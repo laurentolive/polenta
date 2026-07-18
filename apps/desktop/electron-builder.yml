@@ -1,0 +1,35 @@
+appId: com.polenta.desktop
+productName: Polenta
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  # Le bundle mcp-server (out/mcp-server/index.cjs, produit par `pnpm build:mcp-server`,
+  # cf. package.json) est traité comme une ressource extraite plutôt que packagé dans
+  # `files`/app.asar (ci-dessous) — voir extraResources : il doit rester un fichier
+  # ordinaire sur disque, lançable comme process séparé par un client MCP externe.
+  - "!out/mcp-server/**/*"
+extraResources:
+  # T122 sprint 4 — copie le bundle mcp-server (esbuild, autonome hormis `keytar`
+  # natif) hors de app.asar, à un chemin stable résolu par
+  # `main/services/mcp-launch.util.ts::resolveMcpServerLaunchConfig()` via
+  # `process.resourcesPath` en build packagé (cf. specs/T122-design.md §6.2,
+  # specs/SPEC-MCP-SERVER.md §Packaging).
+  - from: out/mcp-server
+    to: mcp-server
+  # `keytar` marqué `--external` par l'esbuild de mcp-server (module natif, non
+  # bundleable en un seul fichier JS) — copié ici pour que `require('keytar')`
+  # depuis `resources/mcp-server/index.cjs` le retrouve par la résolution Node
+  # standard (remontée de node_modules). Le serveur MCP n'appelle en pratique jamais
+  # de méthode qui l'invoque réellement (cf. electron-shim.ts et
+  # specs/T122-design.md §2.1) — copié par prudence, pour que le simple `require`
+  # (évaluation du module, pas son appel) ne casse pas le démarrage du process.
+  - from: node_modules/keytar
+    to: mcp-server/node_modules/keytar
+win:
+  icon: build/icon.ico
+mac:
+  icon: build/icon.png
+linux:
+  icon: build/icon.png

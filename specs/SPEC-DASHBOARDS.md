@@ -1,0 +1,197 @@
+# SPEC-DASHBOARDS — Module Dashboards & Requêtes
+
+> Référence parent : [SPEC.md](../SPEC.md) §2.7
+> Dépend de : [SPEC-TECH-stack.md](SPEC-TECH-stack.md) §2/§5, [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md), [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md)
+> Introduit par T77 (sprints 1–3)
+
+---
+
+## 1. Vue d'ensemble
+
+Système de **dashboards personnalisables par requêtes façon SQL**, remplaçant l'ancien
+"Tableau de bord" statique de la page Projet (StatCards/répartitions/récemment
+modifiées — retiré sans reprise en sprint 3).
+
+Trois entités, chacune privée ou partagée : **Requête** (`SavedQuery`), **Widget**
+(embarqué dans un Dashboard, pas d'entité/fichier propre), **Dashboard**.
+
+Nouvel onglet `ActivityBar` "Suivi" — panneau latéral à deux sections (Dashboards /
+Requêtes), deux familles de vues (`/query`, `/dashboard`).
+
+---
+
+## 2. Moteur de requête (`query-engine.service.ts`)
+
+- **AlaSQL** — SQL exécuté directement sur des tableaux JS en mémoire, pas de moteur
+  de stockage. Cohérent avec `SPEC.md` §5 / `CONTEXT.md` D1 ("pas de base de données
+  applicative").
+- **Dataset** reconstruit à chaque exécution depuis les index en mémoire déjà
+  maintenus par `RequirementsIndexService`/`TestsIndexService` — jamais persisté ni
+  mis en cache sur disque. Trois tables : `requirements`, `tests`, `links`, une ligne
+  par objet, champs `fields{}` étalés au premier niveau (accessibles directement en
+  SQL). Colonne `component` sur chaque ligne (repo courant + composants submodules
+  agrégés via `WorkspaceTreeService`).
+- **Colonnes dérivées sur `requirements`** (T77 sprint 3, cf. §5 ci-dessous) :
+  `coverageStatus` + 5 colonnes booléennes `maturity*` + `maturityMissingCriteria`.
+- **Deux modes** : builder guidé (traduit en SQL côté service, champs limités à une
+  allowlist par type d'objet — protection contre l'injection d'un `BuilderCondition`
+  corrompu) et SQL avancé (texte libre, lecture seule).
+- **Garde-fou lecture seule** : rejette `INSERT/UPDATE/DELETE/DROP/CREATE/ALTER/
+  TRUNCATE/ATTACH/INTO` (ce dernier car AlaSQL implémente `SELECT ... INTO
+  CSV/JSON/.../SQL(path)`, un vecteur d'écriture fichier) sur la SQL finale, quel
+  que soit le mode d'origine.
+- **Export Excel** du résultat courant via `exceljs` (infra autonome, ne dépend pas
+  du ticket T43 export cahier, non encore implémenté au moment de T77).
+
+---
+
+## 3. Stockage — privé / partagé
+
+| Entité | Partagé | Privé |
+|---|---|---|
+| Requête (`SavedQuery`) | `queries/QUERY-xxxx.yaml`, un fichier par requête, ID via `config/counters.yaml` | clé `savedQueries` dans `.{username}.pref`, ID `local-<ts>-<rand>` |
+| Dashboard (`Dashboard`) | `dashboards/DASHBOARD-xxxx.yaml`, widgets **embarqués** dans le YAML (pas de fichier séparé par widget) | clé `dashboards` dans `.{username}.pref` |
+| Historique de requêtes | — | toujours privé (`queryHistory` dans `.pref`), sans exception |
+| Widget | pas de stockage propre — scope hérité du Dashboard parent | idem |
+
+Ordre d'affichage des sections du panneau latéral : `queriesOrder`/`dashboardsOrder`
+dans `.{username}.pref` (préférence d'affichage, indépendante du scope de chaque
+objet référencé).
+
+### 3.1 Règles de dépendance et de scope
+
+- Un widget ne peut être partagé que si sa requête l'est — appliqué à la fois côté
+  UI (filtre proactif du sélecteur de requête) et côté service
+  (`DashboardsService.setScope`/`addWidget`/`updateWidget`), défense en profondeur.
+- Rétrogradation (partagé → privé) d'une requête bloquée si des widgets partagés en
+  dépendent (`SavedQueriesService.findDependentWidgets`, via `DashboardsService`).
+- Suppression d'une requête utilisée par au moins un widget : bloquée, liste des
+  dépendants affichée.
+- Promotion (privé → partagé) toujours libre ; l'id de la requête change (schémas
+  d'id différents privé/partagé) — les widgets des dashboards privés du même
+  utilisateur qui la référencaient sont remappés vers le nouvel id
+  (`DashboardsService.remapWidgetQueryId`), pour ne jamais laisser de référence
+  pendante.
+- **Limite connue** : la détection de dépendants ne voit pas les dashboards privés
+  d'un *autre* utilisateur (fichier `.pref` non accessible depuis la session
+  courante) — compromis assumé, pas un bug à corriger dans ce périmètre.
+
+---
+
+## 4. Vue Dashboard — widgets
+
+- Grille à tailles prédéfinies (`sm`/`md`/`lg` → 1/2/4 colonnes sur une grille à 4
+  colonnes), réordonnable par drag & drop natif HTML5 (même pattern que
+  l'`ElementTree` de la vue Système) — pas de redimensionnement libre en pixels.
+- 5 types de widget : barres, camembert, courbe (recharts), tuile KPI, table. Le
+  type n'est **jamais contraint** par la forme du résultat de la requête — aperçu
+  live dans la popup de configuration, l'utilisateur reste seul juge.
+- Chaque widget gère explicitement le résultat vide et le mapping incomplet (état
+  vide dédié, jamais un chart cassé) — y compris le cas "widget dont la requête
+  sous-jacente a été supprimée" (ne devrait pas arriver grâce aux garde-fous de
+  §3.1, mais affiche un état "requête introuvable" en défense plutôt que de
+  planter).
+
+---
+
+## 5. Dashboards pré-configurés & critères de maturité (T77 sprint 3)
+
+### 5.1 Seed automatique
+
+Trois dashboards **partagés** sont créés automatiquement au premier accès à
+l'onglet "Suivi" si le dossier `dashboards/` est vide et n'a jamais été seedé
+(marqueur `dashboards/.seeded.yaml`, invisible du listing car les fichiers dont le
+nom commence par `.` sont ignorés par `GitService.listFiles`) : **Couverture**,
+**Avancement**, **Maturité**. Le seed ne se redéclenche jamais si le dossier est
+non vide au premier accès (contient déjà des dashboards partagés) ni s'il a déjà eu
+lieu — un utilisateur qui supprime les 3 templates ne les voit pas revenir.
+Implémenté côté main process (`DashboardSeedService`, appelé depuis le handler IPC
+`dashboards:list`), pas côté renderer.
+
+Chaque dashboard pré-configuré est un dashboard partagé normal : modifiable,
+supprimable, widgets ajoutables/retirables comme n'importe quel dashboard partagé —
+aucune UI ni contrainte spéciale ne le distingue après sa création.
+
+**Garde-fous** (trouvés en revue sprint 3) : le marqueur n'est écrit qu'une fois le
+seed **entièrement réussi** (jamais sur le chemin "dossier déjà non vide", qu'il
+s'agisse de dashboards pré-existants ou des restes d'une tentative précédente
+échouée à mi-chemin) — un échec partiel reste donc retentable plutôt que figé
+indéfiniment. Deux appels quasi simultanés à `dashboards:list` (deux fenêtres, ou un
+double-fetch) partagent la même tentative en cours via un cache en mémoire
+(`DashboardSeedService.inFlightSeeds`), pour ne jamais créer les dashboards en
+double. Le seed est également sauté (sans écrire de marqueur, pour retenter plus
+tard) si la branche courante est en lecture seule (`''` ou `prj-*`, même règle que
+`VersioningContext.isReadonly` côté renderer) — `dashboards:list` est passé de
+lecture pure à lecture+écriture avec ce seed, et rien d'autre dans le process
+principal n'empêchait jusqu'ici une écriture sur une baseline.
+
+- **Couverture** : répartition des exigences par `coverageStatus` (camembert) +
+  taux de couverture par composant (barres).
+- **Avancement** : répartition par statut (barres) + répartition par domaine
+  (barres).
+- **Maturité** : taux de maturité global (tuile KPI) + taux par domaine (barres) +
+  table des exigences non conformes avec le(s) critère(s) manquant(s).
+
+### 5.2 Critères de maturité — calcul exact
+
+Basé sur `CLAUDE.md` § "Règles de cohérence — à vérifier systématiquement".
+Implémenté dans `apps/desktop/src/main/services/maturity.util.ts`, appelé depuis
+`query-engine.service.ts` pour chaque ligne de la table `requirements`. Schema-driven
+(aucun nom de champ n'est codé en dur — `schema.yaml` est configurable par projet).
+
+| # | Critère (T77.md) | Colonne dataset | Implémentation |
+|---|---|---|---|
+| 1 | Tous les champs `required: true` du type sont remplis | `maturityRequiredFieldsOk` | Pour chaque champ custom du type (`ObjectTypeDefinition.fields`) marqué `required: true`, vérifie que `r.fields[nom]` est non vide (chaîne non blanche après suppression du HTML pour les champs richtext, tableau non vide, sinon présent). Type non résolvable (cross-composant, ou type supprimé du schéma) → passant par défaut (impossible à vérifier ≠ invalide). |
+| 2 | `statement` respecte la syntaxe EARS | `maturityEarsOk` | Appliqué à **tout champ dont `validator: EARS`** dans le schéma (pas seulement un champ nommé `statement`). Heuristique : après suppression du HTML, le texte doit commencer par un des 5 mots-clés EARS (`WHEN`/`WHILE`/`WHERE`/`IF`/`THE`) et contenir `SHALL` ensuite (regex `^\s*(WHEN\|WHILE\|WHERE\|IF\|THE)\b[\s\S]*\bSHALL\b`, insensible à la casse). Pas de parseur grammatical complet. Aucun champ `validator: EARS` déclaré → passant par défaut. |
+| 3 | Au moins un critère d'acceptance mesurable | `maturityAcceptanceOk` | Cherche un champ dont le `name` ou le `label` contient "accept" (insensible à la casse — correspond à la convention `acceptanceCriteria` de `CLAUDE.md` sans la coder en dur). "Mesurable" = non vide ET (contient un item de checklist markdown `- [ ]`/`- [x]`, ou contient un chiffre — seuil/valeur en prose). Aucun champ correspondant dans le type → passant par défaut. |
+| 4 | Si `status: approved` → au moins un lien de vérification vers un test | `maturityVerificationOk` | Réutilise `coverageStatus` (voir §5.3) : `!isApproved OR coverageStatus !== 'not_covered'`. Le statut "approuvé" est résolu depuis `typeDef.statuses[].isApproval` (pas la chaîne littérale `'approved'`) — un projet dont le statut d'approbation porte un autre nom (ex. `valide`) est géré correctement ; repli sur `'approved'` uniquement si le type n'est pas résolvable ou ne déclare aucun statut `isApproval`. Ne re-dérive pas le matching lien test↔exigence une seconde fois. |
+| 5 | Aucun lien la concernant n'a `needsRevalidation: true` | `maturityNoRevalidation` | Scan de **tous** les liens du périmètre où l'exigence est source OU cible (pas seulement les liens de couverture vers des tests — un lien exigence→exigence `implementation` périmé compte aussi), via `TraceabilityService.computeRevalidationReqIds()`. |
+
+**Robustesse supplémentaire** (trouvée en revue sprint 3) : un `objectTypeRef` manquant ou malformé sur une exigence (frontmatter édité à la main) ne fait plus planter la construction du dataset (`findObjectTypeDef` traite désormais toute valeur non-string/vide comme `'unresolvable'` plutôt que de lever une exception) — et une telle exigence est explicitement comptée comme non mûre (`"type d'objet invalide"` dans `maturityMissingCriteria`), plutôt que silencieusement traitée comme "impossible à vérifier donc conforme".
+| — | Agrégat | `maturityOk` (ET des 5), `maturityMissingCriteria` (libellés des critères manquants, séparés par virgule) | — |
+
+**Robustesse** : toutes les lectures de `r.fields[...]` sont défensives
+(`req.fields ?? {}`) — `requirements-index.service.ts` caste le YAML brut en
+`Requirement` sans normalisation runtime, donc un frontmatter édité à la main sans
+bloc `fields:` ne fait pas planter le calcul (c'est justement le cas d'usage visé :
+lister ce qui est incomplet).
+
+### 5.3 Couverture (`coverageStatus`)
+
+Colonne exposée directement sur `requirements`, réutilisant
+`TraceabilityService.computeCoverage()` (méthode publique extraite en sprint 3 de
+la boucle jusque-là interne à `getMatrix()`) — aucune ré-implémentation du matching
+lien test↔exigence ni du calcul d'agrégat `CoverageStatus` dans le moteur de
+requête. Voir [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §2.2 pour la définition
+et la priorité de calcul des statuts.
+
+**Calculée sur le graphe de liens agrégé de TOUS les composants du périmètre**, pas
+repo par repo : un lien de vérification pertinent pour une exigence d'un composant
+peut être stocké dans — ou référencer un cas de test vivant dans — le repo d'un
+autre composant (liens cross-composant T69/T70). `query-engine.service.ts` agrège
+requirements/tests/links de tous les repos avant d'appeler `computeCoverage()` une
+seule fois, exactement comme `getMatrix()` le fait déjà via `resolveRepoPaths()` —
+sans quoi `coverageStatus` divergerait silencieusement de la Matrice de traçabilité
+pour toute exigence à couverture cross-composant. La résolution du schéma
+(critères 1-3, spécifique à chaque composant) reste en revanche par repo, chaque
+composant étant schema-autonome (cf. `CLAUDE.md`).
+
+---
+
+## 6. Panneau latéral
+
+Deux sections indépendantes ("Dashboards", "Requêtes"), chacune réorganisable par
+glisser-déposer (composant générique `ReorderableSidebarSection`, partagé), filtre
+texte dynamique. Clic sur un dashboard → vue Dashboard ; clic sur une requête → vue
+Requêtes avec cette requête chargée dans l'éditeur adapté à son mode d'origine.
+
+---
+
+## 7. Hors scope
+
+- Redimensionnement libre des widgets en pixels — grille à tailles prédéfinies
+  seulement.
+- Partage/duplication d'un widget entre plusieurs dashboards.
+- Export des dashboards complets (PDF/Excel).
+- Alertes/notifications sur seuils, requêtes planifiées, historique/versioning des
+  résultats de dashboard dans le temps.

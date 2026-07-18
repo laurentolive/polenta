@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --canvas: #f8fafc;
+    --surface: #ffffff;
+    --surface-hover: #f1f5f9;
+    --folder-row: #f5f7fb;
+    --row-hover: #fafbfe;
+    --edge: #e2e8f0;
+    --edge-subtle: #f1f5f9;
+    --ink: #0f172a;
+    --ink-2: #475569;
+    --ink-3: #94a3b8;
+    --prim: #0f172a;
+    --prim-fg: #f8fafc;
+
+    /* Palette catégorielle des widgets dashboard (T77 sprint 2) — ordre fixe, jamais
+     * cyclé arbitrairement (skill dataviz § color-formula) : ces 8 valeurs sont la
+     * palette de référence déjà validée (CVD ΔE mini 24.2 en clair) du skill, réutilisée
+     * telle quelle plutôt que ré-inventée. */
+    --chart-series-1: #2a78d6;
+    --chart-series-2: #1baf7a;
+    --chart-series-3: #eda100;
+    --chart-series-4: #008300;
+    --chart-series-5: #4a3aa7;
+    --chart-series-6: #e34948;
+    --chart-series-7: #e87ba4;
+    --chart-series-8: #eb6834;
+  }
+
+  .dark {
+    --canvas: #0f172a;
+    --surface: #1e293b;
+    --surface-hover: #293548;
+    --folder-row: #232e3d;
+    --row-hover: #1f2c3a;
+    --edge: #334155;
+    --edge-subtle: #1e293b;
+    --ink: #f1f5f9;
+    --ink-2: #cbd5e1;
+    --ink-3: #94a3b8;
+    --prim: #e2e8f0;
+    --prim-fg: #0f172a;
+
+    /* Mêmes 8 teintes, marches "sombres" validées par le skill (CVD ΔE mini 10.3). */
+    --chart-series-1: #3987e5;
+    --chart-series-2: #199e70;
+    --chart-series-3: #c98500;
+    --chart-series-4: #008300;
+    --chart-series-5: #9085e9;
+    --chart-series-6: #e66767;
+    --chart-series-7: #d55181;
+    --chart-series-8: #d95926;
+  }
+
+  * {
+    @apply border-edge;
+  }
+
+  body {
+    @apply bg-canvas text-ink;
+  }
+
+  select {
+    background-color: var(--surface);
+    color: var(--ink);
+  }
+
+  .dark select {
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  /* Form inputs — use with w-full or flex-1 */
+  .input-field {
+    @apply border border-edge rounded px-3 py-2 text-sm bg-surface text-ink
+           placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-slate-400/30
+           disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+
+  /* Select shares the same base style */
+  select.input-field {
+    @apply bg-surface;
+  }
+
+  /* Primary action button */
+  .btn-primary {
+    @apply bg-prim text-prim-fg rounded px-4 py-2 text-sm font-medium
+           hover:opacity-90 active:opacity-80
+           disabled:opacity-50 disabled:cursor-not-allowed transition-opacity;
+  }
+
+  /* Secondary/outline button */
+  .btn-secondary {
+    @apply border border-edge rounded px-4 py-2 text-sm text-ink-2
+           hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply border border-red-300 text-red-600 rounded px-4 py-2 text-sm
+           hover:bg-red-50 disabled:opacity-50
+           dark:border-red-700/60 dark:text-red-400 dark:hover:bg-red-900/20
+           transition-colors;
+  }
+
+  /* Small secondary button */
+  .btn-sm {
+    @apply border border-edge rounded px-2 py-1 text-xs text-ink-2
+           hover:bg-hover disabled:opacity-50 transition-colors;
+  }
+
+  /* Section header label */
+  .section-label {
+    @apply text-xs font-semibold text-ink-3 uppercase tracking-wider;
+  }
+}

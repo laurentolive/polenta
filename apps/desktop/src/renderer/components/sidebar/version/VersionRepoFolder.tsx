@@ -1,0 +1,434 @@
+import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ChevronDown, ChevronRight, FolderGit2, GitFork, Undo2 } from 'lucide-react'
+import { api } from '../../../api'
+import { useSelectedRepo } from '../../../contexts/SelectedRepoContext'
+import { useBranchCheckout } from '../../../hooks/useBranchCheckout'
+import { propagatePinToDependents, type PinPropagationOutcome } from '../../../lib/workspaceActions'
+import { BranchCombobox } from './BranchCombobox'
+import { PinPropagationWarning } from './PinPropagationWarning'
+import type { WorkspaceTreeNode } from '@polenta/types'
+
+interface Props {
+  node: WorkspaceTreeNode
+  depth: number
+  projectId: string
+  /** Workspace root directory — needed to propagate a pin update to dependent repos (T82). */
+  workspaceDir: string
+  /** All repos in the current workspace — needed to find who declares this node as a dependency (T82). */
+  flatNodes: WorkspaceTreeNode[]
+}
+
+/** One repo's git-status/checkout panel — root or a component/interface, all scoped to `node.repoPath`.
+ *  Mirrors `RepoRow` in StructureTab.tsx (chevron, indent, own `open` state, recursion over `children`),
+ *  but each row here owns its own git queries/mutations/modals instead of a shared schema. */
+export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNodes }: Props) {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const { selectedRepoPath, selectRepo } = useSelectedRepo()
+  const { repoPath } = node
+  const indent = depth * 16
+  const isSelected = repoPath === selectedRepoPath
+
+  const [open, setOpen] = useState(true)
+  const [commitMessage, setCommitMessage] = useState('')
+  const [showCommitModal, setShowCommitModal] = useState(false)
+  const [confirmDiscardAll, setConfirmDiscardAll] = useState(false)
+  const [discardConfirmPath, setDiscardConfirmPath] = useState<string | null>(null)
+  const [checkoutConfirm, setCheckoutConfirm] = useState<{ value: string; isCommit: boolean } | null>(null)
+  const [commitPinWarning, setCommitPinWarning] = useState<PinPropagationOutcome | null>(null)
+  // The branch combobox now sits in the always-visible header (T87), not gated by the folder's
+  // own open/closed state — so branches/tags are fetched only while its dropdown is actually
+  // open, same pattern as the Structure tab's RepoBranchSelector.
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false)
+
+  // Mounted unconditionally (not gated by `open`) so the closed-folder dirty badge stays
+  // accurate without requiring the folder to be opened first.
+  const { data: syncStatus } = useQuery({
+    queryKey: ['sync:status', repoPath],
+    queryFn: () => api.sync.status(repoPath),
+    enabled: !!repoPath,
+    refetchInterval: 3000,
+  })
+
+  const {
+    currentBranch, allBranches, allTags,
+    checkout, checkoutCommit, createBranch, deleteBranch, isPending: isBranchPending,
+    isCheckoutError, checkoutError, pinWarning: checkoutPinWarning, dismissPinWarning,
+  } = useBranchCheckout(node, workspaceDir, flatNodes, branchDropdownOpen)
+
+  const staged = syncStatus?.staged ?? []
+  const unstaged = syncStatus?.unstaged ?? []
+  const isDirty = staged.length + unstaged.length > 0
+  const ahead = syncStatus?.ahead ?? 0
+
+  const pushMutation = useMutation({
+    mutationFn: () => api.sync.push(repoPath),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sync:status', repoPath] }),
+  })
+
+  const commitMutation = useMutation({
+    mutationFn: () => {
+      if (staged.length === 0) throw new Error('Aucune modification stagée à committer')
+      return api.sync.commit(repoPath, commitMessage)
+    },
+    onSuccess: async ({ sha }) => {
+      setShowCommitModal(false)
+      setCommitMessage('')
+      qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+      qc.invalidateQueries({ queryKey: ['sync:graph', repoPath] })
+      // T82: this repo's HEAD just advanced — propose the new SHA as pin wherever this repo
+      // is declared as a dependency (cascade: repeats naturally when a dependent is committed).
+      // Rendered outside the commit modal (which just closed) — see commitPinWarning usage below.
+      const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, sha)
+      setCommitPinWarning(outcome)
+    },
+  })
+
+  const stageMutation = useMutation({
+    mutationFn: (filepath: string) => api.sync.stage(repoPath, filepath),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sync:status', repoPath] }),
+  })
+
+  const stageAllMutation = useMutation({
+    mutationFn: () => api.sync.stageAll(repoPath),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sync:status', repoPath] }),
+  })
+
+  const unstageMutation = useMutation({
+    mutationFn: (filepath: string) => api.sync.unstage(repoPath, filepath),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sync:status', repoPath] }),
+  })
+
+  const unstageAllMutation = useMutation({
+    mutationFn: () => api.sync.unstageAll(repoPath),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sync:status', repoPath] }),
+  })
+
+  const discardMutation = useMutation({
+    mutationFn: (filepath: string) => api.sync.discard(repoPath, filepath),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+      setDiscardConfirmPath(null)
+    },
+  })
+
+  const discardAllMutation = useMutation({
+    mutationFn: () => api.sync.discardAll(repoPath),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+      setConfirmDiscardAll(false)
+    },
+  })
+
+  function handleCheckout(name: string) {
+    if (staged.length > 0 || unstaged.length > 0) {
+      setCheckoutConfirm({ value: name, isCommit: false })
+      return
+    }
+    checkout(name)
+  }
+
+  function handleCheckoutCommit(sha: string) {
+    if (staged.length > 0 || unstaged.length > 0) {
+      setCheckoutConfirm({ value: sha, isCommit: true })
+      return
+    }
+    checkoutCommit(sha)
+  }
+
+  function confirmCheckout() {
+    if (!checkoutConfirm) return
+    if (checkoutConfirm.isCommit) checkoutCommit(checkoutConfirm.value)
+    else checkout(checkoutConfirm.value)
+    setCheckoutConfirm(null)
+  }
+
+  return (
+    <div>
+      <div
+        className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-hover transition-colors cursor-pointer select-none"
+        style={{ paddingLeft: `${8 + indent}px` }}
+        onClick={() => { setOpen(v => !v); selectRepo(repoPath) }}
+      >
+        <span className="text-ink-3 shrink-0">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
+        {node.isInterface ? (
+          <GitFork size={14} className="text-violet-500 shrink-0" />
+        ) : (
+          <FolderGit2 size={14} className="text-ink-3 shrink-0" />
+        )}
+        <span className={`text-sm truncate ${isSelected ? 'font-semibold text-blue-500 dark:text-blue-400' : 'font-medium text-ink'}`}>
+          {node.name}
+        </span>
+        {isDirty && (
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Modifications en attente" />
+        )}
+        {/* Branch combobox moved next to the repo name (T87) — always visible, open or closed,
+            instead of a separate labelled "Checkout" row inside the expanded panel. */}
+        <div className="w-32 shrink-0 ml-auto" onClick={e => e.stopPropagation()}>
+          <BranchCombobox
+            branches={allBranches}
+            tags={allTags}
+            currentBranch={currentBranch}
+            onCheckout={handleCheckout}
+            onCheckoutCommit={handleCheckoutCommit}
+            onDelete={deleteBranch}
+            onCreateNew={createBranch}
+            isPending={isBranchPending}
+            onOpenChange={setBranchDropdownOpen}
+          />
+        </div>
+      </div>
+
+      {(isCheckoutError || checkoutPinWarning) && (
+        <div style={{ paddingLeft: `${8 + indent}px` }} className="px-3">
+          {isCheckoutError && (
+            <p className="text-xs text-red-500 leading-snug">
+              {checkoutError instanceof Error ? checkoutError.message : 'Erreur lors du checkout'}
+            </p>
+          )}
+          <PinPropagationWarning outcome={checkoutPinWarning} onDismiss={dismissPinWarning} />
+        </div>
+      )}
+
+      {open && (
+        <div style={{ paddingLeft: `${8 + indent}px` }} className="pb-2">
+          {/* ── Pousser (T86 — restaure la capacité perdue lors de la suppression de SyncBar) ── */}
+          {ahead > 0 && (
+            <div className="px-3 py-2 border-b border-edge-subtle flex items-center justify-between">
+              <span className="text-xs text-ink-2">
+                &uarr;{ahead} commit{ahead > 1 ? 's' : ''} à pousser
+              </span>
+              <button type="button" onClick={() => pushMutation.mutate()}
+                disabled={pushMutation.isPending}
+                className="btn-sm">
+                {pushMutation.isPending ? 'Push…' : 'Pousser'}
+              </button>
+            </div>
+          )}
+          {pushMutation.isError && (
+            <p className="px-3 pt-1 text-xs text-red-500 leading-snug">
+              {pushMutation.error instanceof Error ? pushMutation.error.message : 'Erreur lors du push'}
+            </p>
+          )}
+
+          {/* ── Stagés ── */}
+          <div className="px-3 py-2 border-b border-edge-subtle">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="section-label">Stagés ({staged.length})</p>
+              <div className="flex items-center gap-1">
+                {staged.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { setCommitMessage(''); setShowCommitModal(true) }}
+                      className="btn-sm"
+                    >
+                      Committer…
+                    </button>
+                    <button type="button" onClick={() => unstageAllMutation.mutate()}
+                      disabled={unstageAllMutation.isPending}
+                      className="text-xs px-1.5 py-0.5 text-ink-3 hover:text-ink hover:bg-hover rounded transition-colors disabled:opacity-50"
+                      title="Désindexer tout">
+                      {unstageAllMutation.isPending ? '…' : '−'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            {/* T82: rendered here (not inside the commit modal) because the modal closes
+                synchronously on commit success, before the async pin propagation resolves. */}
+            <PinPropagationWarning outcome={commitPinWarning} onDismiss={() => setCommitPinWarning(null)} />
+            {staged.length === 0 ? (
+              <p className="text-xs text-ink-3 italic">Aucun fichier stagé</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {staged.map(({ path: filePath, marker }) => (
+                  <li key={filePath} className="flex items-center gap-1 text-xs">
+                    <span className={`font-mono font-bold w-3 shrink-0 ${
+                      marker === 'A' ? 'text-green-500' : marker === 'D' ? 'text-red-500' : 'text-amber-500'
+                    }`}>{marker}</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate({ to: '/diff', search: { projectId, repoPath, filepath: filePath, commitSha: undefined } })}
+                      className="flex-1 text-left font-mono text-ink-2 hover:text-ink truncate hover:underline"
+                      title={filePath}
+                    >{filePath}</button>
+                    <button
+                      type="button"
+                      onClick={() => unstageMutation.mutate(filePath)}
+                      disabled={unstageMutation.isPending}
+                      className="shrink-0 text-ink-3 hover:text-ink hover:bg-hover rounded px-1 disabled:opacity-30"
+                      title="Désindexer"
+                    >−</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* ── Modifications ── */}
+          <div className="px-3 py-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="section-label">Modifications ({unstaged.length})</p>
+              <div className="flex items-center gap-1">
+                {unstaged.length > 0 && (
+                  <>
+                    <button type="button" onClick={() => stageAllMutation.mutate()}
+                      disabled={stageAllMutation.isPending}
+                      className="text-xs px-1.5 py-0.5 text-ink-3 hover:text-ink hover:bg-hover rounded transition-colors disabled:opacity-50"
+                      title="Tout stager">
+                      {stageAllMutation.isPending ? '…' : '+'}
+                    </button>
+                    {!confirmDiscardAll ? (
+                      <button type="button" onClick={() => setConfirmDiscardAll(true)}
+                        className="text-xs px-1.5 py-0.5 text-ink-3 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                        title="Tout annuler"><Undo2 size={12} /></button>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-1.5 py-0.5">
+                        <span>Annuler tout ?</span>
+                        <button type="button" onClick={() => discardAllMutation.mutate()}
+                          disabled={discardAllMutation.isPending} className="font-medium hover:underline disabled:opacity-50">
+                          {discardAllMutation.isPending ? '…' : 'Oui'}
+                        </button>
+                        <button type="button" onClick={() => setConfirmDiscardAll(false)} className="text-ink-3 hover:underline">Non</button>
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            {unstaged.length === 0 ? (
+              <p className="text-xs text-ink-3 italic">Aucune modification</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {unstaged.map(({ path: filePath, marker }) => (
+                  <li key={filePath} className="flex items-center gap-1 text-xs">
+                    <span className={`font-mono font-bold w-3 shrink-0 ${
+                      marker === 'A' ? 'text-green-500' : marker === 'D' ? 'text-red-500' : 'text-amber-500'
+                    }`}>{marker}</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate({ to: '/diff', search: { projectId, repoPath, filepath: filePath, commitSha: undefined } })}
+                      className="flex-1 text-left font-mono text-ink-2 hover:text-ink truncate hover:underline"
+                      title={filePath}
+                    >{filePath}</button>
+                    <button
+                      type="button"
+                      onClick={() => stageMutation.mutate(filePath)}
+                      disabled={stageMutation.isPending}
+                      className="shrink-0 text-ink-3 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded px-1 disabled:opacity-30"
+                      title="Stager"
+                    >+</button>
+                    {discardConfirmPath === filePath ? (
+                      <span className="flex items-center gap-0.5 text-red-700 dark:text-red-400">
+                        <button type="button" onClick={() => discardMutation.mutate(filePath)}
+                          disabled={discardMutation.isPending}
+                          className="font-medium hover:underline disabled:opacity-50 px-1">
+                          {discardMutation.isPending ? '…' : '✓'}
+                        </button>
+                        <button type="button" onClick={() => setDiscardConfirmPath(null)}
+                          className="text-ink-3 hover:underline px-1">✕</button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDiscardConfirmPath(filePath)}
+                        className="shrink-0 text-ink-3 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded px-1"
+                        title="Annuler les modifications"
+                      ><Undo2 size={12} /></button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {node.children.map(child => (
+        <VersionRepoFolder
+          key={child.name}
+          node={child}
+          depth={depth + 1}
+          projectId={projectId}
+          workspaceDir={workspaceDir}
+          flatNodes={flatNodes}
+        />
+      ))}
+
+      {/* Checkout avec fichiers modifiés — confirmation */}
+      {checkoutConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-20">
+          <div className="bg-surface border border-edge rounded-lg shadow-xl p-5 w-full max-w-sm mx-4">
+            <h2 className="font-semibold text-sm text-ink mb-2">Changer de branche / tag ?</h2>
+            <p className="text-xs text-ink-2 mb-4">
+              Des fichiers sont modifiés ou stagés dans <span className="font-mono font-medium">{node.name}</span>. Le
+              checkout vers <span className="font-mono font-medium">{checkoutConfirm.value}</span> pourrait écraser
+              ces changements. Committez d'abord pour ne rien perdre.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setCheckoutConfirm(null)} className="btn-secondary text-xs">
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmCheckout}
+                className="px-3 py-1.5 text-xs rounded bg-red-600 hover:bg-red-700 text-white font-medium transition-colors"
+              >
+                Forcer le checkout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Commit modal */}
+      {showCommitModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-20">
+          <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h2 className="font-semibold mb-4 text-sm text-ink">Committer les modifications stagées — {node.name}</h2>
+            <textarea
+              value={commitMessage}
+              onChange={e => setCommitMessage(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && e.ctrlKey && commitMessage.trim() && !commitMutation.isPending) {
+                  e.preventDefault()
+                  commitMutation.mutate()
+                }
+                if (e.key === 'Escape') {
+                  setShowCommitModal(false)
+                  setCommitMessage('')
+                }
+              }}
+              placeholder="Message de commit… (Ctrl+Entrée pour valider)"
+              rows={3}
+              className="input-field w-full resize-none mb-4"
+              autoFocus
+            />
+            {commitMutation.isError && (
+              <p className="text-sm text-red-500 mb-3">
+                {commitMutation.error instanceof Error ? commitMutation.error.message : 'Erreur lors du commit'}
+              </p>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => { setShowCommitModal(false); setCommitMessage('') }}
+                className="btn-secondary">
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => commitMutation.mutate()}
+                disabled={!commitMessage.trim() || commitMutation.isPending}
+                className="btn-primary"
+              >
+                {commitMutation.isPending ? 'Commit…' : 'Committer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

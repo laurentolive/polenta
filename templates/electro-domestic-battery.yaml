@@ -1,0 +1,383 @@
+name: "Électroménager sur batterie"
+description: >
+  Template pour produits électroménagers embarquant une batterie Li-ion
+  (ex: aspirateur sans fil, robot aspirateur, outil sans fil).
+  Couvre les domaines Système, Firmware, Électronique, Mécanique, Batterie, Produit.
+version: "1.0.0"
+tags: [embedded, battery, iec60335, iec62133]
+
+# ─────────────────────────────────────────────
+# Types de liens autorisés
+# ─────────────────────────────────────────────
+linkTypes:
+  - id: DERIVES_FROM
+    label: "Dérive de"
+    allowedFrom: [SW, HW, MECA, BAT, PROD]
+    allowedTo: [SYS, SW, HW]
+  - id: SATISFIES
+    label: "Satisfait"
+  - id: DEPENDS_ON
+    label: "Dépend de"
+  - id: CONFLICTS_WITH
+    label: "En conflit avec"
+  - id: REFINES
+    label: "Précise"
+
+# ─────────────────────────────────────────────
+# Rôles supplémentaires
+# ─────────────────────────────────────────────
+roles:
+  - id: SAFETY_OFFICER
+    label: "Responsable sécurité"
+    description: "Approuve les exigences safety. Requis pour toute transition vers APPROVED sur les types safety."
+
+# ─────────────────────────────────────────────
+# Scripts CI
+# ─────────────────────────────────────────────
+scripts:
+  - name: check
+    path: scripts/check.py
+    description: "Valide les frontmatters : champs requis, EARS, IDs orphelins, liens drawio"
+  - name: matrix
+    path: scripts/matrix.py
+    description: "Génère traceability/matrix.yaml depuis tous les fichiers requirements/"
+  - name: export
+    path: scripts/export.py
+    description: "Export PDF/HTML pour jalons projet (revue de conception, audit)"
+
+# ─────────────────────────────────────────────
+# Statuts communs (réutilisés par tous les types)
+# ─────────────────────────────────────────────
+_commonStatuses: &commonStatuses
+  - id: DRAFT
+    label: Brouillon
+    color: "#6b7280"
+    isApproved: false
+    isArchived: false
+    isInitial: true
+  - id: IN_REVIEW
+    label: En révision
+    color: "#f59e0b"
+    isApproved: false
+    isArchived: false
+    isInitial: false
+  - id: APPROVED
+    label: Approuvé
+    color: "#22c55e"
+    isApproved: true
+    isArchived: false
+    isInitial: false
+  - id: OBSOLETE
+    label: Obsolète
+    color: "#ef4444"
+    isApproved: false
+    isArchived: true
+    isInitial: false
+
+_commonTransitions: &commonTransitions
+  - from: DRAFT
+    to: IN_REVIEW
+    label: "Soumettre à review"
+    requiredRoles: [AUTHOR, ADMIN]
+    requiresComment: false
+    requiresReview: false
+  - from: IN_REVIEW
+    to: APPROVED
+    label: "Approuver"
+    requiredRoles: [ADMIN]
+    requiresComment: false
+    requiresReview: true
+  - from: IN_REVIEW
+    to: DRAFT
+    label: "Rejeter"
+    requiredRoles: [ADMIN]
+    requiresComment: true
+    requiresReview: false
+  - from: "*"
+    to: OBSOLETE
+    label: "Rendre obsolète"
+    requiredRoles: [ADMIN]
+    requiresComment: true
+    requiresReview: false
+
+# ─────────────────────────────────────────────
+# Champs communs (partagés par tous les types)
+# ─────────────────────────────────────────────
+_commonFields: &commonFields
+  - id: statement
+    label: Énoncé
+    type: RICHTEXT
+    required: true
+    order: 1
+    triggerVersionComment: true
+    visibleInList: false
+    visibleInDetail: true
+    validator: EARS
+    description: >
+      Utiliser la syntaxe EARS. Exemples :
+      "WHEN <trigger> THE <système> SHALL <action>"
+      "WHILE <état> THE <système> SHALL <action>"
+
+  - id: rationale
+    label: Justification
+    type: RICHTEXT
+    required: false
+    order: 2
+    visibleInList: false
+    visibleInDetail: true
+    description: "Pourquoi cette exigence existe. Source : mesure terrain, norme, retour client."
+
+  - id: acceptanceCriteria
+    label: Critères d'acceptance
+    type: RICHTEXT
+    required: true
+    order: 3
+    visibleInList: false
+    visibleInDetail: true
+    description: "Critères mesurables en syntaxe checklist Markdown (- [ ] critère). Inclure conditions de test (température, charge, cycles)."
+
+  - id: notes
+    label: Notes
+    type: RICHTEXT
+    required: false
+    order: 4
+    visibleInList: false
+    visibleInDetail: true
+    description: "Contraintes d'implémentation, risques, alternatives considérées."
+
+  - id: priority
+    label: Priorité
+    type: ENUM
+    required: true
+    order: 5
+    visibleInList: true
+    visibleInDetail: true
+    options:
+      - { value: high, label: Haute, color: "#ef4444" }
+      - { value: medium, label: Moyenne, color: "#f59e0b" }
+      - { value: low, label: Basse, color: "#6b7280" }
+
+  - id: tags
+    label: Tags
+    type: MULTI_ENUM
+    required: false
+    order: 6
+    visibleInList: true
+    visibleInDetail: true
+    options:
+      - { value: safety, label: Sécurité }
+      - { value: battery, label: Batterie }
+      - { value: motor, label: Moteur }
+      - { value: ux, label: UX }
+      - { value: thermal, label: Thermique }
+      - { value: emc, label: CEM }
+      - { value: performance, label: Performance }
+
+  - id: diagrams
+    label: Diagrammes DrawIO
+    type: TEXT
+    required: false
+    order: 7
+    visibleInList: false
+    visibleInDetail: true
+    description: "Référence vers un node DrawIO précis : diagrams/foo.drawio#node-ID"
+
+# ─────────────────────────────────────────────
+# Types d'exigences
+# ─────────────────────────────────────────────
+requirementTypes:
+
+  - id: SYS
+    name: Exigence Système
+    prefix: SYS
+    color: "#2563eb"
+    level: 1
+    parentTypes: []
+    statuses: *commonStatuses
+    transitions: *commonTransitions
+    fields:
+      - <<: *commonFields
+      - id: asil
+        label: Niveau ASIL / SIL
+        type: ENUM
+        required: false
+        order: 8
+        visibleInList: true
+        visibleInDetail: true
+        options:
+          - { value: QM, label: QM }
+          - { value: A, label: ASIL-A }
+          - { value: B, label: ASIL-B }
+          - { value: C, label: ASIL-C }
+          - { value: D, label: ASIL-D }
+
+  - id: SW
+    name: Exigence Firmware/Logiciel
+    prefix: SW
+    color: "#7c3aed"
+    level: 2
+    parentTypes: [SYS]
+    statuses: *commonStatuses
+    transitions: *commonTransitions
+    fields:
+      - <<: *commonFields
+      - id: fsmState
+        label: État FSM associé
+        type: ENUM
+        required: false
+        order: 8
+        visibleInList: false
+        visibleInDetail: true
+        options:
+          - { value: standby, label: Standby / Veille }
+          - { value: startup, label: Démarrage }
+          - { value: eco, label: Mode Éco }
+          - { value: normal, label: Mode Normal }
+          - { value: turbo, label: Mode Turbo }
+          - { value: charging, label: Charge }
+          - { value: fault, label: Défaut / Safe state }
+
+  - id: HW
+    name: Exigence Électronique
+    prefix: HW
+    color: "#b45309"
+    level: 2
+    parentTypes: [SYS]
+    statuses: *commonStatuses
+    transitions: *commonTransitions
+    fields:
+      - <<: *commonFields
+      - id: tolerances
+        label: Tolérances
+        type: TEXT
+        required: false
+        order: 8
+        visibleInList: false
+        visibleInDetail: true
+        description: "Ex : ±5%, ±50mV"
+
+  - id: MECA
+    name: Exigence Mécanique
+    prefix: MECA
+    color: "#065f46"
+    level: 2
+    parentTypes: [SYS]
+    statuses: *commonStatuses
+    transitions: *commonTransitions
+    fields:
+      - <<: *commonFields
+
+  - id: BAT
+    name: Exigence Batterie/BMS
+    prefix: BAT
+    color: "#dc2626"
+    level: 2
+    parentTypes: [SYS, HW]
+    statuses:
+      - id: DRAFT
+        label: Brouillon
+        color: "#6b7280"
+        isApproved: false
+        isArchived: false
+        isInitial: true
+      - id: IN_REVIEW
+        label: En révision
+        color: "#f59e0b"
+        isApproved: false
+        isArchived: false
+        isInitial: false
+      - id: SAFETY_REVIEW
+        label: Revue sécurité
+        color: "#f97316"
+        isApproved: false
+        isArchived: false
+        isInitial: false
+        description: "Étape supplémentaire pour les exigences safety batterie"
+      - id: APPROVED
+        label: Approuvé
+        color: "#22c55e"
+        isApproved: true
+        isArchived: false
+        isInitial: false
+      - id: OBSOLETE
+        label: Obsolète
+        color: "#ef4444"
+        isApproved: false
+        isArchived: true
+        isInitial: false
+    transitions:
+      - from: DRAFT
+        to: IN_REVIEW
+        label: "Soumettre à review"
+        requiredRoles: [AUTHOR, ADMIN]
+        requiresComment: false
+        requiresReview: false
+      - from: IN_REVIEW
+        to: SAFETY_REVIEW
+        label: "Envoyer en revue sécurité"
+        requiredRoles: [ADMIN]
+        requiresComment: false
+        requiresReview: false
+      - from: SAFETY_REVIEW
+        to: APPROVED
+        label: "Approuver (sécurité validée)"
+        requiredRoles: [SAFETY_OFFICER, ADMIN]
+        requiresComment: false
+        requiresReview: true
+      - from: IN_REVIEW
+        to: DRAFT
+        label: "Rejeter"
+        requiredRoles: [ADMIN]
+        requiresComment: true
+        requiresReview: false
+      - from: SAFETY_REVIEW
+        to: DRAFT
+        label: "Rejeter (sécurité)"
+        requiredRoles: [SAFETY_OFFICER, ADMIN]
+        requiresComment: true
+        requiresReview: false
+      - from: "*"
+        to: OBSOLETE
+        label: "Rendre obsolète"
+        requiredRoles: [ADMIN]
+        requiresComment: true
+        requiresReview: false
+    fields:
+      - <<: *commonFields
+      - id: iecRef
+        label: Référence normative
+        type: TEXT
+        required: false
+        order: 8
+        visibleInList: false
+        visibleInDetail: true
+        description: "Ex : IEC 62133-2 §7.3.4"
+      - id: cellChemistry
+        label: Chimie cellule
+        type: ENUM
+        required: false
+        order: 9
+        visibleInList: false
+        visibleInDetail: true
+        options:
+          - { value: LiIon, label: Li-ion }
+          - { value: LiPo, label: LiPo }
+          - { value: LFP, label: LFP }
+
+  - id: PROD
+    name: Exigence Produit/UX
+    prefix: PROD
+    color: "#0891b2"
+    level: 1
+    parentTypes: []
+    statuses: *commonStatuses
+    transitions: *commonTransitions
+    fields:
+      - <<: *commonFields
+      - id: persona
+        label: Persona cible
+        type: TEXT
+        required: false
+        order: 8
+        visibleInList: false
+        visibleInDetail: true

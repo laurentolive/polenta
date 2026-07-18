@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.turbo/
+.env
+.env.*
+!.env.example
+*.log
+.claude/worktrees
+# Git repos bare (données runtime)
+data/
+
+# Build outputs
+apps/web/dist/
+apps/api/dist/
+
+# Prisma
+apps/api/prisma/migrations/*.sql.bak
+
+# OS
+.DS_Store
+Thumbs.db

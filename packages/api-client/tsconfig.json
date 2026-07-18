@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@polenta/types": ["../types/src/index.ts"],
+      "@polenta/zod-schemas": ["../zod-schemas/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

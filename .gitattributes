@@ -1,0 +1,3 @@
+# Fichier tiers vendoré (draw.io viewer, minifié) : pas de conversion de fin
+# de ligne, pas de diff affiché (gros fichier généré, jamais édité à la main).
+apps/desktop/src/renderer/public/vendor/drawio-viewer.min.js -text -diff linguist-vendored

@@ -1,0 +1,23 @@
+drawio-viewer.min.js
+=====================
+
+Source: https://github.com/jgraph/drawio/blob/dev/src/main/webapp/js/viewer.min.js
+Vendored on: 2026-07-08 (unmodified, as fetched from the jgraph/drawio "dev" branch)
+
+This file is part of the draw.io project (https://github.com/jgraph/drawio),
+distributed under the Apache License, Version 2.0. The full license text is
+reproduced below and also available at:
+https://github.com/jgraph/drawio/blob/dev/LICENSE
+
+It is used here to render draw.io diagrams offline inside richtext fields,
+with the same rendering engine as the draw.io application itself, instead of
+a hand-written approximate SVG renderer. See specs/T47.md and
+specs/T47-design.md for context.
+
+-----
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+See https://www.apache.org/licenses/LICENSE-2.0 for the full license text.

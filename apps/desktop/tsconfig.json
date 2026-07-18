@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./out",
+    "paths": {
+      "@polenta/types": ["../../packages/types/src/index.ts"],
+      "@polenta/zod-schemas": ["../../packages/zod-schemas/src/index.ts"],
+      "@polenta/api-client": ["../../packages/api-client/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "out"]
+}

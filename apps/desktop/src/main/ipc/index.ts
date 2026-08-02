@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { app, ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { registerPrefHandlers } from './pref.handlers'
 import * as fs from 'fs'
 import * as fsP from 'fs/promises'
@@ -16,6 +16,7 @@ import type { TraceabilityService } from '../services/traceability.service'
 import type { ReviewsService } from '../services/reviews.service'
 import type { RepoWatcherService } from '../services/repo-watcher.service'
 import type { SchemaService } from '../services/schema.service'
+import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
@@ -71,6 +72,7 @@ export interface Container {
   reviews: ReviewsService
   watcher: RepoWatcherService
   schema: SchemaService
+  elementMove: ElementMoveService
   campaigns: CampaignsService
   tree: TreeService
   baseline: BaselineService
@@ -119,6 +121,19 @@ async function findAvailableFileName(dir: string, baseName: string): Promise<str
 }
 
 export function registerIpcHandlers(c: Container): void {
+  // ── Live sync ────────────────────────────────────────────────────────────────
+  // Pushes every out-of-band file change (external edit, git checkout/pull, a bulk-import
+  // script writing directly to disk…) to every open window, so the renderer can invalidate
+  // the affected react-query caches on its own — see useLiveFileSync.ts for the mapping
+  // from `relPath` to query keys. `BrowserWindow.getAllWindows()` rather than threading a
+  // window reference through the DI container: this module has no `win` at construction
+  // time (registerIpcHandlers runs from createContainer(), before createAppWindow()).
+  c.watcher.onFileChange((repoPath, relPath) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('repo:file-changed', repoPath, relPath)
+    }
+  })
+
   // ── Workspace (projects) ───────────────────────────────────────────────────────
   ipcMain.handle('workspace:list-recents', () => c.workspace.listRecents())
   ipcMain.handle('workspace:mark-recent', (_e, workspaceDir: string) =>
@@ -153,6 +168,12 @@ export function registerIpcHandlers(c: Container): void {
     c.sync.commit(repoPath, message))
   ipcMain.handle('sync:push', (_e, repoPath: string) => c.sync.push(repoPath))
   ipcMain.handle('sync:pull', (_e, repoPath: string) => c.sync.pull(repoPath))
+  ipcMain.handle('sync:fetch', (_e, repoPath: string, urlFallback: string, remote?: string) =>
+    c.sync.fetch(repoPath, urlFallback, remote))
+  ipcMain.handle('sync:fast-forward-branch',
+    (_e, repoPath: string, branchName: string, remote?: string) =>
+      c.sync.fastForwardBranch(repoPath, branchName, remote))
+  ipcMain.handle('sync:pull-fast-forward-only', (_e, repoPath: string) => c.sync.pullFastForwardOnly(repoPath))
   ipcMain.handle('sync:log', async (_e, repoPath: string, limit = 20) => {
     const commits = await git.log({ fs, dir: repoPath, depth: limit })
     return commits.map((c: { oid: string; commit: { message: string; author: { name: string; timestamp: number } } }) => ({
@@ -223,6 +244,11 @@ export function registerIpcHandlers(c: Container): void {
   ipcMain.handle('app:set-title', (_event, title: string) => {
     BrowserWindow.getFocusedWindow()?.setTitle(title)
   })
+  // app.getVersion() lit le champ "version" de package.json (packagé dans app.asar par
+  // electron-builder) — c'est aussi ce champ qui alimente le macro ${version} de
+  // electron-builder.yml pour le nom de l'exe généré : une seule string à modifier à
+  // chaque release.
+  ipcMain.handle('app:get-version', () => app.getVersion())
 
   // ── Requirements ─────────────────────────────────────────────────────────────
   ipcMain.handle('requirements:list', (_e, repoPath: string, filters?: unknown) =>
@@ -322,6 +348,18 @@ export function registerIpcHandlers(c: Container): void {
   ipcMain.handle('schema:get', (_e, repoPath: string) => c.schema.get(repoPath))
   ipcMain.handle('schema:save', (_e, repoPath: string, schema: unknown) =>
     c.schema.save(repoPath, schema as import('@polenta/types').ProjectSchema))
+  // Drops the in-memory cache entry so the next `schema:get` re-reads schema.yaml from disk —
+  // needed because SchemaService.get() otherwise serves the cached copy forever within a
+  // session, even after an out-of-band edit to the file (manual edit, git checkout/pull…).
+  ipcMain.handle('schema:invalidate', (_e, repoPath: string) => c.schema.invalidate(repoPath))
+  // T135 sprint 3 — drag & drop d'un élément (exigence/test/campagne) vers un autre nœud du
+  // même repo : mutation du schéma côté main process, suivie d'une cascade best-effort sur les
+  // requirements/tests existants et le fichier d'ordre d'affichage (cf. element-move.service.ts).
+  // La mutation de schéma elle-même est la seule étape all-or-nothing — au-delà, un échec
+  // partiel de la cascade est rapporté à l'appelant plutôt que de tout annuler.
+  ipcMain.handle('schema:move-element',
+    (_e, repoPath: string, dto: { fromNodeName: string; toNodeName: string; typeName: string }) =>
+      c.elementMove.moveElementToNode(repoPath, dto))
 
   // ── Campaigns ────────────────────────────────────────────────────────────────
   ipcMain.handle('campaigns:list', (_e, repoPath: string, component?: string, level?: string) =>

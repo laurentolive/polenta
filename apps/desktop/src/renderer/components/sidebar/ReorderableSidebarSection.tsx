@@ -9,7 +9,9 @@
  * `scope`), so it doesn't need to know which one it's rendering.
  */
 import { useMemo, useRef, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { Lock, Plus, Trash2, Users2, Search as SearchIcon } from 'lucide-react'
+import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type { QueryScope } from '@polenta/types'
 
 export interface SidebarItem {
@@ -77,6 +79,7 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
   deleteError,
   fillHeight,
 }: Props<T>) {
+  const { t } = useTranslation()
   const [filter, setFilter] = useState('')
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
@@ -134,6 +137,12 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
 
   const pendingItem = items.find((it) => it.id === pendingDeleteId)
 
+  useModalHotkeys(
+    () => setPendingDeleteId(null),
+    () => { if (pendingItem) { onDelete(pendingItem); setPendingDeleteId(null) } },
+    !pendingDeleteId,
+  )
+
   return (
     <div
       className={`flex flex-col border-b border-edge ${fillHeight ? 'flex-1 min-h-0' : 'shrink-0'}`}
@@ -143,7 +152,7 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
 
       <div className="flex items-center justify-between px-3 py-2 shrink-0">
         <p className="section-label">{label}</p>
-        <button type="button" onClick={onAdd} className="p-1 rounded text-prim hover:bg-hover transition-colors" title={addTitle}>
+        <button type="button" onClick={onAdd} className="btn-icon text-prim" title={addTitle}>
           <Plus size={14} />
         </button>
       </div>
@@ -156,7 +165,7 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
           onKeyDown={(e) => {
             if (e.key === 'Escape') setFilter('')
           }}
-          placeholder="Filtrer…"
+          placeholder={t('common.filterPlaceholder')}
           className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
         />
         {filter && (
@@ -167,31 +176,31 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
       </div>
 
       {deleteError && (
-        <p className="text-[11px] text-red-500 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-700/60 px-3 py-1.5">
+        <p className="text-[11px] text-status-danger bg-status-danger-bg border-b border-status-danger-border px-3 py-1.5">
           {deleteError}
         </p>
       )}
 
       <div className="flex-1 overflow-y-auto min-h-[64px]">
         {isLoading ? (
-          <div className="p-3 text-xs text-ink-3">Chargement…</div>
+          <div className="p-3 text-xs text-ink-3">{t('common.loading')}</div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 text-center py-6">
             <p className="text-xs text-ink-3">{emptyMessage}</p>
-            <button type="button" onClick={onAdd} className="text-xs text-blue-600 hover:underline">
+            <button type="button" onClick={onAdd} className="text-xs text-prim hover:underline">
               {addFirstLabel}
             </button>
           </div>
         ) : visible.length === 0 ? (
           <div className="flex items-center justify-center py-6">
-            <p className="text-xs text-ink-3">Aucun résultat</p>
+            <p className="text-xs text-ink-3">{t('common.noResults')}</p>
           </div>
         ) : (
           <div className="py-1">
             {visible.map((item) => (
               <div key={item.id} className="relative">
                 {dropTarget?.id === item.id && dropTarget.position === 'before' && (
-                  <div className="absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-10 pointer-events-none" />
+                  <div className="absolute left-0 right-0 top-0 h-0.5 bg-status-info-solid z-10 pointer-events-none" />
                 )}
                 <div
                   draggable
@@ -206,7 +215,7 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
                   ].join(' ')}
                   onClick={() => onSelect(item)}
                 >
-                  <span title={item.scope === 'shared' ? 'Partagé' : 'Privé'} className="shrink-0 text-ink-3">
+                  <span title={item.scope === 'shared' ? t('sidebar.reorderable.shared') : t('sidebar.reorderable.private')} className="shrink-0 text-ink-3">
                     {item.scope === 'shared' ? <Users2 size={11} /> : <Lock size={11} />}
                   </span>
                   <span className="text-xs text-ink truncate flex-1">{item.title}</span>
@@ -216,14 +225,14 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
                       e.stopPropagation()
                       setPendingDeleteId(item.id)
                     }}
-                    title="Supprimer"
-                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-red-500 transition-opacity shrink-0"
+                    title={t('common.delete')}
+                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
                   >
                     <Trash2 size={12} />
                   </button>
                 </div>
                 {dropTarget?.id === item.id && dropTarget.position === 'after' && (
-                  <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-500 z-10 pointer-events-none" />
+                  <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-status-info-solid z-10 pointer-events-none" />
                 )}
               </div>
             ))}
@@ -232,15 +241,15 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
       </div>
 
       {pendingDeleteId && pendingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
-            <h2 className="text-sm font-semibold text-ink mb-2">Supprimer ?</h2>
+            <h2 className="text-sm font-semibold text-ink mb-2">{t('sidebar.reorderable.deleteTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">
-              <strong>{pendingItem.title}</strong> sera supprimé définitivement.
+              <Trans i18nKey="sidebar.reorderable.deleteBody" values={{ title: pendingItem.title }} components={{ b: <strong /> }} />
             </p>
             <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setPendingDeleteId(null)} className="btn-secondary text-sm">
-                Annuler
+              <button type="button" onClick={() => setPendingDeleteId(null)} className="btn-secondary">
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -248,9 +257,9 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
                   onDelete(pendingItem)
                   setPendingDeleteId(null)
                 }}
-                className="bg-red-600 hover:bg-red-700 text-white rounded px-4 py-2 text-sm"
+                className="btn-danger"
               >
-                Supprimer
+                {t('common.delete')}
               </button>
             </div>
           </div>

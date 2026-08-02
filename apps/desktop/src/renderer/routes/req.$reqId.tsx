@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
@@ -19,10 +20,10 @@ export const Route = createFileRoute('/req/$reqId')({
 })
 
 const STATUS_CLASSES: Record<string, string> = {
-  draft:    'bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300',
-  review:   'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  approved: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  obsolete: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  draft:    'bg-status-neutral-bg text-status-neutral',
+  review:   'bg-status-warning-bg text-status-warning',
+  approved: 'bg-status-success-bg text-status-success',
+  obsolete: 'bg-status-danger-bg text-status-danger',
 }
 
 function getStringField(fields: Record<string, unknown>, key: string): string {
@@ -31,6 +32,7 @@ function getStringField(fields: Record<string, unknown>, key: string): string {
 }
 
 function RequirementDetailPage() {
+  const { t } = useTranslation()
   const { reqId } = Route.useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -85,7 +87,7 @@ function RequirementDetailPage() {
       setInitialized(false)
       setSaveError(null)
     },
-    onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : 'Erreur inconnue'),
+    onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : t('common.unknownError')),
   })
 
   const transitionMutation = useMutation({
@@ -97,15 +99,15 @@ function RequirementDetailPage() {
       setTransitionError(null)
       setInitialized(false)
     },
-    onError: (err: unknown) => setTransitionError(err instanceof Error ? err.message : 'Erreur inconnue'),
+    onError: (err: unknown) => setTransitionError(err instanceof Error ? err.message : t('common.unknownError')),
   })
 
   if (!repoPath) {
-    return <p className="text-sm text-ink-2 p-4">Paramètre <code>repoPath</code> manquant dans l&apos;URL.</p>
+    return <p className="text-sm text-ink-2 p-4"><Trans i18nKey="requirementsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   }
 
-  if (isLoading) return <p className="text-sm text-ink-3 p-4">Chargement…</p>
-  if (!req) return <p className="text-sm text-ink-2 p-4">Exigence introuvable : {reqId}</p>
+  if (isLoading) return <p className="text-sm text-ink-3 p-4">{t('common.loading')}</p>
+  if (!req) return <p className="text-sm text-ink-2 p-4">{t('requirementsPage.notFound', { reqId })}</p>
 
   const statusClass = STATUS_CLASSES[req.status] ?? STATUS_CLASSES['draft']
 
@@ -140,7 +142,7 @@ function RequirementDetailPage() {
       <div className="max-w-2xl p-6 space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1">
-            Titre <span className="text-red-500">*</span>
+            {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
           </label>
           <input
             type="text"
@@ -157,6 +159,7 @@ function RequirementDetailPage() {
             value={fields[f.name] ?? String(f.default ?? '')}
             onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
             repoPath={repoPath}
+            interfaceRoles={schema?.roles?.map(r => r.name)}
           />
         ))}
 
@@ -174,7 +177,7 @@ function RequirementDetailPage() {
           ))
         )}
 
-        {saveError && <p className="text-sm text-red-500">{saveError}</p>}
+        {saveError && <p className="text-sm text-status-danger">{saveError}</p>}
 
         <div className="flex gap-3 items-center flex-wrap">
           <button
@@ -183,24 +186,24 @@ function RequirementDetailPage() {
             disabled={!hasChanges || saveMutation.isPending}
             className="btn-primary"
           >
-            {saveMutation.isPending ? 'Sauvegarde…' : 'Sauvegarder'}
+            {saveMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
           </button>
           <button
             type="button"
             onClick={() => navigate({ to: '/schema', search: { repoPath, projectId } })}
             className="btn-secondary"
           >
-            Retour
+            {t('layout.viewHeader.back')}
           </button>
         </div>
 
         {(nextStatus || canMarkObsolete) && (
           <div className="border-t border-edge pt-4 mt-2">
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">
-              Transitions de statut
+              {t('requirementsPage.statusTransitions')}
             </p>
 
-            {transitionError && <p className="text-sm text-red-500 mb-2">{transitionError}</p>}
+            {transitionError && <p className="text-sm text-status-danger mb-2">{transitionError}</p>}
 
             <div className="flex gap-3 items-center flex-wrap">
               {nextStatus && (
@@ -208,16 +211,16 @@ function RequirementDetailPage() {
                   type="button"
                   onClick={() => transitionMutation.mutate(nextStatus.name)}
                   disabled={transitionMutation.isPending}
-                  className={`text-white rounded px-4 py-2 text-sm disabled:opacity-50 transition-colors ${
+                  className={`rounded px-4 py-2 text-sm disabled:opacity-50 transition-colors hover:opacity-90 ${
                     nextStatus.isApproval
-                      ? 'bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600'
-                      : 'bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500'
+                      ? 'bg-status-success-solid text-status-success-fg'
+                      : 'bg-status-warning-solid text-status-warning-fg'
                   }`}
                 >
                   {transitionMutation.isPending
-                    ? 'Transition…'
+                    ? t('requirementsPage.transitioning')
                     : nextStatus.isApproval
-                      ? `Approuver (${nextStatus.label ?? nextStatus.name})`
+                      ? t('requirementsPage.approve', { label: nextStatus.label ?? nextStatus.name })
                       : nextStatus.label ?? nextStatus.name}
                 </button>
               )}
@@ -226,29 +229,29 @@ function RequirementDetailPage() {
                 <button
                   type="button"
                   onClick={() => setConfirmObsolete(true)}
-                  className="border border-red-300 text-red-600 rounded px-3 py-1.5 text-xs hover:bg-red-50 dark:border-red-700/60 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                  className="btn-danger"
                 >
-                  Marquer obsolète
+                  {t('requirementsPage.markObsolete')}
                 </button>
               )}
 
               {confirmObsolete && (
-                <div className="flex items-center gap-2 border border-red-200 rounded px-3 py-2 bg-red-50 dark:border-red-700/60 dark:bg-red-900/20">
-                  <span className="text-sm text-red-700 dark:text-red-400">Confirmer l&apos;obsolescence ?</span>
+                <div className="flex items-center gap-2 border border-status-danger-border rounded px-3 py-2 bg-status-danger-bg">
+                  <span className="text-sm text-status-danger">{t('requirementsPage.confirmObsolete')}</span>
                   <button
                     type="button"
                     onClick={() => transitionMutation.mutate('obsolete')}
                     disabled={transitionMutation.isPending}
-                    className="bg-red-600 text-white rounded px-3 py-1 text-sm disabled:opacity-50"
+                    className="btn-danger"
                   >
-                    {transitionMutation.isPending ? 'Transition…' : 'Oui, obsolète'}
+                    {transitionMutation.isPending ? t('requirementsPage.transitioning') : t('requirementsPage.yesObsolete')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmObsolete(false)}
-                    className="btn-secondary px-3 py-1 text-sm"
+                    className="btn-secondary"
                   >
-                    Annuler
+                    {t('common.cancel')}
                   </button>
                 </div>
               )}

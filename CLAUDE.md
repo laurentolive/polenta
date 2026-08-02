@@ -35,13 +35,18 @@ product-aspirateur-v1/               ← repo produit principal
 │   └── SYS/                         ← exigences système propres au produit
 ├── tests/
 │   └── SYS/
-├── tree.yaml                        ← arbre de traçabilité complet (GÉNÉRÉ — ne pas éditer)
+├── links/
+│   └── links.yaml                   ← tous les ObjectLink du projet (un seul fichier)
 ├── scripts/
-│   ├── check.py                     ← lint des frontmatters
-│   ├── update-tree.py               ← régénère tree.yaml (appelé par le hook pre-commit)
+│   ├── check.py                     ← lint des exigences/tests
 │   └── export.py                    ← export PDF/HTML
 └── .polenta/
-    └── schema.yaml                  ← modèle de données du projet (nodes + objectTypes + linkTypes)
+    ├── workspace.yaml                ← marque le dossier comme projet Polenta ouvrable
+    ├── schema.yaml                   ← modèle de données du projet (nodes + objectTypes + linkTypes)
+    └── trees/
+        └── root/
+            ├── exigence-systeme.yaml ← ordre d'affichage des SYS (un fichier par type d'objet)
+            └── ...                   ← généré/maintenu par l'app, jamais par un script — ne pas éditer à la main
 ```
 
 ### Repo composant autonome
@@ -51,10 +56,10 @@ comp-motor-control/
 ├── .polenta/
 │   └── schema.yaml                  ← schéma propre au composant (autonome)
 ├── requirements/
-│   ├── functional/                  ← REQ-MC-001, REQ-MC-002…
-│   └── sw/                          ← REQ-MC-SW-001…
+│   ├── functional/                  ← REQ-MC-001.yaml, REQ-MC-002.yaml…
+│   └── sw/                          ← REQ-MC-SW-001.yaml…
 └── tests/
-    └── TEST-MC-001.md
+    └── TEST-MC-001.yaml
 ```
 
 ### Repo produit sans composants (projet simple)
@@ -83,10 +88,14 @@ specs/
 │   ├── SW/
 │   ├── HW/
 │   └── integration/
-├── tree.yaml                        ← généré automatiquement par update-tree.py
+├── links/
+│   └── links.yaml                   ← tous les ObjectLink du projet
+├── .polenta/
+│   ├── workspace.yaml
+│   ├── schema.yaml
+│   └── trees/                       ← un fichier par (nœud, type d'objet), maintenu par l'app
 └── scripts/
     ├── check.py
-    ├── update-tree.py
     └── export.py
 ```
 
@@ -146,11 +155,21 @@ linkTypes:
     sourceRefs: [requirement]             # catégorie ou "composant::type"
     targetRefs: [requirement]
   - name: verification
-    labelSourceToTarget: "est vérifié par"
-    labelTargetToSource: "vérifie"
-    sourceRefs: [requirement]
-    targetRefs: [test]
+    labelSourceToTarget: "vérifie"
+    labelTargetToSource: "est vérifiée par"
+    sourceRefs: [test]
+    targetRefs: [requirement]
 ```
+
+**Sens d'un lien de couverture test ↔ exigence** : le moteur de traçabilité
+(`matchCoverageLink` dans `traceability.service.ts`) apparie un lien à sa paire
+test/exigence **quel que soit le sens dans lequel il a été créé** — `sourceId`/`targetId`
+peuvent être le test ou l'exigence indifféremment. Ce n'a pas toujours été le cas : une
+contrainte antérieure imposait `sourceId: <TEST-ID>` / `targetId: <REQ-ID>` sous peine de
+voir l'exigence apparaître `not_covered` sans erreur visible ; elle a été retirée
+volontairement (l'utilisateur crée le lien depuis l'éditeur du test ou celui de
+l'exigence, selon ce qui lui semble naturel, et n'a pas à connaître cette contrainte
+technique). Aucune convention de sens à respecter, donc, pour ce type de lien.
 
 **Préférences projet** (`preferences: {}`) : options globales au niveau du projet, indépendantes des `nodes`/`objectTypes`/`linkTypes`. Portent sur le comportement de l'outil plutôt que sur le modèle de données métier. Ex. `autoPropagatePin` — case à cocher qui contrôle si la mise à jour du `pin` d'un sous-repo (submodule) dans le manifeste du repo parent, suite à un commit reçu sur ce sous-repo, se fait automatiquement ou attend une approbation manuelle de l'intégrateur.
 
@@ -171,13 +190,22 @@ Le préfixe correspond à `ObjectTypeDefinition.prefix` dans le schéma.
 
 ---
 
-## Format d'une exigence (frontmatter YAML + corps Markdown)
+## Format d'une exigence (fichier YAML pur — pas de frontmatter, pas de corps Markdown)
 
-```markdown
----
-id: SYS-001
+Une exigence est un fichier `requirements/<ID>.yaml` — YAML de bout en bout, sans
+délimiteurs `---` et sans section Markdown libre en dessous. Le texte long (énoncé,
+justification, critères d'acceptance…) vit dans des champs de `fields:`, typiquement
+`richtext`.
+
+```yaml
+# requirements/SYS-0001.yaml
+id: SYS-0001
+projectId: ''
+branchId: ''
 objectTypeRef: root::exigence-systeme   # <nœud>::<type-objet>
+title: Démarrage rapide en mode Eco
 status: draft                           # valeur parmi les statuts définis dans le type
+version: 1
 fields:
   priority: high
   statement: |
@@ -190,16 +218,16 @@ fields:
   diagrams:
     - diagrams/system-context.drawio#node-SYS-001
   tags: [startup, performance]
----
-
-## Notes libres
-
-Contraintes d'implémentation, risques, alternatives...
+jiraLinks: []
 ```
 
-**Champs système fixes** (non configurables) : `id`, `objectTypeRef`, `status`
+Un cas de test suit le même principe (`tests/<ID>.yaml`), avec en plus `preconditions`,
+`equipment`, `steps: [{order, action, expectedResult, notes}]`, `postconditions`.
+
+**Champs système fixes** (non configurables) : `id`, `projectId`, `branchId`, `objectTypeRef`, `title`, `status`, `version`, `jiraLinks`
 **Champs personnalisés** : tout dans `fields: {}`, définis par le type dans `schema.yaml`
-**Liens entre objets** : via ObjectLink (mécanisme séparé du frontmatter, géré par Polenta)
+**Liens entre objets** : via `ObjectLink`, dans un fichier séparé `links/links.yaml` (pas dans le fichier de l'exigence) — voir §"Sens d'un lien de couverture test ↔ exigence" plus haut
+**Champs dérivés** (non stockés dans le YAML, lus depuis `git log` du fichier) : `createdAt`, `createdBy`, `updatedAt`, `updatedBy`
 
 ---
 
@@ -240,7 +268,7 @@ THEN THE <système> SHALL <action>
 6. Pas de liens `needsRevalidation: true` laissés sans traitement
 7. **Dans un repo composant** : `schema.yaml` ne déclare pas de `url` sur ses propres nœuds — un composant est autonome
 8. **Dans un repo produit** : les `objectTypeRef` cross-composant utilisent le nom du nœud submodule (ex: `motor-control::exigence-fw`)
-9. `tree.yaml` est toujours généré — ne jamais l'éditer à la main (utiliser `scripts/update-tree.py`)
+9. `.polenta/trees/<nœud>/<type>.yaml` est maintenu par l'application — ne jamais l'éditer à la main en dehors d'un projet d'exemple/fixture
 10. `prefix` est unique sur l'ensemble du projet (tous nœuds confondus)
 
 ---
@@ -268,9 +296,9 @@ Ne pas définir la variable d'environnement `CLAUDE_CODE_SUBAGENT_MODEL` : elle 
 5. Créer les ObjectLinks vers les exigences parentes et les tests
 
 ### Modifier un diagramme `.drawio`
-1. Lire le `.md` associé avant toute modification
-2. Après modification, mettre à jour les `.md` qui référencent ce diagramme
-3. Si des nodes sont supprimés, vérifier les références dans les frontmatters
+1. Lire les exigences/tests qui le référencent avant toute modification
+2. Après modification, vérifier que ces références (`champ diagrams` ou bloc `drawio` dans un `richtext`) restent valides
+3. Si des nodes sont supprimés, vérifier les références `#node-id` dans les fichiers qui les utilisent
 
 ### Passer une exigence en statut `review`
 - Tous les champs `required: true` du type sont remplis
@@ -289,9 +317,9 @@ Ne pas définir la variable d'environnement `CLAUDE_CODE_SUBAGENT_MODEL` : elle 
 - Ne pas inventer des IDs sans vérifier qu'ils n'existent pas déjà dans le repo
 - Ne pas marquer `approved` sans lien vers un cas de test
 - Ne pas créer d'exigence sans syntaxe EARS dans le champ `statement`
-- Ne pas modifier un `.drawio` sans lire le `.md` associé
+- Ne pas modifier un `.drawio` sans lire les exigences/tests qui le référencent
 - Ne pas réutiliser un ID même si l'exigence est `obsolete`
-- Ne pas régénérer `tree.yaml` manuellement — utiliser `scripts/update-tree.py`
+- Ne pas éditer `.polenta/trees/<nœud>/<type>.yaml` manuellement dans un vrai projet — c'est l'application qui le maintient au fil des actions dans l'UI, pas un script
 - **Ne pas éditer `.gitmodules` manuellement** — il est généré par Polenta depuis `schema.nodes` (nœuds avec `url`) via `schema:save`
 - **Ne pas ajouter de `url` dans `schema.yaml` d'un repo composant** — un composant ne se référence pas lui-même comme submodule
 - **Ne pas utiliser de `objectTypeRef` cross-composant dans un repo composant** — uniquement dans le repo produit

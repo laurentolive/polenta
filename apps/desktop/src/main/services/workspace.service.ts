@@ -23,7 +23,9 @@ import type {
   MountOverride,
   ProjectRecent,
   ProjectInfo,
+  ProjectSchema,
 } from '@polenta/types'
+import { findSystemNode } from '@polenta/types'
 
 interface RecentsStore {
   recents: ProjectRecent[]
@@ -156,7 +158,31 @@ export class WorkspaceService {
     }
 
     const localPath = this.resolveRootRepoPath(workspaceDir, config) ?? workspaceDir
-    return { name: path.basename(localPath), localPath, workspaceDir }
+    const label = await this.readRootLabel(localPath)
+    const remoteUrl = await this.readRemoteUrl(localPath)
+    return { name: path.basename(localPath), label, localPath, workspaceDir, remoteUrl }
+  }
+
+  /** Root SystemNode's configured `label`, if any (schema.yaml may be absent/invalid). */
+  private async readRootLabel(repoPath: string): Promise<string | undefined> {
+    try {
+      const schemaPath = path.join(repoPath, '.polenta', 'schema.yaml')
+      const raw = await fsPromises.readFile(schemaPath, 'utf-8')
+      const schema = (yaml.load(raw) as ProjectSchema) ?? undefined
+      return schema ? findSystemNode(schema.nodes, 'root')?.label : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** Root repo's `origin` remote URL, if any is configured. */
+  private async readRemoteUrl(repoPath: string): Promise<string | undefined> {
+    try {
+      const remotes = await git.listRemotes({ fs, dir: repoPath })
+      return remotes.find((r: { remote: string; url: string }) => r.remote === 'origin')?.url ?? undefined
+    } catch {
+      return undefined
+    }
   }
 
   // ── Recents ───────────────────────────────────────────────────────────────────

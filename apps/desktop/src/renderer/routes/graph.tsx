@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react'
@@ -11,6 +12,7 @@ import { propagatePinToDependents, type PinPropagationOutcome } from '../lib/wor
 import { PinPropagationWarning } from '../components/sidebar/version/PinPropagationWarning'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useSetTabTitle } from '../contexts/TabsContext'
+import { toIntlLocale } from '../i18n/useLocale'
 import type { GraphCommit, SyncFileStatus, MergeResult } from '@polenta/api-client'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
@@ -147,7 +149,7 @@ function GraphCell({ row, graphW }: { row: RowData; graphW: number }) {
       <circle key="ring" cx={cx} cy={cy} r={DOT_R + 3}
         fill="none" stroke={COLORS[ci]} strokeWidth={1.5} opacity={0.4} />,
       <circle key="dot"  cx={cx} cy={cy} r={DOT_R}
-        fill={COLORS[ci]} stroke="white" strokeWidth={1.5} />,
+        fill={COLORS[ci]} stroke="rgb(var(--status-info-fg))" strokeWidth={1.5} />,
     )
   } else {
     els.push(
@@ -173,6 +175,7 @@ function CommitFilesRow({
   graphW: number
   colSpan: number
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
 
   const { data: files, isLoading, isError } = useQuery<SyncFileStatus[]>({
@@ -183,27 +186,27 @@ function CommitFilesRow({
   })
 
   return (
-    <tr className="bg-blue-50/50 dark:bg-blue-900/5">
+    <tr className="bg-status-info-bg/50 dark:bg-status-info-bg/5">
       <td colSpan={colSpan} className="px-0 py-0">
-        <div style={{ paddingLeft: graphW + 8 }} className="pr-4 py-2 border-b border-blue-100 dark:border-blue-900/30">
+        <div style={{ paddingLeft: graphW + 8 }} className="pr-4 py-2 border-b border-status-info-border dark:border-status-info-border/30">
           {isLoading && (
             <div className="flex items-center gap-1.5 text-xs text-ink-3 py-1">
               <Loader2 size={11} className="animate-spin" />
-              Chargement…
+              {t('common.loading')}
             </div>
           )}
           {isError && (
-            <p className="text-xs text-red-500 py-1">Erreur lors du chargement des fichiers</p>
+            <p className="text-xs text-status-danger py-1">{t('graphPage.errorLoadingFiles')}</p>
           )}
           {files && files.length === 0 && (
-            <p className="text-xs text-ink-3 italic py-1">Aucun fichier modifié</p>
+            <p className="text-xs text-ink-3 italic py-1">{t('sidebar.version.noModifiedFile')}</p>
           )}
           {files && files.length > 0 && (
             <ul className="space-y-0.5">
               {files.map(({ path: filePath, marker }) => (
                 <li key={filePath} className="flex items-center gap-1.5 text-xs">
                   <span className={`font-mono font-bold w-3 shrink-0 ${
-                    marker === 'A' ? 'text-green-500' : marker === 'D' ? 'text-red-500' : 'text-amber-500'
+                    marker === 'A' ? 'text-status-success' : marker === 'D' ? 'text-status-danger' : 'text-status-warning'
                   }`}>{marker}</span>
                   <button
                     type="button"
@@ -231,8 +234,8 @@ function refColor(name: string): string {
   return BADGE_PALETTE[h % BADGE_PALETTE.length]
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+function formatDate(iso: string, locale: string): string {
+  return new Date(iso).toLocaleDateString(toIntlLocale(locale), { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 // ─── context menu types ───────────────────────────────────────────────────────
@@ -274,6 +277,7 @@ function GraphContextMenu({
   state, repoPath, isClean, currentBranch, allBranches, headSha, projectId,
   workspaceDir, flatNodes, node, onClose, onInvalidate, onPinWarning,
 }: GraphContextMenuProps) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { target } = state
   const ref = useRef<HTMLDivElement>(null)
@@ -345,7 +349,7 @@ function GraphContextMenu({
     mutationFn: (fromBranch: string) => api.sync.merge(repoPath, fromBranch),
     onSuccess: (result: MergeResult) => {
       if (!result.success) {
-        setMutationError(`Conflits de merge : ${result.conflicts.join(', ')}`)
+        setMutationError(t('graphPage.mergeConflicts', { conflicts: result.conflicts.join(', ') }))
         return
       }
       onInvalidate(['status', 'graph'])
@@ -358,7 +362,7 @@ function GraphContextMenu({
     mutationFn: ({ from, into }: { from: string; into: string }) => api.sync.mergeInto(repoPath, from, into),
     onSuccess: (result: MergeResult) => {
       if (!result.success) {
-        setMutationError(`Conflits de merge : ${result.conflicts.join(', ')}`)
+        setMutationError(t('graphPage.mergeConflicts', { conflicts: result.conflicts.join(', ') }))
         return
       }
       onInvalidate(['status', 'graph'])
@@ -444,8 +448,8 @@ function GraphContextMenu({
   // ── shared item classes ──────────────────────────────────────────────────────
 
   const baseItem = 'w-full text-left px-3 py-1.5 hover:bg-hover transition-colors flex items-center gap-2 text-ink'
-  const dangerItem = 'w-full text-left px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2 text-red-500'
-  const confirmItem = 'w-full text-left px-3 py-1.5 bg-red-50 dark:bg-red-900/20 transition-colors flex items-center gap-2 text-red-600 font-semibold'
+  const dangerItem = 'w-full text-left px-3 py-1.5 hover:bg-status-danger-bg transition-colors flex items-center gap-2 text-status-danger'
+  const confirmItem = 'w-full text-left px-3 py-1.5 bg-status-danger-bg transition-colors flex items-center gap-2 text-status-danger font-semibold'
 
   // ── inline branch selector ────────────────────────────────────────────────────
 
@@ -453,8 +457,8 @@ function GraphContextMenu({
     const sha = target.type !== 'commit' ? (target as { sha: string }).sha : target.sha
     const sourceName = target.type === 'branch' ? target.name : target.type === 'tag' ? target.name : sha.slice(0, 7)
     const title = selectorMode === 'merge'
-      ? `Merger « ${sourceName} » dans…`
-      : 'Diff vs branche…'
+      ? t('graphPage.mergeInto', { source: sourceName })
+      : t('graphPage.diffVsBranch')
     return createPortal(
       <div
         ref={ref}
@@ -489,7 +493,7 @@ function GraphContextMenu({
         </div>
         <div className="border-t border-edge my-1" />
         <button type="button" className={baseItem} onClick={() => setSelectorMode(null)}>
-          Retour
+          {t('layout.viewHeader.back')}
         </button>
       </div>,
       document.body,
@@ -510,7 +514,7 @@ function GraphContextMenu({
         style={pos}
       >
         <p className="text-ink font-medium mb-2">
-          {inlinePrompt.mode === 'branch' ? 'Nom de la branche' : 'Nom du tag'}
+          {inlinePrompt.mode === 'branch' ? t('graphPage.branchNameLabel') : t('graphPage.tagNameLabel')}
         </p>
         <input
           autoFocus
@@ -522,14 +526,14 @@ function GraphContextMenu({
             if (e.key === 'Escape') onClose()
           }}
           placeholder={inlinePrompt.mode === 'branch' ? 'feature/ma-branche' : 'v1.0.0'}
-          className="w-full border border-edge rounded px-2 py-1 text-xs bg-surface text-ink outline-none focus:border-blue-400 mb-2"
+          className="w-full border border-edge rounded px-2 py-1 text-xs bg-surface text-ink outline-none focus:border-status-info mb-2"
         />
         {mutationError && (
-          <p className="text-red-500 text-xs mb-2">{mutationError}</p>
+          <p className="text-status-danger text-xs mb-2">{mutationError}</p>
         )}
         {(createBranchAtMut.isPending || createTagMut.isPending) && (
           <div className="flex items-center gap-1.5 text-xs text-ink-3 mb-2">
-            <Loader2 size={11} className="animate-spin" /> En cours…
+            <Loader2 size={11} className="animate-spin" /> {t('graphPage.inProgress')}
           </div>
         )}
         <div className="flex gap-2">
@@ -537,16 +541,16 @@ function GraphContextMenu({
             type="button"
             onClick={() => handleInlineSubmit(targetSha)}
             disabled={createBranchAtMut.isPending || createTagMut.isPending || !inlinePrompt.value.trim()}
-            className="flex-1 bg-blue-500 text-white rounded px-2 py-1 hover:bg-blue-600 disabled:opacity-40 transition-colors"
+            className="flex-1 bg-status-info-solid text-status-info-fg rounded px-2 py-1 hover:opacity-90 disabled:opacity-40 transition-colors"
           >
-            Valider
+            {t('sidebar.version.validate')}
           </button>
           <button
             type="button"
             onClick={() => onClose()}
             className="flex-1 border border-edge rounded px-2 py-1 hover:bg-hover transition-colors text-ink"
           >
-            Annuler
+            {t('common.cancel')}
           </button>
         </div>
       </div>,
@@ -563,7 +567,7 @@ function GraphContextMenu({
       style={pos}
     >
       {mutationError && (
-        <p className="px-3 py-1.5 text-red-500 leading-snug">{mutationError}</p>
+        <p className="px-3 py-1.5 text-status-danger leading-snug">{mutationError}</p>
       )}
 
       {/* ── BRANCH MENU ─────────────────────────────────────────── */}
@@ -582,7 +586,7 @@ function GraphContextMenu({
               <button type="button" className={baseItem} disabled={isCheckoutPend}
                 onClick={() => checkoutBranchMut.mutate(name)}>
                 {isCheckoutPend ? <Loader2 size={11} className="animate-spin" /> : null}
-                Checkout branche
+                {t('graphPage.checkoutBranch')}
               </button>
             )}
 
@@ -591,13 +595,13 @@ function GraphContextMenu({
               disabled={isMergePending || mergeIntoMut.isPending}
               onClick={() => setSelectorMode('merge')}>
               {(isMergePending || mergeIntoMut.isPending) ? <Loader2 size={11} className="animate-spin" /> : null}
-              Merger branche dans…
+              {t('graphPage.mergeBranchInto')}
             </button>
             {!isCurrent && isClean && (
               <button type="button" className={baseItem} disabled={isRebasePending}
                 onClick={() => rebaseMut.mutate(name)}>
                 {isRebasePending ? <Loader2 size={11} className="animate-spin" /> : null}
-                Rebaser courant sur branche
+                {t('graphPage.rebaseCurrentOnBranch')}
               </button>
             )}
 
@@ -606,7 +610,7 @@ function GraphContextMenu({
             <button type="button" className={baseItem} disabled={isPushPending}
               onClick={() => pushBranchMut.mutate(name)}>
               {isPushPending ? <Loader2 size={11} className="animate-spin" /> : null}
-              Pousser branche
+              {t('graphPage.pushBranch')}
             </button>
             {!isCurrent && (
               <button type="button"
@@ -614,7 +618,7 @@ function GraphContextMenu({
                 disabled={isDelLocalPend}
                 onClick={() => handleDestructive('del-local', () => deleteBranchMut.mutate(name))}>
                 {isDelLocalPend ? <Loader2 size={11} className="animate-spin" /> : null}
-                {pendingConfirm === 'del-local' ? 'Confirmer ?' : 'Supprimer branche (locale)'}
+                {pendingConfirm === 'del-local' ? t('graphPage.confirm') : t('graphPage.deleteLocalBranch')}
               </button>
             )}
             <button type="button"
@@ -622,18 +626,18 @@ function GraphContextMenu({
               disabled={isDelRemotePend}
               onClick={() => handleDestructive('del-remote', () => deleteRemoteBranchMut.mutate(name))}>
               {isDelRemotePend ? <Loader2 size={11} className="animate-spin" /> : null}
-              {pendingConfirm === 'del-remote' ? 'Confirmer ?' : 'Supprimer branche remote'}
+              {pendingConfirm === 'del-remote' ? t('graphPage.confirm') : t('graphPage.deleteRemoteBranch')}
             </button>
 
             <div className="border-t border-edge my-1" />
 
             {!isCurrent && (
               <button type="button" className={baseItem} onClick={() => handleDiffVsHead(sha)}>
-                Diff branche vs HEAD
+                {t('graphPage.diffBranchVsHead')}
               </button>
             )}
             <button type="button" className={baseItem} onClick={() => setSelectorMode('diff')}>
-              Diff branche vs branche…
+              {t('graphPage.diffBranchVsBranch')}
             </button>
           </>
         )
@@ -650,7 +654,7 @@ function GraphContextMenu({
               <button type="button" className={baseItem} disabled={checkoutCommitMut.isPending}
                 onClick={() => checkoutCommitMut.mutate(sha)}>
                 {checkoutCommitMut.isPending ? <Loader2 size={11} className="animate-spin" /> : null}
-                Checkout tag
+                {t('graphPage.checkoutTag')}
               </button>
             )}
 
@@ -658,7 +662,7 @@ function GraphContextMenu({
 
             <button type="button" className={baseItem}
               onClick={() => setInlinePrompt({ mode: 'branch', value: '' })}>
-              Créer branche depuis tag…
+              {t('graphPage.createBranchFromTag')}
             </button>
 
             <div className="border-t border-edge my-1" />
@@ -668,16 +672,16 @@ function GraphContextMenu({
               disabled={isDelTagPend}
               onClick={() => handleDestructive('del-tag', () => deleteTagMut.mutate(name))}>
               {isDelTagPend ? <Loader2 size={11} className="animate-spin" /> : null}
-              {pendingConfirm === 'del-tag' ? 'Confirmer ?' : 'Supprimer tag'}
+              {pendingConfirm === 'del-tag' ? t('graphPage.confirm') : t('graphPage.deleteTag')}
             </button>
 
             <div className="border-t border-edge my-1" />
 
             <button type="button" className={baseItem} onClick={() => handleDiffVsHead(sha)}>
-              Diff tag vs HEAD
+              {t('graphPage.diffTagVsHead')}
             </button>
             <button type="button" className={baseItem} onClick={() => setSelectorMode('diff')}>
-              Diff tag vs branche…
+              {t('graphPage.diffTagVsBranch')}
             </button>
           </>
         )
@@ -695,7 +699,7 @@ function GraphContextMenu({
               <button type="button" className={baseItem} disabled={isCheckoutPend}
                 onClick={() => checkoutCommitMut.mutate(sha)}>
                 {isCheckoutPend ? <Loader2 size={11} className="animate-spin" /> : null}
-                Checkout commit
+                {t('graphPage.checkoutCommit')}
               </button>
             )}
 
@@ -703,11 +707,11 @@ function GraphContextMenu({
 
             <button type="button" className={baseItem}
               onClick={() => setInlinePrompt({ mode: 'branch', value: '' })}>
-              Créer branche depuis commit…
+              {t('graphPage.createBranchFromCommit')}
             </button>
             <button type="button" className={baseItem}
               onClick={() => setInlinePrompt({ mode: 'tag', value: '' })}>
-              Créer tag sur commit…
+              {t('graphPage.createTagOnCommit')}
             </button>
 
             {!isCurrent && isClean && (
@@ -716,7 +720,7 @@ function GraphContextMenu({
                 <button type="button" className={baseItem} disabled={isRebasePending}
                   onClick={() => rebaseMut.mutate(sha)}>
                   {isRebasePending ? <Loader2 size={11} className="animate-spin" /> : null}
-                  Rebaser courant sur commit
+                  {t('graphPage.rebaseCurrentOnCommit')}
                 </button>
               </>
             )}
@@ -725,13 +729,13 @@ function GraphContextMenu({
               <>
                 <div className="border-t border-edge my-1" />
                 <button type="button" className={baseItem} onClick={() => handleDiffVsHead(sha)}>
-                  Diff commit vs HEAD
+                  {t('graphPage.diffCommitVsHead')}
                 </button>
               </>
             )}
             {isCurrent && <div className="border-t border-edge my-1" />}
             <button type="button" className={baseItem} onClick={() => setSelectorMode('diff')}>
-              Diff commit vs branche…
+              {t('graphPage.diffCommitVsBranch')}
             </button>
           </>
         )
@@ -744,6 +748,7 @@ function GraphContextMenu({
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 function GraphPage() {
+  const { t, i18n } = useTranslation()
   const { projectId, sha: initialSha } = Route.useSearch()
   const qc = useQueryClient()
 
@@ -762,8 +767,8 @@ function GraphPage() {
   const { flatNodes } = useWorkspaceStructure(workspaceDir, rootRepoPath)
   const repoPath = selectedRepoPath
   const selectedNode = flatNodes.find(n => n.repoPath === repoPath)
-  const repoName = selectedNode?.name
-  useSetTabTitle(repoName ? `Arbre de versions — ${repoName}` : undefined)
+  const repoName = selectedNode?.label || selectedNode?.name
+  useSetTabTitle(repoName ? t('graphPage.tabTitle', { repoName }) : undefined)
 
   const { data: syncStatus } = useQuery({
     queryKey:        ['sync:status', repoPath],
@@ -858,7 +863,7 @@ function GraphPage() {
         currentProjectId={projectId}
         title={
           <>
-            Arbre de versions{repoName ? ` — ${repoName}` : ''}
+            {repoName ? t('graphPage.tabTitle', { repoName }) : t('layout.tabTitles.graph')}
             {syncStatus?.branch && (
               <span className="ml-2 text-xs font-mono text-ink-3 font-normal">
                 ⎇ {syncStatus.branch}
@@ -875,18 +880,18 @@ function GraphPage() {
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <p className="text-sm text-ink-3 italic px-6 py-8">Chargement…</p>
+          <p className="text-sm text-ink-3 italic px-6 py-8">{t('common.loading')}</p>
         ) : commits.length === 0 ? (
-          <p className="text-sm text-ink-3 italic px-6 py-8">Aucun commit</p>
+          <p className="text-sm text-ink-3 italic px-6 py-8">{t('graphPage.noCommit')}</p>
         ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-surface border-b border-edge z-10">
               <tr className="text-xs text-ink-3 uppercase tracking-wide">
                 <th style={{ width: graphW }} className="py-2" />
                 <th className="text-left px-2 py-2 w-20">SHA</th>
-                <th className="text-left px-2 py-2">Message</th>
-                <th className="text-left px-2 py-2 w-32">Auteur</th>
-                <th className="text-left px-2 py-2 w-28">Date</th>
+                <th className="text-left px-2 py-2">{t('graphPage.colMessage')}</th>
+                <th className="text-left px-2 py-2 w-32">{t('graphPage.colAuthor')}</th>
+                <th className="text-left px-2 py-2 w-28">{t('graphPage.colDate')}</th>
                 <th className="w-16 py-2" />
               </tr>
             </thead>
@@ -905,9 +910,9 @@ function GraphPage() {
                     }}
                     className={`border-b border-edge-subtle transition-colors cursor-pointer ${
                       selectedSha === row.commit.sha
-                        ? 'bg-blue-50 dark:bg-blue-900/15'
+                        ? 'bg-status-info-bg dark:bg-status-info-bg/15'
                         : row.commit.isCurrent
-                        ? 'bg-blue-50/40 dark:bg-blue-900/5 hover:bg-hover'
+                        ? 'bg-status-info-bg/40 dark:bg-status-info-bg/5 hover:bg-hover'
                         : 'hover:bg-hover'
                     }`}
                   >
@@ -918,7 +923,7 @@ function GraphPage() {
                     <td className="px-2 py-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {selectedSha === row.commit.sha
-                          ? <ChevronDown size={12} className="shrink-0 text-blue-500" />
+                          ? <ChevronDown size={12} className="shrink-0 text-status-info" />
                           : <ChevronRight size={12} className="shrink-0 text-ink-3" />
                         }
                         {row.commit.refs.map(ref => {
@@ -952,7 +957,7 @@ function GraphPage() {
                                 border:          `1px solid ${refColor(ref)}40`,
                                 outline:         isTag ? `1px dashed ${refColor(ref)}60` : undefined,
                               }}
-                              title={isTag ? `Tag: ${ref}` : `Branche: ${ref}${isCurrentBranch ? ' (courante)' : ''}`}
+                              title={isTag ? t('graphPage.tagLabel', { ref }) : isCurrentBranch ? t('graphPage.branchLabelCurrent', { ref }) : t('graphPage.branchLabel', { ref })}
                             >
                               {ref}
                             </span>
@@ -962,7 +967,7 @@ function GraphPage() {
                       </div>
                     </td>
                     <td className="px-2 py-2 text-ink-3 text-xs truncate">{row.commit.author}</td>
-                    <td className="px-2 py-2 text-ink-3 text-xs whitespace-nowrap">{formatDate(row.commit.date)}</td>
+                    <td className="px-2 py-2 text-ink-3 text-xs whitespace-nowrap">{formatDate(row.commit.date, i18n.language)}</td>
                     <td className="px-2 py-2 text-right" onClick={e => e.stopPropagation()}>
                       {!row.commit.isCurrent && isClean && (
                         <button
@@ -970,7 +975,7 @@ function GraphPage() {
                           onClick={() => checkoutMutation.mutate(row.commit.sha)}
                           disabled={checkoutMutation.isPending}
                           className="text-xs text-ink-3 hover:text-ink border border-edge rounded px-1.5 py-0.5 hover:bg-hover disabled:opacity-40 transition-colors"
-                          title="Checkout ce commit"
+                          title={t('graphPage.checkoutThisCommit')}
                         >
                           {checkoutMutation.isPending ? '…' : '⎇'}
                         </button>

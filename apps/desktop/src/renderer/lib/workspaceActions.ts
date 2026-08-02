@@ -1,5 +1,6 @@
 import { api } from '../api'
 import type { PolentaRepoDependency, PolentaRepoManifest, ImplementsDeclaration, WorkspaceOpenResult, WorkspaceTreeNode } from '@polenta/types'
+import { findSystemNode, mapSystemNode, reorderByKey } from '@polenta/types'
 
 /** Thrown when a mount name is already used elsewhere in the workspace for a different URL (T70 UC-2/UC-3). */
 export class MountNameConflictError extends Error {
@@ -91,12 +92,21 @@ export async function updateInterfaceRoles(
   parentRepoPath: string, interfaceName: string, roles: string[],
 ): Promise<void> {
   const schema = await api.schema.get(parentRepoPath)
-  const implementsList = schema.implements ?? []
+  // T123 — implements vit désormais sur le SystemNode `root` du repo (déprécié au niveau racine
+  // du fichier, cf. schema.ts) : fichier d'abord (legacy, jamais retouché depuis ce ticket), node
+  // root en repli — et toujours écrit sur le node root, jamais plus au niveau racine du fichier,
+  // pour ne pas faire diverger les deux emplacements si ce repo a par ailleurs déjà été édité via
+  // le node (NodeEditModal).
+  const rootNode = findSystemNode(schema.nodes, 'root')
+  const implementsList = schema.implements ?? rootNode?.implements ?? []
   const existingIndex = implementsList.findIndex(impl => impl.interface === interfaceName)
   const nextImplements = existingIndex >= 0
     ? implementsList.map((impl, i) => i === existingIndex ? { ...impl, roles } : impl)
     : [...implementsList, { interface: interfaceName, roles }]
-  await api.schema.save(parentRepoPath, { ...schema, implements: nextImplements })
+  await api.schema.save(parentRepoPath, {
+    ...schema,
+    nodes: mapSystemNode(schema.nodes, 'root', n => ({ ...n, implements: nextImplements })),
+  })
 }
 
 /**
@@ -106,6 +116,14 @@ export async function updateInterfaceRoles(
  * if `deleteLocalFolder` is set (T74). The manifest write always happens before any disk
  * deletion: a failure here must never leave a dangling polenta-repo.yaml reference AND a
  * missing folder at the same time.
+ *
+ * Cleans up the `implements[]` entry wherever it actually lives — the deprecated file-level
+ * `schema.implements` *and* the T123 `nodes[root].implements` (a repo's own root node can carry
+ * its own `implements`, cf. `updateInterfaceRoles`/`StructureTab.handleOpenEditDependency`, which
+ * already read "file first, node fallback"). Checking only the file-level field would leave a
+ * stale duplicate declaration behind on `nodes[root]` for any repo already using the node-level
+ * convention — surfaced by T135 sprint 2's `moveDependencyToParent`, which relies on this cleanup
+ * actually removing the source's declaration before recreating it on the new parent.
  */
 export async function removeDependency(
   workspaceDir: string,
@@ -118,10 +136,16 @@ export async function removeDependency(
   await api.polentaRepo.save(parentRepoPath, { ...manifest, dependencies })
 
   const schema = await api.schema.get(parentRepoPath)
-  if (schema.implements?.some(impl => impl.interface === dep.name)) {
+  const hasFileLevelEntry = schema.implements?.some(impl => impl.interface === dep.name) ?? false
+  const rootNode = findSystemNode(schema.nodes, 'root')
+  const hasRootNodeEntry = rootNode?.implements?.some(impl => impl.interface === dep.name) ?? false
+  if (hasFileLevelEntry || hasRootNodeEntry) {
     await api.schema.save(parentRepoPath, {
       ...schema,
-      implements: schema.implements.filter(impl => impl.interface !== dep.name),
+      implements: hasFileLevelEntry ? schema.implements!.filter(impl => impl.interface !== dep.name) : schema.implements,
+      nodes: hasRootNodeEntry
+        ? mapSystemNode(schema.nodes, 'root', n => ({ ...n, implements: n.implements?.filter(impl => impl.interface !== dep.name) }))
+        : schema.nodes,
     })
   }
 
@@ -133,25 +157,109 @@ export async function removeDependency(
 }
 
 /**
- * Reorders a dependency within `parentRepoPath`'s polenta-repo.yaml (T74 — component/interface
- * ordering, mirroring the up/down reorder already available for elements). `name` is the
- * dependency's current mount name; `dir` swaps it with its previous (-1) or next (+1) sibling
- * in declaration order, which is exactly the order `WorkspaceTreeService` uses to build each
- * node's `children` — reordering here is therefore sufficient to reorder the rendered tree.
- * A no-op (still rebuilds/returns the tree) if `name` isn't found or is already at the boundary.
+ * Moves a dependency from one parent to another by drag & drop (T135 sprint 2 — "drop onto a
+ * folder row to reparent") — `removeDependency` (without deleting the cloned directory) followed
+ * by `addDependency` on the new parent, reusing their existing diamond-conflict handling as-is.
+ * `toLocalParent` mirrors `PolentaRepoDependency.localParent`: `undefined` to become a flat
+ * dependency of `toParentRepoPath` itself, or a local component's name to nest under it.
+ * `dep.localParent` is the dependency's *current* tag on the source (mirrors the same field) —
+ * needed both to resolve which node declares its `implements` role (see below) and to restore it
+ * to its exact former place if the add to the new parent fails.
+ *
+ * Preserves any `implements[]` role declaration the *source* parent had for this dependency —
+ * `removeDependency` strips that declaration from the source (it no longer implements an
+ * interface it no longer depends on), but `addDependency` alone doesn't recreate it on the new
+ * parent. The declaring node is `fromParentRepoPath`'s own root when `dep.localParent` is
+ * `undefined`, or the local component named `dep.localParent` otherwise — a local component's own
+ * `SystemNode` can carry its own `implements` independently of root (T123). Read *before*
+ * `removeDependency` runs, written back via `updateInterfaceRoles` once the dependency exists on
+ * its new parent. Without resolving the correct node, a role declared on a local component (not
+ * root) would silently be missed and lost across the move.
+ *
+ * Sequential, not `Promise.all` — `removeDependency`/`addDependency` each end in their own
+ * `api.workspace.rebuildTree()`, which rewrites the single shared workspace tree cache; running
+ * them concurrently would race on that file (same caution as `propagatePinToDependents`).
+ *
+ * If `addDependency` fails (diamond-conflict, parse-error) *after* `removeDependency` already
+ * succeeded, the dependency is restored to its exact former parent/`localParent` — `addDependency`
+ * only rolls back *its own* write on failure, so without this the dependency would otherwise
+ * vanish from the workspace's entire dependency graph rather than simply staying where it was
+ * before the drag (its cloned repo directory is untouched either way, never deleted here).
  */
-export async function moveDependency(
-  workspaceDir: string, parentRepoPath: string, name: string, dir: -1 | 1,
+export async function moveDependencyToParent(
+  workspaceDir: string,
+  fromParentRepoPath: string,
+  toParentRepoPath: string,
+  toLocalParent: string | undefined,
+  dep: { name: string; url: string; pin: string; repoPath: string; localParent: string | undefined },
+): Promise<WorkspaceOpenResult> {
+  const fromSchema = await api.schema.get(fromParentRepoPath)
+  const declaringNode = dep.localParent
+    ? findSystemNode(fromSchema.nodes, dep.localParent)
+    : findSystemNode(fromSchema.nodes, 'root')
+  const preservedRoles = (dep.localParent ? declaringNode?.implements : (fromSchema.implements ?? declaringNode?.implements))
+    ?.find(impl => impl.interface === dep.name)?.roles
+
+  const removeResult = await removeDependency(workspaceDir, fromParentRepoPath, dep, false)
+  if (removeResult.status !== 'ok') return removeResult
+
+  const addResult = await addDependency(workspaceDir, toParentRepoPath, {
+    name: dep.name, url: dep.url, pin: dep.pin, localParent: toLocalParent,
+  })
+  if (addResult.status !== 'ok') {
+    // Restore the dependency to exactly where it was before this drag — addDependency's own
+    // rollback on failure only undoes its own (destination-side) write.
+    await addDependency(workspaceDir, fromParentRepoPath, {
+      name: dep.name, url: dep.url, pin: dep.pin, localParent: dep.localParent,
+    })
+    return addResult
+  }
+  if (preservedRoles && preservedRoles.length > 0) {
+    await updateInterfaceRoles(toParentRepoPath, dep.name, preservedRoles)
+  }
+  return addResult
+}
+
+/**
+ * Reorders a dependency by drag & drop within `parentRepoPath`'s polenta-repo.yaml (T74 —
+ * component/interface ordering by ↑/↓ buttons; T135 sprint 1 replaces those buttons with drag &
+ * drop, dropping `dir`-based swapping for an arbitrary before/after drop position).
+ *
+ * `dependencies[]` is one flat array shared by every local-parent group of this repo (top-level
+ * siblings with no `localParent`, plus one implicit group per local component that has its own
+ * `localParent`-tagged dependencies nested under it in the Structure tab) — reordering must only
+ * permute declaration order *within* `localParent`'s own group, leaving every other group's
+ * relative order (and therefore its own rendered position) untouched. Achieved by reordering just
+ * the matching subsequence of names via `reorderByKey`, then re-filling the array's original
+ * slots for that group in the new order — every other dependency keeps its exact array index.
+ *
+ * `localParent` is `undefined` for the flat (repo-level) group, or a local component's name for
+ * its own nested group — mirrors `ownDependencies`/`flatDeps` filtering in `StructureTab.tsx`.
+ * A no-op (still rebuilds/returns the tree) if `draggedName`/`targetName` aren't both found in
+ * the same group.
+ */
+export async function reorderDependencies(
+  workspaceDir: string, parentRepoPath: string, localParent: string | undefined,
+  draggedName: string, targetName: string, position: 'before' | 'after',
 ): Promise<WorkspaceOpenResult> {
   const manifest = await api.polentaRepo.get(parentRepoPath).then((m): PolentaRepoManifest => m ?? {})
   const dependencies = manifest.dependencies ?? []
-  const i = dependencies.findIndex(d => d.name === name)
-  const j = i + dir
-  if (i < 0 || j < 0 || j >= dependencies.length) {
+  const inGroup = (d: PolentaRepoDependency) => (d.localParent ?? undefined) === localParent
+  const group = dependencies.filter(inGroup)
+  const groupNames = group.map(d => d.name)
+  const reorderedGroupNames = reorderByKey(groupNames, draggedName, targetName, position)
+  // Value comparison, not reference — `reorderByKey` returns a freshly built array whenever it
+  // actually runs the splice path, even when the resulting order happens to match the input (e.g.
+  // dropping an item back next to the neighbor it already sits beside). A reference check alone
+  // would miss that case and still write an unchanged `polenta-repo.yaml`.
+  const unchanged = reorderedGroupNames.length === groupNames.length
+    && reorderedGroupNames.every((n, i) => n === groupNames[i])
+  if (unchanged) {
     return api.workspace.rebuildTree(workspaceDir)
   }
-  const nextDependencies = [...dependencies]
-  ;[nextDependencies[i], nextDependencies[j]] = [nextDependencies[j], nextDependencies[i]]
+  const byName = new Map(group.map(d => [d.name, d]))
+  let i = 0
+  const nextDependencies = dependencies.map(d => inGroup(d) ? byName.get(reorderedGroupNames[i++])! : d)
   await api.polentaRepo.save(parentRepoPath, { ...manifest, dependencies: nextDependencies })
   return api.workspace.rebuildTree(workspaceDir)
 }

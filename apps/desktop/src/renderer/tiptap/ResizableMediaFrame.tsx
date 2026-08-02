@@ -304,7 +304,7 @@ export function ResizableMediaFrame({
           <div
             ref={overlayRef}
             onPointerDown={e => handleCropDrag(e, 'move')}
-            className="absolute border-2 border-orange-500 bg-orange-500/10 cursor-move"
+            className="absolute border-2 border-status-warning-solid bg-status-warning-solid/10 cursor-move"
             style={{
               left: rect.x * contentScale,
               top: rect.y * contentScale,
@@ -316,7 +316,7 @@ export function ResizableMediaFrame({
               <div
                 key={corner}
                 onPointerDown={e => handleCropDrag(e, corner)}
-                className="absolute w-2.5 h-2.5 bg-white border border-orange-600 rounded-sm"
+                className="absolute w-2.5 h-2.5 bg-status-info-fg border border-status-warning-solid rounded-sm"
                 style={{
                   cursor: corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize',
                   top: corner.startsWith('n') ? -5 : undefined,
@@ -331,7 +331,7 @@ export function ResizableMediaFrame({
             <button type="button" onPointerDown={e => e.stopPropagation()} onClick={cancelCrop} className="px-2 py-1 text-xs rounded border border-edge bg-surface text-ink-2 hover:bg-hover shadow">
               Annuler
             </button>
-            <button type="button" onPointerDown={e => e.stopPropagation()} onClick={confirmCrop} className="px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-500 shadow">
+            <button type="button" onPointerDown={e => e.stopPropagation()} onClick={confirmCrop} className="px-2 py-1 text-xs rounded bg-status-info-solid text-status-info-fg hover:opacity-90 shadow">
               Valider
             </button>
           </div>
@@ -344,7 +344,7 @@ export function ResizableMediaFrame({
             <div
               key={corner}
               onPointerDown={e => handleResizeStart(e, corner)}
-              className="absolute w-2.5 h-2.5 bg-white border border-slate-500 rounded-sm shadow"
+              className="absolute w-2.5 h-2.5 bg-status-info-fg border border-status-neutral-solid rounded-sm shadow"
               style={{
                 cursor: corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize',
                 top: corner.startsWith('n') ? -5 : undefined,

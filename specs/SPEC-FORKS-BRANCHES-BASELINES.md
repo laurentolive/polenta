@@ -44,14 +44,23 @@ résout au clic à partir de la branche courante du repo concerné et de sa bran
 
 | Branche courante du repo | Comportement de "Publier" |
 |---|---|
-| `branch === integrationBranch` (cas nominal — utilisateur non technique) | Popup titre → crée `dev-<slug-du-titre>` depuis la position courante (le checkout ne touche aucun fichier, cf. note `createBranch` ci-dessous — les modifications non commitées suivent) → stage + commit (message = titre) → merge dans la branche d'intégration → checkout de la branche d'intégration + suppression de `dev-<slug>` → push de la branche d'intégration vers `origin`. |
-| `branch` ne commence pas par `int-` et diffère de `integrationBranch` (branche `dev-*` ou branche libre — usage avancé, utilisateur git) | Popup titre (sert de message de commit) → stage + commit **directement sur `branch`**, aucune branche intermédiaire créée → merge vers la branche d'intégration → push. Le repo **reste checkouté sur `branch`** après coup ; cette branche n'est **jamais supprimée automatiquement** — créée par l'utilisateur, il en reste responsable. |
+| `branch === integrationBranch` (cas nominal — utilisateur non technique) | Popup titre → **fetch du remote (T154, voir note ci-dessous)** → crée `dev-<slug-du-titre>` depuis la position courante (le checkout ne touche aucun fichier, cf. note `createBranch` ci-dessous — les modifications non commitées suivent) → **fast-forward de l'intégration locale si elle est en retard (T154)** → stage + commit (message = titre) → merge dans la branche d'intégration → checkout de la branche d'intégration + suppression de `dev-<slug>` → push de la branche d'intégration vers `origin`. |
+| `branch` ne commence pas par `int-` et diffère de `integrationBranch` (branche `dev-*` ou branche libre — usage avancé, utilisateur git) | Popup titre → fetch + fast-forward de l'intégration si en retard (T154, comme ci-dessus) → stage + commit **directement sur `branch`**, aucune branche intermédiaire créée → merge vers la branche d'intégration → push. Le repo **reste checkouté sur `branch`** après coup ; cette branche n'est **jamais supprimée automatiquement** — créée par l'utilisateur, il en reste responsable. |
 | `branch` commence par `int-` mais diffère de `integrationBranch` (une autre branche d'intégration que celle configurée pour ce repo) | **Publication interdite** pour ce repo — l'édition reste possible, seul "Publier" est bloqué (mergerait deux branches d'intégration entre elles, ce qui n'a pas de sens). |
 | Detached HEAD | Édition elle-même bloquée (`VersioningContext.isReadonly` / `SystemViewContext.isRepoReadonly`) — "Publier" non pertinent. |
 
 Le discard de modifications en attente (l'ancien rôle du bouton "Annuler") reste possible mais
 uniquement depuis le panneau Version (`VersionRepoFolder.tsx`, action "Tout annuler") —
 délibérément moins accessible que dans T83 pour limiter les pertes de travail accidentelles.
+
+**Rafraîchir / `git pull` (T153) :** un bouton icône "Rafraîchir" est affiché en permanence dans
+l'en-tête de chaque repo (`VersionRepoFolder.tsx`, à côté du nom, avant le `BranchCombobox`) et
+déclenche `SyncService.pull()` (déjà exposé en IPC/`api.sync.pull` depuis T74 mais jamais appelé
+par l'UI avant ce ticket). Désactivé (avec tooltip explicatif) tant que le repo a des
+modifications en attente (`staged`/`unstaged` non vides) — même garde que celle utilisée pour
+bloquer un checkout direct au §2.1 — pour ne jamais faire merger un pull sur un working tree
+sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible seulement si
+`ahead > 0`), le bouton Rafraîchir reste toujours visible, sur demande explicite.
 
 > **Correctif `SyncService.createBranch` (T87) :** créer une branche à la position courante alors
 > que le répertoire de travail contient des modifications non commitées (le cas nominal ci-dessus)
@@ -60,6 +69,25 @@ délibérément moins accessible que dans T83 pour limiter les pertes de travail
 > `createBranch` utilise désormais `git.branch({ checkout: false })` puis
 > `git.checkout({ ref: name, noCheckout: true })`, qui déplace `HEAD` sans toucher un seul fichier.
 > Bénéficie à tous les appelants de `sync:create-branch` (pas seulement "Publier").
+
+> **Intégration à jour avant merge (T154) :** avant tout, `publishMutation` fait un
+> `SyncService.fetch()` du remote — pendant qu'on est encore checkouté sur `branch`, ce qui est
+> sûr car `fetch` n'écrit que des refs distantes (`refs/remotes/...`), jamais une branche locale.
+> Si ce fetch échoue (réseau, proxy, auth), la publication est bloquée immédiatement avec un
+> message dédié ("réseau indisponible") — **avant** toute création de branche ou commit, donc sans
+> aucun effet de bord ; il est jugé préférable qu'une publication échoue clairement faute de réseau
+> plutôt que de réussir en silence sur une intégration locale potentiellement obsolète (retour
+> utilisateur explicite lors de la conception de ce ticket). Un repo sans remote configuré (projet
+> purement local) reste inchangé : `fetch()` y est un no-op, pas une erreur.
+>
+> Une fois hors de `integrationBranch` (branche éphémère créée, ou déjà sur `branch` dans le cas
+> avancé), `SyncService.fastForwardBranch()` avance la référence locale de l'intégration jusqu'au
+> commit distant tout juste récupéré, **sans jamais toucher le répertoire de travail** — seule une
+> réécriture de `refs/heads/<intégration>`, ce qui suppose de ne jamais l'appeler pendant qu'on est
+> checkouté sur cette branche (sinon HEAD/index et fichiers désynchronisent silencieusement).
+> Si l'intégration locale a divergé (commits locaux non poussés en attente d'un push précédent
+> resté en échec — cas préexistant, rare) : laissée inchangée, `mergeInto` se comporte comme avant
+> ce ticket pour ce cas précis — pas de nouvelle UI de résolution introduite ici.
 
 > **Règle :** toute modification d'exigence ou de test finit par transiter par une branche `dev-*`
 > avant merge dans l'intégration — soit une branche éphémère créée par "Publier" (cas nominal), soit
@@ -170,6 +198,33 @@ Champ : statement
 Nécessiterait de lire les 3 versions du fichier, comparer les champs, et construire une UI de
 résolution dédiée — non engagé.
 
+### 2.5 Auto-pull périodique (T155)
+
+Tant qu'un projet est ouvert, `useAutoPull` (`apps/desktop/src/renderer/hooks/useAutoPull.ts`,
+monté une fois dans `AppLayout.tsx`, indépendamment du panneau/onglet actif) tente toutes les
+**5 minutes** de mettre à jour chaque repo du workspace (root + composants/interfaces) — objectif :
+un utilisateur non git-initié n'a jamais besoin de savoir que "Rafraîchir" (T153) existe. Ne
+tourne jamais à l'ouverture du projet elle-même (`setInterval` diffère naturellement son premier
+tick) — l'ouverture fait déjà sa propre résolution réseau (clone/fetch des dépendances manquantes),
+inutile de la ralentir davantage.
+
+Par repo, à chaque tick :
+1. Ignoré si des fichiers stagés ou non stagés existent (même garde que T153).
+2. Sinon, `SyncService.pullFastForwardOnly()` (nouveau, distinct de `pull()`) — **jamais** de vrai
+   merge à trois voies : contrairement à un clic explicite sur "Rafraîchir", une opération
+   silencieuse et non demandée ne doit jamais pouvoir écrire des marqueurs de conflit dans les
+   fichiers de l'utilisateur pendant qu'il travaille sur autre chose. Un repo qui a divergé (commits
+   locaux non poussés, cf. §2.1 T154) échoue silencieusement, retenté au tick suivant.
+3. Aucune notification ni indicateur — succès invisible, échec journalisé (`console.warn`) jamais
+   remonté à l'utilisateur.
+
+> **Note (constatée pendant les tests de T155, non corrigée par ce ticket) :**
+> `WorkspaceTreeService.writeCache` réécrit `.polenta/tree.cache.yaml` avec un `generatedAt`
+> recalculé à chaque régénération de l'arbre (typiquement à chaque ouverture de projet). Ce fichier
+> étant suivi par git, le repo apparaît "modifié" (au moins ce fichier) peu après l'ouverture — ce
+> qui bloque la garde ci-dessus (comme celle de T153) jusqu'à ce que l'utilisateur committe ou
+> annule ce changement. Cause racine distincte du pull, mérite un ticket dédié.
+
 ---
 
 ## 3. Forks de projet
@@ -242,6 +297,14 @@ L'utilisateur valide → les changements sont commités sur le projet cible.
 ### 4.1 Principe
 
 Un **composant** est un projet Polenta autonome dont les exigences (et tests) peuvent être **inclus par référence** dans d'autres projets. Analogue aux submodules git.
+
+> **T123** : un composant peut aussi être **local** (vivre dans le `schema.yaml` du repo courant,
+> sans submodule séparé — cf. `SPEC-TEMPLATES.md` §3) et imbriqué sous un autre composant local à
+> n'importe quelle profondeur. Ce mécanisme reste entièrement distinct du modèle "composant = repo
+> séparé" décrit dans cette section — un composant en repo séparé ne peut jamais être imbriqué sous
+> un composant local, pour une raison technique (un submodule est déclaré dans
+> `polenta-repo.yaml`, un fichier par repo, jamais au niveau d'un `SystemNode` particulier),
+> pas fonctionnelle.
 
 **Exemples :**
 - `component-battery-bms` — Spécifications BMS réutilisées dans 3 produits

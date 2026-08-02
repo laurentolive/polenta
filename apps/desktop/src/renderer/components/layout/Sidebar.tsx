@@ -23,7 +23,7 @@ export function Sidebar({ activePanel, currentProjectId, width }: Props) {
       {activePanel === 'version' && currentProjectId && (
         <VersionPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
-      {activePanel === 'system'   && currentProjectId && (
+      {(activePanel === 'requirements' || activePanel === 'tests' || activePanel === 'campaigns') && currentProjectId && (
         <SystemPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
       {activePanel === 'dashboard' && currentProjectId && (

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { useSelectedRepo } from '../contexts/SelectedRepoContext'
@@ -59,6 +60,7 @@ function computeLineDiff(oldContent: string, newContent: string): DiffLine[] {
 // selected there, read via CompareRefsContext since sidebar and main content are siblings.
 
 function VersionDiffPage() {
+  const { t } = useTranslation()
   const { selectedRepoPath } = useSelectedRepo()
   const { sha1, sha2, selectedFile } = useCompareRefs()
   const repoPath = selectedRepoPath
@@ -77,7 +79,7 @@ function VersionDiffPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {!selectedFile ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-ink-3 italic">Sélectionnez un fichier dans le panel Version</p>
+          <p className="text-sm text-ink-3 italic">{t('versionDiffPage.selectFileHint')}</p>
         </div>
       ) : (
         <>
@@ -86,9 +88,9 @@ function VersionDiffPage() {
             <p className="font-mono text-sm text-ink font-medium truncate flex-1">{selectedFile}</p>
             {!isLoadingDiff && fileDiff && (
               <p className="text-xs text-ink-3 shrink-0">
-                <span className="text-green-600">+{addCount}</span>
+                <span className="text-status-success">+{addCount}</span>
                 {' / '}
-                <span className="text-red-500">−{removeCount}</span>
+                <span className="text-status-danger">−{removeCount}</span>
               </p>
             )}
           </div>
@@ -96,9 +98,9 @@ function VersionDiffPage() {
           {/* Contenu du diff */}
           <div className="flex-1 overflow-auto font-mono text-xs">
             {isLoadingDiff ? (
-              <p className="text-ink-3 italic p-6">Chargement…</p>
+              <p className="text-ink-3 italic p-6">{t('common.loading')}</p>
             ) : lines.length === 0 ? (
-              <p className="text-ink-3 italic p-6">Aucune différence</p>
+              <p className="text-ink-3 italic p-6">{t('diffPage.noDifference')}</p>
             ) : (
               <table className="w-full border-collapse">
                 <tbody>
@@ -107,9 +109,9 @@ function VersionDiffPage() {
                       key={idx}
                       className={
                         line.type === 'add'
-                          ? 'bg-green-50 dark:bg-green-900/15'
+                          ? 'bg-status-success-bg dark:bg-status-success-bg/15'
                           : line.type === 'remove'
-                          ? 'bg-red-50 dark:bg-red-900/15'
+                          ? 'bg-status-danger-bg dark:bg-status-danger-bg/15'
                           : ''
                       }
                     >
@@ -120,7 +122,7 @@ function VersionDiffPage() {
                         {line.type !== 'remove' ? line.lineNum : ''}
                       </td>
                       <td className={`px-1 py-px w-6 select-none text-center font-bold align-top ${
-                        line.type === 'add' ? 'text-green-600' : line.type === 'remove' ? 'text-red-500' : 'text-ink-3'
+                        line.type === 'add' ? 'text-status-success' : line.type === 'remove' ? 'text-status-danger' : 'text-ink-3'
                       }`}>
                         {line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '}
                       </td>

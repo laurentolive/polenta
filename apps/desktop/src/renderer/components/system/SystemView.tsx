@@ -10,12 +10,14 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { Grid3x3, FileText, Settings } from 'lucide-react'
 import { CampaignListView } from './CampaignListView'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useSystemView } from '../../contexts/SystemViewContext'
+import { useTabs } from '../../contexts/TabsContext'
 import { treeFindNode, treeFindByObjectId, computeSectionNumbers } from '../../hooks/useTreeState'
 import { ExcelView } from './ExcelView'
 import { WordView } from './WordView'
@@ -28,7 +30,8 @@ import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
 import { buildExportRows } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
-import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode } from '@polenta/types'
+import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
+import { flattenSystemNodes } from '@polenta/types'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { getRelevantLinkTypes, getLinkTypeLabel, isLinkTypeValid } from './linkUtils'
 
@@ -89,23 +92,27 @@ function FieldConfigModal({
   onChangeWord: (fields: string[]) => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<ConfigTab>(activeTab)
 
   const systemFieldLabels: Record<string, string> = {
-    section: 'Section', name: 'Label', id: 'ID', status: 'Statut', version: 'Version',
-    createdAt: 'Créé le', updatedAt: 'Modifié le', author: 'Auteur',
-    steps: 'Étapes',
+    section: t('system.fieldConfig.colSection'), name: t('schema.editor.colLabel'), id: t('system.wordView.colId'), status: t('system.wordView.colStatus'), version: t('system.wordView.colVersion'),
+    createdAt: t('system.fieldConfig.colCreatedAt'), updatedAt: t('system.fieldConfig.colUpdatedAt'), author: t('system.fieldConfig.colAuthor'),
+    steps: t('system.wordView.stepsHeading'), coverageStatus: t('system.fieldConfig.colCoverage'),
   }
 
-  const systemFields = ['section', 'name', 'id', 'status', 'version', 'createdAt', 'author']
+  const systemFields = ['section', 'name', 'id', 'status', 'version', 'createdAt', 'author', 'coverageStatus']
   const customFields = (typeDef?.fields ?? []).map(f => f.name)
   const category = typeDef?.category
   const relevantLinkTypes = getRelevantLinkTypes(linkTypes, objectTypeRef, category).map(r => r.lt)
   // section / name / id / status / version sont toujours affichés dans l'en-tête de la carte en vue
   // Document (cf. WordView.ItemCard) — les proposer à cocher là n'aurait aucun effet visible
   const fieldsAlwaysInWordHeader = new Set(['section', 'name', 'id', 'status', 'version'])
+  // coverageStatus (T138) n'a de sens que pour les exigences — un TestCase n'a pas de statut de
+  // couverture, ne pas le proposer à cocher pour ce type d'objet.
   const allFields = [...new Set([...systemFields, ...customFields])]
     .filter(f => tab !== 'word' || !fieldsAlwaysInWordHeader.has(f))
+    .filter(f => f !== 'coverageStatus' || category === 'requirement')
   const hasSteps = category === 'test'
 
   const currentFields = tab === 'excel' ? visibleFieldsExcel : visibleFieldsWord
@@ -131,8 +138,8 @@ function FieldConfigModal({
   const defaultFields = ['section', 'name', 'id', 'status', ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? [])]
 
   const tabLabels: Record<ConfigTab, string> = {
-    excel: 'Tableau',
-    word: 'Document',
+    excel: t('system.fieldConfig.tabExcel'),
+    word: t('system.fieldConfig.tabWord'),
   }
 
   return (
@@ -146,7 +153,7 @@ function FieldConfigModal({
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-ink">Champs visibles</p>
+          <p className="text-sm font-semibold text-ink">{t('system.fieldConfig.visibleFields')}</p>
           <button
             type="button"
             onClick={onClose}
@@ -158,19 +165,19 @@ function FieldConfigModal({
 
         {/* Tabs */}
         <div className="flex border border-edge rounded overflow-hidden mb-3 text-xs">
-          {(['excel', 'word'] as ConfigTab[]).map(t => (
+          {(['excel', 'word'] as ConfigTab[]).map(configTab => (
             <button
-              key={t}
+              key={configTab}
               type="button"
-              onClick={() => setTab(t)}
+              onClick={() => setTab(configTab)}
               className={[
                 'flex-1 py-1 transition-colors',
-                tab === t
+                tab === configTab
                   ? 'bg-ink text-prim-fg font-medium'
                   : 'text-ink-3 hover:text-ink hover:bg-hover',
               ].join(' ')}
             >
-              {tabLabels[t]}
+              {tabLabels[configTab]}
             </button>
           ))}
         </div>
@@ -198,7 +205,7 @@ function FieldConfigModal({
           {/* Steps column (test types only) */}
           {hasSteps && (
             <div className="pt-2 mt-1 border-t border-edge">
-              <p className="text-xs text-ink-3 font-medium mb-1">Cas de test</p>
+              <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.testCase')}</p>
               <label className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded">
                 <input
                   type="checkbox"
@@ -206,16 +213,16 @@ function FieldConfigModal({
                   onChange={() => toggle('steps')}
                   className="h-3 w-3 accent-ink"
                 />
-                <span>Étapes</span>
+                <span>{t('system.wordView.stepsHeading')}</span>
               </label>
             </div>
           )}
 
           {/* Link type columns */}
           <div className="pt-2 mt-1 border-t border-edge">
-            <p className="text-xs text-ink-3 font-medium mb-1">Liens</p>
+            <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.links')}</p>
             {relevantLinkTypes.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">Aucun type de lien pour ce type</p>
+              <p className="text-xs text-ink-3 italic">{t('system.fieldConfig.noLinkTypeForType')}</p>
             ) : (
               <div className="space-y-1.5">
                 {relevantLinkTypes.map(lt => {
@@ -234,7 +241,7 @@ function FieldConfigModal({
                       />
                       <span>{displayLabel || lt.name}</span>
                       {!isLinkTypeValid(lt) && (
-                        <span className="text-amber-500" title="sourceRefs ou targetRefs manquant">⚠</span>
+                        <span className="text-status-warning" title={t('system.fieldConfig.missingRefs')}>⚠</span>
                       )}
                     </label>
                   )
@@ -262,7 +269,9 @@ function FieldConfigModal({
 // ── Main SystemView ───────────────────────────────────────────────────────────
 
 export function SystemView() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
+  const { openTab } = useTabs()
   const {
     currentProjectId,
     repoPath,
@@ -293,6 +302,15 @@ export function SystemView() {
     navigateTo,
     createItemObject,
   } = useSystemView()
+
+  // T135 — `candidateObjects` (dropdown "ajouter un lien") ne se reconstruit que si ces deux
+  // requêtes sont invalidées : sans ça, un titre modifié après le chargement initial (y compris
+  // le "Sans titre" posé à la création) reste figé dans la liste de candidats indéfiniment, alors
+  // que le titre réel de l'objet est bien à jour partout ailleurs (ex: en rouvrant l'objet).
+  const invalidateCandidateObjects = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
+    qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
+  }, [qc, repoPath])
 
   // View mode — persisted per project in localStorage
   const [viewMode, setViewMode] = useState<ViewMode>('excel')
@@ -524,6 +542,7 @@ export function SystemView() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['objects', repoPath, effectiveType?.category, effectiveNodeId, effectiveTypeId] })
+      invalidateCandidateObjects()
       clearPendingEdits()
     },
   })
@@ -583,7 +602,7 @@ export function SystemView() {
 
   const refToCategory = useMemo(() => {
     const map = new Map<string, string>()
-    for (const node of nodes) {
+    for (const { node } of flattenSystemNodes(nodes)) {
       for (const ot of node.objectTypes ?? []) {
         map.set(`${node.name}::${ot.name}`, ot.category)
       }
@@ -607,11 +626,51 @@ export function SystemView() {
     return map
   }, [allLinks])
 
+  // ── Couverture de test (T138) ────────────────────────────────────────────────
+  // Champ système optionnel `coverageStatus` — désactivé par défaut dans Excel/Word (coché via le
+  // panneau ⚙️), toujours affiché dans Édition (cf. specs/T138-design.md, pas d'onglet "Édition"
+  // dans FieldConfigModal aujourd'hui). `enabled` évite d'appeler `traceability:matrix` (qui
+  // recalcule la couverture de tout le repo) tant qu'aucune des 3 vues n'en a besoin.
+  const coverageNeeded = visibleFieldsExcel.includes('coverageStatus')
+    || visibleFieldsWord.includes('coverageStatus')
+    || (viewMode === 'edit' && effectiveType?.category === 'requirement')
+
+  const { data: matrix } = useQuery({
+    queryKey: ['traceability-matrix', repoPath],
+    queryFn: () => api.traceability.matrix(repoPath),
+    enabled: !!repoPath && coverageNeeded,
+  })
+
+  const coverageByReqId = useMemo(() => {
+    const map = new Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>()
+    for (const row of matrix?.requirements ?? []) {
+      map.set(row.requirement.id, { coverageStatus: row.coverageStatus, cells: row.cells })
+    }
+    return map
+  }, [matrix])
+
+  const testsById = useMemo(() => {
+    const map = new Map<string, TestCase>()
+    for (const tc of allTests as TestCase[]) map.set(tc.id, tc)
+    return map
+  }, [allTests])
+
   // ── Link navigation callbacks (T37) — after candidateObjects + editingObjectId ──
 
-  const navigateToObject = useCallback((peerId: string) => {
+  const navigateToObject = useCallback((peerId: string, opts?: { newTab?: boolean }) => {
     const target = candidateObjects.find(c => c.id === peerId)
     if (!target) return
+
+    // T134 — a new tab is a fresh route mount with no access to this component's local state
+    // (viewMode/pendingNavObjectId), so it can't reuse the in-place tree navigation below. The
+    // standalone /req or /test detail page resolves an object from the URL alone, same as
+    // SearchPanel's "open result" navigation.
+    if (opts?.newTab) {
+      const pathname = target.category === 'test' ? `/test/${peerId}` : `/req/${peerId}`
+      openTab(pathname, { repoPath, projectId: currentProjectId })
+      return
+    }
+
     const parts = target.objectTypeRef.split('::')
     if (parts.length !== 2) return
     const [targetNodeId, targetTypeId] = parts
@@ -632,7 +691,7 @@ export function SystemView() {
       setViewMode('edit')
       navigateTo(targetNodeId, targetTypeId)
     }
-  }, [candidateObjects, effectiveNodeId, effectiveTypeId, editingObjectId, viewMode, navigateTo])
+  }, [candidateObjects, effectiveNodeId, effectiveTypeId, editingObjectId, viewMode, navigateTo, openTab, repoPath, currentProjectId])
 
   const handleGoBack = useCallback(() => {
     setBackHistory(prev => {
@@ -662,16 +721,25 @@ export function SystemView() {
 
   const typeKey = effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : null
 
-  const { data: savedPrefs } = useQuery({
+  const { data: savedPrefs, isPlaceholderData: isPrefsPlaceholder } = useQuery({
     queryKey: ['pref-visibility', repoPath, username, typeKey],
     queryFn: async () => {
       if (!repoPath || !username || !typeKey) return null
       return api.pref.getFieldVisibility(repoPath, username, typeKey)
     },
     enabled: !!repoPath && !!username && !!typeKey,
+    // Garde les prefs du type précédent affichées pendant le fetch du nouveau type plutôt que
+    // de repasser par `undefined` : sans ça, changer de type retombait un instant sur le
+    // `fallback` (peu de colonnes) avant de recevoir les vraies prefs, d'où le "flash" de
+    // colonnes en moins puis en plus.
+    placeholderData: keepPreviousData,
   })
 
   useEffect(() => {
+    // Tant que les prefs affichées sont celles de l'ancien type (placeholder en attendant le
+    // fetch du nouveau), ne pas re-dériver les colonnes visibles — sinon on écrase l'affichage
+    // courant par le fallback avant que les vraies prefs du nouveau type n'arrivent.
+    if (isPrefsPlaceholder) return
     const fallback = [
       'section',
       'name',
@@ -684,7 +752,7 @@ export function SystemView() {
     setVisibleFieldsExcel(savedPrefs?.excel ?? fallback)
     setVisibleFieldsWord(savedPrefs?.word ?? fallback)
     setVisibleFieldsEdit(savedPrefs?.edit ?? fallback)
-  }, [savedPrefs, effectiveTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [savedPrefs, effectiveTypeId, isPrefsPlaceholder]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const autoSaveMutation = useMutation({
     mutationFn: async ({ objectId, field, value }: { objectId: string; field: string; value: string }) => {
@@ -702,9 +770,19 @@ export function SystemView() {
       if (cat === 'requirement') return api.requirements.update(repoPath, objectId, dto)
       if (cat === 'test') return api.tests.update(repoPath, objectId, dto as UpdateTestCaseDto)
     },
-    onSuccess: (_, variables) => {
-      qc.invalidateQueries({ queryKey: ['objects', repoPath, effectiveType?.category, effectiveNodeId, effectiveTypeId] })
-      qc.invalidateQueries({ queryKey: ['object', repoPath, effectiveType?.category, variables.objectId] })
+    onSuccess: async (_, variables) => {
+      // Awaited (not fire-and-forget): `invalidateQueries` resolves once its refetch lands.
+      // clearPendingEditsFor must not run before that — otherwise `objects` briefly falls
+      // back to the pre-save `rawObjects` snapshot still sitting in the query cache (no
+      // pendingEdits override left to mask it), and RichTextField's external-resync effect
+      // sees that stale rollback as a genuine value change: it replaces the live document
+      // with it, which for a richtext field just edited (e.g. a new empty list line) means
+      // the just-typed trailing content visibly vanishes and the caret jumps.
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['objects', repoPath, effectiveType?.category, effectiveNodeId, effectiveTypeId] }),
+        qc.invalidateQueries({ queryKey: ['object', repoPath, effectiveType?.category, variables.objectId] }),
+      ])
+      if (variables.field === 'title') invalidateCandidateObjects()
       clearPendingEditsFor(variables.objectId, variables.field, variables.value)
     },
     onError: (err) => {
@@ -761,7 +839,25 @@ export function SystemView() {
     api.tree.save(repoPath, { nodeId: effectiveNodeId, typeId: effectiveTypeId, root: newRoot })
       .then(() => qc.invalidateQueries({ queryKey: ['tree', repoPath, effectiveNodeId, effectiveTypeId] }))
       .catch(err => console.error('[RenameNode] Erreur save tree:', err))
-  }, [repoPath, effectiveNodeId, effectiveTypeId, root, setRoot, qc])
+
+    // T136 — le "Nom" affiché partout dans la Vue Système (arbre, colonne Label, en-tête
+    // Word/Édition) EST le nom du nœud d'arbre, mais c'est le champ `title` de l'objet
+    // (jamais mis à jour par ce renommage tant que ceci n'existait pas) qui alimente la
+    // liste de candidats du sélecteur de lien (LinkCombobox) : sans cette synchro, le titre
+    // d'un objet renommé restait figé (ex: sur "Sans titre") dans ce sélecteur pour toujours.
+    const cat = effectiveType?.category
+    const node = treeFindNode(root, nodeId)
+    const objectId = node?.kind === 'item' ? node.objectId : undefined
+    if (objectId && cat === 'requirement') {
+      api.requirements.update(repoPath, objectId, { title: name })
+        .then(() => invalidateCandidateObjects())
+        .catch(err => console.error('[RenameNode] Erreur sync titre requirement:', err))
+    } else if (objectId && cat === 'test') {
+      api.tests.update(repoPath, objectId, { title: name } as UpdateTestCaseDto)
+        .then(() => invalidateCandidateObjects())
+        .catch(err => console.error('[RenameNode] Erreur sync titre test:', err))
+    }
+  }, [repoPath, effectiveNodeId, effectiveTypeId, effectiveType?.category, root, setRoot, qc, invalidateCandidateObjects])
 
   const handleRootChangeDnd = useCallback((newRoot: TypeTreeNode[]) => {
     if (!repoPath || !effectiveNodeId || !effectiveTypeId) return
@@ -797,13 +893,14 @@ export function SystemView() {
         await api.tree.save(repoPath, { nodeId: effectiveNodeId, typeId: effectiveTypeId, root: updatedRoot })
         qc.invalidateQueries({ queryKey: ['tree', repoPath, effectiveNodeId, effectiveTypeId] })
         qc.invalidateQueries({ queryKey: ['objects', repoPath, effectiveType.category, effectiveNodeId, effectiveTypeId] })
+        invalidateCandidateObjects()
       } catch (err) {
         console.error('Erreur création objet:', err)
       } finally {
         setIsCreating(false)
       }
     }
-  }, [editingObjectId, editingNodeId, effectiveType, effectiveNodeId, effectiveTypeId, repoPath, autoSaveMutation, root, setRoot, qc, handleRenameNode])
+  }, [editingObjectId, editingNodeId, effectiveType, effectiveNodeId, effectiveTypeId, repoPath, autoSaveMutation, root, setRoot, qc, handleRenameNode, invalidateCandidateObjects])
 
   // Appelé par EditView au moment de la navigation (onBack) — sauvegarde tous les champs modifiés en une seule requête
   // Si editingObjectId est null (nouveau nœud sans objet), crée l'objet avec les valeurs remplies
@@ -831,16 +928,22 @@ export function SystemView() {
       }
       if (cat === 'requirement') {
         api.requirements.update(repoPath, editingObjectId, dto)
-          .then(() => qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] }))
+          .then(() => {
+            qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] })
+            if (newTitle) invalidateCandidateObjects()
+          })
           .catch(err => console.error('[FlushEdit] Erreur update requirement:', err))
       } else if (cat === 'test') {
         api.tests.update(repoPath, editingObjectId, dto as UpdateTestCaseDto)
-          .then(() => qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] }))
+          .then(() => {
+            qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] })
+            if (newTitle) invalidateCandidateObjects()
+          })
           .catch(err => console.error('[FlushEdit] Erreur update test:', err))
       }
     } else {
       // Nouvel objet — créer avec les valeurs remplies
-      const title = localValues['title']?.trim() || editingTreeNode?.name?.trim() || 'Sans titre'
+      const title = localValues['title']?.trim() || editingTreeNode?.name?.trim() || t('system.systemView.untitled')
       const customFields: Record<string, string> = {}
       for (const [field, value] of Object.entries(localValues)) {
         if (field === 'section' || field === 'name' || SYSTEM_FIELDS_SET.has(field) || field === 'status' || field === 'title') continue
@@ -857,6 +960,7 @@ export function SystemView() {
           .then(() => {
             qc.invalidateQueries({ queryKey: ['tree', repoPath, effectiveNodeId, effectiveTypeId] })
             qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] })
+            invalidateCandidateObjects()
           })
           .catch(err => console.error('[FlushEdit] Erreur save tree après création:', err))
       }
@@ -870,12 +974,21 @@ export function SystemView() {
           .catch(err => console.error('[FlushEdit] Erreur création test:', err))
       }
     }
-  }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot])
+  }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects])
 
   const savePrefsMutation = useMutation({
     mutationFn: async (views: { excel: string[]; word: string[]; edit: string[] }) => {
       if (!repoPath || !username || !typeKey) return
       await api.pref.setFieldVisibility(repoPath, username, typeKey, views)
+      return views
+    },
+    // Sans ceci, la query ['pref-visibility', ...] garde en cache la valeur d'avant
+    // modification (staleTime 60s) : un aller-retour de vue dans ce délai fait rejouer
+    // le useEffect ci-dessus avec l'ancien savedPrefs et écrase silencieusement le choix
+    // de visibilité qu'on vient pourtant d'enregistrer sur disque.
+    onSuccess: (views) => {
+      if (!views) return
+      qc.setQueryData(['pref-visibility', repoPath, username, typeKey], views)
     },
   })
 
@@ -907,7 +1020,7 @@ export function SystemView() {
   if (nodes.length === 0 || !effectiveNode) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">
-        Aucun composant configuré. Allez dans Projet → Modèle de données.
+        {t('sidebar.system.noComponentConfiguredBody')} {t('sidebar.system.goToDataModel')}
       </div>
     )
   }
@@ -915,7 +1028,7 @@ export function SystemView() {
   if (objectTypes.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">
-        Aucun élément configuré
+        {t('sidebar.system.noElementConfigured')}
       </div>
     )
   }
@@ -945,9 +1058,9 @@ export function SystemView() {
         back={
           viewMode === 'edit'
             // T92 — flush-then-navigate, same sequence EditView's own "Retour" used to run.
-            ? { label: 'Retour', onClick: () => editViewRef.current?.triggerBack() }
+            ? { label: t('layout.viewHeader.back'), onClick: () => editViewRef.current?.triggerBack() }
             : backHistory.length > 0
-              ? { label: 'Retour', onClick: handleGoBack }
+              ? { label: t('layout.viewHeader.back'), onClick: handleGoBack }
               : undefined
         }
         actions={
@@ -960,7 +1073,7 @@ export function SystemView() {
               type="button"
               onClick={undo}
               disabled={!canUndo}
-              title="Annuler (Ctrl+Z)"
+              title={t('system.systemView.undo')}
               className="text-xs text-ink-3 hover:text-ink disabled:opacity-30 px-1"
             >
               ↩
@@ -969,7 +1082,7 @@ export function SystemView() {
               type="button"
               onClick={redo}
               disabled={!canRedo}
-              title="Rétablir (Ctrl+Y)"
+              title={t('system.systemView.redo')}
               className="text-xs text-ink-3 hover:text-ink disabled:opacity-30 px-1"
             >
               ↪
@@ -1033,7 +1146,7 @@ export function SystemView() {
               <button
                 type="button"
                 onClick={() => setShowFieldConfig(v => !v)}
-                title="Configurer les colonnes"
+                title={t('system.fieldConfig.configureColumns')}
                 className="text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
               >
                 <Settings size={14} />
@@ -1045,8 +1158,8 @@ export function SystemView() {
               <div className="flex border border-edge rounded overflow-hidden">
                 {(
                   [
-                    { mode: 'excel' as ViewMode, icon: <Grid3x3 size={13} />, title: 'Vue tableau' },
-                    { mode: 'word' as ViewMode, icon: <FileText size={13} />, title: 'Vue document' },
+                    { mode: 'excel' as ViewMode, icon: <Grid3x3 size={13} />, title: t('system.systemView.tableView') },
+                    { mode: 'word' as ViewMode, icon: <FileText size={13} />, title: t('system.systemView.documentView') },
                   ] as const
                 ).map(({ mode, icon, title }) => (
                   <button
@@ -1106,9 +1219,14 @@ export function SystemView() {
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
             linksByObjectId={linksByObjectId}
+            coverageByReqId={coverageByReqId}
+            testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={() => qc.invalidateQueries({ queryKey: ['links-all', repoPath] })}
+            onLinkChange={() => {
+              qc.invalidateQueries({ queryKey: ['links-all', repoPath] })
+              qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
+            }}
             onInlineEdit={readOnly ? undefined : handleAutoInlineEdit}
             onRenameNode={readOnly ? undefined : handleRenameNode}
             onRootChange={readOnly ? undefined : handleRootChangeDnd}
@@ -1134,9 +1252,14 @@ export function SystemView() {
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
             linksByObjectId={linksByObjectId}
+            coverageByReqId={coverageByReqId}
+            testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={() => qc.invalidateQueries({ queryKey: ['links-all', repoPath] })}
+            onLinkChange={() => {
+              qc.invalidateQueries({ queryKey: ['links-all', repoPath] })
+              qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
+            }}
             onInlineEdit={readOnly ? undefined : handleAutoInlineEdit}
             onRenameNode={readOnly ? undefined : handleRenameNode}
             onReopenDraft={readOnly ? undefined : handleReopenDraft}
@@ -1165,9 +1288,14 @@ export function SystemView() {
             readOnly={readOnly}
             linkTypes={linkTypes}
             objectLinks={editingObjectId ? (linksByObjectId.get(editingObjectId) ?? []) : []}
+            coverageByReqId={coverageByReqId}
+            testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={() => qc.invalidateQueries({ queryKey: ['links-all', repoPath] })}
+            onLinkChange={() => {
+              qc.invalidateQueries({ queryKey: ['links-all', repoPath] })
+              qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
+            }}
             onBlurField={handleEditBlurField}
             onFlushValues={handleFlushEditValues}
             onNavigateToObject={navigateToObject}
@@ -1175,7 +1303,7 @@ export function SystemView() {
           >
             {isEditingTestCase && (
               <div className="border-t border-edge pt-5">
-                <p className="text-xs font-medium text-ink-2 mb-3">Étapes</p>
+                <p className="text-xs font-medium text-ink-2 mb-3">{t('system.wordView.stepsHeading')}</p>
                 <StepsTable
                   steps={testSteps}
                   onChange={setTestSteps}

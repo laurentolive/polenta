@@ -43,6 +43,27 @@ interface ImpactSnapshot {
   links: ObjectLink[]
 }
 
+/**
+ * Match a link against a requirement/test-case pair regardless of which side is
+ * `sourceId` vs `targetId`. A "teste"/coverage link can legitimately be created from
+ * either object's editor (the requirement's or the test's) — the user picks whichever
+ * direction reads naturally, per the link type's `sourceRefs`/`targetRefs` — so coverage
+ * can't assume the test is always the source.
+ */
+function matchCoverageLink(
+  link: ObjectLink,
+  tcIds: Set<string>,
+  reqIds: Set<string>,
+): { testId: string; reqId: string } | null {
+  if (tcIds.has(link.sourceId) && reqIds.has(link.targetId)) {
+    return { testId: link.sourceId, reqId: link.targetId }
+  }
+  if (tcIds.has(link.targetId) && reqIds.has(link.sourceId)) {
+    return { testId: link.targetId, reqId: link.sourceId }
+  }
+  return null
+}
+
 function findImpactNodeById(nodes: ImpactNode[], elementId: string): ImpactNode | null {
   for (const node of nodes) {
     if (node.elementId === elementId) return node
@@ -177,16 +198,17 @@ export class TraceabilityService {
     latestRunMap: Map<string, TestRun>,
   ): Map<string, { cells: MatrixCell[]; coverageStatus: CoverageStatus }> {
     const reqIds = new Set(requirements.map((r) => r.id))
+    const tcIds = new Set(tcMap.keys())
 
     const reqToTests = new Map<string, Array<{ tc: TestCase; coverageType: 'full' | 'partial'; needsRevalidation: boolean }>>()
     for (const link of links) {
-      const tc = tcMap.get(link.sourceId)
-      const reqId = reqIds.has(link.targetId) ? link.targetId : undefined
-      if (tc && reqId) {
-        const arr = reqToTests.get(reqId) ?? []
-        arr.push({ tc, coverageType: link.coverageType ?? 'full', needsRevalidation: link.needsRevalidation })
-        reqToTests.set(reqId, arr)
-      }
+      const match = matchCoverageLink(link, tcIds, reqIds)
+      if (!match) continue
+      const tc = tcMap.get(match.testId)
+      if (!tc) continue
+      const arr = reqToTests.get(match.reqId) ?? []
+      arr.push({ tc, coverageType: link.coverageType ?? 'full', needsRevalidation: link.needsRevalidation })
+      reqToTests.set(match.reqId, arr)
     }
 
     const result = new Map<string, { cells: MatrixCell[]; coverageStatus: CoverageStatus }>()
@@ -251,14 +273,14 @@ export class TraceabilityService {
     const tcIds = new Set(testCases.map((tc) => tc.id))
 
     const coveredReqIds = new Set<string>()
-    const tcCoveredLinks = new Map<string, ObjectLink[]>()
+    const tcCoveredLinks = new Map<string, Array<{ link: ObjectLink; reqId: string }>>()
     for (const link of allLinks) {
-      if (tcIds.has(link.sourceId) && reqIds.has(link.targetId)) {
-        coveredReqIds.add(link.targetId)
-        const arr = tcCoveredLinks.get(link.sourceId) ?? []
-        arr.push(link)
-        tcCoveredLinks.set(link.sourceId, arr)
-      }
+      const match = matchCoverageLink(link, tcIds, reqIds)
+      if (!match) continue
+      coveredReqIds.add(match.reqId)
+      const arr = tcCoveredLinks.get(match.testId) ?? []
+      arr.push({ link, reqId: match.reqId })
+      tcCoveredLinks.set(match.testId, arr)
     }
 
     const uncoveredRequirements = requirements.filter((r) => !coveredReqIds.has(r.id))
@@ -282,18 +304,18 @@ export class TraceabilityService {
       })
     }
 
-    for (const [tcId, links] of tcCoveredLinks) {
+    for (const [tcId, entries] of tcCoveredLinks) {
       const tc = testCases.find((t) => t.id === tcId)
       if (!tc) continue
-      for (const link of links) {
+      for (const { link, reqId: linkedReqId } of entries) {
         if (!link.needsRevalidation) continue
-        const req = await this.findRequirementById(link.targetId, repoPaths)
+        const req = await this.findRequirementById(linkedReqId, repoPaths)
         if (!req) continue
         revalidationItems.push({
           type: 'coverage_link',
           sourceId: tc.id,
           sourceTitle: tc.title,
-          targetId: link.targetId,
+          targetId: linkedReqId,
           targetTitle: req.title,
           linkType: link.type,
           reason: 'Linked requirement has been modified since this test was linked',
@@ -571,6 +593,8 @@ export class TraceabilityService {
     for (const link of allLinks) {
       if (tcIds.has(link.sourceId) && link.targetId === reqId) {
         queue.push({ id: link.sourceId, depth: 1, linkType: link.type, elementType: 'test_case' })
+      } else if (tcIds.has(link.targetId) && link.sourceId === reqId) {
+        queue.push({ id: link.targetId, depth: 1, linkType: link.type, elementType: 'test_case' })
       }
     }
 
@@ -672,12 +696,13 @@ export class TraceabilityService {
 
     const reqToTests = new Map<string, TestCase[]>()
     for (const link of allLinks) {
-      if (!tcIds.has(link.sourceId) || !reqIds.has(link.targetId)) continue
+      const match = matchCoverageLink(link, tcIds, reqIds)
+      if (!match) continue
       if (dto.coverageFilter === 'full_only' && link.coverageType !== 'full') continue
-      const tc = tcMap.get(link.sourceId)!
-      const arr = reqToTests.get(link.targetId) ?? []
+      const tc = tcMap.get(match.testId)!
+      const arr = reqToTests.get(match.reqId) ?? []
       arr.push(tc)
-      reqToTests.set(link.targetId, arr)
+      reqToTests.set(match.reqId, arr)
     }
 
     const selectedTcIds = new Set<string>()

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export type Candidate = { id: string; title: string; objectTypeRef: string; category?: string }
 
@@ -15,8 +16,9 @@ export function LinkCombobox({
   candidates: Candidate[]
   onAdd: (peerId: string) => Promise<void>
   onRemove: (linkId: string) => Promise<void>
-  onNavigateToObject?: (peerId: string) => void
+  onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
 }) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -71,8 +73,8 @@ export function LinkCombobox({
             className="inline-flex items-center gap-1 text-xs font-mono px-1.5 py-0.5 bg-hover rounded border border-edge text-ink"
           >
             <span
-              title="Cliquer pour naviguer vers cet élément"
-              onClick={() => onNavigateToObject?.(peerId)}
+              title={t('system.shared.clickToNavigate')}
+              onClick={e => onNavigateToObject?.(peerId, { newTab: e.ctrlKey || e.metaKey })}
               className={onNavigateToObject ? 'cursor-pointer hover:underline' : ''}
             >
               {peerId}
@@ -81,7 +83,7 @@ export function LinkCombobox({
               type="button"
               disabled={loading}
               onClick={() => handleRemove(linkId)}
-              className="text-ink-3 hover:text-red-400 leading-none"
+              className="text-ink-3 hover:text-status-danger leading-none"
             >
               ×
             </button>
@@ -97,8 +99,8 @@ export function LinkCombobox({
           autoFocus
           onChange={e => { setQuery(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
-          placeholder="Rechercher un élément…"
-          className="w-full text-xs border border-edge rounded px-2 py-1 bg-surface text-ink outline-none focus:border-blue-400 placeholder:text-ink-3"
+          placeholder={t('system.linkCombobox.searchPlaceholder')}
+          className="w-full text-xs border border-edge rounded px-2 py-1 bg-surface text-ink outline-none focus:border-status-info placeholder:text-ink-3"
         />
         {open && filtered.length > 0 && (
           <div

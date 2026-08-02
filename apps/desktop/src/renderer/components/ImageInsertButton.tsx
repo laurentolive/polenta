@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
 import { ImagePlus } from 'lucide-react'
@@ -20,6 +21,7 @@ const MESSAGE_AUTO_DISMISS_MS = 5000
 // mais avec le même retour utilisateur en cas d'erreur ou de copie (cf. revue
 // de code T76 : un échec de copie ne doit pas passer inaperçu).
 export function ImageInsertButton({ editor, repoPath, disabled, className }: Props) {
+  const { t } = useTranslation()
   const buttonRef = useRef<HTMLButtonElement>(null)
   // Empêche un double-clic de superposer deux dialogues natifs de sélection de
   // fichier (et donc potentiellement deux insertions) pendant l'aller-retour IPC.
@@ -50,11 +52,11 @@ export function ImageInsertButton({ editor, repoPath, disabled, className }: Pro
         return
       }
       if (picked.copied) {
-        showMessage(anchor, `Fichier copié dans ${picked.path}`, 'info')
+        showMessage(anchor, t('drawioInsert.fileCopiedTo', { path: picked.path }), 'info')
       }
       editor.chain().focus().setImage({ src: picked.path }).run()
     } catch (err) {
-      showMessage(anchor, err instanceof Error ? err.message : "Erreur lors de l'insertion de l'image.", 'error')
+      showMessage(anchor, err instanceof Error ? err.message : t('imageInsert.insertError'), 'error')
     } finally {
       setPending(false)
     }
@@ -67,7 +69,7 @@ export function ImageInsertButton({ editor, repoPath, disabled, className }: Pro
         type="button"
         onMouseDown={e => { e.preventDefault(); void handleClick() }}
         disabled={disabled || !repoPath || pending}
-        title={repoPath ? 'Insérer une image (fichier)' : 'Insérer une image (contexte repo indisponible)'}
+        title={repoPath ? t('imageInsert.insertImage') : t('imageInsert.insertImageNoRepo')}
         className={className}
       ><ImagePlus size={13} /></button>
       {message && createPortal(
@@ -76,7 +78,7 @@ export function ImageInsertButton({ editor, repoPath, disabled, className }: Pro
           <div
             style={{ position: 'fixed', top: message.top, left: message.left, zIndex: 9999 }}
             className={`min-w-[220px] max-w-[280px] bg-surface border rounded shadow-lg px-2 py-1.5 text-xs ${
-              message.tone === 'error' ? 'border-red-400/50 text-red-500' : 'border-edge text-ink-2'
+              message.tone === 'error' ? 'border-status-danger-border text-status-danger' : 'border-edge text-ink-2'
             }`}
           >
             {message.text}

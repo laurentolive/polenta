@@ -6,6 +6,7 @@
  * aggregation picker in `WidgetConfigModal`; the underlying query is expected to
  * already return the right shape, e.g. via `GROUP BY`/`COUNT(*)`).
  */
+import { useTranslation } from 'react-i18next'
 import type { QueryResult, WidgetFieldMapping } from '@polenta/types'
 import { WidgetEmptyState } from './WidgetEmptyState'
 import { formatNumber, toNumber } from './numeric'
@@ -16,11 +17,12 @@ interface Props {
 }
 
 export function KpiWidget({ result, fieldMapping }: Props) {
+  const { t } = useTranslation()
   const { measure } = fieldMapping
-  if (!measure) return <WidgetEmptyState message="Choisissez une mesure." />
+  if (!measure) return <WidgetEmptyState message={t('dashboardPage.widget.chooseMeasure')} />
 
   const rows = result?.rows ?? []
-  if (rows.length === 0) return <WidgetEmptyState message="Aucune donnée pour cette requête." />
+  if (rows.length === 0) return <WidgetEmptyState message={t('dashboardPage.widget.noData')} />
 
   const value = rows.length === 1 ? toNumber(rows[0][measure]) : rows.reduce((sum, r) => sum + toNumber(r[measure]), 0)
 

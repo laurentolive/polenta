@@ -11,6 +11,7 @@ import type {
   SchemaStatus,
   SystemNode,
 } from '@polenta/types'
+import { findSystemNode, flattenSystemNodes, mapSystemNode } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 
@@ -67,11 +68,62 @@ export class SchemaService {
   }
 
   async save(repoPath: string, schema: ProjectSchema): Promise<void> {
+    this.assertUniquePrefixes(schema)
+    const toWrite = this.mirrorRootRolesImplements(schema)
     const dir = path.join(repoPath, '.polenta')
     await fsP.mkdir(dir, { recursive: true })
     const filePath = path.join(dir, 'schema.yaml')
-    await fsP.writeFile(filePath, yaml.dump(schema, { lineWidth: 120 }), 'utf-8')
-    this.cache.set(repoPath, schema)
+    await fsP.writeFile(filePath, yaml.dump(toWrite, { lineWidth: 120 }), 'utf-8')
+    this.cache.set(repoPath, toWrite)
+  }
+
+  /**
+   * Règle 10 CLAUDE.md : un `prefix` doit être unique sur tout le projet. `addObjectType`
+   * le valide déjà, mais l'UI (StructureTab) sauvegarde par réécriture complète du schéma
+   * via `save()` directement, sans jamais passer par `addObjectType` — sans ce check ici,
+   * ce chemin (le seul que l'UI emprunte réellement) laissait deux types partager le même
+   * prefix, ce qui fait collisionner leurs IDs générés (`nextCounterId` clé
+   * `config/counters.yaml` par prefix seul, cf. `id-counter.util.ts`). Même limitation
+   * documentée sur `findNodeUsingPrefix` : ne porte que sur `schema.nodes` du repo courant.
+   */
+  private assertUniquePrefixes(schema: ProjectSchema): void {
+    const ownerByPrefix = new Map<string, string>()
+    for (const { node } of flattenSystemNodes(schema.nodes)) {
+      for (const type of node.objectTypes ?? []) {
+        if (!type.prefix) continue
+        const owner = ownerByPrefix.get(type.prefix)
+        if (owner) {
+          throw new SchemaValidationError(
+            'PREFIX_TAKEN',
+            `Le prefix "${type.prefix}" est utilisé par plusieurs types (nœuds "${owner}" et "${node.name}").`,
+          )
+        }
+        ownerByPrefix.set(type.prefix, node.name)
+      }
+    }
+  }
+
+  /**
+   * T123 — miroir, à CHAQUE sauvegarde, de `nodes[root].roles`/`.implements` vers les champs
+   * dépréciés `ProjectSchema.roles`/`.implements` (niveau racine du fichier). Contrepartie de
+   * `migrateRootRolesImplements` (lecture) : celle-ci ne copie le fichier vers le node qu'une
+   * fois (idempotente, jamais destructive) ; celle-ci maintient l'inverse à jour en continu, pour
+   * que `workspace-tree.service.ts`/`interface-compliance.service.ts` (qui lisent encore le
+   * fichier directement, sans passer par SchemaService, cf. specs/T123-sprint1.md) voient toujours
+   * la valeur la plus récente — y compris après une édition qui n'écrit plus que sur le node root
+   * (StructureTab.tsx `handleSaveNodeLabel`/`handleSubmitEditDependency`,
+   * `workspaceActions.ts::updateInterfaceRoles`, toutes T123). Centralisé ici plutôt que dupliqué
+   * dans chacun de ces appelants — un seul choke point, jamais oublié par un futur appelant.
+   * `root` absent (ne devrait jamais arriver) : no-op, le schema est écrit tel quel.
+   */
+  private mirrorRootRolesImplements(schema: ProjectSchema): ProjectSchema {
+    const root = findSystemNode(schema.nodes, 'root')
+    if (!root) return schema
+    return {
+      ...schema,
+      roles: root.roles?.length ? root.roles : undefined,
+      implements: root.implements?.length ? root.implements : undefined,
+    }
   }
 
   invalidate(repoPath: string): void {
@@ -118,14 +170,21 @@ export class SchemaService {
   // (`this.cache`, potentiellement partagé avec d'autres appelants de `get()`)
   // reste intact tant que `save()` n'a pas remplacé l'entrée de cache par la copie.
 
-  /** Ajoute un `SystemNode` (composant local, T113 — pas de repo séparé). */
+  /**
+   * Ajoute un `SystemNode` (composant local — pas de repo séparé, T113). Avec `parentName`
+   * (T123), le nouveau nœud est imbriqué dans `children[]` du composant local désigné, à
+   * n'importe quelle profondeur, plutôt qu'au niveau racine de `schema.nodes[]`.
+   */
   async addNode(
     repoPath: string,
-    dto: { name: string; label: string; description?: string; readonly?: boolean },
+    dto: { name: string; label: string; description?: string; readonly?: boolean; parentName?: string },
   ): Promise<ProjectSchema> {
     return this.withMutationQueue(repoPath, async () => {
       const schema = await this.get(repoPath)
-      if (schema.nodes.some((n) => n.name === dto.name)) {
+      // Unicité du nom sur tout l'arbre (T123 — pas seulement le premier niveau), décision
+      // validée : un composant local ne peut pas partager son nom avec un autre composant du
+      // même repo, même sous un parent différent (cf. specs/T123.md §Décisions #1).
+      if (findSystemNode(schema.nodes, dto.name)) {
         throw new SchemaValidationError(
           'NODE_NAME_TAKEN',
           `Le nom de composant "${dto.name}" est déjà utilisé dans ce projet.`,
@@ -138,7 +197,23 @@ export class SchemaService {
         objectTypes: [],
         ...(dto.description ? { description: dto.description } : {}),
       }
-      const updated: ProjectSchema = { ...schema, nodes: [...schema.nodes, newNode] }
+      let nodes: SystemNode[]
+      if (dto.parentName) {
+        const parent = findSystemNode(schema.nodes, dto.parentName)
+        if (!parent) {
+          throw new SchemaValidationError(
+            'NODE_NOT_FOUND',
+            `Composant parent "${dto.parentName}" introuvable dans ce projet.`,
+          )
+        }
+        nodes = mapSystemNode(schema.nodes, dto.parentName, (p) => ({
+          ...p,
+          children: [...(p.children ?? []), newNode],
+        }))
+      } else {
+        nodes = [...schema.nodes, newNode]
+      }
+      const updated: ProjectSchema = { ...schema, nodes }
       await this.save(repoPath, updated)
       return updated
     })
@@ -176,16 +251,63 @@ export class SchemaService {
           )
         }
       }
-      const updatedNode: SystemNode = {
-        ...node,
-        objectTypes: [...(node.objectTypes ?? []), dto.objectType],
-      }
       const updated: ProjectSchema = {
         ...schema,
-        nodes: schema.nodes.map((n) => (n === node ? updatedNode : n)),
+        nodes: mapSystemNode(schema.nodes, node.name, (n) => ({
+          ...n,
+          objectTypes: [...(n.objectTypes ?? []), dto.objectType],
+        })),
       }
       await this.save(repoPath, updated)
       return updated
+    })
+  }
+
+  /**
+   * Déplace un `ObjectTypeDefinition` de `fromNodeName` vers `toNodeName`, dans le MÊME schéma
+   * (T135 sprint 3 — drag & drop d'un élément vers un autre nœud). `prefix`/`name` du type ne
+   * changent jamais — seul le nœud porteur change, donc `objectTypeRef` (`<nœud>::<type>`) change
+   * de valeur ; l'appelant est responsable de la cascade de réécriture sur les
+   * requirements/tests existants (délibérément pas fait ici : `RequirementsService`/
+   * `TestsService` dépendent déjà de `SchemaService`, l'inverse créerait une dépendance
+   * circulaire — cf. `element-move.service.ts`, seule dépendance des trois). No-op idempotent (pas
+   * d'erreur, mêmes refs en entrée/sortie) si `fromNodeName === toNodeName`, pour que l'appelant
+   * n'ait pas à filtrer ce cas lui-même.
+   */
+  async moveObjectType(
+    repoPath: string,
+    dto: { fromNodeName: string; toNodeName: string; typeName: string },
+  ): Promise<{ schema: ProjectSchema; oldRef: string; newRef: string }> {
+    return this.withMutationQueue(repoPath, async () => {
+      const schema = await this.get(repoPath)
+      const fromNode = this.requireNode(schema, dto.fromNodeName)
+      const oldRef = `${dto.fromNodeName}::${dto.typeName}`
+      const newRef = `${dto.toNodeName}::${dto.typeName}`
+      if (dto.fromNodeName === dto.toNodeName) {
+        this.requireObjectType(fromNode, dto.typeName) // still validate it exists, for a consistent contract
+        return { schema, oldRef, newRef }
+      }
+      const toNode = this.requireNode(schema, dto.toNodeName)
+      this.requireNotReadonly(fromNode)
+      this.requireNotReadonly(toNode)
+      const type = this.requireObjectType(fromNode, dto.typeName)
+      if (toNode.objectTypes?.some((t) => t.name === dto.typeName)) {
+        throw new SchemaValidationError(
+          'TYPE_NAME_TAKEN',
+          `Le type "${dto.typeName}" existe déjà dans le nœud "${dto.toNodeName}".`,
+        )
+      }
+      const nodes = mapSystemNode(
+        mapSystemNode(schema.nodes, dto.fromNodeName, (n) => ({
+          ...n,
+          objectTypes: (n.objectTypes ?? []).filter((t) => t.name !== dto.typeName),
+        })),
+        dto.toNodeName,
+        (n) => ({ ...n, objectTypes: [...(n.objectTypes ?? []), type] }),
+      )
+      const updated: ProjectSchema = { ...schema, nodes }
+      await this.save(repoPath, updated)
+      return { schema: updated, oldRef, newRef }
     })
   }
 
@@ -260,7 +382,7 @@ export class SchemaService {
   }
 
   private requireNode(schema: ProjectSchema, nodeName: string): SystemNode {
-    const node = schema.nodes.find((n) => n.name === nodeName)
+    const node = findSystemNode(schema.nodes, nodeName)
     if (!node) {
       throw new SchemaValidationError('NODE_NOT_FOUND', `Nœud "${nodeName}" introuvable dans ce projet.`)
     }
@@ -284,23 +406,32 @@ export class SchemaService {
     return type
   }
 
-  /** Cherche si `prefix` est déjà utilisé par un type de N'IMPORTE QUEL nœud du projet (règle 10 CLAUDE.md) — retourne le nom du nœud en cause, ou `undefined`. */
+  /** Cherche si `prefix` est déjà utilisé par un type de N'IMPORTE QUEL nœud du projet, à
+   *  n'importe quelle profondeur d'imbrication (règle 10 CLAUDE.md, T123 pour la récursion) —
+   *  retourne le nom du nœud en cause, ou `undefined`. */
   private findNodeUsingPrefix(schema: ProjectSchema, prefix: string): string | undefined {
-    return schema.nodes.find((n) => n.objectTypes?.some((t) => t.prefix === prefix))?.name
+    return flattenSystemNodes(schema.nodes).find(
+      ({ node }) => node.objectTypes?.some((t) => t.prefix === prefix),
+    )?.node.name
   }
 
-  /** Construit une copie immuable de `schema` avec `type` remplacé par `updatedType` dans `node`. */
+  /** Construit une copie immuable de `schema` avec `type` remplacé par `updatedType` dans `node`.
+   *  Localise `node` par son nom via `mapSystemNode` (T123) — `node` peut être imbriqué à
+   *  n'importe quelle profondeur, un `.map()` de premier niveau sur `schema.nodes` ne le
+   *  retrouverait pas. */
   private replaceObjectType(
     schema: ProjectSchema,
     node: SystemNode,
     type: ObjectTypeDefinition,
     updatedType: ObjectTypeDefinition,
   ): ProjectSchema {
-    const updatedNode: SystemNode = {
-      ...node,
-      objectTypes: (node.objectTypes ?? []).map((t) => (t === type ? updatedType : t)),
+    return {
+      ...schema,
+      nodes: mapSystemNode(schema.nodes, node.name, (n) => ({
+        ...n,
+        objectTypes: (n.objectTypes ?? []).map((t) => (t === type ? updatedType : t)),
+      })),
     }
-    return { ...schema, nodes: schema.nodes.map((n) => (n === node ? updatedNode : n)) }
   }
 
   /**
@@ -356,9 +487,39 @@ export class SchemaService {
       const raw = await fsP.readFile(filePath, 'utf-8')
       const parsed = yaml.load(raw) as ProjectSchema
       if (!parsed || !parsed.nodes) return DEFAULT_SCHEMA
-      return parsed
+      return this.migrateRootRolesImplements(parsed)
     } catch {
       return DEFAULT_SCHEMA
+    }
+  }
+
+  /**
+   * T123 — un `schema.yaml` écrit avant ce ticket porte `roles`/`implements` au niveau racine
+   * du fichier (décrivant "ce repo est une interface"/"ce repo implémente X"). On les recopie
+   * sur le node `root` (côté lecture, en mémoire), pour qu'un composant local ait exactement le
+   * même mécanisme d'interface que `root` (cf. specs/T123.md §Décisions #4) — idempotente,
+   * n'ajoute la copie que si `root` ne l'a pas déjà.
+   *
+   * Contrepartie côté écriture : `save()` fait l'inverse à chaque sauvegarde
+   * (`mirrorRootRolesImplements`, Sprint 3) — root devient la source de vérité, le niveau racine
+   * du fichier n'est plus qu'un miroir tenu à jour automatiquement pour
+   * `workspace-tree.service.ts`/`interface-compliance.service.ts`, qui lisent encore le fichier
+   * directement sans passer par `SchemaService` (cf. specs/T123-sprint1.md). Cette fonction-ci ne
+   * sert donc plus qu'à peupler `root` en mémoire pour un `schema.yaml` jamais resauvegardé depuis
+   * ce ticket (première lecture d'un projet legacy) — sans elle, la popup d'édition d'un composant
+   * jamais encore retouché montrerait un catalogue de rôles vide pour un repo interface existant.
+   */
+  private migrateRootRolesImplements(schema: ProjectSchema): ProjectSchema {
+    if (!schema.roles?.length && !schema.implements?.length) return schema
+    const root = findSystemNode(schema.nodes, 'root')
+    if (root?.roles?.length || root?.implements?.length) return schema // déjà migré sur root
+    return {
+      ...schema,
+      nodes: mapSystemNode(schema.nodes, 'root', (r) => ({
+        ...r,
+        roles: r.roles ?? schema.roles,
+        implements: r.implements ?? schema.implements,
+      })),
     }
   }
 }

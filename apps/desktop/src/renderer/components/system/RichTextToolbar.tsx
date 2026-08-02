@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useRichText } from '../../contexts/RichTextContext'
 import { DrawioInsertButton } from '../DrawioInsertButton'
 import { ImageInsertButton } from '../ImageInsertButton'
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function RichTextToolbar({ repoPath }: Props) {
+  const { t } = useTranslation()
   const ctx = useRichText()
   if (!ctx?.isActive) return null
 
@@ -37,7 +39,7 @@ export function RichTextToolbar({ repoPath }: Props) {
         type="button"
         onMouseDown={e => { e.preventDefault(); activeEditor?.chain().focus().toggleCode().run() }}
         className={btn(!!activeEditor?.isActive('code'), isRaw)}
-        title="Code inline"
+        title={t('system.shared.inlineCode')}
       ><span className="font-mono">{"`…`"}</span></button>
       <span className="w-px h-4 bg-edge mx-1" />
       <button
@@ -70,7 +72,7 @@ export function RichTextToolbar({ repoPath }: Props) {
         type="button"
         onMouseDown={e => { e.preventDefault(); activeEditor?.chain().focus().toggleCodeBlock().run() }}
         className={btn(!!activeEditor?.isActive('codeBlock'), isRaw)}
-        title="Bloc de code"
+        title={t('system.shared.codeBlock')}
       ><span className="font-mono text-xs">{"{ }"}</span></button>
       <span className="w-px h-4 bg-edge mx-1" />
       <ImageInsertButton editor={activeEditor} repoPath={repoPath} disabled={isRaw} className={btn(false, isRaw)} />
@@ -81,7 +83,7 @@ export function RichTextToolbar({ repoPath }: Props) {
         type="button"
         onMouseDown={e => { e.preventDefault(); toggleRaw() }}
         className={btn(isRaw)}
-        title="Mode markdown brut"
+        title={t('system.richTextToolbar.rawMarkdownMode')}
       >Raw</button>
     </div>
   )

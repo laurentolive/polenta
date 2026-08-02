@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { User, FolderOpen, Search, GitBranch, Layers, LayoutDashboard } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { User, FolderOpen, Search, GitBranch, ClipboardList, FlaskConical, Rocket, PieChart } from 'lucide-react'
 import type { Panel } from './AppLayout'
 
 interface Props {
@@ -11,35 +12,38 @@ interface Props {
 const PANELS: {
   id: Panel
   icon: ReactNode
-  label: string
+  labelKey: string
   requiresProject?: boolean
 }[] = [
-  { id: 'account', icon: <User size={20} />,      label: 'Compte' },
-  { id: 'project', icon: <FolderOpen size={20} />, label: 'Projet' },
-  { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Suivi', requiresProject: true },
-  { id: 'system',   icon: <Layers size={20} />,     label: 'Système', requiresProject: true },
-  { id: 'search',  icon: <Search size={20} />,     label: 'Recherche', requiresProject: true },
-  { id: 'version', icon: <GitBranch size={20} />,  label: 'Version',   requiresProject: true },
+  { id: 'account', icon: <User size={20} />,      labelKey: 'layout.activityBar.account' },
+  { id: 'project', icon: <FolderOpen size={20} />, labelKey: 'layout.activityBar.project' },
+  { id: 'dashboard', icon: <PieChart size={20} />, labelKey: 'layout.activityBar.dashboard', requiresProject: true },
+  { id: 'requirements', icon: <ClipboardList size={20} />, labelKey: 'layout.activityBar.requirements', requiresProject: true },
+  { id: 'tests',        icon: <FlaskConical size={20} />,  labelKey: 'layout.activityBar.tests',        requiresProject: true },
+  { id: 'campaigns',    icon: <Rocket size={20} />,         labelKey: 'layout.activityBar.campaigns',    requiresProject: true },
+  { id: 'search',  icon: <Search size={20} />,     labelKey: 'layout.activityBar.search', requiresProject: true },
+  { id: 'version', icon: <GitBranch size={20} />,  labelKey: 'layout.activityBar.version',   requiresProject: true },
 ]
 
 export function ActivityBar({ activePanel, onSelect, hasProject }: Props) {
+  const { t } = useTranslation()
   return (
-    <div className="flex flex-col w-12 bg-slate-900 border-r border-slate-800 py-2 gap-1">
+    <div className="flex flex-col w-12 bg-activity-bg border-r border-activity-border py-2 gap-1">
       {PANELS.map(p => {
         const disabled = !!p.requiresProject && !hasProject
         return (
           <button
             key={p.id}
-            title={p.label}
+            title={t(p.labelKey)}
             disabled={disabled}
             onClick={() => !disabled && onSelect(p.id)}
             className={[
               'flex items-center justify-center w-12 h-12 transition-colors',
               activePanel === p.id
-                ? 'text-white bg-slate-700'
+                ? 'text-activity-fg-hover bg-activity-bg-active'
                 : disabled
-                  ? 'text-slate-600 cursor-default'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700',
+                  ? 'text-activity-fg-disabled cursor-default'
+                  : 'text-activity-fg hover:text-activity-fg-hover hover:bg-activity-bg-active',
             ].join(' ')}
           >
             {p.icon}

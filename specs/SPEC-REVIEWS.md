@@ -3,6 +3,15 @@
 > Référence parent : [SPEC.md](../SPEC.md) §2.6  
 > Dépend de : [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md), [SPEC-TESTS.md](SPEC-TESTS.md)
 
+> **T130 — état d'implémentation réel** (`packages/types/src/review.ts`,
+> `apps/desktop/src/main/services/reviews.service.ts`) : implémentés — création de review
+> (`create`), lecture (`findById`/`list`), approbation/révocation par objet (`approveObject`/
+> `revokeObject`), clôture (`close`) ; channels IPC `reviews:list/get/create/approve-object/
+> revoke-approval/close`. **Non implémentés** — `milestoneTag` (§2.6), les commentaires de review
+> (§3.3-3.4, types `ReviewComment`/`ReviewCommentReply` définis mais aucune méthode de service ni
+> stockage), et l'index mémoire dédié `ReviewsIndexService` (§6). Ces sections décrivent un
+> comportement prévu, pas l'état actuel — marquées individuellement ci-dessous.
+
 ---
 
 ## 1. Vue d'ensemble
@@ -53,7 +62,6 @@ Une **présélection** est affichée avant confirmation : liste des objets inclu
 | Attribut | Type | Description |
 |----------|------|-------------|
 | `id` | string | Ex. `REVIEW-0001` |
-| `milestoneTag` | string \| null | Tag git de jalon associé (ex. `baseline/v1.0-PDR`) — optionnel |
 | `title` | TEXT | Titre de la review (ex. "Validation exigences BAT v1.0") |
 | `description` | RICHTEXT | Contexte, objectif de la review |
 | `status` | ENUM | `open` / `approved` / `closed` |
@@ -70,7 +78,7 @@ Une **présélection** est affichée avant confirmation : liste des objets inclu
 |----------|------|-------------|
 | `objectId` | string | ID de l'exigence ou du test case |
 | `objectType` | ENUM | `requirement` / `test_case` |
-| `objectVersion` | int | Version soumise à review (figée à la création) |
+| `objectVersion` | int | Version soumise à review (figée à la création) — T130 : bien accepté en entrée (`CreateReviewDto`) et écrit dans le YAML persisté (`reviews.service.ts` `create()`), mais absent de l'interface TypeScript `ReviewObject` (`packages/types/src/review.ts`) — écart de typage, pas de comportement |
 | `approvals` | list | Une entrée par relecteur ayant approuvé (voir §3.2) |
 | `approvalStatus` | ENUM | `pending` / `quorum_reached` / `unanimous` (calculé) |
 
@@ -100,6 +108,11 @@ Exigence SW-0042 (brouillon ouvert = v2 en cours)
 ```
 
 ### 2.6 Lien avec les jalons (baselines)
+
+**T130 : `milestoneTag` n'existe pas.** Absent de l'interface `Review` réelle
+(`packages/types/src/review.ts`) et de `CreateReviewDto` (`reviews.service.ts`) — aucun champ
+n'accepte ni ne persiste de lien vers un tag de jalon. Tout ce qui suit dans cette sous-section
+décrit un comportement prévu, non implémenté.
 
 La review est **découplée des branches git**. Elle s'attache aux objets (exigences, tests) et s'inscrit dans le cycle de vie des jalons projet :
 
@@ -157,10 +170,18 @@ Une approbation est **réversible** : le relecteur peut retirer son approbation 
 reviewerId: user-456
 approvedAt: "2026-06-01T14:30:00Z"
 objectId: BAT-0001
-objectVersion: 1
 ```
 
-### 3.3 Commentaires
+T130 : `ReviewApproval` réel n'a que ces 3 champs — pas d'`objectVersion` (contrairement à
+`ReviewObject`, voir §2.3).
+
+### 3.3 Commentaires — non implémenté (T130)
+
+`ReviewComment`/`ReviewCommentReply` sont définis dans `packages/types/src/review.ts`, mais
+`ReviewsService` n'expose aucune méthode de création/lecture/résolution de commentaire, et aucun
+channel IPC `reviews:add-comment`/`reviews:resolve-comment` n'est enregistré (ils apparaissent dans
+`SPEC-ELECTRON-DESKTOP.md` §11.2 marqués "⚠ non implémenté"). Ce qui suit décrit le comportement
+prévu.
 
 Les commentaires sont **toujours en richtext** (images, tableaux, liens internes vers d'autres exigences).
 
@@ -259,7 +280,6 @@ Les commentaires sont stockés dans des **fichiers séparés** : quand deux rele
 
 ```yaml
 id: REVIEW-0001
-milestoneTag: "baseline/v1.0-PDR"           # ← optionnel — tag git du jalon associé
 title: "Validation exigences BAT v1.0"
 description: "<p>Review pré-release pour les exigences batterie.</p>"
 status: open
@@ -312,9 +332,14 @@ replies:
 
 ---
 
-## 6. Index mémoire — extension
+## 6. Index mémoire — extension — non implémenté (T130)
 
-Un `ReviewsIndexService` est ajouté à l'index en mémoire :
+Il n'existe pas de `ReviewsIndexService` : aucune occurrence dans `apps/desktop/src/main/services/`.
+`ReviewsService` lit/écrit directement les fichiers `reviews/*.yaml` via `GitService`, sans index
+en mémoire ni méthode `findReviewsForObject`/`findReviewsForMilestone`/`hasApprovedReview`. Ce qui
+suit décrit une extension prévue, jamais construite.
+
+Un `ReviewsIndexService` serait ajouté à l'index en mémoire :
 
 ```
 ReviewsIndex (par repoPath)
@@ -369,8 +394,8 @@ Les notifications sont **in-app** via les événements IPC push (`window.polenta
 | Révocabilité de l'approbation | **Oui** — tant que la review n'est pas clôturée |
 | Clôture | **Manuelle** par le créateur — pas d'auto-clôture au quorum |
 | Commentaires | **Richtext** à 3 niveaux : review / objet / champ |
-| Stockage commentaires | **Fichiers séparés** (un par commentaire) pour éviter les conflits git |
+| Stockage commentaires | **Fichiers séparés** (un par commentaire) pour éviter les conflits git — T130 : non implémenté, voir §3.3 |
 | Réouverture d'une review approved | **Impossible** — nouvelle review nécessaire si l'objet change |
 | Lien avec les branches git | **Aucun** — le merge d'une branche ne requiert pas de review. La review est un workflow de validation de contenu, indépendant du flux git |
-| Lien avec les jalons | **Optionnel** — `milestoneTag` peut référencer le tag git du jalon cible, à titre informatif |
+| Lien avec les jalons | **Optionnel** — `milestoneTag` peut référencer le tag git du jalon cible, à titre informatif — T130 : non implémenté, voir §2.6 |
 | Pré-remplissage des objets | **Manuel** — l'utilisateur sélectionne les items depuis la fiche d'un objet ou via une sélection multiple dans la liste |

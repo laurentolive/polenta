@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { deducePanel, deriveCurrentProjectId, type Panel } from '../components/layout/AppLayout'
 
 export interface Tab {
@@ -77,65 +79,85 @@ function isEditableElement(el: Element): boolean {
 
 const RECENTLY_CLOSED_LIMIT = 10
 
+function sameDestination(a: Tab, b: Tab): boolean {
+  if (a.pathname !== b.pathname) return false
+  const aKeys = Object.keys(a.searchParams)
+  const bKeys = Object.keys(b.searchParams)
+  if (aKeys.length !== bKeys.length) return false
+  return aKeys.every(key => a.searchParams[key] === b.searchParams[key])
+}
+
+/** Re-closing a destination already in the history moves it back to the front instead of
+ *  creating a second entry — "Récemment fermés" lists distinct destinations, not close events. */
+function pushRecentlyClosed(prev: Tab[], closed: Tab): Tab[] {
+  return [closed, ...prev.filter(tab => !sameDestination(tab, closed))].slice(0, RECENTLY_CLOSED_LIMIT)
+}
+
 // Mirrors ActivityBar.tsx's PANELS labels — kept separate to avoid pulling the icon-bearing
-// array (JSX) into this non-visual module just for its label strings.
-const PANEL_LABELS: Record<Panel, string> = {
-  account: 'Compte',
-  project: 'Projet',
-  search: 'Recherche',
-  version: 'Version',
-  system: 'Système',
-  dashboard: 'Suivi',
+// array (JSX) into this non-visual module just for its label strings. T111: stores i18n keys
+// (reusing layout.activityBar.* so the two stay in sync by construction) rather than literal
+// strings — `t()` isn't available at module scope, only inside TabsProvider.
+const PANEL_LABEL_KEYS: Record<Panel, string> = {
+  account: 'layout.activityBar.account',
+  project: 'layout.activityBar.project',
+  search: 'layout.activityBar.search',
+  version: 'layout.activityBar.version',
+  requirements: 'layout.activityBar.requirements',
+  tests: 'layout.activityBar.tests',
+  campaigns: 'layout.activityBar.campaigns',
+  dashboard: 'layout.activityBar.dashboard',
 }
 
-// Exact-match overrides for routes whose default panel label (PANEL_LABELS) would be too
-// generic for a tab (e.g. every "system" panel route would otherwise show "Système").
-const TITLE_OVERRIDES: Record<string, string> = {
-  '/': 'Accueil',
-  '/account': 'Compte',
-  '/schema': 'Modèle de données',
-  '/graph': 'Arbre de versions',
-  '/diff': 'Diff',
-  '/baseline': 'Baselines',
-  '/impact-analysis': "Analyse d'impact",
-  '/version-diff': 'Comparer versions',
-  '/versioning': 'Version',
-  '/product': 'Produit',
-  '/components': 'Composants',
-  '/query': 'Requêtes',
-  '/dashboard': 'Suivi',
-  '/preferences': 'Préférences',
-  '/compliance': 'Conformité',
-  '/workspace': 'Workspace',
-  '/req/new': 'Nouvelle exigence',
-  '/test/new': 'Nouveau test',
-  '/campaign/new': 'Nouvelle campagne',
+// Exact-match overrides for routes whose default panel label (PANEL_LABEL_KEYS) would be too
+// generic for a tab (e.g. every "system" panel route would otherwise show "Système"). Reuses
+// existing keys from other namespaces where one already covers the same word (account,
+// dashboard, version, preferences) instead of duplicating the string.
+const TITLE_OVERRIDE_KEYS: Record<string, string> = {
+  '/': 'layout.tabTitles.home',
+  '/account': 'layout.activityBar.account',
+  '/schema': 'layout.tabTitles.schema',
+  '/graph': 'layout.tabTitles.graph',
+  '/diff': 'layout.tabTitles.diff',
+  '/baseline': 'layout.tabTitles.baseline',
+  '/impact-analysis': 'layout.tabTitles.impactAnalysis',
+  '/version-diff': 'layout.tabTitles.versionDiff',
+  '/versioning': 'layout.activityBar.version',
+  '/product': 'layout.tabTitles.product',
+  '/components': 'layout.tabTitles.components',
+  '/query': 'layout.tabTitles.query',
+  '/dashboard': 'layout.activityBar.dashboard',
+  '/preferences': 'preferences.title',
+  '/compliance': 'layout.tabTitles.compliance',
+  '/workspace': 'layout.tabTitles.workspace',
+  '/req/new': 'layout.tabTitles.newRequirement',
+  '/test/new': 'layout.tabTitles.newTest',
+  '/campaign/new': 'layout.tabTitles.newCampaign',
 }
 
-const PREFIX_TITLES: [prefix: string, title: string][] = [
-  ['/req/', 'Exigence'],
-  ['/test/', 'Test'],
-  ['/campaign/', 'Campagne'],
+const PREFIX_TITLE_KEYS: [prefix: string, key: string][] = [
+  ['/req/', 'layout.tabTitles.requirement'],
+  ['/test/', 'layout.tabTitles.test'],
+  ['/campaign/', 'layout.tabTitles.campaign'],
 ]
 
 /** Default tab title for a route — refined per-entity by useSetTabTitle in a later sprint. */
-function defaultTitleForPathname(pathname: string): string {
-  if (TITLE_OVERRIDES[pathname]) return TITLE_OVERRIDES[pathname]
-  const prefixMatch = PREFIX_TITLES.find(([prefix]) => pathname.startsWith(prefix))
-  if (prefixMatch) return prefixMatch[1]
-  return PANEL_LABELS[deducePanel(pathname)]
+function defaultTitleForPathname(pathname: string, t: TFunction): string {
+  if (TITLE_OVERRIDE_KEYS[pathname]) return t(TITLE_OVERRIDE_KEYS[pathname])
+  const prefixMatch = PREFIX_TITLE_KEYS.find(([prefix]) => pathname.startsWith(prefix))
+  if (prefixMatch) return t(prefixMatch[1])
+  return t(PANEL_LABEL_KEYS[deducePanel(pathname)])
 }
 
 function parseSearch(search: string): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(search ?? ''))
 }
 
-function makeTab(pathname: string, searchParams: Record<string, string>): Tab {
+function makeTab(pathname: string, searchParams: Record<string, string>, t: TFunction): Tab {
   return {
     id: crypto.randomUUID(),
     pathname,
     searchParams,
-    title: defaultTitleForPathname(pathname),
+    title: defaultTitleForPathname(pathname, t),
   }
 }
 
@@ -168,12 +190,18 @@ interface Props {
 let sessionCache: { tabs: Tab[]; activeTabId: string; recentlyClosed: Tab[] } | null = null
 
 export function TabsProvider({ children }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { pathname, search } = useRouterState({
     select: s => ({ pathname: s.location.pathname, search: s.location.searchStr }),
   })
 
-  const [tabs, setTabs] = useState<Tab[]>(() => sessionCache?.tabs ?? [makeTab(pathname, parseSearch(search))])
+  // setTabTitleOverride must stay reference-stable (empty useCallback deps, see below) — this
+  // ref lets it read the current `t` without going stale on a locale switch.
+  const tRef = useRef(t)
+  useEffect(() => { tRef.current = t }, [t])
+
+  const [tabs, setTabs] = useState<Tab[]>(() => sessionCache?.tabs ?? [makeTab(pathname, parseSearch(search), t)])
   const [activeTabId, setActiveTabId] = useState<string>(() => sessionCache?.activeTabId ?? tabs[0].id)
   const [recentlyClosed, setRecentlyClosed] = useState<Tab[]>(() => sessionCache?.recentlyClosed ?? [])
   const [dirtyTabIds, setDirtyTabIds] = useState<Set<string>>(new Set())
@@ -191,13 +219,13 @@ export function TabsProvider({ children }: Props) {
   // requirement, changing a filter…) — this is what lets switching away and back restore the
   // exact position without every navigate() having to know about tabs.
   useEffect(() => {
-    setTabs(prev => prev.map(t =>
-      t.id === activeTabId
-        ? { ...t, pathname, searchParams: parseSearch(search), title: defaultTitleForPathname(pathname) }
-        : t
+    setTabs(prev => prev.map(tab =>
+      tab.id === activeTabId
+        ? { ...tab, pathname, searchParams: parseSearch(search), title: defaultTitleForPathname(pathname, t) }
+        : tab
     ))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, search])
+  }, [pathname, search, t])
 
   const currentProjectId = deriveCurrentProjectId(search)
 
@@ -228,7 +256,7 @@ export function TabsProvider({ children }: Props) {
 
     if (isRealSwitch || isRealClose) {
       const home = resolveHomeRoute(currentProjectId)
-      const tab = makeTab(home.pathname, home.searchParams)
+      const tab = makeTab(home.pathname, home.searchParams, t)
       setTabs([tab])
       setActiveTabId(tab.id)
       setRecentlyClosed([])
@@ -236,25 +264,25 @@ export function TabsProvider({ children }: Props) {
 
     if (currentProjectId !== null) lastNonNullProjectId.current = currentProjectId
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProjectId, pathname])
+  }, [currentProjectId, pathname, t])
 
   function openTab(pathname?: string, searchParams?: Record<string, string>) {
     const target = pathname ? { pathname, searchParams: searchParams ?? {} } : resolveHomeRoute(currentProjectId)
-    const tab = makeTab(target.pathname, target.searchParams)
+    const tab = makeTab(target.pathname, target.searchParams, t)
     setTabs(prev => [...prev, tab])
     setActiveTabId(tab.id)
     goTo(tab)
   }
 
   function activateTab(id: string) {
-    const tab = tabs.find(t => t.id === id)
+    const tab = tabs.find(item => item.id === id)
     if (!tab) return
     setActiveTabId(id)
     goTo(tab)
   }
 
   function closeTab(id: string) {
-    const index = tabs.findIndex(t => t.id === id)
+    const index = tabs.findIndex(item => item.id === id)
     if (index === -1) return
 
     setDirtyTabIds(prev => {
@@ -270,18 +298,18 @@ export function TabsProvider({ children }: Props) {
       // "Récemment fermés", same as closing any other tab.
       const original = tabs[0]
       const home = resolveHomeRoute(currentProjectId)
-      const tab: Tab = { id: original.id, pathname: home.pathname, searchParams: home.searchParams, title: defaultTitleForPathname(home.pathname) }
+      const tab: Tab = { id: original.id, pathname: home.pathname, searchParams: home.searchParams, title: defaultTitleForPathname(home.pathname, t) }
       setTabs([tab])
       setActiveTabId(tab.id)
-      setRecentlyClosed(prev => [original, ...prev].slice(0, RECENTLY_CLOSED_LIMIT))
+      setRecentlyClosed(prev => pushRecentlyClosed(prev, original))
       goTo(tab)
       return
     }
 
     const closed = tabs[index]
-    const remaining = tabs.filter(t => t.id !== id)
+    const remaining = tabs.filter(item => item.id !== id)
     setTabs(remaining)
-    setRecentlyClosed(prev => [closed, ...prev].slice(0, RECENTLY_CLOSED_LIMIT))
+    setRecentlyClosed(prev => pushRecentlyClosed(prev, closed))
 
     if (id === activeTabId) {
       const neighbor = remaining[Math.min(index, remaining.length - 1)]
@@ -338,19 +366,19 @@ export function TabsProvider({ children }: Props) {
 
   const setTabTitleOverride = useCallback((id: string, title: string) => {
     setTabs(prev => {
-      const tab = prev.find(t => t.id === id)
+      const tab = prev.find(item => item.id === id)
       if (!tab) return prev
-      const nextTitle = title || defaultTitleForPathname(tab.pathname)
+      const nextTitle = title || defaultTitleForPathname(tab.pathname, tRef.current)
       if (tab.title === nextTitle) return prev
-      return prev.map(t => t.id === id ? { ...t, title: nextTitle } : t)
+      return prev.map(item => item.id === id ? { ...item, title: nextTitle } : item)
     })
   }, [])
 
   function reopenClosedTab(id: string) {
-    const closed = recentlyClosed.find(t => t.id === id)
+    const closed = recentlyClosed.find(item => item.id === id)
     if (!closed) return
-    setRecentlyClosed(prev => prev.filter(t => t.id !== id))
-    const tab = makeTab(closed.pathname, closed.searchParams)
+    setRecentlyClosed(prev => prev.filter(rc => rc.id !== id))
+    const tab = makeTab(closed.pathname, closed.searchParams, t)
     setTabs(prev => [...prev, tab])
     setActiveTabId(tab.id)
     goTo(tab)

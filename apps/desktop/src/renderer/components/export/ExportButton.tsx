@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMutation } from '@tanstack/react-query'
 import { Download, FileSpreadsheet, FileText, FileType } from 'lucide-react'
 import { api } from '../../api'
@@ -30,6 +31,7 @@ interface ExportButtonProps {
 /** Bouton "Exporter" partagé, inséré dans le slot `actions` d'un `ViewHeader` — popover listant
  *  les formats disponibles pour la vue (cf. specs/T43-design.md, mapping formats/type). */
 export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, getPayload, getPrintParams }: ExportButtonProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
@@ -39,10 +41,10 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
       const baseName = await getSuggestedBaseName()
       const suggestedName = `${baseName}.${FORMAT_META[format].extension}`
       if (format === 'pdf') {
-        if (!getPrintParams) throw new Error(`Export PDF non disponible pour cette vue`)
+        if (!getPrintParams) throw new Error(t('exportButton.pdfNotAvailable'))
         return api.export.save(repoPath, kind, format, undefined, getPrintParams(), suggestedName)
       }
-      if (!getPayload) throw new Error(`Export ${FORMAT_META[format].label} non disponible pour cette vue`)
+      if (!getPayload) throw new Error(t('exportButton.formatNotAvailable', { format: FORMAT_META[format].label }))
       const payload = await getPayload(format)
       return api.export.save(repoPath, kind, format, payload, undefined, suggestedName)
     },
@@ -55,7 +57,7 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
     },
     onError: (err: unknown) => {
       setOpen(false)
-      setError(err instanceof Error ? err.message : 'Erreur lors de l’export')
+      setError(err instanceof Error ? err.message : t('exportButton.exportError'))
     },
   })
 
@@ -64,11 +66,11 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5"
-        title="Exporter"
+        className="btn-secondary-sm flex items-center gap-1.5"
+        title={t('exportButton.export')}
       >
         <Download size={13} />
-        Exporter
+        {t('exportButton.export')}
       </button>
 
       {open && (
@@ -105,9 +107,9 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-72"
             onClick={e => e.stopPropagation()}
           >
-            <p className="text-xs text-red-600 dark:text-red-400 mb-2">{error}</p>
-            <button type="button" onClick={() => setError(null)} className="btn-secondary text-xs">
-              Fermer
+            <p className="text-xs text-status-danger mb-2">{error}</p>
+            <button type="button" onClick={() => setError(null)} className="btn-secondary-sm">
+              {t('common.close')}
             </button>
           </div>
         </>
@@ -120,16 +122,16 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-96"
             onClick={e => e.stopPropagation()}
           >
-            <p className="text-xs text-ink-2 mb-2 break-all">Exporté vers {savedPath}</p>
+            <p className="text-xs text-ink-2 mb-2 break-all">{t('exportButton.exportedTo', { path: savedPath })}</p>
             <div className="flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => api.export.showInFolder(savedPath)} className="btn-secondary text-xs">
-                Ouvrir le dossier
+              <button type="button" onClick={() => api.export.showInFolder(savedPath)} className="btn-secondary-sm">
+                {t('exportButton.openFolder')}
               </button>
-              <button type="button" onClick={() => api.export.openFile(savedPath)} className="btn-secondary text-xs">
-                Ouvrir le fichier
+              <button type="button" onClick={() => api.export.openFile(savedPath)} className="btn-secondary-sm">
+                {t('exportButton.openFile')}
               </button>
-              <button type="button" onClick={() => setSavedPath(null)} className="btn-secondary text-xs">
-                Fermer
+              <button type="button" onClick={() => setSavedPath(null)} className="btn-secondary-sm">
+                {t('common.close')}
               </button>
             </div>
           </div>

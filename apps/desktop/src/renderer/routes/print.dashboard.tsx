@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { api } from '../api'
 import { widgetQueryOptions } from '../hooks/useQueryResult'
@@ -26,6 +27,7 @@ export const Route = createFileRoute('/print/dashboard')({
 })
 
 function PrintDashboardPage() {
+  const { t } = useTranslation()
   const { repoPath, workspaceDir, username, dashboardId } = Route.useSearch()
 
   const { data: dashboard, isSuccess: dashboardLoaded } = useQuery({
@@ -56,11 +58,11 @@ function PrintDashboardPage() {
 
   useNotifyPrintReady(dashboardLoaded && queriesLoaded && widgetsSettled)
 
-  if (!dashboard) return <div className="p-10 bg-white min-h-screen" />
+  if (!dashboard) return <div className="p-10 bg-print-bg min-h-screen" />
 
   return (
-    <div className="p-10 bg-white text-slate-900 text-sm min-h-screen">
-      <h1 className="text-xl font-semibold mb-4">Dashboard — {dashboard.title}</h1>
+    <div className="p-10 bg-print-bg text-print-ink text-sm min-h-screen">
+      <h1 className="text-xl font-semibold mb-4">{t('printDashboardPage.title', { title: dashboard.title })}</h1>
       <DashboardGrid
         dashboard={dashboard}
         savedQueries={savedQueries}

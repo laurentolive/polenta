@@ -9,9 +9,11 @@
  * mapping via the same `WidgetRenderer` used in the dashboard grid.
  */
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BarChart3, Hash, LineChart, PieChart, Table2, X } from 'lucide-react'
 import type { QueryScope, SavedQuery, Widget, WidgetFieldMapping, WidgetSize, WidgetType } from '@polenta/types'
 import { useQueryResult } from '../../hooks/useQueryResult'
+import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 
 export interface WidgetConfigResult {
@@ -40,21 +42,22 @@ interface Props {
   initialWidget?: Widget | null
 }
 
-const TYPE_OPTIONS: { value: WidgetType; label: string; icon: typeof BarChart3 }[] = [
-  { value: 'bar', label: 'Barres', icon: BarChart3 },
-  { value: 'pie', label: 'Camembert', icon: PieChart },
-  { value: 'line', label: 'Courbe', icon: LineChart },
-  { value: 'kpi', label: 'Tuile KPI', icon: Hash },
-  { value: 'table', label: 'Table', icon: Table2 },
+const TYPE_OPTIONS: { value: WidgetType; labelKey: string; icon: typeof BarChart3 }[] = [
+  { value: 'bar', labelKey: 'dashboard.widgetModal.typeBar', icon: BarChart3 },
+  { value: 'pie', labelKey: 'dashboard.widgetModal.typePie', icon: PieChart },
+  { value: 'line', labelKey: 'dashboard.widgetModal.typeLine', icon: LineChart },
+  { value: 'kpi', labelKey: 'dashboard.widgetModal.typeKpi', icon: Hash },
+  { value: 'table', labelKey: 'dashboard.widgetModal.typeTable', icon: Table2 },
 ]
 
-const SIZE_OPTIONS: { value: WidgetSize; label: string }[] = [
-  { value: 'sm', label: 'Petit' },
-  { value: 'md', label: 'Moyen' },
-  { value: 'lg', label: 'Large' },
+const SIZE_OPTIONS: { value: WidgetSize; labelKey: string }[] = [
+  { value: 'sm', labelKey: 'dashboard.widgetModal.sizeSmall' },
+  { value: 'md', labelKey: 'dashboard.widgetModal.sizeMedium' },
+  { value: 'lg', labelKey: 'dashboard.widgetModal.sizeLarge' },
 ]
 
 export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, workspaceDir, onSave, onClose, saving, error, initialWidget }: Props) {
+  const { t } = useTranslation()
   // Filtre proactif (pas de validation après coup) : un dashboard partagé ne propose
   // que des requêtes déjà partagées, même à l'auteur de requêtes privées.
   const availableQueries = dashboardScope === 'shared' ? savedQueries.filter((q) => q.scope === 'shared') : savedQueries
@@ -99,11 +102,13 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
     onSave({ title: title.trim(), queryId, type, fieldMapping, size })
   }
 
+  useModalHotkeys(onClose, handleSave, saving)
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-30 p-4">
+    <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-30 p-4">
       <div className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-3 border-b border-edge shrink-0">
-          <h2 className="text-sm font-semibold text-ink">{initialWidget ? 'Modifier le widget' : 'Ajouter un widget'}</h2>
+          <h2 className="text-sm font-semibold text-ink">{initialWidget ? t('dashboard.widgetModal.editTitle') : t('dashboard.widgetModal.addTitle')}</h2>
           <button type="button" onClick={onClose} className="text-ink-3 hover:text-ink">
             <X size={16} />
           </button>
@@ -113,20 +118,20 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
           {/* ── Configuration ── */}
           <div className="space-y-4">
             <div>
-              <label className="text-xs text-ink-3 block mb-1">Titre</label>
+              <label className="text-xs text-ink-3 block mb-1">{t('dashboard.widgetModal.titleLabel')}</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Mon widget…"
+                placeholder={t('dashboard.widgetModal.titlePlaceholder')}
                 autoFocus
                 className="input-field w-full"
               />
             </div>
 
             <div>
-              <label className="text-xs text-ink-3 block mb-1">Requête</label>
+              <label className="text-xs text-ink-3 block mb-1">{t('dashboard.widgetModal.queryLabel')}</label>
               <select value={queryId} onChange={(e) => setQueryId(e.target.value)} className="input-field w-full">
-                <option value="">— sélectionner —</option>
+                <option value="">{t('dashboard.widgetModal.selectPlaceholder')}</option>
                 {availableQueries.map((q) => (
                   <option key={q.id} value={q.id}>
                     {q.title}
@@ -135,48 +140,48 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
               </select>
               {dashboardScope === 'shared' && (
                 <p className="text-[11px] text-ink-3 mt-1">
-                  Dashboard partagé : seules les requêtes déjà partagées sont proposées.
+                  {t('dashboard.widgetModal.sharedDashboardHint')}
                 </p>
               )}
               {availableQueries.length === 0 && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                  Aucune requête disponible{dashboardScope === 'shared' ? ' partagée' : ''}. Créez-en une dans la vue Requêtes.
+                <p className="text-[11px] text-status-warning mt-1">
+                  {dashboardScope === 'shared' ? t('dashboard.widgetModal.noSharedQueryAvailable') : t('dashboard.widgetModal.noQueryAvailable')}
                 </p>
               )}
             </div>
 
             <div>
-              <label className="text-xs text-ink-3 block mb-1.5">Type de widget</label>
+              <label className="text-xs text-ink-3 block mb-1.5">{t('dashboard.widgetModal.widgetTypeLabel')}</label>
               <div className="grid grid-cols-5 gap-1.5">
-                {TYPE_OPTIONS.map(({ value, label, icon: Icon }) => (
+                {TYPE_OPTIONS.map(({ value, labelKey, icon: Icon }) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setType(value)}
-                    title={label}
+                    title={t(labelKey)}
                     className={[
                       'flex flex-col items-center gap-1 py-2 rounded border text-[10px]',
-                      type === value ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'border-edge text-ink-2 hover:bg-hover',
+                      type === value ? 'border-status-info-border bg-status-info-bg text-status-info' : 'border-edge text-ink-2 hover:bg-hover',
                     ].join(' ')}
                   >
                     <Icon size={16} />
-                    {label}
+                    {t(labelKey)}
                   </button>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="text-xs text-ink-3 block mb-1.5">Taille</label>
+              <label className="text-xs text-ink-3 block mb-1.5">{t('dashboard.widgetModal.sizeLabel')}</label>
               <div className="flex gap-2">
-                {SIZE_OPTIONS.map(({ value, label }) => (
+                {SIZE_OPTIONS.map(({ value, labelKey }) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setSize(value)}
-                    className={`px-3 py-1 rounded text-xs border ${size === value ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'border-edge text-ink-2 hover:bg-hover'}`}
+                    className={`px-3 py-1 rounded text-xs border ${size === value ? 'border-status-info-border bg-status-info-bg text-status-info' : 'border-edge text-ink-2 hover:bg-hover'}`}
                   >
-                    {label}
+                    {t(labelKey)}
                   </button>
                 ))}
               </div>
@@ -189,17 +194,17 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
 
           {/* ── Aperçu live ── */}
           <div className="flex flex-col">
-            <label className="text-xs text-ink-3 block mb-1.5">Aperçu</label>
+            <label className="text-xs text-ink-3 block mb-1.5">{t('dashboard.widgetModal.previewLabel')}</label>
             <div className="flex-1 min-h-[280px] border border-edge rounded-lg p-2 bg-canvas">
               {!selectedQuery ? (
                 <div className="flex items-center justify-center h-full text-xs text-ink-3 italic">
-                  Sélectionnez une requête pour prévisualiser.
+                  {t('dashboard.widgetModal.selectQueryToPreview')}
                 </div>
               ) : isLoading ? (
-                <div className="flex items-center justify-center h-full text-xs text-ink-3">Chargement…</div>
+                <div className="flex items-center justify-center h-full text-xs text-ink-3">{t('common.loading')}</div>
               ) : previewError ? (
-                <div className="flex items-center justify-center h-full text-xs text-red-500 italic px-4 text-center">
-                  {previewError instanceof Error ? previewError.message : "Erreur lors de l'exécution de la requête."}
+                <div className="flex items-center justify-center h-full text-xs text-status-danger italic px-4 text-center">
+                  {previewError instanceof Error ? previewError.message : t('dashboard.widgetModal.queryExecutionError')}
                 </div>
               ) : (
                 <WidgetRenderer type={type} result={result ?? null} fieldMapping={fieldMapping} />
@@ -209,17 +214,17 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
         </div>
 
         {error && (
-          <p className="mx-5 mb-3 text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2">
+          <p className="mx-5 mb-3 text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
             {error}
           </p>
         )}
 
         <div className="flex gap-3 justify-end px-5 py-3 border-t border-edge">
-          <button type="button" onClick={onClose} disabled={saving} className="btn-secondary text-sm">
-            Annuler
+          <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">
+            {t('common.cancel')}
           </button>
-          <button type="button" onClick={handleSave} disabled={!canSave || saving} className="btn-primary text-sm">
-            {initialWidget ? (saving ? 'Enregistrement…' : 'Enregistrer') : saving ? 'Ajout…' : 'Ajouter'}
+          <button type="button" onClick={handleSave} disabled={!canSave || saving} className="btn-primary">
+            {initialWidget ? (saving ? t('dashboard.widgetModal.saving') : t('common.save')) : saving ? t('dashboard.widgetModal.adding') : t('dashboard.widgetModal.add')}
           </button>
         </div>
       </div>
@@ -268,15 +273,16 @@ function FieldMappingForm({
   value: WidgetFieldMapping
   onChange: (patch: Partial<WidgetFieldMapping>) => void
 }) {
+  const { t } = useTranslation()
   if (columns.length === 0) {
-    return <p className="text-[11px] text-ink-3 italic">La requête ne renvoie aucune colonne à mapper.</p>
+    return <p className="text-[11px] text-ink-3 italic">{t('dashboard.widgetModal.noColumnToMap')}</p>
   }
 
   if (type === 'table') {
     const selected = value.columns ?? []
     return (
       <div>
-        <label className="text-xs text-ink-3 block mb-1.5">Colonnes affichées (toutes si aucune sélection)</label>
+        <label className="text-xs text-ink-3 block mb-1.5">{t('dashboard.widgetModal.displayedColumns')}</label>
         <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
           {columns.map((c) => (
             <label key={c} className="flex items-center gap-1 text-xs text-ink-2">
@@ -298,10 +304,10 @@ function FieldMappingForm({
   if (type === 'kpi') {
     return (
       <ColumnSelect
-        label="Mesure"
+        label={t('dashboard.widgetModal.measureLabel')}
         value={value.measure}
         columns={columns}
-        placeholder="— sélectionner —"
+        placeholder={t('dashboard.widgetModal.selectPlaceholder')}
         onChange={(measure) => onChange({ measure })}
       />
     )
@@ -311,27 +317,37 @@ function FieldMappingForm({
   return (
     <div className="space-y-3">
       <ColumnSelect
-        label="Catégorie"
+        label={t('dashboard.widgetModal.categoryLabel')}
         value={value.category}
         columns={columns}
-        placeholder="— sélectionner —"
+        placeholder={t('dashboard.widgetModal.selectPlaceholder')}
         onChange={(category) => onChange({ category })}
       />
       <ColumnSelect
-        label="Mesure"
+        label={t('dashboard.widgetModal.measureLabel')}
         value={value.measure}
         columns={columns}
-        placeholder="— sélectionner —"
+        placeholder={t('dashboard.widgetModal.selectPlaceholder')}
         onChange={(measure) => onChange({ measure })}
       />
-      {type === 'line' && (
+      {(type === 'line' || type === 'bar') && (
         <ColumnSelect
-          label="Série (optionnel, multi-courbe)"
+          label={t('dashboard.widgetModal.seriesLabel')}
           value={value.series}
           columns={columns}
-          placeholder="— aucune —"
+          placeholder={t('dashboard.widgetModal.noneOption')}
           onChange={(series) => onChange({ series })}
         />
+      )}
+      {type === 'bar' && value.series && (
+        <label className="flex items-center gap-1.5 text-xs text-ink-2">
+          <input
+            type="checkbox"
+            checked={value.stacked ?? false}
+            onChange={(e) => onChange({ stacked: e.target.checked })}
+          />
+          {t('dashboard.widgetModal.stackedLabel')}
+        </label>
       )}
     </div>
   )

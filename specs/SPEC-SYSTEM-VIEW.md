@@ -14,8 +14,8 @@ La vue Système permet d'explorer, créer, organiser et éditer les éléments d
 ┌──────────────────┬────────────────────────────────────────────────────┐
 │  Panel Système   │  [Composant X / Élément Y]  [↩][↪][🔍][⚙️][vue]  │
 │                  ├────────────────────────────────────────────────────┤
-│  [Composant ▼]   │  ← repo + sous-composant local fusionnés (T120)    │
-│  [Élément   ▼]   │                                                    │
+│  [Composant / Élément ▼]  ← un seul combobox filtrable (T129)         │
+│                  │                                                    │
 │                  │         Vue document                               │
 │  🔍 [filtre   ]  │     (Excel / Word / Édition)                       │
 │                  │                                                    │
@@ -26,59 +26,60 @@ La vue Système permet d'explorer, créer, organiser et éditer les éléments d
 └──────────────────┴────────────────────────────────────────────────────┘
 ```
 
-Le panel système (gauche) contient : les combobox (Composant, Élément), le filtre et l'arbre. La
+Le panel système (gauche) contient : le combobox Composant / Élément, le filtre et l'arbre. La
 zone principale (droite) contient uniquement la vue document et sa toolbar.
 
 ---
 
 ## État initial
 
-Au premier chargement : le composant racine est sélectionné dans le combobox Composant, le
-premier élément disponible est sélectionné dans le combobox Élément.
+Au premier chargement : l'entrée correspondant au composant racine et à son premier type
+disponible est sélectionnée dans le combobox.
 
 ---
 
 ## Panel Système (gauche)
 
-### Combobox Composant (T72 + T113, fusionnés en un seul niveau — T120)
+### Combobox Composant / Élément (T72+T113+T120+T123, puis fusion Élément — T129)
 
-- Liste, à plat, une entrée par `SystemNode` de chaque repo du workspace (racine + toutes les
-  dépendances récursives, composants et interfaces confondus — même liste que l'onglet Structure) :
-  son propre `root` et, le cas échéant, ses sous-composants locaux (cf. §3 `SPEC-TEMPLATES.md`).
-  Un composant en repo séparé et un sous-composant local sont présentés de la **même manière**,
-  comme deux entrées d'un même niveau — aucune notion de "sous-composant" n'est exposée à
-  l'utilisateur (T120, cf. contexte ci-dessous).
-- **Repo à un seul `SystemNode`** (cas le plus courant, mono-repo ou repo sans sous-composant
-  local) : une seule entrée, libellée par le mount name du repo, suffixé par le `label` de ce
-  `SystemNode` si présent — rendu strictement identique à l'ancien combobox "Composant" d'avant
-  T120.
-- **Repo à plusieurs `SystemNode` locaux** (T113), dans un workspace comportant **plusieurs
-  repos** : un séparateur visuel (groupe) identifie le repo d'origine, avec une entrée par
-  `SystemNode` sous ce séparateur, libellée par le `label` propre de ce node (replié sur son
-  `name`). En **mono-repo** (un seul repo dans tout le workspace), ce séparateur est omis même si
-  ce repo a plusieurs `SystemNode` locaux : il n'y a alors rien à distinguer d'un autre repo, un
-  en-tête n'aurait aucune valeur de désambiguïsation.
-- Libellé du combobox : **Composant**.
-- Sélectionner n'importe quelle entrée (repo seul, ou repo + sous-composant local) recharge en une
-  seule action tout le contexte (schéma, arbre, index requirements/tests/liens) sur le repo et le
-  `SystemNode` choisis, et réinitialise la sélection du combobox Élément au premier type disponible
-  pour ce `SystemNode`.
+Un seul combobox **filtrable par texte libre** fixe en une action le contexte d'édition — quel
+`SystemNode` et quel type d'élément (`ObjectTypeDefinition`) de ce nœud. Avant T129, cette
+sélection nécessitait deux comboboxes séquentiels (Composant, puis Élément) ; ils sont fusionnés
+ici en un seul, chaque entrée étant une paire (`SystemNode`, type).
+
+- **Entrées** : produit cartésien de la liste des `SystemNode` (racine + toutes les dépendances
+  récursives, composants et interfaces confondus, à n'importe quelle profondeur d'imbrication
+  locale — T123, cf. §3 `SPEC-TEMPLATES.md`) × les types d'éléments définis sur chacun. Un
+  `SystemNode` **sans aucun type défini ne produit aucune entrée** — il n'est pas sélectionnable
+  depuis ce combobox (à configurer via l'onglet Structure). Un composant en repo séparé et un
+  composant local sont présentés de la **même manière** — aucune notion de "sous-composant"
+  n'est exposée à l'utilisateur (T120).
+- **Libellé d'une entrée** : chemin du composant (identique au libellé de l'ancien combobox
+  Composant — mount name du repo, `label` du `SystemNode`, chemin `›` séparé par des ancêtres
+  locaux pour un composant imbriqué, ex. `Boîtier › Capteurs`) suivi de `" / "` puis du `label`
+  du type (ex. `Boîtier › Capteurs / Exigence Système`).
+- **Groupement** : dans un workspace à **plusieurs repos**, un séparateur visuel (en-tête de
+  section) identifie le repo d'origine, regroupant toutes ses entrées (y compris ses composants
+  locaux imbriqués). En **mono-repo**, aucun en-tête n'apparaît (rien à désambiguïser) — le
+  chemin `›` des composants imbriqués reste affiché, lui, dans tous les cas.
+- **Filtrage** : taper du texte filtre la liste par sous-chaîne insensible à la casse sur le
+  libellé complet (repo + chemin composant + type). Aucun résultat → message générique "Aucun
+  résultat" (`common.noResults`), distinct du message "Aucun composant configuré" affiché quand
+  le workspace entier n'a aucune entrée (combobox alors désactivé, ce message devient le
+  placeholder du champ).
+- **Navigation clavier** : Flèche haut/bas déplace la sélection surlignée dans la liste filtrée
+  (avec défilement automatique si elle sort du cadre visible), Entrée valide, Échap referme sans
+  changer la sélection.
+- Sélectionner une entrée recharge en une seule action tout le contexte (schéma, arbre, index
+  requirements/tests/liens) sur le `SystemNode` et le type choisis — plus d'étape intermédiaire
+  "type non encore sélectionné".
 - Un repo dont le pin (`polenta-repo.yaml`) résout vers un tag/SHA (HEAD détaché) plutôt qu'une
   branche est affiché en lecture seule (bandeau explicite, actions de création/édition
   désactivées) — le repo racine du projet ouvert reste toujours éditable.
-- Persisté dans l'URL (`repo`+`node`/`component`) et dans la dernière sélection restaurée (T52) —
-  format d'URL inchangé par T120, seule la présentation en un unique combobox change.
-
-### Combobox Élément
-
-- Libellé : **Élément**.
-- Liste les types d'éléments définis dans le data model du **`SystemNode`** sélectionné dans le
-  combobox Composant (pas du repo seul — un repo avec plusieurs sous-composants locaux a un jeu de
-  types distinct par sous-composant).
-- Le type sélectionné détermine le type des éléments créés et l'arbre affiché.
-- Chaque type possède sa propre arborescence indépendante.
-- **État vide** : si le `SystemNode` sélectionné n'a aucun type défini, afficher
-  `Aucun élément configuré`.
+- Persisté dans l'URL (`repo`+`node`/`component`+`type`/`level`) et dans la dernière sélection
+  restaurée (T52) — format d'URL inchangé par T129, seule la présentation en un unique combobox
+  filtrable change.
+- Chaque type possède sa propre arborescence indépendante (inchangé).
 
 ### Filtre
 
@@ -128,7 +129,7 @@ Le bouton **`+`** est contextuel et apparaît au survol :
 
 Un bouton **`+ Nouvel élément`** permanent est affiché en fin d'arbre (création à la racine).
 
-Le type de l'élément créé est celui sélectionné dans le combobox Élément. Disponible aussi via clic droit.
+Le type de l'élément créé est celui sélectionné dans le combobox Composant / Élément. Disponible aussi via clic droit.
 
 #### Menu contextuel (clic droit)
 
@@ -252,6 +253,8 @@ Le contenu reflète l'état du filtre. **La sélection dans l'arbre n'a aucun im
 - Les dossiers sont des **lignes de groupe collapsables**.
 - Édition inline : double-clic sur une cellule.
 - Champs système (ID, date de création, auteur…) : lecture seule, visuellement distincts.
+- **Sélection multiple de lignes** : clic simple (sélection simple), Shift+clic (sélection contiguë), Ctrl+clic (sélection discrète/toggle) — indépendante de la sélection de l'arbre du panel gauche.
+- **Édition en masse (T149)** : si plusieurs lignes sont sélectionnées et que l'une d'elles fait l'objet d'une édition inline (statut, énumération, texte, richtext, case `multi_enum`), le changement est propagé à toutes les lignes sélectionnées. Pour `multi_enum`, seule la valeur cochée/décochée est basculée sur chaque ligne — les autres valeurs déjà cochées sur les autres lignes ne sont pas écrasées. Les colonnes de lien (`link::`) ne sont pas concernées (mécanisme dédié, par ligne).
 
 ### Vue Word
 
@@ -282,6 +285,18 @@ Le contenu reflète l'état du filtre. **La sélection dans l'arbre n'a aucun im
 - Stockage : fichier local `.{githubaccount}.pref`.
 - Option **Réinitialiser par défaut** disponible par vue.
 
+**`coverageStatus` (T138)** — champ système représentant le statut de couverture de test d'une
+exigence (`not_covered`/`covered`/`validated`/`failing`/`needs_revalidation`, cf.
+[SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §2.2), affiché en icône non éditable (jamais de champ
+texte/liste éditable). Proposé dans le panneau ⚙️ uniquement pour les types d'objet de catégorie
+`requirement` (absent du panneau pour les cas de test), désactivé par défaut. En Excel c'est une
+colonne à part entière ; en Word l'icône s'affiche dans l'en-tête de carte, à côté du badge de
+statut de cycle de vie. **En Édition, contrairement à ce que dit le paragraphe ci-dessus** — l'onglet
+"Édition" du panneau ⚙️ n'existe en réalité pas et `visibleFieldsEdit` n'est pas branché au rendu de
+cette vue (écart déjà relevé dans [SPEC-AUDIT.md](SPEC-AUDIT.md) §"Configuration des champs ⚙️",
+antérieur à ce ticket) — le badge y est donc affiché **en permanence** pour les exigences plutôt que
+d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart plus général.
+
 ---
 
 ## Persistance de l'état
@@ -290,7 +305,7 @@ Le contenu reflète l'état du filtre. **La sélection dans l'arbre n'a aucun im
 |------|-----------|-----|
 | Mode de vue (Excel / Word) | `localStorage` | `polenta:viewMode:${repoPath}` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
-| `SystemNode` (repo ou sous-composant local, T113) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
+| `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
 | Configuration des champs ⚙️ | Fichier `.{githubaccount}.pref` dans le repo | par vue + par type |
 | Dernier repo/composant/élément consulté (T52) | `localStorage`, par projet | `polenta:lastSelection:${projectId}` |
 
@@ -315,6 +330,8 @@ l'URL. La sélection restaurée est propre à chaque projet (clé indexée par `
 | Situation | Comportement |
 |-----------|-------------|
 | Premier chargement | Composant racine + premier type sélectionnés automatiquement |
-| Composant sans type configuré | `Aucun élément configuré` dans le combobox Élément |
+| Composant sans type configuré | N'apparaît pas dans le combobox (aucune entrée pour ce nœud) — configurable via l'onglet Structure |
+| Workspace sans aucun type configuré nulle part | Combobox désactivé, placeholder `Aucun composant configuré` |
+| Recherche du combobox sans résultat | `Aucun résultat` dans la liste déroulante |
 | Arbre sans élément | `Aucun élément` |
-| Filtre sans résultat | `Aucun élément` dans l'arbre et dans la vue document |
+| Filtre (barre sous le combobox) sans résultat | `Aucun élément` dans l'arbre et dans la vue document |

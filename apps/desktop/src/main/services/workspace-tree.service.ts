@@ -27,6 +27,7 @@ import type {
   ProjectSchema,
 } from '@polenta/types'
 import type { PolentaRepoDependency } from '@polenta/types'
+import { findSystemNode } from '@polenta/types'
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
@@ -49,6 +50,11 @@ interface GraphNode {
   pin: string
   repoPath: string
   children: string[]  // mount names
+  /** T123 (follow-up) — name of a local SystemNode of the declaring parent this node nests
+   *  under. Set from whichever dependency declaration first discovers this mount name in the
+   *  DFS — same "first declaration wins" simplification already applied to `pin`/`url` when a
+   *  mount name is later re-encountered as a shared (diamond) dependency. */
+  localParent?: string
 }
 
 export interface WorkspaceTreeResult {
@@ -218,8 +224,31 @@ export class WorkspaceTreeService {
   async writeCache(workspaceDir: string, tree: WorkspaceTree): Promise<void> {
     const polentaDir = path.join(workspaceDir, '.polenta')
     await fsP.mkdir(polentaDir, { recursive: true })
+    await this.ensureCacheIgnored(workspaceDir)
     const cachePath = path.join(polentaDir, 'tree.cache.yaml')
     await fsP.writeFile(cachePath, yaml.dump(tree, { lineWidth: 120 }), 'utf-8')
+  }
+
+  /**
+   * T156: this cache must never be versioned (T69-design.md — it stores machine-local absolute
+   * paths and is fully regenerable, so a stale/foreign copy committed by someone else is worse
+   * than useless). `createNewProject`/`openProject` (`workspace.service.ts`) only write a
+   * `.gitignore` for the *self-contained* case where `workspaceDir` happens to equal the git
+   * repo root — a multi-repo flat workspace's `workspaceDir` is a plain container directory one
+   * level above the root repo, which those writes never touch, and `openProject`'s adopt-existing-
+   * repo path wrote no `.gitignore` at all. Rather than chase every caller, this runs once here,
+   * right at the only place the cache is ever written: a `.gitignore` placed directly next to the
+   * `.polenta/` folder it excludes is honored by git regardless of which ancestor directory (if
+   * any) turns out to be the actual repo root — and a no-op (inert stray file) if `workspaceDir`
+   * isn't under git at all, which is the common case for a freshly chosen container folder.
+   */
+  private async ensureCacheIgnored(workspaceDir: string): Promise<void> {
+    const gitignorePath = path.join(workspaceDir, '.gitignore')
+    const line = '.polenta/tree.cache.yaml'
+    const existing = await fsP.readFile(gitignorePath, 'utf-8').catch(() => '')
+    if (existing.split(/\r?\n/).includes(line)) return
+    const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : ''
+    await fsP.appendFile(gitignorePath, `${prefix}${line}\n`)
   }
 
   /**
@@ -344,6 +373,7 @@ export class WorkspaceTreeService {
           pin: dep.pin,
           repoPath: depRepoPath,
           children: [],
+          localParent: dep.localParent,
         })
       } else {
         // Already in graph — could be shared (same url+pin) or conflict
@@ -466,15 +496,27 @@ export class WorkspaceTreeService {
       schemaCache.set(node.name, await this.readSchema(node.repoPath))
     }
 
+    // T123 — roles/implements vivent désormais sur le SystemNode `root` du repo, pas seulement au
+    // niveau racine du fichier schema.yaml (déprécié, cf. schema.ts). On lit les deux : le niveau
+    // fichier reste renseigné pour un schema.yaml jamais retouché depuis ce ticket (migration
+    // additive côté SchemaService, cf. specs/T123-sprint1.md), le node root pour tout schema.yaml
+    // édité depuis ce ticket (l'édition écrit désormais sur le node, plus sur le fichier).
+    const getRootNode = (name: string) => {
+      const s = schemaCache.get(name)
+      return s ? findSystemNode(s.nodes, 'root') : undefined
+    }
+
     const getInterfaceFlag = (name: string): boolean => {
       const s = schemaCache.get(name)
-      return Array.isArray(s?.roles) && s!.roles!.length > 0
+      const roles = s?.roles ?? getRootNode(name)?.roles
+      return Array.isArray(roles) && roles.length > 0
     }
 
     const getImplements = (name: string): ImplementsDeclaration[] | undefined => {
       const s = schemaCache.get(name)
-      if (!s?.implements || s.implements.length === 0) return undefined
-      return s.implements
+      const impl = s?.implements ?? getRootNode(name)?.implements
+      if (!impl || impl.length === 0) return undefined
+      return impl
     }
 
     const buildNode = (name: string, visited: Set<string>): WorkspaceTreeNode => {
@@ -487,6 +529,7 @@ export class WorkspaceTreeService {
         }
       }
       const impl = getImplements(name)
+      const label = getRootNode(name)?.label
       const treeNode: WorkspaceTreeNode = {
         name: node.name,
         repoPath: node.repoPath,
@@ -495,7 +538,9 @@ export class WorkspaceTreeService {
         isInterface: getInterfaceFlag(name),
         children,
       }
+      if (label) treeNode.label = label
       if (impl) treeNode.implements = impl
+      if (node.localParent) treeNode.localParent = node.localParent
       return treeNode
     }
 
@@ -506,6 +551,7 @@ export class WorkspaceTreeService {
     const nodes: WorkspaceTreeNode[] = []
     for (const [, node] of graph) {
       const impl = getImplements(node.name)
+      const label = getRootNode(node.name)?.label
       const flatNode: WorkspaceTreeNode = {
         name: node.name,
         repoPath: node.repoPath,
@@ -514,7 +560,9 @@ export class WorkspaceTreeService {
         isInterface: getInterfaceFlag(node.name),
         children: [],
       }
+      if (label) flatNode.label = label
       if (impl) flatNode.implements = impl
+      if (node.localParent) flatNode.localParent = node.localParent
       nodes.push(flatNode)
     }
 

@@ -4,13 +4,16 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import * as yaml from 'js-yaml'
 import type { ProjectSchema } from '@polenta/types'
+import { findSystemNode } from '@polenta/types'
 
 /**
  * SchemaService — lit et met en cache le schéma .polenta/schema.yaml de chaque projet.
  *
- * Pour un SystemNode avec `url` (submodule), le repo du composant est cloné localement
- * dans `<GIT_REPOS_BASE_PATH>/<projectId>/components/<nodeName>`.
- * Pour un nœud local (pas d'url), on retourne le repo produit lui-même.
+ * Depuis T69/T123, `SystemNode` n'a plus de champ `url` : les composants en repo séparé
+ * sont déclarés via `polenta-repo.yaml` (workspace tree), pas dans schema.yaml. Ce module
+ * n'implémente pas la lecture du workspace tree (pas de WorkspaceTreeService côté API) —
+ * `repoPathForNode` ne sait donc résoudre que des nœuds locaux (root + enfants imbriqués,
+ * `SystemNode.children`) et retourne toujours le repo produit.
  */
 @Injectable()
 export class SchemaService {
@@ -47,8 +50,9 @@ export class SchemaService {
    * Retourne le chemin absolu du repo git à utiliser pour lire/écrire un objet
    * appartenant au nœud `nodeName`.
    *
-   * - Nœud local (pas d'url) → repo produit
-   * - Nœud submodule (url présente) → composant cloné sous components/<nodeName>
+   * Sans support du workspace tree (polenta-repo.yaml) côté API, tout nœud — local ou,
+   * faute de mieux, non résolu — retombe sur le repo produit. Un vrai composant en repo
+   * séparé nécessiterait la même résolution que `WorkspaceTreeService` côté desktop.
    */
   async repoPathForNode(projectId: string, nodeName: string): Promise<string> {
     const schema = await this.getSchema(projectId)
@@ -57,19 +61,12 @@ export class SchemaService {
       return this.productRepoPath(projectId)
     }
 
-    const node = schema.nodes.find((n: import('@polenta/types').SystemNode) => n.name === nodeName)
+    const node = findSystemNode(schema.nodes, nodeName)
     if (!node) {
       this.logger.warn(`Node "${nodeName}" not found in schema of project ${projectId} — falling back to product repo`)
-      return this.productRepoPath(projectId)
     }
 
-    if (!node.url) {
-      // Nœud local : on écrit dans le repo produit
-      return this.productRepoPath(projectId)
-    }
-
-    // Nœud submodule : repo cloné localement
-    return path.join(this.productRepoPath(projectId), 'components', nodeName)
+    return this.productRepoPath(projectId)
   }
 
   /**

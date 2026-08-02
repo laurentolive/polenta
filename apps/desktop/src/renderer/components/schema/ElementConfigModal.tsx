@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   type EditableObjectType,
-  CATEGORY_LABEL,
+  CATEGORY_LABEL_KEY,
   FieldsTable,
   StatusesTable,
   ConfirmDelete,
@@ -25,23 +26,12 @@ interface Props {
 }
 
 export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, isNew, isSaving, saveError, onSave, onDelete, onClose }: Props) {
+  const { t } = useTranslation()
   const [draft, setDraft] = useState<EditableObjectType>(objectType)
   const [prefixError, setPrefixError] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(objectType)
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showCancelConfirm) { setShowCancelConfirm(false); return }
-        if (isDirty) setShowCancelConfirm(true)
-        else onClose()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isDirty, showCancelConfirm, onClose])
 
   const set = (patch: Partial<EditableObjectType>) => {
     setDraft(d => ({ ...d, ...patch }))
@@ -50,7 +40,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
 
   const handleSave = () => {
     if (draft.prefix && existingPrefixes.has(draft.prefix)) {
-      setPrefixError(`Le préfixe "${draft.prefix}" est déjà utilisé ailleurs dans le workspace.`)
+      setPrefixError(t('schema.elementConfig.prefixInUse', { prefix: draft.prefix }))
       return
     }
     onSave(draft)
@@ -65,17 +55,34 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
     else onClose()
   }
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showCancelConfirm) { setShowCancelConfirm(false); return }
+        requestClose()
+        return
+      }
+      if (e.key !== 'Enter' || showCancelConfirm || isSaving) return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'TEXTAREA' || tag === 'BUTTON' || target?.isContentEditable) return
+      handleSave()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [showCancelConfirm, isSaving, handleSave, requestClose])
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={requestClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={requestClose}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-5 py-3 border-b border-edge">
-          <span className="text-xs px-1.5 py-0.5 rounded bg-hover text-ink-3">{CATEGORY_LABEL[draft.category]}</span>
+          <span className="text-xs px-1.5 py-0.5 rounded bg-hover text-ink-3">{t(CATEGORY_LABEL_KEY[draft.category])}</span>
           <h2 className="text-sm font-semibold text-ink flex-1">
-            {isNew ? 'Nouvel élément' : (draft.label || draft.name || 'Élément')}
+            {isNew ? t('schema.elementConfig.newElement') : (draft.label || draft.name || t('schema.elementConfig.element'))}
           </h2>
           <span className="text-xs text-ink-3">{repoLabel}</span>
         </div>
@@ -84,29 +91,29 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
         <div className="px-5 py-4">
           {draft.category === 'test' && (
             <p className="text-xs text-ink-3 bg-hover rounded px-2 py-1.5 mb-3">
-              Ce type utilise l'UI étapes (tableau Action / Résultat attendu). Les champs configurables ci-dessous s'ajoutent aux étapes.
+              {t('schema.elementConfig.testStepsHint')}
             </p>
           )}
           <div className="grid grid-cols-4 gap-3 mb-3">
             <div>
-              <label className="block text-xs text-ink-2 mb-0.5">Nom (identifiant)</label>
-              <input value={draft.name} onChange={e => set({ name: e.target.value })} className="input-field w-full font-mono text-xs py-1" placeholder="exigence" />
+              <label className="block text-xs text-ink-2 mb-0.5">{t('schema.elementConfig.nameId')}</label>
+              <input value={draft.name} onChange={e => set({ name: e.target.value })} className="input-field w-full font-mono text-xs py-1" placeholder={t('schema.elementConfig.namePlaceholder')} />
             </div>
             <div>
-              <label className="block text-xs text-ink-2 mb-0.5">Label affiché</label>
-              <input value={draft.label} onChange={e => set({ label: e.target.value })} className="input-field w-full text-xs py-1" placeholder="Exigence fonctionnelle" />
+              <label className="block text-xs text-ink-2 mb-0.5">{t('schema.addDependency.displayLabel')}</label>
+              <input value={draft.label} onChange={e => set({ label: e.target.value })} className="input-field w-full text-xs py-1" placeholder={t('schema.elementConfig.labelPlaceholder')} />
             </div>
             <div>
-              <label className="block text-xs text-ink-2 mb-0.5">Préfixe ID</label>
+              <label className="block text-xs text-ink-2 mb-0.5">{t('schema.elementConfig.prefixId')}</label>
               <input value={draft.prefix} onChange={e => set({ prefix: e.target.value })} className="input-field w-full font-mono text-xs py-1" placeholder="REQ" />
             </div>
             <div>
-              <label className="block text-xs text-ink-2 mb-0.5">Couleur</label>
+              <label className="block text-xs text-ink-2 mb-0.5">{t('schema.elementConfig.color')}</label>
               <input value={draft.color} onChange={e => set({ color: e.target.value })} className="input-field w-full text-xs py-1" placeholder="#3b82f6" />
             </div>
           </div>
-          {prefixError && <p className="text-xs text-red-500 mb-3">{prefixError}</p>}
-          {saveError && <p className="text-xs text-red-500 mb-3">{saveError}</p>}
+          {prefixError && <p className="text-xs text-status-danger mb-3">{prefixError}</p>}
+          {saveError && <p className="text-xs text-status-danger mb-3">{saveError}</p>}
           <FieldsTable fields={draft.fields} onChange={fields => set({ fields })} />
           {draft.category !== 'campaign' && (
             <StatusesTable statuses={draft.statuses} onChange={statuses => set({ statuses })} />
@@ -120,17 +127,17 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
               <ConfirmDelete
                 onConfirm={onDelete}
                 disabled={isSaving}
-                label="Supprimer"
-                className="text-sm text-red-500 hover:text-red-600 transition-colors disabled:opacity-50"
+                label={t('common.delete')}
+                className="text-sm text-status-danger hover:opacity-80 transition-colors disabled:opacity-50"
               />
             )}
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={requestClose} disabled={isSaving} className="text-sm px-4 py-1.5 border border-edge rounded text-ink-2 hover:text-ink transition-colors disabled:opacity-50">
-              Annuler
+            <button type="button" onClick={requestClose} disabled={isSaving} className="btn-secondary">
+              {t('common.cancel')}
             </button>
-            <button type="button" onClick={handleSave} disabled={isSaving || (!isDirty && !isNew)} className="btn-primary px-4 py-1.5 disabled:opacity-50">
-              {isSaving ? 'Enregistrement…' : 'Enregistrer'}
+            <button type="button" onClick={handleSave} disabled={isSaving || (!isDirty && !isNew)} className="btn-primary">
+              {isSaving ? t('schema.elementConfig.saving') : t('common.save')}
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@
  * PieWidget — thin recharts wrapper for `type: 'pie'` (T77 sprint 2).
  * `fieldMapping.category` names each slice, `fieldMapping.measure` sizes it.
  */
+import { useTranslation } from 'react-i18next'
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import type { QueryResult, WidgetFieldMapping } from '@polenta/types'
 import { WidgetEmptyState } from './WidgetEmptyState'
@@ -14,11 +15,12 @@ interface Props {
 }
 
 export function PieWidget({ result, fieldMapping }: Props) {
+  const { t } = useTranslation()
   const { category, measure } = fieldMapping
-  if (!category || !measure) return <WidgetEmptyState message="Choisissez une catégorie et une mesure." />
+  if (!category || !measure) return <WidgetEmptyState message={t('dashboardPage.widget.chooseCategoryAndMeasure')} />
 
   const rows = result?.rows ?? []
-  if (rows.length === 0) return <WidgetEmptyState message="Aucune donnée pour cette requête." />
+  if (rows.length === 0) return <WidgetEmptyState message={t('dashboardPage.widget.noData')} />
 
   const data = rows.map((r) => ({ name: toLabel(r[category]), value: toNumber(r[measure]) }))
 

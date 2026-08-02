@@ -18,10 +18,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { LayoutDashboard, Search as SearchIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { PieChart, Search as SearchIcon } from 'lucide-react'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { ReorderableSidebarSection } from './ReorderableSidebarSection'
+import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type { Dashboard, SavedQuery } from '@polenta/types'
 
 type Tab = 'dashboards' | 'queries'
@@ -42,6 +44,7 @@ function dashboardFilterText(d: Dashboard): string {
 }
 
 export function DashboardPanel({ currentProjectId, projectId }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { searchStr } = useRouterState({ select: (s) => ({ searchStr: s.location.searchStr }) })
@@ -99,7 +102,7 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
       setQueryDeleteError(null)
       qc.invalidateQueries({ queryKey: ['queries', repoPath, username] })
     },
-    onError: (err) => setQueryDeleteError(err instanceof Error ? err.message : 'Suppression impossible.'),
+    onError: (err) => setQueryDeleteError(err instanceof Error ? err.message : t('sidebar.dashboard.deleteFailed')),
   })
 
   function openQuery(id?: string) {
@@ -153,11 +156,17 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
     navigate({ to: '/dashboard', search: { projectId, dashboardId: id } })
   }
 
+  useModalHotkeys(
+    () => setNewDashboardTitle(null),
+    () => newDashboardTitle?.trim() && createDashboardMutation.mutate(newDashboardTitle.trim()),
+    newDashboardTitle === null || createDashboardMutation.isPending,
+  )
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Header (T92 — cohérent avec les autres panneaux latéraux) ── */}
       <div className="px-4 py-3 border-b border-edge shrink-0 flex items-center justify-between">
-        <p className="section-label">Suivi</p>
+        <p className="section-label">{t('sidebar.dashboard.title')}</p>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -165,9 +174,9 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
             className={`p-1 rounded transition-colors ${
               activeTab === 'dashboards' ? 'bg-hover text-prim' : 'text-ink-3 hover:bg-hover hover:text-prim'
             }`}
-            title="Dashboards"
+            title={t('sidebar.dashboard.dashboardsTab')}
           >
-            <LayoutDashboard size={14} />
+            <PieChart size={14} />
           </button>
           <button
             type="button"
@@ -175,7 +184,7 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
             className={`p-1 rounded transition-colors ${
               activeTab === 'queries' ? 'bg-hover text-prim' : 'text-ink-3 hover:bg-hover hover:text-prim'
             }`}
-            title="Requêtes"
+            title={t('sidebar.dashboard.queriesTab')}
           >
             <SearchIcon size={14} />
           </button>
@@ -184,7 +193,7 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
 
       {activeTab === 'dashboards' ? (
         <ReorderableSidebarSection
-          label="Dashboards"
+          label={t('sidebar.dashboard.dashboardsLabel')}
           items={dashboards}
           order={dashboardsOrder}
           activeId={activeDashboardId}
@@ -193,15 +202,15 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
           onSelect={(d) => openDashboard(d.id)}
           onDelete={(d) => deleteDashboardMutation.mutate(d.id)}
           onAdd={() => setNewDashboardTitle('')}
-          emptyMessage="Aucun dashboard"
-          addTitle="Ajouter un dashboard"
-          addFirstLabel="Créer le premier"
+          emptyMessage={t('sidebar.dashboard.noDashboards')}
+          addTitle={t('sidebar.dashboard.addDashboard')}
+          addFirstLabel={t('sidebar.dashboard.createFirstDashboard')}
           isLoading={dashboardsLoading}
           fillHeight
         />
       ) : (
         <ReorderableSidebarSection
-          label="Requêtes"
+          label={t('sidebar.dashboard.queriesLabel')}
           items={queries}
           order={queriesOrder}
           activeId={activeQueryId}
@@ -210,9 +219,9 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
           onSelect={(q) => openQuery(q.id)}
           onDelete={(q) => deleteQueryMutation.mutate(q.id)}
           onAdd={() => openQuery(undefined)}
-          emptyMessage="Aucune requête"
-          addTitle="Ajouter une requête"
-          addFirstLabel="Créer la première"
+          emptyMessage={t('sidebar.dashboard.noQueries')}
+          addTitle={t('sidebar.dashboard.addQuery')}
+          addFirstLabel={t('sidebar.dashboard.createFirstQuery')}
           isLoading={queriesLoading}
           deleteError={queryDeleteError}
           fillHeight
@@ -220,31 +229,28 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
       )}
 
       {newDashboardTitle !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
-            <h2 className="font-semibold text-sm text-ink mb-4">Nouveau dashboard</h2>
-            <label className="text-xs text-ink-3 block mb-1">Titre</label>
+            <h2 className="font-semibold text-sm text-ink mb-4">{t('sidebar.dashboard.newDashboardTitle')}</h2>
+            <label className="text-xs text-ink-3 block mb-1">{t('sidebar.dashboard.titleLabel')}</label>
             <input
               value={newDashboardTitle}
               onChange={(e) => setNewDashboardTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newDashboardTitle.trim()) createDashboardMutation.mutate(newDashboardTitle.trim())
-              }}
-              placeholder="Mon dashboard…"
+              placeholder={t('sidebar.dashboard.titlePlaceholder')}
               autoFocus
               className="input-field w-full mb-5"
             />
             <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setNewDashboardTitle(null)} className="btn-secondary text-sm">
-                Annuler
+              <button type="button" onClick={() => setNewDashboardTitle(null)} className="btn-secondary">
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => newDashboardTitle.trim() && createDashboardMutation.mutate(newDashboardTitle.trim())}
                 disabled={!newDashboardTitle.trim() || createDashboardMutation.isPending}
-                className="btn-primary text-sm"
+                className="btn-primary"
               >
-                {createDashboardMutation.isPending ? 'Création…' : 'Créer'}
+                {createDashboardMutation.isPending ? t('sidebar.dashboard.creating') : t('sidebar.dashboard.create')}
               </button>
             </div>
           </div>

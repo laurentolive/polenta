@@ -29,6 +29,32 @@ export class TreeService {
     await fs.writeFile(filePath, yaml.dump(tree, { lineWidth: 120 }), 'utf-8')
   }
 
+  /**
+   * Moves the display-order file for one (node, type) pair to a different node (T135 sprint 3 —
+   * an element dragged onto another node in the Structure tab). Without this, the curated
+   * folder/order tree a user built for that type (Vue Système) would be silently orphaned at the
+   * old node/type path — the type itself moved, but its saved layout wouldn't follow it, and the
+   * new node/type location would start from an empty tree (`get()`'s fallback for a missing file)
+   * as if the user had never organized anything.
+   *
+   * No-op if `fromNodeId === toNodeId` or if the old file never existed/was already empty (an
+   * empty tree carries no user-authored ordering worth moving). Best-effort: a failure here is
+   * logged, not thrown — losing the curated order is a UX regression, not the kind of data-loss
+   * `objectTypeRef` correctness demands, so it must never block the rest of an element move.
+   */
+  async moveTypeTree(repoPath: string, fromNodeId: string, toNodeId: string, typeId: string): Promise<void> {
+    if (fromNodeId === toNodeId) return
+    try {
+      const existing = await this.get(repoPath, fromNodeId, typeId)
+      if (existing.root.length > 0) {
+        await this.save(repoPath, { nodeId: toNodeId, typeId, root: existing.root })
+      }
+      await fs.unlink(this.treePath(repoPath, fromNodeId, typeId)).catch(() => {})
+    } catch (err) {
+      console.error(`[TreeService] Could not move display order for ${typeId} from ${fromNodeId} to ${toNodeId}:`, err)
+    }
+  }
+
   // ── ID generation ─────────────────────────────────────────────────────────────
 
   generateId(): string {

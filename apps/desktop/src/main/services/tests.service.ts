@@ -1,10 +1,12 @@
+import { randomUUID } from 'crypto'
 import type { ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
+import type { TreeService } from './tree.service'
 import { omitAuditFields } from './audit-fields.util'
-import { findObjectTypeDef } from './schema-lookup.util'
+import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 
 export class TestsService {
@@ -12,6 +14,7 @@ export class TestsService {
     private readonly git: GitService,
     private readonly testsIndex: TestsIndexService,
     private readonly schema: SchemaService,
+    private readonly tree?: TreeService,
   ) {}
 
   findAll(repoPath: string): Promise<TestCase[]> {
@@ -31,6 +34,12 @@ export class TestsService {
   async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
     const testId = await this.nextTestId(repoPath, dto.objectTypeRef)
+
+    // See RequirementsService.create — same reconciled-but-not-guaranteed-unique
+    // counter, same silent-overwrite risk in writeYaml().
+    if (await this.git.fileExists(targetRepo, `tests/${testId}.yaml`)) {
+      throw new Error(`Test case ${testId} already exists`)
+    }
 
     const test: TestCase = {
       id: testId,
@@ -54,6 +63,7 @@ export class TestsService {
 
     await this.git.writeYaml(targetRepo, `tests/${testId}.yaml`, omitAuditFields(test))
     this.testsIndex.upsertTestCase(repoPath, test)
+    await this.appendToTree(targetRepo, dto.objectTypeRef, test.id, test.title)
     return test
   }
 
@@ -139,6 +149,23 @@ export class TestsService {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
+
+  /** See RequirementsService.appendToTree — same reasoning, same tree format (T138). */
+  private async appendToTree(repoPath: string, objectTypeRef: string, objectId: string, title: string): Promise<void> {
+    if (!this.tree) return
+    try {
+      const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
+      const location = schema ? resolveObjectTypeLocation(schema, objectTypeRef) : null
+      if (!location || location === 'unresolvable') return
+
+      const { nodeName, typeDef } = location
+      const current = await this.tree.get(repoPath, nodeName, typeDef.name)
+      const node = { id: randomUUID(), kind: 'item' as const, name: title, objectId, children: [] }
+      await this.tree.save(repoPath, { nodeId: nodeName, typeId: typeDef.name, root: [...current.root, node] })
+    } catch (err) {
+      console.error(`Erreur insertion arbre pour ${objectId}:`, err)
+    }
+  }
 
   private async nextTestId(repoPath: string, objectTypeRef: string): Promise<string> {
     // Scoped by node via the shared lookup — see requirements.service.ts's nextId() for why

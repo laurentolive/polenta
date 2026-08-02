@@ -1,6 +1,7 @@
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import type { ProjectSchema, WorkspaceTreeNode, DiamondConflict } from '@polenta/types'
+import { flattenSystemNodes } from '@polenta/types'
 
 export interface WorkspaceStructure {
   /** True once we know whether `workspaceDir` is a recognized flat workspace. */
@@ -77,10 +78,12 @@ export function useWorkspaceStructure(workspaceDir: string, repoPath: string): W
 
   const allSchemasLoaded = flatNodes.length > 0 && schemaQueries.every(q => q.isSuccess)
 
+  // T123 — un composant local imbriqué (SystemNode.children) doit aussi être couvert par la
+  // validation d'unicité de préfixe projet-wide, pas seulement le premier niveau de schema.nodes.
   const allPrefixes = new Set<string>()
   for (const schema of schemasByRepoPath.values()) {
-    for (const n of schema.nodes) {
-      for (const ot of n.objectTypes ?? []) {
+    for (const { node } of flattenSystemNodes(schema.nodes)) {
+      for (const ot of node.objectTypes ?? []) {
         if (ot.prefix) allPrefixes.add(ot.prefix)
       }
     }
@@ -106,6 +109,12 @@ export function useWorkspaceStructure(workspaceDir: string, repoPath: string): W
     allSchemasLoaded,
     refetchTree: async () => {
       await openQuery.refetch()
+      // Bust the main-process SchemaService cache first (schema.yaml may have changed on disk
+      // out-of-band — manual edit, git pull/checkout…) — invalidating only the react-query cache
+      // below would just re-request the same stale in-memory copy from the main process, since
+      // `staleTime: Infinity` means the query only ever refetches on explicit invalidation, and
+      // `SchemaService.get()` has no other way to know the file changed.
+      await Promise.all(flatNodes.map(node => api.schema.invalidate(node.repoPath)))
       await Promise.all(flatNodes.map(node => qc.invalidateQueries({ queryKey: ['schema', node.repoPath] })))
     },
   }

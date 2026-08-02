@@ -13,30 +13,37 @@
   <!-- Background -->
   <rect width="120" height="120" rx="24" fill="url(#bg)"/>
 
-  <!-- Orbite 1 — 0° -->
-  <g transform="translate(60,60) rotate(0)">
-    <ellipse cx="0" cy="0" rx="46" ry="15" fill="none" stroke="#4de8b4" stroke-width="2.2"/>
-  </g>
-  <!-- Orbite 2 — 60° -->
-  <g transform="translate(60,60) rotate(60)">
-    <ellipse cx="0" cy="0" rx="46" ry="15" fill="none" stroke="#4de8b4" stroke-width="2.2"/>
-  </g>
-  <!-- Orbite 3 — 120° -->
-  <g transform="translate(60,60) rotate(120)">
-    <ellipse cx="0" cy="0" rx="46" ry="15" fill="none" stroke="#4de8b4" stroke-width="2.2"/>
-  </g>
+  <!-- Le groupe ci-dessous est réduit à 82% autour du centre (60,60) : à pleine
+       taille l'orbite/les points touchaient quasiment le bord du canevas (~7px de
+       marge), ce qui les faisait rogner par l'anti-aliasing une fois réduit à
+       16/20px pour la barre de titre Windows ("icône tronquée"). 82% laisse ~14%
+       de marge de sécurité à toutes les tailles. -->
+  <g transform="translate(60,60) scale(0.82) translate(-60,-60)">
+    <!-- Orbite 1 — 0° -->
+    <g transform="translate(60,60) rotate(0)">
+      <ellipse cx="0" cy="0" rx="46" ry="15" fill="none" stroke="#4de8b4" stroke-width="2.2"/>
+    </g>
+    <!-- Orbite 2 — 60° -->
+    <g transform="translate(60,60) rotate(60)">
+      <ellipse cx="0" cy="0" rx="46" ry="15" fill="none" stroke="#4de8b4" stroke-width="2.2"/>
+    </g>
+    <!-- Orbite 3 — 120° -->
+    <g transform="translate(60,60) rotate(120)">
+      <ellipse cx="0" cy="0" rx="46" ry="15" fill="none" stroke="#4de8b4" stroke-width="2.2"/>
+    </g>
 
-  <!-- Points orbitants -->
-  <circle cx="106" cy="60" r="6" fill="#ffffff"/>
-  <g transform="rotate(60, 60, 60)">
+    <!-- Points orbitants -->
     <circle cx="106" cy="60" r="6" fill="#ffffff"/>
-  </g>
-  <g transform="rotate(120, 60, 60)">
-    <circle cx="106" cy="60" r="6" fill="#ffffff"/>
-  </g>
+    <g transform="rotate(60, 60, 60)">
+      <circle cx="106" cy="60" r="6" fill="#ffffff"/>
+    </g>
+    <g transform="rotate(120, 60, 60)">
+      <circle cx="106" cy="60" r="6" fill="#ffffff"/>
+    </g>
 
-  <!-- Noyau -->
-  <circle cx="60" cy="60" r="20" fill="url(#nucleus)"/>
-  <!-- Checkmark -->
-  <path d="M51 61 L57 67 L70 52" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Noyau -->
+    <circle cx="60" cy="60" r="20" fill="url(#nucleus)"/>
+    <!-- Checkmark -->
+    <path d="M51 61 L57 67 L70 52" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>

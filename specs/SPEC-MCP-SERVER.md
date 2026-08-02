@@ -58,8 +58,8 @@ CLI prioritaire si les deux mécanismes sont fournis pour un même paramètre.
 ### 2.3 Mode mono-repo (workspace absent)
 
 Sans `--workspace`, `resolveComponentRepoPath()` ne route jamais vers un vrai
-composant **submodule** (nœud avec `url`) — seuls `root` et les sous-composants
-**locaux** (T113, sans `url`, même repo) sont correctement gérés. Avec
+composant **submodule** (nœud avec `url`) — seuls `root` et les composants
+**locaux** (T113/T123, sans `url`, même repo, imbriqués ou non) sont correctement gérés. Avec
 `--workspace`, le serveur lit le cache existant
 (`<workspaceDir>/.polenta/tree.cache.yaml`) **sans jamais appeler
 `buildTree()`/`openWorkspace()`** (qui peuvent déclencher un clone réseau implicite) —
@@ -118,12 +118,17 @@ une vraie installation par l'humain avant une première release packagée.
 classes** que `main/container.ts::createContainer()` pour la partie schéma/exigences/
 tests/campagnes (`AuthService`, `GitService`, `SyncService`, `PolentaRepoService`,
 `WorkspaceTreeService`, `SchemaService`, `RequirementsIndexService`,
-`TestsIndexService`, `RequirementsService`, `TestsService`, `CampaignsService`) — sans
-`RepoWatcherService` (chokidar, inutile pour un process à appels ponctuels) ni les
-services hors périmètre (`ReviewsService`, `TraceabilityService`, `QueryEngineService`,
-`DashboardsService`, `ExportService`, `WorkspaceService`, `TreeService`,
+`TestsIndexService`, `RequirementsService`, `TestsService`, `CampaignsService`,
+`TreeService`) — sans `RepoWatcherService` (chokidar, inutile pour un process à appels
+ponctuels) ni les autres services hors périmètre (`ReviewsService`, `TraceabilityService`,
+`QueryEngineService`, `DashboardsService`, `ExportService`, `WorkspaceService`,
 `BaselineService`, `InterfaceComplianceService`, `SavedQueriesService`,
 `DashboardSeedService`).
+
+**T130 : `TreeService` EST construit** (T138, `container.ts` du serveur MCP) — retiré de la
+liste "hors périmètre" ci-dessus où il figurait par erreur. Sans lui, les objets créés par ce
+serveur MCP sont écrits sur disque mais n'apparaissent jamais dans SystemView/ExcelView (arbre
+`.polenta/trees/<nœud>/<type>.yaml` jamais mis à jour).
 
 Synchrone (pas de `createContainer()` async) — pas de fenêtre à ouvrir, pas d'attente
 `app.whenReady()`.
@@ -238,7 +243,7 @@ réponse précédente).
 
 | Tool | Entrée | Refuse si |
 |---|---|---|
-| `add_component` | `{ name, label, description?, readonly? }` | `name` déjà pris par un `SystemNode` existant (y compris `"root"`) — `NODE_NAME_TAKEN` |
+| `add_component` | `{ name, label, description?, readonly?, parentName? }` | `name` déjà pris par un `SystemNode` existant à n'importe quelle profondeur (y compris `"root"`) — `NODE_NAME_TAKEN` ; `parentName` fourni mais introuvable dans le repo courant — `NODE_NOT_FOUND` |
 | `add_object_type` | `{ nodeName, objectType: ObjectTypeDefinition }` | nœud introuvable (`NODE_NOT_FOUND`) ou `readonly` (`NODE_READONLY`) ; `objectType.name` déjà pris dans ce nœud (`TYPE_NAME_TAKEN`) ; `objectType.prefix` déjà utilisé par un type de **n'importe quel** nœud du projet (`PREFIX_TAKEN`, règle 10 CLAUDE.md) |
 | `add_field` | `{ nodeName, typeName, field: SchemaField }` | nœud/type introuvables, nœud `readonly`, `field.name` déjà présent (`FIELD_NAME_TAKEN`) |
 | `add_status` | `{ nodeName, typeName, status: SchemaStatus }` | nœud/type introuvables, nœud `readonly`, `status.name` déjà présent (`STATUS_NAME_TAKEN`) |
@@ -246,6 +251,9 @@ réponse précédente).
 
 `add_component` mappe vers `SchemaService.addNode` (nom de tool aligné sur le
 vocabulaire "composant" du spec/UI, nom de méthode aligné sur `SystemNode`).
+`parentName` (T123) imbrique le nouveau composant dans les `children[]` du composant local désigné
+(même repo uniquement) au lieu de l'ajouter au niveau racine de `nodes[]` — absent, comportement
+T122 inchangé.
 
 Réponse succès : le `ProjectSchema` complet mis à jour (`jsonToolResult`). Réponse
 refus : `{ isError: true, content: [{ type: 'text', text: '[<CODE>] <message>' }] }`.

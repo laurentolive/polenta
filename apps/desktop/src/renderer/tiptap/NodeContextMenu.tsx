@@ -77,7 +77,7 @@ export function NodeContextMenu({ x, y, items, onClose }: Props) {
             }}
             className={[
               'w-full text-left px-3 py-1.5 hover:bg-hover transition-colors disabled:opacity-40 disabled:hover:bg-transparent',
-              item.danger ? 'text-red-500' : 'text-ink',
+              item.danger ? 'text-status-danger' : 'text-ink',
             ].join(' ')}
           >
             {item.label}

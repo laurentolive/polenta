@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -29,9 +30,12 @@ interface Props {
   placeholder?: string
   /** Requis pour résoudre et ouvrir les diagrammes draw.io insérés dans le contenu. */
   repoPath?: string
+  /** Donne le focus clavier à l'éditeur dès son montage (ex. popup d'édition ouverte au clic). */
+  autoFocus?: boolean
 }
 
-export function RichTextField({ value, onChange, disabled, placeholder, repoPath }: Props) {
+export function RichTextField({ value, onChange, disabled, placeholder, repoPath, autoFocus }: Props) {
+  const { t } = useTranslation()
   const ctx = useRichText()
   const hasContext = ctx !== null
 
@@ -50,6 +54,16 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
   // the same already-reformatted text) but still a real transaction, so it would still trip the
   // `onUpdate` docChanged guard below and persist an unwanted (if content-identical) save.
   const isInitialSyncRef = useRef(true)
+  // Holds the markdown this field itself last emitted via onChange. The parent typically
+  // echoes that same string straight back as the next `value` prop (through pendingEdits ->
+  // objects merge, cf. SystemViewContext), but tiptap-markdown's parse-then-serialize round
+  // trip is not always identity (see isInitialSyncRef comment above): re-parsing the just-
+  // emitted markdown can yield a slightly different string than getMarkdown() reported the
+  // first time, especially right after a paste (tables, images, escaped punctuation...).
+  // Comparing the incoming `value` against THIS ref, instead of against a freshly recomputed
+  // getMarkdown(), lets the resync effect recognize "this is just my own edit echoed back" and
+  // skip setContent, which otherwise resets the caret to the document start mid-edit.
+  const lastEmittedValueRef = useRef(value)
 
   const editor = useEditor({
     extensions: [
@@ -68,7 +82,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
     editorProps: {
       attributes: {
         class:
-          'outline-none min-h-[80px] text-sm text-ink [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:font-medium [&_h3]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-slate-100 dark:[&_code]:bg-slate-700 [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 dark:[&_blockquote]:border-slate-600 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-ink-2 [&_pre]:bg-slate-100 dark:[&_pre]:bg-slate-800 [&_pre]:p-2 [&_pre]:rounded [&_img]:max-w-full [&_img]:rounded [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-edge [&_th]:bg-hover [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-edge [&_td]:px-2 [&_td]:py-1',
+          'outline-none min-h-[80px] text-sm text-ink [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:font-medium [&_h3]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-status-neutral-bg [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_blockquote]:border-l-2 [&_blockquote]:border-status-neutral-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-ink-2 [&_pre]:bg-status-neutral-bg [&_pre]:p-2 [&_pre]:rounded [&_img]:max-w-full [&_img]:rounded [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-edge [&_th]:bg-hover [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-edge [&_td]:px-2 [&_td]:py-1',
       },
       handlePaste(view, event) {
         // Excel place plusieurs representations sur le presse-papiers pour
@@ -173,11 +187,20 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
       // pushed to `onChange` and silently persisted, even though the user never typed anything.
       if (!transaction.docChanged) return
       const md = (editor.storage.markdown as MarkdownStorage).getMarkdown()
+      lastEmittedValueRef.current = md
       setRawValue(md)
       onChange(md)
     },
     editable: !disabled,
   })
+
+  // Donne le focus dès que l'éditeur est prêt (une seule fois, au montage) — sans ça une popup
+  // d'édition ouverte au clic (ex. cellule richtext de la vue Excel) s'affiche sans focus et
+  // exige un second clic dans le contenu avant de pouvoir taper.
+  useEffect(() => {
+    if (autoFocus && editor) editor.commands.focus('end')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor])
 
   // Sync when value is reset externally (e.g., type change). Skips its first run — see
   // isInitialSyncRef above — since on mount there's nothing external to resync from yet.
@@ -187,11 +210,15 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
       return
     }
     if (!editor) return
+    // The parent echoing back exactly what we just emitted is not an external change —
+    // skip it so a paste (or any edit) never gets its caret reset by its own round-trip.
+    if (value === lastEmittedValueRef.current) return
     const current = (editor.storage.markdown as MarkdownStorage).getMarkdown()
     if (current !== value) {
       editor.commands.setContent(value, false)
       setRawValue(value)
     }
+    lastEmittedValueRef.current = value
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
 
@@ -324,7 +351,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
           type="button"
           onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleCode().run() }}
           className={btn(!!editor?.isActive('code'))}
-          title="Code inline"
+          title={t('system.shared.inlineCode')}
         ><span className="font-mono">{"`…`"}</span></button>
         <span className="w-px h-4 bg-edge mx-1" />
         <button
@@ -357,7 +384,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
           type="button"
           onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleCodeBlock().run() }}
           className={btn(!!editor?.isActive('codeBlock'))}
-          title="Bloc de code"
+          title={t('system.shared.codeBlock')}
         ><span className="font-mono text-xs">{"{ }"}</span></button>
         <span className="w-px h-4 bg-edge mx-1" />
         <ImageInsertButton editor={editor} repoPath={repoPath} className={btn(false)} />

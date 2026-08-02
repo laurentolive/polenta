@@ -77,6 +77,11 @@ const addComponentInput = {
   label: z.string().min(1),
   description: z.string().optional(),
   readonly: z.boolean().optional(),
+  // T123 — nom d'un composant local existant du même projet sous lequel imbriquer le nouveau
+  // composant (children[]). Absent : ajout au niveau racine de schema.nodes[], comportement T113
+  // inchangé. Ne peut désigner qu'un composant du MÊME repo (container.repoPath) — un composant
+  // en repo séparé n'est jamais un parent valide, cf. specs/T123.md §Comportement attendu #3.
+  parentName: z.string().optional(),
 }
 
 const addObjectTypeInput = {
@@ -126,8 +131,10 @@ export function registerSchemaMutationTools(server: McpServer, container: McpCon
       description:
         'Ajoute un composant (SystemNode) local au projet — pas de repo séparé/submodule ' +
         "(un agent ne crée pas de submodule, cf. T113). Refusé si le nom est déjà pris par " +
-        'un composant existant (y compris "root"). Le composant créé démarre sans type ' +
-        "d'objet (objectTypes: []) et readonly: false par défaut.",
+        'un composant existant (y compris "root"), à n\'importe quelle profondeur. Le composant ' +
+        "créé démarre sans type d'objet (objectTypes: []) et readonly: false par défaut. " +
+        'Avec `parentName` (T123) : imbrique le nouveau composant dans les enfants du composant ' +
+        'local désigné (profondeur non limitée) au lieu de l\'ajouter au niveau racine.',
       inputSchema: addComponentInput,
     },
     async (dto) => runSchemaMutation(() => container.schema.addNode(container.repoPath, dto)),

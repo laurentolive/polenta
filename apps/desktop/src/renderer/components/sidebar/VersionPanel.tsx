@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { GitCompare, History, ListTree, Lock, Tag } from 'lucide-react'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
@@ -21,6 +22,7 @@ interface Props {
 // expanded), each repo's own stage/modifications/checkout lives in VersionRepoFolder.
 
 export function VersionPanel({ currentProjectId, projectId }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { isReadonly } = useVersioning()
   const { selectedRepoPath } = useSelectedRepo()
@@ -41,42 +43,42 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-edge shrink-0 flex items-center justify-between">
-        <p className="section-label">{isCompareView ? 'Comparer' : isImpactView ? "Analyse d'impact" : 'Version'}</p>
+        <p className="section-label">{isCompareView ? t('sidebar.version.compareTitle') : isImpactView ? t('sidebar.version.impactTitle') : t('sidebar.version.title')}</p>
         <div className="flex items-center gap-2">
           {isReadonly && (
-            <span title="État figé — aucune branche extraite">
-              <Lock size={11} className="text-amber-500" />
+            <span title={t('sidebar.version.readonlyTooltip')}>
+              <Lock size={11} className="text-status-warning" />
             </span>
           )}
           <button
             type="button"
             onClick={() => navigate({ to: '/baseline', search: { projectId } })}
-            className="p-1 rounded text-prim hover:bg-hover transition-colors"
-            title="Baselines"
+            className="btn-icon text-prim"
+            title={t('sidebar.version.baselines')}
           >
             <Tag size={14} />
           </button>
           <button
             type="button"
             onClick={() => navigate({ to: '/graph', search: { projectId, sha: undefined } })}
-            className="p-1 rounded text-prim hover:bg-hover transition-colors"
-            title="Voir l'arbre de versions"
+            className="btn-icon text-prim"
+            title={t('sidebar.version.viewGraph')}
           >
             <History size={14} />
           </button>
           <button
             type="button"
             onClick={() => navigate({ to: '/version-diff', search: { projectId, repoPath: selectedRepoPath, ref1: undefined, sha1: undefined, ref2: undefined, sha2: undefined } })}
-            className="p-1 rounded text-prim hover:bg-hover transition-colors"
-            title="Comparer deux versions"
+            className="btn-icon text-prim"
+            title={t('sidebar.version.compareVersions')}
           >
             <GitCompare size={14} />
           </button>
           <button
             type="button"
             onClick={() => navigate({ to: '/impact-analysis', search: { projectId } })}
-            className="p-1 rounded text-prim hover:bg-hover transition-colors"
-            title="Analyse d'impact"
+            className="btn-icon text-prim"
+            title={t('sidebar.version.impactAnalysis')}
           >
             <ListTree size={14} />
           </button>
@@ -94,15 +96,14 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
       ) : (
         <div className="flex-1 overflow-y-auto py-1">
           {isLoading && tree.length === 0 && !error && (
-            <p className="px-4 py-2 text-xs text-ink-3 italic">Chargement…</p>
+            <p className="px-4 py-2 text-xs text-ink-3 italic">{t('common.loading')}</p>
           )}
           {error && (
-            <p className="px-4 py-2 text-xs text-red-500 leading-snug">{error}</p>
+            <p className="px-4 py-2 text-xs text-status-danger leading-snug">{error}</p>
           )}
           {conflicts && conflicts.length > 0 && (
-            <p className="px-4 py-2 text-xs text-amber-600 dark:text-amber-400 leading-snug">
-              Conflit de dépendances à résoudre avant d'afficher l'arbre — ouvrez l'onglet
-              Structure du Modèle de données pour le résoudre.
+            <p className="px-4 py-2 text-xs text-status-warning leading-snug">
+              {t('sidebar.version.dependencyConflict')}
             </p>
           )}
           {/* `tree` never has more than one top-level entry (the workspace root, or a single

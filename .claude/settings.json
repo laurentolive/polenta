@@ -8,7 +8,8 @@
       "Bash(echo '[]')",
       "Bash(curl -s -X POST http://localhost:3000/api/v1/projects -H 'Content-Type: application/json' -d '{\"name\": \"Aspirateur Polenta\", \"description\": \"Projet test electro batterie\"}')",
       "Bash(curl -s -X POST http://localhost:3000/api/v1/projects/e2c9c2cb-f681-4497-9722-af0856801663/branches/6b1a98ea-9233-4606-9695-001f53e4f791/requirements -H 'Content-Type: application/json' -d '{ *)",
-      "Bash(curl -s http://localhost:3000/api/v1/projects/e2c9c2cb-f681-4497-9722-af0856801663/branches/6b1a98ea-9233-4606-9695-001f53e4f791/requirements)"
+      "Bash(curl -s http://localhost:3000/api/v1/projects/e2c9c2cb-f681-4497-9722-af0856801663/branches/6b1a98ea-9233-4606-9695-001f53e4f791/requirements)",
+      "Bash(git merge:*)"
     ],
     "additionalDirectories": [
       "c:\\Dev\\polenta\\apps\\api"

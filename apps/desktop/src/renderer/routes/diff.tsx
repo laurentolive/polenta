@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
@@ -50,6 +51,7 @@ function computeLineDiff(oldContent: string, newContent: string): DiffLine[] {
 }
 
 function DiffPage() {
+  const { t } = useTranslation()
   const { projectId, repoPath: searchRepoPath, filepath, commitSha } = Route.useSearch()
   const navigate = useNavigate()
 
@@ -109,9 +111,9 @@ function DiffPage() {
         }
         subtitle={
           <>
-            <span className="text-green-600">+{addCount}</span>
+            <span className="text-status-success">+{addCount}</span>
             {' / '}
-            <span className="text-red-500">−{removeCount}</span>
+            <span className="text-status-danger">−{removeCount}</span>
           </>
         }
       />
@@ -119,9 +121,9 @@ function DiffPage() {
       {/* Diff content */}
       <div className="flex-1 overflow-auto font-mono text-xs">
         {isLoading ? (
-          <p className="text-ink-3 italic p-6">Chargement…</p>
+          <p className="text-ink-3 italic p-6">{t('common.loading')}</p>
         ) : lines.length === 0 ? (
-          <p className="text-ink-3 italic p-6">Aucune différence</p>
+          <p className="text-ink-3 italic p-6">{t('diffPage.noDifference')}</p>
         ) : (
           <table className="w-full border-collapse">
             <tbody>
@@ -130,9 +132,9 @@ function DiffPage() {
                   key={idx}
                   className={
                     line.type === 'add'
-                      ? 'bg-green-50 dark:bg-green-900/15'
+                      ? 'bg-status-success-bg dark:bg-status-success-bg/15'
                       : line.type === 'remove'
-                      ? 'bg-red-50 dark:bg-red-900/15'
+                      ? 'bg-status-danger-bg dark:bg-status-danger-bg/15'
                       : ''
                   }
                 >
@@ -143,7 +145,7 @@ function DiffPage() {
                     {line.type !== 'remove' ? line.lineNum : ''}
                   </td>
                   <td className={`px-1 py-px w-6 select-none text-center font-bold align-top ${
-                    line.type === 'add' ? 'text-green-600' : line.type === 'remove' ? 'text-red-500' : 'text-ink-3'
+                    line.type === 'add' ? 'text-status-success' : line.type === 'remove' ? 'text-status-danger' : 'text-ink-3'
                   }`}>
                     {line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '}
                   </td>

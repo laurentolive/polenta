@@ -16,6 +16,7 @@ const SYSTEM_COLUMN_LABELS: Record<string, string> = {
   updatedAt: 'Modifié le',
   author: 'Auteur',
   steps: 'Étapes',
+  coverageStatus: 'Couverture',
 }
 
 /** Libellé d'une colonne pour l'export — même résolution que `ExcelView.getColumnLabel`, sans les
@@ -49,7 +50,10 @@ export function buildExportRows(
   typeDef: ObjectTypeDefinition | undefined,
   filter: string,
 ): { columns: { key: string; label: string }[]; rows: Record<string, string>[] } {
-  const exportFields = fields.filter(f => !f.startsWith('link::'))
+  // coverageStatus (T138) est un badge dérivé (via traceability:matrix), pas une valeur stockée sur
+  // l'objet — obj[key] serait toujours vide dans l'export, donc exclu plutôt que d'afficher une
+  // colonne "Couverture" vide dans les documents générés.
+  const exportFields = fields.filter(f => !f.startsWith('link::') && f !== 'coverageStatus')
   const columns = exportFields.map(key => ({ key, label: getExportColumnLabel(key, typeDef) }))
   const objectsById = new Map(objects.map(o => [o['id'], o]))
   const needle = filter.trim().toLowerCase()

@@ -2,8 +2,10 @@ import keytar from 'keytar'
 import { app, shell } from 'electron'
 import * as fsPromises from 'fs/promises'
 import * as path from 'path'
+import type { Dispatcher } from 'undici'
 
 import type { GitAuthor } from './git.service'
+import { resolveProxyDispatcher, describeFetchError } from './net-proxy'
 
 const KEYTAR_SERVICE = 'polenta'
 
@@ -89,13 +91,8 @@ export class AuthService {
       return resolveGithubIdentity(pat)
     }
 
-    // Gitea / self-hosted: try /api/v1/user
-    try {
-      return await resolveGiteaIdentity(remote, pat)
-    } catch {
-      // Fallback: return minimal identity from token
-      return { login: 'unknown', name: 'Unknown User', email: '' }
-    }
+    // Hôte non reconnu — pas d'API à interroger, identité minimale
+    return { login: 'unknown', name: 'Unknown User', email: '' }
   }
 
   // ─── Author for git commits ─────────────────────────────────────────────────
@@ -142,7 +139,12 @@ export class AuthService {
     if (!host) return null
     const store = await this.readStore()
 
-    const account = store.accounts.find(a => a.remoteHost === host)
+    // Plusieurs comptes peuvent être enregistrés pour le même host (ex: deux identités
+    // GitHub). Toujours privilégier le compte actif (defaultAccount) 
+    const accountsForHost = store.accounts.filter(a => a.remoteHost === host)
+    const account =
+      accountsForHost.find(a => `${a.remoteHost}:${a.username}` === store.defaultAccount)
+      ?? accountsForHost[0]
 
     if (account) {
       const token = await keytar.getPassword(KEYTAR_SERVICE, `${host}:${account.username}`)
@@ -181,11 +183,19 @@ export class AuthService {
       throw new Error('Device Flow disponible uniquement pour github.com')
     }
 
-    const res = await fetch('https://github.com/login/device/code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ client_id: GITHUB_OAUTH_CLIENT_ID, scope: 'repo' }),
-    })
+    const deviceCodeUrl = 'https://github.com/login/device/code'
+    const dispatcher = await resolveProxyDispatcher(deviceCodeUrl)
+    let res: Response
+    try {
+      res = await fetch(deviceCodeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ client_id: GITHUB_OAUTH_CLIENT_ID, scope: 'repo user:email' }),
+        dispatcher,
+      } as RequestInit & { dispatcher?: Dispatcher })
+    } catch (err) {
+      throw new Error(describeFetchError(err))
+    }
     if (!res.ok) throw new Error(`GitHub device code error: ${res.status}`)
     const data = (await res.json()) as {
       device_code: string
@@ -211,7 +221,9 @@ export class AuthService {
       return { status: 'error', message: 'Device Flow disponible uniquement pour github.com' }
     }
     try {
-      const res = await fetch('https://github.com/login/oauth/access_token', {
+      const accessTokenUrl = 'https://github.com/login/oauth/access_token'
+      const dispatcher = await resolveProxyDispatcher(accessTokenUrl)
+      const res = await fetch(accessTokenUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
@@ -219,7 +231,8 @@ export class AuthService {
           device_code: deviceCode,
           grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
         }),
-      })
+        dispatcher,
+      } as RequestInit & { dispatcher?: Dispatcher })
       const data = (await res.json()) as { access_token?: string; error?: string; interval?: number }
 
       if (data.access_token) {
@@ -240,7 +253,7 @@ export class AuthService {
           return { status: 'error', message: data.error ?? 'Erreur inconnue' }
       }
     } catch (err) {
-      return { status: 'error', message: err instanceof Error ? err.message : String(err) }
+      return { status: 'error', message: describeFetchError(err) }
     }
   }
 
@@ -254,7 +267,7 @@ export class AuthService {
       await this.saveAccount({ remoteHost: host, username: identity.login, name: identity.name, email: identity.email })
       return identity
     } catch {
-      // Can't resolve identity (Gitea without API, etc.) — keep bare token
+      // Can't resolve identity — keep bare token
       return { login: 'git', name: 'Git User', email: `git@${host}` }
     }
   }
@@ -271,9 +284,8 @@ export class AuthService {
     } else {
       store.accounts.push(account)
     }
-    if (!store.defaultAccount) {
-      store.defaultAccount = `${account.remoteHost}:${account.username}`
-    }
+    // Le compte qui vient de se logger devient le compte actif
+    store.defaultAccount = `${account.remoteHost}:${account.username}`
     await this.writeStore(store)
   }
 
@@ -316,32 +328,47 @@ function extractHost(remote: string): string {
 }
 
 async function resolveGithubIdentity(token: string): Promise<{ login: string; name: string; email: string }> {
-  const res = await fetch('https://api.github.com/user', {
-    headers: {
-      Authorization: `token ${token}`,
-      Accept: 'application/vnd.github.v3+json',
-    },
-  })
+  const headers = {
+    Authorization: `token ${token}`,
+    Accept: 'application/vnd.github.v3+json',
+  }
+
+  const userUrl = 'https://api.github.com/user'
+  let res: Response
+  try {
+    res = await fetch(userUrl, { headers, dispatcher: await resolveProxyDispatcher(userUrl) } as RequestInit & {
+      dispatcher?: Dispatcher
+    })
+  } catch (err) {
+    throw new Error(describeFetchError(err))
+  }
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`)
   const data = (await res.json()) as { login: string; name: string | null; email: string | null }
+
+  // `/user`'s `email` field is only populated when the user made it public on their profile —
+  // true for most accounts even with a valid token. The primary/verified address requires the
+  // `user:email` scope and a separate call to `/user/emails`.
+  let email = data.email ?? ''
+  if (!email) {
+    try {
+      const emailsUrl = 'https://api.github.com/user/emails'
+      const emailsRes = await fetch(emailsUrl, {
+        headers,
+        dispatcher: await resolveProxyDispatcher(emailsUrl),
+      } as RequestInit & { dispatcher?: Dispatcher })
+      if (emailsRes.ok) {
+        const emails = (await emailsRes.json()) as { email: string; primary: boolean; verified: boolean }[]
+        email = emails.find(e => e.primary && e.verified)?.email ?? emails.find(e => e.verified)?.email ?? ''
+      }
+    } catch {
+      // Token predates the user:email scope, or the call failed — keep whatever we have.
+    }
+  }
+
   return {
     login: data.login,
     name: data.name ?? data.login,
-    email: data.email ?? '',
-  }
-}
-
-async function resolveGiteaIdentity(remote: string, token: string): Promise<{ login: string; name: string; email: string }> {
-  const baseUrl = remote.replace(/\/[^/]+\/[^/]+$/, '') // strip repo path
-  const res = await fetch(`${baseUrl}/api/v1/user`, {
-    headers: { Authorization: `token ${token}` },
-  })
-  if (!res.ok) throw new Error(`Gitea API error: ${res.status}`)
-  const data = (await res.json()) as { login: string; full_name: string; email: string }
-  return {
-    login: data.login,
-    name: data.full_name ?? data.login,
-    email: data.email ?? '',
+    email,
   }
 }
 

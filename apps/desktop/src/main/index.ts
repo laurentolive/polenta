@@ -11,6 +11,7 @@ export function createAppWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
+    show: false, // affichée seulement au premier paint (ready-to-show) — pas de flash de fenêtre blanche vide
     icon: path.join(__dirname, `../../build/icon.${process.platform === 'win32' ? 'ico' : 'png'}`),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -18,6 +19,8 @@ export function createAppWindow(): BrowserWindow {
       contextIsolation: true,
     },
   })
+
+  win.once('ready-to-show', () => win.show())
 
   Menu.setApplicationMenu(null)
 

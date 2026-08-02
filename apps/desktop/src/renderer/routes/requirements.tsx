@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
@@ -16,10 +17,10 @@ export const Route = createFileRoute('/requirements')({
 })
 
 const STATUS_CLASSES: Record<string, string> = {
-  draft:    'bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300',
-  review:   'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  approved: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  obsolete: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  draft:    'bg-status-neutral-bg text-status-neutral',
+  review:   'bg-status-warning-bg text-status-warning',
+  approved: 'bg-status-success-bg text-status-success',
+  obsolete: 'bg-status-danger-bg text-status-danger',
 }
 
 function groupByType(reqs: Requirement[]): Map<string, Requirement[]> {
@@ -34,6 +35,7 @@ function groupByType(reqs: Requirement[]): Map<string, Requirement[]> {
 }
 
 function RequirementsPage() {
+  const { t } = useTranslation()
   const { projectId, filter, type: typeFilter } = Route.useSearch()
   const navigate = useNavigate()
 
@@ -70,7 +72,7 @@ function RequirementsPage() {
   const typeLabel = (name: string) =>
     reqTypes.find(t => t.name === name)?.label ?? name
 
-  if (!projectId) return <p className="text-sm text-ink-3 p-4">Projet non chargé.</p>
+  if (!projectId) return <p className="text-sm text-ink-3 p-4">{t('common.projectNotLoaded')}</p>
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -78,7 +80,7 @@ function RequirementsPage() {
         currentProjectId={projectId}
         title={
           <>
-            Exigences
+            {t('requirementsPage.title')}
             <span className="text-sm font-normal text-ink-3 ml-2">({filtered.length})</span>
           </>
         }
@@ -87,11 +89,11 @@ function RequirementsPage() {
       <div className="flex-1 overflow-y-auto">
       <div className="max-w-4xl p-6">
       {isLoading ? (
-        <p className="text-sm text-ink-3">Chargement…</p>
+        <p className="text-sm text-ink-3">{t('common.loading')}</p>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-sm text-ink-3">
-            {filter || typeFilter ? 'Aucune exigence pour ce filtre.' : 'Aucune exigence créée.'}
+            {filter || typeFilter ? t('requirementsPage.noRequirementForFilter') : t('requirementsPage.noRequirementCreated')}
           </p>
         </div>
       ) : (

@@ -7,14 +7,14 @@
  * dark switching stays a single edit in `index.css` — nothing here is theme-aware.
  */
 export const CHART_SERIES_COLORS = [
-  'var(--chart-series-1)',
-  'var(--chart-series-2)',
-  'var(--chart-series-3)',
-  'var(--chart-series-4)',
-  'var(--chart-series-5)',
-  'var(--chart-series-6)',
-  'var(--chart-series-7)',
-  'var(--chart-series-8)',
+  'rgb(var(--chart-series-1))',
+  'rgb(var(--chart-series-2))',
+  'rgb(var(--chart-series-3))',
+  'rgb(var(--chart-series-4))',
+  'rgb(var(--chart-series-5))',
+  'rgb(var(--chart-series-6))',
+  'rgb(var(--chart-series-7))',
+  'rgb(var(--chart-series-8))',
 ] as const
 
 export function seriesColor(index: number): string {

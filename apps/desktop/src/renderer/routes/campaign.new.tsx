@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
@@ -34,6 +35,7 @@ function buildDefaultFields(typeDef: { fields: Array<{ name: string; default?: u
 }
 
 function NewCampaignPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { repoPath, projectId, component, level, title: prefillTitle, testCaseIds: prefillTestCaseIds } = Route.useSearch()
@@ -126,16 +128,16 @@ function NewCampaignPage() {
       })
     },
     onError: (err: unknown) => {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue')
+      setError(err instanceof Error ? err.message : t('common.unknownError'))
     },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim()) { setError('Le titre est obligatoire.'); return }
-    if (!repoPath) { setError('Projet non chargé.'); return }
+    if (!title.trim()) { setError(t('requirementsPage.titleRequired')); return }
+    if (!repoPath) { setError(t('common.projectNotLoaded')); return }
     if (!isParamsComplete(selectedTests, allTestsMap, paramValues)) {
-      setError('Renseignez la valeur de chaque paramètre des tests sélectionnés.')
+      setError(t('campaignPage.paramsIncomplete'))
       return
     }
     setError(null)
@@ -156,7 +158,7 @@ function NewCampaignPage() {
       <div className="flex flex-col h-full overflow-hidden">
         <ViewHeader
           currentProjectId={projectId}
-          title="Nouvelle Campagne de test"
+          title={t('campaignPage.newTitle')}
           actions={<RichTextToolbar repoPath={repoPath} />}
         />
 
@@ -166,13 +168,13 @@ function NewCampaignPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">
-              Titre <span className="text-red-500">*</span>
+              {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
             </label>
             <input
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Ex : Campagne validation sprint 11"
+              placeholder={t('campaignPage.titlePlaceholder')}
               className="input-field w-full"
               autoFocus
             />
@@ -181,7 +183,7 @@ function NewCampaignPage() {
           {campaignTypes.length > 0 && (
             <>
               <div>
-                <label className="block text-sm font-medium text-ink mb-1">Type</label>
+                <label className="block text-sm font-medium text-ink mb-1">{t('system.editView.colType')}</label>
                 <select value={type} onChange={e => handleTypeChange(e.target.value)} className="input-field w-full">
                   {campaignTypes.map(t => (
                     <option key={t.name} value={t.name}>{t.label ?? t.name}</option>
@@ -194,19 +196,20 @@ function NewCampaignPage() {
                   value={fields[f.name] ?? String(f.default ?? '')}
                   onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
                   repoPath={repoPath}
+                  interfaceRoles={schema?.roles?.map(r => r.name)}
                 />
               ))}
             </>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Baseline (tag git ou SHA)</label>
+            <label className="block text-sm font-medium text-ink mb-1">{t('campaignPage.baselineLabel')}</label>
             <input
               type="text"
               list="baseline-tags"
               value={baselineRef}
               onChange={e => setBaselineRef(e.target.value)}
-              placeholder="v1.2.0 ou abc1234"
+              placeholder={t('campaignPage.baselinePlaceholder')}
               className="input-field w-full"
             />
             {tags.length > 0 && (
@@ -221,10 +224,10 @@ function NewCampaignPage() {
           {/* Test case selection */}
           <div>
             <p className="text-sm font-medium text-ink mb-2">
-              Cas de test ({selectedTests.size} sélectionné{selectedTests.size !== 1 ? 's' : ''})
+              {t('campaignPage.testCasesSelected', { count: selectedTests.size })}
             </p>
             {tests.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">Aucun cas de test disponible</p>
+              <p className="text-xs text-ink-3 italic">{t('campaignPage.noTestCaseAvailable')}</p>
             ) : (
               <div className="border border-edge rounded divide-y max-h-48 overflow-y-auto">
                 {tests.map(t => (
@@ -255,7 +258,7 @@ function NewCampaignPage() {
             )}
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-status-danger">{error}</p>}
 
           <div className="flex gap-3">
             <button
@@ -263,14 +266,14 @@ function NewCampaignPage() {
               disabled={createMutation.isPending || !isParamsComplete(selectedTests, allTestsMap, paramValues)}
               className="btn-primary"
             >
-              {createMutation.isPending ? 'Création…' : 'Créer la campagne'}
+              {createMutation.isPending ? t('common.creating') : t('campaignPage.createCampaign')}
             </button>
             <button
               type="button"
               onClick={() => window.history.back()}
               className="btn-secondary"
             >
-              Annuler
+              {t('common.cancel')}
             </button>
           </div>
         </form>

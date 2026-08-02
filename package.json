@@ -10,9 +10,13 @@
     "format": "prettier --write \"**/*.{ts,tsx,json,yaml,md}\""
   },
   "devDependencies": {
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
+    "globals": "^15",
     "prettier": "^3.3.0",
     "turbo": "^2.0.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8"
   },
   "engines": {
     "node": ">=20.0.0",

@@ -1,4 +1,5 @@
 ﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { api } from '../api'
@@ -21,19 +22,19 @@ export const Route = createFileRoute('/campaign/$campaignId_/execute/$testId')({
   }),
 })
 
-const STEP_RESULT_OPTIONS: { value: StepResultValue; label: string; cls: string }[] = [
-  { value: 'NOT_EXECUTED', label: 'Non exécuté', cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700/50 dark:text-gray-300' },
-  { value: 'PASS',         label: 'Passé',        cls: 'bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-300' },
-  { value: 'FAIL',         label: 'Échoué',       cls: 'bg-red-100 text-red-700 dark:bg-red-800/40 dark:text-red-300' },
-  { value: 'BLOCKED',      label: 'Bloqué',       cls: 'bg-orange-100 text-orange-700 dark:bg-orange-800/40 dark:text-orange-300' },
-  { value: 'SKIP',         label: 'Ignoré',       cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-300' },
+const STEP_RESULT_OPTIONS: { value: StepResultValue; labelKey: string; cls: string }[] = [
+  { value: 'NOT_EXECUTED', labelKey: 'campaignPage.stepResult.notExecuted', cls: 'bg-status-neutral-bg text-status-neutral' },
+  { value: 'PASS',         labelKey: 'campaignPage.runStatus.pass',         cls: 'bg-status-success-bg text-status-success' },
+  { value: 'FAIL',         labelKey: 'campaignPage.runStatus.fail',         cls: 'bg-status-danger-bg text-status-danger' },
+  { value: 'BLOCKED',      labelKey: 'campaignPage.runStatus.blocked',      cls: 'bg-status-warning-bg text-status-warning' },
+  { value: 'SKIP',         labelKey: 'campaignPage.stepResult.skip',        cls: 'bg-status-warning-bg text-status-warning' },
 ]
 
-const GLOBAL_RESULT_OPTIONS: { value: TestRunResult; label: string }[] = [
-  { value: 'PASS',       label: 'Passé' },
-  { value: 'FAIL',       label: 'Échoué' },
-  { value: 'BLOCKED',    label: 'Bloqué' },
-  { value: 'INCOMPLETE', label: 'Incomplet' },
+const GLOBAL_RESULT_OPTIONS: { value: TestRunResult; labelKey: string }[] = [
+  { value: 'PASS',       labelKey: 'campaignPage.runStatus.pass' },
+  { value: 'FAIL',       labelKey: 'campaignPage.runStatus.fail' },
+  { value: 'BLOCKED',    labelKey: 'campaignPage.runStatus.blocked' },
+  { value: 'INCOMPLETE', labelKey: 'campaignPage.runStatus.incomplete' },
 ]
 
 interface StepExecState {
@@ -59,6 +60,7 @@ function mapResultToStatus(result: TestRunResult) {
 }
 
 function ExecuteTestPage() {
+  const { t } = useTranslation()
   // Le segment d'URL s'appelle historiquement "testId" mais porte désormais l'entryId de
   // l'inclusion du test dans la campagne (un même test peut être inclus plusieurs fois
   // s'il a des paramètres — T97 sprint 2).
@@ -118,6 +120,7 @@ function ExecuteTestPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
+      qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
       navigate({
         to: '/campaign/$campaignId',
         params: { campaignId },
@@ -125,7 +128,7 @@ function ExecuteTestPage() {
       })
     },
     onError: (err: unknown) => {
-      setExecError(err instanceof Error ? err.message : 'Erreur inconnue')
+      setExecError(err instanceof Error ? err.message : t('common.unknownError'))
     },
   })
 
@@ -146,18 +149,18 @@ function ExecuteTestPage() {
   }
 
   if (!repoPath) {
-    return <p className="p-6 text-sm text-ink-2">Paramètre <code>repoPath</code> manquant.</p>
+    return <p className="p-6 text-sm text-ink-2"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   }
-  if (loadingCampaign || loadingTest) return <p className="p-6 text-sm text-ink-3">Chargement…</p>
-  if (!entry) return <p className="p-6 text-sm text-ink-2">Entrée de campagne introuvable : {entryId}</p>
-  if (!testCase) return <p className="p-6 text-sm text-ink-2">Test introuvable : {testCaseId}</p>
+  if (loadingCampaign || loadingTest) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
+  if (!entry) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.entryNotFound', { entryId })}</p>
+  if (!testCase) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.testNotFound', { testCaseId })}</p>
 
   return (
     <RichTextProvider>
       <div className="flex flex-col h-full">
         <ViewHeader
           currentProjectId={projectId}
-          back={{ label: 'Retour', onClick: goBack }}
+          back={{ label: t('layout.viewHeader.back'), onClick: goBack }}
           title={
             <>
               <span className="text-xs font-mono text-ink-3 mr-2">{testCase.id}</span>
@@ -167,7 +170,7 @@ function ExecuteTestPage() {
           actions={
             <>
               <RichTextToolbar repoPath={repoPath} />
-              <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300">
+              <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-status-neutral-bg text-status-neutral">
                 {testCase.status}
               </span>
             </>
@@ -180,7 +183,7 @@ function ExecuteTestPage() {
             {/* Preconditions */}
             {testCase.preconditions && (
               <div>
-                <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">Préconditions</p>
+                <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('testsPage.preconditions')}</p>
                 <div className="text-sm text-ink border border-edge rounded px-4 py-3 bg-hover/30">
                   <RichTextViewer value={substituteParams(testCase.preconditions, paramValues)} repoPath={repoPath} />
                 </div>
@@ -189,7 +192,7 @@ function ExecuteTestPage() {
 
             {/* Steps */}
             <div>
-              <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">Étapes</p>
+              <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('system.wordView.stepsHeading')}</p>
               <div className="space-y-4">
                 {sortedSteps.map((step, idx) => {
                   const state = stepStates.find(s => s.order === step.order)
@@ -206,7 +209,7 @@ function ExecuteTestPage() {
                           className={`text-xs border rounded px-2 py-1 ml-auto ${opt.cls}`}
                         >
                           {STEP_RESULT_OPTIONS.map(o => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
+                            <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
                           ))}
                         </select>
                       </div>
@@ -214,22 +217,22 @@ function ExecuteTestPage() {
                       {/* Step action + expected result */}
                       <div className="grid grid-cols-2 divide-x divide-edge">
                         <div className="px-4 py-3">
-                          <p className="text-xs text-ink-3 mb-1.5">Action</p>
+                          <p className="text-xs text-ink-3 mb-1.5">{t('system.stepsTable.action')}</p>
                           <RichTextViewer value={substituteParams(step.action, paramValues)} repoPath={repoPath} />
                         </div>
                         <div className="px-4 py-3">
-                          <p className="text-xs text-ink-3 mb-1.5">Résultat attendu</p>
+                          <p className="text-xs text-ink-3 mb-1.5">{t('system.stepsTable.expectedResult')}</p>
                           <RichTextViewer value={substituteParams(step.expectedResult, paramValues)} repoPath={repoPath} />
                         </div>
                       </div>
 
                       {/* Step comment */}
                       <div className="px-4 pb-3 pt-2 border-t border-edge">
-                        <p className="text-xs text-ink-3 mb-1.5">Commentaire</p>
+                        <p className="text-xs text-ink-3 mb-1.5">{t('campaignPage.comment')}</p>
                         <RichTextField
                           value={state?.comment ?? ''}
                           onChange={v => setStepComment(step.order, v)}
-                          placeholder="Observations sur cette étape (optionnel)…"
+                          placeholder={t('campaignPage.stepCommentPlaceholder')}
                           repoPath={repoPath}
                         />
                       </div>
@@ -242,7 +245,7 @@ function ExecuteTestPage() {
             {/* Postconditions */}
             {testCase.postconditions && (
               <div>
-                <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">Postconditions</p>
+                <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('testsPage.postconditions')}</p>
                 <div className="text-sm text-ink border border-edge rounded px-4 py-3 bg-hover/30">
                   <RichTextViewer value={substituteParams(testCase.postconditions, paramValues)} repoPath={repoPath} />
                 </div>
@@ -252,12 +255,12 @@ function ExecuteTestPage() {
             {/* Global comment */}
             <div>
               <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">
-                Commentaire global
+                {t('campaignPage.globalComment')}
               </label>
               <RichTextField
                 value={globalNotes}
                 onChange={setGlobalNotes}
-                placeholder="Observations générales, contexte d'exécution…"
+                placeholder={t('campaignPage.globalCommentPlaceholder')}
                 repoPath={repoPath}
               />
             </div>
@@ -265,7 +268,7 @@ function ExecuteTestPage() {
             {/* Global result */}
             <div>
               <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">
-                Résultat global
+                {t('campaignPage.globalResult')}
               </label>
               <div className="flex items-center gap-3">
                 <select
@@ -277,7 +280,7 @@ function ExecuteTestPage() {
                   className="input-field text-sm"
                 >
                   {GLOBAL_RESULT_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
                   ))}
                 </select>
                 {resultOverridden && (
@@ -287,16 +290,16 @@ function ExecuteTestPage() {
                       setResultOverridden(false)
                       setGlobalResult(computeGlobalResult(stepStates.map(s => s.result)))
                     }}
-                    className="text-xs text-blue-500 hover:underline"
+                    className="text-xs text-status-info hover:underline"
                   >
-                    Recalculer depuis les étapes
+                    {t('campaignPage.recalculateFromSteps')}
                   </button>
                 )}
               </div>
             </div>
 
             {execError && (
-              <p className="text-sm text-red-500">{execError}</p>
+              <p className="text-sm text-status-danger">{execError}</p>
             )}
           </div>
         </div>
@@ -309,7 +312,7 @@ function ExecuteTestPage() {
             disabled={executeMutation.isPending}
             className="btn-secondary"
           >
-            Annuler
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -317,7 +320,7 @@ function ExecuteTestPage() {
             disabled={executeMutation.isPending}
             className="btn-primary"
           >
-            {executeMutation.isPending ? 'Enregistrement…' : 'Soumettre le résultat'}
+            {executeMutation.isPending ? t('campaignPage.saving') : t('campaignPage.submitResult')}
           </button>
         </div>
       </div>

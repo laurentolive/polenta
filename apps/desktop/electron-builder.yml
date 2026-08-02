@@ -1,5 +1,17 @@
 appId: com.polenta.desktop
 productName: Polenta
+# keytar ne se recompile pas ici : son binaire napi prébuilt (récupéré par prebuild-install à
+# l'install) est déjà celui qu'utilisent `pnpm dev`/`pnpm preview` avec succès (N-API est stable
+# entre versions d'Electron, pas besoin de rebuild par cible) — laisser npmRebuild à true déclenche
+# `npm rebuild keytar` via node-gyp, qui échoue ici faute de toolchain MSVC C++ complet installée.
+npmRebuild: false
+# keytar.node (module natif) ne peut pas être chargé (dlopen) depuis l'intérieur d'app.asar — doit
+# être extrait tel quel à côté (app.asar.unpacked). D'ordinaire electron-builder détecte ça tout
+# seul, mais son détecteur de modules natifs ne suit pas la structure symlinkée de node_modules par
+# pnpm : sans cette ligne, keytar.node finit packagé DANS l'asar et le require échoue au lancement
+# ("Cannot find module '../build/Release/keytar.node'").
+asarUnpack:
+  - "**/keytar/build/Release/keytar.node"
 directories:
   output: dist
   buildResources: build
@@ -10,6 +22,16 @@ files:
   # `files`/app.asar (ci-dessous) — voir extraResources : il doit rester un fichier
   # ordinaire sur disque, lançable comme process séparé par un client MCP externe.
   - "!out/mcp-server/**/*"
+  # electron.vite.config.ts externalise toutes les deps npm du process main
+  # (externalizeDepsPlugin) — elles restent des `require()` réels à l'exécution (keytar,
+  # isomorphic-git...) et doivent donc être physiquement présentes dans le package. Le
+  # détecteur "production dependencies" intégré d'electron-builder (marche l'arbre de
+  # package.json pour ne garder que les deps de prod) ne suit pas correctement la structure
+  # symlinkée de node_modules par pnpm : des deps transitives comme `async-lock` (requise par
+  # `isomorphic-git`, pas listée dans notre package.json) passaient à la trappe — "Cannot find
+  # module 'async-lock'" au lancement. On inclut tout node_modules explicitement plutôt que de
+  # compter sur cette détection.
+  - node_modules/**/*
 extraResources:
   # T122 sprint 4 — copie le bundle mcp-server (esbuild, autonome hormis `keytar`
   # natif) hors de app.asar, à un chemin stable résolu par
@@ -29,6 +51,11 @@ extraResources:
     to: mcp-server/node_modules/keytar
 win:
   icon: build/icon.ico
+  target: portable
+  # ${version} vient de package.json ("version") — même string que celle exposée en
+  # renderer via app:get-version et affichée dans la barre de titre : un seul endroit à
+  # modifier à chaque release.
+  artifactName: "Polenta-${version}.${ext}"
 mac:
   icon: build/icon.png
 linux:

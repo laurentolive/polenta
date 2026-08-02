@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
 import { useNavigate, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../api'
 import { encodeProjectId, decodeProjectId } from '../../lib/projectId'
 import { markProjectJustClosed } from '../../lib/projectCloseSignal'
+import { useAppVersion } from '../../lib/useAppVersion'
 
 interface Props {
   currentProjectId: string | null
@@ -12,20 +14,26 @@ interface Props {
 // ── Panel sans projet ──────────────────────────────────────────────────────────
 
 function NoProjectPanel() {
+  const { t } = useTranslation()
   const { data: recents = [] } = useQuery({
     queryKey: ['workspace:list-recents'],
     queryFn: () => api.workspace.listRecents(),
   })
+  const { data: version } = useAppVersion()
+
+  useEffect(() => {
+    if (version) api.app.setTitle(`Polenta v${version}`)
+  }, [version])
 
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-edge">
-        <p className="section-label">Projet</p>
+        <p className="section-label">{t('sidebar.project.title')}</p>
       </div>
 
       {recents.length > 0 && (
         <div className="px-3 py-3 border-b border-edge-subtle">
-          <p className="section-label mb-2">Récents</p>
+          <p className="section-label mb-2">{t('sidebar.project.recents')}</p>
           <div className="space-y-0.5">
             {recents.map(r => (
               <Link
@@ -49,6 +57,7 @@ function NoProjectPanel() {
 // ── Panel avec projet ──────────────────────────────────────────────────────────
 
 function WithProjectPanel({ projectId }: { projectId: string }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
 
   const { data: project } = useQuery({
@@ -57,36 +66,45 @@ function WithProjectPanel({ projectId }: { projectId: string }) {
   })
 
   const repoPath = project?.localPath ?? ''
+  const displayName = project?.label || project?.name
+  const { data: version } = useAppVersion()
 
   const handleClose = async () => {
     markProjectJustClosed()
     await api.workspace.clearLastOpened()
-    api.app.setTitle('Polenta')
+    api.app.setTitle(version ? `Polenta v${version}` : 'Polenta')
     navigate({ to: '/' })
   }
 
   useEffect(() => {
-    if (project?.name && project?.localPath) {
-      api.app.setTitle(`Polenta — ${project.name} — ${project.localPath}`)
+    if (displayName && project?.localPath && version) {
+      api.app.setTitle(`Polenta v${version} — ${displayName} — ${project.localPath}`)
     }
-  }, [project?.name, project?.localPath])
+  }, [displayName, project?.localPath, version])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-4 py-3 border-b border-edge shrink-0">
-        <p className="section-label">Projet</p>
+        <p className="section-label">{t('sidebar.project.title')}</p>
         {project && (
-          <div className="flex items-center justify-between mt-1">
-            <p className="text-sm font-medium text-ink truncate flex-1">{project.name}</p>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="text-xs text-ink-3 hover:text-ink ml-2 shrink-0 px-1"
-              title="Fermer le projet"
-            >
-              ✕
-            </button>
-          </div>
+          <>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-sm font-medium text-ink truncate flex-1">{displayName}</p>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="text-xs text-ink-3 hover:text-ink ml-2 shrink-0 px-1"
+                title={t('sidebar.project.closeProject')}
+              >
+                ✕
+              </button>
+            </div>
+            {project.remoteUrl && (
+              <p className="text-xs text-ink-3 truncate mt-0.5" title={project.remoteUrl}>
+                {project.remoteUrl}
+              </p>
+            )}
+          </>
         )}
       </div>
 
@@ -99,7 +117,7 @@ function WithProjectPanel({ projectId }: { projectId: string }) {
               className="flex items-center gap-2 w-full px-2 py-1.5 text-xs text-ink-2 hover:text-ink hover:bg-hover rounded transition-colors"
             >
               <span className="inline-flex justify-center w-4 shrink-0">☰</span>
-              <span>Modèle de données</span>
+              <span>{t('sidebar.project.dataModel')}</span>
             </Link>
             <Link
               to="/preferences"
@@ -107,7 +125,7 @@ function WithProjectPanel({ projectId }: { projectId: string }) {
               className="flex items-center gap-2 w-full px-2 py-1.5 text-xs text-ink-2 hover:text-ink hover:bg-hover rounded transition-colors"
             >
               <span className="inline-flex justify-center w-4 shrink-0">⚙</span>
-              <span>Préférences</span>
+              <span>{t('sidebar.project.preferences')}</span>
             </Link>
           </div>
         </div>

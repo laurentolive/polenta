@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { TestCase } from '@polenta/types'
 import { extractTestParameters } from '../lib/testParams'
 
@@ -11,6 +12,7 @@ interface Props {
  * conditionnel — ne s'affiche rien si le test n'a aucun paramètre. Utilisé à l'ajout d'un
  * test à une campagne (nouvelle ou existante) et pour l'édition ultérieure des valeurs. */
 export function TestParamFields({ testCase, values, onChange }: Props) {
+  const { t } = useTranslation()
   const params = extractTestParameters(testCase)
   if (params.length === 0) return null
 
@@ -26,7 +28,7 @@ export function TestParamFields({ testCase, values, onChange }: Props) {
             value={values[label] ?? ''}
             onChange={e => onChange(label, e.target.value)}
             className="input-field flex-1 text-xs py-1"
-            placeholder="Valeur…"
+            placeholder={t('common.valuePlaceholder')}
           />
         </label>
       ))}

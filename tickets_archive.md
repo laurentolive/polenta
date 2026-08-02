@@ -2,6 +2,764 @@
 
 ---
 
+### T149 — Vue Excel : édition en masse sur une sélection multiple de lignes
+
+**Contexte** : décision validée avec l'utilisateur — propagation automatique dès qu'une édition
+inline est commise sur une ligne faisant partie de la sélection (pas de raccourci type
+Ctrl+Entrée ni de menu contextuel dédié), portée sur tous les champs édités inline (statut/enum,
+texte simple, richtext, cases `multi_enum`) — pas seulement le statut.
+
+**Implémentation** : `apps/desktop/src/renderer/components/system/ExcelView.tsx` — nouvelles
+fonctions `applyInlineEditToSelection` (statut/enum/texte/richtext : même valeur écrasée sur tous
+les objectId de la sélection) et `applyMultiEnumToggleToSelection` (cases à cocher : bascule
+indépendamment la même valeur sur chaque ligne sélectionnée, sans écraser les autres valeurs déjà
+cochées propres à chaque ligne — évite de perdre les tags d'un objet B en cochant/décochant un tag
+sur l'objet A pendant que B est aussi sélectionné). Nouvelle map `nodeId <-> objectId` (les IDs de
+sélection sont des nodeId d'arbre, distincts des objectId métier). Le popover richtext capture
+désormais la valeur d'origine de CHAQUE objet affecté (`richtextOriginalValuesRef`, plus seulement
+celle de l'objet édité) pour restaurer correctement chacun à l'annulation (Échap). Colonnes
+`link::` explicitement hors scope (mécanisme dédié via `LinkCombobox`, pas de notion de "valeur" à
+propager).
+
+**Vérification** : `tsc --noEmit` propre sur `@polenta/desktop`. `specs/SPEC-SYSTEM-VIEW.md`
+§Vue Excel mis à jour (sélection multiple + édition en masse). Non vérifié interactivement dans
+l'app avant archivage.
+
+---
+
+### T148 — Retirer les dashboards pré-configurés "Couverture", "Avancement", "Maturité"
+
+**Contexte** : dashboards livrés en T77 sprint 3, avec leurs 7 requêtes sauvegardées associées —
+seul le dashboard "Status" doit rester seedé automatiquement au premier accès à l'onglet "Suivi".
+
+**Implémentation** : `apps/desktop/src/main/services/dashboard-seed.service.ts`
+(`SEED_QUERIES`/`SEED_DASHBOARDS` réduits aux 2 requêtes/1 dashboard "Status"),
+`specs/SPEC-DASHBOARDS.md` §5.1 mis à jour. Le calcul sous-jacent (`coverageStatus`, `maturity*`
+dans `query-engine.service.ts`/`maturity.util.ts`) non touché — toujours utilisé ailleurs (badges
+Excel, etc.), seuls les 3 dashboards/7 requêtes pré-configurés disparaissent. Fixtures locales déjà
+seedées avant ce correctif (`apps/desktop/PL/Product/dashboards/DASHBOARD-000{1,2,3}.yaml`,
+`queries/QUERY-000{1..7}.yaml`) supprimées manuellement pour rester cohérentes (le marqueur
+`.seeded.yaml` empêche un reseed, donc un nettoyage ponctuel était nécessaire).
+
+**Vérification** : `tsc --noEmit` propre. Vérifié interactivement (build + Playwright `_electron`,
+script `run-desktop`) : sur `apps/desktop/PL/Product` (déjà seedé avant le correctif), l'onglet
+"Suivi" affiche désormais "Aucun dashboard" ; sur un projet neuf créé à la volée, le seed ne crée
+bien que le dashboard "Status" avec ses 2 widgets.
+
+---
+
+### T147 — ActivityBar restait en slate-900 (sombre) en mode clair
+
+**Contexte** : comportement volontairement figé lors de T116 (`specs/T116-design.md` §"2 familles
+volontairement figées"), mais signalé par l'utilisateur comme un défaut visuel en mode clair.
+Décision validée avec l'utilisateur : rendre l'ActivityBar adaptative au thème.
+
+**Implémentation** : `apps/desktop/src/renderer/theme.config.ts` — les 6 tokens `activity-*`
+reçoivent désormais des valeurs `light` distinctes (slate-100/200/600/900, réutilisant la palette
+déjà tokenisée côté clair : `surface-hover`, `edge`, `ink`, `ink-2`, `ink-3`), le thème `dark`
+garde ses valeurs T116 d'origine (slate-900/800/700/400) à l'identique. `index.css`/
+`tailwind.theme.generated.js` régénérés via `pnpm theme:generate` (jamais édités à la main).
+
+**Vérification** : `tsc --noEmit` propre. Vérifié interactivement (build + Playwright `_electron`,
+script `run-desktop`) : capture en mode clair → ActivityBar en slate-100/slate-600, cohérente avec
+le reste de l'UI ; capture en mode sombre → rendu identique pixel pour pixel à avant le correctif.
+
+---
+
+### T146 — Perf : freeze au chargement de l'onglet "Exigences" (~281 exigences)
+
+**Contexte** : reproduit sur `apps/desktop/PL/Product` (281 exigences). Signalé comme apparu
+"depuis le split Système → Exigences/Tests/Campagnes (T145)" ; vérifié non lié — reproduit à
+l'identique en mettant de côté (`git stash`) les modifs T145 et en rebuild sur l'ancien code.
+
+**Root cause** : `RichTextViewer` dans `WordView.tsx` (vue Document) montait un éditeur
+Tiptap/ProseMirror complet (`useEditor`, même en lecture seule) pour CHAQUE champ richtext de
+CHAQUE exigence affichée, sans virtualisation de la liste — pour `PRODUCT_REQ` (3 champs richtext)
+× 281 exigences, ~840 éditeurs montés d'un coup au chargement de l'onglet. Mesuré via un script
+Playwright sondant `performance.now()` toutes les 200ms pendant le rendu : ~0.5-1s de blocage du
+thread renderer par sondage, avant et après T145 à l'identique.
+
+**Implémentation** : nouveau `apps/desktop/src/renderer/lib/staticRichText.tsx`
+(`StaticRichTextViewer`) — rend le markdown en HTML statique via `markdown-it` (déjà utilisé en
+interne par `tiptap-markdown`, ajouté en dépendance directe du package desktop) au lieu
+d'instancier un éditeur ; les blocs `image`/`drawio` (encodage markdown custom de
+`ResizableImageExtension`/`DrawioEmbedExtension`) sont interceptés spécifiquement (image :
+résolution asynchrone du chemin repo-relatif via `api.image.read`, une fois par image réelle ;
+drawio : badge statique, pas de rendu canvas live). `RichTextField` (édition inline, un seul champ
+actif à la fois) n'est pas touché.
+
+**Vérification** : revérifié après correctif avec le même script de sondage : plus aucun blocage
+détecté sur les mêmes 281 exigences ; édition inline testée manuellement (clic sur un champ
+richtext → l'éditeur Tiptap s'ouvre normalement). `tsc --noEmit` propre.
+
+---
+
+### T143 — Bug : champ "description" invisible après mise à jour via MCP (non résolu à l'archivage)
+
+**Symptôme** : lorsqu'une exigence est mise à jour via le serveur MCP, le rechargement dynamique
+dans l'UI fonctionne (titre/statut/etc. se mettent à jour) mais le champ "description" n'apparaît
+pas à l'écran.
+
+**Piste explorée** : "description" n'est pas un champ système de `Requirement`
+(`packages/types/src/requirement.ts`) — ce ne peut être qu'un champ custom `fields.description`
+déclaré dans `objectTypes[].fields[]` du `schema.yaml` du type visé. Or le type concerné (ex.
+`exigence-ve11b` dans `apps/desktop/PL/Product/.polenta/schema.yaml`) ne déclare que `statement`,
+pas `description`. Le rendu (`apps/desktop/src/renderer/routes/req.$reqId.tsx`) itère sur
+`typeDef.fields` (la liste déclarée au schéma), jamais sur les clés réellement présentes dans
+`req.fields` — donc toute clé `fields.*` non déclarée est silencieusement absente de l'écran, sans
+erreur. Côté MCP, `bulk_import_requirements` (`apps/desktop/src/mcp-server/tools/bulk-import.tools.ts`,
+seul point d'écriture — pas de tool `update_requirement` dédié) n'a pas de validation qui empêche
+d'écrire une clé `fields.*` non déclarée au schéma : la valeur est bien écrite/lue sur disque, juste
+invisible dans l'UI.
+
+**Statut à l'archivage** : root cause identifiée mais pas de correctif appliqué — décision à
+prendre (schéma du type concerné doit-il déclarer `description` ? le MCP doit-il valider les clés
+`fields` contre le schéma avant écriture ? l'UI doit-elle afficher en secours les clés `fields` non
+couvertes par le schéma ?). À rouvrir si le comportement redevient prioritaire.
+
+---
+
+### T142 — Perf : indexation exigences/tests O(fichiers × commits) via `GitService.fileHistory()`
+
+**Contexte** : `RequirementsIndexService`/`TestsIndexService` (déclenchée à l'ouverture d'un projet
+et à chaque invalidation) appelait `GitService.fileHistory()` (créé/modifié le/par, T112) une fois
+PAR FICHIER, et cette fonction (`isomorphic-git` `git.log({filepath})`) rejoue tout l'historique de
+commits à chaque appel — coût O(fichiers × commits), qui empire avec la croissance normale du
+projet.
+
+**Implémentation** : nouvelle `GitService.fileHistoryMap(repoPath, prefix)` — un seul passage sur
+l'historique, diff d'arbre scopé au préfixe contre le premier parent de chaque commit, coût
+O(commits). Mesuré sur `specs/` de ce repo (280 fichiers, 536 commits) : ~300s → ~19s (~16×).
+
+**Effet de bord découvert en vérifiant** : l'ancien `fileHistory()` par fichier a un bug sur les
+commits de merge — il rapportait des `updatedAt` ne correspondant à aucun commit réel (vérifié
+contre `git log` sur 5 fichiers) ; le nouveau code corrige ça au passage (158/280 fichiers de
+`specs/` avaient une date fausse).
+
+**Vérification** : `tsc --noEmit` propre. Non vérifié interactivement (pas d'affichage Electron
+attachable au moment du correctif) — voir `specs/T142.md` §Comment tester.
+
+---
+
+### T141 — Perf : lenteur au démarrage de l'app (imports statiques lourds au boot)
+
+**Root cause** : `ExportService`/`QueryEngineService`, construits dans `container.ts` dès le boot
+(avant `app.whenReady()`), importaient statiquement `exceljs` (~380ms), `alasql` (~60ms) et `docx`
+(~28ms) — payés à chaque lancement même sans export ni requête, y compris sur un repo quasi vide.
+
+**Implémentation** : les 8 générateurs d'export (`export/*.xlsx.ts`/`*.docx.ts`) et `alasql` sont
+désormais chargés via `import()` dynamique, différé au premier usage réel.
+
+**Vérification** : `tsc --noEmit` et `electron-vite build` propres (build confirme les générateurs
+sortis en chunks séparés, plus dans `out/main/index.js`). Non vérifié interactivement (pas
+d'affichage Electron attachable au moment du correctif) — voir `specs/T141.md` §Comment tester.
+
+---
+
+### T140 — Nom de dossier affiché au lieu du `label` configuré du nœud `root`
+
+**Symptôme** : dans la config du nœud `root`, le nom du repo (nom de dossier) était affiché
+partout dans l'UI au lieu du `label` configuré dans `schema.yaml` — sidebar "Projet" (titre +
+header), titre de fenêtre Electron, ligne de repo dans l'onglet Structure, panneau "Version"
+(header repo + modales checkout/commit), titre d'onglet du graphe de versions.
+
+**Implémentation** : `WorkspaceTreeNode.label` (nouveau champ, `packages/types/src/polenta-workspace.ts`)
+et `ProjectInfo.label` (`packages/types/src/workspace.ts`) propagent désormais le `label` du
+SystemNode `root` de chaque repo (lu depuis son propre `schema.yaml`) ; tous les affichages listés
+font `label || name`.
+
+**Vérification** : `tsc --noEmit` propre sur `@polenta/desktop`. Non vérifié interactivement (pas
+d'affichage Electron attachable au moment du correctif) — à valider dans l'app avant merge.
+
+---
+
+### T139 — Bug : liens supprimés persistent dans la colonne `link::` en vue Excel (non résolu à l'archivage)
+
+**Symptôme** : des liens supprimés (via l'édition d'un objet) continuent d'apparaître dans la vue
+Excel, alors qu'ils n'apparaissent plus dans les champs de l'objet (vue Édition).
+
+**Reproduction** : supprimer un lien sur un objet, vérifier qu'il a disparu en vue Édition, puis
+regarder la colonne `link::` correspondante en vue Excel pour le même objet.
+
+**Statut à l'archivage** : non investigué — à rouvrir si le comportement redevient prioritaire.
+
+---
+
+### T137 — Bug : bouton "actualiser" du modèle de données sans effet après modif schéma via MCP (non résolu à l'archivage)
+
+**Symptôme** : dans l'onglet modèle de données, le bouton actualiser ne semble pas fonctionner —
+un agent via le serveur MCP a modifié le schéma, mais l'UI ne s'est pas rafraîchie ; il a fallu
+redémarrer l'app pour que les modifications apparaissent.
+
+**Statut à l'archivage** : non investigué — à rouvrir si le comportement redevient prioritaire.
+
+---
+
+### T130 — Revue complète de la doc de format/architecture (CLAUDE.md + specs/)
+
+**Contexte** : préparation de l'open-sourcing du projet. Un premier passage ad hoc avait déjà
+corrigé 3 écarts confirmés (format de stockage, arbre `.polenta/trees/`, sens du lien de couverture
+test↔exigence). Le ticket élargit à un audit complet de tous les `specs/SPEC-*.md` contre le code
+réel (9 passes parallèles + 2 passes ciblées sur les 2 écarts lourds déjà repérés).
+
+**Décision produit** : aucune correction de code dans le périmètre initial — la doc est alignée
+systématiquement sur le comportement réel de l'app v1. Réécriture intégrale de
+`SPEC-ELECTRON-DESKTOP.md` §20 (format `.polenta/schema.yaml`, modèle `SystemNode` réel, pas
+`requirementTypes`/`.gitmodules`) et §22 (composants en repo séparé via `polenta-repo.yaml`/
+workspace plat T69, pas de submodules Git) — plus obsolètes que ce que le ticket avait initialement
+repéré. Renumérotation des sections dupliquées (§18-23). Une trentaine de corrections ponctuelles
+sur les autres fichiers (`SPEC-TECH-stack.md`, `SPEC-MCP-SERVER.md`, `SPEC-PROJECT-MANAGEMENT.md`,
+`SPEC-TESTS.md`, `SPEC-TEMPLATES.md`, `SPEC-REVIEWS.md`) et sur `SPEC-AUDIT.md` (document d'audit
+préexistant non référencé dans `SPEC-INDEX.md` jusqu'ici, une entrée périmée retirée — bug déjà
+corrigé par T63).
+
+**Découvertes en cours de route** : l'application d'un template n'a aucun mécanisme applicatif du
+tout (pas seulement un fichier au mauvais format) ; la création de projet ne contacte jamais de
+remote GitHub/Gitea contrairement à ce que documentait `SPEC-PROJECT-MANAGEMENT.md` §9.
+
+**Suite à la relecture humaine**, deux changements hors périmètre doc-only initial : template
+`templates/electro-domestic-battery.yaml` supprimé (pas réécrit, faute de mécanisme d'application) ;
+support Gitea retiré du code (`auth.service.ts`, listes de remotes suggérés dans
+login/account/AccountMenu/AccountPanel) sur demande explicite — seule vraie modification de code de
+ce ticket.
+
+Détail complet : `specs/T130.md` (audit), `specs/T130-sprint1.md` (résumé + addendum).
+
+---
+
+### T138 — Badge de couverture de test dans les vues Word, Excel, Édition
+
+**Contexte** : `coverageStatus` (calculé par exigence, `computeCoverage()`/`computeCoverageStatus()`
+dans `traceability.service.ts`) n'était visible que de façon agrégée (dashboard "Couverture") ou
+via une requête SQL brute dans le Query Builder — aucune des 3 vues de consultation/édition d'une
+exigence (Excel/Word/Édition) ne l'affichait par exigence individuelle.
+
+**Implémentation** : nouveau champ système `coverageStatus`, ajouté à la liste des champs système
+du panneau ⚙️ "Configuration des champs visibles" (`SystemView.tsx`), proposé uniquement pour les
+types de catégorie `requirement`. Désactivé par défaut dans Excel (colonne dédiée) et Word (badge
+dans l'en-tête de carte, à côté du statut de cycle de vie) — activable via le panneau ⚙️, comme
+n'importe quel autre champ. En Édition, affiché en permanence (hors du pipeline
+`orderedFields`/`FieldRow`, champ non éditable) car l'onglet "Édition" du panneau ⚙️ n'existe pas
+(écart pré-existant documenté dans `specs/SPEC-AUDIT.md`, non comblé par ce ticket). Nouveau
+composant partagé `CoverageBadge.tsx` (icône + tooltip natif listant les tests liés et leur
+statut). Réutilise l'endpoint `traceability:matrix` déjà enregistré côté backend mais jusque-là
+jamais appelé depuis le renderer — aucune route IPC ajoutée, aucune logique de calcul dupliquée.
+
+Auto-revue avant commit (`/code-review`, effort medium) : 2 corrections apportées — les 3
+`onLinkChange` invalident désormais aussi `traceability-matrix` (le badge restait périmé après
+ajout/retrait d'un lien test↔exigence dans la même vue) ; le fetch en vue Édition est restreint aux
+exigences (`effectiveType?.category === 'requirement'`), évitant un recalcul de couverture inutile
+à l'ouverture d'un cas de test.
+
+Vérifié dans l'app buildée (Playwright + Electron), sur un projet de test dédié (schéma +
+exigence + test + lien créés via les IPC handlers) : colonne "Couverture" en Excel après avoir coché
+le champ dans le panneau ⚙️, badge dans l'en-tête de carte Word, badge toujours visible en Édition —
+icône `covered` (test lié, jamais exécuté) correcte dans les 3 vues. `tsc --noEmit` sans erreur.
+Détails dans `specs/T138.md`, `specs/T138-design.md`, `specs/T138-tests.md`, `specs/T138-sprint1.md`.
+
+---
+
+### T134 — Clic sur un lien : ouverture dans un nouvel onglet avec Ctrl+clic
+
+**Contexte** : cliquer sur l'ID d'un objet lié (section Liens, vue Document/Word et combobox de
+liens) navigue vers cet objet dans l'onglet courant (`navigateToObject`, `SystemView.tsx`). Il
+n'existait aucun moyen d'ouvrir l'objet lié dans un nouvel onglet sans d'abord y naviguer puis
+utiliser un mécanisme séparé.
+
+**Implémentation** : `navigateToObject` accepte désormais un second paramètre optionnel
+`opts?: { newTab?: boolean }`. Quand `newTab` est vrai, la navigation ne réutilise pas le chemin
+existant (état local `viewMode`/`pendingNavObjectId` de `SystemView`, propre à l'onglet courant)
+mais route via `openTab()` (`TabsContext.tsx`) vers la page autonome `/req/$id` ou `/test/$id` —
+le même mécanisme déjà utilisé par la recherche globale (`SearchPanel.tsx`) — car un nouvel onglet
+est un remontage de route qui n'a accès à aucun état local de l'onglet d'origine. Les gestionnaires
+`onClick` des puces de lien (`WordView.tsx`, `LinkCombobox.tsx`) passent
+`{ newTab: e.ctrlKey || e.metaKey }`. `EditView.tsx`/`ExcelView.tsx` ne font que propager le type
+et le callback mis à jour, sans changement de comportement propre. Tooltip
+`system.shared.clickToNavigate` (`fr.json`/`en.json`) mis à jour pour mentionner le raccourci.
+
+Vérifié dans l'app buildée (Playwright + Electron) : clic simple sur une puce de lien → navigation
+dans l'onglet courant (inchangé, bouton "Retour" apparaît, un seul onglet) ; Ctrl+clic → nouvel
+onglet ouvert sur la page autonome de l'objet cible, onglet d'origine inchangé. `tsc --noEmit` sans
+erreur.
+
+---
+
+### T135 — Drag & drop dans l'onglet Structure du modèle de données
+
+**Contexte** : l'arbre de l'onglet Structure (`StructureTab.tsx`) n'avait que des boutons ↑/↓ pour
+réordonner les types d'exigence/test/campagne et les composants/interfaces montés — aucun moyen de
+réordonner un composant local, et aucun moyen de changer un élément de parent (composant, composant
+local ou type) sans passer par la suppression/recréation.
+
+**Implémentation** (3 sprints, cf. `specs/T135-design.md`) :
+- **Sprint 1** — remplacement des boutons ↑/↓ par un glisser-déposer natif HTML5 (même pattern que
+  `ReorderableSidebarSection.tsx`, T77), pour les trois types de lignes (éléments, composants
+  montés, composants locaux — ces derniers gagnant leur premier réordonnancement). État de drag
+  centralisé dans `StructureTab` plutôt que par ligne, pour anticiper les sprints suivants.
+- **Sprint 2** — changement de parent par glisser-déposer pour les composants montés
+  (`moveDependencyToParent`, réutilise `removeDependency`/`addDependency`) et les composants locaux
+  (`moveSystemNode`/`isDescendant`, anti-cycle), avec préservation des rôles d'interface à travers
+  le déplacement.
+- **Sprint 3** — changement de parent pour les éléments (types), avec cascade côté main process
+  (`schema:move-element` → `ElementMoveService`) réécrivant `objectTypeRef` sur les
+  exigences/tests existants, et migration du fichier d'ordre d'affichage
+  (`.polenta/trees/<nœud>/<type>.yaml`). Restreint aux nœuds du même repo — un déplacement
+  cross-repo impliquerait de déplacer des fichiers entre deux repos Git, hors périmètre.
+
+Trois revues de code (une par sprint) ont trouvé et corrigé plusieurs bugs réels avant validation :
+un bug de fusion silencieuse au sprint 1 (deux tableaux de stockage distincts traités comme un seul
+groupe de réordonnancement), une perte de données possible dans `moveSystemNode` et une
+non-restauration de dépendance en cas d'échec au sprint 2, et — trouvé indépendamment par 3 angles
+de revue au sprint 3 — l'absence de migration du fichier d'ordre d'affichage, absente du Design
+initial.
+
+Vérifié manuellement dans l'app réelle (build + driver Playwright `run-desktop`) à chaque sprint :
+réordonnancement, nesting/promotion de composants locaux, anti-cycle, et cascade `objectTypeRef`
+tous confirmés fonctionnels de bout en bout. Limitation préexistante documentée (non corrigée, hors
+périmètre) : `req.new.tsx`/`test.new.tsx` peuvent écrire un `objectTypeRef` non qualifié que la
+cascade ne peut alors pas retrouver — candidat pour un ticket séparé.
+
+Détails dans `specs/T135.md`, `specs/T135-design.md`, `specs/T135-tests.md`,
+`specs/T135-sprint1.md`, `specs/T135-sprint2.md`, `specs/T135-sprint3.md`.
+
+---
+
+### T133 — Le clic molette sur un onglet ne le fermait pas
+
+**Contexte** : dans la barre d'onglets, le clic milieu (molette) sur un onglet devait le fermer,
+comme dans un navigateur classique. Rien ne se produisait — seul le curseur d'autoscroll natif
+apparaissait brièvement.
+
+**Root cause** : `TabBar.tsx` ne gérait que `onClick` (activation) et le clic sur la croix de
+fermeture (`stopPropagation` + `attemptCloseTab`) ; aucun handler n'écoutait le clic milieu
+(`auxclick`, bouton 1).
+
+**Correctif** : ajout de `onMouseDown` (bouton 1 → `preventDefault`, supprime l'autoscroll natif)
+et `onAuxClick` (bouton 1 → `attemptCloseTab(tab.id)`) sur le bouton d'onglet — même point d'entrée
+que la croix et Ctrl+W, donc la confirmation de fermeture pour un onglet "dirty" s'applique aussi
+au clic molette. Correctif minimal, pas de changement de `TabsContext.tsx`. Détails dans
+`specs/T133.md`.
+
+---
+
+### T136 — Vue Système : titre "Sans titre" périmé dans le dropdown d'ajout de lien
+
+**Contexte** : dans la section Liens d'un objet, le dropdown de recherche pour ajouter un lien
+affichait le bon ID pour un candidat renommé, mais un titre resté bloqué sur "Sans titre" (ou le
+titre précédent le dernier renommage), alors que l'objet lui-même avait bien le titre à jour.
+
+**Root cause (double cause)** : (1) le renommage d'un objet via l'arbre/Excel/Word
+(`handleRenameNode`, `SystemView.tsx`) ne mettait à jour que `tree.yaml` — jamais le champ `title`
+réel de l'objet (`Requirement.title`/`TestCase.title`), écrit une seule fois à la création (souvent
+avec la valeur par défaut "Sans titre") ; (2) même le `title` corrigé, les requêtes React Query
+globales `['requirements-all', repoPath]`/`['tests-all', repoPath]` (source de `candidateObjects`
+dans `SystemView.tsx`) n'étaient invalidées nulle part après création/renommage, donc jamais
+refetchées.
+
+**Correctif** : `handleRenameNode` synchronise désormais `title` sur l'objet après renommage du
+nœud d'arbre (chemin partagé par arbre inline, vue Excel et vue Word) ; un helper
+`invalidateCandidateObjects()` invalide `requirements-all`/`tests-all` partout où un titre est créé
+ou modifié (`SystemView.tsx` et `createItemObject` dans `SystemViewContext.tsx`). Correctif ciblé
+sur la synchro et les invalidations manquantes, pas de refactoring du flux de sauvegarde existant.
+
+Reproduit et vérifié corrigé dans l'app buildée (Playwright + Electron) : renommage d'un objet →
+`requirements/SYS-0001.yaml` mis à jour, dropdown de recherche de lien reflète immédiatement le
+nouveau titre. Détails complets dans `specs/T136.md`.
+
+---
+
+### T132 — popup édition composant : titre figé sur "Renommer `<nom du repo>`"
+
+**Contexte** : la popup d'édition d'un composant (`NodeEditModal`, `StructureTab.tsx`) — qui permet
+label, description, rôles exposés et interfaces implémentées, pas seulement un renommage — affichait
+le titre "Renommer {{name}}" interpolé avec le nom du **repo** (`target.repoLabel`), pas celui du
+composant réellement édité. Pour la racine du workspace, le titre affichait donc "Renommer Polenta"
+quel que soit le composant en cours d'édition (bug annexe déjà repéré en marge de T131).
+
+**Correctif** : clé i18n `schema.structureTab.renameTitle` (paramétrée) remplacée par
+`editNodeTitle`, texte statique "Éditer le composant" / "Edit component" (`fr.json`/`en.json`),
+`NodeEditModal` mis à jour en conséquence. Correctif ciblé sur le titre de la popup, pas de
+renommage des clés voisines (`renameRepo`, `renameComponent`, libellés de menu distincts et
+corrects tels quels). Détails complets dans `specs/T132.md`.
+
+---
+
+### T131 — Onglet Structure : collapse/uncollapse des composants locaux imbriqués
+
+**Contexte** : dans l'onglet Structure (Modèle de données), les lignes de repo (`RepoRow`,
+`StructureTab.tsx`) avaient déjà un chevron collapse/expand, mais les lignes de composant local
+imbriqué (`LocalNodeRow`, T113/T123, profondeur illimitée via `SystemNode.children`) n'en avaient
+aucun — tout leur contenu (éléments, sous-composants locaux, dépendances imbriquées) était toujours
+rendu, rendant l'arbre très long dès que plusieurs niveaux de composants locaux étaient présents.
+
+**Implémentation (sprint 1, unique)** : `LocalNodeRow` gagne le même mécanisme que `RepoRow` — état
+`open` local (`useState`, défaut `true` à toute profondeur, contrairement au `depth < 2` de
+`RepoRow`, pour ne masquer aucun contenu déjà visible sans action de l'utilisateur), chevron
+`ChevronDown`/`ChevronRight`, clic sur la ligne pour basculer, `stopPropagation` ajouté sur le
+crayon et sur `ConfirmDelete` (enveloppé d'un `<span className="shrink-0">` pour préserver son
+comportement dans la ligne flex) pour ne pas déclencher le toggle. État non persisté, cohérent avec
+`RepoRow` et `ElementTree` (Vue Système). Détails complets dans `specs/T131.md`,
+`specs/T131-design.md`, `specs/T131-tests.md`, `specs/T131-sprint1.md`.
+
+Vérifié dans l'app réelle (build + pilotage Playwright) : composant local → sous-composant local
+imbriqué → élément, collapse/expand fonctionnel à tous les niveaux, aucune régression sur les
+actions de la ligne (`+`, crayon, corbeille) ni sur `RepoRow`. `tsc --noEmit` sans erreur ; pas de
+script de lint ni de tests automatisés couvrant ce fichier.
+
+**Note annexe** (hors périmètre, non corrigée ici) : la modale d'édition d'un composant local
+affiche toujours "Renommer `<nom du repo>`" au lieu du nom du composant édité (`NodeEditModal`
+interpole `target.repoLabel`) — bug préexistant, probablement couvert par T132.
+
+---
+
+### T113 — Sous-composants locaux (même repo) comme pattern de premier ordre
+
+**Contexte** : avant ce ticket, tout `SystemNode` non-root sans entrée correspondante dans
+`polenta-repo.yaml` était traité comme une erreur "orpheline" héritée de T70 §4.5 (badge
+"⚠ non associé à un repo" + bouton Supprimer forcé dans Structure) — aucun moyen de créer
+intentionnellement un composant local (vivant dans le `schema.yaml` du repo courant, sans repo
+git séparé) depuis l'UI, "+ Composant" ne proposant que l'ajout d'une dépendance/repo séparé.
+
+**Implémentation (sprint 1, unique)** : case à cocher "Composant local" dans `AddDependencyModal`
+(masque Repo/Branche, ne laisse que Nom), badge d'erreur retiré au profit d'un mini-header par
+sous-composant local dans `StructureTab.tsx` (label, `+ élément`, renommer, supprimer),
+`handleAddLocalComponent` ajoute directement un `SystemNode` à `schema.yaml` sans passer par
+`polenta-repo.yaml`/git. Nouveau combobox "Sous-composant" dans `SystemPanel.tsx` (masqué si un
+seul `SystemNode`) pour naviguer entre plusieurs sous-composants locaux d'un même repo dans la Vue
+Système. Bug de préfixe d'ID trouvé et corrigé en testant ce combobox : `nextId()`/`nextTestId()`
+résolvaient le préfixe par nom de type seul (à plat) plutôt que scopé par nœud, retombant
+systématiquement sur le premier nœud du repo dès que deux sous-composants partageaient un nom de
+type — corrigé via `findObjectTypeDef()` (`schema-lookup.util.ts`). Détails complets dans
+`specs/T113.md`, `specs/T113-design.md`, `specs/T113-tests.md`, `specs/T113-sprint1.md`.
+
+**Évolution ultérieure** : la distinction « composant » / « sous-composant local » introduite ici
+s'est révélée sans raison fonctionnelle d'être — [[T123]] l'a fusionnée dans un modèle unique où
+n'importe quel composant (local ou repo séparé) peut imbriquer d'autres composants et
+exposer des rôles/interfaces ; [[T129]] a ensuite fusionné le combobox "Sous-composant" introduit
+ici avec les combobox "Composant"/"Élément" en un seul combobox filtrable.
+
+Vérifié dans l'app réelle (build + pilotage automatisé) : création d'un sous-composant local sans
+badge d'erreur, combobox "Sous-composant" listant les bons nœuds, ID généré avec le bon préfixe
+selon le sous-composant sélectionné. `tsc --noEmit` sans erreur.
+
+---
+
+### T129 — Vue Système : fusionner les comboboxes "Composant" et "Élément" en un seul combobox filtrable
+
+**Évolution** (retour utilisateur, discuté en conversation) : sélectionner le contexte d'édition de
+la Vue Système demandait deux actions séquentielles obligatoires — combobox Composant, puis
+combobox Élément (`selectedTypeId` n'avait pas de valeur par défaut, donc choisir un composant sans
+choisir ensuite un type ne menait à rien d'exploitable). Fusionnés en un seul combobox filtrable par
+texte libre, une entrée = une paire (`SystemNode`, `ObjectTypeDefinition`).
+
+**Décisions actées avant implémentation** : pas de chemin hiérarchique façon explorateur de fichiers
+pour la partie inter-repo (le workspace autorise des dépendances diamant — `DiamondConflict`,
+`polenta-workspace.ts` — donc un composant partagé entre repos n'a pas de chemin canonique unique ;
+le chemin `›` de T123 reste utilisé, lui, pour l'imbrication locale, un arbre strict sans cette
+ambiguïté). Groupement par repo conservé (identique à T120). Un `SystemNode` sans type configuré
+n'a aucune entrée dans le combobox fusionné — invisible depuis la Vue Système, géré via l'onglet
+Structure.
+
+**Implémentation (sprint 1, unique)** : nouveau composant `ComponentTypeCombobox.tsx` (modelé sur
+`BranchCombobox.tsx` — input double affichage/filtre + dropdown en portail `document.body` pour
+échapper au panneau `overflow-hidden`), nouveau `componentTypeOptions` dans `SystemViewContext.tsx`
+(fan-out de `componentOptions` × types de chaque nœud, réutilisant `findSystemNode`/
+`flattenSystemNodes` de T123), remplace les deux `<select>` de `SystemPanel.tsx`.
+
+**Revue de code (`/code-review --effort high`)** : 4 bugs confirmés et corrigés — (1) l'identité
+d'entrée initialement prévue comme clé `` `${repo}::${node}::${type}` `` était collision-prone (noms
+de repo/nœud sans restriction de caractères, même leçon que l'ancien combobox Composant avant T120)
+→ repassée à une identité par position dans le tableau ; (2) cliquer dans le champ pendant la frappe
+(ex. repositionner le curseur) effaçait la recherche en cours → le reset ne se fait plus que sur la
+transition fermé→ouvert ; (3) l'état vide global était inatteignable (un `<input disabled>` ne peut
+jamais ouvrir son dropdown) et le mauvais message était réutilisé pour "recherche sans résultat" →
+placeholder dédié + `common.noResults` ; (4) la ligne surlignée au clavier ne défilait jamais dans
+la vue → `scrollIntoView`. Deux points d'efficacité/duplication identifiés mais non corrigés
+(porteraient sur un hook partagé ou d'autres composants, hors périmètre) — documentés dans
+`specs/T129-sprint1.md` comme candidats à un ticket de suivi.
+
+Vérifié dans l'app réelle (driver Playwright) : champ unique, ouverture au focus, filtrage substring
+insensible à la casse, état "Aucun résultat", navigation clavier + Entrée chargeant le bon contexte,
+clic pendant la frappe sans effacement de la recherche. `tsc --noEmit` sans erreur. Détails complets
+dans `specs/T129.md`, `specs/T129-design.md`, `specs/T129-tests.md`, `specs/T129-sprint1.md`.
+
+---
+
+### T123 — Un composant local a les mêmes capacités qu'un composant en repo séparé (imbrication + interfaces)
+
+**Évolution** (retour utilisateur direct sur le cadrage initial) : la distinction « composant » /
+« sous-composant local » introduite par T113 n'a pas de raison fonctionnelle d'être — un composant
+est un composant, qu'il vive dans le `schema.yaml` du repo courant (local) ou dans son propre repo
+séparé (`polenta-repo.yaml`). Ce ticket fusionne l'ancien T124 (interfaces sur composant local,
+retiré, absorbé ici) et livre deux axes : (1) un composant local peut imbriquer d'autres composants
+locaux, profondeur non limitée ; (2) n'importe quel composant (root compris) peut exposer des
+rôles et/ou implémenter des interfaces — capacité auparavant réservée aux repos séparés.
+
+**Sprint 1 — fondation** : nouveau module partagé `packages/types/src/schema-tree.ts`
+(`findSystemNode`/`mapSystemNode`/`flattenSystemNodes`, recherche/traversée récursive de
+`SystemNode`, importable du process main comme du renderer). `SystemNode` gagne `children`
+(imbrication) et `roles`/`implements` (déplacés depuis `ProjectSchema`, dépréciée). `addNode`/
+`add_component` (MCP) acceptent un `parentName` optionnel. Migration additive (jamais destructive)
+de `roles`/`implements` au premier chargement d'un `schema.yaml` legacy. **Bug critique trouvé en
+vérification manuelle** (même classe que celui trouvé indépendamment par T126 sur la même ligne de
+code, quelques jours plus tard) : `@polenta/types` jamais bundlé côté process main d'Electron —
+corrigé dans `electron.vite.config.ts`.
+
+**Sprint 2 — UI Structure** : `StructureTab.tsx` rendu récursif des composants locaux
+(`LocalNodeRow`), action « + Composant local » sur chaque ligne, suppression en cascade avec
+confirmation pluralisée mentionnant le nombre de sous-composants. `Selection`/`NodeEditTarget`
+identifient un `SystemNode` par son nom plutôt que sa position de tableau (une position ne suffit
+plus une fois l'imbrication possible). Vérifié dans l'app réelle : imbrication sur 3 niveaux,
+`schema.yaml` conforme, suppression en cascade correcte.
+
+**Sprint 3 — interfaces sur `SystemNode`** : `roles`/`implements` éditables depuis la même popup
+pour n'importe quel composant (root ou local, imbriqué ou non) — nouveau composant partagé
+`RolesImplementsFields.tsx` (`RolesExposedFields`/`ImplementedInterfacesFields`, extrait
+d'`AddDependencyModal.tsx`). `SchemaService.save()` maintient un miroir automatique
+`SystemNode.root` → niveau racine du fichier à chaque sauvegarde, pour que
+`workspace-tree.service.ts`/`interface-compliance.service.ts` (lecteurs directs du fichier, sans
+passer par `SchemaService`) restent corrects sans être migrés dans ce sprint. Combobox
+« Composant » (Vue Système) libellé en chemin `Parent › Enfant` pour un composant imbriqué.
+Vérifié dans l'app réelle : ajout d'un rôle sur un composant local → badge « Interface » →
+`schema.yaml` conforme (écrit sur le node, pas au niveau fichier) ; popup de self-edit de `root`
+strictement identique à celle d'un composant local.
+
+**Sprint 4 (final) — matrice de conformité + SPEC** : `interface-compliance.service.ts` réécrit à
+la granularité composant (`SystemNode`) au lieu de repo entier — `listAllComponents`/
+`findApprovedReqsForNode`/`findLinksForNode` filtrent par `objectTypeRef` puisque
+`RequirementsIndexService` n'a pas de notion de composant ; nom d'affichage qualifié
+(`repo › ancêtres › node`) pour éviter toute collision entre deux repos différents. SPEC mises à
+jour : `SPEC-TEMPLATES.md` §3/§3a-3b réécrites pour le modèle unifié, `SPEC-SYSTEM-VIEW.md`,
+`SPEC-MCP-SERVER.md`, `SPEC-FORKS-BRANCHES-BASELINES.md`, `SPEC-REQ-requirements.md`,
+`SPEC-INDEX.md`. Vérifié dans l'app réelle : création d'exigence bout en bout sur un composant
+imbriqué à profondeur 2 (bon préfixe d'ID), combobox en chemin, page Conformité interfaces sans
+régression.
+
+**Limitations documentées, non résolues (hors scope)** : collision de nom possible entre deux
+composants locaux interface de même nom dans deux repos différents (`ImplementsDeclaration
+.interface` reste un nom simple, pas un chemin qualifié) ; le sourcing du champ `roles` d'une
+exigence (`EditView`/`DynamicField`) reste limité au composant `root` — à traiter avec T126, qui
+touche le même mécanisme ; `checkComponentCoverage` reste à la granularité repo (aucun appelant
+actuel côté renderer).
+
+**Fusion vers `master`** : la branche T123 a divergé de `master` pendant son développement — T126
+(développé en parallèle, indépendamment) a touché les mêmes fichiers
+(`interface-compliance.service.ts`, `electron.vite.config.ts`, `schema.ts`, plusieurs SPEC) avec
+des correctifs se recoupant partiellement (le même bug de bundler `@polenta/types`, trouvé et
+corrigé indépendamment de chaque côté). Conflits de merge résolus manuellement en conservant la
+restructuration T123 (granularité composant) tout en réappliquant le correctif CSV/tableau T126
+(`parseMultiEnumValue`) par-dessus. `pnpm typecheck` (desktop/web/api-client) : 0 erreur après
+fusion.
+
+---
+
+### T126 — Compléter le support du type de champ `multi_enum` dans tous les écrans d'édition
+
+**Évolution** : le type de champ `multi_enum` (« liste à choix multiple », T110) n'était rendu en
+cases à cocher que dans `EditView.tsx` (Vue Système) — `DynamicField.tsx` (8 écrans détail/création
+req/test/campagne) et l'édition inline de `WordView.tsx`/`ExcelView.tsx` retombaient sur un champ
+texte libre éditant directement la chaîne CSV brute. La spécialisation du champ `roles` (options
+sourcées depuis le catalogue de rôles du repo, `ProjectSchema.roles`) n'était disponible que dans
+la Vue Système. Un bug latent de désérialisation (cast `as string[]` sur une valeur en réalité
+stockée en chaîne CSV) affectait aussi la matrice de conformité interfaces.
+
+**Ajout — sprint 1** : fonctions partagées `parseMultiEnumValue`/`serializeMultiEnumValue`
+(`packages/types/src/schema.ts`) centralisant le format CSV. Nouveau composant partagé
+`MultiEnumCheckboxes.tsx`, utilisé par `DynamicField.tsx` (nouveau) et `EditView.tsx` (migré, plus
+de duplication de rendu). Catalogue de rôles câblé sur les 8 écrans détail/création (`schema` déjà
+chargé partout — aucune requête réseau supplémentaire). Correctif du bug CSV/tableau dans
+`interface-compliance.service.ts` (nouvelle méthode `rolesApplicable`, cast supprimé). **Bug
+critique trouvé en vérification manuelle** (absent de `/code-review` et de `tsc`, qui ne peuvent
+pas détecter une erreur de configuration du bundler) : `@polenta/types` n'était jamais bundlé côté
+process `main` d'Electron (aliasé à sa source TS brute, tous les imports précédents étant
+`import type`, effacés à la compilation) — le premier import de valeur réel
+(`parseMultiEnumValue`) aurait fait planter l'app buildée au démarrage. Corrigé dans
+`electron.vite.config.ts` (`externalizeDepsPlugin({ exclude: ['@polenta/types'] })`).
+
+**Ajout — sprint 2 (final)** : nouveau composant partagé `MultiEnumPopover.tsx` — popover à cases à
+cocher ancré sur la cellule/le champ cliqué, branché dans `ExcelView.tsx` (Vue Tableau) et
+`WordView.tsx` (Vue Document, plomberie popover absente avant ce sprint). Règle du champ `roles`
+extraite en `resolveMultiEnumOptions` (3e occurrence dupliquée). `specs/SPEC-REQ-requirements.md`
+§3.2/§3.2d mis à jour.
+
+**Revue de code (8 angles, par sprint)** : sprint 1 — 3 findings, 2 corrigés (garde défensive
+`parseMultiEnumValue` contre une donnée déjà en tableau ; extraction `MultiEnumCheckboxes` pour
+éliminer une duplication). Sprint 2 — 6 findings, 4 corrigés : deux bugs réels (Échap ne fermait
+pas le popover ; re-cliquer sur la cellule/le champ déjà ouvert ne le refermait pas, faute de
+l'attribut `data-multi-enum-popover` sur le déclencheur — présent dans le mauvais gabarit de
+référence copié au départ) et deux réductions de duplication (`useProjectSchema` au lieu d'une
+`useQuery` locale sans `staleTime` ; `resolveMultiEnumOptions` partagé).
+
+**Vérification manuelle** (app réelle buildée, pilotage Playwright `_electron`, workspace jetable) :
+sprint 1 a révélé le bug critique de bundler ci-dessus. Sprint 2 a confirmé le popover, le
+catalogue de rôles, le toggle-fermeture, la fermeture par Échap et la persistance après redémarrage
+complet de l'app dans les deux vues tabulaires.
+
+---
+
+### T128 — Bug : contenu de fin de richtext tronqué ~1s après édition d'une liste
+
+**Reproduction rapportée** : dans la Vue Excel (`ExcelView.tsx`), ajouter une ligne dans
+une liste richtext (ex. sortir de la liste en tapant Entrée deux fois, ce qui crée un
+paragraphe vide en fin de document) : environ une seconde plus tard, le curseur saute en
+fin de document et ce contenu de fin vient de disparaître.
+
+**Root cause** : `autoSaveMutation.onSuccess` (`SystemView.tsx`) appelait
+`qc.invalidateQueries(...)` sans l'attendre, puis effaçait immédiatement
+`pendingEdits` (`clearPendingEditsFor`). Pendant la fenêtre entre les deux, `objects`
+retombe brièvement sur la donnée serveur pré-sauvegarde (plus de `pendingEdits` pour la
+masquer) — un changement de valeur que l'effet de resynchronisation externe de
+`RichTextField.tsx` (voir T125, qui protège contre l'écho de sa propre édition mais pas
+contre un changement réellement différent) traite comme légitime et réinjecte via
+`setContent`. Un paragraphe vide en fin de document n'ayant aucune représentation
+markdown (contrairement à un item de liste vide, qui survit grâce à son marqueur
+explicite), il disparaît au passage — d'où le contenu tronqué et le saut de curseur.
+
+**Correctif** : `apps/desktop/src/renderer/components/system/SystemView.tsx`,
+`autoSaveMutation.onSuccess` — les deux `invalidateQueries` sont désormais attendus
+(`await Promise.all([...])`) avant `clearPendingEditsFor`, fermant la fenêtre de course.
+
+**Hors scope signalé** : le même motif (`invalidateQueries` non attendu suivi d'un clear
+de pending state) existe aussi dans la mutation de transition de statut de
+`SystemView.tsx` — non corrigé ici car le champ `status` n'est pas édité via
+`RichTextField` (pas de perte de curseur/contenu observable de la même façon).
+
+**Vérification** : reproduit de façon intermittente sur le code d'avant correctif (le
+délai exact entre la dernière frappe et la vérification détermine si la fenêtre de
+course est atteinte), jamais reproduit après correctif sur plusieurs essais avec le même
+scénario/timing — validé en pilotant l'app réelle (build + Playwright `_electron`, driver
+`run-desktop`), pas seulement par lecture de code. `npx tsc --noEmit` propre. Corrigé
+directement sur `master` (pas de worktree dédié — ticket signalé en chat, corrigé dans la
+continuité de la conversation). Détails dans `specs/T128.md`.
+
+---
+
+### T125 — Bug : curseur qui saute dans l'édition richtext de la Vue Excel (après collage)
+
+**Reproduction rapportée** : dans la Vue Excel (`ExcelView.tsx`), coller du contenu
+(Ctrl+V) dans le popover d'édition richtext d'une cellule faisait sauter le curseur à une
+position inattendue peu après le collage.
+
+**Root cause** : l'effet de resynchronisation externe de `RichTextField.tsx` (déclenché
+sur changement de la prop `value`) comparait la valeur reçue à un `getMarkdown()`
+recalculé à la volée. Or chaque frappe/collage fait redescendre ce même contenu comme
+nouvelle prop `value` via `pendingEdits` (écho immédiat de l'édition, pas un changement
+externe), et le round-trip parse→sérialisation de `tiptap-markdown` n'étant pas une
+identité stricte, un collage y est particulièrement exposé (tableaux, ponctuation
+échappée...). Le moindre mismatch déclenchait un `setContent(value, false)` inutile qui
+réinitialise la sélection ProseMirror.
+
+**Correctif** : `apps/desktop/src/renderer/components/RichTextField.tsx` — ajout d'un
+`lastEmittedValueRef` qui retient le markdown que le champ vient lui-même d'émettre ;
+l'effet de resynchronisation l'ignore désormais quand la prop entrante n'est que l'écho
+de sa propre édition, et ne touche à la sélection que pour un changement réellement
+externe.
+
+**Vérification** : reproduit sur le code d'avant correctif (coller au milieu d'un
+paragraphe puis taper un caractère → le caractère atterrit en bout de document) ; plus de
+saut de curseur après correctif, même scénario — validé en pilotant l'app réelle (build +
+Playwright `_electron`, driver `run-desktop`). `npx tsc --noEmit` propre. Corrigé
+directement sur `master` (pas de worktree dédié — ticket signalé en chat, corrigé dans la
+continuité de la conversation). Détails dans `specs/T125.md`.
+
+---
+
+### T127 — Bug : édition richtext perdue en naviguant vers Dashboard (ou tout autre panneau de l'ActivityBar)
+
+**Reproduction rapportée** : dans la Vue d'édition (`EditView`), modifier un champ richtext
+puis cliquer directement sur l'icône "Dashboard" de l'ActivityBar (sans passer par le
+bouton "Retour") faisait disparaître la modification.
+
+**Root cause** : deux mécanismes de persistance coexistent dans `EditView.tsx` — un
+`onBlur` immédiat pour la plupart des types de champ, et un miroir local
+(`localValuesRef`) flushé explicitement par `handleBack` (bouton "Retour") pour les
+autres. Le champ `richtext` (`FieldControl`, cas `case 'richtext':`) ne câble aucun
+`onBlur` — sa seule voie de persistance était ce flush explicite. Or la navigation via
+l'ActivityBar (`ActivityBar.tsx` → `AppLayout.handleSelectPanel` → `navigate({...})`)
+change directement de route et démonte `SystemView`/`EditView` sans jamais appeler
+`onBack`/`handleBack` : le miroir local était perdu avec le composant, sans sauvegarde.
+
+**Correctif** : `apps/desktop/src/renderer/components/system/EditView.tsx` — ajout d'un
+effet de nettoyage qui s'exécute au démontage d'`EditView`, quelle qu'en soit la cause,
+et rejoue le même `onFlushValues(localValuesRef.current)` que le bouton "Retour".
+`onFlushValues` est lu depuis un ref pour que l'effet reste "mount-once" (le cleanup ne
+doit s'exécuter qu'au vrai démontage, pas à chaque changement d'identité de la prop).
+Effet de bord accepté : si "Retour" est cliqué juste avant démontage, le flush s'exécute
+deux fois avec les mêmes valeurs — `handleFlushEditValues` ne réenvoie que si une
+différence avec le serveur existe, donc au pire un PATCH redondant mais idempotent, pas
+de perte ni corruption. Pas de flag "déjà flushé" ajouté pour éviter ça : un tel flag
+devrait être réinitialisé à chaque nouvelle frappe/changement d'objet édité, ajoutant de
+la complexité pour économiser un appel réseau rare et sans conséquence.
+
+**Hors scope signalé** : le même défaut existe potentiellement pour la navigation vers un
+objet lié via `LinksSection`/`navigateToObject` quand `viewMode` reste `'edit'`
+(`handleGoBack` avec historique) — `EditView` n'est alors pas démonté, donc ce correctif
+(basé sur le démontage) ne s'y applique pas. Non reproduit par l'utilisateur, non traité
+ici (correctif minimal).
+
+**Vérification** : `npx tsc --noEmit` propre sur `apps/desktop`. Validation UI bout-en-
+bout via le driver Playwright (`run-desktop`) tentée mais non aboutie — la création d'un
+objet persisté avec champ richtext dans un projet de test butait sur un flux de création
+d'objet sans rapport avec ce bug (l'objet n'est créé côté serveur qu'au blur du champ
+"title", absent d'EditView qui n'affiche que "Nom") ; correctif validé par lecture de
+code et typecheck, avec scénario de test manuel documenté dans `specs/T127.md`. Corrigé
+directement sur `master` (pas de worktree dédié — ticket signalé en chat, corrigé dans la
+continuité de la conversation).
+
+---
+
+### T116 — Centralisation et uniformisation du thème (dark/clair)
+
+**Évolution** : le thème clair/sombre reposait sur deux sources semi-dupliquées
+éditées à la main (`index.css` + `tailwind.config.js`), sans token sémantique pour
+erreur/succès/avertissement/lien — 69 fichiers `.tsx` sur 117 contournaient le système
+de tokens avec des couleurs Tailwind brutes (`slate-`, `red-`, `blue-`, `green-`,
+`white`, `black`...), avec des divergences visuelles incohérentes selon les fichiers
+pour un même sentiment (ex. 4 systèmes de statuts métier réimplémentant chacun leur
+propre palette de nuances).
+
+**Ajout — sprint 1** : nouvelle architecture `apps/desktop/src/renderer/theme.config.ts`,
+source unique des tokens de couleur (TypeScript, triplets RGB), remplaçant les deux
+sources dupliquées précédentes. Script `scripts/generate-theme-css.ts`
+(`pnpm --filter @polenta/desktop theme:generate`) régénère `index.css` et
+`tailwind.theme.generated.js` à partir de ce fichier — jamais édités à la main. 5
+sentiments × 5 variantes (`status-neutral/info/success/warning/danger`, chacun avec
+`-bg`/`-border`/`-solid`/`-fg`), plus les familles figées `activity-*` (ActivityBar,
+toujours sombre) et `print-*` (vues d'impression, toujours claires). Migration de
+`ActivityBar.tsx` et des 8 routes `print.*.tsx`.
+
+**Ajout — sprint 2** : migration des 4 systèmes de statuts métier (exigence, test,
+campagne, exécution de test — 12 fichiers) vers les tokens `status-*`, avec
+harmonisation des divergences repérées à l'audit (SKIP/BLOCKED unifiés sur
+`status-warning`, statut `review` d'exigence unifié sur ambre partout).
+
+**Ajout — sprint 3** : migration des blocs message (erreur/succès/avertissement),
+états actifs interactifs (toggle, onglet, lien, focus) et champs de formulaire — 29
+fichiers (routes, modales, panneaux `sidebar/version/*`, composants de formulaire).
+Couleurs catégorielles hors sentiment (violet = sous-composant/interface) réutilisent
+la palette `chart-series-1..8` existante (T77) plutôt que de nouveaux tokens dédiés.
+
+**Ajout — sprint 4 (final)** : migration du reste (interaction/navigation, widgets
+dashboard, tiptap/rich text, sidebar/layout, diff/impact, export) — 37 fichiers.
+Nouveau token `overlay` (noir fixe, opacité au point d'usage) pour les trames de fond
+de modale, seule famille de couleur figée non anticipée en design mais nécessaire pour
+satisfaire le critère de conformité à la lettre. Constante partagée
+`lib/objectCategoryColors.ts` extraite pour la correspondance catégorie → couleur
+catégorielle (exigence/test/campagne), dupliquée entre `StructureTab.tsx` et
+`SearchPanel.tsx` avec des couleurs jusque-là divergentes entre les deux écrans.
+Nouvelle référence `specs/SPEC-THEMING.md` (architecture, tokens, procédure d'ajout,
+grep de conformité). Grep de conformité final (critère d'acceptation 2 de `T116.md`) :
+0 résultat sur `apps/desktop/src/renderer/**/*.tsx`.
+
+**Revue de code (5 angles, par sprint)** : 7 problèmes confirmés et corrigés au total
+(hors trivialités) — dont deux régressions d'opacité clair/sombre en sprint 4
+(surlignage de lignes dans le graphe git et les vues de diff, perdues lors de la
+substitution mécanique de classes `dark:` distinctes vers un token unique) et une
+bordure de champ invalide trop peu visible (sprint 3, `border-status-danger-border`
+pâle utilisée seule sans fond, corrigée en `border-status-danger`).
+
+---
+
 ### T48 — Restreindre l'ajout de tests à une campagne aux tests approuvés
 
 **Évolution** : le panneau "Ajouter des tests" d'une campagne proposait tous les cas de
@@ -4046,5 +4804,114 @@ dans `.mcp.json`. T121 retiré de `TICKETS.md` (absorbé par ce ticket). Voir
 `specs/T122-sprint1.md`, `specs/T122-sprint2.md`, `specs/T122-sprint3.md`,
 `specs/T122-sprint4.md`, `specs/SPEC-MCP-SERVER.md`.
 **Validé par l'utilisateur, mergé sur `master`.**
+
+---
+
+### T115 — Uniformisation du style des boutons (bouton "Publier" comme référence)
+
+**Évolution** : les boutons de l'app desktop avaient des styles hétérogènes (bordures,
+couleurs, tailles) accumulés au fil des tickets, sans profil commun — contrairement au
+bouton "Publier" qui servait de référence implicite sans être formalisé.
+
+**Correctif** : 6 profils de classes CSS dans `index.css` — `.btn-primary`/`.btn-secondary`/
+`.btn-danger`, chacun décliné en taille standard et compacte (`-sm`), plus `.btn-icon` et
+`.btn-close` pour les boutons icône seule et de fermeture de modale. "Publier" reste
+`.btn-primary-sm`, avec `shadow` comme seul override toléré dans toute l'app (vérifié par
+grep). Sprint 1 : migration d'environ 50 sites vers les 6 profils colorés. Sprint 2 :
+`.btn-icon`/`.btn-close` (VersionPanel ×4, TestsPanel, RequirementsPanel,
+ReorderableSidebarSection, 2 modales d'édition) et remplacement de 3 liens-action
+hardcodés en bleu (`text-blue-600`) par le token de thème `text-prim`.
+
+**Hors scope** (acté en Design, non traité) : éléments de menu déroulant/contextuel à
+action discrète et lignes de sélection de combobox/liste (~25-30 sites hétérogènes) — à
+considérer comme ticket de suivi séparé si souhaité. Deux boutons icône à état conditionnel
+(`baseline.tsx:121`, `VersionImpactSelector.tsx:247` — couleur au survol pilotée par
+`group-hover`/`isActive`) volontairement non migrés vers `.btn-icon` (pas de simples
+variantes de couleur statique).
+
+**Fichiers modifiés** : `apps/desktop/src/renderer/index.css` et ~60 sites de `className`
+à travers composants/routes (voir `specs/T115-sprint1.md`/`T115-sprint2.md` pour la liste
+complète) ; `specs/SPEC-ELECTRON-DESKTOP.md` (nouvelle §19.14 Système de classes de
+boutons), `specs/SPEC-INDEX.md`.
+
+**Vérification** : `pnpm typecheck` (`apps/desktop`) — 0 erreur à chaque sprint et après
+merge sur `master`. Aucune modification de logique métier (diff limité à `index.css` et
+aux `className`). Testé manuellement dans l'app réelle (projet créé à la volée, build +
+pilotage automatisé) après merge : bouton "Publier" confirmé seul à porter `shadow` parmi
+tous les `.btn-primary-sm` (comparaison directe avec "Ajouter un widget" au DOM), les 4
+boutons `.btn-icon` du panneau Version rendus identiques. Vérification complète des 20
+scénarios de `specs/T115-tests.md` par grep + revue de code à chaque sprint (cf.
+`T115-sprint1.md`/`T115-sprint2.md`) ; sous-ensemble golden path re-testé visuellement
+après merge (schéma de test minimal, pas d'exigences/tests/campagnes montés). Voir
+`specs/T115.md`, `specs/T115-design.md`, `specs/T115-tests.md`, `specs/T115-sprint1.md`,
+`specs/T115-sprint2.md`.
+**Validé par l'utilisateur, mergé sur `master`.**
+
+---
+
+### T111 — Internationalisation (i18n) de l'interface Polenta
+
+**Évolution** : ajouter la gestion des langues de l'UI de l'outil (menus, boutons,
+libellés, messages) — pas le contenu métier (`statement`, `rationale`, texte des
+exigences/tests, hors périmètre). Jusqu'ici l'interface était entièrement en français
+codé en dur dans le JSX, sans bibliothèque i18n ni fichier de traduction. Réglage par
+poste (comme le thème clair/sombre, `ThemeContext.tsx`), sans dépendance compte/projet.
+
+**Réalisé (4 sprints, ~150 fichiers renderer couverts)** :
+- **Sprint 1** : infrastructure `react-i18next`/`i18next`
+  (`i18n/{index.ts,useLocale.ts,locales/{fr,en}.json}`), sélecteur de langue dans
+  `AccountPanel.tsx` (bascule immédiate, pas de rechargement de fenêtre), persistance
+  `localStorage:polenta:locale`, défaut français. Coquille applicative (layout, tab bar,
+  comptes, préférences, accueil) migrée — 107 clés. `contexts/TabsContext.tsx` (titres
+  d'onglets par défaut) ajouté au périmètre en cours de sprint, trouvé en revue : sans ce
+  correctif tout nouvel onglet ouvert en anglais affichait un titre français.
+- **Sprint 2** : panneaux latéraux (Projet, Dashboard, Exigences, Recherche, Système,
+  Tests, Version) et popups d'édition Structure/Modèle de données — 378 clés au total.
+  Deux bugs de pluralisation à la main (`!== 1 ? 's' : ''`) trouvés et corrigés en
+  `_one`/`_other` i18next.
+- **Sprint 3** : Vue Système complète (Excel/Document/Édition, exigences/tests/
+  campagnes, exécution de test) — 535 clés au total. Bug de shadowing de la variable `t`
+  (boucle `.map(t => ...)` masquant le `t` de traduction) trouvé par `pnpm typecheck`
+  (`TS2349`) ; récidive de l'anti-pattern de pluralisation corrigée une deuxième fois.
+- **Sprint 4 (final)** : Dashboards/widgets, éditeur de requêtes, export, analyse
+  d'impact, baselines, arbre de versions (`/graph`, menu contextuel complet), diff, et
+  les 7 routes `print.*.tsx` (rendu des exports PDF) — 782 clés au total. Bug d'espace de
+  nommage trouvé en revue (14 sites référençant `dashboard.*` au lieu de
+  `dashboardPage.*`, aucune erreur `tsc` puisque ce sont de simples chaînes) ;
+  récidive de l'anti-pattern de pluralisation une troisième fois (7 clés, dont une
+  combinant deux quantités indépendantes en une seule clé — scindée en deux) ; deux vues
+  imprimables affichaient des valeurs d'énumération brutes (`node.status`,
+  `req.changeType`, table `TEST_RUN_STATUS_LABELS` codée en dur) au lieu des tables de
+  clés déjà utilisées par les vues interactives équivalentes ; centralisation du mapping
+  locale→tag `Intl` (`toIntlLocale()`) après duplication du même ternaire dans 3
+  fichiers, trouvée indépendamment par deux angles de revue. `specs/SPEC-I18N.md` créé
+  (architecture, convention des clés, périmètre traduit/non traduit, contrôle de
+  non-régression) et `SPEC-INDEX.md` mis à jour.
+
+**Convention établie et tenue sur les 4 sprints** : config module-scope (tableaux/objets
+hors composant React) stocke des clés de traduction jamais des littéraux résolus ;
+pluriels toujours via `_one`/`_other` (jamais de ternaire fait main) ; `<Trans>` +
+composant custom pour préserver du style inline (`<strong>`/`<code>`) sur une valeur
+interpolée ; statuts de schéma projet (`schema.yaml`) et contenu métier saisi par
+l'utilisateur jamais traduits (donnée, pas UI) — à distinguer des énums TS fixes
+(`TestRunStatus`, `ImpactAnalysisStatus`, `RequirementChangeType`) qui sont de l'UI
+Polenta et doivent l'être. Menu natif Electron non touché (hors scope du ticket).
+
+**Vérification** : `pnpm typecheck` propre après chaque sprint. Script de contrôle de
+parité des clés `fr.json`/`en.json` exécuté après chaque lot de fichiers et en
+validation finale de chaque sprint (782/782 à l'issue du sprint 4, aucune divergence) ;
+script de résolution vérifiant que chaque `t()`/`i18nKey` référencé dans le code
+correspond à une clé réellement présente dans le dictionnaire. `/code-review` (8 angles)
+exécuté sur le diff complet de chaque sprint, tous les findings CONFIRMED corrigés avant
+commit ; findings PLAUSIBLE documentés et explicitement non actionnés quand l'action
+aurait changé silencieusement du texte visible préexistant ou relevait d'un
+refactoring hors périmètre d'une extraction de chaînes pure. Non testé interactivement
+dans l'environnement de développement (pas d'affichage Electron attachable) — vérification
+statique uniquement à chaque sprint, en attente de validation manuelle humaine bout-en-
+bout (bascule FR/EN sur l'app réelle) avant merge. Voir `specs/T111.md`,
+`specs/T111-design.md`, `specs/T111-tests.md`, `specs/T111-sprint1.md`,
+`specs/T111-sprint2.md`, `specs/T111-sprint3.md`, `specs/T111-sprint4.md`,
+`specs/SPEC-I18N.md`. **Implémentation complète sur la branche `T111` — en attente de
+revue et de merge vers `master` par l'utilisateur.**
 
 ---

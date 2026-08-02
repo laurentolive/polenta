@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Tag, Layers, ChevronDown, ChevronRight, RefreshCw, CircleCheck, CircleAlert, Plus, Trash2, Search } from 'lucide-react'
@@ -6,6 +7,8 @@ import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { ViewHeader } from '../components/layout/ViewHeader'
+import { useModalHotkeys } from '../hooks/useModalHotkeys'
+import { toIntlLocale } from '../i18n/useLocale'
 import type { BaselineRecord, BaselineComponentRef, SyncStatus } from '@polenta/api-client'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
@@ -53,23 +56,27 @@ interface RepoReadiness {
  * (staged/unstaged) bloque encore la création. Le repo n'a plus besoin d'être sur sa branche
  * d'intégration configurée (T79 le bloquait ; incompatible avec ce besoin).
  */
-function readinessIssue(r: RepoReadiness): string | null {
+/** T111 — retourne une clé de traduction (convention module-scope), résolue via t()
+ *  par l'appelant. */
+function readinessIssueKey(r: RepoReadiness): string | null {
   if (r.loading) return null
-  if (!r.status) return 'état illisible'
-  if (r.status.staged.length + r.status.unstaged.length > 0) return 'modifications en attente'
+  if (!r.status) return 'baselinePage.readiness.unreadableState'
+  if (r.status.staged.length + r.status.unstaged.length > 0) return 'baselinePage.readiness.pendingChanges'
   return null
 }
 
 function RepoReadinessRow({ readiness }: { readiness: RepoReadiness }) {
-  const issue = readinessIssue(readiness)
+  const { t } = useTranslation()
+  const issueKey = readinessIssueKey(readiness)
+  const issue = issueKey ? t(issueKey) : null
   return (
     <li className="flex items-center gap-2 px-2 py-1 text-xs">
       {readiness.loading ? (
         <span className="w-3.5 h-3.5 shrink-0" />
       ) : issue ? (
-        <CircleAlert size={14} className="text-red-500 shrink-0" />
+        <CircleAlert size={14} className="text-status-danger shrink-0" />
       ) : (
-        <CircleCheck size={14} className="text-green-600 shrink-0" />
+        <CircleCheck size={14} className="text-status-success shrink-0" />
       )}
       <span className="font-mono text-ink truncate">{readiness.node.name}</span>
       {!readiness.loading && readiness.status && (
@@ -77,18 +84,18 @@ function RepoReadinessRow({ readiness }: { readiness: RepoReadiness }) {
           className="text-ink-3 font-mono truncate"
           title={
             readiness.integrationBranch && readiness.status.branch !== readiness.integrationBranch
-              ? `Branche d'intégration configurée : "${readiness.integrationBranch}"`
-              : 'Branche courante'
+              ? t('baselinePage.readiness.integrationBranchConfigured', { branch: readiness.integrationBranch })
+              : t('baselinePage.readiness.currentBranch')
           }
         >
           {readiness.status.branch}
           {readiness.integrationBranch && readiness.status.branch !== readiness.integrationBranch && (
-            <span className="text-amber-500"> (hors intégration)</span>
+            <span className="text-status-warning"> {t('baselinePage.readiness.outOfIntegration')}</span>
           )}
         </span>
       )}
       <span className="ml-auto text-ink-3 truncate">
-        {readiness.loading ? '…' : issue ?? 'prêt'}
+        {readiness.loading ? '…' : issue ?? t('baselinePage.readiness.ready')}
       </span>
     </li>
   )
@@ -97,6 +104,7 @@ function RepoReadinessRow({ readiness }: { readiness: RepoReadiness }) {
 // ── BaselineItem (collapsible) ────────────────────────────────────────────────
 
 function BaselineItem({ baseline, onDelete }: { baseline: BaselineRecord; onDelete: (baseline: BaselineRecord) => void }) {
+  const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
 
   return (
@@ -113,13 +121,13 @@ function BaselineItem({ baseline, onDelete }: { baseline: BaselineRecord; onDele
           {baseline.message && <span className="text-ink-3 truncate">{baseline.message}</span>}
         </button>
         <span className="text-ink-3 font-sans shrink-0">
-          {new Date(baseline.createdAt).toLocaleDateString('fr-FR')}
+          {new Date(baseline.createdAt).toLocaleDateString(toIntlLocale(i18n.language))}
         </span>
         <button
           type="button"
           onClick={() => onDelete(baseline)}
-          className="p-1 rounded text-ink-3 hover:text-red-500 hover:bg-hover transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-          title="Supprimer la baseline"
+          className="p-1 rounded text-ink-3 hover:text-status-danger hover:bg-hover transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+          title={t('baselinePage.deleteBaselineTitle')}
         >
           <Trash2 size={12} />
         </button>
@@ -131,7 +139,7 @@ function BaselineItem({ baseline, onDelete }: { baseline: BaselineRecord; onDele
             <li key={comp.name} className="flex items-center gap-2 px-2 py-1 text-xs text-ink-3">
               <span className="font-mono truncate">{comp.name}</span>
               <span className="ml-auto flex items-center gap-1 shrink-0">
-                <Tag size={10} className="text-amber-500" />
+                <Tag size={10} className="text-status-warning" />
                 <span className="font-mono text-ink">{comp.tag}</span>
               </span>
             </li>
@@ -139,7 +147,7 @@ function BaselineItem({ baseline, onDelete }: { baseline: BaselineRecord; onDele
         </ul>
       )}
       {open && baseline.components.length === 0 && (
-        <p className="ml-6 mb-1 px-2 py-1 text-xs text-ink-3 italic">Pas de composants.</p>
+        <p className="ml-6 mb-1 px-2 py-1 text-xs text-ink-3 italic">{t('baselinePage.noComponents')}</p>
       )}
     </li>
   )
@@ -176,38 +184,40 @@ function CreateBaselineModal({
   mainTag, setMainTagOverride, message, setMessage, baselines, mainTags, tagConflictNodes, mainTagValid,
   repoPath, tagWarning, isPending, isError, errorMessage, onCreate, onClose,
 }: CreateBaselineModalProps) {
+  const { t } = useTranslation()
+  const canCreate = mainTagValid && !isPending && !!repoPath && !readinessLoading && blockingRepos.length === 0
+  useModalHotkeys(onClose, () => canCreate && onCreate(), isPending)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-3 border-b border-edge shrink-0">
-          <h2 className="text-sm font-semibold text-ink">Nouvelle baseline</h2>
+          <h2 className="text-sm font-semibold text-ink">{t('baselinePage.newBaseline')}</h2>
         </div>
 
         <div className="px-5 py-4 space-y-4 overflow-y-auto">
           <div className="rounded-lg border border-edge p-3">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="section-label">État des repos</span>
+              <span className="section-label">{t('baselinePage.repoStateLabel')}</span>
               <button
                 type="button"
                 onClick={refreshReadiness}
                 className="p-0.5 rounded text-ink-3 hover:text-ink hover:bg-hover transition-colors"
-                title="Rafraîchir"
+                title={t('baselinePage.refresh')}
               >
                 <RefreshCw size={12} />
               </button>
             </div>
             {structureError ? (
-              <p className="text-xs text-red-500 leading-snug">{structureError}</p>
+              <p className="text-xs text-status-danger leading-snug">{structureError}</p>
             ) : structureConflicts && structureConflicts.length > 0 ? (
-              <p className="text-xs text-amber-600 dark:text-amber-400 leading-snug">
-                Conflit de dépendances à résoudre avant de créer une baseline — ouvrez l'onglet
-                Structure du Modèle de données pour le résoudre.
+              <p className="text-xs text-status-warning leading-snug">
+                {t('baselinePage.dependencyConflictHint')}
               </p>
             ) : readinessLoading ? (
-              <p className="text-xs text-ink-3 italic">Vérification…</p>
+              <p className="text-xs text-ink-3 italic">{t('baselinePage.checking')}</p>
             ) : (
               <ul className="space-y-0.5">
                 {repoReadiness.map(r => (
@@ -216,14 +226,14 @@ function CreateBaselineModal({
               </ul>
             )}
             {!structureError && !structureConflicts?.length && !readinessLoading && blockingRepos.length > 0 && (
-              <p className="mt-1.5 text-xs text-red-500 leading-snug">
-                Création bloquée : {blockingRepos.length} repo(s) avec des modifications en attente.
+              <p className="mt-1.5 text-xs text-status-danger leading-snug">
+                {t('baselinePage.creationBlocked', { count: blockingRepos.length })}
               </p>
             )}
           </div>
 
           <div className="rounded-lg border border-edge p-3">
-            <label className="block text-xs text-ink-3 mb-1">Tag repo principal</label>
+            <label className="block text-xs text-ink-3 mb-1">{t('baselinePage.mainRepoTagLabel')}</label>
             <input
               type="text"
               value={mainTag}
@@ -232,37 +242,37 @@ function CreateBaselineModal({
               className="w-full input-field text-xs py-1 font-mono"
             />
             {baselines.some(b => b.tag === mainTag.trim()) && (
-              <p className="mt-1 text-xs text-red-500">Ce tag est déjà utilisé par une baseline existante.</p>
+              <p className="mt-1 text-xs text-status-danger">{t('baselinePage.tagAlreadyUsedByBaseline')}</p>
             )}
             {mainTags.includes(mainTag.trim()) && (
-              <p className="mt-1 text-xs text-amber-500">Ce tag git existe déjà sur le repo.</p>
+              <p className="mt-1 text-xs text-status-warning">{t('baselinePage.tagAlreadyExistsOnRepo')}</p>
             )}
             {tagConflictNodes.length > 0 && (
-              <p className="mt-1 text-xs text-amber-500">
-                Ce tag git existe déjà sur : {tagConflictNodes.map(r => r.node.name).join(', ')}.
+              <p className="mt-1 text-xs text-status-warning">
+                {t('baselinePage.tagAlreadyExistsOn', { names: tagConflictNodes.map(r => r.node.name).join(', ') })}
               </p>
             )}
           </div>
 
           <div className="rounded-lg border border-edge p-3">
-            <label className="block text-xs text-ink-3 mb-1">Message (optionnel)</label>
+            <label className="block text-xs text-ink-3 mb-1">{t('baselinePage.messageOptionalLabel')}</label>
             <textarea
               value={message}
               onChange={e => setMessage(e.target.value)}
-              placeholder="Décrire cette baseline…"
+              placeholder={t('baselinePage.describeBaselinePlaceholder')}
               rows={3}
               className="w-full input-field text-xs resize-none"
             />
           </div>
 
           {isError && (
-            <p className="text-xs text-red-500">
-              {errorMessage ?? 'Erreur lors de la création'}
+            <p className="text-xs text-status-danger">
+              {errorMessage ?? t('baselinePage.creationError')}
             </p>
           )}
 
           {tagWarning && (
-            <p className="text-xs text-amber-500 leading-snug">{tagWarning}</p>
+            <p className="text-xs text-status-warning leading-snug">{tagWarning}</p>
           )}
         </div>
 
@@ -271,17 +281,17 @@ function CreateBaselineModal({
             type="button"
             onClick={onClose}
             disabled={isPending}
-            className="text-sm px-4 py-1.5 border border-edge rounded text-ink-2 hover:text-ink transition-colors disabled:opacity-50"
+            className="btn-secondary"
           >
-            Annuler
+            {t('common.cancel')}
           </button>
           <button
             type="button"
             onClick={onCreate}
             disabled={!mainTagValid || isPending || !repoPath || readinessLoading || blockingRepos.length > 0}
-            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary"
           >
-            {isPending ? 'Création…' : 'Créer la baseline'}
+            {isPending ? t('common.creating') : t('baselinePage.createBaseline')}
           </button>
         </div>
       </div>
@@ -300,35 +310,48 @@ function DeleteBaselineModal({
   onConfirm: () => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
+  useModalHotkeys(onClose, onConfirm, isDeleting)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
       <div className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-edge">
-          <h2 className="text-sm font-semibold text-ink">Supprimer la baseline {baseline.tag} ?</h2>
+          <h2 className="text-sm font-semibold text-ink">{t('baselinePage.deleteBaselineConfirmTitle', { tag: baseline.tag })}</h2>
         </div>
         <div className="px-5 py-4 space-y-2">
           <p className="text-xs text-ink-2 leading-snug">
-            Supprime le tag <code className="text-ink-3">{baseline.tag}</code> sur le repo principal
-            {baseline.components.length > 0 && ` et sur ${baseline.components.length} composant(s)`}. Cette action est irréversible.
+            {baseline.components.length > 0 ? (
+              <Trans
+                i18nKey="baselinePage.deleteBaselineBodyWithComponents"
+                values={{ tag: baseline.tag, count: baseline.components.length }}
+                components={{ code: <code className="text-ink-3" /> }}
+              />
+            ) : (
+              <Trans
+                i18nKey="baselinePage.deleteBaselineBody"
+                values={{ tag: baseline.tag }}
+                components={{ code: <code className="text-ink-3" /> }}
+              />
+            )}
           </p>
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="text-xs text-status-danger">{error}</p>}
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-edge">
           <button
             type="button"
             onClick={onClose}
             disabled={isDeleting}
-            className="text-sm px-4 py-1.5 border border-edge rounded text-ink-2 hover:text-ink transition-colors disabled:opacity-50"
+            className="btn-secondary"
           >
-            Annuler
+            {t('common.cancel')}
           </button>
           <button
             type="button"
             onClick={onConfirm}
             disabled={isDeleting}
-            className="text-sm px-4 py-1.5 rounded bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50"
+            className="btn-danger"
           >
-            {isDeleting ? 'Suppression…' : 'Supprimer'}
+            {isDeleting ? t('campaignPage.deleting') : t('common.delete')}
           </button>
         </div>
       </div>
@@ -339,6 +362,7 @@ function DeleteBaselineModal({
 // ── BaselinePage ──────────────────────────────────────────────────────────────
 
 function BaselinePage() {
+  const { t } = useTranslation()
   const { projectId } = Route.useSearch()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -400,7 +424,7 @@ function BaselinePage() {
     loading: statusQueries[i].isLoading || integrationBranchQueries[i].isLoading || tagsQueries[i].isLoading,
   }))
   const readinessLoading = repoReadiness.length === 0 || repoReadiness.some(r => r.loading)
-  const blockingRepos = repoReadiness.filter(r => readinessIssue(r) !== null)
+  const blockingRepos = repoReadiness.filter(r => readinessIssueKey(r) !== null)
 
   function refreshReadiness() {
     // Prefix match (default react-query behavior): invalidates every repo's entry in one call.
@@ -435,7 +459,7 @@ function BaselinePage() {
       setShowCreateModal(false)
       setTagWarning(
         record.components.length < componentNodes.length
-          ? `${componentNodes.length - record.components.length} composant(s) n'ont pas pu être tagués — vérifier les logs.`
+          ? t('baselinePage.tagWarning', { count: componentNodes.length - record.components.length })
           : null,
       )
     },
@@ -468,7 +492,7 @@ function BaselinePage() {
         title={
           <span className="flex items-center gap-2">
             <Tag size={14} className="text-prim" />
-            Baselines
+            {t('layout.tabTitles.baseline')}
           </span>
         }
         actions={
@@ -476,10 +500,10 @@ function BaselinePage() {
             type="button"
             onClick={() => setShowCreateModal(true)}
             disabled={!repoPath}
-            className="btn-primary flex items-center gap-1.5 text-xs px-3 py-1.5 shadow disabled:opacity-50"
+            className="btn-primary-sm flex items-center gap-1.5"
           >
             <Plus size={12} />
-            Nouvelle baseline
+            {t('baselinePage.newBaseline')}
           </button>
         }
       />
@@ -492,7 +516,7 @@ function BaselinePage() {
               type="text"
               value={filterText}
               onChange={e => setFilterText(e.target.value)}
-              placeholder="Filtrer par tag ou message…"
+              placeholder={t('baselinePage.filterPlaceholder')}
               className="input-field w-full text-xs py-1.5 pl-7"
             />
           </div>
@@ -500,11 +524,11 @@ function BaselinePage() {
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {isLoading ? (
-            <p className="text-sm text-ink-3">Chargement…</p>
+            <p className="text-sm text-ink-3">{t('common.loading')}</p>
           ) : baselines.length === 0 ? (
-            <p className="text-xs text-ink-3 italic">Aucune baseline.</p>
+            <p className="text-xs text-ink-3 italic">{t('baselinePage.noBaseline')}</p>
           ) : filteredBaselines.length === 0 ? (
-            <p className="text-xs text-ink-3 italic">Aucune baseline ne correspond au filtre.</p>
+            <p className="text-xs text-ink-3 italic">{t('baselinePage.noBaselineMatchesFilter')}</p>
           ) : (
             <ul className="max-w-2xl divide-y divide-edge border border-edge rounded-lg overflow-hidden">
               {filteredBaselines.map(b => (

@@ -10,6 +10,11 @@ export interface PolentaRepoDependency {
   url: string
   /** Pinned commit SHA or tag. Managed by the parent repo (configuration management). */
   pin: string
+  /** T123 (follow-up) — name of a local SystemNode (in the declaring repo's own schema.yaml)
+   *  this dependency is nested under for display, so a local component can host repo-separate
+   *  components/interfaces exactly like a repo can. Absent = mounted flatly under the repo, as
+   *  before this field existed. */
+  localParent?: string
 }
 
 export interface PolentaRepoManifest {

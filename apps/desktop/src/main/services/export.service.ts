@@ -1,13 +1,4 @@
 import type { ExportFormat, ExportKind, RequirementsExportPayload, TestsExportPayload, CampaignExportPayload, QueryResultExportPayload, ImpactAnalysisExportPayload, DashboardExportPayload } from '@polenta/types'
-import { exportRequirementsXlsx } from './export/requirements.xlsx'
-import { exportRequirementsDocx } from './export/requirements.docx'
-import { exportTestsXlsx } from './export/tests.xlsx'
-import { exportTestsDocx } from './export/tests.docx'
-import { exportCampaignPlanXlsx } from './export/campaign.xlsx'
-import { exportCampaignPlanDocx, exportCampaignReportDocx } from './export/campaign.docx'
-import { exportQueryResultXlsx } from './export/query-result.xlsx'
-import { exportImpactAnalysisXlsx } from './export/impact-analysis.xlsx'
-import { exportDashboardDocx } from './export/dashboard.docx'
 import { renderKindToPdf } from './pdf.util'
 
 type Generator = (payload: unknown, destPath: string) => Promise<void>
@@ -16,17 +7,31 @@ type Generator = (payload: unknown, destPath: string) => Promise<void>
 // devienne une suite de blocs quasi identiques au fil des sprints (T43-design.md, refactorée en
 // sprint 2 quand elle a franchi le seuil "proportionné"). `payload` reste `unknown` à ce niveau,
 // chaque générateur applique lui-même son cast vers son type de payload spécifique, comme avant.
+//
+// Chaque générateur est chargé via `import()` dynamique plutôt qu'un `import` statique en haut de
+// fichier (T141) : `requirements.xlsx.ts`/`*.docx.ts` importent `exceljs`/`docx`, deux libs lourdes
+// (~380ms et ~30ms à charger) qui n'ont aucune raison d'être payées à CHAQUE démarrage de l'app —
+// `ExportService` est construit dans `container.ts` dès le boot, avant qu'aucun export n'ait été
+// demandé. Le coût est désormais différé au premier export réellement déclenché.
 const GENERATORS: Partial<Record<`${ExportKind}:${'xlsx' | 'docx'}`, Generator>> = {
-  'requirements:xlsx': (p, d) => exportRequirementsXlsx(p as RequirementsExportPayload, d),
-  'requirements:docx': (p, d) => exportRequirementsDocx(p as RequirementsExportPayload, d),
-  'tests:xlsx': (p, d) => exportTestsXlsx(p as TestsExportPayload, d),
-  'tests:docx': (p, d) => exportTestsDocx(p as TestsExportPayload, d),
-  'campaign-plan:xlsx': (p, d) => exportCampaignPlanXlsx(p as CampaignExportPayload, d),
-  'campaign-plan:docx': (p, d) => exportCampaignPlanDocx(p as CampaignExportPayload, d),
-  'campaign-report:docx': (p, d) => exportCampaignReportDocx(p as CampaignExportPayload, d),
-  'query-result:xlsx': (p, d) => exportQueryResultXlsx(p as QueryResultExportPayload, d),
-  'impact-analysis:xlsx': (p, d) => exportImpactAnalysisXlsx(p as ImpactAnalysisExportPayload, d),
-  'dashboard:docx': (p, d) => exportDashboardDocx(p as DashboardExportPayload, d),
+  'requirements:xlsx': async (p, d) =>
+    (await import('./export/requirements.xlsx')).exportRequirementsXlsx(p as RequirementsExportPayload, d),
+  'requirements:docx': async (p, d) =>
+    (await import('./export/requirements.docx')).exportRequirementsDocx(p as RequirementsExportPayload, d),
+  'tests:xlsx': async (p, d) => (await import('./export/tests.xlsx')).exportTestsXlsx(p as TestsExportPayload, d),
+  'tests:docx': async (p, d) => (await import('./export/tests.docx')).exportTestsDocx(p as TestsExportPayload, d),
+  'campaign-plan:xlsx': async (p, d) =>
+    (await import('./export/campaign.xlsx')).exportCampaignPlanXlsx(p as CampaignExportPayload, d),
+  'campaign-plan:docx': async (p, d) =>
+    (await import('./export/campaign.docx')).exportCampaignPlanDocx(p as CampaignExportPayload, d),
+  'campaign-report:docx': async (p, d) =>
+    (await import('./export/campaign.docx')).exportCampaignReportDocx(p as CampaignExportPayload, d),
+  'query-result:xlsx': async (p, d) =>
+    (await import('./export/query-result.xlsx')).exportQueryResultXlsx(p as QueryResultExportPayload, d),
+  'impact-analysis:xlsx': async (p, d) =>
+    (await import('./export/impact-analysis.xlsx')).exportImpactAnalysisXlsx(p as ImpactAnalysisExportPayload, d),
+  'dashboard:docx': async (p, d) =>
+    (await import('./export/dashboard.docx')).exportDashboardDocx(p as DashboardExportPayload, d),
 }
 
 /**

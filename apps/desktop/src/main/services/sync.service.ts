@@ -4,7 +4,8 @@ import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import git from 'isomorphic-git'
-import http from 'isomorphic-git/http/node'
+
+import http from './git-http'
 
 import type { AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
@@ -106,9 +107,21 @@ export class SyncService {
    * `urlFallback` (the dependency's declared URL from polenta-repo.yaml) is used only if the
    * local repo has no `remote` configured yet — normal repos cloned by this app always do,
    * this just avoids failing outright on a repo that was set up some other way.
+   *
+   * T154: routes non-http remotes (local path, ssh — same `isHttpRemote` check as push/pull)
+   * through the native `git` binary, for consistency with those two — isomorphic-git's transport
+   * only implements http(s). Also T154: a repo with no `remote` configured and no `urlFallback`
+   * (a purely local project — "Publier" now calls `fetch()` unconditionally before merging, see
+   * `ModificationControl.tsx`) is a no-op, not an error — there is nothing to fetch, and it must
+   * stay that way rather than blocking local-only publishing on a "network unavailable" message.
    */
   async fetch(repoPath: string, urlFallback: string, remote = 'origin'): Promise<void> {
     const remoteUrl = (await getRemoteUrl(repoPath, remote)) || urlFallback
+    if (!remoteUrl) return
+    if (!isHttpRemote(remoteUrl)) {
+      await execFileAsync('git', ['fetch', remote], { cwd: repoPath })
+      return
+    }
     const credentials = await this.auth.getHttpsCredentials(remoteUrl)
 
     await git.fetch({
@@ -119,6 +132,48 @@ export class SyncService {
       remote,
       onAuth: () => credentials ?? undefined,
     })
+  }
+
+  /**
+   * T154: fast-forwards the local `branchName` ref to match already-fetched remote-tracking refs
+   * (`refs/remotes/<remote>/<branchName>`) — does **not** fetch itself, callers must `fetch()`
+   * first (kept separate so "Publier" can do its early network-reachability check while still on
+   * the integration branch, before this ref-rewrite runs — see below). Never touches the working
+   * directory or index — safe to call regardless of which branch is currently checked out,
+   * PROVIDED it isn't `branchName` itself. `git.writeRef` only rewrites the ref file; if
+   * `branchName` were HEAD's target, the working tree/index would silently desync from the new
+   * HEAD. Callers (see "Publier" in `ModificationControl.tsx`) always invoke this only after
+   * moving off the integration branch onto a work branch.
+   *
+   * - Local `branchName` strictly behind the fetched remote tip → fast-forwarded in place.
+   * - Local has commits the remote doesn't (a previous publish whose push failed silently — T153
+   *   discussion, pre-existing and out of scope here) → left untouched, reported as `'diverged'`;
+   *   callers fall back to today's plain `mergeInto` behavior for this rare case.
+   */
+  async fastForwardBranch(
+    repoPath: string,
+    branchName: string,
+    remote = 'origin',
+  ): Promise<'up-to-date' | 'fast-forwarded' | 'diverged' | 'no-remote-branch'> {
+    const remoteRef = `refs/remotes/${remote}/${branchName}`
+    let remoteOid: string
+    try {
+      remoteOid = await git.resolveRef({ fs, dir: repoPath, ref: remoteRef })
+    } catch {
+      return 'no-remote-branch'
+    }
+
+    const localRef = `refs/heads/${branchName}`
+    const localOid = await git.resolveRef({ fs, dir: repoPath, ref: localRef })
+    if (localOid === remoteOid) return 'up-to-date'
+
+    const canFastForward = await git
+      .isDescendent({ fs, dir: repoPath, oid: remoteOid, ancestor: localOid })
+      .catch(() => false)
+    if (!canFastForward) return 'diverged'
+
+    await git.writeRef({ fs, dir: repoPath, ref: localRef, value: remoteOid, force: true })
+    return 'fast-forwarded'
   }
 
   async status(repoPath: string): Promise<SyncStatus> {
@@ -304,6 +359,39 @@ export class SyncService {
       author: { name: author.name, email: author.email },
       onAuth: () => credentials ?? undefined,
       fastForwardOnly: false,
+    })
+  }
+
+  /**
+   * T155: like `pull()`, but refuses to do anything beyond a plain fast-forward — never attempts
+   * a real 3-way merge, so it can never write conflict markers into the working directory. Used
+   * exclusively by the periodic background auto-pull (`useAutoPull.ts`): a *silent* operation the
+   * user never asked for must not be able to leave a repo mid-conflict while they're looking at
+   * something else entirely. If the branch can't fast-forward (local has unpushed commits —
+   * dirty-but-uncommitted is filtered out by the caller before this is even reached, so this is
+   * the "diverged" case from `fastForwardBranch`/T154), this throws and the caller skips this
+   * repo for the current tick, same as any other transient failure (offline, auth).
+   *
+   * A repo with no remote configured is a no-op, not an error — same reasoning as `fetch()`.
+   */
+  async pullFastForwardOnly(repoPath: string, remote = 'origin'): Promise<void> {
+    const remoteUrl = await getRemoteUrl(repoPath, remote)
+    if (!remoteUrl) return
+    if (!isHttpRemote(remoteUrl)) {
+      await execFileAsync('git', ['pull', '--ff-only', remote], { cwd: repoPath })
+      return
+    }
+    const credentials = await this.auth.getHttpsCredentials(remoteUrl)
+    const author = await this.auth.getAuthor(repoPath)
+
+    await git.pull({
+      fs,
+      http,
+      dir: repoPath,
+      remote,
+      author: { name: author.name, email: author.email },
+      onAuth: () => credentials ?? undefined,
+      fastForwardOnly: true,
     })
   }
 

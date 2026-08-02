@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { GitBranch, Hash, Tag } from 'lucide-react'
 import type { GitRef } from '@polenta/api-client'
 
@@ -24,6 +25,7 @@ function refDisplayValue(refs: GitRef[], sha: string | undefined): string {
 }
 
 export function GitRefCombobox({ refs, value, placeholder, onChange }: GitRefComboboxProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -71,7 +73,7 @@ export function GitRefCombobox({ refs, value, placeholder, onChange }: GitRefCom
             <input
               type="text"
               autoFocus
-              placeholder="Filtrer…"
+              placeholder={t('common.filterPlaceholder')}
               value={filter}
               onChange={e => setFilter(e.target.value)}
               className="w-full text-xs bg-transparent text-ink outline-none placeholder-ink-3"
@@ -79,19 +81,19 @@ export function GitRefCombobox({ refs, value, placeholder, onChange }: GitRefCom
           </div>
           <div className="overflow-y-auto flex-1">
             {localBranches.length > 0 && (
-              <RefGroup label="Branches locales" icon={<GitBranch size={10} />} items={localBranches} onSelect={sha => { onChange(sha); setOpen(false) }} />
+              <RefGroup label={t('sidebar.version.localBranches')} icon={<GitBranch size={10} />} items={localBranches} onSelect={sha => { onChange(sha); setOpen(false) }} />
             )}
             {remoteBranches.length > 0 && (
-              <RefGroup label="Branches remote" icon={<GitBranch size={10} />} items={remoteBranches} onSelect={sha => { onChange(sha); setOpen(false) }} />
+              <RefGroup label={t('sidebar.version.remoteBranches')} icon={<GitBranch size={10} />} items={remoteBranches} onSelect={sha => { onChange(sha); setOpen(false) }} />
             )}
             {tags.length > 0 && (
-              <RefGroup label="Tags" icon={<Tag size={10} />} items={tags} onSelect={sha => { onChange(sha); setOpen(false) }} />
+              <RefGroup label={t('sidebar.version.tags')} icon={<Tag size={10} />} items={tags} onSelect={sha => { onChange(sha); setOpen(false) }} />
             )}
             {commits.length > 0 && (
-              <RefGroup label="Commits récents" icon={<Hash size={10} />} items={commits} onSelect={sha => { onChange(sha); setOpen(false) }} />
+              <RefGroup label={t('sidebar.version.commits')} icon={<Hash size={10} />} items={commits} onSelect={sha => { onChange(sha); setOpen(false) }} />
             )}
             {filtered.length === 0 && (
-              <p className="text-xs text-ink-3 italic px-3 py-2">Aucun résultat</p>
+              <p className="text-xs text-ink-3 italic px-3 py-2">{t('common.noResults')}</p>
             )}
           </div>
         </div>

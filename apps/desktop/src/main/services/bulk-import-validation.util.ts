@@ -1,4 +1,5 @@
 import type { ObjectTypeDefinition, ProjectSchema, SystemNode } from '@polenta/types'
+import { findSystemNode, flattenSystemNodes } from '@polenta/types'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './maturity.util'
 
@@ -156,10 +157,11 @@ function findOwningNode(
   resolved: ObjectTypeDefinition,
 ): SystemNode | undefined {
   const nodeName = objectTypeRef.includes('::') ? objectTypeRef.split('::')[0] : undefined
+  // T123 — nodeName peut désigner un composant local imbriqué à n'importe quelle profondeur.
   if (nodeName && nodeName !== 'root') {
-    return schema.nodes.find((n) => n.name === nodeName)
+    return findSystemNode(schema.nodes, nodeName)
   }
-  return schema.nodes.find((n) => n.objectTypes?.includes(resolved))
+  return flattenSystemNodes(schema.nodes).find(({ node }) => node.objectTypes?.includes(resolved))?.node
 }
 
 /**
@@ -176,7 +178,7 @@ function findLocalNodeByRefPrefix(schema: ProjectSchema, objectTypeRef: string):
   if (!objectTypeRef.includes('::')) return undefined
   const nodeName = objectTypeRef.split('::')[0]
   if (nodeName === 'root') return undefined
-  return schema.nodes.find((n) => n.name === nodeName)
+  return findSystemNode(schema.nodes, nodeName)
 }
 
 /**

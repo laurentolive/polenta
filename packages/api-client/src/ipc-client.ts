@@ -30,10 +30,13 @@ export function createIpcClient(): ApiClient {
   return {
     app: {
       setTitle: (title) => invoke('app:set-title', title),
+      getVersion: () => invoke('app:get-version'),
     },
     schema: {
       get: (p) => invoke('schema:get', p),
       save: (p, schema) => invoke('schema:save', p, schema),
+      moveElement: (p, dto) => invoke('schema:move-element', p, dto),
+      invalidate: (p) => invoke('schema:invalidate', p),
     },
     tree: {
       get: (p, nodeId, typeId) => invoke('tree:get', p, nodeId, typeId),
@@ -82,6 +85,9 @@ export function createIpcClient(): ApiClient {
       commit: (p, m) => invoke('sync:commit', p, m),
       push: (p) => invoke('sync:push', p),
       pull: (p) => invoke('sync:pull', p),
+      fetch: (p, url, remote) => invoke('sync:fetch', p, url, remote),
+      fastForwardBranch: (p, branch, remote) => invoke('sync:fast-forward-branch', p, branch, remote),
+      pullFastForwardOnly: (p) => invoke('sync:pull-fast-forward-only', p),
       log: (p, limit) => invoke('sync:log', p, limit),
       checkoutCommit: (p, sha) => invoke('sync:checkout-commit', p, sha),
       stage: (p, f) => invoke('sync:stage', p, f),

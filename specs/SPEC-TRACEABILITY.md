@@ -61,6 +61,12 @@ Calculé depuis les liens `linkedRequirements` des TestCases et les résultats d
 > `computeCoverage()`, réutilisée telle quelle par le moteur de requête des
 > dashboards (T77, cf. [SPEC-DASHBOARDS.md](SPEC-DASHBOARDS.md) §5.3) pour exposer
 > `coverageStatus` sans dupliquer cette logique.
+>
+> **T138** : ce statut (et ces icônes) est aussi affiché par exigence individuelle dans les vues
+> Excel/Word/Édition (`coverageStatus`, champ système optionnel — cf.
+> [SPEC-SYSTEM-VIEW.md](SPEC-SYSTEM-VIEW.md) §"Configuration des champs"), via l'endpoint
+> `traceability:matrix`/`getMatrix()` déjà existant — même calcul, troisième point de consommation
+> après la matrice de traçabilité et les dashboards.
 
 ### 2.3 Statut d'exécution d'un lien (cellule de la matrice)
 

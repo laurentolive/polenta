@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type RefObject, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { Check, Plus, Trash2, Tag, GitCommitHorizontal } from 'lucide-react'
 import type { BranchInfo } from '@polenta/api-client'
 
@@ -24,6 +25,7 @@ interface FooterActionProps {
  *  (Enter to submit, Escape to cancel). Shared shape for "Nouvelle branche…" and "Checkout un
  *  commit…" (T82) — they differ only in icon/label/placeholder/validation/submit action. */
 function FooterAction({ icon, label, placeholder, show, onShow, onHide, value, onChange, onSubmit, isValid, inputRef }: FooterActionProps) {
+  const { t } = useTranslation()
   return (
     <div className="border-t border-edge-subtle">
       {!show ? (
@@ -53,8 +55,8 @@ function FooterAction({ icon, label, placeholder, show, onShow, onHide, value, o
             type="button"
             onClick={onSubmit}
             disabled={!isValid}
-            className="shrink-0 p-1 text-green-600 hover:text-green-700 disabled:opacity-30"
-            title="Valider"
+            className="shrink-0 p-1 text-status-success hover:opacity-80 disabled:opacity-30"
+            title={t('sidebar.version.validate')}
           >
             <Check size={13} />
           </button>
@@ -62,7 +64,7 @@ function FooterAction({ icon, label, placeholder, show, onShow, onHide, value, o
             type="button"
             onClick={onHide}
             className="shrink-0 p-1 text-ink-3 hover:text-ink"
-            title="Annuler"
+            title={t('common.cancel')}
           >
             ✕
           </button>
@@ -87,6 +89,7 @@ interface BranchComboboxProps {
 }
 
 export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCheckoutCommit, onDelete, onCreateNew, isPending, onOpenChange }: BranchComboboxProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -200,7 +203,7 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
         ref={inputRef}
         type="text"
         value={open ? filter : currentBranch}
-        placeholder="branche…"
+        placeholder={t('sidebar.version.branchPlaceholder')}
         readOnly={!open}
         onChange={e => setFilter(e.target.value)}
         onFocus={openDrop}
@@ -218,7 +221,7 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
         >
           <ul className="max-h-52 overflow-y-auto py-0.5">
             {filteredBranches.length === 0 && filteredTags.length === 0 && (
-              <li className="px-3 py-2 text-xs text-ink-3 italic">Aucune branche</li>
+              <li className="px-3 py-2 text-xs text-ink-3 italic">{t('sidebar.version.noBranch')}</li>
             )}
             {filteredBranches.map(b => (
               <li key={b.name} className="flex items-center group">
@@ -226,7 +229,7 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
                   type="button"
                   onClick={() => handleSelect(b.name)}
                   className={`flex-1 flex items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-hover transition-colors ${
-                    b.isCurrent ? 'text-blue-500 dark:text-blue-400' : 'text-ink'
+                    b.isCurrent ? 'text-status-info' : 'text-ink'
                   }`}
                 >
                   {b.isCurrent && <Check size={11} className="shrink-0" />}
@@ -240,8 +243,8 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
                   <button
                     type="button"
                     onClick={() => setDeleteConfirm(b.name)}
-                    className="shrink-0 px-2 py-1.5 text-ink-3 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Supprimer la branche"
+                    className="shrink-0 px-2 py-1.5 text-ink-3 hover:text-status-danger opacity-0 group-hover:opacity-100 transition-opacity"
+                    title={t('sidebar.version.deleteBranch')}
                   >
                     <Trash2 size={11} />
                   </button>
@@ -251,8 +254,8 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
                     <button
                       type="button"
                       onClick={() => { onDelete(b.name); setDeleteConfirm(null) }}
-                      className="text-[10px] text-red-600 hover:underline font-medium"
-                    >Suppr.</button>
+                      className="text-[10px] text-status-danger hover:underline font-medium"
+                    >{t('sidebar.version.deleteShort')}</button>
                     <button
                       type="button"
                       onClick={() => setDeleteConfirm(null)}
@@ -268,19 +271,19 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
               <>
                 {filteredBranches.length > 0 && (
                   <li className="px-3 pt-2 pb-0.5">
-                    <span className="text-[10px] text-ink-3 uppercase tracking-wide font-medium">Tags</span>
+                    <span className="text-[10px] text-ink-3 uppercase tracking-wide font-medium">{t('sidebar.version.tags')}</span>
                   </li>
                 )}
-                {filteredTags.map(t => (
-                  <li key={`tag:${t}`} className="flex items-center">
+                {filteredTags.map(tag => (
+                  <li key={`tag:${tag}`} className="flex items-center">
                     <button
                       type="button"
-                      onClick={() => handleSelect(t)}
+                      onClick={() => handleSelect(tag)}
                       className="flex-1 flex items-center gap-2 px-3 py-1.5 text-left text-xs font-mono text-ink hover:bg-hover transition-colors"
                     >
                       <span className="w-[11px] shrink-0" />
-                      <span className="truncate">{t}</span>
-                      <span className="ml-auto shrink-0 flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400 font-sans">
+                      <span className="truncate">{tag}</span>
+                      <span className="ml-auto shrink-0 flex items-center gap-0.5 text-[10px] text-status-warning font-sans">
                         <Tag size={9} />
                         tag
                       </span>
@@ -294,8 +297,8 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
           {/* ── Item fixe : Nouvelle branche ── */}
           <FooterAction
             icon={<Plus size={11} className="shrink-0 text-ink-3" />}
-            label="Nouvelle branche…"
-            placeholder="nom-de-branche"
+            label={t('sidebar.version.newBranch')}
+            placeholder={t('sidebar.version.branchNamePlaceholder')}
             show={showCreate}
             onShow={handleShowCreate}
             onHide={() => { setShowCreate(false); setNewName('') }}
@@ -309,8 +312,8 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
           {/* ── Item fixe : Checkout un commit (T82) ── */}
           <FooterAction
             icon={<GitCommitHorizontal size={11} className="shrink-0 text-ink-3" />}
-            label="Checkout un commit…"
-            placeholder="sha…"
+            label={t('sidebar.version.checkoutCommit')}
+            placeholder={t('sidebar.version.shaPlaceholder')}
             show={showCheckoutCommit}
             onShow={handleShowCheckoutCommit}
             onHide={() => { setShowCheckoutCommit(false); setCommitSha('') }}

@@ -11,11 +11,17 @@
 |-------|--------|
 | **1 fenêtre = 1 projet** | Une `BrowserWindow` affiche exactement un projet à la fois. Pas d'onglets, pas de split-view multi-projet. |
 | **2 projets simultanés = 2 fenêtres** | L'utilisateur ouvre une seconde instance de l'app (ou utilise "Ouvrir dans une nouvelle fenêtre"). Chaque fenêtre est indépendante. |
-| **`lastOpenedId` = dernier projet utilisé** | `workspace:mark-last-opened` est mis à jour à chaque ouverture et à chaque fermeture de projet. Il reflète le dernier projet utilisé *toutes fenêtres confondues* — cela ne pose pas de problème car au redémarrage une seule fenêtre s'ouvre et reprend ce projet. |
+| **Dernier projet utilisé** | T130 : pas de channel `workspace:mark-last-opened(id)`. Réel : `workspace:mark-recent` marque un projet comme récemment ouvert, `workspace:clear-last-opened` (sans paramètre) efface le dernier projet ouvert, `workspace:get-last-opened` le lit. Reflète le dernier projet utilisé *toutes fenêtres confondues* — cela ne pose pas de problème car au redémarrage une seule fenêtre s'ouvre et reprend ce projet. |
 
 ---
 
 ## 2. Menu natif Electron — menu "Fichier"
+
+**T130 : le menu natif est désactivé.** `main/index.ts` appelle `Menu.setApplicationMenu(null)` —
+`buildMenu()` ci-dessous n'est jamais invoqué. Les actions "Ouvrir un projet"/"Fermer le projet"
+passent par l'UI in-app (panneau Projet, `SPEC-ELECTRON-DESKTOP.md` §19.8), pas par un menu OS. La
+description qui suit reste le comportement *prévu à l'origine* si le menu natif est un jour
+réactivé — à ne pas prendre comme l'état actuel de l'application.
 
 Le menu est enregistré dans le **main process** via `Menu.buildFromTemplate`. Les actions de navigation émettent des événements vers le renderer via `win.webContents.send(channel)`.
 
@@ -53,7 +59,8 @@ export function buildMenu(win: BrowserWindow): void {
         { type: 'separator' },
         {
           label: 'Fermer le projet',
-          accelerator: 'CmdOrCtrl+W',
+          // T130 (T101) : pas d'accelerator ici — CmdOrCtrl+W est le raccourci de fermeture
+          // d'onglet côté renderer (useTabShortcuts.ts) ; un accelerator ici créerait un conflit.
           click: () => win.webContents.send('menu:close-project'),
         },
         { type: 'separator' },
@@ -78,8 +85,8 @@ Ces channels sont émis par le menu natif et reçus par le renderer via `window.
 
 | Channel | Émis par | Comportement attendu côté renderer |
 |---------|----------|-----------------------------------|
-| `menu:open-workspace` | Menu "Ouvrir un projet…" | `workspace:mark-last-opened(null)` + navigate(`/`) |
-| `menu:close-project` | Menu "Fermer le projet" | `workspace:mark-last-opened(null)` + navigate(`/`) |
+| `menu:open-workspace` | Menu "Ouvrir un projet…" (T130 : menu désactivé, voir §2) | `workspace:clear-last-opened` + navigate(`/`) |
+| `menu:close-project` | Menu "Fermer le projet" (T130 : menu désactivé, voir §2) | `workspace:clear-last-opened` + navigate(`/`) |
 
 > Ces deux actions ont le même effet — l'utilisateur revient sur l'écran Workspace (`/`) et le `lastOpenedId` est effacé.
 
@@ -88,6 +95,10 @@ Ces channels sont émis par le menu natif et reçus par le renderer via `window.
 ## 4. Abonnement renderer — hook `useMenuEvents`
 
 Le hook est monté **une seule fois** dans le composant racine (layout racine du router), pas dans chaque route.
+
+**T130 : appels réels différents** — `api.workspace.clearLastOpened()` (pas `markLastOpened(null)`,
+channel qui n'existe pas), plus un appel supplémentaire non documenté ici à
+`markProjectJustClosed()` :
 
 ```typescript
 // apps/desktop/src/renderer/hooks/useMenuEvents.ts
@@ -100,11 +111,12 @@ export function useMenuEvents(): void {
 
   useEffect(() => {
     const unsubOpen = window.polenta.on('menu:open-workspace', async () => {
-      await api.workspace.markLastOpened(null)
+      await api.workspace.clearLastOpened()
       navigate({ to: '/' })
     })
     const unsubClose = window.polenta.on('menu:close-project', async () => {
-      await api.workspace.markLastOpened(null)
+      await api.workspace.clearLastOpened()
+      markProjectJustClosed()
       navigate({ to: '/' })
     })
     return () => {
@@ -171,7 +183,7 @@ async function handleClose() {
 
 ## 7. Ce qu'il ne faut PAS faire
 
-- ❌ **Ne pas créer un canal IPC `workspace:close-project` dédié.** La fermeture de projet combine deux opérations déjà existantes : `workspace:mark-last-opened(null)` + navigation renderer. Aucune logique côté main process n'est requise.
+- ❌ **Ne pas créer un canal IPC `workspace:close-project` dédié.** La fermeture de projet combine deux opérations déjà existantes : `workspace:clear-last-opened` + navigation renderer. Aucune logique côté main process n'est requise.
 - ❌ **Ne pas arrêter le `RepoWatcherService` à la fermeture.** Le watcher continue en arrière-plan tant que l'app tourne — intentionnel pour la réactivité à la réouverture du même projet.
 - ❌ **Ne pas bloquer plusieurs instances avec `requestSingleInstanceLock`.** Polenta autorise explicitement plusieurs fenêtres pour permettre le travail sur plusieurs projets simultanément.
 
@@ -190,20 +202,22 @@ async function handleClose() {
 
 ## 9. Option "Créer un projet"
 
-Permet de créer un nouveau repo sur le remote (GitHub/Gitea) depuis l'app, puis de le cloner localement.
+**T130 : pas de création de repo distant.** `createNewProject()` (`WorkspaceService`) crée un repo
+git **local uniquement** (`git.init`), sans appel à une API remote GitHub et sans notion de
+visibilité Privé/Public — ce sont des concepts qui n'existent pas dans le code actuel. Le repo
+distant, s'il en existe un, est configuré par l'utilisateur séparément (push manuel vers un remote
+qu'il crée lui-même).
 
-**Formulaire :**
-- **Nom** : nom du projet (= nom du repo remote)
-- **Dossier** : chemin local de destination, avec bouton Browse `[📁]`
-- **Visibilité** : Privé (défaut) / Public
+**Formulaire réel :**
+- **Nom** : nom du projet (= nom du dossier créé)
+- **Dossier conteneur** : dossier où créer le projet, avec bouton Browse `[📁]`
 
-**Séquence :**
-1. Appel API remote : `POST /user/repos` (GitHub) ou équivalent Gitea avec `{ name, private }`
-2. Clone du repo créé dans le dossier local
-3. Ajout à la workspace + `markLastOpened`
-4. Redirection vers `/project/$id`
+**Séquence réelle (`createNewProject(containerDir, name)`) :**
+1. `mkdir` + `git init` (branche par défaut `main`) dans `containerDir/name`
+2. Écrit `.gitignore`, `AGENTS.md`, `.mcp.json` (config serveur MCP), premier commit
+3. `initWorkspace(containerDir, rootRepoPath)` puis `openWorkspace(containerDir)`
 
-**Channel IPC :** `workspace:create` → `{ name: string, localPath: string, private?: boolean }` → `WorkspaceProject`
+**Channel IPC :** `workspace:create-new` → `{ containerDir: string, name: string }` → `WorkspaceOpenResult`
 
 **Implémentation dans `WorkspaceService.createProject()` :**
 ```typescript

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Sun, Moon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Sun, Moon, Languages } from 'lucide-react'
 import { api } from '../../api'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLocale } from '../../i18n/useLocale'
 
 interface Identity {
   login: string
@@ -14,12 +16,13 @@ interface Identity {
 const KNOWN_REMOTES = [
   'https://github.com',
   'https://gitlab.com',
-  'https://gitea.io',
 ]
 
 export function AccountPanel() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { theme, toggle } = useTheme()
+  const { locale, setLocale } = useLocale()
   const [identity, setIdentity] = useState<Identity | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -56,17 +59,20 @@ export function AccountPanel() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-edge">
-        <p className="section-label">Compte</p>
+        <p className="section-label">{t('account.panel.title')}</p>
       </div>
 
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-xs text-ink-3">Chargement…</p>
+          <p className="text-xs text-ink-3">{t('common.loading')}</p>
         </div>
       ) : identity ? (
         <div className="flex flex-col flex-1 p-4 gap-4 overflow-y-auto">
           <div className="space-y-0.5">
             <p className="text-sm font-medium text-ink">{identity.name}</p>
+            {identity.login && (
+              <p className="text-xs text-ink-2 font-mono">@{identity.login}</p>
+            )}
             {identity.email && (
               <p className="text-xs text-ink-2">{identity.email}</p>
             )}
@@ -79,52 +85,63 @@ export function AccountPanel() {
               onClick={() => navigate({ to: '/login' })}
               className="w-full text-left px-3 py-2 text-sm rounded border border-edge text-ink-2 hover:bg-hover transition-colors"
             >
-              Changer de compte…
+              {t('common.changeAccount')}
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full text-left px-3 py-2 text-sm rounded border border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700/60 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+              className="w-full text-left px-3 py-2 text-sm rounded border border-status-danger-border text-status-danger hover:bg-status-danger-bg transition-colors"
             >
-              Se déconnecter
+              {t('common.logout')}
             </button>
           </div>
         </div>
       ) : (
         <div className="flex flex-col flex-1 p-4 gap-3 items-center justify-center text-center">
-          <p className="text-xs text-ink-3">Non connecté</p>
+          <p className="text-xs text-ink-3">{t('account.panel.notConnected')}</p>
           <button
             type="button"
             onClick={() => navigate({ to: '/login' })}
             className="px-3 py-1.5 text-sm rounded border border-edge text-ink-2 hover:bg-hover transition-colors"
           >
-            Se connecter…
+            {t('account.panel.connect')}
           </button>
         </div>
       )}
 
       {/* Preferences */}
-      <div className="border-t border-edge px-4 py-3">
-        <p className="section-label mb-2">Préférences</p>
+      <div className="border-t border-edge px-4 py-3 space-y-2">
+        <p className="section-label mb-2">{t('account.panel.preferences')}</p>
         <div className="flex items-center justify-between">
-          <span className="text-xs text-ink-2">Thème</span>
+          <span className="text-xs text-ink-2">{t('account.panel.theme')}</span>
           <button
             type="button"
             onClick={toggle}
-            title={theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+            title={theme === 'dark' ? t('account.panel.themeToLight') : t('account.panel.themeToDark')}
             className="flex items-center gap-1.5 px-2 py-1 rounded border border-edge text-xs text-ink-2 hover:bg-hover transition-colors"
           >
             {theme === 'dark' ? (
               <>
-                <Sun size={13} className="text-amber-400" />
-                <span>Clair</span>
+                <Sun size={13} className="text-status-warning" />
+                <span>{t('account.panel.light')}</span>
               </>
             ) : (
               <>
                 <Moon size={13} className="text-ink-3" />
-                <span>Sombre</span>
+                <span>{t('account.panel.dark')}</span>
               </>
             )}
+          </button>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-ink-2">{t('account.panel.language')}</span>
+          <button
+            type="button"
+            onClick={() => setLocale(locale === 'fr' ? 'en' : 'fr')}
+            className="flex items-center gap-1.5 px-2 py-1 rounded border border-edge text-xs text-ink-2 hover:bg-hover transition-colors"
+          >
+            <Languages size={13} className="text-ink-3" />
+            <span>{locale === 'fr' ? t('account.panel.english') : t('account.panel.french')}</span>
           </button>
         </div>
       </div>

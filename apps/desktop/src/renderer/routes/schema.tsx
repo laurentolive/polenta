@@ -1,6 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
+﻿import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useVersioning } from '../contexts/VersioningContext'
@@ -16,6 +17,7 @@ import type {
   RoleDefinition,
   ImplementsDeclaration,
 } from '@polenta/types'
+import { flattenSystemNodes } from '@polenta/types'
 
 export const Route = createFileRoute('/schema')({
   component: SchemaEditorPage,
@@ -89,10 +91,11 @@ function editableToSchema(state: EditorState, nodes: SystemNode[], preferences: 
   return schema
 }
 
-// Collect all available refs for link type selectors
+// Collect all available refs for link type selectors — flattened so local components
+// nested at any depth (T123) contribute their object types too, not just top-level nodes.
 function getAllRefs(nodes: SystemNode[]): string[] {
   const refs = ['requirement', 'test', 'campaign']
-  for (const node of nodes) {
+  for (const { node } of flattenSystemNodes(nodes)) {
     for (const ot of node.objectTypes ?? []) {
       if (ot.name) refs.push(`${node.name}::${ot.name}`)
     }
@@ -115,7 +118,7 @@ function RefChips({ refs, allRefs, onChange }: {
         <button key={ref} type="button" onClick={() => toggle(ref)}
           className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
             refs.includes(ref)
-              ? 'bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900 dark:border-blue-600 dark:text-blue-300'
+              ? 'bg-status-info-bg border-status-info-border text-status-info'
               : 'border-edge text-ink-3 hover:border-ink-2 hover:text-ink'
           }`}>
           {ref}
@@ -128,6 +131,7 @@ function RefChips({ refs, allRefs, onChange }: {
 function LiensTab({ state, setState, nodes }: {
   state: EditorState; setState: React.Dispatch<React.SetStateAction<EditorState | null>>; nodes: SystemNode[]
 }) {
+  const { t } = useTranslation()
   const allRefs = getAllRefs(nodes)
 
   const setLink = (i: number, patch: Partial<EditableLinkType>) =>
@@ -143,33 +147,33 @@ function LiensTab({ state, setState, nodes }: {
             <div key={i} className="border border-edge rounded p-3 bg-surface">
               <div className="grid grid-cols-3 gap-3 mb-2">
                 <div>
-                  <label className="block text-xs text-ink-2 mb-0.5">Nom (identifiant)</label>
+                  <label className="block text-xs text-ink-2 mb-0.5">{t('schema.page.linkNameId')}</label>
                   <input value={l.name} onChange={e => setLink(i, { name: e.target.value })}
                     className="input-field w-full font-mono text-xs py-1" placeholder="verifies" />
                 </div>
                 <div>
-                  <label className="block text-xs text-ink-2 mb-0.5">Label source → cible</label>
+                  <label className="block text-xs text-ink-2 mb-0.5">{t('schema.page.linkLabelSourceToTarget')}</label>
                   <input value={l.labelSourceToTarget} onChange={e => setLink(i, { labelSourceToTarget: e.target.value })}
                     className="input-field w-full text-xs py-1" placeholder="est vérifié par" />
                 </div>
                 <div>
-                  <label className="block text-xs text-ink-2 mb-0.5">Label cible → source</label>
+                  <label className="block text-xs text-ink-2 mb-0.5">{t('schema.page.linkLabelTargetToSource')}</label>
                   <input value={l.labelTargetToSource} onChange={e => setLink(i, { labelTargetToSource: e.target.value })}
                     className="input-field w-full text-xs py-1" placeholder="vérifie" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-ink-2 mb-1">Sources</label>
+                  <label className="block text-xs text-ink-2 mb-1">{t('schema.page.sources')}</label>
                   <RefChips refs={l.sourceRefs} allRefs={allRefs} onChange={sourceRefs => setLink(i, { sourceRefs })} />
                 </div>
                 <div>
-                  <label className="block text-xs text-ink-2 mb-1">Cibles</label>
+                  <label className="block text-xs text-ink-2 mb-1">{t('schema.page.targets')}</label>
                   <RefChips refs={l.targetRefs} allRefs={allRefs} onChange={targetRefs => setLink(i, { targetRefs })} />
                 </div>
               </div>
               <div className="flex justify-end mt-2">
-                <ConfirmDelete onConfirm={() => deleteLink(i)} className="text-xs text-red-400 hover:text-red-600" />
+                <ConfirmDelete onConfirm={() => deleteLink(i)} className="text-xs text-status-danger hover:opacity-80" />
               </div>
             </div>
           ))}
@@ -177,8 +181,8 @@ function LiensTab({ state, setState, nodes }: {
       )}
       <button type="button"
         onClick={() => setState(s => s ? { ...s, linkTypes: [...s.linkTypes, { name: '', labelSourceToTarget: '', labelTargetToSource: '', sourceRefs: [], targetRefs: [] }] } : s)}
-        className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-        + Ajouter un type de lien
+        className="text-sm text-status-info hover:underline">
+        {t('schema.page.addLinkType')}
       </button>
     </div>
   )
@@ -189,6 +193,7 @@ function LiensTab({ state, setState, nodes }: {
 type Tab = 'structure' | 'liens'
 
 function SchemaEditorPage() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { repoPath: repoPathParam, projectId } = Route.useSearch()
   const workspaceDir = projectId ? decodeProjectId(projectId) : repoPathParam
@@ -257,12 +262,12 @@ function SchemaEditorPage() {
   }, [isDirty, showCancelConfirm, saveMutation, pendingCloseId])
 
   if (isLoading || !state || !schema) {
-    return <div className="text-sm text-ink-3 p-4">Chargement du schéma…</div>
+    return <div className="text-sm text-ink-3 p-4">{t('schema.page.loading')}</div>
   }
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'structure', label: 'Structure' },
-    { key: 'liens', label: 'Liens' },
+    { key: 'structure', label: t('schema.page.tabStructure') },
+    { key: 'liens', label: t('schema.page.tabLinks') },
   ]
 
   function handleCancelConfirmed() {
@@ -279,30 +284,30 @@ function SchemaEditorPage() {
         currentProjectId={projectId}
         title={
           <>
-            Modèle de données{isDirty && <span className="text-amber-400 ml-1">*</span>}
+            {t('schema.page.title')}{isDirty && <span className="text-status-warning ml-1">*</span>}
           </>
         }
         actions={
           <>
-            {saved && <span className="text-xs text-green-600 dark:text-green-400">✓ Enregistré</span>}
+            {saved && <span className="text-xs text-status-success">✓ {t('schema.page.saved')}</span>}
             {saveMutation.isError && (
-              <span className="text-xs text-red-500">
-                {saveMutation.error instanceof Error ? saveMutation.error.message : 'Erreur'}
+              <span className="text-xs text-status-danger">
+                {saveMutation.error instanceof Error ? saveMutation.error.message : t('schema.page.error')}
               </span>
             )}
             {isDirty && (
               <button
                 type="button"
                 onClick={() => setShowCancelConfirm(true)}
-                className="text-sm text-ink-2 hover:text-ink px-3 py-1.5 border border-edge rounded transition-colors"
+                className="btn-secondary-sm"
               >
-                Annuler
+                {t('common.cancel')}
               </button>
             )}
             {isDirty && (
               <button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
-                className="btn-primary px-4 py-1.5">
-                {saveMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                className="btn-primary-sm">
+                {saveMutation.isPending ? t('schema.page.saving') : t('common.save')}
               </button>
             )}
           </>

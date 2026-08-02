@@ -80,7 +80,9 @@ export type WidgetSize = 'sm' | 'md' | 'lg'
 export interface WidgetFieldMapping {
   category?: string   // bar/pie/line
   measure?: string     // bar/pie/line/kpi
-  series?: string      // line (multi-série), optionnel
+  series?: string      // bar/line (multi-série), optionnel
+  /** bar only, ignoré si `series` absent — empile les séries au lieu de les grouper. */
+  stacked?: boolean
   columns?: string[]   // table
 }
 

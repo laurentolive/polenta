@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
@@ -28,6 +29,7 @@ export const Route = createFileRoute('/print/requirements')({
 })
 
 function PrintRequirementsPage() {
+  const { t } = useTranslation()
   const { repoPath, username, filter, objectTypeRef, componentLabel } = Route.useSearch()
   const [nodeId, typeId] = objectTypeRef.split('::')
 
@@ -73,9 +75,9 @@ function PrintRequirementsPage() {
   const bodyColumns = columns.filter(c => !headerKeys.has(c.key))
 
   return (
-    <div className="p-10 bg-white text-slate-900 text-sm min-h-screen">
-      <h1 className="text-xl font-semibold mb-1">Cahier d'exigences — {componentLabel}</h1>
-      <p className="text-slate-500 mb-8">{rows.length} exigence(s)</p>
+    <div className="p-10 bg-print-bg text-print-ink text-sm min-h-screen">
+      <h1 className="text-xl font-semibold mb-1">{t('printRequirementsPage.title', { componentLabel })}</h1>
+      <p className="text-print-ink-2 mb-8">{t('printRequirementsPage.reqCount', { count: rows.length })}</p>
       <div className="space-y-6">
         {rows.map((row, i) => {
           const meta = [
@@ -84,14 +86,14 @@ function PrintRequirementsPage() {
             versionKey && row[versionKey] && `v${row[versionKey]}`,
           ].filter(Boolean).join(' · ')
           return (
-          <section key={(idKey && row[idKey]) || i} className="break-inside-avoid border-b border-slate-200 pb-4">
+          <section key={(idKey && row[idKey]) || i} className="break-inside-avoid border-b border-print-border pb-4">
             <h2 className="text-base font-medium">
-              {[idKey && row[idKey], nameKey && row[nameKey]].filter(Boolean).join(' — ') || 'Exigence'}
+              {[idKey && row[idKey], nameKey && row[nameKey]].filter(Boolean).join(' — ') || t('printRequirementsPage.fallbackTitle')}
             </h2>
-            {meta && <p className="text-xs text-slate-500 italic mb-2">{meta}</p>}
+            {meta && <p className="text-xs text-print-ink-2 italic mb-2">{meta}</p>}
             {bodyColumns.map(col => row[col.key]?.trim() && (
               <div key={col.key} className="mt-2">
-                <p className="text-xs font-medium text-slate-600">{col.label}</p>
+                <p className="text-xs font-medium text-print-ink-2">{col.label}</p>
                 <pre className="whitespace-pre-wrap font-sans text-sm">{row[col.key]}</pre>
               </div>
             ))}

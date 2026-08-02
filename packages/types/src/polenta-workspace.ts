@@ -36,6 +36,9 @@ export interface PolentaWorkspaceConfig {
 export interface WorkspaceTreeNode {
   /** Mount name (directory name in the workspace). */
   name: string
+  /** Display label from this repo's own schema.yaml (SystemNode `root`), if configured.
+   *  UI should always prefer this over `name` when present. */
+  label?: string
   /** Absolute path to the cloned repo on disk. */
   repoPath: string
   /** Git remote URL. */
@@ -51,6 +54,10 @@ export interface WorkspaceTreeNode {
    * node's own `pin` (look it up by `interface` name in the workspace tree).
    */
   implements?: Array<{ interface: string; roles: string[] }>
+  /** T123 (follow-up) — name of a local SystemNode of the parent repo this node is nested under
+   *  for display (mirrors PolentaRepoDependency.localParent). Absent = nested flatly under the
+   *  parent repo, as before this field existed. */
+  localParent?: string
   /** Direct children (logical tree, not filesystem). */
   children: WorkspaceTreeNode[]
 }

@@ -273,11 +273,12 @@ export function treeVisibleNodes(
 
   // Filter mode: show matching nodes + their parent folders
   const matchingIds = getMatchingIds(root, filter, filterOptions)
+  const descendantMatchMap = computeDescendantMatch(root, matchingIds)
   const result: TypeTreeNode[] = []
   function walkFiltered(nodes: TypeTreeNode[]) {
     for (const n of nodes) {
       const selfMatches = matchingIds.has(n.id)
-      const hasMatchingDescendant = hasMatch(n.children, matchingIds)
+      const hasMatchingDescendant = descendantMatchMap.get(n.id) ?? false
       if (selfMatches || hasMatchingDescendant) {
         result.push(n)
         // Always expand folders that have matching descendants
@@ -325,12 +326,22 @@ function getMatchingIds(
   return ids
 }
 
-function hasMatch(nodes: TypeTreeNode[], matchingIds: Set<string>): boolean {
-  for (const n of nodes) {
-    if (matchingIds.has(n.id)) return true
-    if (hasMatch(n.children, matchingIds)) return true
+/** Single-pass post-order computation of "does this node's subtree contain a match",
+ *  keyed by node id (excludes the node itself). Avoids re-walking every subtree once
+ *  per ancestor, which made the old hasMatch-per-node approach O(n²) on large trees. */
+function computeDescendantMatch(nodes: TypeTreeNode[], matchingIds: Set<string>): Map<string, boolean> {
+  const map = new Map<string, boolean>()
+  function walk(list: TypeTreeNode[]): boolean {
+    let anyMatch = false
+    for (const n of list) {
+      const childHasMatch = walk(n.children)
+      map.set(n.id, childHasMatch)
+      if (childHasMatch || matchingIds.has(n.id)) anyMatch = true
+    }
+    return anyMatch
   }
-  return false
+  walk(nodes)
+  return map
 }
 
 function escapeRegex(s: string): string {

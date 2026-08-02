@@ -1,12 +1,17 @@
 import React, { useState, useCallback, useRef, useEffect, type MouseEvent as ReactMouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
 import { api } from '../../api'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
-import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField } from '@polenta/types'
+import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
+import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
+import { CoverageBadge } from './CoverageBadge'
 import { treeFindNode, treeFindParentId, treeRemoveMany, treeInsert, treeInsertAtBeginning, treeDeepCopyWithNewIds } from '../../hooks/useTreeState'
 import { matchesRefs, filterCandidatesByRefs, getLinkTypeLabel, getPeerId, isLinkTypeValid } from './linkUtils'
 import { RichTextField } from '../RichTextField'
+import { MultiEnumPopover } from './MultiEnumPopover'
+import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { getExportColumnLabel } from '../../lib/exportColumns'
@@ -32,6 +37,8 @@ interface Props {
   sectionNumbers?: Map<string, string>
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
+  coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  testsById?: Map<string, TestCase>
   repoPath?: string
   candidateObjects?: Candidate[]
   onLinkChange?: () => void
@@ -46,7 +53,7 @@ interface Props {
   generateId?: () => string
   stepsByObjectId?: Map<string, { action: string; expectedResult: string }[]>
   onStepsChange?: (objectId: string, steps: StepDraft[]) => void
-  onNavigateToObject?: (peerId: string) => void
+  onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   onItemNodeAdded?: (nodeId: string, sourceObjectId?: string) => void
 }
 
@@ -63,7 +70,7 @@ function getFieldValue(obj: AnyObject, field: string): string {
 }
 
 function isSystemField(field: string): boolean {
-  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version'].includes(field)
+  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'coverageStatus'].includes(field)
 }
 
 function isDescendantOf(node: TypeTreeNode, targetId: string): boolean {
@@ -81,7 +88,9 @@ const DEFAULT_FILTER_OPTIONS: FilterOptions = { caseSensitive: false, wholeWord:
 
 /** Colonnes sans valeur texte pertinente à filtrer. */
 function isFilterableColumn(col: string): boolean {
-  return col !== 'steps'
+  // coverageStatus (T138) n'a pas de valeur texte brute sur l'objet — rendu par icône uniquement,
+  // pas de filtre de colonne pertinent (même raison que 'steps').
+  return col !== 'steps' && col !== 'coverageStatus'
 }
 
 // ── NameCell ──────────────────────────────────────────────────────────────────
@@ -90,11 +99,20 @@ function NameCell({
   value,
   nodeId,
   onRename,
+  isSelected,
+  onSelectCell,
+  freezeStyle,
+  stickyBg,
 }: {
   value: string
   nodeId: string
   onRename?: (nodeId: string, name: string) => void
+  isSelected?: boolean
+  onSelectCell?: () => void
+  freezeStyle?: React.CSSProperties
+  stickyBg?: string
 }) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
@@ -105,7 +123,7 @@ function NameCell({
 
   if (editing) {
     return (
-      <td className="border border-edge px-0 py-0">
+      <td className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')} style={freezeStyle}>
         <input
           autoFocus
           value={draft}
@@ -115,7 +133,7 @@ function NameCell({
             if (e.key === 'Enter') commit()
             if (e.key === 'Escape') { setDraft(value); setEditing(false) }
           }}
-          className="w-full px-2 py-1 text-xs text-ink bg-blue-50 dark:bg-blue-950 border-0 outline-none"
+          className="w-full px-2 py-1 text-xs text-ink bg-status-info-bg border-0 outline-none"
         />
       </td>
     )
@@ -123,12 +141,18 @@ function NameCell({
 
   return (
     <td
+      style={freezeStyle}
       className={[
         'border border-edge px-2 py-1 text-xs text-ink max-w-xs truncate',
-        onRename ? 'cursor-text hover:ring-1 hover:ring-inset hover:ring-blue-400' : '',
+        stickyBg ?? '',
+        onRename ? 'cursor-text hover:ring-1 hover:ring-inset hover:ring-status-info' : '',
+        isSelected ? 'ring-2 ring-inset ring-status-info' : '',
       ].join(' ')}
-      onClick={onRename ? () => { setDraft(value); setEditing(true) } : undefined}
-      title={onRename ? 'Cliquer pour modifier' : undefined}
+      onClick={onRename ? () => {
+        if (isSelected) { setDraft(value); setEditing(true) }
+        else onSelectCell?.()
+      } : undefined}
+      title={onRename ? t('system.shared.clickToEdit') : undefined}
     >
       {value || <span className="text-ink-3 italic">—</span>}
     </td>
@@ -145,6 +169,11 @@ function InlineCell({
   fieldDef,
   onEdit,
   onRichtextEdit,
+  onMultiEnumEdit,
+  isSelected,
+  onSelectCell,
+  freezeStyle,
+  stickyBg,
 }: {
   value: string
   field: string
@@ -153,13 +182,19 @@ function InlineCell({
   fieldDef?: SchemaField
   onEdit?: (objectId: string, field: string, value: string) => void
   onRichtextEdit?: (objectId: string, field: string, rect: DOMRect) => void
+  onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
+  isSelected?: boolean
+  onSelectCell?: () => void
+  freezeStyle?: React.CSSProperties
+  stickyBg?: string
 }) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
   if (isSystem || !onEdit) {
     return (
-      <td className="border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs truncate">
+      <td style={freezeStyle} className="border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs truncate">
         {value}
       </td>
     )
@@ -171,14 +206,20 @@ function InlineCell({
     const hasMore = value.trim().split('\n').filter(l => l.trim()).length > 1
     return (
       <td
-        className="border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs truncate hover:ring-1 hover:ring-inset hover:ring-blue-400"
+        style={freezeStyle}
+        className={[
+          'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs truncate hover:ring-1 hover:ring-inset hover:ring-status-info',
+          stickyBg ?? '',
+          isSelected ? 'ring-2 ring-inset ring-status-info' : '',
+        ].join(' ')}
         onClick={e => {
+          if (!isSelected) { onSelectCell?.(); return }
           if (onRichtextEdit) {
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
             onRichtextEdit(objectId, field, rect)
           }
         }}
-        title="Cliquer pour modifier"
+        title={t('system.shared.clickToEdit')}
       >
         {value ? (
           <span className="text-xs text-ink truncate">
@@ -192,10 +233,35 @@ function InlineCell({
     )
   }
 
+  // multi_enum: CSV preview in read mode, open cases-à-cocher popover on click
+  if (fieldDef?.type === 'multi_enum') {
+    return (
+      <td
+        data-multi-enum-popover
+        style={freezeStyle}
+        className={[
+          'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs truncate hover:ring-1 hover:ring-inset hover:ring-status-info',
+          stickyBg ?? '',
+          isSelected ? 'ring-2 ring-inset ring-status-info' : '',
+        ].join(' ')}
+        onClick={e => {
+          if (!isSelected) { onSelectCell?.(); return }
+          if (onMultiEnumEdit) {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+            onMultiEnumEdit(objectId, field, rect)
+          }
+        }}
+        title={t('system.shared.clickToEdit')}
+      >
+        {value || <span className="text-ink-3 italic">—</span>}
+      </td>
+    )
+  }
+
   if (editing) {
     if (fieldDef?.type === 'enum') {
       return (
-        <td className="border border-edge px-0 py-0">
+        <td style={freezeStyle} className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')}>
           <select
             autoFocus
             ref={el => { if (el) el.showPicker?.() }}
@@ -213,7 +279,7 @@ function InlineCell({
       )
     }
     return (
-      <td className="border border-edge px-0 py-0">
+      <td style={freezeStyle} className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')}>
         <input
           autoFocus
           value={draft}
@@ -223,7 +289,7 @@ function InlineCell({
             if (e.key === 'Enter') { onEdit(objectId, field, draft); setEditing(false) }
             if (e.key === 'Escape') { setDraft(value); setEditing(false) }
           }}
-          className="w-full px-2 py-1 text-xs text-ink bg-blue-50 dark:bg-blue-950 border-0 outline-none"
+          className="w-full px-2 py-1 text-xs text-ink bg-status-info-bg border-0 outline-none"
         />
       </td>
     )
@@ -231,9 +297,17 @@ function InlineCell({
 
   return (
     <td
-      className="border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs truncate hover:ring-1 hover:ring-inset hover:ring-blue-400"
-      onClick={() => { setDraft(value); setEditing(true) }}
-      title="Cliquer pour modifier"
+      style={freezeStyle}
+      className={[
+        'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs truncate hover:ring-1 hover:ring-inset hover:ring-status-info',
+        stickyBg ?? '',
+        isSelected ? 'ring-2 ring-inset ring-status-info' : '',
+      ].join(' ')}
+      onClick={() => {
+        if (isSelected) { setDraft(value); setEditing(true) }
+        else onSelectCell?.()
+      }}
+      title={t('system.shared.clickToEdit')}
     >
       {value || <span className="text-ink-3 italic">—</span>}
     </td>
@@ -309,6 +383,7 @@ function ExcelContextMenu({
   onAction: (action: string) => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -319,11 +394,11 @@ function ExcelContextMenu({
     return () => window.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const items: ExcelMenuItem[] = [{ id: 'copy', label: 'Copier' }]
-  if (canEdit) items.push({ id: 'cut', label: 'Couper' })
-  if (canEdit && clipboard) items.push({ id: 'paste', label: 'Coller' })
+  const items: ExcelMenuItem[] = [{ id: 'copy', label: t('system.shared.copy') }]
+  if (canEdit) items.push({ id: 'cut', label: t('system.shared.cut') })
+  if (canEdit && clipboard) items.push({ id: 'paste', label: t('system.shared.paste') })
   items.push({ separator: true })
-  if (canEdit) items.push({ id: 'delete', label: 'Supprimer', danger: true })
+  if (canEdit) items.push({ id: 'delete', label: t('common.delete'), danger: true })
 
   return (
     <div
@@ -341,12 +416,65 @@ function ExcelContextMenu({
             onClick={() => { onAction(item.id); onClose() }}
             className={[
               'w-full text-left px-3 py-1.5 hover:bg-hover transition-colors',
-              item.danger ? 'text-red-500' : 'text-ink',
+              item.danger ? 'text-status-danger' : 'text-ink',
             ].join(' ')}
           >
             {item.label}
           </button>
         )
+      )}
+    </div>
+  )
+}
+
+// ── ColumnFreezeMenu — figer/libérer les volets (T151) ───────────────────────
+
+function ColumnFreezeMenu({
+  x, y, colIdx, freezeColCount, onFreeze, onUnfreeze, onClose,
+}: {
+  x: number; y: number
+  colIdx: number
+  freezeColCount: number
+  onFreeze: (uptoColIdx: number) => void
+  onUnfreeze: () => void
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    window.addEventListener('mousedown', handler)
+    return () => window.removeEventListener('mousedown', handler)
+  }, [onClose])
+
+  const alreadyFrozenHere = freezeColCount === colIdx + 1
+
+  return (
+    <div
+      ref={ref}
+      className="fixed z-50 bg-surface border border-edge rounded-lg shadow-xl py-1 w-56 text-xs"
+      style={{ left: x, top: y }}
+    >
+      {!alreadyFrozenHere && (
+        <button
+          type="button"
+          onClick={() => { onFreeze(colIdx + 1); onClose() }}
+          className="w-full text-left px-3 py-1.5 hover:bg-hover transition-colors text-ink"
+        >
+          {t('system.excelView.freezeColumns')}
+        </button>
+      )}
+      {freezeColCount > 0 && (
+        <button
+          type="button"
+          onClick={() => { onUnfreeze(); onClose() }}
+          className="w-full text-left px-3 py-1.5 hover:bg-hover transition-colors text-ink"
+        >
+          {t('system.excelView.unfreezeColumns')}
+        </button>
       )}
     </div>
   )
@@ -374,6 +502,10 @@ function GroupRow({
   isSelected,
   onSelectRow,
   onContextMenu,
+  isNameCellSelected,
+  onSelectNameCell,
+  freezeColCount = 0,
+  getFreezeStyle,
 }: {
   node: TypeTreeNode
   depth: number
@@ -394,16 +526,30 @@ function GroupRow({
   isSelected?: boolean
   onSelectRow?: (e: React.MouseEvent<HTMLTableRowElement>) => void
   onContextMenu?: (e: React.MouseEvent<HTMLTableRowElement>) => void
+  isNameCellSelected?: boolean
+  onSelectNameCell?: () => void
+  freezeColCount?: number
+  getFreezeStyle?: (colIdx: number) => React.CSSProperties | undefined
 }) {
   const [folderEditing, setFolderEditing] = useState(false)
+  const startOrSelect = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (isNameCellSelected) setFolderEditing(true)
+    else onSelectNameCell?.()
+  }
+  // Le pencil d'action (index "-1", avant la 1ère colonne) suit la même règle que
+  // l'en-tête : il se fige dès qu'au moins une colonne est figée, pour rester adjacent
+  // à elle sans laisser un vide de scroll entre les deux.
+  const actionFrozenStyle: React.CSSProperties | undefined = freezeColCount > 0 ? { position: 'sticky', left: 0, zIndex: 2 } : undefined
+  const rowBg = isSelected ? 'bg-status-info-bg' : 'bg-folder-row'
 
   return (
     <tr
       className={[
         'cursor-pointer select-none',
-        isSelected ? 'bg-blue-100 dark:bg-blue-900' : 'bg-folder-row',
+        isSelected ? 'bg-status-info-bg' : 'bg-folder-row',
         isDragging ? 'opacity-50' : '',
-        dropInside ? 'outline outline-1 outline-blue-400' : '',
+        dropInside ? 'outline outline-1 outline-status-info' : '',
       ].filter(Boolean).join(' ')}
       style={dropStyle}
       draggable={draggable}
@@ -417,6 +563,7 @@ function GroupRow({
     >
       {hasActions && (
         <td
+          style={actionFrozenStyle}
           className="border border-edge w-8 bg-folder-row px-1 text-center text-ink-2"
           onClick={e => { e.stopPropagation(); onToggle() }}
         >
@@ -436,7 +583,10 @@ function GroupRow({
         if (firstCol === 'section') {
           return (
             <>
-              <td className="border border-edge px-2 py-1.5 text-xs font-semibold text-ink-2">
+              <td
+                style={getFreezeStyle?.(0)}
+                className={['border border-edge px-2 py-1.5 text-xs font-semibold text-ink-2', freezeColCount > 0 ? rowBg : ''].join(' ')}
+              >
                 <span className="flex items-center gap-1.5">
                   {chevron}
                   <span className="text-ink-3 font-mono font-normal">{section ?? ''}</span>
@@ -444,8 +594,12 @@ function GroupRow({
               </td>
               <td
                 colSpan={restCount || 1}
-                className={['border border-edge px-2 py-1.5 text-xs font-semibold text-ink-2', onRename ? 'hover:ring-1 hover:ring-inset hover:ring-blue-400 cursor-text' : ''].join(' ')}
-                onClick={onRename ? e => { e.stopPropagation(); setFolderEditing(true) } : undefined}
+                className={[
+                  'border border-edge px-2 py-1.5 text-xs font-semibold text-ink-2',
+                  onRename ? 'hover:ring-1 hover:ring-inset hover:ring-status-info cursor-text' : '',
+                  isNameCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
+                ].join(' ')}
+                onClick={onRename ? startOrSelect : undefined}
               >
                 <FolderNameText node={node} onRename={onRename} editing={folderEditing} onEditingChange={setFolderEditing} />
               </td>
@@ -457,8 +611,12 @@ function GroupRow({
           <>
             <td
               colSpan={columns.length}
-              className={['border border-edge px-2 py-1.5 text-xs font-semibold text-ink-2', onRename ? 'hover:ring-1 hover:ring-inset hover:ring-blue-400 cursor-text' : ''].join(' ')}
-              onClick={onRename ? e => { e.stopPropagation(); setFolderEditing(true) } : undefined}
+              className={[
+                'border border-edge px-2 py-1.5 text-xs font-semibold text-ink-2',
+                onRename ? 'hover:ring-1 hover:ring-inset hover:ring-status-info cursor-text' : '',
+                isNameCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
+              ].join(' ')}
+              onClick={onRename ? startOrSelect : undefined}
             >
               <span className="flex items-center gap-1.5">
                 {chevron}
@@ -517,6 +675,8 @@ export function ExcelView({
   sectionNumbers,
   linkTypes = [],
   linksByObjectId,
+  coverageByReqId,
+  testsById,
   repoPath,
   candidateObjects = [],
   onLinkChange,
@@ -534,6 +694,12 @@ export function ExcelView({
   onNavigateToObject,
   onItemNodeAdded,
 }: Props) {
+  const { t } = useTranslation()
+  // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
+  // useProjectSchema (staleTime: Infinity) plutôt qu'une useQuery locale — même clé de cache que
+  // SystemViewContext, aucune requête réseau dupliquée.
+  const { data: currentSchema } = useProjectSchema(repoPath ?? '')
+  const interfaceRoles = currentSchema?.roles?.map(r => r.name)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
   const [expandedStepIds, setExpandedStepIds] = useState<Set<string>>(new Set())
   const toggleStepExpand = useCallback((nodeId: string) => {
@@ -546,9 +712,24 @@ export function ExcelView({
   const [localSelectedIds, setLocalSelectedIds] = useState<string[]>([])
   const effectiveSelectedIds = selectedIds ?? localSelectedIds
   const effectiveOnSelect = onSelect ?? setLocalSelectedIds
+  // Cellule "sélectionnée" (contour bleu persistant) — un premier clic sélectionne la
+  // cellule (et fait remonter la sélection de ligne par bubbling, y compris ctrl/shift),
+  // un second clic sur cette même cellule déjà sélectionnée ouvre son éditeur. Évite
+  // qu'un simple clic destiné à sélectionner des lignes ne bascule la cellule en édition.
+  const [selectedCell, setSelectedCell] = useState<{ nodeId: string; col: string } | null>(null)
+  const isCellSelected = useCallback(
+    (nodeId: string, col: string) => selectedCell?.nodeId === nodeId && selectedCell?.col === col,
+    [selectedCell]
+  )
+  const selectCell = useCallback((nodeId: string, col: string) => setSelectedCell({ nodeId, col }), [])
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; hasContent: boolean } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
+  // Figer les volets (T151) — nombre de colonnes, depuis la gauche, épinglées hors du
+  // scroll latéral. Index dans `columns`, pas persisté (comportement UI éphémère comme
+  // colWidths/columnFilters).
+  const [freezeColCount, setFreezeColCount] = useState(0)
+  const [columnFreezeMenu, setColumnFreezeMenu] = useState<{ colIdx: number; x: number; y: number } | null>(null)
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
   const colDragState = useRef<{ startX: number; startWidth: number; col: string } | null>(null)
   const autoColWidthsRef = useRef<Record<string, number>>({})
@@ -571,7 +752,10 @@ export function ExcelView({
     left: number
     width: number
   } | null>(null)
-  const richtextOriginalValueRef = useRef<string>('')
+  // T149 — une entrée par objectId affecté par le popover courant (l'objet édité + ses
+  // pairs de sélection multiple), pour restaurer la valeur propre de CHACUN à l'annulation
+  // (Escape) plutôt que d'écraser tout le monde avec la valeur d'origine du seul objet édité.
+  const richtextOriginalValuesRef = useRef<Map<string, string>>(new Map())
   useEffect(() => {
     if (!activeRichtextPopover) return
     const handler = (e: MouseEvent) => {
@@ -583,6 +767,23 @@ export function ExcelView({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [activeRichtextPopover])
+
+  const [activeMultiEnumPopover, setActiveMultiEnumPopover] = useState<{
+    objectId: string
+    field: string
+    top: number
+    left: number
+    width: number
+  } | null>(null)
+  useEffect(() => {
+    if (!activeMultiEnumPopover) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-multi-enum-popover]')) setActiveMultiEnumPopover(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [activeMultiEnumPopover])
 
   // T51 — filtre par colonne : état local (texte + options), non persisté
   const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilterState>>({})
@@ -683,6 +884,10 @@ export function ExcelView({
     // Ferme aussi le popover s'il pointait sur la colonne qui vient de disparaître —
     // sinon il reste affiché, détaché, au-dessus d'un en-tête qui n'existe plus.
     setActiveColumnFilterPopover(prev => (prev && !columns.includes(prev.column) ? null : prev))
+    // Idem pour la cellule sélectionnée si sa colonne disparaît.
+    setSelectedCell(prev => (prev && !columns.includes(prev.col) ? null : prev))
+    // Le nombre de colonnes figées ne doit jamais dépasser le nombre de colonnes affichées.
+    setFreezeColCount(prev => Math.min(prev, columns.length))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns.join(',')])
 
@@ -691,6 +896,8 @@ export function ExcelView({
   useEffect(() => {
     setColumnFilters({})
     setActiveColumnFilterPopover(null)
+    setSelectedCell(null)
+    setFreezeColCount(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeDef?.prefix, repoPath])
 
@@ -744,6 +951,17 @@ export function ExcelView({
   }
   flatten(root, 0, false)
 
+  // T149 — nodeId <-> objectId, pour propager une édition inline à toute la sélection
+  // multiple (les IDs de sélection sont des nodeId d'arbre, pas des objectId de fond).
+  const nodeIdToObjectId = new Map<string, string>()
+  const objectIdToNodeId = new Map<string, string>()
+  for (const { node } of rows) {
+    if (node.objectId) {
+      nodeIdToObjectId.set(node.id, node.objectId)
+      objectIdToNodeId.set(node.objectId, node.id)
+    }
+  }
+
   // Auto-fit column widths from content (capped at 1/4 screen width)
   const maxAutoWidth = typeof window !== 'undefined' ? Math.floor(window.innerWidth / 4) : 400
   const autoColWidths: Record<string, number> = {}
@@ -761,6 +979,26 @@ export function ExcelView({
   const baseWidths = frozenAutoWidthsRef.current ?? autoColWidths
   const effectiveColWidths = { ...baseWidths, ...colWidths }
   const totalTableWidth = columns.reduce((sum, col) => sum + (effectiveColWidths[col] ?? 120), 0) + (onEditOpen ? 32 : 0)
+
+  // Figer les volets (T151) — offset gauche cumulé de chaque colonne, pour `position: sticky`.
+  // La colonne d'action (icône crayon), si présente, est toujours la plus à gauche.
+  const editIconColWidth = onEditOpen ? 32 : 0
+  const colLeftOffsets: number[] = []
+  {
+    let acc = editIconColWidth
+    for (const col of columns) {
+      colLeftOffsets.push(acc)
+      acc += effectiveColWidths[col] ?? 120
+    }
+  }
+  /** Style `position: sticky` pour la colonne d'index `colIdx`, si elle fait partie des
+   * colonnes figées ; sinon `undefined`. `bg` est la classe Tailwind de fond opaque à
+   * appliquer par-dessus (le `<td>` est transparent par défaut, laissant apparaître les
+   * colonnes défilées derrière lui sans ce fond). */
+  function getFreezeStyle(colIdx: number): React.CSSProperties | undefined {
+    if (colIdx >= freezeColCount) return undefined
+    return { position: 'sticky', left: colLeftOffsets[colIdx], zIndex: 2 }
+  }
 
   // Last column expands to fill the container when the table is narrower than the viewport
   const lastCol = columns[columns.length - 1]
@@ -893,6 +1131,50 @@ export function ExcelView({
     setDropColTarget(null)
   }
 
+  // ── Bulk inline edit (T149) — propage une édition à toute la sélection multiple ──
+  // Un objet n'est "en sélection multiple" que si son nodeId figure dans la sélection
+  // actuelle ET que celle-ci compte au moins 2 lignes ; sinon l'édition reste solo comme
+  // avant. Les colonnes `link::` ne passent pas par ce chemin (LinkCombobox dédiée).
+
+  /** ObjectIds des lignes sélectionnées (hors dossiers, qui n'ont pas de objectId). */
+  function selectedObjectIds(): string[] {
+    return effectiveSelectedIds
+      .map(id => nodeIdToObjectId.get(id))
+      .filter((oid): oid is string => !!oid)
+  }
+
+  /** true si `objectId` fait partie d'une sélection d'au moins 2 lignes. */
+  function isInMultiSelection(objectId: string): boolean {
+    const nodeId = objectIdToNodeId.get(objectId)
+    return !!nodeId && effectiveSelectedIds.length > 1 && effectiveSelectedIds.includes(nodeId)
+  }
+
+  /** Édition simple (status/enum/texte/richtext) : même valeur écrasée sur toute la sélection. */
+  function applyInlineEditToSelection(objectId: string, field: string, value: string) {
+    if (!onInlineEdit) return
+    if (!isInMultiSelection(objectId)) {
+      onInlineEdit(objectId, field, value)
+      return
+    }
+    for (const oid of selectedObjectIds()) onInlineEdit(oid, field, value)
+  }
+
+  /** Case à cocher multi_enum : bascule la même valeur indépendamment sur chaque ligne
+   * sélectionnée (préserve les autres valeurs déjà cochées de chaque ligne), plutôt que
+   * d'écraser tout le tableau sérialisé avec celui de la ligne éditée. */
+  function applyMultiEnumToggleToSelection(objectId: string, field: string, value: string, adding: boolean) {
+    if (!onInlineEdit) return
+    const targets = isInMultiSelection(objectId) ? selectedObjectIds() : [objectId]
+    for (const oid of targets) {
+      const obj = objectMap.get(oid)
+      const current = parseMultiEnumValue(obj ? getFieldValue(obj, field) : '')
+      const next = adding
+        ? (current.includes(value) ? current : [...current, value])
+        : current.filter(v => v !== value)
+      onInlineEdit(oid, field, serializeMultiEnumValue(next))
+    }
+  }
+
   // ── Copy / Cut / Paste / Delete ──────────────────────────────────────────────
 
   const canEdit = !!onRootChange
@@ -1017,21 +1299,43 @@ export function ExcelView({
     } else if (e.key === 'Escape') {
       if (deleteConfirm) setDeleteConfirm(null)
       else if (clipboard?.cut) setClipboard(null)
+      else if (selectedCell) setSelectedCell(null)
+      else if (effectiveSelectedIds.length > 0) effectiveOnSelect([])
+    } else if (e.key === 'Enter' && deleteConfirm) {
+      e.preventDefault()
+      confirmDelete()
     }
   }
 
-  const filteredRows = rows.filter(r => {
-    if (r.kind === 'folder') return true // always show folders when filtering
-    const obj = r.node.objectId ? objectMap.get(r.node.objectId) : null
+  const hasActiveFilter = !!filterLower || activeColumnFilters.length > 0
 
+  function itemMatchesFilters(node: TypeTreeNode, obj: AnyObject | null | undefined): boolean {
     if (filterLower) {
       const globalMatch = !obj
-        ? r.node.name.toLowerCase().includes(filterLower)
-        : columns.some(col => getCellText(r.node, obj, col).toLowerCase().includes(filterLower))
+        ? node.name.toLowerCase().includes(filterLower)
+        : columns.some(col => getCellText(node, obj, col).toLowerCase().includes(filterLower))
       if (!globalMatch) return false
     }
+    return activeColumnFilters.every(({ col, re }) => re.test(getCellText(node, obj, col)))
+  }
 
-    return activeColumnFilters.every(({ col, re }) => re.test(getCellText(r.node, obj, col)))
+  // Un dossier/section ne doit s'afficher, quand un filtre est actif, que s'il contient au
+  // moins un élément descendant qui matche — sinon on se retrouve avec des dossiers vides
+  // affichés parmi des résultats filtrés, ce qui est trompeur (le dossier n'a rien à montrer).
+  function folderHasMatchingDescendant(node: TypeTreeNode): boolean {
+    return node.children.some(child => {
+      if (child.kind === 'folder') return folderHasMatchingDescendant(child)
+      const obj = child.objectId ? objectMap.get(child.objectId) : null
+      return itemMatchesFilters(child, obj)
+    })
+  }
+
+  const filteredRows = rows.filter(r => {
+    if (r.kind === 'folder') {
+      return hasActiveFilter ? folderHasMatchingDescendant(r.node) : true
+    }
+    const obj = r.node.objectId ? objectMap.get(r.node.objectId) : null
+    return itemMatchesFilters(r.node, obj)
   })
 
   const visibleRowIds = filteredRows.map(r => r.node.id)
@@ -1055,6 +1359,12 @@ export function ExcelView({
       }
       return
     }
+    // T149 — un clic simple (sans modificateur) sur une ligne déjà membre d'une sélection
+    // multiple NE la réduit PAS à elle seule : le clic sur une cellule pour l'éditer (ex.
+    // Statut) bulle jusqu'ici sans stopPropagation, donc sans ce garde-fou la sélection
+    // multiple s'effondrerait avant même que l'édition ne commence, rendant la propagation
+    // en masse inatteignable à la souris. Cliquer sur une ligne hors sélection reste solo.
+    if (effectiveSelectedIds.length > 1 && effectiveSelectedIds.includes(nodeId)) return
     effectiveOnSelect([nodeId])
   }
 
@@ -1068,27 +1378,27 @@ export function ExcelView({
       ref={containerRef}
       className="flex-1 overflow-auto outline-none"
       tabIndex={0}
-      onClick={() => effectiveOnSelect([])}
+      onClick={() => { effectiveOnSelect([]); setSelectedCell(null) }}
       onKeyDown={handleKeyDown}
     >
       {/* Delete confirmation modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteConfirm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setDeleteConfirm(null)}>
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-            <h2 className="text-sm font-semibold text-ink mb-2">Supprimer ?</h2>
+            <h2 className="text-sm font-semibold text-ink mb-2">{t('system.shared.deleteTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">
               {deleteConfirm.hasContent
-                ? 'Ce dossier contient des éléments. Tout le contenu sera supprimé en cascade.'
-                : deleteConfirm.ids.length > 1 ? 'Ces éléments seront supprimés.' : 'Cet élément sera supprimé.'}
+                ? t('system.shared.deleteFolderWithContent')
+                : t('system.shared.deleteCount', { count: deleteConfirm.ids.length })}
             </p>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setDeleteConfirm(null)}
-                className="text-sm px-4 py-1.5 border border-edge rounded text-ink-2 hover:text-ink transition-colors">
-                Annuler
+                className="btn-secondary">
+                {t('common.cancel')}
               </button>
               <button type="button" onClick={confirmDelete} autoFocus
-                className="text-sm px-4 py-1.5 rounded bg-red-500 hover:bg-red-600 text-white transition-colors">
-                Supprimer
+                className="btn-danger">
+                {t('common.delete')}
               </button>
             </div>
           </div>
@@ -1106,14 +1416,39 @@ export function ExcelView({
         />
       )}
 
-      <table className="text-xs border-collapse" style={{ width: effectiveTableWidth, tableLayout: 'fixed' }}>
+      {/* Column header context menu — figer/libérer les volets (T151) */}
+      {columnFreezeMenu && (
+        <ColumnFreezeMenu
+          x={columnFreezeMenu.x} y={columnFreezeMenu.y}
+          colIdx={columnFreezeMenu.colIdx}
+          freezeColCount={freezeColCount}
+          onFreeze={setFreezeColCount}
+          onUnfreeze={() => setFreezeColCount(0)}
+          onClose={() => setColumnFreezeMenu(null)}
+        />
+      )}
+
+      {/* border-separate (pas collapse) : avec des cellules `position: sticky` figées (T151),
+          border-collapse fusionne les bordures adjacentes en une entité peinte séparément
+          des cellules elle-même, qui ne suit pas le décalage sticky — ce qui laisse un
+          interstice au scroll par lequel les colonnes défilées redeviennent visibles. En
+          border-separate, chaque cellule peint sa propre bordure dans sa propre boîte. */}
+      <table className="text-xs border-separate" style={{ width: effectiveTableWidth, tableLayout: 'fixed', borderSpacing: 0 }}>
         <thead className="sticky top-0 z-10">
           <tr>
-            {onEditOpen && <th className="border border-edge w-8 bg-hover" />}
+            {onEditOpen && (
+              <th
+                className="border border-edge w-8 bg-hover"
+                style={freezeColCount > 0 ? { position: 'sticky', left: 0, zIndex: 3 } : undefined}
+              />
+            )}
             {columns.map((col, colIdx) => {
+              const frozen = colIdx < freezeColCount
               const colStyle: React.CSSProperties = {
                 width: colIdx === columns.length - 1 ? lastColWidth : effectiveColWidths[col],
-                position: 'relative',
+                position: frozen ? 'sticky' : 'relative',
+                left: frozen ? colLeftOffsets[colIdx] : undefined,
+                zIndex: frozen ? 3 : undefined,
                 userSelect: 'none',
                 opacity: col === draggingCol ? 0.5 : 1,
                 ...(dropColTarget?.col === col && dropColTarget.position === 'before'
@@ -1132,6 +1467,11 @@ export function ExcelView({
                   onDragOver={onColumnsReorder && col !== 'section' ? (e) => handleColDragOver(e, col) : undefined}
                   onDrop={onColumnsReorder && col !== 'section' ? (e) => handleColDrop(e, col) : undefined}
                   onDragEnd={onColumnsReorder && col !== 'section' ? handleColDragEnd : undefined}
+                  onContextMenu={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setColumnFreezeMenu({ colIdx, x: e.clientX, y: e.clientY })
+                  }}
                 >
                   {getColumnLabel(col)}
                   {isSystemField(col) && <span className="ml-1 text-ink-3 font-normal">(sys)</span>}
@@ -1140,7 +1480,7 @@ export function ExcelView({
                       type="button"
                       draggable={false}
                       data-column-filter-icon
-                      title="Filtrer cette colonne"
+                      title={t('system.excelView.filterColumn')}
                       onClick={e => {
                         e.stopPropagation()
                         if (activeColumnFilterPopover?.column === col) {
@@ -1152,7 +1492,7 @@ export function ExcelView({
                       }}
                       className={[
                         'ml-1 align-middle',
-                        activeColumnFilters.some(f => f.col === col) ? 'text-blue-500' : 'text-ink-3 hover:text-ink-2',
+                        activeColumnFilters.some(f => f.col === col) ? 'text-status-info' : 'text-ink-3 hover:text-ink-2',
                       ].join(' ')}
                     >
                       <FilterIcon size={10} />
@@ -1160,7 +1500,7 @@ export function ExcelView({
                   )}
                   <div
                     style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 4, cursor: 'col-resize' }}
-                    className="hover:bg-blue-400"
+                    className="hover:bg-status-info-solid"
                     onMouseDown={(e) => handleColResizeStart(e, col)}
                   />
                 </th>
@@ -1172,7 +1512,7 @@ export function ExcelView({
           {filteredRows.length === 0 && (
             <tr>
               <td colSpan={colCount} className="px-3 py-6 text-center text-ink-3 text-xs">
-                Aucun élément
+                {t('common.noElements')}
               </td>
             </tr>
           )}
@@ -1207,6 +1547,10 @@ export function ExcelView({
                   isSelected={effectiveSelectedIds.includes(node.id)}
                   onSelectRow={e => handleRowSelect(node.id, e)}
                   onContextMenu={e => handleContextMenu(e, node.id)}
+                  isNameCellSelected={isCellSelected(node.id, 'name')}
+                  onSelectNameCell={() => selectCell(node.id, 'name')}
+                  freezeColCount={freezeColCount}
+                  getFreezeStyle={getFreezeStyle}
                 />
               )
             }
@@ -1216,14 +1560,20 @@ export function ExcelView({
             const isCutRow = clipboard?.cut && clipboard.nodes.some(n => n.id === node.id)
             const nodeSteps = node.objectId ? (stepsByObjectId?.get(node.objectId) ?? []) : []
             const stepsExpanded = expandedStepIds.has(node.id)
+            // Fond opaque appliqué aux cellules figées (position: sticky) de cette ligne —
+            // sinon, transparentes par défaut, elles laisseraient apparaître les colonnes
+            // défilées derrière elles au scroll latéral. `group-hover` reflète le survol du
+            // <tr> (classe `group`), pour rester visuellement cohérent avec les lignes non figées.
+            const rowStickyBg = isSelected ? 'bg-status-info-bg' : 'bg-surface group-hover:bg-row-hover'
+            const actionFrozenStyle: React.CSSProperties | undefined = freezeColCount > 0 ? { position: 'sticky', left: 0, zIndex: 2 } : undefined
             return (
               <React.Fragment key={node.id}>
               <tr
                 className={[
                   'group cursor-pointer select-none',
-                  isSelected ? 'bg-blue-100 dark:bg-blue-900' : 'hover:bg-row-hover',
+                  isSelected ? 'bg-status-info-bg' : 'hover:bg-row-hover',
                   isDraggingRow || isCutRow ? 'opacity-50' : '',
-                  dropInside ? 'outline outline-1 outline-blue-400' : '',
+                  dropInside ? 'outline outline-1 outline-status-info' : '',
                 ].filter(Boolean).join(' ')}
                 style={dropStyle}
                 onClick={e => { e.stopPropagation(); handleRowSelect(node.id, e) }}
@@ -1235,31 +1585,58 @@ export function ExcelView({
                 onDragEnd={dndEnabled ? handleRowDragEnd : undefined}
               >
                 {onEditOpen && (
-                  <td className="border border-edge px-1 text-center">
+                  <td
+                    style={actionFrozenStyle}
+                    className={['border border-edge px-1 text-center', freezeColCount > 0 ? rowStickyBg : ''].join(' ')}
+                  >
                     <button
                       type="button"
                       onClick={e => { e.stopPropagation(); onEditOpen(node.id) }}
-                      className="text-ink-3 hover:text-ink opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                      title="Éditer"
+                      className="text-ink-3 hover:text-ink p-1"
+                      title={t('system.shared.editItem')}
                     >
                       <Pencil size={12} />
                     </button>
                   </td>
                 )}
-                {columns.map(col => {
+                {columns.map((col, colIdx) => {
+                  const freezeStyle = getFreezeStyle(colIdx)
+                  const stickyBg = freezeStyle ? rowStickyBg : undefined
                   if (col === 'steps') {
                     const stepsCount = nodeSteps.length
+                    const stepsCellSelected = isCellSelected(node.id, col)
                     return (
                       <td
                         key={col}
-                        className="border border-edge px-2 py-1 text-xs cursor-pointer hover:ring-1 hover:ring-inset hover:ring-blue-400"
-                        onClick={e => { e.stopPropagation(); toggleStepExpand(node.id) }}
-                        title={stepsExpanded ? 'Masquer les étapes' : stepsCount > 0 ? `${stepsCount} étape${stepsCount > 1 ? 's' : ''}` : 'Aucune étape'}
+                        style={freezeStyle}
+                        className={[
+                          'border border-edge px-2 py-1 text-xs cursor-pointer hover:ring-1 hover:ring-inset hover:ring-status-info',
+                          stickyBg ?? '',
+                          stepsCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
+                        ].join(' ')}
+                        onClick={e => {
+                          e.stopPropagation()
+                          if (!stepsCellSelected) { selectCell(node.id, col); return }
+                          toggleStepExpand(node.id)
+                        }}
+                        title={stepsExpanded ? t('system.excelView.hideSteps') : stepsCount > 0 ? t('system.excelView.stepsCount', { count: stepsCount }) : t('system.excelView.noSteps')}
                       >
                         <span className="flex items-center gap-1 text-ink-2">
                           {stepsExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                           {stepsCount > 0 ? stepsCount : <span className="text-ink-3 italic">—</span>}
                         </span>
+                      </td>
+                    )
+                  }
+                  if (col === 'coverageStatus') {
+                    return (
+                      <td key={col} style={freezeStyle} className={['border border-edge px-2 py-1', stickyBg ?? ''].join(' ')}>
+                        {typeDef?.category === 'requirement' && node.objectId && (
+                          <CoverageBadge
+                            coverage={coverageByReqId?.get(node.objectId)}
+                            testsById={testsById ?? new Map()}
+                          />
+                        )}
                       </td>
                     )
                   }
@@ -1270,6 +1647,10 @@ export function ExcelView({
                         value={node.name}
                         nodeId={node.id}
                         onRename={onRenameNode}
+                        isSelected={isCellSelected(node.id, col)}
+                        onSelectCell={() => selectCell(node.id, col)}
+                        freezeStyle={freezeStyle}
+                        stickyBg={stickyBg}
                       />
                     )
                   }
@@ -1280,13 +1661,20 @@ export function ExcelView({
                     const lt = linkTypes.find(l => l.name === typeName)
                     const cellLinks = linksByObjectId?.get(objectId)?.filter(l => l.type === typeName) ?? []
                     const isOpen = activeLinkPopover?.nodeId === node.id && activeLinkPopover.typeName === typeName
+                    const linkCellSelected = isCellSelected(node.id, col)
                     return (
                       <td
                         key={col}
                         data-link-popover
-                        className="border border-edge px-2 py-1 text-xs text-ink-2 max-w-xs truncate cursor-pointer hover:ring-1 hover:ring-inset hover:ring-blue-400"
+                        style={freezeStyle}
+                        className={[
+                          'border border-edge px-2 py-1 text-xs text-ink-2 max-w-xs truncate cursor-pointer hover:ring-1 hover:ring-inset hover:ring-status-info',
+                          stickyBg ?? '',
+                          linkCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
+                        ].join(' ')}
                         title={value || undefined}
                         onClick={e => {
+                          if (!linkCellSelected) { selectCell(node.id, col); return }
                           if (isOpen) { setActiveLinkPopover(null); return }
                           const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
                           setActiveLinkPopover({ nodeId: node.id, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
@@ -1310,13 +1698,27 @@ export function ExcelView({
                       objectId={node.objectId ?? ''}
                       isSystem={isSystemField(col)}
                       fieldDef={fieldDef}
-                      onEdit={onInlineEdit}
+                      isSelected={isCellSelected(node.id, col)}
+                      onSelectCell={() => selectCell(node.id, col)}
+                      freezeStyle={freezeStyle}
+                      stickyBg={stickyBg}
+                      onEdit={onInlineEdit ? applyInlineEditToSelection : undefined}
                       onRichtextEdit={onInlineEdit ? (objId, f, rect) => {
                         const isOpen = activeRichtextPopover?.objectId === objId && activeRichtextPopover.field === f
                         if (isOpen) { setActiveRichtextPopover(null); return }
-                        const origObj = objectMap.get(objId)
-                        richtextOriginalValueRef.current = origObj ? getFieldValue(origObj, f) : ''
+                        const originals = new Map<string, string>()
+                        const targets = isInMultiSelection(objId) ? selectedObjectIds() : [objId]
+                        for (const oid of targets) {
+                          const o = objectMap.get(oid)
+                          originals.set(oid, o ? getFieldValue(o, f) : '')
+                        }
+                        richtextOriginalValuesRef.current = originals
                         setActiveRichtextPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 400) })
+                      } : undefined}
+                      onMultiEnumEdit={onInlineEdit ? (objId, f, rect) => {
+                        const isOpen = activeMultiEnumPopover?.objectId === objId && activeMultiEnumPopover.field === f
+                        if (isOpen) { setActiveMultiEnumPopover(null); return }
+                        setActiveMultiEnumPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: rect.width })
                       } : undefined}
                     />
                   )
@@ -1374,7 +1776,7 @@ export function ExcelView({
                     setActiveColumnFilterPopover(null)
                   }
                 }}
-                placeholder="Filtrer…"
+                placeholder={t('common.filterPlaceholder')}
                 className="flex-1 text-xs bg-transparent text-ink border border-edge rounded px-2 py-1 outline-none"
               />
               {current.text && (
@@ -1415,7 +1817,11 @@ export function ExcelView({
               if (e.key === 'Escape') {
                 e.preventDefault()
                 e.stopPropagation()
-                onInlineEdit?.(activeRichtextPopover.objectId, activeRichtextPopover.field, richtextOriginalValueRef.current)
+                // Restaure chaque objet affecté (édité + pairs de sélection) à sa propre
+                // valeur d'origine — pas à celle du seul objet édité, voir déclaration du ref.
+                for (const [oid, original] of richtextOriginalValuesRef.current) {
+                  onInlineEdit?.(oid, activeRichtextPopover.field, original)
+                }
                 setActiveRichtextPopover(null)
               } else if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault()
@@ -1427,11 +1833,32 @@ export function ExcelView({
             <RichTextField
               value={popoverValue}
               onChange={v => {
-                onInlineEdit?.(activeRichtextPopover.objectId, activeRichtextPopover.field, v)
+                applyInlineEditToSelection(activeRichtextPopover.objectId, activeRichtextPopover.field, v)
               }}
               repoPath={repoPath}
+              autoFocus
             />
           </div>
+        )
+      })()}
+
+      {/* Multi-enum popover — fixed position to escape overflow-auto clipping */}
+      {activeMultiEnumPopover && (() => {
+        const popoverObj = objectMap.get(activeMultiEnumPopover.objectId)
+        const popoverValue = popoverObj ? getFieldValue(popoverObj, activeMultiEnumPopover.field) : ''
+        const fieldDef = typeDef?.fields.find(f => f.name === activeMultiEnumPopover.field)
+        const options = fieldDef ? resolveMultiEnumOptions(fieldDef, interfaceRoles) : []
+        const selected = parseMultiEnumValue(popoverValue)
+        return (
+          <MultiEnumPopover
+            options={options}
+            selected={selected}
+            onToggle={v => {
+              applyMultiEnumToggleToSelection(activeMultiEnumPopover.objectId, activeMultiEnumPopover.field, v, !selected.includes(v))
+            }}
+            onClose={() => setActiveMultiEnumPopover(null)}
+            style={{ top: activeMultiEnumPopover.top, left: activeMultiEnumPopover.left, minWidth: activeMultiEnumPopover.width }}
+          />
         )
       })()}
 
@@ -1445,6 +1872,13 @@ export function ExcelView({
         const currentCategory = typeDef?.category
         const canBeSource = matchesRefs(currentObjectTypeRef, lt.sourceRefs, currentCategory)
         const canBeTarget = matchesRefs(currentObjectTypeRef, lt.targetRefs, currentCategory)
+        const outgoingLinks = cellLinks.filter(l => l.sourceId === objectId)
+        const incomingLinks = cellLinks.filter(l => l.targetId === objectId)
+        // Toujours afficher les liens existants, même dans le sens non canonique pour le
+        // schéma actuel — sinon un lien créé avant un changement de sourceRefs/targetRefs
+        // devient invisible et impossible à délier. La création reste limitée au sens déclaré.
+        const showOutgoing = canBeSource || outgoingLinks.length > 0
+        const showIncoming = canBeTarget || incomingLinks.length > 0
         return (
           <div
             data-link-popover
@@ -1452,11 +1886,11 @@ export function ExcelView({
             style={{ top: activeLinkPopover.top, left: activeLinkPopover.left, width: activeLinkPopover.width }}
             onClick={e => e.stopPropagation()}
           >
-            {canBeSource && (
+            {showOutgoing && (
               <LinkCombobox
                 label={lt.labelSourceToTarget}
-                existingLinks={cellLinks.filter(l => l.sourceId === objectId).map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={filterCandidatesByRefs(candidateObjects, lt.targetRefs)}
+                existingLinks={outgoingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
+                candidates={canBeSource ? filterCandidatesByRefs(candidateObjects, lt.targetRefs) : []}
                 onAdd={async peerId => {
                   if (!repoPath) return
                   await api.requirements.linkCreate(repoPath, { type: activeLinkPopover.typeName, sourceId: objectId, targetId: peerId })
@@ -1467,14 +1901,14 @@ export function ExcelView({
                   await api.requirements.linkDelete(repoPath, linkId)
                   onLinkChange?.()
                 }}
-                onNavigateToObject={onNavigateToObject ? peerId => { setActiveLinkPopover(null); onNavigateToObject(peerId) } : undefined}
+                onNavigateToObject={onNavigateToObject ? (peerId, opts) => { setActiveLinkPopover(null); onNavigateToObject(peerId, opts) } : undefined}
               />
             )}
-            {canBeTarget && (
+            {showIncoming && (
               <LinkCombobox
                 label={lt.labelTargetToSource}
-                existingLinks={cellLinks.filter(l => l.targetId === objectId).map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={filterCandidatesByRefs(candidateObjects, lt.sourceRefs)}
+                existingLinks={incomingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
+                candidates={canBeTarget ? filterCandidatesByRefs(candidateObjects, lt.sourceRefs) : []}
                 onAdd={async peerId => {
                   if (!repoPath) return
                   await api.requirements.linkCreate(repoPath, { type: activeLinkPopover.typeName, sourceId: peerId, targetId: objectId })
@@ -1485,7 +1919,7 @@ export function ExcelView({
                   await api.requirements.linkDelete(repoPath, linkId)
                   onLinkChange?.()
                 }}
-                onNavigateToObject={onNavigateToObject ? peerId => { setActiveLinkPopover(null); onNavigateToObject(peerId) } : undefined}
+                onNavigateToObject={onNavigateToObject ? (peerId, opts) => { setActiveLinkPopover(null); onNavigateToObject(peerId, opts) } : undefined}
               />
             )}
           </div>

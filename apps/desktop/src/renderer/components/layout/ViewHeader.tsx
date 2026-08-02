@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { ModificationControl } from './ModificationControl'
 
@@ -16,6 +17,7 @@ interface ViewHeaderProps {
 
 /** Shared title bar for every main view — see specs/T92.md / T92-design.md §1-§2.1. */
 export function ViewHeader({ back, title, subtitle, actions, currentProjectId }: ViewHeaderProps) {
+  const { t } = useTranslation()
   return (
     <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-edge bg-surface">
       {back && (
@@ -25,7 +27,7 @@ export function ViewHeader({ back, title, subtitle, actions, currentProjectId }:
           className="flex items-center gap-1 text-xs text-ink-3 hover:text-ink transition-colors shrink-0"
         >
           <ArrowLeft size={14} />
-          {back.label ?? 'Retour'}
+          {back.label ?? t('layout.viewHeader.back')}
         </button>
       )}
 

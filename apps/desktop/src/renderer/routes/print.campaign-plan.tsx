@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { resolveCampaignRuns } from '../lib/campaignTests'
@@ -16,6 +17,7 @@ export const Route = createFileRoute('/print/campaign-plan')({
 })
 
 function PrintCampaignPlanPage() {
+  const { t } = useTranslation()
   const { repoPath, campaignId } = Route.useSearch()
 
   const { data: campaign, isSuccess: campaignLoaded } = useQuery({
@@ -31,20 +33,20 @@ function PrintCampaignPlanPage() {
 
   useNotifyPrintReady(campaignLoaded && testsLoaded)
 
-  if (!campaign || !tests) return <div className="p-10 bg-white min-h-screen" />
+  if (!campaign || !tests) return <div className="p-10 bg-print-bg min-h-screen" />
 
   const resolved = resolveCampaignRuns(campaign, tests)
 
   return (
-    <div className="p-10 bg-white text-slate-900 text-sm min-h-screen">
-      <h1 className="text-xl font-semibold mb-1">Cahier de campagne — {campaign.title}</h1>
-      <p className="text-slate-500 mb-8">{campaign.id} — {resolved.length} test(s)</p>
+    <div className="p-10 bg-print-bg text-print-ink text-sm min-h-screen">
+      <h1 className="text-xl font-semibold mb-1">{t('printCampaignPlanPage.title', { title: campaign.title })}</h1>
+      <p className="text-print-ink-2 mb-8">{campaign.id} — {t('printCampaignPlanPage.testCount', { count: resolved.length })}</p>
       <div className="space-y-4">
-        {resolved.map(({ run, test: t }) => (
-          <section key={run.entryId} className="break-inside-avoid border-b border-slate-200 pb-3">
-            <div className="font-mono text-xs text-slate-500">{t.id}</div>
-            <h2 className="text-base font-medium">{t.title}</h2>
-            <p className="text-xs text-slate-500">Statut : {t.status} — Type : {t.objectTypeRef}</p>
+        {resolved.map(({ run, test: tc }) => (
+          <section key={run.entryId} className="break-inside-avoid border-b border-print-border pb-3">
+            <div className="font-mono text-xs text-print-ink-2">{tc.id}</div>
+            <h2 className="text-base font-medium">{tc.title}</h2>
+            <p className="text-xs text-print-ink-2">{t('printCampaignPlanPage.statusType', { status: tc.status, type: tc.objectTypeRef })}</p>
           </section>
         ))}
       </div>

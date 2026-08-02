@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef, useEffect, useMemo, type KeyboardEvent } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, memo, type KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Plus } from 'lucide-react'
 import type { TypeTreeNode } from '@polenta/types'
 import {
@@ -58,6 +59,7 @@ function BgContextMenu({
   onAction: (action: 'create-item' | 'create-folder' | 'paste') => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -69,9 +71,9 @@ function BgContextMenu({
   }, [onClose])
 
   const items: Array<{ id: 'create-item' | 'create-folder' | 'paste'; label: string }> = [
-    { id: 'create-item', label: 'Créer un élément' },
-    { id: 'create-folder', label: 'Créer un dossier' },
-    ...(hasClipboard ? [{ id: 'paste' as const, label: 'Coller' }] : []),
+    { id: 'create-item', label: t('system.shared.createItem') },
+    { id: 'create-folder', label: t('system.shared.createFolder') },
+    ...(hasClipboard ? [{ id: 'paste' as const, label: t('system.shared.paste') }] : []),
   ]
 
   return (
@@ -104,6 +106,7 @@ function ContextMenu({
   onAction: (action: string) => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -115,15 +118,15 @@ function ContextMenu({
   }, [onClose])
 
   const items = [
-    { id: 'create-item', label: 'Créer un élément' },
-    { id: 'create-folder', label: 'Créer un dossier' },
-    { id: 'rename', label: 'Renommer' },
+    { id: 'create-item', label: t('system.shared.createItem') },
+    { id: 'create-folder', label: t('system.shared.createFolder') },
+    { id: 'rename', label: t('system.shared.rename') },
     'separator',
-    { id: 'copy', label: 'Copier' },
-    { id: 'cut', label: 'Couper' },
-    ...(clipboard ? [{ id: 'paste', label: 'Coller' }] : []),
+    { id: 'copy', label: t('system.shared.copy') },
+    { id: 'cut', label: t('system.shared.cut') },
+    ...(clipboard ? [{ id: 'paste', label: t('system.shared.paste') }] : []),
     'separator',
-    { id: 'delete', label: 'Supprimer', danger: true },
+    { id: 'delete', label: t('common.delete'), danger: true },
   ] as const
 
   return (
@@ -142,7 +145,7 @@ function ContextMenu({
             onClick={() => { onAction(item.id); onClose() }}
             className={[
               'w-full text-left px-3 py-1.5 hover:bg-hover transition-colors',
-              'danger' in item && item.danger ? 'text-red-500' : 'text-ink',
+              'danger' in item && item.danger ? 'text-status-danger' : 'text-ink',
             ].join(' ')}
           >
             {item.label}
@@ -155,7 +158,7 @@ function ContextMenu({
 
 // ── TreeRow ───────────────────────────────────────────────────────────────────
 
-function TreeRow({
+const TreeRow = memo(function TreeRow({
   node,
   depth,
   isSelected,
@@ -185,17 +188,18 @@ function TreeRow({
   dropIndicatorBefore: boolean
   dropIndicatorAfterRow: boolean
   dropIndicatorInside: boolean
-  onSelect: (e: React.MouseEvent) => void
-  onExpand: () => void
-  onDoubleClick: () => void
-  onContextMenu: (e: React.MouseEvent) => void
-  onRenameCommit: (name: string) => void
+  onSelect: (nodeId: string, e: React.MouseEvent) => void
+  onExpand: (nodeId: string) => void
+  onDoubleClick: (nodeId: string) => void
+  onContextMenu: (e: React.MouseEvent, nodeId: string) => void
+  onRenameCommit: (nodeId: string, name: string) => void
   onRenameCancel: () => void
   onHoverPlus: (id: string | null) => void
   hoveredForPlus: boolean
   onPlusClick: (e: React.MouseEvent, nodeId: string, inside: boolean) => void
   readOnly: boolean
 }) {
+  const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement>(null)
   const [renameValue, setRenameValue] = useState(node.name)
 
@@ -218,29 +222,29 @@ function TreeRow({
     >
       {/* Drop indicator before (above row) */}
       {dropIndicatorBefore && (
-        <div className="absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-10 pointer-events-none" />
+        <div className="absolute left-0 right-0 top-0 h-0.5 bg-status-info-solid z-10 pointer-events-none" />
       )}
 
       {/* Row */}
       <div
         className={[
           'flex items-center gap-1 px-2 py-1 text-xs cursor-pointer select-none',
-          isSelected ? 'bg-blue-600 text-white' : 'text-ink hover:bg-hover',
+          isSelected ? 'bg-status-info-solid text-status-info-fg' : 'text-ink hover:bg-hover',
           isDragging ? 'opacity-50' : '',
-          dropIndicatorInside ? 'ring-1 ring-blue-400 ring-inset' : '',
+          dropIndicatorInside ? 'ring-1 ring-status-info ring-inset' : '',
         ].join(' ')}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
-        onClick={onSelect}
-        onDoubleClick={() => { if (node.kind === 'folder') onExpand(); else onDoubleClick() }}
-        onContextMenu={onContextMenu}
+        onClick={e => onSelect(node.id, e)}
+        onDoubleClick={() => { if (node.kind === 'folder') onExpand(node.id); else onDoubleClick(node.id) }}
+        onContextMenu={e => onContextMenu(e, node.id)}
         draggable={!readOnly}
       >
         {/* Expand toggle */}
         {node.kind === 'folder' ? (
           <button
             type="button"
-            onClick={e => { e.stopPropagation(); onExpand() }}
-            className={`shrink-0 ${isSelected ? 'text-white' : 'text-ink-3'}`}
+            onClick={e => { e.stopPropagation(); onExpand(node.id) }}
+            className={`shrink-0 ${isSelected ? 'text-status-info-fg' : 'text-ink-3'}`}
           >
             {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
@@ -249,7 +253,7 @@ function TreeRow({
         )}
 
         {/* Icon */}
-        <Icon size={13} className={`shrink-0 ${isSelected ? 'text-white' : node.kind === 'folder' ? 'text-amber-500' : 'text-ink-3'}`} />
+        <Icon size={13} className={`shrink-0 ${isSelected ? 'text-status-info-fg' : node.kind === 'folder' ? 'text-chart-3' : 'text-ink-3'}`} />
 
         {/* Name / rename input */}
         {isRenaming ? (
@@ -258,12 +262,12 @@ function TreeRow({
             value={renameValue}
             onChange={e => setRenameValue(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') { e.preventDefault(); onRenameCommit(renameValue) }
+              if (e.key === 'Enter') { e.preventDefault(); onRenameCommit(node.id, renameValue) }
               if (e.key === 'Escape') { e.preventDefault(); onRenameCancel() }
             }}
-            onBlur={() => onRenameCommit(renameValue)}
+            onBlur={() => onRenameCommit(node.id, renameValue)}
             onClick={e => e.stopPropagation()}
-            className="flex-1 bg-surface text-ink text-xs border border-blue-400 rounded px-1 outline-none"
+            className="flex-1 bg-surface text-ink text-xs border border-status-info rounded px-1 outline-none"
             autoFocus
           />
         ) : (
@@ -274,9 +278,9 @@ function TreeRow({
         {!readOnly && hoveredForPlus && !isRenaming && node.kind === 'folder' && (
           <button
             type="button"
-            title="Créer dans ce dossier"
+            title={t('system.elementTree.createInFolder')}
             onClick={e => onPlusClick(e, node.id, true)}
-            className={`shrink-0 p-0.5 rounded hover:bg-black/10 ${isSelected ? 'text-white' : 'text-ink-3 hover:text-ink'}`}
+            className={`shrink-0 p-0.5 rounded hover:bg-overlay/10 ${isSelected ? 'text-status-info-fg' : 'text-ink-3 hover:text-ink'}`}
           >
             <Plus size={12} />
           </button>
@@ -285,11 +289,11 @@ function TreeRow({
 
       {/* Drop indicator after (below row) */}
       {dropIndicatorAfterRow && (
-        <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-500 z-10 pointer-events-none" />
+        <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-status-info-solid z-10 pointer-events-none" />
       )}
     </div>
   )
-}
+})
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -306,6 +310,7 @@ export function ElementTree({
   readOnly = false,
   onItemNodeAdded,
 }: Props) {
+  const { t } = useTranslation()
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -315,10 +320,16 @@ export function ElementTree({
   const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null)
   const [draggingIds, setDraggingIds] = useState<string[]>([])
   const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; hasContent: boolean } | null>(null)
-  const [bgContextMenu, setBgContextMenu] = useState<{ x: number; y: number } | null>(null)
+  // Menu "Créer un élément / Créer un dossier / Coller" partagé par tous les
+  // déclencheurs (bouton + de fin d'arbre, + de survol de ligne/interstice, clic
+  // droit dans le vide) — parentId/afterId fixent où l'action choisie insère le nœud.
+  const [addMenu, setAddMenu] = useState<{ x: number; y: number; parentId: string | null; afterId: string | null } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const visibleNodes = treeVisibleNodes(root, expandedIds, filter, filterOptions)
+  const visibleNodes = useMemo(
+    () => treeVisibleNodes(root, expandedIds, filter, filterOptions),
+    [root, expandedIds, filter, filterOptions],
+  )
 
   // Pre-compute parent and depth maps to avoid O(n²) lookups in the render loop
   const parentIdMap = useMemo(() => {
@@ -384,9 +395,29 @@ export function ElementTree({
     onSelect([])
   }, [onSelect])
 
+  const handleRowDoubleClick = useCallback((nodeId: string) => {
+    if (onDoubleClick && selectedIds.length <= 1) onDoubleClick(nodeId)
+  }, [onDoubleClick, selectedIds])
+
+  const handleRenameCommit = useCallback((nodeId: string, name: string) => {
+    if (name.trim()) onRootChange(treeRename(root, nodeId, name.trim()))
+    setRenamingId(null)
+  }, [root, onRootChange])
+
+  const handleRenameCancel = useCallback(() => setRenamingId(null), [])
+
   // ── Keyboard navigation ───────────────────────────────────────────────────
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+    // The delete-confirmation dialog is rendered inside this same container, so its
+    // autoFocus'd button bubbles keydown here too — handle it first and bail out, or
+    // Enter would fall through to "open selected item" and Escape wouldn't cancel it.
+    if (deleteConfirm) {
+      if (e.key === 'Escape') { e.preventDefault(); setDeleteConfirm(null) }
+      else if (e.key === 'Enter') { e.preventDefault(); confirmDelete() }
+      return
+    }
+
     const visibleIds = visibleNodes.map(n => n.id)
     const lastSelected = selectedIds[selectedIds.length - 1]
     const currentIdx = lastSelected ? visibleIds.indexOf(lastSelected) : -1
@@ -455,13 +486,13 @@ export function ElementTree({
         document.dispatchEvent(new Event('dragend'))
       }
     }
-  }, [visibleNodes, selectedIds, root, expandedIds, renamingId, draggingIds, clipboard, readOnly, onSelect, onDoubleClick])
+  }, [visibleNodes, selectedIds, root, expandedIds, renamingId, draggingIds, clipboard, readOnly, onSelect, onDoubleClick, deleteConfirm, confirmDelete])
 
   // ── CRUD operations ───────────────────────────────────────────────────────
 
-  function createItem(parentId: string | null, afterId: string | null, kind: 'folder' | 'item') {
+  const createItem = useCallback((parentId: string | null, afterId: string | null, kind: 'folder' | 'item') => {
     const id = generateId()
-    const defaultName = kind === 'folder' ? 'Nouveau dossier' : `Nouvel élément`
+    const defaultName = kind === 'folder' ? t('system.elementTree.newFolder') : t('system.elementTree.newElement')
     const newNode: TypeTreeNode = { id, kind, name: defaultName, children: [] }
     const newRoot = treeInsert(root, newNode, parentId, afterId)
     onRootChange(newRoot)
@@ -469,7 +500,7 @@ export function ElementTree({
     onSelect([id])
     setTimeout(() => setRenamingId(id), 50)
     if (kind === 'item') onItemNodeAdded?.(id)
-  }
+  }, [generateId, t, root, onRootChange, onSelect, onItemNodeAdded])
 
   function initiateDelete(ids: string[]) {
     const allEmptyFolders = ids.every(id => {
@@ -564,40 +595,60 @@ export function ElementTree({
     notifyPastedItems(copies, originalNodes, isCut)
   }
 
-  // ── Background context menu handler ──────────────────────────────────────
-
-  function handleBgContextAction(action: 'create-item' | 'create-folder' | 'paste') {
-    if (action === 'create-item') {
-      createItem(null, null, 'item')
-    } else if (action === 'create-folder') {
-      createItem(null, null, 'folder')
-    } else if (action === 'paste' && clipboard) {
-      const originalNodes = clipboard.nodes  // capture before any state mutation
-      const copies = originalNodes.map(n => treeDeepCopyWithNewIds(n, generateId))
-      let newRoot = root
-      for (const c of copies) {
-        newRoot = treeInsert(newRoot, c, null, null)
-      }
-      const isCut = clipboard.cut
-      if (isCut) {
-        newRoot = treeRemoveMany(newRoot, originalNodes.map(n => n.id))
-        setClipboard(null)
-      }
-      onRootChange(newRoot)
-      onSelect(copies.map(n => n.id))
-      // T65: create backend objects for all copied item nodes
-      notifyPastedItems(copies, originalNodes, isCut)
+  /** Paste clipboard nodes at a given position (root or inside a folder), after `afterId`
+   *  (append at end if null) — shared by every "add menu" trigger. */
+  function pasteAt(parentId: string | null, afterId: string | null) {
+    if (!clipboard) return
+    const originalNodes = clipboard.nodes  // capture before any state mutation
+    const copies = originalNodes.map(n => treeDeepCopyWithNewIds(n, generateId))
+    let newRoot = root
+    let lastAfterId = afterId
+    for (const c of copies) {
+      newRoot = treeInsert(newRoot, c, parentId, lastAfterId)
+      lastAfterId = c.id
     }
+    const isCut = clipboard.cut
+    if (isCut) {
+      newRoot = treeRemoveMany(newRoot, originalNodes.map(n => n.id))
+      setClipboard(null)
+    }
+    if (parentId) setExpandedIds(prev => new Set([...prev, parentId]))
+    onRootChange(newRoot)
+    onSelect(copies.map(n => n.id))
+    // T65: create backend objects for all copied item nodes
+    notifyPastedItems(copies, originalNodes, isCut)
+  }
+
+  // ── Add-menu triggers (bouton + de fin d'arbre, + de ligne/interstice, clic droit) ──
+
+  /** Position the add-menu under a trigger element, clamped so it stays on screen
+   *  even when the trigger sits near the bottom of the panel. */
+  function openAddMenuNear(el: HTMLElement, parentId: string | null, afterId: string | null) {
+    const rect = el.getBoundingClientRect()
+    const y = Math.min(rect.bottom + 4, window.innerHeight - 100)
+    setAddMenu({ x: rect.left, y, parentId, afterId })
+  }
+
+  function handleAddButtonClick(e: React.MouseEvent<HTMLButtonElement>) {
+    openAddMenuNear(e.currentTarget, null, null)
+  }
+
+  function handleAddMenuAction(action: 'create-item' | 'create-folder' | 'paste') {
+    if (!addMenu) return
+    const { parentId, afterId } = addMenu
+    if (action === 'create-item') createItem(parentId, afterId, 'item')
+    else if (action === 'create-folder') createItem(parentId, afterId, 'folder')
+    else if (action === 'paste') pasteAt(parentId, afterId)
   }
 
   // ── Context menu handler ──────────────────────────────────────────────────
 
-  function handleContextMenu(e: React.MouseEvent, nodeId: string) {
+  const handleContextMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
     e.preventDefault()
     e.stopPropagation()
     if (!selectedIds.includes(nodeId)) onSelect([nodeId])
     setContextMenu({ nodeId, x: e.clientX, y: e.clientY })
-  }
+  }, [selectedIds, onSelect])
 
   function handleContextAction(action: string) {
     const targetId = contextMenu?.nodeId ?? null
@@ -634,24 +685,25 @@ export function ElementTree({
 
   // ── Plus button handler ───────────────────────────────────────────────────
 
-  function handlePlusClick(e: React.MouseEvent, nodeId: string, inside: boolean) {
+  const handlePlusClick = useCallback((e: React.MouseEvent, nodeId: string, inside: boolean) => {
     e.stopPropagation()
+    const el = e.currentTarget as HTMLElement
     if (inside) {
-      // Create item inside folder
-      createItem(nodeId, null, 'item')
+      // Ouvrir le menu pour créer à l'intérieur du dossier
+      openAddMenuNear(el, nodeId, null)
     } else {
-      // Create item after this node
+      // Ouvrir le menu pour créer juste après ce nœud
       const parentId = treeFindParentId(root, nodeId)
-      createItem(parentId, nodeId, 'item')
+      openAddMenuNear(el, parentId, nodeId)
     }
-  }
+  }, [root])
 
   // ── Gap + button handler ──────────────────────────────────────────────────
 
   function handleGapPlusClick(e: React.MouseEvent, afterNodeId: string) {
     e.stopPropagation()
     const parentId = treeFindParentId(root, afterNodeId)
-    createItem(parentId, afterNodeId, 'item')
+    openAddMenuNear(e.currentTarget as HTMLElement, parentId, afterNodeId)
   }
 
   // ── Drag & Drop (simplified) ──────────────────────────────────────────────
@@ -675,7 +727,7 @@ export function ElementTree({
 
     // Ghost image with badge count
     const ghost = document.createElement('div')
-    ghost.className = 'text-xs bg-blue-600 text-white px-2 py-1 rounded shadow'
+    ghost.className = 'text-xs bg-status-info-solid text-status-info-fg px-2 py-1 rounded shadow'
     ghost.textContent = ids.length > 1 ? `${ids.length} éléments` : (treeFindNode(root, ids[0])?.name ?? '')
     document.body.appendChild(ghost)
     e.dataTransfer.setDragImage(ghost, 0, 0)
@@ -764,14 +816,24 @@ export function ElementTree({
         onKeyDown={handleKeyDown}
         tabIndex={0}
       >
-        <p>Aucun élément</p>
+        <p>{t('common.noElements')}</p>
         <button
           type="button"
-          onClick={() => createItem(null, null, 'item')}
-          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          onClick={handleAddButtonClick}
+          className="text-xs text-status-info hover:underline"
         >
-          + Créer le premier élément
+          + {t('system.elementTree.createFirstElement')}
         </button>
+
+        {addMenu && (
+          <BgContextMenu
+            x={addMenu.x}
+            y={addMenu.y}
+            hasClipboard={clipboard !== null}
+            onAction={handleAddMenuAction}
+            onClose={() => setAddMenu(null)}
+          />
+        )}
       </div>
     )
   }
@@ -789,22 +851,22 @@ export function ElementTree({
     >
       {/* Delete confirmation modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteConfirm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setDeleteConfirm(null)}>
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-            <h2 className="text-sm font-semibold text-ink mb-2">Supprimer ?</h2>
+            <h2 className="text-sm font-semibold text-ink mb-2">{t('system.shared.deleteTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">
               {deleteConfirm.hasContent
-                ? `Ce dossier contient des éléments. Tout le contenu sera supprimé en cascade.`
-                : `${deleteConfirm.ids.length > 1 ? 'Ces éléments seront supprimés.' : 'Cet élément sera supprimé.'}`}
+                ? t('system.shared.deleteFolderWithContent')
+                : t('system.shared.deleteCount', { count: deleteConfirm.ids.length })}
             </p>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setDeleteConfirm(null)}
-                className="text-sm px-4 py-1.5 border border-edge rounded text-ink-2 hover:text-ink transition-colors">
-                Annuler
+                className="btn-secondary">
+                {t('common.cancel')}
               </button>
               <button type="button" onClick={confirmDelete} autoFocus
-                className="text-sm px-4 py-1.5 rounded bg-red-500 hover:bg-red-600 text-white transition-colors">
-                Supprimer
+                className="btn-danger">
+                {t('common.delete')}
               </button>
             </div>
           </div>
@@ -823,14 +885,14 @@ export function ElementTree({
         />
       )}
 
-      {/* Background context menu (clic droit dans le vide) */}
-      {bgContextMenu && (
+      {/* Menu Créer un élément / Créer un dossier / Coller */}
+      {addMenu && (
         <BgContextMenu
-          x={bgContextMenu.x}
-          y={bgContextMenu.y}
+          x={addMenu.x}
+          y={addMenu.y}
           hasClipboard={clipboard !== null}
-          onAction={handleBgContextAction}
-          onClose={() => setBgContextMenu(null)}
+          onAction={handleAddMenuAction}
+          onClose={() => setAddMenu(null)}
         />
       )}
 
@@ -864,16 +926,13 @@ export function ElementTree({
                 dropIndicatorBefore={!!dropIndicatorBefore}
                 dropIndicatorAfterRow={!!dropIndicatorAfterRow}
                 dropIndicatorInside={!!dropIndicatorInside}
-                onSelect={e => handleSelect(node.id, e)}
-                onExpand={() => toggleExpand(node.id)}
-                onDoubleClick={() => { if (onDoubleClick && selectedIds.length <= 1) onDoubleClick(node.id) }}
-                onContextMenu={e => handleContextMenu(e, node.id)}
-                onRenameCommit={name => {
-                  if (name.trim()) onRootChange(treeRename(root, node.id, name.trim()))
-                  setRenamingId(null)
-                }}
-                onRenameCancel={() => setRenamingId(null)}
-                onHoverPlus={id => setHoveredForPlus(id)}
+                onSelect={handleSelect}
+                onExpand={toggleExpand}
+                onDoubleClick={handleRowDoubleClick}
+                onContextMenu={handleContextMenu}
+                onRenameCommit={handleRenameCommit}
+                onRenameCancel={handleRenameCancel}
+                onHoverPlus={setHoveredForPlus}
                 hoveredForPlus={hoveredForPlus === node.id}
                 onPlusClick={handlePlusClick}
                 readOnly={readOnly}
@@ -890,9 +949,9 @@ export function ElementTree({
                 {hoveredGap === node.id && (
                   <button
                     type="button"
-                    title="Créer un élément ici"
+                    title={t('system.elementTree.createItemHere')}
                     onClick={e => handleGapPlusClick(e, node.id)}
-                    className="absolute flex items-center justify-center w-4 h-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white z-10"
+                    className="absolute flex items-center justify-center w-4 h-4 rounded-full bg-status-info-solid hover:opacity-90 text-status-info-fg z-10"
                   >
                     <Plus size={10} />
                   </button>
@@ -908,11 +967,11 @@ export function ElementTree({
         <div className="flex items-center px-3 py-1.5">
           <button
             type="button"
-            onClick={() => createItem(null, null, 'item')}
+            onClick={handleAddButtonClick}
             className="flex items-center gap-1.5 text-xs text-ink-3 hover:text-ink transition-colors"
           >
             <Plus size={12} />
-            <span>Nouvel élément</span>
+            <span>{t('system.elementTree.newElement')}</span>
           </button>
         </div>
       )}
@@ -921,7 +980,7 @@ export function ElementTree({
       <div
         className="min-h-12"
         onClick={handleClickEmpty}
-        onContextMenu={e => { e.preventDefault(); setBgContextMenu({ x: e.clientX, y: e.clientY }) }}
+        onContextMenu={e => { e.preventDefault(); setAddMenu({ x: e.clientX, y: e.clientY, parentId: null, afterId: null }) }}
       />
     </div>
   )

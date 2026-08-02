@@ -2,6 +2,7 @@ import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { AppLayout } from '../components/layout/AppLayout'
 import { TabBar } from '../components/layout/TabBar'
 import { useMenuEvents } from '../hooks/useMenuEvents'
+import { useLiveFileSync } from '../hooks/useLiveFileSync'
 import { useTabShortcuts } from '../hooks/useTabShortcuts'
 import { ThemeProvider } from '../contexts/ThemeContext'
 import { TabsProvider } from '../contexts/TabsContext'
@@ -21,6 +22,7 @@ function AppChrome() {
 
 function RootLayout() {
   useMenuEvents()
+  useLiveFileSync()
   const pathname = useRouterState({ select: s => s.location.pathname })
   // Les routes /print/* (T43) ne sont jamais visitées par l'utilisateur — chargées uniquement par
   // la fenêtre Electron cachée d'un export PDF, sans chrome d'appli (sidebar/activity bar/onglets).

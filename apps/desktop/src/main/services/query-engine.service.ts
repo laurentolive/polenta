@@ -1,6 +1,6 @@
 import * as path from 'path'
-import alasql from 'alasql'
-import type { Requirement, TestCase, ObjectLink, TestRun, ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
+import type alasqlDefault from 'alasql'
+import type { Requirement, TestCase, ObjectLink, TestRun, ProjectSchema } from '@polenta/types'
 import type {
   BuilderConfig,
   BuilderCondition,
@@ -13,7 +13,8 @@ import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
 import type { TraceabilityService } from './traceability.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
-import { findObjectTypeDef, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
+import { findObjectTypeDef, resolveObjectTypeLocation, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
+import type { ObjectTypeLocation } from './schema-lookup.util'
 import { computeMaturity, REQUIREMENT_DERIVED_FIELDS } from './maturity.util'
 
 type FlatRow = Record<string, unknown>
@@ -66,14 +67,32 @@ function sqlValue(v: unknown): string {
   return `'${String(v).replace(/'/g, "''")}'`
 }
 
-// AlaSQL's LIKE is a thin wrapper that does `pattern.replace(/%/g, '.*')` and feeds the
-// result straight into `new RegExp(...)` (see alasql/dist/alasql.js) — it does NOT
-// implement `_`/`[...]` escaping like real T-SQL, so there is no way to search for a
-// literal `%` via LIKE (any `%` in the value is always turned into a wildcard, even one
-// meant literally). A UDF sidesteps this entirely: plain JS substring match, no wildcard
-// semantics at all, registered once on the shared AlaSQL instance.
-alasql.fn.POLENTA_CONTAINS = (haystack: unknown, needle: unknown): boolean =>
-  typeof haystack === 'string' && haystack.toLowerCase().includes(String(needle ?? '').toLowerCase())
+// `alasql` (~380ms d'exceljs mis à part, alasql seul pèse encore une soixantaine de ms à
+// charger) est importé dynamiquement au premier `execute()`/`builderToSql()` plutôt que
+// statiquement en haut de fichier (T141) : `QueryEngineService` est construit dans
+// `container.ts` dès le boot de l'app, avant qu'aucune requête n'ait été lancée — un
+// import statique paierait ce coût à CHAQUE démarrage, pas seulement pour les projets qui
+// utilisent l'onglet requêtes. `alasqlPromise` mémoïse le chargement + l'enregistrement de
+// l'UDF ci-dessous pour qu'ils ne s'exécutent qu'une seule fois par process.
+let alasqlPromise: Promise<typeof alasqlDefault> | undefined
+
+async function getAlasql(): Promise<typeof alasqlDefault> {
+  if (!alasqlPromise) {
+    alasqlPromise = import('alasql').then((mod) => {
+      const alasql = mod.default
+      // AlaSQL's LIKE is a thin wrapper that does `pattern.replace(/%/g, '.*')` and feeds
+      // the result straight into `new RegExp(...)` (see alasql/dist/alasql.js) — it does
+      // NOT implement `_`/`[...]` escaping like real T-SQL, so there is no way to search
+      // for a literal `%` via LIKE (any `%` in the value is always turned into a wildcard,
+      // even one meant literally). A UDF sidesteps this entirely: plain JS substring
+      // match, no wildcard semantics at all, registered once on the shared AlaSQL instance.
+      alasql.fn.POLENTA_CONTAINS = (haystack: unknown, needle: unknown): boolean =>
+        typeof haystack === 'string' && haystack.toLowerCase().includes(String(needle ?? '').toLowerCase())
+      return alasql
+    })
+  }
+  return alasqlPromise
+}
 
 const OPERATOR_SQL: Record<BuilderCondition['operator'], (field: string, value: unknown) => string> = {
   '=': (f, v) => `[${f}] = ${sqlValue(v)}`,
@@ -149,6 +168,22 @@ function flattenTestCase(tc: TestCase, component: string, latestRun: TestRun | u
     latestRunResult: latestRun?.result ?? null,
     latestRunDate: latestRun?.executedAt ?? null,
   }
+}
+
+/**
+ * `component` on a dataset row must break out each of a repo's own local components
+ * (T123: `SystemNode.children`, nested arbitrarily under `root`) individually, not just
+ * the repo/submodule they all happen to live in — otherwise several local components
+ * sharing one repo collapse into a single `component` value (the repo/mount tag alone),
+ * which is what `resolveRepos()` produces. Prefers the ref's own resolved `nodeName`
+ * (recursed to any depth by `resolveObjectTypeLocation`) over the repo-level tag; falls
+ * back to it when the ref resolves to `root` (the repo's own default/sole node — the
+ * pre-T123 case, kept unchanged for the many projects that never add local components)
+ * or can't be resolved at all (cross-component ref, hand-edited YAML, deleted type).
+ */
+function rowComponentFor(location: ObjectTypeLocation | null | 'unresolvable', repoComponent: string): string {
+  if (location && location !== 'unresolvable' && location.nodeName !== 'root') return location.nodeName
+  return repoComponent
 }
 
 function flattenLink(l: ObjectLink, component: string): FlatRow {
@@ -253,32 +288,41 @@ export class QueryEngineService {
     // `objectTypeRef` is only meaningful against its OWN component's local
     // schema.yaml (each component repo is schema-autonomous per CLAUDE.md — a
     // submodule node's `objectTypes` aren't necessarily mirrored in the product's
-    // schema). `resolveType` is memoized per repo (a handful of distinct
+    // schema). `resolveLocation` is memoized per repo (a handful of distinct
     // objectTypeRefs shared by potentially thousands of requirements) rather than
-    // calling `findObjectTypeDef` once per requirement.
+    // calling `resolveObjectTypeLocation` once per requirement.
     const requirementRows = perRepo.flatMap(({ component, requirements, schema }) => {
-      const typeCache = new Map<string, ObjectTypeDefinition | null>()
-      const resolveType = (ref: string): ObjectTypeDefinition | null => {
-        const cached = typeCache.get(ref)
+      const locationCache = new Map<string, ObjectTypeLocation | null | 'unresolvable'>()
+      const resolveLocation = (ref: string) => {
+        const cached = locationCache.get(ref)
         if (cached !== undefined) return cached
-        const found = findObjectTypeDef(schema as ProjectSchema, ref)
-        const resolved = found === 'unresolvable' ? null : found
-        typeCache.set(ref, resolved)
-        return resolved
+        const found = resolveObjectTypeLocation(schema as ProjectSchema, ref)
+        locationCache.set(ref, found)
+        return found
       }
       return requirements.map((r) => {
         const coverageStatus = coverage.get(r.id)?.coverageStatus ?? 'not_covered'
-        const typeDef = resolveType(r.objectTypeRef)
+        const location = resolveLocation(r.objectTypeRef)
+        const typeDef = location && location !== 'unresolvable' ? location.typeDef : null
+        const rowComponent = rowComponentFor(location, component)
         const maturity = computeMaturity(r, typeDef, coverageStatus, revalidationReqIds.has(r.id))
-        return flattenRequirement(r, component, { coverageStatus, ...maturity })
+        return flattenRequirement(r, rowComponent, { coverageStatus, ...maturity })
       })
     })
 
     return {
       requirements: requirementRows,
-      tests: perRepo.flatMap(({ component, testCases, latestRunMap }) =>
-        testCases.map((tc) => flattenTestCase(tc, component, latestRunMap.get(tc.id))),
-      ),
+      tests: perRepo.flatMap(({ component, testCases, latestRunMap, schema }) => {
+        const locationCache = new Map<string, ObjectTypeLocation | null | 'unresolvable'>()
+        return testCases.map((tc) => {
+          let location = locationCache.get(tc.objectTypeRef)
+          if (location === undefined) {
+            location = resolveObjectTypeLocation(schema as ProjectSchema, tc.objectTypeRef)
+            locationCache.set(tc.objectTypeRef, location)
+          }
+          return flattenTestCase(tc, rowComponentFor(location, component), latestRunMap.get(tc.id))
+        })
+      }),
       links: perRepo.flatMap(({ component, links }) => links.map((l) => flattenLink(l, component))),
     }
   }
@@ -312,6 +356,8 @@ export class QueryEngineService {
     // si buildSql() est un jour étendu et laisse passer un nom de champ non allowlisté,
     // ce garde-fou reste la dernière barrière avant exécution.
     assertReadOnlySql(sql)
+
+    const alasql = await getAlasql()
 
     // Les tables sont réassignées juste avant l'exécution synchrone d'AlaSQL — aucun
     // `await` n'intervient entre l'assignation et l'exec, donc pas de risque de course

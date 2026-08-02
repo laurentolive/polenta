@@ -1,4 +1,5 @@
 ﻿import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api'
 import type { TestRunStatus } from '@polenta/types'
@@ -6,18 +7,18 @@ import { useSystemView } from '../../contexts/SystemViewContext'
 import { buildFilterRegex } from '../../lib/textFilter'
 
 const STATUS_CLASS: Record<string, string> = {
-  planned:     'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
-  in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-400',
-  completed:   'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-400',
-  abandoned:   'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400',
+  planned:     'bg-status-neutral-bg text-status-neutral',
+  in_progress: 'bg-status-info-bg text-status-info',
+  completed:   'bg-status-success-bg text-status-success',
+  abandoned:   'bg-status-danger-bg text-status-danger',
 }
 
 const RUN_CLASS: Partial<Record<TestRunStatus, string>> = {
-  PASS:       'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-  FAIL:       'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-  BLOCKED:    'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
-  INCOMPLETE: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
-  pending:    'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+  PASS:       'bg-status-success-bg text-status-success',
+  FAIL:       'bg-status-danger-bg text-status-danger',
+  BLOCKED:    'bg-status-warning-bg text-status-warning',
+  INCOMPLETE: 'bg-status-warning-bg text-status-warning',
+  pending:    'bg-status-neutral-bg text-status-neutral',
 }
 
 interface Props {
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export function CampaignListView({ repoPath, component, level }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { searchStr } = useRouterState({ select: s => ({ searchStr: s.location.searchStr }) })
   const sp = new URLSearchParams(searchStr ?? '')
@@ -96,11 +98,11 @@ export function CampaignListView({ repoPath, component, level }: Props) {
       <div className="flex-1 overflow-y-auto">
         {campaigns.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-16">
-            <p className="text-sm text-ink-3">Aucune campagne</p>
+            <p className="text-sm text-ink-3">{t('sidebar.system.noCampaign')}</p>
             <button
               type="button"
               onClick={newCampaign}
-              className="mt-3 text-xs text-blue-600 hover:underline"
+              className="mt-3 text-xs text-prim hover:underline"
             >
               CrÃ©er la premiÃ¨re campagne
             </button>
@@ -148,7 +150,7 @@ export function CampaignListView({ repoPath, component, level }: Props) {
                     </div>
                   )}
                   {camp.testCaseIds.length === 0 && (
-                    <p className="text-[10px] text-ink-3 italic mt-1">Aucun test</p>
+                    <p className="text-[10px] text-ink-3 italic mt-1">{t('system.campaignListView.noTest')}</p>
                   )}
                 </div>
 

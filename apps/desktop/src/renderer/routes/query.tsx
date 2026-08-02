@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Play, Save, Trash2, Lock, Users2, Search as SearchIcon } from 'lucide-react'
@@ -22,6 +23,7 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { queryResultExportBaseName } from '../components/export/exportFilenames'
 import { useSetTabTitle } from '../contexts/TabsContext'
+import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import type { BuilderConfig, QueryDefinition, QueryMode, QueryResult, QueryScope, SavedQuery, QueryHistoryEntry } from '@polenta/types'
 
 export const Route = createFileRoute('/query')({
@@ -40,6 +42,7 @@ function entryFilterText(mode: QueryMode, builderConfig: BuilderConfig | undefin
 }
 
 function QueryPage() {
+  const { t } = useTranslation()
   const { projectId, queryId } = Route.useSearch()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -114,7 +117,7 @@ function QueryPage() {
       if (requestIdRef.current !== reqId) return
       // Pas de résultat périmé laissé à l'écran sans indication (T77-tests.md cas limite).
       setResult(null)
-      setError(err instanceof Error ? err.message : "Erreur lors de l'exécution de la requête.")
+      setError(err instanceof Error ? err.message : t('dashboard.widgetModal.queryExecutionError'))
     } finally {
       if (requestIdRef.current === reqId) setIsExecuting(false)
     }
@@ -201,7 +204,10 @@ function QueryPage() {
     })
   }
 
+  useModalHotkeys(() => setSaveModal(null), confirmSave, !saveModal || createMutation.isPending)
+
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [pendingDeleteQueryId, setPendingDeleteQueryId] = useState<string | null>(null)
 
   const deleteQueryMutation = useMutation({
     mutationFn: (id: string) => api.queries.delete(repoPath, username, id),
@@ -212,8 +218,16 @@ function QueryPage() {
     // T77 sprint 2 : delete() est maintenant bloqué si un widget référence encore
     // cette requête (T77-tests.md cas limite) — surfacé ici plutôt que silencieusement
     // ignoré, sans quoi le clic n'aurait visiblement aucun effet.
-    onError: (err) => setDeleteError(err instanceof Error ? err.message : 'Suppression impossible.'),
+    onError: (err) => setDeleteError(err instanceof Error ? err.message : t('sidebar.dashboard.deleteFailed')),
   })
+
+  const pendingDeleteQuery = savedQueries.find((q) => q.id === pendingDeleteQueryId)
+
+  useModalHotkeys(
+    () => setPendingDeleteQueryId(null),
+    () => { if (pendingDeleteQueryId) { deleteQueryMutation.mutate(pendingDeleteQueryId); setPendingDeleteQueryId(null) } },
+    !pendingDeleteQueryId || deleteQueryMutation.isPending,
+  )
 
   const deleteHistoryMutation = useMutation({
     mutationFn: (id: string) => api.queries.historyDelete(repoPath, username, id),
@@ -235,13 +249,13 @@ function QueryPage() {
     ? history.filter((h) => entryFilterText(h.mode, h.builderConfig, h.sqlText).includes(historyFilter.trim().toLowerCase()))
     : history
 
-  if (!projectId) return <p className="text-sm text-ink-3 p-4">Projet non chargé.</p>
+  if (!projectId) return <p className="text-sm text-ink-3 p-4">{t('common.projectNotLoaded')}</p>
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <ViewHeader
         currentProjectId={projectId}
-        title="Requêtes"
+        title={t('sidebar.dashboard.queriesTab')}
         actions={
           result && (
             <ExportButton
@@ -259,9 +273,7 @@ function QueryPage() {
                 // revue de code) plutôt qu'une erreur claire : on préfère refuser explicitement
                 // l'export PDF et orienter vers Excel, qui n'a pas cette limite.
                 if (resultJson.length > 200_000) {
-                  throw new Error(
-                    "Résultat trop volumineux pour l'export PDF (au-delà d'un certain volume, l'aperçu risque d'être tronqué) — utilisez l'export Excel pour ce résultat.",
-                  )
+                  throw new Error(t('queryPage.resultTooLargeForPdf'))
                 }
                 return { queryName: currentQueryName, resultJson }
               }}
@@ -279,16 +291,16 @@ function QueryPage() {
             <button
               type="button"
               onClick={() => setMode('builder')}
-              className={`px-3 py-1.5 ${mode === 'builder' ? 'bg-blue-600 text-white' : 'text-ink-2 hover:bg-hover'}`}
+              className={`px-3 py-1.5 ${mode === 'builder' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
             >
-              Builder
+              {t('queryPage.builderMode')}
             </button>
             <button
               type="button"
               onClick={switchToSql}
-              className={`px-3 py-1.5 ${mode === 'sql' ? 'bg-blue-600 text-white' : 'text-ink-2 hover:bg-hover'}`}
+              className={`px-3 py-1.5 ${mode === 'sql' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
             >
-              SQL avancé
+              {t('queryPage.sqlMode')}
             </button>
           </div>
 
@@ -298,18 +310,18 @@ function QueryPage() {
             type="button"
             onClick={runCurrent}
             disabled={isExecuting}
-            className="btn-primary text-xs flex items-center gap-1.5"
+            className="btn-primary-sm flex items-center gap-1.5"
           >
             <Play size={12} />
-            {isExecuting ? 'Exécution…' : 'Exécuter'}
+            {isExecuting ? t('queryPage.executing') : t('queryPage.execute')}
           </button>
           <button
             type="button"
             onClick={() => setSaveModal({ title: '', scope: 'private' })}
-            className="btn-secondary text-xs flex items-center gap-1.5"
+            className="btn-secondary-sm flex items-center gap-1.5"
           >
             <Save size={12} />
-            Sauvegarder
+            {t('requirementsPage.save')}
           </button>
         </div>
 
@@ -326,7 +338,7 @@ function QueryPage() {
         )}
 
         {error && (
-          <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2">
+          <p className="text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
             {error}
           </p>
         )}
@@ -339,11 +351,13 @@ function QueryPage() {
         <div className="bg-surface border border-edge rounded-lg overflow-hidden">
           <div className="px-4 py-2.5 border-b border-edge flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide shrink-0">
-              Requêtes sauvegardées ({visibleSaved.length}{savedFilter ? `/${savedQueries.length}` : ''})
+              {savedFilter
+                ? t('queryPage.savedQueriesCountFiltered', { visible: visibleSaved.length, total: savedQueries.length })
+                : t('queryPage.savedQueriesCount', { count: visibleSaved.length })}
             </p>
           </div>
           {deleteError && (
-            <p className="text-[11px] text-red-500 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-700/60 px-4 py-1.5">
+            <p className="text-[11px] text-status-danger bg-status-danger-bg border-b border-status-danger-border px-4 py-1.5">
               {deleteError}
             </p>
           )}
@@ -352,15 +366,15 @@ function QueryPage() {
             <input
               value={savedFilter}
               onChange={(e) => setSavedFilter(e.target.value)}
-              placeholder="Filtrer…"
+              placeholder={t('common.filterPlaceholder')}
               className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
             />
           </div>
           <div className="max-h-64 overflow-y-auto">
             {savedQueries.length === 0 ? (
-              <p className="text-xs text-ink-3 italic px-4 py-4">Aucune requête sauvegardée.</p>
+              <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noSavedQuery')}</p>
             ) : visibleSaved.length === 0 ? (
-              <p className="text-xs text-ink-3 italic px-4 py-4">Aucun résultat pour ce filtre.</p>
+              <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noResultForFilter')}</p>
             ) : (
               visibleSaved.map((q) => (
                 <div key={q.id} className="group flex items-center gap-2 px-4 py-2 hover:bg-hover border-b border-edge-subtle last:border-0">
@@ -370,9 +384,9 @@ function QueryPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => deleteQueryMutation.mutate(q.id)}
-                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-red-500 transition-opacity shrink-0"
-                    title="Supprimer"
+                    onClick={() => setPendingDeleteQueryId(q.id)}
+                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
+                    title={t('common.delete')}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -385,7 +399,9 @@ function QueryPage() {
         <div className="bg-surface border border-edge rounded-lg overflow-hidden">
           <div className="px-4 py-2.5 border-b border-edge flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide shrink-0">
-              Historique ({visibleHistory.length}{historyFilter ? `/${history.length}` : ''})
+              {historyFilter
+                ? t('queryPage.historyCountFiltered', { visible: visibleHistory.length, total: history.length })
+                : t('queryPage.historyCount', { count: visibleHistory.length })}
             </p>
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-edge-subtle">
@@ -393,15 +409,15 @@ function QueryPage() {
             <input
               value={historyFilter}
               onChange={(e) => setHistoryFilter(e.target.value)}
-              placeholder="Filtrer…"
+              placeholder={t('common.filterPlaceholder')}
               className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
             />
           </div>
           <div className="max-h-64 overflow-y-auto">
             {history.length === 0 ? (
-              <p className="text-xs text-ink-3 italic px-4 py-4">Aucun historique.</p>
+              <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noHistory')}</p>
             ) : visibleHistory.length === 0 ? (
-              <p className="text-xs text-ink-3 italic px-4 py-4">Aucun résultat pour ce filtre.</p>
+              <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noResultForFilter')}</p>
             ) : (
               visibleHistory.map((h) => (
                 <div key={h.id} className="group flex items-center gap-2 px-4 py-2 hover:bg-hover border-b border-edge-subtle last:border-0">
@@ -415,8 +431,8 @@ function QueryPage() {
                   <button
                     type="button"
                     onClick={() => deleteHistoryMutation.mutate(h.id)}
-                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-red-500 transition-opacity shrink-0"
-                    title="Supprimer"
+                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
+                    title={t('common.delete')}
                   >
                     ✕
                   </button>
@@ -429,18 +445,18 @@ function QueryPage() {
 
       {/* ── Modal de sauvegarde ── */}
       {saveModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-20">
+        <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-20">
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
-            <h2 className="font-semibold text-sm text-ink mb-4">Sauvegarder la requête</h2>
-            <label className="text-xs text-ink-3 block mb-1">Titre</label>
+            <h2 className="font-semibold text-sm text-ink mb-4">{t('queryPage.saveQueryTitle')}</h2>
+            <label className="text-xs text-ink-3 block mb-1">{t('requirementsPage.titleLabel')}</label>
             <input
               value={saveModal.title}
               onChange={(e) => setSaveModal({ ...saveModal, title: e.target.value })}
-              placeholder="Ma requête…"
+              placeholder={t('queryPage.queryTitlePlaceholder')}
               autoFocus
               className="input-field w-full mb-4"
             />
-            <label className="text-xs text-ink-3 block mb-1.5">Portée</label>
+            <label className="text-xs text-ink-3 block mb-1.5">{t('queryPage.scopeLabel')}</label>
             <div className="flex gap-4 mb-5">
               <label className="flex items-center gap-1.5 text-xs text-ink-2">
                 <input
@@ -448,7 +464,7 @@ function QueryPage() {
                   checked={saveModal.scope === 'private'}
                   onChange={() => setSaveModal({ ...saveModal, scope: 'private' })}
                 />
-                Privée
+                {t('queryPage.scopePrivate')}
               </label>
               <label className="flex items-center gap-1.5 text-xs text-ink-2">
                 <input
@@ -456,20 +472,49 @@ function QueryPage() {
                   checked={saveModal.scope === 'shared'}
                   onChange={() => setSaveModal({ ...saveModal, scope: 'shared' })}
                 />
-                Partagée
+                {t('queryPage.scopeShared')}
               </label>
             </div>
             <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setSaveModal(null)} className="btn-secondary text-sm">
-                Annuler
+              <button type="button" onClick={() => setSaveModal(null)} className="btn-secondary">
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
                 onClick={confirmSave}
                 disabled={!saveModal.title.trim() || createMutation.isPending}
-                className="btn-primary text-sm"
+                className="btn-primary"
               >
-                {createMutation.isPending ? 'Sauvegarde…' : 'Sauvegarder'}
+                {createMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de confirmation de suppression ── */}
+      {pendingDeleteQueryId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">
+          <div
+            tabIndex={-1}
+            autoFocus
+            className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4 outline-none"
+          >
+            <h2 className="text-sm font-semibold text-ink mb-2">{t('queryPage.deleteQueryConfirmTitle')}</h2>
+            <p className="text-xs text-ink-2 mb-5">
+              <Trans i18nKey="queryPage.deleteQueryConfirmBody" values={{ title: pendingDeleteQuery?.title ?? pendingDeleteQueryId }} components={{ b: <strong /> }} />
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setPendingDeleteQueryId(null)} className="btn-secondary">
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { deleteQueryMutation.mutate(pendingDeleteQueryId); setPendingDeleteQueryId(null) }}
+                disabled={deleteQueryMutation.isPending}
+                className="btn-danger"
+              >
+                {t('common.delete')}
               </button>
             </div>
           </div>

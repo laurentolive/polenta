@@ -29,8 +29,17 @@ Requêtes), deux familles de vues (`/query`, `/dashboard`).
   maintenus par `RequirementsIndexService`/`TestsIndexService` — jamais persisté ni
   mis en cache sur disque. Trois tables : `requirements`, `tests`, `links`, une ligne
   par objet, champs `fields{}` étalés au premier niveau (accessibles directement en
-  SQL). Colonne `component` sur chaque ligne (repo courant + composants submodules
-  agrégés via `WorkspaceTreeService`).
+  SQL). Colonne `component` sur chaque ligne (`requirements`/`tests`/`links`) —
+  résolue en deux temps (`query-engine.service.ts`, `rowComponentFor()`) : d'abord le
+  repo/submodule (repo courant + composants submodules agrégés via
+  `WorkspaceTreeService`), puis affinée au composant local (`SystemNode`, T123 — un
+  composant local a les mêmes capacités qu'un composant en repo séparé, cf.
+  CLAUDE.md) que l'`objectTypeRef` de la ligne résout réellement, à n'importe quelle
+  profondeur d'imbrication. Le tag repo/submodule ne reste utilisé que pour le nœud
+  `root` par défaut (repo sans composants locaux additionnels, cas historique
+  inchangé) ou quand la ref est irrésolvable. `links` n'a pas d'`objectTypeRef`
+  propre (un lien référence deux objets via `sourceId`/`targetId`) — reste taggé au
+  niveau repo/submodule uniquement.
 - **Colonnes dérivées sur `requirements`** (T77 sprint 3, cf. §5 ci-dessous) :
   `coverageStatus` + 5 colonnes booléennes `maturity*` + `maturityMissingCriteria`.
 - **Deux modes** : builder guidé (traduit en SQL côté service, champs limités à une
@@ -92,21 +101,36 @@ objet référencé).
   §3.1, mais affiche un état "requête introuvable" en défense plutôt que de
   planter).
 
+### 4.1 Widget barres — empilement (`fieldMapping.stacked`)
+
+- Uniquement significatif quand `series` est renseigné (multi-série) — ignoré sinon.
+- Par défaut (`stacked` absent/`false`) : une barre groupée par valeur de série,
+  comportement historique inchangé.
+- `stacked: true` : les séries partagent un même `stackId` recharts et s'empilent au
+  lieu d'être juxtaposées — seul le segment le plus haut de la pile reçoit des coins
+  arrondis (les segments inférieurs restent carrés, sans quoi un arrondi médian
+  laisserait un espace visible avec le segment empilé au-dessus).
+- Réglable dans la popup de configuration du widget (case à cocher visible
+  uniquement pour un widget `bar` avec une `series` sélectionnée) — pas seulement
+  câblé pour le dashboard **Status** pré-configuré (§5.1).
+
 ---
 
 ## 5. Dashboards pré-configurés & critères de maturité (T77 sprint 3)
 
 ### 5.1 Seed automatique
 
-Trois dashboards **partagés** sont créés automatiquement au premier accès à
+Un dashboard **partagé** est créé automatiquement au premier accès à
 l'onglet "Suivi" si le dossier `dashboards/` est vide et n'a jamais été seedé
 (marqueur `dashboards/.seeded.yaml`, invisible du listing car les fichiers dont le
-nom commence par `.` sont ignorés par `GitService.listFiles`) : **Couverture**,
-**Avancement**, **Maturité**. Le seed ne se redéclenche jamais si le dossier est
-non vide au premier accès (contient déjà des dashboards partagés) ni s'il a déjà eu
-lieu — un utilisateur qui supprime les 3 templates ne les voit pas revenir.
-Implémenté côté main process (`DashboardSeedService`, appelé depuis le handler IPC
-`dashboards:list`), pas côté renderer.
+nom commence par `.` sont ignorés par `GitService.listFiles`) : **Status**
+(T148 : les templates **Couverture**, **Avancement**, **Maturité** livrés en T77
+sprint 3 ont été retirés du seed — plus jugés utiles une fois `coverageStatus`
+disponible directement en colonne de dataset SQL). Le seed ne se redéclenche
+jamais si le dossier est non vide au premier accès (contient déjà des dashboards
+partagés) ni s'il a déjà eu lieu — un utilisateur qui supprime le template ne le
+voit pas revenir. Implémenté côté main process (`DashboardSeedService`, appelé
+depuis le handler IPC `dashboards:list`), pas côté renderer.
 
 Chaque dashboard pré-configuré est un dashboard partagé normal : modifiable,
 supprimable, widgets ajoutables/retirables comme n'importe quel dashboard partagé —
@@ -125,12 +149,13 @@ tard) si la branche courante est en lecture seule (`''` ou `prj-*`, même règle
 lecture pure à lecture+écriture avec ce seed, et rien d'autre dans le process
 principal n'empêchait jusqu'ici une écriture sur une baseline.
 
-- **Couverture** : répartition des exigences par `coverageStatus` (camembert) +
-  taux de couverture par composant (barres).
-- **Avancement** : répartition par statut (barres) + répartition par domaine
-  (barres).
-- **Maturité** : taux de maturité global (tuile KPI) + taux par domaine (barres) +
-  table des exigences non conformes avec le(s) critère(s) manquant(s).
+- **Status** : une barre empilée par composant (`fieldMapping.stacked: true`),
+  chaque segment représentant le nombre d'exigences de ce composant dans un
+  `status` donné (`category: component`, `series: status`, `measure: count`) — voir
+  §4.1 pour l'option d'empilement générique introduite pour ce widget — plus une
+  seconde barre empilée par composant, même principe mais un segment par
+  `coverageStatus` (`category: component`, `series: coverageStatus`,
+  `measure: count`) au lieu de `status`.
 
 ### 5.2 Critères de maturité — calcul exact
 

@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
@@ -27,6 +28,7 @@ function buildDefaultFields(typeDef: { fields: Array<{ name: string; default?: u
 }
 
 function NewRequirementPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { repoPath, projectId, type: typeParam } = Route.useSearch()
@@ -66,13 +68,13 @@ function NewRequirementPage() {
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       navigate({ to: '/req/$reqId', params: { reqId: result.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
     },
-    onError: (err: unknown) => setError(err instanceof Error ? err.message : 'Erreur inconnue'),
+    onError: (err: unknown) => setError(err instanceof Error ? err.message : t('common.unknownError')),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim()) { setError('Le titre est obligatoire.'); return }
-    if (!repoPath) { setError("Projet non chargé — revenez à l'accueil."); return }
+    if (!title.trim()) { setError(t('requirementsPage.titleRequired')); return }
+    if (!repoPath) { setError(t('requirementsPage.projectNotLoadedGoHome')); return }
     setError(null)
     createMutation.mutate()
   }
@@ -81,23 +83,23 @@ function NewRequirementPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <ViewHeader currentProjectId={projectId} title="Nouvelle Exigence" />
+      <ViewHeader currentProjectId={projectId} title={t('requirementsPage.newTitle')} />
 
       <div className="flex-1 overflow-y-auto">
       <div className="max-w-2xl p-6">
 
-      {schemaLoading && <p className="text-sm text-ink-3 mb-4">Chargement du schéma…</p>}
+      {schemaLoading && <p className="text-sm text-ink-3 mb-4">{t('schema.page.loading')}</p>}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1">
-            Titre <span className="text-red-500">*</span>
+            {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
           </label>
           <input
             type="text"
             value={title}
             onChange={e => setTitle(e.target.value)}
-            placeholder="Ex : Le système SHALL limiter la température…"
+            placeholder={t('requirementsPage.titlePlaceholder')}
             className="input-field w-full"
             autoFocus
             disabled={isDisabled}
@@ -106,7 +108,7 @@ function NewRequirementPage() {
 
         <div>
           <label className="block text-sm font-medium text-ink mb-1">
-            Type <span className="text-red-500">*</span>
+            {t('system.editView.colType')} <span className="text-status-danger">*</span>
           </label>
           {schema ? (
             <select
@@ -138,21 +140,22 @@ function NewRequirementPage() {
             onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
             disabled={isDisabled}
             repoPath={repoPath}
+            interfaceRoles={schema?.roles?.map(r => r.name)}
           />
         ))}
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && <p className="text-sm text-status-danger">{error}</p>}
 
         <div className="flex gap-3">
           <button type="submit" disabled={isDisabled} className="btn-primary">
-            {createMutation.isPending ? 'Création…' : "Créer l'exigence"}
+            {createMutation.isPending ? t('common.creating') : t('requirementsPage.createRequirement')}
           </button>
           <button
             type="button"
             onClick={() => navigate({ to: '/schema', search: { repoPath, projectId } })}
             className="btn-secondary"
           >
-            Annuler
+            {t('common.cancel')}
           </button>
         </div>
       </form>

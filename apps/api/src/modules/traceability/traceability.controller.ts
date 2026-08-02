@@ -2,7 +2,7 @@ import { Controller, Get, Post, Param, Body, Query } from '@nestjs/common'
 import { TraceabilityService } from './traceability.service'
 import { AcknowledgeImpactSchema, GenerateTestPlanSchema } from '@polenta/zod-schemas'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
-import type { MatrixFiltersDto } from '@polenta/zod-schemas'
+import type { MatrixFiltersDto, AcknowledgeImpactDto, GenerateTestPlanDto } from '@polenta/zod-schemas'
 
 @Controller('projects/:projectId/branches/:branchId/traceability')
 export class TraceabilityController {
@@ -47,7 +47,7 @@ export class TraceabilityController {
     @Param('projectId') projectId: string,
     @Param('branchId') branchId: string,
     @Param('reqId') reqId: string,
-    @Body(new ZodValidationPipe(AcknowledgeImpactSchema)) dto: any,
+    @Body(new ZodValidationPipe(AcknowledgeImpactSchema)) dto: AcknowledgeImpactDto,
   ) {
     return this.traceabilityService.acknowledgeImpact(projectId, branchId, reqId, dto)
   }
@@ -56,7 +56,7 @@ export class TraceabilityController {
   generateTestPlan(
     @Param('projectId') projectId: string,
     @Param('branchId') branchId: string,
-    @Body(new ZodValidationPipe(GenerateTestPlanSchema)) dto: any,
+    @Body(new ZodValidationPipe(GenerateTestPlanSchema)) dto: GenerateTestPlanDto,
   ) {
     return this.traceabilityService.generateTestPlan(projectId, branchId, dto)
   }

@@ -12,9 +12,11 @@
  * "requête introuvable" state instead of crashing (T77-tests.md cas limite).
  */
 import { useMemo, useRef, useState } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
 import { AlertTriangle, Loader2, Pencil, Trash2 } from 'lucide-react'
 import type { Dashboard, SavedQuery, Widget, WidgetSize } from '@polenta/types'
 import { useQueryResult } from '../../hooks/useQueryResult'
+import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 import { orderItems } from '../sidebar/ReorderableSidebarSection'
 
@@ -54,6 +56,7 @@ function WidgetCard({
   onRequestDelete: () => void
   printMode?: boolean
 }) {
+  const { t } = useTranslation()
   const query = savedQueries.find((q) => q.id === widget.queryId)
   const { data: result, isLoading, error } = useQueryResult(repoPath, workspaceDir, query)
 
@@ -66,7 +69,7 @@ function WidgetCard({
             <button
               type="button"
               onClick={onRequestEdit}
-              title="Modifier le widget"
+              title={t('dashboard.widgetModal.editTitle')}
               className="text-ink-3 hover:text-ink transition-colors"
             >
               <Pencil size={12} />
@@ -74,8 +77,8 @@ function WidgetCard({
             <button
               type="button"
               onClick={onRequestDelete}
-              title="Supprimer le widget"
-              className="text-ink-3 hover:text-red-500 transition-colors"
+              title={t('dashboardPage.deleteWidgetTitle')}
+              className="text-ink-3 hover:text-status-danger transition-colors"
             >
               <Trash2 size={12} />
             </button>
@@ -86,15 +89,15 @@ function WidgetCard({
         {!query ? (
           <div className="flex items-center justify-center h-full gap-2 text-xs text-ink-3 italic px-4 text-center">
             <AlertTriangle size={13} className="shrink-0" />
-            Requête introuvable — elle a peut-être été supprimée.
+            {t('dashboardPage.queryNotFound')}
           </div>
         ) : isLoading ? (
           <div className="flex items-center justify-center h-full text-ink-3">
             <Loader2 size={16} className="animate-spin" />
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center h-full text-xs text-red-500 italic px-4 text-center">
-            {error instanceof Error ? error.message : "Erreur lors de l'exécution de la requête."}
+          <div className="flex items-center justify-center h-full text-xs text-status-danger italic px-4 text-center">
+            {error instanceof Error ? error.message : t('dashboard.widgetModal.queryExecutionError')}
           </div>
         ) : (
           <WidgetRenderer type={widget.type} result={result ?? null} fieldMapping={widget.fieldMapping} />
@@ -105,6 +108,7 @@ function WidgetCard({
 }
 
 export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir, onReorder, onDeleteWidget, onEditWidget, printMode = false }: Props) {
+  const { t } = useTranslation()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -153,11 +157,17 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
 
   const pendingWidget = dashboard.widgets.find((w) => w.id === pendingDeleteId)
 
+  useModalHotkeys(
+    () => setPendingDeleteId(null),
+    () => { if (pendingDeleteId) { onDeleteWidget(pendingDeleteId); setPendingDeleteId(null) } },
+    !pendingDeleteId,
+  )
+
   if (ordered.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-1 text-center">
-        <p className="text-sm text-ink-3">Aucun widget dans ce dashboard.</p>
-        <p className="text-xs text-ink-3">Utilisez "Ajouter un widget" pour commencer.</p>
+        <p className="text-sm text-ink-3">{t('dashboardPage.noWidget')}</p>
+        <p className="text-xs text-ink-3">{t('dashboardPage.useAddWidgetHint')}</p>
       </div>
     )
   }
@@ -169,7 +179,7 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
         {ordered.map((widget) => (
           <div key={widget.id} className={`relative ${SIZE_SPAN[widget.size]}`}>
             {dropTarget?.id === widget.id && dropTarget.position === 'before' && (
-              <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500 z-10 pointer-events-none" />
+              <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-status-info-solid z-10 pointer-events-none" />
             )}
             <div
               draggable={!printMode}
@@ -190,22 +200,22 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
               />
             </div>
             {dropTarget?.id === widget.id && dropTarget.position === 'after' && (
-              <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-blue-500 z-10 pointer-events-none" />
+              <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-status-info-solid z-10 pointer-events-none" />
             )}
           </div>
         ))}
       </div>
 
       {pendingDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
-            <h2 className="text-sm font-semibold text-ink mb-2">Supprimer le widget ?</h2>
+            <h2 className="text-sm font-semibold text-ink mb-2">{t('dashboardPage.deleteWidgetConfirmTitle')}</h2>
             <p className="text-xs text-ink-2 mb-5">
-              <strong>{pendingWidget?.title ?? pendingDeleteId}</strong> sera supprimé du dashboard.
+              <Trans i18nKey="dashboardPage.deleteWidgetConfirmBody" values={{ title: pendingWidget?.title ?? pendingDeleteId }} components={{ b: <strong /> }} />
             </p>
             <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setPendingDeleteId(null)} className="btn-secondary text-sm">
-                Annuler
+              <button type="button" onClick={() => setPendingDeleteId(null)} className="btn-secondary">
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -213,9 +223,9 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
                   onDeleteWidget(pendingDeleteId)
                   setPendingDeleteId(null)
                 }}
-                className="bg-red-600 hover:bg-red-700 text-white rounded px-4 py-2 text-sm"
+                className="btn-danger"
               >
-                Supprimer
+                {t('common.delete')}
               </button>
             </div>
           </div>

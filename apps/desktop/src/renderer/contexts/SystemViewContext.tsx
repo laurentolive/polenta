@@ -26,25 +26,50 @@ import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { useTreeState, treeUpdateObjectId } from '../hooks/useTreeState'
 import { useVersioning } from './VersioningContext'
-import type { TypeTreeNode, ObjectTypeDefinition, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
+import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
+import { findSystemNode, flattenSystemNodes } from '@polenta/types'
 import type { FilterOptions } from '../lib/textFilter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** One entry of the merged "Composant" combobox — a (repo, SystemNode) pair. Replaces the
- *  former two-level Composant/Sous-composant cascade (T113 → T120): a local sub-component and
- *  a repo-backed component are now peers in the same flat list. */
-export interface ComponentOption {
+/** One (repo, SystemNode) pair — intermediate building block for `componentTypeOptions` below.
+ *  No longer exposed to SystemPanel directly (T129 merged Composant+Élément into one combobox);
+ *  kept as an internal step because the repo/groupLabel resolution (T120) and the local-nesting
+ *  path resolution (T123) are independent of the per-type fan-out T129 adds on top. */
+interface ComponentOption {
   /** Mount name of the owning repo in the workspace (or the synthetic 'root' in mono-repo mode). */
   repoName: string
   repoPath: string
   /** SystemNode.name within that repo's schema.yaml — 'root' or a local sub-component name. */
   nodeId: string
-  /** Display label for this single option. */
+  /** Display label for this single option (repo/component path, no type yet). */
   label: string
-  /** Set only when the owning repo defines more than one SystemNode — renders as an
-   *  <optgroup> label grouping this repo's entries. Absent for the common case (single
-   *  SystemNode per repo) ⇒ identical rendering to the pre-T120 "Composant" combobox. */
+  /** Set only when the owning repo defines more than one SystemNode — renders as a section
+   *  header grouping this repo's entries in the merged combobox. Absent for the common case
+   *  (single SystemNode per repo) ⇒ no header, same as the pre-T120 "Composant" combobox. */
+  groupLabel?: string
+  /** Carried forward from the same `flattenSystemNodes` pass that resolved this node (below) —
+   *  avoids a second recursive tree lookup per type fan-out (found in review). */
+  objectTypes: ObjectTypeDefinition[]
+}
+
+/** One entry of the merged "Composant / Élément" combobox (T129) — a (repo, SystemNode,
+ *  ObjectTypeDefinition) triple. A SystemNode with no objectTypes contributes zero entries and
+ *  is therefore not reachable from this combobox (cf. specs/T129.md, décision #3) — it stays
+ *  manageable from the Structure tab.
+ *
+ *  No string identity key: repo mount names and SystemNode names have no character restriction
+ *  (cf. AddDependencyModal), so a delimited-string join is collision-prone (found in review, cf.
+ *  the same lesson recorded on the pre-T129 ComponentOption index-based selection). Identity is
+ *  instead the option's position in the `componentTypeOptions` array — same approach the deleted
+ *  code used for `selectedComponentIndex`. */
+export interface ComponentTypeOption {
+  repoName: string
+  nodeId: string
+  typeId: string
+  /** Full label: component path (repo/local-nesting, cf. ComponentOption.label) + " / " + type label. */
+  label: string
+  /** Same repo-grouping header as ComponentOption.groupLabel, carried through unchanged. */
   groupLabel?: string
 }
 
@@ -61,9 +86,16 @@ interface LastSelection {
   type: string
 }
 
-function readLastSelection(projectId: string): LastSelection | null {
+// Keyed per (project, category): the activity bar now has three tabs (Exigences/Tests/
+// Campagnes) sharing the same /product route, each with its own last-browsed repo/node/type —
+// without the category suffix, switching tabs would clobber the other tabs' remembered selection.
+function lastSelectionKey(projectId: string, category: ObjectCategory): string {
+  return `${LAST_SELECTION_PREFIX}${projectId}:${category}`
+}
+
+function readLastSelection(projectId: string, category: ObjectCategory): LastSelection | null {
   try {
-    const raw = localStorage.getItem(`${LAST_SELECTION_PREFIX}${projectId}`)
+    const raw = localStorage.getItem(lastSelectionKey(projectId, category))
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (
@@ -79,12 +111,27 @@ function readLastSelection(projectId: string): LastSelection | null {
   }
 }
 
-function writeLastSelection(projectId: string, selection: LastSelection): void {
+function writeLastSelection(projectId: string, category: ObjectCategory, selection: LastSelection): void {
   try {
-    localStorage.setItem(`${LAST_SELECTION_PREFIX}${projectId}`, JSON.stringify(selection))
+    localStorage.setItem(lastSelectionKey(projectId, category), JSON.stringify(selection))
   } catch {
     // localStorage unavailable (private mode, quota) — best-effort only
   }
+}
+
+/** First (node, type) pair — depth-first across `nodes` and their children — whose type matches
+ *  `category`. Used to pick a sane default when the URL names no node/type yet (or an old one
+ *  filtered out by the active tab), same role as the old `nodes[0].objectTypes?.[0]` default but
+ *  category-aware and not limited to top-level nodes. */
+function firstNodeTypeForCategory(
+  nodes: SystemNode[],
+  category: ObjectCategory,
+): { nodeId: string; typeId: string } | null {
+  for (const { node } of flattenSystemNodes(nodes)) {
+    const type = node.objectTypes?.find(t => t.category === category)
+    if (type) return { nodeId: node.name, typeId: type.name }
+  }
+  return null
 }
 
 export interface SystemViewState {
@@ -96,15 +143,19 @@ export interface SystemViewState {
   nodes: SystemNode[]
   linkTypes: LinkTypeDefinition[]
   schemaLoading: boolean
+  /** Which of the three activity-bar tabs (Exigences/Tests/Campagnes) is active — drives the
+   *  combobox/tree filtering above and the sidebar panel title. */
+  category: ObjectCategory
 
-  // Component selection (T72 repo + T113 local sub-component, merged into one flat list — T120)
-  componentOptions: ComponentOption[]
-  /** Index into componentOptions of the currently selected entry, or -1 if none match (empty
-   *  workspace). Selection is by array position rather than a serialized string key — a repo
-   *  mount name or local SystemNode name has no character restriction (see AddDependencyModal),
-   *  so joining them with a separator and re-parsing on change would be fragile. */
-  selectedComponentIndex: number
-  handleComponentChange: (repoName: string, nodeId: string) => void
+  // Component + Élément selection (T72 repo + T113 local sub-component + T123 nesting, merged
+  // into one filterable combobox — T120 then T129)
+  componentTypeOptions: ComponentTypeOption[]
+  /** Index into componentTypeOptions of the entry matching the current repo/node/type, or -1 if
+   *  none match (empty workspace, or a SystemNode with no objectTypes — cf. ComponentTypeOption
+   *  doc). Position-based rather than a string key: repo/node names have no character
+   *  restriction, so a delimited-string identity is collision-prone (found in review). */
+  selectedComponentTypeIndex: number
+  handleTargetChange: (repoName: string, nodeId: string, typeId: string) => void
   isRepoReadonly: boolean
 
   // Selected node/type (resolved)
@@ -116,8 +167,7 @@ export interface SystemViewState {
   effectiveType: ObjectTypeDefinition | undefined
   effectiveTypeId: string
 
-  // Handlers (called by SystemPanel comboboxes)
-  handleTypeChange: (typeId: string) => void
+  // Handlers
   navigateTo: (nodeId: string, typeId: string) => void
 
   // Tree
@@ -197,6 +247,10 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const urlRepo = sp.get('repo') ?? null
   const urlNode = sp.get('node') ?? sp.get('component') ?? null
   const urlType = sp.get('type') ?? sp.get('level') ?? null
+  // Which of the three activity-bar tabs (Exigences/Tests/Campagnes) is active — defaults to
+  // 'requirement' for old links/tabs saved before that param existed rather than leaving it
+  // unset, so every selection/filtering step below can assume a valid category.
+  const urlCategory: ObjectCategory = (sp.get('category') as ObjectCategory | null) ?? 'requirement'
 
   // ── Root repo path (project root, always editable) ────────────────────────
   const { data: project } = useQuery({
@@ -222,17 +276,54 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // internal 'root' mount placeholder as a header, with no repo-picking value (found in review).
   const componentOptions: ComponentOption[] = flatNodes.flatMap(n => {
     const repoNodes = schemasByRepoPath.get(n.repoPath)?.nodes ?? []
-    if (repoNodes.length <= 1) {
-      const localLabel = repoNodes[0]?.label
+    // T123 — repoNodes peut désormais former un arbre (SystemNode.children), pas seulement une
+    // liste plate de frères de root (T113) — on aplatit pour couvrir l'imbrication à toute
+    // profondeur, en gardant la chaîne d'ancêtres pour le libellé en chemin ci-dessous.
+    const flat = flattenSystemNodes(repoNodes)
+    if (flat.length <= 1) {
+      const localLabel = flat[0]?.node.label
       const label = localLabel && localLabel !== n.name ? `${n.name} — ${localLabel}` : n.name
-      return [{ repoName: n.name, repoPath: n.repoPath, nodeId: repoNodes[0]?.name ?? 'root', label }]
+      return [{
+        repoName: n.name, repoPath: n.repoPath, nodeId: flat[0]?.node.name ?? 'root', label,
+        objectTypes: flat[0]?.node.objectTypes ?? [],
+      }]
     }
     const groupLabel = flatNodes.length > 1 ? n.name : undefined
-    return repoNodes.map(node => ({
-      repoName: n.name, repoPath: n.repoPath, nodeId: node.name,
-      label: node.label || node.name, groupLabel,
-    }))
+    return flat.map(({ node, ancestors }) => {
+      // root n'est jamais affiché dans le chemin — son identité est déjà portée par le repo
+      // lui-même (groupLabel) — pertinent seulement si un composant a été imbriqué SOUS root
+      // (ex. via le tool MCP add_component avec parentName: 'root', cf. specs/T123-design.md §9).
+      const pathAncestors = ancestors.filter(a => a.name !== 'root')
+      const label = pathAncestors.length > 0
+        ? [...pathAncestors.map(a => a.label || a.name), node.label || node.name].join(' › ')
+        : (node.label || node.name)
+      return {
+        repoName: n.name, repoPath: n.repoPath, nodeId: node.name, label, groupLabel,
+        objectTypes: node.objectTypes ?? [],
+      }
+    })
   })
+
+  // T129 — fan out each (repo, SystemNode) entry into one entry per ObjectTypeDefinition of that
+  // node, merging the former Élément combobox into this one. A node with no objectTypes yields no
+  // entry (specs/T129.md, décision #3) rather than a placeholder — it stays reachable/manageable
+  // from the Structure tab instead. Reads `opt.objectTypes` carried forward on ComponentOption
+  // rather than re-resolving the node via a second findSystemNode lookup (found in review).
+  //
+  // Filtered to the active tab's category (T145 — split "Système" into Exigences/Tests/
+  // Campagnes) so the combobox only ever lists types relevant to the tab the user is on, instead
+  // of every category merged together.
+  const componentTypeOptions: ComponentTypeOption[] = componentOptions.flatMap(opt =>
+    opt.objectTypes
+      .filter(t => t.category === urlCategory)
+      .map(t => ({
+        repoName: opt.repoName,
+        nodeId: opt.nodeId,
+        typeId: t.name,
+        label: `${opt.label} / ${t.label || t.name}`,
+        groupLabel: opt.groupLabel,
+      })),
+  )
 
   const selectedRepoName = urlRepo ?? componentOptions[0]?.repoName ?? ''
   const selectedRepoOption = flatNodes.find(n => n.name === selectedRepoName) ?? flatNodes[0]
@@ -249,10 +340,16 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const selectedTypeId = urlType ?? ''
 
   // Resolved effective values
-  const effectiveNode = nodes.find(n => n.name === selectedNodeId) ?? nodes[0]
+  const effectiveNode = findSystemNode(nodes, selectedNodeId) ?? nodes[0]
   const effectiveNodeId = effectiveNode?.name ?? ''
   const objectTypes = effectiveNode?.objectTypes ?? []
-  const effectiveType = objectTypes.find(t => t.name === selectedTypeId) ?? objectTypes[0]
+  // Falls back to a type matching the active tab's category before an unfiltered objectTypes[0]
+  // — an invalid/stale `type` param (deleted type, old link) should still land on this tab's own
+  // content rather than momentarily showing a type from a different category (T145).
+  const effectiveType =
+    objectTypes.find(t => t.name === selectedTypeId) ??
+    objectTypes.find(t => t.category === urlCategory) ??
+    objectTypes[0]
   const effectiveTypeId = effectiveType?.name ?? ''
 
   // Helper: navigate to update repo/node/type in URL, preserving route-specific params
@@ -261,19 +358,19 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
       if (pathname === '/components') {
         navigate({
           to: '/components',
-          search: { projectId, repo: repoName, component: nodeId, type: typeId, level: undefined, tab: undefined },
+          search: { projectId, repo: repoName, component: nodeId, type: typeId, level: undefined, tab: undefined, category: urlCategory },
           replace,
         })
       } else {
         // default to /product
         navigate({
           to: '/product',
-          search: { projectId, repo: repoName, node: nodeId, type: typeId, tab: undefined },
+          search: { projectId, repo: repoName, node: nodeId, type: typeId, tab: undefined, category: urlCategory },
           replace,
         })
       }
     },
-    [navigate, pathname, projectId],
+    [navigate, pathname, projectId, urlCategory],
   )
 
   // Set URL defaults when schema loads (first visit with no URL params, or an
@@ -296,9 +393,13 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     if (!schema || nodes.length === 0 || componentOptions.length === 0) return
 
     const applyFirstNode = () => {
-      const firstNode = nodes[0].name
-      const firstType = nodes[0].objectTypes?.[0]?.name
-      navigateWith(selectedRepoName, firstNode, firstType, true)
+      // T145 — search every node (not just nodes[0]) for one exposing a type of the active
+      // tab's category: the tab clicked might have nothing under the first node at all (e.g. no
+      // campaign type on the root node) while still having content further down the tree.
+      const found = firstNodeTypeForCategory(nodes, urlCategory)
+      if (found) navigateWith(selectedRepoName, found.nodeId, found.typeId, true)
+      // No node exposes this category anywhere: nothing to select — componentTypeOptions is
+      // empty and the combobox/tree show their "nothing configured" state as-is.
     }
 
     if (!urlRepo) {
@@ -319,11 +420,11 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
       // would never be retried, permanently overwriting the saved selection
       // once the write-effect below persists that wrong default.
       if (!allSchemasLoaded) return
-      const saved = readLastSelection(projectId)
+      const saved = readLastSelection(projectId, urlCategory)
       const savedRepoPath = saved ? componentOptions.find(o => o.repoName === saved.repo)?.repoPath : undefined
       const savedSchema = savedRepoPath ? schemasByRepoPath.get(savedRepoPath) : undefined
-      const savedNode = saved ? savedSchema?.nodes?.find(n => n.name === saved.node) : undefined
-      const savedType = saved ? savedNode?.objectTypes?.find(t => t.name === saved.type) : undefined
+      const savedNode = saved && savedSchema ? findSystemNode(savedSchema.nodes, saved.node) : undefined
+      const savedType = saved ? savedNode?.objectTypes?.find(t => t.name === saved.type && t.category === urlCategory) : undefined
 
       if (saved && savedNode && savedType) {
         navigateWith(saved.repo, saved.node, saved.type, true)
@@ -333,11 +434,14 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     } else if (!urlNode) {
       applyFirstNode()
     } else if (!urlType) {
-      const node = nodes.find(n => n.name === urlNode)
-      const firstType = node?.objectTypes?.[0]?.name
+      const node = findSystemNode(nodes, urlNode)
+      const firstType = node?.objectTypes?.find(t => t.category === urlCategory)?.name
       if (firstType) navigateWith(selectedRepoName, urlNode, firstType, true)
+      // This node has nothing of the active tab's category — look elsewhere in the tree instead
+      // of silently falling back to a type from the wrong category (T145).
+      else applyFirstNode()
     }
-  }, [schema, allSchemasLoaded, pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [schema, allSchemasLoaded, pathname, urlCategory]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // T52 — persist the resolved selection (repo/node/type, not the raw URL
   // params) every time it settles on a valid value, so it can be restored on
@@ -349,34 +453,16 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   useEffect(() => {
     if (!projectId || !urlRepo || !urlNode || !urlType) return
     if (!selectedRepoName || !effectiveNodeId || !effectiveTypeId) return
-    writeLastSelection(projectId, { repo: selectedRepoName, node: effectiveNodeId, type: effectiveTypeId })
-  }, [projectId, urlRepo, urlNode, urlType, selectedRepoName, effectiveNodeId, effectiveTypeId])
+    writeLastSelection(projectId, urlCategory, { repo: selectedRepoName, node: effectiveNodeId, type: effectiveTypeId })
+  }, [projectId, urlCategory, urlRepo, urlNode, urlType, selectedRepoName, effectiveNodeId, effectiveTypeId])
 
-  // Replaces the former handleRepoChange/handleNodeChange pair (T120) — the merged combobox
-  // always knows both the repo and the target SystemNode at once, so a single handler resolves
-  // the target node's own first type (not nodes[0] of the repo, which handleRepoChange used to
-  // assume) and navigates in one step.
-  // repoPath falls back to a repoName-only lookup in flatNodes when no componentOptions entry
-  // matches the exact (repoName, nodeId) pair — this can happen for a repo whose schema is still
-  // loading (its entry's nodeId is a placeholder guess, cf. componentOptions above) — restoring
-  // the old handleRepoChange's looser repoName-only resolution instead of leaving repoPath empty.
-  const handleComponentChange = useCallback(
-    (repoName: string, nodeId: string) => {
-      const targetOption = componentOptions.find(o => o.repoName === repoName && o.nodeId === nodeId)
-      const targetRepoPath = targetOption?.repoPath ?? flatNodes.find(n => n.name === repoName)?.repoPath ?? ''
-      const targetSchema = schemasByRepoPath.get(targetRepoPath)
-      const targetNode = targetSchema?.nodes?.find(n => n.name === nodeId)
-      const firstType = targetNode?.objectTypes?.[0]?.name
-      navigateWith(repoName, nodeId, firstType)
-    },
-    [componentOptions, flatNodes, schemasByRepoPath, navigateWith],
-  )
-
-  const handleTypeChange = useCallback(
-    (typeId: string) => {
-      navigateWith(selectedRepoName, effectiveNodeId, typeId)
-    },
-    [selectedRepoName, effectiveNodeId, navigateWith],
+  // Replaces the former handleComponentChange/handleTypeChange pair (T120) — the merged combobox
+  // (T129) always knows the repo, the target SystemNode and the target type at once (an entry is
+  // a (repo, node, type) triple), so a single handler just navigates, with no intermediate
+  // "resolve the first type of this node" step to perform.
+  const handleTargetChange = useCallback(
+    (repoName: string, nodeId: string, typeId: string) => navigateWith(repoName, nodeId, typeId),
+    [navigateWith],
   )
 
   // ── Tree data ──────────────────────────────────────────────────────────────
@@ -539,6 +625,11 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
       await api.tree.save(repoPath, { nodeId: effectiveNodeId, typeId: effectiveTypeId, root: updatedRoot })
       qc.invalidateQueries({ queryKey: ['tree', repoPath, effectiveNodeId, effectiveTypeId] })
       qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] })
+      // T135 — sans ça, le nouvel objet reste absent (ou son titre reste figé à "Sans titre")
+      // dans la liste de candidats du sélecteur de lien tant que ces requêtes ne se rechargent
+      // pas d'elles-mêmes (remount, refocus fenêtre) — voir SystemView.tsx invalidateCandidateObjects.
+      qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
+      qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
     } catch (err) {
       console.error('[SystemView] Erreur création objet immédiate:', err)
     }
@@ -579,9 +670,12 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     nodes,
     linkTypes,
     schemaLoading,
-    componentOptions,
-    selectedComponentIndex: componentOptions.findIndex(o => o.repoName === selectedRepoName && o.nodeId === effectiveNodeId),
-    handleComponentChange,
+    category: urlCategory,
+    componentTypeOptions,
+    selectedComponentTypeIndex: componentTypeOptions.findIndex(
+      o => o.repoName === selectedRepoName && o.nodeId === effectiveNodeId && o.typeId === effectiveTypeId,
+    ),
+    handleTargetChange,
     isRepoReadonly,
     selectedNodeId,
     selectedTypeId,
@@ -590,7 +684,6 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     objectTypes,
     effectiveType,
     effectiveTypeId,
-    handleTypeChange,
     navigateTo: (nodeId: string, typeId: string) => navigateWith(selectedRepoName, nodeId, typeId),
     root,
     setRoot,

@@ -1,19 +1,19 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
-import { Markdown } from 'tiptap-markdown'
 import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
 import { api } from '../../api'
-import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField } from '@polenta/types'
+import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
+import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
 import { matchesRefs, filterCandidatesByRefs, getRelevantLinkTypes, getPeerId, isLinkTypeValid } from './linkUtils'
+import { CoverageBadge } from './CoverageBadge'
 import { RichTextField } from '../RichTextField'
+import { StaticRichTextViewer } from '../../lib/staticRichText'
+import { MultiEnumPopover } from './MultiEnumPopover'
+import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
-import { DrawioEmbed } from '../../tiptap/DrawioEmbedExtension'
-import { ResizableImage } from '../../tiptap/ResizableImageExtension'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +28,14 @@ interface ActiveLinkPopover {
   width: number
 }
 
+interface ActiveMultiEnumPopover {
+  objectId: string
+  field: string
+  top: number
+  left: number
+  width: number
+}
+
 interface Props {
   root: TypeTreeNode[]
   typeDef: ObjectTypeDefinition | undefined
@@ -36,6 +44,8 @@ interface Props {
   sectionNumbers?: Map<string, string>
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
+  coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  testsById?: Map<string, TestCase>
   repoPath?: string
   candidateObjects?: Candidate[]
   onLinkChange?: () => void
@@ -43,7 +53,7 @@ interface Props {
   onRenameNode?: (nodeId: string, name: string) => void
   onEditOpen?: (nodeId: string) => void
   onReopenDraft?: (objectId: string, targetStatus: string) => void
-  onNavigateToObject?: (peerId: string) => void
+  onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   filter?: string
   stepsByObjectId?: Map<string, { action: string; expectedResult: string }[]>
   onStepsChange?: (objectId: string, steps: StepDraft[]) => void
@@ -62,7 +72,7 @@ function getFieldValue(obj: AnyObject, field: string): string {
 }
 
 function isSystemField(field: string): boolean {
-  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version'].includes(field)
+  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'coverageStatus'].includes(field)
 }
 
 // ── FolderHeadingName — inline-editable name inside a heading ─────────────────
@@ -74,6 +84,7 @@ function FolderHeadingName({
   node: TypeTreeNode
   onRename?: (nodeId: string, name: string) => void
 }) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(node.name)
   const spanRef = useRef<HTMLSpanElement>(null)
@@ -106,7 +117,7 @@ function FolderHeadingName({
       ref={spanRef}
       onClick={onRename ? () => { setDraft(node.name); setEditing(true) } : undefined}
       className={onRename ? 'cursor-text' : undefined}
-      title={onRename ? 'Cliquer pour renommer' : undefined}
+      title={onRename ? t('system.wordView.clickToRename') : undefined}
     >
       {node.name}
     </span>
@@ -124,6 +135,7 @@ function InlineCardName({
   nodeId: string
   onRename?: (nodeId: string, name: string) => void
 }) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(name)
 
@@ -154,40 +166,11 @@ function InlineCardName({
     <span
       className={['ml-2 text-sm font-semibold text-ink', onRename ? 'cursor-text hover:bg-hover px-0.5 rounded' : ''].join(' ')}
       onClick={onRename ? () => { setDraft(name); setEditing(true) } : undefined}
-      title={onRename ? 'Cliquer pour renommer' : undefined}
+      title={onRename ? t('system.wordView.clickToRename') : undefined}
     >
       {name}
     </span>
   )
-}
-
-// ── RichTextViewer ────────────────────────────────────────────────────────────
-
-function RichTextViewer({ value, repoPath }: { value: string; repoPath?: string }) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      ResizableImage.configure({ inline: false, allowBase64: true, repoPath }),
-      Link.configure({ openOnClick: false }),
-      Markdown.configure({ html: false, transformPastedText: true }),
-      DrawioEmbed.configure({ repoPath }),
-    ],
-    content: value,
-    editable: false,
-    editorProps: {
-      attributes: {
-        class: 'outline-none text-sm text-ink [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:font-medium [&_h3]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-slate-100 dark:[&_code]:bg-slate-700 [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 dark:[&_blockquote]:border-slate-600 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-ink-2 [&_pre]:bg-slate-100 dark:[&_pre]:bg-slate-800 [&_pre]:p-2 [&_pre]:rounded [&_img]:max-w-full [&_img]:rounded',
-      },
-    },
-  })
-
-  useEffect(() => {
-    if (editor) {
-      editor.commands.setContent(value, false)
-    }
-  }, [value, editor])
-
-  return <EditorContent editor={editor} />
 }
 
 // ── RichTextInlineField ───────────────────────────────────────────────────────
@@ -207,6 +190,7 @@ function RichTextInlineField({
   onEdit?: (objectId: string, field: string, value: string) => void
   repoPath?: string
 }) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
@@ -244,10 +228,10 @@ function RichTextInlineField({
           <div
             className={['text-sm text-ink rounded px-1', onEdit ? 'cursor-text hover:bg-hover' : ''].join(' ')}
             onClick={onEdit ? () => setEditing(true) : undefined}
-            title={onEdit ? 'Cliquer pour modifier' : undefined}
+            title={onEdit ? t('system.shared.clickToEdit') : undefined}
           >
             {value ? (
-              <RichTextViewer value={value} repoPath={repoPath} />
+              <StaticRichTextViewer value={value} repoPath={repoPath} />
             ) : (
               <span className="text-ink-3 italic text-xs">—</span>
             )}
@@ -268,6 +252,7 @@ function InlineField({
   isSystem,
   fieldDef,
   onEdit,
+  onMultiEnumEdit,
 }: {
   label: string
   value: string
@@ -276,7 +261,9 @@ function InlineField({
   isSystem: boolean
   fieldDef?: SchemaField
   onEdit?: (objectId: string, field: string, value: string) => void
+  onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
 }) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
@@ -319,9 +306,17 @@ function InlineField({
         )
       ) : (
         <span
+          {...(fieldDef?.type === 'multi_enum' ? { 'data-multi-enum-popover': true } : {})}
           className="text-xs text-ink cursor-text hover:bg-hover px-1 rounded flex-1"
-          onClick={() => { setDraft(value); setEditing(true) }}
-          title="Cliquer pour modifier"
+          onClick={e => {
+            if (fieldDef?.type === 'multi_enum' && onMultiEnumEdit) {
+              onMultiEnumEdit(objectId, field, (e.currentTarget as HTMLElement).getBoundingClientRect())
+              return
+            }
+            setDraft(value)
+            setEditing(true)
+          }}
+          title={t('system.shared.clickToEdit')}
         >
           {value || <span className="text-ink-3 italic">—</span>}
         </span>
@@ -334,10 +329,10 @@ function InlineField({
 
 function getStatusClass(status: string): string {
   switch (status) {
-    case 'approved':   return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-400'
-    case 'review':     return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-400'
-    case 'obsolete':   return 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400'
-    default:           return 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+    case 'approved':   return 'bg-status-success-bg text-status-success'
+    case 'review':     return 'bg-status-warning-bg text-status-warning'
+    case 'obsolete':   return 'bg-status-danger-bg text-status-danger'
+    default:           return 'bg-status-neutral-bg text-status-neutral'
   }
 }
 
@@ -361,6 +356,9 @@ function ItemCard({
   onStepsChange,
   onNavigateToObject,
   repoPath,
+  onMultiEnumEdit,
+  coverageByReqId,
+  testsById,
 }: {
   node: TypeTreeNode
   obj: AnyObject | null
@@ -372,14 +370,18 @@ function ItemCard({
   onInlineEdit?: (objectId: string, field: string, value: string) => void
   onRenameNode?: (nodeId: string, name: string) => void
   onEditOpen?: (nodeId: string) => void
+  coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  testsById?: Map<string, TestCase>
   onReopenDraft?: (objectId: string, targetStatus: string) => void
   onLinkClick?: (nodeId: string, objectId: string, typeName: string, rect: DOMRect) => void
   activeLinkKey?: string | null
   steps?: StepDraft[]
   onStepsChange?: (objectId: string, steps: StepDraft[]) => void
-  onNavigateToObject?: (peerId: string) => void
+  onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   repoPath?: string
+  onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
 }) {
+  const { t } = useTranslation()
   const currentStatus = obj ? getFieldValue(obj, 'status') : ''
   const isLocked = !!typeDef?.statuses?.find(s => s.name === currentStatus)?.isApproval
 
@@ -392,18 +394,22 @@ function ItemCard({
   }
 
   function getColumnLabel(col: string): string {
-    if (col === 'section') return 'N°'
-    if (col === 'name') return 'Nom'
-    if (col === 'id') return 'ID'
-    if (col === 'status') return 'Statut'
-    if (col === 'version') return 'Version'
+    if (col === 'section') return t('system.wordView.colSection')
+    if (col === 'name') return t('system.wordView.colName')
+    if (col === 'id') return t('system.wordView.colId')
+    if (col === 'status') return t('system.wordView.colStatus')
+    if (col === 'version') return t('system.wordView.colVersion')
     const field = typeDef?.fields.find(f => f.name === col)
     return field?.label ?? col
   }
 
   // section / id / status / version sont déjà affichés dans l'en-tête de la carte (cf. ci-dessus) —
-  // ne pas les dupliquer dans le corps même s'ils sont cochés dans "Champs visibles"
-  const fieldsAlreadyInHeader = new Set(['name', 'section', 'id', 'status', 'version'])
+  // ne pas les dupliquer dans le corps même s'ils sont cochés dans "Champs visibles". coverageStatus
+  // (T138) suit le même chemin : rendu dans l'en-tête, à côté du badge de statut, pas dans le corps.
+  // steps a sa propre section dédiée ("Étapes", cf. plus bas) : sans cette exclusion, getFieldValue
+  // renvoie le tableau brut (toujours vide à l'affichage) sous une ligne de champ générique libellée
+  // "steps" (pas de label déclaré dans typeDef.fields), dupliquant la vraie table Étapes juste en dessous.
+  const fieldsAlreadyInHeader = new Set(['name', 'section', 'id', 'status', 'version', 'coverageStatus', 'steps'])
   const fields = (visibleFields.length > 0 ? visibleFields : ['id', 'status'])
     .filter(f => !f.startsWith('link::') && !fieldsAlreadyInHeader.has(f))
 
@@ -420,6 +426,7 @@ function ItemCard({
   const editOpen   = isLocked ? undefined : onEditOpen
   const editLinks  = isLocked ? undefined : onLinkClick
   const editSteps  = isLocked ? undefined : onStepsChange
+  const editMultiEnum = isLocked ? undefined : onMultiEnumEdit
 
   return (
     <div className="border border-edge rounded p-2.5 bg-surface mb-2 group">
@@ -442,7 +449,7 @@ function ItemCard({
                       value={status}
                       onChange={e => editInline!(node.objectId!, 'status', e.target.value)}
                       className={`${badgeClass} appearance-none cursor-pointer hover:ring-1 hover:ring-current/40 outline-none`}
-                      title="Changer le statut"
+                      title={t('system.wordView.changeStatus')}
                     >
                       {typeDef!.statuses!.map(s => (
                         <option key={s.name} value={s.name}>{s.label ?? s.name}</option>
@@ -455,6 +462,12 @@ function ItemCard({
                 {version && (
                   <span className="text-[10px] font-mono text-ink-3 shrink-0">v{version}</span>
                 )}
+                {visibleFields.includes('coverageStatus') && typeDef?.category === 'requirement' && node.objectId && (
+                  <CoverageBadge
+                    coverage={coverageByReqId?.get(node.objectId)}
+                    testsById={testsById ?? new Map()}
+                  />
+                )}
               </>
             )
           })()}
@@ -466,8 +479,8 @@ function ItemCard({
               <button
                 type="button"
                 onClick={() => onReopenDraft(node.objectId!, draftStatus)}
-                className="text-ink-3 hover:text-amber-600 p-1"
-                title="Retour en brouillon (nouvelle version)"
+                className="text-ink-3 hover:text-status-warning p-1"
+                title={t('system.wordView.reopenDraft')}
               >
                 <RotateCcw size={14} />
               </button>
@@ -478,7 +491,7 @@ function ItemCard({
               type="button"
               onClick={() => editOpen(node.id)}
               className="text-ink-3 hover:text-ink p-1"
-              title="Éditer"
+              title={t('system.shared.editItem')}
             >
               <Pencil size={14} />
             </button>
@@ -518,6 +531,7 @@ function ItemCard({
               isSystem={isSystemField(col)}
               fieldDef={fieldDef}
               onEdit={editInline}
+              onMultiEnumEdit={editMultiEnum}
             />
           )
         })}
@@ -526,7 +540,7 @@ function ItemCard({
       {/* Steps (test cases) */}
       {steps !== undefined && (
         <div className="mt-3 pt-3 border-t border-edge">
-          <p className="text-xs font-medium text-ink-2 mb-3">Étapes</p>
+          <p className="text-xs font-medium text-ink-2 mb-3">{t('system.wordView.stepsHeading')}</p>
           <StepsTable
             steps={localSteps}
             onChange={handleStepsChange}
@@ -547,21 +561,26 @@ function ItemCard({
             const isOpenIn = activeLinkKey === `${node.id}::${lt.name}::in`
             const canBeSource = matchesRefs(currentObjectTypeRef, lt.sourceRefs, currentCategory)
             const canBeTarget = matchesRefs(currentObjectTypeRef, lt.targetRefs, currentCategory)
+            // Toujours afficher les liens existants, même dans le sens non canonique pour le
+            // schéma actuel — sinon un lien créé avant un changement de sourceRefs/targetRefs
+            // devient invisible et impossible à délier. La création reste limitée au sens déclaré.
+            const showOutgoing = canBeSource || outgoing.length > 0
+            const showIncoming = canBeTarget || incoming.length > 0
             return (
               <div key={lt.name} className="space-y-0.5">
-                {canBeSource && (
+                {showOutgoing && (
                   <div
                     data-link-popover
                     className={[
                       'flex items-baseline gap-2 px-1 py-0.5 rounded cursor-pointer',
                       editLinks ? 'hover:bg-hover' : '',
-                      isOpenOut ? 'bg-hover ring-1 ring-inset ring-blue-400' : '',
+                      isOpenOut ? 'bg-hover ring-1 ring-inset ring-status-info' : '',
                     ].join(' ')}
                     onClick={editLinks ? e => {
                       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
                       editLinks(node.id, node.objectId ?? '', lt.name + '::out', rect)
                     } : undefined}
-                    title={editLinks ? 'Cliquer pour modifier les liens' : undefined}
+                    title={editLinks ? t('system.wordView.clickToEditLinks') : undefined}
                   >
                     <span className="text-xs text-ink-3 w-28 shrink-0">{lt.labelSourceToTarget}</span>
                     <span className="text-xs text-ink font-mono">
@@ -571,8 +590,8 @@ function ItemCard({
                               {i > 0 && ', '}
                               <span
                                 className="cursor-pointer hover:underline"
-                                title="Cliquer pour naviguer vers cet élément"
-                                onClick={e => { e.stopPropagation(); onNavigateToObject?.(id) }}
+                                title={t('system.shared.clickToNavigate')}
+                                onClick={e => { e.stopPropagation(); onNavigateToObject?.(id, { newTab: e.ctrlKey || e.metaKey }) }}
                               >{id}</span>
                             </span>
                           ))
@@ -580,19 +599,19 @@ function ItemCard({
                     </span>
                   </div>
                 )}
-                {canBeTarget && (
+                {showIncoming && (
                   <div
                     data-link-popover
                     className={[
                       'flex items-baseline gap-2 px-1 py-0.5 rounded cursor-pointer',
                       editLinks ? 'hover:bg-hover' : '',
-                      isOpenIn ? 'bg-hover ring-1 ring-inset ring-blue-400' : '',
+                      isOpenIn ? 'bg-hover ring-1 ring-inset ring-status-info' : '',
                     ].join(' ')}
                     onClick={editLinks ? e => {
                       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
                       editLinks(node.id, node.objectId ?? '', lt.name + '::in', rect)
                     } : undefined}
-                    title={editLinks ? 'Cliquer pour modifier les liens' : undefined}
+                    title={editLinks ? t('system.wordView.clickToEditLinks') : undefined}
                   >
                     <span className="text-xs text-ink-3 w-28 shrink-0">{lt.labelTargetToSource}</span>
                     <span className="text-xs text-ink font-mono">
@@ -602,8 +621,8 @@ function ItemCard({
                               {i > 0 && ', '}
                               <span
                                 className="cursor-pointer hover:underline"
-                                title="Cliquer pour naviguer vers cet élément"
-                                onClick={e => { e.stopPropagation(); onNavigateToObject?.(id) }}
+                                title={t('system.shared.clickToNavigate')}
+                                onClick={e => { e.stopPropagation(); onNavigateToObject?.(id, { newTab: e.ctrlKey || e.metaKey }) }}
                               >{id}</span>
                             </span>
                           ))
@@ -630,6 +649,8 @@ export function WordView({
   sectionNumbers,
   linkTypes = [],
   linksByObjectId,
+  coverageByReqId,
+  testsById,
   repoPath,
   candidateObjects = [],
   onLinkChange,
@@ -642,7 +663,14 @@ export function WordView({
   stepsByObjectId,
   onStepsChange,
 }: Props) {
+  const { t } = useTranslation()
+  // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
+  // useProjectSchema (staleTime: Infinity) plutôt qu'une useQuery locale — même clé de cache que
+  // SystemViewContext, aucune requête réseau dupliquée.
+  const { data: currentSchema } = useProjectSchema(repoPath ?? '')
+  const interfaceRoles = currentSchema?.roles?.map(r => r.name)
   const [activeLinkPopover, setActiveLinkPopover] = useState<ActiveLinkPopover | null>(null)
+  const [activeMultiEnumPopover, setActiveMultiEnumPopover] = useState<ActiveMultiEnumPopover | null>(null)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
 
   const toggleFolder = useCallback((id: string) => {
@@ -662,6 +690,15 @@ export function WordView({
     return () => document.removeEventListener('mousedown', handler)
   }, [activeLinkPopover])
 
+  useEffect(() => {
+    if (!activeMultiEnumPopover) return
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('[data-multi-enum-popover]')) setActiveMultiEnumPopover(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [activeMultiEnumPopover])
+
   // Build object map
   const objectMap = new Map<string, AnyObject>()
   for (const obj of objects) {
@@ -669,6 +706,23 @@ export function WordView({
   }
 
   const filterLower = filter?.toLowerCase() ?? ''
+
+  function itemMatchesFilter(node: TypeTreeNode, obj: AnyObject | null): boolean {
+    if (!filterLower) return true
+    const objStr = [node.name, node.objectId, ...(obj ? Object.values(obj as Record<string, unknown>).map(String) : [])].join(' ').toLowerCase()
+    return objStr.includes(filterLower)
+  }
+
+  // Un dossier/section ne doit s'afficher, quand un filtre est actif, que s'il contient au
+  // moins un élément descendant qui matche — sinon on se retrouve avec des sections vides
+  // affichées parmi des résultats filtrés, ce qui est trompeur (la section n'a rien à montrer).
+  function folderHasMatchingDescendant(node: TypeTreeNode): boolean {
+    return node.children.some(child => {
+      if (child.kind === 'folder') return folderHasMatchingDescendant(child)
+      const obj = child.objectId ? (objectMap.get(child.objectId) ?? null) : null
+      return itemMatchesFilter(child, obj)
+    })
+  }
 
   function handleLinkClick(nodeId: string, objectId: string, typeKey: string, rect: DOMRect) {
     const key = `${nodeId}::${typeKey}`
@@ -686,11 +740,21 @@ export function WordView({
     })
   }
 
+  function handleMultiEnumClick(objectId: string, field: string, rect: DOMRect) {
+    if (activeMultiEnumPopover?.objectId === objectId && activeMultiEnumPopover.field === field) {
+      setActiveMultiEnumPopover(null)
+      return
+    }
+    setActiveMultiEnumPopover({ objectId, field, top: rect.bottom + 4, left: rect.left, width: rect.width })
+  }
+
   function renderNodes(nodes: TypeTreeNode[], depth: number): ReactNode[] {
     const result: ReactNode[] = []
 
     for (const node of nodes) {
       if (node.kind === 'folder') {
+        if (filterLower && !folderHasMatchingDescendant(node)) continue
+
         const section = sectionNumbers?.get(node.id)
         const HeadingTag = (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const)[Math.min(depth, 5)]
         const headingClass = [
@@ -722,10 +786,7 @@ export function WordView({
       } else {
         const obj = node.objectId ? (objectMap.get(node.objectId) ?? null) : null
 
-        if (filterLower) {
-          const objStr = [node.name, node.objectId, ...(obj ? Object.values(obj as Record<string, unknown>).map(String) : [])].join(' ').toLowerCase()
-          if (!objStr.includes(filterLower)) continue
-        }
+        if (!itemMatchesFilter(node, obj)) continue
 
         const activeLinkKey = activeLinkPopover?.nodeId === node.id
           ? `${node.id}::${activeLinkPopover.typeName}`
@@ -741,6 +802,8 @@ export function WordView({
             section={sectionNumbers?.get(node.id)}
             linkTypes={linkTypes}
             objectLinks={node.objectId ? (linksByObjectId?.get(node.objectId) ?? []) : []}
+            coverageByReqId={coverageByReqId}
+            testsById={testsById}
             onInlineEdit={onInlineEdit}
             onRenameNode={onRenameNode}
             onEditOpen={onEditOpen}
@@ -751,6 +814,7 @@ export function WordView({
             onStepsChange={onStepsChange}
             onNavigateToObject={onNavigateToObject}
             repoPath={repoPath}
+            onMultiEnumEdit={repoPath ? handleMultiEnumClick : undefined}
           />
         )
       }
@@ -768,11 +832,32 @@ export function WordView({
     <div className="flex-1 overflow-auto">
       <div className="px-6 py-2">
         {root.length === 0 ? (
-          <p className="text-ink-3 text-sm italic">Aucun élément</p>
+          <p className="text-ink-3 text-sm italic">{t('common.noElements')}</p>
         ) : (
           renderNodes(root, 0)
         )}
       </div>
+
+      {/* Multi-enum popover — fixed to escape overflow clipping */}
+      {activeMultiEnumPopover && (() => {
+        const popoverObj = objectMap.get(activeMultiEnumPopover.objectId)
+        const popoverValue = popoverObj ? getFieldValue(popoverObj, activeMultiEnumPopover.field) : ''
+        const fieldDef = typeDef?.fields.find(f => f.name === activeMultiEnumPopover.field)
+        const options = fieldDef ? resolveMultiEnumOptions(fieldDef, interfaceRoles) : []
+        const selected = parseMultiEnumValue(popoverValue)
+        return (
+          <MultiEnumPopover
+            options={options}
+            selected={selected}
+            onToggle={v => {
+              const next = selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v]
+              onInlineEdit?.(activeMultiEnumPopover.objectId, activeMultiEnumPopover.field, serializeMultiEnumValue(next))
+            }}
+            onClose={() => setActiveMultiEnumPopover(null)}
+            style={{ top: activeMultiEnumPopover.top, left: activeMultiEnumPopover.left, minWidth: activeMultiEnumPopover.width }}
+          />
+        )
+      })()}
 
       {/* Link popover — fixed to escape overflow clipping */}
       {activeLinkPopover && activeLt && (() => {
@@ -780,9 +865,16 @@ export function WordView({
         const cellLinks = linksByObjectId?.get(objectId)?.filter(l => l.type === activeLinkTypeName) ?? []
         const currentObjectTypeRef = (objectMap.get(objectId) as Record<string, string>)?.objectTypeRef ?? ''
         const currentCategory = typeDef?.category
+        const canBeSource = matchesRefs(currentObjectTypeRef, activeLt.sourceRefs, currentCategory)
+        const canBeTarget = matchesRefs(currentObjectTypeRef, activeLt.targetRefs, currentCategory)
+        const outgoingLinks = cellLinks.filter(l => l.sourceId === objectId)
+        const incomingLinks = cellLinks.filter(l => l.targetId === objectId)
 
-        if (activeLinkDirection === 'out' && !matchesRefs(currentObjectTypeRef, activeLt.sourceRefs, currentCategory)) return null
-        if (activeLinkDirection === 'in' && !matchesRefs(currentObjectTypeRef, activeLt.targetRefs, currentCategory)) return null
+        // Toujours afficher les liens existants, même dans le sens non canonique pour le
+        // schéma actuel — sinon un lien créé avant un changement de sourceRefs/targetRefs
+        // devient invisible et impossible à délier. La création reste limitée au sens déclaré.
+        if (activeLinkDirection === 'out' && !canBeSource && outgoingLinks.length === 0) return null
+        if (activeLinkDirection === 'in' && !canBeTarget && incomingLinks.length === 0) return null
 
         return (
           <div
@@ -794,8 +886,8 @@ export function WordView({
             {activeLinkDirection === 'out' ? (
               <LinkCombobox
                 label={activeLt.labelSourceToTarget}
-                existingLinks={cellLinks.filter(l => l.sourceId === objectId).map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={filterCandidatesByRefs(candidateObjects, activeLt.targetRefs)}
+                existingLinks={outgoingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
+                candidates={canBeSource ? filterCandidatesByRefs(candidateObjects, activeLt.targetRefs) : []}
                 onAdd={async peerId => {
                   if (!repoPath) return
                   await api.requirements.linkCreate(repoPath, { type: activeLinkTypeName!, sourceId: objectId, targetId: peerId })
@@ -810,8 +902,8 @@ export function WordView({
             ) : (
               <LinkCombobox
                 label={activeLt.labelTargetToSource}
-                existingLinks={cellLinks.filter(l => l.targetId === objectId).map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={filterCandidatesByRefs(candidateObjects, activeLt.sourceRefs)}
+                existingLinks={incomingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
+                candidates={canBeTarget ? filterCandidatesByRefs(candidateObjects, activeLt.sourceRefs) : []}
                 onAdd={async peerId => {
                   if (!repoPath) return
                   await api.requirements.linkCreate(repoPath, { type: activeLinkTypeName!, sourceId: peerId, targetId: objectId })

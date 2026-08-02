@@ -41,6 +41,13 @@ function makeUnavailableProxy(namespace: string): Record<string, unknown> {
 
 export const app = makeUnavailableProxy('app')
 export const shell = makeUnavailableProxy('shell')
+export const session = {
+  // `net-proxy.ts` (résolution du proxy système via Chromium) encadre déjà cet appel
+  // dans un try/catch best-effort — l'échec explicite ci-dessous y est absorbé et
+  // retombe simplement sur une connexion directe, comme si aucun proxy système
+  // n'était configuré.
+  defaultSession: makeUnavailableProxy('session.defaultSession'),
+}
 export const BrowserWindow = class {
   constructor() {
     notAvailable('BrowserWindow')

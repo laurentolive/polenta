@@ -5,6 +5,8 @@
  * input widget.
  */
 
+import { Trans } from 'react-i18next'
+
 interface Props {
   value: string
   onChange: (sql: string) => void
@@ -22,8 +24,10 @@ export function SqlEditor({ value, onChange }: Props) {
         className="input-field w-full font-mono text-xs resize-y"
       />
       <p className="text-[11px] text-ink-3">
-        Tables disponibles : <code className="font-mono">requirements</code>, <code className="font-mono">tests</code>, <code className="font-mono">links</code>.
-        Lecture seule — INSERT / UPDATE / DELETE / DROP / CREATE / ATTACH sont refusés.
+        <Trans
+          i18nKey="dashboardPage.sqlEditor.availableTablesHint"
+          components={{ code: <code className="font-mono" /> }}
+        />
       </p>
     </div>
   )

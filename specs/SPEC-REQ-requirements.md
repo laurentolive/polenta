@@ -91,7 +91,7 @@ dans `AGENTS.md`). Voir `SPEC-MCP-SERVER.md` §4.2.
 | `richtext` | Éditeur riche (markdown, images référencées par fichier du repo ou par URL externe — voir §3.2b, liens internes `[[SW-0042]]`, diagrammes draw.io référencés — voir §3.2a) |
 | `number` | Nombre |
 | `enum` | Valeur unique parmi une liste |
-| `multi_enum` | Valeurs multiples parmi une liste |
+| `multi_enum` | Valeurs multiples parmi une liste (cases à cocher) — rendu cohérent dans les 4 endroits d'édition : Vue Système (`EditView`), formulaires détail/création req/test/campagne (`DynamicField`), édition inline Vue Tableau et Vue Document (popover ancré sur la cellule/le champ) — T126 |
 | `boolean` | Booléen |
 | `date` | Date |
 | `datetime` | Date et heure |
@@ -219,13 +219,25 @@ tableau") ou collés depuis une plage Excel.
   qui impose l'absence de fusion et la promotion systématique de la première
   ligne en en-tête ci-dessus.
 
-### 3.2d Champ `multi_enum` nommé `roles` — source unique avec le catalogue d'interface (T110)
+### 3.2d Champ `multi_enum` nommé `roles` — source unique avec le catalogue d'interface (T110, complété T126)
 
-Un champ de type `multi_enum` dont le `name` vaut exactement `roles` est spécialisé : ses options affichées en édition (`EditView`) proviennent du catalogue de rôles du repo courant (`ProjectSchema.roles`, voir `SPEC-TEMPLATES.md` §3a) plutôt que de `values:` codées en dur dans le `SchemaField`, dès que ce catalogue est non vide. Spécialisation par nom de champ, pas un `SchemaFieldType` dédié — pas de migration de projets existants.
+Un champ de type `multi_enum` dont le `name` vaut exactement `roles` est spécialisé : ses options affichées en édition proviennent du catalogue de rôles du repo courant (`ProjectSchema.roles`, voir `SPEC-TEMPLATES.md` §3a) plutôt que de `values:` codées en dur dans le `SchemaField`, dès que ce catalogue est non vide. Spécialisation par nom de champ (`resolveMultiEnumOptions`, `@polenta/types`), pas un `SchemaFieldType` dédié — pas de migration de projets existants.
 
-- Résolution : une requête (`['schema', repoPath]`, une seule par montage d'`EditView`, pas par champ) charge le schéma du repo de l'objet édité ; `schema.roles` non vide → ses `name` remplacent `field.values` pour ce champ précis. Tout autre champ `multi_enum` (ou un champ nommé `roles` dans un repo sans catalogue) garde le comportement générique (`field.values`).
+> **Limite connue (T123)** : `roles`/`implements` vivent désormais sur `SystemNode` (root compris,
+> cf. `SPEC-TEMPLATES.md` §3a), `ProjectSchema.roles` n'en reste qu'un miroir maintenu à jour pour
+> le node `root` uniquement (`SchemaService.save()`). Ce mécanisme de sourcing lit encore
+> exclusivement `ProjectSchema.roles` — il source donc correctement le catalogue d'un composant
+> `root` marqué interface, mais **pas encore** celui d'un composant local marqué interface (son
+> catalogue vit sur son propre `SystemNode`, jamais mirroré au niveau fichier). Un composant local
+> interface expose bien son catalogue dans sa popup d'édition (Structure) et dans la matrice de
+> conformité — seul ce sourcing du champ `roles` d'une exigence en reste au niveau `root`. À
+> traiter dans un ticket dédié, en cohérence avec T126 (support `multi_enum` dans
+> `DynamicField.tsx`), qui touche le même mécanisme.
+
+- Résolution : une requête (`['schema', repoPath]`, via `useProjectSchema`, une seule par montage de vue) charge le schéma du repo de l'objet édité ; `schema.roles` non vide → ses `name` remplacent `field.values` pour ce champ précis. Tout autre champ `multi_enum` (ou un champ nommé `roles` dans un repo sans catalogue) garde le comportement générique (`field.values`).
 - Fallback : si le catalogue est vide (repo pas encore marqué interface, ou projet créé avant T110), les `values:` du `SchemaField` restent utilisées telles quelles — aucune réécriture de fichiers existants requise.
-- Le format de stockage ne change pas (CSV dans le frontmatter, comme tout `multi_enum`) — seule la source des *options proposées* change.
+- Le format de stockage ne change pas (CSV dans le fichier YAML de l'objet, ex. `"a, b, c"`, comme tout `multi_enum` — fonctions partagées `parseMultiEnumValue`/`serializeMultiEnumValue`, `@polenta/types`) — seule la source des *options proposées* change.
+- **T126** — ce comportement, initialement présent uniquement dans `EditView` (Vue Système), est désormais cohérent dans les 4 endroits d'édition d'un champ `multi_enum` : Vue Système (cases à cocher inline), formulaires détail/création req/test/campagne (`DynamicField`, composant partagé `MultiEnumCheckboxes`), édition inline en Vue Tableau et en Vue Document (`ExcelView`/`WordView`, popover à cases à cocher ancré sur la cellule/le champ, composant partagé `MultiEnumPopover`).
 
 ### 3.3 Validation (`validator`)
 
@@ -302,9 +314,16 @@ Les types de liens sont définis dans `schema.yaml > linkTypes`. Exemples couran
 | `satisfies` | A → B | A satisfait B |
 | `depends-on` | A → B | A ne peut être réalisée sans B |
 | `conflicts-with` | A ↔ B | Contradiction entre A et B |
-| `verified-by` | A → B | A est vérifiée par le test B |
+| `verified-by` | A → B | A (le test) vérifie l'exigence B |
 
 Il n'existe pas de lien `PARENT_CHILD` implicite — toute relation entre objets passe par un `ObjectLink` typé.
+
+**Sens d'un lien de couverture** : le calcul de couverture (`matchCoverageLink`, voir
+[SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §2.2) apparie le lien à sa paire
+test/exigence quel que soit le côté — `sourceId`/`targetId` — sur lequel se trouve
+chacun. Une contrainte antérieure imposait le test en `sourceId` ; retirée volontairement
+pour ne pas exposer cette convention technique à l'utilisateur, qui peut créer le lien
+depuis l'éditeur du test ou celui de l'exigence indifféremment.
 
 ### 5.2 Structure d'un lien (`ObjectLink`)
 

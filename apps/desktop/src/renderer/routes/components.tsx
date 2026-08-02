@@ -13,6 +13,7 @@ export const Route = createFileRoute('/components')({
     // 'level' and 'tab' kept for backwards compat but no longer used
     level: search['level'] as string | undefined,
     tab: search['tab'] as string | undefined,
+    category: search['category'] as string | undefined,
   }),
 })
 

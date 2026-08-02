@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
 import type { DrawioPage } from '@polenta/api-client'
@@ -20,6 +21,7 @@ const MESSAGE_AUTO_DISMISS_MS = 5000
 // (RichTextField sans RichTextContext) — la logique de sélection fichier +
 // choix de page ne doit exister qu'à un seul endroit.
 export function DrawioInsertButton({ editor, repoPath, disabled, className }: Props) {
+  const { t } = useTranslation()
   const buttonRef = useRef<HTMLButtonElement>(null)
   // Popovers rendues via un portail dans document.body (comme VersionPanel.tsx),
   // positionnées en position:fixed. La position est capturée AU CLIC, avant tout
@@ -47,7 +49,7 @@ export function DrawioInsertButton({ editor, repoPath, disabled, className }: Pr
     const ok = editor.chain().focus().insertContent({ type: 'drawioEmbed', attrs: { path, nodeId: nodeId ?? null } }).run()
     if (!ok) {
       const rect = buttonRef.current?.getBoundingClientRect()
-      if (rect) showMessage({ top: rect.bottom + 2, left: rect.left }, "Échec de l'insertion du diagramme (position du curseur invalide ?).", 'error')
+      if (rect) showMessage({ top: rect.bottom + 2, left: rect.left }, t('drawioInsert.insertFailed'), 'error')
     }
   }
 
@@ -67,11 +69,11 @@ export function DrawioInsertButton({ editor, repoPath, disabled, className }: Pr
       }
       const pages = await api.drawio.read(repoPath, picked.path)
       if (!pages || pages.length === 0) {
-        showMessage(anchor, 'Aucune page draw.io trouvée dans ce fichier.', 'error')
+        showMessage(anchor, t('drawioInsert.noPageFound'), 'error')
         return
       }
       if (picked.copied) {
-        showMessage(anchor, `Fichier copié dans ${picked.path}`, 'info')
+        showMessage(anchor, t('drawioInsert.fileCopiedTo', { path: picked.path }), 'info')
       }
       if (pages.length === 1) {
         insert(picked.path)
@@ -79,7 +81,7 @@ export function DrawioInsertButton({ editor, repoPath, disabled, className }: Pr
       }
       setPagePicker({ path: picked.path, pages, top: anchor.top, left: anchor.left })
     } catch (err) {
-      showMessage(anchor, err instanceof Error ? err.message : "Erreur lors de l'insertion du diagramme.", 'error')
+      showMessage(anchor, err instanceof Error ? err.message : t('drawioInsert.insertError'), 'error')
     } finally {
       setPending(false)
     }
@@ -92,7 +94,7 @@ export function DrawioInsertButton({ editor, repoPath, disabled, className }: Pr
         type="button"
         onMouseDown={e => { e.preventDefault(); void handleClick() }}
         disabled={disabled || !repoPath || pending}
-        title={repoPath ? 'Insérer un diagramme draw.io' : 'Insérer un diagramme draw.io (contexte repo indisponible)'}
+        title={repoPath ? t('drawioInsert.insertDiagram') : t('drawioInsert.insertDiagramNoRepo')}
         className={className}
       >
         <DrawioLogoIcon size={13} />
@@ -112,7 +114,7 @@ export function DrawioInsertButton({ editor, repoPath, disabled, className }: Pr
           <div
             style={{ position: 'fixed', top: message.top, left: message.left, zIndex: 9999 }}
             className={`min-w-[220px] max-w-[280px] bg-surface border rounded shadow-lg px-2 py-1.5 text-xs ${
-              message.tone === 'error' ? 'border-red-400/50 text-red-500' : 'border-edge text-ink-2'
+              message.tone === 'error' ? 'border-status-danger-border text-status-danger' : 'border-edge text-ink-2'
             }`}
           >
             {message.text}

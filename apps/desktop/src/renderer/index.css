@@ -3,58 +3,108 @@
 @tailwind utilities;
 
 @layer base {
+  /* THEME:GENERATED:START — ne pas éditer à la main, voir theme.config.ts + scripts/generate-theme-css.ts */
   :root {
-    --canvas: #f8fafc;
-    --surface: #ffffff;
-    --surface-hover: #f1f5f9;
-    --folder-row: #f5f7fb;
-    --row-hover: #fafbfe;
-    --edge: #e2e8f0;
-    --edge-subtle: #f1f5f9;
-    --ink: #0f172a;
-    --ink-2: #475569;
-    --ink-3: #94a3b8;
-    --prim: #0f172a;
-    --prim-fg: #f8fafc;
-
-    /* Palette catégorielle des widgets dashboard (T77 sprint 2) — ordre fixe, jamais
-     * cyclé arbitrairement (skill dataviz § color-formula) : ces 8 valeurs sont la
-     * palette de référence déjà validée (CVD ΔE mini 24.2 en clair) du skill, réutilisée
-     * telle quelle plutôt que ré-inventée. */
-    --chart-series-1: #2a78d6;
-    --chart-series-2: #1baf7a;
-    --chart-series-3: #eda100;
-    --chart-series-4: #008300;
-    --chart-series-5: #4a3aa7;
-    --chart-series-6: #e34948;
-    --chart-series-7: #e87ba4;
-    --chart-series-8: #eb6834;
+    --canvas: 248 250 252;
+    --surface: 255 255 255;
+    --surface-hover: 241 245 249;
+    --folder-row: 245 247 251;
+    --row-hover: 250 251 254;
+    --edge: 226 232 240;
+    --edge-subtle: 241 245 249;
+    --ink: 15 23 42;
+    --ink-2: 71 85 105;
+    --ink-3: 148 163 184;
+    --prim: 15 23 42;
+    --prim-fg: 248 250 252;
+    --chart-series-1: 42 120 214;
+    --chart-series-2: 27 175 122;
+    --chart-series-3: 237 161 0;
+    --chart-series-4: 0 131 0;
+    --chart-series-5: 74 58 167;
+    --chart-series-6: 227 73 72;
+    --chart-series-7: 232 123 164;
+    --chart-series-8: 235 104 52;
+    --status-neutral: 51 65 85;
+    --status-neutral-bg: 241 245 249;
+    --status-neutral-border: 203 213 225;
+    --status-neutral-solid: 71 85 105;
+    --status-neutral-fg: 255 255 255;
+    --status-info: 29 78 216;
+    --status-info-bg: 239 246 255;
+    --status-info-border: 219 234 254;
+    --status-info-solid: 37 99 235;
+    --status-info-fg: 255 255 255;
+    --status-success: 21 128 61;
+    --status-success-bg: 240 253 244;
+    --status-success-border: 220 252 231;
+    --status-success-solid: 22 163 74;
+    --status-success-fg: 255 255 255;
+    --status-warning: 180 83 9;
+    --status-warning-bg: 255 251 235;
+    --status-warning-border: 254 243 199;
+    --status-warning-solid: 180 83 9;
+    --status-warning-fg: 255 255 255;
+    --status-danger: 185 28 28;
+    --status-danger-bg: 254 242 242;
+    --status-danger-border: 254 202 202;
+    --status-danger-solid: 220 38 38;
+    --status-danger-fg: 255 255 255;
+    --activity-bg: 241 245 249;
+    --activity-border: 226 232 240;
+    --activity-fg: 71 85 105;
+    --activity-fg-hover: 15 23 42;
+    --activity-bg-active: 226 232 240;
+    --activity-fg-disabled: 148 163 184;
+    --print-bg: 255 255 255;
+    --print-ink: 15 23 42;
+    --print-ink-2: 100 116 139;
+    --print-border: 226 232 240;
+    --overlay: 0 0 0;
   }
 
   .dark {
-    --canvas: #0f172a;
-    --surface: #1e293b;
-    --surface-hover: #293548;
-    --folder-row: #232e3d;
-    --row-hover: #1f2c3a;
-    --edge: #334155;
-    --edge-subtle: #1e293b;
-    --ink: #f1f5f9;
-    --ink-2: #cbd5e1;
-    --ink-3: #94a3b8;
-    --prim: #e2e8f0;
-    --prim-fg: #0f172a;
-
-    /* Mêmes 8 teintes, marches "sombres" validées par le skill (CVD ΔE mini 10.3). */
-    --chart-series-1: #3987e5;
-    --chart-series-2: #199e70;
-    --chart-series-3: #c98500;
-    --chart-series-4: #008300;
-    --chart-series-5: #9085e9;
-    --chart-series-6: #e66767;
-    --chart-series-7: #d55181;
-    --chart-series-8: #d95926;
+    --canvas: 15 23 42;
+    --surface: 30 41 59;
+    --surface-hover: 41 53 72;
+    --folder-row: 35 46 61;
+    --row-hover: 31 44 58;
+    --edge: 51 65 85;
+    --edge-subtle: 30 41 59;
+    --ink: 241 245 249;
+    --ink-2: 203 213 225;
+    --prim: 226 232 240;
+    --prim-fg: 15 23 42;
+    --chart-series-1: 57 135 229;
+    --chart-series-2: 25 158 112;
+    --chart-series-3: 201 133 0;
+    --chart-series-5: 144 133 233;
+    --chart-series-6: 230 103 103;
+    --chart-series-7: 213 81 129;
+    --chart-series-8: 217 89 38;
+    --status-neutral: 203 213 225;
+    --status-neutral-bg: 51 65 85;
+    --status-neutral-border: 71 85 105;
+    --status-info: 96 165 250;
+    --status-info-bg: 30 58 138;
+    --status-info-border: 29 78 216;
+    --status-success: 74 222 128;
+    --status-success-bg: 20 83 45;
+    --status-success-border: 21 128 61;
+    --status-warning: 251 191 36;
+    --status-warning-bg: 120 53 15;
+    --status-warning-border: 180 83 9;
+    --status-danger: 248 113 113;
+    --status-danger-bg: 127 29 29;
+    --status-danger-border: 185 28 28;
+    --activity-bg: 15 23 42;
+    --activity-border: 30 41 59;
+    --activity-fg: 148 163 184;
+    --activity-fg-hover: 255 255 255;
+    --activity-bg-active: 51 65 85;
+    --activity-fg-disabled: 71 85 105;
   }
+/* THEME:GENERATED:END */
 
   * {
     @apply border-edge;
@@ -78,7 +128,7 @@
   /* Form inputs — use with w-full or flex-1 */
   .input-field {
     @apply border border-edge rounded px-3 py-2 text-sm bg-surface text-ink
-           placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-slate-400/30
+           placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-status-info/30
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
 
@@ -87,31 +137,70 @@
     @apply bg-surface;
   }
 
-  /* Primary action button */
+  /* Primary action button — standard: forms, modal footers, form pages */
   .btn-primary {
     @apply bg-prim text-prim-fg rounded px-4 py-2 text-sm font-medium
            hover:opacity-90 active:opacity-80
            disabled:opacity-50 disabled:cursor-not-allowed transition-opacity;
   }
 
-  /* Secondary/outline button */
+  /* Secondary/outline button — standard */
   .btn-secondary {
     @apply border border-edge rounded px-4 py-2 text-sm text-ink-2
            hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
 
-  /* Danger button */
+  /* Danger button — standard. Solid red (not outline): matches the pattern
+     already used app-wide for destructive actions, kept distinct from
+     primary/secondary at every size so it stays recognizable regardless of
+     context (T115). */
   .btn-danger {
-    @apply border border-red-300 text-red-600 rounded px-4 py-2 text-sm
-           hover:bg-red-50 disabled:opacity-50
-           dark:border-red-700/60 dark:text-red-400 dark:hover:bg-red-900/20
-           transition-colors;
+    @apply bg-status-danger-solid text-status-danger-fg rounded px-4 py-2 text-sm font-medium
+           hover:opacity-90 active:opacity-80
+           disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
 
-  /* Small secondary button */
+  /* Compact variants — ViewHeader actions slot, popovers, inline row actions.
+     Same standard→compact ratio across all three colors (T115). */
+  .btn-primary-sm {
+    @apply bg-prim text-prim-fg rounded px-3 py-1.5 text-xs font-medium
+           hover:opacity-90 active:opacity-80
+           disabled:opacity-50 disabled:cursor-not-allowed transition-opacity;
+  }
+
+  .btn-secondary-sm {
+    @apply border border-edge rounded px-3 py-1.5 text-xs text-ink-2
+           hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+
+  .btn-danger-sm {
+    @apply bg-status-danger-solid text-status-danger-fg rounded px-3 py-1.5 text-xs font-medium
+           hover:opacity-90 active:opacity-80
+           disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+
+  /* Small secondary button — pre-dates the -sm variants above and is kept
+     as a distinct, even tighter tier (px-2 py-1 vs px-3 py-1.5), not merged
+     into .btn-secondary-sm to avoid resizing its existing call sites (T115).
+     Prefer .btn-secondary-sm for new compact secondary buttons; reach for
+     .btn-sm only when matching an existing dense control that already uses
+     it (e.g. SearchPanel.tsx, VersionRepoFolder.tsx). */
   .btn-sm {
     @apply border border-edge rounded px-2 py-1 text-xs text-ink-2
            hover:bg-hover disabled:opacity-50 transition-colors;
+  }
+
+  /* Icon-only button — undo/redo, add a row, toggle... No default text
+     color: callers add text-ink-3 hover:text-ink (neutral) or text-prim
+     (accent, e.g. "add" actions) alongside btn-icon (T115). */
+  .btn-icon {
+    @apply p-1 rounded hover:bg-hover disabled:opacity-40
+           disabled:cursor-not-allowed transition-colors;
+  }
+
+  /* Close "x" button in modal headers (T115) */
+  .btn-close {
+    @apply text-ink-3 hover:text-ink text-lg leading-none px-1;
   }
 
   /* Section header label */

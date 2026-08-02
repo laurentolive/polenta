@@ -1,5 +1,6 @@
 import type { SchemaField } from '@polenta/types'
 import { RichTextField } from './RichTextField'
+import { MultiEnumCheckboxes } from './MultiEnumCheckboxes'
 
 interface Props {
   field: SchemaField
@@ -7,16 +8,19 @@ interface Props {
   onChange: (value: string) => void
   disabled?: boolean
   repoPath?: string
+  /** Catalogue de rôles du repo courant (`schema.roles`), pour le champ `multi_enum`
+   *  nommé `roles` uniquement — même règle que EditView.tsx (T110 sprint 3). */
+  interfaceRoles?: string[]
 }
 
-export function DynamicField({ field, value, onChange, disabled, repoPath }: Props) {
+export function DynamicField({ field, value, onChange, disabled, repoPath, interfaceRoles }: Props) {
   const label = field.label ?? field.name ?? ''
 
   return (
     <div>
       <label className="block text-sm font-medium text-ink mb-1">
         {label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
+        {field.required && <span className="text-status-danger ml-1">*</span>}
       </label>
       {field.type === 'richtext' ? (
         <RichTextField
@@ -54,6 +58,14 @@ export function DynamicField({ field, value, onChange, disabled, repoPath }: Pro
           onChange={e => onChange(e.target.checked ? 'true' : 'false')}
           disabled={disabled}
           className="h-4 w-4 accent-ink"
+        />
+      ) : field.type === 'multi_enum' ? (
+        <MultiEnumCheckboxes
+          field={field}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          interfaceRoles={interfaceRoles}
         />
       ) : (
         <input

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import type { QueryResult } from '@polenta/types'
 import { ResultTable } from '../components/dashboard/ResultTable'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
@@ -21,6 +22,7 @@ export const Route = createFileRoute('/print/query-result')({
 })
 
 function PrintQueryResultPage() {
+  const { t } = useTranslation()
   const { queryName, resultJson } = Route.useSearch()
 
   let result: QueryResult
@@ -33,9 +35,9 @@ function PrintQueryResultPage() {
   useNotifyPrintReady(true)
 
   return (
-    <div className="p-10 bg-white text-slate-900 text-sm min-h-screen">
-      <h1 className="text-xl font-semibold mb-1">Résultats de requête — {queryName}</h1>
-      <p className="text-slate-500 mb-8">{result.rows.length} ligne(s)</p>
+    <div className="p-10 bg-print-bg text-print-ink text-sm min-h-screen">
+      <h1 className="text-xl font-semibold mb-1">{t('printQueryResultPage.title', { queryName })}</h1>
+      <p className="text-print-ink-2 mb-8">{t('dashboardPage.resultTable.rowCount', { count: result.rows.length })}</p>
       <ResultTable result={result} />
     </div>
   )

@@ -1,4 +1,5 @@
 ﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Trash2, Play, Eye, Pencil, Copy } from 'lucide-react'
@@ -15,6 +16,7 @@ import { extractTestParameters, isParamsComplete } from '../lib/testParams'
 import { ExportButton } from '../components/export/ExportButton'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
+import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import type { TestRunStatus, TestCase, ProjectSchema } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
@@ -27,20 +29,20 @@ export const Route = createFileRoute('/campaign/$campaignId')({
   }),
 })
 
-const RUN_STATUS_OPTIONS: { value: TestRunStatus; label: string }[] = [
-  { value: 'pending',  label: 'En attente' },
-  { value: 'PASS',      label: 'Passé' },
-  { value: 'FAIL',      label: 'Echoué' },
-  { value: 'BLOCKED',   label: 'Bloqué' },
-  { value: 'INCOMPLETE', label: 'Incomplet' },
-]
+export const RUN_STATUS_LABEL_KEY: Record<TestRunStatus, string> = {
+  pending:    'campaignPage.runStatus.pending',
+  PASS:       'campaignPage.runStatus.pass',
+  FAIL:       'campaignPage.runStatus.fail',
+  BLOCKED:    'campaignPage.runStatus.blocked',
+  INCOMPLETE: 'campaignPage.runStatus.incomplete',
+}
 
 const RUN_STATUS_CLASS: Record<TestRunStatus, string> = {
-  pending:    'bg-gray-200 text-gray-700 dark:bg-gray-600/60 dark:text-gray-200',
-  PASS:       'bg-green-200 text-green-800 dark:bg-green-800/50 dark:text-green-300',
-  FAIL:       'bg-red-200 text-red-800 dark:bg-red-800/50 dark:text-red-300',
-  BLOCKED:    'bg-orange-200 text-orange-800 dark:bg-orange-800/50 dark:text-orange-300',
-  INCOMPLETE: 'bg-yellow-200 text-yellow-700 dark:bg-yellow-800/50 dark:text-yellow-300',
+  pending:    'bg-status-neutral-bg text-status-neutral',
+  PASS:       'bg-status-success-bg text-status-success',
+  FAIL:       'bg-status-danger-bg text-status-danger',
+  BLOCKED:    'bg-status-warning-bg text-status-warning',
+  INCOMPLETE: 'bg-status-warning-bg text-status-warning',
 }
 
 // Statut "approuvé" résolu depuis `statuses[].isApproval` du type du test (schema.yaml),
@@ -56,6 +58,7 @@ function isTestApproved(test: TestCase, schema: ProjectSchema | undefined): bool
 // ─── Campaign detail page ─────────────────────────────────────────────────────
 
 function CampaignDetailPage() {
+  const { t } = useTranslation()
   const { campaignId } = Route.useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -117,6 +120,12 @@ function CampaignDetailPage() {
     },
   })
 
+  useModalHotkeys(
+    () => setConfirmDelete(false),
+    () => deleteMutation.mutate(),
+    !confirmDelete || deleteMutation.isPending,
+  )
+
   const addTestsMutation = useMutation({
     mutationFn: ({ ids, paramValues }: { ids: string[]; paramValues: Record<string, Record<string, string>> }) =>
       api.campaigns.addTests(repoPath, campaignId, ids, paramValues),
@@ -156,10 +165,10 @@ function CampaignDetailPage() {
   })
 
   if (!repoPath) {
-    return <p className="p-6 text-sm text-ink-2">Paramètre <code>repoPath</code> manquant.</p>
+    return <p className="p-6 text-sm text-ink-2"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   }
-  if (isLoading) return <p className="p-6 text-sm text-ink-3">Chargement…</p>
-  if (!campaign) return <p className="p-6 text-sm text-ink-2">Campagne introuvable : {campaignId}</p>
+  if (isLoading) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
+  if (!campaign) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.notFound', { campaignId })}</p>
 
   const typeDef = getCampaignTypeDef(schema, campaign.objectTypeRef)
 
@@ -285,10 +294,10 @@ function CampaignDetailPage() {
               />
             )}
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-              campaign.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' :
-              campaign.status === 'in_progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' :
-              campaign.status === 'abandoned' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' :
-              'bg-hover text-ink-2'
+              campaign.status === 'completed' ? 'bg-status-success-bg text-status-success' :
+              campaign.status === 'in_progress' ? 'bg-status-info-bg text-status-info' :
+              campaign.status === 'abandoned' ? 'bg-status-danger-bg text-status-danger' :
+              'bg-status-neutral-bg text-status-neutral'
             }`}>
               {campaign.status}
             </span>
@@ -307,7 +316,7 @@ function CampaignDetailPage() {
               <button
                 type="button"
                 onClick={startEditingFields}
-                title="Modifier les champs"
+                title={t('campaignPage.editFields')}
                 className="text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
               >
                 <Pencil size={13} />
@@ -315,15 +324,15 @@ function CampaignDetailPage() {
             ) : (
               <div className="flex gap-2">
                 <button type="button" onClick={() => setEditingFields(null)} className="text-xs text-ink-3 hover:text-ink">
-                  Annuler
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
                   onClick={() => updateFieldsMutation.mutate(editingFields)}
                   disabled={updateFieldsMutation.isPending}
-                  className="btn-primary text-xs px-2 py-1"
+                  className="btn-primary-sm"
                 >
-                  {updateFieldsMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                  {updateFieldsMutation.isPending ? t('campaignPage.saving') : t('common.save')}
                 </button>
               </div>
             )}
@@ -337,6 +346,7 @@ function CampaignDetailPage() {
                   value={editingFields[f.name] ?? ''}
                   onChange={v => setEditingFields(prev => ({ ...(prev ?? {}), [f.name]: v }))}
                   repoPath={repoPath}
+                  interfaceRoles={schema?.roles?.map(r => r.name)}
                 />
               ) : (
                 <div key={f.name}>
@@ -355,7 +365,7 @@ function CampaignDetailPage() {
 
       {campaign.baselineRef && (
         <p className="text-xs text-ink-2 mb-4">
-          Baseline : <code className="font-mono">{campaign.baselineRef}</code>
+          {t('campaignPage.baselineLabelPrefix')} <code className="font-mono">{campaign.baselineRef}</code>
         </p>
       )}
 
@@ -381,15 +391,15 @@ function CampaignDetailPage() {
             <button
               type="button"
               onClick={() => setAddingTests(true)}
-              className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-3 py-1.5"
+              className="text-xs text-status-info hover:opacity-80 border border-status-info-border rounded px-3 py-1.5"
             >
-              + Ajouter des tests
+              + {t('campaignPage.addTests')}
             </button>
           ) : (
             <div className="border rounded p-3">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium">
-                  Ajouter des tests ({selectedToAdd.size} sélectionné{selectedToAdd.size !== 1 ? 's' : ''})
+                  {t('campaignPage.addTestsSelected', { count: selectedToAdd.size })}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -397,59 +407,59 @@ function CampaignDetailPage() {
                     onClick={() => { setAddingTests(false); setSelectedToAdd(new Set()); setAddParamValues({}); setTestFilter('') }}
                     className="text-xs text-ink-3 hover:text-ink"
                   >
-                    Annuler
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="button"
                     onClick={handleConfirmAdd}
                     disabled={selectedToAdd.size === 0 || isConfirmingAdd || !isParamsComplete(selectedToAdd, testMap, addParamValues)}
-                    className="btn-primary text-xs px-2 py-1"
+                    className="btn-primary-sm"
                   >
-                    {isConfirmingAdd ? 'Ajout…' : `Ajouter (${selectedToAdd.size})`}
+                    {isConfirmingAdd ? t('campaignPage.adding') : t('campaignPage.addCount', { count: selectedToAdd.size })}
                   </button>
                 </div>
               </div>
               {availableTests.length === 0 ? (
-                <p className="text-xs text-ink-3 italic">Aucun test approuvé disponible (déjà présents ou non approuvés)</p>
+                <p className="text-xs text-ink-3 italic">{t('campaignPage.noApprovedTestAvailable')}</p>
               ) : (
                 <>
                   <input
                     type="text"
                     value={testFilter}
                     onChange={e => setTestFilter(e.target.value)}
-                    placeholder="Filtrer…"
+                    placeholder={t('common.filterPlaceholder')}
                     className="input-field w-full text-xs mb-2"
                   />
                   <div className="border border-edge rounded divide-y max-h-48 overflow-y-auto">
                     {filteredAvailable.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-ink-3 italic">Aucun résultat</p>
+                      <p className="px-3 py-2 text-xs text-ink-3 italic">{t('common.noResults')}</p>
                     ) : (
-                      filteredAvailable.map(t => {
-                        const alreadyIncludedCount = campaign!.testCaseIds.filter(id => id === t.id).length
+                      filteredAvailable.map(availableTest => {
+                        const alreadyIncludedCount = campaign!.testCaseIds.filter(id => id === availableTest.id).length
                         return (
-                        <div key={t.id}>
+                        <div key={availableTest.id}>
                           <label className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-hover">
                             <input
                               type="checkbox"
-                              checked={selectedToAdd.has(t.id)}
-                              onChange={() => toggleToAdd(t.id)}
+                              checked={selectedToAdd.has(availableTest.id)}
+                              onChange={() => toggleToAdd(availableTest.id)}
                               className="rounded"
                             />
-                            <span className="font-mono text-ink-3 shrink-0">{t.id}</span>
-                            <span className="text-ink truncate">{t.title}</span>
+                            <span className="font-mono text-ink-3 shrink-0">{availableTest.id}</span>
+                            <span className="text-ink truncate">{availableTest.title}</span>
                             {alreadyIncludedCount > 0 && (
                               <span className="shrink-0 text-[10px] text-ink-3 italic ml-auto">
-                                déjà {alreadyIncludedCount === 1 ? 'présent' : `présent (${alreadyIncludedCount}×)`}
+                                {t('campaignPage.alreadyPresent', { count: alreadyIncludedCount })}
                               </span>
                             )}
                           </label>
-                          {selectedToAdd.has(t.id) && (
+                          {selectedToAdd.has(availableTest.id) && (
                             <TestParamFields
-                              testCase={t}
-                              values={addParamValues[t.id] ?? {}}
+                              testCase={availableTest}
+                              values={addParamValues[availableTest.id] ?? {}}
                               onChange={(label, value) => setAddParamValues(prev => ({
                                 ...prev,
-                                [t.id]: { ...(prev[t.id] ?? {}), [label]: value },
+                                [availableTest.id]: { ...(prev[availableTest.id] ?? {}), [label]: value },
                               }))}
                             />
                           )}
@@ -468,7 +478,7 @@ function CampaignDetailPage() {
       {/* Test case list */}
       <div className="border rounded divide-y mb-3">
         {campaign.runs.length === 0 ? (
-          <p className="px-4 py-3 text-xs text-ink-3 italic">Aucun cas de test dans cette campagne</p>
+          <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.noTestCaseInCampaign')}</p>
         ) : (
           campaign.runs.map(run => {
             const { entryId, testCaseId: tcId, status: runStatus, runId, paramValues } = run
@@ -501,7 +511,7 @@ function CampaignDetailPage() {
                     )}
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${RUN_STATUS_CLASS[runStatus]}`}>
-                    {RUN_STATUS_OPTIONS.find(o => o.value === runStatus)?.label ?? runStatus}
+                    {t(RUN_STATUS_LABEL_KEY[runStatus])}
                   </span>
                   {isActive && hasLiveParams && (
                     <button
@@ -511,7 +521,7 @@ function CampaignDetailPage() {
                         if (isDuplicating) { setDuplicatingFor(null) }
                         else { setDuplicatingFor(entryId); setDuplicateParamValues({}); setEditingParamsFor(null) }
                       }}
-                      title="Ajouter une autre instance de ce test avec d'autres valeurs"
+                      title={t('campaignPage.addAnotherInstance')}
                       className="shrink-0 text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
                     >
                       <Copy size={12} />
@@ -525,7 +535,7 @@ function CampaignDetailPage() {
                         if (isEditingParams) { setEditingParamsFor(null) }
                         else { startEditingParams(entryId); setDuplicatingFor(null) }
                       }}
-                      title="Modifier les valeurs des paramètres"
+                      title={t('campaignPage.editParamValues')}
                       className="shrink-0 text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
                     >
                       <Pencil size={12} />
@@ -535,11 +545,11 @@ function CampaignDetailPage() {
                     <button
                       type="button"
                       onClick={() => navigateToView(entryId)}
-                      title="Consulter le résultat"
+                      title={t('campaignPage.viewResult')}
                       className="shrink-0 flex items-center gap-1 text-xs text-ink-3 hover:text-ink border border-edge rounded px-2 py-0.5 hover:bg-hover transition-colors"
                     >
                       <Eye size={11} />
-                      Voir
+                      {t('campaignPage.view')}
                     </button>
                   )}
                   {isActive && (
@@ -550,11 +560,11 @@ function CampaignDetailPage() {
                         params: { campaignId, testId: entryId },
                         search: { repoPath, projectId, component, level },
                       })}
-                      title="Exécuter ce test"
-                      className="shrink-0 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                      title={t('campaignPage.executeThisTest')}
+                      className="shrink-0 flex items-center gap-1 text-xs text-status-info hover:opacity-80 border border-status-info-border rounded px-2 py-0.5 hover:bg-status-info-bg transition-colors"
                     >
                       <Play size={11} />
-                      Exécuter
+                      {t('campaignPage.execute')}
                     </button>
                   )}
                 </div>
@@ -571,22 +581,22 @@ function CampaignDetailPage() {
                         onClick={() => setEditingParamsFor(null)}
                         className="text-xs text-ink-3 hover:text-ink"
                       >
-                        Annuler
+                        {t('common.cancel')}
                       </button>
                       <button
                         type="button"
                         onClick={() => updateParamsMutation.mutate({ entryId, paramValues: editParamValues })}
                         disabled={updateParamsMutation.isPending || extractTestParameters(tc).some(label => !editParamValues[label]?.trim())}
-                        className="btn-primary text-xs px-2 py-1"
+                        className="btn-primary-sm"
                       >
-                        {updateParamsMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                        {updateParamsMutation.isPending ? t('campaignPage.saving') : t('common.save')}
                       </button>
                     </div>
                   </div>
                 )}
                 {isDuplicating && liveTc && (
                   <div className="px-3 pb-2">
-                    <p className="pl-6 text-[11px] text-ink-3 mb-1">Nouvelle instance de {tcId} — valeurs des paramètres :</p>
+                    <p className="pl-6 text-[11px] text-ink-3 mb-1">{t('campaignPage.newInstanceOf', { tcId })}</p>
                     <TestParamFields
                       testCase={liveTc}
                       values={duplicateParamValues}
@@ -598,15 +608,15 @@ function CampaignDetailPage() {
                         onClick={() => { setDuplicatingFor(null); setDuplicateParamValues({}) }}
                         className="text-xs text-ink-3 hover:text-ink"
                       >
-                        Annuler
+                        {t('common.cancel')}
                       </button>
                       <button
                         type="button"
                         onClick={() => duplicateTestMutation.mutate({ testCaseId: tcId, paramValues: duplicateParamValues })}
                         disabled={duplicateTestMutation.isPending || extractTestParameters(liveTc).some(label => !duplicateParamValues[label]?.trim())}
-                        className="btn-primary text-xs px-2 py-1"
+                        className="btn-primary-sm"
                       >
-                        {duplicateTestMutation.isPending ? 'Ajout…' : 'Dupliquer'}
+                        {duplicateTestMutation.isPending ? t('campaignPage.adding') : t('campaignPage.duplicate')}
                       </button>
                     </div>
                   </div>
@@ -616,8 +626,8 @@ function CampaignDetailPage() {
                     type="button"
                     onClick={e => { e.stopPropagation(); removeTestMutation.mutate(entryId) }}
                     disabled={removeTestMutation.isPending}
-                    title="Retirer ce test de la campagne"
-                    className="shrink-0 text-ink-3 hover:text-red-500 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                    title={t('campaignPage.removeTestFromCampaign')}
+                    className="shrink-0 text-ink-3 hover:text-status-danger p-1 rounded hover:bg-status-danger-bg transition-colors disabled:opacity-50"
                   >
                     <Trash2 size={13} />
                   </button>
@@ -635,7 +645,7 @@ function CampaignDetailPage() {
           onClick={() => window.history.back()}
           className="btn-secondary"
         >
-          Retour
+          {t('layout.viewHeader.back')}
         </button>
 
         {isActive && (
@@ -644,17 +654,17 @@ function CampaignDetailPage() {
               type="button"
               onClick={() => closeMutation.mutate('completed')}
               disabled={closeMutation.isPending}
-              className="bg-green-600 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+              className="bg-status-success-solid text-status-success-fg rounded px-4 py-2 text-sm disabled:opacity-50 hover:opacity-90"
             >
-              {closeMutation.isPending ? 'Fermeture…' : 'Clore la campagne'}
+              {closeMutation.isPending ? t('campaignPage.closing') : t('campaignPage.closeCampaign')}
             </button>
             <button
               type="button"
               onClick={() => closeMutation.mutate('abandoned')}
               disabled={closeMutation.isPending}
-              className="border border-red-300 text-red-600 rounded px-3 py-1.5 text-sm disabled:opacity-50"
+              className="border border-status-danger-border text-status-danger rounded px-3 py-1.5 text-sm disabled:opacity-50"
             >
-              Abandonner
+              {t('campaignPage.abandon')}
             </button>
           </>
         )}
@@ -662,8 +672,8 @@ function CampaignDetailPage() {
         <button
           type="button"
           onClick={() => setConfirmDelete(true)}
-          title="Supprimer la campagne"
-          className="ml-auto text-ink-3 hover:text-red-500 transition-colors p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+          title={t('campaignPage.deleteCampaignTitle')}
+          className="ml-auto text-ink-3 hover:text-status-danger transition-colors p-1.5 rounded hover:bg-status-danger-bg"
         >
           <Trash2 size={15} />
         </button>
@@ -671,29 +681,28 @@ function CampaignDetailPage() {
 
       {/* Delete confirmation dialog */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">
           <div className="bg-surface rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
-            <h2 className="text-base font-semibold mb-2">Supprimer la campagne ?</h2>
+            <h2 className="text-base font-semibold mb-2">{t('sidebar.system.deleteCampaignTitle')}</h2>
             <p className="text-sm text-ink-2 mb-5">
-              La campagne <strong>{campaign.title}</strong> sera supprimée définitivement.
-              Cette action est irréversible.
+              <Trans i18nKey="sidebar.system.deleteCampaignBody" values={{ title: campaign.title }} components={{ b: <strong /> }} />
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 type="button"
                 onClick={() => setConfirmDelete(false)}
                 disabled={deleteMutation.isPending}
-                className="btn-secondary text-sm"
+                className="btn-secondary"
               >
-                Annuler
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
-                className="bg-red-600 hover:bg-red-700 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+                className="btn-danger"
               >
-                {deleteMutation.isPending ? 'Suppression…' : 'Supprimer'}
+                {deleteMutation.isPending ? t('campaignPage.deleting') : t('common.delete')}
               </button>
             </div>
           </div>

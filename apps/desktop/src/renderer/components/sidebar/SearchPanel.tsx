@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
+import { CATEGORY_CHART_BG } from '../../lib/objectCategoryColors'
 import type { Requirement, TestCase, TestCampaign } from '@polenta/types'
 
 interface Props {
@@ -129,7 +131,7 @@ function ToggleBtn({
       title={title}
       className={[
         'text-[10px] font-mono px-1 py-0.5 rounded transition-colors leading-none select-none',
-        active ? 'bg-blue-600 text-white' : 'text-ink-3 hover:text-ink hover:bg-hover',
+        active ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-3 hover:text-ink hover:bg-hover',
       ].join(' ')}
     >
       {children}
@@ -149,7 +151,7 @@ function ExcerptView({
   return (
     <span className="text-xs text-ink-2 break-all font-mono">
       <span>{excerpt.slice(0, matchStart)}</span>
-      <mark className="bg-yellow-300 dark:bg-yellow-700/60 text-inherit rounded-sm px-px not-italic">
+      <mark className="bg-status-warning-solid/70 text-inherit rounded-sm px-px not-italic">
         {excerpt.slice(matchStart, matchStart + matchLength)}
       </mark>
       <span>{excerpt.slice(matchStart + matchLength)}</span>
@@ -170,14 +172,15 @@ function ResultItem({
   onNavigate: () => void
   onReplace: () => void
 }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(true)
 
   const badgeCls =
     result.itemType === 'requirement'
-      ? 'bg-blue-600'
+      ? CATEGORY_CHART_BG.requirement
       : result.itemType === 'test'
-        ? 'bg-green-600'
-        : 'bg-amber-500'
+        ? CATEGORY_CHART_BG.test
+        : CATEGORY_CHART_BG.campaign
   const badgeLabel =
     result.itemType === 'requirement' ? 'EX' : result.itemType === 'test' ? 'TC' : 'CA'
 
@@ -197,7 +200,7 @@ function ResultItem({
           onClick={onNavigate}
           className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
         >
-          <span className={`text-[9px] font-bold text-white px-1 py-px rounded shrink-0 ${badgeCls}`}>
+          <span className={`text-[9px] font-bold text-status-info-fg px-1 py-px rounded shrink-0 ${badgeCls}`}>
             {badgeLabel}
           </span>
           <span className="font-mono text-xs text-ink-3 shrink-0">{result.id}</span>
@@ -211,7 +214,7 @@ function ResultItem({
               onReplace()
             }}
             className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-ink shrink-0 border border-edge rounded px-1 text-[10px] transition-opacity"
-            title="Remplacer dans cet élément"
+            title={t('sidebar.search.replaceInItem')}
           >
             ↻
           </button>
@@ -242,6 +245,7 @@ function ResultItem({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function SearchPanel({ currentProjectId, projectId }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -382,7 +386,7 @@ export function SearchPanel({ currentProjectId, projectId }: Props) {
     try {
       await replaceInItem(result)
     } catch (e) {
-      setReplaceError(e instanceof Error ? e.message : 'Erreur de remplacement')
+      setReplaceError(e instanceof Error ? e.message : t('sidebar.search.replaceError'))
     }
   }
 
@@ -397,7 +401,7 @@ export function SearchPanel({ currentProjectId, projectId }: Props) {
         }
       }
     } catch (e) {
-      setReplaceError(e instanceof Error ? e.message : 'Erreur de remplacement')
+      setReplaceError(e instanceof Error ? e.message : t('sidebar.search.replaceError'))
     } finally {
       setReplacing(false)
     }
@@ -419,7 +423,7 @@ export function SearchPanel({ currentProjectId, projectId }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-edge shrink-0 space-y-2">
-        <p className="section-label">Recherche</p>
+        <p className="section-label">{t('sidebar.search.title')}</p>
 
         {/* Search row */}
         <div className="flex items-center gap-1">
@@ -427,7 +431,7 @@ export function SearchPanel({ currentProjectId, projectId }: Props) {
             type="button"
             onClick={() => setShowReplace((v) => !v)}
             className="text-ink-3 hover:text-ink p-0.5 shrink-0"
-            title={showReplace ? 'Masquer le remplacement' : 'Afficher le remplacement'}
+            title={showReplace ? t('sidebar.search.hideReplace') : t('sidebar.search.showReplace')}
           >
             {showReplace ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
@@ -435,32 +439,32 @@ export function SearchPanel({ currentProjectId, projectId }: Props) {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher…"
+              placeholder={t('sidebar.search.searchPlaceholder')}
               autoFocus
               className={[
                 'input-field w-full text-xs py-1 pr-[5rem]',
-                regexInvalid ? 'border-red-500 focus:ring-red-400/30' : '',
+                regexInvalid ? 'border-status-danger focus:ring-status-danger/30' : '',
               ].join(' ')}
             />
             <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-0.5">
               <ToggleBtn
                 active={opts.caseSensitive}
                 onClick={() => setOpts((o) => ({ ...o, caseSensitive: !o.caseSensitive }))}
-                title="Respecter la casse"
+                title={t('sidebar.search.caseSensitive')}
               >
                 Aa
               </ToggleBtn>
               <ToggleBtn
                 active={opts.wholeWord}
                 onClick={() => setOpts((o) => ({ ...o, wholeWord: !o.wholeWord }))}
-                title="Mot entier"
+                title={t('sidebar.search.wholeWord')}
               >
                 ab|
               </ToggleBtn>
               <ToggleBtn
                 active={opts.isRegex}
                 onClick={() => setOpts((o) => ({ ...o, isRegex: !o.isRegex }))}
-                title="Expression régulière"
+                title={t('sidebar.search.regex')}
               >
                 .*
               </ToggleBtn>
@@ -476,14 +480,14 @@ export function SearchPanel({ currentProjectId, projectId }: Props) {
               <input
                 value={replaceQuery}
                 onChange={(e) => setReplaceQuery(e.target.value)}
-                placeholder="Remplacer par…"
+                placeholder={t('sidebar.search.replacePlaceholder')}
                 className="input-field w-full text-xs py-1 pr-8"
               />
               <div className="absolute right-1 top-1/2 -translate-y-1/2">
                 <ToggleBtn
                   active={opts.preserveCase}
                   onClick={() => setOpts((o) => ({ ...o, preserveCase: !o.preserveCase }))}
-                  title="Conserver la casse"
+                  title={t('sidebar.search.preserveCase')}
                 >
                   AB
                 </ToggleBtn>
@@ -494,38 +498,38 @@ export function SearchPanel({ currentProjectId, projectId }: Props) {
               onClick={handleReplaceAll}
               disabled={!query || !repoPath || replacing || results.length === 0}
               className="btn-sm shrink-0 whitespace-nowrap"
-              title="Tout remplacer"
+              title={t('sidebar.search.replaceAll')}
             >
-              {replacing ? '…' : 'Tout'}
+              {replacing ? '…' : t('sidebar.search.replaceAllShort')}
             </button>
           </div>
         )}
 
         {/* Type filters */}
         <div className="flex gap-3 text-xs text-ink-3">
-          {(['requirements', 'tests', 'campaigns'] as const).map((t) => (
-            <label key={t} className="flex items-center gap-1 cursor-pointer select-none">
+          {(['requirements', 'tests', 'campaigns'] as const).map((kind) => (
+            <label key={kind} className="flex items-center gap-1 cursor-pointer select-none">
               <input
                 type="checkbox"
-                checked={types[t]}
-                onChange={(e) => setTypes((prev) => ({ ...prev, [t]: e.target.checked }))}
-                className="w-3 h-3 accent-blue-600"
+                checked={types[kind]}
+                onChange={(e) => setTypes((prev) => ({ ...prev, [kind]: e.target.checked }))}
+                className="w-3 h-3 accent-status-info-solid"
               />
-              {t === 'requirements' ? 'Exig.' : t === 'tests' ? 'Tests' : 'Camp.'}
+              {kind === 'requirements' ? t('sidebar.search.requirementsFilter') : kind === 'tests' ? t('sidebar.search.testsFilter') : t('sidebar.search.campaignsFilter')}
             </label>
           ))}
         </div>
 
         {/* Status line */}
         {regexInvalid && (
-          <p className="text-xs text-red-500">Expression régulière invalide</p>
+          <p className="text-xs text-status-danger">{t('sidebar.search.invalidRegex')}</p>
         )}
-        {replaceError && <p className="text-xs text-red-500">{replaceError}</p>}
+        {replaceError && <p className="text-xs text-status-danger">{replaceError}</p>}
         {regex && (
           <p className="text-xs text-ink-3">
             {totalMatches === 0
-              ? 'Aucun résultat'
-              : `${totalMatches} occurrence${totalMatches > 1 ? 's' : ''} dans ${results.length} élément${results.length > 1 ? 's' : ''}`}
+              ? t('common.noResults')
+              : `${t('sidebar.search.resultsMatches', { count: totalMatches })} ${t('sidebar.search.resultsItems', { count: results.length })}`}
           </p>
         )}
       </div>

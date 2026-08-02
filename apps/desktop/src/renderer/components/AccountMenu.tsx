@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 
 interface Identity {
@@ -12,10 +13,10 @@ interface Identity {
 const KNOWN_REMOTES = [
   'https://github.com',
   'https://gitlab.com',
-  'https://gitea.io',
 ]
 
 export function AccountMenu() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [identity, setIdentity] = useState<Identity | null>(null)
   const [open, setOpen] = useState(false)
@@ -65,7 +66,7 @@ export function AccountMenu() {
     navigate({ to: '/login' })
   }
 
-  const label = identity ? identity.login : 'Compte'
+  const label = identity ? identity.login : t('account.menu.defaultLabel')
 
   return (
     <div className="relative" ref={menuRef}>
@@ -95,14 +96,14 @@ export function AccountMenu() {
               onClick={handleChangeAccount}
               className="w-full text-left px-4 py-2 text-sm text-ink hover:bg-hover"
             >
-              Changer de compte…
+              {t('common.changeAccount')}
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-hover"
+              className="w-full text-left px-4 py-2 text-sm text-status-danger hover:bg-hover"
             >
-              Se déconnecter
+              {t('common.logout')}
             </button>
           </div>
         </div>

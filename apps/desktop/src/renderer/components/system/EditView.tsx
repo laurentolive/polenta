@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink } from '@polenta/types'
+import { useTranslation } from 'react-i18next'
+import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink, CoverageStatus, MatrixCell, TestCase } from '@polenta/types'
 import { api } from '../../api'
 import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
 import { matchesRefs, filterCandidatesByRefs, getPeerId, isLinkTypeValid } from './linkUtils'
 import { RichTextField } from '../RichTextField'
+import { MultiEnumCheckboxes } from '../MultiEnumCheckboxes'
+import { CoverageBadge } from './CoverageBadge'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -26,6 +29,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({ field, value, onBlur, onChange, readOnly, repoPath, interfaceRoles }: FieldControlProps) {
+  const { t } = useTranslation()
   const [localVal, setLocalVal] = useState(value)
 
   useEffect(() => {
@@ -36,7 +40,7 @@ function FieldControl({ field, value, onBlur, onChange, readOnly, repoPath, inte
   const set = (v: string) => { setLocalVal(v); onChange(v) }
 
   const base =
-    'w-full text-sm text-ink border border-edge rounded px-3 py-1.5 outline-none focus:border-blue-400 transition-colors bg-surface'
+    'w-full text-sm text-ink border border-edge rounded px-3 py-1.5 outline-none focus:border-status-info transition-colors bg-surface'
   const roBase =
     'w-full text-sm text-ink-2 bg-hover border border-edge rounded px-3 py-1.5 cursor-default select-all'
 
@@ -97,39 +101,20 @@ function FieldControl({ field, value, onBlur, onChange, readOnly, repoPath, inte
       )
     }
 
-    case 'multi_enum': {
+    case 'multi_enum':
       // T110 sprint 3 — un champ multi_enum nommé `roles` source ses options depuis le catalogue
       // de rôles du repo courant (source unique, cf. T110) quand ce catalogue est renseigné,
       // au lieu de `field.values` codées en dur. Spécialisation par nom de champ plutôt qu'un
       // nouveau SchemaFieldType dédié (décidé dans specs/T110-design.md — pas de migration de
       // projets existants, un champ `roles` sans catalogue continue de fonctionner à l'identique).
-      const opts = (field.name === 'roles' && interfaceRoles?.length) ? interfaceRoles : (field.values ?? [])
-      const selected = localVal ? localVal.split(',').map(s => s.trim()).filter(Boolean) : []
-      const toggle = (v: string) => {
-        const next = selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v]
-        const newVal = next.join(', ')
-        set(newVal)
-        onBlur(newVal)
-      }
       return (
-        <div className="flex flex-wrap gap-2">
-          {opts.map(v => (
-            <label key={v} className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
-              <input
-                type="checkbox"
-                checked={selected.includes(v)}
-                onChange={() => toggle(v)}
-                className="h-3.5 w-3.5 accent-ink"
-              />
-              {v}
-            </label>
-          ))}
-          {opts.length === 0 && (
-            <span className="text-ink-3 text-xs italic">Aucune valeur configurée</span>
-          )}
-        </div>
+        <MultiEnumCheckboxes
+          field={field}
+          value={localVal}
+          onChange={v => { set(v); onBlur(v) }}
+          interfaceRoles={interfaceRoles}
+        />
       )
-    }
 
     case 'boolean': {
       const checked = localVal === 'true' || localVal === '1'
@@ -141,7 +126,7 @@ function FieldControl({ field, value, onBlur, onChange, readOnly, repoPath, inte
             onChange={e => { const v = e.target.checked ? 'true' : 'false'; set(v); onBlur(v) }}
             className="h-4 w-4 accent-ink"
           />
-          <span className="text-sm text-ink">{checked ? 'Oui' : 'Non'}</span>
+          <span className="text-sm text-ink">{checked ? t('common.yes') : t('common.no')}</span>
         </label>
       )
     }
@@ -176,7 +161,7 @@ function FieldControl({ field, value, onBlur, onChange, readOnly, repoPath, inte
           onChange={e => set(e.target.value)}
           onBlur={() => onBlur(localVal)}
           className={base}
-          placeholder={field.placeholder ?? 'Utilisateur…'}
+          placeholder={field.placeholder ?? t('system.editView.userPlaceholder')}
         />
       )
 
@@ -244,7 +229,7 @@ function FieldRow({
       <label className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
         {label}
         {system && <span className="text-ink-3 font-normal">(sys)</span>}
-        {field.required && !system && <span className="text-red-400">*</span>}
+        {field.required && !system && <span className="text-status-danger">*</span>}
       </label>
       <FieldControl field={field} value={value} onBlur={onBlur} onChange={onChange} readOnly={system} repoPath={repoPath} interfaceRoles={interfaceRoles} />
     </div>
@@ -272,8 +257,9 @@ function LinksSection({
   repoPath?: string
   candidateObjects?: Candidate[]
   onLinkChange?: () => void
-  onNavigateToObject?: (peerId: string) => void
+  onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
 }) {
+  const { t } = useTranslation()
   const linksByType = useMemo(() => {
     const map = new Map<string, { outgoing: ObjectLink[]; incoming: ObjectLink[] }>()
     for (const lt of linkTypes) map.set(lt.name, { outgoing: [], incoming: [] })
@@ -300,29 +286,35 @@ function LinksSection({
 
   return (
     <div className="border-t border-edge pt-5 space-y-4">
-      <p className="text-xs font-medium text-ink-2">Liens</p>
+      <p className="text-xs font-medium text-ink-2">{t('system.fieldConfig.links')}</p>
       {linkTypes.filter(isLinkTypeValid).map(lt => {
         const entry = linksByType.get(lt.name)!
         const canBeSource = matchesRefs(currentObjectTypeRef, lt.sourceRefs, currentCategory)
         const canBeTarget = matchesRefs(currentObjectTypeRef, lt.targetRefs, currentCategory)
-        if (!canBeSource && !canBeTarget) return null
+        // Toujours afficher les liens existants, même dans le sens non canonique pour le
+        // schéma actuel (ex. schéma modifié après coup) — sinon un lien créé avant un
+        // changement de sourceRefs/targetRefs devient invisible et impossible à délier.
+        // La création de nouveaux liens reste, elle, limitée au sens déclaré par le schéma.
+        const showOutgoing = canBeSource || entry.outgoing.length > 0
+        const showIncoming = canBeTarget || entry.incoming.length > 0
+        if (!showOutgoing && !showIncoming) return null
         return (
           <div key={lt.name} className="space-y-3">
-            {canBeSource && (
+            {showOutgoing && (
               <LinkCombobox
                 label={lt.labelSourceToTarget}
                 existingLinks={entry.outgoing.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={filterCandidatesByRefs(candidateObjects, lt.targetRefs)}
+                candidates={canBeSource ? filterCandidatesByRefs(candidateObjects, lt.targetRefs) : []}
                 onAdd={peerId => handleAdd(lt.name, objectId, peerId)}
                 onRemove={handleRemove}
                 onNavigateToObject={onNavigateToObject}
               />
             )}
-            {canBeTarget && (
+            {showIncoming && (
               <LinkCombobox
                 label={lt.labelTargetToSource}
                 existingLinks={entry.incoming.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={filterCandidatesByRefs(candidateObjects, lt.sourceRefs)}
+                candidates={canBeTarget ? filterCandidatesByRefs(candidateObjects, lt.sourceRefs) : []}
                 onAdd={peerId => handleAdd(lt.name, peerId, objectId)}
                 onRemove={handleRemove}
                 onNavigateToObject={onNavigateToObject}
@@ -347,13 +339,15 @@ export interface EditViewProps {
   readOnly?: boolean
   linkTypes?: LinkTypeDefinition[]
   objectLinks?: ObjectLink[]
+  coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  testsById?: Map<string, TestCase>
   repoPath?: string
   candidateObjects?: { id: string; title: string; objectTypeRef: string }[]
   onLinkChange?: () => void
   onBlurField: (field: string, value: string) => void
   onFlushValues: (values: Record<string, string>) => void
   onBack: () => void
-  onNavigateToObject?: (peerId: string) => void
+  onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   children?: React.ReactNode
 }
 
@@ -374,6 +368,8 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   readOnly = false,
   linkTypes = [],
   objectLinks = [],
+  coverageByReqId,
+  testsById,
   repoPath,
   candidateObjects = [],
   onLinkChange,
@@ -383,6 +379,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   onNavigateToObject,
   children,
 }, ref) {
+  const { t } = useTranslation()
   // T110 sprint 3 — catalogue de rôles du repo courant, pour le champ `roles` (voir FieldControl).
   // Une seule requête par montage de vue (pas par champ), clé de cache déjà utilisée ailleurs
   // (StructureTab) — aucun fetch réseau dupliqué si un ancêtre a déjà chargé ce schema.
@@ -411,6 +408,20 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
 
   useImperativeHandle(ref, () => ({ triggerBack: handleBack }), [handleBack])
 
+  // T127 — flush pending (unblurred) edits when EditView unmounts for any reason other than
+  // the "Retour" button above (which already flushes via handleBack): navigating away through
+  // the ActivityBar (Dashboard, Système, ...) swaps the route and unmounts this component
+  // directly, without ever calling onBack/handleBack. Richtext fields in particular never fire
+  // onBlur (see FieldControl below), so without this their in-progress edits — held only in
+  // localValuesRef — were silently discarded. Kept in a ref so this effect can stay mount-once
+  // (its cleanup must only run on true unmount, not on every onFlushValues identity change).
+  const onFlushValuesRef = useRef(onFlushValues)
+  useEffect(() => { onFlushValuesRef.current = onFlushValues }, [onFlushValues])
+
+  useEffect(() => {
+    return () => { onFlushValuesRef.current(localValuesRef.current) }
+  }, [])
+
   // ── Keyboard: Escape → back ; Ctrl+Enter → blur active field ─────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -438,7 +449,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
 
   const systemPseudo: SchemaField[] = SYSTEM_FIELDS.filter(f =>
     visibleFields.includes(f),
-  ).map(f => ({ name: f, type: 'text' as const, label: labelForSystem(f) }))
+  ).map(f => ({ name: f, type: 'text' as const, label: t(labelKeyForSystem(f)) }))
 
   const customFieldDefs: SchemaField[] = (typeDef?.fields ?? []).filter(f =>
     visibleFields.includes(f.name),
@@ -451,12 +462,12 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
         return sf ? { field: sf, system: true } : null
       }
       if (name === 'name') {
-        return { field: { name: 'name', type: 'text' as const, label: 'Nom' }, system: false }
+        return { field: { name: 'name', type: 'text' as const, label: t('system.wordView.colName') }, system: false }
       }
       if (name === 'status') {
         const statusField: SchemaField = typeDef?.statuses?.length
-          ? { name: 'status', type: 'enum' as const, label: 'Statut', values: typeDef.statuses.map(s => s.name) }
-          : { name: 'status', type: 'text' as const, label: 'Statut' }
+          ? { name: 'status', type: 'enum' as const, label: t('system.wordView.colStatus'), values: typeDef.statuses.map(s => s.name) }
+          : { name: 'status', type: 'text' as const, label: t('system.wordView.colStatus') }
         return { field: statusField, system: false }
       }
       const cf = customFieldDefs.find(f => f.name === name)
@@ -479,6 +490,17 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
       {/* ── Form ── */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-8 py-6 space-y-5">
+          {/* T138 — badge de couverture, toujours affiché pour une exigence (pas d'onglet "Édition"
+              dans FieldConfigModal pour le rendre désactivable, cf. specs/T138-design.md §3.4) ;
+              hors du pipeline orderedFields/FieldRow — champ non éditable, pas un SchemaField. */}
+          {typeDef?.category === 'requirement' && objectData && (
+            <div className="flex items-center gap-1.5">
+              <CoverageBadge
+                coverage={coverageByReqId?.get(objectData['id'] ?? '')}
+                testsById={testsById ?? new Map()}
+              />
+            </div>
+          )}
           {orderedFields.length === 0 && (
             <p className="text-sm text-ink-3 italic">
               Aucun champ configuré pour cette vue.
@@ -549,16 +571,18 @@ function isCompactField(type: SchemaFieldType | 'text'): boolean {
   return ['text', 'number', 'enum', 'date', 'datetime', 'user', 'boolean'].includes(type)
 }
 
-function labelForSystem(name: string): string {
+/** T111 — retourne une clé de traduction (convention module-scope : jamais de littéral ici),
+ *  résolue via t() par l'appelant. */
+function labelKeyForSystem(name: string): string {
   switch (name) {
-    case 'section': return 'N°'
-    case 'name': return 'Nom'
-    case 'id': return 'ID'
-    case 'createdAt': return 'Créé le'
-    case 'updatedAt': return 'Modifié le'
-    case 'author': return 'Auteur'
-    case 'objectTypeRef': return 'Type'
-    case 'version': return 'Version'
+    case 'section': return 'system.wordView.colSection'
+    case 'name': return 'system.wordView.colName'
+    case 'id': return 'system.wordView.colId'
+    case 'createdAt': return 'system.fieldConfig.colCreatedAt'
+    case 'updatedAt': return 'system.fieldConfig.colUpdatedAt'
+    case 'author': return 'system.fieldConfig.colAuthor'
+    case 'objectTypeRef': return 'system.editView.colType'
+    case 'version': return 'system.wordView.colVersion'
     default: return name
   }
 }

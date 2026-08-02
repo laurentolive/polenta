@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
@@ -16,12 +17,12 @@ export const Route = createFileRoute('/tests')({
 })
 
 const STATUS_CLASSES: Record<string, string> = {
-  draft:    'bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300',
-  ready:    'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  passed:   'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  failed:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  blocked:  'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  obsolete: 'bg-slate-100 text-slate-500 dark:bg-slate-700/30 dark:text-slate-400',
+  draft:    'bg-status-neutral-bg text-status-neutral',
+  ready:    'bg-status-info-bg text-status-info',
+  passed:   'bg-status-success-bg text-status-success',
+  failed:   'bg-status-danger-bg text-status-danger',
+  blocked:  'bg-status-warning-bg text-status-warning',
+  obsolete: 'bg-status-neutral-bg text-status-neutral',
 }
 
 function groupByType(tests: TestCase[]): Map<string, TestCase[]> {
@@ -36,6 +37,7 @@ function groupByType(tests: TestCase[]): Map<string, TestCase[]> {
 }
 
 function TestsPage() {
+  const { t } = useTranslation()
   const { projectId, filter, type: typeFilter } = Route.useSearch()
   const navigate = useNavigate()
 
@@ -71,7 +73,7 @@ function TestsPage() {
   const typeLabel = (name: string) =>
     testTypes.find(t => t.name === name)?.label ?? name
 
-  if (!projectId) return <p className="text-sm text-ink-3 p-4">Projet non chargé.</p>
+  if (!projectId) return <p className="text-sm text-ink-3 p-4">{t('common.projectNotLoaded')}</p>
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -79,7 +81,7 @@ function TestsPage() {
         currentProjectId={projectId}
         title={
           <>
-            Tests
+            {t('testsPage.title')}
             <span className="text-sm font-normal text-ink-3 ml-2">({filtered.length})</span>
           </>
         }
@@ -88,11 +90,11 @@ function TestsPage() {
       <div className="flex-1 overflow-y-auto">
       <div className="max-w-4xl p-6">
       {isLoading ? (
-        <p className="text-sm text-ink-3">Chargement…</p>
+        <p className="text-sm text-ink-3">{t('common.loading')}</p>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-sm text-ink-3">
-            {filter || typeFilter ? 'Aucun test pour ce filtre.' : 'Aucun test créé.'}
+            {filter || typeFilter ? t('testsPage.noTestForFilter') : t('testsPage.noTestCreated')}
           </p>
         </div>
       ) : (

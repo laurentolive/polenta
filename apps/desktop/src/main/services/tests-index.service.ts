@@ -84,15 +84,16 @@ export class TestsIndexService {
     // createdAt/createdBy/updatedAt/updatedBy are derived from the file's git log
     // (T112), never trusted from the YAML itself: overwritten unconditionally below,
     // whatever stale/absent keys the file may still have.
+    // T142 — one batched history walk for every file under `tests/`, instead of one
+    // `git.fileHistory()` (full history re-walk) per file: see GitService.fileHistoryMap().
+    const historyMap = await this.git.fileHistoryMap(repoPath, 'tests')
     await Promise.all(
       testFiles
         .filter((f) => f.endsWith('.yaml'))
         .map(async (file) => {
-          const [tc, history] = await Promise.all([
-            this.git.readYaml<TestCase>(repoPath, file),
-            this.git.fileHistory(repoPath, file),
-          ])
+          const tc = await this.git.readYaml<TestCase>(repoPath, file)
           if (!tc?.id) return
+          const history = historyMap.get(file)
           testCases.set(tc.id, {
             ...tc,
             createdAt: history?.createdAt ?? null,

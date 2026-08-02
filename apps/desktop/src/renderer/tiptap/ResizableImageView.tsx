@@ -143,10 +143,10 @@ export function ResizableImageView({ node, extension, updateAttributes, selected
           <div className="p-3 text-xs text-ink-3">Chargement de l'image…</div>
         )}
         {state.status === 'no-repo' && (
-          <div className="p-3 text-xs text-red-500">Image : contexte repo indisponible</div>
+          <div className="p-3 text-xs text-status-danger">Image : contexte repo indisponible</div>
         )}
         {state.status === 'not-found' && (
-          <div className="p-3 text-xs text-red-500">Image introuvable : {src}</div>
+          <div className="p-3 text-xs text-status-danger">Image introuvable : {src}</div>
         )}
         {resolvedSrc && (
           <img
@@ -178,7 +178,7 @@ export function ResizableImageView({ node, extension, updateAttributes, selected
         )}
       </ResizableMediaFrame>
       {replaceError && (
-        <div className="mt-1 px-2 py-1 text-xs text-red-500 border border-red-400/50 rounded bg-surface inline-block">
+        <div className="mt-1 px-2 py-1 text-xs text-status-danger border border-status-danger-border rounded bg-surface inline-block">
           {replaceError}
           <button type="button" onClick={() => setReplaceError(null)} className="ml-2 text-ink-3 hover:text-ink">×</button>
         </div>

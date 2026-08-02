@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { FilterOptions } from '../lib/textFilter'
 
 /** Les 3 boutons bascule casse/mot entier/regex de la barre de filtre globale
@@ -10,15 +11,16 @@ export function FilterOptionsToggle({
   options: FilterOptions
   onChange: (next: FilterOptions) => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="flex items-center gap-2">
       <button
         type="button"
-        title="Sensible à la casse"
+        title={t('system.filterOptionsToggle.caseSensitive')}
         onClick={() => onChange({ ...options, caseSensitive: !options.caseSensitive })}
         className={`text-xs px-1.5 py-0.5 rounded border ${
           options.caseSensitive
-            ? 'border-blue-400 bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+            ? 'border-status-info-border bg-status-info-bg text-status-info'
             : 'border-edge text-ink-3'
         }`}
       >
@@ -26,11 +28,11 @@ export function FilterOptionsToggle({
       </button>
       <button
         type="button"
-        title="Mot entier"
+        title={t('sidebar.search.wholeWord')}
         onClick={() => onChange({ ...options, wholeWord: !options.wholeWord })}
         className={`text-xs px-1.5 py-0.5 rounded border ${
           options.wholeWord
-            ? 'border-blue-400 bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+            ? 'border-status-info-border bg-status-info-bg text-status-info'
             : 'border-edge text-ink-3'
         }`}
       >
@@ -38,11 +40,11 @@ export function FilterOptionsToggle({
       </button>
       <button
         type="button"
-        title="Expression régulière"
+        title={t('sidebar.search.regex')}
         onClick={() => onChange({ ...options, regex: !options.regex })}
         className={`text-xs px-1.5 py-0.5 rounded border ${
           options.regex
-            ? 'border-blue-400 bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+            ? 'border-status-info-border bg-status-info-bg text-status-info'
             : 'border-edge text-ink-3'
         }`}
       >

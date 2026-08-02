@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 
 export const Route = createFileRoute('/login')({
@@ -9,7 +10,6 @@ export const Route = createFileRoute('/login')({
 const COMMON_REMOTES = [
   'https://github.com',
   'https://gitlab.com',
-  'https://gitea.io',
 ]
 
 type DeviceState = 'idle' | 'waiting' | 'error'
@@ -23,6 +23,7 @@ function isGithubRemote(url: string): boolean {
 }
 
 function LoginPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [remote, setRemote] = useState('https://github.com')
   const [customRemote, setCustomRemote] = useState('')
@@ -73,12 +74,12 @@ function LoginPage() {
         case 'expired':
           pollTimeout.current = null
           setDeviceState('error')
-          setDeviceError('Code expiré, réessayez.')
+          setDeviceError(t('login.codeExpired'))
           break
         case 'denied':
           pollTimeout.current = null
           setDeviceState('error')
-          setDeviceError('Connexion refusée.')
+          setDeviceError(t('login.connectionDenied'))
           break
         case 'error':
           pollTimeout.current = null
@@ -136,25 +137,25 @@ function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-canvas">
       <div className="w-full max-w-md bg-surface rounded-xl shadow-sm border border-edge p-8 space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold text-ink">Bienvenue dans Polenta</h1>
+          <h1 className="text-2xl font-semibold text-ink">{t('login.welcome')}</h1>
           <p className="text-sm text-ink-2 mt-1">
-            Connectez votre compte git pour commencer.
+            {t('login.subtitle')}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Remote git</label>
+            <label className="block text-sm font-medium text-ink mb-1">{t('login.remoteLabel')}</label>
             <select value={remote} onChange={e => { setRemote(e.target.value); handleCancelDeviceFlow() }}
               className="input-field w-full" disabled={busy}>
               {COMMON_REMOTES.map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
-              <option value="custom">Autre…</option>
+              <option value="custom">{t('login.otherOption')}</option>
             </select>
             {remote === 'custom' && (
               <input value={customRemote} onChange={e => setCustomRemote(e.target.value)}
-                placeholder="https://gitea.example.com"
+                placeholder="https://git.example.com"
                 className="input-field w-full mt-2" disabled={busy} />
             )}
           </div>
@@ -163,31 +164,31 @@ function LoginPage() {
             <div className="space-y-3">
               {deviceState === 'waiting' && deviceCode ? (
                 <div className="rounded border border-edge bg-canvas p-4 space-y-2 text-center">
-                  <p className="text-xs text-ink-2">Validez dans le navigateur avec ce code :</p>
+                  <p className="text-xs text-ink-2">{t('login.validateInBrowser')}</p>
                   <p className="text-2xl font-mono tracking-widest text-ink">{deviceCode}</p>
                   {verificationUri && (
                     <p className="text-xs text-ink-3 font-mono break-all">{verificationUri}</p>
                   )}
-                  <p className="text-xs text-ink-3">En attente de validation dans le navigateur…</p>
+                  <p className="text-xs text-ink-3">{t('login.waitingValidation')}</p>
                   <button type="button" onClick={handleCancelDeviceFlow}
                     className="text-sm text-ink-2 underline hover:text-ink">
-                    Annuler
+                    {t('common.cancel')}
                   </button>
                 </div>
               ) : (
                 <button type="button" onClick={handleStartDeviceFlow} disabled={busy}
                   className="btn-primary w-full">
-                  Se connecter avec GitHub
+                  {t('login.connectWithGithub')}
                 </button>
               )}
               {deviceError && (
-                <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2">
+                <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
                   {deviceError}
                 </p>
               )}
               <div className="flex items-center gap-2 text-xs text-ink-3">
                 <div className="flex-1 border-t border-edge" />
-                ou
+                {t('common.or')}
                 <div className="flex-1 border-t border-edge" />
               </div>
             </div>
@@ -195,25 +196,24 @@ function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">
-              Personal Access Token (PAT)
+              {t('login.patLabel')}
             </label>
             <input type="password" value={pat} onChange={e => setPat(e.target.value)}
               placeholder="ghp_…" className="input-field w-full font-mono" disabled={busy} />
             <p className="text-xs text-ink-3 mt-1">
-              GitHub : Settings → Developer settings → Personal access tokens.
-              Permissions : Contents (read/write), Metadata (read).
+              {t('login.patHelp')}
             </p>
           </div>
 
           {error && (
-            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2">
+            <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
               {error}
             </p>
           )}
 
           <button type="submit" disabled={busy || !pat || !effectiveRemote}
             className="btn-primary w-full">
-            {loading ? 'Connexion…' : 'Se connecter'}
+            {loading ? t('login.connecting') : t('login.submit')}
           </button>
         </form>
       </div>

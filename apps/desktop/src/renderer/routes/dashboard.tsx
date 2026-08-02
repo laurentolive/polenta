@@ -16,6 +16,7 @@
  * prompt to create one.
  */
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Lock, Plus, Users2 } from 'lucide-react'
@@ -40,6 +41,7 @@ export const Route = createFileRoute('/dashboard')({
 })
 
 function DashboardPage() {
+  const { t } = useTranslation()
   const { projectId, dashboardId } = Route.useSearch()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -136,7 +138,7 @@ function DashboardPage() {
         navigate({ to: '/dashboard', search: { projectId, dashboardId: updated.id }, replace: true })
       }
     },
-    onError: (err) => setScopeError(err instanceof Error ? err.message : 'Impossible de changer la portée.'),
+    onError: (err) => setScopeError(err instanceof Error ? err.message : t('dashboardPage.cannotChangeScope')),
   })
 
   const addWidgetMutation = useMutation({
@@ -166,25 +168,25 @@ function DashboardPage() {
     onSuccess: invalidateDashboard,
   })
 
-  if (!projectId) return <p className="text-sm text-ink-3 p-4">Projet non chargé.</p>
+  if (!projectId) return <p className="text-sm text-ink-3 p-4">{t('common.projectNotLoaded')}</p>
 
   if (!dashboardId) {
     // Deux cas rendent le même "Chargement…" : la résolution des requêtes n'est pas
     // terminée, ou elle l'est et un premier dashboard existe — l'effet ci-dessus est
     // en train de rediriger. Le message d'invite ne s'affiche que si on sait déjà,
     // de façon certaine, qu'aucun dashboard n'existe.
-    if (resolvingFirstDashboard || firstDashboardId) return <p className="text-sm text-ink-3 p-4">Chargement…</p>
+    if (resolvingFirstDashboard || firstDashboardId) return <p className="text-sm text-ink-3 p-4">{t('common.loading')}</p>
     return (
       <div className="max-w-5xl p-6">
         <p className="text-sm text-ink-3">
-          Sélectionnez un dashboard dans le panneau latéral, ou créez-en un avec le bouton "+".
+          {t('dashboardPage.selectOrCreateHint')}
         </p>
       </div>
     )
   }
 
-  if (isLoading) return <p className="text-sm text-ink-3 p-4">Chargement…</p>
-  if (!dashboard) return <p className="text-sm text-ink-3 p-4">Dashboard introuvable.</p>
+  if (isLoading) return <p className="text-sm text-ink-3 p-4">{t('common.loading')}</p>
+  if (!dashboard) return <p className="text-sm text-ink-3 p-4">{t('dashboardPage.dashboardNotFound')}</p>
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -199,7 +201,7 @@ function DashboardPage() {
               if (trimmed && trimmed !== dashboard.title) renameMutation.mutate(trimmed)
               else setTitleDraft(dashboard.title)
             }}
-            className="text-sm font-semibold text-ink bg-transparent border-0 outline-none focus:ring-2 focus:ring-blue-400/30 rounded px-1 -mx-1 w-full"
+            className="text-sm font-semibold text-ink bg-transparent border-0 outline-none focus:ring-2 focus:ring-status-info/30 rounded px-1 -mx-1 w-full"
           />
         }
         actions={
@@ -209,22 +211,22 @@ function DashboardPage() {
                 type="button"
                 onClick={() => scopeMutation.mutate('private')}
                 disabled={scopeMutation.isPending}
-                className={`px-3 py-1.5 flex items-center gap-1.5 ${dashboard.scope === 'private' ? 'bg-blue-600 text-white' : 'text-ink-2 hover:bg-hover'}`}
+                className={`px-3 py-1.5 flex items-center gap-1.5 ${dashboard.scope === 'private' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
               >
-                <Lock size={11} /> Privé
+                <Lock size={11} /> {t('sidebar.reorderable.private')}
               </button>
               <button
                 type="button"
                 onClick={() => scopeMutation.mutate('shared')}
                 disabled={scopeMutation.isPending}
-                className={`px-3 py-1.5 flex items-center gap-1.5 ${dashboard.scope === 'shared' ? 'bg-blue-600 text-white' : 'text-ink-2 hover:bg-hover'}`}
+                className={`px-3 py-1.5 flex items-center gap-1.5 ${dashboard.scope === 'shared' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
               >
-                <Users2 size={11} /> Partagé
+                <Users2 size={11} /> {t('sidebar.reorderable.shared')}
               </button>
             </div>
-            <button type="button" onClick={() => setShowAddWidget(true)} className="btn-primary text-xs flex items-center gap-1.5">
+            <button type="button" onClick={() => setShowAddWidget(true)} className="btn-primary-sm flex items-center gap-1.5">
               <Plus size={12} />
-              Ajouter un widget
+              {t('dashboard.widgetModal.addTitle')}
             </button>
             <ExportButton
               kind="dashboard"
@@ -265,7 +267,7 @@ function DashboardPage() {
       <div className="flex-1 overflow-y-auto">
       <div className="max-w-6xl p-6 pb-16 space-y-5">
       {scopeError && (
-        <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2">
+        <p className="text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
           {scopeError}
         </p>
       )}

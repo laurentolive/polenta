@@ -1,4 +1,5 @@
 import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
+import { findSystemNode, flattenSystemNodes } from '@polenta/types'
 
 /**
  * System columns always present on a query-engine dataset row, independent of
@@ -26,6 +27,41 @@ export type ResolvedObjectType = ObjectTypeDefinition | null | 'unresolvable'
  *   has no access to) — callers should treat this as "can't verify" rather than
  *   "invalid", to avoid false-positive purges/rejections on cross-component refs.
  */
+export interface ObjectTypeLocation {
+  nodeName: string
+  typeDef: ObjectTypeDefinition
+}
+
+/**
+ * Same resolution as `findObjectTypeDef`, but also returns the `SystemNode.name` that
+ * declares the type — needed to address its `.polenta/trees/<nodeName>/<typeName>.yaml`
+ * (T138: object creation must insert into that tree, and doing so requires knowing which
+ * node the ref actually resolved to, not just the type definition).
+ */
+export function resolveObjectTypeLocation(
+  schema: ProjectSchema,
+  objectTypeRef: string,
+): ObjectTypeLocation | null | 'unresolvable' {
+  if (typeof objectTypeRef !== 'string' || objectTypeRef.length === 0) return 'unresolvable'
+
+  const [nodeName, typeName] = objectTypeRef.includes('::')
+    ? objectTypeRef.split('::')
+    : [undefined, objectTypeRef]
+
+  if (nodeName && nodeName !== 'root') {
+    const node = findSystemNode(schema.nodes, nodeName)
+    if (!node || node.objectTypes === undefined) return 'unresolvable'
+    const typeDef = node.objectTypes.find((t) => t.name === typeName)
+    return typeDef ? { nodeName, typeDef } : null
+  }
+
+  for (const { node } of flattenSystemNodes(schema.nodes)) {
+    const typeDef = node.objectTypes?.find((t) => t.name === typeName)
+    if (typeDef) return { nodeName: node.name, typeDef }
+  }
+  return null
+}
+
 export function findObjectTypeDef(schema: ProjectSchema, objectTypeRef: string): ResolvedObjectType {
   // Defensive: `Requirement.objectTypeRef`/`TestCase.objectTypeRef` are typed as
   // always a non-empty string, but nothing normalizes hand-edited YAML at read time
@@ -40,13 +76,15 @@ export function findObjectTypeDef(schema: ProjectSchema, objectTypeRef: string):
     ? objectTypeRef.split('::')
     : [undefined, objectTypeRef]
 
+  // T123 — nodeName peut désigner un composant local imbriqué à n'importe quelle profondeur
+  // (SystemNode.children), pas seulement un nœud de premier niveau — recherche récursive.
   if (nodeName && nodeName !== 'root') {
-    const node = schema.nodes.find((n) => n.name === nodeName)
+    const node = findSystemNode(schema.nodes, nodeName)
     if (!node || node.objectTypes === undefined) return 'unresolvable'
     return node.objectTypes.find((t) => t.name === typeName) ?? null
   }
 
-  for (const node of schema.nodes) {
+  for (const { node } of flattenSystemNodes(schema.nodes)) {
     const found = node.objectTypes?.find((t) => t.name === typeName)
     if (found) return found
   }

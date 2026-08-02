@@ -11,6 +11,7 @@ export const Route = createFileRoute('/product')({
     repo: search['repo'] as string | undefined,
     node: search['node'] as string | undefined,
     type: search['type'] as string | undefined,
+    category: search['category'] as string | undefined,
   }),
 })
 

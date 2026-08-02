@@ -234,17 +234,17 @@ export function DrawioEmbedView({ node, extension, updateAttributes, selected, e
             <div className="p-3 text-xs text-ink-3">Chargement du diagramme…</div>
           )}
           {state.status === 'no-repo' && (
-            <div className="p-3 text-xs text-red-500">Diagramme draw.io : contexte repo indisponible</div>
+            <div className="p-3 text-xs text-status-danger">Diagramme draw.io : contexte repo indisponible</div>
           )}
           {state.status === 'not-found' && (
-            <div className="p-3 text-xs text-red-500">Diagramme introuvable : {path}</div>
+            <div className="p-3 text-xs text-status-danger">Diagramme introuvable : {path}</div>
           )}
           {state.status === 'invalid' && (
-            <div className="p-3 text-xs text-red-500">Diagramme invalide : {path}</div>
+            <div className="p-3 text-xs text-status-danger">Diagramme invalide : {path}</div>
           )}
           <div
             style={{ display: state.status === 'ok' ? 'block' : 'none', width: '100%', height: '100%' }}
-            className="relative cursor-pointer bg-white"
+            className="relative cursor-pointer bg-print-bg"
           >
             {/*
               pointer-events désactivé sur le rendu lui-même : le viewer
@@ -292,7 +292,7 @@ export function DrawioEmbedView({ node, extension, updateAttributes, selected, e
         />
       )}
       {pickerError && (
-        <div className="mt-1 px-2 py-1 text-xs text-red-500 border border-red-400/50 rounded bg-surface inline-block">
+        <div className="mt-1 px-2 py-1 text-xs text-status-danger border border-status-danger-border rounded bg-surface inline-block">
           {pickerError}
           <button type="button" onClick={() => setPickerError(null)} className="ml-2 text-ink-3 hover:text-ink">×</button>
         </div>

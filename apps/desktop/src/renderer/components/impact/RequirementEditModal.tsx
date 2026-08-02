@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api'
 import { useProjectSchema, getReqTypeDef } from '../../hooks/useProjectSchema'
+import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { DynamicField } from '../DynamicField'
 import type { Requirement } from '@polenta/types'
 
@@ -12,10 +13,10 @@ interface Props {
 }
 
 const STATUS_CLASSES: Record<string, string> = {
-  draft:    'bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300',
-  review:   'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  approved: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  obsolete: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  draft:    'bg-status-neutral-bg text-status-neutral',
+  review:   'bg-status-warning-bg text-status-warning',
+  approved: 'bg-status-success-bg text-status-success',
+  obsolete: 'bg-status-danger-bg text-status-danger',
 }
 
 function fieldToString(fields: Record<string, unknown>, key: string): string {
@@ -27,6 +28,7 @@ function fieldToString(fields: Record<string, unknown>, key: string): string {
 // (impact-analysis.tsx) affiche déjà l'énoncé en tooltip au survol du titre/id ; ce popup permet
 // de le consulter confortablement (avec les autres champs), sans troncature.
 export function RequirementEditModal({ repoPath, reqId, onClose }: Props) {
+  const { t } = useTranslation()
   const { data: req, isLoading } = useQuery<Requirement>({
     queryKey: ['requirement', repoPath, reqId],
     queryFn: () => api.requirements.get(repoPath, reqId),
@@ -36,19 +38,13 @@ export function RequirementEditModal({ repoPath, reqId, onClose }: Props) {
   const { data: schema } = useProjectSchema(repoPath)
   const typeDef = getReqTypeDef(schema, req?.objectTypeRef ?? '')
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  useModalHotkeys(onClose, onClose)
 
   const statusClass = req ? (STATUS_CLASSES[req.status] ?? STATUS_CLASSES['draft']) : STATUS_CLASSES['draft']
   const fields = (req?.fields ?? {}) as Record<string, unknown>
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
@@ -60,15 +56,15 @@ export function RequirementEditModal({ repoPath, reqId, onClose }: Props) {
           {req && (
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusClass}`}>{req.status}</span>
           )}
-          <button type="button" onClick={onClose} className="text-ink-3 hover:text-ink text-lg leading-none px-1">×</button>
+          <button type="button" onClick={onClose} className="btn-close">×</button>
         </div>
 
         {/* Body */}
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           {isLoading ? (
-            <p className="text-sm text-ink-3">Chargement…</p>
+            <p className="text-sm text-ink-3">{t('common.loading')}</p>
           ) : !req ? (
-            <p className="text-sm text-ink-2">Exigence introuvable : {reqId}</p>
+            <p className="text-sm text-ink-2">{t('requirementsPage.notFound', { reqId })}</p>
           ) : (
             <>
               {typeDef?.fields.map(f => (
@@ -79,6 +75,7 @@ export function RequirementEditModal({ repoPath, reqId, onClose }: Props) {
                   onChange={() => {}}
                   disabled
                   repoPath={repoPath}
+                  interfaceRoles={schema?.roles?.map(r => r.name)}
                 />
               ))}
 
@@ -96,8 +93,8 @@ export function RequirementEditModal({ repoPath, reqId, onClose }: Props) {
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-edge shrink-0">
-          <button type="button" onClick={onClose} className="text-sm px-4 py-1.5 border border-edge rounded text-ink-2 hover:text-ink transition-colors">
-            Fermer
+          <button type="button" onClick={onClose} className="btn-secondary">
+            {t('common.close')}
           </button>
         </div>
       </div>

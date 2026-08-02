@@ -9,7 +9,7 @@
 ## 1. Architecture globale
 
 ```
-Remote git (GitHub / Gitea / self-hosted)
+Remote git (GitHub / GitLab / self-hosted — T130 : support Gitea retiré)
         ↑ push / pull (action utilisateur explicite)
 ┌──────────────────────────────────────────────────────────┐
 │  Electron Desktop App                                    │
@@ -55,12 +55,12 @@ Remote git → source de vérité partagée entre utilisateurs
 | Distribution | electron-builder | 24.x | Packaging Windows / macOS / Linux |
 | **Frontend** | React | 18.x | UI (renderer Electron) |
 | Build frontend | Vite | 5.x | Dev server + build |
-| UI components | shadcn/ui + Radix UI | latest | Composants accessibles headless |
+| UI components | *(aucun — T130)* | — | `apps/desktop` n'utilise ni shadcn/ui ni Radix UI : composants Tailwind custom + `lucide-react` pour les icônes. shadcn/ui + Radix UI sont utilisés côté `apps/web` uniquement |
 | Styles | Tailwind CSS | 3.x | Utility-first CSS |
 | Éditeur RICHTEXT | TipTap | 2.x | WYSIWYG extensible (nœuds custom `drawioEmbed` et `ResizableImage` — diagramme draw.io rendu via le viewer officiel vendoré, images/diagrammes redimensionnables et rognables ; extensions standard `@tiptap/extension-table`+`-row`+`-header`+`-cell` pour les tableaux, cf. `SPEC-REQ-requirements.md` §3.2a/§3.2b/§3.2c) |
 | Routage | TanStack Router | 1.x | Type-safe, file-based |
 | État serveur | TanStack Query | 5.x | Cache, invalidation, optimistic updates |
-| Formulaires | react-hook-form + Zod | 7.x + 3.x | Validation schema-driven |
+| Formulaires | Zod (sans react-hook-form) | 3.x | Validation schema-driven — `react-hook-form` fait partie du stack `apps/web` uniquement, absent d'`apps/desktop` (T130) |
 | **Git engine** | isomorphic-git | 1.25.x | Pur JS — clone, commit, push, pull, merge, branch |
 | **Index mémoire** | Map + MiniSearch | 7.x | Requêtes, filtres, full-text — zéro DB |
 | **Moteur de requête dashboards** | AlaSQL | 4.17.x | SQL exécuté sur tableaux JS en mémoire (pas de moteur de stockage) — dashboards/requêtes personnalisables (T77), cf. [SPEC-DASHBOARDS.md](SPEC-DASHBOARDS.md) |
@@ -144,7 +144,7 @@ polenta/
 │   └── SW-0042/
 │       └── diagram.drawio           ← XML DrawIO (texte, mergeable)
 └── config/
-    ├── project.yaml                 ← schemaVersion, integrationBranch, etc.
+    ├── project.yaml                 ← integrationBranch (seul champ réel, T130 — §4.5)
     ├── counters.yaml                ← compteurs par préfixe
     ├── requirement-types.yaml
     └── workflows.yaml
@@ -224,18 +224,14 @@ seraient attribués, sans effet de bord sur le compteur réel.
 
 ### 4.5 `config/project.yaml` — configuration du projet
 
+**T130 : seul `integrationBranch` y est réellement lu/écrit** (`git.service.ts` —
+`getIntegrationBranch`/`setIntegrationBranch`). Il n'y a pas de `schemaVersion`, `name`, ni
+`prefixes` dans ce fichier — les types d'objets et leurs préfixes vivent entièrement dans
+`.polenta/schema.yaml` (voir `SPEC-ELECTRON-DESKTOP.md` §20).
+
 ```yaml
 # config/project.yaml
-schemaVersion: 1          # vérifié à l'ouverture par WorkspaceService
-name: "Aspirateur sans fil"
 integrationBranch: integration
-prefixes:
-  SYS: système
-  SW: firmware
-  HW: électronique
-  BAT: batterie
-  MECA: mécanique
-  PROD: produit/UX
 ```
 
 ---
@@ -329,9 +325,9 @@ Les fichiers `.drawio` (XML texte) bénéficient du merge git ligne par ligne �
 
 ## 8. Authentification
 
-- **PAT (Personal Access Token)** : token généré par l'utilisateur sur son remote git (GitHub, Gitea…).
+- **PAT (Personal Access Token)** : token généré par l'utilisateur sur son remote git (GitHub…).
 - **Stockage sécurisé** : `AuthService` utilise `keytar` pour stocker le PAT dans le keychain natif de l'OS (Credential Manager Windows, Keychain macOS, libsecret Linux).
-- **Identité** : nom et email résolus depuis l'API du remote (`GET /user` sur GitHub, `GET /api/v1/user` sur Gitea) ou depuis la git config locale.
+- **Identité** : nom et email résolus depuis l'API du remote (`GET /user` sur GitHub) ou identité minimale de repli pour les autres hosts (T130 : support Gitea retiré).
 - **Utilisation** : `SyncService` appelle `authService.getHttpsCredentials(url)` à chaque push/pull pour fournir les credentials à `isomorphic-git`.
 - **Pas de Auth0, pas de JWT, pas de rôles centralisés.** Les droits d'accès aux repos sont gérés par le remote git (permissions de repo).
 

@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, FolderGit2, GitFork, Undo2 } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
+import { ChevronDown, ChevronRight, FolderGit2, GitFork, RefreshCw, Undo2 } from 'lucide-react'
 import { api } from '../../../api'
 import { useSelectedRepo } from '../../../contexts/SelectedRepoContext'
 import { useBranchCheckout } from '../../../hooks/useBranchCheckout'
 import { propagatePinToDependents, type PinPropagationOutcome } from '../../../lib/workspaceActions'
 import { BranchCombobox } from './BranchCombobox'
 import { PinPropagationWarning } from './PinPropagationWarning'
+import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
 interface Props {
@@ -24,6 +26,7 @@ interface Props {
  *  Mirrors `RepoRow` in StructureTab.tsx (chevron, indent, own `open` state, recursion over `children`),
  *  but each row here owns its own git queries/mutations/modals instead of a shared schema. */
 export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNodes }: Props) {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { selectedRepoPath, selectRepo } = useSelectedRepo()
@@ -68,9 +71,19 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sync:status', repoPath] }),
   })
 
+  // T153: git pull, only ever invoked while the tree is clean — see `disabled` on the button
+  // below (mirrors the `isDirty` guard already used for checkout in handleCheckout above).
+  const pullMutation = useMutation({
+    mutationFn: () => api.sync.pull(repoPath),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+      qc.invalidateQueries({ queryKey: ['sync:graph', repoPath] })
+    },
+  })
+
   const commitMutation = useMutation({
     mutationFn: () => {
-      if (staged.length === 0) throw new Error('Aucune modification stagée à committer')
+      if (staged.length === 0) throw new Error(t('sidebar.version.nothingStagedToCommit'))
       return api.sync.commit(repoPath, commitMessage)
     },
     onSuccess: async ({ sha }) => {
@@ -145,6 +158,11 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
     setCheckoutConfirm(null)
   }
 
+  useModalHotkeys(() => setCheckoutConfirm(null), confirmCheckout, !checkoutConfirm || isBranchPending)
+  // Enter stays Ctrl+Enter here (wired on the textarea below) — plain Enter must insert a
+  // newline in a multi-line commit message, so only Escape is handled globally.
+  useModalHotkeys(() => { setShowCommitModal(false); setCommitMessage('') }, undefined, !showCommitModal)
+
   return (
     <div>
       <div
@@ -154,19 +172,30 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
       >
         <span className="text-ink-3 shrink-0">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
         {node.isInterface ? (
-          <GitFork size={14} className="text-violet-500 shrink-0" />
+          <GitFork size={14} className="text-chart-5 shrink-0" />
         ) : (
           <FolderGit2 size={14} className="text-ink-3 shrink-0" />
         )}
-        <span className={`text-sm truncate ${isSelected ? 'font-semibold text-blue-500 dark:text-blue-400' : 'font-medium text-ink'}`}>
-          {node.name}
+        <span className={`text-sm truncate ${isSelected ? 'font-semibold text-status-info' : 'font-medium text-ink'}`}>
+          {node.label || node.name}
         </span>
         {isDirty && (
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Modifications en attente" />
+          <span className="w-1.5 h-1.5 rounded-full bg-status-warning-solid shrink-0" title={t('sidebar.version.pendingChanges')} />
         )}
+        {/* T153: refresh (git pull) — always visible next to the repo name, blocked while dirty
+            so a pull never has to merge on top of uncommitted work. */}
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); pullMutation.mutate() }}
+          disabled={pullMutation.isPending || isDirty}
+          title={isDirty ? t('sidebar.version.refreshBlockedDirty') : t('sidebar.version.refreshTooltip')}
+          className="shrink-0 ml-auto text-ink-3 hover:text-ink hover:bg-hover rounded p-1 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+        >
+          <RefreshCw size={13} className={pullMutation.isPending ? 'animate-spin' : ''} />
+        </button>
         {/* Branch combobox moved next to the repo name (T87) — always visible, open or closed,
             instead of a separate labelled "Checkout" row inside the expanded panel. */}
-        <div className="w-32 shrink-0 ml-auto" onClick={e => e.stopPropagation()}>
+        <div className="w-32 shrink-0" onClick={e => e.stopPropagation()}>
           <BranchCombobox
             branches={allBranches}
             tags={allTags}
@@ -184,11 +213,19 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
       {(isCheckoutError || checkoutPinWarning) && (
         <div style={{ paddingLeft: `${8 + indent}px` }} className="px-3">
           {isCheckoutError && (
-            <p className="text-xs text-red-500 leading-snug">
-              {checkoutError instanceof Error ? checkoutError.message : 'Erreur lors du checkout'}
+            <p className="text-xs text-status-danger leading-snug">
+              {checkoutError instanceof Error ? checkoutError.message : t('sidebar.version.checkoutError')}
             </p>
           )}
           <PinPropagationWarning outcome={checkoutPinWarning} onDismiss={dismissPinWarning} />
+        </div>
+      )}
+
+      {pullMutation.isError && (
+        <div style={{ paddingLeft: `${8 + indent}px` }} className="px-3">
+          <p className="text-xs text-status-danger leading-snug">
+            {pullMutation.error instanceof Error ? pullMutation.error.message : t('sidebar.version.refreshError')}
+          </p>
         </div>
       )}
 
@@ -198,25 +235,25 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
           {ahead > 0 && (
             <div className="px-3 py-2 border-b border-edge-subtle flex items-center justify-between">
               <span className="text-xs text-ink-2">
-                &uarr;{ahead} commit{ahead > 1 ? 's' : ''} à pousser
+                {t('sidebar.version.pushCount', { count: ahead })}
               </span>
               <button type="button" onClick={() => pushMutation.mutate()}
                 disabled={pushMutation.isPending}
                 className="btn-sm">
-                {pushMutation.isPending ? 'Push…' : 'Pousser'}
+                {pushMutation.isPending ? t('sidebar.version.pushing') : t('sidebar.version.push')}
               </button>
             </div>
           )}
           {pushMutation.isError && (
-            <p className="px-3 pt-1 text-xs text-red-500 leading-snug">
-              {pushMutation.error instanceof Error ? pushMutation.error.message : 'Erreur lors du push'}
+            <p className="px-3 pt-1 text-xs text-status-danger leading-snug">
+              {pushMutation.error instanceof Error ? pushMutation.error.message : t('sidebar.version.pushError')}
             </p>
           )}
 
           {/* ── Stagés ── */}
           <div className="px-3 py-2 border-b border-edge-subtle">
             <div className="flex items-center justify-between mb-1.5">
-              <p className="section-label">Stagés ({staged.length})</p>
+              <p className="section-label">{t('sidebar.version.staged')} ({staged.length})</p>
               <div className="flex items-center gap-1">
                 {staged.length > 0 && (
                   <>
@@ -225,12 +262,12 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                       onClick={() => { setCommitMessage(''); setShowCommitModal(true) }}
                       className="btn-sm"
                     >
-                      Committer…
+                      {t('sidebar.version.commitEllipsis')}
                     </button>
                     <button type="button" onClick={() => unstageAllMutation.mutate()}
                       disabled={unstageAllMutation.isPending}
                       className="text-xs px-1.5 py-0.5 text-ink-3 hover:text-ink hover:bg-hover rounded transition-colors disabled:opacity-50"
-                      title="Désindexer tout">
+                      title={t('sidebar.version.unstageAll')}>
                       {unstageAllMutation.isPending ? '…' : '−'}
                     </button>
                   </>
@@ -241,13 +278,13 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                 synchronously on commit success, before the async pin propagation resolves. */}
             <PinPropagationWarning outcome={commitPinWarning} onDismiss={() => setCommitPinWarning(null)} />
             {staged.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">Aucun fichier stagé</p>
+              <p className="text-xs text-ink-3 italic">{t('sidebar.version.noStagedFile')}</p>
             ) : (
               <ul className="space-y-0.5">
                 {staged.map(({ path: filePath, marker }) => (
                   <li key={filePath} className="flex items-center gap-1 text-xs">
                     <span className={`font-mono font-bold w-3 shrink-0 ${
-                      marker === 'A' ? 'text-green-500' : marker === 'D' ? 'text-red-500' : 'text-amber-500'
+                      marker === 'A' ? 'text-status-success' : marker === 'D' ? 'text-status-danger' : 'text-status-warning'
                     }`}>{marker}</span>
                     <button
                       type="button"
@@ -260,7 +297,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                       onClick={() => unstageMutation.mutate(filePath)}
                       disabled={unstageMutation.isPending}
                       className="shrink-0 text-ink-3 hover:text-ink hover:bg-hover rounded px-1 disabled:opacity-30"
-                      title="Désindexer"
+                      title={t('sidebar.version.unstage')}
                     >−</button>
                   </li>
                 ))}
@@ -271,28 +308,28 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
           {/* ── Modifications ── */}
           <div className="px-3 py-2">
             <div className="flex items-center justify-between mb-1.5">
-              <p className="section-label">Modifications ({unstaged.length})</p>
+              <p className="section-label">{t('sidebar.version.modifications')} ({unstaged.length})</p>
               <div className="flex items-center gap-1">
                 {unstaged.length > 0 && (
                   <>
                     <button type="button" onClick={() => stageAllMutation.mutate()}
                       disabled={stageAllMutation.isPending}
                       className="text-xs px-1.5 py-0.5 text-ink-3 hover:text-ink hover:bg-hover rounded transition-colors disabled:opacity-50"
-                      title="Tout stager">
+                      title={t('sidebar.version.stageAll')}>
                       {stageAllMutation.isPending ? '…' : '+'}
                     </button>
                     {!confirmDiscardAll ? (
                       <button type="button" onClick={() => setConfirmDiscardAll(true)}
-                        className="text-xs px-1.5 py-0.5 text-ink-3 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                        title="Tout annuler"><Undo2 size={12} /></button>
+                        className="text-xs px-1.5 py-0.5 text-ink-3 hover:text-status-danger hover:bg-status-danger-bg rounded transition-colors"
+                        title={t('sidebar.version.discardAll')}><Undo2 size={12} /></button>
                     ) : (
-                      <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-1.5 py-0.5">
-                        <span>Annuler tout ?</span>
+                      <span className="flex items-center gap-1 text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-1.5 py-0.5">
+                        <span>{t('sidebar.version.discardAllConfirm')}</span>
                         <button type="button" onClick={() => discardAllMutation.mutate()}
                           disabled={discardAllMutation.isPending} className="font-medium hover:underline disabled:opacity-50">
-                          {discardAllMutation.isPending ? '…' : 'Oui'}
+                          {discardAllMutation.isPending ? '…' : t('common.yes')}
                         </button>
-                        <button type="button" onClick={() => setConfirmDiscardAll(false)} className="text-ink-3 hover:underline">Non</button>
+                        <button type="button" onClick={() => setConfirmDiscardAll(false)} className="text-ink-3 hover:underline">{t('common.no')}</button>
                       </span>
                     )}
                   </>
@@ -300,13 +337,13 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
               </div>
             </div>
             {unstaged.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">Aucune modification</p>
+              <p className="text-xs text-ink-3 italic">{t('sidebar.version.noModification')}</p>
             ) : (
               <ul className="space-y-0.5">
                 {unstaged.map(({ path: filePath, marker }) => (
                   <li key={filePath} className="flex items-center gap-1 text-xs">
                     <span className={`font-mono font-bold w-3 shrink-0 ${
-                      marker === 'A' ? 'text-green-500' : marker === 'D' ? 'text-red-500' : 'text-amber-500'
+                      marker === 'A' ? 'text-status-success' : marker === 'D' ? 'text-status-danger' : 'text-status-warning'
                     }`}>{marker}</span>
                     <button
                       type="button"
@@ -318,11 +355,11 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                       type="button"
                       onClick={() => stageMutation.mutate(filePath)}
                       disabled={stageMutation.isPending}
-                      className="shrink-0 text-ink-3 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded px-1 disabled:opacity-30"
-                      title="Stager"
+                      className="shrink-0 text-ink-3 hover:text-status-success hover:bg-status-success-bg rounded px-1 disabled:opacity-30"
+                      title={t('sidebar.version.stage')}
                     >+</button>
                     {discardConfirmPath === filePath ? (
-                      <span className="flex items-center gap-0.5 text-red-700 dark:text-red-400">
+                      <span className="flex items-center gap-0.5 text-status-danger">
                         <button type="button" onClick={() => discardMutation.mutate(filePath)}
                           disabled={discardMutation.isPending}
                           className="font-medium hover:underline disabled:opacity-50 px-1">
@@ -335,8 +372,8 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                       <button
                         type="button"
                         onClick={() => setDiscardConfirmPath(filePath)}
-                        className="shrink-0 text-ink-3 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded px-1"
-                        title="Annuler les modifications"
+                        className="shrink-0 text-ink-3 hover:text-status-danger hover:bg-status-danger-bg rounded px-1"
+                        title={t('sidebar.version.discardChanges')}
                       ><Undo2 size={12} /></button>
                     )}
                   </li>
@@ -360,24 +397,26 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
 
       {/* Checkout avec fichiers modifiés — confirmation */}
       {checkoutConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-20">
+        <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-20">
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-5 w-full max-w-sm mx-4">
-            <h2 className="font-semibold text-sm text-ink mb-2">Changer de branche / tag ?</h2>
+            <h2 className="font-semibold text-sm text-ink mb-2">{t('sidebar.version.changeBranchTitle')}</h2>
             <p className="text-xs text-ink-2 mb-4">
-              Des fichiers sont modifiés ou stagés dans <span className="font-mono font-medium">{node.name}</span>. Le
-              checkout vers <span className="font-mono font-medium">{checkoutConfirm.value}</span> pourrait écraser
-              ces changements. Committez d'abord pour ne rien perdre.
+              <Trans
+                i18nKey="sidebar.version.changeBranchBodyVersion"
+                values={{ name: node.label || node.name, value: checkoutConfirm.value }}
+                components={{ mono: <span className="font-mono font-medium" /> }}
+              />
             </p>
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setCheckoutConfirm(null)} className="btn-secondary text-xs">
-                Annuler
+              <button type="button" onClick={() => setCheckoutConfirm(null)} className="btn-secondary-sm">
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
                 onClick={confirmCheckout}
-                className="px-3 py-1.5 text-xs rounded bg-red-600 hover:bg-red-700 text-white font-medium transition-colors"
+                className="btn-danger-sm"
               >
-                Forcer le checkout
+                {t('sidebar.version.forceCheckout')}
               </button>
             </div>
           </div>
@@ -386,9 +425,9 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
 
       {/* Commit modal */}
       {showCommitModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-20">
+        <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-20">
           <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
-            <h2 className="font-semibold mb-4 text-sm text-ink">Committer les modifications stagées — {node.name}</h2>
+            <h2 className="font-semibold mb-4 text-sm text-ink">{t('sidebar.version.commitModalTitle', { name: node.label || node.name })}</h2>
             <textarea
               value={commitMessage}
               onChange={e => setCommitMessage(e.target.value)}
@@ -402,20 +441,20 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                   setCommitMessage('')
                 }
               }}
-              placeholder="Message de commit… (Ctrl+Entrée pour valider)"
+              placeholder={t('sidebar.version.commitMessagePlaceholder')}
               rows={3}
               className="input-field w-full resize-none mb-4"
               autoFocus
             />
             {commitMutation.isError && (
-              <p className="text-sm text-red-500 mb-3">
-                {commitMutation.error instanceof Error ? commitMutation.error.message : 'Erreur lors du commit'}
+              <p className="text-sm text-status-danger mb-3">
+                {commitMutation.error instanceof Error ? commitMutation.error.message : t('sidebar.version.commitError')}
               </p>
             )}
             <div className="flex gap-3 justify-end">
               <button type="button" onClick={() => { setShowCommitModal(false); setCommitMessage('') }}
                 className="btn-secondary">
-                Annuler
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -423,7 +462,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                 disabled={!commitMessage.trim() || commitMutation.isPending}
                 className="btn-primary"
               >
-                {commitMutation.isPending ? 'Commit…' : 'Committer'}
+                {commitMutation.isPending ? t('sidebar.version.committing') : t('sidebar.version.commitAction')}
               </button>
             </div>
           </div>

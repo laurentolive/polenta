@@ -12,6 +12,7 @@
 import { useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 import { encodeProjectId } from '../lib/projectId'
@@ -24,6 +25,7 @@ export const Route = createFileRoute('/workspace')({
 })
 
 function WorkspaceRedirectPage() {
+  const { t } = useTranslation()
   const { dir } = Route.useSearch()
   const navigate = useNavigate()
 
@@ -46,16 +48,16 @@ function WorkspaceRedirectPage() {
 
   if (!dir || error) {
     return (
-      <div className="flex items-start gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2 text-sm text-red-700 dark:text-red-400 max-w-lg mx-auto mt-8">
+      <div className="flex items-start gap-2 bg-status-danger-bg border border-status-danger-border rounded px-3 py-2 text-sm text-status-danger max-w-lg mx-auto mt-8">
         <AlertTriangle size={15} className="mt-0.5 shrink-0" />
         <span>
           {!dir
-            ? 'Aucun workspace spécifié.'
-            : `Ce projet n'est plus résolvable (${error instanceof Error ? error.message : String(error)}). Retournez à l'accueil pour l'ouvrir à nouveau.`}
+            ? t('workspace.noWorkspace')
+            : t('workspace.notResolvable', { error: error instanceof Error ? error.message : String(error) })}
         </span>
       </div>
     )
   }
 
-  return <div className="text-sm text-ink-3">Redirection vers l'onglet Structure…</div>
+  return <div className="text-sm text-ink-3">{t('workspace.redirecting')}</div>
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslation, Trans } from 'react-i18next'
 import { GitMerge, X } from 'lucide-react'
 import { api } from '../../api'
 import { useModificationMode } from '../../hooks/useModificationMode'
@@ -58,11 +59,21 @@ class PublishConflictError extends Error {
   }
 }
 
+/** T154: thrown when the early `fetch` (before any branch/commit is touched) fails — kept
+ *  distinct from `PublishConflictError` so `onError` can show a dedicated "no network" message
+ *  instead of the generic one, and reassure the user nothing was created/committed. */
+class PublishNetworkError extends Error {
+  constructor(public readonly detail: string) {
+    super('network-unavailable')
+  }
+}
+
 interface Props {
   currentProjectId: string | null
 }
 
 export function ModificationControl({ currentProjectId }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { repoPath, branch, integrationBranch, mode, pendingChangesCount, refetch, workspaceDir, flatNodes } =
     useModificationMode(currentProjectId)
@@ -80,7 +91,10 @@ export function ModificationControl({ currentProjectId }: Props) {
   const [popupOpenedFor, setPopupOpenedFor] = useState<{ repoPath: string; branch: string } | null>(null)
   const [title, setTitle] = useState('')
   const [publishError, setPublishError] = useState<
-    { kind: 'conflict'; message: string; files: string[]; workBranch: string } | { kind: 'generic'; message: string } | null
+    | { kind: 'conflict'; message: string; files: string[]; workBranch: string }
+    | { kind: 'network'; message: string }
+    | { kind: 'generic'; message: string }
+    | null
   >(null)
   const [pushError, setPushError] = useState<string | null>(null)
   const [pinWarning, setPinWarning] = useState<PinPropagationOutcome | null>(null)
@@ -131,6 +145,18 @@ export function ModificationControl({ currentProjectId }: Props) {
       const isNominal = branch === integrationBranch || continuingEphemeral
       let workBranch = branch
 
+      // T154: check the network first, before anything else is touched — a failure here (proxy,
+      // offline, auth) must leave the repo exactly as it was, so the user just retries once
+      // connected instead of finding a half-finished publish (ephemeral branch, orphan commit).
+      // Safe to run while still checked out on `integrationBranch` (the nominal case): fetch only
+      // ever writes remote-tracking refs, never local branches.
+      const node = flatNodes.find(n => n.repoPath === repoPath)
+      try {
+        await api.sync.fetch(repoPath, node?.url ?? '')
+      } catch (err) {
+        throw new PublishNetworkError(err instanceof Error ? err.message : String(err))
+      }
+
       if (branch === integrationBranch) {
         const branches = await api.sync.branches(repoPath)
         const existing = new Set(branches.map(b => b.name))
@@ -146,6 +172,14 @@ export function ModificationControl({ currentProjectId }: Props) {
         workBranch = name
         setEphemeralBranch({ repoPath, branch: name })
       }
+
+      // T154: `workBranch` is never `integrationBranch` at this point — either just created above
+      // (nominal case) or already a dev-*/free branch the user was on (advanced case) — so moving
+      // the integration branch's ref here can't desync it from a checkout. Fast-forwards it to the
+      // fetch just done if it's a plain fast-forward; a genuine divergence (pre-existing, rare —
+      // see SPEC-FORKS-BRANCHES-BASELINES.md §2.1) is left untouched and falls through to the
+      // ordinary mergeInto/push behavior below, unchanged from before this ticket.
+      await api.sync.fastForwardBranch(repoPath, integrationBranch)
 
       await api.sync.stageAll(repoPath)
       await api.sync.commit(repoPath, title.trim() || `Modification sur ${branch}`)
@@ -180,7 +214,7 @@ export function ModificationControl({ currentProjectId }: Props) {
       // dialog on "Publication…" once the local work is safely merged.
       api.sync.pushBranch(repoPath, integrationBranch)
         .then(() => setPushError(null))
-        .catch((err: unknown) => setPushError(err instanceof Error ? err.message : 'Erreur lors du push'))
+        .catch((err: unknown) => setPushError(err instanceof Error ? err.message : t('layout.modificationControl.pushError')))
     },
     onError: (err: unknown) => {
       setShowPublishPopup(false)
@@ -188,7 +222,7 @@ export function ModificationControl({ currentProjectId }: Props) {
       if (err instanceof PublishConflictError) {
         setPublishError({
           kind: 'conflict',
-          message: 'Quelqu’un a modifié les mêmes informations — résolution manuelle nécessaire.',
+          message: t('layout.modificationControl.conflictMessage'),
           files: err.conflicts,
           workBranch: err.workBranch,
         })
@@ -200,7 +234,13 @@ export function ModificationControl({ currentProjectId }: Props) {
         refetch()
         return
       }
-      setPublishError({ kind: 'generic', message: err instanceof Error ? err.message : 'Erreur lors de la publication' })
+      if (err instanceof PublishNetworkError) {
+        // T154: thrown before any branch/commit was created — nothing to refetch or clean up,
+        // the repo is exactly as it was before the click.
+        setPublishError({ kind: 'network', message: t('layout.modificationControl.networkError') })
+        return
+      }
+      setPublishError({ kind: 'generic', message: err instanceof Error ? err.message : t('layout.modificationControl.genericError') })
     },
   })
 
@@ -220,8 +260,11 @@ export function ModificationControl({ currentProjectId }: Props) {
     <div className="relative flex items-center gap-2 shrink-0">
       {mode === 'blocked' && (
         <span className="text-xs text-ink-3 bg-surface border border-edge rounded px-2 py-1 max-w-xs text-right">
-          <span className="font-mono">{branch}</span> n'est pas la branche d'intégration configurée
-          (<span className="font-mono">{integrationBranch}</span>) — publication impossible depuis ici.
+          <Trans
+            i18nKey="layout.modificationControl.blockedBranch"
+            values={{ branch, integrationBranch }}
+            components={{ mono: <span className="font-mono" /> }}
+          />
         </span>
       )}
 
@@ -230,10 +273,10 @@ export function ModificationControl({ currentProjectId }: Props) {
           type="button"
           onClick={() => { setShowPublishPopup(true); setPopupOpenedFor({ repoPath, branch }) }}
           disabled={pendingChangesCount === 0}
-          className="btn-primary flex items-center gap-1.5 text-xs px-3 py-1.5 shadow disabled:opacity-50"
+          className="btn-primary-sm flex items-center gap-1.5 shadow"
         >
           <GitMerge size={12} />
-          Publier
+          {t('layout.modificationControl.publish')}
         </button>
       )}
 
@@ -241,8 +284,8 @@ export function ModificationControl({ currentProjectId }: Props) {
         <div className="absolute right-0 top-full mt-1.5 z-40 flex flex-col items-end gap-1.5">
           {pushError && (
             <div className="bg-surface border border-edge rounded px-2 py-1.5 max-w-xs shadow flex items-start gap-2">
-              <p className="text-xs text-amber-700 dark:text-amber-400 leading-snug">
-                Fusionné localement, mais le push a échoué : {pushError}
+              <p className="text-xs text-status-warning leading-snug">
+                {t('layout.modificationControl.pushFailed', { error: pushError })}
               </p>
               <button type="button" onClick={() => setPushError(null)} className="text-ink-3 hover:text-ink shrink-0">
                 <X size={12} />
@@ -260,7 +303,7 @@ export function ModificationControl({ currentProjectId }: Props) {
 
       {mode === 'active' && showPublishPopup && (
         <PublishPopover onClose={() => setShowPublishPopup(false)}>
-          <h2 className="font-semibold mb-4 text-sm text-ink">Publier</h2>
+          <h2 className="font-semibold mb-4 text-sm text-ink">{t('layout.modificationControl.publish')}</h2>
           <input
             type="text"
             value={title}
@@ -268,13 +311,13 @@ export function ModificationControl({ currentProjectId }: Props) {
             onKeyDown={e => {
               if (e.key === 'Enter') submitPublish()
             }}
-            placeholder="Titre de la modification…"
+            placeholder={t('layout.modificationControl.titlePlaceholder')}
             className="input-field w-full mb-4"
             autoFocus
           />
           {isStalePopup && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
-              L'état a changé (branche modifiée) — fermez et réessayez.
+            <p className="text-xs text-status-warning mb-3">
+              {t('layout.modificationControl.staleState')}
             </p>
           )}
           <div className="flex gap-3 justify-end">
@@ -283,7 +326,7 @@ export function ModificationControl({ currentProjectId }: Props) {
               onClick={() => setShowPublishPopup(false)}
               className="btn-secondary"
             >
-              Annuler
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -291,7 +334,7 @@ export function ModificationControl({ currentProjectId }: Props) {
               disabled={!title.trim() || publishMutation.isPending || isStalePopup}
               className="btn-primary"
             >
-              {publishMutation.isPending ? 'Publication…' : 'Publier'}
+              {publishMutation.isPending ? t('layout.modificationControl.publishing') : t('layout.modificationControl.publish')}
             </button>
           </div>
         </PublishPopover>
@@ -299,7 +342,7 @@ export function ModificationControl({ currentProjectId }: Props) {
 
       {publishError && (
         <PublishPopover onClose={() => setPublishError(null)}>
-          <h2 className="font-semibold text-sm text-ink mb-2">Publication impossible</h2>
+          <h2 className="font-semibold text-sm text-ink mb-2">{t('layout.modificationControl.publishImpossible')}</h2>
           <p className={`text-xs text-ink-2 ${publishError.kind === 'conflict' && publishError.files.length > 0 ? 'mb-2' : 'mb-4'}`}>
             {publishError.message}
           </p>
@@ -309,8 +352,8 @@ export function ModificationControl({ currentProjectId }: Props) {
             </ul>
           )}
           <div className="flex gap-2 justify-end">
-            <button type="button" onClick={() => setPublishError(null)} className="btn-secondary text-xs">
-              Fermer
+            <button type="button" onClick={() => setPublishError(null)} className="btn-secondary-sm">
+              {t('common.close')}
             </button>
             {publishError.kind === 'conflict' && (
               <button
@@ -323,10 +366,10 @@ export function ModificationControl({ currentProjectId }: Props) {
                     search: { projectId: currentProjectId ?? '', repoPath, ref1: workBranch, sha1: undefined, ref2: integrationBranch, sha2: undefined },
                   })
                 }}
-                className="btn-primary text-xs flex items-center gap-1"
+                className="btn-primary-sm flex items-center gap-1"
               >
                 <X size={11} />
-                Résolution manuelle (Version)
+                {t('layout.modificationControl.manualResolution')}
               </button>
             )}
           </div>

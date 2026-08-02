@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useTabs } from '../../contexts/TabsContext'
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 /** Popover anchored under the chevron trigger — same click-away/Escape pattern as
  *  ModificationControl's PublishPopover. */
 export function TabListMenu({ onClose }: Props) {
+  const { t } = useTranslation()
   const { tabs, activeTabId, recentlyClosed, activateTab, reopenClosedTab } = useTabs()
   const [filter, setFilter] = useState('')
 
@@ -27,7 +29,7 @@ export function TabListMenu({ onClose }: Props) {
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="absolute right-8 top-full mt-1 z-50 bg-surface border border-edge rounded-lg shadow-xl w-72 max-h-[70vh] overflow-y-auto"
+        className="absolute left-0 top-full mt-1 z-50 bg-surface border border-edge rounded-lg shadow-xl w-72 max-h-[70vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="p-2 border-b border-edge sticky top-0 bg-surface">
@@ -35,7 +37,7 @@ export function TabListMenu({ onClose }: Props) {
             type="text"
             value={filter}
             onChange={e => setFilter(e.target.value)}
-            placeholder="Filtrer les onglets…"
+            placeholder={t('layout.tabListMenu.filterPlaceholder')}
             className="input-field w-full text-xs"
             autoFocus
           />
@@ -56,13 +58,13 @@ export function TabListMenu({ onClose }: Props) {
             </button>
           ))}
           {filteredTabs.length === 0 && (
-            <div className="px-3 py-2 text-xs text-ink-3 italic">Aucun onglet ouvert</div>
+            <div className="px-3 py-2 text-xs text-ink-3 italic">{t('layout.tabListMenu.noTabsOpen')}</div>
           )}
         </div>
 
         {filteredClosed.length > 0 && (
           <div className="border-t border-edge py-1">
-            <div className="section-label px-3 py-1">Récemment fermés</div>
+            <div className="section-label px-3 py-1">{t('layout.tabListMenu.recentlyClosed')}</div>
             {filteredClosed.map(tab => (
               <button
                 key={tab.id}

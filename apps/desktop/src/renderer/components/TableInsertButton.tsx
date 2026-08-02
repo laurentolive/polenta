@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/react'
 import { Table } from 'lucide-react'
 import { TableSizePicker } from '../tiptap/TableSizePicker'
@@ -13,6 +14,7 @@ interface Props {
 // contextuelle (RichTextToolbar) et la toolbar inline standalone
 // (RichTextField sans RichTextContext) — même pattern que DrawioInsertButton.
 export function TableInsertButton({ editor, disabled, className }: Props) {
+  const { t } = useTranslation()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const [picker, setPicker] = useState<{ top: number; left: number } | null>(null)
 
@@ -30,7 +32,7 @@ export function TableInsertButton({ editor, disabled, className }: Props) {
         type="button"
         onMouseDown={e => { e.preventDefault(); handleClick() }}
         disabled={disabled || !editor}
-        title="Insérer un tableau"
+        title={t('tableInsert.insertTable')}
         className={className}
       >
         <Table size={13} />

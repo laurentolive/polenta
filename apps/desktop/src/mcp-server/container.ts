@@ -9,6 +9,7 @@ import { TestsIndexService } from '../main/services/tests-index.service'
 import { RequirementsService } from '../main/services/requirements.service'
 import { TestsService } from '../main/services/tests.service'
 import { CampaignsService } from '../main/services/campaigns.service'
+import { TreeService } from '../main/services/tree.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -33,8 +34,12 @@ export interface McpContainer {
  * sans `RepoWatcherService` (chokidar, inutile pour un process qui répond à des appels
  * ponctuels puis se termine) ni les services hors périmètre de ce ticket
  * (`ReviewsService`, `TraceabilityService`, `QueryEngineService`, `DashboardsService`,
- * `ExportService`, `WorkspaceService`, `TreeService`, `BaselineService`,
+ * `ExportService`, `WorkspaceService`, `BaselineService`,
  * `InterfaceComplianceService`, `SavedQueriesService`, `DashboardSeedService`).
+ * `TreeService` est en revanche bien construit (T138) : sans lui, les objets créés par
+ * ce serveur MCP sont écrits sur disque mais n'apparaissent jamais dans SystemView/
+ * ExcelView, qui énumèrent les objets via `.polenta/trees/<node>/<type>.yaml` et non en
+ * scannant `requirements/`/`tests/`.
  *
  * Synchrone (pas de `createContainer()` async comme le main Electron) — pas de fenêtre
  * à ouvrir, pas d'attente d'`app.whenReady()`.
@@ -56,8 +61,9 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string): Mcp
   const polentaRepo = new PolentaRepoService()
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
   const schema = new SchemaService(auth, workspaceTree)
-  const requirements = new RequirementsService(git, reqIndex, schema)
-  const tests = new TestsService(git, testsIndex, schema)
+  const tree = new TreeService()
+  const requirements = new RequirementsService(git, reqIndex, schema, tree)
+  const tests = new TestsService(git, testsIndex, schema, tree)
   const campaigns = new CampaignsService(git, tests)
 
   return { repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree }

@@ -8,6 +8,7 @@
  * rather than summed, since the widget has no aggregation UI — the underlying query
  * is expected to already group by category/series if that's the intent).
  */
+import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { QueryResult, WidgetFieldMapping } from '@polenta/types'
 import { WidgetEmptyState } from './WidgetEmptyState'
@@ -22,11 +23,12 @@ interface Props {
 const CATEGORY_KEY = '__category'
 
 export function LineWidget({ result, fieldMapping }: Props) {
+  const { t } = useTranslation()
   const { category, measure, series } = fieldMapping
-  if (!category || !measure) return <WidgetEmptyState message="Choisissez une catégorie et une mesure." />
+  if (!category || !measure) return <WidgetEmptyState message={t('dashboardPage.widget.chooseCategoryAndMeasure')} />
 
   const rows = result?.rows ?? []
-  if (rows.length === 0) return <WidgetEmptyState message="Aucune donnée pour cette requête." />
+  if (rows.length === 0) return <WidgetEmptyState message={t('dashboardPage.widget.noData')} />
 
   let data: Record<string, unknown>[]
   let seriesKeys: string[]

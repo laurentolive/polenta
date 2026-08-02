@@ -171,15 +171,16 @@ export class RequirementsIndexService {
     // Load requirements — createdAt/createdBy/updatedAt/updatedBy are derived from the
     // file's git log (T112), never trusted from the YAML itself: overwritten
     // unconditionally below, whatever stale/absent keys the file may still have.
+    // T142 — one batched history walk for every file under `requirements/`, instead of one
+    // `git.fileHistory()` (full history re-walk) per file: see GitService.fileHistoryMap().
+    const historyMap = await this.git.fileHistoryMap(repoPath, 'requirements')
     await Promise.all(
       reqFiles
         .filter((f) => f.endsWith('.yaml'))
         .map(async (file) => {
-          const [req, history] = await Promise.all([
-            this.git.readYaml<Requirement>(repoPath, file),
-            this.git.fileHistory(repoPath, file),
-          ])
+          const req = await this.git.readYaml<Requirement>(repoPath, file)
           if (!req?.id) return
+          const history = historyMap.get(file)
           requirements.set(req.id, {
             ...req,
             createdAt: history?.createdAt ?? null,

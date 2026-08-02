@@ -1,5 +1,6 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Search, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../../api'
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function RequirementsPanel({ currentProjectId, projectId }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [showTypeMenu, setShowTypeMenu] = useState(false)
 
@@ -52,30 +54,30 @@ export function RequirementsPanel({ currentProjectId, projectId }: Props) {
       {/* Header */}
       <div className="px-4 py-3 border-b border-edge shrink-0">
         <div className="flex items-center justify-between mb-2">
-          <p className="section-label">Exigences</p>
+          <p className="section-label">{t('sidebar.requirements.title')}</p>
           <div className="relative">
             <button
               type="button"
               onClick={e => { e.stopPropagation(); setShowTypeMenu(v => !v) }}
               disabled={!repoPath}
-              className="p-1 rounded text-ink-3 hover:text-ink hover:bg-hover disabled:opacity-40 transition-colors"
-              title="Nouvelle exigence"
+              className="btn-icon text-ink-3 hover:text-ink"
+              title={t('sidebar.requirements.newRequirement')}
             >
               <Plus size={14} />
             </button>
             {showTypeMenu && (
               <div className="absolute right-0 top-full mt-1 bg-surface border border-edge rounded shadow-lg z-10 w-48 py-1">
-                {types.length > 0 ? types.map(t => (
+                {types.length > 0 ? types.map(type => (
                   <button
-                    key={t.name}
+                    key={type.name}
                     type="button"
                     onClick={() => {
                       setShowTypeMenu(false)
-                      navigate({ to: '/req/new', search: { repoPath, projectId, type: t.name, component: undefined, level: undefined } })
+                      navigate({ to: '/req/new', search: { repoPath, projectId, type: type.name, component: undefined, level: undefined } })
                     }}
                     className="w-full text-left px-3 py-2 text-xs text-ink-2 hover:bg-hover hover:text-ink transition-colors"
                   >
-                    {t.label ?? t.name}
+                    {type.label ?? type.name}
                   </button>
                 )) : (
                   <button
@@ -86,7 +88,7 @@ export function RequirementsPanel({ currentProjectId, projectId }: Props) {
                     }}
                     className="w-full text-left px-3 py-2 text-xs text-ink-2 hover:bg-hover transition-colors"
                   >
-                    Nouvelle exigence
+                    {t('sidebar.requirements.newRequirement')}
                   </button>
                 )}
               </div>
@@ -99,7 +101,7 @@ export function RequirementsPanel({ currentProjectId, projectId }: Props) {
           <input
             value={currentFilter}
             onChange={e => navTo(e.target.value, currentType)}
-            placeholder="Filtrer…"
+            placeholder={t('common.filterPlaceholder')}
             className="input-field w-full pl-6 pr-3 py-1"
           />
         </div>
@@ -117,23 +119,23 @@ export function RequirementsPanel({ currentProjectId, projectId }: Props) {
               : 'text-ink-2 hover:bg-hover hover:text-ink'
           }`}
         >
-          <span>Tout</span>
+          <span>{t('sidebar.requirements.all')}</span>
           <span className="text-ink-3">{requirements.length}</span>
         </button>
 
-        {types.map(t => (
+        {types.map(type => (
           <button
-            key={t.name}
+            key={type.name}
             type="button"
-            onClick={() => navTo(currentFilter, currentType === t.name ? '' : t.name)}
+            onClick={() => navTo(currentFilter, currentType === type.name ? '' : type.name)}
             className={`w-full flex items-center justify-between px-4 py-2 text-xs transition-colors ${
-              currentType === t.name
+              currentType === type.name
                 ? 'bg-hover text-ink font-medium'
                 : 'text-ink-2 hover:bg-hover hover:text-ink'
             }`}
           >
-            <span>{t.label ?? t.name}</span>
-            <span className="text-ink-3">{countByType.get(t.name) ?? 0}</span>
+            <span>{type.label ?? type.name}</span>
+            <span className="text-ink-3">{countByType.get(type.name) ?? 0}</span>
           </button>
         ))}
       </div>

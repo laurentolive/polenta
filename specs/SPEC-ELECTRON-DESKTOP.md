@@ -1,15 +1,17 @@
 # SPEC-ELECTRON-DESKTOP — Architecture Client Lourd Electron
 
-> Dernière révision : 2026-06-12  
+> Dernière révision : 2026-07-21 (T130)  
 > Remplace la couche NestJS HTTP pour la distribution desktop.  
-> La spec fonctionnelle des modules (Requirements, Tests, Traceability, Reviews…) reste inchangée.
+> La spec fonctionnelle des modules (Requirements, Tests, Traceability, Reviews…) reste inchangée.  
+> §2-17 décrivaient la structure **cible initiale** (2026-06-12), jamais suivie telle quelle en
+> pratique — corrigés à T130 pour refléter la structure **réelle**.
 
 ---
 
 ## 1. Philosophie & principes
 
 ```
-Remote git (GitHub / Gitea / self-hosted)
+Remote git (GitHub / GitLab / self-hosted — T130 : support Gitea retiré)
         ↑ push / pull (action utilisateur explicite)
 ┌───────────────────────────────────────────────────┐
 │  Electron Desktop App                             │
@@ -52,62 +54,66 @@ Local git working tree (clone du remote)
 apps/
   api/          ← conservé pour la version web (inchangé)
   web/          ← conservé pour la version web (inchangé)
-  desktop/      ← NOUVEAU — application Electron
+  desktop/      ← application Electron
     package.json
     tsconfig.json
     electron.vite.config.ts
     electron-builder.yml
     src/
       main/                        ← Node.js process (main)
-        index.ts                   ← BrowserWindow, app lifecycle
-        ipc/                       ← handlers IPC (remplacent les controllers)
-          requirements.ipc.ts
-          tests.ipc.ts
-          traceability.ipc.ts
-          sync.ipc.ts
-          auth.ipc.ts
-          workspace.ipc.ts
-          actions.ipc.ts
-        services/                  ← classes métier (sans NestJS)
-          git/
-            git.service.ts         ← working tree reads/writes
-            sync.service.ts        ← commit / push / pull / status
-            merge.service.ts       ← merge YAML 3-way (V2)
-          index/
-            requirements-index.service.ts
-            tests-index.service.ts
-          requirements/
-            requirements.service.ts
-          tests/
-            tests.service.ts
-          traceability/
-            traceability.service.ts
-          branches/
-            branch.service.ts      ← création, checkout, merge, affected items
-          auth/
-            auth.service.ts
-          workspace/
-            workspace.service.ts
-          watcher/
-            repo-watcher.service.ts
-        container.ts               ← DI manuel (instanciation des services)
+        index.ts                   ← BrowserWindow, app lifecycle, appelle createContainer()
+        ipc/                       ← T130 : un seul point d'enregistrement, pas un fichier par domaine
+          index.ts                 ← registerIpcHandlers() — tous les channels (schema, workspace,
+                                       sync, baseline, requirements, tests, traceability, campaigns,
+                                       reviews, dashboards, queries, tree, image, drawio, export…)
+          pref.handlers.ts         ← channels `pref:*` (préférences utilisateur .pref)
+        services/                  ← T130 : tous les services à plat, pas de sous-dossiers par domaine
+          git.service.ts           ← working tree reads/writes
+          sync.service.ts          ← commit / push / pull / status / merge (inclut ce que le plan
+                                       initial appelait "merge.service.ts" et "branch.service.ts")
+          auth.service.ts
+          workspace.service.ts
+          workspace-tree.service.ts   ← T69, cache de l'arbre du workspace plat (polenta-repo.yaml)
+          polenta-repo.service.ts     ← T69, lecture/écriture de polenta-repo.yaml
+          repo-watcher.service.ts
+          schema.service.ts
+          requirements.service.ts / requirements-index.service.ts
+          tests.service.ts / tests-index.service.ts
+          traceability.service.ts
+          tree.service.ts            ← .polenta/trees/<nœud>/<type>.yaml
+          campaigns.service.ts
+          reviews.service.ts
+          baseline.service.ts
+          interface-compliance.service.ts   ← T123, matrice de conformité par rôle
+          element-move.service.ts
+          dashboards.service.ts / dashboard-seed.service.ts / query-engine.service.ts / saved-queries.service.ts
+          export.service.ts / export/
+          … (utilitaires : id-counter, id-scope, audit-fields, mcp-launch, agents-md.template, pdf, schema-lookup, pref-store)
+        container.ts               ← DI manuel (instanciation des ~22 services + registerIpcHandlers())
       preload/
         index.ts                   ← contextBridge → expose window.polenta
       renderer/
         index.html
         src/
           api/
-            ipc-client.ts          ← implémente ApiClient via ipcRenderer
+            ipc-client.ts          ← implémente ApiClient via ipcRenderer (30+ espaces de noms)
           ... (composants React réutilisés depuis apps/web)
+    mcp-server/                    ← point d'entrée MCP stdio, cf. SPEC-MCP-SERVER.md
 packages/
   types/        ← inchangé
   zod-schemas/  ← inchangé
-  api-client/   ← NOUVEAU — interface ApiClient partagée web + desktop
+  api-client/   ← interface ApiClient partagée web + desktop
     src/
       index.ts  ← interface ApiClient + types de retour
       http-client.ts   ← implémentation HTTP (pour apps/web)
       ipc-client.ts    ← implémentation IPC (pour apps/desktop)
 ```
+
+**Note (T130)** : le plan initial (ci-dessus avant correction) prévoyait un service dédié
+`branches/branch.service.ts` et un `merge.service.ts` séparé avec conflits `YamlConflict[]`
+granulaires par champ. Dans le code réel, toutes ces responsabilités vivent dans `SyncService`
+(`merge()`/`mergeInto()`), avec des conflits remontés au niveau fichier (`{ conflicts: string[] }`),
+pas champ par champ.
 
 ---
 
@@ -120,7 +126,7 @@ packages/
     "keytar": "^7.9.0",
     "chokidar": "^3.6.0",
     "js-yaml": "^4.1.0",
-    "zod": "^3.23.0",
+    "zod": "^3.25.76",
     "@polenta/types": "workspace:*",
     "@polenta/zod-schemas": "workspace:*",
     "@polenta/api-client": "workspace:*"
@@ -158,8 +164,8 @@ export class GitService {
   /** Lit un fichier YAML depuis le working tree */
   async readYaml<T>(repoPath: string, filePath: string): Promise<T | null>
 
-  /** Liste tous les fichiers du working tree, filtrés par préfixe optionnel */
-  async listFiles(repoPath: string, prefix?: string): Promise<string[]>
+  /** Liste tous les fichiers du working tree sous un préfixe (T130 : `prefix` non optionnel) */
+  async listFiles(repoPath: string, prefix: string): Promise<string[]>
 
   // ── Écriture ─────────────────────────────────────────────────────────────
 
@@ -180,8 +186,8 @@ export class GitService {
   /** Crée une branche depuis la branche courante */
   async createBranch(repoPath: string, name: string): Promise<void>
 
-  /** Checkout une branche existante */
-  async checkout(repoPath: string, branch: string): Promise<void>
+  /** Checkout une branche existante (T130 : `branchName`, + `create?` pour créer si absente) */
+  async checkout(repoPath: string, branchName: string, create?: boolean): Promise<void>
 
   /** Supprime une branche locale */
   async deleteBranch(repoPath: string, name: string): Promise<void>
@@ -217,8 +223,8 @@ async readYaml<T>(repoPath: string, filePath: string): Promise<T | null> {
   }
 }
 
-// listFiles — fs.readdir récursif
-async listFiles(repoPath: string, prefix?: string): Promise<string[]> {
+// listFiles — fs.readdir récursif (T130 : prefix non optionnel dans le code réel)
+async listFiles(repoPath: string, prefix: string): Promise<string[]> {
   const walk = async (dir: string, base: string): Promise<string[]> => {
     const entries = await fs.readdir(dir, { withFileTypes: true })
     const results: string[] = []
@@ -231,7 +237,7 @@ async listFiles(repoPath: string, prefix?: string): Promise<string[]> {
     return results
   }
   const files = await walk(repoPath, '')
-  return prefix ? files.filter(f => f.startsWith(prefix)) : files
+  return files.filter(f => f.startsWith(prefix))
 }
 
 // writeYaml — crée les dossiers intermédiaires si nécessaire
@@ -259,13 +265,19 @@ async readYamlRef<T>(repoPath: string, ref: string, filePath: string): Promise<T
 ```typescript
 // apps/desktop/src/main/services/git/sync.service.ts
 
-export interface GitStatus {
-  modified: string[]    // fichiers modifiés non commités
-  untracked: string[]   // nouveaux fichiers
-  ahead: number         // commits locaux non poussés
-  behind: number        // commits distants non tirés
+// T130 : interface réelle `SyncStatus` (pas `GitStatus`) — workflow stage/unstage ajouté,
+// pas de `remoteUrl` :
+export interface SyncStatus {
   branch: string
-  remoteUrl: string | null
+  staged: SyncFileStatus[]
+  unstaged: SyncFileStatus[]
+  ahead: number
+  behind: number
+}
+
+export interface SyncFileStatus {
+  path: string
+  marker: 'M' | 'A' | 'D'
 }
 
 export interface CommitResult {
@@ -278,7 +290,7 @@ export class SyncService {
   constructor(private readonly authService: AuthService) {}
 
   /** État du working tree */
-  async status(repoPath: string): Promise<GitStatus>
+  async status(repoPath: string): Promise<SyncStatus>
 
   /**
    * Crée un commit git avec tous les fichiers modifiés/non-trackés.
@@ -299,17 +311,11 @@ export class SyncService {
   async merge(repoPath: string, fromBranch: string): Promise<MergeResult>
 }
 
+// T130 : conflits remontés au niveau FICHIER dans le code réel, pas de granularité par champ
+// (pas de `YamlConflict`/`conflictingFields` — détection via `instanceof git.Errors.MergeConflictError`) :
 export type MergeResult =
   | { success: true; sha: string }
-  | { success: false; conflicts: YamlConflict[] }
-
-export interface YamlConflict {
-  filePath: string
-  base: Record<string, unknown>    // ancêtre commun
-  ours: Record<string, unknown>    // branche cible (integration)
-  theirs: Record<string, unknown>  // branche feature
-  conflictingFields: string[]      // champs en conflit
-}
+  | { success: false; conflicts: string[] }  // chemins de fichiers en conflit
 ```
 
 **Règle :** `SyncService.commit()` stage TOUS les fichiers modifiés (`git add -A`) avant de committer. Le service ne choisit pas quels fichiers stager — c'est délégué au workflow de l'utilisateur (une branche = un sujet).
@@ -375,8 +381,8 @@ for (const file of files) {
 | `RequirementsService` | `RequirementsService` | Supprimer `@Injectable`, adapter signature |
 | `TestsService` | `TestsService` | Idem |
 | `TraceabilityService` | `TraceabilityService` | Idem |
-| `BranchesService` | `BranchService` | Allégé — pas de YAML métadonnées, items affectés calculés depuis le diff |
-| `ProjectsRegistryService` | `WorkspaceService` | Réécriture — persistance locale |
+| `BranchesService` | *(pas de service dédié, T130)* | Réparti entre `GitService` et `SyncService` — voir §8 |
+| `ProjectsRegistryService` | `WorkspaceService` | Réécriture — workspace plat (T69), pas de registre de projets persistant |
 | `RequirementsIndexService` | `RequirementsIndexService` | Adapter `build()` pour working tree |
 | `TestsIndexService` | `TestsIndexService` | Idem |
 
@@ -390,7 +396,7 @@ for (const file of files) {
 export interface UserIdentity {
   name: string
   email: string
-  login: string          // username du remote (GitHub, Gitea…)
+  login: string          // username du remote (GitHub…)
   avatarUrl: string | null
 }
 
@@ -419,8 +425,7 @@ export class AuthService {
   /**
    * Teste la connexion et récupère l'identité utilisateur.
    * Pour GitHub : GET https://api.github.com/user avec le token.
-   * Pour Gitea  : GET <host>/api/v1/user avec le token.
-   * Pour autres : lit user.name + user.email depuis git config local.
+   * Pour autres (T130 : support Gitea retiré) : identité minimale de repli.
    */
   async resolveIdentity(remoteUrl: string, token: string): Promise<UserIdentity>
 
@@ -448,141 +453,78 @@ export class AuthService {
 
 ---
 
-## 8. `BranchService` — gestion des branches de travail
+## 8. Gestion des branches de travail — pas de `BranchService` dédié (T130)
 
-Une **branche git** est l'unité de travail dans Polenta. Elle représente une intention de modification (correction, ajout, refonte…). Il n'y a pas de fichier YAML de métadonnées — la branche git est l'unique source de vérité.
+Une **branche git** est l'unité de travail dans Polenta. Elle représente une intention de
+modification (correction, ajout, refonte…). Il n'y a pas de fichier YAML de métadonnées — la
+branche git est l'unique source de vérité.
 
-**Convention de nommage (recommandée, non contrainte) :**
-```
-feat/<description-courte>
-fix/<description-courte>
-jira/<PROJ-123>-<description>
-```
-
-Les items affectés sont **calculés dynamiquement** depuis le diff git, jamais stockés.
-
-### Interface
+**T130 : il n'existe pas de classe `BranchService`.** Les opérations sont réparties entre
+`GitService` (lecture/écriture bas niveau) et `SyncService` (opérations qui impliquent une décision
+de flux — merge, push) :
 
 ```typescript
-// apps/desktop/src/main/services/branches/branch.service.ts
+// GitService (apps/desktop/src/main/services/git.service.ts)
+async currentBranch(repoPath: string): Promise<string>
+async listBranches(repoPath: string): Promise<string[]>
+async createBranch(repoPath: string, branchName: string): Promise<void>
+async checkout(repoPath: string, branchName: string, create?: boolean): Promise<void>
+async deleteBranch(repoPath: string, name: string): Promise<void>
 
-export class BranchService {
-  constructor(private readonly git: GitService) {}
-
-  /** Branche courante */
-  async current(repoPath: string): Promise<string>
-
-  /** Liste toutes les branches locales */
-  async list(repoPath: string): Promise<string[]>
-
-  /**
-   * Crée et checkout une nouvelle branche depuis integrationBranch.
-   * Refuse si le working tree n'est pas clean.
-   */
-  async create(repoPath: string, name: string): Promise<void>
-
-  /** Checkout une branche existante */
-  async checkout(repoPath: string, name: string): Promise<void>
-
-  /** Supprime une branche locale */
-  async delete(repoPath: string, name: string, force?: boolean): Promise<void>
-
-  /**
-   * Merge une branche dans integrationBranch.
-   * 1. Checkout integrationBranch
-   * 2. git merge <fromBranch>
-   * 3. Si clean → retourne { success: true, sha }
-   * 4. Si conflit → retourne les YamlConflict[] pour résolution UI
-   */
-  async merge(repoPath: string, fromBranch: string): Promise<MergeResult>
-
-  /**
-   * Applique la résolution d'un conflit YAML champ par champ.
-   * Écrit le fichier résolu sur le working tree (sans committer).
-   */
-  async applyConflictResolution(
-    repoPath: string,
-    filePath: string,
-    resolved: Record<string, unknown>,
-  ): Promise<void>
-
-  /**
-   * Calcule les items (exigences et tests) affectés par la branche courante.
-   * Compare HEAD avec integrationBranch via git diff et parse les IDs
-   * depuis les chemins des fichiers modifiés dans requirements/ et tests/.
-   * Retourne un tableau vide si on est déjà sur integrationBranch.
-   */
-  async affectedItems(repoPath: string): Promise<string[]>
-}
+// SyncService (apps/desktop/src/main/services/sync.service.ts)
+async listBranches(repoPath: string): Promise<{ name: string; isCurrent: boolean; type: 'int' | 'dev' | 'other' }[]>
+async createBranch(repoPath: string, name: string): Promise<void>
+async createBranchAt(repoPath: string, name: string, sha: string): Promise<void>
+async checkoutBranch(repoPath: string, name: string): Promise<void>
+async deleteBranch(repoPath: string, name: string): Promise<void>
+async deleteRemoteBranch(repoPath: string, name: string, remote?: string): Promise<void>
+async pushBranch(repoPath: string, branchName: string, remote?: string): Promise<void>
+async merge(repoPath: string, fromBranch: string): Promise<MergeResult>
+async mergeInto(repoPath: string, fromBranch: string, intoBranch: string): Promise<MergeResult>
 ```
+
+Conflit de merge → `MergeResult` avec `conflicts: string[]` (chemins de fichiers, pas de résolution
+champ par champ — voir §5). Il n'y a pas de méthode `applyConflictResolution` par champ ni
+d'`affectedItems()` séparée sous ce nom ; le calcul des items affectés par une branche est décrit
+dans `SPEC-TRACEABILITY.md`/`SPEC-FORKS-BRANCHES-BASELINES.md`.
 
 ---
 
 ## 9. `WorkspaceService`
 
-Remplace `ProjectsRegistryService`. Gère la liste des repos locaux de l'utilisateur.
+**T130 : modèle entièrement différent du plan initial ci-dessous (avant correction).** Pas de
+registre `WorkspaceProject[]`/`workspace.json` listant des projets indépendants — depuis T69, un
+**workspace plat** regroupe un repo racine et ses dépendances (`polenta-repo.yaml`), et
+`WorkspaceService` expose :
 
 ```typescript
-// apps/desktop/src/main/services/workspace/workspace.service.ts
-
-export interface WorkspaceProject {
-  id: string           // uuid généré à l'ajout
-  name: string         // lu depuis config/project.yaml du repo
-  localPath: string    // chemin absolu sur le disque
-  remoteUrl: string    // URL du remote git
-  integrationBranch: string  // "main" ou "integration" (lu depuis config)
-  schemaVersion: number
-  lastOpenedAt: string
-}
+// apps/desktop/src/main/services/workspace.service.ts
 
 export class WorkspaceService {
-  // Persistance : app.getPath('userData')/workspace.json
-  // Hors git — propre à la machine de l'utilisateur
-
-  /** Liste tous les projets de la workspace */
-  async listProjects(): Promise<WorkspaceProject[]>
-
-  /**
-   * Ajoute un projet existant (repo déjà cloné localement).
-   * Lit config/project.yaml pour extraire name, schemaVersion, integrationBranch.
-   */
-  async addLocalProject(localPath: string): Promise<WorkspaceProject>
-
-  /**
-   * Clone un repo distant et l'ajoute à la workspace.
-   * onProgress: callback pour la barre de progression UI.
-   */
-  async cloneAndAdd(
-    remoteUrl: string,
-    localPath: string,
-    onProgress?: (phase: string, loaded: number, total: number) => void,
-  ): Promise<WorkspaceProject>
-
-  /** Supprime un projet de la workspace (ne supprime pas le repo local) */
-  async removeProject(id: string): Promise<void>
-
-  /** Vérifie la compatibilité schemaVersion — lève une erreur si incompatible */
-  async checkSchemaCompatibility(project: WorkspaceProject): Promise<void>
-
-  /** Retourne un projet par id */
-  async getProject(id: string): Promise<WorkspaceProject>
+  async detectWorkspace(dir: string): Promise<'workspace' | 'repo' | 'unknown'>
+  async openProject(dir: string): Promise<WorkspaceOpenResult>
+  async createNewProject(containerDir: string, name: string): Promise<WorkspaceOpenResult>
+  async createFromClone(/* … */): Promise<WorkspaceOpenResult>
+  async resolve(workspaceDir: string): Promise<ProjectInfo>
+  async initWorkspace(workspaceDir: string, rootRepoPath: string): Promise<void>
+  async openWorkspace(workspaceDir: string): Promise<WorkspaceOpenResult>
+  async listRecents(): Promise<ProjectRecent[]>
+  async markRecent(workspaceDir: string): Promise<void>
+  async getLastOpened(): Promise<ProjectRecent | null>
+  async clearLastOpened(): Promise<void>
+  async ensureAgentFiles(/* … */): Promise<void>   // régénère AGENTS.md/.mcp.json si version périmée
+  async getCacheTree(workspaceDir: string): Promise<WorkspaceTree | null>
+  async rebuildTree(workspaceDir: string): Promise<WorkspaceOpenResult>
+  async setMountOverride(workspaceDir: string, override: MountOverride): Promise<void>
 }
 ```
 
-**Compatibilité schéma :**
-```typescript
-const MIN_SUPPORTED_SCHEMA = 1
-const MAX_SUPPORTED_SCHEMA = 1   // à incrémenter lors de breaking changes
-
-// Dans checkSchemaCompatibility :
-if (schema > MAX_SUPPORTED_SCHEMA) {
-  throw new Error(`Ce repo requiert Polenta v${schema}+. Mettez à jour l'application.`)
-}
-if (schema < MIN_SUPPORTED_SCHEMA) {
-  // Proposer migration dans l'UI
-  throw new SchemaOutdatedError(schema, MAX_SUPPORTED_SCHEMA)
-}
-```
+Il n'y a pas de `checkSchemaCompatibility()` distincte ni de type `WorkspaceProject` — les types
+réels sont `ProjectInfo`/`ProjectRecent`/`WorkspaceOpenResult`/`WorkspaceTree` (`@polenta/types`).
+Pas de registre "liste de projets" persistant : `listRecents()`/`getLastOpened()` ne retiennent que
+l'historique de navigation, pas une source de vérité sur les projets existants — le disque local
+l'est. La découverte des composants en repo séparé passe par `PolentaRepoService` et
+`WorkspaceTreeService` (`polenta-repo.yaml`, voir §22).
 
 ---
 
@@ -672,16 +614,18 @@ Format : `domaine:action`. Arguments passés comme objet unique `{ repoPath, ...
 | `dialog:pick-folder` | `{ title?: string }` | `string \| null` |
 
 #### Workspace
-| Channel | Paramètres | Retour |
-|---------|-----------|--------|
-| `workspace:list` | — | `WorkspaceProject[]` |
-| `workspace:add-local` | `{ localPath }` | `WorkspaceProject` |
-| `workspace:clone` | `{ remoteUrl, localPath }` | `WorkspaceProject` |
-| `workspace:create` | `{ name, localPath, private?: boolean }` | `WorkspaceProject` |
-| `workspace:remove` | `{ id }` | `void` |
-| `workspace:get` | `{ id }` | `WorkspaceProject` |
-| `workspace:get-last-opened` | — | `WorkspaceProject \| null` |
-| `workspace:mark-last-opened` | `id: string \| null` | `void` |
+
+**T130 : channels réels, sans rapport avec la table précédente** (pas de `workspace:list`/
+`add-local`/`clone`/`create`/`remove`/`get` — modèle "liste de projets" remplacé par le workspace
+plat T69, voir §9 et §22) :
+
+`workspace:list-recents` · `workspace:mark-recent` · `workspace:get-last-opened` ·
+`workspace:clear-last-opened` · `workspace:resolve` · `workspace:open-project` ·
+`workspace:create-new` · `workspace:create-from-clone` · `workspace:detect` · `workspace:init` ·
+`workspace:open` · `workspace:get-tree` · `workspace:rebuild-tree` · `workspace:set-mount-override` ·
+`workspace:remove-repo-dir` · `workspace:rename-repo-dir`
+
+Composants en repo séparé : `polenta-repo:get` / `polenta-repo:save` (voir §22).
 
 #### Auth
 | Channel | Paramètres | Retour |
@@ -708,17 +652,12 @@ Format : `domaine:action`. Arguments passés comme objet unique `{ repoPath, ...
 | `sync:unstage-all` | `repoPath` | `void` |
 | `sync:discard` | `repoPath, filepath` | `void` |
 
-#### Branches
-| Channel | Paramètres | Retour |
-|---------|-----------|--------|
-| `branches:list` | `{ repoPath }` | `string[]` |
-| `branches:current` | `{ repoPath }` | `string` |
-| `branches:create` | `{ repoPath, name }` | `void` |
-| `branches:checkout` | `{ repoPath, name }` | `void` |
-| `branches:delete` | `{ repoPath, name, force? }` | `void` |
-| `branches:merge` | `{ repoPath, fromBranch }` | `MergeResult` |
-| `branches:resolve-conflict` | `{ repoPath, filePath, resolved }` | `void` |
-| `branches:affected-items` | `{ repoPath }` | `string[]` |
+#### Branches — pas de préfixe `branches:` (T130)
+
+Il n'existe aucun channel `branches:*`. Toutes les opérations de branche sont sous `sync:*` :
+`sync:branches` · `sync:create-branch` · `sync:create-branch-at` · `sync:checkout-branch` ·
+`sync:delete-branch` · `sync:delete-remote-branch` · `sync:push-branch` · `sync:merge` ·
+`sync:merge-into`. Pas de channel `resolve-conflict` par champ ni `affected-items` séparé.
 
 #### Requirements
 | Channel | Paramètres | Retour |
@@ -766,29 +705,26 @@ Format : `domaine:action`. Arguments passés comme objet unique `{ repoPath, ...
 | `reviews:add-comment` | `{ repoPath, reviewId, dto }` | `ReviewComment` | ⚠ non implémenté |
 | `reviews:resolve-comment` | `{ repoPath, reviewId, commentId }` | `ReviewComment` | ⚠ non implémenté |
 
-#### Baselines
-| Channel | Paramètres | Retour |
-|---------|-----------|--------|
-| `baselines:list` | `{ repoPath }` | `Baseline[]` |
-| `baselines:get` | `{ repoPath, name }` | `Baseline` |
-| `baselines:create` | `{ repoPath, dto }` | `Baseline` |
-| `baselines:diff` | `{ repoPath, fromName, toName }` | `BaselineDiff` |
+#### Baselines — préfixe singulier `baseline:` (T130)
 
-#### Templates
-| Channel | Paramètres | Retour |
-|---------|-----------|--------|
-| `templates:list-available` | — | `TemplateRef[]` |
-| `templates:apply` | `{ repoPath, templateSlug }` | `void` |
-| `templates:export` | `{ repoPath }` | `string` (YAML sérialisé) |
+`baseline:list` · `baseline:get` · `baseline:create` · `baseline:delete` ·
+`baseline:get-integration-branch` · `baseline:set-integration-branch`. Pas de channel
+`baseline:diff` — `BaselineDiff` existe dans `@polenta/types` mais n'est exposé par aucun handler
+(cf. `SPEC-AUDIT.md`).
+
+#### Templates — n'existe pas (T130)
+
+Aucun channel `templates:*` n'est enregistré. L'application d'un template à la création de projet,
+décrite en tant que fonctionnalité courante dans `SPEC-TEMPLATES.md` §5, n'est **pas implémentée** —
+voir `SPEC-TEMPLATES.md` §5 (mis à jour) pour le détail.
 
 #### Menu (événements push main → renderer)
 
-Ces channels sont émis par le menu natif via `win.webContents.send`. Le renderer s'abonne via `window.polenta.on` dans le hook `useMenuEvents` (voir [SPEC-PROJECT-MANAGEMENT.md §3](SPEC-PROJECT-MANAGEMENT.md)).
-
-| Channel | Émis par | Comportement renderer |
-|---------|----------|----------------------|
-| `menu:open-workspace` | Menu "Ouvrir un projet…" | `workspace:mark-last-opened(null)` + navigate(`/`) |
-| `menu:close-project` | Menu "Fermer le projet" | `workspace:mark-last-opened(null)` + navigate(`/`) |
+**T130 : menu natif désactivé.** `main/index.ts` appelle `Menu.setApplicationMenu(null)` — la
+fonction `buildMenu()` qui enregistrerait ces channels n'est jamais invoquée. Les actions "Ouvrir un
+projet"/"Fermer le projet" passent par l'UI in-app (panneau Projet, voir §19.8), pas par un menu OS
+natif. Le hook renderer `useMenuEvents` appelle `api.workspace.clearLastOpened()` (pas
+`mark-last-opened`, channel qui n'existe plus) et `markProjectJustClosed()`.
 
 #### Notifications (événements push main → renderer)
 ```typescript
@@ -808,66 +744,66 @@ interface AppNotification {
 
 ### 11.3 Pattern d'un handler IPC
 
+**T130 : un seul point d'enregistrement**, pas un fichier `*.ipc.ts` par domaine :
+
 ```typescript
-// apps/desktop/src/main/ipc/requirements.ipc.ts
+// apps/desktop/src/main/ipc/index.ts
 
-import { ipcMain } from 'electron'
-import type { RequirementsService } from '../services/requirements/requirements.service'
-
-export function registerRequirementsHandlers(service: RequirementsService): void {
-  ipcMain.handle('requirements:list', async (_event, { repoPath, filters }) => {
-    return service.findAll(repoPath, filters ?? {})
-  })
-
-  ipcMain.handle('requirements:get', async (_event, { repoPath, id }) => {
-    return service.findOne(repoPath, id)
-  })
-
-  ipcMain.handle('requirements:create', async (_event, { repoPath, dto }) => {
-    return service.create(repoPath, dto)
-  })
-
-  // ... etc.
+export function registerIpcHandlers(services: {
+  requirements: RequirementsService
+  tests: TestsService
+  // … tous les autres services du container, voir §11.4
+}): void {
+  ipcMain.handle('requirements:list', (_e, repoPath, filters) => services.requirements.findAll(repoPath, filters))
+  ipcMain.handle('requirements:get', (_e, repoPath, id) => services.requirements.findOne(repoPath, id))
+  ipcMain.handle('requirements:create', (_e, repoPath, dto) => services.requirements.create(repoPath, dto))
+  // … un ipcMain.handle par channel de la référence §11.2, tous dans ce même fichier
 }
 ```
+
+Il n'existe pas de fonction `registerRequirementsHandlers` séparée par domaine — tout est déclaré
+dans `registerIpcHandlers()`, plus `apps/desktop/src/main/ipc/pref.handlers.ts` pour les channels
+`pref:*`.
 
 ### 11.4 Container (`apps/desktop/src/main/container.ts`)
 
-DI manuel — instancie les services et les injecte dans les handlers.
+DI manuel — instancie les services et appelle `registerIpcHandlers()` une seule fois. **T130 : 22
+services**, pas 9 :
 
 ```typescript
-// apps/desktop/src/main/container.ts
+// apps/desktop/src/main/container.ts (services réels, ordre de dépendance)
 
-export function createContainer() {
-  const gitService = new GitService()
-  const authService = new AuthService()
-  const syncService = new SyncService(authService)
+const auth = new AuthService()
+const git = new GitService()
+const reqIndex = new RequirementsIndexService(git)
+const testsIndex = new TestsIndexService(git)
+const watcher = new RepoWatcherService(reqIndex, testsIndex)
+const sync = new SyncService(auth)
+const polentaRepo = new PolentaRepoService()                          // T69
+const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)     // T69
+const workspace = new WorkspaceService(sync, workspaceTree, watcher)
+const schema = new SchemaService(auth, workspaceTree)
+const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)  // T123
+const tree = new TreeService()                                        // .polenta/trees/
+const requirements = new RequirementsService(git, reqIndex, schema, tree)
+const tests = new TestsService(git, testsIndex, schema, tree)
+const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
+const reviews = new ReviewsService(git)
+const campaigns = new CampaignsService(git, tests)
+const elementMove = new ElementMoveService(schema, requirements, tests, tree)
+const baseline = new BaselineService()
+const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)
+const dashboards = new DashboardsService(git)
+const savedQueries = new SavedQueriesService(git, schema, dashboards)
+const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
+const exportSvc = new ExportService()
 
-  const reqIndex = new RequirementsIndexService(gitService)
-  const testsIndex = new TestsIndexService(gitService)
-  const watcher = new RepoWatcherService(reqIndex, testsIndex)
-
-  const requirementsService = new RequirementsService(gitService, reqIndex)
-  const testsService = new TestsService(gitService, testsIndex)
-  const traceabilityService = new TraceabilityService(reqIndex, testsIndex, gitService)
-  const branchService = new BranchService(gitService)
-  const workspaceService = new WorkspaceService(syncService)
-
-  return {
-    gitService,
-    authService,
-    syncService,
-    reqIndex,
-    testsIndex,
-    watcher,
-    requirementsService,
-    testsService,
-    traceabilityService,
-    branchService,
-    workspaceService,
-  }
-}
+registerIpcHandlers({ /* … tous les services ci-dessus */ })
 ```
+
+Il n'y a pas de `BranchService` dans ce container (voir §8) ; `TreeService` **est** injecté (T138 —
+sans lui, les objets créés via le serveur MCP n'apparaissent jamais dans SystemView/ExcelView, voir
+`SPEC-MCP-SERVER.md`).
 
 ---
 
@@ -903,34 +839,32 @@ export interface ApiClient {
     generateTestPlan(repoPath: string, dto: GenerateTestPlanDto): Promise<TestPlanDraft>
     exportCsv(repoPath: string, filters?: MatrixFiltersDto): Promise<MatrixExportRow[]>
   }
-  branches: {
-    list(repoPath: string): Promise<string[]>
-    current(repoPath: string): Promise<string>
-    create(repoPath: string, name: string): Promise<void>
-    checkout(repoPath: string, name: string): Promise<void>
-    delete(repoPath: string, name: string, force?: boolean): Promise<void>
-    merge(repoPath: string, fromBranch: string): Promise<MergeResult>
-    resolveConflict(repoPath: string, filePath: string, resolved: Record<string, unknown>): Promise<void>
-    affectedItems(repoPath: string): Promise<string[]>
-  }
+  // T130 : pas de namespace `branches` séparé — les opérations de branche vivent sous `sync`
+  // (voir §8/§11.2), avec les signatures réelles de SyncService (listBranches, createBranch,
+  // checkoutBranch, deleteBranch, merge, mergeInto…), pas celles ci-dessus.
   sync: {
-    status(repoPath: string): Promise<GitStatus>
+    status(repoPath: string): Promise<SyncStatus>
     commit(repoPath: string, message: string): Promise<CommitResult>
     push(repoPath: string): Promise<void>
     pull(repoPath: string): Promise<void>
+    // + listBranches/createBranch/checkoutBranch/deleteBranch/merge/mergeInto/… (§8, §11.2)
   }
+  // T130 : pas de `list()/addLocal()/clone()/remove()` avec un `WorkspaceProject[]` — modèle
+  // workspace plat réel (§9), méthodes réelles : detectWorkspace/openProject/createNewProject/
+  // createFromClone/resolve/listRecents/markRecent/getLastOpened/clearLastOpened/…
   workspace: {
-    list(): Promise<WorkspaceProject[]>
-    addLocal(localPath: string): Promise<WorkspaceProject>
-    clone(remoteUrl: string, localPath: string): Promise<WorkspaceProject>
-    remove(id: string): Promise<void>
+    getLastOpened(): Promise<ProjectRecent | null>
+    clearLastOpened(): Promise<void>
+    // + le reste de WorkspaceService, voir §9
   }
   auth: {
     saveToken(remoteUrl: string, username: string, token: string): Promise<void>
-    resolveIdentity(remoteUrl: string, token: string): Promise<UserIdentity>
-    getCurrentUser(repoPath: string): Promise<UserIdentity>
-    testConnection(remoteUrl: string, token: string): Promise<{ ok: boolean; error?: string }>
+    resolveIdentity(remoteUrl: string): Promise<UserIdentity>
+    hasAnyAccount(): Promise<boolean>
+    setup(remote: string, pat: string): Promise<UserIdentity>
   }
+  // + schema, campaigns, reviews, baseline, dashboards, queries, tree, polentaRepo, interface,
+  // image, drawio, export, pref — voir §11.2 pour la liste complète des channels réels.
 }
 ```
 
@@ -974,33 +908,22 @@ export function createHttpClient(baseUrl: string): ApiClient {
 
 ## 13. `apps/desktop/src/main/index.ts` — entry point
 
+**T130 : pas d'appel individuel par domaine** — `createContainer()` instancie les ~22 services
+**et** appelle `registerIpcHandlers()` en une fois (voir §11.4). `main/index.ts` se contente
+d'appeler `createContainer()`, définir le menu (`Menu.setApplicationMenu(null)` — menu natif
+désactivé, voir §11.2 "Menu"), et ouvrir la `BrowserWindow` :
+
 ```typescript
 import { app, BrowserWindow } from 'electron'
 import { createContainer } from './container'
-import { registerRequirementsHandlers } from './ipc/requirements.ipc'
-import { registerTestsHandlers } from './ipc/tests.ipc'
-import { registerTraceabilityHandlers } from './ipc/traceability.ipc'
-import { registerSyncHandlers } from './ipc/sync.ipc'
-import { registerAuthHandlers } from './ipc/auth.ipc'
-import { registerWorkspaceHandlers } from './ipc/workspace.ipc'
-import { registerBranchesHandlers } from './ipc/branches.ipc'
 import * as path from 'path'
 
 app.whenReady().then(() => {
-  const container = createContainer()
-
-  // Enregistrer tous les handlers IPC
-  registerRequirementsHandlers(container.requirementsService)
-  registerTestsHandlers(container.testsService)
-  registerTraceabilityHandlers(container.traceabilityService)
-  registerSyncHandlers(container.syncService)
-  registerAuthHandlers(container.authService)
-  registerWorkspaceHandlers(container.workspaceService, container.watcher)
-  registerBranchesHandlers(container.branchService)
+  createContainer()   // instancie les services ET enregistre tous les handlers IPC
 
   const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: 1280,
+    height: 800,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -1025,14 +948,21 @@ app.on('window-all-closed', () => {
 
 ## 14. `electron.vite.config.ts`
 
+Config de base ci-dessous conservée pour l'essentiel, **avec 3 ajouts non documentés à l'origine
+(T123/T126)** : plugin `@tanstack/router-plugin/vite` (génération des routes), alias
+`@polenta/types`/`@polenta/zod-schemas` pour le renderer, et `externalizeDepsPlugin({ exclude:
+['@polenta/types'] })` côté main (nécessaire pour éviter des problèmes de résolution ESM sur ce
+package).
+
 ```typescript
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { resolve } from 'path'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: ['@polenta/types'] })],
     build: {
       rollupOptions: {
         input: resolve(__dirname, 'src/main/index.ts'),
@@ -1048,7 +978,7 @@ export default defineConfig({
     },
   },
   renderer: {
-    plugins: [react()],
+    plugins: [tanstackRouter(), react()],
     build: {
       rollupOptions: {
         input: resolve(__dirname, 'src/renderer/index.html'),
@@ -1057,6 +987,8 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src/renderer/src'),
+        '@polenta/types': resolve(__dirname, '../../packages/types/src'),
+        '@polenta/zod-schemas': resolve(__dirname, '../../packages/zod-schemas/src'),
       },
     },
   },
@@ -1069,7 +1001,7 @@ export default defineConfig({
 
 ### Ce qu'il FAUT faire
 - Toujours lire depuis le working tree (`fs.readFile`), jamais via `git show` sauf pour `readYamlRef` (lecture historique)
-- Toujours créer/changer de branche via `BranchService`, jamais directement depuis un service métier
+- Toujours créer/changer de branche via `GitService`/`SyncService` (pas de `BranchService` dédié, voir §8), jamais directement depuis un service métier
 - Stocker les tokens via `AuthService.saveToken()` uniquement — jamais dans un fichier texte ou dans le repo git
 - Valider les DTOs avec Zod dans les handlers IPC (même pattern que les pipes NestJS)
 - Setter `nodeIntegration: false` et `contextIsolation: true` dans `BrowserWindow` — c'est une règle de sécurité Electron non négociable
@@ -1082,7 +1014,7 @@ export default defineConfig({
 - ❌ Stocker le PAT en clair dans `userData` ou dans le repo
 - ❌ Réutiliser `simple-git` — uniquement `isomorphic-git`
 - ❌ Supprimer ou modifier `apps/api` — la version web reste fonctionnelle en parallèle
-- ❌ Éditer `.gitmodules` manuellement — il est généré par `SchemaService.save()` depuis `schema.components`
+- ❌ Éditer `.polenta/trees/<nœud>/<type>.yaml`, `polenta-repo.yaml` généré, ou tout fichier `.polenta/*.cache.yaml` manuellement — maintenus par l'application (T130 : pas de `.gitmodules`, ce mécanisme n'existe pas — voir §22)
 - ❌ Éditer `tree.yaml` manuellement — il est généré par `scripts/update-tree.py` via le hook pre-commit
 - ❌ Ajouter/supprimer un composant autrement qu'en modifiant `schema.components` via `schema:save`
 
@@ -1103,7 +1035,7 @@ App ouvre (route "/" chargée)
        ├─ NON → /login
        │         L'utilisateur saisit : URL remote + PAT
        │         [Se connecter] → auth:setup(remote, pat)
-       │           ├─ Succès → workspace:mark-last-opened(null) → /
+       │           ├─ Succès → workspace:clear-last-opened → /
        │           └─ Erreur → afficher message d'erreur
        │
        └─ OUI
@@ -1128,8 +1060,9 @@ App ouvre (route "/" chargée)
 |---------|-----------|--------|-------------|
 | `auth:has-any-account` | — | `boolean` | Vrai si au moins un compte (ou token bare) est configuré |
 | `auth:setup` | `{ remote, pat }` | `UserIdentity` | Enregistre le PAT + résout l'identité + persiste le compte |
-| `workspace:get-last-opened` | — | `WorkspaceProject \| null` | Dernier projet ouvert (depuis `workspace.json`) |
-| `workspace:mark-last-opened` | `id: string \| null` | `void` | Met à jour `lastOpenedId` dans `workspace.json` |
+| `workspace:get-last-opened` | — | `ProjectRecent \| null` | Dernier projet ouvert (T130 : pas de `workspace.json` registre — historique de navigation seulement) |
+| `workspace:clear-last-opened` | — | `void` | Efface le dernier projet ouvert (T130 : pas de `mark-last-opened(id)` — channel réel sans paramètre) |
+| `workspace:mark-recent` | `workspaceDir: string` | `void` | Marque un projet comme récemment ouvert |
 
 ### 16.3 Routes renderer
 
@@ -1164,7 +1097,7 @@ App ouvre (route "/" chargée)
 
 > **T108** : la section "Récents" a été retirée de cette page (elle faisait doublon avec la
 > liste "Récents" déjà affichée en permanence dans la sidebar, panneau Projet sans projet
-> ouvert — cf. §19.5/19.6). La page `/` n'affiche plus désormais que les panneaux
+> ouvert — cf. §19.7/19.8). La page `/` n'affiche plus désormais que les panneaux
 > d'ouverture/création, toujours en colonne unique centrée, qu'il existe ou non des projets
 > récents. Le mockup ci-dessous et le glossaire de wording ci-après restent par ailleurs
 > antérieurs à l'implémentation actuelle (wording des boutons notamment — cf. `index.tsx`) et
@@ -1278,67 +1211,25 @@ Voir [SPEC-PROJECT-MANAGEMENT.md](SPEC-PROJECT-MANAGEMENT.md) pour la spécifica
 **Résumé :**
 - 1 fenêtre Electron = 1 projet actif à la fois.
 - Pour travailler sur 2 projets simultanément, l'utilisateur ouvre une seconde fenêtre via **Fichier → Ouvrir dans une nouvelle fenêtre**.
-- **Fichier → Fermer le projet** appelle `workspace:mark-last-opened(null)` + navigue vers `/`.
+- **Fichier → Fermer le projet** appelle `workspace:clear-last-opened` + navigue vers `/` (T130 : menu natif désactivé en pratique, voir §11.2 "Menu" — ce comportement est celui du bouton in-app équivalent).
 - **Fichier → Ouvrir un projet…** fait de même (retour à l'écran Workspace).
 - Le menu natif envoie des événements push (`menu:open-workspace`, `menu:close-project`) au renderer via `win.webContents.send`. Le renderer s'abonne via le hook `useMenuEvents`.
 
 ---
 
-## 21. Design system — tokens et dark mode
+## 18. Design system — tokens et dark mode
 
-### 21.1 Tokens CSS
+**T130 : contenu déplacé vers `SPEC-THEMING.md` (T116), devenu la source unique de vérité.**
+`theme.config.ts` génère `index.css`/`tailwind.theme.generated.js` — les tables de tokens/ratios
+WCAG ci-dessous (état 2026-06-12) ont dérivé de cette génération et ne sont plus tenues à jour ici,
+pour éviter une double source. Voir `SPEC-THEMING.md` pour les tokens actuels (familles
+`status-*`, `chart-series-*`, `activity-*`, `print-*`, overlay) et le mécanisme de génération.
 
-Définis dans `src/renderer/index.css` via CSS custom properties. Tailwind étend sa config pour exposer ces tokens comme classes utilitaires.
+Seul invariant encore pertinent ici : l'**activity bar** reste toujours sombre
+(`slate-900`/`slate-800`/`slate-700`), identique à VS Code, quel que soit le thème choisi.
 
-| Token CSS         | Tailwind class   | Light (`#`)  | Dark (`#`)   | Usage                        |
-|-------------------|-----------------|--------------|--------------|------------------------------|
-| `--canvas`        | `bg-canvas`     | `f8fafc`     | `0f172a`     | Arrière-plan page principale |
-| `--surface`       | `bg-surface`    | `ffffff`     | `1e293b`     | Sidebar, cartes, modales     |
-| `--surface-hover` | `hover:bg-hover`| `f1f5f9`     | `293548`     | État survol d'items          |
-| `--edge`          | `border-edge`   | `e2e8f0`     | `334155`     | Bordures principales         |
-| `--edge-subtle`   | `border-edge-subtle` | `f1f5f9` | `1e293b`   | Séparateurs discrets         |
-| `--ink`           | `text-ink`      | `0f172a`     | `f1f5f9`     | Texte principal              |
-| `--ink-2`         | `text-ink-2`    | `475569`     | `cbd5e1`     | Texte secondaire             |
-| `--ink-3`         | `text-ink-3`    | `94a3b8`     | `94a3b8`     | Texte muted, placeholders    |
-| `--prim`          | `bg-prim`       | `0f172a`     | `e2e8f0`     | Bouton action principale     |
-| `--prim-fg`       | `text-prim-fg`  | `f8fafc`     | `0f172a`     | Texte sur bouton principal   |
-
-**Activity bar** : toujours sombre (`slate-900`/`slate-800`/`slate-700`) — invariant, identique à VS Code.
-
-### 21.2 Classes utilitaires globales
-
-Définies dans `@layer components` :
-
-| Classe         | Usage                                          |
-|----------------|------------------------------------------------|
-| `input-field`  | Champs texte, select, textarea — applique border-edge, bg-surface, focus ring |
-| `btn-primary`  | Bouton action principale (`bg-prim text-prim-fg`) |
-| `btn-secondary`| Bouton secondaire ou annuler (`border-edge hover:bg-hover`) |
-| `btn-danger`   | Bouton destructif avec surcharge dark          |
-| `btn-sm`       | Variante petite taille (xs)                    |
-| `section-label`| En-tête de section dans la sidebar (uppercase, tracking-wider) |
-
-### 21.3 Dark mode
-
-- Contrôle via classe `dark` sur `<html>` (Tailwind `darkMode: 'class'`).
-- `ThemeContext` (`src/renderer/contexts/ThemeContext.tsx`) : 
-  - Initialisation depuis `localStorage('polenta:theme')`, fallback `prefers-color-scheme`.
-  - Expose `theme`, `toggle()`, `setTheme()`.
-- Toggle Soleil/Lune dans **AccountPanel** → section Préférences.
-
-**Ratios de contraste WCAG vérifiés :**
-
-| Paire light                     | Ratio  | Norme    |
-|---------------------------------|--------|----------|
-| `ink` (#0f172a) sur `surface`   | ~21:1  | AAA ✓    |
-| `ink-2` (#475569) sur `surface` | ~6.1:1 | AA ✓     |
-| `ink-3` (#94a3b8) sur `surface` | ~3.4:1 | AA (large text) |
-
-| Paire dark                      | Ratio  | Norme    |
-|---------------------------------|--------|----------|
-| `ink` (#f1f5f9) sur `canvas`    | ~17:1  | AAA ✓    |
-| `ink-2` (#cbd5e1) sur `surface` | ~9.7:1 | AAA ✓    |
-| `ink-3` (#94a3b8) sur `surface` | ~5.5:1 | AA ✓     |
+Classes de boutons : voir §19.16 (`btn-primary`/`btn-secondary`/`btn-danger`/`btn-icon`/`btn-close`/
+`btn-sm`, système complet documenté à T115).
 
 ---
 
@@ -1419,7 +1310,7 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 L'état des sélecteurs (tab, component, level) est porté par l'URL.  
 La sidebar lit les params URL courants (`useRouterState`) et navigue avec `replace: true` à chaque modification — pas de state local dupliqué.
 
-### 19.3 Titre de fenêtre OS
+### 19.5 Titre de fenêtre OS
 
 Le titre de la `BrowserWindow` est mis à jour dynamiquement via IPC :
 
@@ -1448,7 +1339,7 @@ Appelé dans `ProjectPanel` (sidebar) via `useEffect` sur `project?.name` et `pr
 > par onglet (barre d'onglets, §19.1) est un mécanisme entièrement séparé, tenu côté renderer par
 > `TabsContext`, sans lien avec `app:set-title`.
 
-### 19.4 Panneau — Compte
+### 19.6 Panneau — Compte
 
 ```
 ┌─────────────────────────────┐
@@ -1465,7 +1356,7 @@ Appelé dans `ProjectPanel` (sidebar) via `useEffect` sur `project?.name` et `pr
 
 Remplace le composant `AccountMenu` du header (supprimé).
 
-### 19.5 Panneau — Projet (sans projet chargé)
+### 19.7 Panneau — Projet (sans projet chargé)
 
 Affiche la page de gestion de projets : Récents, Créer un projet, Charger un projet, Ouvrir un projet local (voir §16.5).
 
@@ -1483,7 +1374,7 @@ Affiche la page de gestion de projets : Récents, Créer un projet, Charger un p
 └─────────────────────────────┘
 ```
 
-### 19.6 Panneau — Projet (projet chargé) — hub de configuration
+### 19.8 Panneau — Projet (projet chargé) — hub de configuration
 
 Le panneau Projet, quand un projet est chargé, est un hub de configuration. Il **ne contient plus de source control** (déplacé dans le panneau Version).
 
@@ -1513,7 +1404,7 @@ Le panneau Projet, quand un projet est chargé, est un hub de configuration. Il 
 - Mis à jour via `api.app.setTitle(...)` dans un `useEffect` sur `project?.name` / `project?.localPath`
 - `ProjectPanel` est l'unique responsable du titre — `VersionPanel` ne l'appelle pas
 
-### 19.6b Panneau — Version
+### 19.8b Panneau — Version
 
 Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Source Control de VS Code.
 
@@ -1625,7 +1516,7 @@ Si on est sur la branche d'intégration (main) :
 |---------|-----------|--------|
 | `sync:checkout-commit` | `repoPath: string, sha: string` | `void` |
 
-### 19.7 Panneau — Produit
+### 19.9 Panneau — Produit
 
 Tabs `[Exigences | Tests | Campagnes]` directement sous le header. Contenu piloté par le schema produit (niveaux et types définis dans `.polenta/schema.yaml`).
 
@@ -1664,7 +1555,7 @@ Tabs `[Exigences | Tests | Campagnes]` directement sous le header. Contenu pilot
 | ✗ | Dernier run = failed |
 | ○ | Jamais exécuté |
 
-### 19.7.1 Route `/req/new` — Création d'exigence
+### 19.9.1 Route `/req/new` — Création d'exigence
 
 Search params : `{ repoPath, projectId, component?, level? }`
 
@@ -1681,7 +1572,7 @@ Appel : `api.requirements.create(repoPath, { type, title, parentId, fields })`
 
 Après succès : `navigate({ to: '/req/$reqId', params: { reqId: result.id }, search: { repoPath, projectId, component, level } })`
 
-### 19.7.2 Route `/req/$reqId` — Détail/édition d'une exigence
+### 19.9.2 Route `/req/$reqId` — Détail/édition d'une exigence
 
 Search params : `{ repoPath, projectId, component?, level? }`
 
@@ -1690,7 +1581,7 @@ Champs pré-remplis et éditables inline. Boutons :
 - **Transitions** : `draft` → review → approved → obsolete via `api.requirements.transition()`
 - Si `component` présent dans les search params → champ en lecture seule si `readonly: true` dans `schema.components`
 
-### 19.8 Panneau — Composants
+### 19.10 Panneau — Composants
 
 Deux sélecteurs sur la même ligne, puis tabs identiques au panel Produit.
 
@@ -1711,7 +1602,7 @@ Deux sélecteurs sur la même ligne, puis tabs identiques au panel Produit.
 - Tabs, dot statut, icônes résultat : identiques au panel Produit
 - `[+]` désactivé si le composant est `readonly: true`
 
-### 19.8.1 Route `/test/new` — Création de cas de test
+### 19.10.1 Route `/test/new` — Création de cas de test
 
 Search params : `{ repoPath, projectId, component?, level? }`
 
@@ -1726,13 +1617,13 @@ Search params : `{ repoPath, projectId, component?, level? }`
 
 Appel : `api.tests.create(repoPath, { title, type, preconditions, steps, postconditions, fields })`
 
-### 19.8.2 Route `/test/$testId` — Détail/édition d'un cas de test
+### 19.10.2 Route `/test/$testId` — Détail/édition d'un cas de test
 
 Search params : `{ repoPath, projectId, component?, level? }`
 
 Champs pré-remplis et éditables. Bouton **Sauvegarder** : `api.tests.update(...)`. Section **Historique des runs** sous le formulaire.
 
-### 19.8.3 Route `/campaign/new` — Création d'une campagne
+### 19.10.3 Route `/campaign/new` — Création d'une campagne
 
 Search params : `{ repoPath, projectId, component?, level? }`
 
@@ -1745,30 +1636,29 @@ Search params : `{ repoPath, projectId, component?, level? }`
 
 Appel : `api.campaigns.create(repoPath, { title, description, baselineRef, testCaseIds, level, component })`
 
-### 19.8.4 Route `/campaign/$campaignId` — Suivi d'une campagne
+### 19.10.4 Route `/campaign/$campaignId` — Suivi d'une campagne
 
 Affiche les cas de test avec leur statut courant dans la campagne (pending / passed / failed / blocked / skipped). Permet d'exécuter chaque test directement depuis la campagne.
 
-### 19.9 Page "Nouvelle branche" (`/branch/new`)
+### 19.11 Création de branche — pas de route dédiée (T130)
 
-Route déclenchée par le bouton `+ Nouvelle branche…` dans le panneau Version.
-
-**Search params attendus :** `repoPath` + `projectId`.
+**Il n'existe pas de route `/branch/new`.** La création de branche est inline dans
+`BranchCombobox.tsx` (panneau Version, sidebar) :
 
 **Champ :**
 - `name` : nom de la branche (validé : pas d'espaces, pas de `..`, caractères git autorisés)
 - Suggestion de format affichée : `feat/…`, `fix/…`, `jira/PROJ-123-…`
 
 **Comportement :**
-- `api.branches.create(repoPath, name)` → crée et checkout la branche
-- Après succès : `navigate({ to: '/project/$id', params: { id: projectId } })` — NE PAS naviguer vers `/`
+- `api.sync.createBranch(repoPath, name)` (channel `sync:create-branch`, pas `branches:create` — voir
+  §8/§11.2) → crée et checkout la branche, reste sur la vue courante (pas de navigation de route)
 - **Ne pas utiliser `window.confirm()`** — tout état de confirmation se gère via un `useState` React inline
 
 **Bouton "Merger" dans le panneau Version :**
 - Premier clic : confirmation inline — **pas de `window.confirm()`**
-- Oui → `api.branches.merge(repoPath, currentBranch)` → invalide les queries → navigue vers `/project/$id`
+- Oui → `api.sync.merge(repoPath, currentBranch)` (channel `sync:merge`) → invalide les queries
 
-### 19.10 Zone principale
+### 19.12 Zone principale
 
 Affiche le détail de l'élément sélectionné dans la sidebar. Par défaut (rien de sélectionné) : vide ou message d'accueil.
 
@@ -1779,7 +1669,7 @@ Affiche le détail de l'élément sélectionné dans la sidebar. Par défaut (ri
 | Test | Détail du test + historique des runs |
 | Commit (historique) | Diff du commit |
 
-### 19.11 Routing avec le nouveau layout
+### 19.13 Routing avec le nouveau layout
 
 Le layout racine (`__root.tsx`) adopte la structure sidebar + main. La route `/login` reste plein écran (sans sidebar).
 
@@ -1789,7 +1679,7 @@ Le layout racine (`__root.tsx`) adopte la structure sidebar + main. La route `/l
 └── (avec sidebar)
     ├── /               → panneau Projet actif par défaut
     ├── /project/$id    → panneau Projet actif, currentProjectId lu depuis params
-    ├── /branch/new     → panneau Version actif, projectId depuis search param
+    ├── (pas de /branch/new — création de branche inline dans BranchCombobox, voir §19.11)
     ├── /schema         → panneau Projet actif, projectId depuis search param
     ├── /graph          → panneau Version actif, projectId depuis search param
     ├── /diff           → panneau Version actif, projectId + filepath depuis search param
@@ -1828,7 +1718,7 @@ Déduction du panel actif depuis `pathname` + search params :
 - `/project/*`, `/schema` → `'project'`
 - Sinon → `'project'`
 
-### 19.12 Nouveaux channels IPC nécessaires
+### 19.14 Nouveaux channels IPC nécessaires
 
 | Channel | Paramètres | Retour |
 |---------|-----------|--------|
@@ -1856,7 +1746,7 @@ Déduction du panel actif depuis `pathname` + search params :
 | `campaigns:update-run` | `repoPath: string, campaignId: string, testCaseId: string, status: TestRunStatus` | `TestCampaign` |
 | `campaigns:close` | `repoPath: string, id: string, status: 'completed' \| 'abandoned'` | `TestCampaign` |
 
-### 19.13 Barre de titre des vues (`ViewHeader`) et en-tête des panneaux latéraux (T92)
+### 19.15 Barre de titre des vues (`ViewHeader`) et en-tête des panneaux latéraux (T92)
 
 Toutes les vues principales (routes + `SystemView`) partagent un unique composant d'en-tête,
 `components/layout/ViewHeader.tsx`, plutôt que de redéfinir chacune leur propre `<h1>` :
@@ -1897,365 +1787,202 @@ du panneau tel qu'affiché dans `ActivityBar` (Projet, Version, Système, Suivi,
 Compte, Recherche). Seul ce bandeau de titre est concerné — les combobox/filtres/listes sous le
 header gardent leur propre padding.
 
+### 19.16 Système de classes de boutons (`index.css`, T115)
+
+Tous les boutons du renderer utilisent l'une des classes suivantes (`@layer components`,
+`apps/desktop/src/renderer/index.css`) — jamais une redéfinition Tailwind inline dupliquant l'une
+d'elles :
+
+- **3 couleurs sémantiques** : `.btn-primary` (action principale, fond `--prim`),
+  `.btn-secondary` (action secondaire, bordure `edge`), `.btn-danger` (action destructive/risque
+  de perte de données — **plein rouge** `bg-red-600`, volontairement pas de style outline : la
+  couleur seule doit rester reconnaissable quel que soit le contexte ou la taille).
+- **2 tailles par couleur** : suffixe `-sm` pour la variante compacte (`px-3 py-1.5 text-xs`,
+  ex. `.btn-primary-sm`) vs. la taille standard (`px-4 py-2 text-sm`, ex. `.btn-primary`). Choix
+  standard/compact dicté par le contexte, pas par préférence : compact dans le slot `actions` de
+  `ViewHeader` (§19.15), dans un popover ancré (largeur type `w-96`), ou en ligne dans une
+  liste/tableau dense ; standard en pied de modale pleine largeur ou sur une page de formulaire
+  dédiée. Le bouton "Publier" (`ModificationControl.tsx`) est le seul site à ajouter `shadow` en
+  plus de `.btn-primary-sm` — emphase réservée au CTA le plus important du header, pas une
+  propriété générale du profil compact.
+- **`.btn-icon`** : bouton icône seule (undo/redo, ajouter une ligne, toggle…), sans couleur de
+  texte par défaut — l'appelant ajoute `text-ink-3 hover:text-ink` (neutre) ou `text-prim`
+  (accent, ex. actions "ajouter").
+- **`.btn-close`** : bouton "×" de fermeture d'en-tête de modale.
+- **`.btn-sm`** : classe neutre préexistante (`px-2 py-1 text-xs`), plus compacte encore que les
+  variantes `-sm` ci-dessus — conservée telle quelle pour ses usages existants
+  (`SearchPanel.tsx`, `VersionRepoFolder.tsx`) ; les nouveaux boutons secondaires compacts doivent
+  utiliser `.btn-secondary-sm`, pas `.btn-sm`.
+
+Hors de ce système (volontairement, cf. `specs/T115.md` Hors scope) : badges de statut non
+cliquables (`rounded-full` coloré), éléments de menu déroulant/contextuel à action discrète et
+lignes de sélection de combobox/liste (ex. `AccountMenu.tsx`, `GitRefCombobox.tsx`,
+`ExcelView.tsx` menu de tri) — ces derniers restent en Tailwind inline, non harmonisés par T115.
+
 ---
 
 ## 20. Schéma de projet (`.polenta/schema.yaml`)
+
+**T130 : cette section (20.1-20.7, écrite le 2026-06-12) décrivait un modèle de données
+entièrement remplacé depuis** — `requirementTypes`/`testTypes` plats, `ComponentDefinition` avec
+`url`/`branch`/`readonly` généraient un `.gitmodules` (aucune occurrence de `.gitmodules` dans le
+code actuel — `grep -r gitmodules` → 0 résultat). Le modèle réel est celui documenté à jour dans
+[SPEC-TEMPLATES.md](SPEC-TEMPLATES.md) §2-4 : `SystemNode` (imbrication `children` à profondeur
+illimitée, `roles`/`implements` portés par le nœud), `ObjectTypeDefinition` (`category: requirement
+| test | campaign`), `LinkTypeDefinition` (`sourceRefs`/`targetRefs`), `ProjectPreferences`. Les
+composants en repo séparé sont découverts via `polenta-repo.yaml` dans un workspace plat (T69, voir
+§22), pas via des submodules Git déclarés dans le schéma.
 
 Le schéma définit les types d'items, leurs champs personnalisés et les liens possibles entre eux. Il est **versionné dans le repo** à `.polenta/schema.yaml` — chaque branche peut avoir son propre schéma.
 
 ### 20.1 Format du fichier
 
+Voir [SPEC-TEMPLATES.md](SPEC-TEMPLATES.md) §2-4 pour la référence à jour et détaillée (format
+complet, imbrication de composants locaux, interfaces `roles`/`implements`, sens obligatoire d'un
+linkType de couverture). Extrait minimal :
+
 ```yaml
 version: 1
-
-requirementTypes:
-  - name: functional           # valeur stockée dans Requirement.type
-    label: "Fonctionnel"       # affiché dans l'UI
-    prefix: FR                 # préfixe des IDs (ex: FR-0001)
-    fields:
-      - name: domain
-        label: Domaine
-        type: enum
-        values: [SYS, SW, HW, MECA, BAT, PROD]
-        required: true
-      - name: priority
-        label: Priorité
-        type: enum
-        values: [high, medium, low]
-        default: medium
-      - name: statement
-        label: Énoncé
-        type: textarea
-        placeholder: "WHEN ... THE system SHALL ..."
-      - name: justification
-        label: Justification
-        type: textarea
-      - name: acceptance_criteria
-        label: "Critères d'acceptance"
-        type: textarea
-      - name: notes
-        label: Notes
-        type: textarea
-    statuses:
-      - { name: draft,    label: Brouillon }
-      - { name: review,   label: En review }
-      - { name: approved, label: Approuvé,  isApproval: true }
-      - { name: obsolete, label: Obsolète }
-
-  - name: safety
-    label: "Sécurité"
-    prefix: SR
-    fields:
-      - { name: domain,    label: Domaine,   type: enum, values: [SYS, SW, HW, MECA, BAT, PROD], required: true }
-      - { name: hazard,    label: Hazard,    type: text, required: true }
-      - { name: asil,      label: ASIL,      type: enum, values: [QM, A, B, C, D], required: true }
-      - { name: statement, label: Énoncé,    type: textarea }
-    statuses:
-      - { name: draft,    label: Brouillon }
-      - { name: review,   label: En review }
-      - { name: approved, label: Approuvé,  isApproval: true }
-      - { name: obsolete, label: Obsolète }
-
-testTypes:
-  - name: manual
-    label: "Manuel"
-    prefix: TEST
-    fields:
-      - { name: domain, label: Domaine, type: enum, values: [SYS, SW, HW, MECA, BAT, PROD] }
-
-  - name: automated
-    label: "Automatisé"
-    prefix: TEST
-    fields:
-      - { name: domain,       label: Domaine,          type: enum, values: [SYS, SW, HW, MECA, BAT, PROD] }
-      - { name: script_path,  label: "Chemin script",  type: text }
-
+preferences:
+  autoPropagatePin: false
+nodes:
+  - name: root
+    label: Produit
+    readonly: false
+    objectTypes:
+      - name: exigence-systeme
+        label: Exigence Système
+        prefix: SYS
+        category: requirement   # requirement | test | campaign
+        fields:
+          - { name: statement, label: Énoncé, type: richtext, required: true, validator: EARS }
+          - { name: priority, label: Priorité, type: enum, values: [high, medium, low], required: true }
+        statuses:
+          - { name: draft, label: Brouillon }
+          - { name: approved, label: Approuvé, isApproval: true }
+    children: []               # composants locaux imbriqués (T123), profondeur illimitée
 linkTypes:
-  - name: implements
-    label: implémente
-    sourceTypes: [functional, safety]
-    targetTypes: [functional, safety]
-  - name: verifies
-    label: vérifie
-    sourceCategory: test        # tous les types de tests
-    targetCategory: requirement # toutes les exigences
-  - name: derives_from
-    label: dérive de
-    sourceTypes: [functional, safety]
-    targetTypes: [functional, safety]
-
-# Niveaux — organisent les exigences et tests en couches d'abstraction
-# Pilotent le sélecteur [niveau▾] dans le panel Composants
-levels:
-  - name: functional
-    label: "Fonctionnel"
-    requirementTypes: [functional, safety]   # noms de requirementTypes ci-dessus
-    testTypes: [manual, automated]
-  - name: hw
-    label: "HW"
-    requirementTypes: [hw_requirement]
-    testTypes: [hw_test]
-  - name: sw
-    label: "SW"
-    requirementTypes: [sw_requirement]
-    testTypes: [sw_test]
-
-# Composants réutilisables — source de vérité pour la génération de .gitmodules
-components:
-  - name: motor-control             # = nom du dossier dans components/ ET préfixe children::
-    label: "Motorisation"
-    description: "Driver moteur brushless + commande vitesse"
-    domain: HW
-    url: https://github.com/acme/comp-motor-control
-    branch: main
-    readonly: true                  # non modifiable depuis ce repo produit
-
-  - name: bms
-    label: "BMS"
-    description: "Battery Management System"
-    domain: BAT
-    url: https://github.com/acme/comp-bms
-    branch: main
-    readonly: true
+  - name: verified-by
+    labelSourceToTarget: "vérifie"
+    labelTargetToSource: "est vérifiée par"
+    sourceRefs: [test]
+    targetRefs: [requirement]
 ```
 
-**`.gitmodules` est un fichier généré** depuis la section `components` — il ne doit pas être édité manuellement :
+Il n'y a **pas** de `requirementTypes`/`testTypes`/`components`/`levels` au niveau racine, et
+**aucun `.gitmodules` généré** — confirmé par lecture de code (`grep -r gitmodules` sur tout le
+repo → 0 résultat). Les composants en repo séparé sont déclarés dans `polenta-repo.yaml`, pas dans
+`schema.yaml` (voir §22).
 
-```ini
-# .gitmodules — GÉNÉRÉ par Polenta (schema:save), ne pas éditer manuellement
-[submodule "components/motor-control"]
-	path   = components/motor-control
-	url    = https://github.com/acme/comp-motor-control
-	branch = main
-
-[submodule "components/bms"]
-	path   = components/bms
-	url    = https://github.com/acme/comp-bms
-	branch = main
-```
-
-### 20.2 Types TypeScript
-
-#### `packages/types/src/schema.ts` — Schéma simplifié (desktop)
-
-Utilisé par `SchemaService` et l'éditeur de schéma. Stocké dans `.polenta/schema.yaml`.
+### 20.2 Types TypeScript (`packages/types/src/schema.ts`)
 
 ```typescript
-export type SchemaFieldType = 'text' | 'textarea' | 'richtext' | 'number' | 'enum' | 'boolean' | 'date'
+export type SchemaFieldType =
+  | 'text' | 'textarea' | 'number' | 'enum' | 'multi_enum' | 'boolean'
+  | 'date' | 'datetime' | 'richtext' | 'user' | 'drawio'
 
 export interface SchemaField {
   name: string
   label?: string
   type: SchemaFieldType
-  values?: string[]        // enum uniquement
+  values?: string[]          // enum / multi_enum uniquement
   required?: boolean
   default?: unknown
   placeholder?: string
+  validator?: string         // "EARS" | "regex:<pattern>"
 }
 
 export interface SchemaStatus {
   name: string
   label?: string
-  isApproval?: boolean     // true = incrémenter currentVersion
+  color?: string
+  isApproval?: boolean
+  isTerminal?: boolean       // masque l'objet des listes par défaut (ex: obsolete)
 }
 
-export interface RequirementTypeDefinition {
-  name: string             // valeur stockée dans Requirement.type
+export type ObjectCategory = 'requirement' | 'test' | 'campaign'
+
+export interface ObjectTypeDefinition {
+  name: string
   label?: string
-  prefix?: string          // préfixe ID (ex: "FR")
+  color?: string
+  prefix?: string            // unique sur l'ensemble du projet, tous nœuds confondus
+  category: ObjectCategory
   fields: SchemaField[]
   statuses?: SchemaStatus[]
 }
 
-export interface TestTypeDefinition {
+// Composant du système : local (vit dans le schema.yaml courant) ou avec repo séparé
+// (déclaré dans polenta-repo.yaml, voir §22) — mêmes capacités dans les deux cas.
+export interface SystemNode {
   name: string
-  label?: string
-  prefix?: string
-  fields: SchemaField[]
+  label: string
+  description?: string
+  readonly: boolean
+  objectTypes?: ObjectTypeDefinition[]
+  children?: SystemNode[]         // composants locaux imbriqués, profondeur illimitée (T123)
+  roles?: RoleDefinition[]        // ce composant expose une interface (T123)
+  implements?: ImplementsDeclaration[]  // interfaces implémentées par ce composant (T123)
 }
+
+export interface RoleDefinition { name: string; label?: string }
+export interface ImplementsDeclaration { interface: string; roles: string[] }
 
 export interface LinkTypeDefinition {
   name: string
-  label?: string
-  sourceTypes?: string[]
-  targetTypes?: string[]
-  sourceCategory?: 'requirement' | 'test'
-  targetCategory?: 'requirement' | 'test'
+  labelSourceToTarget: string
+  labelTargetToSource: string
+  sourceRefs?: string[]      // catégorie ("requirement"|"test"|"campaign") ou "nœud::type"
+  targetRefs?: string[]
 }
 
-export interface LevelDefinition {
-  name: string                  // ex: "functional", "hw", "sw"
-  label: string
-  requirementTypes: string[]    // noms de RequirementTypeDefinition filtrés pour ce niveau
-  testTypes: string[]
-}
-```
-
-#### `packages/types/src/config.ts` — Modèle avancé (cible future)
-
-Modèle plus riche avec transitions, rôles, validateurs — base pour les sprints suivants.
-**Non utilisé par le desktop actuellement** mais posé comme cible d'évolution.
-
-```typescript
-export type FieldType =
-  | 'TEXT' | 'RICHTEXT' | 'ENUM' | 'MULTI_ENUM' | 'DRAWIO'
-  | 'NUMBER' | 'DATE' | 'DATETIME' | 'BOOLEAN' | 'USER'
-
-export interface FieldDefinition {
-  id: string
-  label: string
-  type: FieldType
-  required: boolean
-  readOnly: boolean
-  order: number
-  triggerVersionComment: boolean
-  validator?: string           // "EARS" | "regex:<pattern>"
-  options?: EnumOption[]       // ENUM / MULTI_ENUM
-  visibleInList: boolean
-  visibleInDetail: boolean
-  // + params type-spécifiques : maxLength, min, max, unit, decimals…
-}
-
-export interface StatusDefinition {
-  id: string; label: string; color: string
-  isApproved: boolean; isArchived: boolean; isInitial: boolean
-}
-
-export interface TransitionDefinition {
-  from: string | '*'; to: string; label: string
-  requiredRoles: string[]
-  requiresComment: boolean
-  requiresReview: boolean
-}
-
-export interface RequirementTypeConfig {
-  id: string; name: string; prefix: string; color: string
-  level: number              // profondeur hiérarchique
-  parentTypes: string[]
-  fields: FieldDefinition[]
-  statuses: StatusDefinition[]
-  transitions: TransitionDefinition[]
-}
-
-export interface ProjectConfig {
-  requirementTypes: RequirementTypeConfig[]
-}
-```
-
-> **Migration prévue :** à terme, `ProjectSchema` (schema.ts) migrera vers `ProjectConfig` (config.ts) pour bénéficier des transitions, des rôles et des validateurs. Les deux coexistent pendant la transition.
-
-#### `packages/types/src/schema.ts` — suite
-
-```typescript
-export interface ComponentDefinition {
-  name: string          // = nom du dossier dans components/ ET préfixe children::
-  label: string
-  description?: string
-  domain: string        // domaine principal (HW, SW, BAT…)
-  url: string           // URL du repo git du composant
-  branch?: string       // branche par défaut (défaut: "main")
-  readonly: boolean     // true = pas d'écriture depuis ce repo produit
+export interface ProjectPreferences {
+  autoPropagatePin?: boolean  // propagation auto du pin sous-repo → parent au commit
 }
 
 export interface ProjectSchema {
   version: number
-  requirementTypes: RequirementTypeDefinition[]
-  testTypes: TestTypeDefinition[]
+  nodes: SystemNode[]
   linkTypes: LinkTypeDefinition[]
-  levels: LevelDefinition[]          // vide pour un schema produit sans niveaux
-  components: ComponentDefinition[]  // vide si projet sans composants réutilisables
-}
-
-// ── Campagnes de test ─────────────────────────────────────────────────────────
-
-export type CampaignStatus = 'planned' | 'in-progress' | 'completed' | 'abandoned'
-export type TestRunStatus = 'pending' | 'passed' | 'failed' | 'blocked' | 'skipped'
-
-export interface TestCampaign {
-  id: string                    // CAMP-0001
-  title: string
-  description?: string
-  level?: string                // nom du niveau (functional | hw | sw) — absent = produit
-  component?: string            // nom du composant — absent = campagne produit
-  baselineRef?: string          // tag git ou SHA épinglé
-  status: CampaignStatus
-  testCaseIds: string[]         // cas de test inclus dans la campagne
-  runs: CampaignTestRun[]
-  createdAt: string
-  completedAt?: string | null
-}
-
-export interface CampaignTestRun {
-  testCaseId: string
-  status: TestRunStatus
-  runId?: string                // référence vers le TestRun si exécuté
-  executedAt?: string
-  executedBy?: string
+  roles?: RoleDefinition[]              // @deprecated T123 — miroir de nodes[root].roles
+  implements?: ImplementsDeclaration[]  // @deprecated T123 — miroir de nodes[root].implements
+  preferences?: ProjectPreferences
 }
 ```
+
+Il n'existe **pas** de `RequirementTypeDefinition`/`TestTypeDefinition`/`ComponentDefinition`/
+`LevelDefinition` — remplacés par `ObjectTypeDefinition`/`SystemNode` ci-dessus.
+
+**`packages/types/src/config.ts` n'est pas une cible future.** Son propre en-tête dit :
+`// SUPERSEDED — remplacé par ProjectSchema dans schema.ts. À supprimer lors de l'implémentation
+une fois les consommateurs migrés.` — c'est du code mort en attente de suppression, pas un modèle
+vers lequel `schema.ts` migrerait. Aucun code ne consomme `ProjectConfig`/`FieldDefinition`/
+`TransitionDefinition` aujourd'hui.
+
+Les types de campagne (`TestCampaign`, `CampaignTestRun`, `CampaignStatus`, `TestRunStatus`) vivent
+dans `packages/types/src/campaign.ts`, pas dans `schema.ts` — voir `SPEC-TESTS.md` §4 pour leur
+format à jour (différent de l'exemple `CAMP-0001`/`testCaseIds` ci-avant : voir les écarts déjà
+listés dans `SPEC-AUDIT.md`).
 
 ### 20.3 SchemaService (`apps/desktop/src/main/services/schema.service.ts`)
 
-- Lit `.polenta/schema.yaml` via `fs.readFile` (working tree direct, pas git)
-- Parse avec `js-yaml` (`yaml.load`)
-- Si fichier absent ou invalide → retourne le **schéma par défaut** (hard-codé en TypeScript, reproduit le comportement actuel avec types `functional`, `performance`, `safety`, `interface`, `constraint` / `manual`, `automated`, `semi-automated`)
-- Résultat mis en cache par `repoPath` (invalidé si le fichier change — via RepoWatcher optionnellement)
-
-```typescript
-export class SchemaService {
-  private cache = new Map<string, ProjectSchema>()
-
-  async get(repoPath: string): Promise<ProjectSchema> {
-    if (this.cache.has(repoPath)) return this.cache.get(repoPath)!
-    const schema = await this.readFromDisk(repoPath)
-    this.cache.set(repoPath, schema)
-    return schema
-  }
-
-  async save(repoPath: string, schema: ProjectSchema): Promise<void> {
-    const dir = path.join(repoPath, '.polenta')
-    await fs.mkdir(dir, { recursive: true })
-    await fs.writeFile(path.join(dir, 'schema.yaml'), yaml.dump(schema, { lineWidth: 120 }), 'utf-8')
-    this.cache.set(repoPath, schema)
-
-    // Régénère .gitmodules depuis schema.components
-    await this.generateGitmodules(repoPath, schema.components ?? [])
-  }
-
-  invalidate(repoPath: string) { this.cache.delete(repoPath) }
-
-  private async readFromDisk(repoPath: string): Promise<ProjectSchema> {
-    try {
-      const raw = await fs.readFile(path.join(repoPath, '.polenta', 'schema.yaml'), 'utf-8')
-      return yaml.load(raw) as ProjectSchema
-    } catch {
-      return DEFAULT_SCHEMA
-    }
-  }
-
-  /**
-   * Génère .gitmodules depuis schema.components.
-   * .gitmodules est un artefact dérivé — ne jamais l'éditer manuellement.
-   */
-  private async generateGitmodules(repoPath: string, components: ComponentDefinition[]): Promise<void> {
-    if (components.length === 0) return
-
-    const lines = [
-      '# GÉNÉRÉ par Polenta (schema:save) — ne pas éditer manuellement',
-      ...components.flatMap(c => [
-        `[submodule "components/${c.name}"]`,
-        `\tpath   = components/${c.name}`,
-        `\turl    = ${c.url}`,
-        `\tbranch = ${c.branch ?? 'main'}`,
-        '',
-      ]),
-    ]
-    await fs.writeFile(path.join(repoPath, '.gitmodules'), lines.join('\n'), 'utf-8')
-  }
-}
-```
-
-**Schéma par défaut** : reproduit exactement les types actuels hardcodés (`functional`, `safety`, `performance`, `interface`, `constraint`, `manual`, `automated`, `semi-automated`) avec les champs `domain`, `priority`, `statement`, `justification`, `acceptance_criteria`, `notes`. `components: []` par défaut.
+- Lit/écrit `.polenta/schema.yaml` via `fs`/`fs/promises` (working tree direct, pas git), parse
+  avec `js-yaml`.
+- Schéma par défaut si fichier absent/invalide : `{ version: 1, nodes: [{ name: 'root', label:
+  'Produit', readonly: false, objectTypes: [] }], linkTypes: [] }` — un seul nœud vide, pas de
+  types hardcodés `functional`/`safety`/`performance`/`interface`/`constraint`.
+- Résultat mis en cache par `repoPath` ; `save()` met à jour le cache directement (pas de relecture
+  disque).
+- **Pas de génération de `.gitmodules`** — `save()` se contente d'écrire le YAML et de maintenir un
+  miroir `roles`/`implements` niveau racine ↔ `nodes[root]` (compat T123, voir code).
+- Mutations ciblées avec validation avant écriture (`SchemaValidationError`, jamais d'écriture si un
+  invariant est violé) : `addNode` (avec `parentName` pour imbriquer, T123), `addObjectType`,
+  `moveObjectType` (T135, drag & drop cross-nœud), `addField`, `addStatus`, `addLinkType`. Une file
+  de promesses par `repoPath` sérialise les mutations concurrentes (agent MCP qui enchaîne
+  plusieurs `add_*` sans attendre chaque réponse).
+- `resolveComponentRepoPath(repoPath, objectTypeRef, workspaceDir?)` résout le repo réel d'un
+  composant en repo séparé via le cache `WorkspaceTreeService` (T69) — `null` si `objectTypeRef` ne
+  référence pas de composant externe (mono-repo ou nœud `root`).
 
 ### 20.4 IPC channels
 
@@ -2263,23 +1990,31 @@ export class SchemaService {
 |---------|-----------|--------|
 | `schema:get` | `repoPath: string` | `ProjectSchema` |
 | `schema:save` | `repoPath: string, schema: ProjectSchema` | `void` |
+| `schema:move-element` | déplacement d'un `ObjectTypeDefinition` entre nœuds (T135) | `ProjectSchema` |
 
-`schema:save` crée `.polenta/` si absent, écrit le YAML, met à jour le cache, **et régénère `.gitmodules`** depuis `schema.components`. C'est le seul endroit où `.gitmodules` est écrit.
+`schema:save` ne régénère **aucun** fichier dérivé de type `.gitmodules` — c'est le seul écart avec
+la version précédente de cette section, à ne pas réintroduire dans une future correction.
 
-`ApiClient.schema` : `get(repoPath): Promise<ProjectSchema>` + `save(repoPath, schema): Promise<void>`
+`ApiClient.schema` : `get(repoPath)` + `save(repoPath, schema)` + `moveElement(...)`.
 
 ### 20.5 Formulaires dynamiques (renderer)
 
-**Hook `useProjectSchema(repoPath)`** : appelle `api.schema.get(repoPath)`, mis en cache par TanStack Query (staleTime: `Infinity` — le schéma ne change pas pendant une session).
+**Hook `useProjectSchema(repoPath)`** : appelle `api.schema.get(repoPath)`, mis en cache par TanStack Query.
 
-**Composant `DynamicField`** : render un contrôle selon `FieldDefinition.type` :
+**Composant `DynamicField`** : render un contrôle selon `SchemaField.type` (T130 : `SchemaFieldType`
+réel a 11 valeurs, pas 7) :
 - `richtext` → `<RichTextField>` (TipTap — voir §21)
 - `text` → `<input type="text">`
 - `textarea` → `<textarea>`
 - `enum` → `<select>` avec `<option>` pour chaque valeur
+- `multi_enum` → cases à cocher (`MultiEnumCheckboxes`), source ses options depuis le catalogue de
+  rôles du composant si le champ s'appelle `roles` et que ce catalogue est non vide (T110/T126)
 - `number` → `<input type="number">`
 - `boolean` → `<input type="checkbox">`
 - `date` → `<input type="date">`
+- `datetime` → équivalent avec heure
+- `user` → sélecteur d'utilisateur
+- `drawio` → intégration diagramme (voir §21.7)
 
 ```tsx
 <DynamicField
@@ -2289,11 +2024,31 @@ export class SchemaService {
 />
 ```
 
-**Routes req.new / req.$reqId / test.new / test.$testId** : chargent le schéma puis rendent dynamiquement les champs selon le type d'item sélectionné.
+**Routes req.new / req.$reqId / test.new / test.$testId** : chargent le schéma puis rendent dynamiquement les champs selon l'`objectTypeRef` sélectionné.
 
-**Sélection du type sur "+"** : dans `RequirementsPanel` et `TestsPanel`, le bouton `[+]` ouvre un petit dropdown listant les types disponibles depuis le schéma → navigue vers `/req/new?type=functional&...` avec le type pré-sélectionné.
+**T130 — retiré** : la section précédente affirmait un schéma par défaut avec des types
+`functional`/`performance`/`safety`/`interface`/`constraint` pré-remplis. Le schéma par défaut réel
+(`DEFAULT_SCHEMA` dans `schema.service.ts`) est `{ nodes: [{ name: 'root', objectTypes: [] }] }` —
+un seul nœud vide, aucun type pré-configuré (voir §20.3).
 
-**Schéma par défaut — champs `richtext`** : dans les types `functional` et `performance`, les champs `statement`, `justification`, `acceptance_criteria`, `notes` sont de type `richtext`. Les types `safety`, `interface`, `constraint` gardent `textarea` (énoncés plus courts, syntaxe contrainte).
+### 20.6 Éditeur de modèle — Route `/schema`
+
+**T130 : 2 onglets réels**, pas 3 (« Exigences »/« Tests »/« Liens ») :
+
+- **Onglet Structure** (`StructureTab.tsx`) — arbre des nœuds (`root` + composants locaux/en repo
+  séparé), chacun avec ses `objectTypes` (création/édition/suppression de type, champs, statuts),
+  imbrication de composants locaux à profondeur illimitée (T123), rôles/interfaces exposés
+  (`roles`/`implements`, T123), collapse/expand (T131). Voir `SPEC-TEMPLATES.md` §3-3b pour le détail
+  fonctionnel complet.
+- **Onglet Liens** (`LiensTab.tsx`) — gestion des `linkTypes` du projet.
+
+[Enregistrer] → `api.schema.save(repoPath, …)` → invalide le cache TanStack Query `['schema',
+repoPath]`.
+
+### 20.7 Liens (UI) — implémentée, pas "sprint suivant"
+
+**T130 :** contrairement à la note précédente ("sprint ultérieur"), l'onglet **Liens** ci-dessus
+existe et permet d'ajouter/modifier/supprimer un `linkTypeDefinition` du projet.
 
 ---
 
@@ -2372,203 +2127,119 @@ Sync externe (ex: changement de type d'exigence réinitialise les champs) : `use
 
 Les exports SVG de DrawIO sont insérés comme images standards via le bouton 🖼. Aucune intégration DrawIO spécifique n'est requise — un `.svg` est une image.
 
-### 20.6 Éditeur de modèle — Route `/schema`
+## 22. Architecture multi-composants
 
-Accessible via le lien **"⚙ Modèle de données"** dans le panneau Projet (bas du panneau, avant Historique).
-
-Search params : `{ repoPath, projectId }`
-
-**Layout :** header (← Projet | titre | [Enregistrer]) + trois onglets.
-
-**Onglet Exigences :**
-- Liste de cartes repliables, une par type (`requirementTypes`)
-- Chaque carte : champs Nom (identifiant, `font-mono`), Label, Préfixe
-- Table **Champs** : colonnes Nom, Label, Type (`select` parmi `text|textarea|number|enum|boolean|date`), Valeurs enum (comma-separated, disabled si type ≠ enum), Requis (checkbox), Défaut, boutons ↑ ↓ ×
-- Table **Statuts** : colonnes Nom, Label, Approbation (checkbox `isApproval`), boutons ↑ ↓ ×
-- Bouton `× Supprimer ce type` (header carte)
-- Bouton `+ Ajouter un type d'exigence` (bas de liste)
-
-**Onglet Tests :** idem sans table Statuts
-
-**Onglet Liens :** table simple (Nom, Label, Source `select requirement|test|—`, Cible `select`, ×) + `+ Ajouter un lien`
-
-**Comportement :**
-- Modifications locales uniquement (pas d'auto-save)
-- [Enregistrer] → `api.schema.save(repoPath, editableToSchema(state))` → invalide `['schema', repoPath]` → affiche `✓ Enregistré` (2 s)
-- Les valeurs enum sont éditées comme chaîne séparée par virgules, converties en tableau à la sauvegarde
-- Nouveau type d'exigence créé avec statuts par défaut (draft, review, approved, obsolete) pré-remplis
-
-### 20.7 Liens (UI — sprint suivant)
-
-Les `linkTypes` sont définis dans le schéma dès maintenant mais l'interface de gestion des liens (ajouter/supprimer un lien entre deux items) est implémentée dans un sprint ultérieur.
-
----
-
-## 22. Architecture multi-composants — Submodules Git
+**T130 : cette section (écrite le 2026-06-12) décrivait un mécanisme de submodules Git piloté par
+`schema.yaml` qui n'existe pas dans le code actuel** — aucune occurrence de `.gitmodules` ni de
+`git.submodule.*` (isomorphic-git) dans tout le repo. Le mécanisme réel, en place depuis T69
+(workspace plat) et étendu par T123/T131/T135 (imbrication de composants locaux), est décrit
+en détail et à jour dans [SPEC-TEMPLATES.md](SPEC-TEMPLATES.md) §3-3b — cette section n'en donne
+qu'un résumé technique côté implémentation.
 
 ### 22.1 Principe
 
-Un produit est composé de composants réutilisables (ex : `motor-control`, `bms`, `filtration`). Chaque composant vit dans son propre repo Git, référencé comme submodule dans le repo produit.
+Un produit peut avoir deux formes de composant, avec **les mêmes capacités** (`objectTypes`,
+imbrication, interfaces `roles`/`implements`) :
+- **Composant local** — un `SystemNode` supplémentaire dans le `schema.yaml` du repo courant,
+  versionné avec `root` (même historique, même commits). Peut être imbriqué dans un autre
+  composant local via `children[]`, **profondeur illimitée** (T123) — pas de limite à un niveau.
+- **Composant en repo séparé** — déclaré dans `polenta-repo.yaml` à la racine du repo qui en
+  dépend, résolu dans un **workspace plat** (T69) : un dossier sur disque contenant le repo racine
+  et chaque dépendance clonée à côté, décrit par `<workspace>/.polenta/workspace.yaml`
+  (`PolentaWorkspaceConfig`) et mis en cache dans `<workspace>/.polenta/tree.cache.yaml`
+  (`WorkspaceTree`).
 
-**Règles structurelles :**
-- **Un seul niveau de submodule** — pas de submodule dans un submodule
-- **Max ~10 composants par produit** — ordre de grandeur du nombre de cartes électroniques
-- **Les composants sont des bibliothèques** — pas de référence remontante vers le repo produit dans leurs frontmatters
-- **L'arbre de traçabilité complet vit dans le repo produit** — source de vérité unique
+```typescript
+// packages/types/src/polenta-repo.ts — polenta-repo.yaml (seuls les repos AVEC dépendances l'ont)
+export interface PolentaRepoDependency {
+  name: string          // nom de montage = nom de dossier dans le workspace
+  url: string           // URL du remote git
+  pin: string           // SHA ou tag épinglé, géré par le repo parent
+  localParent?: string  // imbrique ce montage sous un composant local du repo déclarant (T123)
+}
+export interface PolentaRepoManifest {
+  dependencies?: PolentaRepoDependency[]
+}
+```
 
-**Fichiers générés — ne jamais éditer manuellement :**
+Aucune limite de nombre de composants n'est imposée par le code (l'ancienne limite indicative
+"~10" n'a pas d'équivalent).
 
-| Fichier | Généré par | Déclencheur |
+### 22.2 Fichiers maintenus par l'application — ne jamais éditer manuellement
+
+| Fichier | Maintenu par | Déclencheur |
 |---|---|---|
-| `.gitmodules` | `SchemaService.save()` | Modification de `schema.components` |
-| `tree.yaml` | `scripts/update-tree.py` | Hook pre-commit |
+| `.polenta/trees/<nœud>/<type>.yaml` | `TreeService` | Actions dans l'UI (création/déplacement/suppression d'élément) — un fichier par (nœud, type d'objet), **pas** un `tree.yaml` unique |
+| `<workspace>/.polenta/tree.cache.yaml` | `WorkspaceTreeService` | Ouverture du workspace / `workspace:rebuild-tree` |
+| `<workspace>/.polenta/workspace.yaml` | `WorkspaceService.initWorkspace()` | Création du workspace |
 
-### 22.2 Structure d'un repo produit
+Il n'y a **pas** de `.gitmodules`, pas de `tree.yaml` unique à la racine, pas de script Python, pas
+de hook `pre-commit` — voir CLAUDE.md règle 9.
 
-```
-product-aspirateur-v1/        ← repo produit (repo Git principal)
-├── .gitmodules               ← GÉNÉRÉ depuis schema.components — ne pas éditer
-├── components/
-│   ├── motor-control/        ← submodule initialisé par Polenta
-│   ├── bms/
-│   └── filtration/
-├── requirements/
-│   └── SYS/                  ← exigences système propres au produit
-├── tests/
-│   └── SYS/
-├── tree.yaml                 ← GÉNÉRÉ par update-tree.py — ne pas éditer
-├── .polenta/
-│   └── schema.yaml           ← source de vérité (types + composants)
-└── .git/hooks/
-    └── pre-commit            ← régénère tree.yaml avant chaque commit
-```
+> **`tree.cache.yaml` ne doit jamais être versionné (T156) :** contient des chemins absolus
+> locaux à la machine et un `generatedAt` recalculé à chaque écriture (`nodes`/`logicalTree`
+> aussi, à chaque `rebuildTree()` — ajout/suppression/renommage de dépendance) — un repo qui le
+> suit apparaît "modifié" en permanence, bloquant la garde "aucune modification en attente"
+> utilisée par le bouton Rafraîchir (T153) et l'auto-pull (T155). `WorkspaceTreeService.writeCache()`
+> (choke point unique — cf. tableau ci-dessus) garantit maintenant qu'un `.gitignore` excluant
+> `.polenta/tree.cache.yaml` existe dans `workspaceDir` avant chaque écriture — un `.gitignore`
+> placé directement à côté du dossier `.polenta/` qu'il exclut est honoré par git quel que soit
+> l'ancêtre qui s'avère être la racine du repo (ou un no-op si `workspaceDir` n'est pas du tout
+> sous git, cas courant pour un dossier conteneur fraîchement choisi). Corrige aussi le cas
+> "adoption d'un repo existant" (`WorkspaceService.openProject`), qui n'écrivait auparavant aucun
+> `.gitignore` du tout.
 
-### 22.3 Structure d'un repo composant
+### 22.3 Références cross-composant
 
-```
-comp-motor-control/           ← repo composant autonome
-├── requirements/
-│   ├── functional/           ← REQ-MC-001, REQ-MC-002…
-│   ├── hw/                   ← REQ-MC-HW-001…
-│   └── sw/                   ← REQ-MC-SW-001…
-└── tests/
-    └── TEST-MC-001.md
-```
+Un objet référence un composant par son nom de montage via `objectTypeRef: <nœud>::<type>` (ex.
+`motor-control::exigence-fw`), et les liens entre objets (y compris cross-composant) passent par
+`ObjectLink` dans `links/links.yaml` — pas par un champ `children:`/`parents:` dans le fichier de
+l'objet (voir `SPEC-REQ-requirements.md` §5, déjà à jour).
 
-Un composant **ne contient pas** de champ `parents:` pointant vers des exigences produit — il est autonome.
+### 22.4 Arbre de traçabilité — pas de vue matérialisée globale unique
 
-### 22.4 Références cross-composant dans `children:`
+Il n'existe pas de fichier unique équivalent à l'ancien `tree.yaml` agrégeant tout l'arbre produit +
+composants. Chaque (nœud, type d'objet) a son propre fichier d'ordre d'affichage
+`.polenta/trees/<nœud>/<type>.yaml` (`TypeTree`/`TypeTreeNode`, `packages/types/src/schema.ts`),
+maintenu par l'app à chaque action UI — jamais par un script de régénération, jamais commité comme
+un artefact "généré à la volée" à committer manuellement.
 
-Quand une exigence produit (SYS) pointe vers une exigence d'un composant, elle utilise le préfixe `composant::` :
+### 22.5 Résolution des composants en repo séparé
 
-```yaml
-# requirements/SYS/SYS-001.md (dans le repo produit)
----
-id: SYS-001
-children:
-  - motor-control::REQ-MC-007   # ← préfixe = nom du dossier submodule
-  - bms::REQ-BMS-012
----
-```
+`WorkspaceTreeService` construit et met en cache le `WorkspaceTree` (nœuds aplatis + arbre logique)
+depuis `polenta-repo.yaml` de chaque repo du workspace, en résolvant les conflits en diamant (même
+URL, pins différents) via `DiamondConflict`/`MountOverride` (renommage explicite d'un montage,
+plutôt qu'un champ `version` déclaré). `SchemaService.resolveComponentRepoPath()` s'appuie sur ce
+cache pour retrouver le repo réel derrière un `objectTypeRef` cross-composant.
 
-Les exigences internes à un composant utilisent des références simples (sans préfixe) pour leurs propres liens `children:`.
+`PolentaRepoService` lit/écrit `polenta-repo.yaml` ; `WorkspaceService` orchestre l'ouverture du
+workspace (clone des dépendances manquantes, détection de conflit en diamant, reconstruction de
+l'arbre) — pas d'initialisation de submodule Git (`git.submodule.init/update` n'existe nulle part
+dans le code).
 
-### 22.5 `tree.yaml` — arbre de traçabilité généré
+### 22.6 Impact sur `GitService`
 
-`tree.yaml` est une **vue matérialisée** de l'arbre complet, générée automatiquement depuis les champs `children:` de tous les frontmatters (repo produit + tous les submodules). Il est commité dans le repo produit mais jamais édité à la main.
+`listFiles()` opère uniquement sur le repo passé en `repoPath` — un composant en repo séparé est un
+repo distinct sur disque (pas un submodule Git imbriqué dans le working tree du repo parent), donc
+pas de traversée `components/<nom>/` particulière à gérer ici. Un composant en repo séparé
+`readonly: true` refuse l'écriture au niveau de `SchemaService`/`RequirementsService`/`TestsService`
+(voir `SchemaValidationError('NODE_READONLY', …)`), pas au niveau `GitService`.
 
-```yaml
-# tree.yaml — exemple
-- id: SYS-001
-  title: "Autonomie minimale"
-  repo: product
-  children:
-    - id: motor-control::REQ-MC-007
-      title: "Consommation turbo"
-      repo: motor-control
-      children: []
-    - id: bms::REQ-BMS-012
-      title: "Décharge profonde interdite"
-      repo: bms
-      children:
-        - id: bms::REQ-BMS-SW-004
-          title: "Cutoff tension < 2.8V"
-          repo: bms
-          children: []
-```
+### 22.7 Channels IPC réels
 
-**Ce que `tree.yaml` apporte :**
-- Navigation rapide sans parser tous les `.md` à la volée
-- Détection de cycles ou d'orphelins à la génération
-- Diff Git lisible sur l'évolution de l'arbre entre deux versions
-- Support de la matrice de traçabilité sans traversée multi-repo en temps réel
-
-### 22.6 Hook pre-commit — régénération automatique
-
-Un hook `pre-commit` dans le repo produit régénère `tree.yaml` avant chaque commit et l'inclut dans le commit :
-
-```bash
-#!/bin/bash
-# .git/hooks/pre-commit
-python scripts/update-tree.py   # parse tous les .md du repo + submodules
-git add tree.yaml               # inclure dans le commit courant
-```
-
-Le script `scripts/update-tree.py` :
-1. Parcourt tous les fichiers `.md` du repo produit
-2. Parcourt tous les fichiers `.md` de chaque submodule (via `components/*/`)
-3. Construit l'arbre depuis les champs `children:` des frontmatters
-4. Détecte les cycles et les références orphelines (avertissements)
-5. Écrit `tree.yaml`
-
-### 22.7 Impact sur `WorkspaceService`
-
-Lors d'un clone ou de l'ouverture d'un projet, `WorkspaceService` initialise les submodules déclarés dans `.gitmodules` (généré depuis `schema.components`) :
-
-```typescript
-// Dans WorkspaceService.cloneAndAdd() — après le clone principal :
-await git.submodule.init({ fs, dir: localPath })
-await git.submodule.update({ fs, dir: localPath })
-
-// Dans WorkspaceService.addLocalProject() — si .gitmodules existe :
-await git.submodule.update({ fs, dir: localPath })
-```
-
-`WorkspaceProject` expose les composants résolus (métadonnées schema + SHA Git courant) :
-
-```typescript
-export interface WorkspaceProject {
-  // … champs existants …
-  components: ResolvedComponent[]
-}
-
-export interface ResolvedComponent {
-  definition: ComponentDefinition  // depuis schema.components
-  localPath: string                // chemin absolu dans le working tree
-  sha: string                      // SHA épinglé dans le repo produit
-  isInitialized: boolean           // false si submodule pas encore initialisé
-}
-```
-
-### 22.8 Impact sur `GitService`
-
-`listFiles()` prend en compte les submodules : les chemins `components/<nom>/` sont traversés normalement (ils font partie du working tree une fois initialisés).
-
-`writeYaml()` ne peut écrire que dans le repo produit — les composants ne sont pas éditables directement depuis l'app (lecture seule). Toute modification d'un composant passe par le repo composant.
-
-### 22.9 Nouveaux channels IPC
-
-| Channel | Paramètres | Retour |
-|---------|-----------|--------|
-| `submodules:list` | `repoPath: string` | `ResolvedComponent[]` |
-| `submodules:status` | `repoPath: string` | `{ name: string; sha: string; isDirty: boolean }[]` |
-| `submodules:update` | `repoPath: string, name?: string` | `void` (init + update du submodule donné, ou tous) |
-
-> **Note :** l'ajout ou la suppression d'un composant passe par `schema:save` (qui régénère `.gitmodules`), suivi de `submodules:update` pour initialiser le nouveau submodule. Il n'y a pas de channel `submodules:add` séparé.
+Pas de `submodules:*`. Les channels pertinents sont `workspace:get-tree`, `workspace:rebuild-tree`,
+`workspace:set-mount-override`, `workspace:remove-repo-dir`, `workspace:rename-repo-dir`,
+`polenta-repo:get`, `polenta-repo:save`, plus `interface:compliance-matrix` / `interface:coverage` /
+`interface:needs-revalidation` (matrice de conformité par rôle, T123 — voir
+`InterfaceComplianceService`).
 
 ---
 
-## 18. Ordre d'implémentation recommandé
+## 23. Ordre d'implémentation recommandé (historique)
+
+> Plan de sprints du build initial (2026-06-12) — conservé pour l'historique, ne décrit plus l'état
+> courant du code (cf. corrections T130 dans les sections précédentes). Numéroté §23 (et non plus
+> §18) pour lever le conflit avec l'ancien §21 "Design system", renuméroté §18 à T130.
 
 ```
 Sprint 1 — Infrastructure
@@ -2648,7 +2319,7 @@ Sprint 12 — Commentaires sur reviews + migration vers ProjectConfig (voir §20
      - TransitionDefinition (from/to/requiredRoles/requiresComment/requiresReview)
      - FieldDefinition avec validator EARS, triggerVersionComment, options ENUM
 
-Sprint 11 — Panels Produit & Composants + Campagnes (voir §19.7-19.8 + §20.2)
+Sprint 11 — Panels Produit & Composants + Campagnes (voir §19.9-19.10 + §20.2)
   ① Ajouter `levels` + `TestCampaign` + `CampaignTestRun` dans `packages/types`
   ② `CampaignsService` (create, list, updateRun, close) + stockage YAML dans `campaigns/`
   ③ Handlers IPC campaigns:list/get/create/update-run/close
@@ -2658,7 +2329,7 @@ Sprint 11 — Panels Produit & Composants + Campagnes (voir §19.7-19.8 + §20.2
   ⑦ Routes `/product`, `/components` (panels par défaut)
   ⑧ Routes `/campaign/new`, `/campaign/$id` (création + suivi)
   ⑨ Passer `component?` + `level?` en search params sur `/req/*`, `/test/*`, `/campaign/*`
-  ⑩ Mise à jour déduction `activePanel` dans `AppLayout` (voir §19.11)
+  ⑩ Mise à jour déduction `activePanel` dans `AppLayout` (voir §19.13)
   ⑪ Onglet Schéma : ajouter section "Niveaux" dans l'éditeur `/schema`
 
 Sprint 10 — Architecture multi-composants (voir §22)
@@ -2678,13 +2349,13 @@ Sprint 8 — Refonte layout global VS Code  (voir §19)
   ③ Créer src/renderer/components/layout/Sidebar.tsx (dispatcher des panneaux)
   ④ Créer src/renderer/components/layout/AppLayout.tsx (activity bar + sidebar + main outlet)
   ⑤ Intégrer AppLayout dans __root.tsx (sauf route /login)
-  ⑥ Créer src/renderer/components/sidebar/AccountPanel.tsx (§19.4)
-  ⑦ Créer src/renderer/components/sidebar/ProjectPanel.tsx (§19.5 + §19.6)
+  ⑥ Créer src/renderer/components/sidebar/AccountPanel.tsx (§19.6)
+  ⑦ Créer src/renderer/components/sidebar/ProjectPanel.tsx (§19.7 + §19.8)
        — Sans projet : liste Récents + boutons Créer/Charger/Ouvrir
        — Avec projet : branche, modifications, historique, bouton Nouvelle Action
-  ⑧ Créer src/renderer/components/sidebar/RequirementsPanel.tsx (§19.7)
+  ⑧ Créer src/renderer/components/sidebar/RequirementsPanel.tsx (§19.9)
        — Arborescence groupée par domaine, dot de statut, filtre texte
-  ⑨ Créer src/renderer/components/sidebar/TestsPanel.tsx (§19.8)
+  ⑨ Créer src/renderer/components/sidebar/TestsPanel.tsx (§19.10)
        — Arborescence groupée par domaine, icône dernier résultat, filtre texte
   ⑩ Ajouter IPC handler sync:log (isomorphic-git log)
   ⑪ Ajouter sync.log() dans ApiClient + ipc-client

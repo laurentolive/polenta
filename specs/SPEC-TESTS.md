@@ -350,7 +350,6 @@ stepResults:
   - order: 1
     result: PASS
     comment: "<p>2 barres affichées, conforme.</p>"
-    attachments: []
     executedAt: "2026-06-01T09:05:00Z"
 
   - order: 2
@@ -361,13 +360,11 @@ stepResults:
       <img src="https://onedrive.live.com/embed?resid=XXX&amp;authkey=YYY" />
       <p>Hypothèse : initialisation du driver moteur trop longue en dessous de 15°C.
       Température ambiante au moment du test : 18°C.</p>
-    attachments: []
     executedAt: "2026-06-01T09:08:00Z"
 
   - order: 3
     result: NOT_EXECUTED
     comment: "<p>Test interrompu après échec étape 2. À reprendre après correction FW.</p>"
-    attachments: []
     executedAt: null
 ```
 
@@ -659,7 +656,6 @@ stepResults:
   - order: 1
     result: PASS
     comment: "<p>2 barres affichées, conforme.</p>"
-    attachments: []
     executedAt: "2026-06-01T09:05:00Z"
   - order: 2
     result: FAIL
@@ -673,7 +669,6 @@ stepResults:
   - order: 3
     result: NOT_EXECUTED
     comment: "<p>Interrompu après échec étape 2.</p>"
-    attachments: []
     executedAt: null
 notes: "<p>Test réalisé à 18°C (hors spec des 20°C ±3°C). À refaire dans les conditions nominales après correction FW.</p>"
 ```

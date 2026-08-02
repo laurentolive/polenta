@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useVersioning } from '../contexts/VersioningContext'
@@ -34,6 +35,7 @@ function editableToSchema(state: EditorState, schema: ProjectSchema): ProjectSch
 }
 
 function PreferencesPage() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { repoPath: repoPathParam, projectId } = Route.useSearch()
   const workspaceDir = projectId ? decodeProjectId(projectId) : repoPathParam
@@ -89,7 +91,7 @@ function PreferencesPage() {
   }, [isDirty, showCancelConfirm, saveMutation])
 
   if (isLoading || !state || !schema) {
-    return <div className="text-sm text-ink-3 p-4">Chargement des préférences…</div>
+    return <div className="text-sm text-ink-3 p-4">{t('preferences.loading')}</div>
   }
 
   function handleCancelConfirmed() {
@@ -104,28 +106,28 @@ function PreferencesPage() {
       )}
       <ViewHeader
         currentProjectId={projectId}
-        title={<>Préférences{isDirty && <span className="text-amber-400 ml-1">*</span>}</>}
+        title={<>{t('preferences.title')}{isDirty && <span className="text-status-warning ml-1">*</span>}</>}
         actions={
           <>
-            {saved && <span className="text-xs text-green-600 dark:text-green-400">✓ Enregistré</span>}
+            {saved && <span className="text-xs text-status-success">✓ {t('preferences.saved')}</span>}
             {saveMutation.isError && (
-              <span className="text-xs text-red-500">
-                {saveMutation.error instanceof Error ? saveMutation.error.message : 'Erreur'}
+              <span className="text-xs text-status-danger">
+                {saveMutation.error instanceof Error ? saveMutation.error.message : t('preferences.error')}
               </span>
             )}
             {isDirty && (
               <button
                 type="button"
                 onClick={() => setShowCancelConfirm(true)}
-                className="text-sm text-ink-2 hover:text-ink px-3 py-1.5 border border-edge rounded transition-colors"
+                className="btn-secondary-sm"
               >
-                Annuler
+                {t('common.cancel')}
               </button>
             )}
             {isDirty && (
               <button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
-                className="btn-primary px-4 py-1.5">
-                {saveMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                className="btn-primary-sm">
+                {saveMutation.isPending ? t('preferences.saving') : t('common.save')}
               </button>
             )}
           </>
@@ -142,10 +144,9 @@ function PreferencesPage() {
               className="mt-0.5"
             />
             <span className="text-sm text-ink">
-              Propager automatiquement le pin des sous-repos vers le repo parent lors d'un commit
-              reçu sur le sous-repo
+              {t('preferences.autoPropagateLabel')}
               <span className="block text-xs text-ink-3 mt-0.5">
-                Si décoché, la mise à jour du pin attend une approbation manuelle de l'intégrateur.
+                {t('preferences.autoPropagateHelp')}
               </span>
             </span>
           </label>

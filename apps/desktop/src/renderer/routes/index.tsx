@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { FolderOpen } from 'lucide-react'
 import { api } from '../api'
 import { encodeProjectId } from '../lib/projectId'
@@ -15,6 +16,7 @@ async function pickFolder(setter: (p: string) => void, title?: string) {
 }
 
 function HomePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [ready, setReady] = useState(false)
 
@@ -70,7 +72,7 @@ function HomePage() {
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center text-ink-3 text-sm">
-        Chargement…
+        {t('common.loading')}
       </div>
     )
   }
@@ -88,7 +90,7 @@ function HomePage() {
     try {
       const result = await api.workspace.openProject(openDir)
       if (result.status === 'not-a-workspace') {
-        setOpenError('Ce dossier n\'est ni un projet Polenta ni un repo git.')
+        setOpenError(t('home.notAWorkspace'))
         return
       }
       await goToProject(openDir)
@@ -132,64 +134,64 @@ function HomePage() {
   return (
     <div className="p-8 max-w-lg mx-auto space-y-4">
       <form onSubmit={handleOpen} className="bg-surface rounded-xl border border-edge p-4 space-y-3">
-        <h2 className="font-medium text-ink">Ouvrir un projet existant</h2>
+        <h2 className="font-medium text-ink">{t('home.openExisting')}</h2>
         <div className="flex gap-2">
           <input value={openDir} onChange={e => setOpenDir(e.target.value)}
-            placeholder="Dossier du projet" className="input-field flex-1" disabled={openLoading} />
-          <button type="button" onClick={() => pickFolder(setOpenDir, 'Sélectionner le projet')} disabled={openLoading}
-            className="btn-secondary px-3 py-2">
+            placeholder={t('home.projectFolderPlaceholder')} className="input-field flex-1" disabled={openLoading} />
+          <button type="button" onClick={() => pickFolder(setOpenDir, t('home.selectProject'))} disabled={openLoading}
+            className="btn-secondary">
             <FolderOpen size={15} />
           </button>
         </div>
         <button type="submit" disabled={openLoading || !openDir} className="btn-primary">
-          {openLoading ? 'Ouverture…' : 'Ouvrir'}
+          {openLoading ? t('home.opening') : t('home.open')}
         </button>
         {openError && (
-          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2">
+          <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
             {openError}
           </p>
         )}
       </form>
 
       <form onSubmit={handleCreateFromClone} className="bg-surface rounded-xl border border-edge p-4 space-y-3">
-        <h2 className="font-medium text-ink">Ouvrir un projet depuis un repo existant</h2>
+        <h2 className="font-medium text-ink">{t('home.openFromRepo')}</h2>
         <input value={cloneUrl} onChange={e => setCloneUrl(e.target.value)}
           placeholder="https://github.com/org/projet.git" className="input-field w-full" disabled={cloneLoading} />
         <div className="flex gap-2">
           <input value={cloneContainerDir} onChange={e => setCloneContainerDir(e.target.value)}
-            placeholder="Dossier de destination" className="input-field flex-1" disabled={cloneLoading} />
+            placeholder={t('home.destinationFolderPlaceholder')} className="input-field flex-1" disabled={cloneLoading} />
           <button type="button" onClick={() => pickFolder(setCloneContainerDir)} disabled={cloneLoading}
-            className="btn-secondary px-3 py-2">
+            className="btn-secondary">
             <FolderOpen size={15} />
           </button>
         </div>
         <button type="submit" disabled={cloneLoading || !cloneUrl || !cloneContainerDir} className="btn-primary">
-          {cloneLoading ? 'Clonage…' : 'Cloner'}
+          {cloneLoading ? t('home.cloning') : t('home.clone')}
         </button>
         {cloneError && (
-          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2">
+          <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
             {cloneError}
           </p>
         )}
       </form>
 
       <form onSubmit={handleCreateNew} className="bg-surface rounded-xl border border-edge p-4 space-y-3">
-        <h2 className="font-medium text-ink">Créer un nouveau projet</h2>
+        <h2 className="font-medium text-ink">{t('home.createNew')}</h2>
         <input value={createName} onChange={e => setCreateName(e.target.value)}
-          placeholder="Nom du projet" className="input-field w-full" disabled={createLoading} />
+          placeholder={t('home.projectNamePlaceholder')} className="input-field w-full" disabled={createLoading} />
         <div className="flex gap-2">
           <input value={createContainerDir} onChange={e => setCreateContainerDir(e.target.value)}
-            placeholder="Dossier de destination" className="input-field flex-1" disabled={createLoading} />
+            placeholder={t('home.destinationFolderPlaceholder')} className="input-field flex-1" disabled={createLoading} />
           <button type="button" onClick={() => pickFolder(setCreateContainerDir)} disabled={createLoading}
-            className="btn-secondary px-3 py-2">
+            className="btn-secondary">
             <FolderOpen size={15} />
           </button>
         </div>
         <button type="submit" disabled={createLoading || !createName || !createContainerDir} className="btn-primary">
-          {createLoading ? 'Création…' : 'Créer'}
+          {createLoading ? t('home.creating') : t('home.create')}
         </button>
         {createError && (
-          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/60 rounded px-3 py-2">
+          <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
             {createError}
           </p>
         )}

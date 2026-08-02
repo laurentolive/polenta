@@ -22,8 +22,9 @@ export class RequirementsController {
     try {
       const result = await this.service.findAll(projectId, branchId, {})
       return { ok: true, count: result.length }
-    } catch (err: any) {
-      return { ok: false, error: err?.message, stack: err?.stack?.split('\n').slice(0, 5) }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      return { ok: false, error: error.message, stack: error.stack?.split('\n').slice(0, 5) }
     }
   }
 

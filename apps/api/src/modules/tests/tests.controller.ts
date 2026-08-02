@@ -1,6 +1,13 @@
 import { Controller, Get, Post, Patch, Param, Body } from '@nestjs/common'
 import { TestsService } from './tests.service'
-import { CreateTestCaseSchema, UpdateTestCaseSchema, ExecuteTestCaseSchema } from '@polenta/zod-schemas'
+import {
+  CreateTestCaseSchema,
+  UpdateTestCaseSchema,
+  ExecuteTestCaseSchema,
+  type CreateTestCaseDto,
+  type UpdateTestCaseDto,
+  type ExecuteTestCaseDto,
+} from '@polenta/zod-schemas'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe'
 
 @Controller('projects/:projectId/branches/:branchId/tests')
@@ -34,7 +41,7 @@ export class TestsController {
   async create(
     @Param('projectId') projectId: string,
     @Param('branchId') branchId: string,
-    @Body(new ZodValidationPipe(CreateTestCaseSchema)) dto: any,
+    @Body(new ZodValidationPipe(CreateTestCaseSchema)) dto: CreateTestCaseDto,
   ) {
     return this.testsService.create(projectId, branchId, dto)
   }
@@ -44,7 +51,7 @@ export class TestsController {
     @Param('projectId') projectId: string,
     @Param('branchId') branchId: string,
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(UpdateTestCaseSchema)) dto: any,
+    @Body(new ZodValidationPipe(UpdateTestCaseSchema)) dto: UpdateTestCaseDto,
   ) {
     return this.testsService.update(projectId, branchId, id, dto)
   }
@@ -54,7 +61,7 @@ export class TestsController {
     @Param('projectId') projectId: string,
     @Param('branchId') branchId: string,
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(ExecuteTestCaseSchema)) dto: any,
+    @Body(new ZodValidationPipe(ExecuteTestCaseSchema)) dto: ExecuteTestCaseDto,
   ) {
     return this.testsService.execute(projectId, branchId, id, dto)
   }

@@ -58,6 +58,20 @@ import type {
   GenerateTestPlanDto,
 } from '@polenta/zod-schemas'
 
+/** T135 sprint 3 — drag & drop d'un élément vers un autre nœud du même repo. */
+export interface MoveElementDto {
+  fromNodeName: string
+  toNodeName: string
+  typeName: string
+}
+
+export interface MoveElementResult {
+  schema: ProjectSchema
+  /** Requirements/tests whose `objectTypeRef` cascade rewrite failed (best-effort, cf.
+   *  `ElementMoveService`) — empty when every matching requirement/test was updated. */
+  failed: { kind: 'requirement' | 'test'; id: string; error: string }[]
+}
+
 export interface CreateReviewDto {
   actionId?: string
   title: string
@@ -213,6 +227,9 @@ export type MergeResult =
   | { success: true; sha: string }
   | { success: false; conflicts: string[] }
 
+// T154 — SyncService.ensureIntegrationUpToDate()'s outcome.
+export type IntegrationSyncResult = 'up-to-date' | 'fast-forwarded' | 'diverged' | 'no-remote-branch'
+
 export interface DeviceFlowSession {
   deviceCode: string
   userCode: string
@@ -232,10 +249,14 @@ export type DeviceFlowPollResult =
 export interface ApiClient {
   app: {
     setTitle(title: string): Promise<void>
+    getVersion(): Promise<string>
   }
   schema: {
     get(repoPath: string): Promise<ProjectSchema>
     save(repoPath: string, schema: ProjectSchema): Promise<void>
+    moveElement(repoPath: string, dto: MoveElementDto): Promise<MoveElementResult>
+    /** Drops the main-process in-memory cache for `repoPath` so the next `get()` re-reads schema.yaml from disk. */
+    invalidate(repoPath: string): Promise<void>
   }
   tree: {
     get(repoPath: string, nodeId: string, typeId: string): Promise<TypeTree>
@@ -323,6 +344,9 @@ export interface ApiClient {
     commit(repoPath: string, message: string): Promise<{ sha: string }>
     push(repoPath: string): Promise<void>
     pull(repoPath: string): Promise<void>
+    fetch(repoPath: string, urlFallback: string, remote?: string): Promise<void>
+    fastForwardBranch(repoPath: string, branchName: string, remote?: string): Promise<IntegrationSyncResult>
+    pullFastForwardOnly(repoPath: string): Promise<void>
     log(repoPath: string, limit?: number): Promise<CommitEntry[]>
     checkoutCommit(repoPath: string, sha: string): Promise<void>
     stage(repoPath: string, filepath: string): Promise<void>

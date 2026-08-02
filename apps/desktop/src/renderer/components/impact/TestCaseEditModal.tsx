@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api'
 import { useProjectSchema, getTestTypeDef } from '../../hooks/useProjectSchema'
+import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { DynamicField } from '../DynamicField'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
@@ -20,6 +21,7 @@ function fieldToString(fields: Record<string, unknown>, key: string): string {
 
 // Popup de consultation en lecture seule — pas d'édition, pas de sauvegarde.
 export function TestCaseEditModal({ repoPath, testId, onClose }: Props) {
+  const { t } = useTranslation()
   const { data: tc, isLoading } = useQuery<TestCase>({
     queryKey: ['test', repoPath, testId],
     queryFn: () => api.tests.get(repoPath, testId),
@@ -29,13 +31,7 @@ export function TestCaseEditModal({ repoPath, testId, onClose }: Props) {
   const { data: schema } = useProjectSchema(repoPath)
   const typeDef = getTestTypeDef(schema, tc?.objectTypeRef ?? '')
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  useModalHotkeys(onClose, onClose)
 
   const fields = (tc?.fields ?? {}) as Record<string, unknown>
   const steps: StepDraft[] = (tc?.steps ?? [])
@@ -44,7 +40,7 @@ export function TestCaseEditModal({ repoPath, testId, onClose }: Props) {
     .map(s => ({ action: s.action, expectedResult: s.expectedResult }))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-3xl mx-4 max-h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
@@ -54,19 +50,19 @@ export function TestCaseEditModal({ repoPath, testId, onClose }: Props) {
           <h2 className="text-sm font-semibold text-ink flex-1 truncate">{tc?.title ?? testId}</h2>
           <span className="font-mono text-xs text-ink-3">{testId}</span>
           {tc && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300">
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-status-neutral-bg text-status-neutral">
               {typeDef?.statuses?.find(s => s.name === tc.status)?.label ?? tc.status}
             </span>
           )}
-          <button type="button" onClick={onClose} className="text-ink-3 hover:text-ink text-lg leading-none px-1">×</button>
+          <button type="button" onClick={onClose} className="btn-close">×</button>
         </div>
 
         {/* Body */}
         <div className="px-5 py-4 overflow-y-auto space-y-4">
           {isLoading ? (
-            <p className="text-sm text-ink-3">Chargement…</p>
+            <p className="text-sm text-ink-3">{t('common.loading')}</p>
           ) : !tc ? (
-            <p className="text-sm text-ink-2">Cas de test introuvable : {testId}</p>
+            <p className="text-sm text-ink-2">{t('testsPage.notFound', { testId })}</p>
           ) : (
             <>
               {typeDef?.fields.map(f => (
@@ -77,6 +73,7 @@ export function TestCaseEditModal({ repoPath, testId, onClose }: Props) {
                   onChange={() => {}}
                   disabled
                   repoPath={repoPath}
+                  interfaceRoles={schema?.roles?.map(r => r.name)}
                 />
               ))}
 
@@ -91,19 +88,19 @@ export function TestCaseEditModal({ repoPath, testId, onClose }: Props) {
 
               {tc.preconditions && (
                 <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Préconditions</label>
+                  <label className="block text-sm font-medium text-ink mb-1">{t('testsPage.preconditions')}</label>
                   <p className="text-sm text-ink-2 whitespace-pre-wrap">{tc.preconditions}</p>
                 </div>
               )}
 
               <div>
-                <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">Étapes</p>
+                <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('system.wordView.stepsHeading')}</p>
                 <StepsTable steps={steps} onChange={() => {}} disabled repoPath={repoPath} />
               </div>
 
               {tc.postconditions && (
                 <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Postconditions</label>
+                  <label className="block text-sm font-medium text-ink mb-1">{t('testsPage.postconditions')}</label>
                   <p className="text-sm text-ink-2 whitespace-pre-wrap">{tc.postconditions}</p>
                 </div>
               )}
@@ -113,8 +110,8 @@ export function TestCaseEditModal({ repoPath, testId, onClose }: Props) {
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-edge shrink-0">
-          <button type="button" onClick={onClose} className="text-sm px-4 py-1.5 border border-edge rounded text-ink-2 hover:text-ink transition-colors">
-            Fermer
+          <button type="button" onClick={onClose} className="btn-secondary">
+            {t('common.close')}
           </button>
         </div>
       </div>

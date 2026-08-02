@@ -1,5 +1,7 @@
 import { useRef, useEffect } from 'react'
+import { useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../../../api'
 import { decodeProjectId } from '../../../lib/projectId'
 import { useSelectedRepo } from '../../../contexts/SelectedRepoContext'
@@ -7,7 +9,6 @@ import { useCompareRefs } from '../../../contexts/CompareRefsContext'
 import { useWorkspaceStructure } from '../../../hooks/useWorkspaceStructure'
 import { GitRefCombobox } from './GitRefCombobox'
 import { FileList } from './FileList'
-import { Route as VersionDiffRoute } from '../../../routes/version-diff'
 
 interface Props {
   projectId: string
@@ -18,7 +19,12 @@ interface Props {
  *  comparing two arbitrary commits, so this replaces it with the repo picker + the two
  *  commit comboboxes that used to live in a panel local to the `/version-diff` page itself. */
 export function VersionCompareSelector({ projectId }: Props) {
-  const { repoPath: urlRepoPath, ref1, sha1: urlSha1, ref2, sha2: urlSha2 } = VersionDiffRoute.useSearch()
+  const { t } = useTranslation()
+  // shouldThrow: false — VersionPanel decides to mount this component from `location.pathname`
+  // (useRouterState), which can update a tick before the router's matches array includes
+  // this route ; without it, useSearch() throws "Could not find an active match" in that window.
+  const search = useSearch({ from: '/version-diff', shouldThrow: false })
+  const { repoPath: urlRepoPath, ref1, sha1: urlSha1, ref2, sha2: urlSha2 } = search ?? {}
   const { selectedRepoPath, rootRepoPath, selectRepo } = useSelectedRepo()
   const { sha1, sha2, selectedFile, setSha1, setSha2, setSelectedFile } = useCompareRefs()
 
@@ -102,7 +108,7 @@ export function VersionCompareSelector({ projectId }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-3 py-2 flex flex-col gap-2 shrink-0">
         <div>
-          <p className="text-xs text-ink-3 mb-1">Repo</p>
+          <p className="text-xs text-ink-3 mb-1">{t('sidebar.version.repo')}</p>
           <select
             value={repoPath}
             onChange={e => selectRepo(e.target.value)}
@@ -114,26 +120,26 @@ export function VersionCompareSelector({ projectId }: Props) {
           </select>
         </div>
         <div>
-          <p className="text-xs text-ink-3 mb-1">Objet A</p>
-          <GitRefCombobox refs={refs} value={sha1} placeholder="Sélectionner…" onChange={setSha1} />
+          <p className="text-xs text-ink-3 mb-1">{t('sidebar.version.objectA')}</p>
+          <GitRefCombobox refs={refs} value={sha1} placeholder={t('sidebar.version.select')} onChange={setSha1} />
         </div>
         <div>
-          <p className="text-xs text-ink-3 mb-1">Objet B</p>
-          <GitRefCombobox refs={refs} value={sha2} placeholder="Sélectionner…" onChange={setSha2} />
+          <p className="text-xs text-ink-3 mb-1">{t('sidebar.version.objectB')}</p>
+          <GitRefCombobox refs={refs} value={sha2} placeholder={t('sidebar.version.select')} onChange={setSha2} />
         </div>
       </div>
 
       <div className="px-3 py-1.5 border-y border-edge-subtle shrink-0">
-        <p className="section-label">Fichiers modifiés{files.length > 0 ? ` (${files.length})` : ''}</p>
+        <p className="section-label">{t('sidebar.version.modifiedFiles')}{files.length > 0 ? ` (${files.length})` : ''}</p>
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
         {!sha1 || !sha2 ? (
           <p className="text-xs text-ink-3 italic px-3 py-2">
-            Sélectionnez deux objets à comparer
+            {t('sidebar.version.selectTwoObjects')}
           </p>
         ) : isLoadingFiles ? (
-          <p className="text-xs text-ink-3 italic px-3 py-2">Chargement…</p>
+          <p className="text-xs text-ink-3 italic px-3 py-2">{t('common.loading')}</p>
         ) : (
           <FileList files={files} selected={selectedFile} onSelect={setSelectedFile} />
         )}

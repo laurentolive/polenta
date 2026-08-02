@@ -24,115 +24,43 @@ interface SeedDashboard {
   widgets: SeedWidget[]
 }
 
-// T77.md § Critères d'acceptation : "Un dashboard couverture de test pré-configuré",
-// "un dashboard avancement", "un dashboard maturité". SQL text mode is used throughout
-// (rather than builderConfig) because these queries aggregate derived columns
-// (coverageStatus, maturity*, cf. query-engine.service.ts/maturity.util.ts) that the
-// guided builder's field picker doesn't currently surface (QueryBuilder.tsx lists a
-// type's schema fields, not the query-engine's derived columns) — out of scope to
-// extend this sprint, and SQL mode already has full access to every dataset column.
+// T77.md § Critères d'acceptation. SQL text mode is used throughout (rather than
+// builderConfig) because these queries aggregate derived columns (coverageStatus,
+// cf. query-engine.service.ts) that the guided builder's field picker doesn't
+// currently surface (QueryBuilder.tsx lists a type's schema fields, not the
+// query-engine's derived columns) — out of scope to extend this sprint, and SQL
+// mode already has full access to every dataset column.
 const SEED_QUERIES: SeedQuery[] = [
   {
-    key: 'coverage-status',
-    title: 'Couverture — répartition par statut',
-    sqlText: 'SELECT [coverageStatus], COUNT(*) AS [count] FROM [requirements] GROUP BY [coverageStatus]',
-  },
-  {
-    key: 'coverage-by-component',
-    title: 'Couverture — taux par composant',
+    key: 'requirements-status-by-component',
+    title: 'Exigences — statut par composant',
     sqlText:
-      "SELECT [component], SUM(CASE WHEN [coverageStatus] != 'not_covered' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS [tauxCouverture] FROM [requirements] GROUP BY [component]",
+      'SELECT [component], [status], COUNT(*) AS [count] FROM [requirements] GROUP BY [component], [status]',
   },
   {
-    key: 'status-distribution',
-    title: 'Avancement — répartition par statut',
-    sqlText: 'SELECT [status], COUNT(*) AS [count] FROM [requirements] GROUP BY [status]',
-  },
-  {
-    key: 'domain-distribution',
-    title: 'Avancement — répartition par domaine',
-    sqlText: 'SELECT [domain], COUNT(*) AS [count] FROM [requirements] GROUP BY [domain]',
-  },
-  {
-    key: 'maturity-global',
-    title: 'Maturité — taux global',
-    sqlText: 'SELECT SUM(CASE WHEN [maturityOk] = true THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS [tauxMaturite] FROM [requirements]',
-  },
-  {
-    key: 'maturity-by-domain',
-    title: 'Maturité — taux par domaine',
+    key: 'requirements-coverage-status-by-component',
+    title: 'Exigences — statut de couverture par composant',
     sqlText:
-      'SELECT [domain], SUM(CASE WHEN [maturityOk] = true THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS [tauxMaturite] FROM [requirements] GROUP BY [domain]',
-  },
-  {
-    key: 'maturity-non-conformant',
-    title: 'Maturité — exigences non conformes',
-    sqlText:
-      "SELECT [id], [title], [domain], [maturityMissingCriteria] FROM [requirements] WHERE [maturityOk] = false",
+      'SELECT [component], [coverageStatus], COUNT(*) AS [count] FROM [requirements] GROUP BY [component], [coverageStatus]',
   },
 ]
 
 const SEED_DASHBOARDS: SeedDashboard[] = [
   {
-    title: 'Couverture',
+    title: 'Status',
     widgets: [
       {
-        title: 'Répartition par statut de couverture',
-        queryKey: 'coverage-status',
-        type: 'pie',
-        fieldMapping: { category: 'coverageStatus', measure: 'count' },
-        size: 'md',
-      },
-      {
-        title: 'Taux de couverture par composant',
-        queryKey: 'coverage-by-component',
+        title: 'Statut des exigences par composant',
+        queryKey: 'requirements-status-by-component',
         type: 'bar',
-        fieldMapping: { category: 'component', measure: 'tauxCouverture' },
-        size: 'md',
+        fieldMapping: { category: 'component', measure: 'count', series: 'status', stacked: true },
+        size: 'lg',
       },
-    ],
-  },
-  {
-    title: 'Avancement',
-    widgets: [
       {
-        title: 'Répartition par statut',
-        queryKey: 'status-distribution',
+        title: 'Statut de couverture des exigences par composant',
+        queryKey: 'requirements-coverage-status-by-component',
         type: 'bar',
-        fieldMapping: { category: 'status', measure: 'count' },
-        size: 'md',
-      },
-      {
-        title: 'Répartition par domaine',
-        queryKey: 'domain-distribution',
-        type: 'bar',
-        fieldMapping: { category: 'domain', measure: 'count' },
-        size: 'md',
-      },
-    ],
-  },
-  {
-    title: 'Maturité',
-    widgets: [
-      {
-        title: 'Taux de maturité global',
-        queryKey: 'maturity-global',
-        type: 'kpi',
-        fieldMapping: { measure: 'tauxMaturite' },
-        size: 'sm',
-      },
-      {
-        title: 'Taux de maturité par domaine',
-        queryKey: 'maturity-by-domain',
-        type: 'bar',
-        fieldMapping: { category: 'domain', measure: 'tauxMaturite' },
-        size: 'md',
-      },
-      {
-        title: 'Exigences non conformes',
-        queryKey: 'maturity-non-conformant',
-        type: 'table',
-        fieldMapping: { columns: ['id', 'title', 'domain', 'maturityMissingCriteria'] },
+        fieldMapping: { category: 'component', measure: 'count', series: 'coverageStatus', stacked: true },
         size: 'lg',
       },
     ],
@@ -140,13 +68,14 @@ const SEED_DASHBOARDS: SeedDashboard[] = [
 ]
 
 /**
- * DashboardSeedService — T77 sprint 3.
+ * DashboardSeedService — T77 sprint 3 (T148: "Couverture"/"Avancement"/"Maturité"
+ * removed, only "Status" remains seeded).
  *
- * Seeds the 3 pre-configured shared dashboards ("Couverture", "Avancement",
- * "Maturité" — specs/T77.md § Critères d'acceptation) the first time the "Suivi"
- * panel is opened on a project whose `dashboards/` folder is empty. Called from the
- * `dashboards:list` IPC handler (main process), not the renderer, so it's reliable
- * even outside the UI (T77 sprint 3 instructions: "pas côté renderer").
+ * Seeds the pre-configured shared dashboard(s) ("Status" — specs/T77.md § Critères
+ * d'acceptation) the first time the "Suivi" panel is opened on a project whose
+ * `dashboards/` folder is empty. Called from the `dashboards:list` IPC handler
+ * (main process), not the renderer, so it's reliable even outside the UI (T77
+ * sprint 3 instructions: "pas côté renderer").
  *
  * Deliberately NOT folded into DashboardsService itself: seeding needs to create both
  * SavedQuery and Dashboard/Widget objects, and DashboardsService must not depend on
@@ -169,7 +98,7 @@ const SEED_DASHBOARDS: SeedDashboard[] = [
  * dashboard on purpose" — both leave the folder empty — and the sprint 3 instructions
  * explicitly require the templates never come back once removed. A dotfile marker
  * (`dashboards/.seeded.yaml`), written ONLY once a full seed has actually succeeded,
- * resolves the ambiguity: deleting the 3 seeded dashboards afterward leaves the
+ * resolves the ambiguity: deleting the seeded dashboards afterward leaves the
  * marker file untouched (a separate file), so it is never reseeded. The marker is
  * invisible to `DashboardsService.list()` / `readYamlDir()` (`GitService.listFiles`'s
  * directory walk skips dotfiles) but `readYaml()` (a direct path read) still sees it.
@@ -214,7 +143,7 @@ export class DashboardSeedService {
     // sprint introduces). But unlike every other write (an explicit user action on
     // whatever branch they're knowingly on), this one fires silently and automatically
     // the moment the panel opens — so it gets its own targeted guard rather than
-    // writing 7 queries + 3 dashboards into a baseline that should never be touched.
+    // writing queries + dashboards into a baseline that should never be touched.
     // No marker is written here: once the user switches to a writable branch, the next
     // `dashboards:list` call re-evaluates from scratch.
     const branch = await this.git.currentBranch(repoPath).catch(() => '')

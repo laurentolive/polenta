@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from 'lucide-react'
@@ -29,27 +30,29 @@ export const Route = createFileRoute('/impact-analysis')({
 
 // ── Libellés ─────────────────────────────────────────────────────────────────
 
-const CHANGE_TYPE_LABEL: Record<RequirementChangeType, string> = {
-  added: 'Ajoutée',
-  removed: 'Supprimée',
-  modified: 'Modifiée',
+/** T111 — retournent des clés de traduction (convention module-scope), résolues via
+ *  t() par l'appelant. */
+export const CHANGE_TYPE_LABEL_KEY: Record<RequirementChangeType, string> = {
+  added: 'impactAnalysisPage.changeType.added',
+  removed: 'impactAnalysisPage.changeType.removed',
+  modified: 'impactAnalysisPage.changeType.modified',
 }
 
 const CHANGE_TYPE_COLOR: Record<RequirementChangeType, string> = {
-  added: 'text-green-600',
-  removed: 'text-red-500',
-  modified: 'text-amber-500',
+  added: 'text-status-success',
+  removed: 'text-status-danger',
+  modified: 'text-status-warning',
 }
 
-const STATUS_LABEL: Record<ImpactAnalysisStatus, string> = {
-  impact_non_verifie: 'Impact non vérifié',
-  pas_d_impact_reel: "Pas d'impact réel",
-  impact_a_tester: 'Impact à tester',
-  impact_teste: 'Impact testé',
-  modification_a_faire: 'Modification à faire',
-  modification_faite: 'Modification faite',
-  modification_a_tester: 'Modification à tester',
-  modification_verifiee: 'Modification vérifiée',
+export const STATUS_LABEL_KEY: Record<ImpactAnalysisStatus, string> = {
+  impact_non_verifie: 'impactAnalysisPage.status.impactNonVerifie',
+  pas_d_impact_reel: 'impactAnalysisPage.status.pasDImpactReel',
+  impact_a_tester: 'impactAnalysisPage.status.impactATester',
+  impact_teste: 'impactAnalysisPage.status.impactTeste',
+  modification_a_faire: 'impactAnalysisPage.status.modificationAFaire',
+  modification_faite: 'impactAnalysisPage.status.modificationFaite',
+  modification_a_tester: 'impactAnalysisPage.status.modificationATester',
+  modification_verifiee: 'impactAnalysisPage.status.modificationVerifiee',
 }
 
 const STATUS_ORDER: ImpactAnalysisStatus[] = [
@@ -126,6 +129,7 @@ function useRequirementStatementTooltip(repoPath: string, reqId: string, fallbac
 }
 
 function ImpactNodeStatusEditor({ node, onUpdateStatus }: { node: ImpactNode; onUpdateStatus: UpdateNodeStatus }) {
+  const { t } = useTranslation()
   // Brouillon combiné statut+commentaire, pas deux states indépendants — resynchronisé sur
   // `node` (la ligne peut être réutilisée par React sans remonter, ex. rouvrir une autre
   // analyse dont un nœud partage la même clé). Chaque validation envoie systématiquement les
@@ -166,26 +170,26 @@ function ImpactNodeStatusEditor({ node, onUpdateStatus }: { node: ImpactNode; on
           }
         }}
         onClick={(e) => e.stopPropagation()}
-        placeholder="Commentaire…"
+        placeholder={t('impactAnalysisPage.commentPlaceholder')}
         rows={1}
         className="w-1/4 shrink-0 resize-none text-xs bg-surface border border-edge-subtle rounded px-1.5 py-1 text-ink leading-4"
       />
       <span
         className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-          CLOSED_STATUSES.has(draft.status) ? 'bg-green-500' : 'bg-transparent'
+          CLOSED_STATUSES.has(draft.status) ? 'bg-status-success-solid' : 'bg-transparent'
         }`}
-        title={CLOSED_STATUSES.has(draft.status) ? 'Risque levé' : undefined}
+        title={CLOSED_STATUSES.has(draft.status) ? t('impactAnalysisPage.riskLifted') : undefined}
       />
       <select
         value={draft.status}
         onChange={(e) => commitStatus(e.target.value as ImpactAnalysisStatus)}
         className={`shrink-0 text-xs bg-surface border rounded px-1.5 py-1 text-ink max-w-[9rem] ${
-          CLOSED_STATUSES.has(draft.status) ? 'border-green-400 dark:border-green-700' : 'border-edge-subtle'
+          CLOSED_STATUSES.has(draft.status) ? 'border-status-success' : 'border-edge-subtle'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         {STATUS_ORDER.map((s) => (
-          <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+          <option key={s} value={s}>{t(STATUS_LABEL_KEY[s])}</option>
         ))}
       </select>
     </>
@@ -262,6 +266,7 @@ function ChangedRequirementRow({
   onOpenElement: (node: ImpactNode) => void
   onUpdateItemStatus: (reqId: string, direction: 'descendant' | 'ascendant', node: ImpactNode, status: ImpactAnalysisStatus, comment: string | null) => void
 }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(true)
   const hasTrees = changed.descendantTree.length > 0 || changed.ascendantTree.length > 0
   const onUpdateDescendant: UpdateNodeStatus = (node, status, comment) => onUpdateItemStatus(changed.reqId, 'descendant', node, status, comment)
@@ -291,7 +296,7 @@ function ChangedRequirementRow({
         </button>
         <span className="text-ink-2 truncate flex-1" title={statementTooltip}>{changed.title}</span>
         <span className={`text-xs font-medium shrink-0 ${CHANGE_TYPE_COLOR[changed.changeType]}`}>
-          {CHANGE_TYPE_LABEL[changed.changeType]}
+          {t(CHANGE_TYPE_LABEL_KEY[changed.changeType])}
         </span>
       </div>
 
@@ -313,7 +318,7 @@ function ChangedRequirementRow({
           {changed.ascendantTree.length > 0 && (
             <>
               <p className="text-xs text-ink-3 uppercase tracking-wide px-2 pt-1" style={{ paddingLeft: '26px' }}>
-                Arbre montant
+                {t('impactAnalysisPage.ascendantTree')}
               </p>
               <ImpactTreeView nodes={changed.ascendantTree} repoPath={repoPath} onOpen={onOpenElement} onUpdateStatus={onUpdateAscendant} depth={1} />
             </>
@@ -330,6 +335,7 @@ function ChangedRequirementRow({
 // principal : barre de titre avec la plage de baselines comparées, et la liste (en grand)
 // des exigences impactées pour l'analyse active, lue depuis ImpactAnalysisContext.
 function ImpactAnalysisPage() {
+  const { t } = useTranslation()
   const { projectId } = Route.useSearch()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -410,7 +416,7 @@ function ImpactAnalysisPage() {
       to: '/campaign/new',
       search: {
         ...elementSearch,
-        title: `Vérification impact — ${activeAnalysis.label}`,
+        title: t('impactAnalysisPage.verificationCampaignTitle', { label: activeAnalysis.label }),
         testCaseIds: campaignDraft.testCaseIds.join(','),
       },
     })
@@ -443,7 +449,7 @@ function ImpactAnalysisPage() {
         title={
           activeAnalysis
             ? <span className="font-mono">{activeAnalysis.fromBaseline.tag} → {activeAnalysis.toBaseline.tag}</span>
-            : "Analyse d'impact"
+            : t('impactAnalysisPage.title')
         }
         subtitle={activeAnalysis?.label}
         actions={
@@ -461,9 +467,9 @@ function ImpactAnalysisPage() {
               />
               {allNodes.length > 0 && (
                 openCount === 0 ? (
-                  <span className="text-xs text-green-600 font-medium shrink-0">Tous les impacts maîtrisés</span>
+                  <span className="text-xs text-status-success font-medium shrink-0">{t('impactAnalysisPage.allImpactsHandled')}</span>
                 ) : (
-                  <span className="text-xs text-ink-3 shrink-0">{openCount} ouvert(s) / {allNodes.length} au total</span>
+                  <span className="text-xs text-ink-3 shrink-0">{t('impactAnalysisPage.openCount', { count: openCount, total: allNodes.length })}</span>
                 )
               )}
               {toTestCount > 0 && (
@@ -471,9 +477,9 @@ function ImpactAnalysisPage() {
                   type="button"
                   onClick={generateCampaign}
                   disabled={generateCampaignMutation.isPending}
-                  className="btn-secondary text-xs px-3 py-1.5 shrink-0 disabled:opacity-50"
+                  className="btn-secondary-sm shrink-0"
                 >
-                  {generateCampaignMutation.isPending ? 'Génération…' : `Générer une campagne (${toTestCount})`}
+                  {generateCampaignMutation.isPending ? t('impactAnalysisPage.generating') : t('impactAnalysisPage.generateCampaign', { count: toTestCount })}
                 </button>
               )}
             </>
@@ -485,11 +491,14 @@ function ImpactAnalysisPage() {
       {campaignDraft && activeAnalysis && (
         <div className="px-4 py-2 border-b border-edge-subtle shrink-0 flex items-center gap-3 bg-hover">
           <p className="text-xs text-ink">
-            {campaignDraft.testCaseIds.length} TestCase(s) trouvé(s)
+            {t('impactAnalysisPage.testCasesFound', { count: campaignDraft.testCaseIds.length })}
           </p>
           {campaignDraft.uncoveredRequirementIds.length > 0 && (
-            <p className="text-xs text-amber-500">
-              {campaignDraft.uncoveredRequirementIds.length} exigence(s) non couverte(s) : {campaignDraft.uncoveredRequirementIds.join(', ')}
+            <p className="text-xs text-status-warning">
+              {t('impactAnalysisPage.uncoveredRequirements', {
+                count: campaignDraft.uncoveredRequirementIds.length,
+                ids: campaignDraft.uncoveredRequirementIds.join(', '),
+              })}
             </p>
           )}
           <div className="flex-1" />
@@ -497,9 +506,9 @@ function ImpactAnalysisPage() {
             type="button"
             onClick={goToCreateCampaign}
             disabled={campaignDraft.testCaseIds.length === 0}
-            className="btn-primary text-xs px-3 py-1.5 shrink-0 disabled:opacity-50"
+            className="btn-primary-sm shrink-0"
           >
-            Créer la campagne
+            {t('campaignPage.createCampaign')}
           </button>
         </div>
       )}
@@ -509,13 +518,13 @@ function ImpactAnalysisPage() {
         {!activeAnalysisId ? (
           <div className="h-full flex items-center justify-center">
             <p className="text-sm text-ink-3 italic px-6 text-center">
-              Sélectionnez deux baselines dans le panel Version pour analyser l'impact des modifications, ou rouvrez une analyse existante.
+              {t('impactAnalysisPage.selectTwoBaselinesHint')}
             </p>
           </div>
         ) : isLoadingAnalysis ? (
-          <p className="text-sm text-ink-3 italic px-4 py-3">Chargement…</p>
+          <p className="text-sm text-ink-3 italic px-4 py-3">{t('common.loading')}</p>
         ) : !activeAnalysis || activeAnalysis.changedRequirements.length === 0 ? (
-          <p className="text-sm text-ink-3 italic px-4 py-3">Aucune exigence modifiée entre ces deux baselines.</p>
+          <p className="text-sm text-ink-3 italic px-4 py-3">{t('impactAnalysisPage.noChangedRequirement')}</p>
         ) : (
           <div>
             {activeAnalysis.changedRequirements.map((cr) => (

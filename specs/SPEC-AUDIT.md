@@ -2,6 +2,11 @@
 
 > Généré le 2026-06-24. À traiter avant de créer des tickets dans les domaines concernés.  
 > **Légende** : `[ABSENT]` feature spec non implémentée · `[DIVERGENCE]` comportement différent · `[NON DOC]` code non spécifié
+>
+> **T130 (2026-07-21)** : revue de tous les `specs/SPEC-*.md` restants contre le code — les items
+> `SPEC-TESTS §4+`/`SPEC-TRACEABILITY §3+`/`SPEC-SYSTEM-VIEW`/baselines listés ici ont été
+> re-confirmés d'actualité (sauf l'entrée `§2.2` marquée résolue ci-dessous), pas dupliqués dans
+> `specs/T130.md`. Ce fichier n'était pas référencé dans `SPEC-INDEX.md` — ajouté à T130.
 
 ---
 
@@ -10,7 +15,7 @@
 | Domaine | ABSENT | DIVERGENCE | NON DOC | Criticité |
 |---------|--------|------------|---------|-----------|
 | SPEC-TESTS §4+ | 10 | 5 | 3 | Élevée |
-| SPEC-TRACEABILITY §3+ | 10 | 5 | 2 | Élevée |
+| SPEC-TRACEABILITY §3+ | 10 | 4 (1 résolue T63, T130) | 2 | Élevée |
 | SPEC-SYSTEM-VIEW | 4 | 5 | 4 | Moyenne |
 
 ---
@@ -104,9 +109,10 @@ Spec : `RUN-20260601-001`. Code : `<testCaseId>-run-<seq>` (ex: `TEST-0042-run-0
 
 ### §2.2 — Matrice de couverture
 
-**[DIVERGENCE] Ordre de priorité des statuts inversé**  
-Spec : `needs_revalidation > failing > covered > validated > not_covered`.  
-Code (`traceability.service.ts`, `computeCoverageStatus`) : `needs_revalidation > failing > validated > covered > not_covered` — `covered` et `validated` inversés.
+**[RÉSOLU T63]** ~~Ordre de priorité des statuts inversé~~ — corrigé par T63. Vérifié par lecture
+directe (`traceability.service.ts:786-792`, `computeCoverageStatus`) : l'ordre réel est déjà
+`needs_revalidation > failing > covered > validated > not_covered`, conforme à la spec. Entrée
+laissée barrée plutôt que supprimée pour tracer qu'elle a été vue et confirmée résolue (T130).
 
 **[DIVERGENCE] Filtre statut `approved` absent**  
 La spec dit `covered` = "au moins un TestCase **approuvé** lié". `getMatrix` n'applique aucun filtre sur `tc.status === 'approved'`.

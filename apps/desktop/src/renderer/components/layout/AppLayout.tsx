@@ -7,8 +7,9 @@ import { VersioningProvider } from '../../contexts/VersioningContext'
 import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
 import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
+import { useAutoPull } from '../../hooks/useAutoPull'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'system' | 'dashboard'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'dashboard'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -22,20 +23,23 @@ export function deriveCurrentProjectId(search: string): string | null {
   return new URLSearchParams(search ?? '').get('projectId')
 }
 
-export function deducePanel(pathname: string): Panel {
+/** category (from the `category` search param of /product and /components) tells requirements
+ *  apart from tests/campaigns — those two routes host all three, split only by that param. Doc
+ *  routes (/req/, /test/, /campaign/) already know their own kind from the path, no param needed. */
+export function deducePanel(pathname: string, category?: string): Panel {
   if (pathname === '/search') return 'search'
 
-  if (pathname === '/product' || pathname === '/components') return 'system'
+  if (pathname === '/product' || pathname === '/components') {
+    if (category === 'test') return 'tests'
+    if (category === 'campaign') return 'campaigns'
+    return 'requirements'
+  }
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
 
-  if (
-    pathname.startsWith('/req/') ||
-    pathname.startsWith('/test/') ||
-    pathname.startsWith('/campaign/')
-  ) {
-    return 'system'
-  }
+  if (pathname.startsWith('/req/')) return 'requirements'
+  if (pathname.startsWith('/test/')) return 'tests'
+  if (pathname.startsWith('/campaign/')) return 'campaigns'
 
   if (
     pathname === '/graph' ||
@@ -61,10 +65,17 @@ export function AppLayout() {
   const repoPathFromSearch = searchParams.get('repoPath') ?? ''
   const currentProjectId = deriveCurrentProjectId(search)
 
+  // T155: runs for as long as a project is open, independently of which panel is active — a
+  // non-git-initiated user should never have to open the Version panel to stay up to date.
+  // No-ops internally while `currentProjectId` is null. Called here rather than from inside
+  // `VersioningProvider` below purely so it's unconditional, next to the other top-level hooks,
+  // ahead of this component's early `if (!currentProjectId) return inner` (rules of hooks).
+  useAutoPull(currentProjectId)
+
   // Sidebar-only panels (account, search) have no dedicated route — track separately
   const [sidebarOverride, setSidebarOverride] = useState<Panel | null>(null)
 
-  const routePanel = deducePanel(pathname)
+  const routePanel = deducePanel(pathname, searchParams.get('category') ?? undefined)
   const activePanel: Panel = sidebarOverride ?? routePanel
 
   // Remembers which sub-view of the "version" panel (graph/baseline/version-diff/
@@ -171,9 +182,21 @@ export function AppLayout() {
           }
         }
         break
-      case 'system':
-        navigate({ to: '/product', search: { projectId: currentProjectId ?? '', tab: undefined, repo: undefined, node: undefined, type: undefined } })
+      case 'requirements':
+      case 'tests':
+      case 'campaigns': {
+        const category = p === 'requirements' ? 'requirement' : p === 'tests' ? 'test' : 'campaign'
+        // Carries the current `repo` forward instead of clearing it (as the old single "Système"
+        // entry always did): with three tabs now sharing this reset, clearing repo on every click
+        // sends SystemViewContext down its `!urlRepo` branch each time — which waits on every
+        // workspace repo's schema (`allSchemasLoaded`) before it can even pick a default node/type.
+        // Cheap for a mono-repo project, but on a workspace with several submodule dependencies
+        // that's real git/disk I/O on the main process, repeated on every tab switch — the
+        // multi-second freeze reported after this change. Only node/type are tab-specific and need
+        // clearing; the selected component stays valid across Exigences/Tests/Campagnes.
+        navigate({ to: '/product', search: { projectId: currentProjectId ?? '', tab: undefined, repo: searchParams.get('repo') ?? undefined, node: undefined, type: undefined, category } })
         break
+      }
       case 'dashboard':
         if (currentProjectId) {
           const params = new URLSearchParams(lastDashboardRoute?.search ?? '')
@@ -200,7 +223,7 @@ export function AppLayout() {
       <ActivityBar activePanel={activePanel} onSelect={handleSelectPanel} hasProject={!!currentProjectId} />
       <Sidebar activePanel={activePanel} currentProjectId={currentProjectId} width={sidebarWidth} />
       <div
-        className="bg-edge hover:bg-blue-400 cursor-col-resize shrink-0 transition-colors"
+        className="bg-edge hover:bg-status-info-solid cursor-col-resize shrink-0 transition-colors"
         style={{ width: 4 }}
         onMouseDown={handleDragMouseDown}
       />

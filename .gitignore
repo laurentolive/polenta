@@ -19,3 +19,8 @@ apps/api/prisma/migrations/*.sql.bak
 # OS
 .DS_Store
 Thumbs.db
+
+# Polenta workspace cache (T156) — machine-local absolute paths, fully regenerable, must
+# never be versioned (T69-design.md). Catches nested Polenta projects dogfooded under this repo
+# (e.g. apps/desktop/PL/) whose own .gitignore isn't guaranteed to cover the outer monorepo.
+**/.polenta/tree.cache.yaml

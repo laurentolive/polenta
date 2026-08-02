@@ -10,6 +10,7 @@
  * URL: /search?projectId=<encoded>
  */
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
 
 export const Route = createFileRoute('/search')({
@@ -20,10 +21,11 @@ export const Route = createFileRoute('/search')({
 })
 
 function SearchPage() {
+  const { t } = useTranslation()
   return (
     <div className="h-full flex flex-col items-center justify-center gap-2 text-ink-3 text-sm">
       <Search size={28} className="opacity-30" />
-      <p>Utilisez le panneau de recherche à gauche pour rechercher dans les exigences, tests et campagnes.</p>
+      <p>{t('search.page.hint')}</p>
     </div>
   )
 }

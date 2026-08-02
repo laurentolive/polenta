@@ -1,6 +1,6 @@
 # SPEC-ACCOUNTS-AUTH — Connexion et gestion des comptes git
 
-> Dernière révision : 2026-07-15 (T98)  
+> Dernière révision : 2026-07-21 (T130 — retrait du support Gitea)  
 > Dépend de : [SPEC-ELECTRON-DESKTOP.md](SPEC-ELECTRON-DESKTOP.md)
 
 ---
@@ -12,17 +12,17 @@
 | **Un compte = un remote host + un token** | Aucun mot de passe brut n'est jamais stocké ou envoyé. Tout accès git/API passe par un token (PAT ou token OAuth), stocké dans le trousseau OS via `keytar` (service `polenta`), jamais en clair sur disque. |
 | **`auth.json` (`userData`) ne stocke pas de secrets** | Il ne contient que les métadonnées de compte (`StoredAccount` : host, username, name, email) et le compte par défaut — les tokens vivent exclusivement dans `keytar`. |
 | **Deux méthodes de connexion, à égalité** | Formulaire PAT (tout host) et OAuth Device Flow (github.com uniquement) sont deux chemins vers le même stockage — aucune UI ne distingue un compte connecté via l'un ou l'autre après coup. |
-| **PAT-only pour les hosts non-GitHub** | GitLab, Gitea, GitHub Enterprise Server et tout remote personnalisé passent uniquement par le formulaire PAT — pas de Device Flow implémenté pour ces providers à ce jour. |
+| **PAT-only pour les hosts non-GitHub** | GitLab, GitHub Enterprise Server et tout remote personnalisé passent uniquement par le formulaire PAT — pas de Device Flow implémenté pour ces providers à ce jour. |
 
 ---
 
 ## 2. Formulaire PAT (`/login`)
 
-L'utilisateur choisit un remote (`https://github.com`, `https://gitlab.com`, `https://gitea.io` ou « Autre… ») et colle un Personal Access Token.
+L'utilisateur choisit un remote (`https://github.com`, `https://gitlab.com` ou « Autre… ») et colle un Personal Access Token.
 
 `AuthService.setup(remote, pat)` :
 1. Sauvegarde le token dans `keytar` sous la clé `extractHost(remote)`.
-2. Résout l'identité (`resolveIdentity` — GitHub via `api.github.com/user`, sinon tentative Gitea `/api/v1/user`, sinon identité minimale de repli).
+2. Résout l'identité (`resolveIdentity` — GitHub via `api.github.com/user`, sinon identité minimale de repli — T130 : le support Gitea (`/api/v1/user`) a été retiré).
 3. Sauvegarde le token une seconde fois sous `${host}:${login}` et persiste le compte dans `auth.json`.
 
 `resolveIdentity(remote, token)` reçoit toujours le **remote complet** (scheme + host + port éventuel), jamais seulement le hostname extrait — nécessaire pour les remotes self-hosted sur port non-standard ou en HTTP.
@@ -46,10 +46,10 @@ Second mode de connexion, visible uniquement quand le remote effectif résout ve
 `setup()` (PAT) et `pollDeviceFlow()` (OAuth) convergent vers un unique helper privé `persistToken(remote, token)` :
 - Clé `keytar` = `extractHost(remote)` (host seul, cohérent avec le reste du service).
 - Résolution d'identité = **remote complet** transmis tel quel à `resolveIdentity` (pas de reconstruction d'URL — le scheme et le port du remote d'origine doivent survivre intacts).
-- En cas d'échec de résolution d'identité (Gitea sans API, host injoignable) : repli sur une identité minimale `{ login: 'git', name: 'Git User', email: 'git@{host}' }`, le token reste néanmoins stocké.
+- En cas d'échec de résolution d'identité (host non reconnu, injoignable) : repli sur une identité minimale `{ login: 'git', name: 'Git User', email: 'git@{host}' }`, le token reste néanmoins stocké.
 
 ## 5. Hors scope actuel
 
-- Device Flow pour GitLab.com / Gitea (potentiellement supporté par ces plateformes, non implémenté)
+- Device Flow pour GitLab.com (potentiellement supporté par cette plateforme, non implémenté)
 - Rafraîchissement de token (les tokens OAuth Device Flow d'une GitHub OAuth App classique n'expirent pas par défaut)
 - Migration automatique d'un compte PAT existant vers OAuth

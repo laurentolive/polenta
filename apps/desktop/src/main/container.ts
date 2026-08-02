@@ -10,6 +10,7 @@ import { TraceabilityService } from './services/traceability.service'
 import { ReviewsService } from './services/reviews.service'
 import { RepoWatcherService } from './services/repo-watcher.service'
 import { SchemaService } from './services/schema.service'
+import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
 import { TreeService } from './services/tree.service'
 import { BaselineService } from './services/baseline.service'
@@ -37,13 +38,23 @@ export async function createContainer(): Promise<void> {
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
   const workspace = new WorkspaceService(sync, workspaceTree, watcher)
   const schema = new SchemaService(auth, workspaceTree)
+  // Live sync (T-schema-refresh follow-up) — an out-of-band change to schema.yaml (manual
+  // edit, git checkout/pull, a bulk-import script writing directly to disk…) must not be
+  // served stale forever from SchemaService's in-memory cache for the rest of the session,
+  // the way it was before the "Actualiser" button fix. `'*'` (ref change) is treated the
+  // same as a direct schema.yaml edit — a checkout can change it too, and there is no
+  // cheaper way to know without diffing content.
+  watcher.onFileChange((repoPath, relPath) => {
+    if (relPath === '.polenta/schema.yaml' || relPath === '*') schema.invalidate(repoPath)
+  })
   const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)
-  const requirements = new RequirementsService(git, reqIndex, schema)
-  const tests = new TestsService(git, testsIndex, schema)
+  const tree = new TreeService()
+  const requirements = new RequirementsService(git, reqIndex, schema, tree)
+  const tests = new TestsService(git, testsIndex, schema, tree)
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const reviews = new ReviewsService(git)
   const campaigns = new CampaignsService(git, tests)
-  const tree = new TreeService()
+  const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   const baseline = new BaselineService()
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)
   const dashboards = new DashboardsService(git)
@@ -67,6 +78,7 @@ export async function createContainer(): Promise<void> {
     reviews,
     watcher,
     schema,
+    elementMove,
     campaigns,
     tree,
     baseline,

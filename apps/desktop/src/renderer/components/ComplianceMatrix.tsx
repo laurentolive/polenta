@@ -8,6 +8,7 @@
  */
 
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { CheckCircle2, XCircle, AlertCircle, Minus } from 'lucide-react'
 import type { ComplianceMatrix as ComplianceMatrixData, ComplianceCellStatus } from '@polenta/types'
 
@@ -20,24 +21,25 @@ interface ComplianceMatrixProps {
 function CellIcon({ status }: { status: ComplianceCellStatus }) {
   switch (status) {
     case 'validated':
-      return <CheckCircle2 size={14} className="text-green-500" />
+      return <CheckCircle2 size={14} className="text-status-success" />
     case 'covered':
-      return <AlertCircle size={14} className="text-amber-500" />
+      return <AlertCircle size={14} className="text-status-warning" />
     case 'missing':
-      return <XCircle size={14} className="text-red-500" />
+      return <XCircle size={14} className="text-status-danger" />
     case 'na':
       return <Minus size={14} className="text-ink-3/40" />
   }
 }
 
 function CellLabel({ status }: { status: ComplianceCellStatus }) {
+  const { t } = useTranslation()
   switch (status) {
     case 'validated':
-      return <span className="text-green-600 dark:text-green-400 text-xs font-medium">validé</span>
+      return <span className="text-status-success text-xs font-medium">{t('complianceMatrix.validated')}</span>
     case 'covered':
-      return <span className="text-amber-600 dark:text-amber-400 text-xs font-medium">couvert</span>
+      return <span className="text-status-warning text-xs font-medium">{t('complianceMatrix.covered')}</span>
     case 'missing':
-      return <span className="text-red-600 dark:text-red-400 text-xs font-medium">manquant</span>
+      return <span className="text-status-danger text-xs font-medium">{t('complianceMatrix.missing')}</span>
     case 'na':
       return <span className="text-ink-3/50 text-xs">—</span>
   }
@@ -46,23 +48,24 @@ function CellLabel({ status }: { status: ComplianceCellStatus }) {
 // ── Legend ────────────────────────────────────────────────────────────────────
 
 function Legend() {
+  const { t } = useTranslation()
   return (
     <div className="flex items-center gap-4 text-xs text-ink-3">
       <span className="flex items-center gap-1">
-        <CheckCircle2 size={12} className="text-green-500" />
-        Validé (lien vérifié)
+        <CheckCircle2 size={12} className="text-status-success" />
+        {t('complianceMatrix.legendValidated')}
       </span>
       <span className="flex items-center gap-1">
-        <AlertCircle size={12} className="text-amber-500" />
-        Couvert (lien présent, non validé)
+        <AlertCircle size={12} className="text-status-warning" />
+        {t('complianceMatrix.legendCovered')}
       </span>
       <span className="flex items-center gap-1">
-        <XCircle size={12} className="text-red-500" />
-        Manquant
+        <XCircle size={12} className="text-status-danger" />
+        {t('complianceMatrix.legendMissing')}
       </span>
       <span className="flex items-center gap-1">
         <Minus size={12} className="text-ink-3/40" />
-        Non applicable (rôle différent)
+        {t('complianceMatrix.legendNotApplicable')}
       </span>
     </div>
   )
@@ -71,10 +74,11 @@ function Legend() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ComplianceMatrixComponent({ matrix }: ComplianceMatrixProps) {
+  const { t } = useTranslation()
   if (matrix.requirements.length === 0) {
     return (
       <p className="text-sm text-ink-3 italic">
-        Aucune exigence approuvée dans cette interface.
+        {t('complianceMatrix.noApprovedRequirement')}
       </p>
     )
   }
@@ -82,7 +86,7 @@ export function ComplianceMatrixComponent({ matrix }: ComplianceMatrixProps) {
   if (matrix.components.length === 0) {
     return (
       <p className="text-sm text-ink-3 italic">
-        Aucun composant implémenteur déclaré pour cette interface.
+        {t('complianceMatrix.noImplementingComponent')}
       </p>
     )
   }
@@ -118,10 +122,10 @@ export function ComplianceMatrixComponent({ matrix }: ComplianceMatrixProps) {
           <thead>
             <tr className="bg-surface border-b border-edge">
               <th className="text-left py-2 px-3 text-xs text-ink-3 font-medium min-w-[200px]">
-                Exigence
+                {t('complianceMatrix.requirement')}
               </th>
               <th className="text-left py-2 px-3 text-xs text-ink-3 font-medium w-24">
-                Rôles
+                {t('complianceMatrix.roles')}
               </th>
               {matrix.components.map(comp => (
                 <th
@@ -145,7 +149,7 @@ export function ComplianceMatrixComponent({ matrix }: ComplianceMatrixProps) {
                     colSpan={2 + matrix.components.length}
                     className="py-1.5 px-3 text-xs font-semibold text-ink-2 uppercase tracking-wide border-b border-edge/50"
                   >
-                    {groupKey === 'commun' ? 'Exigences communes (tous rôles)' : `Rôle : ${groupKey}`}
+                    {groupKey === 'commun' ? t('complianceMatrix.commonRequirements') : t('complianceMatrix.roleGroup', { role: groupKey })}
                   </td>
                 </tr>
                 {reqs.map(req => (

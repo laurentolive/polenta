@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
@@ -28,6 +29,7 @@ function getStringField(fields: Record<string, unknown>, key: string): string {
 }
 
 function TestCaseDetailPage() {
+  const { t } = useTranslation()
   const { testId } = Route.useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -108,20 +110,20 @@ function TestCaseDetailPage() {
       setInitialized(false)
       setSaveError(null)
     },
-    onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : 'Erreur inconnue'),
+    onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : t('common.unknownError')),
   })
 
   const handleSave = () => {
-    if (steps.length === 0) { setSaveError('Au moins une étape est requise.'); return }
+    if (steps.length === 0) { setSaveError(t('testsPage.atLeastOneStepRequired')); return }
     const emptyStep = steps.findIndex(s => !s.action.trim() || !s.expectedResult.trim())
-    if (emptyStep !== -1) { setSaveError(`L'étape ${emptyStep + 1} est incomplète.`); return }
+    if (emptyStep !== -1) { setSaveError(t('testsPage.stepIncomplete', { index: emptyStep + 1 })); return }
     setSaveError(null)
     saveMutation.mutate()
   }
 
-  if (!repoPath) return <p className="text-sm text-ink-2 p-4">Paramètre <code>repoPath</code> manquant.</p>
-  if (isLoading) return <p className="text-sm text-ink-3 p-4">Chargement…</p>
-  if (!tc) return <p className="text-sm text-ink-2 p-4">Cas de test introuvable : {testId}</p>
+  if (!repoPath) return <p className="text-sm text-ink-2 p-4"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
+  if (isLoading) return <p className="text-sm text-ink-3 p-4">{t('common.loading')}</p>
+  if (!tc) return <p className="text-sm text-ink-2 p-4">{t('testsPage.notFound', { testId })}</p>
 
   return (
     <RichTextProvider>
@@ -135,7 +137,7 @@ function TestCaseDetailPage() {
                 <select
                   value={status}
                   onChange={e => setStatus(e.target.value)}
-                  className="text-xs font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300 border border-edge outline-none cursor-pointer"
+                  className="text-xs font-medium px-2 py-0.5 rounded bg-status-neutral-bg text-status-neutral border border-edge outline-none cursor-pointer"
                 >
                   {typeDef.statuses.map(s => (
                     <option key={s.name} value={s.name}>{s.label ?? s.name}</option>
@@ -146,7 +148,7 @@ function TestCaseDetailPage() {
                   type="text"
                   value={status}
                   onChange={e => setStatus(e.target.value)}
-                  className="text-xs font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300 border border-edge outline-none w-24"
+                  className="text-xs font-medium px-2 py-0.5 rounded bg-status-neutral-bg text-status-neutral border border-edge outline-none w-24"
                 />
               )}
               <span className="text-xs font-mono text-ink-3 font-normal">{tc.id}</span>
@@ -159,14 +161,14 @@ function TestCaseDetailPage() {
         <div className="max-w-3xl p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">
-              Titre <span className="text-red-500">*</span>
+              {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
             </label>
             <input type="text" value={title} onChange={e => setTitle(e.target.value)}
               className="input-field w-full" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Type</label>
+            <label className="block text-sm font-medium text-ink mb-1">{t('system.editView.colType')}</label>
             <select value={type} onChange={e => setType(e.target.value)} className="input-field w-full">
               {testTypes.map(t => (
                 <option key={t.name} value={t.name}>{t.label ?? t.name}</option>
@@ -179,6 +181,7 @@ function TestCaseDetailPage() {
               value={fields[f.name] ?? String(f.default ?? '')}
               onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
               repoPath={repoPath}
+              interfaceRoles={schema?.roles?.map(r => r.name)}
             />
           ))}
 
@@ -194,33 +197,33 @@ function TestCaseDetailPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Préconditions</label>
+            <label className="block text-sm font-medium text-ink mb-1">{t('testsPage.preconditions')}</label>
             <textarea value={preconditions} onChange={e => setPreconditions(e.target.value)}
               rows={2} className="input-field w-full resize-none" />
           </div>
 
           <div>
-            <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">Étapes</p>
+            <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('system.wordView.stepsHeading')}</p>
             <StepsTable steps={steps} onChange={setSteps} repoPath={repoPath} />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Postconditions</label>
+            <label className="block text-sm font-medium text-ink mb-1">{t('testsPage.postconditions')}</label>
             <textarea value={postconditions} onChange={e => setPostconditions(e.target.value)}
               rows={2} className="input-field w-full resize-none" />
           </div>
 
-          {saveError && <p className="text-sm text-red-500">{saveError}</p>}
+          {saveError && <p className="text-sm text-status-danger">{saveError}</p>}
 
           <div className="flex gap-3">
             <button type="button" onClick={handleSave}
               disabled={!hasChanges || saveMutation.isPending} className="btn-primary">
-              {saveMutation.isPending ? 'Sauvegarde…' : 'Sauvegarder'}
+              {saveMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
             </button>
             <button type="button"
               onClick={() => navigate({ to: '/schema', search: { repoPath, projectId } })}
               className="btn-secondary">
-              Retour
+              {t('layout.viewHeader.back')}
             </button>
           </div>
         </div>

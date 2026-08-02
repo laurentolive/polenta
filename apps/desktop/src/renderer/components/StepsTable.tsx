@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { RichTextField } from './RichTextField'
 
 export interface StepDraft {
@@ -14,6 +15,7 @@ interface StepsTableProps {
 }
 
 export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTableProps) {
+  const { t } = useTranslation()
   const dragIndexRef = useRef<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
@@ -61,8 +63,8 @@ export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTablePr
       {/* Column labels — lightweight, above the bordered container */}
       <div className="grid grid-cols-[1.75rem_1fr_1fr_1.75rem] px-1 pb-0.5">
         <span />
-        <span className="text-[10px] font-medium text-ink-3 uppercase tracking-wide px-1">Action</span>
-        <span className="text-[10px] font-medium text-ink-3 uppercase tracking-wide px-1">Résultat attendu</span>
+        <span className="text-[10px] font-medium text-ink-3 uppercase tracking-wide px-1">{t('system.stepsTable.action')}</span>
+        <span className="text-[10px] font-medium text-ink-3 uppercase tracking-wide px-1">{t('system.stepsTable.expectedResult')}</span>
         <span />
       </div>
 
@@ -78,7 +80,7 @@ export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTablePr
             onDragEnd={handleDragEnd}
             className={[
               'group bg-surface transition-colors',
-              dragOverIndex === index ? 'border-t-2 border-blue-400' : '',
+              dragOverIndex === index ? 'border-t-2 border-status-info' : '',
               dragIndexRef.current === index ? 'opacity-50' : '',
             ].join(' ')}
           >
@@ -95,7 +97,7 @@ export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTablePr
                   value={step.action}
                   onChange={v => update(index, 'action', v)}
                   disabled={disabled}
-                  placeholder="Action…"
+                  placeholder={t('system.stepsTable.actionPlaceholder')}
                   repoPath={repoPath}
                 />
               </div>
@@ -106,7 +108,7 @@ export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTablePr
                   value={step.expectedResult}
                   onChange={v => update(index, 'expectedResult', v)}
                   disabled={disabled}
-                  placeholder="Résultat attendu…"
+                  placeholder={t('system.stepsTable.expectedResultPlaceholder')}
                   repoPath={repoPath}
                 />
               </div>
@@ -117,8 +119,8 @@ export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTablePr
                   type="button"
                   onClick={() => removeStep(index)}
                   disabled={disabled || steps.length <= 1}
-                  className="opacity-0 group-hover:opacity-100 text-xs text-ink-3 hover:text-red-500 transition-all disabled:opacity-0"
-                  title="Supprimer l'étape"
+                  className="opacity-0 group-hover:opacity-100 text-xs text-ink-3 hover:text-status-danger transition-all disabled:opacity-0"
+                  title={t('system.stepsTable.deleteStep')}
                 >
                   ✕
                 </button>
@@ -134,7 +136,7 @@ export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTablePr
         disabled={disabled}
         className="mt-1.5 btn-sm"
       >
-        + Ajouter une étape
+        + {t('system.stepsTable.addStep')}
       </button>
     </div>
   )

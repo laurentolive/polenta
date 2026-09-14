@@ -1302,6 +1302,7 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 | `/campaign/new?projectId&component?&level?` | Formulaire nouvelle campagne | Produit ou Composants |
 | `/campaign/$campaignId?projectId&component?&level?` | Détail / suivi d'une campagne | Produit ou Composants |
 | `/components?projectId&component&level&tab` | **Panel Composants** — liste selon sélecteurs + tab | Composants |
+| `/search?projectId` | **Vue Recherche** — liste des résultats (style Vue Word) ou édition inline d'un résultat (cf. §19.17) | Recherche |
 
 > `component?` et `level?` sont optionnels : absents = contexte produit, présents = contexte composant. Le panel actif est déduit de leur présence.
 
@@ -1818,6 +1819,59 @@ Hors de ce système (volontairement, cf. `specs/T115.md` Hors scope) : badges de
 cliquables (`rounded-full` coloré), éléments de menu déroulant/contextuel à action discrète et
 lignes de sélection de combobox/liste (ex. `AccountMenu.tsx`, `GitRefCombobox.tsx`,
 `ExcelView.tsx` menu de tri) — ces derniers restent en Tailwind inline, non harmonisés par T115.
+
+### 19.17 Vue Recherche (`/search`, activité « Recherche ») — T107, T167
+
+**Panneau latéral** (`SearchPanel.tsx`) : champ de recherche + options (respecter la
+casse `Aa`, mot entier `ab|`, regex `.*`), remplacement (`Remplacer` / `Tout
+remplacer`, option « Conserver la casse » `AB`), filtres de type (Exig. / Tests /
+Camp.), et liste hiérarchique des résultats (élément → occurrences avec extrait
+surligné). Le remplacement ne s'applique qu'aux exigences et tests (pas d'endpoint
+`update` générique pour les campagnes).
+
+**Zone principale** (`routes/search.tsx`) : depuis T167, n'est plus une page vide.
+
+- Recherche vide / regex invalide → état vide (icône + message d'invitation).
+- Recherche valide sans résultat → message « aucun résultat ».
+- Recherche avec résultats → **`SearchResultsDoc`** : une carte **lecture seule**
+  par élément (présentation d'une carte de la Vue Word — en-tête badge
+  catégorie / id / titre / statut / version, puis tous les champs du type rendus
+  en lecture, `richtext` via `StaticRichTextViewer`, étapes de test en liste).
+  Types hétérogènes → **pas de vue Tableau**, pas de dossiers / sections. Les
+  occurrences du terme recherché sont **surlignées** (`<mark>`) dans l'id, le
+  titre, les champs texte et — best effort — les champs `richtext`
+  (`StaticRichTextViewer` prop `highlightRegex`, `TreeWalker`, ignore
+  `pre`/`code`/`.static-drawio`).
+
+**Clic simple** sur un résultat (panneau **ou** carte) → « goto » : la zone
+principale défile jusqu'à la carte (`useScrollToNode`, `data-node-id` = id de
+l'élément) + contour bleu persistant, exactement comme le clic simple dans l'arbre
+des vues Exigences / Tests (cf. `SPEC-SYSTEM-VIEW` §goto, T164). Le clic simple ne
+navigue plus vers la page détail.
+
+**Double-clic** sur un résultat :
+- exigence / test → **édition inline** dans la zone principale
+  (`SearchEditPane` → composant `EditView`, le même que le double-clic en Vue
+  Système : autosave par champ, section Liens, table Étapes, badge couverture,
+  `Ctrl/Cmd+Entrée` = valider, `Échap` / bouton « Retour aux résultats » =
+  retour). **Aucune navigation routeur** — `/search` est conservé. `SearchEditPane`
+  est une version allégée de la machinerie `SystemView` (pas d'arbre : le champ
+  « Nom » édite directement le `title` ; pas d'undo/redo, pas de DnD, pas de
+  création, pas de retour arrière multi-niveaux). La navigation vers un objet lié
+  depuis la section Liens ouvre un **nouvel onglet**.
+- campagne → navigation vers `/campaign/$campaignId` (pas d'édition générique).
+
+**Partage d'état** : `SearchProvider` (`contexts/SearchContext.tsx`) monté dans
+`AppLayout` (branche `currentProjectId`, `key={currentProjectId}`). Porte la
+requête, les options, les filtres de type, les résultats calculés, la cible goto
+et la cible d'édition — consommé par `SearchPanel` (sidebar) et la route `/search`
+(`<Outlet/>`), sous-arbres React distincts. Les requêtes de liste
+(`['requirements'|'tests'|'campaigns', repoPath]`) restent `enabled: !!regex` :
+aucun fetch tant qu'aucune recherche n'est saisie. La recherche survit désormais à
+la navigation hors Recherche puis au retour (provider monté tant qu'un projet est
+ouvert) ; remise à zéro au changement de projet. `routes/search.tsx` utilise
+`useOptionalSearch()` (repli page d'invite) pour le cas où `/search` est atteint
+sans projet ouvert.
 
 ---
 

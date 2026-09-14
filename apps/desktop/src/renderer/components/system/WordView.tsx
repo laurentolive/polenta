@@ -10,12 +10,18 @@ import { matchesRefs, filterCandidatesByRefs, getRelevantLinkTypes, getPeerId, i
 import { CoverageBadge } from './CoverageBadge'
 import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
+import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
 import { MultiEnumPopover } from './MultiEnumPopover'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
+import { useScrollToNode } from '../../hooks/useScrollToNode'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+/** T164 — contour persistant de la carte / section ciblée par un "goto" depuis l'arbre.
+ *  Anneau bleu plein, distinct de la surbrillance de sélection (fond pâle). */
+const GOTO_OUTLINE_CLASS = 'ring-2 ring-inset ring-status-info-solid rounded'
 
 type AnyObject = Requirement | TestCase | Record<string, unknown>
 
@@ -41,6 +47,8 @@ interface Props {
   typeDef: ObjectTypeDefinition | undefined
   objects: AnyObject[]
   visibleFields: string[]
+  /** T162 — masque les titres de section (H1–H6) : cartes à la suite, collapse ignoré. */
+  foldersHidden?: boolean
   sectionNumbers?: Map<string, string>
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
@@ -55,8 +63,15 @@ interface Props {
   onReopenDraft?: (objectId: string, targetStatus: string) => void
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   filter?: string
+  /** T166 — mode du filtre global (casse / mot entier / regex). Sans lui, le filtre document
+   *  restait une sous-chaîne littérale insensible à la casse, incohérent avec l'arbre latéral. */
+  filterOptions?: FilterOptions
   stepsByObjectId?: Map<string, { action: string; expectedResult: string }[]>
   onStepsChange?: (objectId: string, steps: StepDraft[]) => void
+  /** T164 — nœud d'arbre (item ou folder) sur lequel se positionner (scroll + contour) ;
+   *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
+  gotoNodeId?: string | null
+  gotoSeq?: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -222,6 +237,7 @@ function RichTextInlineField({
               onChange={v => setDraft(v)}
               disabled={!onEdit}
               repoPath={repoPath}
+              onSubmit={commit}
             />
           </div>
         ) : (
@@ -359,6 +375,7 @@ function ItemCard({
   onMultiEnumEdit,
   coverageByReqId,
   testsById,
+  isGotoTarget,
 }: {
   node: TypeTreeNode
   obj: AnyObject | null
@@ -380,6 +397,7 @@ function ItemCard({
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   repoPath?: string
   onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
+  isGotoTarget?: boolean
 }) {
   const { t } = useTranslation()
   const currentStatus = obj ? getFieldValue(obj, 'status') : ''
@@ -429,7 +447,10 @@ function ItemCard({
   const editMultiEnum = isLocked ? undefined : onMultiEnumEdit
 
   return (
-    <div className="border border-edge rounded p-2.5 bg-surface mb-2 group">
+    <div
+      data-node-id={node.id}
+      className={`border border-edge rounded p-2.5 bg-surface mb-2 group${isGotoTarget ? ` ${GOTO_OUTLINE_CLASS}` : ''}`}
+    >
       <div className="flex items-start justify-between mb-1.5">
         <div className="flex items-center flex-wrap gap-x-1.5">
           {section && <span className="font-mono text-xs text-ink-3">{section}</span>}
@@ -646,6 +667,7 @@ export function WordView({
   typeDef,
   objects,
   visibleFields,
+  foldersHidden = false,
   sectionNumbers,
   linkTypes = [],
   linksByObjectId,
@@ -660,8 +682,11 @@ export function WordView({
   onReopenDraft,
   onNavigateToObject,
   filter,
+  filterOptions,
   stepsByObjectId,
   onStepsChange,
+  gotoNodeId,
+  gotoSeq,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -672,6 +697,10 @@ export function WordView({
   const [activeLinkPopover, setActiveLinkPopover] = useState<ActiveLinkPopover | null>(null)
   const [activeMultiEnumPopover, setActiveMultiEnumPopover] = useState<ActiveMultiEnumPopover | null>(null)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
+
+  // T164 — "goto" : défiler jusqu'à la carte / l'en-tête portant data-node-id.
+  const containerRef = useRef<HTMLDivElement>(null)
+  useScrollToNode(containerRef, gotoNodeId, gotoSeq)
 
   const toggleFolder = useCallback((id: string) => {
     setCollapsedFolders(prev => {
@@ -705,12 +734,24 @@ export function WordView({
     objectMap.set(getObjectId(obj), obj)
   }
 
-  const filterLower = filter?.toLowerCase() ?? ''
+  // T166 — honore le mode du filtre global (casse / mot entier / regex), comme l'arbre latéral
+  // et le filtre par colonne (T51). buildFilterRegex renvoie null si le filtre est vide OU si
+  // l'expression regex est invalide → dans les deux cas on n'exclut aucune ligne.
+  const filterRe = buildFilterRegex(filter ?? '', filterOptions ?? NO_FILTER_OPTIONS)
 
   function itemMatchesFilter(node: TypeTreeNode, obj: AnyObject | null): boolean {
-    if (!filterLower) return true
-    const objStr = [node.name, node.objectId, ...(obj ? Object.values(obj as Record<string, unknown>).map(String) : [])].join(' ').toLowerCase()
-    return objStr.includes(filterLower)
+    if (!filterRe) return true
+    // Périmètre : nom de nœud + objectId + toutes les valeurs de champs (champs masqués inclus),
+    // testés un par un — pas de haystack joint, pour qu'une regex ne matche pas à cheval sur
+    // deux champs.
+    if (filterRe.test(node.name)) return true
+    if (node.objectId && filterRe.test(node.objectId)) return true
+    if (obj) {
+      for (const v of Object.values(obj as Record<string, unknown>)) {
+        if (filterRe.test(String(v))) return true
+      }
+    }
+    return false
   }
 
   // Un dossier/section ne doit s'afficher, quand un filtre est actif, que s'il contient au
@@ -753,7 +794,14 @@ export function WordView({
 
     for (const node of nodes) {
       if (node.kind === 'folder') {
-        if (filterLower && !folderHasMatchingDescendant(node)) continue
+        if (filterRe && !folderHasMatchingDescendant(node)) continue
+
+        // T162 — titres masqués : pas de <Hn>, collapse ignoré, on descend toujours dans
+        // les enfants (liste plate de cartes, numéro de section conservé sur chaque carte).
+        if (foldersHidden) {
+          result.push(...renderNodes(node.children, depth + 1))
+          continue
+        }
 
         const section = sectionNumbers?.get(node.id)
         const HeadingTag = (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const)[Math.min(depth, 5)]
@@ -764,11 +812,12 @@ export function WordView({
           depth === 2 ? 'text-base' :
           depth === 3 ? 'text-sm' :
           'text-xs',
+          gotoNodeId === node.id ? GOTO_OUTLINE_CLASS : '',
         ].join(' ')
         const isCollapsed = collapsedFolders.has(node.id)
 
         result.push(
-          <HeadingTag key={node.id} className={headingClass} style={depth > 5 ? { marginLeft: `${(depth - 5) * 16}px` } : undefined}>
+          <HeadingTag key={node.id} data-node-id={node.id} className={headingClass} style={depth > 5 ? { marginLeft: `${(depth - 5) * 16}px` } : undefined}>
             <button
               type="button"
               onClick={() => toggleFolder(node.id)}
@@ -815,6 +864,7 @@ export function WordView({
             onNavigateToObject={onNavigateToObject}
             repoPath={repoPath}
             onMultiEnumEdit={repoPath ? handleMultiEnumClick : undefined}
+            isGotoTarget={gotoNodeId === node.id}
           />
         )
       }
@@ -829,7 +879,7 @@ export function WordView({
   const activeLt = linkTypes.find(l => l.name === activeLinkTypeName)
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div ref={containerRef} className="flex-1 overflow-auto">
       <div className="px-6 py-2">
         {root.length === 0 ? (
           <p className="text-ink-3 text-sm italic">{t('common.noElements')}</p>

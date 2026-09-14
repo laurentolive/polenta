@@ -124,6 +124,22 @@ référencer plusieurs diagrammes positionnés librement dans le texte.
   une page, cette page est affichée ; si elle référence une cellule, la page
   qui la contient est affichée avec la cellule surlignée (coordonnées lues
   directement depuis le graphe du viewer) ; sinon la première page.
+- **Rendu en lecture, Vue Word** *(T163)* : le même viewer vendoré est utilisé,
+  mais monté **paresseusement** — un diagramme n'est rendu que lorsqu'il entre
+  (ou approche) le viewport (`IntersectionObserver`), et une seule fois (pas de
+  rafraîchissement au retour de focus, contrairement à l'édition). La Vue Word
+  monte tous les éléments du document d'un coup ; sans cette paresse, un viewer
+  canvas par champ × N éléments gèle l'onglet. La taille (`width`/`height`) et le
+  cadrage (`crop`) stockés sont restitués à l'identique de la Vue Édition. Aucune
+  interaction : un clic sur le diagramme passe le champ en édition (où le viewer
+  interactif prend le relais). `repoPath` absent, fichier introuvable ou invalide
+  → repli sur une étiquette `📐 nom-de-fichier` ou un message d'erreur inline
+  discret, jamais de crash. Le rendu s'appuie sur `lib/staticDrawio.ts` /
+  `StaticRichTextViewer` (rendu markdown-it sans éditeur Tiptap). Depuis T167,
+  `StaticRichTextViewer` accepte une prop optionnelle `highlightRegex` qui
+  surligne (`<mark>`) les occurrences dans les nœuds texte du rendu (Vue
+  Recherche, `SPEC-ELECTRON-DESKTOP` §19.17) — best effort, ignore
+  `pre`/`code`/`.static-drawio` ; inerte sans la prop.
 - **Édition** : pas d'éditeur draw.io intégré. Double-clic sur le diagramme
   rendu ouvre le fichier dans l'application draw.io externe du poste ; le
   rendu inline se rafraîchit automatiquement au retour de focus sur la fenêtre
@@ -136,8 +152,11 @@ référencer plusieurs diagrammes positionnés librement dans le texte.
 Les images et les diagrammes draw.io insérés dans un champ `richtext` sont
 redimensionnables, rognables (crop) et éditables via un menu contextuel clic
 droit — uniquement en édition (`RichTextField`), jamais dans le rendu lecture
-seule (`RichTextViewer` reste un affichage statique de la taille/du cadrage
-déjà stockés, sans aucune interaction).
+seule (`RichTextViewer` / `StaticRichTextViewer` restent un affichage statique de
+la taille/du cadrage déjà stockés, sans aucune interaction). Cette règle porte
+sur **l'interaction d'édition** (poignées, rognage, menu), pas sur la présence du
+diagramme : depuis T163 le diagramme draw.io est bien rendu en lecture, y compris
+en Vue Word (cf. §3.2a), le cadrage/redimensionnement stockés étant restitués.
 
 - **Stockage image** *(T76)* : une image collée ou insérée via le sélecteur de
   fichier est copiée dans un dossier `images/` à la racine du repo courant
@@ -238,6 +257,29 @@ Un champ de type `multi_enum` dont le `name` vaut exactement `roles` est spécia
 - Fallback : si le catalogue est vide (repo pas encore marqué interface, ou projet créé avant T110), les `values:` du `SchemaField` restent utilisées telles quelles — aucune réécriture de fichiers existants requise.
 - Le format de stockage ne change pas (CSV dans le fichier YAML de l'objet, ex. `"a, b, c"`, comme tout `multi_enum` — fonctions partagées `parseMultiEnumValue`/`serializeMultiEnumValue`, `@polenta/types`) — seule la source des *options proposées* change.
 - **T126** — ce comportement, initialement présent uniquement dans `EditView` (Vue Système), est désormais cohérent dans les 4 endroits d'édition d'un champ `multi_enum` : Vue Système (cases à cocher inline), formulaires détail/création req/test/campagne (`DynamicField`, composant partagé `MultiEnumCheckboxes`), édition inline en Vue Tableau et en Vue Document (`ExcelView`/`WordView`, popover à cases à cocher ancré sur la cellule/le champ, composant partagé `MultiEnumPopover`).
+
+### 3.2e Raccourci de validation dans un champ `richtext` — `Ctrl/Cmd+Entrée` (T158)
+
+Depuis l'intérieur d'un champ `richtext` en édition (`RichTextField`, éditeur TipTap),
+`Ctrl+Entrée` (`Cmd+Entrée` sur macOS) **valide la saisie du contexte d'édition courant**
+au lieu d'insérer un saut de ligne :
+
+| Contexte | Effet |
+|---|---|
+| Popover richtext, Vue Tableau (`ExcelView`) | Ferme le popover, valeur conservée |
+| Champ inline, Vue Document (`WordView`) | `commit` : enregistre et sort du mode édition |
+| `EditView` (Vue Système) | Flush/valide le champ (comme le blur des autres types) |
+| Formulaires de création req/test/campagne | Soumet le formulaire (action du bouton primaire) |
+| Pages détail req/test | Déclenche « Enregistrer » (si modifications) |
+| Cellules d'un `StepsTable` | Câblé à l'action du conteneur (« Enregistrer » le test) ; à défaut, sort du champ — n'ajoute jamais d'étape |
+
+- `Maj+Entrée` reste le saut de ligne dur ; `Entrée` seul reste le nouveau paragraphe / item de liste.
+- Mécanique : extension TipTap `submitOnModEnter` (`priority: 1000`, capte `Mod-Enter`) +
+  prop `RichTextField.onSubmit` (passe-plat via `DynamicField` / `StepsTable`). Sans
+  `onSubmit` fourni, `Ctrl+Entrée` garde le comportement TipTap par défaut (saut de ligne) —
+  champs en lecture seule inclus.
+- `Ctrl+Entrée` prend le pas sur la sortie de bloc de code (`CodeBlock`) quand un `onSubmit`
+  est câblé (sortie de bloc de code = flèche bas).
 
 ### 3.3 Validation (`validator`)
 

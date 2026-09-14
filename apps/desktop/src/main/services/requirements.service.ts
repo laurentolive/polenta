@@ -8,6 +8,7 @@ import type { TreeService } from './tree.service'
 import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
+import { withKeyLock } from './serialize-writes.util'
 
 export class RequirementsService {
   constructor(
@@ -83,66 +84,75 @@ export class RequirementsService {
     return req
   }
 
+  // T159 — `withKeyLock` sérialise les read-modify-write concurrents sur le même fichier
+  // (`findById` → merge → `writeYaml`) : sans ça un autosave et une transition de statut
+  // simultanés sur la même exigence pouvaient se marcher dessus (un champ perdu).
   async update(repoPath: string, id: string, dto: UpdateRequirementDto, workspaceDir?: string): Promise<Requirement> {
-    const existing = await this.index.findById(repoPath, id)
-    if (!existing) throw new Error(`Requirement ${id} not found`)
+    return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+      const existing = await this.index.findById(repoPath, id)
+      if (!existing) throw new Error(`Requirement ${id} not found`)
 
-    const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-    // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
-    // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
-    // pas ici (T112).
-    const updated: Requirement = {
-      ...existing,
-      ...(dto.title && { title: dto.title }),
-      fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
-    }
+      const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+      // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
+      // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
+      // pas ici (T112).
+      const updated: Requirement = {
+        ...existing,
+        ...(dto.title && { title: dto.title }),
+        fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
+      }
 
-    await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-    this.index.upsert(repoPath, updated)
-    return updated
+      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
+      this.index.upsert(repoPath, updated)
+      return updated
+    })
   }
 
   async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string): Promise<Requirement> {
-    const existing = await this.index.findById(repoPath, id)
-    if (!existing) throw new Error(`Requirement ${id} not found`)
+    return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+      const existing = await this.index.findById(repoPath, id)
+      if (!existing) throw new Error(`Requirement ${id} not found`)
 
-    const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-    const updated: Requirement = {
-      ...existing,
-      status: targetStatus,
-      version: (existing.version ?? 0) + 1,
-    }
+      const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+      const updated: Requirement = {
+        ...existing,
+        status: targetStatus,
+        version: (existing.version ?? 0) + 1,
+      }
 
-    await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-    this.index.upsert(repoPath, updated)
-    return updated
+      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
+      this.index.upsert(repoPath, updated)
+      return updated
+    })
   }
 
   async transition(repoPath: string, id: string, dto: TransitionRequirementDto, workspaceDir?: string): Promise<Requirement> {
-    const existing = await this.index.findById(repoPath, id)
-    if (!existing) throw new Error(`Requirement ${id} not found`)
+    return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+      const existing = await this.index.findById(repoPath, id)
+      if (!existing) throw new Error(`Requirement ${id} not found`)
 
-    const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+      const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
 
-    // Une exigence approuvée qui quitte ce statut (ex: retour en draft depuis la
-    // colonne Statut de la vue Excel, qui appelle transition() plutôt que openDraft())
-    // doit voir sa version incrémentée au même titre que le bouton dédié "Reopen draft"
-    // (T150) — sinon la traçabilité de version diverge selon le chemin UI emprunté.
-    const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
-    const resolved = schema ? findObjectTypeDef(schema, existing.objectTypeRef) : null
-    const wasApproved = resolved && resolved !== 'unresolvable'
-      ? !!resolved.statuses?.find(s => s.name === existing.status)?.isApproval
-      : false
+      // Une exigence approuvée qui quitte ce statut (ex: retour en draft depuis la
+      // colonne Statut de la vue Excel, qui appelle transition() plutôt que openDraft())
+      // doit voir sa version incrémentée au même titre que le bouton dédié "Reopen draft"
+      // (T150) — sinon la traçabilité de version diverge selon le chemin UI emprunté.
+      const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
+      const resolved = schema ? findObjectTypeDef(schema, existing.objectTypeRef) : null
+      const wasApproved = resolved && resolved !== 'unresolvable'
+        ? !!resolved.statuses?.find(s => s.name === existing.status)?.isApproval
+        : false
 
-    const updated: Requirement = {
-      ...existing,
-      status: dto.toStatus,
-      ...(wasApproved && dto.toStatus !== existing.status ? { version: (existing.version ?? 0) + 1 } : {}),
-    }
+      const updated: Requirement = {
+        ...existing,
+        status: dto.toStatus,
+        ...(wasApproved && dto.toStatus !== existing.status ? { version: (existing.version ?? 0) + 1 } : {}),
+      }
 
-    await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-    this.index.upsert(repoPath, updated)
-    return updated
+      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
+      this.index.upsert(repoPath, updated)
+      return updated
+    })
   }
 
   /**

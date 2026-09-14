@@ -90,6 +90,9 @@ function RequirementDetailPage() {
     onError: (err: unknown) => setSaveError(err instanceof Error ? err.message : t('common.unknownError')),
   })
 
+  // Ctrl/Cmd+Entrée depuis un champ richtext → « Enregistrer » (no-op sans modification).
+  const submitEdit = () => { if (hasChanges && !saveMutation.isPending) saveMutation.mutate() }
+
   const transitionMutation = useMutation({
     mutationFn: (toStatus: string) => api.requirements.transition(repoPath, reqId, { toStatus }),
     onSuccess: () => {
@@ -160,6 +163,7 @@ function RequirementDetailPage() {
             onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
             repoPath={repoPath}
             interfaceRoles={schema?.roles?.map(r => r.name)}
+            onSubmit={submitEdit}
           />
         ))}
 

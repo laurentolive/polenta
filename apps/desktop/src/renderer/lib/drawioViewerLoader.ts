@@ -32,6 +32,24 @@ declare global {
   }
 }
 
+/**
+ * Valeur de l'attribut `data-mxgraph` pour un rendu inline via
+ * `GraphViewer.createViewerForElement` — partagée par l'embed éditable
+ * (DrawioEmbedView) et le rendu lecture seule de la Vue Word (staticDrawio),
+ * pour qu'un ajustement de config ne diverge pas entre les deux.
+ *
+ * IMPORTANT : **jamais** de clé `toolbar`, même à `""` — le viewer teste
+ * `null != graphConfig.toolbar` pour décider d'appeler `addToolbar()` ; une
+ * chaîne vide passe ce test et crée quand même la barre d'outils (fond #eeeeee,
+ * le rectangle gris). Absente, la clé vaut `undefined` et la barre n'est jamais
+ * créée. `lightbox: 0` désactive le clic natif qui ouvrirait la grande lightbox
+ * du viewer ; `nav: false` masque les flèches de navigation de page ;
+ * `resize: true` laisse le viewer dimensionner son conteneur au diagramme.
+ */
+export function inlineDrawioViewerConfig(xml: string): string {
+  return JSON.stringify({ xml, resize: true, nav: false, lightbox: 0 })
+}
+
 let loadPromise: Promise<void> | null = null
 
 export function loadDrawioViewer(): Promise<void> {

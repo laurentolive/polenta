@@ -1,114 +1,14 @@
-import { useState, useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown } from 'lucide-react'
-import { api } from '../../api'
-import { decodeProjectId } from '../../lib/projectId'
 import { CATEGORY_CHART_BG } from '../../lib/objectCategoryColors'
-import type { Requirement, TestCase, TestCampaign } from '@polenta/types'
+import { useSearch } from '../../contexts/SearchContext'
+import type { SearchResult } from '../../lib/searchQuery'
 
 interface Props {
   currentProjectId: string
   projectId: string
-}
-
-interface SearchOpts {
-  caseSensitive: boolean
-  wholeWord: boolean
-  isRegex: boolean
-  preserveCase: boolean
-}
-
-interface SearchTypes {
-  requirements: boolean
-  tests: boolean
-  campaigns: boolean
-}
-
-type ItemType = 'requirement' | 'test' | 'campaign'
-
-interface MatchedField {
-  key: string
-  excerpt: string
-  matchStart: number
-  matchLength: number
-}
-
-interface SearchResult {
-  itemType: ItemType
-  id: string
-  title: string
-  matches: MatchedField[]
-}
-
-// ── Utilities ──────────────────────────────────────────────────────────────────
-
-function escapeRegex(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function buildRegex(query: string, opts: SearchOpts): RegExp | null {
-  if (!query.trim()) return null
-  try {
-    let pattern = opts.isRegex ? query : escapeRegex(query)
-    if (opts.wholeWord) pattern = `\\b${pattern}\\b`
-    return new RegExp(pattern, 'g' + (opts.caseSensitive ? '' : 'i'))
-  } catch {
-    return null
-  }
-}
-
-function applyPreserveCase(original: string, replacement: string): string {
-  if (!replacement) return replacement
-  if (original === original.toUpperCase()) return replacement.toUpperCase()
-  if (original[0] === original[0].toUpperCase()) {
-    return replacement[0].toUpperCase() + replacement.slice(1)
-  }
-  return replacement.toLowerCase()
-}
-
-function replaceInText(text: string, regex: RegExp, replacement: string, preserveCase: boolean): string {
-  const freshRe = new RegExp(regex.source, regex.flags)
-  return text.replace(freshRe, (match) =>
-    preserveCase ? applyPreserveCase(match, replacement) : replacement,
-  )
-}
-
-function getStringFields(fields: Record<string, unknown>): Array<{ key: string; value: string }> {
-  return Object.entries(fields).flatMap(([key, val]) => {
-    if (typeof val === 'string' && val.trim()) return [{ key, value: val }]
-    if (Array.isArray(val)) {
-      const joined = val.filter((v): v is string => typeof v === 'string').join(' ')
-      if (joined) return [{ key, value: joined }]
-    }
-    return []
-  })
-}
-
-function findMatches(
-  fields: Array<{ key: string; value: string }>,
-  regex: RegExp,
-): MatchedField[] {
-  const matched: MatchedField[] = []
-  for (const { key, value } of fields) {
-    regex.lastIndex = 0
-    const m = regex.exec(value)
-    if (m) {
-      const CTX = 35
-      const from = Math.max(0, m.index - CTX)
-      const to = Math.min(value.length, m.index + m[0].length + CTX)
-      const prefix = from > 0 ? '…' : ''
-      const suffix = to < value.length ? '…' : ''
-      matched.push({
-        key,
-        excerpt: prefix + value.slice(from, to) + suffix,
-        matchStart: m.index - from + prefix.length,
-        matchLength: m[0].length,
-      })
-    }
-  }
-  return matched
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -163,13 +63,15 @@ function ResultItem({
   result,
   showReplace,
   canReplace,
-  onNavigate,
+  onGoto,
+  onOpen,
   onReplace,
 }: {
   result: SearchResult
   showReplace: boolean
   canReplace: boolean
-  onNavigate: () => void
+  onGoto: () => void
+  onOpen: () => void
   onReplace: () => void
 }) {
   const { t } = useTranslation()
@@ -197,8 +99,10 @@ function ResultItem({
         </button>
         <button
           type="button"
-          onClick={onNavigate}
+          onClick={onGoto}
+          onDoubleClick={onOpen}
           className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+          title={t('sidebar.search.clickToGoto')}
         >
           <span className={`text-[9px] font-bold text-status-info-fg px-1 py-px rounded shrink-0 ${badgeCls}`}>
             {badgeLabel}
@@ -244,179 +148,42 @@ function ResultItem({
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function SearchPanel({ currentProjectId, projectId }: Props) {
+export function SearchPanel({ projectId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
-  const [query, setQuery] = useState('')
-  const [replaceQuery, setReplaceQuery] = useState('')
-  const [showReplace, setShowReplace] = useState(false)
-  const [opts, setOpts] = useState<SearchOpts>({
-    caseSensitive: false,
-    wholeWord: false,
-    isRegex: false,
-    preserveCase: false,
-  })
-  const [types, setTypes] = useState<SearchTypes>({
-    requirements: true,
-    tests: true,
-    campaigns: true,
-  })
-  const [replacing, setReplacing] = useState(false)
-  const [replaceError, setReplaceError] = useState<string | null>(null)
+  const {
+    query, setQuery,
+    replaceQuery, setReplaceQuery,
+    showReplace, setShowReplace,
+    opts, setOpts,
+    types, setTypes,
+    repoPath,
+    regex,
+    regexInvalid,
+    results,
+    totalMatches,
+    replacing,
+    replaceError,
+    handleReplaceOne,
+    handleReplaceAll,
+    setGoto,
+    openEditor,
+  } = useSearch()
 
-  const { data: project } = useQuery({
-    queryKey: ['workspace', currentProjectId],
-    queryFn: () => api.workspace.resolve(decodeProjectId(currentProjectId)),
-  })
-  const repoPath = project?.localPath ?? ''
-
-  const regex = useMemo(() => buildRegex(query, opts), [query, opts])
-  const regexInvalid = opts.isRegex && !!query && !regex
-
-  const { data: requirements = [] } = useQuery({
-    queryKey: ['requirements', repoPath],
-    queryFn: () => api.requirements.list(repoPath),
-    enabled: !!repoPath && types.requirements && !!regex,
-  })
-
-  const { data: tests = [] } = useQuery({
-    queryKey: ['tests', repoPath],
-    queryFn: () => api.tests.list(repoPath),
-    enabled: !!repoPath && types.tests && !!regex,
-  })
-
-  const { data: campaigns = [] } = useQuery({
-    queryKey: ['campaigns', repoPath],
-    queryFn: () => api.campaigns.list(repoPath),
-    enabled: !!repoPath && types.campaigns && !!regex,
-  })
-
-  const results = useMemo((): SearchResult[] => {
-    if (!regex) return []
-    const out: SearchResult[] = []
-
-    if (types.requirements) {
-      for (const req of requirements as Requirement[]) {
-        const fields = [
-          { key: 'id', value: req.id },
-          { key: 'title', value: req.title },
-          ...getStringFields(req.fields),
-        ]
-        const matches = findMatches(fields, regex)
-        if (matches.length) out.push({ itemType: 'requirement', id: req.id, title: req.title, matches })
-      }
+  // Double-clic : exigence / test → édition inline dans la zone principale (sans
+  // quitter /search) ; campagne (pas d'endpoint d'édition générique) → page campagne.
+  function handleOpen(result: SearchResult) {
+    if (result.itemType === 'campaign') {
+      if (!repoPath) return
+      navigate({
+        to: '/campaign/$campaignId',
+        params: { campaignId: result.id },
+        search: { repoPath, projectId, component: undefined, level: undefined },
+      })
+      return
     }
-
-    if (types.tests) {
-      for (const test of tests as TestCase[]) {
-        const fields = [
-          { key: 'id', value: test.id },
-          { key: 'title', value: test.title },
-          ...getStringFields(test.fields),
-        ]
-        const matches = findMatches(fields, regex)
-        if (matches.length) out.push({ itemType: 'test', id: test.id, title: test.title, matches })
-      }
-    }
-
-    if (types.campaigns) {
-      for (const camp of campaigns as TestCampaign[]) {
-        const fields = [
-          { key: 'id', value: camp.id },
-          { key: 'title', value: camp.title },
-          ...Object.entries(camp.fields ?? {})
-            .filter(([, v]) => typeof v === 'string' && v)
-            .map(([k, v]) => ({ key: k, value: v as string })),
-        ]
-        const matches = findMatches(fields, regex)
-        if (matches.length) out.push({ itemType: 'campaign', id: camp.id, title: camp.title, matches })
-      }
-    }
-
-    return out
-  }, [regex, requirements, tests, campaigns, types])
-
-  const totalMatches = results.reduce((acc, r) => acc + r.matches.length, 0)
-
-  async function replaceInItem(result: SearchResult): Promise<void> {
-    if (!regex || !repoPath) return
-
-    if (result.itemType === 'requirement') {
-      const req = (requirements as Requirement[]).find((r) => r.id === result.id)
-      if (!req) return
-      const newTitle = result.matches.some((m) => m.key === 'title')
-        ? replaceInText(req.title, regex, replaceQuery, opts.preserveCase)
-        : req.title
-      const newFields: Record<string, unknown> = { ...req.fields }
-      for (const m of result.matches) {
-        if (m.key !== 'id' && m.key !== 'title') {
-          const v = req.fields[m.key]
-          if (typeof v === 'string') {
-            newFields[m.key] = replaceInText(v, regex, replaceQuery, opts.preserveCase)
-          }
-        }
-      }
-      await api.requirements.update(repoPath, result.id, { title: newTitle, fields: newFields })
-      queryClient.invalidateQueries({ queryKey: ['requirements', repoPath] })
-    } else if (result.itemType === 'test') {
-      const test = (tests as TestCase[]).find((t) => t.id === result.id)
-      if (!test) return
-      const newTitle = result.matches.some((m) => m.key === 'title')
-        ? replaceInText(test.title, regex, replaceQuery, opts.preserveCase)
-        : test.title
-      const newFields: Record<string, unknown> = { ...test.fields }
-      for (const m of result.matches) {
-        if (m.key !== 'id' && m.key !== 'title') {
-          const v = test.fields[m.key]
-          if (typeof v === 'string') {
-            newFields[m.key] = replaceInText(v, regex, replaceQuery, opts.preserveCase)
-          }
-        }
-      }
-      await api.tests.update(repoPath, result.id, { title: newTitle, fields: newFields })
-      queryClient.invalidateQueries({ queryKey: ['tests', repoPath] })
-    }
-    // campaigns: pas de endpoint update générique
-  }
-
-  async function handleReplaceOne(result: SearchResult) {
-    setReplaceError(null)
-    try {
-      await replaceInItem(result)
-    } catch (e) {
-      setReplaceError(e instanceof Error ? e.message : t('sidebar.search.replaceError'))
-    }
-  }
-
-  async function handleReplaceAll() {
-    if (!regex || !repoPath || replacing || results.length === 0) return
-    setReplacing(true)
-    setReplaceError(null)
-    try {
-      for (const result of results) {
-        if (result.itemType !== 'campaign') {
-          await replaceInItem(result)
-        }
-      }
-    } catch (e) {
-      setReplaceError(e instanceof Error ? e.message : t('sidebar.search.replaceError'))
-    } finally {
-      setReplacing(false)
-    }
-  }
-
-  function navigateTo(result: SearchResult) {
-    if (!repoPath) return
-    const s = { repoPath, projectId, component: undefined, level: undefined }
-    if (result.itemType === 'requirement') {
-      navigate({ to: '/req/$reqId', params: { reqId: result.id }, search: s })
-    } else if (result.itemType === 'test') {
-      navigate({ to: '/test/$testId', params: { testId: result.id }, search: s })
-    } else {
-      navigate({ to: '/campaign/$campaignId', params: { campaignId: result.id }, search: s })
-    }
+    openEditor(result)
   }
 
   return (
@@ -542,7 +309,8 @@ export function SearchPanel({ currentProjectId, projectId }: Props) {
             result={result}
             showReplace={showReplace}
             canReplace={result.itemType !== 'campaign'}
-            onNavigate={() => navigateTo(result)}
+            onGoto={() => setGoto(result.id)}
+            onOpen={() => handleOpen(result)}
             onReplace={() => handleReplaceOne(result)}
           />
         ))}

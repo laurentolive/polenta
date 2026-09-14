@@ -11,9 +11,12 @@ interface Props {
   /** Catalogue de rôles du repo courant (`schema.roles`), pour le champ `multi_enum`
    *  nommé `roles` uniquement — même règle que EditView.tsx (T110 sprint 3). */
   interfaceRoles?: string[]
+  /** Ctrl/Cmd+Entrée dans un champ `richtext` : valide la saisie (soumet le formulaire,
+   *  déclenche « Enregistrer »…). Ignoré pour les autres types de champ. */
+  onSubmit?: () => void
 }
 
-export function DynamicField({ field, value, onChange, disabled, repoPath, interfaceRoles }: Props) {
+export function DynamicField({ field, value, onChange, disabled, repoPath, interfaceRoles, onSubmit }: Props) {
   const label = field.label ?? field.name ?? ''
 
   return (
@@ -29,6 +32,7 @@ export function DynamicField({ field, value, onChange, disabled, repoPath, inter
           disabled={disabled}
           placeholder={field.placeholder ?? ''}
           repoPath={repoPath}
+          onSubmit={onSubmit}
         />
       ) : field.type === 'enum' ? (
         <select

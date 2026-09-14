@@ -21,6 +21,9 @@ interface FieldControlProps {
   value: string
   onBlur: (value: string) => void
   onChange: (value: string) => void
+  /** T159 — édition utilisateur du champ (frappe) → autosave debouncé. Distinct de `onChange`
+   *  (simple miroir local, appelé aussi par la resync depuis le serveur). */
+  onEdit?: (value: string) => void
   readOnly: boolean
   repoPath?: string
   /** T110 sprint 3 — catalogue de rôles du repo courant (`schema.roles`), pour le champ
@@ -28,13 +31,25 @@ interface FieldControlProps {
   interfaceRoles?: string[]
 }
 
-function FieldControl({ field, value, onBlur, onChange, readOnly, repoPath, interfaceRoles }: FieldControlProps) {
+function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPath, interfaceRoles }: FieldControlProps) {
   const { t } = useTranslation()
   const [localVal, setLocalVal] = useState(value)
 
+  // T159 — le tampon d'affichage (`localVal`) et la dernière valeur serveur réconciliée
+  // (`syncedValRef`). Un refetch de l'objet en arrière-plan (autosave d'un champ voisin,
+  // retour de focus fenêtre…) ne doit pas réinitialiser l'éditeur en cours de frappe (et le
+  // saut de curseur associé) : le richtext notamment ne déclenche aucun `blur`. Cet effet
+  // ne touche QUE l'affichage — le miroir `localValuesRef` est la propriété exclusive de
+  // l'effet `[objectData]` d'EditView (sinon les deux se marchent dessus au remount).
+  const localValRef = useRef(value)
+  const syncedValRef = useRef(value)
+  useEffect(() => { localValRef.current = localVal }, [localVal])
+
   useEffect(() => {
-    setLocalVal(value)
-    onChange(value)
+    // N'adopter la valeur serveur que si le tampon n'a pas de divergence non sauvegardée ;
+    // sinon l'édition de l'utilisateur l'emporte à l'écran jusqu'à sa sauvegarde.
+    if (localValRef.current === syncedValRef.current) setLocalVal(value)
+    syncedValRef.current = value
   }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (v: string) => { setLocalVal(v); onChange(v) }
@@ -67,10 +82,12 @@ function FieldControl({ field, value, onBlur, onChange, readOnly, repoPath, inte
       return (
         <RichTextField
           value={localVal}
-          onChange={v => set(v)}
+          onChange={v => { set(v); onEdit?.(v) }}
           disabled={readOnly}
           placeholder={field.placeholder ?? '(rich text — markdown accepté)'}
           repoPath={repoPath}
+          // Ctrl+Entrée : flush/valide le champ, comme le blur des autres types de champ.
+          onSubmit={() => onBlur(localVal)}
         />
       )
 
@@ -212,6 +229,7 @@ function FieldRow({
   system,
   onBlur,
   onChange,
+  onEdit,
   repoPath,
   interfaceRoles,
 }: {
@@ -221,6 +239,7 @@ function FieldRow({
   system: boolean
   onBlur: (v: string) => void
   onChange: (v: string) => void
+  onEdit?: (v: string) => void
   repoPath?: string
   interfaceRoles?: string[]
 }) {
@@ -231,7 +250,7 @@ function FieldRow({
         {system && <span className="text-ink-3 font-normal">(sys)</span>}
         {field.required && !system && <span className="text-status-danger">*</span>}
       </label>
-      <FieldControl field={field} value={value} onBlur={onBlur} onChange={onChange} readOnly={system} repoPath={repoPath} interfaceRoles={interfaceRoles} />
+      <FieldControl field={field} value={value} onBlur={onBlur} onChange={onChange} onEdit={onEdit} readOnly={system} repoPath={repoPath} interfaceRoles={interfaceRoles} />
     </div>
   )
 }
@@ -308,6 +327,7 @@ function LinksSection({
                 onAdd={peerId => handleAdd(lt.name, objectId, peerId)}
                 onRemove={handleRemove}
                 onNavigateToObject={onNavigateToObject}
+                autoFocus={false}
               />
             )}
             {showIncoming && (
@@ -318,6 +338,7 @@ function LinksSection({
                 onAdd={peerId => handleAdd(lt.name, peerId, objectId)}
                 onRemove={handleRemove}
                 onNavigateToObject={onNavigateToObject}
+                autoFocus={false}
               />
             )}
           </div>
@@ -333,6 +354,10 @@ export interface EditViewProps {
   nodeId: string | null
   nodeName?: string
   objectData: Record<string, string> | null
+  /** T159 — l'objet du nœud existe mais sa requête est encore en vol (typiquement juste
+   *  après un changement d'élément). La vue affiche « Chargement… » plutôt que des champs
+   *  vides éditables — sinon une frappe pendant ce laps atterrit dans le mauvais objet. */
+  objectLoading?: boolean
   typeDef: ObjectTypeDefinition | undefined
   visibleFields: string[]
   sectionNumbers?: Map<string, string>
@@ -345,7 +370,15 @@ export interface EditViewProps {
   candidateObjects?: { id: string; title: string; objectTypeRef: string }[]
   onLinkChange?: () => void
   onBlurField: (field: string, value: string) => void
-  onFlushValues: (values: Record<string, string>) => void
+  /** Persiste en une requête les champs de `values` qui diffèrent de leur valeur serveur.
+   *  T159 — `target` cible explicitement un objet + sa baseline (au lieu de l'objet
+   *  couramment édité) : nécessaire quand on persiste l'objet SORTANT après un changement
+   *  d'`editingNodeId` à EditView monté, `editingObjectId` désignant déjà le nouveau.
+   *  Résout à `false` si une écriture a échoué (l'appelant doit retenter). */
+  onFlushValues: (
+    values: Record<string, string>,
+    target?: { objectId: string; category: string; baseline: Record<string, string> },
+  ) => Promise<boolean>
   onBack: () => void
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   children?: React.ReactNode
@@ -362,6 +395,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   nodeId,
   nodeName,
   objectData,
+  objectLoading = false,
   typeDef,
   visibleFields,
   sectionNumbers,
@@ -392,34 +426,137 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
 
   // Local mirror of all field values — updated on every keystroke
   const localValuesRef = useRef<Record<string, string>>({})
+  // Last server values the mirror was reconciled against (per-field divergence baseline).
+  const serverSnapshotRef = useRef<Record<string, string>>({})
+  // T159 — has the user changed a field since the last flush was dispatched? Gates every
+  // flush so a switch/unmount right after an autosave fired doesn't send a duplicate
+  // `update` for the same object (concurrent writes on the same unserialized file).
+  const dirtyRef = useRef(false)
 
-  // Sync from server when objectData loads/changes
-  useEffect(() => {
-    if (objectData) {
-      localValuesRef.current = { ...objectData }
-    }
-  }, [objectData])
-
-  // Navigate away: flush all pending values first
-  const handleBack = useCallback(() => {
-    onFlushValues(localValuesRef.current)
-    onBack()
-  }, [onFlushValues, onBack])
-
-  useImperativeHandle(ref, () => ({ triggerBack: handleBack }), [handleBack])
-
-  // T127 — flush pending (unblurred) edits when EditView unmounts for any reason other than
-  // the "Retour" button above (which already flushes via handleBack): navigating away through
-  // the ActivityBar (Dashboard, Système, ...) swaps the route and unmounts this component
-  // directly, without ever calling onBack/handleBack. Richtext fields in particular never fire
-  // onBlur (see FieldControl below), so without this their in-progress edits — held only in
-  // localValuesRef — were silently discarded. Kept in a ref so this effect can stay mount-once
-  // (its cleanup must only run on true unmount, not on every onFlushValues identity change).
   const onFlushValuesRef = useRef(onFlushValues)
   useEffect(() => { onFlushValuesRef.current = onFlushValues }, [onFlushValues])
 
+  // T159 — the richtext field has no onBlur (see FieldControl), so its edits are persisted
+  // by this debounced writer: one bulk `update` per fire, gated by `dirtyRef`. The plain
+  // inputs keep their immediate `onBlurField` save but call `cancelAutosave()` first, so
+  // EditView never has two writes to the same file in flight. `objectId`/`category`/
+  // `baseline` are captured when the timer is (re)armed, so a switch landing before it fires
+  // can't misroute the outgoing edits. `cancelAutosave` also runs before every explicit
+  // flush (unmount, object switch).
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelAutosave = () => {
+    if (autosaveTimerRef.current) { clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null }
+  }
+  const flushMirror = (objectId: string, category: string, baseline: Record<string, string>) => {
+    if (!dirtyRef.current) return
+    dirtyRef.current = false
+    // Snapshot des valeurs de CET objet : en cas d'échec on doit pouvoir retenter même si
+    // le miroir a entre-temps été repointé sur un autre objet (branche switch).
+    const values = { ...localValuesRef.current }
+    void Promise.resolve(onFlushValuesRef.current(values, { objectId, category, baseline }))
+      .then(ok => {
+        if (ok) return
+        console.error('[EditView] T159 — échec de sauvegarde, nouvelle tentative programmée', { objectId })
+        // Retenter directement cet objet (indépendant du miroir courant) après un court délai.
+        setTimeout(() => { void onFlushValuesRef.current(values, { objectId, category, baseline }) }, 1500)
+      })
+      .catch(err => console.error('[EditView] T159 — échec de sauvegarde (exception)', err))
+  }
+  const scheduleAutosave = () => {
+    cancelAutosave()
+    const objectId = objectData?.['id'] ?? null
+    const category = typeDef?.category ?? ''
+    const baseline = { ...serverSnapshotRef.current }
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null
+      if (objectId) flushMirror(objectId, category, baseline)
+    }, 800)
+  }
+
+  // T159 — `localValuesRef` (the mirror) is owned solely by this effect. FieldControl's own
+  // [value] effect only touches its display buffer, never the mirror, so the mirror keeps
+  // the outgoing object's unsaved edits intact even when the field list remounts under it.
+  //
+  //  - Switch to a different object while EditView stays MOUNTED (tree double-click, linked-
+  //    object nav, Exigences/Tests tab switch — `editingNodeId`/`objectData` already point at
+  //    the new object, or null mid-transition): cancel the debounced autosave, persist the
+  //    OUTGOING object explicitly in one bulk `update` (the mirror is still its edits), then
+  //    reseed the mirror.
+  //  - First mount / same-object refetch / object just created: adopt each server field
+  //    EXCEPT where the user has an unsaved local divergence (mirror ≠ last known server
+  //    value) — that edit must survive a background refetch (sibling autosave, refocus).
+  const prevObjectDataRef = useRef<{ id: string; category: string } | null>(null)
+  const seededNodeIdRef = useRef(nodeId)
   useEffect(() => {
-    return () => { onFlushValuesRef.current(localValuesRef.current) }
+    const id = objectData?.['id'] ?? null
+    const prev = prevObjectDataRef.current
+
+    // Orphan guard — the tree node changed and the mirror is still dirty from a node whose
+    // object was never persisted (`prev` null, so the switch branch below can't flush it):
+    // that content isn't ours, drop it rather than let the next flush write it onto the
+    // object now being shown. (A switch away from a real object already cleared dirtyRef in
+    // the switch branch on the object→null tick.)
+    if (seededNodeIdRef.current !== nodeId) {
+      seededNodeIdRef.current = nodeId
+      if (dirtyRef.current && !prev) {
+        localValuesRef.current = {}
+        serverSnapshotRef.current = {}
+        dirtyRef.current = false
+      }
+    }
+
+    if (prev && prev.id !== id) {
+      cancelAutosave()
+      flushMirror(prev.id, prev.category, serverSnapshotRef.current)
+      localValuesRef.current = objectData ? { ...objectData } : {}
+      serverSnapshotRef.current = objectData ? { ...objectData } : {}
+      dirtyRef.current = false
+    } else if (objectData) {
+      const prevServer = serverSnapshotRef.current
+      const mirror = localValuesRef.current
+      for (const [k, v] of Object.entries(objectData)) {
+        if ((mirror[k] ?? '') === (prevServer[k] ?? '')) mirror[k] = v
+      }
+      serverSnapshotRef.current = { ...objectData }
+    }
+
+    // `objectData` only goes null when the edited object actually changes (react-query keeps
+    // data during a same-key refetch), so a null id here means "switched away", not transient.
+    prevObjectDataRef.current = id ? { id, category: typeDef?.category ?? '' } : null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [objectData, typeDef?.category, nodeId])
+
+  // Navigate away — the outgoing flush is handled by the [objectData] switch branch (linked-
+  // object nav keeps EditView mounted) or by the unmount cleanup below (viewMode leaves
+  // 'edit'), never here, so this stays a single writer.
+  const handleBack = useCallback(() => {
+    cancelAutosave()
+    onBack()
+  }, [onBack])
+
+  useImperativeHandle(ref, () => ({ triggerBack: handleBack }), [handleBack])
+
+  // T127 — flush pending (unblurred) edits when EditView unmounts: the "Retour"/Escape path
+  // (viewMode leaves 'edit') and the ActivityBar/route-change path both unmount without ever
+  // calling a flush themselves, and richtext fields never fire onBlur (see FieldControl), so
+  // their in-progress edits — held only in localValuesRef — would be silently discarded.
+  // Mount-once so its cleanup runs only on true unmount. Targeted at the last-shown object
+  // via `prevObjectDataRef` (T159) — robust to the final render having nulled out
+  // editingNodeId; falls back to the untargeted (creation) path for a brand-new object.
+  // Sole writer on this path — handleBack no longer flushes.
+  useEffect(() => {
+    return () => {
+      cancelAutosave()
+      if (!dirtyRef.current) return
+      const prev = prevObjectDataRef.current
+      const p = prev
+        ? onFlushValuesRef.current(localValuesRef.current, {
+            objectId: prev.id, category: prev.category, baseline: serverSnapshotRef.current,
+          })
+        : onFlushValuesRef.current(localValuesRef.current)
+      void Promise.resolve(p).catch(err => console.error('[EditView] T159 — échec du flush au démontage', err))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── Keyboard: Escape → back ; Ctrl+Enter → blur active field ─────────────
@@ -485,6 +622,18 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
     )
   }
 
+  // T159 — pendant le chargement de l'objet (juste après un changement d'élément), ne pas
+  // monter le formulaire : des champs vides et éditables absorberaient une frappe dans le
+  // mauvais objet. Les hooks ci-dessus (dont l'effet de flush de l'objet sortant) ont déjà
+  // tourné — seul le rendu est court-circuité.
+  if (objectLoading && !objectData) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">
+        {t('common.loading')}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* ── Form ── */}
@@ -506,6 +655,13 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               Aucun champ configuré pour cette vue.
             </p>
           )}
+          {/* T159 — keyed on the edited tree node (NOT objectData.id): switching to another
+              object while EditView stays mounted (tree double-click, linked-object nav)
+              remounts every FieldControl with the new object's values, dropping stale local
+              buffer/guard state. Keyed on nodeId rather than the object id so that a brand-
+              new node getting its object created (null id → real id) does NOT remount and
+              wipe content typed before the title was set. */}
+          <React.Fragment key={nodeId ?? 'new'}>
           {(() => {
             const result: React.ReactNode[] = []
             let i = 0
@@ -521,8 +677,17 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                   label={f.label ?? f.name}
                   value={getValue(f.name)}
                   system={sys || readOnly}
-                  onBlur={v => !sys && !readOnly && onBlurField(f.name, v)}
-                  onChange={v => { if (!sys && !readOnly) localValuesRef.current[f.name] = v }}
+                  onBlur={v => {
+                    if (sys || readOnly) return
+                    // T159 — un save immédiat de ce champ (onBlurField) et l'autosave
+                    // debouncé du richtext écriraient le même fichier en concurrence ;
+                    // annuler le timer (le richtext reste `dirty`, il sera flushé au
+                    // prochain déclencheur) pour garder un seul write en vol.
+                    cancelAutosave()
+                    onBlurField(f.name, v)
+                  }}
+                  onChange={v => { if (!sys && !readOnly) { localValuesRef.current[f.name] = v; dirtyRef.current = true } }}
+                  onEdit={() => { if (!sys && !readOnly) scheduleAutosave() }}
                   repoPath={repoPath}
                   interfaceRoles={f.name === 'roles' ? interfaceRoles : undefined}
                 />
@@ -542,6 +707,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
             }
             return result
           })()}
+          </React.Fragment>
 
           {/* ── Liens section ── */}
           {linkTypes.length > 0 && objectData && (

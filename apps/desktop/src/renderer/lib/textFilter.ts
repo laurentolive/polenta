@@ -4,6 +4,10 @@ export interface FilterOptions {
   regex: boolean
 }
 
+/** Options « neutres » — filtre en sous-chaîne littérale, insensible à la casse. À passer quand
+ *  aucune `FilterOptions` n'est fournie (mode par défaut de la barre de recherche). */
+export const NO_FILTER_OPTIONS: FilterOptions = Object.freeze({ caseSensitive: false, wholeWord: false, regex: false })
+
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** null = pas de contrainte (filtre vide OU expression invalide — on n'exclut rien

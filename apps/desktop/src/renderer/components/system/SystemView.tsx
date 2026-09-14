@@ -19,10 +19,12 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { useSystemView } from '../../contexts/SystemViewContext'
 import { useTabs } from '../../contexts/TabsContext'
 import { treeFindNode, treeFindByObjectId, computeSectionNumbers } from '../../hooks/useTreeState'
+import { useSystemObjects } from '../../hooks/useSystemObjects'
 import { ExcelView } from './ExcelView'
 import { WordView } from './WordView'
 import { EditView, type EditViewHandle } from './EditView'
 import { api } from '../../api'
+import type { FieldVisibilityPref } from '@polenta/api-client'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { RichTextToolbar } from './RichTextToolbar'
 import { ViewHeader } from '../layout/ViewHeader'
@@ -80,6 +82,10 @@ function FieldConfigModal({
   visibleFieldsWord,
   onChangeExcel,
   onChangeWord,
+  showFoldersExcel,
+  showFoldersWord,
+  onChangeShowFoldersExcel,
+  onChangeShowFoldersWord,
   onClose,
 }: {
   typeDef: ObjectTypeDefinition | undefined
@@ -90,6 +96,10 @@ function FieldConfigModal({
   visibleFieldsWord: string[]
   onChangeExcel: (fields: string[]) => void
   onChangeWord: (fields: string[]) => void
+  showFoldersExcel: boolean
+  showFoldersWord: boolean
+  onChangeShowFoldersExcel: (v: boolean) => void
+  onChangeShowFoldersWord: (v: boolean) => void
   onClose: () => void
 }) {
   const { t } = useTranslation()
@@ -117,6 +127,8 @@ function FieldConfigModal({
 
   const currentFields = tab === 'excel' ? visibleFieldsExcel : visibleFieldsWord
   const onChangeCurrent = tab === 'excel' ? onChangeExcel : onChangeWord
+  const showFolders = tab === 'excel' ? showFoldersExcel : showFoldersWord
+  const onChangeShowFolders = tab === 'excel' ? onChangeShowFoldersExcel : onChangeShowFoldersWord
 
   // Ordre canonique = celui de la liste affichée dans ce panneau (champs système, puis custom,
   // puis étapes, puis liens). Recocher un champ le remet à sa place plutôt qu'en fin de liste.
@@ -181,6 +193,17 @@ function FieldConfigModal({
             </button>
           ))}
         </div>
+
+        {/* T162 — afficher / masquer les titres de dossiers (par vue) */}
+        <label className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded mb-2 pb-2 border-b border-edge">
+          <input
+            type="checkbox"
+            checked={showFolders}
+            onChange={e => onChangeShowFolders(e.target.checked)}
+            className="h-3 w-3 accent-ink"
+          />
+          <span>{t('system.fieldConfig.showFolders')}</span>
+        </label>
 
         {/* Scrollable field list */}
         <div className="overflow-y-auto max-h-80 space-y-1.5">
@@ -256,7 +279,7 @@ function FieldConfigModal({
         {/* Reset */}
         <button
           type="button"
-          onClick={() => onChangeCurrent(defaultFields)}
+          onClick={() => { onChangeCurrent(defaultFields); onChangeShowFolders(true) }}
           className="mt-3 text-xs text-ink-3 hover:text-ink underline"
         >
           Réinitialiser
@@ -291,6 +314,7 @@ export function SystemView() {
     redo,
     readOnly,
     filter,
+    filterOptions,
     handleInlineEdit,
     pendingEdits,
     clearPendingEdits,
@@ -301,6 +325,9 @@ export function SystemView() {
     generateId,
     navigateTo,
     createItemObject,
+    gotoNodeId,
+    gotoSeq,
+    clearGoto,
   } = useSystemView()
 
   // T135 — `candidateObjects` (dropdown "ajouter un lien") ne se reconstruit que si ces deux
@@ -342,8 +369,13 @@ export function SystemView() {
   useEffect(() => {
     if (editingNodeId !== null) {
       setViewMode('edit')
+      // T164 — entrer en Vue Édition efface toute cible "goto" (le clic simple qui précède
+      // un double-clic en a posé une). `SystemPanel.handleGoto` ignore ensuite toute requête
+      // tant que `editingNodeId !== null`, donc aucune cible ne peut réapparaître avant la
+      // sortie d'Édition.
+      clearGoto()
     }
-  }, [editingNodeId])
+  }, [editingNodeId, clearGoto])
 
   // ── Link navigation (T37) ─────────────────────────────────────────────────
 
@@ -384,7 +416,7 @@ export function SystemView() {
   )
   const editingObjectId = editingTreeNode?.kind === 'item' ? (editingTreeNode.objectId ?? null) : null
 
-  const { data: loadedObject } = useQuery({
+  const { data: loadedObject, isLoading: loadedObjectLoading } = useQuery({
     queryKey: ['object', repoPath, effectiveType?.category, editingObjectId],
     queryFn: async () => {
       if (!editingObjectId || !effectiveType?.category || !repoPath) return null
@@ -481,23 +513,12 @@ export function SystemView() {
 
   // ── Object loading for Excel / Word views ────────────────────────────────
 
-  const { data: rawObjects = [] } = useQuery({
-    queryKey: ['objects', repoPath, effectiveType?.category, effectiveNodeId, effectiveTypeId],
-    queryFn: async () => {
-      if (!repoPath || !effectiveType?.category || !effectiveNodeId || !effectiveTypeId) return []
-      const ref = `${effectiveNodeId}::${effectiveTypeId}`
-      if (effectiveType.category === 'requirement') {
-        const all = await api.requirements.list(repoPath, {})
-        return all.filter(r => r.objectTypeRef === ref)
-      }
-      if (effectiveType.category === 'test') {
-        const all = await api.tests.list(repoPath)
-        return all.filter(t => t.objectTypeRef === ref)
-      }
-      return []
-    },
-    enabled: !!repoPath && !!effectiveType?.category && !!effectiveNodeId && !!effectiveTypeId,
-  })
+  const { data: rawObjects = [] } = useSystemObjects(
+    repoPath,
+    effectiveType?.category,
+    effectiveNodeId,
+    effectiveTypeId,
+  )
 
   const objects = useMemo(
     () => (rawObjects as (Requirement | TestCase)[]).map(o => {
@@ -573,6 +594,13 @@ export function SystemView() {
   const [visibleFieldsExcel, setVisibleFieldsExcel] = useState<string[]>(['section', 'name', 'id', 'status'])
   const [visibleFieldsWord, setVisibleFieldsWord] = useState<string[]>(['section', 'name', 'id', 'status'])
   const [visibleFieldsEdit, setVisibleFieldsEdit] = useState<string[]>(['section', 'name', 'id', 'status'])
+  // T162 — titres de dossiers affichés dans les vues Tableau / Document (par type, persisté avec les colonnes)
+  const [showFoldersExcel, setShowFoldersExcel] = useState(true)
+  const [showFoldersWord, setShowFoldersWord] = useState(true)
+  // T162 — miroir synchrone de l'objet de pref complet, pour éviter qu'un enregistrement
+  // n'écrase un champ voisin avec une valeur d'état périmée (closures) quand deux réglages
+  // changent coup sur coup (ex. « Réinitialiser » = colonnes + titres en deux appels).
+  const prefsRef = useRef<FieldVisibilityPref>({ excel: [], word: [], edit: [], showFoldersExcel: true, showFoldersWord: true })
 
   const { data: identity } = useQuery({
     queryKey: ['identity', repoPath],
@@ -749,9 +777,18 @@ export function SystemView() {
       ...(effectiveType?.category === 'test' ? ['steps'] : []),
       ...(effectiveType?.fields.slice(0, 3).map(f => f.name) ?? []),
     ]
-    setVisibleFieldsExcel(savedPrefs?.excel ?? fallback)
-    setVisibleFieldsWord(savedPrefs?.word ?? fallback)
-    setVisibleFieldsEdit(savedPrefs?.edit ?? fallback)
+    const excel = savedPrefs?.excel ?? fallback
+    const word = savedPrefs?.word ?? fallback
+    const edit = savedPrefs?.edit ?? fallback
+    // T162 — absent d'une pref écrite avant ce ticket ⇒ titres affichés (défaut)
+    const showFoldersExcelNext = savedPrefs?.showFoldersExcel ?? true
+    const showFoldersWordNext = savedPrefs?.showFoldersWord ?? true
+    setVisibleFieldsExcel(excel)
+    setVisibleFieldsWord(word)
+    setVisibleFieldsEdit(edit)
+    setShowFoldersExcel(showFoldersExcelNext)
+    setShowFoldersWord(showFoldersWordNext)
+    prefsRef.current = { excel, word, edit, showFoldersExcel: showFoldersExcelNext, showFoldersWord: showFoldersWordNext }
   }, [savedPrefs, effectiveTypeId, isPrefsPlaceholder]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const autoSaveMutation = useMutation({
@@ -904,44 +941,62 @@ export function SystemView() {
 
   // Appelé par EditView au moment de la navigation (onBack) — sauvegarde tous les champs modifiés en une seule requête
   // Si editingObjectId est null (nouveau nœud sans objet), crée l'objet avec les valeurs remplies
-  const handleFlushEditValues = useCallback((localValues: Record<string, string>) => {
-    const cat = effectiveType?.category
-    if (!cat || !repoPath || !editingNodeId) return
+  //
+  // T159 — `target` (optionnel) : cible explicitement un objet + sa baseline serveur, au lieu
+  // de l'objet couramment édité. Utilisé par EditView quand il faut persister l'objet SORTANT
+  // après un changement d'`editingNodeId` à EditView monté (double-clic dans l'arbre, nav vers
+  // un objet lié) — à ce moment `editingObjectId`/`objectData` désignent déjà le nouvel objet.
+  // Aussi utilisé par l'autosave debouncé du richtext. Une seule requête `update` par appel,
+  // jamais deux writes concurrents sur le même fichier (read-modify-write non sérialisé côté
+  // main). Pas de création d'objet quand `target` est fourni.
+  const handleFlushEditValues = useCallback(async (
+    localValues: Record<string, string>,
+    target?: { objectId: string; category: string; baseline: Record<string, string> },
+  ): Promise<boolean> => {
+    // `|| ` not `??` — an empty-string category from EditView must still fall back.
+    const cat = target?.category || effectiveType?.category
+    if (!cat || !repoPath) return true
+    const objectId = target?.objectId ?? editingObjectId
+    if (!target && !editingNodeId) return true
 
-    if (editingObjectId) {
+    if (objectId) {
       // Objet existant — sauvegarder les champs modifiés
+      const baseline = target?.baseline ?? objectData ?? {}
       const changedFields: Record<string, string> = {}
       let newTitle: string | undefined
       for (const [field, value] of Object.entries(localValues)) {
         if (field === 'section' || field === 'name') continue
         if (SYSTEM_FIELDS_SET.has(field)) continue
         if (field === 'status') continue
-        const serverValue = objectData?.[field] ?? ''
+        const serverValue = baseline[field] ?? ''
         if (value === serverValue) continue
         if (field === 'title') { newTitle = value.trim() || undefined }
         else { changedFields[field] = value }
       }
-      if (!newTitle && Object.keys(changedFields).length === 0) return
+      if (!newTitle && Object.keys(changedFields).length === 0) return true
       const dto = {
         ...(newTitle ? { title: newTitle } : {}),
         ...(Object.keys(changedFields).length > 0 ? { fields: changedFields } : {}),
       }
-      if (cat === 'requirement') {
-        api.requirements.update(repoPath, editingObjectId, dto)
-          .then(() => {
-            qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] })
-            if (newTitle) invalidateCandidateObjects()
-          })
-          .catch(err => console.error('[FlushEdit] Erreur update requirement:', err))
-      } else if (cat === 'test') {
-        api.tests.update(repoPath, editingObjectId, dto as UpdateTestCaseDto)
-          .then(() => {
-            qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] })
-            if (newTitle) invalidateCandidateObjects()
-          })
-          .catch(err => console.error('[FlushEdit] Erreur update test:', err))
+      // Retourne false si l'écriture a échoué → EditView ré-arme son flag `dirty` et
+      // retentera (prochaine frappe / switch / démontage) au lieu de perdre l'édition.
+      try {
+        if (cat === 'requirement') {
+          await api.requirements.update(repoPath, objectId, dto)
+        } else if (cat === 'test') {
+          await api.tests.update(repoPath, objectId, dto as UpdateTestCaseDto)
+        } else {
+          return true
+        }
+      } catch (err) {
+        console.error('[FlushEdit] Erreur update:', err)
+        return false
       }
-    } else {
+      qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] })
+      qc.invalidateQueries({ queryKey: ['object', repoPath, cat, objectId] })
+      if (newTitle) invalidateCandidateObjects()
+      return true
+    } else if (!target && editingNodeId) {
       // Nouvel objet — créer avec les valeurs remplies
       const title = localValues['title']?.trim() || editingTreeNode?.name?.trim() || t('system.systemView.untitled')
       const customFields: Record<string, string> = {}
@@ -950,7 +1005,7 @@ export function SystemView() {
         if (value !== '') customFields[field] = value
       }
       // Ne créer que si au moins un champ est rempli (hors titre issu du nom du nœud)
-      if (Object.keys(customFields).length === 0 && !localValues['title']?.trim()) return
+      if (Object.keys(customFields).length === 0 && !localValues['title']?.trim()) return true
 
       const objectTypeRef = `${effectiveNodeId}::${effectiveTypeId}`
       const afterCreate = (newId: string) => {
@@ -974,10 +1029,11 @@ export function SystemView() {
           .catch(err => console.error('[FlushEdit] Erreur création test:', err))
       }
     }
+    return true
   }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects])
 
   const savePrefsMutation = useMutation({
-    mutationFn: async (views: { excel: string[]; word: string[]; edit: string[] }) => {
+    mutationFn: async (views: FieldVisibilityPref) => {
       if (!repoPath || !username || !typeKey) return
       await api.pref.setFieldVisibility(repoPath, username, typeKey, views)
       return views
@@ -992,20 +1048,40 @@ export function SystemView() {
     },
   })
 
+  // T162 — un seul objet de pref porte les colonnes des 3 vues + les 2 booléens « titres de
+  // dossiers ». Chaque handler applique son override sur `prefsRef` (miroir synchrone) et
+  // enregistre l'objet COMPLET : sans ça, changer une colonne remettrait `showFolders*` à
+  // `undefined`, et deux appels successifs s'écraseraient mutuellement (closures périmées).
+  const persistPrefs = useCallback((override: Partial<FieldVisibilityPref>) => {
+    const next = { ...prefsRef.current, ...override }
+    prefsRef.current = next
+    savePrefsMutation.mutate(next)
+  }, [savePrefsMutation])
+
   const handleChangeExcel = useCallback((fields: string[]) => {
     setVisibleFieldsExcel(fields)
-    savePrefsMutation.mutate({ excel: fields, word: visibleFieldsWord, edit: visibleFieldsEdit })
-  }, [visibleFieldsWord, visibleFieldsEdit, savePrefsMutation])
+    persistPrefs({ excel: fields })
+  }, [persistPrefs])
 
   const handleChangeWord = useCallback((fields: string[]) => {
     setVisibleFieldsWord(fields)
-    savePrefsMutation.mutate({ excel: visibleFieldsExcel, word: fields, edit: visibleFieldsEdit })
-  }, [visibleFieldsExcel, visibleFieldsEdit, savePrefsMutation])
+    persistPrefs({ word: fields })
+  }, [persistPrefs])
 
   const handleChangeEdit = useCallback((fields: string[]) => {
     setVisibleFieldsEdit(fields)
-    savePrefsMutation.mutate({ excel: visibleFieldsExcel, word: visibleFieldsWord, edit: fields })
-  }, [visibleFieldsExcel, visibleFieldsWord, savePrefsMutation])
+    persistPrefs({ edit: fields })
+  }, [persistPrefs])
+
+  const handleChangeShowFoldersExcel = useCallback((show: boolean) => {
+    setShowFoldersExcel(show)
+    persistPrefs({ showFoldersExcel: show })
+  }, [persistPrefs])
+
+  const handleChangeShowFoldersWord = useCallback((show: boolean) => {
+    setShowFoldersWord(show)
+    persistPrefs({ showFoldersWord: show })
+  }, [persistPrefs])
 
   // ── Empty / loading states ────────────────────────────────────────────────
 
@@ -1197,6 +1273,10 @@ export function SystemView() {
           visibleFieldsWord={visibleFieldsWord}
           onChangeExcel={handleChangeExcel}
           onChangeWord={handleChangeWord}
+          showFoldersExcel={showFoldersExcel}
+          showFoldersWord={showFoldersWord}
+          onChangeShowFoldersExcel={handleChangeShowFoldersExcel}
+          onChangeShowFoldersWord={handleChangeShowFoldersWord}
           onClose={() => setShowFieldConfig(false)}
         />
       )}
@@ -1216,6 +1296,7 @@ export function SystemView() {
             typeDef={effectiveType}
             objects={objects}
             visibleFields={visibleFieldsExcel}
+            foldersHidden={!showFoldersExcel}
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
             linksByObjectId={linksByObjectId}
@@ -1240,7 +1321,10 @@ export function SystemView() {
             }}
             onNavigateToObject={navigateToObject}
             filter={filter}
+            filterOptions={filterOptions}
             onItemNodeAdded={readOnly ? undefined : createItemObject}
+            gotoNodeId={gotoNodeId}
+            gotoSeq={gotoSeq}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'word' && (
@@ -1249,6 +1333,7 @@ export function SystemView() {
             typeDef={effectiveType}
             objects={objects}
             visibleFields={visibleFieldsWord}
+            foldersHidden={!showFoldersWord}
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
             linksByObjectId={linksByObjectId}
@@ -1271,6 +1356,9 @@ export function SystemView() {
             }}
             onNavigateToObject={navigateToObject}
             filter={filter}
+            filterOptions={filterOptions}
+            gotoNodeId={gotoNodeId}
+            gotoSeq={gotoSeq}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'edit' && (
@@ -1279,6 +1367,10 @@ export function SystemView() {
             nodeId={editingNodeId}
             nodeName={editingTreeNode?.name}
             objectData={objectData}
+            // `isLoading` (pas juste `!objectData`) : sur erreur de la query (objet
+            // introuvable / entrée d'arbre orpheline) il repasse à false → EditView
+            // affiche le formulaire vide au lieu de rester bloqué sur « Chargement… ».
+            objectLoading={!!editingObjectId && !objectData && loadedObjectLoading}
             typeDef={effectiveType}
             visibleFields={[
               'section', 'name', 'id', 'status',

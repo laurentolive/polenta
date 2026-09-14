@@ -3,7 +3,7 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import type { DrawioPage } from '@polenta/api-client'
 import { api } from '../api'
 import { resolveDrawioTarget } from '../lib/drawioRender'
-import { loadDrawioViewer } from '../lib/drawioViewerLoader'
+import { loadDrawioViewer, inlineDrawioViewerConfig } from '../lib/drawioViewerLoader'
 import type { DrawioEmbedOptions, DrawioCropRect } from './DrawioEmbedExtension'
 import { ResizableMediaFrame, type MediaBounds } from './ResizableMediaFrame'
 import type { NodeContextMenuEntry } from './NodeContextMenu'
@@ -91,25 +91,12 @@ export function DrawioEmbedView({ node, extension, updateAttributes, selected, e
     if (!container) return
     container.innerHTML = ''
     container.className = 'mxgraph'
-    container.setAttribute('data-mxgraph', JSON.stringify({
-      xml: page.xml,
-      // Pas de clé `toolbar` du tout : le viewer teste `null != graphConfig.toolbar`
-      // pour décider d'appeler addToolbar() — une chaîne vide passe ce test
-      // (elle n'est pas `null`) et crée quand même la barre d'outils (fond
-      // #eeeeee, exactement le rectangle gris signalé). Absente, la clé vaut
-      // `undefined` et addToolbar() n'est jamais appelé.
-      resize: true,
-      nav: false,
-      // Désactive le clic simple natif du viewer qui ouvre sa propre
-      // "lightbox" (grand popup zoom/pan/print) — ce viewer embarqué gère
-      // désormais son propre clic (sélection ProseMirror pour redimensionner)
-      // et son propre double-clic (cf. handleOpenLightbox ci-dessous, qui
-      // invoque la même lightbox mais explicitement). Sans ce flag, le clic
-      // natif consommait l'événement avant qu'il n'atteigne notre gestion
-      // (sélection du node / menu contextuel), et affichait un rectangle de
-      // survol gris signalant la zone cliquable.
-      lightbox: 0,
-    }))
+    // Config partagée avec le rendu lecture seule (staticDrawio) — cf.
+    // inlineDrawioViewerConfig pour le détail (surtout : jamais de clé `toolbar`,
+    // qui recréerait le rectangle gris). `lightbox: 0` est ici doublement utile :
+    // ce viewer embarqué gère son propre clic (sélection ProseMirror) et son
+    // propre double-clic (handleOpenLightbox), le clic natif les masquerait.
+    container.setAttribute('data-mxgraph', inlineDrawioViewerConfig(page.xml))
     window.GraphViewer?.createViewerForElement(container, viewer => {
       if (requestId !== requestIdRef.current) return
       setState({ status: 'ok' })

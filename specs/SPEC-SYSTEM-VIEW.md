@@ -84,6 +84,12 @@ ici en un seul, chaque entrée étant une paire (`SystemNode`, type).
 ### Filtre
 
 - Barre de filtre sous les combobox, avec les options de la vue Recherche existante : sensibilité à la casse, mot entier, expression régulière.
+- **Mode et périmètre identiques pour l'arbre et les vues document** (T166) : les trois options
+  (casse / mot entier / regex) sont honorées de la même façon par l'arbre latéral, la Vue Tableau
+  et la Vue Document ; toutes cherchent dans le **nom du nœud + l'`objectId` + toutes les valeurs
+  de champs** (champs masqués de la vue inclus), chaque valeur testée séparément. Une expression
+  régulière invalide (mode regex) n'exclut aucune ligne ni aucun nœud (pas d'erreur affichée),
+  comme pour le filtre par colonne.
 - Quand un filtre est actif :
   - Seuls les éléments correspondants sont affichés dans l'arbre, **avec leurs dossiers parents** (hiérarchie préservée).
   - Les groupes collapsés contenant des résultats s'auto-expandent.
@@ -168,16 +174,31 @@ Le type de l'élément créé est celui sélectionné dans le combobox Composant
 
 #### Sélection
 
-La sélection dans l'arbre n'a **aucun impact** sur le contenu de la vue document.
+La sélection dans l'arbre n'a **aucun impact sur le _contenu_** de la vue document (celui-ci
+ne dépend que du filtre global). Elle en pilote en revanche la **navigation** : un clic simple
+fait défiler la vue jusqu'à l'élément et l'y encadre (« goto », T164 — voir §Vue Excel / §Vue
+Word).
 
 | Geste | Comportement |
 |-------|-------------|
-| Clic simple | Sélection simple |
-| Shift + Clic | Sélection contiguë |
-| Ctrl + Clic | Sélection discrète (toggle) |
+| Clic simple | Sélection simple + **goto** dans la vue document (Word/Excel) : scroll jusqu'à la ligne/carte/section de l'élément — ou du dossier — et contour persistant sur celle-ci. Sans effet en Vue Édition. |
+| Shift + Clic | Sélection contiguë (pas de goto) |
+| Ctrl + Clic | Sélection discrète (toggle) (pas de goto) |
 | Double-clic | Ouvre la Vue Édition (sélection simple uniquement) |
 | Clic droit | Menu contextuel |
-| Clic dans zone vide | Désélectionne tout |
+| Clic dans zone vide | Désélectionne tout + efface le contour « goto » |
+
+**Goto (T164)** — déclenché par un clic simple **sans modificateur** sur un item ou un
+dossier, et par le **dépôt** d'un drag & drop (recale la vue sur le 1er nœud déplacé). Jamais
+par une sélection multiple, ni par la navigation clavier, ni en Vue Édition. Le contour
+« élément courant » est retiré au prochain goto, au clic dans le vide de l'arbre, au
+changement de composant/type et à l'entrée en Vue Édition. Si l'élément visé n'est pas rendu
+dans la vue (dossier replié dans la vue document) : no-op silencieux. Depuis T166, l'arbre et la
+vue document appliquent le même filtre (mode + périmètre) — un résultat visible dans l'arbre
+l'est aussi dans la vue, il n'y a plus de divergence de filtre en mode regex.
+
+Le même mécanisme (`useScrollToNode` + contour persistant) est réutilisé par la **Vue
+Recherche** au clic simple sur un résultat (`SPEC-ELECTRON-DESKTOP` §19.17, T167).
 
 #### Drag & Drop
 
@@ -190,6 +211,9 @@ La sélection dans l'arbre n'a **aucun impact** sur le contenu de la vue documen
 - Dépôt sur un élément non-dossier : aucune action.
 - Pas de drag & drop entre composants.
 - **Echap** annule le drag.
+- **Goto au dépôt (T164)** : à la fin d'un dépôt réussi, la vue document est défilée jusqu'au
+  1er nœud déplacé (dans l'ordre de l'arbre) et l'encadre — la vue reste synchronisée avec
+  l'élément que l'utilisateur vient de déplacer.
 
 #### Navigation clavier
 
@@ -240,7 +264,10 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 
 ## Vue document (zone principale)
 
-Le contenu reflète l'état du filtre. **La sélection dans l'arbre n'a aucun impact.**
+Le _contenu_ reflète l'état du filtre — **la sélection dans l'arbre n'a aucun impact
+dessus**. Elle en pilote seulement le défilement : un clic simple sur un nœud de l'arbre fait
+un « goto » (scroll + contour) vers cet élément dans la vue courante (T164, cf. §Panel
+Système › Arbre › Sélection).
 
 | État | Contenu affiché |
 |------|----------------|
@@ -251,9 +278,21 @@ Le contenu reflète l'état du filtre. **La sélection dans l'arbre n'a aucun im
 
 - Tableau : une ligne par élément, une colonne par champ visible.
 - Les dossiers sont des **lignes de groupe collapsables**.
+- **Titres de dossiers masquables (T162)** : la case « Afficher les titres des dossiers » du
+  panneau ⚙️ (onglet Tableau) retire toutes les lignes de groupe. Les éléments s'affichent
+  alors en **liste plate** dans l'ordre de l'arbre, l'état collapsé/déplié des dossiers étant
+  ignoré (tous les éléments sont listés). La numérotation de section reste affichée sur les
+  éléments (colonne `section` si visible). Le drag & drop de réordonnancement reste possible
+  **entre éléments de même dossier parent uniquement** — plus de dépôt « dans un dossier » ni
+  de déplacement inter-dossiers (passer par l'arbre latéral ou réafficher les titres).
 - Édition inline : double-clic sur une cellule.
 - Champs système (ID, date de création, auteur…) : lecture seule, visuellement distincts.
 - **Sélection multiple de lignes** : clic simple (sélection simple), Shift+clic (sélection contiguë), Ctrl+clic (sélection discrète/toggle) — indépendante de la sélection de l'arbre du panel gauche.
+- **Goto depuis l'arbre (T164)** : la ligne (élément) ou la ligne de groupe (dossier) ciblée
+  par un clic simple dans l'arbre reçoit un **contour bleu plein persistant** (`outline`),
+  distinct de la surbrillance de sélection de ligne (fond pâle) et de l'`outline` fin/transitoire
+  du survol de dépôt. Un seul élément encadré à la fois. La ligne est décalée sous l'en-tête
+  figé au scroll (`scroll-margin`).
 - **Édition en masse (T149)** : si plusieurs lignes sont sélectionnées et que l'une d'elles fait l'objet d'une édition inline (statut, énumération, texte, richtext, case `multi_enum`), le changement est propagé à toutes les lignes sélectionnées. Pour `multi_enum`, seule la valeur cochée/décochée est basculée sur chaque ligne — les autres valeurs déjà cochées sur les autres lignes ne sont pas écrasées. Les colonnes de lien (`link::`) ne sont pas concernées (mécanisme dédié, par ligne).
 
 ### Vue Word
@@ -262,8 +301,21 @@ Le contenu reflète l'état du filtre. **La sélection dans l'arbre n'a aucun im
 - Les dossiers deviennent des **sections** :
   - Niveau 1 → H1, … niveau 6 → H6.
   - Au-delà du niveau 6 : style H6 avec indentation croissante.
+- **Titres de sections masquables (T162)** : la case « Afficher les titres des dossiers » du
+  panneau ⚙️ (onglet Document) retire tous les titres `Hn`. Les cartes d'éléments s'affichent
+  à la suite, sans titre intercalé, l'état collapsé/déplié étant ignoré. Le préfixe de
+  numérotation de section reste affiché sur chaque carte. Réglage indépendant de celui de la
+  vue Tableau.
 - Édition inline : clic sur un champ (curseur `text` au survol).
 - Champs système : lecture seule, visuellement distincts.
+- **Goto depuis l'arbre (T164)** : la carte de l'élément (ou l'en-tête de section pour un
+  dossier) ciblée par un clic simple dans l'arbre reçoit un **anneau bleu plein persistant**
+  (`ring`). Un seul élément encadré à la fois.
+- Les champs `richtext` sont rendus sans éditeur Tiptap (`StaticRichTextViewer`,
+  markdown-it) pour tenir tout le document d'un coup. Les diagrammes draw.io
+  qu'ils contiennent sont rendus **paresseusement** au défilement
+  (`IntersectionObserver`), une seule fois par occurrence — cf. SPEC-REQ §3.2a
+  (T163).
 
 ### Vue Édition
 
@@ -281,9 +333,15 @@ Le contenu reflète l'état du filtre. **La sélection dans l'arbre n'a aucun im
 
 - Choisir les champs à afficher parmi les champs du type d'élément + les champs système.
 - **Réglages indépendants par vue** : Excel, Word et Édition ont chacun leur propre sélection de champs.
+- **Titres de dossiers (T162)** : case « Afficher les titres des dossiers » en haut du panneau,
+  propre à l'onglet courant (Tableau / Document), cochée par défaut. Décochée ⇒ liste plate
+  sans lignes de groupe / sans sections `Hn` (cf. §Vue Excel / §Vue Word). Persistée dans le
+  même objet que la sélection de champs (`showFoldersExcel` / `showFoldersWord`) ; une pref
+  écrite avant T162, sans ces clés, vaut « affichés ».
 - Sauvegardé **par vue** (Excel / Word / Édition), **par type d'élément**, **par utilisateur**.
-- Stockage : fichier local `.{githubaccount}.pref`.
-- Option **Réinitialiser par défaut** disponible par vue.
+- Stockage : fichier local `.{githubaccount}.pref` (clé `fieldVisibility["<nœud>::<type>"]`).
+- Option **Réinitialiser par défaut** disponible par vue — remet aussi « Afficher les titres
+  des dossiers » à coché.
 
 **`coverageStatus` (T138)** — champ système représentant le statut de couverture de test d'une
 exigence (`not_covered`/`covered`/`validated`/`failing`/`needs_revalidation`, cf.
@@ -306,7 +364,7 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 | Mode de vue (Excel / Word) | `localStorage` | `polenta:viewMode:${repoPath}` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
 | `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
-| Configuration des champs ⚙️ | Fichier `.{githubaccount}.pref` dans le repo | par vue + par type |
+| Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord? }`, par type + par utilisateur |
 | Dernier repo/composant/élément consulté (T52) | `localStorage`, par projet | `polenta:lastSelection:${projectId}` |
 
 Absence de `repo` dans l'URL (lien généré avant T72) : résolution sur le repo racine par défaut,

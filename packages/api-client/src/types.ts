@@ -246,6 +246,17 @@ export type DeviceFlowPollResult =
   | { status: 'denied' }
   | { status: 'error'; message: string }
 
+/** Préférences de visibilité de la Vue Système, par (type d'élément, utilisateur), dans `.{user}.pref`. */
+export interface FieldVisibilityPref {
+  excel: string[]
+  word: string[]
+  edit: string[]
+  /** T162 — titres de dossiers affichés dans la vue Tableau. Absent ⇒ true (affichés). */
+  showFoldersExcel?: boolean
+  /** T162 — titres de dossiers affichés dans la vue Document. Absent ⇒ true (affichés). */
+  showFoldersWord?: boolean
+}
+
 export interface ApiClient {
   app: {
     setTitle(title: string): Promise<void>
@@ -469,8 +480,8 @@ export interface ApiClient {
     delete(repoPath: string, id: string): Promise<void>
   }
   pref: {
-    getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<{ excel: string[]; word: string[]; edit: string[] } | null>
-    setFieldVisibility(repoPath: string, username: string, typeKey: string, views: { excel: string[]; word: string[]; edit: string[] }): Promise<void>
+    getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>
+    setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPref): Promise<void>
   }
   /** Moteur de requêtes AlaSQL + requêtes sauvegardées / historique (T77 sprint 1) */
   queries: {

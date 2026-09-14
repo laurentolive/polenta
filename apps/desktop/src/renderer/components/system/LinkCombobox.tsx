@@ -10,6 +10,7 @@ export function LinkCombobox({
   onAdd,
   onRemove,
   onNavigateToObject,
+  autoFocus = true,
 }: {
   label?: string
   existingLinks: { linkId: string; peerId: string }[]
@@ -17,6 +18,9 @@ export function LinkCombobox({
   onAdd: (peerId: string) => Promise<void>
   onRemove: (linkId: string) => Promise<void>
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
+  /** Focus l'input au montage. `true` par défaut (popovers Excel/Word ouverts au clic),
+   *  passé à `false` dans la vue Édition d'exigence pour ne pas voler le focus au chargement. */
+  autoFocus?: boolean
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
@@ -96,7 +100,7 @@ export function LinkCombobox({
           type="text"
           value={query}
           disabled={loading}
-          autoFocus
+          autoFocus={autoFocus}
           onChange={e => { setQuery(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
           placeholder={t('system.linkCombobox.searchPlaceholder')}

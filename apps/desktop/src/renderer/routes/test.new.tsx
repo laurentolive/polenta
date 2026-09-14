@@ -87,8 +87,10 @@ function NewTestCasePage() {
     onError: (err: unknown) => setError(err instanceof Error ? err.message : t('common.unknownError')),
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const isDisabled = schemaLoading || createMutation.isPending
+
+  const submitForm = () => {
+    if (isDisabled) return
     if (!title.trim()) { setError(t('requirementsPage.titleRequired')); return }
     if (!repoPath) { setError(t('requirementsPage.projectNotLoadedGoHome')); return }
     if (steps.length === 0) { setError(t('testsPage.atLeastOneStepRequired')); return }
@@ -98,7 +100,10 @@ function NewTestCasePage() {
     createMutation.mutate()
   }
 
-  const isDisabled = schemaLoading || createMutation.isPending
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    submitForm()
+  }
 
   return (
     <RichTextProvider>
@@ -154,6 +159,7 @@ function NewTestCasePage() {
               disabled={isDisabled}
               repoPath={repoPath}
               interfaceRoles={schema?.roles?.map(r => r.name)}
+              onSubmit={submitForm}
             />
           ))}
 
@@ -168,7 +174,7 @@ function NewTestCasePage() {
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">
               {t('system.wordView.stepsHeading')} <span className="text-status-danger font-normal normal-case text-xs">*</span>
             </p>
-            <StepsTable steps={steps} onChange={setSteps} disabled={isDisabled} repoPath={repoPath} />
+            <StepsTable steps={steps} onChange={setSteps} disabled={isDisabled} repoPath={repoPath} onSubmit={submitForm} />
           </div>
 
           <div>

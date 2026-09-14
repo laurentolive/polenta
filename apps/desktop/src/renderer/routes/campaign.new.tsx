@@ -132,8 +132,8 @@ function NewCampaignPage() {
     },
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const submitForm = () => {
+    if (createMutation.isPending) return
     if (!title.trim()) { setError(t('requirementsPage.titleRequired')); return }
     if (!repoPath) { setError(t('common.projectNotLoaded')); return }
     if (!isParamsComplete(selectedTests, allTestsMap, paramValues)) {
@@ -142,6 +142,11 @@ function NewCampaignPage() {
     }
     setError(null)
     createMutation.mutate()
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    submitForm()
   }
 
   function toggleTest(id: string) {
@@ -197,6 +202,7 @@ function NewCampaignPage() {
                   onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
                   repoPath={repoPath}
                   interfaceRoles={schema?.roles?.map(r => r.name)}
+                  onSubmit={submitForm}
                 />
               ))}
             </>

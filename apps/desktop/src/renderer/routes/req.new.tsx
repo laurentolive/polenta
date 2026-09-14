@@ -71,15 +71,20 @@ function NewRequirementPage() {
     onError: (err: unknown) => setError(err instanceof Error ? err.message : t('common.unknownError')),
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const isDisabled = schemaLoading || createMutation.isPending
+
+  const submitForm = () => {
+    if (isDisabled) return
     if (!title.trim()) { setError(t('requirementsPage.titleRequired')); return }
     if (!repoPath) { setError(t('requirementsPage.projectNotLoadedGoHome')); return }
     setError(null)
     createMutation.mutate()
   }
 
-  const isDisabled = schemaLoading || createMutation.isPending
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    submitForm()
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -141,6 +146,7 @@ function NewRequirementPage() {
             disabled={isDisabled}
             repoPath={repoPath}
             interfaceRoles={schema?.roles?.map(r => r.name)}
+            onSubmit={submitForm}
           />
         ))}
 

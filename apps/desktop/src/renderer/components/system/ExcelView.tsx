@@ -12,11 +12,12 @@ import { matchesRefs, filterCandidatesByRefs, getLinkTypeLabel, getPeerId, isLin
 import { RichTextField } from '../RichTextField'
 import { MultiEnumPopover } from './MultiEnumPopover'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
+import { useScrollToNode } from '../../hooks/useScrollToNode'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { getExportColumnLabel } from '../../lib/exportColumns'
 import { FilterOptionsToggle } from '../FilterOptionsToggle'
-import { buildFilterRegex, type FilterOptions } from '../../lib/textFilter'
+import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,8 @@ interface Props {
   typeDef: ObjectTypeDefinition | undefined
   objects: AnyObject[]
   visibleFields: string[]
+  /** T162 — masque les lignes de groupe (dossiers) : liste plate, collapse ignoré. */
+  foldersHidden?: boolean
   sectionNumbers?: Map<string, string>
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
@@ -48,6 +51,9 @@ interface Props {
   onRootChange?: (root: TypeTreeNode[]) => void
   onColumnsReorder?: (newOrder: string[]) => void
   filter?: string
+  /** T166 — mode du filtre global (casse / mot entier / regex). Sans lui, le filtre global du
+   *  tableau restait une sous-chaîne littérale insensible à la casse, incohérent avec l'arbre. */
+  filterOptions?: FilterOptions
   selectedIds?: string[]
   onSelect?: (ids: string[]) => void
   generateId?: () => string
@@ -55,9 +61,18 @@ interface Props {
   onStepsChange?: (objectId: string, steps: StepDraft[]) => void
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   onItemNodeAdded?: (nodeId: string, sourceObjectId?: string) => void
+  /** T164 — nœud d'arbre (item ou folder) sur lequel se positionner (scroll + contour) ;
+   *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
+  gotoNodeId?: string | null
+  gotoSeq?: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** T164 — contour persistant de la ligne / ligne de groupe ciblée par un "goto" depuis
+ *  l'arbre. Trait bleu plein en retrait, distinct de la surbrillance de sélection (fond pâle)
+ *  et de l'outline fin/transitoire du drop (`outline-1 outline-status-info`). */
+const GOTO_OUTLINE_CLASS = 'outline outline-2 -outline-offset-2 outline-status-info-solid'
 
 function getObjectId(obj: AnyObject): string {
   return (obj as Record<string, unknown>)['id'] as string ?? ''
@@ -506,6 +521,7 @@ function GroupRow({
   onSelectNameCell,
   freezeColCount = 0,
   getFreezeStyle,
+  isGotoTarget,
 }: {
   node: TypeTreeNode
   depth: number
@@ -530,6 +546,7 @@ function GroupRow({
   onSelectNameCell?: () => void
   freezeColCount?: number
   getFreezeStyle?: (colIdx: number) => React.CSSProperties | undefined
+  isGotoTarget?: boolean
 }) {
   const [folderEditing, setFolderEditing] = useState(false)
   const startOrSelect = (e: React.MouseEvent) => {
@@ -545,11 +562,13 @@ function GroupRow({
 
   return (
     <tr
+      data-node-id={node.id}
       className={[
-        'cursor-pointer select-none',
+        'cursor-pointer select-none scroll-mt-8',
         isSelected ? 'bg-status-info-bg' : 'bg-folder-row',
         isDragging ? 'opacity-50' : '',
         dropInside ? 'outline outline-1 outline-status-info' : '',
+        isGotoTarget ? GOTO_OUTLINE_CLASS : '',
       ].filter(Boolean).join(' ')}
       style={dropStyle}
       draggable={draggable}
@@ -672,6 +691,7 @@ export function ExcelView({
   typeDef,
   objects,
   visibleFields,
+  foldersHidden = false,
   sectionNumbers,
   linkTypes = [],
   linksByObjectId,
@@ -686,6 +706,7 @@ export function ExcelView({
   onRootChange,
   onColumnsReorder,
   filter,
+  filterOptions,
   selectedIds,
   onSelect,
   generateId,
@@ -693,6 +714,8 @@ export function ExcelView({
   onStepsChange,
   onNavigateToObject,
   onItemNodeAdded,
+  gotoNodeId,
+  gotoSeq,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -807,6 +830,10 @@ export function ExcelView({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+
+  // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
+  // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
+  useScrollToNode(containerRef, gotoNodeId, gotoSeq)
 
   useEffect(() => {
     const el = containerRef.current
@@ -943,9 +970,13 @@ export function ExcelView({
   function flatten(nodes: TypeTreeNode[], depth: number, parentCollapsed: boolean) {
     for (const n of nodes) {
       if (parentCollapsed) continue
-      rows.push({ kind: n.kind, node: n, depth })
+      // T162 — titres masqués : aucune ligne de dossier, et le collapse est ignoré (tous
+      // les éléments sont listés à plat).
+      if (!(foldersHidden && n.kind === 'folder')) {
+        rows.push({ kind: n.kind, node: n, depth })
+      }
       if (n.kind === 'folder') {
-        flatten(n.children, depth + 1, collapsedFolders.has(n.id))
+        flatten(n.children, depth + 1, foldersHidden ? false : collapsedFolders.has(n.id))
       }
     }
   }
@@ -1010,7 +1041,10 @@ export function ExcelView({
   const effectiveTableWidth = Math.max(totalTableWidth, containerWidth)
 
   // Apply filter if active
-  const filterLower = filter?.toLowerCase() ?? ''
+  // T166 — honore le mode du filtre global (casse / mot entier / regex), comme l'arbre latéral
+  // et le filtre par colonne T51. buildFilterRegex renvoie null si le filtre est vide OU si
+  // l'expression regex est invalide → dans les deux cas on n'exclut aucune ligne.
+  const filterRe = buildFilterRegex(filter ?? '', filterOptions ?? NO_FILTER_OPTIONS)
 
   // T51 — filtres par colonne actifs (texte non vide, colonne toujours visible)
   const activeColumnFilters = Object.entries(columnFilters)
@@ -1020,7 +1054,7 @@ export function ExcelView({
 
   // ── Row Drag & Drop ──────────────────────────────────────────────────────────
 
-  const dndEnabled = !!onRootChange && !filterLower && activeColumnFilters.length === 0
+  const dndEnabled = !!onRootChange && !filterRe && activeColumnFilters.length === 0
 
   function handleRowDragStart(e: React.DragEvent, nodeId: string) {
     setDraggingNodeId(nodeId)
@@ -1044,6 +1078,13 @@ export function ExcelView({
     const relY = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5
     const parentId = treeFindParentId(root, nodeId)
 
+    // T162 — titres masqués : pas de dossier visible comme cible, donc réordonnancement
+    // uniquement entre éléments de MÊME parent (pas de déplacement inter-dossiers à l'aveugle).
+    if (foldersHidden && draggingNodeId && treeFindParentId(root, draggingNodeId) !== parentId) {
+      setRowDropIndicator(null)
+      return
+    }
+
     if (targetNode.kind === 'folder' && relY > 0.33 && relY < 0.67) {
       setRowDropIndicator({ targetNodeId: nodeId, position: 'inside', parentId: nodeId, afterId: null })
     } else if (relY < 0.5) {
@@ -1066,6 +1107,10 @@ export function ExcelView({
     const draggedNode = treeFindNode(root, draggedId)
     if (!draggedNode) { setDraggingNodeId(null); setRowDropIndicator(null); return }
     if (isDescendantOf(draggedNode, rowDropIndicator.targetNodeId)) { setDraggingNodeId(null); setRowDropIndicator(null); return }
+    // T162 — garde défensive : titres masqués ⇒ pas de déplacement inter-dossiers.
+    if (foldersHidden && treeFindParentId(root, draggedId) !== rowDropIndicator.parentId) {
+      setDraggingNodeId(null); setRowDropIndicator(null); return
+    }
 
     const { parentId, afterId, position } = rowDropIndicator
     const pruned = treeRemoveMany(root, [draggedId])
@@ -1307,14 +1352,24 @@ export function ExcelView({
     }
   }
 
-  const hasActiveFilter = !!filterLower || activeColumnFilters.length > 0
+  const hasActiveFilter = !!filterRe || activeColumnFilters.length > 0
 
   function itemMatchesFilters(node: TypeTreeNode, obj: AnyObject | null | undefined): boolean {
-    if (filterLower) {
-      const globalMatch = !obj
-        ? node.name.toLowerCase().includes(filterLower)
-        : columns.some(col => getCellText(node, obj, col).toLowerCase().includes(filterLower))
-      if (!globalMatch) return false
+    if (filterRe) {
+      // Le filtre texte global (barre de recherche du panneau latéral) cherche dans le nom
+      // de l'élément, son ID et TOUTES les valeurs de champs — pas seulement les colonnes
+      // visibles. Aligné sur WordView.itemMatchesFilter et le filtre de l'arbre latéral
+      // (treeVisibleNodes) : sans ça, un filtre qui matche par nom/ID ou par un champ masqué
+      // de la vue Excel vide entièrement le tableau alors que le panneau et la vue Word montrent
+      // bien le résultat. Le filtrage par colonne (T51) reste, lui, restreint à sa colonne.
+      // T166 — valeurs testées une par une (pas de haystack joint) pour qu'une regex ne
+      // matche pas à cheval sur deux champs.
+      const values = [
+        node.name,
+        node.objectId ?? '',
+        ...(obj ? Object.values(obj as Record<string, unknown>).map(v => String(v ?? '')) : []),
+      ]
+      if (!values.some(v => filterRe.test(v))) return false
     }
     return activeColumnFilters.every(({ col, re }) => re.test(getCellText(node, obj, col)))
   }
@@ -1551,6 +1606,7 @@ export function ExcelView({
                   onSelectNameCell={() => selectCell(node.id, 'name')}
                   freezeColCount={freezeColCount}
                   getFreezeStyle={getFreezeStyle}
+                  isGotoTarget={gotoNodeId === node.id}
                 />
               )
             }
@@ -1569,11 +1625,13 @@ export function ExcelView({
             return (
               <React.Fragment key={node.id}>
               <tr
+                data-node-id={node.id}
                 className={[
-                  'group cursor-pointer select-none',
+                  'group cursor-pointer select-none scroll-mt-8',
                   isSelected ? 'bg-status-info-bg' : 'hover:bg-row-hover',
                   isDraggingRow || isCutRow ? 'opacity-50' : '',
                   dropInside ? 'outline outline-1 outline-status-info' : '',
+                  gotoNodeId === node.id ? GOTO_OUTLINE_CLASS : '',
                 ].filter(Boolean).join(' ')}
                 style={dropStyle}
                 onClick={e => { e.stopPropagation(); handleRowSelect(node.id, e) }}
@@ -1837,6 +1895,10 @@ export function ExcelView({
               }}
               repoPath={repoPath}
               autoFocus
+              // Ctrl+Entrée depuis l'éditeur : TipTap intercepte la frappe avant le onKeyDown
+              // du conteneur ci-dessus — on ferme donc le popover ici (le onChange a déjà
+              // propagé la dernière frappe). Le onKeyDown reste un garde-fou hors éditeur.
+              onSubmit={() => setActiveRichtextPopover(null)}
             />
           </div>
         )

@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { DrawioEmbedView } from './DrawioEmbedView'
 import { escapeXml } from '../lib/drawioRender'
-import { parseCropAttr, type CropRectAttr } from './mediaAttrs'
+import { parseCropAttr, parseDrawioFencePayload, type CropRectAttr } from './mediaAttrs'
 
 // Représentation HTML intermédiaire utilisée uniquement pendant le pipeline
 // markdown-it → HTML → schéma ProseMirror (cf. parse.setup ci-dessous) — jamais
@@ -149,22 +149,7 @@ export const DrawioEmbed = Node.create<DrawioEmbedOptions>({
             markdownit.renderer.rules.fence = (tokens, idx, options, env, self) => {
               const token = tokens[idx]
               if (token.info.trim() === 'drawio') {
-                const content = token.content.trim()
-                let path = content
-                let nodeId = ''
-                let width: number | null = null
-                let height: number | null = null
-                let crop: DrawioCropRect | null = null
-                try {
-                  const parsed = JSON.parse(content) as DrawioEmbedPayload
-                  path = typeof parsed.path === 'string' ? parsed.path : ''
-                  nodeId = typeof parsed.nodeId === 'string' ? parsed.nodeId : ''
-                  width = typeof parsed.width === 'number' ? parsed.width : null
-                  height = typeof parsed.height === 'number' ? parsed.height : null
-                  crop = parseCropAttr(parsed.crop)
-                } catch {
-                  // Contenu non-JSON (édition manuelle) : traité comme un chemin brut sans ancre.
-                }
+                const { path, nodeId, width, height, crop } = parseDrawioFencePayload(token.content)
                 const attrs = [`data-drawio-embed="1"`, `data-path="${escapeXml(path)}"`]
                 if (nodeId) attrs.push(`data-node-id="${escapeXml(nodeId)}"`)
                 if (width) attrs.push(`data-width="${width}"`)

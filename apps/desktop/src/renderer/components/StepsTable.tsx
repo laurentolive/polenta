@@ -12,10 +12,16 @@ interface StepsTableProps {
   onChange: (steps: StepDraft[]) => void
   disabled?: boolean
   repoPath?: string
+  /** Ctrl/Cmd+Entrée dans une cellule richtext : action primaire du conteneur (ex. « Enregistrer »
+   *  le test). Absent (panneaux d'étapes inline sans action discrète) → sort simplement du champ. */
+  onSubmit?: () => void
 }
 
-export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTableProps) {
+export function StepsTable({ steps, onChange, disabled, repoPath, onSubmit }: StepsTableProps) {
   const { t } = useTranslation()
+  // Sans action primaire fournie, Ctrl+Entrée « valide » en sortant du champ (les panneaux
+  // d'étapes inline auto-sauvent à chaque frappe). N'ajoute jamais d'étape.
+  const submitCell = onSubmit ?? (() => { (document.activeElement as HTMLElement | null)?.blur() })
   const dragIndexRef = useRef<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
@@ -99,6 +105,7 @@ export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTablePr
                   disabled={disabled}
                   placeholder={t('system.stepsTable.actionPlaceholder')}
                   repoPath={repoPath}
+                  onSubmit={submitCell}
                 />
               </div>
 
@@ -110,6 +117,7 @@ export function StepsTable({ steps, onChange, disabled, repoPath }: StepsTablePr
                   disabled={disabled}
                   placeholder={t('system.stepsTable.expectedResultPlaceholder')}
                   repoPath={repoPath}
+                  onSubmit={submitCell}
                 />
               </div>
 

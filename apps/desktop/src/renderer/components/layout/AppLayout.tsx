@@ -3,6 +3,7 @@ import { useState, useRef, useCallback, useEffect, type MouseEvent as ReactMouse
 import { ActivityBar } from './ActivityBar'
 import { Sidebar } from './Sidebar'
 import { SystemViewProvider } from '../../contexts/SystemViewContext'
+import { SearchProvider } from '../../contexts/SearchContext'
 import { VersioningProvider } from '../../contexts/VersioningContext'
 import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
@@ -255,7 +256,9 @@ export function AppLayout() {
         <CompareRefsProvider>
           <ImpactAnalysisProvider>
             <SystemViewProvider currentProjectId={currentProjectId}>
-              {inner}
+              <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
+                {inner}
+              </SearchProvider>
             </SystemViewProvider>
           </ImpactAnalysisProvider>
         </CompareRefsProvider>

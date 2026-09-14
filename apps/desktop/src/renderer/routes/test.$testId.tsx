@@ -121,6 +121,9 @@ function TestCaseDetailPage() {
     saveMutation.mutate()
   }
 
+  // Ctrl/Cmd+Entrée depuis un champ richtext (champ perso ou cellule d'étape) → « Enregistrer ».
+  const submitEdit = () => { if (hasChanges && !saveMutation.isPending) handleSave() }
+
   if (!repoPath) return <p className="text-sm text-ink-2 p-4"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   if (isLoading) return <p className="text-sm text-ink-3 p-4">{t('common.loading')}</p>
   if (!tc) return <p className="text-sm text-ink-2 p-4">{t('testsPage.notFound', { testId })}</p>
@@ -182,6 +185,7 @@ function TestCaseDetailPage() {
               onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
               repoPath={repoPath}
               interfaceRoles={schema?.roles?.map(r => r.name)}
+              onSubmit={submitEdit}
             />
           ))}
 
@@ -204,7 +208,7 @@ function TestCaseDetailPage() {
 
           <div>
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('system.wordView.stepsHeading')}</p>
-            <StepsTable steps={steps} onChange={setSteps} repoPath={repoPath} />
+            <StepsTable steps={steps} onChange={setSteps} repoPath={repoPath} onSubmit={submitEdit} />
           </div>
 
           <div>

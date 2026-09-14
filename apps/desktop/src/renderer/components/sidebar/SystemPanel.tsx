@@ -9,7 +9,7 @@
  * State is shared with SystemView (main area) via SystemViewContext.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
@@ -17,11 +17,14 @@ import { Trash2 } from 'lucide-react'
 import { useSystemView } from '../../contexts/SystemViewContext'
 import { ElementTree } from '../system/ElementTree'
 import { ComponentTypeCombobox } from '../system/ComponentTypeCombobox'
+import { useSystemObjects } from '../../hooks/useSystemObjects'
+import { normalizeObject } from '../../lib/normalizeObject'
 import { FilterOptionsToggle } from '../FilterOptionsToggle'
 import { buildFilterRegex } from '../../lib/textFilter'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { api } from '../../api'
 import type { TypeTreeNode } from '@polenta/types'
+import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 
 interface Props {
   currentProjectId: string
@@ -284,9 +287,12 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId: _p
     readOnly,
     filter,
     filterOptions,
+    editingNodeId,
     setEditingNodeId,
     createItemObject,
     repoPath,
+    requestGoto,
+    clearGoto,
   } = useSystemView()
 
   const qc = useQueryClient()
@@ -294,10 +300,58 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId: _p
   // Local selection state for the tree (doesn't affect the doc view per spec)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
 
+  // T166 — périmètre de recherche de l'arbre aligné sur les Vues Word/Excel : le filtre global
+  // doit aussi fouiller le titre et toutes les valeurs de champs, pas seulement le nom de nœud
+  // et l'`objectId`. Même query (donc même cache) que `SystemView` — aucun fetch en double.
+  const { data: rawObjects = [] } = useSystemObjects(
+    repoPath,
+    effectiveType?.category,
+    effectiveNodeId,
+    effectiveTypeId,
+  )
+  const searchTextByObjectId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const obj of rawObjects) {
+      if (!obj.id) continue
+      map.set(obj.id, Object.values(normalizeObject(obj)).join(' '))
+    }
+    return map
+  }, [rawObjects])
+
   const handleDoubleClick = useCallback((nodeId: string) => {
     // Double-click on an item → open Edit view in the main area
     setEditingNodeId(nodeId)
   }, [setEditingNodeId])
+
+  // T164 — clic simple / dépôt d'un drag & drop dans l'arbre → goto dans la vue document
+  // (null = clic dans le vide → efface la cible). No-op en Vue Édition (CU2) : on supprime
+  // la requête à la source pour qu'aucune cible périmée ne subsiste au retour en Word/Excel.
+  const handleGoto = useCallback((nodeId: string | null) => {
+    if (editingNodeId !== null) return
+    if (nodeId) requestGoto(nodeId)
+    else clearGoto()
+  }, [editingNodeId, requestGoto, clearGoto])
+
+  // T161 — le renommage inline d'un élément dans l'arbre latéral ne mettait à jour que le
+  // fichier d'arbre ; le titre de l'objet correspondant restait figé (« Sans titre »).
+  // Miroir de `handleRenameNode` de SystemView (branché lui sur la Vue Tableau / le champ
+  // Nom de la Vue Édition).
+  const handleItemRenamed = useCallback((objectId: string, name: string) => {
+    if (!repoPath) return
+    const cat = effectiveType?.category
+    const done = () => {
+      qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
+      qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
+      if (cat) qc.invalidateQueries({ queryKey: ['object', repoPath, cat, objectId] })
+    }
+    if (cat === 'requirement') {
+      api.requirements.update(repoPath, objectId, { title: name }).then(done)
+        .catch(err => console.error('[SystemPanel] T161 — sync titre exigence:', err))
+    } else if (cat === 'test') {
+      api.tests.update(repoPath, objectId, { title: name } as UpdateTestCaseDto).then(done)
+        .catch(err => console.error('[SystemPanel] T161 — sync titre test:', err))
+    }
+  }, [repoPath, effectiveType?.category, qc])
 
   const handleRootChange = useCallback((newRoot: TypeTreeNode[]) => {
     // TODO: détecter les items supprimés et archiver leurs objets backend
@@ -375,8 +429,11 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId: _p
             typeName={effectiveType?.label ?? effectiveTypeId}
             filter={filter || undefined}
             filterOptions={filterOptions}
+            searchTextByObjectId={searchTextByObjectId}
             readOnly={readOnly}
             onItemNodeAdded={createItemObject}
+            onItemRenamed={handleItemRenamed}
+            onGoto={handleGoto}
           />
         )}
       </div>

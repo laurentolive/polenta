@@ -347,6 +347,7 @@ function CampaignDetailPage() {
                   onChange={v => setEditingFields(prev => ({ ...(prev ?? {}), [f.name]: v }))}
                   repoPath={repoPath}
                   interfaceRoles={schema?.roles?.map(r => r.name)}
+                  onSubmit={() => { if (editingFields && !updateFieldsMutation.isPending) updateFieldsMutation.mutate(editingFields) }}
                 />
               ) : (
                 <div key={f.name}>

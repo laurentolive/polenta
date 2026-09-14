@@ -11,7 +11,7 @@ export function registerPrefHandlers() {
   )
 
   ipcMain.handle('pref:set-field-visibility',
-    (_e, repoPath: string, username: string, typeKey: string, views: { excel: string[]; word: string[]; edit: string[] }) => {
+    (_e, repoPath: string, username: string, typeKey: string, views: { excel: string[]; word: string[]; edit: string[]; showFoldersExcel?: boolean; showFoldersWord?: boolean }) => {
       const pref = readPref(repoPath, username)
       if (!pref['fieldVisibility']) pref['fieldVisibility'] = {}
       ;(pref['fieldVisibility'] as Record<string, unknown>)[typeKey] = views

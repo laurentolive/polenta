@@ -24,9 +24,10 @@ import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
-import { useTreeState, treeUpdateObjectId } from '../hooks/useTreeState'
+import { useTreeState, treeUpdateObjectId, treeFindNode } from '../hooks/useTreeState'
 import { useVersioning } from './VersioningContext'
 import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
+import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { findSystemNode, flattenSystemNodes } from '@polenta/types'
 import type { FilterOptions } from '../lib/textFilter'
 
@@ -206,6 +207,16 @@ export interface SystemViewState {
   // Edit view
   editingNodeId: string | null
   setEditingNodeId: (id: string | null) => void
+
+  // T164 — "goto" : nœud d'arbre (item ou folder) sur lequel la vue document (Word/Excel)
+  // doit se positionner (scroll + contour persistant). Posé au clic simple / au drop dans
+  // l'arbre ; remis à null au clic dans le vide de l'arbre, au changement de composant/type
+  // et à l'entrée en Vue Édition. `gotoSeq` s'incrémente à chaque requête pour re-scroller
+  // même quand la cible est identique (re-clic, re-drop du même nœud).
+  gotoNodeId: string | null
+  gotoSeq: number
+  requestGoto: (nodeId: string) => void
+  clearGoto: () => void
 
   // Immediate object creation on item insert
   // sourceObjectId: when provided, the new object is a copy of the source (paste);
@@ -475,6 +486,16 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
 
   const { root, setRoot, canUndo, canRedo, undo, redo, resetRoot } = useTreeState([])
 
+  // ── T164 — "goto" dans la vue document ─────────────────────────────────────
+  // Déclaré ici (avant l'effet [treeData] qui le réinitialise sur changement de nœud/type).
+  const [gotoTarget, setGotoTarget] = useState<{ nodeId: string | null; seq: number }>({ nodeId: null, seq: 0 })
+  const requestGoto = useCallback((nodeId: string) => {
+    setGotoTarget(g => ({ nodeId, seq: g.seq + 1 }))
+  }, [])
+  const clearGoto = useCallback(() => {
+    setGotoTarget(g => (g.nodeId === null ? g : { nodeId: null, seq: g.seq + 1 }))
+  }, [])
+
   const savedRootRef = useRef<TypeTreeNode[]>([])
   // Track the previous node+type key to distinguish a node/type switch (→ resetRoot)
   // from a refetch after save (→ update savedRootRef only, preserve undo history).
@@ -485,7 +506,10 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     const isKeyChange = key !== prevNodeTypeKeyRef.current
     prevNodeTypeKeyRef.current = key
     savedRootRef.current = treeData.root ?? []
-    if (isKeyChange) resetRoot(treeData.root ?? [])
+    if (isKeyChange) {
+      resetRoot(treeData.root ?? [])
+      setGotoTarget({ nodeId: null, seq: 0 }) // T164 — nouveau composant/type : aucune cible goto
+    }
   }, [treeData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const rootRef = useRef(root)
@@ -587,6 +611,11 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     const cat = effectiveType?.category
     if (!cat || !repoPath || !effectiveNodeId || !effectiveTypeId) return
     const objectTypeRef = `${effectiveNodeId}::${effectiveTypeId}`
+    // T161 — nom du nœud d'arbre au moment où la création démarre. Le champ de renommage
+    // ne s'ouvre que 50 ms après l'insertion du nœud (ElementTree.createItem), donc pendant
+    // cet `await` l'utilisateur peut renommer un nœud qui n'a pas encore d'`objectId` — le
+    // renommage ne se propage alors PAS au titre de l'objet. On rattrape après coup.
+    const nodeNameAtStart = treeFindNode(rootRef.current, nodeId)?.name
     try {
       let objectId: string
       if (cat === 'requirement') {
@@ -623,6 +652,19 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
       const updatedRoot = treeUpdateObjectId(rootRef.current, nodeId, objectId)
       setRoot(updatedRoot)
       await api.tree.save(repoPath, { nodeId: effectiveNodeId, typeId: effectiveTypeId, root: updatedRoot })
+
+      // T161 — le nœud a-t-il été renommé pendant la création ? Si oui, le renommage n'a
+      // pas pu synchroniser le titre (l'objet n'existait pas encore) : on le fait ici.
+      const nodeNameNow = treeFindNode(updatedRoot, nodeId)?.name
+      if (nodeNameAtStart !== undefined && nodeNameNow && nodeNameNow !== nodeNameAtStart && !sourceObjectId) {
+        try {
+          if (cat === 'requirement') await api.requirements.update(repoPath, objectId, { title: nodeNameNow })
+          else if (cat === 'test') await api.tests.update(repoPath, objectId, { title: nodeNameNow } as UpdateTestCaseDto)
+        } catch (err) {
+          console.error('[SystemView] T161 — sync titre après création:', err)
+        }
+      }
+
       qc.invalidateQueries({ queryKey: ['tree', repoPath, effectiveNodeId, effectiveTypeId] })
       qc.invalidateQueries({ queryKey: ['objects', repoPath, cat, effectiveNodeId, effectiveTypeId] })
       // T135 — sans ça, le nouvel objet reste absent (ou son titre reste figé à "Sans titre")
@@ -710,6 +752,10 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     isEditsDirty,
     editingNodeId,
     setEditingNodeId,
+    gotoNodeId: gotoTarget.nodeId,
+    gotoSeq: gotoTarget.seq,
+    requestGoto,
+    clearGoto,
     createItemObject,
   }
 

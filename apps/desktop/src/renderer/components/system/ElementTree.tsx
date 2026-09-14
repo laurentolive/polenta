@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo, memo, type KeyboardE
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Plus } from 'lucide-react'
 import type { TypeTreeNode } from '@polenta/types'
+import type { FilterOptions } from '../../lib/textFilter'
 import {
   treeInsert,
   treeInsertAtBeginning,
@@ -45,9 +46,20 @@ interface Props {
   generateId: () => string
   typeName: string
   filter?: string
-  filterOptions?: { caseSensitive: boolean; wholeWord: boolean; regex: boolean }
+  filterOptions?: FilterOptions
+  /** T166 — texte à fouiller par objet (titre + valeurs de tous les champs), en plus du nom
+   *  de nœud et de l'`objectId`. Aligne le périmètre de recherche de l'arbre sur les Vues
+   *  Word/Excel. */
+  searchTextByObjectId?: Map<string, string>
   readOnly?: boolean
   onItemNodeAdded?: (nodeId: string, sourceObjectId?: string) => void
+  /** T161 — un nœud "item" déjà rattaché à un objet a été renommé : propager le nouveau
+   *  nom au titre de l'objet (l'`onRootChange` ne touche que l'arbre). */
+  onItemRenamed?: (objectId: string, name: string) => void
+  /** T164 — "goto" : l'utilisateur a désigné un nœud (clic simple sans modificateur, ou
+   *  dépôt d'un drag & drop) → la vue document doit s'y positionner. `null` = clic dans le
+   *  vide de l'arbre (efface la cible). */
+  onGoto?: (nodeId: string | null) => void
 }
 
 // ── BgContextMenu ─────────────────────────────────────────────────────────────
@@ -307,8 +319,11 @@ export function ElementTree({
   typeName,
   filter,
   filterOptions,
+  searchTextByObjectId,
   readOnly = false,
   onItemNodeAdded,
+  onItemRenamed,
+  onGoto,
 }: Props) {
   const { t } = useTranslation()
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -327,8 +342,8 @@ export function ElementTree({
   const containerRef = useRef<HTMLDivElement>(null)
 
   const visibleNodes = useMemo(
-    () => treeVisibleNodes(root, expandedIds, filter, filterOptions),
-    [root, expandedIds, filter, filterOptions],
+    () => treeVisibleNodes(root, expandedIds, filter, filterOptions, searchTextByObjectId),
+    [root, expandedIds, filter, filterOptions, searchTextByObjectId],
   )
 
   // Pre-compute parent and depth maps to avoid O(n²) lookups in the render loop
@@ -389,20 +404,31 @@ export function ElementTree({
       return
     }
     onSelect([nodeId])
-  }, [selectedIds, visibleNodes, onSelect])
+    // T164 — vrai clic simple (aucun modificateur) → goto de ce nœud (item ou dossier)
+    // dans la vue document. On re-teste les modificateurs : la branche shift peut retomber
+    // ici quand la sélection contiguë est impossible (from/to introuvables).
+    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) onGoto?.(nodeId)
+  }, [selectedIds, visibleNodes, onSelect, onGoto])
 
   const handleClickEmpty = useCallback(() => {
     onSelect([])
-  }, [onSelect])
+    onGoto?.(null) // T164 — désélection totale : efface la cible goto
+  }, [onSelect, onGoto])
 
   const handleRowDoubleClick = useCallback((nodeId: string) => {
     if (onDoubleClick && selectedIds.length <= 1) onDoubleClick(nodeId)
   }, [onDoubleClick, selectedIds])
 
   const handleRenameCommit = useCallback((nodeId: string, name: string) => {
-    if (name.trim()) onRootChange(treeRename(root, nodeId, name.trim()))
+    const trimmed = name.trim()
+    if (trimmed) {
+      onRootChange(treeRename(root, nodeId, trimmed))
+      // T161 — si le nœud porte déjà un objet, garder son titre aligné sur le nom d'arbre.
+      const node = treeFindNode(root, nodeId)
+      if (node?.kind === 'item' && node.objectId) onItemRenamed?.(node.objectId, trimmed)
+    }
     setRenamingId(null)
-  }, [root, onRootChange])
+  }, [root, onRootChange, onItemRenamed])
 
   const handleRenameCancel = useCallback(() => setRenamingId(null), [])
 
@@ -798,6 +824,9 @@ export function ElementTree({
     onRootChange(newRoot)
     setDraggingIds([])
     setDropIndicator(null)
+    // T164 — recaler la vue document sur le 1er nœud déplacé (ids est déjà dans l'ordre de
+    // l'arbre). Vaut pour un item comme pour un dossier.
+    if (ids[0]) onGoto?.(ids[0])
   }
 
   function handleDragEnd() {

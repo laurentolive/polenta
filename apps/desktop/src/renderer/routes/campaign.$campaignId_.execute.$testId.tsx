@@ -132,6 +132,9 @@ function ExecuteTestPage() {
     },
   })
 
+  // Ctrl/Cmd+Entrée depuis un commentaire richtext → enregistrer le résultat d'exécution.
+  const submitExecution = () => { if (!executeMutation.isPending) executeMutation.mutate() }
+
   function goBack() {
     navigate({
       to: '/campaign/$campaignId',
@@ -234,6 +237,7 @@ function ExecuteTestPage() {
                           onChange={v => setStepComment(step.order, v)}
                           placeholder={t('campaignPage.stepCommentPlaceholder')}
                           repoPath={repoPath}
+                          onSubmit={submitExecution}
                         />
                       </div>
                     </div>
@@ -262,6 +266,7 @@ function ExecuteTestPage() {
                 onChange={setGlobalNotes}
                 placeholder={t('campaignPage.globalCommentPlaceholder')}
                 repoPath={repoPath}
+                onSubmit={submitExecution}
               />
             </div>
 

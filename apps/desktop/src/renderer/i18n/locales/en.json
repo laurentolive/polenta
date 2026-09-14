@@ -203,6 +203,7 @@
       "replaceAll": "Replace all",
       "replaceAllShort": "All",
       "replaceInItem": "Replace in this item",
+      "clickToGoto": "Click to locate in the document · double-click to open",
       "requirementsFilter": "Req.",
       "testsFilter": "Tests",
       "campaignsFilter": "Camp.",
@@ -535,7 +536,8 @@
       "links": "Links",
       "noLinkTypeForType": "No link type for this type",
       "missingRefs": "missing sourceRefs or targetRefs",
-      "configureColumns": "Configure columns"
+      "configureColumns": "Configure columns",
+      "showFolders": "Show folder headings"
     },
     "coverage": {
       "noLinkedTest": "No linked test",
@@ -568,6 +570,10 @@
     "richTextToolbar": {
       "rawMarkdownMode": "Raw markdown mode"
     },
+    "richTextViewer": {
+      "drawioNotFound": "Diagram not found: {{path}}",
+      "drawioInvalid": "Invalid diagram: {{path}}"
+    },
     "stepsTable": {
       "action": "Action",
       "expectedResult": "Expected result",
@@ -582,7 +588,15 @@
   },
   "search": {
     "page": {
-      "hint": "Use the search panel on the left to search across requirements, tests and campaigns."
+      "hint": "Use the search panel on the left to search across requirements, tests and campaigns.",
+      "noResults": "No results for this search."
+    },
+    "doc": {
+      "noField": "No field to display.",
+      "expectedResult": "Expected result"
+    },
+    "edit": {
+      "back": "Back to results"
     }
   },
   "requirementsPage": {

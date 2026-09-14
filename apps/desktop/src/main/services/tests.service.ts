@@ -8,6 +8,7 @@ import type { TreeService } from './tree.service'
 import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
+import { withKeyLock } from './serialize-writes.util'
 
 export class TestsService {
   constructor(
@@ -67,45 +68,51 @@ export class TestsService {
     return test
   }
 
+  // T159 — cf. RequirementsService : sérialise les read-modify-write concurrents sur le
+  // fichier du cas de test.
   async update(repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
-    const existing = await this.testsIndex.findById(repoPath, id)
-    if (!existing) throw new Error(`Test case ${id} not found`)
+    return withKeyLock(`${repoPath}::tests/${id}`, async () => {
+      const existing = await this.testsIndex.findById(repoPath, id)
+      if (!existing) throw new Error(`Test case ${id} not found`)
 
-    const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-    // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
-    // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
-    // pas ici (T112).
-    const updated: TestCase = {
-      ...existing,
-      ...(dto.title && { title: dto.title }),
-      ...(dto.objectTypeRef && { objectTypeRef: dto.objectTypeRef }),
-      ...(dto.status && { status: dto.status }),
-      ...(dto.preconditions !== undefined && { preconditions: dto.preconditions }),
-      ...(dto.equipment && { equipment: dto.equipment }),
-      ...(dto.steps && { steps: dto.steps }),
-      ...(dto.postconditions !== undefined && { postconditions: dto.postconditions }),
-      fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
-    }
+      const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+      // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
+      // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
+      // pas ici (T112).
+      const updated: TestCase = {
+        ...existing,
+        ...(dto.title && { title: dto.title }),
+        ...(dto.objectTypeRef && { objectTypeRef: dto.objectTypeRef }),
+        ...(dto.status && { status: dto.status }),
+        ...(dto.preconditions !== undefined && { preconditions: dto.preconditions }),
+        ...(dto.equipment && { equipment: dto.equipment }),
+        ...(dto.steps && { steps: dto.steps }),
+        ...(dto.postconditions !== undefined && { postconditions: dto.postconditions }),
+        fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
+      }
 
-    await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
-    this.testsIndex.upsertTestCase(repoPath, updated)
-    return updated
+      await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
+      this.testsIndex.upsertTestCase(repoPath, updated)
+      return updated
+    })
   }
 
   async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string): Promise<TestCase> {
-    const existing = await this.testsIndex.findById(repoPath, id)
-    if (!existing) throw new Error(`Test case ${id} not found`)
+    return withKeyLock(`${repoPath}::tests/${id}`, async () => {
+      const existing = await this.testsIndex.findById(repoPath, id)
+      if (!existing) throw new Error(`Test case ${id} not found`)
 
-    const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-    const updated: TestCase = {
-      ...existing,
-      status: targetStatus,
-      version: (existing.version ?? 0) + 1,
-    }
+      const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+      const updated: TestCase = {
+        ...existing,
+        status: targetStatus,
+        version: (existing.version ?? 0) + 1,
+      }
 
-    await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
-    this.testsIndex.upsertTestCase(repoPath, updated)
-    return updated
+      await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
+      this.testsIndex.upsertTestCase(repoPath, updated)
+      return updated
+    })
   }
 
   async execute(repoPath: string, testCaseId: string, dto: ExecuteTestCaseDto, workspaceDir?: string): Promise<TestRun> {

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useEditor, EditorContent } from '@tiptap/react'
+import { Extension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -32,12 +33,37 @@ interface Props {
   repoPath?: string
   /** Donne le focus clavier à l'éditeur dès son montage (ex. popup d'édition ouverte au clic). */
   autoFocus?: boolean
+  /** Ctrl/Cmd+Entrée depuis l'éditeur : valide la saisie du contexte (ferme le popover,
+   *  commit du champ inline, soumet le formulaire…). Absent → Ctrl+Entrée garde le
+   *  comportement TipTap par défaut (saut de ligne). */
+  onSubmit?: () => void
 }
 
-export function RichTextField({ value, onChange, disabled, placeholder, repoPath, autoFocus }: Props) {
+export function RichTextField({ value, onChange, disabled, placeholder, repoPath, autoFocus, onSubmit }: Props) {
   const { t } = useTranslation()
   const ctx = useRichText()
   const hasContext = ctx !== null
+
+  // Ctrl/Cmd+Entrée → onSubmit. La closure `onSubmit` est lue via une ref tenue à jour à
+  // chaque render, pour ne pas avoir à recréer l'éditeur ; l'extension elle-même est créée
+  // une seule fois (initialiseur paresseux de useState).
+  const onSubmitRef = useRef(onSubmit)
+  useEffect(() => { onSubmitRef.current = onSubmit })
+  const [submitExtension] = useState(() =>
+    Extension.create({
+      name: 'submitOnModEnter',
+      // > HardBreak / CodeBlock (priorité 100) : notre keymap `Mod-Enter` est enregistré en
+      // premier et consomme l'évènement quand un onSubmit est fourni (sinon `false` → le
+      // comportement TipTap par défaut reprend la main, rien ne change).
+      priority: 1000,
+      addKeyboardShortcuts: () => ({
+        'Mod-Enter': () => {
+          if (onSubmitRef.current) { onSubmitRef.current(); return true }
+          return false
+        },
+      }),
+    }),
+  )
 
   const [rawValue, setRawValue] = useState(value)
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null)
@@ -77,6 +103,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
       TableCell,
       Markdown.configure({ html: false, transformPastedText: true }),
       DrawioEmbed.configure({ repoPath }),
+      submitExtension,
     ],
     content: value,
     editorProps: {
@@ -243,8 +270,15 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
     return () => { editor.off('selectionUpdate', close) }
   }, [editor, tableMenu])
 
+  // `ctx.isRaw` est global au provider (une seule case "Raw" dans la toolbar), mais
+  // `ctx.activeEditor` désigne le champ réellement ciblé. Sans ce filtrage, tous les
+  // RichTextField de la vue basculeraient en <textarea autoFocus> au clic sur "Raw" :
+  // chacun réclamerait le focus au montage, le dernier de la page gagnerait, et le
+  // caret sauterait hors du champ en cours d'édition (vue qui « part vers le bas »).
+  const isThisRaw = hasContext && ctx.isRaw && ctx.activeEditor === editor
+
   // Resync editor when coming back from raw mode.
-  // Skip on mount (isMountedRef.current is false): ctx.isRaw starts false, so
+  // Skip on mount (isMountedRef.current is false): isThisRaw starts false, so
   // the effect would fire immediately and risk a spurious setContent due to
   // TipTap markdown normalization differences.
   useEffect(() => {
@@ -253,14 +287,14 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
       return
     }
     if (!editor || !ctx) return
-    if (!ctx.isRaw) {
+    if (!isThisRaw) {
       const current = (editor.storage.markdown as MarkdownStorage).getMarkdown()
       if (current !== rawValue) {
         editor.commands.setContent(rawValue, false)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.isRaw])
+  }, [isThisRaw])
 
   // Deactivate context when this RichTextField unmounts (e.g. popover closed).
   // onBlur does not fire during React unmount, so without this cleanup
@@ -308,11 +342,18 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
           }
         }}
       >
-        {ctx.isRaw ? (
+        {isThisRaw ? (
           <textarea
             autoFocus
             value={rawValue}
-            onChange={e => { setRawValue(e.target.value); onChange(e.target.value) }}
+            onChange={e => {
+              // Marque cette valeur comme émise par ce champ : l'effet [value] la
+              // reconnaît comme un écho de notre propre édition et n'appelle pas
+              // setContent sur l'éditeur (masqué) à chaque frappe en mode raw.
+              lastEmittedValueRef.current = e.target.value
+              setRawValue(e.target.value)
+              onChange(e.target.value)
+            }}
             className="w-full px-3 py-2 text-sm font-mono text-ink bg-surface outline-none resize-y min-h-[80px]"
           />
         ) : (

@@ -2,6 +2,163 @@
 
 ---
 
+### T167 — Évolution : Vue Recherche — liste des résultats (style Vue Word) + édition inline dans la zone principale
+
+**Contexte** : la Vue Recherche (`/search`) avait un panneau latéral fonctionnel mais une
+zone principale vide depuis T107 — rien ne s'y passait au lancement d'une recherche.
+
+**Implémentation (2 sprints)** :
+
+- **`lib/searchQuery.ts`** — utilitaires purs extraits de `SearchPanel` (`buildRegex`,
+  `findMatches`, `replaceInText`, types `SearchResult`/`SearchOpts`/…).
+- **`contexts/SearchContext.tsx`** — `SearchProvider` monté dans `AppLayout`
+  (`key={currentProjectId}`), état de recherche partagé entre `SearchPanel` (sidebar) et
+  la route `/search` (`<Outlet/>`). `enabled: !!regex` conservé → aucun fetch au repos.
+  `useSearch()` (throw) + `useOptionalSearch()` (repli si `/search` sans projet).
+- **`SearchPanel`** — devient consommateur du contexte. Clic simple sur un résultat =
+  **goto** (`setGoto`) au lieu de naviguer vers la page détail.
+- **`components/search/SearchResultsDoc.tsx`** — zone principale : une carte **lecture
+  seule** par élément (présentation Vue Word, tous types mélangés, **pas de vue Tableau**,
+  pas de dossiers). Occurrences surlignées (`<mark>`) dans id/titre/champs texte et
+  `richtext` (best effort). `useScrollToNode` + contour bleu pour le goto ; étapes de test
+  en liste lecture seule (pas de `StepsTable`, qui monterait N éditeurs TipTap).
+- **`lib/staticRichText.tsx`** — prop optionnelle `highlightRegex` + effet `TreeWalker`
+  (`clearSearchHighlights` avant chaque passe, ignore `pre`/`code`/`.static-drawio`) ;
+  inerte sans la prop → zéro impact Vue Word.
+- **`components/search/SearchEditPane.tsx`** — double-clic sur une exigence / un test →
+  **édition inline** via `EditView` (le même composant que le double-clic en Vue Système :
+  autosave par champ, Liens, Étapes, badge couverture, `Ctrl+Entrée`, `Échap`/« Retour aux
+  résultats »), **sans quitter `/search`** (état `editing` du contexte, pas de navigation
+  routeur). Version allégée de `SystemView` : pas d'arbre (le champ « Nom » édite le
+  `title`), pas d'undo/DnD/création/`backHistory` ; objet lié → nouvel onglet ; `readOnly`
+  via `useVersioning().isReadonly`. Reseed des étapes uniquement au changement d'objet,
+  flush des étapes non sauvegardées de l'objet sortant.
+- **campagne** (pas d'endpoint `update` générique) : double-clic → navigation
+  `/campaign/$id`.
+
+**Vérification** : `pnpm -C apps/desktop typecheck` propre ; `electron-vite build` OK ;
+`/code-review high` sur chaque sprint (4 + 3 findings corrigés — gardes `rawFields`,
+`<mark>` qui s'empilaient, `useSearch` hors provider, id/titre non surlignés ; puis
+perte d'édition d'étape au refetch, invalidations manquantes, code mort). Pas de runner
+de tests dans `apps/desktop` — scénarios manuels dans `specs/T167-tests.md`. Doc :
+`SPEC-ELECTRON-DESKTOP` §19.3 + §19.17 (nouvelle), `SPEC-SYSTEM-VIEW` §Goto, `SPEC-REQ`
+§3.2a, `SPEC-INDEX` (MAJ → T167). Voir `specs/T167.md`, `specs/T167-design.md`,
+`specs/T167-sprint1.md`, `specs/T167-sprint2.md`. Mergé sur `master` (`--no-ff`).
+
+---
+
+### T166 — Bug : Vues Word et Excel n'honorent pas le mode du filtre global (casse / mot entier / regex)
+
+**Contexte** : découvert pendant T164. La barre de filtre du panneau latéral Vue Système porte
+3 options (`FilterOptions` : `caseSensitive`, `wholeWord`, `regex`). L'arbre latéral
+(`getMatchingIds`) les honorait via une `RegExp` maison (regex invalide → vide l'arbre). Les
+Vues Word/Excel, elles, ignoraient totalement `filterOptions` — `SystemView` ne les transmettait
+même pas — et filtraient en sous-chaîne littérale insensible à la casse. En mode **regex**, une
+saisie type `SW.*01` matchait dans l'arbre mais `.includes('sw.*01')` échouait partout → la vue
+document se vidait et le *goto* T164 devenait un no-op silencieux sur tous les résultats.
+
+**Décision Spec** : périmètre de recherche **unifié** — l'arbre latéral, la Vue Tableau et la
+Vue Document cherchent tous dans nom du nœud + `objectId` + **toutes les valeurs de champs**
+(champs masqués inclus). Regex invalide n'exclut aucune ligne ni aucun nœud (comme le filtre
+par colonne T51).
+
+**Implémentation** : `WordView`/`ExcelView` — `buildFilterRegex(filter, filterOptions ??
+NO_FILTER_OPTIONS)` pour le filtre global, chaque valeur testée séparément (pas de haystack
+joint). `SystemView` passe désormais `filterOptions`. `getMatchingIds`/`treeVisibleNodes` —
+passent à `buildFilterRegex` (regex invalide n'exclut plus rien) + nouveau param
+`searchTextByObjectId: Map<string,string>`. `SystemPanel` construit cette map
+(`Object.values(normalizeObject(obj)).join(' ')`) et charge les objets via un nouveau hook
+partagé `renderer/hooks/useSystemObjects.ts` — query `['objects', repoPath, category, nodeId,
+typeId]` extraite de `SystemView` (même `queryKey` ⇒ cache mutualisé, aucun fetch en double).
+`NO_FILTER_OPTIONS` exporté de `lib/textFilter.ts`. `escapeRegex` local de `useTreeState`
+supprimé (inutilisé).
+
+**Vérification** : `pnpm -C apps/desktop typecheck` propre. `turbo lint` OK (`@polenta/desktop`
+n'a pas de script lint). Pas de runner de tests dans `apps/desktop` — scénarios manuels dans
+`specs/T166.md`. `SPEC-SYSTEM-VIEW.md` (§Filtre : nouveau paragraphe mode + périmètre ; §Goto :
+suppression de la mention « divergence de filtre en mode regex ») et `SPEC-INDEX.md`
+(§global → T166) mis à jour. Mergé sur `master` (`--no-ff`).
+
+---
+
+### T163 — Vue Word : diagrammes draw.io des richtext rendus en lecture (rendu paresseux)
+
+**Contexte** : en Vue Word lecture, `StaticRichTextViewer` (rendu markdown-it sans éditeur
+Tiptap, pour tenir tout le document d'un coup) remplaçait chaque bloc `drawio` d'un champ
+`richtext` par une étiquette `📐 nom-de-fichier` — le diagramme n'apparaissait qu'en passant
+le champ en édition. Choix de perf : un viewer canvas draw.io par champ × N éléments gelait
+l'onglet (≈281 items × 3 champs sur PL/Product). C'était aussi une divergence non documentée
+vs SPEC-REQ §3.2a. Objectif : rendre le diagramme en lecture **sans** régression de perf.
+
+**Implémentation** : la *fence* `drawio` émet un placeholder `<span class="static-drawio">`
+(dims stockées en `min-width`/`min-height` pour réserver la place, badge `📐` en repli ;
+contenu non-JSON → bloc omis comme avant). Nouvel `useEffect` dans `StaticRichTextViewer` :
+`IntersectionObserver` (root = conteneur défilant le plus proche, `rootMargin 300px`) qui
+monte le vrai viewer mxGraph vendoré à l'approche du viewport, **une seule fois** par
+occurrence (pas de re-rendu au scroll ni au focus fenêtre). Nouveau module
+`renderer/lib/staticDrawio.ts` : `computeDrawioLayout` (fonction pure, géométrie crop/taille
+répliquée de `ResizableMediaFrame` mode non-éditable) + `renderStaticDrawio` (rendu
+impératif `outer > inner > .mxgraph` + overlay transparent ; mesure `ResizeObserver`
+content-box ; teardown qui annule l'async, coupe l'observer et **démonte le graphe**
+`graph.destroy()` — le `GraphViewer` vendoré n'a pas de `destroy()` et fuit un listener
+`matchMedia`). `inner` reçoit une largeur explicite d'emblée pour forcer la création
+synchrone du graphe (sinon `checkVisibleState` la diffère via un `MutationObserver` interne
+→ orphelin possible). Clic sur le diagramme → `pointer-events:none` + overlay sans
+gestionnaire → le clic remonte au champ qui passe en édition (le `DrawioEmbedView`
+interactif prend le relais). Erreurs (`repoPath` absent, fichier introuvable, XML invalide,
+échec chargement viewer) → repli badge ou message inline `system.richTextViewer.*`, jamais
+de crash. Mutualisation : `inlineDrawioViewerConfig` (`drawioViewerLoader.ts`) et
+`parseDrawioFencePayload` (`tiptap/mediaAttrs.ts`) partagés avec `DrawioEmbedView` /
+`DrawioEmbedExtension`. MAJ SPEC-REQ §3.2a (nouveau point « Rendu en lecture, Vue Word ») +
+§3.2b (interaction vs présence), SPEC-SYSTEM-VIEW §Vue Word, SPEC-INDEX.
+
+**Décisions** : QO1 surlignage de cellule non implémenté en v1 (page contenante affichée) ;
+QO2 léger étalement `requestAnimationFrame` avant chaque construction de viewer (pas de file
+coordonnée) ; QO3 root = conteneur défilant (pas le viewport) ; QO4 un `IntersectionObserver`
+par instance de `StaticRichTextViewer`.
+
+**Limitation connue** : un diagramme **sans** `width`/`height`/`crop` stockés ne peut pas
+réserver sa place → léger décalage du document quand il se rend au défilement (le composant
+live a le même transitoire : 400×300 puis recalage). Pas de runner de test dans le repo →
+validé par les scénarios manuels de `specs/T163-tests.md`.
+
+### T164 — Clic simple sur un élément de l'arbre → *goto* dans la vue de droite
+
+**Contexte** : dans la Vue Système (onglets Exigences / Tests), le clic simple sur un nœud de
+l'arbre `ElementTree` n'avait aucune action (sélection locale seule) ; seul le double-clic
+ouvrait la Vue Édition. Objectif : au clic simple, faire défiler la vue Word/Excel **déjà
+affichée** jusqu'à l'élément et l'encadrer — sans changer de `viewMode`. Décisions validées :
+contour persistant ; no-op en Vue Édition ; clic sur un dossier → *goto* sur son en-tête de
+section / ligne de groupe ; multi-sélection → pas de *goto* ; dépôt d'un drag & drop → *goto*
+sur le 1er nœud déplacé ; vues Recherche et Campagnes hors scope (déjà satisfaisantes).
+
+**Implémentation** : nouvel état `gotoTarget { nodeId, seq }` dans `SystemViewContext`
+(`requestGoto` / `clearGoto`, `gotoSeq` pour re-scroller sur cible identique), réinitialisé au
+changement de composant/type. `ElementTree` gagne une prop `onGoto` appelée par `handleSelect`
+(clic sans modificateur), `handleClickEmpty` (→ null) et la fin de `handleDrop`. `SystemPanel`
+relaie via `handleGoto`, **no-op tant que `editingNodeId !== null`** (Vue Édition inerte, garde
+à la source). `SystemView` passe `gotoNodeId` / `gotoSeq` à `WordView` / `ExcelView` et appelle
+`clearGoto()` à l'entrée en Édition. Nouveau hook partagé
+`renderer/hooks/useScrollToNode.ts` (`querySelector('[data-node-id]')` + `scrollIntoView`).
+`WordView` : `data-node-id` + anneau `ring-2 ring-status-info-solid` sur `ItemCard` et les
+en-têtes de dossier. `ExcelView` : `data-node-id` + `scroll-mt-8` (sous le `<thead>` sticky) +
+`outline-2 outline-status-info-solid` sur la `<tr>` élément et la `<tr>` de `GroupRow`.
+
+**Limitation connue** (→ **T166**) : `WordView` / `ExcelView` filtrent leur contenu par
+sous-chaîne littérale alors que l'arbre honore `filterOptions` ; en mode **regex** actif, une
+ligne visible dans l'arbre peut ne pas être rendue dans la vue → *goto* = no-op silencieux
+(comportement déjà prévu par la spec). Divergence arbre/vues **préexistante**.
+
+**Vérification** : `pnpm -C apps/desktop typecheck` propre (avant et après merge). `/code-review`
+(medium) — 2 tours : 4 findings corrigés (fuite d'état *goto* au retour d'Édition, garde
+manquante, occlusion `<thead>`, duplication de l'effet → hook), 1 finding documenté (limitation
+regex). `routeTree.gen.ts` non modifié. Pas de runner de tests dans `apps/desktop` — scénarios
+manuels dans `specs/T164-tests.md`. `SPEC-SYSTEM-VIEW.md` (§Sélection, §Drag & Drop, §Vue
+document, §Vue Excel, §Vue Word) et `SPEC-INDEX.md` (§global → T164) mis à jour. Mergé sur
+`master` (`--no-ff`).
+
+---
+
 ### T149 — Vue Excel : édition en masse sur une sélection multiple de lignes
 
 **Contexte** : décision validée avec l'utilisateur — propagation automatique dès qu'une édition

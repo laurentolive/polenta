@@ -203,6 +203,7 @@
       "replaceAll": "Tout remplacer",
       "replaceAllShort": "Tout",
       "replaceInItem": "Remplacer dans cet élément",
+      "clickToGoto": "Cliquer pour localiser dans le document · double-clic pour ouvrir",
       "requirementsFilter": "Exig.",
       "testsFilter": "Tests",
       "campaignsFilter": "Camp.",
@@ -535,7 +536,8 @@
       "links": "Liens",
       "noLinkTypeForType": "Aucun type de lien pour ce type",
       "missingRefs": "sourceRefs ou targetRefs manquant",
-      "configureColumns": "Configurer les colonnes"
+      "configureColumns": "Configurer les colonnes",
+      "showFolders": "Afficher les titres des dossiers"
     },
     "coverage": {
       "noLinkedTest": "Aucun test lié",
@@ -568,6 +570,10 @@
     "richTextToolbar": {
       "rawMarkdownMode": "Mode markdown brut"
     },
+    "richTextViewer": {
+      "drawioNotFound": "Diagramme introuvable : {{path}}",
+      "drawioInvalid": "Diagramme invalide : {{path}}"
+    },
     "stepsTable": {
       "action": "Action",
       "expectedResult": "Résultat attendu",
@@ -582,7 +588,15 @@
   },
   "search": {
     "page": {
-      "hint": "Utilisez le panneau de recherche à gauche pour rechercher dans les exigences, tests et campagnes."
+      "hint": "Utilisez le panneau de recherche à gauche pour rechercher dans les exigences, tests et campagnes.",
+      "noResults": "Aucun résultat pour cette recherche."
+    },
+    "doc": {
+      "noField": "Aucun champ à afficher.",
+      "expectedResult": "Résultat attendu"
+    },
+    "edit": {
+      "back": "Retour aux résultats"
     }
   },
   "requirementsPage": {

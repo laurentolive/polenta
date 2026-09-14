@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef } from 'react'
 import MarkdownIt from 'markdown-it'
 import { api } from '../api'
 import { escapeXml } from './drawioRender'
+import { parseDrawioFencePayload } from '../tiptap/mediaAttrs'
+import { renderStaticDrawio } from './staticDrawio'
 
 /**
  * Read-only counterpart to RichTextField/RichTextViewer, for lists that render many objects at
@@ -15,9 +17,12 @@ import { escapeXml } from './drawioRender'
  *
  * `image`/`drawio` fences are ResizableImageExtension/DrawioEmbedExtension's own markdown
  * encoding (not standard markdown) — mirrored here so those blocks don't fall through to a
- * plain, unreadable code-fence render. Drawio embeds render as a static label rather than the
- * live interactive diagram: reproducing that view is a per-item canvas render, which is exactly
- * the kind of per-row cost this component exists to avoid — click into edit mode to see it.
+ * plain, unreadable code-fence render. The `drawio` fence emits a `<span class="static-drawio">`
+ * placeholder (keeping the `📐 label` as fallback); a post-render effect mounts the real
+ * vendored mxGraph viewer into each placeholder, but only once it nears the viewport
+ * (IntersectionObserver) — so the per-diagram canvas cost stays bounded to what's on screen,
+ * not the hundreds of rows. The rendered diagram is non-interactive: a click passes through to
+ * the field, which enters edit mode and mounts the full DrawioEmbedView. See lib/staticDrawio.ts.
  */
 
 let sharedMd: MarkdownIt | null = null
@@ -48,14 +53,38 @@ function getMarkdownIt(): MarkdownIt {
     }
 
     if (info === 'drawio') {
+      // Contenu non-JSON (édition manuelle du markdown) : comme l'ancien viewer
+      // statique, on omet le bloc plutôt que d'émettre un placeholder qui
+      // tenterait `api.drawio.read` sur du texte brut. L'éditeur (DrawioEmbed),
+      // lui, reste indulgent (chemin brut).
       try {
-        const parsed = JSON.parse(token.content.trim()) as { path?: unknown }
-        const path = typeof parsed.path === 'string' ? parsed.path : ''
-        const label = path.split(/[/\\]/).pop() || 'diagramme'
-        return `<span class="inline-flex items-center gap-1 text-xs text-ink-3 italic border border-edge rounded px-1.5 py-0.5">📐 ${escapeXml(label)}</span>`
+        JSON.parse(token.content.trim())
       } catch {
         return ''
       }
+      const { path, nodeId, width, height, crop } = parseDrawioFencePayload(token.content)
+      const label = path.split(/[/\\]/).pop() || 'diagramme'
+      // Badge de repli : affiché tel quel avant le rendu du viewer, si
+      // `repoPath` est absent, en cas d'erreur, ou si le bloc n'a pas de `path`
+      // (rien à rendre — on garde juste le repère visuel).
+      const badge = `<span class="inline-flex items-center gap-1 text-xs text-ink-3 italic border border-edge rounded px-1.5 py-0.5">📐 ${escapeXml(label)}</span>`
+      if (!path) return badge
+      // Placeholder : porte le payload en data-attributs. Le viewer réel est
+      // monté par renderStaticDrawio quand le bloc approche le viewport (cf.
+      // useEffect plus bas).
+      const attrs = [`class="static-drawio"`, `data-drawio-path="${escapeXml(path)}"`]
+      if (nodeId) attrs.push(`data-drawio-node-id="${escapeXml(nodeId)}"`)
+      if (width) attrs.push(`data-drawio-width="${width}"`)
+      if (height) attrs.push(`data-drawio-height="${height}"`)
+      if (crop) attrs.push(`data-drawio-crop="${escapeXml(JSON.stringify(crop))}"`)
+      // Réserve la place connue (dims du payload) pour éviter que le document
+      // ne "saute" quand le badge cède la place au diagramme au défilement.
+      // Sans dims (diagramme auto) : pas de réservation possible, décalage assumé.
+      const reserve: string[] = []
+      if (width) reserve.push(`min-width:${width}px`)
+      if (height) reserve.push(`min-height:${height}px`)
+      const styleAttr = reserve.length > 0 ? ` style="${reserve.join(';')}"` : ''
+      return `<span ${attrs.join(' ')}${styleAttr}>${badge}</span>`
     }
 
     return defaultFence ? defaultFence(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options)
@@ -68,9 +97,90 @@ function isLiteralSrc(src: string): boolean {
   return src.startsWith('data:') || /^https?:\/\//.test(src)
 }
 
-const VIEWER_CLASS = 'text-sm text-ink [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:font-medium [&_h3]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-status-neutral-bg [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_blockquote]:border-l-2 [&_blockquote]:border-status-neutral-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-ink-2 [&_pre]:bg-status-neutral-bg [&_pre]:p-2 [&_pre]:rounded [&_img]:max-w-full [&_img]:rounded [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-edge [&_th]:bg-hover [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-edge [&_td]:px-2 [&_td]:py-1 [&_p]:my-1'
+// Conteneur défilant le plus proche (la Vue Word défile dans une div
+// `overflow-auto` interne, pas le viewport) : sert de `root` à
+// l'IntersectionObserver pour que la marge de préchargement soit réellement
+// efficace. `null` (viewport) en repli si aucun ancêtre ne défile.
+function nearestScrollParent(el: HTMLElement): HTMLElement | null {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    const oy = getComputedStyle(node).overflowY
+    if (oy === 'auto' || oy === 'scroll') return node
+  }
+  return null
+}
 
-export function StaticRichTextViewer({ value, repoPath }: { value: string; repoPath?: string }) {
+const VIEWER_CLASS = 'text-sm text-ink [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:font-medium [&_h3]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-status-neutral-bg [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_blockquote]:border-l-2 [&_blockquote]:border-status-neutral-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-ink-2 [&_pre]:bg-status-neutral-bg [&_pre]:p-2 [&_pre]:rounded [&_img]:max-w-full [&_img]:rounded [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-edge [&_th]:bg-hover [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-edge [&_td]:px-2 [&_td]:py-1 [&_p]:my-1 [&_.static-drawio]:inline-block [&_.static-drawio]:my-2 [&_.static-drawio]:align-top'
+
+/**
+ * T167 — retire les `<mark data-search-hl>` posés par un passage précédent et
+ * refusionne les nœuds texte. Indispensable : quand seul `regex` change (frappe dans
+ * le champ de recherche), `html` est identique donc React ne réinitialise PAS
+ * l'innerHTML — sans ce nettoyage les surbrillances s'empileraient.
+ */
+function clearSearchHighlights(root: HTMLElement): void {
+  const marks = root.querySelectorAll('mark[data-search-hl]')
+  if (marks.length === 0) return
+  for (const mark of marks) {
+    mark.replaceWith(document.createTextNode(mark.textContent ?? ''))
+  }
+  root.normalize()
+}
+
+/**
+ * T167 — surligne (`<mark>`) les occurrences de `regex` dans les nœuds texte de `root`.
+ * « Best effort » : ignore le contenu des `pre`/`code`/`.static-drawio` (et des `mark`
+ * déjà posés). Aucune dépendance React — opère directement sur le DOM rendu par
+ * `dangerouslySetInnerHTML`.
+ */
+function highlightTextNodes(root: HTMLElement, regex: RegExp): void {
+  const re = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : regex.flags + 'g')
+  const SKIP = new Set(['PRE', 'CODE', 'MARK', 'SCRIPT', 'STYLE'])
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const text = node.nodeValue
+      if (!text || !text.trim()) return NodeFilter.FILTER_REJECT
+      for (let el = node.parentElement; el && el !== root; el = el.parentElement) {
+        if (SKIP.has(el.tagName) || el.classList.contains('static-drawio')) return NodeFilter.FILTER_REJECT
+      }
+      return NodeFilter.FILTER_ACCEPT
+    },
+  })
+  const targets: Text[] = []
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    re.lastIndex = 0
+    if (re.test(n.nodeValue ?? '')) targets.push(n as Text)
+  }
+  for (const textNode of targets) {
+    const text = textNode.nodeValue ?? ''
+    re.lastIndex = 0
+    const frag = document.createDocumentFragment()
+    let last = 0
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text)) !== null) {
+      if (m[0].length === 0) { re.lastIndex++; continue }
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)))
+      const mark = document.createElement('mark')
+      mark.className = 'bg-status-warning-solid/70 text-inherit rounded-sm px-px not-italic'
+      mark.setAttribute('data-search-hl', '')
+      mark.textContent = m[0]
+      frag.appendChild(mark)
+      last = m.index + m[0].length
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)))
+    textNode.parentNode?.replaceChild(frag, textNode)
+  }
+}
+
+export function StaticRichTextViewer({
+  value,
+  repoPath,
+  highlightRegex,
+}: {
+  value: string
+  repoPath?: string
+  /** T167 — surligne les occurrences dans le rendu lecture (Vue Recherche). */
+  highlightRegex?: RegExp
+}) {
   const html = useMemo(() => (value ? getMarkdownIt().render(value) : ''), [value])
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -93,6 +203,48 @@ export function StaticRichTextViewer({ value, repoPath }: { value: string; repoP
     }
     return () => { cancelled = true }
   }, [html, repoPath])
+
+  // Diagrammes draw.io (T163) : la *fence* `drawio` a émis un placeholder
+  // `<span class="static-drawio">`. On monte le viewer mxGraph réel dedans, mais
+  // seulement quand le bloc approche le viewport — le coût par diagramme reste
+  // borné à ce qui est à l'écran, pas aux centaines de lignes. Un diagramme
+  // rendu une fois est laché (`unobserve`) : pas de re-rendu au scroll ni au
+  // retour de focus fenêtre.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !repoPath) return
+    const placeholders = container.querySelectorAll<HTMLElement>('.static-drawio')
+    if (placeholders.length === 0) return
+
+    let disposed = false
+    const teardowns: Array<() => void> = []
+    const io = new IntersectionObserver(entries => {
+      if (disposed) return
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        const el = entry.target as HTMLElement
+        io.unobserve(el)
+        teardowns.push(renderStaticDrawio(el, repoPath))
+      }
+    }, { root: nearestScrollParent(container), rootMargin: '300px' })
+
+    for (const el of placeholders) io.observe(el)
+    return () => {
+      disposed = true
+      io.disconnect()
+      for (const fn of teardowns) fn()
+    }
+  }, [html, repoPath])
+
+  // T167 — surbrillance des occurrences (Vue Recherche). `html` change → React
+  // réinitialise l'innerHTML ; `regex` seul change → il faut nettoyer nous-mêmes
+  // les marques du passage précédent avant d'en reposer.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    clearSearchHighlights(container)
+    if (highlightRegex) highlightTextNodes(container, highlightRegex)
+  }, [html, highlightRegex])
 
   if (!value) return null
   return <div ref={containerRef} className={VIEWER_CLASS} dangerouslySetInnerHTML={{ __html: html }} />

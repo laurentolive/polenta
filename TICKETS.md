@@ -41,6 +41,62 @@ inchangé.
 
 ## Done
 
+### T162 — Évolution : afficher/masquer les titres de dossiers dans les vues Excel et Word (densité d'affichage)
+
+**Statut** : Done — mergé sur master
+
+**Description** : dans les vues Excel et Word de la Vue Système, les titres de dossiers
+(lignes de groupe en Excel, sections H1–H6 en Word) étaient toujours affichés. Ajout d'une
+case à cocher **« Afficher les titres des dossiers »** dans la roue crantée ⚙️
+(`FieldConfigModal`), par onglet (Tableau / Document), cochée par défaut. Décochée : liste
+plate, plus de lignes de groupe ni de sections `Hn`, collapse ignoré, numérotation de
+section conservée sur les éléments. Persistée avec la config des colonnes
+(`fieldVisibility["<nœud>::<type>"]` gagne `showFoldersExcel` / `showFoldersWord` ; pref
+pré-T162 ⇒ affichés). « Réinitialiser » remet aussi la case cochée. En Excel, titres
+masqués, le drag & drop de réordonnancement reste possible entre éléments de même dossier
+parent uniquement. Doc : `SPEC-SYSTEM-VIEW` §Vue Excel / §Vue Word / §Configuration des
+champs / §Persistance. Voir `specs/T162.md`, `specs/T162-design.md`, `specs/T162-sprint1.md`.
+
+### T159 — Bug : modifs d'un champ richtext perdues en vue Édition (+ T161 : titre/desc d'une exigence créée depuis l'arbre)
+
+**Statut** : Done — mergé sur master
+
+**Description** : en vue Édition, un champ `richtext` n'avait aucun autosave (contrairement
+aux vues Excel/Word) ; sa seule persistance était un *flush* à la navigation
+(`handleBack` + cleanup de démontage T127), absent dès qu'`EditView` reste monté et que
+seul `editingNodeId` change (double-clic sur un autre élément de l'arbre, navigation vers
+un objet lié, bascule Exigences/Tests). Vecteur additionnel : un refetch de la query
+`['object']` pendant l'édition (blur d'un autre champ, retour de focus fenêtre) écrasait
+`localValuesRef` via l'effet `[objectData]`.
+
+Volet **T161** absorbé (signalé sur `handstickProduct` / `VE22D`) : une exigence créée
+depuis l'arbre de la Vue Système s'ouvrait vide — `title: "Sans titre"` et `fields: {}` —
+faute de synchro titre ↔ nom d'arbre au renommage inline (course avec la création async de
+`createItemObject`) et pour la même root cause richtext que T159.
+
+Correctif : autosave debouncé du richtext, miroir `localValuesRef` propriété exclusive de
+l'effet `[objectData]` (protégé des refetch), flush ciblé de l'objet sortant au changement
+d'élément, `handleFlushEditValues` async avec retry sur échec, sérialisation des écritures
+par fichier côté main (`withKeyLock` dans `RequirementsService`/`TestsService` — ferme
+aussi la course latente pré-existante d'Excel/Word), synchro titre via
+`ElementTree.onItemRenamed` / `SystemPanel.handleItemRenamed` + rattrapage dans
+`createItemObject`. Voir `specs/T159.md`.
+
+### T158 — Évolution : Ctrl+Entrée valide la saisie dans un champ richtext
+
+**Statut** : Done — mergé sur master
+
+**Description** : dans un champ `richtext` (`RichTextField.tsx`, éditeur TipTap),
+`Ctrl/Cmd+Entrée` n'avait aucun effet métier — l'extension `HardBreak` de starter-kit
+mappe `Mod-Enter` sur un saut de ligne et consomme l'évènement. Ajout d'une extension
+TipTap `submitOnModEnter` (`priority: 1000`) + prop `RichTextField.onSubmit`, câblée sur
+l'action primaire de chaque contexte d'édition richtext : popover Vue Tableau (ferme),
+champ inline Vue Document (`commit`), `EditView` (flush), formulaires de création
+(submit), pages détail req/test (« Enregistrer »), cellules `StepsTable`, édition des
+champs de campagne, commentaires d'exécution. `Maj+Entrée` reste le saut de ligne ; sans
+`onSubmit` le comportement TipTap par défaut est préservé (lecture seule incluse). Doc :
+`SPEC-REQ` §3.2e. Voir `specs/T158.md`.
+
 ### T157 — Évolution : afficher l'adresse du repo GitHub sous le nom du projet
 
 **Statut** : Done — mergé sur master

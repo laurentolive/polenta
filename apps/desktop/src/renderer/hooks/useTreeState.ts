@@ -1,5 +1,6 @@
 import { useCallback, useReducer } from 'react'
 import type { TypeTreeNode } from '@polenta/types'
+import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../lib/textFilter'
 
 // ── Action types ──────────────────────────────────────────────────────────────
 
@@ -250,14 +251,25 @@ export function treeDeepCopyWithNewIds(node: TypeTreeNode, generateId: () => str
   }
 }
 
-/** Get all visible (expanded) nodes in tree order */
+/** Get all visible (expanded) nodes in tree order.
+ *
+ *  `searchTextByObjectId` (T166) — texte supplémentaire à fouiller par objet (titre + valeurs de
+ *  tous les champs, cf. `normalizeObject`), en plus du nom de nœud et de l'`objectId`. Aligne le
+ *  périmètre de recherche de l'arbre sur celui des Vues Word/Excel : sans lui, l'arbre ne
+ *  cherchait que dans le nom + l'ID. */
 export function treeVisibleNodes(
   root: TypeTreeNode[],
   expandedIds: Set<string>,
   filter?: string,
-  filterOptions?: { caseSensitive: boolean; wholeWord: boolean; regex: boolean },
+  filterOptions?: FilterOptions,
+  searchTextByObjectId?: Map<string, string>,
 ): TypeTreeNode[] {
-  if (!filter) {
+  // buildFilterRegex renvoie null quand le filtre est vide OU quand l'expression est invalide
+  // (mode regex) — dans les deux cas on n'exclut aucune ligne (cf. filtre par colonne T51,
+  // CampaignListView). C'est un changement volontaire vs. l'ancien comportement de l'arbre, qui
+  // vidait tout sur regex invalide (cf. T166, specs/T51-sprint1.md §Points ouverts).
+  const filterRe = filter ? buildFilterRegex(filter, filterOptions ?? NO_FILTER_OPTIONS) : null
+  if (!filterRe) {
     const result: TypeTreeNode[] = []
     function walk(nodes: TypeTreeNode[]) {
       for (const n of nodes) {
@@ -272,7 +284,7 @@ export function treeVisibleNodes(
   }
 
   // Filter mode: show matching nodes + their parent folders
-  const matchingIds = getMatchingIds(root, filter, filterOptions)
+  const matchingIds = getMatchingIds(root, filterRe, searchTextByObjectId)
   const descendantMatchMap = computeDescendantMatch(root, matchingIds)
   const result: TypeTreeNode[] = []
   function walkFiltered(nodes: TypeTreeNode[]) {
@@ -294,29 +306,19 @@ export function treeVisibleNodes(
 
 function getMatchingIds(
   root: TypeTreeNode[],
-  filter: string,
-  options?: { caseSensitive: boolean; wholeWord: boolean; regex: boolean },
+  filterRe: RegExp,
+  searchTextByObjectId?: Map<string, string>,
 ): Set<string> {
   const ids = new Set<string>()
-  const { caseSensitive = false, wholeWord = false, regex = false } = options ?? {}
-
-  let test: (s: string) => boolean
-  try {
-    if (regex) {
-      const re = new RegExp(filter, caseSensitive ? '' : 'i')
-      test = (s) => re.test(s)
-    } else {
-      const pattern = wholeWord ? `\\b${escapeRegex(filter)}\\b` : escapeRegex(filter)
-      const re = new RegExp(pattern, caseSensitive ? '' : 'i')
-      test = (s) => re.test(s)
-    }
-  } catch {
-    test = () => false
-  }
 
   function walk(nodes: TypeTreeNode[]) {
     for (const n of nodes) {
-      if (test(n.name) || (n.objectId && test(n.objectId))) {
+      const extra = n.objectId ? searchTextByObjectId?.get(n.objectId) : undefined
+      if (
+        filterRe.test(n.name) ||
+        (n.objectId && filterRe.test(n.objectId)) ||
+        (extra && filterRe.test(extra))
+      ) {
         ids.add(n.id)
       }
       walk(n.children)
@@ -342,10 +344,6 @@ function computeDescendantMatch(nodes: TypeTreeNode[], matchingIds: Set<string>)
   }
   walk(nodes)
   return map
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 export function computeSectionNumbers(root: TypeTreeNode[]): Map<string, string> {

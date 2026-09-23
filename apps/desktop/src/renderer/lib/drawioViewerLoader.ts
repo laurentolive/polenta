@@ -50,6 +50,18 @@ export function inlineDrawioViewerConfig(xml: string): string {
   return JSON.stringify({ xml, resize: true, nav: false, lightbox: 0 })
 }
 
+// URL du script résolue relativement à CE module, pas à la racine du document :
+// dans l'app packagée le renderer est servi en file:// (loadFile), où un chemin
+// absolu `/vendor/...` pointe vers la racine du disque (file:///C:/vendor/...)
+// → échec de chargement → "Diagramme invalide" sur tous les diagrammes (seul le
+// dev, servi en http://localhost, fonctionnait). Un chemin relatif au document
+// ne suffit pas non plus : le routeur (history navigateur) change son pathname.
+// `../vendor/` depuis ce module = `src/renderer/vendor/` en dev (/lib/…) comme
+// en build (/assets/<chunk>.js). Passé via une variable pour que Vite ne tente
+// pas de résoudre `new URL('…', import.meta.url)` comme un asset au build.
+const VIEWER_SCRIPT_REL = '../vendor/drawio-viewer.min.js'
+const VIEWER_SCRIPT_URL = new URL(VIEWER_SCRIPT_REL, import.meta.url).href
+
 let loadPromise: Promise<void> | null = null
 
 export function loadDrawioViewer(): Promise<void> {
@@ -63,14 +75,22 @@ export function loadDrawioViewer(): Promise<void> {
 
   loadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script')
-    script.src = '/vendor/drawio-viewer.min.js'
+    script.src = VIEWER_SCRIPT_URL
     script.async = true
     script.onload = () => {
       if (window.GraphViewer) resolve()
       else reject(new Error('drawio-viewer.min.js chargé mais GraphViewer indisponible'))
     }
-    script.onerror = () => reject(new Error('Échec du chargement de drawio-viewer.min.js'))
+    script.onerror = () => {
+      script.remove()
+      reject(new Error(`Échec du chargement de ${VIEWER_SCRIPT_URL}`))
+    }
     document.head.appendChild(script)
+  })
+  // Un échec ne doit pas rester mémorisé : sinon plus aucun diagramme ne peut
+  // se charger avant un redémarrage de l'app, même si la cause a disparu.
+  loadPromise.catch(() => {
+    loadPromise = null
   })
   return loadPromise
 }

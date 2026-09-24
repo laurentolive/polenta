@@ -502,7 +502,10 @@
       "stepsCount_other": "{{count}} steps",
       "noSteps": "No steps",
       "freezeColumns": "Freeze columns up to here",
-      "unfreezeColumns": "Unfreeze columns"
+      "unfreezeColumns": "Unfreeze columns",
+      "rowMaxHeight": "Max row height",
+      "rowMaxLines_one": "{{count}} line",
+      "rowMaxLines_other": "{{count}} lines"
     },
     "wordView": {
       "clickToRename": "Click to rename",

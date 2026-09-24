@@ -236,7 +236,7 @@ Recherche** au clic simple sur un résultat (`SPEC-ELECTRON-DESKTOP` §19.17, T1
 Ligne unique en haut de la zone principale, maximisant la densité de la vue document.
 
 ```
-[Composant X / Élément Y]        [↩] [↪] [🔍] [⚙️] [vue]
+[Composant X / Élément Y]        [↩] [↪] [🔍] [⚙️] [↕▯] [vue]
 ```
 
 | Élément | Rôle |
@@ -246,6 +246,7 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 | **↩ ↪** | Undo / Redo |
 | **🔍** | Activer / désactiver le filtre dans le panel gauche |
 | **⚙️** | Configuration des champs visibles |
+| **↕▯** | Hauteur max des lignes — Vue Excel uniquement, masqué pour les campagnes (T168, cf. §Vue Excel) |
 | **[vue]** | Sélecteur de vue : Excel / Word (le mode Édition s'active par double-clic ou icône inline, pas par ce sélecteur) |
 | **Enregistrer** | Apparaît uniquement si des modifications sont en attente |
 
@@ -293,6 +294,13 @@ Système › Arbre › Sélection).
   distinct de la surbrillance de sélection de ligne (fond pâle) et de l'`outline` fin/transitoire
   du survol de dépôt. Un seul élément encadré à la fois. La ligne est décalée sous l'en-tête
   figé au scroll (`scroll-margin`).
+- **Hauteur max des lignes (T168)** : bouton ↕▯ de la toolbar → popup avec un slider
+  **1 à 20 lignes de texte** (valeur affichée « N ligne(s) »), effet immédiat. Défaut :
+  **10**. À 1, cellules mono-ligne tronquées (richtext = première ligne + `¶`). Au-delà, le
+  texte passe à la ligne et est coupé par une ellipse après N lignes (hauteur *maximale*, pas
+  fixe), cellules alignées en haut ; un richtext affiche ses lignes non vides en texte brut.
+  Concerne nom, champs, richtext, `multi_enum`, liens — pas les lignes de groupe, ni les
+  colonnes `steps` / `coverageStatus`, ni les cellules en cours d'édition.
 - **Édition en masse (T149)** : si plusieurs lignes sont sélectionnées et que l'une d'elles fait l'objet d'une édition inline (statut, énumération, texte, richtext, case `multi_enum`), le changement est propagé à toutes les lignes sélectionnées. Pour `multi_enum`, seule la valeur cochée/décochée est basculée sur chaque ligne — les autres valeurs déjà cochées sur les autres lignes ne sont pas écrasées. Les colonnes de lien (`link::`) ne sont pas concernées (mécanisme dédié, par ligne).
 
 ### Vue Word
@@ -362,6 +370,7 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 | État | Mécanisme | Clé |
 |------|-----------|-----|
 | Mode de vue (Excel / Word) | `localStorage` | `polenta:viewMode:${repoPath}` |
+| Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 20] ignorée | `localStorage` | `polenta:excelRowMaxLines` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
 | `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
 | Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord? }`, par type + par utilisateur |

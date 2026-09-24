@@ -21,6 +21,7 @@ import { useTabs } from '../../contexts/TabsContext'
 import { treeFindNode, treeFindByObjectId, computeSectionNumbers } from '../../hooks/useTreeState'
 import { useSystemObjects } from '../../hooks/useSystemObjects'
 import { ExcelView } from './ExcelView'
+import { RowMaxHeightButton, ROW_MAX_LINES_MIN, ROW_MAX_LINES_MAX, ROW_MAX_LINES_DEFAULT } from './RowMaxHeightButton'
 import { WordView } from './WordView'
 import { EditView, type EditViewHandle } from './EditView'
 import { api } from '../../api'
@@ -364,6 +365,16 @@ export function SystemView() {
       prevViewModeRef.current = viewMode
     }
   }, [viewMode, repoPath])
+
+  // Hauteur max des lignes de la vue tableau (en lignes de texte) — préférence d'affichage
+  // de l'utilisateur, persistée en localStorage, commune à tous les projets.
+  const [excelRowMaxLines, setExcelRowMaxLines] = useState<number>(() => {
+    const stored = Number(localStorage.getItem('polenta:excelRowMaxLines'))
+    return Number.isInteger(stored) && stored >= ROW_MAX_LINES_MIN && stored <= ROW_MAX_LINES_MAX ? stored : ROW_MAX_LINES_DEFAULT
+  })
+  useEffect(() => {
+    localStorage.setItem('polenta:excelRowMaxLines', String(excelRowMaxLines))
+  }, [excelRowMaxLines])
 
   // When a node is set for editing (from tree double-click), switch to edit mode
   useEffect(() => {
@@ -1229,6 +1240,11 @@ export function SystemView() {
               </button>
             )}
 
+            {/* Hauteur max des lignes — vue tableau uniquement */}
+            {effectiveType?.category !== 'campaign' && viewMode === 'excel' && (
+              <RowMaxHeightButton value={excelRowMaxLines} onChange={setExcelRowMaxLines} />
+            )}
+
             {/* View mode selector — hidden for campaign types */}
             {effectiveType?.category !== 'campaign' && (
               <div className="flex border border-edge rounded overflow-hidden">
@@ -1325,6 +1341,7 @@ export function SystemView() {
             onItemNodeAdded={readOnly ? undefined : createItemObject}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
+            rowMaxLines={excelRowMaxLines}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'word' && (

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, type MouseEvent as ReactMouseEvent } from 'react'
+import React, { useState, useCallback, useRef, useEffect, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
@@ -65,9 +65,39 @@ interface Props {
    *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
   gotoNodeId?: string | null
   gotoSeq?: number
+  /** Hauteur max d'une ligne, en nombre de lignes de texte (1 = une seule ligne tronquée). */
+  rowMaxLines?: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Hauteur max des lignes (en lignes de texte) — fournie par `ExcelView`, lue par les cellules
+ *  via `useCellClamp` plutôt que propagée en prop à chaque composant de cellule. */
+const RowMaxLinesContext = createContext(1)
+
+/** Classe du `<td>` et enveloppe du contenu selon la hauteur max des lignes : à 1, la cellule
+ *  reste mono-ligne tronquée (`truncate`) ; au-delà, le texte passe à la ligne et est coupé
+ *  (ellipse) après `maxLines` lignes. */
+function useCellClamp() {
+  const maxLines = useContext(RowMaxLinesContext)
+  if (maxLines <= 1) {
+    return { maxLines, tdClass: 'truncate', wrap: (content: React.ReactNode) => content }
+  }
+  const style: React.CSSProperties = {
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: maxLines,
+    overflow: 'hidden',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+  }
+  return { maxLines, tdClass: '', wrap: (content: React.ReactNode) => <div style={style}>{content}</div> }
+}
+
+function ClampedContent({ children }: { children: React.ReactNode }) {
+  const clamp = useCellClamp()
+  return <>{clamp.wrap(children)}</>
+}
 
 /** T164 — contour persistant de la ligne / ligne de groupe ciblée par un "goto" depuis
  *  l'arbre. Trait bleu plein en retrait, distinct de la surbrillance de sélection (fond pâle)
@@ -128,6 +158,7 @@ function NameCell({
   stickyBg?: string
 }) {
   const { t } = useTranslation()
+  const clamp = useCellClamp()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
@@ -158,7 +189,8 @@ function NameCell({
     <td
       style={freezeStyle}
       className={[
-        'border border-edge px-2 py-1 text-xs text-ink max-w-xs truncate',
+        'border border-edge px-2 py-1 text-xs text-ink max-w-xs',
+        clamp.tdClass,
         stickyBg ?? '',
         onRename ? 'cursor-text hover:ring-1 hover:ring-inset hover:ring-status-info' : '',
         isSelected ? 'ring-2 ring-inset ring-status-info' : '',
@@ -169,7 +201,7 @@ function NameCell({
       } : undefined}
       title={onRename ? t('system.shared.clickToEdit') : undefined}
     >
-      {value || <span className="text-ink-3 italic">—</span>}
+      {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
     </td>
   )
 }
@@ -204,26 +236,29 @@ function InlineCell({
   stickyBg?: string
 }) {
   const { t } = useTranslation()
+  const clamp = useCellClamp()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
   if (isSystem || !onEdit) {
     return (
-      <td style={freezeStyle} className="border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs truncate">
-        {value}
+      <td style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass].join(' ')}>
+        {clamp.wrap(value)}
       </td>
     )
   }
 
   // Richtext: preview in read mode, open popover on click
   if (fieldDef?.type === 'richtext') {
-    const firstLine = value.split('\n').find(l => l.trim()) ?? ''
-    const hasMore = value.trim().split('\n').filter(l => l.trim()).length > 1
+    const nonEmptyLines = value.split('\n').filter(l => l.trim())
+    const firstLine = nonEmptyLines[0] ?? ''
+    const hasMore = nonEmptyLines.length > 1
     return (
       <td
         style={freezeStyle}
         className={[
-          'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs truncate hover:ring-1 hover:ring-inset hover:ring-status-info',
+          'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs hover:ring-1 hover:ring-inset hover:ring-status-info',
+          clamp.tdClass,
           stickyBg ?? '',
           isSelected ? 'ring-2 ring-inset ring-status-info' : '',
         ].join(' ')}
@@ -237,10 +272,14 @@ function InlineCell({
         title={t('system.shared.clickToEdit')}
       >
         {value ? (
-          <span className="text-xs text-ink truncate">
-            {firstLine}
-            {hasMore && <span className="text-ink-3 ml-1">¶</span>}
-          </span>
+          clamp.maxLines > 1 ? (
+            clamp.wrap(nonEmptyLines.join('\n'))
+          ) : (
+            <span className="text-xs text-ink truncate">
+              {firstLine}
+              {hasMore && <span className="text-ink-3 ml-1">¶</span>}
+            </span>
+          )
         ) : (
           <span className="text-ink-3 italic">—</span>
         )}
@@ -255,7 +294,8 @@ function InlineCell({
         data-multi-enum-popover
         style={freezeStyle}
         className={[
-          'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs truncate hover:ring-1 hover:ring-inset hover:ring-status-info',
+          'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs hover:ring-1 hover:ring-inset hover:ring-status-info',
+          clamp.tdClass,
           stickyBg ?? '',
           isSelected ? 'ring-2 ring-inset ring-status-info' : '',
         ].join(' ')}
@@ -268,7 +308,7 @@ function InlineCell({
         }}
         title={t('system.shared.clickToEdit')}
       >
-        {value || <span className="text-ink-3 italic">—</span>}
+        {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
       </td>
     )
   }
@@ -314,7 +354,8 @@ function InlineCell({
     <td
       style={freezeStyle}
       className={[
-        'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs truncate hover:ring-1 hover:ring-inset hover:ring-status-info',
+        'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs hover:ring-1 hover:ring-inset hover:ring-status-info',
+          clamp.tdClass,
         stickyBg ?? '',
         isSelected ? 'ring-2 ring-inset ring-status-info' : '',
       ].join(' ')}
@@ -324,7 +365,7 @@ function InlineCell({
       }}
       title={t('system.shared.clickToEdit')}
     >
-      {value || <span className="text-ink-3 italic">—</span>}
+      {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
     </td>
   )
 }
@@ -716,6 +757,7 @@ export function ExcelView({
   onItemNodeAdded,
   gotoNodeId,
   gotoSeq,
+  rowMaxLines = 1,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -1488,6 +1530,7 @@ export function ExcelView({
           des cellules elle-même, qui ne suit pas le décalage sticky — ce qui laisse un
           interstice au scroll par lequel les colonnes défilées redeviennent visibles. En
           border-separate, chaque cellule peint sa propre bordure dans sa propre boîte. */}
+      <RowMaxLinesContext.Provider value={rowMaxLines}>
       <table className="text-xs border-separate" style={{ width: effectiveTableWidth, tableLayout: 'fixed', borderSpacing: 0 }}>
         <thead className="sticky top-0 z-10">
           <tr>
@@ -1628,6 +1671,7 @@ export function ExcelView({
                 data-node-id={node.id}
                 className={[
                   'group cursor-pointer select-none scroll-mt-8',
+                  rowMaxLines > 1 ? 'align-top' : '',
                   isSelected ? 'bg-status-info-bg' : 'hover:bg-row-hover',
                   isDraggingRow || isCutRow ? 'opacity-50' : '',
                   dropInside ? 'outline outline-1 outline-status-info' : '',
@@ -1726,7 +1770,8 @@ export function ExcelView({
                         data-link-popover
                         style={freezeStyle}
                         className={[
-                          'border border-edge px-2 py-1 text-xs text-ink-2 max-w-xs truncate cursor-pointer hover:ring-1 hover:ring-inset hover:ring-status-info',
+                          'border border-edge px-2 py-1 text-xs text-ink-2 max-w-xs cursor-pointer hover:ring-1 hover:ring-inset hover:ring-status-info',
+                          rowMaxLines > 1 ? '' : 'truncate',
                           stickyBg ?? '',
                           linkCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
                         ].join(' ')}
@@ -1738,7 +1783,7 @@ export function ExcelView({
                           setActiveLinkPopover({ nodeId: node.id, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
                         }}
                       >
-                        {value || <span className="text-ink-3 italic">—</span>}
+                        <ClampedContent>{value || <span className="text-ink-3 italic">—</span>}</ClampedContent>
                       </td>
                     )
                   }
@@ -1801,6 +1846,7 @@ export function ExcelView({
           })}
         </tbody>
       </table>
+      </RowMaxLinesContext.Provider>
 
       {/* T51 — popover de filtre colonne */}
       {activeColumnFilterPopover && (() => {

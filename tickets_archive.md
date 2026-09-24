@@ -2,6 +2,35 @@
 
 ---
 
+### T168 — Évolution : hauteur max des lignes dans la vue tableau (Excel)
+
+**Contexte** : dans la Vue Excel, toutes les cellules étaient mono-ligne tronquées
+(`truncate`) — un énoncé ou un richtext long (dont seule la première ligne était montrée)
+n'était lisible qu'en ouvrant l'éditeur.
+
+**Implémentation (1 sprint)** :
+
+- **`components/system/RowMaxHeightButton.tsx`** (nouveau) — bouton de toolbar (icône SVG
+  inline `RowHeightIcon`, style lucide : double flèche verticale + cadre) ouvrant une popup
+  avec un slider 1–20 et la valeur « N ligne(s) » ; constantes `ROW_MAX_LINES_MIN` /
+  `ROW_MAX_LINES_MAX` / `ROW_MAX_LINES_DEFAULT` (1 / 20 / 10).
+- **`SystemView.tsx`** — état `excelRowMaxLines` persisté en `localStorage`
+  (`polenta:excelRowMaxLines`, commun à tous les projets, défaut **10** — décision
+  utilisateur, valeur hors plage ignorée) ; bouton visible en Vue Excel hors campagnes ;
+  prop `rowMaxLines` passée à `ExcelView`.
+- **`ExcelView.tsx`** — `RowMaxLinesContext` + hook `useCellClamp()` : `truncate` à 1, sinon
+  `-webkit-line-clamp: N` + `white-space: pre-wrap` ; appliqué à `NameCell`, `InlineCell`
+  (système, texte, enum, richtext, `multi_enum`) et aux cellules de lien ; `align-top` sur les
+  lignes d'élément si N > 1 ; richtext : toutes les lignes non vides si N > 1.
+- **i18n** FR/EN : `system.excelView.rowMaxHeight`, `rowMaxLines_one/_other`.
+
+**Vérification** : `tsc --noEmit` (apps/desktop) propre ; validé par l'humain. Pas de runner de
+tests dans `apps/desktop`. Implémenté directement sur `main`, sans worktree (aucun autre dev
+en cours), spec rédigée a posteriori. Doc : `SPEC-SYSTEM-VIEW` §Toolbar, §Vue Excel,
+§Persistance ; `SPEC-INDEX` (MAJ → T168). Voir `specs/T168.md`.
+
+---
+
 ### T167 — Évolution : Vue Recherche — liste des résultats (style Vue Word) + édition inline dans la zone principale
 
 **Contexte** : la Vue Recherche (`/search`) avait un panneau latéral fonctionnel mais une

@@ -139,7 +139,11 @@ référencer plusieurs diagrammes positionnés librement dans le texte.
   `StaticRichTextViewer` accepte une prop optionnelle `highlightRegex` qui
   surligne (`<mark>`) les occurrences dans les nœuds texte du rendu (Vue
   Recherche, `SPEC-ELECTRON-DESKTOP` §19.17) — best effort, ignore
-  `pre`/`code`/`.static-drawio` ; inerte sans la prop.
+  `pre`/`code`/`.static-drawio` ; inerte sans la prop. Depuis T169, une prop
+  `variant?: 'default' | 'compact'` : `compact` = typographie resserrée pour une
+  cellule de la Vue Excel (text-xs, titres au corps du texte, sans marges
+  verticales, images bornées à la largeur de cellule) ; `default` inchangé
+  (Vue Word, Vue Recherche).
 - **Édition** : pas d'éditeur draw.io intégré. Double-clic sur le diagramme
   rendu ouvre le fichier dans l'application draw.io externe du poste ; le
   rendu inline se rafraîchit automatiquement au retour de focus sur la fenêtre

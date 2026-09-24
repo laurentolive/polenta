@@ -298,9 +298,30 @@ Système › Arbre › Sélection).
   **1 à 20 lignes de texte** (valeur affichée « N ligne(s) »), effet immédiat. Défaut :
   **10**. À 1, cellules mono-ligne tronquées (richtext = première ligne + `¶`). Au-delà, le
   texte passe à la ligne et est coupé par une ellipse après N lignes (hauteur *maximale*, pas
-  fixe), cellules alignées en haut ; un richtext affiche ses lignes non vides en texte brut.
-  Concerne nom, champs, richtext, `multi_enum`, liens — pas les lignes de groupe, ni les
-  colonnes `steps` / `coverageStatus`, ni les cellules en cours d'édition.
+  fixe), cellules alignées en haut. Concerne nom, champs, richtext, `multi_enum`, liens — pas
+  les lignes de groupe, ni les colonnes `steps` / `coverageStatus`, ni les cellules en cours
+  d'édition.
+- **Rendu richtext mis en forme (T169)** : à hauteur max N > 1, une cellule `richtext` affiche
+  le Markdown **mis en forme** (`StaticRichTextViewer` variante `compact` : gras, listes,
+  titres, tableaux, images, draw.io), limité à N lignes de texte (`max-height`), avec un
+  **estompage du bas** (`mask-image`) quand le contenu est coupé. Le rendu n'est construit
+  **que pour les cellules visibles à l'écran et une fois le défilement au repos** (~150 ms sans
+  `scroll`) : un seul IntersectionObserver (`rootMargin: 0`) et un seul listener partagés
+  (`RenderGateProvider` / `useRenderWhenVisibleAtRest`). Les lignes seulement traversées pendant
+  un défilement ne sont jamais rendues. Avant son rendu, la cellule affiche le texte brut
+  tronqué. Une cellule rendue le reste. À N = 1 : première ligne brute + `¶`, inchangé.
+- **Édition richtext dans la cellule (T169)** : la popup d'édition est supprimée. Second clic
+  sur une cellule richtext sélectionnée → `RichTextField` monté **dans le `<td>`**, avec la
+  toolbar richtext partagée de la Vue Système, en **même typographie que la lecture**
+  (`RichTextField variant="compact"`, classes partagées `VIEWER_CLASS_COMPACT`), cadre = contour
+  de la cellule. En édition, la cellule ignore la hauteur max et
+  prend la hauteur de son contenu, en conservant la largeur de colonne. La ligne en édition
+  n'est ni déplaçable (DnD) ni `select-none`, et reste affichée même si la frappe la fait sortir
+  d'un filtre. Sortie : `Ctrl/Cmd+Entrée` ou clic extérieur → validation (valeur déjà persistée
+  à chaque frappe) ; `Échap` → restauration de la valeur d'origine de chaque objet touché
+  (multi-sélection comprise). Un dialogue natif (sélecteur de fichier) ou un menu de l'éditeur
+  rendu par portail (menu de tableau, page draw.io) ne ferme pas l'édition. Une seule cellule
+  en édition à la fois.
 - **Édition en masse (T149)** : si plusieurs lignes sont sélectionnées et que l'une d'elles fait l'objet d'une édition inline (statut, énumération, texte, richtext, case `multi_enum`), le changement est propagé à toutes les lignes sélectionnées. Pour `multi_enum`, seule la valeur cochée/décochée est basculée sur chaque ligne — les autres valeurs déjà cochées sur les autres lignes ne sont pas écrasées. Les colonnes de lien (`link::`) ne sont pas concernées (mécanisme dédié, par ligne).
 
 ### Vue Word

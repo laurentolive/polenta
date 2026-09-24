@@ -10,6 +10,8 @@ import { CoverageBadge } from './CoverageBadge'
 import { treeFindNode, treeFindParentId, treeRemoveMany, treeInsert, treeInsertAtBeginning, treeDeepCopyWithNewIds } from '../../hooks/useTreeState'
 import { matchesRefs, filterCandidatesByRefs, getLinkTypeLabel, getPeerId, isLinkTypeValid } from './linkUtils'
 import { RichTextField } from '../RichTextField'
+import { StaticRichTextViewer } from '../../lib/staticRichText'
+import { RenderGateProvider, useRenderWhenVisibleAtRest } from './useRenderWhenVisibleAtRest'
 import { MultiEnumPopover } from './MultiEnumPopover'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { useScrollToNode } from '../../hooks/useScrollToNode'
@@ -215,7 +217,7 @@ function InlineCell({
   isSystem,
   fieldDef,
   onEdit,
-  onRichtextEdit,
+  richtext,
   onMultiEnumEdit,
   isSelected,
   onSelectCell,
@@ -228,7 +230,8 @@ function InlineCell({
   isSystem: boolean
   fieldDef?: SchemaField
   onEdit?: (objectId: string, field: string, value: string) => void
-  onRichtextEdit?: (objectId: string, field: string, rect: DOMRect) => void
+  /** T169 — cellule richtext : rendu mis en forme + édition en place (voir `RichtextCell`). */
+  richtext?: Omit<RichtextCellProps, 'value' | 'isSelected' | 'onSelectCell' | 'freezeStyle' | 'stickyBg'>
   onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
   isSelected?: boolean
   onSelectCell?: () => void
@@ -240,49 +243,23 @@ function InlineCell({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
+  if (fieldDef?.type === 'richtext' && !isSystem && richtext) {
+    return (
+      <RichtextCell
+        {...richtext}
+        value={value}
+        isSelected={isSelected}
+        onSelectCell={onSelectCell}
+        freezeStyle={freezeStyle}
+        stickyBg={stickyBg}
+      />
+    )
+  }
+
   if (isSystem || !onEdit) {
     return (
       <td style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass].join(' ')}>
         {clamp.wrap(value)}
-      </td>
-    )
-  }
-
-  // Richtext: preview in read mode, open popover on click
-  if (fieldDef?.type === 'richtext') {
-    const nonEmptyLines = value.split('\n').filter(l => l.trim())
-    const firstLine = nonEmptyLines[0] ?? ''
-    const hasMore = nonEmptyLines.length > 1
-    return (
-      <td
-        style={freezeStyle}
-        className={[
-          'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs hover:ring-1 hover:ring-inset hover:ring-status-info',
-          clamp.tdClass,
-          stickyBg ?? '',
-          isSelected ? 'ring-2 ring-inset ring-status-info' : '',
-        ].join(' ')}
-        onClick={e => {
-          if (!isSelected) { onSelectCell?.(); return }
-          if (onRichtextEdit) {
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-            onRichtextEdit(objectId, field, rect)
-          }
-        }}
-        title={t('system.shared.clickToEdit')}
-      >
-        {value ? (
-          clamp.maxLines > 1 ? (
-            clamp.wrap(nonEmptyLines.join('\n'))
-          ) : (
-            <span className="text-xs text-ink truncate">
-              {firstLine}
-              {hasMore && <span className="text-ink-3 ml-1">¶</span>}
-            </span>
-          )
-        ) : (
-          <span className="text-ink-3 italic">—</span>
-        )}
       </td>
     )
   }
@@ -366,6 +343,166 @@ function InlineCell({
       title={t('system.shared.clickToEdit')}
     >
       {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
+    </td>
+  )
+}
+
+// ── RichtextCell (T169) ──────────────────────────────────────────────────────
+
+interface RichtextCellProps {
+  value: string
+  repoPath?: string
+  isSelected?: boolean
+  onSelectCell?: () => void
+  freezeStyle?: React.CSSProperties
+  stickyBg?: string
+  /** Absent : cellule en lecture seule (pas d'entrée en édition). */
+  onStartEdit?: () => void
+  isEditing: boolean
+  /** Valeur live de l'objet pendant l'édition (mise à jour à chaque frappe). */
+  editValue: string
+  onEditChange: (value: string) => void
+  onEditCommit: () => void
+  onEditCancel: () => void
+  /** Signale à ExcelView un mousedown « dans l'éditeur » — y compris dans ses menus rendus
+   *  par portail (tableau, page draw.io), dont les évènements React remontent jusqu'ici. */
+  onEditorMouseDown: () => void
+}
+
+/** Hauteur max « N lignes » d'un rendu richtext mis en forme : `-webkit-line-clamp` est
+ *  inopérant sur du HTML en blocs, d'où `max-height` + estompage du bas (masque, indépendant
+ *  de la couleur de fond : sélection, survol, colonne figée, thème) seulement si ça déborde. */
+function RichtextClamp({ maxLines, children }: { maxLines: number; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [overflowing, setOverflowing] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 1)
+    check()
+    // Contenu observé (et pas seulement la boîte bornée) : images et diagrammes draw.io se
+    // chargent en asynchrone et font grandir le contenu sans changer la boîte.
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    if (el.firstElementChild) ro.observe(el.firstElementChild)
+    return () => ro.disconnect()
+  }, [maxLines])
+  const mask = overflowing ? 'linear-gradient(to bottom, #000 calc(100% - 1rem), transparent)' : undefined
+  return (
+    <div ref={ref} style={{ maxHeight: `${maxLines}rem`, overflow: 'hidden', maskImage: mask, WebkitMaskImage: mask }}>
+      {children}
+    </div>
+  )
+}
+
+function RichtextCell({
+  value,
+  repoPath,
+  isSelected,
+  onSelectCell,
+  freezeStyle,
+  stickyBg,
+  onStartEdit,
+  isEditing,
+  editValue,
+  onEditChange,
+  onEditCommit,
+  onEditCancel,
+  onEditorMouseDown,
+}: RichtextCellProps) {
+  const { t } = useTranslation()
+  const clamp = useCellClamp()
+  const tdRef = useRef<HTMLTableCellElement>(null)
+  // Rendu mis en forme seulement si la cellule est visible et le défilement au repos — à
+  // hauteur max 1, la cellule garde la 1re ligne brute et ne s'inscrit pas.
+  const rendered = useRenderWhenVisibleAtRest(tdRef, clamp.maxLines > 1 && !isEditing)
+
+  // Entrée en édition : amener le haut de l'éditeur à l'écran si la cellule agrandie déborde.
+  useEffect(() => {
+    if (isEditing) tdRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [isEditing])
+
+  if (isEditing) {
+    return (
+      <td
+        ref={tdRef}
+        data-richtext-cell-editor
+        style={freezeStyle}
+        // Cadre d'édition = contour de la cellule (l'éditeur compact n'a pas de bordure propre),
+        // pour que le texte reste exactement à sa place entre lecture et édition.
+        className={['border border-edge p-0 align-top cursor-auto select-text ring-2 ring-inset ring-status-info', stickyBg ?? ''].join(' ')}
+        onMouseDown={onEditorMouseDown}
+        onClick={e => e.stopPropagation()}
+        // Le clic droit appartient à l'éditeur (menu de tableau), pas au menu de ligne.
+        onContextMenu={e => e.stopPropagation()}
+        onKeyDown={e => {
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            e.stopPropagation()
+            onEditCancel()
+          } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            // Garde-fou hors éditeur (ex. textarea Raw) : dans Tiptap, `onSubmit` s'en charge.
+            e.preventDefault()
+            e.stopPropagation()
+            onEditCommit()
+          }
+        }}
+      >
+        <RichTextField
+          value={editValue}
+          onChange={onEditChange}
+          repoPath={repoPath}
+          autoFocus
+          onSubmit={onEditCommit}
+          variant="compact"
+        />
+      </td>
+    )
+  }
+
+  const nonEmptyLines = value.split('\n').filter(l => l.trim())
+  let content: React.ReactNode
+  if (!value) {
+    content = <span className="text-ink-3 italic">—</span>
+  } else if (clamp.maxLines <= 1) {
+    content = (
+      <span className="text-xs text-ink truncate">
+        {nonEmptyLines[0] ?? ''}
+        {nonEmptyLines.length > 1 && <span className="text-ink-3 ml-1">¶</span>}
+      </span>
+    )
+  } else if (rendered) {
+    content = (
+      <RichtextClamp maxLines={clamp.maxLines}>
+        <StaticRichTextViewer value={value} repoPath={repoPath} variant="compact" />
+      </RichtextClamp>
+    )
+  } else {
+    // Pas encore visible au repos : texte brut tronqué (T168), de hauteur voisine.
+    content = clamp.wrap(nonEmptyLines.join('\n'))
+  }
+
+  return (
+    <td
+      ref={tdRef}
+      style={freezeStyle}
+      className={[
+        'border border-edge px-2 py-1 text-xs text-ink',
+        onStartEdit ? 'cursor-text hover:ring-1 hover:ring-inset hover:ring-status-info' : '',
+        clamp.maxLines <= 1 ? 'truncate max-w-xs' : '',
+        stickyBg ?? '',
+        isSelected ? 'ring-2 ring-inset ring-status-info' : '',
+      ].join(' ')}
+      onClick={e => {
+        // Un lien du rendu ne s'ouvre pas dans la cellule : le clic suit le geste de la
+        // cellule (sélection, puis édition), comme en Vue Word.
+        if ((e.target as HTMLElement).closest('a')) e.preventDefault()
+        if (!isSelected) { onSelectCell?.(); return }
+        onStartEdit?.()
+      }}
+      title={onStartEdit ? t('system.shared.clickToEdit') : undefined}
+    >
+      {content}
     </td>
   )
 }
@@ -810,28 +947,35 @@ export function ExcelView({
     return () => document.removeEventListener('mousedown', handler)
   }, [activeLinkPopover])
 
-  const [activeRichtextPopover, setActiveRichtextPopover] = useState<{
+  // T169 — cellule richtext en cours d'édition en place (une seule à la fois). Identifiée par
+  // nœud (c'est la ligne qui s'agrandit) + champ ; objectId porte la donnée éditée.
+  const [activeRichtextEdit, setActiveRichtextEdit] = useState<{
+    nodeId: string
     objectId: string
     field: string
-    top: number
-    left: number
-    width: number
   } | null>(null)
-  // T149 — une entrée par objectId affecté par le popover courant (l'objet édité + ses
+  // T149 — une entrée par objectId affecté par l'édition courante (l'objet édité + ses
   // pairs de sélection multiple), pour restaurer la valeur propre de CHACUN à l'annulation
   // (Escape) plutôt que d'écraser tout le monde avec la valeur d'origine du seul objet édité.
   const richtextOriginalValuesRef = useRef<Map<string, string>>(new Map())
+  // Posé par le onMouseDown React de la cellule en édition — qui reçoit aussi les évènements
+  // des menus de l'éditeur rendus par portail (menu de tableau, page draw.io), hors du <td>
+  // dans le DOM. React écoute sur sa racine, avant ce listener `document` : le drapeau est
+  // donc déjà posé quand le handler ci-dessous traite le même mousedown.
+  const richtextEditorMouseDownRef = useRef(false)
   useEffect(() => {
-    if (!activeRichtextPopover) return
+    if (!activeRichtextEdit) return
     const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (!target.closest('[data-richtext-popover]') && !target.closest('[data-richtext-toolbar]')) {
-        setActiveRichtextPopover(null)
-      }
+      const inside = richtextEditorMouseDownRef.current
+      richtextEditorMouseDownRef.current = false
+      if (inside) return
+      if ((e.target as HTMLElement).closest('[data-richtext-toolbar]')) return
+      // Clic extérieur = validation (la valeur est déjà persistée à chaque frappe).
+      setActiveRichtextEdit(null)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [activeRichtextPopover])
+  }, [activeRichtextEdit])
 
   const [activeMultiEnumPopover, setActiveMultiEnumPopover] = useState<{
     objectId: string
@@ -1428,6 +1572,10 @@ export function ExcelView({
   }
 
   const filteredRows = rows.filter(r => {
+    // T169 — la ligne en cours d'édition richtext reste affichée même si la frappe la fait
+    // sortir d'un filtre (colonne ou global, qui lisent les valeurs live) : sinon l'éditeur
+    // se démonterait en pleine saisie. Le filtre s'applique de nouveau en sortie d'édition.
+    if (activeRichtextEdit?.nodeId === r.node.id) return true
     if (r.kind === 'folder') {
       return hasActiveFilter ? folderHasMatchingDescendant(r.node) : true
     }
@@ -1436,6 +1584,13 @@ export function ExcelView({
   })
 
   const visibleRowIds = filteredRows.map(r => r.node.id)
+
+  // T169 — ligne éditée disparue (collapse, suppression, changement de type — pas les filtres,
+  // cf. filteredRows) : fin de l'édition. La valeur est déjà persistée à chaque frappe.
+  const richtextEditRowVisible = !activeRichtextEdit || rows.some(r => r.node.id === activeRichtextEdit.nodeId)
+  useEffect(() => {
+    if (!richtextEditRowVisible) setActiveRichtextEdit(null)
+  }, [richtextEditRowVisible])
 
   function handleRowSelect(nodeId: string, e: React.MouseEvent) {
     if (e.shiftKey && effectiveSelectedIds.length > 0) {
@@ -1531,6 +1686,7 @@ export function ExcelView({
           interstice au scroll par lequel les colonnes défilées redeviennent visibles. En
           border-separate, chaque cellule peint sa propre bordure dans sa propre boîte. */}
       <RowMaxLinesContext.Provider value={rowMaxLines}>
+      <RenderGateProvider rootRef={containerRef}>
       <table className="text-xs border-separate" style={{ width: effectiveTableWidth, tableLayout: 'fixed', borderSpacing: 0 }}>
         <thead className="sticky top-0 z-10">
           <tr>
@@ -1665,12 +1821,17 @@ export function ExcelView({
             // <tr> (classe `group`), pour rester visuellement cohérent avec les lignes non figées.
             const rowStickyBg = isSelected ? 'bg-status-info-bg' : 'bg-surface group-hover:bg-row-hover'
             const actionFrozenStyle: React.CSSProperties | undefined = freezeColCount > 0 ? { position: 'sticky', left: 0, zIndex: 2 } : undefined
+            // T169 — ligne dont une cellule richtext est en édition en place : ni drag de ligne
+            // ni `select-none`, sinon sélectionner du texte à la souris démarrerait un drag.
+            const rowRichtextEditing = activeRichtextEdit?.nodeId === node.id
+            const rowDnd = dndEnabled && !rowRichtextEditing
             return (
               <React.Fragment key={node.id}>
               <tr
                 data-node-id={node.id}
                 className={[
-                  'group cursor-pointer select-none scroll-mt-8',
+                  'group cursor-pointer scroll-mt-8',
+                  rowRichtextEditing ? '' : 'select-none',
                   rowMaxLines > 1 ? 'align-top' : '',
                   isSelected ? 'bg-status-info-bg' : 'hover:bg-row-hover',
                   isDraggingRow || isCutRow ? 'opacity-50' : '',
@@ -1680,8 +1841,8 @@ export function ExcelView({
                 style={dropStyle}
                 onClick={e => { e.stopPropagation(); handleRowSelect(node.id, e) }}
                 onContextMenu={e => handleContextMenu(e, node.id)}
-                draggable={dndEnabled}
-                onDragStart={dndEnabled ? (e) => handleRowDragStart(e, node.id) : undefined}
+                draggable={rowDnd}
+                onDragStart={rowDnd ? (e) => handleRowDragStart(e, node.id) : undefined}
                 onDragOver={dndEnabled ? (e) => handleRowDragOver(e, node.id) : undefined}
                 onDrop={dndEnabled ? handleRowDrop : undefined}
                 onDragEnd={dndEnabled ? handleRowDragEnd : undefined}
@@ -1806,17 +1967,32 @@ export function ExcelView({
                       freezeStyle={freezeStyle}
                       stickyBg={stickyBg}
                       onEdit={onInlineEdit ? applyInlineEditToSelection : undefined}
-                      onRichtextEdit={onInlineEdit ? (objId, f, rect) => {
-                        const isOpen = activeRichtextPopover?.objectId === objId && activeRichtextPopover.field === f
-                        if (isOpen) { setActiveRichtextPopover(null); return }
-                        const originals = new Map<string, string>()
-                        const targets = isInMultiSelection(objId) ? selectedObjectIds() : [objId]
-                        for (const oid of targets) {
-                          const o = objectMap.get(oid)
-                          originals.set(oid, o ? getFieldValue(o, f) : '')
-                        }
-                        richtextOriginalValuesRef.current = originals
-                        setActiveRichtextPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 400) })
+                      richtext={fieldDef?.type === 'richtext' ? {
+                        repoPath,
+                        onStartEdit: onInlineEdit && node.objectId ? () => {
+                          const objId = node.objectId!
+                          const originals = new Map<string, string>()
+                          const targets = isInMultiSelection(objId) ? selectedObjectIds() : [objId]
+                          for (const oid of targets) {
+                            const o = objectMap.get(oid)
+                            originals.set(oid, o ? getFieldValue(o, col) : '')
+                          }
+                          richtextOriginalValuesRef.current = originals
+                          // Une édition déjà ouverte ailleurs est simplement remplacée : sa valeur
+                          // est déjà persistée, ce qui vaut validation.
+                          setActiveRichtextEdit({ nodeId: node.id, objectId: objId, field: col })
+                        } : undefined,
+                        isEditing: activeRichtextEdit?.nodeId === node.id && activeRichtextEdit.field === col,
+                        editValue: value,
+                        onEditChange: v => applyInlineEditToSelection(node.objectId ?? '', col, v),
+                        onEditCommit: () => setActiveRichtextEdit(null),
+                        onEditCancel: () => {
+                          for (const [oid, original] of richtextOriginalValuesRef.current) {
+                            onInlineEdit?.(oid, col, original)
+                          }
+                          setActiveRichtextEdit(null)
+                        },
+                        onEditorMouseDown: () => { richtextEditorMouseDownRef.current = true },
                       } : undefined}
                       onMultiEnumEdit={onInlineEdit ? (objId, f, rect) => {
                         const isOpen = activeMultiEnumPopover?.objectId === objId && activeMultiEnumPopover.field === f
@@ -1846,6 +2022,7 @@ export function ExcelView({
           })}
         </tbody>
       </table>
+      </RenderGateProvider>
       </RowMaxLinesContext.Provider>
 
       {/* T51 — popover de filtre colonne */}
@@ -1896,55 +2073,6 @@ export function ExcelView({
             <FilterOptionsToggle
               options={current.options}
               onChange={opts => setCurrent({ ...current, options: opts })}
-            />
-          </div>
-        )
-      })()}
-
-      {/* Richtext popover — fixed position to escape overflow-auto clipping */}
-      {activeRichtextPopover && (() => {
-        const popoverObj = objectMap.get(activeRichtextPopover.objectId)
-        const popoverValue = popoverObj ? (popoverObj as Record<string, string>)[activeRichtextPopover.field] ?? '' : ''
-        return (
-          <div
-            data-richtext-popover
-            style={{
-              position: 'fixed',
-              top: activeRichtextPopover.top,
-              left: activeRichtextPopover.left,
-              width: Math.max(activeRichtextPopover.width, 400),
-              zIndex: 50,
-            }}
-            className="bg-surface border border-edge rounded shadow-lg overflow-hidden"
-            onClick={e => e.stopPropagation()}
-            onKeyDown={e => {
-              if (e.key === 'Escape') {
-                e.preventDefault()
-                e.stopPropagation()
-                // Restaure chaque objet affecté (édité + pairs de sélection) à sa propre
-                // valeur d'origine — pas à celle du seul objet édité, voir déclaration du ref.
-                for (const [oid, original] of richtextOriginalValuesRef.current) {
-                  onInlineEdit?.(oid, activeRichtextPopover.field, original)
-                }
-                setActiveRichtextPopover(null)
-              } else if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault()
-                e.stopPropagation()
-                setActiveRichtextPopover(null)
-              }
-            }}
-          >
-            <RichTextField
-              value={popoverValue}
-              onChange={v => {
-                applyInlineEditToSelection(activeRichtextPopover.objectId, activeRichtextPopover.field, v)
-              }}
-              repoPath={repoPath}
-              autoFocus
-              // Ctrl+Entrée depuis l'éditeur : TipTap intercepte la frappe avant le onKeyDown
-              // du conteneur ci-dessus — on ferme donc le popover ici (le onChange a déjà
-              // propagé la dernière frappe). Le onKeyDown reste un garde-fou hors éditeur.
-              onSubmit={() => setActiveRichtextPopover(null)}
             />
           </div>
         )

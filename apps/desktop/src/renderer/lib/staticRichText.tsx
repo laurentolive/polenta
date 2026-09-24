@@ -111,6 +111,12 @@ function nearestScrollParent(el: HTMLElement): HTMLElement | null {
 
 const VIEWER_CLASS = 'text-sm text-ink [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:font-medium [&_h3]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-status-neutral-bg [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_blockquote]:border-l-2 [&_blockquote]:border-status-neutral-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-ink-2 [&_pre]:bg-status-neutral-bg [&_pre]:p-2 [&_pre]:rounded [&_img]:max-w-full [&_img]:rounded [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-edge [&_th]:bg-hover [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-edge [&_td]:px-2 [&_td]:py-1 [&_p]:my-1 [&_.static-drawio]:inline-block [&_.static-drawio]:my-2 [&_.static-drawio]:align-top'
 
+// T169 — cellule de la Vue Excel : même rendu, mais une ligne de texte ≈ une ligne de cellule
+// (1rem en text-xs) pour que la hauteur max « N lignes » corresponde à ~N lignes de contenu.
+// Partagée avec l'éditeur (`RichTextField variant="compact"`) : même taille de texte en lecture
+// et en édition dans la cellule.
+export const VIEWER_CLASS_COMPACT = 'text-xs text-ink [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_h4]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-status-neutral-bg [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_blockquote]:border-l-2 [&_blockquote]:border-status-neutral-border [&_blockquote]:pl-2 [&_blockquote]:italic [&_blockquote]:text-ink-2 [&_pre]:bg-status-neutral-bg [&_pre]:px-1 [&_pre]:rounded [&_pre]:whitespace-pre-wrap [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded [&_table]:border-collapse [&_table]:my-0.5 [&_th]:border [&_th]:border-edge [&_th]:bg-hover [&_th]:px-1 [&_th]:text-left [&_td]:border [&_td]:border-edge [&_td]:px-1 [&_.static-drawio]:inline-block [&_.static-drawio]:max-w-full [&_.static-drawio]:align-top'
+
 /**
  * T167 — retire les `<mark data-search-hl>` posés par un passage précédent et
  * refusionne les nœuds texte. Indispensable : quand seul `regex` change (frappe dans
@@ -175,11 +181,15 @@ export function StaticRichTextViewer({
   value,
   repoPath,
   highlightRegex,
+  variant = 'default',
 }: {
   value: string
   repoPath?: string
   /** T167 — surligne les occurrences dans le rendu lecture (Vue Recherche). */
   highlightRegex?: RegExp
+  /** T169 — `compact` : typographie resserrée pour une cellule de la Vue Excel (text-xs,
+   *  titres ramenés au corps du texte, marges verticales quasi nulles). */
+  variant?: 'default' | 'compact'
 }) {
   const html = useMemo(() => (value ? getMarkdownIt().render(value) : ''), [value])
   const containerRef = useRef<HTMLDivElement>(null)
@@ -247,5 +257,5 @@ export function StaticRichTextViewer({
   }, [html, highlightRegex])
 
   if (!value) return null
-  return <div ref={containerRef} className={VIEWER_CLASS} dangerouslySetInnerHTML={{ __html: html }} />
+  return <div ref={containerRef} className={variant === 'compact' ? VIEWER_CLASS_COMPACT : VIEWER_CLASS} dangerouslySetInnerHTML={{ __html: html }} />
 }

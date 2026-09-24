@@ -2,6 +2,38 @@
 
 ---
 
+### T169 — Évolution : rendu richtext et édition dans la cellule (Vue Excel)
+
+**Contexte** : depuis T168 (hauteur max des lignes, 10 par défaut), une cellule `richtext`
+affichait tout son Markdown **brut** (`**`, `#`, JSON des blocs ` ```drawio ` / ` ```image `),
+et l'édition passait par une popup flottante décalée de la cellule.
+
+**Implémentation (1 sprint)** :
+
+- **`lib/staticRichText.tsx`** — prop `variant?: 'default' | 'compact'` sur
+  `StaticRichTextViewer` ; constante exportée `VIEWER_CLASS_COMPACT` (text-xs, titres au corps du
+  texte, sans marges verticales), partagée entre la lecture et l'édition.
+- **`components/system/useRenderWhenVisibleAtRest.tsx`** (nouveau) — `RenderGateProvider` (un
+  IntersectionObserver `rootMargin: 0` + un listener `scroll`, repos = 150 ms) et
+  `useRenderWhenVisibleAtRest` : une cellule n'est rendue que si elle est visible **et** que le
+  défilement est au repos, et les lignes seulement traversées ne le sont jamais.
+- **`components/RichTextField.tsx`** — prop `variant="compact"` : typographie identique à la
+  lecture, sans hauteur minimale ni bordure propre, marges de la cellule.
+- **`components/system/ExcelView.tsx`** — `RichtextCell` + `RichtextClamp` : à N > 1, rendu mis
+  en forme limité à N lignes (`max-height` + `mask-image` si débordement), texte brut tant que
+  la cellule n'est pas visible au repos, et N = 1 inchangé. Popup supprimée : édition **dans la
+  cellule** (toolbar partagée, hauteur = contenu, contour `ring-2`), sorties
+  `Ctrl/Cmd+Entrée` / clic extérieur / `Échap` (restauration multi-sélection T149). Clic
+  extérieur détecté par un drapeau `onMouseDown` React, qui couvre les menus par portail (menu
+  de tableau, page draw.io). Ligne éditée : sans DnD ni `select-none`, clic droit réservé à
+  l'éditeur, maintenue affichée malgré les filtres (retour `/code-review`).
+
+**Vérification** : `tsc --noEmit` (apps/desktop) propre ; `/code-review` (1 défaut corrigé) ;
+scénarios manuels validés par l'humain. Léger saut de défilement à la remontée lors du rendu,
+jugé acceptable. Implémenté directement sur `main`, sans worktree (décision utilisateur). Doc :
+`SPEC-SYSTEM-VIEW` §Vue Excel, `SPEC-REQ-requirements` §3.2a, `SPEC-INDEX` (MAJ → T169). Voir
+`specs/T169.md`, `specs/T169-design.md`, `specs/T169-tests.md`, `specs/T169-sprint1.md`.
+
 ### T168 — Évolution : hauteur max des lignes dans la vue tableau (Excel)
 
 **Contexte** : dans la Vue Excel, toutes les cellules étaient mono-ligne tronquées

@@ -23,6 +23,7 @@ import { NodeContextMenu } from '../tiptap/NodeContextMenu'
 import { DrawioInsertButton } from './DrawioInsertButton'
 import { ImageInsertButton } from './ImageInsertButton'
 import { TableInsertButton } from './TableInsertButton'
+import { VIEWER_CLASS_COMPACT } from '../lib/staticRichText'
 
 interface Props {
   value: string
@@ -37,9 +38,13 @@ interface Props {
    *  commit du champ inline, soumet le formulaire…). Absent → Ctrl+Entrée garde le
    *  comportement TipTap par défaut (saut de ligne). */
   onSubmit?: () => void
+  /** T169 — `compact` : édition dans une cellule de la Vue Excel — typographie identique au
+   *  rendu lecture de la cellule (`VIEWER_CLASS_COMPACT`), sans hauteur minimale, cadre et
+   *  marges de la cellule. Uniquement en mode contexte (toolbar partagée). */
+  variant?: 'default' | 'compact'
 }
 
-export function RichTextField({ value, onChange, disabled, placeholder, repoPath, autoFocus, onSubmit }: Props) {
+export function RichTextField({ value, onChange, disabled, placeholder, repoPath, autoFocus, onSubmit, variant = 'default' }: Props) {
   const { t } = useTranslation()
   const ctx = useRichText()
   const hasContext = ctx !== null
@@ -108,7 +113,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
     content: value,
     editorProps: {
       attributes: {
-        class:
+        class: variant === 'compact' ? `outline-none ${VIEWER_CLASS_COMPACT}` :
           'outline-none min-h-[80px] text-sm text-ink [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:font-medium [&_h3]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-status-neutral-bg [&_code]:px-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_blockquote]:border-l-2 [&_blockquote]:border-status-neutral-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-ink-2 [&_pre]:bg-status-neutral-bg [&_pre]:p-2 [&_pre]:rounded [&_img]:max-w-full [&_img]:rounded [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-edge [&_th]:bg-hover [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-edge [&_td]:px-2 [&_td]:py-1',
       },
       handlePaste(view, event) {
@@ -322,7 +327,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
   if (hasContext) {
     return (
       <div
-        className={`border border-edge rounded overflow-hidden ${disabled ? 'opacity-60' : ''}`}
+        className={`${variant === 'compact' ? '' : 'border border-edge rounded'} overflow-hidden ${disabled ? 'opacity-60' : ''}`}
         onFocus={() => {
           // Guard: only activate if this editor is not already active, to
           // avoid re-calling activate() when focus moves to the raw textarea
@@ -354,10 +359,12 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
               setRawValue(e.target.value)
               onChange(e.target.value)
             }}
-            className="w-full px-3 py-2 text-sm font-mono text-ink bg-surface outline-none resize-y min-h-[80px]"
+            className={variant === 'compact'
+              ? 'w-full px-2 py-1 text-xs font-mono text-ink bg-surface outline-none resize-y min-h-[4rem]'
+              : 'w-full px-3 py-2 text-sm font-mono text-ink bg-surface outline-none resize-y min-h-[80px]'}
           />
         ) : (
-          <div className="px-3 py-2 bg-surface">
+          <div className={variant === 'compact' ? 'px-2 py-1 bg-surface' : 'px-3 py-2 bg-surface'}>
             <EditorContent editor={editor} />
           </div>
         )}

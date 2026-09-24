@@ -13,6 +13,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -31,6 +33,10 @@ jobs:
             exit 1
           fi
 
+      - name: Generate release notes
+        shell: bash
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -42,4 +48,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: apps/desktop/dist/*.exe
-          generate_release_notes: true
+          body_path: ${{ runner.temp }}/release-notes.md

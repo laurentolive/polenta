@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { User, FolderOpen, Search, GitBranch, ClipboardList, FlaskConical, Rocket, PieChart, Variable } from 'lucide-react'
 import type { Panel } from './AppLayout'
+import { ImpactAnalysisIcon } from './ImpactAnalysisIcon'
 
 interface Props {
   activePanel: Panel
@@ -24,6 +25,7 @@ const PANELS: {
   { id: 'parameters',   icon: <Variable size={20} />,       labelKey: 'layout.activityBar.parameters',   requiresProject: true },
   { id: 'search',  icon: <Search size={20} />,     labelKey: 'layout.activityBar.search', requiresProject: true },
   { id: 'version', icon: <GitBranch size={20} />,  labelKey: 'layout.activityBar.version',   requiresProject: true },
+  { id: 'impact',  icon: <ImpactAnalysisIcon size={20} />, labelKey: 'layout.activityBar.impact', requiresProject: true },
 ]
 
 export function ActivityBar({ activePanel, onSelect, hasProject }: Props) {

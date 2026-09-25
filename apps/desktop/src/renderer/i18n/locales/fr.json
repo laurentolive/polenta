@@ -28,7 +28,8 @@
       "campaigns": "Campagnes",
       "parameters": "Paramètres",
       "search": "Recherche",
-      "version": "Version"
+      "version": "Version",
+      "impact": "Analyse d'impact"
     },
     "tabBar": {
       "newTab": "Nouvel onglet (Ctrl+T)",
@@ -243,12 +244,10 @@
     "version": {
       "title": "Version",
       "compareTitle": "Comparer",
-      "impactTitle": "Analyse d'impact",
       "readonlyTooltip": "État figé — aucune branche extraite",
       "baselines": "Baselines",
       "viewGraph": "Voir l'arbre de versions",
       "compareVersions": "Comparer deux versions",
-      "impactAnalysis": "Analyse d'impact",
       "dependencyConflict": "Conflit de dépendances à résoudre avant d'afficher l'arbre — ouvrez l'onglet Structure du Modèle de données pour le résoudre.",
       "repo": "Repo",
       "objectA": "Objet A",
@@ -930,7 +929,7 @@
     "testCasesFound_other": "{{count}} TestCases trouvés",
     "uncoveredRequirements_one": "{{count}} exigence non couverte : {{ids}}",
     "uncoveredRequirements_other": "{{count}} exigences non couvertes : {{ids}}",
-    "selectTwoBaselinesHint": "Sélectionnez deux baselines dans le panel Version pour analyser l'impact des modifications, ou rouvrez une analyse existante.",
+    "selectTwoBaselinesHint": "Sélectionnez deux baselines dans le panneau Analyse d'impact pour analyser l'impact des modifications, ou rouvrez une analyse existante.",
     "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines."
   },
   "graphPage": {

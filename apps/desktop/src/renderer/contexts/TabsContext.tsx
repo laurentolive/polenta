@@ -102,6 +102,7 @@ const PANEL_LABEL_KEYS: Record<Panel, string> = {
   project: 'layout.activityBar.project',
   search: 'layout.activityBar.search',
   version: 'layout.activityBar.version',
+  impact: 'layout.activityBar.impact',
   requirements: 'layout.activityBar.requirements',
   tests: 'layout.activityBar.tests',
   campaigns: 'layout.activityBar.campaigns',

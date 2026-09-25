@@ -295,7 +295,8 @@ approuvés couvrants via `generateTestPlan` (§5, réutilisé tel quel), dédupl
 
 **Stockage réel** : les exigences/tests sont des fichiers `.yaml` purs sous `requirements/`/`tests/`
 (pas de frontmatter Markdown) ; les liens vivent dans un fichier unique `links/links.yaml`. `GitService`
-expose `readYamlRef`/`listFilesAtRef`/`readYamlDirAtRef` pour lire ces données à un sha arbitraire (utilisé
+expose `readYamlRef`/`listFilesAtRef`/`readYamlDirAtRef` (et, depuis T171, `readYamlAtTag`, qui distingue
+tag introuvable et fichier absent — lecture des paramètres à la baseline d'une campagne) pour lire ces données à un sha arbitraire (utilisé
 par le diff et le snapshot ci-dessus).
 
 ---

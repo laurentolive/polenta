@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
 import { normalizeObject } from '../lib/normalizeObject'
-import { buildExportRows } from '../lib/exportColumns'
+import { buildExportRows, substituteExportParams } from '../lib/exportColumns'
+import { useParamResolver } from '../contexts/ParamRefContext'
 import { computeSectionNumbers } from '../hooks/useTreeState'
 import { getReqTypeDef } from '../hooks/useProjectSchema'
 
@@ -25,12 +26,15 @@ export const Route = createFileRoute('/print/requirements')({
     filter: (s['filter'] as string) ?? '',
     objectTypeRef: (s['objectTypeRef'] as string) ?? '',
     componentLabel: (s['componentLabel'] as string) ?? '',
+    // T171 — résolution des références cross-composant ; absent → base du repo seulement.
+    workspaceDir: (s['workspaceDir'] as string) ?? '',
   }),
 })
 
 function PrintRequirementsPage() {
   const { t } = useTranslation()
-  const { repoPath, username, filter, objectTypeRef, componentLabel } = Route.useSearch()
+  const { repoPath, username, filter, objectTypeRef, componentLabel, workspaceDir } = Route.useSearch()
+  const paramResolver = useParamResolver(repoPath, workspaceDir)
   const [nodeId, typeId] = objectTypeRef.split('::')
 
   const { data: requirements, isSuccess: reqLoaded } = useQuery({
@@ -54,7 +58,7 @@ function PrintRequirementsPage() {
     enabled: !!repoPath && !!username && !!objectTypeRef,
   })
 
-  useNotifyPrintReady(reqLoaded && treeLoaded && schemaLoaded && prefsLoaded)
+  useNotifyPrintReady(reqLoaded && treeLoaded && schemaLoaded && prefsLoaded && paramResolver.ready)
 
   const typeDef = getReqTypeDef(schema, objectTypeRef)
   const fallbackFields = ['section', 'name', 'id', 'status', 'version', ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? [])]
@@ -62,7 +66,9 @@ function PrintRequirementsPage() {
 
   const objects = (requirements ?? []).map(normalizeObject)
   const sectionNumbers = computeSectionNumbers(tree?.root ?? [])
-  const { rows, columns } = buildExportRows(fields, tree?.root ?? [], objects, sectionNumbers, undefined, typeDef, filter)
+  const { rows: rawRows, columns } = buildExportRows(fields, tree?.root ?? [], objects, sectionNumbers, undefined, typeDef, filter)
+  // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
+  const rows = substituteExportParams(rawRows, typeDef, paramResolver.substitute)
 
   const idKey = columns.find(c => c.key === 'id')?.key
   const nameKey = columns.find(c => c.key === 'name')?.key

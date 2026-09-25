@@ -179,15 +179,17 @@ export function createIpcClient(): ApiClient {
     campaigns: {
       list: (p, component, level) => invoke('campaigns:list', p, component, level),
       get: (p, id) => invoke('campaigns:get', p, id),
-      create: (p, dto) => invoke('campaigns:create', p, dto),
+      create: (p, dto, workspaceDir) => invoke('campaigns:create', p, dto, workspaceDir),
       update: (p, id, dto) => invoke('campaigns:update', p, id, dto),
       updateRun: (p, campaignId, entryId, status, runId) => invoke('campaigns:update-run', p, campaignId, entryId, status, runId),
       close: (p, id, status) => invoke('campaigns:close', p, id, status),
-      addTests: (p, campaignId, testCaseIds, paramValuesByTest) =>
-        invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest),
+      addTests: (p, campaignId, testCaseIds, paramValuesByTest, workspaceDir) =>
+        invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest, workspaceDir),
       removeEntries: (p, campaignId, entryIds) => invoke('campaigns:remove-entries', p, campaignId, entryIds),
-      duplicateTest: (p, campaignId, testCaseId, paramValues) =>
-        invoke('campaigns:duplicate-test', p, campaignId, testCaseId, paramValues),
+      duplicateTest: (p, campaignId, testCaseId, paramValues, workspaceDir) =>
+        invoke('campaigns:duplicate-test', p, campaignId, testCaseId, paramValues, workspaceDir),
+      previewParams: (p, source, testCaseIds, workspaceDir) =>
+        invoke('campaigns:preview-params', p, source, testCaseIds, workspaceDir),
       updateRunParams: (p, campaignId, entryId, paramValues) =>
         invoke('campaigns:update-run-params', p, campaignId, entryId, paramValues),
       delete: (p, id) => invoke('campaigns:delete', p, id),

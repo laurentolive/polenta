@@ -1,5 +1,15 @@
 ## New
 
+### T174 — Évolution : l'analyse d'impact sort du panneau Version et a sa propre icône dans la barre d'activité
+
+**Statut** : coding sprint 1 — branche `T174`, worktree `../polenta-T174`
+
+**Demande** : l'analyse d'impact est aujourd'hui une sous-vue du panneau Version (bouton
+`ListTree` dans son en-tête). La sortir en entrée à part entière de la barre d'activité à
+gauche, avec une icône dédiée (document + cases cochées + crayon, cf. maquette utilisateur).
+Le panneau latéral affiche le sélecteur de baselines / liste des analyses
+(`VersionImpactSelector`) ; le bouton correspondant disparaît de l'en-tête Version.
+
 ### T173 — Évolution : analyse d'impact — lever le flag `needsRevalidation` des éléments
 
 **Statut** : New — dépend de T172
@@ -13,7 +23,7 @@ avec les pré-vérifications de baseline SPEC-TRACEABILITY §5.2) à préciser e
 
 ### T171 — Évolution : base de paramètres partagés entre exigences et tests
 
-**Statut** : coding sprint 1 — implémenté (`specs/T171-sprint1.md`), `tsc` propre, script de service 25/25, vue vérifiée dans l'app ; en attente de validation humaine. Sprints 2 et 3 à venir ; travail sur `main`
+**Statut** : coding sprint 3 (dernier) — implémenté (`specs/T171-sprint3.md`), `tsc` propre, scripts de service OK, parcours campagne vérifié dans l'app, SPEC mises à jour ; en attente de validation humaine ; travail sur `main`
 
 **Demande** : un test générique (partagé entre plusieurs produits) prend des valeurs que le
 testeur va aujourd'hui chercher à la main dans les exigences (colonne « objectifs » remplie par

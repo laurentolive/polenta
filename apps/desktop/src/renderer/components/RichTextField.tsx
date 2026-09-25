@@ -23,6 +23,9 @@ import { NodeContextMenu } from '../tiptap/NodeContextMenu'
 import { DrawioInsertButton } from './DrawioInsertButton'
 import { ImageInsertButton } from './ImageInsertButton'
 import { TableInsertButton } from './TableInsertButton'
+import { ParamInsertButton } from './parameters/ParamInsertButton'
+import { useParamRefs } from '../contexts/ParamRefContext'
+import { ParamRefDecoration, paramRefPluginKey } from '../tiptap/ParamRefDecoration'
 import { VIEWER_CLASS_COMPACT } from '../lib/staticRichText'
 
 interface Props {
@@ -70,6 +73,23 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
     }),
   )
 
+  // T171 — références de paramètres : décorées via le ParamRefProvider englobant (s'il existe).
+  // L'extension est créée une fois et lit le contexte courant via une ref.
+  const paramRefs = useParamRefs()
+  const paramRefsRef = useRef(paramRefs)
+  const unresolvedLabelRef = useRef(t('parameters.unresolved'))
+  const disabledRef = useRef(!!disabled)
+  useEffect(() => {
+    paramRefsRef.current = paramRefs
+    unresolvedLabelRef.current = t('parameters.unresolved')
+    disabledRef.current = !!disabled
+  })
+  const [paramRefExtension] = useState(() => ParamRefDecoration.configure({
+    getApi: () => paramRefsRef.current,
+    getUnresolvedLabel: () => unresolvedLabelRef.current,
+    getReadOnly: () => disabledRef.current,
+  }))
+
   const [rawValue, setRawValue] = useState(value)
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null)
   // Track whether this is the initial mount so the resync effect does not
@@ -109,6 +129,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
       Markdown.configure({ html: false, transformPastedText: true }),
       DrawioEmbed.configure({ repoPath }),
       submitExtension,
+      paramRefExtension,
     ],
     content: value,
     editorProps: {
@@ -225,6 +246,14 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
     },
     editable: !disabled,
   })
+
+  // T171 — bases de paramètres chargées ou modifiées, ou passage lecture/édition : recalcule
+  // les décorations (transaction sans changement de document, donc sans onUpdate ni sauvegarde).
+  const paramRefsVersion = paramRefs?.version
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr.setMeta(paramRefPluginKey, true))
+  }, [editor, paramRefsVersion, disabled])
 
   // Donne le focus dès que l'éditeur est prêt (une seule fois, au montage) — sans ça une popup
   // d'édition ouverte au clic (ex. cellule richtext de la vue Excel) s'affiche sans focus et
@@ -438,6 +467,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
         <ImageInsertButton editor={editor} repoPath={repoPath} className={btn(false)} />
         <DrawioInsertButton editor={editor} repoPath={repoPath} className={btn(false)} />
         <TableInsertButton editor={editor} className={btn(false)} />
+        <ParamInsertButton editor={editor} className={btn(false)} />
       </div>
       )}
       {/* Content */}

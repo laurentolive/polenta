@@ -1,12 +1,15 @@
-﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase } from '@polenta/types'
+﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
+import type { ParametersService } from './parameters.service'
 import { nextCounterId } from './id-counter.util'
 
 export class CampaignsService {
   constructor(
     private readonly gitService: GitService,
     private readonly testsService: TestsService,
+    /** T171 — résolution des paramètres de la base à l'ajout ; absent (MCP) : comportement T97. */
+    private readonly parameters?: ParametersService,
   ) {}
 
   private writeQueues = new Map<string, Promise<unknown>>()
@@ -52,10 +55,11 @@ export class CampaignsService {
     return this.ensureEntryIds(campaign)
   }
 
-  async create(repoPath: string, dto: CreateCampaignDto): Promise<TestCampaign> {
+  async create(repoPath: string, dto: CreateCampaignDto, workspaceDir?: string): Promise<TestCampaign> {
     const id = await this.nextCampaignId(repoPath)
     const testCaseIds = dto.testCaseIds ?? []
     const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
+    const previews = await this.previewsFor(repoPath, snapshots, dto.baselineRef, workspaceDir)
 
     const campaign: TestCampaign = {
       id,
@@ -67,7 +71,7 @@ export class CampaignsService {
       baselineRef: dto.baselineRef,
       status: 'planned',
       testCaseIds,
-      runs: this.buildNewRuns([], testCaseIds, dto.paramValuesByTest, snapshots),
+      runs: this.buildNewRuns([], testCaseIds, dto.paramValuesByTest, snapshots, previews),
       createdAt: new Date().toISOString(),
       completedAt: null,
     }
@@ -143,6 +147,7 @@ export class CampaignsService {
     campaignId: string,
     testCaseIds: string[],
     paramValuesByTest?: Record<string, Record<string, string>>,
+    workspaceDir?: string,
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
@@ -159,8 +164,9 @@ export class CampaignsService {
       if (newIds.length === 0) return campaign
 
       const snapshots = await this.snapshotsFor(repoPath, newIds)
+      const previews = await this.previewsFor(repoPath, snapshots, campaign.baselineRef, workspaceDir)
       campaign.testCaseIds = [...campaign.testCaseIds, ...newIds]
-      campaign.runs = this.buildNewRuns(campaign.runs, newIds, paramValuesByTest, snapshots)
+      campaign.runs = this.buildNewRuns(campaign.runs, newIds, paramValuesByTest, snapshots, previews)
 
       await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
       return campaign
@@ -177,6 +183,7 @@ export class CampaignsService {
     campaignId: string,
     testCaseId: string,
     paramValues: Record<string, string>,
+    workspaceDir?: string,
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
@@ -186,12 +193,32 @@ export class CampaignsService {
       }
 
       const snapshots = await this.snapshotsFor(repoPath, [testCaseId])
+      const previews = await this.previewsFor(repoPath, snapshots, campaign.baselineRef, workspaceDir)
       campaign.testCaseIds = [...campaign.testCaseIds, testCaseId]
-      campaign.runs = this.buildNewRuns(campaign.runs, [testCaseId], { [testCaseId]: paramValues }, snapshots)
+      campaign.runs = this.buildNewRuns(campaign.runs, [testCaseId], { [testCaseId]: paramValues }, snapshots, previews)
 
       await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
       return campaign
     })
+  }
+
+  /**
+   * T171 — prévisualisation de la résolution des paramètres pour des tests à ajouter (ou pour une
+   * nouvelle campagne), sans écriture : alimente le panneau d'ajout, le formulaire de création
+   * et la notification « avant validation ». Source : `baselineRef` fourni, sinon celui de la
+   * campagne `campaignId`, sinon l'état courant.
+   */
+  async previewParams(
+    repoPath: string,
+    source: { campaignId?: string; baselineRef?: string },
+    testCaseIds: string[],
+    workspaceDir?: string,
+  ): Promise<ParamResolutionPreview[]> {
+    const baselineRef = source.baselineRef
+      ?? (source.campaignId ? (await this.get(repoPath, source.campaignId)).baselineRef : undefined)
+    const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
+    const previews = await this.previewsFor(repoPath, snapshots, baselineRef, workspaceDir)
+    return [...previews.values()]
   }
 
   async updateRunParams(
@@ -265,6 +292,7 @@ export class CampaignsService {
     newTestCaseIds: string[],
     paramValuesByTest: Record<string, Record<string, string>> | undefined,
     snapshots: Map<string, TestCase>,
+    previews: Map<string, ParamResolutionPreview> = new Map(),
   ): CampaignTestRun[] {
     const counts = new Map<string, number>()
     for (const r of existingRuns) counts.set(r.testCaseId, (counts.get(r.testCaseId) ?? 0) + 1)
@@ -272,13 +300,29 @@ export class CampaignsService {
     const newRuns = newTestCaseIds.map(tcId => {
       const n = (counts.get(tcId) ?? 0) + 1
       counts.set(tcId, n)
-      return {
+      const run: CampaignTestRun = {
         entryId: `${tcId}-${n}`,
         testCaseId: tcId,
         testSnapshot: snapshots.get(tcId),
         status: 'pending' as TestRunStatus,
-        ...(paramValuesByTest?.[tcId] ? { paramValues: paramValuesByTest[tcId] } : {}),
       }
+      const preview = previews.get(tcId)
+      const given = paramValuesByTest?.[tcId] ?? {}
+      if (!preview) {
+        // Sans résolution (service absent, test introuvable) : comportement T97 inchangé.
+        if (paramValuesByTest?.[tcId]) run.paramValues = given
+        return run
+      }
+      // T171 §6 — seules les références à saisir gardent une valeur manuelle : une référence ne
+      // figure jamais à la fois dans `paramValues` et dans `resolvedParams`. Toute référence à
+      // saisir est conservée, vide si le renderer n'en a pas fourni (prévisualisation périmée) :
+      // elle reste ainsi visible et modifiable (`updateRunParams`) au lieu de disparaître.
+      const manual = Object.fromEntries(preview.manual.map(k => [k, given[k] ?? '']))
+      if (Object.keys(manual).length > 0) run.paramValues = manual
+      if (Object.keys(preview.resolved).length > 0) run.resolvedParams = preview.resolved
+      if (preview.sourceRef) run.paramSourceRef = preview.sourceRef
+      if (preview.unresolved.length > 0) run.unresolvedParams = preview.unresolved
+      return run
     })
 
     return [...existingRuns, ...newRuns]
@@ -297,6 +341,18 @@ export class CampaignsService {
    * se retrouve simplement sans `testSnapshot`, avec le même repli sur résolution live que les
    * entrées créées avant ce ticket.
    */
+  /** Résolution des paramètres pour chaque test trouvé (vide sans ParametersService). */
+  private async previewsFor(
+    repoPath: string,
+    snapshots: Map<string, TestCase>,
+    baselineRef: string | undefined,
+    workspaceDir: string | undefined,
+  ): Promise<Map<string, ParamResolutionPreview>> {
+    if (!this.parameters || snapshots.size === 0) return new Map()
+    const previews = await this.parameters.previewForTests(repoPath, [...snapshots.values()], { baselineRef, workspaceDir })
+    return new Map(previews.map(p => [p.testCaseId, p]))
+  }
+
   private async snapshotsFor(repoPath: string, testCaseIds: string[]): Promise<Map<string, TestCase>> {
     const uniqueIds = [...new Set(testCaseIds)]
     const found = await Promise.all(

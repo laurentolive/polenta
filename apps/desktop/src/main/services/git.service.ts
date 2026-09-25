@@ -131,6 +131,23 @@ export class GitService {
 
   // ─── Git objects reads (lecture historique uniquement) ─────────────────────
 
+  /**
+   * T171 — lit un fichier YAML tel qu'il existe au tag `tag`. Distingue « tag introuvable »
+   * (`tagFound: false`, la campagne ne se replie pas sur l'état courant) de « fichier absent au
+   * tag » (`tagFound: true, data: null`). Un tag annoté est déréférencé vers son commit.
+   */
+  async readYamlAtTag<T>(repoPath: string, tag: string, filePath: string): Promise<{ tagFound: boolean; data: T | null }> {
+    let oid: string
+    try {
+      oid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tag}` })
+      const { type } = await git.readObject({ fs, dir: repoPath, oid, format: 'parsed' })
+      if (type === 'tag') oid = (await git.readTag({ fs, dir: repoPath, oid })).tag.object
+    } catch {
+      return { tagFound: false, data: null }
+    }
+    return { tagFound: true, data: await this.readYamlRef<T>(repoPath, oid, filePath) }
+  }
+
   async readYamlRef<T>(repoPath: string, ref: string, filePath: string): Promise<T | null> {
     try {
       const { blob } = await git.readBlob({ fs, dir: repoPath, oid: ref, filepath: filePath })

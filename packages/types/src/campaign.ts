@@ -33,7 +33,37 @@ export interface CampaignTestRun {
   runId?: string
   executedAt?: string
   executedBy?: string
+  /** Paramètres T97 **saisis à la main** (références locales absentes de la base, T171 §6),
+   *  modifiables après l'ajout. Une référence ne figure jamais à la fois ici et dans
+   *  `resolvedParams`. */
   paramValues?: Record<string, string>
+  /** T171 — valeurs lues dans la base de paramètres et figées à l'ajout (clé = référence telle
+   *  qu'écrite : `nom` ou `<nœud>::nom`, valeur déjà formatée `value unit`). Jamais modifiées. */
+  resolvedParams?: Record<string, string>
+  /** T171 — tag git auquel les paramètres ont été lus (= `baselineRef` de la campagne) ; absent :
+   *  état courant. */
+  paramSourceRef?: string
+  /** T171 — références de base restées non résolues à l'ajout, avec leur raison. */
+  unresolvedParams?: UnresolvedParam[]
+}
+
+export type UnresolvedParamReason = 'tag_not_found' | 'missing' | 'empty' | 'unknown_node'
+
+export interface UnresolvedParam {
+  ref: string
+  reason: UnresolvedParamReason
+}
+
+/** T171 — résolution prévisionnelle des paramètres d'un test à l'ajout en campagne (sans écriture). */
+export interface ParamResolutionPreview {
+  testCaseId: string
+  /** Références lues dans la base (valeur formatée). */
+  resolved: Record<string, string>
+  /** Références locales absentes de la base : à saisir à la main (ordre T97). */
+  manual: string[]
+  unresolved: UnresolvedParam[]
+  /** Tag de lecture (baselineRef) ou absent pour l'état courant. */
+  sourceRef?: string
 }
 
 export interface CreateCampaignDto {

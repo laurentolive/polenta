@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { RichTextViewer } from '../components/RichTextViewer'
 import { ViewHeader } from '../components/layout/ViewHeader'
-import { substituteParams } from '../lib/testParams'
+import { FrozenParamRefProvider } from '../contexts/ParamRefContext'
+import { isT171Run, substituteRunParams } from '../lib/testParams'
+import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
 import { toIntlLocale } from '../i18n/useLocale'
 import type { StepResultValue, TestRunResult } from '@polenta/types'
@@ -66,8 +68,10 @@ function TestRunViewPage() {
   const campaignRun = campaign?.runs.find(r => r.entryId === entryId)
   const testCaseId = campaignRun?.testCaseId
   const runId = campaignRun?.runId
-  const paramValues = campaignRun?.paramValues
 
+  // T171 — instance T171 : texte brut, les références sont rendues par FrozenParamRefProvider.
+  // Instance antérieure (T97) : substitution d'origine en amont, code Markdown compris.
+  const runText = (text: string) => (isT171Run(campaignRun) ? text : substituteRunParams(text, campaignRun))
   const { testCase: tc, isLoading: loadingTc } = useResolvedCampaignTest(repoPath, testCaseId, campaignRun?.testSnapshot)
 
   const { data: runs = [], isLoading: loadingRuns } = useQuery({
@@ -86,6 +90,7 @@ function TestRunViewPage() {
   const sortedSteps = [...(tc.steps ?? [])].sort((a, b) => a.order - b.order)
 
   return (
+    <FrozenParamRefProvider run={campaignRun}>
     <div className="flex flex-col h-full overflow-hidden">
       <ViewHeader
         currentProjectId={projectId}
@@ -126,12 +131,13 @@ function TestRunViewPage() {
       </div>
 
       <div className="space-y-6">
+        <RunParamsInfo run={campaignRun} />
         {/* Preconditions */}
         {tc.preconditions && (
           <div>
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('testsPage.preconditions')}</p>
             <div className="border border-edge rounded px-3 py-2 bg-hover">
-              <RichTextViewer value={substituteParams(tc.preconditions, paramValues)} repoPath={repoPath} />
+              <RichTextViewer value={runText(tc.preconditions)} repoPath={repoPath} />
             </div>
           </div>
         )}
@@ -159,11 +165,11 @@ function TestRunViewPage() {
                     <div className="grid grid-cols-2 gap-0 divide-x divide-edge">
                       <div className="px-3 py-2">
                         <p className="text-xs text-ink-3 mb-1">{t('system.stepsTable.action')}</p>
-                        <RichTextViewer value={substituteParams(step.action, paramValues)} repoPath={repoPath} />
+                        <RichTextViewer value={runText(step.action)} repoPath={repoPath} />
                       </div>
                       <div className="px-3 py-2">
                         <p className="text-xs text-ink-3 mb-1">{t('system.stepsTable.expectedResult')}</p>
-                        <RichTextViewer value={substituteParams(step.expectedResult, paramValues)} repoPath={repoPath} />
+                        <RichTextViewer value={runText(step.expectedResult)} repoPath={repoPath} />
                       </div>
                     </div>
 
@@ -186,7 +192,7 @@ function TestRunViewPage() {
           <div>
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('testsPage.postconditions')}</p>
             <div className="border border-edge rounded px-3 py-2 bg-hover">
-              <RichTextViewer value={substituteParams(tc.postconditions, paramValues)} repoPath={repoPath} />
+              <RichTextViewer value={runText(tc.postconditions)} repoPath={repoPath} />
             </div>
           </div>
         )}
@@ -204,5 +210,6 @@ function TestRunViewPage() {
       </div>
       </div>
     </div>
+    </FrozenParamRefProvider>
   )
 }

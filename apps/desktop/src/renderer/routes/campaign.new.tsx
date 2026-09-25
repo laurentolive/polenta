@@ -10,6 +10,8 @@ import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { TestParamFields } from '../components/TestParamFields'
 import { isParamsComplete } from '../lib/testParams'
+import { useParamPreview } from '../hooks/useParamPreview'
+import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/campaign/new')({
   component: NewCampaignPage,
@@ -87,10 +89,6 @@ function NewCampaignPage() {
     queryFn: () => api.tests.list(repoPath),
     enabled: !!repoPath,
   })
-  // Carte non filtrée : la sélection (préremplissage T46 inclus) peut référencer des tests
-  // hors du filtre composant/niveau courant — la validation des paramètres doit malgré
-  // tout les couvrir (cf. specs/T97.md, correctif revue de code).
-  const allTestsMap = new Map(allTests.map(t => [t.id, t]))
 
   // Filter tests by component (node) and level (objectType) when specified.
   // objectTypeRef format: "componentName::objectTypeName"
@@ -100,6 +98,17 @@ function NewCampaignPage() {
     if (level) return t.objectTypeRef.endsWith(`::${level}`)
     return true
   })
+
+  // T171 — résolution prévisionnelle des paramètres des tests sélectionnés, lue au `baselineRef`
+  // saisi (sans repli sur l'état courant) ou sur l'état courant : références résolues affichées en
+  // lecture seule, non résolues signalées avant validation, seules les autres sont à saisir.
+  // Porte sur toute la sélection — préremplissage T46 inclus, qui peut référencer des tests hors
+  // du filtre composant/niveau courant (cf. specs/T97.md, correctif revue de code).
+  const workspaceDir = projectId ? decodeProjectId(projectId) : ''
+  const { previews: paramPreviews, isLoading: previewLoading } = useParamPreview(
+    repoPath, { baselineRef: baselineRef.trim() || undefined }, [...selectedTests], workspaceDir,
+  )
+  const manualKeysById = new Map([...selectedTests].map(id => [id, paramPreviews.get(id)?.manual ?? []]))
 
   const { data: tags = [] } = useQuery({
     queryKey: ['git-tags', repoPath],
@@ -118,7 +127,7 @@ function NewCampaignPage() {
         paramValuesByTest: paramValues,
         component: component || undefined,
         level: level || undefined,
-      }),
+      }, workspaceDir || undefined),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
       navigate({
@@ -136,7 +145,7 @@ function NewCampaignPage() {
     if (createMutation.isPending) return
     if (!title.trim()) { setError(t('requirementsPage.titleRequired')); return }
     if (!repoPath) { setError(t('common.projectNotLoaded')); return }
-    if (!isParamsComplete(selectedTests, allTestsMap, paramValues)) {
+    if (previewLoading || !isParamsComplete(selectedTests, manualKeysById, paramValues)) {
       setError(t('campaignPage.paramsIncomplete'))
       return
     }
@@ -250,7 +259,9 @@ function NewCampaignPage() {
                     </label>
                     {selectedTests.has(t.id) && (
                       <TestParamFields
-                        testCase={t}
+                        labels={paramPreviews.get(t.id)?.manual ?? []}
+                        resolved={paramPreviews.get(t.id)?.resolved}
+                        unresolved={paramPreviews.get(t.id)?.unresolved}
                         values={paramValues[t.id] ?? {}}
                         onChange={(label, value) => setParamValues(prev => ({
                           ...prev,
@@ -269,7 +280,7 @@ function NewCampaignPage() {
           <div className="flex gap-3">
             <button
               type="submit"
-              disabled={createMutation.isPending || !isParamsComplete(selectedTests, allTestsMap, paramValues)}
+              disabled={createMutation.isPending || previewLoading || !isParamsComplete(selectedTests, manualKeysById, paramValues)}
               className="btn-primary"
             >
               {createMutation.isPending ? t('common.creating') : t('campaignPage.createCampaign')}

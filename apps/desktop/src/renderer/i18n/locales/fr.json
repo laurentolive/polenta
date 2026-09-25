@@ -1041,6 +1041,28 @@
     },
     "errors": {
       "invalidName": "Nom invalide : lettres, chiffres, _ et - uniquement."
+    },
+    "unresolved": "référence non résolue",
+    "picker": {
+      "search": "Rechercher un paramètre…",
+      "create": "Créer un paramètre",
+      "insert": "Insérer un paramètre"
     }
+  },
+  "campaignParams": {
+    "fromBase": "Valeur lue dans la base de paramètres",
+    "manual": "Valeur saisie à la main",
+    "reason": {
+      "tag_not_found": "baseline introuvable",
+      "missing": "paramètre absent",
+      "empty": "valeur vide",
+      "unknown_node": "composant inconnu"
+    },
+    "unresolvedCount_one": "{{count}} référence non résolue",
+    "unresolvedCount_other": "{{count}} références non résolues",
+    "bannerTitle_one": "{{count}} instance a des références de paramètres non résolues :",
+    "bannerTitle_other": "{{count}} instances ont des références de paramètres non résolues :",
+    "sourceTag": "Paramètres lus à la baseline {{tag}}",
+    "sourceCurrent": "Paramètres lus sur l'état courant à l'ajout"
   }
 }

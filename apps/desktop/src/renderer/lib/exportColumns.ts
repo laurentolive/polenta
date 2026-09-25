@@ -77,3 +77,23 @@ export function buildExportRows(
 
   return { columns, rows }
 }
+
+/**
+ * T171 §10 — remplace les références de paramètres par leur valeur dans les colonnes d'export où
+ * elles sont reconnues (§3) : champs text / textarea / richtext d'une exigence, preconditions /
+ * postconditions d'un test. `substitute` laisse littérales les références non résolues et celles
+ * écrites dans du code Markdown (même règle qu'à l'écran).
+ */
+export function substituteExportParams(
+  rows: Record<string, string>[],
+  typeDef: { category?: string; fields?: { name: string; type: string }[] } | null | undefined,
+  substitute: (text: string) => string,
+): Record<string, string>[] {
+  const scanned = new Set(typeDef?.category === 'test'
+    ? ['preconditions', 'postconditions']
+    : (typeDef?.fields ?? []).filter(f => f.type === 'text' || f.type === 'textarea' || f.type === 'richtext').map(f => f.name))
+  if (scanned.size === 0) return rows
+  return rows.map(row => Object.fromEntries(
+    Object.entries(row).map(([k, v]) => [k, typeof v === 'string' && scanned.has(k) && v.includes('{') ? substitute(v) : v]),
+  ))
+}

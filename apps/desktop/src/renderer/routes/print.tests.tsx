@@ -5,7 +5,8 @@ import type { TestCase } from '@polenta/types'
 import { api } from '../api'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
 import { normalizeObject } from '../lib/normalizeObject'
-import { buildExportRows } from '../lib/exportColumns'
+import { buildExportRows, substituteExportParams } from '../lib/exportColumns'
+import { useParamResolver } from '../contexts/ParamRefContext'
 import { computeSectionNumbers } from '../hooks/useTreeState'
 import { getTestTypeDef } from '../hooks/useProjectSchema'
 
@@ -23,12 +24,15 @@ export const Route = createFileRoute('/print/tests')({
     filter: (s['filter'] as string) ?? '',
     objectTypeRef: (s['objectTypeRef'] as string) ?? '',
     componentLabel: (s['componentLabel'] as string) ?? '',
+    // T171 — résolution des références cross-composant ; absent → base du repo seulement.
+    workspaceDir: (s['workspaceDir'] as string) ?? '',
   }),
 })
 
 function PrintTestsPage() {
   const { t } = useTranslation()
-  const { repoPath, username, filter, objectTypeRef, componentLabel } = Route.useSearch()
+  const { repoPath, username, filter, objectTypeRef, componentLabel, workspaceDir } = Route.useSearch()
+  const paramResolver = useParamResolver(repoPath, workspaceDir)
   const [nodeId, typeId] = objectTypeRef.split('::')
 
   const { data: tests, isSuccess: testsLoaded } = useQuery({
@@ -52,7 +56,7 @@ function PrintTestsPage() {
     enabled: !!repoPath && !!username && !!objectTypeRef,
   })
 
-  useNotifyPrintReady(testsLoaded && treeLoaded && schemaLoaded && prefsLoaded)
+  useNotifyPrintReady(testsLoaded && treeLoaded && schemaLoaded && prefsLoaded && paramResolver.ready)
 
   const typeDef = getTestTypeDef(schema, objectTypeRef)
   // Même ordre que le fallback de `SystemView.tsx` (section/name/id/status/steps puis champs
@@ -69,7 +73,9 @@ function PrintTestsPage() {
     }
   }
   const sectionNumbers = computeSectionNumbers(tree?.root ?? [])
-  const { rows, columns } = buildExportRows(fields, tree?.root ?? [], objects, sectionNumbers, stepsByObjectId, typeDef, filter)
+  const { rows: rawRows, columns } = buildExportRows(fields, tree?.root ?? [], objects, sectionNumbers, stepsByObjectId, typeDef, filter)
+  // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
+  const rows = substituteExportParams(rawRows, typeDef, paramResolver.substitute)
 
   const idKey = columns.find(c => c.key === 'id')?.key
   const nameKey = columns.find(c => c.key === 'name')?.key

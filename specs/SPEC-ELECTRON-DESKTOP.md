@@ -1277,6 +1277,7 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 | **Version** | ⎇ | Oui | `/graph?projectId=…` — arbre de versions git | Modification courante, fichiers stagés/modifiés |
 | **Produit** | 📋 | Oui | `/product?projectId=…&tab=requirements` | Tabs Exigences / Tests / Campagnes, contenu piloté par schema produit |
 | **Composants** | 🧩 | Oui | `/components?projectId=…&tab=requirements` | Sélecteurs `[composant▾][niveau▾]` sur une ligne + tabs Exigences / Tests / Campagnes |
+| **Paramètres** *(T171)* | `(x)` | Oui | `/parameters?projectId=…&repo?` — bases de paramètres par repo | Liste des repos du workspace (filtre la vue) |
 
 **Règles :**
 - Le panneau actif (`activePanel`) est calculé depuis `pathname` : pas de `useState`, dérivé pur.
@@ -1295,6 +1296,7 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 | `/diff?projectId&filepath` | Vue diff d'un fichier | Version |
 | `/branch/new` | Formulaire nouvelle branche | Version |
 | `/product?projectId&tab` | **Panel Produit** — liste exigences / tests / campagnes selon tab | Produit |
+| `/parameters?projectId&repo?` | **Paramètres** (T171) — bases de paramètres, « Utilisé par », édition | Paramètres |
 | `/req/new?projectId&component?&level?` | Formulaire nouvelle exigence | Produit ou Composants |
 | `/req/$reqId?projectId&component?&level?` | Détail / édition d'une exigence | Produit ou Composants |
 | `/test/new?projectId&component?&level?` | Formulaire nouveau cas de test | Produit ou Composants |
@@ -1743,7 +1745,9 @@ Déduction du panel actif depuis `pathname` + search params :
 | `sync:diff` | `repoPath: string, filepath: string` | `{ oldContent: string; newContent: string }` |
 | `campaigns:list` | `repoPath: string, component?: string, level?: string` | `TestCampaign[]` |
 | `campaigns:get` | `repoPath: string, id: string` | `TestCampaign` |
-| `campaigns:create` | `repoPath: string, dto: CreateCampaignDto` | `TestCampaign` |
+| `campaigns:create` | `repoPath: string, dto: CreateCampaignDto, workspaceDir?: string` | `TestCampaign` (T171 : résout et fige les paramètres) |
+| `campaigns:preview-params` | `repoPath, { campaignId? \| baselineRef? }, testCaseIds: string[], workspaceDir?` | `ParamResolutionPreview[]` (T171, sans écriture) |
+| `parameters:list` / `parameters:usages` / `parameters:create` / `parameters:update` / `parameters:delete` | `repoPath` (repo de la base), …, `workspaceDir?` | T171 — base de paramètres (voir SPEC-REQ §3.2f) |
 | `campaigns:update-run` | `repoPath: string, campaignId: string, testCaseId: string, status: TestRunStatus` | `TestCampaign` |
 | `campaigns:close` | `repoPath: string, id: string, status: 'completed' \| 'abandoned'` | `TestCampaign` |
 

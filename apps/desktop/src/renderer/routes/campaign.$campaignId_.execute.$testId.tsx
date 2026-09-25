@@ -8,7 +8,9 @@ import { RichTextViewer } from '../components/RichTextViewer'
 import { RichTextProvider } from '../contexts/RichTextContext'
 import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
-import { substituteParams } from '../lib/testParams'
+import { FrozenParamRefProvider } from '../contexts/ParamRefContext'
+import { isT171Run, substituteRunParams } from '../lib/testParams'
+import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
 import type { TestRunResult, StepResultValue } from '@polenta/types'
 
@@ -76,8 +78,10 @@ function ExecuteTestPage() {
   })
   const entry = campaign?.runs.find(r => r.entryId === entryId)
   const testCaseId = entry?.testCaseId
-  const paramValues = entry?.paramValues
 
+  // T171 — instance T171 : texte brut, les références sont rendues par FrozenParamRefProvider.
+  // Instance antérieure (T97) : substitution d'origine en amont, code Markdown compris.
+  const runText = (text: string) => (isT171Run(entry) ? text : substituteRunParams(text, entry))
   const { testCase, isLoading: loadingTest } = useResolvedCampaignTest(repoPath, testCaseId, entry?.testSnapshot)
 
   const sortedSteps = [...(testCase?.steps ?? [])].sort((a, b) => a.order - b.order)
@@ -159,6 +163,7 @@ function ExecuteTestPage() {
   if (!testCase) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.testNotFound', { testCaseId })}</p>
 
   return (
+    <FrozenParamRefProvider run={entry}>
     <RichTextProvider>
       <div className="flex flex-col h-full">
         <ViewHeader
@@ -183,12 +188,13 @@ function ExecuteTestPage() {
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+            <RunParamsInfo run={entry} />
             {/* Preconditions */}
             {testCase.preconditions && (
               <div>
                 <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('testsPage.preconditions')}</p>
                 <div className="text-sm text-ink border border-edge rounded px-4 py-3 bg-hover/30">
-                  <RichTextViewer value={substituteParams(testCase.preconditions, paramValues)} repoPath={repoPath} />
+                  <RichTextViewer value={runText(testCase.preconditions)} repoPath={repoPath} />
                 </div>
               </div>
             )}
@@ -221,11 +227,11 @@ function ExecuteTestPage() {
                       <div className="grid grid-cols-2 divide-x divide-edge">
                         <div className="px-4 py-3">
                           <p className="text-xs text-ink-3 mb-1.5">{t('system.stepsTable.action')}</p>
-                          <RichTextViewer value={substituteParams(step.action, paramValues)} repoPath={repoPath} />
+                          <RichTextViewer value={runText(step.action)} repoPath={repoPath} />
                         </div>
                         <div className="px-4 py-3">
                           <p className="text-xs text-ink-3 mb-1.5">{t('system.stepsTable.expectedResult')}</p>
-                          <RichTextViewer value={substituteParams(step.expectedResult, paramValues)} repoPath={repoPath} />
+                          <RichTextViewer value={runText(step.expectedResult)} repoPath={repoPath} />
                         </div>
                       </div>
 
@@ -251,7 +257,7 @@ function ExecuteTestPage() {
               <div>
                 <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('testsPage.postconditions')}</p>
                 <div className="text-sm text-ink border border-edge rounded px-4 py-3 bg-hover/30">
-                  <RichTextViewer value={substituteParams(testCase.postconditions, paramValues)} repoPath={repoPath} />
+                  <RichTextViewer value={runText(testCase.postconditions)} repoPath={repoPath} />
                 </div>
               </div>
             )}
@@ -330,5 +336,6 @@ function ExecuteTestPage() {
         </div>
       </div>
     </RichTextProvider>
+    </FrozenParamRefProvider>
   )
 }

@@ -125,6 +125,19 @@
 }
 
 @layer components {
+  /* T171 — référence de paramètre ({nom}) : même style partout (lecture markdown-it, éditeur
+     Tiptap, texte brut). Variante non résolue : référence littérale en couleur d'alerte. */
+  .param-ref {
+    @apply rounded px-1 bg-status-info-bg text-status-info border-b border-dotted border-status-info cursor-help whitespace-nowrap;
+  }
+  /* Lecture seule dans l'éditeur Tiptap : la source `{nom}` est masquée, un widget affiche la valeur. */
+  .param-ref-source {
+    @apply hidden;
+  }
+  .param-ref--unresolved {
+    @apply bg-status-warning-bg text-status-warning border-status-warning line-through decoration-1;
+  }
+
   /* Form inputs — use with w-full or flex-1 */
   .input-field {
     @apply border border-edge rounded px-3 py-2 text-sm bg-surface text-ink

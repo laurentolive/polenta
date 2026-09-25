@@ -17,6 +17,7 @@ import { useScrollToNode } from '../../hooks/useScrollToNode'
 import { normalizeObject } from '../../lib/normalizeObject'
 import { CATEGORY_CHART_BG } from '../../lib/objectCategoryColors'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
+import { ParamRefText } from '../parameters/ParamRefText'
 import type { SearchResult } from '../../lib/searchQuery'
 import type {
   ObjectTypeDefinition,
@@ -231,7 +232,10 @@ function ResultCard({
               {row.value
                 ? (row.type === 'richtext'
                     ? <StaticRichTextViewer value={row.value} repoPath={repoPath} highlightRegex={regex ?? undefined} />
-                    : <HighlightedText text={row.value} regex={regex} />)
+                    : (result.itemType === 'requirement' && (row.type === 'text' || row.type === 'textarea')
+                        // T171 — une référence de paramètre prime sur la surbrillance de la recherche.
+                        ? <ParamRefText text={row.value} fallback={<HighlightedText text={row.value} regex={regex} />} />
+                        : <HighlightedText text={row.value} regex={regex} />))
                 : <span className="text-ink-3 italic text-xs">—</span>}
             </div>
           </div>

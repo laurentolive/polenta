@@ -90,6 +90,8 @@ specs/
 │   └── integration/
 ├── links/
 │   └── links.yaml                   ← tous les ObjectLink du projet
+├── parameters/
+│   └── parameters.yaml              ← base de paramètres du repo (T171), clés triées
 ├── .polenta/
 │   ├── workspace.yaml
 │   ├── schema.yaml
@@ -270,6 +272,10 @@ THEN THE <système> SHALL <action>
 8. **Dans un repo produit** : les `objectTypeRef` cross-composant utilisent le nom du nœud submodule (ex: `motor-control::exigence-fw`)
 9. `.polenta/trees/<nœud>/<type>.yaml` est maintenu par l'application — ne jamais l'éditer à la main en dehors d'un projet d'exemple/fixture
 10. `prefix` est unique sur l'ensemble du projet (tous nœuds confondus)
+11. Une référence de paramètre `{nom}` / `{<nœud>::nom}` (T171) vise un paramètre existant de
+    `parameters/parameters.yaml` (repo de l'élément, ou composant déclaré dans `polenta-repo.yaml`) ;
+    une référence locale absente de la base est saisie à la main en campagne, toute autre reste
+    littérale — ne pas supprimer un paramètre encore utilisé
 
 ---
 

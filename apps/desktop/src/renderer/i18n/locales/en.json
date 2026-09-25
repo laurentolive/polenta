@@ -1041,6 +1041,28 @@
     },
     "errors": {
       "invalidName": "Invalid name: letters, digits, _ and - only."
+    },
+    "unresolved": "unresolved reference",
+    "picker": {
+      "search": "Search a parameter…",
+      "create": "Create a parameter",
+      "insert": "Insert a parameter"
     }
+  },
+  "campaignParams": {
+    "fromBase": "Value read from the parameter base",
+    "manual": "Value entered manually",
+    "reason": {
+      "tag_not_found": "baseline not found",
+      "missing": "missing parameter",
+      "empty": "empty value",
+      "unknown_node": "unknown component"
+    },
+    "unresolvedCount_one": "{{count}} unresolved reference",
+    "unresolvedCount_other": "{{count}} unresolved references",
+    "bannerTitle_one": "{{count}} instance has unresolved parameter references:",
+    "bannerTitle_other": "{{count}} instances have unresolved parameter references:",
+    "sourceTag": "Parameters read at baseline {{tag}}",
+    "sourceCurrent": "Parameters read from the current state when added"
   }
 }

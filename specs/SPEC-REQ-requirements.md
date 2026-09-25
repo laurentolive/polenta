@@ -285,6 +285,31 @@ au lieu d'insérer un saut de ligne :
 - `Ctrl+Entrée` prend le pas sur la sortie de bloc de code (`CodeBlock`) quand un `onSubmit`
   est câblé (sortie de bloc de code = flèche bas).
 
+### 3.2f Références de paramètres dans le texte (T171)
+
+Chaque repo (produit ou composant) porte une **base de paramètres** : `parameters/parameters.yaml`,
+un dictionnaire `nom → { value, unit?, description? }` (valeur toujours chaîne, clés triées à
+chaque écriture, nom `[A-Za-z0-9_-]+` non modifiable). Le texte des exigences (champs `text`,
+`textarea`, `richtext` ; pas le titre) et des tests (preconditions, étapes, postconditions)
+référence un paramètre par `{nom}` (base du repo de l'élément) ou `{<nœud>::nom}` (base du
+composant `<nœud>`, déclaré dans les dépendances `polenta-repo.yaml` du repo de l'élément),
+indépendamment des liens.
+
+- **Affichage** : en lecture, la valeur (`value unit`) avec un style dédié ; survol = nom et
+  description ; double-clic = édition du paramètre (lecture seule sur un repo readonly), ou
+  création pour une référence locale inconnue. Dans l'éditeur, la référence reste `{nom}`
+  stylée (valeur au survol) ; le Markdown stocké reste `{nom}`. Une référence non résolue
+  (paramètre absent, valeur vide, nœud inconnu) reste littérale, barrée. Une référence écrite
+  dans du code Markdown reste littérale et n'est ni comptée ni substituée.
+- **Insertion** : bouton `{x}` de la barre d'outils ou saisie de `{` → sélecteur (paramètres du
+  repo et des composants visibles, création).
+- **Vue Paramètres** (barre d'activité) : bases par repo, recherche, nombre d'utilisations,
+  « Utilisé par » (liens vers les éléments), création / modification / suppression (refusée tant
+  qu'un élément non terminal utilise le paramètre).
+- **Modification** (`value`, `unit`, ou création résolvant des références) d'un paramètre
+  utilisé par un élément approuvé : confirmation, puis marquage `needsRevalidation` (§5.3).
+- **Exports** exigences / tests : mêmes valeurs qu'à l'écran.
+
 ### 3.3 Validation (`validator`)
 
 | Valeur | Comportement |
@@ -409,6 +434,13 @@ ne changent pas (un élément `approved` peut être marqué).
 **Notification** — icône ⚠ à côté du statut (vues Excel, Word, Édition), infobulle « Impact à
 vérifier ». Pas d'action « Revalider » par lien : le flag est levé depuis l'analyse d'impact
 (**T173**).
+
+**Second déclencheur — paramètre modifié (T171)** : modifier `value`/`unit` d'un paramètre (ou
+créer un paramètre résolvant des références jusque-là littérales) utilisé par un élément
+approuvé non terminal appelle `markImpactedBy(…, { includeSelf: true })` pour chacun de ces
+éléments : l'élément **lui-même** est marqué (son texte affiché a changé sans relecture), ainsi
+que ses éléments liés, avec les mêmes exclusions. Le statut ne change pas. Un changement de
+`description` seule, ou des valeurs arrivées par git (branche, pull, merge), ne marque rien.
 
 ---
 

@@ -8,6 +8,10 @@ import TableCell from '@tiptap/extension-table-cell'
 import { Markdown } from 'tiptap-markdown'
 import { DrawioEmbed } from '../tiptap/DrawioEmbedExtension'
 import { ResizableImage } from '../tiptap/ResizableImageExtension'
+import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useParamRefs } from '../contexts/ParamRefContext'
+import { ParamRefDecoration, paramRefPluginKey } from '../tiptap/ParamRefDecoration'
 
 interface Props {
   value: string
@@ -17,6 +21,19 @@ interface Props {
 }
 
 export function RichTextViewer({ value, className = '', repoPath }: Props) {
+  // T171 — références de paramètres : affichées avec leur valeur (lecture seule) via le
+  // provider englobant (valeurs figées d'une instance de campagne en exécution / relecture).
+  const { t } = useTranslation()
+  const paramRefs = useParamRefs()
+  const paramRefsRef = useRef(paramRefs)
+  const labelRef = useRef(t('parameters.unresolved'))
+  useEffect(() => { paramRefsRef.current = paramRefs; labelRef.current = t('parameters.unresolved') })
+  const [paramRefExtension] = useState(() => ParamRefDecoration.configure({
+    getApi: () => paramRefsRef.current,
+    getUnresolvedLabel: () => labelRef.current,
+    getReadOnly: () => true,
+  }))
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -28,6 +45,7 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
       TableCell,
       Markdown.configure({ html: false }),
       DrawioEmbed.configure({ repoPath }),
+      paramRefExtension,
     ],
     content: value,
     editable: false,
@@ -38,6 +56,11 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
       },
     },
   })
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr.setMeta(paramRefPluginKey, true))
+  }, [editor, paramRefs])
 
   return <EditorContent editor={editor} className={className} />
 }

@@ -175,10 +175,22 @@ apparition (`preconditions` → étapes triées par `order`, `action` puis `expe
 nulle part dans le contexte d'une campagne (ni à l'exécution, ni à la relecture), un
 paramètre qui n'y apparaîtrait que là n'aurait aucune valeur substituée visible.
 
-Un paramètre n'a de valeur que dans le contexte d'une campagne — voir §4.2
-(`CampaignTestRun.paramValues`) et §4.4 (substitution à l'exécution). Sur la fiche de
-définition du test elle-même, `{label}` reste affiché tel quel (pas de résolution, pas de
-mise en forme visuelle particulière).
+**Depuis T171, la syntaxe `{label}` est celle de la base de paramètres** (SPEC-REQ §3.5) :
+`{nom}` désigne le paramètre `nom` du repo du test, `{<nœud>::nom}` celui d'un composant visible.
+La grammaire est unique (`packages/types/src/parameter-refs.ts`) et tolère `\_` (échappement du
+sérialiseur Markdown) ; une référence écrite dans du code Markdown reste littérale et n'est pas
+comptée. À l'ajout en campagne (§4.2) :
+1. une référence présente dans la base avec une valeur non vide est **lue automatiquement et
+   figée** (`resolvedParams`, non modifiable) ;
+2. une référence **locale** absente de la base devient un paramètre **à saisir à la main**,
+   exactement comme en T97 (`paramValues`, modifiable ensuite) ;
+3. toute autre référence (cross-composant absente, valeur vide, nœud non visible, tag de
+   baseline introuvable) reste **non résolue** : littérale, jamais proposée à la saisie,
+   enregistrée dans `unresolvedParams` et signalée.
+
+Sur la fiche de définition du test (Word, Excel, Édition, Recherche), la référence affiche la
+**valeur courante** de la base avec le style dédié (SPEC-REQ §3.5) ; la valeur réellement
+utilisée à l'exécution est celle figée en campagne.
 
 ### 2.4 Lien vers les exigences couvertes
 
@@ -453,12 +465,30 @@ nécessairement unique par `testCaseId` (T97 sprint 2) :
 | `runId` | Référence au `TestRun` créé lors de l'exécution, optionnel tant que `pending` |
 | `executedAt` | Horodatage de la dernière saisie de résultat |
 | `executedBy` | Testeur ayant saisi le résultat, optionnel |
-| `paramValues` | *(T97)* `Record<label, valeur>` — valeurs des paramètres `{label}` du test (voir §2.4a), saisies à l'ajout de cette instance. Absent/vide si le test n'a aucun paramètre. |
+| `paramValues` | *(T97)* `Record<label, valeur>` — valeurs **saisies à la main** des références à saisir (§2.4a cas 2), modifiables après l'ajout. Depuis T171, toute référence à saisir y figure (vide si aucune valeur n'a été fournie) ; une référence n'est jamais à la fois ici et dans `resolvedParams`. |
+| `resolvedParams` | *(T171)* `Record<référence, valeur>` — valeurs lues dans la base de paramètres et **figées** à l'ajout (clé telle qu'écrite : `nom` ou `<nœud>::nom` ; valeur déjà formatée `value unit`). Aucune API ne les modifie. |
+| `paramSourceRef` | *(T171)* Tag git auquel les paramètres ont été lus (= `baselineRef` de la campagne) ; absent = état courant au moment de l'ajout. |
+| `unresolvedParams` | *(T171)* `{ ref, reason: 'tag_not_found' \| 'missing' \| 'empty' \| 'unknown_node' }[]` — références de base restées non résolues à l'ajout. |
 
 Ajouter des tests à une campagne déjà démarrée (`addTests()`) est possible tant qu'elle n'est pas
 `completed`/`abandoned` ; les nouveaux tests entrent avec le statut `pending`. Si le test ajouté a
-des paramètres, l'ajout exige une valeur pour chacun (`paramValues` obligatoire et non vide par
-label détecté) — même règle à la création d'une campagne avec une sélection initiale de tests.
+des références **à saisir** (§2.4a cas 2), l'ajout exige une valeur pour chacune — même règle à la
+création d'une campagne avec une sélection initiale de tests. Les références lues dans la base ne
+sont pas demandées.
+
+**Résolution des paramètres à l'ajout (T171)** : `create()`, `addTests()` et `duplicateTest()`
+résolvent côté main (`ParametersService.previewForTests`) les références de chaque test ajouté,
+dans la base du repo du test (déduit de son `objectTypeRef`) et des composants visibles depuis ce
+repo (dépendances `polenta-repo.yaml`). Source : le tag `baselineRef` de la campagne s'il existe
+(lu dans chaque repo au tag du même nom — `GitService.readYamlAtTag`, tag léger ou annoté),
+**sans repli** sur l'état courant ; sinon l'état courant. Tag introuvable : ajout autorisé,
+références du repo concerné non remplacées (`tag_not_found`), non proposées à la saisie. Le canal
+`campaigns:preview-params` expose la même résolution sans écriture : le panneau d'ajout et le
+formulaire de création affichent les références résolues en lecture seule, les non résolues avec
+leur raison (avant validation), et ne demandent que les références à saisir. Après l'ajout, un
+bandeau dans la page campagne liste les instances ayant des références non résolues (et un
+indicateur ⚠ sur chaque instance concernée). Une modification ultérieure de la base ne change
+pas une campagne existante.
 `addTests()` reste limité à une instance par test à l'ajout groupé (dédoublonné par `testCaseId`,
 comme avant T97 sprint 2).
 
@@ -468,7 +498,9 @@ l'instance ciblée : si un test paramétré est inclus plusieurs fois (T97 sprin
 instances ne sont pas affectées. Une seule occurrence du `testCaseId` correspondant est retirée de
 `testCaseIds` par instance supprimée.
 
-**Instances multiples (T97 sprint 2)** : un test **avec au moins un paramètre** peut être inclus
+**Instances multiples (T97 sprint 2)** : un test **avec au moins une référence à saisir** (T171 :
+un test dont toutes les références sont résolues depuis la base se comporte comme un test sans
+paramètre) peut être inclus
 plusieurs fois dans la même campagne — chaque instance a son propre `entryId`, son propre
 `paramValues`, sa propre exécution (`status`/`runId`), indépendants des autres instances du même
 test. Ajout d'une nouvelle instance via une action dédiée ("Dupliquer" sur une instance déjà
@@ -518,12 +550,18 @@ Métriques calculées à la volée depuis l'index mémoire :
 | Répartition | Nombre de PASS / FAIL / BLOCKED / INCOMPLETE / pending |
 | Couverture req. | Exigences couvertes par au moins un PASS dans cette campagne |
 
-### 4.4 Substitution des paramètres à l'exécution (T97)
+### 4.4 Substitution des paramètres à l'exécution (T97, T171)
 
 Sur les pages qui affichent le contenu d'un test dans le contexte d'une campagne (exécution en
-cours, relecture d'un run terminé) : chaque occurrence de `{label}` dans `preconditions`,
-`postconditions`, `action`/`expectedResult` d'étape est remplacée par la valeur stockée dans
-`CampaignTestRun.paramValues[label]` pour ce test dans cette campagne, si elle existe. Depuis T49,
+cours, relecture d'un run terminé) : chaque référence dans `preconditions`, `postconditions`,
+`action`/`expectedResult` d'étape est remplacée par la valeur **figée** de l'instance —
+`resolvedParams[ref]` puis `paramValues[ref]` (T171) — avec le style dédié ; le survol indique
+l'origine (base ou saisie), sans édition possible. L'en-tête indique la source de résolution
+(« Paramètres lus à la baseline `<tag>` » ou « sur l'état courant ») et un bandeau liste les
+références non résolues de l'instance. Instances antérieures à T171 (sans champ de résolution) :
+substitution T97 d'origine depuis `paramValues`, code Markdown compris, affichage inchangé.
+Les exports de campagne (plan, rapport — xlsx, docx, pdf) utilisent les mêmes valeurs figées, y
+compris les paramètres saisis à la main (non substitués avant T171). Depuis T49,
 le texte utilisé est celui de `testSnapshot` (figé à l'ajout) quand il est présent, pas celui de
 l'état live du test — cohérent avec le reste de la page.
 
@@ -534,8 +572,8 @@ l'état live du test — cohérent avec le reste de la page.
   substitué, sans bloquer l'affichage.
 - Une valeur de `paramValues` dont le `{label}` n'apparaît plus dans le texte (snapshot ou live
   selon le cas — paramètre retiré du test depuis, pour une entrée pré-T49) est simplement ignorée.
-- Hors contexte de campagne (fiche de définition du test), aucune substitution : `{label}` reste
-  affiché tel quel.
+- Hors contexte de campagne (fiche de définition du test) : depuis T171, la référence affiche la
+  valeur **courante** de la base (SPEC-REQ §3.5), pas une valeur figée.
 - Les champs concernés étant du Markdown (voir §5, sérialisation `RichTextField`/`RichTextViewer`),
   la substitution n'échappe pas manuellement le HTML — le rendu Markdown (`html: false`) neutralise
   déjà tout caractère spécial présent dans une valeur substituée.

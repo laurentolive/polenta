@@ -8,6 +8,8 @@ import { DynamicField } from '../components/DynamicField'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { Requirement } from '@polenta/types'
+import { ParamRefProvider } from '../contexts/ParamRefContext'
+import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/req/$reqId')({
   component: RequirementDetailPage,
@@ -129,6 +131,7 @@ function RequirementDetailPage() {
   const canMarkObsolete = req.status !== 'obsolete' && obsoleteStatus !== undefined && (!nextStatus || nextStatus.name !== 'obsolete')
 
   return (
+    <ParamRefProvider repoPath={repoPath} workspaceDir={projectId ? decodeProjectId(projectId) : ''} projectId={projectId}>
     <div className="flex flex-col h-full overflow-hidden">
       <ViewHeader
         currentProjectId={projectId}
@@ -265,5 +268,6 @@ function RequirementDetailPage() {
       </div>
       </div>
     </div>
+    </ParamRefProvider>
   )
 }

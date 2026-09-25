@@ -1,4 +1,5 @@
 import type { TestCampaign, TestCase, CampaignTestRun } from '@polenta/types'
+import { substituteTestParams } from './testParams'
 
 export interface ResolvedCampaignRun {
   run: CampaignTestRun
@@ -26,6 +27,11 @@ export function resolveRunTest(run: CampaignTestRun, testsById: Map<string, Test
 export function resolveCampaignRuns(campaign: TestCampaign, tests: TestCase[]): ResolvedCampaignRun[] {
   const map = new Map(tests.map(t => [t.id, t]))
   return campaign.runs
-    .map(run => ({ run, test: run.testSnapshot ?? map.get(run.testCaseId) }))
+    .map(run => {
+      const test = run.testSnapshot ?? map.get(run.testCaseId)
+      // T171 §10 — les exports de campagne portent les valeurs figées de chaque instance (base
+      // puis saisie à la main — les paramètres T97 saisis n'étaient pas substitués avant T171).
+      return { run, test: test && substituteTestParams(test, run) }
+    })
     .filter((r): r is ResolvedCampaignRun => !!r.test)
 }

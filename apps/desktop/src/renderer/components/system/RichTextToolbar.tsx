@@ -3,6 +3,7 @@ import { useRichText } from '../../contexts/RichTextContext'
 import { DrawioInsertButton } from '../DrawioInsertButton'
 import { ImageInsertButton } from '../ImageInsertButton'
 import { TableInsertButton } from '../TableInsertButton'
+import { ParamInsertButton } from '../parameters/ParamInsertButton'
 
 interface Props {
   repoPath?: string
@@ -78,6 +79,7 @@ export function RichTextToolbar({ repoPath }: Props) {
       <ImageInsertButton editor={activeEditor} repoPath={repoPath} disabled={isRaw} className={btn(false, isRaw)} />
       <DrawioInsertButton editor={activeEditor} repoPath={repoPath} disabled={isRaw} className={btn(false, isRaw)} />
       <TableInsertButton editor={activeEditor} disabled={isRaw} className={btn(false, isRaw)} />
+      <ParamInsertButton editor={activeEditor} disabled={isRaw} className={btn(false, isRaw)} />
       <span className="w-px h-4 bg-edge mx-1" />
       <button
         type="button"

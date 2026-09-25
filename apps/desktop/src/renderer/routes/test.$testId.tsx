@@ -12,6 +12,8 @@ import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { TestCase } from '@polenta/types'
+import { ParamRefProvider } from '../contexts/ParamRefContext'
+import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/test/$testId')({
   component: TestCaseDetailPage,
@@ -129,6 +131,7 @@ function TestCaseDetailPage() {
   if (!tc) return <p className="text-sm text-ink-2 p-4">{t('testsPage.notFound', { testId })}</p>
 
   return (
+    <ParamRefProvider repoPath={repoPath} workspaceDir={projectId ? decodeProjectId(projectId) : ''} projectId={projectId}>
     <RichTextProvider>
       <div className="flex flex-col h-full overflow-hidden">
         <ViewHeader
@@ -234,5 +237,6 @@ function TestCaseDetailPage() {
         </div>
       </div>
     </RichTextProvider>
+    </ParamRefProvider>
   )
 }

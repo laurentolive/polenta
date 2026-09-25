@@ -8,6 +8,7 @@ import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink
 import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
+import { ParamRefText } from '../parameters/ParamRefText'
 import { treeFindNode, treeFindParentId, treeRemoveMany, treeInsert, treeInsertAtBeginning, treeDeepCopyWithNewIds } from '../../hooks/useTreeState'
 import { matchesRefs, filterCandidatesByRefs, getLinkTypeLabel, getPeerId, isLinkTypeValid } from './linkUtils'
 import { RichTextField } from '../RichTextField'
@@ -228,6 +229,7 @@ function InlineCell({
   freezeStyle,
   stickyBg,
   adornment,
+  paramRefs = false,
 }: {
   value: string
   field: string
@@ -244,12 +246,17 @@ function InlineCell({
   stickyBg?: string
   /** T172 — contenu affiché après la valeur en lecture (ex. ⚠ « Impact à vérifier » du statut). */
   adornment?: React.ReactNode
+  /** T171 — exigence : références de paramètres rendues dans les champs text/textarea. */
+  paramRefs?: boolean
 }) {
   const { t } = useTranslation()
   const clamp = useCellClamp()
   const withAdornment = (content: React.ReactNode) => adornment
     ? <span className="inline-flex items-center gap-1">{content}{adornment}</span>
     : content
+  const display = paramRefs && !isSystem && value && (fieldDef?.type === 'text' || fieldDef?.type === 'textarea')
+    ? <ParamRefText text={value} />
+    : value
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
@@ -269,7 +276,7 @@ function InlineCell({
   if (isSystem || !onEdit) {
     return (
       <td style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass].join(' ')}>
-        {clamp.wrap(withAdornment(value))}
+        {clamp.wrap(withAdornment(display))}
       </td>
     )
   }
@@ -352,7 +359,7 @@ function InlineCell({
       }}
       title={t('system.shared.clickToEdit')}
     >
-      {clamp.wrap(withAdornment(value || <span className="text-ink-3 italic">—</span>))}
+      {clamp.wrap(withAdornment(display || <span className="text-ink-3 italic">—</span>))}
     </td>
   )
 }
@@ -1978,6 +1985,7 @@ export function ExcelView({
                       onSelectCell={() => selectCell(node.id, col)}
                       freezeStyle={freezeStyle}
                       stickyBg={stickyBg}
+                      paramRefs={typeDef?.category === 'requirement'}
                       adornment={col === 'status' && (obj as { needsRevalidation?: boolean } | null | undefined)?.needsRevalidation
                         ? <RevalidationFlag show /> : undefined}
                       onEdit={onInlineEdit ? applyInlineEditToSelection : undefined}

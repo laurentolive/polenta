@@ -5,11 +5,13 @@ import type {
   ParameterDeleteResult,
   ParameterUsage,
   ParameterWriteResult,
+  ParamResolutionPreview,
   ParametersFile,
   ProjectSchema,
   RepoParameters,
+  TestCase,
 } from '@polenta/types'
-import { PARAM_NAME_RE, extractFieldParamRefs, extractTestParamRefs } from '@polenta/types'
+import { PARAM_NAME_RE, extractFieldParamRefs, extractTestParamRefs, formatParamValue } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -66,16 +68,69 @@ export class ParametersService {
 
   /** Base de paramètres d'un repo, triée par nom. Fichier absent → base vide. */
   async read(repoPath: string): Promise<Parameter[]> {
-    const file = await this.git.readYaml<Partial<ParametersFile>>(repoPath, PARAMETERS_FILE)
-    const raw = file && typeof file.parameters === 'object' && file.parameters ? file.parameters : {}
-    return Object.keys(raw).sort().map((name) => {
-      const entry = (Object.prototype.hasOwnProperty.call(raw, name) && raw[name] && typeof raw[name] === 'object'
-        ? raw[name] : {}) as Partial<Omit<Parameter, 'name'>>
-      const p: Parameter = { name, value: entry.value == null ? '' : String(entry.value) }
-      if (entry.unit != null && String(entry.unit) !== '') p.unit = String(entry.unit)
-      if (entry.description != null && String(entry.description) !== '') p.description = String(entry.description)
-      return p
-    })
+    return parseParametersFile(await this.git.readYaml<Partial<ParametersFile>>(repoPath, PARAMETERS_FILE))
+  }
+
+  /** Base d'un repo telle qu'elle existait au tag `tag` (`null` si le tag est introuvable). */
+  async readAtTag(repoPath: string, tag: string): Promise<Parameter[] | null> {
+    const { tagFound, data } = await this.git.readYamlAtTag<Partial<ParametersFile>>(repoPath, tag, PARAMETERS_FILE)
+    return tagFound ? parseParametersFile(data) : null
+  }
+
+  /**
+   * T171 §6-§7 — résolution des paramètres de tests à l'ajout en campagne, sans écriture.
+   * Source : le tag `baselineRef` s'il est fourni (sans repli sur l'état courant), sinon l'état
+   * courant. Pour chaque référence du test (ordre T97) :
+   * - base lisible, paramètre présent avec une valeur → `resolved` ;
+   * - référence locale absente d'une base lisible → `manual` (saisie à la main, comme T97) ;
+   * - sinon → `unresolved` : `tag_not_found`, `missing` (cross-composant), `empty`,
+   *   `unknown_node` (nœud non visible depuis le repo du test).
+   * Le repo du test est déduit de son `objectTypeRef` (composant en repo séparé) ou, à défaut,
+   * celui de la campagne.
+   */
+  async previewForTests(
+    campaignRepo: string,
+    tests: TestCase[],
+    opts: { baselineRef?: string; workspaceDir?: string } = {},
+  ): Promise<ParamResolutionPreview[]> {
+    const ctx = await this.workspaceCtx(campaignRepo, opts.workspaceDir)
+    const tag = opts.baselineRef?.trim() || undefined
+    const bases = new Map<string, Promise<Map<string, Parameter> | null>>()
+    const baseOf = (repo: string) => {
+      let b = bases.get(repo)
+      if (!b) {
+        b = (tag ? this.readAtTag(repo, tag) : this.read(repo)).then(ps => ps && new Map(ps.map(x => [x.name, x])))
+        bases.set(repo, b)
+      }
+      return b
+    }
+
+    const out: ParamResolutionPreview[] = []
+    for (const tc of tests) {
+      const ownerRepo = (await this.schema.resolveComponentRepoPath(campaignRepo, tc.objectTypeRef, opts.workspaceDir)) ?? campaignRepo
+      const visible = await this.visibleComponents(ctx, ownerRepo)
+      const preview: ParamResolutionPreview = { testCaseId: tc.id, resolved: {}, manual: [], unresolved: [] }
+      if (tag) preview.sourceRef = tag
+      for (const key of extractTestParamRefs(tc)) {
+        const i = key.indexOf('::')
+        const local = i === -1
+        const repo = local ? ownerRepo : visible.get(key.slice(0, i))
+        if (!repo) { preview.unresolved.push({ ref: key, reason: 'unknown_node' }); continue }
+        const base = await baseOf(repo)
+        if (!base) { preview.unresolved.push({ ref: key, reason: 'tag_not_found' }); continue }
+        const param = base.get(local ? key : key.slice(i + 2))
+        if (!param) {
+          if (local) preview.manual.push(key)
+          else preview.unresolved.push({ ref: key, reason: 'missing' })
+          continue
+        }
+        const display = formatParamValue(param)
+        if (display === null) preview.unresolved.push({ ref: key, reason: 'empty' })
+        else preview.resolved[key] = display
+      }
+      out.push(preview)
+    }
+    return out
   }
 
   /** Bases de tous les repos du workspace (repo ouvert en premier). */
@@ -97,6 +152,7 @@ export class ParametersService {
         readonly: ctx.readonlyRepos.has(p),
         parameters,
         usageCounts: Object.fromEntries(parameters.map(x => [x.name, byName[x.name] ?? 0])),
+        components: Object.fromEntries(await this.visibleComponents(ctx, p)),
       }
       const label = ctx.labelByRepo.get(p) ?? (await this.readSchema(p))?.nodes?.find(n => n.name === 'root')?.label
       if (label) out.label = label
@@ -295,6 +351,20 @@ export class ParametersService {
       return null
     }
   }
+}
+
+/** Lecture tolérante de `parameters.yaml` : fichier absent / mal formé → base vide ; valeurs
+ *  converties en chaînes ; `unit`/`description` vides omis. */
+function parseParametersFile(file: Partial<ParametersFile> | null): Parameter[] {
+  const raw = file && typeof file.parameters === 'object' && file.parameters ? file.parameters : {}
+  return Object.keys(raw).sort().map((name) => {
+    const entry = (Object.prototype.hasOwnProperty.call(raw, name) && raw[name] && typeof raw[name] === 'object'
+      ? raw[name] : {}) as Partial<Omit<Parameter, 'name'>>
+    const p: Parameter = { name, value: entry.value == null ? '' : String(entry.value) }
+    if (entry.unit != null && String(entry.unit) !== '') p.unit = String(entry.unit)
+    if (entry.description != null && String(entry.description) !== '') p.description = String(entry.description)
+    return p
+  })
 }
 
 /** Dictionnaire sans prototype : un nom de paramètre valide peut être `constructor`,

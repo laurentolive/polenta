@@ -29,6 +29,9 @@ export interface RepoParameters {
   parameters: Parameter[]
   /** Nombre d'éléments (exigences + tests, tous repos) qui référencent chaque paramètre. */
   usageCounts: Record<string, number>
+  /** Composants visibles depuis ce repo (dépendances `polenta-repo.yaml` montées) : nom de
+   *  montage → repoPath. Cible des références `{<nœud>::nom}` écrites dans ce repo. */
+  components: Record<string, string>
 }
 
 /** Exigence ou test qui référence un paramètre (« Utilisé par »). */

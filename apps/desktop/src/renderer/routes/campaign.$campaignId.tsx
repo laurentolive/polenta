@@ -2,7 +2,7 @@
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Trash2, Play, Eye, Pencil, Copy } from 'lucide-react'
+import { Trash2, Play, Eye, Pencil, Copy, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 import { useProjectSchema, getCampaignTypeDef, getTestTypeDef } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -12,7 +12,10 @@ import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import { TestParamFields } from '../components/TestParamFields'
-import { extractTestParameters, isParamsComplete } from '../lib/testParams'
+import { isParamsComplete, manualKeysForRun } from '../lib/testParams'
+import { useParamPreview } from '../hooks/useParamPreview'
+import { decodeProjectId } from '../lib/projectId'
+import { UnresolvedParamsBanner } from '../components/UnresolvedParamsBanner'
 import { ExportButton } from '../components/export/ExportButton'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
@@ -63,6 +66,8 @@ function CampaignDetailPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { repoPath, projectId, component, level } = Route.useSearch()
+  // T171 — résolution des paramètres de la base (repos composants) à l'ajout.
+  const workspaceDir = projectId ? decodeProjectId(projectId) : ''
 
   const [addingTests, setAddingTests] = useState(false)
   const [selectedToAdd, setSelectedToAdd] = useState<Set<string>>(new Set())
@@ -103,6 +108,12 @@ function CampaignDetailPage() {
     enabled: !!repoPath,
   })
 
+  // T171 — références à saisir / lues dans la base / non résolues, pour chaque test approuvé
+  // candidat à l'ajout (ou à une nouvelle instance), lues à la source de la campagne.
+  const { previews: paramPreviews, isLoading: previewLoading } = useParamPreview(
+    repoPath, { campaignId }, tests.map(t => t.id), workspaceDir, !!repoPath && tests.length > 0,
+  )
+
   const closeMutation = useMutation({
     mutationFn: (status: 'completed' | 'abandoned') =>
       api.campaigns.close(repoPath, campaignId, status),
@@ -128,7 +139,7 @@ function CampaignDetailPage() {
 
   const addTestsMutation = useMutation({
     mutationFn: ({ ids, paramValues }: { ids: string[]; paramValues: Record<string, Record<string, string>> }) =>
-      api.campaigns.addTests(repoPath, campaignId, ids, paramValues),
+      api.campaigns.addTests(repoPath, campaignId, ids, paramValues, workspaceDir || undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
@@ -146,7 +157,7 @@ function CampaignDetailPage() {
 
   const duplicateTestMutation = useMutation({
     mutationFn: ({ testCaseId, paramValues }: { testCaseId: string; paramValues: Record<string, string> }) =>
-      api.campaigns.duplicateTest(repoPath, campaignId, testCaseId, paramValues),
+      api.campaigns.duplicateTest(repoPath, campaignId, testCaseId, paramValues, workspaceDir || undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
@@ -187,12 +198,15 @@ function CampaignDetailPage() {
   const isActive = campaign.status === 'planned' || campaign.status === 'in_progress'
 
   const includedIds = new Set(campaign.testCaseIds)
-  // Un test déjà présent reste proposé s'il a des paramètres — permet d'en ajouter une
-  // autre instance directement depuis ce panneau (pas seulement via "Dupliquer" sur une
-  // ligne existante). Un test sans paramètre reste limité à une seule inclusion.
+  // T171 — références à saisir par test, selon la résolution prévisionnelle (base à la source de
+  // la campagne). Seules elles comptent pour la complétude et pour la règle d'instance unique.
+  const manualKeysById = new Map(tests.map(t => [t.id, paramPreviews.get(t.id)?.manual ?? []]))
+  // Un test déjà présent reste proposé s'il a des paramètres **à saisir** — permet d'en ajouter
+  // une autre instance directement depuis ce panneau. Un test dont toutes les références sont
+  // résolues depuis la base se comporte comme un test sans paramètre : une seule inclusion.
   const availableTests = tests
     .filter(t => isTestApproved(t, schema))
-    .filter(t => !includedIds.has(t.id) || extractTestParameters(t).length > 0)
+    .filter(t => !includedIds.has(t.id) || (manualKeysById.get(t.id)?.length ?? 0) > 0)
   const filteredAvailable = testFilter.trim()
     ? availableTests.filter(t =>
         t.id.toLowerCase().includes(testFilter.toLowerCase()) ||
@@ -228,7 +242,7 @@ function CampaignDetailPage() {
 
   async function handleConfirmAdd() {
     if (selectedToAdd.size === 0) return
-    if (!isParamsComplete(selectedToAdd, testMap, addParamValues)) return
+    if (previewLoading || !isParamsComplete(selectedToAdd, manualKeysById, addParamValues)) return
 
     // Un id déjà présent dans la campagne (test paramétré re-sélectionné) devient une
     // nouvelle instance via duplicateTest() plutôt qu'addTests(), qui déduplique.
@@ -391,7 +405,11 @@ function CampaignDetailPage() {
           {!addingTests ? (
             <button
               type="button"
-              onClick={() => setAddingTests(true)}
+              onClick={() => {
+                // T171 — prévisualisation relue à l'ouverture (base ou tests modifiés entre-temps).
+                qc.invalidateQueries({ queryKey: ['campaign-param-preview'] })
+                setAddingTests(true)
+              }}
               className="text-xs text-status-info hover:opacity-80 border border-status-info-border rounded px-3 py-1.5"
             >
               + {t('campaignPage.addTests')}
@@ -413,7 +431,7 @@ function CampaignDetailPage() {
                   <button
                     type="button"
                     onClick={handleConfirmAdd}
-                    disabled={selectedToAdd.size === 0 || isConfirmingAdd || !isParamsComplete(selectedToAdd, testMap, addParamValues)}
+                    disabled={selectedToAdd.size === 0 || isConfirmingAdd || previewLoading || !isParamsComplete(selectedToAdd, manualKeysById, addParamValues)}
                     className="btn-primary-sm"
                   >
                     {isConfirmingAdd ? t('campaignPage.adding') : t('campaignPage.addCount', { count: selectedToAdd.size })}
@@ -456,7 +474,9 @@ function CampaignDetailPage() {
                           </label>
                           {selectedToAdd.has(availableTest.id) && (
                             <TestParamFields
-                              testCase={availableTest}
+                              labels={paramPreviews.get(availableTest.id)?.manual ?? []}
+                              resolved={paramPreviews.get(availableTest.id)?.resolved}
+                              unresolved={paramPreviews.get(availableTest.id)?.unresolved}
                               values={addParamValues[availableTest.id] ?? {}}
                               onChange={(label, value) => setAddParamValues(prev => ({
                                 ...prev,
@@ -476,6 +496,9 @@ function CampaignDetailPage() {
         </div>
       )}
 
+      {/* T171 — notification persistante : instances avec des références non résolues. */}
+      <UnresolvedParamsBanner runs={campaign.runs} />
+
       {/* Test case list */}
       <div className="border rounded divide-y mb-3">
         {campaign.runs.length === 0 ? (
@@ -484,14 +507,17 @@ function CampaignDetailPage() {
           campaign.runs.map(run => {
             const { entryId, testCaseId: tcId, status: runStatus, runId, paramValues } = run
             const tc = resolveRunTest(run, testMap)
-            const hasParams = tc ? extractTestParameters(tc).length > 0 : false
+            // Références à saisir de cette instance (les valeurs lues dans la base sont figées).
+            const runManualKeys = tc ? manualKeysForRun(run, tc) : []
+            const hasParams = runManualKeys.length > 0
             // État live du test, distinct de `tc` : "Dupliquer" crée une nouvelle instance dont
             // le snapshot sera pris sur l'état *actuel* du test (`duplicateTest()`), pas sur le
             // snapshot figé de l'entrée cliquée — l'icône et le panneau de saisie des paramètres
             // doivent donc refléter les paramètres live, sous peine de proposer des champs qui ne
             // correspondent plus au `{label}` réellement figé dans la nouvelle instance.
             const liveTc = testMap.get(tcId)
-            const hasLiveParams = liveTc ? extractTestParameters(liveTc).length > 0 : false
+            const liveManualKeys = paramPreviews.get(tcId)?.manual ?? []
+            const hasLiveParams = liveManualKeys.length > 0
             const isEditingParams = editingParamsFor === entryId
             const isDuplicating = duplicatingFor === entryId
             return (
@@ -504,6 +530,14 @@ function CampaignDetailPage() {
                     <span className="font-mono text-xs text-ink-3">{tcId}</span>
                     {tc && (
                       <span className="text-xs text-ink ml-2 truncate">{tc.title}</span>
+                    )}
+                    {(run.unresolvedParams?.length ?? 0) > 0 && (
+                      <span
+                        className="ml-2 inline-flex items-center gap-0.5 text-[10px] text-status-warning"
+                        title={run.unresolvedParams!.map(u => `{${u.ref}} — ${t(`campaignParams.reason.${u.reason}`)}`).join('\n')}
+                      >
+                        <AlertTriangle size={11} />{t('campaignParams.unresolvedCount', { count: run.unresolvedParams!.length })}
+                      </span>
                     )}
                     {paramValues && Object.keys(paramValues).length > 0 && (
                       <span className="block text-[10px] font-mono text-ink-3 truncate">
@@ -572,7 +606,7 @@ function CampaignDetailPage() {
                 {isEditingParams && tc && (
                   <div className="px-3 pb-2">
                     <TestParamFields
-                      testCase={tc}
+                      labels={runManualKeys}
                       values={editParamValues}
                       onChange={(label, value) => setEditParamValues(prev => ({ ...prev, [label]: value }))}
                     />
@@ -587,7 +621,7 @@ function CampaignDetailPage() {
                       <button
                         type="button"
                         onClick={() => updateParamsMutation.mutate({ entryId, paramValues: editParamValues })}
-                        disabled={updateParamsMutation.isPending || extractTestParameters(tc).some(label => !editParamValues[label]?.trim())}
+                        disabled={updateParamsMutation.isPending || runManualKeys.some(label => !editParamValues[label]?.trim())}
                         className="btn-primary-sm"
                       >
                         {updateParamsMutation.isPending ? t('campaignPage.saving') : t('common.save')}
@@ -599,7 +633,9 @@ function CampaignDetailPage() {
                   <div className="px-3 pb-2">
                     <p className="pl-6 text-[11px] text-ink-3 mb-1">{t('campaignPage.newInstanceOf', { tcId })}</p>
                     <TestParamFields
-                      testCase={liveTc}
+                      labels={liveManualKeys}
+                      resolved={paramPreviews.get(tcId)?.resolved}
+                      unresolved={paramPreviews.get(tcId)?.unresolved}
                       values={duplicateParamValues}
                       onChange={(label, value) => setDuplicateParamValues(prev => ({ ...prev, [label]: value }))}
                     />
@@ -614,7 +650,7 @@ function CampaignDetailPage() {
                       <button
                         type="button"
                         onClick={() => duplicateTestMutation.mutate({ testCaseId: tcId, paramValues: duplicateParamValues })}
-                        disabled={duplicateTestMutation.isPending || extractTestParameters(liveTc).some(label => !duplicateParamValues[label]?.trim())}
+                        disabled={duplicateTestMutation.isPending || liveManualKeys.some(label => !duplicateParamValues[label]?.trim())}
                         className="btn-primary-sm"
                       >
                         {duplicateTestMutation.isPending ? t('campaignPage.adding') : t('campaignPage.duplicate')}

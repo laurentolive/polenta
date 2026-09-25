@@ -57,7 +57,10 @@ export async function createContainer(): Promise<void> {
   const tests = new TestsService(git, testsIndex, schema, tree, revalidation)
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const reviews = new ReviewsService(git)
-  const campaigns = new CampaignsService(git, tests)
+  // T171 — base de paramètres ; marque les éléments approuvés impactés via T172, et résout les
+  // paramètres des tests à l'ajout en campagne.
+  const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
+  const campaigns = new CampaignsService(git, tests, parameters)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   const baseline = new BaselineService()
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)
@@ -68,8 +71,6 @@ export async function createContainer(): Promise<void> {
   const savedQueries = new SavedQueriesService(git, schema, dashboards)
   const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
   const exportSvc = new ExportService()
-  // T171 — base de paramètres ; marque les éléments approuvés impactés via T172.
-  const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
   registerIpcHandlers({
     auth,

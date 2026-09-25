@@ -4,6 +4,9 @@ import { api } from '../api'
 import { escapeXml } from './drawioRender'
 import { parseDrawioFencePayload } from '../tiptap/mediaAttrs'
 import { renderStaticDrawio } from './staticDrawio'
+import { markdownParamRefs, type ParamRefsEnv } from './markdownParamRefs'
+import { useParamRefs } from '../contexts/ParamRefContext'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Read-only counterpart to RichTextField/RichTextViewer, for lists that render many objects at
@@ -89,6 +92,7 @@ function getMarkdownIt(): MarkdownIt {
 
     return defaultFence ? defaultFence(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options)
   }
+  markdownParamRefs(md)
   sharedMd = md
   return md
 }
@@ -191,7 +195,17 @@ export function StaticRichTextViewer({
    *  titres ramenés au corps du texte, marges verticales quasi nulles). */
   variant?: 'default' | 'compact'
 }) {
-  const html = useMemo(() => (value ? getMarkdownIt().render(value) : ''), [value])
+  // T171 — références de paramètres : résolues via le ParamRefProvider englobant, s'il existe.
+  const paramRefs = useParamRefs()
+  const { t } = useTranslation()
+  const unresolvedLabel = t('parameters.unresolved')
+  const html = useMemo(() => {
+    if (!value) return ''
+    const env: ParamRefsEnv = { paramRefs, unresolvedLabel }
+    return getMarkdownIt().render(value, env)
+    // `paramRefs.version` : les bases ont changé → re-rendu des valeurs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, paramRefs?.version, unresolvedLabel])
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Repo-relative image paths (T76) can't be resolved by the browser directly (not a web URL) —
@@ -257,5 +271,24 @@ export function StaticRichTextViewer({
   }, [html, highlightRegex])
 
   if (!value) return null
-  return <div ref={containerRef} className={variant === 'compact' ? VIEWER_CLASS_COMPACT : VIEWER_CLASS} dangerouslySetInnerHTML={{ __html: html }} />
+  return (
+    <div
+      ref={containerRef}
+      className={variant === 'compact' ? VIEWER_CLASS_COMPACT : VIEWER_CLASS}
+      dangerouslySetInnerHTML={{ __html: html }}
+      // Comme un lien : un clic simple sur une référence ne remonte pas (la cellule / le champ
+      // passerait en édition avant que le double-clic n'arrive).
+      onClick={paramRefs ? e => {
+        if ((e.target as HTMLElement).closest('[data-param-ref]')) e.stopPropagation()
+      } : undefined}
+      onDoubleClick={paramRefs ? e => {
+        // T171 — double-clic sur une référence : édition (ou création) du paramètre.
+        const el = (e.target as HTMLElement).closest<HTMLElement>('[data-param-ref]')
+        if (!el?.dataset.paramRef) return
+        e.preventDefault()
+        e.stopPropagation()
+        paramRefs.openParameter(el.dataset.paramRef)
+      } : undefined}
+    />
+  )
 }

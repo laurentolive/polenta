@@ -12,9 +12,12 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { SearchResultsDoc } from '../components/search/SearchResultsDoc'
 import { SearchEditPane } from '../components/search/SearchEditPane'
+import { ParamRefProvider } from '../contexts/ParamRefContext'
+import { decodeProjectId } from '../lib/projectId'
 import { useOptionalSearch } from '../contexts/SearchContext'
 import type { SearchResult } from '../lib/searchQuery'
 
@@ -50,9 +53,16 @@ function SearchPage() {
     editing, openEditor, closeEditor,
   } = search
 
+  // T171 — références de paramètres résolues dans la liste comme dans l'édition.
+  const withParams = (node: ReactNode) => (
+    <ParamRefProvider repoPath={repoPath} workspaceDir={projectId ? decodeProjectId(projectId) : ''} projectId={projectId}>
+      {node}
+    </ParamRefProvider>
+  )
+
   // Édition inline d'un résultat (exigence / test) — prioritaire sur la liste.
   if (editing) {
-    return <SearchEditPane editing={editing} repoPath={repoPath} projectId={projectId} onBack={closeEditor} />
+    return withParams(<SearchEditPane editing={editing} repoPath={repoPath} projectId={projectId} onBack={closeEditor} />)
   }
 
   if (!regex) return emptyState(t('search.page.hint'))
@@ -73,7 +83,7 @@ function SearchPage() {
     openEditor(result)
   }
 
-  return (
+  return withParams(
     <div className="flex flex-col h-full overflow-hidden">
       <ViewHeader currentProjectId={projectId} title={t('sidebar.search.title')} />
       <SearchResultsDoc

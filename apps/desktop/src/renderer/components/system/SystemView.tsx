@@ -27,11 +27,13 @@ import { EditView, type EditViewHandle } from './EditView'
 import { api } from '../../api'
 import type { FieldVisibilityPref } from '@polenta/api-client'
 import { RichTextProvider } from '../../contexts/RichTextContext'
+import { ParamRefProvider, useParamResolver } from '../../contexts/ParamRefContext'
+import { decodeProjectId } from '../../lib/projectId'
 import { RichTextToolbar } from './RichTextToolbar'
 import { ViewHeader } from '../layout/ViewHeader'
 import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
-import { buildExportRows } from '../../lib/exportColumns'
+import { buildExportRows, substituteExportParams } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
 import { flattenSystemNodes } from '@polenta/types'
@@ -330,6 +332,9 @@ export function SystemView() {
     gotoSeq,
     clearGoto,
   } = useSystemView()
+
+  // T171 — résolution des paramètres pour les exports (le ParamRefProvider est monté plus bas).
+  const paramResolver = useParamResolver(repoPath, currentProjectId ? decodeProjectId(currentProjectId) : '')
 
   // T135 — `candidateObjects` (dropdown "ajouter un lien") ne se reconstruit que si ces deux
   // requêtes sont invalidées : sans ça, un titre modifié après le chargement initial (y compris
@@ -1143,6 +1148,7 @@ export function SystemView() {
     .join(' / ')
 
   return (
+    <ParamRefProvider repoPath={repoPath} workspaceDir={currentProjectId ? decodeProjectId(currentProjectId) : ''} projectId={currentProjectId ?? ''}>
     <RichTextProvider>
     <div className="flex flex-col h-full overflow-hidden">
       <ViewHeader
@@ -1204,7 +1210,8 @@ export function SystemView() {
                     format === 'docx' ? visibleFieldsWord : visibleFieldsExcel,
                     root, objects, sectionNumbers, stepsByObjectId, effectiveType, filter,
                   )
-                  return { componentLabel: effectiveNode?.label || effectiveNodeId, columns, rows }
+                  // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
+                  return { componentLabel: effectiveNode?.label || effectiveNodeId, columns, rows: substituteExportParams(rows, effectiveType, paramResolver.substitute) }
                 }}
                 getPrintParams={() => ({
                   repoPath,
@@ -1212,6 +1219,7 @@ export function SystemView() {
                   filter,
                   objectTypeRef: `${effectiveNodeId}::${effectiveTypeId}`,
                   componentLabel: effectiveNode?.label || effectiveNodeId,
+                  workspaceDir: currentProjectId ? decodeProjectId(currentProjectId) : '',
                 })}
               />
             )}
@@ -1229,7 +1237,8 @@ export function SystemView() {
                     format === 'docx' ? visibleFieldsWord : visibleFieldsExcel,
                     root, objects, sectionNumbers, stepsByObjectId, effectiveType, filter,
                   )
-                  return { componentLabel: effectiveNode?.label || effectiveNodeId, columns, rows }
+                  // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
+                  return { componentLabel: effectiveNode?.label || effectiveNodeId, columns, rows: substituteExportParams(rows, effectiveType, paramResolver.substitute) }
                 }}
                 getPrintParams={() => ({
                   repoPath,
@@ -1237,6 +1246,7 @@ export function SystemView() {
                   filter,
                   objectTypeRef: `${effectiveNodeId}::${effectiveTypeId}`,
                   componentLabel: effectiveNode?.label || effectiveNodeId,
+                  workspaceDir: currentProjectId ? decodeProjectId(currentProjectId) : '',
                 })}
               />
             )}
@@ -1439,5 +1449,6 @@ export function SystemView() {
       </div>
     </div>
     </RichTextProvider>
+    </ParamRefProvider>
   )
 }

@@ -18,8 +18,8 @@ interface Props {
   initialName?: string
   readOnly: boolean
   onClose: () => void
-  /** Appelé après écriture, avec les éléments marqués `needsRevalidation`. */
-  onSaved?: (marked: number) => void
+  /** Appelé après écriture : nombre d'éléments marqués `needsRevalidation`, nom du paramètre. */
+  onSaved?: (marked: number, name: string) => void
 }
 
 type Pending = { kind: 'save' } | { kind: 'delete' } | null
@@ -58,6 +58,7 @@ export function ParameterEditDialog({ repoPath, workspaceDir, projectId, paramet
   const invalidate = (marked: number) => {
     qc.invalidateQueries({ queryKey: ['parameters'] })
     qc.invalidateQueries({ queryKey: ['parameter-usages'] })
+    qc.invalidateQueries({ queryKey: ['campaign-param-preview'] })
     if (marked > 0) {
       // Mêmes préfixes que l'invalidation T172 de SystemView : les éléments marqués peuvent être
       // de n'importe quel type/nœud.
@@ -78,7 +79,7 @@ export function ParameterEditDialog({ repoPath, workspaceDir, projectId, paramet
     },
     onSuccess: (res) => {
       invalidate(res.marked.length)
-      onSaved?.(res.marked.length)
+      onSaved?.(res.marked.length, isCreate ? name : parameter!.name)
       onClose()
     },
     onError: (err) => { setPending(null); setError(err instanceof Error ? err.message : String(err)) },

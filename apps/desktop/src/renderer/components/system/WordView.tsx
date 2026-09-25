@@ -9,6 +9,7 @@ import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions }
 import { matchesRefs, filterCandidatesByRefs, getRelevantLinkTypes, getPeerId, isLinkTypeValid } from './linkUtils'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
+import { ParamRefText } from '../parameters/ParamRefText'
 import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
@@ -270,6 +271,7 @@ function InlineField({
   fieldDef,
   onEdit,
   onMultiEnumEdit,
+  paramRefs = false,
 }: {
   label: string
   value: string
@@ -279,6 +281,8 @@ function InlineField({
   fieldDef?: SchemaField
   onEdit?: (objectId: string, field: string, value: string) => void
   onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
+  /** T171 — l'élément est une exigence : ses champs text/textarea portent des références. */
+  paramRefs?: boolean
 }) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
@@ -292,7 +296,9 @@ function InlineField({
         {isSystem && <span className="text-ink-3/50">(sys)</span>}
       </span>
       {isSystem || !onEdit ? (
-        <span className={`text-xs ${isSystem ? 'text-ink-2' : 'text-ink'}`}>{value || '—'}</span>
+        <span className={`text-xs ${isSystem ? 'text-ink-2' : 'text-ink'}`}>
+          {value ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : value) : '—'}
+        </span>
       ) : editing ? (
         fieldDef?.type === 'enum' ? (
           <select
@@ -335,11 +341,18 @@ function InlineField({
           }}
           title={t('system.shared.clickToEdit')}
         >
-          {value || <span className="text-ink-3 italic">—</span>}
+          {value
+            ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : value)
+            : <span className="text-ink-3 italic">—</span>}
         </span>
       )}
     </div>
   )
+}
+
+/** T171 §3 — champs texte non riches où une référence de paramètre est reconnue. */
+function isParamField(fieldDef: SchemaField | undefined, isSystem: boolean): boolean {
+  return !isSystem && (fieldDef?.type === 'text' || fieldDef?.type === 'textarea')
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -555,6 +568,7 @@ function ItemCard({
               fieldDef={fieldDef}
               onEdit={editInline}
               onMultiEnumEdit={editMultiEnum}
+              paramRefs={typeDef?.category === 'requirement'}
             />
           )
         })}

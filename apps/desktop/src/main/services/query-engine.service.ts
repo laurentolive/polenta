@@ -144,6 +144,7 @@ function flattenRequirement(r: Requirement, component: string, derived: FlatRow)
     title: r.title,
     status: r.status,
     version: r.version,
+    needsRevalidation: !!r.needsRevalidation,
     createdAt: r.createdAt,
     createdBy: r.createdBy,
     updatedAt: r.updatedAt,
@@ -160,6 +161,7 @@ function flattenTestCase(tc: TestCase, component: string, latestRun: TestRun | u
     objectTypeRef: tc.objectTypeRef,
     title: tc.title,
     status: tc.status,
+    needsRevalidation: !!tc.needsRevalidation,
     createdAt: tc.createdAt,
     createdBy: tc.createdBy,
     updatedAt: tc.updatedAt,
@@ -192,7 +194,6 @@ function flattenLink(l: ObjectLink, component: string): FlatRow {
     type: l.type,
     sourceId: l.sourceId,
     targetId: l.targetId,
-    needsRevalidation: l.needsRevalidation,
     coverageType: l.coverageType ?? null,
     createdAt: l.createdAt,
     createdBy: l.createdBy,
@@ -261,7 +262,7 @@ export class QueryEngineService {
     const repos = await this.resolveRepos(repoPath, workspaceDir)
     const perRepo = await Promise.all(repos.map(({ repoPath: rp, component }) => this.fetchRepoRaw(rp, component)))
 
-    // Coverage and needsRevalidation (T77 sprint 3 derived columns) must be computed
+    // Coverage (T77 sprint 3 derived column) must be computed
     // over the FULL cross-component link graph, not per repo in isolation: a
     // verification link relevant to a requirement in one component's repo can be
     // stored in — or reference a test case living in — a different component's repo
@@ -282,7 +283,6 @@ export class QueryEngineService {
     // Reuses TraceabilityService's own T63-fixed aggregation (see its doc comment) —
     // no re-derivation of the test↔requirement link matching here.
     const coverage = this.traceability.computeCoverage(allRequirements, allLinks, tcMap, latestRunMap)
-    const revalidationReqIds = this.traceability.computeRevalidationReqIds(allLinks)
 
     // Schema resolution stays PER REPO (unlike coverage above): a requirement's
     // `objectTypeRef` is only meaningful against its OWN component's local
@@ -305,7 +305,7 @@ export class QueryEngineService {
         const location = resolveLocation(r.objectTypeRef)
         const typeDef = location && location !== 'unresolvable' ? location.typeDef : null
         const rowComponent = rowComponentFor(location, component)
-        const maturity = computeMaturity(r, typeDef, coverageStatus, revalidationReqIds.has(r.id))
+        const maturity = computeMaturity(r, typeDef, coverageStatus, !!r.needsRevalidation)
         return flattenRequirement(r, rowComponent, { coverageStatus, ...maturity })
       })
     })

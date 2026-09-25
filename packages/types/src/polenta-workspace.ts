@@ -99,7 +99,7 @@ export type WorkspaceOpenResult =
  * Status of a compliance cell.
  * - covered   : a link exists between the component and the requirement
  * - missing   : no link exists (but the requirement is applicable based on roles)
- * - validated : link exists AND the link has been validated (no needsRevalidation)
+ * - validated : link exists AND neither end is flagged needsRevalidation (T172)
  * - na        : requirement role does not apply to this component
  */
 export type ComplianceCellStatus = 'covered' | 'missing' | 'validated' | 'na'

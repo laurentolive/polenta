@@ -382,7 +382,7 @@ PATCH /projects/:id/components/comp-bms
 **Processus :**
 1. Calcul des changements entre `v2.1` et `v3.0` dans le composant
 2. Analyse d'impact : quelles exigences du projet parent ont des liens vers des exigences modifiées du composant ?
-3. Ces liens sont marqués `needsRevalidation`
+3. Les éléments liés sont marqués `needsRevalidation` (T172 : flag porté par les éléments, SPEC-REQ §5.3)
 4. Un résumé est affiché avant confirmation
 
 ```
@@ -429,7 +429,7 @@ Avant de créer une baseline, Polenta vérifie et affiche :
 |-----------|-------------|
 | Des exigences en brouillon sur `main` | ⚠ Avertissement (bloquant si configuré) |
 | Des exigences approuvées sans test lié | ⚠ Avertissement |
-| Des liens `needsRevalidation` | ⚠ Avertissement |
+| Des éléments marqués `needsRevalidation` (T172) | ⚠ Avertissement |
 | Des campagnes de test en cours | ℹ Information |
 | Taux de couverture < seuil configuré | ⚠ Avertissement (ex. < 80%) |
 

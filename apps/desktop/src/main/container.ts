@@ -6,6 +6,7 @@ import { RequirementsIndexService } from './services/requirements-index.service'
 import { TestsIndexService } from './services/tests-index.service'
 import { RequirementsService } from './services/requirements.service'
 import { TestsService } from './services/tests.service'
+import { RevalidationService } from './services/revalidation.service'
 import { TraceabilityService } from './services/traceability.service'
 import { ReviewsService } from './services/reviews.service'
 import { RepoWatcherService } from './services/repo-watcher.service'
@@ -49,8 +50,10 @@ export async function createContainer(): Promise<void> {
   })
   const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)
   const tree = new TreeService()
-  const requirements = new RequirementsService(git, reqIndex, schema, tree)
-  const tests = new TestsService(git, testsIndex, schema, tree)
+  // T172 — marquage needsRevalidation des éléments liés quand un élément quitte l'approbation.
+  const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree)
+  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation)
+  const tests = new TestsService(git, testsIndex, schema, tree, revalidation)
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const reviews = new ReviewsService(git)
   const campaigns = new CampaignsService(git, tests)

@@ -2283,9 +2283,10 @@ pas de traversée `components/<nom>/` particulière à gérer ici. Un composant 
 
 Pas de `submodules:*`. Les channels pertinents sont `workspace:get-tree`, `workspace:rebuild-tree`,
 `workspace:set-mount-override`, `workspace:remove-repo-dir`, `workspace:rename-repo-dir`,
-`polenta-repo:get`, `polenta-repo:save`, plus `interface:compliance-matrix` / `interface:coverage` /
-`interface:needs-revalidation` (matrice de conformité par rôle, T123 — voir
-`InterfaceComplianceService`).
+`polenta-repo:get`, `polenta-repo:save`, plus `interface:compliance-matrix` / `interface:coverage`
+(matrice de conformité par rôle, T123 — voir `InterfaceComplianceService`).
+`interface:needs-revalidation` a été supprimé par T172 (jamais appelé ; le flag est désormais
+porté par les éléments, SPEC-REQ §5.3).
 
 ---
 

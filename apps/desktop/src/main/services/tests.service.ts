@@ -1,10 +1,11 @@
 import { randomUUID } from 'crypto'
-import type { ProjectSchema, TestCase, TestRun } from '@polenta/types'
+import type { ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
 import type { TreeService } from './tree.service'
+import { RevalidationService } from './revalidation.service'
 import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
@@ -16,6 +17,7 @@ export class TestsService {
     private readonly testsIndex: TestsIndexService,
     private readonly schema: SchemaService,
     private readonly tree?: TreeService,
+    private readonly revalidation?: RevalidationService,
   ) {}
 
   findAll(repoPath: string): Promise<TestCase[]> {
@@ -71,7 +73,7 @@ export class TestsService {
   // T159 — cf. RequirementsService : sérialise les read-modify-write concurrents sur le
   // fichier du cas de test.
   async update(repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
-    return withKeyLock(`${repoPath}::tests/${id}`, async () => {
+    const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
 
@@ -93,12 +95,18 @@ export class TestsService {
 
       await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
       this.testsIndex.upsertTestCase(repoPath, updated)
-      return updated
+      // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
+      const leftApproval = !!dto.status && RevalidationService.leavesApproval(
+        await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, dto.status)
+      return { updated, leftApproval }
     })
+    // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).
+    if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
+    return updated
   }
 
   async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string): Promise<TestCase> {
-    return withKeyLock(`${repoPath}::tests/${id}`, async () => {
+    const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
 
@@ -111,8 +119,20 @@ export class TestsService {
 
       await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
       this.testsIndex.upsertTestCase(repoPath, updated)
-      return updated
+      const leftApproval = RevalidationService.leavesApproval(
+        await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, targetStatus)
+      return { updated, leftApproval }
     })
+    // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).
+    if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
+    return updated
+  }
+
+  /** Définition du type de l'objet dans le schéma du repo ouvert (null si non résolvable). */
+  private async readTypeDef(repoPath: string, objectTypeRef: string): Promise<ObjectTypeDefinition | null> {
+    const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
+    const resolved = schema ? findObjectTypeDef(schema, objectTypeRef) : null
+    return resolved && resolved !== 'unresolvable' ? resolved : null
   }
 
   async execute(repoPath: string, testCaseId: string, dto: ExecuteTestCaseDto, workspaceDir?: string): Promise<TestRun> {

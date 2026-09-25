@@ -535,8 +535,6 @@ export interface ApiClient {
     complianceMatrix(workspaceDir: string): Promise<ComplianceMatrix[]>
     /** Check component coverage for a specific component × interface pair. */
     coverage(componentRepoPath: string, interfaceRepoPath: string, roles: string[]): Promise<CoverageResult>
-    /** Compute which links need revalidation after an interface requirement change. */
-    needsRevalidation(interfaceReqId: string, reqRoles: string[], workspaceDir: string): Promise<{ componentRepoPath: string; linkId: string }[]>
   }
   /** Export cahiers/rapports/dashboard en Word/Excel/PDF (T43) — un seul canal générique plutôt
    *  qu'un handler ad hoc par type de contenu, cf. specs/T43-design.md. */

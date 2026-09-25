@@ -120,8 +120,8 @@ etc.).
 - \`tree.yaml\` (et \`.polenta/tree.cache.yaml\`) sont **générés** — ne jamais les éditer
   à la main.
 - Un ID n'est **jamais réutilisé**, même si l'objet passe en statut terminal/obsolète.
-- Un lien marqué \`needsRevalidation: true\` signale un impact à traiter — ne pas le
-  laisser sans suite après une modification qui le justifierait.
+- Une exigence ou un test marqué \`needsRevalidation: true\` signale un impact à vérifier
+  (un élément lié a quitté l'approbation) — ne pas lever ce flag sans analyse d'impact.
 - Le \`prefix\` de chaque type d'objet est unique sur l'ensemble du projet.
 
 ## System engineering assisté par IA — les 4 usages visés

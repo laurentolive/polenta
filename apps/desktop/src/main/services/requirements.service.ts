@@ -1,10 +1,11 @@
 import { randomUUID } from 'crypto'
-import type { ProjectSchema, Requirement } from '@polenta/types'
+import type { ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
 import type { CreateRequirementDto, UpdateRequirementDto, TransitionRequirementDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService, RequirementFilters } from './requirements-index.service'
 import type { SchemaService } from './schema.service'
 import type { TreeService } from './tree.service'
+import { RevalidationService } from './revalidation.service'
 import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
@@ -16,6 +17,7 @@ export class RequirementsService {
     private readonly index: RequirementsIndexService,
     private readonly schema: SchemaService,
     private readonly tree?: TreeService,
+    private readonly revalidation?: RevalidationService,
   ) {}
 
   findAll(repoPath: string, filters: RequirementFilters): Promise<Requirement[]> {
@@ -109,11 +111,12 @@ export class RequirementsService {
   }
 
   async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string): Promise<Requirement> {
-    return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+    const { updated, leftApproval } = await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
       const existing = await this.index.findById(repoPath, id)
       if (!existing) throw new Error(`Requirement ${id} not found`)
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+      const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
       const updated: Requirement = {
         ...existing,
         status: targetStatus,
@@ -122,12 +125,15 @@ export class RequirementsService {
 
       await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
       this.index.upsert(repoPath, updated)
-      return updated
+      return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, targetStatus) }
     })
+    // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
+    if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
+    return updated
   }
 
   async transition(repoPath: string, id: string, dto: TransitionRequirementDto, workspaceDir?: string): Promise<Requirement> {
-    return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+    const { updated, leftApproval } = await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
       const existing = await this.index.findById(repoPath, id)
       if (!existing) throw new Error(`Requirement ${id} not found`)
 
@@ -137,11 +143,8 @@ export class RequirementsService {
       // colonne Statut de la vue Excel, qui appelle transition() plutôt que openDraft())
       // doit voir sa version incrémentée au même titre que le bouton dédié "Reopen draft"
       // (T150) — sinon la traçabilité de version diverge selon le chemin UI emprunté.
-      const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
-      const resolved = schema ? findObjectTypeDef(schema, existing.objectTypeRef) : null
-      const wasApproved = resolved && resolved !== 'unresolvable'
-        ? !!resolved.statuses?.find(s => s.name === existing.status)?.isApproval
-        : false
+      const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
+      const wasApproved = !!typeDef?.statuses?.find(s => s.name === existing.status)?.isApproval
 
       const updated: Requirement = {
         ...existing,
@@ -151,8 +154,18 @@ export class RequirementsService {
 
       await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
       this.index.upsert(repoPath, updated)
-      return updated
+      return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, dto.toStatus) }
     })
+    // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
+    if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
+    return updated
+  }
+
+  /** Définition du type de l'objet dans le schéma du repo ouvert (null si non résolvable). */
+  private async readTypeDef(repoPath: string, objectTypeRef: string): Promise<ObjectTypeDefinition | null> {
+    const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
+    const resolved = schema ? findObjectTypeDef(schema, objectTypeRef) : null
+    return resolved && resolved !== 'unresolvable' ? resolved : null
   }
 
   /**

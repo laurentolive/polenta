@@ -224,7 +224,7 @@ jiraLinks: []
 Un cas de test suit le même principe (`tests/<ID>.yaml`), avec en plus `preconditions`,
 `equipment`, `steps: [{order, action, expectedResult, notes}]`, `postconditions`.
 
-**Champs système fixes** (non configurables) : `id`, `projectId`, `branchId`, `objectTypeRef`, `title`, `status`, `version`, `jiraLinks`
+**Champs système fixes** (non configurables) : `id`, `projectId`, `branchId`, `objectTypeRef`, `title`, `status`, `version`, `jiraLinks`, `needsRevalidation` (T172 — écrit uniquement quand vrai : un élément lié a quitté l'approbation, impact à vérifier ; posé par l'application, jamais à la main)
 **Champs personnalisés** : tout dans `fields: {}`, définis par le type dans `schema.yaml`
 **Liens entre objets** : via `ObjectLink`, dans un fichier séparé `links/links.yaml` (pas dans le fichier de l'exigence) — voir §"Sens d'un lien de couverture test ↔ exigence" plus haut
 **Champs dérivés** (non stockés dans le YAML, lus depuis `git log` du fichier) : `createdAt`, `createdBy`, `updatedAt`, `updatedBy`
@@ -265,7 +265,7 @@ THEN THE <système> SHALL <action>
 3. Toute exigence `approved` a au moins un lien vers un cas de test
 4. Le champ `objectTypeRef` référence un type existant dans `schema.yaml`
 5. Les exigences à caractère sécurité ont `priority: high` dans leurs champs
-6. Pas de liens `needsRevalidation: true` laissés sans traitement
+6. Pas d'élément `needsRevalidation: true` laissé sans analyse d'impact (le flag est porté par les exigences/tests, plus par les liens — T172)
 7. **Dans un repo composant** : `schema.yaml` ne déclare pas de `url` sur ses propres nœuds — un composant est autonome
 8. **Dans un repo produit** : les `objectTypeRef` cross-composant utilisent le nom du nœud submodule (ex: `motor-control::exigence-fw`)
 9. `.polenta/trees/<nœud>/<type>.yaml` est maintenu par l'application — ne jamais l'éditer à la main en dehors d'un projet d'exemple/fixture

@@ -9,6 +9,7 @@ import { matchesRefs, filterCandidatesByRefs, getPeerId, isLinkTypeValid } from 
 import { RichTextField } from '../RichTextField'
 import { MultiEnumCheckboxes } from '../MultiEnumCheckboxes'
 import { CoverageBadge } from './CoverageBadge'
+import { RevalidationFlag } from './RevalidationFlag'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -232,6 +233,7 @@ function FieldRow({
   onEdit,
   repoPath,
   interfaceRoles,
+  labelAdornment,
 }: {
   field: SchemaField
   label: string
@@ -242,6 +244,8 @@ function FieldRow({
   onEdit?: (v: string) => void
   repoPath?: string
   interfaceRoles?: string[]
+  /** T172 — contenu affiché après le libellé (ex. ⚠ « Impact à vérifier » du statut). */
+  labelAdornment?: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -249,6 +253,7 @@ function FieldRow({
         {label}
         {system && <span className="text-ink-3 font-normal">(sys)</span>}
         {field.required && !system && <span className="text-status-danger">*</span>}
+        {labelAdornment}
       </label>
       <FieldControl field={field} value={value} onBlur={onBlur} onChange={onChange} onEdit={onEdit} readOnly={system} repoPath={repoPath} interfaceRoles={interfaceRoles} />
     </div>
@@ -690,6 +695,8 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                   onEdit={() => { if (!sys && !readOnly) scheduleAutosave() }}
                   repoPath={repoPath}
                   interfaceRoles={f.name === 'roles' ? interfaceRoles : undefined}
+                  labelAdornment={f.name === 'status'
+                    ? <RevalidationFlag show={objectData?.needsRevalidation === 'true'} /> : undefined}
                 />
               )
               if (compact && nextCompact) {

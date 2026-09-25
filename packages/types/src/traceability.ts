@@ -12,7 +12,7 @@ export type CoverageStatus =
   | 'validated'          // au moins un test lié, ET tous les tests liés (hors fail/blocked/
                           // needs_revalidation) ont au moins une exécution PASS
   | 'failing'            // dernière exécution FAIL ou BLOCKED
-  | 'needs_revalidation' // au moins un lien avec needsRevalidation = true
+  | 'needs_revalidation' // l'exigence ou un de ses tests liés est marqué needsRevalidation (T172)
 
 export type CellStatus =
   | 'not_run'
@@ -44,14 +44,12 @@ export interface TraceabilityMatrix {
 
 // ─── Missing links ─────────────────────────────────────────────────────────────
 
+/** T172 — élément (exigence ou test) marqué `needsRevalidation` : impact à vérifier. */
 export interface RevalidationItem {
-  type: 'req_link' | 'coverage_link'
-  sourceId: string
-  sourceTitle: string
-  targetId: string
-  targetTitle: string
-  linkType: string
-  reason: string
+  elementId: string
+  elementType: 'requirement' | 'test_case'
+  title: string
+  status: string
 }
 
 // ─── Impact analysis ──────────────────────────────────────────────────────────

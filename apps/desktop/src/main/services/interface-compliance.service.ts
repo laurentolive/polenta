@@ -105,7 +105,7 @@ export class InterfaceComplianceService {
       const link = implementsLinks.find(l => l.targetId === req.id)
       if (!link) {
         missing.push(req.id)
-      } else if (link.needsRevalidation) {
+      } else if (await this.hasImpactToCheck(req, link, componentRepoPath)) {
         covered.push(req.id)
       } else {
         validated.push(req.id)
@@ -123,50 +123,20 @@ export class InterfaceComplianceService {
     }
   }
 
-  /**
-   * Given an interface requirement that was modified (or approved), return the
-   * IDs of all links in all components of the workspace that should be marked
-   * `needsRevalidation`.
-   *
-   * Only components whose declared roles intersect the requirement's roles
-   * are affected.
-   */
-  async computeNeedsRevalidation(
-    interfaceReqId: string,
-    reqRoles: string[],
-    workspaceDir: string,
-  ): Promise<{ componentRepoPath: string; linkId: string }[]> {
-    const tree = await this.workspaceTree.readCache(workspaceDir)
-    if (!tree) return []
-
-    const components = await this.listAllComponents(tree)
-    const affected: { componentRepoPath: string; linkId: string }[] = []
-
-    for (const comp of components) {
-      if (!comp.node.implements || comp.node.implements.length === 0) continue
-
-      for (const impl of comp.node.implements) {
-        const declaredRoles = impl.roles ?? []
-
-        // If reqRoles is empty → applies to all; otherwise check intersection
-        const applies = reqRoles.length === 0 || declaredRoles.some(r => reqRoles.includes(r))
-        if (!applies) continue
-
-        // Find the implements-interface link pointing to this requirement, among this
-        // component's OWN links (not every link in the repo, cf. findLinksForNode).
-        const links = await this.findLinksForNode(comp.repoPath, comp.node.name)
-        for (const link of links) {
-          if (link.type === 'implements-interface' && link.targetId === interfaceReqId) {
-            affected.push({ componentRepoPath: comp.repoPath, linkId: link.id })
-          }
-        }
-      }
-    }
-
-    return affected
-  }
-
   // ── Private helpers ─────────────────────────────────────────────────────────
+
+  /** T172 — un lien `implements-interface` reste « covered » (non validé) tant que l'une de ses
+   *  extrémités est marquée `needsRevalidation` : l'exigence d'interface, ou l'élément du
+   *  composant qui l'implémente (celui qui est marqué quand l'exigence d'interface est rouverte). */
+  private async hasImpactToCheck(
+    interfaceReq: Requirement | undefined,
+    link: ObjectLink,
+    componentRepoPath: string,
+  ): Promise<boolean> {
+    if (interfaceReq?.needsRevalidation) return true
+    const source = await this.reqIndex.findById(componentRepoPath, link.sourceId)
+    return !!source?.needsRevalidation
+  }
 
   /** T123 — énumère tous les composants (root + composants locaux à toute profondeur) de tous
    *  les repos du workspace, avec un nom d'affichage garanti unique. */
@@ -241,6 +211,7 @@ export class InterfaceComplianceService {
     const requirements: ComplianceRequirementRow[] = interfaceReqs.map(r =>
       this.toRowDescriptor(r),
     )
+    const interfaceReqById = new Map(interfaceReqs.map(r => [r.id, r]))
 
     const components: ComplianceComponentColumn[] = implementors.map(({ comp, impl }) => ({
       name: comp.displayName,
@@ -274,7 +245,7 @@ export class InterfaceComplianceService {
         let status: ComplianceCellStatus
         if (!link) {
           status = 'missing'
-        } else if (!link.needsRevalidation) {
+        } else if (!(await this.hasImpactToCheck(interfaceReqById.get(req.id), link, comp.repoPath))) {
           status = 'validated'
         } else {
           status = 'covered'

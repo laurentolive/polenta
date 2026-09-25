@@ -8,6 +8,7 @@ import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink
 import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
 import { matchesRefs, filterCandidatesByRefs, getRelevantLinkTypes, getPeerId, isLinkTypeValid } from './linkUtils'
 import { CoverageBadge } from './CoverageBadge'
+import { RevalidationFlag } from './RevalidationFlag'
 import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
@@ -480,6 +481,7 @@ function ItemCard({
                     <span className={badgeClass}>{statusDef?.label ?? status}</span>
                   )
                 )}
+                <RevalidationFlag show={!!(obj as { needsRevalidation?: boolean }).needsRevalidation} />
                 {version && (
                   <span className="text-[10px] font-mono text-ink-3 shrink-0">v{version}</span>
                 )}

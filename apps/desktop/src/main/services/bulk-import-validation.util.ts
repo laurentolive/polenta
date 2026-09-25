@@ -1,6 +1,5 @@
-import type { ObjectTypeDefinition, ProjectSchema, SystemNode } from '@polenta/types'
-import { findSystemNode, flattenSystemNodes } from '@polenta/types'
-import { findObjectTypeDef } from './schema-lookup.util'
+import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
+import { findObjectTypeDef, findLocalNodeByRefPrefix, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './maturity.util'
 
 /**
@@ -141,44 +140,6 @@ function validateEntry(
   }
 
   return null
-}
-
-/**
- * Retrouve le `SystemNode` propriétaire de `resolved` (l'objet renvoyé par
- * `findObjectTypeDef`, littéralement l'un des éléments de `node.objectTypes[]`) — par
- * égalité de référence quand `objectTypeRef` n'a pas de préfixe de nœud explicite
- * (recherche `findObjectTypeDef` elle-même en itérant les nœuds), pour retomber sur
- * exactement le même nœud qu'elle a trouvé même si plusieurs nœuds déclarent un type
- * de même nom (T113 : des `SystemNode` frères peuvent réutiliser un nom de type).
- */
-function findOwningNode(
-  schema: ProjectSchema,
-  objectTypeRef: string,
-  resolved: ObjectTypeDefinition,
-): SystemNode | undefined {
-  const nodeName = objectTypeRef.includes('::') ? objectTypeRef.split('::')[0] : undefined
-  // T123 — nodeName peut désigner un composant local imbriqué à n'importe quelle profondeur.
-  if (nodeName && nodeName !== 'root') {
-    return findSystemNode(schema.nodes, nodeName)
-  }
-  return flattenSystemNodes(schema.nodes).find(({ node }) => node.objectTypes?.includes(resolved))?.node
-}
-
-/**
- * Retrouve le `SystemNode` LOCAL désigné par le préfixe `<nodeName>::` d'un
- * `objectTypeRef` dont le TYPE est `'unresolvable'` (nœud submodule sans
- * `objectTypes` inlinés, ou nœud carrément absent de `schema.nodes`). Contrairement à
- * `findOwningNode`, ne peut pas s'appuyer sur une égalité de référence avec un
- * `ObjectTypeDefinition` déjà résolu (il n'y en a pas) — se contente donc de retrouver
- * le nœud par nom quand `objectTypeRef` a un préfixe explicite (`nodeName::typeName`).
- * Un `objectTypeRef` sans préfixe (juste un nom de type, jamais trouvé dans aucun
- * nœud local) n'a par construction aucun nœud à retrouver ici.
- */
-function findLocalNodeByRefPrefix(schema: ProjectSchema, objectTypeRef: string): SystemNode | undefined {
-  if (!objectTypeRef.includes('::')) return undefined
-  const nodeName = objectTypeRef.split('::')[0]
-  if (nodeName === 'root') return undefined
-  return findSystemNode(schema.nodes, nodeName)
 }
 
 /**

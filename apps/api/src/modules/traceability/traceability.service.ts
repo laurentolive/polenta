@@ -12,11 +12,22 @@ import type {
   MatrixCell,
   MatrixExportRow,
   MatrixRow,
-  RevalidationItem,
   TestPlanDraft,
   TraceabilityMatrix,
 } from '@polenta/types'
 import type { TestCase } from '@polenta/types'
+
+// Forme historique (lien marqué) de RevalidationItem : `@polenta/types` est passé à une forme
+// par élément avec T172 (desktop) ; cette copie apps/api n'est pas alignée (hors scope T172).
+export interface LegacyRevalidationItem {
+  type: 'req_link' | 'coverage_link'
+  sourceId: string
+  sourceTitle: string
+  targetId: string
+  targetTitle: string
+  linkType: string
+  reason: string
+}
 
 @Injectable()
 export class TraceabilityService {
@@ -56,7 +67,7 @@ export class TraceabilityService {
       const tc = testCaseMap.get(link.targetId)
       if (!tc) continue
       const arr = reqToTests.get(link.sourceId) ?? []
-      arr.push({ tc, coverageType: link.coverageType!, needsRevalidation: link.needsRevalidation })
+      arr.push({ tc, coverageType: link.coverageType!, needsRevalidation: link.needsRevalidation ?? false })
       reqToTests.set(link.sourceId, arr)
     }
 
@@ -127,7 +138,7 @@ export class TraceabilityService {
     const uncoveredRequirements = requirements.filter((r) => !coveredReqIds.has(r.id))
     const orphanTests = testCases.filter((tc) => !testIdsWithLinks.has(tc.id))
 
-    const revalidationItems: RevalidationItem[] = []
+    const revalidationItems: LegacyRevalidationItem[] = []
 
     // Req-to-req links needing revalidation
     const reqRevalidationLinks = linksNeedingRevalidation.filter((l) => l.coverageType === undefined)

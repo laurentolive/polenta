@@ -7,6 +7,7 @@ import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
 import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
 import { CoverageBadge } from './CoverageBadge'
+import { RevalidationFlag } from './RevalidationFlag'
 import { treeFindNode, treeFindParentId, treeRemoveMany, treeInsert, treeInsertAtBeginning, treeDeepCopyWithNewIds } from '../../hooks/useTreeState'
 import { matchesRefs, filterCandidatesByRefs, getLinkTypeLabel, getPeerId, isLinkTypeValid } from './linkUtils'
 import { RichTextField } from '../RichTextField'
@@ -67,7 +68,8 @@ interface Props {
    *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
   gotoNodeId?: string | null
   gotoSeq?: number
-  /** Hauteur max d'une ligne, en nombre de lignes de texte (1 = une seule ligne tronquée). */
+  /** Hauteur max d'une ligne, en nombre de lignes de texte (1 = une seule ligne tronquée,
+   *  `Infinity` = toutes les lignes). */
   rowMaxLines?: number
 }
 
@@ -79,20 +81,22 @@ const RowMaxLinesContext = createContext(1)
 
 /** Classe du `<td>` et enveloppe du contenu selon la hauteur max des lignes : à 1, la cellule
  *  reste mono-ligne tronquée (`truncate`) ; au-delà, le texte passe à la ligne et est coupé
- *  (ellipse) après `maxLines` lignes. */
+ *  (ellipse) après `maxLines` lignes ; à `Infinity`, il n'est pas coupé. */
 function useCellClamp() {
   const maxLines = useContext(RowMaxLinesContext)
   if (maxLines <= 1) {
     return { maxLines, tdClass: 'truncate', wrap: (content: React.ReactNode) => content }
   }
-  const style: React.CSSProperties = {
-    display: '-webkit-box',
-    WebkitBoxOrient: 'vertical',
-    WebkitLineClamp: maxLines,
-    overflow: 'hidden',
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'anywhere',
-  }
+  const style: React.CSSProperties = Number.isFinite(maxLines)
+    ? {
+        display: '-webkit-box',
+        WebkitBoxOrient: 'vertical',
+        WebkitLineClamp: maxLines,
+        overflow: 'hidden',
+        whiteSpace: 'pre-wrap',
+        overflowWrap: 'anywhere',
+      }
+    : { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
   return { maxLines, tdClass: '', wrap: (content: React.ReactNode) => <div style={style}>{content}</div> }
 }
 
@@ -223,6 +227,7 @@ function InlineCell({
   onSelectCell,
   freezeStyle,
   stickyBg,
+  adornment,
 }: {
   value: string
   field: string
@@ -237,9 +242,14 @@ function InlineCell({
   onSelectCell?: () => void
   freezeStyle?: React.CSSProperties
   stickyBg?: string
+  /** T172 — contenu affiché après la valeur en lecture (ex. ⚠ « Impact à vérifier » du statut). */
+  adornment?: React.ReactNode
 }) {
   const { t } = useTranslation()
   const clamp = useCellClamp()
+  const withAdornment = (content: React.ReactNode) => adornment
+    ? <span className="inline-flex items-center gap-1">{content}{adornment}</span>
+    : content
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
@@ -259,7 +269,7 @@ function InlineCell({
   if (isSystem || !onEdit) {
     return (
       <td style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass].join(' ')}>
-        {clamp.wrap(value)}
+        {clamp.wrap(withAdornment(value))}
       </td>
     )
   }
@@ -342,7 +352,7 @@ function InlineCell({
       }}
       title={t('system.shared.clickToEdit')}
     >
-      {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
+      {clamp.wrap(withAdornment(value || <span className="text-ink-3 italic">—</span>))}
     </td>
   )
 }
@@ -371,7 +381,8 @@ interface RichtextCellProps {
 
 /** Hauteur max « N lignes » d'un rendu richtext mis en forme : `-webkit-line-clamp` est
  *  inopérant sur du HTML en blocs, d'où `max-height` + estompage du bas (masque, indépendant
- *  de la couleur de fond : sélection, survol, colonne figée, thème) seulement si ça déborde. */
+ *  de la couleur de fond : sélection, survol, colonne figée, thème) seulement si ça déborde.
+ *  À `Infinity` (toutes les lignes), aucune borne : le rendu est affiché en entier. */
 function RichtextClamp({ maxLines, children }: { maxLines: number; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [overflowing, setOverflowing] = useState(false)
@@ -387,6 +398,7 @@ function RichtextClamp({ maxLines, children }: { maxLines: number; children: Rea
     if (el.firstElementChild) ro.observe(el.firstElementChild)
     return () => ro.disconnect()
   }, [maxLines])
+  if (!Number.isFinite(maxLines)) return <div>{children}</div>
   const mask = overflowing ? 'linear-gradient(to bottom, #000 calc(100% - 1rem), transparent)' : undefined
   return (
     <div ref={ref} style={{ maxHeight: `${maxLines}rem`, overflow: 'hidden', maskImage: mask, WebkitMaskImage: mask }}>
@@ -1966,6 +1978,8 @@ export function ExcelView({
                       onSelectCell={() => selectCell(node.id, col)}
                       freezeStyle={freezeStyle}
                       stickyBg={stickyBg}
+                      adornment={col === 'status' && (obj as { needsRevalidation?: boolean } | null | undefined)?.needsRevalidation
+                        ? <RevalidationFlag show /> : undefined}
                       onEdit={onInlineEdit ? applyInlineEditToSelection : undefined}
                       richtext={fieldDef?.type === 'richtext' ? {
                         repoPath,

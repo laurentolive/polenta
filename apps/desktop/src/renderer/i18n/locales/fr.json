@@ -478,6 +478,9 @@
     }
   },
   "system": {
+    "revalidation": {
+      "tooltip": "Impact à vérifier"
+    },
     "shared": {
       "editItem": "Éditer",
       "copy": "Copier",
@@ -505,7 +508,8 @@
       "unfreezeColumns": "Ne plus figer les colonnes",
       "rowMaxHeight": "Hauteur max des lignes",
       "rowMaxLines_one": "{{count}} ligne",
-      "rowMaxLines_other": "{{count}} lignes"
+      "rowMaxLines_other": "{{count}} lignes",
+      "rowMaxLinesAll": "Toutes les lignes"
     },
     "wordView": {
       "clickToRename": "Cliquer pour renommer",

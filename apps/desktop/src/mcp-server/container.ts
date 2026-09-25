@@ -8,6 +8,7 @@ import { RequirementsIndexService } from '../main/services/requirements-index.se
 import { TestsIndexService } from '../main/services/tests-index.service'
 import { RequirementsService } from '../main/services/requirements.service'
 import { TestsService } from '../main/services/tests.service'
+import { RevalidationService } from '../main/services/revalidation.service'
 import { CampaignsService } from '../main/services/campaigns.service'
 import { TreeService } from '../main/services/tree.service'
 
@@ -62,8 +63,10 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string): Mcp
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
   const schema = new SchemaService(auth, workspaceTree)
   const tree = new TreeService()
-  const requirements = new RequirementsService(git, reqIndex, schema, tree)
-  const tests = new TestsService(git, testsIndex, schema, tree)
+  // T172 — mêmes déclencheurs que l'app : un changement de statut via MCP marque aussi les pairs.
+  const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree)
+  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation)
+  const tests = new TestsService(git, testsIndex, schema, tree, revalidation)
   const campaigns = new CampaignsService(git, tests)
 
   return { repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree }

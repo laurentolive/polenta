@@ -307,6 +307,7 @@ au lieu d'insérer un saut de ligne :
 | `createdBy` | user | Auteur |
 | `updatedAt` | datetime | Date de dernière modification |
 | `updatedBy` | user | Auteur de la dernière modification |
+| `needsRevalidation` | bool? | **T172** — impact à vérifier : un élément lié a quitté un statut d'approbation (§5.3). Persisté uniquement quand vrai (absent = `false`), indépendant du statut. Aussi présent sur les cas de test |
 
 ---
 
@@ -379,15 +380,35 @@ depuis l'éditeur du test ou celui de l'exigence indifféremment.
 | `type` | string | Nom du `LinkTypeDefinition` dans `schema.yaml` |
 | `sourceId` | string | ID de l'objet source |
 | `targetId` | string | ID de l'objet cible |
-| `targetCommitHash` | string? | Hash Git de la version cible au moment de la création du lien |
-| `needsRevalidation` | bool | Vrai si la cible a été modifiée (commit différent) depuis la création du lien |
+| `targetCommitHash` | string? | Hash Git de la version cible au moment de la création du lien (non utilisé pour la revalidation) |
+| `needsRevalidation` | bool? | **Déprécié (T172)** — ni lu ni écrit ; l'impact est porté par les éléments (§5.3). Toléré dans les `links.yaml` existants |
 | `coverageType` | enum? | `full` \| `partial` (pour les liens de couverture test) |
 | `createdAt` | datetime | Date de création |
 | `createdBy` | user | Auteur |
 
-### 5.3 Revalidation
+### 5.3 Revalidation (T172)
 
-Quand un objet cible est modifié (nouveau commit), tous les liens pointant vers lui sont marqués `needsRevalidation: true`. L'auteur est notifié et peut revalider le lien (met à jour `targetCommitHash`) ou le supprimer.
+Le flag `needsRevalidation` est porté par les **éléments** (exigences, cas de test), pas par
+les liens : les liens servent à trouver les éléments impactés et ne sont jamais modifiés.
+
+**Déclencheur** — un élément X **quitte un statut d'approbation** (`isApproval`) vers un statut
+qui ne l'est pas : « Rouvrir en brouillon » ou changement de statut direct (colonne Statut de
+la vue Excel). Un élément approuvé étant verrouillé, c'est le seul chemin par lequel son contenu
+peut changer. L'édition d'un élément non approuvé, la réapprobation et les transitions entre
+statuts non approuvés ne déclenchent rien. T171 réutilise le même point d'entrée
+(`RevalidationService.markImpactedBy`) pour la modification d'un paramètre.
+
+**Éléments marqués** — l'élément à l'autre bout de **chaque** lien touchant X, quel que soit
+le sens et le type du lien, dans tous les repos du workspace (même agrégation que la matrice) ;
+le flag est écrit dans le YAML de l'élément, dans son propre repo. Un seul niveau (pas de
+cascade). Non marqués : X lui-même, les éléments en statut terminal (`isTerminal`), ceux d'un
+nœud `readonly` (nœud local du repo ouvert, ou repo composant monté sous un nœud submodule
+`readonly`), les liens orphelins. Le statut, la version et le verrouillage des éléments marqués
+ne changent pas (un élément `approved` peut être marqué).
+
+**Notification** — icône ⚠ à côté du statut (vues Excel, Word, Édition), infobulle « Impact à
+vérifier ». Pas d'action « Revalider » par lien : le flag est levé depuis l'analyse d'impact
+(**T173**).
 
 ---
 

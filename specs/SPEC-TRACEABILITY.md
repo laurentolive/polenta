@@ -46,7 +46,7 @@ Calculé depuis les liens `linkedRequirements` des TestCases et les résultats d
 | `covered` | ◑ | Au moins un TestCase approuvé lié, mais aucune exécution PASS |
 | `validated` | ✓ | Au moins un TestCase approuvé avec au moins une exécution PASS |
 | `failing` | ✗ | TestCases liés exécutés, dernier run = FAIL ou BLOCKED |
-| `needs_revalidation` | ⚠ | Au moins un lien de couverture marqué `needsRevalidation` |
+| `needs_revalidation` | ⚠ | L'exigence, ou un des tests qui la couvrent, est marqué `needsRevalidation` (T172, SPEC-REQ §5.3) — une exigence marquée l'est même sans test lié |
 
 **Priorité de calcul** (si plusieurs statuts applicables) :
 `needs_revalidation` > `failing` > `covered` > `validated` > `not_covered`
@@ -78,7 +78,7 @@ Pour chaque paire (exigence, TestCase) :
 | `pass` | Dernier TestRun pour ce TestCase = PASS |
 | `fail` | Dernier TestRun = FAIL |
 | `blocked` | Dernier TestRun = BLOCKED |
-| `needs_revalidation` | Lien marqué `needsRevalidation` |
+| `needs_revalidation` | L'exigence ou le test de la paire est marqué `needsRevalidation` (T172) |
 
 > "Dernier TestRun" = le plus récent par `executedAt`, toutes campagnes confondues.
 
@@ -134,21 +134,19 @@ TEST-0031  Test vibrations méca      [approuvé]  [orphelin]
 
 Un test orphelin n'est pas forcément un problème (test de régression générale), mais il doit être conscient.
 
-### 3.3 Liens à revalider
+### 3.3 Éléments à revalider (T172)
 
-Tous les liens dont `needsRevalidation: true`, groupés par type :
+Depuis T172 le flag est porté par les éléments (SPEC-REQ §5.3) : la liste
+(`getMissingLinks().revalidationItems`) contient les exigences et les tests marqués
+`needsRevalidation: true` — `{ elementId, elementType, title, status }` — et non plus des liens.
 
-**Liens exigence → exigence :**
 ```
-SW-0042  DERIVES_FROM  SYS-0001  ⚠  SYS-0001 est passé en v3 depuis la création du lien
-```
-
-**Liens test → exigence :**
-```
-TEST-0007  couvre  SW-0042  ⚠  SW-0042 est passé en v2 depuis que ce lien a été créé
+SW-0042   exigence  ⚠  impact à vérifier
+TEST-0007 test      ⚠  impact à vérifier
 ```
 
-Pour chaque lien à revalider : bouton **"Revalider"** (met à jour la version cible et efface le flag) ou **"Supprimer le lien"**.
+Pas de bouton « Revalider » par lien : la levée du flag se fait depuis l'analyse d'impact
+(**T173**). La suppression d'un lien reste possible depuis l'éditeur de l'élément.
 
 ### 3.4 Exigences approuvées sans test exécuté
 

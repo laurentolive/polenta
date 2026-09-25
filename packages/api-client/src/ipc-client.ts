@@ -248,8 +248,6 @@ export function createIpcClient(): ApiClient {
       complianceMatrix: (workspaceDir) => invoke('interface:compliance-matrix', workspaceDir),
       coverage: (componentRepoPath, interfaceRepoPath, roles) =>
         invoke('interface:coverage', componentRepoPath, interfaceRepoPath, roles),
-      needsRevalidation: (interfaceReqId, reqRoles, workspaceDir) =>
-        invoke('interface:needs-revalidation', interfaceReqId, reqRoles, workspaceDir),
     },
     export: {
       save: (repoPath, kind, format, payload, printParams, suggestedName) =>

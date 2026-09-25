@@ -32,6 +32,7 @@ import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { SyncService } from './sync.service'
+import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 
 /** Minimal read-only snapshot of a repo's requirements/tests/links as they existed at a given
  * git ref — built once per `createImpactAnalysis` call (at the target baseline's sha) and shared
@@ -103,16 +104,8 @@ export class TraceabilityService {
    * In workspace mode (workspaceDir provided), includes repoPath + all component repos
    * from the workspace tree cache.
    */
-  private async resolveRepoPaths(repoPath: string, workspaceDir?: string): Promise<string[]> {
-    if (!workspaceDir || !this.workspaceTree) return [repoPath]
-    const tree = await this.workspaceTree.readCache(workspaceDir)
-    if (!tree) return [repoPath]
-    // Include root repo + all component repos from the workspace tree
-    const paths = new Set<string>([repoPath])
-    for (const node of tree.nodes) {
-      if (node.repoPath) paths.add(node.repoPath)
-    }
-    return Array.from(paths)
+  private resolveRepoPaths(repoPath: string, workspaceDir?: string): Promise<string[]> {
+    return resolveWorkspaceRepoPaths(this.workspaceTree, repoPath, workspaceDir)
   }
 
   /**
@@ -200,24 +193,26 @@ export class TraceabilityService {
     const reqIds = new Set(requirements.map((r) => r.id))
     const tcIds = new Set(tcMap.keys())
 
-    const reqToTests = new Map<string, Array<{ tc: TestCase; coverageType: 'full' | 'partial'; needsRevalidation: boolean }>>()
+    const reqToTests = new Map<string, Array<{ tc: TestCase; coverageType: 'full' | 'partial' }>>()
     for (const link of links) {
       const match = matchCoverageLink(link, tcIds, reqIds)
       if (!match) continue
       const tc = tcMap.get(match.testId)
       if (!tc) continue
       const arr = reqToTests.get(match.reqId) ?? []
-      arr.push({ tc, coverageType: link.coverageType ?? 'full', needsRevalidation: link.needsRevalidation })
+      arr.push({ tc, coverageType: link.coverageType ?? 'full' })
       reqToTests.set(match.reqId, arr)
     }
 
     const result = new Map<string, { cells: MatrixCell[]; coverageStatus: CoverageStatus }>()
     for (const req of requirements) {
       const reqLinks = reqToTests.get(req.id) ?? []
-      const cells: MatrixCell[] = reqLinks.map(({ tc, coverageType, needsRevalidation }) => {
+      const cells: MatrixCell[] = reqLinks.map(({ tc, coverageType }) => {
         const latestRun = latestRunMap.get(tc.id)
         let status: CellStatus
-        if (needsRevalidation) status = 'needs_revalidation'
+        // T172 — le flag est porté par les éléments : la paire est à revalider si l'une de ses
+        // deux extrémités est marquée.
+        if (req.needsRevalidation || tc.needsRevalidation) status = 'needs_revalidation'
         else if (!latestRun) status = 'not_run'
         else if (latestRun.result === 'PASS') status = 'pass'
         else if (latestRun.result === 'FAIL') status = 'fail'
@@ -230,43 +225,25 @@ export class TraceabilityService {
           lastRunDate: latestRun?.executedAt ?? null,
         }
       })
-      result.set(req.id, { cells, coverageStatus: computeCoverageStatus(cells) })
+      // T172 — une exigence marquée est `needs_revalidation` même sans test lié.
+      const coverageStatus = req.needsRevalidation ? 'needs_revalidation' : computeCoverageStatus(cells)
+      result.set(req.id, { cells, coverageStatus })
     }
     return result
-  }
-
-  /**
-   * Set of requirement ids touched — as source OR target — by at least one link with
-   * `needsRevalidation: true`. Not just coverage links to tests: a stale
-   * requirement→requirement `implementation`/`derives_from`/... link counts too
-   * (T77 sprint 3 maturity criterion 5: "aucun lien la concernant n'a
-   * needsRevalidation: true"). Centralized here alongside `computeCoverage()` so
-   * revalidation-aware features share one definition instead of re-deriving it.
-   */
-  computeRevalidationReqIds(links: ObjectLink[]): Set<string> {
-    const ids = new Set<string>()
-    for (const link of links) {
-      if (!link.needsRevalidation) continue
-      ids.add(link.sourceId)
-      ids.add(link.targetId)
-    }
-    return ids
   }
 
   async getMissingLinks(repoPath: string, workspaceDir?: string) {
     const repoPaths = await this.resolveRepoPaths(repoPath, workspaceDir)
 
-    const [reqArrays, tcArrays, linksArrays, revalLinksArrays] = await Promise.all([
+    const [reqArrays, tcArrays, linksArrays] = await Promise.all([
       Promise.all(repoPaths.map(p => this.reqIndex.findAll(p, {}))),
       Promise.all(repoPaths.map(p => this.testsIndex.findAll(p))),
       Promise.all(repoPaths.map(p => this.reqIndex.findAllLinks(p))),
-      Promise.all(repoPaths.map(p => this.reqIndex.findLinksNeedingRevalidation(p))),
     ])
-    const [requirements, testCases, allLinks, reqLinksNeedingRevalidation] = [
+    const [requirements, testCases, allLinks] = [
       reqArrays.flat(),
       tcArrays.flat(),
       linksArrays.flat(),
-      revalLinksArrays.flat(),
     ]
 
     const reqIds = new Set(requirements.map((r) => r.id))
@@ -285,43 +262,13 @@ export class TraceabilityService {
 
     const uncoveredRequirements = requirements.filter((r) => !coveredReqIds.has(r.id))
     const orphanTests = testCases.filter((tc) => !tcCoveredLinks.has(tc.id))
-    const revalidationItems: RevalidationItem[] = []
-
-    for (const link of reqLinksNeedingRevalidation) {
-      const [source, target] = await Promise.all([
-        this.findRequirementById(link.sourceId, repoPaths),
-        this.findRequirementById(link.targetId, repoPaths),
-      ])
-      if (!source || !target) continue
-      revalidationItems.push({
-        type: 'req_link',
-        sourceId: link.sourceId,
-        sourceTitle: source.title,
-        targetId: link.targetId,
-        targetTitle: target.title,
-        linkType: link.type,
-        reason: 'Target requirement has been modified since this link was created',
-      })
-    }
-
-    for (const [tcId, entries] of tcCoveredLinks) {
-      const tc = testCases.find((t) => t.id === tcId)
-      if (!tc) continue
-      for (const { link, reqId: linkedReqId } of entries) {
-        if (!link.needsRevalidation) continue
-        const req = await this.findRequirementById(linkedReqId, repoPaths)
-        if (!req) continue
-        revalidationItems.push({
-          type: 'coverage_link',
-          sourceId: tc.id,
-          sourceTitle: tc.title,
-          targetId: linkedReqId,
-          targetTitle: req.title,
-          linkType: link.type,
-          reason: 'Linked requirement has been modified since this test was linked',
-        })
-      }
-    }
+    // T172 — éléments (exigences et tests) marqués `needsRevalidation` : impact à vérifier.
+    const revalidationItems: RevalidationItem[] = [
+      ...requirements.filter((r) => r.needsRevalidation).map((r): RevalidationItem => (
+        { elementId: r.id, elementType: 'requirement', title: r.title, status: r.status })),
+      ...testCases.filter((tc) => tc.needsRevalidation).map((tc): RevalidationItem => (
+        { elementId: tc.id, elementType: 'test_case', title: tc.title, status: tc.status })),
+    ]
 
     return { uncoveredRequirements, orphanTests, revalidationItems }
   }

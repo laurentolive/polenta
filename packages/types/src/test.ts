@@ -30,6 +30,8 @@ export interface TestCase {
   steps: TestStep[]
   postconditions: string       // HTML (RICHTEXT)
   fields: Record<string, unknown>
+  // T172 — impact à vérifier (cf. Requirement.needsRevalidation).
+  needsRevalidation?: boolean
   // Dérivés du git log du fichier (premier/dernier commit le touchant), pas persistés
   // dans le YAML — `null` tant que le fichier n'a jamais été commité.
   createdAt: string | null

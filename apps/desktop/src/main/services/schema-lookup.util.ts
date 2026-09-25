@@ -1,4 +1,4 @@
-import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
+import type { ObjectTypeDefinition, ProjectSchema, SystemNode } from '@polenta/types'
 import { findSystemNode, flattenSystemNodes } from '@polenta/types'
 
 /**
@@ -9,7 +9,7 @@ import { findSystemNode, flattenSystemNodes } from '@polenta/types'
  */
 export const SYSTEM_QUERY_FIELDS = [
   'id', 'objectTypeRef', 'title', 'status', 'component',
-  'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'version',
+  'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'version', 'needsRevalidation',
 ] as const
 
 export type ResolvedObjectType = ObjectTypeDefinition | null | 'unresolvable'
@@ -89,4 +89,58 @@ export function findObjectTypeDef(schema: ProjectSchema, objectTypeRef: string):
     if (found) return found
   }
   return null
+}
+
+/**
+ * Retrouve le `SystemNode` propriétaire de `resolved` (l'objet renvoyé par
+ * `findObjectTypeDef`, littéralement l'un des éléments de `node.objectTypes[]`) — par
+ * égalité de référence quand `objectTypeRef` n'a pas de préfixe de nœud explicite
+ * (recherche `findObjectTypeDef` elle-même en itérant les nœuds), pour retomber sur
+ * exactement le même nœud qu'elle a trouvé même si plusieurs nœuds déclarent un type
+ * de même nom (T113 : des `SystemNode` frères peuvent réutiliser un nom de type). Déplacé depuis
+ * `bulk-import-validation.util.ts` (T172, partagé avec `isRefInReadonlyNode`).
+ */
+export function findOwningNode(
+  schema: ProjectSchema,
+  objectTypeRef: string,
+  resolved: ObjectTypeDefinition,
+): SystemNode | undefined {
+  const nodeName = objectTypeRef.includes('::') ? objectTypeRef.split('::')[0] : undefined
+  // T123 — nodeName peut désigner un composant local imbriqué à n'importe quelle profondeur.
+  if (nodeName && nodeName !== 'root') {
+    return findSystemNode(schema.nodes, nodeName)
+  }
+  return flattenSystemNodes(schema.nodes).find(({ node }) => node.objectTypes?.includes(resolved))?.node
+}
+
+/**
+ * Retrouve le `SystemNode` LOCAL désigné par le préfixe `<nodeName>::` d'un
+ * `objectTypeRef` dont le TYPE est `'unresolvable'` (nœud submodule sans
+ * `objectTypes` inlinés, ou nœud carrément absent de `schema.nodes`). Contrairement à
+ * `findOwningNode`, ne peut pas s'appuyer sur une égalité de référence avec un
+ * `ObjectTypeDefinition` déjà résolu (il n'y en a pas) — se contente donc de retrouver
+ * le nœud par nom quand `objectTypeRef` a un préfixe explicite (`nodeName::typeName`).
+ * Un `objectTypeRef` sans préfixe (juste un nom de type, jamais trouvé dans aucun
+ * nœud local) n'a par construction aucun nœud à retrouver ici.
+ */
+export function findLocalNodeByRefPrefix(schema: ProjectSchema, objectTypeRef: string): SystemNode | undefined {
+  if (!objectTypeRef.includes('::')) return undefined
+  const nodeName = objectTypeRef.split('::')[0]
+  if (nodeName === 'root') return undefined
+  return findSystemNode(schema.nodes, nodeName)
+}
+
+/**
+ * T172 — l'`objectTypeRef` appartient-il à un nœud déclaré `readonly: true` dans `schema` ?
+ * Même résolution que la validation bulk-import (`bulk-import-validation.util.ts`) : nœud
+ * propriétaire du type résolu, sinon nœud local désigné par le préfixe quand le type est
+ * `'unresolvable'` (nœud submodule sans `objectTypes` inlinés).
+ */
+export function isRefInReadonlyNode(schema: ProjectSchema, objectTypeRef: string): boolean {
+  const resolved = findObjectTypeDef(schema, objectTypeRef)
+  if (resolved === null) return false
+  const node = resolved === 'unresolvable'
+    ? findLocalNodeByRefPrefix(schema, objectTypeRef)
+    : findOwningNode(schema, objectTypeRef, resolved)
+  return !!node?.readonly
 }

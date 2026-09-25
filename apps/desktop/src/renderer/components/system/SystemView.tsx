@@ -21,7 +21,7 @@ import { useTabs } from '../../contexts/TabsContext'
 import { treeFindNode, treeFindByObjectId, computeSectionNumbers } from '../../hooks/useTreeState'
 import { useSystemObjects } from '../../hooks/useSystemObjects'
 import { ExcelView } from './ExcelView'
-import { RowMaxHeightButton, ROW_MAX_LINES_MIN, ROW_MAX_LINES_MAX, ROW_MAX_LINES_DEFAULT } from './RowMaxHeightButton'
+import { RowMaxHeightButton, ROW_MAX_LINES_MIN, ROW_MAX_LINES_ALL, ROW_MAX_LINES_DEFAULT } from './RowMaxHeightButton'
 import { WordView } from './WordView'
 import { EditView, type EditViewHandle } from './EditView'
 import { api } from '../../api'
@@ -340,6 +340,15 @@ export function SystemView() {
     qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
   }, [qc, repoPath])
 
+  // T172 — un élément qui quitte l'approbation marque `needsRevalidation` ses éléments liés,
+  // qui peuvent être d'un autre type/nœud que la vue courante : invalidation par préfixe.
+  const invalidateImpactedObjects = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['objects', repoPath] })
+    qc.invalidateQueries({ queryKey: ['object', repoPath] })
+    qc.invalidateQueries({ queryKey: ['traceability-matrix'] })
+    invalidateCandidateObjects()
+  }, [qc, repoPath, invalidateCandidateObjects])
+
   // View mode — persisted per project in localStorage
   const [viewMode, setViewMode] = useState<ViewMode>('excel')
   const viewModeRestoredRef = useRef(false)
@@ -370,7 +379,7 @@ export function SystemView() {
   // de l'utilisateur, persistée en localStorage, commune à tous les projets.
   const [excelRowMaxLines, setExcelRowMaxLines] = useState<number>(() => {
     const stored = Number(localStorage.getItem('polenta:excelRowMaxLines'))
-    return Number.isInteger(stored) && stored >= ROW_MAX_LINES_MIN && stored <= ROW_MAX_LINES_MAX ? stored : ROW_MAX_LINES_DEFAULT
+    return Number.isInteger(stored) && stored >= ROW_MAX_LINES_MIN && stored <= ROW_MAX_LINES_ALL ? stored : ROW_MAX_LINES_DEFAULT
   })
   useEffect(() => {
     localStorage.setItem('polenta:excelRowMaxLines', String(excelRowMaxLines))
@@ -452,6 +461,7 @@ export function SystemView() {
         id: req.id,
         title: req.title ?? '',
         status: req.status ?? '',
+        needsRevalidation: req.needsRevalidation ? 'true' : '',
         createdAt: req.createdAt ?? '',
         updatedAt: req.updatedAt ?? '',
         author: req.createdBy ?? '',
@@ -467,6 +477,7 @@ export function SystemView() {
         id: tc.id,
         title: tc.title ?? '',
         status: tc.status ?? '',
+        needsRevalidation: tc.needsRevalidation ? 'true' : '',
         createdAt: tc.createdAt ?? '',
         updatedAt: tc.updatedAt ?? '',
         author: tc.createdBy ?? '',
@@ -831,6 +842,7 @@ export function SystemView() {
         qc.invalidateQueries({ queryKey: ['object', repoPath, effectiveType?.category, variables.objectId] }),
       ])
       if (variables.field === 'title') invalidateCandidateObjects()
+      if (variables.field === 'status') invalidateImpactedObjects()
       clearPendingEditsFor(variables.objectId, variables.field, variables.value)
     },
     onError: (err) => {
@@ -869,6 +881,7 @@ export function SystemView() {
     onSuccess: (_, { objectId }) => {
       qc.invalidateQueries({ queryKey: ['objects', repoPath, effectiveType?.category, effectiveNodeId, effectiveTypeId] })
       qc.invalidateQueries({ queryKey: ['object', repoPath, effectiveType?.category, objectId] })
+      invalidateImpactedObjects()
       clearPendingEditsFor(objectId, 'status')
     },
     onError: (err) => {
@@ -1341,7 +1354,7 @@ export function SystemView() {
             onItemNodeAdded={readOnly ? undefined : createItemObject}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
-            rowMaxLines={excelRowMaxLines}
+            rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'word' && (

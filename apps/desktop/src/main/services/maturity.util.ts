@@ -202,7 +202,7 @@ export function computeMaturity(
   req: Requirement,
   typeDef: ObjectTypeDefinition | null,
   coverageStatus: CoverageStatus,
-  hasNeedsRevalidationLink: boolean,
+  needsRevalidation: boolean,
 ): MaturityColumns {
   // Défense contre un `objectTypeRef` manquant/malformé (frontmatter édité à la
   // main) — `schema-lookup.util.ts`'s `findObjectTypeDef` ne plante plus dessus
@@ -233,13 +233,9 @@ export function computeMaturity(
   // exists, not whether it passed.
   const verificationOk = !isApprovedStatus(req, typeDef) || coverageStatus !== 'not_covered'
 
-  // Critère 5 — "Aucun lien la concernant n'a needsRevalidation: true". Considers
-  // every link where this requirement is either source or target — not just coverage
-  // links to tests (e.g. a stale requirement→requirement `implementation` link also
-  // counts) — computed once for the whole cross-component graph by the caller
-  // (query-engine.service.ts's buildDataset(), via TraceabilityService.
-  // computeRevalidationReqIds()) and passed in as a single boolean per requirement.
-  const noReval = !hasNeedsRevalidationLink
+  // Critère 5 — l'exigence n'est pas marquée `needsRevalidation` (T172 : le flag est porté
+  // par l'élément, posé quand un élément lié quitte l'approbation — impact à vérifier).
+  const noReval = !needsRevalidation
 
   const criteria: [boolean, string][] = [
     [hasObjectTypeRef, "type d'objet invalide"],
@@ -247,7 +243,7 @@ export function computeMaturity(
     [earsOk, 'EARS'],
     [acceptOk, "critère d'acceptance"],
     [verificationOk, 'lien de vérification'],
-    [noReval, 'lien à revalider'],
+    [noReval, 'impact à vérifier'],
   ]
   const missing = criteria.filter(([ok]) => !ok).map(([, label]) => label)
 

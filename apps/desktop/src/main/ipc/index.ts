@@ -608,13 +608,6 @@ export function registerIpcHandlers(c: Container): void {
     roles: string[],
   ) =>
     c.interfaceCompliance.checkComponentCoverage(componentRepoPath, interfaceRepoPath, roles))
-  ipcMain.handle('interface:needs-revalidation', (
-    _e,
-    interfaceReqId: string,
-    reqRoles: string[],
-    workspaceDir: string,
-  ) =>
-    c.interfaceCompliance.computeNeedsRevalidation(interfaceReqId, reqRoles, workspaceDir))
 
   // ── Queries (T77 sprint 1) ───────────────────────────────────────────────────
   ipcMain.handle('queries:execute', (_e, repoPath: string, queryDef: unknown, workspaceDir?: string) =>

@@ -296,7 +296,8 @@ Système › Arbre › Sélection).
   figé au scroll (`scroll-margin`).
 - **Hauteur max des lignes (T168)** : bouton ↕▯ de la toolbar → popup avec un slider
   **1 à 20 lignes de texte** (valeur affichée « N ligne(s) »), effet immédiat. Défaut :
-  **10**. À 1, cellules mono-ligne tronquées (richtext = première ligne + `¶`). Au-delà, le
+  **10**. Au bout du slider, une position au-delà de 20 affiche **toutes les lignes** (libellé
+  « Toutes les lignes », aucune coupe ni estompage — T170). À 1, cellules mono-ligne tronquées (richtext = première ligne + `¶`). Au-delà, le
   texte passe à la ligne et est coupé par une ellipse après N lignes (hauteur *maximale*, pas
   fixe), cellules alignées en haut. Concerne nom, champs, richtext, `multi_enum`, liens — pas
   les lignes de groupe, ni les colonnes `steps` / `coverageStatus`, ni les cellules en cours
@@ -391,7 +392,7 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 | État | Mécanisme | Clé |
 |------|-----------|-----|
 | Mode de vue (Excel / Word) | `localStorage` | `polenta:viewMode:${repoPath}` |
-| Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 20] ignorée | `localStorage` | `polenta:excelRowMaxLines` |
+| Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 21] ignorée — 21 = toutes les lignes (T170) | `localStorage` | `polenta:excelRowMaxLines` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
 | `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
 | Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord? }`, par type + par utilisateur |

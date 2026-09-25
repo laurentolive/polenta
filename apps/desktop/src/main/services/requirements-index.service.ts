@@ -36,6 +36,9 @@ export class RequirementsIndexService {
 
     if (filters.type) results = results.filter((r) => r.objectTypeRef === filters.type)
     if (filters.status) results = results.filter((r) => r.status === filters.status)
+    if (filters.needsRevalidation !== undefined) {
+      results = results.filter((r) => !!r.needsRevalidation === filters.needsRevalidation)
+    }
     if (filters.tags?.length) {
       results = results.filter((r) => {
         const reqTags = (r.fields as Record<string, unknown>)['tags'] as string[] | undefined
@@ -67,11 +70,6 @@ export class RequirementsIndexService {
     return (idx.versions.get(requirementId) ?? []).sort((a, b) => b.versionNumber - a.versionNumber)
   }
 
-  async findLinksNeedingRevalidation(repoPath: string): Promise<ObjectLink[]> {
-    const idx = await this.getOrBuild(repoPath)
-    return idx.links.filter((l) => l.needsRevalidation)
-  }
-
   async findAllLinks(repoPath: string): Promise<ObjectLink[]> {
     const idx = await this.getOrBuild(repoPath)
     return idx.links
@@ -84,7 +82,6 @@ export class RequirementsIndexService {
       type: data.type,
       sourceId: data.sourceId,
       targetId: data.targetId,
-      needsRevalidation: false,
       createdAt: new Date().toISOString(),
       createdBy: 'user',
     } as unknown as ObjectLink

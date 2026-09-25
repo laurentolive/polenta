@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 export const ROW_MAX_LINES_MIN = 1
 export const ROW_MAX_LINES_MAX = 20
 export const ROW_MAX_LINES_DEFAULT = 10
+/** Position du slider au-delà de `ROW_MAX_LINES_MAX` : hauteur non limitée (toutes les lignes). */
+export const ROW_MAX_LINES_ALL = ROW_MAX_LINES_MAX + 1
 
 /** Icône au style lucide : double flèche verticale (hauteur) à gauche d'une ligne/cadre. */
 function RowHeightIcon({ size = 14 }: { size?: number }) {
@@ -27,7 +29,8 @@ function RowHeightIcon({ size = 14 }: { size?: number }) {
 }
 
 /** Bouton de la barre du haut (vue tableau) — ouvre une popup avec un slider réglant la
- *  hauteur max des lignes d'`ExcelView`, exprimée en nombre de lignes de texte. */
+ *  hauteur max des lignes d'`ExcelView`, exprimée en nombre de lignes de texte ; le bout du
+ *  slider (`ROW_MAX_LINES_ALL`) affiche toutes les lignes. */
 export function RowMaxHeightButton({
   value,
   onChange,
@@ -58,13 +61,15 @@ export function RowMaxHeightButton({
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-ink-2">{t('system.excelView.rowMaxHeight')}</span>
               <span className="text-xs font-mono text-ink">
-                {t('system.excelView.rowMaxLines', { count: value })}
+                {value >= ROW_MAX_LINES_ALL
+                  ? t('system.excelView.rowMaxLinesAll')
+                  : t('system.excelView.rowMaxLines', { count: value })}
               </span>
             </div>
             <input
               type="range"
               min={ROW_MAX_LINES_MIN}
-              max={ROW_MAX_LINES_MAX}
+              max={ROW_MAX_LINES_ALL}
               step={1}
               value={value}
               onChange={e => onChange(Number(e.target.value))}

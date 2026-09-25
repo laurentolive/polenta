@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { GitCompare, History, ListTree, Lock, Tag } from 'lucide-react'
+import { GitCompare, History, Lock, Tag } from 'lucide-react'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { useVersioning } from '../../contexts/VersioningContext'
@@ -9,7 +9,6 @@ import { useSelectedRepo } from '../../contexts/SelectedRepoContext'
 import { useWorkspaceStructure } from '../../hooks/useWorkspaceStructure'
 import { VersionRepoFolder } from './version/VersionRepoFolder'
 import { VersionCompareSelector } from './version/VersionCompareSelector'
-import { VersionImpactSelector } from './version/VersionImpactSelector'
 
 interface Props {
   currentProjectId: string
@@ -28,7 +27,6 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
   const { selectedRepoPath } = useSelectedRepo()
   const pathname = useRouterState({ select: s => s.location.pathname })
   const isCompareView = pathname === '/version-diff'
-  const isImpactView = pathname === '/impact-analysis'
   const workspaceDir = decodeProjectId(projectId)
 
   const { data: project } = useQuery({
@@ -43,7 +41,7 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-edge shrink-0 flex items-center justify-between">
-        <p className="section-label">{isCompareView ? t('sidebar.version.compareTitle') : isImpactView ? t('sidebar.version.impactTitle') : t('sidebar.version.title')}</p>
+        <p className="section-label">{isCompareView ? t('sidebar.version.compareTitle') : t('sidebar.version.title')}</p>
         <div className="flex items-center gap-2">
           {isReadonly && (
             <span title={t('sidebar.version.readonlyTooltip')}>
@@ -74,24 +72,12 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
           >
             <GitCompare size={14} />
           </button>
-          <button
-            type="button"
-            onClick={() => navigate({ to: '/impact-analysis', search: { projectId } })}
-            className="btn-icon text-prim"
-            title={t('sidebar.version.impactAnalysis')}
-          >
-            <ListTree size={14} />
-          </button>
         </div>
       </div>
 
       {isCompareView ? (
         <div className="flex-1 overflow-hidden">
           <VersionCompareSelector projectId={projectId} />
-        </div>
-      ) : isImpactView ? (
-        <div className="flex-1 overflow-hidden">
-          <VersionImpactSelector projectId={projectId} />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto py-1">

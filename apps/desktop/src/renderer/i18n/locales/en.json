@@ -28,7 +28,8 @@
       "campaigns": "Campaigns",
       "parameters": "Parameters",
       "search": "Search",
-      "version": "Version"
+      "version": "Version",
+      "impact": "Impact analysis"
     },
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
@@ -243,12 +244,10 @@
     "version": {
       "title": "Version",
       "compareTitle": "Compare",
-      "impactTitle": "Impact analysis",
       "readonlyTooltip": "Frozen state — no branch checked out",
       "baselines": "Baselines",
       "viewGraph": "View the version tree",
       "compareVersions": "Compare two versions",
-      "impactAnalysis": "Impact analysis",
       "dependencyConflict": "Dependency conflict to resolve before showing the tree — open the Structure tab of the Data model to resolve it.",
       "repo": "Repo",
       "objectA": "Object A",
@@ -930,7 +929,7 @@
     "testCasesFound_other": "{{count}} test cases found",
     "uncoveredRequirements_one": "{{count}} uncovered requirement: {{ids}}",
     "uncoveredRequirements_other": "{{count}} uncovered requirements: {{ids}}",
-    "selectTwoBaselinesHint": "Select two baselines in the Version panel to analyze the impact of changes, or reopen an existing analysis.",
+    "selectTwoBaselinesHint": "Select two baselines in the Impact analysis panel to analyze the impact of changes, or reopen an existing analysis.",
     "noChangedRequirement": "No requirement changed between these two baselines."
   },
   "graphPage": {

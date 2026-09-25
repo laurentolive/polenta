@@ -331,7 +331,7 @@ function ChangedRequirementRow({
 
 // ── ImpactAnalysisPage ───────────────────────────────────────────────────────
 // Le panneau latéral (sélection des baselines, création, liste des analyses) vit désormais
-// dans le panel Version (VersionImpactSelector) — cette page n'affiche plus que le contenu
+// dans le panneau Analyse d'impact (VersionImpactSelector, T174) — cette page n'affiche plus que le contenu
 // principal : barre de titre avec la plage de baselines comparées, et la liste (en grand)
 // des exigences impactées pour l'analyse active, lue depuis ImpactAnalysisContext.
 function ImpactAnalysisPage() {
@@ -370,7 +370,7 @@ function ImpactAnalysisPage() {
 
   const [campaignDraft, setCampaignDraft] = useState<{ testCaseIds: string[]; uncoveredRequirementIds: string[] } | null>(null)
 
-  // Repart de zéro à chaque changement d'analyse active (choisie dans le panel Version).
+  // Repart de zéro à chaque changement d'analyse active (choisie dans le panneau Analyse d'impact).
   useEffect(() => {
     setCampaignDraft(null)
   }, [activeAnalysisId])

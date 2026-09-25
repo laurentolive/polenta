@@ -10,7 +10,7 @@ import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
 import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -38,6 +38,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
   if (pathname === '/parameters') return 'parameters'
+  if (pathname === '/impact-analysis') return 'impact'
 
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
@@ -48,8 +49,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
     pathname === '/diff' ||
     pathname === '/version-diff' ||
     pathname === '/versioning' ||
-    pathname === '/baseline' ||
-    pathname === '/impact-analysis'
+    pathname === '/baseline'
   ) {
     return 'version'
   }
@@ -80,8 +80,8 @@ export function AppLayout() {
   const routePanel = deducePanel(pathname, searchParams.get('category') ?? undefined)
   const activePanel: Panel = sidebarOverride ?? routePanel
 
-  // Remembers which sub-view of the "version" panel (graph/baseline/version-diff/
-  // impact-analysis) was last open, so switching to another activity-bar panel and back
+  // Remembers which sub-view of the "version" panel (graph/baseline/version-diff) was
+  // last open, so switching to another activity-bar panel and back
   // restores it instead of always resetting to the graph — see handleSelectPanel below.
   const [lastVersionRoute, setLastVersionRoute] = useState<{ pathname: string; search: string } | null>(null)
 
@@ -162,9 +162,6 @@ export function AppLayout() {
             case '/baseline':
               navigate({ to: '/baseline', search: { projectId: currentProjectId } })
               break
-            case '/impact-analysis':
-              navigate({ to: '/impact-analysis', search: { projectId: currentProjectId } })
-              break
             case '/version-diff':
               navigate({
                 to: '/version-diff',
@@ -199,6 +196,11 @@ export function AppLayout() {
         navigate({ to: '/product', search: { projectId: currentProjectId ?? '', tab: undefined, repo: searchParams.get('repo') ?? undefined, node: undefined, type: undefined, category } })
         break
       }
+      case 'impact':
+        // T174: own activity-bar entry (was a sub-view of Version). The open analysis is
+        // kept by ImpactAnalysisContext, so a bare /impact-analysis restores it.
+        if (currentProjectId) navigate({ to: '/impact-analysis', search: { projectId: currentProjectId } })
+        break
       case 'parameters':
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
         break

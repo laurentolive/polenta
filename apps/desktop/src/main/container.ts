@@ -7,6 +7,7 @@ import { TestsIndexService } from './services/tests-index.service'
 import { RequirementsService } from './services/requirements.service'
 import { TestsService } from './services/tests.service'
 import { RevalidationService } from './services/revalidation.service'
+import { ParametersService } from './services/parameters.service'
 import { TraceabilityService } from './services/traceability.service'
 import { ReviewsService } from './services/reviews.service'
 import { RepoWatcherService } from './services/repo-watcher.service'
@@ -67,6 +68,8 @@ export async function createContainer(): Promise<void> {
   const savedQueries = new SavedQueriesService(git, schema, dashboards)
   const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
   const exportSvc = new ExportService()
+  // T171 — base de paramètres ; marque les éléments approuvés impactés via T172.
+  const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
   registerIpcHandlers({
     auth,
@@ -93,5 +96,6 @@ export async function createContainer(): Promise<void> {
     dashboards,
     dashboardSeed,
     export: exportSvc,
+    parameters,
   })
 }

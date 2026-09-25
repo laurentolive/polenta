@@ -11,30 +11,9 @@ traiter l'impact sur un élément marqué et de lever le flag (`needsRevalidatio
 de l'élément). Périmètre (action unitaire / en masse, trace de qui a levé le flag et quand, lien
 avec les pré-vérifications de baseline SPEC-TRACEABILITY §5.2) à préciser en phase Spec.
 
-### T172 — Évolution : revalidation des liens (`needsRevalidation`) — écriture automatique du flag et action « Revalider »
-
-**Statut** : coding sprint 1 — implémenté, `tsc` propre, script de service 20/20 OK, en attente de validation humaine (`specs/T172-sprint1.md`) ; travail sur `main`. Recadrage : flag porté par l'**élément** lié (pas par
-le lien), pas de bouton « Revalider » (levée du flag → T173).
-
-**Demande** : SPEC-REQ §5.3 prévoit que la modification d'un objet marque ses liens
-`needsRevalidation: true` (notification, pas de retour en `draft`), et que l'utilisateur puisse
-revalider ou supprimer le lien. Le code ne fait aujourd'hui que **lire** ce flag (statut
-`needs_revalidation` de la matrice, critère de maturité, compliance d'interface, Query Builder) :
-rien ne le passe à `true`, et il n'existe pas d'action « Revalider » (SPEC-AUDIT §3, « [ABSENT]
-Bouton Revalider »). `computeNeedsRevalidation` (`interface-compliance.service.ts`) n'est appelé
-nulle part. À implémenter de façon générale :
-- modification d'un élément `approved` (exigence ou test) → **tous** ses liens marqués
-  `needsRevalidation: true`, **quel que soit leur sens** (le sens des liens de couverture est
-  indifférent, cf. CLAUDE.md) ;
-- action « Revalider » sur un lien marqué (lève le flag, met à jour `targetCommitHash`) ;
-- point d'entrée réutilisable par T171 (« modification d'un paramètre = modification de chaque
-  élément qui le référence »).
-Périmètre exact (quelles modifications déclenchent : contenu seul ou aussi statut/titre ; seuls
-les éléments `approved` ou tous ; où afficher la notification) à préciser en phase Spec.
-
 ### T171 — Évolution : base de paramètres partagés entre exigences et tests
 
-**Statut** : specifying — spec rédigée, en attente de validation humaine
+**Statut** : coding sprint 1 — implémenté (`specs/T171-sprint1.md`), `tsc` propre, script de service 25/25, vue vérifiée dans l'app ; en attente de validation humaine. Sprints 2 et 3 à venir ; travail sur `main`
 
 **Demande** : un test générique (partagé entre plusieurs produits) prend des valeurs que le
 testeur va aujourd'hui chercher à la main dans les exigences (colonne « objectifs » remplie par
@@ -44,14 +23,7 @@ repo (produit et composants), référencée par `{nom}` / `{<nœud>::nom}` dans 
 exigences et des tests, indépendamment des liens. Unifiée avec les paramètres T97 (repli en
 saisie manuelle). Résolution et gel des valeurs à l'ajout en campagne, à la baseline de la
 campagne si elle existe. Les variantes de jeux de valeurs passent par les branches git.
-**Dépend de T172** (revalidation des liens). Voir `specs/T171.md`.
-
-### T170 — Évolution : hauteur max des lignes Vue Excel — « toutes les lignes » au bout du slider
-
-**Statut** : coding sprint 1 — implémenté, `tsc` propre, en attente de validation humaine (sur `main`, comme T168/T169)
-
-**Demande** : T168 limite la hauteur des lignes à 20 au maximum ; au-delà de 20, quand le
-curseur est au bout, afficher toutes les lignes. Voir `specs/T170.md`.
+**Dépend de T172** (livré, archivé). Spec réalignée sur T172 (flag porté par les éléments). Voir `specs/T171.md`.
 
 ### T154 — Évolution : sécuriser "Publier" (fetch + fast-forward de l'intégration, échec réseau explicite)
 

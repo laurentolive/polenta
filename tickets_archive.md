@@ -2,6 +2,51 @@
 
 ---
 
+### T170 — Évolution : hauteur max des lignes Vue Excel — « toutes les lignes » au bout du slider
+
+**Contexte** : T168 limitait la hauteur des lignes de la Vue Excel à 20 lignes au maximum.
+
+**Implémentation (1 sprint)** :
+
+- **`RowMaxHeightButton.tsx`** — position supplémentaire `ROW_MAX_LINES_ALL` (= 21) au bout du
+  slider, libellée « Toutes les lignes » / « All lines » (i18n `system.excelView.rowMaxLinesAll`).
+- **`SystemView.tsx`** — plage persistée [1, 21] (clé `polenta:excelRowMaxLines`) ; passe
+  `Infinity` à `ExcelView` en position 21.
+- **`ExcelView.tsx`** — `useCellClamp` sans `line-clamp` et `RichtextClamp` sans `max-height` ni
+  estompage quand `maxLines` est infini ; le reste suit le comportement N > 1.
+
+Voir `specs/T170.md`.
+
+---
+
+### T172 — Évolution : revalidation (`needsRevalidation`) — marquage automatique des éléments impactés
+
+**Contexte** : SPEC-REQ §5.3 prévoyait qu'une modification signale un impact sur ce qui est lié,
+mais le code ne faisait que lire un flag `ObjectLink.needsRevalidation` que rien n'écrivait.
+Recadré en phase Spec : le flag est porté par les **éléments** (exigences, tests), pas par les
+liens ; pas de bouton « Revalider » (levée du flag → T173).
+
+**Implémentation (1 sprint)** :
+
+- **`RevalidationService.markImpactedBy`** (nouveau, point d'entrée réutilisé par T171) : quand
+  un élément quitte un statut `isApproval` (`openDraft`, `transition`, `tests.update` avec
+  statut), chaque élément à l'autre bout d'un de ses liens (sens/type indifférents, tous les
+  repos du workspace) reçoit `needsRevalidation: true` dans son YAML. Exclus : l'élément
+  lui-même, les éléments terminaux, readonly (nœud local ou repo monté sous un nœud readonly),
+  orphelins. Statut, version et `links.yaml` inchangés ; déclenché hors du verrou de l'élément,
+  au mieux.
+- **Lecteurs** basculés sur le flag de l'élément : matrice (cellule/statut de couverture),
+  maturité (critère 5), compliance d'interface, Query Builder (colonne sur exigences/tests),
+  `revalidationItems`. Supprimés : `computeNeedsRevalidation`, IPC `interface:needs-revalidation`,
+  `findLinksNeedingRevalidation`, `computeRevalidationReqIds`. `ObjectLink.needsRevalidation`
+  déprécié.
+- **UI** : `RevalidationFlag` (⚠ « Impact à vérifier ») à côté du statut dans Excel, Word et
+  Édition ; invalidation élargie après une réouverture ou un changement de statut.
+
+Voir `specs/T172.md`, `specs/T172-design.md`, `specs/T172-sprint1.md`.
+
+---
+
 ### T169 — Évolution : rendu richtext et édition dans la cellule (Vue Excel)
 
 **Contexte** : depuis T168 (hauteur max des lignes, 10 par défaut), une cellule `richtext`

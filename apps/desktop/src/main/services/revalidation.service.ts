@@ -52,11 +52,21 @@ export class RevalidationService {
   /**
    * Marque `needsRevalidation: true` chaque élément à l'autre bout d'un lien touchant
    * `elementId` (sens indifférent, tous types de liens, tous les repos du workspace). Un seul
-   * niveau, pas de cascade. Exclus : l'élément lui-même, les pairs introuvables, déjà marqués,
-   * en statut terminal ou appartenant à un nœud `readonly`. Best-effort par pair : une erreur
-   * est loggée sans interrompre les autres pairs ni l'opération appelante.
+   * niveau, pas de cascade. Exclus : l'élément lui-même (sauf `includeSelf`), les pairs
+   * introuvables, déjà marqués, en statut terminal ou appartenant à un nœud `readonly`.
+   * Best-effort par pair : une erreur est loggée sans interrompre les autres pairs ni
+   * l'opération appelante.
+   *
+   * `repoPath` est le repo **ouvert** : c'est son schéma qui déclare les nœuds `readonly`.
+   * `includeSelf` (T171 §9) : l'élément lui-même est aussi marqué — son texte affiché a changé
+   * (paramètre modifié) sans passer par un brouillon ; mêmes exclusions que pour les pairs.
    */
-  async markImpactedBy(repoPath: string, elementId: string, workspaceDir?: string): Promise<ImpactedElement[]> {
+  async markImpactedBy(
+    repoPath: string,
+    elementId: string,
+    workspaceDir?: string,
+    opts: { includeSelf?: boolean } = {},
+  ): Promise<ImpactedElement[]> {
     let repoPaths: string[]
     const peerIds = new Set<string>()
     try {
@@ -72,14 +82,15 @@ export class RevalidationService {
       console.error(`[Revalidation] liens de ${elementId} illisibles:`, err)
       return []
     }
-    peerIds.delete(elementId)
+    if (opts.includeSelf) peerIds.add(elementId)
+    else peerIds.delete(elementId)
 
     const openedSchema = await this.readSchema(repoPath)
     const ctx: MarkContext = {
       repoPaths,
       openedRepoPath: repoPath,
       openedSchema,
-      readonlyRepoPaths: await this.readonlyRepoPaths(openedSchema, workspaceDir),
+      readonlyRepoPaths: await this.readonlyRepoPathsFor(openedSchema, workspaceDir),
       workspaceDir,
     }
     const marked: ImpactedElement[] = []
@@ -94,6 +105,12 @@ export class RevalidationService {
     return marked
   }
 
+  /** Repos du workspace en lecture seule vus depuis le repo ouvert `repoPath` (même règle que
+   *  le marquage) — réutilisé par ParametersService (T171) pour refuser les écritures. */
+  async readonlyRepoPaths(repoPath: string, workspaceDir?: string): Promise<Set<string>> {
+    return this.readonlyRepoPathsFor(await this.readSchema(repoPath), workspaceDir)
+  }
+
   // ── Private helpers ─────────────────────────────────────────────────────────
 
   /**
@@ -103,7 +120,7 @@ export class RevalidationService {
    * donc sur le repo, via le nom de montage (même correspondance nom de nœud ↔ nœud de l'arbre
    * workspace que `SchemaService.resolveComponentRepoPath`).
    */
-  private async readonlyRepoPaths(openedSchema: ProjectSchema | null, workspaceDir?: string): Promise<Set<string>> {
+  private async readonlyRepoPathsFor(openedSchema: ProjectSchema | null, workspaceDir?: string): Promise<Set<string>> {
     const out = new Set<string>()
     if (!openedSchema || !workspaceDir || !this.workspaceTree) return out
     const tree = await this.workspaceTree.readCache(workspaceDir)

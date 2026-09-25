@@ -32,6 +32,7 @@ import type {
 } from '../services/dashboards.service'
 import type { DashboardSeedService } from '../services/dashboard-seed.service'
 import type { ExportService } from '../services/export.service'
+import type { ParametersService } from '../services/parameters.service'
 import type {
   CreateRequirementDto,
   UpdateRequirementDto,
@@ -52,6 +53,7 @@ import type {
   UpdateImpactItemStatusDto,
   ExportKind,
   ExportFormat,
+  Parameter,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
@@ -84,6 +86,7 @@ export interface Container {
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService
   export: ExportService
+  parameters: ParametersService
 }
 
 // Deux tables distinctes (pas une dérivée de l'autre) : la relation n'est pas
@@ -283,6 +286,18 @@ export function registerIpcHandlers(c: Container): void {
 
   ipcMain.handle('requirements:link-delete', (_e, repoPath: string, linkId: string) =>
     c.requirements.deleteLink(repoPath, linkId))
+
+  // ── Paramètres (T171) ───────────────────────────────────────────────────────
+  ipcMain.handle('parameters:list', (_e, repoPath: string, workspaceDir?: string) =>
+    c.parameters.list(repoPath, workspaceDir))
+  ipcMain.handle('parameters:usages', (_e, repoPath: string, name: string, workspaceDir?: string) =>
+    c.parameters.usages(repoPath, name, workspaceDir))
+  ipcMain.handle('parameters:create', (_e, repoPath: string, param: Parameter, workspaceDir?: string) =>
+    c.parameters.create(repoPath, param, workspaceDir))
+  ipcMain.handle('parameters:update', (_e, repoPath: string, name: string, patch: Omit<Parameter, 'name'>, workspaceDir?: string) =>
+    c.parameters.update(repoPath, name, patch, workspaceDir))
+  ipcMain.handle('parameters:delete', (_e, repoPath: string, name: string, workspaceDir?: string) =>
+    c.parameters.delete(repoPath, name, workspaceDir))
 
   // ── Tests ────────────────────────────────────────────────────────────────────
   ipcMain.handle('tests:list', (_e, repoPath: string) => c.tests.findAll(repoPath))

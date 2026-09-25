@@ -244,6 +244,13 @@ export function createIpcClient(): ApiClient {
       getOrder: (repoPath, username) => invoke('dashboards:order-get', repoPath, username),
       setOrder: (repoPath, username, order) => invoke('dashboards:order-set', repoPath, username, order),
     },
+    parameters: {
+      list: (repoPath, workspaceDir) => invoke('parameters:list', repoPath, workspaceDir),
+      usages: (repoPath, name, workspaceDir) => invoke('parameters:usages', repoPath, name, workspaceDir),
+      create: (repoPath, param, workspaceDir) => invoke('parameters:create', repoPath, param, workspaceDir),
+      update: (repoPath, name, patch, workspaceDir) => invoke('parameters:update', repoPath, name, patch, workspaceDir),
+      delete: (repoPath, name, workspaceDir) => invoke('parameters:delete', repoPath, name, workspaceDir),
+    },
     interface: {
       complianceMatrix: (workspaceDir) => invoke('interface:compliance-matrix', workspaceDir),
       coverage: (componentRepoPath, interfaceRepoPath, roles) =>

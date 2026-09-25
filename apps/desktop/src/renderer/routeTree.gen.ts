@@ -19,6 +19,7 @@ import { Route as RequirementsRouteImport } from './routes/requirements'
 import { Route as QueryRouteImport } from './routes/query'
 import { Route as ProductRouteImport } from './routes/product'
 import { Route as PreferencesRouteImport } from './routes/preferences'
+import { Route as ParametersRouteImport } from './routes/parameters'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ImpactAnalysisRouteImport } from './routes/impact-analysis'
 import { Route as GraphRouteImport } from './routes/graph'
@@ -93,6 +94,11 @@ const ProductRoute = ProductRouteImport.update({
 const PreferencesRoute = PreferencesRouteImport.update({
   id: '/preferences',
   path: '/preferences',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ParametersRoute = ParametersRouteImport.update({
+  id: '/parameters',
+  path: '/parameters',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -234,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/graph': typeof GraphRoute
   '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
+  '/parameters': typeof ParametersRoute
   '/preferences': typeof PreferencesRoute
   '/product': typeof ProductRoute
   '/query': typeof QueryRoute
@@ -271,6 +278,7 @@ export interface FileRoutesByTo {
   '/graph': typeof GraphRoute
   '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
+  '/parameters': typeof ParametersRoute
   '/preferences': typeof PreferencesRoute
   '/product': typeof ProductRoute
   '/query': typeof QueryRoute
@@ -309,6 +317,7 @@ export interface FileRoutesById {
   '/graph': typeof GraphRoute
   '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
+  '/parameters': typeof ParametersRoute
   '/preferences': typeof PreferencesRoute
   '/product': typeof ProductRoute
   '/query': typeof QueryRoute
@@ -348,6 +357,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/impact-analysis'
     | '/login'
+    | '/parameters'
     | '/preferences'
     | '/product'
     | '/query'
@@ -385,6 +395,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/impact-analysis'
     | '/login'
+    | '/parameters'
     | '/preferences'
     | '/product'
     | '/query'
@@ -422,6 +433,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/impact-analysis'
     | '/login'
+    | '/parameters'
     | '/preferences'
     | '/product'
     | '/query'
@@ -460,6 +472,7 @@ export interface RootRouteChildren {
   GraphRoute: typeof GraphRoute
   ImpactAnalysisRoute: typeof ImpactAnalysisRoute
   LoginRoute: typeof LoginRoute
+  ParametersRoute: typeof ParametersRoute
   PreferencesRoute: typeof PreferencesRoute
   ProductRoute: typeof ProductRoute
   QueryRoute: typeof QueryRoute
@@ -557,6 +570,13 @@ declare module '@tanstack/react-router' {
       path: '/preferences'
       fullPath: '/preferences'
       preLoaderRoute: typeof PreferencesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/parameters': {
+      id: '/parameters'
+      path: '/parameters'
+      fullPath: '/parameters'
+      preLoaderRoute: typeof ParametersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -748,6 +768,7 @@ const rootRouteChildren: RootRouteChildren = {
   GraphRoute: GraphRoute,
   ImpactAnalysisRoute: ImpactAnalysisRoute,
   LoginRoute: LoginRoute,
+  ParametersRoute: ParametersRoute,
   PreferencesRoute: PreferencesRoute,
   ProductRoute: ProductRoute,
   QueryRoute: QueryRoute,

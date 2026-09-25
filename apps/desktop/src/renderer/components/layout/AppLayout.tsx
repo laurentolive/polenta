@@ -10,7 +10,7 @@ import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
 import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'dashboard'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -37,6 +37,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
   }
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
+  if (pathname === '/parameters') return 'parameters'
 
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
@@ -198,6 +199,9 @@ export function AppLayout() {
         navigate({ to: '/product', search: { projectId: currentProjectId ?? '', tab: undefined, repo: searchParams.get('repo') ?? undefined, node: undefined, type: undefined, category } })
         break
       }
+      case 'parameters':
+        if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
+        break
       case 'dashboard':
         if (currentProjectId) {
           const params = new URLSearchParams(lastDashboardRoute?.search ?? '')

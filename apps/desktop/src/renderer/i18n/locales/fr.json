@@ -26,6 +26,7 @@
       "requirements": "Exigences",
       "tests": "Tests",
       "campaigns": "Campagnes",
+      "parameters": "Paramètres",
       "search": "Recherche",
       "version": "Version"
     },
@@ -1012,5 +1013,34 @@
   "printTestsPage": {
     "title": "Cahier de test — {{componentLabel}}",
     "fallbackTitle": "Test"
+  },
+  "parameters": {
+    "title": "Paramètres",
+    "allRepos": "Tous les repos",
+    "new": "Nouveau paramètre",
+    "searchPlaceholder": "Rechercher (nom, valeur, description)…",
+    "empty": "Aucun paramètre dans ce repo.",
+    "emptyValue": "(vide)",
+    "uses": "Utilisations",
+    "readOnly": "Lecture seule",
+    "usedBy": "Utilisé par ({{count}})",
+    "notUsed": "Utilisé par aucun élément.",
+    "fields": {
+      "name": "Nom",
+      "value": "Valeur",
+      "unit": "Unité",
+      "description": "Description"
+    },
+    "dialog": {
+      "createTitle": "Nouveau paramètre",
+      "editTitle": "Paramètre {{name}}",
+      "confirmImpact": "Ce changement modifie le texte de {{count}} élément(s) approuvé(s). Eux et leurs éléments liés seront marqués « Impact à vérifier » (leur statut ne change pas) :",
+      "confirmSave": "Enregistrer et marquer",
+      "confirmDelete": "Supprimer le paramètre {{name}} ?",
+      "deleteRefused": "Suppression impossible : le paramètre est encore utilisé par ces éléments. Retirez les références puis réessayez."
+    },
+    "errors": {
+      "invalidName": "Nom invalide : lettres, chiffres, _ et - uniquement."
+    }
   }
 }

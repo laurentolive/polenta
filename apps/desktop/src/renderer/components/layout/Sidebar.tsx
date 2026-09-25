@@ -5,6 +5,7 @@ import { SearchPanel } from '../sidebar/SearchPanel'
 import { VersionPanel } from '../sidebar/VersionPanel'
 import { SystemPanel } from '../sidebar/SystemPanel'
 import { DashboardPanel } from '../sidebar/DashboardPanel'
+import { ParametersPanel } from '../sidebar/ParametersPanel'
 
 interface Props {
   activePanel: Panel
@@ -29,6 +30,7 @@ export function Sidebar({ activePanel, currentProjectId, width }: Props) {
       {activePanel === 'dashboard' && currentProjectId && (
         <DashboardPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
+      {activePanel === 'parameters' && currentProjectId && <ParametersPanel projectId={currentProjectId} />}
     </div>
   )
 }

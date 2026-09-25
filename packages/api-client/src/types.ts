@@ -1,4 +1,9 @@
 import type {
+  Parameter,
+  ParameterDeleteResult,
+  ParameterUsage,
+  ParameterWriteResult,
+  RepoParameters,
   ProjectRecent,
   ProjectInfo,
   Requirement,
@@ -528,6 +533,14 @@ export interface ApiClient {
     /** Ordre d'affichage de la section "Dashboards" du panneau latéral (préférence perso). */
     getOrder(repoPath: string, username: string): Promise<string[]>
     setOrder(repoPath: string, username: string, order: string[]): Promise<void>
+  }
+  /** Base de paramètres (T171) — `repoPath` = repo qui porte la base. */
+  parameters: {
+    list(repoPath: string, workspaceDir?: string): Promise<RepoParameters[]>
+    usages(repoPath: string, name: string, workspaceDir?: string): Promise<ParameterUsage[]>
+    create(repoPath: string, param: Parameter, workspaceDir?: string): Promise<ParameterWriteResult>
+    update(repoPath: string, name: string, patch: Omit<Parameter, 'name'>, workspaceDir?: string): Promise<ParameterWriteResult>
+    delete(repoPath: string, name: string, workspaceDir?: string): Promise<ParameterDeleteResult>
   }
   /** Interface compliance (T69 Sprint 4) */
   interface: {

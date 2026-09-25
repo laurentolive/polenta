@@ -106,6 +106,7 @@ const PANEL_LABEL_KEYS: Record<Panel, string> = {
   tests: 'layout.activityBar.tests',
   campaigns: 'layout.activityBar.campaigns',
   dashboard: 'layout.activityBar.dashboard',
+  parameters: 'layout.activityBar.parameters',
 }
 
 // Exact-match overrides for routes whose default panel label (PANEL_LABEL_KEYS) would be too

@@ -26,6 +26,7 @@
       "requirements": "Requirements",
       "tests": "Tests",
       "campaigns": "Campaigns",
+      "parameters": "Parameters",
       "search": "Search",
       "version": "Version"
     },
@@ -1012,5 +1013,34 @@
   "printTestsPage": {
     "title": "Test booklet — {{componentLabel}}",
     "fallbackTitle": "Test"
+  },
+  "parameters": {
+    "title": "Parameters",
+    "allRepos": "All repositories",
+    "new": "New parameter",
+    "searchPlaceholder": "Search (name, value, description)…",
+    "empty": "No parameter in this repository.",
+    "emptyValue": "(empty)",
+    "uses": "Uses",
+    "readOnly": "Read-only",
+    "usedBy": "Used by ({{count}})",
+    "notUsed": "Not used by any element.",
+    "fields": {
+      "name": "Name",
+      "value": "Value",
+      "unit": "Unit",
+      "description": "Description"
+    },
+    "dialog": {
+      "createTitle": "New parameter",
+      "editTitle": "Parameter {{name}}",
+      "confirmImpact": "This change alters the text of {{count}} approved element(s). They and their linked elements will be flagged \"Impact to check\" (their status does not change):",
+      "confirmSave": "Save and flag",
+      "confirmDelete": "Delete parameter {{name}}?",
+      "deleteRefused": "Cannot delete: the parameter is still used by these elements. Remove the references and try again."
+    },
+    "errors": {
+      "invalidName": "Invalid name: letters, digits, _ and - only."
+    }
   }
 }

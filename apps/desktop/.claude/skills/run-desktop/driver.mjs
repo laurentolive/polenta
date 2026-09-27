@@ -88,6 +88,27 @@ const COMMANDS = {
     }
   },
 
+  // Real (trusted) double-click at page coordinates computed by a JS expression evaluated in
+  // the page, which must return { x, y } — e.g. the screen position of a character. Two
+  // genuine clicks ~120 ms apart (the 2nd with clickCount 2 → native `dblclick`), unlike
+  // synthetic `dispatchEvent`, which skips the browser's default actions (focus, selection).
+  async 'dblclick-at'(expr) {
+    if (!page) return console.log('ERROR: launch first')
+    try {
+      const p = await page.evaluate(expr)
+      if (!p) return console.log('dblclick-at -> no point')
+      await page.mouse.move(p.x, p.y)
+      await page.mouse.down({ clickCount: 1 })
+      await page.mouse.up({ clickCount: 1 })
+      await new Promise((r) => setTimeout(r, 120))
+      await page.mouse.down({ clickCount: 2 })
+      await page.mouse.up({ clickCount: 2 })
+      console.log('dblclick-at', Math.round(p.x), Math.round(p.y), '-> OK')
+    } catch (e) {
+      console.log('dblclick-at -> ERROR:', e.message)
+    }
+  },
+
   async 'click-text'(text) {
     if (!page) return console.log('ERROR: launch first')
     const r = await page.evaluate((t) => {

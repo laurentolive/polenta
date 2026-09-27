@@ -96,10 +96,11 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
 
   const [rawValue, setRawValue] = useState(value)
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null)
-  // Track whether this is the initial mount so the resync effect does not
-  // fire spuriously on mount (ctx.isRaw starts false, which would trigger
-  // an unnecessary setContent before the user has interacted).
-  const isMountedRef = useRef(false)
+  // Last raw-mode state seen by the "back from raw" resync effect below: it only acts on an
+  // actual raw → rich transition, never on mount (isThisRaw starts false). T176 — a "mounted"
+  // flag was consumed by React StrictMode's simulated first pass (dev), and the second pass
+  // then called setContent (normalized markdown ≠ rawValue): caret thrown to the end.
+  const wasRawRef = useRef(false)
   // Same concern for the "value reset externally" effect below: TipTap-markdown's initial
   // parse of `content` is not always identity (e.g. a plain `\n` inside a paragraph is not
   // markdown syntax for a line break, so it round-trips as a space) — comparing the freshly
@@ -108,11 +109,16 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
   // the field would call `setContent` on every load — a no-op content-wise (it just re-parses
   // the same already-reformatted text) but still a real transaction, so it would still trip the
   // `onUpdate` docChanged guard below and persist an unwanted (if content-identical) save.
-  const isInitialSyncRef = useRef(true)
+  // T176 — the guard compares against the last `value` the effect has seen rather than being
+  // a "first run" flag: React StrictMode (dev) runs mount effects twice, the simulated first
+  // pass consumed the flag and the second one called `setContent` (the initial parse had
+  // already emitted a normalized markdown, so `value` ≠ last emitted) — caret thrown to the
+  // end of the content and a spurious save, randomly depending on the content's round-trip.
+  const syncedValueRef = useRef(value)
   // Holds the markdown this field itself last emitted via onChange. The parent typically
   // echoes that same string straight back as the next `value` prop (through pendingEdits ->
   // objects merge, cf. SystemViewContext), but tiptap-markdown's parse-then-serialize round
-  // trip is not always identity (see isInitialSyncRef comment above): re-parsing the just-
+  // trip is not always identity (see syncedValueRef comment above): re-parsing the just-
   // emitted markdown can yield a slightly different string than getMarkdown() reported the
   // first time, especially right after a paste (tables, images, escaped punctuation...).
   // Comparing the incoming `value` against THIS ref, instead of against a freshly recomputed
@@ -240,7 +246,7 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
       // `Editor.setEditable()` (called from the effect below whenever `disabled` toggles,
       // including on mount) emits TipTap's 'update' event even though nothing in the document
       // actually changed. Without this guard that spurious event is indistinguishable from a
-      // real edit — the (already lossily re-parsed, see isInitialSyncRef above) markdown gets
+      // real edit — the (already lossily re-parsed, see syncedValueRef above) markdown gets
       // pushed to `onChange` and silently persisted, even though the user never typed anything.
       if (!transaction.docChanged) return
       const md = (editor.storage.markdown as MarkdownStorage).getMarkdown()
@@ -270,13 +276,12 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor])
 
-  // Sync when value is reset externally (e.g., type change). Skips its first run — see
-  // isInitialSyncRef above — since on mount there's nothing external to resync from yet.
+  // Sync when value is reset externally (e.g., type change). Reacts only to an actual change
+  // of the `value` prop since the last run (see syncedValueRef above) — on mount there's
+  // nothing external to resync from yet.
   useEffect(() => {
-    if (isInitialSyncRef.current) {
-      isInitialSyncRef.current = false
-      return
-    }
+    if (value === syncedValueRef.current) return
+    syncedValueRef.current = value
     if (!editor) return
     // The parent echoing back exactly what we just emitted is not an external change —
     // skip it so a paste (or any edit) never gets its caret reset by its own round-trip.
@@ -318,15 +323,12 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
   // caret sauterait hors du champ en cours d'édition (vue qui « part vers le bas »).
   const isThisRaw = hasContext && ctx.isRaw && ctx.activeEditor === editor
 
-  // Resync editor when coming back from raw mode.
-  // Skip on mount (isMountedRef.current is false): isThisRaw starts false, so
-  // the effect would fire immediately and risk a spurious setContent due to
-  // TipTap markdown normalization differences.
+  // Resync editor when coming back from raw mode — only on an actual isThisRaw change (see
+  // wasRawRef above): on mount it would risk a spurious setContent due to TipTap markdown
+  // normalization differences.
   useEffect(() => {
-    if (!isMountedRef.current) {
-      isMountedRef.current = true
-      return
-    }
+    if (isThisRaw === wasRawRef.current) return
+    wasRawRef.current = isThisRaw
     if (!editor || !ctx) return
     if (!isThisRaw) {
       const current = (editor.storage.markdown as MarkdownStorage).getMarkdown()

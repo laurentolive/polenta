@@ -88,3 +88,27 @@ la cellule s'agrandit vers le bas et le point cliqué reste en place ; `caretPoi
 la zone visible du tableau avant `posAtCoords` s'il en est sorti. Vérifié en build de production (fixture
 300 éléments avec richtext longs en lignes 4–5, copie du projet `PL/Product`) : curseur au bon caractère sur
 toutes les lignes, plus de défilement au double-clic.
+
+## Correctif 2 — curseur en fin de contenu, aléatoire, en `pnpm dev` (cause réelle)
+
+**Signalé** : toujours en fin de contenu « aléatoirement », ex. `B-1-004-01-M` (handstickProduct).
+
+**Reproduction** : impossible en build de production (clics réels Playwright : 60/60) ; reproduit avec le runtime
+React de **développement** (`StrictMode` actif, comme `pnpm dev`) : 33/60 échecs, dont `B-1-004-01-M`.
+
+**Cause** (trace des transactions ProseMirror) : deux effets de `RichTextField` se gardaient de leur premier
+passage par un drapeau « déjà monté » (`isInitialSyncRef`, `isMountedRef`). En dev, `StrictMode` exécute
+deux fois les effets de montage : le passage simulé consommait le drapeau, le second appelait
+`setContent` — la conversion Markdown initiale n'étant pas toujours identité (`<`, listes, échappements…),
+le Markdown de l'éditeur ≠ `value` / `rawValue` — ce qui replaçait le curseur en fin de contenu (et pouvait
+déclencher une sauvegarde parasite). « Aléatoire » : ne touche que les contenus dont l'aller-retour Markdown
+n'est pas identique.
+
+**Correctif** (`RichTextField.tsx`) : les deux effets ne réagissent plus qu'à un **changement réel** de leur
+entrée (`syncedValueRef` : dernière `value` vue ; `wasRawRef` : dernier état Raw vu), plus à un drapeau de
+premier passage. Concerne tous les champs richtext (Vue Excel, Édition, popups), pas seulement T176.
+
+**Vérifié** (runtime dev, clics réels, copie de handstickProduct) : 60/60 curseurs au bon caractère, dont
+`B-1-004-01-M` ; aucun fichier d'exigence modifié après 60 ouvertures / annulations. `tsc` propre.
+Outil de test : commande `dblclick-at <expr>` ajoutée au driver `run-desktop` (double-clic réel aux
+coordonnées renvoyées par une expression évaluée dans la page).

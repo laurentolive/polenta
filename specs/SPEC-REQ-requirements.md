@@ -143,7 +143,11 @@ référencer plusieurs diagrammes positionnés librement dans le texte.
   `variant?: 'default' | 'compact'` : `compact` = typographie resserrée pour une
   cellule de la Vue Excel (text-xs, titres au corps du texte, sans marges
   verticales, images bornées à la largeur de cellule) ; `default` inchangé
-  (Vue Word, Vue Recherche).
+  (Vue Word, Vue Recherche). Côté éditeur, `RichTextField` accepte depuis T176
+  `initialCaret?: 'end' | (() => { left, top } | null)` (avec `autoFocus`) :
+  position initiale du curseur — `'end'` par défaut, ou coordonnées client lues
+  une fois l'éditeur monté (`posAtCoords`), utilisé par la Vue Excel pour placer
+  le curseur au point double-cliqué.
 - **Édition** : pas d'éditeur draw.io intégré. Double-clic sur le diagramme
   rendu ouvre le fichier dans l'application draw.io externe du poste ; le
   rendu inline se rafraîchit automatiquement au retour de focus sur la fenêtre

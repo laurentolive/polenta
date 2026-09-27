@@ -2,7 +2,7 @@
 
 ### T176 — Évolution : Vue Excel — édition au double-clic, sans lag, sans changement de style, curseur au point cliqué
 
-**Statut** : coding sprint 1/2 — implémenté (`specs/T176-sprint1.md`), `tsc` propre, vérifié dans l'app ; en attente de validation humaine avant sprint 2 (réactivité) ; travail sur `main`
+**Statut** : coding sprint 2/2 (dernier) — implémenté (`specs/T176-sprint1.md`, `specs/T176-sprint2.md`), `tsc` propre, vérifié et mesuré dans l'app, SPEC mises à jour ; en attente de validation humaine ; travail sur `main`
 
 **Demande** : dans la Vue Excel (`components/system/ExcelView.tsx`) :
 1. **Double-clic** pour éditer une cellule (le simple clic reste la sélection, pour préserver la

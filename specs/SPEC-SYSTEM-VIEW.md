@@ -286,7 +286,32 @@ Système › Arbre › Sélection).
   éléments (colonne `section` si visible). Le drag & drop de réordonnancement reste possible
   **entre éléments de même dossier parent uniquement** — plus de dépôt « dans un dossier » ni
   de déplacement inter-dossiers (passer par l'arbre latéral ou réafficher les titres).
-- Édition inline : double-clic sur une cellule.
+- **Édition inline (T176)** :
+  - **Gestes** : clic simple = sélection de la cellule (contour bleu) et, par remontée, de la ligne —
+    n'ouvre jamais d'éditeur ; **double-clic** = ouverture directe (sélectionnée ou non) ; **F2** =
+    ouverture de la cellule sélectionnée, curseur en fin (convention Excel ; ignoré si le focus est dans
+    un champ de saisie). Toutes les cellules éditables : texte / nombre / date, nom d'élément, richtext,
+    enum / statut (liste), `multi_enum` (popover), liens (popover), étapes (dépliage), nom de dossier
+    (renommage — le double-clic sur le chevron replie toujours la ligne). Cellules non éditables :
+    sélection seulement. Pas de sélection de mot native au double-clic. Un double-clic sur une référence
+    de paramètre `{nom}` ou un lien du rendu garde son propre geste (T171).
+  - **Éditeur texte iso-typographique** : `<textarea>` transparent dans le `<td>`, qui garde ses marges
+    et sa typographie de lecture (le texte ne bouge pas), hauteur = contenu (`field-sizing: content`,
+    sans clamp de hauteur), contour de sélection. Champs `text` / `textarea` **multi-lignes** (retours à
+    la ligne conservés : une liste `- …` reste sur plusieurs lignes) ; nom, nombre, date : mono-ligne.
+    Entrée = retour à la ligne (mono-ligne : valider) ; `Ctrl/Cmd+Entrée` = valider ; `Échap` = annuler ;
+    clic extérieur = valider. Valider sans modification n'écrit rien. Après validation / annulation au
+    clavier, le focus revient au tableau (F2 / Échap réutilisables).
+  - **Curseur au point double-cliqué** : texte — offset calculé sur le rendu lecture avant montage
+    (`caretRangeFromPoint`, une référence de paramètre compte pour sa forme brute `{nom}`) ;
+    richtext — `posAtCoords` Tiptap au montage (`RichTextField` prop `initialCaret`). Hors du texte →
+    fin. Une référence `{nom}` affichée par sa valeur en lecture apparaît en brut en édition (le texte
+    autour peut se décaler, le curseur reste au bon caractère).
+  - **Réactivité** : la cellule sélectionnée est tenue hors de l'état React de la vue
+    (`excelCellStore`, `useSyncExternalStore`) ; les cellules sont mémoïsées (`memo`) et reçoivent des
+    actions stables par contexte : un changement de ligne sélectionnée ne re-rend que les lignes, pas les
+    cellules. Mesures (300 éléments, 10 colonnes, hauteur max 10) : changement de ligne ~20 ms,
+    double-clic → éditeur texte ~28 ms, → richtext ~50–100 ms.
 - Champs système (ID, date de création, auteur…) : lecture seule, visuellement distincts.
 - **Sélection multiple de lignes** : clic simple (sélection simple), Shift+clic (sélection contiguë), Ctrl+clic (sélection discrète/toggle) — indépendante de la sélection de l'arbre du panel gauche.
 - **Goto depuis l'arbre (T164)** : la ligne (élément) ou la ligne de groupe (dossier) ciblée
@@ -311,8 +336,8 @@ Système › Arbre › Sélection).
   (`RenderGateProvider` / `useRenderWhenVisibleAtRest`). Les lignes seulement traversées pendant
   un défilement ne sont jamais rendues. Avant son rendu, la cellule affiche le texte brut
   tronqué. Une cellule rendue le reste. À N = 1 : première ligne brute + `¶`, inchangé.
-- **Édition richtext dans la cellule (T169)** : la popup d'édition est supprimée. Second clic
-  sur une cellule richtext sélectionnée → `RichTextField` monté **dans le `<td>`**, avec la
+- **Édition richtext dans la cellule (T169)** : la popup d'édition est supprimée. Double-clic
+  (ou F2) sur une cellule richtext (T176) → `RichTextField` monté **dans le `<td>`**, avec la
   toolbar richtext partagée de la Vue Système, en **même typographie que la lecture**
   (`RichTextField variant="compact"`, classes partagées `VIEWER_CLASS_COMPACT`), cadre = contour
   de la cellule. En édition, la cellule ignore la hauteur max et

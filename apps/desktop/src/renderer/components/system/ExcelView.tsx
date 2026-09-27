@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useMemo, memo, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
@@ -154,6 +154,33 @@ function isFilterableColumn(col: string): boolean {
 // typographie et les marges de la lecture (`ExcelTextEditor`) : le <td> garde ses classes de
 // lecture, sans clamp de hauteur (cellule agrandie au contenu), avec le contour de sélection.
 
+/**
+ * T176 (sprint 2) — actions des cellules, **stables** pour toute la vie d'`ExcelView` (elles lisent
+ * l'état courant via une ref) : les cellules, mémoïsées (`memo`), ne reçoivent que des props
+ * primitives et ne sont plus re-rendues quand la sélection de lignes change.
+ */
+interface ExcelCellActions {
+  /** Édition simple (statut, enum, texte, richtext) — propagée à la sélection multiple (T149). */
+  inlineEdit(objectId: string, field: string, value: string): void
+  rename(nodeId: string, name: string): void
+  startRichtextEdit(nodeId: string, objectId: string, field: string): void
+  commitRichtext(): void
+  cancelRichtext(field: string): void
+  richtextEditorMouseDown(): void
+  toggleMultiEnum(objectId: string, field: string, rect: DOMRect): void
+  openLinkPopover(nodeId: string, typeName: string, rect: DOMRect): void
+  closeLinkPopover(): void
+  toggleSteps(nodeId: string): void
+}
+
+const ExcelCellActionsContext = createContext<ExcelCellActions | null>(null)
+
+function useCellActions(): ExcelCellActions {
+  const actions = useContext(ExcelCellActionsContext)
+  if (!actions) throw new Error('ExcelCellActionsContext manquant')
+  return actions
+}
+
 const CELL_SELECTED_CLASS = 'ring-2 ring-inset ring-status-info'
 const CELL_EDITABLE_CLASS = 'hover:ring-1 hover:ring-inset hover:ring-status-info'
 
@@ -166,20 +193,22 @@ function caretOffsetFor(caret: CaretRequest, container: HTMLElement | null, valu
 
 // ── NameCell ──────────────────────────────────────────────────────────────────
 
-function NameCell({
+const NameCell = memo(function NameCell({
   value,
   nodeId,
-  onRename,
+  canRename,
   freezeStyle,
   stickyBg,
 }: {
   value: string
   nodeId: string
-  onRename?: (nodeId: string, name: string) => void
+  canRename: boolean
   freezeStyle?: React.CSSProperties
   stickyBg?: string
 }) {
   const { t } = useTranslation()
+  const actions = useCellActions()
+  const onRename = canRename ? actions.rename : undefined
   const clamp = useCellClamp()
   const tdRef = useRef<HTMLTableCellElement>(null)
   const [edit, setEdit] = useState<{ caret: number } | null>(null)
@@ -224,23 +253,23 @@ function NameCell({
       {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
     </td>
   )
-}
+})
 
 // ── InlineCell ────────────────────────────────────────────────────────────────
 
-function InlineCell({
+const InlineCell = memo(function InlineCell({
   value,
   field,
   nodeId,
   objectId,
   isSystem,
   fieldDef,
-  onEdit,
-  richtext,
-  onMultiEnumEdit,
+  canEdit,
+  repoPath,
+  richtextEditing = false,
   freezeStyle,
   stickyBg,
-  adornment,
+  needsRevalidation = false,
   paramRefs = false,
 }: {
   value: string
@@ -250,18 +279,34 @@ function InlineCell({
   objectId: string
   isSystem: boolean
   fieldDef?: SchemaField
-  onEdit?: (objectId: string, field: string, value: string) => void
-  /** T169 — cellule richtext : rendu mis en forme + édition en place (voir `RichtextCell`). */
-  richtext?: Omit<RichtextCellProps, 'value' | 'nodeId' | 'col' | 'freezeStyle' | 'stickyBg'>
-  onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
+  /** Édition inline autorisée (`onInlineEdit` fourni à la vue). */
+  canEdit: boolean
+  repoPath?: string
+  /** T169 — cellule richtext en cours d'édition en place. */
+  richtextEditing?: boolean
   freezeStyle?: React.CSSProperties
   stickyBg?: string
-  /** T172 — contenu affiché après la valeur en lecture (ex. ⚠ « Impact à vérifier » du statut). */
-  adornment?: React.ReactNode
+  /** T172 — ⚠ « Impact à vérifier » affiché après la valeur (colonne statut). */
+  needsRevalidation?: boolean
   /** T171 — exigence : références de paramètres rendues dans les champs text/textarea. */
   paramRefs?: boolean
 }) {
   const { t } = useTranslation()
+  const actions = useCellActions()
+  const onEdit = canEdit ? actions.inlineEdit : undefined
+  const onMultiEnumEdit = canEdit ? actions.toggleMultiEnum : undefined
+  const adornment = needsRevalidation ? <RevalidationFlag show /> : undefined
+  const richtext: Omit<RichtextCellProps, 'value' | 'nodeId' | 'col' | 'freezeStyle' | 'stickyBg'> | undefined =
+    fieldDef?.type === 'richtext' ? {
+      repoPath,
+      onStartEdit: canEdit && objectId ? () => actions.startRichtextEdit(nodeId, objectId, field) : undefined,
+      isEditing: richtextEditing,
+      editValue: value,
+      onEditChange: v => actions.inlineEdit(objectId, field, v),
+      onEditCommit: actions.commitRichtext,
+      onEditCancel: () => actions.cancelRichtext(field),
+      onEditorMouseDown: actions.richtextEditorMouseDown,
+    } : undefined
   const clamp = useCellClamp()
   const tdRef = useRef<HTMLTableCellElement>(null)
   const [edit, setEdit] = useState<{ caret: number } | null>(null)
@@ -381,37 +426,36 @@ function InlineCell({
         : clamp.wrap(withAdornment(display || <span className="text-ink-3 italic">—</span>))}
     </td>
   )
-}
+})
 
 // ── LinkCell / StepsCell (T176 — extraites du rendu de ligne pour leurs gestes) ─
 
-function LinkCell({
+const LinkCell = memo(function LinkCell({
   nodeId,
   col,
+  typeName,
   value,
   isOpen,
-  onOpen,
-  onClose,
   freezeStyle,
   stickyBg,
   truncate,
 }: {
   nodeId: string
   col: string
+  typeName: string
   value: string
   isOpen: boolean
-  onOpen: (rect: DOMRect) => void
-  onClose: () => void
   freezeStyle?: React.CSSProperties
   stickyBg?: string
   truncate: boolean
 }) {
   const { t } = useTranslation()
+  const actions = useCellActions()
   const tdRef = useRef<HTMLTableCellElement>(null)
   const g = useCellGestures(nodeId, col, () => {
-    if (isOpen) { onClose(); return }
+    if (isOpen) { actions.closeLinkPopover(); return }
     const rect = tdRef.current?.getBoundingClientRect()
-    if (rect) onOpen(rect)
+    if (rect) actions.openLinkPopover(nodeId, typeName, rect)
   })
   return (
     <td
@@ -432,14 +476,13 @@ function LinkCell({
       <ClampedContent>{value || <span className="text-ink-3 italic">—</span>}</ClampedContent>
     </td>
   )
-}
+})
 
-function StepsCell({
+const StepsCell = memo(function StepsCell({
   nodeId,
   col,
   stepsCount,
   expanded,
-  onToggle,
   freezeStyle,
   stickyBg,
 }: {
@@ -447,12 +490,12 @@ function StepsCell({
   col: string
   stepsCount: number
   expanded: boolean
-  onToggle: () => void
   freezeStyle?: React.CSSProperties
   stickyBg?: string
 }) {
   const { t } = useTranslation()
-  const g = useCellGestures(nodeId, col, onToggle)
+  const actions = useCellActions()
+  const g = useCellGestures(nodeId, col, () => actions.toggleSteps(nodeId))
   return (
     <td
       style={freezeStyle}
@@ -472,7 +515,7 @@ function StepsCell({
       </span>
     </td>
   )
-}
+})
 
 // ── RichtextCell (T169) ──────────────────────────────────────────────────────
 
@@ -1351,9 +1394,15 @@ export function ExcelView({
    * colonnes figées ; sinon `undefined`. `bg` est la classe Tailwind de fond opaque à
    * appliquer par-dessus (le `<td>` est transparent par défaut, laissant apparaître les
    * colonnes défilées derrière lui sans ce fond). */
+  // T176 — objets de style stables d'un rendu à l'autre (props des cellules mémoïsées) : recalculés
+  // seulement quand le nombre de colonnes figées ou leurs décalages changent.
+  const frozenOffsetsKey = colLeftOffsets.slice(0, freezeColCount).join(',')
+  const freezeStyles = useMemo<React.CSSProperties[]>(
+    () => frozenOffsetsKey ? frozenOffsetsKey.split(',').map(left => ({ position: 'sticky', left: Number(left), zIndex: 2 })) : [],
+    [frozenOffsetsKey],
+  )
   function getFreezeStyle(colIdx: number): React.CSSProperties | undefined {
-    if (colIdx >= freezeColCount) return undefined
-    return { position: 'sticky', left: colLeftOffsets[colIdx], zIndex: 2 }
+    return colIdx < freezeColCount ? freezeStyles[colIdx] : undefined
   }
 
   // Last column expands to fill the container when the table is narrower than the viewport
@@ -1518,6 +1567,14 @@ export function ExcelView({
     const nodeId = objectIdToNodeId.get(objectId)
     return !!nodeId && effectiveSelectedIds.length > 1 && effectiveSelectedIds.includes(nodeId)
   }
+
+  // T176 — définition « enum » de la colonne statut, stable (prop d'une cellule mémoïsée).
+  const statusFieldDef = useMemo<SchemaField | undefined>(
+    () => typeDef?.statuses?.length
+      ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(st => st.name) }
+      : undefined,
+    [typeDef],
+  )
 
   /** Édition simple (status/enum/texte/richtext) : même valeur écrasée sur toute la sélection. */
   function applyInlineEditToSelection(objectId: string, field: string, value: string) {
@@ -1771,6 +1828,56 @@ export function ExcelView({
   // l'unique endroit permettant de le modifier ou de l'effacer.
   const colCount = columns.length + (onEditOpen ? 1 : 0)
 
+  // T176 (sprint 2) — actions des cellules : implémentation recréée à chaque rendu (elle lit l'état
+  // courant), exposée via un objet stable qui délègue à la dernière version (ref).
+  const cellActionsImpl: ExcelCellActions = {
+    inlineEdit: applyInlineEditToSelection,
+    rename: (nodeId, name) => onRenameNode?.(nodeId, name),
+    startRichtextEdit: (nodeId, objId, field) => {
+      const originals = new Map<string, string>()
+      const targets = isInMultiSelection(objId) ? selectedObjectIds() : [objId]
+      for (const oid of targets) {
+        const o = objectMap.get(oid)
+        originals.set(oid, o ? getFieldValue(o, field) : '')
+      }
+      richtextOriginalValuesRef.current = originals
+      // Une édition déjà ouverte ailleurs est simplement remplacée : sa valeur est déjà
+      // persistée, ce qui vaut validation.
+      setActiveRichtextEdit({ nodeId, objectId: objId, field })
+    },
+    commitRichtext: () => setActiveRichtextEdit(null),
+    cancelRichtext: field => {
+      for (const [oid, original] of richtextOriginalValuesRef.current) {
+        onInlineEdit?.(oid, field, original)
+      }
+      setActiveRichtextEdit(null)
+    },
+    richtextEditorMouseDown: () => { richtextEditorMouseDownRef.current = true },
+    toggleMultiEnum: (objId, f, rect) => {
+      const isOpen = activeMultiEnumPopover?.objectId === objId && activeMultiEnumPopover.field === f
+      if (isOpen) { setActiveMultiEnumPopover(null); return }
+      setActiveMultiEnumPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: rect.width })
+    },
+    openLinkPopover: (nodeId, typeName, rect) =>
+      setActiveLinkPopover({ nodeId, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) }),
+    closeLinkPopover: () => setActiveLinkPopover(null),
+    toggleSteps: toggleStepExpand,
+  }
+  const cellActionsRef = useRef(cellActionsImpl)
+  cellActionsRef.current = cellActionsImpl
+  const cellActions = useMemo<ExcelCellActions>(() => ({
+    inlineEdit: (o, f, v) => cellActionsRef.current.inlineEdit(o, f, v),
+    rename: (n, name) => cellActionsRef.current.rename(n, name),
+    startRichtextEdit: (n, o, f) => cellActionsRef.current.startRichtextEdit(n, o, f),
+    commitRichtext: () => cellActionsRef.current.commitRichtext(),
+    cancelRichtext: f => cellActionsRef.current.cancelRichtext(f),
+    richtextEditorMouseDown: () => cellActionsRef.current.richtextEditorMouseDown(),
+    toggleMultiEnum: (o, f, r) => cellActionsRef.current.toggleMultiEnum(o, f, r),
+    openLinkPopover: (n, t, r) => cellActionsRef.current.openLinkPopover(n, t, r),
+    closeLinkPopover: () => cellActionsRef.current.closeLinkPopover(),
+    toggleSteps: n => cellActionsRef.current.toggleSteps(n),
+  }), [])
+
   return (
     <div
       ref={containerRef}
@@ -1781,6 +1888,7 @@ export function ExcelView({
       onKeyDown={handleKeyDown}
     >
       <ExcelCellStoreContext.Provider value={cellStore}>
+      <ExcelCellActionsContext.Provider value={cellActions}>
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setDeleteConfirm(null)}>
@@ -2019,7 +2127,6 @@ export function ExcelView({
                         col={col}
                         stepsCount={nodeSteps.length}
                         expanded={stepsExpanded}
-                        onToggle={() => toggleStepExpand(node.id)}
                         freezeStyle={freezeStyle}
                         stickyBg={stickyBg}
                       />
@@ -2043,7 +2150,7 @@ export function ExcelView({
                         key={col}
                         value={node.name}
                         nodeId={node.id}
-                        onRename={onRenameNode}
+                        canRename={!!onRenameNode}
                         freezeStyle={freezeStyle}
                         stickyBg={stickyBg}
                       />
@@ -2053,18 +2160,15 @@ export function ExcelView({
                     const typeName = col.slice(6)
                     const objectId = node.objectId ?? ''
                     const value = getLinkCellValue(objectId, typeName)
-                    const lt = linkTypes.find(l => l.name === typeName)
-                    const cellLinks = linksByObjectId?.get(objectId)?.filter(l => l.type === typeName) ?? []
                     const isOpen = activeLinkPopover?.nodeId === node.id && activeLinkPopover.typeName === typeName
                     return (
                       <LinkCell
                         key={col}
                         nodeId={node.id}
                         col={col}
+                        typeName={typeName}
                         value={value}
                         isOpen={isOpen}
-                        onOpen={rect => setActiveLinkPopover({ nodeId: node.id, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })}
-                        onClose={() => setActiveLinkPopover(null)}
                         freezeStyle={freezeStyle}
                         stickyBg={stickyBg}
                         truncate={rowMaxLines <= 1}
@@ -2073,9 +2177,7 @@ export function ExcelView({
                   }
                   const value = getCellText(node, obj, col)
                   const fieldDef: SchemaField | undefined = col === 'status'
-                    ? (typeDef?.statuses?.length
-                      ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(s => s.name) }
-                      : undefined)
+                    ? statusFieldDef
                     : typeDef?.fields.find(f => f.name === col)
                   return (
                     <InlineCell
@@ -2086,44 +2188,13 @@ export function ExcelView({
                       objectId={node.objectId ?? ''}
                       isSystem={isSystemField(col)}
                       fieldDef={fieldDef}
+                      canEdit={!!onInlineEdit}
+                      repoPath={repoPath}
+                      richtextEditing={activeRichtextEdit?.nodeId === node.id && activeRichtextEdit.field === col}
                       freezeStyle={freezeStyle}
                       stickyBg={stickyBg}
                       paramRefs={typeDef?.category === 'requirement'}
-                      adornment={col === 'status' && (obj as { needsRevalidation?: boolean } | null | undefined)?.needsRevalidation
-                        ? <RevalidationFlag show /> : undefined}
-                      onEdit={onInlineEdit ? applyInlineEditToSelection : undefined}
-                      richtext={fieldDef?.type === 'richtext' ? {
-                        repoPath,
-                        onStartEdit: onInlineEdit && node.objectId ? () => {
-                          const objId = node.objectId!
-                          const originals = new Map<string, string>()
-                          const targets = isInMultiSelection(objId) ? selectedObjectIds() : [objId]
-                          for (const oid of targets) {
-                            const o = objectMap.get(oid)
-                            originals.set(oid, o ? getFieldValue(o, col) : '')
-                          }
-                          richtextOriginalValuesRef.current = originals
-                          // Une édition déjà ouverte ailleurs est simplement remplacée : sa valeur
-                          // est déjà persistée, ce qui vaut validation.
-                          setActiveRichtextEdit({ nodeId: node.id, objectId: objId, field: col })
-                        } : undefined,
-                        isEditing: activeRichtextEdit?.nodeId === node.id && activeRichtextEdit.field === col,
-                        editValue: value,
-                        onEditChange: v => applyInlineEditToSelection(node.objectId ?? '', col, v),
-                        onEditCommit: () => setActiveRichtextEdit(null),
-                        onEditCancel: () => {
-                          for (const [oid, original] of richtextOriginalValuesRef.current) {
-                            onInlineEdit?.(oid, col, original)
-                          }
-                          setActiveRichtextEdit(null)
-                        },
-                        onEditorMouseDown: () => { richtextEditorMouseDownRef.current = true },
-                      } : undefined}
-                      onMultiEnumEdit={onInlineEdit ? (objId, f, rect) => {
-                        const isOpen = activeMultiEnumPopover?.objectId === objId && activeMultiEnumPopover.field === f
-                        if (isOpen) { setActiveMultiEnumPopover(null); return }
-                        setActiveMultiEnumPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: rect.width })
-                      } : undefined}
+                      needsRevalidation={col === 'status' && !!(obj as { needsRevalidation?: boolean } | null | undefined)?.needsRevalidation}
                     />
                   )
                 })}
@@ -2286,6 +2357,7 @@ export function ExcelView({
           </div>
         )
       })()}
+      </ExcelCellActionsContext.Provider>
       </ExcelCellStoreContext.Provider>
     </div>
   )

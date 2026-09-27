@@ -333,6 +333,8 @@ export function registerIpcHandlers(c: Container): void {
   // ── Analyse d'impact (T46) ──────────────────────────────────────────────────────
   ipcMain.handle('impact-analysis:create', (_e, repoPath: string, dto: unknown) =>
     c.traceability.createImpactAnalysis(repoPath, dto as CreateImpactAnalysisDto))
+  ipcMain.handle('impact-analysis:local', (_e, repoPath: string, workspaceDir?: string) =>
+    c.traceability.computeLocalImpactAnalysis(repoPath, workspaceDir))
   ipcMain.handle('impact-analysis:list', (_e, repoPath: string) =>
     c.traceability.listImpactAnalyses(repoPath))
   ipcMain.handle('impact-analysis:get', (_e, repoPath: string, id: string) =>

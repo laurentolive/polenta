@@ -162,6 +162,7 @@ export function createIpcClient(): ApiClient {
     impactAnalysis: {
       create: (p, dto) => invoke('impact-analysis:create', p, dto),
       list: (p) => invoke('impact-analysis:list', p),
+      local: (p, w) => invoke('impact-analysis:local', p, w),
       get: (p, id) => invoke('impact-analysis:get', p, id),
       updateStatus: (p, id, dto) => invoke('impact-analysis:update-status', p, id, dto),
       delete: (p, id) => invoke('impact-analysis:delete', p, id),

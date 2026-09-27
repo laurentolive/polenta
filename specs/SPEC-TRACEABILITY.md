@@ -269,7 +269,11 @@ modification en attente (staged/unstaged) bloque encore la création, sur n'impo
    `getImpactReport`), et chaque nœud visité (pas seulement l'exigence déclenchante) porte les tests qui
    le couvrent directement. Un même élément n'apparaît qu'une fois par exigence changée (garde-fou
    anti-cycle partagé entre les deux arbres) ; il peut réapparaître sous une autre exigence changée de la
-   même analyse.
+   même analyse. **Liens de couverture test ↔ exigence suivis dans les deux sens** (T175) : un test
+   est rattaché à une exigence que le lien ait été créé depuis le test (`sourceId` = test) ou depuis
+   l'exigence (`targetId` = test) — même règle que `matchCoverageLink`. Avant T175 seul le premier sens
+   était suivi ; les analyses déjà persistées ne sont pas recalculées. Les liens exigence ↔ exigence
+   gardent leur sens (source = enfant, cible = parent).
 
 Une fois créée, une analyse est un **instantané reproductible** : la rouvrir plus tard restitue
 exactement le même diff et les mêmes arbres, quoi qu'il arrive au projet depuis. Il n'y a pas de
@@ -298,6 +302,45 @@ approuvés couvrants via `generateTestPlan` (§5, réutilisé tel quel), dédupl
 expose `readYamlRef`/`listFilesAtRef`/`readYamlDirAtRef` (et, depuis T171, `readYamlAtTag`, qui distingue
 tag introuvable et fichier absent — lecture des paramètres à la baseline d'une campagne) pour lire ces données à un sha arbitraire (utilisé
 par le diff et le snapshot ci-dessus).
+
+### 4.7 Analyse d'impact des modifications locales (T175)
+
+Troisième flux, **live** : l'impact des modifications non commitées (working tree) par rapport au dernier
+commit (`HEAD`) — le cas « je viens de modifier des exigences/tests, qu'est-ce que ça touche ? » sans
+passer par une baseline.
+
+**Présentation** : dans le panneau Analyse d'impact, une entrée « Modifications locales (vs HEAD) » s'affiche
+en tête de la liste des analyses tant qu'au moins un élément diffère de `HEAD` (compteur d'éléments, pas de
+date ni de suppression). À l'ouverture de la vue (montage du panneau) sans analyse active, elle est
+sélectionnée automatiquement — une seule fois : une désélection par l'utilisateur n'est pas annulée, et une
+analyse enregistrée sélectionnée n'est jamais remplacée. Quand les modifications disparaissent (commit,
+Publier, abandon), l'entrée disparaît et, si elle était active, la vue revient à « aucune analyse ». Le
+sélecteur de baselines reste utilisable. Valeur sentinelle `LOCAL_IMPACT_ANALYSIS_ID` dans
+`ImpactAnalysisContext.activeAnalysisId`.
+
+**Périmètre** : repo racine **et** composants (`resolveWorkspaceRepoPaths`), chacun comparé à **son** `HEAD`,
+quel que soit le repo sélectionné. Seuls `requirements/**/*.yaml` et `tests/**/*.yaml` sont des **éléments
+changés** (ajouté / supprimé / modifié, staged + unstaged + non suivis confondus —
+`SyncService.workdirChangesVsHead`, `statusMatrix` restreint à ces dossiers). `links/links.yaml` ne compte
+pas comme changement mais modifie la construction des arbres ; tout autre fichier est ignoré. Un fichier
+identique champ à champ à `HEAD` (reformatage) ne compte pas. Champs comparés : `status`, `title`,
+`fields.*`, plus pour un test ses sections racine `preconditions`, `equipment`, `steps`, `postconditions`
+(chacune = un champ). Le type de changement vient de git : un YAML illisible (édition en cours) est signalé
+(id = nom de fichier si besoin) sans détail de champs, jamais pris pour une suppression.
+
+**Calcul** (`TraceabilityService.computeLocalImpactAnalysis`, IPC `impact-analysis:local`) : mêmes arbres
+qu'en §4.6 (`buildImpactTreesFromSnapshot`) mais sur un **snapshot du working tree multi-repo** (lecture
+disque, pas l'index vivant ; exigences, tests et liens de tous les repos agrégés, doublon d'id → le repo
+racine gagne). Pour un **test** changé : arbre descendant vide, arbre montant = exigences qu'il couvre puis
+leurs ascendants. Un élément hors du repo racine porte `repo: { path, name }` (badge dans l'UI, popup ouvert
+dans son repo). Sans aucun changement, le snapshot n'est pas chargé. Type `LocalImpactAnalysis`
+(`changedRequirements` contient exigences **et** tests, `elementType` optionnel ; absent = exigence).
+
+**Nature** : jamais persisté (aucune écriture disque), pas de statut, commentaire, complétude, export ni
+génération de campagne — lecture seule, bouton Rafraîchir. Recalcul quand `useLiveFileSync` reçoit un
+`repo:file-changed` sur `requirements/`, `tests/`, `links/` ou un changement de ref (`'*'`) de n'importe
+quel repo, au retour du focus, ou au clic sur Rafraîchir — pas de polling. Pour un suivi (statuts,
+campagne), commiter, poser une baseline et utiliser §4.6.
 
 ---
 

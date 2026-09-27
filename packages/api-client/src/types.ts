@@ -45,6 +45,7 @@ import type {
   WidgetFieldMapping,
   ImpactAnalysis,
   ImpactAnalysisSummary,
+  LocalImpactAnalysis,
   RequirementDiffEntry,
   CreateImpactAnalysisDto,
   UpdateImpactItemStatusDto,
@@ -460,6 +461,8 @@ export interface ApiClient {
     /** Crée et persiste une analyse d'impact entre deux baselines (T46) — figée à la création. */
     create(repoPath: string, dto: CreateImpactAnalysisDto): Promise<ImpactAnalysis>
     list(repoPath: string): Promise<ImpactAnalysisSummary[]>
+    /** T175 — analyse live des modifications locales vs HEAD (racine + composants), jamais persistée. */
+    local(repoPath: string, workspaceDir?: string): Promise<LocalImpactAnalysis>
     get(repoPath: string, id: string): Promise<ImpactAnalysis>
     updateStatus(repoPath: string, id: string, dto: UpdateImpactItemStatusDto): Promise<ImpactAnalysis>
     delete(repoPath: string, id: string): Promise<void>

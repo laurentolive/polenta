@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { useSelectedRepo } from '../contexts/SelectedRepoContext'
-import { useImpactAnalysis } from '../contexts/ImpactAnalysisContext'
+import { useImpactAnalysis, LOCAL_IMPACT_ANALYSIS_ID } from '../contexts/ImpactAnalysisContext'
+import { useLocalImpactAnalysis } from '../hooks/useLocalImpactAnalysis'
 import { RequirementEditModal } from '../components/impact/RequirementEditModal'
 import { TestCaseEditModal } from '../components/impact/TestCaseEditModal'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -19,6 +20,7 @@ import type {
   Requirement,
   RequirementChangeType,
   ImpactAnalysisStatus,
+  ElementRepoRef,
 } from '@polenta/types'
 
 export const Route = createFileRoute('/impact-analysis')({
@@ -112,6 +114,18 @@ interface ImpactTreeViewProps {
   onOpen: (node: ImpactNode) => void
   onUpdateStatus: UpdateNodeStatus
   depth?: number
+  /** T175 — analyse locale : pas de statut ni de commentaire. */
+  readOnly?: boolean
+}
+
+/** T175 — nom du composant d'un élément qui n'est pas dans le repo racine de l'analyse. */
+function RepoBadge({ repo }: { repo?: ElementRepoRef }) {
+  if (!repo) return null
+  return (
+    <span className="text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0 truncate max-w-[8rem]" title={repo.path}>
+      {repo.name}
+    </span>
+  )
 }
 
 // L'énoncé EARS courant d'une exigence n'est pas assez court pour tenir dans la liste — la
@@ -196,7 +210,8 @@ function ImpactNodeStatusEditor({ node, onUpdateStatus }: { node: ImpactNode; on
   )
 }
 
-function ImpactTreeNodeRow({ node, repoPath, onOpen, onUpdateStatus, depth }: { node: ImpactNode; repoPath: string; onOpen: (node: ImpactNode) => void; onUpdateStatus: UpdateNodeStatus; depth: number }) {
+function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateStatus, depth, readOnly }: { node: ImpactNode; repoPath: string; onOpen: (node: ImpactNode) => void; onUpdateStatus: UpdateNodeStatus; depth: number; readOnly?: boolean }) {
+  const repoPath = node.repo?.path ?? analysisRepoPath
   const [expanded, setExpanded] = useState(true)
   const hasChildren = node.children.length > 0
   const badge = node.elementType === 'requirement' ? 'EX' : 'TC'
@@ -231,21 +246,22 @@ function ImpactTreeNodeRow({ node, repoPath, onOpen, onUpdateStatus, depth }: { 
         <span className="text-ink-2 truncate min-w-0 flex-1" title={tooltip}>
           {node.title}
         </span>
-        <ImpactNodeStatusEditor node={node} onUpdateStatus={onUpdateStatus} />
+        <RepoBadge repo={node.repo} />
+        {!readOnly && <ImpactNodeStatusEditor node={node} onUpdateStatus={onUpdateStatus} />}
       </div>
       {hasChildren && expanded && (
-        <ImpactTreeView nodes={node.children} repoPath={repoPath} onOpen={onOpen} onUpdateStatus={onUpdateStatus} depth={depth + 1} />
+        <ImpactTreeView nodes={node.children} repoPath={analysisRepoPath} onOpen={onOpen} onUpdateStatus={onUpdateStatus} depth={depth + 1} readOnly={readOnly} />
       )}
     </div>
   )
 }
 
-function ImpactTreeView({ nodes, repoPath, onOpen, onUpdateStatus, depth = 0 }: ImpactTreeViewProps) {
+function ImpactTreeView({ nodes, repoPath, onOpen, onUpdateStatus, depth = 0, readOnly }: ImpactTreeViewProps) {
   if (nodes.length === 0) return null
   return (
     <div>
       {nodes.map((node) => (
-        <ImpactTreeNodeRow key={`${node.elementType}-${node.elementId}`} node={node} repoPath={repoPath} onOpen={onOpen} onUpdateStatus={onUpdateStatus} depth={depth} />
+        <ImpactTreeNodeRow key={`${node.elementType}-${node.elementId}`} node={node} repoPath={repoPath} onOpen={onOpen} onUpdateStatus={onUpdateStatus} depth={depth} readOnly={readOnly} />
       ))}
     </div>
   )
@@ -255,17 +271,22 @@ function ImpactTreeView({ nodes, repoPath, onOpen, onUpdateStatus, depth = 0 }: 
 
 function ChangedRequirementRow({
   changed,
-  repoPath,
-  onOpenRequirement,
+  repoPath: analysisRepoPath,
+  onOpenChanged,
   onOpenElement,
   onUpdateItemStatus,
+  readOnly,
 }: {
   changed: ChangedRequirement
   repoPath: string
-  onOpenRequirement: (reqId: string) => void
+  onOpenChanged: (changed: ChangedRequirement) => void
   onOpenElement: (node: ImpactNode) => void
   onUpdateItemStatus: (reqId: string, direction: 'descendant' | 'ascendant', node: ImpactNode, status: ImpactAnalysisStatus, comment: string | null) => void
+  readOnly?: boolean
 }) {
+  // T175 — un élément changé peut être un test, et vivre dans un composant.
+  const isRequirement = (changed.elementType ?? 'requirement') === 'requirement'
+  const repoPath = changed.repo?.path ?? analysisRepoPath
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(true)
   const hasTrees = changed.descendantTree.length > 0 || changed.ascendantTree.length > 0
@@ -274,7 +295,7 @@ function ChangedRequirementRow({
   // Le diff brut du champ statement (EARS, potentiellement long/multi-lignes) est redondant avec
   // l'énoncé déjà consultable au survol du titre/id — retiré de la liste des champs changés.
   const changedFields = changed.changedFields.filter((f) => f.field !== 'fields.statement')
-  const statementTooltip = useRequirementStatementTooltip(repoPath, changed.reqId, changed.title)
+  const statementTooltip = useRequirementStatementTooltip(isRequirement ? repoPath : '', isRequirement ? changed.reqId : '', changed.title)
 
   return (
     <div className="border-b border-edge-subtle">
@@ -286,15 +307,19 @@ function ChangedRequirementRow({
         ) : (
           <span className="w-[13px] shrink-0" />
         )}
+        {changed.elementType && (
+          <span className="font-mono text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0">{isRequirement ? 'EX' : 'TC'}</span>
+        )}
         <button
           type="button"
-          onClick={() => onOpenRequirement(changed.reqId)}
+          onClick={() => onOpenChanged(changed)}
           className="font-mono text-ink font-medium truncate hover:underline text-left"
           title={statementTooltip}
         >
           {changed.reqId}
         </button>
         <span className="text-ink-2 truncate flex-1" title={statementTooltip}>{changed.title}</span>
+        <RepoBadge repo={changed.repo} />
         <span className={`text-xs font-medium shrink-0 ${CHANGE_TYPE_COLOR[changed.changeType]}`}>
           {t(CHANGE_TYPE_LABEL_KEY[changed.changeType])}
         </span>
@@ -313,14 +338,14 @@ function ChangedRequirementRow({
       {expanded && hasTrees && (
         <div className="pb-2">
           {changed.descendantTree.length > 0 && (
-            <ImpactTreeView nodes={changed.descendantTree} repoPath={repoPath} onOpen={onOpenElement} onUpdateStatus={onUpdateDescendant} depth={1} />
+            <ImpactTreeView nodes={changed.descendantTree} repoPath={analysisRepoPath} onOpen={onOpenElement} onUpdateStatus={onUpdateDescendant} depth={1} readOnly={readOnly} />
           )}
           {changed.ascendantTree.length > 0 && (
             <>
               <p className="text-xs text-ink-3 uppercase tracking-wide px-2 pt-1" style={{ paddingLeft: '26px' }}>
                 {t('impactAnalysisPage.ascendantTree')}
               </p>
-              <ImpactTreeView nodes={changed.ascendantTree} repoPath={repoPath} onOpen={onOpenElement} onUpdateStatus={onUpdateAscendant} depth={1} />
+              <ImpactTreeView nodes={changed.ascendantTree} repoPath={analysisRepoPath} onOpen={onOpenElement} onUpdateStatus={onUpdateAscendant} depth={1} readOnly={readOnly} />
             </>
           )}
         </div>
@@ -342,11 +367,15 @@ function ImpactAnalysisPage() {
   const { selectedRepoPath } = useSelectedRepo()
   const { activeAnalysisId } = useImpactAnalysis()
   const repoPath = selectedRepoPath
+  // T175 — analyse live des modifications locales (non persistée, lecture seule).
+  const isLocal = activeAnalysisId === LOCAL_IMPACT_ANALYSIS_ID
+  const localQuery = useLocalImpactAnalysis(projectId)
+  const localAnalysis = localQuery.data
 
   const { data: activeAnalysis, isLoading: isLoadingAnalysis } = useQuery<ImpactAnalysis>({
     queryKey: ['impact-analysis:get', repoPath, activeAnalysisId],
     queryFn: () => api.impactAnalysis.get(repoPath, activeAnalysisId!),
-    enabled: !!repoPath && !!activeAnalysisId,
+    enabled: !!repoPath && !!activeAnalysisId && !isLocal,
   })
 
   // `analysisId` voyage dans les variables de la mutation (pas dans une fermeture sur
@@ -428,14 +457,21 @@ function ImpactAnalysisPage() {
   // scroll/filtre via l'historique de navigation).
   const elementSearch = { repoPath, projectId, component: undefined, level: undefined }
 
-  const [quickEdit, setQuickEdit] = useState<{ type: 'requirement' | 'test_case'; id: string } | null>(null)
+  // Repo racine des éléments sans `repo` : le repo racine du workspace pour l'analyse locale,
+  // le repo sélectionné (celui de l'analyse enregistrée) sinon.
+  const rootedRepoPath = isLocal ? (localAnalysis?.rootRepoPath ?? repoPath) : repoPath
+  const displayedChanges = isLocal ? (localAnalysis?.changedRequirements ?? []) : (activeAnalysis?.changedRequirements ?? [])
+  const isLoadingDisplayed = isLocal ? localQuery.isLoading : isLoadingAnalysis
 
-  function openRequirement(reqId: string) {
-    setQuickEdit({ type: 'requirement', id: reqId })
+  // `repoPath` propre à l'élément : un élément d'un composant (T175) s'ouvre dans son repo.
+  const [quickEdit, setQuickEdit] = useState<{ type: 'requirement' | 'test_case'; id: string; repoPath: string } | null>(null)
+
+  function openChanged(changed: ChangedRequirement) {
+    setQuickEdit({ type: changed.elementType ?? 'requirement', id: changed.reqId, repoPath: changed.repo?.path ?? rootedRepoPath })
   }
 
   function openElement(node: ImpactNode) {
-    setQuickEdit({ type: node.elementType, id: node.elementId })
+    setQuickEdit({ type: node.elementType, id: node.elementId, repoPath: node.repo?.path ?? rootedRepoPath })
   }
 
   const closedCount = allNodes.filter((n) => CLOSED_STATUSES.has(n.status)).length
@@ -447,13 +483,29 @@ function ImpactAnalysisPage() {
       <ViewHeader
         currentProjectId={projectId}
         title={
-          activeAnalysis
-            ? <span className="font-mono">{activeAnalysis.fromBaseline.tag} → {activeAnalysis.toBaseline.tag}</span>
-            : t('impactAnalysisPage.title')
+          isLocal
+            ? t('impactAnalysisPage.localTitle')
+            : activeAnalysis
+              ? <span className="font-mono">{activeAnalysis.fromBaseline.tag} → {activeAnalysis.toBaseline.tag}</span>
+              : t('impactAnalysisPage.title')
         }
-        subtitle={activeAnalysis?.label}
+        subtitle={
+          isLocal
+            ? (localAnalysis ? t('impactAnalysisPage.localComputedAt', { time: new Date(localAnalysis.computedAt).toLocaleTimeString() }) : undefined)
+            : activeAnalysis?.label
+        }
         actions={
-          activeAnalysis && (
+          isLocal ? (
+            <button
+              type="button"
+              onClick={() => localQuery.refetch()}
+              disabled={localQuery.isFetching}
+              className="btn-secondary-sm shrink-0 flex items-center gap-1.5"
+            >
+              <RefreshCw size={12} className={localQuery.isFetching ? 'animate-spin' : ''} />
+              {t('impactAnalysisPage.refresh')}
+            </button>
+          ) : activeAnalysis && (
             <>
               <ExportButton
                 kind="impact-analysis"
@@ -488,7 +540,7 @@ function ImpactAnalysisPage() {
       />
 
       {/* Brouillon de campagne générée */}
-      {campaignDraft && activeAnalysis && (
+      {campaignDraft && activeAnalysis && !isLocal && (
         <div className="px-4 py-2 border-b border-edge-subtle shrink-0 flex items-center gap-3 bg-hover">
           <p className="text-xs text-ink">
             {t('impactAnalysisPage.testCasesFound', { count: campaignDraft.testCaseIds.length })}
@@ -521,20 +573,21 @@ function ImpactAnalysisPage() {
               {t('impactAnalysisPage.selectTwoBaselinesHint')}
             </p>
           </div>
-        ) : isLoadingAnalysis ? (
+        ) : isLoadingDisplayed ? (
           <p className="text-sm text-ink-3 italic px-4 py-3">{t('common.loading')}</p>
-        ) : !activeAnalysis || activeAnalysis.changedRequirements.length === 0 ? (
+        ) : displayedChanges.length === 0 ? (
           <p className="text-sm text-ink-3 italic px-4 py-3">{t('impactAnalysisPage.noChangedRequirement')}</p>
         ) : (
           <div>
-            {activeAnalysis.changedRequirements.map((cr) => (
+            {displayedChanges.map((cr) => (
               <ChangedRequirementRow
-                key={cr.reqId}
+                key={`${cr.elementType ?? 'requirement'}-${cr.reqId}`}
                 changed={cr}
-                repoPath={repoPath}
-                onOpenRequirement={openRequirement}
+                repoPath={rootedRepoPath}
+                onOpenChanged={openChanged}
                 onOpenElement={openElement}
                 onUpdateItemStatus={updateItemStatus}
+                readOnly={isLocal}
               />
             ))}
           </div>
@@ -542,10 +595,10 @@ function ImpactAnalysisPage() {
       </div>
 
       {quickEdit?.type === 'requirement' && (
-        <RequirementEditModal repoPath={repoPath} reqId={quickEdit.id} onClose={() => setQuickEdit(null)} />
+        <RequirementEditModal repoPath={quickEdit.repoPath} reqId={quickEdit.id} onClose={() => setQuickEdit(null)} />
       )}
       {quickEdit?.type === 'test_case' && (
-        <TestCaseEditModal repoPath={repoPath} testId={quickEdit.id} onClose={() => setQuickEdit(null)} />
+        <TestCaseEditModal repoPath={quickEdit.repoPath} testId={quickEdit.id} onClose={() => setQuickEdit(null)} />
       )}
     </div>
   )

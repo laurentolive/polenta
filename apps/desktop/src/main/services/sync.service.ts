@@ -478,6 +478,36 @@ export class SyncService {
     })
   }
 
+  /** HEAD commit sha, or null when the repo has no commit yet. */
+  async resolveHead(repoPath: string): Promise<string | null> {
+    try {
+      return await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * T175 — files whose working-tree content differs from HEAD (staged, unstaged and untracked
+   * alike — the index is irrelevant, disk is compared to HEAD), restricted to `prefixes`.
+   * statusMatrix columns: head 0|1, workdir 0 = absent / 1 = same as HEAD / 2 = differs.
+   */
+  async workdirChangesVsHead(repoPath: string, prefixes: string[]): Promise<{ path: string; change: 'added' | 'removed' | 'modified' }[]> {
+    let matrix: Awaited<ReturnType<typeof git.statusMatrix>>
+    try {
+      matrix = await git.statusMatrix({ fs, dir: repoPath, filepaths: prefixes })
+    } catch {
+      return []
+    }
+    const changes: { path: string; change: 'added' | 'removed' | 'modified' }[] = []
+    for (const [filepath, head, workdir] of matrix) {
+      if (head === 0 && workdir === 2) changes.push({ path: filepath, change: 'added' })
+      else if (head === 1 && workdir === 0) changes.push({ path: filepath, change: 'removed' })
+      else if (head === 1 && workdir === 2) changes.push({ path: filepath, change: 'modified' })
+    }
+    return changes
+  }
+
   /** Resolves a tag name to its commit sha. Tags created by `createTag` are lightweight refs
    * written directly to a commit sha (no annotation to peel). Returns null if the tag doesn't exist. */
   async resolveTag(repoPath: string, tagName: string): Promise<string | null> {

@@ -24,6 +24,12 @@ export interface RequirementDiffEntry {
   titleTo: string | null
 }
 
+/** Repo d'appartenance d'un élément quand il n'est pas le repo racine de l'analyse (T175). */
+export interface ElementRepoRef {
+  path: string   // repoPath absolu — pour ouvrir le popup et requêter l'élément
+  name: string   // label du nœud workspace (label ?? name) — affichage
+}
+
 /**
  * Nœud d'un des deux arbres (montant ou descendant) d'une exigence changée. Les `test_case` sont
  * toujours des feuilles (children: []) ; seules les `requirement` peuvent avoir des enfants.
@@ -38,6 +44,7 @@ export interface ImpactNode {
   updatedAt: string | null
   updatedBy: string | null
   children: ImpactNode[]
+  repo?: ElementRepoRef          // T175 — absent = repo racine
 }
 
 export interface ChangedRequirement {
@@ -47,6 +54,8 @@ export interface ChangedRequirement {
   changedFields: ChangedField[]  // vide si added/removed
   descendantTree: ImpactNode[]   // enfants directs de reqId dans l'arbre descendant
   ascendantTree: ImpactNode[]    // idem, ascendant
+  elementType?: 'requirement' | 'test_case'   // T175 — absent = 'requirement' (analyses T46)
+  repo?: ElementRepoRef                        // T175 — absent = repo racine
 }
 
 export interface BaselineRefPointer {
@@ -62,6 +71,15 @@ export interface ImpactAnalysis {
   toBaseline: BaselineRefPointer
   createdAt: string
   createdBy: string
+  changedRequirements: ChangedRequirement[]
+}
+
+/** Analyse live des modifications locales vs HEAD (T175) — jamais persistée, pas de statuts.
+ *  `changedRequirements` contient exigences ET tests (cf. `elementType`), pour réutiliser le rendu T46. */
+export interface LocalImpactAnalysis {
+  rootRepoPath: string
+  computedAt: string                          // ISO
+  heads: { repoPath: string; sha: string }[]  // HEAD de chaque repo au moment du calcul
   changedRequirements: ChangedRequirement[]
 }
 

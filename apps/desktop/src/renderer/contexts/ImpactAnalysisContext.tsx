@@ -1,5 +1,9 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
+/** T175 — valeur de `activeAnalysisId` désignant l'analyse live des modifications locales
+ *  (non persistée, pas d'id de fichier). */
+export const LOCAL_IMPACT_ANALYSIS_ID = '__local__'
+
 interface ImpactAnalysisContextValue {
   activeAnalysisId: string | null
   setActiveAnalysisId: (id: string | null) => void

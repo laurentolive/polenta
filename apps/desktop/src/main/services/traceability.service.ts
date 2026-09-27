@@ -17,6 +17,8 @@ import type {
   ImpactAnalysisSummary,
   ChangedRequirement,
   ImpactNode,
+  ElementRepoRef,
+  LocalImpactAnalysis,
   RequirementDiffEntry,
   ChangedField,
   CreateImpactAnalysisDto,
@@ -27,6 +29,7 @@ import type {
   GenerateTestPlanDto,
   MatrixFiltersDto,
 } from '@polenta/zod-schemas'
+import * as path from 'path'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -34,14 +37,17 @@ import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { SyncService } from './sync.service'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 
-/** Minimal read-only snapshot of a repo's requirements/tests/links as they existed at a given
- * git ref — built once per `createImpactAnalysis` call (at the target baseline's sha) and shared
- * by every `buildImpactTreesFromSnapshot()` call for that analysis, to avoid re-reading the same
- * blobs once per changed requirement. */
+/** Minimal read-only snapshot of requirements/tests/links — either as they existed at a given
+ * git ref (T46, one repo, built once per `createImpactAnalysis` at the target baseline's sha) or as
+ * they are on disk across all workspace repos (T175). Shared by every
+ * `buildImpactTreesFromSnapshot()` call of one analysis, to avoid re-reading the same blobs once
+ * per changed element. `repoPath` = repo the element lives in; `rootRepoPath` = analysis root. */
 interface ImpactSnapshot {
-  requirements: Map<string, { title: string }>
-  tests: Map<string, { title: string }>
+  rootRepoPath: string
+  requirements: Map<string, { title: string; repoPath: string }>
+  tests: Map<string, { title: string; repoPath: string }>
   links: ObjectLink[]
+  repoNames: Map<string, string>
 }
 
 /**
@@ -65,6 +71,12 @@ function matchCoverageLink(
   return null
 }
 
+/** Repo d'un élément pour l'affichage — `undefined` s'il est dans le repo racine de l'analyse. */
+function elementRepoRef(snapshot: ImpactSnapshot, repoPath: string | undefined): ElementRepoRef | undefined {
+  if (!repoPath || repoPath === snapshot.rootRepoPath) return undefined
+  return { path: repoPath, name: snapshot.repoNames.get(repoPath) ?? path.basename(repoPath) }
+}
+
 function findImpactNodeById(nodes: ImpactNode[], elementId: string): ImpactNode | null {
   for (const node of nodes) {
     if (node.elementId === elementId) return node
@@ -74,7 +86,31 @@ function findImpactNodeById(nodes: ImpactNode[], elementId: string): ImpactNode 
   return null
 }
 
-function diffRequirementFields(a: Requirement, b: Requirement): ChangedField[] {
+/** Sections d'un cas de test stockées à la racine du YAML (pas dans `fields`). */
+const TEST_CASE_TOP_LEVEL_FIELDS = ['preconditions', 'equipment', 'steps', 'postconditions'] as const
+
+/** Champ à champ sur `status`, `title`, `fields.*` — et, pour un test (T175), ses sections
+ *  racine (`steps`, `preconditions`…), chacune comptée comme un seul champ. */
+function diffElementFields(
+  a: { status: string; title: string; fields?: unknown },
+  b: { status: string; title: string; fields?: unknown },
+  elementType: 'requirement' | 'test_case' = 'requirement',
+): ChangedField[] {
+  const changed = diffRequirementLikeFields(a, b)
+  if (elementType === 'test_case') {
+    const ra = a as Record<string, unknown>
+    const rb = b as Record<string, unknown>
+    for (const key of TEST_CASE_TOP_LEVEL_FIELDS) {
+      if (JSON.stringify(ra[key]) !== JSON.stringify(rb[key])) changed.push({ field: key, from: ra[key], to: rb[key] })
+    }
+  }
+  return changed
+}
+
+function diffRequirementLikeFields(
+  a: { status: string; title: string; fields?: unknown },
+  b: { status: string; title: string; fields?: unknown },
+): ChangedField[] {
   const changed: ChangedField[] = []
   if (a.status !== b.status) changed.push({ field: 'status', from: a.status, to: b.status })
   if (a.title !== b.title) changed.push({ field: 'title', from: a.title, to: b.title })
@@ -304,7 +340,7 @@ export class TraceabilityService {
       } else if (reqA && !reqB) {
         entries.push({ reqId, changeType: 'removed', changedFields: [], titleFrom: reqA.title, titleTo: null })
       } else if (reqA && reqB) {
-        const changedFields = diffRequirementFields(reqA, reqB)
+        const changedFields = diffElementFields(reqA, reqB)
         if (changedFields.length > 0) {
           entries.push({ reqId, changeType: 'modified', changedFields, titleFrom: reqA.title, titleTo: reqB.title })
         }
@@ -321,24 +357,73 @@ export class TraceabilityService {
       this.git.readYamlRef<{ links: ObjectLink[] }>(repoPath, sha, 'links/links.yaml'),
     ])
 
-    const requirements = new Map<string, { title: string }>()
-    for (const r of reqRecords) if (r.id) requirements.set(r.id, { title: r.title })
+    const requirements = new Map<string, { title: string; repoPath: string }>()
+    for (const r of reqRecords) if (r.id) requirements.set(r.id, { title: r.title, repoPath })
 
-    const tests = new Map<string, { title: string }>()
-    for (const t of testRecords) if (t.id) tests.set(t.id, { title: t.title })
+    const tests = new Map<string, { title: string; repoPath: string }>()
+    for (const t of testRecords) if (t.id) tests.set(t.id, { title: t.title, repoPath })
 
-    return { requirements, tests, links: linksData?.links ?? [] }
+    return { rootRepoPath: repoPath, requirements, tests, links: linksData?.links ?? [], repoNames: new Map() }
+  }
+
+  /** T175 — lecture disque tolérante : un YAML invalide (édition en cours) donne `null`. */
+  private readYamlLenient<T>(repoPath: string, filePath: string): Promise<T | null> {
+    return this.git.readYaml<T>(repoPath, filePath).catch(() => null)
   }
 
   /**
-   * Construit les deux arbres d'impact (montant/descendant) d'une exigence changée, à partir
-   * d'un `ImpactSnapshot` déjà chargé (fonction pure, aucun accès git). Les tests couvrant
-   * directement `reqId` sont placés en tête de l'arbre descendant (pas d'arbre séparé pour eux —
-   * ils sont rattachés à `reqId`, qui n'est lui-même pas un `ImpactNode`). Un `Set` de nœuds
-   * visités est partagé par les deux arbres pour qu'un même élément n'apparaisse qu'une fois
-   * (cf. spec T46 point 2).
+   * T175 — état courant sur disque (pas l'index vivant, qui peut ignorer une édition faite hors
+   * de l'app) de tous les repos : exigences, tests et `links/links.yaml` concaténés. Les ids sont
+   * uniques sur le workspace (préfixes uniques) ; en cas de doublon, le repo racine gagne.
    */
-  private buildImpactTreesFromSnapshot(snapshot: ImpactSnapshot, reqId: string): { descendantTree: ImpactNode[]; ascendantTree: ImpactNode[] } {
+  private async loadWorkingTreeSnapshot(rootRepoPath: string, repoPaths: string[], repoNames: Map<string, string>): Promise<ImpactSnapshot> {
+    const requirements = new Map<string, { title: string; repoPath: string }>()
+    const tests = new Map<string, { title: string; repoPath: string }>()
+    const links: ObjectLink[] = []
+    // Racine en dernier : ses entrées écrasent un éventuel doublon d'un composant.
+    const ordered = [...repoPaths.filter((p) => p !== rootRepoPath), rootRepoPath]
+    // Un fichier en cours d'édition peut être invalide : ignoré plutôt que de faire échouer
+    // toute l'analyse (`readYaml`/`readYamlDir` propagent l'erreur de parsing).
+    const readDir = async <T>(repoPath: string, dir: string): Promise<T[]> => {
+      const files = (await this.git.listFiles(repoPath, dir)).filter((f) => f.endsWith('.yaml'))
+      const items: (T | null)[] = await Promise.all(files.map((f) => this.readYamlLenient<T>(repoPath, f)))
+      return items.filter((it): it is T => it !== null)
+    }
+    const perRepo = await Promise.all(ordered.map(async (repoPath) => {
+      const [reqRecords, testRecords, linksData] = await Promise.all([
+        readDir<Requirement>(repoPath, 'requirements'),
+        readDir<TestCase>(repoPath, 'tests'),
+        this.readYamlLenient<{ links: ObjectLink[] }>(repoPath, 'links/links.yaml'),
+      ])
+      return { repoPath, reqRecords, testRecords, repoLinks: linksData?.links ?? [] }
+    }))
+    for (const { repoPath, reqRecords, testRecords, repoLinks } of perRepo) {
+      for (const r of reqRecords) if (r?.id) requirements.set(r.id, { title: r.title, repoPath })
+      for (const t of testRecords) if (t?.id) tests.set(t.id, { title: t.title, repoPath })
+      links.push(...repoLinks)
+    }
+    return { rootRepoPath, requirements, tests, links, repoNames }
+  }
+
+  /**
+   * Construit les deux arbres d'impact (montant/descendant) d'un élément changé, à partir
+   * d'un `ImpactSnapshot` déjà chargé (fonction pure, aucun accès git). Pour une exigence, les
+   * tests la couvrant directement sont placés en tête de l'arbre descendant (pas d'arbre séparé
+   * pour eux — ils sont rattachés à `reqId`, qui n'est lui-même pas un `ImpactNode`). Pour un
+   * test (T175), l'arbre descendant est vide et l'arbre montant part des exigences qu'il couvre.
+   * Un `Set` de nœuds visités est partagé par les deux arbres pour qu'un même élément
+   * n'apparaisse qu'une fois (cf. spec T46 point 2).
+   *
+   * Liens de couverture test ↔ exigence : suivis quel que soit leur sens (cf. `matchCoverageLink`
+   * — le lien peut avoir été créé depuis le test ou depuis l'exigence). Les liens exigence ↔
+   * exigence gardent leur sens (source = enfant, cible = parent) ; un id qui n'est pas une
+   * exigence du snapshot n'est jamais suivi comme exigence.
+   */
+  private buildImpactTreesFromSnapshot(
+    snapshot: ImpactSnapshot,
+    reqId: string,
+    rootType: 'requirement' | 'test_case' = 'requirement',
+  ): { descendantTree: ImpactNode[]; ascendantTree: ImpactNode[] } {
     // Index une fois (O(M)) plutôt que de filtrer `snapshot.links` en entier à chaque nœud visité
     // (qui serait O(nœuds × M) sur un projet avec beaucoup de liens).
     const bySource = new Map<string, ObjectLink[]>()
@@ -354,19 +439,32 @@ export class TraceabilityService {
 
     const visited = new Set<string>([reqId])
 
-    const makeNode = (elementId: string, elementType: 'requirement' | 'test_case', title: string, linkType: string, children: ImpactNode[] = []): ImpactNode => ({
-      elementId, elementType, title, linkType,
-      status: 'impact_non_verifie', comment: null, updatedAt: null, updatedBy: null,
-      children,
-    })
+    const makeNode = (elementId: string, elementType: 'requirement' | 'test_case', title: string, linkType: string, children: ImpactNode[] = []): ImpactNode => {
+      const node: ImpactNode = {
+        elementId, elementType, title, linkType,
+        status: 'impact_non_verifie', comment: null, updatedAt: null, updatedBy: null,
+        children,
+      }
+      const owner = elementType === 'requirement' ? snapshot.requirements.get(elementId) : snapshot.tests.get(elementId)
+      const repo = elementRepoRef(snapshot, owner?.repoPath)
+      if (repo) node.repo = repo
+      return node
+    }
+
+    // Couverture dans les deux sens : test en source (lien créé depuis le test) ou en cible
+    // (lien créé depuis l'exigence).
+    const coverageLinksOf = (id: string): { otherId: string; link: ObjectLink }[] => [
+      ...(byTarget.get(id) ?? []).map((link) => ({ otherId: link.sourceId, link })),
+      ...(bySource.get(id) ?? []).map((link) => ({ otherId: link.targetId, link })),
+    ]
 
     const testLeavesFor = (parentReqId: string): ImpactNode[] => {
       const leaves: ImpactNode[] = []
-      for (const link of byTarget.get(parentReqId) ?? []) {
-        if (!snapshot.tests.has(link.sourceId)) continue
-        if (visited.has(link.sourceId)) continue
-        visited.add(link.sourceId)
-        leaves.push(makeNode(link.sourceId, 'test_case', snapshot.tests.get(link.sourceId)!.title, link.type))
+      for (const { otherId, link } of coverageLinksOf(parentReqId)) {
+        if (!snapshot.tests.has(otherId)) continue
+        if (visited.has(otherId)) continue
+        visited.add(otherId)
+        leaves.push(makeNode(otherId, 'test_case', snapshot.tests.get(otherId)!.title, link.type))
       }
       return leaves
     }
@@ -395,9 +493,96 @@ export class TraceabilityService {
       return nodes
     }
 
+    if (rootType === 'test_case') {
+      const ascendantTree: ImpactNode[] = []
+      for (const { otherId, link } of coverageLinksOf(reqId)) {
+        if (visited.has(otherId) || !snapshot.requirements.has(otherId)) continue
+        visited.add(otherId)
+        ascendantTree.push(buildReqNode(otherId, link.type, 'ascendant'))
+      }
+      return { descendantTree: [], ascendantTree }
+    }
+
     const descendantTree: ImpactNode[] = [...testLeavesFor(reqId), ...collectDirect('descendant')]
     const ascendantTree: ImpactNode[] = collectDirect('ascendant')
     return { descendantTree, ascendantTree }
+  }
+
+  /**
+   * T175 — analyse live des modifications locales : pour chaque repo du workspace (racine +
+   * composants), exigences et tests dont le contenu sur disque diffère de HEAD (staged, unstaged
+   * ou non suivis), puis arbres d'impact sur l'état courant sur disque. Jamais persistée.
+   */
+  async computeLocalImpactAnalysis(rootRepoPath: string, workspaceDir?: string): Promise<LocalImpactAnalysis> {
+    const repoPaths = await this.resolveRepoPaths(rootRepoPath, workspaceDir)
+    const repoNames = new Map<string, string>()
+    if (workspaceDir && this.workspaceTree) {
+      const tree = await this.workspaceTree.readCache(workspaceDir)
+      for (const node of tree?.nodes ?? []) {
+        if (node.repoPath) repoNames.set(node.repoPath, node.label ?? node.name)
+      }
+    }
+
+    type LocalChange = { repoPath: string; elementType: 'requirement' | 'test_case'; entry: RequirementDiffEntry }
+    const perRepo = await Promise.all(repoPaths.map(async (repoPath): Promise<{ head: string | null; changes: LocalChange[] }> => {
+      const headSha = await this.sync.resolveHead(repoPath)
+      if (!headSha) return { head: null, changes: [] } // repo sans commit : rien à comparer
+      const files = (await this.sync.workdirChangesVsHead(repoPath, ['requirements', 'tests']))
+        .filter((f) => f.path.endsWith('.yaml'))
+      const changes = await Promise.all(files.map(async (f): Promise<LocalChange | null> => {
+        const elementType = f.path.startsWith('tests/') ? 'test_case' : 'requirement'
+        const [before, after] = await Promise.all([
+          f.change === 'added' ? null : this.git.readYamlRef<Requirement | TestCase>(repoPath, headSha, f.path),
+          f.change === 'removed' ? null : this.readYamlLenient<Requirement | TestCase>(repoPath, f.path),
+        ])
+        // Le type de changement vient de git (le fichier existe ou non), pas de la lisibilité du
+        // YAML : un fichier en cours d'édition peut être invalide sans avoir été supprimé. Un côté
+        // illisible → changement signalé sans détail de champs (id repris du nom de fichier).
+        const id = after?.id ?? before?.id ?? path.posix.basename(f.path, '.yaml')
+        const titleFrom = before?.title ?? null
+        const titleTo = after?.title ?? null
+        if (f.change === 'modified' && before && after) {
+          const changedFields = diffElementFields(before, after, elementType)
+          if (changedFields.length === 0) return null // même contenu champ à champ (ex. reformatage)
+          return { repoPath, elementType, entry: { reqId: id, changeType: 'modified', changedFields, titleFrom, titleTo } }
+        }
+        return { repoPath, elementType, entry: { reqId: id, changeType: f.change, changedFields: [], titleFrom, titleTo } }
+      }))
+      return { head: headSha, changes: changes.filter((c): c is LocalChange => c !== null) }
+    }))
+
+    const result: LocalImpactAnalysis = {
+      rootRepoPath,
+      computedAt: new Date().toISOString(),
+      heads: perRepo.flatMap((r, i) => (r.head ? [{ repoPath: repoPaths[i], sha: r.head }] : [])),
+      changedRequirements: [],
+    }
+    const changes = perRepo.flatMap((r) => r.changes)
+    if (changes.length === 0) return result // cas courant du polling : pas de snapshot à charger
+
+    const snapshot = await this.loadWorkingTreeSnapshot(rootRepoPath, repoPaths, repoNames)
+    // Repo racine d'abord (clé vide), puis composants par nom, puis id.
+    const repoRank = (p: string) => (p === rootRepoPath ? '' : (repoNames.get(p) ?? path.basename(p)))
+    changes.sort((a, b) =>
+      repoRank(a.repoPath).localeCompare(repoRank(b.repoPath)) || a.entry.reqId.localeCompare(b.entry.reqId))
+
+    result.changedRequirements = changes.map(({ repoPath, elementType, entry }) => {
+      const trees = entry.changeType === 'removed'
+        ? { descendantTree: [], ascendantTree: [] }
+        : this.buildImpactTreesFromSnapshot(snapshot, entry.reqId, elementType)
+      const changed: ChangedRequirement = {
+        reqId: entry.reqId,
+        title: (entry.changeType === 'removed' ? entry.titleFrom : (entry.titleTo ?? entry.titleFrom)) ?? entry.reqId,
+        changeType: entry.changeType,
+        changedFields: entry.changedFields,
+        ...trees,
+        elementType,
+      }
+      const repo = elementRepoRef(snapshot, repoPath)
+      if (repo) changed.repo = repo
+      return changed
+    })
+    return result
   }
 
   /** Crée et persiste une analyse d'impact entre deux baselines — calcul figé, une seule fois. */

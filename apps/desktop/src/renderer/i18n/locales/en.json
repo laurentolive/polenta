@@ -266,6 +266,9 @@
       "analyzeImpact": "Analyze impact",
       "existingAnalyses": "Existing analyses",
       "noAnalysis": "No analysis.",
+      "localChanges": "Local changes (vs HEAD)",
+      "localChangesCount_one": "{{count}} item",
+      "localChangesCount_other": "{{count}} items",
       "deleteAnalysis": "Delete this analysis",
       "deleteAnalysisTitle": "Delete this analysis?",
       "deleteAnalysisBody": "The impact analysis “{{label}}” will be permanently deleted.",
@@ -930,6 +933,9 @@
     "uncoveredRequirements_one": "{{count}} uncovered requirement: {{ids}}",
     "uncoveredRequirements_other": "{{count}} uncovered requirements: {{ids}}",
     "selectTwoBaselinesHint": "Select two baselines in the Impact analysis panel to analyze the impact of changes, or reopen an existing analysis.",
+    "localTitle": "Local changes (vs HEAD)",
+    "localComputedAt": "Computed at {{time}}",
+    "refresh": "Refresh",
     "noChangedRequirement": "No requirement changed between these two baselines."
   },
   "graphPage": {

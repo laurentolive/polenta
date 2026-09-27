@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { FilePen, Plus, Trash2 } from 'lucide-react'
 import { api } from '../../../api'
 import { useSelectedRepo } from '../../../contexts/SelectedRepoContext'
-import { useImpactAnalysis } from '../../../contexts/ImpactAnalysisContext'
+import { useImpactAnalysis, LOCAL_IMPACT_ANALYSIS_ID } from '../../../contexts/ImpactAnalysisContext'
+import { useLocalImpactAnalysis } from '../../../hooks/useLocalImpactAnalysis'
 import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
 import type { BaselineRecord } from '@polenta/api-client'
 import type { ImpactAnalysisSummary } from '@polenta/types'
@@ -109,6 +110,25 @@ export function VersionImpactSelector({ projectId }: Props) {
     queryFn: () => api.impactAnalysis.list(repoPath),
     enabled: !!repoPath,
   })
+
+  // T175 — analyse live des modifications locales : entrée en tête de liste tant qu'au moins un
+  // élément diffère de HEAD, sélectionnée automatiquement une seule fois par ouverture de la vue
+  // (montage du panneau) si aucune analyse n'est active — un clic qui la désélectionne ensuite
+  // n'est pas annulé au recalcul suivant.
+  const { data: localAnalysis } = useLocalImpactAnalysis(projectId)
+  const localCount = localAnalysis?.changedRequirements.length ?? 0
+  const isLocalActive = activeAnalysisId === LOCAL_IMPACT_ANALYSIS_ID
+  const autoSelectedRef = useRef(false)
+
+  useEffect(() => {
+    if (autoSelectedRef.current || !localAnalysis) return
+    autoSelectedRef.current = true
+    if (activeAnalysisId === null && localCount > 0) setActiveAnalysisId(LOCAL_IMPACT_ANALYSIS_ID)
+  }, [localAnalysis, localCount, activeAnalysisId, setActiveAnalysisId])
+
+  useEffect(() => {
+    if (isLocalActive && localAnalysis && localCount === 0) setActiveAnalysisId(null)
+  }, [isLocalActive, localAnalysis, localCount, setActiveAnalysisId])
 
   const createMutation = useMutation({
     mutationFn: () => api.impactAnalysis.create(repoPath, { fromBaselineTag: fromTag!, toBaselineTag: toTag! }),
@@ -229,8 +249,21 @@ export function VersionImpactSelector({ projectId }: Props) {
 
         <div className="px-3 py-2">
           <p className="text-xs text-ink-3 font-medium uppercase tracking-wide mb-1.5">{t('sidebar.version.existingAnalyses')}</p>
+          {localCount > 0 && (
+            <div className={`mb-0.5 rounded ${isLocalActive ? 'bg-hover ring-1 ring-prim' : ''}`}>
+              <button
+                type="button"
+                onClick={() => setActiveAnalysisId(isLocalActive ? null : LOCAL_IMPACT_ANALYSIS_ID)}
+                className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-hover transition-colors flex items-center gap-1.5 ${isLocalActive ? 'text-prim' : 'text-ink'}`}
+              >
+                <FilePen size={13} className="shrink-0" />
+                <span className="italic truncate flex-1">{t('sidebar.version.localChanges')}</span>
+                <span className="text-ink-3 shrink-0">{t('sidebar.version.localChangesCount', { count: localCount })}</span>
+              </button>
+            </div>
+          )}
           {analyses.length === 0 ? (
-            <p className="text-xs text-ink-3 italic">{t('sidebar.version.noAnalysis')}</p>
+            localCount === 0 && <p className="text-xs text-ink-3 italic">{t('sidebar.version.noAnalysis')}</p>
           ) : (
             <ul className="space-y-0.5">
               {analyses.map((a) => {

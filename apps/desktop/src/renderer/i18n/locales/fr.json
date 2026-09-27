@@ -266,6 +266,9 @@
       "analyzeImpact": "Analyser l'impact",
       "existingAnalyses": "Analyses existantes",
       "noAnalysis": "Aucune analyse.",
+      "localChanges": "Modifications locales (vs HEAD)",
+      "localChangesCount_one": "{{count}} élément",
+      "localChangesCount_other": "{{count}} éléments",
       "deleteAnalysis": "Supprimer cette analyse",
       "deleteAnalysisTitle": "Supprimer cette analyse ?",
       "deleteAnalysisBody": "L'analyse d'impact « {{label}} » sera définitivement supprimée.",
@@ -930,6 +933,9 @@
     "uncoveredRequirements_one": "{{count}} exigence non couverte : {{ids}}",
     "uncoveredRequirements_other": "{{count}} exigences non couvertes : {{ids}}",
     "selectTwoBaselinesHint": "Sélectionnez deux baselines dans le panneau Analyse d'impact pour analyser l'impact des modifications, ou rouvrez une analyse existante.",
+    "localTitle": "Modifications locales (vs HEAD)",
+    "localComputedAt": "Calculée à {{time}}",
+    "refresh": "Rafraîchir",
     "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines."
   },
   "graphPage": {

@@ -1,5 +1,18 @@
 ## New
 
+### T175 — Évolution : analyse d'impact par défaut sur les modifications locales non commitées
+
+**Statut** : coding sprint 1 (unique) — implémenté (`specs/T175-sprint1.md`), `tsc` propre, script de service 41/41, vérifié dans l'app (N11–N13), SPEC mises à jour ; en attente de validation humaine ; travail sur `main`
+
+**Demande** : à l'ouverture de la vue Analyse d'impact, si des fichiers du repo sont modifiés
+en local (working tree non commité), la vue affiche par défaut l'impact de ces modifications
+par rapport au dernier commit (`HEAD`), sans que l'utilisateur ait à choisir de baseline. S'il
+n'y a aucune modification locale, le comportement actuel (sélecteur de baselines / liste des
+analyses) est conservé. Points à préciser en phase Spec : prise en compte des fichiers non
+suivis (éléments créés) et supprimés, cas des composants (submodules) modifiés, rafraîchissement
+de la vue quand les modifications locales évoluent, et possibilité de revenir à une analyse
+contre une baseline.
+
 ### T174 — Évolution : l'analyse d'impact sort du panneau Version et a sa propre icône dans la barre d'activité
 
 **Statut** : coding sprint 1 — branche `T174`, worktree `../polenta-T174`

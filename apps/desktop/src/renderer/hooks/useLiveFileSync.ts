@@ -22,6 +22,12 @@ export function useLiveFileSync(): void {
     const unsubscribe = window.polenta.on('repo:file-changed', (...args: unknown[]) => {
       const [repoPath, relPath] = args as [string, string]
 
+      // T175 — l'analyse locale couvre tout le workspace (clé indexée sur le repo racine) : tout
+      // changement d'élément/lien ou de ref dans n'importe quel repo la rend périmée.
+      if (relPath === '*' || /^(requirements|tests|links)\//.test(relPath)) {
+        qc.invalidateQueries({ queryKey: ['impact-analysis:local'] })
+      }
+
       if (relPath === '*') {
         qc.invalidateQueries({ predicate: (q) => q.queryKey[1] === repoPath })
         return

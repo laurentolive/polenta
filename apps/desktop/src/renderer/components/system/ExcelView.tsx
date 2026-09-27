@@ -517,6 +517,26 @@ const StepsCell = memo(function StepsCell({
   )
 })
 
+/** T176 — point double-cliqué (relatif au <td>) en coordonnées client, ramené dans la zone visible
+ *  du tableau si besoin : `posAtCoords` ne résout qu'un point à l'écran — hors écran, le curseur
+ *  tomberait en fin de contenu. */
+function caretPointOnScreen(td: HTMLElement | null, rel: { dx: number; dy: number } | null): { left: number; top: number } | null {
+  if (!td || !rel) return null
+  const grid = td.closest<HTMLElement>('[data-excel-grid]')
+  let r = td.getBoundingClientRect()
+  if (grid) {
+    const g = grid.getBoundingClientRect()
+    // Marge : l'en-tête collant du tableau recouvre le haut de la zone.
+    const margin = 48
+    const y = r.top + rel.dy
+    const x = r.left + rel.dx
+    if (y < g.top + margin || y > g.bottom - margin) grid.scrollTop += y - (g.top + g.height / 2)
+    if (x < g.left + 8 || x > g.right - 8) grid.scrollLeft += x - (g.left + g.width / 2)
+    r = td.getBoundingClientRect()
+  }
+  return { left: r.left + rel.dx, top: r.top + rel.dy }
+}
+
 // ── RichtextCell (T169) ──────────────────────────────────────────────────────
 
 interface RichtextCellProps {
@@ -599,9 +619,12 @@ function RichtextCell({
       }
     : undefined)
 
-  // Entrée en édition : amener le haut de l'éditeur à l'écran si la cellule agrandie déborde.
+  // Entrée en édition par F2 : amener le haut de l'éditeur à l'écran si la cellule agrandie
+  // déborde. Pas au double-clic (T176) : la cellule s'agrandit vers le bas et l'utilisateur reste
+  // là où il a cliqué — faire défiler éloignerait le point cliqué, voire le sortirait de l'écran
+  // avant que `initialCaret` ne soit lu (ordre des effets non garanti, ex. StrictMode en dev).
   useEffect(() => {
-    if (isEditing) tdRef.current?.scrollIntoView({ block: 'nearest' })
+    if (isEditing && !caretRef.current) tdRef.current?.scrollIntoView({ block: 'nearest' })
   }, [isEditing])
 
   if (isEditing) {
@@ -638,11 +661,7 @@ function RichtextCell({
           onChange={onEditChange}
           repoPath={repoPath}
           autoFocus
-          initialCaret={() => {
-            const c = caretRef.current
-            const r = tdRef.current?.getBoundingClientRect()
-            return c && r ? { left: r.left + c.dx, top: r.top + c.dy } : null
-          }}
+          initialCaret={() => caretPointOnScreen(tdRef.current, caretRef.current)}
           onSubmit={() => { refocusGrid(tdRef.current); onEditCommit() }}
           variant="compact"
         />

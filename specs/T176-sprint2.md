@@ -71,3 +71,20 @@ bout (évènement → frame suivante), ce qui est ce que perçoit l'utilisateur.
 2. Reprendre les étapes de `T176-sprint1.md` (gestes, F2, touches, curseur, édition en masse).
 3. Colonnes figées (Figer les volets) : sélection de lignes et édition inchangées, fonds opaques corrects au
    défilement horizontal.
+
+## Correctif post-validation — curseur en fin de contenu richtext à partir de la 4e ligne
+
+**Signalé** : en richtext, le curseur se plaçait en fin de contenu au lieu du point double-cliqué, sauf sur
+les 3 premières lignes du tableau.
+
+**Cause (probable, non reproduite en build de production)** : à l'entrée en édition, la cellule agrandie
+faisait `scrollIntoView` ; si l'éditeur Tiptap devient disponible *après* ce défilement (ordre des effets non
+garanti — ex. `StrictMode` en `pnpm dev`, qui détruit / recrée l'éditeur), `initialCaret` relit un point
+sorti de l'écran → `posAtCoords` renvoie `null` → `focus('end')`. Les premières lignes n'ont pas besoin de
+défiler, d'où le symptôme.
+
+**Correctif** (`ExcelView.tsx`, `RichtextCell`) : pas de `scrollIntoView` au double-clic (seulement pour F2) —
+la cellule s'agrandit vers le bas et le point cliqué reste en place ; `caretPointOnScreen` ramène le point dans
+la zone visible du tableau avant `posAtCoords` s'il en est sorti. Vérifié en build de production (fixture
+300 éléments avec richtext longs en lignes 4–5, copie du projet `PL/Product`) : curseur au bon caractère sur
+toutes les lignes, plus de défilement au double-clic.

@@ -502,6 +502,7 @@
       "codeBlock": "Code block"
     },
     "excelView": {
+      "doubleClickToEdit": "Double-click or F2 to edit",
       "filterColumn": "Filter this column",
       "hideSteps": "Hide steps",
       "stepsCount_one": "{{count}} step",

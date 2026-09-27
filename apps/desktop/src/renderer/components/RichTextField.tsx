@@ -45,9 +45,13 @@ interface Props {
    *  rendu lecture de la cellule (`VIEWER_CLASS_COMPACT`), sans hauteur minimale, cadre et
    *  marges de la cellule. Uniquement en mode contexte (toolbar partagée). */
   variant?: 'default' | 'compact'
+  /** T176 — avec `autoFocus` : position initiale du curseur. `'end'` (défaut) ou une fonction
+   *  évaluée une fois l'éditeur monté, qui renvoie des coordonnées client (le conteneur a pu
+   *  défiler entre le clic et le montage) ; hors contenu → fin. */
+  initialCaret?: 'end' | (() => { left: number; top: number } | null)
 }
 
-export function RichTextField({ value, onChange, disabled, placeholder, repoPath, autoFocus, onSubmit, variant = 'default' }: Props) {
+export function RichTextField({ value, onChange, disabled, placeholder, repoPath, autoFocus, onSubmit, variant = 'default', initialCaret = 'end' }: Props) {
   const { t } = useTranslation()
   const ctx = useRichText()
   const hasContext = ctx !== null
@@ -259,7 +263,10 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
   // d'édition ouverte au clic (ex. cellule richtext de la vue Excel) s'affiche sans focus et
   // exige un second clic dans le contenu avant de pouvoir taper.
   useEffect(() => {
-    if (autoFocus && editor) editor.commands.focus('end')
+    if (!autoFocus || !editor) return
+    const coords = typeof initialCaret === 'function' ? initialCaret() : null
+    const pos = coords ? editor.view.posAtCoords(coords)?.pos : undefined
+    editor.commands.focus(pos ?? 'end')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor])
 

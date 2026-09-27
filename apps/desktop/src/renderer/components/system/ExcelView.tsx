@@ -21,6 +21,9 @@ import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { getExportColumnLabel } from '../../lib/exportColumns'
 import { FilterOptionsToggle } from '../FilterOptionsToggle'
+import { ExcelCellStoreContext, createExcelCellStore, useCellGestures, refocusGrid, type CaretRequest } from './excelCellStore'
+import { rawOffsetAtPoint } from './excelCaret'
+import { ExcelTextEditor } from './ExcelTextEditor'
 import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -145,48 +148,58 @@ function isFilterableColumn(col: string): boolean {
   return col !== 'steps' && col !== 'coverageStatus'
 }
 
+// ── Gestes de cellule (T176) ─────────────────────────────────────────────────
+// Clic = sélection de la cellule (contour bleu) et, par remontée, de la ligne ; double-clic ou F2
+// = édition / popover (`useCellGestures`, `excelCellStore.ts`). Un éditeur texte reprend la
+// typographie et les marges de la lecture (`ExcelTextEditor`) : le <td> garde ses classes de
+// lecture, sans clamp de hauteur (cellule agrandie au contenu), avec le contour de sélection.
+
+const CELL_SELECTED_CLASS = 'ring-2 ring-inset ring-status-info'
+const CELL_EDITABLE_CLASS = 'hover:ring-1 hover:ring-inset hover:ring-status-info'
+
+/** Offset du curseur à l'ouverture d'un éditeur texte : au point double-cliqué (calculé sur le
+ *  rendu lecture encore monté), en fin de texte pour F2 ou un point hors du texte. */
+function caretOffsetFor(caret: CaretRequest, container: HTMLElement | null, value: string): number {
+  if (caret.kind === 'end' || !value || !container) return value.length
+  return rawOffsetAtPoint(container, caret.clientX, caret.clientY) ?? value.length
+}
+
 // ── NameCell ──────────────────────────────────────────────────────────────────
 
 function NameCell({
   value,
   nodeId,
   onRename,
-  isSelected,
-  onSelectCell,
   freezeStyle,
   stickyBg,
 }: {
   value: string
   nodeId: string
   onRename?: (nodeId: string, name: string) => void
-  isSelected?: boolean
-  onSelectCell?: () => void
   freezeStyle?: React.CSSProperties
   stickyBg?: string
 }) {
   const { t } = useTranslation()
   const clamp = useCellClamp()
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(value)
+  const tdRef = useRef<HTMLTableCellElement>(null)
+  const [edit, setEdit] = useState<{ caret: number } | null>(null)
+  const g = useCellGestures(nodeId, 'name', onRename
+    ? caret => setEdit({ caret: caretOffsetFor(caret, tdRef.current, value) })
+    : undefined)
 
-  const commit = () => {
-    if (draft.trim() && draft !== value) onRename?.(nodeId, draft.trim())
-    setEditing(false)
-  }
-
-  if (editing) {
+  if (edit) {
     return (
-      <td className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')} style={freezeStyle}>
-        <input
-          autoFocus
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={e => {
-            if (e.key === 'Enter') commit()
-            if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+      <td ref={tdRef} style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink max-w-xs', stickyBg ?? '', CELL_SELECTED_CLASS].join(' ')}>
+        <ExcelTextEditor
+          initialValue={value}
+          multiline={false}
+          caretOffset={edit.caret}
+          onCommit={v => {
+            const next = v.trim()
+            if (next && next !== value) onRename?.(nodeId, next)
+            setEdit(null)
           }}
-          className="w-full px-2 py-1 text-xs text-ink bg-status-info-bg border-0 outline-none"
+          onCancel={() => setEdit(null)}
         />
       </td>
     )
@@ -194,19 +207,19 @@ function NameCell({
 
   return (
     <td
+      ref={tdRef}
       style={freezeStyle}
       className={[
         'border border-edge px-2 py-1 text-xs text-ink max-w-xs',
         clamp.tdClass,
         stickyBg ?? '',
-        onRename ? 'cursor-text hover:ring-1 hover:ring-inset hover:ring-status-info' : '',
-        isSelected ? 'ring-2 ring-inset ring-status-info' : '',
+        onRename ? `cursor-text ${CELL_EDITABLE_CLASS}` : '',
+        g.isSelected ? CELL_SELECTED_CLASS : '',
       ].join(' ')}
-      onClick={onRename ? () => {
-        if (isSelected) { setDraft(value); setEditing(true) }
-        else onSelectCell?.()
-      } : undefined}
-      title={onRename ? t('system.shared.clickToEdit') : undefined}
+      onClick={g.onClick}
+      onMouseDown={g.onMouseDown}
+      onDoubleClick={g.onDoubleClick}
+      title={onRename ? t('system.excelView.doubleClickToEdit') : undefined}
     >
       {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
     </td>
@@ -218,14 +231,13 @@ function NameCell({
 function InlineCell({
   value,
   field,
+  nodeId,
   objectId,
   isSystem,
   fieldDef,
   onEdit,
   richtext,
   onMultiEnumEdit,
-  isSelected,
-  onSelectCell,
   freezeStyle,
   stickyBg,
   adornment,
@@ -233,15 +245,15 @@ function InlineCell({
 }: {
   value: string
   field: string
+  /** Nœud d'arbre de la ligne — identifie la cellule (sélection, F2) avec `field`. */
+  nodeId: string
   objectId: string
   isSystem: boolean
   fieldDef?: SchemaField
   onEdit?: (objectId: string, field: string, value: string) => void
   /** T169 — cellule richtext : rendu mis en forme + édition en place (voir `RichtextCell`). */
-  richtext?: Omit<RichtextCellProps, 'value' | 'isSelected' | 'onSelectCell' | 'freezeStyle' | 'stickyBg'>
+  richtext?: Omit<RichtextCellProps, 'value' | 'nodeId' | 'col' | 'freezeStyle' | 'stickyBg'>
   onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
-  isSelected?: boolean
-  onSelectCell?: () => void
   freezeStyle?: React.CSSProperties
   stickyBg?: string
   /** T172 — contenu affiché après la valeur en lecture (ex. ⚠ « Impact à vérifier » du statut). */
@@ -251,94 +263,98 @@ function InlineCell({
 }) {
   const { t } = useTranslation()
   const clamp = useCellClamp()
-  const withAdornment = (content: React.ReactNode) => adornment
-    ? <span className="inline-flex items-center gap-1">{content}{adornment}</span>
-    : content
-  const display = paramRefs && !isSystem && value && (fieldDef?.type === 'text' || fieldDef?.type === 'textarea')
-    ? <ParamRefText text={value} />
-    : value
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(value)
+  const tdRef = useRef<HTMLTableCellElement>(null)
+  const [edit, setEdit] = useState<{ caret: number } | null>(null)
+  const isRichtext = fieldDef?.type === 'richtext' && !isSystem && !!richtext
+  const editable = !isRichtext && !isSystem && !!onEdit
+  const isMultiEnum = fieldDef?.type === 'multi_enum'
+  // Hook appelé inconditionnellement (règle des hooks) ; une cellule richtext a ses propres gestes
+  // (`RichtextCell`) — ici `editable` est faux, donc rien n'est inscrit au registre.
+  const g = useCellGestures(nodeId, field, editable
+    ? caret => {
+        if (isMultiEnum) {
+          const rect = tdRef.current?.getBoundingClientRect()
+          if (rect) onMultiEnumEdit?.(objectId, field, rect)
+          return
+        }
+        setEdit({ caret: caretOffsetFor(caret, tdRef.current, value) })
+      }
+    : undefined)
 
-  if (fieldDef?.type === 'richtext' && !isSystem && richtext) {
+  if (isRichtext) {
     return (
       <RichtextCell
-        {...richtext}
+        {...richtext!}
         value={value}
-        isSelected={isSelected}
-        onSelectCell={onSelectCell}
+        nodeId={nodeId}
+        col={field}
         freezeStyle={freezeStyle}
         stickyBg={stickyBg}
       />
     )
   }
 
-  if (isSystem || !onEdit) {
+  const withAdornment = (content: React.ReactNode) => adornment
+    ? <span className="inline-flex items-center gap-1">{content}{adornment}</span>
+    : content
+  const display = paramRefs && !isSystem && value && (fieldDef?.type === 'text' || fieldDef?.type === 'textarea')
+    ? <ParamRefText text={value} />
+    : value
+
+  if (!editable) {
     return (
-      <td style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass].join(' ')}>
+      <td
+        ref={tdRef}
+        style={freezeStyle}
+        className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass, g.isSelected ? CELL_SELECTED_CLASS : ''].join(' ')}
+        onClick={g.onClick}
+      >
         {clamp.wrap(withAdornment(display))}
       </td>
     )
   }
 
-  // multi_enum: CSV preview in read mode, open cases-à-cocher popover on click
-  if (fieldDef?.type === 'multi_enum') {
+  if (edit && fieldDef?.type === 'enum') {
     return (
-      <td
-        data-multi-enum-popover
-        style={freezeStyle}
-        className={[
-          'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs hover:ring-1 hover:ring-inset hover:ring-status-info',
-          clamp.tdClass,
-          stickyBg ?? '',
-          isSelected ? 'ring-2 ring-inset ring-status-info' : '',
-        ].join(' ')}
-        onClick={e => {
-          if (!isSelected) { onSelectCell?.(); return }
-          if (onMultiEnumEdit) {
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-            onMultiEnumEdit(objectId, field, rect)
-          }
-        }}
-        title={t('system.shared.clickToEdit')}
-      >
-        {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
+      <td style={freezeStyle} className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')}>
+        <select
+          autoFocus
+          ref={el => { if (el) el.showPicker?.() }}
+          value={value}
+          onChange={e => {
+            if (e.target.value !== value) onEdit!(objectId, field, e.target.value)
+            refocusGrid(e.currentTarget)
+            setEdit(null)
+          }}
+          onBlur={() => setEdit(null)}
+          onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); refocusGrid(e.currentTarget); setEdit(null) } }}
+          onClick={e => e.stopPropagation()}
+          className="w-full px-2 py-1 text-xs text-ink bg-surface border-0 outline-none"
+        >
+          {(fieldDef.values ?? []).map(v => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
       </td>
     )
   }
 
-  if (editing) {
-    if (fieldDef?.type === 'enum') {
-      return (
-        <td style={freezeStyle} className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')}>
-          <select
-            autoFocus
-            ref={el => { if (el) el.showPicker?.() }}
-            value={draft}
-            onChange={e => { onEdit(objectId, field, e.target.value); setEditing(false) }}
-            onBlur={() => setEditing(false)}
-            onKeyDown={e => { if (e.key === 'Escape') { setDraft(value); setEditing(false) } }}
-            className="w-full px-2 py-1 text-xs text-ink bg-surface border-0 outline-none"
-          >
-{(fieldDef.values ?? []).map(v => (
-              <option key={v} value={v}>{v}</option>
-            ))}
-          </select>
-        </td>
-      )
-    }
+  if (edit) {
+    // T176 — multi-ligne pour les champs texte (les retours à la ligne sont conservés) ;
+    // mono-ligne pour les nombres, dates, etc.
+    const multiline = fieldDef?.type === 'text' || fieldDef?.type === 'textarea'
     return (
-      <td style={freezeStyle} className={['border border-edge px-0 py-0', stickyBg ?? ''].join(' ')}>
-        <input
-          autoFocus
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={() => { onEdit(objectId, field, draft); setEditing(false) }}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { onEdit(objectId, field, draft); setEditing(false) }
-            if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+      <td ref={tdRef} style={freezeStyle} className={['border border-edge px-2 py-1 text-xs text-ink max-w-xs', stickyBg ?? '', CELL_SELECTED_CLASS].join(' ')}>
+        <ExcelTextEditor
+          initialValue={value}
+          multiline={multiline}
+          caretOffset={edit.caret}
+          onCommit={v => {
+            // Valider sans modification n'écrit rien (plus d'aplatissement ni de propagation T149).
+            if (v !== value) onEdit!(objectId, field, v)
+            setEdit(null)
           }}
-          className="w-full px-2 py-1 text-xs text-ink bg-status-info-bg border-0 outline-none"
+          onCancel={() => setEdit(null)}
         />
       </td>
     )
@@ -346,20 +362,114 @@ function InlineCell({
 
   return (
     <td
+      ref={tdRef}
+      data-multi-enum-popover={isMultiEnum ? '' : undefined}
       style={freezeStyle}
       className={[
-        'border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs hover:ring-1 hover:ring-inset hover:ring-status-info',
-          clamp.tdClass,
+        `border border-edge px-2 py-1 text-xs text-ink cursor-text max-w-xs ${CELL_EDITABLE_CLASS}`,
+        clamp.tdClass,
         stickyBg ?? '',
-        isSelected ? 'ring-2 ring-inset ring-status-info' : '',
+        g.isSelected ? CELL_SELECTED_CLASS : '',
       ].join(' ')}
-      onClick={() => {
-        if (isSelected) { setDraft(value); setEditing(true) }
-        else onSelectCell?.()
-      }}
-      title={t('system.shared.clickToEdit')}
+      onClick={g.onClick}
+      onMouseDown={g.onMouseDown}
+      onDoubleClick={g.onDoubleClick}
+      title={t('system.excelView.doubleClickToEdit')}
     >
-      {clamp.wrap(withAdornment(display || <span className="text-ink-3 italic">—</span>))}
+      {isMultiEnum
+        ? clamp.wrap(value || <span className="text-ink-3 italic">—</span>)
+        : clamp.wrap(withAdornment(display || <span className="text-ink-3 italic">—</span>))}
+    </td>
+  )
+}
+
+// ── LinkCell / StepsCell (T176 — extraites du rendu de ligne pour leurs gestes) ─
+
+function LinkCell({
+  nodeId,
+  col,
+  value,
+  isOpen,
+  onOpen,
+  onClose,
+  freezeStyle,
+  stickyBg,
+  truncate,
+}: {
+  nodeId: string
+  col: string
+  value: string
+  isOpen: boolean
+  onOpen: (rect: DOMRect) => void
+  onClose: () => void
+  freezeStyle?: React.CSSProperties
+  stickyBg?: string
+  truncate: boolean
+}) {
+  const { t } = useTranslation()
+  const tdRef = useRef<HTMLTableCellElement>(null)
+  const g = useCellGestures(nodeId, col, () => {
+    if (isOpen) { onClose(); return }
+    const rect = tdRef.current?.getBoundingClientRect()
+    if (rect) onOpen(rect)
+  })
+  return (
+    <td
+      ref={tdRef}
+      data-link-popover
+      style={freezeStyle}
+      className={[
+        `border border-edge px-2 py-1 text-xs text-ink-2 max-w-xs cursor-pointer ${CELL_EDITABLE_CLASS}`,
+        truncate ? 'truncate' : '',
+        stickyBg ?? '',
+        g.isSelected ? CELL_SELECTED_CLASS : '',
+      ].join(' ')}
+      title={value || t('system.excelView.doubleClickToEdit')}
+      onClick={g.onClick}
+      onMouseDown={g.onMouseDown}
+      onDoubleClick={g.onDoubleClick}
+    >
+      <ClampedContent>{value || <span className="text-ink-3 italic">—</span>}</ClampedContent>
+    </td>
+  )
+}
+
+function StepsCell({
+  nodeId,
+  col,
+  stepsCount,
+  expanded,
+  onToggle,
+  freezeStyle,
+  stickyBg,
+}: {
+  nodeId: string
+  col: string
+  stepsCount: number
+  expanded: boolean
+  onToggle: () => void
+  freezeStyle?: React.CSSProperties
+  stickyBg?: string
+}) {
+  const { t } = useTranslation()
+  const g = useCellGestures(nodeId, col, onToggle)
+  return (
+    <td
+      style={freezeStyle}
+      className={[
+        `border border-edge px-2 py-1 text-xs cursor-pointer ${CELL_EDITABLE_CLASS}`,
+        stickyBg ?? '',
+        g.isSelected ? CELL_SELECTED_CLASS : '',
+      ].join(' ')}
+      onClick={e => { e.stopPropagation(); g.onClick() }}
+      onMouseDown={g.onMouseDown}
+      onDoubleClick={g.onDoubleClick}
+      title={expanded ? t('system.excelView.hideSteps') : stepsCount > 0 ? t('system.excelView.stepsCount', { count: stepsCount }) : t('system.excelView.noSteps')}
+    >
+      <span className="flex items-center gap-1 text-ink-2">
+        {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        {stepsCount > 0 ? stepsCount : <span className="text-ink-3 italic">—</span>}
+      </span>
     </td>
   )
 }
@@ -369,8 +479,8 @@ function InlineCell({
 interface RichtextCellProps {
   value: string
   repoPath?: string
-  isSelected?: boolean
-  onSelectCell?: () => void
+  nodeId: string
+  col: string
   freezeStyle?: React.CSSProperties
   stickyBg?: string
   /** Absent : cellule en lecture seule (pas d'entrée en édition). */
@@ -417,8 +527,8 @@ function RichtextClamp({ maxLines, children }: { maxLines: number; children: Rea
 function RichtextCell({
   value,
   repoPath,
-  isSelected,
-  onSelectCell,
+  nodeId,
+  col,
   freezeStyle,
   stickyBg,
   onStartEdit,
@@ -435,6 +545,16 @@ function RichtextCell({
   // Rendu mis en forme seulement si la cellule est visible et le défilement au repos — à
   // hauteur max 1, la cellule garde la 1re ligne brute et ne s'inscrit pas.
   const rendered = useRenderWhenVisibleAtRest(tdRef, clamp.maxLines > 1 && !isEditing)
+  // T176 — point double-cliqué, relatif au <td> : relu à l'ouverture de l'éditeur, une fois la
+  // cellule éventuellement défilée (`posAtCoords`). `null` = fin (F2).
+  const caretRef = useRef<{ dx: number; dy: number } | null>(null)
+  const g = useCellGestures(nodeId, col, onStartEdit
+    ? caret => {
+        const r = tdRef.current?.getBoundingClientRect()
+        caretRef.current = caret.kind === 'point' && r ? { dx: caret.clientX - r.left, dy: caret.clientY - r.top } : null
+        onStartEdit()
+      }
+    : undefined)
 
   // Entrée en édition : amener le haut de l'éditeur à l'écran si la cellule agrandie déborde.
   useEffect(() => {
@@ -452,17 +572,20 @@ function RichtextCell({
         className={['border border-edge p-0 align-top cursor-auto select-text ring-2 ring-inset ring-status-info', stickyBg ?? ''].join(' ')}
         onMouseDown={onEditorMouseDown}
         onClick={e => e.stopPropagation()}
+        onDoubleClick={e => e.stopPropagation()}
         // Le clic droit appartient à l'éditeur (menu de tableau), pas au menu de ligne.
         onContextMenu={e => e.stopPropagation()}
         onKeyDown={e => {
           if (e.key === 'Escape') {
             e.preventDefault()
             e.stopPropagation()
+            refocusGrid(tdRef.current)
             onEditCancel()
           } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             // Garde-fou hors éditeur (ex. textarea Raw) : dans Tiptap, `onSubmit` s'en charge.
             e.preventDefault()
             e.stopPropagation()
+            refocusGrid(tdRef.current)
             onEditCommit()
           }
         }}
@@ -472,7 +595,12 @@ function RichtextCell({
           onChange={onEditChange}
           repoPath={repoPath}
           autoFocus
-          onSubmit={onEditCommit}
+          initialCaret={() => {
+            const c = caretRef.current
+            const r = tdRef.current?.getBoundingClientRect()
+            return c && r ? { left: r.left + c.dx, top: r.top + c.dy } : null
+          }}
+          onSubmit={() => { refocusGrid(tdRef.current); onEditCommit() }}
           variant="compact"
         />
       </td>
@@ -507,19 +635,20 @@ function RichtextCell({
       style={freezeStyle}
       className={[
         'border border-edge px-2 py-1 text-xs text-ink',
-        onStartEdit ? 'cursor-text hover:ring-1 hover:ring-inset hover:ring-status-info' : '',
+        onStartEdit ? `cursor-text ${CELL_EDITABLE_CLASS}` : '',
         clamp.maxLines <= 1 ? 'truncate max-w-xs' : '',
         stickyBg ?? '',
-        isSelected ? 'ring-2 ring-inset ring-status-info' : '',
+        g.isSelected ? CELL_SELECTED_CLASS : '',
       ].join(' ')}
       onClick={e => {
         // Un lien du rendu ne s'ouvre pas dans la cellule : le clic suit le geste de la
-        // cellule (sélection, puis édition), comme en Vue Word.
+        // cellule (sélection ; double-clic = édition).
         if ((e.target as HTMLElement).closest('a')) e.preventDefault()
-        if (!isSelected) { onSelectCell?.(); return }
-        onStartEdit?.()
+        g.onClick()
       }}
-      title={onStartEdit ? t('system.shared.clickToEdit') : undefined}
+      onMouseDown={g.onMouseDown}
+      onDoubleClick={g.onDoubleClick}
+      title={onStartEdit ? t('system.excelView.doubleClickToEdit') : undefined}
     >
       {content}
     </td>
@@ -531,51 +660,38 @@ function RichtextCell({
 function FolderNameText({
   node,
   onRename,
-  editing: editingProp,
-  onEditingChange,
+  edit,
+  onEditEnd,
+  textRef,
 }: {
   node: TypeTreeNode
   onRename?: (nodeId: string, name: string) => void
-  editing?: boolean
-  onEditingChange?: (v: boolean) => void
+  /** T176 — édition en cours (ouverte par double-clic / F2 sur la cellule), curseur initial. */
+  edit: { caret: number } | null
+  onEditEnd: () => void
+  /** Rendu lecture du nom — sert à placer le curseur au point double-cliqué. */
+  textRef: React.RefObject<HTMLSpanElement>
 }) {
-  const [editingLocal, setEditingLocal] = useState(false)
-  const editing = editingProp ?? editingLocal
-  const setEditing = onEditingChange ?? setEditingLocal
-  const [draft, setDraft] = useState(node.name)
-
-  useEffect(() => {
-    if (editing) setDraft(node.name)
-  }, [editing, node.name])
-
-  const commit = (e: React.SyntheticEvent) => {
-    e.stopPropagation()
-    const next = draft.trim() || node.name
-    if (next !== node.name) onRename?.(node.id, next)
-    setEditing(false)
-  }
-
-  if (editing) {
+  if (edit) {
     return (
-      <input
-        autoFocus
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => {
-          e.stopPropagation()
-          if (e.key === 'Enter') commit(e)
-          if (e.key === 'Escape') { setEditing(false) }
-        }}
-        onClick={e => e.stopPropagation()}
-        className="bg-transparent outline-none text-xs font-semibold text-ink min-w-[4rem]"
-        style={{ width: `${Math.max(draft.length, 4)}ch` }}
-      />
+      <span className="flex-1 min-w-0">
+        <ExcelTextEditor
+          initialValue={node.name}
+          multiline={false}
+          caretOffset={edit.caret}
+          onCommit={v => {
+            const next = v.trim() || node.name
+            if (next !== node.name) onRename?.(node.id, next)
+            onEditEnd()
+          }}
+          onCancel={onEditEnd}
+        />
+      </span>
     )
   }
 
   return (
-    <span className={onRename ? 'cursor-text' : undefined}>
+    <span ref={textRef} className={onRename ? 'cursor-text' : undefined}>
       {node.name}
     </span>
   )
@@ -714,8 +830,6 @@ function GroupRow({
   isSelected,
   onSelectRow,
   onContextMenu,
-  isNameCellSelected,
-  onSelectNameCell,
   freezeColCount = 0,
   getFreezeStyle,
   isGotoTarget,
@@ -739,18 +853,28 @@ function GroupRow({
   isSelected?: boolean
   onSelectRow?: (e: React.MouseEvent<HTMLTableRowElement>) => void
   onContextMenu?: (e: React.MouseEvent<HTMLTableRowElement>) => void
-  isNameCellSelected?: boolean
-  onSelectNameCell?: () => void
   freezeColCount?: number
   getFreezeStyle?: (colIdx: number) => React.CSSProperties | undefined
   isGotoTarget?: boolean
 }) {
-  const [folderEditing, setFolderEditing] = useState(false)
-  const startOrSelect = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (isNameCellSelected) setFolderEditing(true)
-    else onSelectNameCell?.()
-  }
+  const { t } = useTranslation()
+  // T176 — nom du dossier : clic = sélection de la cellule (sans sélectionner la ligne, comme
+  // avant) ; double-clic / F2 = renommage (le double-clic ne replie donc plus la ligne depuis le
+  // nom : chevron, cellule d'action ou de section).
+  const nameTextRef = useRef<HTMLSpanElement>(null)
+  const [folderEdit, setFolderEdit] = useState<{ caret: number } | null>(null)
+  const g = useCellGestures(node.id, 'name', onRename
+    ? caret => setFolderEdit({ caret: caretOffsetFor(caret, nameTextRef.current, node.name) })
+    : undefined)
+  const nameCellProps = onRename ? {
+    onClick: (e: React.MouseEvent) => { e.stopPropagation(); g.onClick() },
+    onMouseDown: g.onMouseDown,
+    onDoubleClick: g.onDoubleClick,
+    title: t('system.excelView.doubleClickToEdit'),
+  } : {}
+  const folderNameText = (
+    <FolderNameText node={node} onRename={onRename} edit={folderEdit} onEditEnd={() => setFolderEdit(null)} textRef={nameTextRef} />
+  )
   // Le pencil d'action (index "-1", avant la 1ère colonne) suit la même règle que
   // l'en-tête : il se fige dès qu'au moins une colonne est figée, pour rester adjacent
   // à elle sans laisser un vide de scroll entre les deux.
@@ -791,7 +915,7 @@ function GroupRow({
         const restCount = columns.length - 1
 
         const chevron = !hasActions && (
-          <span onClick={e => { e.stopPropagation(); onToggle() }}>
+          <span data-cell-dblclick-ignore onClick={e => { e.stopPropagation(); onToggle() }}>
             {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </span>
         )
@@ -812,12 +936,12 @@ function GroupRow({
                 colSpan={restCount || 1}
                 className={[
                   'border border-edge px-2 py-1.5 text-xs font-semibold text-ink-2',
-                  onRename ? 'hover:ring-1 hover:ring-inset hover:ring-status-info cursor-text' : '',
-                  isNameCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
+                  onRename ? `${CELL_EDITABLE_CLASS} cursor-text` : '',
+                  g.isSelected || folderEdit ? CELL_SELECTED_CLASS : '',
                 ].join(' ')}
-                onClick={onRename ? startOrSelect : undefined}
+                {...nameCellProps}
               >
-                <FolderNameText node={node} onRename={onRename} editing={folderEditing} onEditingChange={setFolderEditing} />
+                {folderNameText}
               </td>
             </>
           )
@@ -829,14 +953,14 @@ function GroupRow({
               colSpan={columns.length}
               className={[
                 'border border-edge px-2 py-1.5 text-xs font-semibold text-ink-2',
-                onRename ? 'hover:ring-1 hover:ring-inset hover:ring-status-info cursor-text' : '',
-                isNameCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
+                onRename ? `${CELL_EDITABLE_CLASS} cursor-text` : '',
+                g.isSelected || folderEdit ? CELL_SELECTED_CLASS : '',
               ].join(' ')}
-              onClick={onRename ? startOrSelect : undefined}
+              {...nameCellProps}
             >
               <span className="flex items-center gap-1.5">
                 {chevron}
-                <FolderNameText node={node} onRename={onRename} editing={folderEditing} onEditingChange={setFolderEditing} />
+                {folderNameText}
               </span>
             </td>
           </>
@@ -933,16 +1057,11 @@ export function ExcelView({
   const [localSelectedIds, setLocalSelectedIds] = useState<string[]>([])
   const effectiveSelectedIds = selectedIds ?? localSelectedIds
   const effectiveOnSelect = onSelect ?? setLocalSelectedIds
-  // Cellule "sélectionnée" (contour bleu persistant) — un premier clic sélectionne la
-  // cellule (et fait remonter la sélection de ligne par bubbling, y compris ctrl/shift),
-  // un second clic sur cette même cellule déjà sélectionnée ouvre son éditeur. Évite
-  // qu'un simple clic destiné à sélectionner des lignes ne bascule la cellule en édition.
-  const [selectedCell, setSelectedCell] = useState<{ nodeId: string; col: string } | null>(null)
-  const isCellSelected = useCallback(
-    (nodeId: string, col: string) => selectedCell?.nodeId === nodeId && selectedCell?.col === col,
-    [selectedCell]
-  )
-  const selectCell = useCallback((nodeId: string, col: string) => setSelectedCell({ nodeId, col }), [])
+  // Cellule "sélectionnée" (contour bleu persistant) — un clic sélectionne la cellule (et fait
+  // remonter la sélection de ligne par bubbling, y compris ctrl/shift) ; double-clic ou F2 ouvre
+  // son éditeur (T176). Tenue hors de l'état React (`excelCellStore`) : sélectionner une cellule
+  // ne re-rend que les deux cellules concernées, pas tout le tableau.
+  const [cellStore] = useState(createExcelCellStore)
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; hasContent: boolean } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
@@ -1117,7 +1236,8 @@ export function ExcelView({
     // sinon il reste affiché, détaché, au-dessus d'un en-tête qui n'existe plus.
     setActiveColumnFilterPopover(prev => (prev && !columns.includes(prev.column) ? null : prev))
     // Idem pour la cellule sélectionnée si sa colonne disparaît.
-    setSelectedCell(prev => (prev && !columns.includes(prev.col) ? null : prev))
+    const selected = cellStore.getSelected()
+    if (selected && !columns.includes(selected.col)) cellStore.select(null)
     // Le nombre de colonnes figées ne doit jamais dépasser le nombre de colonnes affichées.
     setFreezeColCount(prev => Math.min(prev, columns.length))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1128,7 +1248,7 @@ export function ExcelView({
   useEffect(() => {
     setColumnFilters({})
     setActiveColumnFilterPopover(null)
-    setSelectedCell(null)
+    cellStore.select(null)
     setFreezeColCount(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeDef?.prefix, repoPath])
@@ -1546,10 +1666,14 @@ export function ExcelView({
       }
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && canEdit) {
       if (effectiveSelectedIds.length > 0) { e.preventDefault(); initiateDelete(effectiveSelectedIds) }
+    } else if (e.key === 'F2') {
+      // T176 — édition de la cellule sélectionnée, curseur en fin (convention Excel).
+      const cell = cellStore.getSelected()
+      if (cell && cellStore.requestEdit(cell.nodeId, cell.col, { kind: 'end' })) e.preventDefault()
     } else if (e.key === 'Escape') {
       if (deleteConfirm) setDeleteConfirm(null)
       else if (clipboard?.cut) setClipboard(null)
-      else if (selectedCell) setSelectedCell(null)
+      else if (cellStore.getSelected()) cellStore.select(null)
       else if (effectiveSelectedIds.length > 0) effectiveOnSelect([])
     } else if (e.key === 'Enter' && deleteConfirm) {
       e.preventDefault()
@@ -1636,6 +1760,9 @@ export function ExcelView({
     // multiple s'effondrerait avant même que l'édition ne commence, rendant la propagation
     // en masse inatteignable à la souris. Cliquer sur une ligne hors sélection reste solo.
     if (effectiveSelectedIds.length > 1 && effectiveSelectedIds.includes(nodeId)) return
+    // T176 — déjà la seule ligne sélectionnée (ex. 2d clic d'un double-clic) : pas de nouveau
+    // tableau de sélection, donc pas de re-rendu du tableau.
+    if (effectiveSelectedIds.length === 1 && effectiveSelectedIds[0] === nodeId) return
     effectiveOnSelect([nodeId])
   }
 
@@ -1648,10 +1775,12 @@ export function ExcelView({
     <div
       ref={containerRef}
       className="flex-1 overflow-auto outline-none"
+      data-excel-grid
       tabIndex={0}
-      onClick={() => { effectiveOnSelect([]); setSelectedCell(null) }}
+      onClick={() => { effectiveOnSelect([]); cellStore.select(null) }}
       onKeyDown={handleKeyDown}
     >
+      <ExcelCellStoreContext.Provider value={cellStore}>
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setDeleteConfirm(null)}>
@@ -1820,8 +1949,6 @@ export function ExcelView({
                   isSelected={effectiveSelectedIds.includes(node.id)}
                   onSelectRow={e => handleRowSelect(node.id, e)}
                   onContextMenu={e => handleContextMenu(e, node.id)}
-                  isNameCellSelected={isCellSelected(node.id, 'name')}
-                  onSelectNameCell={() => selectCell(node.id, 'name')}
                   freezeColCount={freezeColCount}
                   getFreezeStyle={getFreezeStyle}
                   isGotoTarget={gotoNodeId === node.id}
@@ -1885,29 +2012,17 @@ export function ExcelView({
                   const freezeStyle = getFreezeStyle(colIdx)
                   const stickyBg = freezeStyle ? rowStickyBg : undefined
                   if (col === 'steps') {
-                    const stepsCount = nodeSteps.length
-                    const stepsCellSelected = isCellSelected(node.id, col)
                     return (
-                      <td
+                      <StepsCell
                         key={col}
-                        style={freezeStyle}
-                        className={[
-                          'border border-edge px-2 py-1 text-xs cursor-pointer hover:ring-1 hover:ring-inset hover:ring-status-info',
-                          stickyBg ?? '',
-                          stepsCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
-                        ].join(' ')}
-                        onClick={e => {
-                          e.stopPropagation()
-                          if (!stepsCellSelected) { selectCell(node.id, col); return }
-                          toggleStepExpand(node.id)
-                        }}
-                        title={stepsExpanded ? t('system.excelView.hideSteps') : stepsCount > 0 ? t('system.excelView.stepsCount', { count: stepsCount }) : t('system.excelView.noSteps')}
-                      >
-                        <span className="flex items-center gap-1 text-ink-2">
-                          {stepsExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                          {stepsCount > 0 ? stepsCount : <span className="text-ink-3 italic">—</span>}
-                        </span>
-                      </td>
+                        nodeId={node.id}
+                        col={col}
+                        stepsCount={nodeSteps.length}
+                        expanded={stepsExpanded}
+                        onToggle={() => toggleStepExpand(node.id)}
+                        freezeStyle={freezeStyle}
+                        stickyBg={stickyBg}
+                      />
                     )
                   }
                   if (col === 'coverageStatus') {
@@ -1929,8 +2044,6 @@ export function ExcelView({
                         value={node.name}
                         nodeId={node.id}
                         onRename={onRenameNode}
-                        isSelected={isCellSelected(node.id, col)}
-                        onSelectCell={() => selectCell(node.id, col)}
                         freezeStyle={freezeStyle}
                         stickyBg={stickyBg}
                       />
@@ -1943,28 +2056,19 @@ export function ExcelView({
                     const lt = linkTypes.find(l => l.name === typeName)
                     const cellLinks = linksByObjectId?.get(objectId)?.filter(l => l.type === typeName) ?? []
                     const isOpen = activeLinkPopover?.nodeId === node.id && activeLinkPopover.typeName === typeName
-                    const linkCellSelected = isCellSelected(node.id, col)
                     return (
-                      <td
+                      <LinkCell
                         key={col}
-                        data-link-popover
-                        style={freezeStyle}
-                        className={[
-                          'border border-edge px-2 py-1 text-xs text-ink-2 max-w-xs cursor-pointer hover:ring-1 hover:ring-inset hover:ring-status-info',
-                          rowMaxLines > 1 ? '' : 'truncate',
-                          stickyBg ?? '',
-                          linkCellSelected ? 'ring-2 ring-inset ring-status-info' : '',
-                        ].join(' ')}
-                        title={value || undefined}
-                        onClick={e => {
-                          if (!linkCellSelected) { selectCell(node.id, col); return }
-                          if (isOpen) { setActiveLinkPopover(null); return }
-                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                          setActiveLinkPopover({ nodeId: node.id, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
-                        }}
-                      >
-                        <ClampedContent>{value || <span className="text-ink-3 italic">—</span>}</ClampedContent>
-                      </td>
+                        nodeId={node.id}
+                        col={col}
+                        value={value}
+                        isOpen={isOpen}
+                        onOpen={rect => setActiveLinkPopover({ nodeId: node.id, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })}
+                        onClose={() => setActiveLinkPopover(null)}
+                        freezeStyle={freezeStyle}
+                        stickyBg={stickyBg}
+                        truncate={rowMaxLines <= 1}
+                      />
                     )
                   }
                   const value = getCellText(node, obj, col)
@@ -1978,11 +2082,10 @@ export function ExcelView({
                       key={col}
                       value={value}
                       field={col}
+                      nodeId={node.id}
                       objectId={node.objectId ?? ''}
                       isSystem={isSystemField(col)}
                       fieldDef={fieldDef}
-                      isSelected={isCellSelected(node.id, col)}
-                      onSelectCell={() => selectCell(node.id, col)}
                       freezeStyle={freezeStyle}
                       stickyBg={stickyBg}
                       paramRefs={typeDef?.category === 'requirement'}
@@ -2183,6 +2286,7 @@ export function ExcelView({
           </div>
         )
       })()}
+      </ExcelCellStoreContext.Provider>
     </div>
   )
 }

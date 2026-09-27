@@ -26,6 +26,8 @@ export function ParamRefText({ text, fallback }: { text: string; fallback?: Reac
         key={ref.index}
         className={r.status === 'ok' ? 'param-ref' : 'param-ref param-ref--unresolved'}
         data-param-ref={ref.key}
+        // T176 — forme brute, pour placer le curseur de l'éditeur (Vue Excel) au bon caractère.
+        data-param-raw={ref.raw}
         title={paramRefTitle(api, ref.key, t('parameters.unresolved'))}
         // Comme un lien : le clic simple ne remonte pas au champ (qui passerait sinon en édition
         // avant que le double-clic n'arrive) ; le double-clic ouvre le paramètre.

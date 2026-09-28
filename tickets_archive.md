@@ -2,6 +2,33 @@
 
 ---
 
+### T176 — Évolution : Vue Excel — édition au double-clic / F2, sans lag, sans changement de style, curseur au point cliqué
+
+**Contexte** : il fallait deux clics séparés pour éditer une cellule (sélection puis édition), avec un lag
+perceptible ; l'éditeur texte (`<input>` sur fond bleu) décalait le texte, plaçait le curseur en fin et
+aplatissait les listes `- …` des champs `text` (retours à la ligne supprimés à l'enregistrement).
+
+**Implémentation (2 sprints + 3 correctifs)** :
+
+- **Gestes** — clic = sélection seulement ; double-clic ou **F2** = édition / liste / popover / dépliage de
+  toute cellule éditable (texte, nom, richtext, enum, multi_enum, liens, étapes, nom de dossier)
+  (`excelCellStore.ts`, `useCellGestures`).
+- **Éditeur texte iso-typographique** (`ExcelTextEditor.tsx`) — `<textarea>` transparent, même position du
+  texte qu'en lecture, multi-ligne pour `text` / `textarea` ; Entrée = ligne, Ctrl+Entrée = valider, Échap =
+  annuler ; valider sans modification n'écrit rien.
+- **Curseur au point cliqué** — texte : `rawOffsetAtPoint` (`excelCaret.ts`) ; richtext : prop `initialCaret`
+  de `RichTextField` (`posAtCoords`).
+- **Réactivité** — cellule sélectionnée hors état React (store), cellules `memo` + actions stables par
+  contexte : 300 éléments, changement de ligne 60 → 20 ms, double-clic → éditeur texte 69 → 28 ms.
+- **Correctifs** — curseur richtext hors écran après défilement ; `RichTextField` : deux effets gardés par un
+  drapeau « premier passage » consommé par `StrictMode` (dev) appelaient `setContent` → curseur en fin de
+  contenu et sauvegarde parasite (tous les champs richtext) ; fond blanc de l'éditeur richtext en cellule.
+- Driver `run-desktop` : commande `dblclick-at` (double-clic réel à des coordonnées calculées).
+
+Voir `specs/T176.md`, `specs/T176-design.md`, `specs/T176-sprint1.md`, `specs/T176-sprint2.md`.
+
+---
+
 ### T170 — Évolution : hauteur max des lignes Vue Excel — « toutes les lignes » au bout du slider
 
 **Contexte** : T168 limitait la hauteur des lignes de la Vue Excel à 20 lignes au maximum.

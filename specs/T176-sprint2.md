@@ -112,3 +112,14 @@ premier passage. Concerne tous les champs richtext (Vue Excel, Édition, popups)
 `B-1-004-01-M` ; aucun fichier d'exigence modifié après 60 ouvertures / annulations. `tsc` propre.
 Outil de test : commande `dblclick-at <expr>` ajoutée au driver `run-desktop` (double-clic réel aux
 coordonnées renvoyées par une expression évaluée dans la page).
+
+## Correctif 3 — fond blanc de la cellule richtext en édition
+
+**Signalé** : en édition, le fond de la cellule richtext passait au blanc (pavé blanc quand le contenu est
+moins haut que la cellule).
+
+**Cause / correctif** (`RichTextField.tsx`) : en variante `compact`, le conteneur de l'éditeur (et la zone
+Raw) avait un fond opaque `bg-surface`. Fond transparent en `compact` : la cellule garde le fond de sa ligne
+(sélection, survol, colonne figée) comme en lecture ; variante `default` inchangée. Vérifié dans l'app
+(ligne sélectionnée, richtext d'une ligne dans une cellule haute de 9 lignes : aucun élément opaque entre
+l'éditeur et la ligne).

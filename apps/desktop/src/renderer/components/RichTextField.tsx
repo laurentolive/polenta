@@ -398,11 +398,13 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
               onChange(e.target.value)
             }}
             className={variant === 'compact'
-              ? 'w-full px-2 py-1 text-xs font-mono text-ink bg-surface outline-none resize-y min-h-[4rem]'
+              ? 'w-full px-2 py-1 text-xs font-mono text-ink bg-transparent outline-none resize-y min-h-[4rem]'
               : 'w-full px-3 py-2 text-sm font-mono text-ink bg-surface outline-none resize-y min-h-[80px]'}
           />
         ) : (
-          <div className={variant === 'compact' ? 'px-2 py-1 bg-surface' : 'px-3 py-2 bg-surface'}>
+          <div className={variant === 'compact' ? 'px-2 py-1' : 'px-3 py-2 bg-surface'}>
+            {/* T176 — compact (cellule de la Vue Excel) : fond transparent, la cellule garde le fond
+                de sa ligne (sélection, colonne figée) comme en lecture — pas de pavé blanc. */}
             <EditorContent editor={editor} />
           </div>
         )}

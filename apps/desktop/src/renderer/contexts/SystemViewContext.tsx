@@ -180,6 +180,10 @@ export interface SystemViewState {
   redo: () => void
   isTreeDirty: boolean
   treeLoading: boolean
+  /** `<nœud>|<type>` dont l'arbre est actuellement chargé dans `root` — diffère de la sélection
+   *  courante le temps de charger l'arbre d'un nouveau type (les vues attendent l'égalité avant
+   *  de s'afficher, plutôt que de montrer l'arbre de l'ancien type sous le nouveau titre). */
+  rootKey: string
   readOnly: boolean
 
   // Save
@@ -500,6 +504,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // Track the previous node+type key to distinguish a node/type switch (→ resetRoot)
   // from a refetch after save (→ update savedRootRef only, preserve undo history).
   const prevNodeTypeKeyRef = useRef('')
+  const [rootKey, setRootKey] = useState('')
   useEffect(() => {
     if (!treeData) return
     const key = `${effectiveNodeId}|${effectiveTypeId}`
@@ -508,6 +513,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     savedRootRef.current = treeData.root ?? []
     if (isKeyChange) {
       resetRoot(treeData.root ?? [])
+      setRootKey(key)
       setGotoTarget({ nodeId: null, seq: 0 }) // T164 — nouveau composant/type : aucune cible goto
     }
   }, [treeData]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -735,6 +741,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     redo,
     isTreeDirty,
     treeLoading,
+    rootKey,
     readOnly,
     save,
     isSaving: saveMutation.isPending,

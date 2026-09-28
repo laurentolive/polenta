@@ -123,3 +123,50 @@ Raw) avait un fond opaque `bg-surface`. Fond transparent en `compact` : la cellu
 (sélection, survol, colonne figée) comme en lecture ; variante `default` inchangée. Vérifié dans l'app
 (ligne sélectionnée, richtext d'une ligne dans une cellule haute de 9 lignes : aucun élément opaque entre
 l'éditeur et la ligne).
+
+## Correctif 4 — ouverture de la Vue Excel : délai et glitches
+
+**Signalé** : la vue tableau s'affiche avec un gros délai et deux glitches.
+
+**Mesure** (build de production, driver Playwright, handstickProduct / PH2 Exigence : 180 éléments, 27 colonnes
+visibles, hauteur max 10 ; échantillonnage à chaque frame du clic jusqu'à stabilisation) — avant :
+
+| t (ms) | Affiché |
+|--------|---------|
+| 320 | colonnes par défaut `section/name/id/status`, cellules vides (**glitch 1**) |
+| 431 | colonnes « fallback » + données |
+| 838 | vraies colonnes (prefs) — tableau entièrement différent (**glitch 2**) |
+| 932 | richtext : texte brut → mis en forme |
+
+Profil CPU : `useTranslation()` dans chaque cellule (~4 800) ≈ 170 ms ; lecture de `clientWidth` au montage
+(reflow synchrone du tableau entier) puis `setContainerWidth` → second rendu complet ; 3 rendus complets
+intermédiaires. IPC négligeable (< 10 ms).
+
+**Correctifs** :
+- `SystemView.tsx` : vues Tableau / Document rendues seulement quand `viewReady` (prefs du type appliquées,
+  `rootKey` = type courant, objets chargés, liens / couverture si affichés) — sinon `ViewLoading` (zone vide,
+  libellé après 400 ms). Requête des prefs lancée après résolution de l'identité (plus de double application
+  `local` puis vrai login).
+- `SystemViewContext.tsx` : `rootKey` — clé nœud|type de l'arbre chargé dans `root`.
+- `ExcelView.tsx` : libellés des cellules via `ExcelCellLabelsContext` ; plus de `containerWidth` (CSS
+  `min-width: 100%`, dernière colonne en largeur auto) ; rendu progressif (50 lignes, puis le reste en
+  `startTransition` après la première peinture, d'emblée complet si une cible goto est posée) ; estompage
+  richtext posé en effet de layout.
+- `useRenderWhenVisibleAtRest.tsx` : une cellule visible au montage est rendue avant la première peinture
+  (`isVisibleNow`, repli sur la fenêtre tant que la ref du conteneur n'est pas attachée).
+
+**Après** : un seul état affiché, le final, à ~350 ms (lignes hors écran complétées à ~650 ms, sans changement
+visible) ; changement de type Exigences → Tests : ancien tableau → ~20 ms de zone vide → nouveau tableau final.
+CPU de l'ouverture : ~1 220 ms → ~760 ms (mesuré avant ajout du rendu progressif). Dernière colonne : remplit
+toujours la largeur (vérifié sur PH2 / Test, 6 colonnes). `tsc` propre.
+
+### Complément — rendu richtext en tâche de fond
+
+Demande : rendre d'abord le visible, puis le reste en tâche de fond. `RenderGateProvider`
+(`useRenderWhenVisibleAtRest.tsx`) : après le rendu du visible, lots de `backgroundBatch` (12) cellules
+pendant les temps morts (`requestIdleCallback`), triées par distance à la zone visible (en dessous d'abord,
+puis au-dessus), rendues en `startTransition` ; annulé à chaque `scroll`, relancé à l'arrêt du défilement
+(`flush`) et à chaque nouvelle inscription (lignes du rendu progressif, dépliage). Mesuré (handstickProduct,
+604 cellules richtext) : tout rendu ~2,7 s après l'ouverture, aucune tâche longue > 50 ms pendant le fond ;
+défilement au milieu du tableau → cellules déjà mises en forme, ligne de tête inchangée après 1,5 s
+(pas de saut). Non vérifié : défilement pendant le rendu de fond (logique d'annulation relue).

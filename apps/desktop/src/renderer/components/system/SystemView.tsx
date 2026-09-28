@@ -292,6 +292,24 @@ function FieldConfigModal({
   )
 }
 
+// ── ViewLoading — attente des données des vues Tableau / Document ───────────
+
+/** Zone vide pendant le chargement ; le libellé n'apparaît que si l'attente se prolonge, pour
+ *  ne pas faire clignoter un « Chargement… » avant un affichage quasi immédiat. */
+function ViewLoading() {
+  const { t } = useTranslation()
+  const [showLabel, setShowLabel] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setShowLabel(true), 400)
+    return () => clearTimeout(timer)
+  }, [])
+  return (
+    <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">
+      {showLabel ? t('common.loading') : null}
+    </div>
+  )
+}
+
 // ── Main SystemView ───────────────────────────────────────────────────────────
 
 export function SystemView() {
@@ -310,6 +328,7 @@ export function SystemView() {
     effectiveNodeId,
     objectTypes,
     root,
+    rootKey,
     setRoot,
     canUndo,
     canRedo,
@@ -540,7 +559,7 @@ export function SystemView() {
 
   // ── Object loading for Excel / Word views ────────────────────────────────
 
-  const { data: rawObjects = [] } = useSystemObjects(
+  const { data: rawObjects = [], isPending: objectsPending } = useSystemObjects(
     repoPath,
     effectiveType?.category,
     effectiveNodeId,
@@ -629,7 +648,7 @@ export function SystemView() {
   // changent coup sur coup (ex. « Réinitialiser » = colonnes + titres en deux appels).
   const prefsRef = useRef<FieldVisibilityPref>({ excel: [], word: [], edit: [], showFoldersExcel: true, showFoldersWord: true })
 
-  const { data: identity } = useQuery({
+  const { data: identity, isPending: identityPending } = useQuery({
     queryKey: ['identity', repoPath],
     queryFn: () => api.auth.resolveIdentity(repoPath),
     enabled: !!repoPath,
@@ -637,7 +656,7 @@ export function SystemView() {
   })
   const username = identity?.login ?? 'local'
 
-  const { data: allLinks = [] } = useQuery({
+  const { data: allLinks = [], isPending: linksPending } = useQuery({
     queryKey: ['links-all', repoPath],
     queryFn: () => api.requirements.linksAll(repoPath),
     enabled: !!repoPath,
@@ -690,7 +709,7 @@ export function SystemView() {
     || visibleFieldsWord.includes('coverageStatus')
     || (viewMode === 'edit' && effectiveType?.category === 'requirement')
 
-  const { data: matrix } = useQuery({
+  const { data: matrix, isPending: matrixPending } = useQuery({
     queryKey: ['traceability-matrix', repoPath],
     queryFn: () => api.traceability.matrix(repoPath),
     enabled: !!repoPath && coverageNeeded,
@@ -775,14 +794,18 @@ export function SystemView() {
   }, [backHistory, handleGoBack, setEditingNodeId])
 
   const typeKey = effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : null
+  // Type dont les colonnes visibles (prefs) sont appliquées — cf. `viewReady`.
+  const [prefsAppliedKey, setPrefsAppliedKey] = useState<string | null>(null)
 
-  const { data: savedPrefs, isPlaceholderData: isPrefsPlaceholder } = useQuery({
+  const { data: savedPrefs, isPlaceholderData: isPrefsPlaceholder, isPending: prefsPending } = useQuery({
     queryKey: ['pref-visibility', repoPath, username, typeKey],
     queryFn: async () => {
       if (!repoPath || !username || !typeKey) return null
       return api.pref.getFieldVisibility(repoPath, username, typeKey)
     },
-    enabled: !!repoPath && !!username && !!typeKey,
+    // Attendre l'identité : lancée avec le repli `local` puis relancée avec le vrai login, la
+    // requête appliquait deux jeux de colonnes successifs (glitch à l'ouverture de la vue).
+    enabled: !!repoPath && !!username && !!typeKey && !identityPending,
     // Garde les prefs du type précédent affichées pendant le fetch du nouveau type plutôt que
     // de repasser par `undefined` : sans ça, changer de type retombait un instant sur le
     // `fallback` (peu de colonnes) avant de recevoir les vraies prefs, d'où le "flash" de
@@ -794,7 +817,7 @@ export function SystemView() {
     // Tant que les prefs affichées sont celles de l'ancien type (placeholder en attendant le
     // fetch du nouveau), ne pas re-dériver les colonnes visibles — sinon on écrase l'affichage
     // courant par le fallback avant que les vraies prefs du nouveau type n'arrivent.
-    if (isPrefsPlaceholder) return
+    if (isPrefsPlaceholder || prefsPending) return
     const fallback = [
       'section',
       'name',
@@ -816,7 +839,8 @@ export function SystemView() {
     setShowFoldersExcel(showFoldersExcelNext)
     setShowFoldersWord(showFoldersWordNext)
     prefsRef.current = { excel, word, edit, showFoldersExcel: showFoldersExcelNext, showFoldersWord: showFoldersWordNext }
-  }, [savedPrefs, effectiveTypeId, isPrefsPlaceholder]) // eslint-disable-line react-hooks/exhaustive-deps
+    setPrefsAppliedKey(typeKey)
+  }, [savedPrefs, typeKey, isPrefsPlaceholder, prefsPending]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const autoSaveMutation = useMutation({
     mutationFn: async ({ objectId, field, value }: { objectId: string; field: string; value: string }) => {
@@ -1112,6 +1136,18 @@ export function SystemView() {
     persistPrefs({ showFoldersWord: show })
   }, [persistPrefs])
 
+  // Vues Tableau / Document affichées seulement quand tout ce qui détermine leur rendu est là :
+  // colonnes visibles du type (prefs), arbre du type, objets, liens et couverture s'ils sont
+  // affichés. Sans ça, la vue se peignait 3 à 4 fois à l'ouverture (colonnes par défaut et
+  // cellules vides, puis données, puis vraies colonnes) — autant de glitches, et autant de
+  // rendus complets du tableau qui retardaient l'affichage final.
+  const shownFields = viewMode === 'word' ? visibleFieldsWord : visibleFieldsExcel
+  const viewReady = prefsAppliedKey === typeKey
+    && rootKey === `${effectiveNodeId}|${effectiveTypeId}`
+    && !objectsPending
+    && !(linksPending && shownFields.some(f => f.startsWith('link::')))
+    && !(matrixPending && shownFields.includes('coverageStatus'))
+
   // ── Empty / loading states ────────────────────────────────────────────────
 
   if (schemaLoading) {
@@ -1329,7 +1365,8 @@ export function SystemView() {
             level={effectiveTypeId || undefined}
           />
         )}
-        {effectiveType?.category !== 'campaign' && viewMode === 'excel' && (
+        {effectiveType?.category !== 'campaign' && viewMode !== 'edit' && !viewReady && <ViewLoading />}
+        {effectiveType?.category !== 'campaign' && viewMode === 'excel' && viewReady && (
           <ExcelView
             root={root}
             typeDef={effectiveType}
@@ -1367,7 +1404,7 @@ export function SystemView() {
             rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}
           />
         )}
-        {effectiveType?.category !== 'campaign' && viewMode === 'word' && (
+        {effectiveType?.category !== 'campaign' && viewMode === 'word' && viewReady && (
           <WordView
             root={root}
             typeDef={effectiveType}

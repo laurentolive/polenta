@@ -312,6 +312,17 @@ Système › Arbre › Sélection).
     actions stables par contexte : un changement de ligne sélectionnée ne re-rend que les lignes, pas les
     cellules. Mesures (300 éléments, 10 colonnes, hauteur max 10) : changement de ligne ~20 ms,
     double-clic → éditeur texte ~28 ms, → richtext ~50–100 ms.
+  - **Ouverture de la vue (correctif T176)** : les vues Tableau et Document ne s'affichent qu'une
+    fois réunis les colonnes visibles du type (prefs, lues **après** résolution de l'identité),
+    l'arbre du type, ses objets, et les liens / la couverture s'ils sont affichés — zone vide en
+    attendant (« Chargement… » au-delà de 400 ms). Un seul affichage, directement final : plus de
+    colonnes par défaut à cellules vides puis de changement de colonnes. Les libellés des cellules
+    sont traduits une fois par la vue (pas de `useTranslation` par cellule) ; le remplissage de la
+    largeur par la dernière colonne est en CSS (`min-width: 100%`, dernière colonne sans largeur
+    fixe), sans mesure JS du conteneur. Rendu progressif : les 50 premières lignes au premier
+    affichage, les suivantes juste après en transition React. Mesure (handstickProduct, 180
+    exigences, 27 colonnes, build de production) : tableau affiché ~350 ms après le clic (contre
+    ~850–930 ms en 4 états successifs).
 - Champs système (ID, date de création, auteur…) : lecture seule, visuellement distincts.
 - **Sélection multiple de lignes** : clic simple (sélection simple), Shift+clic (sélection contiguë), Ctrl+clic (sélection discrète/toggle) — indépendante de la sélection de l'arbre du panel gauche.
 - **Goto depuis l'arbre (T164)** : la ligne (élément) ou la ligne de groupe (dossier) ciblée
@@ -335,7 +346,14 @@ Système › Arbre › Sélection).
   `scroll`) : un seul IntersectionObserver (`rootMargin: 0`) et un seul listener partagés
   (`RenderGateProvider` / `useRenderWhenVisibleAtRest`). Les lignes seulement traversées pendant
   un défilement ne sont jamais rendues. Avant son rendu, la cellule affiche le texte brut
-  tronqué. Une cellule rendue le reste. À N = 1 : première ligne brute + `¶`, inchangé.
+  tronqué. Une cellule déjà visible au montage (ouverture, sans défilement) est rendue mise en
+  forme **avant la première peinture** (vérification synchrone en effet de layout), sans passer par
+  le texte brut. **En tâche de fond**, une fois le visible rendu, les autres cellules le sont par
+  lots de 12 pendant les temps morts du navigateur (`requestIdleCallback`, transition React), les
+  plus proches de l'écran d'abord (en dessous avant au-dessus) ; suspendu pendant un défilement,
+  repris à l'arrêt. Une cellule rendue au-dessus de l'écran ne décale pas la vue (ancrage de
+  défilement du navigateur). Mesure (180 exigences, 604 cellules richtext) : tout est rendu ~2,7 s
+  après l'ouverture, sans tâche longue (> 50 ms) — l'interface reste réactive. Une cellule rendue le reste. À N = 1 : première ligne brute + `¶`, inchangé.
 - **Édition richtext dans la cellule (T169)** : la popup d'édition est supprimée. Double-clic
   (ou F2) sur une cellule richtext (T176) → `RichTextField` monté **dans le `<td>`**, avec la
   toolbar richtext partagée de la Vue Système, en **même typographie que la lecture**

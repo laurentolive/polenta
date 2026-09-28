@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo, memo, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, startTransition, memo, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
@@ -114,6 +114,11 @@ function ClampedContent({ children }: { children: React.ReactNode }) {
  *  et de l'outline fin/transitoire du drop (`outline-1 outline-status-info`). */
 const GOTO_OUTLINE_CLASS = 'outline outline-2 -outline-offset-2 outline-status-info-solid'
 
+/** Lignes rendues au premier affichage (de quoi remplir l'écran) ; les suivantes sont rendues
+ *  juste après, en transition (interruptible) — la vue apparaît sans attendre le rendu et le
+ *  layout de tout le tableau. */
+const INITIAL_RENDERED_ROWS = 50
+
 function getObjectId(obj: AnyObject): string {
   return (obj as Record<string, unknown>)['id'] as string ?? ''
 }
@@ -181,6 +186,23 @@ function useCellActions(): ExcelCellActions {
   return actions
 }
 
+/** Libellés des cellules, traduits une fois par `ExcelView` : un `useTranslation()` par cellule
+ *  (plusieurs milliers sur un gros tableau) coûtait à lui seul ~170 ms à l'ouverture de la vue. */
+interface ExcelCellLabels {
+  doubleClickToEdit: string
+  hideSteps: string
+  noSteps: string
+  stepsCount: (count: number) => string
+}
+
+const ExcelCellLabelsContext = createContext<ExcelCellLabels | null>(null)
+
+function useCellLabels(): ExcelCellLabels {
+  const labels = useContext(ExcelCellLabelsContext)
+  if (!labels) throw new Error('ExcelCellLabelsContext manquant')
+  return labels
+}
+
 const CELL_SELECTED_CLASS = 'ring-2 ring-inset ring-status-info'
 const CELL_EDITABLE_CLASS = 'hover:ring-1 hover:ring-inset hover:ring-status-info'
 
@@ -206,7 +228,7 @@ const NameCell = memo(function NameCell({
   freezeStyle?: React.CSSProperties
   stickyBg?: string
 }) {
-  const { t } = useTranslation()
+  const labels = useCellLabels()
   const actions = useCellActions()
   const onRename = canRename ? actions.rename : undefined
   const clamp = useCellClamp()
@@ -248,7 +270,7 @@ const NameCell = memo(function NameCell({
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={onRename ? t('system.excelView.doubleClickToEdit') : undefined}
+      title={onRename ? labels.doubleClickToEdit : undefined}
     >
       {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
     </td>
@@ -291,7 +313,7 @@ const InlineCell = memo(function InlineCell({
   /** T171 — exigence : références de paramètres rendues dans les champs text/textarea. */
   paramRefs?: boolean
 }) {
-  const { t } = useTranslation()
+  const labels = useCellLabels()
   const actions = useCellActions()
   const onEdit = canEdit ? actions.inlineEdit : undefined
   const onMultiEnumEdit = canEdit ? actions.toggleMultiEnum : undefined
@@ -419,7 +441,7 @@ const InlineCell = memo(function InlineCell({
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={t('system.excelView.doubleClickToEdit')}
+      title={labels.doubleClickToEdit}
     >
       {isMultiEnum
         ? clamp.wrap(value || <span className="text-ink-3 italic">—</span>)
@@ -449,7 +471,7 @@ const LinkCell = memo(function LinkCell({
   stickyBg?: string
   truncate: boolean
 }) {
-  const { t } = useTranslation()
+  const labels = useCellLabels()
   const actions = useCellActions()
   const tdRef = useRef<HTMLTableCellElement>(null)
   const g = useCellGestures(nodeId, col, () => {
@@ -468,7 +490,7 @@ const LinkCell = memo(function LinkCell({
         stickyBg ?? '',
         g.isSelected ? CELL_SELECTED_CLASS : '',
       ].join(' ')}
-      title={value || t('system.excelView.doubleClickToEdit')}
+      title={value || labels.doubleClickToEdit}
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
@@ -493,7 +515,7 @@ const StepsCell = memo(function StepsCell({
   freezeStyle?: React.CSSProperties
   stickyBg?: string
 }) {
-  const { t } = useTranslation()
+  const labels = useCellLabels()
   const actions = useCellActions()
   const g = useCellGestures(nodeId, col, () => actions.toggleSteps(nodeId))
   return (
@@ -507,7 +529,7 @@ const StepsCell = memo(function StepsCell({
       onClick={e => { e.stopPropagation(); g.onClick() }}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={expanded ? t('system.excelView.hideSteps') : stepsCount > 0 ? t('system.excelView.stepsCount', { count: stepsCount }) : t('system.excelView.noSteps')}
+      title={expanded ? labels.hideSteps : stepsCount > 0 ? labels.stepsCount(stepsCount) : labels.noSteps}
     >
       <span className="flex items-center gap-1 text-ink-2">
         {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
@@ -566,7 +588,8 @@ interface RichtextCellProps {
 function RichtextClamp({ maxLines, children }: { maxLines: number; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [overflowing, setOverflowing] = useState(false)
-  useEffect(() => {
+  // Effet de layout : l'estompage du bas est posé dès la première peinture, pas une frame après.
+  useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 1)
@@ -602,7 +625,7 @@ function RichtextCell({
   onEditCancel,
   onEditorMouseDown,
 }: RichtextCellProps) {
-  const { t } = useTranslation()
+  const labels = useCellLabels()
   const clamp = useCellClamp()
   const tdRef = useRef<HTMLTableCellElement>(null)
   // Rendu mis en forme seulement si la cellule est visible et le défilement au repos — à
@@ -710,7 +733,7 @@ function RichtextCell({
       }}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={onStartEdit ? t('system.excelView.doubleClickToEdit') : undefined}
+      title={onStartEdit ? labels.doubleClickToEdit : undefined}
     >
       {content}
     </td>
@@ -919,7 +942,7 @@ function GroupRow({
   getFreezeStyle?: (colIdx: number) => React.CSSProperties | undefined
   isGotoTarget?: boolean
 }) {
-  const { t } = useTranslation()
+  const labels = useCellLabels()
   // T176 — nom du dossier : clic = sélection de la cellule (sans sélectionner la ligne, comme
   // avant) ; double-clic / F2 = renommage (le double-clic ne replie donc plus la ligne depuis le
   // nom : chevron, cellule d'action ou de section).
@@ -932,7 +955,7 @@ function GroupRow({
     onClick: (e: React.MouseEvent) => { e.stopPropagation(); g.onClick() },
     onMouseDown: g.onMouseDown,
     onDoubleClick: g.onDoubleClick,
-    title: t('system.excelView.doubleClickToEdit'),
+    title: labels.doubleClickToEdit,
   } : {}
   const folderNameText = (
     <FolderNameText node={node} onRename={onRename} edit={folderEdit} onEditEnd={() => setFolderEdit(null)} textRef={nameTextRef} />
@@ -1215,22 +1238,23 @@ export function ExcelView({
   }, [activeColumnFilterPopover])
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
 
   // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
   // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
   useScrollToNode(containerRef, gotoNodeId, gotoSeq)
 
+  // Rendu progressif (cf. INITIAL_RENDERED_ROWS) — d'emblée complet si une cible « goto » est
+  // posée à l'ouverture, pour que sa ligne existe quand `useScrollToNode` la cherche.
+  const [renderAllRows, setRenderAllRows] = useState(() => !!gotoNodeId)
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    setContainerWidth(el.clientWidth)
-    const ro = new ResizeObserver(entries => {
-      setContainerWidth(Math.floor(entries[0].contentRect.width))
+    if (renderAllRows) return
+    // Après la première peinture (rAF + tâche), pas dans la même frame.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const raf = requestAnimationFrame(() => {
+      timer = setTimeout(() => startTransition(() => setRenderAllRows(true)), 0)
     })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+    return () => { cancelAnimationFrame(raf); if (timer) clearTimeout(timer) }
+  }, [renderAllRows])
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [rowDropIndicator, setRowDropIndicator] = useState<RowDropIndicator | null>(null)
@@ -1424,14 +1448,10 @@ export function ExcelView({
     return colIdx < freezeColCount ? freezeStyles[colIdx] : undefined
   }
 
-  // Last column expands to fill the container when the table is narrower than the viewport
-  const lastCol = columns[columns.length - 1]
-  const lastColNaturalWidth = effectiveColWidths[lastCol] ?? 120
-  const othersTotalWidth = totalTableWidth - lastColNaturalWidth
-  const lastColWidth = containerWidth > totalTableWidth
-    ? containerWidth - othersTotalWidth
-    : lastColNaturalWidth
-  const effectiveTableWidth = Math.max(totalTableWidth, containerWidth)
+  // La dernière colonne s'élargit pour remplir le conteneur quand le tableau est plus étroit :
+  // en CSS (`min-width: 100%` sur le tableau, dernière colonne sans largeur fixe — elle reçoit
+  // le reste en `table-layout: fixed`), plus en JS — lire la largeur du conteneur au montage
+  // forçait un reflow synchrone du tableau entier puis un second rendu complet.
 
   // Apply filter if active
   // T166 — honore le mode du filtre global (casse / mot entier / regex), comme l'arbre latéral
@@ -1882,6 +1902,12 @@ export function ExcelView({
     closeLinkPopover: () => setActiveLinkPopover(null),
     toggleSteps: toggleStepExpand,
   }
+  const cellLabels = useMemo<ExcelCellLabels>(() => ({
+    doubleClickToEdit: t('system.excelView.doubleClickToEdit'),
+    hideSteps: t('system.excelView.hideSteps'),
+    noSteps: t('system.excelView.noSteps'),
+    stepsCount: count => t('system.excelView.stepsCount', { count }),
+  }), [t])
   const cellActionsRef = useRef(cellActionsImpl)
   cellActionsRef.current = cellActionsImpl
   const cellActions = useMemo<ExcelCellActions>(() => ({
@@ -1908,6 +1934,7 @@ export function ExcelView({
     >
       <ExcelCellStoreContext.Provider value={cellStore}>
       <ExcelCellActionsContext.Provider value={cellActions}>
+      <ExcelCellLabelsContext.Provider value={cellLabels}>
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setDeleteConfirm(null)}>
@@ -1962,7 +1989,7 @@ export function ExcelView({
           border-separate, chaque cellule peint sa propre bordure dans sa propre boîte. */}
       <RowMaxLinesContext.Provider value={rowMaxLines}>
       <RenderGateProvider rootRef={containerRef}>
-      <table className="text-xs border-separate" style={{ width: effectiveTableWidth, tableLayout: 'fixed', borderSpacing: 0 }}>
+      <table className="text-xs border-separate" style={{ width: totalTableWidth, minWidth: '100%', tableLayout: 'fixed', borderSpacing: 0 }}>
         <thead className="sticky top-0 z-10">
           <tr>
             {onEditOpen && (
@@ -1974,7 +2001,7 @@ export function ExcelView({
             {columns.map((col, colIdx) => {
               const frozen = colIdx < freezeColCount
               const colStyle: React.CSSProperties = {
-                width: colIdx === columns.length - 1 ? lastColWidth : effectiveColWidths[col],
+                width: colIdx === columns.length - 1 ? undefined : effectiveColWidths[col],
                 position: frozen ? 'sticky' : 'relative',
                 left: frozen ? colLeftOffsets[colIdx] : undefined,
                 zIndex: frozen ? 3 : undefined,
@@ -2045,7 +2072,7 @@ export function ExcelView({
               </td>
             </tr>
           )}
-          {filteredRows.map(({ kind, node, depth }) => {
+          {(renderAllRows ? filteredRows : filteredRows.slice(0, INITIAL_RENDERED_ROWS)).map(({ kind, node, depth }) => {
             const rowDrop = rowDropIndicator?.targetNodeId === node.id ? rowDropIndicator : null
             const isDraggingRow = draggingNodeId === node.id
             const dropStyle: React.CSSProperties = {}
@@ -2376,6 +2403,7 @@ export function ExcelView({
           </div>
         )
       })()}
+      </ExcelCellLabelsContext.Provider>
       </ExcelCellActionsContext.Provider>
       </ExcelCellStoreContext.Provider>
     </div>

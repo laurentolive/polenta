@@ -17,8 +17,9 @@ export interface AddDependencyValues {
   /** Edit mode only (T110 sprint 2) — interfaces que ce nœud implémente lui-même (il peut à la
    *  fois exposer son propre catalogue ET implémenter d'autres interfaces qu'il monte). */
   implementsList: ImplementsDeclaration[]
-  /** Edit mode only (T74) — the component/interface's own displayed label & description,
-   *  merged into this modal instead of a separate "rename repo" dialog. Ignored when adding. */
+  /** The component/interface's own displayed label & description (T74 — merged into this modal
+   *  instead of a separate "rename repo" dialog). Also entered when adding (T177): written onto
+   *  the new node / the new dependency's schema root node — left untouched there when blank. */
   label: string
   description: string
   /** T113 — "Composant local" checkbox (add mode, kind === 'component' only): the component
@@ -141,18 +142,18 @@ export function AddDependencyModal({
               {t('schema.addDependency.localComponentLabel')}
             </label>
           )}
-          {isEdit && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-ink-2 mb-0.5">{t('schema.addDependency.displayLabel')}</label>
-                <input value={label} onChange={e => setLabel(e.target.value)} className="input-field w-full text-xs py-1.5" placeholder={name} />
-              </div>
-              <div>
-                <label className="block text-xs text-ink-2 mb-0.5">{t('schema.addDependency.description')}</label>
-                <input value={description} onChange={e => setDescription(e.target.value)} className="input-field w-full text-xs py-1.5" placeholder={t('schema.addDependency.descriptionPlaceholder')} />
-              </div>
+          {/* T177 — affiché aussi à l'ajout (plus seulement en édition) : le label affiché et la
+              description se saisissent dès la création, comme dans la popup d'édition. */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-ink-2 mb-0.5">{t('schema.addDependency.displayLabel')}</label>
+              <input value={label} onChange={e => setLabel(e.target.value)} className="input-field w-full text-xs py-1.5" placeholder={name} />
             </div>
-          )}
+            <div>
+              <label className="block text-xs text-ink-2 mb-0.5">{t('schema.addDependency.description')}</label>
+              <input value={description} onChange={e => setDescription(e.target.value)} className="input-field w-full text-xs py-1.5" placeholder={t('schema.addDependency.descriptionPlaceholder')} />
+            </div>
+          </div>
           {!isLocal && (
             <div className="grid grid-cols-2 gap-3">
               <div>

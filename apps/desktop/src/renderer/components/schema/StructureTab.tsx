@@ -1413,27 +1413,44 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         // Checkboxes only render for kind === 'component' (cf. AddDependencyModal's canBeLocal) —
         // for an interface, `values.include*` still carry their unseen default (true) and must be
         // ignored here, or every "+ Interface" would silently seed object types nobody asked for.
-        if (pendingDependency.kind === 'component') {
-          const categories = defaultCategoriesFrom(values)
-          const newRepoPath = result.tree.nodes.find(n => n.name === values.name)?.repoPath
-          if (categories.length > 0 && newRepoPath) {
-            try {
-              const newSchema = await api.schema.get(newRepoPath)
-              // Only seed an empty/fresh component's own schema — never override an existing
-              // component's already-configured object types just because it got (re-)linked here,
-              // which would clobber a repo that manages its own schema.yaml autonomously.
-              if ((findSystemNode(newSchema.nodes, 'root')?.objectTypes ?? []).length === 0) {
-                const newTypes = categories.map(category => editableToObjType(
-                  emptyObjType(category, values.name, t(CATEGORY_LABEL_KEY[category]), t('schema.editor.descriptionFieldLabel')),
-                ))
-                await saveSchema(newRepoPath, withNodeObjectTypes(newSchema, 'root', () => newTypes))
-              }
-            } catch (err) {
-              // Best-effort, same reasoning as renameDependency's cascade (workspaceActions.ts):
-              // the dependency itself was already added successfully — a failure to seed its
-              // default object types must not surface as a failure of the whole action.
-              console.error('[handleSubmitDependency] Could not seed default object types on new dependency:', err)
+        const categories = pendingDependency.kind === 'component' ? defaultCategoriesFrom(values) : []
+        // T177 — label/description saisis à l'ajout, écrits sur le node `root` du schéma propre
+        // de la dépendance (comme en édition). Seulement s'ils sont renseignés : un repo existant
+        // qui a déjà son propre label ne doit pas le perdre parce que le champ a été laissé vide.
+        const label = values.label.trim()
+        const description = values.description.trim()
+        const newRepoPath = result.tree.nodes.find(n => n.name === values.name)?.repoPath
+        if (newRepoPath && (categories.length > 0 || label || description)) {
+          try {
+            let nextSchema = await api.schema.get(newRepoPath)
+            // Only seed an empty/fresh component's own schema — never override an existing
+            // component's already-configured object types just because it got (re-)linked here,
+            // which would clobber a repo that manages its own schema.yaml autonomously.
+            if (categories.length > 0 && (findSystemNode(nextSchema.nodes, 'root')?.objectTypes ?? []).length === 0) {
+              const newTypes = categories.map(category => editableToObjType(
+                emptyObjType(category, values.name, t(CATEGORY_LABEL_KEY[category]), t('schema.editor.descriptionFieldLabel')),
+              ))
+              nextSchema = withNodeObjectTypes(nextSchema, 'root', () => newTypes)
             }
+            if (label || description) {
+              nextSchema = {
+                ...nextSchema,
+                nodes: mapSystemNode(nextSchema.nodes, 'root', n => ({
+                  ...n,
+                  ...(label ? { label } : {}),
+                  ...(description ? { description } : {}),
+                })),
+              }
+            }
+            await saveSchema(newRepoPath, nextSchema)
+            // WorkspaceTreeNode.label est dérivé du node root au (re)build de l'arbre — même
+            // raisonnement que handleSubmitEditDependency : refetch APRÈS le setQueryData ci-dessus.
+            if (label) await refetchTree()
+          } catch (err) {
+            // Best-effort, same reasoning as renameDependency's cascade (workspaceActions.ts):
+            // the dependency itself was already added successfully — a failure to seed its
+            // default object types / label must not surface as a failure of the whole action.
+            console.error('[handleSubmitDependency] Could not seed default object types / label on new dependency:', err)
           }
         }
       } else if (result.status === 'diamond-conflict') {

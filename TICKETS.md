@@ -1,5 +1,13 @@
 ## New
 
+### T177 — Bug : le formulaire d'ajout d'un composant n'a pas le label affiché ni la description
+
+**Statut** : debugging — correctif appliqué (`specs/T177.md`), `tsc` propre ; en attente de validation humaine ; travail sur `main`
+
+**Description** : à l'ajout d'un composant (ou d'une interface) depuis l'onglet Structure, la
+popup ne proposait pas tous les champs de la popup de modification, notamment « Label affiché »
+et « Description » : il fallait créer le composant puis le rééditer pour les renseigner.
+
 ### T175 — Évolution : analyse d'impact par défaut sur les modifications locales non commitées
 
 **Statut** : coding sprint 1 (unique) — implémenté (`specs/T175-sprint1.md`), `tsc` propre, script de service 41/41, vérifié dans l'app (N11–N13), SPEC mises à jour ; en attente de validation humaine ; travail sur `main`

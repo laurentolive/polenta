@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { User, FolderOpen, Search, GitBranch, ClipboardList, FlaskConical, Rocket, PieChart, Variable } from 'lucide-react'
+import { User, Settings, Search, GitBranch, ClipboardList, FlaskConical, Rocket, PieChart, Variable } from 'lucide-react'
 import type { Panel } from './AppLayout'
 import { ImpactAnalysisIcon } from './ImpactAnalysisIcon'
 
@@ -17,7 +17,7 @@ const PANELS: {
   requiresProject?: boolean
 }[] = [
   { id: 'account', icon: <User size={20} />,      labelKey: 'layout.activityBar.account' },
-  { id: 'project', icon: <FolderOpen size={20} />, labelKey: 'layout.activityBar.project' },
+  { id: 'project', icon: <Settings size={20} />,   labelKey: 'layout.activityBar.project' },
   { id: 'dashboard', icon: <PieChart size={20} />, labelKey: 'layout.activityBar.dashboard', requiresProject: true },
   { id: 'requirements', icon: <ClipboardList size={20} />, labelKey: 'layout.activityBar.requirements', requiresProject: true },
   { id: 'tests',        icon: <FlaskConical size={20} />,  labelKey: 'layout.activityBar.tests',        requiresProject: true },

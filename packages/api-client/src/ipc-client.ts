@@ -184,11 +184,11 @@ export function createIpcClient(): ApiClient {
       update: (p, id, dto) => invoke('campaigns:update', p, id, dto),
       updateRun: (p, campaignId, entryId, status, runId) => invoke('campaigns:update-run', p, campaignId, entryId, status, runId),
       close: (p, id, status) => invoke('campaigns:close', p, id, status),
-      addTests: (p, campaignId, testCaseIds, paramValuesByTest, workspaceDir) =>
-        invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest, workspaceDir),
+      addTests: (p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances) =>
+        invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances),
       removeEntries: (p, campaignId, entryIds) => invoke('campaigns:remove-entries', p, campaignId, entryIds),
-      duplicateTest: (p, campaignId, testCaseId, paramValues, workspaceDir) =>
-        invoke('campaigns:duplicate-test', p, campaignId, testCaseId, paramValues, workspaceDir),
+      duplicateTest: (p, campaignId, testCaseId, paramValues, workspaceDir, requirementId) =>
+        invoke('campaigns:duplicate-test', p, campaignId, testCaseId, paramValues, workspaceDir, requirementId),
       previewParams: (p, source, testCaseIds, workspaceDir) =>
         invoke('campaigns:preview-params', p, source, testCaseIds, workspaceDir),
       updateRunParams: (p, campaignId, entryId, paramValues) =>

@@ -8,6 +8,7 @@ import { RequirementsService } from './services/requirements.service'
 import { TestsService } from './services/tests.service'
 import { RevalidationService } from './services/revalidation.service'
 import { ParametersService } from './services/parameters.service'
+import { ReqRefsService } from './services/req-refs.service'
 import { TraceabilityService } from './services/traceability.service'
 import { ReviewsService } from './services/reviews.service'
 import { RepoWatcherService } from './services/repo-watcher.service'
@@ -59,7 +60,9 @@ export async function createContainer(): Promise<void> {
   const reviews = new ReviewsService(git)
   // T171 — base de paramètres ; marque les éléments approuvés impactés via T172, et résout les
   // paramètres des tests à l'ajout en campagne.
-  const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
+  // T179 — exigences liées aux tests pour les références `{req.<champ>}`.
+  const reqRefs = new ReqRefsService(git, reqIndex, schema)
+  const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree, reqRefs)
   const campaigns = new CampaignsService(git, tests, parameters)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   const baseline = new BaselineService()

@@ -75,6 +75,9 @@ export interface TestRun {
   id: string
   testCaseId: string
   campaignRunId: string | null
+  /** T179 — exigence de l'instance de campagne exécutée : le run ne compte, en couverture, que pour
+   *  elle. Absent : compte pour toutes les exigences liées au test. */
+  requirementId?: string
   result: TestRunResult
   executedAt: string
   executedBy: string

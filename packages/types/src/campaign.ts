@@ -24,6 +24,9 @@ export interface CampaignTestRun {
    *  être inclus plusieurs fois s'il a des paramètres (T97 sprint 2). */
   entryId: string
   testCaseId: string
+  /** T179 — exigence pour laquelle l'instance a été générée (test contenant des `{req.<champ>}`,
+   *  une instance par exigence liée). Absent : test sans `{req.…}`, ou sans exigence liée. */
+  requirementId?: string
   /** Copie complète du `TestCase` au moment de l'inclusion dans la campagne (T49) — fige
    *  contenu/statut, indépendamment des modifications ultérieures de la source. Absent sur
    *  les entrées créées avant T49 (pas de backfill rétroactif, décision de cadrage) : ces
@@ -47,7 +50,7 @@ export interface CampaignTestRun {
   unresolvedParams?: UnresolvedParam[]
 }
 
-export type UnresolvedParamReason = 'tag_not_found' | 'missing' | 'empty' | 'unknown_node'
+export type UnresolvedParamReason = 'tag_not_found' | 'missing' | 'empty' | 'unknown_node' | 'no_linked_requirement'
 
 export interface UnresolvedParam {
   ref: string
@@ -64,7 +67,24 @@ export interface ParamResolutionPreview {
   unresolved: UnresolvedParam[]
   /** Tag de lecture (baselineRef) ou absent pour l'état courant. */
   sourceRef?: string
+  /** T179 — présent si le test contient au moins une `{req.<champ>}` : une entrée par exigence liée
+   *  (lien de couverture, non terminale, tri naturel des IDs) ; vide si aucune (les clés `req.*` sont
+   *  alors dans `unresolved`). Les clés `req.*` ne sont jamais dans `resolved` ni `manual`. */
+  requirements?: ReqInstancePreview[]
 }
+
+/** T179 — valeurs `{req.<champ>}` d'une exigence liée, pour l'instance qui lui serait dédiée. */
+export interface ReqInstancePreview {
+  requirementId: string
+  title: string
+  /** Clés `req.<champ>`, valeurs formatées (paramètres de base imbriqués déjà substitués). */
+  resolved: Record<string, string>
+  unresolved: UnresolvedParam[]
+}
+
+/** T179 — par test itérant (`{req.…}`) : exigences retenues à l'ajout, et valeurs saisies à la main
+ *  propres à chaque instance. Test absent : toutes ses exigences liées, avec `paramValuesByTest`. */
+export type ReqInstanceSelection = Record<string, Array<{ requirementId: string; paramValues?: Record<string, string> }>>
 
 export interface CreateCampaignDto {
   title: string
@@ -75,6 +95,8 @@ export interface CreateCampaignDto {
   level?: string
   testCaseIds: string[]
   paramValuesByTest?: Record<string, Record<string, string>>
+  /** T179 — exigences retenues par test itérant (voir `ReqInstanceSelection`). */
+  reqInstances?: ReqInstanceSelection
 }
 
 export interface UpdateCampaignDto {

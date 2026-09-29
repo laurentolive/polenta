@@ -1,6 +1,7 @@
 import type {
   Parameter,
   ParamResolutionPreview,
+  ReqInstanceSelection,
   ParameterDeleteResult,
   ParameterUsage,
   ParameterWriteResult,
@@ -482,9 +483,11 @@ export interface ApiClient {
     update(repoPath: string, id: string, dto: UpdateCampaignDto): Promise<TestCampaign>
     updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunStatus, runId?: string): Promise<TestCampaign>
     close(repoPath: string, id: string, status: 'completed' | 'abandoned'): Promise<TestCampaign>
-    addTests(repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string): Promise<TestCampaign>
+    /** T179 — `reqInstances` : exigences retenues (et saisies par instance) des tests itérants. */
+    addTests(repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: ReqInstanceSelection): Promise<TestCampaign>
     removeEntries(repoPath: string, campaignId: string, entryIds: string[]): Promise<TestCampaign>
-    duplicateTest(repoPath: string, campaignId: string, testCaseId: string, paramValues: Record<string, string>, workspaceDir?: string): Promise<TestCampaign>
+    /** T179 — `requirementId` : duplicata d'une instance générée pour cette exigence. */
+    duplicateTest(repoPath: string, campaignId: string, testCaseId: string, paramValues: Record<string, string>, workspaceDir?: string, requirementId?: string): Promise<TestCampaign>
     /** T171 — résolution prévisionnelle des paramètres de tests à ajouter (sans écriture). */
     previewParams(repoPath: string, source: { campaignId?: string; baselineRef?: string }, testCaseIds: string[], workspaceDir?: string): Promise<ParamResolutionPreview[]>
     updateRunParams(repoPath: string, campaignId: string, entryId: string, paramValues: Record<string, string>): Promise<TestCampaign>

@@ -57,7 +57,25 @@ interface ImpactSnapshot {
  * direction reads naturally, per the link type's `sourceRefs`/`targetRefs` — so coverage
  * can't assume the test is always the source.
  */
-function matchCoverageLink(
+/** T179 — fusion des runs par test de plusieurs repos, triés du plus récent au plus ancien. */
+export function mergeRunsMaps(maps: Map<string, TestRun[]>[]): Map<string, TestRun[]> {
+  const merged = new Map<string, TestRun[]>()
+  for (const map of maps) {
+    for (const [tcId, runs] of map) merged.set(tcId, [...(merged.get(tcId) ?? []), ...runs])
+  }
+  for (const runs of merged.values()) {
+    runs.sort((a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime())
+  }
+  return merged
+}
+
+/** T179 — dernier run d'un test pour une exigence : le plus récent qui n'a pas été exécuté pour une
+ *  autre exigence (instance générée par `{req.<champ>}`) ; `runs` trié du plus récent au plus ancien. */
+export function latestRunForRequirement(runs: TestRun[] | undefined, reqId: string): TestRun | undefined {
+  return runs?.find(r => !r.requirementId || r.requirementId === reqId)
+}
+
+export function matchCoverageLink(
   link: ObjectLink,
   tcIds: Set<string>,
   reqIds: Set<string>,
@@ -182,12 +200,13 @@ export class TraceabilityService {
     for (const map of latestRunMapsArr) {
       for (const [k, v] of map) latestRunMap.set(k, v)
     }
+    const runsMap = mergeRunsMaps(await Promise.all(repoPaths.map(p => this.testsIndex.getRunsMap(p))))
 
     const allLinksArrays = await Promise.all(repoPaths.map(p => this.reqIndex.findAllLinks(p)))
     const allLinks = allLinksArrays.flat()
 
     const tcMap = new Map(testCases.map((tc) => [tc.id, tc]))
-    const coverage = this.computeCoverage(requirements, allLinks, tcMap, latestRunMap)
+    const coverage = this.computeCoverage(requirements, allLinks, tcMap, latestRunMap, runsMap)
 
     const colIds = new Set<string>()
     for (const { cells } of coverage.values()) {
@@ -225,6 +244,9 @@ export class TraceabilityService {
     links: ObjectLink[],
     tcMap: Map<string, TestCase>,
     latestRunMap: Map<string, TestRun>,
+    /** T179 — tous les runs par test (récent d'abord) : si fourni, le dernier run d'une paire
+     *  (exigence, test) ignore les runs d'instances générées pour une autre exigence. */
+    runsMap?: Map<string, TestRun[]>,
   ): Map<string, { cells: MatrixCell[]; coverageStatus: CoverageStatus }> {
     const reqIds = new Set(requirements.map((r) => r.id))
     const tcIds = new Set(tcMap.keys())
@@ -244,7 +266,7 @@ export class TraceabilityService {
     for (const req of requirements) {
       const reqLinks = reqToTests.get(req.id) ?? []
       const cells: MatrixCell[] = reqLinks.map(({ tc, coverageType }) => {
-        const latestRun = latestRunMap.get(tc.id)
+        const latestRun = runsMap ? latestRunForRequirement(runsMap.get(tc.id), req.id) : latestRunMap.get(tc.id)
         let status: CellStatus
         // T172 — le flag est porté par les éléments : la paire est à revalider si l'une de ses
         // deux extrémités est marquée.
@@ -682,12 +704,9 @@ export class TraceabilityService {
     const req = await this.findRequirementById(reqId, repoPaths)
     if (!req) throw new Error(`Requirement ${reqId} not found`)
 
-    // Merge latest run maps from all repos
-    const latestRunMapsArr = await Promise.all(repoPaths.map(p => this.testsIndex.getLatestRunMap(p)))
-    const latestRunMap = new Map<string, import('@polenta/types').TestRun>()
-    for (const map of latestRunMapsArr) {
-      for (const [k, v] of map) latestRunMap.set(k, v)
-    }
+    // T179 — tests atteints depuis `reqId` : dernier run de la paire (reqId, test), sans les runs
+    // d'instances générées pour une autre exigence (même règle que la matrice).
+    const runsMap = mergeRunsMaps(await Promise.all(repoPaths.map(p => this.testsIndex.getRunsMap(p))))
 
     const ackFiles = await this.git.listFiles(repoPath, `impact-acks/${reqId}`)
     const acks = new Map<string, ImpactAcknowledgement>()
@@ -760,7 +779,7 @@ export class TraceabilityService {
         const tc = await this.testsIndex.findById(repoPath, entry.id) ??
           (await Promise.all(repoPaths.map(p => this.testsIndex.findById(p, entry.id)))).find(t => t != null)
         if (!tc) continue
-        const latestRun = latestRunMap.get(tc.id)
+        const latestRun = latestRunForRequirement(runsMap.get(tc.id), reqId)
         items.push({
           elementId: entry.id,
           elementType: 'test_case',
@@ -846,11 +865,13 @@ export class TraceabilityService {
     }
 
     const selectedTests = testCases.filter((tc) => selectedTcIds.has(tc.id))
-    const latestRunMapsArr = await Promise.all(repoPaths.map(p => this.testsIndex.getLatestRunMap(p)))
-    const latestRunMap = new Map<string, import('@polenta/types').TestRun>()
-    for (const map of latestRunMapsArr) {
-      for (const [k, v] of map) latestRunMap.set(k, v)
+    // T179 — exigences retenues couvertes par chaque test : un run d'instance générée pour une
+    // exigence hors du plan ne compte pas.
+    const tcToReqs = new Map<string, Set<string>>()
+    for (const [reqId, tests] of reqToTests) {
+      for (const tc of tests) tcToReqs.set(tc.id, (tcToReqs.get(tc.id) ?? new Set()).add(reqId))
     }
+    const runsMap = mergeRunsMaps(await Promise.all(repoPaths.map(p => this.testsIndex.getRunsMap(p))))
 
     let withPassingRun = 0
     let withFailingRun = 0
@@ -859,7 +880,8 @@ export class TraceabilityService {
 
     for (const tc of selectedTests) {
       testCaseRefs.push(tc.id)
-      const run = latestRunMap.get(tc.id)
+      const reqIds = tcToReqs.get(tc.id)
+      const run = runsMap.get(tc.id)?.find(r => !r.requirementId || !!reqIds?.has(r.requirementId))
       if (!run) neverExecuted++
       else if (run.result === 'PASS') withPassingRun++
       else withFailingRun++

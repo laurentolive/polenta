@@ -1,7 +1,8 @@
-﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview } from '@polenta/types'
+﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
+import { REQ_REF_PREFIX, extractTestReqRefs } from '@polenta/types'
 import { nextCounterId } from './id-counter.util'
 
 export class CampaignsService {
@@ -70,12 +71,14 @@ export class CampaignsService {
       component: dto.component,
       baselineRef: dto.baselineRef,
       status: 'planned',
-      testCaseIds,
-      runs: this.buildNewRuns([], testCaseIds, dto.paramValuesByTest, snapshots, previews),
+      testCaseIds: [],
+      runs: this.buildNewRuns([], testCaseIds, dto.paramValuesByTest, snapshots, previews, dto.reqInstances),
       createdAt: new Date().toISOString(),
       completedAt: null,
     }
 
+    // T179 — une occurrence par instance créée (un test itérant en a une par exigence retenue).
+    campaign.testCaseIds = campaign.runs.map(r => r.testCaseId)
     await this.gitService.writeYaml(repoPath, `campaigns/${id}.yaml`, campaign)
     return campaign
   }
@@ -148,6 +151,7 @@ export class CampaignsService {
     testCaseIds: string[],
     paramValuesByTest?: Record<string, Record<string, string>>,
     workspaceDir?: string,
+    reqInstances?: ReqInstanceSelection,
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
@@ -160,13 +164,18 @@ export class CampaignsService {
         ...campaign.testCaseIds,
         ...campaign.runs.map(r => r.testCaseId),
       ])
-      const newIds = [...new Set(testCaseIds)].filter(id => !existingIds.has(id))
+      const candidates = [...new Set(testCaseIds)]
+      const snapshots = await this.snapshotsFor(repoPath, candidates)
+      const previews = await this.previewsFor(repoPath, snapshots, campaign.baselineRef, workspaceDir)
+      // T179 — un test itérant (`{req.…}` avec exigences liées) déjà présent reste ajoutable pour
+      // ses exigences sans instance : la déduplication porte sur le couple (test, exigence).
+      const newIds = candidates.filter(id => !existingIds.has(id) || !!previews.get(id)?.requirements?.length)
       if (newIds.length === 0) return campaign
 
-      const snapshots = await this.snapshotsFor(repoPath, newIds)
-      const previews = await this.previewsFor(repoPath, snapshots, campaign.baselineRef, workspaceDir)
-      campaign.testCaseIds = [...campaign.testCaseIds, ...newIds]
-      campaign.runs = this.buildNewRuns(campaign.runs, newIds, paramValuesByTest, snapshots, previews)
+      const before = campaign.runs.length
+      campaign.runs = this.buildNewRuns(campaign.runs, newIds, paramValuesByTest, snapshots, previews, reqInstances)
+      if (campaign.runs.length === before) return campaign
+      campaign.testCaseIds = [...campaign.testCaseIds, ...campaign.runs.slice(before).map(r => r.testCaseId)]
 
       await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
       return campaign
@@ -184,6 +193,7 @@ export class CampaignsService {
     testCaseId: string,
     paramValues: Record<string, string>,
     workspaceDir?: string,
+    requirementId?: string,
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
@@ -194,8 +204,20 @@ export class CampaignsService {
 
       const snapshots = await this.snapshotsFor(repoPath, [testCaseId])
       const previews = await this.previewsFor(repoPath, snapshots, campaign.baselineRef, workspaceDir)
-      campaign.testCaseIds = [...campaign.testCaseIds, testCaseId]
-      campaign.runs = this.buildNewRuns(campaign.runs, [testCaseId], { [testCaseId]: paramValues }, snapshots, previews)
+      const linked = previews.get(testCaseId)?.requirements
+      if (requirementId && linked && !linked.some(r => r.requirementId === requirementId)) {
+        // Lien retiré ou exigence devenue terminale depuis l'ajout : rien à dupliquer.
+        throw new Error(`Requirement ${requirementId} is no longer linked to ${testCaseId}`)
+      }
+      const before = campaign.runs.length
+      // T179 — duplicata d'une instance générée : même exigence, valeurs relues à la source ;
+      // instance sans exigence : une seule nouvelle instance, même pour un test itérant.
+      campaign.runs = this.buildNewRuns(
+        campaign.runs, [testCaseId], { [testCaseId]: paramValues }, snapshots, previews,
+        requirementId ? { [testCaseId]: [{ requirementId, paramValues }] } : undefined,
+        { allowExisting: true, single: !requirementId },
+      )
+      campaign.testCaseIds = [...campaign.testCaseIds, ...campaign.runs.slice(before).map(r => r.testCaseId)]
 
       await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
       return campaign
@@ -293,37 +315,75 @@ export class CampaignsService {
     paramValuesByTest: Record<string, Record<string, string>> | undefined,
     snapshots: Map<string, TestCase>,
     previews: Map<string, ParamResolutionPreview> = new Map(),
+    reqInstances?: ReqInstanceSelection,
+    /** `allowExisting` : instance ajoutée même si le couple (test, exigence) existe (duplicata) ;
+     *  `single` : une seule instance sans exigence, sans itérer. */
+    opts: { allowExisting?: boolean; single?: boolean } = {},
   ): CampaignTestRun[] {
     const counts = new Map<string, number>()
     for (const r of existingRuns) counts.set(r.testCaseId, (counts.get(r.testCaseId) ?? 0) + 1)
 
-    const newRuns = newTestCaseIds.map(tcId => {
+    const newRun = (tcId: string, given: Record<string, string> | undefined, requirementId?: string): CampaignTestRun => {
       const n = (counts.get(tcId) ?? 0) + 1
       counts.set(tcId, n)
       const run: CampaignTestRun = {
         entryId: `${tcId}-${n}`,
         testCaseId: tcId,
+        ...(requirementId && { requirementId }),
         testSnapshot: snapshots.get(tcId),
         status: 'pending' as TestRunStatus,
       }
       const preview = previews.get(tcId)
-      const given = paramValuesByTest?.[tcId] ?? {}
       if (!preview) {
         // Sans résolution (service absent, test introuvable) : comportement T97 inchangé.
-        if (paramValuesByTest?.[tcId]) run.paramValues = given
+        if (given) run.paramValues = given
         return run
       }
       // T171 §6 — seules les références à saisir gardent une valeur manuelle : une référence ne
       // figure jamais à la fois dans `paramValues` et dans `resolvedParams`. Toute référence à
       // saisir est conservée, vide si le renderer n'en a pas fourni (prévisualisation périmée) :
       // elle reste ainsi visible et modifiable (`updateRunParams`) au lieu de disparaître.
-      const manual = Object.fromEntries(preview.manual.map(k => [k, given[k] ?? '']))
+      const manual = Object.fromEntries(preview.manual.map(k => [k, given?.[k] ?? '']))
+      // T179 — valeurs `{req.<champ>}` de l'exigence de l'instance, figées avec celles de la base.
+      const inst = requirementId ? preview.requirements?.find(r => r.requirementId === requirementId) : undefined
+      const resolved = { ...preview.resolved, ...inst?.resolved }
+      const unresolved = [...preview.unresolved, ...(inst?.unresolved ?? [])]
+      if (!inst && preview.requirements?.length) {
+        // Instance sans exigence d'un test itérant (duplicata d'une instance antérieure) : ses
+        // `{req.…}` n'ont pas de valeur — non résolues, jamais à saisir.
+        const t = snapshots.get(tcId)
+        for (const f of t ? extractTestReqRefs(t) : []) unresolved.push({ ref: REQ_REF_PREFIX + f, reason: 'no_linked_requirement' })
+      }
       if (Object.keys(manual).length > 0) run.paramValues = manual
-      if (Object.keys(preview.resolved).length > 0) run.resolvedParams = preview.resolved
+      if (Object.keys(resolved).length > 0) run.resolvedParams = resolved
       if (preview.sourceRef) run.paramSourceRef = preview.sourceRef
-      if (preview.unresolved.length > 0) run.unresolvedParams = preview.unresolved
+      if (unresolved.length > 0) run.unresolvedParams = unresolved
       return run
-    })
+    }
+
+    const newRuns: CampaignTestRun[] = []
+    for (const tcId of newTestCaseIds) {
+      const linked = previews.get(tcId)?.requirements
+      if (!linked?.length || opts.single) {
+        newRuns.push(newRun(tcId, paramValuesByTest?.[tcId]))
+        continue
+      }
+      // T179 §4 — test itérant : une instance par exigence retenue (sélection absente : toutes),
+      // hors exigences qui en ont déjà une (sauf duplicata explicite). Une exigence sélectionnée
+      // mais plus liée (sélection périmée) est ignorée.
+      const selection = reqInstances?.[tcId]
+      const wanted = selection
+        ? selection.filter(s => linked.some(r => r.requirementId === s.requirementId))
+        : linked.map(r => ({ requirementId: r.requirementId, paramValues: paramValuesByTest?.[tcId] }))
+      const done = new Set<string>()
+      for (const { requirementId, paramValues } of wanted) {
+        if (done.has(requirementId)) continue
+        done.add(requirementId)
+        const present = [...existingRuns, ...newRuns].some(r => r.testCaseId === tcId && r.requirementId === requirementId)
+        if (present && !opts.allowExisting) continue
+        newRuns.push(newRun(tcId, paramValues ?? paramValuesByTest?.[tcId], requirementId))
+      }
+    }
 
     return [...existingRuns, ...newRuns]
   }

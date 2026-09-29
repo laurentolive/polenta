@@ -55,6 +55,8 @@ export const ExecuteTestCaseSchema = z.object({
   equipmentUsed: z.array(EquipmentUsedSchema).optional(),
   notes: z.string().optional(),
   result: z.enum(['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE']).optional(),
+  /** T179 — exigence de l'instance de campagne exécutée (couverture par exigence). */
+  requirementId: z.string().optional(),
 })
 
 export type CreateTestCaseDto = z.infer<typeof CreateTestCaseSchema>

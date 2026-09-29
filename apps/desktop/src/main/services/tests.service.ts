@@ -161,6 +161,8 @@ export class TestsService {
       id: runId,
       testCaseId,
       campaignRunId: null,
+      // T179 — instance générée pour une exigence : le run ne couvre qu'elle.
+      ...(dto.requirementId && { requirementId: dto.requirementId }),
       result,
       executedAt: now,
       executedBy: 'TODO:current-user',

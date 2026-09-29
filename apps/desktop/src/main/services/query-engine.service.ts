@@ -12,6 +12,7 @@ import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
 import type { TraceabilityService } from './traceability.service'
+import { mergeRunsMaps } from './traceability.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import { findObjectTypeDef, resolveObjectTypeLocation, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
 import type { ObjectTypeLocation } from './schema-lookup.util'
@@ -248,14 +249,15 @@ export class QueryEngineService {
    *  computation because coverage/revalidation (below) must be computed over the
    *  FULL cross-component graph, not repo-by-repo — see `buildDataset()`. */
   private async fetchRepoRaw(rp: string, component: string) {
-    const [requirements, testCases, latestRunMap, links, schema] = await Promise.all([
+    const [requirements, testCases, latestRunMap, links, schema, runsMap] = await Promise.all([
       this.reqIndex.findAll(rp, {}),
       this.testsIndex.findAll(rp),
       this.testsIndex.getLatestRunMap(rp),
       this.reqIndex.findAllLinks(rp),
       this.schema.get(rp),
+      this.testsIndex.getRunsMap(rp),
     ])
-    return { component, requirements, testCases, latestRunMap, links, schema }
+    return { component, requirements, testCases, latestRunMap, links, schema, runsMap }
   }
 
   async buildDataset(repoPath: string, workspaceDir?: string): Promise<QueryDataset> {
@@ -282,7 +284,8 @@ export class QueryEngineService {
 
     // Reuses TraceabilityService's own T63-fixed aggregation (see its doc comment) —
     // no re-derivation of the test↔requirement link matching here.
-    const coverage = this.traceability.computeCoverage(allRequirements, allLinks, tcMap, latestRunMap)
+    const runsMap = mergeRunsMaps(perRepo.map((r) => r.runsMap))
+    const coverage = this.traceability.computeCoverage(allRequirements, allLinks, tcMap, latestRunMap, runsMap)
 
     // Schema resolution stays PER REPO (unlike coverage above): a requirement's
     // `objectTypeRef` is only meaningful against its OWN component's local

@@ -7,11 +7,23 @@ import type {
   ParameterWriteResult,
   ParamResolutionPreview,
   ParametersFile,
+  ReqInstancePreview,
   ProjectSchema,
   RepoParameters,
   TestCase,
 } from '@polenta/types'
-import { PARAM_NAME_RE, extractFieldParamRefs, extractTestParamRefs, formatParamValue } from '@polenta/types'
+import {
+  PARAM_NAME_RE,
+  REQ_REF_PREFIX,
+  extractFieldParamRefs,
+  extractTestParamRefs,
+  extractTestReqRefs,
+  formatParamValue,
+  formatReqFieldValue,
+  isReqRefKey,
+  parseMarkdownParamRefs,
+  substituteMarkdownParamRefs,
+} from '@polenta/types'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -19,6 +31,8 @@ import type { SchemaService } from './schema.service'
 import type { PolentaRepoService } from './polenta-repo.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { RevalidationService } from './revalidation.service'
+import type { ReqRefSource, ReqRefsService } from './req-refs.service'
+import { reqFieldValue } from './req-refs.service'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { withKeyLock } from './serialize-writes.util'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
@@ -62,6 +76,8 @@ export class ParametersService {
     private readonly polentaRepo: PolentaRepoService,
     private readonly revalidation: RevalidationService,
     private readonly workspaceTree?: WorkspaceTreeService,
+    /** T179 — exigences liées pour `{req.<champ>}` ; absent : ces références restent littérales. */
+    private readonly reqRefs?: ReqRefsService,
   ) {}
 
   // ── Lecture ─────────────────────────────────────────────────────────────────
@@ -105,13 +121,66 @@ export class ParametersService {
       return b
     }
 
+    // T179 — exigences et liens du workspace, lus une seule fois pour tout l'ajout groupé.
+    let reqSource: Promise<ReqRefSource> | undefined
+    const reqSourceOf = () => (reqSource ??= this.reqRefs!.loadSource(ctx.repoPaths, tag))
+    const visibleOf = new Map<string, Promise<Map<string, string>>>()
+    const visibleFrom = (repo: string) => {
+      let v = visibleOf.get(repo)
+      if (!v) { v = this.visibleComponents(ctx, repo); visibleOf.set(repo, v) }
+      return v
+    }
+
     const out: ParamResolutionPreview[] = []
     for (const tc of tests) {
       const ownerRepo = (await this.schema.resolveComponentRepoPath(campaignRepo, tc.objectTypeRef, opts.workspaceDir)) ?? campaignRepo
-      const visible = await this.visibleComponents(ctx, ownerRepo)
+      const visible = await visibleFrom(ownerRepo)
       const preview: ParamResolutionPreview = { testCaseId: tc.id, resolved: {}, manual: [], unresolved: [] }
       if (tag) preview.sourceRef = tag
+      const reqFields = extractTestReqRefs(tc)
+      if (reqFields.length > 0 && this.reqRefs) {
+        const source = await reqSourceOf()
+        const linked = this.reqRefs.linkedRequirements(source, tc.id)
+        preview.requirements = []
+        if (linked.length === 0) {
+          // Liens illisibles partout (tag introuvable dans tous les repos) ≠ aucun lien.
+          const reason = tag && source.tagMissingRepos.size === source.repoPaths.length ? 'tag_not_found' : 'no_linked_requirement'
+          for (const f of reqFields) preview.unresolved.push({ ref: REQ_REF_PREFIX + f, reason })
+        }
+        for (const { req, repoPath: reqRepo } of linked) {
+          const inst: ReqInstancePreview = { requirementId: req.id, title: req.title, resolved: {}, unresolved: [] }
+          const base = await baseOf(reqRepo)
+          const reqVisible = await visibleFrom(reqRepo)
+          // T179 §6 — paramètres de base imbriqués dans la valeur : base du repo de l'exigence.
+          const nestedLookup = async (text: string) => {
+            const values = new Map<string, string>()
+            for (const { key } of parseMarkdownParamRefs(text)) {
+              if (isReqRefKey(key) || values.has(key)) continue
+              const i = key.indexOf('::')
+              const repo = i === -1 ? reqRepo : reqVisible.get(key.slice(0, i))
+              const b = repo ? await baseOf(repo) : null
+              const p = b?.get(i === -1 ? key : key.slice(i + 2))
+              const display = p ? formatParamValue(p) : null
+              if (display !== null) values.set(key, display)
+            }
+            return substituteMarkdownParamRefs(text, k => values.get(k))
+          }
+          for (const f of reqFields) {
+            const ref = REQ_REF_PREFIX + f
+            if (source.tagMissingRepos.has(reqRepo)) { inst.unresolved.push({ ref, reason: 'tag_not_found' }); continue }
+            const raw = reqFieldValue(req, f)
+            if (raw === undefined) { inst.unresolved.push({ ref, reason: 'missing' }); continue }
+            const display = formatReqFieldValue(raw)
+            if (display === null) { inst.unresolved.push({ ref, reason: 'empty' }); continue }
+            inst.resolved[ref] = base ? await nestedLookup(display) : display
+          }
+          preview.requirements.push(inst)
+        }
+      }
       for (const key of extractTestParamRefs(tc)) {
+        // T179 — `{req.<champ>}` : résolue par exigence ci-dessus (jamais saisie à la main) ;
+        // sans service, littérale comme toute référence inconnue.
+        if (isReqRefKey(key)) continue
         const i = key.indexOf('::')
         const local = i === -1
         const repo = local ? ownerRepo : visible.get(key.slice(0, i))

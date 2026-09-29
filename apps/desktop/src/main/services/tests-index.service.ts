@@ -36,6 +36,12 @@ export class TestsIndexService {
     return result
   }
 
+  /** T179 — tous les runs par test, du plus récent au plus ancien (couverture par exigence). */
+  async getRunsMap(repoPath: string): Promise<Map<string, TestRun[]>> {
+    const idx = await this.getOrBuild(repoPath)
+    return new Map(idx.runsByTestCase)
+  }
+
   upsertTestCase(repoPath: string, tc: TestCase): void {
     const idx = this.index.get(repoPath)
     if (!idx) return

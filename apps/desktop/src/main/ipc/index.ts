@@ -394,14 +394,14 @@ export function registerIpcHandlers(c: Container): void {
     (_e, repoPath: string, id: string, status: unknown) =>
       c.campaigns.close(repoPath, id, status as 'completed' | 'abandoned'))
   ipcMain.handle('campaigns:add-tests',
-    (_e, repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string) =>
-      c.campaigns.addTests(repoPath, campaignId, testCaseIds, paramValuesByTest, workspaceDir))
+    (_e, repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: import('@polenta/types').ReqInstanceSelection) =>
+      c.campaigns.addTests(repoPath, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances))
   ipcMain.handle('campaigns:remove-entries',
     (_e, repoPath: string, campaignId: string, entryIds: string[]) =>
       c.campaigns.removeEntries(repoPath, campaignId, entryIds))
   ipcMain.handle('campaigns:duplicate-test',
-    (_e, repoPath: string, campaignId: string, testCaseId: string, paramValues: Record<string, string>, workspaceDir?: string) =>
-      c.campaigns.duplicateTest(repoPath, campaignId, testCaseId, paramValues, workspaceDir))
+    (_e, repoPath: string, campaignId: string, testCaseId: string, paramValues: Record<string, string>, workspaceDir?: string, requirementId?: string) =>
+      c.campaigns.duplicateTest(repoPath, campaignId, testCaseId, paramValues, workspaceDir, requirementId))
   // T171 — résolution prévisionnelle des paramètres (panneau d'ajout, création), sans écriture.
   ipcMain.handle('campaigns:preview-params',
     (_e, repoPath: string, source: { campaignId?: string; baselineRef?: string }, testCaseIds: string[], workspaceDir?: string) =>

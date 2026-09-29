@@ -137,15 +137,21 @@ export class GitService {
    * tag » (`tagFound: true, data: null`). Un tag annoté est déréférencé vers son commit.
    */
   async readYamlAtTag<T>(repoPath: string, tag: string, filePath: string): Promise<{ tagFound: boolean; data: T | null }> {
-    let oid: string
+    const oid = await this.resolveTagOid(repoPath, tag)
+    if (!oid) return { tagFound: false, data: null }
+    return { tagFound: true, data: await this.readYamlRef<T>(repoPath, oid, filePath) }
+  }
+
+  /** Commit pointé par le tag `tag` (tag annoté déréférencé), `null` si le tag est introuvable. */
+  async resolveTagOid(repoPath: string, tag: string): Promise<string | null> {
     try {
-      oid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tag}` })
+      let oid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tag}` })
       const { type } = await git.readObject({ fs, dir: repoPath, oid, format: 'parsed' })
       if (type === 'tag') oid = (await git.readTag({ fs, dir: repoPath, oid })).tag.object
+      return oid
     } catch {
-      return { tagFound: false, data: null }
+      return null
     }
-    return { tagFound: true, data: await this.readYamlRef<T>(repoPath, oid, filePath) }
   }
 
   async readYamlRef<T>(repoPath: string, ref: string, filePath: string): Promise<T | null> {
@@ -238,9 +244,10 @@ export class GitService {
    * mode and agrees with `git log --full-history -- <path>` on every spot-checked case — so this
    * is a correctness fix for those files, not just a speedup, even though the two can disagree.
    */
-  async fileHistoryMap(repoPath: string, prefix: string): Promise<Map<string, FileHistory>> {
+  // T179 — `ref` : historique jusqu'à un commit donné (tag de baseline) plutôt que HEAD.
+  async fileHistoryMap(repoPath: string, prefix: string, ref = 'HEAD'): Promise<Map<string, FileHistory>> {
     const result = new Map<string, FileHistory>()
-    const commits = await git.log({ fs, dir: repoPath, ref: 'HEAD', force: true }).catch(() => [])
+    const commits = await git.log({ fs, dir: repoPath, ref, force: true }).catch(() => [])
 
     for (const commit of commits) {
       const parentOid = commit.commit.parent[0]

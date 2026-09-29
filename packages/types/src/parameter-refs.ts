@@ -14,7 +14,17 @@ export const PARAM_NAME_RE = /^[A-Za-z0-9_-]+$/
  *  qui n'est pas entouré de lettres (`{_x}` → `{\_x}`) ; les groupes sont à normaliser avec
  *  `unescapeRefPart`. */
 export function paramRefRegExp(): RegExp {
-  return /\{(?:((?:[A-Za-z0-9-]|\\?_)+)::)?((?:[A-Za-z0-9-]|\\?_)+)\}/g
+  // T179 — `{req.<champ>}` : champ de l'exigence liée, jamais préfixé d'un nœud (`{x::req.y}`
+  // n'est pas une référence et reste littéral).
+  return /\{(?:((?:[A-Za-z0-9-]|\\?_)+)::(?!req\.))?((?:req\.)?(?:[A-Za-z0-9-]|\\?_)+)\}/g
+}
+
+/** T179 — préfixe des clés de référence à un champ de l'exigence liée (`{req.<champ>}`). */
+export const REQ_REF_PREFIX = 'req.'
+
+/** Vrai pour une clé `req.<champ>` (T179) ; faux pour un paramètre de la base (T171). */
+export function isReqRefKey(key: string): boolean {
+  return key.startsWith(REQ_REF_PREFIX)
 }
 
 /** Retire l'échappement Markdown `\_` d'un groupe capturé par `paramRefRegExp`. */
@@ -27,6 +37,8 @@ export function unescapeRefPart(part: string | undefined): string | undefined {
 export interface ParamRef {
   /** Texte source, accolades comprises. */
   raw: string
+  /** `req` : champ de l'exigence liée (T179, `name` = le champ) ; `param` : base de paramètres. */
+  kind: 'param' | 'req'
   /** Nœud submodule visé (forme `{<nœud>::nom}`), absent pour une référence locale. */
   node?: string
   name: string
@@ -41,7 +53,9 @@ export function parseParamRefs(text: string | null | undefined): ParamRef[] {
   for (const m of text.matchAll(paramRefRegExp())) {
     const node = unescapeRefPart(m[1])
     const name = unescapeRefPart(m[2])
-    refs.push({ raw: m[0], node, name, key: node ? `${node}::${name}` : name, index: m.index ?? 0 })
+    const key = node ? `${node}::${name}` : name
+    if (isReqRefKey(key)) refs.push({ raw: m[0], kind: 'req', name: key.slice(REQ_REF_PREFIX.length), key, index: m.index ?? 0 })
+    else refs.push({ raw: m[0], kind: 'param', node, name, key, index: m.index ?? 0 })
   }
   return refs
 }
@@ -89,14 +103,39 @@ export function extractTestParamRefs(tc: Pick<TestCase, 'preconditions' | 'postc
   return distinctKeys(texts)
 }
 
+/** Champs de l'exigence liée référencés par un test (`{req.<champ>}`, T179), distincts, dans
+ *  l'ordre de `extractTestParamRefs`. Non vide ⇒ le test est instancié une fois par exigence liée. */
+export function extractTestReqRefs(tc: Pick<TestCase, 'preconditions' | 'postconditions' | 'steps'>): string[] {
+  return extractTestParamRefs(tc).filter(isReqRefKey).map(k => k.slice(REQ_REF_PREFIX.length))
+}
+
 /** Clés référencées par les champs `fieldNames` d'une exigence (champs text/textarea/richtext,
- *  à déterminer par l'appelant depuis le type ; le titre n'est jamais scanné). */
+ *  à déterminer par l'appelant depuis le type ; le titre n'est jamais scanné). `{req.<champ>}`
+ *  n'a pas de sens dans une exigence (T179 §2) : littéral, jamais retourné. */
 export function extractFieldParamRefs(fields: Record<string, unknown> | undefined, fieldNames: string[]): string[] {
   const texts = fieldNames.map((n) => {
     const v = fields?.[n]
     return typeof v === 'string' ? v : null
   })
-  return distinctKeys(texts)
+  return distinctKeys(texts).filter(k => !isReqRefKey(k))
+}
+
+/**
+ * T179 §6 — texte substitué pour la valeur d'un champ d'exigence : chaîne telle quelle, nombre et
+ * booléen en texte, liste jointe par `, `, objet en JSON compact ; `null` si vide (non résolue).
+ */
+export function formatReqFieldValue(value: unknown): string | null {
+  if (value === undefined || value === null) return null
+  let text: string
+  if (typeof value === 'string') text = value
+  else if (typeof value === 'number' || typeof value === 'boolean') text = String(value)
+  else if (Array.isArray(value)) {
+    text = value
+      .map(v => (v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')))
+      .filter(v => v.trim())
+      .join(', ')
+  } else text = JSON.stringify(value)
+  return text.trim() ? text : null
 }
 
 /** Texte substitué : `value`, suivi de ` <unit>` si renseignée ; `null` si `value` est vide. */

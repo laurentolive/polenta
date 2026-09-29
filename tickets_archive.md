@@ -1,5 +1,137 @@
 # Tickets archivés (implémentés)
 
+> Depuis le 2026-09-29, les tickets sont des **issues GitHub** (`laurentolive/polenta`) —
+> voir `WORKFLOW.md`. Les tickets encore ouverts dans `TICKETS.md` ont été migrés :
+>
+> | Ticket | Issue |
+> |--------|-------|
+> | T151 | #1 |
+> | T153 | #2 |
+> | T154 | #3 |
+> | T171 | #4 |
+> | T173 | #5 |
+> | T174 | #6 |
+> | T175 | #7 |
+> | T177 | #8 |
+> | T178 | #9 |
+> | T179 | #10 |
+
+---
+
+### T162 — Évolution : afficher/masquer les titres de dossiers dans les vues Excel et Word (densité d'affichage)
+
+**Statut** : Done — mergé sur master
+
+**Description** : dans les vues Excel et Word de la Vue Système, les titres de dossiers
+(lignes de groupe en Excel, sections H1–H6 en Word) étaient toujours affichés. Ajout d'une
+case à cocher **« Afficher les titres des dossiers »** dans la roue crantée ⚙️
+(`FieldConfigModal`), par onglet (Tableau / Document), cochée par défaut. Décochée : liste
+plate, plus de lignes de groupe ni de sections `Hn`, collapse ignoré, numérotation de
+section conservée sur les éléments. Persistée avec la config des colonnes
+(`fieldVisibility["<nœud>::<type>"]` gagne `showFoldersExcel` / `showFoldersWord` ; pref
+pré-T162 ⇒ affichés). « Réinitialiser » remet aussi la case cochée. En Excel, titres
+masqués, le drag & drop de réordonnancement reste possible entre éléments de même dossier
+parent uniquement. Doc : `SPEC-SYSTEM-VIEW` §Vue Excel / §Vue Word / §Configuration des
+champs / §Persistance. Voir `specs/T162.md`, `specs/T162-design.md`, `specs/T162-sprint1.md`.
+
+### T159 — Bug : modifs d'un champ richtext perdues en vue Édition (+ T161 : titre/desc d'une exigence créée depuis l'arbre)
+
+**Statut** : Done — mergé sur master
+
+**Description** : en vue Édition, un champ `richtext` n'avait aucun autosave (contrairement
+aux vues Excel/Word) ; sa seule persistance était un *flush* à la navigation
+(`handleBack` + cleanup de démontage T127), absent dès qu'`EditView` reste monté et que
+seul `editingNodeId` change (double-clic sur un autre élément de l'arbre, navigation vers
+un objet lié, bascule Exigences/Tests). Vecteur additionnel : un refetch de la query
+`['object']` pendant l'édition (blur d'un autre champ, retour de focus fenêtre) écrasait
+`localValuesRef` via l'effet `[objectData]`.
+
+Volet **T161** absorbé (signalé sur `handstickProduct` / `VE22D`) : une exigence créée
+depuis l'arbre de la Vue Système s'ouvrait vide — `title: "Sans titre"` et `fields: {}` —
+faute de synchro titre ↔ nom d'arbre au renommage inline (course avec la création async de
+`createItemObject`) et pour la même root cause richtext que T159.
+
+Correctif : autosave debouncé du richtext, miroir `localValuesRef` propriété exclusive de
+l'effet `[objectData]` (protégé des refetch), flush ciblé de l'objet sortant au changement
+d'élément, `handleFlushEditValues` async avec retry sur échec, sérialisation des écritures
+par fichier côté main (`withKeyLock` dans `RequirementsService`/`TestsService` — ferme
+aussi la course latente pré-existante d'Excel/Word), synchro titre via
+`ElementTree.onItemRenamed` / `SystemPanel.handleItemRenamed` + rattrapage dans
+`createItemObject`. Voir `specs/T159.md`.
+
+### T158 — Évolution : Ctrl+Entrée valide la saisie dans un champ richtext
+
+**Statut** : Done — mergé sur master
+
+**Description** : dans un champ `richtext` (`RichTextField.tsx`, éditeur TipTap),
+`Ctrl/Cmd+Entrée` n'avait aucun effet métier — l'extension `HardBreak` de starter-kit
+mappe `Mod-Enter` sur un saut de ligne et consomme l'évènement. Ajout d'une extension
+TipTap `submitOnModEnter` (`priority: 1000`) + prop `RichTextField.onSubmit`, câblée sur
+l'action primaire de chaque contexte d'édition richtext : popover Vue Tableau (ferme),
+champ inline Vue Document (`commit`), `EditView` (flush), formulaires de création
+(submit), pages détail req/test (« Enregistrer »), cellules `StepsTable`, édition des
+champs de campagne, commentaires d'exécution. `Maj+Entrée` reste le saut de ligne ; sans
+`onSubmit` le comportement TipTap par défaut est préservé (lecture seule incluse). Doc :
+`SPEC-REQ` §3.2e. Voir `specs/T158.md`.
+
+### T157 — Évolution : afficher l'adresse du repo GitHub sous le nom du projet
+
+**Statut** : Done — mergé sur master
+
+**Description** : dans le panneau latéral "Projet" (`ProjectPanel.tsx`), seul le nom
+d'affichage du projet était visible. Ajout d'une ligne secondaire sous ce nom, affichant
+l'URL du remote `origin` du repo root (adresse GitHub) quand un remote est configuré —
+nouveau champ `ProjectInfo.remoteUrl`, lu dans `WorkspaceService.resolve()` via
+`git.listRemotes` (même pattern que `sync.service.ts`/`workspace-tree.service.ts`).
+Voir `specs/T157.md`.
+
+### T156 — Bug : `.polenta/tree.cache.yaml` versionné par erreur, bloque les gardes "repo propre"
+
+**Statut** : Done — mergé sur master
+
+**Description** : découvert en testant T155 — `WorkspaceTreeService.writeCache()` écrit
+`.polenta/tree.cache.yaml` (chemins absolus locaux, timestamp changeant à chaque écriture) sans
+jamais garantir qu'un `.gitignore` l'exclut. `createNewProject`/`openProject`
+(`workspace.service.ts`) ne protégeaient ce fichier que par accident dans un seul cas, jamais dans
+le cas d'adoption d'un repo existant — d'où un repo qui apparaît "modifié" en permanence peu après
+ouverture, bloquant le bouton Rafraîchir (T153) et l'auto-pull (T155). Correctif centralisé dans
+`writeCache()` elle-même (garantit le `.gitignore` avant chaque écriture, quel que soit
+l'appelant) + nettoyage du fichier déjà suivi dans ce repo (`apps/desktop/PL/.polenta/tree.cache.yaml`).
+Voir `specs/T156.md`.
+
+### T155 — Évolution : auto-pull périodique en tâche de fond
+
+**Statut** : Done — mergé sur master
+
+**Description** : suite à T153 (bouton "Rafraîchir") et T154 (sécurisation de "Publier") — un
+utilisateur non git-initié ne devrait jamais avoir à connaître l'existence d'un pull. Ajout d'un
+auto-pull en tâche de fond (`useAutoPull`, monté dans `AppLayout.tsx`), qui tourne toutes les
+5 minutes tant qu'un projet est ouvert (indépendamment de l'onglet actif, pas de pull à l'ouverture
+du projet elle-même). Utilise une nouvelle méthode `SyncService.pullFastForwardOnly` (jamais de
+vrai merge — une opération silencieuse ne doit jamais pouvoir écrire de marqueurs de conflit).
+Ignore tout repo avec des modifications en attente. Voir `specs/T155.md`.
+
+### T152 — Bug : ECONNRESET au clone d'un repo distant derrière un proxy d'entreprise
+
+**Statut** : Done — mergé sur master
+
+**Description** : Sur un poste d'entreprise derrière un proxy, le login GitHub (Device
+Flow) fonctionnait mais le clone d'un projet échouait avec `read ECONNRESET`. Root cause :
+le commit `7701f1f` (« organization proxy support ») n'avait rendu proxy-aware que
+`auth.service.ts`, pas le transport git (`isomorphic-git/http/node`, basé sur les modules
+`http`/`https` natifs de Node, sans connaissance du proxy). Voir `specs/T152.md` pour le
+détail et le correctif (`git-http.ts`).
+
+### T150 — Bug : version non incrémentée au retour approved → draft
+
+**Statut** : Done — mergé sur master
+
+**Description** : Une fois qu'une exigence est passée en statut `approved`, si elle repasse
+en `draft` (retrait d'approbation / nouvelle itération), son champ `version` doit s'incrémenter.
+Ce n'était pas le cas via la colonne Statut de la vue Excel (chemin `transition()`),
+contrairement au bouton dédié « Reopen draft » de la vue Word (chemin `openDraft()`).
+Voir `specs/T150.md` pour le détail.
+
 ---
 
 ### T176 — Évolution : Vue Excel — édition au double-clic / F2, sans lag, sans changement de style, curseur au point cliqué

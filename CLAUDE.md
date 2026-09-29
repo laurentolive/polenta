@@ -2,7 +2,8 @@
 # Projet : Produits électroménager sur batterie
 
 ### Workflow de developpement 
-Le demande de correction ou d'evolution passe par un ticket décrit dans TICKETS.md.
+Les demandes de correction ou d'évolution passent par une **issue GitHub** (repo `laurentolive/polenta`,
+CLI `gh`) — `TICKETS.md` n'est plus utilisé.
 Pour toute correction de bug ou évolution suivre WORKFLOW.md. 
 
 ## Contexte produit
@@ -68,7 +69,6 @@ comp-motor-control/
 specs/
 ├── CLAUDE.md                        ← ce fichier
 ├── CONTEXT.md                       ← historique des décisions de conception
-├── TICKETS.md                       ← liste des tickets a traiter et leur status
 ├── WORKFLOW.md                      ← decrit le process de dev entre les agents AI et le developpeur humain
 ├── requirements/
 │   ├── SYS/

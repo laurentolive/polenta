@@ -904,6 +904,20 @@
     "tagWarning_other": "{{count}} composants n'ont pas pu être tagués — vérifier les logs."
   },
   "impactAnalysisPage": {
+    "revalidation": {
+      "clear": "Lever le flag",
+      "clearSelection": "Lever le flag de la sélection ({{count}})",
+      "select": "Sélectionner {{id}}",
+      "confirmTitle": "Lever le flag « Impact à vérifier »",
+      "confirmBody_one": "Lever le flag de {{count}} élément ? Son YAML sera modifié (à publier).",
+      "confirmBody_other": "Lever le flag de {{count}} éléments ? Leurs YAML seront modifiés (à publier).",
+      "failed": "Flag non levé : {{items}}",
+      "reason": {
+        "not_found": "introuvable",
+        "readonly": "lecture seule",
+        "error": "erreur d'écriture"
+      }
+    },
     "changeType": {
       "added": "Ajoutée",
       "removed": "Supprimée",

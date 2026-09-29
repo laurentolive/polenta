@@ -1,4 +1,6 @@
 import type {
+  ClearRevalidationResult,
+  FlaggedElement,
   Parameter,
   ParamResolutionPreview,
   ReqInstanceSelection,
@@ -457,6 +459,12 @@ export interface ApiClient {
     exportCsv(repoPath: string, filters?: MatrixFiltersDto, workspaceDir?: string): Promise<MatrixExportRow[]>
     /** Diff exigence-par-exigence entre deux shas (T46) — indépendant de l'index vivant. */
     diffRequirements(repoPath: string, fromSha: string, toSha: string): Promise<RequirementDiffEntry[]>
+  }
+  revalidation: {
+    /** T173 — éléments marqués `needsRevalidation` du workspace, avec leurs éléments liés. */
+    list(repoPath: string, workspaceDir?: string): Promise<FlaggedElement[]>
+    /** T173 — lève le flag (retire la clé du YAML) ; best-effort par élément, pas de commit. */
+    clear(repoPath: string, ids: string[], workspaceDir?: string): Promise<ClearRevalidationResult>
   }
   impactAnalysis: {
     /** Crée et persiste une analyse d'impact entre deux baselines (T46) — figée à la création. */

@@ -904,6 +904,20 @@
     "tagWarning_other": "{{count}} components could not be tagged — check the logs."
   },
   "impactAnalysisPage": {
+    "revalidation": {
+      "clear": "Clear flag",
+      "clearSelection": "Clear flag on selection ({{count}})",
+      "select": "Select {{id}}",
+      "confirmTitle": "Clear the “Impact to check” flag",
+      "confirmBody_one": "Clear the flag on {{count}} item? Its YAML will be modified (to publish).",
+      "confirmBody_other": "Clear the flag on {{count}} items? Their YAML files will be modified (to publish).",
+      "failed": "Flag not cleared: {{items}}",
+      "reason": {
+        "not_found": "not found",
+        "readonly": "read-only",
+        "error": "write error"
+      }
+    },
     "changeType": {
       "added": "Added",
       "removed": "Removed",

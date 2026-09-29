@@ -159,6 +159,10 @@ export function createIpcClient(): ApiClient {
       exportCsv: (p, f, workspaceDir) => invoke('traceability:export-csv', p, f, workspaceDir),
       diffRequirements: (p, fromSha, toSha) => invoke('traceability:diff-requirements', p, fromSha, toSha),
     },
+    revalidation: {
+      list: (p, w) => invoke('revalidation:list', p, w),
+      clear: (p, ids, w) => invoke('revalidation:clear', p, ids, w),
+    },
     impactAnalysis: {
       create: (p, dto) => invoke('impact-analysis:create', p, dto),
       list: (p) => invoke('impact-analysis:list', p),

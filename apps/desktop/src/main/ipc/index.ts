@@ -33,6 +33,7 @@ import type {
 import type { DashboardSeedService } from '../services/dashboard-seed.service'
 import type { ExportService } from '../services/export.service'
 import type { ParametersService } from '../services/parameters.service'
+import type { RevalidationService } from '../services/revalidation.service'
 import type {
   CreateRequirementDto,
   UpdateRequirementDto,
@@ -87,6 +88,7 @@ export interface Container {
   dashboardSeed: DashboardSeedService
   export: ExportService
   parameters: ParametersService
+  revalidation: RevalidationService
 }
 
 // Deux tables distinctes (pas une dérivée de l'autre) : la relation n'est pas
@@ -343,6 +345,16 @@ export function registerIpcHandlers(c: Container): void {
     c.traceability.updateImpactItemStatus(repoPath, id, dto as UpdateImpactItemStatusDto))
   ipcMain.handle('impact-analysis:delete', (_e, repoPath: string, id: string) =>
     c.traceability.deleteImpactAnalysis(repoPath, id))
+
+  // ── Revalidation (T173) — levée du flag needsRevalidation ──────────────────────
+  ipcMain.handle('revalidation:list', (_e, repoPath: string, workspaceDir?: string) =>
+    c.revalidation.listFlagged(repoPath, workspaceDir))
+  ipcMain.handle('revalidation:clear', (_e, repoPath: string, ids: unknown, workspaceDir?: string) => {
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+      throw new Error('revalidation:clear — ids must be a string array')
+    }
+    return c.revalidation.clear(repoPath, ids, workspaceDir)
+  })
 
   // ── Reviews ───────────────────────────────────────────────────────────────────
   ipcMain.handle('reviews:list', (_e, repoPath: string, status?: unknown) =>

@@ -26,6 +26,8 @@ export function useLiveFileSync(): void {
       // changement d'élément/lien ou de ref dans n'importe quel repo la rend périmée.
       if (relPath === '*' || /^(requirements|tests|links)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['impact-analysis:local'] })
+        // T173 — éléments marqués du workspace (même périmètre).
+        qc.invalidateQueries({ queryKey: ['revalidation:flagged'] })
       }
 
       if (relPath === '*') {

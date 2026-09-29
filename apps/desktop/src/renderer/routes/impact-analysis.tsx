@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -8,6 +8,9 @@ import { decodeProjectId } from '../lib/projectId'
 import { useSelectedRepo } from '../contexts/SelectedRepoContext'
 import { useImpactAnalysis, LOCAL_IMPACT_ANALYSIS_ID } from '../contexts/ImpactAnalysisContext'
 import { useLocalImpactAnalysis } from '../hooks/useLocalImpactAnalysis'
+import { useFlaggedElements } from '../hooks/useFlaggedElements'
+import { useClearRevalidation } from '../hooks/useClearRevalidation'
+import { RevalidationFlag } from '../components/system/RevalidationFlag'
 import { RequirementEditModal } from '../components/impact/RequirementEditModal'
 import { TestCaseEditModal } from '../components/impact/TestCaseEditModal'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -21,6 +24,7 @@ import type {
   RequirementChangeType,
   ImpactAnalysisStatus,
   ElementRepoRef,
+  ClearRevalidationResult,
 } from '@polenta/types'
 
 export const Route = createFileRoute('/impact-analysis')({
@@ -87,6 +91,27 @@ function flattenNodes(nodes: ImpactNode[]): ImpactNode[] {
 function flattenAnalysis(analysis: ImpactAnalysis): ImpactNode[] {
   return analysis.changedRequirements.flatMap((cr) => [...flattenNodes(cr.descendantTree), ...flattenNodes(cr.ascendantTree)])
 }
+
+// ── Levée du flag needsRevalidation (T173) ───────────────────────────────────
+
+/** État partagé par tous les nœuds d'arbre : quels éléments sont marqués (lecture live, même
+ *  pour une analyse figée), sélection multiple (par id, dédupliquée entre occurrences) et levée
+ *  unitaire. Contexte plutôt que props : l'arbre est récursif sur trois composants. */
+interface RevalidationTreeState {
+  flaggedIds: Set<string>
+  selected: Set<string>
+  toggle: (id: string) => void
+  clear: (ids: string[]) => void
+  pending: boolean
+}
+
+const RevalidationTreeContext = createContext<RevalidationTreeState>({
+  flaggedIds: new Set(),
+  selected: new Set(),
+  toggle: () => {},
+  clear: () => {},
+  pending: false,
+})
 
 // ── ImpactTreeView (récursif) ────────────────────────────────────────────────
 
@@ -220,6 +245,9 @@ function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateS
   // test_case — le résultat retombe alors simplement sur `node.title`.
   const statementTooltip = useRequirementStatementTooltip(isRequirement ? repoPath : '', isRequirement ? node.elementId : '', node.title)
   const tooltip = isRequirement ? statementTooltip : node.title
+  const { t } = useTranslation()
+  const revalidation = useContext(RevalidationTreeContext)
+  const flagged = revalidation.flaggedIds.has(node.elementId)
 
   return (
     <div>
@@ -234,6 +262,15 @@ function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateS
         ) : (
           <span className="w-[13px] shrink-0" />
         )}
+        {flagged && (
+          <input
+            type="checkbox"
+            checked={revalidation.selected.has(node.elementId)}
+            onChange={() => revalidation.toggle(node.elementId)}
+            className="shrink-0"
+            aria-label={t('impactAnalysisPage.revalidation.select', { id: node.elementId })}
+          />
+        )}
         <span className="font-mono text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0">{badge}</span>
         <button
           type="button"
@@ -243,10 +280,21 @@ function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateS
         >
           {node.elementId}
         </button>
+        <RevalidationFlag show={flagged} />
         <span className="text-ink-2 truncate min-w-0 flex-1" title={tooltip}>
           {node.title}
         </span>
         <RepoBadge repo={node.repo} />
+        {flagged && (
+          <button
+            type="button"
+            onClick={() => revalidation.clear([node.elementId])}
+            disabled={revalidation.pending}
+            className="btn-secondary-sm shrink-0"
+          >
+            {t('impactAnalysisPage.revalidation.clear')}
+          </button>
+        )}
         {!readOnly && <ImpactNodeStatusEditor node={node} onUpdateStatus={onUpdateStatus} />}
       </div>
       {hasChildren && expanded && (
@@ -296,6 +344,9 @@ function ChangedRequirementRow({
   // l'énoncé déjà consultable au survol du titre/id — retiré de la liste des champs changés.
   const changedFields = changed.changedFields.filter((f) => f.field !== 'fields.statement')
   const statementTooltip = useRequirementStatementTooltip(isRequirement ? repoPath : '', isRequirement ? changed.reqId : '', changed.title)
+  // T173 — l'élément changé n'est normalement pas marqué (T171 `includeSelf` excepté) : icône
+  // seule, la levée se fait depuis la liste de repli.
+  const { flaggedIds } = useContext(RevalidationTreeContext)
 
   return (
     <div className="border-b border-edge-subtle">
@@ -318,6 +369,7 @@ function ChangedRequirementRow({
         >
           {changed.reqId}
         </button>
+        <RevalidationFlag show={flaggedIds.has(changed.reqId)} />
         <span className="text-ink-2 truncate flex-1" title={statementTooltip}>{changed.title}</span>
         <RepoBadge repo={changed.repo} />
         <span className={`text-xs font-medium shrink-0 ${CHANGE_TYPE_COLOR[changed.changeType]}`}>
@@ -399,10 +451,58 @@ function ImpactAnalysisPage() {
 
   const [campaignDraft, setCampaignDraft] = useState<{ testCaseIds: string[]; uncoveredRequirementIds: string[] } | null>(null)
 
+  // T173 — levée du flag : état live des éléments marqués, sélection multiple, échecs.
+  const { flaggedIds } = useFlaggedElements(projectId)
+  const clearMutation = useClearRevalidation(projectId)
+  const [selectedFlagged, setSelectedFlagged] = useState<Set<string>>(new Set())
+  const [confirmClearSelection, setConfirmClearSelection] = useState(false)
+  const [clearFailures, setClearFailures] = useState<ClearRevalidationResult['failed']>([])
+
   // Repart de zéro à chaque changement d'analyse active (choisie dans le panneau Analyse d'impact).
   useEffect(() => {
     setCampaignDraft(null)
+    setSelectedFlagged(new Set())
+    setClearFailures([])
   }, [activeAnalysisId])
+
+  // Un élément qui n'est plus marqué (levé ici ou ailleurs) sort de la sélection.
+  useEffect(() => {
+    setSelectedFlagged((prev) => {
+      const next = new Set([...prev].filter((id) => flaggedIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [flaggedIds])
+
+  function clearFlags(ids: string[]) {
+    if (ids.length === 0) return
+    clearMutation.mutate(ids, {
+      onSuccess: (result) => {
+        setClearFailures(result.failed)
+        setSelectedFlagged((prev) => {
+          const next = new Set(prev)
+          for (const id of [...result.cleared, ...result.unchanged]) next.delete(id)
+          return next
+        })
+      },
+      onError: (err) => {
+        const message = err instanceof Error ? err.message : String(err)
+        setClearFailures(ids.map((id) => ({ id, reason: 'error' as const, message })))
+      },
+    })
+  }
+
+  const revalidationTree: RevalidationTreeState = {
+    flaggedIds,
+    selected: selectedFlagged,
+    toggle: (id) => setSelectedFlagged((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    }),
+    clear: clearFlags,
+    pending: clearMutation.isPending,
+  }
 
   const generateCampaignMutation = useMutation({
     mutationFn: async (vars: { analysisId: string; label: string; nodes: ImpactNode[] }) => {
@@ -495,7 +595,18 @@ function ImpactAnalysisPage() {
             : activeAnalysis?.label
         }
         actions={
-          isLocal ? (
+          <>
+          {selectedFlagged.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setConfirmClearSelection(true)}
+              disabled={clearMutation.isPending}
+              className="btn-secondary-sm shrink-0"
+            >
+              {t('impactAnalysisPage.revalidation.clearSelection', { count: selectedFlagged.size })}
+            </button>
+          )}
+          {isLocal ? (
             <button
               type="button"
               onClick={() => localQuery.refetch()}
@@ -535,9 +646,51 @@ function ImpactAnalysisPage() {
                 </button>
               )}
             </>
-          )
+          )}
+          </>
         }
       />
+
+      {/* T173 — échecs de levée du flag */}
+      {clearFailures.length > 0 && (
+        <div className="px-4 py-2 border-b border-edge-subtle shrink-0 flex items-center gap-3 bg-hover">
+          <p className="text-xs text-status-danger flex-1">
+            {t('impactAnalysisPage.revalidation.failed', {
+              items: clearFailures.map((f) => `${f.id} (${t(`impactAnalysisPage.revalidation.reason.${f.reason}`)})`).join(', '),
+            })}
+          </p>
+          <button type="button" onClick={() => setClearFailures([])} className="btn-secondary-sm shrink-0">
+            {t('common.close')}
+          </button>
+        </div>
+      )}
+
+      {confirmClearSelection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setConfirmClearSelection(false)}>
+          <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-sm font-semibold text-ink mb-2">{t('impactAnalysisPage.revalidation.confirmTitle')}</h2>
+            <p className="text-xs text-ink-2 mb-5">
+              {t('impactAnalysisPage.revalidation.confirmBody', { count: selectedFlagged.size })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirmClearSelection(false)} className="btn-secondary">
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                autoFocus
+                className="btn-primary"
+                onClick={() => {
+                  setConfirmClearSelection(false)
+                  clearFlags([...selectedFlagged])
+                }}
+              >
+                {t('impactAnalysisPage.revalidation.clear')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Brouillon de campagne générée */}
       {campaignDraft && activeAnalysis && !isLocal && (
@@ -578,7 +731,7 @@ function ImpactAnalysisPage() {
         ) : displayedChanges.length === 0 ? (
           <p className="text-sm text-ink-3 italic px-4 py-3">{t('impactAnalysisPage.noChangedRequirement')}</p>
         ) : (
-          <div>
+          <RevalidationTreeContext.Provider value={revalidationTree}>
             {displayedChanges.map((cr) => (
               <ChangedRequirementRow
                 key={`${cr.elementType ?? 'requirement'}-${cr.reqId}`}
@@ -590,7 +743,7 @@ function ImpactAnalysisPage() {
                 readOnly={isLocal}
               />
             ))}
-          </div>
+          </RevalidationTreeContext.Provider>
         )}
       </div>
 

@@ -1,5 +1,6 @@
 import type { Requirement } from './requirement'
 import type { TestCase } from './test'
+import type { ElementRepoRef } from './impact-analysis'
 
 // ─── Coverage ─────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,39 @@ export interface RevalidationItem {
   elementType: 'requirement' | 'test_case'
   title: string
   status: string
+}
+
+/** T173 — élément lié à un élément marqué (aide à identifier le déclencheur). */
+export interface FlaggedLinkedElement {
+  elementId: string
+  elementType: 'requirement' | 'test_case'
+  title: string
+  status: string
+  version?: number               // absent si non renseigné (TestCase.version est optionnel)
+  linkType: string
+  /** Statut courant `isApproval` dans son type ; false si type introuvable. */
+  approved: boolean
+  repo?: ElementRepoRef          // absent = repo racine
+}
+
+/** T173 — élément marqué `needsRevalidation`, vu depuis tout le workspace. */
+export interface FlaggedElement {
+  elementId: string
+  elementType: 'requirement' | 'test_case'
+  title: string
+  status: string
+  version?: number               // absent si non renseigné (TestCase.version est optionnel)
+  repo?: ElementRepoRef          // absent = repo racine
+  linked: FlaggedLinkedElement[] // tous liens, sens indifférent, un niveau ; tri par id
+}
+
+export type ClearRevalidationFailure = 'not_found' | 'readonly' | 'error'
+
+/** T173 — résultat de la levée du flag, best-effort par élément. */
+export interface ClearRevalidationResult {
+  cleared: string[]              // ids dont la clé a été retirée
+  unchanged: string[]            // ids déjà non marqués (idempotence, pas une erreur)
+  failed: Array<{ id: string; reason: ClearRevalidationFailure; message?: string }>
 }
 
 // ─── Impact analysis ──────────────────────────────────────────────────────────

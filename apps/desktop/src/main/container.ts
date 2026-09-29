@@ -101,5 +101,6 @@ export async function createContainer(): Promise<void> {
     dashboardSeed,
     export: exportSvc,
     parameters,
+    revalidation,
   })
 }

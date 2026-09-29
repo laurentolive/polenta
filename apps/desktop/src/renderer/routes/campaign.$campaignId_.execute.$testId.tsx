@@ -116,6 +116,8 @@ function ExecuteTestPage() {
         stepResults: stepStates.map(s => ({ order: s.order, result: s.result, comment: s.comment })),
         notes: globalNotes.trim() || undefined,
         result: globalResult,
+        // T179 — instance générée pour une exigence : le run ne couvre qu'elle.
+        ...(entry?.requirementId && { requirementId: entry.requirementId }),
       })
       const campaignStatus = mapResultToStatus(globalResult)
       await api.campaigns.updateRun(repoPath, campaignId, entryId, campaignStatus, run.id)

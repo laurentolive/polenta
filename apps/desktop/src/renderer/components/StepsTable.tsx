@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RichTextField } from './RichTextField'
+import { ReqRefScope } from '../contexts/ParamRefContext'
 
 export interface StepDraft {
   action: string
@@ -65,6 +66,8 @@ export function StepsTable({ steps, onChange, disabled, repoPath, onSubmit }: St
   }
 
   return (
+    // T179 — les étapes sont des champs de test : `{req.<champ>}` y est une référence.
+    <ReqRefScope repoPath={repoPath}>
     <div>
       {/* Column labels — lightweight, above the bordered container */}
       <div className="grid grid-cols-[1.75rem_1fr_1fr_1.75rem] px-1 pb-0.5">
@@ -147,5 +150,6 @@ export function StepsTable({ steps, onChange, disabled, repoPath, onSubmit }: St
         + {t('system.stepsTable.addStep')}
       </button>
     </div>
+    </ReqRefScope>
   )
 }

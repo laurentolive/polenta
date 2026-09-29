@@ -18,6 +18,7 @@ import { normalizeObject } from '../../lib/normalizeObject'
 import { CATEGORY_CHART_BG } from '../../lib/objectCategoryColors'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { ParamRefText } from '../parameters/ParamRefText'
+import { ReqRefScope } from '../../contexts/ParamRefContext'
 import type { SearchResult } from '../../lib/searchQuery'
 import type {
   ObjectTypeDefinition,
@@ -246,6 +247,8 @@ function ResultCard({
       {steps !== undefined && steps.length > 0 && (
         <div className="mt-3 pt-3 border-t border-edge">
           <p className="text-xs font-medium text-ink-2 mb-2">{t('system.wordView.stepsHeading')}</p>
+          {/* T179 — étapes d'un test : `{req.<champ>}` y est une référence. */}
+          <ReqRefScope repoPath={repoPath}>
           <ol className="space-y-1.5">
             {steps.map((s, i) => (
               <li key={i} className="flex gap-2 text-sm text-ink">
@@ -262,6 +265,7 @@ function ResultCard({
               </li>
             ))}
           </ol>
+          </ReqRefScope>
         </div>
       )}
     </div>

@@ -1052,7 +1052,13 @@
     "picker": {
       "search": "Rechercher un paramètre…",
       "create": "Créer un paramètre",
-      "insert": "Insérer un paramètre"
+      "insert": "Insérer un paramètre",
+      "reqField": "Champ de l'exigence liée",
+      "reqSystemField": "champ système"
+    },
+    "reqRef": {
+      "title": "Champ « {{field}} » de l'exigence liée — résolu en campagne, une instance par exigence",
+      "noLinked": "aucune exigence liée"
     }
   },
   "campaignParams": {
@@ -1062,13 +1068,21 @@
       "tag_not_found": "baseline introuvable",
       "missing": "paramètre absent",
       "empty": "valeur vide",
-      "unknown_node": "composant inconnu"
+      "unknown_node": "composant inconnu",
+      "no_linked_requirement": "aucune exigence liée"
     },
     "unresolvedCount_one": "{{count}} référence non résolue",
     "unresolvedCount_other": "{{count}} références non résolues",
     "bannerTitle_one": "{{count}} instance a des références de paramètres non résolues :",
     "bannerTitle_other": "{{count}} instances ont des références de paramètres non résolues :",
     "sourceTag": "Paramètres lus à la baseline {{tag}}",
-    "sourceCurrent": "Paramètres lus sur l'état courant à l'ajout"
+    "sourceCurrent": "Paramètres lus sur l'état courant à l'ajout",
+    "reqInstances": {
+      "hint_one": "{{count}} exigence liée : une instance par exigence cochée",
+      "hint_other": "{{count}} exigences liées : une instance par exigence cochée",
+      "alreadyPresent": "déjà présente",
+      "openRequirement": "Ouvrir l'exigence",
+      "requirementOfInstance": "Exigence de cette instance :"
+    }
   }
 }

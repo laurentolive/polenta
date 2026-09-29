@@ -36,6 +36,16 @@ function buildDecorations(doc: PMNode, api: ParamRefApi | null, unresolvedLabel:
     for (const ref of parseParamRefs(node.text)) {
       const from = pos + ref.index
       const resolved = api.resolve(ref.key)
+      // T179 — `{req.<champ>}` hors champ de test : texte brut, sans décoration.
+      if (resolved.status === 'literal') continue
+      if (resolved.status === 'req') {
+        decos.push(Decoration.inline(from, from + ref.raw.length, {
+          class: 'param-ref param-ref--req',
+          title: resolved.title,
+          'data-param-ref': ref.key,
+        }, { key: ref.key }))
+        continue
+      }
       if (readOnly && resolved.status === 'ok') {
         const to = from + ref.raw.length
         decos.push(Decoration.inline(from, to, { class: 'param-ref-source' }, { key: ref.key }))

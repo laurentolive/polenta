@@ -1,5 +1,5 @@
 import type { CampaignTestRun, TestCase } from '@polenta/types'
-import { extractTestParamRefs, parseParamRefs, substituteMarkdownParamRefs, substituteParamRefs } from '@polenta/types'
+import { extractTestParamRefs, isReqRefKey, parseParamRefs, substituteMarkdownParamRefs, substituteParamRefs } from '@polenta/types'
 
 // T97 → T171 : la syntaxe `{nom}` des paramètres de test est celle de la base de paramètres
 // (`@polenta/types` parameter-refs). À l'ajout en campagne, le main résout les références
@@ -59,11 +59,13 @@ export function manualKeysForRun(run: CampaignTestRun, test: ParamScannable): st
     // T97 : toutes les références locales, code compris (grammaire et scan d'origine).
     const texts = [test.preconditions, ...[...(test.steps ?? [])].sort((a, b) => a.order - b.order)
       .flatMap(s => [s.action, s.expectedResult]), test.postconditions]
-    return [...new Set(texts.flatMap(t => parseParamRefs(t).map(r => r.key)))].filter(k => !k.includes('::'))
+    // `{req.<champ>}` (T179) n'existait pas : jamais à saisir.
+    return [...new Set(texts.flatMap(t => parseParamRefs(t).map(r => r.key)))].filter(k => !k.includes('::') && !isReqRefKey(k))
   }
   const keys = extractTestParamRefs(test)
   const unresolved = new Set((run.unresolvedParams ?? []).map(u => u.ref))
-  return keys.filter(k => run.resolvedParams?.[k] === undefined && !unresolved.has(k))
+  // T179 — `{req.<champ>}` : figée depuis l'exigence de l'instance ou non résolue, jamais saisie.
+  return keys.filter(k => run.resolvedParams?.[k] === undefined && !unresolved.has(k) && !isReqRefKey(k))
 }
 
 /** Vrai si chaque référence à saisir de chaque test sélectionné a une valeur non vide. */

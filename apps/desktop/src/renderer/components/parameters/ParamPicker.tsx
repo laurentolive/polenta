@@ -9,6 +9,8 @@ export interface ParamCandidate {
   key: string
   parameter: Parameter
   repoLabel: string
+  /** T179 — texte affiché à la place de la valeur (champ de l'exigence liée : son libellé). */
+  hint?: string
 }
 
 /** T171 — sélecteur d'insertion d'un paramètre (bouton de la barre d'outils ou saisie de `{`).
@@ -28,7 +30,7 @@ export function ParamPicker({ anchor, candidates, canCreate, onPick, onCreate, o
 
   const needle = query.trim().toLowerCase()
   const shown = useMemo(() => candidates.filter(c => !needle
-    || [c.key, c.parameter.value, c.parameter.unit ?? '', c.repoLabel, c.parameter.description ?? '']
+    || [c.key, c.parameter.value, c.parameter.unit ?? '', c.repoLabel, c.parameter.description ?? '', c.hint ?? '']
       .some(s => s.toLowerCase().includes(needle))), [candidates, needle])
 
   useEffect(() => { setActive(0) }, [needle])
@@ -74,7 +76,7 @@ export function ParamPicker({ anchor, candidates, canCreate, onPick, onCreate, o
               onClick={() => onPick(c.key)}
             >
               <span className="font-mono text-ink truncate">{c.key}</span>
-              <span className="text-ink-2 shrink-0">{formatParamValue(c.parameter) ?? t('parameters.emptyValue')}</span>
+              <span className="text-ink-2 shrink-0">{c.hint ?? formatParamValue(c.parameter) ?? t('parameters.emptyValue')}</span>
               <span className="ml-auto text-ink-3 shrink-0 truncate max-w-[30%]">{c.repoLabel}</span>
             </button>
           </li>

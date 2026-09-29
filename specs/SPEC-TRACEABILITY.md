@@ -81,6 +81,12 @@ Pour chaque paire (exigence, TestCase) :
 | `needs_revalidation` | L'exigence ou le test de la paire est marqué `needsRevalidation` (T172) |
 
 > "Dernier TestRun" = le plus récent par `executedAt`, toutes campagnes confondues.
+>
+> *(T179)* Un `TestRun` qui porte `requirementId` (exécution d'une instance générée pour une
+> exigence par `{req.<champ>}`, SPEC-TESTS §4.2) ne compte **que** pour cette exigence : pour la paire
+> (exigence, test), le dernier run retenu est le plus récent parmi les runs sans `requirementId` et
+> ceux de cette exigence (`latestRunForRequirement`). Même règle pour la couverture du moteur de
+> requêtes (dashboards), le rapport d'impact d'une exigence et le plan de test généré.
 
 ### 2.4 Filtres de la matrice
 

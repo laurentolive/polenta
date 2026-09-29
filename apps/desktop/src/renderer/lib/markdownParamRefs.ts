@@ -16,6 +16,8 @@ function escapeHtml(s: string): string {
 /** Infobulle d'une référence : nom (et description), ou raison de la non-résolution. */
 export function paramRefTitle(api: ParamRefApi, key: string, unresolvedLabel: string): string {
   const r = api.resolve(key)
+  if (r.status === 'req') return r.title
+  if (r.status === 'literal') return ''
   if (r.status === 'unresolved') return `{${key}} — ${unresolvedLabel}`
   return r.parameter.description ? `${key} — ${r.parameter.description}` : key
 }
@@ -66,7 +68,12 @@ export function markdownParamRefs(md: MarkdownIt): void {
     if (!api) return escapeHtml(tok.content)
     const key = tok.meta.key as string
     const r = api.resolve(key)
+    // T179 — `{req.<champ>}` hors champ de test : texte brut.
+    if (r.status === 'literal') return escapeHtml(tok.content)
     const title = escapeHtml(paramRefTitle(api, key, env.unresolvedLabel ?? ''))
+    if (r.status === 'req') {
+      return `<span class="param-ref param-ref--req" data-param-ref="${escapeHtml(key)}" title="${title}">${escapeHtml(tok.content)}</span>`
+    }
     if (r.status === 'ok') {
       return `<span class="param-ref" data-param-ref="${escapeHtml(key)}" title="${title}">${escapeHtml(r.display)}</span>`
     }

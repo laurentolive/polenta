@@ -1,18 +1,12 @@
 import type { ObjectLink, ProjectSchema, Requirement } from '@polenta/types'
+import { REQ_REF_SYSTEM_FIELDS } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService } from './requirements-index.service'
 import type { SchemaService } from './schema.service'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { matchCoverageLink } from './traceability.service'
 
-/** Champs système et dérivés d'une exigence accessibles par `{req.<champ>}` : ils masquent un
- *  champ personnalisé homonyme (T179 §1). */
-export const REQ_SYSTEM_FIELDS = [
-  'id', 'projectId', 'branchId', 'objectTypeRef', 'title', 'status', 'version', 'jiraLinks',
-  'needsRevalidation', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy',
-] as const
-
-const SYSTEM_FIELD_SET = new Set<string>(REQ_SYSTEM_FIELDS)
+const SYSTEM_FIELD_SET = new Set<string>(REQ_REF_SYSTEM_FIELDS)
 
 export interface SourcedRequirement {
   req: Requirement

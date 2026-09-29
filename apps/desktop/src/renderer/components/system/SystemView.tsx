@@ -12,6 +12,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StepsTable } from '../StepsTable'
+import { LinkedReqValues } from '../parameters/LinkedReqValues'
 import type { StepDraft } from '../StepsTable'
 import { Grid3x3, FileText, Settings } from 'lucide-react'
 import { CampaignListView } from './CampaignListView'
@@ -1473,12 +1474,18 @@ export function SystemView() {
             {isEditingTestCase && (
               <div className="border-t border-edge pt-5">
                 <p className="text-xs font-medium text-ink-2 mb-3">{t('system.wordView.stepsHeading')}</p>
-                <StepsTable
-                  steps={testSteps}
-                  onChange={setTestSteps}
-                  disabled={readOnly}
+                <LinkedReqValues
                   repoPath={repoPath}
-                />
+                  testId={editingObjectId}
+                  workspaceDir={currentProjectId ? decodeProjectId(currentProjectId) : ''}
+                >
+                  <StepsTable
+                    steps={testSteps}
+                    onChange={setTestSteps}
+                    disabled={readOnly}
+                    repoPath={repoPath}
+                  />
+                </LinkedReqValues>
               </div>
             )}
           </EditView>

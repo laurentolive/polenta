@@ -313,6 +313,9 @@ indépendamment des liens.
 - **Modification** (`value`, `unit`, ou création résolvant des références) d'un paramètre
   utilisé par un élément approuvé : confirmation, puis marquage `needsRevalidation` (§5.3).
 - **Exports** exigences / tests : mêmes valeurs qu'à l'écran.
+- *(T179)* `{req.<champ>}` (champ de l'exigence liée, résolu par instance en campagne — SPEC-TESTS
+  §2.4a) n'a de sens que dans un test : dans une exigence, c'est du texte brut (ni style, ni
+  « Utilisé par », ni résolution).
 
 ### 3.3 Validation (`validator`)
 
@@ -400,6 +403,9 @@ test/exigence quel que soit le côté — `sourceId`/`targetId` — sur lequel s
 chacun. Une contrainte antérieure imposait le test en `sourceId` ; retirée volontairement
 pour ne pas exposer cette convention technique à l'utilisateur, qui peut créer le lien
 depuis l'éditeur du test ou celui de l'exigence indifféremment.
+
+La même définition du lien de couverture détermine les **exigences liées** d'un test pour les
+références `{req.<champ>}` (T179, SPEC-TESTS §2.4a) : une instance de campagne par exigence liée.
 
 ### 5.2 Structure d'un lien (`ObjectLink`)
 

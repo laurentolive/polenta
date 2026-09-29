@@ -6,6 +6,7 @@ import { api } from '../api'
 import { useProjectSchema, getTestTypeDef, getAllObjectTypes } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
 import { StepsTable } from '../components/StepsTable'
+import { LinkedReqValues } from '../components/parameters/LinkedReqValues'
 import type { StepDraft } from '../components/StepsTable'
 import { RichTextProvider } from '../contexts/RichTextContext'
 import { RichTextToolbar } from '../components/system/RichTextToolbar'
@@ -211,7 +212,9 @@ function TestCaseDetailPage() {
 
           <div>
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('system.wordView.stepsHeading')}</p>
-            <StepsTable steps={steps} onChange={setSteps} repoPath={repoPath} onSubmit={submitEdit} />
+            <LinkedReqValues repoPath={repoPath} testId={testId} workspaceDir={projectId ? decodeProjectId(projectId) : ''}>
+              <StepsTable steps={steps} onChange={setSteps} repoPath={repoPath} onSubmit={submitEdit} />
+            </LinkedReqValues>
           </div>
 
           <div>

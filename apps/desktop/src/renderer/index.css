@@ -137,6 +137,10 @@
   .param-ref--unresolved {
     @apply bg-status-warning-bg text-status-warning border-status-warning line-through decoration-1;
   }
+  /* T179 — `{req.<champ>}` dans un test : référence au champ de l'exigence liée, résolue en campagne. */
+  .param-ref--req {
+    @apply bg-status-neutral-bg text-status-neutral border-status-neutral border-dashed;
+  }
 
   /* Form inputs — use with w-full or flex-1 */
   .input-field {

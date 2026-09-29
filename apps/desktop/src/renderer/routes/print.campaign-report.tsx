@@ -45,7 +45,7 @@ function PrintCampaignReportPage() {
           const status = run.status
           return (
             <section key={run.entryId} className="break-inside-avoid border-b border-print-border pb-3">
-              <div className="font-mono text-xs text-print-ink-2">{tc.id}</div>
+              <div className="font-mono text-xs text-print-ink-2">{tc.id}{run.requirementId && ` · ${run.requirementId}`}</div>
               <h2 className="text-base font-medium">{tc.title}</h2>
               <p className="text-xs font-medium mt-1">{t('printCampaignReportPage.result', { label: t(RUN_STATUS_LABEL_KEY[status]) })}</p>
               {run.executedAt && (

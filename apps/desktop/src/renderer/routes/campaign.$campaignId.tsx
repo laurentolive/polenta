@@ -12,7 +12,12 @@ import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import { TestParamFields } from '../components/TestParamFields'
-import { isParamsComplete, manualKeysForRun } from '../lib/testParams'
+import { manualKeysForRun } from '../lib/testParams'
+import {
+  buildReqInstances, countInstances, effectiveReqSelection, isAddComplete, isIteratingPreview, missingReqs,
+  presentReqIds, setReqValue, toggleReq, type ReqSelectionState,
+} from '../lib/reqInstances'
+import { ReqInstancePicker } from '../components/campaign/ReqInstancePicker'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
 import { UnresolvedParamsBanner } from '../components/UnresolvedParamsBanner'
@@ -20,7 +25,7 @@ import { ExportButton } from '../components/export/ExportButton'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import type { TestRunStatus, TestCase, ProjectSchema } from '@polenta/types'
+import type { TestRunStatus, TestCase, ProjectSchema, ReqInstanceSelection } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
@@ -72,6 +77,8 @@ function CampaignDetailPage() {
   const [addingTests, setAddingTests] = useState(false)
   const [selectedToAdd, setSelectedToAdd] = useState<Set<string>>(new Set())
   const [addParamValues, setAddParamValues] = useState<Record<string, Record<string, string>>>({})
+  // T179 — tests itérants : exigences cochées et valeurs saisies par instance.
+  const [addReqSel, setAddReqSel] = useState<ReqSelectionState>({})
   const [testFilter, setTestFilter] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingFields, setEditingFields] = useState<Record<string, string> | null>(null)
@@ -138,8 +145,8 @@ function CampaignDetailPage() {
   )
 
   const addTestsMutation = useMutation({
-    mutationFn: ({ ids, paramValues }: { ids: string[]; paramValues: Record<string, Record<string, string>> }) =>
-      api.campaigns.addTests(repoPath, campaignId, ids, paramValues, workspaceDir || undefined),
+    mutationFn: ({ ids, paramValues, reqInstances }: { ids: string[]; paramValues: Record<string, Record<string, string>>; reqInstances?: ReqInstanceSelection }) =>
+      api.campaigns.addTests(repoPath, campaignId, ids, paramValues, workspaceDir || undefined, reqInstances),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
@@ -156,8 +163,8 @@ function CampaignDetailPage() {
   })
 
   const duplicateTestMutation = useMutation({
-    mutationFn: ({ testCaseId, paramValues }: { testCaseId: string; paramValues: Record<string, string> }) =>
-      api.campaigns.duplicateTest(repoPath, campaignId, testCaseId, paramValues, workspaceDir || undefined),
+    mutationFn: ({ testCaseId, paramValues, requirementId }: { testCaseId: string; paramValues: Record<string, string>; requirementId?: string }) =>
+      api.campaigns.duplicateTest(repoPath, campaignId, testCaseId, paramValues, workspaceDir || undefined, requirementId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
@@ -204,9 +211,19 @@ function CampaignDetailPage() {
   // Un test déjà présent reste proposé s'il a des paramètres **à saisir** — permet d'en ajouter
   // une autre instance directement depuis ce panneau. Un test dont toutes les références sont
   // résolues depuis la base se comporte comme un test sans paramètre : une seule inclusion.
+  // T179 — un test itérant déjà présent reste proposé tant qu'une de ses exigences liées n'a pas
+  // d'instance (déduplication par couple test/exigence) ; ses références à saisir ne suffisent pas
+  // (une instance de plus pour la même exigence passe par « Dupliquer »).
+  const presentOf = (id: string) => presentReqIds(campaign.runs, id)
   const availableTests = tests
     .filter(t => isTestApproved(t, schema))
-    .filter(t => !includedIds.has(t.id) || (manualKeysById.get(t.id)?.length ?? 0) > 0)
+    .filter(t => {
+      if (!includedIds.has(t.id)) return true
+      const preview = paramPreviews.get(t.id)
+      if (isIteratingPreview(preview)) return missingReqs(preview, presentOf(t.id)).length > 0
+      return (manualKeysById.get(t.id)?.length ?? 0) > 0
+    })
+  const addComplete = isAddComplete(selectedToAdd, paramPreviews, addParamValues, addReqSel, presentOf)
   const filteredAvailable = testFilter.trim()
     ? availableTests.filter(t =>
         t.id.toLowerCase().includes(testFilter.toLowerCase()) ||
@@ -221,6 +238,20 @@ function CampaignDetailPage() {
   function startEditingParams(entryId: string) {
     setEditingParamsFor(entryId)
     setEditParamValues(getRunParamValues(entryId))
+  }
+
+  /** T179 — l'exigence d'une instance peut vivre dans n'importe quel repo du workspace (liens de
+   *  couverture multi-repo) : ouvre sa fiche dans le premier repo qui la contient. */
+  async function openRequirement(reqId: string) {
+    const tree = workspaceDir ? await api.workspace.getTree(workspaceDir).catch(() => null) : null
+    const repos = [repoPath, ...(tree?.nodes ?? []).map(n => n.repoPath).filter(p => p && p !== repoPath)]
+    for (const repo of repos) {
+      const found = await api.requirements.get(repo, reqId).then(() => true, () => false)
+      if (found) {
+        navigate({ to: '/req/$reqId', params: { reqId }, search: { repoPath: repo, projectId, component: undefined, level: undefined } })
+        return
+      }
+    }
   }
 
   function navigateToView(entryId: string) {
@@ -242,23 +273,28 @@ function CampaignDetailPage() {
 
   async function handleConfirmAdd() {
     if (selectedToAdd.size === 0) return
-    if (previewLoading || !isParamsComplete(selectedToAdd, manualKeysById, addParamValues)) return
+    if (previewLoading || !addComplete) return
 
     // Un id déjà présent dans la campagne (test paramétré re-sélectionné) devient une
-    // nouvelle instance via duplicateTest() plutôt qu'addTests(), qui déduplique.
+    // nouvelle instance via duplicateTest() plutôt qu'addTests(), qui déduplique. T179 — un test
+    // itérant passe toujours par addTests(), avec les exigences retenues (dédup test/exigence).
     const ids = [...selectedToAdd]
-    const newIds = ids.filter(id => !includedIds.has(id))
-    const duplicateIds = ids.filter(id => includedIds.has(id))
+    const iterIds = ids.filter(id => isIteratingPreview(paramPreviews.get(id)))
+    const newIds = ids.filter(id => !iterIds.includes(id) && !includedIds.has(id))
+    const duplicateIds = ids.filter(id => !iterIds.includes(id) && includedIds.has(id))
+    const addIds = [...newIds, ...iterIds]
+    const reqInstances = buildReqInstances(iterIds, paramPreviews, addReqSel, presentOf)
 
     setIsConfirmingAdd(true)
     try {
       await Promise.all([
-        ...(newIds.length > 0 ? [addTestsMutation.mutateAsync({ ids: newIds, paramValues: addParamValues })] : []),
+        ...(addIds.length > 0 ? [addTestsMutation.mutateAsync({ ids: addIds, paramValues: addParamValues, reqInstances })] : []),
         ...duplicateIds.map(id => duplicateTestMutation.mutateAsync({ testCaseId: id, paramValues: addParamValues[id] ?? {} })),
       ])
       setAddingTests(false)
       setSelectedToAdd(new Set())
       setAddParamValues({})
+      setAddReqSel({})
       setTestFilter('')
     } finally {
       setIsConfirmingAdd(false)
@@ -423,7 +459,7 @@ function CampaignDetailPage() {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => { setAddingTests(false); setSelectedToAdd(new Set()); setAddParamValues({}); setTestFilter('') }}
+                    onClick={() => { setAddingTests(false); setSelectedToAdd(new Set()); setAddParamValues({}); setAddReqSel({}); setTestFilter('') }}
                     className="text-xs text-ink-3 hover:text-ink"
                   >
                     {t('common.cancel')}
@@ -431,10 +467,10 @@ function CampaignDetailPage() {
                   <button
                     type="button"
                     onClick={handleConfirmAdd}
-                    disabled={selectedToAdd.size === 0 || isConfirmingAdd || previewLoading || !isParamsComplete(selectedToAdd, manualKeysById, addParamValues)}
+                    disabled={selectedToAdd.size === 0 || isConfirmingAdd || previewLoading || !addComplete}
                     className="btn-primary-sm"
                   >
-                    {isConfirmingAdd ? t('campaignPage.adding') : t('campaignPage.addCount', { count: selectedToAdd.size })}
+                    {isConfirmingAdd ? t('campaignPage.adding') : t('campaignPage.addCount', { count: countInstances(selectedToAdd, paramPreviews, addReqSel, presentOf) })}
                   </button>
                 </div>
               </div>
@@ -472,7 +508,21 @@ function CampaignDetailPage() {
                               </span>
                             )}
                           </label>
-                          {selectedToAdd.has(availableTest.id) && (
+                          {selectedToAdd.has(availableTest.id) && isIteratingPreview(paramPreviews.get(availableTest.id)) && (() => {
+                            const id = availableTest.id
+                            const present = presentOf(id)
+                            const current = effectiveReqSelection(id, paramPreviews.get(id), present, addReqSel)
+                            return (
+                              <ReqInstancePicker
+                                preview={paramPreviews.get(id)!}
+                                present={present}
+                                selection={current}
+                                onToggle={reqId => setAddReqSel(prev => toggleReq(prev, id, reqId, current))}
+                                onChange={(reqId, key, value) => setAddReqSel(prev => setReqValue(prev, id, reqId, current, key, value))}
+                              />
+                            )
+                          })()}
+                          {selectedToAdd.has(availableTest.id) && !isIteratingPreview(paramPreviews.get(availableTest.id)) && (
                             <TestParamFields
                               labels={paramPreviews.get(availableTest.id)?.manual ?? []}
                               resolved={paramPreviews.get(availableTest.id)?.resolved}
@@ -517,6 +567,10 @@ function CampaignDetailPage() {
             // correspondent plus au `{label}` réellement figé dans la nouvelle instance.
             const liveTc = testMap.get(tcId)
             const liveManualKeys = paramPreviews.get(tcId)?.manual ?? []
+            // T179 — valeurs `{req.<champ>}` actuelles de l'exigence de l'instance (duplicata).
+            const liveReq = run.requirementId
+              ? paramPreviews.get(tcId)?.requirements?.find(r => r.requirementId === run.requirementId)
+              : undefined
             const hasLiveParams = liveManualKeys.length > 0
             const isEditingParams = editingParamsFor === entryId
             const isDuplicating = duplicatingFor === entryId
@@ -530,6 +584,22 @@ function CampaignDetailPage() {
                     <span className="font-mono text-xs text-ink-3">{tcId}</span>
                     {tc && (
                       <span className="text-xs text-ink ml-2 truncate">{tc.title}</span>
+                    )}
+                    {run.requirementId && (
+                      <>
+                        <span className="text-xs text-ink-3 mx-1">·</span>
+                        <button
+                          type="button"
+                          title={t('campaignParams.reqInstances.openRequirement')}
+                          onClick={e => {
+                            e.stopPropagation()
+                            void openRequirement(run.requirementId!)
+                          }}
+                          className="font-mono text-xs text-status-info hover:underline"
+                        >
+                          {run.requirementId}
+                        </button>
+                      </>
                     )}
                     {(run.unresolvedParams?.length ?? 0) > 0 && (
                       <span
@@ -548,7 +618,8 @@ function CampaignDetailPage() {
                   <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${RUN_STATUS_CLASS[runStatus]}`}>
                     {t(RUN_STATUS_LABEL_KEY[runStatus])}
                   </span>
-                  {isActive && hasLiveParams && (
+                  {/* T179 — exigence plus liée : pas de duplicata possible pour elle. */}
+                  {isActive && hasLiveParams && (!run.requirementId || liveReq) && (
                     <button
                       type="button"
                       onClick={e => {
@@ -634,8 +705,8 @@ function CampaignDetailPage() {
                     <p className="pl-6 text-[11px] text-ink-3 mb-1">{t('campaignPage.newInstanceOf', { tcId })}</p>
                     <TestParamFields
                       labels={liveManualKeys}
-                      resolved={paramPreviews.get(tcId)?.resolved}
-                      unresolved={paramPreviews.get(tcId)?.unresolved}
+                      resolved={{ ...paramPreviews.get(tcId)?.resolved, ...liveReq?.resolved }}
+                      unresolved={[...(paramPreviews.get(tcId)?.unresolved ?? []), ...(liveReq?.unresolved ?? [])]}
                       values={duplicateParamValues}
                       onChange={(label, value) => setDuplicateParamValues(prev => ({ ...prev, [label]: value }))}
                     />
@@ -649,7 +720,7 @@ function CampaignDetailPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => duplicateTestMutation.mutate({ testCaseId: tcId, paramValues: duplicateParamValues })}
+                        onClick={() => duplicateTestMutation.mutate({ testCaseId: tcId, paramValues: duplicateParamValues, requirementId: run.requirementId })}
                         disabled={duplicateTestMutation.isPending || liveManualKeys.some(label => !duplicateParamValues[label]?.trim())}
                         className="btn-primary-sm"
                       >

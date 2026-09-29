@@ -31,8 +31,8 @@ export async function exportCampaignPlanDocx(
     }),
   ]
 
-  for (const { test: t } of entries) {
-    children.push(new Paragraph({ text: `${t.id} — ${t.title}`, heading: HeadingLevel.HEADING_2 }))
+  for (const { run, test: t } of entries) {
+    children.push(new Paragraph({ text: entryHeading(t, run.requirementId), heading: HeadingLevel.HEADING_2 }))
     children.push(new Paragraph({
       children: [new TextRun({ text: `Type : ${t.objectTypeRef}    Statut : ${t.status}`, italics: true })],
     }))
@@ -58,7 +58,7 @@ export async function exportCampaignReportDocx(
 
   for (const { run, test: t } of entries) {
     const status = run.status
-    children.push(new Paragraph({ text: `${t.id} — ${t.title}`, heading: HeadingLevel.HEADING_2 }))
+    children.push(new Paragraph({ text: entryHeading(t, run.requirementId), heading: HeadingLevel.HEADING_2 }))
     children.push(new Paragraph({
       children: [new TextRun({ text: `Résultat : ${TEST_RUN_STATUS_LABELS[status]}`, bold: true })],
     }))
@@ -70,6 +70,11 @@ export async function exportCampaignReportDocx(
   }
 
   await writeDoc(children, destPath)
+}
+
+/** Titre d'une instance ; T179 — suivi de l'exigence pour laquelle elle a été générée. */
+function entryHeading(t: { id: string; title: string }, requirementId: string | undefined): string {
+  return `${t.id} — ${t.title}${requirementId ? ` · ${requirementId}` : ''}`
 }
 
 async function writeDoc(children: Paragraph[], destPath: string): Promise<void> {

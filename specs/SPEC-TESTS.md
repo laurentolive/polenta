@@ -192,6 +192,24 @@ Sur la fiche de définition du test (Word, Excel, Édition, Recherche), la réf�
 **valeur courante** de la base avec le style dédié (SPEC-REQ §3.5) ; la valeur réellement
 utilisée à l'exécution est celle figée en campagne.
 
+**Champ de l'exigence liée — `{req.<champ>}` (T179).** Dans les mêmes champs d'un test, `{req.<champ>}`
+référence un champ de l'exigence pour laquelle l'instance de campagne est générée : tout champ
+personnalisé (`fields`), tout champ système (`id`, `title`, `status`, `version`, `objectTypeRef`,
+`projectId`, `branchId`, `jiraLinks` — clés Jira —, `needsRevalidation` — absent = `false`) et les
+champs dérivés du git log (`createdAt`, `createdBy`, `updatedAt`, `updatedBy`) ; un champ
+personnalisé homonyme d'un champ système est masqué. Jamais préfixée d'un nœud (`{x::req.y}` reste
+littéral). Un test qui en contient au moins une est **itérant** : à l'ajout en campagne, une instance
+par exigence liée (§4.2). Les exigences liées sont celles du **lien de couverture**
+(`matchCoverageLink`, deux sens, tout type de lien — SPEC-REQ §5.1), exigences terminales exclues,
+liens orphelins ignorés, tri naturel des ID. Valeur substituée : texte brut (Markdown d'un `richtext`
+inséré tel quel), nombre/booléen en texte, liste jointe par `, `, objet en JSON compact ; un
+paramètre de base imbriqué dans la valeur est résolu dans la base du repo de l'exigence. Une
+`{req.…}` n'est **jamais** à saisir à la main. Sur la fiche de définition, elle reste affichée
+littéralement avec un style dédié (`param-ref--req`) ; au survol, dans la fiche/l'édition du test,
+la valeur du champ pour chaque exigence liée (état courant), ailleurs (Word, Excel, Recherche) un
+libellé générique. Le sélecteur d'insertion (saisie de `{` dans une étape) propose les champs de
+l'exigence liée. Dans une exigence, `{req.…}` est du texte brut.
+
 ### 2.4 Lien vers les exigences couvertes
 
 Un cas de test peut couvrir **une ou plusieurs exigences**. Le lien est bidirectionnel :
@@ -468,7 +486,8 @@ nécessairement unique par `testCaseId` (T97 sprint 2) :
 | `paramValues` | *(T97)* `Record<label, valeur>` — valeurs **saisies à la main** des références à saisir (§2.4a cas 2), modifiables après l'ajout. Depuis T171, toute référence à saisir y figure (vide si aucune valeur n'a été fournie) ; une référence n'est jamais à la fois ici et dans `resolvedParams`. |
 | `resolvedParams` | *(T171)* `Record<référence, valeur>` — valeurs lues dans la base de paramètres et **figées** à l'ajout (clé telle qu'écrite : `nom` ou `<nœud>::nom` ; valeur déjà formatée `value unit`). Aucune API ne les modifie. |
 | `paramSourceRef` | *(T171)* Tag git auquel les paramètres ont été lus (= `baselineRef` de la campagne) ; absent = état courant au moment de l'ajout. |
-| `unresolvedParams` | *(T171)* `{ ref, reason: 'tag_not_found' \| 'missing' \| 'empty' \| 'unknown_node' }[]` — références de base restées non résolues à l'ajout. |
+| `unresolvedParams` | *(T171)* `{ ref, reason: 'tag_not_found' \| 'missing' \| 'empty' \| 'unknown_node' \| 'no_linked_requirement' }[]` — références restées non résolues à l'ajout (`no_linked_requirement` : T179, `{req.…}` d'un test sans exigence liée). |
+| `requirementId` | *(T179)* Exigence pour laquelle l'instance a été générée (test itérant, §2.4a). Absent pour un test sans `{req.…}` ou sans exigence liée. Les valeurs `{req.<champ>}` sont figées dans `resolvedParams` sous la clé `req.<champ>`. |
 
 Ajouter des tests à une campagne déjà démarrée (`addTests()`) est possible tant qu'elle n'est pas
 `completed`/`abandoned` ; les nouveaux tests entrent avec le statut `pending`. Si le test ajouté a
@@ -490,7 +509,23 @@ bandeau dans la page campagne liste les instances ayant des références non ré
 indicateur ⚠ sur chaque instance concernée). Une modification ultérieure de la base ne change
 pas une campagne existante.
 `addTests()` reste limité à une instance par test à l'ajout groupé (dédoublonné par `testCaseId`,
-comme avant T97 sprint 2).
+comme avant T97 sprint 2) — sauf pour un test itérant (T179, ci-dessous).
+
+**Une instance par exigence liée (T179)** : pour un test itérant (§2.4a), `create()` et `addTests()`
+créent une instance par exigence retenue, chacune avec son `requirementId`, ses valeurs
+`{req.<champ>}` figées et ses propres références à saisir. Le panneau d'ajout et le formulaire de
+création listent sous le test ses exigences liées, **cochées par défaut, décochables**, avec leurs
+valeurs en lecture seule ; `reqInstances` (par test : exigences retenues et saisies par instance)
+est transmis au main, absent = toutes les exigences liées. La **déduplication** porte sur le couple
+(test, exigence) : un test déjà présent reste proposé tant qu'une de ses exigences liées n'a pas
+d'instance (les exigences déjà instanciées sont grisées « déjà présente »). Test itérant sans
+exigence liée : une seule instance, `{req.…}` non résolues (`no_linked_requirement`). Avec
+`baselineRef`, exigences, liens et champs dérivés sont lus **au tag** (un lien créé après le tag ne
+génère pas d'instance), sans repli sur l'état courant. « Dupliquer » une instance générée crée une
+instance pour **la même exigence** (valeurs relues à la source ; erreur si l'exigence n'est plus
+liée) ; « Dupliquer » une instance sans exigence crée une seule instance. La liste des tests de la
+campagne affiche l'ID de l'exigence de chaque instance (lien vers sa fiche, cherchée dans les repos
+du workspace).
 
 **Retirer un test (T99)** : `removeEntries()` retire une ou plusieurs instances (`entryId`) d'une
 campagne (refusé si `completed`/`abandoned`, même garde que `addTests()`) — ne retire que
@@ -574,6 +609,12 @@ l'état live du test — cohérent avec le reste de la page.
   selon le cas — paramètre retiré du test depuis, pour une entrée pré-T49) est simplement ignorée.
 - Hors contexte de campagne (fiche de définition du test) : depuis T171, la référence affiche la
   valeur **courante** de la base (SPEC-REQ §3.5), pas une valeur figée.
+- *(T179)* Instance générée pour une exigence : les `{req.<champ>}` sont substituées comme les
+  autres références figées (`resolvedParams`) ; l'en-tête rappelle « Exigence de cette instance :
+  `<ID>` » (et son titre s'il a été figé via `{req.title}`). Le `TestRun` créé à l'exécution porte
+  `requirementId` : il ne compte, en couverture, que pour cette exigence (SPEC-TRACEABILITY §2.3).
+  Exports de campagne (plan xlsx/docx/pdf, rapport docx/pdf) : une ligne par instance, avec l'ID de
+  son exigence (colonne « Exigence » en xlsx, suffixe `· <ID>` ailleurs).
 - Les champs concernés étant du Markdown (voir §5, sérialisation `RichTextField`/`RichTextViewer`),
   la substitution n'échappe pas manuellement le HTML — le rendu Markdown (`html: false`) neutralise
   déjà tout caractère spécial présent dans une valeur substituée.

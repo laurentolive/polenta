@@ -21,10 +21,16 @@ export function ParamRefText({ text, fallback }: { text: string; fallback?: Reac
   for (const ref of refs) {
     if (ref.index > last) parts.push(text.slice(last, ref.index))
     const r = api.resolve(ref.key)
+    // T179 — `{req.<champ>}` hors champ de test : texte brut.
+    if (r.status === 'literal') {
+      parts.push(ref.raw)
+      last = ref.index + ref.raw.length
+      continue
+    }
     parts.push(
       <span
         key={ref.index}
-        className={r.status === 'ok' ? 'param-ref' : 'param-ref param-ref--unresolved'}
+        className={r.status === 'ok' ? 'param-ref' : r.status === 'req' ? 'param-ref param-ref--req' : 'param-ref param-ref--unresolved'}
         data-param-ref={ref.key}
         // T176 — forme brute, pour placer le curseur de l'éditeur (Vue Excel) au bon caractère.
         data-param-raw={ref.raw}

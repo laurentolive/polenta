@@ -22,6 +22,13 @@ export function paramRefRegExp(): RegExp {
 /** T179 — préfixe des clés de référence à un champ de l'exigence liée (`{req.<champ>}`). */
 export const REQ_REF_PREFIX = 'req.'
 
+/** T179 — champs système et dérivés (git log) d'une exigence accessibles par `{req.<champ>}` ; ils
+ *  masquent un champ personnalisé homonyme. */
+export const REQ_REF_SYSTEM_FIELDS = [
+  'id', 'projectId', 'branchId', 'objectTypeRef', 'title', 'status', 'version', 'jiraLinks',
+  'needsRevalidation', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy',
+] as const
+
 /** Vrai pour une clé `req.<champ>` (T179) ; faux pour un paramètre de la base (T171). */
 export function isReqRefKey(key: string): boolean {
   return key.startsWith(REQ_REF_PREFIX)

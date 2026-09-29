@@ -9,7 +9,11 @@ import { RichTextProvider } from '../contexts/RichTextContext'
 import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { TestParamFields } from '../components/TestParamFields'
-import { isParamsComplete } from '../lib/testParams'
+import {
+  buildReqInstances, effectiveReqSelection, isAddComplete, isIteratingPreview, setReqValue, toggleReq,
+  type ReqSelectionState,
+} from '../lib/reqInstances'
+import { ReqInstancePicker } from '../components/campaign/ReqInstancePicker'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
 
@@ -48,6 +52,8 @@ function NewCampaignPage() {
     () => new Set(prefillTestCaseIds ? prefillTestCaseIds.split(',').filter(Boolean) : []),
   )
   const [paramValues, setParamValues] = useState<Record<string, Record<string, string>>>({})
+  // T179 — tests itérants : exigences cochées et valeurs saisies par instance.
+  const [reqSel, setReqSel] = useState<ReqSelectionState>({})
   const [error, setError] = useState<string | null>(null)
 
   // TanStack Router ne remonte pas ce composant pour une navigation vers cette même route
@@ -58,6 +64,7 @@ function NewCampaignPage() {
     setTitle(prefillTitle ?? '')
     setSelectedTests(new Set(prefillTestCaseIds ? prefillTestCaseIds.split(',').filter(Boolean) : []))
     setParamValues({})
+    setReqSel({})
   }, [prefillTitle, prefillTestCaseIds])
 
   const { data: schema } = useProjectSchema(repoPath)
@@ -108,7 +115,10 @@ function NewCampaignPage() {
   const { previews: paramPreviews, isLoading: previewLoading } = useParamPreview(
     repoPath, { baselineRef: baselineRef.trim() || undefined }, [...selectedTests], workspaceDir,
   )
-  const manualKeysById = new Map([...selectedTests].map(id => [id, paramPreviews.get(id)?.manual ?? []]))
+  // Nouvelle campagne : aucune exigence n'a encore d'instance.
+  const noneYet = () => new Set<string>()
+  // Une campagne peut être créée sans test : aucune instance exigée.
+  const paramsComplete = isAddComplete(selectedTests, paramPreviews, paramValues, reqSel, noneYet, false)
 
   const { data: tags = [] } = useQuery({
     queryKey: ['git-tags', repoPath],
@@ -125,6 +135,7 @@ function NewCampaignPage() {
         baselineRef: baselineRef.trim() || undefined,
         testCaseIds: [...selectedTests],
         paramValuesByTest: paramValues,
+        reqInstances: buildReqInstances(selectedTests, paramPreviews, reqSel, noneYet),
         component: component || undefined,
         level: level || undefined,
       }, workspaceDir || undefined),
@@ -145,7 +156,7 @@ function NewCampaignPage() {
     if (createMutation.isPending) return
     if (!title.trim()) { setError(t('requirementsPage.titleRequired')); return }
     if (!repoPath) { setError(t('common.projectNotLoaded')); return }
-    if (previewLoading || !isParamsComplete(selectedTests, manualKeysById, paramValues)) {
+    if (previewLoading || !paramsComplete) {
       setError(t('campaignPage.paramsIncomplete'))
       return
     }
@@ -257,7 +268,19 @@ function NewCampaignPage() {
                       <span className="font-mono text-ink-3 shrink-0">{t.id}</span>
                       <span className="text-ink truncate">{t.title}</span>
                     </label>
-                    {selectedTests.has(t.id) && (
+                    {selectedTests.has(t.id) && isIteratingPreview(paramPreviews.get(t.id)) && (() => {
+                      const current = effectiveReqSelection(t.id, paramPreviews.get(t.id), noneYet(), reqSel)
+                      return (
+                        <ReqInstancePicker
+                          preview={paramPreviews.get(t.id)!}
+                          present={noneYet()}
+                          selection={current}
+                          onToggle={reqId => setReqSel(prev => toggleReq(prev, t.id, reqId, current))}
+                          onChange={(reqId, key, value) => setReqSel(prev => setReqValue(prev, t.id, reqId, current, key, value))}
+                        />
+                      )
+                    })()}
+                    {selectedTests.has(t.id) && !isIteratingPreview(paramPreviews.get(t.id)) && (
                       <TestParamFields
                         labels={paramPreviews.get(t.id)?.manual ?? []}
                         resolved={paramPreviews.get(t.id)?.resolved}
@@ -280,7 +303,7 @@ function NewCampaignPage() {
           <div className="flex gap-3">
             <button
               type="submit"
-              disabled={createMutation.isPending || previewLoading || !isParamsComplete(selectedTests, manualKeysById, paramValues)}
+              disabled={createMutation.isPending || previewLoading || !paramsComplete}
               className="btn-primary"
             >
               {createMutation.isPending ? t('common.creating') : t('campaignPage.createCampaign')}

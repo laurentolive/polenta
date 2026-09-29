@@ -44,7 +44,7 @@ function PrintCampaignPlanPage() {
       <div className="space-y-4">
         {resolved.map(({ run, test: tc }) => (
           <section key={run.entryId} className="break-inside-avoid border-b border-print-border pb-3">
-            <div className="font-mono text-xs text-print-ink-2">{tc.id}</div>
+            <div className="font-mono text-xs text-print-ink-2">{tc.id}{run.requirementId && ` · ${run.requirementId}`}</div>
             <h2 className="text-base font-medium">{tc.title}</h2>
             <p className="text-xs text-print-ink-2">{t('printCampaignPlanPage.statusType', { status: tc.status, type: tc.objectTypeRef })}</p>
           </section>

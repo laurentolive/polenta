@@ -1052,7 +1052,13 @@
     "picker": {
       "search": "Search a parameter…",
       "create": "Create a parameter",
-      "insert": "Insert a parameter"
+      "insert": "Insert a parameter",
+      "reqField": "Linked requirement field",
+      "reqSystemField": "system field"
+    },
+    "reqRef": {
+      "title": "Field “{{field}}” of the linked requirement — resolved in campaigns, one instance per requirement",
+      "noLinked": "no linked requirement"
     }
   },
   "campaignParams": {
@@ -1062,13 +1068,21 @@
       "tag_not_found": "baseline not found",
       "missing": "missing parameter",
       "empty": "empty value",
-      "unknown_node": "unknown component"
+      "unknown_node": "unknown component",
+      "no_linked_requirement": "no linked requirement"
     },
     "unresolvedCount_one": "{{count}} unresolved reference",
     "unresolvedCount_other": "{{count}} unresolved references",
     "bannerTitle_one": "{{count}} instance has unresolved parameter references:",
     "bannerTitle_other": "{{count}} instances have unresolved parameter references:",
     "sourceTag": "Parameters read at baseline {{tag}}",
-    "sourceCurrent": "Parameters read from the current state when added"
+    "sourceCurrent": "Parameters read from the current state when added",
+    "reqInstances": {
+      "hint_one": "{{count}} linked requirement: one instance per checked requirement",
+      "hint_other": "{{count}} linked requirements: one instance per checked requirement",
+      "alreadyPresent": "already present",
+      "openRequirement": "Open requirement",
+      "requirementOfInstance": "Requirement of this instance:"
+    }
   }
 }

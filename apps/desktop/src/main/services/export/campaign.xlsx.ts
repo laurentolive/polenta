@@ -14,15 +14,17 @@ export async function exportCampaignPlanXlsx(
   titleRow.font = { bold: true, size: 13 }
   sheet.addRow([])
 
-  const headerRow = sheet.addRow(['ID', 'Titre', 'Type', 'Statut'])
+  // T179 — une ligne par instance ; « Exigence » : exigence pour laquelle l'instance a été générée.
+  const headerRow = sheet.addRow(['ID', 'Titre', 'Exigence', 'Type', 'Statut'])
   headerRow.font = { bold: true }
   sheet.getColumn(1).width = 16
   sheet.getColumn(2).width = 50
-  sheet.getColumn(3).width = 24
-  sheet.getColumn(4).width = 14
+  sheet.getColumn(3).width = 16
+  sheet.getColumn(4).width = 24
+  sheet.getColumn(5).width = 14
 
-  for (const { test: t } of payload.entries) {
-    sheet.addRow([t.id, t.title, t.objectTypeRef, t.status])
+  for (const { run, test: t } of payload.entries) {
+    sheet.addRow([t.id, t.title, run.requirementId ?? '', t.objectTypeRef, t.status])
   }
 
   await workbook.xlsx.writeFile(destPath)

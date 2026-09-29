@@ -282,9 +282,9 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     project?.localPath ?? '',
   )
   // Flat list of (repo, SystemNode) pairs (T120 — merges the former Composant/Sous-composant
-  // cascade). A repo with a single SystemNode contributes one entry, labeled exactly as the
-  // pre-T120 "Composant" combobox (mount name, disambiguated by its local node's label, e.g.
-  // "Produit" — several repos can share the same default-template label, T73). A repo with
+  // cascade). A repo with a single SystemNode contributes one entry, labeled by its display label
+  // only (T178 — the mount name is no longer shown next to it; falls back to the mount name when
+  // the repo has no label). A repo with
   // several SystemNode locaux (T113) contributes one entry per node. Grouped under that repo's
   // identity only when the workspace has more than one repo (flatNodes.length > 1) — a mono-repo
   // project has nothing to disambiguate from, so grouping there would only ever show the
@@ -296,14 +296,13 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     // profondeur, en gardant la chaîne d'ancêtres pour le libellé en chemin ci-dessous.
     const flat = flattenSystemNodes(repoNodes)
     if (flat.length <= 1) {
-      const localLabel = flat[0]?.node.label
-      const label = localLabel && localLabel !== n.name ? `${n.name} — ${localLabel}` : n.name
+      const label = flat[0]?.node.label || n.label || n.name
       return [{
         repoName: n.name, repoPath: n.repoPath, nodeId: flat[0]?.node.name ?? 'root', label,
         objectTypes: flat[0]?.node.objectTypes ?? [],
       }]
     }
-    const groupLabel = flatNodes.length > 1 ? n.name : undefined
+    const groupLabel = flatNodes.length > 1 ? (n.label || n.name) : undefined
     return flat.map(({ node, ancestors }) => {
       // root n'est jamais affiché dans le chemin — son identité est déjà portée par le repo
       // lui-même (groupLabel) — pertinent seulement si un composant a été imbriqué SOUS root

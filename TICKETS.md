@@ -1,5 +1,12 @@
 ## New
 
+### T178 — Bug : vues Exigences/Tests — les composants affichent le nom de montage en plus du label
+
+**Statut** : debugging — correctif appliqué (`specs/T178.md`), `tsc` propre ; en attente de validation humaine ; travail sur `main`
+
+**Description** : dans les vues Exigences et Tests, le sélecteur de composant affichait
+« <nom de montage> — <label affiché> ». Seul le label affiché doit apparaître.
+
 ### T177 — Bug : le formulaire d'ajout d'un composant n'a pas le label affiché ni la description
 
 **Statut** : debugging — correctif appliqué (`specs/T177.md`), `tsc` propre ; en attente de validation humaine ; travail sur `main`

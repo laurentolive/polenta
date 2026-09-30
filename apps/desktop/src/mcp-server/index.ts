@@ -27,6 +27,7 @@ import { registerSchemaTools } from './tools/schema.tools'
 import { registerReadTools } from './tools/read.tools'
 import { registerBulkImportTools } from './tools/bulk-import.tools'
 import { registerSchemaMutationTools } from './tools/schema-mutation.tools'
+import { registerLinkTools } from './tools/links.tools'
 
 interface ParsedArgs {
   repo?: string
@@ -78,6 +79,7 @@ async function main(): Promise<void> {
   registerReadTools(server, container)
   registerBulkImportTools(server, container)
   registerSchemaMutationTools(server, container)
+  registerLinkTools(server, container)
 
   const transport = new StdioServerTransport()
   await server.connect(transport)

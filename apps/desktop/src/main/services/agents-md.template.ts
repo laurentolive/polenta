@@ -10,7 +10,7 @@
  * À incrémenter à chaque changement de contenu de `AGENTS_MD_TEMPLATE` qui doit se
  * propager aux projets déjà créés.
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 1
+export const AGENTS_MD_TEMPLATE_VERSION = 2
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -65,7 +65,8 @@ Corps libre en Markdown (notes, contraintes, alternatives…).
 - **Champs métier** : tout ce qui est sous \`fields:\`, propre à chaque projet — leur
   liste, type et obligation (\`required\`) sont définis dans le schéma, pas ici.
 - **Les liens entre objets** (dérivation, vérification…) ne sont pas dans le
-  frontmatter : ce sont des ObjectLinks gérés par Polenta séparément.
+  frontmatter : ce sont des ObjectLinks gérés par Polenta séparément, dans
+  \`links/links.yaml\` (à créer/supprimer via les tools MCP \`create_links\`/\`delete_links\`).
 
 ## Où trouver les règles propres à CE projet : \`.polenta/schema.yaml\`
 
@@ -101,6 +102,10 @@ Tools disponibles :
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import
   massif avec \`dryRun\` obligatoire par défaut (aperçu des IDs prévisionnels et des
   erreurs, sans rien écrire) ; \`dryRun: false\` écrit réellement, en série, best-effort.
+- \`list_links\` / \`create_links\` / \`delete_links\` — liens entre objets (vérification,
+  implémentation…). \`create_links\`/\`delete_links\` ont \`dryRun\` par défaut ; \`create_links\`
+  vérifie le type (\`linkTypes\` de \`get_schema\`), l'existence des objets, la compatibilité
+  \`sourceRefs\`/\`targetRefs\` et l'absence de doublon.
 - \`add_component\` / \`add_object_type\` / \`add_field\` / \`add_status\` / \`add_link_type\` —
   modification ciblée du modèle de données (\`.polenta/schema.yaml\`), avec vérification
   des invariants (nom déjà pris, \`prefix\` unique sur tout le projet, nœud

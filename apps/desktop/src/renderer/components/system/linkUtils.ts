@@ -1,6 +1,7 @@
 import type { LinkTypeDefinition, ObjectLink } from '@polenta/types'
 import type { Candidate } from './LinkCombobox'
 
+// Règle dupliquée côté main dans `main/services/link-validation.util.ts` (GH16, serveur MCP) — garder les deux alignées.
 export function matchesRefs(objectTypeRef: string, refs: string[] | undefined, category: string | undefined): boolean {
   if (!refs || refs.length === 0) return true
   return refs.some(r => r.includes('::') ? r === objectTypeRef : r === category)

@@ -27,7 +27,8 @@ d'`objectTypeRef`, validation des champs requis, format des fichiers).
 - **Respect des nœuds `readonly: true`** — tout tool d'écriture (import massif,
   mutation de schéma) refuse d'écrire dans un nœud marqué `readonly: true`.
 - **Dry-run obligatoire pour l'import massif** — `bulk_import_*` valide et prévisualise
-  par défaut (`dryRun: true`), n'écrit qu'avec `dryRun: false` explicite.
+  par défaut (`dryRun: true`), n'écrit qu'avec `dryRun: false` explicite. Même règle pour
+  `create_links`/`delete_links` (GH16, §4.4).
 - **Enforcement EARS/cohérence** : hors scope (statu quo) — sauf la vérification EARS
   spécifique aux champs `validator: EARS` dans `bulk_import_*` (cf. §4.1), les autres
   règles de `CLAUDE.md` §"Règles de cohérence" restent documentées dans `AGENTS.md`,
@@ -132,6 +133,9 @@ serveur MCP sont écrits sur disque mais n'apparaissent jamais dans SystemView/E
 
 Synchrone (pas de `createContainer()` async) — pas de fenêtre à ouvrir, pas d'attente
 `app.whenReady()`.
+
+**GH16** : `McpContainer` expose aussi `reqIndex`/`testsIndex`, pour que `create_links`
+puisse invalider ces index quand un ID est introuvable (pas de watcher dans ce process).
 
 **Limitation connue documentée** : `AuthService`/`SyncService` sont construits (requis
 transitivement) mais aucun tool de ce ticket n'appelle une méthode qui touche
@@ -262,6 +266,80 @@ refus : `{ isError: true, content: [{ type: 'text', text: '[<CODE>] <message>' }
 TYPE_NAME_TAKEN | TYPE_NOT_FOUND | PREFIX_TAKEN | FIELD_NAME_TAKEN |
 STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN`.
 
+### 4.4 Liens (`tools/links.tools.ts`, GH16)
+
+Liens (`ObjectLink`) toujours lus/écrits dans `links/links.yaml` du **repo ciblé**
+(`--repo`), jamais dans un composant. Chaque tool relit ce fichier depuis le disque
+(`RequirementsIndexService.reloadLinks`) : le process MCP n'a pas de `RepoWatcherService`,
+son cache peut ignorer un lien créé entre-temps par l'app, et une écriture basée dessus
+l'écraserait. `reloadLinks` lève si le fichier a un contenu dont `links` n'est pas un
+tableau (fichier absent ou vide → `[]`) ; un YAML invalide lève déjà dans `readYaml`.
+Dans l'autre sens, l'app voit les écritures MCP (son watcher invalide l'index sur tout
+changement sous `links/`).
+
+#### `list_links`
+
+```ts
+{ objectId?: string; type?: string }   →   { links: ObjectLink[] }
+```
+`objectId` : liens dont l'objet est source **ou** cible ; `type` : `linkTypes[].name`. Filtres
+cumulés (ET). Pas de `paginate`.
+
+#### `create_links`
+
+```ts
+{ entries: Array<{ type, sourceId, targetId }>; dryRun?: boolean }   // dryRun par défaut true
+→ { dryRun, summary: { total, ok, failed },
+    wouldCreate: Array<{ index, type, sourceId, targetId }>,   // dryRun: true
+    created: Array<{ index, id }>,                              // dryRun: false
+    errors: Array<{ index, code, reason }> }
+```
+
+Validation stricte (`main/services/link-validation.util.ts::validateLinkEntries`, pure),
+par entrée, première règle en échec retenue :
+
+1. `type` ∈ `schema.linkTypes` — sinon `LINK_TYPE_NOT_FOUND`.
+2. `sourceId !== targetId` — sinon `SELF_LINK`.
+3. Source et cible existent — sinon `OBJECT_NOT_FOUND` (raison : « source »/« cible » + ID).
+   Recherche dans `resolveWorkspaceRepoPaths` (repo ciblé seul en mono-repo ; + repos
+   composants du cache d'arbre avec `--workspace`) : exigences, tests, campagnes. Si un ID
+   du lot est introuvable, les index exigences/tests de ces repos sont invalidés et la
+   recherche refaite **une fois** (objet créé par l'app après la construction de l'index).
+4. Compatibilité : **catégorie = dossier de stockage** (`requirements/` → `requirement`,
+   `tests/` → `test`, `campaigns/` → `campaign`), pas le schéma — un type de composant
+   submodule `'unresolvable'` dans le schéma produit a donc une catégorie fiable. Une ref
+   `nœud::type` est comparée à l'`objectTypeRef` stocké, sinon à la catégorie ; liste vide
+   = tout accepté (même règle que `renderer/.../linkUtils.ts::matchesRefs`, dupliquée).
+   Valide si l'un des deux sens est compatible ; le sens fourni est **conservé** (pas de
+   normalisation). Sinon `LINK_TYPE_INCOMPATIBLE`.
+5. Pas de doublon (même `type`, même paire, quel que soit le sens) avec un lien existant
+   ou une entrée valide précédente du lot — sinon `DUPLICATE_LINK` (cite l'id existant).
+
+`dryRun: false` : `RequirementsIndexService.createLinks(repoPath, dtos, 'mcp')` — sous
+verrou par repo (`withKeyLock`), relit le fichier, **refait le contrôle de doublon** contre
+cet état (appel MCP concurrent, lien ajouté par l'app entre la validation et l'écriture :
+l'entrée est alors reportée `DUPLICATE_LINK`), puis **une seule** écriture pour le lot.
+Liens créés : `createdBy: 'mcp'`, `createdAt` ISO, id `lnk_<timestamp>_<aléa>` unique.
+Ne pose pas `needsRevalidation`. Lot vide → aucune écriture.
+
+#### `delete_links`
+
+```ts
+{ ids: string[]; dryRun?: boolean }   // dryRun par défaut true
+→ { dryRun, summary, wouldDelete: ObjectLink[] /* dryRun */, deleted: string[] /* réel */,
+    errors: Array<{ index, code: 'LINK_NOT_FOUND', reason }> }
+```
+Id inexistant ou répété dans le lot → `LINK_NOT_FOUND` à son index, les autres sont
+traités. `dryRun: false` : `RequirementsIndexService.deleteLinks` (même verrou, relecture,
+une seule écriture) ; un lien disparu entre-temps est reporté `LINK_NOT_FOUND`.
+
+Toutes les erreurs par entrée sont dans `errors[]` (jamais `isError`, même si tout le lot
+échoue) ; une erreur inattendue (YAML corrompu) remonte en erreur de protocole, fichier
+non modifié.
+
+Le chemin IPC de l'UI (`requirements:link-create`/`link-delete`) reste **sans
+validation** (hors scope GH16).
+
 ---
 
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
@@ -294,7 +372,8 @@ Pour chacun des deux fichiers, `ensureAgentFiles` (factorisé dans
      — les clients MCP ignorent les clés inconnues à la racine, ce champ ne perturbe
      pas la découverte des tools.
 2. Compare ce marqueur à la constante courante (`AGENTS_MD_TEMPLATE_VERSION` /
-   `MCP_JSON_TEMPLATE_VERSION`, toutes deux `1` au sprint 4) :
+   `MCP_JSON_TEMPLATE_VERSION`, toutes deux `1` au sprint 4 ; `AGENTS_MD_TEMPLATE_VERSION`
+   passée à `2` par GH16 — ajout des tools de liens) :
    - **Égal** → **aucune écriture** (mtime/hash strictement inchangés — vérifié
      manuellement, cf. `specs/T122-sprint4.md`).
    - **Absent** (fichier pré-T122/T106, ou créé/édité à la main sans le marqueur) ou
@@ -334,6 +413,12 @@ Deux catégories (cf. §4) :
 - **Mode mono-repo par défaut** (§2.3) : sans `--workspace`, un `objectTypeRef` vers un
   vrai composant submodule (nœud avec `url`) retombe silencieusement sur le repo
   produit — pas une erreur, mais pas le comportement attendu pour un vrai submodule.
+  Pour `create_links` (GH16), un objet vivant dans un repo composant n'est pas trouvé
+  sans `--workspace` → `OBJECT_NOT_FOUND`.
+- **Liens : fenêtre de course inter-process résiduelle** (GH16) — le verrou de
+  `createLinks`/`deleteLinks` est propre au process MCP ; une écriture de l'app sur
+  `links.yaml` entre la relecture sous verrou et l'écriture MCP (quelques ms) serait
+  perdue. Même niveau de risque que les autres écritures YAML read-modify-write.
 - **`add_object_type.prefix` : scan mono-repo, pas workspace-wide** — le contrôle
   d'unicité (règle 10 CLAUDE.md) ne porte que sur `schema.nodes` du repo COURANT ;
   les prefixes d'un vrai composant submodule (schéma vivant dans un autre repo, non
@@ -377,6 +462,9 @@ Deux catégories (cf. §4) :
 | `apps/desktop/src/mcp-server/tools/read.tools.ts` | `list_requirements`, `list_tests`, `list_campaigns` |
 | `apps/desktop/src/mcp-server/tools/bulk-import.tools.ts` | `bulk_import_requirements`, `bulk_import_tests`, `bulk_import_campaigns` |
 | `apps/desktop/src/mcp-server/tools/schema-mutation.tools.ts` | `add_component`, `add_object_type`, `add_field`, `add_status`, `add_link_type` |
+| `apps/desktop/src/mcp-server/tools/links.tools.ts` | `list_links`, `create_links`, `delete_links` (GH16) |
+| `apps/desktop/src/main/services/link-validation.util.ts` | `validateLinkEntries`, `matchesRefs` (GH16, logique pure) |
+| `apps/desktop/src/main/services/requirements-index.service.ts` | `reloadLinks`/`createLinks`/`deleteLinks` (GH16 — relecture disque, verrou par repo, écriture unique par lot) |
 | `apps/desktop/src/main/services/bulk-import-validation.util.ts` | `validateBulkEntries` (logique métier pure) |
 | `apps/desktop/src/main/services/id-counter.util.ts` | `nextCounterId` (T118) + `peekNextCounterId`/`formatCounterId` (T122) |
 | `apps/desktop/src/main/services/schema.service.ts` | `addNode`/`addObjectType`/`addField`/`addStatus`/`addLinkType`, `SchemaValidationError`, `withMutationQueue` |

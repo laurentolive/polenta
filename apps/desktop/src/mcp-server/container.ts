@@ -25,6 +25,10 @@ export interface McpContainer {
   tests: TestsService
   campaigns: CampaignsService
   workspaceTree: WorkspaceTreeService
+  /** GH16 — exposés pour invalider le cache quand un ID est introuvable (objet créé par
+   *  l'app après construction de l'index : ce process n'a pas de RepoWatcherService). */
+  reqIndex: RequirementsIndexService
+  testsIndex: TestsIndexService
 }
 
 /**
@@ -69,5 +73,5 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string): Mcp
   const tests = new TestsService(git, testsIndex, schema, tree, revalidation)
   const campaigns = new CampaignsService(git, tests)
 
-  return { repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree }
+  return { repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex }
 }

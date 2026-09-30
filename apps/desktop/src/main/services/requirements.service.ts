@@ -50,6 +50,18 @@ export class RequirementsService {
     return this.index.deleteLink(repoPath, linkId)
   }
 
+  reloadLinks(repoPath: string) {
+    return this.index.reloadLinks(repoPath)
+  }
+
+  createLinks(repoPath: string, data: Array<{ type: string; sourceId: string; targetId: string }>, createdBy: string) {
+    return this.index.createLinks(repoPath, data, createdBy)
+  }
+
+  deleteLinks(repoPath: string, ids: string[]) {
+    return this.index.deleteLinks(repoPath, ids)
+  }
+
   async create(repoPath: string, dto: CreateRequirementDto, workspaceDir?: string): Promise<Requirement> {
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
     const reqId = await this.nextId(repoPath, dto.objectTypeRef)

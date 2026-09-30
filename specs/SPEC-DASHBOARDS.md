@@ -217,8 +217,10 @@ affichées ensemble, empilées (Dashboards en haut), sous l'en-tête « Suivi »
 - Chaque section se replie ou se déplie par clic sur son en-tête (chevron + libellé). Le
   bouton « + » reste actif quand la section est repliée.
 - Une section repliée n'affiche que son en-tête.
-- Les sections dépliées se partagent la hauteur (`flex-1`) : 50/50 si les deux sont
-  dépliées, toute la hauteur si une seule l'est.
+- Les sections dépliées se partagent la hauteur : toute la hauteur si une seule est
+  dépliée. Si les deux le sont, le partage suit un séparateur déplaçable entre elles
+  (défaut 50/50, 140 px minimum par section, double-clic → 50/50). Le ratio est
+  persisté en `localStorage['polenta:suiviSplit']`.
 - L'état replié/déplié est persisté en `localStorage['polenta:suiviCollapsed']`
   (`{dashboards, queries}`, commun à tous les projets). Par défaut, les deux sections
   sont dépliées, y compris en cas de valeur illisible.

@@ -18,6 +18,12 @@ Pas de tests unitaires renderer dans le projet (pas de script `test` dans
 | N7 | Exécuter une requête, puis la sauvegarder (titre + portée). | Elle apparaît immédiatement dans la section Requêtes du panneau et y est surlignée. Le titre de l'onglet reprend son nom. |
 | N8 | Historique : filtrer, supprimer une entrée (✕), cliquer une entrée. | Fonctionnement identique à avant GH14. |
 
+| S1 | Deux sections dépliées : glisser le séparateur vers le bas. | Dashboards grandit, Requêtes rétrécit. Le curseur `row-resize` est gardé pendant tout le glissement. |
+| S2 | Glisser le séparateur jusqu'en haut ou en bas. | Blocage à 140 px minimum pour chaque section, sans chevauchement de contenu. |
+| S3 | Double-clic sur le séparateur. | Retour à 50/50. |
+| S4 | Redimensionner, puis redémarrer l'app. | Le ratio est restauré. |
+| S5 | Replier une des deux sections. | Le séparateur disparaît et la section dépliée prend toute la hauteur. Au redépli, le ratio mémorisé est réappliqué. |
+
 ## Cas limites
 
 | # | Situation | Résultat attendu |

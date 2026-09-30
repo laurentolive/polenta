@@ -24,6 +24,21 @@
 
 Conforme à `GH14.md` et `GH14-design.md`.
 
+## Ajout en validation — séparateur redimensionnable
+
+Demandé à la validation du sprint (initialement hors scope dans `GH14.md`) :
+- `ReorderableSidebarSection` : nouveau prop optionnel `flexGrow` (défaut 1). Une section
+  dépliée a le style `flex: <flexGrow> 1 0%`.
+- `DashboardPanel` : les deux sections sont regroupées dans un conteneur
+  (`sectionsRef`). Un séparateur `role="separator"` (`h-1`, `cursor-row-resize`, surligné
+  au survol) n'est rendu que si les deux sections sont dépliées. Le glissement calcule
+  le ratio `split` à partir de la position verticale du pointeur dans le conteneur,
+  borné à 140 px minimum par section. Il suit le même principe que la poignée de
+  largeur de la sidebar dans `AppLayout` (listeners `mousemove`/`mouseup` sur
+  `document`). Un double-clic rétablit 0,5. Le ratio est persisté en
+  `localStorage['polenta:suiviSplit']`, avec repli sur 0,5 si la valeur est invalide.
+- Tests : scénarios S1–S5 ajoutés dans `GH14-tests.md`.
+
 ## Divergences par rapport au design
 
 - **Dépliage automatique restreint aux éléments listés** (issu de la revue de code). Le

@@ -48,6 +48,9 @@ interface Props<T extends SidebarItem> {
   /** GH14 — collapsed: only the header (chevron, label, "+") is rendered. */
   collapsed: boolean
   onToggleCollapsed: () => void
+  /** GH14 — share of the height when expanded (flex-grow, basis 0), set by the
+   *  parent's splitter. Defaults to 1, i.e. an even split with the other section. */
+  flexGrow?: number
 }
 
 /** Exported for `DashboardGrid.tsx`'s widget grid, which needs the exact same
@@ -83,6 +86,7 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
   deleteError,
   collapsed,
   onToggleCollapsed,
+  flexGrow = 1,
 }: Props<T>) {
   const { t } = useTranslation()
   const [filter, setFilter] = useState('')
@@ -149,7 +153,10 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
   )
 
   return (
-    <div className={`flex flex-col border-b border-edge ${collapsed ? 'shrink-0' : 'flex-1 min-h-0'}`}>
+    <div
+      className={`flex flex-col border-b border-edge ${collapsed ? 'shrink-0' : 'min-h-0'}`}
+      style={collapsed ? undefined : { flex: `${flexGrow} 1 0%` }}
+    >
       <div ref={dragImageRef} className="fixed -top-96 left-0 w-1 h-1 opacity-0" />
 
       <div className="flex items-center justify-between gap-2 px-3 py-2 shrink-0">

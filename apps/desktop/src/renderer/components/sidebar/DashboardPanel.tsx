@@ -11,12 +11,13 @@
  * GH14: T92's icon tab bar (one section at a time) was unclear — both sections are
  * shown again, stacked, each collapsible. The collapsed state is persisted in
  * localStorage (UI preference, shared by all projects) and a section is forced
- * open when it holds the active item.
+ * open when it holds the active item. When both are expanded, a horizontal splitter
+ * between them sets their height ratio (persisted too; double-click resets 50/50).
  *
  * Clicking a saved query opens the Requêtes view with it loaded; clicking a
  * dashboard opens the Dashboard view (T77.md § Panneau latéral).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -45,6 +46,23 @@ function readCollapsed(): Collapsed {
     // Valeur illisible — on retombe sur les deux sections dépliées.
   }
   return DEFAULT_COLLAPSED
+}
+
+const SPLIT_KEY = 'polenta:suiviSplit'
+const SPLIT_DEFAULT = 0.5
+/** Minimum height (px) kept for each section while dragging the splitter — header +
+ *  filter + the list's own 64px minimum, so a section never overflows into the other. */
+const SPLIT_MIN_PX = 140
+
+/** Share of the two-section area given to Dashboards (Requêtes gets the rest). */
+function readSplit(): number {
+  try {
+    const parsed = parseFloat(localStorage.getItem(SPLIT_KEY) ?? '')
+    if (parsed > 0 && parsed < 1) return parsed
+  } catch {
+    // Valeur illisible — partage 50/50.
+  }
+  return SPLIT_DEFAULT
 }
 
 interface Props {
@@ -86,6 +104,41 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
   function toggleCollapsed(section: keyof Collapsed) {
     setCollapsed((prev) => ({ ...prev, [section]: !prev[section] }))
   }
+
+  // ── Splitter Dashboards / Requêtes (both expanded only) ─────────────────────
+  const [split, setSplit] = useState<number>(readSplit)
+  const sectionsRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SPLIT_KEY, String(split))
+    } catch {
+      // Préférence d'affichage non persistée — sans conséquence.
+    }
+  }, [split])
+
+  function handleSplitMouseDown(e: ReactMouseEvent) {
+    e.preventDefault()
+    const container = sectionsRef.current
+    if (!container) return
+    const onMouseMove = (ev: MouseEvent) => {
+      const rect = container.getBoundingClientRect()
+      if (rect.height <= 2 * SPLIT_MIN_PX) return
+      const min = SPLIT_MIN_PX / rect.height
+      setSplit(Math.min(1 - min, Math.max(min, (ev.clientY - rect.top) / rect.height)))
+    }
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+    }
+    // Keep the resize cursor while the pointer leaves the thin handle mid-drag.
+    document.body.style.cursor = 'row-resize'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }
+
+  const bothExpanded = !collapsed.dashboards && !collapsed.queries
 
   const { data: project } = useQuery({
     queryKey: ['workspace', currentProjectId],
@@ -211,42 +264,56 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
         <p className="section-label">{t('sidebar.dashboard.title')}</p>
       </div>
 
-      <ReorderableSidebarSection
-        label={t('sidebar.dashboard.dashboardsLabel')}
-        items={dashboards}
-        order={dashboardsOrder}
-        activeId={activeDashboardId}
-        filterText={dashboardFilterText}
-        onReorder={(order) => dashboardsOrderMutation.mutate(order)}
-        onSelect={(d) => openDashboard(d.id)}
-        onDelete={(d) => deleteDashboardMutation.mutate(d.id)}
-        onAdd={() => setNewDashboardTitle('')}
-        emptyMessage={t('sidebar.dashboard.noDashboards')}
-        addTitle={t('sidebar.dashboard.addDashboard')}
-        addFirstLabel={t('sidebar.dashboard.createFirstDashboard')}
-        isLoading={dashboardsLoading}
-        collapsed={collapsed.dashboards}
-        onToggleCollapsed={() => toggleCollapsed('dashboards')}
-      />
+      <div ref={sectionsRef} className="flex-1 min-h-0 flex flex-col">
+        <ReorderableSidebarSection
+          label={t('sidebar.dashboard.dashboardsLabel')}
+          items={dashboards}
+          order={dashboardsOrder}
+          activeId={activeDashboardId}
+          filterText={dashboardFilterText}
+          onReorder={(order) => dashboardsOrderMutation.mutate(order)}
+          onSelect={(d) => openDashboard(d.id)}
+          onDelete={(d) => deleteDashboardMutation.mutate(d.id)}
+          onAdd={() => setNewDashboardTitle('')}
+          emptyMessage={t('sidebar.dashboard.noDashboards')}
+          addTitle={t('sidebar.dashboard.addDashboard')}
+          addFirstLabel={t('sidebar.dashboard.createFirstDashboard')}
+          isLoading={dashboardsLoading}
+          collapsed={collapsed.dashboards}
+          onToggleCollapsed={() => toggleCollapsed('dashboards')}
+          flexGrow={bothExpanded ? split : 1}
+        />
 
-      <ReorderableSidebarSection
-        label={t('sidebar.dashboard.queriesLabel')}
-        items={queries}
-        order={queriesOrder}
-        activeId={activeQueryId}
-        filterText={queryFilterText}
-        onReorder={(order) => queriesOrderMutation.mutate(order)}
-        onSelect={(q) => openQuery(q.id)}
-        onDelete={(q) => deleteQueryMutation.mutate(q.id)}
-        onAdd={() => openQuery(undefined)}
-        emptyMessage={t('sidebar.dashboard.noQueries')}
-        addTitle={t('sidebar.dashboard.addQuery')}
-        addFirstLabel={t('sidebar.dashboard.createFirstQuery')}
-        isLoading={queriesLoading}
-        deleteError={queryDeleteError}
-        collapsed={collapsed.queries}
-        onToggleCollapsed={() => toggleCollapsed('queries')}
-      />
+        {bothExpanded && (
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            onMouseDown={handleSplitMouseDown}
+            onDoubleClick={() => setSplit(SPLIT_DEFAULT)}
+            className="h-1 -mt-px shrink-0 cursor-row-resize hover:bg-status-info-solid transition-colors"
+          />
+        )}
+
+        <ReorderableSidebarSection
+          label={t('sidebar.dashboard.queriesLabel')}
+          items={queries}
+          order={queriesOrder}
+          activeId={activeQueryId}
+          filterText={queryFilterText}
+          onReorder={(order) => queriesOrderMutation.mutate(order)}
+          onSelect={(q) => openQuery(q.id)}
+          onDelete={(q) => deleteQueryMutation.mutate(q.id)}
+          onAdd={() => openQuery(undefined)}
+          emptyMessage={t('sidebar.dashboard.noQueries')}
+          addTitle={t('sidebar.dashboard.addQuery')}
+          addFirstLabel={t('sidebar.dashboard.createFirstQuery')}
+          isLoading={queriesLoading}
+          deleteError={queryDeleteError}
+          collapsed={collapsed.queries}
+          onToggleCollapsed={() => toggleCollapsed('queries')}
+          flexGrow={bothExpanded ? 1 - split : 1}
+        />
+      </div>
 
       {newDashboardTitle !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">

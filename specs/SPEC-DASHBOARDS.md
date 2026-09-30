@@ -15,8 +15,10 @@ modifiées — retiré sans reprise en sprint 3).
 Trois entités, chacune privée ou partagée : **Requête** (`SavedQuery`), **Widget**
 (embarqué dans un Dashboard, pas d'entité/fichier propre), **Dashboard**.
 
-Nouvel onglet `ActivityBar` "Suivi" — panneau latéral à deux sections (Dashboards /
-Requêtes), deux familles de vues (`/query`, `/dashboard`).
+Nouvel onglet `ActivityBar` "Suivi" — panneau latéral à deux sections repliables
+empilées (Dashboards / Requêtes, §6), deux familles de vues (`/query`, `/dashboard`).
+La vue Requêtes contient l'éditeur, le résultat, la sauvegarde, l'historique et l'export.
+Les requêtes sauvegardées ne sont listées que dans le panneau latéral (GH14).
 
 ---
 
@@ -209,6 +211,24 @@ Deux sections indépendantes ("Dashboards", "Requêtes"), chacune réorganisable
 glisser-déposer (composant générique `ReorderableSidebarSection`, partagé), filtre
 texte dynamique. Clic sur un dashboard → vue Dashboard ; clic sur une requête → vue
 Requêtes avec cette requête chargée dans l'éditeur adapté à son mode d'origine.
+
+**Disposition (GH14 — remplace les onglets à icônes de T92)** : les deux sections sont
+affichées ensemble, empilées (Dashboards en haut), sous l'en-tête « Suivi ».
+- Chaque section se replie ou se déplie par clic sur son en-tête (chevron + libellé). Le
+  bouton « + » reste actif quand la section est repliée.
+- Une section repliée n'affiche que son en-tête.
+- Les sections dépliées se partagent la hauteur : toute la hauteur si une seule est
+  dépliée. Si les deux le sont, le partage suit un séparateur déplaçable entre elles
+  (défaut 50/50, 140 px minimum par section, double-clic → 50/50). Le ratio est
+  persisté en `localStorage['polenta:suiviSplit']`.
+- L'état replié/déplié est persisté en `localStorage['polenta:suiviCollapsed']`
+  (`{dashboards, queries}`, commun à tous les projets). Par défaut, les deux sections
+  sont dépliées, y compris en cas de valeur illisible.
+- Une section se déplie automatiquement quand l'élément actif de l'URL (`dashboardId` /
+  `queryId`) figure dans sa liste. Un id d'historique ne déplie rien.
+
+La suppression d'une requête sauvegardée se fait uniquement depuis ce panneau (la vue
+Requêtes n'a plus de liste « Requêtes sauvegardées » depuis GH14).
 
 ---
 

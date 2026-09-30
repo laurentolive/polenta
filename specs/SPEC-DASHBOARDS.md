@@ -230,10 +230,26 @@ affichées ensemble, empilées (Dashboards en haut), sous l'en-tête « Suivi »
 La suppression d'une requête sauvegardée se fait uniquement depuis ce panneau (la vue
 Requêtes n'a plus de liste « Requêtes sauvegardées » depuis GH14).
 
+### 6.1 Rafraîchissement sur écriture externe (GH18)
+
+Requêtes et dashboards peuvent être écrits hors de l'app (tools MCP, `SPEC-MCP-SERVER.md`
+§4.5). `useLiveFileSync` (renderer, alimenté par `RepoWatcherService`) invalide :
+- `queries/**` → clés `['queries', repoPath, …]` ;
+- `dashboards/**` → `['dashboards' | 'dashboard' | 'print-dashboard', repoPath, …]` (liste
+  **et** dashboard ouvert) ;
+- `.{user}.pref` → toutes les clés ci-dessus + `queries-order` / `dashboards-order`.
+
+Match par préfixe `[clé, repoPath]`, quel que soit l'utilisateur. Une écriture de l'app
+elle-même (dont l'historique de requêtes, stocké dans `.pref`) déclenche aussi un refetch —
+redondant et sans conséquence. Un objet créé hors de l'app n'est pas ajouté à
+`queriesOrder`/`dashboardsOrder` : il apparaît en fin de section.
+
 ---
 
 ## 7. Hors scope
 
+- Via MCP (GH18) : changement de scope privé ↔ partagé, ordre du panneau latéral,
+  historique de requêtes, seed — réservés à l'app.
 - Redimensionnement libre des widgets en pixels — grille à tailles prédéfinies
   seulement.
 - Partage/duplication d'un widget entre plusieurs dashboards.

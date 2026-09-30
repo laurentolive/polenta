@@ -12,6 +12,8 @@ import {
 } from '../../main/services/suivi-validation.util'
 import {
   assertWritableBranch,
+  findVisibleQuery,
+  peekSharedId,
   PRIVATE_SCOPE_REASON,
   resolveUser,
   resultColumnNames,
@@ -90,25 +92,9 @@ const deleteQueryInput = {
 }
 
 const SAMPLE_SIZE = 5
-const SHARED_QUERY_ID = /^QUERY-\d+$/
 
 function preview(result: QueryResult) {
   return { columns: result.columns, total: result.rows.length, sample: result.rows.slice(0, SAMPLE_SIZE) }
-}
-
-/** Id qu'aurait une requête partagée créée maintenant — même calcul que
- *  `GitService.nextCounterId('QUERY')`, sans écrire `config/counters.yaml`. */
-async function peekSharedQueryId(c: McpContainer): Promise<string> {
-  const counters = (await c.git.readYaml<Record<string, number | undefined>>(c.repoPath, 'config/counters.yaml').catch(() => null)) ?? {}
-  return `QUERY-${String((counters.QUERY ?? 0) + 1).padStart(4, '0')}`
-}
-
-/** Requête visible par cet appel : un id privé sans `--user` n'est jamais résolu, et un id
- *  partagé hors format `QUERY-NNNN` non plus (il servirait de chemin de fichier). */
-async function findVisibleQuery(c: McpContainer, id: string): Promise<SavedQuery | null> {
-  const { username, hasUser } = resolveUser(c)
-  if (isPrivateScopeId(id) ? !hasUser : !SHARED_QUERY_ID.test(id)) return null
-  return c.savedQueries.findOne(c.repoPath, username, id)
 }
 
 /** Widgets utilisant `queryId` dont une colonne mappée disparaît du nouveau résultat. */
@@ -222,7 +208,7 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
 
       if (dryRun) {
         const query: SavedQuery = {
-          id: scope === 'shared' ? await peekSharedQueryId(c) : "(généré à l'écriture)",
+          id: scope === 'shared' ? await peekSharedId(c, 'QUERY') : "(généré à l'écriture)",
           title: cleanTitle,
           mode,
           ...(mode === 'sql' ? { sqlText } : { builderConfig }),

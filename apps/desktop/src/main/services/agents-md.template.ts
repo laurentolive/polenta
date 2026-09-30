@@ -10,7 +10,7 @@
  * À incrémenter à chaque changement de contenu de `AGENTS_MD_TEMPLATE` qui doit se
  * propager aux projets déjà créés.
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 2
+export const AGENTS_MD_TEMPLATE_VERSION = 3
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -106,6 +106,17 @@ Tools disponibles :
   implémentation…). \`create_links\`/\`delete_links\` ont \`dryRun\` par défaut ; \`create_links\`
   vérifie le type (\`linkTypes\` de \`get_schema\`), l'existence des objets, la compatibilité
   \`sourceRefs\`/\`targetRefs\` et l'absence de doublon.
+- \`list_queries\` / \`run_query\` / \`create_query\` / \`update_query\` / \`delete_query\` —
+  requêtes de la vue Suivi (SQL en lecture seule, ou mode builder). \`run_query\` exécute une
+  requête sauvegardée ou ad hoc et retourne colonnes + lignes : à appeler avant de créer un
+  widget pour connaître les colonnes disponibles.
+- \`list_dashboards\` / \`create_dashboard\` / \`update_dashboard\` / \`delete_dashboard\` /
+  \`add_widget\` / \`update_widget\` / \`delete_widget\` / \`reorder_widgets\` — dashboards et
+  indicateurs. Un widget référence une requête sauvegardée ; son \`fieldMapping\` (\`category\`,
+  \`measure\`, \`series\`, \`columns\`) doit citer des colonnes du résultat. Toutes les écritures
+  ont \`dryRun\` par défaut. Les objets **privés** (propres à un utilisateur) ne sont
+  accessibles que si le serveur est lancé avec \`--user <login>\` (ou \`POLENTA_USER\`) ; sinon
+  seul le scope partagé est visible et modifiable.
 - \`add_component\` / \`add_object_type\` / \`add_field\` / \`add_status\` / \`add_link_type\` —
   modification ciblée du modèle de données (\`.polenta/schema.yaml\`), avec vérification
   des invariants (nom déjà pris, \`prefix\` unique sur tout le projet, nœud
@@ -147,7 +158,8 @@ exécuté sur trois tables reconstruites en mémoire depuis les fichiers : \`req
 \`tests\`, \`links\` — une ligne par objet, les champs de \`fields{}\` sont directement
 accessibles comme colonnes. Une colonne dérivée \`coverageStatus\` existe déjà sur
 \`requirements\` (voir §4). Écrire une requête SQL standard sur ces tables pour
-construire un indicateur ou un widget de dashboard.
+construire un indicateur, puis l'enregistrer et l'afficher via les tools MCP
+(\`create_query\` puis \`add_widget\`) si votre client les supporte.
 
 ### 4. Vérification des liens (traçabilité)
 La couverture d'une exigence se calcule depuis ses liens vers des tests approuvés et

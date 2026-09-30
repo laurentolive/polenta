@@ -1,9 +1,10 @@
-import type { QueryDefinition, QueryResult } from '@polenta/types'
+import type { Dashboard, QueryDefinition, QueryResult, SavedQuery } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { errorToolResult } from '../mcp-types'
 import { resolveWorkspaceRepoPaths } from '../../main/services/workspace-repos.util'
 import { isReadonlyBranch } from '../../main/services/readonly-branch.util'
 import { isReadOnlySql } from '../../main/services/query-engine.service'
+import { isPrivateScopeId } from '../../main/services/id-scope.util'
 import {
   unknownBuilderFields,
   validateQueryDefinitionShape,
@@ -110,4 +111,29 @@ export async function runDefinition(c: McpContainer, def: QueryDefinition): Prom
 /** Colonnes du résultat, ou null si indéterminables (0 ligne : `inferColumns` ne voit rien). */
 export function resultColumnNames(result: QueryResult): string[] | null {
   return result.rows.length === 0 ? null : result.columns.map((col) => col.name)
+}
+
+const SHARED_QUERY_ID = /^QUERY-\d+$/
+const SHARED_DASHBOARD_ID = /^DASHBOARD-\d+$/
+
+/** Requête visible par cet appel : un id privé sans `--user` n'est jamais résolu, et un id
+ *  partagé hors format `QUERY-NNNN` non plus (il servirait de chemin de fichier). */
+export async function findVisibleQuery(c: McpContainer, id: string): Promise<SavedQuery | null> {
+  const { username, hasUser } = resolveUser(c)
+  if (isPrivateScopeId(id) ? !hasUser : !SHARED_QUERY_ID.test(id)) return null
+  return c.savedQueries.findOne(c.repoPath, username, id)
+}
+
+/** Dashboard visible par cet appel — mêmes règles que `findVisibleQuery` (`DASHBOARD-NNNN`). */
+export async function findVisibleDashboard(c: McpContainer, id: string): Promise<Dashboard | null> {
+  const { username, hasUser } = resolveUser(c)
+  if (isPrivateScopeId(id) ? !hasUser : !SHARED_DASHBOARD_ID.test(id)) return null
+  return c.dashboards.get(c.repoPath, username, id)
+}
+
+/** Id qu'aurait un objet partagé créé maintenant — même calcul que
+ *  `GitService.nextCounterId(key)`, sans écrire `config/counters.yaml`. */
+export async function peekSharedId(c: McpContainer, key: 'QUERY' | 'DASHBOARD'): Promise<string> {
+  const counters = (await c.git.readYaml<Record<string, number | undefined>>(c.repoPath, 'config/counters.yaml').catch(() => null)) ?? {}
+  return `${key}-${String((counters[key] ?? 0) + 1).padStart(4, '0')}`
 }

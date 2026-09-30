@@ -28,7 +28,8 @@ d'`objectTypeRef`, validation des champs requis, format des fichiers).
   mutation de schéma) refuse d'écrire dans un nœud marqué `readonly: true`.
 - **Dry-run obligatoire pour l'import massif** — `bulk_import_*` valide et prévisualise
   par défaut (`dryRun: true`), n'écrit qu'avec `dryRun: false` explicite. Même règle pour
-  `create_links`/`delete_links` (GH16, §4.4).
+  `create_links`/`delete_links` (GH16, §4.4) et pour toutes les écritures de la vue Suivi
+  (GH18, §4.5).
 - **Enforcement EARS/cohérence** : hors scope (statu quo) — sauf la vérification EARS
   spécifique aux champs `validator: EARS` dans `bulk_import_*` (cf. §4.1), les autres
   règles de `CLAUDE.md` §"Règles de cohérence" restent documentées dans `AGENTS.md`,
@@ -53,6 +54,7 @@ PATH (déjà requis pour `pnpm`/le développement de ce repo).
 |---|---|---|---|---|
 | Repo produit ciblé | `--repo <path>` | `POLENTA_REPO_PATH` | Oui | `process.exit(1)`, message sur **stderr uniquement** (jamais stdout — canal réservé au protocole MCP) |
 | Racine workspace multi-repo | `--workspace <path>` | `POLENTA_WORKSPACE_DIR` | Non | Mode mono-repo (cf. §2.3) ; si fourni mais introuvable, avertissement stderr + repli mono-repo (pas un échec) |
+| Utilisateur Polenta (GH18) | `--user <login>` | `POLENTA_USER` | Non | Scope **partagé** seulement pour les tools de la vue Suivi (§4.5). Valeur hors `^[A-Za-z0-9][A-Za-z0-9._-]*$` ou contenant `..` → `process.exit(1)`, message stderr. Même login que l'app (nom du fichier `.{login}.pref`). `.mcp.json` généré par l'app ne le pose pas. |
 
 CLI prioritaire si les deux mécanismes sont fournis pour un même paramètre.
 
@@ -133,6 +135,11 @@ serveur MCP sont écrits sur disque mais n'apparaissent jamais dans SystemView/E
 
 Synchrone (pas de `createContainer()` async) — pas de fenêtre à ouvrir, pas d'attente
 `app.whenReady()`.
+
+**GH18** : le container construit aussi `TraceabilityService`, `QueryEngineService`,
+`DashboardsService`, `SavedQueriesService` (même graphe que `main/container.ts`) et expose
+`user` — `DashboardSeedService` reste exclu (le seed des dashboards pré-configurés est
+propre à l'app). `TraceabilityService` n'est appelé que via `computeCoverage` (pur).
 
 **GH16** : `McpContainer` expose aussi `reqIndex`/`testsIndex`, pour que `create_links`
 puisse invalider ces index quand un ID est introuvable (pas de watcher dans ce process).
@@ -340,6 +347,57 @@ non modifié.
 Le chemin IPC de l'UI (`requirements:link-create`/`link-delete`) reste **sans
 validation** (hors scope GH16).
 
+### 4.5 Vue Suivi — requêtes et dashboards (`tools/queries.tools.ts`, `tools/dashboards.tools.ts`, GH18)
+
+Helpers communs : `tools/suivi-common.ts` ; règles pures : `main/services/suivi-validation.util.ts`.
+Écritures via `SavedQueriesService` / `DashboardsService` (formats et ids de
+`SPEC-DASHBOARDS.md` §3), `createdBy: 'mcp'`.
+
+**Règles communes aux écritures** : un objet par appel ; `dryRun` par défaut `true`
+(validation complète, requête comprise, aperçu sans écriture — l'id partagé prévu est lu
+dans `config/counters.yaml` sans l'incrémenter) ; branche `''`/`prj-*` → `READONLY_BRANCH`
+même en dryRun (`readonly-branch.util.ts`, règle partagée avec `DashboardSeedService`).
+Erreur attendue → `isError` avec message `[CODE] raison`.
+
+**Scope** : sans `--user`, les services reçoivent une sentinelle `NO_USER` (caractère nul) :
+lecture `.pref` → vide, écriture `.pref` physiquement impossible ; toute opération privée →
+`PRIVATE_SCOPE_UNAVAILABLE`, un id privé n'est jamais résolu. Un id partagé hors format
+`QUERY-NNNN` / `DASHBOARD-NNNN` n'est jamais résolu (`*_NOT_FOUND`) — il servirait de chemin.
+
+**Exécution d'une requête** (`runDefinition`) — échec classé dans l'ordre :
+`INVALID_QUERY_DEFINITION` (sqlText XOR builderConfig selon `mode`) → `FORBIDDEN_SQL`
+(`isReadOnlySql`) → `INVALID_BUILDER_CONFIG` (`QueryEngineService.inspectBuilderTarget` :
+type ou `component` introuvable — **sans** le repli historique de l'exécution UI —, champ
+hors allowlist ; opérateurs contrôlés par l'enum zod d'entrée) → `QUERY_EXECUTION_ERROR`
+(message AlaSQL). Les index exigences/tests de tous les repos du périmètre sont invalidés
+avant chaque exécution (pas de watcher dans ce process).
+
+| Tool | Entrée | Points clés |
+|---|---|---|
+| `list_queries` | `{ scope? }` | historique jamais exposé |
+| `run_query` | `{ queryId? \| definition?, offset?, limit? }` | exactement un des deux (`INVALID_INPUT`) ; sortie `{ sql, columns, rows, total, offset, limit }`, `limit ≤ LIST_RESULT_LIMIT` ; n'écrit pas l'historique |
+| `create_query` | `{ title, mode, sqlText?, builderConfig?, scope='shared', dryRun? }` | `DUPLICATE_TITLE` (même scope, casse/espaces ignorés) ; sortie `{ query, preview: { columns, total, sample(5) } }` |
+| `update_query` | `{ id, title?, mode?, sqlText?, builderConfig?, dryRun? }` | changer de mode exige la définition complète ; l'autre définition est retirée du YAML ; `warnings: WIDGET_MAPPING_BROKEN` (non bloquant) pour les widgets dont une colonne disparaît ; scope non modifiable |
+| `delete_query` | `{ id, dryRun? }` | `QUERY_IN_USE` + liste des widgets (même limite que l'app : dashboards privés d'un autre utilisateur invisibles) |
+| `list_dashboards` | `{ scope? }` | widgets dans l'ordre `widgetOrder`, `queryTitle` ; **ne déclenche pas le seed** |
+| `create_dashboard` | `{ title, scope='shared', dryRun? }` | créé vide ; `DUPLICATE_TITLE` |
+| `update_dashboard` | `{ id, title, dryRun? }` | renommage seul |
+| `delete_dashboard` | `{ id, dryRun? }` | widgets embarqués supprimés, requêtes conservées |
+| `add_widget` | `{ dashboardId, title, queryId, type, fieldMapping, size='md', position?, dryRun? }` | règles widget ci-dessous ; `position` = index dans `widgetOrder` |
+| `update_widget` | `{ dashboardId, widgetId, title?, queryId?, type?, fieldMapping?, size?, dryRun? }` | `fieldMapping` fourni **remplace** l'ancien ; mêmes règles |
+| `delete_widget` | `{ dashboardId, widgetId, dryRun? }` | retire aussi l'id de `widgetOrder` |
+| `reorder_widgets` | `{ dashboardId, order, dryRun? }` | permutation exacte, sinon `INVALID_ORDER` |
+
+**Règles widget** (dans l'ordre) : `DASHBOARD_NOT_FOUND` → `QUERY_NOT_FOUND` →
+`PRIVATE_QUERY_IN_SHARED_DASHBOARD` → exécution de la requête → `MISSING_MAPPING` /
+`INVALID_MAPPING` (bar/line/pie : `category`+`measure` ; `series` bar/line ; `stacked` bar
+avec `series` ; kpi : `measure` ; table : `columns` optionnel ; clé inconnue rejetée par
+zod) → `UNKNOWN_COLUMN` (résultat vide : contrôle sauté, `warnings: COLUMNS_UNVERIFIED`) →
+`DUPLICATE_WIDGET` (même requête, type et mapping normalisé). La cohérence type ↔ forme du
+résultat n'est pas contrôlée au-delà (`SPEC-DASHBOARDS.md` §4).
+
+**Rafraîchissement de l'app** : cf. `SPEC-DASHBOARDS.md` §6.1.
+
 ---
 
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
@@ -443,6 +501,13 @@ Deux catégories (cf. §4) :
   `add_*` réussir silencieusement sur un schéma quasi vide et écraser le fichier
   réel. Risque réel, documenté au sprint 3, non corrigé (cross-cutting, partagé par
   tous les appelants de `SchemaService`, hors périmètre de ce ticket).
+- **Vue Suivi (GH18)** : `delete_query` ne voit pas les widgets des dashboards privés d'un
+  *autre* utilisateur (même limite que l'app) ; course inter-process résiduelle sur
+  `config/counters.yaml` et sur un même fichier de dashboard (écriture app + MCP
+  simultanées) ; `run_query` reconstruit les index à chaque appel (coûteux sur un très gros
+  workspace).
+- **Bundle `alasql`** (GH18) : la build Node d'alasql contient des `require('react-native…')`
+  (try/catch ou branches React Native) — marqués `--external` dans `build:mcp-server`.
 - **Packaging non vérifié de bout en bout** (§2.4) : bundle + mécanisme
   `ELECTRON_RUN_AS_NODE` vérifiés directement ; un build `electron-builder` complet
   (installeur réel) ne l'a pas été dans cet environnement.
@@ -463,6 +528,11 @@ Deux catégories (cf. §4) :
 | `apps/desktop/src/mcp-server/tools/bulk-import.tools.ts` | `bulk_import_requirements`, `bulk_import_tests`, `bulk_import_campaigns` |
 | `apps/desktop/src/mcp-server/tools/schema-mutation.tools.ts` | `add_component`, `add_object_type`, `add_field`, `add_status`, `add_link_type` |
 | `apps/desktop/src/mcp-server/tools/links.tools.ts` | `list_links`, `create_links`, `delete_links` (GH16) |
+| `apps/desktop/src/mcp-server/tools/suivi-common.ts` | Helpers vue Suivi : `NO_USER`, `resolveUser`, `assertWritableBranch`, `freshenIndexes`, `runDefinition`, `findVisibleQuery`/`findVisibleDashboard`, `peekSharedId` (GH18) |
+| `apps/desktop/src/mcp-server/tools/queries.tools.ts` | `list_queries`, `run_query`, `create_query`, `update_query`, `delete_query` (GH18) |
+| `apps/desktop/src/mcp-server/tools/dashboards.tools.ts` | `list_dashboards`, `create/update/delete_dashboard`, `add/update/delete_widget`, `reorder_widgets` (GH18) |
+| `apps/desktop/src/main/services/suivi-validation.util.ts` | Validation pure vue Suivi : codes, définition de requête, titres, widget, ordre (GH18) |
+| `apps/desktop/src/main/services/readonly-branch.util.ts` | `isReadonlyBranch` (GH18, partagé avec `DashboardSeedService`) |
 | `apps/desktop/src/main/services/link-validation.util.ts` | `validateLinkEntries`, `matchesRefs` (GH16, logique pure) |
 | `apps/desktop/src/main/services/requirements-index.service.ts` | `reloadLinks`/`createLinks`/`deleteLinks` (GH16 — relecture disque, verrou par repo, écriture unique par lot) |
 | `apps/desktop/src/main/services/bulk-import-validation.util.ts` | `validateBulkEntries` (logique métier pure) |

@@ -7,10 +7,14 @@
  * "Dashboards" would just be the same code with different field names. Works
  * against the minimal shape both `SavedQuery` and `Dashboard` share (`id`, `title`,
  * `scope`), so it doesn't need to know which one it's rendering.
+ *
+ * GH14: collapsible — the parent owns the collapsed state (it persists it and forces
+ * a section open when it holds the active item). Expanded sections are `flex-1`, so
+ * two open sections split the height 50/50 and a single open one takes it all.
  */
 import { useMemo, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { Lock, Plus, Trash2, Users2, Search as SearchIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Lock, Plus, Trash2, Users2, Search as SearchIcon } from 'lucide-react'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type { QueryScope } from '@polenta/types'
 
@@ -41,9 +45,9 @@ interface Props<T extends SidebarItem> {
   /** Surfaced when a delete is rejected (e.g. requête utilisée par un widget —
    *  T77-tests.md cas limite "Suppression d'une requête utilisée par un widget"). */
   deleteError?: string | null
-  /** T92 tabs — when the panel shows one section at a time (not stacked), it should
-   *  fill the available height instead of being capped at half of it. */
-  fillHeight?: boolean
+  /** GH14 — collapsed: only the header (chevron, label, "+") is rendered. */
+  collapsed: boolean
+  onToggleCollapsed: () => void
 }
 
 /** Exported for `DashboardGrid.tsx`'s widget grid, which needs the exact same
@@ -77,7 +81,8 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
   addFirstLabel,
   isLoading,
   deleteError,
-  fillHeight,
+  collapsed,
+  onToggleCollapsed,
 }: Props<T>) {
   const { t } = useTranslation()
   const [filter, setFilter] = useState('')
@@ -144,101 +149,110 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
   )
 
   return (
-    <div
-      className={`flex flex-col border-b border-edge ${fillHeight ? 'flex-1 min-h-0' : 'shrink-0'}`}
-      style={fillHeight ? undefined : { maxHeight: '50%' }}
-    >
+    <div className={`flex flex-col border-b border-edge ${collapsed ? 'shrink-0' : 'flex-1 min-h-0'}`}>
       <div ref={dragImageRef} className="fixed -top-96 left-0 w-1 h-1 opacity-0" />
 
-      <div className="flex items-center justify-between px-3 py-2 shrink-0">
-        <p className="section-label">{label}</p>
+      <div className="flex items-center justify-between gap-2 px-3 py-2 shrink-0">
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-expanded={!collapsed}
+          className="flex-1 flex items-center gap-1 min-w-0 text-left text-ink-3 hover:text-ink"
+        >
+          {collapsed ? <ChevronRight size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
+          <span className="section-label truncate">{label}</span>
+        </button>
         <button type="button" onClick={onAdd} className="btn-icon text-prim" title={addTitle}>
           <Plus size={14} />
         </button>
       </div>
 
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-edge-subtle shrink-0">
-        <SearchIcon size={12} className="text-ink-3 shrink-0" />
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setFilter('')
-          }}
-          placeholder={t('common.filterPlaceholder')}
-          className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
-        />
-        {filter && (
-          <button type="button" onClick={() => setFilter('')} className="text-ink-3 hover:text-ink text-xs">
-            ✕
-          </button>
-        )}
-      </div>
-
-      {deleteError && (
-        <p className="text-[11px] text-status-danger bg-status-danger-bg border-b border-status-danger-border px-3 py-1.5">
-          {deleteError}
-        </p>
-      )}
-
-      <div className="flex-1 overflow-y-auto min-h-[64px]">
-        {isLoading ? (
-          <div className="p-3 text-xs text-ink-3">{t('common.loading')}</div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 text-center py-6">
-            <p className="text-xs text-ink-3">{emptyMessage}</p>
-            <button type="button" onClick={onAdd} className="text-xs text-prim hover:underline">
-              {addFirstLabel}
+      {!collapsed && (
+        <>
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-edge-subtle shrink-0">
+          <SearchIcon size={12} className="text-ink-3 shrink-0" />
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setFilter('')
+            }}
+            placeholder={t('common.filterPlaceholder')}
+            className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
+          />
+          {filter && (
+            <button type="button" onClick={() => setFilter('')} className="text-ink-3 hover:text-ink text-xs">
+              ✕
             </button>
-          </div>
-        ) : visible.length === 0 ? (
-          <div className="flex items-center justify-center py-6">
-            <p className="text-xs text-ink-3">{t('common.noResults')}</p>
-          </div>
-        ) : (
-          <div className="py-1">
-            {visible.map((item) => (
-              <div key={item.id} className="relative">
-                {dropTarget?.id === item.id && dropTarget.position === 'before' && (
-                  <div className="absolute left-0 right-0 top-0 h-0.5 bg-status-info-solid z-10 pointer-events-none" />
-                )}
-                <div
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, item.id)}
-                  onDragOver={(e) => handleDragOver(e, item.id)}
-                  onDrop={handleDrop}
-                  onDragEnd={handleDragEnd}
-                  className={[
-                    'group flex items-center gap-2 px-3 py-1.5 hover:bg-hover transition-colors cursor-pointer',
-                    activeId === item.id ? 'bg-hover' : '',
-                    draggingId === item.id ? 'opacity-40' : '',
-                  ].join(' ')}
-                  onClick={() => onSelect(item)}
-                >
-                  <span title={item.scope === 'shared' ? t('sidebar.reorderable.shared') : t('sidebar.reorderable.private')} className="shrink-0 text-ink-3">
-                    {item.scope === 'shared' ? <Users2 size={11} /> : <Lock size={11} />}
-                  </span>
-                  <span className="text-xs text-ink truncate flex-1">{item.title}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setPendingDeleteId(item.id)
-                    }}
-                    title={t('common.delete')}
-                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-                {dropTarget?.id === item.id && dropTarget.position === 'after' && (
-                  <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-status-info-solid z-10 pointer-events-none" />
-                )}
-              </div>
-            ))}
-          </div>
+          )}
+        </div>
+
+        {deleteError && (
+          <p className="text-[11px] text-status-danger bg-status-danger-bg border-b border-status-danger-border px-3 py-1.5">
+            {deleteError}
+          </p>
         )}
-      </div>
+
+        <div className="flex-1 overflow-y-auto min-h-[64px]">
+          {isLoading ? (
+            <div className="p-3 text-xs text-ink-3">{t('common.loading')}</div>
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 text-center py-6">
+              <p className="text-xs text-ink-3">{emptyMessage}</p>
+              <button type="button" onClick={onAdd} className="text-xs text-prim hover:underline">
+                {addFirstLabel}
+              </button>
+            </div>
+          ) : visible.length === 0 ? (
+            <div className="flex items-center justify-center py-6">
+              <p className="text-xs text-ink-3">{t('common.noResults')}</p>
+            </div>
+          ) : (
+            <div className="py-1">
+              {visible.map((item) => (
+                <div key={item.id} className="relative">
+                  {dropTarget?.id === item.id && dropTarget.position === 'before' && (
+                    <div className="absolute left-0 right-0 top-0 h-0.5 bg-status-info-solid z-10 pointer-events-none" />
+                  )}
+                  <div
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, item.id)}
+                    onDragOver={(e) => handleDragOver(e, item.id)}
+                    onDrop={handleDrop}
+                    onDragEnd={handleDragEnd}
+                    className={[
+                      'group flex items-center gap-2 px-3 py-1.5 hover:bg-hover transition-colors cursor-pointer',
+                      activeId === item.id ? 'bg-hover' : '',
+                      draggingId === item.id ? 'opacity-40' : '',
+                    ].join(' ')}
+                    onClick={() => onSelect(item)}
+                  >
+                    <span title={item.scope === 'shared' ? t('sidebar.reorderable.shared') : t('sidebar.reorderable.private')} className="shrink-0 text-ink-3">
+                      {item.scope === 'shared' ? <Users2 size={11} /> : <Lock size={11} />}
+                    </span>
+                    <span className="text-xs text-ink truncate flex-1">{item.title}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPendingDeleteId(item.id)
+                      }}
+                      title={t('common.delete')}
+                      className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  {dropTarget?.id === item.id && dropTarget.position === 'after' && (
+                    <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-status-info-solid z-10 pointer-events-none" />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        </>
+      )}
 
       {pendingDeleteId && pendingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">

@@ -8,9 +8,10 @@
  * logic via `ReorderableSidebarSection` (extracted here rather than duplicated —
  * see that file's header comment).
  *
- * T92: the two sections used to be stacked (each capped at 50% height). Now shown
- * one at a time behind an icon tab bar (same small-icon-button style as
- * VersionPanel's header) so whichever list you're using gets the full height.
+ * GH14: T92's icon tab bar (one section at a time) was unclear — both sections are
+ * shown again, stacked, each collapsible. The collapsed state is persisted in
+ * localStorage (UI preference, shared by all projects) and a section is forced
+ * open when it holds the active item.
  *
  * Clicking a saved query opens the Requêtes view with it loaded; clicking a
  * dashboard opens the Dashboard view (T77.md § Panneau latéral).
@@ -19,14 +20,32 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { PieChart, Search as SearchIcon } from 'lucide-react'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { ReorderableSidebarSection } from './ReorderableSidebarSection'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type { Dashboard, SavedQuery } from '@polenta/types'
 
-type Tab = 'dashboards' | 'queries'
+interface Collapsed {
+  dashboards: boolean
+  queries: boolean
+}
+
+const COLLAPSED_KEY = 'polenta:suiviCollapsed'
+const DEFAULT_COLLAPSED: Collapsed = { dashboards: false, queries: false }
+
+function readCollapsed(): Collapsed {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? 'null')
+    if (parsed && typeof parsed === 'object') {
+      const p = parsed as Partial<Record<keyof Collapsed, unknown>>
+      return { dashboards: p.dashboards === true, queries: p.queries === true }
+    }
+  } catch {
+    // Valeur illisible — on retombe sur les deux sections dépliées.
+  }
+  return DEFAULT_COLLAPSED
+}
 
 interface Props {
   currentProjectId: string
@@ -54,14 +73,19 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
 
   const [newDashboardTitle, setNewDashboardTitle] = useState<string | null>(null)
   const [queryDeleteError, setQueryDeleteError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<Tab>(activeQueryId ? 'queries' : 'dashboards')
+  const [collapsed, setCollapsed] = useState<Collapsed>(readCollapsed)
 
-  // Keep the tab bar in sync with whichever view is actually open (e.g. navigating
-  // straight to /query, or selecting a dashboard while the "Requêtes" tab is active).
   useEffect(() => {
-    if (activeQueryId) setActiveTab('queries')
-    else if (activeDashboardId) setActiveTab('dashboards')
-  }, [activeQueryId, activeDashboardId])
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsed))
+    } catch {
+      // Préférence d'affichage non persistée — sans conséquence.
+    }
+  }, [collapsed])
+
+  function toggleCollapsed(section: keyof Collapsed) {
+    setCollapsed((prev) => ({ ...prev, [section]: !prev[section] }))
+  }
 
   const { data: project } = useQuery({
     queryKey: ['workspace', currentProjectId],
@@ -152,6 +176,24 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
     },
   })
 
+  // A section holding the active item (URL, freshly saved query, "+"…) is forced
+  // open so the highlighted item is visible. Only when the id really is one of its
+  // items: a history entry also opens /query with a `queryId` — not a saved query,
+  // nothing to highlight, so the user's collapsed choice is left alone. Keyed on
+  // booleans (not the lists) so a mere refetch doesn't reopen a section the user
+  // just collapsed.
+  const activeQueryListed = !!activeQueryId && queries.some((q) => q.id === activeQueryId)
+  const activeDashboardListed = !!activeDashboardId && dashboards.some((d) => d.id === activeDashboardId)
+  useEffect(() => {
+    setCollapsed((prev) => {
+      const next = {
+        dashboards: activeDashboardListed ? false : prev.dashboards,
+        queries: activeQueryListed ? false : prev.queries,
+      }
+      return next.dashboards === prev.dashboards && next.queries === prev.queries ? prev : next
+    })
+  }, [activeQueryId, activeDashboardId, activeQueryListed, activeDashboardListed])
+
   function openDashboard(id: string) {
     navigate({ to: '/dashboard', search: { projectId, dashboardId: id } })
   }
@@ -165,68 +207,46 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Header (T92 — cohérent avec les autres panneaux latéraux) ── */}
-      <div className="px-4 py-3 border-b border-edge shrink-0 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-edge shrink-0">
         <p className="section-label">{t('sidebar.dashboard.title')}</p>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('dashboards')}
-            className={`p-1 rounded transition-colors ${
-              activeTab === 'dashboards' ? 'bg-hover text-prim' : 'text-ink-3 hover:bg-hover hover:text-prim'
-            }`}
-            title={t('sidebar.dashboard.dashboardsTab')}
-          >
-            <PieChart size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('queries')}
-            className={`p-1 rounded transition-colors ${
-              activeTab === 'queries' ? 'bg-hover text-prim' : 'text-ink-3 hover:bg-hover hover:text-prim'
-            }`}
-            title={t('sidebar.dashboard.queriesTab')}
-          >
-            <SearchIcon size={14} />
-          </button>
-        </div>
       </div>
 
-      {activeTab === 'dashboards' ? (
-        <ReorderableSidebarSection
-          label={t('sidebar.dashboard.dashboardsLabel')}
-          items={dashboards}
-          order={dashboardsOrder}
-          activeId={activeDashboardId}
-          filterText={dashboardFilterText}
-          onReorder={(order) => dashboardsOrderMutation.mutate(order)}
-          onSelect={(d) => openDashboard(d.id)}
-          onDelete={(d) => deleteDashboardMutation.mutate(d.id)}
-          onAdd={() => setNewDashboardTitle('')}
-          emptyMessage={t('sidebar.dashboard.noDashboards')}
-          addTitle={t('sidebar.dashboard.addDashboard')}
-          addFirstLabel={t('sidebar.dashboard.createFirstDashboard')}
-          isLoading={dashboardsLoading}
-          fillHeight
-        />
-      ) : (
-        <ReorderableSidebarSection
-          label={t('sidebar.dashboard.queriesLabel')}
-          items={queries}
-          order={queriesOrder}
-          activeId={activeQueryId}
-          filterText={queryFilterText}
-          onReorder={(order) => queriesOrderMutation.mutate(order)}
-          onSelect={(q) => openQuery(q.id)}
-          onDelete={(q) => deleteQueryMutation.mutate(q.id)}
-          onAdd={() => openQuery(undefined)}
-          emptyMessage={t('sidebar.dashboard.noQueries')}
-          addTitle={t('sidebar.dashboard.addQuery')}
-          addFirstLabel={t('sidebar.dashboard.createFirstQuery')}
-          isLoading={queriesLoading}
-          deleteError={queryDeleteError}
-          fillHeight
-        />
-      )}
+      <ReorderableSidebarSection
+        label={t('sidebar.dashboard.dashboardsLabel')}
+        items={dashboards}
+        order={dashboardsOrder}
+        activeId={activeDashboardId}
+        filterText={dashboardFilterText}
+        onReorder={(order) => dashboardsOrderMutation.mutate(order)}
+        onSelect={(d) => openDashboard(d.id)}
+        onDelete={(d) => deleteDashboardMutation.mutate(d.id)}
+        onAdd={() => setNewDashboardTitle('')}
+        emptyMessage={t('sidebar.dashboard.noDashboards')}
+        addTitle={t('sidebar.dashboard.addDashboard')}
+        addFirstLabel={t('sidebar.dashboard.createFirstDashboard')}
+        isLoading={dashboardsLoading}
+        collapsed={collapsed.dashboards}
+        onToggleCollapsed={() => toggleCollapsed('dashboards')}
+      />
+
+      <ReorderableSidebarSection
+        label={t('sidebar.dashboard.queriesLabel')}
+        items={queries}
+        order={queriesOrder}
+        activeId={activeQueryId}
+        filterText={queryFilterText}
+        onReorder={(order) => queriesOrderMutation.mutate(order)}
+        onSelect={(q) => openQuery(q.id)}
+        onDelete={(q) => deleteQueryMutation.mutate(q.id)}
+        onAdd={() => openQuery(undefined)}
+        emptyMessage={t('sidebar.dashboard.noQueries')}
+        addTitle={t('sidebar.dashboard.addQuery')}
+        addFirstLabel={t('sidebar.dashboard.createFirstQuery')}
+        isLoading={queriesLoading}
+        deleteError={queryDeleteError}
+        collapsed={collapsed.queries}
+        onToggleCollapsed={() => toggleCollapsed('queries')}
+      />
 
       {newDashboardTitle !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">

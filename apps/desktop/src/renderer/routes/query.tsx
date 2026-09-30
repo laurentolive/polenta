@@ -2,17 +2,18 @@
  * QueryPage — "Vue Requêtes" (T77 sprint 1).
  *
  * Builder / SQL avancé toggle, table de résultat, sauvegarde (titre + portée),
- * listes "Requêtes sauvegardées" et "Historique" (filtrables, historique avec
- * purge auto + croix de suppression), export Excel.
+ * liste "Historique" (filtrable, purge auto + croix de suppression), export Excel.
+ * GH14 : la liste "Requêtes sauvegardées" a été retirée — elle doublonnait la
+ * section Requêtes du panneau latéral Suivi (seul point d'ouverture/suppression).
  *
  * URL: /query?projectId=<encoded>&queryId=<id?>
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { useTranslation, Trans } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Save, Trash2, Lock, Users2, Search as SearchIcon } from 'lucide-react'
+import { Play, Save, Search as SearchIcon } from 'lucide-react'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
@@ -90,7 +91,6 @@ function QueryPage() {
   const [error, setError] = useState<string | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [saveModal, setSaveModal] = useState<{ title: string; scope: QueryScope } | null>(null)
-  const [savedFilter, setSavedFilter] = useState('')
   const [historyFilter, setHistoryFilter] = useState('')
 
   const loadedRef = useRef<string | undefined>(undefined)
@@ -206,29 +206,6 @@ function QueryPage() {
 
   useModalHotkeys(() => setSaveModal(null), confirmSave, !saveModal || createMutation.isPending)
 
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [pendingDeleteQueryId, setPendingDeleteQueryId] = useState<string | null>(null)
-
-  const deleteQueryMutation = useMutation({
-    mutationFn: (id: string) => api.queries.delete(repoPath, username, id),
-    onSuccess: () => {
-      setDeleteError(null)
-      qc.invalidateQueries({ queryKey: ['queries', repoPath, username] })
-    },
-    // T77 sprint 2 : delete() est maintenant bloqué si un widget référence encore
-    // cette requête (T77-tests.md cas limite) — surfacé ici plutôt que silencieusement
-    // ignoré, sans quoi le clic n'aurait visiblement aucun effet.
-    onError: (err) => setDeleteError(err instanceof Error ? err.message : t('sidebar.dashboard.deleteFailed')),
-  })
-
-  const pendingDeleteQuery = savedQueries.find((q) => q.id === pendingDeleteQueryId)
-
-  useModalHotkeys(
-    () => setPendingDeleteQueryId(null),
-    () => { if (pendingDeleteQueryId) { deleteQueryMutation.mutate(pendingDeleteQueryId); setPendingDeleteQueryId(null) } },
-    !pendingDeleteQueryId || deleteQueryMutation.isPending,
-  )
-
   const deleteHistoryMutation = useMutation({
     mutationFn: (id: string) => api.queries.historyDelete(repoPath, username, id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['queries-history', repoPath, username] }),
@@ -238,12 +215,6 @@ function QueryPage() {
   // (pattern `request-{name}`). `QueryHistoryEntry` n'a pas de titre (requête non sauvegardée) :
   // seule une requête réellement sauvegardée (`savedQueries`) peut fournir un nom.
   const currentQueryName = (queryId && savedQueries.find(q => q.id === queryId)?.title) || 'resultat'
-
-  const visibleSaved = savedFilter.trim()
-    ? savedQueries.filter((q) =>
-        `${q.title} ${entryFilterText(q.mode, q.builderConfig, q.sqlText)}`.toLowerCase().includes(savedFilter.trim().toLowerCase()),
-      )
-    : savedQueries
 
   const visibleHistory = historyFilter.trim()
     ? history.filter((h) => entryFilterText(h.mode, h.builderConfig, h.sqlText).includes(historyFilter.trim().toLowerCase()))
@@ -346,100 +317,50 @@ function QueryPage() {
         <ResultTable result={result} />
       </div>
 
-      {/* ── Requêtes sauvegardées / Historique ── */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-surface border border-edge rounded-lg overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-edge flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide shrink-0">
-              {savedFilter
-                ? t('queryPage.savedQueriesCountFiltered', { visible: visibleSaved.length, total: savedQueries.length })
-                : t('queryPage.savedQueriesCount', { count: visibleSaved.length })}
-            </p>
-          </div>
-          {deleteError && (
-            <p className="text-[11px] text-status-danger bg-status-danger-bg border-b border-status-danger-border px-4 py-1.5">
-              {deleteError}
-            </p>
-          )}
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-edge-subtle">
-            <SearchIcon size={11} className="text-ink-3 shrink-0" />
-            <input
-              value={savedFilter}
-              onChange={(e) => setSavedFilter(e.target.value)}
-              placeholder={t('common.filterPlaceholder')}
-              className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
-            />
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {savedQueries.length === 0 ? (
-              <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noSavedQuery')}</p>
-            ) : visibleSaved.length === 0 ? (
-              <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noResultForFilter')}</p>
-            ) : (
-              visibleSaved.map((q) => (
-                <div key={q.id} className="group flex items-center gap-2 px-4 py-2 hover:bg-hover border-b border-edge-subtle last:border-0">
-                  <button type="button" onClick={() => navigate({ to: '/query', search: { projectId, queryId: q.id } })} className="flex-1 flex items-center gap-2 text-left min-w-0">
-                    {q.scope === 'shared' ? <Users2 size={11} className="text-ink-3 shrink-0" /> : <Lock size={11} className="text-ink-3 shrink-0" />}
-                    <span className="text-xs text-ink truncate">{q.title}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingDeleteQueryId(q.id)}
-                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
-                    title={t('common.delete')}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+      {/* ── Historique ── */}
+      <div className="bg-surface border border-edge rounded-lg overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-edge flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide shrink-0">
+            {historyFilter
+              ? t('queryPage.historyCountFiltered', { visible: visibleHistory.length, total: history.length })
+              : t('queryPage.historyCount', { count: visibleHistory.length })}
+          </p>
         </div>
-
-        <div className="bg-surface border border-edge rounded-lg overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-edge flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide shrink-0">
-              {historyFilter
-                ? t('queryPage.historyCountFiltered', { visible: visibleHistory.length, total: history.length })
-                : t('queryPage.historyCount', { count: visibleHistory.length })}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-edge-subtle">
-            <SearchIcon size={11} className="text-ink-3 shrink-0" />
-            <input
-              value={historyFilter}
-              onChange={(e) => setHistoryFilter(e.target.value)}
-              placeholder={t('common.filterPlaceholder')}
-              className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
-            />
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {history.length === 0 ? (
-              <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noHistory')}</p>
-            ) : visibleHistory.length === 0 ? (
-              <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noResultForFilter')}</p>
-            ) : (
-              visibleHistory.map((h) => (
-                <div key={h.id} className="group flex items-center gap-2 px-4 py-2 hover:bg-hover border-b border-edge-subtle last:border-0">
-                  <button type="button" onClick={() => navigate({ to: '/query', search: { projectId, queryId: h.id } })} className="flex-1 flex items-center gap-2 text-left min-w-0">
-                    <span className="text-[10px] font-mono text-ink-3 shrink-0 uppercase">{h.mode}</span>
-                    <span className="text-xs text-ink truncate">
-                      {h.mode === 'sql' ? h.sqlText : h.builderConfig?.objectTypeRef}
-                    </span>
-                  </button>
-                  <span className="text-[10px] text-ink-3 shrink-0">{new Date(h.executedAt).toLocaleTimeString()}</span>
-                  <button
-                    type="button"
-                    onClick={() => deleteHistoryMutation.mutate(h.id)}
-                    className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
-                    title={t('common.delete')}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-edge-subtle">
+          <SearchIcon size={11} className="text-ink-3 shrink-0" />
+          <input
+            value={historyFilter}
+            onChange={(e) => setHistoryFilter(e.target.value)}
+            placeholder={t('common.filterPlaceholder')}
+            className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
+          />
+        </div>
+        <div className="max-h-64 overflow-y-auto">
+          {history.length === 0 ? (
+            <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noHistory')}</p>
+          ) : visibleHistory.length === 0 ? (
+            <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noResultForFilter')}</p>
+          ) : (
+            visibleHistory.map((h) => (
+              <div key={h.id} className="group flex items-center gap-2 px-4 py-2 hover:bg-hover border-b border-edge-subtle last:border-0">
+                <button type="button" onClick={() => navigate({ to: '/query', search: { projectId, queryId: h.id } })} className="flex-1 flex items-center gap-2 text-left min-w-0">
+                  <span className="text-[10px] font-mono text-ink-3 shrink-0 uppercase">{h.mode}</span>
+                  <span className="text-xs text-ink truncate">
+                    {h.mode === 'sql' ? h.sqlText : h.builderConfig?.objectTypeRef}
+                  </span>
+                </button>
+                <span className="text-[10px] text-ink-3 shrink-0">{new Date(h.executedAt).toLocaleTimeString()}</span>
+                <button
+                  type="button"
+                  onClick={() => deleteHistoryMutation.mutate(h.id)}
+                  className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
+                  title={t('common.delete')}
+                >
+                  ✕
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -486,35 +407,6 @@ function QueryPage() {
                 className="btn-primary"
               >
                 {createMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal de confirmation de suppression ── */}
-      {pendingDeleteQueryId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40">
-          <div
-            tabIndex={-1}
-            autoFocus
-            className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4 outline-none"
-          >
-            <h2 className="text-sm font-semibold text-ink mb-2">{t('queryPage.deleteQueryConfirmTitle')}</h2>
-            <p className="text-xs text-ink-2 mb-5">
-              <Trans i18nKey="queryPage.deleteQueryConfirmBody" values={{ title: pendingDeleteQuery?.title ?? pendingDeleteQueryId }} components={{ b: <strong /> }} />
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setPendingDeleteQueryId(null)} className="btn-secondary">
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={() => { deleteQueryMutation.mutate(pendingDeleteQueryId); setPendingDeleteQueryId(null) }}
-                disabled={deleteQueryMutation.isPending}
-                className="btn-danger"
-              >
-                {t('common.delete')}
               </button>
             </div>
           </div>

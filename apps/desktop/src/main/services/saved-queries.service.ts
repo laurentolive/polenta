@@ -24,6 +24,9 @@ export interface CreateSavedQueryDto {
 
 export interface UpdateSavedQueryDto {
   title?: string
+  /** GH18 — changement de mode (tool MCP `update_query`) ; la définition de l'autre mode
+   *  est alors retirée (`withSingleDefinition`). Jamais envoyé par l'UI actuelle. */
+  mode?: QueryMode
   builderConfig?: BuilderConfig
   sqlText?: string
 }
@@ -37,6 +40,16 @@ function isSameHistoryQuery(a: QueryHistoryEntry, b: AddHistoryEntryDto): boolea
   if (a.mode !== b.mode) return false
   if (a.mode === 'sql') return (a.sqlText ?? '') === (b.sqlText ?? '')
   return JSON.stringify(a.builderConfig ?? {}) === JSON.stringify(b.builderConfig ?? {})
+}
+
+/** Une requête sauvegardée porte la définition de son mode, jamais les deux (GH18 :
+ *  `update` peut désormais changer `mode`). */
+function withSingleDefinition(q: SavedQuery): SavedQuery {
+  // Copie + delete plutôt que déstructuration : garde l'ordre des clés du YAML (diff git minimal).
+  const out = { ...q }
+  if (out.mode === 'sql') delete out.builderConfig
+  else delete out.sqlText
+  return out
 }
 
 interface PrefStore {
@@ -119,7 +132,7 @@ export class SavedQueriesService {
       const list = pref.savedQueries ?? []
       const idx = list.findIndex((q) => q.id === id)
       if (idx < 0) throw new Error(`Requête introuvable : ${id}`)
-      list[idx] = { ...list[idx], ...dto }
+      list[idx] = withSingleDefinition({ ...list[idx], ...dto })
       pref.savedQueries = list
       this.writePref(repoPath, username, pref)
       return list[idx]
@@ -127,7 +140,7 @@ export class SavedQueriesService {
 
     const existing = await this.git.readYaml<SavedQuery>(repoPath, `queries/${id}.yaml`)
     if (!existing) throw new Error(`Requête introuvable : ${id}`)
-    const updated: SavedQuery = { ...existing, ...dto }
+    const updated: SavedQuery = withSingleDefinition({ ...existing, ...dto })
     await this.git.writeYaml(repoPath, `queries/${id}.yaml`, updated)
     return updated
   }

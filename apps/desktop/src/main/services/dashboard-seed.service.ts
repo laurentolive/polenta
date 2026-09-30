@@ -2,6 +2,7 @@ import type { Dashboard, WidgetFieldMapping, WidgetSize, WidgetType } from '@pol
 import type { GitService } from './git.service'
 import type { DashboardsService, AddWidgetDto, CreateDashboardDto } from './dashboards.service'
 import type { SavedQueriesService, CreateSavedQueryDto } from './saved-queries.service'
+import { isReadonlyBranch } from './readonly-branch.util'
 
 const SEED_MARKER_PATH = 'dashboards/.seeded.yaml'
 
@@ -147,7 +148,7 @@ export class DashboardSeedService {
     // No marker is written here: once the user switches to a writable branch, the next
     // `dashboards:list` call re-evaluates from scratch.
     const branch = await this.git.currentBranch(repoPath).catch(() => '')
-    if (branch === '' || branch.startsWith('prj-')) return
+    if (isReadonlyBranch(branch)) return
 
     const shared = await this.git.readYamlDir<Dashboard>(repoPath, 'dashboards')
     if (shared.length > 0) {

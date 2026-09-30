@@ -26,7 +26,7 @@ interface QueryDataset {
   links: FlatRow[]
 }
 
-type QueryTable = 'requirements' | 'tests'
+export type QueryTable = 'requirements' | 'tests'
 
 interface TableInfo {
   table: QueryTable
@@ -53,8 +53,14 @@ function stripStringLiterals(sql: string): string {
   return sql.replace(/'(?:[^']|'')*'/g, "''")
 }
 
+/** Vrai si `sql` ne contient aucune instruction d'écriture — exporté pour que les tools
+ *  MCP (GH18) classent ce refus (`FORBIDDEN_SQL`) avant toute exécution. */
+export function isReadOnlySql(sql: string): boolean {
+  return !FORBIDDEN_SQL.test(stripStringLiterals(sql))
+}
+
 function assertReadOnlySql(sql: string): void {
-  if (FORBIDDEN_SQL.test(stripStringLiterals(sql))) {
+  if (!isReadOnlySql(sql)) {
     throw new Error(
       'Requête refusée : les instructions INSERT / UPDATE / DELETE / DROP / CREATE / ALTER / TRUNCATE / ATTACH / INTO ne sont pas autorisées (lecture seule).',
     )
@@ -428,7 +434,7 @@ export class QueryEngineService {
     objectTypeRef: string,
     component: string | undefined,
     workspaceDir: string | undefined,
-  ): Promise<TableInfo> {
+  ): Promise<TableInfo & { resolved: boolean }> {
     const targetRepo = component ? (await this.resolveComponentPath(component, workspaceDir)) ?? repoPath : repoPath
     const schema = await this.schema.get(targetRepo)
     const found = findObjectTypeDef(schema, objectTypeRef)
@@ -437,7 +443,26 @@ export class QueryEngineService {
     const table: QueryTable = resolved?.category === 'test' ? 'tests' : 'requirements'
     const extra: readonly string[] = table === 'tests' ? ['latestRunResult', 'latestRunDate'] : REQUIREMENT_DERIVED_FIELDS
     const typeFields = resolved?.fields.map((f) => f.name) ?? []
-    return { table, allowedFields: new Set([...SYSTEM_QUERY_FIELDS, ...extra, ...typeFields]) }
+    return { table, allowedFields: new Set([...SYSTEM_QUERY_FIELDS, ...extra, ...typeFields]), resolved: !!resolved }
+  }
+
+  /**
+   * GH18 — cible d'un builderConfig SANS repli silencieux, pour la validation stricte des
+   * tools MCP : `resolved: false` si le type est introuvable dans le schéma du composant.
+   * L'exécution (`execute`/`builderToSql`) garde le repli historique de
+   * `resolveTableInfo` (type supprimé du schéma → requête toujours exécutable côté UI).
+   */
+  async inspectBuilderTarget(
+    repoPath: string,
+    objectTypeRef: string,
+    component: string | undefined,
+    workspaceDir?: string,
+  ): Promise<{ resolved: boolean; table: QueryTable; allowedFields: string[] }> {
+    // Composant nommé mais introuvable : resolveTableInfo retomberait sur repoPath et
+    // pourrait y résoudre un type homonyme — refusé ici (faute de frappe sur `component`).
+    const componentMissing = !!component && !(await this.resolveComponentPath(component, workspaceDir))
+    const info = await this.resolveTableInfo(repoPath, objectTypeRef, component, workspaceDir)
+    return { resolved: info.resolved && !componentMissing, table: info.table, allowedFields: [...info.allowedFields] }
   }
 
   /** Look up a workspace component's repo path by its mount name (tree.yaml), same

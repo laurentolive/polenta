@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "package": "electron-vite build && pnpm run build:mcp-server && electron-builder",
     "mcp-server": "tsx src/mcp-server/index.ts",
-    "build:mcp-server": "esbuild src/mcp-server/index.ts --bundle --platform=node --format=cjs --outfile=out/mcp-server/index.cjs --external:keytar --alias:electron=./src/mcp-server/electron-shim.ts",
+    "build:mcp-server": "esbuild src/mcp-server/index.ts --bundle --platform=node --format=cjs --outfile=out/mcp-server/index.cjs --external:keytar --external:react-native --external:react-native-fetch-blob --external:react-native-fs --alias:electron=./src/mcp-server/electron-shim.ts",
     "theme:generate": "tsx scripts/generate-theme-css.ts"
   },
   "dependencies": {

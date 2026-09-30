@@ -15,6 +15,8 @@ import { useQueryClient } from '@tanstack/react-query'
  * the `'*'` full-refresh case, where a ref change (checkout/pull/merge) gives no per-file
  * signal to narrow down.
  */
+const DASHBOARD_KEYS = ['dashboards', 'dashboard', 'print-dashboard']
+
 export function useLiveFileSync(): void {
   const qc = useQueryClient()
 
@@ -37,6 +39,25 @@ export function useLiveFileSync(): void {
 
       if (relPath === '.polenta/schema.yaml') {
         qc.invalidateQueries({ queryKey: ['schema', repoPath] })
+        return
+      }
+
+      // GH18 — vue Suivi : requêtes/dashboards partagés écrits hors de l'app (tools MCP).
+      // Clés `[<clé>, repoPath, username, …]` — match par préfixe, tout user. `dashboard` /
+      // `print-dashboard` = dashboard ouvert (widgets), pas seulement la liste.
+      if (relPath.startsWith('queries/')) {
+        qc.invalidateQueries({ queryKey: ['queries', repoPath] })
+        return
+      }
+      if (relPath.startsWith('dashboards/')) {
+        for (const key of DASHBOARD_KEYS) qc.invalidateQueries({ queryKey: [key, repoPath] })
+        return
+      }
+      // Requêtes/dashboards privés et ordres du panneau latéral vivent dans `.{user}.pref`.
+      if (/^\.[^/]+\.pref$/.test(relPath)) {
+        for (const key of ['queries', 'queries-order', 'dashboards-order', ...DASHBOARD_KEYS]) {
+          qc.invalidateQueries({ queryKey: [key, repoPath] })
+        }
         return
       }
 

@@ -300,6 +300,9 @@ function ElementLeaf({ objectType, item, dragging, dropTarget, onDragStartRow, o
         onClick={onClick}
         className="flex items-center gap-2 flex-1 min-w-0 text-left"
       >
+        {/* GH19 — emplacement du chevron des lignes de composant : l'icône d'un élément tombe dans
+            la même colonne que l'icône de dossier de ses composants frères. */}
+        <span className="w-[14px] shrink-0" />
         <FileText size={13} className={`${CATEGORY_DOT[objectType.category] ?? 'text-ink-3'} shrink-0`} />
         <span className="text-xs text-ink-2 truncate">
           {objectType.prefix && <code className="text-ink-3 font-mono mr-1">{objectType.prefix}</code>}
@@ -458,19 +461,35 @@ interface StructureTreeHandlers {
   canDropInto: (dragging: DragItem, target: ReparentTarget) => boolean
 }
 
+/** GH19 — une seule échelle d'indentation pour tout l'arbre : une ligne (repo, composant local ou
+ *  élément) de niveau `depth` commence à `rowPadding(depth)` px, quel que soit son type. */
+const INDENT_STEP = 16
+const ROW_BASE_PADDING = 8 // = px-2 des lignes
+/** Largeur du chevron (14px) + gap-2 (8px) — pour aligner un texte sur l'icône d'une ligne. */
+const CHEVRON_SLOT = 22
+function rowPadding(depth: number): number {
+  return ROW_BASE_PADDING + depth * INDENT_STEP
+}
+/** Retrait du wrapper d'un ElementLeaf enfant d'une ligne de niveau `depth` — ElementLeaf ajoute
+ *  lui-même son px-2, d'où `rowPadding(depth + 1)` au total. */
+function childOffset(depth: number): number {
+  return rowPadding(depth + 1) - ROW_BASE_PADDING
+}
+
 /** Renders one local component's own row (icône, label, badge Interface, actions) plus its own
  *  éléments (ElementLeaf), récursivement ses composants locaux imbriqués, et ses propres
  *  dépendances repo-séparées (T123 + follow-up) — un composant local a exactement les mêmes
  *  capacités qu'un composant avec repo séparé, cf. specs/T123.md §3. */
 function LocalNodeRow({
-  node, repoPath, repoLabel, indent, parentName, repoDependencies, handlers,
+  node, repoPath, repoLabel, depth, parentName, repoDependencies, handlers,
 }: {
   node: SystemNode
   repoPath: string
   repoLabel: string
-  /** Absolute left padding in px for this row — the enclosing RepoRow's own indent (`32 +
-   *  depth * 16`, matching root's own élément rows) plus 16px per level of local nesting. */
-  indent: number
+  /** Tree level of this row — same scale as `RepoRow.depth` (GH19): every row, repo or local,
+   *  sits at `rowPadding(depth)`, and its own children (éléments, composants locaux imbriqués,
+   *  dépendances) at `depth + 1`. */
+  depth: number
   /** This node's parent in the *local* SystemNode tree (T135) — `null` when it sits in the
    *  repo's own top-level merged list (`rootNode.children` + top-level `schema.nodes`, cf.
    *  RepoRow), the enclosing local component's own name otherwise. Identifies this row's drag &
@@ -507,8 +526,8 @@ function LocalNodeRow({
         onDropRow={handlers.onDropRow}
         onDragEndRow={handlers.onDragEndRow}
         onRowClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 py-1 group/local cursor-pointer select-none rounded hover:bg-hover transition-colors"
-        style={{ paddingLeft: `${indent}px` }}
+        className="flex items-center gap-2 py-1.5 px-2 group/local cursor-pointer select-none rounded hover:bg-hover transition-colors"
+        style={{ paddingLeft: `${rowPadding(depth)}px` }}
       >
         <span className="text-ink-3">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
         {/* Même poids visuel qu'une ligne de repo (RepoRow) — un composant local est un composant
@@ -557,7 +576,7 @@ function LocalNodeRow({
       {open && (
         <>
           {objectTypes.map((ot, typeIndex) => (
-            <div key={typeIndex} style={{ paddingLeft: `${indent}px` }}>
+            <div key={typeIndex} style={{ paddingLeft: `${childOffset(depth)}px` }}>
               <ElementLeaf
                 objectType={ot}
                 item={{ kind: 'element', repoPath, nodeName: node.name, typeIndex, typeName: ot.name }}
@@ -578,7 +597,7 @@ function LocalNodeRow({
               node={child}
               repoPath={repoPath}
               repoLabel={repoLabel}
-              indent={indent + 16}
+              depth={depth + 1}
               parentName={node.name}
               repoDependencies={repoDependencies}
               handlers={handlers}
@@ -588,12 +607,8 @@ function LocalNodeRow({
             <RepoRow
               key={dep.name}
               node={dep}
-              // T123 (follow-up) — même relation visuelle qu'entre une ligne de repo et ses propres
-              // composants locaux/dépendances imbriquées (cf. RepoRow ci-dessous : les dépendances y
-              // rendent 8px moins indentées que les composants locaux, à `depth` égal) : indent/16
-              // place cette dépendance imbriquée au même niveau que les autres dépendances de
-              // `repoPath`, pas un cran plus profond que les propres composants locaux de ce nœud.
-              depth={Math.round(indent / 16)}
+              // GH19 — même niveau que les composants locaux imbriqués de ce nœud.
+              depth={depth + 1}
               parentRepoPath={repoPath}
               localParent={node.name}
               handlers={handlers}
@@ -622,7 +637,6 @@ function RepoRow({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(depth < 2)
-  const indent = depth * 16
   const { workspaceDir, flatNodes, schemasByRepoPath, isLoading, schemasReady } = handlers
   const schema = schemasByRepoPath.get(node.repoPath)
   // root n'est jamais imbriqué (T123) — reste toujours au premier niveau de schema.nodes.
@@ -732,7 +746,7 @@ function RepoRow({
         onDragEndRow={handlers.onDragEndRow}
         onRowClick={() => setOpen(v => !v)}
         className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-hover transition-colors cursor-pointer select-none group"
-        style={{ paddingLeft: `${8 + indent}px` }}
+        style={{ paddingLeft: `${rowPadding(depth)}px` }}
       >
         {headerContent}
       </DragRow>
@@ -740,12 +754,12 @@ function RepoRow({
       {open && (
         <div>
           {isLoading && !schema && (
-            <p className="text-xs text-ink-3 italic" style={{ paddingLeft: `${32 + indent}px` }}>{t('common.loading')}</p>
+            <p className="text-xs text-ink-3 italic" style={{ paddingLeft: `${rowPadding(depth + 1) + CHEVRON_SLOT}px` }}>{t('common.loading')}</p>
           )}
           {/* root's own éléments rendent à plat, sans ligne de composant (comportement T113
               inchangé) — root reste toujours le seul nœud qui n'a pas sa propre ligne. */}
           {(rootNode?.objectTypes ?? []).map((ot, typeIndex) => (
-            <div key={typeIndex} style={{ paddingLeft: `${32 + indent}px` }}>
+            <div key={typeIndex} style={{ paddingLeft: `${childOffset(depth)}px` }}>
               <ElementLeaf
                 objectType={ot}
                 item={{ kind: 'element', repoPath: node.repoPath, nodeName: 'root', typeIndex, typeName: ot.name }}
@@ -761,7 +775,7 @@ function RepoRow({
             </div>
           ))}
           {schema && flattenSystemNodes(schema.nodes).every(({ node: n }) => (n.objectTypes ?? []).length === 0) && (
-            <p className="text-xs text-ink-3 italic" style={{ paddingLeft: `${32 + indent}px` }}>{t('schema.structureTab.noElementConfigured')}</p>
+            <p className="text-xs text-ink-3 italic" style={{ paddingLeft: `${rowPadding(depth + 1) + CHEVRON_SLOT}px` }}>{t('schema.structureTab.noElementConfigured')}</p>
           )}
           {/* Composants locaux de ce repo, de premier niveau — qu'ils soient des frères de root
               (T113, cas le plus courant : "+ Composant" depuis la ligne de repo) ou des enfants
@@ -779,7 +793,7 @@ function RepoRow({
               node={localNode}
               repoPath={node.repoPath}
               repoLabel={node.name}
-              indent={32 + indent}
+              depth={depth + 1}
               parentName="root"
               repoDependencies={node.children}
               handlers={handlers}
@@ -791,7 +805,7 @@ function RepoRow({
               node={localNode}
               repoPath={node.repoPath}
               repoLabel={node.name}
-              indent={32 + indent}
+              depth={depth + 1}
               parentName={null}
               repoDependencies={node.children}
               handlers={handlers}

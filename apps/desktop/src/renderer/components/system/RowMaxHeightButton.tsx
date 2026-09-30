@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next'
 
 export const ROW_MAX_LINES_MIN = 1
 export const ROW_MAX_LINES_MAX = 20
-export const ROW_MAX_LINES_DEFAULT = 10
 /** Position du slider au-delà de `ROW_MAX_LINES_MAX` : hauteur non limitée (toutes les lignes). */
 export const ROW_MAX_LINES_ALL = ROW_MAX_LINES_MAX + 1
+export const ROW_MAX_LINES_DEFAULT = ROW_MAX_LINES_ALL
 
 /** Icône au style lucide : double flèche verticale (hauteur) à gauche d'une ligne/cadre. */
 function RowHeightIcon({ size = 14 }: { size?: number }) {

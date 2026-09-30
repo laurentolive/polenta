@@ -36,7 +36,7 @@ export class TestsService {
 
   async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
-    const testId = await this.nextTestId(repoPath, dto.objectTypeRef)
+    const testId = await this.nextTestId(repoPath, targetRepo, dto.objectTypeRef)
 
     // See RequirementsService.create — same reconciled-but-not-guaranteed-unique
     // counter, same silent-overwrite risk in writeYaml().
@@ -196,7 +196,9 @@ export class TestsService {
     }
   }
 
-  private async nextTestId(repoPath: string, objectTypeRef: string): Promise<string> {
+  /** Prefix resolved from `repoPath`'s schema, number allocated in `targetRepo` — see
+   *  RequirementsService.nextId (GH20). */
+  private async nextTestId(repoPath: string, targetRepo: string, objectTypeRef: string): Promise<string> {
     // Scoped by node via the shared lookup — see requirements.service.ts's nextId() for why
     // a flat search across every node's objectTypes is wrong (T113: sibling SystemNodes can
     // legitimately reuse the same type name with different prefixes).
@@ -206,7 +208,7 @@ export class TestsService {
     const prefix = (resolved && resolved !== 'unresolvable' ? resolved.prefix : undefined)
       ?? typeName.slice(0, 6).toUpperCase()
 
-    return nextCounterId(this.git, repoPath, prefix, 'tests')
+    return nextCounterId(this.git, targetRepo, prefix, 'tests', targetRepo === repoPath ? [] : [repoPath])
   }
 
   private async nextRunId(repoPath: string, testCaseId: string): Promise<string> {

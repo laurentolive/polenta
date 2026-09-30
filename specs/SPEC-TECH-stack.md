@@ -145,7 +145,6 @@ polenta/
 │       └── diagram.drawio           ← XML DrawIO (texte, mergeable)
 └── config/
     ├── project.yaml                 ← integrationBranch (seul champ réel, T130 — §4.5)
-    ├── counters.yaml                ← compteurs par préfixe
     ├── requirement-types.yaml
     └── workflows.yaml
 ```
@@ -197,30 +196,43 @@ jiraLinks:
 
 ### 4.4 Gestion des IDs
 
-Les identifiants sont attribués à la **création** depuis `config/counters.yaml` :
+**GH20 : plus de compteur persistant.** L'ID `<PREFIX>-NNNN` est attribué à la **création**
+par `nextCounterId()` (`id-counter.util.ts`, unique module d'attribution — exigences, tests,
+campagnes, revues, dashboards et requêtes partagés), qui le **déduit du disque** du repo qui
+reçoit le fichier :
 
-```yaml
-# config/counters.yaml
-REQ: 42        # prochain numéro d'exigence (préfixe selon le type)
-TEST: 15       # prochain numéro de cas de test
-REVIEW: 6      # prochain numéro de Review
-CAMP: 3        # prochain numéro de Campagne
+```
+next(P) = max( plus haut P-NNNN.yaml du dossier du type (récursif),
+               plus haute pierre tombale .polenta/tombstones/P-NNNN,
+               plus haut numéro attribué pendant la session (mémoire du process) ) + 1
 ```
 
-Chaque service lit sa clé, génère l'ID, incrémente, et `fs.writeFile` le fichier (sans committer). Le commit inclura cette mise à jour avec le reste des modifications de la branche `dev-*` courante (cf. workflow "Publier", `SPEC-FORKS-BRANCHES-BASELINES.md` §2).
+- **Pierres tombales** — `.polenta/tombstones/<ID>`, un fichier **vide** par ID, écrit par
+  `deleteWithTombstone()` **avant** chaque suppression physique (campagne, dashboard ou
+  requête partagés, y compris le passage partagé → privé). Versionnées avec la suppression,
+  jamais supprimées : un ID n'est **jamais réutilisé**, pour aucun type.
+- **Sérialisation (T118)** — file de promesses par repo : deux `create()` concurrents du même
+  process obtiennent des IDs distincts. Rien n'étant écrit pour réserver un ID, la mémoire de
+  session tient lieu de réservation jusqu'à l'écriture du fichier (trou possible si l'objet
+  n'est finalement pas écrit ou après un changement de branche, jamais de collision).
+  Garde-fou entre process (app + serveur MCP) : chaque `create()` refuse d'écraser un fichier
+  existant (`assertNewObjectFile`, erreur `<ID> already exists`).
+- **Composants** — une exigence/un test d'un type de composant créé depuis le produit reçoit
+  son numéro dans le **repo du composant** ; le repo produit reste une source d'historique
+  pour ce prefix (ses pierres tombales et son `counters.yaml` non migré).
+- **Migration de `config/counters.yaml`** (fichier pré-GH20, valeur = dernier numéro
+  attribué) — paresseuse, à la première attribution dans le repo (app ou MCP), idempotente :
+  pour chaque clé numérique dont l'ID n'a plus de fichier dans `requirements/`, `tests/`,
+  `campaigns/`, `reviews/`, `dashboards/`, `queries/`, pose la pierre tombale, puis supprime
+  le fichier (clés héritées `nextId`/`prefixes` ignorées).
+- **`peekNextCounterId()`** — même calcul, **lecture seule** (ni migration, ni mémoire mise à
+  jour ; un `counters.yaml` non migré est pris en compte), utilisé par le mode `dryRun: true`
+  de `bulk_import_*` (`SPEC-MCP-SERVER.md` §4.2).
 
-**Résolution des conflits sur `counters.yaml`** : si deux branches `dev-*` créées depuis la même base génèrent le même ID (ex. deux `REQ-42` sur deux branches), le merge détectera le conflit. La résolution prend la valeur la plus haute des deux, et les IDs en double sur la branche mergée sont renommés. Ce cas est rare car les branches `dev-*` sont créées depuis la branche d'intégration, qui avance linéairement.
-
-**Écritures en série rapprochées (T118, étendu T122)** : `nextCounterId()`
-(`id-counter.util.ts`) sérialise chaque lecture+écriture de `counters.yaml` par
-`repoPath` via une file de promesses en mémoire, et recale le compteur sur
-`max(compteur stocké, plus haut <PREFIX>-NNNN présent sur disque) + 1` — couvre aussi
-bien les collisions entre deux `create()` concurrents que les écritures en série
-rapide d'un import massif (`bulk_import_*` du serveur MCP, `SPEC-MCP-SERVER.md` §4.2,
-qui écrit N objets l'un après l'autre dans une seule requête). Le même fichier expose
-`peekNextCounterId()` — variante **lecture seule**, sans écrire `counters.yaml` —
-utilisée par le mode `dryRun: true` de `bulk_import_*` pour prévisualiser les IDs qui
-seraient attribués, sans effet de bord sur le compteur réel.
+**Collisions entre branches** : deux branches parties du même état attribuent le même
+prochain ID (plus de conflit sur un fichier partagé, mais deux objets de même ID). Le merge
+les signale comme deux ajouts du même fichier ; l'un des deux est renommé à la main. Non
+traité par GH20 (cf. issue #17).
 
 ### 4.5 `config/project.yaml` — configuration du projet
 

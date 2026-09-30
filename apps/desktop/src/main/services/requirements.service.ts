@@ -64,7 +64,7 @@ export class RequirementsService {
 
   async create(repoPath: string, dto: CreateRequirementDto, workspaceDir?: string): Promise<Requirement> {
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
-    const reqId = await this.nextId(repoPath, dto.objectTypeRef)
+    const reqId = await this.nextId(repoPath, targetRepo, dto.objectTypeRef)
 
     // Belt-and-suspenders: nextId() already reconciles the counter against files on
     // disk, so this should never trigger in practice — but writeYaml() overwrites
@@ -240,7 +240,13 @@ export class RequirementsService {
     }
   }
 
-  private async nextId(repoPath: string, objectTypeRef: string): Promise<string> {
+  /**
+   * The prefix is resolved from `repoPath`'s schema (it declares every node), but the number is
+   * allocated in `targetRepo`, the repo that receives the file — GH20: IDs are derived from the
+   * files on disk, so a component's IDs must be counted where the component's files live. The
+   * product repo stays a history source (pre-GH20 counters/tombstones, cf. `nextCounterId`).
+   */
+  private async nextId(repoPath: string, targetRepo: string, objectTypeRef: string): Promise<string> {
     const typeName = objectTypeRef.split('::').pop() ?? objectTypeRef
 
     // Scoped by node (not a flat search across every node's objectTypes) via the same
@@ -252,6 +258,6 @@ export class RequirementsService {
     const prefix = (resolved && resolved !== 'unresolvable' ? resolved.prefix : undefined)
       ?? typeName.slice(0, 6).toUpperCase()
 
-    return nextCounterId(this.git, repoPath, prefix, 'requirements')
+    return nextCounterId(this.git, targetRepo, prefix, 'requirements', targetRepo === repoPath ? [] : [repoPath])
   }
 }

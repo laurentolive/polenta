@@ -36,6 +36,13 @@ export class GitService {
     await fsPromises.writeFile(full, yaml.dump(data, { lineWidth: 120 }), 'utf-8')
   }
 
+  /** Writes raw text (not YAML) — e.g. the empty tombstone files of GH20 (`id-counter.util.ts`). */
+  async writeText(repoPath: string, filePath: string, content: string): Promise<void> {
+    const full = path.join(repoPath, filePath)
+    await fsPromises.mkdir(path.dirname(full), { recursive: true })
+    await fsPromises.writeFile(full, content, 'utf-8')
+  }
+
   async fileExists(repoPath: string, filePath: string): Promise<boolean> {
     try {
       await fsPromises.access(path.join(repoPath, filePath))
@@ -106,27 +113,6 @@ export class GitService {
     const yamlFiles = files.filter((f) => f.endsWith('.yaml'))
     const items: (T | null)[] = await Promise.all(yamlFiles.map((file) => this.readYaml<T>(repoPath, file)))
     return items.filter((it): it is T => it !== null)
-  }
-
-  /**
-   * Increment and persist a named counter in `config/counters.yaml`, returning
-   * `{idPrefix}-{padded number}` (e.g. `QUERY-0001`) — shared by every T77 service
-   * using this ID scheme (SavedQuery, Dashboard). `ReviewsService.nextReviewId` uses
-   * the same mechanism but predates this sprint and isn't touched here.
-   */
-  async nextCounterId(repoPath: string, counterKey: string, idPrefix: string): Promise<string> {
-    const countersPath = 'config/counters.yaml'
-    let counters: Record<string, number | undefined> = {}
-    try {
-      const existing = await this.readYaml<Record<string, number | undefined>>(repoPath, countersPath)
-      counters = existing ?? {}
-    } catch {
-      // file doesn't exist yet
-    }
-    const next = (counters[counterKey] ?? 0) + 1
-    counters[counterKey] = next
-    await this.writeYaml(repoPath, countersPath, counters)
-    return `${idPrefix}-${String(next).padStart(4, '0')}`
   }
 
   // ─── Git objects reads (lecture historique uniquement) ─────────────────────

@@ -1,5 +1,6 @@
 import type { Review, ReviewStatus } from '@polenta/types'
 import type { GitService } from './git.service'
+import { assertNewObjectFile, nextCounterId } from './id-counter.util'
 
 export interface CreateReviewDto {
   actionId?: string
@@ -15,16 +16,11 @@ export interface CreateReviewDto {
   }>
 }
 
-interface CountersConfig {
-  REVIEW?: number
-  [key: string]: number | undefined
-}
-
 export class ReviewsService {
   constructor(private readonly git: GitService) {}
 
   async create(repoPath: string, dto: CreateReviewDto): Promise<Review> {
-    const id = await this.nextReviewId(repoPath)
+    const id = await nextCounterId(this.git, repoPath, 'REVIEW', 'reviews')
 
     const review: Review = {
       id,
@@ -45,6 +41,7 @@ export class ReviewsService {
       })),
     }
 
+    await assertNewObjectFile(this.git, repoPath, `reviews/${id}.yaml`, id)
     await this.git.writeYaml(repoPath, `reviews/${id}.yaml`, review)
     return review
   }
@@ -119,23 +116,5 @@ export class ReviewsService {
     review.status = status
     await this.git.writeYaml(repoPath, `reviews/${reviewId}.yaml`, review)
     return review
-  }
-
-  // ─── Private helpers ─────────────────────────────────────────────────────────
-
-  private async nextReviewId(repoPath: string): Promise<string> {
-    const countersPath = 'config/counters.yaml'
-    let counters: CountersConfig = {}
-    try {
-      const existing = await this.git.readYaml<CountersConfig>(repoPath, countersPath)
-      counters = existing ?? {}
-    } catch {
-      // file doesn't exist yet
-    }
-
-    const next = (counters.REVIEW ?? 0) + 1
-    counters.REVIEW = next
-    await this.git.writeYaml(repoPath, countersPath, counters)
-    return `REVIEW-${String(next).padStart(4, '0')}`
   }
 }

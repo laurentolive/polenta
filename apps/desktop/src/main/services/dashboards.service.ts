@@ -2,6 +2,7 @@ import type { Dashboard, QueryScope, Widget, WidgetFieldMapping, WidgetSize, Wid
 import type { GitService } from './git.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
+import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 
 export interface CreateDashboardDto {
   title: string
@@ -46,7 +47,7 @@ interface PrefStore {
  * CRUD des dashboards + widgets embarqués (un dashboard = un fichier YAML contenant
  * son tableau `widgets`, pas de fichier séparé par widget — même logique que les
  * approbations embarquées dans ReviewsService). Scope privé (`.{username}.pref`) ou
- * partagé (`dashboards/DASHBOARD-xxxx.yaml`, ID via `config/counters.yaml`).
+ * partagé (`dashboards/DASHBOARD-xxxx.yaml`, ID via `nextCounterId`, cf. `id-counter.util.ts`).
  *
  * Un widget n'a pas de scope propre : son scope effectif est celui de son dashboard
  * parent (T77-design.md § "Règles de dépendance et de scope"). La validation
@@ -82,7 +83,7 @@ export class DashboardsService {
 
   async create(repoPath: string, username: string, dto: CreateDashboardDto): Promise<Dashboard> {
     if (dto.scope === 'shared') {
-      const id = await this.git.nextCounterId(repoPath, 'DASHBOARD', 'DASHBOARD')
+      const id = await nextCounterId(this.git, repoPath, 'DASHBOARD', 'dashboards')
       const dashboard: Dashboard = {
         id,
         title: dto.title,
@@ -92,6 +93,7 @@ export class DashboardsService {
         createdBy: dto.createdBy,
         createdAt: new Date().toISOString(),
       }
+      await assertNewObjectFile(this.git, repoPath, `dashboards/${id}.yaml`, id)
       await this.git.writeYaml(repoPath, `dashboards/${id}.yaml`, dashboard)
       return dashboard
     }
@@ -124,7 +126,7 @@ export class DashboardsService {
       this.writePref(repoPath, username, pref)
       return
     }
-    await this.git.deleteFile(repoPath, `dashboards/${id}.yaml`)
+    await deleteWithTombstone(this.git, repoPath, `dashboards/${id}.yaml`, id)
   }
 
   /**
@@ -148,14 +150,15 @@ export class DashboardsService {
     let moved: Dashboard
     if (newScope === 'shared') {
       this.assertWidgetsShareable(current.widgets)
-      const newId = await this.git.nextCounterId(repoPath, 'DASHBOARD', 'DASHBOARD')
+      const newId = await nextCounterId(this.git, repoPath, 'DASHBOARD', 'dashboards')
       moved = { ...current, id: newId, scope: 'shared' }
+      await assertNewObjectFile(this.git, repoPath, `dashboards/${newId}.yaml`, newId)
       await this.git.writeYaml(repoPath, `dashboards/${newId}.yaml`, moved)
       const pref = this.readPref(repoPath, username)
       pref.dashboards = (pref.dashboards ?? []).filter((d) => d.id !== id)
       this.writePref(repoPath, username, pref)
     } else {
-      await this.git.deleteFile(repoPath, `dashboards/${id}.yaml`)
+      await deleteWithTombstone(this.git, repoPath, `dashboards/${id}.yaml`, id)
       moved = { ...current, id: generatePrivateId(), scope: 'private' }
       const pref = this.readPref(repoPath, username)
       pref.dashboards = [...(pref.dashboards ?? []), moved]

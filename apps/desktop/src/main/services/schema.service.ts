@@ -82,8 +82,8 @@ export class SchemaService {
    * le valide déjà, mais l'UI (StructureTab) sauvegarde par réécriture complète du schéma
    * via `save()` directement, sans jamais passer par `addObjectType` — sans ce check ici,
    * ce chemin (le seul que l'UI emprunte réellement) laissait deux types partager le même
-   * prefix, ce qui fait collisionner leurs IDs générés (`nextCounterId` clé
-   * `config/counters.yaml` par prefix seul, cf. `id-counter.util.ts`). Même limitation
+   * prefix, ce qui fait collisionner leurs IDs générés (`nextCounterId` calcule le
+   * prochain numéro par prefix seul, cf. `id-counter.util.ts`). Même limitation
    * documentée sur `findNodeUsingPrefix` : ne porte que sur `schema.nodes` du repo courant.
    */
   private assertUniquePrefixes(schema: ProjectSchema): void {

@@ -12,6 +12,7 @@ import type { DashboardsService } from './dashboards.service'
 import { findObjectTypeDef, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
+import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 
 export interface CreateSavedQueryDto {
   title: string
@@ -55,8 +56,8 @@ interface PrefStore {
  *
  * CRUD des requêtes sauvegardées + historique. Scope privé (stocké dans le fichier
  * de préférences `.{username}.pref`, jamais committé) ou partagé (fichier YAML
- * versionné dans `queries/`, ID via `config/counters.yaml`, même mécanisme que
- * ReviewsService).
+ * versionné dans `queries/`, ID via `nextCounterId`, même mécanisme que
+ * ReviewsService, cf. `id-counter.util.ts`).
  *
  * `dashboards` est optionnel uniquement pour ne pas casser un appel de test qui
  * construirait ce service sans dépendance — en usage réel (`container.ts`) il est
@@ -80,7 +81,7 @@ export class SavedQueriesService {
 
   async create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery> {
     if (dto.scope === 'shared') {
-      const id = await this.git.nextCounterId(repoPath, 'QUERY', 'QUERY')
+      const id = await nextCounterId(this.git, repoPath, 'QUERY', 'queries')
       const query: SavedQuery = {
         id,
         title: dto.title,
@@ -91,6 +92,7 @@ export class SavedQueriesService {
         createdBy: dto.createdBy,
         createdAt: new Date().toISOString(),
       }
+      await assertNewObjectFile(this.git, repoPath, `queries/${id}.yaml`, id)
       await this.git.writeYaml(repoPath, `queries/${id}.yaml`, query)
       return query
     }
@@ -141,7 +143,7 @@ export class SavedQueriesService {
       this.writePref(repoPath, username, pref)
       return
     }
-    await this.git.deleteFile(repoPath, `queries/${id}.yaml`)
+    await deleteWithTombstone(this.git, repoPath, `queries/${id}.yaml`, id)
   }
 
   /**
@@ -170,7 +172,7 @@ export class SavedQueriesService {
     let moved: SavedQuery
     if (newScope === 'private') {
       await this.assertNoDependents(repoPath, username, id, 'repasser en privé')
-      await this.git.deleteFile(repoPath, `queries/${id}.yaml`)
+      await deleteWithTombstone(this.git, repoPath, `queries/${id}.yaml`, id)
       moved = { ...current, id: generatePrivateId(), scope: 'private' }
       const pref = this.readPref(repoPath, username)
       pref.savedQueries = [...(pref.savedQueries ?? []), moved]
@@ -179,8 +181,9 @@ export class SavedQueriesService {
       const pref = this.readPref(repoPath, username)
       pref.savedQueries = (pref.savedQueries ?? []).filter((q) => q.id !== id)
       this.writePref(repoPath, username, pref)
-      const newId = await this.git.nextCounterId(repoPath, 'QUERY', 'QUERY')
+      const newId = await nextCounterId(this.git, repoPath, 'QUERY', 'queries')
       moved = { ...current, id: newId, scope: 'shared' }
+      await assertNewObjectFile(this.git, repoPath, `queries/${newId}.yaml`, newId)
       await this.git.writeYaml(repoPath, `queries/${newId}.yaml`, moved)
       // Cascade the id change to widgets in the user's own private dashboards that
       // referenced the old (now-deleted) private id — see doc comment above.

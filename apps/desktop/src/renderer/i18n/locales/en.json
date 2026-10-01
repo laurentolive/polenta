@@ -51,13 +51,20 @@
       "publishing": "Publishing…",
       "pushFailed": "Merged locally, but the push failed: {{error}}",
       "titlePlaceholder": "Title of the change…",
-      "staleState": "State has changed (branch changed) — close and try again.",
+      "staleState": "State has changed (branch or pending changes) — close and try again.",
       "publishImpossible": "Unable to publish",
-      "conflictMessage": "Someone modified the same information — manual resolution required.",
-      "networkError": "Unable to publish: network unavailable. Your changes remain pending — try again once connected.",
       "genericError": "Error while publishing",
       "pushError": "Error during push",
-      "manualResolution": "Manual resolution (Version)"
+      "manualResolution": "Manual resolution (Version)",
+      "conflictOnRepo": "“{{repo}}”: someone modified the same information — manual resolution required.",
+      "networkErrorRepo": "Unable to publish: network unavailable for “{{repo}}”. Nothing was published, your changes remain pending — try again once connected.",
+      "blockedRepos": "Nothing was published: these repos are not on their configured integration branch.",
+      "failedOnRepo": "Publishing “{{repo}}” failed: {{error}}",
+      "alreadyPublished": "Already published: {{repos}}. Run “Publish” again to finish.",
+      "reposToPublish": "Repos to publish:",
+      "repoFiles_one": "({{count}} file)",
+      "repoFiles_other": "({{count}} files)",
+      "parentsNote": "Parent repos are published too, to update their pins."
     },
     "viewHeader": {
       "back": "Back"

@@ -97,6 +97,23 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 > sprint 2) — il n'était atteignable depuis aucune navigation de l'UI et faisait doublon avec ce
 > workflow simplifié.
 
+> **Publication multi-repo (GH38) :** "Publier" ne se limite plus au repo concerné (racine ou
+> `?repo=`) : un clic publie, sous un seul titre, **chaque repo du workspace** qui a des
+> modifications en attente (ou qui est resté sur la branche éphémère d'une publication en conflit),
+> enfants avant parents (post-ordre de l'arbre logique, chaque repo une seule fois en cas de
+> diamant, racine en dernier) — `renderer/lib/publishWorkspace.ts`. Chaque repo suit le flux
+> unitaire décrit ci-dessus ; après chacun, son SHA de merge est propagé comme pin dans ses
+> dépendants (T82), qui passent ensuite et publient donc cette mise à jour de pin avec leurs
+> propres modifications (un parent sans autre modification est publié pour le seul pin).
+> Contrôles **avant toute écriture**, sur les repos à publier et tous leurs ancêtres : une branche
+> bloquante (HEAD détaché, `int-*` non configurée) refuse toute la publication en listant les
+> repos ; un `fetch` en échec (T154) aussi, en nommant le repo. Un échec (conflit…) sur un repo
+> arrête la publication à ce repo : les repos déjà publiés restent publiés **et sont poussés**,
+> l'erreur nomme le repo en échec et les repos déjà publiés, « Résolution manuelle » ouvre le diff
+> du repo en échec. En fin de publication (succès ou échec), un repo publié laissé en HEAD détaché
+> par les reconstructions de l'arbre de la propagation de pin (cas diamant : ses deux parents
+> déclarent temporairement deux pins différents) est remis sur sa branche d'intégration.
+
 ### 2.2 Règles
 
 - Chaque repo a une branche d'intégration **configurée** (pas nécessairement `main` — désignée

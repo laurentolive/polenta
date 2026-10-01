@@ -1768,6 +1768,11 @@ Toutes les vues principales (routes + `SystemView`) partagent un unique composan
   uniquement sur les vues hors contexte projet, ex. `/account`). `ModificationControl` n'est donc
   plus monté globalement par `AppLayout` — il apparaît dans le flux normal de la barre de titre de
   chaque vue, jamais en `position: fixed`.
+- GH38 : le bouton "Publier" s'active dès qu'**un** repo du workspace a des modifications en
+  attente (`useModificationMode.pendingRepos`, statut de chaque repo interrogé toutes les 3 s), et
+  le popup de titre liste les repos qui seront publiés (cf. `SPEC-FORKS-BRANCHES-BASELINES.md`
+  §2.1, « Publication multi-repo »). Visibilité et message « branche bloquée » restent pilotés par
+  le repo concerné.
 - `ModificationControl` : conteneur racine `relative flex items-center gap-2 shrink-0`. Ses
   popups (saisie du titre de publication, erreur/conflit) sont des popovers ancrés sous le bouton
   (`absolute right-0 top-full mt-2 z-50`, largeur fixe `w-96` — **ne pas** utiliser `w-full` sur un

@@ -1,14 +1,13 @@
 # Polenta
 
-**Requirements and test management built on git, designed to work with AI agents.**
+**System engineering made easy**
 
 Polenta is a desktop ALM tool (think Polarion or DOORS) for system engeeniring.
-Think to be inclusive for non technical person. 
-To reach this goal, a natural human expression is used instead of ML formalis and UI is designed to be intuitive.
-A configurable data model to meet each team terminology & needs process. Requirements, test cases, campaigns, reviews and
-trace links are plain YAML files in a git repository. Backend has no database and no server. The desktop app is an editor on top
-of those files, and an MCP server gives AI agents such as Claude Code, Cursor and Codex the
-same access.
+Think to be inclusive for non technical person but respecting system engineering strictness. 
+To reach this goal, a natural human expression is used instead of ML formalism. UI is designed to be intuitive.
+A data model to manage Requirements, test cases, campaigns, reviews and
+trace links is configurable to meet each team terminology & process needs. 
+An MCP server gives AI agents such as Claude Code, Cursor and Codex the access to whole data model to allow assist redaction, mass import, coherence review...
 
 > Status: early development (desktop `v0.0.7`). Expect breaking changes.
 
@@ -42,43 +41,7 @@ same access.
 | **Export** | PDF audit reports, Excel matrices, Word, JUnit XML |
 | **i18n** | English and French UI |
 
-## What a requirement looks like
 
-```yaml
-# requirements/SYS-0001.yaml
-id: SYS-0001
-objectTypeRef: root::exigence-systeme
-title: Fast start in Eco mode
-status: draft
-version: 1
-fields:
-  priority: high
-  statement: |
-    WHEN the user presses the power button
-    THE system SHALL start in Eco mode within 500 ms
-  acceptanceCriteria: |
-    - [ ] Start time measured < 500 ms at 25 °C, battery > 20 %
-jiraLinks: []
-```
-
-Trace links are kept in `links/links.yaml`. The project's data model (object types, fields,
-statuses, link types, component nodes) lives in `.polenta/schema.yaml`.
-
-## Project layout
-
-```
-my-product/
-├── .polenta/
-│   ├── workspace.yaml        # marks the folder as a Polenta project
-│   ├── schema.yaml           # data model: nodes, object types, link types
-│   └── trees/                # display order (maintained by the app)
-├── requirements/             # one YAML file per requirement
-├── tests/                    # one YAML file per test case
-├── links/links.yaml          # all trace links
-├── parameters/parameters.yaml
-├── diagrams/                 # draw.io files
-└── components/               # optional: reusable component repos (git submodules)
-```
 
 ## Using Polenta with an AI agent
 

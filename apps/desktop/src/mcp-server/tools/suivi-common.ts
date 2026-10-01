@@ -5,6 +5,7 @@ import { resolveWorkspaceRepoPaths } from '../../main/services/workspace-repos.u
 import { isReadonlyBranch } from '../../main/services/readonly-branch.util'
 import { isReadOnlySql } from '../../main/services/query-engine.service'
 import { isPrivateScopeId } from '../../main/services/id-scope.util'
+import { formatCounterId, peekNextCounterId } from '../../main/services/id-counter.util'
 import {
   unknownBuilderFields,
   validateQueryDefinitionShape,
@@ -131,9 +132,9 @@ export async function findVisibleDashboard(c: McpContainer, id: string): Promise
   return c.dashboards.get(c.repoPath, username, id)
 }
 
-/** Id qu'aurait un objet partagé créé maintenant — même calcul que
- *  `GitService.nextCounterId(key)`, sans écrire `config/counters.yaml`. */
+/** Id qu'aurait un objet partagé créé maintenant — même calcul que `nextCounterId`
+ *  (fichiers + pierres tombales, GH20), en lecture seule. */
 export async function peekSharedId(c: McpContainer, key: 'QUERY' | 'DASHBOARD'): Promise<string> {
-  const counters = (await c.git.readYaml<Record<string, number | undefined>>(c.repoPath, 'config/counters.yaml').catch(() => null)) ?? {}
-  return `${key}-${String((counters[key] ?? 0) + 1).padStart(4, '0')}`
+  const dir = key === 'QUERY' ? 'queries' : 'dashboards'
+  return formatCounterId(key, await peekNextCounterId(c.git, c.repoPath, key, dir))
 }

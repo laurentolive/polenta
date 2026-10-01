@@ -355,8 +355,8 @@ Helpers communs : `tools/suivi-common.ts` ; règles pures : `main/services/suivi
 `SPEC-DASHBOARDS.md` §3), `createdBy: 'mcp'`.
 
 **Règles communes aux écritures** : un objet par appel ; `dryRun` par défaut `true`
-(validation complète, requête comprise, aperçu sans écriture — l'id partagé prévu est lu
-dans `config/counters.yaml` sans l'incrémenter) ; branche `''`/`prj-*` → `READONLY_BRANCH`
+(validation complète, requête comprise, aperçu sans écriture — l'id partagé prévu est
+calculé par `peekNextCounterId`, lecture seule, GH20) ; branche `''`/`prj-*` → `READONLY_BRANCH`
 même en dryRun (`readonly-branch.util.ts`, règle partagée avec `DashboardSeedService`).
 Erreur attendue → `isError` avec message `[CODE] raison`.
 
@@ -504,7 +504,8 @@ Deux catégories (cf. §4) :
   tous les appelants de `SchemaService`, hors périmètre de ce ticket).
 - **Vue Suivi (GH18)** : `delete_query` ne voit pas les widgets des dashboards privés d'un
   *autre* utilisateur (même limite que l'app) ; course inter-process résiduelle sur
-  `config/counters.yaml` et sur un même fichier de dashboard (écriture app + MCP
+  l'attribution d'un id partagé (mémoire de session propre à chaque process, garde-fou
+  anti-écrasement — GH20) et sur un même fichier de dashboard (écriture app + MCP
   simultanées) ; `run_query` reconstruit les index à chaque appel (coûteux sur un très gros
   workspace).
 - **Bundle `alasql`** (GH18) : la build Node d'alasql contient des `require('react-native…')`

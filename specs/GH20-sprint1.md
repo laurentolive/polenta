@@ -80,3 +80,12 @@ composant figure dans l'arbre mais n'a pas encore de `.git` (comportement exista
    suppression et `.polenta/tombstones/CAMP-xxxx` (scénario 23). Recréer une campagne :
    elle ne reprend pas l'ID supprimé.
 3. Passer un dashboard partagé en privé puis en créer un nouveau partagé : nouvel ID.
+
+## Au merge
+
+GH18 (vue Suivi, mergé dans main pendant GH20) avait ajouté `peekSharedId`
+(`mcp-server/tools/suivi-common.ts`), qui lisait `config/counters.yaml` directement pour
+l'aperçu `dryRun` des ids partagés : après migration, il aurait toujours prédit `-0001`.
+Remplacé par `peekNextCounterId` ; `SPEC-MCP-SERVER.md` (règles d'écriture Suivi, limites
+GH18) aligné. Conflit `SPEC-INDEX.md` (ligne SPEC-MCP-SERVER) : description de main
+conservée, MAJ → GH20. Typecheck et scénarios rejoués sur le code mergé : OK.

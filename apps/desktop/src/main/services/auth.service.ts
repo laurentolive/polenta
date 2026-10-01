@@ -1,10 +1,13 @@
 import keytar from 'keytar'
 import { app, shell } from 'electron'
+import * as fs from 'fs'
 import * as fsPromises from 'fs/promises'
 import * as path from 'path'
+import git from 'isomorphic-git'
 import type { Dispatcher } from 'undici'
 
 import type { GitAuthor } from './git.service'
+import { migrateLocalPref } from './pref-store.util'
 import { resolveProxyDispatcher, describeFetchError } from './net-proxy'
 
 const KEYTAR_SERVICE = 'polenta'
@@ -93,6 +96,42 @@ export class AuthService {
 
     // Hôte non reconnu — pas d'API à interroger, identité minimale
     return { login: 'unknown', name: 'Unknown User', email: '' }
+  }
+
+  /**
+   * GH29 — login under which the per-user `.{username}.pref` of `repoPath` is read and
+   * written. The project's `origin` host comes first, then the hosts the account menus
+   * probe; "connected" means a bare host token in the keychain (what logout deletes). Read
+   * from auth.json, no network call; `local` only when no account is connected. A real login
+   * triggers the one-shot merge of `.local.pref` (cf. `migrateLocalPref`).
+   */
+  async projectUsername(repoPath: string): Promise<string> {
+    const originUrl = await getOriginUrl(repoPath)
+    const originHost = originUrl && /^https?:\/\//i.test(originUrl) ? extractHost(originUrl) : ''
+    const hosts = [...new Set([originHost, 'github.com', 'gitlab.com'].filter(Boolean))]
+    const store = await this.readStore()
+
+    let username = 'local'
+    for (const host of hosts) {
+      if (!(await keytar.getPassword(KEYTAR_SERVICE, host))) continue
+      const accountsForHost = store.accounts.filter(a => a.remoteHost === host)
+      const account =
+        accountsForHost.find(a => `${a.remoteHost}:${a.username}` === store.defaultAccount)
+        ?? accountsForHost[0]
+      if (account) {
+        username = account.username
+        break
+      }
+      try {
+        username = (await this.resolveIdentity(`https://${host}`)).login
+        break
+      } catch {
+        // try next host
+      }
+    }
+
+    migrateLocalPref(repoPath, username)
+    return username
   }
 
   // ─── Author for git commits ─────────────────────────────────────────────────
@@ -318,6 +357,15 @@ export class AuthService {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function getOriginUrl(repoPath: string): Promise<string | null> {
+  try {
+    const remotes = await git.listRemotes({ fs, dir: repoPath })
+    return remotes.find(r => r.remote === 'origin')?.url ?? null
+  } catch {
+    return null
+  }
+}
 
 function extractHost(remote: string): string {
   try {

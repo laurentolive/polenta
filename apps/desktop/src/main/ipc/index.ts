@@ -170,6 +170,8 @@ export function registerIpcHandlers(c: Container): void {
   ipcMain.handle('auth:delete-token', (_e, remote: string) => c.auth.deleteToken(remote))
   ipcMain.handle('auth:resolve-identity', (_e, remote: string) =>
     c.auth.resolveIdentity(remote))
+  ipcMain.handle('auth:project-username', (_e, repoPath: string) =>
+    c.auth.projectUsername(repoPath))
   ipcMain.handle('auth:device-flow-start', (_e, remote: string) => c.auth.startDeviceFlow(remote))
   ipcMain.handle('auth:device-flow-poll', (_e, remote: string, deviceCode: string) =>
     c.auth.pollDeviceFlow(remote, deviceCode))

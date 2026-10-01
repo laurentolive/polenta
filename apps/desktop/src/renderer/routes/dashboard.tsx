@@ -54,13 +54,15 @@ function DashboardPage() {
   })
   const repoPath = project?.localPath ?? ''
 
-  const { data: identity } = useQuery({
-    queryKey: ['identity', repoPath],
-    queryFn: () => api.auth.resolveIdentity(repoPath),
+  const { data: identityLogin, isError: identityError } = useQuery({
+    queryKey: ['project-username', repoPath],
+    queryFn: () => api.auth.projectUsername(repoPath),
     enabled: !!repoPath,
     retry: false,
   })
-  const username = identity?.login ?? 'local'
+  // GH29 — vide tant que l'identité n'est pas résolue : les lectures (gardées par `!!username`)
+  // attendent, rien n'est lu ni écrit sous `local` par erreur.
+  const username = identityLogin ?? (identityError ? 'local' : '')
 
   const dashboardQueryKey = ['dashboard', repoPath, username, dashboardId]
   const { data: dashboard, isLoading } = useQuery({

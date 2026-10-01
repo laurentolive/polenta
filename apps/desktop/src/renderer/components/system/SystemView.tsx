@@ -654,13 +654,13 @@ export function SystemView() {
   // changent coup sur coup (ex. « Réinitialiser » = colonnes + titres en deux appels).
   const prefsRef = useRef<FieldVisibilityPref>({ excel: [], word: [], edit: [], showFoldersExcel: true, showFoldersWord: true })
 
-  const { data: identity, isPending: identityPending } = useQuery({
-    queryKey: ['identity', repoPath],
-    queryFn: () => api.auth.resolveIdentity(repoPath),
+  const { data: identityLogin, isPending: identityPending } = useQuery({
+    queryKey: ['project-username', repoPath],
+    queryFn: () => api.auth.projectUsername(repoPath),
     enabled: !!repoPath,
     retry: false,
   })
-  const username = identity?.login ?? 'local'
+  const username = identityLogin ?? 'local'
 
   const { data: allLinks = [], isPending: linksPending } = useQuery({
     queryKey: ['links-all', repoPath],

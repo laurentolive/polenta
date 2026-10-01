@@ -84,6 +84,7 @@ export function createIpcClient(): ApiClient {
       getToken: (r) => invoke('auth:get-token', r),
       deleteToken: (r) => invoke('auth:delete-token', r),
       resolveIdentity: (r) => invoke('auth:resolve-identity', r),
+      projectUsername: (p) => invoke('auth:project-username', p),
       hasAnyAccount: () => invoke('auth:has-any-account'),
       setup: (r, p) => invoke('auth:setup', r, p),
       startDeviceFlow: (r) => invoke('auth:device-flow-start', r),

@@ -634,6 +634,7 @@ Composants en repo séparé : `polenta-repo:get` / `polenta-repo:save` (voir §2
 | `auth:get-token` | `{ remoteUrl }` | `string \| null` |
 | `auth:delete-token` | `{ remoteUrl }` | `void` |
 | `auth:resolve-identity` | `{ remoteUrl }` | `UserIdentity` |
+| `auth:project-username` | `{ repoPath }` | `string` — login du compte connecté pour le remote `origin` du repo (sinon github.com / gitlab.com), `local` si aucun ; nom du fichier `.{username}.pref`. Fusionne une fois `.local.pref` dans `.{login}.pref` (GH29) |
 | `auth:has-any-account` | — | `boolean` |
 | `auth:setup` | `{ remote, pat }` | `UserIdentity` |
 

@@ -336,6 +336,8 @@ export interface ApiClient {
     getToken(remote: string): Promise<string | null>
     deleteToken(remote: string): Promise<void>
     resolveIdentity(remote: string): Promise<{ login: string; name: string; email: string }>
+    /** GH29 — login owning `.{username}.pref` for this repo (`local` if no account connected). */
+    projectUsername(repoPath: string): Promise<string>
     hasAnyAccount(): Promise<boolean>
     setup(remote: string, pat: string): Promise<{ login: string; name: string; email: string }>
     startDeviceFlow(remote: string): Promise<DeviceFlowSession>

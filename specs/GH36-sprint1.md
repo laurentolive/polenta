@@ -64,6 +64,19 @@ Branche `GH36` **rebasée sur `GH34` (28184e5)**, qui n'est pas encore mergé (r
   `AuthService` (testeur de repli) sera ajouté au sprint 2, quand l'import en aura besoin.
 - Le script accepte `GH36_OUT_DIR` pour conserver les fichiers produits (contrôle manuel dans Excel).
 
+## Correction après test humain (commit suivant)
+
+Retour : « je ne vois pas de champs pour renseigner l'exécution, le testeur et la date ». Les
+colonnes de saisie étaient en I–L, après ~170 unités de largeur de colonnes d'information : hors
+de l'écran à l'ouverture, et les cases blanches et vides ne se signalaient pas.
+- Ordre des colonnes : Clé, Instance, Étape, Test/Action, Résultat attendu, **Verdict, Testeur,
+  Date, Commentaire** (F–I), puis Exigence, Paramètres, Statut actuel.
+- Cases de saisie remplies en **jaune**, en-têtes des colonnes de saisie en jaune foncé ; le bandeau
+  dit « Remplir uniquement les cases en jaune ».
+- Volet figé sur les colonnes A–C en plus des en-têtes ; largeurs réduites.
+- Vérifié dans Excel 16 avec une fenêtre de 1366×768 : la plage visible à l'ouverture est D6:K24,
+  plus les colonnes A–C figées, donc les colonnes F–I sont visibles. Script : 34/34.
+
 ## Mises à jour SPEC
 
 Aucune (prévues au sprint 2, dernier sprint).
@@ -76,6 +89,7 @@ Aucune (prévues au sprint 2, dernier sprint).
 3. **E14 / E13** : « Excel d'exécution » → « Exporter le classeur d'exécution… » ; vérifier le nom
    proposé ; annuler une fois (aucun message), puis enregistrer.
 4. **E11** : ouvrir le fichier dans Excel. Il doit s'ouvrir sans réparation. Vérifier : les
+   colonnes jaunes Verdict / Testeur / Date / Commentaire sont visibles sans défiler ; les
    lignes d'étape se replient sous leur instance ; les cellules grisées et bleues ne sont pas
    modifiables ; la liste déroulante du Verdict fonctionne ; le filtre d'une colonne fonctionne ;
    les paramètres sont substitués.

@@ -10,10 +10,13 @@ export const EXECUTION_SHEET_FORMAT_VERSION = 1
 
 export type ExecutionSheetLocale = 'fr' | 'en'
 
-/** Colonnes de la feuille de saisie, dans l'ordre (A…L). */
+/** Colonnes de la feuille de saisie, dans l'ordre (A…L). Les colonnes de saisie suivent
+ *  immédiatement « Résultat attendu » pour être visibles à l'ouverture sans défilement horizontal ;
+ *  les colonnes d'information secondaires sont reléguées à droite. */
 export const EXECUTION_SHEET_COLUMNS = [
-  'key', 'instance', 'step', 'text', 'expected', 'requirement', 'params',
-  'currentStatus', 'verdict', 'tester', 'date', 'comment',
+  'key', 'instance', 'step', 'text', 'expected',
+  'verdict', 'tester', 'date', 'comment',
+  'requirement', 'params', 'currentStatus',
 ] as const
 
 export type ExecutionSheetColumn = typeof EXECUTION_SHEET_COLUMNS[number]
@@ -62,7 +65,7 @@ export const EXECUTION_SHEET_LABELS: Record<ExecutionSheetLocale, ExecutionSheet
     stepVerdicts: { PASS: 'Passé', FAIL: 'Échoué', BLOCKED: 'Bloqué', SKIP: 'Ignoré', NOT_EXECUTED: 'Non exécuté' },
     globalVerdicts: { PASS: 'Passé', FAIL: 'Échoué', BLOCKED: 'Bloqué', INCOMPLETE: 'Incomplet' },
     runStatuses: { pending: 'En attente', PASS: 'Passé', FAIL: 'Échoué', BLOCKED: 'Bloqué', INCOMPLETE: 'Incomplet' },
-    banner: 'Remplir uniquement les colonnes Verdict, Testeur, Date et Commentaire. Ne pas modifier les autres colonnes ni supprimer de lignes : le fichier sera réimporté dans Polenta.',
+    banner: 'Remplir uniquement les cases en jaune (Verdict, Testeur, Date, Commentaire). Ne pas modifier les autres colonnes ni supprimer de lignes : le fichier sera réimporté dans Polenta.',
     exportedAt: 'Exporté le',
     baseline: 'Baseline',
     preconditions: 'Préconditions',
@@ -90,7 +93,7 @@ export const EXECUTION_SHEET_LABELS: Record<ExecutionSheetLocale, ExecutionSheet
     stepVerdicts: { PASS: 'Passed', FAIL: 'Failed', BLOCKED: 'Blocked', SKIP: 'Skipped', NOT_EXECUTED: 'Not executed' },
     globalVerdicts: { PASS: 'Passed', FAIL: 'Failed', BLOCKED: 'Blocked', INCOMPLETE: 'Incomplete' },
     runStatuses: { pending: 'Pending', PASS: 'Passed', FAIL: 'Failed', BLOCKED: 'Blocked', INCOMPLETE: 'Incomplete' },
-    banner: 'Fill in only the Verdict, Tester, Date and Comment columns. Do not change other columns or delete rows: the file will be re-imported into Polenta.',
+    banner: 'Fill in only the yellow cells (Verdict, Tester, Date, Comment). Do not change other columns or delete rows: the file will be re-imported into Polenta.',
     exportedAt: 'Exported on',
     baseline: 'Baseline',
     preconditions: 'Preconditions',

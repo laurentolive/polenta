@@ -175,13 +175,17 @@ via un pré-passage sur les blocs fenced dédiés (même détection que #34). Pa
 | C | `step` | — | `order` | — |
 | D | `text` | `TEST-ID — titre` | action | — |
 | E | `expected` | préconditions / postconditions | résultat attendu | — |
-| F | `requirement` | `requirementId` | — | — |
-| G | `params` | paramètres figés | — | — |
-| H | `currentStatus` | libellé statut actuel | — | — |
-| I | `verdict` | verdict global (liste globale) | verdict d'étape (liste étape) | ✔ |
-| J | `tester` | testeur | — | ✔ (instance) |
-| K | `date` | date d'exécution (`numFmt` date) | — | ✔ (instance) |
-| L | `comment` | commentaire global | commentaire d'étape | ✔ |
+| F | `verdict` | verdict global (liste globale) | verdict d'étape (liste étape) | ✔ |
+| G | `tester` | testeur | — | ✔ (instance) |
+| H | `date` | date d'exécution (`numFmt` date) | — | ✔ (instance) |
+| I | `comment` | commentaire global | commentaire d'étape | ✔ |
+| J | `requirement` | `requirementId` | — | — |
+| K | `params` | paramètres figés | — | — |
+| L | `currentStatus` | libellé statut actuel | — | — |
+
+*(Correction après test du sprint 1 : les colonnes de saisie étaient en I–L, hors de l'écran à
+l'ouverture ; elles suivent désormais « Résultat attendu », cases de saisie et en-têtes en jaune,
+volet figé sur les colonnes A–C.)*
 
 - Lignes 1–3 : titre campagne (`ID — titre`), baseline / date d'export, bandeau. Ligne 5 : en-têtes,
   `autoFilter` sur le tableau, volet figé sous les en-têtes.

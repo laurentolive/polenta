@@ -137,8 +137,9 @@ function richtextToCellText(markdown: string, labels: ExecutionSheetLabels): str
 // ─── Écriture exceljs ─────────────────────────────────────────────────────────
 
 const COLUMN_WIDTHS: Record<ExecutionSheetColumn, number> = {
-  key: 18, instance: 16, step: 7, text: 50, expected: 45, requirement: 13, params: 26,
-  currentStatus: 13, verdict: 14, tester: 18, date: 16, comment: 45,
+  key: 18, instance: 14, step: 6, text: 42, expected: 32,
+  verdict: 14, tester: 16, date: 16, comment: 40,
+  requirement: 13, params: 26, currentStatus: 13,
 }
 const WRAPPED: ExecutionSheetColumn[] = ['text', 'expected', 'params', 'comment']
 /** Colonnes saisissables par type de ligne (spec §3.2). */
@@ -147,9 +148,14 @@ const EDITABLE: Record<ExecutionSheetRow['kind'], ExecutionSheetColumn[]> = {
   step: ['verdict', 'comment'],
 }
 
+const INPUT_COLUMNS = new Set<ExecutionSheetColumn>([...EDITABLE.instance, ...EDITABLE.step])
+
 const FILL_INSTANCE = 'FFDCE6F2'
 const FILL_LOCKED = 'FFF2F2F2'
 const FILL_HEADER = 'FF1F3864'
+/** Cases à remplir par le testeur (et leurs en-têtes) : jaune, repère explicite du bandeau. */
+const FILL_INPUT = 'FFFFF2CC'
+const FILL_INPUT_HEADER = 'FFBF8F00'
 const FONT_HEADER = 'FFFFFFFF'
 
 const colIndex = (c: ExecutionSheetColumn) => EXECUTION_SHEET_COLUMNS.indexOf(c) + 1
@@ -171,7 +177,8 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'Polenta'
   const sheet = workbook.addWorksheet(labels.sheetName, {
-    views: [{ state: 'frozen', ySplit: EXECUTION_SHEET_HEADER_ROW }],
+    // Volet figé : en-têtes + colonnes Clé/Instance/Étape (repère en défilement horizontal).
+    views: [{ state: 'frozen', ySplit: EXECUTION_SHEET_HEADER_ROW, xSplit: EXECUTION_SHEET_COLUMNS.indexOf('step') + 1 }],
     properties: { outlineProperties: { summaryBelow: false, summaryRight: false } },
   })
 
@@ -199,7 +206,7 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
     const cell = header.getCell(i + 1)
     cell.value = labels.headers[c]
     cell.font = { bold: true, color: { argb: FONT_HEADER } }
-    cell.fill = solid(FILL_HEADER)
+    cell.fill = solid(INPUT_COLUMNS.has(c) ? FILL_INPUT_HEADER : FILL_HEADER)
     cell.alignment = { vertical: 'middle', wrapText: true }
   })
 
@@ -226,6 +233,7 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
       cell.border = { bottom: { style: 'hair', color: { argb: 'FFBFBFBF' } } }
       if (editable.has(c)) {
         cell.protection = { locked: false }
+        cell.fill = solid(FILL_INPUT)
       } else {
         cell.fill = solid(r.kind === 'instance' ? FILL_INSTANCE : FILL_LOCKED)
       }

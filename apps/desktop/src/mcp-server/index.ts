@@ -20,6 +20,7 @@
  * (CLI prioritaire si les deux mécanismes sont fournis.)
  */
 
+import './stdout-guard'
 import * as fs from 'fs'
 import * as path from 'path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'

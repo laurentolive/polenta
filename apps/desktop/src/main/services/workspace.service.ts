@@ -10,6 +10,7 @@ import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { RepoWatcherService } from './repo-watcher.service'
 import { AGENTS_MD_TEMPLATE, AGENTS_MD_TEMPLATE_VERSION, extractAgentsMdVersion } from './agents-md.template'
 import { resolveMcpServerLaunchConfig } from './mcp-launch.util'
+import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
 import {
   buildMcpJsonContent,
   extractMcpJsonVersion,
@@ -576,7 +577,7 @@ export class WorkspaceService {
     const cachePath = path.join(workspaceDir, '.polenta', 'tree.cache.yaml')
     try {
       const raw = await fsPromises.readFile(cachePath, 'utf-8')
-      return (yaml.load(raw) as WorkspaceTree) ?? null
+      return parseTreeCache(workspaceDir, raw)
     } catch {
       return null
     }
@@ -587,6 +588,6 @@ export class WorkspaceService {
     const polentaDir = path.join(workspaceDir, '.polenta')
     await fsPromises.mkdir(polentaDir, { recursive: true })
     const cachePath = path.join(polentaDir, 'tree.cache.yaml')
-    await fsPromises.writeFile(cachePath, yaml.dump(tree, { lineWidth: 120 }), 'utf-8')
+    await fsPromises.writeFile(cachePath, serializeTreeCache(workspaceDir, tree), 'utf-8')
   }
 }

@@ -28,6 +28,7 @@ import type {
 } from '@polenta/types'
 import type { PolentaRepoDependency } from '@polenta/types'
 import { findSystemNode } from '@polenta/types'
+import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
@@ -230,13 +231,14 @@ export class WorkspaceTreeService {
 
   /**
    * Read the cached tree from <workspaceDir>/.polenta/tree.cache.yaml.
-   * Returns null if absent or unreadable.
+   * Returns null if absent, unreadable, or pointing outside `workspaceDir` (GH31 — copied or
+   * moved workspace: callers then rebuild, or fall back to mono-repo).
    */
   async readCache(workspaceDir: string): Promise<WorkspaceTree | null> {
     const cachePath = path.join(workspaceDir, '.polenta', 'tree.cache.yaml')
     try {
       const raw = await fsP.readFile(cachePath, 'utf-8')
-      return (yaml.load(raw) as WorkspaceTree) ?? null
+      return parseTreeCache(workspaceDir, raw)
     } catch {
       return null
     }
@@ -250,7 +252,7 @@ export class WorkspaceTreeService {
     await fsP.mkdir(polentaDir, { recursive: true })
     await this.ensureCacheIgnored(workspaceDir)
     const cachePath = path.join(polentaDir, 'tree.cache.yaml')
-    await fsP.writeFile(cachePath, yaml.dump(tree, { lineWidth: 120 }), 'utf-8')
+    await fsP.writeFile(cachePath, serializeTreeCache(workspaceDir, tree), 'utf-8')
   }
 
   /**

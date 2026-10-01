@@ -39,7 +39,7 @@ export interface WorkspaceTreeNode {
   /** Display label from this repo's own schema.yaml (SystemNode `root`), if configured.
    *  UI should always prefer this over `name` when present. */
   label?: string
-  /** Absolute path to the cloned repo on disk. */
+  /** Absolute path to the cloned repo on disk (stored relative to the workspace in tree.cache.yaml — GH31). */
   repoPath: string
   /** Git remote URL. */
   url: string

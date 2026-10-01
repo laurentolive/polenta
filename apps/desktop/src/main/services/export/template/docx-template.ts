@@ -1,4 +1,5 @@
 import * as fsP from 'fs/promises'
+import { DocxPackage } from './docx-package'
 
 // Filtres autorisés dans les balises (`{{titre | upper}}`) — liste blanche : rien d'autre n'est
 // appelable depuis un gabarit (le parseur angular-expressions n'évalue que le scope de données).
@@ -38,6 +39,7 @@ const ERROR_LABELS: Record<string, string> = {
   duplicate_open_tag: 'balise ouverte deux fois',
   duplicate_close_tag: 'balise fermée deux fois',
   raw_xml_tag_should_be_only_text_in_paragraph: 'une balise {{@…}} doit être seule dans son paragraphe',
+  raw_tag_outerxml_invalid: 'une balise {{@…}} doit être seule dans son paragraphe (pas dans une boucle sur une seule ligne)',
   scopeparser_compilation_failed: 'expression invalide',
   scopeparser_execution_failed: 'erreur à l’évaluation de l’expression',
   unimplemented_tag_type: 'type de balise non pris en charge',
@@ -68,11 +70,16 @@ export function describeTemplateError(templateName: string, err: unknown): strin
 }
 
 /**
- * GH34 — remplit un gabarit Word client avec `data` et renvoie le document produit. Aucun fichier
+ * GH34 — remplit un gabarit Word client avec les données produites par `prepare` et renvoie le
+ * document produit. Aucun fichier
  * n'est écrit ici : l'appelant n'écrit la destination qu'une fois le buffer entièrement généré,
  * pour ne jamais laisser de fichier partiel (ni écraser un fichier existant) en cas d'erreur.
  */
-export async function renderDocxTemplate(templatePath: string, templateName: string, data: object): Promise<Buffer> {
+export async function renderDocxTemplate(
+  templatePath: string,
+  templateName: string,
+  prepare: (pkg: DocxPackage) => Promise<object>,
+): Promise<Buffer> {
   let content: Buffer
   try {
     content = await fsP.readFile(templatePath)
@@ -98,6 +105,11 @@ export async function renderDocxTemplate(templatePath: string, templateName: str
     throw new Error(`Gabarit « ${templateName} » n’est pas un document Word valide (.docx).`)
   }
 
+  // Données construites sur le paquet du gabarit : le contenu riche y alloue ses images,
+  // numérotations et styles avant le rendu.
+  const pkg = new DocxPackage(zip)
+  const data = await prepare(pkg)
+
   try {
     const doc = new Docxtemplater(zip, {
       delimiters: { start: '{{', end: '}}' },
@@ -110,6 +122,7 @@ export async function renderDocxTemplate(templatePath: string, templateName: str
       errorLogging: false,
     })
     doc.render(data)
+    pkg.finalize(doc.getZip())
     return doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer
   } catch (err) {
     throw new Error(describeTemplateError(templateName, err))

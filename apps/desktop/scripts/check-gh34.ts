@@ -232,6 +232,8 @@ async function main(): Promise<void> {
     check('S1.21 aucune exécution de code (refus par le gabarit)', /invalide/.test((err as Error).message), (err as Error).message)
   }
 
+  await sprint2(service, lib, tmp, out)
+
   // ── S1.13 / S1.15 — bibliothèque non configurée / absente ─────────────────
   dir = undefined
   const none = await library.list('docx')
@@ -240,9 +242,249 @@ async function main(): Promise<void> {
   const gone = await library.list('docx')
   check('S1.15 bibliothèque introuvable', gone.dirConfigured && !gone.dirExists)
 
-  await fsP.rm(tmp, { recursive: true, force: true })
+  // `--keep` : conserve les documents produits (ouverture manuelle dans Word, « sans réparation »).
+  if (process.argv.includes('--keep')) console.log(`\nDocuments conservés dans ${out}`)
+  else await fsP.rm(tmp, { recursive: true, force: true })
   console.log(`\n${passes} PASS, ${failures} FAIL`)
   process.exit(failures ? 1 : 0)
+}
+
+// ── Sprint 2 — richtext mis en forme ────────────────────────────────────────
+
+const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+const GIF_1X1 = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
+/** Bien-formé : chaque balise ouvrante a sa fermante, dans l'ordre. */
+function wellFormed(xml: string): string | null {
+  const stack: string[] = []
+  for (const m of xml.matchAll(/<(\/?)([A-Za-z_][\w:.-]*)[^>]*?(\/?)>/g)) {
+    if (m[0].startsWith('<?')) continue
+    const [, closing, name, selfClosing] = m
+    if (selfClosing) continue
+    if (!closing) stack.push(name)
+    else if (stack.pop() !== name) return `fermeture </${name}> inattendue`
+  }
+  return stack.length ? `non fermé : ${stack.join(' > ')}` : null
+}
+
+/** Cohérence du paquet : XML bien formé, relations/médias/content types/numérotations présents. */
+function packageProblems(buffer: Buffer): string[] {
+  const zip = new PizZip(buffer)
+  const problems: string[] = []
+  const doc = zip.file('word/document.xml')!.asText()
+  const rels = zip.file('word/_rels/document.xml.rels')!.asText()
+  const types = zip.file('[Content_Types].xml')!.asText()
+  const numbering = zip.file('word/numbering.xml')?.asText() ?? ''
+  for (const [name, xml] of [['document.xml', doc], ['rels', rels], ['types', types], ['numbering.xml', numbering]] as const) {
+    const err = xml ? wellFormed(xml) : null
+    if (err) problems.push(`${name} : ${err}`)
+  }
+  for (const [, rId] of doc.matchAll(/r:embed="([^"]+)"/g)) {
+    const target = new RegExp(`Id="${rId}"[^>]*Target="([^"]+)"`).exec(rels)?.[1]
+    if (!target) problems.push(`relation ${rId} absente`)
+    else if (!zip.file(`word/${target}`)) problems.push(`média ${target} absent`)
+    else if (!new RegExp(`Extension="${target.split('.').pop()}"`, 'i').test(types)) problems.push(`content type ${target} absent`)
+  }
+  for (const [, numId] of doc.matchAll(/<w:numId w:val="(\d+)"/g)) {
+    if (!numbering.includes(`<w:num w:numId="${numId}"`)) problems.push(`numId ${numId} non défini`)
+  }
+  const firstNum = numbering.search(/<w:num[\s>]/)
+  if (firstNum >= 0 && numbering.lastIndexOf('<w:abstractNum ') > firstNum) problems.push('abstractNum après num')
+  if (numbering && !rels.includes('numbering.xml')) problems.push('relation numbering absente')
+  for (const cell of doc.matchAll(/<w:tc>([\s\S]*?)<\/w:tc>/g)) {
+    // Approximation suffisante ici (pas de tableau imbriqué dans une cellule imbriquée).
+    if (!/<w:p[ />][\s\S]*$/.test(cell[1]) || /<\/w:tbl>\s*$/.test(cell[1])) problems.push('cellule sans paragraphe final')
+  }
+  const ids = [...doc.matchAll(/<wp:docPr id="(\d+)"/g)].map(m => m[1])
+  if (new Set(ids).size !== ids.length) problems.push('wp:docPr id dupliqué')
+  return problems
+}
+
+async function sprint2(service: TemplateExportService, lib: string, repo: string, out: string): Promise<void> {
+  await fsP.mkdir(path.join(repo, 'images'), { recursive: true })
+  await fsP.writeFile(path.join(repo, 'images', 'x.png'), Buffer.from(PNG_1X1, 'base64'))
+  await fsP.writeFile(path.join(repo, 'images', 'g.gif'), Buffer.from(GIF_1X1, 'base64'))
+
+  const full = [
+    '# Titre 1',
+    '## Titre 2',
+    'Texte **gras** *italique* ~~barré~~ `code` [[SW-0042]] [lien](https://x.y).',
+    '',
+    '**gras _in_ out**',
+    '',
+    '- puce',
+    '  - imbriquée',
+    '    1. numéro imbriqué',
+    '- [ ] à faire',
+    '- [x] fait',
+    '',
+    '1. un',
+    '2. deux',
+    '',
+    'Paragraphe entre deux listes.',
+    '',
+    '1. un bis',
+    '',
+    '| A | B |',
+    '|---|---|',
+    '| 1 | 2 |',
+    '',
+    '> citation',
+    '',
+    '```image',
+    '{"src":"images/x.png","width":5000}',
+    '```',
+    '',
+    '```image',
+    '{"src":"images/x.png","crop":{"x":0.1,"y":0.2,"width":0.5,"height":0.25}}',
+    '```',
+    '',
+    '![gif](images/g.gif)',
+    '',
+    '![absente](images/absente.png)',
+    '',
+    '```drawio',
+    '{"path":"diagrams/a.drawio","nodeId":"n1"}',
+    '```',
+    '',
+    'ligne A',
+    'ligne B',
+  ].join('\n')
+
+  const payload: RequirementsExportPayload = {
+    componentLabel: 'C',
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'statement', label: 'Énoncé', type: 'richtext' },
+      { key: 'empty', label: 'Vide', type: 'richtext' },
+      { key: 'tableOnly', label: 'Tableau', type: 'richtext' },
+    ],
+    rows: [],
+    outline: [
+      { kind: 'item', level: 1, section: '1', name: 'A', values: { id: 'SYS-1', statement: full, empty: '', tableOnly: '| x |\n|---|\n| y |' } },
+      { kind: 'item', level: 1, section: '2', name: 'B', values: { id: 'SYS-2', statement: '1. autre liste\n2. suite', empty: '', tableOnly: '' } },
+    ],
+  }
+
+  // Gabarit : riche dans le corps + dans des cellules de tableau, champ vide entre deux marqueurs.
+  const tplPath = path.join(lib, 'S2', 'riche.docx')
+  await writeDocx(tplPath, [
+    p('{{#items}}'),
+    p('DEBUT {{id}}'),
+    p('{{@rich.statement}}'),
+    p('{{@rich.empty}}'),
+    p('FIN {{id}}'),
+    new Table({ rows: [new TableRow({ children: [cell('{{@rich.tableOnly}}'), cell('{{@rich.empty}}')] })] }),
+    p('{{#columns}}'),
+    p('{{label}}'),
+    p('{{@rich}}'),
+    p('{{/columns}}'),
+    p('{{/items}}'),
+  ])
+
+  const run = async (relPath: string, name: string, data: RequirementsExportPayload = payload) => {
+    const dest = path.join(out, name)
+    await service.run('requirements', 'docx', data, repo, relPath, dest)
+    return fsP.readFile(dest)
+  }
+
+  // ── S2.1 / S2.3 — rendu complet, gabarit sans Table Grid ni Quote ─────────
+  const buf = await run('S2/riche.docx', 's2-riche.docx')
+  const doc = new PizZip(buf).file('word/document.xml')!.asText()
+  const problems = packageProblems(buf)
+  check('S2.1 paquet cohérent (XML, relations, médias, numérotation, cellules)', problems.length === 0, problems.join(' ; '))
+  check('S2.1 titres au style du gabarit', doc.includes('<w:pStyle w:val="Heading1"/>') && doc.includes('<w:pStyle w:val="Heading2"/>'))
+  check('S2.1 gras / italique / barré / code',
+    /<w:b\/><\/w:rPr><w:t xml:space="preserve">gras/.test(doc) && /<w:i\/><\/w:rPr><w:t xml:space="preserve">italique/.test(doc)
+    && /<w:strike\/><\/w:rPr><w:t xml:space="preserve">barré/.test(doc) && /Consolas[^>]*\/><\/w:rPr><w:t xml:space="preserve">code/.test(doc))
+  check('S2.11 [[ID]] et lien → texte', doc.includes(' SW-0042 ') && doc.includes('>lien<') && !doc.includes('[['))
+  check('S2.1 listes : puces, imbrication, liste numérotée imbriquée',
+    /<w:ilvl w:val="0"\/>[\s\S]*?puce/.test(doc) && /<w:ilvl w:val="1"\/>[\s\S]*?imbriquée/.test(doc) && /<w:ilvl w:val="2"\/>[\s\S]*?numéro imbriqué/.test(doc))
+  check('S2.1 cases à cocher', doc.includes('>☐ <') && doc.includes('>☒ <'))
+  check('S2.1 style List Paragraph', doc.includes('<w:pStyle w:val="ListParagraph"/>'))
+  check('S2.1 tableau avec en-tête', doc.includes('<w:tblHeader/>') && /<w:tblHeader\/>[\s\S]*?<w:b\/>[\s\S]*?>A</.test(doc))
+  check('S2.3 tableau sans Table Grid → bordures', doc.includes('<w:tblBorders>') && !doc.includes('<w:tblStyle'))
+  check('S2.3 citation sans style Quote → retrait', /<w:ind w:left="720"\/><\/w:pPr><w:r><w:rPr><w:i\/>/.test(doc))
+  check('S2.1 images embarquées (png fence, png crop, gif inline)', (doc.match(/<w:drawing>/g) ?? []).length >= 3 * 2) // ×2 : statement + boucle columns
+  check('S2.6 image plus large que la page ramenée à la largeur utile',
+    [...doc.matchAll(/<wp:extent cx="(\d+)"/g)].every(m => Number(m[1]) <= (11906 - 2 * 1440) * 635))
+  check('S2.1 rognage (fractions) → srcRect', doc.includes('<a:srcRect l="10000" t="20000" r="40000" b="55000"/>'))
+  check('S2.1 gras imbriqué conservé après fermeture intérieure', /<w:b\/><w:i\/><\/w:rPr><w:t xml:space="preserve">in<[\s\S]*?<w:b\/><\/w:rPr><w:t xml:space="preserve"> out</.test(doc))
+  check('S2.7 image introuvable → repli', doc.includes('[Image : images/absente.png]'))
+  check('S2.8 même image : un seul média', Object.keys(new PizZip(buf).files).filter(f => f.startsWith('word/media/')).length === 2)
+  check('draw.io → repli explicite (sprint 3)', doc.includes('[Diagramme : diagrams/a.drawio#n1]'))
+  check('retours à la ligne conservés', /ligne A<\/w:t><\/w:r><w:r><w:br\/><\/w:r><w:r><w:t xml:space="preserve">ligne B/.test(doc))
+  const paras = paragraphsOf(buf)
+  check('S2.10 champ vide : aucun paragraphe parasite',
+    paras.indexOf('FIN SYS-2') - paras.lastIndexOf('autre listesuite') <= 2 || paras.indexOf('FIN SYS-2') - paras.indexOf('suite') === 1,
+    JSON.stringify(paras.slice(paras.indexOf('DEBUT SYS-2'), paras.indexOf('FIN SYS-2') + 1)))
+
+  // ── S2.4 — chaque liste numérotée repart à 1 ──────────────────────────────
+  const numbering = new PizZip(buf).file('word/numbering.xml')!.asText()
+  // numId de chaque paragraphe contenant `text` (toutes les occurrences, dans l'ordre).
+  const numIdsOf = (text: string) => [...doc.matchAll(/<w:p>((?:(?!<\/w:p>)[\s\S])*)<\/w:p>/g)]
+    .filter(m => m[1].includes(`>${text}<`))
+    .map(m => /<w:numId w:val="(\d+)"/.exec(m[1])?.[1])
+  const ids = ['un', 'un bis', 'autre liste'].map(t => numIdsOf(t)[0])
+  check('S2.4 listes numérotées distinctes', ids.every(Boolean) && new Set(ids).size === 3, JSON.stringify(ids))
+  const twice = numIdsOf('un')
+  check('S2.4 même champ inséré deux fois : listes indépendantes', twice.length >= 2 && twice[0] !== twice[1], JSON.stringify(twice))
+  check('S2.4 redémarrage à 1', [...ids, ...twice].every(id => new RegExp(`<w:num w:numId="${id}">(?:(?!</w:num>)[\\s\\S])*<w:startOverride w:val="1"/>`).test(numbering)))
+
+  // ── S2.2 — gabarit « français » (styleId Titre1) ; S2.5 — sans numbering.xml ; Table Grid
+  const zip = new PizZip(await fsP.readFile(tplPath))
+  const styles = zip.file('word/styles.xml')!.asText()
+    .replace(/w:styleId="Heading1"/, 'w:styleId="Titre1"')
+    .replace('</w:styles>', '<w:style w:type="table" w:styleId="Grilledutableau"><w:name w:val="Table Grid"/></w:style></w:styles>')
+  zip.file('word/styles.xml', styles)
+  zip.remove('word/numbering.xml')
+  zip.file('word/_rels/document.xml.rels', zip.file('word/_rels/document.xml.rels')!.asText().replace(/<Relationship [^>]*numbering\.xml"\/>/, ''))
+  zip.file('[Content_Types].xml', zip.file('[Content_Types].xml')!.asText().replace(/<Override PartName="\/word\/numbering\.xml"[^>]*\/>/, ''))
+  await fsP.writeFile(path.join(lib, 'S2', 'fr.docx'), zip.generate({ type: 'nodebuffer' }))
+  const frBuf = await run('S2/fr.docx', 's2-fr.docx')
+  const frDoc = new PizZip(frBuf).file('word/document.xml')!.asText()
+  check('S2.2 styleId localisé (Titre1) résolu par nom', frDoc.includes('<w:pStyle w:val="Titre1"/>'))
+  check('S2.2 style de tableau Table Grid utilisé', frDoc.includes('<w:tblStyle w:val="Grilledutableau"/>'))
+  const frProblems = packageProblems(frBuf)
+  check('S2.5 gabarit sans numbering.xml : partie créée, paquet cohérent', !!new PizZip(frBuf).file('word/numbering.xml') && frProblems.length === 0, frProblems.join(' ; '))
+
+  // ── Gabarit sans {{@…}} : pas de conversion ni d'image embarquée ─────────
+  await writeDocx(path.join(lib, 'S2', 'simple.docx'), [p('{{#items}}{{id}} {{statement}}{{/items}}')])
+  const simple = new PizZip(await run('S2/simple.docx', 's2-simple.docx'))
+  check('gabarit sans {{@…}} : aucun média ni numérotation ajoutés',
+    !Object.keys(simple.files).some(f => f.startsWith('word/media/'))
+    && simple.file('word/numbering.xml')?.asText() === new PizZip(await fsP.readFile(path.join(lib, 'S2', 'simple.docx'))).file('word/numbering.xml')?.asText())
+
+  // ── Numérotation Word pour Mac (numIdMacAtCleanup en fin de partie) ───────
+  const mac = new PizZip(await fsP.readFile(tplPath))
+  mac.file('word/numbering.xml', mac.file('word/numbering.xml')!.asText().replace('</w:numbering>', '<w:numIdMacAtCleanup w:val="0"/></w:numbering>'))
+  await fsP.writeFile(path.join(lib, 'S2', 'mac.docx'), mac.generate({ type: 'nodebuffer' }))
+  const macNum = new PizZip(await run('S2/mac.docx', 's2-mac.docx')).file('word/numbering.xml')!.asText()
+  check('numIdMacAtCleanup reste après les w:num ajoutés', macNum.lastIndexOf('<w:num ') < macNum.indexOf('<w:numIdMacAtCleanup'))
+
+  // ── S2.9 — balise brute au milieu d'un paragraphe ─────────────────────────
+  await writeDocx(path.join(lib, 'S2', 'brut.docx'), [p('{{#items}}'), p('Énoncé : {{@rich.statement}}'), p('{{/items}}')])
+  try {
+    await run('S2/brut.docx', 's2-brut.docx')
+    check('S2.9 balise brute non seule → erreur', false, 'aucune erreur')
+  } catch (err) {
+    check('S2.9 balise brute non seule → erreur explicite', /seule dans son paragraphe/.test((err as Error).message), (err as Error).message)
+  }
+
+  // ── S2.12 — volume ────────────────────────────────────────────────────────
+  const many: RequirementsExportPayload = {
+    ...payload,
+    outline: Array.from({ length: 500 }, (_, i) => ({
+      kind: 'item' as const, level: 1, section: String(i + 1), name: `R${i}`,
+      values: { id: `SYS-${i}`, statement: full, empty: '', tableOnly: '' },
+    })),
+  }
+  const t0 = Date.now()
+  const bigBuf = await run('S2/riche.docx', 's2-500.docx', many)
+  const elapsed = Date.now() - t0
+  check(`S2.12 500 exigences en < 15 s (${elapsed} ms)`, elapsed < 15000)
+  const bigProblems = packageProblems(bigBuf)
+  check('S2.12 paquet cohérent à 500 exigences', bigProblems.length === 0, bigProblems.slice(0, 3).join(' ; '))
 }
 
 main().catch(err => {

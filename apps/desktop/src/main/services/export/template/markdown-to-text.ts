@@ -1,14 +1,4 @@
-import MarkdownIt from 'markdown-it'
-
-type Token = ReturnType<MarkdownIt['parse']>[number]
-
-// Mêmes options que le rendu à l'écran (`StaticRichTextViewer`) pour que les deux interprètent la
-// même source de la même façon (tables GFM et barré activés par défaut dans markdown-it).
-let md: MarkdownIt | null = null
-function getMd(): MarkdownIt {
-  md ??= new MarkdownIt({ html: false, linkify: false })
-  return md
-}
+import { parseMarkdown, stripInternalLinks, type MdToken } from './markdown'
 
 /**
  * GH34 — texte simple d'un champ richtext (Markdown), pour la balise `{{champ}}` d'un gabarit :
@@ -19,7 +9,7 @@ function getMd(): MarkdownIt {
  */
 export function markdownToPlainText(markdown: string): string {
   if (!markdown.trim()) return ''
-  const tokens = getMd().parse(markdown, {})
+  const tokens = parseMarkdown(markdown)
   const lines: string[] = []
   // Pile des listes ouvertes : compteur courant pour une liste ordonnée, null pour des puces.
   const lists: (number | null)[] = []
@@ -100,13 +90,12 @@ export function markdownToPlainText(markdown: string): string {
   return lines.join('\n')
 }
 
-function inlineText(token: Token): string {
+function inlineText(token: MdToken): string {
   let out = ''
   for (const child of token.children ?? []) {
     if (child.type === 'text' || child.type === 'code_inline') out += child.content
     else if (child.type === 'softbreak' || child.type === 'hardbreak') out += '\n'
     else if (child.type === 'image') out += ''
   }
-  // Liens internes `[[SW-0042]]` → `SW-0042` (pas de lien hypertexte en export, GH34 §2.5).
-  return out.replace(/\[\[([^\]]+)\]\]/g, '$1')
+  return stripInternalLinks(out)
 }

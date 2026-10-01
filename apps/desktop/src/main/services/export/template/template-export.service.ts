@@ -4,16 +4,19 @@ import type { ExportTemplateLibrary } from '../../export-template-library'
 import type { GitService } from '../../git.service'
 import type { SchemaService } from '../../schema.service'
 import type { AuthService } from '../../auth.service'
+import type { RichConverter } from './template-data'
 
-type KindDataBuilder = (payload: unknown) => Promise<object>
+type KindDataBuilder = (payload: unknown, toRich: RichConverter) => Promise<object>
+
+const NO_RICH = { render: () => '' }
 
 // Kinds pris en charge par un gabarit, par format — étendu au fil des sprints (GH34-design §5 :
 // campagnes et dashboard au sprint 3, xlsx au sprint 4). Modules chargés en `import()` dynamique
 // (T141) : ce service est construit au démarrage, markdown-it/docxtemplater ne doivent l'être
 // qu'au premier export par gabarit.
 const DATA_BUILDERS: Partial<Record<`${ExportKind}:${TemplateExportFormat}`, KindDataBuilder>> = {
-  'requirements:docx': async p => (await import('./template-data')).buildItemsData(p as RequirementsExportPayload),
-  'tests:docx': async p => (await import('./template-data')).buildItemsData(p as TestsExportPayload),
+  'requirements:docx': async (p, r) => (await import('./template-data')).buildItemsData(p as RequirementsExportPayload, r),
+  'tests:docx': async (p, r) => (await import('./template-data')).buildItemsData(p as TestsExportPayload, r),
 }
 
 export function supportsTemplate(kind: ExportKind, format: string): boolean {
@@ -54,19 +57,20 @@ export class TemplateExportService {
       this.git.tagsAtHead(repoPath).catch(() => [] as string[]),
     ])
     const componentLabel = (payload as { componentLabel?: string } | null)?.componentLabel ?? ''
-    const [{ buildCommonData }, { renderDocxTemplate }, kindData] = await Promise.all([
+    const [{ buildCommonData }, { renderDocxTemplate }, { MarkdownToOoxml }] = await Promise.all([
       import('./template-data'),
       import('./docx-template'),
-      builder(payload),
+      import('./markdown-to-ooxml'),
     ])
-    const data = {
-      ...buildCommonData({
-        projectLabel, componentLabel, user, kind, templateRelPath, branch, commit, tags, now: new Date(),
-      }),
-      ...kindData,
-    }
-
-    const buffer = await renderDocxTemplate(templatePath, templateRelPath, data)
+    const common = buildCommonData({
+      projectLabel, componentLabel, user, kind, templateRelPath, branch, commit, tags, now: new Date(),
+    })
+    const buffer = await renderDocxTemplate(templatePath, templateRelPath, async pkg => {
+      // Gabarit sans balise `{{@…}}` : pas de conversion (ni chargement d'images) inutile.
+      const converter = pkg.usesRawTags ? new MarkdownToOoxml(pkg, repoPath) : null
+      const toRich: RichConverter = async md => (converter ? converter.convert(md) : NO_RICH)
+      return { ...common, ...(await builder(payload, toRich)) }
+    })
     await fsP.writeFile(destPath, buffer)
   }
 }

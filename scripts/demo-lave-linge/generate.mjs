@@ -121,17 +121,6 @@ function writeTrees(key) {
   }
 }
 
-function writeCounters(key, extra = {}) {
-  const counts = {}
-  const bump = id => {
-    const m = /^(.+)-(\d+)$/.exec(id)
-    if (m) counts[m[1]] = Math.max(counts[m[1]] ?? 0, Number(m[2]))
-  }
-  for (const e of ELEMENTS) if (e.repo === key && state.has(e.id)) bump(e.id)
-  for (const id of extra.ids ?? []) bump(id)
-  writeYaml(repoDir(key), 'config/counters.yaml', counts)
-}
-
 function writeParameters(key) {
   const sorted = Object.fromEntries(Object.keys(params[key]).sort().map(k => {
     const { value, unit, description } = params[key][k]
@@ -347,28 +336,19 @@ for (const phase of PHASES) {
     writeLinks(key, phase.key)
     for (const r of allRuns.filter(r => r.repo === key && r.phase === phase.key)) writeRun(r)
 
-    const extraIds = []
     if (key === 'produit') {
-      for (const c of CAMPAIGNS.filter(c => phaseIdx(c.phase) <= phaseIdx(phase.key))) {
-        extraIds.push(c.id)
-        if (c.phase === phase.key) writeCampaign(c)
+      for (const c of CAMPAIGNS.filter(c => c.phase === phase.key)) writeCampaign(c)
+      for (const r of REVIEWS.filter(r => r.phase === phase.key)) {
+        const { phase: _p, ...review } = r
+        writeYaml(dir, `reviews/${r.id}.yaml`, review)
       }
-      for (const r of REVIEWS.filter(r => phaseIdx(r.phase) <= phaseIdx(phase.key))) {
-        extraIds.push(r.id)
-        if (r.phase === phase.key) {
-          const { phase: _p, ...review } = r
-          writeYaml(dir, `reviews/${r.id}.yaml`, review)
-        }
-      }
-      if (phaseIdx(phase.key) >= phaseIdx('P4')) {
-        extraIds.push(...QUERIES.map(q => q.id), ...DASHBOARDS.map(d => d.id))
-        if (phase.key === 'P4') writeSuivi(dir)
-      }
+      if (phase.key === 'P4') writeSuivi(dir)
       if (phase.key === 'P8') writeFile(dir, 'GUIDE-EVALUATION.md', GUIDE)
     }
 
+    // Pas de config/counters.yaml (GH20) : l'app déduit le prochain ID des fichiers présents, et
+    // la démo ne supprime jamais d'objet — aucune pierre tombale (.polenta/tombstones/) à poser.
     writeTrees(key)
-    writeCounters(key, { ids: extraIds })
 
     const by = phase.by[key] ?? phase.by.default
     commitAll(dir, `${phase.msg}`, by, phase.date)
@@ -416,7 +396,6 @@ function writeSuivi(dir) {
     priority: 'low', source: 'Marketing', marches: 'CN, JP',
   } }))
   writeTrees('produit')
-  writeCounters('produit', { ids: [...CAMPAIGNS.map(c => c.id), ...REVIEWS.map(r => r.id), ...QUERIES.map(q => q.id), ...DASHBOARDS.map(d => d.id)] })
   commitAll(dir, DEV_BRANCH.msg, DEV_BRANCH.by, DEV_BRANCH.date)
   git(dir, ['checkout', '-q', 'main'])
 }

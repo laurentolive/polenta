@@ -923,6 +923,7 @@ function GroupRow({
   onContextMenu,
   freezeColCount = 0,
   getFreezeStyle,
+  nameStickyLeft,
   isGotoTarget,
 }: {
   node: TypeTreeNode
@@ -946,6 +947,9 @@ function GroupRow({
   onContextMenu?: (e: React.MouseEvent<HTMLTableRowElement>) => void
   freezeColCount?: number
   getFreezeStyle?: (colIdx: number) => React.CSSProperties | undefined
+  /** GH25 — décalage gauche (px) de la cellule fusionnée du nom quand des colonnes sont figées :
+   * le nom (et son chevron) y reste collé au lieu de défiler avec le scroll horizontal. */
+  nameStickyLeft?: number
   isGotoTarget?: boolean
 }) {
   const labels = useCellLabels()
@@ -971,6 +975,13 @@ function GroupRow({
   // à elle sans laisser un vide de scroll entre les deux.
   const actionFrozenStyle: React.CSSProperties | undefined = freezeColCount > 0 ? { position: 'sticky', left: 0, zIndex: 2 } : undefined
   const rowBg = isSelected ? 'bg-status-info-bg' : 'bg-folder-row'
+  // GH25 — la cellule du nom fusionne les colonnes (colSpan) et ne peut donc pas être figée
+  // elle-même : c'est son contenu qui est collé (`sticky`), décalé du bord + padding (`px-2`)
+  // de la cellule pour ne pas bouger avant que le scroll ne l'atteigne. Pas pendant le
+  // renommage : l'éditeur occupe toute la largeur de la cellule, comme avant.
+  const nameStickyStyle: React.CSSProperties | undefined = nameStickyLeft !== undefined && !folderEdit
+    ? { position: 'sticky', left: nameStickyLeft + 9 }
+    : undefined
 
   return (
     <tr
@@ -1032,7 +1043,7 @@ function GroupRow({
                 ].join(' ')}
                 {...nameCellProps}
               >
-                {folderNameText}
+                {nameStickyStyle ? <span className="inline-block" style={nameStickyStyle}>{folderNameText}</span> : folderNameText}
               </td>
             </>
           )
@@ -1049,7 +1060,7 @@ function GroupRow({
               ].join(' ')}
               {...nameCellProps}
             >
-              <span className="flex items-center gap-1.5">
+              <span className={[nameStickyStyle ? 'inline-flex' : 'flex', 'items-center gap-1.5'].join(' ')} style={nameStickyStyle}>
                 {chevron}
                 {folderNameText}
               </span>
@@ -2116,6 +2127,7 @@ export function ExcelView({
                   onContextMenu={e => handleContextMenu(e, node.id)}
                   freezeColCount={freezeColCount}
                   getFreezeStyle={getFreezeStyle}
+                  nameStickyLeft={freezeColCount > 0 ? colLeftOffsets[columns[0] === 'section' ? 1 : 0] : undefined}
                   isGotoTarget={gotoNodeId === node.id}
                 />
               )

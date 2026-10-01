@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import { useProjectSchema, getAllObjectTypes } from '../hooks/useProjectSchema'
+import { useProjectSchema, getAllObjectTypes, getTestTypeRefs } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
 import { RichTextProvider } from '../contexts/RichTextContext'
 import { RichTextToolbar } from '../components/system/RichTextToolbar'
@@ -102,10 +102,17 @@ function NewCampaignPage() {
 
   // Filter tests by component (node) and level (objectType) when specified.
   // objectTypeRef format: "componentName::objectTypeName"
+  // GH12 — `level` n'est un filtre que s'il désigne un type de **test** : depuis le panneau
+  // Campagnes, c'est le type de campagne sélectionné, qui excluait alors tous les tests ; dans ce
+  // cas seul le composant filtre.
+  const testTypeRefs = getTestTypeRefs(schema).map(r => r.ref)
+  const levelIsTestType = !!level && testTypeRefs.some(ref =>
+    component ? ref === `${component}::${level}` : ref.endsWith(`::${level}`))
   const tests = allTests.filter(t => {
-    if (component && level) return t.objectTypeRef === `${component}::${level}`
+    if (level && levelIsTestType) {
+      return component ? t.objectTypeRef === `${component}::${level}` : t.objectTypeRef.endsWith(`::${level}`)
+    }
     if (component) return t.objectTypeRef.startsWith(`${component}::`)
-    if (level) return t.objectTypeRef.endsWith(`::${level}`)
     return true
   })
 

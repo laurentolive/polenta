@@ -58,7 +58,7 @@ export type RichConverter = (markdown: string) => Promise<RichFragment>
  * Expose `fragment` en propriété calculée : docxtemplater relit la valeur à chaque occurrence de
  * balise, chaque insertion reçoit donc ses propres numérotations de listes (`RichFragment`).
  */
-function defineRich(target: object, key: string, fragment: RichFragment): void {
+export function defineRich(target: object, key: string, fragment: RichFragment): void {
   Object.defineProperty(target, key, { get: () => fragment.render(), enumerable: true, configurable: true })
 }
 
@@ -81,11 +81,13 @@ export interface TemplateItem {
   steps: TemplateStep[]
   /** OOXML des champs richtext, par nom de champ (`{{@rich.statement}}`). */
   rich: Record<string, string>
+  /** Libellé du statut défini dans le schéma (`{{status}}` reste la valeur). */
+  statusLabel: string
   [field: string]: unknown
 }
 
 // Clés structurelles d'un élément : prioritaires sur une colonne de même nom.
-const RESERVED = new Set(['isFolder', 'isItem', 'level', 'section', 'name', 'columns', 'steps', 'rich'])
+const RESERVED = new Set(['isFolder', 'isItem', 'level', 'section', 'name', 'columns', 'steps', 'rich', 'statusLabel'])
 
 /**
  * GH34 — `items` d'un cahier d'exigences ou de tests. Part de `outline` (arbre complet dans
@@ -121,6 +123,7 @@ async function toItem(entry: TemplateOutlineEntry, columns: ExportColumn[], toRi
     columns: [],
     steps: [],
     rich: {},
+    statusLabel: entry.statusLabel ?? entry.values['status'] ?? '',
   }
   if (entry.kind === 'folder') return item
 

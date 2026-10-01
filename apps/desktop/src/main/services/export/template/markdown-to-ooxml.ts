@@ -1,6 +1,7 @@
 import { parseMarkdown, stripInternalLinks, type MdToken } from './markdown'
 import type { DocxPackage, ListKind } from './docx-package'
 import { loadImage, type LoadedImage } from './image-source'
+import { drawioKey, parseDrawioFence, type DrawioSnapshot } from './drawio-ref'
 
 const EMU_PER_PX = 9525 // 96 dpi
 const TWIPS_PER_EMU = 1 / 635
@@ -40,8 +41,14 @@ const EMPTY_FRAGMENT: RichFragment = { render: () => '' }
  */
 export class MarkdownToOoxml {
   private readonly images = new Map<string, Promise<{ rId: string; image: LoadedImage } | null>>()
+  private readonly drawingIds = new Map<string, string>()
 
-  constructor(private readonly pkg: DocxPackage, private readonly repoPath: string) {}
+  /** `drawings` : diagrammes draw.io déjà rendus en image (`snapshotDrawios`), par `drawioKey`. */
+  constructor(
+    private readonly pkg: DocxPackage,
+    private readonly repoPath: string,
+    private readonly drawings: Map<string, DrawioSnapshot> = new Map(),
+  ) {}
 
   async convert(markdown: string): Promise<RichFragment> {
     if (!markdown.trim()) return EMPTY_FRAGMENT
@@ -55,6 +62,18 @@ export class MarkdownToOoxml {
         return xml.replace(/§(\d+)§/g, (_, k: string) => String(numIds[Number(k)]))
       },
     }
+  }
+
+  /** Image d'un diagramme enregistrée dans le paquet (une fois par rendu), `null` si non rendu. */
+  drawio(key: string): { rId: string; snapshot: DrawioSnapshot } | null {
+    const snapshot = this.drawings.get(key)
+    if (!snapshot) return null
+    let rId = this.drawingIds.get(key)
+    if (!rId) {
+      rId = this.pkg.addImage(snapshot.png, 'png')
+      this.drawingIds.set(key, rId)
+    }
+    return { rId, snapshot }
   }
 
   /** Image enregistrée dans le paquet (une seule fois par source), `null` si inutilisable. */
@@ -223,10 +242,18 @@ class Conversion {
       return
     }
     if (token.type === 'fence' && info === 'drawio') {
-      // Rendu des diagrammes en image : sprint 3 (GH34-design §2.5). Repli explicite d'ici là.
-      const ref = parseJson(token.content)
-      const target = typeof ref?.path === 'string' ? `${ref.path}${typeof ref.nodeId === 'string' && ref.nodeId ? `#${ref.nodeId}` : ''}` : ''
-      this.out.push(paragraph([], run(`[Diagramme : ${target}]`, { italic: true })))
+      // Contenu non-JSON : bloc omis, comme à l'écran (`StaticRichTextViewer`).
+      const ref = parseDrawioFence(token.content)
+      if (!ref) return
+      const drawn = this.converter.drawio(drawioKey(ref))
+      if (drawn) {
+        const cx = Math.round(drawn.snapshot.width * EMU_PER_PX)
+        const cy = Math.round(drawn.snapshot.height * EMU_PER_PX)
+        this.out.push(paragraph([], this.drawingRun(drawn.rId, cx, cy, ref.path, '')))
+      } else {
+        // Rendu impossible (fichier absent, XML invalide, délai) : repli explicite (spec §2.7).
+        this.out.push(paragraph([], run(`[Diagramme : ${ref.path}${ref.nodeId ? `#${ref.nodeId}` : ''}]`, { italic: true })))
+      }
       return
     }
     for (const line of token.content.replace(/\n$/, '').split('\n')) {
@@ -235,22 +262,7 @@ class Conversion {
   }
 
   private tableXml(table: TableFrame): string {
-    const columns = Math.max(1, ...table.rows.map(r => r.cells.length))
-    const totalTwips = Math.floor(this.pkg.contentWidthEmu * TWIPS_PER_EMU)
-    const colTwips = Math.floor(totalTwips / columns)
-    const style = this.pkg.styles.tableGrid
-    const borders = style
-      ? ''
-      : '<w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
-        .map(side => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="auto"/>`).join('') + '</w:tblBorders>'
-    const tblPr = `<w:tblPr>${style ? `<w:tblStyle w:val="${style}"/>` : ''}<w:tblW w:w="${colTwips * columns}" w:type="dxa"/>${borders}</w:tblPr>`
-    const grid = `<w:tblGrid>${`<w:gridCol w:w="${colTwips}"/>`.repeat(columns)}</w:tblGrid>`
-    const rows = table.rows.map(row => {
-      const cells = Array.from({ length: columns }, (_, i) =>
-        `<w:tc><w:tcPr><w:tcW w:w="${colTwips}" w:type="dxa"/></w:tcPr>${row.cells[i] ?? '<w:p/>'}</w:tc>`).join('')
-      return `<w:tr>${row.header ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${cells}</w:tr>`
-    }).join('')
-    return `<w:tbl>${tblPr}${grid}${rows}</w:tbl>`
+    return tableXml(this.pkg, table.rows)
   }
 
   // ── Texte ─────────────────────────────────────────────────────────────────
@@ -319,27 +331,66 @@ class Conversion {
     const baseH = crop ? crop.height * image.height : image.height
     const w = ref.width ?? (ref.height ? (ref.height * baseW) / baseH : baseW)
     const h = ref.height ?? (w * baseH) / baseW
-    let cx = Math.round(w * EMU_PER_PX)
-    let cy = Math.round(h * EMU_PER_PX)
-    if (cx > this.pkg.contentWidthEmu) {
-      cy = Math.round((cy * this.pkg.contentWidthEmu) / cx)
-      cx = this.pkg.contentWidthEmu
-    }
+    const cx = Math.round(w * EMU_PER_PX)
+    const cy = Math.round(h * EMU_PER_PX)
 
     const srcRect = crop
       ? `<a:srcRect l="${pct(crop.x)}" t="${pct(crop.y)}" r="${pct(1 - crop.x - crop.width)}" b="${pct(1 - crop.y - crop.height)}"/>`
       : ''
+    return this.drawingRun(rId, cx, cy, ref.alt, srcRect)
+  }
+
+  /** Dessin inline ; taille ramenée à la largeur utile de la page, ratio conservé. */
+  private drawingRun(rId: string, cx: number, cy: number, alt: string, srcRect: string): string {
+    if (cx > this.pkg.contentWidthEmu) {
+      cy = Math.round((cy * this.pkg.contentWidthEmu) / cx)
+      cx = this.pkg.contentWidthEmu
+    }
     // Identifiant provisoire : renuméroté sur tout le document par `DocxPackage.finalize`.
     const id = this.pkg.nextDrawingId()
     return '<w:r><w:drawing>'
       + `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/>`
-      + `<wp:docPr id="${id}" name="Image ${id}" descr="${escapeXml(ref.alt)}"/>`
+      + `<wp:docPr id="${id}" name="Image ${id}" descr="${escapeXml(alt)}"/>`
       + '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
       + `<pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="Image ${id}"/><pic:cNvPicPr/></pic:nvPicPr>`
       + `<pic:blipFill><a:blip r:embed="${rId}"/>${srcRect}<a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
       + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>`
       + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>'
   }
+}
+
+/**
+ * Tableau Word à la largeur utile de la page, colonnes égales, style `Table Grid` du gabarit s'il
+ * existe (sinon bordures simples) ; les lignes `header` sont répétées en haut de chaque page.
+ * `cells` : contenu OOXML de chaque cellule (un ou plusieurs `w:p`).
+ */
+export function tableXml(pkg: DocxPackage, rows: { header: boolean; cells: string[] }[]): string {
+  const columns = Math.max(1, ...rows.map(r => r.cells.length))
+  const totalTwips = Math.floor(pkg.contentWidthEmu * TWIPS_PER_EMU)
+  const colTwips = Math.floor(totalTwips / columns)
+  const style = pkg.styles.tableGrid
+  const borders = style
+    ? ''
+    : '<w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+      .map(side => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="auto"/>`).join('') + '</w:tblBorders>'
+  const tblPr = `<w:tblPr>${style ? `<w:tblStyle w:val="${style}"/>` : ''}<w:tblW w:w="${colTwips * columns}" w:type="dxa"/>${borders}</w:tblPr>`
+  const grid = `<w:tblGrid>${`<w:gridCol w:w="${colTwips}"/>`.repeat(columns)}</w:tblGrid>`
+  const body = rows.map(row => {
+    const cells = Array.from({ length: columns }, (_, i) =>
+      `<w:tc><w:tcPr><w:tcW w:w="${colTwips}" w:type="dxa"/></w:tcPr>${row.cells[i] || '<w:p/>'}</w:tc>`).join('')
+    return `<w:tr>${row.header ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${cells}</w:tr>`
+  }).join('')
+  return `<w:tbl>${tblPr}${grid}${body}</w:tbl>`
+}
+
+/** Tableau de texte simple (en-tête en gras), pour `{{@table}}` (ex. résultat d'un widget). */
+export function textTableXml(pkg: DocxPackage, header: string[], rows: string[][]): string {
+  if (header.length === 0) return ''
+  const cell = (text: string, bold: boolean) => paragraph([], run(text, { bold }))
+  return tableXml(pkg, [
+    { header: true, cells: header.map(h => cell(h, true)) },
+    ...rows.map(r => ({ header: false, cells: header.map((_, i) => cell(r[i] ?? '', false)) })),
+  ])
 }
 
 /** Texte simple → un paragraphe Word par ligne (vide → rien). */

@@ -1,12 +1,28 @@
 import * as fsP from 'fs/promises'
-import type { ExportKind, RequirementsExportPayload, TemplateExportFormat, TestsExportPayload } from '@polenta/types'
+import type {
+  CampaignExportPayload,
+  DashboardExportPayload,
+  ExportKind,
+  RequirementsExportPayload,
+  TemplateExportFormat,
+  TestsExportPayload,
+} from '@polenta/types'
 import type { ExportTemplateLibrary } from '../../export-template-library'
 import type { GitService } from '../../git.service'
 import type { SchemaService } from '../../schema.service'
 import type { AuthService } from '../../auth.service'
+import type { TestsService } from '../../tests.service'
 import type { RichConverter } from './template-data'
+import type { RunLoader, TableBuilder } from './template-data-campaign'
+import type { DrawioSnapshotter } from './drawio-ref'
 
-type KindDataBuilder = (payload: unknown, toRich: RichConverter) => Promise<object>
+interface BuilderContext {
+  toRich: RichConverter
+  loadRun: RunLoader
+  toTable: TableBuilder
+}
+
+type KindDataBuilder = (payload: unknown, ctx: BuilderContext) => Promise<object>
 
 const NO_RICH = { render: () => '' }
 
@@ -14,13 +30,15 @@ const NO_RICH = { render: () => '' }
 // campagnes et dashboard au sprint 3, xlsx au sprint 4). Modules chargés en `import()` dynamique
 // (T141) : ce service est construit au démarrage, markdown-it/docxtemplater ne doivent l'être
 // qu'au premier export par gabarit.
-const DATA_BUILDERS: Partial<Record<`${ExportKind}:${TemplateExportFormat}`, KindDataBuilder>> = {
-  'requirements:docx': async (p, r) => (await import('./template-data')).buildItemsData(p as RequirementsExportPayload, r),
-  'tests:docx': async (p, r) => (await import('./template-data')).buildItemsData(p as TestsExportPayload, r),
-}
+const campaignData: KindDataBuilder = async (p, c) =>
+  (await import('./template-data-campaign')).buildCampaignData(p as CampaignExportPayload, c.toRich, c.loadRun)
 
-export function supportsTemplate(kind: ExportKind, format: string): boolean {
-  return `${kind}:${format}` in DATA_BUILDERS
+const DATA_BUILDERS: Partial<Record<`${ExportKind}:${TemplateExportFormat}`, KindDataBuilder>> = {
+  'requirements:docx': async (p, c) => (await import('./template-data')).buildItemsData(p as RequirementsExportPayload, c.toRich),
+  'tests:docx': async (p, c) => (await import('./template-data')).buildItemsData(p as TestsExportPayload, c.toRich),
+  'campaign-plan:docx': campaignData,
+  'campaign-report:docx': campaignData,
+  'dashboard:docx': async (p, c) => (await import('./template-data-campaign')).buildDashboardData(p as DashboardExportPayload, c.toTable),
 }
 
 /**
@@ -34,6 +52,10 @@ export class TemplateExportService {
     private readonly git: GitService,
     private readonly schema: SchemaService,
     private readonly auth: AuthService,
+    private readonly tests: TestsService,
+    /** Rendu des diagrammes draw.io en image (fenêtre cachée, `drawio-snapshot.ts`) — injecté
+     *  pour que les vérifications automatiques puissent s'en passer (pas d'Electron). */
+    private readonly snapshotDrawios: DrawioSnapshotter,
   ) {}
 
   async run(
@@ -56,20 +78,37 @@ export class TemplateExportService {
       this.git.headSha(repoPath).catch(() => ''),
       this.git.tagsAtHead(repoPath).catch(() => [] as string[]),
     ])
-    const componentLabel = (payload as { componentLabel?: string } | null)?.componentLabel ?? ''
-    const [{ buildCommonData }, { renderDocxTemplate }, { MarkdownToOoxml }] = await Promise.all([
+    const p = payload as { componentLabel?: string; campaign?: { component?: string } } | null
+    const componentLabel = p?.componentLabel ?? p?.campaign?.component ?? ''
+    const [{ buildCommonData }, { renderDocxTemplate }, { MarkdownToOoxml, textTableXml }, { collectDrawioRefs }] = await Promise.all([
       import('./template-data'),
       import('./docx-template'),
       import('./markdown-to-ooxml'),
+      import('./drawio-ref'),
     ])
+    const loadRun: RunLoader = async (testCaseId, runId) =>
+      (await this.tests.findRuns(repoPath, testCaseId)).find(r => r.id === runId) ?? null
     const common = buildCommonData({
       projectLabel, componentLabel, user, kind, templateRelPath, branch, commit, tags, now: new Date(),
     })
     const buffer = await renderDocxTemplate(templatePath, templateRelPath, async pkg => {
       // Gabarit sans balise `{{@…}}` : pas de conversion (ni chargement d'images) inutile.
-      const converter = pkg.usesRawTags ? new MarkdownToOoxml(pkg, repoPath) : null
+      let converter: InstanceType<typeof MarkdownToOoxml> | null = null
+      if (pkg.usesRawTags) {
+        // Diagrammes rendus en une seule passe (une fenêtre cachée), avant la conversion.
+        const refs = collectDrawioRefs(payload)
+        // Rendu impossible (fenêtre, délai) : les diagrammes passent en repli texte, l'export continue.
+        const drawings = refs.length > 0
+          ? await this.snapshotDrawios(repoPath, refs).catch(err => {
+            console.error('[GH34] rendu des diagrammes draw.io impossible :', err)
+            return new Map()
+          })
+          : new Map()
+        converter = new MarkdownToOoxml(pkg, repoPath, drawings)
+      }
       const toRich: RichConverter = async md => (converter ? converter.convert(md) : NO_RICH)
-      return { ...common, ...(await builder(payload, toRich)) }
+      const toTable: TableBuilder = (header, rows) => textTableXml(pkg, header, rows)
+      return { ...common, ...(await builder(payload, { toRich, loadRun, toTable })) }
     })
     await fsP.writeFile(destPath, buffer)
   }

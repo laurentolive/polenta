@@ -67,6 +67,8 @@ export interface TemplateOutlineEntry {
   section: string
   name: string
   values: Record<string, string>
+  /** Libellé du statut tel que défini dans le schéma (ex. « Approuvé » pour `approved`). */
+  statusLabel?: string
   steps?: { order: number; action: string; expectedResult: string; notes: string }[]
 }
 

@@ -8,6 +8,9 @@ import type { ExportKind, ExportTemplateKey, TemplateExportFormat } from '@polen
 export const TEMPLATE_FORMATS_BY_KIND: Partial<Record<ExportKind, TemplateExportFormat[]>> = {
   requirements: ['docx'],
   tests: ['docx'],
+  'campaign-plan': ['docx'],
+  'campaign-report': ['docx'],
+  dashboard: ['docx'],
 }
 
 export function templateKey(kind: ExportKind, format: TemplateExportFormat): ExportTemplateKey {

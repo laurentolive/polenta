@@ -767,6 +767,13 @@ export function registerIpcHandlers(c: Container): void {
   })
   // GH34 — gabarits de la bibliothèque (préférence application) pour un format.
   ipcMain.handle('export-templates:list', (_e, format: TemplateExportFormat) => c.exportTemplateLibrary.list(format))
+  // Gabarits d'exemple : `extraResources` en build packagé (electron-builder.yml), sources du repo
+  // en développement.
+  ipcMain.handle('export-templates:install-examples', () => c.exportTemplateLibrary.installExamples(
+    app.isPackaged
+      ? path.join(process.resourcesPath, 'export-templates')
+      : path.join(app.getAppPath(), 'resources', 'export-templates'),
+  ))
   ipcMain.handle('export:show-in-folder', (_e, filePath: string) => {
     shell.showItemInFolder(filePath)
   })

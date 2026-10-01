@@ -38,6 +38,7 @@ import { Route as PrintTestsRouteImport } from './routes/print.tests'
 import { Route as PrintRequirementsRouteImport } from './routes/print.requirements'
 import { Route as PrintQueryResultRouteImport } from './routes/print.query-result'
 import { Route as PrintImpactAnalysisRouteImport } from './routes/print.impact-analysis'
+import { Route as PrintDrawioSnapshotRouteImport } from './routes/print.drawio-snapshot'
 import { Route as PrintDashboardRouteImport } from './routes/print.dashboard'
 import { Route as PrintCampaignReportRouteImport } from './routes/print.campaign-report'
 import { Route as PrintCampaignPlanRouteImport } from './routes/print.campaign-plan'
@@ -191,6 +192,11 @@ const PrintImpactAnalysisRoute = PrintImpactAnalysisRouteImport.update({
   path: '/print/impact-analysis',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrintDrawioSnapshotRoute = PrintDrawioSnapshotRouteImport.update({
+  id: '/print/drawio-snapshot',
+  path: '/print/drawio-snapshot',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrintDashboardRoute = PrintDashboardRouteImport.update({
   id: '/print/dashboard',
   path: '/print/dashboard',
@@ -256,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
+  '/print/drawio-snapshot': typeof PrintDrawioSnapshotRoute
   '/print/impact-analysis': typeof PrintImpactAnalysisRoute
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
@@ -294,6 +301,7 @@ export interface FileRoutesByTo {
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
+  '/print/drawio-snapshot': typeof PrintDrawioSnapshotRoute
   '/print/impact-analysis': typeof PrintImpactAnalysisRoute
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
@@ -333,6 +341,7 @@ export interface FileRoutesById {
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
+  '/print/drawio-snapshot': typeof PrintDrawioSnapshotRoute
   '/print/impact-analysis': typeof PrintImpactAnalysisRoute
   '/print/query-result': typeof PrintQueryResultRoute
   '/print/requirements': typeof PrintRequirementsRoute
@@ -373,6 +382,7 @@ export interface FileRouteTypes {
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
+    | '/print/drawio-snapshot'
     | '/print/impact-analysis'
     | '/print/query-result'
     | '/print/requirements'
@@ -411,6 +421,7 @@ export interface FileRouteTypes {
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
+    | '/print/drawio-snapshot'
     | '/print/impact-analysis'
     | '/print/query-result'
     | '/print/requirements'
@@ -449,6 +460,7 @@ export interface FileRouteTypes {
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
+    | '/print/drawio-snapshot'
     | '/print/impact-analysis'
     | '/print/query-result'
     | '/print/requirements'
@@ -488,6 +500,7 @@ export interface RootRouteChildren {
   PrintCampaignPlanRoute: typeof PrintCampaignPlanRoute
   PrintCampaignReportRoute: typeof PrintCampaignReportRoute
   PrintDashboardRoute: typeof PrintDashboardRoute
+  PrintDrawioSnapshotRoute: typeof PrintDrawioSnapshotRoute
   PrintImpactAnalysisRoute: typeof PrintImpactAnalysisRoute
   PrintQueryResultRoute: typeof PrintQueryResultRoute
   PrintRequirementsRoute: typeof PrintRequirementsRoute
@@ -705,6 +718,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrintImpactAnalysisRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/print/drawio-snapshot': {
+      id: '/print/drawio-snapshot'
+      path: '/print/drawio-snapshot'
+      fullPath: '/print/drawio-snapshot'
+      preLoaderRoute: typeof PrintDrawioSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/print/dashboard': {
       id: '/print/dashboard'
       path: '/print/dashboard'
@@ -784,6 +804,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrintCampaignPlanRoute: PrintCampaignPlanRoute,
   PrintCampaignReportRoute: PrintCampaignReportRoute,
   PrintDashboardRoute: PrintDashboardRoute,
+  PrintDrawioSnapshotRoute: PrintDrawioSnapshotRoute,
   PrintImpactAnalysisRoute: PrintImpactAnalysisRoute,
   PrintQueryResultRoute: PrintQueryResultRoute,
   PrintRequirementsRoute: PrintRequirementsRoute,

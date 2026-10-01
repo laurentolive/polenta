@@ -1,3 +1,4 @@
+import { constants as fsConstants } from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type { ExportTemplateInfo, ExportTemplateListResult, TemplateExportFormat } from '@polenta/types'
@@ -6,6 +7,9 @@ import type { AppSettingsService } from './app-settings.service'
 // Profondeur de sous-dossiers parcourue (un sous-dossier par client, éventuellement un niveau de
 // rangement en plus) — borne un dossier mal choisi (ex. la racine d'un disque).
 const MAX_DEPTH = 5
+
+/** Sous-dossier de la bibliothèque recevant les gabarits d'exemple livrés avec l'application. */
+export const EXAMPLES_FOLDER = 'Exemples Polenta'
 
 /**
  * GH34 — bibliothèque de gabarits d'export : dossier choisi dans les préférences application
@@ -29,6 +33,28 @@ export class ExportTemplateLibrary {
     await walk(dir, '', `.${format}`, 0, templates)
     templates.sort((a, b) => a.relPath.localeCompare(b.relPath))
     return { dirConfigured: true, dirExists: true, templates }
+  }
+
+  /**
+   * Copie les gabarits d'exemple livrés avec l'application (`sourceDir`) dans le sous-dossier
+   * `EXAMPLES_FOLDER` de la bibliothèque. Un fichier déjà présent n'est jamais écrasé (l'utilisateur
+   * a pu le modifier) : relancer l'installation ne fait que compléter.
+   */
+  async installExamples(sourceDir: string): Promise<{ folder: string; copied: number }> {
+    const dir = this.appSettings.get().exportTemplatesDir
+    if (!dir) throw new Error('Aucune bibliothèque de gabarits d’export n’est configurée.')
+    const target = path.join(dir, EXAMPLES_FOLDER)
+    await fsP.mkdir(target, { recursive: true })
+    let copied = 0
+    for (const name of await fsP.readdir(sourceDir)) {
+      try {
+        await fsP.copyFile(path.join(sourceDir, name), path.join(target, name), fsConstants.COPYFILE_EXCL)
+        copied++
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+      }
+    }
+    return { folder: target, copied }
   }
 
   /** Chemin absolu d'un gabarit — refuse tout chemin sortant de la bibliothèque (`..`, absolu). */

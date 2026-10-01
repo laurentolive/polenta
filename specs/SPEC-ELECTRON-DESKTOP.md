@@ -1786,6 +1786,51 @@ Toutes les vues principales (routes + `SystemView`) partagent un unique composan
   d'export inline de `query.tsx` (mutation dédiée + canal IPC `queries:export-excel` ad hoc,
   retirés) — tout nouvel export de vue doit passer par ce mécanisme partagé (canal IPC générique
   `export:save`, `ExportService` côté main process), pas par un bouton/canal spécifique à la vue.
+  Pour les kinds/formats acceptant un gabarit client (GH34, `renderer/lib/exportTemplates.ts`), le
+  popover affiche au-dessus des formats une liste « Gabarit Word » — cf. §19.15a.
+
+#### 19.15a Export à partir d'un gabarit client (GH34)
+
+Le client fournit ses gabarits Word (page de garde, logo, en-têtes/pieds, cartouche, styles) avec des
+balises `{{…}}` ; Polenta les remplit. Le rendu « Standard » (générateurs T43) reste disponible et
+inchangé. Spec/design : `specs/GH34.md`, `specs/GH34-design.md` ; référence utilisateur des balises :
+`apps/desktop/resources/export-templates/Référence des balises.html`.
+
+- **Bibliothèque** : préférence application `exportTemplatesDir` (`app-settings.json`, réglée dans le
+  panneau Compte › Préférences, avec « Installer les exemples »). Dossier lu tel quel (local, réseau,
+  repo cloné), jamais écrit hors installation des exemples ; `.docx`/`.xlsx` listés récursivement
+  (5 niveaux, `~$*` et fichiers cachés exclus), identifiés par **chemin relatif** `/`
+  (`ExportTemplateLibrary`, IPC `export-templates:list`). Résolution refusant toute sortie du dossier.
+- **Défaut par projet** : `schema.yaml` › `preferences.exportTemplates` (`<kind>:<format>` → chemin
+  relatif), page Préférences du projet ; partagé par l'équipe, valable quel que soit l'emplacement de
+  la bibliothèque sur chaque poste.
+- **Popover Exporter** : « Standard » + gabarits du format, défaut du projet présélectionné ; défaut
+  introuvable → affiché « ⚠ … (introuvable) » désactivé, Standard présélectionné, message ; bouton de
+  format désactivé tant que la liste n'est pas chargée. Le gabarit choisi est passé à `export:save`
+  (`templateRelPath`) ; le renderer joint alors à son payload l'arbre complet (`outline` : dossiers,
+  niveau, étapes détaillées, `statusLabel`, cf. `buildExportOutline`). Kinds pris en charge (docx) :
+  `requirements`, `tests`, `campaign-plan`, `campaign-report`, `dashboard`.
+- **Moteur** (`main/services/export/template/`) : `TemplateExportService` construit les données
+  (communes `project`/`export`/`git` + par kind : `template-data.ts`, `template-data-campaign.ts` —
+  le rapport de campagne lit les résultats par étape de l'exécution `runId` via `TestsService`),
+  `docx-template.ts` remplit le gabarit (docxtemplater, délimiteurs `{{ }}`, `paragraphLoop`,
+  donnée absente → vide, erreurs traduites avec gabarit + balise, aucun fichier écrit en cas d'erreur).
+- **Contenu riche** (`{{@rich.<champ>}}`, aussi sur `columns` et `steps`) : `markdown-to-ooxml.ts`
+  convertit le Markdown aux styles du gabarit retrouvés **par nom** (`heading N`, `List Paragraph`,
+  `Table Grid`, `Quote`, `HTML Code` — l'ID dépend de la langue de Word) ; listes numérotées
+  ré-allouées à chaque insertion (`RichFragment`, chaque liste repart à 1), cases à cocher, tableaux,
+  images (taille/rognage de l'éditeur, en fractions), ramenées à la largeur utile. `docx-package.ts`
+  complète le paquet (médias, relations, content types, `numbering.xml` dans l'ordre du schéma,
+  cellules terminées par un paragraphe, IDs de dessins renumérotés). Gabarit sans `{{@…}}` : aucune
+  conversion. Dashboard : `{{@table}}` par widget (tableau construit par Polenta, docxtemplater n'ayant
+  pas de boucle de colonnes).
+- **Diagrammes draw.io** : rendus en PNG (×2) en une passe avant conversion, par une fenêtre cachée
+  offscreen sur la route `/print/drawio-snapshot` (même viewer, même page/ancre/taille/rognage que la
+  Vue Word via `renderStaticDrawio(…, onDone)`) et `capturePage` (`drawio-snapshot.ts`, IPC scoped
+  `export:drawio-snapshot-ready`). Échec (fichier absent, XML invalide, délai) → `[Diagramme : …]`,
+  captures déjà faites conservées.
+- **Vérification** : `apps/desktop/scripts/check-gh34.ts` (contrôles automatiques, `--keep` pour
+  ouvrir les documents) ; `scripts/e2e-gh34-drawio.mjs` (app buildée ou packagée via `E2E_EXE`).
 
 Les panneaux latéraux (sidebar) suivent une convention distincte, désormais généralisée à tous :
 un conteneur `px-4 py-3 border-b border-edge` contenant `<p className="section-label">` (classe

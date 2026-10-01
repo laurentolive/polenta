@@ -78,7 +78,9 @@ export function buildExportOutline(
   sectionNumbers: Map<string, string>,
   stepsByObjectId: Map<string, ExportStep[]> | undefined,
   filter: string,
+  typeDef?: ObjectTypeDefinition,
 ): TemplateOutlineEntry[] {
+  const statusLabels = new Map((typeDef?.statuses ?? []).map(st => [st.name, st.label]))
   const exportFields = getExportFields(fields)
   const objectsById = new Map(objects.map(o => [o['id'], o]))
   const needle = filter.trim().toLowerCase()
@@ -96,6 +98,7 @@ export function buildExportOutline(
           section,
           name: node.name || '',
           values: buildRow(node, obj, exportFields, sectionNumbers, stepsByObjectId),
+          statusLabel: statusLabels.get(obj['status'] ?? '') ?? obj['status'] ?? '',
           ...(stepsByObjectId ? { steps: stepsByObjectId.get(node.objectId) ?? [] } : {}),
         })
       } else {

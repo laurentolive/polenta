@@ -81,7 +81,11 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
   const appSettings = new AppSettingsService()
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
-  const exportSvc = new ExportService(new TemplateExportService(exportTemplateLibrary, git, schema, auth))
+  const exportSvc = new ExportService(new TemplateExportService(
+    exportTemplateLibrary, git, schema, auth, tests,
+    // Chargé au premier diagramme à rendre (T141 : rien de plus au démarrage).
+    async (repoPath, refs) => (await import('./services/export/template/drawio-snapshot')).snapshotDrawios(repoPath, refs),
+  ))
   const update = new UpdateService(appSettings)
 
   registerIpcHandlers({

@@ -104,7 +104,10 @@
       "exportTemplatesChoose": "Choose…",
       "exportTemplatesClear": "Clear",
       "exportTemplatesNone": "No folder configured",
-      "exportTemplatesPick": "Export template library"
+      "exportTemplatesPick": "Export template library",
+      "exportTemplatesExamples": "Install examples",
+      "exportTemplatesExamplesHint": "Copies the example Word templates and the tag reference into the \"Exemples Polenta\" sub-folder of the library (existing files are never overwritten).",
+      "exportTemplatesExamplesDone": "{{count}} file(s) copied to {{folder}}"
     },
     "menu": {
       "defaultLabel": "Account"

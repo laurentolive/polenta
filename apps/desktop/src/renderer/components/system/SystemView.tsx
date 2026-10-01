@@ -600,7 +600,7 @@ export function SystemView() {
     const substitute = (values: Record<string, string>[]) => substituteExportParams(values, effectiveType, paramResolver.substitute)
     const payload = { componentLabel: effectiveNode?.label || effectiveNodeId || '', columns, rows: substitute(rows) }
     if (!templated) return payload
-    const outline = buildExportOutline(fields, root, objects, sectionNumbers, stepsByObjectId, filter)
+    const outline = buildExportOutline(fields, root, objects, sectionNumbers, stepsByObjectId, filter, effectiveType)
     const values = substitute(outline.map(e => e.values))
     return { ...payload, outline: outline.map((e, i) => ({ ...e, values: values[i] })) }
   }

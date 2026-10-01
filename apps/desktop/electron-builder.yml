@@ -55,6 +55,10 @@ extraResources:
   # (évaluation du module, pas son appel) ne casse pas le démarrage du process.
   - from: node_modules/keytar
     to: mcp-server/node_modules/keytar
+  # GH34 — gabarits Word d'exemple et référence des balises, copiés dans la bibliothèque de
+  # l'utilisateur par « Installer les exemples » (export-templates:install-examples).
+  - from: resources/export-templates
+    to: export-templates
 win:
   icon: build/icon.ico
   # GH26 — installeur NSIS (plus de portable) : seule cible Windows qu'electron-updater sait

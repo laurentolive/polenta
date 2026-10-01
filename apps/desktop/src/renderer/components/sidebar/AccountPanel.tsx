@@ -42,6 +42,16 @@ export function AccountPanel() {
     setTemplatesDir(saved.exportTemplatesDir ?? '')
   }
 
+  const [examplesMessage, setExamplesMessage] = useState<string | null>(null)
+  async function handleInstallExamples() {
+    try {
+      const { folder, copied } = await api.export.installExampleTemplates()
+      setExamplesMessage(t('account.panel.exportTemplatesExamplesDone', { count: copied, folder }))
+    } catch (err) {
+      setExamplesMessage(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   async function handlePickTemplatesDir() {
     const picked = await api.dialog.pickFolder(t('account.panel.exportTemplatesPick'))
     if (picked) await handleSetTemplatesDir(picked)
@@ -211,6 +221,17 @@ export function AccountPanel() {
             <p className="text-xs text-ink-3 break-all">
               {templatesDir || t('account.panel.exportTemplatesNone')}
             </p>
+            {templatesDir && (
+              <button
+                type="button"
+                onClick={() => void handleInstallExamples()}
+                title={t('account.panel.exportTemplatesExamplesHint')}
+                className="px-2 py-1 rounded border border-edge text-xs text-ink-2 hover:bg-hover transition-colors"
+              >
+                {t('account.panel.exportTemplatesExamples')}
+              </button>
+            )}
+            {examplesMessage && <p className="text-xs text-ink-3 break-all">{examplesMessage}</p>}
           </div>
         )}
       </div>

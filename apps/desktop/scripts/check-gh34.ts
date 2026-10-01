@@ -13,13 +13,17 @@ import * as os from 'os'
 import * as path from 'path'
 import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun } from 'docx'
 import PizZip from 'pizzip'
-import type { RequirementsExportPayload, TestsExportPayload } from '@polenta/types'
+import type {
+  CampaignExportPayload, DashboardExportPayload, RequirementsExportPayload, TestCase, TestRun, TestsExportPayload,
+} from '@polenta/types'
 import { ExportTemplateLibrary } from '../src/main/services/export-template-library'
 import { TemplateExportService } from '../src/main/services/export/template/template-export.service'
 import type { AppSettingsService } from '../src/main/services/app-settings.service'
 import type { GitService } from '../src/main/services/git.service'
 import type { SchemaService } from '../src/main/services/schema.service'
 import type { AuthService } from '../src/main/services/auth.service'
+import type { TestsService } from '../src/main/services/tests.service'
+import type { DrawioRef, DrawioSnapshot } from '../src/main/services/export/template/drawio-ref'
 
 let failures = 0
 let passes = 0
@@ -158,7 +162,8 @@ async function main(): Promise<void> {
   } as unknown as GitService
   const schema = { get: async () => ({ nodes: [{ name: 'root', label: 'Aspirateur V1' }] }) } as unknown as SchemaService
   const auth = { projectUsername: async () => 'lolive' } as unknown as AuthService
-  const service = new TemplateExportService(library, git, schema, auth)
+  const tests = { findRuns: async () => RUNS } as unknown as TestsService
+  const service = new TemplateExportService(library, git, schema, auth, tests, fakeSnapshotter)
 
   // ── S1.2 — liste de la bibliothèque ───────────────────────────────────────
   const listed = await library.list('docx')
@@ -233,6 +238,7 @@ async function main(): Promise<void> {
   }
 
   await sprint2(service, lib, tmp, out)
+  await sprint3(service, library, lib, tmp, out)
 
   // ── S1.13 / S1.15 — bibliothèque non configurée / absente ─────────────────
   dir = undefined
@@ -491,3 +497,156 @@ main().catch(err => {
   console.error(err)
   process.exit(1)
 })
+
+// ── Sprint 3 — draw.io, campagnes, dashboard, gabarits d'exemple ────────────
+
+const PNG_1X1_S3 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+/** Appels reçus par le faux rendu draw.io (la vraie capture est vérifiée dans l'app, cf. sprint3.md). */
+const snapshotCalls: DrawioRef[][] = []
+async function fakeSnapshotter(_repo: string, refs: DrawioRef[]): Promise<Map<string, DrawioSnapshot>> {
+  snapshotCalls.push(refs)
+  const { drawioKey } = await import('../src/main/services/export/template/drawio-ref')
+  return new Map(refs.filter(r => r.path === 'diagrams/ok.drawio').map(r => [drawioKey(r), { png: PNG_1X1_S3, width: 300, height: 150 }]))
+}
+
+const testCase = (id: string, title: string): TestCase => ({
+  id, title, projectId: '', branchId: '', objectTypeRef: 'root::test', status: 'approved',
+  preconditions: 'Batterie **chargée**', postconditions: 'Appareil éteint', equipment: [],
+  steps: [
+    { order: 2, action: 'Mesurer le temps', expectedResult: '< 500 ms', notes: null },
+    { order: 1, action: 'Appuyer sur **ON**', expectedResult: 'LED verte', notes: 'à 25 °C' },
+  ],
+  fields: { niveau: 'système' }, createdAt: null, createdBy: null, updatedAt: null, updatedBy: null,
+})
+
+const RUNS: TestRun[] = [{
+  id: 'RUN-1', testCaseId: 'TEST-0001', campaignRunId: null, result: 'FAIL', executedAt: '2026-09-30T14:05:00Z',
+  executedBy: 'lolive', duration: 60, equipmentUsed: [], notes: 'Écart **constaté**',
+  stepResults: [
+    { order: 1, result: 'PASS', comment: '', executedAt: null },
+    { order: 2, result: 'FAIL', comment: 'Mesuré **620 ms**', executedAt: null },
+  ],
+}]
+
+const campaignPayload: CampaignExportPayload = {
+  campaign: {
+    id: 'CAMP-0001', title: 'Validation démarrage', fields: {}, baselineRef: 'v1.2.0', component: 'Moteur',
+    status: 'in_progress', testCaseIds: [], runs: [], createdAt: '2026-09-01T00:00:00Z',
+  },
+  entries: [
+    { run: { entryId: 'TEST-0001', testCaseId: 'TEST-0001', status: 'FAIL', runId: 'RUN-1', executedAt: '2026-09-30T14:05:00Z', executedBy: 'lolive', requirementId: 'SYS-0001' }, test: testCase('TEST-0001', 'Démarrage Eco') },
+    { run: { entryId: 'TEST-0002', testCaseId: 'TEST-0002', status: 'pending' }, test: testCase('TEST-0002', 'Démarrage Turbo') },
+  ],
+}
+
+const dashboardPayload: DashboardExportPayload = {
+  dashboard: {
+    id: 'D1', title: 'Suivi', scope: 'project' as never, createdBy: '', createdAt: '',
+    widgetOrder: ['w2', 'w1'],
+    widgets: [
+      { id: 'w1', title: 'Vide', queryId: 'q', type: 'table' as never, fieldMapping: {} as never, size: {} as never },
+      { id: 'w2', title: 'Couverture', queryId: 'q', type: 'table' as never, fieldMapping: {} as never, size: {} as never },
+    ],
+  },
+  widgetResults: {
+    w1: { columns: [], rows: [] },
+    w2: { columns: [{ name: 'Statut', type: 'string' }, { name: 'Nombre', type: 'number' }], rows: [{ Statut: 'approved', Nombre: 12 }, { Statut: 'draft', Nombre: 3 }] },
+  },
+}
+
+const DRAWIO = (pathName: string, nodeId = 'n1') => ['```drawio', JSON.stringify({ path: pathName, nodeId, width: 300 }), '```'].join('\n')
+
+async function sprint3(service: TemplateExportService, library: ExportTemplateLibrary, lib: string, repo: string, out: string): Promise<void> {
+  const examplesSrc = path.join(__dirname, '..', 'resources', 'export-templates')
+
+  // ── S3.7 — installation des exemples (sans écrasement) ────────────────────
+  const first = await library.installExamples(examplesSrc)
+  const again = await library.installExamples(examplesSrc)
+  const expected = fs.readdirSync(examplesSrc).length
+  check(`S3.7 exemples installés (${first.copied}/${expected}), réinstallation sans écrasement`, first.copied === expected && again.copied === 0)
+  const listed = (await library.list('docx')).templates.map(t => t.relPath).filter(r => r.startsWith('Exemples Polenta/'))
+  check('S3.7 exemples listés (référence HTML exclue)', listed.length === expected - 1, JSON.stringify(listed))
+
+  const exportTo = async (kind: Parameters<TemplateExportService['run']>[0], tpl: string, payload: unknown, name: string) => {
+    const dest = path.join(out, name)
+    await service.run(kind, 'docx', payload, repo, `Exemples Polenta/${tpl}`, dest)
+    return fsP.readFile(dest)
+  }
+  const textOf = (b: Buffer) => paragraphsOf(b).join('\n')
+
+  // ── S3.1–S3.3 — draw.io ────────────────────────────────────────────────────
+  const statement = [
+    'Avant', '', DRAWIO('diagrams/ok.drawio'), '', DRAWIO('diagrams/absent.drawio', 'x9'), '', DRAWIO('diagrams/ok.drawio'),
+    '', '```drawio', 'pas du json', '```',
+  ].join('\n')
+  const reqPayload: RequirementsExportPayload = {
+    componentLabel: 'Moteur',
+    columns: [{ key: 'section', label: 'Section' }, { key: 'id', label: 'ID' }, { key: 'name', label: 'Label' }, { key: 'status', label: 'Statut' }, { key: 'statement', label: 'Énoncé', type: 'richtext' }],
+    rows: [],
+    outline: [
+      { kind: 'folder', level: 1, section: '1', name: 'Sécurité', values: {} },
+      { kind: 'folder', level: 2, section: '1.1', name: 'Batterie', values: {} },
+      ...Array.from({ length: 20 }, (_, i) => ({
+        kind: 'item' as const, level: 3, section: `1.1.${i + 1}`, name: `Exigence ${i + 1}`, statusLabel: 'Approuvé',
+        values: { section: `1.1.${i + 1}`, id: `SYS-${String(i + 1).padStart(4, '0')}`, name: `Exigence ${i + 1}`, status: 'approved', statement },
+      })),
+    ],
+  }
+  snapshotCalls.length = 0
+  const reqBuf = await exportTo('requirements', 'Cahier des exigences.docx', reqPayload, 's3-exigences.docx')
+  const reqDoc = new PizZip(reqBuf).file('word/document.xml')!.asText()
+  const reqText = textOf(reqBuf)
+  check('S3.1 diagramme rendu inséré en image (taille d’affichage)', reqDoc.includes(`<wp:extent cx="${300 * 9525}" cy="${150 * 9525}"/>`))
+  check('S3.2 diagramme introuvable → repli', reqText.includes('[Diagramme : diagrams/absent.drawio#x9]'))
+  check('S3.2 bloc drawio non JSON → omis', !reqText.includes('pas du json'))
+  check('S3.3 rendu en une seule passe (un appel)', snapshotCalls.length === 1, String(snapshotCalls.length))
+  check('S3.3 même diagramme ×40 → un seul média', Object.keys(new PizZip(reqBuf).files).filter(f => f.startsWith('word/media/')).length === 1)
+  check('S3.7 exemple exigences : titres de dossiers hiérarchiques', /Heading1"\/>[\s\S]*?1 Sécurité/.test(reqDoc) && /Heading2"\/>[\s\S]*?1\.1 Batterie/.test(reqDoc))
+  check('S3.7 exemple exigences : cartouche et en-tête', reqText.includes('Aspirateur V1') && reqText.includes('v1.2.0'))
+  check('libellé de statut du schéma', reqText.includes('Statut : Approuvé') && !reqText.includes('Statut : approved'))
+  const headerXml = Object.keys(new PizZip(reqBuf).files).filter(f => /word\/header\d*\.xml/.test(f)).map(f => new PizZip(reqBuf).file(f)!.asText()).join('')
+  check('S3.7 balises remplies dans l’en-tête', headerXml.includes('Aspirateur V1 — Cahier des exigences') && !headerXml.includes('{{'))
+  const reqProblems = packageProblems(reqBuf)
+  check('S3.7 exemple exigences : paquet cohérent', reqProblems.length === 0, reqProblems.join(' ; '))
+
+  snapshotCalls.length = 0
+  await exportTo('requirements', 'Cahier des exigences.docx', { ...reqPayload, outline: reqPayload.outline!.map(e => ({ ...e, values: { ...e.values, statement: 'sans diagramme' } })) }, 's3-sans-diagramme.docx')
+  check('aucun diagramme → pas de fenêtre de rendu', snapshotCalls.length === 0)
+
+  // ── Exemple tests ──────────────────────────────────────────────────────────
+  const testsBuf = await exportTo('tests', 'Cahier de tests.docx', {
+    componentLabel: 'Moteur',
+    columns: [{ key: 'id', label: 'ID' }, { key: 'name', label: 'Label' }, { key: 'preconditions', label: 'Préconditions', type: 'richtext' }],
+    rows: [],
+    outline: [{ kind: 'item', level: 1, section: '1', name: 'Démarrage', values: { id: 'TEST-0001', name: 'Démarrage', preconditions: 'Batterie **chargée**' }, steps: testCase('x', 'y').steps.map(st => ({ ...st, notes: st.notes ?? '' })) }],
+  } satisfies TestsExportPayload, 's3-tests.docx')
+  const testsText = textOf(testsBuf)
+  check('S3.7 exemple tests : étapes en tableau', testsText.includes('Appuyer sur ON') && testsText.includes('LED verte'))
+  check('S3.7 exemple tests : paquet cohérent', packageProblems(testsBuf).length === 0, packageProblems(testsBuf).join(' ; '))
+
+  // ── S3.4 / S3.5 — campagnes ───────────────────────────────────────────────
+  const planBuf = await exportTo('campaign-plan', 'Cahier de campagne.docx', campaignPayload, 's3-campagne.docx')
+  const planText = textOf(planBuf)
+  check('S3.4 cahier de campagne : entrées, exigence de l’instance, composant',
+    planText.includes('TEST-0001') && planText.includes('Démarrage Turbo') && planText.includes('SYS-0001') && planText.includes('Moteur'))
+  check('S3.4 étapes triées par ordre', planText.indexOf('Appuyer sur ON') < planText.indexOf('Mesurer le temps'))
+  check('S3.4 préconditions mises en forme', /<w:b\/><\/w:rPr><w:t xml:space="preserve">chargée/.test(new PizZip(planBuf).file('word/document.xml')!.asText()))
+  check('S3.4 paquet cohérent', packageProblems(planBuf).length === 0, packageProblems(planBuf).join(' ; '))
+
+  const reportBuf = await exportTo('campaign-report', 'Rapport de campagne.docx', campaignPayload, 's3-rapport.docx')
+  const reportText = textOf(reportBuf)
+  check('S3.5 rapport : statut de campagne et libellés de résultat', reportText.includes('En cours') && reportText.includes('Échoué') && reportText.includes('En attente'))
+  check('S3.5 rapport : synthèse (total 2, 1 échec, 1 en attente)', /\n2\n0\n1\n0\n0\n1\n/.test(reportText), reportText.slice(reportText.indexOf('Synthèse'), reportText.indexOf('Synthèse') + 120))
+  check('S3.5 rapport : résultat et commentaire par étape', reportText.includes('Passé') && reportText.includes('Mesuré 620 ms'))
+  check('S3.5 rapport : date d’exécution formatée', reportText.includes('30/09/2026'))
+  check('S3.5 rapport : notes d’exécution', reportText.includes('Écart constaté') || /constaté/.test(new PizZip(reportBuf).file('word/document.xml')!.asText()))
+  check('S3.5 paquet cohérent', packageProblems(reportBuf).length === 0, packageProblems(reportBuf).join(' ; '))
+
+  // ── S3.6 — dashboard ──────────────────────────────────────────────────────
+  const dashBuf = await exportTo('dashboard', 'Dashboard.docx', dashboardPayload, 's3-dashboard.docx')
+  const dashText = textOf(dashBuf)
+  check('S3.6 dashboard : ordre d’affichage des widgets', dashText.indexOf('Couverture') < dashText.indexOf('Vide'))
+  check('S3.6 dashboard : tableau du résultat', /Statut\nNombre\napproved\n12\ndraft\n3/.test(dashText), dashText)
+  check('S3.6 dashboard : widget sans donnée', /Vide\nAucune donnée\./.test(dashText))
+  check('S3.6 paquet cohérent', packageProblems(dashBuf).length === 0, packageProblems(dashBuf).join(' ; '))
+}

@@ -104,7 +104,10 @@
       "exportTemplatesChoose": "Choisir…",
       "exportTemplatesClear": "Vider",
       "exportTemplatesNone": "Aucun dossier configuré",
-      "exportTemplatesPick": "Bibliothèque de gabarits d’export"
+      "exportTemplatesPick": "Bibliothèque de gabarits d’export",
+      "exportTemplatesExamples": "Installer les exemples",
+      "exportTemplatesExamplesHint": "Copie les gabarits Word d'exemple et la référence des balises dans le sous-dossier « Exemples Polenta » de la bibliothèque (sans écraser les fichiers existants).",
+      "exportTemplatesExamplesDone": "{{count}} fichier(s) copié(s) dans {{folder}}"
     },
     "menu": {
       "defaultLabel": "Compte"

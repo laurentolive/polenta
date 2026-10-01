@@ -225,9 +225,10 @@ plafonnement/troncature que ci-dessus.
   { dryRun: true, summary: { total, ok, failed },
     wouldCreate: [{ index, id /* prévisionnel */ }], created: [], errors: BulkEntryError[] }
   ```
-  Les IDs prévisionnels sont calculés par `peekNextCounterId` (lecture seule de
-  `config/counters.yaml` + listing du dossier, sans écrire), une fois par préfixe
-  distinct du batch, puis un offset en mémoire par préfixe garantit des IDs
+  Les IDs prévisionnels sont calculés par `peekNextCounterId` (lecture seule : listing
+  du dossier et des pierres tombales, `counters.yaml` non migré pris en compte — GH20),
+  dans le repo qui recevra les fichiers (repo du composant pour un type de composant),
+  une fois par préfixe distinct du batch, puis un offset en mémoire par préfixe garantit des IDs
   prévisionnels distincts au sein d'un même batch.
 
 - **`dryRun: false`** : réutilise `RequirementsService.create`/`TestsService.create`/
@@ -249,7 +250,7 @@ Un tool par méthode ciblée de `SchemaService` — chacune : `get()` → valide
 copie immuable du schéma → `save()` (réécriture complète du fichier — atomicité au
 niveau du fichier). Toutes les 5 méthodes passent par une file de sérialisation par
 `repoPath` (`SchemaService::withMutationQueue`, même classe de bug/remède que T118
-pour `counters.yaml` — un agent MCP peut pipeliner plusieurs `add_*` sans attendre la
+pour l'attribution des IDs — un agent MCP peut pipeliner plusieurs `add_*` sans attendre la
 réponse précédente).
 
 | Tool | Entrée | Refuse si |

@@ -594,7 +594,6 @@ POST /projects/:id/baselines
 <project-git-repo>/
 ├── config/
 │   ├── project.yaml             ← schemaVersion, integrationBranch, forkOf...
-│   ├── counters.yaml            ← REQ/TEST/REVIEW/CAMP/CRUN par préfixe
 │   ├── requirement-types.yaml
 │   └── components.yaml          ← références aux composants
 ├── requirements/

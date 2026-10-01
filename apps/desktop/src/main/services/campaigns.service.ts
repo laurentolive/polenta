@@ -3,7 +3,7 @@ import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
 import { REQ_REF_PREFIX, extractTestReqRefs } from '@polenta/types'
-import { nextCounterId } from './id-counter.util'
+import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 
 export class CampaignsService {
   constructor(
@@ -79,6 +79,7 @@ export class CampaignsService {
 
     // T179 — une occurrence par instance créée (un test itérant en a une par exigence retenue).
     campaign.testCaseIds = campaign.runs.map(r => r.testCaseId)
+    await assertNewObjectFile(this.gitService, repoPath, `campaigns/${id}.yaml`, id)
     await this.gitService.writeYaml(repoPath, `campaigns/${id}.yaml`, campaign)
     return campaign
   }
@@ -297,7 +298,7 @@ export class CampaignsService {
   }
 
   async delete(repoPath: string, id: string): Promise<void> {
-    await this.gitService.deleteFile(repoPath, `campaigns/${id}.yaml`)
+    await deleteWithTombstone(this.gitService, repoPath, `campaigns/${id}.yaml`, id)
   }
 
   // â”€â”€â”€ Private helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

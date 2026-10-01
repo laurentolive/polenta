@@ -60,7 +60,7 @@ Les requêtes sauvegardées ne sont listées que dans le panneau latéral (GH14)
 
 | Entité | Partagé | Privé |
 |---|---|---|
-| Requête (`SavedQuery`) | `queries/QUERY-xxxx.yaml`, un fichier par requête, ID via `config/counters.yaml` | clé `savedQueries` dans `.{username}.pref`, ID `local-<ts>-<rand>` |
+| Requête (`SavedQuery`) | `queries/QUERY-xxxx.yaml`, un fichier par requête, ID via `nextCounterId` (pierre tombale à la suppression ou au passage en privé, GH20) | clé `savedQueries` dans `.{username}.pref`, ID `local-<ts>-<rand>` |
 | Dashboard (`Dashboard`) | `dashboards/DASHBOARD-xxxx.yaml`, widgets **embarqués** dans le YAML (pas de fichier séparé par widget) | clé `dashboards` dans `.{username}.pref` |
 | Historique de requêtes | — | toujours privé (`queryHistory` dans `.pref`), sans exception |
 | Widget | pas de stockage propre — scope hérité du Dashboard parent | idem |

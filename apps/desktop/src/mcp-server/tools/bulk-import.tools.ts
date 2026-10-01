@@ -78,8 +78,8 @@ interface BulkImportToolResult {
  * appelle ce callback pour renseigner `predictedId` sur chaque entrée valide, mais
  * `runBulkImport` n'utilise `predictedId` QUE dans la branche `dryRun: true` (la
  * branche d'écriture réelle prend son ID dans la valeur retournée par `create()`,
- * seule source de vérité). Calculer un vrai aperçu (donc lire `counters.yaml` +
- * lister le dossier via `peekNextCounterId`) avant une écriture réelle serait un
+ * seule source de vérité). Calculer un vrai aperçu (donc lister le dossier et les
+ * pierres tombales via `peekNextCounterId`) avant une écriture réelle serait un
  * aller-retour disque entièrement gaspillé, doublé par la lecture déjà faite en
  * série par le vrai `nextCounterId` à l'intérieur de `create()` — relevé en review.
  */
@@ -138,18 +138,29 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
  * fois par préfixe DISTINCT présent dans le batch (pas un appel disque par entrée),
  * puis tient un offset en mémoire par préfixe pour que les IDs prévisionnels d'un
  * même batch soient distincts (cf. doc de `validateBulkEntries`).
+ *
+ * GH20 — la base se lit dans le repo qui recevra les fichiers (repo du composant pour un
+ * type de composant, résolu comme `RequirementsService`/`TestsService.create`), pas
+ * forcément `container.repoPath` : les IDs sont désormais déduits des fichiers sur disque.
  */
 async function makeSchemaBackedIdPreview(
-  git: GitService,
-  repoPath: string,
+  container: McpContainer,
   schema: ProjectSchema,
   entries: BulkImportEntryDto[],
   dir: string,
 ): Promise<(objectTypeRef: string | undefined) => string> {
-  const prefixes = new Set(entries.map((e) => resolveIdPrefix(schema, e.objectTypeRef ?? '')))
+  const refByPrefix = new Map<string, string>()
+  for (const e of entries) {
+    const prefix = resolveIdPrefix(schema, e.objectTypeRef ?? '')
+    if (!refByPrefix.has(prefix)) refByPrefix.set(prefix, e.objectTypeRef ?? '')
+  }
   const baseByPrefix = new Map<string, number>()
-  for (const prefix of prefixes) {
-    baseByPrefix.set(prefix, await peekNextCounterId(git, repoPath, prefix, dir))
+  for (const [prefix, objectTypeRef] of refByPrefix) {
+    const targetRepo = (await container.schema.resolveComponentRepoPath(
+      container.repoPath, objectTypeRef, container.workspaceDir,
+    )) ?? container.repoPath
+    const historyRepos = targetRepo === container.repoPath ? [] : [container.repoPath]
+    baseByPrefix.set(prefix, await peekNextCounterId(container.git, targetRepo, prefix, dir, historyRepos))
   }
 
   const usedByPrefix = new Map<string, number>()
@@ -198,7 +209,7 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
     async ({ entries, dryRun }) => {
       const schema = await container.schema.get(container.repoPath)
       const preview = dryRun
-        ? await makeSchemaBackedIdPreview(container.git, container.repoPath, schema, entries, 'requirements')
+        ? await makeSchemaBackedIdPreview(container, schema, entries, 'requirements')
         : NOOP_ID_PREVIEW
       const result = await runBulkImport(schema, entries, dryRun, preview, (dto) =>
         container.requirements.create(container.repoPath, dto, container.workspaceDir),
@@ -220,7 +231,7 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
     async ({ entries, dryRun }) => {
       const schema = await container.schema.get(container.repoPath)
       const preview = dryRun
-        ? await makeSchemaBackedIdPreview(container.git, container.repoPath, schema, entries, 'tests')
+        ? await makeSchemaBackedIdPreview(container, schema, entries, 'tests')
         : NOOP_ID_PREVIEW
       const result = await runBulkImport(schema, entries, dryRun, preview, (dto) =>
         container.tests.create(container.repoPath, dto, container.workspaceDir),

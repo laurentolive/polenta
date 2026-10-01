@@ -44,6 +44,7 @@ product-aspirateur-v1/               ← repo produit principal
 └── .polenta/
     ├── workspace.yaml                ← marque le dossier comme projet Polenta ouvrable
     ├── schema.yaml                   ← modèle de données du projet (nodes + objectTypes + linkTypes)
+    ├── tombstones/                   ← un fichier vide par ID supprimé physiquement (GH20), jamais supprimé
     └── trees/
         └── root/
             ├── exigence-systeme.yaml ← ordre d'affichage des SYS (un fichier par type d'objet)
@@ -95,6 +96,7 @@ specs/
 ├── .polenta/
 │   ├── workspace.yaml
 │   ├── schema.yaml
+│   ├── tombstones/                  ← IDs supprimés physiquement (GH20), un fichier vide par ID
 │   └── trees/                       ← un fichier par (nœud, type d'objet), maintenu par l'app
 └── scripts/
     ├── check.py
@@ -187,7 +189,10 @@ technique). Aucune convention de sens à respecter, donc, pour ce type de lien.
 | MECA-XXX| Mécanique            |
 | PRD-XXX | Produit              |
 
-Les IDs sont séquentiels et ne sont jamais réutilisés (même si obsolète).
+Les IDs sont séquentiels et ne sont jamais réutilisés (même si obsolète). Il n'y a pas de
+compteur persistant : le prochain numéro d'un préfixe est déduit des fichiers présents et des
+pierres tombales `.polenta/tombstones/<ID>` que l'application pose à chaque suppression
+physique (GH20).
 Le préfixe correspond à `ObjectTypeDefinition.prefix` dans le schéma.
 
 ---
@@ -325,6 +330,7 @@ Ne pas définir la variable d'environnement `CLAUDE_CODE_SUBAGENT_MODEL` : elle 
 - Ne pas créer d'exigence sans syntaxe EARS dans le champ `statement`
 - Ne pas modifier un `.drawio` sans lire les exigences/tests qui le référencent
 - Ne pas réutiliser un ID même si l'exigence est `obsolete`
+- Ne pas supprimer une pierre tombale `.polenta/tombstones/<ID>`, ni supprimer à la main le fichier d'un objet (passer par l'application, qui pose la pierre tombale)
 - Ne pas éditer `.polenta/trees/<nœud>/<type>.yaml` manuellement dans un vrai projet — c'est l'application qui le maintient au fil des actions dans l'UI, pas un script
 - **Ne pas éditer `.gitmodules` manuellement** — il est généré par Polenta depuis `schema.nodes` (nœuds avec `url`) via `schema:save`
 - **Ne pas ajouter de `url` dans `schema.yaml` d'un repo composant** — un composant ne se référence pas lui-même comme submodule

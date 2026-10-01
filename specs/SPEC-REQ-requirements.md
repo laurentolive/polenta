@@ -464,12 +464,14 @@ Exemples : SYS-0001, SW-0005, BMS-0012
 ```
 
 - Le **préfixe** est défini dans `ObjectTypeDefinition.prefix`.
-- Le **numéro** est issu d'un **compteur global au projet** : chaque nouvel objet incrémente ce compteur. Les séquences par type sont discontinues — c'est attendu et acceptable.
+- Le **numéro** est calculé **par préfixe** à partir du disque (GH20) : plus haut numéro
+  existant ou marqué d'une pierre tombale, + 1 — cf. `SPEC-TECH-stack.md` §4.4. La séquence
+  peut présenter des trous — c'est attendu et acceptable.
 - L'identifiant est attribué à la **création** et n'est **jamais modifié ni réutilisé**.
 
 **Exposition MCP (T122)** : `bulk_import_requirements` (`dryRun: true`) prévisualise
 les IDs qui seraient attribués sans les consommer (`peekNextCounterId`, lecture seule
-de `config/counters.yaml` — cf. `SPEC-TECH-stack.md` §4.4) ; `dryRun: false` attribue
+du disque — cf. `SPEC-TECH-stack.md` §4.4) ; `dryRun: false` attribue
 les IDs réels en série via le même mécanisme sérialisé que l'UI (T118), garantissant
 l'absence de collision même pour des créations rapprochées au sein d'un même batch.
 
@@ -506,4 +508,6 @@ Un lien Jira peut être ajouté à n'importe quel moment — il est optionnel.
 
 - **Pas de suppression physique** : une exigence est désactivée en la passant dans un statut `isTerminal: true` (ex. `obsolete`).
 - L'objet reste lisible dans l'historique et dans les liens entrants (marqués "cible obsolète").
-- Son identifiant n'est **jamais réutilisé**.
+- Son identifiant n'est **jamais réutilisé**. Une exigence n'étant jamais supprimée
+  physiquement par l'application, son fichier suffit à le garantir ; un fichier supprimé
+  hors application (explorateur, `git rm`) ne laisse pas de pierre tombale (GH20).

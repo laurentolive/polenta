@@ -93,6 +93,24 @@ par Polenta (`xlsx-refs.ts`). exceljs écarté (perd graphiques / tableaux crois
 (Les autres mises à jour SPEC de GH34 ont été faites au sprint 3 : SPEC-TECH-stack §2/§9,
 SPEC-TEMPLATES §2, SPEC-ELECTRON-DESKTOP §19.15/§19.15a.)
 
+## Ajustement après le sprint 4 : sommaire des gabarits d'exemple
+
+Demande : page de garde + table des matières dans les gabarits (choix : gabarits d'exemple Word
+seulement, table Word native mise à jour à l'ouverture).
+
+- Les 5 gabarits Word d'exemple ont, après la page de garde, une page **« Sommaire »** : table des
+  matières Word (titres 1 à 3 + titres d'éléments au niveau 4, liens, numéros de page), mise à jour
+  par Word à l'ouverture (`updateFields`). Niveaux via le niveau hiérarchique du style de titre
+  d'élément (`\u`) : `\t "Style,4"` est ignoré sous Windows en français (séparateur « ; », constaté
+  dans Word).
+- **Gabarit client avec sa propre table des matières** : Polenta ajoute `updateFields` (ordre du
+  schéma respecté) et corrige un cas qui **cassait le champ** : la fin du champ TOC dans le même
+  paragraphe que `{{#items}}`, supprimé par docxtemplater (`isolateFieldChars`). Fixture faite par
+  Word : `scripts/fixtures/gh34-client-toc.docx` (`make-gh34-client-toc-docx.ps1`).
+- Vérifié : `check-gh34.ts` **115 PASS** ; Word 16 : tables des matières présentes et mises à jour
+  avec les données exportées pour les 5 exemples et le gabarit client ; page Sommaire contrôlée
+  visuellement.
+
 ## Test manuel
 
 1. Panneau Compte › **Installer les exemples** (ajoute les 5 classeurs Excel à `Exemples Polenta/`).

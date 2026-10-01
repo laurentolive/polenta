@@ -1832,6 +1832,13 @@ inchangé. Spec/design : `specs/GH34.md`, `specs/GH34-design.md` ; référence u
   Vue Word via `renderStaticDrawio(…, onDone)`) et `capturePage` (`drawio-snapshot.ts`, IPC scoped
   `export:drawio-snapshot-ready`). Échec (fichier absent, XML invalide, délai) → `[Diagramme : …]`,
   captures déjà faites conservées.
+- **Table des matières** : un gabarit contenant un champ `TOC` reçoit `w:updateFields` (ordre du
+  schéma de `settings.xml` respecté) — Word la recalcule à l'ouverture. Avant le rendu, un
+  caractère de champ partageant un paragraphe avec une balise de section (`{{#…}}`/`{{/…}}`), que
+  `paragraphLoop` supprimerait avec le paragraphe, est isolé dans son propre paragraphe
+  (`isolateFieldChars`, cas typique : fin du champ TOC collée au paragraphe suivant). Gabarits
+  d'exemple Word : page « Sommaire » (`TOC \o "1-4" \u`, titres d'éléments au niveau hiérarchique 4 —
+  pas `\t "Style,4"`, dont le séparateur dépend des paramètres régionaux).
 - **Excel** (`xlsx-render.ts`, `template-data-xlsx.ts`) : xlsx-template (MIT, travaille sur le XML du
   classeur : logo, graphiques, autres feuilles, mise en page conservés) ; balises `${a.b}`, ligne
   modèle `${table:<liste>.<champ>}` (balise seule dans sa cellule) répétée avec sa mise en forme,

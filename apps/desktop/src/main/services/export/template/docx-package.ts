@@ -84,6 +84,11 @@ export class DocxPackage {
       documentXml = ensureCellsEndWithParagraph(documentXml)
       documentXml = renumberDrawings(documentXml)
       zip.file('word/document.xml', documentXml)
+      // Table des matières du gabarit : calculée sur le gabarit vide, à recalculer par Word.
+      if (/<w:instrText\b[^>]*>\s*TOC\b|<w:fldSimple\b[^>]*w:instr="\s*TOC\b/.test(documentXml)) {
+        const settings = zip.file('word/settings.xml')?.asText()
+        if (settings) zip.file('word/settings.xml', ensureUpdateFields(settings))
+      }
     }
 
     const relsPath = 'word/_rels/document.xml.rels'
@@ -171,6 +176,24 @@ function ensureCellsEndWithParagraph(xml: string): string {
     .replace(/<\/w:tbl>(\s*)<\/w:tc>/g, '</w:tbl>$1<w:p/></w:tc>')
     .replace(/<\/w:tcPr>(\s*)<\/w:tc>/g, '</w:tcPr>$1<w:p/></w:tc>')
     .replace(/<w:tc>(\s*)<\/w:tc>/g, '<w:tc>$1<w:p/></w:tc>')
+}
+
+// Éléments de `w:settings` qui suivent `w:updateFields` dans l'ordre imposé par le schéma.
+const AFTER_UPDATE_FIELDS = [
+  'hdrShapeDefaults', 'footnotePr', 'endnotePr', 'compat', 'docVars', 'rsids', 'mathPr', 'attachedSchema',
+  'themeFontLang', 'clrSchemeMapping', 'doNotIncludeSubdocsInStats', 'doNotAutoCompressPictures', 'forceUpgrade',
+  'captions', 'readModeInkLockDown', 'smartTagType', 'schemaLibrary', 'shapeDefaults', 'doNotEmbedSmartTags',
+  'decimalSymbol', 'listSeparator',
+]
+
+/** Word propose de mettre à jour les champs (table des matières, numéros de page) à l'ouverture. */
+function ensureUpdateFields(settings: string): string {
+  if (/<w:updateFields\b/.test(settings)) {
+    return settings.replace(/<w:updateFields\b[^>]*\/>/, '<w:updateFields w:val="true"/>')
+  }
+  const next = new RegExp(`<(?:w|m):(?:${AFTER_UPDATE_FIELDS.join('|')})\\b`).exec(settings)
+  const at = next ? next.index : settings.lastIndexOf('</w:settings>')
+  return at < 0 ? settings : `${settings.slice(0, at)}<w:updateFields w:val="true"/>${settings.slice(at)}`
 }
 
 /**

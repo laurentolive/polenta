@@ -45,6 +45,39 @@ const ERROR_LABELS: Record<string, string> = {
   unimplemented_tag_type: 'type de balise non pris en charge',
 }
 
+/**
+ * Un paragraphe ne contenant qu'une balise de section (`{{#items}}`, `{{/}}`, `{{^x}}`) est supprimé
+ * par docxtemplater (`paragraphLoop`) — avec tout ce qu'il porte d'autre. Word place souvent un
+ * caractère de champ dans un tel paragraphe (fin du champ de la table des matières, collée au
+ * paragraphe suivant) : le supprimer casse le champ. Ces paragraphes — et seulement ceux que
+ * docxtemplater supprimerait : aucun texte hors balises de section — sont scindés avant le rendu :
+ * les runs avant la première balise et après la dernière vont dans leurs propres paragraphes
+ * (mêmes propriétés), la balise reste seule dans le sien. Un paragraphe portant un saut de section
+ * ou une numérotation de liste n'est pas scindé (propriétés non duplicables sans effet visible).
+ */
+export function isolateFieldChars(xml: string): string {
+  // Paragraphes vides auto-fermants (`<w:p …/>`) reconnus à part : sinon l'expression engloberait
+  // le paragraphe suivant.
+  return xml.replace(/<w:p\b([^>]*?)(?:\/>|>((?:(?!<\/w:p>)[\s\S])*)<\/w:p>)/g, (whole, attrs: string, body: string | undefined) => {
+    if (body === undefined || !body.includes('<w:fldChar')) return whole
+    const text = [...body.matchAll(/<w:t\b[^>]*>([^<]*)<\/w:t>/g)].map(t => t[1]).join('')
+    const sectionTags = /\{\{\s*[#^/][^{}]*\}\}/g
+    if (!sectionTags.test(text) || text.replace(sectionTags, '').trim() !== '') return whole
+    const pPr = /^\s*<w:pPr\b[\s\S]*?<\/w:pPr>/.exec(body)?.[0] ?? ''
+    if (/<w:(?:sectPr|numPr)\b/.test(pPr)) return whole
+    const runs = [...body.slice(pPr.length).matchAll(/<w:r\b[^>]*>[\s\S]*?<\/w:r>|<w:r\b[^>]*\/>|<[^>]+\/>|<w:(?:bookmarkStart|bookmarkEnd|proofErr)\b[^>]*>/g)]
+      .map(m => m[0])
+    if (runs.join('').length !== body.slice(pPr.length).replace(/\s+$/, '').length) return whole // structure inattendue : intact
+    const runText = (r: string) => [...r.matchAll(/<w:t\b[^>]*>([^<]*)<\/w:t>/g)].map(t => t[1]).join('')
+    const first = runs.findIndex(r => runText(r).includes('{{'))
+    let last = -1
+    runs.forEach((r, i) => { if (runText(r).includes('}}')) last = i })
+    if (first < 0 || last < first) return whole
+    const part = (rs: string[]) => (rs.length ? `<w:p${attrs}>${pPr}${rs.join('')}</w:p>` : '')
+    return part(runs.slice(0, first)) + part(runs.slice(first, last + 1)) + part(runs.slice(last + 1))
+  })
+}
+
 interface DocxtemplaterErrorDetail {
   properties?: { explanation?: string; xtag?: string; id?: string }
   message?: string
@@ -104,6 +137,9 @@ export async function renderDocxTemplate(
   } catch {
     throw new Error(`Gabarit « ${templateName} » n’est pas un document Word valide (.docx).`)
   }
+
+  const documentXml = zip.file('word/document.xml')?.asText()
+  if (documentXml) zip.file('word/document.xml', isolateFieldChars(documentXml))
 
   // Données construites sur le paquet du gabarit : le contenu riche y alloue ses images,
   // numérotations et styles avant le rendu.

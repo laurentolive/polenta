@@ -13,7 +13,7 @@ import * as path from 'path'
 import ExcelJS from 'exceljs'
 import {
   AlignmentType, BorderStyle, Document, Footer, Header, HeadingLevel, Packer, PageBreak, PageNumber,
-  Paragraph, ShadingType, Table, TableCell, TableRow, TabStopType, TextRun, WidthType,
+  Paragraph, ShadingType, Table, TableCell, TableOfContents, TableRow, TabStopType, TextRun, WidthType,
 } from 'docx'
 
 const OUT = path.join(__dirname, '..', 'resources', 'export-templates')
@@ -70,7 +70,15 @@ function cartouche(rows: [string, string][]): Table {
   })
 }
 
-function cover(docTitle: string, subtitle: string, extra: [string, string][]): Paragraph[] | (Paragraph | Table)[] {
+type Block = Paragraph | Table | TableOfContents
+
+// Titre d'une exigence / d'un test : niveau hiérarchique 4 (repris dans la table des matières sous les dossiers).
+const ITEM_TITLE_STYLE = 'Polenta — Titre d’élément'
+
+/** Page de garde (cartouche), puis page « Sommaire » : table des matières Word des titres 1 à 3
+ *  (dossiers, sections) et des titres d'éléments (niveau 4), avec liens, calculée par Word à
+ *  l'ouverture (`features.updateFields`). */
+function cover(docTitle: string, subtitle: string, extra: [string, string][]): Block[] {
   return [
     new Paragraph({ spacing: { before: 2400 }, children: [] }),
     p('{{project.label}}', { size: 28, color: GREY }),
@@ -88,12 +96,20 @@ function cover(docTitle: string, subtitle: string, extra: [string, string][]): P
     new Paragraph({ spacing: { before: 600 }, children: [] }),
     meta('Document généré par Polenta à partir du gabarit {{export.templateName}}.'),
     new Paragraph({ children: [new PageBreak()] }),
+    // « Sommaire » au style Titre du document, pas en Titre 1 : il n'apparaît pas dans la table.
+    new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: 'Sommaire', size: 40 })] }),
+    // Niveaux hiérarchiques des paragraphes (`\u`) plutôt que `\t "Style,4"` : le séparateur de
+    // `\t` dépend des paramètres régionaux (« ; » sous Windows en français), pas le niveau.
+    new TableOfContents('Sommaire', { hyperlink: true, headingStyleRange: '1-4', useAppliedParagraphOutlineLevel: true }),
+    new Paragraph({ children: [new PageBreak()] }),
   ]
 }
 
-function document(docTitle: string, children: (Paragraph | Table)[]): Document {
+function document(docTitle: string, children: Block[]): Document {
   return new Document({
     creator: 'Polenta',
+    // Word propose de mettre à jour les champs (table des matières, n° de page) à l'ouverture.
+    features: { updateFields: true },
     title: docTitle,
     styles: {
       default: {
@@ -104,7 +120,7 @@ function document(docTitle: string, children: (Paragraph | Table)[]): Document {
         heading3: { run: { font: 'Calibri Light', size: 24, bold: true, color: '2E74B5' }, paragraph: { spacing: { before: 200, after: 80 }, keepNext: true } },
       },
       paragraphStyles: [
-        { id: 'PolentaItemTitle', name: 'Polenta — titre d’élément', basedOn: 'Normal', next: 'Normal', run: { bold: true, size: 23, color: ACCENT }, paragraph: { spacing: { before: 240, after: 40 }, keepNext: true, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: ACCENT_LIGHT, space: 2 } } } },
+        { id: 'PolentaItemTitle', name: ITEM_TITLE_STYLE, basedOn: 'Normal', next: 'Normal', run: { bold: true, size: 23, color: ACCENT }, paragraph: { outlineLevel: 3, spacing: { before: 240, after: 40 }, keepNext: true, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: ACCENT_LIGHT, space: 2 } } } },
         { id: 'PolentaMeta', name: 'Polenta — métadonnées', basedOn: 'Normal', next: 'Normal', run: { size: 18, color: GREY, italics: true }, paragraph: { spacing: { after: 120 } } },
         { id: 'PolentaLabel', name: 'Polenta — libellé', basedOn: 'Normal', next: 'Normal', run: { bold: true, size: 19, color: GREY }, paragraph: { spacing: { before: 120, after: 20 }, keepNext: true } },
       ],

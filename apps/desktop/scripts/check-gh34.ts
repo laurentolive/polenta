@@ -616,6 +616,38 @@ async function sprint3(service: TemplateExportService, library: ExportTemplateLi
   await exportTo('requirements', 'Cahier des exigences.docx', { ...reqPayload, outline: reqPayload.outline!.map(e => ({ ...e, values: { ...e.values, statement: 'sans diagramme' } })) }, 's3-sans-diagramme.docx')
   check('aucun diagramme → pas de fenêtre de rendu', snapshotCalls.length === 0)
 
+  // ── Table des matières : exemples et gabarit client (fait par Word, sans mise à jour des champs) ──
+  const settingsOf = (b: Buffer) => new PizZip(b).file('word/settings.xml')!.asText()
+  check('sommaire des exemples : champ TOC (niveaux hiérarchiques) + mise à jour à l’ouverture',
+    /TOC \\h \\o &quot;1-4&quot; \\u/.test(reqDoc) && /<w:updateFields\b/.test(settingsOf(reqBuf)))
+  fs.copyFileSync(path.join(__dirname, 'fixtures', 'gh34-client-toc.docx'), path.join(lib, 'client-toc.docx'))
+  const tocDest = path.join(out, 's3-client-toc.docx')
+  await service.run('requirements', 'docx', reqPayload, repo, 'client-toc.docx', tocDest)
+  const tocSettings = settingsOf(await fsP.readFile(tocDest))
+  check('gabarit client avec sommaire : mise à jour des champs ajoutée, avant <w:compat> (ordre du schéma)',
+    (tocSettings.match(/<w:updateFields w:val="true"\/>/g) ?? []).length === 1
+    && tocSettings.indexOf('<w:updateFields') < tocSettings.indexOf('<w:compat'), tocSettings.slice(0, 400))
+  const tocDoc = new PizZip(await fsP.readFile(tocDest)).file('word/document.xml')!.asText()
+  const fld = [...tocDoc.matchAll(/fldCharType="(begin|end)"/g)].map(m => m[1])
+  check('gabarit client avec sommaire : champ TOC intact (fin conservée malgré {{#items}} dans le même paragraphe)',
+    fld.filter(t => t === 'begin').length === fld.filter(t => t === 'end').length && fld.length > 0, fld.join(','))
+  {
+    const { isolateFieldChars } = await import('../src/main/services/export/template/docx-template')
+    const r = (t: string) => `<w:r><w:t>${t}</w:t></w:r>`
+    const end = '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    const inline = `<w:p>${r('Page ')}<w:r><w:fldChar w:fldCharType="begin"/></w:r>${end}${r('{{#draft}} (brouillon){{/draft}}')}</w:p>`
+    check('isolateFieldChars : paragraphe avec texte laissé intact', isolateFieldChars(inline) === inline)
+    const afterEmpty = `<w:p w:rsidR="1"/><w:p>${end}${r('{{#items}}')}</w:p>`
+    const split = isolateFieldChars(afterEmpty)
+    check('isolateFieldChars : paragraphe vide auto-fermant puis fin de champ + boucle → scindé',
+      split === `<w:p w:rsidR="1"/><w:p>${end}</w:p><w:p>${r('{{#items}}')}</w:p>`, split)
+    const sect = `<w:p><w:pPr><w:sectPr/></w:pPr>${end}${r('{{/items}}')}</w:p>`
+    check('isolateFieldChars : paragraphe avec saut de section laissé intact', isolateFieldChars(sect) === sect)
+  }
+  const noTocDest = path.join(out, 's3-sans-sommaire.docx')
+  await service.run('requirements', 'docx', reqPayload, repo, 'S2/simple.docx', noTocDest)
+  check('gabarit sans sommaire : réglages inchangés', !/<w:updateFields/.test(settingsOf(await fsP.readFile(noTocDest))))
+
   // ── Exemple tests ──────────────────────────────────────────────────────────
   const testsBuf = await exportTo('tests', 'Cahier de tests.docx', {
     componentLabel: 'Moteur',

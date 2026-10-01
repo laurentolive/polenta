@@ -75,7 +75,7 @@ export function CampaignListView({ repoPath, component, level }: Props) {
   }
 
   if (isLoading) {
-    return <div className="p-6 text-sm text-ink-3">Chargementâ€¦</div>
+    return <div className="p-6 text-sm text-ink-3">Chargement…</div>
   }
 
   return (
@@ -104,12 +104,12 @@ export function CampaignListView({ repoPath, component, level }: Props) {
               onClick={newCampaign}
               className="mt-3 text-xs text-prim hover:underline"
             >
-              CrÃ©er la premiÃ¨re campagne
+              Créer la première campagne
             </button>
           </div>
         ) : visibleCampaigns.length === 0 ? (
           <div className="flex items-center justify-center h-full text-center py-16">
-            <p className="text-sm text-ink-3">Aucun rÃ©sultat</p>
+            <p className="text-sm text-ink-3">Aucun résultat</p>
           </div>
         ) : (
           <div className="divide-y divide-edge">

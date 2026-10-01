@@ -314,6 +314,13 @@ export class WorkspaceService {
    * Returns 'not-a-workspace' if .polenta/workspace.yaml is absent.
    */
   async openWorkspace(workspaceDir: string): Promise<WorkspaceOpenResult> {
+    // GH32 — tracked so tree-cache readers (query engine, traceability…) running in parallel
+    // wait for the tree instead of seeing no cache and scoping to the root repo alone.
+    if (!this.workspaceTreeService) return this.doOpenWorkspace(workspaceDir)
+    return this.workspaceTreeService.trackBuild(workspaceDir, this.doOpenWorkspace(workspaceDir))
+  }
+
+  private async doOpenWorkspace(workspaceDir: string): Promise<WorkspaceOpenResult> {
     const markerPath = path.join(workspaceDir, '.polenta', 'workspace.yaml')
 
     let config: PolentaWorkspaceConfig = {}
@@ -368,7 +375,7 @@ export class WorkspaceService {
     if (this.workspaceTreeService) {
       // Check if cache is still valid
       if (await this.workspaceTreeService.isCacheValid(workspaceDir, rootRepoPath)) {
-        const cached = await this.workspaceTreeService.readCache(workspaceDir)
+        const cached = await this.workspaceTreeService.readCacheFile(workspaceDir)
         if (cached) {
           console.log('[WorkspaceService] using cached tree for', workspaceDir)
           this.watchTree(cached)
@@ -538,10 +545,15 @@ export class WorkspaceService {
    * Rebuild the workspace tree from scratch (ignores cache).
    */
   async rebuildTree(workspaceDir: string): Promise<WorkspaceOpenResult> {
-    // Delete cache so openWorkspace rebuilds it
-    const cachePath = path.join(workspaceDir, '.polenta', 'tree.cache.yaml')
-    await fsPromises.unlink(cachePath).catch(() => {})
-    return this.openWorkspace(workspaceDir)
+    const rebuild = async () => {
+      // Delete cache so doOpenWorkspace rebuilds it
+      const cachePath = path.join(workspaceDir, '.polenta', 'tree.cache.yaml')
+      await fsPromises.unlink(cachePath).catch(() => {})
+      return this.doOpenWorkspace(workspaceDir)
+    }
+    // GH32 — tracked from before the unlink, so no reader sees the cache missing.
+    if (!this.workspaceTreeService) return rebuild()
+    return this.workspaceTreeService.trackBuild(workspaceDir, rebuild())
   }
 
   /**

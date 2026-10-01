@@ -97,6 +97,11 @@ function httpErrorStatus(err: unknown): number | null {
 // ── Service ───────────────────────────────────────────────────────────────────
 
 export class WorkspaceTreeService {
+  /** GH32 — open/rebuild in flight per workspace (key: resolved workspaceDir). While one runs,
+   *  `tree.cache.yaml` is absent or stale (e.g. right after `rebuildTree` deleted it), so
+   *  `readCache` waits for it instead of letting callers fall back to the root repo alone. */
+  private readonly pendingBuilds = new Map<string, Promise<unknown>>()
+
   constructor(
     private readonly syncService: SyncService,
     private readonly polentaRepoService: PolentaRepoService,
@@ -235,6 +240,28 @@ export class WorkspaceTreeService {
    * moved workspace: callers then rebuild, or fall back to mono-repo).
    */
   async readCache(workspaceDir: string): Promise<WorkspaceTree | null> {
+    const pending = this.pendingBuilds.get(path.resolve(workspaceDir))
+    if (pending) await pending.catch(() => {})
+    return this.readCacheFile(workspaceDir)
+  }
+
+  /**
+   * GH32 — registers `build` (an open/rebuild of `workspaceDir` that ends by writing the cache)
+   * so concurrent `readCache` calls wait for it. Returns `build` unchanged.
+   */
+  trackBuild<T>(workspaceDir: string, build: Promise<T>): Promise<T> {
+    const key = path.resolve(workspaceDir)
+    this.pendingBuilds.set(key, build)
+    const clear = () => { if (this.pendingBuilds.get(key) === build) this.pendingBuilds.delete(key) }
+    build.then(clear, clear)
+    return build
+  }
+
+  /**
+   * Same as `readCache` without waiting for an in-flight build — only for the build itself
+   * (waiting there on its own tracked promise would deadlock).
+   */
+  async readCacheFile(workspaceDir: string): Promise<WorkspaceTree | null> {
     const cachePath = path.join(workspaceDir, '.polenta', 'tree.cache.yaml')
     try {
       const raw = await fsP.readFile(cachePath, 'utf-8')
@@ -304,7 +331,7 @@ export class WorkspaceTreeService {
    * Returns true if the cache is still valid (root repo HEAD SHA matches).
    */
   async isCacheValid(workspaceDir: string, rootRepoPath: string): Promise<boolean> {
-    const cached = await this.readCache(workspaceDir)
+    const cached = await this.readCacheFile(workspaceDir)
     if (!cached || !cached.rootRepoHeadSha) return false
     const currentSha = await this.getHeadSha(rootRepoPath)
     return currentSha !== '' && currentSha === cached.rootRepoHeadSha

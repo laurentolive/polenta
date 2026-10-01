@@ -89,3 +89,12 @@ l'aperçu `dryRun` des ids partagés : après migration, il aurait toujours pré
 Remplacé par `peekNextCounterId` ; `SPEC-MCP-SERVER.md` (règles d'écriture Suivi, limites
 GH18) aligné. Conflit `SPEC-INDEX.md` (ligne SPEC-MCP-SERVER) : description de main
 conservée, MAJ → GH20. Typecheck et scénarios rejoués sur le code mergé : OK.
+
+## Générateur de la démo « Lave-linge LL800 »
+
+`scripts/demo-lave-linge/generate.mjs` écrivait `config/counters.yaml` (max des IDs
+présents) dans chaque dépôt à chaque phase. Supprimé : la démo ne supprime jamais d'objet,
+le parsing redonne donc exactement les mêmes prochains IDs et aucune pierre tombale n'est à
+générer. Régénération vérifiée : arbres identiques à la démo publiée, hormis l'absence de
+`counters.yaml` et les pins SHA de `polenta-repo.yaml` (conséquence des nouveaux SHA des
+composants) ; deux générations successives donnent les mêmes SHA.

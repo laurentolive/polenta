@@ -58,6 +58,7 @@ import type {
   ExportFormat,
   ExportResult,
   ExecutionSheetLocale,
+  ExecutionImportPreview,
   Parameter,
   AppSettings,
 } from '@polenta/types'
@@ -476,6 +477,24 @@ export function registerIpcHandlers(c: Container): void {
       return { status: 'error', message: err instanceof Error ? err.message : 'Erreur lors de l’export' }
     }
   })
+  // GH36 sprint 2 — import : choix du fichier puis aperçu (aucune écriture) ; l'application relit
+  // le fichier et revalide contre l'état courant de la campagne.
+  ipcMain.handle('campaigns:execution-sheet-preview', async (
+    _e,
+    repoPath: string,
+    campaignId: string,
+  ): Promise<ExecutionImportPreview | { canceled: true }> => {
+    const result = await dialog.showOpenDialog({
+      title: 'Importer des résultats d’exécution',
+      filters: [EXPORT_DIALOG_FILTERS.xlsx],
+      properties: ['openFile'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+    return c.campaignExecution.preview(repoPath, campaignId, result.filePaths[0])
+  })
+  ipcMain.handle('campaigns:execution-sheet-apply',
+    (_e, repoPath: string, campaignId: string, filePath: string, workspaceDir?: string) =>
+      c.campaignExecution.apply(repoPath, campaignId, filePath, workspaceDir))
 
   // ── Baselines ────────────────────────────────────────────────────────────────
   ipcMain.handle('baseline:list', (_e, repoPath: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>

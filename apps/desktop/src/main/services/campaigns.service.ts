@@ -106,6 +106,8 @@ export class CampaignsService {
     entryId: string,
     status: TestRunStatus,
     runId?: string,
+    /** GH36 — import d'un classeur d'exécution : date et testeur lus dans le fichier. */
+    meta?: { executedAt?: string; executedBy?: string },
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
@@ -113,11 +115,15 @@ export class CampaignsService {
       const runIndex = campaign.runs.findIndex(r => r.entryId === entryId)
       if (runIndex === -1) throw new Error(`Entry ${entryId} not found in campaign ${campaignId}`)
 
+      // `executedBy` est réécrit à chaque saisie : absent (exécution dans l'outil), il est retiré
+      // pour ne pas laisser le testeur d'un import précédent sur un nouveau résultat (GH36).
+      const { executedBy: _previousTester, ...previous } = campaign.runs[runIndex]
       campaign.runs[runIndex] = {
-        ...campaign.runs[runIndex],
+        ...previous,
         status,
         ...(runId && { runId }),
-        executedAt: new Date().toISOString(),
+        executedAt: meta?.executedAt ?? new Date().toISOString(),
+        ...(meta?.executedBy && { executedBy: meta.executedBy }),
       }
 
       // Auto-set status to in_progress if currently planned

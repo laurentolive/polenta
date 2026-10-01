@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation } from '@tanstack/react-query'
-import { FileDown, FileSpreadsheet } from 'lucide-react'
-import type { ExecutionSheetLocale, ExportResult } from '@polenta/types'
+import { FileDown, FileSpreadsheet, FileUp } from 'lucide-react'
+import type { ExecutionImportPreview, ExecutionSheetLocale, ExportResult } from '@polenta/types'
 import { api } from '../../api'
+import { ExecutionImportModal } from './ExecutionImportModal'
 
 interface ExecutionSheetMenuProps {
   repoPath: string
   campaignId: string
+  workspaceDir?: string
 }
 
 /** Langue des libellés du classeur : celle de l'UI (le réimport reconnaît les deux). */
@@ -19,11 +21,12 @@ function sheetLocale(language: string | undefined): ExecutionSheetLocale {
  * GH36 — exécution d'une campagne hors outil : bouton « Excel d'exécution » du header de la page
  * campagne (popover d'actions). Masqué par l'appelant pour une campagne clôturée.
  */
-export function ExecutionSheetMenu({ repoPath, campaignId }: ExecutionSheetMenuProps) {
+export function ExecutionSheetMenu({ repoPath, campaignId, workspaceDir }: ExecutionSheetMenuProps) {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedPath, setSavedPath] = useState<string | null>(null)
+  const [importPreview, setImportPreview] = useState<ExecutionImportPreview | null>(null)
 
   const exportMutation = useMutation({
     mutationFn: (): Promise<ExportResult> =>
@@ -38,6 +41,20 @@ export function ExecutionSheetMenu({ repoPath, campaignId }: ExecutionSheetMenuP
       setError(err instanceof Error ? err.message : t('exportButton.exportError'))
     },
   })
+
+  const previewMutation = useMutation({
+    mutationFn: () => api.campaigns.executionSheet.preview(repoPath, campaignId),
+    onSuccess: result => {
+      setOpen(false)
+      // Sélecteur de fichier fermé sans choix : rien à afficher.
+      if (!('canceled' in result)) setImportPreview(result)
+    },
+    onError: (err: unknown) => {
+      setOpen(false)
+      setError(err instanceof Error ? err.message : t('common.unknownError'))
+    },
+  })
+  const busy = exportMutation.isPending || previewMutation.isPending
 
   return (
     <div className="relative">
@@ -61,13 +78,25 @@ export function ExecutionSheetMenu({ repoPath, campaignId }: ExecutionSheetMenuP
             <button
               type="button"
               onClick={() => exportMutation.mutate()}
-              disabled={exportMutation.isPending}
+              disabled={busy}
               className="flex items-start gap-2 px-3 py-2 rounded hover:bg-hover text-left disabled:opacity-50"
             >
               <FileDown size={15} className="mt-0.5 shrink-0 text-ink-2" />
               <span>
                 <span className="block text-xs text-ink">{t('campaignPage.executionSheet.export')}</span>
                 <span className="block text-[11px] text-ink-3">{t('campaignPage.executionSheet.exportHint')}</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => previewMutation.mutate()}
+              disabled={busy}
+              className="flex items-start gap-2 px-3 py-2 rounded hover:bg-hover text-left disabled:opacity-50"
+            >
+              <FileUp size={15} className="mt-0.5 shrink-0 text-ink-2" />
+              <span>
+                <span className="block text-xs text-ink">{t('campaignPage.executionSheet.import')}</span>
+                <span className="block text-[11px] text-ink-3">{t('campaignPage.executionSheet.importHint')}</span>
               </span>
             </button>
           </div>
@@ -110,6 +139,16 @@ export function ExecutionSheetMenu({ repoPath, campaignId }: ExecutionSheetMenuP
             </div>
           </div>
         </>
+      )}
+
+      {importPreview && (
+        <ExecutionImportModal
+          repoPath={repoPath}
+          campaignId={campaignId}
+          workspaceDir={workspaceDir}
+          preview={importPreview}
+          onClose={() => setImportPreview(null)}
+        />
       )}
     </div>
   )

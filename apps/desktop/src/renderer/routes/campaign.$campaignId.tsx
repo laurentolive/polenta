@@ -315,9 +315,10 @@ function CampaignDetailPage() {
                 getPrintParams={() => ({ repoPath, campaignId })}
               />
             )}
-            {/* GH36 — exécution hors outil (classeur Excel) : pas sur une campagne clôturée. */}
+            {/* GH36 — exécution hors outil (export du classeur / import des résultats) : pas sur une
+                campagne clôturée. */}
             {campaign.status !== 'completed' && campaign.status !== 'abandoned' && (
-              <ExecutionSheetMenu repoPath={repoPath} campaignId={campaignId} />
+              <ExecutionSheetMenu repoPath={repoPath} campaignId={campaignId} workspaceDir={workspaceDir || undefined} />
             )}
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
               campaign.status === 'completed' ? 'bg-status-success-bg text-status-success' :

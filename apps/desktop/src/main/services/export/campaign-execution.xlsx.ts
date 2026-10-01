@@ -42,7 +42,7 @@ export interface ExecutionSheetModel {
   exportedAt: string
   rows: ExecutionSheetRow[]
   /** Une entrée par instance, dans l'ordre de la campagne — recopiée dans `_polenta`. */
-  instances: { entryId: string; testCaseId: string; orders: number[] }[]
+  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean }[]
 }
 
 export interface ExecutionSheetEntry {
@@ -96,7 +96,7 @@ export function buildExecutionSheetModel(input: {
         expected: text(step.expectedResult),
       })
     }
-    instances.push({ entryId: run.entryId, testCaseId: run.testCaseId, orders: steps.map(s => s.order) })
+    instances.push({ entryId: run.entryId, testCaseId: run.testCaseId, orders: steps.map(s => s.order), testFound: !!test })
   }
 
   return {
@@ -278,8 +278,10 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   meta.addRow(['exportedAt', model.exportedAt])
   meta.addRow(['locale', model.locale])
   meta.addRow([])
-  meta.addRow(['entryId', 'testCaseId', 'orders'])
-  for (const inst of model.instances) meta.addRow([inst.entryId, inst.testCaseId, inst.orders.join(',')])
+  meta.addRow(['entryId', 'testCaseId', 'orders', 'testFound'])
+  for (const inst of model.instances) {
+    meta.addRow([inst.entryId, inst.testCaseId, inst.orders.join(','), inst.testFound ? 1 : 0])
+  }
 
   return workbook
 }

@@ -70,7 +70,7 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree, reqRefs)
   const campaigns = new CampaignsService(git, tests, parameters)
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
-  const campaignExecution = new CampaignExecutionService(campaigns, tests)
+  const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   const baseline = new BaselineService()
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)

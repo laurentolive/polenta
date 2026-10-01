@@ -25,9 +25,12 @@ export default defineConfig({
     // la syntaxe Flow invalide en JS standard) — ses propres deps manquantes (cross-fetch, yargs)
     // ne sont en fait jamais require()-ées par le chemin d'exécution réellement utilisé ici (déjà
     // vérifié : aucun crash alasql observé dans aucun test, dev ou packagé).
+    // electron-updater (GH26) exclu pour la même raison : ses deps transitives (fs-extra,
+    // builder-util-runtime, lazy-val, semver…) manquaient au packaging ("Cannot find module
+    // 'fs-extra'" au lancement de l'app installée).
     plugins: [
       externalizeDepsPlugin({
-        exclude: ['@polenta/types', 'isomorphic-git', 'chokidar', 'docx', 'exceljs', 'js-yaml'],
+        exclude: ['@polenta/types', 'isomorphic-git', 'chokidar', 'docx', 'exceljs', 'js-yaml', 'electron-updater'],
       }),
     ],
     build: {

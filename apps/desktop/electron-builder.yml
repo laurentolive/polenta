@@ -1,5 +1,11 @@
 appId: com.polenta.desktop
 productName: Polenta
+# GH26 — l'installeur NSIS one-click par utilisateur nomme son dossier d'installation (et le
+# cache de l'updater) d'après le "name" npm, pas productName : "@polenta/desktop" donnait
+# %LOCALAPPDATA%\Programs\@polentadesktop. Réécrit seulement le package.json packagé ; userData
+# n'en dépend pas (main/index.ts force app.setName('Polenta')).
+extraMetadata:
+  name: polenta
 # keytar ne se recompile pas ici : son binaire napi prébuilt (récupéré par prebuild-install à
 # l'install) est déjà celui qu'utilisent `pnpm dev`/`pnpm preview` avec succès (N-API est stable
 # entre versions d'Electron, pas besoin de rebuild par cible) — laisser npmRebuild à true déclenche

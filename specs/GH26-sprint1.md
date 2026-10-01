@@ -74,3 +74,22 @@ même » avec un avertissement, pas de modale séparée).
 **Attention** : la première release qui contient `latest.yml` sera la 0.0.8 ; une app 0.0.7
 installée par cet installeur la détectera. Les utilisateurs de l'exe portable doivent
 installer l'installeur une fois à la main (à mentionner dans les notes de release).
+
+## Correctifs après premier test d'installation (validation humaine)
+
+1. **Crash au lancement de l'app installée** — `Cannot find module 'fs-extra'` (require stack
+   `electron-updater/out/main.js`). Cause : avec pnpm strict, electron-builder ne package que les
+   dépendances directes de `apps/desktop` ; les transitives d'`electron-updater` (fs-extra,
+   builder-util-runtime, lazy-val, semver…) manquaient dans `app.asar`. Ce n'est pas lié à #28
+   (reproduit à l'identique avec pnpm 9.0.0 et l'ancien nommage du store). Correctif : même motif
+   que isomorphic-git/chokidar — `electron-updater` ajouté à `externalizeDepsPlugin({ exclude })`
+   dans `electron.vite.config.ts`, donc bundlé dans `out/main/index.js`.
+2. **Dossier d'installation `%LOCALAPPDATA%\Programs\@polentadesktop`** — en one-click par
+   utilisateur, electron-builder nomme le dossier d'après le `name` npm (`@polenta/desktop`), pas
+   `productName`. Correctif : `extraMetadata.name: polenta` dans `electron-builder.yml` → dossier
+   `…\Programs\polenta`, cache updater `polenta-updater`. `userData` inchangé
+   (`app.setName('Polenta')` dans `main/index.ts`).
+
+Vérifié : build packagé lancé (sans `ELECTRON_RUN_AS_NODE`, userData isolé) — démarrage sans
+erreur, puis `[update] Checking for update` à ~10 s et erreur 404 `latest.yml` sur la release
+v0.0.7 seulement journalisée (scénario L3).

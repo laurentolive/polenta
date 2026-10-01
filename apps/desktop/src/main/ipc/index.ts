@@ -158,6 +158,8 @@ export function registerIpcHandlers(c: Container): void {
     c.workspace.createNewProject(containerDir, name))
   ipcMain.handle('workspace:create-from-clone', (_e, containerDir: string, remoteUrl: string) =>
     c.workspace.createFromClone(containerDir, remoteUrl))
+  ipcMain.handle('workspace:is-empty-dir', (_e, dir: string) =>
+    c.workspace.isEmptyDir(dir))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   ipcMain.handle('auth:has-any-account', () => c.auth.hasAnyAccount())

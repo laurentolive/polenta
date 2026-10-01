@@ -1063,13 +1063,14 @@ App ouvre (route "/" chargée)
 | `workspace:get-last-opened` | — | `ProjectRecent \| null` | Dernier projet ouvert (T130 : pas de `workspace.json` registre — historique de navigation seulement) |
 | `workspace:clear-last-opened` | — | `void` | Efface le dernier projet ouvert (T130 : pas de `mark-last-opened(id)` — channel réel sans paramètre) |
 | `workspace:mark-recent` | `workspaceDir: string` | `void` | Marque un projet comme récemment ouvert |
+| `workspace:is-empty-dir` | `dir: string` | `boolean` | GH27 — `true` si le dossier n'existe pas ou ne contient aucune entrée (fichiers cachés compris) ; utilisé par le bouton Démo |
 
 ### 16.3 Routes renderer
 
 | Route | Condition d'accès | Comportement |
 |-------|------------------|--------------|
 | `/login` | Aucun compte configuré | Formulaire remote + PAT ; redirige vers `/` après succès |
-| `/` | Compte configuré | Liste des projets + [Cloner] + [Ouvrir] si aucun `lastOpenedId` ; sinon redirige vers `/dashboard?projectId=…` (T102) |
+| `/` | Compte configuré | Si aucun `lastOpenedId` : boutons Démo / Ouvrir / Depuis un repo / Créer (GH27, §16.5) ; sinon redirige vers `/dashboard?projectId=…` (T102) |
 | `/dashboard?projectId=…` | Dernier projet connu (démarrage) | Page Suivi/Dashboard du projet ; `dashboardId` absent → redirige vers le premier dashboard en ordre panneau latéral, ou invite à en créer un si le projet n'en a aucun (T109) |
 
 ### 16.4 Écran Login (`/login`)
@@ -1095,62 +1096,48 @@ App ouvre (route "/" chargée)
 
 ### 16.5 Écran Workspace (`/`) — layout
 
-> **T108** : la section "Récents" a été retirée de cette page (elle faisait doublon avec la
-> liste "Récents" déjà affichée en permanence dans la sidebar, panneau Projet sans projet
-> ouvert — cf. §19.7/19.8). La page `/` n'affiche plus désormais que les panneaux
-> d'ouverture/création, toujours en colonne unique centrée, qu'il existe ou non des projets
-> récents. Le mockup ci-dessous et le glossaire de wording ci-après restent par ailleurs
-> antérieurs à l'implémentation actuelle (wording des boutons notamment — cf. `index.tsx`) et
-> n'ont pas été mis à jour dans le cadre de T108, qui ne portait que sur la suppression du
-> doublon "Récents".
+> **GH27** : la page ne contient plus de formulaires. Elle propose quatre boutons d'action et ne
+> demande chaque information qu'au moment où elle est nécessaire : dossier par le sélecteur
+> natif, texte par un popup à un seul champ. Le but est de minimiser le nombre de clics.
+> La liste des projets récents reste dans la sidebar uniquement (T108).
 
 ```
-┌───────────────────────────────────────────────────────────────────────┐
-│  Ouvrir un projet                                           [user▾]   │
-├───────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│                     ┌─ Créer un projet ───────────────┐              │
-│                     │ Nom   [ mon-projet             ] │              │
-│                     │ Dossier [ C:\projets\…  ] [📁] │              │
-│                     │ Visibilité  ● Privé  ○ Public  │              │
-│                     │              [ Créer ]          │              │
-│                     └─────────────────────────────────┘              │
-│                     ┌─ Charger un projet ─────────────────┐          │
-│                     │ URL  [ https://github.com/…      ] │          │
-│                     │ Dossier [ C:\projets\…   ] [📁]  │          │
-│                     │                   [ Charger ]     │          │
-│                     └─────────────────────────────────────┘          │
-│                     ┌─ Ouvrir un projet local ────────────┐          │
-│                     │ Dossier [ C:\projets\…   ] [📁]  │          │
-│                     │                   [ Ouvrir ]      │          │
-│                     └─────────────────────────────────────┘          │
-│                                                                       │
-└───────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ ✨ Découvrir Polenta avec le projet de        │  ← mis en avant (bg-prim)
+│    démonstration                             │
+│    Lave-linge LL800 — toutes les fonctionnalités sur un projet complet
+└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ 📂 Ouvrir un projet existant                  │
+└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ ⬇  Ouvrir un projet depuis un repo existant   │
+└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ ＋ Créer un nouveau projet                    │
+└──────────────────────────────────────────────┘
 ```
 
-**Structure :**
-- **Header** : titre "Ouvrir un projet" à gauche, `[user▾]` à droite.
-- **Contenu** : une colonne unique centrée, trois panneaux empilés — "Créer un projet", "Charger un projet", "Ouvrir un projet local".
-- La liste des projets récents n'apparaît que dans la sidebar (panneau Projet), pas sur cette page (T108).
+Chaque bouton porte un titre et une ligne d'aide. Pendant une opération, la ligne d'aide du
+bouton concerné est remplacée par un libellé de chargement, et les autres boutons sont
+désactivés. Une erreur s'affiche sous le bouton concerné et disparaît au lancement suivant.
 
-**Glossaire / wording :**
+| Bouton | Enchaînement | Opération |
+|--------|--------------|-----------|
+| Démo | sélecteur natif → | dossier contenant `.polenta/workspace.yaml` (`workspace:detect`) : `workspace:open-project` ; sinon dossier vide ou inexistant (`workspace:is-empty-dir`) : `workspace:create-from-clone` avec l'URL fixe `DEMO_PROJECT_URL` (`renderer/lib/demoProject.ts`) ; sinon erreur « dossier non vide » |
+| Ouvrir un projet existant | sélecteur natif → | `workspace:open-project` (`not-a-workspace` → erreur) |
+| Depuis un repo existant | popup « URL du repo Git » → sélecteur natif → | `workspace:create-from-clone` |
+| Créer un nouveau projet | popup « Nom du projet » → sélecteur natif → | `workspace:create-new` |
 
-| Ancien | Nouveau | Sens |
-|--------|---------|------|
-| "Cloner un repo" | "Charger un projet" | Télécharger un projet distant existant |
-| "Ouvrir un repo existant" | "Ouvrir un projet local" | Pointer vers un dossier déjà cloné |
-| "repo" | "projet" | Dans toute l'interface utilisateur |
-
-**Panneau "Créer un projet" :**
-- Champ **Nom** : nom du projet (sera le nom du repo créé sur le remote).
-- Champ **Dossier** : chemin local où cloner après création, avec bouton Browse `[📁]`.
-- Sélecteur **Visibilité** : Privé (défaut) / Public.
-- Bouton **Créer** : appelle `workspace:create` (voir §11.2).
-
-**Comportement de création :**
-1. Appel à l'API du remote (GitHub : `POST /user/repos`) pour créer le repo avec le nom donné.
-2. Clone du repo fraîchement créé dans le dossier local.
-3. Redirection vers `/project/$id`.
+- **Popup** (`components/home/TextPromptModal.tsx`) : un seul champ, qui a le focus à l'ouverture.
+  `Entrée` valide, `Échap` ou un clic sur l'overlay annule, et la validation est impossible si le
+  champ est vide.
+- **Annuler** le popup ou le sélecteur natif ne déclenche rien et n'affiche aucun message.
+- **Succès** : `workspace:mark-recent` puis navigation vers `/schema`.
+- **Dossier choisi = dossier conteneur** du workspace : le repo est placé dans
+  `<dossier>/<nom-du-repo>` ou `<dossier>/<nom>`. Si `workspace:create-from-clone` échoue, il
+  supprime le sous-dossier qu'il a lui-même créé, pour qu'une nouvelle tentative dans le même
+  dossier reste possible.
 
 **Menu déroulant `[user▾]` :**
 
@@ -1167,7 +1154,7 @@ App ouvre (route "/" chargée)
 
 Le bouton `[user▾]` est présent sur toutes les routes sauf `/login`.
 
-Le bouton `[📁]` (Browse) ouvre le sélecteur de dossier natif de l'OS via `dialog:pick-folder`. Le chemin sélectionné remplace le contenu du champ texte adjacent.
+Les boutons de `/` qui demandent un dossier ouvrent directement le sélecteur de dossier natif de l'OS via `dialog:pick-folder` (GH27).
 
 ### 16.6 Channel IPC `dialog:pick-folder`
 

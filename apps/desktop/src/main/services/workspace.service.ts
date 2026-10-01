@@ -68,6 +68,17 @@ export class WorkspaceService {
     return 'unknown'
   }
 
+  /** GH27 — true if `dir` doesn't exist or has no entries at all (hidden ones included); false
+   *  otherwise, including when `dir` is a file. Lets the home page refuse to load the demo
+   *  project into a folder that already holds something other than a Polenta project. */
+  async isEmptyDir(dir: string): Promise<boolean> {
+    try {
+      return (await fsPromises.readdir(dir)).length === 0
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === 'ENOENT'
+    }
+  }
+
   // ── Opening / creating projects (renderer-facing entry points) ─────────────────
 
   /**
@@ -133,12 +144,21 @@ export class WorkspaceService {
   ): Promise<WorkspaceOpenResult> {
     const name = path.basename(remoteUrl.replace(/\.git$/, '').replace(/\/+$/, ''))
     const rootRepoPath = path.join(containerDir, name)
+    const existedBefore = await fsPromises.stat(rootRepoPath).then(() => true, () => false)
     await fsPromises.mkdir(rootRepoPath, { recursive: true })
-    await this.syncService.clone(
-      remoteUrl,
-      rootRepoPath,
-      onProgress ? (p) => onProgress('cloning', p, 100) : undefined,
-    )
+    try {
+      await this.syncService.clone(
+        remoteUrl,
+        rootRepoPath,
+        onProgress ? (p) => onProgress('cloning', p, 100) : undefined,
+      )
+    } catch (err) {
+      // GH27 — a failed clone (offline, bad URL) must not leave behind the folder it created:
+      // the home page refuses to load the demo into a non-empty folder, so a leftover would block
+      // every retry in that folder. A folder that existed before is never touched.
+      if (!existedBefore) await fsPromises.rm(rootRepoPath, { recursive: true, force: true }).catch(() => {})
+      throw err
+    }
     await this.initWorkspace(containerDir, rootRepoPath)
     return this.openWorkspace(containerDir)
   }

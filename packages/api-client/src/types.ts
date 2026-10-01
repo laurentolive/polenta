@@ -312,6 +312,8 @@ export interface ApiClient {
     openProject(dir: string): Promise<WorkspaceOpenResult>
     createNew(containerDir: string, name: string): Promise<WorkspaceOpenResult>
     createFromClone(containerDir: string, remoteUrl: string): Promise<WorkspaceOpenResult>
+    // GH27 — true if the folder is missing or has no entries
+    isEmptyDir(dir: string): Promise<boolean>
     // T69: flat workspace
     detect(dir: string): Promise<'workspace' | 'repo' | 'unknown'>
     init(workspaceDir: string, rootRepoPath: string): Promise<void>

@@ -208,9 +208,11 @@ visibilité Privé/Public — ce sont des concepts qui n'existent pas dans le co
 distant, s'il en existe un, est configuré par l'utilisateur séparément (push manuel vers un remote
 qu'il crée lui-même).
 
-**Formulaire réel :**
-- **Nom** : nom du projet (= nom du dossier créé)
-- **Dossier conteneur** : dossier où créer le projet, avec bouton Browse `[📁]`
+**Saisie (GH27)** : bouton « Créer un nouveau projet » de `/`, qui enchaîne
+- un popup **Nom du projet** (= nom du dossier créé), seul champ, `Entrée` pour valider ;
+- puis le sélecteur natif pour le **Dossier conteneur**, où le projet est créé.
+
+Cf. SPEC-ELECTRON-DESKTOP §16.5.
 
 **Séquence réelle (`createNewProject(containerDir, name)`) :**
 1. `mkdir` + `git init` (branche par défaut `main`) dans `containerDir/name`

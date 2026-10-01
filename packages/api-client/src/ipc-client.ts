@@ -59,6 +59,8 @@ export function createIpcClient(): ApiClient {
       openProject: (dir) => invoke('workspace:open-project', dir),
       createNew: (containerDir, name) => invoke('workspace:create-new', containerDir, name),
       createFromClone: (containerDir, remoteUrl) => invoke('workspace:create-from-clone', containerDir, remoteUrl),
+      // GH27
+      isEmptyDir: (dir) => invoke('workspace:is-empty-dir', dir),
       // T69: flat workspace
       detect: (dir) => invoke('workspace:detect', dir),
       init: (workspaceDir, rootRepoPath) => invoke('workspace:init', workspaceDir, rootRepoPath),

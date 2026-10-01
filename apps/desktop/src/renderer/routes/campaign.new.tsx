@@ -8,12 +8,10 @@ import { DynamicField } from '../components/DynamicField'
 import { RichTextProvider } from '../contexts/RichTextContext'
 import { RichTextToolbar } from '../components/system/RichTextToolbar'
 import { ViewHeader } from '../components/layout/ViewHeader'
-import { TestParamFields } from '../components/TestParamFields'
 import {
-  buildReqInstances, effectiveReqSelection, isAddComplete, isIteratingPreview, setReqValue, toggleReq,
-  type ReqSelectionState,
+  buildReqInstances, effectiveReqSelection, isAddComplete, isIteratingPreview, type ReqSelectionState,
 } from '../lib/reqInstances'
-import { ReqInstancePicker } from '../components/campaign/ReqInstancePicker'
+import { TestPickerModal, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
 
@@ -55,6 +53,8 @@ function NewCampaignPage() {
   // T179 — tests itérants : exigences cochées et valeurs saisies par instance.
   const [reqSel, setReqSel] = useState<ReqSelectionState>({})
   const [error, setError] = useState<string | null>(null)
+  // GH33 — sélecteur ouvert : sélection et saisies à restituer (figées à l'ouverture).
+  const [pickerInitial, setPickerInitial] = useState<PickerResult | null>(null)
 
   // TanStack Router ne remonte pas ce composant pour une navigation vers cette même route
   // (seuls les search params changent) — sans ce resync, rouvrir "Nouvelle Campagne" depuis la
@@ -65,6 +65,7 @@ function NewCampaignPage() {
     setSelectedTests(new Set(prefillTestCaseIds ? prefillTestCaseIds.split(',').filter(Boolean) : []))
     setParamValues({})
     setReqSel({})
+    setPickerInitial(null)
   }, [prefillTitle, prefillTestCaseIds])
 
   const { data: schema } = useProjectSchema(repoPath)
@@ -96,6 +97,8 @@ function NewCampaignPage() {
     queryFn: () => api.tests.list(repoPath),
     enabled: !!repoPath,
   })
+
+  const allTestsById = new Map(allTests.map(tc => [tc.id, tc]))
 
   // Filter tests by component (node) and level (objectType) when specified.
   // objectTypeRef format: "componentName::objectTypeName"
@@ -169,15 +172,6 @@ function NewCampaignPage() {
     submitForm()
   }
 
-  function toggleTest(id: string) {
-    setSelectedTests(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   return (
     <RichTextProvider>
       <div className="flex flex-col h-full overflow-hidden">
@@ -247,56 +241,69 @@ function NewCampaignPage() {
             )}
           </div>
 
-          {/* Test case selection */}
+          {/* Test case selection — GH33 : sélecteur en modale (Vue Excel filtrable, 2 étapes) */}
           <div>
             <p className="text-sm font-medium text-ink mb-2">
               {t('campaignPage.testCasesSelected', { count: selectedTests.size })}
             </p>
-            {tests.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">{t('campaignPage.noTestCaseAvailable')}</p>
-            ) : (
-              <div className="border border-edge rounded divide-y max-h-48 overflow-y-auto">
-                {tests.map(t => (
-                  <div key={t.id}>
-                    <label className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-hover">
-                      <input
-                        type="checkbox"
-                        checked={selectedTests.has(t.id)}
-                        onChange={() => toggleTest(t.id)}
-                        className="rounded"
-                      />
-                      <span className="font-mono text-ink-3 shrink-0">{t.id}</span>
-                      <span className="text-ink truncate">{t.title}</span>
-                    </label>
-                    {selectedTests.has(t.id) && isIteratingPreview(paramPreviews.get(t.id)) && (() => {
-                      const current = effectiveReqSelection(t.id, paramPreviews.get(t.id), noneYet(), reqSel)
-                      return (
-                        <ReqInstancePicker
-                          preview={paramPreviews.get(t.id)!}
-                          present={noneYet()}
-                          selection={current}
-                          onToggle={reqId => setReqSel(prev => toggleReq(prev, t.id, reqId, current))}
-                          onChange={(reqId, key, value) => setReqSel(prev => setReqValue(prev, t.id, reqId, current, key, value))}
-                        />
-                      )
-                    })()}
-                    {selectedTests.has(t.id) && !isIteratingPreview(paramPreviews.get(t.id)) && (
-                      <TestParamFields
-                        labels={paramPreviews.get(t.id)?.manual ?? []}
-                        resolved={paramPreviews.get(t.id)?.resolved}
-                        unresolved={paramPreviews.get(t.id)?.unresolved}
-                        values={paramValues[t.id] ?? {}}
-                        onChange={(label, value) => setParamValues(prev => ({
-                          ...prev,
-                          [t.id]: { ...(prev[t.id] ?? {}), [label]: value },
-                        }))}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
+            <button
+              type="button"
+              onClick={() => {
+                qc.invalidateQueries({ queryKey: ['campaign-param-preview'] })
+                setPickerInitial({ testIds: [...selectedTests], paramValues, reqSel })
+              }}
+              className="text-xs text-status-info hover:opacity-80 border border-status-info-border rounded px-3 py-1.5"
+            >
+              {selectedTests.size === 0 ? t('campaignPage.picker.openSelect') : t('campaignPage.picker.edit')}
+            </button>
+            {selectedTests.size > 0 && (
+              <ul className="mt-2 border border-edge rounded divide-y max-h-64 overflow-y-auto">
+                {[...selectedTests].map(id => {
+                  const p = paramPreviews.get(id)
+                  const iterating = isIteratingPreview(p)
+                  const instances = iterating ? Object.keys(effectiveReqSelection(id, p, noneYet(), reqSel)).length : 1
+                  const values = Object.entries(paramValues[id] ?? {}).filter(([, v]) => v.trim())
+                  return (
+                    <li key={id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                      <span className="font-mono text-ink-3 shrink-0">{id}</span>
+                      <span className="text-ink truncate">{allTestsById.get(id)?.title ?? ''}</span>
+                      {iterating && (
+                        <span className="shrink-0 text-[10px] text-ink-3">{t('campaignPage.picker.instances', { count: instances })}</span>
+                      )}
+                      {values.length > 0 && (
+                        <span className="ml-auto shrink min-w-0 truncate text-[10px] text-ink-3 font-mono">
+                          {values.map(([k, v]) => `${k}=${v}`).join(', ')}
+                        </span>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {selectedTests.size > 0 && !previewLoading && !paramsComplete && (
+              <p className="mt-1 text-xs text-status-warning">{t('campaignPage.paramsIncomplete')}</p>
             )}
           </div>
+          {pickerInitial && (
+            <TestPickerModal
+              repoPath={repoPath}
+              workspaceDir={workspaceDir}
+              mode="create"
+              candidates={tests}
+              allTests={allTests}
+              defaultTypeRef={component && level ? `${component}::${level}` : undefined}
+              previewSource={{ baselineRef: baselineRef.trim() || undefined }}
+              initial={pickerInitial}
+              presentOf={noneYet}
+              onConfirm={result => {
+                setSelectedTests(new Set(result.testIds))
+                setParamValues(result.paramValues)
+                setReqSel(result.reqSel)
+                setPickerInitial(null)
+              }}
+              onCancel={() => setPickerInitial(null)}
+            />
+          )}
 
           {error && <p className="text-sm text-status-danger">{error}</p>}
 

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ParamResolutionPreview, TestCase } from '@polenta/types'
@@ -78,8 +79,12 @@ export function TestPickerModal({
 
   const [step, setStep] = useState<1 | 2>(1)
   const [chosenTypeRef, setChosenTypeRef] = useState<string | null>(null)
+  // Type par défaut : celui de la route s'il existe, sinon le premier type ayant des tests
+  // proposés (ex. route filtrée par composant seul), sinon le premier type.
   const typeRef = chosenTypeRef
-    ?? (defaultTypeRef && typeRefs.some(r => r.ref === defaultTypeRef) ? defaultTypeRef : typeRefs[0]?.ref)
+    ?? (defaultTypeRef && typeRefs.some(r => r.ref === defaultTypeRef) ? defaultTypeRef : undefined)
+    ?? typeRefs.find(r => candidates.some(tc => tc.objectTypeRef === r.ref))?.ref
+    ?? typeRefs[0]?.ref
   const currentType = typeRefs.find(r => r.ref === typeRef)
   const [filter, setFilter] = useState('')
   const [filterOptions, setFilterOptions] = useState<FilterOptions>(NO_FILTER_OPTIONS)
@@ -183,7 +188,9 @@ export function TestPickerModal({
       : undefined,
   }), [selected, includedCount, t])
 
-  return (
+  // Portail : la modale peut être ouverte depuis un <form> (création de campagne) — rendue dans
+  // ce formulaire, `Entrée` dans un de ses champs le soumettrait.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={requestCancel}>
       <div
         className="bg-surface border border-edge rounded-lg shadow-xl w-[95vw] h-[90vh] flex flex-col"
@@ -352,6 +359,7 @@ export function TestPickerModal({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }

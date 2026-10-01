@@ -677,13 +677,9 @@
     "saving": "Enregistrement…",
     "baselineLabelPrefix": "Baseline :",
     "addTests": "Ajouter des tests",
-    "addTestsSelected_one": "Ajouter des tests ({{count}} sélectionné)",
-    "addTestsSelected_other": "Ajouter des tests ({{count}} sélectionnés)",
     "adding": "Ajout…",
     "addCount": "Ajouter ({{count}})",
     "noApprovedTestAvailable": "Aucun test approuvé disponible (déjà présents ou non approuvés)",
-    "alreadyPresent_one": "déjà présent",
-    "alreadyPresent_other": "déjà présent ({{count}}×)",
     "noTestCaseInCampaign": "Aucun cas de test dans cette campagne",
     "addAnotherInstance": "Ajouter une autre instance de ce test avec d'autres valeurs",
     "editParamValues": "Modifier les valeurs des paramètres",
@@ -734,7 +730,11 @@
       "alreadyIncluded_other": "Déjà présent {{count}} fois dans la campagne",
       "abandonTitle": "Abandonner la sélection ?",
       "abandon": "Abandonner",
-      "keepEditing": "Continuer"
+      "keepEditing": "Continuer",
+      "openSelect": "Sélectionner des tests…",
+      "edit": "Modifier la sélection…",
+      "instances_one": "{{count}} instance",
+      "instances_other": "{{count}} instances"
     }
   },
   "dashboard": {

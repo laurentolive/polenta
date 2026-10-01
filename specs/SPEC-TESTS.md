@@ -495,6 +495,25 @@ des références **à saisir** (§2.4a cas 2), l'ajout exige une valeur pour cha
 création d'une campagne avec une sélection initiale de tests. Les références lues dans la base ne
 sont pas demandées.
 
+**Sélecteur de tests (GH33)** : à la création (`/campaign/new`, bouton « Sélectionner des
+tests… » puis récapitulatif de la sélection) comme à l'ajout (« + Ajouter des tests » d'une
+campagne active), les tests se choisissent dans une **modale à deux étapes**
+(`TestPickerModal`) — c'est ce que désignent ci-dessous « le panneau d'ajout » et « le
+formulaire de création » :
+1. **Sélection** dans la Vue Excel du type de test choisi (combobox des types `test` du repo,
+   un type à la fois, sélection conservée d'un type à l'autre), en mode sélection
+   ([SPEC-SYSTEM-VIEW §Vue Excel](SPEC-SYSTEM-VIEW.md#vue-excel)) : colonnes/dossiers/repli/
+   colonnes figées repris des préférences Vue Excel de l'utilisateur (lus, jamais réécrits),
+   lecture seule, cases à cocher (ligne, dossier, en-tête), Ctrl/Maj, filtre global et filtres
+   colonne (T51). Compteur « N sélectionnés, dont M non affichés ». Un test présent dans
+   `tests/` mais absent de l'arbre du type est listé en fin de grille.
+2. **Paramètres** — seulement si un test sélectionné est itérant ou a des références à saisir
+   (sinon sautée) : `ReqInstancePicker` / `TestParamFields`, mêmes règles de complétude.
+Annuler une sélection modifiée demande confirmation ; à la création, la modale ne fait que
+mettre à jour la sélection du formulaire (la campagne est créée par « Créer »). Les tests
+proposés sont inchangés : tous les tests (filtre composant/niveau) à la création ; à l'ajout,
+les tests approuvés, dédoublonnés comme décrit ci-dessous.
+
 **Résolution des paramètres à l'ajout (T171)** : `create()`, `addTests()` et `duplicateTest()`
 résolvent côté main (`ParametersService.previewForTests`) les références de chaque test ajouté,
 dans la base du repo du test (déduit de son `objectTypeRef`) et des composants visibles depuis ce

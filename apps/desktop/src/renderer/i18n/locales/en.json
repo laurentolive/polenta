@@ -677,13 +677,9 @@
     "saving": "Saving…",
     "baselineLabelPrefix": "Baseline:",
     "addTests": "Add tests",
-    "addTestsSelected_one": "Add tests ({{count}} selected)",
-    "addTestsSelected_other": "Add tests ({{count}} selected)",
     "adding": "Adding…",
     "addCount": "Add ({{count}})",
     "noApprovedTestAvailable": "No approved test available (already included or not approved)",
-    "alreadyPresent_one": "already present",
-    "alreadyPresent_other": "already present ({{count}}×)",
     "noTestCaseInCampaign": "No test case in this campaign",
     "addAnotherInstance": "Add another instance of this test with different values",
     "editParamValues": "Edit parameter values",
@@ -734,7 +730,11 @@
       "alreadyIncluded_other": "Already included {{count}} times in the campaign",
       "abandonTitle": "Discard the selection?",
       "abandon": "Discard",
-      "keepEditing": "Keep editing"
+      "keepEditing": "Keep editing",
+      "openSelect": "Select tests…",
+      "edit": "Edit selection…",
+      "instances_one": "{{count}} instance",
+      "instances_other": "{{count}} instances"
     }
   },
   "dashboard": {

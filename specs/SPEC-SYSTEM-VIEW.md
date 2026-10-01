@@ -113,7 +113,8 @@ ici en un seul, chaque entrée étant une paire (`SystemNode`, type).
   d'une colonne sans filtre, y compris popover fermé.
 - `Échap` dans le popover vide le texte du filtre de la colonne (les options sont
   conservées) et ferme le popover ; un clic en dehors ferme le popover sans vider
-  le texte.
+  le texte. La touche est consommée par le popover (GH33) : elle ne ferme pas une modale
+  qui héberge la vue (sélecteur de tests d'une campagne).
 - État local à la vue Tableau, non persisté : réinitialisé au changement de
   composant/type, ou à la fermeture du projet. Un filtre sur une colonne masquée
   (via la configuration des colonnes visibles) est oublié.
@@ -367,6 +368,23 @@ Système › Arbre › Sélection).
   rendu par portail (menu de tableau, page draw.io) ne ferme pas l'édition. Une seule cellule
   en édition à la fois.
 - **Édition en masse (T149)** : si plusieurs lignes sont sélectionnées et que l'une d'elles fait l'objet d'une édition inline (statut, énumération, texte, richtext, case `multi_enum`), le changement est propagé à toutes les lignes sélectionnées. Pour `multi_enum`, seule la valeur cochée/décochée est basculée sur chaque ligne — les autres valeurs déjà cochées sur les autres lignes ne sont pas écrasées. Les colonnes de lien (`link::`) ne sont pas concernées (mécanisme dédié, par ligne).
+- **Mode sélection (GH33)** : variante de la Vue Excel utilisée par le sélecteur de tests d'une
+  campagne ([SPEC-TESTS §4.2](SPEC-TESTS.md)) — prop `selection` d'`ExcelView`, logique pure dans
+  `lib/gridSelection.ts`. Absente de la vue système.
+  - Lecture seule forcée : ni édition inline / F2, ni renommage, ni DnD de lignes ou de
+    colonnes, ni popover de lien (valeurs affichées), ni menu contextuel, ni raccourcis
+    (copier/couper/coller/suppr) ; `Échap` remonte à la modale hôte.
+  - Sélection par `objectId` (pas par nœud d'arbre), qui peut contenir des objets non affichés
+    (autre type, filtrés, dossier replié) — **aucun clic ne les retire**.
+  - Colonne de tête de cases, toujours figée. Case de ligne : bascule ce test ; Maj+case :
+    applique l'état cible à la plage affichée depuis l'ancre. Clic sur la ligne : simple = seul
+    ce test parmi les lignes affichées ; Ctrl = bascule ; Maj = plage (remplace la sélection
+    affichée) ; Ctrl+Maj = ajoute la plage. Ancre = dernière ligne cliquée sans Maj ; ancre non
+    affichée ⇒ Maj ignoré.
+  - Cases de dossier et d'en-tête à trois états (cochée / indéterminée / vide, désactivée si
+    aucun test) : portent sur les tests qui passent les filtres, **repli ignoré**. Un clic sur
+    une ligne de dossier le replie/déplie (pas de sélection).
+  - Repli, colonnes figées et filtres sont locaux à la vue hôte, jamais persistés.
 
 ### Vue Word
 

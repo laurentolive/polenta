@@ -98,7 +98,13 @@
       "french": "Français",
       "english": "English",
       "autoUpdate": "Mises à jour auto.",
-      "autoUpdateHint": "Rechercher et télécharger les mises à jour au démarrage (effectif au prochain lancement)"
+      "autoUpdateHint": "Rechercher et télécharger les mises à jour au démarrage (effectif au prochain lancement)",
+      "exportTemplates": "Gabarits d'export",
+      "exportTemplatesHint": "Dossier contenant les gabarits Word/Excel des clients (dossier local, partage réseau ou repo cloné), partagé entre projets.",
+      "exportTemplatesChoose": "Choisir…",
+      "exportTemplatesClear": "Vider",
+      "exportTemplatesNone": "Aucun dossier configuré",
+      "exportTemplatesPick": "Bibliothèque de gabarits d’export"
     },
     "menu": {
       "defaultLabel": "Compte"
@@ -156,7 +162,19 @@
     "error": "Erreur",
     "saving": "Enregistrement…",
     "autoPropagateLabel": "Propager automatiquement le pin des sous-repos vers le repo parent lors d'un commit reçu sur le sous-repo",
-    "autoPropagateHelp": "Si décoché, la mise à jour du pin attend une approbation manuelle de l'intégrateur."
+    "autoPropagateHelp": "Si décoché, la mise à jour du pin attend une approbation manuelle de l'intégrateur.",
+    "exportTemplatesTitle": "Gabarits d'export par défaut",
+    "exportTemplatesHelp": "Gabarit client présélectionné à l'export, désigné par son chemin dans la bibliothèque de gabarits de chaque utilisateur.",
+    "exportTemplatesNoLibrary": "Aucune bibliothèque de gabarits configurée sur ce poste (panneau Compte › Préférences) : seuls les gabarits déjà enregistrés sont affichés.",
+    "exportTemplateKind": {
+      "requirements": "Cahier d'exigences",
+      "tests": "Cahier de tests",
+      "campaign-plan": "Cahier de campagne",
+      "campaign-report": "Rapport de campagne",
+      "dashboard": "Dashboard",
+      "query-result": "Résultat de requête",
+      "impact-analysis": "Analyse d'impact"
+    }
   },
   "workspace": {
     "noWorkspace": "Aucun workspace spécifié.",
@@ -815,7 +833,13 @@
     "export": "Exporter",
     "exportedTo": "Exporté vers {{path}}",
     "openFolder": "Ouvrir le dossier",
-    "openFile": "Ouvrir le fichier"
+    "openFile": "Ouvrir le fichier",
+    "templateFor": "Gabarit {{format}}",
+    "standardTemplate": "Standard",
+    "notFound": "introuvable",
+    "noTemplateLibrary": "Aucune bibliothèque de gabarits : à configurer dans le panneau Compte › Préférences.",
+    "templateLibraryMissing": "Dossier de la bibliothèque de gabarits introuvable (panneau Compte › Préférences).",
+    "defaultTemplateMissing": "Gabarit par défaut du projet « {{path}} » introuvable dans la bibliothèque : export Standard proposé."
   },
   "diamondConflict": {
     "mountNameRequired": "Le nom de montage est requis.",

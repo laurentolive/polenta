@@ -54,6 +54,8 @@ import type {
   UpdateImpactItemStatusDto,
   ExportKind,
   ExportFormat,
+  ExportTemplateListResult,
+  TemplateExportFormat,
   ExportResult,
   AppSettings,
   UpdateState,
@@ -605,7 +607,11 @@ export interface ApiClient {
       payload: unknown,
       printParams: Record<string, string> | undefined,
       suggestedName: string,
+      /** GH34 — gabarit client (chemin relatif à la bibliothèque) ; absent = rendu Standard. */
+      templateRelPath?: string,
     ): Promise<ExportResult>
+    /** GH34 — gabarits de la bibliothèque (préférence application) pour un format. */
+    listTemplates(format: TemplateExportFormat): Promise<ExportTemplateListResult>
     /** Signale depuis une route `/print/<kind>` que ses données sont chargées et prêtes à imprimer
      *  — n'a d'effet que dans la fenêtre cachée créée par un export pdf en cours. */
     notifyPrintReady(): Promise<void>

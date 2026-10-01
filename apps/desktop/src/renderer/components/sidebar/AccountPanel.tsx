@@ -27,10 +27,25 @@ export function AccountPanel() {
   const [loading, setLoading] = useState(true)
   // GH26 — préférence app-level (userData), lue par le main au démarrage suivant.
   const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean | null>(null)
+  // GH34 — dossier de la bibliothèque de gabarits d'export (préférence app-level).
+  const [templatesDir, setTemplatesDir] = useState<string | null>(null)
 
   useEffect(() => {
-    api.app.getSettings().then(s => setAutoCheckUpdates(s.autoCheckUpdates)).catch(() => {})
+    api.app.getSettings().then(s => {
+      setAutoCheckUpdates(s.autoCheckUpdates)
+      setTemplatesDir(s.exportTemplatesDir ?? '')
+    }).catch(() => {})
   }, [])
+
+  async function handleSetTemplatesDir(dir: string) {
+    const saved = await api.app.setSettings({ exportTemplatesDir: dir })
+    setTemplatesDir(saved.exportTemplatesDir ?? '')
+  }
+
+  async function handlePickTemplatesDir() {
+    const picked = await api.dialog.pickFolder(t('account.panel.exportTemplatesPick'))
+    if (picked) await handleSetTemplatesDir(picked)
+  }
 
   async function handleToggleAutoUpdate(value: boolean) {
     setAutoCheckUpdates(value)
@@ -169,6 +184,34 @@ export function AccountPanel() {
               onChange={e => void handleToggleAutoUpdate(e.target.checked)}
             />
           </label>
+        )}
+        {templatesDir !== null && (
+          <div className="space-y-1" title={t('account.panel.exportTemplatesHint')}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-ink-2">{t('account.panel.exportTemplates')}</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => void handlePickTemplatesDir()}
+                  className="px-2 py-1 rounded border border-edge text-xs text-ink-2 hover:bg-hover transition-colors"
+                >
+                  {t('account.panel.exportTemplatesChoose')}
+                </button>
+                {templatesDir && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSetTemplatesDir('')}
+                    className="px-2 py-1 rounded border border-edge text-xs text-ink-2 hover:bg-hover transition-colors"
+                  >
+                    {t('account.panel.exportTemplatesClear')}
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-ink-3 break-all">
+              {templatesDir || t('account.panel.exportTemplatesNone')}
+            </p>
+          </div>
         )}
       </div>
     </div>

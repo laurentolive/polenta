@@ -98,7 +98,13 @@
       "french": "Français",
       "english": "English",
       "autoUpdate": "Auto updates",
-      "autoUpdateHint": "Check for and download updates at startup (applies on next launch)"
+      "autoUpdateHint": "Check for and download updates at startup (applies on next launch)",
+      "exportTemplates": "Export templates",
+      "exportTemplatesHint": "Folder holding client Word/Excel templates (local folder, network share or cloned repo), shared across projects.",
+      "exportTemplatesChoose": "Choose…",
+      "exportTemplatesClear": "Clear",
+      "exportTemplatesNone": "No folder configured",
+      "exportTemplatesPick": "Export template library"
     },
     "menu": {
       "defaultLabel": "Account"
@@ -156,7 +162,19 @@
     "error": "Error",
     "saving": "Saving…",
     "autoPropagateLabel": "Automatically propagate the sub-repo pin to the parent repo when a commit is received on the sub-repo",
-    "autoPropagateHelp": "If unchecked, the pin update waits for manual approval from the integrator."
+    "autoPropagateHelp": "If unchecked, the pin update waits for manual approval from the integrator.",
+    "exportTemplatesTitle": "Default export templates",
+    "exportTemplatesHelp": "Client template preselected on export, identified by its path in each user's template library.",
+    "exportTemplatesNoLibrary": "No template library configured on this machine (Account panel › Preferences): only already saved templates are shown.",
+    "exportTemplateKind": {
+      "requirements": "Requirements document",
+      "tests": "Test document",
+      "campaign-plan": "Campaign plan",
+      "campaign-report": "Campaign report",
+      "dashboard": "Dashboard",
+      "query-result": "Query result",
+      "impact-analysis": "Impact analysis"
+    }
   },
   "workspace": {
     "noWorkspace": "No workspace specified.",
@@ -815,7 +833,13 @@
     "export": "Export",
     "exportedTo": "Exported to {{path}}",
     "openFolder": "Open folder",
-    "openFile": "Open file"
+    "openFile": "Open file",
+    "templateFor": "{{format}} template",
+    "standardTemplate": "Standard",
+    "notFound": "not found",
+    "noTemplateLibrary": "No template library: set it up in Account panel › Preferences.",
+    "templateLibraryMissing": "Template library folder not found (Account panel › Preferences).",
+    "defaultTemplateMissing": "Project default template \"{{path}}\" not found in the library: Standard export selected."
   },
   "diamondConflict": {
     "mountNameRequired": "The mount name is required.",

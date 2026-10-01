@@ -53,6 +53,7 @@ import type {
   CreateImpactAnalysisDto,
   UpdateImpactItemStatusDto,
   ExportKind,
+  TemplateExportFormat,
   ExportFormat,
   Parameter,
   AppSettings,
@@ -62,6 +63,7 @@ import type { CreateReviewDto } from '../services/reviews.service'
 import type { TreeService } from '../services/tree.service'
 import type { BaselineService } from '../services/baseline.service'
 import type { AppSettingsService } from '../services/app-settings.service'
+import type { ExportTemplateLibrary } from '../services/export-template-library'
 import type { UpdateService } from '../services/update.service'
 import { parseDrawioPages } from '../drawio-xml'
 
@@ -93,6 +95,7 @@ export interface Container {
   parameters: ParametersService
   revalidation: RevalidationService
   appSettings: AppSettingsService
+  exportTemplateLibrary: ExportTemplateLibrary
   update: UpdateService
 }
 
@@ -738,12 +741,13 @@ export function registerIpcHandlers(c: Container): void {
   // ── Export (T43) ─────────────────────────────────────────────────────────────
   ipcMain.handle('export:save', async (
     _e,
-    _repoPath: string,
+    repoPath: string,
     kind: ExportKind,
     format: ExportFormat,
     payload: unknown,
     printParams: Record<string, string> | undefined,
     suggestedName: string,
+    templateRelPath?: string,
   ) => {
     const filter = EXPORT_DIALOG_FILTERS[format]
     if (!filter) return { status: 'error' as const, message: `Format d'export inconnu : "${format}"` }
@@ -755,12 +759,14 @@ export function registerIpcHandlers(c: Container): void {
     })
     if (saveResult.canceled || !saveResult.filePath) return { status: 'canceled' as const }
     try {
-      await c.export.run(kind, format, payload, printParams, saveResult.filePath)
+      await c.export.run(kind, format, payload, printParams, saveResult.filePath, { repoPath, templateRelPath })
       return { status: 'ok' as const, filePath: saveResult.filePath }
     } catch (err) {
       return { status: 'error' as const, message: err instanceof Error ? err.message : 'Erreur lors de l’export' }
     }
   })
+  // GH34 — gabarits de la bibliothèque (préférence application) pour un format.
+  ipcMain.handle('export-templates:list', (_e, format: TemplateExportFormat) => c.exportTemplateLibrary.list(format))
   ipcMain.handle('export:show-in-folder', (_e, filePath: string) => {
     shell.showItemInFolder(filePath)
   })

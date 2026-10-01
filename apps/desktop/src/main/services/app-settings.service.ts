@@ -20,6 +20,10 @@ export class AppSettingsService {
       const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf-8')) as Partial<AppSettings>
       return {
         autoCheckUpdates: typeof raw.autoCheckUpdates === 'boolean' ? raw.autoCheckUpdates : DEFAULTS.autoCheckUpdates,
+        // GH34 — chaîne vide traitée comme « non configuré » (bouton Vider).
+        ...(typeof raw.exportTemplatesDir === 'string' && raw.exportTemplatesDir
+          ? { exportTemplatesDir: raw.exportTemplatesDir }
+          : {}),
       }
     } catch {
       return { ...DEFAULTS }
@@ -28,6 +32,7 @@ export class AppSettingsService {
 
   set(patch: Partial<AppSettings>): AppSettings {
     const next = { ...this.get(), ...patch }
+    if (!next.exportTemplatesDir) delete next.exportTemplatesDir
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
     fs.writeFileSync(this.filePath, JSON.stringify(next, null, 2), 'utf-8')
     return next

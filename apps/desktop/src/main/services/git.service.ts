@@ -325,6 +325,17 @@ export class GitService {
     return git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
   }
 
+  /** GH34 — tags (triés) pointant sur le commit HEAD, annotés déréférencés ; `[]` si aucun. */
+  async tagsAtHead(repoPath: string): Promise<string[]> {
+    const head = await this.headSha(repoPath)
+    const tags = await git.listTags({ fs, dir: repoPath })
+    const matching: string[] = []
+    for (const tag of tags) {
+      if ((await this.resolveTagOid(repoPath, tag)) === head) matching.push(tag)
+    }
+    return matching.sort()
+  }
+
   async currentBranch(repoPath: string): Promise<string> {
     const branch = await git.currentBranch({ fs, dir: repoPath, fullname: false })
     return branch ?? 'HEAD'

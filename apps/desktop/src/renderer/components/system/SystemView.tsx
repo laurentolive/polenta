@@ -34,7 +34,7 @@ import { RichTextToolbar } from './RichTextToolbar'
 import { ViewHeader } from '../layout/ViewHeader'
 import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
-import { buildExportRows, substituteExportParams } from '../../lib/exportColumns'
+import { buildExportOutline, buildExportRows, substituteExportParams, type ExportStep } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
 import { flattenSystemNodes } from '@polenta/types'
@@ -577,16 +577,33 @@ export function SystemView() {
     [rawObjects, pendingEdits]
   )
 
-  const stepsByObjectId = useMemo((): Map<string, { action: string; expectedResult: string }[]> | undefined => {
+  const stepsByObjectId = useMemo((): Map<string, ExportStep[]> | undefined => {
     if (effectiveType?.category !== 'test') return undefined
-    const map = new Map<string, { action: string; expectedResult: string }[]>()
+    const map = new Map<string, ExportStep[]>()
     for (const obj of rawObjects as TestCase[]) {
       if (obj.id) {
-        map.set(obj.id, (obj.steps ?? []).slice().sort((a, b) => a.order - b.order).map(s => ({ action: s.action, expectedResult: s.expectedResult })))
+        map.set(obj.id, (obj.steps ?? []).slice().sort((a, b) => a.order - b.order).map(s => ({
+          order: s.order, action: s.action, expectedResult: s.expectedResult, notes: s.notes ?? '',
+        })))
       }
     }
     return map
   }, [rawObjects, effectiveType?.category])
+
+  // Payload des exports Excel/Word du cahier d'exigences ou de tests (T43) — `templated` (GH34) :
+  // gabarit client choisi, on joint l'arbre complet (dossiers, étapes détaillées) que le rendu
+  // Standard n'utilise pas.
+  const buildDocumentExportPayload = (format: 'xlsx' | 'docx', templated: boolean) => {
+    const fields = format === 'docx' ? visibleFieldsWord : visibleFieldsExcel
+    const { columns, rows } = buildExportRows(fields, root, objects, sectionNumbers, stepsByObjectId, effectiveType, filter)
+    // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
+    const substitute = (values: Record<string, string>[]) => substituteExportParams(values, effectiveType, paramResolver.substitute)
+    const payload = { componentLabel: effectiveNode?.label || effectiveNodeId || '', columns, rows: substitute(rows) }
+    if (!templated) return payload
+    const outline = buildExportOutline(fields, root, objects, sectionNumbers, stepsByObjectId, filter)
+    const values = substitute(outline.map(e => e.values))
+    return { ...payload, outline: outline.map((e, i) => ({ ...e, values: values[i] })) }
+  }
 
   const saveInlineEditsMutation = useMutation({
     mutationFn: async (edits: Record<string, Record<string, string>>) => {
@@ -1273,14 +1290,7 @@ export function SystemView() {
                   const headSha = await api.git.headSha(repoPath)
                   return requirementsExportBaseName(effectiveNode?.label || effectiveNodeId, headSha)
                 }}
-                getPayload={(format) => {
-                  const { columns, rows } = buildExportRows(
-                    format === 'docx' ? visibleFieldsWord : visibleFieldsExcel,
-                    root, objects, sectionNumbers, stepsByObjectId, effectiveType, filter,
-                  )
-                  // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
-                  return { componentLabel: effectiveNode?.label || effectiveNodeId, columns, rows: substituteExportParams(rows, effectiveType, paramResolver.substitute) }
-                }}
+                getPayload={(format, { templated }) => buildDocumentExportPayload(format, templated)}
                 getPrintParams={() => ({
                   repoPath,
                   username,
@@ -1300,14 +1310,7 @@ export function SystemView() {
                   const headSha = await api.git.headSha(repoPath)
                   return testsExportBaseName(effectiveNode?.label || effectiveNodeId, headSha)
                 }}
-                getPayload={(format) => {
-                  const { columns, rows } = buildExportRows(
-                    format === 'docx' ? visibleFieldsWord : visibleFieldsExcel,
-                    root, objects, sectionNumbers, stepsByObjectId, effectiveType, filter,
-                  )
-                  // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
-                  return { componentLabel: effectiveNode?.label || effectiveNodeId, columns, rows: substituteExportParams(rows, effectiveType, paramResolver.substitute) }
-                }}
+                getPayload={(format, { templated }) => buildDocumentExportPayload(format, templated)}
                 getPrintParams={() => ({
                   repoPath,
                   username,

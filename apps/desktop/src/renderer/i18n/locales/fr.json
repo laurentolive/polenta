@@ -718,8 +718,6 @@
       "noTestType": "Aucun type de test dans ce projet.",
       "selected_one": "{{count}} test sélectionné",
       "selected_other": "{{count}} tests sélectionnés",
-      "selectedWithHidden_one": "{{count}} test sélectionné, dont {{hidden}} non affiché",
-      "selectedWithHidden_other": "{{count}} tests sélectionnés, dont {{hidden}} non affichés",
       "clearSelection": "Vider la sélection",
       "next": "Suivant",
       "previous": "Précédent",
@@ -734,7 +732,9 @@
       "openSelect": "Sélectionner des tests…",
       "edit": "Modifier la sélection…",
       "instances_one": "{{count}} instance",
-      "instances_other": "{{count}} instances"
+      "instances_other": "{{count}} instances",
+      "hiddenSuffix_one": ", dont {{count}} non affiché",
+      "hiddenSuffix_other": ", dont {{count}} non affichés"
     }
   },
   "dashboard": {

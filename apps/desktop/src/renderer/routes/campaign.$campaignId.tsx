@@ -420,22 +420,24 @@ function CampaignDetailPage() {
           >
             + {t('campaignPage.addTests')}
           </button>
-          {addingTests && (
-            <TestPickerModal
-              repoPath={repoPath}
-              workspaceDir={workspaceDir}
-              mode="add"
-              candidates={availableTests}
-              defaultTypeRef={component && level ? `${component}::${level}` : undefined}
-              previewSource={{ campaignId }}
-              initial={EMPTY_PICKER_RESULT}
-              presentOf={presentOf}
-              includedCount={id => campaign!.testCaseIds.filter(x => x === id).length}
-              onConfirm={handleConfirmAdd}
-              onCancel={() => setAddingTests(false)}
-            />
-          )}
         </div>
+      )}
+      {/* Hors de la garde `isActive` : si la campagne est clôturée ailleurs pendant la sélection,
+          la modale reste ouverte et affiche l'erreur de l'ajout au lieu de disparaître. */}
+      {addingTests && (
+        <TestPickerModal
+          repoPath={repoPath}
+          workspaceDir={workspaceDir}
+          mode="add"
+          candidates={availableTests}
+          defaultTypeRef={component && level ? `${component}::${level}` : undefined}
+          previewSource={{ campaignId }}
+          initial={EMPTY_PICKER_RESULT}
+          presentOf={presentOf}
+          includedCount={id => campaign!.testCaseIds.filter(x => x === id).length}
+          onConfirm={handleConfirmAdd}
+          onCancel={() => setAddingTests(false)}
+        />
       )}
 
       {/* T171 — notification persistante : instances avec des références non résolues. */}

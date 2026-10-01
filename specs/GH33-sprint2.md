@@ -68,3 +68,48 @@ Spec : `specs/GH33.md` — Design : `specs/GH33-design.md` — Scénarios : `spe
   campagne ;
 - **L1–L5** ;
 - **R1–R2** : non-régression de la Vue Excel dans la vue système.
+
+## Tests de l'application (pilotage Playwright `_electron`)
+
+Exécution automatisée sur le build `out/`, avec un profil Electron isolé
+(`--user-data-dir`). Le jeu de données est une **copie** du projet `handstickProduct`, préparée
+ainsi :
+- 60 tests approuvés ;
+- 16 tests passés dans le type `VE22D::VE22D_TEST` ;
+- dans l'arbre : « Dossier A » avec son « Sous-dossier A1 », et un « Dossier brouillons » ;
+- un test retiré de l'arbre (orphelin) ;
+- `PRODUCT_TEST-0003` avec une référence à saisir `{vitesse_essai}` ;
+- `PRODUCT_TEST-0029` itérant (`{req.id}`, 3 exigences liées).
+
+Les scénarios ont été pilotés avec de vrais clics souris, Ctrl et Maj compris, et l'état a été
+vérifié dans le DOM et dans les YAML de campagne.
+
+| Scénarios | Résultat |
+|-----------|----------|
+| N1–N6 | OK. N4 : 3 exigences liées → « Ajouter (3) » ; en décocher une → « Ajouter (2) » ; 2 instances avec `requirementId`. |
+| S1–S13 | OK |
+| F1–F5 | OK |
+| A1–A5 | OK. A5 : le fichier de préférences `.<user>.pref` n'est pas modifié par les manipulations dans la modale. |
+| A6 | OK après correctif (voir ci-dessous). |
+| C1–C5 | OK. Entrée dans le filtre et dans un paramètre ne créent pas la campagne. |
+| C7 | Créer une campagne sans test : non exécuté. |
+| L2, L3 | OK |
+| R1–R2 | OK : vue système sans colonne de cases ; crayon, glisser-déposer et Ctrl+clic (T149) intacts ; `Échap` dans le popover de filtre colonne. |
+| Non testés | C6 (le projet n'a pas de tag de baseline), L1 (aucun projet sans type de test), L4 (performances ressenties) et L5 (langue EN). |
+
+### Correctifs issus des tests
+
+- **A6** : la modale d'ajout était rendue dans le bloc réservé aux campagnes actives. Si la
+  campagne était clôturée ailleurs (rechargement par le watcher), la modale disparaissait sans
+  message et la sélection était perdue. Elle est maintenant rendue hors de ce bloc : l'erreur
+  « Cannot add tests to a completed campaign » s'affiche dans le pied et la modale reste
+  ouverte.
+- **Pluriel du compteur** : « dont 1 non affichés » suivait le total au lieu du nombre de tests
+  masqués. Le suffixe porte désormais son propre pluriel (`campaignPage.picker.hiddenSuffix_*`).
+
+### Bug préexistant constaté, hors périmètre
+
+« + Nouvelle campagne » (panneau Campagnes) ouvre `/campaign/new` avec `level` égal au **type
+de campagne** (ex. `PRODUCT_CAMP`). Le formulaire filtre les tests sur ce `level`, donc aucun
+test n'est proposé. Le filtre date du commit initial et l'ancienne liste était tout aussi vide.
+Il est signalé dans une issue séparée.

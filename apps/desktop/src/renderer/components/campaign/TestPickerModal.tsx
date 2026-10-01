@@ -307,9 +307,8 @@ export function TestPickerModal({
 
         <div className="flex items-center gap-3 px-4 py-3 border-t border-edge">
           <p className="text-xs text-ink-2">
-            {hiddenCount > 0
-              ? t('campaignPage.picker.selectedWithHidden', { count: orderedSelected.length, hidden: hiddenCount })
-              : t('campaignPage.picker.selected', { count: orderedSelected.length })}
+            {t('campaignPage.picker.selected', { count: orderedSelected.length })}
+            {hiddenCount > 0 && t('campaignPage.picker.hiddenSuffix', { count: hiddenCount })}
           </p>
           {step === 1 && orderedSelected.length > 0 && (
             <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-status-info hover:opacity-80">

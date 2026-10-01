@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { User, Settings, Search, GitBranch, ClipboardList, FlaskConical, Rocket, PieChart, Variable } from 'lucide-react'
 import type { Panel } from './AppLayout'
 import { ImpactAnalysisIcon } from './ImpactAnalysisIcon'
+import { UpdateBadge } from './UpdateBadge'
 
 interface Props {
   activePanel: Panel
@@ -53,6 +54,7 @@ export function ActivityBar({ activePanel, onSelect, hasProject }: Props) {
           </button>
         )
       })}
+      <UpdateBadge />
     </div>
   )
 }

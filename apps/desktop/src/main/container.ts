@@ -25,9 +25,11 @@ import { SavedQueriesService } from './services/saved-queries.service'
 import { DashboardsService } from './services/dashboards.service'
 import { DashboardSeedService } from './services/dashboard-seed.service'
 import { ExportService } from './services/export.service'
+import { AppSettingsService } from './services/app-settings.service'
+import { UpdateService } from './services/update.service'
 import { registerIpcHandlers } from './ipc/index'
 
-export async function createContainer(): Promise<void> {
+export async function createContainer(): Promise<{ update: UpdateService }> {
   const auth = new AuthService()
   const git = new GitService()
   // Constructed early (only needs `git`) so `watcher` — and, via it, `workspace` below —
@@ -74,6 +76,9 @@ export async function createContainer(): Promise<void> {
   const savedQueries = new SavedQueriesService(git, schema, dashboards)
   const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
   const exportSvc = new ExportService()
+  // GH26 — préférences app-level + mise à jour automatique.
+  const appSettings = new AppSettingsService()
+  const update = new UpdateService(appSettings)
 
   registerIpcHandlers({
     auth,
@@ -102,5 +107,9 @@ export async function createContainer(): Promise<void> {
     export: exportSvc,
     parameters,
     revalidation,
+    appSettings,
+    update,
   })
+
+  return { update }
 }

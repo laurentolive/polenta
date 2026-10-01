@@ -47,5 +47,9 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/desktop/dist/*.exe
+          # GH26 — latest.yml + blockmap : requis par electron-updater (mise à jour auto).
+          files: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.exe.blockmap
+            apps/desktop/dist/latest.yml
           body_path: ${{ runner.temp }}/release-notes.md

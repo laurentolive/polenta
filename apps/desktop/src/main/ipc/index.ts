@@ -55,11 +55,14 @@ import type {
   ExportKind,
   ExportFormat,
   Parameter,
+  AppSettings,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
 import type { TreeService } from '../services/tree.service'
 import type { BaselineService } from '../services/baseline.service'
+import type { AppSettingsService } from '../services/app-settings.service'
+import type { UpdateService } from '../services/update.service'
 import { parseDrawioPages } from '../drawio-xml'
 
 export interface Container {
@@ -89,6 +92,8 @@ export interface Container {
   export: ExportService
   parameters: ParametersService
   revalidation: RevalidationService
+  appSettings: AppSettingsService
+  update: UpdateService
 }
 
 // Deux tables distinctes (pas une dérivée de l'autre) : la relation n'est pas
@@ -254,6 +259,20 @@ export function registerIpcHandlers(c: Container): void {
   // electron-builder.yml pour le nom de l'exe généré : une seule string à modifier à
   // chaque release.
   ipcMain.handle('app:get-version', () => app.getVersion())
+  // GH26 — préférences de l'application (userData/app-settings.json, pas schema.yaml).
+  ipcMain.handle('app:get-settings', () => c.appSettings.get())
+  ipcMain.handle('app:set-settings', (_e, patch: Partial<AppSettings>) => c.appSettings.set(patch))
+  // GH26 — restreint aux pages de release du repo : seul usage (lien « Voir les nouveautés »),
+  // pas un ouvreur d'URL générique exposé au renderer.
+  ipcMain.handle('app:open-release-page', (_e, url: string) => {
+    if (url.startsWith('https://github.com/laurentolive/polenta/releases/')) return shell.openExternal(url)
+  })
+
+  // ── Update (GH26) ─────────────────────────────────────────────────────────────
+  // État poussé aux fenêtres par 'update:state-changed' ; get-state couvre une fenêtre
+  // montée après l'événement.
+  ipcMain.handle('update:get-state', () => c.update.getState())
+  ipcMain.handle('update:install', () => c.update.install())
 
   // ── Requirements ─────────────────────────────────────────────────────────────
   ipcMain.handle('requirements:list', (_e, repoPath: string, filters?: unknown) =>

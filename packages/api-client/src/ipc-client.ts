@@ -31,6 +31,13 @@ export function createIpcClient(): ApiClient {
     app: {
       setTitle: (title) => invoke('app:set-title', title),
       getVersion: () => invoke('app:get-version'),
+      getSettings: () => invoke('app:get-settings'),
+      setSettings: (patch) => invoke('app:set-settings', patch),
+      openReleasePage: (url) => invoke('app:open-release-page', url),
+    },
+    update: {
+      getState: () => invoke('update:get-state'),
+      install: () => invoke('update:install'),
     },
     schema: {
       get: (p) => invoke('schema:get', p),

@@ -1259,6 +1259,8 @@ Classes de boutons : voir §19.16 (`btn-primary`/`btn-secondary`/`btn-danger`/`b
 └────┴───────────────────┴─────────────────────────────────────────┘
 ```
 
+**Badge de mise à jour (GH26)** : `UpdateBadge` en bas de l'ActivityBar (`mt-auto`), rendu seulement quand `UpdateState.status === 'ready'` (mise à jour téléchargée) — icône + pastille, info-bulle « Polenta vX.Y.Z est disponible », jamais de popup. Clic → popover (version actuelle → nouvelle, « Voir les nouveautés » via `app:open-release-page`, « Plus tard », « Redémarrer pour installer »). Si des onglets de la fenêtre sont dirty (`TabsContext.dirtyTabIds`), le premier clic affiche un avertissement et le bouton devient « Installer quand même » (les onglets dirty des autres fenêtres ne sont pas vus — limite acceptée).
+
 **Principe fondamental :** cliquer une icône dans l'ActivityBar change **simultanément** la sidebar (panneau de contrôle) et le main frame (vue par défaut du panneau). L'`activePanel` est **dérivé de l'URL courante** — aucun état React séparé n'est nécessaire.
 
 - **Barre d'onglets** (T101, ~32 px, au-dessus de tout le reste) : onglets façon Firefox, un onglet = une URL complète (pathname + search params) mémorisée par `TabsContext`/`TabsProvider` (`apps/desktop/src/renderer/contexts/TabsContext.tsx`). Changer d'onglet fait un `navigate()` vers l'URL mémorisée — l'ActivityBar/Sidebar en dessous suivent automatiquement puisqu'ils dérivent de l'URL courante, comme pour toute navigation normale. Bouton "+"/Ctrl+T (nouvel onglet sur la page d'accueil), croix/Ctrl+W (fermer, avec confirmation si l'onglet est enregistré "dirty" via `useRegisterTabDirty` — schema.tsx, req.$reqId.tsx, test.$testId.tsx, campaign.$campaignId.tsx), bouton flèche vers le bas (menu déroulant filtrable listant les onglets ouverts + "Récemment fermés", limité à 10 entrées, en mémoire). Le dernier onglet d'une fenêtre n'est jamais fermé : son contenu est réinitialisé sur la page d'accueil. Scope par fenêtre Electron (`createAppWindow()`) — pas de persistance entre redémarrages. Titre par onglet dérivé par défaut de la route (`useSetTabTitle` l'affine ensuite avec le nom réel de l'entité affichée).
@@ -1358,6 +1360,11 @@ Appelé dans `ProjectPanel` (sidebar) via `useEffect` sur `project?.name` et `pr
 ```
 
 Remplace le composant `AccountMenu` du header (supprimé).
+
+Section **Préférences** (préférences de l'application, pas du projet) : thème et langue
+(`localStorage`), et case « Mises à jour auto. » (GH26) liée à `app:get-settings`/`app:set-settings`
+(`autoCheckUpdates`, `userData/app-settings.json` — lue par le main au démarrage, d'où pas de
+`localStorage`) ; effective au prochain lancement.
 
 ### 19.7 Panneau — Projet (sans projet chargé)
 
@@ -1728,6 +1735,13 @@ Déduction du panel actif depuis `pathname` + search params :
 | `sync:log` | `repoPath: string, limit?: number` | `CommitEntry[]` |
 | `sync:checkout-commit` | `repoPath: string, sha: string` | `void` |
 | `app:set-title` | `title: string` | `void` (one-way) |
+| `app:get-version` | — | `string` (`app.getVersion()`) |
+| `app:get-settings` | — | `AppSettings` (GH26, `userData/app-settings.json`) |
+| `app:set-settings` | `patch: Partial<AppSettings>` | `AppSettings` |
+| `app:open-release-page` | `url: string` | `void` — `shell.openExternal`, restreint à `https://github.com/laurentolive/polenta/releases/` |
+| `update:get-state` | — | `UpdateState` (GH26) |
+| `update:install` | — | `void` — `quitAndInstall` si `status === 'ready'`, sinon no-op |
+| `update:state-changed` | push main → **toutes** les fenêtres | `UpdateState` (`window.polenta.on`, hook `useUpdateState`) |
 | `schema:get` | `repoPath: string` | `ProjectSchema` |
 | `schema:save` | `repoPath: string, schema: ProjectSchema` | `void` |
 | `branches:create` | `repoPath: string, name: string` | `void` |

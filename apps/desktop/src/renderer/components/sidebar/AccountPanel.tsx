@@ -25,6 +25,22 @@ export function AccountPanel() {
   const { locale, setLocale } = useLocale()
   const [identity, setIdentity] = useState<Identity | null>(null)
   const [loading, setLoading] = useState(true)
+  // GH26 — préférence app-level (userData), lue par le main au démarrage suivant.
+  const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    api.app.getSettings().then(s => setAutoCheckUpdates(s.autoCheckUpdates)).catch(() => {})
+  }, [])
+
+  async function handleToggleAutoUpdate(value: boolean) {
+    setAutoCheckUpdates(value)
+    try {
+      const saved = await api.app.setSettings({ autoCheckUpdates: value })
+      setAutoCheckUpdates(saved.autoCheckUpdates)
+    } catch {
+      setAutoCheckUpdates(!value)
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -144,6 +160,16 @@ export function AccountPanel() {
             <span>{locale === 'fr' ? t('account.panel.english') : t('account.panel.french')}</span>
           </button>
         </div>
+        {autoCheckUpdates !== null && (
+          <label className="flex items-center justify-between gap-2 cursor-pointer" title={t('account.panel.autoUpdateHint')}>
+            <span className="text-xs text-ink-2">{t('account.panel.autoUpdate')}</span>
+            <input
+              type="checkbox"
+              checked={autoCheckUpdates}
+              onChange={e => void handleToggleAutoUpdate(e.target.checked)}
+            />
+          </label>
+        )}
       </div>
     </div>
   )

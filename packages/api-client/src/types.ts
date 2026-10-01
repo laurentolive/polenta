@@ -55,6 +55,8 @@ import type {
   ExportKind,
   ExportFormat,
   ExportResult,
+  AppSettings,
+  UpdateState,
 } from '@polenta/types'
 import type {
   CreateRequirementDto,
@@ -277,6 +279,17 @@ export interface ApiClient {
   app: {
     setTitle(title: string): Promise<void>
     getVersion(): Promise<string>
+    /** GH26 — préférences de l'application (userData), pas du projet. */
+    getSettings(): Promise<AppSettings>
+    setSettings(patch: Partial<AppSettings>): Promise<AppSettings>
+    /** GH26 — ouvre une page de release GitHub dans le navigateur système. */
+    openReleasePage(url: string): Promise<void>
+  }
+  /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
+   *  'update:state-changed' (window.polenta.on). */
+  update: {
+    getState(): Promise<UpdateState>
+    install(): Promise<void>
   }
   schema: {
     get(repoPath: string): Promise<ProjectSchema>

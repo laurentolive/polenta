@@ -40,8 +40,9 @@ export function createAppWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
-  await createContainer()
+  const { update } = await createContainer()
   createAppWindow()
+  update.scheduleStartupCheck()
 })
 
 app.on('window-all-closed', () => {

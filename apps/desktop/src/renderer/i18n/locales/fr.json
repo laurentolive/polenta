@@ -96,7 +96,9 @@
       "dark": "Sombre",
       "language": "Langue",
       "french": "Français",
-      "english": "English"
+      "english": "English",
+      "autoUpdate": "Mises à jour auto.",
+      "autoUpdateHint": "Rechercher et télécharger les mises à jour au démarrage (effectif au prochain lancement)"
     },
     "menu": {
       "defaultLabel": "Compte"
@@ -1091,6 +1093,20 @@
       "alreadyPresent": "déjà présente",
       "openRequirement": "Ouvrir l'exigence",
       "requirementOfInstance": "Exigence de cette instance :"
+    }
+  },
+  "update": {
+    "badge": {
+      "title": "Polenta v{{version}} est disponible"
+    },
+    "popover": {
+      "title": "Mise à jour disponible",
+      "versions": "Version actuelle {{current}} → {{available}}",
+      "releaseNotes": "Voir les nouveautés",
+      "install": "Redémarrer pour installer",
+      "installAnyway": "Installer quand même",
+      "later": "Plus tard",
+      "dirtyWarning": "Des onglets ont des modifications non enregistrées : elles seront perdues au redémarrage."
     }
   }
 }

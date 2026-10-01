@@ -1,0 +1,5 @@
+# GH26 — lu uniquement avec POLENTA_FORCE_DEV_UPDATE=1 en `pnpm dev` (forceDevUpdateConfig) ;
+# jamais packagé (seul out/** entre dans le build, cf. electron-builder.yml `files`).
+provider: github
+owner: laurentolive
+repo: polenta

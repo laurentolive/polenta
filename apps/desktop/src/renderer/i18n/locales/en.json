@@ -96,7 +96,9 @@
       "dark": "Dark",
       "language": "Language",
       "french": "Français",
-      "english": "English"
+      "english": "English",
+      "autoUpdate": "Auto updates",
+      "autoUpdateHint": "Check for and download updates at startup (applies on next launch)"
     },
     "menu": {
       "defaultLabel": "Account"
@@ -1091,6 +1093,20 @@
       "alreadyPresent": "already present",
       "openRequirement": "Open requirement",
       "requirementOfInstance": "Requirement of this instance:"
+    }
+  },
+  "update": {
+    "badge": {
+      "title": "Polenta v{{version}} is available"
+    },
+    "popover": {
+      "title": "Update available",
+      "versions": "Current version {{current}} → {{available}}",
+      "releaseNotes": "See what's new",
+      "install": "Restart to install",
+      "installAnyway": "Install anyway",
+      "later": "Later",
+      "dirtyWarning": "Some tabs have unsaved changes: they will be lost on restart."
     }
   }
 }

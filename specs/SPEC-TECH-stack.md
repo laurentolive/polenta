@@ -349,8 +349,8 @@ Les fichiers `.drawio` (XML texte) bénéficient du merge git ligne par ligne �
 
 | Composant | Mécanisme |
 |-----------|-----------|
-| Application desktop | Binaire via `electron-builder` (`.exe` Windows, `.dmg` macOS, `.AppImage` Linux) |
-| Mises à jour | `electron-updater` — vérification au démarrage, téléchargement en arrière-plan |
+| Application desktop | Binaire via `electron-builder` (`.dmg` macOS, `.AppImage` Linux). Windows (GH26) : installeur **NSIS one-click par utilisateur** `Polenta-Setup-X.Y.Z.exe` (`perMachine: false`, installé dans `%LOCALAPPDATA%\Programs\Polenta`, **sans droits admin**) — remplace l'ancien `.exe` portable. Build `electron-builder --publish never` ; `publish: github` (laurentolive/polenta) ne sert qu'à générer `latest.yml`. La CI (`release.yml`, sur tag `vX.Y.Z`) téléverse l'installeur, son `.blockmap` et `latest.yml` |
+| Mises à jour (GH26) | `electron-updater` (`UpdateService`, main) : une seule vérification par session, ~10 s après l'ouverture de la fenêtre, uniquement en build packagé (`POLENTA_FORCE_DEV_UPDATE=1` + `dev-app-update.yml` pour tester en dev) et si la préférence app-level `autoCheckUpdates` (`userData/app-settings.json`, `AppSettingsService`, défaut `true`) est active. Pré-releases/drafts ignorés. Téléchargement en arrière-plan ; installation silencieuse à la fermeture (`autoInstallOnAppQuit`) ou via le badge (`quitAndInstall`). Erreurs (hors ligne, `latest.yml` absent) seulement journalisées `[update]` — jamais affichées |
 | Données utilisateur | `app.getPath('userData')` — `workspace.json` (liste des projets), `auth.json` (comptes) |
 | Repos git | Dossier choisi par l'utilisateur au clone (`SyncService.clone(remoteUrl, localPath)`) |
 | Serveur MCP (T122) | Bundle autonome esbuild (`out/mcp-server/index.cjs`, CJS, `electron` alias-é vers un shim, `keytar` externe) copié hors `app.asar` via `extraResources` (`resources/mcp-server/`) — lancé en build packagé via le binaire Electron lui-même en mode `ELECTRON_RUN_AS_NODE=1` (pas de dépendance à un Node.js système). Détails : `SPEC-MCP-SERVER.md` §2.4. |

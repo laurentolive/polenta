@@ -96,6 +96,10 @@ l'utilisateur final :
   ELECTRON_RUN_AS_NODE: '1' }` — fait tourner le binaire Electron packagé comme un
   Node.js ordinaire, sans dépendre d'un Node.js système sur le poste utilisateur
   final (souvent absent, contrairement à un poste de développement).
+  Depuis GH26 (installeur NSIS par utilisateur au lieu de l'exe portable), `process.execPath`
+  et `resourcesPath` sont stables : `%LOCALAPPDATA%\Programs\Polenta\…`, inchangés d'une mise
+  à jour à l'autre — le `.mcp.json` généré reste valide après une mise à jour auto (l'exe
+  portable s'extrayait au contraire dans un dossier temporaire).
 - **Lancement en dev** (`app.isPackaged === false`) : `command: 'node'`, `args: [
   <appPath>/node_modules/tsx/dist/cli.mjs, <appPath>/src/mcp-server/index.ts,
   '--repo', '.']`, résolu via `app.getAppPath()`.

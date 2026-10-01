@@ -51,11 +51,27 @@ extraResources:
     to: mcp-server/node_modules/keytar
 win:
   icon: build/icon.ico
-  target: portable
+  # GH26 — installeur NSIS (plus de portable) : seule cible Windows qu'electron-updater sait
+  # mettre à jour. Installation par utilisateur (cf. bloc nsis), sans droits admin.
+  target: nsis
   # ${version} vient de package.json ("version") — même string que celle exposée en
   # renderer via app:get-version et affichée dans la barre de titre : un seul endroit à
   # modifier à chaque release.
-  artifactName: "Polenta-${version}.${ext}"
+  artifactName: "Polenta-Setup-${version}.${ext}"
+nsis:
+  oneClick: true
+  # %LOCALAPPDATA%\Programs\Polenta — pas d'élévation UAC, ni à l'installation ni aux mises à jour.
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Polenta
+# GH26 — sert uniquement à générer latest.yml (lu par electron-updater au runtime) : le build
+# tourne avec `--publish never`, le téléversement est fait par release.yml (action-gh-release).
+publish:
+  provider: github
+  owner: laurentolive
+  repo: polenta
+  releaseType: release
 mac:
   icon: build/icon.png
 linux:

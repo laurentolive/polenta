@@ -10,6 +10,7 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
+import ExcelJS from 'exceljs'
 import {
   AlignmentType, BorderStyle, Document, Footer, Header, HeadingLevel, Packer, PageBreak, PageNumber,
   Paragraph, ShadingType, Table, TableCell, TableRow, TabStopType, TextRun, WidthType,
@@ -244,10 +245,142 @@ const templates: Record<string, Document> = {
   ]),
 }
 
+// ── Gabarits Excel (sprint 4) ─────────────────────────────────────────────────
+
+interface SheetSpec {
+  title: string
+  extra: [string, string][]
+  /** Colonnes : en-tête, balise de la ligne modèle (`${table:…}`), largeur. */
+  columns: { header: string; tag: string; width: number; wrap?: boolean }[]
+  /** Formules de synthèse sous le tableau, en coordonnées de la ligne modèle (`{col}`/`{row}`). */
+  totals?: [string, string][]
+}
+
+const HEADER_ROW = 8
+const TEMPLATE_ROW = HEADER_ROW + 1
+
+/** Classeur d'exemple : titre, cartouche, en-têtes, ligne modèle, synthèse ; volets figés, filtre,
+ *  impression paysage ajustée en largeur. Les formules de synthèse portent sur la seule ligne
+ *  modèle : Polenta les étend aux lignes générées. */
+async function workbook(spec: SheetSpec): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook()
+  wb.creator = 'Polenta'
+  const ws = wb.addWorksheet(spec.title.slice(0, 31), {
+    views: [{ state: 'frozen', ySplit: HEADER_ROW }],
+    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
+    headerFooter: { oddFooter: `&L${spec.title} — &D&RPage &P / &N` },
+  })
+  const last = spec.columns.length
+  ws.mergeCells(1, 1, 1, last)
+  ws.getCell(1, 1).value = `\${project.label} — ${spec.title}`
+  ws.getCell(1, 1).font = { size: 16, bold: true, color: { argb: 'FF' + ACCENT } }
+  const cartouche: [string, string][] = [
+    ...spec.extra,
+    ['Révision', '${git.commit} ${git.tag} (${git.branch})'],
+    ['Édité le', '${export.date} par ${export.user}'],
+  ]
+  cartouche.forEach(([k, v], i) => {
+    ws.getCell(2 + i, 1).value = k
+    ws.getCell(2 + i, 1).font = { bold: true, color: { argb: 'FF' + GREY } }
+    ws.getCell(2 + i, 2).value = v
+  })
+
+  const border = { style: 'thin' as const, color: { argb: 'FFA6A6A6' } }
+  const borders = { top: border, bottom: border, left: border, right: border }
+  spec.columns.forEach((c, i) => {
+    ws.getColumn(i + 1).width = c.width
+    const h = ws.getCell(HEADER_ROW, i + 1)
+    h.value = c.header
+    h.font = { bold: true, color: { argb: 'FF' + ACCENT } }
+    h.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + ACCENT_LIGHT } }
+    h.border = borders
+    const t = ws.getCell(TEMPLATE_ROW, i + 1)
+    t.value = c.tag
+    t.border = borders
+    t.alignment = { vertical: 'top', wrapText: !!c.wrap }
+  })
+  ws.autoFilter = { from: { row: HEADER_ROW, column: 1 }, to: { row: TEMPLATE_ROW, column: last } }
+
+  ;(spec.totals ?? []).forEach(([label, formula], i) => {
+    const r = TEMPLATE_ROW + 2 + i
+    ws.getCell(r, 1).value = label
+    ws.getCell(r, 1).font = { bold: true }
+    ws.getCell(r, 2).value = { formula: formula.replace(/\{row\}/g, String(TEMPLATE_ROW)) }
+    ws.getCell(r, 2).font = { bold: true }
+  })
+  return Buffer.from(await wb.xlsx.writeBuffer())
+}
+
+const xlsxTemplates: Record<string, SheetSpec> = {
+  'Liste des exigences.xlsx': {
+    title: 'Liste des exigences',
+    extra: [['Composant', '${project.component}'], ['Exigences', '${count}']],
+    columns: [
+      { header: 'Section', tag: '${table:items.section}', width: 13 },
+      { header: 'ID', tag: '${table:items.id}', width: 14 },
+      { header: 'Libellé', tag: '${table:items.name}', width: 40, wrap: true },
+      { header: 'Dossier', tag: '${table:items.folderPath}', width: 24, wrap: true },
+      { header: 'Statut', tag: '${table:items.statusLabel}', width: 14 },
+    ],
+    totals: [['Total', 'COUNTA(B{row}:B{row})'], ['Approuvées', 'COUNTIF(E{row}:E{row},"Approuvé")']],
+  },
+  'Liste des tests.xlsx': {
+    title: 'Liste des tests',
+    extra: [['Composant', '${project.component}'], ['Tests', '${count}']],
+    columns: [
+      { header: 'Section', tag: '${table:items.section}', width: 13 },
+      { header: 'ID', tag: '${table:items.id}', width: 14 },
+      { header: 'Libellé', tag: '${table:items.name}', width: 36, wrap: true },
+      { header: 'Statut', tag: '${table:items.statusLabel}', width: 14 },
+      { header: 'Étapes', tag: '${table:items.stepCount}', width: 8 },
+      { header: 'Procédure', tag: '${table:items.stepsText}', width: 60, wrap: true },
+    ],
+    totals: [['Total', 'COUNTA(B{row}:B{row})'], ['Étapes', 'SUM(E{row}:E{row})']],
+  },
+  'Plan de campagne.xlsx': {
+    title: 'Plan de campagne',
+    extra: [['Campagne', '${campaign.id} — ${campaign.title}'], ['Composant', '${campaign.component}'], ['Référence', '${campaign.baselineRef}']],
+    columns: [
+      { header: 'Test', tag: '${table:entries.id}', width: 14 },
+      { header: 'Titre', tag: '${table:entries.title}', width: 36, wrap: true },
+      { header: 'Exigence', tag: '${table:entries.requirementId}', width: 14 },
+      { header: 'Préconditions', tag: '${table:entries.preconditions}', width: 30, wrap: true },
+      { header: 'Procédure', tag: '${table:entries.stepsText}', width: 60, wrap: true },
+      { header: 'Résultat', tag: '${table:entries.statusLabel}', width: 14 },
+    ],
+    totals: [['Tests', 'COUNTA(A{row}:A{row})']],
+  },
+  'Résultat de requête.xlsx': {
+    title: 'Résultat de requête',
+    extra: [['Requête', '${query.name}'], ['Lignes', '${count}']],
+    // En-têtes et cellules en largeur : colonnes de la requête, inconnues à l'avance.
+    columns: [{ header: '${columnNames}', tag: '${table:rows.cells}', width: 22 }],
+  },
+  'Analyse des impacts.xlsx': {
+    title: 'Analyse d’impact',
+    extra: [['Analyse', '${analysis.label}'], ['Baselines', '${analysis.from} → ${analysis.to}'], ['Exigences modifiées', '${changes}']],
+    columns: [
+      { header: 'Exigence modifiée', tag: '${table:rows.reqId}', width: 16 },
+      { header: 'Direction', tag: '${table:rows.direction}', width: 14 },
+      { header: 'Profondeur', tag: '${table:rows.depth}', width: 10 },
+      { header: 'Élément', tag: '${table:rows.id}', width: 14 },
+      { header: 'Titre', tag: '${table:rows.title}', width: 40, wrap: true },
+      { header: 'Type / lien', tag: '${table:rows.type}', width: 16 },
+      { header: 'Statut', tag: '${table:rows.status}', width: 14 },
+      { header: 'Commentaire', tag: '${table:rows.comment}', width: 36, wrap: true },
+    ],
+    totals: [['Impactés', 'COUNTIF(B{row}:B{row},"<>Modification")']],
+  },
+}
+
 async function main(): Promise<void> {
   fs.mkdirSync(OUT, { recursive: true })
   for (const [name, doc] of Object.entries(templates)) {
     fs.writeFileSync(path.join(OUT, name), await Packer.toBuffer(doc))
+    console.log(`écrit ${name}`)
+  }
+  for (const [name, spec] of Object.entries(xlsxTemplates)) {
+    fs.writeFileSync(path.join(OUT, name), await workbook(spec))
     console.log(`écrit ${name}`)
   }
 }

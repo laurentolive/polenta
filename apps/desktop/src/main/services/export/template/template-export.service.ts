@@ -3,6 +3,8 @@ import type {
   CampaignExportPayload,
   DashboardExportPayload,
   ExportKind,
+  ImpactAnalysisExportPayload,
+  QueryResultExportPayload,
   RequirementsExportPayload,
   TemplateExportFormat,
   TestsExportPayload,
@@ -26,6 +28,13 @@ type KindDataBuilder = (payload: unknown, ctx: BuilderContext) => Promise<object
 
 const NO_RICH = { render: () => '' }
 
+// Excel : pas de contenu riche ni de tableau Word ; les builders xlsx ne s'en servent pas.
+const XLSX_CONTEXT: BuilderContext = {
+  toRich: async () => NO_RICH,
+  loadRun: async () => null,
+  toTable: () => '',
+}
+
 // Kinds pris en charge par un gabarit, par format — étendu au fil des sprints (GH34-design §5 :
 // campagnes et dashboard au sprint 3, xlsx au sprint 4). Modules chargés en `import()` dynamique
 // (T141) : ce service est construit au démarrage, markdown-it/docxtemplater ne doivent l'être
@@ -39,6 +48,12 @@ const DATA_BUILDERS: Partial<Record<`${ExportKind}:${TemplateExportFormat}`, Kin
   'campaign-plan:docx': campaignData,
   'campaign-report:docx': campaignData,
   'dashboard:docx': async (p, c) => (await import('./template-data-campaign')).buildDashboardData(p as DashboardExportPayload, c.toTable),
+  // Sprint 4 — Excel (texte simple, une ligne modèle par liste).
+  'requirements:xlsx': async p => (await import('./template-data-xlsx')).buildItemsXlsxData(p as RequirementsExportPayload),
+  'tests:xlsx': async p => (await import('./template-data-xlsx')).buildItemsXlsxData(p as TestsExportPayload),
+  'campaign-plan:xlsx': async p => (await import('./template-data-xlsx')).buildCampaignXlsxData(p as CampaignExportPayload),
+  'query-result:xlsx': async p => (await import('./template-data-xlsx')).buildQueryResultXlsxData(p as QueryResultExportPayload),
+  'impact-analysis:xlsx': async p => (await import('./template-data-xlsx')).buildImpactXlsxData(p as ImpactAnalysisExportPayload),
 }
 
 /**
@@ -80,6 +95,16 @@ export class TemplateExportService {
     ])
     const p = payload as { componentLabel?: string; campaign?: { component?: string } } | null
     const componentLabel = p?.componentLabel ?? p?.campaign?.component ?? ''
+    const now = new Date()
+
+    if (format === 'xlsx') {
+      const [{ buildCommonData }, { renderXlsxTemplate }] = await Promise.all([import('./template-data'), import('./xlsx-render')])
+      const common = buildCommonData({ projectLabel, componentLabel, user, kind, templateRelPath, branch, commit, tags, now })
+      const buffer = await renderXlsxTemplate(templatePath, templateRelPath, { ...common, ...(await builder(payload, XLSX_CONTEXT)) })
+      await fsP.writeFile(destPath, buffer)
+      return
+    }
+
     const [{ buildCommonData }, { renderDocxTemplate }, { MarkdownToOoxml, textTableXml }, { collectDrawioRefs }] = await Promise.all([
       import('./template-data'),
       import('./docx-template'),
@@ -89,7 +114,7 @@ export class TemplateExportService {
     const loadRun: RunLoader = async (testCaseId, runId) =>
       (await this.tests.findRuns(repoPath, testCaseId)).find(r => r.id === runId) ?? null
     const common = buildCommonData({
-      projectLabel, componentLabel, user, kind, templateRelPath, branch, commit, tags, now: new Date(),
+      projectLabel, componentLabel, user, kind, templateRelPath, branch, commit, tags, now,
     })
     const buffer = await renderDocxTemplate(templatePath, templateRelPath, async pkg => {
       // Gabarit sans balise `{{@…}}` : pas de conversion (ni chargement d'images) inutile.

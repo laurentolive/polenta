@@ -28,14 +28,14 @@ export default defineConfig({
     // electron-updater (GH26) exclu pour la même raison : ses deps transitives (fs-extra,
     // builder-util-runtime, lazy-val, semver…) manquaient au packaging ("Cannot find module
     // 'fs-extra'" au lancement de l'app installée).
-    // docxtemplater, pizzip, angular-expressions, markdown-it (GH34, export par gabarit) exclus pour
+    // docxtemplater, pizzip, angular-expressions, markdown-it, xlsx-template (GH34, export par gabarit) exclus pour
     // la même raison : @xmldom/xmldom, pako, entities, mdurl… ne sont pas hissés dans
     // apps/desktop/node_modules. Bundlés dans des chunks chargés au premier export (import()).
     plugins: [
       externalizeDepsPlugin({
         exclude: [
           '@polenta/types', 'isomorphic-git', 'chokidar', 'docx', 'exceljs', 'js-yaml', 'electron-updater',
-          'docxtemplater', 'pizzip', 'angular-expressions', 'markdown-it',
+          'docxtemplater', 'pizzip', 'angular-expressions', 'markdown-it', 'xlsx-template',
         ],
       }),
     ],

@@ -85,7 +85,14 @@ try {
   console.log(`export (${Date.now() - t0} ms) :`, JSON.stringify(result))
   if (result.status === 'ok') {
     console.log('fichier :', dest, fs.statSync(dest).size, 'octets')
-    exitCode = 0
+    // Excel (sprint 4) : même payload, gabarit d'exemple Excel — xlsx-template bundlé dans le main.
+    const destXlsx = path.join(outDir, 'e2e-liste.xlsx')
+    await app.evaluate(({ dialog }, filePath) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath })
+    }, destXlsx)
+    const xlsx = await invoke('export:save', repo, 'requirements', 'xlsx', payload, undefined, 'x.xlsx', 'Exemples Polenta/Liste des exigences.xlsx')
+    console.log('export xlsx :', JSON.stringify(xlsx))
+    if (xlsx.status === 'ok') exitCode = 0
   }
 } finally {
   await app.close().catch(() => {})

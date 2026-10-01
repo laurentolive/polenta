@@ -6,11 +6,13 @@ import type { ExportKind, ExportTemplateKey, TemplateExportFormat } from '@polen
  * dashboard au sprint 3, xlsx au sprint 4, cf. specs/GH34-design.md §5).
  */
 export const TEMPLATE_FORMATS_BY_KIND: Partial<Record<ExportKind, TemplateExportFormat[]>> = {
-  requirements: ['docx'],
-  tests: ['docx'],
-  'campaign-plan': ['docx'],
+  requirements: ['docx', 'xlsx'],
+  tests: ['docx', 'xlsx'],
+  'campaign-plan': ['docx', 'xlsx'],
   'campaign-report': ['docx'],
   dashboard: ['docx'],
+  'query-result': ['xlsx'],
+  'impact-analysis': ['xlsx'],
 }
 
 export function templateKey(kind: ExportKind, format: TemplateExportFormat): ExportTemplateKey {

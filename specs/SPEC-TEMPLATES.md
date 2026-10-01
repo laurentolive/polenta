@@ -29,7 +29,7 @@ schema:
   version: 1
   preferences:                    # optionnel — options d'outil au niveau du projet, hors modèle métier
     autoPropagatePin: false       # T94 — propagation auto du pin sous-repo → parent au commit, sinon approbation manuelle
-    exportTemplates:              # GH34 — gabarit Word par défaut par `<kind>:<format>`, chemin relatif à la
+    exportTemplates:              # GH34 — gabarit Word/Excel par défaut par `<kind>:<format>`, chemin relatif à la
       requirements:docx: ACME/Cahier des exigences.docx   #   bibliothèque de gabarits de chaque utilisateur (préférence
                                   #   application `exportTemplatesDir`) ; clé absente = rendu Standard.
                                   #   Réglé dans la page Préférences du projet (cf. SPEC-ELECTRON-DESKTOP §19.15a)

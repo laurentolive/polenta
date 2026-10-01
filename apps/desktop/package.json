@@ -54,6 +54,7 @@
     "tailwind-merge": "^2.3.0",
     "tiptap-markdown": "^0.8.10",
     "undici": "^6.19.0",
+    "xlsx-template": "^1.4.7",
     "zod": "^3.25.76"
   },
   "devDependencies": {

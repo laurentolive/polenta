@@ -1792,7 +1792,8 @@ Toutes les vues principales (routes + `SystemView`) partagent un unique composan
 #### 19.15a Export à partir d'un gabarit client (GH34)
 
 Le client fournit ses gabarits Word (page de garde, logo, en-têtes/pieds, cartouche, styles) avec des
-balises `{{…}}` ; Polenta les remplit. Le rendu « Standard » (générateurs T43) reste disponible et
+balises `{{…}}`, et Excel (cartouche, mise en forme, formules, graphiques) avec des balises `${…}` ;
+Polenta les remplit. Le rendu « Standard » (générateurs T43) reste disponible et
 inchangé. Spec/design : `specs/GH34.md`, `specs/GH34-design.md` ; référence utilisateur des balises :
 `apps/desktop/resources/export-templates/Référence des balises.html`.
 
@@ -1808,8 +1809,10 @@ inchangé. Spec/design : `specs/GH34.md`, `specs/GH34-design.md` ; référence u
   introuvable → affiché « ⚠ … (introuvable) » désactivé, Standard présélectionné, message ; bouton de
   format désactivé tant que la liste n'est pas chargée. Le gabarit choisi est passé à `export:save`
   (`templateRelPath`) ; le renderer joint alors à son payload l'arbre complet (`outline` : dossiers,
-  niveau, étapes détaillées, `statusLabel`, cf. `buildExportOutline`). Kinds pris en charge (docx) :
-  `requirements`, `tests`, `campaign-plan`, `campaign-report`, `dashboard`.
+  niveau, étapes détaillées, `statusLabel`, cf. `buildExportOutline`). Kinds pris en charge — docx :
+  `requirements`, `tests`, `campaign-plan`, `campaign-report`, `dashboard` ; xlsx : `requirements`,
+  `tests`, `campaign-plan`, `query-result`, `impact-analysis` (`renderer/lib/exportTemplates.ts`,
+  miroir de `DATA_BUILDERS` côté main). Une liste par format accepté (« Gabarit Word », « Gabarit Excel »).
 - **Moteur** (`main/services/export/template/`) : `TemplateExportService` construit les données
   (communes `project`/`export`/`git` + par kind : `template-data.ts`, `template-data-campaign.ts` —
   le rapport de campagne lit les résultats par étape de l'exécution `runId` via `TestsService`),
@@ -1829,8 +1832,25 @@ inchangé. Spec/design : `specs/GH34.md`, `specs/GH34-design.md` ; référence u
   Vue Word via `renderStaticDrawio(…, onDone)`) et `capturePage` (`drawio-snapshot.ts`, IPC scoped
   `export:drawio-snapshot-ready`). Échec (fichier absent, XML invalide, délai) → `[Diagramme : …]`,
   captures déjà faites conservées.
+- **Excel** (`xlsx-render.ts`, `template-data-xlsx.ts`) : xlsx-template (MIT, travaille sur le XML du
+  classeur : logo, graphiques, autres feuilles, mise en page conservés) ; balises `${a.b}`, ligne
+  modèle `${table:<liste>.<champ>}` (balise seule dans sa cellule) répétée avec sa mise en forme,
+  `${columnNames}` / `${table:rows.cells}` pour des colonnes inconnues (résultat de requête). Données en
+  texte simple, champs `number` du schéma en nombres ; une ligne par élément (dossiers en
+  `folder`/`folderPath`), procédure en `stepsText`. **Réécriture des références** (`xlsx-refs.ts`,
+  coordonnées du gabarit → classeur produit) que xlsx-template laisse sur la ligne modèle : plages
+  couvrant une ligne modèle étendues (formules de toutes les feuilles, `sqref` de mise en forme
+  conditionnelle — y compris `x14` — et de validation, filtre automatique, séries de graphiques, noms
+  définis/zone d'impression), références situées dessous décalées ; dans une ligne générée,
+  sémantique de recopie d'Excel (composantes de ligne relatives décalées du rang : `=D6*2` → `=D7*2`,
+  cumul `SOMME(D$6:D6)`), `fullCalcOnLoad`. Valeurs commençant par `=` préfixées d'un U+200B (jamais
+  écrites comme formules). Liste vide : ligne modèle conservée vidée. Combinaison produisant deux
+  cellules à la même adresse (bug xlsx-template avec liste de cellules + recopie de ligne, option
+  désactivée dans ce cas) → erreur explicite plutôt qu'un classeur illisible.
 - **Vérification** : `apps/desktop/scripts/check-gh34.ts` (contrôles automatiques, `--keep` pour
-  ouvrir les documents) ; `scripts/e2e-gh34-drawio.mjs` (app buildée ou packagée via `E2E_EXE`).
+  ouvrir les documents ; gabarit client Excel de référence `scripts/fixtures/gh34-client.xlsx`, fait
+  par Excel via `make-gh34-client-xlsx.ps1`) ; `scripts/e2e-gh34-drawio.mjs` (export Word avec capture
+  draw.io + export Excel, app buildée ou packagée via `E2E_EXE`).
 
 Les panneaux latéraux (sidebar) suivent une convention distincte, désormais généralisée à tous :
 un conteneur `px-4 py-3 border-b border-edge` contenant `<p className="section-label">` (classe

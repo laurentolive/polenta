@@ -644,6 +644,11 @@ export function SystemView() {
   // T162 — titres de dossiers affichés dans les vues Tableau / Document (par type, persisté avec les colonnes)
   const [showFoldersExcel, setShowFoldersExcel] = useState(true)
   const [showFoldersWord, setShowFoldersWord] = useState(true)
+  // GH24 — dossiers repliés (Tableau / Document) et colonnes figées (Tableau), par type et
+  // persistés avec les colonnes : vivaient en état local des vues, perdus à chaque démontage.
+  const [collapsedFoldersExcel, setCollapsedFoldersExcel] = useState<string[]>([])
+  const [collapsedFoldersWord, setCollapsedFoldersWord] = useState<string[]>([])
+  const [freezeColCountExcel, setFreezeColCountExcel] = useState(0)
   // T162 — miroir synchrone de l'objet de pref complet, pour éviter qu'un enregistrement
   // n'écrase un champ voisin avec une valeur d'état périmée (closures) quand deux réglages
   // changent coup sur coup (ex. « Réinitialiser » = colonnes + titres en deux appels).
@@ -839,7 +844,18 @@ export function SystemView() {
     setVisibleFieldsEdit(edit)
     setShowFoldersExcel(showFoldersExcelNext)
     setShowFoldersWord(showFoldersWordNext)
-    prefsRef.current = { excel, word, edit, showFoldersExcel: showFoldersExcelNext, showFoldersWord: showFoldersWordNext }
+    const collapsedFoldersExcelNext = savedPrefs?.collapsedFoldersExcel ?? []
+    const collapsedFoldersWordNext = savedPrefs?.collapsedFoldersWord ?? []
+    const freezeColCountExcelNext = savedPrefs?.freezeColCountExcel ?? 0
+    setCollapsedFoldersExcel(collapsedFoldersExcelNext)
+    setCollapsedFoldersWord(collapsedFoldersWordNext)
+    setFreezeColCountExcel(freezeColCountExcelNext)
+    prefsRef.current = {
+      excel, word, edit,
+      showFoldersExcel: showFoldersExcelNext, showFoldersWord: showFoldersWordNext,
+      collapsedFoldersExcel: collapsedFoldersExcelNext, collapsedFoldersWord: collapsedFoldersWordNext,
+      freezeColCountExcel: freezeColCountExcelNext,
+    }
     setPrefsAppliedKey(typeKey)
   }, [savedPrefs, typeKey, isPrefsPlaceholder, prefsPending]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1137,6 +1153,21 @@ export function SystemView() {
     persistPrefs({ showFoldersWord: show })
   }, [persistPrefs])
 
+  const handleCollapsedFoldersExcelChange = useCallback((ids: string[]) => {
+    setCollapsedFoldersExcel(ids)
+    persistPrefs({ collapsedFoldersExcel: ids })
+  }, [persistPrefs])
+
+  const handleCollapsedFoldersWordChange = useCallback((ids: string[]) => {
+    setCollapsedFoldersWord(ids)
+    persistPrefs({ collapsedFoldersWord: ids })
+  }, [persistPrefs])
+
+  const handleFreezeColCountExcelChange = useCallback((count: number) => {
+    setFreezeColCountExcel(count)
+    persistPrefs({ freezeColCountExcel: count })
+  }, [persistPrefs])
+
   // Vues Tableau / Document affichées seulement quand tout ce qui détermine leur rendu est là :
   // colonnes visibles du type (prefs), arbre du type, objets, liens et couverture s'ils sont
   // affichés. Sans ça, la vue se peignait 3 à 4 fois à l'ouverture (colonnes par défaut et
@@ -1403,6 +1434,10 @@ export function SystemView() {
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}
+            collapsedFolders={collapsedFoldersExcel}
+            onCollapsedFoldersChange={handleCollapsedFoldersExcelChange}
+            freezeColCount={freezeColCountExcel}
+            onFreezeColCountChange={handleFreezeColCountExcelChange}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'word' && viewReady && (
@@ -1437,6 +1472,8 @@ export function SystemView() {
             filterOptions={filterOptions}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
+            collapsedFolders={collapsedFoldersWord}
+            onCollapsedFoldersChange={handleCollapsedFoldersWordChange}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'edit' && (

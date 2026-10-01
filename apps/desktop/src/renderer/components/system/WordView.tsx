@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
 import { LinkCombobox } from './LinkCombobox'
@@ -74,6 +74,10 @@ interface Props {
    *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
   gotoNodeId?: string | null
   gotoSeq?: number
+  /** GH24 — dossiers repliés : détenus par SystemView (pref du type) pour survivre au
+   *  démontage de la vue (changement de vue / de type). */
+  collapsedFolders: string[]
+  onCollapsedFoldersChange: (ids: string[]) => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -703,6 +707,8 @@ export function WordView({
   onStepsChange,
   gotoNodeId,
   gotoSeq,
+  collapsedFolders: collapsedFolderIds,
+  onCollapsedFoldersChange,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -712,18 +718,20 @@ export function WordView({
   const interfaceRoles = currentSchema?.roles?.map(r => r.name)
   const [activeLinkPopover, setActiveLinkPopover] = useState<ActiveLinkPopover | null>(null)
   const [activeMultiEnumPopover, setActiveMultiEnumPopover] = useState<ActiveMultiEnumPopover | null>(null)
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
+  const collapsedFolders = useMemo(() => new Set(collapsedFolderIds), [collapsedFolderIds])
 
   // T164 — "goto" : défiler jusqu'à la carte / l'en-tête portant data-node-id.
   const containerRef = useRef<HTMLDivElement>(null)
   useScrollToNode(containerRef, gotoNodeId, gotoSeq)
 
+  // Ref plutôt que dépendances : garde `toggleFolder` stable (passé aux lignes mémoïsées).
+  const collapsedFoldersRef = useRef({ set: collapsedFolders, onChange: onCollapsedFoldersChange })
+  collapsedFoldersRef.current = { set: collapsedFolders, onChange: onCollapsedFoldersChange }
   const toggleFolder = useCallback((id: string) => {
-    setCollapsedFolders(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+    const { set, onChange } = collapsedFoldersRef.current
+    const next = new Set(set)
+    next.has(id) ? next.delete(id) : next.add(id)
+    onChange([...next])
   }, [])
 
   useEffect(() => {

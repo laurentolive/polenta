@@ -75,6 +75,12 @@ interface Props {
   /** Hauteur max d'une ligne, en nombre de lignes de texte (1 = une seule ligne tronquée,
    *  `Infinity` = toutes les lignes). */
   rowMaxLines?: number
+  /** GH24 — dossiers repliés et nombre de colonnes figées : détenus par SystemView (pref du
+   *  type) pour survivre au démontage de la vue (changement de vue / de type). */
+  collapsedFolders: string[]
+  onCollapsedFoldersChange: (ids: string[]) => void
+  freezeColCount: number
+  onFreezeColCountChange: (count: number) => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1123,6 +1129,10 @@ export function ExcelView({
   gotoNodeId,
   gotoSeq,
   rowMaxLines = 1,
+  collapsedFolders: collapsedFolderIds,
+  onCollapsedFoldersChange,
+  freezeColCount: storedFreezeColCount,
+  onFreezeColCountChange,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -1130,7 +1140,7 @@ export function ExcelView({
   // SystemViewContext, aucune requête réseau dupliquée.
   const { data: currentSchema } = useProjectSchema(repoPath ?? '')
   const interfaceRoles = currentSchema?.roles?.map(r => r.name)
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
+  const collapsedFolders = useMemo(() => new Set(collapsedFolderIds), [collapsedFolderIds])
   const [expandedStepIds, setExpandedStepIds] = useState<Set<string>>(new Set())
   const toggleStepExpand = useCallback((nodeId: string) => {
     setExpandedStepIds(prev => {
@@ -1151,9 +1161,8 @@ export function ExcelView({
   const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; hasContent: boolean } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null)
   // Figer les volets (T151) — nombre de colonnes, depuis la gauche, épinglées hors du
-  // scroll latéral. Index dans `columns`, pas persisté (comportement UI éphémère comme
-  // colWidths/columnFilters).
-  const [freezeColCount, setFreezeColCount] = useState(0)
+  // scroll latéral. Index dans `columns`. GH24 — persisté dans la pref du type (SystemView),
+  // borné au nombre de colonnes affichées (cf. `freezeColCount` après `columns`).
   const [columnFreezeMenu, setColumnFreezeMenu] = useState<{ colIdx: number; x: number; y: number } | null>(null)
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
   const colDragState = useRef<{ startX: number; startWidth: number; col: string } | null>(null)
@@ -1288,12 +1297,14 @@ export function ExcelView({
     document.addEventListener('mouseup', onMouseUp)
   }, [colWidths])
 
+  // Ref plutôt que dépendances : garde `toggleFolder` stable (passé aux lignes mémoïsées).
+  const collapsedFoldersRef = useRef({ set: collapsedFolders, onChange: onCollapsedFoldersChange })
+  collapsedFoldersRef.current = { set: collapsedFolders, onChange: onCollapsedFoldersChange }
   const toggleFolder = useCallback((id: string) => {
-    setCollapsedFolders(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+    const { set, onChange } = collapsedFoldersRef.current
+    const next = new Set(set)
+    next.has(id) ? next.delete(id) : next.add(id)
+    onChange([...next])
   }, [])
 
   // Build object map for quick lookup
@@ -1308,6 +1319,9 @@ export function ExcelView({
 
   // Column order follows visibleFields as-is (enables DnD reorder persistence)
   const columns = visibleFields.length > 0 ? visibleFields : ['id', 'name']
+  // Le nombre de colonnes figées ne dépasse jamais le nombre de colonnes affichées — borné à
+  // l'affichage, sans réécrire la valeur stockée.
+  const freezeColCount = Math.min(storedFreezeColCount, columns.length)
 
   // T51 — oublie le filtre d'une colonne qui n'est plus affichée (pas de filtre "fantôme")
   useEffect(() => {
@@ -1324,8 +1338,6 @@ export function ExcelView({
     // Idem pour la cellule sélectionnée si sa colonne disparaît.
     const selected = cellStore.getSelected()
     if (selected && !columns.includes(selected.col)) cellStore.select(null)
-    // Le nombre de colonnes figées ne doit jamais dépasser le nombre de colonnes affichées.
-    setFreezeColCount(prev => Math.min(prev, columns.length))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns.join(',')])
 
@@ -1335,7 +1347,6 @@ export function ExcelView({
     setColumnFilters({})
     setActiveColumnFilterPopover(null)
     cellStore.select(null)
-    setFreezeColCount(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeDef?.prefix, repoPath])
 
@@ -1698,7 +1709,7 @@ export function ExcelView({
         if (n.id === targetId) return { ...n, children: [...n.children, ...copies] }
         return { ...n, children: n.children.map(insertInto) }
       })
-      setCollapsedFolders(prev => { const s = new Set(prev); s.delete(targetId); return s })
+      if (collapsedFolders.has(targetId)) onCollapsedFoldersChange(collapsedFolderIds.filter(id => id !== targetId))
     } else {
       const parentId = treeFindParentId(root, targetId)
       newRoot = treeInsert(root, copies[0], parentId, targetId)
@@ -1976,8 +1987,8 @@ export function ExcelView({
           x={columnFreezeMenu.x} y={columnFreezeMenu.y}
           colIdx={columnFreezeMenu.colIdx}
           freezeColCount={freezeColCount}
-          onFreeze={setFreezeColCount}
-          onUnfreeze={() => setFreezeColCount(0)}
+          onFreeze={onFreezeColCountChange}
+          onUnfreeze={() => onFreezeColCountChange(0)}
           onClose={() => setColumnFreezeMenu(null)}
         />
       )}

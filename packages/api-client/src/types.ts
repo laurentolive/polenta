@@ -265,6 +265,12 @@ export interface FieldVisibilityPref {
   showFoldersExcel?: boolean
   /** T162 — titres de dossiers affichés dans la vue Document. Absent ⇒ true (affichés). */
   showFoldersWord?: boolean
+  /** GH24 — ids des dossiers repliés dans la vue Tableau. Absent ⇒ aucun. */
+  collapsedFoldersExcel?: string[]
+  /** GH24 — ids des dossiers repliés dans la vue Document. Absent ⇒ aucun. */
+  collapsedFoldersWord?: string[]
+  /** GH24 — nombre de colonnes figées (depuis la gauche) de la vue Tableau. Absent ⇒ 0. */
+  freezeColCountExcel?: number
 }
 
 export interface ApiClient {

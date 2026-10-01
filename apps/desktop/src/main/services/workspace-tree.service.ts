@@ -71,6 +71,8 @@ export interface WorkspaceTreeParseErrorResult {
   status: 'parse-error'
   repoName: string
   error: string
+  /** GH30 — see `WorkspaceOpenResult`: the remote refused the clone/fetch (HTTP 401/403/404). */
+  remoteAccess?: boolean
 }
 
 export interface WorkspaceTreeCycleResult {
@@ -83,6 +85,13 @@ export type WorkspaceTreeBuildResult =
   | WorkspaceTreeConflictResult
   | WorkspaceTreeParseErrorResult
   | WorkspaceTreeCycleResult
+
+/** GH30 — HTTP status of an isomorphic-git `HttpError`, or null for any other error. */
+function httpErrorStatus(err: unknown): number | null {
+  // Duck-typed on `code` rather than `instanceof`, robust to a duplicated isomorphic-git copy.
+  const e = err as { code?: unknown; data?: { statusCode?: unknown } } | null
+  return e?.code === 'HttpError' && typeof e.data?.statusCode === 'number' ? e.data.statusCode : null
+}
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
@@ -187,6 +196,21 @@ export class WorkspaceTreeService {
           }
         } catch (err) {
           console.error(`[WorkspaceTreeService] ${alreadyCloned ? 'Fetch' : 'Clone'} failed for ${name}:`, err)
+          // GH30: GitHub answers 404 (not 401/403) for a private repo when the request carries no
+          // valid credentials or the account has no access — the raw "HTTP Error: 404 Not Found"
+          // reads as a broken URL/parse failure, so translate it into an actionable message.
+          const statusCode = httpErrorStatus(err)
+          if (statusCode === 401 || statusCode === 403 || statusCode === 404) {
+            const hasCredentials = await this.syncService.hasHttpsCredentials(node.url)
+            return {
+              status: 'parse-error',
+              repoName: name,
+              remoteAccess: true,
+              error: hasCredentials
+                ? `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : vérifiez que votre compte a accès à ce dépôt et que votre token a la bonne portée (scope « repo », ou dépôt inclus dans un token fine-grained).`
+                : `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : aucun compte n'est configuré pour cet hôte dans Polenta — ajoutez un compte ayant accès à ce dépôt.`,
+            }
+          }
           // Non-fatal: report as a parse-error so the rest is usable
           return {
             status: 'parse-error',

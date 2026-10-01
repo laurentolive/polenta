@@ -91,7 +91,9 @@ export type WorkspaceOpenResult =
   | { status: 'ok'; tree: WorkspaceTree }
   | { status: 'not-a-workspace' }
   | { status: 'diamond-conflict'; conflicts: DiamondConflict[] }
-  | { status: 'parse-error'; repoName: string; error: string }
+  /** `remoteAccess` (GH30): the clone/fetch of a dependency was refused by the remote (HTTP
+   *  401/403/404) — `error` is then a complete, user-facing message, not a parse diagnostic. */
+  | { status: 'parse-error'; repoName: string; error: string; remoteAccess?: boolean }
 
 // ── Compliance matrix (T69 Sprint 4) ─────────────────────────────────────────
 

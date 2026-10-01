@@ -78,6 +78,11 @@ function conflictFiles(err: unknown): string[] | null {
 export class SyncService {
   constructor(private readonly auth: AuthService) {}
 
+  /** GH30 — whether a clone/fetch of `remoteUrl` would carry credentials at all. */
+  async hasHttpsCredentials(remoteUrl: string): Promise<boolean> {
+    return (await this.auth.getHttpsCredentials(remoteUrl)) !== null
+  }
+
   async clone(remoteUrl: string, localPath: string, onProgress?: (p: number) => void): Promise<void> {
     const credentials = await this.auth.getHttpsCredentials(remoteUrl)
 

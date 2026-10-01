@@ -1084,7 +1084,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
       } else if (result.status === 'diamond-conflict') {
         setLocalConflicts(result.conflicts)
       } else if (result.status === 'parse-error') {
-        setSaveError(t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error }))
+        setSaveError((result.remoteAccess ? result.error : t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error })))
       }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
@@ -1133,7 +1133,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
       } else if (result.status === 'diamond-conflict') {
         setLocalConflicts(result.conflicts)
       } else if (result.status === 'parse-error') {
-        setSaveError(t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error }))
+        setSaveError((result.remoteAccess ? result.error : t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error })))
       }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
@@ -1471,7 +1471,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         setPendingDependency(null)
         setLocalConflicts(result.conflicts)
       } else if (result.status === 'parse-error') {
-        setAddDependencyError(t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error }))
+        setAddDependencyError((result.remoteAccess ? result.error : t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error })))
       } else {
         // Unreachable in practice: ensureWorkspaceInitialized() just above guarantees the
         // workspace marker exists, which is the only way rebuildTree returns 'not-a-workspace'.
@@ -1579,7 +1579,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
             setEditingDependency(null)
             setLocalConflicts(renameResult.conflicts)
           } else if (renameResult.status === 'parse-error') {
-            setEditDependencyError(t('schema.structureTab.parseError', { repoName: renameResult.repoName, error: renameResult.error }))
+            setEditDependencyError((renameResult.remoteAccess ? renameResult.error : t('schema.structureTab.parseError', { repoName: renameResult.repoName, error: renameResult.error })))
           } else {
             setEditDependencyError(t('schema.structureTab.notAWorkspace'))
           }
@@ -1600,7 +1600,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           setEditingDependency(null)
           setLocalConflicts(result.conflicts)
         } else if (result.status === 'parse-error') {
-          setEditDependencyError(t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error }))
+          setEditDependencyError((result.remoteAccess ? result.error : t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error })))
         } else {
           setEditDependencyError(t('schema.structureTab.notAWorkspace'))
         }
@@ -1688,7 +1688,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         setRemovingDependency(null)
         setLocalConflicts(result.conflicts)
       } else if (result.status === 'parse-error') {
-        setRemoveDependencyError(t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error }))
+        setRemoveDependencyError((result.remoteAccess ? result.error : t('schema.structureTab.parseError', { repoName: result.repoName, error: result.error })))
       } else {
         setRemoveDependencyError(t('schema.structureTab.notAWorkspace'))
       }

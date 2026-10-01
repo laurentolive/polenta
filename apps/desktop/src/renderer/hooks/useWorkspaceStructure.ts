@@ -52,6 +52,7 @@ export function useWorkspaceStructure(workspaceDir: string, repoPath: string): W
   const treeError =
     isUnknown ? 'Ce répertoire ne correspond plus à un projet Polenta valide (déplacé ou supprimé ?).'
     : openResult?.status === 'not-a-workspace' ? 'Ce répertoire n\'est pas un workspace Polenta.'
+    : openResult?.status === 'parse-error' && openResult.remoteAccess ? openResult.error
     : openResult?.status === 'parse-error' ? `Erreur de parsing dans "${openResult.repoName}" : ${openResult.error}`
     : null
 

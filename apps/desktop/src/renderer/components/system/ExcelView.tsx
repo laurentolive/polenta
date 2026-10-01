@@ -957,9 +957,12 @@ function GroupRow({
   // avant) ; double-clic / F2 = renommage (le double-clic ne replie donc plus la ligne depuis le
   // nom : chevron, cellule d'action ou de section).
   const nameTextRef = useRef<HTMLSpanElement>(null)
-  const [folderEdit, setFolderEdit] = useState<{ caret: number } | null>(null)
+  const nameTdRef = useRef<HTMLTableCellElement>(null)
+  // GH25 — `width` : largeur de l'éditeur quand le nom est collé (colonnes figées), mesurée à
+  // l'ouverture — voir `stickyEditWidth`.
+  const [folderEdit, setFolderEdit] = useState<{ caret: number; width?: number } | null>(null)
   const g = useCellGestures(node.id, 'name', onRename
-    ? caret => setFolderEdit({ caret: caretOffsetFor(caret, nameTextRef.current, node.name) })
+    ? caret => setFolderEdit({ caret: caretOffsetFor(caret, nameTextRef.current, node.name), width: stickyEditWidth() })
     : undefined)
   const nameCellProps = onRename ? {
     onClick: (e: React.MouseEvent) => { e.stopPropagation(); g.onClick() },
@@ -977,11 +980,20 @@ function GroupRow({
   const rowBg = isSelected ? 'bg-status-info-bg' : 'bg-folder-row'
   // GH25 — la cellule du nom fusionne les colonnes (colSpan) et ne peut donc pas être figée
   // elle-même : c'est son contenu qui est collé (`sticky`), décalé du bord + padding (`px-2`)
-  // de la cellule pour ne pas bouger avant que le scroll ne l'atteigne. Pas pendant le
-  // renommage : l'éditeur occupe toute la largeur de la cellule, comme avant.
-  const nameStickyStyle: React.CSSProperties | undefined = nameStickyLeft !== undefined && !folderEdit
-    ? { position: 'sticky', left: nameStickyLeft + 9 }
+  // de la cellule pour ne pas bouger avant que le scroll ne l'atteigne.
+  const nameStickyStyle: React.CSSProperties | undefined = nameStickyLeft !== undefined
+    ? { position: 'sticky', left: nameStickyLeft + 9, width: folderEdit?.width }
     : undefined
+  /** GH25 — en édition, le contenu reste collé (sinon l'éditeur repart au début de la cellule,
+   * hors de vue après un scroll à droite) ; sa largeur est bornée à la partie visible de la
+   * cellule (zone de scroll moins la zone figée), et non à toute la cellule fusionnée, qui ne
+   * pourrait alors plus glisser. */
+  function stickyEditWidth(): number | undefined {
+    const td = nameTdRef.current
+    const scroller = td?.closest('table')?.parentElement
+    if (!td || !scroller || nameStickyLeft === undefined) return undefined
+    return Math.max(60, Math.min(td.clientWidth, scroller.clientWidth - nameStickyLeft) - 18)
+  }
 
   return (
     <tr
@@ -1041,9 +1053,10 @@ function GroupRow({
                   onRename ? `${CELL_EDITABLE_CLASS} cursor-text` : '',
                   g.isSelected || folderEdit ? CELL_SELECTED_CLASS : '',
                 ].join(' ')}
+                ref={nameTdRef}
                 {...nameCellProps}
               >
-                {nameStickyStyle ? <span className="inline-block" style={nameStickyStyle}>{folderNameText}</span> : folderNameText}
+                {nameStickyStyle ? <span className="inline-flex" style={nameStickyStyle}>{folderNameText}</span> : folderNameText}
               </td>
             </>
           )
@@ -1058,6 +1071,7 @@ function GroupRow({
                 onRename ? `${CELL_EDITABLE_CLASS} cursor-text` : '',
                 g.isSelected || folderEdit ? CELL_SELECTED_CLASS : '',
               ].join(' ')}
+              ref={nameTdRef}
               {...nameCellProps}
             >
               <span className={[nameStickyStyle ? 'inline-flex' : 'flex', 'items-center gap-1.5'].join(' ')} style={nameStickyStyle}>

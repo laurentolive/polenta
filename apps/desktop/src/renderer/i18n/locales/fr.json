@@ -520,7 +520,8 @@
       "rowMaxHeight": "Hauteur max des lignes",
       "rowMaxLines_one": "{{count}} ligne",
       "rowMaxLines_other": "{{count}} lignes",
-      "rowMaxLinesAll": "Toutes les lignes"
+      "rowMaxLinesAll": "Toutes les lignes",
+      "selectAllVisible": "Tout sélectionner (lignes filtrées)"
     },
     "wordView": {
       "clickToRename": "Cliquer pour renommer",
@@ -712,7 +713,29 @@
     "recalculateFromSteps": "Recalculer depuis les étapes",
     "submitResult": "Soumettre le résultat",
     "backToCampaign": "Retour à la campagne",
-    "generalNotes": "Notes générales"
+    "generalNotes": "Notes générales",
+    "picker": {
+      "titleSelect": "Sélectionner des tests",
+      "titleParams": "Paramètres des tests sélectionnés",
+      "step": "Étape {{step}} / {{total}}",
+      "testType": "Type de test",
+      "noTestType": "Aucun type de test dans ce projet.",
+      "selected_one": "{{count}} test sélectionné",
+      "selected_other": "{{count}} tests sélectionnés",
+      "selectedWithHidden_one": "{{count}} test sélectionné, dont {{hidden}} non affiché",
+      "selectedWithHidden_other": "{{count}} tests sélectionnés, dont {{hidden}} non affichés",
+      "clearSelection": "Vider la sélection",
+      "next": "Suivant",
+      "previous": "Précédent",
+      "confirmSelection": "Valider la sélection ({{count}})",
+      "withoutParams_one": "{{count}} test sans paramètre",
+      "withoutParams_other": "{{count}} tests sans paramètre",
+      "alreadyIncluded_one": "Déjà présent {{count}} fois dans la campagne",
+      "alreadyIncluded_other": "Déjà présent {{count}} fois dans la campagne",
+      "abandonTitle": "Abandonner la sélection ?",
+      "abandon": "Abandonner",
+      "keepEditing": "Continuer"
+    }
   },
   "dashboard": {
     "widgetModal": {

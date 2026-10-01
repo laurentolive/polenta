@@ -58,3 +58,26 @@ export function getAllObjectTypes(schema: ProjectSchema | undefined, category: '
   if (!schema) return []
   return flattenSystemNodes(schema.nodes).flatMap(({ node }) => (node.objectTypes ?? []).filter(t => t.category === category))
 }
+
+export interface TestTypeRef {
+  /** `<nœud>::<type>` — format de `objectTypeRef`. */
+  ref: string
+  label: string
+  typeDef: ObjectTypeDefinition
+}
+
+/** GH33 — types `test` de tous les nœuds locaux, avec leur ref (`getAllObjectTypes` ne donne pas le
+ *  nom du nœud). Libellé préfixé du chemin du composant (`›`) quand le schéma a plusieurs nœuds. */
+export function getTestTypeRefs(schema: ProjectSchema | undefined): TestTypeRef[] {
+  if (!schema) return []
+  const flat = flattenSystemNodes(schema.nodes)
+  return flat.flatMap(({ node, ancestors }) => (node.objectTypes ?? [])
+    .filter(t => t.category === 'test')
+    .map(t => ({
+      ref: `${node.name}::${t.name}`,
+      label: flat.length > 1
+        ? [...ancestors, node].map(n => n.label || n.name).concat(t.label || t.name).join(' › ')
+        : t.label || t.name,
+      typeDef: t,
+    })))
+}

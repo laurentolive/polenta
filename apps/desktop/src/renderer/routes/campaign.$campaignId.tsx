@@ -13,11 +13,8 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import { TestParamFields } from '../components/TestParamFields'
 import { manualKeysForRun } from '../lib/testParams'
-import {
-  buildReqInstances, countInstances, effectiveReqSelection, isAddComplete, isIteratingPreview, missingReqs,
-  presentReqIds, setReqValue, toggleReq, type ReqSelectionState,
-} from '../lib/reqInstances'
-import { ReqInstancePicker } from '../components/campaign/ReqInstancePicker'
+import { buildReqInstances, isIteratingPreview, missingReqs, presentReqIds } from '../lib/reqInstances'
+import { TestPickerModal, EMPTY_PICKER_RESULT, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
 import { UnresolvedParamsBanner } from '../components/UnresolvedParamsBanner'
@@ -25,7 +22,7 @@ import { ExportButton } from '../components/export/ExportButton'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import type { TestRunStatus, TestCase, ProjectSchema, ReqInstanceSelection } from '@polenta/types'
+import type { TestRunStatus, TestCase, ProjectSchema, ReqInstanceSelection, ParamResolutionPreview } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
@@ -74,19 +71,14 @@ function CampaignDetailPage() {
   // T171 — résolution des paramètres de la base (repos composants) à l'ajout.
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
 
+  // GH33 — sélecteur de tests (modale) ouvert.
   const [addingTests, setAddingTests] = useState(false)
-  const [selectedToAdd, setSelectedToAdd] = useState<Set<string>>(new Set())
-  const [addParamValues, setAddParamValues] = useState<Record<string, Record<string, string>>>({})
-  // T179 — tests itérants : exigences cochées et valeurs saisies par instance.
-  const [addReqSel, setAddReqSel] = useState<ReqSelectionState>({})
-  const [testFilter, setTestFilter] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingFields, setEditingFields] = useState<Record<string, string> | null>(null)
   const [editingParamsFor, setEditingParamsFor] = useState<string | null>(null)
   const [editParamValues, setEditParamValues] = useState<Record<string, string>>({})
   const [duplicatingFor, setDuplicatingFor] = useState<string | null>(null)
   const [duplicateParamValues, setDuplicateParamValues] = useState<Record<string, string>>({})
-  const [isConfirmingAdd, setIsConfirmingAdd] = useState(false)
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ['campaign', repoPath, campaignId],
@@ -117,7 +109,7 @@ function CampaignDetailPage() {
 
   // T171 — références à saisir / lues dans la base / non résolues, pour chaque test approuvé
   // candidat à l'ajout (ou à une nouvelle instance), lues à la source de la campagne.
-  const { previews: paramPreviews, isLoading: previewLoading } = useParamPreview(
+  const { previews: paramPreviews } = useParamPreview(
     repoPath, { campaignId }, tests.map(t => t.id), workspaceDir, !!repoPath && tests.length > 0,
   )
 
@@ -223,13 +215,6 @@ function CampaignDetailPage() {
       if (isIteratingPreview(preview)) return missingReqs(preview, presentOf(t.id)).length > 0
       return (manualKeysById.get(t.id)?.length ?? 0) > 0
     })
-  const addComplete = isAddComplete(selectedToAdd, paramPreviews, addParamValues, addReqSel, presentOf)
-  const filteredAvailable = testFilter.trim()
-    ? availableTests.filter(t =>
-        t.id.toLowerCase().includes(testFilter.toLowerCase()) ||
-        (t.title ?? '').toLowerCase().includes(testFilter.toLowerCase())
-      )
-    : availableTests
 
   function getRunParamValues(entryId: string): Record<string, string> {
     return campaign!.runs.find(r => r.entryId === entryId)?.paramValues ?? {}
@@ -262,43 +247,29 @@ function CampaignDetailPage() {
     })
   }
 
-  function toggleToAdd(id: string) {
-    setSelectedToAdd(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  async function handleConfirmAdd() {
-    if (selectedToAdd.size === 0) return
-    if (previewLoading || !addComplete) return
+  /** GH33 — validation du sélecteur (la modale vérifie déjà la complétude). Rejet = erreur
+   *  affichée dans la modale, qui reste ouverte. */
+  async function handleConfirmAdd(
+    { testIds, paramValues: addParamValues, reqSel: addReqSel }: PickerResult,
+    previews: Map<string, ParamResolutionPreview>,
+  ) {
+    if (testIds.length === 0) return
 
     // Un id déjà présent dans la campagne (test paramétré re-sélectionné) devient une
     // nouvelle instance via duplicateTest() plutôt qu'addTests(), qui déduplique. T179 — un test
     // itérant passe toujours par addTests(), avec les exigences retenues (dédup test/exigence).
-    const ids = [...selectedToAdd]
-    const iterIds = ids.filter(id => isIteratingPreview(paramPreviews.get(id)))
+    const ids = testIds
+    const iterIds = ids.filter(id => isIteratingPreview(previews.get(id)))
     const newIds = ids.filter(id => !iterIds.includes(id) && !includedIds.has(id))
     const duplicateIds = ids.filter(id => !iterIds.includes(id) && includedIds.has(id))
     const addIds = [...newIds, ...iterIds]
-    const reqInstances = buildReqInstances(iterIds, paramPreviews, addReqSel, presentOf)
+    const reqInstances = buildReqInstances(iterIds, previews, addReqSel, presentOf)
 
-    setIsConfirmingAdd(true)
-    try {
-      await Promise.all([
-        ...(addIds.length > 0 ? [addTestsMutation.mutateAsync({ ids: addIds, paramValues: addParamValues, reqInstances })] : []),
-        ...duplicateIds.map(id => duplicateTestMutation.mutateAsync({ testCaseId: id, paramValues: addParamValues[id] ?? {} })),
-      ])
-      setAddingTests(false)
-      setSelectedToAdd(new Set())
-      setAddParamValues({})
-      setAddReqSel({})
-      setTestFilter('')
-    } finally {
-      setIsConfirmingAdd(false)
-    }
+    await Promise.all([
+      ...(addIds.length > 0 ? [addTestsMutation.mutateAsync({ ids: addIds, paramValues: addParamValues, reqInstances })] : []),
+      ...duplicateIds.map(id => duplicateTestMutation.mutateAsync({ testCaseId: id, paramValues: addParamValues[id] ?? {} })),
+    ])
+    setAddingTests(false)
   }
 
   return (
@@ -435,113 +406,34 @@ function CampaignDetailPage() {
         </div>
       )}
 
-      {/* Add tests section */}
+      {/* Add tests section — GH33 : sélecteur en modale (Vue Excel filtrable, 2 étapes) */}
       {isActive && (
         <div className="mb-4">
-          {!addingTests ? (
-            <button
-              type="button"
-              onClick={() => {
-                // T171 — prévisualisation relue à l'ouverture (base ou tests modifiés entre-temps).
-                qc.invalidateQueries({ queryKey: ['campaign-param-preview'] })
-                setAddingTests(true)
-              }}
-              className="text-xs text-status-info hover:opacity-80 border border-status-info-border rounded px-3 py-1.5"
-            >
-              + {t('campaignPage.addTests')}
-            </button>
-          ) : (
-            <div className="border rounded p-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium">
-                  {t('campaignPage.addTestsSelected', { count: selectedToAdd.size })}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { setAddingTests(false); setSelectedToAdd(new Set()); setAddParamValues({}); setAddReqSel({}); setTestFilter('') }}
-                    className="text-xs text-ink-3 hover:text-ink"
-                  >
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmAdd}
-                    disabled={selectedToAdd.size === 0 || isConfirmingAdd || previewLoading || !addComplete}
-                    className="btn-primary-sm"
-                  >
-                    {isConfirmingAdd ? t('campaignPage.adding') : t('campaignPage.addCount', { count: countInstances(selectedToAdd, paramPreviews, addReqSel, presentOf) })}
-                  </button>
-                </div>
-              </div>
-              {availableTests.length === 0 ? (
-                <p className="text-xs text-ink-3 italic">{t('campaignPage.noApprovedTestAvailable')}</p>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    value={testFilter}
-                    onChange={e => setTestFilter(e.target.value)}
-                    placeholder={t('common.filterPlaceholder')}
-                    className="input-field w-full text-xs mb-2"
-                  />
-                  <div className="border border-edge rounded divide-y max-h-48 overflow-y-auto">
-                    {filteredAvailable.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-ink-3 italic">{t('common.noResults')}</p>
-                    ) : (
-                      filteredAvailable.map(availableTest => {
-                        const alreadyIncludedCount = campaign!.testCaseIds.filter(id => id === availableTest.id).length
-                        return (
-                        <div key={availableTest.id}>
-                          <label className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-hover">
-                            <input
-                              type="checkbox"
-                              checked={selectedToAdd.has(availableTest.id)}
-                              onChange={() => toggleToAdd(availableTest.id)}
-                              className="rounded"
-                            />
-                            <span className="font-mono text-ink-3 shrink-0">{availableTest.id}</span>
-                            <span className="text-ink truncate">{availableTest.title}</span>
-                            {alreadyIncludedCount > 0 && (
-                              <span className="shrink-0 text-[10px] text-ink-3 italic ml-auto">
-                                {t('campaignPage.alreadyPresent', { count: alreadyIncludedCount })}
-                              </span>
-                            )}
-                          </label>
-                          {selectedToAdd.has(availableTest.id) && isIteratingPreview(paramPreviews.get(availableTest.id)) && (() => {
-                            const id = availableTest.id
-                            const present = presentOf(id)
-                            const current = effectiveReqSelection(id, paramPreviews.get(id), present, addReqSel)
-                            return (
-                              <ReqInstancePicker
-                                preview={paramPreviews.get(id)!}
-                                present={present}
-                                selection={current}
-                                onToggle={reqId => setAddReqSel(prev => toggleReq(prev, id, reqId, current))}
-                                onChange={(reqId, key, value) => setAddReqSel(prev => setReqValue(prev, id, reqId, current, key, value))}
-                              />
-                            )
-                          })()}
-                          {selectedToAdd.has(availableTest.id) && !isIteratingPreview(paramPreviews.get(availableTest.id)) && (
-                            <TestParamFields
-                              labels={paramPreviews.get(availableTest.id)?.manual ?? []}
-                              resolved={paramPreviews.get(availableTest.id)?.resolved}
-                              unresolved={paramPreviews.get(availableTest.id)?.unresolved}
-                              values={addParamValues[availableTest.id] ?? {}}
-                              onChange={(label, value) => setAddParamValues(prev => ({
-                                ...prev,
-                                [availableTest.id]: { ...(prev[availableTest.id] ?? {}), [label]: value },
-                              }))}
-                            />
-                          )}
-                        </div>
-                        )
-                      })
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+          <button
+            type="button"
+            onClick={() => {
+              // T171 — prévisualisation relue à l'ouverture (base ou tests modifiés entre-temps).
+              qc.invalidateQueries({ queryKey: ['campaign-param-preview'] })
+              setAddingTests(true)
+            }}
+            className="text-xs text-status-info hover:opacity-80 border border-status-info-border rounded px-3 py-1.5"
+          >
+            + {t('campaignPage.addTests')}
+          </button>
+          {addingTests && (
+            <TestPickerModal
+              repoPath={repoPath}
+              workspaceDir={workspaceDir}
+              mode="add"
+              candidates={availableTests}
+              defaultTypeRef={component && level ? `${component}::${level}` : undefined}
+              previewSource={{ campaignId }}
+              initial={EMPTY_PICKER_RESULT}
+              presentOf={presentOf}
+              includedCount={id => campaign!.testCaseIds.filter(x => x === id).length}
+              onConfirm={handleConfirmAdd}
+              onCancel={() => setAddingTests(false)}
+            />
           )}
         </div>
       )}

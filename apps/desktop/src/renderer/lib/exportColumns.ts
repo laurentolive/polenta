@@ -19,6 +19,21 @@ const SYSTEM_COLUMN_LABELS: Record<string, string> = {
   coverageStatus: 'Couverture',
 }
 
+/** Colonnes affichées par défaut (aucune préférence enregistrée pour le type) — même ordre pour la
+ *  vue système, les exports pdf et le sélecteur de tests GH33 : section/name/id/status, `version`
+ *  (exigence) ou `steps` (test), puis les 3 premiers champs personnalisés. */
+export function defaultVisibleFields(typeDef: ObjectTypeDefinition | undefined): string[] {
+  return [
+    'section',
+    'name',
+    'id',
+    'status',
+    ...(typeDef?.category === 'requirement' ? ['version'] : []),
+    ...(typeDef?.category === 'test' ? ['steps'] : []),
+    ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? []),
+  ]
+}
+
 /** Libellé d'une colonne pour l'export — même résolution que `ExcelView.getColumnLabel`, sans les
  *  colonnes `link::*` (relations), non prises en charge par l'export (T43) : filtrées par
  *  `buildExportRows` avant construction des colonnes. */

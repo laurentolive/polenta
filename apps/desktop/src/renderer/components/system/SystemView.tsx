@@ -22,7 +22,7 @@ import { useTabs } from '../../contexts/TabsContext'
 import { treeFindNode, treeFindByObjectId, computeSectionNumbers } from '../../hooks/useTreeState'
 import { useSystemObjects } from '../../hooks/useSystemObjects'
 import { ExcelView } from './ExcelView'
-import { RowMaxHeightButton, ROW_MAX_LINES_MIN, ROW_MAX_LINES_ALL, ROW_MAX_LINES_DEFAULT } from './RowMaxHeightButton'
+import { RowMaxHeightButton, ROW_MAX_LINES_ALL, readExcelRowMaxLines } from './RowMaxHeightButton'
 import { WordView } from './WordView'
 import { EditView, type EditViewHandle } from './EditView'
 import { api } from '../../api'
@@ -34,7 +34,7 @@ import { RichTextToolbar } from './RichTextToolbar'
 import { ViewHeader } from '../layout/ViewHeader'
 import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
-import { buildExportRows, substituteExportParams } from '../../lib/exportColumns'
+import { buildExportRows, substituteExportParams, defaultVisibleFields } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
 import { flattenSystemNodes } from '@polenta/types'
@@ -402,10 +402,7 @@ export function SystemView() {
 
   // Hauteur max des lignes de la vue tableau (en lignes de texte) — préférence d'affichage
   // de l'utilisateur, persistée en localStorage, commune à tous les projets.
-  const [excelRowMaxLines, setExcelRowMaxLines] = useState<number>(() => {
-    const stored = Number(localStorage.getItem('polenta:excelRowMaxLines'))
-    return Number.isInteger(stored) && stored >= ROW_MAX_LINES_MIN && stored <= ROW_MAX_LINES_ALL ? stored : ROW_MAX_LINES_DEFAULT
-  })
+  const [excelRowMaxLines, setExcelRowMaxLines] = useState<number>(readExcelRowMaxLines)
   useEffect(() => {
     localStorage.setItem('polenta:excelRowMaxLines', String(excelRowMaxLines))
   }, [excelRowMaxLines])
@@ -824,15 +821,7 @@ export function SystemView() {
     // fetch du nouveau), ne pas re-dériver les colonnes visibles — sinon on écrase l'affichage
     // courant par le fallback avant que les vraies prefs du nouveau type n'arrivent.
     if (isPrefsPlaceholder || prefsPending) return
-    const fallback = [
-      'section',
-      'name',
-      'id',
-      'status',
-      ...(effectiveType?.category === 'requirement' ? ['version'] : []),
-      ...(effectiveType?.category === 'test' ? ['steps'] : []),
-      ...(effectiveType?.fields.slice(0, 3).map(f => f.name) ?? []),
-    ]
+    const fallback = defaultVisibleFields(effectiveType)
     const excel = savedPrefs?.excel ?? fallback
     const word = savedPrefs?.word ?? fallback
     const edit = savedPrefs?.edit ?? fallback

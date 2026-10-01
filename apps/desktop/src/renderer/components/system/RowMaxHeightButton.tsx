@@ -82,3 +82,14 @@ export function RowMaxHeightButton({
     </div>
   )
 }
+
+/** Hauteur max des lignes de la Vue Excel enregistrée (`localStorage`, commune à tous les projets),
+ *  bornée — défaut si absente ou invalide. Partagée par la vue système et le sélecteur GH33. */
+export function readExcelRowMaxLines(): number {
+  try {
+    const stored = Number(localStorage.getItem('polenta:excelRowMaxLines'))
+    return Number.isInteger(stored) && stored >= ROW_MAX_LINES_MIN && stored <= ROW_MAX_LINES_ALL ? stored : ROW_MAX_LINES_DEFAULT
+  } catch {
+    return ROW_MAX_LINES_DEFAULT
+  }
+}

@@ -57,6 +57,11 @@ export const ExecuteTestCaseSchema = z.object({
   result: z.enum(['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE']).optional(),
   /** T179 — exigence de l'instance de campagne exécutée (couverture par exigence). */
   requirementId: z.string().optional(),
+  /** GH36 — import d'un classeur d'exécution : testeur, date et origine lus dans le fichier.
+   *  Absents : exécution dans l'outil (date = maintenant). */
+  executedBy: z.string().optional(),
+  executedAt: z.string().datetime({ offset: true }).optional(),
+  origin: z.literal('excel-import').optional(),
 })
 
 export type CreateTestCaseDto = z.infer<typeof CreateTestCaseSchema>

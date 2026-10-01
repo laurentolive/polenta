@@ -296,6 +296,7 @@ Un `TestRun` représente **une exécution concrète** d'un cas de test à un ins
 | `equipmentUsed` | list | Identification physique de chaque équipement (voir §3.2) |
 | `stepResults` | list | Résultat par étape (voir §3.4) |
 | `notes` | RICHTEXT | Observations générales, contexte global de l'exécution. Liens OneDrive pour les fichiers annexes (logs, exports CSV). |
+| `origin` | `'excel-import'` | *(GH36)* Origine du résultat : absent = saisi dans l'outil ; `excel-import` = réimporté depuis le classeur d'exécution (§4.5), avec testeur et date lus dans le fichier |
 
 ### 3.2 Identification du matériel utilisé (EquipmentUsed)
 
@@ -638,6 +639,61 @@ l'état live du test — cohérent avec le reste de la page.
 - Les champs concernés étant du Markdown (voir §5, sérialisation `RichTextField`/`RichTextViewer`),
   la substitution n'échappe pas manuellement le HTML — le rendu Markdown (`html: false`) neutralise
   déjà tout caractère spécial présent dans une valeur substituée.
+
+### 4.5 Exécution hors outil : classeur Excel d'exécution (GH36)
+
+Pour les équipes qui n'exécutent pas les campagnes dans Polenta : la campagne est exportée dans un
+classeur Excel que les testeurs remplissent, puis le classeur rempli est réimporté. Bouton
+**« Excel d'exécution »** dans le header de la page campagne (`ExecutionSheetMenu`), absent sur une
+campagne `completed`/`abandoned` (export et import y sont aussi refusés côté main). Format natif
+fixe, indépendant des gabarits client (GH34). Code : `CampaignExecutionService`,
+`export/campaign-execution.xlsx.ts` (export), `export/campaign-execution-import.ts` (import),
+libellés et types partagés dans `@polenta/types` (`campaign-execution-sheet.ts`).
+
+**Export** (« Exporter le classeur d'exécution… », nom proposé `<CAMP-ID>_execution_<AAAA-MM-JJ>.xlsx`) :
+toutes les instances de la campagne, dans l'ordre de `runs[]`, chacune sur une **ligne d'instance**
+suivie d'une **ligne par étape** (niveau de plan 1, repliable). Colonnes, dans l'ordre : Clé
+(masquée), Instance, Étape, Test / Action, Résultat attendu, **Verdict, Testeur, Date d'exécution,
+Commentaire** (cases de saisie, en jaune), puis Exigence (`requirementId`, T179), Paramètres
+(valeurs figées `réf = valeur`), Statut actuel. Le texte des étapes et les pré/postconditions sont
+ceux de `testSnapshot` (sinon test live, §4.2), paramètres substitués comme en §4.4, convertis en
+texte brut ; images et diagrammes remplacés par `[image]` / `[diagramme]`. Test source introuvable :
+ligne d'instance « (test introuvable) » sans étape.
+- Seules les cases de saisie sont déverrouillées (Verdict/Testeur/Date/Commentaire sur une ligne
+  d'instance, Verdict/Commentaire sur une ligne d'étape) ; feuille protégée **sans mot de passe** ;
+  listes déroulantes de verdicts (global : §3.3, étape : §3.3 StepResult) dans la langue de l'UI ;
+  filtre automatique et volet figé (en-têtes + colonnes Clé/Instance/Étape). Excel refuse de trier
+  une feuille protégée contenant des cellules verrouillées : le tri suppose d'ôter la protection,
+  sans effet sur l'import.
+- Chaque ligne porte une **clé technique** masquée (`entryId` ou `entryId#order`) ; une feuille
+  `_polenta` très masquée porte `formatVersion` (1), `campaignId`, `exportedAt`, `locale` et, par
+  instance, `entryId`, `testCaseId`, `orders`, `testFound`.
+
+**Import** (« Importer des résultats… ») : sélection du fichier, **aperçu** (`ExecutionImportModal`,
+aucune écriture), puis « Importer N résultats ». À l'application, le main **relit et revalide** le
+fichier contre l'état courant de la campagne (l'aperçu n'est qu'indicatif).
+- Lignes identifiées par leur clé, jamais par leur position (tri/filtre sans effet). Langue du
+  classeur indifférente : verdicts reconnus en code (`FAIL`) ou libellé FR/EN, casse et espaces ignorés.
+- Une instance est **remplie** si son verdict global ou au moins un verdict d'étape est renseigné ;
+  sinon elle est ignorée (inchangée) — import partiel, import successif de plusieurs fichiers.
+- Instance remplie : verdict d'étape vide → `NOT_EXECUTED` ; verdict global saisi → utilisé tel
+  quel, sinon calculé (règle §3.3) ; Testeur vide → identité git de l'utilisateur qui importe ;
+  Date vide → date de l'import (cellule date, formule, `AAAA-MM-JJ[ HH:mm]` ou `JJ/MM/AAAA[ HH:mm]`,
+  heure locale ; sans heure → midi local) ; commentaires en texte brut → Markdown échappé, une ligne
+  = un paragraphe.
+- **Toute instance remplie écrase** le résultat existant : un nouveau `TestRun` est créé (même
+  service que l'exécution dans l'outil, `origin: 'excel-import'`, `requirementId` de l'instance,
+  testeur et date du fichier), puis l'instance prend son statut, son `runId`, `executedAt` et
+  `executedBy` ; campagne `planned` → `in_progress`. L'aperçu signale « remplace le résultat
+  existant ». Écriture séquentielle ; une erreur arrête l'import (les instances déjà écrites restent).
+- Refus global (rien d'écrit) : fichier illisible, pas de feuille `_polenta`, version inconnue,
+  classeur d'une autre campagne, campagne clôturée. Erreur propre à une instance (exclue, les autres
+  importées) : instance absente de la campagne, test introuvable, étapes du fichier ≠ étapes
+  exportées, verdict non reconnu, date illisible. Ligne sans clé portant une saisie : avertissement.
+- Relecture d'un run importé : badge « Importé depuis Excel ».
+
+`CampaignTestRun.executedBy` est désormais réécrit à chaque saisie de résultat : renseigné par un
+import, retiré par une exécution dans l'outil (qui ne le fournit pas).
 
 ---
 

@@ -122,6 +122,12 @@ function TestRunViewPage() {
               · {new Date(run.executedAt).toLocaleDateString(toIntlLocale(i18n.language), { day: 'numeric', month: 'long', year: 'numeric' })}
               · {run.executedBy}
             </span>
+            {/* GH36 — résultat saisi hors outil puis réimporté depuis le classeur d'exécution. */}
+            {run.origin === 'excel-import' && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-surface/60 border border-current/20">
+                {t('campaignPage.executionSheet.importedBadge')}
+              </span>
+            )}
           </div>
         ) : (
           <div className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-status-neutral-bg text-status-neutral">

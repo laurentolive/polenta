@@ -18,6 +18,7 @@ import type { RepoWatcherService } from '../services/repo-watcher.service'
 import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
+import type { CampaignExecutionService } from '../services/campaign-execution.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
 import type { InterfaceComplianceService } from '../services/interface-compliance.service'
@@ -55,6 +56,9 @@ import type {
   ExportKind,
   TemplateExportFormat,
   ExportFormat,
+  ExportResult,
+  ExecutionSheetLocale,
+  ExecutionImportPreview,
   Parameter,
   AppSettings,
 } from '@polenta/types'
@@ -82,6 +86,7 @@ export interface Container {
   schema: SchemaService
   elementMove: ElementMoveService
   campaigns: CampaignsService
+  campaignExecution: CampaignExecutionService
   tree: TreeService
   baseline: BaselineService
   polentaRepo: PolentaRepoService
@@ -450,6 +455,46 @@ export function registerIpcHandlers(c: Container): void {
   ipcMain.handle('campaigns:delete',
     (_e, repoPath: string, id: string) =>
       c.campaigns.delete(repoPath, id))
+  // GH36 — classeur Excel d'exécution hors outil : dialogue d'enregistrement ici (comme
+  // `export:save`), contenu construit côté main à partir de la campagne.
+  ipcMain.handle('campaigns:execution-sheet-export', async (
+    _e,
+    repoPath: string,
+    campaignId: string,
+    locale: ExecutionSheetLocale,
+  ): Promise<ExportResult> => {
+    const today = new Date().toISOString().slice(0, 10)
+    const saveResult = await dialog.showSaveDialog({
+      title: 'Exporter le classeur d’exécution',
+      defaultPath: `${campaignId}_execution_${today}.xlsx`,
+      filters: [EXPORT_DIALOG_FILTERS.xlsx],
+    })
+    if (saveResult.canceled || !saveResult.filePath) return { status: 'canceled' }
+    try {
+      await c.campaignExecution.exportSheet(repoPath, campaignId, locale === 'en' ? 'en' : 'fr', saveResult.filePath)
+      return { status: 'ok', filePath: saveResult.filePath }
+    } catch (err) {
+      return { status: 'error', message: err instanceof Error ? err.message : 'Erreur lors de l’export' }
+    }
+  })
+  // GH36 sprint 2 — import : choix du fichier puis aperçu (aucune écriture) ; l'application relit
+  // le fichier et revalide contre l'état courant de la campagne.
+  ipcMain.handle('campaigns:execution-sheet-preview', async (
+    _e,
+    repoPath: string,
+    campaignId: string,
+  ): Promise<ExecutionImportPreview | { canceled: true }> => {
+    const result = await dialog.showOpenDialog({
+      title: 'Importer des résultats d’exécution',
+      filters: [EXPORT_DIALOG_FILTERS.xlsx],
+      properties: ['openFile'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+    return c.campaignExecution.preview(repoPath, campaignId, result.filePaths[0])
+  })
+  ipcMain.handle('campaigns:execution-sheet-apply',
+    (_e, repoPath: string, campaignId: string, filePath: string, workspaceDir?: string) =>
+      c.campaignExecution.apply(repoPath, campaignId, filePath, workspaceDir))
 
   // ── Baselines ────────────────────────────────────────────────────────────────
   ipcMain.handle('baseline:list', (_e, repoPath: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>

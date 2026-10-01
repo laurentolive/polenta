@@ -19,6 +19,7 @@ import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
 import { UnresolvedParamsBanner } from '../components/UnresolvedParamsBanner'
 import { ExportButton } from '../components/export/ExportButton'
+import { ExecutionSheetMenu } from '../components/campaign/ExecutionSheetMenu'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
@@ -313,6 +314,11 @@ function CampaignDetailPage() {
                 getPayload={() => ({ campaign, entries: resolveCampaignRuns(campaign, tests) })}
                 getPrintParams={() => ({ repoPath, campaignId })}
               />
+            )}
+            {/* GH36 — exécution hors outil (export du classeur / import des résultats) : pas sur une
+                campagne clôturée. */}
+            {campaign.status !== 'completed' && campaign.status !== 'abandoned' && (
+              <ExecutionSheetMenu repoPath={repoPath} campaignId={campaignId} workspaceDir={workspaceDir || undefined} />
             )}
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
               campaign.status === 'completed' ? 'bg-status-success-bg text-status-success' :

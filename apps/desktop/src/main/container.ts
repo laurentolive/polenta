@@ -15,6 +15,7 @@ import { RepoWatcherService } from './services/repo-watcher.service'
 import { SchemaService } from './services/schema.service'
 import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
+import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TreeService } from './services/tree.service'
 import { BaselineService } from './services/baseline.service'
 import { PolentaRepoService } from './services/polenta-repo.service'
@@ -68,6 +69,8 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
   const reqRefs = new ReqRefsService(git, reqIndex, schema)
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree, reqRefs)
   const campaigns = new CampaignsService(git, tests, parameters)
+  // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
+  const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   const baseline = new BaselineService()
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)
@@ -103,6 +106,7 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
     schema,
     elementMove,
     campaigns,
+    campaignExecution,
     tree,
     baseline,
     polentaRepo,

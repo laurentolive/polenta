@@ -208,6 +208,12 @@ export function createIpcClient(): ApiClient {
       updateRunParams: (p, campaignId, entryId, paramValues) =>
         invoke('campaigns:update-run-params', p, campaignId, entryId, paramValues),
       delete: (p, id) => invoke('campaigns:delete', p, id),
+      executionSheet: {
+        export: (p, campaignId, locale) => invoke('campaigns:execution-sheet-export', p, campaignId, locale),
+        preview: (p, campaignId) => invoke('campaigns:execution-sheet-preview', p, campaignId),
+        apply: (p, campaignId, filePath, workspaceDir) =>
+          invoke('campaigns:execution-sheet-apply', p, campaignId, filePath, workspaceDir),
+      },
     },
     dialog: {
       pickFolder: (title) => invoke('dialog:pick-folder', title),

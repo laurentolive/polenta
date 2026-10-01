@@ -57,6 +57,9 @@ import type {
   ExportTemplateListResult,
   TemplateExportFormat,
   ExportResult,
+  ExecutionSheetLocale,
+  ExecutionImportPreview,
+  ExecutionImportResult,
   AppSettings,
   UpdateState,
 } from '@polenta/types'
@@ -525,6 +528,15 @@ export interface ApiClient {
     previewParams(repoPath: string, source: { campaignId?: string; baselineRef?: string }, testCaseIds: string[], workspaceDir?: string): Promise<ParamResolutionPreview[]>
     updateRunParams(repoPath: string, campaignId: string, entryId: string, paramValues: Record<string, string>): Promise<TestCampaign>
     delete(repoPath: string, id: string): Promise<void>
+    /** GH36 — exécution hors outil via un classeur Excel. */
+    executionSheet: {
+      /** Ouvre le dialogue d'enregistrement puis écrit le classeur (`locale` : libellés du classeur). */
+      export(repoPath: string, campaignId: string, locale: ExecutionSheetLocale): Promise<ExportResult>
+      /** Ouvre le sélecteur de fichier puis renvoie l'aperçu de l'import (aucune écriture). */
+      preview(repoPath: string, campaignId: string): Promise<ExecutionImportPreview | { canceled: true }>
+      /** Relit et revalide `filePath`, puis écrit les résultats des instances remplies. */
+      apply(repoPath: string, campaignId: string, filePath: string, workspaceDir?: string): Promise<ExecutionImportResult>
+    }
   }
   pref: {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>

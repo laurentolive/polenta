@@ -85,6 +85,8 @@ export interface TestRun {
   equipmentUsed: EquipmentUsed[]
   stepResults: StepResult[]
   notes: string                // HTML (RICHTEXT)
+  /** GH36 — origine du résultat ; absent = saisi dans l'outil. */
+  origin?: 'excel-import'
 }
 
 // ─── Campaigns ───────────────────────────────────────────────────────────────

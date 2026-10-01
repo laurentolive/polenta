@@ -1,5 +1,8 @@
 import type { CampaignTestRun, TestCase } from '@polenta/types'
-import { extractTestParamRefs, isReqRefKey, parseParamRefs, substituteMarkdownParamRefs, substituteParamRefs } from '@polenta/types'
+import { extractTestParamRefs, isReqRefKey, isT171Run, parseParamRefs, substituteRunParams } from '@polenta/types'
+
+// GH36 — helpers de valeurs figées déplacés dans `@polenta/types` (utilisés aussi par le main).
+export { isT171Run, runParamLookup, substituteRunParams } from '@polenta/types'
 
 // T97 → T171 : la syntaxe `{nom}` des paramètres de test est celle de la base de paramètres
 // (`@polenta/types` parameter-refs). À l'ajout en campagne, le main résout les références
@@ -8,31 +11,7 @@ import { extractTestParamRefs, isReqRefKey, parseParamRefs, substituteMarkdownPa
 // campagne a figé — la résolution elle-même est côté main (`campaigns:preview-params`).
 
 type ParamScannable = Pick<TestCase, 'preconditions' | 'postconditions' | 'steps'>
-
-/** Valeur figée d'une référence pour une instance : base (`resolvedParams`), puis saisie. */
-export function runParamLookup(run: Pick<CampaignTestRun, 'resolvedParams' | 'paramValues'> | undefined) {
-  return (key: string): string | undefined => run?.resolvedParams?.[key] ?? run?.paramValues?.[key]
-}
-
 type RunParams = Pick<CampaignTestRun, 'resolvedParams' | 'paramValues' | 'unresolvedParams' | 'paramSourceRef'>
-
-/** Instance ajoutée depuis T171 (résolution depuis la base) ; sinon instance T97 historique. */
-export function isT171Run(run: RunParams | undefined): boolean {
-  return !!run && (run.resolvedParams !== undefined || run.unresolvedParams !== undefined || run.paramSourceRef !== undefined)
-}
-
-/**
- * Remplace chaque référence par sa valeur figée dans l'instance ; une référence sans valeur
- * reste littérale (non résolue, ou saisie vidée), comme en T97. Instance T171 : le code Markdown
- * est laissé tel quel (même règle qu'à l'écran). Instance antérieure : substitution T97 partout,
- * code compris, pour ne rien changer à l'affichage des campagnes existantes.
- */
-export function substituteRunParams(text: string, run: RunParams | undefined): string {
-  if (!text) return text
-  return isT171Run(run)
-    ? substituteMarkdownParamRefs(text, runParamLookup(run))
-    : substituteParamRefs(text, runParamLookup(run))
-}
 
 /** Copie du test dont les champs scannés (T171 §3) portent les valeurs figées de l'instance. */
 export function substituteTestParams<T extends ParamScannable>(test: T, run: RunParams | undefined): T {

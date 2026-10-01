@@ -146,7 +146,8 @@ export class TestsService {
     if (!testCase) throw new Error(`Test case ${testCaseId} not found`)
 
     const runId = await this.nextRunId(targetRepo, testCaseId)
-    const now = new Date().toISOString()
+    // GH36 — un résultat importé porte la date d'exécution saisie par le testeur.
+    const now = dto.executedAt ?? new Date().toISOString()
 
     // Determine overall result: explicit override takes priority, otherwise computed from steps
     const stepResults = dto.stepResults.sort((a, b) => a.order - b.order)
@@ -165,11 +166,12 @@ export class TestsService {
       ...(dto.requirementId && { requirementId: dto.requirementId }),
       result,
       executedAt: now,
-      executedBy: 'TODO:current-user',
+      executedBy: dto.executedBy || 'TODO:current-user',
       duration: 0,
       equipmentUsed: dto.equipmentUsed ?? [],
       stepResults: stepResults.map((s) => ({ ...s, executedAt: now })),
       notes: dto.notes ?? '',
+      ...(dto.origin && { origin: dto.origin }),
     }
 
     await this.git.writeYaml(targetRepo, `test-runs/${testCaseId}/${runId}.yaml`, run)

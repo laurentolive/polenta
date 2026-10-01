@@ -716,6 +716,12 @@
     "abandon": "Abandonner",
     "deleteCampaignTitle": "Supprimer la campagne",
     "deleting": "Suppression…",
+    "executionSheet": {
+      "menu": "Excel d'exécution",
+      "menuTitle": "Exécuter la campagne hors outil avec un classeur Excel",
+      "export": "Exporter le classeur d'exécution…",
+      "exportHint": "Classeur à remplir par les testeurs, puis à réimporter"
+    },
     "stepResult": {
       "notExecuted": "Non exécuté",
       "skip": "Ignoré"

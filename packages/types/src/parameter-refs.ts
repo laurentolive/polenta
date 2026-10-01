@@ -1,5 +1,6 @@
 import type { Parameter } from './parameter'
 import type { TestCase } from './test'
+import type { CampaignTestRun } from './campaign'
 
 // ─── Références de paramètres (T171) ─────────────────────────────────────────
 // Seule définition de la grammaire `{nom}` / `{<nœud>::nom}`, partagée par le main (usages,
@@ -177,4 +178,33 @@ export function substituteParamRefs(text: string, lookup: (key: string) => strin
     const value = lookup(node ? `${node}::${name}` : name)
     return value && value.trim() ? value : match
   })
+}
+
+// ─── Valeurs figées d'une instance de campagne (T97/T171) ─────────────────────
+// GH36 — déplacés depuis `renderer/lib/testParams.ts` (ré-exportés là-bas) pour servir aussi au
+// main process (classeur d'exécution Excel).
+
+type RunParams = Pick<CampaignTestRun, 'resolvedParams' | 'paramValues' | 'unresolvedParams' | 'paramSourceRef'>
+
+/** Valeur figée d'une référence pour une instance : base (`resolvedParams`), puis saisie. */
+export function runParamLookup(run: Pick<CampaignTestRun, 'resolvedParams' | 'paramValues'> | undefined) {
+  return (key: string): string | undefined => run?.resolvedParams?.[key] ?? run?.paramValues?.[key]
+}
+
+/** Instance ajoutée depuis T171 (résolution depuis la base) ; sinon instance T97 historique. */
+export function isT171Run(run: RunParams | undefined): boolean {
+  return !!run && (run.resolvedParams !== undefined || run.unresolvedParams !== undefined || run.paramSourceRef !== undefined)
+}
+
+/**
+ * Remplace chaque référence par sa valeur figée dans l'instance ; une référence sans valeur
+ * reste littérale (non résolue, ou saisie vidée), comme en T97. Instance T171 : le code Markdown
+ * est laissé tel quel (même règle qu'à l'écran). Instance antérieure : substitution T97 partout,
+ * code compris, pour ne rien changer à l'affichage des campagnes existantes.
+ */
+export function substituteRunParams(text: string, run: RunParams | undefined): string {
+  if (!text) return text
+  return isT171Run(run)
+    ? substituteMarkdownParamRefs(text, runParamLookup(run))
+    : substituteParamRefs(text, runParamLookup(run))
 }

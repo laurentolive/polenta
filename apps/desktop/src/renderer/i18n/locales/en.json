@@ -716,6 +716,12 @@
     "abandon": "Abandon",
     "deleteCampaignTitle": "Delete campaign",
     "deleting": "Deleting…",
+    "executionSheet": {
+      "menu": "Execution Excel",
+      "menuTitle": "Run the campaign outside the tool with an Excel workbook",
+      "export": "Export execution workbook…",
+      "exportHint": "Workbook for testers to fill in, then re-import"
+    },
     "stepResult": {
       "notExecuted": "Not executed",
       "skip": "Skipped"

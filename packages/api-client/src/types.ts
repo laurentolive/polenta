@@ -54,6 +54,8 @@ import type {
   UpdateImpactItemStatusDto,
   ExportKind,
   ExportFormat,
+  ExportTemplateListResult,
+  TemplateExportFormat,
   ExportResult,
   AppSettings,
   UpdateState,
@@ -605,7 +607,18 @@ export interface ApiClient {
       payload: unknown,
       printParams: Record<string, string> | undefined,
       suggestedName: string,
+      /** GH34 — gabarit client (chemin relatif à la bibliothèque) ; absent = rendu Standard. */
+      templateRelPath?: string,
     ): Promise<ExportResult>
+    /** GH34 — gabarits de la bibliothèque (préférence application) pour un format. */
+    listTemplates(format: TemplateExportFormat): Promise<ExportTemplateListResult>
+    /** GH34 — copie les gabarits d'exemple livrés avec l'application dans la bibliothèque
+     *  (sous-dossier dédié, fichiers existants jamais écrasés) ; renvoie le nombre de fichiers copiés. */
+    installExampleTemplates(): Promise<{ folder: string; copied: number }>
+    /** GH34 — depuis la route `/print/drawio-snapshot` : diagramme `index` rendu (rectangle en px
+     *  CSS, `null` si échec), ou fin du rendu (`index = -1`). N'a d'effet que dans la fenêtre
+     *  cachée de capture d'un export Word par gabarit. */
+    drawioSnapshotReady(index: number, rect: { x: number; y: number; width: number; height: number } | null): Promise<void>
     /** Signale depuis une route `/print/<kind>` que ses données sont chargées et prêtes à imprimer
      *  — n'a d'effet que dans la fenêtre cachée créée par un export pdf en cours. */
     notifyPrintReady(): Promise<void>

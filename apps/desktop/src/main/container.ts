@@ -25,6 +25,8 @@ import { SavedQueriesService } from './services/saved-queries.service'
 import { DashboardsService } from './services/dashboards.service'
 import { DashboardSeedService } from './services/dashboard-seed.service'
 import { ExportService } from './services/export.service'
+import { ExportTemplateLibrary } from './services/export-template-library'
+import { TemplateExportService } from './services/export/template/template-export.service'
 import { AppSettingsService } from './services/app-settings.service'
 import { UpdateService } from './services/update.service'
 import { registerIpcHandlers } from './ipc/index'
@@ -75,9 +77,15 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
   // never needs to look up a SavedQuery, so this ordering avoids a circular dependency.
   const savedQueries = new SavedQueriesService(git, schema, dashboards)
   const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
-  const exportSvc = new ExportService()
   // GH26 — préférences app-level + mise à jour automatique.
   const appSettings = new AppSettingsService()
+  // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
+  const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
+  const exportSvc = new ExportService(new TemplateExportService(
+    exportTemplateLibrary, git, schema, auth, tests,
+    // Chargé au premier diagramme à rendre (T141 : rien de plus au démarrage).
+    async (repoPath, refs) => (await import('./services/export/template/drawio-snapshot')).snapshotDrawios(repoPath, refs),
+  ))
   const update = new UpdateService(appSettings)
 
   registerIpcHandlers({
@@ -105,6 +113,7 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
     dashboards,
     dashboardSeed,
     export: exportSvc,
+    exportTemplateLibrary,
     parameters,
     revalidation,
     appSettings,

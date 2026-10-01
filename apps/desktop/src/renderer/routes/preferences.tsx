@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { useProjectSchema } from '../hooks/useProjectSchema'
@@ -8,7 +8,8 @@ import { useVersioning } from '../contexts/VersioningContext'
 import { decodeProjectId } from '../lib/projectId'
 import { CancelConfirmModal } from '../components/schema/objectTypeEditor'
 import { ViewHeader } from '../components/layout/ViewHeader'
-import type { ProjectSchema } from '@polenta/types'
+import { TEMPLATE_KEYS, templateKey } from '../lib/exportTemplates'
+import type { ExportTemplateKey, ProjectSchema, TemplateExportFormat } from '@polenta/types'
 
 export const Route = createFileRoute('/preferences')({
   component: PreferencesPage,
@@ -19,19 +20,34 @@ export const Route = createFileRoute('/preferences')({
 })
 
 // Dedicated page for project-level tool preferences (T96), reached from its own sidebar item
-// (ProjectPanel.tsx), separate from the Modèle de données page/schema editor. Currently a single
-// option (autoPropagatePin) — more will be added to this same EditorState/form as they come.
+// (ProjectPanel.tsx), separate from the Modèle de données page/schema editor: autoPropagatePin and
+// default export templates (GH34) — more will be added to this same EditorState/form as they come.
 
 interface EditorState {
   autoPropagatePin: boolean
+  /** GH34 — gabarit d'export par défaut par `<kind>:<format>` ; absent = Standard. */
+  exportTemplates: Partial<Record<ExportTemplateKey, string>>
 }
 
 function schemaToEditable(schema: ProjectSchema): EditorState {
-  return { autoPropagatePin: schema.preferences?.autoPropagatePin ?? false }
+  return {
+    autoPropagatePin: schema.preferences?.autoPropagatePin ?? false,
+    exportTemplates: { ...schema.preferences?.exportTemplates },
+  }
 }
 
 function editableToSchema(state: EditorState, schema: ProjectSchema): ProjectSchema {
-  return { ...schema, preferences: { ...schema.preferences, autoPropagatePin: state.autoPropagatePin } }
+  const { exportTemplates: _previous, ...otherPreferences } = schema.preferences ?? {}
+  // Entrées « Standard » retirées plutôt qu'écrites vides ; clé entière omise si rien n'est défini.
+  const exportTemplates = Object.fromEntries(Object.entries(state.exportTemplates).filter(([, v]) => !!v))
+  return {
+    ...schema,
+    preferences: {
+      ...otherPreferences,
+      autoPropagatePin: state.autoPropagatePin,
+      ...(Object.keys(exportTemplates).length > 0 ? { exportTemplates } : {}),
+    },
+  }
 }
 
 function PreferencesPage() {
@@ -47,6 +63,18 @@ function PreferencesPage() {
   }, [workspaceDir])
 
   const { data: schema, isLoading } = useProjectSchema(repoPath)
+  const templateFormats = [...new Set(TEMPLATE_KEYS.map(k => k.format))]
+  const templateLists = useQueries({
+    queries: templateFormats.map(format => ({
+      queryKey: ['export-templates', format],
+      queryFn: () => api.export.listTemplates(format),
+      staleTime: 0,
+    })),
+  })
+  const templatesByFormat = new Map<TemplateExportFormat, string[]>(
+    templateFormats.map((format, i) => [format, templateLists[i]?.data?.templates.map(tpl => tpl.relPath) ?? []]),
+  )
+  const libraryConfigured = templateLists.some(q => q.data?.dirConfigured)
   const [state, setState] = useState<EditorState | null>(null)
   const [savedState, setSavedState] = useState<EditorState | null>(null)
   const [saved, setSaved] = useState(false)
@@ -150,6 +178,43 @@ function PreferencesPage() {
               </span>
             </span>
           </label>
+
+          {/* GH34 — gabarit d'export par défaut, partagé par l'équipe via schema.yaml. */}
+          <div className="mt-6">
+            <p className="text-sm text-ink">{t('preferences.exportTemplatesTitle')}</p>
+            <p className="text-xs text-ink-3 mt-0.5 mb-3">
+              {libraryConfigured ? t('preferences.exportTemplatesHelp') : t('preferences.exportTemplatesNoLibrary')}
+            </p>
+            <div className="space-y-2">
+              {TEMPLATE_KEYS.map(({ kind, format }) => {
+                const key = templateKey(kind, format)
+                const value = state.exportTemplates[key] ?? ''
+                const available = templatesByFormat.get(format) ?? []
+                const missing = !!value && !available.includes(value)
+                return (
+                  <label key={key} className="flex items-center gap-3">
+                    <span className="text-xs text-ink-2 w-56">{t(`preferences.exportTemplateKind.${kind}`)} ({format})</span>
+                    <select
+                      value={value}
+                      onChange={e => setState(s => {
+                        if (!s) return s
+                        // « Standard » = clé retirée (pas une chaîne vide), pour que l'état
+                        // redevienne identique à celui enregistré et que la page ne reste pas
+                        // marquée modifiée.
+                        const { [key]: _previous, ...others } = s.exportTemplates
+                        return { ...s, exportTemplates: e.target.value ? { ...others, [key]: e.target.value } : others }
+                      })}
+                      className="input-field flex-1 text-xs py-1"
+                    >
+                      <option value="">{t('exportButton.standardTemplate')}</option>
+                      {missing && <option value={value}>⚠ {value} ({t('exportButton.notFound')})</option>}
+                      {available.map(path => <option key={path} value={path}>{path}</option>)}
+                    </select>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>

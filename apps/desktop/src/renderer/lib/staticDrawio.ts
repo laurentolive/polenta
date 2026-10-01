@@ -119,8 +119,24 @@ function nextFrame(): Promise<void> {
  * Renvoie un teardown : annule toute etape asynchrone en vol, coupe le
  * ResizeObserver de mesure et demonte le graphe mxGraph.
  */
-export function renderStaticDrawio(placeholder: HTMLElement, repoPath: string): () => void {
+export function renderStaticDrawio(
+  placeholder: HTMLElement,
+  repoPath: string,
+  /** GH34 — appelé une fois : `true` quand le diagramme est rendu et mis en page, `false` en
+   *  erreur (badge d'erreur affiché). Sert à la capture en image pour l'export Word. */
+  onDone?: (ok: boolean) => void,
+): () => void {
   const { path, nodeId, width, height, crop } = readAttrs(placeholder)
+  let done = false
+  const finish = (ok: boolean) => {
+    if (done) return
+    done = true
+    onDone?.(ok)
+  }
+  const fail = (key: string) => {
+    showError(placeholder, key, path)
+    finish(false)
+  }
   let cancelled = false
   let resizeObs: ResizeObserver | null = null
   let viewer: GraphViewerLike | null = null
@@ -146,7 +162,10 @@ export function renderStaticDrawio(placeholder: HTMLElement, repoPath: string): 
     disposeViewer()
   }
 
-  if (!path) return teardown
+  if (!path) {
+    finish(false)
+    return teardown
+  }
 
   const run = async () => {
     let pages
@@ -157,26 +176,26 @@ export function renderStaticDrawio(placeholder: HTMLElement, repoPath: string): 
     }
     if (cancelled) return
     if (!pages || pages.length === 0) {
-      showError(placeholder, 'system.richTextViewer.drawioNotFound', path)
+      fail('system.richTextViewer.drawioNotFound')
       return
     }
 
     const target = resolveDrawioTarget(pages, nodeId)
     const page = pages[target.pageIndex]
     if (!page || !page.xml) {
-      showError(placeholder, 'system.richTextViewer.drawioInvalid', path)
+      fail('system.richTextViewer.drawioInvalid')
       return
     }
 
     try {
       await loadDrawioViewer()
     } catch {
-      if (!cancelled) showError(placeholder, 'system.richTextViewer.drawioInvalid', path)
+      if (!cancelled) fail('system.richTextViewer.drawioInvalid')
       return
     }
     if (cancelled) return
     if (!window.GraphViewer) {
-      showError(placeholder, 'system.richTextViewer.drawioInvalid', path)
+      fail('system.richTextViewer.drawioInvalid')
       return
     }
 
@@ -252,6 +271,7 @@ export function renderStaticDrawio(placeholder: HTMLElement, repoPath: string): 
         // conteneur a une largeur non nulle), puis suivi des redimensionnements
         // internes du viewer (resize:true) jusqu'au teardown.
         applyLayout(container.clientWidth, container.clientHeight)
+        finish(true)
         resizeObs = new ResizeObserver(entries => {
           if (cancelled) return
           const box = entries[entries.length - 1]?.contentRect
@@ -260,13 +280,13 @@ export function renderStaticDrawio(placeholder: HTMLElement, repoPath: string): 
         resizeObs.observe(container)
       })
     } catch {
-      if (!cancelled) showError(placeholder, 'system.richTextViewer.drawioInvalid', path)
+      if (!cancelled) fail('system.richTextViewer.drawioInvalid')
     }
   }
 
   // .catch de derniere ligne : un throw inattendu ne doit jamais remonter en
   // unhandledrejection ; le placeholder garde alors son badge de repli.
-  void run().catch(() => {})
+  void run().catch(() => finish(false))
 
   return teardown
 }

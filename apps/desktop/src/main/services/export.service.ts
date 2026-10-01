@@ -1,5 +1,6 @@
 import type { ExportFormat, ExportKind, RequirementsExportPayload, TestsExportPayload, CampaignExportPayload, QueryResultExportPayload, ImpactAnalysisExportPayload, DashboardExportPayload } from '@polenta/types'
 import { renderKindToPdf } from './pdf.util'
+import type { TemplateExportService } from './export/template/template-export.service'
 
 type Generator = (payload: unknown, destPath: string) => Promise<void>
 
@@ -41,20 +42,29 @@ const GENERATORS: Partial<Record<`${ExportKind}:${'xlsx' | 'docx'}`, Generator>>
  * et rend la route imprimable correspondante à partir de `printParams`.
  */
 export class ExportService {
-  // `repoPath` volontairement absent de cette signature (divergence assumée vs le brouillon de
-  // specs/T43-design.md) : aucun générateur sprint 1/2 n'en a besoin (xlsx/docx travaillent
-  // uniquement à partir de `payload`, pdf reçoit son propre repoPath via `printParams`) — à
-  // réintroduire ici si un générateur d'un sprint suivant en a réellement besoin, plutôt qu'un
-  // paramètre mort dès aujourd'hui.
+  constructor(private readonly templates: TemplateExportService) {}
+
+  /**
+   * `options.templateRelPath` (GH34) : gabarit client choisi dans la bibliothèque — remplace le
+   * rendu Standard pour xlsx/docx. `repoPath` est réintroduit pour ce cas (données communes du
+   * gabarit : branche, commit, tag, projet), seul générateur qui en a besoin.
+   */
   async run(
     kind: ExportKind,
     format: ExportFormat,
     payload: unknown,
     printParams: Record<string, string> | undefined,
     destPath: string,
+    options: { repoPath?: string; templateRelPath?: string } = {},
   ): Promise<void> {
     if (format === 'pdf') {
       await renderKindToPdf(kind, printParams ?? {}, destPath)
+      return
+    }
+
+    if (options.templateRelPath) {
+      if (!options.repoPath) throw new Error('Export à partir d’un gabarit : dépôt du projet inconnu.')
+      await this.templates.run(kind, format, payload, options.repoPath, options.templateRelPath, destPath)
       return
     }
 

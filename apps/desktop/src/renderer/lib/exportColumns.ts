@@ -1,4 +1,4 @@
-import type { ObjectTypeDefinition, TypeTreeNode } from '@polenta/types'
+import type { ExportColumn, ObjectTypeDefinition, TemplateOutlineEntry, TypeTreeNode } from '@polenta/types'
 import { treeFlatten } from '../hooks/useTreeState'
 
 // Miroir de `ExcelView.getColumnLabel` (components/system/ExcelView.tsx) pour les colonnes
@@ -64,12 +64,8 @@ export function buildExportRows(
   stepsByObjectId: Map<string, unknown[]> | undefined,
   typeDef: ObjectTypeDefinition | undefined,
   filter: string,
-): { columns: { key: string; label: string }[]; rows: Record<string, string>[] } {
-  // coverageStatus (T138) est un badge dérivé (via traceability:matrix), pas une valeur stockée sur
-  // l'objet — obj[key] serait toujours vide dans l'export, donc exclu plutôt que d'afficher une
-  // colonne "Couverture" vide dans les documents générés.
-  const exportFields = fields.filter(f => !f.startsWith('link::') && f !== 'coverageStatus')
-  const columns = exportFields.map(key => ({ key, label: getExportColumnLabel(key, typeDef) }))
+): { columns: ExportColumn[]; rows: Record<string, string>[] } {
+  const exportFields = getExportFields(fields)
   const objectsById = new Map(objects.map(o => [o['id'], o]))
   const needle = filter.trim().toLowerCase()
   const rows: Record<string, string>[] = []
@@ -77,20 +73,101 @@ export function buildExportRows(
   for (const node of treeFlatten(root)) {
     if (node.kind !== 'item' || !node.objectId) continue
     const obj = objectsById.get(node.objectId)
-    if (!obj) continue
-    if (needle && !(obj['id']?.toLowerCase().includes(needle) || obj['title']?.toLowerCase().includes(needle))) continue
-
-    const row: Record<string, string> = {}
-    for (const key of exportFields) {
-      if (key === 'section') row[key] = sectionNumbers.get(node.id) ?? ''
-      else if (key === 'name') row[key] = node.name || ''
-      else if (key === 'steps') row[key] = String(stepsByObjectId?.get(node.objectId)?.length ?? 0)
-      else row[key] = obj[key] ?? ''
-    }
-    rows.push(row)
+    if (!obj || !matchesFilter(obj, needle)) continue
+    rows.push(buildRow(node, obj, exportFields, sectionNumbers, stepsByObjectId))
   }
 
-  return { columns, rows }
+  return { columns: buildColumns(exportFields, typeDef), rows }
+}
+
+/**
+ * GH34 — arbre d'export pour un gabarit client : mêmes éléments, même ordre, mêmes valeurs que
+ * `buildExportRows` (dont il partage le filtre et la construction de ligne), plus les dossiers
+ * (avec leur profondeur, pour des titres hiérarchiques) et le détail des étapes de test. Un dossier
+ * n'est gardé que s'il contient au moins un élément retenu par le filtre.
+ */
+export function buildExportOutline(
+  fields: string[],
+  root: TypeTreeNode[],
+  objects: Record<string, string>[],
+  sectionNumbers: Map<string, string>,
+  stepsByObjectId: Map<string, ExportStep[]> | undefined,
+  filter: string,
+  typeDef?: ObjectTypeDefinition,
+): TemplateOutlineEntry[] {
+  const statusLabels = new Map((typeDef?.statuses ?? []).map(st => [st.name, st.label]))
+  const exportFields = getExportFields(fields)
+  const objectsById = new Map(objects.map(o => [o['id'], o]))
+  const needle = filter.trim().toLowerCase()
+
+  const walk = (nodes: TypeTreeNode[], level: number): TemplateOutlineEntry[] => {
+    const out: TemplateOutlineEntry[] = []
+    for (const node of nodes) {
+      const section = sectionNumbers.get(node.id) ?? ''
+      if (node.kind === 'item') {
+        const obj = node.objectId ? objectsById.get(node.objectId) : undefined
+        if (!node.objectId || !obj || !matchesFilter(obj, needle)) continue
+        out.push({
+          kind: 'item',
+          level,
+          section,
+          name: node.name || '',
+          values: buildRow(node, obj, exportFields, sectionNumbers, stepsByObjectId),
+          statusLabel: statusLabels.get(obj['status'] ?? '') ?? obj['status'] ?? '',
+          ...(stepsByObjectId ? { steps: stepsByObjectId.get(node.objectId) ?? [] } : {}),
+        })
+      } else {
+        const children = walk(node.children, level + 1)
+        if (children.length === 0) continue
+        out.push({ kind: 'folder', level, section, name: node.name || '', values: {} }, ...children)
+      }
+    }
+    return out
+  }
+  return walk(root, 1)
+}
+
+/** Étape de test telle qu'exportée (GH34 : détail pour les gabarits, nombre pour la colonne `steps`). */
+export interface ExportStep {
+  order: number
+  action: string
+  expectedResult: string
+  notes: string
+}
+
+// coverageStatus (T138) est un badge dérivé (via traceability:matrix), pas une valeur stockée sur
+// l'objet — obj[key] serait toujours vide dans l'export, donc exclu plutôt que d'afficher une
+// colonne "Couverture" vide dans les documents générés.
+function getExportFields(fields: string[]): string[] {
+  return fields.filter(f => !f.startsWith('link::') && f !== 'coverageStatus')
+}
+
+function buildColumns(exportFields: string[], typeDef: ObjectTypeDefinition | undefined): ExportColumn[] {
+  return exportFields.map(key => {
+    const type = typeDef?.fields.find(f => f.name === key)?.type
+    return { key, label: getExportColumnLabel(key, typeDef), ...(type ? { type } : {}) }
+  })
+}
+
+function matchesFilter(obj: Record<string, string>, needle: string): boolean {
+  return !needle || !!(obj['id']?.toLowerCase().includes(needle) || obj['title']?.toLowerCase().includes(needle))
+}
+
+function buildRow(
+  node: TypeTreeNode,
+  obj: Record<string, string>,
+  exportFields: string[],
+  sectionNumbers: Map<string, string>,
+  stepsByObjectId: Map<string, unknown[]> | undefined,
+): Record<string, string> {
+  const row: Record<string, string> = {}
+  for (const key of exportFields) {
+    if (key === 'section') row[key] = sectionNumbers.get(node.id) ?? ''
+    else if (key === 'name') row[key] = node.name || ''
+    else if (key === 'steps') row[key] = String(stepsByObjectId?.get(node.objectId ?? '')?.length ?? 0)
+    else row[key] = obj[key] ?? ''
+  }
+  return row
 }
 
 /**

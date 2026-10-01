@@ -274,8 +274,11 @@ export function createIpcClient(): ApiClient {
         invoke('interface:coverage', componentRepoPath, interfaceRepoPath, roles),
     },
     export: {
-      save: (repoPath, kind, format, payload, printParams, suggestedName) =>
-        invoke('export:save', repoPath, kind, format, payload, printParams, suggestedName),
+      save: (repoPath, kind, format, payload, printParams, suggestedName, templateRelPath) =>
+        invoke('export:save', repoPath, kind, format, payload, printParams, suggestedName, templateRelPath),
+      listTemplates: (format) => invoke('export-templates:list', format),
+      installExampleTemplates: () => invoke('export-templates:install-examples'),
+      drawioSnapshotReady: (index, rect) => invoke('export:drawio-snapshot-ready', index, rect),
       notifyPrintReady: () => invoke('export:print-ready'),
       showInFolder: (filePath) => invoke('export:show-in-folder', filePath),
       openFile: (filePath) => invoke('export:open-file', filePath),

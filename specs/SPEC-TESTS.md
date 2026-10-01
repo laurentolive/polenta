@@ -614,7 +614,8 @@ l'origine (base ou saisie), sans édition possible. L'en-tête indique la source
 (« Paramètres lus à la baseline `<tag>` » ou « sur l'état courant ») et un bandeau liste les
 références non résolues de l'instance. Instances antérieures à T171 (sans champ de résolution) :
 substitution T97 d'origine depuis `paramValues`, code Markdown compris, affichage inchangé.
-Les exports de campagne (plan, rapport — xlsx, docx, pdf) utilisent les mêmes valeurs figées, y
+Les exports de campagne (plan, rapport — xlsx, docx, pdf, y compris à partir d'un gabarit client —
+GH34, une entrée `entries` par instance avec son `requirementId`) utilisent les mêmes valeurs figées, y
 compris les paramètres saisis à la main (non substitués avant T171). Depuis T49,
 le texte utilisé est celui de `testSnapshot` (figé à l'ajout) quand il est présent, pas celui de
 l'état live du test — cohérent avec le reste de la page.

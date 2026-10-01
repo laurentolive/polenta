@@ -1,3 +1,4 @@
+import type { SchemaFieldType } from './schema'
 import type { TestCase } from './test'
 import type { TestCampaign, CampaignTestRun } from './campaign'
 import type { QueryResult, Dashboard } from './dashboard'
@@ -34,14 +35,60 @@ export type ExportResult =
 // l'arbre) et envoyées déjà résolues sous forme générique `{key,label}`/`Record<key,valeur>`.
 export interface RequirementsExportPayload {
   componentLabel: string
-  columns: { key: string; label: string }[]
+  columns: ExportColumn[]
   rows: Record<string, string>[]
+  /** GH34 — fourni seulement pour un export à partir d'un gabarit (ignoré par le rendu Standard). */
+  outline?: TemplateOutlineEntry[]
 }
 
 export interface TestsExportPayload {
   componentLabel: string
-  columns: { key: string; label: string }[]
+  columns: ExportColumn[]
   rows: Record<string, string>[]
+  /** GH34 — cf. `RequirementsExportPayload.outline`. */
+  outline?: TemplateOutlineEntry[]
+}
+
+/** `type` (GH34) : type du champ de schéma quand la colonne en est un — `richtext` est converti
+ *  (texte simple au sprint 1, mise en forme Word ensuite) par l'export à partir d'un gabarit. */
+export interface ExportColumn {
+  key: string
+  label: string
+  type?: SchemaFieldType
+}
+
+/** GH34 — entrée de l'arbre (dossier ou élément) dans l'ordre visuel, pour les gabarits d'export :
+ *  mêmes clés/valeurs que `rows` (paramètres déjà substitués), plus les dossiers et le détail des
+ *  étapes de test que `rows` ne porte pas. */
+export interface TemplateOutlineEntry {
+  kind: 'folder' | 'item'
+  /** Profondeur dans l'arbre, 1 = racine. */
+  level: number
+  section: string
+  name: string
+  values: Record<string, string>
+  /** Libellé du statut tel que défini dans le schéma (ex. « Approuvé » pour `approved`). */
+  statusLabel?: string
+  steps?: { order: number; action: string; expectedResult: string; notes: string }[]
+}
+
+/** GH34 — formats pour lesquels un gabarit client peut remplacer le rendu Standard. */
+export type TemplateExportFormat = 'docx' | 'xlsx'
+
+/** GH34 — clé d'un gabarit par défaut dans `schema.preferences.exportTemplates`. */
+export type ExportTemplateKey = `${ExportKind}:${TemplateExportFormat}`
+
+export interface ExportTemplateInfo {
+  /** Chemin relatif à la bibliothèque, séparateurs `/` — identifiant du gabarit. */
+  relPath: string
+}
+
+export interface ExportTemplateListResult {
+  /** Préférence application renseignée. */
+  dirConfigured: boolean
+  /** Dossier présent et lisible. */
+  dirExists: boolean
+  templates: ExportTemplateInfo[]
 }
 
 // Même forme pour 'campaign-plan' et 'campaign-report' (T43 sprint 2) — seul le générateur appelé

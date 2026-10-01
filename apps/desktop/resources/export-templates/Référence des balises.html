@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gabarits d'export Polenta — référence des balises</title>
+<style>
+  :root { --ink: #1f2933; --ink-2: #52606d; --accent: #1f3864; --line: #d9e2ec; --code-bg: #f0f4f8; }
+  body { font: 15px/1.55 "Segoe UI", Calibri, system-ui, sans-serif; color: var(--ink); background: #fff; max-width: 920px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { color: var(--accent); font-size: 28px; margin-bottom: 4px; }
+  h2 { color: var(--accent); font-size: 21px; margin-top: 40px; border-bottom: 2px solid var(--line); padding-bottom: 4px; }
+  h3 { font-size: 16px; margin-top: 24px; }
+  p.lead { color: var(--ink-2); margin-top: 0; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font: 13px Consolas, "Courier New", monospace; }
+  pre { background: var(--code-bg); padding: 12px 14px; border-radius: 4px; overflow-x: auto; font: 13px/1.5 Consolas, "Courier New", monospace; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #e4ecf7; }
+  td:first-child { white-space: nowrap; }
+  .note { border-left: 4px solid #f0b429; background: #fffbea; padding: 8px 12px; margin: 12px 0; }
+  @media print { body { max-width: none; } h2 { break-after: avoid; } }
+</style>
+</head>
+<body>
+
+<h1>Gabarits d'export — référence des balises</h1>
+<p class="lead">Un gabarit est un document Word (<code>.docx</code>) ou un classeur Excel (<code>.xlsx</code>) de votre client — page de garde, logo, en-têtes et pieds de page, styles, formules — dans lequel des <strong>balises</strong> indiquent où Polenta place les données à l'export. Sections 2 à 6 et 8 : Word ; section 7 : Excel.</p>
+
+<h2>1. Mise en place</h2>
+<ol>
+  <li><strong>Bibliothèque</strong> : panneau Compte › Préférences › <em>Gabarits d'export</em> › <em>Choisir…</em> — un dossier (local, partage réseau ou repo cloné) contenant les gabarits, par exemple un sous-dossier par client. <em>Installer les exemples</em> y copie les gabarits de ce dossier.</li>
+  <li><strong>Gabarit par défaut d'un projet</strong> : page Préférences du projet › <em>Gabarits d'export par défaut</em>. Le choix est enregistré dans <code>.polenta/schema.yaml</code> (chemin relatif à la bibliothèque) et partagé par l'équipe.</li>
+  <li><strong>À l'export</strong> : bouton Exporter › listes <em>Gabarit Word</em> / <em>Gabarit Excel</em> (défaut du projet présélectionné, ou <em>Standard</em> pour le rendu habituel).</li>
+</ol>
+
+<h2>2. Syntaxe</h2>
+<table>
+  <tr><th>Balise</th><th>Effet</th></tr>
+  <tr><td><code>{{project.label}}</code></td><td>Insère une valeur (texte simple).</td></tr>
+  <tr><td><code>{{#items}}</code> … <code>{{/items}}</code></td><td>Répète le contenu pour chaque élément de la liste. Placées dans une <strong>ligne de tableau</strong>, les balises répètent la ligne.</td></tr>
+  <tr><td><code>{{#isFolder}}</code> … <code>{{/isFolder}}</code></td><td>Affiche le contenu si la valeur est vraie / non vide.</td></tr>
+  <tr><td><code>{{^isFolder}}</code> … <code>{{/isFolder}}</code></td><td>Affiche le contenu si la valeur est fausse / vide.</td></tr>
+  <tr><td><code>{{#status == "approved"}}</code> … <code>{{/}}</code></td><td>Condition par expression (<code>==</code>, <code>!=</code>, <code>&gt;</code>, <code>&amp;&amp;</code>, <code>||</code>). <code>{{/}}</code> ferme la dernière section ouverte.</td></tr>
+  <tr><td><code>{{@rich.statement}}</code></td><td>Insère un champ riche <strong>mis en forme</strong> (titres, listes, tableaux, images, diagrammes). La balise doit être <strong>seule dans son paragraphe</strong> (elle le remplace).</td></tr>
+  <tr><td><code>{{titre | upper}}</code></td><td>Filtres : <code>upper</code>, <code>lower</code>, <code>default:"—"</code>, <code>join:", "</code>, <code>date:"dd/MM/yyyy HH:mm"</code> (sur une date ISO, ex. <code>export.iso</code> ou <code>executedAt</code>).</td></tr>
+</table>
+<div class="note">Tapez chaque balise <strong>d'un trait</strong>, sans changer de mise en forme au milieu : Word peut sinon la découper en morceaux. Une balise mal fermée est signalée à l'export, avec le nom du gabarit et la balise concernée, et aucun fichier n'est produit. Une donnée inconnue donne simplement un texte vide.</div>
+<p>Les accolades simples (<code>{texte}</code>) sont laissées telles quelles. Les balises sont aussi reconnues dans les en-têtes et pieds de page.</p>
+<p><strong>Table des matières</strong> : insérez-la dans le gabarit comme d'habitude (Références › Table des matières). Elle est calculée sur le gabarit vide ; Polenta demande à Word de la mettre à jour à l'ouverture du document produit (Word affiche « Mettre à jour les champs ? » — répondez Oui). Les gabarits d'exemple ont une page « Sommaire » reprenant les titres (dossiers, sections) et les titres d'éléments.</p>
+
+<h2>3. Données communes à tous les exports</h2>
+<table>
+  <tr><th>Balise</th><th>Contenu</th></tr>
+  <tr><td><code>{{project.label}}</code></td><td>Nom du projet.</td></tr>
+  <tr><td><code>{{project.component}}</code></td><td>Composant exporté (ou composant de la campagne).</td></tr>
+  <tr><td><code>{{export.date}}</code>, <code>{{export.datetime}}</code></td><td>Date / date et heure de génération (format français).</td></tr>
+  <tr><td><code>{{export.iso}}</code></td><td>Même instant au format ISO, à combiner avec le filtre <code>date</code>.</td></tr>
+  <tr><td><code>{{export.user}}</code></td><td>Compte de l'utilisateur qui exporte.</td></tr>
+  <tr><td><code>{{git.branch}}</code>, <code>{{git.commit}}</code>, <code>{{git.tag}}</code></td><td>Branche, commit (7 caractères) et tag éventuel de la révision exportée.</td></tr>
+  <tr><td><code>{{export.templateName}}</code>, <code>{{export.kind}}</code></td><td>Gabarit utilisé, type d'export.</td></tr>
+</table>
+
+<h2>4. Cahier d'exigences et cahier de tests</h2>
+<p>Les éléments suivent l'ordre de l'arbre, le filtre et les colonnes visibles de la Vue Word.</p>
+<table>
+  <tr><th>Balise</th><th>Contenu</th></tr>
+  <tr><td><code>{{count}}</code></td><td>Nombre d'éléments (hors dossiers).</td></tr>
+  <tr><td><code>{{#items}}</code></td><td>Dossiers et éléments, dans l'ordre. Un dossier n'apparaît que s'il contient un élément retenu.</td></tr>
+  <tr><td><code>{{isFolder}}</code>, <code>{{isItem}}</code></td><td>Nature de l'entrée.</td></tr>
+  <tr><td><code>{{level}}</code></td><td>Profondeur dans l'arbre (1 = racine) — ex. <code>{{#isFolder &amp;&amp; level == 1}}</code> pour un Titre 1.</td></tr>
+  <tr><td><code>{{section}}</code>, <code>{{name}}</code></td><td>Numéro de section et libellé dans l'arbre.</td></tr>
+  <tr><td><code>{{id}}</code>, <code>{{status}}</code>, <code>{{version}}</code>, <code>{{&lt;champ&gt;}}</code></td><td>Colonnes visibles, par nom de champ (texte simple ; champs riches sans mise en forme).</td></tr>
+  <tr><td><code>{{statusLabel}}</code></td><td>Libellé du statut défini dans le modèle de données (ex. « Approuvé »), même si la colonne Statut est masquée.</td></tr>
+  <tr><td><code>{{@rich.&lt;champ&gt;}}</code></td><td>Champ riche mis en forme.</td></tr>
+  <tr><td><code>{{#columns}}</code> <code>{{label}}</code> <code>{{value}}</code> <code>{{@rich}}</code> <code>{{key}}</code> <code>{{isRich}}</code></td><td>Boucle sur les colonnes visibles, sans les connaître à l'avance.</td></tr>
+  <tr><td><code>{{#steps}}</code> <code>{{order}}</code> <code>{{action}}</code> <code>{{expectedResult}}</code> <code>{{notes}}</code></td><td>Tests : étapes, dans l'ordre (mises en forme : <code>{{@rich.action}}</code>, <code>{{@rich.expectedResult}}</code>, <code>{{@rich.notes}}</code>).</td></tr>
+</table>
+<pre>{{#items}}
+{{#isFolder &amp;&amp; level == 1}}          ← paragraphe seul
+{{section}} {{name}}                 ← paragraphe au style Titre 1
+{{/}}
+{{#isItem}}
+{{id}} — {{name}}
+{{@rich.statement}}                  ← paragraphe seul
+{{/isItem}}
+{{/items}}</pre>
+
+<h2>5. Cahier et rapport de campagne</h2>
+<table>
+  <tr><th>Balise</th><th>Contenu</th></tr>
+  <tr><td><code>{{campaign.id}}</code>, <code>{{campaign.title}}</code></td><td>Campagne.</td></tr>
+  <tr><td><code>{{campaign.status}}</code>, <code>{{campaign.statusLabel}}</code></td><td>Statut (valeur / libellé : Planifiée, En cours, Terminée, Abandonnée).</td></tr>
+  <tr><td><code>{{campaign.baselineRef}}</code>, <code>{{campaign.component}}</code>, <code>{{campaign.level}}</code>, <code>{{campaign.createdAt}}</code>, <code>{{campaign.completedAt}}</code>, <code>{{campaign.fields.&lt;champ&gt;}}</code></td><td>Référence (tag) des paramètres, composant, niveau, dates, champs personnalisés.</td></tr>
+  <tr><td><code>{{count}}</code>, <code>{{summary.total}}</code>, <code>{{summary.pass}}</code>, <code>{{summary.fail}}</code>, <code>{{summary.blocked}}</code>, <code>{{summary.incomplete}}</code>, <code>{{summary.pending}}</code></td><td>Nombre de tests et synthèse par résultat.</td></tr>
+  <tr><td><code>{{#entries}}</code></td><td>Une entrée par instance de test (un test paramétré peut apparaître plusieurs fois).</td></tr>
+  <tr><td><code>{{id}}</code>, <code>{{title}}</code>, <code>{{testStatus}}</code>, <code>{{requirementId}}</code>, <code>{{fields.&lt;champ&gt;}}</code></td><td>Test (contenu figé à l'inclusion, paramètres substitués) ; exigence de l'instance.</td></tr>
+  <tr><td><code>{{status}}</code>, <code>{{statusLabel}}</code>, <code>{{executedAt}}</code>, <code>{{executedBy}}</code>, <code>{{notes}}</code></td><td>Résultat d'exécution (Passé, Échoué, Bloqué, Incomplet, En attente), date, auteur, notes.</td></tr>
+  <tr><td><code>{{preconditions}}</code>, <code>{{postconditions}}</code></td><td>Texte simple ; mis en forme : <code>{{@rich.preconditions}}</code>, <code>{{@rich.postconditions}}</code>, <code>{{@rich.notes}}</code>.</td></tr>
+  <tr><td><code>{{#steps}}</code> <code>{{order}}</code> <code>{{action}}</code> <code>{{expectedResult}}</code> <code>{{notes}}</code> <code>{{result}}</code> <code>{{resultLabel}}</code> <code>{{comment}}</code></td><td>Étapes, avec le résultat et le commentaire saisis à l'exécution (rapport). Mis en forme : <code>{{@rich.action}}</code>, <code>{{@rich.expectedResult}}</code>, <code>{{@rich.notes}}</code>, <code>{{@rich.comment}}</code>.</td></tr>
+</table>
+
+<h2>6. Dashboard</h2>
+<table>
+  <tr><th>Balise</th><th>Contenu</th></tr>
+  <tr><td><code>{{dashboard.title}}</code>, <code>{{count}}</code></td><td>Dashboard, nombre de widgets.</td></tr>
+  <tr><td><code>{{#widgets}}</code> <code>{{title}}</code> <code>{{type}}</code></td><td>Widgets dans l'ordre d'affichage.</td></tr>
+  <tr><td><code>{{@table}}</code></td><td>Tableau des résultats du widget (paragraphe seul).</td></tr>
+  <tr><td><code>{{hasData}}</code>, <code>{{rowCount}}</code></td><td>Résultat non vide, nombre de lignes.</td></tr>
+  <tr><td><code>{{#columns}}{{name}}{{/columns}}</code>, <code>{{#rows}}{{#cells}}{{.}}{{/cells}}{{/rows}}</code></td><td>Colonnes et cellules pour une mise en forme libre.</td></tr>
+</table>
+<p>Les graphiques ne sont pas repris dans le Word (export PDF pour un rendu visuel).</p>
+
+<h2>7. Gabarits Excel</h2>
+<p>Un gabarit Excel (<code>.xlsx</code>) est un classeur de votre client : logo, cartouche, mise en forme, largeurs de colonnes, formules, mise en forme conditionnelle, graphiques, autres feuilles, mise en page — tout est conservé. Les balises s'écrivent <strong><code>${…}</code></strong> dans les cellules (et non <code>{{…}}</code>).</p>
+<table>
+  <tr><th>Balise</th><th>Effet</th></tr>
+  <tr><td><code>${project.label}</code>, <code>${git.commit}</code>, <code>${count}</code>…</td><td>Valeur unique (mêmes données qu'en Word, sections 3 à 6). Plusieurs balises et du texte peuvent partager une cellule.</td></tr>
+  <tr><td><code>${table:items.id}</code></td><td><strong>Ligne modèle</strong> : la ligne qui contient ces balises est répétée pour chaque élément de la liste, avec sa mise en forme (bordures, polices, formats, hauteur). Les autres cellules de la ligne (ex. une formule <code>=D6*2</code>) sont recopiées et suivent leur ligne.</td></tr>
+  <tr><td><code>${columnNames}</code></td><td>Une liste de valeurs, une par cellule vers la droite (en-têtes d'un résultat de requête).</td></tr>
+  <tr><td><code>${table:rows.cells}</code></td><td>Ligne modèle dont chaque ligne produit ses cellules vers la droite (résultat de requête, colonnes inconnues à l'avance). À placer seule sur sa ligne modèle.</td></tr>
+</table>
+<p><strong>Formules et références</strong> : écrivez les formules de synthèse sur la seule ligne modèle — <code>=SOMME(D6:D6)</code>, <code>=NB.SI(C6:C6;"Approuvé")</code>, y compris depuis une autre feuille (<code>=NBVAL(Exigences!A6:A6)</code>). Polenta les étend aux lignes générées, comme la mise en forme conditionnelle, les validations de données, le filtre automatique, la zone d'impression, les plages nommées et les séries des graphiques. Excel recalcule tout à l'ouverture.</p>
+<table>
+  <tr><th>Liste</th><th>Champs disponibles</th></tr>
+  <tr><td><code>items</code> (exigences, tests)</td><td>Colonnes visibles de la Vue Excel par nom de champ, <code>section</code>, <code>name</code>, <code>statusLabel</code>, <code>folder</code> (dossier parent), <code>folderPath</code> (chemin « A › B »), <code>level</code>, <code>stepCount</code>, <code>stepsText</code> (procédure « 1. action → résultat attendu »). Une ligne par élément, pas de ligne pour les dossiers. Les champs numériques du modèle sont de vrais nombres.</td></tr>
+  <tr><td><code>entries</code> (plan de campagne)</td><td><code>id</code>, <code>title</code>, <code>requirementId</code>, <code>testStatus</code>, <code>status</code>, <code>statusLabel</code>, <code>executedAt</code>, <code>executedBy</code>, <code>preconditions</code>, <code>postconditions</code>, <code>stepCount</code>, <code>stepsText</code> ; en-tête <code>${campaign.id}</code>, <code>${campaign.title}</code>, <code>${campaign.component}</code>, <code>${campaign.baselineRef}</code>…</td></tr>
+  <tr><td><code>rows</code> (résultat de requête)</td><td><code>cells</code> (toutes les colonnes) ou une colonne par son nom (<code>${table:rows.Statut}</code>) ; <code>${query.name}</code>, <code>${columnNames}</code>, <code>${count}</code>.</td></tr>
+  <tr><td><code>rows</code> (analyse d'impact)</td><td><code>reqId</code>, <code>direction</code> (Modification / Descendant / Ascendant), <code>depth</code>, <code>id</code>, <code>title</code>, <code>type</code>, <code>status</code>, <code>comment</code>, <code>updatedBy</code> ; <code>${analysis.label}</code>, <code>${analysis.from}</code>, <code>${analysis.to}</code>, <code>${changes}</code>.</td></tr>
+</table>
+<div class="note">Les champs riches arrivent en texte simple (une cellule n'a pas de mise en forme riche) ; images et diagrammes sont omis. Une valeur commençant par <code>=</code> est écrite comme texte, jamais comme formule.</div>
+
+<h2>8. Contenu riche (<code>{{@…}}</code>, Word)</h2>
+<ul>
+  <li><strong>Styles du gabarit</strong> : titres → styles <em>Titre 1…6</em> (<em>Heading 1…6</em>), listes → <em>Paragraphe de liste</em>, tableaux → <em>Grille du tableau</em> (<em>Table Grid</em>), citations → <em>Citation</em> (<em>Quote</em>), code → <em>Code HTML</em>. Modifiez ces styles dans le gabarit pour changer le rendu ; un style absent laisse le rendu par défaut.</li>
+  <li><strong>Listes</strong> : chaque liste numérotée repart à 1 ; cases à cocher ☐ / ☒.</li>
+  <li><strong>Images</strong> : à la taille et au rognage choisis dans l'éditeur, ramenées à la largeur de la page (PNG, JPEG, GIF ; autres formats remplacés par <em>[Image : …]</em>).</li>
+  <li><strong>Diagrammes draw.io</strong> : insérés en image, tels qu'affichés dans la Vue Word ; un diagramme introuvable donne <em>[Diagramme : chemin#nœud]</em>.</li>
+  <li>Liens internes <code>[[SW-0042]]</code> → <code>SW-0042</code> ; liens → leur texte.</li>
+</ul>
+
+</body>
+</html>

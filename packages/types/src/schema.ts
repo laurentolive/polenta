@@ -1,4 +1,6 @@
-﻿export type SchemaFieldType =
+﻿import type { ExportTemplateKey } from './export'
+
+export type SchemaFieldType =
   | 'text'
   | 'textarea'
   | 'number'
@@ -154,6 +156,12 @@ export interface ProjectPreferences {
    * approval by the integrator. Decided 2026-07-14 — see CLAUDE.md "Modèle de données".
    */
   autoPropagatePin?: boolean
+  /**
+   * GH34 — gabarit d'export par défaut, par `<kind>:<format>` : chemin relatif à la bibliothèque
+   * de gabarits de chaque utilisateur (préférence application `exportTemplatesDir`). Absent =
+   * rendu Standard.
+   */
+  exportTemplates?: Partial<Record<ExportTemplateKey, string>>
 }
 
 export interface ProjectSchema {

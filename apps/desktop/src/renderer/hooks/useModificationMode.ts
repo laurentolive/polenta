@@ -8,7 +8,7 @@
  * on a provider that isn't always present.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouterState } from '@tanstack/react-router'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
@@ -34,6 +34,20 @@ export interface ModificationModeState {
   workspaceDir: string
   /** All repos in the current workspace — needed to find who declares the repo concerné as a dependency (T82). */
   flatNodes: WorkspaceTreeNode[]
+  /** Logical tree roots of the workspace — "Publier" publishes children before parents (GH38). */
+  tree: WorkspaceTreeNode[]
+  /** GH38: every repo of the workspace with pending changes, in `flatNodes` order — "Publier"
+   *  publishes all of them, not just the repo concerné. */
+  pendingRepos: PendingRepo[]
+  /** GH38: sum of `pendingRepos[].count` — enables the "Publier" button. */
+  totalPendingCount: number
+}
+
+export interface PendingRepo {
+  name: string
+  label?: string
+  repoPath: string
+  count: number
 }
 
 export function useModificationMode(currentProjectId: string | null): ModificationModeState {
@@ -52,7 +66,26 @@ export function useModificationMode(currentProjectId: string | null): Modificati
     enabled: !!currentProjectId,
   })
 
-  const { flatNodes } = useWorkspaceStructure(project?.workspaceDir ?? '', project?.localPath ?? '')
+  const { flatNodes, tree } = useWorkspaceStructure(project?.workspaceDir ?? '', project?.localPath ?? '')
+
+  // GH38: pending state of every repo, not just the repo concerné — same query key/fn as the
+  // single-repo query below, so react-query dedupes them.
+  const statusQueries = useQueries({
+    queries: flatNodes.map(node => ({
+      queryKey: ['sync:status', node.repoPath],
+      queryFn: () => api.sync.status(node.repoPath),
+      refetchInterval: 3000,
+    })),
+  })
+  const pendingRepos: PendingRepo[] = []
+  statusQueries.forEach((q, i) => {
+    const count = (q.data?.staged.length ?? 0) + (q.data?.unstaged.length ?? 0)
+    if (count > 0) {
+      const node = flatNodes[i]
+      pendingRepos.push({ name: node.name, label: node.label, repoPath: node.repoPath, count })
+    }
+  })
+  const totalPendingCount = pendingRepos.reduce((sum, r) => sum + r.count, 0)
 
   // A specific `?repo=` was requested but the workspace tree hasn't resolved it yet: stay empty
   // rather than transiently falling back to root (which would briefly point the button at the
@@ -92,7 +125,8 @@ export function useModificationMode(currentProjectId: string | null): Modificati
   }
 
   function refetch() {
-    qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+    // GH38: every repo's status, not just the repo concerné's — a publish touches all of them.
+    qc.invalidateQueries({ queryKey: ['sync:status'] })
     qc.invalidateQueries({ queryKey: ['sync:branches', repoPath] })
     invalidateIntegrationBranch()
   }
@@ -107,5 +141,8 @@ export function useModificationMode(currentProjectId: string | null): Modificati
     refetch,
     workspaceDir: project?.workspaceDir ?? '',
     flatNodes,
+    tree,
+    pendingRepos,
+    totalPendingCount,
   }
 }

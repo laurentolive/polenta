@@ -6,22 +6,12 @@ import { GitMerge, X } from 'lucide-react'
 import { api } from '../../api'
 import { useModificationMode } from '../../hooks/useModificationMode'
 import { useVersioning } from '../../contexts/VersioningContext'
-import { propagatePinToDependents, type PinPropagationOutcome } from '../../lib/workspaceActions'
+import type { PinPropagationOutcome } from '../../lib/workspaceActions'
+import {
+  publishWorkspace, PublishBlockedError, PublishConflictError, PublishNetworkError, PublishRepoError,
+  type EphemeralBranch, type PublishedRepo,
+} from '../../lib/publishWorkspace'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
-
-const DIACRITICS = /[̀-ͯ]/g
-
-/** `dev-<slug>` — lowercase, accents stripped, non-alphanumeric runs collapsed to `-`, capped. */
-function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(DIACRITICS, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
-    .replace(/-+$/g, '')
-}
 
 /** Popover anchored under its trigger (T92 — replaces the old full-screen centered `Overlay`).
  *  Click-away capture (no dimming) + Escape to close, reusing the pattern already established by
@@ -50,33 +40,24 @@ function PublishPopover({ children, onClose }: { children: ReactNode; onClose: (
   )
 }
 
-/** Thrown by `publishMutation`'s `mutationFn` on a merge conflict, caught by `onError` — keeps
- *  the mutation's success type down to just `{ sha }` instead of a result union the conflict
- *  case would otherwise have to be re-shaped into for display. */
-class PublishConflictError extends Error {
-  constructor(public readonly conflicts: string[], public readonly workBranch: string) {
-    super('merge-conflict')
-  }
-}
-
-/** T154: thrown when the early `fetch` (before any branch/commit is touched) fails — kept
- *  distinct from `PublishConflictError` so `onError` can show a dedicated "no network" message
- *  instead of the generic one, and reassure the user nothing was created/committed. */
-class PublishNetworkError extends Error {
-  constructor(public readonly detail: string) {
-    super('network-unavailable')
-  }
-}
-
 interface Props {
   currentProjectId: string | null
+}
+
+function repoName(repo: { name: string; label?: string }): string {
+  return repo.label || repo.name
 }
 
 export function ModificationControl({ currentProjectId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { repoPath, branch, integrationBranch, mode, pendingChangesCount, refetch, workspaceDir, flatNodes } =
-    useModificationMode(currentProjectId)
+  const {
+    repoPath, branch, integrationBranch, mode, pendingChangesCount, refetch, workspaceDir, flatNodes, tree,
+    pendingRepos, totalPendingCount,
+  } = useModificationMode(currentProjectId)
+  // GH38: identity of the set of repos the popup was opened for — any repo gaining or losing
+  // pending changes while the title is being typed makes the popup stale, like a branch change.
+  const pendingSignature = pendingRepos.map(r => `${r.repoPath}:${r.count}`).join('|')
   // VersioningContext tracks the root repo independently (its own 3s poll) — nudge it to
   // refresh immediately after a checkout so the header's readonly indicator doesn't lag by up
   // to 3s, same pattern as VersionRepoFolder's checkout mutations.
@@ -88,12 +69,15 @@ export function ModificationControl({ currentProjectId }: Props) {
   // Captured when the popup opens, checked again at submit time — if either no longer matches,
   // refuse the stale submission instead of silently publishing against a branch the user never
   // saw when they typed the title.
-  const [popupOpenedFor, setPopupOpenedFor] = useState<{ repoPath: string; branch: string } | null>(null)
+  const [popupOpenedFor, setPopupOpenedFor] = useState<{ repoPath: string; branch: string; pending: string } | null>(null)
   const [title, setTitle] = useState('')
   const [publishError, setPublishError] = useState<
-    | { kind: 'conflict'; message: string; files: string[]; workBranch: string }
+    // GH38: `repoPath`/`integrationBranch` are those of the repo that failed — not necessarily the
+    // repo concerné — and `published` the repos already published before it in the same run.
+    | { kind: 'conflict'; message: string; files: string[]; workBranch: string; repoPath: string; integrationBranch: string; published: string[] }
     | { kind: 'network'; message: string }
-    | { kind: 'generic'; message: string }
+    | { kind: 'blocked'; message: string; repos: string[] }
+    | { kind: 'generic'; message: string; published: string[] }
     | null
   >(null)
   const [pushError, setPushError] = useState<string | null>(null)
@@ -105,7 +89,9 @@ export function ModificationControl({ currentProjectId }: Props) {
   // treating it as a user-owned advanced branch that's never cleaned up, once `branch` no longer
   // equals `integrationBranch`. Deliberately NOT reset by the mode/branch-change effect below —
   // the whole point is to survive exactly the branch change a conflict causes.
-  const [ephemeralBranch, setEphemeralBranch] = useState<{ repoPath: string; branch: string } | null>(null)
+  // GH38: still a single entry — a multi-repo publish stops at the first failing repo, so at most
+  // one repo can be left on its ephemeral branch.
+  const [ephemeralBranch, setEphemeralBranch] = useState<EphemeralBranch | null>(null)
 
   // The mode (or the resolved repo/branch itself) can change out from under an open dialog for
   // reasons outside this component's control (someone else checks out a different branch on the
@@ -131,123 +117,114 @@ export function ModificationControl({ currentProjectId }: Props) {
     refetchVersioning()
   }
 
-  // T87: "Publier" resolves its own strategy from `branch` vs `integrationBranch` (and the
-  // leftover `ephemeralBranch` from a previous conflicted attempt, if any) at the moment it runs —
-  // on the configured integration branch it creates an ephemeral `dev-<slug>` first (deleted again
-  // once merged); from any other branch (dev-* or a freely-named one — advanced, git-savvy usage)
-  // it commits directly on that branch and never deletes or checks it out away from — the user
-  // created it, they stay responsible for it. `mode === 'blocked'` (another `int-*` branch than
-  // the configured one) never reaches this mutation — the button isn't shown.
+  // Push is best-effort and doesn't gate "Publier" completing — the merges are already durable
+  // locally at this point. Deliberately not awaited: a slow/flaky remote shouldn't keep the dialog
+  // on "Publication…" once the local work is safely merged. GH38: one push per published repo,
+  // failures aggregated and prefixed with the repo's name.
+  function pushPublished(published: PublishedRepo[]) {
+    Promise.allSettled(published.map(r => api.sync.pushBranch(r.repoPath, r.integrationBranch)))
+      .then(results => {
+        const errors = results.flatMap((res, i) => res.status === 'rejected'
+          ? [`${repoName(published[i])} : ${res.reason instanceof Error ? res.reason.message : t('layout.modificationControl.pushError')}`]
+          : [])
+        setPushError(errors.length > 0 ? errors.join(' — ') : null)
+      })
+  }
+
+  // GH38: "Publier" publishes every repo of the workspace that has something to publish, children
+  // before parents, each through the unchanged T87/T154 single-repo flow (see `publishWorkspace`).
+  // `mode` (repo concerné) still drives the button's visibility; a candidate repo on a blocked
+  // branch is refused by `publishWorkspace` before anything is touched.
   const publishMutation = useMutation({
-    mutationFn: async (): Promise<{ sha: string }> => {
-      const continuingEphemeral =
-        ephemeralBranch?.repoPath === repoPath && ephemeralBranch.branch === branch
-      const isNominal = branch === integrationBranch || continuingEphemeral
-      let workBranch = branch
-
-      // T154: check the network first, before anything else is touched — a failure here (proxy,
-      // offline, auth) must leave the repo exactly as it was, so the user just retries once
-      // connected instead of finding a half-finished publish (ephemeral branch, orphan commit).
-      // Safe to run while still checked out on `integrationBranch` (the nominal case): fetch only
-      // ever writes remote-tracking refs, never local branches.
-      const node = flatNodes.find(n => n.repoPath === repoPath)
-      try {
-        await api.sync.fetch(repoPath, node?.url ?? '')
-      } catch (err) {
-        throw new PublishNetworkError(err instanceof Error ? err.message : String(err))
-      }
-
-      if (branch === integrationBranch) {
-        const branches = await api.sync.branches(repoPath)
-        const existing = new Set(branches.map(b => b.name))
-        const slug = slugify(title)
-        const base = slug ? `dev-${slug}` : 'dev-modification'
-        let name = base
-        let n = 2
-        while (existing.has(name)) {
-          name = `${base}-${n}`
-          n += 1
-        }
-        await api.sync.createBranch(repoPath, name)
-        workBranch = name
-        setEphemeralBranch({ repoPath, branch: name })
-      }
-
-      // T154: `workBranch` is never `integrationBranch` at this point — either just created above
-      // (nominal case) or already a dev-*/free branch the user was on (advanced case) — so moving
-      // the integration branch's ref here can't desync it from a checkout. Fast-forwards it to the
-      // fetch just done if it's a plain fast-forward; a genuine divergence (pre-existing, rare —
-      // see SPEC-FORKS-BRANCHES-BASELINES.md §2.1) is left untouched and falls through to the
-      // ordinary mergeInto/push behavior below, unchanged from before this ticket.
-      await api.sync.fastForwardBranch(repoPath, integrationBranch)
-
-      await api.sync.stageAll(repoPath)
-      await api.sync.commit(repoPath, title.trim() || `Modification sur ${branch}`)
-      const merge = await api.sync.mergeInto(repoPath, workBranch, integrationBranch)
-      if (!merge.success) throw new PublishConflictError(merge.conflicts, workBranch)
-
-      if (isNominal) {
-        await api.sync.checkoutBranch(repoPath, integrationBranch)
-        await api.sync.deleteBranch(repoPath, workBranch).catch(() => {})
-        setEphemeralBranch(null)
-      }
-
-      return { sha: merge.sha }
+    mutationFn: () => {
+      // Plain repo, or workspace structure still loading: `tree` is empty — fall back to the repo
+      // concerné alone, i.e. exactly the pre-GH38 behavior.
+      const roots = tree.length > 0
+        ? tree
+        : [{ name: 'root', repoPath, url: '', pin: '', isInterface: false, children: [] }]
+      return publishWorkspace({
+        workspaceDir,
+        flatNodes,
+        roots,
+        title,
+        ephemeral: ephemeralBranch,
+        onEphemeralChange: setEphemeralBranch,
+      })
     },
-    onSuccess: async (result) => {
+    onSuccess: (result) => {
       setShowPublishPopup(false)
       setPopupOpenedFor(null)
       setTitle('')
       setPublishError(null)
-      // T82: propose the merge SHA as pin wherever this repo is declared as a dependency.
-      // Resolved — and the resulting warning set — before invalidateAll() below, which can flip
-      // `mode`/`branch` and would otherwise race the reset effect that clears pinWarning.
-      const node = flatNodes.find(n => n.repoPath === repoPath)
-      if (node) {
-        const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, result.sha)
-        setPinWarning(outcome)
-      }
+      // T82: set before invalidateAll() below, which can flip `mode`/`branch` and would otherwise
+      // race the reset effect that clears pinWarning.
+      setPinWarning(result.pinOutcome)
       invalidateAll()
 
-      // Push is best-effort and doesn't gate "Publier" completing — the merge is already durable
-      // locally at this point. Deliberately not awaited: a slow/flaky remote shouldn't keep the
-      // dialog on "Publication…" once the local work is safely merged.
-      api.sync.pushBranch(repoPath, integrationBranch)
-        .then(() => setPushError(null))
-        .catch((err: unknown) => setPushError(err instanceof Error ? err.message : t('layout.modificationControl.pushError')))
+      pushPublished(result.published)
     },
     onError: (err: unknown) => {
       setShowPublishPopup(false)
       setPopupOpenedFor(null)
-      if (err instanceof PublishConflictError) {
+      if (err instanceof PublishBlockedError) {
+        // GH38: refused before anything was touched.
         setPublishError({
-          kind: 'conflict',
-          message: t('layout.modificationControl.conflictMessage'),
-          files: err.conflicts,
-          workBranch: err.workBranch,
+          kind: 'blocked',
+          message: t('layout.modificationControl.blockedRepos'),
+          repos: err.repos.map(r => `${repoName(r.repo)} : ${r.branch || 'HEAD'} ≠ ${r.integrationBranch}`),
         })
-        // The repo is now actually checked out on `err.workBranch` (the ephemeral branch created
-        // just before the conflicting merge), but `branch` here is still the pre-mutation value —
-        // `sync:status` isn't polled/invalidated until this refetch. Without it, an immediate retry
-        // (before the next 3s poll) would still see `branch === integrationBranch` and try to
-        // create a second ephemeral branch instead of recognizing `continuingEphemeral`.
-        refetch()
         return
       }
       if (err instanceof PublishNetworkError) {
         // T154: thrown before any branch/commit was created — nothing to refetch or clean up,
-        // the repo is exactly as it was before the click.
-        setPublishError({ kind: 'network', message: t('layout.modificationControl.networkError') })
+        // every repo is exactly as it was before the click.
+        setPublishError({
+          kind: 'network',
+          message: t('layout.modificationControl.networkErrorRepo', { repo: repoName(err.repo) }),
+        })
         return
       }
-      setPublishError({ kind: 'generic', message: err instanceof Error ? err.message : t('layout.modificationControl.genericError') })
+      // The failing repo may now be checked out on its ephemeral branch, and the repos published
+      // before it have changed too — without this refetch an immediate retry (before the next 3s
+      // poll) would not recognize `continuingEphemeral` from a stale `sync:status`.
+      invalidateAll()
+      if (err instanceof PublishRepoError) {
+        // GH38: the repos published before the failing one are merged for good — push them too.
+        pushPublished(err.published)
+        const published = err.published.map(repoName)
+        if (err.reason instanceof PublishConflictError) {
+          setPublishError({
+            kind: 'conflict',
+            message: t('layout.modificationControl.conflictOnRepo', { repo: repoName(err.repo) }),
+            files: err.reason.conflicts,
+            workBranch: err.reason.workBranch,
+            repoPath: err.repo.repoPath,
+            integrationBranch: err.integrationBranch,
+            published,
+          })
+          return
+        }
+        setPublishError({
+          kind: 'generic',
+          message: t('layout.modificationControl.failedOnRepo', { repo: repoName(err.repo), error: err.message }),
+          published,
+        })
+        return
+      }
+      setPublishError({
+        kind: 'generic',
+        message: err instanceof Error ? err.message : t('layout.modificationControl.genericError'),
+        published: [],
+      })
     },
   })
 
   if (!repoPath || mode === 'other') return null
 
   const isStalePopup =
-    !!popupOpenedFor && (popupOpenedFor.repoPath !== repoPath || popupOpenedFor.branch !== branch)
+    !!popupOpenedFor && (
+      popupOpenedFor.repoPath !== repoPath || popupOpenedFor.branch !== branch || popupOpenedFor.pending !== pendingSignature
+    )
 
   function submitPublish() {
     if (!title.trim() || publishMutation.isPending || isStalePopup) return
@@ -271,8 +248,8 @@ export function ModificationControl({ currentProjectId }: Props) {
       {mode === 'active' && (
         <button
           type="button"
-          onClick={() => { setShowPublishPopup(true); setPopupOpenedFor({ repoPath, branch }) }}
-          disabled={pendingChangesCount === 0}
+          onClick={() => { setShowPublishPopup(true); setPopupOpenedFor({ repoPath, branch, pending: pendingSignature }) }}
+          disabled={totalPendingCount === 0 && pendingChangesCount === 0}
           className="btn-primary-sm flex items-center gap-1.5 shadow"
         >
           <GitMerge size={12} />
@@ -315,6 +292,22 @@ export function ModificationControl({ currentProjectId }: Props) {
             className="input-field w-full mb-4"
             autoFocus
           />
+          {pendingRepos.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs text-ink-2 mb-1">{t('layout.modificationControl.reposToPublish')}</p>
+              <ul className="text-xs text-ink-2 list-disc list-inside">
+                {pendingRepos.map(r => (
+                  <li key={r.repoPath}>
+                    {repoName(r)}{' '}
+                    <span className="text-ink-3">{t('layout.modificationControl.repoFiles', { count: r.count })}</span>
+                  </li>
+                ))}
+              </ul>
+              {flatNodes.length > 1 && (
+                <p className="text-xs text-ink-3 mt-1">{t('layout.modificationControl.parentsNote')}</p>
+              )}
+            </div>
+          )}
           {isStalePopup && (
             <p className="text-xs text-status-warning mb-3">
               {t('layout.modificationControl.staleState')}
@@ -343,15 +336,25 @@ export function ModificationControl({ currentProjectId }: Props) {
       {publishError && (
         <PublishPopover onClose={() => setPublishError(null)}>
           <h2 className="font-semibold text-sm text-ink mb-2">{t('layout.modificationControl.publishImpossible')}</h2>
-          <p className={`text-xs text-ink-2 ${publishError.kind === 'conflict' && publishError.files.length > 0 ? 'mb-2' : 'mb-4'}`}>
+          <p className="text-xs text-ink-2 mb-2">
             {publishError.message}
           </p>
           {publishError.kind === 'conflict' && publishError.files.length > 0 && (
-            <ul className="text-xs font-mono text-ink-2 mb-4 list-disc list-inside">
+            <ul className="text-xs font-mono text-ink-2 mb-2 list-disc list-inside">
               {publishError.files.map(f => <li key={f}>{f}</li>)}
             </ul>
           )}
-          <div className="flex gap-2 justify-end">
+          {publishError.kind === 'blocked' && (
+            <ul className="text-xs font-mono text-ink-2 mb-2 list-disc list-inside">
+              {publishError.repos.map(r => <li key={r}>{r}</li>)}
+            </ul>
+          )}
+          {(publishError.kind === 'conflict' || publishError.kind === 'generic') && publishError.published.length > 0 && (
+            <p className="text-xs text-ink-3 mb-2">
+              {t('layout.modificationControl.alreadyPublished', { repos: publishError.published.join(', ') })}
+            </p>
+          )}
+          <div className="flex gap-2 justify-end mt-4">
             <button type="button" onClick={() => setPublishError(null)} className="btn-secondary-sm">
               {t('common.close')}
             </button>
@@ -359,11 +362,12 @@ export function ModificationControl({ currentProjectId }: Props) {
               <button
                 type="button"
                 onClick={() => {
-                  const workBranch = publishError.workBranch
+                  // GH38: the diff of the repo that conflicted, not of the repo concerné.
+                  const { workBranch, repoPath: failedRepoPath, integrationBranch: failedIntegrationBranch } = publishError
                   setPublishError(null)
                   navigate({
                     to: '/version-diff',
-                    search: { projectId: currentProjectId ?? '', repoPath, ref1: workBranch, sha1: undefined, ref2: integrationBranch, sha2: undefined },
+                    search: { projectId: currentProjectId ?? '', repoPath: failedRepoPath, ref1: workBranch, sha1: undefined, ref2: failedIntegrationBranch, sha2: undefined },
                   })
                 }}
                 className="btn-primary-sm flex items-center gap-1"

@@ -51,13 +51,20 @@
       "publishing": "Publication…",
       "pushFailed": "Fusionné localement, mais le push a échoué : {{error}}",
       "titlePlaceholder": "Titre de la modification…",
-      "staleState": "L'état a changé (branche modifiée) — fermez et réessayez.",
+      "staleState": "L'état a changé (branche ou modifications en attente) — fermez et réessayez.",
       "publishImpossible": "Publication impossible",
-      "conflictMessage": "Quelqu’un a modifié les mêmes informations — résolution manuelle nécessaire.",
-      "networkError": "Publication impossible : réseau indisponible. Vos modifications restent en attente, réessayez une fois connecté.",
       "genericError": "Erreur lors de la publication",
       "pushError": "Erreur lors du push",
-      "manualResolution": "Résolution manuelle (Version)"
+      "manualResolution": "Résolution manuelle (Version)",
+      "conflictOnRepo": "« {{repo}} » : quelqu’un a modifié les mêmes informations — résolution manuelle nécessaire.",
+      "networkErrorRepo": "Publication impossible : réseau indisponible pour « {{repo}} ». Rien n'a été publié, vos modifications restent en attente — réessayez une fois connecté.",
+      "blockedRepos": "Rien n'a été publié : ces repos ne sont pas sur leur branche d'intégration configurée.",
+      "failedOnRepo": "Échec de la publication de « {{repo}} » : {{error}}",
+      "alreadyPublished": "Déjà publiés : {{repos}}. Relancez « Publier » pour terminer.",
+      "reposToPublish": "Repos publiés :",
+      "repoFiles_one": "({{count}} fichier)",
+      "repoFiles_other": "({{count}} fichiers)",
+      "parentsNote": "Les repos parents sont aussi publiés pour mettre à jour les pins."
     },
     "viewHeader": {
       "back": "Retour"

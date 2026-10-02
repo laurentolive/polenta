@@ -15,6 +15,7 @@ import { decodeProjectId } from '../lib/projectId'
 import { useVersioning } from '../contexts/VersioningContext'
 import { useIntegrationBranch } from './useIntegrationBranch'
 import { useWorkspaceStructure } from './useWorkspaceStructure'
+import { isResyncBranch } from '../lib/publishWorkspace'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
 export type ModificationMode = 'active' | 'blocked' | 'other'
@@ -39,7 +40,7 @@ export interface ModificationModeState {
   /** GH38: every repo of the workspace with pending changes, in `flatNodes` order — "Publier"
    *  publishes all of them, not just the repo concerné. */
   pendingRepos: PendingRepo[]
-  /** GH38: sum of `pendingRepos[].count` — enables the "Publier" button. */
+  /** GH38: sum of `pendingRepos[].count`. */
   totalPendingCount: number
 }
 
@@ -48,6 +49,9 @@ export interface PendingRepo {
   label?: string
   repoPath: string
   count: number
+  /** GH39: checked out on a `dev-resync` branch — commits set aside by "Resynchroniser", to be
+   *  published even with no pending file (`count` may be 0). */
+  setAside: boolean
 }
 
 export function useModificationMode(currentProjectId: string | null): ModificationModeState {
@@ -80,9 +84,10 @@ export function useModificationMode(currentProjectId: string | null): Modificati
   const pendingRepos: PendingRepo[] = []
   statusQueries.forEach((q, i) => {
     const count = (q.data?.staged.length ?? 0) + (q.data?.unstaged.length ?? 0)
-    if (count > 0) {
+    const setAside = isResyncBranch(q.data?.branch ?? '')
+    if (count > 0 || setAside) {
       const node = flatNodes[i]
-      pendingRepos.push({ name: node.name, label: node.label, repoPath: node.repoPath, count })
+      pendingRepos.push({ name: node.name, label: node.label, repoPath: node.repoPath, count, setAside })
     }
   })
   const totalPendingCount = pendingRepos.reduce((sum, r) => sum + r.count, 0)

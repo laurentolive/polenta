@@ -16,17 +16,18 @@ const AUTO_PULL_INTERVAL_MS = 5 * 60 * 1000
  * make it worse (explicit product decision). `setInterval` naturally defers its first tick, so
  * "no pull at startup" falls out of the implementation for free — no special-casing needed.
  *
- * Two safety layers, both required — see specs/T154.md and the T153/T155 discussion:
- * - Skips any repo with staged/unstaged changes (same guard as the manual Rafraîchir button).
- * - Uses `pullFastForwardOnly` rather than `pull` — a real 3-way merge (and the conflict markers
- *   it can write into the working directory) must never happen without the user asking for it.
- *   A repo that can't fast-forward (local has unpushed commits diverging from origin — the rare,
- *   pre-existing case T154 documents) is just skipped, not merged.
+ * Each tick is one `SyncService.autoSync` per repo (GH39), with the T153/T155 safety layers:
+ * - A repo with staged/unstaged changes is never fast-forwarded (same guard as the manual
+ *   Rafraîchir button) — but it is still fetched, so its integration state reflects the server.
+ * - Fast-forward only — a real 3-way merge (and the conflict markers it can write into the working
+ *   directory) must never happen without the user asking for it. A diverged integration is left
+ *   alone; the sync indicator surfaces it and "Resynchroniser" is the way out (GH39).
+ * - An integration branch only *ahead* of origin (a push after "Publier" failed) gets its push
+ *   retried — that push never touches the working tree.
  *
- * Silent by design: success is invisible (repo statuses refresh on their own next 3s poll) and a
- * skip/failure (dirty repo, offline, diverged, auth) is logged, not surfaced — a technical git
- * error about a network action the user never asked for would be worse than trying again in
- * `AUTO_PULL_INTERVAL_MS`.
+ * No popup: success is invisible (repo statuses refresh on their own next 3s poll) and a failure
+ * (offline, auth, rejected push) is logged and kept as the repo's last sync error
+ * (`['sync:last-error', repoPath]`, shown by the sync indicator), then retried next tick.
  */
 export function useAutoPull(currentProjectId: string | null): void {
   const qc = useQueryClient()
@@ -45,19 +46,25 @@ export function useAutoPull(currentProjectId: string | null): void {
 
     const repoPaths = Array.from(new Set([rootRepoPath, ...flatNodes.map(n => n.repoPath)].filter(Boolean)))
 
-    async function pullIfClean(repoPath: string) {
+    async function autoSync(repoPath: string) {
       try {
-        const status = await api.sync.status(repoPath)
-        if (status.staged.length > 0 || status.unstaged.length > 0) return
-        await api.sync.pullFastForwardOnly(repoPath)
-        qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+        const integrationBranch = await api.baseline.getIntegrationBranch(repoPath)
+        const { state } = await api.sync.autoSync(repoPath, integrationBranch)
+        // A tick that didn't fail doesn't explain away an earlier one: while the integration is
+        // still ahead/diverged, keep the error (e.g. the push "Publier" saw rejected) that led there.
+        if (state !== 'ahead' && state !== 'diverged') qc.setQueryData(['sync:last-error', repoPath], null)
       } catch (err) {
-        console.warn(`[auto-pull] skipped ${repoPath}:`, err instanceof Error ? err.message : err)
+        const message = err instanceof Error ? err.message : String(err)
+        console.warn(`[auto-pull] ${repoPath}:`, message)
+        qc.setQueryData(['sync:last-error', repoPath], message)
+      } finally {
+        qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+        qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
       }
     }
 
     const id = setInterval(() => {
-      for (const repoPath of repoPaths) void pullIfClean(repoPath)
+      for (const repoPath of repoPaths) void autoSync(repoPath)
     }, AUTO_PULL_INTERVAL_MS)
 
     return () => clearInterval(id)

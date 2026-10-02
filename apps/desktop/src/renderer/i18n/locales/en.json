@@ -59,11 +59,13 @@
       "conflictOnRepo": "“{{repo}}”: someone modified the same information — manual resolution required.",
       "networkErrorRepo": "Unable to publish: network unavailable for “{{repo}}”. Nothing was published, your changes remain pending — try again once connected.",
       "blockedRepos": "Nothing was published: these repos are not on their configured integration branch.",
+      "divergedRepos": "Nothing was published: the integration branch of these repos diverged from the server and can't be resynchronized automatically (conflict). Use “Resynchronize” (sync indicator).",
       "failedOnRepo": "Publishing “{{repo}}” failed: {{error}}",
       "alreadyPublished": "Already published: {{repos}}. Run “Publish” again to finish.",
       "reposToPublish": "Repos to publish:",
       "repoFiles_one": "({{count}} file)",
       "repoFiles_other": "({{count}} files)",
+      "setAsideCommits": "(set-aside commits)",
       "parentsNote": "Parent repos are published too, to update their pins."
     },
     "viewHeader": {

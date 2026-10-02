@@ -54,6 +54,27 @@ export type MergeResult =
   | { success: true; sha: string }
   | { success: false; conflicts: string[] }
 
+/** GH39 — the configured integration branch compared to its remote-tracking ref (last fetch). */
+export type IntegrationRemoteStateKind = 'no-remote' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
+
+export interface IntegrationRemoteState {
+  state: IntegrationRemoteStateKind
+  /** Local commits absent from origin. */
+  ahead: number
+  /** Origin commits absent locally. */
+  behind: number
+}
+
+export type ResyncOutcome =
+  | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
+  | { outcome: 'set-aside'; branch: string }
+
+/** GH39 — prefix of the branch `resyncIntegration` sets diverged local commits aside on. */
+export const RESYNC_BRANCH_PREFIX = 'dev-resync'
+
+/** GH39 — depth of the history walk used to count ahead/behind commits. */
+const DIVERGENCE_LOG_DEPTH = 500
+
 /**
  * isomorphic-git's transport layer only implements the http(s) smart protocol — a local
  * filesystem path used as `origin` (e.g. a demo/test bare repo) throws UrlParseError before
@@ -369,8 +390,8 @@ export class SyncService {
 
   /**
    * T155: like `pull()`, but refuses to do anything beyond a plain fast-forward — never attempts
-   * a real 3-way merge, so it can never write conflict markers into the working directory. Used
-   * exclusively by the periodic background auto-pull (`useAutoPull.ts`): a *silent* operation the
+   * a real 3-way merge, so it can never write conflict markers into the working directory. Was used
+   * by the periodic background auto-pull until GH39 replaced it there by `autoSync`: a *silent* operation the
    * user never asked for must not be able to leave a repo mid-conflict while they're looking at
    * something else entirely. If the branch can't fast-forward (local has unpushed commits —
    * dirty-but-uncommitted is filtered out by the caller before this is even reached, so this is
@@ -398,6 +419,178 @@ export class SyncService {
       onAuth: () => credentials ?? undefined,
       fastForwardOnly: true,
     })
+  }
+
+  /**
+   * GH39: where the local integration branch stands against `origin/<branch>` as of the last fetch
+   * — purely local, no network. A repo without remote, or whose branch was never pushed, is
+   * `no-remote` (nothing to compare against, nothing to alert about).
+   */
+  async integrationState(repoPath: string, branch: string, remote = 'origin'): Promise<IntegrationRemoteState> {
+    const none: IntegrationRemoteState = { state: 'no-remote', ahead: 0, behind: 0 }
+    if (!branch || !(await getRemoteUrl(repoPath, remote))) return none
+    let localOid: string
+    let remoteOid: string
+    try {
+      localOid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${branch}` })
+      remoteOid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/remotes/${remote}/${branch}` })
+    } catch {
+      return none
+    }
+    if (localOid === remoteOid) return { state: 'up-to-date', ahead: 0, behind: 0 }
+
+    const [localCommits, remoteCommits] = await Promise.all([
+      git.log({ fs, dir: repoPath, ref: localOid, depth: DIVERGENCE_LOG_DEPTH }),
+      git.log({ fs, dir: repoPath, ref: remoteOid, depth: DIVERGENCE_LOG_DEPTH }),
+    ])
+    const localSet = new Set(localCommits.map(c => c.oid))
+    const remoteSet = new Set(remoteCommits.map(c => c.oid))
+    const ahead = localCommits.filter(c => !remoteSet.has(c.oid)).length
+    const behind = remoteCommits.filter(c => !localSet.has(c.oid)).length
+
+    const isDescendent = (oid: string, ancestor: string) =>
+      git.isDescendent({ fs, dir: repoPath, oid, ancestor, depth: -1 }).catch(() => false)
+    if (await isDescendent(remoteOid, localOid)) return { state: 'behind', ahead: 0, behind }
+    if (await isDescendent(localOid, remoteOid)) return { state: 'ahead', ahead, behind: 0 }
+    return { state: 'diverged', ahead, behind }
+  }
+
+  /** GH39: would merging `origin/<branch>` into `<branch>` conflict? Simulated — nothing is written. */
+  async canMergeRemoteIntoIntegration(
+    repoPath: string,
+    branch: string,
+    remote = 'origin',
+  ): Promise<{ ok: true } | { ok: false; conflicts: string[] }> {
+    const author = await this.auth.getAuthor(repoPath)
+    try {
+      await git.merge({
+        fs,
+        dir: repoPath,
+        ours: branch,
+        theirs: `${remote}/${branch}`,
+        author: { name: author.name, email: author.email },
+        dryRun: true,
+      })
+      return { ok: true }
+    } catch (err: unknown) {
+      const conflicts = conflictFiles(err)
+      if (conflicts) return { ok: false, conflicts }
+      throw err
+    }
+  }
+
+  /** GH39: true when `branch` has no commit that `into` doesn't already contain. */
+  async isMergedInto(repoPath: string, branch: string, into: string): Promise<boolean> {
+    const [oid, intoOid] = await Promise.all([
+      git.resolveRef({ fs, dir: repoPath, ref: branch }),
+      git.resolveRef({ fs, dir: repoPath, ref: into }),
+    ])
+    if (oid === intoOid) return true
+    return git.isDescendent({ fs, dir: repoPath, oid: intoOid, ancestor: oid, depth: -1 }).catch(() => false)
+  }
+
+  /**
+   * GH39: the explicit "Resynchroniser" action — brings the integration branch back in line with
+   * `origin` whatever its state (see specs/GH39.md §3.2):
+   * - `behind` → fast-forward; `ahead` → push; `diverged` → merge `origin/<branch>` then push.
+   * - When `branch` is checked out, the working tree follows (merge + checkout, same mechanics as
+   *   `git.pull`) — refused with `integration-dirty` if the repo has pending changes, so this can
+   *   never overwrite them.
+   * - `diverged` with conflicts → the local commits are set aside on `dev-resync[-n]`, the
+   *   integration is realigned on origin, and "Publier" from `dev-resync` then goes through the
+   *   ordinary conflict flow (§2.4). Nothing in the working tree is touched.
+   */
+  async resyncIntegration(repoPath: string, branch: string, remote = 'origin'): Promise<ResyncOutcome> {
+    await this.fetch(repoPath, '', remote)
+    const { state } = await this.integrationState(repoPath, branch, remote)
+    if (state === 'no-remote' || state === 'up-to-date') return { outcome: 'up-to-date' }
+    if (state === 'ahead') {
+      await this.pushBranch(repoPath, branch, remote)
+      return { outcome: 'pushed' }
+    }
+
+    const checkedOut = (await git.currentBranch({ fs, dir: repoPath })) === branch
+    if (checkedOut) {
+      const { staged, unstaged } = await this.status(repoPath)
+      if (staged.length + unstaged.length > 0) throw new Error('integration-dirty')
+    }
+
+    const author = await this.auth.getAuthor(repoPath)
+    try {
+      await git.merge({
+        fs,
+        dir: repoPath,
+        ours: branch,
+        theirs: `${remote}/${branch}`,
+        author: { name: author.name, email: author.email },
+        message: `Merge ${remote}/${branch} into ${branch}`,
+        fastForwardOnly: state === 'behind',
+      })
+    } catch (err: unknown) {
+      if (!conflictFiles(err)) throw err
+      return { outcome: 'set-aside', branch: await this.setAside(repoPath, branch, checkedOut, remote) }
+    }
+    if (checkedOut) await git.checkout({ fs, dir: repoPath, ref: branch })
+    if (state === 'behind') return { outcome: 'fast-forwarded' }
+    await this.pushBranch(repoPath, branch, remote)
+    return { outcome: 'merged' }
+  }
+
+  /** GH39: moves the diverged local integration commits onto a fresh `dev-resync[-n]` branch and
+   *  realigns `branch` on `<remote>/<branch>`. HEAD is moved first (same commit, no file touched —
+   *  `createBranch`'s T87 technique), so the ref rewrite never desyncs a checkout. */
+  private async setAside(repoPath: string, branch: string, checkedOut: boolean, remote: string): Promise<string> {
+    const existing = new Set(await git.listBranches({ fs, dir: repoPath }))
+    let name = RESYNC_BRANCH_PREFIX
+    for (let n = 2; existing.has(name); n += 1) name = `${RESYNC_BRANCH_PREFIX}-${n}`
+
+    const localOid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${branch}` })
+    const remoteOid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/remotes/${remote}/${branch}` })
+    await git.branch({ fs, dir: repoPath, ref: name, object: localOid, checkout: false })
+    if (checkedOut) await git.checkout({ fs, dir: repoPath, ref: name, noCheckout: true })
+    await git.writeRef({ fs, dir: repoPath, ref: `refs/heads/${branch}`, value: remoteOid, force: true })
+    return name
+  }
+
+  /**
+   * GH39: one background auto-pull tick (T155) for a repo, with a single network round-trip:
+   * - fetch, even with pending changes (fetch only writes remote-tracking refs) — so the
+   *   integration state reflects the server;
+   * - clean repo → fast-forward-only of the current branch onto its fetched remote counterpart
+   *   (never a 3-way merge — T155); a branch that can't fast-forward is left alone;
+   * - integration `ahead` only (a previous push failed) → push retried — push never touches files.
+   * Returns the final integration state; network/auth errors propagate to the caller.
+   */
+  async autoSync(repoPath: string, integrationBranch: string, remote = 'origin'): Promise<IntegrationRemoteState> {
+    if (!(await getRemoteUrl(repoPath, remote))) return { state: 'no-remote', ahead: 0, behind: 0 }
+    await this.fetch(repoPath, '', remote)
+
+    const current = await git.currentBranch({ fs, dir: repoPath })
+    const { staged, unstaged } = await this.status(repoPath)
+    if (current && staged.length + unstaged.length === 0) {
+      const hasRemoteBranch = await git
+        .resolveRef({ fs, dir: repoPath, ref: `refs/remotes/${remote}/${current}` })
+        .then(() => true, () => false)
+      if (hasRemoteBranch) {
+        const author = await this.auth.getAuthor(repoPath)
+        const fastForwarded = await git
+          .merge({
+            fs,
+            dir: repoPath,
+            ours: current,
+            theirs: `${remote}/${current}`,
+            author: { name: author.name, email: author.email },
+            fastForwardOnly: true,
+          })
+          .then(r => !r.alreadyMerged, () => false)
+        if (fastForwarded) await git.checkout({ fs, dir: repoPath, ref: current })
+      }
+    }
+
+    const state = await this.integrationState(repoPath, integrationBranch, remote)
+    if (state.state !== 'ahead') return state
+    await this.pushBranch(repoPath, integrationBranch, remote)
+    return this.integrationState(repoPath, integrationBranch, remote)
   }
 
   async graph(repoPath: string, limit = 100): Promise<GraphCommit[]> {

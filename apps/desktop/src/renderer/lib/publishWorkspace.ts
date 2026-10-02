@@ -105,6 +105,26 @@ export class PublishBlockedError extends Error {
   }
 }
 
+/** GH39: a candidate's integration branch diverged from origin and merging origin into it would
+ *  conflict — refused before anything was touched; "Resynchroniser" is the way out. */
+export class PublishDivergedError extends Error {
+  constructor(public readonly repos: { repo: PublishRepoRef; conflicts: string[] }[]) {
+    super('integration-diverged')
+  }
+}
+
+/** GH39: branch `SyncService.resyncIntegration` sets diverged local commits aside on (`dev-resync`,
+ *  `dev-resync-2`…) — same constant as `RESYNC_BRANCH_PREFIX` in sync.service.ts (main process). */
+export const RESYNC_BRANCH_PREFIX = 'dev-resync'
+
+const RESYNC_BRANCH_PATTERN = new RegExp(`^${RESYNC_BRANCH_PREFIX}(-[0-9]+)?$`)
+
+/** Exactly the names `setAside` generates (`dev-resync`, `dev-resync-<n>`) — not a user's
+ *  `dev-resync-notes` nor an ephemeral `dev-<slug>` from a publish titled "Resync …". */
+export function isResyncBranch(branch: string): boolean {
+  return RESYNC_BRANCH_PATTERN.test(branch)
+}
+
 /** GH38: publishing `repo` failed (`reason` is a `PublishConflictError` or any other error) after
  *  `published` were already published — those stay published, nothing after `repo` was touched. */
 export class PublishRepoError extends Error {
@@ -135,9 +155,12 @@ export async function publishRepo(opts: {
   integrationBranch: string
   title: string
   continuingEphemeral: boolean
+  /** GH39: staged/unstaged changes to commit — none on a retry or a `dev-resync` branch, where
+   *  committing would only create an empty commit. */
+  hasPendingChanges: boolean
   onEphemeralChange: (b: EphemeralBranch | null) => void
 }): Promise<{ sha: string }> {
-  const { repoPath, branch, integrationBranch, title, continuingEphemeral, onEphemeralChange } = opts
+  const { repoPath, branch, integrationBranch, title, continuingEphemeral, hasPendingChanges, onEphemeralChange } = opts
   const isNominal = branch === integrationBranch || continuingEphemeral
   let workBranch = branch
 
@@ -160,13 +183,19 @@ export async function publishRepo(opts: {
   // T154: `workBranch` is never `integrationBranch` at this point — either just created above
   // (nominal case) or already a dev-*/free branch the user was on (advanced case) — so moving
   // the integration branch's ref here can't desync it from a checkout. Fast-forwards it to the
-  // fetch done upfront if it's a plain fast-forward; a genuine divergence (pre-existing, rare —
-  // see SPEC-FORKS-BRANCHES-BASELINES.md §2.1) is left untouched and falls through to the
-  // ordinary mergeInto/push behavior below.
-  await api.sync.fastForwardBranch(repoPath, integrationBranch)
+  // fetch done upfront if it's a plain fast-forward. GH39: a diverged integration (local commits
+  // whose push failed + new commits on origin) gets origin merged into it instead — by reference,
+  // same reason — checked conflict-free beforehand by `publishWorkspace`, before anything was written.
+  const integration = await api.sync.fastForwardBranch(repoPath, integrationBranch)
+  if (integration === 'diverged') {
+    const merged = await api.sync.mergeInto(repoPath, `origin/${integrationBranch}`, integrationBranch)
+    if (!merged.success) throw new Error(`origin/${integrationBranch} : ${merged.conflicts.join(', ')}`)
+  }
 
-  await api.sync.stageAll(repoPath)
-  await api.sync.commit(repoPath, title.trim() || `Modification sur ${branch}`)
+  if (hasPendingChanges) {
+    await api.sync.stageAll(repoPath)
+    await api.sync.commit(repoPath, title.trim() || `Modification sur ${branch}`)
+  }
   const merge = await api.sync.mergeInto(repoPath, workBranch, integrationBranch)
   if (!merge.success) throw new PublishConflictError(merge.conflicts, workBranch)
 
@@ -193,6 +222,7 @@ interface RepoState {
   branch: string
   integrationBranch: string
   hasWork: boolean
+  hasPendingChanges: boolean
   continuingEphemeral: boolean
 }
 
@@ -201,9 +231,15 @@ async function readRepoState(repoPath: string, ephemeral: EphemeralBranch | null
     api.sync.status(repoPath),
     api.baseline.getIntegrationBranch(repoPath),
   ])
-  const continuingEphemeral = ephemeral?.repoPath === repoPath && ephemeral.branch === status.branch
-  const pending = status.staged.length + status.unstaged.length
-  return { branch: status.branch, integrationBranch, hasWork: pending > 0 || continuingEphemeral, continuingEphemeral }
+  // GH39: a `dev-resync` branch left by "Resynchroniser" behaves like the ephemeral branch of a
+  // conflicted publish — published (even without pending changes) while it holds commits the
+  // integration doesn't have, then deleted.
+  const continuingEphemeral = (ephemeral?.repoPath === repoPath && ephemeral.branch === status.branch)
+    || (isResyncBranch(status.branch) && !(await api.sync.isMergedInto(repoPath, status.branch, integrationBranch)))
+  const hasPendingChanges = status.staged.length + status.unstaged.length > 0
+  return {
+    branch: status.branch, integrationBranch, hasWork: hasPendingChanges || continuingEphemeral, hasPendingChanges, continuingEphemeral,
+  }
 }
 
 function ref(node: WorkspaceTreeNode): PublishRepoRef {
@@ -262,6 +298,19 @@ export async function publishWorkspace(opts: {
     }
   }
 
+  // GH39: an integration branch that diverged from origin is resynchronized during its publication
+  // (see `publishRepo`) — unless that merge would conflict, in which case nothing is published:
+  // piling a new merge onto it would only deepen the divergence.
+  const diverged: { repo: PublishRepoRef; conflicts: string[] }[] = []
+  for (const node of candidates) {
+    const { integrationBranch } = states.get(node.repoPath)!
+    const { state } = await api.sync.integrationState(node.repoPath, integrationBranch)
+    if (state !== 'diverged') continue
+    const check = await api.sync.canMergeRemoteIntoIntegration(node.repoPath, integrationBranch)
+    if (!check.ok) diverged.push({ repo: ref(node), conflicts: check.conflicts })
+  }
+  if (diverged.length > 0) throw new PublishDivergedError(diverged)
+
   const published: PublishedRepo[] = []
   for (const node of candidates) {
     let state: RepoState | undefined
@@ -274,6 +323,7 @@ export async function publishWorkspace(opts: {
         integrationBranch: state.integrationBranch,
         title,
         continuingEphemeral: state.continuingEphemeral,
+        hasPendingChanges: state.hasPendingChanges,
         onEphemeralChange: trackEphemeral,
       })
       published.push({ ...ref(node), integrationBranch: state.integrationBranch, sha })

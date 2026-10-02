@@ -59,11 +59,13 @@
       "conflictOnRepo": "« {{repo}} » : quelqu’un a modifié les mêmes informations — résolution manuelle nécessaire.",
       "networkErrorRepo": "Publication impossible : réseau indisponible pour « {{repo}} ». Rien n'a été publié, vos modifications restent en attente — réessayez une fois connecté.",
       "blockedRepos": "Rien n'a été publié : ces repos ne sont pas sur leur branche d'intégration configurée.",
+      "divergedRepos": "Rien n'a été publié : l'intégration de ces repos a divergé du serveur et ne peut pas être resynchronisée automatiquement (conflit). Utilisez « Resynchroniser » (indicateur de synchronisation).",
       "failedOnRepo": "Échec de la publication de « {{repo}} » : {{error}}",
       "alreadyPublished": "Déjà publiés : {{repos}}. Relancez « Publier » pour terminer.",
       "reposToPublish": "Repos publiés :",
       "repoFiles_one": "({{count}} fichier)",
       "repoFiles_other": "({{count}} fichiers)",
+      "setAsideCommits": "(commits mis de côté)",
       "parentsNote": "Les repos parents sont aussi publiés pour mettre à jour les pins."
     },
     "viewHeader": {

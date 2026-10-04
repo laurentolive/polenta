@@ -341,8 +341,6 @@
       "unstageAll": "Désindexer tout",
       "stageAll": "Tout stager",
       "discardAll": "Tout annuler",
-      "noStagedFile": "Aucun fichier stagé",
-      "noModification": "Aucune modification",
       "unstage": "Désindexer",
       "stage": "Stager",
       "discardChanges": "Annuler les modifications",
@@ -356,7 +354,10 @@
       "pinConflict": "Conflit de dépendances : le pin n'a pas pu être mis à jour dans {{names}}. ",
       "pinFailed": "Échec de mise à jour du pin dans {{name}} : {{error}}",
       "noBaseline": "Aucune baseline",
-      "nothingStagedToCommit": "Aucune modification stagée à committer"
+      "nothingStagedToCommit": "Aucune modification stagée à committer",
+      "nothingToCommit": "Rien à committer",
+      "viewRepoGraph": "Voir l'historique de {{name}}",
+      "baselinesTitle": "Baselines"
     },
     "reorderable": {
       "deleteTitle": "Supprimer ?",
@@ -1007,7 +1008,8 @@
     "noBaseline": "Aucune baseline.",
     "noBaselineMatchesFilter": "Aucune baseline ne correspond au filtre.",
     "tagWarning_one": "{{count}} composant n'a pas pu être tagué — vérifier les logs.",
-    "tagWarning_other": "{{count}} composants n'ont pas pu être tagués — vérifier les logs."
+    "tagWarning_other": "{{count}} composants n'ont pas pu être tagués — vérifier les logs.",
+    "baselineCreated": "Baseline {{tag}} créée"
   },
   "impactAnalysisPage": {
     "revalidation": {

@@ -464,6 +464,13 @@ modification en attente (stagée ou non). Les repos en défaut sont listés avec
 > **bloquante et non contournable** (pas de "forcer la création" possible) — la branche courante du
 > repo est toujours affichée à titre informatif dans le récapitulatif, mais ne bloque plus.
 
+> **GH40 — UI de création** : plus de popup. La vue `/baseline` est le formulaire de création
+> (état des repos, tag pré-rempli, message, bouton « Créer la baseline », `Ctrl+Entrée`) ; la
+> liste des baselines est dans le panneau Version tant que cette vue est ouverte. Après succès :
+> bandeau « Baseline <tag> créée », formulaire ré-initialisé ; le tag tout juste créé reste refusé
+> tant que la liste des tags n'a pas été rechargée (le formulaire ne se ferme plus, il ne doit pas
+> pouvoir le soumettre deux fois). Conditions de blocage inchangées.
+
 ### 5.3 Contenu d'une baseline
 
 > **Implémentation actuelle** : il n'y a pas de fichier d'index (`.polenta/baselines.yaml` a été

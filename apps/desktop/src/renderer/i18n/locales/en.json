@@ -1270,7 +1270,9 @@
       "unknownType": "Unknown object type: {{ref}}",
       "unknownStatus": "Unknown status for this type: {{status}}",
       "emptyTitle": "The title is empty.",
-      "fieldsNotObject": "\"fields\" must be an object."
+      "fieldsNotObject": "\"fields\" must be an object.",
+      "requiredEmpty": "Required field is empty: {{field}}",
+      "ears": "\"{{field}}\" does not follow the EARS syntax (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)"
     },
     "failure": {
       "stale": "One of the two branches moved since opening: nothing was written. Run the original operation again.",
@@ -1286,6 +1288,26 @@
     "closeTab": "Close tab",
     "noConflicts": "No real conflict: both sides were merged automatically, field by field. Finalize the merge.",
     "resuming": "Finishing the publication…",
-    "retryResume": "Retry the rest of the publication"
+    "retryResume": "Retry the rest of the publication",
+    "modeRaw": "Raw",
+    "modeRendered": "Rendered",
+    "renderNotSupported": "Rendered view is available for requirements and tests only — resolve this file in Raw.",
+    "showBase": "Common ancestor",
+    "basePane": "Common ancestor",
+    "absentInBase": "File absent from the common ancestor.",
+    "renderUnavailable": "The output YAML is invalid: fix it in Raw mode to get the rendered view back (nothing is lost).",
+    "rendered": {
+      "title": "Title",
+      "status": "Status",
+      "preconditions": "Preconditions",
+      "steps": "Steps",
+      "postconditions": "Postconditions",
+      "other": "Other properties",
+      "empty": "(empty)",
+      "leftValue": "My changes",
+      "rightValue": "Destination",
+      "removedOnSide": "Removed on this side",
+      "conflict": "Changed on both sides: pick a version (editable afterwards)."
+    }
   }
 }

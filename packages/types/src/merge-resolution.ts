@@ -69,6 +69,8 @@ export interface MergeValidationIssue {
     | 'unknownStatus'
     | 'emptyTitle'
     | 'fieldsNotObject'
+    | 'requiredEmpty'
+    | 'ears'
   params?: Record<string, string | number>
 }
 

@@ -1270,7 +1270,9 @@
       "unknownType": "Type d'objet inconnu : {{ref}}",
       "unknownStatus": "Statut inconnu pour ce type : {{status}}",
       "emptyTitle": "Le titre est vide.",
-      "fieldsNotObject": "« fields » doit être un objet."
+      "fieldsNotObject": "« fields » doit être un objet.",
+      "requiredEmpty": "Champ requis vide : {{field}}",
+      "ears": "« {{field}} » ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)"
     },
     "failure": {
       "stale": "Une des deux branches a bougé depuis l'ouverture : rien n'a été écrit. Relancez l'opération d'origine.",
@@ -1286,6 +1288,26 @@
     "closeTab": "Fermer l'onglet",
     "noConflicts": "Aucun conflit réel : les changements des deux côtés ont été fusionnés automatiquement, champ par champ. Finalisez le merge.",
     "resuming": "Fin de la publication en cours…",
-    "retryResume": "Réessayer la suite de la publication"
+    "retryResume": "Réessayer la suite de la publication",
+    "modeRaw": "Raw",
+    "modeRendered": "Rendu",
+    "renderNotSupported": "Rendu disponible pour les exigences et les tests uniquement — ce fichier se résout en Raw.",
+    "showBase": "Ancêtre commun",
+    "basePane": "Ancêtre commun",
+    "absentInBase": "Fichier absent de l'ancêtre commun.",
+    "renderUnavailable": "Le YAML de la sortie est invalide : corrigez-le en mode Raw pour revenir au rendu (rien n'est perdu).",
+    "rendered": {
+      "title": "Titre",
+      "status": "Statut",
+      "preconditions": "Préconditions",
+      "steps": "Étapes",
+      "postconditions": "Postconditions",
+      "other": "Autres propriétés",
+      "empty": "(vide)",
+      "leftValue": "Mes modifications",
+      "rightValue": "Destination",
+      "removedOnSide": "Supprimé de ce côté",
+      "conflict": "Modifié des deux côtés : choisissez une version (modifiable ensuite)."
+    }
   }
 }

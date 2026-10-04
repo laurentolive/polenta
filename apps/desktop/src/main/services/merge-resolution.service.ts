@@ -17,6 +17,7 @@ import type { SchemaService } from './schema.service'
 import type { SyncService } from './sync.service'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { TOMBSTONES_DIR } from './id-counter.util'
+import { isEarsCompliant, isFilled } from './maturity.util'
 
 /**
  * GH37 — résolution des conflits de merge dans l'outil (specs/GH37-design.md §2.2, §4).
@@ -424,9 +425,19 @@ export class MergeResolutionService {
     const typeDef = findObjectTypeDef(await this.schema.get(repoPath), ref)
     if (typeDef === null) {
       errors.push({ code: 'unknownType', params: { ref } })
-    } else if (typeDef !== 'unresolvable' && typeDef.statuses && typeDef.statuses.length > 0) {
-      if (!typeDef.statuses.some(s => s.name === obj.status)) {
+    } else if (typeDef !== 'unresolvable') {
+      if (typeDef.statuses && typeDef.statuses.length > 0 && !typeDef.statuses.some(s => s.name === obj.status)) {
         errors.push({ code: 'unknownStatus', params: { status: String(obj.status ?? '') } })
+      }
+      // Non bloquant (sprint 2) : mêmes règles que l'import en masse et la maturité, signalées
+      // sans empêcher « Merger » — un merge n'a pas à corriger ce que les deux côtés acceptaient.
+      const fields = (obj.fields && typeof obj.fields === 'object' ? obj.fields : {}) as Record<string, unknown>
+      for (const f of typeDef.fields ?? []) {
+        const label = f.label ?? f.name
+        if (f.required && !isFilled(fields[f.name])) warnings.push({ code: 'requiredEmpty', params: { field: label } })
+        else if (f.validator === 'EARS' && isFilled(fields[f.name]) && !isEarsCompliant(fields[f.name])) {
+          warnings.push({ code: 'ears', params: { field: label } })
+        }
       }
     }
     return { errors, warnings }

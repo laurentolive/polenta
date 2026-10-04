@@ -179,3 +179,53 @@ describe('changedLineIndexes', () => {
     expect([...changedLineIndexes(null, 'x\ny')!]).toEqual([0, 1])
   })
 })
+
+describe('Rendu helpers (units)', () => {
+  const twoConflicts = () => {
+    const left = { ...base, title: 'A', fields: { ...base.fields, priority: 'high' } }
+    const right = { ...base, title: 'B', fields: { ...base.fields, priority: 'low' } }
+    return { left, right, m: mergeFile(dump(base), dump(left), dump(right), labels) }
+  }
+
+  it('U14 — invalid YAML outside the regions gives an error, never throws', async () => {
+    const { m } = twoConflicts()
+    const broken = m.output.replace('status: draft', 'status: [draft')
+    expect(parseOutput('object', broken).error).toBeDefined()
+    const { updateObjectOutput } = await import('./index')
+    expect(updateObjectOutput(broken, 'version', 2)).toBeNull()
+  })
+
+  it('updateObjectOutput edits a resolved unit and keeps the open regions verbatim', async () => {
+    const { updateObjectOutput, regionFragments } = await import('./index')
+    const { m } = twoConflicts()
+    const before = regionFragments(m.output)
+    const out = updateObjectOutput(m.output, 'fields.statement', 'THE system SHALL do X')!
+    expect(regionFragments(out)).toEqual(before)
+    const p = parseOutput('object', out)
+    expect(p.unresolved.sort()).toEqual(['fields.priority', 'title'])
+    expect((p.value as typeof base).fields.statement).toBe('THE system SHALL do X')
+    // Resolving everything afterwards still gives a valid object.
+    expect(parseOutput('object', resolveAllRegions(out, 'left')).value).toMatchObject({ title: 'A', fields: { priority: 'high' } })
+  })
+
+  it('fragmentValue reads the value of an indented fragment', async () => {
+    const { fragmentValue, regionFragments } = await import('./index')
+    const { m } = twoConflicts()
+    const f = regionFragments(m.output).get('fields.priority')!
+    expect(fragmentValue(f.left)).toBe('high')
+    expect(fragmentValue(f.right)).toBe('low')
+    expect(fragmentValue('')).toBeUndefined()
+  })
+
+  it('changedUnits lists the units a side changed', async () => {
+    const { changedUnits } = await import('./index')
+    expect([...changedUnits(base, withFields(base, { priority: 'high' }, { title: 'X' }))].sort()).toEqual(['fields.priority', 'title'])
+  })
+
+  it('unitAnchors finds root keys, fields and regions', async () => {
+    const { unitAnchors } = await import('./index')
+    const { m } = twoConflicts()
+    const keys = unitAnchors(m.output).map(a => a.key)
+    expect(keys).toEqual(expect.arrayContaining(['id', 'title', 'fields', 'fields.priority', 'fields.statement']))
+  })
+})

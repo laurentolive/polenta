@@ -6,7 +6,8 @@ import {
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { yaml } from '@codemirror/lang-yaml'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
-import { findRegions, type Side } from '@polenta/merge-core'
+import { findRegions, unitAnchors, type Side } from '@polenta/merge-core'
+import { programmaticScroller, ratioOf, type ScrollSyncGroup } from './scrollSync'
 
 /**
  * GH37 — panneau Raw de l'éditeur de résolution (CodeMirror 6, design §3.2).
@@ -28,6 +29,9 @@ interface Props {
   onResolve?: (key: string, side: Side) => void
   labels?: { takeLeft: string; takeRight: string }
   yamlSyntax?: boolean
+  /** Défilement synchronisé (sprint 2) : groupe, id du panneau, et ancrage par unité d'objet
+   *  (`units`) ou simple position relative (fichier texte). */
+  sync?: { group: ScrollSyncGroup; id: string; units: boolean }
 }
 
 const theme = EditorView.theme({
@@ -121,7 +125,7 @@ function highlightDecorations(state: EditorState, highlight: Props['highlight'])
 
 const setHighlight = StateEffect.define<Props['highlight']>()
 
-export function RawPane({ value, readOnly = false, highlight, onChange, onResolve, labels, yamlSyntax = true }: Props) {
+export function RawPane({ value, readOnly = false, highlight, onChange, onResolve, labels, yamlSyntax = true, sync }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   // Latest callbacks, read by the (long-lived) editor extensions.
@@ -163,7 +167,8 @@ export function RawPane({ value, readOnly = false, highlight, onChange, onResolv
     }
     const v = new EditorView({ state: EditorState.create({ doc: value, extensions }), parent: host.current! })
     view.current = v
-    return () => { v.destroy(); view.current = null }
+    const unsync = sync ? attachSync(v, sync) : () => {}
+    return () => { unsync(); v.destroy(); view.current = null }
     // The editor is rebuilt only when its nature changes; value/highlight are synced below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly, yamlSyntax])
@@ -180,4 +185,41 @@ export function RawPane({ value, readOnly = false, highlight, onChange, onResolv
   }, [highlight])
 
   return <div ref={host} className="h-full min-h-0 overflow-hidden" />
+}
+
+/** Publishes this editor's scroll anchor to the group, and follows the others'. */
+function attachSync(v: EditorView, sync: NonNullable<Props['sync']>): () => void {
+  const el = v.scrollDOM
+  const scroller = programmaticScroller()
+  let cachedDoc: unknown = null
+  let cached: { key: string; line: number }[] = []
+  const anchors = () => {
+    if (!sync.units) return []
+    if (cachedDoc !== v.state.doc) { cachedDoc = v.state.doc; cached = unitAnchors(v.state.doc.toString()) }
+    return cached
+  }
+  const onScroll = () => {
+    if (scroller.isEcho(el)) return
+    const block = v.lineBlockAtHeight(el.scrollTop)
+    const line = v.state.doc.lineAt(block.from).number - 1
+    let anchor: { key: string; line: number } | null = null
+    for (const a of anchors()) { if (a.line <= line) anchor = a; else break }
+    sync.group.publish(sync.id, { key: anchor?.key ?? null, offset: anchor ? line - anchor.line : 0, ratio: ratioOf(el) })
+  }
+  el.addEventListener('scroll', onScroll, { passive: true })
+  const unregister = sync.group.register(sync.id, {
+    scrollTo(target) {
+      const list = anchors()
+      const i = target.key ? list.findIndex(a => a.key === target.key) : -1
+      if (i < 0) {
+        scroller.set(el, target.ratio * (el.scrollHeight - el.clientHeight))
+        return
+      }
+      const span = i + 1 < list.length ? list[i + 1].line - list[i].line - 1 : target.offset
+      const line = list[i].line + Math.min(target.offset, Math.max(0, span))
+      const pos = v.state.doc.line(Math.min(line + 1, v.state.doc.lines)).from
+      scroller.set(el, v.lineBlockAt(pos).top)
+    },
+  })
+  return () => { el.removeEventListener('scroll', onScroll); unregister() }
 }

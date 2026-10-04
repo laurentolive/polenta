@@ -86,8 +86,8 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 > réécriture de `refs/heads/<intégration>`, ce qui suppose de ne jamais l'appeler pendant qu'on est
 > checkouté sur cette branche (sinon HEAD/index et fichiers désynchronisent silencieusement).
 > Si l'intégration locale a divergé (commits locaux non poussés en attente d'un push précédent
-> resté en échec — cas préexistant, rare) : laissée inchangée, `mergeInto` se comporte comme avant
-> ce ticket pour ce cas précis — pas de nouvelle UI de résolution introduite ici.
+> resté en échec, alors qu'`origin` a avancé) : voir §2.6 (GH39) — `origin/<intégration>` y est
+> d'abord fusionné, ou la publication est refusée si cette fusion serait en conflit.
 
 > **Règle :** toute modification d'exigence ou de test finit par transiter par une branche `dev-*`
 > avant merge dans l'intégration — soit une branche éphémère créée par "Publier" (cas nominal), soit
@@ -160,7 +160,8 @@ backend, seule l'UI simplifiée (T83/T87) impose `dev-*` pour son propre flux.
 3. Si pas de conflit et cas nominal → `sync:checkout-branch` vers l'intégration +
    `sync:delete-branch` de la branche éphémère ; puis dans tous les cas (nominal ou avancé) →
    `sync:push-branch` de la branche d'intégration vers `origin` (best-effort, un échec de push
-   n'annule pas le merge local déjà acquis)
+   n'annule pas le merge local déjà acquis — il reste signalé par l'indicateur de synchronisation
+   et le push est relancé par l'auto-pull, §2.6 GH39)
 4. Si conflit → voir §2.4
 
 **Suppression :** `sync:delete-branch` — possible sur toute branche sauf celle actuellement
@@ -225,15 +226,26 @@ tourne jamais à l'ouverture du projet elle-même (`setInterval` diffère nature
 tick) — l'ouverture fait déjà sa propre résolution réseau (clone/fetch des dépendances manquantes),
 inutile de la ralentir davantage.
 
-Par repo, à chaque tick :
-1. Ignoré si des fichiers stagés ou non stagés existent (même garde que T153).
-2. Sinon, `SyncService.pullFastForwardOnly()` (nouveau, distinct de `pull()`) — **jamais** de vrai
-   merge à trois voies : contrairement à un clic explicite sur "Rafraîchir", une opération
-   silencieuse et non demandée ne doit jamais pouvoir écrire des marqueurs de conflit dans les
-   fichiers de l'utilisateur pendant qu'il travaille sur autre chose. Un repo qui a divergé (commits
-   locaux non poussés, cf. §2.1 T154) échoue silencieusement, retenté au tick suivant.
-3. Aucune notification ni indicateur — succès invisible, échec journalisé (`console.warn`) jamais
-   remonté à l'utilisateur.
+Par repo, à chaque tick — un seul appel `SyncService.autoSync(repo, intégration)` (GH39, un seul
+fetch réseau) :
+1. `fetch` d'`origin`, **même si le repo a des modifications en attente** (un fetch n'écrit que des
+   refs distantes) — pour que l'état de synchronisation (§2.6) reflète le serveur.
+2. Repo propre (aucun fichier stagé ou non stagé — même garde que T153) → fast-forward de la
+   branche courante sur `origin/<branche>` — **jamais** de vrai merge à trois voies : contrairement à
+   un clic explicite sur "Rafraîchir", une opération silencieuse et non demandée ne doit jamais
+   pouvoir écrire des marqueurs de conflit dans les fichiers de l'utilisateur pendant qu'il
+   travaille sur autre chose. Une branche qui ne peut pas avancer en fast-forward est laissée telle
+   quelle.
+3. Intégration **seulement en avance** sur `origin` (push d'une publication resté en échec) → push
+   relancé, même repo sale (le push ne touche pas les fichiers). Intégration **divergée** → aucune
+   action automatique, l'indicateur la signale (§2.6).
+4. Pas de popup : succès invisible ; un échec (hors ligne, auth, push refusé) est journalisé
+   (`console.warn`) et conservé comme dernière erreur du repo (`['sync:last-error', repo]`,
+   affichée par l'indicateur), effacée dès qu'un tick réussit **et** que l'intégration n'est plus en
+   alerte. Retenté au tick suivant.
+
+`SyncService.pullFastForwardOnly()` (T155) n'est plus utilisé par l'auto-pull depuis GH39 ; il reste
+exposé en IPC.
 
 > **Note (constatée pendant les tests de T155, non corrigée par ce ticket) :**
 > `WorkspaceTreeService.writeCache` réécrit `.polenta/tree.cache.yaml` avec un `generatedAt`
@@ -241,6 +253,58 @@ Par repo, à chaque tick :
 > étant suivi par git, le repo apparaît "modifié" (au moins ce fichier) peu après l'ouverture — ce
 > qui bloque la garde ci-dessus (comme celle de T153) jusqu'à ce que l'utilisateur committe ou
 > annule ce changement. Cause racine distincte du pull, mérite un ticket dédié.
+
+### 2.6 Synchronisation de l'intégration avec `origin` (GH39)
+
+**Problème corrigé :** un push en échec après "Publier" laissait le merge uniquement en local ; dès
+qu'`origin` avançait, l'intégration locale divergeait, l'auto-pull échouait sans le dire et chaque
+"Publier" empilait de nouveaux commits locaux par-dessus — divergence auto-entretenue et invisible.
+
+**État de l'intégration** (`SyncService.integrationState`, IPC `sync:integration-state`, local, sans
+réseau — refs du dernier fetch) : pour chaque repo, la branche d'intégration **configurée** (pas la
+branche courante) comparée à `origin/<intégration>` :
+
+| État | Définition | Alerte |
+|---|---|---|
+| `up-to-date` | mêmes commits | non |
+| `behind` | origin a des commits absents en local, pas l'inverse | non (l'auto-pull s'en charge) |
+| `ahead` | commits locaux absents d'origin, origin n'a rien de nouveau | oui, sauf pendant le push qui suit "Publier" (`['sync:pushing', repo]`) |
+| `diverged` | les deux | oui |
+| `no-remote` | pas de remote, ou intégration jamais poussée | non |
+
+**Indicateur** (`hooks/useIntegrationSync.ts`, interrogé toutes les 30 s et rafraîchi après chaque action — Publier, push, pull, commit, Resynchroniser, tick d’auto-pull ; un seul Resynchroniser à la fois dans toute l’app) :
+- En-tête (`layout/SyncIndicator.tsx`, à gauche de "Publier" dans `ViewHeader`) : pastille avec le
+  nombre de repos en alerte ; popover listant chaque repo (nom, intégration, « N modification(s) non
+  publiée(s) sur le serveur » ou « Divergé : N en local, M sur le serveur », dernière erreur) avec un
+  bouton **Resynchroniser**. Rien d'affiché sans alerte (ni dans un projet sans remote).
+- Panneau Version (`VersionRepoFolder.tsx`) : badge `↑N ↓M` relatif à l'intégration dans l'en-tête
+  du repo (couleur d'alerte si `ahead`/`diverged`), bouton Resynchroniser (icône) en cas d'alerte,
+  dernière erreur sous la ligne.
+
+**Resynchroniser** (`SyncService.resyncIntegration`, IPC `sync:resync-integration`) :
+1. `fetch`, puis selon l'état : `behind` → fast-forward ; `ahead` → push ; `diverged` → merge
+   d'`origin/<intégration>` dans l'intégration (« Merge origin/<int> into <int> ») puis push.
+   Intégration checkoutée → le répertoire de travail suit (merge puis checkout, comme `git.pull`).
+2. Garde : intégration checkoutée **avec** modifications en attente et état `behind`/`diverged` →
+   refus (`integration-dirty`, message « publiez-les ou annulez-les d'abord »), rien n'est modifié.
+3. Conflit sur le merge → les commits locaux sont **mis de côté** : branche `dev-resync` (`-2`, `-3`…
+   si prise) créée sur l'ancien commit local, `HEAD` déplacé dessus sans toucher aucun fichier si
+   l'intégration était checkoutée, puis intégration réalignée sur `origin/<intégration>`. Un message
+   invite à cliquer sur "Publier" pour fusionner ces commits.
+4. Sur `dev-resync[-n]` (noms exacts uniquement), "Publier" est actif sans modification en attente
+   (le popover affiche « (commits mis de côté) ») et la traite comme une branche éphémère : merge
+   dans l'intégration, retour sur l'intégration, suppression de `dev-resync`, push. Un conflit suit
+   le flux §2.4 standard.
+
+**"Publier" sur une intégration divergée** (`publishWorkspace.ts`) : contrôle supplémentaire **avant
+toute écriture**, après les fetchs, sur chaque repo candidat — état `diverged` → simulation
+(`git.merge({ dryRun })`, IPC `sync:can-merge-remote`) de la fusion d'`origin/<intégration>` :
+conflit → toute la publication est refusée (`PublishDivergedError`, liste repo : fichiers, renvoi
+vers Resynchroniser) ; sinon, pendant la publication du repo, `origin/<intégration>` est fusionné par
+référence dans l'intégration (après la création de la branche éphémère, comme le fast-forward T154)
+avant le merge de la modification. Une intégration seulement `ahead` n'est pas bloquante (le push
+emporte les anciens commits). "Publier" ne crée plus de commit vide quand il n'y a rien à committer
+(reprise après conflit, `dev-resync`).
 
 ---
 

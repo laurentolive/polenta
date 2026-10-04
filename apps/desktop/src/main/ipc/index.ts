@@ -196,6 +196,15 @@ export function registerIpcHandlers(c: Container): void {
     (_e, repoPath: string, branchName: string, remote?: string) =>
       c.sync.fastForwardBranch(repoPath, branchName, remote))
   ipcMain.handle('sync:pull-fast-forward-only', (_e, repoPath: string) => c.sync.pullFastForwardOnly(repoPath))
+  ipcMain.handle('sync:integration-state', (_e, repoPath: string, branch: string) =>
+    c.sync.integrationState(repoPath, branch))
+  ipcMain.handle('sync:can-merge-remote', (_e, repoPath: string, branch: string) =>
+    c.sync.canMergeRemoteIntoIntegration(repoPath, branch))
+  ipcMain.handle('sync:resync-integration', (_e, repoPath: string, branch: string) =>
+    c.sync.resyncIntegration(repoPath, branch))
+  ipcMain.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch))
+  ipcMain.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>
+    c.sync.isMergedInto(repoPath, branch, into))
   ipcMain.handle('sync:log', async (_e, repoPath: string, limit = 20) => {
     const commits = await git.log({ fs, dir: repoPath, depth: limit })
     return commits.map((c: { oid: string; commit: { message: string; author: { name: string; timestamp: number } } }) => ({

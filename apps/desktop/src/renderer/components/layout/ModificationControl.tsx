@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { GitMerge, X } from 'lucide-react'
@@ -8,17 +8,18 @@ import { useModificationMode } from '../../hooks/useModificationMode'
 import { useVersioning } from '../../contexts/VersioningContext'
 import type { PinPropagationOutcome } from '../../lib/workspaceActions'
 import {
-  publishWorkspace, PublishBlockedError, PublishConflictError, PublishNetworkError, PublishRepoError,
+  publishWorkspace, PublishBlockedError, PublishConflictError, PublishDivergedError, PublishNetworkError, PublishRepoError,
   type EphemeralBranch, type PublishedRepo,
 } from '../../lib/publishWorkspace'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
 
 /** Popover anchored under its trigger (T92 — replaces the old full-screen centered `Overlay`).
+ *  GH39: also used by `SyncIndicator`, the other header control.
  *  Click-away capture (no dimming) + Escape to close, reusing the pattern already established by
  *  `FieldConfigModal` (SystemView.tsx) rather than inventing a new one. Positioned `absolute`
  *  relative to `ModificationControl`'s own `relative` root, so it stays anchored under the button
  *  regardless of which view's header it's rendered in. */
-function PublishPopover({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+export function PublishPopover({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -51,13 +52,14 @@ function repoName(repo: { name: string; label?: string }): string {
 export function ModificationControl({ currentProjectId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const {
     repoPath, branch, integrationBranch, mode, pendingChangesCount, refetch, workspaceDir, flatNodes, tree,
-    pendingRepos, totalPendingCount,
+    pendingRepos,
   } = useModificationMode(currentProjectId)
   // GH38: identity of the set of repos the popup was opened for — any repo gaining or losing
   // pending changes while the title is being typed makes the popup stale, like a branch change.
-  const pendingSignature = pendingRepos.map(r => `${r.repoPath}:${r.count}`).join('|')
+  const pendingSignature = pendingRepos.map(r => `${r.repoPath}:${r.count}:${r.setAside}`).join('|')
   // VersioningContext tracks the root repo independently (its own 3s poll) — nudge it to
   // refresh immediately after a checkout so the header's readonly indicator doesn't lag by up
   // to 3s, same pattern as VersionRepoFolder's checkout mutations.
@@ -120,10 +122,21 @@ export function ModificationControl({ currentProjectId }: Props) {
   // Push is best-effort and doesn't gate "Publier" completing — the merges are already durable
   // locally at this point. Deliberately not awaited: a slow/flaky remote shouldn't keep the dialog
   // on "Publication…" once the local work is safely merged. GH38: one push per published repo,
-  // failures aggregated and prefixed with the repo's name.
+  // failures aggregated and prefixed with the repo's name. GH39: each repo's outcome is also kept as
+  // its last sync error (`['sync:last-error', repoPath]`, shared with the auto-pull) so a failed push
+  // stays visible on the sync indicator once this notification is dismissed — which, conversely,
+  // ignores a repo flagged `sync:pushing` (legitimately ahead until its push lands).
   function pushPublished(published: PublishedRepo[]) {
+    published.forEach(r => qc.setQueryData(['sync:pushing', r.repoPath], true))
     Promise.allSettled(published.map(r => api.sync.pushBranch(r.repoPath, r.integrationBranch)))
       .then(results => {
+        results.forEach((res, i) => {
+          const { repoPath } = published[i]
+          qc.setQueryData(['sync:pushing', repoPath], false)
+          qc.setQueryData(['sync:last-error', repoPath],
+            res.status === 'rejected' ? (res.reason instanceof Error ? res.reason.message : String(res.reason)) : null)
+          qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
+        })
         const errors = results.flatMap((res, i) => res.status === 'rejected'
           ? [`${repoName(published[i])} : ${res.reason instanceof Error ? res.reason.message : t('layout.modificationControl.pushError')}`]
           : [])
@@ -172,6 +185,15 @@ export function ModificationControl({ currentProjectId }: Props) {
           kind: 'blocked',
           message: t('layout.modificationControl.blockedRepos'),
           repos: err.repos.map(r => `${repoName(r.repo)} : ${r.branch || 'HEAD'} ≠ ${r.integrationBranch}`),
+        })
+        return
+      }
+      if (err instanceof PublishDivergedError) {
+        // GH39: refused before anything was touched, like a blocked branch.
+        setPublishError({
+          kind: 'blocked',
+          message: t('layout.modificationControl.divergedRepos'),
+          repos: err.repos.map(r => `${repoName(r.repo)} : ${r.conflicts.join(', ')}`),
         })
         return
       }
@@ -249,7 +271,7 @@ export function ModificationControl({ currentProjectId }: Props) {
         <button
           type="button"
           onClick={() => { setShowPublishPopup(true); setPopupOpenedFor({ repoPath, branch, pending: pendingSignature }) }}
-          disabled={totalPendingCount === 0 && pendingChangesCount === 0}
+          disabled={pendingRepos.length === 0 && pendingChangesCount === 0}
           className="btn-primary-sm flex items-center gap-1.5 shadow"
         >
           <GitMerge size={12} />
@@ -299,7 +321,9 @@ export function ModificationControl({ currentProjectId }: Props) {
                 {pendingRepos.map(r => (
                   <li key={r.repoPath}>
                     {repoName(r)}{' '}
-                    <span className="text-ink-3">{t('layout.modificationControl.repoFiles', { count: r.count })}</span>
+                    <span className="text-ink-3">
+                      {r.setAside ? t('layout.modificationControl.setAsideCommits') : t('layout.modificationControl.repoFiles', { count: r.count })}
+                    </span>
                   </li>
                 ))}
               </ul>

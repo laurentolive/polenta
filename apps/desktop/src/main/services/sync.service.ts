@@ -886,30 +886,30 @@ export class SyncService {
   async merge(repoPath: string, fromBranch: string): Promise<MergeResult> {
     const currentBranch = await git.currentBranch({ fs, dir: repoPath })
     if (!currentBranch) throw new Error('Detached HEAD — cannot merge')
-
-    const author = await this.auth.getAuthor(repoPath)
-
-    try {
-      const result = await git.merge({
-        fs,
-        dir: repoPath,
-        ours: currentBranch,
-        theirs: fromBranch,
-        author: { name: author.name, email: author.email },
-        message: `Merge branch '${fromBranch}' into ${currentBranch}`,
-        fastForwardOnly: false,
-      })
-
-      return { success: true, sha: result.oid ?? '' }
-    } catch (err: unknown) {
-      const conflicts = conflictFiles(err)
-      // GH37: the refs let the caller open the merge editor (gauche = branche mergée).
-      if (conflicts) return { success: false, conflicts, leftRef: fromBranch, rightRef: currentBranch }
-      throw err
-    }
+    return this.mergeBranch(repoPath, fromBranch, currentBranch)
   }
 
   async mergeInto(repoPath: string, fromBranch: string, intoBranch: string): Promise<MergeResult> {
+    return this.mergeBranch(repoPath, fromBranch, intoBranch)
+  }
+
+  /**
+   * `git.merge` (isomorphic-git) only moves the `intoBranch` ref — merge commit or fast-forward —
+   * and never touches the index nor the working directory. When `intoBranch` is the checked-out
+   * branch, both would be left on the old tree: `git status` then shows the merged changes as
+   * staged reversals, and the next commit silently undoes the merge (GH42). So, for the
+   * checked-out branch only: the tree must be clean beforehand (re-checked here, the UI guard
+   * relies on a polled status), and the working directory is realigned on the new HEAD after.
+   * Merging into a branch that is not checked out (Publier's `mergeInto` from `dev-*`) is
+   * unchanged.
+   */
+  private async mergeBranch(repoPath: string, fromBranch: string, intoBranch: string): Promise<MergeResult> {
+    const checkedOut = (await git.currentBranch({ fs, dir: repoPath })) === intoBranch
+    if (checkedOut) {
+      const status = await this.status(repoPath)
+      if (status.staged.length + status.unstaged.length > 0) throw new Error('Uncommitted changes — cannot merge')
+    }
+    const before = await git.resolveRef({ fs, dir: repoPath, ref: intoBranch })
     const author = await this.auth.getAuthor(repoPath)
     try {
       const result = await git.merge({
@@ -921,9 +921,13 @@ export class SyncService {
         message: `Merge branch '${fromBranch}' into ${intoBranch}`,
         fastForwardOnly: false,
       })
+      if (checkedOut && result.oid && result.oid !== before) {
+        await git.checkout({ fs, dir: repoPath, ref: intoBranch, force: true })
+      }
       return { success: true, sha: result.oid ?? '' }
     } catch (err: unknown) {
       const conflicts = conflictFiles(err)
+      // GH37: the refs let the caller open the merge editor (gauche = branche mergée).
       if (conflicts) return { success: false, conflicts, leftRef: fromBranch, rightRef: intoBranch }
       throw err
     }

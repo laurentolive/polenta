@@ -1,7 +1,7 @@
 export type Side = 'left' | 'right'
 
 /** How a conflicting file is merged and edited (GH37 design §2.1). */
-export type FileKind = 'object' | 'text' | 'binary'
+export type FileKind = 'object' | 'links' | 'parameters' | 'text' | 'binary'
 
 /** Labels written on the conflict markers of a region (`<<<<<<< <left> [key]`). */
 export interface MarkerLabels {

@@ -134,6 +134,7 @@ export function createIpcClient(): ApiClient {
       getFile: (id, path) => invoke('merge-resolution:get-file', id, path),
       saveFile: (id, path, draft) => invoke('merge-resolution:save-file', id, path, draft),
       validate: (id, path, text) => invoke('merge-resolution:validate', id, path, text),
+      keepBoth: (id, path, apply) => invoke('merge-resolution:keep-both', id, path, apply),
       finalize: (id) => invoke('merge-resolution:finalize', id),
       abandon: (id) => invoke('merge-resolution:abandon', id),
     },

@@ -1,4 +1,5 @@
 import * as path from 'path'
+import { formatCounterId } from '@polenta/merge-core'
 import type { GitService } from './git.service'
 
 /**
@@ -62,11 +63,10 @@ export async function nextCounterId(
  * Formats a counter number into the `<PREFIX>-XXXX` ID convention shared by every
  * counter-backed object type — extracted so `computeNextId` (writes) and
  * `peekNextCounterId` (read-only preview, T122 sprint 2) always render the same format
- * from the same number.
+ * from the same number. GH37: lives in `@polenta/merge-core`, whose renumbering
+ * ("Garder les deux") must issue IDs in exactly this format too.
  */
-export function formatCounterId(prefix: string, num: number): string {
-  return `${prefix}-${String(num).padStart(4, '0')}`
-}
+export { formatCounterId }
 
 /**
  * Physically deletes an object's file, leaving its tombstone behind so its ID is never

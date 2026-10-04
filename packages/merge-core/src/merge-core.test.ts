@@ -229,3 +229,73 @@ describe('Rendu helpers (units)', () => {
     expect(keys).toEqual(expect.arrayContaining(['id', 'title', 'fields', 'fields.priority', 'fields.statement']))
   })
 })
+
+describe('keyed collections (links, parameters)', () => {
+  const link = (id: string, extra: Record<string, unknown> = {}) =>
+    ({ id, type: 'verification', sourceId: 'TEST-0001', targetId: `SYS-${id}`, createdAt: '2026-01-01', createdBy: 'a', ...extra })
+  const L = (...links: unknown[]) => dump({ links })
+
+  it('U15 — links added on both sides are all kept, right order then left', () => {
+    const m = mergeFile(L(link('A')), L(link('A'), link('L')), L(link('A'), link('R')), labels, 'links/links.yaml')
+    expect(m.kind).toBe('links')
+    expect(m.blocks).toEqual([])
+    expect((yaml.load(m.output) as { links: { id: string }[] }).links.map(l => l.id)).toEqual(['A', 'R', 'L'])
+  })
+
+  it('U16 — the same link changed differently is one block link:<id>, resolvable', () => {
+    const m = mergeFile(L(link('A')), L(link('A', { coverageType: 'full' })), L(link('A', { coverageType: 'partial' })), labels, 'links/links.yaml')
+    expect(m.blocks.map(b => b.key)).toEqual(['link:A'])
+    const out = resolveRegion(m.output, 'link:A', 'right')
+    expect(parseOutput('links', out)).toMatchObject({ unresolved: [] })
+    expect((yaml.load(out) as { links: { coverageType: string }[] }).links[0].coverageType).toBe('partial')
+  })
+
+  it('link removed on one side and changed on the other is a block with an empty side', () => {
+    const m = mergeFile(L(link('A'), link('B')), L(link('B')), L(link('A', { coverageType: 'full' }), link('B')), labels, 'links/links.yaml')
+    expect(m.blocks.map(b => b.key)).toEqual(['link:A'])
+    expect((yaml.load(resolveRegion(m.output, 'link:A', 'left')) as { links: unknown[] }).links).toHaveLength(1)
+  })
+
+  it('U17 — parameters added on both sides: union, sorted', () => {
+    const P = (p: Record<string, unknown>) => dump({ parameters: p })
+    const m = mergeFile(P({ b: { value: '1' } }), P({ b: { value: '1' }, z: { value: '2' } }), P({ a: { value: '3' }, b: { value: '1' } }), labels, 'parameters/parameters.yaml')
+    expect(m.kind).toBe('parameters')
+    expect(m.blocks).toEqual([])
+    expect(Object.keys((yaml.load(m.output) as { parameters: object }).parameters)).toEqual(['a', 'b', 'z'])
+  })
+
+  it('a parameter changed differently is a block param:<name>', () => {
+    const P = (v: string) => dump({ parameters: { tmax: { value: v, unit: '°C' } } })
+    const m = mergeFile(P('40'), P('45'), P('50'), labels, 'parameters/parameters.yaml')
+    expect(m.blocks.map(b => b.key)).toEqual(['param:tmax'])
+    expect(parseOutput('parameters', resolveRegion(m.output, 'param:tmax', 'left')).value).toEqual({ parameters: { tmax: { value: '45', unit: '°C' } } })
+  })
+
+  it('a links.yaml of another shape falls back to text', () => {
+    expect(mergeFile('x: 1\n', 'x: 2\n', 'x: 3\n', labels, 'links/links.yaml').kind).toBe('text')
+  })
+})
+
+describe('renumbering (Garder les deux)', () => {
+  it('U18 — renumberText replaces whole IDs only', async () => {
+    const { renumberText } = await import('./index')
+    expect(renumberText('a SYS-0043 b, SYS-00431, XSYS-0043, TEST-0043-2, SYS-0043.yaml', 'SYS-0043', 'SYS-0044'))
+      .toBe('a SYS-0044 b, SYS-00431, XSYS-0043, TEST-0043-2, SYS-0044.yaml')
+    expect(renumberText('TEST-0012-2', 'TEST-0012', 'TEST-0013')).toBe('TEST-0013-2')
+    // A dashed prefix ending like the renumbered one is another ID.
+    expect(renumberText('SW-0001 MC-SW-0001', 'SW-0001', 'SW-0007')).toBe('SW-0007 MC-SW-0001')
+  })
+
+  it('U19 — renumberPath renames the file and a folder named after the ID', async () => {
+    const { renumberPath } = await import('./index')
+    expect(renumberPath('test-runs/TEST-0012/RUN-1.yaml', 'TEST-0012', 'TEST-0013')).toBe('test-runs/TEST-0013/RUN-1.yaml')
+    expect(renumberPath('requirements/SYS-0043.yaml', 'SYS-0043', 'SYS-0044')).toBe('requirements/SYS-0044.yaml')
+    expect(renumberPath('requirements/SYS-00431.yaml', 'SYS-0043', 'SYS-0044')).toBe('requirements/SYS-00431.yaml')
+  })
+
+  it('U20 — nextFreeId honors files, tombstones and IDs already issued', async () => {
+    const { nextFreeId } = await import('./index')
+    expect(nextFreeId('SYS', ['requirements/SYS-0041.yaml', '.polenta/tombstones/SYS-0045', 'requirements/SYS-0043.yaml'])).toBe('SYS-0046')
+    expect(nextFreeId('SYS', ['requirements/SYS-0043.yaml'], ['SYS-0050'])).toBe('SYS-0051')
+  })
+})

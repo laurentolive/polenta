@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
 import { Check, Columns3, Eye, FileCode } from 'lucide-react'
 import {
-  changedLineIndexes, changedUnits, findRegions, parseOutput, regionFragments, resolveAllRegions, resolveRegion,
+  changedLineIndexes, changedUnits, shortRef, findRegions, parseOutput, regionFragments, resolveAllRegions, resolveRegion,
   updateObjectOutput, type Side,
 } from '@polenta/merge-core'
 import type {
-  MergeFileDetail, MergeFileDraft, MergeSessionInfo, MergeValidationIssue, ObjectTypeDefinition,
+  MergeFileDetail, MergeFileDraft, MergeKeepBothResult, MergeSessionInfo, MergeValidationIssue, ObjectTypeDefinition,
 } from '@polenta/types'
+import { api } from '../../api'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/useProjectSchema'
 import { RawPane } from './RawPane'
@@ -21,6 +22,8 @@ interface Props {
   path: string
   saveFile: (path: string, draft: MergeFileDraft) => Promise<void>
   onMerged: () => void
+  /** « Garder les deux » a recalculé la session (fichiers en conflit renumérotés). */
+  onSessionChanged: (session: MergeSessionInfo) => void
 }
 
 const SAVE_DELAY_MS = 500
@@ -45,8 +48,10 @@ export function FileResolver(props: Props) {
   return <Resolver key={detail.path} {...props} detail={detail} />
 }
 
-/** A file is resolved by choosing a side (binary, deleted on one side) or by editing a text output. */
+/** A file is resolved by choosing a side (binary, deleted on one side) or by editing a text output
+ *  — always the latter for a file brought in by the renumbering (reviewed, present on one side). */
 function isChoiceFile(d: MergeFileDetail): boolean {
+  if (d.conflict === 'renumbered') return false
   return d.kind === 'binary' || d.left === null || d.right === null
 }
 
@@ -60,7 +65,7 @@ function loadObject(text: string | null): Obj | null {
   }
 }
 
-function Resolver({ session, path, saveFile, onMerged, detail }: Props & { detail: MergeFileDetail }) {
+function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail }: Props & { detail: MergeFileDetail }) {
   const { t } = useTranslation()
   const choiceMode = isChoiceFile(detail)
   const [text, setText] = useState<string>(detail.draft?.text ?? detail.initialOutput ?? '')
@@ -177,11 +182,18 @@ function Resolver({ session, path, saveFile, onMerged, detail }: Props & { detai
     const textOf = pane === 'left' ? detail.left : pane === 'right' ? detail.right : detail.base
     const obj = objects[pane]
     const title = pane === 'left'
-      ? t('mergeResolve.leftPane', { ref: session.leftRef })
-      : pane === 'right' ? t('mergeResolve.rightPane', { ref: session.rightRef }) : t('mergeResolve.basePane')
+      ? t('mergeResolve.leftPane', { ref: shortRef(session.leftRef) })
+      : pane === 'right' ? t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }) : t('mergeResolve.basePane')
     const tone = pane === 'base' ? undefined : pane
     let content: ReactNode
-    if (textOf === null) {
+    const image = detail.images?.[pane]
+    if (image) {
+      content = (
+        <div className="h-full overflow-auto p-3 flex items-start justify-center bg-canvas">
+          <img src={image} alt={title} className="max-w-full border border-edge" />
+        </div>
+      )
+    } else if (textOf === null) {
       content = (
         <p className="p-4 text-xs text-ink-3 italic">
           {detail.kind === 'binary' ? t('mergeResolve.binaryContent')
@@ -301,6 +313,9 @@ function Resolver({ session, path, saveFile, onMerged, detail }: Props & { detai
                 </span>
               )}
             </PaneTitle>
+            {detail.conflict === 'both-added' && detail.kind === 'object' && (
+              <KeepBothBar session={session} path={path} onApplied={onSessionChanged} />
+            )}
             <div className="flex-1 min-h-0">{output}</div>
             {!choiceMode && <ValidationBar parseError={regions.error} issues={validation} />}
           </div>
@@ -378,6 +393,56 @@ function ValidationBar({ parseError, issues }: { parseError?: string; issues: { 
     <div className="px-3 py-1.5 border-t border-edge text-xs shrink-0 space-y-0.5 max-h-24 overflow-auto">
       {errors.map(e => <p key={e} className="text-status-danger">{e}</p>)}
       {warnings.map(w => <p key={w} className="text-status-warning">{w}</p>)}
+    </div>
+  )
+}
+
+/**
+ * « Garder les deux » (sprint 3) : l'objet de gauche reçoit le prochain ID libre, ses références
+ * côté gauche suivent. Aperçu (ID attribué, fichiers réécrits) avant confirmation.
+ */
+function KeepBothBar({ session, path, onApplied }: { session: MergeSessionInfo; path: string; onApplied: (s: MergeSessionInfo) => void }) {
+  const { t } = useTranslation()
+  const [preview, setPreview] = useState<MergeKeepBothResult | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const run = async (apply: boolean) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await api.mergeResolution.keepBoth(session.id, path, apply)
+      if (apply && res.session) onApplied(res.session)
+      else setPreview(res)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="px-3 py-2 border-b border-edge bg-status-info-bg text-xs shrink-0">
+      {!preview ? (
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-ink-2">{t('mergeResolve.keepBoth.hint')}</p>
+          <button type="button" className="btn-secondary-sm" disabled={busy} onClick={() => void run(false)}>
+            {t('mergeResolve.keepBoth.button')}
+          </button>
+        </div>
+      ) : (
+        <div>
+          <p className="text-ink mb-1">{t('mergeResolve.keepBoth.preview', { oldId: preview.oldId, newId: preview.newId })}</p>
+          <ul className="font-mono text-ink-2 list-disc list-inside max-h-24 overflow-auto mb-2">
+            {preview.impacted.map(p => <li key={p}>{p}</li>)}
+          </ul>
+          <div className="flex gap-2 justify-end">
+            <button type="button" className="btn-secondary-sm" disabled={busy} onClick={() => setPreview(null)}>{t('common.cancel')}</button>
+            <button type="button" className="btn-primary-sm" disabled={busy} onClick={() => void run(true)}>
+              {t('mergeResolve.keepBoth.confirm', { newId: preview.newId })}
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <p className="text-status-danger mt-1">{error}</p>}
     </div>
   )
 }

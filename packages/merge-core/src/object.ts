@@ -57,11 +57,11 @@ function orderedKeys(...objs: Obj[]): string[] {
   return out
 }
 
-type UnitResult =
+export type UnitResult =
   | { conflict: false; value: unknown; from?: Side | 'both' }
   | { conflict: true; left: unknown; right: unknown }
 
-function mergeUnit(unit: string, b: unknown, l: unknown, r: unknown): UnitResult {
+export function mergeUnit(unit: string, b: unknown, l: unknown, r: unknown): UnitResult {
   if (deepEqual(l, r)) return { conflict: false, value: l, from: deepEqual(l, b) ? undefined : 'both' }
   if (deepEqual(l, b)) return { conflict: false, value: r, from: 'right' }
   if (deepEqual(r, b)) return { conflict: false, value: l, from: 'left' }

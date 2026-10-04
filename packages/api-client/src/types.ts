@@ -2,6 +2,7 @@ import type {
   MergeFileDetail,
   MergeFileDraft,
   MergeFinalizeResult,
+  MergeKeepBothResult,
   MergeOrigin,
   MergeSessionInfo,
   MergeValidation,
@@ -248,7 +249,9 @@ export interface DrawioPage {
 // is surfaced here; the renderer has no use for the full YAML diff objects.
 export type MergeResult =
   | { success: true; sha: string }
-  | { success: false; conflicts: string[] }
+  // GH37: `leftRef` (mes modifications) / `rightRef` (destination) of the conflicting merge, to
+  // open the merge editor on it.
+  | { success: false; conflicts: string[]; leftRef?: string; rightRef?: string }
 
 // T154 — SyncService.ensureIntegrationUpToDate()'s outcome.
 export type IntegrationSyncResult = 'up-to-date' | 'fast-forwarded' | 'diverged' | 'no-remote-branch'
@@ -398,7 +401,7 @@ export interface ApiClient {
     status(repoPath: string): Promise<SyncStatus>
     commit(repoPath: string, message: string): Promise<{ sha: string }>
     push(repoPath: string): Promise<void>
-    pull(repoPath: string): Promise<void>
+    pull(repoPath: string): Promise<MergeResult>
     fetch(repoPath: string, urlFallback: string, remote?: string): Promise<void>
     fastForwardBranch(repoPath: string, branchName: string, remote?: string): Promise<IntegrationSyncResult>
     pullFastForwardOnly(repoPath: string): Promise<void>
@@ -440,6 +443,7 @@ export interface ApiClient {
     getFile(id: string, path: string): Promise<MergeFileDetail>
     saveFile(id: string, path: string, draft: MergeFileDraft): Promise<MergeSessionInfo>
     validate(id: string, path: string, text: string): Promise<MergeValidation>
+    keepBoth(id: string, path: string, apply: boolean): Promise<MergeKeepBothResult>
     finalize(id: string): Promise<MergeFinalizeResult>
     abandon(id: string): Promise<void>
   }

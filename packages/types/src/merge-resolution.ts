@@ -6,15 +6,22 @@
 
 export type MergeSide = 'left' | 'right'
 
-/** Opération qui a produit le conflit — détermine les libellés et la suite après finalisation. */
+/** Opération qui a produit le conflit — détermine les libellés, la branche avancée par la
+ *  finalisation et la suite après finalisation. */
 export type MergeOrigin =
   | { kind: 'publish'; workBranch: string; integrationBranch: string; title: string; ephemeral: boolean }
+  /** Vue graphe : merge de `from` dans `into` (la branche courante pour « merge »). */
   | { kind: 'merge'; from: string; into: string }
+  /** Rafraîchir : la branche locale (gauche, avancée) reçoit `remoteRef` (droite). */
+  | { kind: 'pull'; branch: string; remoteRef: string }
 
-export type MergeConflictKind = 'both-modified' | 'both-added' | 'deleted-left' | 'deleted-right'
+/** `renumbered` (sprint 3) : fichier sans conflit touché par la renumérotation « Garder les deux »,
+ *  listé pour relecture avant d'être mergé. */
+export type MergeConflictKind = 'both-modified' | 'both-added' | 'deleted-left' | 'deleted-right' | 'renumbered'
 
-/** `object` = exigence/test/campagne… (fusion par champ), `text` = hunks de lignes, `binary` = choix d'un côté. */
-export type MergeFileKind = 'object' | 'text' | 'binary'
+/** `object` = exigence/test/campagne… (fusion par champ), `links`/`parameters` = par lien / par
+ *  paramètre, `text` = hunks de lignes, `binary` = choix d'un côté. */
+export type MergeFileKind = 'object' | 'links' | 'parameters' | 'text' | 'binary'
 
 export interface MergeFileEntry {
   path: string
@@ -23,6 +30,11 @@ export interface MergeFileEntry {
   objectId?: string
   title?: string
   state: 'todo' | 'merged'
+}
+
+export interface MergeRenumber {
+  oldId: string
+  newId: string
 }
 
 export interface MergeSessionInfo {
@@ -34,10 +46,18 @@ export interface MergeSessionInfo {
   leftOid: string
   rightOid: string
   baseOid: string
+  /** Arbre gauche réécrit par « Garder les deux » (sinon l'arbre de `leftOid`). */
+  leftTreeOid?: string
+  renumbers: MergeRenumber[]
   /** Branche mise à jour par la finalisation, et le côté dont elle provient. */
   targetRef: string
   targetSide: MergeSide
   files: MergeFileEntry[]
+  /** Calculé à la lecture : une des deux branches a bougé depuis l'ouverture — la session ne peut
+   *  plus être finalisée, il faut repartir d'une résolution neuve. */
+  stale?: boolean
+  /** Un brouillon périmé du même merge a été remplacé par cette session (à signaler une fois). */
+  replacedStaleDraft?: boolean
 }
 
 /** Avancement d'un fichier : texte de sortie (objet/texte) ou côté retenu (binaire, supprimé/modifié). */
@@ -52,7 +72,9 @@ export interface MergeFileDetail extends MergeFileEntry {
   base: string | null
   left: string | null
   right: string | null
-  /** Sortie initiale calculée (régions de marqueurs comprises) — `null` si un seul côté existe ou binaire. */
+  /** Binaire de type image : aperçus (data URL) des versions présentes. */
+  images?: { base?: string; left?: string; right?: string }
+  /** Sortie initiale calculée (régions de marqueurs comprises) — `null` pour un choix de côté. */
   initialOutput: string | null
   blocks: { key: string; left?: string; right?: string }[]
   auto: { key: string; from: MergeSide | 'both' }[]
@@ -71,12 +93,23 @@ export interface MergeValidationIssue {
     | 'fieldsNotObject'
     | 'requiredEmpty'
     | 'ears'
+    | 'invalidLinks'
+    | 'invalidParameters'
   params?: Record<string, string | number>
 }
 
 export interface MergeValidation {
   errors: MergeValidationIssue[]
   warnings: MergeValidationIssue[]
+}
+
+/** « Garder les deux » : ID attribué à l'objet de gauche et fichiers réécrits (aperçu puis application). */
+export interface MergeKeepBothResult {
+  oldId: string
+  newId: string
+  impacted: string[]
+  /** Présent quand la renumérotation a été appliquée (session recalculée). */
+  session?: MergeSessionInfo
 }
 
 export type MergeFinalizeResult =

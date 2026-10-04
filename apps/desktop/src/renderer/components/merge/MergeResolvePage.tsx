@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, Circle, GitMerge } from 'lucide-react'
 import type { MergeFinalizeResult, MergeSessionInfo } from '@polenta/types'
+import { shortRef } from '@polenta/merge-core'
 import { api } from '../../api'
 import { useSetTabTitle, useTabs } from '../../contexts/TabsContext'
 import { useModificationMode } from '../../hooks/useModificationMode'
@@ -40,7 +41,7 @@ export function MergeResolvePage({ id, projectId }: Props) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { activeTabId, closeTab } = useTabs()
-  const { session: sessionQuery, saveFile } = useMergeSession(id)
+  const { session: sessionQuery, saveFile, setSession } = useMergeSession(id)
   const session = sessionQuery.data ?? null
   const { workspaceDir, flatNodes, tree } = useModificationMode(projectId || null)
 
@@ -67,6 +68,37 @@ export function MergeResolvePage({ id, projectId }: Props) {
   if (sessionQuery.isLoading) return <p className="p-6 text-sm text-ink-3 italic">{t('common.loading')}</p>
   if (!session) {
     return <p className="p-6 text-sm text-ink-3">{t('mergeResolve.noSession')}</p>
+  }
+
+  /** « Garder les deux » recomputed the session: file contents changed, cached details are stale. */
+  function onSessionChanged(s: MergeSessionInfo) {
+    qc.removeQueries({ queryKey: ['merge-resolution', s.id, 'file'] })
+    setSession(s)
+  }
+
+  /**
+   * A branch moved since this resolution was opened: it can't be finalized any more. Start over
+   * from the current state of the same merge (the stale draft is replaced, GH37 §10). For Publier,
+   * the integration branch is first brought up to date with the remote (T154), as "Publier" does.
+   */
+  async function restart() {
+    if (!session) return
+    setBusy(true)
+    setFailure(null)
+    try {
+      const { origin } = session
+      if (origin.kind === 'publish') {
+        await api.sync.fetch(session.repoPath, '').catch(() => {})
+        await api.sync.fastForwardBranch(session.repoPath, origin.integrationBranch).catch(() => {})
+      }
+      const next = await api.mergeResolution.open(session.repoPath, session.leftRef, session.rightRef, origin)
+      void qc.invalidateQueries({ queryKey: ['merge-resolution'] })
+      void navigate({ to: '/merge-resolve', search: { id: next.id, projectId } })
+    } catch (err) {
+      setFailure({ reason: 'error', message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setBusy(false)
+    }
   }
 
   const mergedCount = session.files.filter(f => f.state === 'merged').length
@@ -115,7 +147,7 @@ export function MergeResolvePage({ id, projectId }: Props) {
         <div className="flex-1 min-w-0">
           <h1 className="text-sm font-semibold text-ink truncate">{t('mergeResolve.tabTitle', { repo: repoLabel(session.repoPath) })}</h1>
           <p className="text-xs text-ink-3 truncate">
-            {t('mergeResolve.subtitle', { left: session.leftRef, right: session.rightRef })}
+            {t('mergeResolve.subtitle', { left: shortRef(session.leftRef), right: shortRef(session.rightRef) })}
           </p>
         </div>
         <span className="text-xs text-ink-2 shrink-0">{t('mergeResolve.progress', { merged: mergedCount, total: session.files.length })}</span>
@@ -134,11 +166,24 @@ export function MergeResolvePage({ id, projectId }: Props) {
             </div>
           )}
         </div>
-        <button type="button" className="btn-primary-sm" disabled={!allMerged || busy} onClick={() => void finalize()}>
+        <button type="button" className="btn-primary-sm" disabled={!allMerged || busy || !!session.stale} onClick={() => void finalize()}>
           {busy ? t('mergeResolve.finalizing') : t('mergeResolve.finalize')}
         </button>
       </div>
-      {failure && (
+      {(session.stale || failure?.reason === 'stale') && (
+        <div className="px-4 py-2 border-b border-edge bg-status-warning-bg text-xs text-status-warning shrink-0 flex items-center gap-3">
+          <span className="flex-1">{t('mergeResolve.staleBanner')}</span>
+          <button type="button" className="btn-primary-sm" disabled={busy} onClick={() => void restart()}>
+            {t('mergeResolve.restart')}
+          </button>
+        </div>
+      )}
+      {session.replacedStaleDraft && !session.stale && (
+        <div className="px-4 py-2 border-b border-edge bg-status-info-bg text-xs text-status-info shrink-0">
+          {t('mergeResolve.replacedStaleDraft')}
+        </div>
+      )}
+      {failure && failure.reason !== 'stale' && (
         <div className="px-4 py-2 border-b border-edge bg-status-danger-bg text-xs text-status-danger shrink-0">
           {failure.reason === 'error' ? failure.message : t(`mergeResolve.failure.${failure.reason}`)}
           {'paths' in failure && failure.paths && failure.paths.length > 0 && (
@@ -177,7 +222,7 @@ export function MergeResolvePage({ id, projectId }: Props) {
 
         <main className="flex-1 min-w-0 min-h-0">
           {selected ? (
-            <FileResolver session={session} path={selected} saveFile={saveFile}
+            <FileResolver session={session} path={selected} saveFile={saveFile} onSessionChanged={onSessionChanged}
               onMerged={() => {
                 const s = qc.getQueryData<MergeSessionInfo>(['merge-resolution', session.id]) ?? session
                 selectNextTodo(s, selected)

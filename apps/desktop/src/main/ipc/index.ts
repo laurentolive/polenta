@@ -258,6 +258,8 @@ export function registerIpcHandlers(c: Container): void {
     c.mergeResolution.saveFile(id, filepath, draft))
   ipcMain.handle('merge-resolution:validate', (_e, id: string, filepath: string, text: string) =>
     c.mergeResolution.validate(id, filepath, text))
+  ipcMain.handle('merge-resolution:keep-both', (_e, id: string, filepath: string, apply: boolean) =>
+    c.mergeResolution.keepBoth(id, filepath, apply))
   ipcMain.handle('merge-resolution:finalize', (_e, id: string) => c.mergeResolution.finalize(id))
   ipcMain.handle('merge-resolution:abandon', (_e, id: string) => c.mergeResolution.abandon(id))
   ipcMain.handle('sync:create-branch-at', (_e, repoPath: string, name: string, sha: string) =>

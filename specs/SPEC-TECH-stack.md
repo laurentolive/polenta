@@ -62,6 +62,8 @@ Remote git → source de vérité partagée entre utilisateurs
 | État serveur | TanStack Query | 5.x | Cache, invalidation, optimistic updates |
 | Formulaires | Zod (sans react-hook-form) | 3.x | Validation schema-driven — `react-hook-form` fait partie du stack `apps/web` uniquement, absent d'`apps/desktop` (T130) |
 | **Git engine** | isomorphic-git | 1.25.x | Pur JS — clone, commit, push, pull, merge, branch |
+| Fusion 3-voies (GH37) | `@polenta/merge-core` (package du monorepo) + diff3 | — / 0.0.3 | Logique pure de résolution des conflits : fusion par champ des objets, par lien (`links.yaml`) / par paramètre (`parameters.yaml`), hunks de lignes avec **le même `diff3`** qu'isomorphic-git (un fichier est en conflit ici exactement quand il l'est pour `git.merge`), marqueurs de conflit nommés, renumérotation. Importé par le main et le renderer (source TS aliasée, bundlée dans le main comme `@polenta/types`), seul package testé par **vitest** (`pnpm --filter @polenta/merge-core test`). Cf. §6 |
+| Éditeur de code (GH37) | CodeMirror 6 (`@codemirror/state`, `view`, `commands`, `language`, `lang-yaml`) | 6.x | Panneaux Raw de l'éditeur de résolution des conflits : décorations de lignes, widgets « Prendre gauche/droite », défilement synchronisé. Monaco écarté (lourd, workers à configurer sous Electron). Chunk de la route `/merge-resolve` seulement (≈ 800 kB, chargé à la demande) |
 | **Index mémoire** | Map + MiniSearch | 7.x | Requêtes, filtres, full-text — zéro DB |
 | **Moteur de requête dashboards** | AlaSQL | 4.17.x | SQL exécuté sur tableaux JS en mémoire (pas de moteur de stockage) — dashboards/requêtes personnalisables (T77), cf. [SPEC-DASHBOARDS.md](SPEC-DASHBOARDS.md) |
 | Export Excel | ExcelJS | 4.4.x | `.xlsx` pour tous les exports xlsx (T43 : cahiers d'exigences/tests/campagne, résultats de requête, analyse d'impact) — introduit en T77 pour le seul résultat de requête, généralisé par T43 via `ExportService`/canal IPC `export:save` (l'ancien canal ad hoc `queries:export-excel` a été retiré) |
@@ -100,6 +102,7 @@ polenta/
 ├── packages/
 │   ├── types/                      ← interfaces TypeScript partagées
 │   ├── zod-schemas/                ← schémas Zod partagés
+│   ├── merge-core/                 ← fusion 3-voies pure (GH37), partagée main/renderer, testée vitest
 │   └── api-client/                 ← interface ApiClient (IPC + HTTP)
 ├── turbo.json
 ├── pnpm-workspace.yaml
@@ -233,8 +236,10 @@ next(P) = max( plus haut P-NNNN.yaml du dossier du type (récursif),
 
 **Collisions entre branches** : deux branches parties du même état attribuent le même
 prochain ID (plus de conflit sur un fichier partagé, mais deux objets de même ID). Le merge
-les signale comme deux ajouts du même fichier ; l'un des deux est renommé à la main. Non
-traité par GH20 (cf. issue #17).
+les signale comme deux ajouts du même fichier. Non traité par GH20 (cf. issue #17) ; depuis
+**GH37**, l'éditeur de résolution propose **« Garder les deux »** : l'objet de gauche reçoit le
+prochain ID libre (union des fichiers et pierres tombales des trois versions) et ses références
+côté gauche sont renumérotées (cf. §6.4).
 
 ### 4.5 `config/project.yaml` — configuration du projet
 
@@ -297,15 +302,90 @@ L'index est **idempotent** : le reconstruire depuis le working tree produit touj
 
 ## 6. Gestion des conflits de merge YAML
 
-**État actuel (T84) :** `SyncService.merge()`/`mergeInto()` détectent un conflit via
-`err instanceof git.Errors.MergeConflictError` et renvoient `conflicts: string[]` — les chemins
-réels des fichiers en conflit (`err.data.filepaths`), pas de résolution champ par champ. Il
-n'existe pas de `MergeService` séparé ; en cas d'échec du "Publier" (cf.
-`SPEC-FORKS-BRANCHES-BASELINES.md` §2.4), l'utilisateur reste sur sa branche `dev-*`, une
-notification affiche le message générique **et** la liste des fichiers en conflit, avec un lien
-vers `/version-diff` scopé au repo concerné (root ou composant) et pré-rempli avec le diff entre la
-branche `dev-*` et la branche d'intégration — pas d'assistance de résolution dans l'UI au-delà de
-ce diff en lecture seule.
+**Détection (T84, inchangée) :** `SyncService.merge()`/`mergeInto()`/`pull()` appellent `git.merge`
+d'isomorphic-git avec `abortOnConflict` (défaut) : un conflit **ne touche ni le working directory ni
+l'index** et lève `MergeConflictError`, détectée par `instanceof`. Le résultat
+`{ success: false, conflicts, leftRef, rightRef }` porte les chemins en conflit et, depuis GH37, les
+deux refs du merge (gauche = « mes modifications », droite = « destination ») pour ouvrir l'éditeur.
+
+### 6.1 Résolution dans l'outil (GH37)
+
+Toute opération en conflit propose **« Résoudre les conflits »**, qui ouvre (ou rouvre, avec son
+brouillon) une **session de résolution** dans un onglet `/merge-resolve` :
+
+| Origine | Gauche | Droite | Branche avancée par la finalisation |
+|---|---|---|---|
+| Publier (`publishWorkspace`) | `dev-<slug>` | intégration | intégration — puis fin de la publication (§6.3) |
+| Graphe — merge (`merge`) | branche mergée | branche courante | branche courante (WD réaligné) |
+| Graphe — `mergeInto` | `from` | `into` | `into` |
+| Rafraîchir (`pull`) | branche locale | `origin/<branche>` | branche locale (WD réaligné) |
+
+- **Service** : `MergeResolutionService` (main, canaux `merge-resolution:*` :
+  `open/list/get/get-file/save-file/validate/keep-both/finalize/abandon`). Il ne travaille que sur
+  les objets git : il parcourt les trois arbres (gauche, ancêtre commun, droite) avec `git.walk` et
+  ne lit le contenu que des chemins modifiés des deux côtés.
+- **Logique pure** : `@polenta/merge-core`, partagée entre le main et le renderer.
+  - *Objets typés* (exigences, tests, campagnes) : fusion **par unité**, c'est-à-dire chaque clé
+    racine hors `fields`, et chaque `fields.<nom>`. Une unité modifiée d'un seul côté, ou à
+    l'identique des deux côtés, est reprise sans conflit. `version` prend le max et
+    `needsRevalidation` le OU logique.
+  - *`links/links.yaml`* : fusion par lien (`id`), union des ajouts.
+  - *`parameters/parameters.yaml`* : fusion par paramètre, clés triées.
+  - *Autres fichiers* : hunks `diff3`, la même bibliothèque qu'isomorphic-git.
+  - *Binaires* : choix d'un côté, avec aperçu pour les images.
+  - Conséquence : un objet dont des **champs différents** ont changé de chaque côté n'est **pas**
+    en conflit, même si git l'aurait signalé ligne à ligne.
+- **Sortie** : le **texte** est l'unique source de vérité. Un bloc non résolu y est une région de
+  marqueurs nommée par sa clé (`<<<<<<< <gauche> [fields.statement]` … `=======` … `>>>>>>> <droite> [fields.statement]`).
+  - Le mode Rendu (exigences et tests) édite une unité via `updateObjectOutput`, sans toucher aux
+    régions encore ouvertes.
+  - **Validation** (main) :
+    - erreurs bloquantes : YAML ou marqueurs invalides, `id` différent du nom de fichier, type ou
+      statut inconnu, titre vide, `fields` non objet, `links`/`parameters` mal formés ;
+    - avertissements non bloquants : champ `required` vide, énoncé non EARS.
+- **Supprimé d'un côté, modifié de l'autre** : Garder / Supprimer. Garder retire la pierre tombale
+  `.polenta/tombstones/<ID>` apportée par le côté qui supprimait.
+- **Brouillons** : `userData/merge-drafts/<id>.json`, avec `id` = hash(repo, oid gauche, oid droite).
+  Ils ne sont jamais écrits dans le repo et sont repris après redémarrage (bouton « Reprendre la
+  résolution des conflits » à côté de Publier). Si une branche a bougé, la session est **périmée** :
+  elle ne peut plus être finalisée, « Recommencer avec l'état actuel » rouvre le même merge, et
+  l'ancien brouillon est remplacé (l'utilisateur en est informé).
+
+### 6.2 Finalisation
+
+1. Les deux branches pointent toujours sur les oids de la session (sinon refus `stale`).
+2. Le WD doit être propre si la branche cible est checkoutée, et toujours pour Publier, car la suite
+   quitte la branche de travail (sinon refus `dirty-worktree`).
+3. Tous les fichiers sont mergés et valides.
+4. **L'arbre résultat est reconstruit par Polenta** : parcours des trois arbres, sorties validées,
+   fusion propre recalculée pour les fichiers non listés, puis `writeBlob`/`writeTree`. `git.merge`
+   n'est pas réutilisé : il ne permet ni supprimé/modifié ni la renumérotation de fichiers sans
+   conflit.
+5. `git.commit` à deux parents `[cible, autre]` sur la branche cible, puis `checkout` forcé si elle
+   est checkoutée. Rien n'est écrit dans le WD avant ce point.
+
+### 6.3 Suite de Publier
+
+`resumePublishAfterResolution` (renderer) :
+- retour sur l'intégration et suppression de `dev-<slug>`, seulement si elle était éphémère (T87) ;
+- propagation du pin (T82) et raccrochage en cas de HEAD détaché (cas diamant) ;
+- publication des repos restants (GH38) sous le même titre, puis push best-effort.
+
+Si la suite échoue, l'écran de fin propose « Réessayer ». Un conflit sur un repo suivant rouvre
+l'éditeur pour ce repo.
+
+### 6.4 « Garder les deux » (même ID créé des deux côtés)
+
+L'objet n'existe pas dans l'ancêtre commun, donc toute occurrence de son ID côté gauche désigne
+l'objet de gauche.
+- Le côté gauche est réécrit dans un **arbre git synthétique** (`leftTreeOid` de la session) :
+  chaque fichier modifié à gauche depuis l'ancêtre est renuméroté. Cela couvre le nom de fichier,
+  le dossier `test-runs/<ID>/`, et les occurrences de l'ID à mot entier dans le texte (liens, arbres
+  d'affichage, campagnes, `entryId` `<ID>-<n>`, mentions).
+- La session est ensuite recalculée sur (ancêtre, gauche', droite).
+- Les fichiers touchés sans conflit apparaissent comme **« renumérotés »**, à relire puis merger
+  (les binaires ne sont que renommés).
+- L'ID et les fichiers impactés sont montrés avant confirmation.
 
 **Détail historique (corrigé par T84) :** avant ce ticket, la détection reposait sur
 `err.message.includes('MergeConflictError')`, qui ne correspondait en réalité **jamais** — le
@@ -315,10 +395,10 @@ le `throw err`, jamais dans la branche `{ success: false, conflicts: [...] }` : 
 remontait comme une erreur non gérée plutôt que comme l'échec binaire documenté. `T84` corrige la
 détection (`instanceof` sur la classe typée) en même temps qu'il peuple `conflicts`.
 
-**Non implémenté, hors périmètre (pas de ticket ouvert à ce jour) :** résolution champ par champ
-(base/ours/theirs par champ YAML, UI de choix de valeur). Nécessiterait un service lisant les 3
-versions du fichier via `git.readYamlRef()`, une comparaison de champs, et une UI dédiée — décrit
-pour mémoire, pas engagé.
+**Non implémenté (hors périmètre GH37) :**
+- résolution d'un rebase en conflit (toujours abandonné automatiquement) ;
+- choix à l'intérieur d'un champ (se fait par édition libre) ;
+- mode Rendu des campagnes, liens, paramètres, arbres et `.drawio` (Raw seulement).
 
 Les fichiers `.drawio` (XML texte) bénéficient du merge git ligne par ligne — rarement en conflit grâce aux IDs de nœuds stables.
 

@@ -359,7 +359,9 @@
       "pinConflict": "Conflit de dépendances : le pin n'a pas pu être mis à jour dans {{names}}. ",
       "pinFailed": "Échec de mise à jour du pin dans {{name}} : {{error}}",
       "noBaseline": "Aucune baseline",
-      "nothingStagedToCommit": "Aucune modification stagée à committer"
+      "nothingStagedToCommit": "Aucune modification stagée à committer",
+      "refreshConflict_one": "Conflit avec la branche distante ({{count}} fichier) : rien n'a été modifié.",
+      "refreshConflict_other": "Conflit avec la branche distante ({{count}} fichiers) : rien n'a été modifié."
     },
     "reorderable": {
       "deleteTitle": "Supprimer ?",
@@ -1258,7 +1260,8 @@
       "both-modified": "Modifié des deux côtés",
       "both-added": "Ajouté des deux côtés",
       "deleted-left": "Supprimé dans mes modifications",
-      "deleted-right": "Supprimé dans la destination"
+      "deleted-right": "Supprimé dans la destination",
+      "renumbered": "Renuméroté (à relire)"
     },
     "validation": {
       "markers": "Marqueurs de conflit invalides : {{message}}",
@@ -1272,7 +1275,9 @@
       "emptyTitle": "Le titre est vide.",
       "fieldsNotObject": "« fields » doit être un objet.",
       "requiredEmpty": "Champ requis vide : {{field}}",
-      "ears": "« {{field}} » ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)"
+      "ears": "« {{field}} » ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)",
+      "invalidLinks": "links.yaml invalide (chaque lien a un id unique, un type, une source et une cible) {{id}}",
+      "invalidParameters": "parameters.yaml invalide (une table « parameters » attendue)"
     },
     "failure": {
       "stale": "Une des deux branches a bougé depuis l'ouverture : rien n'a été écrit. Relancez l'opération d'origine.",
@@ -1308,6 +1313,15 @@
       "rightValue": "Destination",
       "removedOnSide": "Supprimé de ce côté",
       "conflict": "Modifié des deux côtés : choisissez une version (modifiable ensuite)."
+    },
+    "staleBanner": "Une des deux branches a bougé depuis l'ouverture : cette résolution ne peut plus être finalisée.",
+    "restart": "Recommencer avec l'état actuel",
+    "replacedStaleDraft": "Une résolution précédente de ce merge était périmée (branches modifiées depuis) : elle a été remplacée par celle-ci.",
+    "keepBoth": {
+      "hint": "Deux objets différents portent le même ID : vous pouvez garder les deux (le vôtre est renuméroté).",
+      "button": "Garder les deux…",
+      "preview": "{{oldId}} (mes modifications) deviendra {{newId}} ; fichiers réécrits de mon côté :",
+      "confirm": "Renuméroter en {{newId}}"
     }
   }
 }

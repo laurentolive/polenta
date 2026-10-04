@@ -12,6 +12,7 @@ import { propagatePinToDependents, type PinPropagationOutcome } from '../lib/wor
 import { PinPropagationWarning } from '../components/sidebar/version/PinPropagationWarning'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useSetTabTitle } from '../contexts/TabsContext'
+import { useOpenMergeResolution } from '../components/merge/useOpenMergeResolution'
 import { toIntlLocale } from '../i18n/useLocale'
 import type { GraphCommit, SyncFileStatus, MergeResult } from '@polenta/api-client'
 import type { WorkspaceTreeNode } from '@polenta/types'
@@ -290,6 +291,9 @@ function GraphContextMenu({
   const [selectorMode, setSelectorMode] = useState<'diff' | 'merge' | null>(null)
   // Per-mutation error messages
   const [mutationError, setMutationError] = useState<string | null>(null)
+  // GH37: the last merge conflicted — offered to resolve it in the merge editor.
+  const [mergeConflict, setMergeConflict] = useState<{ leftRef: string; rightRef: string; from: string; into: string } | null>(null)
+  const openResolution = useOpenMergeResolution(projectId)
 
   // Close on click outside
   useEffect(() => {
@@ -347,9 +351,12 @@ function GraphContextMenu({
 
   const mergeMut = useMutation({
     mutationFn: (fromBranch: string) => api.sync.merge(repoPath, fromBranch),
-    onSuccess: (result: MergeResult) => {
+    onSuccess: (result: MergeResult, fromBranch) => {
       if (!result.success) {
         setMutationError(t('graphPage.mergeConflicts', { conflicts: result.conflicts.join(', ') }))
+        if (result.leftRef && result.rightRef) {
+          setMergeConflict({ leftRef: result.leftRef, rightRef: result.rightRef, from: fromBranch, into: result.rightRef })
+        }
         return
       }
       onInvalidate(['status', 'graph'])
@@ -360,9 +367,10 @@ function GraphContextMenu({
 
   const mergeIntoMut = useMutation({
     mutationFn: ({ from, into }: { from: string; into: string }) => api.sync.mergeInto(repoPath, from, into),
-    onSuccess: (result: MergeResult) => {
+    onSuccess: (result: MergeResult, { from, into }) => {
       if (!result.success) {
         setMutationError(t('graphPage.mergeConflicts', { conflicts: result.conflicts.join(', ') }))
+        if (result.leftRef && result.rightRef) setMergeConflict({ leftRef: result.leftRef, rightRef: result.rightRef, from, into })
         return
       }
       onInvalidate(['status', 'graph'])
@@ -568,6 +576,23 @@ function GraphContextMenu({
     >
       {mutationError && (
         <p className="px-3 py-1.5 text-status-danger leading-snug">{mutationError}</p>
+      )}
+      {mergeConflict && (
+        <div className="px-3 pb-1.5">
+          <button
+            type="button"
+            className="btn-primary-sm"
+            disabled={openResolution.pending}
+            onClick={() => {
+              const { leftRef, rightRef, from, into } = mergeConflict
+              void openResolution.open(repoPath, leftRef, rightRef, { kind: 'merge', from, into })
+                .then(ok => { if (ok) onClose() })
+            }}
+          >
+            {t('layout.modificationControl.resolveConflicts')}
+          </button>
+          {openResolution.error && <p className="text-status-danger mt-1">{openResolution.error}</p>}
+        </div>
       )}
 
       {/* ── BRANCH MENU ─────────────────────────────────────────── */}

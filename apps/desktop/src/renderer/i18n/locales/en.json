@@ -359,7 +359,9 @@
       "pinConflict": "Dependency conflict: the pin could not be updated in {{names}}. ",
       "pinFailed": "Failed to update the pin in {{name}}: {{error}}",
       "noBaseline": "No baseline",
-      "nothingStagedToCommit": "Nothing staged to commit"
+      "nothingStagedToCommit": "Nothing staged to commit",
+      "refreshConflict_one": "Conflict with the remote branch ({{count}} file): nothing was changed.",
+      "refreshConflict_other": "Conflict with the remote branch ({{count}} files): nothing was changed."
     },
     "reorderable": {
       "deleteTitle": "Delete?",
@@ -1258,7 +1260,8 @@
       "both-modified": "Modified on both sides",
       "both-added": "Added on both sides",
       "deleted-left": "Deleted in my changes",
-      "deleted-right": "Deleted in the destination"
+      "deleted-right": "Deleted in the destination",
+      "renumbered": "Renumbered (to review)"
     },
     "validation": {
       "markers": "Invalid conflict markers: {{message}}",
@@ -1272,7 +1275,9 @@
       "emptyTitle": "The title is empty.",
       "fieldsNotObject": "\"fields\" must be an object.",
       "requiredEmpty": "Required field is empty: {{field}}",
-      "ears": "\"{{field}}\" does not follow the EARS syntax (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)"
+      "ears": "\"{{field}}\" does not follow the EARS syntax (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)",
+      "invalidLinks": "Invalid links.yaml (each link needs a unique id, a type, a source and a target) {{id}}",
+      "invalidParameters": "Invalid parameters.yaml (a \"parameters\" mapping is expected)"
     },
     "failure": {
       "stale": "One of the two branches moved since opening: nothing was written. Run the original operation again.",
@@ -1308,6 +1313,15 @@
       "rightValue": "Destination",
       "removedOnSide": "Removed on this side",
       "conflict": "Changed on both sides: pick a version (editable afterwards)."
+    },
+    "staleBanner": "One of the two branches moved since opening: this resolution can no longer be finalized.",
+    "restart": "Start over from the current state",
+    "replacedStaleDraft": "A previous resolution of this merge was stale (branches changed since): it was replaced by this one.",
+    "keepBoth": {
+      "hint": "Two different objects have the same ID: you can keep both (yours gets renumbered).",
+      "button": "Keep both…",
+      "preview": "{{oldId}} (my changes) will become {{newId}}; files rewritten on my side:",
+      "confirm": "Renumber to {{newId}}"
     }
   }
 }

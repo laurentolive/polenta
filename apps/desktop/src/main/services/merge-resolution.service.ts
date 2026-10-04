@@ -5,11 +5,12 @@ import { createHash } from 'crypto'
 import { app } from 'electron'
 import git, { TREE, type WalkerEntry } from 'isomorphic-git'
 import {
-  detectKind, isBinaryContent, mergeFile, parseObject, parseOutput, type MarkerLabels,
+  detectKind, entriesOf, isBinaryContent, mergeFile, nextFreeId, parseObject, parseOutput, prefixOf,
+  renumberPath, renumberText, shortRef, type MarkerLabels,
 } from '@polenta/merge-core'
 import type {
   MergeConflictKind, MergeFileDetail, MergeFileDraft, MergeFileEntry, MergeFileKind, MergeFinalizeResult,
-  MergeOrigin, MergeSessionInfo, MergeSide, MergeValidation, MergeValidationIssue,
+  MergeKeepBothResult, MergeOrigin, MergeSessionInfo, MergeSide, MergeValidation, MergeValidationIssue,
 } from '@polenta/types'
 
 import type { AuthService } from './auth.service'
@@ -20,14 +21,20 @@ import { TOMBSTONES_DIR } from './id-counter.util'
 import { isEarsCompliant, isFilled } from './maturity.util'
 
 /**
- * GH37 — résolution des conflits de merge dans l'outil (specs/GH37-design.md §2.2, §4).
+ * GH37 — résolution des conflits de merge dans l'outil (specs/GH37-design.md §2.2, §4, §5).
  *
  * Tout se passe sur les objets git : `git.merge` (abortOnConflict) n'a rien écrit dans le working
  * directory ni l'index, et cette session non plus — elle lit les trois versions des fichiers en
  * conflit et, à la finalisation, reconstruit elle-même l'arbre résultat puis crée le commit de
  * merge à deux parents. L'avancement (sortie de chaque fichier) est un brouillon JSON hors du
  * repo, `userData/merge-drafts/<id>.json`, l'id dérivant du repo et des deux commits : rouvrir le
- * même merge retrouve le brouillon, un merge dont une branche a bougé est une autre session.
+ * même merge retrouve le brouillon ; si une branche a bougé, l'ancien brouillon est périmé et
+ * remplacé par une session neuve (signalé à l'utilisateur).
+ *
+ * « Garder les deux » (sprint 3) réécrit le côté gauche dans un arbre git synthétique
+ * (`leftTreeOid`) : l'objet ajouté des deux côtés n'existe pas dans l'ancêtre, donc toute
+ * occurrence de son ID côté gauche désigne l'objet de gauche — chemins et contenus des fichiers
+ * modifiés à gauche sont renumérotés, puis la session est recalculée sur (ancêtre, gauche', droite).
  */
 
 interface DraftFile {
@@ -52,6 +59,9 @@ interface ResultEntry {
 
 const TREE_MODE = '040000'
 const modeString = (mode: number) => mode.toString(8).padStart(6, '0')
+const IMAGE_TYPES: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+}
 
 async function oidOf(e: WalkerEntry | undefined): Promise<string | undefined> {
   return e ? e.oid() : undefined
@@ -59,10 +69,19 @@ async function oidOf(e: WalkerEntry | undefined): Promise<string | undefined> {
 
 async function textOf(e: WalkerEntry | undefined): Promise<{ text: string | null; binary: boolean }> {
   if (!e) return { text: null, binary: false }
+  // A submodule pin (gitlink) points to a commit of another repo: no content to read here — it is
+  // resolved by choosing a side, like a binary.
+  if ((await e.type()) === 'commit') return { text: null, binary: true }
   const bytes = await e.content()
   if (!bytes) return { text: null, binary: false }
   if (isBinaryContent(bytes)) return { text: null, binary: true }
   return { text: Buffer.from(bytes).toString('utf8'), binary: false }
+}
+
+/** Every ancestor folder of `p` (`a/b/c.yaml` → `a`, `a/b`). */
+function ancestors(p: string): string[] {
+  const parts = p.split('/')
+  return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join('/'))
 }
 
 export class MergeResolutionService {
@@ -85,57 +104,51 @@ export class MergeResolutionService {
 
     const id = createHash('sha1').update(`${path.resolve(repoPath)}\0${leftOid}\0${rightOid}`).digest('hex')
     const existing = await this.load(id)
-    if (existing) return existing.session
+    if (existing) return this.withStale(existing.session)
 
-    const labels = { left: leftRef, right: rightRef }
-    const files: MergeFileEntry[] = []
-    await this.walk(repoPath, leftOid, baseOid, rightOid, async (filepath, t) => {
-      const entry = await this.classify(filepath, t, labels)
-      if (entry) files.push(entry)
-    })
-    files.sort((a, b) => a.path.localeCompare(b.path))
+    // Same merge (repo + refs) left in progress while a branch moved since: that draft can never
+    // be finalized any more — replaced by this fresh session, and the user is told (GH37 §10).
+    let replacedStaleDraft = false
+    for (const other of await this.allDrafts()) {
+      const s = other.session
+      if (s.id !== id && path.resolve(s.repoPath) === path.resolve(repoPath) && s.leftRef === leftRef && s.rightRef === rightRef) {
+        await this.abandon(s.id)
+        replacedStaleDraft = true
+      }
+    }
 
-    // Publier (et le merge du graphe) avancent la branche de droite ; seule la reprise d'un pull
-    // (sprint 3) avancera la gauche.
+    // Publier et le graphe avancent la droite (la destination) ; Rafraîchir avance la branche
+    // locale (gauche) en y fusionnant la branche distante.
+    const targetSide: MergeSide = origin.kind === 'pull' ? 'left' : 'right'
     const session: MergeSessionInfo = {
       id, repoPath, origin, leftRef, rightRef, leftOid, rightOid, baseOid,
-      targetRef: rightRef, targetSide: 'right', files,
+      renumbers: [],
+      targetRef: targetSide === 'left' ? leftRef : rightRef,
+      targetSide,
+      files: await this.computeConflicts(repoPath, leftOid, baseOid, rightOid, { left: leftRef, right: rightRef }),
+      ...(replacedStaleDraft ? { replacedStaleDraft } : {}),
     }
     await this.store({ session, files: {} })
     return session
   }
 
   /** Resolutions in progress (drafts), optionally for the given repos only — lets the UI offer to
-   *  resume one after the app restarted, when nothing else leads back to it. */
+   *  resume one after the app restarted, when nothing else leads back to it. Stale ones included
+   *  (flagged): resuming one is how the user learns it must be started over. */
   async list(repoPaths?: string[]): Promise<MergeSessionInfo[]> {
-    const dir = path.dirname(this.draftPath('x'))
-    let names: string[]
-    try {
-      names = (await fsP.readdir(dir)).filter(n => n.endsWith('.json'))
-    } catch {
-      return []
-    }
     const wanted = repoPaths && new Set(repoPaths.map(p => path.resolve(p)))
     const sessions: MergeSessionInfo[] = []
-    for (const n of names) {
-      const draft = await this.load(n.slice(0, -'.json'.length))
-      if (!draft || (wanted && !wanted.has(path.resolve(draft.session.repoPath)))) continue
-      // A draft whose branches moved since can never be finalized ("stale") — not offered.
-      if (await this.isCurrent(draft.session)) sessions.push(draft.session)
+    for (const draft of await this.allDrafts()) {
+      if (wanted && !wanted.has(path.resolve(draft.session.repoPath))) continue
+      sessions.push(await this.withStale(draft.session))
     }
-    return sessions
-  }
-
-  private async isCurrent(session: MergeSessionInfo): Promise<boolean> {
-    const [l, r] = await Promise.all([
-      git.resolveRef({ fs, dir: session.repoPath, ref: session.leftRef }).catch(() => null),
-      git.resolveRef({ fs, dir: session.repoPath, ref: session.rightRef }).catch(() => null),
-    ])
-    return l === session.leftOid && r === session.rightOid
+    // Current ones first: "Reprendre" opens the first.
+    return sessions.sort((a, b) => Number(!!a.stale) - Number(!!b.stale))
   }
 
   async get(id: string): Promise<MergeSessionInfo | null> {
-    return (await this.load(id))?.session ?? null
+    const draft = await this.load(id)
+    return draft ? this.withStale(draft.session) : null
   }
 
   async getFile(id: string, filepath: string): Promise<MergeFileDetail> {
@@ -143,18 +156,33 @@ export class MergeResolutionService {
     const { session } = draft
     const entry = session.files.find(f => f.path === filepath)
     if (!entry) throw new Error(`${filepath} is not in conflict in this merge`)
+    const { repoPath } = session
+    const leftRoot = session.leftTreeOid ?? session.leftOid
     const [base, left, right] = await Promise.all([
-      this.readText(session.repoPath, session.baseOid, filepath),
-      this.readText(session.repoPath, session.leftOid, filepath),
-      this.readText(session.repoPath, session.rightOid, filepath),
+      this.readText(repoPath, session.baseOid, filepath),
+      this.readText(repoPath, leftRoot, filepath),
+      this.readText(repoPath, session.rightOid, filepath),
     ])
+    let images: MergeFileDetail['images']
+    const mime = IMAGE_TYPES[path.extname(filepath).slice(1).toLowerCase()]
+    if (entry.kind === 'binary' && mime) {
+      const [b, l, r] = await Promise.all([
+        this.readDataUrl(repoPath, session.baseOid, filepath, mime),
+        this.readDataUrl(repoPath, leftRoot, filepath, mime),
+        this.readDataUrl(repoPath, session.rightOid, filepath, mime),
+      ])
+      images = { ...(b ? { base: b } : {}), ...(l ? { left: l } : {}), ...(r ? { right: r } : {}) }
+    }
     const merge = entry.kind !== 'binary' && left !== null && right !== null
-      ? mergeFile(base, left, right, this.labels(session))
+      ? mergeFile(base, left, right, this.labels(session), filepath)
       : null
+    // A file brought in by the renumbering exists on one side only: its output is that content.
+    const initialOutput = merge?.output ?? (entry.conflict === 'renumbered' ? left ?? right : null)
     return {
       ...entry,
       base, left, right,
-      initialOutput: merge?.output ?? null,
+      ...(images ? { images } : {}),
+      initialOutput,
       blocks: merge?.blocks ?? [],
       auto: merge?.auto ?? [],
       draft: draft.files[filepath],
@@ -167,6 +195,8 @@ export class MergeResolutionService {
     if (!entry) throw new Error(`${filepath} is not in conflict in this merge`)
     draft.files[filepath] = fileDraft
     entry.state = fileDraft.state
+    // The "stale draft replaced" notice has been seen once the user works on the session.
+    delete draft.session.replacedStaleDraft
     await this.store(draft)
     return draft.session
   }
@@ -181,6 +211,126 @@ export class MergeResolutionService {
   async abandon(id: string): Promise<void> {
     this.cache.delete(id)
     await fsP.rm(this.draftPath(id), { force: true })
+  }
+
+  // ─── « Garder les deux » (design §5) ────────────────────────────────────────────
+
+  /**
+   * Object added on both sides with the same ID: the left one gets the next free ID of its
+   * prefix, and every occurrence of the old ID on the left side follows. `apply: false` only
+   * previews (ID + files rewritten); `apply: true` also recomputes the session — drafts of the
+   * files not touched by the renumbering are kept.
+   */
+  async keepBoth(id: string, filepath: string, apply: boolean): Promise<MergeKeepBothResult> {
+    const draft = await this.require(id)
+    const { session } = draft
+    const entry = session.files.find(f => f.path === filepath)
+    if (!entry || entry.conflict !== 'both-added' || entry.kind !== 'object' || !entry.objectId) {
+      throw new Error(`${filepath} is not an object added on both sides`)
+    }
+    const oldId = entry.objectId
+    const prefix = prefixOf(oldId)
+    if (!prefix) throw new Error(`${oldId} has no numeric suffix`)
+
+    const { repoPath } = session
+    const known = new Set<string>()
+    for (const ref of [session.baseOid, session.leftOid, session.rightOid]) {
+      for (const f of await git.listFiles({ fs, dir: repoPath, ref })) known.add(f)
+    }
+    const newId = nextFreeId(prefix, known, session.renumbers.map(r => r.newId))
+
+    const leftRoot = session.leftTreeOid ?? session.leftOid
+    const { treeOid, impacted } = await this.rewriteLeft(repoPath, leftRoot, session.baseOid, oldId, newId)
+    if (!apply) return { oldId, newId, impacted }
+
+    const labels = this.labels(session)
+    const conflicts = await this.computeConflicts(repoPath, treeOid, session.baseOid, session.rightOid, labels)
+    const impactedSet = new Set(impacted)
+    // Files touched by the renumbering but merging cleanly are listed for review ("renumbered").
+    for (const p of impacted) {
+      if (conflicts.some(c => c.path === p)) continue
+      const text = await this.readText(repoPath, treeOid, p)
+      // A binary file is only renamed (its content can't hold the ID): nothing to review.
+      if (text === null) continue
+      const sample = parseObject(text)
+      conflicts.push({
+        path: p,
+        conflict: 'renumbered',
+        kind: detectKind([text], p),
+        ...(sample ? { objectId: sample.id as string, title: typeof sample.title === 'string' ? sample.title : undefined } : {}),
+        state: 'todo',
+      })
+    }
+    // Files listed for review by an earlier "Garder les deux" and untouched by this one stay
+    // listed (with their draft, kept below) — otherwise their reviewed output would be dropped.
+    for (const f of session.files) {
+      if (f.conflict === 'renumbered' && !impactedSet.has(f.path) && !conflicts.some(c => c.path === f.path)) {
+        conflicts.push({ ...f })
+      }
+    }
+    conflicts.sort((a, b) => a.path.localeCompare(b.path))
+
+    const files: Record<string, MergeFileDraft> = {}
+    for (const f of conflicts) {
+      const previous = draft.files[f.path]
+      if (previous && !impactedSet.has(f.path) && f.path !== filepath) {
+        files[f.path] = previous
+        f.state = previous.state
+      }
+    }
+    draft.session = {
+      ...session,
+      leftTreeOid: treeOid,
+      renumbers: [...session.renumbers, { oldId, newId }],
+      files: conflicts,
+    }
+    draft.files = files
+    await this.store(draft)
+    return { oldId, newId, impacted, session: draft.session }
+  }
+
+  /** Left side with `oldId` renumbered: changed paths/contents (vs the base) rewritten, the rest
+   *  taken as is. Returns the new root tree and the rewritten paths (new names). */
+  private async rewriteLeft(
+    repoPath: string, leftRoot: string, baseOid: string, oldId: string, newId: string,
+  ): Promise<{ treeOid: string; impacted: string[] }> {
+    const entries: ResultEntry[] = []
+    const impacted: string[] = []
+    await git.walk({
+      fs,
+      dir: repoPath,
+      trees: [TREE({ ref: leftRoot }), TREE({ ref: baseOid })],
+      map: async (filepath, walkEntries) => {
+        const [left, base] = (walkEntries ?? []).map(e => e ?? undefined)
+        if (filepath === '.') return true
+        if (!left) return null
+        const [lo, bo] = await Promise.all([oidOf(left), oidOf(base)])
+        const type = await left.type()
+        if (lo === bo) {
+          // Unchanged since the base: the ID (new on both sides) cannot appear in it.
+          entries.push({ path: filepath, oid: lo as string, mode: type === 'tree' ? TREE_MODE : modeString(await left.mode()), type: type as ResultEntry['type'] })
+          return null
+        }
+        if (type === 'tree') return true
+        if (type === 'commit') {
+          // Submodule pin: a commit of another repo, never read — copied as is.
+          entries.push({ path: filepath, oid: lo as string, mode: modeString(await left.mode()), type: 'commit' })
+          return null
+        }
+        const newPath = renumberPath(filepath, oldId, newId)
+        const bytes = (await left.content()) ?? new Uint8Array()
+        let oid = lo as string
+        if (!isBinaryContent(bytes)) {
+          const text = Buffer.from(bytes).toString('utf8')
+          const rewritten = renumberText(text, oldId, newId)
+          if (rewritten !== text) oid = await this.writeBlob(repoPath, rewritten)
+        }
+        if (oid !== lo || newPath !== filepath) impacted.push(newPath)
+        entries.push({ path: newPath, oid, mode: modeString(await left.mode()), type: 'blob' })
+        return null
+      },
+    })
+    return { treeOid: await this.writeTrees(repoPath, entries), impacted: impacted.sort() }
   }
 
   // ─── Finalisation (design §4) ───────────────────────────────────────────────────
@@ -225,10 +375,13 @@ export class MergeResolutionService {
     const targetOid = session.targetSide === 'right' ? session.rightOid : session.leftOid
     const otherOid = session.targetSide === 'right' ? session.leftOid : session.rightOid
     const otherRef = session.targetSide === 'right' ? session.leftRef : session.rightRef
+    const message = session.origin.kind === 'pull'
+      ? `Merge remote-tracking branch '${shortRef(session.origin.remoteRef)}' into ${session.targetRef}`
+      : `Merge branch '${otherRef}' into ${session.targetRef}`
     const sha = await git.commit({
       fs,
       dir: repoPath,
-      message: `Merge branch '${otherRef}' into ${session.targetRef}`,
+      message,
       author: { name: author.name, email: author.email },
       tree,
       parent: [targetOid, otherOid],
@@ -246,23 +399,51 @@ export class MergeResolutionService {
   // ─── Internals ──────────────────────────────────────────────────────────────────
 
   private labels(session: MergeSessionInfo): MarkerLabels {
-    return { left: session.leftRef, right: session.rightRef }
+    return { left: shortRef(session.leftRef), right: shortRef(session.rightRef) }
+  }
+
+  private async isCurrent(session: MergeSessionInfo): Promise<boolean> {
+    const [l, r] = await Promise.all([
+      git.resolveRef({ fs, dir: session.repoPath, ref: session.leftRef }).catch(() => null),
+      git.resolveRef({ fs, dir: session.repoPath, ref: session.rightRef }).catch(() => null),
+    ])
+    return l === session.leftOid && r === session.rightOid
+  }
+
+  private async withStale(session: MergeSessionInfo): Promise<MergeSessionInfo> {
+    const stale = !(await this.isCurrent(session))
+    return stale ? { ...session, stale } : session
+  }
+
+  private async computeConflicts(
+    repoPath: string, leftRoot: string, baseOid: string, rightOid: string, labels: MarkerLabels,
+  ): Promise<MergeFileEntry[]> {
+    const files: MergeFileEntry[] = []
+    await this.walk(repoPath, leftRoot, baseOid, rightOid, async (filepath, t) => {
+      const entry = await this.classify(filepath, t, labels)
+      if (entry) files.push(entry)
+    })
+    return files.sort((a, b) => a.path.localeCompare(b.path))
   }
 
   /**
    * Walks left/base/right together and calls `onBlob` for each path whose content differs on
    * both sides (the only paths that can conflict). Subtrees identical on two sides are pruned.
+   * `leftRoot` may be a commit or a tree (the renumbered left side).
    */
   private async walk(
-    repoPath: string, leftOid: string, baseOid: string, rightOid: string,
+    repoPath: string, leftRoot: string, baseOid: string, rightOid: string,
     onBlob: (filepath: string, t: Triple) => Promise<void>,
-    opts: { onTaken?: (entry: ResultEntry) => void; mustDescend?: (filepath: string) => boolean } = {},
+    opts: {
+      onTaken?: (entry: ResultEntry, taken: WalkerEntry) => Promise<void> | void
+      mustDescend?: (filepath: string) => boolean
+    } = {},
   ): Promise<void> {
     const { onTaken, mustDescend } = opts
     await git.walk({
       fs,
       dir: repoPath,
-      trees: [TREE({ ref: leftOid }), TREE({ ref: baseOid }), TREE({ ref: rightOid })],
+      trees: [TREE({ ref: leftRoot }), TREE({ ref: baseOid }), TREE({ ref: rightOid })],
       map: async (filepath, entries) => {
         const [left, base, right] = (entries ?? []).map(e => e ?? undefined)
         if (filepath === '.') return true
@@ -273,12 +454,12 @@ export class MergeResolutionService {
           const type = taken ? await taken.type() : undefined
           if (type === 'tree' && mustDescend?.(filepath)) return true
           if (taken && onTaken) {
-            onTaken({
+            await onTaken({
               path: filepath,
               oid: (await taken.oid()) as string,
               mode: type === 'tree' ? TREE_MODE : modeString(await taken.mode()),
               type: type as ResultEntry['type'],
-            })
+            }, taken)
           }
           return null
         }
@@ -301,10 +482,10 @@ export class MergeResolutionService {
 
     let kind: MergeFileKind
     if (left.binary || right.binary || base.binary) kind = 'binary'
-    else kind = detectKind([left.text, right.text])
+    else kind = detectKind([left.text, right.text], filepath)
 
     if (kind !== 'binary' && left.text !== null && right.text !== null) {
-      if (mergeFile(base.text, left.text, right.text, labels).blocks.length === 0) return null
+      if (mergeFile(base.text, left.text, right.text, labels, filepath).blocks.length === 0) return null
     }
 
     const sample = parseObject(right.text ?? left.text ?? '')
@@ -319,6 +500,7 @@ export class MergeResolutionService {
 
   private async buildTree(session: MergeSessionInfo, files: Record<string, MergeFileDraft>): Promise<string> {
     const { repoPath } = session
+    const leftRoot = session.leftTreeOid ?? session.leftOid
     const conflicts = new Map(session.files.map(f => [f.path, f]))
     // An object deleted on one side but kept here must not be left with the tombstone the
     // deleting side wrote for it (GH20: a tombstone means "never issue this ID again").
@@ -332,17 +514,20 @@ export class MergeResolutionService {
         })
         .map(f => `${TOMBSTONES_DIR}/${f.objectId}`),
     )
+    // Folders holding a path that needs a decision of its own (tombstone to drop, renumbered file
+    // with a reviewed output) are walked into rather than taken whole.
+    const descend = new Set([...dropTombstones, ...session.files.map(f => f.path)].flatMap(ancestors))
     const entries: ResultEntry[] = []
 
     await this.walk(
-      repoPath, session.leftOid, session.baseOid, session.rightOid,
+      repoPath, leftRoot, session.baseOid, session.rightOid,
       async (filepath, t) => {
         const entry = conflicts.get(filepath)
         const modeFrom = async () => modeString(await (t.right ?? t.left)!.mode())
         if (!entry) {
           // Clean 3-way merge (not listed as a conflict): recompute it to get the content.
           const [base, left, right] = await Promise.all([textOf(t.base), textOf(t.left), textOf(t.right)])
-          const merged = mergeFile(base.text, left.text!, right.text!, this.labels(session))
+          const merged = mergeFile(base.text, left.text!, right.text!, this.labels(session), filepath)
           entries.push({ path: filepath, oid: await this.writeBlob(repoPath, merged.output), mode: await modeFrom(), type: 'blob' })
           return
         }
@@ -353,13 +538,24 @@ export class MergeResolutionService {
         }
         const chosen = d.choice === 'left' ? t.left : t.right
         if (chosen) {
-          entries.push({ path: filepath, oid: (await chosen.oid()) as string, mode: modeString(await chosen.mode()), type: 'blob' })
+          // `commit` for a submodule pin (gitlink), `blob` otherwise.
+          const type = (await chosen.type()) as ResultEntry['type']
+          entries.push({ path: filepath, oid: (await chosen.oid()) as string, mode: modeString(await chosen.mode()), type })
         }
       },
       {
-        onTaken: e => { if (!dropTombstones.has(e.path)) entries.push(e) },
-        // Never take a whole subtree that holds a tombstone to drop: walk into it instead.
-        mustDescend: p => [...dropTombstones].some(d => d.startsWith(`${p}/`)),
+        onTaken: async (e, taken) => {
+          if (dropTombstones.has(e.path)) return
+          // A renumbered file present on one side only is "taken" by the walk: its reviewed
+          // output (the draft) is what lands in the result.
+          const d = e.type === 'blob' && conflicts.has(e.path) ? files[e.path] : undefined
+          if (d?.text !== undefined) {
+            entries.push({ ...e, oid: await this.writeBlob(repoPath, d.text), mode: modeString(await taken.mode()) })
+            return
+          }
+          entries.push(e)
+        },
+        mustDescend: p => descend.has(p),
       },
     )
     return this.writeTrees(repoPath, entries)
@@ -394,13 +590,22 @@ export class MergeResolutionService {
     return (await write(root, true))!
   }
 
-  private async readText(repoPath: string, commitOid: string, filepath: string): Promise<string | null> {
+  private async readBytes(repoPath: string, rootOid: string, filepath: string): Promise<Uint8Array | null> {
     try {
-      const { blob } = await git.readBlob({ fs, dir: repoPath, oid: commitOid, filepath })
-      return isBinaryContent(blob) ? null : Buffer.from(blob).toString('utf8')
+      return (await git.readBlob({ fs, dir: repoPath, oid: rootOid, filepath })).blob
     } catch {
       return null
     }
+  }
+
+  private async readText(repoPath: string, rootOid: string, filepath: string): Promise<string | null> {
+    const blob = await this.readBytes(repoPath, rootOid, filepath)
+    return blob === null || isBinaryContent(blob) ? null : Buffer.from(blob).toString('utf8')
+  }
+
+  private async readDataUrl(repoPath: string, rootOid: string, filepath: string, mime: string): Promise<string | null> {
+    const blob = await this.readBytes(repoPath, rootOid, filepath)
+    return blob === null ? null : `data:${mime};base64,${Buffer.from(blob).toString('base64')}`
   }
 
   private async validateText(repoPath: string, entry: MergeFileEntry, text: string): Promise<MergeValidation> {
@@ -412,7 +617,23 @@ export class MergeResolutionService {
       errors.push({ code: 'yaml', params: { message: parsed.error } })
       return { errors, warnings }
     }
-    if (entry.kind !== 'object' || parsed.unresolved.length > 0) return { errors, warnings }
+    if (parsed.unresolved.length > 0) return { errors, warnings }
+
+    if (entry.kind === 'links' || entry.kind === 'parameters') {
+      const root = parsed.value![entry.kind]
+      const entries = entriesOf(entry.kind, root)
+      if (!entries || Object.keys(parsed.value!).some(k => k !== entry.kind)) {
+        errors.push({ code: entry.kind === 'links' ? 'invalidLinks' : 'invalidParameters' })
+      } else if (entry.kind === 'links') {
+        const bad = [...entries.values()].find(l => {
+          const link = l as Record<string, unknown>
+          return ['type', 'sourceId', 'targetId'].some(k => typeof link[k] !== 'string' || link[k] === '')
+        }) as { id?: string } | undefined
+        if (bad) errors.push({ code: 'invalidLinks', params: { id: bad.id ?? '' } })
+      }
+      return { errors, warnings }
+    }
+    if (entry.kind !== 'object') return { errors, warnings }
 
     const obj = parsed.value!
     const expectedId = path.basename(entry.path).replace(/\.ya?ml$/, '')
@@ -445,8 +666,27 @@ export class MergeResolutionService {
 
   // ─── Drafts (userData/merge-drafts) ─────────────────────────────────────────────
 
+  private draftDir(): string {
+    return path.join(app.getPath('userData'), 'merge-drafts')
+  }
+
   private draftPath(id: string): string {
-    return path.join(app.getPath('userData'), 'merge-drafts', `${id}.json`)
+    return path.join(this.draftDir(), `${id}.json`)
+  }
+
+  private async allDrafts(): Promise<DraftFile[]> {
+    let names: string[]
+    try {
+      names = (await fsP.readdir(this.draftDir())).filter(n => n.endsWith('.json'))
+    } catch {
+      return []
+    }
+    const drafts: DraftFile[] = []
+    for (const n of names) {
+      const d = await this.load(n.slice(0, -'.json'.length))
+      if (d) drafts.push(d)
+    }
+    return drafts
   }
 
   private async load(id: string): Promise<DraftFile | null> {
@@ -454,6 +694,8 @@ export class MergeResolutionService {
     if (cached) return cached
     try {
       const draft = JSON.parse(await fsP.readFile(this.draftPath(id), 'utf-8')) as DraftFile
+      // Drafts written by sprint 1/2 predate `renumbers`.
+      draft.session.renumbers ??= []
       this.cache.set(id, draft)
       return draft
     } catch {

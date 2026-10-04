@@ -7,6 +7,7 @@ import git from 'isomorphic-git'
 import type { AuthService } from '../services/auth.service'
 import type { GitService } from '../services/git.service'
 import type { SyncService } from '../services/sync.service'
+import type { MergeResolutionService } from '../services/merge-resolution.service'
 import type { WorkspaceService } from '../services/workspace.service'
 import type { RequirementsIndexService } from '../services/requirements-index.service'
 import type { TestsIndexService } from '../services/tests-index.service'
@@ -61,6 +62,8 @@ import type {
   ExecutionImportPreview,
   Parameter,
   AppSettings,
+  MergeFileDraft,
+  MergeOrigin,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
@@ -75,6 +78,7 @@ export interface Container {
   auth: AuthService
   git: GitService
   sync: SyncService
+  mergeResolution: MergeResolutionService
   workspace: WorkspaceService
   reqIndex: RequirementsIndexService
   testsIndex: TestsIndexService
@@ -244,6 +248,18 @@ export function registerIpcHandlers(c: Container): void {
     c.sync.merge(repoPath, fromBranch))
   ipcMain.handle('sync:merge-into', (_e, repoPath: string, fromBranch: string, intoBranch: string) =>
     c.sync.mergeInto(repoPath, fromBranch, intoBranch))
+  // GH37 — résolution des conflits de merge dans l'outil.
+  ipcMain.handle('merge-resolution:open', (_e, repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin) =>
+    c.mergeResolution.open(repoPath, leftRef, rightRef, origin))
+  ipcMain.handle('merge-resolution:list', (_e, repoPaths?: string[]) => c.mergeResolution.list(repoPaths))
+  ipcMain.handle('merge-resolution:get', (_e, id: string) => c.mergeResolution.get(id))
+  ipcMain.handle('merge-resolution:get-file', (_e, id: string, filepath: string) => c.mergeResolution.getFile(id, filepath))
+  ipcMain.handle('merge-resolution:save-file', (_e, id: string, filepath: string, draft: MergeFileDraft) =>
+    c.mergeResolution.saveFile(id, filepath, draft))
+  ipcMain.handle('merge-resolution:validate', (_e, id: string, filepath: string, text: string) =>
+    c.mergeResolution.validate(id, filepath, text))
+  ipcMain.handle('merge-resolution:finalize', (_e, id: string) => c.mergeResolution.finalize(id))
+  ipcMain.handle('merge-resolution:abandon', (_e, id: string) => c.mergeResolution.abandon(id))
   ipcMain.handle('sync:create-branch-at', (_e, repoPath: string, name: string, sha: string) =>
     c.sync.createBranchAt(repoPath, name, sha))
   ipcMain.handle('sync:delete-remote-branch', (_e, repoPath: string, name: string, remote?: string) =>

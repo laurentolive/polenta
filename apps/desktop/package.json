@@ -14,8 +14,14 @@
     "theme:generate": "tsx scripts/generate-theme-css.ts"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.7.1",
+    "@codemirror/lang-yaml": "^6.1.1",
+    "@codemirror/language": "^6.10.3",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.34.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@polenta/api-client": "workspace:*",
+    "@polenta/merge-core": "workspace:*",
     "@polenta/types": "workspace:*",
     "@polenta/zod-schemas": "workspace:*",
     "@tanstack/react-query": "^5.40.0",

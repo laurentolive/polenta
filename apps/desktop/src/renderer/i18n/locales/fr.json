@@ -55,7 +55,6 @@
       "publishImpossible": "Publication impossible",
       "genericError": "Erreur lors de la publication",
       "pushError": "Erreur lors du push",
-      "manualResolution": "Résolution manuelle (Version)",
       "conflictOnRepo": "« {{repo}} » : quelqu’un a modifié les mêmes informations — résolution manuelle nécessaire.",
       "networkErrorRepo": "Publication impossible : réseau indisponible pour « {{repo}} ». Rien n'a été publié, vos modifications restent en attente — réessayez une fois connecté.",
       "blockedRepos": "Rien n'a été publié : ces repos ne sont pas sur leur branche d'intégration configurée.",
@@ -64,7 +63,10 @@
       "reposToPublish": "Repos publiés :",
       "repoFiles_one": "({{count}} fichier)",
       "repoFiles_other": "({{count}} fichiers)",
-      "parentsNote": "Les repos parents sont aussi publiés pour mettre à jour les pins."
+      "parentsNote": "Les repos parents sont aussi publiés pour mettre à jour les pins.",
+      "resolveConflicts": "Résoudre les conflits",
+      "resumeResolution_one": "Reprendre la résolution des conflits",
+      "resumeResolution_other": "Reprendre les résolutions ({{count}})"
     },
     "viewHeader": {
       "back": "Retour"
@@ -87,7 +89,8 @@
       "newCampaign": "Nouvelle campagne",
       "requirement": "Exigence",
       "test": "Test",
-      "campaign": "Campagne"
+      "campaign": "Campagne",
+      "mergeResolve": "Conflits"
     }
   },
   "account": {
@@ -1218,5 +1221,71 @@
       "later": "Plus tard",
       "dirtyWarning": "Des onglets ont des modifications non enregistrées : elles seront perdues au redémarrage."
     }
+  },
+  "mergeResolve": {
+    "tabTitle": "Conflits — {{repo}}",
+    "title": "Résolution des conflits",
+    "subtitle": "Mes modifications : {{left}} → destination : {{right}}",
+    "progress": "{{merged}} / {{total}} fichiers mergés",
+    "files": "Fichiers en conflit",
+    "selectFile": "Sélectionnez un fichier.",
+    "noSession": "Cette résolution n'existe plus (merge finalisé ou abandonné).",
+    "abandon": "Abandonner",
+    "abandonConfirm_one": "{{count}} fichier est déjà mergé : abandonner perd cette résolution. Le repo n'est pas modifié.",
+    "abandonConfirm_other": "{{count}} fichiers sont déjà mergés : abandonner perd cette résolution. Le repo n'est pas modifié.",
+    "finalize": "Finaliser le merge",
+    "finalizing": "Finalisation…",
+    "merge": "Merger",
+    "merged": "Mergé",
+    "allLeft": "Tout prendre à gauche",
+    "allRight": "Tout prendre à droite",
+    "takeLeft": "← Prendre gauche",
+    "takeRight": "Prendre droite →",
+    "leftPane": "Mes modifications · {{ref}}",
+    "rightPane": "Destination · {{ref}}",
+    "outputPane": "Sortie du merge",
+    "blocksLeft_one": "{{count}} bloc à résoudre",
+    "blocksLeft_other": "{{count}} blocs à résoudre",
+    "absentOnSide": "Fichier supprimé de ce côté.",
+    "binaryContent": "Fichier binaire — contenu non affiché.",
+    "keepModified": "Garder (version modifiée)",
+    "deleteFile": "Supprimer",
+    "takeLeftFile": "Prendre mes modifications",
+    "takeRightFile": "Prendre la destination",
+    "binaryHint": "Fichier binaire modifié des deux côtés : choisissez la version à garder.",
+    "deletedHint": "Ce fichier a été supprimé d'un côté et modifié de l'autre : gardez la version modifiée ou supprimez-le.",
+    "conflict": {
+      "both-modified": "Modifié des deux côtés",
+      "both-added": "Ajouté des deux côtés",
+      "deleted-left": "Supprimé dans mes modifications",
+      "deleted-right": "Supprimé dans la destination"
+    },
+    "validation": {
+      "markers": "Marqueurs de conflit invalides : {{message}}",
+      "yaml": "YAML invalide : {{message}}",
+      "unresolved_one": "{{count}} bloc non résolu",
+      "unresolved_other": "{{count}} blocs non résolus",
+      "notObject": "Le contenu n'est pas un objet YAML.",
+      "idMismatch": "L'id « {{id}} » doit correspondre au nom du fichier ({{expected}}).",
+      "unknownType": "Type d'objet inconnu : {{ref}}",
+      "unknownStatus": "Statut inconnu pour ce type : {{status}}",
+      "emptyTitle": "Le titre est vide.",
+      "fieldsNotObject": "« fields » doit être un objet."
+    },
+    "failure": {
+      "stale": "Une des deux branches a bougé depuis l'ouverture : rien n'a été écrit. Relancez l'opération d'origine.",
+      "dirty-worktree": "Le repo a des modifications non commitées : rien n'a été écrit. Annulez-les (panneau Version), puis finalisez.",
+      "unresolved": "Des fichiers ne sont pas encore mergés.",
+      "invalid": "Des sorties sont invalides."
+    },
+    "doneTitle": "Merge finalisé",
+    "doneSha": "Commit de merge {{sha}}.",
+    "donePublished": "Publié : {{repos}}.",
+    "nextConflict": "La publication s'est arrêtée sur un nouveau conflit dans « {{repo}} ».",
+    "resumeFailed": "La suite de la publication a échoué : {{error}}",
+    "closeTab": "Fermer l'onglet",
+    "noConflicts": "Aucun conflit réel : les changements des deux côtés ont été fusionnés automatiquement, champ par champ. Finalisez le merge.",
+    "resuming": "Fin de la publication en cours…",
+    "retryResume": "Réessayer la suite de la publication"
   }
 }

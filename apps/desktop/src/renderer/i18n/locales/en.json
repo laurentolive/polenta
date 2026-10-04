@@ -55,7 +55,6 @@
       "publishImpossible": "Unable to publish",
       "genericError": "Error while publishing",
       "pushError": "Error during push",
-      "manualResolution": "Manual resolution (Version)",
       "conflictOnRepo": "“{{repo}}”: someone modified the same information — manual resolution required.",
       "networkErrorRepo": "Unable to publish: network unavailable for “{{repo}}”. Nothing was published, your changes remain pending — try again once connected.",
       "blockedRepos": "Nothing was published: these repos are not on their configured integration branch.",
@@ -64,7 +63,10 @@
       "reposToPublish": "Repos to publish:",
       "repoFiles_one": "({{count}} file)",
       "repoFiles_other": "({{count}} files)",
-      "parentsNote": "Parent repos are published too, to update their pins."
+      "parentsNote": "Parent repos are published too, to update their pins.",
+      "resolveConflicts": "Resolve conflicts",
+      "resumeResolution_one": "Resume conflict resolution",
+      "resumeResolution_other": "Resume resolutions ({{count}})"
     },
     "viewHeader": {
       "back": "Back"
@@ -87,7 +89,8 @@
       "newCampaign": "New campaign",
       "requirement": "Requirement",
       "test": "Test",
-      "campaign": "Campaign"
+      "campaign": "Campaign",
+      "mergeResolve": "Conflicts"
     }
   },
   "account": {
@@ -1218,5 +1221,71 @@
       "later": "Later",
       "dirtyWarning": "Some tabs have unsaved changes: they will be lost on restart."
     }
+  },
+  "mergeResolve": {
+    "tabTitle": "Conflicts — {{repo}}",
+    "title": "Conflict resolution",
+    "subtitle": "My changes: {{left}} → destination: {{right}}",
+    "progress": "{{merged}} / {{total}} files merged",
+    "files": "Conflicting files",
+    "selectFile": "Select a file.",
+    "noSession": "This resolution no longer exists (merge finalized or abandoned).",
+    "abandon": "Abandon",
+    "abandonConfirm_one": "{{count}} file is already merged: abandoning loses this resolution. The repository is not changed.",
+    "abandonConfirm_other": "{{count}} files are already merged: abandoning loses this resolution. The repository is not changed.",
+    "finalize": "Finalize merge",
+    "finalizing": "Finalizing…",
+    "merge": "Merge",
+    "merged": "Merged",
+    "allLeft": "Take all left",
+    "allRight": "Take all right",
+    "takeLeft": "← Take left",
+    "takeRight": "Take right →",
+    "leftPane": "My changes · {{ref}}",
+    "rightPane": "Destination · {{ref}}",
+    "outputPane": "Merge output",
+    "blocksLeft_one": "{{count}} block to resolve",
+    "blocksLeft_other": "{{count}} blocks to resolve",
+    "absentOnSide": "File deleted on this side.",
+    "binaryContent": "Binary file — content not shown.",
+    "keepModified": "Keep (modified version)",
+    "deleteFile": "Delete",
+    "takeLeftFile": "Take my changes",
+    "takeRightFile": "Take the destination",
+    "binaryHint": "Binary file changed on both sides: choose the version to keep.",
+    "deletedHint": "This file was deleted on one side and modified on the other: keep the modified version or delete it.",
+    "conflict": {
+      "both-modified": "Modified on both sides",
+      "both-added": "Added on both sides",
+      "deleted-left": "Deleted in my changes",
+      "deleted-right": "Deleted in the destination"
+    },
+    "validation": {
+      "markers": "Invalid conflict markers: {{message}}",
+      "yaml": "Invalid YAML: {{message}}",
+      "unresolved_one": "{{count}} unresolved block",
+      "unresolved_other": "{{count}} unresolved blocks",
+      "notObject": "The content is not a YAML object.",
+      "idMismatch": "The id \"{{id}}\" must match the file name ({{expected}}).",
+      "unknownType": "Unknown object type: {{ref}}",
+      "unknownStatus": "Unknown status for this type: {{status}}",
+      "emptyTitle": "The title is empty.",
+      "fieldsNotObject": "\"fields\" must be an object."
+    },
+    "failure": {
+      "stale": "One of the two branches moved since opening: nothing was written. Run the original operation again.",
+      "dirty-worktree": "The repository has uncommitted changes: nothing was written. Discard them (Version panel), then finalize.",
+      "unresolved": "Some files are not merged yet.",
+      "invalid": "Some outputs are invalid."
+    },
+    "doneTitle": "Merge finalized",
+    "doneSha": "Merge commit {{sha}}.",
+    "donePublished": "Published: {{repos}}.",
+    "nextConflict": "The publication stopped on a new conflict in \"{{repo}}\".",
+    "resumeFailed": "Resuming the publication failed: {{error}}",
+    "closeTab": "Close tab",
+    "noConflicts": "No real conflict: both sides were merged automatically, field by field. Finalize the merge.",
+    "resuming": "Finishing the publication…",
+    "retryResume": "Retry the rest of the publication"
   }
 }

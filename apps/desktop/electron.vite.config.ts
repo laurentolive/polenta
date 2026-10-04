@@ -31,11 +31,14 @@ export default defineConfig({
     // docxtemplater, pizzip, angular-expressions, markdown-it, xlsx-template (GH34, export par gabarit) exclus pour
     // la même raison : @xmldom/xmldom, pako, entities, mdurl… ne sont pas hissés dans
     // apps/desktop/node_modules. Bundlés dans des chunks chargés au premier export (import()).
+    // @polenta/merge-core (GH37) : source TS brute comme @polenta/types, et sa dépendance diff3
+    // n'est pas hissée dans apps/desktop/node_modules — les deux bundlés.
     plugins: [
       externalizeDepsPlugin({
         exclude: [
           '@polenta/types', 'isomorphic-git', 'chokidar', 'docx', 'exceljs', 'js-yaml', 'electron-updater',
           'docxtemplater', 'pizzip', 'angular-expressions', 'markdown-it', 'xlsx-template',
+          '@polenta/merge-core', 'diff3',
         ],
       }),
     ],
@@ -48,6 +51,7 @@ export default defineConfig({
       alias: {
         '@polenta/types': resolve(__dirname, '../../packages/types/src/index.ts'),
         '@polenta/zod-schemas': resolve(__dirname, '../../packages/zod-schemas/src/index.ts'),
+        '@polenta/merge-core': resolve(__dirname, '../../packages/merge-core/src/index.ts'),
       },
     },
   },
@@ -80,6 +84,7 @@ export default defineConfig({
         '@polenta/types': resolve(__dirname, '../../packages/types/src/index.ts'),
         '@polenta/zod-schemas': resolve(__dirname, '../../packages/zod-schemas/src/index.ts'),
         '@polenta/api-client': resolve(__dirname, '../../packages/api-client/src/index.ts'),
+        '@polenta/merge-core': resolve(__dirname, '../../packages/merge-core/src/index.ts'),
       },
     },
     build: {

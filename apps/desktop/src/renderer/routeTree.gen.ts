@@ -20,6 +20,7 @@ import { Route as QueryRouteImport } from './routes/query'
 import { Route as ProductRouteImport } from './routes/product'
 import { Route as PreferencesRouteImport } from './routes/preferences'
 import { Route as ParametersRouteImport } from './routes/parameters'
+import { Route as MergeResolveRouteImport } from './routes/merge-resolve'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ImpactAnalysisRouteImport } from './routes/impact-analysis'
 import { Route as GraphRouteImport } from './routes/graph'
@@ -100,6 +101,11 @@ const PreferencesRoute = PreferencesRouteImport.update({
 const ParametersRoute = ParametersRouteImport.update({
   id: '/parameters',
   path: '/parameters',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MergeResolveRoute = MergeResolveRouteImport.update({
+  id: '/merge-resolve',
+  path: '/merge-resolve',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -246,6 +252,7 @@ export interface FileRoutesByFullPath {
   '/graph': typeof GraphRoute
   '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
+  '/merge-resolve': typeof MergeResolveRoute
   '/parameters': typeof ParametersRoute
   '/preferences': typeof PreferencesRoute
   '/product': typeof ProductRoute
@@ -285,6 +292,7 @@ export interface FileRoutesByTo {
   '/graph': typeof GraphRoute
   '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
+  '/merge-resolve': typeof MergeResolveRoute
   '/parameters': typeof ParametersRoute
   '/preferences': typeof PreferencesRoute
   '/product': typeof ProductRoute
@@ -325,6 +333,7 @@ export interface FileRoutesById {
   '/graph': typeof GraphRoute
   '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
+  '/merge-resolve': typeof MergeResolveRoute
   '/parameters': typeof ParametersRoute
   '/preferences': typeof PreferencesRoute
   '/product': typeof ProductRoute
@@ -366,6 +375,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/impact-analysis'
     | '/login'
+    | '/merge-resolve'
     | '/parameters'
     | '/preferences'
     | '/product'
@@ -405,6 +415,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/impact-analysis'
     | '/login'
+    | '/merge-resolve'
     | '/parameters'
     | '/preferences'
     | '/product'
@@ -444,6 +455,7 @@ export interface FileRouteTypes {
     | '/graph'
     | '/impact-analysis'
     | '/login'
+    | '/merge-resolve'
     | '/parameters'
     | '/preferences'
     | '/product'
@@ -484,6 +496,7 @@ export interface RootRouteChildren {
   GraphRoute: typeof GraphRoute
   ImpactAnalysisRoute: typeof ImpactAnalysisRoute
   LoginRoute: typeof LoginRoute
+  MergeResolveRoute: typeof MergeResolveRoute
   ParametersRoute: typeof ParametersRoute
   PreferencesRoute: typeof PreferencesRoute
   ProductRoute: typeof ProductRoute
@@ -590,6 +603,13 @@ declare module '@tanstack/react-router' {
       path: '/parameters'
       fullPath: '/parameters'
       preLoaderRoute: typeof ParametersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/merge-resolve': {
+      id: '/merge-resolve'
+      path: '/merge-resolve'
+      fullPath: '/merge-resolve'
+      preLoaderRoute: typeof MergeResolveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -788,6 +808,7 @@ const rootRouteChildren: RootRouteChildren = {
   GraphRoute: GraphRoute,
   ImpactAnalysisRoute: ImpactAnalysisRoute,
   LoginRoute: LoginRoute,
+  MergeResolveRoute: MergeResolveRoute,
   ParametersRoute: ParametersRoute,
   PreferencesRoute: PreferencesRoute,
   ProductRoute: ProductRoute,

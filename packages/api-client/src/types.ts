@@ -1,4 +1,10 @@
 import type {
+  MergeFileDetail,
+  MergeFileDraft,
+  MergeFinalizeResult,
+  MergeOrigin,
+  MergeSessionInfo,
+  MergeValidation,
   ClearRevalidationResult,
   FlaggedElement,
   Parameter,
@@ -426,6 +432,17 @@ export interface ApiClient {
     resolveRefs(repoPath: string): Promise<GitRef[]>
   }
   /** Opérations git bas niveau ne relevant pas du domaine `sync` (T43). */
+  /** GH37 — résolution des conflits de merge dans l'outil (brouillon hors repo, cf. MergeSessionInfo). */
+  mergeResolution: {
+    open(repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin): Promise<MergeSessionInfo>
+    list(repoPaths?: string[]): Promise<MergeSessionInfo[]>
+    get(id: string): Promise<MergeSessionInfo | null>
+    getFile(id: string, path: string): Promise<MergeFileDetail>
+    saveFile(id: string, path: string, draft: MergeFileDraft): Promise<MergeSessionInfo>
+    validate(id: string, path: string, text: string): Promise<MergeValidation>
+    finalize(id: string): Promise<MergeFinalizeResult>
+    abandon(id: string): Promise<void>
+  }
   git: {
     /** SHA complet du commit HEAD courant — utilisé pour le nom de fichier par défaut des exports. */
     headSha(repoPath: string): Promise<string>

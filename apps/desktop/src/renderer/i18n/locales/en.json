@@ -68,6 +68,19 @@
       "setAsideCommits": "(set-aside commits)",
       "parentsNote": "Parent repos are published too, to update their pins."
     },
+    "syncIndicator": {
+      "title": "Sync with the server",
+      "intro": "The integration branch of these repos is out of sync with the server:",
+      "ahead_one": "{{count}} change not published to the server",
+      "ahead_other": "{{count}} changes not published to the server",
+      "diverged": "Diverged: {{ahead}} local, {{behind}} on the server",
+      "lastError": "Last error: {{error}}",
+      "resync": "Resynchronize",
+      "resyncing": "Resynchronizing…",
+      "resyncDirty": "Unable to resynchronize: “{{repo}}” has pending changes on its integration branch. Publish or discard them first.",
+      "setAside": "Your unpublished changes were set aside on branch {{branch}}. Click “Publish” to merge them: any conflict is resolved as usual.",
+      "allSynced": "Every repo is in sync with the server."
+    },
     "viewHeader": {
       "back": "Back"
     },
@@ -333,6 +346,7 @@
       "pushing": "Pushing…",
       "pushError": "Error during push",
       "refresh": "Refresh",
+      "integrationBadgeTooltip": "Integration {{branch}}: {{ahead}} local commit(s) missing from the server, {{behind}} server commit(s) missing locally",
       "refreshTooltip": "Fetch remote changes (git pull)",
       "refreshing": "Refreshing…",
       "refreshError": "Error during refresh",

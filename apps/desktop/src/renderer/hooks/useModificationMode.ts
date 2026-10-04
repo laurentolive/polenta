@@ -132,6 +132,7 @@ export function useModificationMode(currentProjectId: string | null): Modificati
   function refetch() {
     // GH38: every repo's status, not just the repo concerné's — a publish touches all of them.
     qc.invalidateQueries({ queryKey: ['sync:status'] })
+    qc.invalidateQueries({ queryKey: ['sync:integration-state'] })  // GH39 — polled only every 30s
     qc.invalidateQueries({ queryKey: ['sync:branches', repoPath] })
     invalidateIntegrationBranch()
   }

@@ -14,11 +14,12 @@ import {
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
 
 /** Popover anchored under its trigger (T92 — replaces the old full-screen centered `Overlay`).
+ *  GH39: also used by `SyncIndicator`, the other header control.
  *  Click-away capture (no dimming) + Escape to close, reusing the pattern already established by
  *  `FieldConfigModal` (SystemView.tsx) rather than inventing a new one. Positioned `absolute`
  *  relative to `ModificationControl`'s own `relative` root, so it stays anchored under the button
  *  regardless of which view's header it's rendered in. */
-function PublishPopover({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+export function PublishPopover({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -123,14 +124,19 @@ export function ModificationControl({ currentProjectId }: Props) {
   // on "Publication…" once the local work is safely merged. GH38: one push per published repo,
   // failures aggregated and prefixed with the repo's name. GH39: each repo's outcome is also kept as
   // its last sync error (`['sync:last-error', repoPath]`, shared with the auto-pull) so a failed push
-  // stays visible on the sync indicator once this notification is dismissed.
+  // stays visible on the sync indicator once this notification is dismissed — which, conversely,
+  // ignores a repo flagged `sync:pushing` (legitimately ahead until its push lands).
   function pushPublished(published: PublishedRepo[]) {
+    published.forEach(r => qc.setQueryData(['sync:pushing', r.repoPath], true))
     Promise.allSettled(published.map(r => api.sync.pushBranch(r.repoPath, r.integrationBranch)))
       .then(results => {
-        results.forEach((res, i) => qc.setQueryData(
-          ['sync:last-error', published[i].repoPath],
-          res.status === 'rejected' ? (res.reason instanceof Error ? res.reason.message : String(res.reason)) : null,
-        ))
+        results.forEach((res, i) => {
+          const { repoPath } = published[i]
+          qc.setQueryData(['sync:pushing', repoPath], false)
+          qc.setQueryData(['sync:last-error', repoPath],
+            res.status === 'rejected' ? (res.reason instanceof Error ? res.reason.message : String(res.reason)) : null)
+          qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
+        })
         const errors = results.flatMap((res, i) => res.status === 'rejected'
           ? [`${repoName(published[i])} : ${res.reason instanceof Error ? res.reason.message : t('layout.modificationControl.pushError')}`]
           : [])

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, FolderGit2, GitFork, RefreshCw, Undo2 } from 'lucide-react'
+import { ArrowDownUp, ChevronDown, ChevronRight, FolderGit2, GitFork, RefreshCw, Undo2 } from 'lucide-react'
 import { api } from '../../../api'
 import { useSelectedRepo } from '../../../contexts/SelectedRepoContext'
 import { useBranchCheckout } from '../../../hooks/useBranchCheckout'
@@ -10,6 +10,7 @@ import { propagatePinToDependents, type PinPropagationOutcome } from '../../../l
 import { BranchCombobox } from './BranchCombobox'
 import { PinPropagationWarning } from './PinPropagationWarning'
 import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
+import { useRepoIntegrationSync, useResyncIntegration } from '../../../hooks/useIntegrationSync'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
 interface Props {
@@ -66,9 +67,17 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
   const isDirty = staged.length + unstaged.length > 0
   const ahead = syncStatus?.ahead ?? 0
 
+  // GH39: integration branch vs origin — badge + "Resynchroniser" while ahead/diverged.
+  const { info: integrationInfo, lastError: syncError, alert: syncAlert } = useRepoIntegrationSync(repoPath)
+  const { resync, pendingRepoPath: resyncPending, anyPending: anyResyncPending, setAside, reset: resetResync } = useResyncIntegration()
+  const showIntegrationBadge = !!integrationInfo && integrationInfo.state !== 'up-to-date' && integrationInfo.state !== 'no-remote'
+
   const pushMutation = useMutation({
     mutationFn: () => api.sync.push(repoPath),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sync:status', repoPath] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+      qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
+    },
   })
 
   // T153: git pull, only ever invoked while the tree is clean — see `disabled` on the button
@@ -78,6 +87,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
       qc.invalidateQueries({ queryKey: ['sync:graph', repoPath] })
+      qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
     },
   })
 
@@ -91,6 +101,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
       setCommitMessage('')
       qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
       qc.invalidateQueries({ queryKey: ['sync:graph', repoPath] })
+      qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
       // T82: this repo's HEAD just advanced — propose the new SHA as pin wherever this repo
       // is declared as a dependency (cascade: repeats naturally when a dependent is committed).
       // Rendered outside the commit modal (which just closed) — see commitPinWarning usage below.
@@ -182,6 +193,29 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
         {isDirty && (
           <span className="w-1.5 h-1.5 rounded-full bg-status-warning-solid shrink-0" title={t('sidebar.version.pendingChanges')} />
         )}
+        {showIntegrationBadge && (
+          <span
+            className={`text-xs font-mono shrink-0 ${syncAlert ? 'text-status-warning' : 'text-ink-3'}`}
+            title={t('sidebar.version.integrationBadgeTooltip', {
+              branch: integrationInfo.integrationBranch, ahead: integrationInfo.ahead, behind: integrationInfo.behind,
+            })}
+          >
+            {integrationInfo.ahead > 0 && `↑${integrationInfo.ahead}`}
+            {integrationInfo.ahead > 0 && integrationInfo.behind > 0 && ' '}
+            {integrationInfo.behind > 0 && `↓${integrationInfo.behind}`}
+          </span>
+        )}
+        {syncAlert && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); resync(repoPath, node.label || node.name) }}
+            disabled={anyResyncPending}
+            title={t('layout.syncIndicator.resync')}
+            className="shrink-0 ml-auto text-status-warning hover:bg-hover rounded p-1 disabled:opacity-30 transition-colors"
+          >
+            <ArrowDownUp size={13} className={resyncPending ? 'animate-pulse' : ''} />
+          </button>
+        )}
         {/* T153: refresh (git pull) — always visible next to the repo name, blocked while dirty
             so a pull never has to merge on top of uncommitted work. */}
         <button
@@ -189,7 +223,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
           onClick={e => { e.stopPropagation(); pullMutation.mutate() }}
           disabled={pullMutation.isPending || isDirty}
           title={isDirty ? t('sidebar.version.refreshBlockedDirty') : t('sidebar.version.refreshTooltip')}
-          className="shrink-0 ml-auto text-ink-3 hover:text-ink hover:bg-hover rounded p-1 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+          className={`shrink-0 ${syncAlert ? '' : 'ml-auto'} text-ink-3 hover:text-ink hover:bg-hover rounded p-1 disabled:opacity-30 disabled:hover:bg-transparent transition-colors`}
         >
           <RefreshCw size={13} className={pullMutation.isPending ? 'animate-spin' : ''} />
         </button>
@@ -218,6 +252,23 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
             </p>
           )}
           <PinPropagationWarning outcome={checkoutPinWarning} onDismiss={dismissPinWarning} />
+        </div>
+      )}
+
+      {(setAside || (syncAlert && syncError)) && (
+        <div style={{ paddingLeft: `${8 + indent}px` }} className="px-3 flex items-start gap-2">
+          {setAside ? (
+            <p className="text-xs text-status-info leading-snug flex-1">
+              {t('layout.syncIndicator.setAside', { branch: setAside.branch })}
+            </p>
+          ) : (
+            <p className="text-xs text-status-danger leading-snug flex-1 break-words">
+              {t('layout.syncIndicator.lastError', { error: syncError })}
+            </p>
+          )}
+          {setAside && (
+            <button type="button" onClick={resetResync} className="text-xs text-ink-3 hover:text-ink shrink-0">✕</button>
+          )}
         </div>
       )}
 

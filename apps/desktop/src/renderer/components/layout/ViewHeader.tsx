@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { ModificationControl } from './ModificationControl'
+import { SyncIndicator } from './SyncIndicator'
 
 interface ViewHeaderProps {
   /** Optional leading back button — replaces the ad hoc back buttons each view used to define. */
@@ -38,6 +39,8 @@ export function ViewHeader({ back, title, subtitle, actions, currentProjectId }:
 
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
 
+      {/* GH39: sync alert (integration ahead of / diverged from origin), left of Publier. */}
+      {currentProjectId !== undefined && <SyncIndicator currentProjectId={currentProjectId} />}
       {currentProjectId !== undefined && <ModificationControl currentProjectId={currentProjectId} />}
     </div>
   )

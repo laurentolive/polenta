@@ -1284,6 +1284,7 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 | `/schema?repoPath&projectId` | **Modèle de données** (onglet Structure par défaut) — page d'atterrissage du projet depuis T86, remplace `/project/$id` (retiré) | Projet |
 | `/graph?projectId` | **Arbre de versions** (commits, refs de branches, checkout) | Version |
 | `/diff?projectId&filepath` | Vue diff d'un fichier | Version |
+| `/merge-resolve?id&projectId` | **Résolution des conflits** d'un merge (GH37) — session `id` (`merge-resolution:*`), ouverte dans son propre onglet « Conflits — <repo> » depuis Publier, la vue graphe ou Rafraîchir ; en-tête propre (pas de `ViewHeader`, donc pas de bouton Publier pendant la résolution) | — |
 | `/branch/new` | Formulaire nouvelle branche | Version |
 | `/product?projectId&tab` | **Panel Produit** — liste exigences / tests / campagnes selon tab | Produit |
 | `/parameters?projectId&repo?` | **Paramètres** (T171) — bases de paramètres, « Utilisé par », édition | Paramètres |
@@ -1800,6 +1801,15 @@ Toutes les vues principales (routes + `SystemView`) partagent un unique composan
   largeur du bouton), avec une couche de capture de clic invisible (`fixed inset-0 z-40`, sans
   assombrissement) reprenant le pattern déjà utilisé par `FieldConfigModal` — plus l'ancien
   `Overlay` plein écran centré.
+- **GH37** :
+  - le popup de conflit propose **« Résoudre les conflits »**, qui ouvre `/merge-resolve` dans un
+    nouvel onglet via `useOpenMergeResolution` ;
+  - un bouton **« Reprendre la résolution des conflits »** est affiché à côté de Publier tant
+    qu'une résolution est en cours (brouillon) sur un repo du workspace ;
+  - **Contrainte `openTab`** : appelé depuis un callback asynchrone plutôt que depuis le clic,
+    `openTab` doit être enveloppé dans `flushSync`. Sinon le changement de location du routeur est
+    rendu avant le changement d'onglet actif, et l'onglet précédent est réécrit vers la nouvelle
+    route (effet de synchronisation de `TabsContext`).
 - Vues volontairement hors de cette convention : `login.tsx` (écran pré-authentification) et
   `version-diff.tsx` (layout à deux colonnes sans titre de vue "premier niveau" — son panneau
   `w-64` "Comparer" suit déjà la convention panneau latéral ci-dessous).

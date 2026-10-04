@@ -62,6 +62,13 @@ bloquer un checkout direct au §2.1 — pour ne jamais faire merger un pull sur 
 sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible seulement si
 `ahead > 0`), le bouton Rafraîchir reste toujours visible, sur demande explicite.
 
+> **GH37 — `pull` réécrit.** `fetch`, puis merge de `refs/remotes/origin/<branche>` dans la branche
+> courante via isomorphic-git (`abortOnConflict`), puis `checkout` pour réaligner le WD. Un
+> **conflit n'écrit plus rien dans le working directory**. C'est aussi vrai pour un remote SSH ou
+> local, dont l'ancien chemin `git pull --no-rebase` en CLI écrivait les marqueurs dans les
+> fichiers. Le conflit est renvoyé (`MergeResult` avec `leftRef`/`rightRef`), et le panneau Version
+> propose « Résoudre les conflits » (§2.4).
+
 > **Correctif `SyncService.createBranch` (T87) :** créer une branche à la position courante alors
 > que le répertoire de travail contient des modifications non commitées (le cas nominal ci-dessus)
 > ne doit écraser aucun fichier. `git.branch({ checkout: true })` d'isomorphic-git délègue à son
@@ -181,12 +188,33 @@ chemins réels des fichiers en conflit (`err.data.filepaths`). Le type `YamlConf
 
 En cas d'échec de "Publier", l'utilisateur reste sur sa branche `dev-*` (aucune perte de travail),
 une notification affiche le message générique ("quelqu'un a modifié les mêmes informations") **et**
-la liste des fichiers en conflit, avec un bouton "Résolution manuelle (Version)" qui navigue vers
-`/version-diff` — scopé au repo réellement concerné (root ou composant, pas systématiquement le
-root comme le lien `/graph` utilisé avant ce ticket) et pré-rempli avec le diff entre la branche
-`dev-*` et la branche d'intégration. Résolution manuelle = éditer le fichier sur `dev-*` pour
-réconcilier son contenu (en s'aidant de ce diff), committer, relancer "Publier" — pas d'assistance
-de résolution dans l'UI au-delà de ce diff en lecture seule.
+la liste des fichiers en conflit.
+
+**GH37 — éditeur de résolution.** Le bouton **« Résoudre les conflits »** (il remplace l'ancien
+« Résolution manuelle (Version) » vers `/version-diff`) ouvre l'onglet `/merge-resolve`, scopé au
+repo en échec. Même bouton après un merge en conflit dans la vue graphe (merge, mergeInto) et après
+un « Rafraîchir » en conflit.
+
+L'éditeur, fichier par fichier :
+- **Disposition** : mes modifications | destination en haut (plus l'ancêtre commun en 3ᵉ colonne à
+  la demande), sortie éditable en bas, séparateur réglable.
+- **Bascule Raw / Rendu** : le Rendu est disponible pour les exigences et les tests, en lecture
+  pour les côtés et en formulaire pour la sortie.
+- **Blocs** : « ← Prendre gauche / Prendre droite → » par bloc, ou pour tout le fichier.
+  - Un bloc est un **champ** pour les objets, un **lien** pour `links.yaml`, un **paramètre** pour
+    `parameters.yaml`, et un hunk de lignes ailleurs.
+  - Un champ modifié d'un seul côté est repris automatiquement : la vision ci-dessous est
+    **implémentée**.
+- **Choix d'un côté** pour les cas « supprimé d'un côté / modifié de l'autre » et pour les binaires.
+- **« Garder les deux »** quand le même ID est créé des deux côtés : renumérotation de l'objet de
+  gauche et de ses références.
+- **Merger** valide un fichier ; **Finaliser le merge** crée le commit et termine la publication.
+- **Rien n'est écrit dans le working directory** pendant la résolution. L'avancement est un
+  brouillon hors repo, repris après redémarrage via « Reprendre la résolution des conflits » (à côté
+  de Publier). Un brouillon périmé (branche qui a bougé) se recommence.
+
+Détails techniques : `SPEC-TECH-stack.md` §6. `/version-diff` reste accessible depuis le panneau
+Version.
 
 **Note historique :** avant T84, la détection utilisait `err.message.includes('MergeConflictError')`
 — une chaîne qui n'apparaît en réalité jamais dans le message de l'erreur isomorphic-git. Le catch
@@ -194,8 +222,8 @@ tombait donc toujours dans `throw err` ; un conflit de merge remontait comme une
 plutôt que comme l'échec binaire documenté par `T83`. Corrigé par ce ticket en même temps que le
 peuplement de `conflicts`.
 
-**Résolution champ par champ — non implémentée, hors périmètre (pas de ticket ouvert à ce jour) :**
-l'exemple ci-dessous reste une vision non engagée, pas un comportement livré ou planifié :
+**Résolution champ par champ — implémentée par GH37** (vision d'origine conservée pour mémoire ;
+la « valeur custom » est l'édition libre de la sortie, en Raw ou en formulaire) :
 
 ```
 Conflit sur SW-0042 — Exigence moteur démarrage
@@ -213,8 +241,7 @@ Champ : statement
   → Pas de conflit sur ce champ (un seul côté a changé → auto-résolu)
 ```
 
-Nécessiterait de lire les 3 versions du fichier, comparer les champs, et construire une UI de
-résolution dédiée — non engagé.
+Hors périmètre GH37 : rebase en conflit (toujours abandonné), choix à l'intérieur d'un même champ.
 
 ### 2.5 Auto-pull périodique (T155)
 

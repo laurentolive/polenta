@@ -84,9 +84,10 @@ export interface PublishRepoRef {
   repoPath: string
 }
 
-/** Thrown by `publishRepo` on a merge conflict — the repo is left checked out on `workBranch`. */
+/** Thrown by `publishRepo` on a merge conflict — the repo is left checked out on `workBranch`.
+ *  `ephemeral`: `workBranch` is the `dev-<slug>` this flow created (T87), not a user-owned branch. */
 export class PublishConflictError extends Error {
-  constructor(public readonly conflicts: string[], public readonly workBranch: string) {
+  constructor(public readonly conflicts: string[], public readonly workBranch: string, public readonly ephemeral: boolean) {
     super('merge-conflict')
   }
 }
@@ -197,15 +198,83 @@ export async function publishRepo(opts: {
     await api.sync.commit(repoPath, title.trim() || `Modification sur ${branch}`)
   }
   const merge = await api.sync.mergeInto(repoPath, workBranch, integrationBranch)
-  if (!merge.success) throw new PublishConflictError(merge.conflicts, workBranch)
+  if (!merge.success) throw new PublishConflictError(merge.conflicts, workBranch, isNominal)
 
   if (isNominal) {
-    await api.sync.checkoutBranch(repoPath, integrationBranch)
-    await api.sync.deleteBranch(repoPath, workBranch).catch(() => {})
+    await leaveWorkBranch(repoPath, integrationBranch, workBranch)
     onEphemeralChange(null)
   }
 
   return { sha: merge.sha }
+}
+
+/** End of the nominal flow: back on the integration branch, the ephemeral `dev-<slug>` deleted. */
+async function leaveWorkBranch(repoPath: string, integrationBranch: string, workBranch: string): Promise<void> {
+  await api.sync.checkoutBranch(repoPath, integrationBranch)
+  await api.sync.deleteBranch(repoPath, workBranch).catch(() => {})
+}
+
+export interface ResumePublishResult extends PublishWorkspaceResult {
+  /** What stopped the publication of the remaining repos, if anything (same errors as
+   *  `publishWorkspace`) — the resolved repo itself is always in `published`. */
+  error?: unknown
+}
+
+/**
+ * GH37 — the conflicting merge of `repo` was resolved in the merge editor, which committed the
+ * merge (`sha`) on its integration branch: finish that repo exactly like `publishRepo` would
+ * have (leave the ephemeral branch, propagate the pin), then publish the remaining repos under the
+ * same title. Not a second `publishRepo` run on the work branch: that would commit an empty
+ * commit on it and merge it again.
+ */
+export async function resumePublishAfterResolution(opts: {
+  workspaceDir: string
+  flatNodes: WorkspaceTreeNode[]
+  roots: WorkspaceTreeNode[]
+  repoPath: string
+  workBranch: string
+  /** The work branch is the ephemeral `dev-<slug>` "Publier" created (T87) — left and deleted. An
+   *  advanced, user-owned branch is never checked out away from nor deleted, as in `publishRepo`. */
+  ephemeral: boolean
+  integrationBranch: string
+  title: string
+  sha: string
+}): Promise<ResumePublishResult> {
+  const { workspaceDir, flatNodes, roots, repoPath, workBranch, ephemeral, integrationBranch, title, sha } = opts
+  const node = flatNodes.find(n => n.repoPath === repoPath)
+  const resolved: PublishedRepo = { name: node?.name ?? 'root', label: node?.label, repoPath, integrationBranch, sha }
+  const pinOutcome: PinPropagationOutcome = { updated: [], conflicted: [], failed: [] }
+
+  if (ephemeral) {
+    const status = await api.sync.status(repoPath)
+    if (status.branch === workBranch) await leaveWorkBranch(repoPath, integrationBranch, workBranch)
+  }
+  if (node) {
+    const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, sha)
+    pinOutcome.updated.push(...outcome.updated)
+    pinOutcome.conflicted.push(...outcome.conflicted)
+    pinOutcome.failed.push(...outcome.failed)
+  }
+
+  try {
+    const rest = await publishWorkspace({
+      workspaceDir, flatNodes, roots, title, ephemeral: null, onEphemeralChange: () => {},
+    })
+    // `publishWorkspace` only reattaches the repos it published itself (diamond case).
+    await reattachPublished([resolved])
+    return {
+      published: [resolved, ...rest.published],
+      pinOutcome: {
+        updated: [...pinOutcome.updated, ...rest.pinOutcome.updated],
+        conflicted: [...pinOutcome.conflicted, ...rest.pinOutcome.conflicted],
+        failed: [...pinOutcome.failed, ...rest.pinOutcome.failed],
+      },
+    }
+  } catch (error) {
+    await reattachPublished([resolved])
+    const published = error instanceof PublishRepoError ? [resolved, ...error.published] : [resolved]
+    return { published, pinOutcome, error }
+  }
 }
 
 export interface PublishedRepo extends PublishRepoRef {

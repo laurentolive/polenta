@@ -10,6 +10,7 @@ import { propagatePinToDependents, type PinPropagationOutcome } from '../../../l
 import { BranchCombobox } from './BranchCombobox'
 import { PinPropagationWarning } from './PinPropagationWarning'
 import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
+import { useOpenMergeResolution } from '../../merge/useOpenMergeResolution'
 import { useRepoIntegrationSync, useResyncIntegration } from '../../../hooks/useIntegrationSync'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
@@ -34,6 +35,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
   const { repoPath } = node
   const indent = depth * 16
   const isSelected = repoPath === selectedRepoPath
+  const openResolution = useOpenMergeResolution(projectId)
 
   const [open, setOpen] = useState(true)
   const [commitMessage, setCommitMessage] = useState('')
@@ -293,6 +295,33 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
           </p>
         </div>
       )}
+
+      {/* GH37: the remote branch conflicts with local commits — nothing was written, resolve it. */}
+      {pullMutation.data && !pullMutation.data.success && (() => {
+        const conflict = pullMutation.data
+        return (
+          <div style={{ paddingLeft: `${8 + indent}px` }} className="px-3 pb-1">
+            <p className="text-xs text-status-warning leading-snug mb-1">
+              {t('sidebar.version.refreshConflict', { count: conflict.conflicts.length })}
+            </p>
+            {conflict.leftRef && conflict.rightRef && (
+              <button
+                type="button"
+                className="btn-primary-sm"
+                disabled={openResolution.pending}
+                onClick={() => {
+                  const remoteRef = conflict.rightRef!
+                  void openResolution.open(repoPath, conflict.leftRef!, remoteRef, { kind: 'pull', branch: conflict.leftRef!, remoteRef })
+                    .then(ok => { if (ok) pullMutation.reset() })
+                }}
+              >
+                {t('layout.modificationControl.resolveConflicts')}
+              </button>
+            )}
+            {openResolution.error && <p className="text-xs text-status-danger mt-1">{openResolution.error}</p>}
+          </div>
+        )
+      })()}
 
       {open && (
         <div style={{ paddingLeft: `${8 + indent}px` }} className="pb-1">

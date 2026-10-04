@@ -1,4 +1,11 @@
 import type {
+  MergeFileDetail,
+  MergeFileDraft,
+  MergeFinalizeResult,
+  MergeKeepBothResult,
+  MergeOrigin,
+  MergeSessionInfo,
+  MergeValidation,
   ClearRevalidationResult,
   FlaggedElement,
   Parameter,
@@ -242,7 +249,9 @@ export interface DrawioPage {
 // is surfaced here; the renderer has no use for the full YAML diff objects.
 export type MergeResult =
   | { success: true; sha: string }
-  | { success: false; conflicts: string[] }
+  // GH37: `leftRef` (mes modifications) / `rightRef` (destination) of the conflicting merge, to
+  // open the merge editor on it.
+  | { success: false; conflicts: string[]; leftRef?: string; rightRef?: string }
 
 // T154 — SyncService.ensureIntegrationUpToDate()'s outcome.
 export type IntegrationSyncResult = 'up-to-date' | 'fast-forwarded' | 'diverged' | 'no-remote-branch'
@@ -403,7 +412,7 @@ export interface ApiClient {
     status(repoPath: string): Promise<SyncStatus>
     commit(repoPath: string, message: string): Promise<{ sha: string }>
     push(repoPath: string): Promise<void>
-    pull(repoPath: string): Promise<void>
+    pull(repoPath: string): Promise<MergeResult>
     fetch(repoPath: string, urlFallback: string, remote?: string): Promise<void>
     fastForwardBranch(repoPath: string, branchName: string, remote?: string): Promise<IntegrationSyncResult>
     pullFastForwardOnly(repoPath: string): Promise<void>
@@ -447,6 +456,18 @@ export interface ApiClient {
     resolveRefs(repoPath: string): Promise<GitRef[]>
   }
   /** Opérations git bas niveau ne relevant pas du domaine `sync` (T43). */
+  /** GH37 — résolution des conflits de merge dans l'outil (brouillon hors repo, cf. MergeSessionInfo). */
+  mergeResolution: {
+    open(repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin): Promise<MergeSessionInfo>
+    list(repoPaths?: string[]): Promise<MergeSessionInfo[]>
+    get(id: string): Promise<MergeSessionInfo | null>
+    getFile(id: string, path: string): Promise<MergeFileDetail>
+    saveFile(id: string, path: string, draft: MergeFileDraft): Promise<MergeSessionInfo>
+    validate(id: string, path: string, text: string): Promise<MergeValidation>
+    keepBoth(id: string, path: string, apply: boolean): Promise<MergeKeepBothResult>
+    finalize(id: string): Promise<MergeFinalizeResult>
+    abandon(id: string): Promise<void>
+  }
   git: {
     /** SHA complet du commit HEAD courant — utilisé pour le nom de fichier par défaut des exports. */
     headSha(repoPath: string): Promise<string>

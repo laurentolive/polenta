@@ -123,6 +123,7 @@ const TITLE_OVERRIDE_KEYS: Record<string, string> = {
   '/baseline': 'layout.tabTitles.baseline',
   '/impact-analysis': 'layout.tabTitles.impactAnalysis',
   '/version-diff': 'layout.tabTitles.versionDiff',
+  '/merge-resolve': 'layout.tabTitles.mergeResolve',
   '/versioning': 'layout.activityBar.version',
   '/product': 'layout.tabTitles.product',
   '/components': 'layout.tabTitles.components',

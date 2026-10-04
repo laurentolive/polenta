@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { flushSync } from 'react-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation, Trans } from 'react-i18next'
 import { GitMerge, X } from 'lucide-react'
 import { api } from '../../api'
+import { useTabs } from '../../contexts/TabsContext'
 import { useModificationMode } from '../../hooks/useModificationMode'
 import { useVersioning } from '../../contexts/VersioningContext'
 import type { PinPropagationOutcome } from '../../lib/workspaceActions'
@@ -51,7 +52,7 @@ function repoName(repo: { name: string; label?: string }): string {
 
 export function ModificationControl({ currentProjectId }: Props) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
+  const { openTab } = useTabs()
   const qc = useQueryClient()
   const {
     repoPath, branch, integrationBranch, mode, pendingChangesCount, refetch, workspaceDir, flatNodes, tree,
@@ -76,7 +77,11 @@ export function ModificationControl({ currentProjectId }: Props) {
   const [publishError, setPublishError] = useState<
     // GH38: `repoPath`/`integrationBranch` are those of the repo that failed — not necessarily the
     // repo concerné — and `published` the repos already published before it in the same run.
-    | { kind: 'conflict'; message: string; files: string[]; workBranch: string; repoPath: string; integrationBranch: string; published: string[] }
+    // GH37: `title`/`ephemeral` let the merge editor finish this publication once resolved.
+    | {
+        kind: 'conflict'; message: string; files: string[]; workBranch: string; ephemeral: boolean; repoPath: string
+        integrationBranch: string; title: string; published: string[]
+      }
     | { kind: 'network'; message: string }
     | { kind: 'blocked'; message: string; repos: string[] }
     | { kind: 'generic'; message: string; published: string[] }
@@ -220,8 +225,10 @@ export function ModificationControl({ currentProjectId }: Props) {
             message: t('layout.modificationControl.conflictOnRepo', { repo: repoName(err.repo) }),
             files: err.reason.conflicts,
             workBranch: err.reason.workBranch,
+            ephemeral: err.reason.ephemeral,
             repoPath: err.repo.repoPath,
             integrationBranch: err.integrationBranch,
+            title,
             published,
           })
           return
@@ -239,6 +246,32 @@ export function ModificationControl({ currentProjectId }: Props) {
         published: [],
       })
     },
+  })
+
+  // GH37: opens (or reopens, with its draft) the conflict resolution of the repo that failed, in
+  // a tab of its own — the merge editor finishes the publication from there.
+  const resolveMutation = useMutation({
+    mutationFn: (e: Extract<NonNullable<typeof publishError>, { kind: 'conflict' }>) =>
+      api.mergeResolution.open(e.repoPath, e.workBranch, e.integrationBranch, {
+        kind: 'publish', workBranch: e.workBranch, integrationBranch: e.integrationBranch, title: e.title, ephemeral: e.ephemeral,
+      }),
+    onSuccess: (session) => {
+      setPublishError(null)
+      void qc.invalidateQueries({ queryKey: ['merge-resolution', 'list'] })
+      // Called from an async callback, not a click: without flushSync the router's (synchronous)
+      // location update renders before the new tab becomes active, and the tab-sync effect of
+      // TabsContext rewrites the *previous* tab to /merge-resolve.
+      flushSync(() => openTab('/merge-resolve', { id: session.id, projectId: currentProjectId ?? '' }))
+    },
+  })
+
+  // GH37: resolutions left in progress (drafts) on the repos of this workspace — the way back to
+  // one after the app restarted, when "Publier" no longer knows about the conflicted branch.
+  const workspaceRepoPaths = flatNodes.length > 0 ? flatNodes.map(n => n.repoPath) : [repoPath]
+  const { data: openResolutions = [] } = useQuery({
+    queryKey: ['merge-resolution', 'list', workspaceRepoPaths],
+    queryFn: () => api.mergeResolution.list(workspaceRepoPaths),
+    enabled: !!repoPath,
   })
 
   if (!repoPath || mode === 'other') return null
@@ -265,6 +298,18 @@ export function ModificationControl({ currentProjectId }: Props) {
             components={{ mono: <span className="font-mono" /> }}
           />
         </span>
+      )}
+
+      {openResolutions.length > 0 && (
+        <button
+          type="button"
+          onClick={() => openTab('/merge-resolve', { id: openResolutions[0].id, projectId: currentProjectId ?? '' })}
+          className="btn-secondary-sm flex items-center gap-1.5 text-status-warning"
+          title={openResolutions.map(s => `${s.leftRef} → ${s.rightRef}`).join('\n')}
+        >
+          <GitMerge size={12} />
+          {t('layout.modificationControl.resumeResolution', { count: openResolutions.length })}
+        </button>
       )}
 
       {mode === 'active' && (
@@ -378,6 +423,11 @@ export function ModificationControl({ currentProjectId }: Props) {
               {t('layout.modificationControl.alreadyPublished', { repos: publishError.published.join(', ') })}
             </p>
           )}
+          {resolveMutation.isError && (
+            <p className="text-xs text-status-danger mb-2">
+              {resolveMutation.error instanceof Error ? resolveMutation.error.message : String(resolveMutation.error)}
+            </p>
+          )}
           <div className="flex gap-2 justify-end mt-4">
             <button type="button" onClick={() => setPublishError(null)} className="btn-secondary-sm">
               {t('common.close')}
@@ -385,19 +435,13 @@ export function ModificationControl({ currentProjectId }: Props) {
             {publishError.kind === 'conflict' && (
               <button
                 type="button"
-                onClick={() => {
-                  // GH38: the diff of the repo that conflicted, not of the repo concerné.
-                  const { workBranch, repoPath: failedRepoPath, integrationBranch: failedIntegrationBranch } = publishError
-                  setPublishError(null)
-                  navigate({
-                    to: '/version-diff',
-                    search: { projectId: currentProjectId ?? '', repoPath: failedRepoPath, ref1: workBranch, sha1: undefined, ref2: failedIntegrationBranch, sha2: undefined },
-                  })
-                }}
+                // GH38: the repo that conflicted, not necessarily the repo concerné.
+                onClick={() => resolveMutation.mutate(publishError)}
+                disabled={resolveMutation.isPending}
                 className="btn-primary-sm flex items-center gap-1"
               >
-                <X size={11} />
-                {t('layout.modificationControl.manualResolution')}
+                <GitMerge size={11} />
+                {t('layout.modificationControl.resolveConflicts')}
               </button>
             )}
           </div>

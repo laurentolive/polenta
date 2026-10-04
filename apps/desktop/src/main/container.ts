@@ -29,6 +29,7 @@ import { ExportService } from './services/export.service'
 import { ExportTemplateLibrary } from './services/export-template-library'
 import { TemplateExportService } from './services/export/template/template-export.service'
 import { AppSettingsService } from './services/app-settings.service'
+import { MergeResolutionService } from './services/merge-resolution.service'
 import { UpdateService } from './services/update.service'
 import { registerIpcHandlers } from './ipc/index'
 
@@ -82,6 +83,7 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
   const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
   // GH26 — préférences app-level + mise à jour automatique.
   const appSettings = new AppSettingsService()
+  const mergeResolution = new MergeResolutionService(auth, sync, schema)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
   const exportSvc = new ExportService(new TemplateExportService(
@@ -95,6 +97,7 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
     auth,
     git,
     sync,
+    mergeResolution,
     workspace,
     reqIndex,
     testsIndex,

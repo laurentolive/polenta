@@ -132,6 +132,17 @@ export function createIpcClient(): ApiClient {
       diffFileBetween: (p, sha1, sha2, filepath) => invoke('sync:diff-file-between', p, sha1, sha2, filepath),
       resolveRefs: (p) => invoke('sync:resolve-refs', p),
     },
+    mergeResolution: {
+      open: (p, leftRef, rightRef, origin) => invoke('merge-resolution:open', p, leftRef, rightRef, origin),
+      list: (repoPaths) => invoke('merge-resolution:list', repoPaths),
+      get: (id) => invoke('merge-resolution:get', id),
+      getFile: (id, path) => invoke('merge-resolution:get-file', id, path),
+      saveFile: (id, path, draft) => invoke('merge-resolution:save-file', id, path, draft),
+      validate: (id, path, text) => invoke('merge-resolution:validate', id, path, text),
+      keepBoth: (id, path, apply) => invoke('merge-resolution:keep-both', id, path, apply),
+      finalize: (id) => invoke('merge-resolution:finalize', id),
+      abandon: (id) => invoke('merge-resolution:abandon', id),
+    },
     git: {
       headSha: (p) => invoke('git:head-sha', p),
     },

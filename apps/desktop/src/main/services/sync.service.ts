@@ -52,7 +52,9 @@ export interface CommitResult {
 
 export type MergeResult =
   | { success: true; sha: string }
-  | { success: false; conflicts: string[] }
+  // GH37: `leftRef` (mes modifications) / `rightRef` (destination) of the conflicting merge, to
+  // open the merge editor on it.
+  | { success: false; conflicts: string[]; leftRef?: string; rightRef?: string }
 
 /** GH39 — the configured integration branch compared to its remote-tracking ref (last fetch). */
 export type IntegrationRemoteStateKind = 'no-remote' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
@@ -371,24 +373,44 @@ export class SyncService {
     })
   }
 
-  async pull(repoPath: string, remote = 'origin'): Promise<void> {
-    const remoteUrl = await getRemoteUrl(repoPath, remote)
-    if (remoteUrl && !isHttpRemote(remoteUrl)) {
-      await execFileAsync('git', ['pull', '--no-rebase', remote], { cwd: repoPath })
-      return
-    }
-    const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
-    const author = await this.auth.getAuthor(repoPath)
+  /**
+   * "Rafraîchir" (T153), reworked by GH37: fetch, then merge `refs/remotes/<remote>/<branch>` into
+   * the current branch through isomorphic-git with `abortOnConflict` — a conflict leaves the
+   * working directory and the index untouched (no conflict markers, SSH remote included: the
+   * former `git pull --no-rebase` CLI path wrote them into the user's files) and is returned so
+   * the caller can open the merge editor (`leftRef` = local branch, `rightRef` = remote branch).
+   * On success the working directory is realigned on the new HEAD (`git.merge` alone doesn't).
+   * Only ever called on a clean tree (UI guard, re-checked here before anything moves).
+   */
+  async pull(repoPath: string, remote = 'origin'): Promise<MergeResult> {
+    const branch = await git.currentBranch({ fs, dir: repoPath })
+    if (!branch) throw new Error('Detached HEAD — cannot pull')
+    const status = await this.status(repoPath)
+    if (status.staged.length + status.unstaged.length > 0) throw new Error('Uncommitted changes — cannot pull')
 
-    await git.pull({
-      fs,
-      http,
-      dir: repoPath,
-      remote,
-      author: { name: author.name, email: author.email },
-      onAuth: () => credentials ?? undefined,
-      fastForwardOnly: false,
-    })
+    await this.fetch(repoPath, '', remote)
+    const remoteRef = `refs/remotes/${remote}/${branch}`
+    const localOid = await git.resolveRef({ fs, dir: repoPath, ref: branch })
+    const remoteOid = await git.resolveRef({ fs, dir: repoPath, ref: remoteRef }).catch(() => null)
+    if (!remoteOid || remoteOid === localOid) return { success: true, sha: localOid }
+
+    const author = await this.auth.getAuthor(repoPath)
+    try {
+      const result = await git.merge({
+        fs,
+        dir: repoPath,
+        ours: branch,
+        theirs: remoteRef,
+        author: { name: author.name, email: author.email },
+        message: `Merge remote-tracking branch '${remote}/${branch}' into ${branch}`,
+      })
+      await git.checkout({ fs, dir: repoPath, ref: branch, force: true })
+      return { success: true, sha: result.oid ?? localOid }
+    } catch (err: unknown) {
+      const conflicts = conflictFiles(err)
+      if (conflicts) return { success: false, conflicts, leftRef: branch, rightRef: remoteRef }
+      throw err
+    }
   }
 
   /**
@@ -881,7 +903,8 @@ export class SyncService {
       return { success: true, sha: result.oid ?? '' }
     } catch (err: unknown) {
       const conflicts = conflictFiles(err)
-      if (conflicts) return { success: false, conflicts }
+      // GH37: the refs let the caller open the merge editor (gauche = branche mergée).
+      if (conflicts) return { success: false, conflicts, leftRef: fromBranch, rightRef: currentBranch }
       throw err
     }
   }
@@ -901,7 +924,7 @@ export class SyncService {
       return { success: true, sha: result.oid ?? '' }
     } catch (err: unknown) {
       const conflicts = conflictFiles(err)
-      if (conflicts) return { success: false, conflicts }
+      if (conflicts) return { success: false, conflicts, leftRef: fromBranch, rightRef: intoBranch }
       throw err
     }
   }

@@ -1,15 +1,12 @@
 import { useState } from 'react'
-import { useTranslation, Trans } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Tag, Layers, ChevronDown, ChevronRight, RefreshCw, CircleCheck, CircleAlert, Plus, Trash2, Search } from 'lucide-react'
+import { Tag, RefreshCw, CircleCheck, CircleAlert } from 'lucide-react'
 import { api } from '../api'
-import { decodeProjectId } from '../lib/projectId'
-import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
+import { useBaselines } from '../hooks/useBaselines'
 import { ViewHeader } from '../components/layout/ViewHeader'
-import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import { toIntlLocale } from '../i18n/useLocale'
-import type { BaselineRecord, BaselineComponentRef, SyncStatus } from '@polenta/api-client'
+import type { BaselineRecord, SyncStatus } from '@polenta/api-client'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
 export const Route = createFileRoute('/baseline')({
@@ -101,61 +98,9 @@ function RepoReadinessRow({ readiness }: { readiness: RepoReadiness }) {
   )
 }
 
-// ── BaselineItem (collapsible) ────────────────────────────────────────────────
+// ── CreateBaselineForm (GH40: ex-popup, rendue directement dans la vue) ───────
 
-function BaselineItem({ baseline, onDelete }: { baseline: BaselineRecord; onDelete: (baseline: BaselineRecord) => void }) {
-  const { t, i18n } = useTranslation()
-  const [open, setOpen] = useState(false)
-
-  return (
-    <li>
-      <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs hover:bg-hover transition-colors group">
-        <button
-          type="button"
-          onClick={() => setOpen(v => !v)}
-          className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
-        >
-          {open ? <ChevronDown size={11} className="text-ink-3 shrink-0" /> : <ChevronRight size={11} className="text-ink-3 shrink-0" />}
-          <Layers size={11} className="text-ink-3 shrink-0" />
-          <span className="font-mono text-ink shrink-0">{baseline.tag}</span>
-          {baseline.message && <span className="text-ink-3 truncate">{baseline.message}</span>}
-        </button>
-        <span className="text-ink-3 font-sans shrink-0">
-          {new Date(baseline.createdAt).toLocaleDateString(toIntlLocale(i18n.language))}
-        </span>
-        <button
-          type="button"
-          onClick={() => onDelete(baseline)}
-          className="p-1 rounded text-ink-3 hover:text-status-danger hover:bg-hover transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-          title={t('baselinePage.deleteBaselineTitle')}
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-
-      {open && baseline.components.length > 0 && (
-        <ul className="ml-6 mb-1 space-y-0.5">
-          {baseline.components.map(comp => (
-            <li key={comp.name} className="flex items-center gap-2 px-2 py-1 text-xs text-ink-3">
-              <span className="font-mono truncate">{comp.name}</span>
-              <span className="ml-auto flex items-center gap-1 shrink-0">
-                <Tag size={10} className="text-status-warning" />
-                <span className="font-mono text-ink">{comp.tag}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {open && baseline.components.length === 0 && (
-        <p className="ml-6 mb-1 px-2 py-1 text-xs text-ink-3 italic">{t('baselinePage.noComponents')}</p>
-      )}
-    </li>
-  )
-}
-
-// ── CreateBaselineModal ────────────────────────────────────────────────────────
-
-interface CreateBaselineModalProps {
+interface CreateBaselineFormProps {
   repoReadiness: RepoReadiness[]
   structureError: string | null
   structureConflicts: unknown[] | null
@@ -169,191 +114,127 @@ interface CreateBaselineModalProps {
   baselines: BaselineRecord[]
   mainTags: string[]
   tagConflictNodes: RepoReadiness[]
-  mainTagValid: boolean
-  repoPath: string
+  canCreate: boolean
+  createdTag: string | null
   tagWarning: string | null
   isPending: boolean
   isError: boolean
   errorMessage: string | null
   onCreate: () => void
-  onClose: () => void
 }
 
-function CreateBaselineModal({
+function CreateBaselineForm({
   repoReadiness, structureError, structureConflicts, readinessLoading, blockingRepos, refreshReadiness,
-  mainTag, setMainTagOverride, message, setMessage, baselines, mainTags, tagConflictNodes, mainTagValid,
-  repoPath, tagWarning, isPending, isError, errorMessage, onCreate, onClose,
-}: CreateBaselineModalProps) {
+  mainTag, setMainTagOverride, message, setMessage, baselines, mainTags, tagConflictNodes, canCreate,
+  createdTag, tagWarning, isPending, isError, errorMessage, onCreate,
+}: CreateBaselineFormProps) {
   const { t } = useTranslation()
-  const canCreate = mainTagValid && !isPending && !!repoPath && !readinessLoading && blockingRepos.length === 0
-  useModalHotkeys(onClose, () => canCreate && onCreate(), isPending)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
-      <div
-        className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="px-5 py-3 border-b border-edge shrink-0">
-          <h2 className="text-sm font-semibold text-ink">{t('baselinePage.newBaseline')}</h2>
-        </div>
+    // Ctrl/Cmd+Entrée = créer. Pas d'Entrée seule (le champ tag déclencherait une création
+    // involontaire) ni d'Échap (plus de popup à fermer).
+    <div
+      className="max-w-2xl space-y-4"
+      onKeyDown={e => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && canCreate) {
+          e.preventDefault()
+          onCreate()
+        }
+      }}
+    >
+      {createdTag && (
+        <p className="flex items-center gap-1.5 text-xs text-status-success">
+          <CircleCheck size={14} className="shrink-0" />
+          {t('baselinePage.baselineCreated', { tag: createdTag })}
+        </p>
+      )}
 
-        <div className="px-5 py-4 space-y-4 overflow-y-auto">
-          <div className="rounded-lg border border-edge p-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="section-label">{t('baselinePage.repoStateLabel')}</span>
-              <button
-                type="button"
-                onClick={refreshReadiness}
-                className="p-0.5 rounded text-ink-3 hover:text-ink hover:bg-hover transition-colors"
-                title={t('baselinePage.refresh')}
-              >
-                <RefreshCw size={12} />
-              </button>
-            </div>
-            {structureError ? (
-              <p className="text-xs text-status-danger leading-snug">{structureError}</p>
-            ) : structureConflicts && structureConflicts.length > 0 ? (
-              <p className="text-xs text-status-warning leading-snug">
-                {t('baselinePage.dependencyConflictHint')}
-              </p>
-            ) : readinessLoading ? (
-              <p className="text-xs text-ink-3 italic">{t('baselinePage.checking')}</p>
-            ) : (
-              <ul className="space-y-0.5">
-                {repoReadiness.map(r => (
-                  <RepoReadinessRow key={r.node.repoPath} readiness={r} />
-                ))}
-              </ul>
-            )}
-            {!structureError && !structureConflicts?.length && !readinessLoading && blockingRepos.length > 0 && (
-              <p className="mt-1.5 text-xs text-status-danger leading-snug">
-                {t('baselinePage.creationBlocked', { count: blockingRepos.length })}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-edge p-3">
-            <label className="block text-xs text-ink-3 mb-1">{t('baselinePage.mainRepoTagLabel')}</label>
-            <input
-              type="text"
-              value={mainTag}
-              onChange={e => setMainTagOverride(e.target.value)}
-              placeholder="v1.0.0"
-              className="w-full input-field text-xs py-1 font-mono"
-            />
-            {baselines.some(b => b.tag === mainTag.trim()) && (
-              <p className="mt-1 text-xs text-status-danger">{t('baselinePage.tagAlreadyUsedByBaseline')}</p>
-            )}
-            {mainTags.includes(mainTag.trim()) && (
-              <p className="mt-1 text-xs text-status-warning">{t('baselinePage.tagAlreadyExistsOnRepo')}</p>
-            )}
-            {tagConflictNodes.length > 0 && (
-              <p className="mt-1 text-xs text-status-warning">
-                {t('baselinePage.tagAlreadyExistsOn', { names: tagConflictNodes.map(r => r.node.name).join(', ') })}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-edge p-3">
-            <label className="block text-xs text-ink-3 mb-1">{t('baselinePage.messageOptionalLabel')}</label>
-            <textarea
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              placeholder={t('baselinePage.describeBaselinePlaceholder')}
-              rows={3}
-              className="w-full input-field text-xs resize-none"
-            />
-          </div>
-
-          {isError && (
-            <p className="text-xs text-status-danger">
-              {errorMessage ?? t('baselinePage.creationError')}
-            </p>
-          )}
-
-          {tagWarning && (
-            <p className="text-xs text-status-warning leading-snug">{tagWarning}</p>
-          )}
-        </div>
-
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-edge shrink-0">
+      <div className="rounded-lg border border-edge p-3">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="section-label">{t('baselinePage.repoStateLabel')}</span>
           <button
             type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="btn-secondary"
+            onClick={refreshReadiness}
+            className="p-0.5 rounded text-ink-3 hover:text-ink hover:bg-hover transition-colors"
+            title={t('baselinePage.refresh')}
           >
-            {t('common.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={onCreate}
-            disabled={!mainTagValid || isPending || !repoPath || readinessLoading || blockingRepos.length > 0}
-            className="btn-primary"
-          >
-            {isPending ? t('common.creating') : t('baselinePage.createBaseline')}
+            <RefreshCw size={12} />
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ── DeleteBaselineModal ─────────────────────────────────────────────────────────
-
-function DeleteBaselineModal({
-  baseline, isDeleting, error, onConfirm, onClose,
-}: {
-  baseline: BaselineRecord
-  isDeleting: boolean
-  error: string | null
-  onConfirm: () => void
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-  useModalHotkeys(onClose, onConfirm, isDeleting)
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
-      <div className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-3 border-b border-edge">
-          <h2 className="text-sm font-semibold text-ink">{t('baselinePage.deleteBaselineConfirmTitle', { tag: baseline.tag })}</h2>
-        </div>
-        <div className="px-5 py-4 space-y-2">
-          <p className="text-xs text-ink-2 leading-snug">
-            {baseline.components.length > 0 ? (
-              <Trans
-                i18nKey="baselinePage.deleteBaselineBodyWithComponents"
-                values={{ tag: baseline.tag, count: baseline.components.length }}
-                components={{ code: <code className="text-ink-3" /> }}
-              />
-            ) : (
-              <Trans
-                i18nKey="baselinePage.deleteBaselineBody"
-                values={{ tag: baseline.tag }}
-                components={{ code: <code className="text-ink-3" /> }}
-              />
-            )}
+        {structureError ? (
+          <p className="text-xs text-status-danger leading-snug">{structureError}</p>
+        ) : structureConflicts && structureConflicts.length > 0 ? (
+          <p className="text-xs text-status-warning leading-snug">
+            {t('baselinePage.dependencyConflictHint')}
           </p>
-          {error && <p className="text-xs text-status-danger">{error}</p>}
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-edge">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isDeleting}
-            className="btn-secondary"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isDeleting}
-            className="btn-danger"
-          >
-            {isDeleting ? t('campaignPage.deleting') : t('common.delete')}
-          </button>
-        </div>
+        ) : readinessLoading ? (
+          <p className="text-xs text-ink-3 italic">{t('baselinePage.checking')}</p>
+        ) : (
+          <ul className="space-y-0.5">
+            {repoReadiness.map(r => (
+              <RepoReadinessRow key={r.node.repoPath} readiness={r} />
+            ))}
+          </ul>
+        )}
+        {!structureError && !structureConflicts?.length && !readinessLoading && blockingRepos.length > 0 && (
+          <p className="mt-1.5 text-xs text-status-danger leading-snug">
+            {t('baselinePage.creationBlocked', { count: blockingRepos.length })}
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-edge p-3">
+        <label className="block text-xs text-ink-3 mb-1">{t('baselinePage.mainRepoTagLabel')}</label>
+        <input
+          type="text"
+          value={mainTag}
+          onChange={e => setMainTagOverride(e.target.value)}
+          placeholder="v1.0.0"
+          className="w-full input-field text-xs py-1 font-mono"
+        />
+        {baselines.some(b => b.tag === mainTag.trim()) && (
+          <p className="mt-1 text-xs text-status-danger">{t('baselinePage.tagAlreadyUsedByBaseline')}</p>
+        )}
+        {mainTags.includes(mainTag.trim()) && (
+          <p className="mt-1 text-xs text-status-warning">{t('baselinePage.tagAlreadyExistsOnRepo')}</p>
+        )}
+        {tagConflictNodes.length > 0 && (
+          <p className="mt-1 text-xs text-status-warning">
+            {t('baselinePage.tagAlreadyExistsOn', { names: tagConflictNodes.map(r => r.node.name).join(', ') })}
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-edge p-3">
+        <label className="block text-xs text-ink-3 mb-1">{t('baselinePage.messageOptionalLabel')}</label>
+        <textarea
+          value={message}
+          onChange={e => setMessage(e.target.value)}
+          placeholder={t('baselinePage.describeBaselinePlaceholder')}
+          rows={3}
+          className="w-full input-field text-xs resize-none"
+        />
+      </div>
+
+      {isError && (
+        <p className="text-xs text-status-danger">
+          {errorMessage ?? t('baselinePage.creationError')}
+        </p>
+      )}
+
+      {tagWarning && (
+        <p className="text-xs text-status-warning leading-snug">{tagWarning}</p>
+      )}
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onCreate}
+          disabled={!canCreate}
+          className="btn-primary"
+          title="Ctrl+Enter"
+        >
+          {isPending ? t('common.creating') : t('baselinePage.createBaseline')}
+        </button>
       </div>
     </div>
   )
@@ -361,39 +242,26 @@ function DeleteBaselineModal({
 
 // ── BaselinePage ──────────────────────────────────────────────────────────────
 
+/** GH40 — la vue de droite est le formulaire de création ; la liste des baselines vit dans le
+ *  panneau Version (`BaselineListPanel`), alimentée par le même `useBaselines`. */
 function BaselinePage() {
   const { t } = useTranslation()
   const { projectId } = Route.useSearch()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const workspaceDir = decodeProjectId(projectId)
 
-  const { data: project } = useQuery({
-    queryKey: ['workspace', projectId],
-    queryFn: () => api.workspace.resolve(decodeProjectId(projectId)),
-    enabled: !!projectId,
-  })
-  const repoPath = project?.localPath ?? ''
+  const {
+    workspaceDir, repoPath, flatNodes, componentNodes, baselines, structureError, structureConflicts,
+  } = useBaselines(projectId)
 
-  const { flatNodes, error: structureError, conflicts: structureConflicts } = useWorkspaceStructure(workspaceDir, repoPath)
-  const componentNodes = flatNodes.filter(n => n.repoPath !== repoPath)
-
-  const { data: mainTags = [] } = useQuery({
+  const { data: mainTags = [], dataUpdatedAt: mainTagsUpdatedAt } = useQuery({
     queryKey: ['sync:tags', repoPath],
     queryFn: () => api.sync.tags(repoPath),
     enabled: !!repoPath,
   })
 
-  const componentRefs: BaselineComponentRef[] = componentNodes.map(n => ({ name: n.name, repoPath: n.repoPath }))
-
-  const { data: baselines = [] } = useQuery({
-    queryKey: ['baseline:list', repoPath, componentRefs],
-    queryFn: () => api.baseline.list(repoPath, componentRefs),
-    enabled: !!repoPath,
-  })
-
   // T79: readiness of every repo in the workspace (root included) — a baseline can only be
-  // created once every repo is on its configured integration branch with no pending changes.
+  // created once every repo has no pending changes (T46: any branch is accepted).
   const statusQueries = useQueries({
     queries: flatNodes.map(node => ({
       queryKey: ['sync:status', node.repoPath],
@@ -436,15 +304,22 @@ function BaselinePage() {
   const [mainTagOverride, setMainTagOverride] = useState<string | null>(null)
   const mainTag = mainTagOverride ?? nextTag(mainTags)
   const [message, setMessage] = useState('')
+  const [createdTag, setCreatedTag] = useState<string | null>(null)
+  // The form stays on screen after a creation (GH40, no popup to close): until the tag/baseline
+  // lists refetch, nextTag() still suggests the tag just created — never let it be re-submitted.
+  // The guard lifts once the root tag list has refetched (the tag is then caught by the regular
+  // checks, or is free again if that baseline was deleted meanwhile).
+  const [lastCreated, setLastCreated] = useState<{ tag: string; at: number } | null>(null)
+  const staleCreatedTag = lastCreated && mainTagsUpdatedAt <= lastCreated.at ? lastCreated.tag : null
 
   const tagConflictNodes = repoReadiness.filter(r => (r.tags ?? []).includes(mainTag.trim()))
   const mainTagValid =
     mainTag.trim() !== '' &&
+    mainTag.trim() !== staleCreatedTag &&
     !baselines.some(b => b.tag === mainTag.trim()) &&
     tagConflictNodes.length === 0
 
   const [tagWarning, setTagWarning] = useState<string | null>(null)
-  const [showCreateModal, setShowCreateModal] = useState(false)
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -456,7 +331,8 @@ function BaselinePage() {
       qc.invalidateQueries({ queryKey: ['sync:tags'] })
       setMainTagOverride(null)
       setMessage('')
-      setShowCreateModal(false)
+      setCreatedTag(record.tag)
+      setLastCreated({ tag: record.tag, at: Date.now() })
       setTagWarning(
         record.components.length < componentNodes.length
           ? t('baselinePage.tagWarning', { count: componentNodes.length - record.components.length })
@@ -465,24 +341,13 @@ function BaselinePage() {
     },
   })
 
-  const [deletingBaseline, setDeletingBaseline] = useState<BaselineRecord | null>(null)
-  const deleteMutation = useMutation({
-    mutationFn: (baseline: BaselineRecord) => api.baseline.delete(repoPath, baseline.tag, componentRefs),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['baseline:list', repoPath] })
-      qc.invalidateQueries({ queryKey: ['sync:tags'] })
-      setDeletingBaseline(null)
-    },
-  })
+  const canCreate = mainTagValid && !createMutation.isPending && !!repoPath && !readinessLoading && blockingRepos.length === 0
 
-  const [filterText, setFilterText] = useState('')
-  const filteredBaselines = baselines.filter(b => {
-    const needle = filterText.trim().toLowerCase()
-    if (!needle) return true
-    return b.tag.toLowerCase().includes(needle) || b.message.toLowerCase().includes(needle)
-  })
-
-  const isLoading = !project
+  function handleCreate() {
+    setCreatedTag(null)
+    setTagWarning(null)
+    createMutation.mutate()
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -492,88 +357,39 @@ function BaselinePage() {
         title={
           <span className="flex items-center gap-2">
             <Tag size={14} className="text-prim" />
-            {t('layout.tabTitles.baseline')}
-          </span>
-        }
-        actions={
-          <button
-            type="button"
-            onClick={() => setShowCreateModal(true)}
-            disabled={!repoPath}
-            className="btn-primary-sm flex items-center gap-1.5"
-          >
-            <Plus size={12} />
             {t('baselinePage.newBaseline')}
-          </button>
+          </span>
         }
       />
 
-      <div className="flex-1 overflow-hidden flex flex-col">
-        <div className="shrink-0 px-6 py-3 border-b border-edge">
-          <div className="relative max-w-sm">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
-            <input
-              type="text"
-              value={filterText}
-              onChange={e => setFilterText(e.target.value)}
-              placeholder={t('baselinePage.filterPlaceholder')}
-              className="input-field w-full text-xs py-1.5 pl-7"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {isLoading ? (
-            <p className="text-sm text-ink-3">{t('common.loading')}</p>
-          ) : baselines.length === 0 ? (
-            <p className="text-xs text-ink-3 italic">{t('baselinePage.noBaseline')}</p>
-          ) : filteredBaselines.length === 0 ? (
-            <p className="text-xs text-ink-3 italic">{t('baselinePage.noBaselineMatchesFilter')}</p>
-          ) : (
-            <ul className="max-w-2xl divide-y divide-edge border border-edge rounded-lg overflow-hidden">
-              {filteredBaselines.map(b => (
-                <BaselineItem key={b.tag} baseline={b} onDelete={setDeletingBaseline} />
-              ))}
-            </ul>
-          )}
-        </div>
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        {!repoPath ? (
+          <p className="text-sm text-ink-3">{t('common.loading')}</p>
+        ) : (
+          <CreateBaselineForm
+            repoReadiness={repoReadiness}
+            structureError={structureError}
+            structureConflicts={structureConflicts}
+            readinessLoading={readinessLoading}
+            blockingRepos={blockingRepos}
+            refreshReadiness={refreshReadiness}
+            mainTag={mainTag}
+            setMainTagOverride={v => { setMainTagOverride(v); setCreatedTag(null) }}
+            message={message}
+            setMessage={v => { setMessage(v); setCreatedTag(null) }}
+            baselines={baselines}
+            mainTags={mainTags}
+            tagConflictNodes={tagConflictNodes}
+            canCreate={canCreate}
+            createdTag={createdTag}
+            tagWarning={tagWarning}
+            isPending={createMutation.isPending}
+            isError={createMutation.isError}
+            errorMessage={createMutation.error instanceof Error ? createMutation.error.message : null}
+            onCreate={handleCreate}
+          />
+        )}
       </div>
-
-      {showCreateModal && (
-        <CreateBaselineModal
-          repoReadiness={repoReadiness}
-          structureError={structureError}
-          structureConflicts={structureConflicts}
-          readinessLoading={readinessLoading}
-          blockingRepos={blockingRepos}
-          refreshReadiness={refreshReadiness}
-          mainTag={mainTag}
-          setMainTagOverride={setMainTagOverride}
-          message={message}
-          setMessage={setMessage}
-          baselines={baselines}
-          mainTags={mainTags}
-          tagConflictNodes={tagConflictNodes}
-          mainTagValid={mainTagValid}
-          repoPath={repoPath}
-          tagWarning={tagWarning}
-          isPending={createMutation.isPending}
-          isError={createMutation.isError}
-          errorMessage={createMutation.error instanceof Error ? createMutation.error.message : null}
-          onCreate={() => createMutation.mutate()}
-          onClose={() => setShowCreateModal(false)}
-        />
-      )}
-
-      {deletingBaseline && (
-        <DeleteBaselineModal
-          baseline={deletingBaseline}
-          isDeleting={deleteMutation.isPending}
-          error={deleteMutation.error instanceof Error ? deleteMutation.error.message : null}
-          onConfirm={() => deleteMutation.mutate(deletingBaseline)}
-          onClose={() => setDeletingBaseline(null)}
-        />
-      )}
     </div>
   )
 }

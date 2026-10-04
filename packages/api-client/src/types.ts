@@ -256,6 +256,17 @@ export type MergeResult =
 // T154 — SyncService.ensureIntegrationUpToDate()'s outcome.
 export type IntegrationSyncResult = 'up-to-date' | 'fast-forwarded' | 'diverged' | 'no-remote-branch'
 
+// GH39 — mirrors SyncService's IntegrationRemoteState / ResyncOutcome.
+export type IntegrationRemoteStateKind = 'no-remote' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
+export interface IntegrationRemoteState {
+  state: IntegrationRemoteStateKind
+  ahead: number
+  behind: number
+}
+export type ResyncOutcome =
+  | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
+  | { outcome: 'set-aside'; branch: string }
+
 export interface DeviceFlowSession {
   deviceCode: string
   userCode: string
@@ -405,6 +416,16 @@ export interface ApiClient {
     fetch(repoPath: string, urlFallback: string, remote?: string): Promise<void>
     fastForwardBranch(repoPath: string, branchName: string, remote?: string): Promise<IntegrationSyncResult>
     pullFastForwardOnly(repoPath: string): Promise<void>
+    /** GH39: integration branch vs `origin/<branch>` as of the last fetch — local, no network. */
+    integrationState(repoPath: string, branch: string): Promise<IntegrationRemoteState>
+    /** GH39: simulates merging `origin/<branch>` into `<branch>` — nothing is written. */
+    canMergeRemoteIntoIntegration(repoPath: string, branch: string): Promise<{ ok: true } | { ok: false; conflicts: string[] }>
+    /** GH39: "Resynchroniser" — throws `integration-dirty` if the checked-out integration has pending changes. */
+    resyncIntegration(repoPath: string, branch: string): Promise<ResyncOutcome>
+    /** GH39: one auto-pull tick — fetch, fast-forward if clean, push retry if the integration is only ahead. */
+    autoSync(repoPath: string, integrationBranch: string): Promise<IntegrationRemoteState>
+    /** GH39: true when `branch` has no commit absent from `into`. */
+    isMergedInto(repoPath: string, branch: string, into: string): Promise<boolean>
     log(repoPath: string, limit?: number): Promise<CommitEntry[]>
     checkoutCommit(repoPath: string, sha: string): Promise<void>
     stage(repoPath: string, filepath: string): Promise<void>

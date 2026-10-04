@@ -1409,6 +1409,25 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 
 **Principe :** la branche git courante est l'identité de la modification. Pas de métadonnées YAML séparées.
 
+> **GH40 — état actuel du panneau** (le schéma ci-dessous date d'avant l'arbre multi-repo T78) :
+> - **Arbre de repos** (`VersionRepoFolder`, un dossier par repo root/composant/interface) ; chaque
+>   ligne de repo porte, toujours visibles : pastille « modifications en attente », icône **graphe**
+>   (sélectionne le repo puis ouvre `/graph`, sans replier/déplier le dossier), Rafraîchir (pull),
+>   combobox de branche. L'icône graphe du **header** reste globale : elle ouvre `/graph` sur le
+>   repo déjà sélectionné.
+> - **Sections vides masquées** : Stagés et Modifications ne sont rendues que si elles contiennent
+>   au moins un fichier ; les deux vides → une ligne unique « Rien à committer » (affichée seulement
+>   une fois le statut git chargé). Les messages « Aucun fichier stagé » / « Aucune modification »
+>   n'existent plus. L'avertissement de propagation de pin post-commit (T82) est rendu hors de la
+>   section Stagés, pour survivre au commit qui la vide.
+> - **Densité** : header `py-1.5`, ligne de repo `py-0.5` (≈ 26 px, bornée par la combobox),
+>   sections `px-2 py-1`, ligne de fichier `h-5` (20 px).
+> - **Contenu piloté par la route** : `/version-diff` → sélecteur de comparaison ; `/baseline` →
+>   liste des baselines (`BaselineListPanel` : filtre tag/message, dépliage sur place des tags
+>   composants, suppression avec confirmation) ; sinon → arbre des repos. La vue `/baseline` est
+>   le formulaire de création (ex-popup, voir SPEC-FORKS-BRANCHES-BASELINES §5.2). Liste et
+>   formulaire partagent `useBaselines` (même clé `baseline:list`).
+
 ```
 ┌─────────────────────────────┐
 │  VERSION           🌿 main  │  ← branche courante dans le header
@@ -1681,6 +1700,7 @@ Le layout racine (`__root.tsx`) adopte la structure sidebar + main. La route `/l
     ├── (pas de /branch/new — création de branche inline dans BranchCombobox, voir §19.11)
     ├── /schema         → panneau Projet actif, projectId depuis search param
     ├── /graph          → panneau Version actif, projectId depuis search param
+    ├── /baseline       → panneau Version actif (liste des baselines), vue = formulaire de création (GH40)
     ├── /diff           → panneau Version actif, projectId + filepath depuis search param
     ├── /product        → panneau Produit actif, projectId + tab depuis search param
     ├── /req/new        → Produit si component absent, Composants sinon

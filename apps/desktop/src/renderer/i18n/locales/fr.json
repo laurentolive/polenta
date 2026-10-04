@@ -58,15 +58,30 @@
       "conflictOnRepo": "« {{repo}} » : quelqu’un a modifié les mêmes informations — résolution manuelle nécessaire.",
       "networkErrorRepo": "Publication impossible : réseau indisponible pour « {{repo}} ». Rien n'a été publié, vos modifications restent en attente — réessayez une fois connecté.",
       "blockedRepos": "Rien n'a été publié : ces repos ne sont pas sur leur branche d'intégration configurée.",
+      "divergedRepos": "Rien n'a été publié : l'intégration de ces repos a divergé du serveur et ne peut pas être resynchronisée automatiquement (conflit). Utilisez « Resynchroniser » (indicateur de synchronisation).",
       "failedOnRepo": "Échec de la publication de « {{repo}} » : {{error}}",
       "alreadyPublished": "Déjà publiés : {{repos}}. Relancez « Publier » pour terminer.",
       "reposToPublish": "Repos publiés :",
       "repoFiles_one": "({{count}} fichier)",
       "repoFiles_other": "({{count}} fichiers)",
+      "setAsideCommits": "(commits mis de côté)",
       "parentsNote": "Les repos parents sont aussi publiés pour mettre à jour les pins.",
       "resolveConflicts": "Résoudre les conflits",
       "resumeResolution_one": "Reprendre la résolution des conflits",
       "resumeResolution_other": "Reprendre les résolutions ({{count}})"
+    },
+    "syncIndicator": {
+      "title": "Synchronisation avec le serveur",
+      "intro": "L'intégration de ces repos n'est pas alignée sur le serveur :",
+      "ahead_one": "{{count}} modification non publiée sur le serveur",
+      "ahead_other": "{{count}} modifications non publiées sur le serveur",
+      "diverged": "Divergé : {{ahead}} en local, {{behind}} sur le serveur",
+      "lastError": "Dernière erreur : {{error}}",
+      "resync": "Resynchroniser",
+      "resyncing": "Resynchronisation…",
+      "resyncDirty": "Resynchronisation impossible : « {{repo}} » a des modifications en attente sur sa branche d'intégration. Publiez-les ou annulez-les d'abord.",
+      "setAside": "Vos modifications non publiées ont été mises de côté sur la branche {{branch}}. Cliquez sur « Publier » pour les fusionner : les conflits éventuels se résolvent comme d'habitude.",
+      "allSynced": "Tous les repos sont synchronisés avec le serveur."
     },
     "viewHeader": {
       "back": "Retour"
@@ -334,6 +349,7 @@
       "pushing": "Push…",
       "pushError": "Erreur lors du push",
       "refresh": "Rafraîchir",
+      "integrationBadgeTooltip": "Intégration {{branch}} : {{ahead}} commit(s) local(aux) absent(s) du serveur, {{behind}} commit(s) du serveur absent(s) en local",
       "refreshTooltip": "Récupérer les changements distants (git pull)",
       "refreshing": "Rafraîchissement…",
       "refreshError": "Erreur lors du rafraîchissement",
@@ -344,8 +360,6 @@
       "unstageAll": "Désindexer tout",
       "stageAll": "Tout stager",
       "discardAll": "Tout annuler",
-      "noStagedFile": "Aucun fichier stagé",
-      "noModification": "Aucune modification",
       "unstage": "Désindexer",
       "stage": "Stager",
       "discardChanges": "Annuler les modifications",
@@ -360,6 +374,9 @@
       "pinFailed": "Échec de mise à jour du pin dans {{name}} : {{error}}",
       "noBaseline": "Aucune baseline",
       "nothingStagedToCommit": "Aucune modification stagée à committer",
+      "nothingToCommit": "Rien à committer",
+      "viewRepoGraph": "Voir l'historique de {{name}}",
+      "baselinesTitle": "Baselines",
       "refreshConflict_one": "Conflit avec la branche distante ({{count}} fichier) : rien n'a été modifié.",
       "refreshConflict_other": "Conflit avec la branche distante ({{count}} fichiers) : rien n'a été modifié."
     },
@@ -1012,7 +1029,8 @@
     "noBaseline": "Aucune baseline.",
     "noBaselineMatchesFilter": "Aucune baseline ne correspond au filtre.",
     "tagWarning_one": "{{count}} composant n'a pas pu être tagué — vérifier les logs.",
-    "tagWarning_other": "{{count}} composants n'ont pas pu être tagués — vérifier les logs."
+    "tagWarning_other": "{{count}} composants n'ont pas pu être tagués — vérifier les logs.",
+    "baselineCreated": "Baseline {{tag}} créée"
   },
   "impactAnalysisPage": {
     "revalidation": {

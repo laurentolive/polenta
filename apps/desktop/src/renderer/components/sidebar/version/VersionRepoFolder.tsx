@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
-import { ArrowDownUp, ChevronDown, ChevronRight, FolderGit2, GitFork, RefreshCw, Undo2 } from 'lucide-react'
+import { ArrowDownUp, ChevronDown, ChevronRight, FolderGit2, GitFork, History, RefreshCw, Undo2 } from 'lucide-react'
 import { api } from '../../../api'
 import { useSelectedRepo } from '../../../contexts/SelectedRepoContext'
 import { useBranchCheckout } from '../../../hooks/useBranchCheckout'
@@ -177,7 +177,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
   return (
     <div>
       <div
-        className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-hover transition-colors cursor-pointer select-none"
+        className="flex items-center gap-1.5 py-0.5 px-2 rounded hover:bg-hover transition-colors cursor-pointer select-none"
         style={{ paddingLeft: `${8 + indent}px` }}
         onClick={() => { setOpen(v => !v); selectRepo(repoPath) }}
       >
@@ -211,11 +211,25 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
             onClick={e => { e.stopPropagation(); resync(repoPath, node.label || node.name) }}
             disabled={anyResyncPending}
             title={t('layout.syncIndicator.resync')}
-            className="shrink-0 ml-auto text-status-warning hover:bg-hover rounded p-1 disabled:opacity-30 transition-colors"
+            className="shrink-0 ml-auto text-status-warning hover:bg-hover rounded p-0.5 disabled:opacity-30 transition-colors"
           >
             <ArrowDownUp size={13} className={resyncPending ? 'animate-pulse' : ''} />
           </button>
         )}
+        {/* GH40: this repo's version graph — selects the repo (the /graph view follows the
+            selection) without toggling the folder. The header's graph icon stays global. */}
+        <button
+          type="button"
+          onClick={e => {
+            e.stopPropagation()
+            selectRepo(repoPath)
+            navigate({ to: '/graph', search: { projectId, sha: undefined } })
+          }}
+          title={t('sidebar.version.viewRepoGraph', { name: node.label || node.name })}
+          className={`shrink-0 ${syncAlert ? '' : 'ml-auto'} text-ink-3 hover:text-ink hover:bg-hover rounded p-0.5 transition-colors`}
+        >
+          <History size={13} />
+        </button>
         {/* T153: refresh (git pull) — always visible next to the repo name, blocked while dirty
             so a pull never has to merge on top of uncommitted work. */}
         <button
@@ -223,7 +237,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
           onClick={e => { e.stopPropagation(); pullMutation.mutate() }}
           disabled={pullMutation.isPending || isDirty}
           title={isDirty ? t('sidebar.version.refreshBlockedDirty') : t('sidebar.version.refreshTooltip')}
-          className={`shrink-0 ${syncAlert ? '' : 'ml-auto'} text-ink-3 hover:text-ink hover:bg-hover rounded p-1 disabled:opacity-30 disabled:hover:bg-transparent transition-colors`}
+          className="shrink-0 text-ink-3 hover:text-ink hover:bg-hover rounded p-0.5 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
         >
           <RefreshCw size={13} className={pullMutation.isPending ? 'animate-spin' : ''} />
         </button>
@@ -281,10 +295,10 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
       )}
 
       {open && (
-        <div style={{ paddingLeft: `${8 + indent}px` }} className="pb-2">
+        <div style={{ paddingLeft: `${8 + indent}px` }} className="pb-1">
           {/* ── Pousser (T86 — restaure la capacité perdue lors de la suppression de SyncBar) ── */}
           {ahead > 0 && (
-            <div className="px-3 py-2 border-b border-edge-subtle flex items-center justify-between">
+            <div className="px-2 py-1 flex items-center justify-between">
               <span className="text-xs text-ink-2">
                 {t('sidebar.version.pushCount', { count: ahead })}
               </span>
@@ -296,14 +310,28 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
             </div>
           )}
           {pushMutation.isError && (
-            <p className="px-3 pt-1 text-xs text-status-danger leading-snug">
+            <p className="px-2 pt-0.5 text-xs text-status-danger leading-snug">
               {pushMutation.error instanceof Error ? pushMutation.error.message : t('sidebar.version.pushError')}
             </p>
           )}
 
+          {/* T82: rendered outside the Stagés section (and outside the commit modal, which closes
+              synchronously on commit success) — the commit empties the staged list, which hides
+              that section (GH40), before the async pin propagation resolves. */}
+          <div className="px-2">
+            <PinPropagationWarning outcome={commitPinWarning} onDismiss={() => setCommitPinWarning(null)} />
+          </div>
+
+          {/* GH40: empty sections are hidden; both empty → a single "nothing to commit" line.
+              Gated on syncStatus so it doesn't flash before the first status load. */}
+          {syncStatus && !isDirty && (
+            <p className="px-2 py-0.5 text-xs text-ink-3 italic">{t('sidebar.version.nothingToCommit')}</p>
+          )}
+
           {/* ── Stagés ── */}
-          <div className="px-3 py-2 border-b border-edge-subtle">
-            <div className="flex items-center justify-between mb-1.5">
+          {staged.length > 0 && (
+          <div className={`px-2 py-1 ${unstaged.length > 0 ? 'border-b border-edge-subtle' : ''}`}>
+            <div className="flex items-center justify-between mb-0.5">
               <p className="section-label">{t('sidebar.version.staged')} ({staged.length})</p>
               <div className="flex items-center gap-1">
                 {staged.length > 0 && (
@@ -325,15 +353,9 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                 )}
               </div>
             </div>
-            {/* T82: rendered here (not inside the commit modal) because the modal closes
-                synchronously on commit success, before the async pin propagation resolves. */}
-            <PinPropagationWarning outcome={commitPinWarning} onDismiss={() => setCommitPinWarning(null)} />
-            {staged.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">{t('sidebar.version.noStagedFile')}</p>
-            ) : (
-              <ul className="space-y-0.5">
+            <ul>
                 {staged.map(({ path: filePath, marker }) => (
-                  <li key={filePath} className="flex items-center gap-1 text-xs">
+                  <li key={filePath} className="flex items-center gap-1 h-5 text-xs">
                     <span className={`font-mono font-bold w-3 shrink-0 ${
                       marker === 'A' ? 'text-status-success' : marker === 'D' ? 'text-status-danger' : 'text-status-warning'
                     }`}>{marker}</span>
@@ -352,13 +374,14 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                     >−</button>
                   </li>
                 ))}
-              </ul>
-            )}
+            </ul>
           </div>
+          )}
 
           {/* ── Modifications ── */}
-          <div className="px-3 py-2">
-            <div className="flex items-center justify-between mb-1.5">
+          {unstaged.length > 0 && (
+          <div className="px-2 py-1">
+            <div className="flex items-center justify-between mb-0.5">
               <p className="section-label">{t('sidebar.version.modifications')} ({unstaged.length})</p>
               <div className="flex items-center gap-1">
                 {unstaged.length > 0 && (
@@ -387,12 +410,9 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                 )}
               </div>
             </div>
-            {unstaged.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">{t('sidebar.version.noModification')}</p>
-            ) : (
-              <ul className="space-y-0.5">
+            <ul>
                 {unstaged.map(({ path: filePath, marker }) => (
-                  <li key={filePath} className="flex items-center gap-1 text-xs">
+                  <li key={filePath} className="flex items-center gap-1 h-5 text-xs">
                     <span className={`font-mono font-bold w-3 shrink-0 ${
                       marker === 'A' ? 'text-status-success' : marker === 'D' ? 'text-status-danger' : 'text-status-warning'
                     }`}>{marker}</span>
@@ -429,9 +449,9 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
                     )}
                   </li>
                 ))}
-              </ul>
-            )}
+            </ul>
           </div>
+          )}
         </div>
       )}
 

@@ -357,8 +357,6 @@
       "unstageAll": "Unstage all",
       "stageAll": "Stage all",
       "discardAll": "Discard all",
-      "noStagedFile": "No staged files",
-      "noModification": "No modifications",
       "unstage": "Unstage",
       "stage": "Stage",
       "discardChanges": "Discard changes",
@@ -372,7 +370,10 @@
       "pinConflict": "Dependency conflict: the pin could not be updated in {{names}}. ",
       "pinFailed": "Failed to update the pin in {{name}}: {{error}}",
       "noBaseline": "No baseline",
-      "nothingStagedToCommit": "Nothing staged to commit"
+      "nothingStagedToCommit": "Nothing staged to commit",
+      "nothingToCommit": "Nothing to commit",
+      "viewRepoGraph": "View history of {{name}}",
+      "baselinesTitle": "Baselines"
     },
     "reorderable": {
       "deleteTitle": "Delete?",
@@ -1023,7 +1024,8 @@
     "noBaseline": "No baseline.",
     "noBaselineMatchesFilter": "No baseline matches this filter.",
     "tagWarning_one": "{{count}} component could not be tagged — check the logs.",
-    "tagWarning_other": "{{count}} components could not be tagged — check the logs."
+    "tagWarning_other": "{{count}} components could not be tagged — check the logs.",
+    "baselineCreated": "Baseline {{tag}} created"
   },
   "impactAnalysisPage": {
     "revalidation": {

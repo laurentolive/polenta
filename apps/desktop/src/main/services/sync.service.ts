@@ -252,8 +252,11 @@ export class SyncService {
           // No refs/remotes/origin/<branch> yet. Only treat local commits as "ahead" if a
           // remote is actually configured (branch just never pushed) — with no remote at
           // all there's nowhere to push to, so the whole local history isn't "to push" (T89).
+          // GH41: and only the commits no remote branch already has (`git log <b> --not
+          // --remotes`) — a branch forked from a pushed one would otherwise count its whole
+          // history (e.g. `dev-resync`, GH39).
           const hasRemote = (await getRemoteUrl(repoPath, 'origin')) !== null
-          ahead = hasRemote ? localCommits.length : 0
+          ahead = hasRemote ? await countNotOnRemote(repoPath, localCommits.map(c => c.oid)) : 0
         }
       }
     } catch {
@@ -1098,4 +1101,16 @@ async function getRemoteUrl(repoPath: string, remote: string): Promise<string | 
   } catch {
     return null
   }
+}
+
+/** GH41: how many of `oids` (a branch's history, newest first) no `origin/*` branch contains —
+ *  `git log <branch> --not --remotes`, within the same 100-commit window `status()` uses. */
+async function countNotOnRemote(repoPath: string, oids: string[], remote = 'origin'): Promise<number> {
+  const remoteBranches = await git.listBranches({ fs, dir: repoPath, remote }).catch(() => [] as string[])
+  const onRemote = new Set<string>()
+  for (const b of remoteBranches.filter(b => b !== 'HEAD')) {
+    const commits = await git.log({ fs, dir: repoPath, ref: `refs/remotes/${remote}/${b}`, depth: 100 }).catch(() => [])
+    for (const c of commits) onRemote.add(c.oid)
+  }
+  return oids.filter(oid => !onRemote.has(oid)).length
 }

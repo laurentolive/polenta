@@ -45,6 +45,23 @@ function parseChromiumProxyString(proxyString: string): string | undefined {
   return `http://${match[1].trim()}`
 }
 
+const UNREACHABLE_CODES = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET',
+])
+// Message stderr de `git fetch` en CLI (remotes SSH) quand le serveur est injoignable.
+const UNREACHABLE_GIT_STDERR = /could not resolve host|network is unreachable|connection timed out|connection refused|operation timed out/i
+
+// GH43 : le serveur git est injoignable (poste hors ligne, DNS, coupure) — à distinguer d'une
+// erreur d'authentification ou d'un push refusé, qui elles méritent d'être remontées.
+export function isNetworkUnreachable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const code = (err as { code?: unknown }).code
+  const causeCode = (err.cause as { code?: unknown } | undefined)?.code
+  if (UNREACHABLE_CODES.has(String(code)) || UNREACHABLE_CODES.has(String(causeCode))) return true
+  return UNREACHABLE_GIT_STDERR.test(err.message)
+}
+
 // Traduit les erreurs réseau bas niveau (fetch/undici) en message compréhensible pour
 // l'utilisateur final, avec la piste la plus probable (proxy/pare-feu/certificat).
 export function describeFetchError(err: unknown): string {

@@ -77,6 +77,7 @@
       "ahead_other": "{{count}} changes not published to the server",
       "diverged": "Diverged: {{ahead}} local, {{behind}} on the server",
       "lastError": "Last error: {{error}}",
+      "offline": "server unreachable (offline?), retried automatically every 5 minutes",
       "resync": "Resynchronize",
       "resyncing": "Resynchronizing…",
       "resyncDirty": "Unable to resynchronize: “{{repo}}” has pending changes on its integration branch. Publish or discard them first.",

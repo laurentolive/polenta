@@ -6,6 +6,7 @@ import { promisify } from 'util'
 import git from 'isomorphic-git'
 
 import http from './git-http'
+import { isNetworkUnreachable } from './net-proxy'
 
 import type { AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
@@ -65,6 +66,8 @@ export interface IntegrationRemoteState {
   ahead: number
   /** Origin commits absent locally. */
   behind: number
+  /** GH43 — set by `autoSync` only: the server was unreachable, the state is the last fetch's. */
+  offline?: true
 }
 
 export type ResyncOutcome =
@@ -584,11 +587,22 @@ export class SyncService {
    * - clean repo → fast-forward-only of the current branch onto its fetched remote counterpart
    *   (never a 3-way merge — T155); a branch that can't fast-forward is left alone;
    * - integration `ahead` only (a previous push failed) → push retried — push never touches files.
-   * Returns the final integration state; network/auth errors propagate to the caller.
+   * Returns the final integration state. An unreachable server (offline, DNS — GH43) is an
+   * expected condition, not an error: the state as of the last fetch is returned flagged
+   * `offline` (a rejected IPC handler would be logged by Electron at every tick). Other errors
+   * (auth, rejected push…) propagate to the caller.
    */
   async autoSync(repoPath: string, integrationBranch: string, remote = 'origin'): Promise<IntegrationRemoteState> {
     if (!(await getRemoteUrl(repoPath, remote))) return { state: 'no-remote', ahead: 0, behind: 0 }
-    await this.fetch(repoPath, '', remote)
+    const offline = async (err: unknown): Promise<IntegrationRemoteState> => {
+      if (!isNetworkUnreachable(err)) throw err
+      return { ...(await this.integrationState(repoPath, integrationBranch, remote)), offline: true }
+    }
+    try {
+      await this.fetch(repoPath, '', remote)
+    } catch (err) {
+      return offline(err)
+    }
 
     const current = await git.currentBranch({ fs, dir: repoPath })
     const { staged, unstaged } = await this.status(repoPath)
@@ -614,7 +628,11 @@ export class SyncService {
 
     const state = await this.integrationState(repoPath, integrationBranch, remote)
     if (state.state !== 'ahead') return state
-    await this.pushBranch(repoPath, integrationBranch, remote)
+    try {
+      await this.pushBranch(repoPath, integrationBranch, remote)
+    } catch (err) {
+      return offline(err)
+    }
     return this.integrationState(repoPath, integrationBranch, remote)
   }
 

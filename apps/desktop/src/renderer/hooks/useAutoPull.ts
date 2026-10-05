@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { useWorkspaceStructure } from './useWorkspaceStructure'
@@ -26,11 +27,14 @@ const AUTO_PULL_INTERVAL_MS = 5 * 60 * 1000
  *   retried — that push never touches the working tree.
  *
  * No popup: success is invisible (repo statuses refresh on their own next 3s poll) and a failure
- * (offline, auth, rejected push) is logged and kept as the repo's last sync error
- * (`['sync:last-error', repoPath]`, shown by the sync indicator), then retried next tick.
+ * (auth, rejected push) is logged and kept as the repo's last sync error
+ * (`['sync:last-error', repoPath]`, shown by the sync indicator), then retried next tick. An
+ * unreachable server is not a failure (GH43): `autoSync` resolves flagged `offline`, and only a
+ * translated "server unreachable" note is kept as the last error — nothing logged.
  */
 export function useAutoPull(currentProjectId: string | null): void {
   const qc = useQueryClient()
+  const { t } = useTranslation()
 
   const { data: project } = useQuery({
     queryKey: ['workspace', currentProjectId],
@@ -49,7 +53,11 @@ export function useAutoPull(currentProjectId: string | null): void {
     async function autoSync(repoPath: string) {
       try {
         const integrationBranch = await api.baseline.getIntegrationBranch(repoPath)
-        const { state } = await api.sync.autoSync(repoPath, integrationBranch)
+        const { state, offline } = await api.sync.autoSync(repoPath, integrationBranch)
+        if (offline) {
+          qc.setQueryData(['sync:last-error', repoPath], t('layout.syncIndicator.offline'))
+          return
+        }
         // A tick that didn't fail doesn't explain away an earlier one: while the integration is
         // still ahead/diverged, keep the error (e.g. the push "Publier" saw rejected) that led there.
         if (state !== 'ahead' && state !== 'diverged') qc.setQueryData(['sync:last-error', repoPath], null)
@@ -68,5 +76,5 @@ export function useAutoPull(currentProjectId: string | null): void {
     }, AUTO_PULL_INTERVAL_MS)
 
     return () => clearInterval(id)
-  }, [currentProjectId, rootRepoPath, flatNodes, qc])
+  }, [currentProjectId, rootRepoPath, flatNodes, qc, t])
 }

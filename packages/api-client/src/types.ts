@@ -262,6 +262,7 @@ export interface IntegrationRemoteState {
   state: IntegrationRemoteStateKind
   ahead: number
   behind: number
+  offline?: true
 }
 export type ResyncOutcome =
   | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }

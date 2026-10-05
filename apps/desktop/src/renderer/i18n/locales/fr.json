@@ -77,6 +77,7 @@
       "ahead_other": "{{count}} modifications non publiées sur le serveur",
       "diverged": "Divergé : {{ahead}} en local, {{behind}} sur le serveur",
       "lastError": "Dernière erreur : {{error}}",
+      "offline": "serveur injoignable (hors ligne ?), nouvel essai automatique toutes les 5 minutes",
       "resync": "Resynchroniser",
       "resyncing": "Resynchronisation…",
       "resyncDirty": "Resynchronisation impossible : « {{repo}} » a des modifications en attente sur sa branche d'intégration. Publiez-les ou annulez-les d'abord.",

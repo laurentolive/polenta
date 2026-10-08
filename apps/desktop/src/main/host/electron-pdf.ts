@@ -2,17 +2,7 @@ import { BrowserWindow } from 'electron'
 import * as path from 'path'
 import * as fsP from 'fs/promises'
 import type { ExportKind } from '@polenta/types'
-
-// Une route imprimable par kind implémenté — étendu au fil des sprints (T43-design.md §Sprints).
-const PRINT_ROUTE_BY_KIND: Partial<Record<ExportKind, string>> = {
-  requirements: '/print/requirements',
-  tests: '/print/tests',
-  'campaign-plan': '/print/campaign-plan',
-  'campaign-report': '/print/campaign-report',
-  'query-result': '/print/query-result',
-  'impact-analysis': '/print/impact-analysis',
-  dashboard: '/print/dashboard',
-}
+import { PRINT_ROUTE_BY_KIND } from './print-renderer'
 
 /**
  * Rend une route imprimable (`/print/<kind>`) dans une fenêtre Electron cachée puis produit un

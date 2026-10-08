@@ -1,9 +1,9 @@
 import { app, BrowserWindow } from 'electron'
 import * as path from 'path'
-import { drawioKey, type DrawioSnapshot, type DrawioSnapshotter } from './drawio-ref'
+import { drawioKey, type DrawioSnapshot, type DrawioSnapshotter } from '../services/export/template/drawio-ref'
 
 // Chemins résolus depuis la racine de l'application (et non `__dirname`) : ce module est chargé à
-// la demande depuis un chunk (`out/main/chunks/`), pas depuis `out/main/` comme `pdf.util.ts`.
+// la demande depuis un chunk (`out/main/chunks/`), pas depuis `out/main/` comme `electron-pdf.ts`.
 // `app.getAppPath()` = `apps/desktop` en dev, `resources/app.asar` une fois packagé (`out/**` inclus).
 
 const ZOOM = 2 // netteté à l'impression
@@ -17,7 +17,7 @@ const VIEWPORT = { width: 1600, height: 1200 } // px CSS
  * viewer draw.io n'existe que dans un navigateur : une fenêtre cachée (rendu offscreen) charge la
  * route `/print/drawio-snapshot`, qui rend chaque diagramme avec le même code que la Vue Word et
  * signale son rectangle ; on capture la zone (`capturePage`) avant de passer au suivant. Même
- * mécanisme de chargement que l'export PDF (`pdf.util.ts`). Un diagramme en échec (fichier
+ * mécanisme de chargement que l'export PDF (`electron-pdf.ts`). Un diagramme en échec (fichier
  * absent, XML invalide, délai) est simplement absent du résultat : l'appelant insère un repli.
  */
 export const snapshotDrawios: DrawioSnapshotter = async (repoPath, refs) => {

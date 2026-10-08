@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import type { AppSettings } from '@polenta/types'
@@ -11,8 +10,10 @@ const DEFAULTS: AppSettings = { autoCheckUpdates: true }
  * (d'où pas de localStorage, cf. le thème). Fichier absent ou illisible → valeurs par défaut.
  */
 export class AppSettingsService {
+  constructor(private readonly userDataDir: string) {}
+
   private get filePath(): string {
-    return path.join(app.getPath('userData'), 'app-settings.json')
+    return path.join(this.userDataDir, 'app-settings.json')
   }
 
   get(): AppSettings {

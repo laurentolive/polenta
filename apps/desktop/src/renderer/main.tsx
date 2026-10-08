@@ -21,7 +21,7 @@ declare module '@tanstack/react-router' {
 // T43 — la fenêtre Electron cachée d'un export PDF charge toujours `index.html` (via `loadURL`
 // avec une query, ou `loadFile(..., {search})` en prod) : `file://.../index.html` ne peut pas
 // cibler un sous-chemin directement, c'est le seul point d'entrée disponible pour ces fenêtres.
-// `__print` porte le chemin de la route imprimable réellement visée (cf. `pdf.util.ts`).
+// `__print` porte le chemin de la route imprimable réellement visée (cf. `electron-pdf.ts`).
 //
 // Un `history.replaceState` avant `createRouter` ne suffit pas : sur une URL `file://` d'entrée,
 // TanStack Router peut quand même résoudre son premier match sur `/` (quirk documenté par
@@ -29,7 +29,7 @@ declare module '@tanstack/react-router' {
 // real client-side navigate() call fixes it"). Sans ce `navigate()` explicite, `HomePage` (`/`)
 // peut monter et lancer son propre effet de redirection (`routes/index.tsx`, vers `/login` ou
 // `/schema`) avant que la route imprimable ne s'affiche — ni l'un ni l'autre n'appelle jamais
-// `notifyPrintReady()`, la fenêtre cachée reste bloquée jusqu'au timeout de `pdf.util.ts`. On
+// `notifyPrintReady()`, la fenêtre cachée reste bloquée jusqu'au timeout de `electron-pdf.ts`. On
 // attend donc explicitement la résolution de la navigation avant de monter `<RouterProvider>`, ce
 // qui garantit qu'aucun autre écran ne peut jamais apparaître même brièvement.
 const bootParams = new URLSearchParams(window.location.search)

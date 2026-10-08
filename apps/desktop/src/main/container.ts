@@ -30,11 +30,17 @@ import { ExportTemplateLibrary } from './services/export-template-library'
 import { TemplateExportService } from './services/export/template/template-export.service'
 import { AppSettingsService } from './services/app-settings.service'
 import { MergeResolutionService } from './services/merge-resolution.service'
-import { UpdateService } from './services/update.service'
-import { registerIpcHandlers } from './ipc/index'
+import type { Container } from './ipc/index'
+import type { HostContext } from './host/host-context'
+import type { PrintRenderer } from './host/print-renderer'
 
-export async function createContainer(): Promise<{ update: UpdateService }> {
-  const auth = new AuthService()
+/**
+ * Instancie le noyau de services (GH44 : sans dépendance à Electron). L'hôte fournit ce qui
+ * dépend du poste ou de l'utilisateur ; l'appelant enregistre les handlers (`registerHandlers`)
+ * et, sur le desktop, les channels propres au poste local.
+ */
+export function createContainer(host: HostContext, print: PrintRenderer): Container {
+  const auth = new AuthService(host)
   const git = new GitService()
   // Constructed early (only needs `git`) so `watcher` — and, via it, `workspace` below —
   // can be wired up before any repo is actually opened (T112: WorkspaceService.
@@ -45,7 +51,7 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
   const sync = new SyncService(auth)
   const polentaRepo = new PolentaRepoService()
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
-  const workspace = new WorkspaceService(sync, workspaceTree, watcher)
+  const workspace = new WorkspaceService(host, sync, workspaceTree, watcher)
   const schema = new SchemaService(auth, workspaceTree)
   // Live sync (T-schema-refresh follow-up) — an out-of-band change to schema.yaml (manual
   // edit, git checkout/pull, a bulk-import script writing directly to disk…) must not be
@@ -81,19 +87,17 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
   // never needs to look up a SavedQuery, so this ordering avoids a circular dependency.
   const savedQueries = new SavedQueriesService(git, schema, dashboards)
   const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
-  // GH26 — préférences app-level + mise à jour automatique.
-  const appSettings = new AppSettingsService()
-  const mergeResolution = new MergeResolutionService(auth, sync, schema)
+  // GH26 — préférences app-level.
+  const appSettings = new AppSettingsService(host.userDataDir)
+  const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
-  const exportSvc = new ExportService(new TemplateExportService(
-    exportTemplateLibrary, git, schema, auth, tests,
-    // Chargé au premier diagramme à rendre (T141 : rien de plus au démarrage).
-    async (repoPath, refs) => (await import('./services/export/template/drawio-snapshot')).snapshotDrawios(repoPath, refs),
-  ))
-  const update = new UpdateService(appSettings)
+  const exportSvc = new ExportService(
+    new TemplateExportService(exportTemplateLibrary, git, schema, auth, tests, print.snapshotDrawios),
+    print,
+  )
 
-  registerIpcHandlers({
+  return {
     auth,
     git,
     sync,
@@ -124,8 +128,5 @@ export async function createContainer(): Promise<{ update: UpdateService }> {
     parameters,
     revalidation,
     appSettings,
-    update,
-  })
-
-  return { update }
+  }
 }

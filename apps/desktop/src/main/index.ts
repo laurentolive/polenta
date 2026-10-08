@@ -1,6 +1,11 @@
 import { app, BrowserWindow, Menu } from 'electron'
 import * as path from 'path'
 import { createContainer } from './container'
+import { registerHandlers } from './ipc/index'
+import { ipcMainRegistry, electronPlatformHost, registerDesktopOnlyHandlers } from './ipc/desktop-only.handlers'
+import { createElectronHostContext } from './host/electron-host'
+import { electronPrintRenderer } from './host/electron-print'
+import { UpdateService } from './services/update.service'
 
 // Aligne le dossier userData (auth.json, keytar, workspace.json…) entre `pnpm dev` et le build
 // packagé — sans ça, Electron retombe sur le "name" du package.json en dev (`@polenta/desktop`)
@@ -39,8 +44,12 @@ export function createAppWindow(): BrowserWindow {
   return win
 }
 
-app.whenReady().then(async () => {
-  const { update } = await createContainer()
+app.whenReady().then(() => {
+  const container = createContainer(createElectronHostContext(), electronPrintRenderer)
+  registerHandlers(ipcMainRegistry, container, electronPlatformHost)
+  // GH26 — mise à jour automatique : propre au desktop, hors du noyau de services partagé.
+  const update = new UpdateService(container.appSettings)
+  registerDesktopOnlyHandlers(container, update)
   createAppWindow()
   update.scheduleStartupCheck()
 })

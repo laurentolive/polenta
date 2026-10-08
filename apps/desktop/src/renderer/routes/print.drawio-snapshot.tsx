@@ -16,7 +16,7 @@ const ITEM_TIMEOUT_MS = 10_000
 
 /**
  * Route technique (GH34 sprint 3) — capture des diagrammes draw.io en image pour l'export Word à
- * partir d'un gabarit. Chargée dans une fenêtre cachée par `drawio-snapshot.ts` (main), selon le
+ * partir d'un gabarit. Chargée dans une fenêtre cachée par `electron-drawio-snapshot.ts` (main), selon le
  * même mécanisme que les routes `/print/*` du PDF. Rend chaque diagramme l'un après l'autre avec
  * le viewer de la Vue Word (`renderStaticDrawio` : même page, même ancre, même taille et même
  * rognage qu'à l'écran), puis transmet son rectangle au main, qui capture la zone avant de passer

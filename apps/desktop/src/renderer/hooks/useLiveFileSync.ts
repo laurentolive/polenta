@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 /**
  * Subscribes to `repo:file-changed`, pushed by the main process (RepoWatcherService, via
- * `registerIpcHandlers`) whenever a watched repo changes out-of-band — an external edit, a
+ * `registerHandlers`) whenever a watched repo changes out-of-band — an external edit, a
  * `git checkout`/`pull`, a bulk-import script writing directly to disk (as in the
  * exigences_320AW_RP1.yaml import). Without this, those changes only became visible after a
  * full app restart: schema.yaml's own cache got a manual "Actualiser" button fix earlier, but

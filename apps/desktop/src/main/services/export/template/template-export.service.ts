@@ -68,7 +68,7 @@ export class TemplateExportService {
     private readonly schema: SchemaService,
     private readonly auth: AuthService,
     private readonly tests: TestsService,
-    /** Rendu des diagrammes draw.io en image (fenêtre cachée, `drawio-snapshot.ts`) — injecté
+    /** Rendu des diagrammes draw.io en image (`PrintRenderer.snapshotDrawios`, GH44) — injecté
      *  pour que les vérifications automatiques puissent s'en passer (pas d'Electron). */
     private readonly snapshotDrawios: DrawioSnapshotter,
   ) {}

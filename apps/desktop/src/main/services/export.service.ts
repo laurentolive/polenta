@@ -1,5 +1,5 @@
 import type { ExportFormat, ExportKind, RequirementsExportPayload, TestsExportPayload, CampaignExportPayload, QueryResultExportPayload, ImpactAnalysisExportPayload, DashboardExportPayload } from '@polenta/types'
-import { renderKindToPdf } from './pdf.util'
+import type { PrintRenderer } from '../host/print-renderer'
 import type { TemplateExportService } from './export/template/template-export.service'
 
 type Generator = (payload: unknown, destPath: string) => Promise<void>
@@ -42,7 +42,10 @@ const GENERATORS: Partial<Record<`${ExportKind}:${'xlsx' | 'docx'}`, Generator>>
  * et rend la route imprimable correspondante à partir de `printParams`.
  */
 export class ExportService {
-  constructor(private readonly templates: TemplateExportService) {}
+  constructor(
+    private readonly templates: TemplateExportService,
+    private readonly print: PrintRenderer,
+  ) {}
 
   /**
    * `options.templateRelPath` (GH34) : gabarit client choisi dans la bibliothèque — remplace le
@@ -58,7 +61,7 @@ export class ExportService {
     options: { repoPath?: string; templateRelPath?: string } = {},
   ): Promise<void> {
     if (format === 'pdf') {
-      await renderKindToPdf(kind, printParams ?? {}, destPath)
+      await this.print.renderPdf(kind, printParams ?? {}, destPath)
       return
     }
 

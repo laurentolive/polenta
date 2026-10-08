@@ -240,7 +240,7 @@ function QueryPage() {
               getPrintParams={() => {
                 const resultJson = JSON.stringify(result)
                 // Le résultat complet transite en JSON dans l'URL de la fenêtre cachée
-                // (`pdf.util.ts` → `win.loadFile(..., {search})`) faute d'ID stable à recharger
+                // (`electron-pdf.ts` → `win.loadFile(..., {search})`) faute d'ID stable à recharger
                 // pour une requête ad hoc — cf. `QueryResultExportPayload`. Au-delà d'un certain
                 // volume, la chaîne de requête risque une troncature silencieuse (constat de
                 // revue de code) plutôt qu'une erreur claire : on préfère refuser explicitement

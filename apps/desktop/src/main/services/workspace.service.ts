@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import * as fsPromises from 'fs/promises'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -9,7 +8,7 @@ import type { SyncService } from './sync.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { RepoWatcherService } from './repo-watcher.service'
 import { AGENTS_MD_TEMPLATE, AGENTS_MD_TEMPLATE_VERSION, extractAgentsMdVersion } from './agents-md.template'
-import { resolveMcpServerLaunchConfig } from './mcp-launch.util'
+import type { HostContext } from '../host/host-context'
 import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
 import {
   buildMcpJsonContent,
@@ -36,10 +35,11 @@ interface RecentsStore {
 
 export class WorkspaceService {
   private get workspacePath(): string {
-    return path.join(app.getPath('userData'), 'workspace.json')
+    return path.join(this.host.userDataDir, 'workspace.json')
   }
 
   constructor(
+    private readonly host: HostContext,
     private readonly syncService: SyncService,
     private readonly workspaceTreeService?: WorkspaceTreeService,
     // T112 — starts the requirements/tests index's git-log-based cache invalidation
@@ -114,15 +114,20 @@ export class WorkspaceService {
     )
     await fsPromises.writeFile(path.join(rootRepoPath, 'AGENTS.md'), AGENTS_MD_TEMPLATE, 'utf-8')
     // T122 sprint 4 — `.mcp.json` généré au même endroit/moment qu'`AGENTS.md` (T106),
-    // pré-configuré pour lancer le serveur MCP de ce projet (cf. mcp-launch.util.ts).
-    await fsPromises.writeFile(
-      path.join(rootRepoPath, '.mcp.json'),
-      buildMcpJsonContent(resolveMcpServerLaunchConfig()),
-      'utf-8',
-    )
+    // pré-configuré pour lancer le serveur MCP de ce projet (cf. host/mcp-launch.ts).
+    // GH44 — pas de `.mcp.json` hors desktop (cf. `HostContext.mcpServerLaunch`) ; le desktop le
+    // régénère à la première ouverture (`ensureAgentFiles`).
+    const mcpServerLaunch = this.host.mcpServerLaunch
+    if (mcpServerLaunch) {
+      await fsPromises.writeFile(
+        path.join(rootRepoPath, '.mcp.json'),
+        buildMcpJsonContent(mcpServerLaunch()),
+        'utf-8',
+      )
+    }
     await git.add({ fs, dir: rootRepoPath, filepath: '.gitignore' })
     await git.add({ fs, dir: rootRepoPath, filepath: 'AGENTS.md' })
-    await git.add({ fs, dir: rootRepoPath, filepath: '.mcp.json' })
+    if (mcpServerLaunch) await git.add({ fs, dir: rootRepoPath, filepath: '.mcp.json' })
     await git.commit({
       fs,
       dir: rootRepoPath,
@@ -477,6 +482,8 @@ export class WorkspaceService {
   }
 
   private async ensureMcpJson(rootRepoPath: string): Promise<boolean> {
+    const mcpServerLaunch = this.host.mcpServerLaunch
+    if (!mcpServerLaunch) return false
     return this.ensureVersionedFile(
       path.join(rootRepoPath, '.mcp.json'),
       '.mcp.json',
@@ -485,7 +492,7 @@ export class WorkspaceService {
       // Résolu paresseusement (pas passé en paramètre) : uniquement calculé quand une
       // régénération s'avère nécessaire (évite un `app.getAppPath()`/`app.isPackaged`
       // inutile sur le chemin "déjà à jour", très majoritaire à chaque ouverture).
-      () => buildMcpJsonContent(resolveMcpServerLaunchConfig()),
+      () => buildMcpJsonContent(mcpServerLaunch()),
     )
   }
 

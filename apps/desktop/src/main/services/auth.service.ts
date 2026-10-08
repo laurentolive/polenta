@@ -1,5 +1,3 @@
-import keytar from 'keytar'
-import { app, shell } from 'electron'
 import * as fs from 'fs'
 import * as fsPromises from 'fs/promises'
 import * as path from 'path'
@@ -7,10 +5,9 @@ import git from 'isomorphic-git'
 import type { Dispatcher } from 'undici'
 
 import type { GitAuthor } from './git.service'
+import type { HostContext } from '../host/host-context'
 import { migrateLocalPref } from './pref-store.util'
 import { resolveProxyDispatcher, describeFetchError } from './net-proxy'
-
-const KEYTAR_SERVICE = 'polenta'
 
 // Client ID de l'OAuth App GitHub "Polenta" (Device Flow activé). Non secret par nature — le
 // Device Flow ne nécessite aucun client secret — donc embarqué directement, pas de config externe.
@@ -52,32 +49,34 @@ export interface UserIdentity {
 }
 
 export class AuthService {
+  constructor(private readonly host: HostContext) {}
+
   private get authFilePath(): string {
-    return path.join(app.getPath('userData'), 'auth.json')
+    return path.join(this.host.userDataDir, 'auth.json')
   }
 
   // ─── Token storage (keychain OS) ────────────────────────────────────────────
 
   async saveToken(remote: string, token: string): Promise<void> {
     const host = extractHost(remote)
-    await keytar.setPassword(KEYTAR_SERVICE, host, token)
+    await this.host.tokenStore.set(host, token)
   }
 
   async saveTokenForUser(remote: string, username: string, token: string): Promise<void> {
     const host = extractHost(remote)
-    await keytar.setPassword(KEYTAR_SERVICE, `${host}:${username}`, token)
+    await this.host.tokenStore.set(`${host}:${username}`, token)
   }
 
   async getToken(remote: string, username?: string): Promise<string | null> {
     const host = extractHost(remote)
     const account = username ? `${host}:${username}` : host
-    return keytar.getPassword(KEYTAR_SERVICE, account)
+    return this.host.tokenStore.get(account)
   }
 
   async deleteToken(remote: string, username?: string): Promise<void> {
     const host = extractHost(remote)
     const account = username ? `${host}:${username}` : host
-    await keytar.deletePassword(KEYTAR_SERVICE, account)
+    await this.host.tokenStore.delete(account)
   }
 
   // ─── Identity resolution ────────────────────────────────────────────────────
@@ -113,7 +112,7 @@ export class AuthService {
 
     let username = 'local'
     for (const host of hosts) {
-      if (!(await keytar.getPassword(KEYTAR_SERVICE, host))) continue
+      if (!(await this.host.tokenStore.get(host))) continue
       const accountsForHost = store.accounts.filter(a => a.remoteHost === host)
       const account =
         accountsForHost.find(a => `${a.remoteHost}:${a.username}` === store.defaultAccount)
@@ -186,14 +185,14 @@ export class AuthService {
       ?? accountsForHost[0]
 
     if (account) {
-      const token = await keytar.getPassword(KEYTAR_SERVICE, `${host}:${account.username}`)
-        ?? await keytar.getPassword(KEYTAR_SERVICE, host)
+      const token = await this.host.tokenStore.get(`${host}:${account.username}`)
+        ?? await this.host.tokenStore.get(host)
       if (!token) return null
       return { username: account.username, password: token }
     }
 
     // No account in auth.json yet — try a bare token stored via saveToken()
-    const token = await keytar.getPassword(KEYTAR_SERVICE, host)
+    const token = await this.host.tokenStore.get(host)
     if (!token) return null
     return { username: 'git', password: token }
   }
@@ -203,7 +202,7 @@ export class AuthService {
     if (store.accounts.length > 0) return true
     const commonHosts = ['github.com', 'gitlab.com']
     for (const host of commonHosts) {
-      const t = await keytar.getPassword(KEYTAR_SERVICE, host)
+      const t = await this.host.tokenStore.get(host)
       if (t) return true
     }
     return false
@@ -244,7 +243,8 @@ export class AuthService {
       interval: number
     }
 
-    await shell.openExternal(data.verification_uri)
+    if (!this.host.openExternal) throw new Error('Device Flow indisponible : cet hôte ne peut pas ouvrir de navigateur.')
+    await this.host.openExternal(data.verification_uri)
 
     return {
       deviceCode: data.device_code,
@@ -299,10 +299,10 @@ export class AuthService {
   // Shared by setup() (PAT) and pollDeviceFlow() (OAuth) — save token, resolve identity, persist account
   private async persistToken(remote: string, token: string): Promise<{ login: string; name: string; email: string }> {
     const host = extractHost(remote)
-    await keytar.setPassword(KEYTAR_SERVICE, host, token)
+    await this.host.tokenStore.set(host, token)
     try {
       const identity = await this.resolveIdentity(remote, token)
-      await keytar.setPassword(KEYTAR_SERVICE, `${host}:${identity.login}`, token)
+      await this.host.tokenStore.set(`${host}:${identity.login}`, token)
       await this.saveAccount({ remoteHost: host, username: identity.login, name: identity.name, email: identity.email })
       return identity
     } catch {

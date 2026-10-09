@@ -49,6 +49,11 @@ composant en repo séparé.
 | S2-18 [A] | Sérialisation : réponses des channels du parcours de parité passées par JSON. | Égalité profonde avec la valeur d'origine (pas de `Date`/`Buffer`/`Map` perdus). |
 | S2-19 [A] | Démarrage `POLENTA_WEB_AUTH=dev` avec `NODE_ENV=production`. | Refus de démarrer, message explicite. |
 | S2-20 [M] | Console navigateur sur tout le parcours de parité. | Aucune erreur, aucun bouton inopérant (AC 8). |
+| S2-21 [A] | Argument racine relatif (`workspace:remove-repo-dir('src')`). | 403. |
+| S2-22 [A] | Lien symbolique créé par le serveur (checkout d'un repo). | Fichier texte contenant la cible, jamais un lien. |
+| S2-23 [A] | Clone/fetch vers un hôte hors `POLENTA_WEB_GIT_HOSTS`, HTTP, IP de métadonnées. | Refusé. |
+| S2-24 [A] | Dépendance `polenta-repo.yaml` / override nommé `../x`. | Ignorée (nom de montage invalide). |
+| S2-25 [M] | WebSocket `/events` ouvert depuis une autre origine (autre port). | Fermé (4403). |
 
 ## Sprint 3 — Forge, sessions, multi-utilisateurs (Forgejo de #45)
 

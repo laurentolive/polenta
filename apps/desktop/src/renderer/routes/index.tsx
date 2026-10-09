@@ -7,6 +7,8 @@ import { encodeProjectId } from '../lib/projectId'
 import { consumeProjectJustClosed } from '../lib/projectCloseSignal'
 import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
+import { WebProjectList } from '../components/home/WebProjectList'
+import { isWeb } from '../platform'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -27,6 +29,8 @@ function HomePage() {
   const [prompt, setPrompt] = useState<'clone' | 'create' | null>(null)
   // Synchronous guard against a double click landing before `busy` re-renders the buttons disabled.
   const running = useRef(false)
+  // GH44 — web: project folders created by the running action (removed again if it fails).
+  const createdDirs = useRef<string[]>([])
 
   useEffect(() => {
     // T105 — this page briefly mounts on every dip through "/" (including "close project", which
@@ -76,14 +80,35 @@ function HomePage() {
     await navigate({ to: '/schema', search: { repoPath: '', projectId: encodeProjectId(workspaceDir) } })
   }
 
+  /**
+   * Destination of a new project. Desktop: a folder from the native picker. Web (GH44): a fresh,
+   * empty folder under « Mes projets » in the user's server space — remembered so a failed clone
+   * does not leave it behind (`createdDirs`, declared with the other hooks above).
+   */
+  async function pickDestination(nameHint: string, pickerTitle: string): Promise<string | null> {
+    if (!isWeb) return api.dialog.pickFolder(pickerTitle)
+    const dir = await api.web.newWorkspaceDir(nameHint)
+    createdDirs.current.push(dir)
+    return dir
+  }
+
   /** Runs one action: `op` returns the project folder to open, or null if the user cancelled. */
   async function run(action: HomeAction, op: () => Promise<string | null>) {
     if (running.current) return
     running.current = true
     setBusy(action)
     setError(null)
+    createdDirs.current = []
     try {
-      const dir = await op()
+      let dir: string | null
+      try {
+        dir = await op()
+      } catch (err) {
+        // Web : un clone/une création en échec ne laisse pas de dossier vide dans « Mes projets ».
+        // Seule l'action est couverte : une erreur à l'ouverture ne détruit jamais le projet créé.
+        for (const created of createdDirs.current) await api.web.deleteWorkspace(created, true).catch(() => {})
+        throw err
+      }
       if (dir) await goToProject(dir)
     } catch (err) {
       setError({ action, message: err instanceof Error ? err.message : String(err) })
@@ -94,7 +119,7 @@ function HomePage() {
   }
 
   const handleDemo = () => run('demo', async () => {
-    const dir = await api.dialog.pickFolder(t('home.pickDemoFolder'))
+    const dir = await pickDestination('demo', t('home.pickDemoFolder'))
     if (!dir) return null
     if (await api.workspace.detect(dir) === 'workspace') {
       await api.workspace.openProject(dir)
@@ -116,7 +141,7 @@ function HomePage() {
   const handleCloneUrl = (url: string) => {
     setPrompt(null)
     run('clone', async () => {
-      const dir = await api.dialog.pickFolder(t('home.pickDestinationFolder'))
+      const dir = await pickDestination(url.replace(/\.git$/, '').replace(/\/+$/, '').split('/').pop() ?? 'projet', t('home.pickDestinationFolder'))
       if (!dir) return null
       await api.workspace.createFromClone(dir, url)
       return dir
@@ -126,22 +151,39 @@ function HomePage() {
   const handleCreateName = (name: string) => {
     setPrompt(null)
     run('create', async () => {
-      const dir = await api.dialog.pickFolder(t('home.pickDestinationFolder'))
+      const dir = await pickDestination(name, t('home.pickDestinationFolder'))
       if (!dir) return null
       await api.workspace.createNew(dir, name)
       return dir
     })
   }
 
+  const handleOpenWebProject = (dir: string) => run('open', async () => {
+    const result = await api.workspace.openProject(dir)
+    if (result.status === 'not-a-workspace') throw new Error(t('home.notAWorkspace'))
+    return dir
+  })
+
   const actions: Array<{ action: HomeAction; icon: LucideIcon; title: string; help: string; busyLabel: string; onClick: () => void }> = [
     { action: 'demo', icon: Sparkles, title: t('home.demoTitle'), help: t('home.demoHelp'), busyLabel: t('home.loadingDemo'), onClick: handleDemo },
-    { action: 'open', icon: FolderOpen, title: t('home.openExisting'), help: t('home.openExistingHelp'), busyLabel: t('home.opening'), onClick: handleOpen },
+    // GH44 — web : « Mes projets » (liste ci-dessous) remplace l'ouverture d'un dossier local.
+    ...(isWeb ? [] : [{ action: 'open' as const, icon: FolderOpen, title: t('home.openExisting'), help: t('home.openExistingHelp'), busyLabel: t('home.opening'), onClick: handleOpen }]),
     { action: 'clone', icon: Download, title: t('home.openFromRepo'), help: t('home.openFromRepoHelp'), busyLabel: t('home.cloning'), onClick: () => setPrompt('clone') },
     { action: 'create', icon: Plus, title: t('home.createNew'), help: t('home.createNewHelp'), busyLabel: t('home.creating'), onClick: () => setPrompt('create') },
   ]
 
   return (
     <div className="p-8 max-w-lg mx-auto space-y-3">
+      {isWeb && (
+        <div className="space-y-2">
+          <WebProjectList disabled={busy !== null} onOpen={handleOpenWebProject} />
+          {error?.action === 'open' && (
+            <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
+              {error.message}
+            </p>
+          )}
+        </div>
+      )}
       {actions.map(({ action, icon: Icon, title, help, busyLabel, onClick }) => {
         const featured = action === 'demo'
         return (

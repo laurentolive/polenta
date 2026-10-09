@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import type { DrawioPage } from '@polenta/api-client'
 import { api } from '../api'
+import { capabilities } from '../platform'
 import { resolveDrawioTarget } from '../lib/drawioRender'
 import { loadDrawioViewer, inlineDrawioViewerConfig } from '../lib/drawioViewerLoader'
 import type { DrawioEmbedOptions, DrawioCropRect } from './DrawioEmbedExtension'
@@ -190,7 +191,10 @@ export function DrawioEmbedView({ node, extension, updateAttributes, selected, e
   }
 
   const menuItems: NodeContextMenuEntry[] = [
-    { id: 'open-external', label: 'Ouvrir dans draw.io', disabled: !repoPath || !path, onSelect: handleOpenExternal },
+    // GH44 — pas d'application draw.io locale dans la version web (#46).
+    ...(capabilities.externalDrawioEditor
+      ? [{ id: 'open-external', label: 'Ouvrir dans draw.io', disabled: !repoPath || !path, onSelect: handleOpenExternal }]
+      : []),
     { id: 'change-page', label: 'Changer de page/node-id', disabled: state.status !== 'ok', onSelect: () => void handleChangePage() },
     'separator',
     { id: 'replace', label: 'Remplacer le fichier', onSelect: () => void handleReplaceFile() },

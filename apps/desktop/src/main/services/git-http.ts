@@ -15,12 +15,23 @@ import { resolveProxyDispatcher } from './net-proxy'
  * top of `undici.request`, reusing that same proxy resolution for every git operation
  * (clone/fetch/push/pull).
  */
+/**
+ * GH44 — contrôle des URLs git contactées. Le desktop n'en pose aucun (l'utilisateur contacte ce
+ * qu'il veut depuis son poste) ; le serveur web limite les clones/fetch/push aux hôtes de la forge,
+ * pour qu'un utilisateur ne fasse pas interroger un service interne par le serveur (SSRF).
+ */
+let remoteGuard: ((url: URL) => void) | null = null
+export function setGitRemoteGuard(guard: ((url: URL) => void) | null): void {
+  remoteGuard = guard
+}
+
 async function request({
   url,
   method = 'GET',
   headers = {},
   body,
 }: GitHttpRequest): Promise<GitHttpResponse> {
+  if (remoteGuard) remoteGuard(new URL(url))
   const dispatcher = await resolveProxyDispatcher(url)
   const reqBody = body ? (Array.isArray(body) ? Buffer.concat(body.map(chunk => Buffer.from(chunk))) : Readable.from(body)) : undefined
 

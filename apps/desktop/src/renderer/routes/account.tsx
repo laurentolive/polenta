@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Sun, Moon } from 'lucide-react'
 import { api } from '../api'
+import { isWeb, capabilities } from '../platform'
+import { loadWebSessionIdentity, webLogout } from '../lib/webSession'
 import { useTheme } from '../contexts/ThemeContext'
 import { ViewHeader } from '../components/layout/ViewHeader'
 
@@ -31,6 +33,12 @@ function AccountPage() {
 
   useEffect(() => {
     async function load() {
+      // GH44 — version web : le compte est celui de la session serveur.
+      if (isWeb) {
+        setIdentity(await loadWebSessionIdentity())
+        setLoading(false)
+        return
+      }
       for (const remote of KNOWN_REMOTES) {
         try {
           const token = await api.auth.getToken(remote)
@@ -48,6 +56,7 @@ function AccountPage() {
   }, [])
 
   async function handleLogout() {
+    if (isWeb) return webLogout()
     if (identity) {
       try { await api.auth.deleteToken(identity.remote) } catch { /* best-effort */ }
     }

@@ -301,7 +301,28 @@ export interface FieldVisibilityPref {
   freezeColCountExcel?: number
 }
 
+/** GH44 — un projet de « Mes projets » (espace serveur de l'utilisateur, version web). */
+export interface WebWorkspaceEntry {
+  name: string
+  workspaceDir: string
+}
+
+export type WebDeleteWorkspaceResult =
+  | { status: 'deleted' }
+  | { status: 'unpublished'; repos: string[] }
+
 export interface ApiClient {
+  /**
+   * GH44 — channels propres au serveur web (`window.polenta.platform === 'web'`) ; n'existent pas
+   * sur le desktop.
+   */
+  web: {
+    workspacesRoot(): Promise<string>
+    listWorkspaces(): Promise<WebWorkspaceEntry[]>
+    /** Dossier neuf et vide sous « Mes projets » : remplace le choix d'un dossier de destination. */
+    newWorkspaceDir(nameHint: string): Promise<string>
+    deleteWorkspace(workspaceDir: string, force?: boolean): Promise<WebDeleteWorkspaceResult>
+  }
   app: {
     setTitle(title: string): Promise<void>
     getVersion(): Promise<string>

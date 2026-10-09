@@ -2,10 +2,17 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
+import { isWeb } from '../platform'
 
 export const Route = createFileRoute('/login')({
-  component: LoginPage,
+  component: isWeb ? WebLoginRedirect : LoginPage,
 })
+
+/** GH44 — version web : connexion gérée par le serveur (session ; forge OIDC au sprint 3). */
+function WebLoginRedirect() {
+  useEffect(() => { window.location.replace('/auth/login') }, [])
+  return null
+}
 
 const COMMON_REMOTES = [
   'https://github.com',

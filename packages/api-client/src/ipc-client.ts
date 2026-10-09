@@ -28,6 +28,12 @@ export function createIpcClient(): ApiClient {
     window.polenta.invoke(channel, ...args) as Promise<T>
 
   return {
+    web: {
+      workspacesRoot: () => invoke('web:workspaces-root'),
+      listWorkspaces: () => invoke('web:list-workspaces'),
+      newWorkspaceDir: (nameHint) => invoke('web:new-workspace-dir', nameHint),
+      deleteWorkspace: (workspaceDir, force) => invoke('web:delete-workspace', workspaceDir, force),
+    },
     app: {
       setTitle: (title) => invoke('app:set-title', title),
       getVersion: () => invoke('app:get-version'),

@@ -3,7 +3,8 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type { ExportKind, ExportFormat, ExportResult, ExecutionSheetLocale, ExecutionImportPreview } from '@polenta/types'
 import type { Container } from './index'
-import type { HandlerRegistry } from './registry'
+import type { HandlerRegistry, Handler } from './registry'
+import type { DESKTOP_ONLY_CHANNELS } from './channels'
 import type { PlatformHost } from '../host/platform-host'
 import type { UpdateService } from '../services/update.service'
 import { IMAGE_MIME_BY_EXT, importFileIntoRepo, saveExport, saveExecutionSheet } from './file-ops'
@@ -42,36 +43,40 @@ const EXPORT_DIALOG_FILTERS: Record<ExportFormat, { name: string; extensions: st
 }
 
 export function registerDesktopOnlyHandlers(c: Container, update: UpdateService): void {
+  // Typé sur `DESKTOP_ONLY_CHANNELS` : un channel ajouté ici sans y figurer ne compile pas, et le
+  // serveur web s'appuie sur cette liste (channels.ts).
+  const handle = (channel: typeof DESKTOP_ONLY_CHANNELS[number], fn: Handler) => ipcMain.handle(channel, fn)
+
   // ── Auth : Device Flow GitHub (ouvre le navigateur du poste) ──────────────────
-  ipcMain.handle('auth:device-flow-start', (_e, remote: string) => c.auth.startDeviceFlow(remote))
-  ipcMain.handle('auth:device-flow-poll', (_e, remote: string, deviceCode: string) =>
+  handle('auth:device-flow-start', (_e, remote: string) => c.auth.startDeviceFlow(remote))
+  handle('auth:device-flow-poll', (_e, remote: string, deviceCode: string) =>
     c.auth.pollDeviceFlow(remote, deviceCode))
 
   // ── App ───────────────────────────────────────────────────────────────────────
-  ipcMain.handle('app:set-title', (_event, title: string) => {
+  handle('app:set-title', (_event, title: string) => {
     BrowserWindow.getFocusedWindow()?.setTitle(title)
   })
   // app.getVersion() lit le champ "version" de package.json (packagé dans app.asar par
   // electron-builder) — c'est aussi ce champ qui alimente le macro ${version} de
   // electron-builder.yml pour le nom de l'exe généré : une seule string à modifier à
   // chaque release.
-  ipcMain.handle('app:get-version', () => app.getVersion())
+  handle('app:get-version', () => app.getVersion())
   // GH26 — restreint aux pages de release du repo : seul usage (lien « Voir les nouveautés »),
   // pas un ouvreur d'URL générique exposé au renderer.
-  ipcMain.handle('app:open-release-page', (_e, url: string) => {
+  handle('app:open-release-page', (_e, url: string) => {
     if (url.startsWith('https://github.com/laurentolive/polenta/releases/')) return shell.openExternal(url)
   })
 
   // ── Update (GH26) ─────────────────────────────────────────────────────────────
   // État poussé aux fenêtres par 'update:state-changed' ; get-state couvre une fenêtre
   // montée après l'événement.
-  ipcMain.handle('update:get-state', () => update.getState())
-  ipcMain.handle('update:install', () => update.install())
+  handle('update:get-state', () => update.getState())
+  handle('update:install', () => update.install())
 
   // ── Campagnes : classeur Excel d'exécution (GH36) ──────────────────────────────
   // Dialogue d'enregistrement ici (comme `export:save`), contenu construit côté main à partir de
   // la campagne.
-  ipcMain.handle('campaigns:execution-sheet-export', async (
+  handle('campaigns:execution-sheet-export', async (
     _e,
     repoPath: string,
     campaignId: string,
@@ -88,7 +93,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   })
   // GH36 sprint 2 — import : choix du fichier puis aperçu (aucune écriture) ; l'application relit
   // le fichier et revalide contre l'état courant de la campagne.
-  ipcMain.handle('campaigns:execution-sheet-preview', async (
+  handle('campaigns:execution-sheet-preview', async (
     _e,
     repoPath: string,
     campaignId: string,
@@ -103,7 +108,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   })
 
   // ── Dialog ───────────────────────────────────────────────────────────────────
-  ipcMain.handle('dialog:pick-folder', async (_event, title?: string) => {
+  handle('dialog:pick-folder', async (_event, title?: string) => {
     const result = await dialog.showOpenDialog({
       title: title ?? 'Sélectionner un dossier',
       properties: ['openDirectory', 'createDirectory'],
@@ -111,7 +116,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.handle('dialog:pick-image-file', async () => {
+  handle('dialog:pick-image-file', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Insérer une image',
       properties: ['openFile'],
@@ -125,7 +130,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
     return { mimeType, base64: data }
   })
 
-  ipcMain.handle('dialog:pick-drawio-file', async (_e, repoPath: string) => {
+  handle('dialog:pick-drawio-file', async (_e, repoPath: string) => {
     const result = await dialog.showOpenDialog({
       title: 'Sélectionner un diagramme draw.io',
       properties: ['openFile'],
@@ -136,12 +141,12 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   })
 
   // ── Draw.io (T47) ────────────────────────────────────────────────────────────
-  ipcMain.handle('drawio:open-external', async (_e, repoPath: string, relativePath: string) => {
+  handle('drawio:open-external', async (_e, repoPath: string, relativePath: string) => {
     await shell.openPath(path.join(repoPath, relativePath))
   })
 
   // ── Image (T76) ──────────────────────────────────────────────────────────────
-  ipcMain.handle('image:pick-file', async (_e, repoPath: string) => {
+  handle('image:pick-file', async (_e, repoPath: string) => {
     const result = await dialog.showOpenDialog({
       title: 'Insérer une image',
       properties: ['openFile'],
@@ -152,7 +157,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   })
 
   // ── Export (T43) ─────────────────────────────────────────────────────────────
-  ipcMain.handle('export:save', async (
+  handle('export:save', async (
     _e,
     repoPath: string,
     kind: ExportKind,
@@ -173,8 +178,8 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
     if (saveResult.canceled || !saveResult.filePath) return { status: 'canceled' as const }
     return saveExport(c, saveResult.filePath, repoPath, kind, format, payload, printParams, templateRelPath)
   })
-  ipcMain.handle('export:show-in-folder', (_e, filePath: string) => {
+  handle('export:show-in-folder', (_e, filePath: string) => {
     shell.showItemInFolder(filePath)
   })
-  ipcMain.handle('export:open-file', (_e, filePath: string) => shell.openPath(filePath))
+  handle('export:open-file', (_e, filePath: string) => shell.openPath(filePath))
 }

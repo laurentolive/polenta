@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { EVENTS_RECONNECTED } from '../lib/webEvents'
 
 /**
  * Subscribes to `repo:file-changed`, pushed by the main process (RepoWatcherService, via
@@ -86,6 +87,12 @@ export function useLiveFileSync(): void {
         })
       }
     })
-    return unsubscribe
+    // GH44 — version web : connexion d'événements rétablie après une coupure, des changements ont
+    // pu être manqués → tout relire (jamais émis sur le desktop).
+    const unsubscribeReconnect = window.polenta.on(EVENTS_RECONNECTED, () => { void qc.invalidateQueries() })
+    return () => {
+      unsubscribe()
+      unsubscribeReconnect()
+    }
   }, [qc])
 }

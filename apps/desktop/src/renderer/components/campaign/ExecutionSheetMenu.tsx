@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { FileDown, FileSpreadsheet, FileUp } from 'lucide-react'
 import type { ExecutionImportPreview, ExecutionSheetLocale, ExportResult } from '@polenta/types'
 import { api } from '../../api'
+import { capabilities } from '../../platform'
 import { ExecutionImportModal } from './ExecutionImportModal'
 
 interface ExecutionSheetMenuProps {
@@ -125,14 +126,16 @@ export function ExecutionSheetMenu({ repoPath, campaignId, workspaceDir }: Execu
             className="absolute right-0 top-full mt-2 z-50 bg-surface border border-edge rounded-lg shadow-xl p-3 w-96"
             onClick={e => e.stopPropagation()}
           >
-            <p className="text-xs text-ink-2 mb-2 break-all">{t('exportButton.exportedTo', { path: savedPath })}</p>
+            <p className="text-xs text-ink-2 mb-2 break-all">{t(capabilities.localFilesystem ? 'exportButton.exportedTo' : 'exportButton.downloaded', { path: savedPath })}</p>
             <div className="flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => api.export.showInFolder(savedPath)} className="btn-secondary-sm">
-                {t('exportButton.openFolder')}
-              </button>
-              <button type="button" onClick={() => api.export.openFile(savedPath)} className="btn-secondary-sm">
-                {t('exportButton.openFile')}
-              </button>
+              {capabilities.localFilesystem && <>
+                <button type="button" onClick={() => api.export.showInFolder(savedPath)} className="btn-secondary-sm">
+                  {t('exportButton.openFolder')}
+                </button>
+                <button type="button" onClick={() => api.export.openFile(savedPath)} className="btn-secondary-sm">
+                  {t('exportButton.openFile')}
+                </button>
+              </>}
               <button type="button" onClick={() => setSavedPath(null)} className="btn-secondary-sm">
                 {t('common.close')}
               </button>

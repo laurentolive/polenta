@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink, CoverageStatus, MatrixCell, TestCase } from '@polenta/types'
 import { api } from '../../api'
+import { capabilities } from '../../platform'
 import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
 import { matchesRefs, filterCandidatesByRefs, getPeerId, isLinkTypeValid } from './linkUtils'
@@ -194,16 +195,18 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
             className={`${base} flex-1`}
             placeholder="chemin/vers/fichier.drawio"
           />
-          <button
-            type="button"
-            onClick={() => {
-              if (localVal && repoPath) void api.drawio.openExternal(repoPath, localVal)
-            }}
-            disabled={!localVal || !repoPath}
-            className="text-xs px-3 py-1.5 border border-edge rounded hover:bg-hover text-ink-2 disabled:opacity-40 shrink-0"
-          >
-            Ouvrir dans Draw.io
-          </button>
+          {capabilities.externalDrawioEditor && (
+            <button
+              type="button"
+              onClick={() => {
+                if (localVal && repoPath) void api.drawio.openExternal(repoPath, localVal)
+              }}
+              disabled={!localVal || !repoPath}
+              className="text-xs px-3 py-1.5 border border-edge rounded hover:bg-hover text-ink-2 disabled:opacity-40 shrink-0"
+            >
+              Ouvrir dans Draw.io
+            </button>
+          )}
         </div>
       )
 

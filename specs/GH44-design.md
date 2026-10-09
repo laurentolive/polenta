@@ -279,6 +279,41 @@ Composants adaptés (masquage, pas de réécriture) :
 un seul utilisateur, sans OIDC, pour développer et tester S2 sans #45. Refusé au démarrage si
 `NODE_ENV=production`.
 
+### 4.7 Révisions issues de l'implémentation (S2)
+
+- **Liste blanche explicite** : `WEB_EXPOSED` (177 channels du noyau), `WEB_HIDDEN` (4 channels de
+  jetons), `WEB_ONLY_CHANNELS` (10 channels `web:*` + `app:get-version`). Les channels desktop-only
+  sont listés dans `main/ipc/channels.ts` et `registerDesktopOnlyHandlers` est typé dessus. Pas de
+  champ `Policy` par channel : la garde de chemins applique des règles génériques, complétées par
+  `ROOT_ARGS` (positions des arguments racine, dérivées des signatures — test de synchronisation) et
+  `CONTENT_ARGS` (texte libre : message de commit, contenu de fichier, commentaire).
+- **Arguments racine** (`repoPath`, `workspaceDir`, `containerDir`…) : absolus obligatoires — un
+  relatif serait résolu depuis le dossier courant du serveur (constat de revue).
+- **Durcissement du process serveur** (`web-server/hardening.ts`, jamais sur le desktop) :
+  dossier courant vide (`<data>/.cwd`) ; liens symboliques recréés en fichiers texte comme git avec
+  `core.symlinks=false` (un repo cloné ne peut pas pointer vers `/etc/passwd` ni vers l'espace d'un
+  autre) ; clone/fetch/push limités aux hôtes de `POLENTA_WEB_GIT_HOSTS` en HTTPS (SSRF), via
+  `setGitRemoteGuard` dans `git-http.ts`.
+- **Noms de montage** (`polenta-repo.yaml`, overrides) : un seul segment (`isSafeMountName`, partagé
+  desktop/web) — une dépendance nommée `../x` est ignorée avec un avertissement.
+- **WebSocket** : Origin vérifiée (même hôte) — pas d'en-tête CSRF possible sur un handshake.
+- **Arguments `undefined`** : JSON les transformerait en `null` (paramètres par défaut perdus) ; le
+  bridge transmet leurs positions (`undefinedArgs`), le serveur les restaure.
+- **Reconnexion** des événements : canal synthétique `web:events-reconnected` → `useLiveFileSync`
+  invalide toutes les requêtes (desktop : jamais émis).
+- **Accueil web** (anticipé de §5.4) : `WebProjectList` + `web:new-workspace-dir` (dossier neuf
+  sous « Mes projets » à la place du sélecteur), suppression avec refus si non publié. Un échec
+  pendant l'action supprime le dossier créé ; une erreur à l'ouverture ne le supprime jamais.
+- **Compte** : identité lue sur `/auth/me` (le renderer n'appelle plus `auth:get-token` sur le web),
+  déconnexion par `/auth/logout`, bouton « Changer de compte » masqué.
+- **Shim Electron non étendu** : un import résiduel de `dialog`/`BrowserWindow` fait échouer le
+  bundle esbuild (« No matching export »), ce qui est plus sûr qu'un proxy à l'exécution.
+- **Export PDF** : `pendingPrintRenderer` (message explicite) jusqu'au sprint 4 ; un export par
+  gabarit rend ses diagrammes en repli texte.
+- **Ports** : serveur 8787 (`POLENTA_WEB_PORT`), client Vite de dev 5180 (`POLENTA_WEB_CLIENT_PORT`)
+  — 8080/5173 souvent occupés sur les postes de dev.
+- **`@types/node@^20`** déclaré dans `apps/desktop` (auparavant hérité d'`apps/api`).
+
 ## 5. Sprint 3 — Authentification forge et multi-utilisateurs (nécessite #45 P0)
 
 ### 5.1 OIDC
@@ -358,6 +393,9 @@ sur `GET /healthz`.
 | `POLENTA_WEB_IDLE_MINUTES` | 30 | Éviction mémoire. |
 | `POLENTA_WEB_MAX_ACTIVE_USERS` | 50 | Garde-fou mémoire. |
 | `POLENTA_WEB_MAX_UPLOAD_MB` | 20 | Taille max d'upload. |
+| `POLENTA_WEB_PORT` | 8787 | Port d'écoute (S2). |
+| `POLENTA_WEB_GIT_HOSTS` | hôte de la forge | Hôtes git autorisés, séparés par des virgules (S2, SSRF). |
+| `POLENTA_WEB_GIT_ALLOW_HTTP` | false | Autoriser git en HTTP clair (forge interne sans TLS). |
 | `POLENTA_WEB_AUTH` | `oidc` | `dev` interdit en production. |
 
 ### 6.4 Intégration au kit `deploy/` de #45
@@ -409,4 +447,6 @@ passera `status:blocked` — « dépend de #45 » — entre S2 et S3 si nécessa
 | Mémoire : un Container + index par utilisateur actif. | Éviction, plafond d'utilisateurs actifs, mesure en S4 (objectif : < 300 Mo par utilisateur sur le projet de démo). |
 | Jeton OAuth2 Forgejo utilisable pour git HTTPS : à confirmer. | Test en tout début de S3 ; repli : création d'un jeton d'accès via l'API Forgejo à la connexion (même mécanisme que #45 P0-4), révoqué à la déconnexion. |
 | Divergence future : un nouveau channel desktop oublié dans la politique web. | Test d'exhaustivité `ChannelPolicy` ∪ `DESKTOP_ONLY` = channels enregistrés (S2). |
+| Dossier courant partagé par tous les utilisateurs : un chemin relatif dans un DTO (non couvert par `ROOT_ARGS`) y serait résolu. | Dossier vide, sans `..` possible ; seules des écritures d'un utilisateur y seraient visibles d'un autre. Isolation complète (un process par utilisateur) hors périmètre (D5). |
+| Logout par `GET /auth/logout` déclenchable depuis une autre page (déconnexion forcée). | Impact limité (aucune donnée exposée) ; passage en POST au sprint 3 avec OIDC. |
 | Fichiers modifiés par S1 très partagés (`ipc/index.ts`, `container.ts`) → conflits avec les autres tickets. | S1 court, mécanique, mergé tôt dans main après validation. |

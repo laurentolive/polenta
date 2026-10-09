@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
+import { isWeb, capabilities } from '../platform'
+import { loadWebSessionIdentity, webLogout } from '../lib/webSession'
 
 interface Identity {
   login: string
@@ -24,6 +26,12 @@ export function AccountMenu() {
 
   useEffect(() => {
     async function load() {
+      // GH44 — version web : le compte est celui de la session serveur.
+      if (isWeb) {
+        setIdentity(await loadWebSessionIdentity())
+        
+        return
+      }
       for (const remote of KNOWN_REMOTES) {
         try {
           const token = await api.auth.getToken(remote)
@@ -51,6 +59,7 @@ export function AccountMenu() {
 
   async function handleLogout() {
     setOpen(false)
+    if (isWeb) return webLogout()
     if (identity) {
       try {
         await api.auth.deleteToken(identity.remote)
@@ -91,13 +100,15 @@ export function AccountMenu() {
             </div>
           )}
           <div className="py-1">
-            <button
-              type="button"
-              onClick={handleChangeAccount}
-              className="w-full text-left px-4 py-2 text-sm text-ink hover:bg-hover"
-            >
-              {t('common.changeAccount')}
-            </button>
+            {capabilities.accountManagement && (
+              <button
+                type="button"
+                onClick={handleChangeAccount}
+                className="w-full text-left px-4 py-2 text-sm text-ink hover:bg-hover"
+              >
+                {t('common.changeAccount')}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleLogout}

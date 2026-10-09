@@ -182,7 +182,14 @@
     "createNewHelp": "Démarrer un projet vide",
     "projectNameLabel": "Nom du projet",
     "creating": "Création…",
-    "continue": "Continuer"
+    "continue": "Continuer",
+    "web": {
+      "myProjects": "Mes projets",
+      "noProjects": "Aucun projet pour l’instant : chargez la démo, ouvrez un repo ou créez un projet.",
+      "delete": "Supprimer de « Mes projets »",
+      "deleteConfirm": "Supprimer le projet « {{name}} » de votre espace ? Le dépôt distant n’est pas touché.",
+      "deleteUnpublished": "« {{name}} » contient des modifications non publiées ({{repos}}). Elles seront perdues. Supprimer quand même ?"
+    }
   },
   "preferences": {
     "loading": "Chargement des préférences…",
@@ -935,6 +942,7 @@
     "exportError": "Erreur lors de l'export",
     "export": "Exporter",
     "exportedTo": "Exporté vers {{path}}",
+    "downloaded": "Téléchargé : {{path}}",
     "openFolder": "Ouvrir le dossier",
     "openFile": "Ouvrir le fichier",
     "templateFor": "Gabarit {{format}}",

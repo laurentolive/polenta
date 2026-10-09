@@ -96,6 +96,12 @@ function httpErrorStatus(err: unknown): number | null {
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
+/** Nom de dossier d'une dépendance : un seul segment, ni `.` ni `..`. */
+export function isSafeMountName(name: unknown): name is string {
+  return typeof name === 'string' && name.length > 0 && name !== '.' && name !== '..'
+    && !/[\\/\0]/.test(name) && !/^[a-zA-Z]:/.test(name)
+}
+
 export class WorkspaceTreeService {
   /** GH32 — open/rebuild in flight per workspace (key: resolved workspaceDir). While one runs,
    *  `tree.cache.yaml` is absent or stale (e.g. right after `rebuildTree` deleted it), so
@@ -322,6 +328,9 @@ export class WorkspaceTreeService {
    * name whose directory was never actually renamed).
    */
   async renameClonedRepo(workspaceDir: string, oldMountName: string, newMountName: string): Promise<void> {
+    if (!isSafeMountName(oldMountName) || !isSafeMountName(newMountName)) {
+      throw new Error('Nom de dossier de dépendance invalide.')
+    }
     const oldPath = path.join(workspaceDir, oldMountName)
     const newPath = path.join(workspaceDir, newMountName)
     await fsP.rename(oldPath, newPath)
@@ -410,6 +419,12 @@ export class WorkspaceTreeService {
       // Check if user has configured a mount-override for this (url, pin)
       const override = mountOverrides.find(o => o.url === dep.url && o.pin === dep.pin)
       const mountName = override ? override.mountAs : dep.name
+      // GH44 — un nom de montage (polenta-repo.yaml, override) désigne un dossier frère du repo
+      // racine : jamais un chemin, sinon le clone/la lecture sortirait du workspace.
+      if (!isSafeMountName(mountName)) {
+        console.warn(`[WorkspaceTree] dépendance ignorée : nom de montage invalide « ${mountName} »`)
+        continue
+      }
       const depRepoPath = path.join(workspaceDir, mountName)
 
       // Update parent's children list

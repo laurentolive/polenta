@@ -5,6 +5,8 @@ import { Sun, Moon, Languages } from 'lucide-react'
 import { api } from '../../api'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLocale } from '../../i18n/useLocale'
+import { isWeb, capabilities } from '../../platform'
+import { loadWebSessionIdentity, webLogout } from '../../lib/webSession'
 
 interface Identity {
   login: string
@@ -69,6 +71,12 @@ export function AccountPanel() {
 
   useEffect(() => {
     async function load() {
+      // GH44 — version web : le compte est celui de la session serveur.
+      if (isWeb) {
+        setIdentity(await loadWebSessionIdentity())
+        setLoading(false)
+        return
+      }
       for (const remote of KNOWN_REMOTES) {
         try {
           const token = await api.auth.getToken(remote)
@@ -87,6 +95,7 @@ export function AccountPanel() {
   }, [])
 
   async function handleLogout() {
+    if (isWeb) return webLogout()
     if (identity) {
       try {
         await api.auth.deleteToken(identity.remote)
@@ -121,13 +130,15 @@ export function AccountPanel() {
           </div>
 
           <div className="border-t border-edge-subtle pt-4 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => navigate({ to: '/login' })}
-              className="w-full text-left px-3 py-2 text-sm rounded border border-edge text-ink-2 hover:bg-hover transition-colors"
-            >
-              {t('common.changeAccount')}
-            </button>
+            {capabilities.accountManagement && (
+              <button
+                type="button"
+                onClick={() => navigate({ to: '/login' })}
+                className="w-full text-left px-3 py-2 text-sm rounded border border-edge text-ink-2 hover:bg-hover transition-colors"
+              >
+                {t('common.changeAccount')}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleLogout}
@@ -185,7 +196,7 @@ export function AccountPanel() {
             <span>{locale === 'fr' ? t('account.panel.english') : t('account.panel.french')}</span>
           </button>
         </div>
-        {autoCheckUpdates !== null && (
+        {capabilities.autoUpdate && autoCheckUpdates !== null && (
           <label className="flex items-center justify-between gap-2 cursor-pointer" title={t('account.panel.autoUpdateHint')}>
             <span className="text-xs text-ink-2">{t('account.panel.autoUpdate')}</span>
             <input
@@ -199,7 +210,7 @@ export function AccountPanel() {
           <div className="space-y-1" title={t('account.panel.exportTemplatesHint')}>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-ink-2">{t('account.panel.exportTemplates')}</span>
-              <div className="flex gap-1">
+              {capabilities.localFilesystem && <div className="flex gap-1">
                 <button
                   type="button"
                   onClick={() => void handlePickTemplatesDir()}
@@ -216,7 +227,7 @@ export function AccountPanel() {
                     {t('account.panel.exportTemplatesClear')}
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
             <p className="text-xs text-ink-3 break-all">
               {templatesDir || t('account.panel.exportTemplatesNone')}

@@ -182,7 +182,14 @@
     "createNewHelp": "Start an empty project",
     "projectNameLabel": "Project name",
     "creating": "Creating…",
-    "continue": "Continue"
+    "continue": "Continue",
+    "web": {
+      "myProjects": "My projects",
+      "noProjects": "No projects yet: load the demo, open a repository or create a project.",
+      "delete": "Remove from “My projects”",
+      "deleteConfirm": "Remove project “{{name}}” from your space? The remote repository is not affected.",
+      "deleteUnpublished": "“{{name}}” has unpublished changes ({{repos}}). They will be lost. Remove anyway?"
+    }
   },
   "preferences": {
     "loading": "Loading preferences…",
@@ -935,6 +942,7 @@
     "exportError": "Error while exporting",
     "export": "Export",
     "exportedTo": "Exported to {{path}}",
+    "downloaded": "Downloaded: {{path}}",
     "openFolder": "Open folder",
     "openFile": "Open file",
     "templateFor": "{{format}} template",

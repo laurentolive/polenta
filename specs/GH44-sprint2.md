@@ -80,6 +80,12 @@ Aucune (sprint non final).
   données, accueil « Mes projets », panneau Compte (identité de session, sans « Changer de
   compte »), aucune erreur console. Ce test a révélé un hook placé après un `return` dans
   l'accueil — corrigé.
+- **Tests de bout en bout automatisés** (Playwright, Chromium, serveur buildé, forge git locale) :
+  11/11 — S2-1 accueil, S2-2 clone par l'UI, S2-3 parité (données + 10 vues), S2-4 image et
+  draw.io par upload (et annulation), S2-5 export Word téléchargé, S2-6 classeur d'exécution aller-
+  retour, S2-7 deux onglets, S2-8 coupure et reconnexion, S2-9 Publier (auteur du commit distant =
+  identité de l'utilisateur), S2-25 Origin WebSocket, S2-20 aucune erreur console. Captures dans
+  `apps/desktop/e2e-web/.results/`.
 - `/code-review` : 10 constats (dont 6 de sécurité : racines relatives, liens symboliques, noms de
   montage, jetons au logout, Origin WebSocket, SSRF), tous traités et couverts par des tests.
 
@@ -89,6 +95,14 @@ Aucune (sprint non final).
 - Authentification : mode dev uniquement (OIDC Forgejo au sprint 3, dépend de #45 P0).
 - Dossier courant partagé entre utilisateurs (vide) : voir risques du design.
 - `GET /auth/logout` sans CSRF : passage en POST au sprint 3.
+
+## Comment relancer les tests automatisés
+
+```bash
+cd apps/desktop
+pnpm test            # vitest : garde de chemins, politique de channels, serveur, durcissement
+pnpm test:e2e:web    # build web + Playwright (première fois : npx playwright install chromium)
+```
 
 ## Comment tester manuellement
 

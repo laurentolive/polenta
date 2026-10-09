@@ -2,7 +2,13 @@
 
 Références : `specs/GH44.md` (AC 1–13), `specs/GH44-design.md`.
 Légende : **[A]** test automatique (vitest, `apps/desktop/src/web-server/*.test.ts`),
-**[M]** test manuel. Projet de référence : projet de démo (`Démo`) + un projet multi-repos avec
+**[E2E]** test de bout en bout automatisé dans un navigateur réel (Playwright,
+`apps/desktop/e2e-web/s2.spec.ts`, `pnpm test:e2e:web`), **[M]** test manuel.
+
+Les tests [E2E] tournent sur le serveur web **buildé** ; une forge git locale
+(`e2e-web/support/git-http-server.ts`, CGI autour de `git http-backend`) sert un repo nu de la démo :
+le clone, Publier et la vérification de l'historique distant se font sans GitHub (seules les
+dépendances de la démo sont lues sur github.com). Projet de référence : projet de démo (`Démo`) + un projet multi-repos avec
 composant en repo séparé.
 
 ## Sprint 1 — Non-régression desktop
@@ -25,15 +31,15 @@ composant en repo séparé.
 ### Nominal
 | ID | Scénario | Attendu |
 |---|---|---|
-| S2-1 [M] | `pnpm dev:web` en mode dev, ouvrir le navigateur. | Écran d'accueil web ; aucune erreur console. |
-| S2-2 [M] | Cloner un projet par URL, l'ouvrir. | Clone sous `<data>/users/<login>/workspaces/` ; arbre et vues chargés. |
-| S2-3 [M] | Parcours de parité (cf. §Parité) dans le navigateur. | Identique au desktop, PDF excepté. |
-| S2-4 [M] | Insérer une image et un drawio (upload). | Fichier copié dans le repo (`images/`, `diagrams/`), affiché. |
-| S2-5 [M] | Export Word et Excel. | Fichier téléchargé par le navigateur, nom suggéré conservé ; pas de bouton « Ouvrir »/« Afficher dans le dossier ». |
-| S2-6 [M] | Classeur d'exécution : export (téléchargement), import (upload), aperçu, application. | Résultats appliqués comme sur desktop. |
-| S2-7 [M] | Deux onglets, édition dans le premier. | Second onglet rafraîchi sans rechargement (AC 9). |
-| S2-8 [M] | Couper la connexion WebSocket (devtools offline 10 s) puis rétablir. | Reconnexion, caches invalidés, aucune erreur bloquante. |
-| S2-9 [M] | Publier puis vérifier `git log` du remote. | Commit à l'identité du compte dev. |
+| S2-1 [E2E] | `pnpm dev:web` en mode dev, ouvrir le navigateur. | Écran d'accueil web ; aucune erreur console. |
+| S2-2 [E2E] | Cloner un projet par URL, l'ouvrir. | Clone sous `<data>/users/<login>/workspaces/` ; arbre et vues chargés. |
+| S2-3 [E2E] | Parcours de parité (cf. §Parité) dans le navigateur. | Identique au desktop, PDF excepté. |
+| S2-4 [E2E] | Insérer une image et un drawio (upload). | Fichier copié dans le repo (`images/`, `diagrams/`), affiché. |
+| S2-5 [E2E] | Export Word et Excel. | Fichier téléchargé par le navigateur, nom suggéré conservé ; pas de bouton « Ouvrir »/« Afficher dans le dossier ». |
+| S2-6 [E2E] | Classeur d'exécution : export (téléchargement), import (upload), aperçu, application. | Résultats appliqués comme sur desktop. |
+| S2-7 [E2E] | Deux onglets, édition dans le premier. | Second onglet rafraîchi sans rechargement (AC 9). |
+| S2-8 [E2E] | Couper la connexion WebSocket (devtools offline 10 s) puis rétablir. | Reconnexion, caches invalidés, aucune erreur bloquante. |
+| S2-9 [E2E] | Publier puis vérifier `git log` du remote. | Commit à l'identité du compte dev. |
 
 ### Sécurité / cas limites
 | ID | Scénario | Attendu |
@@ -48,12 +54,19 @@ composant en repo séparé.
 | S2-17 [A] | `GET /download/:id` d'un autre utilisateur, ou après téléchargement. | 404. |
 | S2-18 [A] | Sérialisation : réponses des channels du parcours de parité passées par JSON. | Égalité profonde avec la valeur d'origine (pas de `Date`/`Buffer`/`Map` perdus). |
 | S2-19 [A] | Démarrage `POLENTA_WEB_AUTH=dev` avec `NODE_ENV=production`. | Refus de démarrer, message explicite. |
-| S2-20 [M] | Console navigateur sur tout le parcours de parité. | Aucune erreur, aucun bouton inopérant (AC 8). |
+| S2-20 [E2E] | Console navigateur sur tout le parcours de parité. | Aucune erreur, aucun bouton inopérant (AC 8). |
 | S2-21 [A] | Argument racine relatif (`workspace:remove-repo-dir('src')`). | 403. |
 | S2-22 [A] | Lien symbolique créé par le serveur (checkout d'un repo). | Fichier texte contenant la cible, jamais un lien. |
 | S2-23 [A] | Clone/fetch vers un hôte hors `POLENTA_WEB_GIT_HOSTS`, HTTP, IP de métadonnées. | Refusé. |
 | S2-24 [A] | Dépendance `polenta-repo.yaml` / override nommé `../x`. | Ignorée (nom de montage invalide). |
-| S2-25 [M] | WebSocket `/events` ouvert depuis une autre origine (autre port). | Fermé (4403). |
+| S2-25 [E2E] | WebSocket `/events` ouvert depuis une autre origine (autre port). | Fermé (4403). |
+
+Couverture [E2E] de S2-3 (parité) : création / modification / relecture d'exigence, lien
+test → exigence, ouverture de chaque vue de la barre d'activité (Projet, Suivi, Exigences, Tests,
+Campagnes, Paramètres, Recherche, Version, Analyse d'impact, Compte) sans erreur ; S2-6 vérifie aussi
+le refus d'exécution hors outil sur une campagne clôturée ; S2-8 coupe réellement la WebSocket
+(`routeWebSocket`) puis laisse le navigateur hors ligne 3 s. Le reste du parcours de parité
+(baselines, dashboards en édition, recherche/remplacement, conflit GH37) reste [M].
 
 ## Sprint 3 — Forge, sessions, multi-utilisateurs (Forgejo de #45)
 

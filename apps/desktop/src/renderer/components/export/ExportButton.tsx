@@ -30,11 +30,13 @@ interface ExportButtonProps {
   getPayload?: (format: 'xlsx' | 'docx', options: { templated: boolean }) => unknown | Promise<unknown>
   /** pdf : paramètres transmis à la route imprimable `/print/<kind>`, qui recharge ses propres données. */
   getPrintParams?: () => Record<string, string>
+  /** Libellé du bouton (défaut : "Exporter") — à préciser quand une vue en affiche plusieurs. */
+  label?: string
 }
 
 /** Bouton "Exporter" partagé, inséré dans le slot `actions` d'un `ViewHeader` — popover listant
  *  les formats disponibles pour la vue (cf. specs/T43-design.md, mapping formats/type). */
-export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, getPayload, getPrintParams }: ExportButtonProps) {
+export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, getPayload, getPrintParams, label }: ExportButtonProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,10 +75,10 @@ export function ExportButton({ kind, formats, repoPath, getSuggestedBaseName, ge
         type="button"
         onClick={() => setOpen(o => !o)}
         className="btn-secondary-sm flex items-center gap-1.5"
-        title={t('exportButton.export')}
+        title={label ?? t('exportButton.export')}
       >
         <Download size={13} />
-        {t('exportButton.export')}
+        {label ?? t('exportButton.export')}
       </button>
 
       {open && (

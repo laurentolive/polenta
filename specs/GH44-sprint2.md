@@ -84,8 +84,12 @@ Aucune (sprint non final).
   11/11 — S2-1 accueil, S2-2 clone par l'UI, S2-3 parité (données + 10 vues), S2-4 image et
   draw.io par upload (et annulation), S2-5 export Word téléchargé, S2-6 classeur d'exécution aller-
   retour, S2-7 deux onglets, S2-8 coupure et reconnexion, S2-9 Publier (auteur du commit distant =
-  identité de l'utilisateur), S2-25 Origin WebSocket, S2-20 aucune erreur console. Captures dans
-  `apps/desktop/e2e-web/.results/`.
+  identité de l'utilisateur), S2-25 Origin WebSocket, S2-20 aucune erreur console (après chaque
+  test) ; parité : P-1 recherche/remplacement, P-2 dashboard + widget, P-3 baseline, P-4 conflit
+  résolu dans le navigateur (GH37) — **14/14, stable sur 3 exécutions**. Outillage réutilisable et
+  documenté pour les tickets suivants : `apps/desktop/e2e-web/README.md` (`setupSession`, forge
+  locale, autre utilisateur, uploads/téléchargements, événements) ; WORKFLOW.md (Agent Dev, étape 6)
+  y renvoie.
 - `/code-review` : 10 constats (dont 6 de sécurité : racines relatives, liens symboliques, noms de
   montage, jetons au logout, Origin WebSocket, SSRF), tous traités et couverts par des tests.
 

@@ -61,12 +61,21 @@ composant en repo séparé.
 | S2-24 [A] | Dépendance `polenta-repo.yaml` / override nommé `../x`. | Ignorée (nom de montage invalide). |
 | S2-25 [E2E] | WebSocket `/events` ouvert depuis une autre origine (autre port). | Fermé (4403). |
 
+Parcours de parité automatisés en plus (`e2e-web/parity.spec.ts`) :
+
+| ID | Scénario | Attendu |
+|---|---|---|
+| P-1 [E2E] | Recherche d'un terme unique, « Remplacer par… » + « Tout ». | Titre et énoncé de l'exigence remplacés sur disque. |
+| P-2 [E2E] | « Ajouter un dashboard » (modale), puis « Ajouter un widget » (requête, type Table). | Dashboard créé, widget affiché. |
+| P-3 [E2E] | Publier, puis Version › Baselines › « Créer la baseline » (tag + message). | Plus de blocage « modifications en attente » ; baseline listée (UI et `baseline:list`). |
+| P-4 [E2E] | Un autre poste pousse une modification du titre de PRD-0001 ; même champ modifié et publié depuis le web. | « Publication impossible » → « Résoudre les conflits » → « Tout prendre à gauche », « Merger », « Finaliser le merge » → commit de merge de l'utilisateur web sur la forge, valeur du web retenue. |
+
 Couverture [E2E] de S2-3 (parité) : création / modification / relecture d'exigence, lien
 test → exigence, ouverture de chaque vue de la barre d'activité (Projet, Suivi, Exigences, Tests,
 Campagnes, Paramètres, Recherche, Version, Analyse d'impact, Compte) sans erreur ; S2-6 vérifie aussi
 le refus d'exécution hors outil sur une campagne clôturée ; S2-8 coupe réellement la WebSocket
-(`routeWebSocket`) puis laisse le navigateur hors ligne 3 s. Le reste du parcours de parité
-(baselines, dashboards en édition, recherche/remplacement, conflit GH37) reste [M].
+(`routeWebSocket`) puis laisse le navigateur hors ligne 3 s. Restent [M] : comparaison de
+baselines et analyse d'impact entre baselines, requêtes SQL avancées, exports PDF (sprint 4).
 
 ## Sprint 3 — Forge, sessions, multi-utilisateurs (Forgejo de #45)
 

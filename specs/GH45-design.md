@@ -1,0 +1,614 @@
+# GH45 — Design technique
+
+Entrée : `specs/GH45.md` (validée le 2026-10-09, amendée multi-instance, commit aeda6b0).
+Base : branche `GH45` créée depuis `GH44` @ ece9810 (`HostContext`/`TokenStore`, serveur web S2).
+
+## 1. Contraintes qui structurent le design
+
+| Constat | Conséquence |
+|---|---|
+| Pas de Docker ni de WSL sur le poste de dev. | Les tests sur un vrai Forgejo ou un vrai Gitea se font **sur le VPS** (`vps-f515f9c6`, avant tout client). Le kit d'infra de base passe donc **avant** le code Polenta. |
+| Les deux transports (IPC Electron, bridge HTTP de GH44) ne transmettent que `error.message`. | La classification 401/403 voyage **dans le message**, sous forme d'un marqueur structuré (§3.4). |
+| `git-http.ts` porte déjà un garde d'URL (`setGitRemoteGuard`, anti-SSRF du web). | Les appels API de forge passent par le **même garde** (§3.2). |
+| `@polenta/types` contient déjà du code runtime (`parameter-refs.ts`, `schema.ts`…). | Le marqueur d'erreur partagé entre main et renderer y vit (§3.4). |
+| La démo (`demo-ll800-produit`) déclare 4 composants sur github.com, épinglés par branche, tag ou SHA. | Le miroir de démo importe les 5 repos (tags compris) puis réécrit les URLs dans `polenta-repo.yaml` (§5.5). |
+| Le multi-instance donne un sous-domaine par client. | **Prérequis humain** : un domaine avec un enregistrement wildcard (`*.forge.<domaine>` en A et AAAA vers le VPS). Le nom OVH du VPS ne fournit pas de sous-domaines. |
+
+## 2. Découpage en sprints
+
+| Sprint | Contenu | Dépend de | Débloque |
+|---|---|---|---|
+| **S1** | Infra de base : `polenta-host.sh setup`, `instance add/list/stop/start`, `polenta-admin.sh` (sauf `access report`), sites Caddy, isolation. **Point de vérification API** (§6). | Prérequis humains (§7) | Forge réelle pour S2 ; GH44 S3 (OIDC : `oauth-app create`) |
+| **S2** | P0 Polenta : providers, identité, configuration machine, connexion par mot de passe → jeton, 401/403 (bannière, auto-pull), compte courant, message GH30. Tests réels Forgejo + Gitea. | S1 | **GH44 S3** |
+| **S3** | Infra exploitation : sauvegarde/restauration, `update` avec retour arrière, `export`/`remove`, fail2ban, `access report`, RUNBOOK. Test de réinstallation de l'OS. | S1 | **GH44 S4** |
+| **S4** | P1 : liste des repos, création sur le serveur (projet et composant), champ `user`, diagnostic de droits. Mises à jour SPEC (dernier sprint). | S2 | — |
+
+S2 et S3 sont indépendants l'un de l'autre et peuvent s'enchaîner dans un ordre ou l'autre.
+
+---
+
+## 3. Polenta — P0 (sprint S2)
+
+### 3.1 Types partagés — `packages/types/src/forge.ts` (nouveau)
+
+```ts
+export type ForgeKind = 'github' | 'forgejo' | 'generic'
+
+export interface ForgeIdentity { login: string; name: string; email: string }
+
+export interface ForgeAccount {          // ce que l'UI affiche du compte courant (sans jeton)
+  key: string                            // `${host}:${login}` — clé keytar et defaultAccount actuels
+  provider: ForgeKind
+  baseUrl: string                        // scheme + host + port, sans slash final
+  host: string
+  login: string; name: string; email: string
+}
+
+export interface MachineConfig {
+  defaultServer?: string                 // baseUrl normalisée
+  hideGithub: boolean
+  demoProjectUrl?: string
+  autoUpdate?: false                     // seule valeur significative
+}
+
+export type PasswordLoginResult =
+  | { status: 'ok'; account: ForgeAccount }
+  | { status: 'otp-required' }
+  | { status: 'invalid-otp' }
+  | { status: 'invalid-credentials' }
+  | { status: 'account-disabled' }
+  | { status: 'not-a-forge' }
+  | { status: 'network'; message: string }
+
+// Marqueur d'erreur d'accès (§3.4)
+export interface ForgeAccessIssue { status: 401 | 403; host: string; repo?: string }
+export function encodeForgeAccessError(issue: ForgeAccessIssue, humanMessage: string): string
+export function parseForgeAccessError(message: string): { issue: ForgeAccessIssue; humanMessage: string } | null
+```
+
+`AppSettings` (`app.ts`) gagne `autoCheckUpdatesLocked?: boolean`, en lecture seule, calculé et jamais
+écrit. `IntegrationRemoteState` gagne `accessRevoked?: boolean`, à côté de `offline` (GH43).
+
+### 3.2 Couche forge — `apps/desktop/src/main/services/forge/` (nouveau dossier)
+
+Exception assumée à « services à plat » (SPEC-ELECTRON-DESKTOP §2–3) : 6 fichiers cohérents. La SPEC
+sera mise à jour au S4.
+
+| Fichier | Rôle |
+|---|---|
+| `remote-guard.ts` | `setRemoteGuard` / `checkRemote(url)`, extraits de `git-http.ts`, qui s'en sert désormais. Un seul garde pour git **et** l'API. `setGitRemoteGuard` reste un alias (aucun changement d'appel côté `web-server/hardening.ts`). |
+| `forge-http.ts` | `forgeRequest(url, { method, token?, basic?, otp?, json? })` : `checkRemote`, puis proxy (`resolveProxyDispatcher`), puis undici. Lève `ForgeHttpError { status, body, url }` sur un statut ≥ 400 et laisse passer les erreurs réseau (`isNetworkUnreachable` continue de fonctionner). `paginate(url, …)` : `page`/`limit=50` jusqu'à une page incomplète. |
+| `forge-provider.ts` | Interface `ForgeProvider` (ci-dessous) et `providerFor(kind)`. |
+| `github.provider.ts` | `resolveIdentity` (code actuel de `resolveGithubIdentity`), Device Flow (déplacé depuis `AuthService`), `GITHUB_HOST`. **Seul endroit où `github.com` est écrit en dur** (critère 9). |
+| `forgejo.provider.ts` | API `/api/v1`, pour Forgejo et Gitea (§3.3). |
+| `forge-detect.ts` | `detectForgeKind(baseUrl)` : hôte du provider GitHub → `github` ; sinon `GET /api/v1/version` → JSON `{version: string}` donne `forgejo` ; sinon `generic`. Erreur réseau → propagée (l'UI affiche le message réseau). |
+
+```ts
+export interface ForgeProvider {
+  readonly kind: ForgeKind
+  resolveIdentity(baseUrl: string, token: string): Promise<ForgeIdentity>
+  // Optionnels — implémentés par forgejo seulement en V1 (spec hors scope : rien pour github)
+  createAccessToken?(baseUrl: string, login: string, password: string, otp: string | undefined,
+                     tokenName: string): Promise<string>
+  listRepos?(baseUrl: string, token: string): Promise<ForgeRepo[]>
+  listCreatableOrgs?(baseUrl: string, token: string, login: string): Promise<ForgeOrg[]>
+  repoExists?(baseUrl: string, token: string, owner: string, name: string): Promise<boolean>
+  createOrgRepo?(baseUrl: string, token: string, org: string, name: string): Promise<ForgeRepo>
+  repoPermissions?(baseUrl: string, token: string, owner: string, repo: string):
+                   Promise<{ pull: boolean; push: boolean; admin: boolean } | null>
+  orgMembers?(baseUrl: string, token: string, owner: string): Promise<ForgeMember[] | null>  // null : owner n'est pas une organisation
+}
+```
+
+`generic` n'a pas de provider : `providerFor('generic')` renvoie `null`, et les appelants gardent le
+comportement actuel (repli d'identité minimal, aucune fonction P1).
+
+### 3.3 Provider Forgejo/Gitea
+
+| Fonction | Appel | Notes |
+|---|---|---|
+| identité | `GET /api/v1/user` | `name = full_name \|\| login` ; `email` tel quel (adresse noreply si l'utilisateur masque la sienne) |
+| jeton | `POST /api/v1/users/{login}/tokens`, Basic Auth, en-têtes `X-Gitea-OTP` **et** `X-Forgejo-OTP` si un code est fourni | Corps `{ name, scopes }`. Réponse : `sha1`. Scopes et forme exacte des erreurs (2FA requise, code invalide, compte désactivé) **figés au point de vérification §6**. |
+| repos | `GET /api/v1/user/repos` paginé | `full_name`, `clone_url`, `description`, `permissions` |
+| orgs créables | `GET /api/v1/user/orgs`, puis `GET /api/v1/users/{login}/orgs/{org}/permissions` → `can_create_repository` | Endpoint à confirmer au §6. Repli : `is_owner \|\| can_create_repository`. |
+| existe ? | `GET /api/v1/repos/{owner}/{name}` | 404 → libre |
+| création | `POST /api/v1/orgs/{org}/repos` `{ name, private: true, auto_init: false, default_branch: 'main' }` | 409 → nom pris |
+| permissions | `GET /api/v1/repos/{owner}/{repo}` → `permissions` | 404/403 → `null` (pas d'accès) |
+| membres | `GET /api/v1/orgs/{owner}/members` paginé | 404 sur `/orgs/{owner}` → `null` (owner = utilisateur) |
+
+Nom du jeton : `polenta-<HostContext.deviceLabel>-<AAAAMMJJ-HHmm>`. `deviceLabel` est un nouveau champ
+**optionnel** de `HostContext` : `os.hostname()` sur le desktop, `web` sur le serveur web (que GH44 S3
+pourra préciser), absent pour MCP (le MCP ne se connecte pas).
+
+### 3.4 Erreurs d'accès — `main/services/forge/forge-access.ts`
+
+- `httpStatusOf(err)` :
+  - isomorphic-git `HttpError` → `data.statusCode` (code déplacé depuis `workspace-tree.service.ts`) ;
+  - binaire git natif → stderr `/returned error: (401|403)/`, ou `Authentication failed` → 401 ;
+  - `ForgeHttpError` → `status`.
+- `class ForgeAccessError extends Error` : son `message` = `encodeForgeAccessError(issue, texteFR)`.
+  Le marqueur est `⟦forge-access {"status":401,"host":"…"}⟧ `, suivi du texte lisible. Les deux
+  transports gardent le message intact. L'IPC Electron le préfixe de `Error invoking remote method …`,
+  c'est pourquoi `parseForgeAccessError` cherche le marqueur **n'importe où** dans le message.
+- Règles (dans `SyncService`, autour de `clone`, `fetch`, `push`, `pushBranch`, `pull`,
+  `pullFastForwardOnly`, `resyncIntegration`, `deleteRemoteBranch` ; et dans les appels API des
+  providers) :
+  - **401 avec des identifiants envoyés** → `auth.markAccessRevoked(host)`, puis `ForgeAccessError(401)`.
+    Sans identifiants (aucun compte pour cet hôte), l'erreur d'origine est conservée : le message
+    GH30 « aucun compte configuré » continue de s'appliquer.
+  - **403 sur une opération d'écriture** (`push`, `pushBranch`, `deleteRemoteBranch`) →
+    `ForgeAccessError(403, repo)`, avec le texte de la spec §5.3. Un 403 en lecture reste l'erreur
+    d'origine (chemin GH30).
+- `autoSync` : si `auth.isAccessRevoked(host)` → renvoie `integrationState(...)` avec
+  `accessRevoked: true`, **sans appel réseau**. Un 401 pendant le tick → marque l'hôte, renvoie aussi
+  `accessRevoked: true`, sans lever (même logique que `offline`).
+- `markAccessRevoked` est un `Set<host>` en mémoire dans `AuthService` (par processus ; sur le web, par
+  conteneur d'utilisateur). Il est levé par une connexion réussie sur cet hôte.
+
+### 3.5 `AuthService` (modifié)
+
+- `StoredAccount` gagne `provider?: ForgeKind` et `baseUrl?: string`. Normalisation **à la lecture** :
+  - absents → `provider = host === GITHUB_HOST ? 'github' : 'generic'` ;
+  - `baseUrl = https://${remoteHost}`.
+
+  On n'écrit jamais de migration : le fichier n'est réécrit qu'à la prochaine sauvegarde.
+- `resolveIdentity(remote, token)` → via `providerFor(kind)` ; `generic` → repli minimal actuel.
+- `persistToken(remote, token, kind)` : pour `github`/`forgejo`, un échec d'identité **lève une
+  erreur** (plus de compte « Git User »). Le repli ne reste que pour `generic`.
+- `setup(remote, pat)` (formulaire jeton) détecte d'abord le type de forge.
+- **Nouveau** `loginWithPassword(serverUrl, login, password, otp?)` → `PasswordLoginResult` :
+  1. `detectForgeKind` doit renvoyer `forgejo`, sinon `not-a-forge` ;
+  2. `createAccessToken` ;
+  3. `persistToken` ;
+  4. `clearAccessRevoked(host)`.
+
+  Le mot de passe n'est passé qu'à `forgeRequest` (en-tête `Authorization` construit localement).
+  Il n'est jamais journalisé, et les messages de `ForgeHttpError` n'incluent ni les en-têtes ni le
+  corps de la requête.
+- **Nouveau** `currentAccount(): ForgeAccount | null` : compte par défaut, lu dans `auth.json`, sans
+  réseau. Il remplace les 3 boucles `KNOWN_REMOTES` du renderer (`AccountMenu.tsx`,
+  `AccountPanel.tsx`, `routes/account.tsx`).
+- **Nouveau** `logout()` : supprime les jetons (`host` et `host:login`) et le compte de `auth.json`,
+  puis promeut le compte suivant en compte par défaut s'il y en a un.
+- `hasAnyAccount` / `projectUsername` : comptes enregistrés et hôte d'`origin`. Les jetons nus
+  hérités (saisis avant les comptes) sont **migrés une fois** au démarrage
+  (`migrateLegacyBareTokens`) : pour chacun des 2 hôtes historiques qui a un jeton nu sans compte, un
+  compte est créé (identité résolue ; si l'échec est réseau, on réessaie au prochain démarrage). La
+  constante `LEGACY_BARE_TOKEN_HOSTS` est la seule liste d'hôtes hors provider, documentée comme
+  migration (critère 9).
+- `providerKindForUrl(url)` : compte de cet hôte → son `provider`, sinon `null`. Utilisé par le
+  message GH30 et par P1.
+
+### 3.6 Configuration machine
+
+- `main/services/machine-config.ts` (fonction pure + lecture du fichier) :
+  `loadMachineConfig({ platform, env, readFile, log }) → MachineConfig`.
+  - Chemin :
+    - `env.POLENTA_CONFIG` ;
+    - sinon, sous Windows, `%ProgramData%\Polenta\config.json` ;
+    - sous macOS, `/Library/Application Support/Polenta/config.json` ;
+    - sous Linux, `/etc/polenta/config.json`.
+  - Validation clé par clé : URL http(s) pour `defaultServer` et `demoProjectUrl` (normalisées),
+    booléen pour `hideGithub`, `false` seulement pour `autoUpdate`. Une clé inconnue ou invalide est
+    ignorée, avec un `log.warn`. Un JSON illisible donne `{ hideGithub: false }`, avec un `log.warn`.
+- `HostContext.machineConfig: MachineConfig` (**requis**) :
+  - desktop : `createElectronHostContext()` le charge une fois au démarrage ;
+  - web : `web-host.ts` le construit depuis `POLENTA_WEB_DEFAULT_SERVER` (par défaut : premier hôte
+    de `POLENTA_WEB_GIT_HOSTS` en https) et `POLENTA_WEB_DEMO_PROJECT_URL`, avec `hideGithub: true`
+    si l'hôte n'est pas github.com ;
+  - MCP : `{ hideGithub: false }`.
+- Nouveau channel partagé `app:get-machine-config`.
+- `AppSettingsService` reçoit `machineConfig` : si `autoUpdate === false`, `get()` renvoie
+  `autoCheckUpdates: false, autoCheckUpdatesLocked: true`, et `set()` ignore `autoCheckUpdates`.
+  `UpdateService.scheduleStartupCheck` ne change pas (il lit `get()`) : aucune requête vers github.com
+  (critère 4).
+
+### 3.7 IPC (channels partagés, sauf mention contraire)
+
+| Channel | Service |
+|---|---|
+| `auth:detect-forge(serverUrl)` | `detectForgeKind` |
+| `auth:login-password(serverUrl, login, password, otp?)` | `loginWithPassword` |
+| `auth:current-account()` | `currentAccount` |
+| `auth:logout()` | `logout` — **desktop uniquement** (le web a sa propre déconnexion de session) |
+| `app:get-machine-config()` | `host.machineConfig` |
+
+Ils sont ajoutés à `@polenta/api-client` et à la liste blanche des channels du serveur web
+(`channel-policy.ts`). Sur le web, `auth:login-password` **n'est pas exposé** : la connexion se fait par
+OIDC (GH44 S3).
+
+### 3.8 Renderer
+
+- `renderer/api.ts` : `createIpcClient(invoke)` reçoit un `invoke` enveloppé. Sur rejet, l'enveloppe
+  appelle `parseForgeAccessError(message)` ; si c'est une erreur d'accès, elle appelle
+  `forgeAccessNotices.report(issue)` et **relance une erreur dont le message est le texte lisible
+  seul**. Toutes les UI existantes (Publier, indicateur de sync, clone) affichent ainsi un texte
+  propre sans modification. `@polenta/api-client` : `createIpcClient(invoke = window.polenta.invoke)`
+  (paramètre optionnel).
+- `renderer/lib/forgeAccessNotices.ts` : petit store (`report` / `subscribe` / `clear(host)`),
+  dédupliqué par hôte pour les 401 jusqu'à `clear` (appelé après une connexion réussie).
+- `components/layout/ForgeAccessBanner.tsx` (monté dans `AppLayout`) : bannière 401
+  « Votre accès au serveur <hôte> a été révoqué ou a expiré. Reconnectez-vous. »
+  - desktop : bouton → `/login?server=<baseUrl>` ;
+  - web : redirection `/auth/login` (GH44 S3 invalide la session).
+- `hooks/useAutoPull.ts` : si `accessRevoked` → `forgeAccessNotices.report({ status: 401, host })` et
+  `sync:last-error` avec le texte. Pas de `console.warn` à chaque tick (critère 5).
+- `routes/login.tsx` (refonte du formulaire desktop) :
+  - le sélecteur de serveur vient de `machineConfig`. Avec `hideGithub` et `defaultServer`, le
+    serveur est affiché seul, sans sélecteur ;
+  - le type de forge est détecté à la validation de l'URL (`auth:detect-forge`), avec un anti-rebond :
+    - `github` → formulaire actuel (jeton + Device Flow) ;
+    - `forgejo` → identifiant / mot de passe, puis un champ code 2FA qui n'apparaît que sur
+      `otp-required`, et un lien « Utiliser un jeton » ;
+    - `generic` → jeton ;
+  - le paramètre de recherche `server` pré-remplit l'URL (retour depuis la bannière).
+- `AccountMenu.tsx`, `AccountPanel.tsx`, `routes/account.tsx` : un hook `useCurrentAccount()`
+  (`auth:current-account`) remplace les 3 boucles `KNOWN_REMOTES` (supprimées). La déconnexion passe
+  par `auth:logout`, avec une ligne d'aide (spec §4.5) pour un compte `forgejo`.
+- `AccountPanel` : case « Vérifier les mises à jour » désactivée, avec une infobulle, si
+  `autoCheckUpdatesLocked`.
+- `routes/index.tsx` : bouton Démo → `machineConfig.demoProjectUrl ?? (hideGithub ? masqué :
+  DEMO_PROJECT_URL)`.
+- i18n FR/EN pour tous les nouveaux textes (`login.*`, `forgeAccess.*`, `account.*`).
+
+### 3.9 Message GH30 (`workspace-tree.service.ts`)
+
+`httpErrorStatus` est remplacé par `httpStatusOf` (§3.4), et un `ForgeAccessError` 401 est reconnu.
+Le texte dépend de `auth.providerKindForUrl(node.url)` : pour `forgejo`, « Votre compte n'a pas accès
+au dépôt "<nom>" (<url>). Demandez à l'administrateur de vous ajouter à une équipe qui y a accès. »
+Pour `github` et `null`, les textes actuels sont inchangés. `WorkspaceTreeService` reçoit `auth` (ajout
+au constructeur, `container.ts`).
+
+---
+
+## 4. Polenta — P1 (sprint S4)
+
+### 4.1 Service `ForgeService` — `main/services/forge/forge.service.ts`
+
+Il dépend d'`AuthService` (comptes, jetons, provider par URL) et de `SyncService`/`WorkspaceService`.
+
+| Méthode | Comportement |
+|---|---|
+| `accounts()` | Comptes `forgejo` (sélecteur quand il y en a plusieurs) |
+| `listRepos(accountKey)` | Provider `listRepos`, avec `readOnly = !permissions.push` |
+| `creatableOrgs(accountKey)` | `listCreatableOrgs` |
+| `repoAccess(repoPath)` | URL d'`origin`, provider, `repoPermissions` ; `null` si hors ligne, non-forgejo ou sans compte (aucune erreur) |
+| `orgMembers(repoPath)` | Owner tiré de l'URL d'`origin`, puis `orgMembers`, avec un cache par `(host, org)` pour la durée du processus ; `null` dans les cas sans objet |
+
+### 4.2 Création sur le serveur (côté main, pour un ordre et une gestion d'échec maîtrisés)
+
+`WorkspaceService.createOnServer(containerDir, name, accountKey, org)` :
+
+1. `repoExists` → **erreur avant toute écriture locale** si le nom est pris (spec §6.4).
+2. `createOrgRepo`.
+3. `createNewProject(containerDir, name)` (inchangé, GH27).
+4. Ajout d'`origin` = `clone_url`.
+5. `pushBranch(main)`.
+6. Résultat `{ ...WorkspaceOpenResult, pushWarning?: string }` : un échec du push n'annule rien (spec
+   §6.3). Le repo distant n'est **jamais** supprimé.
+
+`WorkspaceService.createComponentOnServer(workspaceDir, name, accountKey, org)` : mêmes étapes 1 à 5
+sur `workspaceDir/<name>`, avec le même contenu initial que `createNewProject`. Il renvoie
+`clone_url`, que la modale inscrit dans le champ URL.
+
+Channels :
+- `forge:accounts` ;
+- `forge:list-repos` ;
+- `forge:creatable-orgs` ;
+- `forge:repo-access` ;
+- `forge:org-members` ;
+- `workspace:create-on-server` ;
+- `workspace:create-component-on-server`.
+
+Tous sont partagés. La garde de chemins du web s'applique aux arguments `containerDir`/`workspaceDir`.
+
+### 4.3 UI
+
+- `components/home/RepoPickerModal.tsx` (accueil « Depuis un repo ») :
+  - liste filtrable (`organisation/nom`, description), badge « lecture seule » ;
+  - sélecteur de compte s'il y en a plusieurs ;
+  - lien « Saisir une URL » vers le `TextPromptModal` actuel ;
+  - n'est affichée que si `forge:accounts` n'est pas vide, sinon flux actuel.
+- `components/home/CreateProjectModal.tsx` (accueil « Créer ») :
+  - nom, puis choix « Sur ce poste » / « Sur le serveur <hôte> » ;
+  - organisation : seulement les organisations créables. S'il n'y en a aucune, l'option est
+    désactivée avec une explication ;
+  - sans compte `forgejo` → `TextPromptModal` actuel.
+- `AddDependencyModal.tsx` : bouton « Créer le repo sur le serveur » (organisation + nom), qui remplit
+  l'URL au retour.
+- `components/system/UserFieldInput.tsx` : `<input list>` + `<datalist>` alimenté par
+  `forge:org-members` (React Query, `staleTime: Infinity`). Il est utilisé par `EditView` (cas
+  `user`) et par tout autre éditeur du type `user` repéré au S4. La saisie reste libre.
+- `hooks/useRepoAccessDiagnostic.ts` + bandeau dans `AppLayout` :
+  - au chargement du workspace, `forge:repo-access` sur la racine ;
+  - `push === false` → bandeau non bloquant (spec §8.2). Les dépendances sans accès sont déjà
+    signalées par §3.9.
+
+---
+
+## 5. Infra — kit `deploy/` (sprints S1 et S3)
+
+### 5.1 Arborescence (écart à la spec : `app.ini.tmpl` remplacé par des variables d'environnement)
+
+```
+deploy/
+├── polenta-host.sh            setup | status | instance <add|list|stop|start|update|backup|restore|export|remove>
+├── polenta-admin.sh           --instance <nom> user|team|project|access|oauth-app …
+├── lib/
+│   ├── common.sh              log/die, require_root, check_os, env (lecture/écriture idempotente), confirm
+│   ├── forgejo-api.sh         api GET/POST/PATCH/DELETE (curl + jq, jeton ops), pagination
+│   ├── caddy.sh               génération du site d'instance, connexion réseau, rechargement à chaud
+│   └── backup.sh              restic par instance (env, backup, forget/prune, restore, ping)
+├── host/
+│   ├── docker-compose.yml     caddy:<version épinglée>, ports 80/443, volumes data/config/sites
+│   └── Caddyfile              { email {$ACME_EMAIL} } + import /etc/caddy/sites/*.caddy
+├── instance/
+│   ├── docker-compose.yml     forgejo (image `${FORGE_IMAGE}:${FORGE_VERSION}`), réseau propre ; profil polenta-web
+│   └── instance.env.example
+├── host.env.example
+├── config.example.json
+├── tests/acceptance.sh        vérifications non destructives depuis l'extérieur (§8)
+└── RUNBOOK.md
+```
+
+État sur l'hôte :
+- `/opt/polenta/kit/` : copie du kit ;
+- `/opt/polenta/host.env` ;
+- `/opt/polenta/caddy/{data,config,sites}/` ;
+- `/opt/polenta/instances/<nom>/{instance.env,data/,admin.log}` ;
+- `/usr/local/bin/polenta-host` et `/usr/local/bin/polenta-admin` (liens) ;
+- `/var/log/polenta/`.
+
+Dépendances installées par `setup` : `docker-ce` + plugin `compose`, `jq`, `curl`, `dnsutils`,
+`restic`, `ufw`, `fail2ban`, `unattended-upgrades`.
+
+### 5.2 Configuration Forgejo par variables (`instance.env`)
+
+Variables `FORGEJO__section__KEY`. Pour qu'un même fichier serve aussi au test de compatibilité Gitea
+(image surchargée par `FORGE_IMAGE`), le kit les écrit aussi en `GITEA__…`. *La prise en charge du
+préfixe par chacune des deux images est vérifiée au §6* ; on n'en garde qu'un si l'autre suffit.
+
+| Clé | Valeur |
+|---|---|
+| `server.ROOT_URL` / `DOMAIN` | `https://<domaine>/` |
+| `server.DISABLE_SSH` / `START_SSH_SERVER` / `LFS_START_SERVER` | `true` / `false` / `false` |
+| `service.DISABLE_REGISTRATION` / `REQUIRE_SIGNIN_VIEW` | `true` / `true` |
+| `repository.FORCE_PRIVATE` / `DEFAULT_PRIVATE` | `true` / `private` |
+| `repository.upload.FILE_MAX_SIZE`, `server.LFS_MAX_FILE_SIZE` | 50 (Mo) / 0 |
+| `security.INSTALL_LOCK` / `SECRET_KEY` / `INTERNAL_TOKEN` | `true` / générés |
+| `security.DISABLE_GIT_HOOKS` | `true` |
+| `security.REVERSE_PROXY_LIMIT` / `REVERSE_PROXY_TRUSTED_PROXIES` | `1` / sous-réseau du réseau d'instance (IP client réelle pour les journaux et fail2ban) |
+| `database.DB_TYPE` | `sqlite3` |
+| `mailer.*` | Depuis `host.env` (`SMTP_*`), surchargeable par instance ; absent → mailer désactivé |
+| `log.MODE` / `log.ROOT_PATH` | `console, file` / `/data/log` (lu par fail2ban) |
+
+`SECRET_KEY` fait partie des données à sauvegarder : il chiffre les secrets 2FA. `instance.env` est
+donc inclus dans la sauvegarde restic (chiffrée).
+
+### 5.3 Réseau et TLS
+
+- Chaque instance est un projet compose `polenta-<nom>`, avec un réseau bridge `polenta-<nom>`.
+  Forgejo **ne publie aucun port**.
+- Caddy est relié à chaque réseau d'instance par `docker network connect`, à chaud, sans redémarrage.
+  Le `docker-compose.yml` de l'hôte est régénéré avec la liste des réseaux externes, pour rester
+  cohérent si Caddy est recréé. Les instances n'ont aucun réseau commun (critère 15).
+- Site d'instance : `/opt/polenta/caddy/sites/<nom>.caddy` → `reverse_proxy forgejo-<nom>:3000`,
+  plus les en-têtes (HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options SAMEORIGIN`),
+  plus `request_body max_size 60MB`. Rechargement par
+  `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` (sans coupure).
+- Docker contourne `ufw` pour les ports publiés : seuls 80 et 443 le sont, par Caddy. **fail2ban
+  utilise la chaîne `DOCKER-USER`** pour bannir le trafic à destination de Caddy (dans `INPUT`, le ban
+  n'aurait aucun effet).
+
+### 5.4 `setup` (S1)
+
+Étapes de spec §9.2, avec deux précisions :
+
+- **IP publique** : `ip -4 route get 1.1.1.1` (adresse source), et l'équivalent en IPv6.
+- **Durcissement SSH** : drop-in `/etc/ssh/sshd_config.d/10-polenta.conf`, appliqué seulement si
+  `~$SUDO_USER/.ssh/authorized_keys` contient au moins une clé, puis `sshd -t` et un rechargement. Sur
+  un échec de `sshd -t`, le drop-in est retiré.
+
+`unattended-upgrades` avec redémarrage automatique à 04:00. Le cron `/etc/cron.d/polenta` est
+complété au S3.
+
+### 5.5 `instance add` (S1)
+
+Étapes de spec §9.4. Précisions :
+
+- **Compte d'exploitation** : `forgejo admin user create --admin --username polenta-ops …`, puis
+  `forgejo admin user generate-access-token --username polenta-ops --scopes all --raw`. Le jeton
+  `OPS_TOKEN` va dans `instance.env`. Toutes les opérations suivantes passent par l'API avec ce jeton.
+- **Équipes** (`POST /orgs/{org}/teams`, `includes_all_repositories: true`, unités code/issues/…) :
+
+  | Équipe | Permission | Peut créer des repos |
+  |---|---|---|
+  | `auteurs` | `write` | **oui** (création de projet depuis Polenta, spec §6.2) |
+  | `testeurs` | `write` | non |
+  | `lecteurs` | `read` | non |
+
+- **Miroir de démo** (option `--no-demo` pour l'ignorer) :
+  1. `POST /repos/migrate` (import simple, pas un miroir, `mirror: false`) pour la racine et les 4
+     composants (tags compris, pour les pins `v1.1`/`v2.0` et le SHA) ;
+  2. réécriture des URLs github.com → instance dans `polenta-repo.yaml` de la racine
+     (`PUT /repos/{org}/{racine}/contents/polenta-repo.yaml`, commit de `polenta-ops`) ;
+  3. URL de la racine → `demoProjectUrl` du `config.json` généré.
+- **Garde mémoire** : `MemAvailable` < 512 Mo → avertissement et confirmation (`--yes` pour forcer).
+
+### 5.6 `polenta-admin.sh` (S1, sauf `access report` au S3)
+
+- `--instance` est facultatif s'il n'y a qu'une instance, et obligatoire sinon (erreur qui liste les
+  instances). L'outil lit `OPS_TOKEN` et le domaine dans `instance.env`.
+- **`user add`** : `POST /admin/users` (`must_change_password: true`, mot de passe aléatoire de 20
+  caractères). Le mot de passe est **affiché** si le SMTP est absent ; sinon, `send_notify: true`.
+- **`user import`** : CSV `;`, en-tête obligatoire, et un rapport `OK/ERREUR` par ligne.
+- **`user disable`** : `PATCH /admin/users/{login}` `{ prohibit_login: true }`, puis suppression des
+  jetons (`GET`/`DELETE /users/{login}/tokens` avec `Sudo: <login>`). *Le comportement exact (un jeton
+  existant est-il refusé dès `prohibit_login` ?) est vérifié au §6.* La suppression explicite des
+  jetons garantit le critère 19 dans tous les cas.
+- **`project create`** :
+  1. création du repo ;
+  2. contenu initial = mêmes fichiers que `createNewProject` (`.gitignore`, `AGENTS.md`), poussés par
+     `POST /repos/{org}/{repo}/contents` ;
+  3. rattachement aux équipes données (sinon, les équipes « tous les repos » s'appliquent déjà).
+- **`oauth-app create`** : `POST /user/applications/oauth2`, avec `confidential_client: true` pour
+  `polenta-web`.
+- **`access report`** (S3) :
+  - pour chaque repo, `GET /repos/{o}/{r}/collaborators` + `…/collaborators/{u}/permission` ;
+  - équipes : `GET /repos/{o}/{r}/teams` + `GET /teams/{id}/members` ;
+  - sortie : droit effectif maximal par (utilisateur, repo), en tableau ou `--csv`.
+- Chaque commande d'écriture ajoute une ligne `date ISO | instance | commande (sans mot de passe) |
+  OK/ERREUR` dans `admin.log`.
+
+### 5.7 Sauvegarde et restauration (S3)
+
+- **Méthode retenue : arrêt court de l'instance, puis copie restic de `data/` + `instance.env`, puis
+  redémarrage** (~10 à 30 s par instance, à 02:30). C'est la seule façon d'obtenir une copie SQLite et
+  dépôts parfaitement cohérente sans procédure de restauration SQL. On restaure en remettant le
+  dossier en place et en lançant le compose.
+  - Rejeté : `forgejo dump` comme sauvegarde principale. Sa restauration est manuelle et non
+    triviale. Il est en revanche **inclus dans `instance export`**, parce qu'il est le format portable
+    vers un autre Forgejo.
+- **Dépôt restic** : `s3:<BACKUP_S3_ENDPOINT>/<bucket>/<instance>`, avec un `RESTIC_PASSWORD` propre à
+  l'instance.
+  - Rétention : `forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12`, `prune` le dimanche.
+  - Tags : `nightly`, `pre-update`, `manual`.
+- **Ping** : `BACKUP_PING_URL` en cas de succès, `…/fail` en cas d'échec. Une instance en échec
+  n'arrête pas la boucle `--all`.
+- **`instance restore <nom> --from <id|latest>`** sur un hôte préparé :
+  1. `restic restore` dans `instances/<nom>/` (dossier absent, ou `--force` après confirmation) ;
+  2. compose up ;
+  3. site Caddy et réseau ;
+  4. `healthz`.
+
+  `--domain` permet de restaurer sous un autre nom ou domaine (test, ou bascule). `ROOT_URL` est alors
+  réécrit.
+- **`instance export <nom>`** → `/opt/polenta/exports/<nom>-<date>.tar.gz` + `.sha256`, contenant :
+  - `forgejo dump` (format portable) ;
+  - `data/` brut ;
+  - `instance.env` **expurgé** de `OPS_TOKEN` et des identifiants S3 (`SECRET_KEY` conservé : il est
+    nécessaire pour remonter) ;
+  - un `LISEZMOI.md` : comment remonter l'instance avec l'image Forgejo officielle à la même version.
+- **`instance remove <nom>`** :
+  1. `export` obligatoire ;
+  2. saisie du nom pour confirmer ;
+  3. `compose down -v`, puis déconnexion du réseau de Caddy ;
+  4. suppression du site et rechargement de Caddy ;
+  5. `rm -rf instances/<nom>`.
+
+  Le dépôt restic n'est pas touché, et le RUNBOOK documente sa purge.
+
+### 5.8 `instance update` avec retour arrière (S3)
+
+1. Sauvegarde taguée `pre-update`.
+2. `docker pull <image>:<version>`. Un échec ici (version inexistante) est le cas « version invalide »
+   du critère 17 : **rien n'a changé**, un message s'affiche et la commande sort.
+3. Arrêt, réécriture de `FORGE_VERSION`, démarrage.
+4. `healthz` pendant 180 s au maximum.
+5. En cas d'échec : arrêt, puis **restauration du snapshot `pre-update`**. Forgejo migre la base au
+   démarrage, donc remettre seulement l'ancienne image ne suffirait pas. Ensuite, ancienne version,
+   démarrage et `healthz`. Message d'échec avec le journal.
+
+`--all` traite les instances l'une après l'autre et s'arrête à la première en échec (après son
+retour arrière).
+
+### 5.9 fail2ban (S3)
+
+- Jail `sshd` standard.
+- Jail `polenta-forgejo` : `logpath` = glob `/opt/polenta/instances/*/data/log/forgejo.log` (relu
+  par `polenta-host` après chaque `add`/`remove`), filtre sur `Failed authentication attempt for .* from <HOST>`
+  *(ligne exacte vérifiée au §6)*, `action = iptables-allports[chain=DOCKER-USER]`, 10 essais en
+  10 min, ban d'1 h.
+
+---
+
+## 6. Point de vérification sur instance réelle (début de S1, résultats consignés dans `GH45-sprint1.md`)
+
+On monte, sur le VPS, une instance Forgejo de test avec le kit en cours de S1, puis une instance Gitea
+temporaire (`FORGE_IMAGE=gitea/gitea`). On vérifie et on fige :
+
+1. préfixe des variables d'environnement accepté par chaque image (§5.2) ;
+2. scopes minimaux d'un jeton pour : lire/écrire des repos d'organisation, créer un repo dans une
+   organisation, lire l'utilisateur et les membres ;
+3. réponses de `POST /users/{login}/tokens` :
+   - succès ;
+   - mauvais mot de passe ;
+   - 2FA requise sans code ;
+   - code invalide ;
+   - compte `prohibit_login` ;
+
+   statut + corps, avec les deux en-têtes OTP. Elles deviennent des fixtures pour les tests unitaires
+   de `forgejo.provider` ;
+4. endpoint des permissions d'organisation (`can_create_repository`) ;
+5. effet de `prohibit_login` sur un jeton existant (git HTTPS et API) ;
+6. ligne de journal d'un échec de connexion (filtre fail2ban) ;
+7. un jeton OAuth2 Forgejo est-il utilisable pour git HTTPS ? C'est le risque ouvert par GH44 S3
+   (`GH44-design.md` §8), mesuré ici pour lui.
+
+Un résultat qui contredit le design est corrigé dans ce fichier, et signalé au STOP HUMAIN du S1.
+
+## 7. Prérequis humains (avant S1)
+
+1. **Accès SSH par clé** à `debian@vps-f515f9c6.vps.ovh.net` (commande donnée dans le chat du
+   2026-10-09).
+2. **Domaine de test** avec un wildcard : `*.forge.<domaine>` en A → 152.228.240.152, en AAAA →
+   2001:41d0:305:2100::1:87cf. `BASE_DOMAIN=forge.<domaine>`.
+3. **Stockage S3 de sauvegarde** (avant S3 seulement) : bucket + clés d'accès, chez un autre fournisseur
+   que le VPS (analyse §5.5). Par exemple Scaleway Object Storage (Paris).
+4. Facultatif : SMTP (sinon les mots de passe temporaires sont affichés) et une URL de supervision
+   (healthchecks.io ou équivalent).
+
+## 8. Tests
+
+- **Unitaires (vitest)** : `vitest.config.ts` inclut aussi `src/main/services/**/*.test.ts`. Tests sur :
+  - `machine-config` ;
+  - `forge-detect` et `forgejo.provider` (serveur HTTP Node local, avec les fixtures du §6 :
+    pagination, 409, 401 OTP…) ;
+  - `forge-access` (classification + marqueur aller-retour) ;
+  - `AuthService` (normalisation des comptes hérités, `persistToken` qui lève une erreur pour une
+    forge connue, absence du mot de passe dans les erreurs).
+- **Shell** : `shellcheck` sur tous les scripts (installé sur le VPS au S1, et lancé là-bas).
+- **Acceptation infra** : `deploy/tests/acceptance.sh <domaine>...`, lancé depuis le poste de dev :
+  - HTTPS valide ;
+  - redirection vers la connexion sans session ;
+  - `/user/sign_up` désactivé ;
+  - ports 22/80/443 ouverts, 3000/2222/8080 fermés ;
+  - en-têtes de sécurité.
+- **Scénarios** : `specs/GH45-tests.md`.
+
+## 9. Fichiers touchés
+
+| Sprint | Créés | Modifiés |
+|---|---|---|
+| S1 | `deploy/**` (sauf sauvegarde, update, export, fail2ban), `specs/GH45-sprint1.md` | — |
+| S2 | `packages/types/src/forge.ts`, `main/services/forge/{remote-guard,forge-http,forge-provider,github.provider,forgejo.provider,forge-detect,forge-access}.ts`, `main/services/machine-config.ts`, `renderer/lib/forgeAccessNotices.ts`, `renderer/components/layout/ForgeAccessBanner.tsx`, `renderer/hooks/useCurrentAccount.ts`, tests | `packages/types/src/{index,app}.ts`, `packages/api-client/src/{ipc-client,types}.ts`, `main/host/{host-context,electron-host}.ts`, `main/services/{auth.service,sync.service,app-settings.service,workspace-tree.service,git-http}.ts`, `main/container.ts`, `main/ipc/{index,channels}.ts`, `mcp-server/*` (HostContext), `web-server/{web-host,channel-policy}.ts`, `renderer/api.ts`, `renderer/routes/{login,index,account}.tsx`, `renderer/components/{AccountMenu,sidebar/AccountPanel,layout/AppLayout}.tsx`, `renderer/hooks/useAutoPull.ts`, `renderer/i18n/locales/{fr,en}.json`, `vitest.config.ts` |
+| S3 | `deploy/lib/backup.sh`, fail2ban, `RUNBOOK.md` | `deploy/polenta-host.sh`, `deploy/polenta-admin.sh` |
+| S4 | `main/services/forge/forge.service.ts`, `renderer/components/home/{RepoPickerModal,CreateProjectModal}.tsx`, `renderer/components/system/UserFieldInput.tsx`, `renderer/hooks/useRepoAccessDiagnostic.ts` | `main/services/workspace.service.ts`, `main/container.ts`, IPC, api-client, `channel-policy.ts`, `renderer/routes/index.tsx`, `AddDependencyModal.tsx`, `EditView.tsx`, `AppLayout.tsx`, i18n ; SPEC (§10) |
+
+## 10. Mises à jour SPEC prévues (S4)
+
+- `SPEC-ACCOUNTS-AUTH.md` : providers, connexion par mot de passe → jeton, configuration machine,
+  compte courant / déconnexion, 401 révoqué.
+- `SPEC-ELECTRON-DESKTOP.md` :
+  - §2–3 : dossier `services/forge/`, exception à « services à plat » ;
+  - §16 : démo selon la configuration machine, nouvelles modales de l'accueil.
+- `SPEC-PROJECT-MANAGEMENT.md` §3+ : création sur le serveur.
+- `SPEC-FORKS-BRANCHES-BASELINES.md` §1–2 : 401/403 dans Publier et dans l'auto-pull (`accessRevoked`).
+- `SPEC-TECH-stack.md` §9 : `autoUpdate` verrouillé par la configuration machine.
+- `SPEC-REQ-requirements.md` §3 : champ `user` (autocomplétion).
+- `SPEC-TEMPLATES.md` §3 : `AddDependencyModal` (création distante).
+- `SPEC-ELECTRON-DESKTOP.md` §22 : message GH30 par provider.
+
+## 11. Décisions et alternatives rejetées
+
+| Décision | Alternative rejetée | Raison |
+|---|---|---|
+| Kit en Bash + curl/jq | Ansible ; un binaire Go/Node d'administration | Zéro dépendance sur le poste de l'exploitant. Lisible et modifiable par un admin système. |
+| Une instance = un projet compose + un réseau dédié | Un seul compose pour toutes les instances | Isolation, arrêt et mise à jour par client sans toucher aux autres (critère 15). |
+| Caddy relié à chaud aux réseaux d'instance | `docker compose up` de Caddy à chaque ajout | Pas de coupure des autres clients. |
+| SQLite par instance | Postgres partagé ; un Postgres par instance | Partagé = données mêlées ; un par instance = +200 Mo de RAM chacun. SQLite suffit pour moins de 50 utilisateurs par client. |
+| Sauvegarde par arrêt court + restic | `forgejo dump` seul | Restauration triviale et exacte. Le dump reste dans l'export portable. |
+| Marqueur d'erreur dans le message | Champs d'erreur structurés dans l'IPC | Les deux transports ne gardent que le message. Changer le bridge GH44 et l'IPC Electron touchait 200 channels. |
+| `forgeAccessNotices` + enveloppe de l'`invoke` | Gérer le 401 dans chaque appelant | Un seul point, et tous les textes existants deviennent propres sans modification. |
+| Création sur le serveur côté main en une seule étape | Enchaîner depuis le renderer | Ordre et gestion d'échec partiel garantis (spec §6.3), réutilisable par le web. |
+| Pas de provider `generic` | Interroger des API inconnues | Comportement actuel conservé pour les remotes inconnus. |

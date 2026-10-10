@@ -1,0 +1,40 @@
+# GH45 — une instance Forgejo (un client). Lancé par polenta-host avec
+#   docker compose -p polenta-<nom> --env-file <instance>/instance.env -f <kit>/instance/docker-compose.yml
+# Aucun port publié : seul le Caddy de l'hôte, relié au réseau polenta-<nom>, y accède.
+services:
+  forgejo:
+    image: ${FORGE_IMAGE}:${FORGE_VERSION}
+    container_name: forgejo-${INSTANCE_NAME}
+    restart: unless-stopped
+    env_file:
+      - ${INSTANCE_DIR}/forgejo.env
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+    volumes:
+      - ${INSTANCE_DIR}/data:/data
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # GH44 sprint 4 — client web Polenta de cette instance. Inactif tant que le profil « web »
+  # n'est pas demandé (image fournie par GH44).
+  polenta-web:
+    profiles: ["web"]
+    image: ${POLENTA_WEB_IMAGE:-polenta-web}:${POLENTA_WEB_VERSION:-none}
+    container_name: polenta-web-${INSTANCE_NAME}
+    restart: unless-stopped
+    volumes:
+      - ${INSTANCE_DIR}/web-data:/var/lib/polenta-web
+    networks:
+      - default
+
+networks:
+  default:
+    name: polenta-${INSTANCE_NAME}

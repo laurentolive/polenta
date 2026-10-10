@@ -612,3 +612,29 @@ Un résultat qui contredit le design est corrigé dans ce fichier, et signalé a
 | `forgeAccessNotices` + enveloppe de l'`invoke` | Gérer le 401 dans chaque appelant | Un seul point, et tous les textes existants deviennent propres sans modification. |
 | Création sur le serveur côté main en une seule étape | Enchaîner depuis le renderer | Ordre et gestion d'échec partiel garantis (spec §6.3), réutilisable par le web. |
 | Pas de provider `generic` | Interroger des API inconnues | Comportement actuel conservé pour les remotes inconnus. |
+
+---
+
+## 12. Révisions issues du sprint 1 (mesures sur instance réelle, `GH45-sprint1.md`)
+
+Ces révisions **remplacent** les passages concernés plus haut.
+
+### Pour S2 (Polenta)
+
+| Section | Révision |
+|---|---|
+| §3.3 jeton | Scopes : `write:repository`, `read:user`, **`write:organization`** (`read:organization` ne permet pas de créer un repo d'organisation). En-tête OTP : **`X-Gitea-OTP`** (accepté par Forgejo et Gitea ; `X-Forgejo-OTP` refusé par Gitea). |
+| §3.3 / §3.5 erreurs de connexion | Forgejo : 401 avec message distinctif (« password is invalid », « does not exist », « invalid provided OTP », « not allowed login »). Code 2FA demandé si la réponse est « invalid provided OTP » **et** qu'aucun code n'a été envoyé ; « code invalide » si un code a été envoyé. Gitea : 401 générique pour tous ces cas → résultat `invalid-credentials`, et l'écran de connexion d'un serveur Gitea affiche **toujours** un champ « Code 2FA (si activée) » facultatif. La détection Forgejo / Gitea vient de `GET /api/v1/version` (Forgejo répond aussi à `/api/forgejo/v1/version`). |
+| §3.3 organisations créables | `GET /users/{login}/orgs/{org}/permissions` → `can_create_repository` seul (ne pas utiliser `can_read`/`can_write`, incohérents sur Gitea). |
+| §3.4 accès révoqué | Un **compte désactivé ne produit pas de 401** : l'API répond **403** « prohibited from signing in », et git reçoit **HTTP 200 + page HTML** sur `info/refs` (erreur de protocole côté client). Règle révisée : pour un hôte `forgejo`, tout échec git qui n'est ni réseau ni un 403 d'écriture **déclenche une sonde** `GET /api/v1/user` avec le jeton → 401 = jeton révoqué/expiré, 403 contenant « prohibited » = compte désactivé ; les deux donnent `ForgeAccessError(401)` (même bannière, texte « accès révoqué ou compte désactivé »). Jeton invalide sur git : 401 `text/plain`, classé directement. |
+| §3.4 (GH44 S3) | Un jeton OAuth2 Forgejo/Gitea est utilisable pour git HTTPS (et l'API en `token`/`Bearer`) ; il expire (`expires_in`) et un `refresh_token` est fourni. Risque `GH44-design.md` §8 levé. |
+
+### Pour S3 (infra)
+
+| Section | Révision |
+|---|---|
+| §5.2 | Variables `GITEA__` seules, valeurs entre apostrophes (fait au S1). |
+| §5.6 `user disable` | Garantie = `prohibit_login` (vérifié sur les deux forges : jetons existants refusés). Suppression des jetons en plus sur Forgejo (liste admin + `Sudo` = 200) ; impossible sur Gitea (401), sans conséquence. |
+| §5.9 fail2ban | Fichier `data/log/gitea.log` (et non `forgejo.log`). Deux filtres : `Failed authentication attempt for .* from <HOST>` (connexion web) et `completed .* for <HOST>:\d+, 401 Unauthorized` (git et API, dont la création de jeton par mot de passe, qui n'émet pas la première ligne). L'IP réelle du client est journalisée (proxy de confiance OK). |
+| §5.5 démo | URLs réécrites sur toutes les branches de tous les repos de démo ; tags `RE1`/`RE2` laissés tels quels (limite à documenter dans le RUNBOOK). |
+| Hôte partagé | L'hôte de l'éditeur sert aussi `www.esquaresoft.fr` via le Caddy du kit (`etc/sites/_esquaresoft.caddy`, réseau `polenta-edge`). Le kit ne gère que les fichiers `<instance>.caddy` ; les fichiers `_*.caddy` sont des **sites additionnels** à documenter dans le RUNBOOK. Les tests destructifs S3-13/S3-15 (réinstallation de l'OS) doivent être replanifiés (cf. STOP HUMAIN S1). |

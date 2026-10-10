@@ -1,4 +1,5 @@
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import type { ProjectSchema, WorkspaceTreeNode, DiamondConflict } from '@polenta/types'
 import { flattenSystemNodes } from '@polenta/types'
@@ -29,6 +30,7 @@ export interface WorkspaceStructure {
  * for cross-repo prefix validation.
  */
 export function useWorkspaceStructure(workspaceDir: string, repoPath: string): WorkspaceStructure {
+  const { t } = useTranslation()
   const qc = useQueryClient()
 
   const detectQuery = useQuery({
@@ -50,8 +52,8 @@ export function useWorkspaceStructure(workspaceDir: string, repoPath: string): W
 
   const openResult = openQuery.data
   const treeError =
-    isUnknown ? 'Ce répertoire ne correspond plus à un projet Polenta valide (déplacé ou supprimé ?).'
-    : openResult?.status === 'not-a-workspace' ? 'Ce répertoire n\'est pas un workspace Polenta.'
+    isUnknown ? t('workspace.unknownDirectory')
+    : openResult?.status === 'not-a-workspace' ? t('workspace.notAWorkspace')
     : openResult?.status === 'parse-error' && openResult.remoteAccess ? openResult.error
     : openResult?.status === 'parse-error' ? `Erreur de parsing dans "${openResult.repoName}" : ${openResult.error}`
     : null

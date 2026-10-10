@@ -8,7 +8,8 @@ import * as yaml from 'js-yaml'
 import type { SyncService } from './sync.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { RepoWatcherService } from './repo-watcher.service'
-import { AGENTS_MD_TEMPLATE, AGENTS_MD_TEMPLATE_VERSION, extractAgentsMdVersion } from './agents-md.template'
+import { AGENTS_MD_TEMPLATE_VERSION, buildAgentsMdTemplate, extractAgentsMdVersion } from './agents-md.template'
+import { BRAND } from '../../shared/brand'
 import { resolveMcpServerLaunchConfig } from './mcp-launch.util'
 import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
 import {
@@ -112,7 +113,7 @@ export class WorkspaceService {
       '.polenta/tree.cache.yaml\n*.pref\n',
       'utf-8',
     )
-    await fsPromises.writeFile(path.join(rootRepoPath, 'AGENTS.md'), AGENTS_MD_TEMPLATE, 'utf-8')
+    await fsPromises.writeFile(path.join(rootRepoPath, 'AGENTS.md'), buildAgentsMdTemplate(BRAND), 'utf-8')
     // T122 sprint 4 — `.mcp.json` généré au même endroit/moment qu'`AGENTS.md` (T106),
     // pré-configuré pour lancer le serveur MCP de ce projet (cf. mcp-launch.util.ts).
     await fsPromises.writeFile(
@@ -127,7 +128,7 @@ export class WorkspaceService {
       fs,
       dir: rootRepoPath,
       message: 'init: create project',
-      author: { name: 'Polenta', email: 'polenta@localhost' },
+      author: { name: BRAND.productName, email: `${BRAND.id}@localhost` },
     })
 
     await this.initWorkspace(containerDir, rootRepoPath)
@@ -175,7 +176,7 @@ export class WorkspaceService {
       const raw = await fsPromises.readFile(markerPath, 'utf-8')
       config = (yaml.load(raw) as PolentaWorkspaceConfig) ?? {}
     } catch {
-      throw new Error(`Not a Polenta project: ${workspaceDir}`)
+      throw new Error(`Not a ${BRAND.productName} project: ${workspaceDir}`)
     }
 
     const localPath = this.resolveRootRepoPath(workspaceDir, config) ?? workspaceDir
@@ -472,7 +473,7 @@ export class WorkspaceService {
       'AGENTS.md',
       extractAgentsMdVersion,
       AGENTS_MD_TEMPLATE_VERSION,
-      AGENTS_MD_TEMPLATE,
+      () => buildAgentsMdTemplate(BRAND),
     )
   }
 

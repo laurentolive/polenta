@@ -7,6 +7,7 @@ import { encodeProjectId } from '../lib/projectId'
 import { consumeProjectJustClosed } from '../lib/projectCloseSignal'
 import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
+import { BrandLogo } from '../components/BrandLogo'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -142,6 +143,7 @@ function HomePage() {
 
   return (
     <div className="p-8 max-w-lg mx-auto space-y-3">
+      <BrandLogo />
       {actions.map(({ action, icon: Icon, title, help, busyLabel, onClick }) => {
         const featured = action === 'demo'
         return (

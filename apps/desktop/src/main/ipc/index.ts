@@ -73,6 +73,7 @@ import type { AppSettingsService } from '../services/app-settings.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import type { UpdateService } from '../services/update.service'
 import { parseDrawioPages } from '../drawio-xml'
+import { BRAND } from '../../shared/brand'
 
 export interface Container {
   auth: AuthService
@@ -301,10 +302,12 @@ export function registerIpcHandlers(c: Container): void {
   // GH26 — préférences de l'application (userData/app-settings.json, pas schema.yaml).
   ipcMain.handle('app:get-settings', () => c.appSettings.get())
   ipcMain.handle('app:set-settings', (_e, patch: Partial<AppSettings>) => c.appSettings.set(patch))
-  // GH26 — restreint aux pages de release du repo : seul usage (lien « Voir les nouveautés »),
-  // pas un ouvreur d'URL générique exposé au renderer.
+  // GH26 — restreint aux pages de release : seul usage (lien « Voir les nouveautés »), pas un
+  // ouvreur d'URL générique exposé au renderer. GH49 : celles de la marque (`releasesUrl`, ou une
+  // page sous celle-ci) ; marque sans `releasesUrl` → rien n'est ouvert.
   ipcMain.handle('app:open-release-page', (_e, url: string) => {
-    if (url.startsWith('https://github.com/laurentolive/polenta/releases/')) return shell.openExternal(url)
+    const base = BRAND.releasesUrl?.replace(/\/+$/, '')
+    if (base && (url === base || url.startsWith(`${base}/`))) return shell.openExternal(url)
   })
 
   // ── Update (GH26) ─────────────────────────────────────────────────────────────

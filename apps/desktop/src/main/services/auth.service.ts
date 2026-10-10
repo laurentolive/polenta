@@ -167,7 +167,7 @@ export class AuthService {
       // fall through
     }
 
-    return { name: 'Polenta User', email: 'user@polenta.local' }
+    return { name: `${BRAND.productName} User`, email: `user@${BRAND.id}.local` }
   }
 
   // ─── Credentials for isomorphic-git ────────────────────────────────────────

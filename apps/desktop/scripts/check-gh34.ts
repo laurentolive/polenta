@@ -7,6 +7,8 @@
  *
  * Lancement : `pnpm --filter @polenta/desktop exec tsx scripts/check-gh34.ts`
  */
+// GH49 — marque à poser avant tout import de service (BRAND lu au chargement des modules).
+import './register-brand'
 import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
@@ -17,7 +19,7 @@ import type {
   CampaignExportPayload, DashboardExportPayload, ImpactAnalysisExportPayload, QueryResultExportPayload,
   RequirementsExportPayload, TestCase, TestRun, TestsExportPayload,
 } from '@polenta/types'
-import { ExportTemplateLibrary } from '../src/main/services/export-template-library'
+import { EXAMPLES_FOLDER, ExportTemplateLibrary } from '../src/main/services/export-template-library'
 import { TemplateExportService } from '../src/main/services/export/template/template-export.service'
 import type { AppSettingsService } from '../src/main/services/app-settings.service'
 import type { GitService } from '../src/main/services/git.service'
@@ -566,13 +568,13 @@ async function sprint3(service: TemplateExportService, library: ExportTemplateLi
   const again = await library.installExamples(examplesSrc)
   const expected = fs.readdirSync(examplesSrc).length
   check(`S3.7 exemples installés (${first.copied}/${expected}), réinstallation sans écrasement`, first.copied === expected && again.copied === 0)
-  const listed = (await library.list('docx')).templates.map(t => t.relPath).filter(r => r.startsWith('Exemples Polenta/'))
+  const listed = (await library.list('docx')).templates.map(t => t.relPath).filter(r => r.startsWith(`${EXAMPLES_FOLDER}/`))
   const docxCount = fs.readdirSync(examplesSrc).filter(f => f.endsWith('.docx')).length
   check('S3.7 exemples Word listés (référence HTML exclue)', listed.length === docxCount, JSON.stringify(listed))
 
   const exportTo = async (kind: Parameters<TemplateExportService['run']>[0], tpl: string, payload: unknown, name: string) => {
     const dest = path.join(out, name)
-    await service.run(kind, 'docx', payload, repo, `Exemples Polenta/${tpl}`, dest)
+    await service.run(kind, 'docx', payload, repo, `${EXAMPLES_FOLDER}/${tpl}`, dest)
     return fsP.readFile(dest)
   }
   const textOf = (b: Buffer) => paragraphsOf(b).join('\n')
@@ -770,7 +772,7 @@ async function sprint4(service: TemplateExportService, lib: string, repo: string
   check('liste vide : ligne modèle vidée, références inchangées', x0.cell('Exigences', 'A6') === '' && x0.formulas('Exigences').includes('SUM(D6:D6)') && /Exigences!\$A\$6:\$A\$6/.test(x0.zip.file(Object.keys(x0.zip.files).find(f => /xl\/charts\/chart\d*\.xml/.test(f))!)!.asText()))
 
   // ── S4.3 / exemples ───────────────────────────────────────────────────────
-  const ex = 'Exemples Polenta/'
+  const ex = `${EXAMPLES_FOLDER}/`
   const xr = await exportXlsx('requirements', ex + 'Liste des exigences.xlsx', reqPayload(3), 's4-exigences.xlsx')
   const sheetName = [...xr.sheets.keys()][0]
   check('S4.3 richtext en texte simple dans une cellule', !JSON.stringify(xr.sheets.get(sheetName)).includes('**'))

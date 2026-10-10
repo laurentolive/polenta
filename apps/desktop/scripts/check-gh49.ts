@@ -2,16 +2,19 @@
  * GH49 — vérifications automatiques de la marque blanche (specs/GH49-tests.md, scénarios « Auto »).
  * Sprint 1 : chargement/validation des marques (B*), configuration electron-builder (P1, P2, L6),
  * marque non injectée (B10), marque injectée dans le bundle MCP (P5, si `out/mcp-server/index.cjs`
- * existe).
+ * existe). Sprint 2 : surcharges de thème (L5, D4), scan « aucun Polenta visible » (S1–S3).
  *
  * Lancement : `pnpm --filter @polenta/desktop exec tsx scripts/check-gh49.ts`
  */
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { BRANDS_ROOT, BrandError, loadBrand, resolveBrandId } from './brand'
 import { artifactBaseName, builderConfig } from '../electron-builder.config'
+import { brandThemeCss } from './vite-brand-plugin'
+import { buildAgentsMdTemplate } from '../src/main/services/agents-md.template'
+import { themeTokens } from '../src/renderer/theme.config'
 
 let failures = 0
 let passes = 0
@@ -140,6 +143,57 @@ if (existsSync(mcpBundle)) {
 } else {
   console.log('Bundle MCP absent (pnpm build:mcp-server) — P5 ignoré')
 }
+
+// ─── L5/D4 : surcharges de thème ─────────────────────────────────────────────────────────────
+console.log('Thème')
+check('L5 polenta : aucune règle CSS', brandThemeCss(polenta) === '')
+const demoCss = brandThemeCss(demo)
+check('D4 demo : prim clair', demoCss.includes('html:root { --prim: 217 95 2;'), demoCss)
+check('D4 demo : prim sombre', /html\.dark \{ --prim: 251 146 60;/.test(demoCss), demoCss)
+check('D4 demo : tokens non surchargés absents', !demoCss.includes('--canvas'))
+const partial = brandThemeCss({ ...demo, theme: { prim: { light: '1 2 3' } } })
+check('D4 surcharge clair seul : sombre = valeur Polenta', partial.includes(`html.dark { --prim: ${themeTokens['prim'].dark};`), partial)
+
+// ─── S1–S3 : aucun « Polenta » visible ────────────────────────────────────────────────────────
+console.log('Aucun Polenta visible')
+const srcRoot = path.resolve(__dirname, '../src')
+// Noms de fichiers / variables de format conservés (spec §2) : cités tels quels pour être trouvés.
+const FORMAT_NAMES_RE = /\.polenta\/|polenta-repo\.yaml|polenta:agents-md-version|POLENTA_\w+/g
+for (const loc of ['fr', 'en']) {
+  const offenders: string[] = []
+  const walk = (node: unknown, key: string): void => {
+    if (typeof node === 'string') { if (/polenta/i.test(node.replace(FORMAT_NAMES_RE, ''))) offenders.push(key) }
+    else if (node && typeof node === 'object') for (const [k, v] of Object.entries(node)) walk(v, key ? `${key}.${k}` : k)
+  }
+  walk(JSON.parse(readFileSync(path.join(srcRoot, `renderer/i18n/locales/${loc}.json`), 'utf8')), '')
+  check(`S1 ${loc}.json sans « Polenta »`, offenders.length === 0, offenders)
+}
+// Identifiants de format conservés (spec §2) : types/classes Polenta*, et le mot dans les commentaires.
+const FORMAT_IDENTIFIER_RE = /\bPolenta(Repo|Workspace|Api)\w*/g
+const COMMENT_LINE_RE = /^\s*(\/\/|\*|\/\*)/
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const full = path.join(dir, name)
+    if (statSync(full).isDirectory()) return sourceFiles(full)
+    return /\.(ts|tsx|html)$/.test(name) && name !== 'routeTree.gen.ts' ? [full] : []
+  })
+}
+const literalOffenders: string[] = []
+for (const file of ['main', 'renderer', 'preload', 'mcp-server', 'shared'].flatMap(d => sourceFiles(path.join(srcRoot, d)))) {
+  readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+    if (COMMENT_LINE_RE.test(line)) return
+    const code = line.replace(/\s\/\/.*$/, '').replace(FORMAT_IDENTIFIER_RE, '')
+    // Le mot, ou un lien vers le repo de Polenta (ex. ancienne liste blanche de pages de release).
+    if (/\bPolenta\b|laurentolive\/polenta\b/.test(code)) literalOffenders.push(`${path.relative(srcRoot, file)}:${i + 1}`)
+  })
+}
+check('S2 aucun « Polenta » dans le code (hors commentaires et identifiants de format)', literalOffenders.length === 0, literalOffenders)
+const agentsDemo = buildAgentsMdTemplate({ productName: 'Demo Specs' })
+const agentsResidue = agentsDemo.replace(FORMAT_NAMES_RE, '')
+check('S3 AGENTS.md demo : « Polenta » seulement dans les noms de format', !/polenta/i.test(agentsResidue),
+  agentsResidue.split('\n').filter(l => /polenta/i.test(l)))
+check('S3 AGENTS.md demo : nom de la marque, sans lien', agentsDemo.includes('géré avec Demo Specs :'))
+check('S3 AGENTS.md polenta : lien conservé', buildAgentsMdTemplate(polenta.info).includes('géré avec [Polenta](https://polenta.dev)'))
 
 console.log(`\n${passes} ok, ${failures} échec(s)`)
 process.exit(failures ? 1 : 0)

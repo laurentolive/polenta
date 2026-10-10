@@ -60,7 +60,7 @@ Légende : **Auto** = couvert par `scripts/check-gh49.ts` ; **Manuel** = vérifi
 |---|----------|---------|------|
 | L1 | Polenta et Demo Specs installés et lancés en même temps | deux fenêtres, deux icônes de barre des tâches distinctes ; projets récents et comptes séparés | Manuel |
 | L2 | Projet créé par Demo Specs ouvert dans Polenta (et inverse) | s'ouvre sans erreur ; `AGENTS.md` non réécrit (marqueur de version égal) | Manuel |
-| L3 | Projet existant (AGENTS.md v3) ouvert après GH49 | `AGENTS.md` régénéré une fois en v4, puis plus jamais | Manuel |
+| L3 | Projet existant (AGENTS.md v3) ouvert après GH49 | `AGENTS.md` **non réécrit** (version de gabarit inchangée, texte Polenta identique — décision sprint 2) | Manuel |
 | L4 | Marque sans `logo.svg` (Polenta) | écrans d'accueil et de connexion identiques à avant ; pas d'`<img>` cassée | Manuel |
 | L5 | Marque avec `theme` vide ou absent | aucune règle CSS ajoutée | Auto (sortie du module virtuel) |
 | L6 | `productName` avec apostrophe / accent (`L'Outil Été`) | titre, textes i18n, `Exemples L'Outil Été/`, nom d'installeur sans espaces corrects | Auto (builderConfig) + Manuel |

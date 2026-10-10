@@ -1,3 +1,5 @@
+import type { BrandInfo } from '../../shared/brand-types'
+
 /**
  * Version courante du gabarit `AGENTS.md` (T122 sprint 4, point 7 du spec — absorbe
  * T121). Le fichier généré embarque ce numéro en tête (marqueur
@@ -7,8 +9,14 @@
  * une régénération complète ; un marqueur égal ne réécrit RIEN (pas de comparaison
  * byte à byte du contenu, pour ne pas écraser des notes ajoutées par l'utilisateur en
  * bas du fichier tant que le gabarit n'a pas changé — cf. specs/T122.md point 7).
- * À incrémenter à chaque changement de contenu de `AGENTS_MD_TEMPLATE` qui doit se
+ * À incrémenter à chaque changement de contenu de `buildAgentsMdTemplate` qui doit se
  * propager aux projets déjà créés.
+ *
+ * GH49 : le nom du produit vient de la marque du binaire (`productName`, lien `website`) ; les
+ * noms de fichiers de format (`.polenta/`, `polenta-repo.yaml`) restent tels quels. Version NON
+ * incrémentée : pour la marque polenta le texte est identique à la v3, une régénération réécrirait
+ * AGENTS.md dans tous les projets existants pour rien. Le marqueur ne compare pas le nom : un
+ * projet garde le nom de la marque qui l'a écrit, quelle que soit la marque qui l'ouvre ensuite.
  */
 export const AGENTS_MD_TEMPLATE_VERSION = 3
 
@@ -36,14 +44,17 @@ export function extractAgentsMdVersion(content: string): number | undefined {
  * Codex, Copilot, Gemini CLI…) can use this file — it contains no
  * tool-specific instructions.
  */
-export const AGENTS_MD_TEMPLATE = `<!-- polenta:agents-md-version:${AGENTS_MD_TEMPLATE_VERSION} -->
-# AGENTS.md — Repère pour un agent IA sur ce projet Polenta
+export function buildAgentsMdTemplate(brand: Pick<BrandInfo, 'productName' | 'website'>): string {
+  const name = brand.productName
+  const productLink = brand.website ? `[${name}](${brand.website})` : name
+  return `<!-- polenta:agents-md-version:${AGENTS_MD_TEMPLATE_VERSION} -->
+# AGENTS.md — Repère pour un agent IA sur ce projet ${name}
 
-Ce projet est géré avec [Polenta](https://polenta.dev) : un système de gestion des
+Ce projet est géré avec ${productLink} : un système de gestion des
 exigences et des tests **fichiers d'abord** (pas de base de données) — tout est
-versionné dans ce dépôt git, l'application Polenta n'est qu'un viewer/éditeur par-dessus.
+versionné dans ce dépôt git, l'application ${name} n'est qu'un viewer/éditeur par-dessus.
 Ce fichier donne à n'importe quelle IA (Claude Code, Cursor, Codex, Copilot, Gemini CLI…)
-les clés pour respecter l'organisation du dépôt sans avoir accès au code de Polenta.
+les clés pour respecter l'organisation du dépôt sans avoir accès au code de ${name}.
 
 ## Format d'un objet (exigence, test, campagne)
 
@@ -65,7 +76,7 @@ Corps libre en Markdown (notes, contraintes, alternatives…).
 - **Champs métier** : tout ce qui est sous \`fields:\`, propre à chaque projet — leur
   liste, type et obligation (\`required\`) sont définis dans le schéma, pas ici.
 - **Les liens entre objets** (dérivation, vérification…) ne sont pas dans le
-  frontmatter : ce sont des ObjectLinks gérés par Polenta séparément, dans
+  frontmatter : ce sont des ObjectLinks gérés par ${name} séparément, dans
   \`links/links.yaml\` (à créer/supprimer via les tools MCP \`create_links\`/\`delete_links\`).
 
 ## Où trouver les règles propres à CE projet : \`.polenta/schema.yaml\`
@@ -77,7 +88,7 @@ toute création ou modification d'objet :
   \`requirement\`/\`test\`/\`campaign\`, champs custom, statuts).
 - \`objectTypes[].fields[].validator\` : si un champ a \`validator: EARS\`, son énoncé doit
   suivre la syntaxe EARS (WHEN/THE/SHALL…) — ne pas l'imposer si le validateur est
-  absent, c'est une convention par projet, pas une règle Polenta globale.
+  absent, c'est une convention par projet, pas une règle ${name} globale.
 - \`objectTypes[].statuses[]\` : les statuts valides pour ce type, avec \`isApproval\`
   (marque l'objet comme validé) et \`isTerminal\` (masqué des listes par défaut).
 - \`linkTypes[]\` : les types de liens autorisés entre objets (\`sourceRefs\`/\`targetRefs\`).
@@ -88,7 +99,7 @@ le modèle est entièrement configurable par projet.
 ## Serveur MCP — interface programmatique préférée si votre client la supporte
 
 Si votre client (Claude Code, Cursor, ou tout autre client MCP) détecte le fichier
-\`.mcp.json\` à la racine de ce projet, un serveur MCP Polenta est disponible : **c'est le
+\`.mcp.json\` à la racine de ce projet, un serveur MCP ${name} est disponible : **c'est le
 mécanisme préféré** pour créer/importer des objets ou modifier le modèle de données —
 il applique automatiquement la génération d'ID (sans collision), la résolution
 d'\`objectTypeRef\`, la validation des champs requis et le format des fichiers, au lieu
@@ -122,7 +133,7 @@ Tools disponibles :
   des invariants (nom déjà pris, \`prefix\` unique sur tout le projet, nœud
   \`readonly: true\`) avant toute écriture.
 
-Comme le reste de Polenta, le serveur MCP n'effectue **jamais de commit/push
+Comme le reste de ${name}, le serveur MCP n'effectue **jamais de commit/push
 automatique** — les fichiers créés/modifiés restent en attente, l'utilisateur les
 committe/publie explicitement ensuite depuis l'app.
 
@@ -153,7 +164,7 @@ Vérifier : le test couvre bien l'exigence qu'il référence, les étapes/critè
 passage sont mesurables, le résultat de la dernière exécution (\`TestRun\`) est à jour.
 
 ### 3. Construction d'indicateurs (requêtes / dashboards)
-Les dashboards de Polenta reposent sur un moteur de requête **SQL en lecture seule**
+Les dashboards de ${name} reposent sur un moteur de requête **SQL en lecture seule**
 exécuté sur trois tables reconstruites en mémoire depuis les fichiers : \`requirements\`,
 \`tests\`, \`links\` — une ligne par objet, les champs de \`fields{}\` sont directement
 accessibles comme colonnes. Une colonne dérivée \`coverageStatus\` existe déjà sur
@@ -182,3 +193,4 @@ Ce fichier ne contient aucune instruction propre à un agent donné — l'utilis
 ce projet peut travailler avec l'IA de son choix (Claude Code, Cursor, Codex,
 Copilot, Gemini CLI, ou tout autre outil qui lit \`AGENTS.md\`).
 `
+}

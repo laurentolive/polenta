@@ -51,6 +51,12 @@ traduction>` résolue par `t()`, jamais affichés en valeur brute.
   par script à chaque sprint (cf. §6).
 - **Sélecteur de langue** — dans `AccountPanel.tsx`, au même niveau que le
   toggle thème clair/sombre (`useTheme()`).
+- **Nom du produit (GH49)** — variable globale `{{appName}}`
+  (`interpolation.defaultVariables`, = `BRAND.productName`, marque du build) disponible
+  dans toutes les chaînes sans la passer à `t()`. **Aucune chaîne traduite ne contient
+  « Polenta » en dur** : écrire `{{appName}}`. Seuls les noms de format cités tels quels
+  (`.polenta/`, `polenta-repo.yaml`, `POLENTA_*`) restent littéraux. Vérifié par
+  `scripts/check-gh49.ts` (scan S1/S2).
 
 ## §3. Convention des clés et cas d'usage
 

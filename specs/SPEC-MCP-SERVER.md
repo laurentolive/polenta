@@ -45,8 +45,12 @@ d'`objectTypeRef`, validation des champs requis, format des fichiers).
 pnpm --filter @polenta/desktop run mcp-server -- --repo <path> [--workspace <path>]
 ```
 
-Équivalent : `tsx src/mcp-server/index.ts --repo <path>`. Suppose un `node` sur le
-PATH (déjà requis pour `pnpm`/le développement de ce repo).
+Équivalent : `tsx src/mcp-server/dev-entry.ts --repo <path> [--brand <id>]`. Suppose un `node`
+sur le PATH (déjà requis pour `pnpm`/le développement de ce repo). GH49 : `dev-entry.ts` pose
+la marque (`--brand`, sinon `POLENTA_BRAND`, sinon `polenta`) via `scripts/register-brand.ts`
+avant de charger `index.ts` — les services lisent `BRAND` (`src/shared/brand.ts`) dès leur
+chargement, et sous `tsx` il n'y a pas de `define` de build. Lancer `index.ts` directement
+sous `tsx` échoue (« marque non injectée »).
 
 ### 2.2 Arguments / variables d'environnement
 
@@ -74,9 +78,12 @@ Le point d'entrée doit rester invocable depuis une app Electron packagée
 (`electron-builder`), sans dépendre de `pnpm`/`tsx`/Node système sur le poste de
 l'utilisateur final :
 
-- **Bundle autonome** : `pnpm --filter @polenta/desktop run build:mcp-server` (esbuild,
-  `--bundle --platform=node --format=cjs`) produit `out/mcp-server/index.cjs` —
-  un seul fichier CJS, sans dépendance à `tsx`. Deux substitutions au bundling :
+- **Bundle autonome** : `pnpm --filter @polenta/desktop run build:mcp-server`
+  (`scripts/build-mcp-server.ts`, API esbuild, `bundle`/`platform: node`/`format: cjs`) produit
+  `out/mcp-server/index.cjs` — un seul fichier CJS, sans dépendance à `tsx`. La marque du build
+  (GH49, `POLENTA_BRAND`) y est figée en `define __POLENTA_BRAND__` : le serveur packagé lit les
+  comptes (service keytar) de sa marque ; `scripts/package.ts` refuse de packager un bundle MCP
+  construit pour une autre marque que l'app. Deux substitutions au bundling :
   - `electron` est **alias-é** vers `src/mcp-server/electron-shim.ts` (objet qui lève
     une erreur explicite si `app`/`shell`/`BrowserWindow` sont réellement invoqués —
     jamais le cas dans les tools MCP de ce ticket, cf. §7 "Limitations connues").
@@ -84,7 +91,7 @@ l'utilisateur final :
     process Electron, le vrai module `electron` n'est pas résolvable).
   - `keytar` (addon natif `.node`, non bundleable en un seul fichier JS) reste
     `--external`, résolu au runtime par la remontée standard de `node_modules`.
-- **`electron-builder.yml`** : `out/mcp-server/**/*` est exclu de `files` (donc de
+- **`electron-builder.config.ts`** (GH49, ex-`electron-builder.yml`) : `out/mcp-server/**/*` est exclu de `files` (donc de
   `app.asar`) et copié via `extraResources` vers `resources/mcp-server/` — doit
   rester un fichier ordinaire sur disque, lançable comme process séparé. `keytar`
   est copié séparément vers `resources/mcp-server/node_modules/keytar` pour que
@@ -97,12 +104,15 @@ l'utilisateur final :
   Node.js ordinaire, sans dépendre d'un Node.js système sur le poste utilisateur
   final (souvent absent, contrairement à un poste de développement).
   Depuis GH26 (installeur NSIS par utilisateur au lieu de l'exe portable), `process.execPath`
-  et `resourcesPath` sont stables : `%LOCALAPPDATA%\Programs\Polenta\…`, inchangés d'une mise
+  et `resourcesPath` sont stables : `%LOCALAPPDATA%\Programs\<executableName>\…` (`polenta` pour la marque par défaut), inchangés d'une mise
   à jour à l'autre — le `.mcp.json` généré reste valide après une mise à jour auto (l'exe
   portable s'extrayait au contraire dans un dossier temporaire).
 - **Lancement en dev** (`app.isPackaged === false`) : `command: 'node'`, `args: [
-  <appPath>/node_modules/tsx/dist/cli.mjs, <appPath>/src/mcp-server/index.ts,
-  '--repo', '.']`, résolu via `app.getAppPath()`.
+  <appPath>/node_modules/tsx/dist/cli.mjs, <appPath>/src/mcp-server/dev-entry.ts,
+  '--brand', <BRAND.id>, '--repo', '.']`, résolu via `app.getAppPath()` (GH49 : argument
+  `--brand` plutôt qu'un bloc `env`, que certains clients MCP substituent à tout
+  l'environnement). Un `.mcp.json` de dev antérieur à GH49 (qui lance `index.ts`) est à
+  supprimer pour être régénéré à l'ouverture du projet.
 
 **Vérification effectuée (T122 sprint 4)** : le bundle esbuild démarre et répond
 correctement à un vrai client MCP (`get_schema`, découverte des 12 tools) à la fois
@@ -409,8 +419,11 @@ résultat n'est pas contrôlée au-delà (`SPEC-DASHBOARDS.md` §4).
 
 ### 5.1 À la création d'un nouveau projet
 
-`WorkspaceService.createNewProject()` écrit `AGENTS.md` (`AGENTS_MD_TEMPLATE`,
-`agents-md.template.ts`) et `.mcp.json` (`buildMcpJsonContent`,
+`WorkspaceService.createNewProject()` écrit `AGENTS.md` (`buildAgentsMdTemplate(BRAND)`,
+`agents-md.template.ts` — GH49 : produit présenté sous le `productName` de la marque, lien
+`website` s'il existe ; noms de format `.polenta/`, `polenta-repo.yaml` inchangés ;
+`AGENTS_MD_TEMPLATE_VERSION` laissée à 3, le texte de la marque polenta étant identique — un
+projet garde le nom de la marque qui a écrit son AGENTS.md) et `.mcp.json` (`buildMcpJsonContent`,
 `mcp-server/mcp-json.template.ts`, avec la commande résolue par
 `mcp-launch.util.ts::resolveMcpServerLaunchConfig()`) à côté de `.gitignore`, tous
 inclus dans le commit initial `init: create project` — `git status` après création

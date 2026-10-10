@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - "v*.*.*"
+  # GH49 — build d'une marque client (apps/desktop/brands/<brand>/) : l'installeur est fourni en
+  # artefact du run, jamais publié en release de ce repo (le client héberge ses mises à jour, et
+  # le nom des clients n'apparaît pas dans les releases publiques).
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: "Marque (dossier apps/desktop/brands/<brand>)"
+        required: true
+        default: polenta
 
 permissions:
   contents: write
@@ -24,6 +33,7 @@ jobs:
           cache: pnpm
 
       - name: Check tag matches package.json version
+        if: github.event_name == 'push'
         shell: bash
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
@@ -34,6 +44,7 @@ jobs:
           fi
 
       - name: Generate release notes
+        if: github.event_name == 'push'
         shell: bash
         run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
 
@@ -42,9 +53,23 @@ jobs:
 
       - name: Package desktop app
         working-directory: apps/desktop
+        env:
+          POLENTA_BRAND: ${{ github.event_name == 'push' && 'polenta' || inputs.brand }}
         run: pnpm package
 
+      - name: Upload brand installer
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ inputs.brand }}
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.exe.blockmap
+            apps/desktop/dist/latest.yml
+          if-no-files-found: error
+
       - name: Publish GitHub release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           # GH26 — latest.yml + blockmap : requis par electron-updater (mise à jour auto).

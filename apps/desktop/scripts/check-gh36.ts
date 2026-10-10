@@ -8,6 +8,8 @@
  *
  * Lancement : `pnpm --filter @polenta/desktop exec tsx scripts/check-gh36.ts`
  */
+// GH49 — marque à poser avant tout import de service (BRAND lu au chargement des modules).
+import './register-brand'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'

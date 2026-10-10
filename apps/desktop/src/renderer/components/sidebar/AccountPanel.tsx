@@ -5,6 +5,7 @@ import { Sun, Moon, Languages } from 'lucide-react'
 import { api } from '../../api'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLocale } from '../../i18n/useLocale'
+import { BRAND } from '../../../shared/brand'
 
 interface Identity {
   login: string
@@ -185,7 +186,8 @@ export function AccountPanel() {
             <span>{locale === 'fr' ? t('account.panel.english') : t('account.panel.french')}</span>
           </button>
         </div>
-        {autoCheckUpdates !== null && (
+        {/* GH49 — marque sans source de mise à jour : préférence sans objet, masquée. */}
+        {BRAND.update && autoCheckUpdates !== null && (
           <label className="flex items-center justify-between gap-2 cursor-pointer" title={t('account.panel.autoUpdateHint')}>
             <span className="text-xs text-ink-2">{t('account.panel.autoUpdate')}</span>
             <input

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
+import { BrandLogo } from '../components/BrandLogo'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -136,6 +137,7 @@ function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-canvas">
       <div className="w-full max-w-md bg-surface rounded-xl shadow-sm border border-edge p-8 space-y-6">
+        <BrandLogo />
         <div>
           <h1 className="text-2xl font-semibold text-ink">{t('login.welcome')}</h1>
           <p className="text-sm text-ink-2 mt-1">

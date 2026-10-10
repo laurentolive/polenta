@@ -132,7 +132,7 @@
       "exportTemplatesNone": "Aucun dossier configuré",
       "exportTemplatesPick": "Bibliothèque de gabarits d’export",
       "exportTemplatesExamples": "Installer les exemples",
-      "exportTemplatesExamplesHint": "Copie les gabarits Word d'exemple et la référence des balises dans le sous-dossier « Exemples Polenta » de la bibliothèque (sans écraser les fichiers existants).",
+      "exportTemplatesExamplesHint": "Copie les gabarits Word d'exemple et la référence des balises dans le sous-dossier « Exemples {{appName}} » de la bibliothèque (sans écraser les fichiers existants).",
       "exportTemplatesExamplesDone": "{{count}} fichier(s) copié(s) dans {{folder}}"
     },
     "menu": {
@@ -148,7 +148,7 @@
     }
   },
   "login": {
-    "welcome": "Bienvenue dans Polenta",
+    "welcome": "Bienvenue dans {{appName}}",
     "subtitle": "Connectez votre compte git pour commencer.",
     "remoteLabel": "Remote git",
     "otherOption": "Autre…",
@@ -163,14 +163,14 @@
     "connecting": "Connexion…"
   },
   "home": {
-    "demoTitle": "Découvrir Polenta avec le projet de démonstration",
+    "demoTitle": "Découvrir {{appName}} avec le projet de démonstration",
     "demoHelp": "Lave-linge LL800 — toutes les fonctionnalités sur un projet complet",
     "loadingDemo": "Chargement de la démo…",
     "pickDemoFolder": "Dossier du projet de démonstration",
-    "demoFolderNotEmpty": "Ce dossier n'est pas vide et ne contient pas de projet Polenta : choisissez un dossier vide ou un projet existant.",
-    "notAWorkspace": "Ce dossier n'est ni un projet Polenta ni un repo git.",
+    "demoFolderNotEmpty": "Ce dossier n'est pas vide et ne contient pas de projet {{appName}} : choisissez un dossier vide ou un projet existant.",
+    "notAWorkspace": "Ce dossier n'est ni un projet {{appName}} ni un repo git.",
     "openExisting": "Ouvrir un projet existant",
-    "openExistingHelp": "Choisir le dossier d'un projet Polenta ou d'un repo git",
+    "openExistingHelp": "Choisir le dossier d'un projet {{appName}} ou d'un repo git",
     "pickProjectFolder": "Dossier du projet",
     "opening": "Ouverture…",
     "openFromRepo": "Ouvrir un projet depuis un repo existant",
@@ -208,7 +208,9 @@
   "workspace": {
     "noWorkspace": "Aucun workspace spécifié.",
     "notResolvable": "Ce projet n'est plus résolvable ({{error}}). Retournez à l'accueil pour l'ouvrir à nouveau.",
-    "redirecting": "Redirection vers l'onglet Structure…"
+    "redirecting": "Redirection vers l'onglet Structure…",
+    "unknownDirectory": "Ce répertoire ne correspond plus à un projet {{appName}} valide (déplacé ou supprimé ?).",
+    "notAWorkspace": "Ce répertoire n'est pas un workspace {{appName}}."
   },
   "sidebar": {
     "project": {
@@ -505,7 +507,7 @@
       "moveElementStale": "Cet élément a changé avant la fin du déplacement — merci de recommencer le glisser-déposer.",
       "nameAlreadyUsed": "Ce nom est déjà utilisé dans ce repo ou ce workspace.",
       "schemaLoadingForLocal": "Le schéma de ce repo est encore en cours de chargement — réessayez dans un instant.",
-      "notAWorkspace": "Ce répertoire n'est pas (ou plus) un workspace Polenta."
+      "notAWorkspace": "Ce répertoire n'est pas (ou plus) un workspace {{appName}}."
     },
     "page": {
       "title": "Modèle de données",
@@ -780,7 +782,7 @@
       "importedBadge": "Importé depuis Excel",
       "fatal": {
         "unreadable": "Fichier illisible : ce n'est pas un classeur Excel valide.",
-        "notAnExecutionSheet": "Ce fichier n'est pas un classeur d'exécution Polenta (feuille technique absente).",
+        "notAnExecutionSheet": "Ce fichier n'est pas un classeur d'exécution {{appName}} (feuille technique absente).",
         "unsupportedVersion": "Version de classeur non prise en charge ({{version}}).",
         "wrongCampaign": "Ce classeur a été exporté pour une autre campagne ({{campaignId}}).",
         "campaignClosed": "La campagne est clôturée : import impossible."
@@ -1233,7 +1235,7 @@
   },
   "update": {
     "badge": {
-      "title": "Polenta v{{version}} est disponible"
+      "title": "{{appName}} v{{version}} est disponible"
     },
     "popover": {
       "title": "Mise à jour disponible",

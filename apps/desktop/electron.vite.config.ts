@@ -2,9 +2,17 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { TanStackRouterVite } from '@tanstack/router-vite-plugin'
 import { resolve } from 'path'
+import { loadBrand } from './scripts/brand'
+import { brandPlugin } from './scripts/vite-brand-plugin'
+
+// GH49 — marque POLENTA_BRAND (défaut polenta), figée dans les trois bundles : le code applicatif
+// la lit via src/shared/brand.ts (constante __POLENTA_BRAND__). Marque invalide → build en échec.
+const brand = loadBrand()
+const brandDefine = { __POLENTA_BRAND__: JSON.stringify(brand.info) }
 
 export default defineConfig({
   main: {
+    define: brandDefine,
     // @polenta/types est aliasé vers sa source TS brute (pas de dist compilé) — sans l'exclure
     // ici, externalizeDepsPlugin le laisse en `require()` externe non transformé, que Node ne
     // sait pas charger (syntaxe ESM `export`). Restait invisible tant que tous les imports
@@ -56,6 +64,7 @@ export default defineConfig({
     },
   },
   preload: {
+    define: brandDefine,
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
@@ -64,6 +73,7 @@ export default defineConfig({
     },
   },
   renderer: {
+    define: brandDefine,
     plugins: [
       // autoCodeSplitting: sans lui, routeTree.gen.ts importe le composant de CHAQUE route en
       // statique (Tiptap, recharts, docx...) — tout le graphe de dépendances doit être transformé
@@ -77,6 +87,7 @@ export default defineConfig({
         autoCodeSplitting: true,
       }),
       react(),
+      brandPlugin(brand),
     ],
     root: './src/renderer',
     resolve: {

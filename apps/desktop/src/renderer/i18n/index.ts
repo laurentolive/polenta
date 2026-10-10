@@ -2,6 +2,7 @@ import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import fr from './locales/fr.json'
 import en from './locales/en.json'
+import { BRAND } from '../../shared/brand'
 
 export const LOCALE_STORAGE_KEY = 'polenta:locale'
 
@@ -15,7 +16,9 @@ i18n.use(initReactI18next).init({
   },
   lng: initialLng,
   fallbackLng: 'fr',
-  interpolation: { escapeValue: false },
+  // GH49 — {{appName}} disponible dans toutes les chaînes : nom de la marque du binaire. Aucune
+  // chaîne traduite ne contient « Polenta » en dur (vérifié par scripts/check-gh49.ts).
+  interpolation: { escapeValue: false, defaultVariables: { appName: BRAND.productName } },
 })
 
 export default i18n

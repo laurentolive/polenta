@@ -650,3 +650,81 @@ Ces révisions **remplacent** les passages concernés plus haut.
 | §3.8 renderer | `renderer/api.ts` nettoie aussi le champ `error` des résultats (`parse-error`). |
 | §3.5 jetons hérités | Pas de `migrateLegacyBareTokens` : compatibilité par lecture (`hasAnyAccount`, `projectUsername`, `logout`). |
 | GitHub sur le web | Les URLs fixes de l'API GitHub ne passent pas par le garde des hôtes git (pas d'entrée utilisateur, pas de risque SSRF). |
+
+---
+
+## 13. Sprint S2b — configuration centralisée par équipe, lien d'invitation, tests d'interface
+
+Entrée : spec §3bis / §3ter (décisions du 2026-10-10). S'intercale entre S2 et S3/S4.
+
+### 13.1 Kit (`deploy/`)
+
+- `instance add` → nouvelle étape idempotente `ensure_config_repo` :
+  - repo privé `<org>/polenta-config` avec un `config.yaml` modèle commenté ;
+  - protection de la branche `main` (`POST /repos/{org}/polenta-config/branch_protections` :
+    push réservé à l'équipe `Owners`).
+
+  Les équipes « tous les repos » y ont donc la lecture et, malgré leur droit d'écriture, ne
+  peuvent pas pousser.
+- Nouvelle commande **`polenta-host instance sync <nom>`** : rejoue les étapes idempotentes après
+  installation (organisation, équipes, repo de config) sur une instance existante (`acme`, `globex`,
+  et les instances créées avec une version antérieure du kit).
+- `polenta-admin user add|import` : affiche le lien `polenta://connect?server=…&login=…` et un
+  message d'invitation prêt à copier. Le lien de téléchargement vient de `POLENTA_DOWNLOAD_URL`
+  (`host.env`, facultatif).
+
+### 13.2 Process main
+
+| Fichier | Rôle |
+|---|---|
+| `services/forge/team-config.ts` (nouveau, pur) | `parseTeamConfig(yaml)` → config validée (clés inconnues ou invalides ignorées et listées) ; `resolveTeamConfig(config, teams)` → `{ projects, updates, preferences }` selon §3bis-4. |
+| `services/forge-config.service.ts` (nouveau) | Pour le compte courant : organisations (`GET /user/orgs`), équipes (`GET /user/teams`), lecture de `GET /repos/{org}/polenta-config/raw/config.yaml` (première organisation qui en a un), résolution, cache `userData/forge-config.json` (dernière version + date + erreur). Rafraîchi à la connexion, au démarrage et toutes les 30 min. `effective()` est synchrone, depuis le cache. |
+| `services/app-settings.service.ts` | Verrou des mises à jour si machine `autoUpdate: false` **ou** `updates: managed` effectif. |
+| `services/update.service.ts` | La décision de vérifier est relue **au moment** de la vérification (la config de la forge peut arriver après le démarrage). |
+| `ipc/pref.handlers.ts` | `pref:get-field-visibility` : sans choix personnel pour ce type, renvoie le défaut de la config (vues absentes → défaut Polenta). |
+| `host/invite-link.ts` (nouveau, pur) | `parseInviteLink(url)` → `{ server, login }` ou `null` (schéma `polenta:`, hôte `connect`, serveur http(s) uniquement, identifiant `[A-Za-z0-9._-]`). |
+| `index.ts` (desktop) | `requestSingleInstanceLock`, `setAsDefaultProtocolClient('polenta')`, lien reçu au lancement (`argv`), par `second-instance` (Windows/Linux) ou `open-url` (macOS) → invitation en attente + événement `app:invite` ; fenêtre ramenée au premier plan. |
+| `electron-builder.yml` | `protocols: [{ name: Polenta, schemes: [polenta] }]` (enregistrement par l'installateur NSIS). |
+| IPC | `app:get-team-config` (config effective + source + erreur), `app:take-pending-invite` (desktop), événement `app:invite`. |
+
+### 13.3 Renderer
+
+- Écran de connexion :
+  - paramètres `server` et `login` (lien d'invitation) ;
+  - « Autre… » devient « Serveur de votre entreprise… » ;
+  - une adresse saisie sans `https://` est complétée.
+- `hooks/useInviteLinks.ts` (dans `__root`) : prend l'invitation en attente au démarrage, écoute
+  `app:invite`, puis ouvre la connexion pré-remplie. Si le compte courant est déjà sur ce serveur
+  avec cet identifiant, il affiche l'accueil.
+- `hooks/useTeamConfig.ts` :
+  - langue et thème par défaut appliqués **sans être enregistrés**, et seulement sans choix
+    personnel (`localStorage`) ;
+  - vue d'ouverture d'un projet (`projectHome`) via un utilitaire `projectHomeRoute(projectId)`,
+    qui remplace les navigations codées en dur vers `/dashboard`.
+- Accueil : section « Projets de votre équipe ». Seuls les repos accessibles sont affichés (le main
+  vérifie l'accès avec le jeton). Un clic ouvre le projet s'il est déjà sur le poste (même URL
+  d'`origin`), sinon le clone puis l'ouvre.
+- Panneau Compte : « Configuration du serveur : appliquée (équipes : …) » ou « ignorée : … ».
+
+### 13.4 Tests d'interface automatisés (desktop)
+
+- `apps/desktop/e2e-desktop/` : Playwright `_electron.launch` sur le build (`out/main`).
+- **Isolation** : `POLENTA_USER_DATA_DIR` (`app.setPath('userData')` avant `ready`) et
+  `POLENTA_KEYTAR_SERVICE` (nom de service keytar dédié aux tests). Ce sont deux variables
+  d'environnement de test qui ne modifient pas le comportement normal. Les comptes et jetons
+  personnels du poste ne sont jamais touchés.
+- Contre la forge de test `acme` (comptes `itest-*`, actions d'admin par SSH). Scénarios :
+  - connexion par lien d'invitation ;
+  - connexion par mot de passe et par 2FA ;
+  - compte neuf ;
+  - bannière d'accès révoqué puis « Se reconnecter » ;
+  - déconnexion ;
+  - « Projets de votre équipe » et vue d'ouverture selon l'équipe ;
+  - case des mises à jour verrouillée pour un lecteur ;
+  - langue par défaut sans choix personnel ;
+  - non-régression sans compte forge (écran GitHub inchangé).
+
+### 13.5 Ordre
+
+S2b est commité en un sprint. Les sprints S3 (infra exploitation) et S4 (P1) restent inchangés. Le
+S4 réutilisera `forge-config.service` (organisation courante) et la vérification d'accès aux repos.

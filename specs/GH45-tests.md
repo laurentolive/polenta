@@ -96,6 +96,25 @@ Environnement :
 | S2-25 [A] | `forgejo.provider` sur un serveur simulé : `listRepos` sur 120 repos (3 pages), `createOrgRepo` → 409. | 120 repos ; erreur « nom pris ». |
 | S2-26 [M] | Web (GH44, mode dev) : `auth:login-password` appelé depuis la console. | Refusé (channel non exposé) ; `app:get-machine-config` renvoie la forge de `POLENTA_WEB_GIT_HOSTS`. |
 
+## Sprint 2b — Configuration par équipe, invitation, tests d'interface
+
+| ID | Scénario | Attendu |
+|---|---|---|
+| S2b-1 [M] | `polenta-host instance sync acme`, puis lecture de `acme/polenta-config`. | Repo créé avec le modèle ; `main` protégée (push `Owners` seulement) ; second `sync` sans effet. |
+| S2b-2 [A] | Push d'un membre d'`auteurs` sur `polenta-config` ; push d'un propriétaire. | Refusé ; accepté (critère 24). |
+| S2b-3 [A] | `resolveTeamConfig` : utilisateur de 0, 1, 2 équipes ; `updates` contradictoires ; préférence définie par 2 équipes. | Union des projets, `managed` l'emporte, première équipe du fichier pour une préférence (critère 22). |
+| S2b-4 [A] | YAML invalide, repo absent, serveur hors ligne (cache présent / absent). | Aucune erreur bloquante ; cache ou comportement sans config ; erreur visible dans le panneau Compte (critère 25). |
+| S2b-5 [A] | `parseInviteLink` : lien valide, serveur `javascript:`/`file:`, identifiant invalide, paramètres manquants. | Seul le lien valide est accepté. |
+| S2b-6 [A/UI] | Lancer Polenta avec `polenta://connect?server=https://acme…&login=itest-auteur`. | Connexion pré-remplie (serveur + identifiant), pas de connexion automatique ; après mot de passe → accueil (critère 21, UC12). |
+| S2b-7 [A/UI] | Polenta ouvert, second lancement avec un lien. | Traité dans la fenêtre existante (instance unique). |
+| S2b-8 [A/UI] | Config `testeurs` : projet `acme/essai`, `projectHome: campaigns`. Connexion d'un testeur, puis d'un auteur. | Le testeur voit « essai » dans « Projets de votre équipe », ouvre le projet sur Campagnes ; l'auteur ne voit pas « essai » (UC13). |
+| S2b-9 [A/UI] | `lecteurs: updates: managed`, connexion d'un lecteur. | Case des mises à jour désactivée et verrouillée (UC14). |
+| S2b-10 [A/UI] | `defaults.preferences.language: en`, poste sans choix de langue, puis choix explicite « français ». | Interface en anglais ; après le choix, français, même au démarrage suivant (critère 23). |
+| S2b-11 [A/UI] | Défaut `fieldVisibility` pour un type, utilisateur sans préférence, puis avec. | Défaut appliqué, puis choix personnel conservé (critère 23). |
+| S2b-12 [A] | `config.json` DSI `autoUpdate: false` + config forge `updates: auto`. | Mises à jour verrouillées (critère 26). |
+| S2b-13 [A/UI] | Parcours S2 en interface : connexion mot de passe, 2FA, compte neuf (bouton de changement), bannière d'accès révoqué + « Se reconnecter », déconnexion, écran GitHub sans compte forge. | Conforme à S2-1 à S2-11. |
+| S2b-14 [A] | `polenta-admin user add` : lien et message d'invitation. | Lien valide (accepté par `parseInviteLink`), message sans mot de passe si SMTP. |
+
 ## Sprint 3 — Infra exploitation
 
 | ID | Scénario | Attendu |

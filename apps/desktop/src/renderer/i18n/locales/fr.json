@@ -225,6 +225,20 @@
       "open": "Ouvrir",
       "pickFolder": "Dossier où placer le projet",
       "folderNotEmpty": "Ce dossier n’est pas vide : choisissez un dossier vide pour y placer le projet."
+    },
+    "server": {
+      "account": "Compte",
+      "searchRepos": "Rechercher un projet (organisation/nom)",
+      "repoList": "Projets accessibles",
+      "noRepos": "Aucun projet accessible avec ce compte. Demandez à votre administrateur de vous ajouter à une équipe.",
+      "noMatch": "Aucun projet ne correspond à la recherche.",
+      "readOnly": "lecture seule",
+      "enterUrl": "Saisir une URL",
+      "organization": "Organisation",
+      "onServer": "Sur le serveur {{host}}",
+      "onThisComputer": "Sur ce poste uniquement",
+      "noCreatableOrg": "Votre compte n’a le droit de créer un projet dans aucune organisation de {{host}}. Demandez-le à votre administrateur.",
+      "pushWarning": "Projet créé sur le serveur, mais sa première publication a échoué ({{message}}). Publiez plus tard depuis le bouton Publier."
     }
   },
   "preferences": {
@@ -489,7 +503,14 @@
       "implementedVersionLabel": "Version implémentée",
       "unresolved": "non résolu",
       "rolesPlayedLabel": "Rôles joués",
-      "addImplementation": "+ Déclarer une implémentation"
+      "addImplementation": "+ Déclarer une implémentation",
+      "server": {
+        "create": "Créer le repo sur le serveur",
+        "created": "Dépôt {{repo}} créé sur le serveur.",
+        "repoName": "Nom du repo",
+        "creating": "Création…",
+        "confirm": "Créer"
+      }
     },
     "removeDependency": {
       "title": "Retirer {{repoLabel}} ?",
@@ -1389,6 +1410,7 @@
   },
   "forgeAccess": {
     "revoked": "Votre accès au serveur {{host}} a été révoqué, a expiré ou votre compte a été désactivé. Vos modifications locales sont conservées.",
-    "reconnect": "Se reconnecter"
+    "reconnect": "Se reconnecter",
+    "readOnlyProject": "Vous avez un accès en lecture seule à ce projet ({{repo}}) : vous pouvez consulter mais pas publier."
   }
 }

@@ -1,8 +1,8 @@
-import type { ForgeDetection, ForgeIdentity, PasswordLoginResult } from '@polenta/types'
+import type { ForgeDetection, ForgeIdentity, ForgeMember, ForgeOrg, ForgeRepo, PasswordLoginResult } from '@polenta/types'
 
 import { isNetworkUnreachable, describeFetchError } from '../net-proxy'
 import { forgeRequest, ForgeHttpError, normalizeBaseUrl } from './forge-http'
-import type { ForgeProvider } from './forge-provider'
+import { RepoNameTakenError, type ForgeProvider } from './forge-provider'
 import { GITHUB_HOST } from './github.provider'
 
 /**
@@ -25,6 +25,113 @@ export const forgejoProvider: ForgeProvider = {
     // L'e-mail peut être une adresse « noreply » si l'utilisateur masque la sienne : prise telle quelle.
     return { login: data.login, name: data.full_name?.trim() || data.login, email: data.email ?? '' }
   },
+
+  async listRepos(baseUrl, token) {
+    const repos = await paginate<ApiRepo>(`${baseUrl}/api/v1/user/repos`, token)
+    return repos.map(toForgeRepo).sort((a, b) => a.fullName.localeCompare(b.fullName))
+  },
+
+  async listCreatableOrgs(baseUrl, token, login) {
+    const orgs = await paginate<{ username: string; full_name?: string }>(`${baseUrl}/api/v1/user/orgs`, token)
+    // Droit de création par organisation : `can_create_repository` seul (can_read/can_write sont
+    // incohérents sur Gitea — mesuré au S1, design §12).
+    const checks = await Promise.all(orgs.map(async org => {
+      try {
+        const { data } = await forgeRequest<{ can_create_repository?: boolean; is_owner?: boolean }>(
+          `${baseUrl}/api/v1/users/${encodeURIComponent(login)}/orgs/${encodeURIComponent(org.username)}/permissions`, { token })
+        return Boolean(data.can_create_repository || data.is_owner)
+      } catch {
+        return false
+      }
+    }))
+    return orgs
+      .filter((_, i) => checks[i])
+      .map(org => ({ name: org.username, label: org.full_name?.trim() ?? '' }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  },
+
+  async repoExists(baseUrl, token, owner, name) {
+    try {
+      await forgeRequest(`${baseUrl}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`, { token })
+      return true
+    } catch (err) {
+      if (err instanceof ForgeHttpError && err.status === 404) return false
+      throw err
+    }
+  },
+
+  async createOrgRepo(baseUrl, token, org, name) {
+    try {
+      const { data } = await forgeRequest<ApiRepo>(`${baseUrl}/api/v1/orgs/${encodeURIComponent(org)}/repos`, {
+        method: 'POST', token,
+        json: { name, private: true, auto_init: false, default_branch: 'main' },
+      })
+      return toForgeRepo(data)
+    } catch (err) {
+      if (err instanceof ForgeHttpError && err.status === 409) throw new RepoNameTakenError(`${org}/${name}`)
+      throw err
+    }
+  },
+
+  async repoPermissions(baseUrl, token, owner, repo) {
+    try {
+      const { data } = await forgeRequest<ApiRepo>(
+        `${baseUrl}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, { token, timeoutMs: 10_000 })
+      const p = data.permissions
+      return { pull: p?.pull ?? true, push: p?.push ?? false, admin: p?.admin ?? false }
+    } catch (err) {
+      if (err instanceof ForgeHttpError && (err.status === 404 || err.status === 403)) return null
+      throw err
+    }
+  },
+
+  async orgMembers(baseUrl, token, owner) {
+    try {
+      await forgeRequest(`${baseUrl}/api/v1/orgs/${encodeURIComponent(owner)}`, { token })
+    } catch (err) {
+      // Propriétaire = utilisateur (repo personnel) : pas d'organisation, pas d'autocomplétion.
+      if (err instanceof ForgeHttpError && err.status === 404) return null
+      throw err
+    }
+    const members = await paginate<{ login: string; full_name?: string }>(
+      `${baseUrl}/api/v1/orgs/${encodeURIComponent(owner)}/members`, token)
+    return members
+      .map((m): ForgeMember => ({ login: m.login, name: m.full_name?.trim() || m.login }))
+      .sort((a, b) => a.login.localeCompare(b.login))
+  },
+}
+
+interface ApiRepo {
+  full_name: string
+  name: string
+  owner?: { login?: string; username?: string }
+  description?: string
+  clone_url: string
+  permissions?: { pull?: boolean; push?: boolean; admin?: boolean }
+}
+
+function toForgeRepo(r: ApiRepo): ForgeRepo {
+  const owner = r.owner?.login ?? r.owner?.username ?? r.full_name.split('/')[0]
+  return {
+    fullName: r.full_name, owner, name: r.name, description: r.description?.trim() ?? '',
+    cloneUrl: r.clone_url, readOnly: r.permissions ? !r.permissions.push : false,
+  }
+}
+
+/** Toutes les pages d'une liste (50 par page, maximum par défaut des forges), bornées à 2 000 éléments. */
+const PAGE_SIZE = 50
+const MAX_PAGES = 40
+
+async function paginate<T>(url: string, token: string): Promise<T[]> {
+  const out: T[] = []
+  const sep = url.includes('?') ? '&' : '?'
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const { data } = await forgeRequest<T[]>(`${url}${sep}limit=${PAGE_SIZE}&page=${page}`, { token })
+    if (!Array.isArray(data)) break
+    out.push(...data)
+    if (data.length < PAGE_SIZE) break
+  }
+  return out
 }
 
 /**

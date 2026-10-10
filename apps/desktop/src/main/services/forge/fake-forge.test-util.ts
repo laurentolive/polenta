@@ -9,6 +9,8 @@ import type { AddressInfo } from 'net'
 export interface FakeRequest {
   method: string
   path: string
+  /** Paramètres de l'URL (pagination…). */
+  query: URLSearchParams
   headers: http.IncomingHttpHeaders
   body: string
 }
@@ -29,8 +31,8 @@ export async function startFakeForge(): Promise<FakeForge> {
     let body = ''
     req.on('data', chunk => { body += chunk })
     req.on('end', () => {
-      const path = (req.url ?? '/').split('?')[0]
-      const record: FakeRequest = { method: req.method ?? 'GET', path, headers: req.headers, body }
+      const [path, search = ''] = (req.url ?? '/').split('?')
+      const record: FakeRequest = { method: req.method ?? 'GET', path, query: new URLSearchParams(search), headers: req.headers, body }
       requests.push(record)
       const handler = routes.get(`${record.method} ${path}`)
       if (!handler) {

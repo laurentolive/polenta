@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { ImplementsDeclaration, RoleDefinition } from '@polenta/types'
 import { RolesExposedFields, ImplementedInterfacesFields } from './RolesImplementsFields'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { CreateRepoOnServer } from './CreateRepoOnServer'
 
 export interface AddDependencyValues {
   url: string
@@ -176,6 +177,10 @@ export function AddDependencyModal({
                 />
               </div>
             </div>
+          )}
+          {/* GH45 S4 — nouveau repo créé sur la forge ; son URL remplit le champ ci-dessus. */}
+          {!isEdit && !isLocal && (
+            <CreateRepoOnServer suggestedName={name} onCreated={cloneUrl => { setUrl(cloneUrl); setBranch('main') }} />
           )}
           {canBeLocal && (
             <div>

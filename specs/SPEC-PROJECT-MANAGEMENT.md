@@ -1,6 +1,6 @@
 # SPEC-PROJECT-MANAGEMENT — Gestion de projet dans l'application desktop
 
-> Dernière révision : 2026-06-05  
+> Dernière révision : 2026-10-11 (GH45 S4 — repos et création sur une forge Forgejo/Gitea)  
 > Dépend de : [SPEC-ELECTRON-DESKTOP.md](SPEC-ELECTRON-DESKTOP.md)
 
 ---
@@ -202,11 +202,8 @@ async function handleClose() {
 
 ## 9. Option "Créer un projet"
 
-**T130 : pas de création de repo distant.** `createNewProject()` (`WorkspaceService`) crée un repo
-git **local uniquement** (`git.init`), sans appel à une API remote GitHub et sans notion de
-visibilité Privé/Public — ce sont des concepts qui n'existent pas dans le code actuel. Le repo
-distant, s'il en existe un, est configuré par l'utilisateur séparément (push manuel vers un remote
-qu'il crée lui-même).
+**Création locale (T130, GH27 — inchangée).** `createNewProject()` (`WorkspaceService`) crée un repo
+git **local uniquement** (`git.init`). Sans compte Forgejo/Gitea, c'est le seul mode proposé.
 
 **Saisie (GH27)** : bouton « Créer un nouveau projet » de `/`, qui enchaîne
 - un popup **Nom du projet** (= nom du dossier créé), seul champ, `Entrée` pour valider ;
@@ -215,21 +212,69 @@ qu'il crée lui-même).
 Cf. SPEC-ELECTRON-DESKTOP §16.5.
 
 **Séquence réelle (`createNewProject(containerDir, name)`) :**
-1. `mkdir` + `git init` (branche par défaut `main`) dans `containerDir/name`
-2. Écrit `.gitignore`, `AGENTS.md`, `.mcp.json` (config serveur MCP), premier commit
-3. `initWorkspace(containerDir, rootRepoPath)` puis `openWorkspace(containerDir)`
+1. `initProjectRepo(containerDir/name)` : `mkdir` + `git init` (branche `main`), `.gitignore`,
+   `AGENTS.md`, `.mcp.json` (config serveur MCP, desktop), premier commit
+2. `initWorkspace(containerDir, rootRepoPath)` puis `openWorkspace(containerDir)`
 
 **Channel IPC :** `workspace:create-new` → `{ containerDir: string, name: string }` → `WorkspaceOpenResult`
 
-**Implémentation dans `WorkspaceService.createProject()` :**
-```typescript
-async createProject(name: string, localPath: string, isPrivate = true): Promise<WorkspaceProject> {
-  // 1. Récupère le remote depuis AuthService (defaultAccount.remoteHost)
-  // 2. Appelle l'API host pour créer le repo
-  // 3. Clone le repo créé dans localPath
-  // 4. Retourne addLocalProject(localPath)
-}
-```
+### 9.1 Forges Forgejo/Gitea : liste des repos et création sur le serveur (GH45 S4)
+
+Avec au moins un compte `forgejo` connecté (SPEC-ACCOUNTS-AUTH §5), l'accueil propose les fonctions
+de la forge. Les comptes sont relus **à l'ouverture** de chaque fenêtre (la page d'accueil est
+montée une première fois avant la connexion). Code : `main/services/forge/forge.service.ts`
+(`ForgeService`), provider `forge/forgejo.provider.ts`.
+
+**« Ouvrir un projet depuis un repo »** → `RepoPickerModal` :
+- repos accessibles au compte (`GET /api/v1/user/repos`, **toutes les pages**, 50 par page), triés,
+  recherche sur `organisation/nom` et la description ;
+- badge « lecture seule » si le compte n'a pas l'écriture (`permissions.push`) ;
+- le repo de configuration `<org>/polenta-config` (SPEC-ACCOUNTS-AUTH §7) n'est pas proposé ;
+- sélecteur de compte s'il y en a plusieurs ;
+- « Saisir une URL » : popup URL d'avant GH45 ;
+- un repo déjà présent sur le poste (projet récent de même `origin`) est rouvert, sinon cloné.
+
+**« Créer un nouveau projet »** → `CreateProjectModal` : nom, puis **« Sur le serveur <hôte> »**
+(par défaut quand c'est possible) ou « Sur ce poste uniquement » (création locale ci-dessus) :
+- organisation choisie parmi celles où le compte **peut créer** (`GET /user/orgs`, puis
+  `GET /users/{login}/orgs/{org}/permissions` → `can_create_repository` ou `is_owner`) ; aucune →
+  option désactivée avec l'explication ;
+- `workspace:create-on-server(containerDir, name, accountKey, org)` → `CreateOnServerResult`
+  (`ForgeService.createProjectOnServer`), dans cet ordre :
+  1. nom valide (`[A-Za-z0-9._-]`) et **libre** (`GET /repos/{org}/{nom}` → 404) — sinon erreur
+     **avant toute écriture locale** (« Le dépôt … existe déjà sur le serveur ») ;
+  2. `POST /orgs/{org}/repos` `{ private: true, auto_init: false, default_branch: 'main' }` (409 →
+     même erreur) ;
+  3. `createNewProject` (contenu initial identique au local) ;
+  4. `origin` = URL de clone du repo ;
+  5. publication de `main`. **Un échec de la publication n'annule rien** : le projet reste ouvert
+     avec `origin`, le message (« publiez plus tard ») s'affiche dans l'indicateur de
+     synchronisation (`pushWarning`). Polenta ne supprime **jamais** un repo distant.
+
+### 9.2 Composant créé sur le serveur (GH45 S4)
+
+Dans la fenêtre d'ajout d'un composant (SPEC-TEMPLATES §3), « Créer le repo sur le serveur » :
+organisation (mêmes règles qu'en §9.1) et nom du repo (par défaut : nom de montage). 
+`workspace:create-component-on-server(accountKey, org, name)` → `{ cloneUrl }` : nom vérifié, repo
+privé créé, **initialisé dans un dossier temporaire** (même contenu qu'un nouveau projet) puis
+publié, dossier temporaire supprimé. L'URL remplit le champ « Repo (git URL) » ; l'ajout et le
+clone suivent le flux habituel par URL. Si la publication échoue, l'erreur donne l'URL du repo créé
+(vide) pour réessayer par « Saisir une URL ».
+
+### 9.3 Champ `user` et diagnostic des droits (GH45 S4)
+
+- `forge:org-members(repoPath)` : membres de l'organisation propriétaire du repo `origin` (login,
+  nom affiché), en cache par `(hôte, organisation)` pour la durée du processus ; `null` pour un repo
+  personnel, hors ligne, ou hors Forgejo. Utilisé par le champ `user` (SPEC-REQ-requirements §3).
+- `forge:repo-access(repoPath)` : droits du compte sur le repo `origin` ; `null` dans les cas sans
+  objet (jamais d'erreur). À l'ouverture d'un projet, si le compte n'a que la lecture sur le repo
+  racine : bandeau non bloquant « Vous avez un accès en lecture seule à ce projet : vous pouvez
+  consulter mais pas publier » (`RepoAccessBanner`, refermable pour la session). Les actions
+  d'édition restent possibles ; le refus arrive à la publication (SPEC-ACCOUNTS-AUTH §8). Une
+  dépendance inaccessible est signalée au chargement de l'arbre (SPEC-ELECTRON-DESKTOP §22).
+
+Web (GH44) : mêmes channels, exposés au navigateur ; `containerDir` et `repoPath` passent par la
+garde des chemins de l'espace utilisateur.
 
 ---
 

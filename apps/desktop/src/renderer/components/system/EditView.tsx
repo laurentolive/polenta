@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink, CoverageStatus, MatrixCell, TestCase } from '@polenta/types'
 import { api } from '../../api'
+import { UserFieldInput } from './UserFieldInput'
 import { capabilities } from '../../platform'
 import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
@@ -173,12 +174,13 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
       )
 
     case 'user':
+      // GH45 S4 — membres de l'organisation proposés (forge Forgejo), saisie libre conservée.
       return (
-        <input
-          type="text"
+        <UserFieldInput
           value={localVal}
-          onChange={e => set(e.target.value)}
+          onChange={set}
           onBlur={() => onBlur(localVal)}
+          repoPath={repoPath}
           className={base}
           placeholder={field.placeholder ?? t('system.editView.userPlaceholder')}
         />

@@ -31,6 +31,7 @@ import { TemplateExportService } from './services/export/template/template-expor
 import { AppSettingsService } from './services/app-settings.service'
 import { MergeResolutionService } from './services/merge-resolution.service'
 import { ForgeConfigService } from './services/forge-config.service'
+import { ForgeService } from './services/forge/forge.service'
 import type { Container } from './ipc/index'
 import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
@@ -91,6 +92,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // GH26 — préférences app-level.
   // GH45 S2b — configuration par équipe lue sur la forge (spec §3bis).
   const forgeConfig = new ForgeConfigService(auth, host.userDataDir)
+  // GH45 S4 — repos, organisations, membres, droits ; création de projet/composant sur le serveur.
+  const forge = new ForgeService(auth, workspace, sync)
   const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged())
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
@@ -133,5 +136,6 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     appSettings,
     machineConfig: host.machineConfig,
     forgeConfig,
+    forge,
   }
 }

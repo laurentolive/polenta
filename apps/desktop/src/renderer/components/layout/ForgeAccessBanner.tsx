@@ -31,7 +31,7 @@ export function ForgeAccessBanner() {
   return (
     <div className="shrink-0 border-b border-status-warning-border bg-status-warning-bg">
       {issues.map(issue => (
-        <div key={issue.host} role="alert" className="flex items-center gap-3 px-4 py-2 text-sm text-status-warning-fg">
+        <div key={issue.host} role="alert" className="flex items-center gap-3 px-4 py-2 text-sm text-status-warning">
           <span className="flex-1">{t('forgeAccess.revoked', { host: issue.host })}</span>
           <button type="button" className="btn-primary btn-sm" onClick={() => reconnect(issue)}>
             {t('forgeAccess.reconnect')}

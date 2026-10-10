@@ -753,3 +753,16 @@ S4 réutilisera `forge-config.service` (organisation courante) et la vérificati
 | §5.9 fail2ban | Jail `polenta-forge` : `logpath` = liste explicite des `data/log/gitea.log` (réécrite à chaque add/restore/remove). Échecs web/git et créations de jeton refusées sont comptés. `banaction = iptables-allports` et `chain = DOCKER-USER` sont deux clés séparées. `datepattern` explicite. `ignoreip` = `ADMIN_IPS` (sshd aussi). |
 | Console | `kernel.printk = 3 4 1 3` (console KVM utilisable). |
 | Kit | `ensure_config_repo` : un repo vide renvoie `200 []` → on vérifie que la réponse est bien un fichier. |
+
+## 15. Révisions issues du sprint S4 (`GH45-sprint4.md`)
+
+| Point | Révision |
+|---|---|
+| §4.2 création | Portée par `ForgeService` (`createProjectOnServer`, `createComponentOnServer`), qui dépend de `WorkspaceService` et `SyncService`, et non par `WorkspaceService`. Le contenu initial vient de `WorkspaceService.initProjectRepo` (extrait de `createNewProject`). |
+| §4.2 composant | Repo initialisé dans un **dossier temporaire**, publié, puis supprimé ; seule l'URL est renvoyée (pas de `workspaceDir`). Un repo laissé dans `workspaceDir/<nom>` entrait en collision avec le clone de l'ajout par URL, et aucun chemin n'est à contrôler côté web. Publication en échec → erreur qui donne l'URL. |
+| §4.1 repos | Le repo de configuration `<org>/polenta-config` n'est pas proposé. Pagination : 50 par page, 40 pages au plus. |
+| §4.1 erreurs | Appels d'API de `ForgeService` gardés comme git : 401, ou 403 « prohibited » → hôte marqué révoqué et `ForgeAccessError` (bannière) ; réseau → message lisible. |
+| §4.3 accueil | Comptes relus **au clic** (`fetchQuery`) : la page d'accueil est montée une première fois avant la connexion, et un cache vide faisait proposer l'ancien flux. Création « Sur le serveur » proposée par défaut quand elle est possible. |
+| §4.3 champ `user` | Aussi dans `DynamicField` et dans l'édition inline de la Vue Tableau (`ExcelTextEditor` passe en `<input list>` mono-ligne quand des membres sont proposés). |
+| §4.3 diagnostic | `RepoAccessBanner` (bandeau `role=status`, refermable pour la session). |
+| Correctif S2 | Bannière « accès révoqué » et message « mot de passe temporaire » : texte `status-warning` (le `status-warning-fg` blanc était illisible sur fond clair). |

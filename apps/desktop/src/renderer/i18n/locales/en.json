@@ -225,6 +225,20 @@
       "open": "Open",
       "pickFolder": "Folder for the project",
       "folderNotEmpty": "This folder is not empty: choose an empty folder for the project."
+    },
+    "server": {
+      "account": "Account",
+      "searchRepos": "Search a project (organization/name)",
+      "repoList": "Accessible projects",
+      "noRepos": "No project is accessible with this account. Ask your administrator to add you to a team.",
+      "noMatch": "No project matches the search.",
+      "readOnly": "read-only",
+      "enterUrl": "Enter a URL",
+      "organization": "Organization",
+      "onServer": "On the server {{host}}",
+      "onThisComputer": "On this computer only",
+      "noCreatableOrg": "Your account is not allowed to create a project in any organization on {{host}}. Ask your administrator.",
+      "pushWarning": "Project created on the server, but its first publication failed ({{message}}). Publish later with the Publish button."
     }
   },
   "preferences": {
@@ -489,7 +503,14 @@
       "implementedVersionLabel": "Implemented version",
       "unresolved": "unresolved",
       "rolesPlayedLabel": "Roles played",
-      "addImplementation": "+ Declare an implementation"
+      "addImplementation": "+ Declare an implementation",
+      "server": {
+        "create": "Create the repo on the server",
+        "created": "Repository {{repo}} created on the server.",
+        "repoName": "Repository name",
+        "creating": "Creating…",
+        "confirm": "Create"
+      }
     },
     "removeDependency": {
       "title": "Remove {{repoLabel}}?",
@@ -1389,6 +1410,7 @@
   },
   "forgeAccess": {
     "revoked": "Your access to {{host}} was revoked or has expired, or your account was disabled. Your local changes are kept.",
-    "reconnect": "Sign in again"
+    "reconnect": "Sign in again",
+    "readOnlyProject": "You have read-only access to this project ({{repo}}): you can browse but not publish."
   }
 }

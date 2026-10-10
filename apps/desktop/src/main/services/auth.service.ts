@@ -220,6 +220,36 @@ export class AuthService {
     return token ? { account: toForgeAccount(account), token } : null
   }
 
+  /** GH45 S4 — comptes Forgejo/Gitea connectés (avec jeton), compte par défaut en tête. */
+  async forgeAccounts(): Promise<ForgeAccount[]> {
+    const store = await this.readStore()
+    const out: ForgeAccount[] = []
+    for (const account of store.accounts.map(normalize)) {
+      if (account.provider !== 'forgejo' || !(await this.tokenFor(account))) continue
+      if (keyOf(account) === store.defaultAccount) out.unshift(toForgeAccount(account))
+      else out.push(toForgeAccount(account))
+    }
+    return out
+  }
+
+  /** GH45 S4 — compte (par sa clé `<hôte>:<login>`) et son jeton ; `null` si inconnu ou déconnecté. */
+  async accountWithTokenByKey(key: string): Promise<{ account: ForgeAccount; token: string } | null> {
+    const store = await this.readStore()
+    const stored = store.accounts.find(a => keyOf(a) === key)
+    if (!stored) return null
+    const account = normalize(stored)
+    const token = await this.tokenFor(account)
+    return token ? { account: toForgeAccount(account), token } : null
+  }
+
+  /** GH45 S4 — compte de l'hôte d'une URL de remote et son jeton (même choix que les opérations git). */
+  async accountWithTokenForUrl(url: string): Promise<{ account: ForgeAccount; token: string } | null> {
+    const account = await this.accountForHost(extractHost(url))
+    if (!account) return null
+    const token = await this.tokenFor(account)
+    return token ? { account: toForgeAccount(account), token } : null
+  }
+
   private async connectedAccount(): Promise<NormalizedAccount | null> {
     const store = await this.readStore()
     const ordered = [

@@ -69,6 +69,7 @@ import type { TreeService } from '../services/tree.service'
 import type { BaselineService } from '../services/baseline.service'
 import type { AppSettingsService } from '../services/app-settings.service'
 import type { ForgeConfigService } from '../services/forge-config.service'
+import type { ForgeService } from '../services/forge/forge.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
 
@@ -107,6 +108,8 @@ export interface Container {
   machineConfig: MachineConfig
   /** GH45 S2b — configuration par équipe lue sur la forge. */
   forgeConfig: ForgeConfigService
+  /** GH45 S4 — repos, organisations, droits, membres ; création sur le serveur. */
+  forge: ForgeService
 }
 
 /**
@@ -141,6 +144,17 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     c.workspace.isEmptyDir(dir))
   r.handle('workspace:find-by-remote', (_e, remoteUrl: string) =>
     c.workspace.findRecentByRemote(remoteUrl))
+
+  // ── Forges (GH45 S4) : repos, organisations, droits, membres, création sur le serveur ─────────
+  r.handle('forge:accounts', () => c.forge.accounts())
+  r.handle('forge:list-repos', (_e, accountKey: string) => c.forge.listRepos(accountKey))
+  r.handle('forge:creatable-orgs', (_e, accountKey: string) => c.forge.creatableOrgs(accountKey))
+  r.handle('forge:repo-access', (_e, repoPath: string) => c.forge.repoAccess(repoPath))
+  r.handle('forge:org-members', (_e, repoPath: string) => c.forge.orgMembers(repoPath))
+  r.handle('workspace:create-on-server', (_e, containerDir: string, name: string, accountKey: string, org: string) =>
+    c.forge.createProjectOnServer(containerDir, name, accountKey, org))
+  r.handle('workspace:create-component-on-server', (_e, accountKey: string, org: string, name: string) =>
+    c.forge.createComponentOnServer(accountKey, org, name))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())

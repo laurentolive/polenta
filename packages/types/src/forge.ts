@@ -1,6 +1,8 @@
 // GH45 — forges git (GitHub, Forgejo/Gitea) : types partagés main ↔ renderer, configuration machine,
 // et marqueur des erreurs d'accès (accès révoqué, droits insuffisants).
 
+import type { WorkspaceOpenResult } from './polenta-workspace'
+
 /** Type de forge d'un compte. `forgejo` couvre Forgejo et Gitea (API /api/v1 commune). */
 export type ForgeKind = 'github' | 'forgejo' | 'generic'
 
@@ -100,6 +102,50 @@ export interface TeamConfigStatus {
 /** Projet proposé, accessible à l'utilisateur, avec son URL de clone. */
 export interface TeamProjectEntry extends TeamProject {
   cloneUrl: string
+}
+
+// ─── Repos, organisations, membres (GH45 S4, spec §6-8) ──────────────────────
+
+/** Repo accessible au compte, tel que la forge le décrit. */
+export interface ForgeRepo {
+  /** `propriétaire/nom`. */
+  fullName: string
+  owner: string
+  name: string
+  description: string
+  cloneUrl: string
+  /** Le compte n'a pas le droit d'écriture (badge « lecture seule »). */
+  readOnly: boolean
+}
+
+/** Organisation dans laquelle le compte peut créer des repos. */
+export interface ForgeOrg {
+  name: string
+  /** Nom affiché (peut être vide). */
+  label: string
+}
+
+/** Membre d'une organisation (autocomplétion des champs `user`). */
+export interface ForgeMember {
+  login: string
+  /** Nom affiché, ou le login. */
+  name: string
+}
+
+/** Droits du compte sur le repo d'un workspace (diagnostic à l'ouverture). */
+export interface ForgeRepoAccess {
+  host: string
+  /** `propriétaire/nom`. */
+  repo: string
+  pull: boolean
+  push: boolean
+}
+
+/** Projet créé sur le serveur : ouvert localement ; `pushWarning` si la publication initiale a échoué. */
+export interface CreateOnServerResult {
+  open: WorkspaceOpenResult
+  cloneUrl: string
+  pushWarning?: string
 }
 
 // ─── Erreurs d'accès ──────────────────────────────────────────────────────────

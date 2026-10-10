@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Download, FolderOpen, Plus, Sparkles, type LucideIcon } from 'lucide-react'
 import { api } from '../api'
@@ -7,12 +8,15 @@ import { encodeProjectId } from '../lib/projectId'
 import { consumeProjectJustClosed } from '../lib/projectCloseSignal'
 import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
+import { RepoPickerModal } from '../components/home/RepoPickerModal'
+import { CreateProjectModal } from '../components/home/CreateProjectModal'
+import type { ServerTarget } from '../components/home/ServerTargetFields'
 import { WebProjectList } from '../components/home/WebProjectList'
 import { isWeb } from '../platform'
 import { TeamProjects } from '../components/home/TeamProjects'
 import { useTeamConfig } from '../hooks/useTeamConfig'
 import { projectHomeRoute } from '../lib/projectHome'
-import type { TeamProjectEntry } from '@polenta/types'
+import type { ForgeAccount, ForgeRepo, TeamProjectEntry } from '@polenta/types'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -30,7 +34,17 @@ function HomePage() {
 
   const [busy, setBusy] = useState<HomeAction | null>(null)
   const [error, setError] = useState<{ action: HomeAction; message: string } | null>(null)
-  const [prompt, setPrompt] = useState<'clone' | 'create' | null>(null)
+  // GH45 S4 — avec un compte Forgejo/Gitea : liste des repos (« clone ») et création sur le serveur
+  // (« create ») ; « clone-url » / « create-local » : saisie simple d'avant GH45.
+  const [prompt, setPrompt] = useState<'clone' | 'clone-url' | 'create' | 'create-local' | null>(null)
+  const qc = useQueryClient()
+  const [forgeAccounts, setForgeAccounts] = useState<ForgeAccount[]>([])
+  // Comptes relus au clic : la page est montée une première fois avant la connexion.
+  const openPrompt = async (kind: 'clone' | 'create') => {
+    const accounts = await qc.fetchQuery({ queryKey: ['forge-accounts'], queryFn: () => api.forge.accounts(), staleTime: 0 }).catch(() => [])
+    setForgeAccounts(accounts)
+    setPrompt(accounts.length > 0 ? kind : kind === 'clone' ? 'clone-url' : 'create-local')
+  }
   // GH45 — projet de démonstration selon la configuration machine : URL fournie (miroir sur la forge
   // de l'entreprise), sinon la démo publique — masquée si GitHub est masqué. `undefined` : en cours.
   const [demoUrl, setDemoUrl] = useState<string | null | undefined>(undefined)
@@ -189,6 +203,39 @@ function HomePage() {
     })
   }
 
+  // GH45 S4 — repo choisi dans la liste : ouvert s'il est déjà sur le poste, sinon cloné.
+  const handlePickRepo = (repo: ForgeRepo) => {
+    setPrompt(null)
+    run('clone', async () => {
+      const existing = await api.workspace.findByRemote(repo.cloneUrl)
+      if (existing) {
+        await api.workspace.openProject(existing.workspaceDir)
+        return existing.workspaceDir
+      }
+      const dir = await pickDestination(repo.name, t('home.pickDestinationFolder'))
+      if (!dir) return null
+      await api.workspace.createFromClone(dir, repo.cloneUrl)
+      return dir
+    })
+  }
+
+  // GH45 S4 — projet créé sur le serveur : nom vérifié avant toute création locale ; une
+  // publication initiale en échec laisse le projet ouvert, avec le message dans l'indicateur de
+  // synchronisation (« publiez plus tard »).
+  const handleCreateOnServer = (name: string, target: ServerTarget) => {
+    setPrompt(null)
+    run('create', async () => {
+      const dir = await pickDestination(name, t('home.pickDestinationFolder'))
+      if (!dir) return null
+      const result = await api.workspace.createOnServer(dir, name, target.accountKey, target.org)
+      if (result.pushWarning) {
+        const project = await api.workspace.resolve(dir)
+        qc.setQueryData(['sync:last-error', project.localPath], t('home.server.pushWarning', { message: result.pushWarning }))
+      }
+      return dir
+    })
+  }
+
   const handleCreateName = (name: string) => {
     setPrompt(null)
     run('create', async () => {
@@ -209,8 +256,8 @@ function HomePage() {
     ...(demoUrl ? [{ action: 'demo' as const, icon: Sparkles, title: t('home.demoTitle'), help: t('home.demoHelp'), busyLabel: t('home.loadingDemo'), onClick: handleDemo }] : []),
     // GH44 — web : « Mes projets » (liste ci-dessous) remplace l'ouverture d'un dossier local.
     ...(isWeb ? [] : [{ action: 'open' as const, icon: FolderOpen, title: t('home.openExisting'), help: t('home.openExistingHelp'), busyLabel: t('home.opening'), onClick: handleOpen }]),
-    { action: 'clone', icon: Download, title: t('home.openFromRepo'), help: t('home.openFromRepoHelp'), busyLabel: t('home.cloning'), onClick: () => setPrompt('clone') },
-    { action: 'create', icon: Plus, title: t('home.createNew'), help: t('home.createNewHelp'), busyLabel: t('home.creating'), onClick: () => setPrompt('create') },
+    { action: 'clone', icon: Download, title: t('home.openFromRepo'), help: t('home.openFromRepoHelp'), busyLabel: t('home.cloning'), onClick: () => void openPrompt('clone') },
+    { action: 'create', icon: Plus, title: t('home.createNew'), help: t('home.createNewHelp'), busyLabel: t('home.creating'), onClick: () => void openPrompt('create') },
   ]
 
   return (
@@ -257,12 +304,20 @@ function HomePage() {
         )
       })}
 
-      {prompt === 'clone' && (
+      {prompt === 'clone' && forgeAccounts.length > 0 && (
+        <RepoPickerModal accounts={forgeAccounts} onPick={handlePickRepo}
+          onEnterUrl={() => setPrompt('clone-url')} onCancel={() => setPrompt(null)} />
+      )}
+      {prompt === 'clone-url' && (
         <TextPromptModal title={t('home.openFromRepo')} label={t('home.repoUrlLabel')}
           placeholder={`${defaultServer ?? 'https://github.com'}/org/projet.git`} confirmLabel={t('home.continue')}
           onConfirm={handleCloneUrl} onCancel={() => setPrompt(null)} />
       )}
-      {prompt === 'create' && (
+      {prompt === 'create' && forgeAccounts.length > 0 && (
+        <CreateProjectModal accounts={forgeAccounts} onLocal={handleCreateName} onServer={handleCreateOnServer}
+          onCancel={() => setPrompt(null)} />
+      )}
+      {prompt === 'create-local' && (
         <TextPromptModal title={t('home.createNew')} label={t('home.projectNameLabel')}
           confirmLabel={t('home.continue')} onConfirm={handleCreateName} onCancel={() => setPrompt(null)} />
       )}

@@ -24,6 +24,7 @@ import { FilterOptionsToggle } from '../FilterOptionsToggle'
 import { ExcelCellStoreContext, createExcelCellStore, useCellGestures, refocusGrid, type CaretRequest } from './excelCellStore'
 import { rawOffsetAtPoint } from './excelCaret'
 import { ExcelTextEditor } from './ExcelTextEditor'
+import { useOrgMembers } from './UserFieldInput'
 import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
 import { rowClick, checkboxClick, groupState, toggleGroup, type GroupState } from '../../lib/gridSelection'
 
@@ -382,6 +383,8 @@ const InlineCell = memo(function InlineCell({
   const isRichtext = fieldDef?.type === 'richtext' && !isSystem && !!richtext
   const editable = !isRichtext && !isSystem && !!onEdit
   const isMultiEnum = fieldDef?.type === 'multi_enum'
+  // GH45 S4 — champ `user` : membres de l'organisation proposés à l'édition (requête partagée).
+  const members = useOrgMembers(fieldDef?.type === 'user' ? repoPath : undefined)
   // Hook appelé inconditionnellement (règle des hooks) ; une cellule richtext a ses propres gestes
   // (`RichtextCell`) — ici `editable` est faux, donc rien n'est inscrit au registre.
   const g = useCellGestures(nodeId, field, editable
@@ -463,6 +466,7 @@ const InlineCell = memo(function InlineCell({
           initialValue={value}
           multiline={multiline}
           caretOffset={edit.caret}
+          members={members}
           onCommit={v => {
             // Valider sans modification n'écrit rien (plus d'aplatissement ni de propagation T149).
             if (v !== value) onEdit!(objectId, field, v)

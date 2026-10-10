@@ -5,6 +5,10 @@ Exécuté en root SUR L'HÔTE (lit /opt/polenta/instances/<instance>/instance.en
   sudo python3 forge-setup.py accounts <instance>        → JSON des comptes de test (stdout)
   sudo python3 forge-setup.py config <instance> <b64>     → remplace <org>/polenta-config/config.yaml
                                                             (en tant que propriétaire : compte d'exploitation)
+  sudo python3 forge-setup.py seed <instance>             → itest : schéma avec un champ `user` + une exigence (S4)
+  sudo python3 forge-setup.py repo <instance> <nom>       → {exists, private, branches} (S4)
+  sudo python3 forge-setup.py delete-repos <instance> <préfixe> → supprime les repos <préfixe>* (S4)
+  sudo python3 forge-setup.py bulk <instance> <préfixe> <n>     → n repos vides <préfixe>NN (S4)
 
 Comptes (re)créés : itest-auteur (auteurs), itest-testeur (testeurs), itest-lecteur (lecteurs),
 itest-2fa (auteurs, TOTP), itest-neuf (mot de passe temporaire) ; repo <org>/itest (main + .gitignore).
@@ -34,6 +38,42 @@ def req(method, path, body=None, token=OPS, raw=False, opener=None, data=None):
     if raw: return c, t
     try: return c, json.loads(t)
     except Exception: return c, t
+
+
+SEED_SCHEMA = """version: 1
+nodes:
+  - name: root
+    label: Projet de test
+    readonly: false
+    objectTypes:
+      - name: exigence
+        label: Exigence
+        prefix: REQ
+        category: requirement
+        fields:
+          - name: statement
+            label: Enonce
+            type: richtext
+          - name: responsable
+            label: Responsable
+            type: user
+        statuses:
+          - name: draft
+            label: Brouillon
+linkTypes: []
+"""
+
+SEED_REQ = """id: REQ-0001
+projectId: ''
+branchId: ''
+objectTypeRef: root::exigence
+title: Exigence de test
+status: draft
+version: 1
+fields:
+  statement: THE system SHALL be tested.
+jiraLinks: []
+"""
 
 
 def pw(): return 'It-' + base64.b32encode(os.urandom(10)).decode().rstrip('=')
@@ -90,6 +130,44 @@ if cmd == 'accounts':
                                                                     'message': 'init', 'branch': 'main', 'new_branch': 'main'})
     assert c == 201, (c, j)
     print(json.dumps(out))
+elif cmd == 'seed':
+    # GH45 S4 — itest : schéma minimal avec un champ `user` et une exigence (autocomplétion S4-10).
+    files = {
+        '.polenta/schema.yaml': SEED_SCHEMA,
+        'requirements/REQ-0001.yaml': SEED_REQ,
+    }
+    for p, text in files.items():
+        c, j = req('POST', f'/repos/{ORG}/itest/contents/{p}', {'content': base64.b64encode(text.encode()).decode(),
+                                                                 'message': f'tests GH45 S4 : {p}', 'branch': 'main'})
+        assert c == 201, (p, c, j)
+    print(json.dumps({'ok': True}))
+elif cmd == 'repo':
+    # GH45 S4 — état d'un repo de l'organisation : existe, privé, branches.
+    c, j = req('GET', f'/repos/{ORG}/{sys.argv[3]}')
+    if c != 200:
+        print(json.dumps({'exists': False}))
+    else:
+        _, br = req('GET', f'/repos/{ORG}/{sys.argv[3]}/branches')
+        print(json.dumps({'exists': True, 'private': j['private'], 'branches': [b['name'] for b in br]}))
+elif cmd == 'delete-repos':
+    # GH45 S4 — nettoyage : repos de l'organisation dont le nom commence par le préfixe donné.
+    prefix = sys.argv[3]
+    assert len(prefix) >= 3, 'préfixe trop court'
+    page, names = 1, []
+    while True:
+        _, batch = req('GET', f'/orgs/{ORG}/repos?limit=50&page={page}')
+        names += [r['name'] for r in batch]
+        if len(batch) < 50: break
+        page += 1
+    gone = [n for n in names if n.startswith(prefix)]
+    for n in gone: req('DELETE', f'/repos/{ORG}/{n}')
+    print(json.dumps({'deleted': gone}))
+elif cmd == 'bulk':
+    # GH45 S4 — n repos vides `<préfixe>NN` (pagination de la liste, critère 7).
+    prefix, n = sys.argv[3], int(sys.argv[4])
+    for i in range(n):
+        req('POST', f'/orgs/{ORG}/repos', {'name': f'{prefix}{i:02d}', 'private': True, 'auto_init': False})
+    print(json.dumps({'ok': True}))
 elif cmd == 'config':
     content = base64.b64decode(sys.argv[3])
     c, cur = req('GET', f'/repos/{ORG}/polenta-config/contents/config.yaml')

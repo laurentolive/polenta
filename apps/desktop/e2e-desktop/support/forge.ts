@@ -34,8 +34,28 @@ export function uploadSetupScript(): void {
   execFileSync(cmd === 'ssh' ? 'scp' : cmd, [...args.filter(a => a !== '-T'), '-q', SETUP, `${target}:/tmp/forge-setup.py`])
 }
 
-export function resetAccounts(): Accounts {
-  return JSON.parse(ssh(`sudo python3 /tmp/forge-setup.py accounts ${INSTANCE}`)) as Accounts
+export function resetAccounts(instance = INSTANCE): Accounts {
+  return JSON.parse(ssh(`sudo python3 /tmp/forge-setup.py accounts ${instance}`)) as Accounts
+}
+
+/** GH45 S4 — itest : schéma avec un champ `user` et une exigence. */
+export function seedItest(): void {
+  ssh(`sudo python3 /tmp/forge-setup.py seed ${INSTANCE}`)
+}
+
+/** GH45 S4 — état d'un repo de l'organisation sur la forge. */
+export function repoInfo(name: string): { exists: boolean; private?: boolean; branches?: string[] } {
+  return JSON.parse(ssh(`sudo python3 /tmp/forge-setup.py repo ${INSTANCE} ${name}`))
+}
+
+/** GH45 S4 — supprime les repos de l'organisation `<préfixe>*`. */
+export function deleteRepos(prefix: string): void {
+  ssh(`sudo python3 /tmp/forge-setup.py delete-repos ${INSTANCE} ${prefix}`)
+}
+
+/** GH45 S4 — n repos vides `<préfixe>NN`. */
+export function bulkRepos(prefix: string, n: number): void {
+  ssh(`sudo python3 /tmp/forge-setup.py bulk ${INSTANCE} ${prefix} ${n}`)
 }
 
 export function setTeamConfig(yaml: string): void {

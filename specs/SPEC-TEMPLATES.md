@@ -53,6 +53,13 @@ campagnes), des composants imbriqués (`children`, voir plus bas), et des interf
 `polenta-repo.yaml` dans le workspace plat — les champs `url` et `branch` sur un `SystemNode` sont
 obsolètes et ne doivent plus être utilisés.
 
+**Repo du composant créé sur le serveur (GH45 S4)** : à l'ajout d'un composant (ou d'une
+interface) avec son propre repo, la fenêtre `AddDependencyModal` propose « Créer le repo sur le
+serveur » quand un compte Forgejo/Gitea est connecté : organisation où le compte peut créer, nom
+du repo (par défaut le nom de montage). Le repo est créé privé, initialisé et publié par le main,
+puis son URL remplit le champ « Repo (git URL) » ; l'ajout se poursuit comme pour un repo existant
+(clone, `polenta-repo.yaml`, types d'objets par défaut). Détail : SPEC-PROJECT-MANAGEMENT §9.2.
+
 **Plusieurs composants locaux par repo (T113)** : un repo peut définir plus d'un `SystemNode` dans
 son `schema.yaml` — `root` (toujours présent, lui-même un composant comme les autres) plus zéro ou
 plusieurs composants locaux, chacun avec ses propres `objectTypes`. Un composant local vit dans le

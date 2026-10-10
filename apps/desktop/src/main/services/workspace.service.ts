@@ -104,6 +104,16 @@ export class WorkspaceService {
    */
   async createNewProject(containerDir: string, name: string): Promise<WorkspaceOpenResult> {
     const rootRepoPath = path.join(containerDir, name)
+    await this.initProjectRepo(rootRepoPath)
+    await this.initWorkspace(containerDir, rootRepoPath)
+    return this.openWorkspace(containerDir)
+  }
+
+  /**
+   * Contenu initial d'un nouveau repo Polenta (branche `main`, `.gitignore`, `AGENTS.md`,
+   * `.mcp.json`, premier commit). GH45 S4 — partagé avec la création d'un composant sur le serveur.
+   */
+  async initProjectRepo(rootRepoPath: string): Promise<void> {
     await fsPromises.mkdir(rootRepoPath, { recursive: true })
     await git.init({ fs, dir: rootRepoPath, defaultBranch: 'main' })
 
@@ -134,9 +144,6 @@ export class WorkspaceService {
       message: 'init: create project',
       author: { name: 'Polenta', email: 'polenta@localhost' },
     })
-
-    await this.initWorkspace(containerDir, rootRepoPath)
-    return this.openWorkspace(containerDir)
   }
 
   /**

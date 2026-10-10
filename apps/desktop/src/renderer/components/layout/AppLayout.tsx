@@ -10,6 +10,7 @@ import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
 import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
+import { RepoAccessBanner } from './RepoAccessBanner'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
 
@@ -237,6 +238,7 @@ export function AppLayout() {
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <ForgeAccessBanner />
+        {currentProjectId && <RepoAccessBanner projectId={currentProjectId} />}
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>

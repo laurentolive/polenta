@@ -1,5 +1,7 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
+import type { ForgeMember } from '@polenta/types'
 import { refocusGrid } from './excelCellStore'
+import { MemberDatalist } from './UserFieldInput'
 
 /**
  * T176 — éditeur en place d'une cellule texte de la Vue Excel, à iso-typographie avec la lecture :
@@ -9,6 +11,9 @@ import { refocusGrid } from './excelCellStore'
  *
  * Clavier : Entrée = retour à la ligne (multi-ligne) ou valider (mono-ligne) ; Ctrl/Cmd+Entrée =
  * valider ; Échap = annuler ; perte de focus (clic extérieur) = valider.
+ *
+ * GH45 S4 — champ `user` avec des membres à proposer : `<input list>` mono-ligne (un `<textarea>`
+ * n'accepte pas de `<datalist>`), même clavier.
  */
 export function ExcelTextEditor({
   initialValue,
@@ -16,6 +21,7 @@ export function ExcelTextEditor({
   caretOffset,
   onCommit,
   onCancel,
+  members,
 }: {
   initialValue: string
   multiline: boolean
@@ -23,9 +29,13 @@ export function ExcelTextEditor({
   caretOffset?: number
   onCommit: (value: string) => void
   onCancel: () => void
+  /** GH45 S4 — membres proposés (champ `user`). */
+  members?: ForgeMember[]
 }) {
   const [draft, setDraft] = useState(initialValue)
-  const ref = useRef<HTMLTextAreaElement>(null)
+  const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null)
+  const listId = useId()
+  const withList = !multiline && (members?.length ?? 0) > 0
   // Un seul dénouement : Échap puis le `blur` du démontage ne doivent pas aussi valider.
   const doneRef = useRef(false)
 
@@ -50,6 +60,41 @@ export function ExcelTextEditor({
     onCancel()
   }
 
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation()
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      refocusGrid(ref.current)
+      cancel()
+    } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || !multiline)) {
+      e.preventDefault()
+      refocusGrid(ref.current)
+      commit()
+    }
+  }
+
+  if (withList) {
+    return (
+      <>
+        <input
+          ref={ref}
+          value={draft}
+          spellCheck={false}
+          autoComplete="off"
+          list={listId}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={onKeyDown}
+          onClick={e => e.stopPropagation()}
+          onDoubleClick={e => e.stopPropagation()}
+          className="block w-full p-0 m-0 border-0 bg-transparent outline-none"
+          style={{ font: 'inherit', lineHeight: 'inherit', color: 'inherit', letterSpacing: 'inherit' }}
+        />
+        <MemberDatalist id={listId} members={members!} />
+      </>
+    )
+  }
+
   return (
     <textarea
       ref={ref}
@@ -58,18 +103,7 @@ export function ExcelTextEditor({
       spellCheck={false}
       onChange={e => setDraft(multiline ? e.target.value : e.target.value.replace(/\r?\n/g, ' '))}
       onBlur={commit}
-      onKeyDown={e => {
-        e.stopPropagation()
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          refocusGrid(ref.current)
-          cancel()
-        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || !multiline)) {
-          e.preventDefault()
-          refocusGrid(ref.current)
-          commit()
-        }
-      }}
+      onKeyDown={onKeyDown}
       // L'édition ne doit ni re-sélectionner la ligne ni rouvrir l'éditeur.
       onClick={e => e.stopPropagation()}
       onDoubleClick={e => e.stopPropagation()}

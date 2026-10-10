@@ -416,7 +416,7 @@ function LoginPage() {
               )}
               {passwordChangeUrl && (
                 <div className="rounded border border-status-warning-border bg-status-warning-bg px-3 py-2 space-y-2">
-                  <p className="text-sm text-status-warning-fg">{t('login.forge.passwordChangeRequired')}</p>
+                  <p className="text-sm text-status-warning">{t('login.forge.passwordChangeRequired')}</p>
                   <button type="button" className="btn-secondary btn-sm"
                     onClick={() => void api.auth.openPasswordChange()}>
                     {t('login.forge.changePassword')}

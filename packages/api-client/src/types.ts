@@ -1,4 +1,7 @@
-import type { ForgeAccount, ForgeDetection, MachineConfig, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry } from '@polenta/types'
+import type {
+  CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+} from '@polenta/types'
 import type {
   MergeFileDetail,
   MergeFileDraft,
@@ -365,6 +368,18 @@ export interface ApiClient {
     save(repoPath: string, tree: TypeTree): Promise<void>
     generateId(): Promise<string>
   }
+  /** GH45 S4 — forges Forgejo/Gitea du compte : repos, organisations, droits, membres. */
+  forge: {
+    /** Comptes Forgejo/Gitea connectés, compte par défaut en tête. */
+    accounts(): Promise<ForgeAccount[]>
+    listRepos(accountKey: string): Promise<ForgeRepo[]>
+    /** Organisations où le compte peut créer un repo. */
+    creatableOrgs(accountKey: string): Promise<ForgeOrg[]>
+    /** Droits sur le repo `origin` ; null hors ligne, hors Forgejo ou sans compte. */
+    repoAccess(repoPath: string): Promise<ForgeRepoAccess | null>
+    /** Membres de l'organisation propriétaire du repo ; null dans les cas sans objet. */
+    orgMembers(repoPath: string): Promise<ForgeMember[] | null>
+  }
   workspace: {
     listRecents(): Promise<ProjectRecent[]>
     markRecent(workspaceDir: string): Promise<void>
@@ -376,6 +391,10 @@ export interface ApiClient {
     createFromClone(containerDir: string, remoteUrl: string): Promise<WorkspaceOpenResult>
     /** GH45 S2b — projet récent dont l'origin est `remoteUrl`, null sinon. */
     findByRemote(remoteUrl: string): Promise<ProjectRecent | null>
+    /** GH45 S4 — nouveau projet sur le serveur (repo privé dans `org`), puis local, puis publication. */
+    createOnServer(containerDir: string, name: string, accountKey: string, org: string): Promise<CreateOnServerResult>
+    /** GH45 S4 — nouveau repo de composant sur le serveur, initialisé ; renvoie son URL de clone. */
+    createComponentOnServer(accountKey: string, org: string, name: string): Promise<{ cloneUrl: string }>
     // GH27 — true if the folder is missing or has no entries
     isEmptyDir(dir: string): Promise<boolean>
     // T69: flat workspace

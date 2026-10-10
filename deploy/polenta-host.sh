@@ -923,7 +923,11 @@ cmd_backup_cron() {
     if ( backup_instance "$name" nightly ); then
       host_log "backup $name (nightly)" OK
       local prune=(); [[ "$(date +%u)" == 7 ]] && prune=(--prune)
-      ( restic_for "$name" forget --quiet "${BACKUP_KEEP[@]}" "${prune[@]}" ) || warn "rétention de $name en échec"
+      # Verrous périmés (opération interrompue, hôte perdu puis restauré : constaté au test S3-13) :
+      # « unlock » ne retire que les verrous d'un processus mort ou vieux de plus de 30 min.
+      ( restic_for "$name" unlock --quiet ) || true
+      ( restic_for "$name" forget --quiet "${BACKUP_KEEP[@]}" "${prune[@]}" ) \
+        || { warn "rétention de $name en échec"; host_log "rétention $name" ERREUR; }
     else
       failed=1; host_log "backup $name (nightly)" ERREUR
     fi

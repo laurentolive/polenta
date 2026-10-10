@@ -178,7 +178,9 @@ Les mises à jour de sécurité de l'OS sont automatiques ; redémarrer l'hôte 
   de jeton) en 10 min → l'IP est bannie **de toutes les forges** (pas de SSH) pendant 1 h. Les
   règles des forges sont dans la chaîne `DOCKER-USER` d'iptables.
 - `ADMIN_IPS` (host.env) : IP fixes de l'exploitant **jamais** bannies. À laisser vide avec une IP
-  dynamique ou mobile ; relancer `setup` après modification.
+  dynamique ou mobile ; relancer `setup` après modification. Une campagne de tests de connexion
+  (mauvais mots de passe, codes 2FA faux) atteint vite le seuil : ajouter temporairement l'IP du
+  testeur, ou lever le bannissement entre deux séries.
 - Voir / lever un bannissement :
   ```
   sudo fail2ban-client status polenta-forge        # ou sshd
@@ -229,9 +231,18 @@ Ces sites **ne sont pas sauvegardés** par le kit : garder leurs sources ailleur
 
 ### A12. Reprise sur un hôte neuf / changement d'hôte
 
-Prouvé au test S3-13 (réinstallation complète de l'OS).
+Prouvé au test S3-13 (réinstallation complète de l'OS, 2026-10-11) : `setup` 1 min 50, restauration
+~35 s par client, comptes / 2FA / droits / dépôts intacts. Compter ~15 min au total hors délai de
+réinstallation du fournisseur.
+
+**Avant** une réinstallation volontaire : `instance backup --all`, puis copier hors de l'hôte
+`instance keys`, `/opt/polenta/host.env` et les sites additionnels.
 
 1. Nouvel hôte (ou OS réinstallé) : utilisateur sudo, clé SSH, mot de passe pour la console (A8).
+   OVH : vérifier la version choisie dans la liste (Debian **13**, pas 11 — `setup` refuse un OS non
+   supporté) ; le mot de passe de `debian` doit être changé à la première connexion SSH
+   interactive, avant toute commande automatisée. L'empreinte SSH de l'hôte change :
+   `ssh-keygen -R <hôte>` sur le poste de l'exploitant.
 2. Copier le kit et le `host.env` d'origine (gardé hors de l'hôte, ou le recréer) ; `setup` (A2).
 3. Si l'adresse IP change : mettre à jour le DNS (`*.forge…` A et AAAA, TTL court conseillé à
    l'avance) et attendre la propagation (`dig +short acme.forge.mondomaine.fr`).
@@ -243,6 +254,9 @@ Prouvé au test S3-13 (réinstallation complète de l'OS).
    ```
 5. Republier les sites additionnels (A10).
 6. `polenta-host status` ; les postes Polenta se reconnectent seuls (même adresse).
+
+Les verrous restic laissés par l'ancien hôte sont levés automatiquement par la sauvegarde nocturne
+(`restic unlock`, verrous périmés uniquement).
 
 **Bascule planifiée** vers un nouvel hôte : préparer le nouvel hôte, `instance backup <nom>` sur
 l'ancien juste avant, arrêter l'instance sur l'ancien (`instance stop`), basculer le DNS, puis

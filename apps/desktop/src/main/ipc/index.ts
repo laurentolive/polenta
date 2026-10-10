@@ -68,6 +68,7 @@ import type { CreateReviewDto } from '../services/reviews.service'
 import type { TreeService } from '../services/tree.service'
 import type { BaselineService } from '../services/baseline.service'
 import type { AppSettingsService } from '../services/app-settings.service'
+import type { ForgeConfigService } from '../services/forge-config.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
 
@@ -104,6 +105,8 @@ export interface Container {
   exportTemplateLibrary: ExportTemplateLibrary
   /** GH45 — configuration machine de l'hôte (cf. HostContext.machineConfig). */
   machineConfig: MachineConfig
+  /** GH45 S2b — configuration par équipe lue sur la forge. */
+  forgeConfig: ForgeConfigService
 }
 
 /**
@@ -136,6 +139,8 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     c.workspace.createFromClone(containerDir, remoteUrl))
   r.handle('workspace:is-empty-dir', (_e, dir: string) =>
     c.workspace.isEmptyDir(dir))
+  r.handle('workspace:find-by-remote', (_e, remoteUrl: string) =>
+    c.workspace.findRecentByRemote(remoteUrl))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())
@@ -145,6 +150,10 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     c.auth.loginWithPassword(serverUrl, login, password, otp))
   r.handle('auth:current-account', () => c.auth.currentAccount())
   r.handle('app:get-machine-config', () => c.machineConfig)
+  r.handle('app:get-team-config', () => c.forgeConfig.status())
+  r.handle('app:refresh-team-config', () => c.forgeConfig.refresh())
+  r.handle('app:team-projects', () => c.forgeConfig.teamProjects())
+  c.forgeConfig.onChange(status => platform.broadcast('app:team-config-changed', status))
   r.handle('auth:setup', (_e, remote: string, pat: string) => c.auth.setup(remote, pat))
   r.handle('auth:save-token', (_e, remote: string, token: string) =>
     c.auth.saveToken(remote, token))
@@ -648,5 +657,5 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   r.handle('export-templates:install-examples', () =>
     c.exportTemplateLibrary.installExamples(platform.exportTemplateExamplesDir()))
 
-  registerPrefHandlers(r)
+  registerPrefHandlers(r, c.forgeConfig)
 }

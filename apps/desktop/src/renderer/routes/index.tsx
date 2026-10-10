@@ -9,6 +9,10 @@ import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
 import { WebProjectList } from '../components/home/WebProjectList'
 import { isWeb } from '../platform'
+import { TeamProjects } from '../components/home/TeamProjects'
+import { useTeamConfig } from '../hooks/useTeamConfig'
+import { projectHomeRoute } from '../lib/projectHome'
+import type { TeamProjectEntry } from '@polenta/types'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -17,7 +21,7 @@ export const Route = createFileRoute('/')({
 // GH27 — the page is a list of action buttons; each one asks only for what it needs, when it
 // needs it: folders through the native picker, text (Git URL, project name) through a one-field
 // prompt.
-type HomeAction = 'demo' | 'open' | 'clone' | 'create'
+type HomeAction = 'demo' | 'open' | 'clone' | 'create' | 'team'
 
 function HomePage() {
   const { t } = useTranslation()
@@ -30,6 +34,8 @@ function HomePage() {
   // GH45 — projet de démonstration selon la configuration machine : URL fournie (miroir sur la forge
   // de l'entreprise), sinon la démo publique — masquée si GitHub est masqué. `undefined` : en cours.
   const [demoUrl, setDemoUrl] = useState<string | null | undefined>(undefined)
+  // GH45 S2b — vue d'ouverture d'un projet selon l'équipe (projectHome).
+  const projectHome = useTeamConfig()?.config?.preferences.projectHome
   const [defaultServer, setDefaultServer] = useState<string | undefined>(undefined)
 
   useEffect(() => {
@@ -70,7 +76,7 @@ function HomePage() {
       const lastOpened = await api.workspace.getLastOpened()
       if (cancelled) return
       if (lastOpened) {
-        await navigate({ to: '/dashboard', search: { projectId: encodeProjectId(lastOpened.workspaceDir), dashboardId: undefined } })
+        await navigate(projectHomeRoute(encodeProjectId(lastOpened.workspaceDir), (await api.app.getTeamConfig().catch(() => null))?.config?.preferences.projectHome))
         return
       }
 
@@ -88,8 +94,13 @@ function HomePage() {
     )
   }
 
-  async function goToProject(workspaceDir: string) {
+  async function goToProject(workspaceDir: string, action?: HomeAction) {
     await api.workspace.markRecent(workspaceDir)
+    // GH45 S2b — projet existant : vue d'ouverture de l'équipe s'il y en a une ; création : /schema.
+    if (projectHome && action !== 'create') {
+      await navigate(projectHomeRoute(encodeProjectId(workspaceDir), projectHome))
+      return
+    }
     await navigate({ to: '/schema', search: { repoPath: '', projectId: encodeProjectId(workspaceDir) } })
   }
 
@@ -122,7 +133,7 @@ function HomePage() {
         for (const created of createdDirs.current) await api.web.deleteWorkspace(created, true).catch(() => {})
         throw err
       }
-      if (dir) await goToProject(dir)
+      if (dir) await goToProject(dir, action)
     } catch (err) {
       setError({ action, message: err instanceof Error ? err.message : String(err) })
     } finally {
@@ -141,6 +152,22 @@ function HomePage() {
     }
     if (!(await api.workspace.isEmptyDir(dir))) throw new Error(t('home.demoFolderNotEmpty'))
     await api.workspace.createFromClone(dir, demoUrl)
+    return dir
+  })
+
+  // GH45 S2b — projet proposé par l'équipe : ouvert s'il est déjà sur le poste, sinon cloné.
+  const handleTeamProject = (project: TeamProjectEntry) => run('team', async () => {
+    const existing = await api.workspace.findByRemote(project.cloneUrl)
+    if (existing) {
+      await api.workspace.openProject(existing.workspaceDir)
+      return existing.workspaceDir
+    }
+    const dir = await pickDestination(project.repo.split('/')[1] ?? 'projet', t('home.team.pickFolder'))
+    if (!dir) return null
+    // Dossier non vide (y compris un autre projet Polenta) : refusé — on n'ouvre jamais un autre
+    // projet à la place de celui de l'équipe.
+    if (!(await api.workspace.isEmptyDir(dir))) throw new Error(t('home.team.folderNotEmpty'))
+    await api.workspace.createFromClone(dir, project.cloneUrl)
     return dir
   })
 
@@ -197,6 +224,12 @@ function HomePage() {
             </p>
           )}
         </div>
+      )}
+      <TeamProjects disabled={busy !== null} onOpen={handleTeamProject} />
+      {error?.action === 'team' && (
+        <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
+          {error.message}
+        </p>
       )}
       {actions.map(({ action, icon: Icon, title, help, busyLabel, onClick }) => {
         const featured = action === 'demo'

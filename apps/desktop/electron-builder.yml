@@ -86,3 +86,8 @@ mac:
   icon: build/icon.png
 linux:
   icon: build/icon.png
+# GH45 S2b — lien d'invitation polenta://connect?server=…&login=…
+protocols:
+  - name: Polenta
+    schemes:
+      - polenta

@@ -135,7 +135,12 @@
       "exportTemplatesExamplesHint": "Copie les gabarits Word d'exemple et la référence des balises dans le sous-dossier « Exemples Polenta » de la bibliothèque (sans écraser les fichiers existants).",
       "exportTemplatesExamplesDone": "{{count}} fichier(s) copié(s) dans {{folder}}",
       "forgeTokenHint": "La déconnexion supprime le jeton de ce poste ; il reste visible dans vos paramètres du serveur › Applications, où vous pouvez le révoquer.",
-      "autoUpdateLocked": "Mises à jour gérées par votre service informatique."
+      "autoUpdateLocked": "Mises à jour gérées par votre service informatique.",
+      "teamConfigTeams": "Configuration du serveur appliquée (équipes : {{teams}}).",
+      "teamConfigDefaults": "Configuration du serveur appliquée.",
+      "teamConfigNone": "Aucune configuration sur ce serveur.",
+      "teamConfigError": "Configuration du serveur non lue : {{error}}",
+      "teamConfigWarnings": "({{count}} réglage(s) ignoré(s))"
     },
     "menu": {
       "defaultLabel": "Compte"
@@ -180,7 +185,11 @@
       "accountDisabled": "Ce compte est désactivé. Contactez l’administrateur du serveur.",
       "notAForge": "Ce serveur n’est pas un serveur Forgejo ou Gitea.",
       "passwordChangeRequired": "Votre mot de passe est temporaire : changez-le sur le serveur, puis connectez-vous ici avec le nouveau.",
-      "changePassword": "Changer mon mot de passe sur le serveur"
+      "changePassword": "Changer mon mot de passe sur le serveur",
+      "companyServer": "Serveur de votre entreprise…",
+      "serverPlaceholder": "adresse du serveur, ex. acme.forge.example.fr",
+      "invited": "Invitation à vous connecter au serveur {{server}}.",
+      "inviteRejected": "Lien d’invitation ignoré : le serveur {{server}} n’est pas celui autorisé par votre service informatique."
     }
   },
   "home": {
@@ -210,6 +219,12 @@
       "delete": "Supprimer de « Mes projets »",
       "deleteConfirm": "Supprimer le projet « {{name}} » de votre espace ? Le dépôt distant n’est pas touché.",
       "deleteUnpublished": "« {{name}} » contient des modifications non publiées ({{repos}}). Elles seront perdues. Supprimer quand même ?"
+    },
+    "team": {
+      "title": "Projets de votre équipe",
+      "open": "Ouvrir",
+      "pickFolder": "Dossier où placer le projet",
+      "folderNotEmpty": "Ce dossier n’est pas vide : choisissez un dossier vide pour y placer le projet."
     }
   },
   "preferences": {

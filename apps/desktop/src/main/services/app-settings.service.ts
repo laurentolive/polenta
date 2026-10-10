@@ -14,10 +14,12 @@ export class AppSettingsService {
     private readonly userDataDir: string,
     /** GH45 — `autoUpdate: false` impose et verrouille `autoCheckUpdates: false`. */
     private readonly machineConfig: MachineConfig = { hideGithub: false },
+    /** GH45 S2b — `updates: managed` dans la configuration de la forge (même effet). */
+    private readonly forgeUpdatesManaged: () => boolean = () => false,
   ) {}
 
   private get updatesLocked(): boolean {
-    return this.machineConfig.autoUpdate === false
+    return this.machineConfig.autoUpdate === false || this.forgeUpdatesManaged()
   }
 
   private get filePath(): string {

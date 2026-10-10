@@ -212,6 +212,14 @@ export class AuthService {
     return account ? toForgeAccount(account) : null
   }
 
+  /** GH45 S2b — compte courant et son jeton (lecture de la configuration de la forge). */
+  async currentAccountWithToken(): Promise<{ account: ForgeAccount; token: string } | null> {
+    const account = await this.connectedAccount()
+    if (!account) return null
+    const token = await this.tokenFor(account)
+    return token ? { account: toForgeAccount(account), token } : null
+  }
+
   private async connectedAccount(): Promise<NormalizedAccount | null> {
     const store = await this.readStore()
     const ordered = [

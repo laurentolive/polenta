@@ -33,6 +33,32 @@ team_id_or_die() {
   [[ -n "$TEAM_ID" ]] || die "équipe « $1 » inconnue dans $ORG. Équipes : $(jq -r '[.[].name] | join(", ")' <<<"$API_LIST")"
 }
 
+# GH45 S2b — lien d'invitation (spec §3ter) : ouvre Polenta sur l'écran de connexion, serveur et
+# identifiant pré-remplis ; jamais de connexion automatique.
+invite_link() {
+  local login="$1"
+  printf 'polenta://connect?server=%s&login=%s' "$(jq -rn --arg v "https://$API_DOMAIN" '$v|@uri')" "$(jq -rn --arg v "$login" '$v|@uri')"
+}
+
+# Message d'invitation prêt à copier (mot de passe inclus seulement sans SMTP).
+announce_invitation() {
+  local login="$1" fullname="$2"
+  local download; download="$(env_get "$HOST_ENV" POLENTA_DOWNLOAD_URL)"
+  printf '  Lien d'"'"'invitation : %s\n' "$(invite_link "$login")"
+  printf '  ── Message à envoyer ──────────────────────────────────────────────\n'
+  printf '  Bonjour %s,\n\n' "${fullname:-$login}"
+  printf '  Votre compte Polenta est prêt sur le serveur https://%s\n' "$API_DOMAIN"
+  printf '  Identifiant : %s\n' "$login"
+  if smtp_enabled; then
+    printf '  Mot de passe temporaire : envoyé dans un e-mail séparé.\n'
+  else
+    printf '  Mot de passe temporaire : %s (à changer à la première connexion)\n' "$USER_PASSWORD"
+  fi
+  [[ -n "$download" ]] && printf '\n  1. Installez Polenta : %s\n' "$download"
+  printf '  %s Cliquez sur ce lien pour vous connecter : %s\n' "$([[ -n "$download" ]] && printf '2.' || printf '→')" "$(invite_link "$login")"
+  printf '  ──────────────────────────────────────────────────────────────────\n'
+}
+
 # Mot de passe temporaire d'un compte qui vient d'être créé : affiché TOUT DE SUITE (sans SMTP),
 # avant les étapes suivantes. Si l'une d'elles échoue, le compte existe déjà et une relance serait
 # refusée (« login déjà utilisé ») : le mot de passe ne doit jamais être perdu.
@@ -87,6 +113,7 @@ cmd_user_add() {
   fi
   ok "utilisateur $login créé"
   announce_password "$login" "$email"
+  announce_invitation "$login" "$fullname"
   for t in "${teams[@]}"; do
     if ! add_to_team "$t" "$login"; then
       admin_log "$INSTANCE" "$CMDLINE" "ERREUR compte créé, $USER_ERROR"
@@ -130,8 +157,8 @@ cmd_user_import() {
     fi
     if [[ $okline == 1 ]]; then
       nok=$((nok + 1))
-      if smtp_enabled; then printf '%-20s %-8s %s\n' "$login" OK "e-mail envoyé"
-      else printf '%-20s %-8s %s\n' "$login" OK "mot de passe temporaire : $USER_PASSWORD"; fi
+      if smtp_enabled; then printf '%-20s %-8s %s\n' "$login" OK "e-mail envoyé — $(invite_link "$login")"
+      else printf '%-20s %-8s %s\n' "$login" OK "mot de passe temporaire : $USER_PASSWORD — $(invite_link "$login")"; fi
       admin_log "$INSTANCE" "user import $login" OK
     else
       nerr=$((nerr + 1))

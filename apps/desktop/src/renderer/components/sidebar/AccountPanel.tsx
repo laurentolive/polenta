@@ -7,6 +7,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { useLocale } from '../../i18n/useLocale'
 import { capabilities } from '../../platform'
 import { useCurrentAccount } from '../../hooks/useCurrentAccount'
+import { useTeamConfig } from '../../hooks/useTeamConfig'
 
 export function AccountPanel() {
   const { t } = useTranslation()
@@ -88,6 +89,7 @@ export function AccountPanel() {
             {identity.provider === 'forgejo' && (
               <p className="text-xs text-ink-3 pt-1">{t('account.panel.forgeTokenHint')}</p>
             )}
+            {identity.provider === 'forgejo' && <TeamConfigLine />}
           </div>
 
           <div className="border-t border-edge-subtle pt-4 flex flex-col gap-2">
@@ -210,5 +212,22 @@ export function AccountPanel() {
         )}
       </div>
     </div>
+  )
+}
+
+/** GH45 S2b — état de la configuration du serveur (spec §3bis-4). */
+function TeamConfigLine() {
+  const { t } = useTranslation()
+  const status = useTeamConfig()
+  if (!status) return null
+  let text: string
+  if (status.error) text = t('account.panel.teamConfigError', { error: status.error })
+  else if (!status.config) text = t('account.panel.teamConfigNone')
+  else if (status.config.teams.length > 0) text = t('account.panel.teamConfigTeams', { teams: status.config.teams.join(', ') })
+  else text = t('account.panel.teamConfigDefaults')
+  return (
+    <p className="text-xs text-ink-3 pt-1" title={status.warnings.join('\n') || undefined}>
+      {text}{status.warnings.length > 0 ? ` ${t('account.panel.teamConfigWarnings', { count: status.warnings.length })}` : ''}
+    </p>
   )
 }

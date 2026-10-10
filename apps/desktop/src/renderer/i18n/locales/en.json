@@ -135,7 +135,12 @@
       "exportTemplatesExamplesHint": "Copies the example Word templates and the tag reference into the \"Exemples Polenta\" sub-folder of the library (existing files are never overwritten).",
       "exportTemplatesExamplesDone": "{{count}} file(s) copied to {{folder}}",
       "forgeTokenHint": "Signing out removes the token from this computer; it remains listed in your server settings › Applications, where you can revoke it.",
-      "autoUpdateLocked": "Updates are managed by your IT department."
+      "autoUpdateLocked": "Updates are managed by your IT department.",
+      "teamConfigTeams": "Server configuration applied (teams: {{teams}}).",
+      "teamConfigDefaults": "Server configuration applied.",
+      "teamConfigNone": "No configuration on this server.",
+      "teamConfigError": "Server configuration not read: {{error}}",
+      "teamConfigWarnings": "({{count}} setting(s) ignored)"
     },
     "menu": {
       "defaultLabel": "Account"
@@ -180,7 +185,11 @@
       "accountDisabled": "This account is disabled. Contact the server administrator.",
       "notAForge": "This server is not a Forgejo or Gitea server.",
       "passwordChangeRequired": "Your password is temporary: change it on the server, then sign in here with the new one.",
-      "changePassword": "Change my password on the server"
+      "changePassword": "Change my password on the server",
+      "companyServer": "Your company server…",
+      "serverPlaceholder": "server address, e.g. acme.forge.example.com",
+      "invited": "Invitation to sign in to {{server}}.",
+      "inviteRejected": "Invitation link ignored: {{server}} is not the server allowed by your IT department."
     }
   },
   "home": {
@@ -210,6 +219,12 @@
       "delete": "Remove from “My projects”",
       "deleteConfirm": "Remove project “{{name}}” from your space? The remote repository is not affected.",
       "deleteUnpublished": "“{{name}}” has unpublished changes ({{repos}}). They will be lost. Remove anyway?"
+    },
+    "team": {
+      "title": "Your team’s projects",
+      "open": "Open",
+      "pickFolder": "Folder for the project",
+      "folderNotEmpty": "This folder is not empty: choose an empty folder for the project."
     }
   },
   "preferences": {

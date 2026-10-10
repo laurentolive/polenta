@@ -19,6 +19,7 @@
     "start:web": "node out/web-server/index.cjs",
     "test": "vitest run",
     "test:e2e:web": "pnpm build:web && playwright test",
+    "test:e2e:desktop": "electron-vite build && playwright test -c playwright.desktop.config.ts",
     "theme:generate": "tsx scripts/generate-theme-css.ts"
   },
   "dependencies": {

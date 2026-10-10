@@ -58,6 +58,9 @@ export class UpdateService {
 
     setTimeout(() => {
       // La promesse rejette aussi hors ligne, en plus de l'événement 'error' déjà traité.
+      // GH45 S2b — relu ici : la configuration de la forge (updates: managed) peut être arrivée
+      // après le démarrage.
+      if (!this.settings.get().autoCheckUpdates) return
       autoUpdater.checkForUpdates().catch(() => {})
     }, delayMs)
   }

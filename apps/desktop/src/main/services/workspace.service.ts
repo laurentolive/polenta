@@ -229,6 +229,33 @@ export class WorkspaceService {
     return alive.sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt))
   }
 
+  /**
+   * GH45 S2b — projet récent dont le repo racine a `remoteUrl` pour origin (projets proposés par
+   * l'équipe : ouvrir plutôt que recloner). Comparaison sans `.git` final ni casse de l'hôte.
+   */
+  async findRecentByRemote(remoteUrl: string): Promise<ProjectRecent | null> {
+    const norm = (u: string) => {
+      try {
+        const url = new URL(u)
+        return `${url.protocol}//${url.host.toLowerCase()}${url.pathname.replace(/\.git$/, '').replace(/\/+$/, '')}`
+      } catch {
+        return u.replace(/\.git$/, '').replace(/\/+$/, '')
+      }
+    }
+    const wanted = norm(remoteUrl)
+    for (const recent of await this.listRecents()) {
+      try {
+        const info = await this.resolve(recent.workspaceDir)
+        const remotes = await git.listRemotes({ fs, dir: info.localPath })
+        const origin = remotes.find(r => r.remote === 'origin')?.url
+        if (origin && norm(origin) === wanted) return recent
+      } catch {
+        // projet illisible : ignoré
+      }
+    }
+    return null
+  }
+
   async markRecent(workspaceDir: string): Promise<void> {
     const store = await this.readRecents()
     const norm = path.resolve(workspaceDir)

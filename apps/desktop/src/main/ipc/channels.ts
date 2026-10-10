@@ -8,6 +8,7 @@ export const DESKTOP_ONLY_CHANNELS = [
   'auth:device-flow-poll',
   'auth:logout',
   'auth:open-password-change',
+  'app:take-pending-invite',
   'app:set-title',
   'app:get-version',
   'app:open-release-page',

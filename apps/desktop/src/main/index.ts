@@ -6,11 +6,49 @@ import { ipcMainRegistry, electronPlatformHost, registerDesktopOnlyHandlers } fr
 import { createElectronHostContext } from './host/electron-host'
 import { electronPrintRenderer } from './host/electron-print'
 import { UpdateService } from './services/update.service'
+import { INVITE_SCHEME, inviteFromArgv, parseInviteLink, setPendingInvite, type InviteLink } from './host/invite-link'
 
 // Aligne le dossier userData (auth.json, keytar, workspace.json…) entre `pnpm dev` et le build
 // packagé — sans ça, Electron retombe sur le "name" du package.json en dev (`@polenta/desktop`)
 // au lieu du `productName` d'electron-builder.yml (`Polenta`), donnant deux profils isolés.
 app.setName('Polenta')
+// GH45 S2b — tests d'interface : profil isolé (auth.json, préférences…). Non défini en usage normal.
+if (process.env['POLENTA_USER_DATA_DIR']) app.setPath('userData', process.env['POLENTA_USER_DATA_DIR'])
+
+// GH45 S2b — lien d'invitation polenta:// (spec §3ter) : instance unique, le lien est traité par
+// la fenêtre déjà ouverte.
+let mainWindow: BrowserWindow | null = null
+function receiveInvite(link: InviteLink | null): void {
+  if (!link) return
+  setPendingInvite(link)
+  if (!app.isReady()) return            // la fenêtre créée au démarrage prendra l'invitation
+  const win = mainWindow ?? BrowserWindow.getAllWindows()[0]
+  if (!win) {
+    // macOS, toutes fenêtres fermées : nouvelle fenêtre, qui prend l'invitation en attente.
+    mainWindow = createAppWindow()
+    mainWindow.on('closed', () => { mainWindow = null })
+    return
+  }
+  if (win.isMinimized()) win.restore()
+  win.focus()
+  electronPlatformHost.broadcast('app:invite', link)
+}
+const primaryInstance = app.requestSingleInstanceLock()
+if (!primaryInstance) {
+  // Seconde instance : son lien a été transmis à la première (second-instance). app.quit() avant
+  // « ready » n'arrête pas toujours le processus (constaté en test) : sortie immédiate.
+  app.exit(0)
+} else {
+  app.on('second-instance', (_event, argv) => receiveInvite(inviteFromArgv(argv)))
+  app.on('open-url', (event, url) => {     // macOS
+    event.preventDefault()
+    receiveInvite(parseInviteLink(url))
+  })
+  // Seule l'application installée s'enregistre comme gestionnaire de polenta:// — jamais `pnpm dev`
+  // ni les tests, qui remplaceraient l'enregistrement de l'application installée.
+  if (app.isPackaged) app.setAsDefaultProtocolClient(INVITE_SCHEME)
+  receiveInvite(inviteFromArgv(process.argv))
+}
 
 export function createAppWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -45,12 +83,14 @@ export function createAppWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  if (!primaryInstance) return   // seconde instance : le lien a été transmis à la première
   const container = createContainer(createElectronHostContext(), electronPrintRenderer)
   registerHandlers(ipcMainRegistry, container, electronPlatformHost)
   // GH26 — mise à jour automatique : propre au desktop, hors du noyau de services partagé.
   const update = new UpdateService(container.appSettings)
   registerDesktopOnlyHandlers(container, update)
-  createAppWindow()
+  mainWindow = createAppWindow()
+  mainWindow.on('closed', () => { mainWindow = null })
   update.scheduleStartupCheck()
 })
 

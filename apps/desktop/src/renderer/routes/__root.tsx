@@ -6,6 +6,15 @@ import { useLiveFileSync } from '../hooks/useLiveFileSync'
 import { useTabShortcuts } from '../hooks/useTabShortcuts'
 import { ThemeProvider } from '../contexts/ThemeContext'
 import { TabsProvider } from '../contexts/TabsContext'
+import { useInviteLinks } from '../hooks/useInviteLinks'
+import { useTeamConfigEffects } from '../hooks/useTeamConfig'
+
+/** GH45 S2b — lien d'invitation et configuration d'équipe (sous ThemeProvider : thème par défaut). */
+function AppEffects({ enabled }: { enabled: boolean }) {
+  useInviteLinks()
+  useTeamConfigEffects(enabled)
+  return null
+}
 
 // T101 — owns h-screen; AppLayout's own root div is h-full, sized by the flex-1 wrapper below.
 function AppChrome() {
@@ -27,8 +36,10 @@ function RootLayout() {
   // Les routes /print/* (T43) ne sont jamais visitées par l'utilisateur — chargées uniquement par
   // la fenêtre Electron cachée d'un export PDF, sans chrome d'appli (sidebar/activity bar/onglets).
   const isBareRoute = pathname === '/login' || pathname.startsWith('/print/')
+  const isPrint = pathname.startsWith('/print/')
   return (
     <ThemeProvider>
+      {!isPrint && <AppEffects enabled={pathname !== '/login'} />}
       {isBareRoute ? <Outlet /> : <TabsProvider><AppChrome /></TabsProvider>}
     </ThemeProvider>
   )

@@ -7,6 +7,7 @@
 #   polenta-host instance add <nom> [options]  nouvelle instance (client)
 #   polenta-host instance list
 #   polenta-host instance stop|start <nom>
+#   polenta-host instance sync <nom>           remet à niveau une instance existante (idempotent)
 #
 # Sprint 3 : instance update|backup|restore|export|remove.
 set -Eeuo pipefail
@@ -255,6 +256,10 @@ render_forgejo_env() {
     "service__DISABLE_REGISTRATION=true"
     "service__REQUIRE_SIGNIN_VIEW=true"
     "service__DEFAULT_KEEP_EMAIL_PRIVATE=false"
+    # Une seule organisation par instance (celle du client, créée par le kit) : les utilisateurs
+    # n'en créent pas — une organisation personnelle ne peut pas masquer la configuration Polenta.
+    "service__DEFAULT_ALLOW_CREATE_ORGANIZATION=false"
+    "admin__DISABLE_REGULAR_ORG_CREATION=true"
     "repository__FORCE_PRIVATE=true"
     "repository__DEFAULT_PRIVATE=private"
     "repository__DEFAULT_BRANCH=main"
@@ -404,6 +409,43 @@ ensure_demo() {
   else ok "démo : URLs des dépendances réécrites vers $domain ($rewritten branche(s))"; fi
 }
 
+# GH45 S2b — configuration Polenta de l'organisation, par équipe (spec §3bis) : repo
+# <org>/polenta-config, modèle commenté, branche main protégée (push réservé à Owners). Le contenu
+# d'un repo existant n'est jamais réécrit.
+CONFIG_REPO="polenta-config"
+
+ensure_config_repo() {
+  local name="$1" org="$2" demo="$3"
+  if api GET "/repos/$org/$CONFIG_REPO"; then
+    skip "repo de configuration $org/$CONFIG_REPO"
+  else
+    api_ok POST "/orgs/$org/repos" "$(jq -n --arg n "$CONFIG_REPO" \
+      '{name: $n, private: true, auto_init: false, default_branch: "main", description: "Configuration Polenta par équipe (propriétaires uniquement)"}')"
+    ok "repo de configuration $org/$CONFIG_REPO"
+  fi
+  # Étape séparée (reprise d'un ajout interrompu entre la création du repo et celle du fichier).
+  if api GET "/repos/$org/$CONFIG_REPO/contents/config.yaml"; then
+    skip "configuration : config.yaml"
+  else
+    local projects=' []'
+    [[ "$demo" == 1 ]] && projects=$'\n    - repo: '"$org/$DEMO_ROOT_REPO"$'\n      label: Démonstration'
+    local tmpl; tmpl="$(cat "$KIT_DIR/instance/polenta-config.yaml.tmpl")"
+    tmpl="${tmpl//__ORG__/$org}"
+    tmpl="${tmpl//__DEFAULT_PROJECTS__/$projects}"
+    api_ok POST "/repos/$org/$CONFIG_REPO/contents/config.yaml" "$(jq -n --arg c "$(printf '%s\n' "$tmpl" | base64 -w0)" \
+      '{content: $c, message: "Configuration Polenta initiale", branch: "main", new_branch: "main"}')"
+    ok "configuration : config.yaml (modèle)"
+  fi
+  api_ok GET "/repos/$org/$CONFIG_REPO/branch_protections"
+  if jq -e '.[] | select((.rule_name // .branch_name) == "main")' <<<"$API_BODY" >/dev/null; then
+    skip "configuration : branche main protégée"
+  else
+    api_ok POST "/repos/$org/$CONFIG_REPO/branch_protections" "$(jq -n \
+      '{rule_name: "main", branch_name: "main", enable_push: true, enable_push_whitelist: true, push_whitelist_teams: ["Owners"], push_whitelist_usernames: []}')"
+    ok "configuration : branche main protégée (propriétaires uniquement)"
+  fi
+}
+
 write_polenta_config() {
   local name="$1" domain="$2" org="$3" demo="$4"
   local demo_url=""; [[ "$demo" == 1 ]] && demo_url="https://$domain/$org/$DEMO_ROOT_REPO.git"
@@ -489,6 +531,7 @@ cmd_instance_add() {
   CLIENT_ADMIN_PASSWORD=""
   [[ -n "$admin_login" ]] && ensure_client_admin "$name" "$org" "$admin_login" "$admin_email"
   [[ "$demo" == 1 ]] && ensure_demo "$name" "$org" "$domain"
+  ensure_config_repo "$name" "$org" "$demo"
   write_polenta_config "$name" "$domain" "$org" "$demo"
   touch "$dir/.add-complete"
   admin_log "$name" "instance add $name --domain $domain --org $org${admin_login:+ --client-admin $admin_login}" OK
@@ -502,6 +545,25 @@ cmd_instance_add() {
   fi
   printf '  Compte exploitation polenta-ops (mot de passe et jeton dans %s)\n' "$env"
   printf '  Config Polenta      %s/polenta-config.json (à distribuer aux postes)\n' "$dir"
+}
+
+# GH45 S2b — rejoue les étapes idempotentes d'après installation sur une instance existante
+# (instances créées avec une version antérieure du kit) : compte d'exploitation, organisation,
+# équipes, repo de configuration.
+cmd_instance_sync() {
+  require_root; require_cmd docker jq curl; load_host_env
+  local name; name="$(resolve_instance "${1:-}")"
+  local env; env="$(instance_env "$name")"
+  [[ -f "$(instance_dir "$name")/.add-complete" ]] || die "instance « $name » incomplète : relancez « instance add $name »."
+  local org domain; org="$(env_get "$env" ORG)"; domain="$(env_get "$env" DOMAIN)"
+  log "Mise à niveau de l'instance « $name »"
+  ensure_ops_account "$name"
+  ensure_org_and_teams "$name" "$org"
+  local demo=0; api GET "/repos/$org/$DEMO_ROOT_REPO" && demo=1
+  ensure_config_repo "$name" "$org" "$demo"
+  write_polenta_config "$name" "$domain" "$org" "$demo"
+  admin_log "$name" "instance sync" OK
+  ok "instance $name à jour"
 }
 
 instance_health() {
@@ -559,6 +621,7 @@ main() {
         list) require_root; cmd_instance_list ;;
         stop) cmd_instance_stop "$@" ;;
         start) cmd_instance_start "$@" ;;
+        sync) cmd_instance_sync "$@" ;;
         update|backup|restore|export|remove) die "« instance $sub » arrive au sprint 3 de GH45." ;;
         *) usage 1 ;;
       esac ;;

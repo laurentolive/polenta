@@ -1,0 +1,32 @@
+# Configuration Polenta de l'organisation __ORG__.
+# Modifiable uniquement par les propriétaires de l'organisation (branche main protégée).
+# Polenta la relit à la connexion, au démarrage et toutes les 30 minutes.
+#
+# Chaque membre reçoit « defaults », puis les réglages des équipes dont il est membre (section
+# « teams », clé = nom exact de l'équipe) :
+#   - projects   : projets proposés à l'accueil — ceux de toutes ses équipes s'ajoutent ;
+#   - updates    : auto | managed (mises à jour gérées par l'informatique) — managed l'emporte ;
+#   - preferences: valeurs par défaut, jamais imposées à qui a déjà fait son propre choix —
+#                  la première équipe (dans l'ordre du fichier) qui définit une clé l'emporte.
+#       language    : fr | en
+#       theme       : light | dark
+#       projectHome : dashboard | requirements | tests | campaigns   (vue d'ouverture d'un projet)
+#       fieldVisibility:
+#         <nœud>::<type>:          # ex. root::exigence-systeme
+#           excel: [champ, …]      # vues : excel, word, edit
+version: 1
+defaults:
+  updates: auto
+  projects:__DEFAULT_PROJECTS__
+  preferences: {}
+teams: {}
+# Exemple :
+# teams:
+#   testeurs:
+#     projects:
+#       - repo: __ORG__/mon-projet
+#         label: Mon projet
+#     preferences:
+#       projectHome: campaigns
+#   lecteurs:
+#     updates: managed

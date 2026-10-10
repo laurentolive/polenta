@@ -1,4 +1,4 @@
-import type { ForgeAccount, ForgeDetection, MachineConfig, PasswordLoginResult } from '@polenta/types'
+import type { ForgeAccount, ForgeDetection, MachineConfig, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry } from '@polenta/types'
 import type {
   MergeFileDetail,
   MergeFileDraft,
@@ -338,6 +338,14 @@ export interface ApiClient {
     openReleasePage(url: string): Promise<void>
     /** GH45 — configuration machine (DSI sur le desktop, exploitant sur le web). */
     getMachineConfig(): Promise<MachineConfig>
+    /** GH45 S2b — configuration par équipe (cache, sans réseau). */
+    getTeamConfig(): Promise<TeamConfigStatus>
+    /** GH45 S2b — relit la configuration sur la forge du compte courant. */
+    refreshTeamConfig(): Promise<TeamConfigStatus>
+    /** GH45 S2b — projets proposés, accessibles à l'utilisateur. */
+    teamProjects(): Promise<TeamProjectEntry[]>
+    /** GH45 S2b — desktop : lien d'invitation reçu avant que l'interface ne soit prête. */
+    takePendingInvite(): Promise<{ server: string; login?: string } | null>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */
@@ -366,6 +374,8 @@ export interface ApiClient {
     openProject(dir: string): Promise<WorkspaceOpenResult>
     createNew(containerDir: string, name: string): Promise<WorkspaceOpenResult>
     createFromClone(containerDir: string, remoteUrl: string): Promise<WorkspaceOpenResult>
+    /** GH45 S2b — projet récent dont l'origin est `remoteUrl`, null sinon. */
+    findByRemote(remoteUrl: string): Promise<ProjectRecent | null>
     // GH27 — true if the folder is missing or has no entries
     isEmptyDir(dir: string): Promise<boolean>
     // T69: flat workspace

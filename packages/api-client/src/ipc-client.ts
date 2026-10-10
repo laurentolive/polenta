@@ -47,6 +47,10 @@ export function createIpcClient(
       setSettings: (patch) => invoke('app:set-settings', patch),
       openReleasePage: (url) => invoke('app:open-release-page', url),
       getMachineConfig: () => invoke('app:get-machine-config'),
+      getTeamConfig: () => invoke('app:get-team-config'),
+      refreshTeamConfig: () => invoke('app:refresh-team-config'),
+      teamProjects: () => invoke('app:team-projects'),
+      takePendingInvite: () => invoke('app:take-pending-invite'),
     },
     update: {
       getState: () => invoke('update:get-state'),
@@ -72,6 +76,7 @@ export function createIpcClient(
       openProject: (dir) => invoke('workspace:open-project', dir),
       createNew: (containerDir, name) => invoke('workspace:create-new', containerDir, name),
       createFromClone: (containerDir, remoteUrl) => invoke('workspace:create-from-clone', containerDir, remoteUrl),
+      findByRemote: (remoteUrl) => invoke('workspace:find-by-remote', remoteUrl),
       // GH27
       isEmptyDir: (dir) => invoke('workspace:is-empty-dir', dir),
       // T69: flat workspace

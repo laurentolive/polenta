@@ -5,3 +5,5 @@ dist/
 # GH44 — résultats et rapport des tests e2e web (Playwright)
 e2e-web/.results/
 e2e-web/.report/
+# GH45 — résultats des tests d’interface du desktop (Playwright)
+e2e-desktop/.results/

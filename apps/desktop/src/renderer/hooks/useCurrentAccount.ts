@@ -44,6 +44,8 @@ export function useCurrentAccount(): { account: CurrentAccount | null; loading: 
     if (isWeb) return webLogout()
     try {
       await api.auth.logout()
+      // GH45 S2b — plus de compte : la configuration de l'équipe ne s'applique plus.
+      await api.app.refreshTeamConfig()
     } catch {
       // best-effort : l'écran de connexion s'affiche quoi qu'il en soit
     }

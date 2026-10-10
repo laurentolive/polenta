@@ -1,4 +1,5 @@
 import { app, ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { takePendingInvite } from '../host/invite-link'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type { ExportKind, ExportFormat, ExportResult, ExecutionSheetLocale, ExecutionImportPreview } from '@polenta/types'
@@ -54,6 +55,8 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   // GH45 — déconnexion du compte courant (le web a sa propre déconnexion de session).
   handle('auth:logout', () => c.auth.logout())
   handle('auth:open-password-change', () => c.auth.openPasswordChange())
+  // GH45 S2b — lien d'invitation reçu avant que l'interface ne soit prête (spec §3ter).
+  handle('app:take-pending-invite', () => takePendingInvite())
 
   // ── App ───────────────────────────────────────────────────────────────────────
   handle('app:set-title', (_event, title: string) => {

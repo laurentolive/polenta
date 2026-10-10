@@ -728,3 +728,16 @@ Entrée : spec §3bis / §3ter (décisions du 2026-10-10). S'intercale entre S2 
 
 S2b est commité en un sprint. Les sprints S3 (infra exploitation) et S4 (P1) restent inchangés. Le
 S4 réutilisera `forge-config.service` (organisation courante) et la vérification d'accès aux repos.
+
+### 13.6 Révisions issues du sprint S2b (`GH45-sprint2b.md`)
+
+| Point | Révision |
+|---|---|
+| `projectHome` | `dashboard | requirements | tests | campaigns` (panneaux existants). |
+| Lien d'invitation | `https` uniquement ; une politique DSI (serveur imposé) l'emporte, et le lien est alors ignoré avec un message. Protocole enregistré par l'application installée seulement. |
+| Rafraîchissement | Déclenché par le renderer (démarrage, connexion, 30 min, déconnexion). |
+| Organisation | La plus ancienne qui a une configuration ; le kit interdit aux utilisateurs de créer des organisations. |
+| Champs visibles | Résolus type par type (première équipe du fichier qui règle un type). |
+| Thème | Choix explicite sous `polenta:theme-choice` (l'ancienne clé était écrite automatiquement). |
+| Tests d'interface | `apps/desktop/e2e-desktop/` (Playwright Electron), lancé par `pnpm test:e2e:desktop` avec `POLENTA_E2E_SSH`. |
+

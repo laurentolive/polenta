@@ -55,6 +55,53 @@ export type PasswordLoginResult =
   | { status: 'not-a-forge' }
   | { status: 'network'; message: string }
 
+// ─── Configuration par équipe (GH45 S2b, spec §3bis) ──────────────────────────
+
+/** Vue d'ouverture d'un projet (panneaux existants : Suivi, Exigences, Tests, Campagnes). */
+export type ProjectHome = 'dashboard' | 'requirements' | 'tests' | 'campaigns'
+
+export interface TeamProject {
+  /** `organisation/projet` sur la forge du compte. */
+  repo: string
+  label?: string
+}
+
+export interface TeamConfigPreferences {
+  language?: 'fr' | 'en'
+  theme?: 'light' | 'dark'
+  projectHome?: ProjectHome
+  /** Champs visibles par défaut, par type d'objet (`<nœud>::<type>`) et par vue. */
+  fieldVisibility?: Record<string, Partial<Record<'excel' | 'word' | 'edit', string[]>>>
+}
+
+/** Configuration effective de l'utilisateur courant (defaults + ses équipes). */
+export interface EffectiveTeamConfig {
+  projects: TeamProject[]
+  updates: 'auto' | 'managed'
+  preferences: TeamConfigPreferences
+  /** Équipes de l'utilisateur qui ont une section dans la configuration. */
+  teams: string[]
+}
+
+/** État de la configuration du serveur, pour l'UI (panneau Compte). */
+export interface TeamConfigStatus {
+  config: EffectiveTeamConfig | null
+  /** Serveur et organisation d'où vient la configuration. */
+  server?: string
+  org?: string
+  /** Date de la dernière lecture réussie (ISO). */
+  fetchedAt?: string
+  /** Dernière erreur de lecture (la config affichée est alors celle du cache, s'il existe). */
+  error?: string
+  /** Clés ignorées du fichier (valeurs invalides, clés inconnues). */
+  warnings: string[]
+}
+
+/** Projet proposé, accessible à l'utilisateur, avec son URL de clone. */
+export interface TeamProjectEntry extends TeamProject {
+  cloneUrl: string
+}
+
 // ─── Erreurs d'accès ──────────────────────────────────────────────────────────
 // L'IPC Electron et le bridge web ne transmettent que `error.message` : la nature de l'erreur
 // voyage dans le message, sous un marqueur que le renderer retire avant affichage.

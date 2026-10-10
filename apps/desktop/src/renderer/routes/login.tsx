@@ -5,12 +5,18 @@ import type { ForgeDetection, MachineConfig, PasswordLoginResult } from '@polent
 import { api } from '../api'
 import { isWeb } from '../platform'
 import { forgeAccessNotices } from '../lib/forgeAccessNotices'
+import { useQueryClient } from '@tanstack/react-query'
+import { refreshTeamConfig } from '../hooks/useTeamConfig'
+import { inviteStore } from '../lib/inviteStore'
 
 export const Route = createFileRoute('/login')({
   component: isWeb ? WebLoginRedirect : LoginPage,
   // GH45 — `server` : serveur pré-rempli (retour depuis la bannière « accès révoqué »).
-  validateSearch: (search: Record<string, unknown>): { server?: string } =>
-    typeof search['server'] === 'string' ? { server: search['server'] } : {},
+  // GH45 S2b — `login` : identifiant pré-rempli (lien d'invitation, spec §3ter).
+  validateSearch: (search: Record<string, unknown>): { server?: string; login?: string } => ({
+    ...(typeof search['server'] === 'string' ? { server: search['server'] } : {}),
+    ...(typeof search['login'] === 'string' ? { login: search['login'] } : {}),
+  }),
 })
 
 /** GH44 — version web : connexion gérée par le serveur (session ; forge OIDC au sprint 3). */
@@ -35,6 +41,21 @@ function hostOf(url: string): string {
   }
 }
 
+/** Adresse saisie sans schéma (« acme.forge.example.fr ») : https par défaut. */
+function withScheme(input: string): string {
+  const v = input.trim()
+  if (!v || /^[a-z][a-z0-9+.-]*:\/\//i.test(v)) return v
+  return `https://${v}`
+}
+
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin
+  } catch {
+    return false
+  }
+}
+
 function isHttpUrl(url: string): boolean {
   try {
     const u = new URL(url)
@@ -53,7 +74,16 @@ function serverOptions(config: MachineConfig): string[] {
 function LoginPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const search = Route.useSearch()
+  const routeSearch = Route.useSearch()
+  // GH45 S2b — invitation en cours : paramètres de l'URL, sinon l'invitation gardée en mémoire
+  // (une navigation vers /login sans paramètres ne doit pas la perdre).
+  const [invite, setInvite] = useState(inviteStore.get())
+  useEffect(() => inviteStore.subscribe(setInvite), [])
+  const search = {
+    server: routeSearch.server ?? invite?.server,
+    login: routeSearch.login ?? invite?.login,
+  }
+  const qc = useQueryClient()
   const [machineConfig, setMachineConfig] = useState<MachineConfig | null>(null)
   const [remote, setRemote] = useState('')
   const [customRemote, setCustomRemote] = useState('')
@@ -64,10 +94,16 @@ function LoginPage() {
   // GH45 — connexion Forgejo/Gitea par identifiant + mot de passe.
   const [detection, setDetection] = useState<Detection>({ status: 'idle' })
   const [usePat, setUsePat] = useState(false)
-  const [login, setLogin] = useState('')
+  const [login, setLogin] = useState(search.login ?? '')
+  // Nouvelle invitation alors que l'écran est déjà affiché : identifiant mis à jour.
+  useEffect(() => {
+    if (search.login) setLogin(search.login)
+  }, [search.login])
   const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
   const [otpRequested, setOtpRequested] = useState(false)
+  // Invitation vers un serveur refusée par la politique DSI (lien ignoré, message affiché).
+  const [inviteRejected, setInviteRejected] = useState(false)
   // Compte neuf : mot de passe temporaire à changer sur la forge avant de pouvoir se connecter.
   const [passwordChangeUrl, setPasswordChangeUrl] = useState<string | null>(null)
 
@@ -92,7 +128,11 @@ function LoginPage() {
       .then(config => {
         if (cancelled) return
         setMachineConfig(config)
-        const wanted = search.server ?? config.defaultServer ?? (config.hideGithub ? '' : COMMON_REMOTES[0])
+        // Politique DSI (serveur imposé, GitHub masqué) : une invitation vers un autre serveur est ignorée.
+        const policyServer = config.hideGithub && config.defaultServer ? config.defaultServer : null
+        const invited = search.server && (!policyServer || sameOrigin(search.server, policyServer)) ? search.server : undefined
+        setInviteRejected(Boolean(search.server && !invited))
+        const wanted = invited ?? config.defaultServer ?? (config.hideGithub ? '' : COMMON_REMOTES[0])
         if (wanted && serverOptions(config).includes(wanted)) {
           setRemote(wanted)
         } else {
@@ -103,7 +143,7 @@ function LoginPage() {
     return () => { cancelled = true }
   }, [search.server])
 
-  const effectiveRemote = remote === 'custom' ? customRemote.trim() : remote
+  const effectiveRemote = remote === 'custom' ? withScheme(customRemote) : remote
   const githubAllowed = !hideGithub
   const provider = detection.status === 'done' ? detection.value.provider : null
   const isGithub = provider === 'github' && githubAllowed
@@ -146,6 +186,9 @@ function LoginPage() {
 
   const loggedIn = async (serverUrl: string) => {
     forgeAccessNotices.clear(hostOf(serverUrl))
+    inviteStore.clear()
+    // GH45 S2b — configuration de l'équipe du compte qui vient de se connecter.
+    await refreshTeamConfig(qc)
     await navigate({ to: '/' })
   }
 
@@ -276,6 +319,17 @@ function LoginPage() {
           </p>
         </div>
 
+        {search.server && !inviteRejected && (
+          <p className="text-sm text-ink-2 bg-canvas border border-edge rounded px-3 py-2">
+            {t('login.forge.invited', { server: search.server })}
+          </p>
+        )}
+        {inviteRejected && (
+          <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
+            {t('login.forge.inviteRejected', { server: search.server })}
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">{t('login.remoteLabel')}</label>
@@ -287,12 +341,12 @@ function LoginPage() {
                 {options.map(r => (
                   <option key={r} value={r}>{r}</option>
                 ))}
-                <option value="custom">{t('login.otherOption')}</option>
+                <option value="custom">{t('login.forge.companyServer')}</option>
               </select>
             ) : null}
             {remote === 'custom' && (
               <input value={customRemote} onChange={e => setCustomRemote(e.target.value)}
-                placeholder="https://git.example.com"
+                placeholder={t('login.forge.serverPlaceholder')}
                 className="input-field w-full mt-2" disabled={busy} />
             )}
             {detection.status === 'pending' && (
@@ -342,12 +396,12 @@ function LoginPage() {
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">{t('login.forge.login')}</label>
                 <input value={login} onChange={e => setLogin(e.target.value)} autoComplete="username"
-                  className="input-field w-full" disabled={busy} autoFocus />
+                  className="input-field w-full" disabled={busy} autoFocus={!search.login} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">{t('login.forge.password')}</label>
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                  autoComplete="current-password" className="input-field w-full" disabled={busy} />
+                  autoComplete="current-password" className="input-field w-full" disabled={busy} autoFocus={!!search.login} />
               </div>
               {showOtp && (
                 <div>

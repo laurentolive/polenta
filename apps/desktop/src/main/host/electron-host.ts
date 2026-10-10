@@ -6,7 +6,9 @@ import type { HostContext, TokenStore } from './host-context'
 import { resolveMcpServerLaunchConfig } from './mcp-launch'
 import { loadMachineConfig } from '../services/machine-config'
 
-const KEYTAR_SERVICE = 'polenta'
+// GH45 S2b — POLENTA_KEYTAR_SERVICE : service dédié aux tests d'interface (les jetons personnels
+// du poste ne sont jamais touchés). Non défini en usage normal.
+const KEYTAR_SERVICE = process.env['POLENTA_KEYTAR_SERVICE'] || 'polenta'
 
 /** Jetons dans le trousseau de l'OS (SPEC-ACCOUNTS-AUTH §1) — comportement d'avant GH44. */
 export class KeytarTokenStore implements TokenStore {

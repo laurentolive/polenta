@@ -9,7 +9,8 @@
 
 /** Channels du noyau partagé exposés au navigateur (liste blanche, design D6). */
 export const WEB_EXPOSED: ReadonlySet<string> = new Set([
-  'app:get-machine-config', 'app:get-settings', 'app:set-settings',
+  'app:get-machine-config', 'app:get-settings', 'app:get-team-config', 'app:refresh-team-config', 'app:set-settings',
+  'app:team-projects',
   'auth:current-account', 'auth:has-any-account', 'auth:project-username', 'auth:resolve-identity',
   'baseline:create', 'baseline:delete', 'baseline:get', 'baseline:get-integration-branch',
   'baseline:list', 'baseline:set-integration-branch',
@@ -61,7 +62,7 @@ export const WEB_EXPOSED: ReadonlySet<string> = new Set([
   'traceability:impact', 'traceability:matrix', 'traceability:missing-links',
   'traceability:test-plan',
   'tree:generate-id', 'tree:get', 'tree:save',
-  'workspace:clear-last-opened', 'workspace:create-from-clone', 'workspace:create-new',
+  'workspace:find-by-remote', 'workspace:clear-last-opened', 'workspace:create-from-clone', 'workspace:create-new',
   'workspace:detect', 'workspace:get-last-opened', 'workspace:get-tree', 'workspace:init',
   'workspace:is-empty-dir', 'workspace:list-recents', 'workspace:mark-recent', 'workspace:open',
   'workspace:open-project', 'workspace:rebuild-tree', 'workspace:remove-repo-dir',

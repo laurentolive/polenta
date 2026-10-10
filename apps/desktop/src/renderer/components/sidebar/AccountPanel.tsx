@@ -5,36 +5,26 @@ import { Sun, Moon, Languages } from 'lucide-react'
 import { api } from '../../api'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLocale } from '../../i18n/useLocale'
-import { isWeb, capabilities } from '../../platform'
-import { loadWebSessionIdentity, webLogout } from '../../lib/webSession'
-
-interface Identity {
-  login: string
-  name: string
-  email: string
-  remote: string
-}
-
-const KNOWN_REMOTES = [
-  'https://github.com',
-  'https://gitlab.com',
-]
+import { capabilities } from '../../platform'
+import { useCurrentAccount } from '../../hooks/useCurrentAccount'
 
 export function AccountPanel() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { theme, toggle } = useTheme()
   const { locale, setLocale } = useLocale()
-  const [identity, setIdentity] = useState<Identity | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { account: identity, loading, logout } = useCurrentAccount()
   // GH26 — préférence app-level (userData), lue par le main au démarrage suivant.
   const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean | null>(null)
+  // GH45 — verrouillée par la configuration machine (autoUpdate: false).
+  const [autoUpdateLocked, setAutoUpdateLocked] = useState(false)
   // GH34 — dossier de la bibliothèque de gabarits d'export (préférence app-level).
   const [templatesDir, setTemplatesDir] = useState<string | null>(null)
 
   useEffect(() => {
     api.app.getSettings().then(s => {
       setAutoCheckUpdates(s.autoCheckUpdates)
+      setAutoUpdateLocked(s.autoCheckUpdatesLocked === true)
       setTemplatesDir(s.exportTemplatesDir ?? '')
     }).catch(() => {})
   }, [])
@@ -69,40 +59,8 @@ export function AccountPanel() {
     }
   }
 
-  useEffect(() => {
-    async function load() {
-      // GH44 — version web : le compte est celui de la session serveur.
-      if (isWeb) {
-        setIdentity(await loadWebSessionIdentity())
-        setLoading(false)
-        return
-      }
-      for (const remote of KNOWN_REMOTES) {
-        try {
-          const token = await api.auth.getToken(remote)
-          if (!token) continue
-          const id = await api.auth.resolveIdentity(remote)
-          setIdentity({ ...id, remote })
-          setLoading(false)
-          return
-        } catch {
-          // try next remote
-        }
-      }
-      setLoading(false)
-    }
-    load()
-  }, [])
-
   async function handleLogout() {
-    if (isWeb) return webLogout()
-    if (identity) {
-      try {
-        await api.auth.deleteToken(identity.remote)
-      } catch {
-        // best-effort
-      }
-    }
+    await logout()
     await navigate({ to: '/login' })
   }
 
@@ -127,6 +85,9 @@ export function AccountPanel() {
               <p className="text-xs text-ink-2">{identity.email}</p>
             )}
             <p className="text-xs text-ink-3 font-mono">{identity.remote}</p>
+            {identity.provider === 'forgejo' && (
+              <p className="text-xs text-ink-3 pt-1">{t('account.panel.forgeTokenHint')}</p>
+            )}
           </div>
 
           <div className="border-t border-edge-subtle pt-4 flex flex-col gap-2">
@@ -197,11 +158,13 @@ export function AccountPanel() {
           </button>
         </div>
         {capabilities.autoUpdate && autoCheckUpdates !== null && (
-          <label className="flex items-center justify-between gap-2 cursor-pointer" title={t('account.panel.autoUpdateHint')}>
+          <label className="flex items-center justify-between gap-2 cursor-pointer"
+            title={autoUpdateLocked ? t('account.panel.autoUpdateLocked') : t('account.panel.autoUpdateHint')}>
             <span className="text-xs text-ink-2">{t('account.panel.autoUpdate')}</span>
             <input
               type="checkbox"
               checked={autoCheckUpdates}
+              disabled={autoUpdateLocked}
               onChange={e => void handleToggleAutoUpdate(e.target.checked)}
             />
           </label>

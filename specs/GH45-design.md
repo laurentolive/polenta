@@ -638,3 +638,15 @@ Ces révisions **remplacent** les passages concernés plus haut.
 | §5.9 fail2ban | Fichier `data/log/gitea.log` (et non `forgejo.log`). Deux filtres : `Failed authentication attempt for .* from <HOST>` (connexion web) et `completed .* for <HOST>:\d+, 401 Unauthorized` (git et API, dont la création de jeton par mot de passe, qui n'émet pas la première ligne). L'IP réelle du client est journalisée (proxy de confiance OK). |
 | §5.5 démo | URLs réécrites sur toutes les branches de tous les repos de démo ; tags `RE1`/`RE2` laissés tels quels (limite à documenter dans le RUNBOOK). |
 | Hôte partagé | L'hôte de l'éditeur sert aussi `www.esquaresoft.fr` via le Caddy du kit (`etc/sites/_esquaresoft.caddy`, réseau `polenta-edge`). Le kit ne gère que les fichiers `<instance>.caddy` ; les fichiers `_*.caddy` sont des **sites additionnels** à documenter dans le RUNBOOK. Les tests destructifs S3-13/S3-15 (réinstallation de l'OS) doivent être replanifiés (cf. STOP HUMAIN S1). |
+
+### Révisions issues du sprint 2 (mesures sur Forgejo 15.0.9 et Gitea 28.1.0, `GH45-sprint2.md`)
+
+| Section | Révision |
+|---|---|
+| §3.2 détection | Forge exigeant la connexion : `/api/v1/version` → 403 `{"message":"Only signed in user…"}`, reconnu comme forge ; Forgejo/Gitea par `/api/forgejo/v1/version` (403 vs 404). Redirections GET suivies, base = origine finale, jeton jamais transmis à un autre hôte. |
+| §3.5 connexion | Compte neuf : 403 « You must change your password. Change it at: <url> » → résultat `password-change-required`. Le desktop n'ouvre que l'URL annoncée par la forge lors de ce refus (`auth:open-password-change` sans argument). |
+| §3.3 jeton | Nom `polenta-<poste>-<AAAAMMJJ-HHmm>-<aléa>` : deux connexions dans la même minute faisaient refuser le second jeton. |
+| §3.4 droits | Push d'un lecteur ou sur branche protégée : HTTP 200 puis « pre-receive hook declined » (pas de 403) → `writeDeniedError`. La sonde d'API n'est faite que pour une réponse non-git (page HTML) ou un 403. L'issue d'accès porte `serverUrl` (bannière). |
+| §3.8 renderer | `renderer/api.ts` nettoie aussi le champ `error` des résultats (`parse-error`). |
+| §3.5 jetons hérités | Pas de `migrateLegacyBareTokens` : compatibilité par lecture (`hasAnyAccount`, `projectUsername`, `logout`). |
+| GitHub sur le web | Les URLs fixes de l'API GitHub ne passent pas par le garde des hôtes git (pas d'entrée utilisateur, pas de risque SSRF). |

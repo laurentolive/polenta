@@ -7,8 +7,9 @@ import git from 'isomorphic-git'
 
 import http from './git-http'
 import { isNetworkUnreachable } from './net-proxy'
+import { ForgeAccessError, httpStatusOf, isNonGitResponse, isPushDeclined, revokedError, writeDeniedError } from './forge/forge-access'
 
-import type { AuthService } from './auth.service'
+import { extractHost, type AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
 
 const execFileAsync = promisify(execFile)
@@ -68,6 +69,10 @@ export interface IntegrationRemoteState {
   behind: number
   /** GH43 — set by `autoSync` only: the server was unreachable, the state is the last fetch's. */
   offline?: true
+  /** GH45 — set by `autoSync` only: access to the server was revoked (no network call until re-login). */
+  accessRevoked?: true
+  /** GH45 — server (origin) whose access was revoked (with `accessRevoked`). */
+  revokedServer?: string
 }
 
 export type ResyncOutcome =
@@ -104,6 +109,49 @@ function conflictFiles(err: unknown): string[] | null {
 export class SyncService {
   constructor(private readonly auth: AuthService) {}
 
+  /**
+   * GH45 — runs a network git operation against an HTTPS remote and turns an access refusal into a
+   * `ForgeAccessError` (design §3.4, revised §12):
+   * - 401 while credentials were sent → access revoked (host flagged until re-login);
+   * - 403 on a write (`write`) → no write permission (or protected branch), unless the API says the
+   *   account is disabled;
+   * - a non-git answer (HTML page) or a 403 → API probe: a disabled account answers git with
+   *   HTTP 200 + an HTML page, not a 401. Other failures (non fast-forward, local errors) are never
+   *   delayed by a probe.
+   * Network errors and every other failure are rethrown untouched (GH30/GH43 paths unchanged).
+   */
+  private async guarded<T>(remoteUrl: string | null, write: boolean, op: () => Promise<T>): Promise<T> {
+    try {
+      return await op()
+    } catch (err) {
+      throw await this.classifyAccessError(err, remoteUrl, write)
+    }
+  }
+
+  private async classifyAccessError(err: unknown, remoteUrl: string | null, write: boolean): Promise<unknown> {
+    if (!remoteUrl || !isHttpRemote(remoteUrl) || err instanceof ForgeAccessError || isNetworkUnreachable(err)) return err
+    if (conflictFiles(err)) return err
+    const host = extractHost(remoteUrl)
+    const status = httpStatusOf(err)
+    if (status === 404 || status === 400 || (status !== null && status >= 500)) return err
+    if (!(await this.hasHttpsCredentials(remoteUrl))) return err
+    const revoked = (): ForgeAccessError => {
+      this.auth.markAccessRevoked(host)
+      return revokedError(host, new URL(remoteUrl).origin)
+    }
+    if (status === 401) return revoked()
+    if (write && isPushDeclined(err)) return writeDeniedError(host, repoLabel(remoteUrl))
+    if (status !== 403 && !isNonGitResponse(err)) return err
+    if ((await this.auth.probeForgeAccess(remoteUrl)) === 'revoked') return revoked()
+    if (status === 403 && write) return writeDeniedError(host, repoLabel(remoteUrl))
+    return err
+  }
+
+  /** GH45 — forge type of the account registered for `remoteUrl`'s host (`null`: no account). */
+  async forgeKindForUrl(remoteUrl: string) {
+    return this.auth.providerKindForUrl(remoteUrl)
+  }
+
   /** GH30 — whether a clone/fetch of `remoteUrl` would carry credentials at all. */
   async hasHttpsCredentials(remoteUrl: string): Promise<boolean> {
     return (await this.auth.getHttpsCredentials(remoteUrl)) !== null
@@ -112,7 +160,7 @@ export class SyncService {
   async clone(remoteUrl: string, localPath: string, onProgress?: (p: number) => void): Promise<void> {
     const credentials = await this.auth.getHttpsCredentials(remoteUrl)
 
-    await git.clone({
+    await this.guarded(remoteUrl, false, () => git.clone({
       fs,
       http,
       dir: localPath,
@@ -125,7 +173,7 @@ export class SyncService {
             }
           }
         : undefined,
-    })
+    }))
   }
 
   /**
@@ -155,14 +203,14 @@ export class SyncService {
     }
     const credentials = await this.auth.getHttpsCredentials(remoteUrl)
 
-    await git.fetch({
+    await this.guarded(remoteUrl, false, () => git.fetch({
       fs,
       http,
       dir: repoPath,
       url: remoteUrl,
       remote,
       onAuth: () => credentials ?? undefined,
-    })
+    }))
   }
 
   /**
@@ -367,13 +415,13 @@ export class SyncService {
     }
     const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
 
-    await git.push({
+    await this.guarded(remoteUrl, true, () => git.push({
       fs,
       http,
       dir: repoPath,
       remote,
       onAuth: () => credentials ?? undefined,
-    })
+    }))
   }
 
   /**
@@ -438,7 +486,7 @@ export class SyncService {
     const credentials = await this.auth.getHttpsCredentials(remoteUrl)
     const author = await this.auth.getAuthor(repoPath)
 
-    await git.pull({
+    await this.guarded(remoteUrl, false, () => git.pull({
       fs,
       http,
       dir: repoPath,
@@ -446,7 +494,7 @@ export class SyncService {
       author: { name: author.name, email: author.email },
       onAuth: () => credentials ?? undefined,
       fastForwardOnly: true,
-    })
+    }))
   }
 
   /**
@@ -593,8 +641,18 @@ export class SyncService {
    * (auth, rejected push…) propagate to the caller.
    */
   async autoSync(repoPath: string, integrationBranch: string, remote = 'origin'): Promise<IntegrationRemoteState> {
-    if (!(await getRemoteUrl(repoPath, remote))) return { state: 'no-remote', ahead: 0, behind: 0 }
+    const remoteUrl = await getRemoteUrl(repoPath, remote)
+    if (!remoteUrl) return { state: 'no-remote', ahead: 0, behind: 0 }
+    // GH45: access already known to be revoked — no network call (and no new error) per tick until
+    // the user logs in again on this host.
+    const revoked = async (): Promise<IntegrationRemoteState> => ({
+      ...(await this.integrationState(repoPath, integrationBranch, remote)),
+      accessRevoked: true,
+      revokedServer: new URL(remoteUrl).origin,
+    })
+    if (isHttpRemote(remoteUrl) && this.auth.isAccessRevoked(extractHost(remoteUrl))) return revoked()
     const offline = async (err: unknown): Promise<IntegrationRemoteState> => {
+      if (err instanceof ForgeAccessError && err.issue.status === 401) return revoked()
       if (!isNetworkUnreachable(err)) throw err
       return { ...(await this.integrationState(repoPath, integrationBranch, remote)), offline: true }
     }
@@ -963,7 +1021,7 @@ export class SyncService {
     }
     const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
 
-    await git.push({
+    await this.guarded(remoteUrl, true, () => git.push({
       fs,
       http,
       dir: repoPath,
@@ -971,7 +1029,7 @@ export class SyncService {
       remoteRef: name,
       delete: true,
       onAuth: () => credentials ?? undefined,
-    })
+    }))
   }
 
   async deleteTag(repoPath: string, tagName: string): Promise<void> {
@@ -986,14 +1044,14 @@ export class SyncService {
     }
     const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
 
-    await git.push({
+    await this.guarded(remoteUrl, true, () => git.push({
       fs,
       http,
       dir: repoPath,
       remote,
       ref: branchName,
       onAuth: () => credentials ?? undefined,
-    })
+    }))
   }
 
   async rebase(repoPath: string, onto: string): Promise<void> {
@@ -1136,6 +1194,15 @@ export class SyncService {
     })
 
     return files
+  }
+}
+
+/** GH45 — `owner/repo` of an HTTPS remote URL, for user-facing messages. */
+function repoLabel(remoteUrl: string): string {
+  try {
+    return new URL(remoteUrl).pathname.replace(/^\/+|\.git$|\/+$/g, '') || remoteUrl
+  } catch {
+    return remoteUrl
   }
 }
 

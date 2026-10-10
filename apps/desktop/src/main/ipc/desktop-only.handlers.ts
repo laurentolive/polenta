@@ -51,6 +51,9 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   handle('auth:device-flow-start', (_e, remote: string) => c.auth.startDeviceFlow(remote))
   handle('auth:device-flow-poll', (_e, remote: string, deviceCode: string) =>
     c.auth.pollDeviceFlow(remote, deviceCode))
+  // GH45 — déconnexion du compte courant (le web a sa propre déconnexion de session).
+  handle('auth:logout', () => c.auth.logout())
+  handle('auth:open-password-change', () => c.auth.openPasswordChange())
 
   // ── App ───────────────────────────────────────────────────────────────────────
   handle('app:set-title', (_event, title: string) => {

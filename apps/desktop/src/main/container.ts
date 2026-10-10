@@ -88,7 +88,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const savedQueries = new SavedQueriesService(git, schema, dashboards)
   const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
   // GH26 — préférences app-level.
-  const appSettings = new AppSettingsService(host.userDataDir)
+  const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig)
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
@@ -128,5 +128,6 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     parameters,
     revalidation,
     appSettings,
+    machineConfig: host.machineConfig,
   }
 }

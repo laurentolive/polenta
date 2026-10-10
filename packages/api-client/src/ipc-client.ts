@@ -23,9 +23,15 @@ declare global {
   }
 }
 
-export function createIpcClient(): ApiClient {
+/**
+ * `transport` : appel IPC brut (par défaut `window.polenta.invoke`). GH45 — le renderer l'enveloppe
+ * pour intercepter les erreurs d'accès à une forge en un seul point (renderer/api.ts).
+ */
+export function createIpcClient(
+  transport: (channel: string, ...args: unknown[]) => Promise<unknown> = (channel, ...args) => window.polenta.invoke(channel, ...args),
+): ApiClient {
   const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
-    window.polenta.invoke(channel, ...args) as Promise<T>
+    transport(channel, ...args) as Promise<T>
 
   return {
     web: {
@@ -40,6 +46,7 @@ export function createIpcClient(): ApiClient {
       getSettings: () => invoke('app:get-settings'),
       setSettings: (patch) => invoke('app:set-settings', patch),
       openReleasePage: (url) => invoke('app:open-release-page', url),
+      getMachineConfig: () => invoke('app:get-machine-config'),
     },
     update: {
       getState: () => invoke('update:get-state'),
@@ -95,6 +102,11 @@ export function createIpcClient(): ApiClient {
       setup: (r, p) => invoke('auth:setup', r, p),
       startDeviceFlow: (r) => invoke('auth:device-flow-start', r),
       pollDeviceFlow: (r, d) => invoke('auth:device-flow-poll', r, d),
+      detectForge: (serverUrl) => invoke('auth:detect-forge', serverUrl),
+      loginWithPassword: (serverUrl, login, password, otp) => invoke('auth:login-password', serverUrl, login, password, otp),
+      currentAccount: () => invoke('auth:current-account'),
+      logout: () => invoke('auth:logout'),
+      openPasswordChange: () => invoke('auth:open-password-change'),
     },
     sync: {
       status: (p) => invoke('sync:status', p),

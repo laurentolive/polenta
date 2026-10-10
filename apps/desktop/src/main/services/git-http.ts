@@ -4,6 +4,7 @@ import { request as undiciRequest, type Dispatcher } from 'undici'
 import type { HttpClient, GitHttpRequest, GitHttpResponse } from 'isomorphic-git/http/node'
 
 import { resolveProxyDispatcher } from './net-proxy'
+import { checkRemote } from './forge/remote-guard'
 
 /**
  * isomorphic-git's own `isomorphic-git/http/node` transport goes through Node's
@@ -15,15 +16,8 @@ import { resolveProxyDispatcher } from './net-proxy'
  * top of `undici.request`, reusing that same proxy resolution for every git operation
  * (clone/fetch/push/pull).
  */
-/**
- * GH44 — contrôle des URLs git contactées. Le desktop n'en pose aucun (l'utilisateur contacte ce
- * qu'il veut depuis son poste) ; le serveur web limite les clones/fetch/push aux hôtes de la forge,
- * pour qu'un utilisateur ne fasse pas interroger un service interne par le serveur (SSRF).
- */
-let remoteGuard: ((url: URL) => void) | null = null
-export function setGitRemoteGuard(guard: ((url: URL) => void) | null): void {
-  remoteGuard = guard
-}
+/** GH44 — alias conservé : le garde (forge/remote-guard.ts) couvre désormais aussi l'API de forge (GH45). */
+export { setRemoteGuard as setGitRemoteGuard } from './forge/remote-guard'
 
 async function request({
   url,
@@ -31,7 +25,7 @@ async function request({
   headers = {},
   body,
 }: GitHttpRequest): Promise<GitHttpResponse> {
-  if (remoteGuard) remoteGuard(new URL(url))
+  checkRemote(url)
   const dispatcher = await resolveProxyDispatcher(url)
   const reqBody = body ? (Array.isArray(body) ? Buffer.concat(body.map(chunk => Buffer.from(chunk))) : Readable.from(body)) : undefined
 

@@ -1,3 +1,4 @@
+import type { MachineConfig } from '@polenta/types'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { createContainer } from '../main/container'
@@ -26,6 +27,8 @@ export interface UserRuntime {
 }
 
 export interface UserPoolOptions {
+  /** GH45 — configuration machine de l'exploitant (forge par défaut, démo…). */
+  machineConfig: MachineConfig
   dataDir: string
   resourcesDir: string
   idleMinutes: number
@@ -98,7 +101,7 @@ export class UserPool {
         try { socket.send(message) } catch { /* socket fermée entre-temps */ }
       }
     }
-    const container = createContainer(createWebHostContext(dirs.userData, this.tokenStore(login)), pendingPrintRenderer)
+    const container = createContainer(createWebHostContext(dirs.userData, this.tokenStore(login), this.opts.machineConfig), pendingPrintRenderer)
     // Pas de dossier local à choisir : la bibliothèque de gabarits d'export (GH34) vit dans l'espace
     // de l'utilisateur.
     if (!container.appSettings.get().exportTemplatesDir) {

@@ -9,8 +9,8 @@
 
 /** Channels du noyau partagé exposés au navigateur (liste blanche, design D6). */
 export const WEB_EXPOSED: ReadonlySet<string> = new Set([
-  'app:get-settings', 'app:set-settings',
-  'auth:has-any-account', 'auth:project-username', 'auth:resolve-identity',
+  'app:get-machine-config', 'app:get-settings', 'app:set-settings',
+  'auth:current-account', 'auth:has-any-account', 'auth:project-username', 'auth:resolve-identity',
   'baseline:create', 'baseline:delete', 'baseline:get', 'baseline:get-integration-branch',
   'baseline:list', 'baseline:set-integration-branch',
   'campaigns:add-tests', 'campaigns:close', 'campaigns:create', 'campaigns:delete',
@@ -73,6 +73,8 @@ export const WEB_HIDDEN: Record<string, string> = {
   // Le compte web est celui de la session (forge) : aucune gestion de jeton depuis le navigateur,
   // et un jeton ne doit jamais transiter vers lui (AC 1).
   'auth:setup': 'compte = session',
+  'auth:detect-forge': 'connexion = OIDC par la forge (GH44 S3)',
+  'auth:login-password': 'connexion = OIDC par la forge (GH44 S3) ; jamais de mot de passe via le serveur web',
   'auth:save-token': 'compte = session',
   'auth:get-token': 'renverrait le jeton forge au navigateur',
   'auth:delete-token': 'compte = session',

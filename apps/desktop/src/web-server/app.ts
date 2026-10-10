@@ -44,6 +44,7 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
   const sessions = new SessionStore(config.sessionHours * 3_600_000)
   const pool = new UserPool({
     dataDir: config.dataDir, resourcesDir: config.resourcesDir, idleMinutes: config.idleMinutes, version,
+    machineConfig: config.machineConfig,
   })
 
   await app.register(fastifyCookie, { secret: config.sessionSecret })

@@ -1,4 +1,6 @@
 import * as path from 'path'
+import type { MachineConfig } from '@polenta/types'
+import { isGithubHost } from '../main/services/forge/github.provider'
 
 /**
  * GH44 — configuration du serveur web, lue depuis l'environnement (specs/GH44-design.md §6.3).
@@ -22,6 +24,8 @@ export interface WebConfig {
   /** Cookies `Secure` (HTTPS) — faux uniquement en développement local. */
   secureCookies: boolean
   auth: DevAuthConfig
+  /** GH45 — équivalent web de la configuration machine du desktop (POLENTA_WEB_DEFAULT_SERVER…). */
+  machineConfig: MachineConfig
 }
 
 export interface DevAuthConfig {
@@ -64,6 +68,8 @@ export function loadConfig(appRoot: string): WebConfig {
   if (!LOGIN_PATTERN.test(login)) throw new Error(`POLENTA_WEB_DEV_LOGIN invalide : « ${login} » ([a-z0-9._-])`)
 
   const staticDir = process.env['POLENTA_WEB_STATIC_DIR'] ?? path.join(appRoot, 'out', 'web')
+  const gitHosts = env('POLENTA_WEB_GIT_HOSTS', new URL(env('POLENTA_WEB_DEV_REMOTE', 'https://github.com')).hostname)
+    .split(',').map(h => h.trim()).filter(Boolean)
   return {
     port: int('POLENTA_WEB_PORT', 8787),
     host: env('POLENTA_WEB_HOST', '127.0.0.1'),
@@ -75,8 +81,7 @@ export function loadConfig(appRoot: string): WebConfig {
     idleMinutes: int('POLENTA_WEB_IDLE_MINUTES', 30),
     maxUploadMb: int('POLENTA_WEB_MAX_UPLOAD_MB', 20),
     secureCookies: env('POLENTA_WEB_SECURE_COOKIES', 'false') === 'true',
-    gitHosts: env('POLENTA_WEB_GIT_HOSTS', new URL(env('POLENTA_WEB_DEV_REMOTE', 'https://github.com')).hostname)
-      .split(',').map(h => h.trim()).filter(Boolean),
+    gitHosts,
     gitAllowHttp: env('POLENTA_WEB_GIT_ALLOW_HTTP', 'false') === 'true',
     auth: {
       mode: 'dev',
@@ -86,5 +91,21 @@ export function loadConfig(appRoot: string): WebConfig {
       remote: env('POLENTA_WEB_DEV_REMOTE', 'https://github.com'),
       token: env('POLENTA_WEB_DEV_TOKEN', ''),
     },
+    machineConfig: webMachineConfig(gitHosts),
+  }
+}
+
+/**
+ * GH45 — forge par défaut du serveur web : `POLENTA_WEB_DEFAULT_SERVER`, sinon le premier hôte git
+ * autorisé (en https). GitHub n'est proposé que si la forge par défaut est github.com.
+ */
+export function webMachineConfig(gitHosts: string[]): MachineConfig {
+  const explicit = process.env['POLENTA_WEB_DEFAULT_SERVER']
+  const defaultServer = explicit ? new URL(explicit).origin : gitHosts[0] ? `https://${gitHosts[0]}` : undefined
+  const demo = process.env['POLENTA_WEB_DEMO_PROJECT_URL']
+  return {
+    ...(defaultServer ? { defaultServer } : {}),
+    hideGithub: !defaultServer || !isGithubHost(new URL(defaultServer).hostname),
+    ...(demo ? { demoProjectUrl: demo } : {}),
   }
 }

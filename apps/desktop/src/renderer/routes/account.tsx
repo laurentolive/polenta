@@ -1,10 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Sun, Moon } from 'lucide-react'
-import { api } from '../api'
-import { isWeb, capabilities } from '../platform'
-import { loadWebSessionIdentity, webLogout } from '../lib/webSession'
+import { useCurrentAccount } from '../hooks/useCurrentAccount'
 import { useTheme } from '../contexts/ThemeContext'
 import { ViewHeader } from '../components/layout/ViewHeader'
 
@@ -12,54 +9,14 @@ export const Route = createFileRoute('/account')({
   component: AccountPage,
 })
 
-interface Identity {
-  login: string
-  name: string
-  email: string
-  remote: string
-}
-
-const KNOWN_REMOTES = [
-  'https://github.com',
-  'https://gitlab.com',
-]
-
 function AccountPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { theme, toggle } = useTheme()
-  const [identity, setIdentity] = useState<Identity | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function load() {
-      // GH44 — version web : le compte est celui de la session serveur.
-      if (isWeb) {
-        setIdentity(await loadWebSessionIdentity())
-        setLoading(false)
-        return
-      }
-      for (const remote of KNOWN_REMOTES) {
-        try {
-          const token = await api.auth.getToken(remote)
-          if (!token) continue
-          const id = await api.auth.resolveIdentity(remote)
-          setIdentity({ ...id, remote })
-          break
-        } catch {
-          // try next
-        }
-      }
-      setLoading(false)
-    }
-    load()
-  }, [])
+  const { account: identity, loading, logout } = useCurrentAccount()
 
   async function handleLogout() {
-    if (isWeb) return webLogout()
-    if (identity) {
-      try { await api.auth.deleteToken(identity.remote) } catch { /* best-effort */ }
-    }
+    await logout()
     await navigate({ to: '/login' })
   }
 
@@ -77,6 +34,9 @@ function AccountPage() {
         {identity?.login && <p className="text-xs text-ink-2 font-mono">@{identity.login}</p>}
         {identity?.email && <p className="text-xs text-ink-2">{identity.email}</p>}
         <p className="text-xs text-ink-3 font-mono">{identity?.remote ?? '—'}</p>
+        {identity?.provider === 'forgejo' && (
+          <p className="text-xs text-ink-3 pt-1">{t('account.panel.forgeTokenHint')}</p>
+        )}
       </div>
 
       {/* Preferences */}

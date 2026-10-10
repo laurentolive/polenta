@@ -18,6 +18,7 @@ function config(dataDir: string): WebConfig {
     sessionSecret: 'test-secret-0123456789-0123456789', sessionHours: 1, idleMinutes: 30, maxUploadMb: 1,
     secureCookies: false, gitHosts: ['git.example.org'], gitAllowHttp: false,
     auth: { mode: 'dev', login: 'alice', name: 'Alice', email: 'alice@example.org', remote: 'https://git.example.org', token: 'tok-secret' },
+    machineConfig: { defaultServer: 'https://git.example.org', hideGithub: true },
   }
 }
 

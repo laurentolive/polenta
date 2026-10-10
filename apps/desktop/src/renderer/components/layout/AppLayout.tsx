@@ -9,6 +9,7 @@ import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
 import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
+import { ForgeAccessBanner } from './ForgeAccessBanner'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
 
@@ -234,9 +235,12 @@ export function AppLayout() {
         style={{ width: 4 }}
         onMouseDown={handleDragMouseDown}
       />
-      <main className="flex-1 overflow-auto">
-        <Outlet />
-      </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <ForgeAccessBanner />
+        <main className="flex-1 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 

@@ -1,7 +1,10 @@
+import * as fs from 'fs'
+import * as os from 'os'
 import keytar from 'keytar'
 import { app, shell } from 'electron'
 import type { HostContext, TokenStore } from './host-context'
 import { resolveMcpServerLaunchConfig } from './mcp-launch'
+import { loadMachineConfig } from '../services/machine-config'
 
 const KEYTAR_SERVICE = 'polenta'
 
@@ -24,5 +27,19 @@ export function createElectronHostContext(): HostContext {
     tokenStore: new KeytarTokenStore(),
     openExternal: (url) => shell.openExternal(url),
     mcpServerLaunch: resolveMcpServerLaunchConfig,
+    machineConfig: loadMachineConfig({
+      platform: process.platform,
+      env: process.env,
+      readFile: (file) => {
+        try {
+          return fs.readFileSync(file, 'utf-8')
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+          throw err
+        }
+      },
+      warn: (message) => console.warn(message),
+    }),
+    deviceLabel: os.hostname(),
   }
 }

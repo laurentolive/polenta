@@ -11,7 +11,8 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/web-server/**/*.test.ts'],
+    // GH45 — aussi les services du process main (forges, configuration machine, comptes).
+    include: ['src/web-server/**/*.test.ts', 'src/main/services/**/*.test.ts'],
     environment: 'node',
     testTimeout: 20_000,
   },

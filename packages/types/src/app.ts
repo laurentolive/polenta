@@ -5,6 +5,8 @@ export interface AppSettings {
   autoCheckUpdates: boolean
   /** GH34 — dossier de la bibliothèque de gabarits d'export (chemin absolu). Absent = non configuré. */
   exportTemplatesDir?: string
+  /** GH45 — lecture seule : la configuration machine impose `autoCheckUpdates: false` (jamais écrit). */
+  autoCheckUpdatesLocked?: boolean
 }
 
 // GH26 — état de la mise à jour automatique (electron-updater), poussé par le main au renderer.

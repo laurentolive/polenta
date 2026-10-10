@@ -1,3 +1,4 @@
+import type { ForgeAccount, ForgeDetection, MachineConfig, PasswordLoginResult } from '@polenta/types'
 import type {
   MergeFileDetail,
   MergeFileDraft,
@@ -263,6 +264,10 @@ export interface IntegrationRemoteState {
   ahead: number
   behind: number
   offline?: true
+  /** GH45 — accès au serveur révoqué : plus aucun appel réseau jusqu'à la reconnexion. */
+  accessRevoked?: true
+  /** GH45 — serveur concerné, scheme + hôte + port (avec `accessRevoked`). */
+  revokedServer?: string
 }
 export type ResyncOutcome =
   | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
@@ -331,6 +336,8 @@ export interface ApiClient {
     setSettings(patch: Partial<AppSettings>): Promise<AppSettings>
     /** GH26 — ouvre une page de release GitHub dans le navigateur système. */
     openReleasePage(url: string): Promise<void>
+    /** GH45 — configuration machine (DSI sur le desktop, exploitant sur le web). */
+    getMachineConfig(): Promise<MachineConfig>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */
@@ -389,6 +396,16 @@ export interface ApiClient {
     setup(remote: string, pat: string): Promise<{ login: string; name: string; email: string }>
     startDeviceFlow(remote: string): Promise<DeviceFlowSession>
     pollDeviceFlow(remote: string, deviceCode: string): Promise<DeviceFlowPollResult>
+    /** GH45 — type de forge d'un serveur (écran de connexion). */
+    detectForge(serverUrl: string): Promise<ForgeDetection>
+    /** GH45 — connexion identifiant + mot de passe (+ 2FA) : la forge crée un jeton, seul conservé. */
+    loginWithPassword(serverUrl: string, login: string, password: string, otp?: string): Promise<PasswordLoginResult>
+    /** GH45 — compte courant, sans réseau ; null si aucun compte connecté. */
+    currentAccount(): Promise<ForgeAccount | null>
+    /** GH45 — desktop : déconnexion du compte courant (jetons locaux supprimés). */
+    logout(): Promise<void>
+    /** GH45 — desktop : ouvre la page de changement de mot de passe annoncée par la forge à la dernière connexion. */
+    openPasswordChange(): Promise<void>
   }
   dialog: {
     pickFolder(title?: string): Promise<string | null>

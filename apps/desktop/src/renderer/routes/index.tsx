@@ -27,6 +27,19 @@ function HomePage() {
   const [busy, setBusy] = useState<HomeAction | null>(null)
   const [error, setError] = useState<{ action: HomeAction; message: string } | null>(null)
   const [prompt, setPrompt] = useState<'clone' | 'create' | null>(null)
+  // GH45 — projet de démonstration selon la configuration machine : URL fournie (miroir sur la forge
+  // de l'entreprise), sinon la démo publique — masquée si GitHub est masqué. `undefined` : en cours.
+  const [demoUrl, setDemoUrl] = useState<string | null | undefined>(undefined)
+  const [defaultServer, setDefaultServer] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    api.app.getMachineConfig()
+      .then(config => {
+        setDemoUrl(config.demoProjectUrl ?? (config.hideGithub ? null : DEMO_PROJECT_URL))
+        setDefaultServer(config.defaultServer)
+      })
+      .catch(() => setDemoUrl(DEMO_PROJECT_URL))
+  }, [])
   // Synchronous guard against a double click landing before `busy` re-renders the buttons disabled.
   const running = useRef(false)
   // GH44 — web: project folders created by the running action (removed again if it fails).
@@ -119,6 +132,7 @@ function HomePage() {
   }
 
   const handleDemo = () => run('demo', async () => {
+    if (!demoUrl) return null
     const dir = await pickDestination('demo', t('home.pickDemoFolder'))
     if (!dir) return null
     if (await api.workspace.detect(dir) === 'workspace') {
@@ -126,7 +140,7 @@ function HomePage() {
       return dir
     }
     if (!(await api.workspace.isEmptyDir(dir))) throw new Error(t('home.demoFolderNotEmpty'))
-    await api.workspace.createFromClone(dir, DEMO_PROJECT_URL)
+    await api.workspace.createFromClone(dir, demoUrl)
     return dir
   })
 
@@ -165,7 +179,7 @@ function HomePage() {
   })
 
   const actions: Array<{ action: HomeAction; icon: LucideIcon; title: string; help: string; busyLabel: string; onClick: () => void }> = [
-    { action: 'demo', icon: Sparkles, title: t('home.demoTitle'), help: t('home.demoHelp'), busyLabel: t('home.loadingDemo'), onClick: handleDemo },
+    ...(demoUrl ? [{ action: 'demo' as const, icon: Sparkles, title: t('home.demoTitle'), help: t('home.demoHelp'), busyLabel: t('home.loadingDemo'), onClick: handleDemo }] : []),
     // GH44 — web : « Mes projets » (liste ci-dessous) remplace l'ouverture d'un dossier local.
     ...(isWeb ? [] : [{ action: 'open' as const, icon: FolderOpen, title: t('home.openExisting'), help: t('home.openExistingHelp'), busyLabel: t('home.opening'), onClick: handleOpen }]),
     { action: 'clone', icon: Download, title: t('home.openFromRepo'), help: t('home.openFromRepoHelp'), busyLabel: t('home.cloning'), onClick: () => setPrompt('clone') },
@@ -212,7 +226,7 @@ function HomePage() {
 
       {prompt === 'clone' && (
         <TextPromptModal title={t('home.openFromRepo')} label={t('home.repoUrlLabel')}
-          placeholder="https://github.com/org/projet.git" confirmLabel={t('home.continue')}
+          placeholder={`${defaultServer ?? 'https://github.com'}/org/projet.git`} confirmLabel={t('home.continue')}
           onConfirm={handleCloneUrl} onCancel={() => setPrompt(null)} />
       )}
       {prompt === 'create' && (

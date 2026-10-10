@@ -133,7 +133,9 @@
       "exportTemplatesPick": "Bibliothèque de gabarits d’export",
       "exportTemplatesExamples": "Installer les exemples",
       "exportTemplatesExamplesHint": "Copie les gabarits Word d'exemple et la référence des balises dans le sous-dossier « Exemples Polenta » de la bibliothèque (sans écraser les fichiers existants).",
-      "exportTemplatesExamplesDone": "{{count}} fichier(s) copié(s) dans {{folder}}"
+      "exportTemplatesExamplesDone": "{{count}} fichier(s) copié(s) dans {{folder}}",
+      "forgeTokenHint": "La déconnexion supprime le jeton de ce poste ; il reste visible dans vos paramètres du serveur › Applications, où vous pouvez le révoquer.",
+      "autoUpdateLocked": "Mises à jour gérées par votre service informatique."
     },
     "menu": {
       "defaultLabel": "Compte"
@@ -160,7 +162,26 @@
     "codeExpired": "Code expiré, réessayez.",
     "connectionDenied": "Connexion refusée.",
     "submit": "Se connecter",
-    "connecting": "Connexion…"
+    "connecting": "Connexion…",
+    "forge": {
+      "detecting": "Identification du serveur…",
+      "login": "Identifiant",
+      "password": "Mot de passe",
+      "otp": "Code de double authentification",
+      "otpOptional": "Code de double authentification (si activée)",
+      "otpHelp": "Saisissez le code à 6 chiffres affiché par votre application d’authentification.",
+      "passwordNotStored": "Votre mot de passe n’est pas conservé : Polenta demande au serveur un jeton d’accès, seul enregistré sur ce poste.",
+      "useToken": "Utiliser un jeton d’accès à la place",
+      "usePassword": "Se connecter avec identifiant et mot de passe",
+      "patHelp": "Jeton créé dans les paramètres du serveur › Applications, avec accès en écriture aux dépôts et aux organisations, et en lecture à l’utilisateur.",
+      "invalidOtp": "Code de double authentification invalide.",
+      "invalidCredentials": "Identifiant ou mot de passe incorrect.",
+      "invalidCredentialsGitea": "Connexion refusée : identifiant ou mot de passe incorrect, code de double authentification manquant ou invalide, ou compte désactivé.",
+      "accountDisabled": "Ce compte est désactivé. Contactez l’administrateur du serveur.",
+      "notAForge": "Ce serveur n’est pas un serveur Forgejo ou Gitea.",
+      "passwordChangeRequired": "Votre mot de passe est temporaire : changez-le sur le serveur, puis connectez-vous ici avec le nouveau.",
+      "changePassword": "Changer mon mot de passe sur le serveur"
+    }
   },
   "home": {
     "demoTitle": "Découvrir Polenta avec le projet de démonstration",
@@ -1350,5 +1371,9 @@
       "preview": "{{oldId}} (mes modifications) deviendra {{newId}} ; fichiers réécrits de mon côté :",
       "confirm": "Renuméroter en {{newId}}"
     }
+  },
+  "forgeAccess": {
+    "revoked": "Votre accès au serveur {{host}} a été révoqué, a expiré ou votre compte a été désactivé. Vos modifications locales sont conservées.",
+    "reconnect": "Se reconnecter"
   }
 }

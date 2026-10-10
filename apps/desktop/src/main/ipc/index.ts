@@ -61,6 +61,7 @@ import type {
   AppSettings,
   MergeFileDraft,
   MergeOrigin,
+  MachineConfig,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
@@ -101,6 +102,8 @@ export interface Container {
   revalidation: RevalidationService
   appSettings: AppSettingsService
   exportTemplateLibrary: ExportTemplateLibrary
+  /** GH45 — configuration machine de l'hôte (cf. HostContext.machineConfig). */
+  machineConfig: MachineConfig
 }
 
 /**
@@ -136,6 +139,12 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())
+  // GH45 — forges : détection, connexion par mot de passe, compte courant, configuration machine.
+  r.handle('auth:detect-forge', (_e, serverUrl: string) => c.auth.detectForge(serverUrl))
+  r.handle('auth:login-password', (_e, serverUrl: string, login: string, password: string, otp?: string) =>
+    c.auth.loginWithPassword(serverUrl, login, password, otp))
+  r.handle('auth:current-account', () => c.auth.currentAccount())
+  r.handle('app:get-machine-config', () => c.machineConfig)
   r.handle('auth:setup', (_e, remote: string, pat: string) => c.auth.setup(remote, pat))
   r.handle('auth:save-token', (_e, remote: string, token: string) =>
     c.auth.saveToken(remote, token))

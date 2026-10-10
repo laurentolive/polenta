@@ -1,3 +1,4 @@
+import type { MachineConfig } from '@polenta/types'
 import type { McpServerLaunchConfig } from '../../mcp-server/mcp-json.template'
 
 /**
@@ -25,4 +26,11 @@ export interface HostContext {
    * pour les postes des utilisateurs. `AGENTS.md`, contenu du repo, reste écrit partout.
    */
   mcpServerLaunch?: () => McpServerLaunchConfig
+  /**
+   * GH45 — configuration machine (serveur par défaut, masquage de GitHub, démo, mises à jour) :
+   * fichier de la DSI sur le desktop, variables d'environnement de l'exploitant sur le web.
+   */
+  machineConfig: MachineConfig
+  /** GH45 — nom du poste dans le nom des jetons créés à la connexion (`polenta-<poste>-<date>`). */
+  deviceLabel?: string
 }

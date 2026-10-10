@@ -51,6 +51,7 @@ function unavailable(what: string): never {
 }
 const mcpHostContext: HostContext = {
   get userDataDir(): string { return unavailable('userData') },
+  machineConfig: { hideGithub: false },
   tokenStore: {
     get: async () => unavailable('le stockage des jetons'),
     set: async () => unavailable('le stockage des jetons'),

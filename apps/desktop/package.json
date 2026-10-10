@@ -17,7 +17,7 @@
     "build:web": "vite build -c vite.web.config.ts && pnpm run build:web-server",
     "build:web-server": "esbuild src/web-server/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=out/web-server/index.cjs --external:keytar --external:fsevents --external:fastify --external:@fastify/* --external:react-native --external:react-native-fetch-blob --external:react-native-fs --alias:electron=./src/mcp-server/electron-shim.ts",
     "start:web": "node out/web-server/index.cjs",
-    "test": "vitest run src/web-server",
+    "test": "vitest run",
     "test:e2e:web": "pnpm build:web && playwright test",
     "theme:generate": "tsx scripts/generate-theme-css.ts"
   },

@@ -26,7 +26,7 @@ function rootArgsFromSource(): Record<string, number[]> {
 
 function registeredChannels() {
   const dir = path.join(os.tmpdir(), 'polenta-policy-test')
-  const container = createContainer(createWebHostContext(dir, new MemoryTokenStore()), pendingPrintRenderer)
+  const container = createContainer(createWebHostContext(dir, new MemoryTokenStore(), { hideGithub: true }), pendingPrintRenderer)
   const shared: string[] = []
   registerHandlers({ handle: (ch) => { shared.push(ch) } }, container, createWebPlatformHost(() => {}, dir))
   const web: string[] = []

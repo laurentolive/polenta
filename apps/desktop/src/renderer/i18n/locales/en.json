@@ -133,7 +133,9 @@
       "exportTemplatesPick": "Export template library",
       "exportTemplatesExamples": "Install examples",
       "exportTemplatesExamplesHint": "Copies the example Word templates and the tag reference into the \"Exemples Polenta\" sub-folder of the library (existing files are never overwritten).",
-      "exportTemplatesExamplesDone": "{{count}} file(s) copied to {{folder}}"
+      "exportTemplatesExamplesDone": "{{count}} file(s) copied to {{folder}}",
+      "forgeTokenHint": "Signing out removes the token from this computer; it remains listed in your server settings › Applications, where you can revoke it.",
+      "autoUpdateLocked": "Updates are managed by your IT department."
     },
     "menu": {
       "defaultLabel": "Account"
@@ -160,7 +162,26 @@
     "codeExpired": "Code expired, try again.",
     "connectionDenied": "Connection denied.",
     "submit": "Log in",
-    "connecting": "Logging in…"
+    "connecting": "Logging in…",
+    "forge": {
+      "detecting": "Identifying the server…",
+      "login": "Username",
+      "password": "Password",
+      "otp": "Two-factor authentication code",
+      "otpOptional": "Two-factor authentication code (if enabled)",
+      "otpHelp": "Enter the 6-digit code shown by your authenticator app.",
+      "passwordNotStored": "Your password is not kept: Polenta asks the server for an access token, the only thing stored on this computer.",
+      "useToken": "Use an access token instead",
+      "usePassword": "Sign in with username and password",
+      "patHelp": "Token created in the server settings › Applications, with write access to repositories and organizations and read access to the user.",
+      "invalidOtp": "Invalid two-factor authentication code.",
+      "invalidCredentials": "Incorrect username or password.",
+      "invalidCredentialsGitea": "Sign-in refused: incorrect username or password, missing or invalid two-factor code, or disabled account.",
+      "accountDisabled": "This account is disabled. Contact the server administrator.",
+      "notAForge": "This server is not a Forgejo or Gitea server.",
+      "passwordChangeRequired": "Your password is temporary: change it on the server, then sign in here with the new one.",
+      "changePassword": "Change my password on the server"
+    }
   },
   "home": {
     "demoTitle": "Discover Polenta with the demo project",
@@ -1350,5 +1371,9 @@
       "preview": "{{oldId}} (my changes) will become {{newId}}; files rewritten on my side:",
       "confirm": "Renumber to {{newId}}"
     }
+  },
+  "forgeAccess": {
+    "revoked": "Your access to {{host}} was revoked or has expired, or your account was disabled. Your local changes are kept.",
+    "reconnect": "Sign in again"
   }
 }

@@ -1,3 +1,4 @@
+import type { MachineConfig } from '@polenta/types'
 import type { HostContext, TokenStore } from '../main/host/host-context'
 import type { PlatformHost } from '../main/host/platform-host'
 import type { PrintRenderer } from '../main/host/print-renderer'
@@ -24,8 +25,8 @@ export class MemoryTokenStore implements TokenStore {
 }
 
 /** Pas d'`openExternal` ni de `mcpServerLaunch` : sans objet côté serveur. */
-export function createWebHostContext(userDataDir: string, tokenStore: TokenStore): HostContext {
-  return { userDataDir, tokenStore }
+export function createWebHostContext(userDataDir: string, tokenStore: TokenStore, machineConfig: MachineConfig): HostContext {
+  return { userDataDir, tokenStore, machineConfig, deviceLabel: 'web' }
 }
 
 export function createWebPlatformHost(

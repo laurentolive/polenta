@@ -1,0 +1,10 @@
+# Marque de test GH49 — sert aux vérifications de la marque blanche (specs/GH49-tests.md).
+# Build : POLENTA_BRAND=demo pnpm dev / pnpm package
+id: demo
+productName: Demo Specs
+appId: com.example.demospecs
+executableName: demo-specs
+# Pas de `update` : mise à jour automatique désactivée pour cette marque.
+theme:
+  prim: { light: '217 95 2', dark: '251 146 60' }
+  prim-fg: { light: '255 255 255', dark: '15 23 42' }

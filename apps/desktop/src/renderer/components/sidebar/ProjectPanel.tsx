@@ -6,6 +6,7 @@ import { api } from '../../api'
 import { encodeProjectId, decodeProjectId } from '../../lib/projectId'
 import { markProjectJustClosed } from '../../lib/projectCloseSignal'
 import { useAppVersion } from '../../lib/useAppVersion'
+import { BRAND } from '../../../shared/brand'
 
 interface Props {
   currentProjectId: string | null
@@ -22,7 +23,7 @@ function NoProjectPanel() {
   const { data: version } = useAppVersion()
 
   useEffect(() => {
-    if (version) api.app.setTitle(`Polenta v${version}`)
+    if (version) api.app.setTitle(`${BRAND.productName} v${version}`)
   }, [version])
 
   return (
@@ -72,13 +73,13 @@ function WithProjectPanel({ projectId }: { projectId: string }) {
   const handleClose = async () => {
     markProjectJustClosed()
     await api.workspace.clearLastOpened()
-    api.app.setTitle(version ? `Polenta v${version}` : 'Polenta')
+    api.app.setTitle(version ? `${BRAND.productName} v${version}` : BRAND.productName)
     navigate({ to: '/' })
   }
 
   useEffect(() => {
     if (displayName && project?.localPath && version) {
-      api.app.setTitle(`Polenta v${version} — ${displayName} — ${project.localPath}`)
+      api.app.setTitle(`${BRAND.productName} v${version} — ${displayName} — ${project.localPath}`)
     }
   }, [displayName, project?.localPath, version])
 

@@ -9,8 +9,10 @@ import type { Dispatcher } from 'undici'
 import type { GitAuthor } from './git.service'
 import { migrateLocalPref } from './pref-store.util'
 import { resolveProxyDispatcher, describeFetchError } from './net-proxy'
+import { BRAND } from '../../shared/brand'
 
-const KEYTAR_SERVICE = 'polenta'
+// GH49 — comptes séparés par marque ; Polenta garde 'polenta' (comptes existants retrouvés).
+const KEYTAR_SERVICE = BRAND.id
 
 // Client ID de l'OAuth App GitHub "Polenta" (Device Flow activé). Non secret par nature — le
 // Device Flow ne nécessite aucun client secret — donc embarqué directement, pas de config externe.

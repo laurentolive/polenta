@@ -97,10 +97,15 @@ Modifiés :
 
 - **Intégration** (`scripts/forge-smoke.ts`) : 22/22 sur Forgejo et sur Gitea (régression S2).
 
-## Reste à valider manuellement
+## Validation manuelle (2026-10-10)
 
-- L'installateur NSIS enregistre bien `polenta://` (build `pnpm package`, puis clic sur un lien depuis un e-mail).
-- Lecture du modèle `config.yaml` par l'admin d'un client dans l'interface web de la forge.
+- Installateur NSIS (`pnpm package`, `Polenta-Setup-0.0.8.exe`) : le protocole `polenta://` est
+  enregistré par utilisateur (`HKCU\Software\Classes\polenta`, `URL Protocol`) et pointe vers
+  l'application installée (`%LOCALAPPDATA%\Programs\@polentadesktop\Polenta.exe "%1"`).
+- Lien d'invitation ouvert par Win+R : premier lancement et Polenta déjà ouvert — validés par le
+  demandeur.
+- Remarque hors périmètre : le dossier d'installation s'appelle `@polentadesktop` (nom du package
+  npm), comportement antérieur à GH45.
 
 ## Mises à jour SPEC
 

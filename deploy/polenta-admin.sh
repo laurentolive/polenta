@@ -8,8 +8,9 @@
 #   polenta-admin [--instance <nom>] team member add|rm <équipe> <login>
 #   polenta-admin [--instance <nom>] project create <nom> [--team <équipe>]…
 #   polenta-admin [--instance <nom>] oauth-app create <nom> <redirect-uri>
+#   polenta-admin [--instance <nom>] access report [--csv]
 #
-# --instance est facultatif quand l'hôte n'a qu'une instance. Sprint 3 : access report.
+# --instance est facultatif quand l'hôte n'a qu'une instance.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -18,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=lib/forgejo-api.sh
 . "$SCRIPT_DIR/lib/forgejo-api.sh"
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 INSTANCE=""
 ORG=""
@@ -262,6 +263,50 @@ cmd_oauth_app_create() {
     "$(jq -r .client_id <<<"$API_BODY")" "$(jq -r .client_secret <<<"$API_BODY")"
 }
 
+# ─── access report (S3) ───────────────────────────────────────────────────────
+
+# Accès effectifs : pour chaque repo de l'organisation, le droit maximal de chaque utilisateur, via
+# ses équipes et ses ajouts individuels (revue d'accès périodique, ISO 27001).
+cmd_access_report() {
+  local csv=0; [[ "${1:-}" == --csv ]] && csv=1
+  local rank='{"none":0,"read":1,"write":2,"admin":3,"owner":4}'
+  local lines="" repo team_json tid perm members m collab
+  declare -A team_members=()
+  api_paginate "/orgs/$ORG/repos"
+  local repos; repos="$(jq -r '.[].name' <<<"$API_LIST")"
+  for repo in $repos; do
+    api_ok GET "/repos/$ORG/$repo/teams"
+    team_json="$API_BODY"
+    for tid in $(jq -r '.[].id' <<<"$team_json"); do
+      perm="$(jq -r --argjson id "$tid" '.[] | select(.id == $id) | .permission' <<<"$team_json")"
+      if [[ -z "${team_members[$tid]+x}" ]]; then
+        api_paginate "/teams/$tid/members"
+        team_members[$tid]="$(jq -r '.[].login' <<<"$API_LIST")"
+      fi
+      members="${team_members[$tid]}"
+      for m in $members; do lines+="$m;$repo;$perm"$'\n'; done
+    done
+    api_paginate "/repos/$ORG/$repo/collaborators"
+    for collab in $(jq -r '.[].login' <<<"$API_LIST"); do
+      api_ok GET "/repos/$ORG/$repo/collaborators/$collab/permission"
+      lines+="$collab;$repo;$(jq -r '.permission' <<<"$API_BODY")"$'\n'
+    done
+  done
+  # Droit maximal par (utilisateur, repo).
+  local result
+  result="$(printf '%s' "$lines" | awk -F';' -v r="$rank" '
+    BEGIN { n=split("none read write admin owner", lv, " "); for (i=1;i<=n;i++) rk[lv[i]]=i }
+    NF==3 { k=$1";"$2; if (!(k in best) || rk[$3] > rk[best[k]]) best[k]=$3 }
+    END { for (k in best) print k";"best[k] }' | sort)"
+  if [[ $csv == 1 ]]; then
+    printf 'utilisateur;repo;droit\n%s\n' "$result"
+  else
+    printf '%-20s %-34s %s\n' UTILISATEUR REPO DROIT
+    printf '%s\n' "$result" | awk -F';' 'NF==3 { printf "%-20s %-34s %s\n", $1, $2, $3 }'
+  fi
+  admin_log "$INSTANCE" "access report" OK
+}
+
 # ─── main ─────────────────────────────────────────────────────────────────────
 
 main() {
@@ -285,7 +330,7 @@ main() {
     "team member") cmd_team_member "$@" ;;
     "project create") cmd_project_create "$@" ;;
     "oauth-app create") cmd_oauth_app_create "$@" ;;
-    "access report") die "« access report » arrive au sprint 3 de GH45." ;;
+    "access report") cmd_access_report "$@" ;;
     *) usage 1 ;;
   esac
 }

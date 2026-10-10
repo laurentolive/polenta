@@ -8,8 +8,13 @@
 #   polenta-host instance list
 #   polenta-host instance stop|start <nom>
 #   polenta-host instance sync <nom>           remet à niveau une instance existante (idempotent)
-#
-# Sprint 3 : instance update|backup|restore|export|remove.
+#   polenta-host instance backup <nom>|--all   sauvegarde chiffrée (arrêt de quelques secondes)
+#   polenta-host instance snapshots <nom>      liste des sauvegardes
+#   polenta-host instance keys                 mots de passe des sauvegardes (à garder HORS de l'hôte)
+#   polenta-host instance restore <nom> --from <id|latest> [--source s] [--domain d] [--password-file f] [--force]
+#   polenta-host instance update <nom>|--all <version>   avec retour arrière automatique
+#   polenta-host instance export <nom>         archive de restitution au client
+#   polenta-host instance remove <nom>         export puis suppression définitive
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -20,12 +25,14 @@ KIT_DIR="$POLENTA_ROOT/kit"
 . "$SCRIPT_DIR/lib/caddy.sh"
 # shellcheck source=lib/forgejo-api.sh
 . "$SCRIPT_DIR/lib/forgejo-api.sh"
+# shellcheck source=lib/backup.sh
+. "$SCRIPT_DIR/lib/backup.sh"
 
 DEMO_SOURCE_OWNER_URL="https://github.com/laurentolive"
 DEMO_ROOT_REPO="demo-ll800-produit"
 DEMO_REPOS=(demo-ll800-produit demo-ll800-comp-moteur demo-ll800-comp-pompe-vidange demo-ll800-comp-module-wifi demo-ll800-if-bus-interne)
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 # ─── setup ────────────────────────────────────────────────────────────────────
 
@@ -120,6 +127,16 @@ setup_resolved() {
   fi
 }
 
+# Messages du noyau (dont chaque paquet rejeté par le pare-feu) hors de la console : ils rendaient
+# la console KVM inutilisable le jour où on en avait besoin (incident du 2026-10-10).
+setup_console() {
+  if write_if_changed /etc/sysctl.d/10-polenta-console.conf 'kernel.printk = 3 4 1 3'; then
+    sysctl -q -p /etc/sysctl.d/10-polenta-console.conf; ok "console : messages du noyau limités"
+  else
+    skip "console : messages du noyau limités"
+  fi
+}
+
 setup_firewall() {
   local rules=(22/tcp 80/tcp 443/tcp 443/udp) r changed=0
   ufw status | grep -q "^Status: active" || {
@@ -133,12 +150,14 @@ setup_firewall() {
 }
 
 setup_fail2ban() {
-  local jail='[sshd]
+  local admin_ips; admin_ips="$(env_get "$HOST_ENV" ADMIN_IPS | tr ',' ' ')"
+  local jail="[sshd]
 enabled = true
 backend = systemd
 maxretry = 5
 findtime = 10m
-bantime = 1h'
+bantime = 1h
+ignoreip = 127.0.0.1/8 ::1 ${admin_ips}"
   if write_if_changed /etc/fail2ban/jail.d/10-polenta-sshd.local "$jail"; then
     systemctl restart fail2ban; ok "fail2ban (sshd)"
   else
@@ -156,6 +175,72 @@ Unattended-Upgrade::Automatic-Reboot-Time "04:00";'
   write_if_changed /etc/apt/apt.conf.d/20auto-upgrades "$auto" && c=1
   write_if_changed /etc/apt/apt.conf.d/52polenta-unattended "$reboot" && c=1
   if [[ $c == 1 ]]; then ok "mises à jour de sécurité automatiques (redémarrage 04:00)"; else skip "mises à jour de sécurité automatiques"; fi
+}
+
+# Sauvegarde nocturne (02:30) et rotation des journaux du kit.
+setup_cron() {
+  local cron='# GH45 — polenta-host : sauvegarde chiffrée de toutes les instances (arrêt de quelques secondes chacune)
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 2 * * * root /usr/local/bin/polenta-host backup-cron >>/var/log/polenta/backup.log 2>&1'
+  local rotate='/var/log/polenta/*.log {
+  weekly
+  rotate 12
+  compress
+  missingok
+  notifempty
+}'
+  local c=0
+  write_if_changed /etc/cron.d/polenta "$cron" 644 && c=1
+  write_if_changed /etc/logrotate.d/polenta "$rotate" 644 && c=1
+  if [[ $c == 1 ]]; then ok "sauvegarde nocturne (02:30) et rotation des journaux"; else skip "sauvegarde nocturne"; fi
+}
+
+# fail2ban sur les forges (design §5.9, révisé §12) : échecs de connexion web et créations de
+# jeton refusées (mot de passe), IP réelle du client (proxy de confiance), blocage dans DOCKER-USER
+# (le trafic vers Caddy ne passe pas par INPUT). Les 401 ordinaires de git (première requête sans
+# identifiants, normale) ne sont PAS comptés.
+setup_fail2ban_forge() {
+  # datepattern : sans lui, fail2ban ne lit pas la date des journaux Forgejo (« 2026/10/10 15:06:44 »)
+  # et compte chaque ligne comme récente — un journal relu en entier (restauration) déclenchait un
+  # bannissement sur des échecs vieux de plusieurs heures (incident du 2026-10-10).
+  local filter='[Definition]
+failregex = Failed authentication attempt for .* from <HOST>:\d+
+            router: completed POST /api/v1/users/[^/ ]+/tokens for <HOST>:\d+, 401 Unauthorized
+ignoreregex =
+datepattern = ^%%Y/%%m/%%d %%H:%%M:%%S'
+  local logs; logs="$(find "$POLENTA_INSTANCES" -path '*/data/log/gitea.log' 2>/dev/null | sort | sed 's/^/          /')"
+  local ignoreip; ignoreip="127.0.0.1/8 ::1 $(env_get "$HOST_ENV" ADMIN_IPS | tr ',' ' ')"
+  local jail
+  if [[ -n "$logs" ]]; then
+    # chain = DOCKER-USER : le trafic vers Caddy (ports publiés par Docker) ne passe pas par INPUT.
+    # Passé en paramètre de « banaction », il était ignoré : la règle tombait dans INPUT, bloquait
+    # SSH et ne protégeait pas les forges (incident du 2026-10-10).
+    jail="[polenta-forge]
+enabled = true
+backend = polling
+filter = polenta-forge
+logpath =
+${logs}
+maxretry = 10
+findtime = 10m
+bantime = 1h
+banaction = iptables-allports
+chain = DOCKER-USER
+ignoreip = ${ignoreip}"
+  else
+    jail='[polenta-forge]
+enabled = false'
+  fi
+  local c=0
+  write_if_changed /etc/fail2ban/filter.d/polenta-forge.conf "$filter" && c=1
+  write_if_changed /etc/fail2ban/jail.d/20-polenta-forge.local "$jail" && c=1
+  if [[ $c == 1 ]]; then
+    systemctl reload fail2ban 2>/dev/null || systemctl restart fail2ban
+    ok "fail2ban (forges)"
+  else
+    skip "fail2ban (forges)"
+  fi
 }
 
 # Clé uniquement + root interdit, SEULEMENT si l'admin a déjà une clé autorisée (spec §9.2-3).
@@ -196,9 +281,12 @@ cmd_setup() {
   setup_docker
   setup_resolved
   setup_firewall
+  setup_console
   setup_fail2ban
   setup_unattended
   setup_ssh
+  setup_cron
+  setup_fail2ban_forge
   caddy_up
   log "Hôte prêt. Ajoutez un client : polenta-host instance add <nom>"
 }
@@ -424,7 +512,9 @@ ensure_config_repo() {
     ok "repo de configuration $org/$CONFIG_REPO"
   fi
   # Étape séparée (reprise d'un ajout interrompu entre la création du repo et celle du fichier).
-  if api GET "/repos/$org/$CONFIG_REPO/contents/config.yaml"; then
+  # Sur un repo vide, Forgejo répond 200 « [] » au lieu de 404 : vérifier qu'il s'agit d'un fichier.
+  if api GET "/repos/$org/$CONFIG_REPO/contents/config.yaml" \
+    && jq -e 'type == "object" and .type == "file"' <<<"$API_BODY" >/dev/null; then
     skip "configuration : config.yaml"
   else
     local projects=' []'
@@ -534,7 +624,15 @@ cmd_instance_add() {
   ensure_config_repo "$name" "$org" "$demo"
   write_polenta_config "$name" "$domain" "$org" "$demo"
   touch "$dir/.add-complete"
+  setup_fail2ban_forge
   admin_log "$name" "instance add $name --domain $domain --org $org${admin_login:+ --client-admin $admin_login}" OK
+  # Première sauvegarde (UC1), si le stockage est configuré.
+  local backup_ok=0
+  if [[ -n "$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)" ]]; then
+    if ( backup_instance "$name" manual ); then backup_ok=1; else warn "première sauvegarde en échec : polenta-host instance backup $name"; fi
+  else
+    warn "sauvegardes non configurées (BACKUP_S3_* dans $HOST_ENV)"
+  fi
 
   log "Instance « $name » prête"
   printf '  URL                 https://%s\n' "$domain"
@@ -545,6 +643,9 @@ cmd_instance_add() {
   fi
   printf '  Compte exploitation polenta-ops (mot de passe et jeton dans %s)\n' "$env"
   printf '  Config Polenta      %s/polenta-config.json (à distribuer aux postes)\n' "$dir"
+  if [[ $backup_ok == 1 ]]; then
+    printf '  Sauvegardes         OK — mot de passe à ranger HORS de l'"'"'hôte : polenta-host instance keys\n'
+  fi
 }
 
 # GH45 S2b — rejoue les étapes idempotentes d'après installation sur une instance existante
@@ -564,6 +665,276 @@ cmd_instance_sync() {
   write_polenta_config "$name" "$domain" "$org" "$demo"
   admin_log "$name" "instance sync" OK
   ok "instance $name à jour"
+}
+
+# ─── sprint 3 : sauvegardes, restauration, mises à jour, export, retrait ──────
+
+# polenta-host instance backup <nom>|--all [--tag t]
+cmd_instance_backup() {
+  require_root; load_host_env; require_cmd restic jq
+  local target="${1:-}" tag=manual; shift || true
+  [[ "${1:-}" == --tag ]] && tag="$2"
+  if [[ "$target" == --all ]]; then
+    local name failed=0
+    for name in $(list_instances); do
+      [[ -f "$(instance_dir "$name")/.add-complete" ]] || continue
+      ( backup_instance "$name" "$tag" ) || { failed=1; host_log "backup $name ($tag)" ERREUR; continue; }
+      host_log "backup $name ($tag)" OK
+    done
+    if [[ $failed == 0 ]]; then backup_ping ok; else backup_ping fail; die "au moins une sauvegarde a échoué (voir ci-dessus)."; fi
+    return
+  fi
+  local name; name="$(resolve_instance "$target")"
+  backup_instance "$name" "$tag"
+  admin_log "$name" "instance backup ($tag)" OK
+}
+
+# polenta-host instance snapshots <nom>
+cmd_instance_snapshots() {
+  require_root; load_host_env
+  local name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance snapshots <nom> [--password-file f]"
+  shift
+  [[ "${1:-}" == --password-file ]] && RESTIC_PASSWORD_OVERRIDE="$(tr -d '[:space:]' <"$2")"
+  local rc=0
+  restic_for "$name" snapshots || rc=$?
+  case "$rc" in
+    0) ;;
+    10) die "aucune sauvegarde pour « $name »." ;;
+    12) die "mot de passe incorrect pour les sauvegardes de « $name »." ;;
+    *) die "sauvegardes de « $name » inaccessibles (restic, code $rc)." ;;
+  esac
+}
+
+# polenta-host instance keys — mots de passe des sauvegardes, à conserver HORS de l'hôte.
+cmd_instance_keys() {
+  require_root
+  local name
+  printf '%-16s %s\n' INSTANCE "MOT DE PASSE DES SAUVEGARDES (restic)"
+  for name in $(list_instances); do
+    [[ -f "$(instance_env "$name")" ]] || continue
+    printf '%-16s %s\n' "$name" "$(env_get "$(instance_env "$name")" RESTIC_PASSWORD)"
+  done
+  warn "à ranger dans un gestionnaire de mots de passe : sans eux, aucune restauration n'est possible sur un hôte neuf."
+}
+
+# polenta-host instance restore <nom> --from <id|latest> [--domain d] [--password-file f] [--source <nom>] [--force]
+cmd_instance_restore() {
+  require_root; load_host_env; require_cmd docker restic jq dig curl
+  local name="${1:-}" from="" domain="" source="" force=0; shift || true
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --from) from="$2"; shift 2 ;;
+      --domain) domain="$2"; shift 2 ;;
+      --password-file) RESTIC_PASSWORD_OVERRIDE="$(tr -d '[:space:]' <"$2")"; shift 2 ;;
+      --source) source="$2"; shift 2 ;;
+      --force) force=1; shift ;;
+      --yes|-y) ASSUME_YES=1; shift ;;
+      *) die "option inconnue : $1" ;;
+    esac
+  done
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ && -n "$from" ]] \
+    || die "usage : polenta-host instance restore <nom> --from <id|latest> [--source <instance sauvegardée>] [--domain d] [--password-file f] [--force]"
+  source="${source:-$name}"
+  local dir; dir="$(instance_dir "$name")"
+  if [[ -e "$dir" ]]; then
+    [[ $force == 1 ]] || die "l'instance « $name » existe déjà sur cet hôte (--force pour la remplacer par la sauvegarde)."
+    confirm "Remplacer TOUTES les données actuelles de « $name » par la sauvegarde « $from » ?" || die "abandon."
+    inst_compose "$name" down >/dev/null 2>&1 || true
+  fi
+  # Mot de passe : instance.env local de l'instance source s'il existe, sinon --password-file.
+  if [[ -z "${RESTIC_PASSWORD_OVERRIDE:-}" && -f "$(instance_env "$source")" ]]; then
+    RESTIC_PASSWORD_OVERRIDE="$(env_get "$(instance_env "$source")" RESTIC_PASSWORD)"
+  fi
+  local snapshot; snapshot="$(resolve_snapshot "$source" "$from")"
+  log "Restauration de « $source » (sauvegarde $snapshot) vers l'instance « $name »"
+  restore_snapshot_to "$source" "$dir" "$snapshot"
+  chmod 700 "$dir"; chown -R 1000:1000 "$dir/data"
+  local env; env="$(instance_env "$name")"
+  local olddomain; olddomain="$(env_get "$env" DOMAIN)"
+  domain="${domain:-$olddomain}"
+  env_set "$env" INSTANCE_NAME "$name"
+  env_set "$env" INSTANCE_DIR "$dir"
+  env_set "$env" DOMAIN "$domain"
+  env_set "$env" LAST_BACKUP "$(snapshot_time "$source" "$snapshot")"
+  check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  render_forgejo_env "$name"
+  local img; img="$(env_get "$env" FORGE_IMAGE):$(env_get "$env" FORGE_VERSION)"
+  docker pull -q "$img" >/dev/null || die "image introuvable : $img"
+  inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
+  wait_healthy "$name"; ok "forge restaurée et démarrée"
+  caddy_add_site "$name" "$domain"
+  wait_https "$domain"; ok "https://$domain"
+  api_use_instance "$name"
+  write_polenta_config "$name" "$domain" "$(env_get "$env" ORG)" "$(api GET "/repos/$(env_get "$env" ORG)/$DEMO_ROOT_REPO" && echo 1 || echo 0)"
+  touch "$dir/.add-complete"
+  setup_fail2ban_forge
+  admin_log "$name" "instance restore depuis $source@$snapshot (domaine $domain)" OK
+  log "Instance « $name » restaurée — https://$domain"
+}
+
+# polenta-host instance update <nom>|--all <version> — sauvegarde, mise à jour, retour arrière si échec.
+update_instance() {
+  local name="$1" version="$2" env; env="$(instance_env "$name")"
+  local image old; image="$(env_get "$env" FORGE_IMAGE)"; old="$(env_get "$env" FORGE_VERSION)"
+  [[ "$old" != "$version" ]] || { skip "$name déjà en $version"; return 0; }
+  log "Mise à jour de « $name » : $old → $version"
+  # 1. La nouvelle version doit exister : sinon rien n'est touché (critère 17).
+  docker pull -q "$image:$version" >/dev/null 2>&1 || die "version introuvable : $image:$version — rien n'a été modifié."
+  # 2. Sauvegarde de retour arrière.
+  backup_instance "$name" pre-update
+  local snapshot; snapshot="$(resolve_snapshot "$name" latest:pre-update)"
+  # 3. Nouvelle version.
+  env_set "$env" FORGE_VERSION "$version"
+  render_forgejo_env "$name"
+  inst_compose "$name" up -d >/dev/null 2>&1 || true
+  local healthy=0
+  ( wait_healthy "$name" ) && ( wait_https "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
+  # Crochet de test (scénario S3-7) : la NOUVELLE version est déclarée en échec, après démarrage
+  # et migration de la base — jamais en exploitation.
+  if [[ "${POLENTA_TEST_FAIL_UPDATE:-0}" == 1 ]]; then
+    warn "POLENTA_TEST_FAIL_UPDATE=1 : échec simulé de la nouvelle version"; healthy=0
+  fi
+  if [[ $healthy == 1 ]]; then
+    admin_log "$name" "instance update $old → $version" OK
+    ok "$name en version $version"
+    return 0
+  fi
+  # 4. Retour arrière : la base a pu être migrée → restauration du snapshot pre-update.
+  warn "$name ne démarre pas en $version : retour à $old et aux données d'avant la mise à jour."
+  docker logs --tail 30 "$(forge_container "$name")" >&2 || true
+  inst_compose "$name" down >/dev/null 2>&1 || true
+  restore_snapshot_to "$name" "$(instance_dir "$name")" "$snapshot"
+  chown -R 1000:1000 "$(instance_dir "$name")/data"
+  env_set "$env" FORGE_VERSION "$old"
+  env_set "$env" LAST_BACKUP "$(snapshot_time "$name" "$snapshot")"
+  render_forgejo_env "$name"
+  inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
+  wait_healthy "$name"
+  admin_log "$name" "instance update $old → $version" "ERREUR, retour à $old (snapshot $snapshot)"
+  die "mise à jour de $name annulée : instance revenue en $old avec les données d'avant (snapshot $snapshot)."
+}
+
+cmd_instance_update() {
+  require_root; load_host_env; require_cmd docker restic jq
+  local target="${1:-}" version="${2:-}"
+  [[ -n "$target" && -n "$version" && "$version" != latest ]] \
+    || die "usage : polenta-host instance update <nom>|--all <version> (jamais « latest »)"
+  if [[ "$target" == --all ]]; then
+    local name
+    for name in $(list_instances); do
+      [[ -f "$(instance_dir "$name")/.add-complete" ]] || continue
+      update_instance "$name" "$version"
+    done
+    return
+  fi
+  update_instance "$(resolve_instance "$target")" "$version"
+}
+
+# polenta-host instance export <nom> — archive de restitution au client.
+cmd_instance_export() {
+  require_root; load_host_env; require_cmd docker tar sha256sum
+  local name; name="$(resolve_instance "${1:-}")"
+  local dir env; dir="$(instance_dir "$name")"; env="$(instance_env "$name")"
+  local stamp; stamp="$(date +%Y%m%d-%H%M%S)"
+  local out="$POLENTA_ROOT/exports"; mkdir -p "$out"; chmod 700 "$out"
+  local work; work="$(mktemp -d "$POLENTA_ROOT/.export.XXXXXX")"
+  log "Export de « $name »"
+  # 1. Dump portable (format officiel Forgejo/Gitea), instance en service.
+  local c; c="$(forge_container "$name")"
+  docker exec -u git "$c" sh -c 'rm -f /tmp/polenta-dump.tar.gz; cd /tmp && if command -v forgejo >/dev/null; then forgejo dump --type tar.gz --file /tmp/polenta-dump.tar.gz; else gitea dump --type tar.gz --file /tmp/polenta-dump.tar.gz; fi' >"$work/dump.log" 2>&1 \
+    || { cat "$work/dump.log" >&2; die "dump de la forge en échec."; }
+  rm -f "$work/dump.log"
+  docker cp "$c:/tmp/polenta-dump.tar.gz" "$work/forge-dump.tar.gz" >/dev/null
+  docker exec "$c" rm -f /tmp/polenta-dump.tar.gz
+  ok "dump de la forge"
+  # 2. Données brutes, copie cohérente (arrêt court, comme une sauvegarde).
+  inst_compose "$name" stop >/dev/null 2>&1 || true
+  tar -C "$dir" -czf "$work/data.tar.gz" data || { inst_compose "$name" up -d >/dev/null 2>&1; die "copie des données impossible."; }
+  inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
+  wait_healthy "$name"
+  ok "données brutes"
+  # 3. Configuration expurgée des secrets d'exploitation (SECRET_KEY conservé : nécessaire pour remonter).
+  grep -vE '^(OPS_TOKEN|OPS_PASSWORD|RESTIC_PASSWORD|LAST_BACKUP|INSTANCE_DIR)=' "$env" >"$work/instance.env"
+  # Format de « docker run --env-file » : valeurs sans apostrophes (docker run, contrairement à
+  # docker compose, les garderait dans la valeur).
+  sed -E "s/^([A-Za-z0-9_.]+)='(.*)'$/\1=\2/" "$dir/forgejo.env" >"$work/forge.env"
+  local version image domain
+  version="$(env_get "$env" FORGE_VERSION)"; image="$(env_get "$env" FORGE_IMAGE)"; domain="$(env_get "$env" DOMAIN)"
+  cat >"$work/LISEZMOI.md" <<EOF
+# Export de la forge « ${name} » (${domain}) — ${stamp}
+
+Contenu :
+- \`forge-dump.tar.gz\` : export officiel de la forge (${image}, version ${version}), restaurable
+  avec la commande \`restore\` de la forge (documentation Forgejo : « Backup and restore »).
+- \`data.tar.gz\` : le dossier \`/data\` complet de la forge (dépôts git, base SQLite, configuration).
+- \`forge.env\` : la configuration de la forge (variables GITEA__…), dont la clé SECRET_KEY,
+  indispensable pour relire les secrets chiffrés (double authentification…).
+
+Remonter la forge à l'identique (Docker) :
+
+    mkdir forge && tar -C forge -xzf data.tar.gz
+    sudo chown -R 1000:1000 forge/data
+    docker run -d --name forge --env-file forge.env -e USER_UID=1000 -e USER_GID=1000 \\
+      -v "\$PWD/forge/data:/data" -p 3000:3000 ${image}:${version}
+
+Puis servir le port 3000 en HTTPS sous ${domain} (ou modifier GITEA__server__ROOT_URL et
+GITEA__server__DOMAIN dans forge.env pour une autre adresse). Les postes Polenta se reconnectent à la
+nouvelle adresse.
+EOF
+  local archive="$out/${name}-${stamp}.tar.gz"
+  tar -C "$work" -czf "$archive" .
+  rm -rf "$work"
+  (cd "$out" && sha256sum "$(basename "$archive")" >"$(basename "$archive").sha256")
+  chmod 600 "$archive" "$archive.sha256"
+  admin_log "$name" "instance export → $archive" OK
+  ok "export : $archive (+ .sha256, $(du -h "$archive" | cut -f1))"
+  EXPORT_ARCHIVE="$archive"
+}
+
+# polenta-host instance remove <nom> [--confirm <nom>] — export obligatoire, puis suppression.
+cmd_instance_remove() {
+  require_root; load_host_env
+  local name; name="$(resolve_instance "${1:-}")"; shift || true
+  local typed=""
+  [[ "${1:-}" == --confirm ]] && typed="${2:-}"
+  if [[ -z "$typed" ]]; then
+    read -r -p "Suppression DÉFINITIVE de l'instance « $name » (un export est fait avant). Tapez son nom pour confirmer : " typed
+  fi
+  [[ "$typed" == "$name" ]] || die "confirmation incorrecte : rien n'a été supprimé."
+  cmd_instance_export "$name"
+  local domain; domain="$(env_get "$(instance_env "$name")" DOMAIN)"
+  inst_compose "$name" down -v >/dev/null 2>&1 || true
+  caddy_remove_site "$name"
+  docker network rm "polenta-$name" >/dev/null 2>&1 || true
+  rm -rf "$(instance_dir "$name")"
+  setup_fail2ban_forge
+  host_log "instance remove $name ($domain), export $EXPORT_ARCHIVE" OK
+  ok "instance $name supprimée — export conservé : $EXPORT_ARCHIVE"
+  warn "les sauvegardes restent dans le stockage S3 ($(restic_repo_url "$name")) : purge manuelle, cf. RUNBOOK."
+}
+
+# Tâche nocturne (cron) : sauvegarde de toutes les instances, rétention, purge hebdomadaire.
+cmd_backup_cron() {
+  require_root; load_host_env
+  log "Sauvegarde nocturne $(date -Iseconds)"
+  local name failed=0
+  for name in $(list_instances); do
+    [[ -f "$(instance_dir "$name")/.add-complete" ]] || continue
+    if ( backup_instance "$name" nightly ); then
+      host_log "backup $name (nightly)" OK
+      local prune=(); [[ "$(date +%u)" == 7 ]] && prune=(--prune)
+      ( restic_for "$name" forget --quiet "${BACKUP_KEEP[@]}" "${prune[@]}" ) || warn "rétention de $name en échec"
+    else
+      failed=1; host_log "backup $name (nightly)" ERREUR
+    fi
+  done
+  if [[ $failed == 0 ]]; then backup_ping ok; else backup_ping fail; fi
+  return $failed
+}
+
+host_log() {
+  mkdir -p "$POLENTA_LOG_DIR"
+  printf '%s | %s | %s\n' "$(date -Iseconds)" "$1" "$2" >>"$POLENTA_LOG_DIR/host.log"
 }
 
 instance_health() {
@@ -613,6 +984,7 @@ main() {
   local cmd="${1:-}"; shift || true
   case "$cmd" in
     setup) cmd_setup "$@" ;;
+    backup-cron) cmd_backup_cron ;;
     status) require_root; load_host_env; cmd_status ;;
     instance)
       local sub="${1:-}"; shift || true
@@ -622,7 +994,13 @@ main() {
         stop) cmd_instance_stop "$@" ;;
         start) cmd_instance_start "$@" ;;
         sync) cmd_instance_sync "$@" ;;
-        update|backup|restore|export|remove) die "« instance $sub » arrive au sprint 3 de GH45." ;;
+        backup) cmd_instance_backup "$@" ;;
+        snapshots) cmd_instance_snapshots "$@" ;;
+        keys) cmd_instance_keys "$@" ;;
+        restore) cmd_instance_restore "$@" ;;
+        update) cmd_instance_update "$@" ;;
+        export) cmd_instance_export "$@" ;;
+        remove) cmd_instance_remove "$@" ;;
         *) usage 1 ;;
       esac ;;
     -h|--help|help|"") usage 0 ;;

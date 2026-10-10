@@ -741,3 +741,15 @@ S4 réutilisera `forge-config.service` (organisation courante) et la vérificati
 | Thème | Choix explicite sous `polenta:theme-choice` (l'ancienne clé était écrite automatiquement). |
 | Tests d'interface | `apps/desktop/e2e-desktop/` (Playwright Electron), lancé par `pnpm test:e2e:desktop` avec `POLENTA_E2E_SSH`. |
 
+
+## 14. Révisions issues du sprint S3 (`GH45-sprint3.md`)
+
+| Point | Révision |
+|---|---|
+| §5.7 restauration | Extraction dans un dossier temporaire, puis arrêt de l'instance remplacée seulement si l'extraction a réussi. `LAST_BACKUP` prend la date du snapshot, et le journal de la forge est renommé. Nouvelles commandes : `instance snapshots` et `instance keys`. `instance add` fait la première sauvegarde. |
+| §5.7 nocturne | `backup-cron` (cron 02:30) : `restic unlock` (verrous périmés) avant `forget`. |
+| §5.7 export | `forge.env` au format `docker run --env-file`. Une instance arrêtée est remise à l'arrêt après l'export. Le port du `LISEZMOI` est lié à `127.0.0.1`. |
+| §5.8 update | `pull` **avant** la sauvegarde `pre-update`. Crochet de test `POLENTA_TEST_FAIL_UPDATE`. |
+| §5.9 fail2ban | Jail `polenta-forge` : `logpath` = liste explicite des `data/log/gitea.log` (réécrite à chaque add/restore/remove). Échecs web/git et créations de jeton refusées sont comptés. `banaction = iptables-allports` et `chain = DOCKER-USER` sont deux clés séparées. `datepattern` explicite. `ignoreip` = `ADMIN_IPS` (sshd aussi). |
+| Console | `kernel.printk = 3 4 1 3` (console KVM utilisable). |
+| Kit | `ensure_config_repo` : un repo vide renvoie `200 []` → on vérifie que la réponse est bien un fichier. |

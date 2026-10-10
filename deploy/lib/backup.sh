@@ -8,6 +8,12 @@
 
 BACKUP_KEEP=(--keep-daily 7 --keep-weekly 4 --keep-monthly 12)
 
+# Dossiers temporaires (extraction de snapshot, export) : ils contiennent les données et secrets d'un
+# client, supprimés à la sortie du script, y compris sur erreur.
+CLEANUP=()
+cleanup_tmp() { [[ ${#CLEANUP[@]} -eq 0 ]] || rm -rf "${CLEANUP[@]}"; }
+trap cleanup_tmp EXIT
+
 # Dépôt restic d'une instance (URL S3), à partir de host.env.
 restic_repo_url() {
   local name="$1"
@@ -61,7 +67,7 @@ backup_instance() {
   [[ -f "$dir/.add-complete" ]] || die "instance « $name » incomplète : rien à sauvegarder."
   restic_ensure_repo "$name"
   local was_running=0
-  [[ "$(instance_health "$name")" == healthy ]] && was_running=1
+  [[ "$(instance_health "$name")" =~ ^(healthy|unhealthy|starting|running)$ ]] && was_running=1
   local started; started="$(date +%s)"
   inst_compose "$name" stop >/dev/null 2>&1 || true
   local rc=0 files=(data instance.env) f
@@ -82,11 +88,17 @@ backup_instance() {
 
 # Snapshot à restaurer : identifiant, « latest », ou « latest:<tag> ».
 resolve_snapshot() {
-  local name="$1" from="$2" json
+  local name="$1" from="$2" json rc=0
   case "$from" in
-    latest) json="$(restic_for "$name" snapshots --json --latest 1)" ;;
-    latest:*) json="$(restic_for "$name" snapshots --json --latest 1 --tag "${from#latest:}")" ;;
-    *) json="$(restic_for "$name" snapshots --json "$from")" ;;
+    latest) json="$(restic_for "$name" snapshots --json --latest 1 2>/dev/null)" || rc=$? ;;
+    latest:*) json="$(restic_for "$name" snapshots --json --latest 1 --tag "${from#latest:}" 2>/dev/null)" || rc=$? ;;
+    *) json="$(restic_for "$name" snapshots --json "$from" 2>/dev/null)" || rc=$? ;;
+  esac
+  case "$rc" in
+    0) ;;
+    10) die "aucune sauvegarde pour « $name » dans le stockage S3." ;;
+    12) die "mot de passe incorrect pour les sauvegardes de « $name » — rien n'a été modifié." ;;
+    *) die "sauvegarde « $from » de « $name » introuvable ou stockage inaccessible (restic, code $rc) — rien n'a été modifié." ;;
   esac
   local id; id="$(jq -r '.[-1].short_id // empty' <<<"$json")"
   [[ -n "$id" ]] || die "aucune sauvegarde « $from » pour $name."
@@ -102,10 +114,12 @@ snapshot_time() {
 }
 
 # Restaure le contenu d'un snapshot (data/, instance.env…) dans $2, quel que soit le chemin
-# d'origine (une instance peut être restaurée sous un autre nom).
+# d'origine (une instance peut être restaurée sous un autre nom). $4 (facultatif) : instance à
+# arrêter juste avant de remplacer ses fichiers, une fois le snapshot extrait sans erreur.
 restore_snapshot_to() {
-  local name="$1" target="$2" snapshot="$3"
+  local name="$1" target="$2" snapshot="$3" stop="${4:-}"
   local tmp; tmp="$(mktemp -d "$POLENTA_ROOT/.restore.XXXXXX")"
+  CLEANUP+=("$tmp")   # données du client : supprimées même en cas d'échec (trap EXIT)
   restic_for "$name" restore "$snapshot" --target "$tmp" >/dev/null
   # Les fichiers sont à la racine du snapshot (sauvegarde lancée depuis le dossier de l'instance,
   # chemins relatifs) ; une sauvegarde à chemins absolus les place sous …/instances/<nom>/ :
@@ -113,6 +127,7 @@ restore_snapshot_to() {
   local found; found="$(find "$tmp" -maxdepth 8 -name instance.env -type f | head -n1)"
   local src; src="$(dirname "${found:-$tmp/absent/x}")"
   [[ -n "$src" && -d "$src/data" ]] || { rm -rf "$tmp"; die "snapshot $snapshot illisible (instance.env ou data/ absent)."; }
+  if [[ -n "$stop" ]]; then inst_compose "$stop" down >/dev/null 2>&1 || true; fi
   mkdir -p "$target"
   # Contenu restauré à la place du contenu actuel (data/ remplacé entièrement).
   rm -rf "$target/data"

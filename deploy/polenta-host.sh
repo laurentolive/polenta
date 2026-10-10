@@ -736,18 +736,21 @@ cmd_instance_restore() {
     || die "usage : polenta-host instance restore <nom> --from <id|latest> [--source <instance sauvegardée>] [--domain d] [--password-file f] [--force]"
   source="${source:-$name}"
   local dir; dir="$(instance_dir "$name")"
+  local replace=""
   if [[ -e "$dir" ]]; then
     [[ $force == 1 ]] || die "l'instance « $name » existe déjà sur cet hôte (--force pour la remplacer par la sauvegarde)."
     confirm "Remplacer TOUTES les données actuelles de « $name » par la sauvegarde « $from » ?" || die "abandon."
-    inst_compose "$name" down >/dev/null 2>&1 || true
+    replace="$name"
   fi
   # Mot de passe : instance.env local de l'instance source s'il existe, sinon --password-file.
   if [[ -z "${RESTIC_PASSWORD_OVERRIDE:-}" && -f "$(instance_env "$source")" ]]; then
     RESTIC_PASSWORD_OVERRIDE="$(env_get "$(instance_env "$source")" RESTIC_PASSWORD)"
   fi
+  # Snapshot et mot de passe vérifiés AVANT d'arrêter l'instance remplacée : une erreur la laisse en
+  # service (elle n'est arrêtée qu'une fois le snapshot extrait, par restore_snapshot_to).
   local snapshot; snapshot="$(resolve_snapshot "$source" "$from")"
   log "Restauration de « $source » (sauvegarde $snapshot) vers l'instance « $name »"
-  restore_snapshot_to "$source" "$dir" "$snapshot"
+  restore_snapshot_to "$source" "$dir" "$snapshot" "$replace"
   chmod 700 "$dir"; chown -R 1000:1000 "$dir/data"
   local env; env="$(instance_env "$name")"
   local olddomain; olddomain="$(env_get "$env" DOMAIN)"
@@ -838,8 +841,16 @@ cmd_instance_export() {
   local stamp; stamp="$(date +%Y%m%d-%H%M%S)"
   local out="$POLENTA_ROOT/exports"; mkdir -p "$out"; chmod 700 "$out"
   local work; work="$(mktemp -d "$POLENTA_ROOT/.export.XXXXXX")"
+  CLEANUP+=("$work")   # contient des secrets : supprimé même en cas d'échec (trap EXIT)
   log "Export de « $name »"
-  # 1. Dump portable (format officiel Forgejo/Gitea), instance en service.
+  # 1. Dump portable (format officiel Forgejo/Gitea), instance en service — démarrée si elle a été
+  # arrêtée (instance stop), sinon un client arrêté ne pourrait être ni exporté ni retiré.
+  local was_running=1
+  if [[ "$(instance_health "$name")" != healthy ]]; then
+    was_running=0
+    inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
+    wait_healthy "$name"
+  fi
   local c; c="$(forge_container "$name")"
   docker exec -u git "$c" sh -c 'rm -f /tmp/polenta-dump.tar.gz; cd /tmp && if command -v forgejo >/dev/null; then forgejo dump --type tar.gz --file /tmp/polenta-dump.tar.gz; else gitea dump --type tar.gz --file /tmp/polenta-dump.tar.gz; fi' >"$work/dump.log" 2>&1 \
     || { cat "$work/dump.log" >&2; die "dump de la forge en échec."; }
@@ -850,8 +861,10 @@ cmd_instance_export() {
   # 2. Données brutes, copie cohérente (arrêt court, comme une sauvegarde).
   inst_compose "$name" stop >/dev/null 2>&1 || true
   tar -C "$dir" -czf "$work/data.tar.gz" data || { inst_compose "$name" up -d >/dev/null 2>&1; die "copie des données impossible."; }
-  inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
-  wait_healthy "$name"
+  if [[ $was_running == 1 ]]; then
+    inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
+    wait_healthy "$name"
+  fi
   ok "données brutes"
   # 3. Configuration expurgée des secrets d'exploitation (SECRET_KEY conservé : nécessaire pour remonter).
   grep -vE '^(OPS_TOKEN|OPS_PASSWORD|RESTIC_PASSWORD|LAST_BACKUP|INSTANCE_DIR)=' "$env" >"$work/instance.env"
@@ -875,9 +888,9 @@ Remonter la forge à l'identique (Docker) :
     mkdir forge && tar -C forge -xzf data.tar.gz
     sudo chown -R 1000:1000 forge/data
     docker run -d --name forge --env-file forge.env -e USER_UID=1000 -e USER_GID=1000 \\
-      -v "\$PWD/forge/data:/data" -p 3000:3000 ${image}:${version}
+      -v "\$PWD/forge/data:/data" -p 127.0.0.1:3000:3000 ${image}:${version}
 
-Puis servir le port 3000 en HTTPS sous ${domain} (ou modifier GITEA__server__ROOT_URL et
+Le port 3000 (HTTP, non chiffré) n'écoute que sur la machine elle-même : le servir en HTTPS sous ${domain} (ou modifier GITEA__server__ROOT_URL et
 GITEA__server__DOMAIN dans forge.env pour une autre adresse). Les postes Polenta se reconnectent à la
 nouvelle adresse.
 EOF
@@ -942,7 +955,8 @@ host_log() {
 }
 
 instance_health() {
-  docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$(forge_container "$1")" 2>/dev/null || echo absent
+  # Conteneur arrêté : son état (exited…), pas le dernier état de santé connu (« unhealthy »).
+  docker inspect -f '{{if and .State.Running .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$(forge_container "$1")" 2>/dev/null || echo absent
 }
 
 cmd_instance_list() {

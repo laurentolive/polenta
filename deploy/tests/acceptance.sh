@@ -37,6 +37,8 @@ check_instance() {
   verdict "HTTP redirigé vers HTTPS" "HTTP non redirigé (Location : ${loc:-aucune})" [ "${loc#https://}" != "$loc" ]
 
   # Rien de visible sans connexion.
+  loc="$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 10 "https://$d/")"
+  verdict "accueil → page de connexion (pas de page marketing Forgejo)" "accueil public affiché (redirection : ${loc:-aucune})" grep -q '/user/login' <<<"$loc"
   code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$d/explore/repos")"
   loc="$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 10 "https://$d/explore/repos")"
   if [[ "$code" =~ ^30[0-9]$ && "$loc" == *"/user/login"* ]]; then pass "exploration anonyme → page de connexion"

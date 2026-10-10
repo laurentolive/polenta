@@ -34,7 +34,7 @@ Environnement :
 ### Sécurité / isolation
 | ID | Scénario | Attendu |
 |---|---|---|
-| S1-13 [A] | `deploy/tests/acceptance.sh acme.forge.<d> globex.forge.<d>` depuis le poste de dev. | HTTPS valide ; page d'accueil → connexion ; `/user/sign_up` refusé ; 22/80/443 ouverts, 3000/2222/8080 fermés ; HSTS, `X-Content-Type-Options` et `Referrer-Policy` présents (critère 14). |
+| S1-13 [A] | `deploy/tests/acceptance.sh acme.forge.<d> globex.forge.<d>` depuis le poste de dev. | HTTPS valide ; accueil `/` → connexion (pas de page marketing Forgejo), titre = nom d'instance ; `/user/sign_up` refusé ; 22/80/443 ouverts, 3000/2222/8080 fermés ; HSTS, `X-Content-Type-Options` et `Referrer-Policy` présents (critère 14). |
 | S1-14 [M] | Se connecter sur `globex` avec un compte d'`acme`. | Refusé (UC1b, critère 15). |
 | S1-15 [M] | `docker exec forgejo-acme wget -qO- http://forgejo-globex:3000` puis par l'IP du conteneur `globex`. | Nom non résolu ; IP injoignable (critère 15). |
 | S1-16 [M] | Création d'un repo **public** par alice dans l'interface web. | Forcé en privé. |
@@ -112,7 +112,7 @@ Environnement :
 | S3-10 [M] | `instance remove globex` (saisie du nom). | Export préalable ; plus de conteneur, de réseau, de site ni de dossier `globex` ; `acme` jamais interrompu (UC1c). |
 | S3-11 [M] | 10 échecs de connexion depuis une IP de test sur `acme`. | IP bannie (chaîne `DOCKER-USER`) pour 80/443 ; levée après 1 h ou `fail2ban-client unban`. |
 | S3-12 [M] | `polenta-admin --instance acme access report --csv`. | Une ligne par (utilisateur, repo), avec le droit effectif maximal ; cohérent avec S1-9. |
-| S3-13 [M] | **Réinstallation complète de l'OS** (console OVH), puis copie du kit, `setup`, puis `instance restore acme --from latest`. | `acme` identique, sous le même domaine ; un poste Polenta déjà connecté reprend push/pull sans reconnexion (UC9, critère 16). |
+| S3-13 [M] | **Réinstallation complète de l'OS** (console OVH), puis copie du kit, `setup`, puis `instance restore acme --from latest`, puis **republication du site `www.esquaresoft.fr`** (hors kit). | `acme` identique, sous le même domaine ; un poste Polenta déjà connecté reprend push/pull sans reconnexion (UC9, critère 16) ; `https://www.esquaresoft.fr` répond de nouveau (coupure acceptée par le demandeur). |
 | S3-14 [M] | Relecture du RUNBOOK par le demandeur : préparer un hôte, ajouter un client et un utilisateur, restaurer. | Validé (critère 20). |
 | S3-15 [M] | Fin de campagne : réinstallation de l'OS (console OVH) avant tout client. | Hôte vierge prêt pour la production (spec §9.9). |
 

@@ -139,6 +139,19 @@ instance (démo comprise), images Docker 680 Mo au total.
   ne touche à aucun fichier `_*.caddy` ni à ce réseau. **Conséquence : les tests destructifs du S3
   (réinstallation de l'OS, S3-13/S3-15) couperaient le site.**
 
+## Retour de validation (2026-10-10)
+
+- **Accueil public** : `https://acme.forge.esquaresoft.fr/` affichait la page marketing de
+  Forgejo (« Forgejo: Beyond coding. We forge. ») sans connexion. Aucune donnée exposée (repos,
+  exploration et API redirigeaient déjà vers la connexion), mais le test d'acceptation ne
+  contrôlait pas la racine. Corrigé : `server.LANDING_PAGE=login`, nom d'instance
+  `APP_NAME` (défaut « Forge <organisation> », option `instance add --app-name`), et nouvelle
+  vérification « accueil → page de connexion » dans `acceptance.sh` (échoue avant le correctif,
+  passe après, sur les 3 instances).
+- **Tests destructifs du S3** (réinstallation de l'OS, S3-13/S3-15) : le demandeur accepte des
+  micro-coupures de `www.esquaresoft.fr`, à condition de republier le site et de le vérifier dans
+  le cadre du test.
+
 ## Comment tester manuellement
 
 ```bash

@@ -236,7 +236,13 @@ ensure_generated_secret() {
 render_forgejo_env() {
   local name="$1" env; env="$(instance_env "$name")"
   local domain; domain="$(env_get "$env" DOMAIN)"
+  local app_name; app_name="$(env_get "$env" APP_NAME)"
   local -a kv=(
+    # Section racine d'app.ini (clé sans section : « GITEA____APP_NAME »). Remplace le titre
+    # générique « Forgejo: Beyond coding. We forge. » par celui du client.
+    "__APP_NAME=${app_name:-Forge $(env_get "$env" ORG)}"
+    # Accueil = page de connexion : pas de page marketing Forgejo sur le domaine d'un client.
+    "server__LANDING_PAGE=login"
     "server__ROOT_URL=https://$domain/"
     "server__DOMAIN=$domain"
     "server__PROTOCOL=http"
@@ -408,8 +414,8 @@ write_polenta_config() {
 
 cmd_instance_add() {
   require_root; require_cmd docker jq dig curl; load_host_env
-  local name="" domain="" org="" admin_login="" admin_email="" demo=1 image="" version=""
-  name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance add <nom> [--domain d] [--org o] [--client-admin login email] [--no-demo] [--image i] [--version v] [--yes]"
+  local name="" domain="" org="" admin_login="" admin_email="" demo=1 image="" version="" app_name=""
+  name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance add <nom> [--domain d] [--org o] [--client-admin login email] [--app-name \"Nom affiché\"] [--no-demo] [--image i] [--version v] [--yes]"
   shift
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -418,6 +424,7 @@ cmd_instance_add() {
       --client-admin) admin_login="$2"; admin_email="$3"; shift 3 ;;
       --no-demo) demo=0; shift ;;
       --image) image="$2"; shift 2 ;;
+      --app-name) app_name="$2"; shift 2 ;;
       --version) version="$2"; shift 2 ;;
       --yes|-y) ASSUME_YES=1; shift ;;
       *) die "option inconnue : $1" ;;
@@ -458,6 +465,8 @@ cmd_instance_add() {
   env_set "$env" INSTANCE_DIR "$dir"
   env_set "$env" DOMAIN "$domain"
   env_set "$env" ORG "$org"
+  [[ -n "$app_name" ]] && env_set "$env" APP_NAME "$app_name"
+  [[ -n "$(env_get "$env" APP_NAME)" ]] || env_set "$env" APP_NAME "Forge $org"
   [[ -n "$(env_get "$env" FORGE_IMAGE)" ]] || env_set "$env" FORGE_IMAGE "${image:-$FORGE_IMAGE_DEFAULT}"
   [[ -n "$(env_get "$env" FORGE_VERSION)" ]] || env_set "$env" FORGE_VERSION "${version:-$FORGE_VERSION_DEFAULT}"
   [[ -n "$(env_get "$env" OPS_PASSWORD)" ]] || env_set "$env" OPS_PASSWORD "$(random_secret 32)"

@@ -1,5 +1,9 @@
 import { defineConfig } from '@playwright/test'
 import { E2E } from './e2e-web/support/env'
+import { OIDC, prepareOidcApp } from './e2e-web/support/oidc-env'
+
+// GH44 S3 — application OAuth2 de la forge de test (si POLENTA_E2E_SSH), avant les serveurs.
+prepareOidcApp()
 
 /**
  * GH44 — tests de bout en bout du client web (`specs/GH44-tests.md`, scénarios S2). Ils pilotent
@@ -27,13 +31,25 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  webServer: {
-    command: 'node out/web-server/index.cjs',
-    url: `${E2E.baseUrl}/healthz`,
-    reuseExistingServer: false,
-    timeout: 60_000,
-    stdout: 'ignore',
-    stderr: 'pipe',
-    env: E2E.serverEnv,
-  },
+  webServer: [
+    {
+      command: 'node out/web-server/index.cjs',
+      url: `${E2E.baseUrl}/healthz`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      stdout: 'ignore',
+      stderr: 'pipe',
+      env: E2E.serverEnv,
+    },
+    // GH44 S3 — serveur en mode oidc, branché sur la forge de test (POLENTA_E2E_SSH).
+    ...(OIDC.enabled ? [{
+      command: 'node out/web-server/index.cjs',
+      url: `${OIDC.baseUrl}/healthz`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      stdout: 'ignore' as const,
+      stderr: 'pipe' as const,
+      env: OIDC.serverEnv,
+    }] : []),
+  ],
 })

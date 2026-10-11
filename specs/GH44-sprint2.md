@@ -121,3 +121,16 @@ Scénarios S2-1 à S2-20 de `specs/GH44-tests.md` (les cas automatisés sont cou
 en particulier : démo, clone, édition + Publier, image / drawio par upload, exports Word/Excel
 téléchargés, classeur d'exécution, deux onglets, coupure réseau (devtools offline), console sans
 erreur.
+
+## Suite (2026-10-11) — intégration dans `main` et #45
+
+- Les commits du sprint 2 sont dans `main` par le merge de GH45 (`c4061c9`), branché sur GH44
+  @ `f5325d6`. La branche `GH44` a été avancée sur `main` @ `e8d804e` (fast-forward, aucun conflit).
+- Revérifié sur `main` (GH45, GH49 marque blanche, GH43, GH47 compris) : typecheck, 135 + 34 tests
+  unitaires, **14/14 e2e web**.
+- #45 a raccordé le serveur web à sa couche forge sans changer le comportement du sprint 2 (détail :
+  `GH44-design.md` §10.1).
+- **#50 corrigé** : `GET /download/:id` supprimait le fichier sur `finish` de la réponse, alors que
+  le flux de lecture pouvait encore le tenir ouvert ; sous Windows, `rm` échouait (EPERM) dans une
+  promesse non gérée — en production, une rejection non gérée arrête le process Node. Suppression à
+  la fermeture du flux, échec journalisé ; `FileStore.remove` et le nettoyage des tests réessaient.

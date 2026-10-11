@@ -23,17 +23,25 @@ services:
       retries: 5
       start_period: 30s
 
-  # GH44 sprint 4 — client web Polenta de cette instance. Inactif tant que le profil « web »
-  # n'est pas demandé (image fournie par GH44).
+  # GH44 — client web Polenta de cette instance (image apps/desktop/Dockerfile.web). Actif quand
+  # l'instance a un domaine web (WEB_DOMAIN) : polenta-host ajoute alors « --profile web » à toutes
+  # ses commandes compose (`polenta-host instance web enable`). Connexion OIDC par la forge
+  # ci-dessus ; configuration et secrets dans web.env (rendu par polenta-host, chmod 600).
   polenta-web:
     profiles: ["web"]
     image: ${POLENTA_WEB_IMAGE:-polenta-web}:${POLENTA_WEB_VERSION:-none}
     container_name: polenta-web-${INSTANCE_NAME}
     restart: unless-stopped
+    env_file:
+      - path: ${INSTANCE_DIR}/web.env
+        required: false
     volumes:
       - ${INSTANCE_DIR}/web-data:/var/lib/polenta-web
     networks:
       - default
+    depends_on:
+      forgejo:
+        condition: service_healthy
 
 networks:
   default:

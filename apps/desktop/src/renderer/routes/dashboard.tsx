@@ -17,7 +17,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Lock, Plus, Users2 } from 'lucide-react'
 import type { Widget, QueryResult } from '@polenta/types'
@@ -44,6 +44,7 @@ function DashboardPage() {
   const { t } = useTranslation()
   const { projectId, dashboardId } = Route.useSearch()
   const navigate = useNavigate()
+  const router = useRouter()
   const qc = useQueryClient()
   const workspaceDir = decodeProjectId(projectId)
 
@@ -103,8 +104,11 @@ function DashboardPage() {
 
   useEffect(() => {
     if (dashboardId || resolvingFirstDashboard || !firstDashboardId) return
+    // GH44 — the user may already have left for another view whose route is still loading (lazy
+    // chunk over the network, web client): redirecting now would cancel their navigation.
+    if (router.state.location.pathname !== '/dashboard') return
     navigate({ to: '/dashboard', search: { projectId, dashboardId: firstDashboardId }, replace: true })
-  }, [dashboardId, resolvingFirstDashboard, firstDashboardId, projectId, navigate])
+  }, [dashboardId, resolvingFirstDashboard, firstDashboardId, projectId, navigate, router])
 
   const [titleDraft, setTitleDraft] = useState('')
   const [showAddWidget, setShowAddWidget] = useState(false)

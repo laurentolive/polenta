@@ -141,9 +141,54 @@ caddy_add_site() {
   fi
 }
 
+# GH44 — site du client web d'une instance : fichier distinct (`<nom>.web.caddy`), même en-têtes que
+# la forge. Caddy relaie la WebSocket des événements (/events) sans configuration particulière.
+caddy_render_web_site() {
+  local name="$1" domain="$2"
+  cat <<EOF
+# Client web de l'instance ${name} — généré par polenta-host, ne pas éditer à la main.
+${domain} {
+	encode zstd gzip
+	# Uploads (images, diagrammes, classeurs) et exports : limite du serveur web (20 Mo par défaut).
+	request_body {
+		max_size 64MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+	reverse_proxy polenta-web-${name}:8787
+}
+EOF
+}
+
+caddy_add_web_site() {
+  local name="$1" domain="$2"
+  caddy_write_compose || true
+  caddy_connect_network "polenta-$name"
+  local site="$POLENTA_CADDY/etc/sites/$name.web.caddy"
+  if write_if_changed "$site" "$(caddy_render_web_site "$name" "$domain")"; then
+    if ! caddy_reload; then
+      rm -f "$site"; caddy_reload || true
+      die "Caddy refuse la configuration du site $domain (détail ci-dessus)."
+    fi
+    ok "site Caddy $domain (client web)"
+  else
+    skip "site Caddy $domain (client web)"
+  fi
+}
+
+caddy_remove_web_site() {
+  rm -f "$POLENTA_CADDY/etc/sites/$1.web.caddy"
+  caddy_reload || true
+}
+
 caddy_remove_site() {
   local name="$1"
-  rm -f "$POLENTA_CADDY/etc/sites/$name.caddy"
+  rm -f "$POLENTA_CADDY/etc/sites/$name.caddy" "$POLENTA_CADDY/etc/sites/$name.web.caddy"
   caddy_reload || true
   caddy_disconnect_network "polenta-$name"
   caddy_write_compose || true

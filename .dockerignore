@@ -1,0 +1,12 @@
+# GH44 S4 — contexte de build de l'image polenta-web (apps/desktop/Dockerfile.web).
+**/node_modules
+**/out
+**/dist
+**/.turbo
+.git
+.claude
+apps/desktop/.web-data
+apps/desktop/e2e-web/.results
+apps/desktop/e2e-web/.report
+apps/desktop/e2e-desktop/.results
+**/*.log

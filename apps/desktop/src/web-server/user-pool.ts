@@ -5,11 +5,21 @@ import { createContainer } from '../main/container'
 import { registerHandlers, type Container } from '../main/ipc/index'
 import type { Handler } from '../main/ipc/registry'
 import { FileStore } from './file-store'
-import { createWebHostContext, createWebPlatformHost, pendingPrintRenderer, MemoryTokenStore } from './web-host'
+import { createWebHostContext, createWebPlatformHost, pendingPrintRenderer, SessionTokenStore } from './web-host'
+import type { PrintRenderer } from '../main/host/print-renderer'
 import { registerWebHandlers, type UserDirs } from './web-handlers'
 
 export interface EventSocket {
   send(data: string): void
+  close(code?: number, reason?: string): void
+}
+
+/** Plus de place pour un nouvel utilisateur : tous les utilisateurs chargés ont une vue ouverte. */
+export class PoolFullError extends Error {
+  constructor() {
+    super('Le serveur est à pleine capacité : réessayez dans quelques minutes.')
+    this.name = 'PoolFullError'
+  }
 }
 
 /** Ressources d'un utilisateur connecté : ses services, ses handlers, ses vues ouvertes. */
@@ -24,7 +34,12 @@ export interface UserRuntime {
   uploads: FileStore
   downloads: FileStore
   lastSeen: number
+  /** Appels RPC en cours : un utilisateur occupé n'est jamais évincé. */
+  inflight: number
 }
+
+/** Délai minimal d'inactivité avant qu'un utilisateur puisse céder sa place (plafond atteint). */
+const MIN_IDLE_BEFORE_EVICTION_MS = 60_000
 
 export interface UserPoolOptions {
   /** GH45 — configuration machine de l'exploitant (forge par défaut, démo…). */
@@ -32,7 +47,13 @@ export interface UserPoolOptions {
   dataDir: string
   resourcesDir: string
   idleMinutes: number
+  /** Utilisateurs chargés en même temps (design §5.3) ; défaut : illimité. */
+  maxActiveUsers?: number
   version: string
+  /** GH44 S3 — magasin de jetons d'un utilisateur (OIDC : rafraîchissement, révocation). */
+  createTokenStore?: (login: string) => SessionTokenStore
+  /** GH44 S4 — impression (PDF, diagrammes) dans une session de l'utilisateur ; défaut : indisponible. */
+  createPrintRenderer?: (login: string) => PrintRenderer
 }
 
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
@@ -46,14 +67,14 @@ const DOWNLOAD_TTL_MS = 60 * 60 * 1000
 export class UserPool {
   private readonly runtimes = new Map<string, UserRuntime>()
   private readonly pending = new Map<string, Promise<UserRuntime>>()
-  private readonly credentials = new Map<string, MemoryTokenStore>()
+  private readonly credentials = new Map<string, SessionTokenStore>()
 
   constructor(private readonly opts: UserPoolOptions) {}
 
-  tokenStore(login: string): MemoryTokenStore {
+  tokenStore(login: string): SessionTokenStore {
     let store = this.credentials.get(login)
     if (!store) {
-      store = new MemoryTokenStore()
+      store = this.opts.createTokenStore?.(login) ?? new SessionTokenStore()
       this.credentials.set(login, store)
     }
     return store
@@ -83,7 +104,28 @@ export class UserPool {
     return pending
   }
 
+  /** Utilisateurs dont les services sont chargés. */
+  activeLogins(): string[] {
+    return [...this.runtimes.keys()]
+  }
+
+  /**
+   * Plafond d'utilisateurs chargés : libère le moins récemment utilisé sans vue ouverte, sinon
+   * refuse (`PoolFullError` → 503) plutôt que de saturer la mémoire.
+   */
+  private makeRoom(): void {
+    const max = this.opts.maxActiveUsers
+    if (!max || this.runtimes.size + this.pending.size < max) return
+    const now = Date.now()
+    const idle = [...this.runtimes.values()]
+      .filter(rt => rt.sockets.size === 0 && rt.inflight === 0 && now - rt.lastSeen >= MIN_IDLE_BEFORE_EVICTION_MS)
+      .sort((a, b) => a.lastSeen - b.lastSeen)
+    if (!idle[0]) throw new PoolFullError()
+    this.dispose(idle[0])
+  }
+
   private async create(login: string): Promise<UserRuntime> {
+    this.makeRoom()
     const root = path.join(this.opts.dataDir, 'users', login)
     const dirs: UserDirs = {
       root,
@@ -101,7 +143,7 @@ export class UserPool {
         try { socket.send(message) } catch { /* socket fermée entre-temps */ }
       }
     }
-    const container = createContainer(createWebHostContext(dirs.userData, this.tokenStore(login), this.opts.machineConfig), pendingPrintRenderer)
+    const container = createContainer(createWebHostContext(dirs.userData, this.tokenStore(login), this.opts.machineConfig), this.opts.createPrintRenderer?.(login) ?? pendingPrintRenderer)
     // Pas de dossier local à choisir : la bibliothèque de gabarits d'export (GH34) vit dans l'espace
     // de l'utilisateur.
     if (!container.appSettings.get().exportTemplatesDir) {
@@ -118,7 +160,7 @@ export class UserPool {
     registerWebHandlers(registry, { container, dirs, uploads, downloads, version: this.opts.version })
 
     const runtime: UserRuntime = {
-      login, realRoot, dirs, container, handlers, sockets, uploads, downloads, lastSeen: Date.now(),
+      login, realRoot, dirs, container, handlers, sockets, uploads, downloads, lastSeen: Date.now(), inflight: 0,
     }
     this.runtimes.set(login, runtime)
     void uploads.purge()
@@ -150,6 +192,24 @@ export class UserPool {
   private dispose(rt: UserRuntime): void {
     rt.container.watcher.unwatchAll()
     this.runtimes.delete(rt.login)
+  }
+
+  /**
+   * GH44 S3 — accès révoqué : jetons effacés, vues ouvertes prévenues (`auth:session-revoked`) puis
+   * fermées. Les fichiers de l'utilisateur (modifications non publiées) sont conservés.
+   */
+  revoke(login: string): void {
+    this.forgetCredentials(login)
+    const rt = this.runtimes.get(login)
+    if (!rt) return
+    const message = JSON.stringify({ channel: 'auth:session-revoked', args: [] })
+    for (const socket of [...rt.sockets]) {
+      try {
+        socket.send(message)
+        socket.close(4402, 'revoked') // 4402 : page « accès révoqué » même si le message est perdu
+      } catch { /* socket déjà fermée */ }
+    }
+    rt.sockets.clear()
   }
 
   disposeAll(): void {

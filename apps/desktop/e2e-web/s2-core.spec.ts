@@ -3,6 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import WebSocket from 'ws'
 import { E2E } from './support/env'
+import { publish } from './support/ui'
 import { remoteChangedFiles, remoteLog } from './support/forge'
 import { DRAWIO_MINIMAL, PNG_1PX } from './support/files'
 import { collectErrors, recordEvents, recordedEvents } from './support/helpers'
@@ -200,10 +201,7 @@ test('S2-8 — coupure réseau : reconnexion des événements', async () => {
 
 test('S2-9 — Publier : commit à l\'identité de l\'utilisateur, poussé vers la forge', async () => {
   const before = remoteLog('%H')
-  await s.page.getByRole('button', { name: 'Publier' }).first().click()
-  await s.page.getByPlaceholder(/Titre de la modification/).fill('E2E : publication depuis le web')
-  await s.shot('s2-9-popover')
-  await s.page.getByRole('button', { name: 'Publier' }).last().click()
+  await publish(s.page, 'E2E : publication depuis le web')
   await expect.poll(() => remoteLog('%H'), { timeout: 60_000 }).not.toBe(before)
   await s.shot('s2-9-publie')
   expect(remoteLog('%an <%ae>')).toBe(`${E2E.user.name} <${E2E.user.email}>`)

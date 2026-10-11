@@ -43,7 +43,8 @@ export class FileStore {
 
   async remove(id: string): Promise<void> {
     if (!ID_PATTERN.test(id)) return
-    await fsP.rm(path.join(this.dir, id), { recursive: true, force: true })
+    // Réessais : sous Windows, un fichier tout juste refermé peut encore être verrouillé (#50).
+    await fsP.rm(path.join(this.dir, id), { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 
   /** Supprime les entrées plus anciennes que la durée de vie. */

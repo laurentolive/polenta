@@ -443,17 +443,29 @@ export class AuthService {
   }
 
   /**
+   * GH44 — connexion avec un jeton obtenu hors de ce service (jeton OAuth2 de la session OIDC du
+   * serveur web) : même enregistrement que les autres connexions (identité vérifiée, jetons, compte,
+   * levée de la révocation).
+   */
+  async connectWithToken(serverUrl: string, token: string, kind: ForgeKind, identity?: ForgeIdentity): Promise<ForgeAccount> {
+    return this.persistToken(serverUrl, token, kind, identity)
+  }
+
+  /**
    * Shared by setup() (PAT), pollDeviceFlow() (OAuth) and loginWithPassword() — resolve identity,
    * save token, persist account. GH45 — for a known forge (github, forgejo) an identity that can't
    * be resolved fails the login: no more « Git User » account, whose commits would be anonymous.
    * `generic` keeps the pre-GH45 fallback (bare token, minimal identity).
    */
-  private async persistToken(remote: string, token: string, kind: ForgeKind): Promise<ForgeAccount> {
+  private async persistToken(remote: string, token: string, kind: ForgeKind, knownIdentity?: ForgeIdentity): Promise<ForgeAccount> {
     const baseUrl = normalizeBaseUrl(remote)
     const host = extractHost(baseUrl)
     const provider = providerFor(kind)
     let identity: ForgeIdentity
-    if (provider) {
+    if (knownIdentity) {
+      // Identité déjà vérifiée par l'appelant avec ce même jeton (connexion OIDC web, GH44).
+      identity = knownIdentity
+    } else if (provider) {
       try {
         identity = await provider.resolveIdentity(baseUrl, token)
       } catch (err) {

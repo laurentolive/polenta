@@ -77,17 +77,28 @@ le refus d'exécution hors outil sur une campagne clôturée ; S2-8 coupe réell
 (`routeWebSocket`) puis laisse le navigateur hors ligne 3 s. Restent [M] : comparaison de
 baselines et analyse d'impact entre baselines, requêtes SQL avancées, exports PDF (sprint 4).
 
-## Sprint 3 — Forge, sessions, multi-utilisateurs (Forgejo de #45)
+### Régression #50 (2026-10-11)
 
 | ID | Scénario | Attendu |
 |---|---|---|
-| S3-1 [M] | Connexion d'Alice via Forgejo (OIDC). | Retour sur l'accueil web ; aucun formulaire PAT (AC 1). |
-| S3-2 [M] | Inspecter cookies, réponses `/rpc`, `/auth/me`, logs serveur. | Jeton forge absent partout ; cookie de session `HttpOnly` (AC 1). |
-| S3-3 [M] | Alice modifie SYS-0001 et publie. | `git log --format='%an <%ae>'` = identité Forgejo d'Alice ; `updatedBy` = Alice (AC 2). |
-| S3-4 [M] | Alice et Bob ouvrent le même projet ; Alice modifie sans publier. | Bob ne voit rien ; Bob a son propre clone (AC 4). |
+| S2-26 [A] | `pnpm --filter @polenta/desktop test` répété (Windows). | Aucune erreur non gérée `EPERM rmdir …\downloads\<uuid>` : le téléchargement est supprimé à la fermeture du flux, un échec est journalisé (jamais une rejection non gérée). 5/5 exécutions propres. |
+
+## Sprint 3 — Forge, sessions, multi-utilisateurs (Forgejo de #45)
+
+*(Révisé 2026-10-11, #45 livré.)* Les scénarios [M] ci-dessous deviennent des tests [E2E] contre
+l'instance Forgejo de test `acme` (comptes `itest-*`, administration par SSH via `POLENTA_E2E_SSH`,
+comme `apps/desktop/e2e-desktop/` de #45), avec l'outillage `e2e-web/support/` ; restent [M] ceux
+qui exigent un redémarrage du conteneur ou une attente réelle (S3-7, S3-9, S3-10).
+
+| ID | Scénario | Attendu |
+|---|---|---|
+| S3-1 [E2E] | Connexion d'Alice via Forgejo (OIDC). | Retour sur l'accueil web ; aucun formulaire PAT (AC 1). |
+| S3-2 [E2E] | Inspecter cookies, réponses `/rpc`, `/auth/me`, logs serveur. | Jeton forge absent partout ; cookie de session `HttpOnly` (AC 1). |
+| S3-3 [E2E] | Alice modifie SYS-0001 et publie. | `git log --format='%an <%ae>'` = identité Forgejo d'Alice ; `updatedBy` = Alice (AC 2). |
+| S3-4 [E2E] | Alice et Bob ouvrent le même projet ; Alice modifie sans publier. | Bob ne voit rien ; Bob a son propre clone (AC 4). |
 | S3-5 [M] | Alice et Bob modifient le même champ ; Alice publie, puis Bob. | Bob passe par la résolution GH37 dans le navigateur. |
-| S3-6 [M] | Désactiver Bob dans Forgejo pendant sa session, puis Bob publie. | Message de révocation, retour au login ; modifications non publiées retrouvées après réactivation et reconnexion (AC 3). |
-| S3-7 [M] | Désactiver Bob, Bob ne fait rien. | Session invalidée en ≤ 5 min. |
+| S3-6 [E2E] | Désactiver Bob dans Forgejo pendant sa session, puis Bob publie. | Message de révocation, retour au login ; modifications non publiées retrouvées après réactivation et reconnexion (AC 3). |
+| S3-7 [A] | Désactiver Bob, Bob ne fait rien. | Session invalidée en ≤ 5 min. |
 | S3-8 [M] | Sous-traitant n'ayant accès qu'à un repo : cloner un repo non autorisé. | Erreur d'accès explicite (droits forge). |
 | S3-9 [M] | Inactivité 30 min (ou délai réduit en test), puis reprise. | Mémoire libérée (log d'éviction) ; projet rouvert sans perte (AC 10). |
 | S3-10 [M] | Redémarrer le conteneur. | Reconnexion ; clones et modifications non publiées conservés (AC 11). |
@@ -95,6 +106,19 @@ baselines et analyse d'impact entre baselines, requêtes SQL avancées, exports 
 | S3-12 [A] | Pool : création concurrente pour le même login. | Un seul Container. |
 | S3-13 [A] | Pool : dépassement de `MAX_ACTIVE_USERS` avec/sans sockets ouvertes. | Éviction LRU / 503. |
 | S3-14 [A] | Login forge contenant des caractères hors `[a-z0-9._-]`. | Connexion refusée proprement. |
+| S3-15 [E2E] | Accueil web d'un membre d'équipe (#45 S2b) : « Projets de votre équipe ». | Seuls les repos accessibles sont listés ; clic → clone dans « Mes projets » puis ouverture sur la vue d'ouverture de l'équipe. |
+| S3-16 [E2E] | « Créer sur le serveur » depuis le web (#45 S4). | Repo créé dans l'organisation, clone dans « Mes projets », premier commit à l'identité de l'utilisateur. |
+| S3-17 [E2E] | Lecteur (droit lecture seule) : publier une modification. | Bannière « écriture refusée » (marqueur `forge-access` 403) dans le navigateur ; session conservée. |
+| S3-18 [A] | Erreur RPC portant un marqueur `forge-access` 401 pour l'hôte de la session, ou forge marquée révoquée pendant un appel réussi (synchronisation automatique). | Session détruite, `auth:session-revoked` diffusé, réponse 401 `revoked` ; appels tardifs avec la même session : 401 `revoked` ; WebSocket fermée en 4402. |
+| S3-19 [A] | Jeton OAuth2 expiré (`expires_in` dépassé) avant une opération git. | Rafraîchi par `refresh_token` sans interruption ; refresh refusé → session révoquée. |
+| S3-20 [A] | `auth:login-password`, `auth:detect-forge` appelés depuis le navigateur. | 404 (connexion web = OIDC uniquement). Déjà couvert par `channel-policy.test.ts`. |
+| S3-21 [E2E] | Configuration d'équipe (`<org>/polenta-config`) : langue et vue d'ouverture par défaut. | Appliquées sur le web comme sur le desktop, sans choix personnel enregistré. |
+
+**Statut au sprint 3 (2026-10-11)** — [E2E] contre `acme` (`s3-oidc.spec.ts`) : S3-1, S3-2, S3-3,
+S3-4, S3-6, S3-15, S3-16, S3-17, S3-21. [A] (`oidc.test.ts`, `user-pool.test.ts`) : S3-7 (sonde
+périodique), S3-12, S3-13, S3-14, S3-18, S3-19, S3-20, plus état/PKCE, échange refusé, déconnexion
+`POST`, rafraîchissement concurrent d'une reconnexion. Restent [M] : S3-5 (conflit entre deux
+utilisateurs web : mécanisme couvert en mode dev par P-4), S3-8, S3-9, S3-10, S3-11.
 
 ## Sprint 4 — Impression, Docker, déploiement
 
@@ -104,10 +128,21 @@ baselines et analyse d'impact entre baselines, requêtes SQL avancées, exports 
 | S4-2 [M] | Export Word par gabarit avec diagrammes drawio. | Diagrammes en PNG nets (zoom 2). |
 | S4-3 [M] | Trois exports PDF lancés simultanément par deux utilisateurs. | Tous aboutissent (file d'attente) ; chaque PDF contient les données de son auteur. |
 | S4-4 [A] | Jeton d'impression réutilisé ou expiré. | Refusé. |
-| S4-5 [M] | `docker compose --profile web up` sur le VPS de test (#45). | `https://polenta.<domaine>` servi par Caddy ; `/healthz` OK (AC 13). |
-| S4-6 [M] | `backup.sh` puis `restore.sh` sur un VPS vierge. | Espaces utilisateurs restaurés, modifications non publiées comprises. |
+| S4-5 [M] | `polenta-host instance web enable acme --domain <d>` sur l'hôte de test (#45). | Application OAuth2 créée, profil `web` actif, `https://<d>` servi par Caddy (WebSocket compris) ; `/healthz` OK (AC 13). |
+| S4-6 [M] | `polenta-host` : sauvegarde de l'instance puis restauration (#45 S3). | `web-data` et `web.env` inclus ; espaces utilisateurs restaurés, modifications non publiées comprises. |
 | S4-7 [M] | Mesure mémoire : 5 utilisateurs sur la démo. | < 300 Mo par utilisateur actif. |
 | S4-8 [M] | Desktop packagé (`pnpm package`) après tous les sprints. | Fonctionne sans aucun code serveur (AC 12). |
+
+**Statut au sprint 4 (2026-10-11)** — [E2E] `s4-print.spec.ts` (serveur local) : S4-1 (vue Exigences,
+dashboard), S4-2, S4-3 (trois exports simultanés d'un même utilisateur — la file d'attente est
+commune à tous les utilisateurs). [E2E] `s4-deployed.spec.ts` contre l'image déployée sur `acme`
+(`https://acme-web.forge.esquaresoft.fr`) : S4-5 (HTTPS, en-têtes, OIDC, clone, PDF imprimé dans
+l'image, `web-data`), S4-7 (`POLENTA_E2E_MEASURE=1`, 3 utilisateurs sur la démo : 27 Mo par
+utilisateur). S4-6 : sauvegarde vérifiée (`web-data`, `web.env` dans l'instantané restic) ;
+**restauration non jouée** (reste [M]). S4-4 : **sans objet** — pas de jeton d'impression, une
+session de l'utilisateur créée puis détruite par rendu (design §10.3). S4-8 : suite `e2e-desktop/`
+sur le build Electron ; le paquet d'installation (`pnpm package`) reste [M]. Les autres `kind` de
+S4-1 (tests, campagne, requête, analyse d'impact) passent par le même rendu et restent [M].
 
 ## Parcours de parité (S2-3, S4-1, AC 7)
 

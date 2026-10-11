@@ -3,9 +3,11 @@ import type { MachineConfig } from '@polenta/types'
 import { isGithubHost } from '../main/services/forge/github.provider'
 
 /**
- * GH44 — configuration du serveur web, lue depuis l'environnement (specs/GH44-design.md §6.3).
- * Sprint 2 : seul le mode `dev` (un utilisateur fixe, jeton en variable d'environnement) existe ;
- * l'authentification OIDC par la forge arrive au sprint 3.
+ * GH44 — configuration du serveur web, lue depuis l'environnement (specs/GH44-design.md §6.3,
+ * révisé §10). Deux modes d'authentification :
+ * - `oidc` (production) : connexion par la forge Forgejo de l'instance (OAuth2/OIDC + PKCE) ;
+ * - `dev` : un utilisateur fixe, jeton en variable d'environnement — développement et tests e2e
+ *   sans forge, interdit avec `NODE_ENV=production`.
  */
 export interface WebConfig {
   port: number
@@ -18,12 +20,16 @@ export interface WebConfig {
   sessionHours: number
   idleMinutes: number
   maxUploadMb: number
+  /** Utilisateurs dont les services restent en mémoire en même temps (design §5.3). */
+  maxActiveUsers: number
+  /** GH44 S4 — impression (PDF, diagrammes d'un export par gabarit) par Chromium headless. */
+  print: boolean
   /** Hôtes git que le serveur peut contacter (clone/fetch/push) — défaut : hôte de la forge. */
   gitHosts: string[]
   gitAllowHttp: boolean
   /** Cookies `Secure` (HTTPS) — faux uniquement en développement local. */
   secureCookies: boolean
-  auth: DevAuthConfig
+  auth: DevAuthConfig | OidcAuthConfig
   /** GH45 — équivalent web de la configuration machine du desktop (POLENTA_WEB_DEFAULT_SERVER…). */
   machineConfig: MachineConfig
 }
@@ -38,8 +44,21 @@ export interface DevAuthConfig {
   token: string
 }
 
+export interface OidcAuthConfig {
+  mode: 'oidc'
+  /** Forge Forgejo/Gitea de l'instance : émetteur OIDC et forge par défaut (scheme + hôte). */
+  forgeUrl: string
+  clientId: string
+  clientSecret: string
+  /** URL publique du serveur web (adresse de retour `…/auth/callback`). */
+  publicUrl: string
+}
+
 /** Identifiant de forge utilisable comme nom de dossier (design §4.3). */
 export const LOGIN_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/
+
+/** Secret de session du mode dev — jamais accepté en mode oidc. */
+const DEV_SESSION_SECRET = 'dev-only-insecure-secret-change-me-0123456789'
 
 function env(name: string, fallback?: string): string {
   const v = process.env[name]
@@ -56,41 +75,71 @@ function int(name: string, fallback: number): number {
   return n
 }
 
-export function loadConfig(appRoot: string): WebConfig {
-  const authMode = env('POLENTA_WEB_AUTH', 'dev')
-  if (authMode !== 'dev') {
-    throw new Error(`POLENTA_WEB_AUTH=${authMode} : seul le mode « dev » est disponible (OIDC : sprint 3 de GH44).`)
+function origin(name: string, value: string): string {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error(`${name} invalide : « ${value} » (URL attendue)`)
   }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`${name} : http(s) attendu`)
+  return url.origin
+}
+
+function loadAuth(): DevAuthConfig | OidcAuthConfig {
+  const mode = env('POLENTA_WEB_AUTH', 'dev')
+  if (mode === 'oidc') {
+    return {
+      mode: 'oidc',
+      forgeUrl: origin('POLENTA_WEB_DEFAULT_SERVER', env('POLENTA_WEB_DEFAULT_SERVER')),
+      clientId: env('POLENTA_WEB_OIDC_CLIENT_ID'),
+      clientSecret: env('POLENTA_WEB_OIDC_CLIENT_SECRET'),
+      publicUrl: origin('POLENTA_WEB_PUBLIC_URL', env('POLENTA_WEB_PUBLIC_URL')),
+    }
+  }
+  if (mode !== 'dev') throw new Error(`POLENTA_WEB_AUTH=${mode} : « oidc » ou « dev » attendu.`)
   if (process.env['NODE_ENV'] === 'production') {
     throw new Error('POLENTA_WEB_AUTH=dev est interdit avec NODE_ENV=production.')
   }
   const login = env('POLENTA_WEB_DEV_LOGIN').toLowerCase()
   if (!LOGIN_PATTERN.test(login)) throw new Error(`POLENTA_WEB_DEV_LOGIN invalide : « ${login} » ([a-z0-9._-])`)
+  return {
+    mode: 'dev',
+    login,
+    name: env('POLENTA_WEB_DEV_NAME', login),
+    email: env('POLENTA_WEB_DEV_EMAIL', `${login}@localhost`),
+    remote: env('POLENTA_WEB_DEV_REMOTE', 'https://github.com'),
+    token: env('POLENTA_WEB_DEV_TOKEN', ''),
+  }
+}
 
+export function loadConfig(appRoot: string): WebConfig {
+  const auth = loadAuth()
+  const forgeUrl = auth.mode === 'oidc' ? auth.forgeUrl : auth.remote
   const staticDir = process.env['POLENTA_WEB_STATIC_DIR'] ?? path.join(appRoot, 'out', 'web')
-  const gitHosts = env('POLENTA_WEB_GIT_HOSTS', new URL(env('POLENTA_WEB_DEV_REMOTE', 'https://github.com')).hostname)
+  const gitHosts = env('POLENTA_WEB_GIT_HOSTS', new URL(forgeUrl).hostname)
     .split(',').map(h => h.trim()).filter(Boolean)
+  const sessionSecret = env('POLENTA_WEB_SESSION_SECRET', auth.mode === 'dev' ? DEV_SESSION_SECRET : undefined)
+  if (auth.mode === 'oidc' && (sessionSecret === DEV_SESSION_SECRET || sessionSecret.length < 32)) {
+    throw new Error('POLENTA_WEB_SESSION_SECRET : 32 caractères aléatoires au moins en mode oidc.')
+  }
+  const secureDefault = auth.mode === 'oidc' && auth.publicUrl.startsWith('https:') ? 'true' : 'false'
   return {
     port: int('POLENTA_WEB_PORT', 8787),
     host: env('POLENTA_WEB_HOST', '127.0.0.1'),
     dataDir: path.resolve(env('POLENTA_WEB_DATA_DIR', path.join(appRoot, '.web-data'))),
     staticDir: process.env['POLENTA_WEB_NO_STATIC'] ? null : staticDir,
     resourcesDir: env('POLENTA_WEB_RESOURCES_DIR', path.join(appRoot, 'resources')),
-    sessionSecret: env('POLENTA_WEB_SESSION_SECRET', 'dev-only-insecure-secret-change-me-0123456789'),
+    sessionSecret,
     sessionHours: int('POLENTA_WEB_SESSION_HOURS', 12),
     idleMinutes: int('POLENTA_WEB_IDLE_MINUTES', 30),
     maxUploadMb: int('POLENTA_WEB_MAX_UPLOAD_MB', 20),
-    secureCookies: env('POLENTA_WEB_SECURE_COOKIES', 'false') === 'true',
+    maxActiveUsers: int('POLENTA_WEB_MAX_ACTIVE_USERS', 50),
+    print: env('POLENTA_WEB_PRINT', 'true') !== 'false',
+    secureCookies: env('POLENTA_WEB_SECURE_COOKIES', secureDefault) === 'true',
     gitHosts,
     gitAllowHttp: env('POLENTA_WEB_GIT_ALLOW_HTTP', 'false') === 'true',
-    auth: {
-      mode: 'dev',
-      login,
-      name: env('POLENTA_WEB_DEV_NAME', login),
-      email: env('POLENTA_WEB_DEV_EMAIL', `${login}@localhost`),
-      remote: env('POLENTA_WEB_DEV_REMOTE', 'https://github.com'),
-      token: env('POLENTA_WEB_DEV_TOKEN', ''),
-    },
+    auth,
     machineConfig: webMachineConfig(gitHosts),
   }
 }

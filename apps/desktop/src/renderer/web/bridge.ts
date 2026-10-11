@@ -8,32 +8,43 @@
  */
 import type { UpdateState } from '@polenta/types'
 import { EVENTS_RECONNECTED } from '../lib/webEvents'
+import { CSRF_HEADER_NAME, csrfToken } from '../lib/webSession'
 
 type Listener = (...args: unknown[]) => void
 
-const CSRF_COOKIE = 'polenta_csrf'
 const LOGIN_URL = '/auth/login'
+/** GH44 S3 — accès révoqué par la forge : page d'explication, puis reconnexion. */
+const REVOKED_URL = '/auth/revoked'
 const NOT_AVAILABLE = 'Non disponible dans la version web.'
 
 class SessionExpiredError extends Error {}
 
-function csrfToken(): string {
-  const match = document.cookie.split('; ').find(c => c.startsWith(`${CSRF_COOKIE}=`))
-  return match ? decodeURIComponent(match.slice(CSRF_COOKIE.length + 1)) : ''
-}
+/** Une seule redirection : la première (révocation, expiration) l'emporte sur les suivantes. */
+let leaving = false
 
-function redirectToLogin(): never {
-  window.location.href = LOGIN_URL
+function redirectTo(url: string): never {
+  if (!leaving) {
+    leaving = true
+    window.location.href = url
+  }
   throw new SessionExpiredError('Session expirée, reconnexion…')
 }
 
+function redirectToLogin(): never {
+  return redirectTo(LOGIN_URL)
+}
+
 async function readResult(res: Response): Promise<unknown> {
-  if (res.status === 401) redirectToLogin()
-  let body: { ok?: boolean; value?: unknown; error?: { message?: string } } | null = null
+  let body: { ok?: boolean; value?: unknown; error?: { message?: string; revoked?: boolean } } | null = null
   try {
     body = await res.json()
   } catch {
+    if (res.status === 401) redirectToLogin()
     throw new Error(`Erreur serveur (${res.status})`)
+  }
+  if (res.status === 401) {
+    if (body?.error?.revoked) redirectTo(REVOKED_URL)
+    redirectToLogin()
   }
   if (!body?.ok) throw new Error(body?.error?.message ?? `Erreur serveur (${res.status})`)
   return body.value
@@ -43,7 +54,7 @@ async function rpc(channel: string, args: unknown[]): Promise<unknown> {
   const res = await fetch(`/rpc/${encodeURIComponent(channel)}`, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', 'X-Polenta-CSRF': csrfToken() },
+    headers: { 'Content-Type': 'application/json', [CSRF_HEADER_NAME]: csrfToken() },
     // `undefined` n'existe pas en JSON (il deviendrait `null`, et un paramètre par défaut ne
     // s'appliquerait plus) : ses positions voyagent à part et le serveur le restaure.
     body: JSON.stringify({ args, undefinedArgs: args.flatMap((a, i) => (a === undefined ? [i] : [])) }),
@@ -80,7 +91,7 @@ async function upload(file: File): Promise<string> {
   const res = await fetch('/upload', {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'X-Polenta-CSRF': csrfToken() },
+    headers: { [CSRF_HEADER_NAME]: csrfToken() },
     body: form,
   })
   const value = (await readResult(res)) as { uploadId: string }
@@ -176,6 +187,7 @@ function emit(channel: string, args: unknown[]): void {
 
 function connectEvents(): void {
   let retry = 0
+  let revoked = false
   let hadConnection = false
   const open = () => {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/events`)
@@ -187,10 +199,21 @@ function connectEvents(): void {
     ws.onmessage = (ev) => {
       try {
         const { channel, args } = JSON.parse(String(ev.data)) as { channel: string; args: unknown[] }
+        // GH44 S3 — le serveur a invalidé la session (accès révoqué par la forge).
+        if (channel === 'auth:session-revoked') {
+          revoked = true
+          try { redirectTo(REVOKED_URL) } catch { /* redirection en cours */ }
+          return
+        }
         emit(channel, args)
       } catch { /* message invalide ignoré */ }
     }
     ws.onclose = (ev) => {
+      if (revoked) return
+      if (ev.code === 4402) {
+        try { redirectTo(REVOKED_URL) } catch { /* redirection en cours */ }
+        return
+      }
       if (ev.code === 4401) return redirectToLoginSafe()
       retry = Math.min(retry + 1, 6)
       setTimeout(open, 500 * 2 ** retry)

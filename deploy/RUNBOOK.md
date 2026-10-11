@@ -265,8 +265,11 @@ l'ancien juste avant, arrêter l'instance sur l'ancien (`instance stop`), bascul
 ### A13. Dimensionnement
 
 Mesuré : ~105-130 Mo de RAM par forge au repos, Caddy ~26 Mo ; 6-10 Mo de disque par instance
-démo comprise ; images Docker ~700 Mo. Avec `polenta-web` (GH44, à venir) : prévoir en plus
-~150 Mo par instance (à mesurer).
+démo comprise ; images Docker ~700 Mo. Client web (A15), mesuré le 2026-10-11 sur le projet de
+démonstration : ~125-170 Mo au repos, ~30 Mo par utilisateur actif (libérés après 30 min
+d'inactivité), ~55 Mo de plus pendant les impressions PDF (navigateur fermé après 10 min sans
+impression) — 3 utilisateurs et impression : ~310 Mo ; image ~1,2 Go ; `web-data` = copies de
+travail des projets.
 
 | Hôte | Clients raisonnables |
 |---|---|
@@ -282,6 +285,55 @@ se valide d'abord sur un **hôte jetable** (VPS à l'heure ou VM locale), jamais
 l'hôte de production.
 
 ---
+
+### A15. Client web (Polenta dans le navigateur)
+
+Chaque instance peut avoir son **client web** (GH44) : Polenta dans un navigateur, sans installation,
+sur un domaine distinct de la forge (ex. `acme-web.forge.example.fr`, couvert par le DNS joker
+`*.forge`). Les utilisateurs s'y connectent **avec leur compte de la forge** (OIDC) : mêmes droits,
+même désactivation, commits à leur nom.
+
+**Image** — construite depuis le dépôt Polenta, une fois par version (et par marque) :
+
+```bash
+docker build -f apps/desktop/Dockerfile.web --build-arg POLENTA_BRAND=polenta -t polenta-web:0.0.9 .
+# ou poussée sur un registre : … -t ghcr.io/<org>/polenta-web:0.0.9 && docker push …
+```
+
+Image par défaut de l'hôte : `POLENTA_WEB_IMAGE=ghcr.io/<org>/polenta-web` dans `host.env`
+(sinon `polenta-web`, image locale).
+
+**Activer, mettre à jour, désactiver :**
+
+```bash
+sudo polenta-host instance web enable acme --domain acme-web.forge.example.fr --version 0.0.9
+sudo polenta-host instance web enable acme --version 0.0.10     # mise à jour : même commande
+sudo polenta-host instance web disable acme                     # arrêt ; données conservées
+```
+
+`enable` vérifie l'image et le DNS, crée l'application OAuth2 `polenta-web` de la forge (adresse de
+retour `https://<domaine web>/auth/callback`), écrit `web.env` (chmod 600 : client OAuth2, secret de
+session), démarre le conteneur `polenta-web-<instance>` et publie le site Caddy `<instance>.web.caddy`.
+Rejouable sans risque. Ensuite, `stop`, `start`, `backup`, `restore`, `export` et `remove` de
+l'instance incluent le client web. La sauvegarde arrête le client web avec la forge : les utilisateurs
+connectés à ce moment se reconnectent (sans ressaisie si leur session de la forge est active).
+
+**Données** — `web-data/` : un espace par utilisateur (copies de travail des projets ouverts dans le
+navigateur, dont les **modifications pas encore publiées**). Sauvegardé avec l'instance (`web-data`,
+`web.env`), inclus dans l'export de restitution (`web-data.tar.gz`). Après une restauration sous un
+autre domaine de forge, `restore` réaligne `web.env` ; si le **domaine web** change, relancer
+`instance web enable <nom> --domain <nouveau>` (nouvelle adresse de retour OAuth2).
+
+**Incidents :**
+
+| Symptôme | Cause probable | Action |
+|---|---|---|
+| Page « Le serveur de connexion est injoignable » | forge arrêtée, ou IP de l'hôte bannie par fail2ban de la forge | `instance list`, `fail2ban-client status polenta-forge` |
+| « La connexion n'a pas abouti » au retour de la forge | application OAuth2 supprimée ou secret changé | `instance web enable <nom>` (recrée l'application) |
+| « Votre accès a été révoqué » | compte désactivé (`polenta-admin user disable`) ou jeton retiré | normal ; `user enable` pour rétablir |
+| Export PDF en erreur | navigateur headless de l'image | `docker logs polenta-web-<nom>` |
+
+Journaux : `docker logs polenta-web-<instance>`.
 
 ## Partie B — admin du client
 
@@ -343,6 +395,15 @@ démarrage et toutes les 30 minutes.
   (`polenta-config.json`) sur chaque poste — Windows `%ProgramData%\Polenta\config.json`, macOS
   `/Library/Application Support/Polenta/config.json`, Linux `/etc/polenta/config.json` (GPO, MDM,
   script). L'écran de connexion ne propose alors que votre forge.
+
+### B7. Polenta dans le navigateur
+
+Si votre exploitant a activé le client web, Polenta s'ouvre à l'adresse qu'il vous a donnée
+(ex. `https://acme-web.forge.example.fr`). Chacun se connecte avec **son compte de la forge** :
+mêmes droits, mêmes équipes, commits à son nom. Rien à installer. Différences avec l'application :
+pas d'ouverture de dossier local (vos projets sont dans « Mes projets », sur le serveur), les
+exports sont téléchargés, et l'édition des diagrammes draw.io se fait dans l'application de bureau
+(ou par remplacement du fichier).
 
 ### B6. Annuaire d'entreprise (LDAP / Active Directory, OIDC)
 

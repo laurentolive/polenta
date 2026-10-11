@@ -19,11 +19,36 @@ export interface Accounts {
   neuf: string
 }
 
+/**
+ * Configuration d'équipe de test (`__ORG__` = organisation), posée par le compte d'exploitation.
+ * Chaque fichier de tests qui en dépend la pose lui-même : l'état laissé par une exécution
+ * précédente (autre fichier, autre suite) ne doit pas changer le résultat.
+ */
+export const TEAM_CONFIG = `version: 1
+defaults:
+  updates: auto
+  projects: []
+  preferences: {}
+teams:
+  testeurs:
+    projects:
+      - repo: __ORG__/itest
+        label: Projet de test
+    preferences:
+      projectHome: campaigns
+  lecteurs:
+    updates: managed
+  auteurs:
+    preferences:
+      language: en
+`
+
 export const SSH = process.env['POLENTA_E2E_SSH'] ?? ''
 export const INSTANCE = process.env['POLENTA_E2E_INSTANCE'] ?? 'acme'
 const SETUP = path.join(__dirname, 'forge-setup.py')
 
-function ssh(remote: string): string {
+/** Commande sur l’hôte de la forge de test (sortie standard). */
+export function ssh(remote: string): string {
   if (!SSH) throw new Error('POLENTA_E2E_SSH requis (accès SSH à l’hôte de la forge de test).')
   return execSync(`${SSH} ${remote}`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
 }
@@ -56,6 +81,28 @@ export function deleteRepos(prefix: string): void {
 /** GH45 S4 — n repos vides `<préfixe>NN`. */
 export function bulkRepos(prefix: string, n: number): void {
   ssh(`sudo python3 /tmp/forge-setup.py bulk ${INSTANCE} ${prefix} ${n}`)
+}
+
+/**
+ * GH44 S3 — lève le bannissement fail2ban de l'IP de test (celle de la connexion SSH, `$SSH_CLIENT`,
+ * qui est aussi celle des requêtes HTTPS) : des exécutions répétées cumulent les 401 normaux de git
+ * et des scénarios de révocation, jusqu'au seuil du jail `polenta-forge`.
+ */
+export function unbanSelf(): void {
+  if (!SSH) return
+  // Sans shell local (cmd.exe interpréterait les caractères spéciaux) ; `${SSH_CLIENT%% *}` est
+  // développé par le shell distant, avant sudo (qui ne transmet pas SSH_CLIENT).
+  const [cmd, ...args] = SSH.split(/\s+/)
+  try {
+    execFileSync(cmd, [...args, 'sudo fail2ban-client set polenta-forge unbanip ${SSH_CLIENT%% *}'], { stdio: 'ignore' })
+  } catch {
+    // IP non bannie : fail2ban répond en erreur, rien à faire.
+  }
+}
+
+/** GH44 S3 — application OAuth2 (re)créée pour le client web de test ; secret lisible une fois. */
+export function oauthApp(name: string, redirectUri: string): { clientId: string; clientSecret: string; baseUrl: string } {
+  return JSON.parse(ssh(`sudo python3 /tmp/forge-setup.py oauth-app ${INSTANCE} ${name} ${redirectUri}`))
 }
 
 export function setTeamConfig(yaml: string): void {

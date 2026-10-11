@@ -15,6 +15,8 @@
 #   polenta-host instance update <nom>|--all <version>   avec retour arrière automatique
 #   polenta-host instance export <nom>         archive de restitution au client
 #   polenta-host instance remove <nom>         export puis suppression définitive
+#   polenta-host instance web enable <nom> --domain d --version v [--image i]   client web (GH44)
+#   polenta-host instance web disable <nom>    arrête le client web (données conservées)
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -32,7 +34,8 @@ DEMO_SOURCE_OWNER_URL="https://github.com/laurentolive"
 DEMO_ROOT_REPO="demo-ll800-produit"
 DEMO_REPOS=(demo-ll800-produit demo-ll800-comp-moteur demo-ll800-comp-pompe-vidange demo-ll800-comp-module-wifi demo-ll800-if-bus-interne)
 
-usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+# Aide : le bloc de commentaires d'en-tête, jusqu'à la première ligne de code.
+usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit "${1:-0}"; }
 
 # ─── setup ────────────────────────────────────────────────────────────────────
 
@@ -295,7 +298,10 @@ cmd_setup() {
 
 inst_compose() {
   local name="$1"; shift
-  docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" -f "$KIT_DIR/instance/docker-compose.yml" "$@"
+  # GH44 — client web actif (domaine web renseigné) : ses commandes (up, stop, down…) l'incluent.
+  local -a profile=()
+  [[ -n "$(env_get "$(instance_env "$name")" WEB_DOMAIN)" ]] && profile=(--profile web)
+  docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" "${profile[@]}" -f "$KIT_DIR/instance/docker-compose.yml" "$@"
 }
 
 forge_container() { printf 'forgejo-%s' "$1"; }
@@ -397,9 +403,9 @@ wait_healthy() {
 }
 
 wait_https() {
-  local domain="$1" timeout="${2:-180}" t=0
+  local domain="$1" timeout="${2:-180}" health="${3:-/api/healthz}" t=0
   while (( t < timeout )); do
-    curl -fsS -o /dev/null --max-time 10 --resolve "$domain:443:127.0.0.1" "https://$domain/api/healthz" 2>/dev/null && return 0
+    curl -fsS -o /dev/null --max-time 10 --resolve "$domain:443:127.0.0.1" "https://$domain$health" 2>/dev/null && return 0
     sleep 5; t=$((t + 5))
   done
   docker logs --tail 30 "$CADDY_CONTAINER" >&2 || true
@@ -769,6 +775,16 @@ cmd_instance_restore() {
   wait_https "$domain"; ok "https://$domain"
   api_use_instance "$name"
   write_polenta_config "$name" "$domain" "$(env_get "$env" ORG)" "$(api GET "/repos/$(env_get "$env" ORG)/$DEMO_ROOT_REPO" && echo 1 || echo 0)"
+  # GH44 — client web restauré avec l'instance : configuration réalignée sur le domaine de la forge.
+  # Un échec du client web (image absente, DNS du domaine web pas encore basculé…) n'empêche pas la
+  # restauration de la forge : signalé, à reprendre par « instance web enable ». Sous-shell lancé
+  # puis attendu (et non testé par if/!) : `set -e` y reste actif.
+  if [[ -n "$(env_get "$env" WEB_DOMAIN)" ]]; then
+    local web_rc=0
+    ( web_start "$name" ) &
+    wait $! || web_rc=$?
+    [[ $web_rc == 0 ]] || warn "client web non démarré — forge restaurée ; corriger puis relancer : polenta-host instance web enable $name"
+  fi
   touch "$dir/.add-complete"
   setup_fail2ban_forge
   admin_log "$name" "instance restore depuis $source@$snapshot (domaine $domain)" OK
@@ -861,11 +877,17 @@ cmd_instance_export() {
   # 2. Données brutes, copie cohérente (arrêt court, comme une sauvegarde).
   inst_compose "$name" stop >/dev/null 2>&1 || true
   tar -C "$dir" -czf "$work/data.tar.gz" data || { inst_compose "$name" up -d >/dev/null 2>&1; die "copie des données impossible."; }
+  # GH44 — espaces des utilisateurs du client web (clones, modifications non publiées), copiés
+  # pendant le même arrêt : aucun utilisateur n'écrit pendant la copie.
+  if [[ -d "$dir/web-data" ]]; then
+    tar -C "$dir" -czf "$work/web-data.tar.gz" web-data || { inst_compose "$name" up -d >/dev/null 2>&1; die "copie des données du client web impossible."; }
+  fi
   if [[ $was_running == 1 ]]; then
     inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
     wait_healthy "$name"
   fi
   ok "données brutes"
+  [[ -f "$work/web-data.tar.gz" ]] && ok "données du client web"
   # 3. Configuration expurgée des secrets d'exploitation (SECRET_KEY conservé : nécessaire pour remonter).
   grep -vE '^(OPS_TOKEN|OPS_PASSWORD|RESTIC_PASSWORD|LAST_BACKUP|INSTANCE_DIR)=' "$env" >"$work/instance.env"
   # Format de « docker run --env-file » : valeurs sans apostrophes (docker run, contrairement à
@@ -882,6 +904,8 @@ Contenu :
 - \`data.tar.gz\` : le dossier \`/data\` complet de la forge (dépôts git, base SQLite, configuration).
 - \`forge.env\` : la configuration de la forge (variables GITEA__…), dont la clé SECRET_KEY,
   indispensable pour relire les secrets chiffrés (double authentification…).
+- \`web-data.tar.gz\` (si le client web était activé) : les espaces des utilisateurs du client web
+  (copies de travail, dont les modifications qu'ils n'avaient pas encore publiées sur la forge).
 
 Remonter la forge à l'identique (Docker) :
 
@@ -924,6 +948,124 @@ cmd_instance_remove() {
   host_log "instance remove $name ($domain), export $EXPORT_ARCHIVE" OK
   ok "instance $name supprimée — export conservé : $EXPORT_ARCHIVE"
   warn "les sauvegardes restent dans le stockage S3 ($(restic_repo_url "$name")) : purge manuelle, cf. RUNBOOK."
+}
+
+# ─── Client web (GH44) ────────────────────────────────────────────────────────────
+
+# web.env du client web, rendu depuis instance.env : forge de l'instance (émetteur OIDC, hôte git
+# autorisé), URL publique, application OAuth2, secret de session (généré une fois, conservé).
+render_web_env() {
+  local name="$1" env dir; env="$(instance_env "$name")"; dir="$(instance_dir "$name")"
+  local forge web; forge="$(env_get "$env" DOMAIN)"; web="$(env_get "$env" WEB_DOMAIN)"
+  local secret; secret="$(env_get "$dir/web.env" POLENTA_WEB_SESSION_SECRET)"
+  [[ -n "$secret" ]] || secret="$(random_secret 48)"
+  local content
+  content="$(cat <<EOF
+# Client web de l'instance ${name} — généré par polenta-host (instance web enable), ne pas éditer.
+POLENTA_WEB_AUTH=oidc
+POLENTA_WEB_DEFAULT_SERVER=https://${forge}
+POLENTA_WEB_PUBLIC_URL=https://${web}
+POLENTA_WEB_GIT_HOSTS=${forge}
+POLENTA_WEB_OIDC_CLIENT_ID=$(env_get "$env" WEB_OIDC_CLIENT_ID)
+POLENTA_WEB_OIDC_CLIENT_SECRET=$(env_get "$env" WEB_OIDC_CLIENT_SECRET)
+POLENTA_WEB_SESSION_SECRET=${secret}
+EOF
+)"
+  write_if_changed "$dir/web.env" "$content" 600 || true
+  chmod 600 "$dir/web.env"
+}
+
+# Application OAuth2 « polenta-web » de la forge, dont l'adresse de retour est le domaine web.
+# Recréée si elle manque ou si le domaine a changé (le secret n'est lisible qu'à la création).
+ensure_web_oauth_app() {
+  local name="$1" env; env="$(instance_env "$name")"
+  local redirect="https://$(env_get "$env" WEB_DOMAIN)/auth/callback"
+  local current; current="$(env_get "$env" WEB_OIDC_CLIENT_ID)"
+  api_use_instance "$name"
+  api_ok GET /user/applications/oauth2
+  local apps="$API_BODY"
+  if [[ -n "$current" ]] && jq -e --arg c "$current" --arg r "$redirect" \
+      '.[] | select(.client_id == $c and (.redirect_uris | index($r)))' <<<"$apps" >/dev/null; then
+    skip "application OAuth2 polenta-web"
+    return 0
+  fi
+  local id
+  for id in $(jq -r '.[] | select(.name == "polenta-web") | .id' <<<"$apps"); do
+    api DELETE "/user/applications/oauth2/$id" >/dev/null || true
+  done
+  api_ok POST /user/applications/oauth2 "$(jq -n --arg r "$redirect" \
+    '{name: "polenta-web", redirect_uris: [$r], confidential_client: true}')"
+  env_set "$env" WEB_OIDC_CLIENT_ID "$(jq -r .client_id <<<"$API_BODY")"
+  env_set "$env" WEB_OIDC_CLIENT_SECRET "$(jq -r .client_secret <<<"$API_BODY")"
+  ok "application OAuth2 polenta-web ($redirect)"
+}
+
+wait_web_healthy() {
+  local name="$1" timeout="${2:-120}" t=0 s c="polenta-web-$1"
+  while (( t < timeout )); do
+    s="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$c" 2>/dev/null || echo absent)"
+    [[ "$s" == healthy ]] && return 0
+    sleep 3; t=$((t + 3))
+  done
+  docker logs --tail 40 "$c" >&2 || true
+  die "le client web de $name n'est pas en bonne santé après ${timeout}s (état : $s)."
+}
+
+# Démarre (ou réaligne) le client web d'une instance dont WEB_DOMAIN est renseigné.
+web_start() {
+  local name="$1" env dir; env="$(instance_env "$name")"; dir="$(instance_dir "$name")"
+  local domain; domain="$(env_get "$env" WEB_DOMAIN)"
+  mkdir -p "$dir/web-data"; chown 1000:1000 "$dir/web-data"
+  ensure_web_oauth_app "$name"
+  render_web_env "$name"
+  inst_compose "$name" up -d polenta-web >/dev/null 2>&1 || inst_compose "$name" up -d polenta-web
+  wait_web_healthy "$name"; ok "client web démarré"
+  caddy_add_web_site "$name" "$domain"
+  wait_https "$domain" 180 /healthz; ok "https://$domain"
+}
+
+# polenta-host instance web enable <nom> --domain <d> --version <v> [--image <i>]
+cmd_instance_web_enable() {
+  require_root; load_host_env; require_cmd docker jq dig curl
+  local name; name="$(resolve_instance "${1:-}")"; shift || true
+  local env; env="$(instance_env "$name")"
+  local domain image version
+  domain="$(env_get "$env" WEB_DOMAIN)"; image="$(env_get "$env" POLENTA_WEB_IMAGE)"; version="$(env_get "$env" POLENTA_WEB_VERSION)"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --domain) domain="$2"; shift 2 ;;
+      --image) image="$2"; shift 2 ;;
+      --version) version="$2"; shift 2 ;;
+      *) die "option inconnue : $1" ;;
+    esac
+  done
+  image="${image:-${POLENTA_WEB_IMAGE_DEFAULT:-polenta-web}}"
+  [[ -n "$domain" && -n "$version" ]] \
+    || die "usage : polenta-host instance web enable <nom> --domain <domaine web> --version <version> [--image <image>]"
+  [[ "$domain" != "$(env_get "$env" DOMAIN)" ]] || die "le client web demande son propre domaine (différent de celui de la forge)."
+  docker image inspect "$image:$version" >/dev/null 2>&1 || docker pull -q "$image:$version" >/dev/null \
+    || die "image introuvable : $image:$version (construite avec apps/desktop/Dockerfile.web ?)"
+  check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  env_set "$env" WEB_DOMAIN "$domain"
+  env_set "$env" POLENTA_WEB_IMAGE "$image"
+  env_set "$env" POLENTA_WEB_VERSION "$version"
+  log "Client web de « $name » ($image:$version)"
+  web_start "$name"
+  admin_log "$name" "instance web enable ($domain, $image:$version)" OK
+  log "Client web de « $name » — https://$domain"
+}
+
+# polenta-host instance web disable <nom> — arrêt du client web ; web-data et web.env conservés.
+cmd_instance_web_disable() {
+  require_root; load_host_env
+  local name; name="$(resolve_instance "${1:-}")"
+  local env; env="$(instance_env "$name")"
+  [[ -n "$(env_get "$env" WEB_DOMAIN)" ]] || { skip "client web de $name déjà désactivé"; return 0; }
+  inst_compose "$name" rm -sf polenta-web >/dev/null 2>&1 || true
+  caddy_remove_web_site "$name"
+  env_set "$env" WEB_DOMAIN ""
+  admin_log "$name" "instance web disable" OK
+  ok "client web de $name arrêté (données conservées dans $(instance_dir "$name")/web-data)"
 }
 
 # Tâche nocturne (cron) : sauvegarde de toutes les instances, rétention, purge hebdomadaire.
@@ -1019,6 +1161,13 @@ main() {
         update) cmd_instance_update "$@" ;;
         export) cmd_instance_export "$@" ;;
         remove) cmd_instance_remove "$@" ;;
+        web)
+          local websub="${1:-}"; shift || true
+          case "$websub" in
+            enable) cmd_instance_web_enable "$@" ;;
+            disable) cmd_instance_web_disable "$@" ;;
+            *) usage 1 ;;
+          esac ;;
         *) usage 1 ;;
       esac ;;
     -h|--help|help|"") usage 0 ;;

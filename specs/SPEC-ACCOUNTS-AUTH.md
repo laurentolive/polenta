@@ -1,6 +1,6 @@
 # SPEC-ACCOUNTS-AUTH — Connexion et gestion des comptes git
 
-> Dernière révision : 2026-10-11 (GH45 — forges Forgejo/Gitea, connexion par mot de passe, configuration machine et par équipe, accès révoqué)  
+> Dernière révision : 2026-10-11 (GH45 — forges Forgejo/Gitea, connexion par mot de passe, configuration machine et par équipe, accès révoqué ; GH44 — connexion du client web, §8a)  
 > Dépend de : [SPEC-ELECTRON-DESKTOP.md](SPEC-ELECTRON-DESKTOP.md)
 
 ---
@@ -104,6 +104,28 @@ Les deux transports (IPC Electron, bridge web) ne gardent que le message d'une e
 - **401** (jeton révoqué ou expiré) — y compris un **compte désactivé**, qui ne produit pas de 401 côté git (HTTP 200 + page HTML) : pour un hôte `forgejo`, un échec git inexpliqué déclenche une sonde `GET /api/v1/user` (401, ou 403 « prohibited » → révoqué). L'hôte est marqué « accès révoqué » jusqu'à une reconnexion réussie ; l'auto-pull s'arrête sans appel réseau ni erreur répétée. **Bannière unique** par hôte, « Se reconnecter » pré-rempli (desktop) ; les modifications locales ne sont jamais touchées.
 - **403 en écriture** (lecteur, branche protégée — Forgejo répond HTTP 200 puis « pre-receive hook declined ») : « Vous n'avez pas le droit de publier sur <repo> ». Le commit local est conservé.
 - Diagnostic à l'ouverture d'un projet (GH45 S4) : lecture seule signalée par un bandeau non bloquant (SPEC-PROJECT-MANAGEMENT §9.3).
+
+## 8a. Client web : connexion OIDC par la forge (GH44)
+
+Le client web (`SPEC-WEB.md`) n'a ni écran `/login`, ni trousseau, ni gestion de comptes :
+
+- **Connexion** : `GET /auth/login` → Authorization Code + PKCE S256 vers la forge Forgejo de
+  l'instance (`POLENTA_WEB_DEFAULT_SERVER`), application OAuth2 `polenta-web` créée par
+  `polenta-host instance web enable` (#45 / GH44). Au retour, identité lue par `GET /api/v1/user`
+  (même règle « identité = celle du serveur » qu'au §1), puis `AuthService.connectWithToken(url,
+  jeton, 'forgejo', identité)` dans l'espace de l'utilisateur : `auth.json` de
+  `<data>/users/<login>/userData/`, compte par défaut, levée d'un « accès révoqué » antérieur.
+- **Jeton** : le jeton OAuth2 de la connexion sert directement à git et à l'API. Il n'est **jamais
+  persisté** ni envoyé au navigateur : `TokenStore` (interface de `main/host/host-context.ts` qui
+  remplace les appels directs à `keytar`, GH44 S1) est implémenté sur le web par
+  `SessionTokenStore` (mémoire de la session, rafraîchi par `refresh_token` une minute avant
+  l'expiration, époque par connexion). Desktop : `KeytarTokenStore` (inchangé).
+- **Révocation** : la détection du §8 s'applique (marqueur `forge-access`, sonde `GET /user`) ; le
+  serveur web y ajoute la fin de session (sockets fermées, page « Votre accès a été révoqué ») et
+  une vérification toutes les 5 min. Détail : `SPEC-WEB.md` §5.
+- **Interface** : identité de la session (`/auth/me`, `useCurrentAccount`) et « Se déconnecter »
+  (`POST /auth/logout`) ; PAT, Device Flow, mot de passe et « Changer de compte » masqués
+  (channels `auth:login-password`, `auth:detect-forge`, jetons : jamais exposés).
 
 ## 9. Hors scope actuel
 

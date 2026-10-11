@@ -46,15 +46,20 @@ Local git working tree (clone du remote)
 > indépendant du process Electron principal. Il respecte les règles 1 et 3 à
 > l'identique : pas de port HTTP, pas de commit/push automatique.
 
+> **Précision (GH44)** : la règle 1 vaut pour l'**application desktop**. Le client web est un
+> **troisième point d'entrée** sur le même noyau de services (`apps/desktop/src/web-server/`,
+> cf. `SPEC-WEB.md`) : serveur HTTP déployé par l'exploitant, un conteneur de services par
+> utilisateur, même renderer servi au navigateur. Le desktop n'en dépend pas à l'exécution. Le noyau
+> ne dépend plus d'Electron : ce qui touche au poste passe par `HostContext`, `PlatformHost` et
+> `PrintRenderer` (`main/host/`), et les handlers s'enregistrent dans un `HandlerRegistry`.
+
 ---
 
 ## 2. Structure du monorepo
 
 ```
 apps/
-  api/          ← conservé pour la version web (inchangé)
-  web/          ← conservé pour la version web (inchangé)
-  desktop/      ← application Electron
+  desktop/      ← application Electron + serveur web (GH44 : squelettes apps/api et apps/web supprimés)
     package.json
     tsconfig.json
     electron.vite.config.ts        ← define __POLENTA_BRAND__ + plugin de marque (GH49)
@@ -104,16 +109,28 @@ apps/
         src/
           api/
             ipc-client.ts          ← implémente ApiClient via ipcRenderer (30+ espaces de noms)
-          ... (composants React réutilisés depuis apps/web)
+          ... (composants React)
+        web.html, web/             ← GH44 : entrée web (bridge window.polenta HTTP/WebSocket)
+        platform.ts                ← GH44 : isWeb / capabilities (fonctions propres au poste masquées)
     mcp-server/                    ← point d'entrée MCP stdio, cf. SPEC-MCP-SERVER.md
+    web-server/                    ← GH44 : serveur web (Fastify), cf. SPEC-WEB.md
+    e2e-web/                       ← GH44 : tests de bout en bout du client web (README.md)
+    Dockerfile.web                 ← GH44 : image du serveur web
+
+> **GH44** — `src/main/host/` : `host-context.ts` (`HostContext`, `TokenStore`), `electron-host.ts`
+> (keytar, `userData`), `platform-host.ts`, `print-renderer.ts` (+ `electron-print.ts`,
+> `electron-pdf.ts`, `electron-drawio-snapshot.ts`), `mcp-launch.ts`. `src/main/ipc/` :
+> `index.ts` (`registerHandlers(registry, container, platform)`, channels partagés),
+> `desktop-only.handlers.ts` (dialogues, shell, mise à jour, Device Flow — jamais côté web),
+> `channels.ts` (liste desktop-only), `registry.ts`, `file-ops.ts`.
 packages/
   types/        ← inchangé
   zod-schemas/  ← inchangé
   api-client/   ← interface ApiClient partagée web + desktop
     src/
       index.ts  ← interface ApiClient + types de retour
-      http-client.ts   ← implémentation HTTP (pour apps/web)
-      ipc-client.ts    ← implémentation IPC (pour apps/desktop)
+      ipc-client.ts    ← implémentation unique : appelle window.polenta.invoke (preload Electron
+                         sur le desktop, bridge HTTP/WebSocket dans le navigateur — GH44)
 ```
 
 **Note (T130)** : le plan initial (ci-dessus avant correction) prévoyait un service dédié
@@ -754,6 +771,11 @@ interface AppNotification {
 
 **T130 : un seul point d'enregistrement**, pas un fichier `*.ipc.ts` par domaine :
 
+> **GH44** — `registerIpcHandlers(services)` est devenu `registerHandlers(r, c, platform)` :
+> `r.handle(channel, fn)` remplace `ipcMain.handle` (`ipcMainRegistry` sur le desktop, table par
+> utilisateur sur le serveur web) ; la diffusion d'événements passe par `platform.broadcast`. Les
+> channels propres au poste sont dans `desktop-only.handlers.ts`, typés sur `channels.ts`.
+
 ```typescript
 // apps/desktop/src/main/ipc/index.ts
 
@@ -777,6 +799,11 @@ dans `registerIpcHandlers()`, plus `apps/desktop/src/main/ipc/pref.handlers.ts` 
 
 DI manuel — instancie les services et appelle `registerIpcHandlers()` une seule fois. **T130 : 22
 services**, pas 9 :
+
+> **GH44** — `createContainer(host: HostContext, print: PrintRenderer): Container`, synchrone, ne
+> fait plus d'enregistrement : `main/index.ts` appelle `registerHandlers(ipcMainRegistry, …)`, crée
+> `UpdateService` et `registerDesktopOnlyHandlers` ; le serveur web crée un conteneur par
+> utilisateur (`web-server/user-pool.ts`).
 
 ```typescript
 // apps/desktop/src/main/container.ts (services réels, ordre de dépendance)
@@ -897,7 +924,8 @@ export function createIpcClient(): ApiClient {
 ```
 
 ```typescript
-// packages/api-client/src/http-client.ts
+// packages/api-client/src/http-client.ts — HISTORIQUE (non implémenté) : GH44 a choisi de garder
+// ipc-client.ts et de fournir window.polenta par un bridge HTTP/WebSocket (SPEC-WEB.md §3).
 // Implémentation web — utilisée dans apps/web/
 
 export function createHttpClient(baseUrl: string): ApiClient {
@@ -917,7 +945,8 @@ export function createHttpClient(baseUrl: string): ApiClient {
 ## 13. `apps/desktop/src/main/index.ts` — entry point
 
 **T130 : pas d'appel individuel par domaine** — `createContainer()` instancie les ~22 services
-**et** appelle `registerIpcHandlers()` en une fois (voir §11.4). `main/index.ts` se contente
+**et** appelle `registerIpcHandlers()` en une fois (voir §11.4). *(GH44 : l'enregistrement est
+fait par `main/index.ts`, cf. encadré §11.4.)* `main/index.ts` se contente
 d'appeler `createContainer()`, définir le menu (`Menu.setApplicationMenu(null)` — menu natif
 désactivé, voir §11.2 "Menu"), et ouvrir la `BrowserWindow` :
 
@@ -1021,7 +1050,8 @@ export default defineConfig({
 - ❌ Exposer `ipcRenderer` directement dans le preload — uniquement via `contextBridge`
 - ❌ Stocker le PAT en clair dans `userData` ou dans le repo
 - ❌ Réutiliser `simple-git` — uniquement `isomorphic-git`
-- ❌ Supprimer ou modifier `apps/api` — la version web reste fonctionnelle en parallèle
+- ❌ Importer `electron` ou `keytar` dans `main/services/` (GH44 : passer par `HostContext`,
+  `PlatformHost`, `PrintRenderer` — le noyau est partagé avec le serveur web et le serveur MCP)
 - ❌ Éditer `.polenta/trees/<nœud>/<type>.yaml`, `polenta-repo.yaml` généré, ou tout fichier `.polenta/*.cache.yaml` manuellement — maintenus par l'application (T130 : pas de `.gitmodules`, ce mécanisme n'existe pas — voir §22)
 - ❌ Éditer `tree.yaml` manuellement — il est généré par `scripts/update-tree.py` via le hook pre-commit
 - ❌ Ajouter/supprimer un composant autrement qu'en modifiant `schema.components` via `schema:save`

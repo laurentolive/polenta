@@ -1,6 +1,7 @@
 # GH44 — Design technique : client web
 
-Entrée : `specs/GH44.md` (validée le 2026-10-08). Dépendance : #45 (P0 + infra).
+Entrée : `specs/GH44.md` (validée le 2026-10-08). Dépendance : #45 (P0 + infra) — **livrée le
+2026-10-10** ; les sprints 3 et 4 sont révisés en §10 à partir de ce qui existe réellement.
 
 ## 1. Vue d'ensemble
 
@@ -314,7 +315,7 @@ un seul utilisateur, sans OIDC, pour développer et tester S2 sans #45. Refusé 
   — 8080/5173 souvent occupés sur les postes de dev.
 - **`@types/node@^20`** déclaré dans `apps/desktop` (auparavant hérité d'`apps/api`).
 
-## 5. Sprint 3 — Authentification forge et multi-utilisateurs (nécessite #45 P0)
+## 5. Sprint 3 — Authentification forge et multi-utilisateurs (nécessite #45 P0 — livré ; voir révisions §10.2)
 
 ### 5.1 OIDC
 
@@ -358,7 +359,7 @@ Channels `web:*` ajoutés : `web:workspaces-root` (renvoie `<root>/workspaces`),
 `WebHome` réutilise les popups existantes (clone, création, démo) en remplaçant le choix de dossier
 par un nom.
 
-## 6. Sprint 4 — Rendu PDF, packaging, déploiement
+## 6. Sprint 4 — Rendu PDF, packaging, déploiement (révisions §10.3)
 
 ### 6.1 `PlaywrightPrintRenderer`
 
@@ -385,7 +386,8 @@ sur `GET /healthz`.
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `POLENTA_WEB_PUBLIC_URL` | — | URL publique (redirections OIDC, cookies `Secure`). |
-| `POLENTA_WEB_FORGE_URL` | — | URL de la forge (issuer OIDC + remote par défaut). |
+| `POLENTA_WEB_DEFAULT_SERVER` | 1er hôte git | URL de la forge (issuer OIDC + forge par défaut). *Révisé : variable introduite par #45, remplace `POLENTA_WEB_FORGE_URL`.* |
+| `POLENTA_WEB_DEMO_PROJECT_URL` | démo GitHub | Projet de démonstration proposé (#45). |
 | `POLENTA_WEB_OIDC_CLIENT_ID` / `_SECRET` | — | Application OAuth2 créée dans Forgejo (`install.sh` de #45). |
 | `POLENTA_WEB_SESSION_SECRET` | — | Signature des cookies. |
 | `POLENTA_WEB_DATA_DIR` | `/data` | Racine des espaces utilisateurs. |
@@ -433,8 +435,8 @@ encore au moment du sprint : le ticket reste `status:blocked` (dépend de #45) s
 |---|---|---|---|
 | **S1** | Découplage desktop (§3) | — | Desktop identique (parcours manuel T-S1 de `GH44-tests.md`), typecheck, aucun `electron` dans les services sauf exceptions listées. |
 | **S2** | Serveur, bridge, build web, mode dev, adaptateurs, capacités UI, suppression squelettes (§4) | S1 | Polenta Web utilisable en local en mode dev, mono-utilisateur, tous les parcours sauf PDF. |
-| **S3** | OIDC forge, sessions, révocation, pool multi-utilisateurs, accueil web (§5) | S2, **#45 P0** | Deux utilisateurs Forgejo réels, isolation, révocation. |
-| **S4** | Playwright, Docker, intégration `deploy/`, campagne de parité, SPEC (§6) | S3, **#45 infra** | Image déployée sur le VPS de test derrière Caddy. |
+| **S3** | OIDC forge, sessions, révocation, pool multi-utilisateurs, accueil web (§5, §10.2) | S2, #45 P0 ✓ | Deux utilisateurs Forgejo réels, isolation, révocation. |
+| **S4** | Playwright, Docker, intégration `deploy/`, campagne de parité, SPEC (§6, §10.3) | S3, #45 infra ✓ | Image déployée sur l'instance de test (`acme`) derrière Caddy. |
 
 Ordre recommandé : S1 et S2 peuvent démarrer **tout de suite** ; S3 attend le P0 de #45 (le ticket
 passera `status:blocked` — « dépend de #45 » — entre S2 et S3 si nécessaire).
@@ -450,3 +452,71 @@ passera `status:blocked` — « dépend de #45 » — entre S2 et S3 si nécessa
 | Dossier courant partagé par tous les utilisateurs : un chemin relatif dans un DTO (non couvert par `ROOT_ARGS`) y serait résolu. | Dossier vide, sans `..` possible ; seules des écritures d'un utilisateur y seraient visibles d'un autre. Isolation complète (un process par utilisateur) hors périmètre (D5). |
 | Logout par `GET /auth/logout` déclenchable depuis une autre page (déconnexion forcée). | Impact limité (aucune donnée exposée) ; passage en POST au sprint 3 avec OIDC. |
 | Fichiers modifiés par S1 très partagés (`ipc/index.ts`, `container.ts`) → conflits avec les autres tickets. | S1 court, mécanique, mergé tôt dans main après validation. |
+
+## 10. Révisions après la livraison de #45 et GH49 (2026-10-11)
+
+État de départ : `main` @ `e8d804e` contient GH44 S1–S2 (les commits de GH44 ont été intégrés par le
+merge de GH45, branché sur GH44 @ `f5325d6`), GH45 (sprints 1 à 4), GH49 (marque blanche), GH43,
+GH47. La branche `GH44` est avancée sur `main` (fast-forward). Vérifié sur cet état : typecheck,
+135 + 34 tests unitaires, 14/14 tests e2e web.
+
+### 10.1 Ce que #45 a déjà fait côté web (rien à refaire)
+
+| Sujet | Où |
+|---|---|
+| `HostContext` étendu : `machineConfig`, `deviceLabel: 'web'` | `web-server/web-host.ts`, `config.ts` (`webMachineConfig`, `POLENTA_WEB_DEFAULT_SERVER`, `POLENTA_WEB_DEMO_PROJECT_URL`) |
+| Garde des hôtes commun à git **et** à l'API des forges | `main/services/forge/remote-guard.ts` (`setGitRemoteGuard` conservé en alias, `hardening.ts` inchangé) |
+| Nouveaux channels classés : exposés (`auth:current-account`, `app:get-team-config`, `app:team-projects`, `forge:*`, `workspace:create-on-server`…) et masqués (`auth:login-password`, `auth:detect-forge`) ; `ROOT_ARGS` complété | `web-server/channel-policy.ts` (test de synchronisation vert) |
+| Compte courant web = session | `renderer/hooks/useCurrentAccount.ts` (remplace les branches `isWeb` d'`AccountMenu`, `AccountPanel`, `routes/account.tsx`) |
+| Accueil : « Projets de votre équipe », repos du serveur, « Créer sur le serveur » passent par `pickDestination` (dossier neuf de « Mes projets » sur le web) | `renderer/routes/index.tsx` |
+| Bannière d'accès (`ForgeAccessBanner`) alimentée par le marqueur `⟦forge-access …⟧` contenu dans le message d'erreur : le bridge web le transmet tel quel | `renderer/components/layout/ForgeAccessBanner.tsx`, `web/bridge.ts` (inchangé) |
+| Marque (GH49) appliquée au build web et au serveur | `vite.web.config.ts`, `scripts/build-web-server.ts`, `BRAND.productName` dans `app.ts`/`hardening.ts` |
+
+### 10.2 Sprint 3 révisé (OIDC, sessions, multi-utilisateurs)
+
+- **Jeton** : le jeton OAuth2 de la session OIDC sert **directement** à git et à l'API (mesuré par
+  #45 §12 ; risque §9 levé). Pas de création de jeton d'accès à la connexion. Le `refresh_token`
+  est conservé en mémoire avec la session ; `SessionTokenStore` rafraîchit avant `expires_in`.
+- **Application OAuth2** : `polenta-admin --instance <nom> oauth-app create polenta-web
+  https://<domaine-web>/auth/callback` (#45) fournit `client_id` / `client_secret` →
+  `POLENTA_WEB_OIDC_CLIENT_ID` / `_SECRET`. Issuer = `POLENTA_WEB_DEFAULT_SERVER`.
+- **Compte de la session** : à la connexion, `auth.saveAccount({ remoteHost, username, name, email,
+  provider: 'forgejo', baseUrl })` dans l'espace de l'utilisateur, identité via
+  `providerFor('forgejo').resolveIdentity` (#45) ; jetons posés dans le `MemoryTokenStore` sous
+  `host` et `host:login` (convention d'`AuthService`). `auth.clearAccessRevoked(host)` à chaque
+  connexion réussie.
+- **Révocation** : la détection existe (#45 §3.4 : 401, 403 « prohibited », sonde `GET /user` sur
+  réponse non-git). Le serveur web ajoute seulement : dans `POST /rpc`, si le message d'erreur porte
+  un marqueur `forge-access` 401 pour l'hôte de la forge de la session → session détruite, jetons
+  effacés, événement `auth:session-revoked` aux sockets, réponse 401 (le bridge redirige vers
+  `/auth/login`). `autoSync` renvoie déjà `accessRevoked` sans réseau. Vérification périodique
+  (5 min) inchangée.
+- **Configuration d'équipe** : `forge-config.service` fonctionne par conteneur d'utilisateur avec le
+  jeton de la session ; à appeler à la connexion (équivalent du rafraîchissement déclenché par le
+  renderer desktop). Le cache `userData/forge-config.json` vit dans l'espace de l'utilisateur.
+- **Mode dev** conservé pour le développement et les tests e2e sans forge OIDC.
+- **Logout** : `POST /auth/logout` (CSRF) au lieu de `GET` (risque §9).
+- **Tests e2e S3** : contre l'instance Forgejo de test `acme` (comptes `itest-*`, actions
+  d'administration par SSH via `POLENTA_E2E_SSH`, comme `e2e-desktop/` de #45), en réutilisant
+  `e2e-web/support/session.ts` avec une connexion OIDC réelle ; les tests existants restent en
+  mode dev (forge locale).
+
+### 10.3 Sprint 4 révisé (impression, image, déploiement)
+
+- **Kit existant** (#45) : service compose `polenta-web` (profil `web`, image
+  `${POLENTA_WEB_IMAGE}:${POLENTA_WEB_VERSION}`, volume `<instance>/web-data` →
+  `/var/lib/polenta-web`, propriétaire uid 1000). **À ajouter par GH44 S4** :
+  - environnement du service (fichier `web.env` de l'instance : `POLENTA_WEB_*`, secret de session,
+    client OAuth2), port interne 8787 ;
+  - commande `polenta-host instance web enable|disable <nom> [--domain <d>]` : crée l'application
+    OAuth2, écrit `web.env`, active le profil, ajoute le site Caddy ;
+  - site Caddy `polenta-web-<instance>:8787` sur le domaine web de l'instance (sous-domaine
+    configurable), WebSocket `/events` compris ;
+  - **sauvegarde** : `backup_instance` (lib `backup.sh`) n'inclut que `data`, `instance.env`,
+    `admin.log`, `polenta-config.json` → ajouter `web-data` et `web.env` quand le profil est actif ;
+    restauration et export alignés ;
+  - RUNBOOK : section « client web », dimensionnement par instance avec `polenta-web`.
+- **Image** : construite **par marque** (GH49 : `POLENTA_BRAND` au build), utilisateur uid 1000,
+  `POLENTA_WEB_DATA_DIR=/var/lib/polenta-web`, Chromium de Playwright pour l'impression.
+- **#50** (EPERM intermittent au nettoyage des tests, Windows) : corrigé dans GH44 (suppression d'un
+  téléchargement à la fermeture du flux, sans rejection non gérée ; réessais de `rm`).

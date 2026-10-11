@@ -77,7 +77,18 @@ le refus d'exécution hors outil sur une campagne clôturée ; S2-8 coupe réell
 (`routeWebSocket`) puis laisse le navigateur hors ligne 3 s. Restent [M] : comparaison de
 baselines et analyse d'impact entre baselines, requêtes SQL avancées, exports PDF (sprint 4).
 
+### Régression #50 (2026-10-11)
+
+| ID | Scénario | Attendu |
+|---|---|---|
+| S2-26 [A] | `pnpm --filter @polenta/desktop test` répété (Windows). | Aucune erreur non gérée `EPERM rmdir …\downloads\<uuid>` : le téléchargement est supprimé à la fermeture du flux, un échec est journalisé (jamais une rejection non gérée). 5/5 exécutions propres. |
+
 ## Sprint 3 — Forge, sessions, multi-utilisateurs (Forgejo de #45)
+
+*(Révisé 2026-10-11, #45 livré.)* Les scénarios [M] ci-dessous deviennent des tests [E2E] contre
+l'instance Forgejo de test `acme` (comptes `itest-*`, administration par SSH via `POLENTA_E2E_SSH`,
+comme `apps/desktop/e2e-desktop/` de #45), avec l'outillage `e2e-web/support/` ; restent [M] ceux
+qui exigent un redémarrage du conteneur ou une attente réelle (S3-7, S3-9, S3-10).
 
 | ID | Scénario | Attendu |
 |---|---|---|
@@ -95,6 +106,13 @@ baselines et analyse d'impact entre baselines, requêtes SQL avancées, exports 
 | S3-12 [A] | Pool : création concurrente pour le même login. | Un seul Container. |
 | S3-13 [A] | Pool : dépassement de `MAX_ACTIVE_USERS` avec/sans sockets ouvertes. | Éviction LRU / 503. |
 | S3-14 [A] | Login forge contenant des caractères hors `[a-z0-9._-]`. | Connexion refusée proprement. |
+| S3-15 [E2E] | Accueil web d'un membre d'équipe (#45 S2b) : « Projets de votre équipe ». | Seuls les repos accessibles sont listés ; clic → clone dans « Mes projets » puis ouverture sur la vue d'ouverture de l'équipe. |
+| S3-16 [E2E] | « Créer sur le serveur » depuis le web (#45 S4). | Repo créé dans l'organisation, clone dans « Mes projets », premier commit à l'identité de l'utilisateur. |
+| S3-17 [E2E] | Lecteur (droit lecture seule) : publier une modification. | Bannière « écriture refusée » (marqueur `forge-access` 403) dans le navigateur ; session conservée. |
+| S3-18 [A] | Erreur RPC portant un marqueur `forge-access` 401 pour l'hôte de la session. | Session détruite, `auth:session-revoked` diffusé, réponse 401. |
+| S3-19 [A] | Jeton OAuth2 expiré (`expires_in` dépassé) avant une opération git. | Rafraîchi par `refresh_token` sans interruption ; refresh refusé → session révoquée. |
+| S3-20 [A] | `auth:login-password`, `auth:detect-forge` appelés depuis le navigateur. | 404 (connexion web = OIDC uniquement). Déjà couvert par `channel-policy.test.ts`. |
+| S3-21 [E2E] | Configuration d'équipe (`<org>/polenta-config`) : langue et vue d'ouverture par défaut. | Appliquées sur le web comme sur le desktop, sans choix personnel enregistré. |
 
 ## Sprint 4 — Impression, Docker, déploiement
 
@@ -104,8 +122,8 @@ baselines et analyse d'impact entre baselines, requêtes SQL avancées, exports 
 | S4-2 [M] | Export Word par gabarit avec diagrammes drawio. | Diagrammes en PNG nets (zoom 2). |
 | S4-3 [M] | Trois exports PDF lancés simultanément par deux utilisateurs. | Tous aboutissent (file d'attente) ; chaque PDF contient les données de son auteur. |
 | S4-4 [A] | Jeton d'impression réutilisé ou expiré. | Refusé. |
-| S4-5 [M] | `docker compose --profile web up` sur le VPS de test (#45). | `https://polenta.<domaine>` servi par Caddy ; `/healthz` OK (AC 13). |
-| S4-6 [M] | `backup.sh` puis `restore.sh` sur un VPS vierge. | Espaces utilisateurs restaurés, modifications non publiées comprises. |
+| S4-5 [M] | `polenta-host instance web enable acme --domain <d>` sur l'hôte de test (#45). | Application OAuth2 créée, profil `web` actif, `https://<d>` servi par Caddy (WebSocket compris) ; `/healthz` OK (AC 13). |
+| S4-6 [M] | `polenta-host` : sauvegarde de l'instance puis restauration (#45 S3). | `web-data` et `web.env` inclus ; espaces utilisateurs restaurés, modifications non publiées comprises. |
 | S4-7 [M] | Mesure mémoire : 5 utilisateurs sur la démo. | < 300 Mo par utilisateur actif. |
 | S4-8 [M] | Desktop packagé (`pnpm package`) après tous les sprints. | Fonctionne sans aucun code serveur (AC 12). |
 

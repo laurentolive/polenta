@@ -58,6 +58,28 @@ export function bulkRepos(prefix: string, n: number): void {
   ssh(`sudo python3 /tmp/forge-setup.py bulk ${INSTANCE} ${prefix} ${n}`)
 }
 
+/**
+ * GH44 S3 — lève le bannissement fail2ban de l'IP de test (celle de la connexion SSH, `$SSH_CLIENT`,
+ * qui est aussi celle des requêtes HTTPS) : des exécutions répétées cumulent les 401 normaux de git
+ * et des scénarios de révocation, jusqu'au seuil du jail `polenta-forge`.
+ */
+export function unbanSelf(): void {
+  if (!SSH) return
+  // Sans shell local (cmd.exe interpréterait les caractères spéciaux) ; `${SSH_CLIENT%% *}` est
+  // développé par le shell distant, avant sudo (qui ne transmet pas SSH_CLIENT).
+  const [cmd, ...args] = SSH.split(/\s+/)
+  try {
+    execFileSync(cmd, [...args, 'sudo fail2ban-client set polenta-forge unbanip ${SSH_CLIENT%% *}'], { stdio: 'ignore' })
+  } catch {
+    // IP non bannie : fail2ban répond en erreur, rien à faire.
+  }
+}
+
+/** GH44 S3 — application OAuth2 (re)créée pour le client web de test ; secret lisible une fois. */
+export function oauthApp(name: string, redirectUri: string): { clientId: string; clientSecret: string; baseUrl: string } {
+  return JSON.parse(ssh(`sudo python3 /tmp/forge-setup.py oauth-app ${INSTANCE} ${name} ${redirectUri}`))
+}
+
 export function setTeamConfig(yaml: string): void {
   ssh(`sudo python3 /tmp/forge-setup.py config ${INSTANCE} ${Buffer.from(yaml, 'utf-8').toString('base64')}`)
 }

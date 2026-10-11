@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { setupSession } from './support/session'
+import { publish } from './support/ui'
 import { DEMO_REPO, bareRepoPath, outsideClone, remoteLog } from './support/forge'
 import { execFileSync } from 'child_process'
 
@@ -62,9 +63,7 @@ test('P-2 — créer un dashboard et y ajouter un widget', async () => {
 test('P-3 — publier puis créer une baseline', async () => {
   // Une baseline exige des repos sans modification en attente : on publie d'abord.
   const before = remoteLog('%H')
-  await s.page.getByRole('button', { name: 'Publier' }).first().click()
-  await s.page.getByPlaceholder(/Titre de la modification/).fill('E2E : parité avant baseline')
-  await s.page.getByRole('button', { name: 'Publier' }).last().click()
+  await publish(s.page, 'E2E : parité avant baseline')
   await expect.poll(() => remoteLog('%H'), { timeout: 60_000 }).not.toBe(before)
 
   await s.openView('Version')
@@ -90,10 +89,7 @@ test('P-4 — conflit à la publication, résolu dans le navigateur (GH37)', asy
 
   // Même champ, autre valeur, dans le navigateur.
   await s.invoke('requirements:update', s.project.localPath, 'PRD-0001', { title: 'Capacité de charge (web)' }, s.project.workspaceDir)
-  await s.page.keyboard.press('Escape')
-  await s.page.getByRole('button', { name: 'Publier' }).first().click()
-  await s.page.getByPlaceholder(/Titre de la modification/).fill('web : titre PRD-0001')
-  await s.page.getByRole('button', { name: 'Publier' }).last().click()
+  await publish(s.page, 'web : titre PRD-0001')
 
   await expect(s.page.getByRole('heading', { name: 'Publication impossible' })).toBeVisible({ timeout: 60_000 })
   await expect(s.page.getByRole('listitem').filter({ hasText: rel })).toBeVisible()

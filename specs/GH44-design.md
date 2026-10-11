@@ -501,6 +501,21 @@ GH47. La branche `GH44` est avancée sur `main` (fast-forward). Vérifié sur ce
   `e2e-web/support/session.ts` avec une connexion OIDC réelle ; les tests existants restent en
   mode dev (forge locale).
 
+#### Révisions issues de l'implémentation du sprint 3 (`GH44-sprint3.md`)
+
+| Point | Révision |
+|---|---|
+| Client OIDC | Implémentation minimale (`web-server/auth/oidc.ts`), sans bibliothèque : découverte (émetteur = forge, points d'accès sur la forge), Authorization Code + PKCE S256, client confidentiel (secret dans le corps), `scope=openid profile email`. **`id_token` non exploité** : jetons obtenus du point d'échange en TLS avec authentification du client, identité relue par `GET /api/v1/user` (comme le desktop). Le consentement Forgejo confirme que le jeton donne accès aux repos privés. |
+| État | `state` aléatoire, à usage unique, 10 min, conservé côté serveur (`PendingAuthorizations`, plafonné à 10 000) **et** dans un cookie signé `polenta_oidc` : le retour n'est accepté que dans le navigateur qui a lancé la connexion. |
+| Identité | Lue une seule fois au retour ; `AuthService.connectWithToken(url, jeton, 'forgejo', identité)` enregistre le compte et lève la révocation. Login normalisé en minuscules pour le dossier de l'utilisateur, refusé hors `[a-z0-9._-]`. |
+| Jetons | `SessionTokenStore` (remplace `MemoryTokenStore`) : jeton d'accès + `refresh_token` en mémoire, rafraîchis une minute avant l'expiration (un seul à la fois), jamais recopiés dans la table générique. **Époque** incrémentée à chaque connexion : un rafraîchissement ou une erreur d'une génération antérieure n'affecte jamais la connexion suivante. |
+| Révocation | Trois voies, une seule action (`revokeLogin` : sessions détruites, jetons effacés, `auth:session-revoked` puis fermeture 4402) : marqueur `forge-access` 401 de la forge de la session dans une erreur RPC ; marque `isAccessRevoked` posée par le conteneur pendant un appel, même réussi (synchronisation automatique #45, qui ne lève pas) ; vérification toutes les 5 min (sonde #45, en parallèle, sans chevauchement). Toujours conditionnée à l'époque de l'appel. |
+| Sessions révoquées | Mémorisées 10 min : les appels encore en vol reçoivent `401 { revoked: true }` et la WebSocket est fermée en 4402, pour que le navigateur affiche « accès révoqué » et non une reconnexion silencieuse. Bridge : la première redirection l'emporte. |
+| Pages hors application | `/auth/logged-out`, `/auth/revoked`, et pages d'erreur explicites : forge injoignable (503), refus côté forge (403), échange refusé (502), espace indisponible (503 si plafond). Plus de JSON brut dans le navigateur. |
+| Déconnexion | `POST /auth/logout` avec jeton CSRF ; `GET` supprimé (risque §9 levé). |
+| Pool | `POLENTA_WEB_MAX_ACTIVE_USERS` (défaut 50) : n'évince qu'un utilisateur sans vue ouverte, sans appel en cours et inactif depuis au moins 1 min ; sinon 503. |
+| Configuration | `POLENTA_WEB_AUTH=oidc` exige `POLENTA_WEB_DEFAULT_SERVER`, `POLENTA_WEB_OIDC_CLIENT_ID|SECRET`, `POLENTA_WEB_PUBLIC_URL` et un `POLENTA_WEB_SESSION_SECRET` d'au moins 32 caractères ; cookies `Secure` par défaut si l'URL publique est en https ; hôtes git par défaut = hôte de la forge. |
+
 ### 10.3 Sprint 4 révisé (impression, image, déploiement)
 
 - **Kit existant** (#45) : service compose `polenta-web` (profil `web`, image

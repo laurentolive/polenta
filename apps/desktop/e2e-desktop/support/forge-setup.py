@@ -9,6 +9,7 @@ Exécuté en root SUR L'HÔTE (lit /opt/polenta/instances/<instance>/instance.en
   sudo python3 forge-setup.py repo <instance> <nom>       → {exists, private, branches} (S4)
   sudo python3 forge-setup.py delete-repos <instance> <préfixe> → supprime les repos <préfixe>* (S4)
   sudo python3 forge-setup.py bulk <instance> <préfixe> <n>     → n repos vides <préfixe>NN (S4)
+  sudo python3 forge-setup.py oauth-app <instance> <nom> <retour> → application OAuth2 recréée (GH44 S3)
 
 Comptes (re)créés : itest-auteur (auteurs), itest-testeur (testeurs), itest-lecteur (lecteurs),
 itest-2fa (auteurs, TOTP), itest-neuf (mot de passe temporaire) ; repo <org>/itest (main + .gitignore).
@@ -176,5 +177,17 @@ elif cmd == 'config':
                {'content': base64.b64encode(content).decode(), 'sha': cur['sha'], 'message': 'tests GH45 : configuration de test'})
     assert c == 200, (c, j)   # propriétaire : autorisé malgré la protection de main (critère 24)
     print(json.dumps({'ok': True}))
+elif cmd == 'oauth-app':
+    # GH44 S3 — application OAuth2 du client web de test (adresse de retour locale), recréée à chaque
+    # exécution : le secret n'est lisible qu'à la création.
+    name, redirect = sys.argv[3], sys.argv[4]
+    c, apps = req('GET', '/user/applications/oauth2')
+    assert c == 200, (c, apps)
+    for a in apps:
+        if a['name'] == name:
+            req('DELETE', f"/user/applications/oauth2/{a['id']}")
+    c, j = req('POST', '/user/applications/oauth2', {'name': name, 'redirect_uris': [redirect], 'confidential_client': True})
+    assert c == 201, (c, j)
+    print(json.dumps({'clientId': j['client_id'], 'clientSecret': j['client_secret'], 'baseUrl': BASE}))
 else:
     sys.exit(f'commande inconnue : {cmd}')

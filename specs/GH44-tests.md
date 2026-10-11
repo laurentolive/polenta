@@ -92,13 +92,13 @@ qui exigent un redémarrage du conteneur ou une attente réelle (S3-7, S3-9, S3-
 
 | ID | Scénario | Attendu |
 |---|---|---|
-| S3-1 [M] | Connexion d'Alice via Forgejo (OIDC). | Retour sur l'accueil web ; aucun formulaire PAT (AC 1). |
-| S3-2 [M] | Inspecter cookies, réponses `/rpc`, `/auth/me`, logs serveur. | Jeton forge absent partout ; cookie de session `HttpOnly` (AC 1). |
-| S3-3 [M] | Alice modifie SYS-0001 et publie. | `git log --format='%an <%ae>'` = identité Forgejo d'Alice ; `updatedBy` = Alice (AC 2). |
-| S3-4 [M] | Alice et Bob ouvrent le même projet ; Alice modifie sans publier. | Bob ne voit rien ; Bob a son propre clone (AC 4). |
+| S3-1 [E2E] | Connexion d'Alice via Forgejo (OIDC). | Retour sur l'accueil web ; aucun formulaire PAT (AC 1). |
+| S3-2 [E2E] | Inspecter cookies, réponses `/rpc`, `/auth/me`, logs serveur. | Jeton forge absent partout ; cookie de session `HttpOnly` (AC 1). |
+| S3-3 [E2E] | Alice modifie SYS-0001 et publie. | `git log --format='%an <%ae>'` = identité Forgejo d'Alice ; `updatedBy` = Alice (AC 2). |
+| S3-4 [E2E] | Alice et Bob ouvrent le même projet ; Alice modifie sans publier. | Bob ne voit rien ; Bob a son propre clone (AC 4). |
 | S3-5 [M] | Alice et Bob modifient le même champ ; Alice publie, puis Bob. | Bob passe par la résolution GH37 dans le navigateur. |
-| S3-6 [M] | Désactiver Bob dans Forgejo pendant sa session, puis Bob publie. | Message de révocation, retour au login ; modifications non publiées retrouvées après réactivation et reconnexion (AC 3). |
-| S3-7 [M] | Désactiver Bob, Bob ne fait rien. | Session invalidée en ≤ 5 min. |
+| S3-6 [E2E] | Désactiver Bob dans Forgejo pendant sa session, puis Bob publie. | Message de révocation, retour au login ; modifications non publiées retrouvées après réactivation et reconnexion (AC 3). |
+| S3-7 [A] | Désactiver Bob, Bob ne fait rien. | Session invalidée en ≤ 5 min. |
 | S3-8 [M] | Sous-traitant n'ayant accès qu'à un repo : cloner un repo non autorisé. | Erreur d'accès explicite (droits forge). |
 | S3-9 [M] | Inactivité 30 min (ou délai réduit en test), puis reprise. | Mémoire libérée (log d'éviction) ; projet rouvert sans perte (AC 10). |
 | S3-10 [M] | Redémarrer le conteneur. | Reconnexion ; clones et modifications non publiées conservés (AC 11). |
@@ -109,10 +109,16 @@ qui exigent un redémarrage du conteneur ou une attente réelle (S3-7, S3-9, S3-
 | S3-15 [E2E] | Accueil web d'un membre d'équipe (#45 S2b) : « Projets de votre équipe ». | Seuls les repos accessibles sont listés ; clic → clone dans « Mes projets » puis ouverture sur la vue d'ouverture de l'équipe. |
 | S3-16 [E2E] | « Créer sur le serveur » depuis le web (#45 S4). | Repo créé dans l'organisation, clone dans « Mes projets », premier commit à l'identité de l'utilisateur. |
 | S3-17 [E2E] | Lecteur (droit lecture seule) : publier une modification. | Bannière « écriture refusée » (marqueur `forge-access` 403) dans le navigateur ; session conservée. |
-| S3-18 [A] | Erreur RPC portant un marqueur `forge-access` 401 pour l'hôte de la session. | Session détruite, `auth:session-revoked` diffusé, réponse 401. |
+| S3-18 [A] | Erreur RPC portant un marqueur `forge-access` 401 pour l'hôte de la session, ou forge marquée révoquée pendant un appel réussi (synchronisation automatique). | Session détruite, `auth:session-revoked` diffusé, réponse 401 `revoked` ; appels tardifs avec la même session : 401 `revoked` ; WebSocket fermée en 4402. |
 | S3-19 [A] | Jeton OAuth2 expiré (`expires_in` dépassé) avant une opération git. | Rafraîchi par `refresh_token` sans interruption ; refresh refusé → session révoquée. |
 | S3-20 [A] | `auth:login-password`, `auth:detect-forge` appelés depuis le navigateur. | 404 (connexion web = OIDC uniquement). Déjà couvert par `channel-policy.test.ts`. |
 | S3-21 [E2E] | Configuration d'équipe (`<org>/polenta-config`) : langue et vue d'ouverture par défaut. | Appliquées sur le web comme sur le desktop, sans choix personnel enregistré. |
+
+**Statut au sprint 3 (2026-10-11)** — [E2E] contre `acme` (`s3-oidc.spec.ts`) : S3-1, S3-2, S3-3,
+S3-4, S3-6, S3-15, S3-16, S3-17, S3-21. [A] (`oidc.test.ts`, `user-pool.test.ts`) : S3-7 (sonde
+périodique), S3-12, S3-13, S3-14, S3-18, S3-19, S3-20, plus état/PKCE, échange refusé, déconnexion
+`POST`, rafraîchissement concurrent d'une reconnexion. Restent [M] : S3-5 (conflit entre deux
+utilisateurs web : mécanisme couvert en mode dev par P-4), S3-8, S3-9, S3-10, S3-11.
 
 ## Sprint 4 — Impression, Docker, déploiement
 

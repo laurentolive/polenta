@@ -14,7 +14,7 @@ async function main(): Promise<void> {
   applyServerHardening({ dataDir: config.dataDir, gitHosts: config.gitHosts, gitAllowHttp: config.gitAllowHttp })
   const pkg = JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf-8')) as { version: string }
   const { app } = await buildServer(config, pkg.version)
-  if (!config.auth.token) {
+  if (config.auth.mode === 'dev' && !config.auth.token) {
     app.log.warn('POLENTA_WEB_DEV_TOKEN vide : clone/push vers un remote privé échoueront.')
   }
   await app.listen({ port: config.port, host: config.host })

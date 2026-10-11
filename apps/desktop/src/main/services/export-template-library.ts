@@ -3,13 +3,15 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type { ExportTemplateInfo, ExportTemplateListResult, TemplateExportFormat } from '@polenta/types'
 import type { AppSettingsService } from './app-settings.service'
+import { BRAND } from '../../shared/brand'
 
 // Profondeur de sous-dossiers parcourue (un sous-dossier par client, éventuellement un niveau de
 // rangement en plus) — borne un dossier mal choisi (ex. la racine d'un disque).
 const MAX_DEPTH = 5
 
 /** Sous-dossier de la bibliothèque recevant les gabarits d'exemple livrés avec l'application. */
-export const EXAMPLES_FOLDER = 'Exemples Polenta'
+// GH49 — au nom de la marque du binaire.
+export const EXAMPLES_FOLDER = `Exemples ${BRAND.productName}`
 
 /**
  * GH34 — bibliothèque de gabarits d'export : dossier choisi dans les préférences application

@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import fastifyCookie from '@fastify/cookie'
 import fastifyMultipart from '@fastify/multipart'
+import { BRAND } from '../shared/brand'
 import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import { createReadStream, createWriteStream, existsSync } from 'fs'
@@ -105,7 +106,7 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
     }
     void reply.clearCookie(SESSION_COOKIE, cookieOpts).clearCookie(CSRF_COOKIE, cookieOpts)
     return reply.type('text/html; charset=utf-8').send(
-      '<!doctype html><meta charset="utf-8"><title>Polenta</title>' +
+      `<!doctype html><meta charset="utf-8"><title>${BRAND.productName}</title>` +
       '<body style="font-family:sans-serif;padding:2rem">Vous êtes déconnecté. ' +
       '<a href="/auth/login">Se reconnecter</a></body>',
     )

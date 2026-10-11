@@ -8,6 +8,7 @@ import { forgeAccessNotices } from '../lib/forgeAccessNotices'
 import { useQueryClient } from '@tanstack/react-query'
 import { refreshTeamConfig } from '../hooks/useTeamConfig'
 import { inviteStore } from '../lib/inviteStore'
+import { BrandLogo } from '../components/BrandLogo'
 
 export const Route = createFileRoute('/login')({
   component: isWeb ? WebLoginRedirect : LoginPage,
@@ -312,6 +313,7 @@ function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-canvas">
       <div className="w-full max-w-md bg-surface rounded-xl shadow-sm border border-edge p-8 space-y-6">
+        <BrandLogo />
         <div>
           <h1 className="text-2xl font-semibold text-ink">{t('login.welcome')}</h1>
           <p className="text-sm text-ink-2 mt-1">

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { loadMachineConfig, machineConfigPath, parseMachineConfig } from './machine-config'
+import { BRAND } from '../../shared/brand'
 
 function load(content: string | null | Error, env: NodeJS.ProcessEnv = {}) {
   const warnings: string[] = []
@@ -14,10 +15,10 @@ function load(content: string | null | Error, env: NodeJS.ProcessEnv = {}) {
 }
 
 describe('machine-config', () => {
-  it('chemins par plateforme, POLENTA_CONFIG prioritaire', () => {
-    expect(machineConfigPath('win32', { ProgramData: 'D:\\PD' })).toBe('D:\\PD\\Polenta\\config.json')
-    expect(machineConfigPath('linux', {})).toBe('/etc/polenta/config.json')
-    expect(machineConfigPath('darwin', {})).toBe('/Library/Application Support/Polenta/config.json')
+  it('chemins par plateforme (dossier de la marque, GH49), POLENTA_CONFIG prioritaire', () => {
+    expect(machineConfigPath('win32', { ProgramData: 'D:\\PD' })).toBe(`D:\\PD\\${BRAND.productName}\\config.json`)
+    expect(machineConfigPath('linux', {})).toBe(`/etc/${BRAND.id}/config.json`)
+    expect(machineConfigPath('darwin', {})).toBe(`/Library/Application Support/${BRAND.productName}/config.json`)
     expect(machineConfigPath('linux', { POLENTA_CONFIG: '/tmp/c.json' })).toBe('/tmp/c.json')
   })
 

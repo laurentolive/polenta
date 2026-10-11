@@ -17,6 +17,7 @@ import { TeamProjects } from '../components/home/TeamProjects'
 import { useTeamConfig } from '../hooks/useTeamConfig'
 import { projectHomeRoute } from '../lib/projectHome'
 import type { ForgeAccount, ForgeRepo, TeamProjectEntry } from '@polenta/types'
+import { BrandLogo } from '../components/BrandLogo'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -262,6 +263,7 @@ function HomePage() {
 
   return (
     <div className="p-8 max-w-lg mx-auto space-y-3">
+      <BrandLogo />
       {isWeb && (
         <div className="space-y-2">
           <WebProjectList disabled={busy !== null} onOpen={handleOpenWebProject} />

@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
+import { BRAND } from '../../shared/brand'
 
 /**
  * `get_schema` — tool de lecture seule (T122 sprint 1).
@@ -16,7 +17,7 @@ export function registerSchemaTools(server: McpServer, container: McpContainer):
     {
       title: 'Get project schema',
       description:
-        "Retourne le schéma résolu du projet Polenta courant (.polenta/schema.yaml) : " +
+        `Retourne le schéma résolu du projet ${BRAND.productName} courant (.polenta/schema.yaml) : ` +
         "nœuds (composants), types d'objets, champs, statuts, types de lien. À appeler " +
         "avant toute création d'objet pour connaître les objectTypeRef valides et leurs " +
         "champs requis.",

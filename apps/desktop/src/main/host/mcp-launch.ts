@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import * as path from 'path'
 import type { McpServerLaunchConfig } from '../../mcp-server/mcp-json.template'
+import { BRAND } from '../../shared/brand'
 
 /**
  * Résout comment lancer le serveur MCP Polenta pour le repo produit courant (T122
@@ -20,7 +21,7 @@ import type { McpServerLaunchConfig } from '../../mcp-server/mcp-json.template'
  *   cet usage).
  * - **Packagé** (app installée via `electron-builder`) : le bundle autonome
  *   `resources/mcp-server/index.cjs` (produit par `pnpm build:mcp-server`, copié par
- *   `extraResources`, cf. `electron-builder.yml`) est lancé avec le binaire Electron
+ *   `extraResources`, cf. `electron-builder.config.ts`) est lancé avec le binaire Electron
  *   packagé lui-même, en mode `ELECTRON_RUN_AS_NODE=1` — évite toute dépendance à un
  *   Node.js système sur le poste utilisateur final (souvent absent d'une machine qui
  *   n'a qu'installé l'app Polenta, contrairement à un poste de développement).
@@ -44,9 +45,12 @@ export function resolveMcpServerLaunchConfig(): McpServerLaunchConfig {
 
   const appRoot = app.getAppPath() // `apps/desktop` en dev (electron-vite dev)
   const tsxCli = path.join(appRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs')
-  const mcpServerEntry = path.join(appRoot, 'src', 'mcp-server', 'index.ts')
+  // GH49 — dev-entry.ts pose la marque (pas de define sous tsx) avant de charger index.ts ;
+  // `--brand` aligne le serveur sur la marque de l'app `pnpm dev` qui écrit ce .mcp.json (argument
+  // plutôt que bloc `env`, que certains clients MCP substituent à tout l'environnement).
+  const mcpServerEntry = path.join(appRoot, 'src', 'mcp-server', 'dev-entry.ts')
   return {
     command: 'node',
-    args: [tsxCli, mcpServerEntry, '--repo', '.'],
+    args: [tsxCli, mcpServerEntry, '--brand', BRAND.id, '--repo', '.'],
   }
 }

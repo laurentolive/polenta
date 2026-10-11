@@ -13,6 +13,7 @@ import { normalizeBaseUrl } from './forge/forge-http'
 import type { ForgeProvider } from './forge/forge-provider'
 import { githubProvider, isGithubHost, GITHUB_HOST, startGithubDeviceFlow, pollGithubDeviceFlow } from './forge/github.provider'
 import { forgejoProvider, detectForge, createAccessToken, probeAccess } from './forge/forgejo.provider'
+import { BRAND } from '../../shared/brand'
 
 export type { DeviceFlowSession } from './forge/github.provider'
 
@@ -376,7 +377,7 @@ export class AuthService {
       // fall through
     }
 
-    return { name: 'Polenta User', email: 'user@polenta.local' }
+    return { name: `${BRAND.productName} User`, email: `user@${BRAND.id}.local` }
   }
 
   // ─── Credentials for isomorphic-git ────────────────────────────────────────

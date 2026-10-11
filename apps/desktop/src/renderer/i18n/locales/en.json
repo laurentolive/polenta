@@ -132,7 +132,7 @@
       "exportTemplatesNone": "No folder configured",
       "exportTemplatesPick": "Export template library",
       "exportTemplatesExamples": "Install examples",
-      "exportTemplatesExamplesHint": "Copies the example Word templates and the tag reference into the \"Exemples Polenta\" sub-folder of the library (existing files are never overwritten).",
+      "exportTemplatesExamplesHint": "Copies the example Word templates and the tag reference into the \"Exemples {{appName}}\" sub-folder of the library (existing files are never overwritten).",
       "exportTemplatesExamplesDone": "{{count}} file(s) copied to {{folder}}",
       "forgeTokenHint": "Signing out removes the token from this computer; it remains listed in your server settings › Applications, where you can revoke it.",
       "autoUpdateLocked": "Updates are managed by your IT department.",
@@ -155,7 +155,7 @@
     }
   },
   "login": {
-    "welcome": "Welcome to Polenta",
+    "welcome": "Welcome to {{appName}}",
     "subtitle": "Connect your git account to get started.",
     "remoteLabel": "Git remote",
     "otherOption": "Other…",
@@ -175,7 +175,7 @@
       "otp": "Two-factor authentication code",
       "otpOptional": "Two-factor authentication code (if enabled)",
       "otpHelp": "Enter the 6-digit code shown by your authenticator app.",
-      "passwordNotStored": "Your password is not kept: Polenta asks the server for an access token, the only thing stored on this computer.",
+      "passwordNotStored": "Your password is not kept: {{appName}} asks the server for an access token, the only thing stored on this computer.",
       "useToken": "Use an access token instead",
       "usePassword": "Sign in with username and password",
       "patHelp": "Token created in the server settings › Applications, with write access to repositories and organizations and read access to the user.",
@@ -193,14 +193,14 @@
     }
   },
   "home": {
-    "demoTitle": "Discover Polenta with the demo project",
+    "demoTitle": "Discover {{appName}} with the demo project",
     "demoHelp": "LL800 washing machine — every feature on a complete project",
     "loadingDemo": "Loading demo…",
     "pickDemoFolder": "Demo project folder",
-    "demoFolderNotEmpty": "This folder is not empty and holds no Polenta project: pick an empty folder or an existing project.",
-    "notAWorkspace": "This folder is neither a Polenta project nor a git repo.",
+    "demoFolderNotEmpty": "This folder is not empty and holds no {{appName}} project: pick an empty folder or an existing project.",
+    "notAWorkspace": "This folder is neither a {{appName}} project nor a git repo.",
     "openExisting": "Open an existing project",
-    "openExistingHelp": "Pick a Polenta project folder or a git repo",
+    "openExistingHelp": "Pick a {{appName}} project folder or a git repo",
     "pickProjectFolder": "Project folder",
     "opening": "Opening…",
     "openFromRepo": "Open a project from an existing repo",
@@ -265,7 +265,9 @@
   "workspace": {
     "noWorkspace": "No workspace specified.",
     "notResolvable": "This project can no longer be resolved ({{error}}). Go back to the home page to open it again.",
-    "redirecting": "Redirecting to the Structure tab…"
+    "redirecting": "Redirecting to the Structure tab…",
+    "unknownDirectory": "This directory no longer matches a valid {{appName}} project (moved or deleted?).",
+    "notAWorkspace": "This directory is not a {{appName}} workspace."
   },
   "sidebar": {
     "project": {
@@ -569,7 +571,7 @@
       "moveElementStale": "This element changed before the move completed — please try dragging it again.",
       "nameAlreadyUsed": "This name is already used in this repo or workspace.",
       "schemaLoadingForLocal": "This repo's schema is still loading — try again in a moment.",
-      "notAWorkspace": "This directory is not (or no longer) a Polenta workspace."
+      "notAWorkspace": "This directory is not (or no longer) a {{appName}} workspace."
     },
     "page": {
       "title": "Data model",
@@ -844,7 +846,7 @@
       "importedBadge": "Imported from Excel",
       "fatal": {
         "unreadable": "Unreadable file: not a valid Excel workbook.",
-        "notAnExecutionSheet": "This file is not a Polenta execution workbook (technical sheet missing).",
+        "notAnExecutionSheet": "This file is not a {{appName}} execution workbook (technical sheet missing).",
         "unsupportedVersion": "Unsupported workbook version ({{version}}).",
         "wrongCampaign": "This workbook was exported for another campaign ({{campaignId}}).",
         "campaignClosed": "The campaign is closed: import not possible."
@@ -998,6 +1000,8 @@
     "formatNotAvailable": "{{format}} export not available for this view",
     "exportError": "Error while exporting",
     "export": "Export",
+    "exportPlan": "Export plan",
+    "exportReport": "Export report",
     "exportedTo": "Exported to {{path}}",
     "downloaded": "Downloaded: {{path}}",
     "openFolder": "Open folder",
@@ -1296,7 +1300,7 @@
   },
   "update": {
     "badge": {
-      "title": "Polenta v{{version}} is available"
+      "title": "{{appName}} v{{version}} is available"
     },
     "popover": {
       "title": "Update available",

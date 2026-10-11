@@ -1,0 +1,12 @@
+# Marque par défaut (POLENTA_BRAND absent) — valeurs historiques, à ne pas changer : appId,
+# productName (dossier userData) et id (service keytar) déterminent où l'app installée
+# retrouve projets, comptes et préférences des utilisateurs existants (GH49 spec §3.5).
+id: polenta
+productName: Polenta
+appId: com.polenta.desktop
+executableName: polenta
+website: https://polenta.dev
+update:
+  provider: github
+  owner: laurentolive
+  repo: polenta

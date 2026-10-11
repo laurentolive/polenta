@@ -155,8 +155,8 @@ describe('lien d’invitation (spec §3ter)', () => {
   })
 
   it('ligne de commande (Windows) : le premier lien valide', () => {
-    expect(inviteFromArgv(['C:\\Polenta\\Polenta.exe', '--flag', 'polenta://connect?server=https://acme.example.fr&login=bob']))
+    expect(inviteFromArgv(['C:\\Programs\\app\\app.exe', '--flag', 'polenta://connect?server=https://acme.example.fr&login=bob']))
       .toEqual({ server: 'https://acme.example.fr', login: 'bob' })
-    expect(inviteFromArgv(['Polenta.exe'])).toBeNull()
+    expect(inviteFromArgv(['app.exe'])).toBeNull()
   })
 })

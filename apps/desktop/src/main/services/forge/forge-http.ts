@@ -2,6 +2,7 @@ import { request as undiciRequest, type Dispatcher } from 'undici'
 
 import { resolveProxyDispatcher } from '../net-proxy'
 import { checkRemote } from './remote-guard'
+import { BRAND } from '../../../shared/brand'
 
 /**
  * GH45 — appels HTTP vers l'API d'une forge (GitHub, Forgejo/Gitea) : même garde d'URL que git
@@ -68,7 +69,7 @@ const MAX_REDIRECTS = 3
 
 export async function forgeRequest<T = unknown>(url: string, opts: ForgeRequestOptions = {}): Promise<ForgeResponse<T>> {
   if (!opts.fixedUrl) checkRemote(url)
-  const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': 'Polenta', ...opts.headers }
+  const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': BRAND.productName, ...opts.headers }
   if (opts.token) headers['Authorization'] = `token ${opts.token}`
   if (opts.basic) {
     headers['Authorization'] = `Basic ${Buffer.from(`${opts.basic.login}:${opts.basic.password}`, 'utf-8').toString('base64')}`

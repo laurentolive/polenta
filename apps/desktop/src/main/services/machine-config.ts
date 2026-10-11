@@ -1,5 +1,6 @@
 import * as path from 'path'
 import type { MachineConfig } from '@polenta/types'
+import { BRAND } from '../../shared/brand'
 
 /**
  * GH45 — configuration « machine » déployée par la DSI (GPO, télédistribution), lue une fois au
@@ -17,12 +18,13 @@ export interface MachineConfigSource {
   warn: (message: string) => void
 }
 
+// GH49 — un dossier par marque (Polenta : « Polenta » / « polenta », chemins inchangés).
 export function machineConfigPath(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string {
   if (env['POLENTA_CONFIG']) return env['POLENTA_CONFIG']
   switch (platform) {
-    case 'win32': return path.win32.join(env['ProgramData'] ?? 'C:\\ProgramData', 'Polenta', 'config.json')
-    case 'darwin': return '/Library/Application Support/Polenta/config.json'
-    default: return '/etc/polenta/config.json'
+    case 'win32': return path.win32.join(env['ProgramData'] ?? 'C:\\ProgramData', BRAND.productName, 'config.json')
+    case 'darwin': return `/Library/Application Support/${BRAND.productName}/config.json`
+    default: return `/etc/${BRAND.id}/config.json`
   }
 }
 

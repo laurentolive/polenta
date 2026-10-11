@@ -57,9 +57,13 @@ apps/
   desktop/      ← application Electron
     package.json
     tsconfig.json
-    electron.vite.config.ts
-    electron-builder.yml
+    electron.vite.config.ts        ← define __POLENTA_BRAND__ + plugin de marque (GH49)
+    electron-builder.config.ts     ← GH49 : config paramétrée par la marque (remplace electron-builder.yml)
+    brands/<id>/                   ← GH49 : marques (brand.yaml, icônes, logo) — cf. brands/README.md
+    scripts/brand.ts, vite-brand-plugin.ts, package.ts, build-mcp-server.ts, register-brand.ts
     src/
+      shared/                      ← GH49 : brand.ts (BRAND, constante de build) + brand-types.ts —
+                                       importable par main, preload, renderer et serveur MCP
       main/                        ← Node.js process (main)
         index.ts                   ← BrowserWindow, app lifecycle, appelle createContainer()
         ipc/                       ← T130 : un seul point d'enregistrement, pas un fichier par domaine
@@ -1260,7 +1264,7 @@ Classes de boutons : voir §19.16 (`btn-primary`/`btn-secondary`/`btn-danger`/`b
 └────┴───────────────────┴─────────────────────────────────────────┘
 ```
 
-**Badge de mise à jour (GH26)** : `UpdateBadge` en bas de l'ActivityBar (`mt-auto`), rendu seulement quand `UpdateState.status === 'ready'` (mise à jour téléchargée) — icône + pastille, info-bulle « Polenta vX.Y.Z est disponible », jamais de popup. Clic → popover (version actuelle → nouvelle, « Voir les nouveautés » via `app:open-release-page`, « Plus tard », « Redémarrer pour installer »). Si des onglets de la fenêtre sont dirty (`TabsContext.dirtyTabIds`), le premier clic affiche un avertissement et le bouton devient « Installer quand même » (les onglets dirty des autres fenêtres ne sont pas vus — limite acceptée).
+**Badge de mise à jour (GH26)** : `UpdateBadge` en bas de l'ActivityBar (`mt-auto`), rendu seulement quand `UpdateState.status === 'ready'` (mise à jour téléchargée) — icône + pastille, info-bulle « <productName> vX.Y.Z est disponible » (GH49), jamais de popup. Clic → popover (version actuelle → nouvelle, « Voir les nouveautés » via `app:open-release-page`, « Plus tard », « Redémarrer pour installer »). Si des onglets de la fenêtre sont dirty (`TabsContext.dirtyTabIds`), le premier clic affiche un avertissement et le bouton devient « Installer quand même » (les onglets dirty des autres fenêtres ne sont pas vus — limite acceptée).
 
 **Principe fondamental :** cliquer une icône dans l'ActivityBar change **simultanément** la sidebar (panneau de contrôle) et le main frame (vue par défaut du panneau). L'`activePanel` est **dérivé de l'URL courante** — aucun état React séparé n'est nécessaire.
 
@@ -1410,10 +1414,12 @@ Le panneau Projet, quand un projet est chargé, est un hub de configuration. Il 
 
 **Bouton "Fermer le projet" (✕) :**
 - Affiché à droite du nom du projet dans le header du panneau
-- Appelle `api.workspace.clearLastOpened()`, remet le titre à `'Polenta'`, navigue vers `/`
+- Appelle `api.workspace.clearLastOpened()`, remet le titre à `<productName> v<version>` (marque du build, GH49), navigue vers `/`
 
 **Titre de fenêtre :**
 - Mis à jour via `api.app.setTitle(...)` dans un `useEffect` sur `project?.name` / `project?.localPath`
+- Format `<productName> v<version> — <projet> — <chemin>` (`BRAND.productName`, GH49) ; `<title>` de
+  `index.html` et icône d'onglet injectés au build par `scripts/vite-brand-plugin.ts`
 - `ProjectPanel` est l'unique responsable du titre — `VersionPanel` ne l'appelle pas
 
 ### 19.8b Panneau — Version

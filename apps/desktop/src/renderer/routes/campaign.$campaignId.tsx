@@ -290,6 +290,7 @@ function CampaignDetailPage() {
             {!testsLoading && (
               <ExportButton
                 kind="campaign-plan"
+                label={t('exportButton.exportPlan')}
                 formats={['xlsx', 'docx', 'pdf']}
                 repoPath={repoPath}
                 getSuggestedBaseName={async () => {
@@ -305,6 +306,7 @@ function CampaignDetailPage() {
             {!testsLoading && campaign.runs.some(r => r.status !== 'pending') && (
               <ExportButton
                 kind="campaign-report"
+                label={t('exportButton.exportReport')}
                 formats={['docx', 'pdf']}
                 repoPath={repoPath}
                 getSuggestedBaseName={async () => {

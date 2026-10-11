@@ -9,6 +9,7 @@ import type { DESKTOP_ONLY_CHANNELS } from './channels'
 import type { PlatformHost } from '../host/platform-host'
 import type { UpdateService } from '../services/update.service'
 import { IMAGE_MIME_BY_EXT, importFileIntoRepo, saveExport, saveExecutionSheet } from './file-ops'
+import { BRAND } from '../../shared/brand'
 
 /**
  * GH44 — channels propres au poste local : dialogues natifs, `shell`, fenêtres, mise à jour
@@ -67,10 +68,12 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   // electron-builder.yml pour le nom de l'exe généré : une seule string à modifier à
   // chaque release.
   handle('app:get-version', () => app.getVersion())
-  // GH26 — restreint aux pages de release du repo : seul usage (lien « Voir les nouveautés »),
-  // pas un ouvreur d'URL générique exposé au renderer.
+  // GH26 — restreint aux pages de release : seul usage (lien « Voir les nouveautés »), pas un
+  // ouvreur d'URL générique exposé au renderer. GH49 : celles de la marque (`releasesUrl`, ou une
+  // page sous celle-ci) ; marque sans `releasesUrl` → rien n'est ouvert.
   handle('app:open-release-page', (_e, url: string) => {
-    if (url.startsWith('https://github.com/laurentolive/polenta/releases/')) return shell.openExternal(url)
+    const base = BRAND.releasesUrl?.replace(/\/+$/, '')
+    if (base && (url === base || url.startsWith(`${base}/`))) return shell.openExternal(url)
   })
 
   // ── Update (GH26) ─────────────────────────────────────────────────────────────

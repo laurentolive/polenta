@@ -7,6 +7,7 @@ import type {
   CampaignTestRun, ExecutionSheetColumn, ExecutionSheetLabels, ExecutionSheetLocale, TestCampaign, TestCase,
 } from '@polenta/types'
 import { markdownToPlainText } from './template/markdown-to-text'
+import { BRAND } from '../../../shared/brand'
 
 /**
  * GH36 — classeur Excel d'exécution hors outil (specs/GH36-design.md §3.3). Deux niveaux :
@@ -175,7 +176,7 @@ export async function writeExecutionWorkbook(model: ExecutionSheetModel, destPat
 export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promise<ExcelJS.Workbook> {
   const labels = EXECUTION_SHEET_LABELS[model.locale]
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = 'Polenta'
+  workbook.creator = BRAND.productName
   const sheet = workbook.addWorksheet(labels.sheetName, {
     // Volet figé : en-têtes + colonnes Clé/Instance/Étape (repère en défilement horizontal).
     views: [{ state: 'frozen', ySplit: EXECUTION_SHEET_HEADER_ROW, xSplit: EXECUTION_SHEET_COLUMNS.indexOf('step') + 1 }],

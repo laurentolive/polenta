@@ -14,6 +14,8 @@ export default defineConfig({
     // GH45 — aussi les services du process main (forges, configuration machine, comptes).
     include: ['src/web-server/**/*.test.ts', 'src/main/services/**/*.test.ts'],
     environment: 'node',
+    // GH49 — les services partagés lisent la marque au chargement (src/shared/brand.ts).
+    setupFiles: ['scripts/register-brand.ts'],
     testTimeout: 20_000,
   },
 })

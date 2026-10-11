@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { setGitRemoteGuard } from '../main/services/git-http'
+import { BRAND } from '../shared/brand'
 
 /**
  * GH44 — durcissements propres au process serveur (jamais appliqués au desktop) :
@@ -40,7 +41,7 @@ export function gitRemoteGuard(hosts: string[], allowHttp: boolean): (url: URL) 
   return (url) => {
     const schemeOk = url.protocol === 'https:' || (allowHttp && url.protocol === 'http:')
     if (!schemeOk || !allowed.has(url.hostname.toLowerCase())) {
-      throw new Error(`Serveur git non autorisé sur ce serveur Polenta : ${url.protocol}//${url.host}`)
+      throw new Error(`Serveur git non autorisé sur ce serveur ${BRAND.productName} : ${url.protocol}//${url.host}`)
     }
   }
 }

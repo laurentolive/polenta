@@ -29,7 +29,7 @@ beforeEach(async () => { repo = await fsP.mkdtemp(path.join(os.tmpdir(), 'polent
 afterEach(async () => { await fsP.rm(repo, { recursive: true, force: true }) })
 
 describe('champs visibles par défaut de l’équipe (S2b-11, critère 23)', () => {
-  it('sans choix personnel : défaut de l’équipe ; autre type : défaut de Polenta', () => {
+  it('sans choix personnel : défaut de l’équipe ; autre type : défaut de l’application', () => {
     withTeamDefault({ 'root::exigence': { excel: ['priority', 'statement'] } })
     expect(get('root::exigence')).toEqual({ excel: ['priority', 'statement'] })
     expect(get('root::test')).toBeNull()

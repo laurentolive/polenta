@@ -18,6 +18,7 @@ import * as yaml from 'js-yaml'
 
 import type { SyncService } from './sync.service'
 import type { PolentaRepoService } from './polenta-repo.service'
+import { BRAND } from '../../shared/brand'
 import type {
   WorkspaceTree,
   WorkspaceTreeNode,
@@ -220,7 +221,7 @@ export class WorkspaceTreeService {
               repoName: name,
               remoteAccess: true,
               error: !hasCredentials
-                ? `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : aucun compte n'est configuré pour cet hôte dans Polenta — ajoutez un compte ayant accès à ce dépôt.`
+                ? `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : aucun compte n'est configuré pour cet hôte dans ${BRAND.productName} — ajoutez un compte ayant accès à ce dépôt.`
                 : forge === 'forgejo'
                   ? `Votre compte n'a pas accès au dépôt "${name}" (${node.url}). Demandez à l'administrateur du serveur de vous ajouter à une équipe qui y a accès.`
                   : `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : vérifiez que votre compte a accès à ce dépôt et que votre token a la bonne portée (scope « repo », ou dépôt inclus dans un token fine-grained).`,

@@ -8,6 +8,7 @@ import { useLocale } from '../../i18n/useLocale'
 import { capabilities } from '../../platform'
 import { useCurrentAccount } from '../../hooks/useCurrentAccount'
 import { useTeamConfig } from '../../hooks/useTeamConfig'
+import { BRAND } from '../../../shared/brand'
 
 export function AccountPanel() {
   const { t } = useTranslation()
@@ -159,7 +160,8 @@ export function AccountPanel() {
             <span>{locale === 'fr' ? t('account.panel.english') : t('account.panel.french')}</span>
           </button>
         </div>
-        {capabilities.autoUpdate && autoCheckUpdates !== null && (
+        {/* GH49 — marque sans source de mise à jour : préférence sans objet, masquée. */}
+        {capabilities.autoUpdate && BRAND.update && autoCheckUpdates !== null && (
           <label className="flex items-center justify-between gap-2 cursor-pointer"
             title={autoUpdateLocked ? t('account.panel.autoUpdateLocked') : t('account.panel.autoUpdateHint')}>
             <span className="text-xs text-ink-2">{t('account.panel.autoUpdate')}</span>

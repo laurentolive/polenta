@@ -2,8 +2,14 @@ import { app, BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { UpdateState } from '@polenta/types'
 import type { AppSettingsService } from './app-settings.service'
+import { BRAND } from '../../shared/brand'
 
-const RELEASES_URL = 'https://github.com/laurentolive/polenta/releases'
+/** GH49 — notes de version de la marque : page du tag pour GitHub, page `releasesUrl` telle quelle
+ * pour une source `generic` ; absente → pas de lien. */
+function releaseUrl(version: string): string | undefined {
+  if (!BRAND.releasesUrl) return undefined
+  return BRAND.update?.provider === 'github' ? `${BRAND.releasesUrl}/tag/v${version}` : BRAND.releasesUrl
+}
 
 /**
  * GH26 — mise à jour automatique (electron-updater, provider GitHub décrit par le `publish`
@@ -20,9 +26,12 @@ export class UpdateService {
 
   scheduleStartupCheck(delayMs = 10_000): void {
     if (this.scheduled) return
+    // GH49 — marque sans source de mise à jour : aucune vérification (pas d'app-update.yml packagé).
+    if (!BRAND.update) return
     // Hors build packagé, electron-updater n'a pas d'app-update.yml : POLENTA_FORCE_DEV_UPDATE=1
     // lui fait lire apps/desktop/dev-app-update.yml pour tester détection + badge en `pnpm dev`.
-    const forceDev = process.env['POLENTA_FORCE_DEV_UPDATE'] === '1'
+    // GH49 — dev-app-update.yml décrit la source de Polenta : ignoré pour une autre marque.
+    const forceDev = process.env['POLENTA_FORCE_DEV_UPDATE'] === '1' && BRAND.id === 'polenta'
     if (!app.isPackaged && !forceDev) return
     if (!this.settings.get().autoCheckUpdates) return
     this.scheduled = true
@@ -44,12 +53,12 @@ export class UpdateService {
     autoUpdater.on('update-available', (info) => this.setState({
       status: 'downloading',
       availableVersion: info.version,
-      releaseUrl: `${RELEASES_URL}/tag/v${info.version}`,
+      releaseUrl: releaseUrl(info.version),
     }))
     autoUpdater.on('update-downloaded', (info) => this.setState({
       status: 'ready',
       availableVersion: info.version,
-      releaseUrl: `${RELEASES_URL}/tag/v${info.version}`,
+      releaseUrl: releaseUrl(info.version),
     }))
     autoUpdater.on('error', (err) => {
       console.error('[update] error:', err?.message ?? err)

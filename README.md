@@ -105,4 +105,4 @@ AlaSQL, MiniSearch, Recharts, Zod.
 
 ## License
 
-[GNU GPL v3](LICENSE)
+[GNU AGPL v3](LICENSE) (`AGPL-3.0-or-later`). Versions up to and including commit 646c204 were released under the GNU GPL v3.

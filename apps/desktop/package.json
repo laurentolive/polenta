@@ -2,6 +2,7 @@
   "name": "@polenta/desktop",
   "version": "0.0.8",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

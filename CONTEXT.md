@@ -123,6 +123,29 @@ la visualisation, navigatio, l'édition des exigences, des tests, des campagnes 
 
 ---
 
+### D7 — Licence AGPLv3, modèle économique par le service (GH48)
+
+**Décision** : Polenta est publié sous **AGPL-3.0-or-later** (auparavant GPLv3, jusqu'au
+commit `646c204` inclus — ces versions restent sous GPLv3).
+
+**Pourquoi** :
+- Le client web (#44) et l'hébergement (#45) exposent Polenta sur un réseau ; la GPLv3
+  n'oblige pas un tiers qui héberge une version modifiée en SaaS à publier ses modifications.
+  L'AGPLv3 (§13) comble cette faille.
+- Le modèle économique est celui du service (type Red Hat) : installation, hébergement,
+  support, mises à jour, développement sur mesure — compatible avec une licence libre.
+- Un client qui héberge Polenta en interne n'a rien à publier vers l'extérieur.
+
+**Écartés** : PolyForm Noncommercial (interdit tout usage en entreprise, donc chez tous les
+clients cibles) ; Elastic License 2.0 / FSL (pas open source).
+
+**Conséquences** :
+- Tant que l'auteur est seul titulaire des droits, une double licence (AGPL + commerciale)
+  reste possible. Accepter des contributions externes impose un CLA pour la conserver.
+- La protection du nom passe par un dépôt de marque, pas par la licence.
+
+---
+
 ## Tensions et compromis identifiés
 
 | Tension | Choix fait | Raison |

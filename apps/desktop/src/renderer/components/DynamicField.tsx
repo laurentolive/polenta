@@ -1,6 +1,7 @@
 import type { SchemaField } from '@polenta/types'
 import { RichTextField } from './RichTextField'
 import { MultiEnumCheckboxes } from './MultiEnumCheckboxes'
+import { UserFieldInput } from './system/UserFieldInput'
 
 interface Props {
   field: SchemaField
@@ -70,6 +71,16 @@ export function DynamicField({ field, value, onChange, disabled, repoPath, inter
           onChange={onChange}
           disabled={disabled}
           interfaceRoles={interfaceRoles}
+        />
+      ) : field.type === 'user' ? (
+        // GH45 S4 — membres de l'organisation proposés (forge Forgejo), saisie libre conservée.
+        <UserFieldInput
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          repoPath={repoPath}
+          placeholder={field.placeholder ?? ''}
+          className="input-field w-full"
         />
       ) : (
         <input

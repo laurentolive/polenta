@@ -166,7 +166,11 @@ Sprint {K} : exécute uniquement le périmètre sprint {K} défini dans `specs/G
 3. Vérifie TypeScript / lint — zéro erreur nouvelle
 4. Lance `/code-review` sur le diff
 5. Corrige les problèmes identifiés
-6. Exécute les tests automatiques disponibles
+6. Exécute les tests automatiques disponibles : `pnpm test` (unitaires) et, si le ticket touche le
+   renderer, les services du main ou le serveur web, les tests de bout en bout du client web
+   (`pnpm --filter @polenta/desktop test:e2e:web`, cf. `apps/desktop/e2e-web/README.md`). Les
+   scénarios du ticket qui peuvent l'être sont ajoutés en e2e (`e2e-web/gh{N}-*.spec.ts`) plutôt que
+   laissés en test manuel.
 7. Corrige jusqu'à zéro bug
 
 **Si dernier sprint :**

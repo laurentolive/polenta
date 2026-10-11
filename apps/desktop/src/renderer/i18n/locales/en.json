@@ -133,7 +133,14 @@
       "exportTemplatesPick": "Export template library",
       "exportTemplatesExamples": "Install examples",
       "exportTemplatesExamplesHint": "Copies the example Word templates and the tag reference into the \"Exemples {{appName}}\" sub-folder of the library (existing files are never overwritten).",
-      "exportTemplatesExamplesDone": "{{count}} file(s) copied to {{folder}}"
+      "exportTemplatesExamplesDone": "{{count}} file(s) copied to {{folder}}",
+      "forgeTokenHint": "Signing out removes the token from this computer; it remains listed in your server settings › Applications, where you can revoke it.",
+      "autoUpdateLocked": "Updates are managed by your IT department.",
+      "teamConfigTeams": "Server configuration applied (teams: {{teams}}).",
+      "teamConfigDefaults": "Server configuration applied.",
+      "teamConfigNone": "No configuration on this server.",
+      "teamConfigError": "Server configuration not read: {{error}}",
+      "teamConfigWarnings": "({{count}} setting(s) ignored)"
     },
     "menu": {
       "defaultLabel": "Account"
@@ -160,7 +167,30 @@
     "codeExpired": "Code expired, try again.",
     "connectionDenied": "Connection denied.",
     "submit": "Log in",
-    "connecting": "Logging in…"
+    "connecting": "Logging in…",
+    "forge": {
+      "detecting": "Identifying the server…",
+      "login": "Username",
+      "password": "Password",
+      "otp": "Two-factor authentication code",
+      "otpOptional": "Two-factor authentication code (if enabled)",
+      "otpHelp": "Enter the 6-digit code shown by your authenticator app.",
+      "passwordNotStored": "Your password is not kept: {{appName}} asks the server for an access token, the only thing stored on this computer.",
+      "useToken": "Use an access token instead",
+      "usePassword": "Sign in with username and password",
+      "patHelp": "Token created in the server settings › Applications, with write access to repositories and organizations and read access to the user.",
+      "invalidOtp": "Invalid two-factor authentication code.",
+      "invalidCredentials": "Incorrect username or password.",
+      "invalidCredentialsGitea": "Sign-in refused: incorrect username or password, missing or invalid two-factor code, or disabled account.",
+      "accountDisabled": "This account is disabled. Contact the server administrator.",
+      "notAForge": "This server is not a Forgejo or Gitea server.",
+      "passwordChangeRequired": "Your password is temporary: change it on the server, then sign in here with the new one.",
+      "changePassword": "Change my password on the server",
+      "companyServer": "Your company server…",
+      "serverPlaceholder": "server address, e.g. acme.forge.example.com",
+      "invited": "Invitation to sign in to {{server}}.",
+      "inviteRejected": "Invitation link ignored: {{server}} is not the server allowed by your IT department."
+    }
   },
   "home": {
     "demoTitle": "Discover {{appName}} with the demo project",
@@ -182,7 +212,34 @@
     "createNewHelp": "Start an empty project",
     "projectNameLabel": "Project name",
     "creating": "Creating…",
-    "continue": "Continue"
+    "continue": "Continue",
+    "web": {
+      "myProjects": "My projects",
+      "noProjects": "No projects yet: load the demo, open a repository or create a project.",
+      "delete": "Remove from “My projects”",
+      "deleteConfirm": "Remove project “{{name}}” from your space? The remote repository is not affected.",
+      "deleteUnpublished": "“{{name}}” has unpublished changes ({{repos}}). They will be lost. Remove anyway?"
+    },
+    "team": {
+      "title": "Your team’s projects",
+      "open": "Open",
+      "pickFolder": "Folder for the project",
+      "folderNotEmpty": "This folder is not empty: choose an empty folder for the project."
+    },
+    "server": {
+      "account": "Account",
+      "searchRepos": "Search a project (organization/name)",
+      "repoList": "Accessible projects",
+      "noRepos": "No project is accessible with this account. Ask your administrator to add you to a team.",
+      "noMatch": "No project matches the search.",
+      "readOnly": "read-only",
+      "enterUrl": "Enter a URL",
+      "organization": "Organization",
+      "onServer": "On the server {{host}}",
+      "onThisComputer": "On this computer only",
+      "noCreatableOrg": "Your account is not allowed to create a project in any organization on {{host}}. Ask your administrator.",
+      "pushWarning": "Project created on the server, but its first publication failed ({{message}}). Publish later with the Publish button."
+    }
   },
   "preferences": {
     "loading": "Loading preferences…",
@@ -448,7 +505,14 @@
       "implementedVersionLabel": "Implemented version",
       "unresolved": "unresolved",
       "rolesPlayedLabel": "Roles played",
-      "addImplementation": "+ Declare an implementation"
+      "addImplementation": "+ Declare an implementation",
+      "server": {
+        "create": "Create the repo on the server",
+        "created": "Repository {{repo}} created on the server.",
+        "repoName": "Repository name",
+        "creating": "Creating…",
+        "confirm": "Create"
+      }
     },
     "removeDependency": {
       "title": "Remove {{repoLabel}}?",
@@ -939,6 +1003,7 @@
     "exportPlan": "Export plan",
     "exportReport": "Export report",
     "exportedTo": "Exported to {{path}}",
+    "downloaded": "Downloaded: {{path}}",
     "openFolder": "Open folder",
     "openFile": "Open file",
     "templateFor": "{{format}} template",
@@ -1346,5 +1411,10 @@
       "preview": "{{oldId}} (my changes) will become {{newId}}; files rewritten on my side:",
       "confirm": "Renumber to {{newId}}"
     }
+  },
+  "forgeAccess": {
+    "revoked": "Your access to {{host}} was revoked or has expired, or your account was disabled. Your local changes are kept.",
+    "reconnect": "Sign in again",
+    "readOnlyProject": "You have read-only access to this project ({{repo}}): you can browse but not publish."
   }
 }

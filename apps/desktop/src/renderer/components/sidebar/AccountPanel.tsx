@@ -5,35 +5,28 @@ import { Sun, Moon, Languages } from 'lucide-react'
 import { api } from '../../api'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLocale } from '../../i18n/useLocale'
+import { capabilities } from '../../platform'
+import { useCurrentAccount } from '../../hooks/useCurrentAccount'
+import { useTeamConfig } from '../../hooks/useTeamConfig'
 import { BRAND } from '../../../shared/brand'
-
-interface Identity {
-  login: string
-  name: string
-  email: string
-  remote: string
-}
-
-const KNOWN_REMOTES = [
-  'https://github.com',
-  'https://gitlab.com',
-]
 
 export function AccountPanel() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { theme, toggle } = useTheme()
   const { locale, setLocale } = useLocale()
-  const [identity, setIdentity] = useState<Identity | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { account: identity, loading, logout } = useCurrentAccount()
   // GH26 — préférence app-level (userData), lue par le main au démarrage suivant.
   const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean | null>(null)
+  // GH45 — verrouillée par la configuration machine (autoUpdate: false).
+  const [autoUpdateLocked, setAutoUpdateLocked] = useState(false)
   // GH34 — dossier de la bibliothèque de gabarits d'export (préférence app-level).
   const [templatesDir, setTemplatesDir] = useState<string | null>(null)
 
   useEffect(() => {
     api.app.getSettings().then(s => {
       setAutoCheckUpdates(s.autoCheckUpdates)
+      setAutoUpdateLocked(s.autoCheckUpdatesLocked === true)
       setTemplatesDir(s.exportTemplatesDir ?? '')
     }).catch(() => {})
   }, [])
@@ -68,33 +61,8 @@ export function AccountPanel() {
     }
   }
 
-  useEffect(() => {
-    async function load() {
-      for (const remote of KNOWN_REMOTES) {
-        try {
-          const token = await api.auth.getToken(remote)
-          if (!token) continue
-          const id = await api.auth.resolveIdentity(remote)
-          setIdentity({ ...id, remote })
-          setLoading(false)
-          return
-        } catch {
-          // try next remote
-        }
-      }
-      setLoading(false)
-    }
-    load()
-  }, [])
-
   async function handleLogout() {
-    if (identity) {
-      try {
-        await api.auth.deleteToken(identity.remote)
-      } catch {
-        // best-effort
-      }
-    }
+    await logout()
     await navigate({ to: '/login' })
   }
 
@@ -119,16 +87,22 @@ export function AccountPanel() {
               <p className="text-xs text-ink-2">{identity.email}</p>
             )}
             <p className="text-xs text-ink-3 font-mono">{identity.remote}</p>
+            {identity.provider === 'forgejo' && (
+              <p className="text-xs text-ink-3 pt-1">{t('account.panel.forgeTokenHint')}</p>
+            )}
+            {identity.provider === 'forgejo' && <TeamConfigLine />}
           </div>
 
           <div className="border-t border-edge-subtle pt-4 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => navigate({ to: '/login' })}
-              className="w-full text-left px-3 py-2 text-sm rounded border border-edge text-ink-2 hover:bg-hover transition-colors"
-            >
-              {t('common.changeAccount')}
-            </button>
+            {capabilities.accountManagement && (
+              <button
+                type="button"
+                onClick={() => navigate({ to: '/login' })}
+                className="w-full text-left px-3 py-2 text-sm rounded border border-edge text-ink-2 hover:bg-hover transition-colors"
+              >
+                {t('common.changeAccount')}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleLogout}
@@ -187,12 +161,14 @@ export function AccountPanel() {
           </button>
         </div>
         {/* GH49 — marque sans source de mise à jour : préférence sans objet, masquée. */}
-        {BRAND.update && autoCheckUpdates !== null && (
-          <label className="flex items-center justify-between gap-2 cursor-pointer" title={t('account.panel.autoUpdateHint')}>
+        {capabilities.autoUpdate && BRAND.update && autoCheckUpdates !== null && (
+          <label className="flex items-center justify-between gap-2 cursor-pointer"
+            title={autoUpdateLocked ? t('account.panel.autoUpdateLocked') : t('account.panel.autoUpdateHint')}>
             <span className="text-xs text-ink-2">{t('account.panel.autoUpdate')}</span>
             <input
               type="checkbox"
               checked={autoCheckUpdates}
+              disabled={autoUpdateLocked}
               onChange={e => void handleToggleAutoUpdate(e.target.checked)}
             />
           </label>
@@ -201,7 +177,7 @@ export function AccountPanel() {
           <div className="space-y-1" title={t('account.panel.exportTemplatesHint')}>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-ink-2">{t('account.panel.exportTemplates')}</span>
-              <div className="flex gap-1">
+              {capabilities.localFilesystem && <div className="flex gap-1">
                 <button
                   type="button"
                   onClick={() => void handlePickTemplatesDir()}
@@ -218,7 +194,7 @@ export function AccountPanel() {
                     {t('account.panel.exportTemplatesClear')}
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
             <p className="text-xs text-ink-3 break-all">
               {templatesDir || t('account.panel.exportTemplatesNone')}
@@ -238,5 +214,22 @@ export function AccountPanel() {
         )}
       </div>
     </div>
+  )
+}
+
+/** GH45 S2b — état de la configuration du serveur (spec §3bis-4). */
+function TeamConfigLine() {
+  const { t } = useTranslation()
+  const status = useTeamConfig()
+  if (!status) return null
+  let text: string
+  if (status.error) text = t('account.panel.teamConfigError', { error: status.error })
+  else if (!status.config) text = t('account.panel.teamConfigNone')
+  else if (status.config.teams.length > 0) text = t('account.panel.teamConfigTeams', { teams: status.config.teams.join(', ') })
+  else text = t('account.panel.teamConfigDefaults')
+  return (
+    <p className="text-xs text-ink-3 pt-1" title={status.warnings.join('\n') || undefined}>
+      {text}{status.warnings.length > 0 ? ` ${t('account.panel.teamConfigWarnings', { count: status.warnings.length })}` : ''}
+    </p>
   )
 }

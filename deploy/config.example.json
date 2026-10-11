@@ -1,0 +1,6 @@
+{
+  "defaultServer": "https://acme.forge.example.fr",
+  "hideGithub": true,
+  "demoProjectUrl": "https://acme.forge.example.fr/acme/demo-ll800-produit.git",
+  "autoUpdate": false
+}

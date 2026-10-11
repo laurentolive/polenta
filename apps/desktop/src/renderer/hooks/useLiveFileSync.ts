@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { EVENTS_RECONNECTED } from '../lib/webEvents'
 
 /**
  * Subscribes to `repo:file-changed`, pushed by the main process (RepoWatcherService, via
- * `registerIpcHandlers`) whenever a watched repo changes out-of-band — an external edit, a
+ * `registerHandlers`) whenever a watched repo changes out-of-band — an external edit, a
  * `git checkout`/`pull`, a bulk-import script writing directly to disk (as in the
  * exigences_320AW_RP1.yaml import). Without this, those changes only became visible after a
  * full app restart: schema.yaml's own cache got a manual "Actualiser" button fix earlier, but
@@ -86,6 +87,12 @@ export function useLiveFileSync(): void {
         })
       }
     })
-    return unsubscribe
+    // GH44 — version web : connexion d'événements rétablie après une coupure, des changements ont
+    // pu être manqués → tout relire (jamais émis sur le desktop).
+    const unsubscribeReconnect = window.polenta.on(EVENTS_RECONNECTED, () => { void qc.invalidateQueries() })
+    return () => {
+      unsubscribe()
+      unsubscribeReconnect()
+    }
   }, [qc])
 }

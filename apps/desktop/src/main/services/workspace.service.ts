@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import * as fsPromises from 'fs/promises'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -10,7 +9,7 @@ import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { RepoWatcherService } from './repo-watcher.service'
 import { AGENTS_MD_TEMPLATE_VERSION, buildAgentsMdTemplate, extractAgentsMdVersion } from './agents-md.template'
 import { BRAND } from '../../shared/brand'
-import { resolveMcpServerLaunchConfig } from './mcp-launch.util'
+import type { HostContext } from '../host/host-context'
 import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
 import {
   buildMcpJsonContent,
@@ -37,10 +36,11 @@ interface RecentsStore {
 
 export class WorkspaceService {
   private get workspacePath(): string {
-    return path.join(app.getPath('userData'), 'workspace.json')
+    return path.join(this.host.userDataDir, 'workspace.json')
   }
 
   constructor(
+    private readonly host: HostContext,
     private readonly syncService: SyncService,
     private readonly workspaceTreeService?: WorkspaceTreeService,
     // T112 — starts the requirements/tests index's git-log-based cache invalidation
@@ -105,6 +105,16 @@ export class WorkspaceService {
    */
   async createNewProject(containerDir: string, name: string): Promise<WorkspaceOpenResult> {
     const rootRepoPath = path.join(containerDir, name)
+    await this.initProjectRepo(rootRepoPath)
+    await this.initWorkspace(containerDir, rootRepoPath)
+    return this.openWorkspace(containerDir)
+  }
+
+  /**
+   * Contenu initial d'un nouveau repo Polenta (branche `main`, `.gitignore`, `AGENTS.md`,
+   * `.mcp.json`, premier commit). GH45 S4 — partagé avec la création d'un composant sur le serveur.
+   */
+  async initProjectRepo(rootRepoPath: string): Promise<void> {
     await fsPromises.mkdir(rootRepoPath, { recursive: true })
     await git.init({ fs, dir: rootRepoPath, defaultBranch: 'main' })
 
@@ -115,24 +125,26 @@ export class WorkspaceService {
     )
     await fsPromises.writeFile(path.join(rootRepoPath, 'AGENTS.md'), buildAgentsMdTemplate(BRAND), 'utf-8')
     // T122 sprint 4 — `.mcp.json` généré au même endroit/moment qu'`AGENTS.md` (T106),
-    // pré-configuré pour lancer le serveur MCP de ce projet (cf. mcp-launch.util.ts).
-    await fsPromises.writeFile(
-      path.join(rootRepoPath, '.mcp.json'),
-      buildMcpJsonContent(resolveMcpServerLaunchConfig()),
-      'utf-8',
-    )
+    // pré-configuré pour lancer le serveur MCP de ce projet (cf. host/mcp-launch.ts).
+    // GH44 — pas de `.mcp.json` hors desktop (cf. `HostContext.mcpServerLaunch`) ; le desktop le
+    // régénère à la première ouverture (`ensureAgentFiles`).
+    const mcpServerLaunch = this.host.mcpServerLaunch
+    if (mcpServerLaunch) {
+      await fsPromises.writeFile(
+        path.join(rootRepoPath, '.mcp.json'),
+        buildMcpJsonContent(mcpServerLaunch()),
+        'utf-8',
+      )
+    }
     await git.add({ fs, dir: rootRepoPath, filepath: '.gitignore' })
     await git.add({ fs, dir: rootRepoPath, filepath: 'AGENTS.md' })
-    await git.add({ fs, dir: rootRepoPath, filepath: '.mcp.json' })
+    if (mcpServerLaunch) await git.add({ fs, dir: rootRepoPath, filepath: '.mcp.json' })
     await git.commit({
       fs,
       dir: rootRepoPath,
       message: 'init: create project',
       author: { name: BRAND.productName, email: `${BRAND.id}@localhost` },
     })
-
-    await this.initWorkspace(containerDir, rootRepoPath)
-    return this.openWorkspace(containerDir)
   }
 
   /**
@@ -223,6 +235,33 @@ export class WorkspaceService {
       await this.writeRecents({ recents: alive })
     }
     return alive.sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt))
+  }
+
+  /**
+   * GH45 S2b — projet récent dont le repo racine a `remoteUrl` pour origin (projets proposés par
+   * l'équipe : ouvrir plutôt que recloner). Comparaison sans `.git` final ni casse de l'hôte.
+   */
+  async findRecentByRemote(remoteUrl: string): Promise<ProjectRecent | null> {
+    const norm = (u: string) => {
+      try {
+        const url = new URL(u)
+        return `${url.protocol}//${url.host.toLowerCase()}${url.pathname.replace(/\.git$/, '').replace(/\/+$/, '')}`
+      } catch {
+        return u.replace(/\.git$/, '').replace(/\/+$/, '')
+      }
+    }
+    const wanted = norm(remoteUrl)
+    for (const recent of await this.listRecents()) {
+      try {
+        const info = await this.resolve(recent.workspaceDir)
+        const remotes = await git.listRemotes({ fs, dir: info.localPath })
+        const origin = remotes.find(r => r.remote === 'origin')?.url
+        if (origin && norm(origin) === wanted) return recent
+      } catch {
+        // projet illisible : ignoré
+      }
+    }
+    return null
   }
 
   async markRecent(workspaceDir: string): Promise<void> {
@@ -478,6 +517,8 @@ export class WorkspaceService {
   }
 
   private async ensureMcpJson(rootRepoPath: string): Promise<boolean> {
+    const mcpServerLaunch = this.host.mcpServerLaunch
+    if (!mcpServerLaunch) return false
     return this.ensureVersionedFile(
       path.join(rootRepoPath, '.mcp.json'),
       '.mcp.json',
@@ -486,7 +527,7 @@ export class WorkspaceService {
       // Résolu paresseusement (pas passé en paramètre) : uniquement calculé quand une
       // régénération s'avère nécessaire (évite un `app.getAppPath()`/`app.isPackaged`
       // inutile sur le chemin "déjà à jour", très majoritaire à chaque ouverture).
-      () => buildMcpJsonContent(resolveMcpServerLaunchConfig()),
+      () => buildMcpJsonContent(mcpServerLaunch()),
     )
   }
 

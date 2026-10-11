@@ -9,6 +9,7 @@
  * - Reading / writing the tree cache at <workspace>/.polenta/tree.cache.yaml
  */
 
+import { ForgeAccessError, httpStatusOf } from './forge/forge-access'
 import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
@@ -88,14 +89,14 @@ export type WorkspaceTreeBuildResult =
   | WorkspaceTreeParseErrorResult
   | WorkspaceTreeCycleResult
 
-/** GH30 — HTTP status of an isomorphic-git `HttpError`, or null for any other error. */
-function httpErrorStatus(err: unknown): number | null {
-  // Duck-typed on `code` rather than `instanceof`, robust to a duplicated isomorphic-git copy.
-  const e = err as { code?: unknown; data?: { statusCode?: unknown } } | null
-  return e?.code === 'HttpError' && typeof e.data?.statusCode === 'number' ? e.data.statusCode : null
-}
 
 // ── Service ───────────────────────────────────────────────────────────────────
+
+/** Nom de dossier d'une dépendance : un seul segment, ni `.` ni `..`. */
+export function isSafeMountName(name: unknown): name is string {
+  return typeof name === 'string' && name.length > 0 && name !== '.' && name !== '..'
+    && !/[\\/\0]/.test(name) && !/^[a-zA-Z]:/.test(name)
+}
 
 export class WorkspaceTreeService {
   /** GH32 — open/rebuild in flight per workspace (key: resolved workspaceDir). While one runs,
@@ -206,16 +207,24 @@ export class WorkspaceTreeService {
           // GH30: GitHub answers 404 (not 401/403) for a private repo when the request carries no
           // valid credentials or the account has no access — the raw "HTTP Error: 404 Not Found"
           // reads as a broken URL/parse failure, so translate it into an actionable message.
-          const statusCode = httpErrorStatus(err)
+          // GH45: a revoked access (ForgeAccessError) is reported as such — the renderer shows the
+          // re-login banner from its marker.
+          if (err instanceof ForgeAccessError) {
+            return { status: 'parse-error', repoName: name, remoteAccess: true, error: err.message }
+          }
+          const statusCode = httpStatusOf(err)
           if (statusCode === 401 || statusCode === 403 || statusCode === 404) {
             const hasCredentials = await this.syncService.hasHttpsCredentials(node.url)
+            const forge = hasCredentials ? await this.syncService.forgeKindForUrl(node.url) : null
             return {
               status: 'parse-error',
               repoName: name,
               remoteAccess: true,
-              error: hasCredentials
-                ? `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : vérifiez que votre compte a accès à ce dépôt et que votre token a la bonne portée (scope « repo », ou dépôt inclus dans un token fine-grained).`
-                : `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : aucun compte n'est configuré pour cet hôte dans ${BRAND.productName} — ajoutez un compte ayant accès à ce dépôt.`,
+              error: !hasCredentials
+                ? `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : aucun compte n'est configuré pour cet hôte dans ${BRAND.productName} — ajoutez un compte ayant accès à ce dépôt.`
+                : forge === 'forgejo'
+                  ? `Votre compte n'a pas accès au dépôt "${name}" (${node.url}). Demandez à l'administrateur du serveur de vous ajouter à une équipe qui y a accès.`
+                  : `Dépôt introuvable ou accès refusé pour "${name}" (${node.url}, HTTP ${statusCode}) : vérifiez que votre compte a accès à ce dépôt et que votre token a la bonne portée (scope « repo », ou dépôt inclus dans un token fine-grained).`,
             }
           }
           // Non-fatal: report as a parse-error so the rest is usable
@@ -323,6 +332,9 @@ export class WorkspaceTreeService {
    * name whose directory was never actually renamed).
    */
   async renameClonedRepo(workspaceDir: string, oldMountName: string, newMountName: string): Promise<void> {
+    if (!isSafeMountName(oldMountName) || !isSafeMountName(newMountName)) {
+      throw new Error('Nom de dossier de dépendance invalide.')
+    }
     const oldPath = path.join(workspaceDir, oldMountName)
     const newPath = path.join(workspaceDir, newMountName)
     await fsP.rename(oldPath, newPath)
@@ -411,6 +423,12 @@ export class WorkspaceTreeService {
       // Check if user has configured a mount-override for this (url, pin)
       const override = mountOverrides.find(o => o.url === dep.url && o.pin === dep.pin)
       const mountName = override ? override.mountAs : dep.name
+      // GH44 — un nom de montage (polenta-repo.yaml, override) désigne un dossier frère du repo
+      // racine : jamais un chemin, sinon le clone/la lecture sortirait du workspace.
+      if (!isSafeMountName(mountName)) {
+        console.warn(`[WorkspaceTree] dépendance ignorée : nom de montage invalide « ${mountName} »`)
+        continue
+      }
       const depRepoPath = path.join(workspaceDir, mountName)
 
       // Update parent's children list

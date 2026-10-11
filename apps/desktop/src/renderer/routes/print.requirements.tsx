@@ -11,7 +11,7 @@ import { getReqTypeDef } from '../hooks/useProjectSchema'
 
 /**
  * Route imprimable — jamais visitée par l'utilisateur, chargée uniquement par la fenêtre Electron
- * cachée d'un export PDF (cf. `pdf.util.ts`). Recharge elle-même l'arbre, le schéma, la
+ * cachée d'un export PDF (cf. `electron-pdf.ts`). Recharge elle-même l'arbre, le schéma, la
  * configuration de colonnes (`visibleFieldsWord` — le pdf vise un rendu visuel équivalent au
  * docx, cf. specs/T43-tests.md scénario 5) et les exigences, puis construit les mêmes
  * colonnes/lignes que `SystemView.tsx` via `buildExportRows` — décision structurante de

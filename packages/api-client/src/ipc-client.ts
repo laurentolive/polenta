@@ -23,17 +23,34 @@ declare global {
   }
 }
 
-export function createIpcClient(): ApiClient {
+/**
+ * `transport` : appel IPC brut (par défaut `window.polenta.invoke`). GH45 — le renderer l'enveloppe
+ * pour intercepter les erreurs d'accès à une forge en un seul point (renderer/api.ts).
+ */
+export function createIpcClient(
+  transport: (channel: string, ...args: unknown[]) => Promise<unknown> = (channel, ...args) => window.polenta.invoke(channel, ...args),
+): ApiClient {
   const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
-    window.polenta.invoke(channel, ...args) as Promise<T>
+    transport(channel, ...args) as Promise<T>
 
   return {
+    web: {
+      workspacesRoot: () => invoke('web:workspaces-root'),
+      listWorkspaces: () => invoke('web:list-workspaces'),
+      newWorkspaceDir: (nameHint) => invoke('web:new-workspace-dir', nameHint),
+      deleteWorkspace: (workspaceDir, force) => invoke('web:delete-workspace', workspaceDir, force),
+    },
     app: {
       setTitle: (title) => invoke('app:set-title', title),
       getVersion: () => invoke('app:get-version'),
       getSettings: () => invoke('app:get-settings'),
       setSettings: (patch) => invoke('app:set-settings', patch),
       openReleasePage: (url) => invoke('app:open-release-page', url),
+      getMachineConfig: () => invoke('app:get-machine-config'),
+      getTeamConfig: () => invoke('app:get-team-config'),
+      refreshTeamConfig: () => invoke('app:refresh-team-config'),
+      teamProjects: () => invoke('app:team-projects'),
+      takePendingInvite: () => invoke('app:take-pending-invite'),
     },
     update: {
       getState: () => invoke('update:get-state'),
@@ -50,6 +67,13 @@ export function createIpcClient(): ApiClient {
       save: (p, tree) => invoke('tree:save', p, tree),
       generateId: () => invoke('tree:generate-id'),
     },
+    forge: {
+      accounts: () => invoke('forge:accounts'),
+      listRepos: (accountKey) => invoke('forge:list-repos', accountKey),
+      creatableOrgs: (accountKey) => invoke('forge:creatable-orgs', accountKey),
+      repoAccess: (repoPath) => invoke('forge:repo-access', repoPath),
+      orgMembers: (repoPath) => invoke('forge:org-members', repoPath),
+    },
     workspace: {
       listRecents: () => invoke('workspace:list-recents'),
       markRecent: (workspaceDir) => invoke('workspace:mark-recent', workspaceDir),
@@ -59,6 +83,9 @@ export function createIpcClient(): ApiClient {
       openProject: (dir) => invoke('workspace:open-project', dir),
       createNew: (containerDir, name) => invoke('workspace:create-new', containerDir, name),
       createFromClone: (containerDir, remoteUrl) => invoke('workspace:create-from-clone', containerDir, remoteUrl),
+      findByRemote: (remoteUrl) => invoke('workspace:find-by-remote', remoteUrl),
+      createOnServer: (containerDir, name, accountKey, org) => invoke('workspace:create-on-server', containerDir, name, accountKey, org),
+      createComponentOnServer: (accountKey, org, name) => invoke('workspace:create-component-on-server', accountKey, org, name),
       // GH27
       isEmptyDir: (dir) => invoke('workspace:is-empty-dir', dir),
       // T69: flat workspace
@@ -89,6 +116,11 @@ export function createIpcClient(): ApiClient {
       setup: (r, p) => invoke('auth:setup', r, p),
       startDeviceFlow: (r) => invoke('auth:device-flow-start', r),
       pollDeviceFlow: (r, d) => invoke('auth:device-flow-poll', r, d),
+      detectForge: (serverUrl) => invoke('auth:detect-forge', serverUrl),
+      loginWithPassword: (serverUrl, login, password, otp) => invoke('auth:login-password', serverUrl, login, password, otp),
+      currentAccount: () => invoke('auth:current-account'),
+      logout: () => invoke('auth:logout'),
+      openPasswordChange: () => invoke('auth:open-password-change'),
     },
     sync: {
       status: (p) => invoke('sync:status', p),

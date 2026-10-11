@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Download, FolderOpen, Plus, Sparkles, type LucideIcon } from 'lucide-react'
 import { api } from '../api'
@@ -7,6 +8,15 @@ import { encodeProjectId } from '../lib/projectId'
 import { consumeProjectJustClosed } from '../lib/projectCloseSignal'
 import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
+import { RepoPickerModal } from '../components/home/RepoPickerModal'
+import { CreateProjectModal } from '../components/home/CreateProjectModal'
+import type { ServerTarget } from '../components/home/ServerTargetFields'
+import { WebProjectList } from '../components/home/WebProjectList'
+import { isWeb } from '../platform'
+import { TeamProjects } from '../components/home/TeamProjects'
+import { useTeamConfig } from '../hooks/useTeamConfig'
+import { projectHomeRoute } from '../lib/projectHome'
+import type { ForgeAccount, ForgeRepo, TeamProjectEntry } from '@polenta/types'
 import { BrandLogo } from '../components/BrandLogo'
 
 export const Route = createFileRoute('/')({
@@ -16,7 +26,7 @@ export const Route = createFileRoute('/')({
 // GH27 — the page is a list of action buttons; each one asks only for what it needs, when it
 // needs it: folders through the native picker, text (Git URL, project name) through a one-field
 // prompt.
-type HomeAction = 'demo' | 'open' | 'clone' | 'create'
+type HomeAction = 'demo' | 'open' | 'clone' | 'create' | 'team'
 
 function HomePage() {
   const { t } = useTranslation()
@@ -25,9 +35,36 @@ function HomePage() {
 
   const [busy, setBusy] = useState<HomeAction | null>(null)
   const [error, setError] = useState<{ action: HomeAction; message: string } | null>(null)
-  const [prompt, setPrompt] = useState<'clone' | 'create' | null>(null)
+  // GH45 S4 — avec un compte Forgejo/Gitea : liste des repos (« clone ») et création sur le serveur
+  // (« create ») ; « clone-url » / « create-local » : saisie simple d'avant GH45.
+  const [prompt, setPrompt] = useState<'clone' | 'clone-url' | 'create' | 'create-local' | null>(null)
+  const qc = useQueryClient()
+  const [forgeAccounts, setForgeAccounts] = useState<ForgeAccount[]>([])
+  // Comptes relus au clic : la page est montée une première fois avant la connexion.
+  const openPrompt = async (kind: 'clone' | 'create') => {
+    const accounts = await qc.fetchQuery({ queryKey: ['forge-accounts'], queryFn: () => api.forge.accounts(), staleTime: 0 }).catch(() => [])
+    setForgeAccounts(accounts)
+    setPrompt(accounts.length > 0 ? kind : kind === 'clone' ? 'clone-url' : 'create-local')
+  }
+  // GH45 — projet de démonstration selon la configuration machine : URL fournie (miroir sur la forge
+  // de l'entreprise), sinon la démo publique — masquée si GitHub est masqué. `undefined` : en cours.
+  const [demoUrl, setDemoUrl] = useState<string | null | undefined>(undefined)
+  // GH45 S2b — vue d'ouverture d'un projet selon l'équipe (projectHome).
+  const projectHome = useTeamConfig()?.config?.preferences.projectHome
+  const [defaultServer, setDefaultServer] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    api.app.getMachineConfig()
+      .then(config => {
+        setDemoUrl(config.demoProjectUrl ?? (config.hideGithub ? null : DEMO_PROJECT_URL))
+        setDefaultServer(config.defaultServer)
+      })
+      .catch(() => setDemoUrl(DEMO_PROJECT_URL))
+  }, [])
   // Synchronous guard against a double click landing before `busy` re-renders the buttons disabled.
   const running = useRef(false)
+  // GH44 — web: project folders created by the running action (removed again if it fails).
+  const createdDirs = useRef<string[]>([])
 
   useEffect(() => {
     // T105 — this page briefly mounts on every dip through "/" (including "close project", which
@@ -54,7 +91,7 @@ function HomePage() {
       const lastOpened = await api.workspace.getLastOpened()
       if (cancelled) return
       if (lastOpened) {
-        await navigate({ to: '/dashboard', search: { projectId: encodeProjectId(lastOpened.workspaceDir), dashboardId: undefined } })
+        await navigate(projectHomeRoute(encodeProjectId(lastOpened.workspaceDir), (await api.app.getTeamConfig().catch(() => null))?.config?.preferences.projectHome))
         return
       }
 
@@ -72,9 +109,26 @@ function HomePage() {
     )
   }
 
-  async function goToProject(workspaceDir: string) {
+  async function goToProject(workspaceDir: string, action?: HomeAction) {
     await api.workspace.markRecent(workspaceDir)
+    // GH45 S2b — projet existant : vue d'ouverture de l'équipe s'il y en a une ; création : /schema.
+    if (projectHome && action !== 'create') {
+      await navigate(projectHomeRoute(encodeProjectId(workspaceDir), projectHome))
+      return
+    }
     await navigate({ to: '/schema', search: { repoPath: '', projectId: encodeProjectId(workspaceDir) } })
+  }
+
+  /**
+   * Destination of a new project. Desktop: a folder from the native picker. Web (GH44): a fresh,
+   * empty folder under « Mes projets » in the user's server space — remembered so a failed clone
+   * does not leave it behind (`createdDirs`, declared with the other hooks above).
+   */
+  async function pickDestination(nameHint: string, pickerTitle: string): Promise<string | null> {
+    if (!isWeb) return api.dialog.pickFolder(pickerTitle)
+    const dir = await api.web.newWorkspaceDir(nameHint)
+    createdDirs.current.push(dir)
+    return dir
   }
 
   /** Runs one action: `op` returns the project folder to open, or null if the user cancelled. */
@@ -83,9 +137,18 @@ function HomePage() {
     running.current = true
     setBusy(action)
     setError(null)
+    createdDirs.current = []
     try {
-      const dir = await op()
-      if (dir) await goToProject(dir)
+      let dir: string | null
+      try {
+        dir = await op()
+      } catch (err) {
+        // Web : un clone/une création en échec ne laisse pas de dossier vide dans « Mes projets ».
+        // Seule l'action est couverte : une erreur à l'ouverture ne détruit jamais le projet créé.
+        for (const created of createdDirs.current) await api.web.deleteWorkspace(created, true).catch(() => {})
+        throw err
+      }
+      if (dir) await goToProject(dir, action)
     } catch (err) {
       setError({ action, message: err instanceof Error ? err.message : String(err) })
     } finally {
@@ -95,14 +158,31 @@ function HomePage() {
   }
 
   const handleDemo = () => run('demo', async () => {
-    const dir = await api.dialog.pickFolder(t('home.pickDemoFolder'))
+    if (!demoUrl) return null
+    const dir = await pickDestination('demo', t('home.pickDemoFolder'))
     if (!dir) return null
     if (await api.workspace.detect(dir) === 'workspace') {
       await api.workspace.openProject(dir)
       return dir
     }
     if (!(await api.workspace.isEmptyDir(dir))) throw new Error(t('home.demoFolderNotEmpty'))
-    await api.workspace.createFromClone(dir, DEMO_PROJECT_URL)
+    await api.workspace.createFromClone(dir, demoUrl)
+    return dir
+  })
+
+  // GH45 S2b — projet proposé par l'équipe : ouvert s'il est déjà sur le poste, sinon cloné.
+  const handleTeamProject = (project: TeamProjectEntry) => run('team', async () => {
+    const existing = await api.workspace.findByRemote(project.cloneUrl)
+    if (existing) {
+      await api.workspace.openProject(existing.workspaceDir)
+      return existing.workspaceDir
+    }
+    const dir = await pickDestination(project.repo.split('/')[1] ?? 'projet', t('home.team.pickFolder'))
+    if (!dir) return null
+    // Dossier non vide (y compris un autre projet Polenta) : refusé — on n'ouvre jamais un autre
+    // projet à la place de celui de l'équipe.
+    if (!(await api.workspace.isEmptyDir(dir))) throw new Error(t('home.team.folderNotEmpty'))
+    await api.workspace.createFromClone(dir, project.cloneUrl)
     return dir
   })
 
@@ -117,9 +197,42 @@ function HomePage() {
   const handleCloneUrl = (url: string) => {
     setPrompt(null)
     run('clone', async () => {
-      const dir = await api.dialog.pickFolder(t('home.pickDestinationFolder'))
+      const dir = await pickDestination(url.replace(/\.git$/, '').replace(/\/+$/, '').split('/').pop() ?? 'projet', t('home.pickDestinationFolder'))
       if (!dir) return null
       await api.workspace.createFromClone(dir, url)
+      return dir
+    })
+  }
+
+  // GH45 S4 — repo choisi dans la liste : ouvert s'il est déjà sur le poste, sinon cloné.
+  const handlePickRepo = (repo: ForgeRepo) => {
+    setPrompt(null)
+    run('clone', async () => {
+      const existing = await api.workspace.findByRemote(repo.cloneUrl)
+      if (existing) {
+        await api.workspace.openProject(existing.workspaceDir)
+        return existing.workspaceDir
+      }
+      const dir = await pickDestination(repo.name, t('home.pickDestinationFolder'))
+      if (!dir) return null
+      await api.workspace.createFromClone(dir, repo.cloneUrl)
+      return dir
+    })
+  }
+
+  // GH45 S4 — projet créé sur le serveur : nom vérifié avant toute création locale ; une
+  // publication initiale en échec laisse le projet ouvert, avec le message dans l'indicateur de
+  // synchronisation (« publiez plus tard »).
+  const handleCreateOnServer = (name: string, target: ServerTarget) => {
+    setPrompt(null)
+    run('create', async () => {
+      const dir = await pickDestination(name, t('home.pickDestinationFolder'))
+      if (!dir) return null
+      const result = await api.workspace.createOnServer(dir, name, target.accountKey, target.org)
+      if (result.pushWarning) {
+        const project = await api.workspace.resolve(dir)
+        qc.setQueryData(['sync:last-error', project.localPath], t('home.server.pushWarning', { message: result.pushWarning }))
+      }
       return dir
     })
   }
@@ -127,23 +240,46 @@ function HomePage() {
   const handleCreateName = (name: string) => {
     setPrompt(null)
     run('create', async () => {
-      const dir = await api.dialog.pickFolder(t('home.pickDestinationFolder'))
+      const dir = await pickDestination(name, t('home.pickDestinationFolder'))
       if (!dir) return null
       await api.workspace.createNew(dir, name)
       return dir
     })
   }
 
+  const handleOpenWebProject = (dir: string) => run('open', async () => {
+    const result = await api.workspace.openProject(dir)
+    if (result.status === 'not-a-workspace') throw new Error(t('home.notAWorkspace'))
+    return dir
+  })
+
   const actions: Array<{ action: HomeAction; icon: LucideIcon; title: string; help: string; busyLabel: string; onClick: () => void }> = [
-    { action: 'demo', icon: Sparkles, title: t('home.demoTitle'), help: t('home.demoHelp'), busyLabel: t('home.loadingDemo'), onClick: handleDemo },
-    { action: 'open', icon: FolderOpen, title: t('home.openExisting'), help: t('home.openExistingHelp'), busyLabel: t('home.opening'), onClick: handleOpen },
-    { action: 'clone', icon: Download, title: t('home.openFromRepo'), help: t('home.openFromRepoHelp'), busyLabel: t('home.cloning'), onClick: () => setPrompt('clone') },
-    { action: 'create', icon: Plus, title: t('home.createNew'), help: t('home.createNewHelp'), busyLabel: t('home.creating'), onClick: () => setPrompt('create') },
+    ...(demoUrl ? [{ action: 'demo' as const, icon: Sparkles, title: t('home.demoTitle'), help: t('home.demoHelp'), busyLabel: t('home.loadingDemo'), onClick: handleDemo }] : []),
+    // GH44 — web : « Mes projets » (liste ci-dessous) remplace l'ouverture d'un dossier local.
+    ...(isWeb ? [] : [{ action: 'open' as const, icon: FolderOpen, title: t('home.openExisting'), help: t('home.openExistingHelp'), busyLabel: t('home.opening'), onClick: handleOpen }]),
+    { action: 'clone', icon: Download, title: t('home.openFromRepo'), help: t('home.openFromRepoHelp'), busyLabel: t('home.cloning'), onClick: () => void openPrompt('clone') },
+    { action: 'create', icon: Plus, title: t('home.createNew'), help: t('home.createNewHelp'), busyLabel: t('home.creating'), onClick: () => void openPrompt('create') },
   ]
 
   return (
     <div className="p-8 max-w-lg mx-auto space-y-3">
       <BrandLogo />
+      {isWeb && (
+        <div className="space-y-2">
+          <WebProjectList disabled={busy !== null} onOpen={handleOpenWebProject} />
+          {error?.action === 'open' && (
+            <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
+              {error.message}
+            </p>
+          )}
+        </div>
+      )}
+      <TeamProjects disabled={busy !== null} onOpen={handleTeamProject} />
+      {error?.action === 'team' && (
+        <p className="text-sm text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
+          {error.message}
+        </p>
+      )}
       {actions.map(({ action, icon: Icon, title, help, busyLabel, onClick }) => {
         const featured = action === 'demo'
         return (
@@ -170,12 +306,20 @@ function HomePage() {
         )
       })}
 
-      {prompt === 'clone' && (
+      {prompt === 'clone' && forgeAccounts.length > 0 && (
+        <RepoPickerModal accounts={forgeAccounts} onPick={handlePickRepo}
+          onEnterUrl={() => setPrompt('clone-url')} onCancel={() => setPrompt(null)} />
+      )}
+      {prompt === 'clone-url' && (
         <TextPromptModal title={t('home.openFromRepo')} label={t('home.repoUrlLabel')}
-          placeholder="https://github.com/org/projet.git" confirmLabel={t('home.continue')}
+          placeholder={`${defaultServer ?? 'https://github.com'}/org/projet.git`} confirmLabel={t('home.continue')}
           onConfirm={handleCloneUrl} onCancel={() => setPrompt(null)} />
       )}
-      {prompt === 'create' && (
+      {prompt === 'create' && forgeAccounts.length > 0 && (
+        <CreateProjectModal accounts={forgeAccounts} onLocal={handleCreateName} onServer={handleCreateOnServer}
+          onCancel={() => setPrompt(null)} />
+      )}
+      {prompt === 'create-local' && (
         <TextPromptModal title={t('home.createNew')} label={t('home.projectNameLabel')}
           confirmLabel={t('home.continue')} onConfirm={handleCreateName} onCancel={() => setPrompt(null)} />
       )}

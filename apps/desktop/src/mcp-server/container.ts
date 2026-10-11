@@ -1,3 +1,4 @@
+import type { HostContext } from '../main/host/host-context'
 import { AuthService } from '../main/services/auth.service'
 import { GitService } from '../main/services/git.service'
 import { SyncService } from '../main/services/sync.service'
@@ -42,6 +43,23 @@ export interface McpContainer {
 }
 
 /**
+ * GH44 — hôte headless : aucun tool n'accède aux jetons ni à `userData` (cf. `createMcpContainer`) ; un accès
+ * futur échoue explicitement plutôt que d'écrire dans le dossier courant.
+ */
+function unavailable(what: string): never {
+  throw new Error(`[mcp-server] ${what} n'est pas disponible en mode serveur MCP autonome (cf. src/mcp-server/container.ts).`)
+}
+const mcpHostContext: HostContext = {
+  get userDataDir(): string { return unavailable('userData') },
+  machineConfig: { hideGithub: false },
+  tokenStore: {
+    get: async () => unavailable('le stockage des jetons'),
+    set: async () => unavailable('le stockage des jetons'),
+    delete: async () => unavailable('le stockage des jetons'),
+  },
+}
+
+/**
  * DI headless pour le serveur MCP (T122 sprint 1).
  *
  * Réutilise EXACTEMENT les mêmes classes que `main/container.ts::createContainer()`
@@ -56,19 +74,18 @@ export interface McpContainer {
  * ExcelView, qui énumèrent les objets via `.polenta/trees/<node>/<type>.yaml` et non en
  * scannant `requirements/`/`tests/`.
  *
- * Synchrone (pas de `createContainer()` async comme le main Electron) — pas de fenêtre
- * à ouvrir, pas d'attente d'`app.whenReady()`.
+ * Synchrone — pas de fenêtre à ouvrir, pas d'attente d'`app.whenReady()`.
  *
  * `AuthService`/`SyncService` sont construits (requis transitivement par
  * `WorkspaceTreeService`/`SchemaService`) mais aucune de leurs méthodes touchant
- * `app.getPath`/`keytar` n'est jamais appelée par les tools de ce sprint (lecture
+ * `userData`/les jetons (`mcpHostContext`, GH44) n'est jamais appelée par les tools de ce sprint (lecture
  * seule, pas de clone/push/pull/commit) — cf. specs/T122-design.md §2.1 pour
  * l'analyse de sûreté et specs/T122-sprint1.md pour la dette technique documentée
  * (des `Noop*Service` typés seraient un durcissement à prévoir si un futur sprint
  * élargit le périmètre au point d'appeler ces méthodes).
  */
 export function createMcpContainer(repoPath: string, workspaceDir?: string, user?: string): McpContainer {
-  const auth = new AuthService()
+  const auth = new AuthService(mcpHostContext)
   const git = new GitService()
   const reqIndex = new RequirementsIndexService(git)
   const testsIndex = new TestsIndexService(git)

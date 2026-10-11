@@ -168,8 +168,9 @@ for (const loc of ['fr', 'en']) {
   walk(JSON.parse(readFileSync(path.join(srcRoot, `renderer/i18n/locales/${loc}.json`), 'utf8')), '')
   check(`S1 ${loc}.json sans « Polenta »`, offenders.length === 0, offenders)
 }
-// Identifiants de format conservés (spec §2) : types/classes Polenta*, et le mot dans les commentaires.
-const FORMAT_IDENTIFIER_RE = /\bPolenta(Repo|Workspace|Api)\w*/g
+// Identifiants de format conservés (spec §2) : types/classes Polenta*, en-têtes HTTP techniques
+// `X-Polenta-*` du serveur web (GH44, jamais affichés), et le mot dans les commentaires.
+const FORMAT_IDENTIFIER_RE = /\bPolenta(Repo|Workspace|Api)\w*|\bX-Polenta-[\w-]+/g
 const COMMENT_LINE_RE = /^\s*(\/\/|\*|\/\*)/
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

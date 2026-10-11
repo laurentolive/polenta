@@ -1,5 +1,7 @@
-import { app, ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { registerPrefHandlers } from './pref.handlers'
+import type { HandlerRegistry } from './registry'
+import type { PlatformHost } from '../host/platform-host'
+import { IMAGE_MIME_BY_EXT, IMAGE_EXT_BY_MIME, findAvailableFileName } from './file-ops'
 import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
@@ -54,26 +56,22 @@ import type {
   QueryScope,
   CreateImpactAnalysisDto,
   UpdateImpactItemStatusDto,
-  ExportKind,
   TemplateExportFormat,
-  ExportFormat,
-  ExportResult,
-  ExecutionSheetLocale,
-  ExecutionImportPreview,
   Parameter,
   AppSettings,
   MergeFileDraft,
   MergeOrigin,
+  MachineConfig,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
 import type { TreeService } from '../services/tree.service'
 import type { BaselineService } from '../services/baseline.service'
 import type { AppSettingsService } from '../services/app-settings.service'
+import type { ForgeConfigService } from '../services/forge-config.service'
+import type { ForgeService } from '../services/forge/forge.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
-import type { UpdateService } from '../services/update.service'
 import { parseDrawioPages } from '../drawio-xml'
-import { BRAND } from '../../shared/brand'
 
 export interface Container {
   auth: AuthService
@@ -106,111 +104,102 @@ export interface Container {
   revalidation: RevalidationService
   appSettings: AppSettingsService
   exportTemplateLibrary: ExportTemplateLibrary
-  update: UpdateService
+  /** GH45 — configuration machine de l'hôte (cf. HostContext.machineConfig). */
+  machineConfig: MachineConfig
+  /** GH45 S2b — configuration par équipe lue sur la forge. */
+  forgeConfig: ForgeConfigService
+  /** GH45 S4 — repos, organisations, droits, membres ; création sur le serveur. */
+  forge: ForgeService
 }
 
-// Deux tables distinctes (pas une dérivée de l'autre) : la relation n'est pas
-// bijective — `jpg` et `jpeg` pointent tous deux vers `image/jpeg`, mais
-// l'extension de sortie choisie pour ce MIME (fichier collé, T76) doit rester
-// `jpg` de façon stable, pas dépendre de l'ordre d'itération d'une inversion.
-const IMAGE_MIME_BY_EXT: Record<string, string> = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-  gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp',
-}
-const IMAGE_EXT_BY_MIME: Record<string, string> = {
-  'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif',
-  'image/svg+xml': 'svg', 'image/webp': 'webp',
-}
-
-const EXPORT_DIALOG_FILTERS: Record<ExportFormat, { name: string; extensions: string[] }> = {
-  xlsx: { name: 'Excel', extensions: ['xlsx'] },
-  docx: { name: 'Word', extensions: ['docx'] },
-  pdf: { name: 'PDF', extensions: ['pdf'] },
-}
-
-// Renvoie `baseName` s'il est libre dans `dir`, sinon `stem-1.ext`, `stem-2.ext`, etc.
-async function findAvailableFileName(dir: string, baseName: string): Promise<string> {
-  const ext = path.extname(baseName)
-  const stem = path.basename(baseName, ext)
-  let candidate = baseName
-  for (let i = 1; ; i++) {
-    try {
-      await fsP.access(path.join(dir, candidate))
-      candidate = `${stem}-${i}${ext}`
-    } catch {
-      return candidate
-    }
-  }
-}
-
-export function registerIpcHandlers(c: Container): void {
+/**
+ * Channels partagés par le desktop et le serveur web (GH44). Les channels propres au poste local
+ * (dialogues natifs, shell, mise à jour…) sont dans `desktop-only.handlers.ts`.
+ */
+export function registerHandlers(r: HandlerRegistry, c: Container, platform: PlatformHost): void {
   // ── Live sync ────────────────────────────────────────────────────────────────
   // Pushes every out-of-band file change (external edit, git checkout/pull, a bulk-import
   // script writing directly to disk…) to every open window, so the renderer can invalidate
   // the affected react-query caches on its own — see useLiveFileSync.ts for the mapping
-  // from `relPath` to query keys. `BrowserWindow.getAllWindows()` rather than threading a
-  // window reference through the DI container: this module has no `win` at construction
-  // time (registerIpcHandlers runs from createContainer(), before createAppWindow()).
+  // from `relPath` to query keys.
   c.watcher.onFileChange((repoPath, relPath) => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('repo:file-changed', repoPath, relPath)
-    }
+    platform.broadcast('repo:file-changed', repoPath, relPath)
   })
 
   // ── Workspace (projects) ───────────────────────────────────────────────────────
-  ipcMain.handle('workspace:list-recents', () => c.workspace.listRecents())
-  ipcMain.handle('workspace:mark-recent', (_e, workspaceDir: string) =>
+  r.handle('workspace:list-recents', () => c.workspace.listRecents())
+  r.handle('workspace:mark-recent', (_e, workspaceDir: string) =>
     c.workspace.markRecent(workspaceDir))
-  ipcMain.handle('workspace:get-last-opened', () => c.workspace.getLastOpened())
-  ipcMain.handle('workspace:clear-last-opened', () => c.workspace.clearLastOpened())
-  ipcMain.handle('workspace:resolve', (_e, workspaceDir: string) =>
+  r.handle('workspace:get-last-opened', () => c.workspace.getLastOpened())
+  r.handle('workspace:clear-last-opened', () => c.workspace.clearLastOpened())
+  r.handle('workspace:resolve', (_e, workspaceDir: string) =>
     c.workspace.resolve(workspaceDir))
-  ipcMain.handle('workspace:open-project', (_e, dir: string) =>
+  r.handle('workspace:open-project', (_e, dir: string) =>
     c.workspace.openProject(dir))
-  ipcMain.handle('workspace:create-new', (_e, containerDir: string, name: string) =>
+  r.handle('workspace:create-new', (_e, containerDir: string, name: string) =>
     c.workspace.createNewProject(containerDir, name))
-  ipcMain.handle('workspace:create-from-clone', (_e, containerDir: string, remoteUrl: string) =>
+  r.handle('workspace:create-from-clone', (_e, containerDir: string, remoteUrl: string) =>
     c.workspace.createFromClone(containerDir, remoteUrl))
-  ipcMain.handle('workspace:is-empty-dir', (_e, dir: string) =>
+  r.handle('workspace:is-empty-dir', (_e, dir: string) =>
     c.workspace.isEmptyDir(dir))
+  r.handle('workspace:find-by-remote', (_e, remoteUrl: string) =>
+    c.workspace.findRecentByRemote(remoteUrl))
+
+  // ── Forges (GH45 S4) : repos, organisations, droits, membres, création sur le serveur ─────────
+  r.handle('forge:accounts', () => c.forge.accounts())
+  r.handle('forge:list-repos', (_e, accountKey: string) => c.forge.listRepos(accountKey))
+  r.handle('forge:creatable-orgs', (_e, accountKey: string) => c.forge.creatableOrgs(accountKey))
+  r.handle('forge:repo-access', (_e, repoPath: string) => c.forge.repoAccess(repoPath))
+  r.handle('forge:org-members', (_e, repoPath: string) => c.forge.orgMembers(repoPath))
+  r.handle('workspace:create-on-server', (_e, containerDir: string, name: string, accountKey: string, org: string) =>
+    c.forge.createProjectOnServer(containerDir, name, accountKey, org))
+  r.handle('workspace:create-component-on-server', (_e, accountKey: string, org: string, name: string) =>
+    c.forge.createComponentOnServer(accountKey, org, name))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
-  ipcMain.handle('auth:has-any-account', () => c.auth.hasAnyAccount())
-  ipcMain.handle('auth:setup', (_e, remote: string, pat: string) => c.auth.setup(remote, pat))
-  ipcMain.handle('auth:save-token', (_e, remote: string, token: string) =>
+  r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())
+  // GH45 — forges : détection, connexion par mot de passe, compte courant, configuration machine.
+  r.handle('auth:detect-forge', (_e, serverUrl: string) => c.auth.detectForge(serverUrl))
+  r.handle('auth:login-password', (_e, serverUrl: string, login: string, password: string, otp?: string) =>
+    c.auth.loginWithPassword(serverUrl, login, password, otp))
+  r.handle('auth:current-account', () => c.auth.currentAccount())
+  r.handle('app:get-machine-config', () => c.machineConfig)
+  r.handle('app:get-team-config', () => c.forgeConfig.status())
+  r.handle('app:refresh-team-config', () => c.forgeConfig.refresh())
+  r.handle('app:team-projects', () => c.forgeConfig.teamProjects())
+  c.forgeConfig.onChange(status => platform.broadcast('app:team-config-changed', status))
+  r.handle('auth:setup', (_e, remote: string, pat: string) => c.auth.setup(remote, pat))
+  r.handle('auth:save-token', (_e, remote: string, token: string) =>
     c.auth.saveToken(remote, token))
-  ipcMain.handle('auth:get-token', (_e, remote: string) => c.auth.getToken(remote))
-  ipcMain.handle('auth:delete-token', (_e, remote: string) => c.auth.deleteToken(remote))
-  ipcMain.handle('auth:resolve-identity', (_e, remote: string) =>
+  r.handle('auth:get-token', (_e, remote: string) => c.auth.getToken(remote))
+  r.handle('auth:delete-token', (_e, remote: string) => c.auth.deleteToken(remote))
+  r.handle('auth:resolve-identity', (_e, remote: string) =>
     c.auth.resolveIdentity(remote))
-  ipcMain.handle('auth:project-username', (_e, repoPath: string) =>
+  r.handle('auth:project-username', (_e, repoPath: string) =>
     c.auth.projectUsername(repoPath))
-  ipcMain.handle('auth:device-flow-start', (_e, remote: string) => c.auth.startDeviceFlow(remote))
-  ipcMain.handle('auth:device-flow-poll', (_e, remote: string, deviceCode: string) =>
-    c.auth.pollDeviceFlow(remote, deviceCode))
 
   // ── Sync ─────────────────────────────────────────────────────────────────────
-  ipcMain.handle('sync:status', (_e, repoPath: string) => c.sync.status(repoPath))
-  ipcMain.handle('sync:commit', (_e, repoPath: string, message: string) =>
+  r.handle('sync:status', (_e, repoPath: string) => c.sync.status(repoPath))
+  r.handle('sync:commit', (_e, repoPath: string, message: string) =>
     c.sync.commit(repoPath, message))
-  ipcMain.handle('sync:push', (_e, repoPath: string) => c.sync.push(repoPath))
-  ipcMain.handle('sync:pull', (_e, repoPath: string) => c.sync.pull(repoPath))
-  ipcMain.handle('sync:fetch', (_e, repoPath: string, urlFallback: string, remote?: string) =>
+  r.handle('sync:push', (_e, repoPath: string) => c.sync.push(repoPath))
+  r.handle('sync:pull', (_e, repoPath: string) => c.sync.pull(repoPath))
+  r.handle('sync:fetch', (_e, repoPath: string, urlFallback: string, remote?: string) =>
     c.sync.fetch(repoPath, urlFallback, remote))
-  ipcMain.handle('sync:fast-forward-branch',
+  r.handle('sync:fast-forward-branch',
     (_e, repoPath: string, branchName: string, remote?: string) =>
       c.sync.fastForwardBranch(repoPath, branchName, remote))
-  ipcMain.handle('sync:pull-fast-forward-only', (_e, repoPath: string) => c.sync.pullFastForwardOnly(repoPath))
-  ipcMain.handle('sync:integration-state', (_e, repoPath: string, branch: string) =>
+  r.handle('sync:pull-fast-forward-only', (_e, repoPath: string) => c.sync.pullFastForwardOnly(repoPath))
+  r.handle('sync:integration-state', (_e, repoPath: string, branch: string) =>
     c.sync.integrationState(repoPath, branch))
-  ipcMain.handle('sync:can-merge-remote', (_e, repoPath: string, branch: string) =>
+  r.handle('sync:can-merge-remote', (_e, repoPath: string, branch: string) =>
     c.sync.canMergeRemoteIntoIntegration(repoPath, branch))
-  ipcMain.handle('sync:resync-integration', (_e, repoPath: string, branch: string) =>
+  r.handle('sync:resync-integration', (_e, repoPath: string, branch: string) =>
     c.sync.resyncIntegration(repoPath, branch))
-  ipcMain.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch))
-  ipcMain.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>
+  r.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch))
+  r.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>
     c.sync.isMergedInto(repoPath, branch, into))
-  ipcMain.handle('sync:log', async (_e, repoPath: string, limit = 20) => {
+  r.handle('sync:log', async (_e, repoPath: string, limit = 20) => {
     const commits = await git.log({ fs, dir: repoPath, depth: limit })
     return commits.map((c: { oid: string; commit: { message: string; author: { name: string; timestamp: number } } }) => ({
       sha: c.oid,
@@ -219,198 +208,178 @@ export function registerIpcHandlers(c: Container): void {
       date: new Date(c.commit.author.timestamp * 1000).toISOString(),
     }))
   })
-  ipcMain.handle('sync:checkout-commit', async (_e, repoPath: string, sha: string) => {
+  r.handle('sync:checkout-commit', async (_e, repoPath: string, sha: string) => {
     await git.checkout({ fs, dir: repoPath, ref: sha })
   })
-  ipcMain.handle('sync:stage', (_e, repoPath: string, filepath: string) =>
+  r.handle('sync:stage', (_e, repoPath: string, filepath: string) =>
     c.sync.stage(repoPath, filepath))
-  ipcMain.handle('sync:stage-all', (_e, repoPath: string) =>
+  r.handle('sync:stage-all', (_e, repoPath: string) =>
     c.sync.stageAll(repoPath))
-  ipcMain.handle('sync:unstage', (_e, repoPath: string, filepath: string) =>
+  r.handle('sync:unstage', (_e, repoPath: string, filepath: string) =>
     c.sync.unstage(repoPath, filepath))
-  ipcMain.handle('sync:unstage-all', (_e, repoPath: string) =>
+  r.handle('sync:unstage-all', (_e, repoPath: string) =>
     c.sync.unstageAll(repoPath))
-  ipcMain.handle('sync:discard', (_e, repoPath: string, filepath: string) =>
+  r.handle('sync:discard', (_e, repoPath: string, filepath: string) =>
     c.sync.discard(repoPath, filepath))
-  ipcMain.handle('sync:discard-all', (_e, repoPath: string) =>
+  r.handle('sync:discard-all', (_e, repoPath: string) =>
     c.sync.discardAll(repoPath))
-  ipcMain.handle('sync:graph', (_e, repoPath: string, limit?: number) =>
+  r.handle('sync:graph', (_e, repoPath: string, limit?: number) =>
     c.sync.graph(repoPath, limit))
-  ipcMain.handle('sync:tags', (_e, repoPath: string) =>
+  r.handle('sync:tags', (_e, repoPath: string) =>
     c.sync.tags(repoPath))
-  ipcMain.handle('sync:diff', (_e, repoPath: string, filepath: string) =>
+  r.handle('sync:diff', (_e, repoPath: string, filepath: string) =>
     c.sync.diff(repoPath, filepath))
-  ipcMain.handle('sync:branches', (_e, repoPath: string) =>
+  r.handle('sync:branches', (_e, repoPath: string) =>
     c.sync.listBranches(repoPath))
-  ipcMain.handle('sync:create-branch', (_e, repoPath: string, name: string) =>
+  r.handle('sync:create-branch', (_e, repoPath: string, name: string) =>
     c.sync.createBranch(repoPath, name))
-  ipcMain.handle('sync:checkout-branch', (_e, repoPath: string, name: string) =>
+  r.handle('sync:checkout-branch', (_e, repoPath: string, name: string) =>
     c.sync.checkoutBranch(repoPath, name))
-  ipcMain.handle('sync:delete-branch', (_e, repoPath: string, name: string) =>
+  r.handle('sync:delete-branch', (_e, repoPath: string, name: string) =>
     c.sync.deleteBranch(repoPath, name))
-  ipcMain.handle('sync:commit-files', (_e: unknown, repoPath: string, sha: string) =>
+  r.handle('sync:commit-files', (_e: unknown, repoPath: string, sha: string) =>
     c.sync.commitFiles(repoPath, sha))
-  ipcMain.handle('sync:commit-diff', (_e: unknown, repoPath: string, sha: string, filepath: string) =>
+  r.handle('sync:commit-diff', (_e: unknown, repoPath: string, sha: string, filepath: string) =>
     c.sync.commitDiff(repoPath, sha, filepath))
-  ipcMain.handle('sync:create-tag', (_e, repoPath: string, tagName: string) =>
+  r.handle('sync:create-tag', (_e, repoPath: string, tagName: string) =>
     c.sync.createTag(repoPath, tagName))
-  ipcMain.handle('sync:merge', (_e, repoPath: string, fromBranch: string) =>
+  r.handle('sync:merge', (_e, repoPath: string, fromBranch: string) =>
     c.sync.merge(repoPath, fromBranch))
-  ipcMain.handle('sync:merge-into', (_e, repoPath: string, fromBranch: string, intoBranch: string) =>
+  r.handle('sync:merge-into', (_e, repoPath: string, fromBranch: string, intoBranch: string) =>
     c.sync.mergeInto(repoPath, fromBranch, intoBranch))
   // GH37 — résolution des conflits de merge dans l'outil.
-  ipcMain.handle('merge-resolution:open', (_e, repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin) =>
+  r.handle('merge-resolution:open', (_e, repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin) =>
     c.mergeResolution.open(repoPath, leftRef, rightRef, origin))
-  ipcMain.handle('merge-resolution:list', (_e, repoPaths?: string[]) => c.mergeResolution.list(repoPaths))
-  ipcMain.handle('merge-resolution:get', (_e, id: string) => c.mergeResolution.get(id))
-  ipcMain.handle('merge-resolution:get-file', (_e, id: string, filepath: string) => c.mergeResolution.getFile(id, filepath))
-  ipcMain.handle('merge-resolution:save-file', (_e, id: string, filepath: string, draft: MergeFileDraft) =>
+  r.handle('merge-resolution:list', (_e, repoPaths?: string[]) => c.mergeResolution.list(repoPaths))
+  r.handle('merge-resolution:get', (_e, id: string) => c.mergeResolution.get(id))
+  r.handle('merge-resolution:get-file', (_e, id: string, filepath: string) => c.mergeResolution.getFile(id, filepath))
+  r.handle('merge-resolution:save-file', (_e, id: string, filepath: string, draft: MergeFileDraft) =>
     c.mergeResolution.saveFile(id, filepath, draft))
-  ipcMain.handle('merge-resolution:validate', (_e, id: string, filepath: string, text: string) =>
+  r.handle('merge-resolution:validate', (_e, id: string, filepath: string, text: string) =>
     c.mergeResolution.validate(id, filepath, text))
-  ipcMain.handle('merge-resolution:keep-both', (_e, id: string, filepath: string, apply: boolean) =>
+  r.handle('merge-resolution:keep-both', (_e, id: string, filepath: string, apply: boolean) =>
     c.mergeResolution.keepBoth(id, filepath, apply))
-  ipcMain.handle('merge-resolution:finalize', (_e, id: string) => c.mergeResolution.finalize(id))
-  ipcMain.handle('merge-resolution:abandon', (_e, id: string) => c.mergeResolution.abandon(id))
-  ipcMain.handle('sync:create-branch-at', (_e, repoPath: string, name: string, sha: string) =>
+  r.handle('merge-resolution:finalize', (_e, id: string) => c.mergeResolution.finalize(id))
+  r.handle('merge-resolution:abandon', (_e, id: string) => c.mergeResolution.abandon(id))
+  r.handle('sync:create-branch-at', (_e, repoPath: string, name: string, sha: string) =>
     c.sync.createBranchAt(repoPath, name, sha))
-  ipcMain.handle('sync:delete-remote-branch', (_e, repoPath: string, name: string, remote?: string) =>
+  r.handle('sync:delete-remote-branch', (_e, repoPath: string, name: string, remote?: string) =>
     c.sync.deleteRemoteBranch(repoPath, name, remote))
-  ipcMain.handle('sync:delete-tag', (_e, repoPath: string, tagName: string) =>
+  r.handle('sync:delete-tag', (_e, repoPath: string, tagName: string) =>
     c.sync.deleteTag(repoPath, tagName))
-  ipcMain.handle('sync:push-branch', (_e, repoPath: string, branchName: string, remote?: string) =>
+  r.handle('sync:push-branch', (_e, repoPath: string, branchName: string, remote?: string) =>
     c.sync.pushBranch(repoPath, branchName, remote))
-  ipcMain.handle('sync:rebase', (_e, repoPath: string, onto: string) =>
+  r.handle('sync:rebase', (_e, repoPath: string, onto: string) =>
     c.sync.rebase(repoPath, onto))
-  ipcMain.handle('sync:diff-between', (_e, repoPath: string, sha1: string, sha2: string) =>
+  r.handle('sync:diff-between', (_e, repoPath: string, sha1: string, sha2: string) =>
     c.sync.diffBetween(repoPath, sha1, sha2))
-  ipcMain.handle('sync:diff-file-between', (_e, repoPath: string, sha1: string, sha2: string, filepath: string) =>
+  r.handle('sync:diff-file-between', (_e, repoPath: string, sha1: string, sha2: string, filepath: string) =>
     c.sync.diffFileBetween(repoPath, sha1, sha2, filepath))
-  ipcMain.handle('sync:resolve-refs', (_e, repoPath: string) =>
+  r.handle('sync:resolve-refs', (_e, repoPath: string) =>
     c.sync.resolveRefs(repoPath))
   // sync:submodule-tags supprimé en T69 Sprint 3 — les submodules git ne sont plus utilisés.
 
   // ── App ───────────────────────────────────────────────────────────────────────
-  ipcMain.handle('app:set-title', (_event, title: string) => {
-    BrowserWindow.getFocusedWindow()?.setTitle(title)
-  })
-  // app.getVersion() lit le champ "version" de package.json (packagé dans app.asar par
-  // electron-builder) — c'est aussi ce champ qui alimente le macro ${version} de
-  // electron-builder.yml pour le nom de l'exe généré : une seule string à modifier à
-  // chaque release.
-  ipcMain.handle('app:get-version', () => app.getVersion())
   // GH26 — préférences de l'application (userData/app-settings.json, pas schema.yaml).
-  ipcMain.handle('app:get-settings', () => c.appSettings.get())
-  ipcMain.handle('app:set-settings', (_e, patch: Partial<AppSettings>) => c.appSettings.set(patch))
-  // GH26 — restreint aux pages de release : seul usage (lien « Voir les nouveautés »), pas un
-  // ouvreur d'URL générique exposé au renderer. GH49 : celles de la marque (`releasesUrl`, ou une
-  // page sous celle-ci) ; marque sans `releasesUrl` → rien n'est ouvert.
-  ipcMain.handle('app:open-release-page', (_e, url: string) => {
-    const base = BRAND.releasesUrl?.replace(/\/+$/, '')
-    if (base && (url === base || url.startsWith(`${base}/`))) return shell.openExternal(url)
-  })
+  r.handle('app:get-settings', () => c.appSettings.get())
+  r.handle('app:set-settings', (_e, patch: Partial<AppSettings>) => c.appSettings.set(patch))
 
-  // ── Update (GH26) ─────────────────────────────────────────────────────────────
-  // État poussé aux fenêtres par 'update:state-changed' ; get-state couvre une fenêtre
-  // montée après l'événement.
-  ipcMain.handle('update:get-state', () => c.update.getState())
-  ipcMain.handle('update:install', () => c.update.install())
 
   // ── Requirements ─────────────────────────────────────────────────────────────
-  ipcMain.handle('requirements:list', (_e, repoPath: string, filters?: unknown) =>
+  r.handle('requirements:list', (_e, repoPath: string, filters?: unknown) =>
     c.requirements.findAll(repoPath, (filters as RequirementFilters | undefined) ?? {}))
 
-  ipcMain.handle('requirements:get', (_e, repoPath: string, id: string) =>
+  r.handle('requirements:get', (_e, repoPath: string, id: string) =>
     c.requirements.findOne(repoPath, id))
 
-  ipcMain.handle('requirements:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
+  r.handle('requirements:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.create(repoPath, dto as CreateRequirementDto, workspaceDir))
 
-  ipcMain.handle('requirements:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
+  r.handle('requirements:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.update(repoPath, id, dto as UpdateRequirementDto, workspaceDir))
 
-  ipcMain.handle('requirements:open-draft', (_e, repoPath: string, id: string, comment: string, workspaceDir?: string) =>
+  r.handle('requirements:open-draft', (_e, repoPath: string, id: string, comment: string, workspaceDir?: string) =>
     c.requirements.openDraft(repoPath, id, comment, workspaceDir))
 
-  ipcMain.handle('requirements:transition', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
+  r.handle('requirements:transition', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.transition(repoPath, id, dto as TransitionRequirementDto, workspaceDir))
 
-  ipcMain.handle('requirements:versions', (_e, repoPath: string, id: string) =>
+  r.handle('requirements:versions', (_e, repoPath: string, id: string) =>
     c.requirements.findVersions(repoPath, id))
 
-  ipcMain.handle('requirements:links', (_e, repoPath: string, id: string) =>
+  r.handle('requirements:links', (_e, repoPath: string, id: string) =>
     c.requirements.findLinks(repoPath, id))
 
-  ipcMain.handle('requirements:links-all', (_e, repoPath: string) =>
+  r.handle('requirements:links-all', (_e, repoPath: string) =>
     c.requirements.findAllLinks(repoPath))
 
-  ipcMain.handle('requirements:link-create', (_e, repoPath: string, data: { type: string; sourceId: string; targetId: string }) =>
+  r.handle('requirements:link-create', (_e, repoPath: string, data: { type: string; sourceId: string; targetId: string }) =>
     c.requirements.createLink(repoPath, data))
 
-  ipcMain.handle('requirements:link-delete', (_e, repoPath: string, linkId: string) =>
+  r.handle('requirements:link-delete', (_e, repoPath: string, linkId: string) =>
     c.requirements.deleteLink(repoPath, linkId))
 
   // ── Paramètres (T171) ───────────────────────────────────────────────────────
-  ipcMain.handle('parameters:list', (_e, repoPath: string, workspaceDir?: string) =>
+  r.handle('parameters:list', (_e, repoPath: string, workspaceDir?: string) =>
     c.parameters.list(repoPath, workspaceDir))
-  ipcMain.handle('parameters:usages', (_e, repoPath: string, name: string, workspaceDir?: string) =>
+  r.handle('parameters:usages', (_e, repoPath: string, name: string, workspaceDir?: string) =>
     c.parameters.usages(repoPath, name, workspaceDir))
-  ipcMain.handle('parameters:create', (_e, repoPath: string, param: Parameter, workspaceDir?: string) =>
+  r.handle('parameters:create', (_e, repoPath: string, param: Parameter, workspaceDir?: string) =>
     c.parameters.create(repoPath, param, workspaceDir))
-  ipcMain.handle('parameters:update', (_e, repoPath: string, name: string, patch: Omit<Parameter, 'name'>, workspaceDir?: string) =>
+  r.handle('parameters:update', (_e, repoPath: string, name: string, patch: Omit<Parameter, 'name'>, workspaceDir?: string) =>
     c.parameters.update(repoPath, name, patch, workspaceDir))
-  ipcMain.handle('parameters:delete', (_e, repoPath: string, name: string, workspaceDir?: string) =>
+  r.handle('parameters:delete', (_e, repoPath: string, name: string, workspaceDir?: string) =>
     c.parameters.delete(repoPath, name, workspaceDir))
 
   // ── Tests ────────────────────────────────────────────────────────────────────
-  ipcMain.handle('tests:list', (_e, repoPath: string) => c.tests.findAll(repoPath))
-  ipcMain.handle('tests:get', (_e, repoPath: string, id: string) =>
+  r.handle('tests:list', (_e, repoPath: string) => c.tests.findAll(repoPath))
+  r.handle('tests:get', (_e, repoPath: string, id: string) =>
     c.tests.findOne(repoPath, id))
-  ipcMain.handle('tests:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
+  r.handle('tests:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.tests.create(repoPath, dto as CreateTestCaseDto, workspaceDir))
-  ipcMain.handle('tests:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
+  r.handle('tests:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.tests.update(repoPath, id, dto as UpdateTestCaseDto, workspaceDir))
-  ipcMain.handle('tests:execute', (_e, repoPath: string, tcId: string, dto: unknown, workspaceDir?: string) =>
+  r.handle('tests:execute', (_e, repoPath: string, tcId: string, dto: unknown, workspaceDir?: string) =>
     c.tests.execute(repoPath, tcId, dto as ExecuteTestCaseDto, workspaceDir))
-  ipcMain.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
+  r.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
     c.tests.findRuns(repoPath, tcId))
-  ipcMain.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string) =>
+  r.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string) =>
     c.tests.openDraft(repoPath, id, targetStatus, workspaceDir))
 
   // ── Traceability ─────────────────────────────────────────────────────────────
-  ipcMain.handle('traceability:matrix', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>
+  r.handle('traceability:matrix', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>
     c.traceability.getMatrix(repoPath, (filters as MatrixFiltersDto | undefined) ?? {}, workspaceDir))
-  ipcMain.handle('traceability:missing-links', (_e, repoPath: string, workspaceDir?: string) =>
+  r.handle('traceability:missing-links', (_e, repoPath: string, workspaceDir?: string) =>
     c.traceability.getMissingLinks(repoPath, workspaceDir))
-  ipcMain.handle('traceability:impact', (_e, repoPath: string, reqId: string, depth?: number, workspaceDir?: string) =>
+  r.handle('traceability:impact', (_e, repoPath: string, reqId: string, depth?: number, workspaceDir?: string) =>
     c.traceability.getImpactReport(repoPath, reqId, depth ?? 1, workspaceDir))
-  ipcMain.handle('traceability:acknowledge', (_e, repoPath: string, reqId: string, dto: unknown) =>
+  r.handle('traceability:acknowledge', (_e, repoPath: string, reqId: string, dto: unknown) =>
     c.traceability.acknowledgeImpact(repoPath, reqId, dto as AcknowledgeImpactDto))
-  ipcMain.handle('traceability:test-plan', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
+  r.handle('traceability:test-plan', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.traceability.generateTestPlan(repoPath, dto as GenerateTestPlanDto, workspaceDir))
-  ipcMain.handle('traceability:export-csv', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>
+  r.handle('traceability:export-csv', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>
     c.traceability.exportCsv(repoPath, (filters as MatrixFiltersDto | undefined) ?? {}, workspaceDir))
-  ipcMain.handle('traceability:diff-requirements', (_e, repoPath: string, fromSha: string, toSha: string) =>
+  r.handle('traceability:diff-requirements', (_e, repoPath: string, fromSha: string, toSha: string) =>
     c.traceability.diffRequirementsBetweenRefs(repoPath, fromSha, toSha))
 
   // ── Analyse d'impact (T46) ──────────────────────────────────────────────────────
-  ipcMain.handle('impact-analysis:create', (_e, repoPath: string, dto: unknown) =>
+  r.handle('impact-analysis:create', (_e, repoPath: string, dto: unknown) =>
     c.traceability.createImpactAnalysis(repoPath, dto as CreateImpactAnalysisDto))
-  ipcMain.handle('impact-analysis:local', (_e, repoPath: string, workspaceDir?: string) =>
+  r.handle('impact-analysis:local', (_e, repoPath: string, workspaceDir?: string) =>
     c.traceability.computeLocalImpactAnalysis(repoPath, workspaceDir))
-  ipcMain.handle('impact-analysis:list', (_e, repoPath: string) =>
+  r.handle('impact-analysis:list', (_e, repoPath: string) =>
     c.traceability.listImpactAnalyses(repoPath))
-  ipcMain.handle('impact-analysis:get', (_e, repoPath: string, id: string) =>
+  r.handle('impact-analysis:get', (_e, repoPath: string, id: string) =>
     c.traceability.getImpactAnalysis(repoPath, id))
-  ipcMain.handle('impact-analysis:update-status', (_e, repoPath: string, id: string, dto: unknown) =>
+  r.handle('impact-analysis:update-status', (_e, repoPath: string, id: string, dto: unknown) =>
     c.traceability.updateImpactItemStatus(repoPath, id, dto as UpdateImpactItemStatusDto))
-  ipcMain.handle('impact-analysis:delete', (_e, repoPath: string, id: string) =>
+  r.handle('impact-analysis:delete', (_e, repoPath: string, id: string) =>
     c.traceability.deleteImpactAnalysis(repoPath, id))
 
   // ── Revalidation (T173) — levée du flag needsRevalidation ──────────────────────
-  ipcMain.handle('revalidation:list', (_e, repoPath: string, workspaceDir?: string) =>
+  r.handle('revalidation:list', (_e, repoPath: string, workspaceDir?: string) =>
     c.revalidation.listFlagged(repoPath, workspaceDir))
-  ipcMain.handle('revalidation:clear', (_e, repoPath: string, ids: unknown, workspaceDir?: string) => {
+  r.handle('revalidation:clear', (_e, repoPath: string, ids: unknown, workspaceDir?: string) => {
     if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
       throw new Error('revalidation:clear — ids must be a string array')
     }
@@ -418,124 +387,87 @@ export function registerIpcHandlers(c: Container): void {
   })
 
   // ── Reviews ───────────────────────────────────────────────────────────────────
-  ipcMain.handle('reviews:list', (_e, repoPath: string, status?: unknown) =>
+  r.handle('reviews:list', (_e, repoPath: string, status?: unknown) =>
     c.reviews.list(repoPath, status as ReviewStatus | undefined))
-  ipcMain.handle('reviews:get', (_e, repoPath: string, id: string) =>
+  r.handle('reviews:get', (_e, repoPath: string, id: string) =>
     c.reviews.findById(repoPath, id))
-  ipcMain.handle('reviews:create', (_e, repoPath: string, dto: unknown) =>
+  r.handle('reviews:create', (_e, repoPath: string, dto: unknown) =>
     c.reviews.create(repoPath, dto as CreateReviewDto))
-  ipcMain.handle('reviews:approve-object',
+  r.handle('reviews:approve-object',
     (_e, repoPath: string, reviewId: string, objectId: string, reviewerId: string) =>
       c.reviews.approveObject(repoPath, reviewId, objectId, reviewerId))
-  ipcMain.handle('reviews:revoke-approval',
+  r.handle('reviews:revoke-approval',
     (_e, repoPath: string, reviewId: string, objectId: string, reviewerId: string) =>
       c.reviews.revokeApproval(repoPath, reviewId, objectId, reviewerId))
-  ipcMain.handle('reviews:close',
+  r.handle('reviews:close',
     (_e, repoPath: string, reviewId: string, status: unknown) =>
       c.reviews.close(repoPath, reviewId, status as 'approved' | 'closed'))
 
   // ── Schema ───────────────────────────────────────────────────────────────────
-  ipcMain.handle('schema:get', (_e, repoPath: string) => c.schema.get(repoPath))
-  ipcMain.handle('schema:save', (_e, repoPath: string, schema: unknown) =>
+  r.handle('schema:get', (_e, repoPath: string) => c.schema.get(repoPath))
+  r.handle('schema:save', (_e, repoPath: string, schema: unknown) =>
     c.schema.save(repoPath, schema as import('@polenta/types').ProjectSchema))
   // Drops the in-memory cache entry so the next `schema:get` re-reads schema.yaml from disk —
   // needed because SchemaService.get() otherwise serves the cached copy forever within a
   // session, even after an out-of-band edit to the file (manual edit, git checkout/pull…).
-  ipcMain.handle('schema:invalidate', (_e, repoPath: string) => c.schema.invalidate(repoPath))
+  r.handle('schema:invalidate', (_e, repoPath: string) => c.schema.invalidate(repoPath))
   // T135 sprint 3 — drag & drop d'un élément (exigence/test/campagne) vers un autre nœud du
   // même repo : mutation du schéma côté main process, suivie d'une cascade best-effort sur les
   // requirements/tests existants et le fichier d'ordre d'affichage (cf. element-move.service.ts).
   // La mutation de schéma elle-même est la seule étape all-or-nothing — au-delà, un échec
   // partiel de la cascade est rapporté à l'appelant plutôt que de tout annuler.
-  ipcMain.handle('schema:move-element',
+  r.handle('schema:move-element',
     (_e, repoPath: string, dto: { fromNodeName: string; toNodeName: string; typeName: string }) =>
       c.elementMove.moveElementToNode(repoPath, dto))
 
   // ── Campaigns ────────────────────────────────────────────────────────────────
-  ipcMain.handle('campaigns:list', (_e, repoPath: string, component?: string, level?: string) =>
+  r.handle('campaigns:list', (_e, repoPath: string, component?: string, level?: string) =>
     c.campaigns.list(repoPath, component, level))
-  ipcMain.handle('campaigns:get', (_e, repoPath: string, id: string) =>
+  r.handle('campaigns:get', (_e, repoPath: string, id: string) =>
     c.campaigns.get(repoPath, id))
-  ipcMain.handle('campaigns:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
+  r.handle('campaigns:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.campaigns.create(repoPath, dto as import('@polenta/types').CreateCampaignDto, workspaceDir))
-  ipcMain.handle('campaigns:update', (_e, repoPath: string, id: string, dto: unknown) =>
+  r.handle('campaigns:update', (_e, repoPath: string, id: string, dto: unknown) =>
     c.campaigns.update(repoPath, id, dto as import('@polenta/types').UpdateCampaignDto))
-  ipcMain.handle('campaigns:update-run',
+  r.handle('campaigns:update-run',
     (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId?: string) =>
       c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunStatus, runId))
-  ipcMain.handle('campaigns:close',
+  r.handle('campaigns:close',
     (_e, repoPath: string, id: string, status: unknown) =>
       c.campaigns.close(repoPath, id, status as 'completed' | 'abandoned'))
-  ipcMain.handle('campaigns:add-tests',
+  r.handle('campaigns:add-tests',
     (_e, repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: import('@polenta/types').ReqInstanceSelection) =>
       c.campaigns.addTests(repoPath, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances))
-  ipcMain.handle('campaigns:remove-entries',
+  r.handle('campaigns:remove-entries',
     (_e, repoPath: string, campaignId: string, entryIds: string[]) =>
       c.campaigns.removeEntries(repoPath, campaignId, entryIds))
-  ipcMain.handle('campaigns:duplicate-test',
+  r.handle('campaigns:duplicate-test',
     (_e, repoPath: string, campaignId: string, testCaseId: string, paramValues: Record<string, string>, workspaceDir?: string, requirementId?: string) =>
       c.campaigns.duplicateTest(repoPath, campaignId, testCaseId, paramValues, workspaceDir, requirementId))
   // T171 — résolution prévisionnelle des paramètres (panneau d'ajout, création), sans écriture.
-  ipcMain.handle('campaigns:preview-params',
+  r.handle('campaigns:preview-params',
     (_e, repoPath: string, source: { campaignId?: string; baselineRef?: string }, testCaseIds: string[], workspaceDir?: string) =>
       c.campaigns.previewParams(repoPath, source, testCaseIds, workspaceDir))
-  ipcMain.handle('campaigns:update-run-params',
+  r.handle('campaigns:update-run-params',
     (_e, repoPath: string, campaignId: string, entryId: string, paramValues: Record<string, string>) =>
       c.campaigns.updateRunParams(repoPath, campaignId, entryId, paramValues))
-  ipcMain.handle('campaigns:delete',
+  r.handle('campaigns:delete',
     (_e, repoPath: string, id: string) =>
       c.campaigns.delete(repoPath, id))
-  // GH36 — classeur Excel d'exécution hors outil : dialogue d'enregistrement ici (comme
-  // `export:save`), contenu construit côté main à partir de la campagne.
-  ipcMain.handle('campaigns:execution-sheet-export', async (
-    _e,
-    repoPath: string,
-    campaignId: string,
-    locale: ExecutionSheetLocale,
-  ): Promise<ExportResult> => {
-    const today = new Date().toISOString().slice(0, 10)
-    const saveResult = await dialog.showSaveDialog({
-      title: 'Exporter le classeur d’exécution',
-      defaultPath: `${campaignId}_execution_${today}.xlsx`,
-      filters: [EXPORT_DIALOG_FILTERS.xlsx],
-    })
-    if (saveResult.canceled || !saveResult.filePath) return { status: 'canceled' }
-    try {
-      await c.campaignExecution.exportSheet(repoPath, campaignId, locale === 'en' ? 'en' : 'fr', saveResult.filePath)
-      return { status: 'ok', filePath: saveResult.filePath }
-    } catch (err) {
-      return { status: 'error', message: err instanceof Error ? err.message : 'Erreur lors de l’export' }
-    }
-  })
-  // GH36 sprint 2 — import : choix du fichier puis aperçu (aucune écriture) ; l'application relit
-  // le fichier et revalide contre l'état courant de la campagne.
-  ipcMain.handle('campaigns:execution-sheet-preview', async (
-    _e,
-    repoPath: string,
-    campaignId: string,
-  ): Promise<ExecutionImportPreview | { canceled: true }> => {
-    const result = await dialog.showOpenDialog({
-      title: 'Importer des résultats d’exécution',
-      filters: [EXPORT_DIALOG_FILTERS.xlsx],
-      properties: ['openFile'],
-    })
-    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
-    return c.campaignExecution.preview(repoPath, campaignId, result.filePaths[0])
-  })
-  ipcMain.handle('campaigns:execution-sheet-apply',
+  r.handle('campaigns:execution-sheet-apply',
     (_e, repoPath: string, campaignId: string, filePath: string, workspaceDir?: string) =>
       c.campaignExecution.apply(repoPath, campaignId, filePath, workspaceDir))
 
   // ── Baselines ────────────────────────────────────────────────────────────────
-  ipcMain.handle('baseline:list', (_e, repoPath: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
+  r.handle('baseline:list', (_e, repoPath: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
     c.baseline.list(repoPath, components))
-  ipcMain.handle('baseline:get', (_e, repoPath: string, tag: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
+  r.handle('baseline:get', (_e, repoPath: string, tag: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
     c.baseline.get(repoPath, tag, components))
-  ipcMain.handle('baseline:get-integration-branch', (_e, repoPath: string) => c.git.getIntegrationBranch(repoPath))
-  ipcMain.handle('baseline:set-integration-branch', (_e, repoPath: string, branch: string) => c.git.setIntegrationBranch(repoPath, branch))
-  ipcMain.handle('baseline:delete', (_e, repoPath: string, tag: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
+  r.handle('baseline:get-integration-branch', (_e, repoPath: string) => c.git.getIntegrationBranch(repoPath))
+  r.handle('baseline:set-integration-branch', (_e, repoPath: string, branch: string) => c.git.setIntegrationBranch(repoPath, branch))
+  r.handle('baseline:delete', (_e, repoPath: string, tag: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
     c.baseline.delete(repoPath, tag, components))
-  ipcMain.handle('baseline:create', async (_e, repoPath: string, dto: import('../services/baseline.service').CreateBaselineDto, workspaceDir?: string) => {
+  r.handle('baseline:create', async (_e, repoPath: string, dto: import('../services/baseline.service').CreateBaselineDto, workspaceDir?: string) => {
     // Create a tag on the main repo — annotated (carries the baseline message) when one was given
     const message = dto.message?.trim() ?? ''
     if (message) {
@@ -577,59 +509,9 @@ export function registerIpcHandlers(c: Container): void {
     } satisfies import('../services/baseline.service').BaselineRecord
   })
 
-  // ── Dialog ───────────────────────────────────────────────────────────────────
-  ipcMain.handle('dialog:pick-folder', async (_event, title?: string) => {
-    const result = await dialog.showOpenDialog({
-      title: title ?? 'Sélectionner un dossier',
-      properties: ['openDirectory', 'createDirectory'],
-    })
-    return result.canceled ? null : result.filePaths[0]
-  })
-
-  ipcMain.handle('dialog:pick-image-file', async () => {
-    const result = await dialog.showOpenDialog({
-      title: 'Insérer une image',
-      properties: ['openFile'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'] }],
-    })
-    if (result.canceled || !result.filePaths[0]) return null
-    const filePath = result.filePaths[0]
-    const ext = path.extname(filePath).toLowerCase().replace('.', '')
-    const mimeType = IMAGE_MIME_BY_EXT[ext] ?? 'image/png'
-    const data = await fsP.readFile(filePath, { encoding: 'base64' })
-    return { mimeType, base64: data }
-  })
-
-  ipcMain.handle('dialog:pick-drawio-file', async (_e, repoPath: string) => {
-    const result = await dialog.showOpenDialog({
-      title: 'Sélectionner un diagramme draw.io',
-      properties: ['openFile'],
-      filters: [{ name: 'draw.io', extensions: ['drawio'] }],
-    })
-    if (result.canceled || !result.filePaths[0]) return { status: 'canceled' as const }
-    const picked = result.filePaths[0]
-    const rel = path.relative(repoPath, picked)
-    // Fichier déjà dans le repo courant (pas de '..' ni de chemin absolu résiduel,
-    // ce dernier cas couvrant un autre volume Windows) : référence directe.
-    if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-      return { status: 'ok' as const, path: rel.split(path.sep).join('/'), copied: false }
-    }
-    // Fichier hors du repo : les diagrammes référencés doivent vivre dans le repo
-    // (D4, CONTEXT.md) — on copie le fichier choisi dans diagrams/ plutôt que de
-    // rejeter la sélection, avec un nom dédupliqué en cas de collision.
-    try {
-      const diagramsDir = path.join(repoPath, 'diagrams')
-      await fsP.mkdir(diagramsDir, { recursive: true })
-      const destName = await findAvailableFileName(diagramsDir, path.basename(picked))
-      await fsP.copyFile(picked, path.join(diagramsDir, destName))
-      return { status: 'ok' as const, path: `diagrams/${destName}`, copied: true }
-    } catch {
-      return { status: 'error' as const, message: 'Impossible de copier le fichier dans le repo.' }
-    }
-  })
 
   // ── Draw.io (T47) ────────────────────────────────────────────────────────────
-  ipcMain.handle('drawio:read', async (_e, repoPath: string, relativePath: string) => {
+  r.handle('drawio:read', async (_e, repoPath: string, relativePath: string) => {
     let raw: string
     try {
       raw = await fsP.readFile(path.join(repoPath, relativePath), 'utf-8')
@@ -638,39 +520,9 @@ export function registerIpcHandlers(c: Container): void {
     }
     return parseDrawioPages(raw)
   })
-  ipcMain.handle('drawio:open-external', async (_e, repoPath: string, relativePath: string) => {
-    await shell.openPath(path.join(repoPath, relativePath))
-  })
 
   // ── Image (T76) ──────────────────────────────────────────────────────────────
-  ipcMain.handle('image:pick-file', async (_e, repoPath: string) => {
-    const result = await dialog.showOpenDialog({
-      title: 'Insérer une image',
-      properties: ['openFile'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'] }],
-    })
-    if (result.canceled || !result.filePaths[0]) return { status: 'canceled' as const }
-    const picked = result.filePaths[0]
-    const rel = path.relative(repoPath, picked)
-    // Fichier déjà dans le repo courant : référence directe (même logique que
-    // `dialog:pick-drawio-file`).
-    if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-      return { status: 'ok' as const, path: rel.split(path.sep).join('/'), copied: false }
-    }
-    // Fichier hors du repo : les images référencées vivent dans le repo (T76,
-    // par analogie avec D4/CONTEXT.md pour les diagrammes) — copie dans
-    // `images/` plutôt que rejet, nom dédupliqué en cas de collision.
-    try {
-      const imagesDir = path.join(repoPath, 'images')
-      await fsP.mkdir(imagesDir, { recursive: true })
-      const destName = await findAvailableFileName(imagesDir, path.basename(picked))
-      await fsP.copyFile(picked, path.join(imagesDir, destName))
-      return { status: 'ok' as const, path: `images/${destName}`, copied: true }
-    } catch {
-      return { status: 'error' as const, message: 'Impossible de copier le fichier dans le repo.' }
-    }
-  })
-  ipcMain.handle('image:read', async (_e, repoPath: string, relativePath: string) => {
+  r.handle('image:read', async (_e, repoPath: string, relativePath: string) => {
     const ext = path.extname(relativePath).toLowerCase().replace('.', '')
     const mimeType = IMAGE_MIME_BY_EXT[ext] ?? 'image/png'
     try {
@@ -680,7 +532,7 @@ export function registerIpcHandlers(c: Container): void {
       return null
     }
   })
-  ipcMain.handle('image:write-paste', async (_e, repoPath: string, mimeType: string, base64: string) => {
+  r.handle('image:write-paste', async (_e, repoPath: string, mimeType: string, base64: string) => {
     try {
       const ext = IMAGE_EXT_BY_MIME[mimeType] ?? 'png'
       const imagesDir = path.join(repoPath, 'images')
@@ -695,47 +547,47 @@ export function registerIpcHandlers(c: Container): void {
   })
 
   // ── Tree ─────────────────────────────────────────────────────────────────────
-  ipcMain.handle('tree:get', (_e, repoPath: string, nodeId: string, typeId: string) =>
+  r.handle('tree:get', (_e, repoPath: string, nodeId: string, typeId: string) =>
     c.tree.get(repoPath, nodeId, typeId))
-  ipcMain.handle('tree:save', (_e, repoPath: string, tree: unknown) =>
+  r.handle('tree:save', (_e, repoPath: string, tree: unknown) =>
     c.tree.save(repoPath, tree as import('@polenta/types').TypeTree))
-  ipcMain.handle('tree:generate-id', () =>
+  r.handle('tree:generate-id', () =>
     c.tree.generateId())
 
   // ── Flat workspace (T69 Sprint 1) ─────────────────────────────────────────────
-  ipcMain.handle('workspace:detect', (_e, dir: string) =>
+  r.handle('workspace:detect', (_e, dir: string) =>
     c.workspace.detectWorkspace(dir))
-  ipcMain.handle('workspace:init', (_e, workspaceDir: string, rootRepoPath: string) =>
+  r.handle('workspace:init', (_e, workspaceDir: string, rootRepoPath: string) =>
     c.workspace.initWorkspace(workspaceDir, rootRepoPath))
-  ipcMain.handle('workspace:open', (_e, workspaceDir: string) =>
+  r.handle('workspace:open', (_e, workspaceDir: string) =>
     c.workspace.openWorkspace(workspaceDir))
 
   // ── Flat workspace (T69 Sprint 2) ─────────────────────────────────────────────
-  ipcMain.handle('workspace:get-tree', (_e, workspaceDir: string) =>
+  r.handle('workspace:get-tree', (_e, workspaceDir: string) =>
     c.workspace.getCacheTree(workspaceDir))
-  ipcMain.handle('workspace:rebuild-tree', (_e, workspaceDir: string) =>
+  r.handle('workspace:rebuild-tree', (_e, workspaceDir: string) =>
     c.workspace.rebuildTree(workspaceDir))
-  ipcMain.handle('workspace:set-mount-override', (_e, workspaceDir: string, override: unknown) =>
+  r.handle('workspace:set-mount-override', (_e, workspaceDir: string, override: unknown) =>
     c.workspace.setMountOverride(workspaceDir, override as import('@polenta/types').MountOverride))
   // T74: physically delete a dependency's cloned directory (renderer always removes its
   // polenta-repo.yaml reference and rebuilds the tree first — see workspaceActions.ts).
-  ipcMain.handle('workspace:remove-repo-dir', (_e, repoPath: string) =>
+  r.handle('workspace:remove-repo-dir', (_e, repoPath: string) =>
     c.workspaceTree.removeClonedRepo(repoPath))
   // T74 sprint 2: physically rename a dependency's mount directory (renderer does this before
   // any manifest write — see workspaceActions.ts).
-  ipcMain.handle('workspace:rename-repo-dir', (_e, workspaceDir: string, oldMountName: string, newMountName: string) =>
+  r.handle('workspace:rename-repo-dir', (_e, workspaceDir: string, oldMountName: string, newMountName: string) =>
     c.workspaceTree.renameClonedRepo(workspaceDir, oldMountName, newMountName))
 
   // ── PolentaRepo (T69 Sprint 1) ────────────────────────────────────────────────
-  ipcMain.handle('polenta-repo:get', (_e, repoPath: string) =>
+  r.handle('polenta-repo:get', (_e, repoPath: string) =>
     c.polentaRepo.readManifest(repoPath))
-  ipcMain.handle('polenta-repo:save', (_e, repoPath: string, manifest: unknown) =>
+  r.handle('polenta-repo:save', (_e, repoPath: string, manifest: unknown) =>
     c.polentaRepo.writeManifest(repoPath, manifest as import('@polenta/types').PolentaRepoManifest))
 
   // ── Interface compliance (T69 Sprint 4) ────────────────────────────────────────
-  ipcMain.handle('interface:compliance-matrix', (_e, workspaceDir: string) =>
+  r.handle('interface:compliance-matrix', (_e, workspaceDir: string) =>
     c.interfaceCompliance.getComplianceMatrix(workspaceDir))
-  ipcMain.handle('interface:coverage', (
+  r.handle('interface:coverage', (
     _e,
     componentRepoPath: string,
     interfaceRepoPath: string,
@@ -744,33 +596,33 @@ export function registerIpcHandlers(c: Container): void {
     c.interfaceCompliance.checkComponentCoverage(componentRepoPath, interfaceRepoPath, roles))
 
   // ── Queries (T77 sprint 1) ───────────────────────────────────────────────────
-  ipcMain.handle('queries:execute', (_e, repoPath: string, queryDef: unknown, workspaceDir?: string) =>
+  r.handle('queries:execute', (_e, repoPath: string, queryDef: unknown, workspaceDir?: string) =>
     c.queryEngine.execute(repoPath, queryDef as QueryDefinition, workspaceDir))
-  ipcMain.handle('queries:builder-to-sql', (_e, repoPath: string, config: unknown, workspaceDir?: string) =>
+  r.handle('queries:builder-to-sql', (_e, repoPath: string, config: unknown, workspaceDir?: string) =>
     c.queryEngine.builderToSql(repoPath, config as BuilderConfig, workspaceDir))
-  ipcMain.handle('queries:list', (_e, repoPath: string, username: string) =>
+  r.handle('queries:list', (_e, repoPath: string, username: string) =>
     c.savedQueries.list(repoPath, username))
-  ipcMain.handle('queries:create', (_e, repoPath: string, username: string, dto: unknown) =>
+  r.handle('queries:create', (_e, repoPath: string, username: string, dto: unknown) =>
     c.savedQueries.create(repoPath, username, dto as CreateSavedQueryDto))
-  ipcMain.handle('queries:update', (_e, repoPath: string, username: string, id: string, dto: unknown) =>
+  r.handle('queries:update', (_e, repoPath: string, username: string, id: string, dto: unknown) =>
     c.savedQueries.update(repoPath, username, id, dto as UpdateSavedQueryDto))
-  ipcMain.handle('queries:delete', (_e, repoPath: string, username: string, id: string) =>
+  r.handle('queries:delete', (_e, repoPath: string, username: string, id: string) =>
     c.savedQueries.delete(repoPath, username, id))
-  ipcMain.handle('queries:history-list', (_e, repoPath: string, username: string) =>
+  r.handle('queries:history-list', (_e, repoPath: string, username: string) =>
     c.savedQueries.listHistory(repoPath, username))
-  ipcMain.handle('queries:history-add', (_e, repoPath: string, username: string, entry: unknown) =>
+  r.handle('queries:history-add', (_e, repoPath: string, username: string, entry: unknown) =>
     c.savedQueries.addHistoryEntry(repoPath, username, entry as AddHistoryEntryDto))
-  ipcMain.handle('queries:history-delete', (_e, repoPath: string, username: string, id: string) =>
+  r.handle('queries:history-delete', (_e, repoPath: string, username: string, id: string) =>
     c.savedQueries.deleteHistoryEntry(repoPath, username, id))
-  ipcMain.handle('queries:order-get', (_e, repoPath: string, username: string) =>
+  r.handle('queries:order-get', (_e, repoPath: string, username: string) =>
     c.savedQueries.getQueriesOrder(repoPath, username))
-  ipcMain.handle('queries:order-set', (_e, repoPath: string, username: string, order: string[]) =>
+  r.handle('queries:order-set', (_e, repoPath: string, username: string, order: string[]) =>
     c.savedQueries.setQueriesOrder(repoPath, username, order))
-  ipcMain.handle('queries:set-scope', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
+  r.handle('queries:set-scope', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
     c.savedQueries.setScope(repoPath, username, id, scope as QueryScope))
 
   // ── Dashboards & widgets (T77 sprint 2, seed sprint 3) ───────────────────────
-  ipcMain.handle('dashboards:list', async (_e, repoPath: string, username: string) => {
+  r.handle('dashboards:list', async (_e, repoPath: string, username: string) => {
     // Seed the 3 pre-configured shared dashboards on first access (empty `dashboards/`
     // folder, never seeded before) — server-side, ahead of every list() call, so it's
     // reliable regardless of which UI entry point triggers the panel's first load
@@ -778,81 +630,46 @@ export function registerIpcHandlers(c: Container): void {
     await c.dashboardSeed.ensureSeeded(repoPath, username)
     return c.dashboards.list(repoPath, username)
   })
-  ipcMain.handle('dashboards:get', (_e, repoPath: string, username: string, id: string) =>
+  r.handle('dashboards:get', (_e, repoPath: string, username: string, id: string) =>
     c.dashboards.get(repoPath, username, id))
-  ipcMain.handle('dashboards:create', (_e, repoPath: string, username: string, dto: unknown) =>
+  r.handle('dashboards:create', (_e, repoPath: string, username: string, dto: unknown) =>
     c.dashboards.create(repoPath, username, dto as CreateDashboardDto))
-  ipcMain.handle('dashboards:update', (_e, repoPath: string, username: string, id: string, dto: unknown) =>
+  r.handle('dashboards:update', (_e, repoPath: string, username: string, id: string, dto: unknown) =>
     c.dashboards.update(repoPath, username, id, dto as UpdateDashboardDto))
-  ipcMain.handle('dashboards:delete', (_e, repoPath: string, username: string, id: string) =>
+  r.handle('dashboards:delete', (_e, repoPath: string, username: string, id: string) =>
     c.dashboards.delete(repoPath, username, id))
-  ipcMain.handle('dashboards:set-scope', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
+  r.handle('dashboards:set-scope', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
     c.dashboards.setScope(repoPath, username, id, scope as QueryScope))
-  ipcMain.handle('dashboards:add-widget', (_e, repoPath: string, username: string, dashboardId: string, dto: unknown) =>
+  r.handle('dashboards:add-widget', (_e, repoPath: string, username: string, dashboardId: string, dto: unknown) =>
     c.dashboards.addWidget(repoPath, username, dashboardId, dto as AddWidgetDto))
-  ipcMain.handle(
+  r.handle(
     'dashboards:update-widget',
     (_e, repoPath: string, username: string, dashboardId: string, widgetId: string, dto: unknown) =>
       c.dashboards.updateWidget(repoPath, username, dashboardId, widgetId, dto as UpdateWidgetDto),
   )
-  ipcMain.handle(
+  r.handle(
     'dashboards:delete-widget',
     (_e, repoPath: string, username: string, dashboardId: string, widgetId: string) =>
       c.dashboards.deleteWidget(repoPath, username, dashboardId, widgetId),
   )
-  ipcMain.handle(
+  r.handle(
     'dashboards:set-widget-order',
     (_e, repoPath: string, username: string, dashboardId: string, order: string[]) =>
       c.dashboards.setWidgetOrder(repoPath, username, dashboardId, order),
   )
-  ipcMain.handle('dashboards:order-get', (_e, repoPath: string, username: string) =>
+  r.handle('dashboards:order-get', (_e, repoPath: string, username: string) =>
     c.dashboards.getDashboardsOrder(repoPath, username))
-  ipcMain.handle('dashboards:order-set', (_e, repoPath: string, username: string, order: string[]) =>
+  r.handle('dashboards:order-set', (_e, repoPath: string, username: string, order: string[]) =>
     c.dashboards.setDashboardsOrder(repoPath, username, order))
 
   // ── Git (T43) ────────────────────────────────────────────────────────────────
-  ipcMain.handle('git:head-sha', (_e, repoPath: string) => c.git.headSha(repoPath))
+  r.handle('git:head-sha', (_e, repoPath: string) => c.git.headSha(repoPath))
 
   // ── Export (T43) ─────────────────────────────────────────────────────────────
-  ipcMain.handle('export:save', async (
-    _e,
-    repoPath: string,
-    kind: ExportKind,
-    format: ExportFormat,
-    payload: unknown,
-    printParams: Record<string, string> | undefined,
-    suggestedName: string,
-    templateRelPath?: string,
-  ) => {
-    const filter = EXPORT_DIALOG_FILTERS[format]
-    if (!filter) return { status: 'error' as const, message: `Format d'export inconnu : "${format}"` }
-
-    const saveResult = await dialog.showSaveDialog({
-      title: 'Exporter',
-      defaultPath: suggestedName,
-      filters: [filter],
-    })
-    if (saveResult.canceled || !saveResult.filePath) return { status: 'canceled' as const }
-    try {
-      await c.export.run(kind, format, payload, printParams, saveResult.filePath, { repoPath, templateRelPath })
-      return { status: 'ok' as const, filePath: saveResult.filePath }
-    } catch (err) {
-      return { status: 'error' as const, message: err instanceof Error ? err.message : 'Erreur lors de l’export' }
-    }
-  })
   // GH34 — gabarits de la bibliothèque (préférence application) pour un format.
-  ipcMain.handle('export-templates:list', (_e, format: TemplateExportFormat) => c.exportTemplateLibrary.list(format))
-  // Gabarits d'exemple : `extraResources` en build packagé (electron-builder.yml), sources du repo
-  // en développement.
-  ipcMain.handle('export-templates:install-examples', () => c.exportTemplateLibrary.installExamples(
-    app.isPackaged
-      ? path.join(process.resourcesPath, 'export-templates')
-      : path.join(app.getAppPath(), 'resources', 'export-templates'),
-  ))
-  ipcMain.handle('export:show-in-folder', (_e, filePath: string) => {
-    shell.showItemInFolder(filePath)
-  })
-  ipcMain.handle('export:open-file', (_e, filePath: string) => shell.openPath(filePath))
+  r.handle('export-templates:list', (_e, format: TemplateExportFormat) => c.exportTemplateLibrary.list(format))
+  r.handle('export-templates:install-examples', () =>
+    c.exportTemplateLibrary.installExamples(platform.exportTemplateExamplesDir()))
 
-  registerPrefHandlers()
+  registerPrefHandlers(r, c.forgeConfig)
 }

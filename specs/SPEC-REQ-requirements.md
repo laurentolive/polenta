@@ -2,7 +2,7 @@
 
 > Spec détaillée du périmètre "Exigences" de Polenta.  
 > Voir aussi : [SPEC-TEMPLATES.md](SPEC-TEMPLATES.md) pour la configuration métier par domaine.  
-> Dernière révision : 2026-06-15
+> Dernière révision : 2026-10-11 (GH45 S4 — autocomplétion du champ `user`)
 
 ---
 
@@ -96,7 +96,7 @@ dans `AGENTS.md`). Voir `SPEC-MCP-SERVER.md` §4.2.
 | `date` | Date |
 | `datetime` | Date et heure |
 | `drawio` | Référence à un fichier `.drawio` du repo (chemin) + bouton d'ouverture dans l'application draw.io externe du poste — pas d'éditeur intégré, pas d'iframe réseau |
-| `user` | Référence utilisateur |
+| `user` | Référence utilisateur : la valeur enregistrée est le **login** (chaîne, format YAML inchangé). GH45 S4 — quand l'`origin` du repo est sur une forge Forgejo/Gitea dont le propriétaire est une organisation, les **membres de l'organisation** (login, nom affiché) sont proposés en autocomplétion (`<datalist>`), chargés une fois par session (`forge:org-members`, SPEC-PROJECT-MANAGEMENT §9.3), dans la Vue Système (`EditView`), les formulaires (`DynamicField`) et l'édition inline de la Vue Tableau. La saisie reste libre (utilisateur externe, hors ligne) ; repo personnel, GitHub ou forge injoignable : texte libre, sans message. |
 
 ### 3.2a Diagrammes draw.io dans un champ `richtext` (T47)
 

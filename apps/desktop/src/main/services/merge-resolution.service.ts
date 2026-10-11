@@ -2,7 +2,6 @@ import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { createHash } from 'crypto'
-import { app } from 'electron'
 import git, { TREE, type WalkerEntry } from 'isomorphic-git'
 import {
   detectKind, entriesOf, isBinaryContent, mergeFile, nextFreeId, parseObject, parseOutput, prefixOf,
@@ -88,6 +87,7 @@ export class MergeResolutionService {
   private cache = new Map<string, DraftFile>()
 
   constructor(
+    private readonly userDataDir: string,
     private readonly auth: AuthService,
     private readonly sync: SyncService,
     private readonly schema: SchemaService,
@@ -667,7 +667,7 @@ export class MergeResolutionService {
   // ─── Drafts (userData/merge-drafts) ─────────────────────────────────────────────
 
   private draftDir(): string {
-    return path.join(app.getPath('userData'), 'merge-drafts')
+    return path.join(this.userDataDir, 'merge-drafts')
   }
 
   private draftPath(id: string): string {

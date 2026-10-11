@@ -1,6 +1,6 @@
 # SPEC-ELECTRON-DESKTOP — Architecture Client Lourd Electron
 
-> Dernière révision : 2026-07-21 (T130)  
+> Dernière révision : 2026-10-11 (GH45 — forges Forgejo/Gitea : services/forge/, accueil, connexion, dépendance inaccessible)  
 > Remplace la couche NestJS HTTP pour la distribution desktop.  
 > La spec fonctionnelle des modules (Requirements, Tests, Traceability, Reviews…) reste inchangée.  
 > §2-17 décrivaient la structure **cible initiale** (2026-06-12), jamais suivie telle quelle en
@@ -72,6 +72,9 @@ apps/
                                        reviews, dashboards, queries, tree, image, drawio, export…)
           pref.handlers.ts         ← channels `pref:*` (préférences utilisateur .pref)
         services/                  ← T130 : tous les services à plat, pas de sous-dossiers par domaine
+                                       (exceptions : export/, et forge/ — GH45 : providers GitHub et
+                                       Forgejo/Gitea, détection, HTTP des API, erreurs d'accès,
+                                       configuration d'équipe, ForgeService)
           git.service.ts           ← working tree reads/writes
           sync.service.ts          ← commit / push / pull / status / merge (inclut ce que le plan
                                        initial appelait "merge.service.ts" et "branch.service.ts")
@@ -1080,6 +1083,11 @@ App ouvre (route "/" chargée)
 
 ### 16.4 Écran Login (`/login`)
 
+> **GH45** : l'écran s'adapte au serveur — configuration machine (serveur imposé, GitHub masqué),
+> détection de la forge, connexion **identifiant + mot de passe (+ 2FA)** sur Forgejo/Gitea, lien
+> d'invitation `polenta://connect`. Référence : SPEC-ACCOUNTS-AUTH §2-3. Le schéma ci-dessous est
+> celui d'un serveur GitHub (jeton).
+
 ```
 ┌─────────────────────────────────────────┐
 │  Bienvenue dans Polenta                 │
@@ -1129,10 +1137,15 @@ désactivés. Une erreur s'affiche sous le bouton concerné et disparaît au lan
 
 | Bouton | Enchaînement | Opération |
 |--------|--------------|-----------|
-| Démo | sélecteur natif → | dossier contenant `.polenta/workspace.yaml` (`workspace:detect`) : `workspace:open-project` ; sinon dossier vide ou inexistant (`workspace:is-empty-dir`) : `workspace:create-from-clone` avec l'URL fixe `DEMO_PROJECT_URL` (`renderer/lib/demoProject.ts`) ; sinon erreur « dossier non vide » |
+| Démo | sélecteur natif → | dossier contenant `.polenta/workspace.yaml` (`workspace:detect`) : `workspace:open-project` ; sinon dossier vide ou inexistant (`workspace:is-empty-dir`) : `workspace:create-from-clone` avec l'URL de démo — GH45 : `demoProjectUrl` de la configuration machine, sinon `DEMO_PROJECT_URL` (`renderer/lib/demoProject.ts`) ; bouton **masqué** si GitHub est masqué sans démo fournie ; sinon erreur « dossier non vide » |
 | Ouvrir un projet existant | sélecteur natif → | `workspace:open-project` (`not-a-workspace` → erreur) |
-| Depuis un repo existant | popup « URL du repo Git » → sélecteur natif → | `workspace:create-from-clone` |
-| Créer un nouveau projet | popup « Nom du projet » → sélecteur natif → | `workspace:create-new` |
+| Depuis un repo existant | popup « URL du repo Git » → sélecteur natif → ; GH45 S4, avec un compte Forgejo/Gitea : **liste des repos accessibles** (`RepoPickerModal`, « Saisir une URL » pour le popup) | `workspace:create-from-clone` (repo déjà sur le poste : rouvert) |
+| Créer un nouveau projet | popup « Nom du projet » → sélecteur natif → ; GH45 S4, avec un compte Forgejo/Gitea : `CreateProjectModal` (nom, « Sur le serveur <hôte> » + organisation, ou « Sur ce poste uniquement ») | `workspace:create-new`, ou `workspace:create-on-server` (SPEC-PROJECT-MANAGEMENT §9.1) |
+
+**Projets de votre équipe** (GH45 S2b) : au-dessus des boutons, les projets proposés par la
+configuration de l'équipe sur la forge (SPEC-ACCOUNTS-AUTH §7), accessibles à l'utilisateur ; un
+clic rouvre le projet s'il est déjà sur le poste, sinon le clone (dossier vide requis). Un projet
+existant s'ouvre sur la vue de l'équipe (`projectHome`) si elle est définie.
 
 - **Popup** (`components/home/TextPromptModal.tsx`) : un seul champ, qui a le focus à l'ouverture.
   `Entrée` valide, `Échap` ou un clic sur l'overlay annule, et la validation est impossible si le
@@ -2384,6 +2397,18 @@ depuis `polenta-repo.yaml` de chaque repo du workspace, en résolvant les confli
 URL, pins différents) via `DiamondConflict`/`MountOverride` (renommage explicite d'un montage,
 plutôt qu'un champ `version` déclaré). `SchemaService.resolveComponentRepoPath()` s'appuie sur ce
 cache pour retrouver le repo réel derrière un `objectTypeRef` cross-composant.
+
+**Dépendance inaccessible (GH30, GH45)** : un clone/fetch refusé (HTTP 401/403/404 — GitHub répond
+404 pour un repo privé inaccessible) est rendu en `parse-error` avec `remoteAccess: true` et un
+message actionnable, qui nomme le composant et l'URL :
+- aucun compte pour l'hôte → « aucun compte n'est configuré pour cet hôte dans Polenta — ajoutez un
+  compte ayant accès à ce dépôt » ;
+- compte **Forgejo/Gitea** → « Votre compte n'a pas accès au dépôt "<nom>" (<url>). Demandez à
+  l'administrateur du serveur de vous ajouter à une équipe qui y a accès. » ;
+- compte GitHub ou autre → vérifier l'accès et la portée du jeton (scope `repo`, dépôt inclus dans
+  un jeton fine-grained) ;
+- accès révoqué (`ForgeAccessError` 401) → message d'accès révoqué, bannière de reconnexion
+  (SPEC-ACCOUNTS-AUTH §8).
 
 `PolentaRepoService` lit/écrit `polenta-repo.yaml` ; `WorkspaceService` orchestre l'ouverture du
 workspace (clone des dépendances manquantes, détection de conflit en diamant, reconstruction de

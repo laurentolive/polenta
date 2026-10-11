@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
+import { forgeAccessNotices } from '../lib/forgeAccessNotices'
 import { decodeProjectId } from '../lib/projectId'
 import { useWorkspaceStructure } from './useWorkspaceStructure'
 
@@ -53,7 +54,15 @@ export function useAutoPull(currentProjectId: string | null): void {
     async function autoSync(repoPath: string) {
       try {
         const integrationBranch = await api.baseline.getIntegrationBranch(repoPath)
-        const { state, offline } = await api.sync.autoSync(repoPath, integrationBranch)
+        const { state, offline, accessRevoked, revokedServer } = await api.sync.autoSync(repoPath, integrationBranch)
+        // GH45: access revoked — one banner for the host (ForgeAccessBanner), no log line per tick;
+        // the main process makes no network call for this host until the user logs in again.
+        if (accessRevoked) {
+          const host = revokedServer ? new URL(revokedServer).hostname : ''
+          if (revokedServer) forgeAccessNotices.report({ status: 401, host, serverUrl: revokedServer })
+          qc.setQueryData(['sync:last-error', repoPath], t('forgeAccess.revoked', { host }))
+          return
+        }
         if (offline) {
           qc.setQueryData(['sync:last-error', repoPath], t('layout.syncIndicator.offline'))
           return

@@ -9,12 +9,8 @@ dist/
 # Git repos bare (données runtime)
 data/
 
-# Build outputs
-apps/web/dist/
-apps/api/dist/
-
-# Prisma
-apps/api/prisma/migrations/*.sql.bak
+# GH44 — espaces utilisateurs du serveur web en développement (POLENTA_WEB_DATA_DIR par défaut)
+apps/desktop/.web-data/
 
 # OS
 .DS_Store

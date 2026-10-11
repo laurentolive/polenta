@@ -1,4 +1,8 @@
 import type {
+  CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+} from '@polenta/types'
+import type {
   MergeFileDetail,
   MergeFileDraft,
   MergeFinalizeResult,
@@ -263,6 +267,10 @@ export interface IntegrationRemoteState {
   ahead: number
   behind: number
   offline?: true
+  /** GH45 — accès au serveur révoqué : plus aucun appel réseau jusqu'à la reconnexion. */
+  accessRevoked?: true
+  /** GH45 — serveur concerné, scheme + hôte + port (avec `accessRevoked`). */
+  revokedServer?: string
 }
 export type ResyncOutcome =
   | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
@@ -301,7 +309,28 @@ export interface FieldVisibilityPref {
   freezeColCountExcel?: number
 }
 
+/** GH44 — un projet de « Mes projets » (espace serveur de l'utilisateur, version web). */
+export interface WebWorkspaceEntry {
+  name: string
+  workspaceDir: string
+}
+
+export type WebDeleteWorkspaceResult =
+  | { status: 'deleted' }
+  | { status: 'unpublished'; repos: string[] }
+
 export interface ApiClient {
+  /**
+   * GH44 — channels propres au serveur web (`window.polenta.platform === 'web'`) ; n'existent pas
+   * sur le desktop.
+   */
+  web: {
+    workspacesRoot(): Promise<string>
+    listWorkspaces(): Promise<WebWorkspaceEntry[]>
+    /** Dossier neuf et vide sous « Mes projets » : remplace le choix d'un dossier de destination. */
+    newWorkspaceDir(nameHint: string): Promise<string>
+    deleteWorkspace(workspaceDir: string, force?: boolean): Promise<WebDeleteWorkspaceResult>
+  }
   app: {
     setTitle(title: string): Promise<void>
     getVersion(): Promise<string>
@@ -310,6 +339,16 @@ export interface ApiClient {
     setSettings(patch: Partial<AppSettings>): Promise<AppSettings>
     /** GH26 — ouvre une page de release GitHub dans le navigateur système. */
     openReleasePage(url: string): Promise<void>
+    /** GH45 — configuration machine (DSI sur le desktop, exploitant sur le web). */
+    getMachineConfig(): Promise<MachineConfig>
+    /** GH45 S2b — configuration par équipe (cache, sans réseau). */
+    getTeamConfig(): Promise<TeamConfigStatus>
+    /** GH45 S2b — relit la configuration sur la forge du compte courant. */
+    refreshTeamConfig(): Promise<TeamConfigStatus>
+    /** GH45 S2b — projets proposés, accessibles à l'utilisateur. */
+    teamProjects(): Promise<TeamProjectEntry[]>
+    /** GH45 S2b — desktop : lien d'invitation reçu avant que l'interface ne soit prête. */
+    takePendingInvite(): Promise<{ server: string; login?: string } | null>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */
@@ -329,6 +368,18 @@ export interface ApiClient {
     save(repoPath: string, tree: TypeTree): Promise<void>
     generateId(): Promise<string>
   }
+  /** GH45 S4 — forges Forgejo/Gitea du compte : repos, organisations, droits, membres. */
+  forge: {
+    /** Comptes Forgejo/Gitea connectés, compte par défaut en tête. */
+    accounts(): Promise<ForgeAccount[]>
+    listRepos(accountKey: string): Promise<ForgeRepo[]>
+    /** Organisations où le compte peut créer un repo. */
+    creatableOrgs(accountKey: string): Promise<ForgeOrg[]>
+    /** Droits sur le repo `origin` ; null hors ligne, hors Forgejo ou sans compte. */
+    repoAccess(repoPath: string): Promise<ForgeRepoAccess | null>
+    /** Membres de l'organisation propriétaire du repo ; null dans les cas sans objet. */
+    orgMembers(repoPath: string): Promise<ForgeMember[] | null>
+  }
   workspace: {
     listRecents(): Promise<ProjectRecent[]>
     markRecent(workspaceDir: string): Promise<void>
@@ -338,6 +389,12 @@ export interface ApiClient {
     openProject(dir: string): Promise<WorkspaceOpenResult>
     createNew(containerDir: string, name: string): Promise<WorkspaceOpenResult>
     createFromClone(containerDir: string, remoteUrl: string): Promise<WorkspaceOpenResult>
+    /** GH45 S2b — projet récent dont l'origin est `remoteUrl`, null sinon. */
+    findByRemote(remoteUrl: string): Promise<ProjectRecent | null>
+    /** GH45 S4 — nouveau projet sur le serveur (repo privé dans `org`), puis local, puis publication. */
+    createOnServer(containerDir: string, name: string, accountKey: string, org: string): Promise<CreateOnServerResult>
+    /** GH45 S4 — nouveau repo de composant sur le serveur, initialisé ; renvoie son URL de clone. */
+    createComponentOnServer(accountKey: string, org: string, name: string): Promise<{ cloneUrl: string }>
     // GH27 — true if the folder is missing or has no entries
     isEmptyDir(dir: string): Promise<boolean>
     // T69: flat workspace
@@ -368,6 +425,16 @@ export interface ApiClient {
     setup(remote: string, pat: string): Promise<{ login: string; name: string; email: string }>
     startDeviceFlow(remote: string): Promise<DeviceFlowSession>
     pollDeviceFlow(remote: string, deviceCode: string): Promise<DeviceFlowPollResult>
+    /** GH45 — type de forge d'un serveur (écran de connexion). */
+    detectForge(serverUrl: string): Promise<ForgeDetection>
+    /** GH45 — connexion identifiant + mot de passe (+ 2FA) : la forge crée un jeton, seul conservé. */
+    loginWithPassword(serverUrl: string, login: string, password: string, otp?: string): Promise<PasswordLoginResult>
+    /** GH45 — compte courant, sans réseau ; null si aucun compte connecté. */
+    currentAccount(): Promise<ForgeAccount | null>
+    /** GH45 — desktop : déconnexion du compte courant (jetons locaux supprimés). */
+    logout(): Promise<void>
+    /** GH45 — desktop : ouvre la page de changement de mot de passe annoncée par la forge à la dernière connexion. */
+    openPasswordChange(): Promise<void>
   }
   dialog: {
     pickFolder(title?: string): Promise<string | null>

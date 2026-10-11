@@ -271,6 +271,19 @@ fetch réseau) :
    affichée par l'indicateur), effacée dès qu'un tick réussit **et** que l'intégration n'est plus en
    alerte. Retenté au tick suivant.
 
+**Accès refusé par la forge (GH45)** — détail : SPEC-ACCOUNTS-AUTH §8.
+- **401** (jeton révoqué ou expiré, compte désactivé — détecté par sonde d'API sur une forge
+  Forgejo/Gitea, git ne renvoyant pas de 401 dans ce cas) : `autoSync` répond `accessRevoked`
+  **sans lever**, l'hôte est marqué ; les ticks suivants ne font **aucun appel réseau** pour cet
+  hôte jusqu'à une reconnexion réussie. Une seule bannière « accès révoqué » par hôte, pas de
+  `console.warn` répété ; la dernière erreur du repo porte le même texte.
+- **403 en écriture** dans « Publier » ou dans le push relancé par l'auto-pull (compte lecteur,
+  branche protégée ; Forgejo répond HTTP 200 puis « pre-receive hook declined ») : « Vous n'avez pas
+  le droit de publier sur <repo> (lecture seule ou branche protégée). Votre travail est conservé
+  localement ; contactez votre administrateur. » Le commit local n'est jamais retiré.
+- Projet créé sur le serveur dont la publication initiale a échoué (SPEC-PROJECT-MANAGEMENT §9.1) :
+  l'intégration est en avance sur `origin`, le push est relancé par l'auto-pull comme ci-dessus.
+
 `SyncService.pullFastForwardOnly()` (T155) n'est plus utilisé par l'auto-pull depuis GH39 ; il reste
 exposé en IPC.
 

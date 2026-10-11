@@ -953,12 +953,17 @@ cmd_instance_remove() {
 # ─── Client web (GH44) ────────────────────────────────────────────────────────────
 
 # web.env du client web, rendu depuis instance.env : forge de l'instance (émetteur OIDC, hôte git
-# autorisé), URL publique, application OAuth2, secret de session (généré une fois, conservé).
+# autorisé), URL publique, application OAuth2, secret de session (généré une fois, conservé),
+# projet de démonstration s'il est sur la forge (#58 — sans lui, le bouton démo est masqué).
 render_web_env() {
   local name="$1" env dir; env="$(instance_env "$name")"; dir="$(instance_dir "$name")"
   local forge web; forge="$(env_get "$env" DOMAIN)"; web="$(env_get "$env" WEB_DOMAIN)"
   local secret; secret="$(env_get "$dir/web.env" POLENTA_WEB_SESSION_SECRET)"
   [[ -n "$secret" ]] || secret="$(random_secret 48)"
+  local org demo_line=""; org="$(env_get "$env" ORG)"
+  api_use_instance "$name"
+  api GET "/repos/$org/$DEMO_ROOT_REPO" \
+    && demo_line=$'\n'"POLENTA_WEB_DEMO_PROJECT_URL=https://${forge}/${org}/${DEMO_ROOT_REPO}.git"
   local content
   content="$(cat <<EOF
 # Client web de l'instance ${name} — généré par polenta-host (instance web enable), ne pas éditer.
@@ -968,7 +973,7 @@ POLENTA_WEB_PUBLIC_URL=https://${web}
 POLENTA_WEB_GIT_HOSTS=${forge}
 POLENTA_WEB_OIDC_CLIENT_ID=$(env_get "$env" WEB_OIDC_CLIENT_ID)
 POLENTA_WEB_OIDC_CLIENT_SECRET=$(env_get "$env" WEB_OIDC_CLIENT_SECRET)
-POLENTA_WEB_SESSION_SECRET=${secret}
+POLENTA_WEB_SESSION_SECRET=${secret}${demo_line}
 EOF
 )"
   write_if_changed "$dir/web.env" "$content" 600 || true

@@ -313,7 +313,7 @@ sudo polenta-host instance web disable acme                     # arrêt ; donn�
 
 `enable` vérifie l'image et le DNS, crée l'application OAuth2 `polenta-web` de la forge (adresse de
 retour `https://<domaine web>/auth/callback`), écrit `web.env` (chmod 600 : client OAuth2, secret de
-session), démarre le conteneur `polenta-web-<instance>` et publie le site Caddy `<instance>.web.caddy`.
+session, projet de démonstration de la forge s'il existe), démarre le conteneur `polenta-web-<instance>` et publie le site Caddy `<instance>.web.caddy`.
 Rejouable sans risque. Ensuite, `stop`, `start`, `backup`, `restore`, `export` et `remove` de
 l'instance incluent le client web. La sauvegarde arrête le client web avec la forge : les utilisateurs
 connectés à ce moment se reconnectent (sans ressaisie si leur session de la forge est active).

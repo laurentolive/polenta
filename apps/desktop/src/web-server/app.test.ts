@@ -43,7 +43,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close()
-  await fsP.rm(base, { recursive: true, force: true })
+  await fsP.rm(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 describe('session et RPC', () => {

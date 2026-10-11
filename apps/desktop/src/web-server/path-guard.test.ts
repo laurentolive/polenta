@@ -19,7 +19,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await fsP.rm(base, { recursive: true, force: true })
+  await fsP.rm(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 async function rejected(channel: string, args: unknown[]): Promise<PathGuardError> {

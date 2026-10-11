@@ -8,7 +8,7 @@ import { isSafeMountName } from '../main/services/workspace-tree.service'
 
 let dir: string
 beforeAll(async () => { dir = await fsP.mkdtemp(path.join(os.tmpdir(), 'polenta-hard-')) })
-afterAll(async () => { await fsP.rm(dir, { recursive: true, force: true }) })
+afterAll(async () => { await fsP.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) })
 
 describe('liens symboliques neutralisés (core.symlinks=false)', () => {
   it('fs.promises.symlink et fs.symlinkSync écrivent un fichier texte', async () => {

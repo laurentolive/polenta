@@ -220,9 +220,14 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
       .header('Content-Type', 'application/octet-stream')
       .header('Content-Length', stat.size)
       .header('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${extended}`)
-    // Usage unique : supprimé une fois envoyé (la purge horaire couvre un téléchargement abandonné).
-    reply.raw.on('finish', () => { void rt.downloads.remove(req.params.id) })
-    return reply.send(createReadStream(file.filePath))
+    // Usage unique : supprimé une fois le fichier refermé — pas à la fin de la réponse, où le flux
+    // de lecture peut encore le tenir ouvert (EPERM sous Windows, #50). Un échec n'est jamais une
+    // rejection non gérée (elle arrêterait le process) : la purge horaire rattrape.
+    const stream = createReadStream(file.filePath)
+    stream.on('close', () => {
+      rt.downloads.remove(req.params.id).catch(err => req.log.warn({ err: String(err) }, 'download non supprimé'))
+    })
+    return reply.send(stream)
   })
 
   // ── Build web du renderer ─────────────────────────────────────────────────────

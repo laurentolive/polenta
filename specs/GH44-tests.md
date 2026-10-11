@@ -133,6 +133,17 @@ utilisateurs web : mécanisme couvert en mode dev par P-4), S3-8, S3-9, S3-10, S
 | S4-7 [M] | Mesure mémoire : 5 utilisateurs sur la démo. | < 300 Mo par utilisateur actif. |
 | S4-8 [M] | Desktop packagé (`pnpm package`) après tous les sprints. | Fonctionne sans aucun code serveur (AC 12). |
 
+**Statut au sprint 4 (2026-10-11)** — [E2E] `s4-print.spec.ts` (serveur local) : S4-1 (vue Exigences,
+dashboard), S4-2, S4-3 (trois exports simultanés d'un même utilisateur — la file d'attente est
+commune à tous les utilisateurs). [E2E] `s4-deployed.spec.ts` contre l'image déployée sur `acme`
+(`https://acme-web.forge.esquaresoft.fr`) : S4-5 (HTTPS, en-têtes, OIDC, clone, PDF imprimé dans
+l'image, `web-data`), S4-7 (`POLENTA_E2E_MEASURE=1`, 3 utilisateurs sur la démo : 27 Mo par
+utilisateur). S4-6 : sauvegarde vérifiée (`web-data`, `web.env` dans l'instantané restic) ;
+**restauration non jouée** (reste [M]). S4-4 : **sans objet** — pas de jeton d'impression, une
+session de l'utilisateur créée puis détruite par rendu (design §10.3). S4-8 : suite `e2e-desktop/`
+sur le build Electron ; le paquet d'installation (`pnpm package`) reste [M]. Les autres `kind` de
+S4-1 (tests, campagne, requête, analyse d'impact) passent par le même rendu et restent [M].
+
 ## Parcours de parité (S2-3, S4-1, AC 7)
 
 À dérouler à l'identique sur desktop et web ; toute différence hors adaptations listées en

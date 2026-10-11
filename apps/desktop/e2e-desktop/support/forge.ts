@@ -19,11 +19,36 @@ export interface Accounts {
   neuf: string
 }
 
+/**
+ * Configuration d'équipe de test (`__ORG__` = organisation), posée par le compte d'exploitation.
+ * Chaque fichier de tests qui en dépend la pose lui-même : l'état laissé par une exécution
+ * précédente (autre fichier, autre suite) ne doit pas changer le résultat.
+ */
+export const TEAM_CONFIG = `version: 1
+defaults:
+  updates: auto
+  projects: []
+  preferences: {}
+teams:
+  testeurs:
+    projects:
+      - repo: __ORG__/itest
+        label: Projet de test
+    preferences:
+      projectHome: campaigns
+  lecteurs:
+    updates: managed
+  auteurs:
+    preferences:
+      language: en
+`
+
 export const SSH = process.env['POLENTA_E2E_SSH'] ?? ''
 export const INSTANCE = process.env['POLENTA_E2E_INSTANCE'] ?? 'acme'
 const SETUP = path.join(__dirname, 'forge-setup.py')
 
-function ssh(remote: string): string {
+/** Commande sur l’hôte de la forge de test (sortie standard). */
+export function ssh(remote: string): string {
   if (!SSH) throw new Error('POLENTA_E2E_SSH requis (accès SSH à l’hôte de la forge de test).')
   return execSync(`${SSH} ${remote}`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
 }

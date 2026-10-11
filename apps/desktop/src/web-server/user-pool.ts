@@ -6,6 +6,7 @@ import { registerHandlers, type Container } from '../main/ipc/index'
 import type { Handler } from '../main/ipc/registry'
 import { FileStore } from './file-store'
 import { createWebHostContext, createWebPlatformHost, pendingPrintRenderer, SessionTokenStore } from './web-host'
+import type { PrintRenderer } from '../main/host/print-renderer'
 import { registerWebHandlers, type UserDirs } from './web-handlers'
 
 export interface EventSocket {
@@ -51,6 +52,8 @@ export interface UserPoolOptions {
   version: string
   /** GH44 S3 — magasin de jetons d'un utilisateur (OIDC : rafraîchissement, révocation). */
   createTokenStore?: (login: string) => SessionTokenStore
+  /** GH44 S4 — impression (PDF, diagrammes) dans une session de l'utilisateur ; défaut : indisponible. */
+  createPrintRenderer?: (login: string) => PrintRenderer
 }
 
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
@@ -140,7 +143,7 @@ export class UserPool {
         try { socket.send(message) } catch { /* socket fermée entre-temps */ }
       }
     }
-    const container = createContainer(createWebHostContext(dirs.userData, this.tokenStore(login), this.opts.machineConfig), pendingPrintRenderer)
+    const container = createContainer(createWebHostContext(dirs.userData, this.tokenStore(login), this.opts.machineConfig), this.opts.createPrintRenderer?.(login) ?? pendingPrintRenderer)
     // Pas de dossier local à choisir : la bibliothèque de gabarits d'export (GH34) vit dans l'espace
     // de l'utilisateur.
     if (!container.appSettings.get().exportTemplatesDir) {

@@ -75,7 +75,7 @@ beforeAll(async () => {
   const config: WebConfig = {
     port: 0, host: '127.0.0.1', dataDir: base, staticDir: null, resourcesDir: base,
     sessionSecret: 'test-secret-0123456789-0123456789-xx', sessionHours: 1, idleMinutes: 30, maxUploadMb: 1,
-    maxActiveUsers: 50, secureCookies: false, gitHosts: ['127.0.0.1'], gitAllowHttp: true,
+    maxActiveUsers: 50, print: false, secureCookies: false, gitHosts: ['127.0.0.1'], gitAllowHttp: true,
     auth: { mode: 'oidc', forgeUrl: forge.baseUrl, clientId: 'cid', clientSecret: 'csecret', publicUrl: 'http://polenta.test' },
     machineConfig: { defaultServer: forge.baseUrl, hideGithub: true },
   }

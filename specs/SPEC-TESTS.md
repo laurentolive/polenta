@@ -650,6 +650,11 @@ fixe, indépendant des gabarits client (GH34). Code : `CampaignExecutionService`
 `export/campaign-execution.xlsx.ts` (export), `export/campaign-execution-import.ts` (import),
 libellés et types partagés dans `@polenta/types` (`campaign-execution-sheet.ts`).
 
+> **Client web (GH44)** : l'export est **téléchargé** (`web:execution-sheet-export`) ; à l'import,
+> le classeur est choisi dans le navigateur, envoyé (`POST /upload`) et prévisualisé par
+> `web:execution-sheet-preview` ; l'application (`campaigns:execution-sheet-apply`) est inchangée.
+> Mêmes règles de contenu, de revalidation et de refus (`SPEC-WEB.md` §7).
+
 **Export** (« Exporter le classeur d'exécution… », nom proposé `<CAMP-ID>_execution_<AAAA-MM-JJ>.xlsx`) :
 toutes les instances de la campagne, dans l'ordre de `runs[]`, chacune sur une **ligne d'instance**
 suivie d'une **ligne par étape** (niveau de plan 1, repliable). Colonnes, dans l'ordre : Clé

@@ -15,7 +15,7 @@ let csrf = ''
 function config(dataDir: string): WebConfig {
   return {
     port: 0, host: '127.0.0.1', dataDir, staticDir: null, resourcesDir: dataDir,
-    sessionSecret: 'test-secret-0123456789-0123456789', sessionHours: 1, idleMinutes: 30, maxUploadMb: 1, maxActiveUsers: 50,
+    sessionSecret: 'test-secret-0123456789-0123456789', sessionHours: 1, idleMinutes: 30, maxUploadMb: 1, maxActiveUsers: 50, print: false,
     secureCookies: false, gitHosts: ['git.example.org'], gitAllowHttp: false,
     auth: { mode: 'dev', login: 'alice', name: 'Alice', email: 'alice@example.org', remote: 'https://git.example.org', token: 'tok-secret' },
     machineConfig: { defaultServer: 'https://git.example.org', hideGithub: true },

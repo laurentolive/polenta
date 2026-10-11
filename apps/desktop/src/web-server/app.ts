@@ -19,6 +19,7 @@ import {
 import { PoolFullError, UserPool } from './user-pool'
 import { SessionTokenStore } from './web-host'
 import { OidcClient, pkcePair } from './auth/oidc'
+import { HeadlessPrinter, type PrintSession } from './print/headless-print'
 import { IMAGE_MIME_BY_EXT } from '../main/ipc/file-ops'
 import { forgejoProvider, probeAccess } from '../main/services/forge/forgejo.provider'
 
@@ -76,9 +77,31 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
   const forgeHost = new URL(forgeUrl).hostname
   const pendingAuth = new PendingAuthorizations()
 
+  /**
+   * GH44 S4 — impression : un Chromium headless charge les routes `/print/*` depuis ce serveur
+   * (adresse d'écoute, port réellement écouté), dans une session d'impression de l'utilisateur
+   * (durée du rendu au plus, détruite après le rendu).
+   */
+  const printer = config.print ? new HeadlessPrinter(() => {
+    const address = app.server.address()
+    const port = typeof address === 'object' && address ? address.port : config.port
+    return `http://${printHost(config.host)}:${port}`
+  }) : null
+  function openPrintSession(login: string, ttlMs: number): PrintSession {
+    const session = sessions.createPrint({ login, name: 'impression', email: '' }, ttlMs)
+    return {
+      cookies: [
+        { name: SESSION_COOKIE, value: app.signCookie(session.id) },
+        { name: CSRF_COOKIE, value: session.csrf },
+      ],
+      dispose: () => sessions.destroy(session.id),
+    }
+  }
+
   const pool = new UserPool({
     dataDir: config.dataDir, resourcesDir: config.resourcesDir, idleMinutes: config.idleMinutes, version,
     machineConfig: config.machineConfig, maxActiveUsers: config.maxActiveUsers,
+    ...(printer ? { createPrintRenderer: (login: string) => printer.forUser(ttlMs => openPrintSession(login, ttlMs)) } : {}),
     createTokenStore: (login) => new SessionTokenStore(
       oidc ? (refreshToken) => oidc.refresh(refreshToken) : undefined,
       () => revokeLogin(login, 'rafraîchissement du jeton refusé par la forge'),
@@ -420,7 +443,11 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
     // `/` est un répertoire pour @fastify/static (403 sans index) : servi explicitement.
     app.get('/', (_req, reply) => reply.sendFile('web.html'))
     app.setNotFoundHandler((req, reply) => {
-      if (req.method === 'GET' && !API_PREFIXES.some(p => req.url.startsWith(p))) {
+      // Fallback SPA pour les navigations seulement (`/dashboard?…`) : un fichier absent (extension
+      // dans le chemin : script, image) répond 404 — renvoyer `web.html` à un <script> provoque une
+      // erreur de syntaxe dans la page (viewer draw.io hors réseau, images relatives).
+      const pathOnly = req.url.split('?')[0]
+      if (req.method === 'GET' && !API_PREFIXES.some(p => req.url.startsWith(p)) && !/\.[a-z0-9]+$/i.test(pathOnly)) {
         return reply.sendFile('web.html')
       }
       return reply.code(404).send({ ok: false, error: { message: 'Introuvable' } })
@@ -459,10 +486,21 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
   }
 
   app.addHook('onClose', async () => {
+    await printer?.close()
     if (accessTimer) clearInterval(accessTimer)
     clearInterval(evictTimer)
     pool.disposeAll()
   })
 
   return { app, pool, sessions, checkAccesses }
+}
+
+/**
+ * GH44 S4 — adresse à laquelle le navigateur d'impression joint ce serveur : la boucle locale si le
+ * serveur écoute sur toutes les interfaces, sinon l'adresse d'écoute elle-même.
+ */
+export function printHost(host: string): string {
+  if (host === '0.0.0.0' || host === '') return '127.0.0.1'
+  if (host === '::') return '[::1]'
+  return host.includes(':') ? `[${host}]` : host
 }

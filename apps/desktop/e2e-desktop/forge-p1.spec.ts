@@ -4,7 +4,7 @@ import * as path from 'path'
 import { expect, test, type Page } from '@playwright/test'
 
 import { chooseServer, launch, newProfile, signIn, stubFolderPicker } from './support/app'
-import { bulkRepos, deleteRepos, repoInfo, resetAccounts, seedItest, uploadSetupScript, type Accounts } from './support/forge'
+import { bulkRepos, deleteRepos, repoInfo, resetAccounts, seedItest, setTeamConfig, unbanSelf, uploadSetupScript, TEAM_CONFIG, type Accounts } from './support/forge'
 
 /**
  * GH45 S4 — fonctions P1 contre une vraie forge du kit (specs/GH45-tests.md S4-1 à S4-12) : liste
@@ -16,9 +16,13 @@ let A: Accounts
 const RUN = Date.now().toString(36)
 
 test.beforeAll(() => {
+  // Les 401 normaux des scénarios (révocation, mauvais mot de passe) cumulés sur plusieurs
+  // exécutions finissent par faire bannir l'IP de test par fail2ban.
+  unbanSelf()
   uploadSetupScript()
   A = resetAccounts()
   seedItest()
+  setTeamConfig(TEAM_CONFIG.replace(/__ORG__/g, A.org))
 })
 
 test.afterAll(() => {
@@ -108,7 +112,7 @@ test('S4-5 / S4-7 — auteur : nom pris refusé avant toute création locale, pu
     await page.getByLabel(/Nom du projet|Project name/).fill(name)
     await page.getByRole('button', { name: /^(Continuer|Continue)$/ }).click()
     await expect(page).toHaveURL(/projectId=/, { timeout: 60_000 })
-    expect(repoInfo(name)).toEqual({ exists: true, private: true, branches: ['main'] })
+    await expect.poll(() => repoInfo(name)).toEqual({ exists: true, private: true, branches: ['main'] })
     const gitConfig = fs.readFileSync(path.join(folder, name, '.git', 'config'), 'utf-8')
     expect(gitConfig).toContain(`${A.baseUrl}/${A.org}/${name}.git`)
   } finally {
@@ -155,8 +159,9 @@ test('S4-10 — champ `user` : membres de l’organisation proposés, login enre
   const { app, page } = await signedIn('itest-auteur', A.auteur)
   try {
     const repo = await openItest(app, page, 's4-user')
-    // L'ouverture du projet se termine sur sa vue d'accueil : on attend qu'elle soit affichée.
-    await expect(page).toHaveURL(/dashboardId=/, { timeout: 30_000 })
+    // L'ouverture du projet se termine sur sa vue d'accueil (modèle de données sans « projectHome »
+    // d'équipe, ou tableau de bord du projet déjà ouvert) : on attend qu'elle soit affichée.
+    await expect(page).toHaveURL(/dashboardId=|\/schema\?/, { timeout: 30_000 })
     await page.locator('button[title="Exigences"], button[title="Requirements"]').first().click()
     await page.getByText(/Create the first element|Créer le premier élément/).click()
     await page.getByText(/^(Create an element|Créer un élément)$/).click()
@@ -191,7 +196,7 @@ test('S4-9 — ajout d’un composant : repo créé sur le serveur, URL remplie,
   const name = `s4-comp-${RUN}`
   try {
     const repo = await openItest(app, page, 's4-comp')
-    await expect(page).toHaveURL(/dashboardId=/, { timeout: 30_000 })
+    await expect(page).toHaveURL(/dashboardId=|\/schema\?/, { timeout: 30_000 })
     await page.locator('button[title="Projet"], button[title="Project"]').first().click()
     await page.locator('main').getByText('Projet de test', { exact: true }).hover()
     await page.locator('button[title*="Projet de test"]').first().click()
@@ -202,7 +207,7 @@ test('S4-9 — ajout d’un composant : repo créé sur le serveur, URL remplie,
     await expect(dialog.getByRole('combobox', { name: /Organisation|Organization/ })).toHaveValue(A.org, { timeout: 30_000 })
     await dialog.getByRole('button', { name: /^(Créer|Create)$/ }).click()
     await expect(dialog.getByPlaceholder('git@github.com:org/repo.git')).toHaveValue(`${A.baseUrl}/${A.org}/${name}.git`, { timeout: 60_000 })
-    expect(repoInfo(name)).toEqual({ exists: true, private: true, branches: ['main'] })
+    await expect.poll(() => repoInfo(name)).toEqual({ exists: true, private: true, branches: ['main'] })
     await dialog.getByRole('button', { name: /^(Ajouter|Add)$/ }).click()
     await expect(dialog).toHaveCount(0, { timeout: 60_000 })
     // Composant cloné et monté : ses types d'objets (préfixe dérivé du nom) apparaissent dans l'arbre.

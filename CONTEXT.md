@@ -110,6 +110,27 @@ la visualisation, navigatio, l'édition des exigences, des tests, des campagnes 
 
 ---
 
+### D5b — Client web sur le même noyau (GH44)
+
+**Décision** : proposer aussi Polenta **dans le navigateur**, pour les clients qui hébergent leur
+forge (#45) et ne veulent pas installer d'application — sans remettre en cause D5 : le desktop
+reste l'application de référence, sans serveur HTTP.
+
+**Comment** :
+- Même renderer React que le desktop ; seul le transport change (`window.polenta` en
+  HTTP/WebSocket au lieu de l'IPC). Mêmes services : le noyau ne dépend plus d'Electron
+  (`HostContext`, `PlatformHost`, `PrintRenderer`).
+- Un serveur Node (Fastify) par instance client, un **espace par utilisateur** sur le serveur
+  (copies de travail git) et un conteneur de services par utilisateur connecté.
+- Connexion **par la forge** (OIDC) : mêmes droits, mêmes commits signés du nom de l'utilisateur,
+  désactivation du compte = fin de l'accès. Aucun jeton dans le navigateur.
+- D1 tient toujours : les données restent dans des repos git ; le serveur n'a pas de base de
+  données, seulement des copies de travail.
+
+**Écarté** : reprendre `apps/web`/`apps/api` (squelettes antérieurs, sans rien de commun avec
+l'application) ; une API REST par fonction (doublon de ~200 channels) ; un process par utilisateur
+(coût hors proportion pour ≤ 50 utilisateurs). Détail : `specs/SPEC-WEB.md`, `specs/GH44-design.md`.
+
 ### D6 — Scripts Python pour l'outillage
 
 **Décision** : L'outillage (lint, matrice, export) est en Python simple, ~200 lignes total.

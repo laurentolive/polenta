@@ -1,0 +1,51 @@
+# GH44 S4 — image du serveur web Polenta (specs/GH44-design.md §6.2, révisé §10.3).
+#
+# Contexte de build = racine du monorepo :
+#   docker build -f apps/desktop/Dockerfile.web --build-arg POLENTA_BRAND=polenta -t polenta-web:<version> .
+#
+# Exécution : Node 20 « slim » et le seul Chromium headless de playwright-core (impression des PDF
+# et des diagrammes), avec ses dépendances système — pas l'image Playwright complète (Firefox et
+# WebKit inutiles : ~3,6 Go). Utilisateur non root `node` (uid 1000, propriétaire du volume
+# `web-data` créé par le kit deploy/).
+
+FROM node:20-bookworm AS build
+WORKDIR /src
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+COPY . .
+# Ni binaire Electron, ni navigateurs Playwright, ni module natif keytar : inutiles au serveur web.
+ENV CI=true ELECTRON_SKIP_BINARY_DOWNLOAD=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN pnpm install --frozen-lockfile --ignore-scripts
+ARG POLENTA_BRAND=polenta
+RUN cd apps/desktop \
+ && POLENTA_BRAND="$POLENTA_BRAND" pnpm build:web \
+ && mkdir -p /out/app \
+ && cp -r out/web-server out/web resources package.json /out/app/ \
+ && node scripts/web-runtime-package.mjs > /out/runtime-package.json
+
+FROM node:20-bookworm-slim
+WORKDIR /app
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY --from=build /out/runtime-package.json /app/runtime/package.json
+# Dépendances directes aux versions exactes du lockfile pnpm ; leurs dépendances transitives sont
+# résolues au build (pas de lockfile npm) : une image est construite une fois par version, testée
+# (e2e-web/s4-deployed.spec.ts) puis déployée — on ne reconstruit pas une version déjà livrée.
+RUN cd /app/runtime \
+ && npm install --omit=dev --no-audit --no-fund \
+ && node node_modules/playwright-core/cli.js install --with-deps --only-shell chromium \
+ && npm cache clean --force && rm -rf /var/lib/apt/lists/* /tmp/*
+COPY --from=build /out/app /app
+ENV NODE_ENV=production \
+    NODE_PATH=/app/runtime/node_modules \
+    POLENTA_WEB_APP_ROOT=/app \
+    POLENTA_WEB_STATIC_DIR=/app/web \
+    POLENTA_WEB_RESOURCES_DIR=/app/resources \
+    POLENTA_WEB_DATA_DIR=/var/lib/polenta-web \
+    POLENTA_WEB_HOST=0.0.0.0 \
+    POLENTA_WEB_PORT=8787
+RUN mkdir -p /var/lib/polenta-web && chown node:node /var/lib/polenta-web
+USER node
+EXPOSE 8787
+VOLUME ["/var/lib/polenta-web"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "/app/web-server/index.cjs"]

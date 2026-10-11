@@ -80,7 +80,8 @@ write_if_changed() {
     return 1
   fi
   mkdir -p "$(dirname "$file")"
-  printf '%s\n' "$content" >"$file.tmp.$$"
+  # Fichier à mode imposé (secrets en 600) : jamais lisible par d'autres, même le temps de l'écriture.
+  ( [[ -n "$mode" ]] && umask 077; printf '%s\n' "$content" >"$file.tmp.$$" )
   [[ -n "$mode" ]] && chmod "$mode" "$file.tmp.$$"
   mv "$file.tmp.$$" "$file"
   return 0
@@ -113,6 +114,8 @@ load_host_env() {
   [[ -f "$HOST_ENV" ]] || die "$HOST_ENV introuvable — lancez « polenta-host setup »."
   ACME_EMAIL="$(env_get "$HOST_ENV" ACME_EMAIL)"
   BASE_DOMAIN="$(env_get "$HOST_ENV" BASE_DOMAIN)"
+  # GH44 — image du client web proposée par défaut (instance web enable), ex. ghcr.io/…/polenta-web.
+  POLENTA_WEB_IMAGE_DEFAULT="$(env_get "$HOST_ENV" POLENTA_WEB_IMAGE)"
   FORGE_IMAGE_DEFAULT="$(env_get "$HOST_ENV" FORGE_IMAGE)"; FORGE_IMAGE_DEFAULT="${FORGE_IMAGE_DEFAULT:-$DEFAULT_FORGE_IMAGE}"
   FORGE_VERSION_DEFAULT="$(env_get "$HOST_ENV" FORGE_VERSION)"; FORGE_VERSION_DEFAULT="${FORGE_VERSION_DEFAULT:-$DEFAULT_FORGE_VERSION}"
   CADDY_VERSION="$(env_get "$HOST_ENV" CADDY_VERSION)"; CADDY_VERSION="${CADDY_VERSION:-$DEFAULT_CADDY_VERSION}"

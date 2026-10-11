@@ -8,36 +8,19 @@ import {
   chooseServer, electronEnv, launch, launchWithConfig, loginInput, MAIN, newProfile, openAccountPanel, otpInput,
   passwordInput, signIn, stubFolderPicker,
 } from './support/app'
-import { admin, resetAccounts, setTeamConfig, totp, uploadSetupScript, type Accounts } from './support/forge'
+import { admin, resetAccounts, setTeamConfig, totp, unbanSelf, uploadSetupScript, TEAM_CONFIG, type Accounts } from './support/forge'
 
 /**
  * GH45 — tests d'interface du desktop contre une vraie forge du kit (specs/GH45-tests.md : S2b et
  * validation UI du sprint 2). Chaque test démarre Polenta dans un profil neuf et isolé.
  */
 
-// Configuration d'équipe de test, posée par le compte d'exploitation (propriétaire).
-const TEAM_CONFIG = `version: 1
-defaults:
-  updates: auto
-  projects: []
-  preferences: {}
-teams:
-  testeurs:
-    projects:
-      - repo: __ORG__/itest
-        label: Projet de test
-    preferences:
-      projectHome: campaigns
-  lecteurs:
-    updates: managed
-  auteurs:
-    preferences:
-      language: en
-`
-
 let A: Accounts
 
 test.beforeAll(() => {
+  // Les 401 normaux des scénarios (révocation, mauvais mot de passe) cumulés sur plusieurs
+  // exécutions finissent par faire bannir l'IP de test par fail2ban.
+  unbanSelf()
   uploadSetupScript()
   A = resetAccounts()
   setTeamConfig(TEAM_CONFIG.replace(/__ORG__/g, A.org))

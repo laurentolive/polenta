@@ -18,7 +18,8 @@ build({
   target: 'node20',
   format: 'cjs',
   outfile: 'out/web-server/index.cjs',
-  external: ['keytar', 'fsevents', 'fastify', '@fastify/*', 'react-native', 'react-native-fetch-blob', 'react-native-fs'],
+  // playwright-core (GH44 S4, impression) : binaires et chemins de navigateurs résolus à l'exécution.
+  external: ['keytar', 'fsevents', 'fastify', '@fastify/*', 'playwright-core', 'react-native', 'react-native-fetch-blob', 'react-native-fs'],
   alias: { electron: './src/mcp-server/electron-shim.ts' },
   define: { __POLENTA_BRAND__: JSON.stringify(brand.info) },
   logLevel: 'info',

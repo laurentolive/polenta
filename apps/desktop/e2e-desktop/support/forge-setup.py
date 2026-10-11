@@ -148,8 +148,9 @@ elif cmd == 'repo':
     if c != 200:
         print(json.dumps({'exists': False}))
     else:
+        # Juste après une création, la forge peut exposer le repo avant ses branches (null).
         _, br = req('GET', f'/repos/{ORG}/{sys.argv[3]}/branches')
-        print(json.dumps({'exists': True, 'private': j['private'], 'branches': [b['name'] for b in br]}))
+        print(json.dumps({'exists': True, 'private': j['private'], 'branches': [b['name'] for b in br or []]}))
 elif cmd == 'delete-repos':
     # GH45 S4 — nettoyage : repos de l'organisation dont le nom commence par le préfixe donné.
     prefix = sys.argv[3]

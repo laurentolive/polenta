@@ -22,6 +22,8 @@ export interface WebConfig {
   maxUploadMb: number
   /** Utilisateurs dont les services restent en mémoire en même temps (design §5.3). */
   maxActiveUsers: number
+  /** GH44 S4 — impression (PDF, diagrammes d'un export par gabarit) par Chromium headless. */
+  print: boolean
   /** Hôtes git que le serveur peut contacter (clone/fetch/push) — défaut : hôte de la forge. */
   gitHosts: string[]
   gitAllowHttp: boolean
@@ -133,6 +135,7 @@ export function loadConfig(appRoot: string): WebConfig {
     idleMinutes: int('POLENTA_WEB_IDLE_MINUTES', 30),
     maxUploadMb: int('POLENTA_WEB_MAX_UPLOAD_MB', 20),
     maxActiveUsers: int('POLENTA_WEB_MAX_ACTIVE_USERS', 50),
+    print: env('POLENTA_WEB_PRINT', 'true') !== 'false',
     secureCookies: env('POLENTA_WEB_SECURE_COOKIES', secureDefault) === 'true',
     gitHosts,
     gitAllowHttp: env('POLENTA_WEB_GIT_ALLOW_HTTP', 'false') === 'true',

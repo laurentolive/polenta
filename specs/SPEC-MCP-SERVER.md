@@ -164,6 +164,14 @@ transitivement) mais aucun tool de ce ticket n'appelle une méthode qui touche
 repose sur le comportement actuel du code (pas d'appel agressif dans un constructeur),
 pas sur une garantie de type — cf. §7.
 
+**GH44 — `HostContext` headless** : les services ne lisent plus `app.getPath('userData')` ni
+`keytar` directement ; ils reçoivent un `HostContext` (`main/host/host-context.ts` :
+`userDataDir`, `tokenStore`, `machineConfig`, `deviceLabel`, `openExternal?`). Le serveur MCP
+passe `mcpHostContext` (`mcp-server/container.ts`) dont `userDataDir` et `tokenStore` lèvent une
+erreur explicite : la limitation ci-dessus n'est plus silencieuse — un accès futur échoue au lieu
+d'écrire dans le dossier courant. Le même mécanisme sert au serveur web (`SPEC-WEB.md`), qui
+fournit un `HostContext` par utilisateur.
+
 ---
 
 ## 4. Tools exposés

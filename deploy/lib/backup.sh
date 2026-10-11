@@ -72,6 +72,10 @@ backup_instance() {
   inst_compose "$name" stop >/dev/null 2>&1 || true
   local rc=0 files=(data instance.env) f
   for f in admin.log polenta-config.json; do [[ -f "$dir/$f" ]] && files+=("$f"); done
+  # GH44 — client web : espaces des utilisateurs (dont leurs modifications non publiées) et sa
+  # configuration (secret de session, client OAuth2).
+  [[ -d "$dir/web-data" ]] && files+=(web-data)
+  [[ -f "$dir/web.env" ]] && files+=(web.env)
   (cd "$dir" && restic_for "$name" backup --quiet --tag "$tag" --host polenta "${files[@]}") || rc=$?
   if [[ $was_running == 1 ]]; then
     inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d

@@ -8,6 +8,11 @@ export interface Session {
   /** Jeton CSRF (double-submit : cookie lisible + en-tête `X-Polenta-CSRF`). */
   csrf: string
   expiresAt: number
+  /**
+   * GH44 S4 — session d'impression (page headless d'un rendu) : ne compte pas comme une connexion
+   * de l'utilisateur (déconnexion, vérification périodique des accès).
+   */
+  print?: true
 }
 
 export const SESSION_COOKIE = 'polenta_sid'
@@ -31,11 +36,21 @@ export class SessionStore {
   constructor(private readonly ttlMs: number) {}
 
   create(identity: { login: string; name: string; email: string }): Session {
+    return this.add(identity, this.ttlMs)
+  }
+
+  /** GH44 S4 — session d'un rendu headless, limitée à la durée de ce rendu. */
+  createPrint(identity: { login: string; name: string; email: string }, ttlMs: number): Session {
+    return this.add(identity, ttlMs, true)
+  }
+
+  private add(identity: { login: string; name: string; email: string }, ttlMs: number, print?: true): Session {
     const session: Session = {
       id: randomBytes(32).toString('base64url'),
       ...identity,
       csrf: randomBytes(24).toString('base64url'),
-      expiresAt: Date.now() + this.ttlMs,
+      expiresAt: Date.now() + ttlMs,
+      ...(print ? { print } : {}),
     }
     this.sessions.set(session.id, session)
     return session
@@ -81,13 +96,13 @@ export class SessionStore {
   /** Logins ayant au moins une session valide (vérification périodique des accès). */
   activeLogins(): string[] {
     const now = Date.now()
-    return [...new Set([...this.sessions.values()].filter(s => s.expiresAt > now).map(s => s.login))]
+    return [...new Set([...this.sessions.values()].filter(s => !s.print && s.expiresAt > now).map(s => s.login))]
   }
 
   /** Vrai s'il reste une session valide pour ce login (ses jetons sont alors conservés). */
   hasLogin(login: string): boolean {
     const now = Date.now()
-    for (const s of this.sessions.values()) if (s.login === login && s.expiresAt > now) return true
+    for (const s of this.sessions.values()) if (!s.print && s.login === login && s.expiresAt > now) return true
     return false
   }
 }

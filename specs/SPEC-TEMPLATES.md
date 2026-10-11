@@ -280,6 +280,14 @@ Toutes les transitions entre statuts sont autorisées — il n'y a pas de graphe
 
 ---
 
+
+> **Client web (GH44)** — les gabarits d'export (`exportTemplates`, GH34) fonctionnent à
+> l'identique ; la bibliothèque de gabarits de chaque utilisateur est
+> `<data>/users/<login>/userData/export-templates/` (pas de choix de dossier local), alimentée par
+> « Installer les exemples ». **Limite** : un utilisateur web ne peut pas encore y déposer les
+> gabarits propres au client (pas d'envoi de gabarit) — suivi dans un ticket dédié. Les diagrammes
+> draw.io des gabarits Word sont rendus en images côté serveur (`SPEC-WEB.md` §6).
+
 ## 4. Types de liens (`LinkTypeDefinition`)
 
 ```yaml

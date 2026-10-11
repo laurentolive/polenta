@@ -150,6 +150,12 @@ sont pas interrompues.
 Choisir une version LTS de Forgejo, lire les notes de version (changements cassants), mettre à jour
 d'abord une instance de test.
 
+Instance avec client web (GH57) : la page de consentement de la forge est régénérée pour la nouvelle
+version avant son démarrage. Si `update` affiche « page de consentement du client web non générée »,
+la nouvelle version a changé cette page : la mise à jour est faite, mais les utilisateurs revoient
+l'écran « Autoriser polenta-web » à leur première connexion web — à signaler (évolution du kit).
+Vérification sur l'instance de test : `apps/desktop/e2e-web/gh57-consent.spec.ts`.
+
 Les mises à jour de sécurité de l'OS sont automatiques ; redémarrer l'hôte quand
 `/var/run/reboot-required` existe (les forges redémarrent seules).
 
@@ -315,7 +321,17 @@ sudo polenta-host instance web disable acme                     # arrêt ; donn�
 retour `https://<domaine web>/auth/callback`), écrit `web.env` (chmod 600 : client OAuth2, secret de
 session, projet de démonstration de la forge s'il existe), démarre le conteneur `polenta-web-<instance>` et publie le site Caddy `<instance>.web.caddy`.
 Rejouable sans risque. Ensuite, `stop`, `start`, `backup`, `restore`, `export` et `remove` de
-l'instance incluent le client web. La sauvegarde arrête le client web avec la forge : les utilisateurs
+l'instance incluent le client web.
+
+**Pas d'écran de consentement (GH57)** — sans rien de plus, la forge demanderait à chaque utilisateur,
+à sa première connexion web, d'« Autoriser polenta-web à accéder à son compte ». `enable` dépose donc
+une page de consentement personnalisée dans la forge (`data/gitea/templates/user/auth/grant.tmpl`,
+générée à partir de celle de la version installée) qui valide automatiquement l'autorisation pour la
+seule application `polenta-web` de l'instance (reconnue par son `client_id`) ; toute autre
+application garde la page d'origine. La forge est redémarrée (quelques secondes) quand cette page
+change. Ce fichier appartient au kit : ne pas le modifier. `disable` le retire ; `update` le
+régénère (A6). Si la page ne peut pas être générée, un avertissement l'indique et la page d'origine
+est conservée (les utilisateurs voient alors l'écran de consentement, sans autre conséquence). La sauvegarde arrête le client web avec la forge : les utilisateurs
 connectés à ce moment se reconnectent (sans ressaisie si leur session de la forge est active).
 
 **Données** — `web-data/` : un espace par utilisateur (copies de travail des projets ouverts dans le

@@ -16,3 +16,14 @@ test (`acme`).
 | T9 [M] | `install_grant_template acme <image sans forge, ex. alpine:3>` (simulation d'une version inattendue). | Avertissement, modèle retiré, aucun arrêt du script. | 5 |
 | T10 [M] | `instance update acme 15.0.9` (même version). | Modèle régénéré avant le redémarrage, identique ; mise à jour réussie ; T4 toujours vert. | 5 |
 | T11 [A] | `bash -n` du kit, `shellcheck` si disponible. | Sans erreur. | — |
+
+**Statut (2026-10-11)** — T1–T3 : `deploy/tests/grant-template.test.sh`, 50 vérifications, vertes sur
+le poste de dev et sur l'hôte. T4, T5 : `gh57-consent.spec.ts` vert contre `acme` ; **contre-épreuve** :
+page personnalisée retirée à la main → T4 échoue (« page de consentement présentée »). T6 : suite web
+complète 40/40 (+ 1 mesure ignorée). T7, T8, T9 : joués sur l'hôte (rejeu sans redémarrage ;
+`disable` retire la page et redémarre la forge, `enable` la remet ; image `alpine:3` → avertissement
+« modèle d'origine introuvable dans l'image », page d'origine, script poursuivi). T10 : **pas de mise à jour
+réelle jouée** — la seule version plus récente est Forgejo 16.0.0 (majeure : passage de `acme` non
+décidé). Vérifié sans rien modifier : la page de consentement de l'image 16.0.0 est identique à celle
+de 15.0.9 et `grant-template.py` l'accepte (code 0). Le déroulé d'`update` (génération avant
+redémarrage, nouvel essai sans la page) est relu, à observer à la prochaine mise à jour de `acme`. T11 : `bash -n` ; `shellcheck` absent du poste et de l'hôte.

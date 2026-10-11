@@ -98,6 +98,12 @@ apps/desktop/
   `polenta_oidc`. `GET /auth/callback` : échange du code, identité relue par `GET /api/v1/user`
   (l'`id_token` n'est pas exploité), `AuthService.connectWithToken(…, 'forgejo', identité)` dans
   l'espace de l'utilisateur. Détail : `SPEC-ACCOUNTS-AUTH.md` §Web.
+- **Consentement (GH57)** : la forge ne présente pas sa page « Autoriser polenta-web » : le kit y
+  installe une page de consentement personnalisée, générée à partir de celle de la version de la
+  forge, qui valide automatiquement l'autorisation pour la seule application `polenta-web` de
+  l'instance (comparaison du `client_id`) — page d'origine pour toute autre application, et en cas
+  de doute (forme inattendue après une mise à jour). L'autorisation reste enregistrée et révocable
+  dans les paramètres du compte. Détail : `specs/GH57-design.md`, `deploy/RUNBOOK.md` A15.
 - **Jetons** : le jeton OAuth2 sert directement à git et à l'API de la forge. `SessionTokenStore`
   (implémente `TokenStore`) les garde **en mémoire uniquement**, rafraîchit une minute avant
   l'expiration ; une **époque** par connexion isole les rafraîchissements et erreurs d'une connexion
@@ -190,7 +196,8 @@ la version web »).
   Utilisateur `node` (uid 1000), volume `/var/lib/polenta-web`, `HEALTHCHECK` sur `/healthz`.
 - **Kit `deploy/`** (#45) : service compose `polenta-web` (profil `web`, `web.env` de l'instance,
   démarre après la forge saine) ; `polenta-host instance web enable <nom> --domain <d> --version <v>
-  [--image <i>]` crée l'application OAuth2 de la forge, écrit `web.env` (600), démarre le conteneur
+  [--image <i>]` crée l'application OAuth2 de la forge, installe la page de consentement
+  personnalisée (GH57, `deploy/lib/grant-template.py`), écrit `web.env` (600), démarre le conteneur
   et publie le site Caddy `<nom>.web.caddy` (reverse proxy vers `polenta-web-<nom>:8787`, WebSocket
   compris) ; `instance web disable` l'arrête (données conservées). Sauvegarde, restauration et export
   de l'instance incluent `web-data` et `web.env`. Procédures : `deploy/RUNBOOK.md` A15.

@@ -805,9 +805,19 @@ update_instance() {
   # 3. Nouvelle version.
   env_set "$env" FORGE_VERSION "$version"
   render_forgejo_env "$name"
+  # GH57 — page de consentement régénérée pour la nouvelle version, chargée par le redémarrage
+  # ci-dessous (en cas de retour arrière, la restauration des données remet l'ancienne).
+  if [[ -n "$(env_get "$env" WEB_DOMAIN)" ]]; then install_grant_template "$name" "$image:$version" || true; fi
   inst_compose "$name" up -d >/dev/null 2>&1 || true
   local healthy=0
   ( wait_healthy "$name" ) && ( wait_https "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
+  # GH57 — la nouvelle version peut refuser la page de consentement générée : nouvel essai avec la
+  # page d'origine avant tout retour arrière.
+  if [[ $healthy == 0 ]] && remove_grant_template "$name"; then
+    warn "$name ne démarre pas en $version avec la page de consentement du client web : essai avec la page d'origine."
+    inst_compose "$name" restart forgejo >/dev/null 2>&1 || true
+    ( wait_healthy "$name" ) && ( wait_https "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
+  fi
   # Crochet de test (scénario S3-7) : la NOUVELLE version est déclarée en échec, après démarrage
   # et migration de la base — jamais en exploitation.
   if [[ "${POLENTA_TEST_FAIL_UPDATE:-0}" == 1 ]]; then
@@ -1016,12 +1026,101 @@ wait_web_healthy() {
   die "le client web de $name n'est pas en bonne santé après ${timeout}s (état : $s)."
 }
 
+# ─── GH57 : page de consentement de la forge validée automatiquement pour le client web ──────────
+# Modèle `grant.tmpl` dans le dossier custom de la forge (/data/gitea = <instance>/data/gitea) :
+# page de transition pour l'application polenta-web de l'instance, page d'origine pour les autres
+# (specs/GH57-design.md). En cas de doute, la page d'origine est conservée.
+
+grant_template_file() { printf '%s/data/gitea/templates/user/auth/grant.tmpl' "$(instance_dir "$1")"; }
+
+# Modèle de consentement d'origine d'une image de forge (Forgejo ou Gitea), sur la sortie standard.
+forge_grant_template_original() {
+  # Utilisateur git : la forge refuse de s'exécuter en root (« not supposed to be run as root »).
+  docker run --rm --user git --entrypoint sh "$1" -c '
+    d="$(mktemp -d)"
+    if command -v forgejo >/dev/null; then f=forgejo; else f=gitea; fi
+    "$f" embedded extract --destination "$d" templates/user/auth/grant.tmpl >/dev/null 2>&1 \
+      && cat "$d/templates/user/auth/grant.tmpl"'
+}
+
+# Retire le modèle ; renvoie 0 s'il existait.
+remove_grant_template() {
+  local f; f="$(grant_template_file "$1")"
+  [[ -f "$f" ]] || return 1
+  rm -f "$f"
+}
+
+# Écrit le modèle pour l'image de forge donnée ; renvoie 0 si le fichier a changé (ajouté, modifié
+# ou retiré faute de pouvoir le générer). Jamais d'arrêt du script.
+install_grant_template() {
+  local name="$1" image="$2" env f data reason="" generated="" rc=0
+  env="$(instance_env "$name")"; f="$(grant_template_file "$name")"; data="$(instance_dir "$name")/data/gitea"
+  local client_id; client_id="$(env_get "$env" WEB_OIDC_CLIENT_ID)"
+  # Fichiers temporaires supprimés ici même : la fonction peut tourner dans un sous-shell (restore),
+  # qui n'a ni le tableau CLEANUP ni le piège EXIT du script.
+  local original err; original="$(mktemp)"; err="$(mktemp)"
+  if [[ -z "$client_id" ]]; then
+    reason="application OAuth2 polenta-web inconnue (WEB_OIDC_CLIENT_ID vide)"
+  elif ! command -v python3 >/dev/null; then
+    reason="python3 absent de l'hôte (polenta-host setup l'installe)"
+  elif ! forge_grant_template_original "$image" >"$original" 2>"$err" || [[ ! -s "$original" ]]; then
+    reason="modèle d'origine introuvable dans l'image"
+  else
+    # Sortie standard seule dans le modèle : un avertissement de Python sur stderr n'y entre jamais.
+    generated="$(python3 -I "$SCRIPT_DIR/lib/grant-template.py" "$original" "$client_id" 2>"$err")" || rc=$?
+    [[ $rc == 0 ]] || reason="$(head -c 300 "$err")"
+  fi
+  rm -f "$original" "$err"
+  if [[ -n "$reason" ]]; then
+    warn "page de consentement du client web non générée pour $image : $reason — page d'origine de la forge conservée."
+    remove_grant_template "$name"
+    return
+  fi
+  local owner; owner="$(stat -c %u:%g "$data")"
+  mkdir -p "$(dirname "$f")"
+  chown "$owner" "$data/templates" "$data/templates/user" "$data/templates/user/auth"
+  if write_if_changed "$f" "$generated" 644; then
+    chown "$owner" "$f"
+    ok "page de consentement du client web ($image)"
+    return 0
+  fi
+  skip "page de consentement du client web"
+  return 1
+}
+
+# Redémarre la forge (si son conteneur tourne) pour charger le modèle. Si elle ne redevient pas
+# saine, le modèle est retiré et la forge redémarrée avec la page d'origine.
+restart_forge_for_grant_template() {
+  local name="$1"
+  case "$(instance_health "$name")" in
+    healthy|starting|unhealthy) ;;
+    *) return 0 ;;   # arrêtée : le modèle sera chargé à son prochain démarrage
+  esac
+  inst_compose "$name" restart forgejo >/dev/null 2>&1 || inst_compose "$name" restart forgejo
+  local rc=0
+  ( wait_healthy "$name" 120 ) &
+  wait $! || rc=$?
+  if [[ $rc == 0 ]]; then
+    ok "forge redémarrée (page de consentement)"
+    return 0
+  fi
+  warn "forge en échec avec la page de consentement du client web : page d'origine rétablie."
+  remove_grant_template "$name" || true
+  inst_compose "$name" restart forgejo >/dev/null 2>&1 || inst_compose "$name" restart forgejo
+  wait_healthy "$name"
+  ok "forge redémarrée avec la page de consentement d'origine"
+}
+
 # Démarre (ou réaligne) le client web d'une instance dont WEB_DOMAIN est renseigné.
 web_start() {
   local name="$1" env dir; env="$(instance_env "$name")"; dir="$(instance_dir "$name")"
   local domain; domain="$(env_get "$env" WEB_DOMAIN)"
   mkdir -p "$dir/web-data"; chown 1000:1000 "$dir/web-data"
   ensure_web_oauth_app "$name"
+  # GH57 — pas de page de consentement de la forge pour le client web.
+  if install_grant_template "$name" "$(env_get "$env" FORGE_IMAGE):$(env_get "$env" FORGE_VERSION)"; then
+    restart_forge_for_grant_template "$name"
+  fi
   render_web_env "$name"
   inst_compose "$name" up -d polenta-web >/dev/null 2>&1 || inst_compose "$name" up -d polenta-web
   wait_web_healthy "$name"; ok "client web démarré"
@@ -1068,6 +1167,11 @@ cmd_instance_web_disable() {
   [[ -n "$(env_get "$env" WEB_DOMAIN)" ]] || { skip "client web de $name déjà désactivé"; return 0; }
   inst_compose "$name" rm -sf polenta-web >/dev/null 2>&1 || true
   caddy_remove_web_site "$name"
+  # GH57 — page de consentement d'origine rétablie.
+  if remove_grant_template "$name"; then
+    ok "page de consentement d'origine rétablie"
+    restart_forge_for_grant_template "$name"
+  fi
   env_set "$env" WEB_DOMAIN ""
   admin_log "$name" "instance web disable" OK
   ok "client web de $name arrêté (données conservées dans $(instance_dir "$name")/web-data)"

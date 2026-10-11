@@ -124,3 +124,15 @@ particulier.
 | Modèle généré syntaxiquement invalide → forge qui ne démarre pas (les modèles sont analysés au démarrage) ou page de consentement en erreur pour **toutes** les applications. | Validation de forme (§2) et test unitaire sur les modèles de référence ; `restart_forge` : si la forge n'est pas saine après redémarrage (`wait_healthy` dans un sous-shell attendu, `set -e` actif), retrait du modèle, nouveau redémarrage, avertissement. Le test e2e `gh57-consent` exécute la page générée. |
 | Une version future rend la page sans `.Application.ClientID`. | Le test e2e `gh57-consent` le détecte (consentement réapparu) ; effet limité au retour de la page d'origine (la comparaison `eq` d'un champ vide échoue). |
 | Un administrateur de la forge personnalise lui-même `grant.tmpl`. | Le fichier est réservé au kit (en-tête explicite, RUNBOOK) : écrasé à chaque génération. |
+
+## 8. Révisions issues de l'implémentation et de la revue (`GH57-sprint1.md`)
+
+| Point | Révision |
+|---|---|
+| Extraction | `docker run --user git` : la forge refuse de s'exécuter en root (« not supposed to be run as root »), y compris pour `embedded extract`. |
+| Page de transition | Reprend `{{template "base/alert" .}}` ; si la forge signale une erreur (`.Flash.ErrorMsg` ou `.Flash.WarningMsg`, même test que son modèle `base/alert`), pas d'envoi automatique (pas de boucle) et bouton visible. |
+| `client_id` | `fullmatch` : `^…$` de Python accepterait un saut de ligne final, invalide dans une chaîne de modèle. |
+| Génération | Sortie d'erreur de Python séparée du modèle (un avertissement n'entre jamais dans `grant.tmpl`) ; raison explicite de l'échec (python3 absent, modèle introuvable dans l'image, forme inattendue) ; fichiers temporaires supprimés dans la fonction (appel possible dans un sous-shell). |
+| Redémarrage | Aussi quand la forge est `starting`/`unhealthy` (conteneur en marche), pas seulement `healthy` ; message distinct quand la page d'origine a dû être rétablie. |
+| Mise à jour | Si la nouvelle version ne démarre pas avec la page générée : nouvel essai avec la page d'origine **avant** le retour arrière complet. |
+| Tests e2e | `completeForgeLogin` relève la page d'origine sur les réponses HTTP (marqueur `oauth2-authorize-application-box`), pas seulement sur un clic. |

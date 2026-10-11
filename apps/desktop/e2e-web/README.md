@@ -68,7 +68,7 @@ Les comptes `itest-auteur|testeur|lecteur` et le repo `acme/itest` sont recréé
 |---|---|
 | `support/oidc-env.ts` | `OIDC.enabled`, `OIDC.baseUrl`, `OIDC.forgeUrl`, environnement du serveur oidc, `prepareOidcApp()`. |
 | `support/ui.ts` | `publish(page, titre)` : Publier comme un utilisateur, en refermant puis en rouvrant le popover s'il signale « l'état a changé ». `LABELS` : libellés français et anglais. |
-| `support/forge-login.ts` | `completeForgeLogin(page, urlDeLApplication, login, motDePasse)` : la suite d'une redirection vers la forge, jusqu'au retour dans l'application. |
+| `support/forge-login.ts` | `completeForgeLogin(page, urlDeLApplication, login, motDePasse)` : la suite d'une redirection vers la forge, jusqu'au retour dans l'application Renvoie `{ consentShown }` (page de consentement présentée ou non, GH57). |
 | `e2e-desktop/support/forge.ts` | `resetAccounts`, `seedItest`, `setTeamConfig`, `admin('user disable …')`, `repoInfo`, `deleteRepos`, `oauthApp`, `unbanSelf`, `ssh(commande)` (commande sur l'hôte). |
 
 Recette de connexion (`completeForgeLogin`, partagée par `s3-oidc.spec.ts` et `s4-deployed.spec.ts`) :
@@ -215,6 +215,7 @@ connexion d'événements par le test avec `page.routeWebSocket` (voir `s2-core.s
 | `s2-core.spec.ts` | S2-1 accueil, S2-2 clone par l'UI, S2-3 parité (données + vues), S2-4 upload image/draw.io, S2-5 export téléchargé, S2-6 classeur d'exécution, S2-7 deux onglets, S2-8 coupure réseau, S2-9 Publier, S2-25 Origin WebSocket ; S2-20 (console) après chaque test. |
 | `parity.spec.ts` | P-1 recherche et remplacement, P-2 dashboard et widget, P-3 baseline, P-4 conflit résolu dans le navigateur (GH37). |
 | `s4-print.spec.ts` | S4-1 exports PDF (vue Exigences, dashboard), S4-3 trois exports PDF simultanés, S4-2 export Word par gabarit avec diagrammes draw.io en PNG. |
+| `gh57-consent.spec.ts` (instance déployée) | GH57 T4 première connexion sans page de consentement, T5 autre application « polenta-web » : page d'origine. |
 | `s4-deployed.spec.ts` (instance déployée) | S4-5 HTTPS et en-têtes, connexion OIDC, clone, PDF imprimé dans l'image, données dans `web-data/` ; S4-7 mémoire (`POLENTA_E2E_MEASURE=1`). |
 | `gh56-activity-bar.spec.ts` (`specs/GH56-tests.md`) | E1–E7 ActivityBar : ordre par drag & drop, masquage par clic droit, réinitialisation, préférence commune aux projets ; L1–L3, L5, L6. |
 | `s3-oidc.spec.ts` (forge réelle) | S3-1/S3-2 connexion OIDC sans jeton côté navigateur, S3-3 commit à l'identité forge, S3-4 isolation de deux utilisateurs, S3-17 lecteur : écriture refusée, S3-6 compte désactivé → « accès révoqué » et travail conservé, S3-15/S3-21 projets et préférences d'équipe, S3-16 « Créer sur le serveur ». |
@@ -230,5 +231,5 @@ connexion d'événements par le test avec `page.routeWebSocket` (voir `s2-core.s
 | `POLENTA_E2E_SSH` | — | Accès SSH à l'hôte de la forge de test : active `s3-oidc.spec.ts` et le serveur oidc. |
 | `POLENTA_E2E_INSTANCE` | `acme` | Instance du kit utilisée comme forge de test. |
 | `POLENTA_E2E_OIDC_PORT` | 8796 | Port du serveur web en mode oidc. |
-| `POLENTA_E2E_WEB_URL` | — | URL du client web déployé par le kit (avec `POLENTA_E2E_SSH`) : active `s4-deployed.spec.ts`. |
+| `POLENTA_E2E_WEB_URL` | — | URL du client web déployé par le kit (avec `POLENTA_E2E_SSH`) : active `s4-deployed.spec.ts` et `gh57-consent.spec.ts`. |
 | `POLENTA_E2E_MEASURE` | — | `1` : mesure mémoire S4-7 dans `s4-deployed.spec.ts` (redémarre le conteneur). |

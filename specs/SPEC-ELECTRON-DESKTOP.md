@@ -1299,7 +1299,7 @@ Classes de boutons : voir §19.16 (`btn-primary`/`btn-secondary`/`btn-danger`/`b
 **Principe fondamental :** cliquer une icône dans l'ActivityBar change **simultanément** la sidebar (panneau de contrôle) et le main frame (vue par défaut du panneau). L'`activePanel` est **dérivé de l'URL courante** — aucun état React séparé n'est nécessaire.
 
 - **Barre d'onglets** (T101, ~32 px, au-dessus de tout le reste) : onglets façon Firefox, un onglet = une URL complète (pathname + search params) mémorisée par `TabsContext`/`TabsProvider` (`apps/desktop/src/renderer/contexts/TabsContext.tsx`). Changer d'onglet fait un `navigate()` vers l'URL mémorisée — l'ActivityBar/Sidebar en dessous suivent automatiquement puisqu'ils dérivent de l'URL courante, comme pour toute navigation normale. Bouton "+"/Ctrl+T (nouvel onglet sur la page d'accueil), croix/Ctrl+W (fermer, avec confirmation si l'onglet est enregistré "dirty" via `useRegisterTabDirty` — schema.tsx, req.$reqId.tsx, test.$testId.tsx, campaign.$campaignId.tsx), bouton flèche vers le bas (menu déroulant filtrable listant les onglets ouverts + "Récemment fermés", limité à 10 entrées, en mémoire). Le dernier onglet d'une fenêtre n'est jamais fermé : son contenu est réinitialisé sur la page d'accueil. Scope par fenêtre Electron (`createAppWindow()`) — pas de persistance entre redémarrages. Titre par onglet dérivé par défaut de la route (`useSetTabTitle` l'affine ensuite avec le nom réel de l'entité affichée).
-- **Activity bar** (~48 px) : navigation entre les panneaux.
+- **Activity bar** (~48 px) : navigation entre les panneaux. Personnalisable par l'utilisateur (GH56, cf. §19.2).
 - **Sidebar** (~280 px) : contrôles du panneau actif — filtre texte, filtre par type, actions (créer, committer…). Ne contient pas de liste principale.
 - **Main frame** (`<main>`, reste) : contenu principal rendu par `<Outlet>`. Vue par défaut du panneau + vues de détail secondaires.
 
@@ -1321,6 +1321,23 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 - Recliquer le panneau déjà actif re-navigue vers la route par défaut.
 - "Version", "Produit", "Composants" sont grisés si aucun projet n'est chargé.
 - Lorsque le main frame affiche un diff (`/diff`), le panel Version expose une icône `History` pour revenir à `/graph`.
+
+**Personnalisation (GH56)** — ordre et visibilité des boutons, préférence d'interface **par poste**,
+commune à tous les projets (`localStorage`, clé `polenta.activityBarLayout` = `{order, hidden}` ;
+par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, menu dans
+`layout/ActivityBarMenu.tsx`.
+- **Drag & drop** (HTML5 natif) : tout bouton de panneau, y compris Compte/Projet et un bouton grisé,
+  se dépose avant/après un autre (trait d'insertion). L'ordre enregistré est complet (masqués compris)
+  pour qu'un bouton réaffiché retrouve sa place. Les boutons grisés portent `aria-disabled` et non
+  `disabled` : Chromium ne délivre ni `dragstart` ni `contextmenu` à un `<button disabled>`.
+- **Clic droit** (sur un bouton ou la zone vide) : « Masquer « X » » si le bouton visé est masquable,
+  liste à cocher de tous les panneaux (Compte et Projet cochés, non masquables), « Réinitialiser la
+  disposition » (supprime la clé). Fermeture par clic extérieur ou Échap.
+- Masquer le panneau actif ne navigue pas : la vue reste affichée, accessible par onglets/URL.
+- Panneau absent de la préférence (ajouté depuis) → visible, en fin de barre ; id inconnu ignoré ;
+  préférence illisible → disposition par défaut.
+- Le badge de mise à jour (GH26) reste ancré en bas, hors drag & drop et hors menu.
+- Pas de synchronisation en direct entre fenêtres : une autre fenêtre voit la modification au rechargement.
 
 ### 19.3 Main frame — table des routes
 

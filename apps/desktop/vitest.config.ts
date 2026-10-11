@@ -12,7 +12,8 @@ export default defineConfig({
   },
   test: {
     // GH45 — aussi les services du process main (forges, configuration machine, comptes).
-    include: ['src/web-server/**/*.test.ts', 'src/main/services/**/*.test.ts'],
+    // GH56 — et la logique pure du renderer (sans DOM).
+    include: ['src/web-server/**/*.test.ts', 'src/main/services/**/*.test.ts', 'src/renderer/**/*.test.ts'],
     environment: 'node',
     // GH49 — les services partagés lisent la marque au chargement (src/shared/brand.ts).
     setupFiles: ['scripts/register-brand.ts'],

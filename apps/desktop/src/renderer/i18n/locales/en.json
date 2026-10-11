@@ -29,7 +29,11 @@
       "parameters": "Parameters",
       "search": "Search",
       "version": "Version",
-      "impact": "Impact analysis"
+      "impact": "Impact analysis",
+      "menu": {
+        "hide": "Hide \"{{label}}\"",
+        "reset": "Reset layout"
+      }
     },
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",

@@ -1,0 +1,17 @@
+# GH61 — surcharge compose du mode CADDY_MODE=external, ajoutée par polenta-host (inst_compose) :
+#   docker compose … -f instance/docker-compose.yml -f instance/docker-compose.external.yml
+# La forge et le client web rejoignent, en plus de polenta-<nom>, le réseau de bord EDGE_NETWORK
+# sur lequel le Caddy existant est déjà rattaché. Réseau externe : il appartient à l'exploitant
+# et n'est jamais créé par le kit. Aucun port publié.
+services:
+  forgejo:
+    networks:
+      - edge
+  polenta-web:
+    networks:
+      - edge
+
+networks:
+  edge:
+    external: true
+    name: ${EDGE_NETWORK}

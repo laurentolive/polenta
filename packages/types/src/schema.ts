@@ -162,6 +162,11 @@ export interface ProjectPreferences {
    * rendu Standard.
    */
   exportTemplates?: Partial<Record<ExportTemplateKey, string>>
+  /**
+   * GH65 — intervalle du pull automatique (minutes), lu dans le schéma du repo racine. Entier dans
+   * [1, 60] ; absent ou invalide = 5.
+   */
+  autoPullIntervalMinutes?: number
 }
 
 export interface ProjectSchema {

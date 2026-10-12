@@ -20,15 +20,18 @@ import type { QueryResult, WidgetFieldMapping } from '@polenta/types'
 import { WidgetEmptyState } from './WidgetEmptyState'
 import { seriesColor } from './chartColors'
 import { toLabel, toNumber } from './numeric'
+import { rawValueIndex } from './drilldown'
 
 interface Props {
   result: QueryResult | null
   fieldMapping: WidgetFieldMapping
+  /** GH65 — clic sur une barre / un segment : valeurs brutes de la catégorie (et de la série). */
+  onSelect?: (values: Record<string, unknown>) => void
 }
 
 const CATEGORY_KEY = '__category'
 
-export function BarWidget({ result, fieldMapping }: Props) {
+export function BarWidget({ result, fieldMapping, onSelect }: Props) {
   const { t } = useTranslation()
   const { category, measure, series, stacked } = fieldMapping
   if (!category || !measure) return <WidgetEmptyState message={t('dashboardPage.widget.chooseCategoryAndMeasure')} />
@@ -59,6 +62,17 @@ export function BarWidget({ result, fieldMapping }: Props) {
     // numeric measure value.
     data = rows.map((r) => ({ [CATEGORY_KEY]: toLabel(r[category]), [measure]: toNumber(r[measure]) }))
     seriesKeys = [measure]
+  }
+
+  // Les libellés (`toLabel`) perdent l'information (`null` → « — », dates localisées) : le clic
+  // remonte la valeur brute de la première ligne portant ce libellé.
+  const rawCategory = rawValueIndex(rows, category)
+  const rawSeries = series ? rawValueIndex(rows, series) : null
+  const select = (cat: unknown, sv: string) => {
+    if (!onSelect) return
+    const values: Record<string, unknown> = { [category]: rawCategory.get(String(cat)) }
+    if (series && rawSeries) values[series] = rawSeries.get(sv)
+    onSelect(values)
   }
 
   return (
@@ -94,6 +108,8 @@ export function BarWidget({ result, fieldMapping }: Props) {
               radius={radius}
               maxBarSize={48}
               stackId={isStacked ? 'stack' : undefined}
+              onClick={onSelect ? (entry: { payload?: Record<string, unknown> }) => select(entry.payload?.[CATEGORY_KEY], sv) : undefined}
+              style={onSelect ? { cursor: 'pointer' } : undefined}
             />
           )
         })}

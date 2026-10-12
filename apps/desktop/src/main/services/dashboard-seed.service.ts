@@ -3,8 +3,11 @@ import type { GitService } from './git.service'
 import type { DashboardsService, AddWidgetDto, CreateDashboardDto } from './dashboards.service'
 import type { SavedQueriesService, CreateSavedQueryDto } from './saved-queries.service'
 import { isReadonlyBranch } from './readonly-branch.util'
+import { readPref, writePref } from './pref-store.util'
 
 const SEED_MARKER_PATH = 'dashboards/.seeded.yaml'
+/** GH65 — clé du `.{user}.pref` portant le marqueur du seed « Campagnes » (cf. ensureCampaignsSeeded). */
+const CAMPAIGNS_SEED_PREF_KEY = 'campaignsSeed'
 
 interface SeedQuery {
   key: string
@@ -68,6 +71,133 @@ const SEED_DASHBOARDS: SeedDashboard[] = [
   },
 ]
 
+// ─── GH65 — dashboard « Campagnes » ───────────────────────────────────────────
+// Seed indépendant, PRIVÉ (`.{user}.pref`, ignoré par git) : livré à chaque utilisateur de tout
+// projet, nouveau ou existant, sans rien écrire dans le repo. Un seed partagé aurait été créé par
+// chaque membre de l'équipe sur son propre clone avant d'avoir récupéré celui des autres (doublons,
+// conflits add/add sur queries/ et dashboards/), et ses fichiers non publiés auraient rendu le repo
+// « sale » — ce qui bloque le pull automatique. L'utilisateur le partage s'il le souhaite (promotion
+// des requêtes puis du dashboard, SPEC-DASHBOARDS §3.1). SQL avancé : les campagnes
+// sans `objectTypeRef` (antérieures aux types de campagne) doivent être comptées. Les KPI groupent
+// sur `campaignStatus` (une seule valeur après le WHERE) pour rendre ZÉRO ligne quand il n'y a rien à
+// mesurer — sans GROUP BY, AlaSQL rend une ligne vide et le KPI afficherait 0 au lieu de son état vide.
+
+type SeedLocale = 'fr' | 'en'
+
+type CampaignSeedQueryKey = 'progress' | 'executedPct' | 'passPct' | 'perDay' | 'failures'
+
+interface CampaignSeedLabels {
+  dashboard: string
+  queries: Record<CampaignSeedQueryKey, string>
+  widgets: Record<CampaignSeedQueryKey, string>
+}
+
+const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
+  fr: {
+    dashboard: 'Campagnes',
+    queries: {
+      progress: 'Campagnes — avancement par statut',
+      executedPct: 'Campagnes en cours — % exécuté',
+      passPct: 'Campagnes en cours — % PASS',
+      perDay: 'Campagnes — exécutions par jour',
+      failures: 'Campagnes en cours — entrées en échec',
+    },
+    widgets: {
+      progress: 'Avancement par campagne',
+      executedPct: '% exécuté',
+      passPct: '% PASS',
+      perDay: 'Exécutions par jour',
+      failures: 'Entrées en échec',
+    },
+  },
+  en: {
+    dashboard: 'Campaigns',
+    queries: {
+      progress: 'Campaigns — progress by status',
+      executedPct: 'Campaigns in progress — % executed',
+      passPct: 'Campaigns in progress — % PASS',
+      perDay: 'Campaigns — executions per day',
+      failures: 'Campaigns in progress — failed entries',
+    },
+    widgets: {
+      progress: 'Progress by campaign',
+      executedPct: '% executed',
+      passPct: '% PASS',
+      perDay: 'Executions per day',
+      failures: 'Failed entries',
+    },
+  },
+}
+
+export const CAMPAIGN_SEED_QUERIES: { key: CampaignSeedQueryKey; sqlText: string }[] = [
+  {
+    key: 'progress',
+    sqlText:
+      "SELECT [campaignTitle], [status], COUNT(*) AS [count] FROM [campaign_entries] WHERE [campaignStatus] IN ('planned', 'in_progress') GROUP BY [campaignTitle], [status]",
+  },
+  {
+    key: 'executedPct',
+    sqlText:
+      "SELECT ROUND(100 * SUM(CASE WHEN [executed] = true THEN 1 ELSE 0 END) / COUNT(*), 1) AS [executedPct] FROM [campaign_entries] WHERE [campaignStatus] = 'in_progress' GROUP BY [campaignStatus]",
+  },
+  {
+    key: 'passPct',
+    sqlText:
+      "SELECT ROUND(100 * SUM(CASE WHEN [status] = 'PASS' THEN 1 ELSE 0 END) / COUNT(*), 1) AS [passPct] FROM [campaign_entries] WHERE [campaignStatus] = 'in_progress' AND [executed] = true GROUP BY [campaignStatus]",
+  },
+  {
+    key: 'perDay',
+    sqlText:
+      'SELECT [executedDay], COUNT(*) AS [count] FROM [campaign_entries] WHERE [executed] = true GROUP BY [executedDay] ORDER BY [executedDay]',
+  },
+  {
+    key: 'failures',
+    sqlText:
+      "SELECT [campaignId], [campaignTitle], [entryId], [testCaseId], [testTitle], [status], [executedAt], [executedBy] FROM [campaign_entries] WHERE [campaignStatus] = 'in_progress' AND [status] IN ('FAIL', 'BLOCKED') ORDER BY [executedAt] DESC",
+  },
+]
+
+const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; type: WidgetType; fieldMapping: WidgetFieldMapping; size: WidgetSize }[] = [
+  { queryKey: 'progress', type: 'bar', fieldMapping: { category: 'campaignTitle', measure: 'count', series: 'status', stacked: true }, size: 'lg' },
+  { queryKey: 'executedPct', type: 'kpi', fieldMapping: { measure: 'executedPct' }, size: 'sm' },
+  { queryKey: 'passPct', type: 'kpi', fieldMapping: { measure: 'passPct' }, size: 'sm' },
+  { queryKey: 'perDay', type: 'line', fieldMapping: { category: 'executedDay', measure: 'count' }, size: 'md' },
+  {
+    queryKey: 'failures',
+    type: 'table',
+    fieldMapping: { columns: ['campaignId', 'campaignTitle', 'entryId', 'testCaseId', 'testTitle', 'status', 'executedAt', 'executedBy'] },
+    size: 'lg',
+  },
+]
+
+/** Marqueur à reprise : ce qui a déjà été créé, pour qu'une relance après un échec ne duplique rien. */
+export interface CampaignsSeedMarker {
+  state: 'partial' | 'done'
+  queries?: Partial<Record<CampaignSeedQueryKey, string>>
+  dashboardId?: string
+  widgets?: CampaignSeedQueryKey[]
+  seededAt?: string
+}
+
+/** Lecture/écriture du marqueur — injectable pour les tests ; par défaut, clé du `.{user}.pref`. */
+export interface CampaignsSeedMarkerStore {
+  read(repoPath: string, username: string): CampaignsSeedMarker | null
+  write(repoPath: string, username: string, marker: CampaignsSeedMarker): void
+}
+
+const prefMarkerStore: CampaignsSeedMarkerStore = {
+  read: (repoPath, username) => (readPref(repoPath, username)[CAMPAIGNS_SEED_PREF_KEY] as CampaignsSeedMarker | undefined) ?? null,
+  write: (repoPath, username, marker) => {
+    // Relu juste avant l'écriture : les services requêtes/dashboards écrivent le même fichier.
+    writePref(repoPath, username, { ...readPref(repoPath, username), [CAMPAIGNS_SEED_PREF_KEY]: marker })
+  },
+}
+
+/** Langue des libellés du seed (le main n'a pas d'i18next) : `en*` → anglais, sinon français. */
+export function seedLocale(locale: string | undefined): SeedLocale {
+  return locale?.toLowerCase().startsWith('en') ? 'en' : 'fr'
+}
+
 /**
  * DashboardSeedService — T77 sprint 3 (T148: "Couverture"/"Avancement"/"Maturité"
  * removed, only "Status" remains seeded).
@@ -120,13 +250,22 @@ export class DashboardSeedService {
     private readonly git: GitService,
     private readonly dashboards: DashboardsService,
     private readonly savedQueries: SavedQueriesService,
+    /** GH65 — marqueur du seed « Campagnes » (défaut : `.{user}.pref`). */
+    private readonly campaignsMarker: CampaignsSeedMarkerStore = prefMarkerStore,
   ) {}
 
-  async ensureSeeded(repoPath: string, username: string): Promise<void> {
+  async ensureSeeded(repoPath: string, username: string, locale?: string): Promise<void> {
     const existing = this.inFlightSeeds.get(repoPath)
     if (existing) return existing
 
-    const attempt = this.doEnsureSeeded(repoPath, username).finally(() => {
+    const attempt = (async () => {
+      await this.doEnsureSeeded(repoPath, username)
+      // Seed facultatif : un échec ne doit pas empêcher de lister les dashboards (« Status »,
+      // ceux de l'utilisateur). Retenté au prochain `dashboards:list` (marqueur à reprise).
+      await this.ensureCampaignsSeeded(repoPath, username, seedLocale(locale)).catch((err) => {
+        console.warn(`[dashboard-seed] seed « Campagnes » non terminé (${repoPath}) :`, err instanceof Error ? err.message : String(err))
+      })
+    })().finally(() => {
       this.inFlightSeeds.delete(repoPath)
     })
     this.inFlightSeeds.set(repoPath, attempt)
@@ -196,5 +335,60 @@ export class DashboardSeedService {
     // Written ONLY on full success — see class doc comment for why the "folder
     // already non-empty" branch above must NOT write it too.
     await this.git.writeYaml(repoPath, SEED_MARKER_PATH, { seededAt: new Date().toISOString(), seededBy: username })
+  }
+  /**
+   * GH65 — dashboard « Campagnes », créé une fois par utilisateur et par repo, en privé. Le marqueur
+   * est écrit dès la première création (`state: partial`) et enrichi à chaque étape ; une relance
+   * reprend là où l'échec s'est produit, sans doublon. `done` : plus jamais rien, même si
+   * l'utilisateur supprime le dashboard. Rien n'est écrit dans le repo : pas de garde « branche en
+   * lecture seule » (le `.pref` ne dépend pas de la branche).
+   */
+  private async ensureCampaignsSeeded(repoPath: string, username: string, locale: SeedLocale): Promise<void> {
+    const previous = this.campaignsMarker.read(repoPath, username)
+    if (previous?.state === 'done') return
+
+    const labels = CAMPAIGN_SEED_LABELS[locale]
+    const queries: Partial<Record<CampaignSeedQueryKey, string>> = { ...previous?.queries }
+    let dashboardId = previous?.dashboardId
+    let widgets: CampaignSeedQueryKey[] = [...(previous?.widgets ?? [])]
+    const save = () => this.campaignsMarker.write(repoPath, username, { state: 'partial', queries, dashboardId, widgets })
+
+    for (const q of CAMPAIGN_SEED_QUERIES) {
+      const knownId = queries[q.key]
+      if (knownId && (await this.savedQueries.findOne(repoPath, username, knownId))) continue
+      const created = await this.savedQueries.create(repoPath, username, {
+        title: labels.queries[q.key],
+        mode: 'sql',
+        sqlText: q.sqlText,
+        scope: 'private',
+        createdBy: username,
+      })
+      queries[q.key] = created.id
+      save()
+    }
+
+    const existingDashboard = dashboardId ? await this.dashboards.get(repoPath, username, dashboardId) : null
+    if (!existingDashboard) {
+      const created = await this.dashboards.create(repoPath, username, { title: labels.dashboard, scope: 'private', createdBy: username })
+      dashboardId = created.id
+      widgets = []
+      save()
+    }
+
+    for (const w of CAMPAIGN_SEED_WIDGETS) {
+      const queryId = queries[w.queryKey]
+      if (widgets.includes(w.queryKey) || !queryId) continue
+      await this.dashboards.addWidget(repoPath, username, dashboardId!, {
+        title: labels.widgets[w.queryKey],
+        queryId,
+        type: w.type,
+        fieldMapping: w.fieldMapping,
+        size: w.size,
+      })
+      widgets.push(w.queryKey)
+      save()
+    }
+
+    this.campaignsMarker.write(repoPath, username, { state: 'done', seededAt: new Date().toISOString() })
   }
 }

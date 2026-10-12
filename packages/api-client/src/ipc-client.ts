@@ -286,6 +286,8 @@ export function createIpcClient(
     queries: {
       execute: (repoPath, queryDef, workspaceDir) => invoke('queries:execute', repoPath, queryDef, workspaceDir),
       builderToSql: (repoPath, config, workspaceDir) => invoke('queries:builder-to-sql', repoPath, config, workspaceDir),
+      drillDown: (repoPath, queryDef, selection, workspaceDir) => invoke('queries:drill-down', repoPath, queryDef, selection, workspaceDir),
+      resolveRowTarget: (repoPath, row, workspaceDir) => invoke('queries:resolve-row-target', repoPath, row, workspaceDir),
       list: (repoPath, username) => invoke('queries:list', repoPath, username),
       create: (repoPath, username, dto: CreateSavedQueryDto) => invoke('queries:create', repoPath, username, dto),
       update: (repoPath, username, id, dto: UpdateSavedQueryDto) => invoke('queries:update', repoPath, username, id, dto),
@@ -298,7 +300,7 @@ export function createIpcClient(
       setScope: (repoPath, username, id, scope: QueryScope) => invoke('queries:set-scope', repoPath, username, id, scope),
     },
     dashboards: {
-      list: (repoPath, username) => invoke('dashboards:list', repoPath, username),
+      list: (repoPath, username, locale?: string) => invoke('dashboards:list', repoPath, username, locale),
       get: (repoPath, username, id) => invoke('dashboards:get', repoPath, username, id),
       create: (repoPath, username, dto: CreateDashboardDto) => invoke('dashboards:create', repoPath, username, dto),
       update: (repoPath, username, id, dto: UpdateDashboardDto) => invoke('dashboards:update', repoPath, username, id, dto),

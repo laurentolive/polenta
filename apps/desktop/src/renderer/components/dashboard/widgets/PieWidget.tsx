@@ -12,9 +12,11 @@ import { toLabel, toNumber } from './numeric'
 interface Props {
   result: QueryResult | null
   fieldMapping: WidgetFieldMapping
+  /** GH65 — clic sur une part : valeur brute de la catégorie. */
+  onSelect?: (values: Record<string, unknown>) => void
 }
 
-export function PieWidget({ result, fieldMapping }: Props) {
+export function PieWidget({ result, fieldMapping, onSelect }: Props) {
   const { t } = useTranslation()
   const { category, measure } = fieldMapping
   if (!category || !measure) return <WidgetEmptyState message={t('dashboardPage.widget.chooseCategoryAndMeasure')} />
@@ -22,12 +24,21 @@ export function PieWidget({ result, fieldMapping }: Props) {
   const rows = result?.rows ?? []
   if (rows.length === 0) return <WidgetEmptyState message={t('dashboardPage.widget.noData')} />
 
-  const data = rows.map((r) => ({ name: toLabel(r[category]), value: toNumber(r[measure]) }))
+  const data = rows.map((r) => ({ name: toLabel(r[category]), value: toNumber(r[measure]), raw: r[category] }))
 
   return (
     <ResponsiveContainer width="100%" height="100%">
       <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" innerRadius="52%" outerRadius="82%" paddingAngle={2}>
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          innerRadius="52%"
+          outerRadius="82%"
+          paddingAngle={2}
+          onClick={onSelect ? (_: unknown, index: number) => onSelect({ [category]: data[index]?.raw }) : undefined}
+          style={onSelect ? { cursor: 'pointer' } : undefined}
+        >
           {data.map((_, i) => (
             <Cell key={i} fill={seriesColor(i)} stroke="var(--surface)" strokeWidth={2} />
           ))}

@@ -7,14 +7,15 @@ import type { QueryDefinition, QueryResult, SavedQuery } from '@polenta/types'
  *  fin de chargement de *tous* les widgets d'un dashboard (via `useQueries`) avant de signaler
  *  `notifyPrintReady()` — même `queryKey` ici que dans `DashboardGrid`, donc react-query
  *  dédoublonne l'appel IPC plutôt que de l'exécuter deux fois. */
+/** Définition exécutable d'une requête sauvegardée (builder OU sql) — partagée avec le drill-down (GH65). */
+export function toQueryDefinition(query: SavedQuery): QueryDefinition {
+  return query.mode === 'sql' ? { mode: 'sql', sqlText: query.sqlText } : { mode: 'builder', builderConfig: query.builderConfig }
+}
+
 export function widgetQueryOptions(repoPath: string, workspaceDir: string, query: SavedQuery | undefined | null) {
   return {
     queryKey: ['widget-query-result', repoPath, query?.id, query?.sqlText, JSON.stringify(query?.builderConfig ?? null)],
-    queryFn: (): Promise<QueryResult> => {
-      const def: QueryDefinition =
-        query!.mode === 'sql' ? { mode: 'sql', sqlText: query!.sqlText } : { mode: 'builder', builderConfig: query!.builderConfig }
-      return api.queries.execute(repoPath, def, workspaceDir)
-    },
+    queryFn: (): Promise<QueryResult> => api.queries.execute(repoPath, toQueryDefinition(query!), workspaceDir),
     enabled: !!repoPath && !!query,
   }
 }

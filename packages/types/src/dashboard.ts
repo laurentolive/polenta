@@ -7,6 +7,23 @@
 // tant que dashboards.service.ts n'existe pas).
 
 export type QueryScope = 'private' | 'shared'
+
+/**
+ * GH65 — colonnes de la table `campaign_entries` (une ligne par entrée de campagne) : allowlist du
+ * builder côté main ET liste de champs proposée par le builder côté renderer. Les champs
+ * personnalisés de la campagne y sont ajoutés sous la forme `campaign_<nom>`.
+ */
+export const CAMPAIGN_ENTRY_FIELDS = [
+  'campaignId', 'campaignTitle', 'campaignStatus', 'objectTypeRef', 'campaignObjectTypeRef',
+  'baselineRef', 'level', 'campaignComponent', 'component',
+  'entryId', 'testCaseId', 'requirementId', 'testTitle',
+  'status', 'executed', 'executedAt', 'executedDay', 'executedBy', 'runId',
+] as const
+
+export type CampaignEntryField = (typeof CAMPAIGN_ENTRY_FIELDS)[number]
+
+/** Préfixe des champs personnalisés de campagne dans `campaign_entries`. */
+export const CAMPAIGN_FIELD_PREFIX = 'campaign_'
 export type QueryMode = 'builder' | 'sql'
 
 export interface BuilderCondition {
@@ -69,6 +86,24 @@ export interface QueryResult {
   columns: QueryResultColumn[]
   rows: Record<string, unknown>[]
 }
+
+/** GH65 — élément cliqué dans un widget : valeurs BRUTES (pas les libellés affichés) par colonne du
+ *  résultat (catégorie, série éventuelle). Vide : KPI — toutes les lignes sources de la requête. */
+export interface DrillDownSelection {
+  values: Record<string, unknown>
+}
+
+/** GH65 — lignes d'un élément de widget. `source` : lignes sources (requête réécrite) ; `result` :
+ *  repli sur les lignes du résultat (requête SQL non réécrivable : jointure, expression…). */
+export interface DrillDownResult extends QueryResult {
+  mode: 'source' | 'result'
+}
+
+/** GH65 — objet à ouvrir pour une ligne de résultat (repo où il vit, résolu côté main). */
+export type RowTarget =
+  | { kind: 'requirement' | 'test'; id: string; repoPath: string }
+  | { kind: 'campaign'; id: string; repoPath: string; status?: string }
+  | { kind: 'campaign-run'; campaignId: string; entryId: string; repoPath: string }
 
 // ─── Widgets & dashboards ─────────────────────────────────────────────────────
 // T77 sprint 2 — types déclarés dès sprint 1 par anticipation (cf. T77-design.md

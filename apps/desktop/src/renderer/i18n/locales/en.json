@@ -81,7 +81,7 @@
       "ahead_other": "{{count}} changes not published to the server",
       "diverged": "Diverged: {{ahead}} local, {{behind}} on the server",
       "lastError": "Last error: {{error}}",
-      "offline": "server unreachable (offline?), retried automatically every 5 minutes",
+      "offline": "server unreachable (offline?), retried automatically every {{minutes}} min",
       "resync": "Resynchronize",
       "resyncing": "Resynchronizing…",
       "resyncDirty": "Unable to resynchronize: “{{repo}}” has pending changes on its integration branch. Publish or discard them first.",
@@ -253,6 +253,8 @@
     "saving": "Saving…",
     "autoPropagateLabel": "Automatically propagate the sub-repo pin to the parent repo when a commit is received on the sub-repo",
     "autoPropagateHelp": "If unchecked, the pin update waits for manual approval from the integrator.",
+    "autoPullIntervalLabel": "Automatic retrieval interval (minutes)",
+    "autoPullIntervalHelp": "How often other people's publications are retrieved ({{min}} to {{max}} min, {{def}} by default). A repository with pending changes is never updated automatically.",
     "exportTemplatesTitle": "Default export templates",
     "exportTemplatesHelp": "Client template preselected on export, identified by its path in each user's template library.",
     "exportTemplatesNoLibrary": "No template library configured on this machine (Account panel › Preferences): only already saved templates are shown.",
@@ -936,6 +938,11 @@
         "completed": "Closed",
         "abandoned": "Abandoned"
       }
+    },
+    "statusFilter": {
+      "toggle": "Filter on {{status}} (click again to remove)",
+      "clear": "Filter: {{status}} ✕",
+      "empty": "No {{status}} entry."
     }
   },
   "dashboard": {
@@ -1002,7 +1009,25 @@
       "valuePlaceholder": "value…",
       "remove": "Remove",
       "addCondition": "Add a condition",
-      "groupByLabel": "Group by"
+      "groupByLabel": "Group by",
+      "campaignEntriesType": "{{label}} (entries)",
+      "campaignFields": {
+        "campaignId": "Campaign (ID)",
+        "campaignTitle": "Campaign (title)",
+        "campaignStatus": "Campaign (status)",
+        "baselineRef": "Baseline",
+        "level": "Level",
+        "campaignComponent": "Target component",
+        "component": "Component",
+        "entryId": "Entry",
+        "testCaseId": "Test",
+        "requirementId": "Requirement",
+        "testTitle": "Test title",
+        "status": "Entry status",
+        "executedAt": "Executed at",
+        "executedDay": "Execution day",
+        "executedBy": "Executed by"
+      }
     }
   },
   "dashboardPage": {
@@ -1030,6 +1055,12 @@
     },
     "sqlEditor": {
       "availableTablesHint": "Available tables: <code>requirements</code>, <code>tests</code>, <code>links</code>. Read-only — INSERT / UPDATE / DELETE / DROP / CREATE / ATTACH are rejected."
+    },
+    "drillDown": {
+      "title": "Details",
+      "fallback": "Details not available for this query — result rows shown.",
+      "notFound": "Object not found.",
+      "openFailed": "Could not open: {{message}}"
     }
   },
   "exportButton": {

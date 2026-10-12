@@ -81,7 +81,7 @@ function dashboardFilterText(d: Dashboard): string {
 }
 
 export function DashboardPanel({ currentProjectId, projectId }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { searchStr } = useRouterState({ select: (s) => ({ searchStr: s.location.searchStr }) })
@@ -192,7 +192,7 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
 
   const { data: dashboards = [], isLoading: dashboardsLoading } = useQuery({
     queryKey: ['dashboards', repoPath, username],
-    queryFn: () => api.dashboards.list(repoPath, username),
+    queryFn: () => api.dashboards.list(repoPath, username, i18n.resolvedLanguage),
     enabled: !!repoPath && !!username,
   })
 

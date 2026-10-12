@@ -398,7 +398,7 @@ avant chaque exécution (pas de watcher dans ce process).
 | Tool | Entrée | Points clés |
 |---|---|---|
 | `list_queries` | `{ scope? }` | historique jamais exposé |
-| `run_query` | `{ queryId? \| definition?, offset?, limit? }` | exactement un des deux (`INVALID_INPUT`) ; sortie `{ sql, columns, rows, total, offset, limit }`, `limit ≤ LIST_RESULT_LIMIT` ; n'écrit pas l'historique |
+| `run_query` | `{ queryId? \| definition?, offset?, limit? }` | tables `requirements`, `tests`, `links`, `campaign_entries` (GH65, SPEC-DASHBOARDS §2.1) ; exactement un des deux (`INVALID_INPUT`) ; sortie `{ sql, columns, rows, total, offset, limit }`, `limit ≤ LIST_RESULT_LIMIT` ; n'écrit pas l'historique |
 | `create_query` | `{ title, mode, sqlText?, builderConfig?, scope='shared', dryRun? }` | `DUPLICATE_TITLE` (même scope, casse/espaces ignorés) ; sortie `{ query, preview: { columns, total, sample(5) } }` |
 | `update_query` | `{ id, title?, mode?, sqlText?, builderConfig?, dryRun? }` | changer de mode exige la définition complète ; l'autre définition est retirée du YAML ; `warnings: WIDGET_MAPPING_BROKEN` (non bloquant) pour les widgets dont une colonne disparaît ; scope non modifiable |
 | `delete_query` | `{ id, dryRun? }` | `QUERY_IN_USE` + liste des widgets (même limite que l'app : dashboards privés d'un autre utilisateur invisibles) |

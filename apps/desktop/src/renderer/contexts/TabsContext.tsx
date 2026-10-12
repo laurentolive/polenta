@@ -39,6 +39,11 @@ export function useTabs(): TabsContextValue {
   return ctx
 }
 
+/** GH65 — même contexte, `null` hors `TabsProvider` (routes « nues » : impression, export PDF). */
+export function useOptionalTabs(): TabsContextValue | null {
+  return useContext(TabsContext)
+}
+
 /** Registers whether the tab currently showing this view has unsaved changes — wire up with
  *  a view's own existing "isDirty"/"hasChanges" flag (see schema.tsx, req.$reqId.tsx). Ctrl+W /
  *  the tab's croix ask for confirmation instead of closing outright while this is true.

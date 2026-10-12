@@ -14,9 +14,11 @@ import { formatNumber, toNumber } from './numeric'
 interface Props {
   result: QueryResult | null
   fieldMapping: WidgetFieldMapping
+  /** GH65 — clic sur la tuile : toutes les lignes sources de la requête (sélection vide). */
+  onSelect?: (values: Record<string, unknown>) => void
 }
 
-export function KpiWidget({ result, fieldMapping }: Props) {
+export function KpiWidget({ result, fieldMapping, onSelect }: Props) {
   const { t } = useTranslation()
   const { measure } = fieldMapping
   if (!measure) return <WidgetEmptyState message={t('dashboardPage.widget.chooseMeasure')} />
@@ -27,7 +29,11 @@ export function KpiWidget({ result, fieldMapping }: Props) {
   const value = rows.length === 1 ? toNumber(rows[0][measure]) : rows.reduce((sum, r) => sum + toNumber(r[measure]), 0)
 
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-1">
+    <div
+      className={`flex flex-col items-center justify-center h-full gap-1${onSelect ? ' cursor-pointer rounded hover:bg-hover' : ''}`}
+      onClick={onSelect ? () => onSelect({}) : undefined}
+      data-drilldown={onSelect ? 'kpi' : undefined}
+    >
       <span className="text-4xl font-semibold text-ink tabular-nums">{formatNumber(value)}</span>
       <span className="text-xs text-ink-3 truncate max-w-full">{measure}</span>
     </div>

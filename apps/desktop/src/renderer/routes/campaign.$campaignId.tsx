@@ -28,13 +28,27 @@ import type { TestRunStatus, TestCase, ProjectSchema, ReqInstanceSelection, Para
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    repoPath: (search['repoPath'] as string) ?? '',
-    projectId: (search['projectId'] as string) ?? '',
-    component: search['component'] as string | undefined,
-    level: search['level'] as string | undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>) => {
+    // GH65 — filtre de la liste des entrées par statut (pastilles, navigation depuis la vue Suivi).
+    // Clé optionnelle : les navigations existantes vers la page n'ont pas à la fournir.
+    const status = parseRunStatus(search['status'])
+    return {
+      repoPath: (search['repoPath'] as string) ?? '',
+      projectId: (search['projectId'] as string) ?? '',
+      component: search['component'] as string | undefined,
+      level: search['level'] as string | undefined,
+      ...(status ? { status } : {}),
+    }
+  },
 })
+
+// Ordre d'affichage des pastilles ; valeurs = statuts d'entrée de `TEST_RUN_STATUS_LABELS`.
+const RUN_STATUSES: TestRunStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE', 'pending']
+
+/** Valeur d'URL hors liste ignorée (filtre absent). */
+function parseRunStatus(v: unknown): TestRunStatus | undefined {
+  return RUN_STATUSES.includes(v as TestRunStatus) ? (v as TestRunStatus) : undefined
+}
 
 export const RUN_STATUS_LABEL_KEY: Record<TestRunStatus, string> = {
   pending:    'campaignPage.runStatus.pending',
@@ -69,7 +83,9 @@ function CampaignDetailPage() {
   const { campaignId } = Route.useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { repoPath, projectId, component, level } = Route.useSearch()
+  const { repoPath, projectId, component, level, status: statusFilter } = Route.useSearch()
+  const setStatusFilter = (status: TestRunStatus | undefined) =>
+    navigate({ to: '/campaign/$campaignId', params: { campaignId }, search: { repoPath, projectId, component, level, ...(status ? { status } : {}) }, replace: true })
   // T171 — résolution des paramètres de la base (repos composants) à l'ajout.
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
 
@@ -417,16 +433,30 @@ function CampaignDetailPage() {
 
       {/* Progress summary */}
       {campaign.runs.length > 0 && (
-        <div className="flex gap-3 mb-4 text-xs">
-          {(['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE', 'pending'] as TestRunStatus[]).map(s => {
+        <div className="flex items-center gap-3 mb-4 text-xs">
+          {RUN_STATUSES.map(s => {
             const count = campaign.runs.filter(r => r.status === s).length
-            if (count === 0) return null
+            const active = statusFilter === s
+            if (count === 0 && !active) return null
+            // GH65 — pastille = filtre (re-clic : retiré).
             return (
-              <span key={s} className={`px-2 py-0.5 rounded-full ${RUN_STATUS_CLASS[s]}`}>
+              <button
+                key={s}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setStatusFilter(active ? undefined : s)}
+                title={t('campaignPage.statusFilter.toggle', { status: s })}
+                className={`px-2 py-0.5 rounded-full ${RUN_STATUS_CLASS[s]} ${active ? 'ring-2 ring-offset-1 ring-status-info' : statusFilter ? 'opacity-50 hover:opacity-100' : 'hover:brightness-95'}`}
+              >
                 {count} {s}
-              </span>
+              </button>
             )
           })}
+          {statusFilter && (
+            <button type="button" onClick={() => setStatusFilter(undefined)} className="text-ink-3 hover:text-ink underline" data-testid="campaign-status-filter-clear">
+              {t('campaignPage.statusFilter.clear', { status: statusFilter })}
+            </button>
+          )}
         </div>
       )}
 
@@ -475,8 +505,10 @@ function CampaignDetailPage() {
       <div className="border rounded divide-y mb-3">
         {campaign.runs.length === 0 ? (
           <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.noTestCaseInCampaign')}</p>
+        ) : statusFilter && !campaign.runs.some(r => r.status === statusFilter) ? (
+          <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.statusFilter.empty', { status: statusFilter })}</p>
         ) : (
-          campaign.runs.map(run => {
+          campaign.runs.filter(r => !statusFilter || r.status === statusFilter).map(run => {
             const { entryId, testCaseId: tcId, status: runStatus, runId, paramValues } = run
             const tc = resolveRunTest(run, testMap)
             // Références à saisir de cette instance (les valeurs lues dans la base sont figées).

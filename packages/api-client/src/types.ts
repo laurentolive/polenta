@@ -48,6 +48,9 @@ import type {
   CoverageResult,
   // ComplianceCellStatus is exported from @polenta/types but not needed directly in ApiClient
   QueryDefinition,
+  DrillDownSelection,
+  DrillDownResult,
+  RowTarget,
   QueryResult,
   BuilderConfig,
   QueryMode,
@@ -659,6 +662,10 @@ export interface ApiClient {
     execute(repoPath: string, queryDef: QueryDefinition, workspaceDir?: string): Promise<QueryResult>
     /** Traduit un BuilderConfig en SQL équivalent (pré-remplissage de l'éditeur SQL avancé). */
     builderToSql(repoPath: string, config: BuilderConfig, workspaceDir?: string): Promise<string>
+    /** GH65 — lignes de l'élément cliqué d'un widget (lignes sources, ou repli sur le résultat). */
+    drillDown(repoPath: string, queryDef: QueryDefinition, selection: DrillDownSelection, workspaceDir?: string): Promise<DrillDownResult>
+    /** GH65 — objet à ouvrir pour une ligne de résultat ; `null` : ligne non navigable / introuvable. */
+    resolveRowTarget(repoPath: string, row: Record<string, unknown>, workspaceDir?: string): Promise<RowTarget | null>
     list(repoPath: string, username: string): Promise<SavedQuery[]>
     create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery>
     update(repoPath: string, username: string, id: string, dto: UpdateSavedQueryDto): Promise<SavedQuery>
@@ -680,7 +687,8 @@ export interface ApiClient {
   }
   /** Dashboards personnalisables + widgets embarqués (T77 sprint 2) */
   dashboards: {
-    list(repoPath: string, username: string): Promise<Dashboard[]>
+    /** GH65 — `locale` : langue des libellés du seed « Campagnes » (absent : français). */
+    list(repoPath: string, username: string, locale?: string): Promise<Dashboard[]>
     get(repoPath: string, username: string, id: string): Promise<Dashboard | null>
     create(repoPath: string, username: string, dto: CreateDashboardDto): Promise<Dashboard>
     update(repoPath: string, username: string, id: string, dto: UpdateDashboardDto): Promise<Dashboard>

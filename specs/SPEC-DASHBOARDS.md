@@ -29,9 +29,12 @@ Les requêtes sauvegardées ne sont listées que dans le panneau latéral (GH14)
   applicative").
 - **Dataset** reconstruit à chaque exécution depuis les index en mémoire déjà
   maintenus par `RequirementsIndexService`/`TestsIndexService` — jamais persisté ni
-  mis en cache sur disque. Trois tables : `requirements`, `tests`, `links`, une ligne
+  mis en cache sur disque. Quatre tables : `requirements`, `tests`, `links`, une ligne
   par objet, champs `fields{}` étalés au premier niveau (accessibles directement en
-  SQL). Colonne `component` sur chaque ligne (`requirements`/`tests`/`links`) —
+  SQL), et `campaign_entries` (GH65, §2.1). Les exécutions simultanées sur le même
+  (repo, workspace) — les widgets d'un dashboard qui se rafraîchissent ensemble —
+  partagent une seule construction du dataset (`inFlightDatasets`), rien n'est conservé
+  une fois la promesse résolue. Colonne `component` sur chaque ligne (`requirements`/`tests`/`links`) —
   résolue en deux temps (`query-engine.service.ts`, `rowComponentFor()`) : d'abord le
   repo/submodule (repo courant + composants submodules agrégés via
   `WorkspaceTreeService`), puis affinée au composant local (`SystemNode`, T123 — un
@@ -51,6 +54,51 @@ Les requêtes sauvegardées ne sont listées que dans le panneau latéral (GH14)
   TRUNCATE/ATTACH/INTO` (ce dernier car AlaSQL implémente `SELECT ... INTO
   CSV/JSON/.../SQL(path)`, un vecteur d'écriture fichier) sur la SQL finale, quel
   que soit le mode d'origine.
+### 2.1 Table `campaign_entries` (GH65)
+
+Une ligne par entrée de campagne (`CampaignTestRun`) de toutes les campagnes du périmètre (repo
+courant + composants, `CampaignsService.list` par repo), dans son **dernier** état (l'historique
+des ré-exécutions d'une entrée n'est pas restitué). Colonnes (`CAMPAIGN_ENTRY_FIELDS`,
+`@polenta/types`) : `campaignId`, `campaignTitle`, `campaignStatus`, `objectTypeRef` (= type de la
+campagne, pour le builder), `campaignObjectTypeRef`, `baselineRef`, `level`, `campaignComponent`
+(composant ciblé), `component` (où vit le fichier, même règle que les autres tables), `entryId`,
+`testCaseId`, `requirementId`, `testTitle` (snapshot, sinon test live), `status` (statut de
+l'entrée), `executed` (booléen `status ≠ pending`), `executedAt`, `executedDay` (`AAAA-MM-JJ`,
+date UTC de l'ISO stocké), `executedBy`, `runId`. Champs personnalisés de la campagne préfixés
+`campaign_<nom>` (évite les collisions avec `status`/`title`…).
+
+- Builder : un type de catégorie `campaign` est proposé « <type> (entrées) » ; allowlist =
+  colonnes ci-dessus + `campaign_<nom>`. Non proposées dans le builder (SQL seulement) :
+  `executed` (booléen incomparable avec la saisie texte), `objectTypeRef`,
+  `campaignObjectTypeRef`, `runId`. Une campagne sans `objectTypeRef` n'est visible qu'en SQL.
+- Un fichier campagne illisible est ignoré (avertissement journalisé) : il ne fait pas échouer
+  les requêtes sur les autres tables.
+- Tools MCP : table accessible via `run_query` / `create_query` (aucun tool dédié).
+
+### 2.2 Drill-down et ouverture d'un objet (GH65)
+
+`QueryEngineService.drillDown(repoPath, queryDef, { values }, workspaceDir)` (channel
+`queries:drill-down`) : lignes qui composent l'élément cliqué d'un widget. `values` = valeurs
+**brutes** cliquées par colonne (catégorie, série) ; vide pour un KPI.
+- **Builder** : `groupBy` retiré, `[col] = valeur` (`IS NULL` pour `null`) ajouté en `AND` aux
+  conditions de l'utilisateur (quel que soit leur combinator) → `mode: 'source'`. Colonne hors
+  allowlist ou valeur non scalaire → repli.
+- **SQL** : l'AST AlaSQL de la requête est modifié (`SELECT *`, sans GROUP BY / HAVING / ORDER BY /
+  DISTINCT, WHERE d'origine `AND` conditions cliquées) puis **exécuté tel quel** — jamais
+  re-sérialisé (le `toString()` d'AlaSQL n'échappe pas les apostrophes des littéraux). Uniquement
+  pour une sélection sur une table du dataset (alias conservé), sans jointure, union, sous-requête
+  en FROM, TOP / LIMIT / OFFSET / INTO, dont chaque colonne cliquée est une colonne simple
+  (directe ou aliasée). Nœuds de l'AST testés par `instanceof alasql.yy.*` (le bundle serveur est
+  minifié). Sinon → repli.
+- **Repli** (`mode: 'result'`) : lignes du résultat d'origine portant les valeurs cliquées ; la
+  popup l'indique (« Détail non disponible pour cette requête… »).
+
+`resolveRowTarget(repoPath, row, workspaceDir)` (channel `queries:resolve-row-target`) : objet à
+ouvrir pour une ligne, cherché dans les repos du périmètre — `campaignId` + `entryId` → résultat
+d'exécution (`/campaign/$id/run/$entryId`) si l'entrée est exécutée, sinon page de campagne
+filtrée `pending` ; `campaignId` seul → page de campagne (+ `status` s'il est valide) ; `id` →
+exigence, test ou campagne ; sinon `null`. La ligne ne porte jamais de chemin de repo.
+
 - **Export Excel** du résultat courant via `exceljs` (infra autonome, ne dépend pas
   du ticket T43 export cahier, non encore implémenté au moment de T77).
 
@@ -97,6 +145,13 @@ objet référencé).
 - 5 types de widget : barres, camembert, courbe (recharts), tuile KPI, table. Le
   type n'est **jamais contraint** par la forme du résultat de la requête — aperçu
   live dans la popup de configuration, l'utilisateur reste seul juge.
+- **Navigation (GH65)** : clic sur une barre / un segment, une part, un point de courbe
+  (catégorie seule) ou une tuile KPI → popup « Détail » (`DrillDownModal`, rendue en portail hors
+  de la carte `draggable`) listant les lignes de l'élément (§2.2). Clic sur une ligne de la popup
+  ou d'un widget table → objet ouvert dans un nouvel onglet. Lignes cliquables : colonne
+  `campaignId` ou `id` non vide, hors lignes de lien (`isRowNavigable`) ; objet introuvable ou
+  erreur → mention sous la table. Rien de cliquable dans l'aperçu de `WidgetConfigModal` ni en
+  impression (`printMode`, route hors `TabsProvider`).
 - Chaque widget gère explicitement le résultat vide et le mapping incomplet (état
   vide dédié, jamais un chart cassé) — y compris le cas "widget dont la requête
   sous-jacente a été supprimée" (ne devrait pas arriver grâce aux garde-fous de
@@ -158,6 +213,25 @@ principal n'empêchait jusqu'ici une écriture sur une baseline.
   seconde barre empilée par composant, même principe mais un segment par
   `coverageStatus` (`category: component`, `series: coverageStatus`,
   `measure: count`) au lieu de `status`.
+
+### 5.1b Dashboard « Campagnes » (GH65)
+
+Seed **indépendant** du précédent, enchaîné par `DashboardSeedService.ensureSeeded(repoPath,
+username, locale?)` (`dashboards:list` reçoit la langue de l'UI). **Privé, par utilisateur**
+(dashboard et requêtes dans le `.{user}.pref`, ignoré par git) : rien n'est écrit dans le repo — un
+seed partagé automatique sur un projet existant aurait été créé par chaque membre de l'équipe sur
+son clone (doublons, conflits add/add) et aurait laissé des fichiers non publiés, bloquant le pull
+automatique. Pour le partager : requêtes puis dashboard (§3.1 ; action groupée : #67).
+- Une fois par utilisateur et par repo, nouveau ou existant ; supprimé → jamais recréé. Marqueur à
+  reprise sous la clé `campaignsSeed` du `.pref` (`state: partial | done`, ids déjà créés) : une
+  relance après un échec partiel ne duplique rien. Un échec est journalisé sans faire échouer
+  `dashboards:list`. Pas de garde de branche (rien dans le repo).
+- Libellés fr / en (`en*` → anglais, sinon français ; le main n'a pas d'i18next).
+- Widgets (requêtes SQL sur `campaign_entries`) : **Avancement par campagne** (barre empilée,
+  `campaignTitle` × `status`, campagnes `planned`/`in_progress`), **% exécuté** et **% PASS** (KPI,
+  campagnes `in_progress` ; `GROUP BY campaignStatus` pour rendre zéro ligne — état vide — quand
+  il n'y a rien à mesurer), **Exécutions par jour** (courbe sur `executedDay`), **Entrées en
+  échec** (table FAIL / BLOCKED des campagnes en cours → clic = résultat d'exécution).
 
 ### 5.2 Critères de maturité — calcul exact
 
@@ -239,7 +313,14 @@ Requêtes et dashboards peuvent être écrits hors de l'app (tools MCP, `SPEC-MC
   **et** dashboard ouvert) ;
 - `.{user}.pref` → toutes les clés ci-dessus + `queries-order` / `dashboards-order`.
 
-Match par préfixe `[clé, repoPath]`, quel que soit l'utilisateur. Une écriture de l'app
+Match par préfixe `[clé, repoPath]`, quel que soit l'utilisateur.
+
+**Résultats des widgets (GH65)** : `['widget-query-result']` et `['widget-drilldown']` (popup de
+détail) sont invalidés, **sans filtre de repo**, sur tout changement `requirements/`, `tests/`,
+`links/`, `campaigns/` ou de ref (`'*'` : checkout, pull, avance rapide du pull automatique) dans
+**n'importe quel** repo du workspace — leur clé est indexée sur le repo racine mais le dataset
+agrège tous les repos. Un résultat saisi sur le poste, ou récupéré par le pull automatique (§2.5 de
+SPEC-FORKS-BRANCHES-BASELINES), met donc à jour le dashboard ouvert sans action. Une écriture de l'app
 elle-même (dont l'historique de requêtes, stocké dans `.pref`) déclenche aussi un refetch —
 redondant et sans conséquence. Un objet créé hors de l'app n'est pas ajouté à
 `queriesOrder`/`dashboardsOrder` : il apparaît en fin de section.

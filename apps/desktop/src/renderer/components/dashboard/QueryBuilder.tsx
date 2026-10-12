@@ -15,7 +15,8 @@
 
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
-import type { BuilderCondition, BuilderConfig, ProjectSchema, SchemaField } from '@polenta/types'
+import type { BuilderCondition, BuilderConfig, CampaignEntryField, ProjectSchema, SchemaField } from '@polenta/types'
+import { CAMPAIGN_ENTRY_FIELDS, CAMPAIGN_FIELD_PREFIX } from '@polenta/types'
 
 interface ComponentNode {
   name: string
@@ -37,7 +38,7 @@ interface QueryableType {
   /** Mount name of the owning component — undefined for the current/root repo. */
   component: string | undefined
   label: string
-  category: 'requirement' | 'test'
+  category: 'requirement' | 'test' | 'campaign'
   fields: SchemaField[]
 }
 
@@ -67,6 +68,15 @@ const SYSTEM_FIELD_DEFS: { name: string; labelKey: string; type: SchemaField['ty
   { name: 'updatedBy', labelKey: 'queryPage.builder.colUpdatedBy', type: 'text' },
 ]
 
+/** GH65 — un type de campagne se requête sur `campaign_entries` (une ligne par entrée), colonnes
+ *  partagées avec l'allowlist du main ; libellés `queryPage.builder.campaignFields.*`. Non proposées :
+ *  `executed` (booléen — la saisie texte du builder ne le compare jamais ; `status ≠ pending` suffit),
+ *  les doublons techniques d'`objectTypeRef` et `runId`. Toutes restent accessibles en SQL. */
+const CAMPAIGN_BUILDER_HIDDEN = new Set<CampaignEntryField>(['executed', 'objectTypeRef', 'campaignObjectTypeRef', 'runId'])
+const CAMPAIGN_SYSTEM_FIELD_DEFS: { name: CampaignEntryField; type: SchemaField['type'] }[] = CAMPAIGN_ENTRY_FIELDS
+  .filter((name) => !CAMPAIGN_BUILDER_HIDDEN.has(name))
+  .map((name) => ({ name, type: name === 'executedAt' ? 'date' : 'text' }))
+
 const OPERATORS: { value: BuilderCondition['operator']; labelKey: string | null; symbol: string | null }[] = [
   { value: '=', labelKey: null, symbol: '=' },
   { value: '!=', labelKey: null, symbol: '≠' },
@@ -89,7 +99,7 @@ export function getQueryableTypes(
     const componentLabel = schema.nodes[0]?.label ?? node.name
     for (const localNode of schema.nodes) {
       for (const ot of localNode.objectTypes ?? []) {
-        if (ot.category !== 'requirement' && ot.category !== 'test') continue
+        if (ot.category !== 'requirement' && ot.category !== 'test' && ot.category !== 'campaign') continue
         result.push({
           ref: `${localNode.name}::${ot.name}`,
           component,
@@ -103,8 +113,18 @@ export function getQueryableTypes(
   return result
 }
 
-function fieldsForType(types: QueryableType[], ref: string, component: string | undefined, systemFields: SchemaField[]): SchemaField[] {
+function fieldsForType(
+  types: QueryableType[],
+  ref: string,
+  component: string | undefined,
+  systemFields: SchemaField[],
+  campaignFields: SchemaField[],
+): SchemaField[] {
   const type = types.find((t) => t.ref === ref && t.component === component)
+  if (type?.category === 'campaign') {
+    // Champs de la campagne préfixés : jamais en collision avec les colonnes de l'entrée.
+    return [...campaignFields, ...type.fields.map((f) => ({ ...f, name: CAMPAIGN_FIELD_PREFIX + f.name, label: f.label ?? f.name }))]
+  }
   const systemNames = new Set(systemFields.map((f) => f.name))
   // Un champ custom qui reprend le nom d'un champ système (ex: "status") est masqué ici :
   // le dataset du moteur de requête fait toujours gagner le champ système en cas de
@@ -119,7 +139,8 @@ export function QueryBuilder({ flatNodes, schemasByRepoPath, selfRepoPath, value
   const systemFields: SchemaField[] = SYSTEM_FIELD_DEFS.map((f) => ({ name: f.name, label: t(f.labelKey), type: f.type }))
   const operators = OPERATORS.map((op) => ({ value: op.value, label: op.symbol ?? t(op.labelKey!) }))
   const types = getQueryableTypes(flatNodes, schemasByRepoPath, selfRepoPath)
-  const fields = fieldsForType(types, value.objectTypeRef, value.component, systemFields)
+  const campaignFields: SchemaField[] = CAMPAIGN_SYSTEM_FIELD_DEFS.map((f) => ({ name: f.name, label: t(`queryPage.builder.campaignFields.${f.name}`), type: f.type }))
+  const fields = fieldsForType(types, value.objectTypeRef, value.component, systemFields, campaignFields)
   const selectedKey = value.objectTypeRef ? encodeTypeKey(value.component, value.objectTypeRef) : ''
 
   function updateCondition(idx: number, patch: Partial<BuilderCondition>) {
@@ -162,7 +183,9 @@ export function QueryBuilder({ flatNodes, schemasByRepoPath, selfRepoPath, value
             <>
               <option value="">{t('dashboard.widgetModal.selectPlaceholder')}</option>
               {types.map((qt) => (
-                <option key={encodeTypeKey(qt.component, qt.ref)} value={encodeTypeKey(qt.component, qt.ref)}>{qt.label}</option>
+                <option key={encodeTypeKey(qt.component, qt.ref)} value={encodeTypeKey(qt.component, qt.ref)}>
+                  {qt.category === 'campaign' ? t('queryPage.builder.campaignEntriesType', { label: qt.label }) : qt.label}
+                </option>
               ))}
             </>
           )}

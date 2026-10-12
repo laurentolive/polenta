@@ -12,6 +12,9 @@ export const SYSTEM_QUERY_FIELDS = [
   'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'version', 'needsRevalidation',
 ] as const
 
+/** GH65 — colonnes de `campaign_entries`, partagées avec le builder du renderer. */
+export { CAMPAIGN_ENTRY_FIELDS, CAMPAIGN_FIELD_PREFIX } from '@polenta/types'
+
 export type ResolvedObjectType = ObjectTypeDefinition | null | 'unresolvable'
 
 /**

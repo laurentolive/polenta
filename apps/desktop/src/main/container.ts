@@ -82,7 +82,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   const baseline = new BaselineService()
-  const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)
+  const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree, campaigns)
   const dashboards = new DashboardsService(git)
   // dashboards is injected here (not the other way around) — SavedQueriesService needs
   // to detect widgets depending on a query (delete/setScope guards), DashboardsService

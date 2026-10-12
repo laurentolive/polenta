@@ -9,7 +9,7 @@ import type {
 import type { GitService } from './git.service'
 import type { SchemaService } from './schema.service'
 import type { DashboardsService } from './dashboards.service'
-import { findObjectTypeDef, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
+import { CAMPAIGN_ENTRY_FIELDS, CAMPAIGN_FIELD_PREFIX, findObjectTypeDef, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
@@ -308,7 +308,11 @@ export class SavedQueriesService {
     if (typeDef === 'unresolvable') return true // composant non local — impossible à vérifier ici
     if (!typeDef) return false // le type a été supprimé du schéma
 
-    const allowed = new Set([...SYSTEM_QUERY_FIELDS, ...typeDef.fields.map((f) => f.name)])
+    // GH65 — un type de campagne se requête sur `campaign_entries` : autres colonnes système,
+    // champs du type préfixés (même allowlist que QueryEngineService.resolveTableInfo).
+    const allowed = typeDef.category === 'campaign'
+      ? new Set<string>([...CAMPAIGN_ENTRY_FIELDS, ...typeDef.fields.map((f) => CAMPAIGN_FIELD_PREFIX + f.name)])
+      : new Set<string>([...SYSTEM_QUERY_FIELDS, ...typeDef.fields.map((f) => f.name)])
     const fieldsUsed = [
       ...entry.builderConfig.conditions.map((c) => c.field),
       ...(entry.builderConfig.groupBy ?? []),

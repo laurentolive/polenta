@@ -81,7 +81,7 @@
       "ahead_other": "{{count}} modifications non publiées sur le serveur",
       "diverged": "Divergé : {{ahead}} en local, {{behind}} sur le serveur",
       "lastError": "Dernière erreur : {{error}}",
-      "offline": "serveur injoignable (hors ligne ?), nouvel essai automatique toutes les 5 minutes",
+      "offline": "serveur injoignable (hors ligne ?), nouvel essai automatique toutes les {{minutes}} min",
       "resync": "Resynchroniser",
       "resyncing": "Resynchronisation…",
       "resyncDirty": "Resynchronisation impossible : « {{repo}} » a des modifications en attente sur sa branche d'intégration. Publiez-les ou annulez-les d'abord.",
@@ -253,6 +253,8 @@
     "saving": "Enregistrement…",
     "autoPropagateLabel": "Propager automatiquement le pin des sous-repos vers le repo parent lors d'un commit reçu sur le sous-repo",
     "autoPropagateHelp": "Si décoché, la mise à jour du pin attend une approbation manuelle de l'intégrateur.",
+    "autoPullIntervalLabel": "Intervalle de récupération automatique (minutes)",
+    "autoPullIntervalHelp": "Fréquence à laquelle les publications des autres sont récupérées (de {{min}} à {{max}} min, {{def}} par défaut). Un dépôt avec des modifications en cours n'est jamais mis à jour automatiquement.",
     "exportTemplatesTitle": "Gabarits d'export par défaut",
     "exportTemplatesHelp": "Gabarit client présélectionné à l'export, désigné par son chemin dans la bibliothèque de gabarits de chaque utilisateur.",
     "exportTemplatesNoLibrary": "Aucune bibliothèque de gabarits configurée sur ce poste (panneau Compte › Préférences) : seuls les gabarits déjà enregistrés sont affichés.",
@@ -936,6 +938,11 @@
         "completed": "Clôturée",
         "abandoned": "Abandonnée"
       }
+    },
+    "statusFilter": {
+      "toggle": "Filtrer sur {{status}} (re-cliquer pour retirer)",
+      "clear": "Filtre : {{status}} ✕",
+      "empty": "Aucune entrée {{status}}."
     }
   },
   "dashboard": {
@@ -1002,7 +1009,25 @@
       "valuePlaceholder": "valeur…",
       "remove": "Retirer",
       "addCondition": "Ajouter une condition",
-      "groupByLabel": "Grouper par"
+      "groupByLabel": "Grouper par",
+      "campaignEntriesType": "{{label}} (entrées)",
+      "campaignFields": {
+        "campaignId": "Campagne (ID)",
+        "campaignTitle": "Campagne (titre)",
+        "campaignStatus": "Campagne (statut)",
+        "baselineRef": "Baseline",
+        "level": "Niveau",
+        "campaignComponent": "Composant ciblé",
+        "component": "Composant",
+        "entryId": "Entrée",
+        "testCaseId": "Test",
+        "requirementId": "Exigence",
+        "testTitle": "Titre du test",
+        "status": "Statut de l'entrée",
+        "executedAt": "Exécutée le",
+        "executedDay": "Jour d'exécution",
+        "executedBy": "Exécutée par"
+      }
     }
   },
   "dashboardPage": {
@@ -1030,6 +1055,12 @@
     },
     "sqlEditor": {
       "availableTablesHint": "Tables disponibles : <code>requirements</code>, <code>tests</code>, <code>links</code>. Lecture seule — INSERT / UPDATE / DELETE / DROP / CREATE / ATTACH sont refusés."
+    },
+    "drillDown": {
+      "title": "Détail",
+      "fallback": "Détail non disponible pour cette requête — lignes du résultat affichées.",
+      "notFound": "Objet introuvable.",
+      "openFailed": "Ouverture impossible : {{message}}"
     }
   },
   "exportButton": {

@@ -15,14 +15,18 @@ import { WidgetEmptyState } from './WidgetEmptyState'
 import { seriesColor } from './chartColors'
 import { toLabel, toNumber } from './numeric'
 
+import { rawValueIndex } from './drilldown'
+
 interface Props {
   result: QueryResult | null
   fieldMapping: WidgetFieldMapping
+  /** GH65 — clic sur un point : valeur brute de la catégorie (toutes séries confondues). */
+  onSelect?: (values: Record<string, unknown>) => void
 }
 
 const CATEGORY_KEY = '__category'
 
-export function LineWidget({ result, fieldMapping }: Props) {
+export function LineWidget({ result, fieldMapping, onSelect }: Props) {
   const { t } = useTranslation()
   const { category, measure, series } = fieldMapping
   if (!category || !measure) return <WidgetEmptyState message={t('dashboardPage.widget.chooseCategoryAndMeasure')} />
@@ -49,9 +53,24 @@ export function LineWidget({ result, fieldMapping }: Props) {
     seriesKeys = [measure]
   }
 
+  // Clic au niveau du graphique (point le plus proche) : la catégorie seule — avec plusieurs séries,
+  // le point visé n'est pas identifiable de façon fiable sous le curseur.
+  const rawCategory = rawValueIndex(rows, category)
+  const handleClick = onSelect
+    ? (state: { activeLabel?: string | number } | null) => {
+        if (state?.activeLabel === undefined) return
+        onSelect({ [category]: rawCategory.get(String(state.activeLabel)) })
+      }
+    : undefined
+
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+      <LineChart
+        data={data}
+        margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
+        onClick={handleClick}
+        style={onSelect ? { cursor: 'pointer' } : undefined}
+      >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--edge-subtle)" vertical={false} />
         <XAxis
           dataKey={CATEGORY_KEY}

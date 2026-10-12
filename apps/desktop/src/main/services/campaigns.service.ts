@@ -1,8 +1,8 @@
-﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection } from '@polenta/types'
+﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
-import { REQ_REF_PREFIX, extractTestReqRefs } from '@polenta/types'
+import { REQ_REF_PREFIX, carryKey, extractTestReqRefs } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 
 export class CampaignsService {
@@ -76,6 +76,8 @@ export class CampaignsService {
       createdAt: new Date().toISOString(),
       completedAt: null,
     }
+    // GH64 — entrées reportées depuis d'autres campagnes, après celles de l'onglet Tests.
+    campaign.runs.push(...await this.buildCarriedRuns(repoPath, undefined, campaign.runs, dto.carried, dto.baselineRef, workspaceDir))
 
     // T179 — une occurrence par instance créée (un test itérant en a une par exigence retenue).
     campaign.testCaseIds = campaign.runs.map(r => r.testCaseId)
@@ -159,6 +161,8 @@ export class CampaignsService {
     paramValuesByTest?: Record<string, Record<string, string>>,
     workspaceDir?: string,
     reqInstances?: ReqInstanceSelection,
+    /** GH64 — entrées reportées depuis d'autres campagnes. */
+    carried?: CarriedEntrySelection[],
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
@@ -177,10 +181,12 @@ export class CampaignsService {
       // T179 — un test itérant (`{req.…}` avec exigences liées) déjà présent reste ajoutable pour
       // ses exigences sans instance : la déduplication porte sur le couple (test, exigence).
       const newIds = candidates.filter(id => !existingIds.has(id) || !!previews.get(id)?.requirements?.length)
-      if (newIds.length === 0) return campaign
+      if (newIds.length === 0 && !carried?.length) return campaign
 
       const before = campaign.runs.length
       campaign.runs = this.buildNewRuns(campaign.runs, newIds, paramValuesByTest, snapshots, previews, reqInstances)
+      // GH64 — entrées reportées, dédoublonnées contre l'existant et l'onglet Tests.
+      campaign.runs.push(...await this.buildCarriedRuns(repoPath, campaignId, campaign.runs, carried, campaign.baselineRef, workspaceDir))
       if (campaign.runs.length === before) return campaign
       campaign.testCaseIds = [...campaign.testCaseIds, ...campaign.runs.slice(before).map(r => r.testCaseId)]
 
@@ -330,43 +336,8 @@ export class CampaignsService {
     const counts = new Map<string, number>()
     for (const r of existingRuns) counts.set(r.testCaseId, (counts.get(r.testCaseId) ?? 0) + 1)
 
-    const newRun = (tcId: string, given: Record<string, string> | undefined, requirementId?: string): CampaignTestRun => {
-      const n = (counts.get(tcId) ?? 0) + 1
-      counts.set(tcId, n)
-      const run: CampaignTestRun = {
-        entryId: `${tcId}-${n}`,
-        testCaseId: tcId,
-        ...(requirementId && { requirementId }),
-        testSnapshot: snapshots.get(tcId),
-        status: 'pending' as TestRunStatus,
-      }
-      const preview = previews.get(tcId)
-      if (!preview) {
-        // Sans résolution (service absent, test introuvable) : comportement T97 inchangé.
-        if (given) run.paramValues = given
-        return run
-      }
-      // T171 §6 — seules les références à saisir gardent une valeur manuelle : une référence ne
-      // figure jamais à la fois dans `paramValues` et dans `resolvedParams`. Toute référence à
-      // saisir est conservée, vide si le renderer n'en a pas fourni (prévisualisation périmée) :
-      // elle reste ainsi visible et modifiable (`updateRunParams`) au lieu de disparaître.
-      const manual = Object.fromEntries(preview.manual.map(k => [k, given?.[k] ?? '']))
-      // T179 — valeurs `{req.<champ>}` de l'exigence de l'instance, figées avec celles de la base.
-      const inst = requirementId ? preview.requirements?.find(r => r.requirementId === requirementId) : undefined
-      const resolved = { ...preview.resolved, ...inst?.resolved }
-      const unresolved = [...preview.unresolved, ...(inst?.unresolved ?? [])]
-      if (!inst && preview.requirements?.length) {
-        // Instance sans exigence d'un test itérant (duplicata d'une instance antérieure) : ses
-        // `{req.…}` n'ont pas de valeur — non résolues, jamais à saisir.
-        const t = snapshots.get(tcId)
-        for (const f of t ? extractTestReqRefs(t) : []) unresolved.push({ ref: REQ_REF_PREFIX + f, reason: 'no_linked_requirement' })
-      }
-      if (Object.keys(manual).length > 0) run.paramValues = manual
-      if (Object.keys(resolved).length > 0) run.resolvedParams = resolved
-      if (preview.sourceRef) run.paramSourceRef = preview.sourceRef
-      if (unresolved.length > 0) run.unresolvedParams = unresolved
-      return run
-    }
+    const newRun = (tcId: string, given: Record<string, string> | undefined, requirementId?: string) =>
+      this.makeRun(counts, tcId, given, requirementId, snapshots, previews)
 
     const newRuns: CampaignTestRun[] = []
     for (const tcId of newTestCaseIds) {
@@ -393,6 +364,136 @@ export class CampaignsService {
     }
 
     return [...existingRuns, ...newRuns]
+  }
+
+  /**
+   * GH64 — instances reportées depuis d'autres campagnes. Le renderer n'envoie que des références
+   * (campagne, entrée) et les saisies de l'étape 2 : test et exigence sont relus dans la campagne
+   * source. Une sélection invalide (source ou entrée introuvable, campagne cible elle-même, test
+   * supprimé, exigence plus liée, doublon de l'existant) est ignorée sans faire échouer le reste —
+   * comme un test supprimé entre l'affichage du panneau et l'appel (`snapshotsFor`). Paramètres de
+   * la base relus selon `baselineRef` de la cible, jamais recopiés de la source. Renvoie les seules
+   * nouvelles instances ; la campagne source n'est jamais modifiée.
+   */
+  private async buildCarriedRuns(
+    repoPath: string,
+    targetId: string | undefined,
+    existingRuns: CampaignTestRun[],
+    carried: CarriedEntrySelection[] | undefined,
+    baselineRef: string | undefined,
+    workspaceDir: string | undefined,
+  ): Promise<CampaignTestRun[]> {
+    if (!carried?.length) return []
+
+    // Entrées source résolues. L'id de campagne vient du renderer et sert de nom de fichier :
+    // seul un id simple est accepté (pas de chemin).
+    const valid = carried.filter(sel => sel.campaignId !== targetId && /^[A-Za-z0-9_-]+$/.test(sel.campaignId))
+    const ids = [...new Set(valid.map(sel => sel.campaignId))]
+    // Campagne source supprimée entre l'affichage et l'appel : ignorée. Toute autre erreur de
+    // lecture (YAML invalide…) remonte plutôt que de faire disparaître le report sans message.
+    const loaded = await Promise.all(ids.map(id =>
+      this.gitService.readYaml<TestCampaign>(repoPath, `campaigns/${id}.yaml`)
+        .then(c => (c ? this.ensureEntryIds(c) : null))))
+    const sources = new Map(ids.map((id, i) => [id, loaded[i]]))
+    const picked: Array<{ sel: CarriedEntrySelection; source: CampaignTestRun }> = []
+    for (const sel of valid) {
+      const source = sources.get(sel.campaignId)?.runs.find(r => r.entryId === sel.entryId)
+      if (source) picked.push({ sel, source })
+    }
+    if (picked.length === 0) return []
+
+    const snapshots = await this.snapshotsFor(repoPath, picked.map(p => p.source.testCaseId))
+    const previews = await this.previewsFor(repoPath, snapshots, baselineRef, workspaceDir)
+
+    const counts = new Map<string, number>()
+    for (const r of existingRuns) counts.set(r.testCaseId, (counts.get(r.testCaseId) ?? 0) + 1)
+    const keys = new Set(existingRuns.map(r => carryKey(r.testCaseId, r.requirementId, r.paramValues)))
+    const newRuns: CampaignTestRun[] = []
+
+    const add = (sel: CarriedEntrySelection, tcId: string, given: Record<string, string> | undefined, requirementId?: string) => {
+      // Clé sur les valeurs telles qu'elles seront stockées (seules les références à saisir).
+      const key = carryKey(tcId, requirementId, storedParamValues(previews.get(tcId), given))
+      if (keys.has(key)) return
+      keys.add(key)
+      const run = this.makeRun(counts, tcId, given, requirementId, snapshots, previews)
+      run.carriedFrom = { campaignId: sel.campaignId, entryId: sel.entryId }
+      newRuns.push(run)
+    }
+
+    for (const { sel, source } of picked) {
+      const tcId = source.testCaseId
+      if (!snapshots.has(tcId)) continue
+      const preview = previews.get(tcId)
+      const linked = preview?.requirements
+      if (!preview) {
+        // Sans résolution (service absent — MCP) : comportement T97, exigence de la source gardée.
+        add(sel, tcId, sel.paramValues, source.requirementId)
+      } else if (!linked?.length) {
+        // Test (devenu) non itérant : instance sans exigence.
+        add(sel, tcId, sel.paramValues)
+      } else if (source.requirementId) {
+        // Instance T179 : même exigence, si elle est encore liée (lue à la baseline cible).
+        if (linked.some(r => r.requirementId === source.requirementId)) add(sel, tcId, sel.paramValues, source.requirementId)
+      } else {
+        // Entrée sans exigence d'un test devenu itérant : exigences retenues (absent : toutes).
+        const wanted = sel.reqInstances ?? linked.map(r => ({ requirementId: r.requirementId, paramValues: sel.paramValues }))
+        for (const w of wanted) {
+          if (linked.some(r => r.requirementId === w.requirementId)) add(sel, tcId, w.paramValues ?? sel.paramValues, w.requirementId)
+        }
+      }
+    }
+    return newRuns
+  }
+
+  /**
+   * Nouvelle entrée `pending` d'un test : `entryId` unique (`${testCaseId}-${n}`, `counts` = nombre
+   * d'instances par test, mis à jour), copie du test (T49), paramètres résolus (T171) et valeurs
+   * `{req.<champ>}` de l'exigence de l'instance (T179). Partagé par `buildNewRuns` et
+   * `buildCarriedRuns` (GH64).
+   */
+  private makeRun(
+    counts: Map<string, number>,
+    tcId: string,
+    given: Record<string, string> | undefined,
+    requirementId: string | undefined,
+    snapshots: Map<string, TestCase>,
+    previews: Map<string, ParamResolutionPreview>,
+  ): CampaignTestRun {
+    const n = (counts.get(tcId) ?? 0) + 1
+    counts.set(tcId, n)
+    const run: CampaignTestRun = {
+      entryId: `${tcId}-${n}`,
+      testCaseId: tcId,
+      ...(requirementId && { requirementId }),
+      testSnapshot: snapshots.get(tcId),
+      status: 'pending' as TestRunStatus,
+    }
+    const preview = previews.get(tcId)
+    if (!preview) {
+      // Sans résolution (service absent, test introuvable) : comportement T97 inchangé.
+      if (given) run.paramValues = given
+      return run
+    }
+    // T171 §6 — seules les références à saisir gardent une valeur manuelle : une référence ne
+    // figure jamais à la fois dans `paramValues` et dans `resolvedParams`. Toute référence à
+    // saisir est conservée, vide si le renderer n'en a pas fourni (prévisualisation périmée) :
+    // elle reste ainsi visible et modifiable (`updateRunParams`) au lieu de disparaître.
+    const manual = storedParamValues(preview, given) ?? {}
+    // T179 — valeurs `{req.<champ>}` de l'exigence de l'instance, figées avec celles de la base.
+    const inst = requirementId ? preview.requirements?.find(r => r.requirementId === requirementId) : undefined
+    const resolved = { ...preview.resolved, ...inst?.resolved }
+    const unresolved = [...preview.unresolved, ...(inst?.unresolved ?? [])]
+    if (!inst && preview.requirements?.length) {
+      // Instance sans exigence d'un test itérant (duplicata d'une instance antérieure) : ses
+      // `{req.…}` n'ont pas de valeur — non résolues, jamais à saisir.
+      const t = snapshots.get(tcId)
+      for (const f of t ? extractTestReqRefs(t) : []) unresolved.push({ ref: REQ_REF_PREFIX + f, reason: 'no_linked_requirement' })
+    }
+    if (Object.keys(manual).length > 0) run.paramValues = manual
+    if (Object.keys(resolved).length > 0) run.resolvedParams = resolved
+    if (preview.sourceRef) run.paramSourceRef = preview.sourceRef
+    if (unresolved.length > 0) run.unresolvedParams = unresolved
+    return run
   }
 
   /**
@@ -456,4 +557,15 @@ export class CampaignsService {
   private nextCampaignId(repoPath: string): Promise<string> {
     return nextCounterId(this.gitService, repoPath, 'CAMP', 'campaigns')
   }
+}
+
+/**
+ * Valeurs saisies à la main telles que stockées sur une instance : avec une résolution (T171 §6),
+ * exactement les références à saisir (vides si non fournies) ; sans, les valeurs données (T97).
+ */
+function storedParamValues(
+  preview: ParamResolutionPreview | undefined,
+  given: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  return preview ? Object.fromEntries(preview.manual.map(k => [k, given?.[k] ?? ''])) : given
 }

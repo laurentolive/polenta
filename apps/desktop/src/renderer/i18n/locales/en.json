@@ -800,6 +800,7 @@
     "addTests": "Add tests",
     "adding": "Adding…",
     "addCount": "Add ({{count}})",
+    "carriedFrom": "Carried over from {{campaignId}} (entry {{entryId}})",
     "noApprovedTestAvailable": "No approved test available (already included or not approved)",
     "noTestCaseInCampaign": "No test case in this campaign",
     "addAnotherInstance": "Add another instance of this test with different values",

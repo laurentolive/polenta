@@ -436,8 +436,8 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     (_e, repoPath: string, id: string, status: unknown) =>
       c.campaigns.close(repoPath, id, status as 'completed' | 'abandoned'))
   r.handle('campaigns:add-tests',
-    (_e, repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: import('@polenta/types').ReqInstanceSelection) =>
-      c.campaigns.addTests(repoPath, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances))
+    (_e, repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: import('@polenta/types').ReqInstanceSelection, carried?: import('@polenta/types').CarriedEntrySelection[]) =>
+      c.campaigns.addTests(repoPath, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances, carried))
   r.handle('campaigns:remove-entries',
     (_e, repoPath: string, campaignId: string, entryIds: string[]) =>
       c.campaigns.removeEntries(repoPath, campaignId, entryIds))

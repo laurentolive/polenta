@@ -246,8 +246,8 @@ export function createIpcClient(
       update: (p, id, dto) => invoke('campaigns:update', p, id, dto),
       updateRun: (p, campaignId, entryId, status, runId) => invoke('campaigns:update-run', p, campaignId, entryId, status, runId),
       close: (p, id, status) => invoke('campaigns:close', p, id, status),
-      addTests: (p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances) =>
-        invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances),
+      addTests: (p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances, carried) =>
+        invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances, carried),
       removeEntries: (p, campaignId, entryIds) => invoke('campaigns:remove-entries', p, campaignId, entryIds),
       duplicateTest: (p, campaignId, testCaseId, paramValues, workspaceDir, requirementId) =>
         invoke('campaigns:duplicate-test', p, campaignId, testCaseId, paramValues, workspaceDir, requirementId),

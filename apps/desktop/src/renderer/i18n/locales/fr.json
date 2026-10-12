@@ -800,6 +800,7 @@
     "addTests": "Ajouter des tests",
     "adding": "Ajout…",
     "addCount": "Ajouter ({{count}})",
+    "carriedFrom": "Reporté depuis {{campaignId}} (entrée {{entryId}})",
     "noApprovedTestAvailable": "Aucun test approuvé disponible (déjà présents ou non approuvés)",
     "noTestCaseInCampaign": "Aucun cas de test dans cette campagne",
     "addAnotherInstance": "Ajouter une autre instance de ce test avec d'autres valeurs",

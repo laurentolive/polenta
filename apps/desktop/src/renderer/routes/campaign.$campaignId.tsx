@@ -503,6 +503,25 @@ function CampaignDetailPage() {
                         </button>
                       </>
                     )}
+                    {/* GH64 — instance reportée depuis une autre campagne. */}
+                    {run.carriedFrom && (
+                      <button
+                        type="button"
+                        title={t('campaignPage.carriedFrom', { campaignId: run.carriedFrom.campaignId, entryId: run.carriedFrom.entryId })}
+                        onClick={e => {
+                          e.stopPropagation()
+                          navigate({
+                            to: '/campaign/$campaignId',
+                            params: { campaignId: run.carriedFrom!.campaignId },
+                            // Composant/niveau de la source inconnus ici : pas ceux de la cible.
+                            search: { repoPath, projectId, component: undefined, level: undefined },
+                          })
+                        }}
+                        className="ml-2 font-mono text-[10px] text-ink-3 hover:text-status-info hover:underline"
+                      >
+                        ↩ {run.carriedFrom.campaignId}
+                      </button>
+                    )}
                     {(run.unresolvedParams?.length ?? 0) > 0 && (
                       <span
                         className="ml-2 inline-flex items-center gap-0.5 text-[10px] text-status-warning"

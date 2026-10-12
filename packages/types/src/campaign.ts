@@ -48,6 +48,40 @@ export interface CampaignTestRun {
   paramSourceRef?: string
   /** T171 — références de base restées non résolues à l'ajout, avec leur raison. */
   unresolvedParams?: UnresolvedParam[]
+  /** GH64 — instance reportée depuis une autre campagne (entrée source). Absent : ajout normal. */
+  carriedFrom?: CarriedFrom
+}
+
+/** GH64 — entrée d'une autre campagne dont une instance a été reportée. */
+export interface CarriedFrom {
+  campaignId: string
+  entryId: string
+}
+
+/** GH64 — entrée source retenue pour un report, avec les saisies de l'étape 2 du sélecteur. */
+export interface CarriedEntrySelection extends CarriedFrom {
+  /** Valeurs saisies à la main (pré-remplies depuis l'entrée source, éditables). */
+  paramValues?: Record<string, string>
+  /** Entrée source sans exigence d'un test devenu itérant (T179) : exigences retenues, une instance
+   *  chacune. Absent : toutes les exigences liées. Ignoré pour une entrée qui a une exigence. */
+  reqInstances?: Array<{ requirementId: string; paramValues?: Record<string, string> }>
+}
+
+/**
+ * GH64 — clé de doublon d'une instance de campagne : (test, exigence, valeurs saisies à la main).
+ * Valeurs normalisées (clés triées, `trim()`, vides retirées) : un test sans référence à saisir se
+ * réduit à (test, exigence), soit la règle « une seule inclusion d'un test sans paramètre ».
+ */
+export function carryKey(
+  testCaseId: string,
+  requirementId: string | undefined,
+  paramValues: Record<string, string> | undefined,
+): string {
+  const values = Object.entries(paramValues ?? {})
+    .map(([k, v]) => [k, (v ?? '').trim()] as const)
+    .filter(([, v]) => v !== '')
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return JSON.stringify([testCaseId, requirementId ?? '', values])
 }
 
 export type UnresolvedParamReason = 'tag_not_found' | 'missing' | 'empty' | 'unknown_node' | 'no_linked_requirement'
@@ -97,6 +131,8 @@ export interface CreateCampaignDto {
   paramValuesByTest?: Record<string, Record<string, string>>
   /** T179 — exigences retenues par test itérant (voir `ReqInstanceSelection`). */
   reqInstances?: ReqInstanceSelection
+  /** GH64 — entrées reportées depuis d'autres campagnes. */
+  carried?: CarriedEntrySelection[]
 }
 
 export interface UpdateCampaignDto {

@@ -146,7 +146,8 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
     {
       title: 'Run query',
       description:
-        'Exécute une requête (lecture seule) sur les tables requirements, tests, links — soit une ' +
+        'Exécute une requête (lecture seule) sur les tables requirements, tests, links, campaign_entries ' +
+        '(une ligne par entrée de campagne : campaignId, entryId, testCaseId, status, executedAt…) — soit une ' +
         'requête sauvegardée (queryId), soit une définition ad hoc (definition : mode sql + sqlText, ' +
         'ou mode builder + builderConfig). Retourne la SQL exécutée, les colonnes et les lignes ' +
         '(paginées par offset/limit). À utiliser avant add_widget pour connaître les colonnes.',

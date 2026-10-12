@@ -298,7 +298,7 @@ export function createIpcClient(
       setScope: (repoPath, username, id, scope: QueryScope) => invoke('queries:set-scope', repoPath, username, id, scope),
     },
     dashboards: {
-      list: (repoPath, username) => invoke('dashboards:list', repoPath, username),
+      list: (repoPath, username, locale?: string) => invoke('dashboards:list', repoPath, username, locale),
       get: (repoPath, username, id) => invoke('dashboards:get', repoPath, username, id),
       create: (repoPath, username, dto: CreateDashboardDto) => invoke('dashboards:create', repoPath, username, dto),
       update: (repoPath, username, id, dto: UpdateDashboardDto) => invoke('dashboards:update', repoPath, username, id, dto),

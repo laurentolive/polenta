@@ -7,6 +7,23 @@
 // tant que dashboards.service.ts n'existe pas).
 
 export type QueryScope = 'private' | 'shared'
+
+/**
+ * GH65 — colonnes de la table `campaign_entries` (une ligne par entrée de campagne) : allowlist du
+ * builder côté main ET liste de champs proposée par le builder côté renderer. Les champs
+ * personnalisés de la campagne y sont ajoutés sous la forme `campaign_<nom>`.
+ */
+export const CAMPAIGN_ENTRY_FIELDS = [
+  'campaignId', 'campaignTitle', 'campaignStatus', 'objectTypeRef', 'campaignObjectTypeRef',
+  'baselineRef', 'level', 'campaignComponent', 'component',
+  'entryId', 'testCaseId', 'requirementId', 'testTitle',
+  'status', 'executed', 'executedAt', 'executedDay', 'executedBy', 'runId',
+] as const
+
+export type CampaignEntryField = (typeof CAMPAIGN_ENTRY_FIELDS)[number]
+
+/** Préfixe des champs personnalisés de campagne dans `campaign_entries`. */
+export const CAMPAIGN_FIELD_PREFIX = 'campaign_'
 export type QueryMode = 'builder' | 'sql'
 
 export interface BuilderCondition {

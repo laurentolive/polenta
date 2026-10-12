@@ -622,12 +622,13 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     c.savedQueries.setScope(repoPath, username, id, scope as QueryScope))
 
   // ── Dashboards & widgets (T77 sprint 2, seed sprint 3) ───────────────────────
-  r.handle('dashboards:list', async (_e, repoPath: string, username: string) => {
+  r.handle('dashboards:list', async (_e, repoPath: string, username: string, locale?: string) => {
     // Seed the 3 pre-configured shared dashboards on first access (empty `dashboards/`
     // folder, never seeded before) — server-side, ahead of every list() call, so it's
     // reliable regardless of which UI entry point triggers the panel's first load
     // (T77 sprint 3 — see dashboard-seed.service.ts for the "once only" guarantee).
-    await c.dashboardSeed.ensureSeeded(repoPath, username)
+    // GH65 — `locale` : langue des libellés du dashboard « Campagnes » (seed indépendant).
+    await c.dashboardSeed.ensureSeeded(repoPath, username, typeof locale === 'string' ? locale : undefined)
     return c.dashboards.list(repoPath, username)
   })
   r.handle('dashboards:get', (_e, repoPath: string, username: string, id: string) =>

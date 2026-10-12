@@ -41,7 +41,7 @@ export const Route = createFileRoute('/dashboard')({
 })
 
 function DashboardPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { projectId, dashboardId } = Route.useSearch()
   const navigate = useNavigate()
   const router = useRouter()
@@ -84,7 +84,7 @@ function DashboardPage() {
   // instead of showing the "pick one" prompt. Only fetched when actually needed.
   const { data: dashboards = [], isLoading: dashboardsLoading } = useQuery({
     queryKey: ['dashboards', repoPath, username],
-    queryFn: () => api.dashboards.list(repoPath, username),
+    queryFn: () => api.dashboards.list(repoPath, username, i18n.resolvedLanguage),
     enabled: !!repoPath && !!username && !dashboardId,
   })
   const { data: dashboardsOrder = [], isLoading: dashboardsOrderLoading } = useQuery({

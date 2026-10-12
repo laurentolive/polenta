@@ -103,7 +103,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   // seed des dashboards pré-configurés reste propre à l'app). TraceabilityService n'est
   // appelé que pour computeCoverage (pur, ni réseau ni keytar).
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
-  const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)
+  const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree, campaigns)
   const dashboards = new DashboardsService(git)
   const savedQueries = new SavedQueriesService(git, schema, dashboards)
 

@@ -679,7 +679,8 @@ export interface ApiClient {
   }
   /** Dashboards personnalisables + widgets embarqués (T77 sprint 2) */
   dashboards: {
-    list(repoPath: string, username: string): Promise<Dashboard[]>
+    /** GH65 — `locale` : langue des libellés du seed « Campagnes » (absent : français). */
+    list(repoPath: string, username: string, locale?: string): Promise<Dashboard[]>
     get(repoPath: string, username: string, id: string): Promise<Dashboard | null>
     create(repoPath: string, username: string, dto: CreateDashboardDto): Promise<Dashboard>
     update(repoPath: string, username: string, id: string, dto: UpdateDashboardDto): Promise<Dashboard>

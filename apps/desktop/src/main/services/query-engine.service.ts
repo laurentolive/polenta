@@ -1,6 +1,6 @@
 import * as path from 'path'
 import type alasqlDefault from 'alasql'
-import type { Requirement, TestCase, ObjectLink, TestRun, ProjectSchema } from '@polenta/types'
+import type { Requirement, TestCase, ObjectLink, TestRun, ProjectSchema, TestCampaign, CampaignTestRun } from '@polenta/types'
 import type {
   BuilderConfig,
   BuilderCondition,
@@ -14,7 +14,8 @@ import type { SchemaService } from './schema.service'
 import type { TraceabilityService } from './traceability.service'
 import { mergeRunsMaps } from './traceability.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
-import { findObjectTypeDef, resolveObjectTypeLocation, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
+import type { CampaignsService } from './campaigns.service'
+import { CAMPAIGN_ENTRY_FIELDS, CAMPAIGN_FIELD_PREFIX, findObjectTypeDef, resolveObjectTypeLocation, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
 import type { ObjectTypeLocation } from './schema-lookup.util'
 import { computeMaturity, REQUIREMENT_DERIVED_FIELDS } from './maturity.util'
 
@@ -24,9 +25,11 @@ interface QueryDataset {
   requirements: FlatRow[]
   tests: FlatRow[]
   links: FlatRow[]
+  /** GH65 — une ligne par entrée de campagne (`CampaignTestRun`). */
+  campaign_entries: FlatRow[]
 }
 
-export type QueryTable = 'requirements' | 'tests'
+export type QueryTable = 'requirements' | 'tests' | 'campaign_entries'
 
 interface TableInfo {
   table: QueryTable
@@ -209,6 +212,40 @@ function flattenLink(l: ObjectLink, component: string): FlatRow {
 }
 
 /**
+ * GH65 — une entrée de campagne, dans son dernier état. Les champs personnalisés de la campagne
+ * sont préfixés `campaign_` (une campagne a souvent son propre `status`/`title`, qui écraserait
+ * les colonnes de l'entrée) et posés AVANT les colonnes système, comme ailleurs. `objectTypeRef`
+ * doublonne `campaignObjectTypeRef` : le builder filtre toujours sur `[objectTypeRef]`.
+ */
+function flattenCampaignEntry(c: TestCampaign, run: CampaignTestRun, component: string, testTitle: string | null): FlatRow {
+  const custom: FlatRow = {}
+  for (const [k, v] of Object.entries(c.fields ?? {})) custom[CAMPAIGN_FIELD_PREFIX + k] = v
+  return {
+    ...custom,
+    campaignId: c.id,
+    campaignTitle: c.title,
+    campaignStatus: c.status,
+    objectTypeRef: c.objectTypeRef ?? null,
+    campaignObjectTypeRef: c.objectTypeRef ?? null,
+    baselineRef: c.baselineRef ?? null,
+    level: c.level ?? null,
+    campaignComponent: c.component ?? null,
+    component,
+    entryId: run.entryId,
+    testCaseId: run.testCaseId,
+    requirementId: run.requirementId ?? null,
+    testTitle,
+    status: run.status,
+    executed: run.status !== 'pending',
+    executedAt: run.executedAt ?? null,
+    // Préfixe date de l'ISO stocké (UTC) — regroupement jour par jour sans dépendre du fuseau.
+    executedDay: run.executedAt ? run.executedAt.slice(0, 10) : null,
+    executedBy: run.executedBy ?? null,
+    runId: run.runId ?? null,
+  }
+}
+
+/**
  * QueryEngineService — T77 sprint 1, étendu sprint 3 (coverageStatus + critères de
  * maturité, cf. maturity.util.ts).
  *
@@ -226,6 +263,8 @@ export class QueryEngineService {
     private readonly schema: SchemaService,
     private readonly traceability: TraceabilityService,
     private readonly workspaceTree?: WorkspaceTreeService,
+    /** GH65 — source de `campaign_entries` ; absent : table vide. */
+    private readonly campaigns?: CampaignsService,
   ) {}
 
   /**
@@ -255,18 +294,51 @@ export class QueryEngineService {
    *  computation because coverage/revalidation (below) must be computed over the
    *  FULL cross-component graph, not repo-by-repo — see `buildDataset()`. */
   private async fetchRepoRaw(rp: string, component: string) {
-    const [requirements, testCases, latestRunMap, links, schema, runsMap] = await Promise.all([
+    const [requirements, testCases, latestRunMap, links, schema, runsMap, campaigns] = await Promise.all([
       this.reqIndex.findAll(rp, {}),
       this.testsIndex.findAll(rp),
       this.testsIndex.getLatestRunMap(rp),
       this.reqIndex.findAllLinks(rp),
       this.schema.get(rp),
       this.testsIndex.getRunsMap(rp),
+      this.listCampaigns(rp),
     ])
-    return { component, requirements, testCases, latestRunMap, links, schema, runsMap }
+    return { component, requirements, testCases, latestRunMap, links, schema, runsMap, campaigns }
   }
 
+  /**
+   * GH65 — campagnes d'un repo pour `campaign_entries`. Un fichier campagne illisible (YAML abîmé à
+   * la main ou par un merge) ne doit pas casser TOUTES les requêtes — y compris celles qui ne lisent
+   * que `requirements` : la table reste vide pour ce repo, avertissement journalisé.
+   */
+  private async listCampaigns(rp: string): Promise<TestCampaign[]> {
+    if (!this.campaigns) return []
+    try {
+      return await this.campaigns.list(rp)
+    } catch (err) {
+      console.warn(`[query-engine] campagnes ignorées pour ${rp} :`, err instanceof Error ? err.message : String(err))
+      return []
+    }
+  }
+
+  /**
+   * GH65 — constructions en cours, par (repo, workspace) : les widgets d'un dashboard se
+   * rafraîchissent ensemble (un résultat saisi invalide tous les widgets ouverts) et partagent
+   * ainsi UNE construction du dataset. Rien n'est conservé une fois la promesse résolue — le
+   * dataset reste reconstruit à chaque exécution (SPEC-DASHBOARDS §2).
+   */
+  private readonly inFlightDatasets = new Map<string, Promise<QueryDataset>>()
+
   async buildDataset(repoPath: string, workspaceDir?: string): Promise<QueryDataset> {
+    const key = `${repoPath}\u0000${workspaceDir ?? ''}`
+    const pending = this.inFlightDatasets.get(key)
+    if (pending) return pending
+    const build = this.doBuildDataset(repoPath, workspaceDir).finally(() => this.inFlightDatasets.delete(key))
+    this.inFlightDatasets.set(key, build)
+    return build
+  }
+
+  private async doBuildDataset(repoPath: string, workspaceDir?: string): Promise<QueryDataset> {
     const repos = await this.resolveRepos(repoPath, workspaceDir)
     const perRepo = await Promise.all(repos.map(({ repoPath: rp, component }) => this.fetchRepoRaw(rp, component)))
 
@@ -333,6 +405,15 @@ export class QueryEngineService {
         })
       }),
       links: perRepo.flatMap(({ component, links }) => links.map((l) => flattenLink(l, component))),
+      campaign_entries: perRepo.flatMap(({ component, campaigns, schema }) =>
+        campaigns.flatMap((c) => {
+          const location = c.objectTypeRef ? resolveObjectTypeLocation(schema as ProjectSchema, c.objectTypeRef) : null
+          const rowComponent = rowComponentFor(location, component)
+          return (c.runs ?? []).map((run) =>
+            flattenCampaignEntry(c, run, rowComponent, run.testSnapshot?.title ?? tcMap.get(run.testCaseId)?.title ?? null),
+          )
+        }),
+      ),
     }
   }
 
@@ -374,6 +455,7 @@ export class QueryEngineService {
     alasql.tables.requirements = { data: dataset.requirements }
     alasql.tables.tests = { data: dataset.tests }
     alasql.tables.links = { data: dataset.links }
+    alasql.tables.campaign_entries = { data: dataset.campaign_entries }
 
     let rows: FlatRow[]
     try {
@@ -440,6 +522,11 @@ export class QueryEngineService {
     const found = findObjectTypeDef(schema, objectTypeRef)
     const resolved = found && found !== 'unresolvable' ? found : null
 
+    // GH65 — un type de campagne se requête sur ses entrées : colonnes propres, champs préfixés.
+    if (resolved?.category === 'campaign') {
+      const campaignFields = resolved.fields.map((f) => CAMPAIGN_FIELD_PREFIX + f.name)
+      return { table: 'campaign_entries', allowedFields: new Set([...CAMPAIGN_ENTRY_FIELDS, ...campaignFields]), resolved: true }
+    }
     const table: QueryTable = resolved?.category === 'test' ? 'tests' : 'requirements'
     const extra: readonly string[] = table === 'tests' ? ['latestRunResult', 'latestRunDate'] : REQUIREMENT_DERIVED_FIELDS
     const typeFields = resolved?.fields.map((f) => f.name) ?? []

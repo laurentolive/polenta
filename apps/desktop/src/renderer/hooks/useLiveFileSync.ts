@@ -33,6 +33,13 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['revalidation:flagged'] })
       }
 
+      // GH65 — résultats des widgets de la vue Suivi : clé indexée sur le repo RACINE, mais le
+      // dataset agrège tout le workspace. Un changement de données ou de ref (avance rapide du pull
+      // automatique, résultat saisi sur ce poste) dans n'importe quel repo les rend périmés.
+      if (relPath === '*' || /^(requirements|tests|links|campaigns)\//.test(relPath)) {
+        qc.invalidateQueries({ queryKey: ['widget-query-result'] })
+      }
+
       if (relPath === '*') {
         qc.invalidateQueries({ predicate: (q) => q.queryKey[1] === repoPath })
         return

@@ -52,6 +52,7 @@ import type {
 import type {
   ReviewStatus,
   QueryDefinition,
+  DrillDownSelection,
   BuilderConfig,
   QueryScope,
   CreateImpactAnalysisDto,
@@ -598,6 +599,11 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   // ── Queries (T77 sprint 1) ───────────────────────────────────────────────────
   r.handle('queries:execute', (_e, repoPath: string, queryDef: unknown, workspaceDir?: string) =>
     c.queryEngine.execute(repoPath, queryDef as QueryDefinition, workspaceDir))
+  // GH65 — vue Suivi : lignes d'un élément de widget, objet à ouvrir pour une ligne.
+  r.handle('queries:drill-down', (_e, repoPath: string, queryDef: unknown, selection: unknown, workspaceDir?: string) =>
+    c.queryEngine.drillDown(repoPath, queryDef as QueryDefinition, selection as DrillDownSelection, workspaceDir))
+  r.handle('queries:resolve-row-target', (_e, repoPath: string, row: unknown, workspaceDir?: string) =>
+    c.queryEngine.resolveRowTarget(repoPath, (row ?? {}) as Record<string, unknown>, workspaceDir))
   r.handle('queries:builder-to-sql', (_e, repoPath: string, config: unknown, workspaceDir?: string) =>
     c.queryEngine.builderToSql(repoPath, config as BuilderConfig, workspaceDir))
   r.handle('queries:list', (_e, repoPath: string, username: string) =>

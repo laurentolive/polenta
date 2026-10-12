@@ -286,6 +286,8 @@ export function createIpcClient(
     queries: {
       execute: (repoPath, queryDef, workspaceDir) => invoke('queries:execute', repoPath, queryDef, workspaceDir),
       builderToSql: (repoPath, config, workspaceDir) => invoke('queries:builder-to-sql', repoPath, config, workspaceDir),
+      drillDown: (repoPath, queryDef, selection, workspaceDir) => invoke('queries:drill-down', repoPath, queryDef, selection, workspaceDir),
+      resolveRowTarget: (repoPath, row, workspaceDir) => invoke('queries:resolve-row-target', repoPath, row, workspaceDir),
       list: (repoPath, username) => invoke('queries:list', repoPath, username),
       create: (repoPath, username, dto: CreateSavedQueryDto) => invoke('queries:create', repoPath, username, dto),
       update: (repoPath, username, id, dto: UpdateSavedQueryDto) => invoke('queries:update', repoPath, username, id, dto),

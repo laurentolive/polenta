@@ -16,6 +16,8 @@ import { useTranslation, Trans } from 'react-i18next'
 import { AlertTriangle, Loader2, Pencil, Trash2 } from 'lucide-react'
 import type { Dashboard, SavedQuery, Widget, WidgetSize } from '@polenta/types'
 import { useQueryResult } from '../../hooks/useQueryResult'
+import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
+import { DrillDownModal } from './DrillDownModal'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 import { orderItems } from '../sidebar/ReorderableSidebarSection'
@@ -59,6 +61,10 @@ function WidgetCard({
   const { t } = useTranslation()
   const query = savedQueries.find((q) => q.id === widget.queryId)
   const { data: result, isLoading, error } = useQueryResult(repoPath, workspaceDir, query)
+  // GH65 — drill-down (popup de détail) et ouverture de l'objet d'une ligne ; jamais en impression.
+  const [drillValues, setDrillValues] = useState<Record<string, unknown> | null>(null)
+  const { open: openRow, message: openMessage } = useOpenRowTarget(repoPath, workspaceDir)
+  const interactive = !printMode && !!query
 
   return (
     <div className="bg-surface border border-edge rounded-lg flex flex-col overflow-hidden h-64">
@@ -100,9 +106,26 @@ function WidgetCard({
             {error instanceof Error ? error.message : t('dashboard.widgetModal.queryExecutionError')}
           </div>
         ) : (
-          <WidgetRenderer type={widget.type} result={result ?? null} fieldMapping={widget.fieldMapping} />
+          <WidgetRenderer
+            type={widget.type}
+            result={result ?? null}
+            fieldMapping={widget.fieldMapping}
+            onSelect={interactive ? setDrillValues : undefined}
+            onRowClick={interactive ? (row) => void openRow(row) : undefined}
+          />
         )}
       </div>
+      {openMessage && <p className="px-3 py-1 text-[11px] text-status-danger border-t border-edge-subtle">{openMessage}</p>}
+      {drillValues && query && (
+        <DrillDownModal
+          widgetTitle={widget.title}
+          query={query}
+          values={drillValues}
+          repoPath={repoPath}
+          workspaceDir={workspaceDir}
+          onClose={() => setDrillValues(null)}
+        />
+      )}
     </div>
   )
 }

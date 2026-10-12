@@ -1,10 +1,14 @@
 import * as path from 'path'
 import type alasqlDefault from 'alasql'
 import type { Requirement, TestCase, ObjectLink, TestRun, ProjectSchema, TestCampaign, CampaignTestRun } from '@polenta/types'
+import { TEST_RUN_STATUS_LABELS } from '@polenta/types'
 import type {
   BuilderConfig,
   BuilderCondition,
+  DrillDownResult,
+  DrillDownSelection,
   QueryDefinition,
+  RowTarget,
   QueryResult,
   QueryResultColumn,
 } from '@polenta/types'
@@ -120,6 +124,101 @@ const OPERATOR_SQL: Record<BuilderCondition['operator'], (field: string, value: 
       : String(v).split(',').map((s) => s.trim()).filter((s) => s.length > 0)
     return `[${f}] IN (${list.map(sqlValue).join(', ')})`
   },
+}
+
+/** GH65 — condition d'égalité du drill-down ; `null`/`undefined` (barre « — ») → IS NULL. */
+function equalsClause(column: string, value: unknown): string {
+  return value === null || value === undefined ? `[${column}] IS NULL` : `[${column}] = ${sqlValue(value)}`
+}
+
+/** Valeur filtrable en SQL par égalité (pas un tableau/objet — ex. champ `tags`). */
+function isScalar(v: unknown): boolean {
+  return v === null || v === undefined || typeof v !== 'object'
+}
+
+/** GH65 — même égalité, en JS (repli `result`) : `null` ≡ `undefined`, tableaux/objets par contenu. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if ((a === null || a === undefined) && (b === null || b === undefined)) return true
+  if (!isScalar(a) || !isScalar(b)) return JSON.stringify(a) === JSON.stringify(b)
+  return Object.is(a, b)
+}
+
+const DATASET_TABLES = new Set(['requirements', 'tests', 'links', 'campaign_entries'])
+const ENTRY_STATUSES = new Set<string>(Object.keys(TEST_RUN_STATUS_LABELS))
+
+/** AST AlaSQL minimal utilisé par la réécriture du drill-down (cf. `drillDownStatement`). */
+interface AlaColumn { columnid?: string; as?: string; tableid?: string }
+interface AlaExpression { expression: unknown }
+interface AlaSelect {
+  columns?: AlaColumn[]
+  from?: Array<{ tableid?: string }>
+  where?: AlaExpression
+  execute(databaseid: string, params: unknown[]): unknown
+  [key: string]: unknown
+}
+
+/** Clés d'un SELECT qui rendent la réécriture non représentative (ou dangereuse) → repli. */
+const DRILLDOWN_BLOCKING_KEYS = ['joins', 'union', 'unionall', 'except', 'intersect', 'top', 'limit', 'offset', 'fetch', 'into']
+
+/**
+ * GH65 — lignes SOURCES d'un élément d'un widget SQL : l'AST de la requête d'origine est modifié
+ * (`SELECT *`, sans GROUP BY / HAVING / ORDER BY / DISTINCT, WHERE d'origine `AND` valeurs
+ * cliquées) puis EXÉCUTÉ tel quel — jamais re-sérialisé : le `toString()` d'AlaSQL n'échappe pas
+ * les apostrophes des littéraux (`'l''eau'` → `'l'eau'`), ce qui changerait le sens du WHERE.
+ * Uniquement pour une sélection sur UNE table du dataset (alias conservé), sans jointure, union,
+ * sous-requête en FROM, TOP / LIMIT / OFFSET ni INTO, dont chaque colonne cliquée est une colonne
+ * simple (directe ou aliasée) et chaque valeur un scalaire — sinon `null` (repli `result`).
+ */
+function drillDownStatement(alasql: typeof alasqlDefault, sql: string, values: Record<string, unknown>): AlaSelect | null {
+  // Classes de l'AST comparées par `instanceof` (jamais par `constructor.name` : le bundle du
+  // serveur web est minifié, les noms de classes n'y survivent pas).
+  const yy = (alasql as unknown as { yy: Record<string, new (arg: Record<string, unknown>) => unknown> }).yy
+  let stmts: AlaSelect[]
+  try {
+    stmts = (alasql.parse(sql) as unknown as { statements: AlaSelect[] }).statements
+  } catch {
+    return null
+  }
+  if (stmts.length !== 1) return null
+  const s = stmts[0]
+  if (!(s instanceof yy.Select)) return null
+  if (DRILLDOWN_BLOCKING_KEYS.some((k) => s[k] !== undefined && s[k] !== null)) return null
+  if (!s.from || s.from.length !== 1 || !(s.from[0] instanceof yy.Table)) return null
+  const table = s.from[0].tableid
+  if (!table || !DATASET_TABLES.has(table)) return null
+
+  const columns = s.columns ?? []
+  const isColumn = (c: AlaColumn) => c instanceof yy.Column
+  const hasStar = columns.some((c) => isColumn(c) && c.columnid === '*')
+  const clauses: string[] = []
+  for (const [name, value] of Object.entries(values)) {
+    if (!isScalar(value)) return null
+    const col = columns.find((c) => (c.as ?? c.columnid) === name)
+    let source: string | undefined
+    if (col) source = isColumn(col) ? col.columnid : undefined
+    else if (hasStar) source = name
+    if (!source || source === '*' || source.includes(']')) return null
+    clauses.push(equalsClause(source, value))
+  }
+
+  // Conditions cliquées : analysées depuis un SQL que nous générons (valeurs échappées par sqlValue).
+  let ours: unknown = null
+  if (clauses.length) {
+    try {
+      const parsed = (alasql.parse(`SELECT * FROM t WHERE ${clauses.join(' AND ')}`) as unknown as { statements: AlaSelect[] }).statements[0]
+      ours = parsed.where?.expression ?? null
+    } catch {
+      return null
+    }
+  }
+  s.columns = [new yy.Column({ columnid: '*' }) as AlaColumn]
+  for (const k of ['group', 'having', 'order', 'distinct']) delete s[k]
+  if (ours) {
+    s.where = (s.where
+      ? new yy.Expression({ expression: new yy.Op({ left: s.where.expression, op: 'AND', right: ours }) })
+      : new yy.Expression({ expression: ours })) as AlaExpression
+  }
+  return s
 }
 
 function inferColumns(rows: FlatRow[]): QueryResultColumn[] {
@@ -442,11 +541,21 @@ export class QueryEngineService {
       sql = this.buildSql(queryDef.builderConfig, info)
     }
 
+    return this.runSql(dataset, sql)
+  }
+
+  /** Exécute `sql` (garde-fou lecture seule compris) sur un dataset déjà construit. */
+  private async runSql(dataset: QueryDataset, sql: string): Promise<QueryResult> {
     // Vérifié pour les deux modes (pas seulement le SQL brut) — défense en profondeur :
     // si buildSql() est un jour étendu et laisse passer un nom de champ non allowlisté,
     // ce garde-fou reste la dernière barrière avant exécution.
     assertReadOnlySql(sql)
 
+    return this.runOnDataset(dataset, (alasql) => alasql(sql))
+  }
+
+  /** Lie les tables du dataset puis exécute `run` — sans `await` entre les deux (voir ci-dessous). */
+  private async runOnDataset(dataset: QueryDataset, run: (alasql: typeof alasqlDefault) => unknown): Promise<QueryResult> {
     const alasql = await getAlasql()
 
     // Les tables sont réassignées juste avant l'exécution synchrone d'AlaSQL — aucun
@@ -459,7 +568,7 @@ export class QueryEngineService {
 
     let rows: FlatRow[]
     try {
-      rows = alasql(sql) as FlatRow[]
+      rows = run(alasql) as FlatRow[]
       if (!Array.isArray(rows)) rows = []
     } catch (err) {
       throw new Error(`Requête invalide : ${err instanceof Error ? err.message : String(err)}`)
@@ -468,7 +577,94 @@ export class QueryEngineService {
     return { columns: inferColumns(rows), rows }
   }
 
-  private buildSql(config: BuilderConfig, info: TableInfo): string {
+  /** Repli du drill-down : lignes du résultat d'origine portant les valeurs cliquées. */
+  private async filteredResult(dataset: QueryDataset, sql: string, values: Record<string, unknown>): Promise<DrillDownResult> {
+    const result = await this.runSql(dataset, sql)
+    const rows = result.rows.filter((row) => Object.entries(values).every(([name, value]) => sameValue(row[name], value)))
+    return { mode: 'result', columns: result.columns, rows }
+  }
+
+  /**
+   * GH65 — lignes qui composent l'élément cliqué d'un widget (barre, segment, part, point, KPI).
+   * Builder : `groupBy` retiré, valeurs cliquées ajoutées en `AND` aux conditions de l'utilisateur
+   * (quel que soit leur combinator) ; une colonne hors allowlist (ex. `count`) est ignorée. SQL :
+   * réécriture (`rewriteSqlForDrillDown`) ou, à défaut, lignes du résultat d'origine filtrées.
+   */
+  async drillDown(repoPath: string, queryDef: QueryDefinition, selection: DrillDownSelection, workspaceDir?: string): Promise<DrillDownResult> {
+    const values = selection?.values ?? {}
+    const dataset = await this.buildDataset(repoPath, workspaceDir)
+
+    if (queryDef.mode === 'builder') {
+      if (!queryDef.builderConfig) throw new Error('builderConfig requis en mode builder.')
+      const config = queryDef.builderConfig
+      const info = await this.resolveTableInfo(repoPath, config.objectTypeRef, config.component, workspaceDir)
+      // Colonne cliquée hors allowlist (ex. `count`) ou valeur non scalaire : le filtre ne peut pas
+      // être appliqué aux lignes sources — repli explicite plutôt que des lignes non filtrées.
+      const filterable = Object.entries(values).every(([name, value]) => info.allowedFields.has(name) && isScalar(value))
+      if (!filterable) return this.filteredResult(dataset, this.buildSql(config, info), values)
+      const extra = Object.entries(values).map(([name, value]) => equalsClause(name, value))
+      const sql = this.buildSql({ ...config, groupBy: undefined }, info, extra)
+      return { mode: 'source', ...(await this.runSql(dataset, sql)) }
+    }
+
+    const sql = (queryDef.sqlText ?? '').trim()
+    if (!sql) throw new Error('Requête SQL vide.')
+    assertReadOnlySql(sql)
+    const alasql = await getAlasql()
+    const stmt = drillDownStatement(alasql, sql, values)
+    if (stmt) {
+      try {
+        return { mode: 'source', ...(await this.runOnDataset(dataset, (a) => stmt.execute(a.useid, []))) }
+      } catch {
+        // Requête modifiée refusée à l'exécution : repli sur le résultat.
+      }
+    }
+    return this.filteredResult(dataset, sql, values)
+  }
+
+  /**
+   * GH65 — objet à ouvrir pour une ligne de résultat (widget table, popup de détail), retrouvé dans
+   * les repos du périmètre — la ligne ne porte jamais de chemin. Ordre : entrée de campagne
+   * (`campaignId` + `entryId`), campagne (`campaignId`), puis `id` (exigence, test, campagne).
+   */
+  async resolveRowTarget(repoPath: string, row: Record<string, unknown>, workspaceDir?: string): Promise<RowTarget | null> {
+    const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+    const repos = await this.resolveRepos(repoPath, workspaceDir)
+    const findCampaign = async (id: string) => {
+      for (const { repoPath: rp } of repos) {
+        const c = (await this.listCampaigns(rp)).find((x) => x.id === id)
+        if (c) return { campaign: c, repoPath: rp }
+      }
+      return null
+    }
+
+    const campaignId = str(row.campaignId)
+    if (campaignId) {
+      const found = await findCampaign(campaignId)
+      if (!found) return null
+      const entryId = str(row.entryId)
+      const entry = entryId ? found.campaign.runs?.find((r) => r.entryId === entryId) : undefined
+      if (entry) {
+        return entry.status === 'pending'
+          ? { kind: 'campaign', id: campaignId, repoPath: found.repoPath, status: 'pending' }
+          : { kind: 'campaign-run', campaignId, entryId: entry.entryId, repoPath: found.repoPath }
+      }
+      const status = str(row.status)
+      return { kind: 'campaign', id: campaignId, repoPath: found.repoPath, ...(status && ENTRY_STATUSES.has(status) ? { status } : {}) }
+    }
+
+    const id = str(row.id)
+    if (!id) return null
+    for (const { repoPath: rp } of repos) {
+      if (await this.reqIndex.findById(rp, id)) return { kind: 'requirement', id, repoPath: rp }
+      if (await this.testsIndex.findById(rp, id)) return { kind: 'test', id, repoPath: rp }
+    }
+    const campaign = await findCampaign(id)
+    return campaign ? { kind: 'campaign', id, repoPath: campaign.repoPath } : null
+  }
+
+  /** `extra` (GH65, drill-down) : clauses ajoutées en `AND`, après les conditions de l'utilisateur. */
+  private buildSql(config: BuilderConfig, info: TableInfo, extra: string[] = []): string {
     const assertField = (f: string): string => {
       if (!info.allowedFields.has(f)) {
         throw new Error(`Champ inconnu pour ce type d'objet : ${f}`)
@@ -490,7 +686,8 @@ export class QueryEngineService {
       if (!fn) throw new Error(`Opérateur non supporté : ${c.operator}`)
       return fn(assertField(c.field), c.value)
     })
-    const condPart = condClauses.length ? ` AND (${condClauses.join(` ${config.combinator} `)})` : ''
+    const condPart = (condClauses.length ? ` AND (${condClauses.join(` ${config.combinator} `)})` : '')
+      + extra.map((clause) => ` AND ${clause}`).join('')
     const groupBy = config.groupBy?.length ? config.groupBy.map((f) => `[${assertField(f)}]`) : []
     const select = groupBy.length ? `${groupBy.join(', ')}, COUNT(*) AS [count]` : '*'
     const groupByClause = groupBy.length ? ` GROUP BY ${groupBy.join(', ')}` : ''

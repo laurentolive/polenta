@@ -247,7 +247,9 @@ Hors périmètre GH37 : rebase en conflit (toujours abandonné), choix à l'int�
 
 Tant qu'un projet est ouvert, `useAutoPull` (`apps/desktop/src/renderer/hooks/useAutoPull.ts`,
 monté une fois dans `AppLayout.tsx`, indépendamment du panneau/onglet actif) tente toutes les
-**5 minutes** de mettre à jour chaque repo du workspace (root + composants/interfaces) — objectif :
+**5 minutes** — par défaut ; préférence projet `preferences.autoPullIntervalMinutes` du repo racine
+(entier 1–60, valeur invalide = 5, minuteur réarmé au changement sans redémarrage, GH65) — de
+mettre à jour chaque repo du workspace (root + composants/interfaces) — objectif :
 un utilisateur non git-initié n'a jamais besoin de savoir que "Rafraîchir" (T153) existe. Ne
 tourne jamais à l'ouverture du projet elle-même (`setInterval` diffère naturellement son premier
 tick) — l'ouverture fait déjà sa propre résolution réseau (clone/fetch des dépendances manquantes),

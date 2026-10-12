@@ -905,6 +905,11 @@
       "instances_other": "{{count}} instances",
       "hiddenSuffix_one": ", {{count}} not shown",
       "hiddenSuffix_other": ", {{count}} not shown"
+    },
+    "statusFilter": {
+      "toggle": "Filter on {{status}} (click again to remove)",
+      "clear": "Filter: {{status}} ✕",
+      "empty": "No {{status}} entry."
     }
   },
   "dashboard": {
@@ -1017,6 +1022,12 @@
     },
     "sqlEditor": {
       "availableTablesHint": "Available tables: <code>requirements</code>, <code>tests</code>, <code>links</code>. Read-only — INSERT / UPDATE / DELETE / DROP / CREATE / ATTACH are rejected."
+    },
+    "drillDown": {
+      "title": "Details",
+      "fallback": "Details not available for this query — result rows shown.",
+      "notFound": "Object not found.",
+      "openFailed": "Could not open: {{message}}"
     }
   },
   "exportButton": {

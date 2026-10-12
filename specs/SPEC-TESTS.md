@@ -605,6 +605,13 @@ Métriques calculées à la volée depuis l'index mémoire :
 | Répartition | Nombre de PASS / FAIL / BLOCKED / INCOMPLETE / pending |
 | Couverture req. | Exigences couvertes par au moins un PASS dans cette campagne |
 
+**Filtre par statut (GH65)** : les pastilles de répartition sont des boutons bascule — clic =
+liste des entrées réduite à ce statut, re-clic = retrait (lien « Filtre : X ✕ »). Filtre porté par
+le paramètre d'URL optionnel `status` de `/campaign/$campaignId` (valeur hors liste ignorée), posé
+aussi par la vue Suivi (ligne d'entrée `pending` → page filtrée, SPEC-DASHBOARDS §2.2). Le suivi
+multi-campagnes (avancement, % exécuté, % PASS, exécutions par jour) vit dans la vue Suivi :
+table `campaign_entries` et dashboard « Campagnes » (SPEC-DASHBOARDS §2.1, §5.1b).
+
 ### 4.4 Substitution des paramètres à l'exécution (T97, T171)
 
 Sur les pages qui affichent le contenu d'un test dans le contexte d'une campagne (exécution en

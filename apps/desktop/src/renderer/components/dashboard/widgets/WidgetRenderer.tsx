@@ -15,19 +15,23 @@ interface Props {
   type: WidgetType
   result: QueryResult | null
   fieldMapping: WidgetFieldMapping
+  /** GH65 — drill-down (barre, part, point, KPI) ; absent (aperçu, impression) : rien de cliquable. */
+  onSelect?: (values: Record<string, unknown>) => void
+  /** GH65 — ouverture de l'objet d'une ligne (widget table). */
+  onRowClick?: (row: Record<string, unknown>) => void
 }
 
-export function WidgetRenderer({ type, result, fieldMapping }: Props) {
+export function WidgetRenderer({ type, result, fieldMapping, onSelect, onRowClick }: Props) {
   switch (type) {
     case 'bar':
-      return <BarWidget result={result} fieldMapping={fieldMapping} />
+      return <BarWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} />
     case 'pie':
-      return <PieWidget result={result} fieldMapping={fieldMapping} />
+      return <PieWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} />
     case 'line':
-      return <LineWidget result={result} fieldMapping={fieldMapping} />
+      return <LineWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} />
     case 'kpi':
-      return <KpiWidget result={result} fieldMapping={fieldMapping} />
+      return <KpiWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} />
     case 'table':
-      return <TableWidget result={result} fieldMapping={fieldMapping} />
+      return <TableWidget result={result} fieldMapping={fieldMapping} onRowClick={onRowClick} />
   }
 }

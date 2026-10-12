@@ -38,6 +38,7 @@ export function useLiveFileSync(): void {
       // automatique, résultat saisi sur ce poste) dans n'importe quel repo les rend périmés.
       if (relPath === '*' || /^(requirements|tests|links|campaigns)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
+        qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
 
       if (relPath === '*') {

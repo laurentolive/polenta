@@ -6,6 +6,7 @@
 
 import { useTranslation } from 'react-i18next'
 import type { QueryResult } from '@polenta/types'
+import { isRowNavigable } from '../../lib/rowNavigation'
 
 function formatCell(v: unknown, booleanLabels: { true: string; false: string }): string {
   if (v === null || v === undefined) return '—'
@@ -14,7 +15,8 @@ function formatCell(v: unknown, booleanLabels: { true: string; false: string }):
   return String(v)
 }
 
-export function ResultTable({ result }: { result: QueryResult | null }) {
+/** `onRowClick` (GH65) : les lignes qui désignent un objet (`isRowNavigable`) deviennent cliquables. */
+export function ResultTable({ result, onRowClick }: { result: QueryResult | null; onRowClick?: (row: Record<string, unknown>) => void }) {
   const { t } = useTranslation()
   const booleanLabels = { true: t('dashboardPage.resultTable.booleanTrue'), false: t('dashboardPage.resultTable.booleanFalse') }
 
@@ -40,7 +42,12 @@ export function ResultTable({ result }: { result: QueryResult | null }) {
         </thead>
         <tbody>
           {result.rows.map((row, i) => (
-            <tr key={i} className="border-b border-edge-subtle last:border-0 hover:bg-hover">
+            <tr
+              key={i}
+              className={`border-b border-edge-subtle last:border-0 hover:bg-hover${onRowClick && isRowNavigable(row) ? ' cursor-pointer' : ''}`}
+              onClick={onRowClick && isRowNavigable(row) ? () => onRowClick(row) : undefined}
+              data-navigable={onRowClick && isRowNavigable(row) ? 'true' : undefined}
+            >
               {result.columns.map((col) => (
                 <td key={col.name} className="px-3 py-1.5 text-ink whitespace-nowrap">
                   {formatCell(row[col.name], booleanLabels)}

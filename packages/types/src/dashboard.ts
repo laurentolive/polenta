@@ -87,6 +87,24 @@ export interface QueryResult {
   rows: Record<string, unknown>[]
 }
 
+/** GH65 — élément cliqué dans un widget : valeurs BRUTES (pas les libellés affichés) par colonne du
+ *  résultat (catégorie, série éventuelle). Vide : KPI — toutes les lignes sources de la requête. */
+export interface DrillDownSelection {
+  values: Record<string, unknown>
+}
+
+/** GH65 — lignes d'un élément de widget. `source` : lignes sources (requête réécrite) ; `result` :
+ *  repli sur les lignes du résultat (requête SQL non réécrivable : jointure, expression…). */
+export interface DrillDownResult extends QueryResult {
+  mode: 'source' | 'result'
+}
+
+/** GH65 — objet à ouvrir pour une ligne de résultat (repo où il vit, résolu côté main). */
+export type RowTarget =
+  | { kind: 'requirement' | 'test'; id: string; repoPath: string }
+  | { kind: 'campaign'; id: string; repoPath: string; status?: string }
+  | { kind: 'campaign-run'; campaignId: string; entryId: string; repoPath: string }
+
 // ─── Widgets & dashboards ─────────────────────────────────────────────────────
 // T77 sprint 2 — types déclarés dès sprint 1 par anticipation (cf. T77-design.md
 // § "Découpage en sprints"), mais NON câblés à un service/UI avant le sprint 2.

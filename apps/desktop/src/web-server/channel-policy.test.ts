@@ -10,13 +10,31 @@ import { createWebHostContext, createWebPlatformHost, MemoryTokenStore, pendingP
 import * as fs from 'fs'
 import { WEB_EXPOSED, WEB_HIDDEN, WEB_ONLY_CHANNELS, ROOT_ARGS, ROOT_PARAM_NAME, isExposed } from './channel-policy'
 
+/** Découpe une liste de paramètres sur les virgules de premier niveau (hors `<…>`, `{…}`, `[…]`,
+ *  `(…)`) — `Record<string, Record<string, string>>` ne doit pas décaler les positions suivantes. */
+function splitTopLevel(params: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let current = ''
+  for (const ch of params) {
+    if ('<{[('.includes(ch)) depth++
+    else if ('>}])'.includes(ch)) depth--
+    if (ch === ',' && depth === 0) {
+      out.push(current)
+      current = ''
+    } else current += ch
+  }
+  out.push(current)
+  return out
+}
+
 /** Positions des paramètres « racine » relevées dans le source des handlers (même règle que la table). */
 function rootArgsFromSource(): Record<string, number[]> {
   const files = ['../main/ipc/index.ts', '../main/ipc/pref.handlers.ts', './web-handlers.ts']
   const src = files.map(f => fs.readFileSync(path.join(__dirname, f), 'utf-8')).join('\n')
   const result: Record<string, number[]> = {}
   for (const m of src.matchAll(/(?:r\.handle|handle)\(\s*'([^']+)',\s*(?:async\s*)?\(([^)]*)\)/g)) {
-    const params = m[2].replace(/\s+/g, ' ').split(/,(?![^<{]*[>}])/).map(p => p.trim()).filter(Boolean)
+    const params = splitTopLevel(m[2].replace(/\s+/g, ' ')).map(p => p.trim()).filter(Boolean)
     const names = params.slice(1).map(p => p.split(':')[0].trim().replace(/\?$/, '').split('=')[0].trim())
     const idx = names.flatMap((n, i) => (ROOT_PARAM_NAME.test(n) ? [i] : []))
     if (idx.length) result[m[1]] = idx

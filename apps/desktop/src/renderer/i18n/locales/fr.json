@@ -903,7 +903,39 @@
       "instances_one": "{{count}} instance",
       "instances_other": "{{count}} instances",
       "hiddenSuffix_one": ", dont {{count}} non affiché",
-      "hiddenSuffix_other": ", dont {{count}} non affichés"
+      "hiddenSuffix_other": ", dont {{count}} non affichés",
+      "tabTests": "Tests",
+      "tabCampaign": "Depuis une campagne"
+    },
+    "carry": {
+      "sources": "Campagnes source",
+      "noCampaign": "Aucune autre campagne",
+      "statusFilter": "Statut des entrées :",
+      "pickSource": "Cochez une ou plusieurs campagnes pour lister leurs entrées.",
+      "noEntry": "Aucune entrée ne correspond",
+      "checkAll": "Tout cocher",
+      "colTest": "Test",
+      "colRequirement": "Exigence",
+      "colParams": "Paramètres",
+      "colStatus": "Statut",
+      "colExecution": "Exécution",
+      "colSource": "Campagne source",
+      "colRemark": "Remarque",
+      "versionChanged": "Test modifié depuis : v{{from}} → v{{to}}",
+      "alsoIn": "aussi dans {{ids}}",
+      "unavailable": {
+        "deleted": "Test supprimé",
+        "notApproved": "Non approuvé",
+        "outOfScope": "Hors périmètre",
+        "reqUnlinked": "Exigence plus liée",
+        "alreadyPresent": "Déjà présent"
+      },
+      "campaignStatus": {
+        "planned": "Planifiée",
+        "in_progress": "En cours",
+        "completed": "Clôturée",
+        "abandoned": "Abandonnée"
+      }
     }
   },
   "dashboard": {

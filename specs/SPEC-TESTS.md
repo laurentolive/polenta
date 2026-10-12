@@ -489,6 +489,7 @@ nécessairement unique par `testCaseId` (T97 sprint 2) :
 | `paramSourceRef` | *(T171)* Tag git auquel les paramètres ont été lus (= `baselineRef` de la campagne) ; absent = état courant au moment de l'ajout. |
 | `unresolvedParams` | *(T171)* `{ ref, reason: 'tag_not_found' \| 'missing' \| 'empty' \| 'unknown_node' \| 'no_linked_requirement' }[]` — références restées non résolues à l'ajout (`no_linked_requirement` : T179, `{req.…}` d'un test sans exigence liée). |
 | `requirementId` | *(T179)* Exigence pour laquelle l'instance a été générée (test itérant, §2.4a). Absent pour un test sans `{req.…}` ou sans exigence liée. Les valeurs `{req.<champ>}` sont figées dans `resolvedParams` sous la clé `req.<champ>`. |
+| `carriedFrom` | *(GH64)* `{ campaignId, entryId }` — entrée d'une autre campagne dont l'instance a été reportée (voir « Report depuis une autre campagne » ci-dessous). Absent pour un ajout normal. |
 
 Ajouter des tests à une campagne déjà démarrée (`addTests()`) est possible tant qu'elle n'est pas
 `completed`/`abandoned` ; les nouveaux tests entrent avec le statut `pending`. Si le test ajouté a
@@ -514,6 +515,39 @@ Annuler une sélection modifiée demande confirmation ; à la création, la moda
 mettre à jour la sélection du formulaire (la campagne est créée par « Créer »). Les tests
 proposés sont inchangés : tous les tests (filtre composant/niveau) à la création ; à l'ajout,
 les tests approuvés, dédoublonnés comme décrit ci-dessous.
+
+**Report depuis une autre campagne (GH64)** : l'étape 1 du sélecteur (création comme ajout) a deux
+onglets, « Tests » (Vue Excel ci-dessus, inchangée) et « Depuis une campagne ». Ce dernier liste
+toutes les campagnes du repo sauf la cible, quel que soit leur statut (plus récente d'abord, sélection
+multiple, aucune cochée par défaut), un filtre par statut d'entrée (`pending` / `BLOCKED` /
+`INCOMPLETE` cochés par défaut, `FAIL` / `PASS` disponibles) et les entrées correspondantes (test,
+exigence, valeurs saisies, statut, exécution, campagne source, remarque). Une entrée disponible est
+cochée à sa première apparition ; décochée, elle le reste quand les campagnes ou le filtre changent.
+Les sélections des deux onglets se cumulent.
+- **Doublon** : clé `carryKey(test, exigence, valeurs saisies normalisées)` (`@polenta/types`). Une
+  même clé dans plusieurs campagnes source n'est proposée qu'une fois (entrée la plus récente :
+  `executedAt`, à défaut création de sa campagne ; les autres citées en remarque) ; une clé déjà
+  présente dans la cible est grisée « Déjà présent ».
+- **Indisponible** (grisé, motif) : test supprimé ; non approuvé (ajout) ou hors du filtre
+  composant/niveau (création) — mêmes règles que l'onglet Tests ; instance T179 dont l'exigence
+  n'est plus liée (lue à la baseline de la cible). Version du test changée depuis la copie de la
+  source : simple avertissement.
+- **Instance créée** : une par entrée retenue (deux entrées d'un test à paramètres saisis aux
+  valeurs différentes → deux instances), `pending`, copie du test dans son **état actuel** (T49),
+  paramètres de base relus selon la baseline de la **cible** (T171), valeurs saisies pré-remplies
+  depuis la source et modifiables à l'étape 2, `requirementId` de la source conservé (pas de choix
+  d'exigence) ; entrée sans exigence d'un test devenu itérant : `ReqInstancePicker`, sans les
+  exigences déjà prises par une autre entrée reportée. `carriedFrom` renseigné.
+- **Priorité sur l'onglet Tests** : un test sans paramètre à saisir coché dans les deux onglets, ou
+  une exigence reportée d'un test itérant, ne donne qu'une instance — la reportée. Appliquée à
+  l'envoi (`withCarryPrecedence`), sans modifier la sélection de l'onglet Tests.
+- **Main** (`create()` / `addTests(…, carried)`) : ne reçoit que des références
+  `(campaignId, entryId)` et les saisies, relit la source (id de campagne sans chemin), ignore
+  silencieusement une sélection invalide (source ou entrée absente, cible elle-même, test supprimé,
+  exigence plus liée, doublon) ; une source illisible (YAML invalide) est une erreur. Instances
+  reportées placées après celles de l'onglet Tests. La campagne source n'est **jamais modifiée**.
+- Liste des tests de la campagne : mention `↩ <CAMP-ID>` (lien vers la source, infobulle avec
+  l'entrée) sur une instance reportée ; exports inchangés.
 
 **Résolution des paramètres à l'ajout (T171)** : `create()`, `addTests()` et `duplicateTest()`
 résolvent côté main (`ParametersService.previewForTests`) les références de chaque test ajouté,

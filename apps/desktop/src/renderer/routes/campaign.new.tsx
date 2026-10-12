@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import { useProjectSchema, getAllObjectTypes, getTestTypeRefs } from '../hooks/useProjectSchema'
@@ -14,6 +14,11 @@ import {
 import { TestPickerModal, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
+import type { TestCase } from '@polenta/types'
+import {
+  EMPTY_CARRY_STATE, carryCoverage, isCarryComplete, toCarriedSelection, withCarryPrecedence,
+  type CarryEligibility, type CarryState, type PickedCarry,
+} from '../lib/carryOver'
 
 export const Route = createFileRoute('/campaign/new')({
   component: NewCampaignPage,
@@ -52,6 +57,9 @@ function NewCampaignPage() {
   const [paramValues, setParamValues] = useState<Record<string, Record<string, string>>>({})
   // T179 — tests itérants : exigences cochées et valeurs saisies par instance.
   const [reqSel, setReqSel] = useState<ReqSelectionState>({})
+  // GH64 — entrées reportées depuis d'autres campagnes, et état de l'onglet pour sa réouverture.
+  const [carried, setCarried] = useState<PickedCarry[]>([])
+  const [carryState, setCarryState] = useState<CarryState>(EMPTY_CARRY_STATE)
   const [error, setError] = useState<string | null>(null)
   // GH33 — sélecteur ouvert : sélection et saisies à restituer (figées à l'ouverture).
   const [pickerInitial, setPickerInitial] = useState<PickerResult | null>(null)
@@ -65,6 +73,8 @@ function NewCampaignPage() {
     setSelectedTests(new Set(prefillTestCaseIds ? prefillTestCaseIds.split(',').filter(Boolean) : []))
     setParamValues({})
     setReqSel({})
+    setCarried([])
+    setCarryState(EMPTY_CARRY_STATE)
     setPickerInitial(null)
   }, [prefillTitle, prefillTestCaseIds])
 
@@ -115,6 +125,8 @@ function NewCampaignPage() {
     if (component) return t.objectTypeRef.startsWith(`${component}::`)
     return true
   })
+  // GH64 — périmètre des tests reportables à la création (même filtre que l'onglet Tests).
+  const testIdsInScope = useMemo(() => new Set(tests.map(tc => tc.id)), [tests])
 
   // T171 — résolution prévisionnelle des paramètres des tests sélectionnés, lue au `baselineRef`
   // saisi (sans repli sur l'état courant) ou sur l'état courant : références résolues affichées en
@@ -123,12 +135,22 @@ function NewCampaignPage() {
   // du filtre composant/niveau courant (cf. specs/T97.md, correctif revue de code).
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
   const { previews: paramPreviews, isLoading: previewLoading } = useParamPreview(
-    repoPath, { baselineRef: baselineRef.trim() || undefined }, [...selectedTests], workspaceDir,
+    repoPath, { baselineRef: baselineRef.trim() || undefined }, [...selectedTests, ...carried.map(c => c.testCaseId)], workspaceDir,
   )
   // Nouvelle campagne : aucune exigence n'a encore d'instance.
   const noneYet = () => new Set<string>()
   // Une campagne peut être créée sans test : aucune instance exigée.
-  const paramsComplete = isAddComplete(selectedTests, paramPreviews, paramValues, reqSel, noneYet, false)
+  // GH64 — priorité au report : tests et exigences couverts par une entrée reportée ne sont pas
+  // ajoutés une seconde fois depuis l'onglet Tests (la sélection de l'onglet reste intacte).
+  const precedence = withCarryPrecedence([...selectedTests], noneYet, carryCoverage(carried, paramPreviews))
+  // Une baseline modifiée après la sélection peut demander de nouvelles saisies aux reportées.
+  const paramsComplete = isAddComplete(precedence.testIds, paramPreviews, paramValues, reqSel, precedence.presentOf, false)
+    && isCarryComplete(carried, paramPreviews)
+  const selectionCount = precedence.testIds.length + carried.length
+  const isCarryEligible = useCallback(
+    (tc: TestCase): CarryEligibility => (testIdsInScope.has(tc.id) ? 'ok' : 'outOfScope'),
+    [testIdsInScope],
+  )
 
   const { data: tags = [] } = useQuery({
     queryKey: ['git-tags', repoPath],
@@ -143,9 +165,10 @@ function NewCampaignPage() {
         objectTypeRef: type || undefined,
         fields,
         baselineRef: baselineRef.trim() || undefined,
-        testCaseIds: [...selectedTests],
+        testCaseIds: precedence.testIds,
         paramValuesByTest: paramValues,
-        reqInstances: buildReqInstances(selectedTests, paramPreviews, reqSel, noneYet),
+        reqInstances: buildReqInstances(precedence.testIds, paramPreviews, reqSel, precedence.presentOf),
+        carried: toCarriedSelection(carried),
         component: component || undefined,
         level: level || undefined,
       }, workspaceDir || undefined),
@@ -251,24 +274,24 @@ function NewCampaignPage() {
           {/* Test case selection — GH33 : sélecteur en modale (Vue Excel filtrable, 2 étapes) */}
           <div>
             <p className="text-sm font-medium text-ink mb-2">
-              {t('campaignPage.testCasesSelected', { count: selectedTests.size })}
+              {t('campaignPage.testCasesSelected', { count: selectionCount })}
             </p>
             <button
               type="button"
               onClick={() => {
                 qc.invalidateQueries({ queryKey: ['campaign-param-preview'] })
-                setPickerInitial({ testIds: [...selectedTests], paramValues, reqSel })
+                setPickerInitial({ testIds: [...selectedTests], paramValues, reqSel, carried, carryState })
               }}
               className="text-xs text-status-info hover:opacity-80 border border-status-info-border rounded px-3 py-1.5"
             >
-              {selectedTests.size === 0 ? t('campaignPage.picker.openSelect') : t('campaignPage.picker.edit')}
+              {selectionCount === 0 ? t('campaignPage.picker.openSelect') : t('campaignPage.picker.edit')}
             </button>
-            {selectedTests.size > 0 && (
+            {selectionCount > 0 && (
               <ul className="mt-2 border border-edge rounded divide-y max-h-64 overflow-y-auto">
-                {[...selectedTests].map(id => {
+                {precedence.testIds.map(id => {
                   const p = paramPreviews.get(id)
                   const iterating = isIteratingPreview(p)
-                  const instances = iterating ? Object.keys(effectiveReqSelection(id, p, noneYet(), reqSel)).length : 1
+                  const instances = iterating ? Object.keys(effectiveReqSelection(id, p, precedence.presentOf(id), reqSel)).length : 1
                   const values = Object.entries(paramValues[id] ?? {}).filter(([, v]) => v.trim())
                   return (
                     <li key={id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
@@ -285,9 +308,30 @@ function NewCampaignPage() {
                     </li>
                   )
                 })}
+                {carried.map(c => {
+                  const values = c.reqInstances
+                    ? c.reqInstances.map(r => r.requirementId)
+                    : Object.entries(c.paramValues ?? {}).filter(([, v]) => v.trim()).map(([k, v]) => `${k}=${v}`)
+                  return (
+                    <li key={`${c.campaignId}/${c.entryId}`} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                      <span className="font-mono text-ink-3 shrink-0">{c.testCaseId}</span>
+                      <span className="text-ink truncate">{allTestsById.get(c.testCaseId)?.title ?? ''}</span>
+                      <span
+                        className="shrink-0 font-mono text-[10px] text-ink-3"
+                        title={t('campaignPage.carriedFrom', { campaignId: c.campaignId, entryId: c.entryId })}
+                      >
+                        ↩ {c.campaignId}
+                      </span>
+                      {c.requirementId && <span className="shrink-0 font-mono text-[10px] text-ink-3">· {c.requirementId}</span>}
+                      {values.length > 0 && (
+                        <span className="ml-auto shrink min-w-0 truncate text-[10px] text-ink-3 font-mono">{values.join(', ')}</span>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             )}
-            {selectedTests.size > 0 && !previewLoading && !paramsComplete && (
+            {selectionCount > 0 && !previewLoading && !paramsComplete && (
               <p className="mt-1 text-xs text-status-warning">{t('campaignPage.paramsIncomplete')}</p>
             )}
           </div>
@@ -302,10 +346,13 @@ function NewCampaignPage() {
               previewSource={{ baselineRef: baselineRef.trim() || undefined }}
               initial={pickerInitial}
               presentOf={noneYet}
+              isEligible={isCarryEligible}
               onConfirm={result => {
                 setSelectedTests(new Set(result.testIds))
                 setParamValues(result.paramValues)
                 setReqSel(result.reqSel)
+                setCarried(result.carried)
+                setCarryState(result.carryState)
                 setPickerInitial(null)
               }}
               onCancel={() => setPickerInitial(null)}

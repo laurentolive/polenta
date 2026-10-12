@@ -903,7 +903,39 @@
       "instances_one": "{{count}} instance",
       "instances_other": "{{count}} instances",
       "hiddenSuffix_one": ", {{count}} not shown",
-      "hiddenSuffix_other": ", {{count}} not shown"
+      "hiddenSuffix_other": ", {{count}} not shown",
+      "tabTests": "Tests",
+      "tabCampaign": "From a campaign"
+    },
+    "carry": {
+      "sources": "Source campaigns",
+      "noCampaign": "No other campaign",
+      "statusFilter": "Entry status:",
+      "pickSource": "Check one or more campaigns to list their entries.",
+      "noEntry": "No matching entry",
+      "checkAll": "Check all",
+      "colTest": "Test",
+      "colRequirement": "Requirement",
+      "colParams": "Parameters",
+      "colStatus": "Status",
+      "colExecution": "Execution",
+      "colSource": "Source campaign",
+      "colRemark": "Remark",
+      "versionChanged": "Test changed since: v{{from}} → v{{to}}",
+      "alsoIn": "also in {{ids}}",
+      "unavailable": {
+        "deleted": "Test deleted",
+        "notApproved": "Not approved",
+        "outOfScope": "Out of scope",
+        "reqUnlinked": "Requirement no longer linked",
+        "alreadyPresent": "Already included"
+      },
+      "campaignStatus": {
+        "planned": "Planned",
+        "in_progress": "In progress",
+        "completed": "Closed",
+        "abandoned": "Abandoned"
+      }
     }
   },
   "dashboard": {

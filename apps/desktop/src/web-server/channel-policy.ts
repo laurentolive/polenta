@@ -93,7 +93,7 @@ export const WEB_HIDDEN: Record<string, string> = {
 export const ROOT_ARGS: Record<string, number[]> = {
   'auth:project-username': [0], 'baseline:create': [0], 'baseline:delete': [0],
   'baseline:get': [0], 'baseline:get-integration-branch': [0], 'baseline:list': [0],
-  'baseline:set-integration-branch': [0], 'campaigns:add-tests': [0, 5], 'campaigns:close': [0],
+  'baseline:set-integration-branch': [0], 'campaigns:add-tests': [0, 4], 'campaigns:close': [0],
   'campaigns:create': [0, 2], 'campaigns:delete': [0], 'campaigns:duplicate-test': [0, 4],
   'campaigns:execution-sheet-apply': [0, 2, 3], 'campaigns:get': [0], 'campaigns:list': [0],
   'campaigns:preview-params': [0, 3], 'campaigns:remove-entries': [0], 'campaigns:update': [0],

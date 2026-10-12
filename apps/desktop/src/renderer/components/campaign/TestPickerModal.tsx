@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import type { ParamResolutionPreview, TestCase } from '@polenta/types'
+import type { CampaignTestRun, ParamResolutionPreview, TestCase, TestRunStatus } from '@polenta/types'
 import { api } from '../../api'
 import { useProjectSchema, getTestTypeRefs } from '../../hooks/useProjectSchema'
 import { useParamPreview } from '../../hooks/useParamPreview'
@@ -11,19 +11,32 @@ import { FilterOptionsToggle } from '../FilterOptionsToggle'
 import { TestParamFields } from '../TestParamFields'
 import { ReqInstancePicker } from './ReqInstancePicker'
 import { TestPickerGrid } from './TestPickerGrid'
+import { CampaignCarryPanel } from './CampaignCarryPanel'
 import { NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
 import {
   countInstances, effectiveReqSelection, isAddComplete, isIteratingPreview, setReqValue, toggleReq,
   type ReqSelectionState,
 } from '../../lib/reqInstances'
+import {
+  EMPTY_CARRY_STATE, buildCarryRows, carriedReqIds, carryCoverage, carryNeedsInput, carryValuesOf,
+  countCarryInstances, isCarryComplete, pickCarried, picksRequirements, sourceCampaigns, targetKeysOf,
+  withCarryPrecedence,
+  type CarryEligibility, type CarryState, type PickedCarry,
+} from '../../lib/carryOver'
 
 export interface PickerResult {
   testIds: string[]
   paramValues: Record<string, Record<string, string>>
   reqSel: ReqSelectionState
+  /** GH64 — entrées reportées depuis d'autres campagnes, avec leurs saisies. */
+  carried: PickedCarry[]
+  /** GH64 — état de l'onglet « Depuis une campagne », pour rouvrir le sélecteur à l'identique. */
+  carryState: CarryState
 }
 
-export const EMPTY_PICKER_RESULT: PickerResult = { testIds: [], paramValues: {}, reqSel: {} }
+export const EMPTY_PICKER_RESULT: PickerResult = {
+  testIds: [], paramValues: {}, reqSel: {}, carried: [], carryState: EMPTY_CARRY_STATE,
+}
 
 /**
  * GH33 — sélecteur de tests d'une campagne, en modale à deux étapes : (1) sélection dans une Vue
@@ -42,6 +55,9 @@ export function TestPickerModal({
   initial,
   presentOf,
   includedCount,
+  targetCampaignId,
+  targetRuns,
+  isEligible,
   onConfirm,
   onCancel,
 }: {
@@ -61,6 +77,13 @@ export function TestPickerModal({
   presentOf: (testId: string) => Set<string>
   /** Nombre d'instances déjà présentes (badge « déjà ×N », mode ajout). */
   includedCount?: (testId: string) => number
+  /** GH64 — campagne cible (ajout), exclue des sources du report. */
+  targetCampaignId?: string
+  /** GH64 — instances de la campagne cible (ajout), pour les doublons du report. */
+  targetRuns?: CampaignTestRun[]
+  /** GH64 — éligibilité d'un test reporté : mêmes règles que `candidates` (approbation à l'ajout,
+   *  périmètre composant/niveau à la création). */
+  isEligible: (tc: TestCase) => CarryEligibility
   /** `previews` : résolution des paramètres sur laquelle la sélection a été validée (même source
    *  que `previewSource`). Rejet = erreur affichée, modale laissée ouverte. */
   onConfirm: (result: PickerResult, previews: Map<string, ParamResolutionPreview>) => Promise<void> | void
@@ -93,6 +116,14 @@ export function TestPickerModal({
   const [paramValues, setParamValues] = useState(initial.paramValues)
   const [reqSel, setReqSel] = useState<ReqSelectionState>(initial.reqSel)
   const [confirmAbandon, setConfirmAbandon] = useState(false)
+  // GH64 — onglet « Depuis une campagne ».
+  const [tab, setTab] = useState<'tests' | 'campaign'>('tests')
+  const [carrySources, setCarrySources] = useState(() => new Set(initial.carryState.sources))
+  const [carryStatuses, setCarryStatuses] = useState(() => new Set<TestRunStatus>(initial.carryState.statuses))
+  const [carryChecked, setCarryChecked] = useState(() => new Set(initial.carryState.checked))
+  const [carrySeen, setCarrySeen] = useState(() => new Set(initial.carryState.seen))
+  const [carryValues, setCarryValues] = useState(initial.carryState.values)
+  const [carryReqSel, setCarryReqSel] = useState<ReqSelectionState>(initial.carryState.reqSel)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -111,34 +142,121 @@ export function TestPickerModal({
     return [...inCandidates, ...[...selected].filter(id => !known.has(id))]
   }, [candidates, selected])
 
+  // GH64 — campagnes source du report (toutes sauf la cible).
+  const { data: allCampaigns = [], isLoading: campaignsLoading } = useQuery({
+    queryKey: ['campaigns', repoPath],
+    queryFn: () => api.campaigns.list(repoPath),
+    enabled: !!repoPath,
+  })
+  const carryCampaigns = useMemo(() => sourceCampaigns(allCampaigns, targetCampaignId), [allCampaigns, targetCampaignId])
+
   // Prévisualisation sur tous les candidats (+ présélection) : une seule requête à l'ouverture,
   // pas une par changement de sélection.
   const previewIds = useMemo(
     () => [...new Set([...candidates.map(tc => tc.id), ...initial.testIds])],
     [candidates, initial.testIds],
   )
-  const { previews, isLoading: previewLoading } = useParamPreview(repoPath, previewSource, previewIds, workspaceDir)
+  const { previews: testPreviews, isLoading: testPreviewLoading } = useParamPreview(repoPath, previewSource, previewIds, workspaceDir)
+  // GH64 — résolution des tests des seules campagnes source cochées (requête distincte : ouvrir le
+  // sélecteur ne résout pas toutes les campagnes du repo) ; la réponse précédente reste affichée
+  // pendant le rechargement qui suit une coche.
+  const carrySourceList = useMemo(
+    () => carryCampaigns.filter(c => carrySources.has(c.id)),
+    [carryCampaigns, carrySources],
+  )
+  const carryPreviewIds = useMemo(
+    () => [...new Set(carrySourceList.flatMap(c => c.runs.map(r => r.testCaseId)))],
+    [carrySourceList],
+  )
+  const { previews: carryPreviews, isLoading: carryPreviewLoading } = useParamPreview(
+    repoPath, previewSource, carryPreviewIds, workspaceDir, true, true,
+  )
+  const previews = useMemo(() => new Map([...carryPreviews, ...testPreviews]), [carryPreviews, testPreviews])
+  const previewLoading = testPreviewLoading || carryPreviewLoading
+
+  // GH64 — lignes du report : entrées des campagnes cochées, au filtre de statut.
+  const targetKeys = useMemo(() => targetKeysOf(targetRuns), [targetRuns])
+  const carryRows = useMemo(() => buildCarryRows({
+    sources: carrySourceList,
+    statuses: carryStatuses,
+    testsById,
+    isEligible,
+    previews,
+    targetKeys,
+  }), [carrySourceList, carryStatuses, testsById, isEligible, previews, targetKeys])
+  // Une ligne disponible est cochée à sa première apparition, une fois la résolution de son test
+  // reçue (elle décide de « Exigence plus liée ») ; décochée ensuite, elle le reste.
+  useEffect(() => {
+    if (carryPreviewLoading) return
+    const fresh = carryRows.filter(r => !carrySeen.has(r.key) && (r.unavailable === 'deleted' || previews.has(r.testCaseId)))
+    if (fresh.length === 0) return
+    setCarrySeen(prev => new Set([...prev, ...fresh.map(r => r.key)]))
+    const available = fresh.filter(r => !r.unavailable).map(r => r.key)
+    if (available.length > 0) setCarryChecked(prev => new Set([...prev, ...available]))
+  }, [carryRows, carrySeen, carryPreviewLoading, previews])
+  const carrySelected = useMemo(
+    () => carryRows.filter(r => !r.unavailable && carryChecked.has(r.key)),
+    [carryRows, carryChecked],
+  )
+  // Exigences à proposer à une entrée reportée sans exigence : ni présentes dans la cible, ni prises
+  // par une autre entrée reportée.
+  const carriedReqs = useMemo(() => carriedReqIds(carrySelected), [carrySelected])
+  const presentForCarry = useCallback(
+    (id: string) => new Set([...presentOf(id), ...(carriedReqs.get(id) ?? [])]),
+    [presentOf, carriedReqs],
+  )
+  const picked = useMemo(
+    () => pickCarried(carrySelected, previews, { values: carryValues, reqSel: carryReqSel }, presentForCarry),
+    [carrySelected, previews, carryValues, carryReqSel, presentForCarry],
+  )
+
+  // Priorité au report (spec §4.4) : un test sans paramètre reporté n'est pas ajouté une seconde
+  // fois depuis l'onglet Tests ; les exigences reportées d'un test itérant y deviennent « présentes ».
+  // Appliquée à l'affichage ici, et à l'envoi par l'appelant (`withCarryPrecedence`) : la sélection
+  // de l'onglet Tests elle-même n'est pas modifiée.
+  const precedence = withCarryPrecedence(orderedSelected, presentOf, carryCoverage(picked, previews))
+  const testsSelected = precedence.testIds
+  const presentWithCarry = precedence.presentOf
 
   const needsInput = (id: string) => {
     const p = previews.get(id)
     return isIteratingPreview(p) || (p?.manual?.length ?? 0) > 0
   }
-  const inputIds = orderedSelected.filter(needsInput)
-  const hasStep2 = inputIds.length > 0
-  // Lignes affichées : seulement quand une grille du type courant est montée (étape 1, type avec
-  // des tests proposés) — sinon la dernière liste reçue serait celle d'un autre type.
-  const displayedSet = new Set(step === 1 && typeCandidates.length > 0 ? displayed : [])
-  const hiddenCount = step === 1 ? orderedSelected.filter(id => !displayedSet.has(id)).length : 0
-  const complete = isAddComplete(orderedSelected, previews, paramValues, reqSel, presentOf, mode === 'add')
-  const instanceCount = countInstances(orderedSelected, previews, reqSel, presentOf)
+  const inputIds = testsSelected.filter(needsInput)
+  const carryInputRows = carrySelected.filter(r => carryNeedsInput(r, previews.get(r.testCaseId)))
+  const hasStep2 = inputIds.length > 0 || carryInputRows.length > 0
+  // Lignes affichées : seulement quand une grille du type courant est montée (étape 1, onglet Tests,
+  // type avec des tests proposés) — sinon la dernière liste reçue serait celle d'un autre type.
+  const displayedSet = new Set(step === 1 && tab === 'tests' && typeCandidates.length > 0 ? displayed : [])
+  const hiddenCount = step === 1 && tab === 'tests' ? orderedSelected.filter(id => !displayedSet.has(id)).length : 0
+  const instanceCount = countInstances(testsSelected, previews, reqSel, presentWithCarry) + countCarryInstances(picked)
+  const complete = isAddComplete(testsSelected, previews, paramValues, reqSel, presentWithCarry, false)
+    && isCarryComplete(picked, previews)
+    && (mode !== 'add' || instanceCount > 0)
+  const selectedCount = orderedSelected.length + carrySelected.length
+
+  const carryState = (): CarryState => ({
+    sources: [...carrySources],
+    statuses: [...carryStatuses],
+    checked: [...carryChecked],
+    seen: [...carrySeen],
+    values: carryValues,
+    reqSel: carryReqSel,
+  })
 
   const isDirty = useCallback(() => {
     const a = [...selected].sort().join(',')
     const b = [...initial.testIds].sort().join(',')
+    const keys = (list: Iterable<string>) => [...list].sort().join('\n')
     return a !== b
       || JSON.stringify(paramValues) !== JSON.stringify(initial.paramValues)
       || JSON.stringify(reqSel) !== JSON.stringify(initial.reqSel)
-  }, [selected, paramValues, reqSel, initial])
+      || keys(carrySources) !== keys(initial.carryState.sources)
+      || keys(carryStatuses) !== keys(initial.carryState.statuses)
+      || keys(carryChecked) !== keys(initial.carryState.checked)
+      || JSON.stringify(carryValues) !== JSON.stringify(initial.carryState.values)
+      || JSON.stringify(carryReqSel) !== JSON.stringify(initial.carryState.reqSel)
+  }, [selected, paramValues, reqSel, carrySources, carryStatuses, carryChecked, carryValues, carryReqSel, initial])
 
   const requestCancel = useCallback(() => {
     if (submitting) return
@@ -155,6 +273,8 @@ export function TestPickerModal({
       testIds: orderedSelected,
       paramValues: Object.fromEntries(Object.entries(paramValues).filter(([id]) => keep.has(id))),
       reqSel: Object.fromEntries(Object.entries(reqSel).filter(([id]) => keep.has(id))),
+      carried: picked,
+      carryState: carryState(),
     }
     setError(null)
     setSubmitting(true)
@@ -204,6 +324,39 @@ export function TestPickerModal({
         </div>
 
         {step === 1 && (
+          <div className="flex gap-1 px-4 pt-2 border-b border-edge" role="tablist">
+            {(['tests', 'campaign'] as const).map(id => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={`px-3 py-1.5 text-xs rounded-t border border-b-0 ${tab === id ? 'border-edge bg-surface text-ink font-medium -mb-px' : 'border-transparent text-ink-3 hover:text-ink'}`}
+              >
+                {id === 'tests' ? t('campaignPage.picker.tabTests') : t('campaignPage.picker.tabCampaign')}
+                {id === 'campaign' && carrySelected.length > 0 && <span className="ml-1 text-ink-3">({carrySelected.length})</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {step === 1 && tab === 'campaign' && (
+          <CampaignCarryPanel
+            campaigns={carryCampaigns}
+            isLoading={campaignsLoading}
+            sources={carrySources}
+            onSourcesChange={setCarrySources}
+            statuses={carryStatuses}
+            onStatusesChange={setCarryStatuses}
+            rows={carryRows}
+            checked={carryChecked}
+            onCheckedChange={setCarryChecked}
+            testsById={testsById}
+          />
+        )}
+
+        {step === 1 && tab === 'tests' && (
           typeRefs.length === 0 ? (
             <p className="flex-1 p-4 text-xs text-ink-3 italic">{t('campaignPage.picker.noTestType')}</p>
           ) : (
@@ -257,7 +410,7 @@ export function TestPickerModal({
             {inputIds.map(id => {
               const tc = testsById.get(id)
               const p = previews.get(id)
-              const present = presentOf(id)
+              const present = presentWithCarry(id)
               return (
                 <div key={id} className="border border-edge rounded">
                   <p className="flex items-center gap-2 px-3 py-2 text-xs">
@@ -290,13 +443,56 @@ export function TestPickerModal({
                 </div>
               )
             })}
-            {orderedSelected.length > inputIds.length && (
+            {carryInputRows.map(row => {
+              const tc = testsById.get(row.testCaseId)
+              const p = previews.get(row.testCaseId)
+              return (
+                <div key={row.key} className="border border-edge rounded" data-carry-entry={`${row.campaignId}/${row.entryId}`}>
+                  <p className="flex items-center gap-2 px-3 py-2 text-xs">
+                    <span className="font-mono text-ink-3 shrink-0">{row.testCaseId}</span>
+                    <span className="text-ink truncate">{tc?.title ?? ''}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-ink-3" title={t('campaignPage.carriedFrom', { campaignId: row.campaignId, entryId: row.entryId })}>
+                      ↩ {row.campaignId}
+                    </span>
+                    {row.requirementId && <span className="shrink-0 font-mono text-[10px] text-ink-3">· {row.requirementId}</span>}
+                  </p>
+                  {picksRequirements(row, p) ? (() => {
+                    const present = presentForCarry(row.testCaseId)
+                    const current = effectiveReqSelection(row.key, p, present, carryReqSel)
+                    return (
+                      <ReqInstancePicker
+                        preview={p!}
+                        present={present}
+                        selection={current}
+                        onToggle={reqId => setCarryReqSel(prev => toggleReq(prev, row.key, reqId, current))}
+                        onChange={(reqId, key, value) => setCarryReqSel(prev => setReqValue(prev, row.key, reqId, current, key, value))}
+                      />
+                    )
+                  })() : (
+                    <TestParamFields
+                      labels={p?.manual ?? []}
+                      resolved={{
+                        ...p?.resolved,
+                        ...(row.requirementId ? p?.requirements?.find(r => r.requirementId === row.requirementId)?.resolved : undefined),
+                      }}
+                      unresolved={p?.unresolved}
+                      values={carryValuesOf(row, p, carryValues)}
+                      onChange={(label, value) => setCarryValues(prev => ({
+                        ...prev,
+                        [row.key]: { ...carryValuesOf(row, p, prev), [label]: value },
+                      }))}
+                    />
+                  )}
+                </div>
+              )
+            })}
+            {testsSelected.length > inputIds.length && (
               <details className="text-xs text-ink-3">
                 <summary className="cursor-pointer">
-                  {t('campaignPage.picker.withoutParams', { count: orderedSelected.length - inputIds.length })}
+                  {t('campaignPage.picker.withoutParams', { count: testsSelected.length - inputIds.length })}
                 </summary>
                 <ul className="mt-1 pl-4 space-y-0.5">
-                  {orderedSelected.filter(id => !needsInput(id)).map(id => (
+                  {testsSelected.filter(id => !needsInput(id)).map(id => (
                     <li key={id}><span className="font-mono">{id}</span> {testsById.get(id)?.title ?? ''}</li>
                   ))}
                 </ul>
@@ -307,11 +503,11 @@ export function TestPickerModal({
 
         <div className="flex items-center gap-3 px-4 py-3 border-t border-edge">
           <p className="text-xs text-ink-2">
-            {t('campaignPage.picker.selected', { count: orderedSelected.length })}
+            {t('campaignPage.picker.selected', { count: selectedCount })}
             {hiddenCount > 0 && t('campaignPage.picker.hiddenSuffix', { count: hiddenCount })}
           </p>
-          {step === 1 && orderedSelected.length > 0 && (
-            <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-status-info hover:opacity-80">
+          {step === 1 && selectedCount > 0 && (
+            <button type="button" onClick={() => { setSelected(new Set()); setCarryChecked(new Set()) }} className="text-xs text-status-info hover:opacity-80">
               {t('campaignPage.picker.clearSelection')}
             </button>
           )}
@@ -329,7 +525,7 @@ export function TestPickerModal({
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                disabled={previewLoading || (mode === 'add' && orderedSelected.length === 0)}
+                disabled={previewLoading || (mode === 'add' && selectedCount === 0)}
                 className="btn-primary-sm"
               >
                 {t('campaignPage.picker.next')}

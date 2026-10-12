@@ -1,7 +1,7 @@
 ﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Trash2, Play, Eye, Pencil, Copy, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 import { useProjectSchema, getCampaignTypeDef, getTestTypeDef } from '../hooks/useProjectSchema'
@@ -14,6 +14,7 @@ import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import { TestParamFields } from '../components/TestParamFields'
 import { manualKeysForRun } from '../lib/testParams'
 import { buildReqInstances, isIteratingPreview, missingReqs, presentReqIds } from '../lib/reqInstances'
+import { carryCoverage, toCarriedSelection, withCarryPrecedence, type CarryEligibility } from '../lib/carryOver'
 import { TestPickerModal, EMPTY_PICKER_RESULT, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
@@ -23,7 +24,7 @@ import { ExecutionSheetMenu } from '../components/campaign/ExecutionSheetMenu'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import type { TestRunStatus, TestCase, ProjectSchema, ReqInstanceSelection, ParamResolutionPreview } from '@polenta/types'
+import type { TestRunStatus, TestCase, ProjectSchema, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
@@ -92,6 +93,11 @@ function CampaignDetailPage() {
   useRegisterTabDirty(editingFields !== null)
 
   const { data: schema } = useProjectSchema(repoPath)
+  // GH64 — éligibilité d'un test reporté : même règle que l'ajout normal (test approuvé).
+  const isCarryEligible = useCallback(
+    (tc: TestCase): CarryEligibility => (isTestApproved(tc, schema) ? 'ok' : 'notApproved'),
+    [schema],
+  )
 
   const updateFieldsMutation = useMutation({
     mutationFn: (fields: Record<string, string>) =>
@@ -138,8 +144,14 @@ function CampaignDetailPage() {
   )
 
   const addTestsMutation = useMutation({
-    mutationFn: ({ ids, paramValues, reqInstances }: { ids: string[]; paramValues: Record<string, Record<string, string>>; reqInstances?: ReqInstanceSelection }) =>
-      api.campaigns.addTests(repoPath, campaignId, ids, paramValues, workspaceDir || undefined, reqInstances),
+    mutationFn: ({ ids, paramValues, reqInstances, carried }: {
+      ids: string[]
+      paramValues: Record<string, Record<string, string>>
+      reqInstances?: ReqInstanceSelection
+      /** GH64 — entrées reportées depuis d'autres campagnes. */
+      carried?: CarriedEntrySelection[]
+    }) =>
+      api.campaigns.addTests(repoPath, campaignId, ids, paramValues, workspaceDir || undefined, reqInstances, carried),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
@@ -251,23 +263,27 @@ function CampaignDetailPage() {
   /** GH33 — validation du sélecteur (la modale vérifie déjà la complétude). Rejet = erreur
    *  affichée dans la modale, qui reste ouverte. */
   async function handleConfirmAdd(
-    { testIds, paramValues: addParamValues, reqSel: addReqSel }: PickerResult,
+    { testIds, paramValues: addParamValues, reqSel: addReqSel, carried }: PickerResult,
     previews: Map<string, ParamResolutionPreview>,
   ) {
-    if (testIds.length === 0) return
+    if (testIds.length === 0 && carried.length === 0) return
 
     // Un id déjà présent dans la campagne (test paramétré re-sélectionné) devient une
     // nouvelle instance via duplicateTest() plutôt qu'addTests(), qui déduplique. T179 — un test
     // itérant passe toujours par addTests(), avec les exigences retenues (dédup test/exigence).
-    const ids = testIds
+    // GH64 — priorité au report : tests et exigences couverts par une entrée reportée retirés.
+    const precedence = withCarryPrecedence(testIds, presentOf, carryCoverage(carried, previews))
+    const ids = precedence.testIds
     const iterIds = ids.filter(id => isIteratingPreview(previews.get(id)))
     const newIds = ids.filter(id => !iterIds.includes(id) && !includedIds.has(id))
     const duplicateIds = ids.filter(id => !iterIds.includes(id) && includedIds.has(id))
     const addIds = [...newIds, ...iterIds]
-    const reqInstances = buildReqInstances(iterIds, previews, addReqSel, presentOf)
+    const reqInstances = buildReqInstances(iterIds, previews, addReqSel, precedence.presentOf)
 
     await Promise.all([
-      ...(addIds.length > 0 ? [addTestsMutation.mutateAsync({ ids: addIds, paramValues: addParamValues, reqInstances })] : []),
+      ...(addIds.length > 0 || carried.length > 0
+        ? [addTestsMutation.mutateAsync({ ids: addIds, paramValues: addParamValues, reqInstances, carried: toCarriedSelection(carried) })]
+        : []),
       ...duplicateIds.map(id => duplicateTestMutation.mutateAsync({ testCaseId: id, paramValues: addParamValues[id] ?? {} })),
     ])
     setAddingTests(false)
@@ -443,6 +459,10 @@ function CampaignDetailPage() {
           initial={EMPTY_PICKER_RESULT}
           presentOf={presentOf}
           includedCount={id => campaign!.testCaseIds.filter(x => x === id).length}
+          allTests={tests}
+          targetCampaignId={campaignId}
+          targetRuns={campaign.runs}
+          isEligible={isCarryEligible}
           onConfirm={handleConfirmAdd}
           onCancel={() => setAddingTests(false)}
         />

@@ -6,14 +6,16 @@ import type { TestRunStatus } from '@polenta/types'
 import { useSystemView } from '../../contexts/SystemViewContext'
 import { buildFilterRegex } from '../../lib/textFilter'
 
-const STATUS_CLASS: Record<string, string> = {
+/** Pastille de statut de campagne (réutilisée par le sélecteur de report, GH64). */
+export const STATUS_CLASS: Record<string, string> = {
   planned:     'bg-status-neutral-bg text-status-neutral',
   in_progress: 'bg-status-info-bg text-status-info',
   completed:   'bg-status-success-bg text-status-success',
   abandoned:   'bg-status-danger-bg text-status-danger',
 }
 
-const RUN_CLASS: Partial<Record<TestRunStatus, string>> = {
+/** Pastille de statut d'entrée de campagne (réutilisée par le sélecteur de report, GH64). */
+export const RUN_CLASS: Partial<Record<TestRunStatus, string>> = {
   PASS:       'bg-status-success-bg text-status-success',
   FAIL:       'bg-status-danger-bg text-status-danger',
   BLOCKED:    'bg-status-warning-bg text-status-warning',

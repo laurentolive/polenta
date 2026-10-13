@@ -161,6 +161,11 @@ export interface ImportedInstance {
   stepResults: { order: number; result: StepResultValue; comment: string }[]
 }
 
+export type ExecutionImportWarning =
+  | { code: 'row_without_key'; row: number }
+  /** GH68 — instance importable dont la copie du test n'est pas dans un statut d'approbation. */
+  | { code: 'test_not_approved'; entryId: string; status: string }
+
 export interface ExecutionImportPreview {
   filePath: string
   fileName: string
@@ -168,7 +173,7 @@ export interface ExecutionImportPreview {
   fatal?: ExecutionImportFatal
   importable: ImportedInstance[]
   errors: { entryId: string; error: ExecutionImportInstanceError }[]
-  warnings: { code: 'row_without_key'; row: number }[]
+  warnings: ExecutionImportWarning[]
   /** Instances présentes dans le fichier mais sans aucun verdict (laissées inchangées). */
   unfilledCount: number
 }

@@ -433,6 +433,10 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   r.handle('campaigns:update-run',
     (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId?: string) =>
       c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunStatus, runId))
+  // GH68 — resynchronisation de la copie des instances pending non approuvées.
+  r.handle('campaigns:refresh-entries',
+    (_e, repoPath: string, campaignId: string, entryIds: string[]) =>
+      c.campaigns.refreshEntries(repoPath, campaignId, entryIds))
   r.handle('campaigns:close',
     (_e, repoPath: string, id: string, status: unknown) =>
       c.campaigns.close(repoPath, id, status as 'completed' | 'abandoned'))

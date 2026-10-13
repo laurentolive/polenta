@@ -6,7 +6,7 @@ import {
 } from '@polenta/types'
 import type {
   ExecutionImportFatal, ExecutionImportInstanceError, ExecutionImportPreview, ExecutionSheetColumn,
-  ImportedInstance, StepResultValue, TestCampaign, TestRunResult,
+  ImportedInstance, StepResultValue, TestCampaign, TestCase, TestRunResult,
 } from '@polenta/types'
 
 /**
@@ -132,6 +132,8 @@ export interface ExecutionImportContext {
   /** Date d'import (ISO), retenue quand la colonne Date est vide. */
   now: string
   filePath: string
+  /** GH68 — statut d'approbation d'un test ; absent : aucun avertissement `test_not_approved`. */
+  isApproved?: (test: TestCase) => boolean
 }
 
 export function validateExecutionImport(
@@ -177,7 +179,14 @@ export function validateExecutionImport(
     }
     const result = validateInstance(entryId, group, metaById.get(entryId), ctx)
     if ('error' in result) preview.errors.push({ entryId, error: result.error })
-    else preview.importable.push(result.instance)
+    else {
+      preview.importable.push(result.instance)
+      // GH68 — exécution d'un test non approuvé : signalée, pas refusée (copie figée de l'instance).
+      const snapshot = ctx.campaign.runs.find(r => r.entryId === entryId)?.testSnapshot
+      if (snapshot && ctx.isApproved && !ctx.isApproved(snapshot)) {
+        preview.warnings.push({ code: 'test_not_approved', entryId, status: snapshot.status })
+      }
+    }
   }
   return preview
 }

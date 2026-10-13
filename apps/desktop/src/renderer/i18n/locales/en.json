@@ -841,6 +841,7 @@
       "inError_other": "In error ({{count}}) — not imported",
       "warnings": "Warnings",
       "rowWithoutKey": "Row {{row}} added in the workbook (no key): ignored",
+      "testNotApproved": "{{entryId}}: test not approved ({{status}})",
       "unfilled_one": "{{count}} instance not filled in: left unchanged",
       "unfilled_other": "{{count}} instances not filled in: left unchanged",
       "importN_one": "Import {{count}} result",

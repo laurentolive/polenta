@@ -841,6 +841,7 @@
       "inError_other": "En erreur ({{count}}) — non importées",
       "warnings": "Avertissements",
       "rowWithoutKey": "Ligne {{row}} ajoutée dans le classeur (sans clé) : ignorée",
+      "testNotApproved": "{{entryId}} : test non approuvé ({{status}})",
       "unfilled_one": "{{count}} instance non remplie : laissée inchangée",
       "unfilled_other": "{{count}} instances non remplies : laissées inchangées",
       "importN_one": "Importer {{count}} résultat",

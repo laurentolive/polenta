@@ -146,9 +146,11 @@ export function ExecutionImportModal({ repoPath, campaignId, workspaceDir, previ
                     {t('campaignPage.executionSheet.warnings')}
                   </h3>
                   <ul className="space-y-1 text-xs text-ink-2">
-                    {preview.warnings.map(w => (
-                      <li key={w.row}>{t('campaignPage.executionSheet.rowWithoutKey', { row: w.row })}</li>
-                    ))}
+                    {preview.warnings.map(w => w.code === 'row_without_key'
+                      ? <li key={`row-${w.row}`}>{t('campaignPage.executionSheet.rowWithoutKey', { row: w.row })}</li>
+                      // GH68 — exécution d'un test non approuvé : importée, mais signalée.
+                      : <li key={`entry-${w.entryId}`}>{t('campaignPage.executionSheet.testNotApproved', { entryId: w.entryId, status: w.status })}</li>,
+                    )}
                   </ul>
                 </section>
               )}

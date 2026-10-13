@@ -81,6 +81,14 @@ export interface ObjectTypeDefinition {
   statuses?: SchemaStatus[]
 }
 
+/** GH68 — `status` est-il le statut d'approbation du type (`statuses[].isApproval`) ? Repli sur
+ *  le littéral `approved` quand le type est introuvable ou ne déclare aucun statut d'approbation
+ *  (même règle que `isApprovedStatus` de maturity.util.ts). */
+export function isApprovalStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): boolean {
+  const approvalStatusName = typeDef?.statuses?.find(s => s.isApproval)?.name
+  return status === (approvalStatusName ?? 'approved')
+}
+
 // Noeud local : composant propre au repo produit.
 //   objectTypes defini ici dans le schema produit.
 // Un noeud peut reference un composant d'un autre repo dans le workspace plat

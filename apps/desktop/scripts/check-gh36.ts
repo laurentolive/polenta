@@ -80,6 +80,9 @@ const executeCalls: { testCaseId: string; dto: Record<string, unknown> }[] = []
 const updateRunCalls: { entryId: string; status: string; runId?: string; meta?: unknown }[] = []
 const fakeCampaigns = {
   get: async () => structuredClone(current),
+  // GH68 — pas de resynchronisation dans ce scénario (copies figées GH36 inchangées).
+  refreshEntries: async () => structuredClone(current),
+  approvalPredicate: async () => () => true,
   updateRun: async (_repo: string, _id: string, entryId: string, status: string, runId?: string, meta?: unknown) => {
     updateRunCalls.push({ entryId, status, runId, meta })
   },

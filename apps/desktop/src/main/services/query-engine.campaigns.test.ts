@@ -129,6 +129,18 @@ describe('GH65 — campaign_entries', () => {
     expect(r.rows).toEqual([{ executedDay: '2026-10-12', executed: true }])
   })
 
+  it('GH69 N1 — campaignCreatedAt = createdAt de la campagne, ordre chronologique des colonnes', async () => {
+    const e = engine({ [ROOT]: [
+      campaign('CAMP-0005', [run(1, 'PASS'), run(2, 'FAIL')], { createdAt: '2026-10-03T00:00:00.000Z' }),
+      campaign('CAMP-0006', [run(1, 'PASS')], { createdAt: '2026-10-02T00:00:00.000Z' }),
+    ] })
+    const r = await e.execute(ROOT, sql('SELECT DISTINCT campaignId, campaignCreatedAt FROM campaign_entries ORDER BY campaignCreatedAt'), '/ws')
+    expect(r.rows).toEqual([
+      { campaignId: 'CAMP-0006', campaignCreatedAt: '2026-10-02T00:00:00.000Z' },
+      { campaignId: 'CAMP-0005', campaignCreatedAt: '2026-10-03T00:00:00.000Z' },
+    ])
+  })
+
   it('1.20 — aucune campagne : table vide, KPI sans ligne', async () => {
     const e = engine({})
     expect((await e.execute(ROOT, sql('SELECT * FROM campaign_entries'), '/ws')).rows).toEqual([])

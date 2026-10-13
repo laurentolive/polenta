@@ -15,7 +15,7 @@ export type QueryScope = 'private' | 'shared'
  */
 export const CAMPAIGN_ENTRY_FIELDS = [
   'campaignId', 'campaignTitle', 'campaignStatus', 'objectTypeRef', 'campaignObjectTypeRef',
-  'baselineRef', 'level', 'campaignComponent', 'component',
+  'baselineRef', 'campaignCreatedAt', 'level', 'campaignComponent', 'component',
   'entryId', 'testCaseId', 'requirementId', 'testTitle',
   'status', 'executed', 'executedAt', 'executedDay', 'executedBy', 'runId',
 ] as const
@@ -109,13 +109,15 @@ export type RowTarget =
 // T77 sprint 2 — types déclarés dès sprint 1 par anticipation (cf. T77-design.md
 // § "Découpage en sprints"), mais NON câblés à un service/UI avant le sprint 2.
 
-export type WidgetType = 'bar' | 'pie' | 'line' | 'kpi' | 'table'
+export type WidgetType = 'bar' | 'pie' | 'line' | 'kpi' | 'table' | 'matrix'
 export type WidgetSize = 'sm' | 'md' | 'lg'
 
 export interface WidgetFieldMapping {
-  category?: string   // bar/pie/line
-  measure?: string     // bar/pie/line/kpi
-  series?: string      // bar/line (multi-série), optionnel
+  category?: string   // bar/pie/line ; matrix : lignes
+  measure?: string     // bar/pie/line/kpi ; matrix : valeur des cellules
+  series?: string      // bar/line (multi-série), optionnel ; matrix : colonnes
+  /** GH69 — matrix only, optionnel : colonne affichée à côté de la valeur de ligne (ex. `testTitle`). */
+  label?: string
   /** bar only, ignoré si `series` absent — empile les séries au lieu de les grouper. */
   stacked?: boolean
   columns?: string[]   // table

@@ -71,7 +71,7 @@ export function unknownBuilderFields(config: BuilderConfig, allowedFields: reado
 
 /** Colonnes de résultat citées par un mapping de widget. */
 export function mappingColumns(m: WidgetFieldMapping): string[] {
-  const cols = [m.category, m.measure, m.series, ...(m.columns ?? [])]
+  const cols = [m.category, m.measure, m.series, m.label, ...(m.columns ?? [])]
   return [...new Set(cols.filter((c): c is string => typeof c === 'string' && c !== ''))]
 }
 
@@ -101,6 +101,8 @@ const MAPPING_RULES: Record<WidgetType, { required: MappingKey[]; allowed: Mappi
   pie: { required: ['category', 'measure'], allowed: ['category', 'measure'] },
   kpi: { required: ['measure'], allowed: ['measure'] },
   table: { required: [], allowed: ['columns'] },
+  // GH69 — category = lignes, series = colonnes, measure = valeur, label = libellé de ligne.
+  matrix: { required: ['category', 'series', 'measure'], allowed: ['category', 'series', 'measure', 'label'] },
 }
 
 function isSet(m: WidgetFieldMapping, key: MappingKey): boolean {

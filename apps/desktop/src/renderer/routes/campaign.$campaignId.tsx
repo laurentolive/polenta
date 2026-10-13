@@ -26,6 +26,7 @@ import { ExecutionSheetMenu } from '../components/campaign/ExecutionSheetMenu'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
+import { RUN_STATUS_CLASS, RUN_STATUS_LABEL_KEY, isTestRunStatus } from '../lib/runStatus'
 import type { TestRunStatus, TestCase, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
@@ -49,23 +50,7 @@ const RUN_STATUSES: TestRunStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE', 
 
 /** Valeur d'URL hors liste ignorée (filtre absent). */
 function parseRunStatus(v: unknown): TestRunStatus | undefined {
-  return RUN_STATUSES.includes(v as TestRunStatus) ? (v as TestRunStatus) : undefined
-}
-
-export const RUN_STATUS_LABEL_KEY: Record<TestRunStatus, string> = {
-  pending:    'campaignPage.runStatus.pending',
-  PASS:       'campaignPage.runStatus.pass',
-  FAIL:       'campaignPage.runStatus.fail',
-  BLOCKED:    'campaignPage.runStatus.blocked',
-  INCOMPLETE: 'campaignPage.runStatus.incomplete',
-}
-
-const RUN_STATUS_CLASS: Record<TestRunStatus, string> = {
-  pending:    'bg-status-neutral-bg text-status-neutral',
-  PASS:       'bg-status-success-bg text-status-success',
-  FAIL:       'bg-status-danger-bg text-status-danger',
-  BLOCKED:    'bg-status-warning-bg text-status-warning',
-  INCOMPLETE: 'bg-status-warning-bg text-status-warning',
+  return isTestRunStatus(v) ? v : undefined
 }
 
 // ─── Campaign detail page ─────────────────────────────────────────────────────

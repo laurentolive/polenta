@@ -60,7 +60,8 @@ Une ligne par entrée de campagne (`CampaignTestRun`) de toutes les campagnes du
 courant + composants, `CampaignsService.list` par repo), dans son **dernier** état (l'historique
 des ré-exécutions d'une entrée n'est pas restitué). Colonnes (`CAMPAIGN_ENTRY_FIELDS`,
 `@polenta/types`) : `campaignId`, `campaignTitle`, `campaignStatus`, `objectTypeRef` (= type de la
-campagne, pour le builder), `campaignObjectTypeRef`, `baselineRef`, `level`, `campaignComponent`
+campagne, pour le builder), `campaignObjectTypeRef`, `baselineRef`, `campaignCreatedAt` (GH69 — `createdAt` de la campagne, pour ordonner les colonnes
+d'une matrice), `level`, `campaignComponent`
 (composant ciblé), `component` (où vit le fichier, même règle que les autres tables), `entryId`,
 `testCaseId`, `requirementId`, `testTitle` (snapshot, sinon test live), `status` (statut de
 l'entrée), `executed` (booléen `status ≠ pending`), `executedAt`, `executedDay` (`AAAA-MM-JJ`,
@@ -142,7 +143,8 @@ objet référencé).
 - Grille à tailles prédéfinies (`sm`/`md`/`lg` → 1/2/4 colonnes sur une grille à 4
   colonnes), réordonnable par drag & drop natif HTML5 (même pattern que
   l'`ElementTree` de la vue Système) — pas de redimensionnement libre en pixels.
-- 5 types de widget : barres, camembert, courbe (recharts), tuile KPI, table. Le
+- 6 types de widget : barres, camembert, courbe (recharts), tuile KPI, table, matrice (GH69,
+  §4.2). Le
   type n'est **jamais contraint** par la forme du résultat de la requête — aperçu
   live dans la popup de configuration, l'utilisateur reste seul juge.
 - **Navigation (GH65)** : clic sur une barre / un segment, une part, un point de courbe
@@ -170,6 +172,40 @@ objet référencé).
 - Réglable dans la popup de configuration du widget (case à cocher visible
   uniquement pour un widget `bar` avec une `series` sélectionnée) — pas seulement
   câblé pour le dashboard **Status** pré-configuré (§5.1).
+
+
+### 4.2 Widget matrice (`type: 'matrix'`, GH69)
+
+Tableau croisé, cas d'usage principal : le résultat de chaque test dans chaque campagne. Pivot fait
+côté renderer sur le résultat de la requête (`widgets/matrix.ts`, `buildMatrix`), sans requête
+supplémentaire.
+- **Mapping** : `category` = lignes, `series` = colonnes, `measure` = valeur des cellules (tous trois
+  requis), `label` = libellé affiché à côté de la valeur de ligne (optionnel, ex. `testTitle`). Mêmes
+  clés que le pivot catégorie × série des barres : le drill-down (§2.2) est inchangé.
+- **Ordre** : colonnes dans l'ordre de première apparition dans le résultat (l'utilisateur le règle
+  par `ORDER BY`, ex. `campaignCreatedAt`) ; lignes triées par libellé en ordre naturel
+  (`Intl.Collator` numérique, `TEST-0002` avant `TEST-0010`), « — » (valeur nulle) en dernier.
+- **Cellule** = lignes du résultat portant ce couple : aucune → « · » neutre (absent ≠ `pending`) ;
+  que des `TestRunStatus` → **pire statut** (`FAIL > BLOCKED > INCOMPLETE > pending > PASS`,
+  `lib/runStatus.ts`), pastille aux couleurs de la page campagne, `×n` si plusieurs lignes, infobulle
+  de répartition ; sinon que des nombres (ou chaînes numériques) → somme ; sinon valeurs distinctes
+  jointes par « , ».
+- **Affichage** : défilement dans les deux sens dans la carte, en-tête de colonnes et première colonne
+  figés. Pas de totaux, pas de tri interactif.
+- **Navigation** : clic sur une cellule non vide → popup « Détail » (valeurs brutes ligne + colonne) ;
+  clic sur un en-tête en forme d'ID d'objet (`/^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-\d+$/`) → cet objet
+  (`resolveRowTarget({ id })` : exigence, test ou campagne ; inexistant → « Objet introuvable ») ;
+  les autres en-têtes (titre, statut, date…) ne sont pas cliquables. Rien de cliquable dans
+  l'aperçu ni en impression.
+- **Libellé de ligne** : valeur de la dernière ligne du résultat portant la valeur de ligne (titre
+  le plus récent avec un tri chronologique).
+- **Enregistrement depuis l'app** : seules les clés de mapping du type choisi sont enregistrées
+  (`WidgetConfigModal`, `applicableMapping`) ; côté MCP, l'avertissement `WIDGET_MAPPING_BROKEN`
+  ne considère que les clés applicables au type (`pruneMapping`).
+- Exemple : `SELECT testCaseId, testTitle, campaignId, campaignCreatedAt, status FROM
+  campaign_entries ORDER BY campaignCreatedAt`, lignes `testCaseId`, libellé `testTitle`, colonnes
+  `campaignId`, valeur `status`. Une ligne par instance : colonne SQL concaténée
+  (`testCaseId + ' / ' + requirementId AS instance`) choisie comme lignes.
 
 ---
 

@@ -34,14 +34,15 @@ import {
  */
 
 const scopeSchema = z.enum(['shared', 'private'])
-const widgetTypeSchema = z.enum(['bar', 'pie', 'line', 'kpi', 'table'])
+const widgetTypeSchema = z.enum(['bar', 'pie', 'line', 'kpi', 'table', 'matrix'])
 const widgetSizeSchema = z.enum(['sm', 'md', 'lg'])
 
 const fieldMappingSchema = z
   .object({
-    category: z.string().optional().describe('bar/line/pie : colonne des catégories'),
-    measure: z.string().optional().describe('bar/line/pie/kpi : colonne numérique'),
-    series: z.string().optional().describe('bar/line : colonne de série (multi-série)'),
+    category: z.string().optional().describe('bar/line/pie : colonne des catégories ; matrix : colonne des lignes'),
+    measure: z.string().optional().describe('bar/line/pie/kpi : colonne numérique ; matrix : valeur des cellules (statuts d’exécution → pire statut, nombres → somme)'),
+    series: z.string().optional().describe('bar/line : colonne de série (multi-série) ; matrix : colonne des colonnes'),
+    label: z.string().optional().describe('matrix : libellé affiché à côté de la valeur de ligne (ex. testTitle)'),
     stacked: z.boolean().optional().describe('bar avec series : empiler les séries'),
     columns: z.array(z.string()).optional().describe('table : colonnes affichées (absent = toutes)'),
   })

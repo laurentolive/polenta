@@ -265,7 +265,11 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // Which of the three activity-bar tabs (Exigences/Tests/Campagnes) is active — defaults to
   // 'requirement' for old links/tabs saved before that param existed rather than leaving it
   // unset, so every selection/filtering step below can assume a valid category.
-  const urlCategory: ObjectCategory = (sp.get('category') as ObjectCategory | null) ?? 'requirement'
+  // Doc routes (/req/, /test/, /campaign/) carry no ?category= — their path names the kind
+  // (GH72 — opening a campaign used to flip the sidebar header/combobox to Exigences).
+  const urlCategory: ObjectCategory =
+    (sp.get('category') as ObjectCategory | null) ??
+    (pathname.startsWith('/campaign/') ? 'campaign' : pathname.startsWith('/test/') ? 'test' : 'requirement')
 
   // ── Root repo path (project root, always editable) ────────────────────────
   const { data: project } = useQuery({

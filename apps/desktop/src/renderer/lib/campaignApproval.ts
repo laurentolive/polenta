@@ -22,3 +22,9 @@ export function unapprovedPendingRuns(
 ): CampaignTestRun[] {
   return runs.filter(r => r.status === 'pending' && !!unapprovedTestOf(r, liveById.get(r.testCaseId), campaignOpen, isApproved))
 }
+
+/** Report d'une entrée (GH64) : la nouvelle instance copie l'état actuel du test — c'est lui qui
+ *  est signalé s'il n'est pas approuvé, sinon `undefined`. */
+export function unapprovedCarriedTest(live: TestCase | undefined, isApproved: IsApproved): TestCase | undefined {
+  return live && !isApproved(live) ? live : undefined
+}

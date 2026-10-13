@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CampaignTestRun, TestCase } from '@polenta/types'
-import { unapprovedPendingRuns, unapprovedTestOf } from './campaignApproval'
+import { unapprovedCarriedTest, unapprovedPendingRuns, unapprovedTestOf } from './campaignApproval'
 
 // GH68 — badge « Non approuvé » et bandeau de la page campagne (L1–L3 de specs/GH68-tests.md) ;
 // GH71 C5 — campagne clôturée : jugée sur la copie.
@@ -43,5 +43,11 @@ describe('campaignApproval', () => {
     const runs = [run('A', tc('A', 'draft')), run('B', tc('B', 'valide')), run('C', tc('C', 'draft'), 'FAIL')]
     const live = new Map([['A', tc('A', 'draft', 2)], ['B', tc('B', 'valide')], ['C', tc('C', 'draft')]])
     expect(unapprovedPendingRuns(runs, live, true, isApproved).map(r => r.testCaseId)).toEqual(['A'])
+  })
+
+  it('GH80 — report : jugé sur le test live', () => {
+    expect(unapprovedCarriedTest(tc('A', 'draft'), isApproved)?.status).toBe('draft')
+    expect(unapprovedCarriedTest(tc('A', 'valide'), isApproved)).toBeUndefined()
+    expect(unapprovedCarriedTest(undefined, isApproved)).toBeUndefined()
   })
 })

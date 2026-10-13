@@ -98,7 +98,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree)
   const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation)
   const tests = new TestsService(git, testsIndex, schema, tree, revalidation)
-  const campaigns = new CampaignsService(git, tests)
+  const campaigns = new CampaignsService(git, tests, undefined, schema)
   // GH18 — vue Suivi : même graphe que main/container.ts (sans DashboardSeedService, le
   // seed des dashboards pré-configurés reste propre à l'app). TraceabilityService n'est
   // appelé que pour computeCoverage (pur, ni réseau ni keytar).

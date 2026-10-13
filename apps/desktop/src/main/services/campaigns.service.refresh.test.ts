@@ -191,3 +191,31 @@ describe('CampaignsService.refreshEntries', () => {
     expect(campaign.runs[0]!.status).toBe('PASS')
   })
 })
+
+describe('CampaignsService.approvalPredicate', () => {
+  it('GH80 — schéma fourni par SchemaService (cache), pas relu du disque', async () => {
+    const get = vi.fn(async () => SCHEMA as never)
+    const withSchema = new CampaignsService(git, testsService, undefined, { get })
+    await fsP.rm(path.join(dir, '.polenta', 'schema.yaml'))
+    const isApproved = await withSchema.approvalPredicate(dir)
+    expect(get).toHaveBeenCalledWith(dir)
+    expect(isApproved(testCase('TEST-A', 'valide'))).toBe(true)
+    expect(isApproved(testCase('TEST-A', 'approved'))).toBe(false)
+  })
+
+  it('GH80 — ref sans préfixe : le type de test est retenu, pas un type d\'exigence homonyme', async () => {
+    await git.writeYaml(dir, '.polenta/schema.yaml', {
+      ...SCHEMA,
+      nodes: [{
+        name: 'root', label: 'Produit', objectTypes: [
+          { name: 'item', label: 'Exigence', prefix: 'REQ', category: 'requirement', fields: [], statuses: [{ name: 'ok', isApproval: true }] },
+          { name: 'item', label: 'Test', prefix: 'TST', category: 'test', fields: [], statuses: [{ name: 'valide', isApproval: true }] },
+        ],
+      }],
+    })
+    const isApproved = await service.approvalPredicate(dir)
+    const tc = (status: string) => ({ ...testCase('TST-1', status), objectTypeRef: 'item' }) as TestCase
+    expect(isApproved(tc('valide'))).toBe(true)
+    expect(isApproved(tc('ok'))).toBe(false)
+  })
+})

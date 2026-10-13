@@ -77,7 +77,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // T179 — exigences liées aux tests pour les références `{req.<champ>}`.
   const reqRefs = new ReqRefsService(git, reqIndex, schema)
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree, reqRefs)
-  const campaigns = new CampaignsService(git, tests, parameters)
+  const campaigns = new CampaignsService(git, tests, parameters, schema)
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)

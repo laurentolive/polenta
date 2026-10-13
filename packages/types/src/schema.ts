@@ -83,7 +83,7 @@ export interface ObjectTypeDefinition {
 
 /** GH68 — `status` est-il le statut d'approbation du type (`statuses[].isApproval`) ? Repli sur
  *  le littéral `approved` quand le type est introuvable ou ne déclare aucun statut d'approbation
- *  (même règle que `isApprovedStatus` de maturity.util.ts). */
+ *  (règle unique, partagée avec le critère 4 de maturité — GH80). */
 export function isApprovalStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): boolean {
   const approvalStatusName = typeDef?.statuses?.find(s => s.isApproval)?.name
   return status === (approvalStatusName ?? 'approved')

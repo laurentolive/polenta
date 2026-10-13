@@ -163,4 +163,13 @@ describe('aperçu d\'import', () => {
     expect(preview.unfilledCount).toBe(1)
     expect(preview.warnings).toEqual([])
   })
+
+  it('GH80 — entrée pré-T49 (sans copie) sur un test live non approuvé : avertissement', async () => {
+    await writeCampaign([{ entryId: 'TEST-A-1', testCaseId: 'TEST-A', status: 'pending' }])
+    const preview = validateExecutionImport(sheet(['TEST-A-1']), {
+      campaign: await campaigns.get(dir, 'CAMP-0001'), fallbackUser: 'Imp', now: '2026-10-13T00:00:00.000Z',
+      filePath: 'x.xlsx', isApproved: await campaigns.approvalPredicate(dir), liveTests: new Map(tests),
+    })
+    expect(preview.warnings).toEqual([{ code: 'test_not_approved', entryId: 'TEST-A-1', status: 'draft' }])
+  })
 })

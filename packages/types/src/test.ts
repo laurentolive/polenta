@@ -1,4 +1,5 @@
 import type { ObjectHistory } from './history'
+import type { CampaignEntryRef } from './campaign'
 
 // ─── Test Case Definition ─────────────────────────────────────────────────────
 
@@ -78,7 +79,9 @@ export interface StepResult {
 export interface TestRun {
   id: string
   testCaseId: string
-  campaignRunId: string | null
+  /** GH73 — entrée de campagne dont ce run est l'exécution. Absent : exécution isolée, ou run
+   *  antérieur à GH73 (les anciens fichiers portent `campaignRunId: null`, ignoré). */
+  campaignEntry?: CampaignEntryRef
   /** T179 — exigence de l'instance de campagne exécutée : le run ne compte, en couverture, que pour
    *  elle. Absent : compte pour toutes les exigences liées au test. */
   requirementId?: string

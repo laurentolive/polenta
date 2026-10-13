@@ -15,6 +15,9 @@ export interface TestCampaign {
   status: CampaignStatus
   testCaseIds: string[]
   runs: CampaignTestRun[]
+  /** GH73 — entrées retirées (`removeEntries`), conservées avec `removedAt` : un historique daté
+   *  reste juste après un retrait. Absent si aucune. Les lecteurs de `runs` ne les voient pas. */
+  removedRuns?: RemovedCampaignTestRun[]
   createdAt: string
   completedAt?: string | null
   /** GH77 — historique du statut et des champs personnalisés suivis. */
@@ -36,6 +39,8 @@ export interface CampaignTestRun {
    *  entrées continuent de se résoudre contre l'état live du test. */
   testSnapshot?: TestCase
   status: TestRunStatus
+  /** GH73 — instant d'ajout de l'entrée dans la campagne. Absent : entrée antérieure à GH73. */
+  addedAt?: string
   runId?: string
   executedAt?: string
   executedBy?: string
@@ -55,11 +60,17 @@ export interface CampaignTestRun {
   carriedFrom?: CarriedFrom
 }
 
-/** GH64 — entrée d'une autre campagne dont une instance a été reportée. */
-export interface CarriedFrom {
+/** GH73 — entrée retirée d'une campagne (`TestCampaign.removedRuns`), avec l'instant du retrait. */
+export type RemovedCampaignTestRun = CampaignTestRun & { removedAt: string }
+
+/** GH73 — référence à une entrée de campagne (campagne + instance). */
+export interface CampaignEntryRef {
   campaignId: string
   entryId: string
 }
+
+/** GH64 — entrée d'une autre campagne dont une instance a été reportée. */
+export type CarriedFrom = CampaignEntryRef
 
 /** GH64 — entrée source retenue pour un report, avec les saisies de l'étape 2 du sélecteur. */
 export interface CarriedEntrySelection extends CarriedFrom {

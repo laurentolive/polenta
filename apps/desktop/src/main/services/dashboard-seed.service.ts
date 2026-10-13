@@ -1,4 +1,4 @@
-import type { Dashboard, WidgetFieldMapping, WidgetSize, WidgetType } from '@polenta/types'
+import type { Dashboard, Widget, WidgetFieldMapping, WidgetSize, WidgetType } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { DashboardsService, AddWidgetDto, CreateDashboardDto } from './dashboards.service'
 import type { SavedQueriesService, CreateSavedQueryDto } from './saved-queries.service'
@@ -96,7 +96,7 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
   fr: {
     dashboard: 'Campagnes',
     queries: {
-      progress: 'Campagnes — avancement par statut',
+      progress: 'Campagnes — avancement',
       executedPct: 'Campagnes en cours — % exécuté',
       passPct: 'Campagnes en cours — % PASS',
       perDay: 'Campagnes — exécutions par jour',
@@ -113,7 +113,7 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
   en: {
     dashboard: 'Campaigns',
     queries: {
-      progress: 'Campaigns — progress by status',
+      progress: 'Campaigns — progress',
       executedPct: 'Campaigns in progress — % executed',
       passPct: 'Campaigns in progress — % PASS',
       perDay: 'Campaigns — executions per day',
@@ -129,12 +129,27 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
   },
 }
 
+/** GH65 — définition d'origine du widget « Avancement par campagne », pour la mise à niveau GH71. */
+export const GH65_PROGRESS_SQL =
+  "SELECT [campaignTitle], [status], COUNT(*) AS [count] FROM [campaign_entries] WHERE [campaignStatus] IN ('planned', 'in_progress') GROUP BY [campaignTitle], [status]"
+export const GH65_PROGRESS_MAPPING: WidgetFieldMapping = { category: 'campaignTitle', measure: 'count', series: 'status', stacked: true }
+
+/** GH71 — avancement de la définition des tests au résultat (étapes `campaign-progress.ts`). */
+export const PROGRESS_SQL =
+  "SELECT [campaignTitle], [progress], COUNT(*) AS [count] FROM [campaign_entries] WHERE [campaignStatus] IN ('planned', 'in_progress') GROUP BY [campaignTitle], [progress]"
+export const PROGRESS_MAPPING: WidgetFieldMapping = {
+  category: 'campaignTitle', measure: 'count', series: 'progress', stacked: true, preset: 'campaignProgress',
+}
+/** Titres d'origine (GH65) de la requête → titre actuel, appliqué à la mise à niveau. */
+const GH65_PROGRESS_TITLES: Record<string, string> = {
+  'Campagnes — avancement par statut': 'Campagnes — avancement',
+  'Campaigns — progress by status': 'Campaigns — progress',
+}
+/** Mises à niveau des seeds « Campagnes » déjà créés, mémorisées dans le marqueur. */
+const PROGRESS_UPGRADE = 'progressV2'
+
 export const CAMPAIGN_SEED_QUERIES: { key: CampaignSeedQueryKey; sqlText: string }[] = [
-  {
-    key: 'progress',
-    sqlText:
-      "SELECT [campaignTitle], [status], COUNT(*) AS [count] FROM [campaign_entries] WHERE [campaignStatus] IN ('planned', 'in_progress') GROUP BY [campaignTitle], [status]",
-  },
+  { key: 'progress', sqlText: PROGRESS_SQL },
   {
     key: 'executedPct',
     sqlText:
@@ -158,7 +173,7 @@ export const CAMPAIGN_SEED_QUERIES: { key: CampaignSeedQueryKey; sqlText: string
 ]
 
 const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; type: WidgetType; fieldMapping: WidgetFieldMapping; size: WidgetSize }[] = [
-  { queryKey: 'progress', type: 'bar', fieldMapping: { category: 'campaignTitle', measure: 'count', series: 'status', stacked: true }, size: 'lg' },
+  { queryKey: 'progress', type: 'bar', fieldMapping: PROGRESS_MAPPING, size: 'lg' },
   { queryKey: 'executedPct', type: 'kpi', fieldMapping: { measure: 'executedPct' }, size: 'sm' },
   { queryKey: 'passPct', type: 'kpi', fieldMapping: { measure: 'passPct' }, size: 'sm' },
   { queryKey: 'perDay', type: 'line', fieldMapping: { category: 'executedDay', measure: 'count' }, size: 'md' },
@@ -177,6 +192,8 @@ export interface CampaignsSeedMarker {
   dashboardId?: string
   widgets?: CampaignSeedQueryKey[]
   seededAt?: string
+  /** GH71 — mises à niveau déjà appliquées (ou sans objet, seed créé aux définitions récentes). */
+  upgrades?: string[]
 }
 
 /** Lecture/écriture du marqueur — injectable pour les tests ; par défaut, clé du `.{user}.pref`. */
@@ -264,6 +281,9 @@ export class DashboardSeedService {
       // ceux de l'utilisateur). Retenté au prochain `dashboards:list` (marqueur à reprise).
       await this.ensureCampaignsSeeded(repoPath, username, seedLocale(locale)).catch((err) => {
         console.warn(`[dashboard-seed] seed « Campagnes » non terminé (${repoPath}) :`, err instanceof Error ? err.message : String(err))
+      })
+      await this.upgradeCampaignsSeed(repoPath, username).catch((err) => {
+        console.warn(`[dashboard-seed] mise à niveau « Campagnes » non terminée (${repoPath}) :`, err instanceof Error ? err.message : String(err))
       })
     })().finally(() => {
       this.inFlightSeeds.delete(repoPath)
@@ -389,6 +409,50 @@ export class DashboardSeedService {
       save()
     }
 
-    this.campaignsMarker.write(repoPath, username, { state: 'done', seededAt: new Date().toISOString() })
+    // GH71 — ids conservés (mises à niveau futures). Pas de marque de mise à niveau ici : un seed GH65
+    // interrompu puis repris peut garder la requête ou le widget d'origine — `upgradeCampaignsSeed`,
+    // appelé ensuite, les remet à niveau (sans effet sur un seed créé aux définitions récentes).
+    this.campaignsMarker.write(repoPath, username, { state: 'done', seededAt: new Date().toISOString(), queries, dashboardId })
   }
+
+  /**
+   * GH71 — met à niveau le widget « Avancement par campagne » d'un seed GH65 déjà créé : étapes
+   * d'avancement (`progress`, préréglage `campaignProgress`) au lieu du statut d'entrée. Une fois
+   * par utilisateur et par repo. Le marqueur `done` des seeds GH65 n'ayant pas les ids, la requête est
+   * retrouvée par son SQL exact (donc non modifiée) parmi les requêtes privées ; elle n'est mise à
+   * niveau que si chaque widget qui l'utilise a le mapping d'origine ou le nouveau — sinon un widget
+   * personnalisé (qui lit `status`) se retrouverait vide. Requête modifiée ou partagée : rien n'est
+   * touché. Reprise sans perte après un échec en cours de route : une requête déjà passée au nouveau
+   * SQL est reconnue aussi, et seuls les widgets restés à l'ancien mapping sont mis à jour.
+   */
+  private async upgradeCampaignsSeed(repoPath: string, username: string): Promise<void> {
+    const marker = this.campaignsMarker.read(repoPath, username)
+    if (marker?.state !== 'done' || marker.upgrades?.includes(PROGRESS_UPGRADE)) return
+
+    const [queries, dashboards] = await Promise.all([
+      this.savedQueries.list(repoPath, username),
+      this.dashboards.list(repoPath, username),
+    ])
+    const hasMapping = (w: Widget, m: WidgetFieldMapping) => w.type === 'bar' && sameMapping(w.fieldMapping, m)
+    for (const q of queries) {
+      if (q.scope !== 'private' || q.mode !== 'sql' || (q.sqlText !== GH65_PROGRESS_SQL && q.sqlText !== PROGRESS_SQL)) continue
+      const uses = dashboards.flatMap((d) => d.widgets.filter((w) => w.queryId === q.id).map((w) => ({ d, w })))
+      if (uses.some(({ w }) => !hasMapping(w, GH65_PROGRESS_MAPPING) && !hasMapping(w, PROGRESS_MAPPING))) continue
+      if (q.sqlText === GH65_PROGRESS_SQL) {
+        const title = GH65_PROGRESS_TITLES[q.title]
+        await this.savedQueries.update(repoPath, username, q.id, { sqlText: PROGRESS_SQL, ...(title && { title }) })
+      }
+      for (const { d, w } of uses) {
+        if (hasMapping(w, GH65_PROGRESS_MAPPING)) await this.dashboards.updateWidget(repoPath, username, d.id, w.id, { fieldMapping: PROGRESS_MAPPING })
+      }
+    }
+    this.campaignsMarker.write(repoPath, username, { ...marker, upgrades: [...(marker.upgrades ?? []), PROGRESS_UPGRADE] })
+  }
+}
+
+/** Même mapping, ordre des clés et clés `undefined` indifférents. */
+function sameMapping(a: WidgetFieldMapping, b: WidgetFieldMapping): boolean {
+  const norm = (m: WidgetFieldMapping) =>
+    JSON.stringify(Object.entries(m).filter(([, v]) => v !== undefined).sort(([x], [y]) => x.localeCompare(y)))
+  return norm(a) === norm(b)
 }

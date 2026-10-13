@@ -96,7 +96,8 @@ type MappingKey = keyof WidgetFieldMapping
 
 /** Mapping requis / autorisé par type de widget (GH18-design §5). */
 const MAPPING_RULES: Record<WidgetType, { required: MappingKey[]; allowed: MappingKey[] }> = {
-  bar: { required: ['category', 'measure'], allowed: ['category', 'measure', 'series', 'stacked'] },
+  // GH71 — `preset` : présentation des séries (étapes d'avancement de campagne).
+  bar: { required: ['category', 'measure'], allowed: ['category', 'measure', 'series', 'stacked', 'preset'] },
   line: { required: ['category', 'measure'], allowed: ['category', 'measure', 'series'] },
   pie: { required: ['category', 'measure'], allowed: ['category', 'measure'] },
   kpi: { required: ['measure'], allowed: ['measure'] },
@@ -127,6 +128,7 @@ export function pruneMapping(type: WidgetType, m: WidgetFieldMapping): WidgetFie
     if (isSet(m, key)) (out as Record<string, unknown>)[key] = m[key]
   }
   if (out.stacked && !isSet(out, 'series')) delete out.stacked
+  if (out.preset && !isSet(out, 'series')) delete out.preset
   return out
 }
 
@@ -172,6 +174,9 @@ export function validateWidget(
   }
   if (widget.type === 'bar' && m.stacked === true && !isSet(m, 'series')) {
     return fail('INVALID_MAPPING', 'Widget "bar" : stacked exige une series.')
+  }
+  if (widget.type === 'bar' && m.preset !== undefined && !isSet(m, 'series')) {
+    return fail('INVALID_MAPPING', 'Widget "bar" : preset exige une series.')
   }
 
   const warnings: SuiviWarning[] = []

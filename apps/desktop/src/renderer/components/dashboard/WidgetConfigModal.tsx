@@ -210,7 +210,7 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
                   {previewError instanceof Error ? previewError.message : t('dashboard.widgetModal.queryExecutionError')}
                 </div>
               ) : (
-                <WidgetRenderer type={type} result={result ?? null} fieldMapping={fieldMapping} />
+                <WidgetRenderer type={type} result={result ?? null} fieldMapping={fieldMapping} repoPath={repoPath} />
               )}
             </div>
           </div>
@@ -268,7 +268,7 @@ function ColumnSelect({
 // Clés de mapping que le formulaire propose pour chaque type : celles d'un ancien type (le mapping
 // est conservé quand on change de type) ne sont pas enregistrées (GH69 — ex. `label` d'une matrice).
 const APPLICABLE_KEYS: Record<WidgetType, (keyof WidgetFieldMapping)[]> = {
-  bar: ['category', 'measure', 'series', 'stacked'],
+  bar: ['category', 'measure', 'series', 'stacked', 'preset'],
   line: ['category', 'measure', 'series'],
   pie: ['category', 'measure'],
   kpi: ['measure'],
@@ -389,6 +389,20 @@ function FieldMappingForm({
             onChange={(e) => onChange({ stacked: e.target.checked })}
           />
           {t('dashboard.widgetModal.stackedLabel')}
+        </label>
+      )}
+      {/* GH71 — séries présentées comme étapes d'avancement de campagne (ordre, libellés, couleurs). */}
+      {type === 'bar' && value.series && (
+        <label className="flex items-center gap-2 text-xs text-ink-2">
+          {t('dashboard.widgetModal.presetLabel')}
+          <select
+            className="input-field text-xs"
+            value={value.preset ?? ''}
+            onChange={(e) => onChange({ preset: e.target.value === 'campaignProgress' ? 'campaignProgress' : undefined })}
+          >
+            <option value="">{t('dashboard.widgetModal.presetStandard')}</option>
+            <option value="campaignProgress">{t('dashboard.widgetModal.presetCampaignProgress')}</option>
+          </select>
         </label>
       )}
     </div>

@@ -37,8 +37,9 @@ test('2.1 — clic sur le segment FAIL de la campagne → ses entrées FAIL', as
   await openCampaignsDashboard()
   // Un calque `g.recharts-bar` par série, dans l'ordre de la légende.
   const bars = widget('Avancement par campagne')
-  await expect(bars.locator('.recharts-legend-item').filter({ hasText: /^FAIL$/ })).toBeVisible()
-  const series = await bars.locator('.recharts-legend-item').evaluateAll(els => els.findIndex(e => e.textContent?.trim() === 'FAIL'))
+  // GH71 — séries présentées comme étapes d'avancement : « FAIL » s'affiche « Échoué ».
+  await expect(bars.locator('.recharts-legend-item').filter({ hasText: /^Échoué$/ })).toBeVisible()
+  const series = await bars.locator('.recharts-legend-item').evaluateAll(els => els.findIndex(e => e.textContent?.trim() === 'Échoué'))
   expect(series).toBeGreaterThanOrEqual(0)
   const segments = bars.locator('g.recharts-bar').nth(series).locator('path.recharts-rectangle')
   // Barres animées au montage (recharts) : attendre qu'elles soient dessinées.
@@ -75,22 +76,23 @@ test('2.4 / 2.7 — KPI « % exécuté » → toutes les entrées ; ligne pendin
   const row = dialog().locator('tbody tr').filter({ hasText: campaign.id }).filter({ hasText: pending })
   await expect(row).toHaveCount(1)
   await row.click()
-  await expect(s.page).toHaveURL(new RegExp(`/campaign/${campaign.id}\\?.*status=pending`))
-  await expect(s.page.getByRole('button', { name: /1 pending/ })).toHaveAttribute('aria-pressed', 'true')
+  // GH71 — filtrée sur l'étape d'avancement de l'entrée (test approuvé non exécuté : « Prêt à exécuter »).
+  await expect(s.page).toHaveURL(new RegExp(`/campaign/${campaign.id}\\?.*progress=ready`))
+  await expect(s.page.getByRole('button', { name: /1 Prêt à exécuter/ })).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('2.9 — pastilles de statut : filtre, re-clic pour retirer', async () => {
-  // Page de la campagne ouverte par le test précédent, filtrée sur `pending`.
-  const fail = s.page.getByRole('button', { name: /2 FAIL/ })
+  // Page de la campagne ouverte par le test précédent, filtrée sur `ready` (GH71 : pastilles par étape).
+  const fail = s.page.getByRole('button', { name: /2 Échoué/ })
   await fail.click()
-  await expect(s.page).toHaveURL(/status=FAIL/)
+  await expect(s.page).toHaveURL(/progress=FAIL/)
   await expect(fail).toHaveAttribute('aria-pressed', 'true')
-  await expect(s.page.getByRole('button', { name: /1 pending/ })).toHaveAttribute('aria-pressed', 'false')
+  await expect(s.page.getByRole('button', { name: /1 Prêt à exécuter/ })).toHaveAttribute('aria-pressed', 'false')
   // La liste affiche l'ID du test de chaque entrée.
   await expect(s.page.getByText(campaign.runs[3].testCaseId, { exact: true })).toHaveCount(0)
   await expect(s.page.getByText(campaign.runs[1].testCaseId, { exact: true })).toBeVisible()
   await fail.click()
-  await expect(s.page).not.toHaveURL(/status=/)
+  await expect(s.page).not.toHaveURL(/progress=/)
   await expect(s.page.getByText(campaign.runs[3].testCaseId, { exact: true })).toBeVisible()
 })
 

@@ -25,6 +25,17 @@
     --chart-series-6: 227 73 72;
     --chart-series-7: 232 123 164;
     --chart-series-8: 235 104 52;
+    /* GH71 — étapes d'avancement de campagne : préparation (gris, du plus foncé au plus clair),
+       prêt (bleu), puis résultats (jaune, orange, rouge, vert). */
+    --chart-progress-prep-1: 71 85 105;
+    --chart-progress-prep-2: 100 116 139;
+    --chart-progress-prep-3: 148 163 184;
+    --chart-progress-prep-4: 203 213 225;
+    --chart-progress-ready: 37 99 235;
+    --chart-progress-incomplete: 234 179 8;
+    --chart-progress-blocked: 234 88 12;
+    --chart-progress-fail: 220 38 38;
+    --chart-progress-pass: 22 163 74;
     --status-neutral: 51 65 85;
     --status-neutral-bg: 241 245 249;
     --status-neutral-border: 203 213 225;
@@ -82,6 +93,15 @@
     --chart-series-6: 230 103 103;
     --chart-series-7: 213 81 129;
     --chart-series-8: 217 89 38;
+    --chart-progress-prep-1: 203 213 225;
+    --chart-progress-prep-2: 148 163 184;
+    --chart-progress-prep-3: 100 116 139;
+    --chart-progress-prep-4: 71 85 105;
+    --chart-progress-ready: 96 165 250;
+    --chart-progress-incomplete: 250 204 21;
+    --chart-progress-blocked: 251 146 60;
+    --chart-progress-fail: 248 113 113;
+    --chart-progress-pass: 74 222 128;
     --status-neutral: 203 213 225;
     --status-neutral-bg: 51 65 85;
     --status-neutral-border: 71 85 105;

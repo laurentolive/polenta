@@ -20,12 +20,14 @@ interface Props {
   onSelect?: (values: Record<string, unknown>) => void
   /** GH65 — ouverture de l'objet d'une ligne (widget table) ; GH69 — d'un en-tête de matrice (`{ id }`). */
   onRowClick?: (row: Record<string, unknown>) => void
+  /** GH71 — repo du dashboard (schéma pour le préréglage `campaignProgress` du widget barre). */
+  repoPath?: string
 }
 
-export function WidgetRenderer({ type, result, fieldMapping, onSelect, onRowClick }: Props) {
+export function WidgetRenderer({ type, result, fieldMapping, onSelect, onRowClick, repoPath }: Props) {
   switch (type) {
     case 'bar':
-      return <BarWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} />
+      return <BarWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} repoPath={repoPath} />
     case 'pie':
       return <PieWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} />
     case 'line':

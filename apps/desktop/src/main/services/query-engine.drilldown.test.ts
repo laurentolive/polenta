@@ -80,7 +80,7 @@ const ids = (rows: Array<Record<string, unknown>>, key = 'id') => rows.map(r => 
 describe('GH65 — drillDown', () => {
   it('2.1 — segment FAIL de la barre empilée du seed (SQL simple) → entrées FAIL de la campagne', async () => {
     const progress = CAMPAIGN_SEED_QUERIES.find(q => q.key === 'progress')!.sqlText
-    const r = await engine().drillDown(ROOT, sql(progress), { values: { campaignTitle: 'A', status: 'FAIL' } }, '/ws')
+    const r = await engine().drillDown(ROOT, sql(progress), { values: { campaignTitle: 'A', progress: 'FAIL' } }, '/ws')
     expect(r.mode).toBe('source')
     expect(ids(r.rows, 'entryId')).toEqual(['TEST-0002', 'TEST-0003'])
     expect(r.columns.map(c => c.name)).toContain('executedAt')
@@ -201,9 +201,9 @@ describe('GH65 — resolveRowTarget', () => {
       .toEqual({ kind: 'campaign-run', campaignId: 'CAMP-0001', entryId: 'TEST-0002', repoPath: COMP })
   })
 
-  it('2.7 — entrée pending → page de campagne filtrée', async () => {
+  it('2.7 — entrée pending → page de campagne filtrée (GH71 : sur son étape d’avancement)', async () => {
     expect(await e.resolveRowTarget(ROOT, { campaignId: 'CAMP-0001', entryId: 'TEST-0004' }, '/ws'))
-      .toEqual({ kind: 'campaign', id: 'CAMP-0001', repoPath: COMP, status: 'pending' })
+      .toEqual({ kind: 'campaign', id: 'CAMP-0001', repoPath: COMP, progress: 'ready' })
   })
 
   it('campagne seule (+ statut valide), statut inconnu ignoré', async () => {

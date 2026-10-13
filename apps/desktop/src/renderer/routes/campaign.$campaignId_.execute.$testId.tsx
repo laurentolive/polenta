@@ -15,7 +15,7 @@ import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
 import { useProjectSchema, isTestApproved, testStatusLabel } from '../hooks/useProjectSchema'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import type { TestRunResult, StepResultValue } from '@polenta/types'
+import type { TestCase, TestRunResult, StepResultValue } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId_/execute/$testId')({
   component: ExecuteTestPage,
@@ -104,7 +104,16 @@ function ExecuteTestPage() {
   // T171 — instance T171 : texte brut, les références sont rendues par FrozenParamRefProvider.
   // Instance antérieure (T97) : substitution d'origine en amont, code Markdown compris.
   const runText = (text: string) => (isT171Run(entry) ? text : substituteRunParams(text, entry))
-  const { testCase, isLoading: loadingTest } = useResolvedCampaignTest(repoPath, testCaseId, entry?.testSnapshot)
+  const { testCase: currentTest, isLoading: loadingTest } = useResolvedCampaignTest(repoPath, testCaseId, entry?.testSnapshot)
+  // GH71 (correctif GH68) — la version affichée est figée pour la session d'exécution : si la copie
+  // change pendant la saisie (export Excel, resynchronisation lancée ailleurs), la saisie n'est pas
+  // réinitialisée ; un bandeau propose d'afficher la nouvelle version (ce qui, lui, la réinitialise).
+  const [lockedTest, setLockedTest] = useState<TestCase>()
+  useEffect(() => {
+    if (!refreshing && currentTest && !lockedTest) setLockedTest(currentTest)
+  }, [refreshing, currentTest, lockedTest])
+  const testCase = lockedTest ?? currentTest
+  const testChanged = !!lockedTest && !!currentTest && JSON.stringify(lockedTest) !== JSON.stringify(currentTest)
 
   const sortedSteps = [...(testCase?.steps ?? [])].sort((a, b) => a.order - b.order)
 
@@ -227,6 +236,15 @@ function ExecuteTestPage() {
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+            {testChanged && (
+              <div className="rounded border border-status-warning-border bg-status-warning-bg px-3 py-2 text-xs text-status-warning flex items-center gap-2" data-testid="execute-test-changed">
+                <AlertTriangle size={13} className="shrink-0" />
+                <span className="flex-1">{t('campaignPage.executeTestChanged')}</span>
+                <button type="button" className="underline shrink-0" onClick={() => setLockedTest(currentTest)}>
+                  {t('campaignPage.executeTestChangedReload')}
+                </button>
+              </div>
+            )}
             {notApproved && (
               <div className="rounded border border-status-warning-border bg-status-warning-bg px-3 py-2 text-xs text-status-warning flex items-center gap-1.5">
                 <AlertTriangle size={13} className="shrink-0" />

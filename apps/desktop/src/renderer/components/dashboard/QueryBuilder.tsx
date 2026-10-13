@@ -72,7 +72,8 @@ const SYSTEM_FIELD_DEFS: { name: string; labelKey: string; type: SchemaField['ty
  *  partagées avec l'allowlist du main ; libellés `queryPage.builder.campaignFields.*`. Non proposées :
  *  `executed` (booléen — la saisie texte du builder ne le compare jamais ; `status ≠ pending` suffit),
  *  les doublons techniques d'`objectTypeRef` et `runId`. Toutes restent accessibles en SQL. */
-const CAMPAIGN_BUILDER_HIDDEN = new Set<CampaignEntryField>(['executed', 'objectTypeRef', 'campaignObjectTypeRef', 'runId'])
+// GH71 — `progressRank` : rang technique, pour trier en SQL.
+const CAMPAIGN_BUILDER_HIDDEN = new Set<CampaignEntryField>(['executed', 'objectTypeRef', 'campaignObjectTypeRef', 'runId', 'progressRank'])
 const CAMPAIGN_SYSTEM_FIELD_DEFS: { name: CampaignEntryField; type: SchemaField['type'] }[] = CAMPAIGN_ENTRY_FIELDS
   .filter((name) => !CAMPAIGN_BUILDER_HIDDEN.has(name))
   .map((name) => ({ name, type: name === 'executedAt' || name === 'campaignCreatedAt' ? 'date' : 'text' }))

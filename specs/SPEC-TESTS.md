@@ -630,9 +630,13 @@ c'est la version affichée/exportée qui est enregistrée, pas celle relue au mo
 Une copie resynchronisée sur une version approuvée cesse d'être resynchronisable ; une instance
 ajoutée approuvée garde le comportement T49. Signalement :
 - liste de la campagne : pastille « Non approuvé » (statut jugé sur l'état live pour une instance
-  resynchronisable, sinon sur la copie), bandeau « N instance(s) à exécuter… » pour les `pending` ;
+  resynchronisable **d'une campagne ouverte** — GH71 —, sinon sur la copie), bandeau « N instance(s)
+  à exécuter… » pour les `pending` ;
 - page d'exécution : bandeau d'avertissement, et confirmation « Exécuter quand même » à la
-  première saisie (instance `pending`) — pas de blocage ;
+  première saisie (instance `pending`) — pas de blocage. La version affichée est figée pour la
+  session d'exécution (GH71) : si la copie change pendant la saisie (export Excel, resynchronisation
+  lancée ailleurs), la saisie n'est pas réinitialisée ; un bandeau le signale et propose d'afficher
+  la nouvelle version (ce qui efface la saisie) ;
 - aperçu d'import Excel : avertissement `test_not_approved` (§4.5).
 Le passage `planned` → `in_progress` n'est pas conditionné au statut des tests. La génération
 depuis l'analyse d'impact (T46) envoie `testCaseFilter: 'include_draft'`.
@@ -655,13 +659,24 @@ Métriques calculées à la volée depuis l'index mémoire :
 |----------|--------|
 | Taux d'exécution | `exécutés / total` (statut de `runs` différent de `pending`) |
 | Taux de succès | `PASS / exécutés` |
-| Répartition | Nombre de PASS / FAIL / BLOCKED / INCOMPLETE / pending |
+| Répartition | Nombre d'entrées par **étape d'avancement** (GH71) : une étape par statut de test non approuvé présent (`prep:<statut>`), Prêt à exécuter (`ready`), Incomplet, Bloqué, Échoué, Passé |
 | Couverture req. | Exigences couvertes par au moins un PASS dans cette campagne |
 
-**Filtre par statut (GH65)** : les pastilles de répartition sont des boutons bascule — clic =
-liste des entrées réduite à ce statut, re-clic = retrait (lien « Filtre : X ✕ »). Filtre porté par
-le paramètre d'URL optionnel `status` de `/campaign/$campaignId` (valeur hors liste ignorée), posé
-aussi par la vue Suivi (ligne d'entrée `pending` → page filtrée, SPEC-DASHBOARDS §2.2). Le suivi
+**Étapes d'avancement (GH71)** : l'étape d'une entrée suit la règle de la table `campaign_entries`
+(SPEC-DASHBOARDS §2.1 — `@polenta/types/campaign-progress.ts`) : résultat si elle est exécutée,
+sinon `ready` si le test retenu (règle GH68, campagne ouverte) est approuvé, sinon
+`prep:<statut>`. Les pastilles de répartition remplacent « En attente » par une pastille par étape
+de préparation présente puis « Prêt à exécuter », dans l'ordre canonique (préparation dans l'ordre du
+schéma, prêt, incomplet, bloqué, échoué, passé — même ordre et mêmes libellés que le widget
+« Avancement par campagne », SPEC-DASHBOARDS §4.1b). Une étape sans entrée n'a pas de pastille
+(sauf l'étape filtrée).
+
+**Filtre (GH65, GH71)** : les pastilles sont des boutons bascule — clic = liste des entrées réduite
+à cette étape, re-clic = retrait (lien « Filtre : X ✕ »). Filtre porté par le paramètre d'URL
+optionnel `progress` de `/campaign/$campaignId` (clé d'étape ; valeur invalide ignorée), posé aussi
+par la vue Suivi (ligne d'entrée non exécutée → page filtrée sur son étape, SPEC-DASHBOARDS §2.2).
+Le paramètre `status` (GH65) reste accepté pour les liens existants — `status=pending` = toutes les
+entrées non exécutées — ; `progress` l'emporte s'ils sont présents tous les deux. Le suivi
 multi-campagnes (avancement, % exécuté, % PASS, exécutions par jour) vit dans la vue Suivi :
 table `campaign_entries` et dashboard « Campagnes » (SPEC-DASHBOARDS §2.1, §5.1b).
 

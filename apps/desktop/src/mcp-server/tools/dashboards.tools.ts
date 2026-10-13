@@ -44,6 +44,7 @@ const fieldMappingSchema = z
     series: z.string().optional().describe('bar/line : colonne de série (multi-série) ; matrix : colonne des colonnes'),
     label: z.string().optional().describe('matrix : libellé affiché à côté de la valeur de ligne (ex. testTitle)'),
     stacked: z.boolean().optional().describe('bar avec series : empiler les séries'),
+    preset: z.enum(['campaignProgress']).optional().describe('bar avec series : séries présentées comme étapes d’avancement de campagne (colonne progress de campaign_entries : ordre, libellés, couleurs)'),
     columns: z.array(z.string()).optional().describe('table : colonnes affichées (absent = toutes)'),
   })
   .strict()

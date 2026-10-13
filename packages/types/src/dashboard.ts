@@ -18,6 +18,8 @@ export const CAMPAIGN_ENTRY_FIELDS = [
   'baselineRef', 'campaignCreatedAt', 'level', 'campaignComponent', 'component',
   'entryId', 'testCaseId', 'requirementId', 'testTitle',
   'status', 'executed', 'executedAt', 'executedDay', 'executedBy', 'runId',
+  // GH71 — étape d'avancement (campaign-progress.ts), son rang canonique, statut du test retenu.
+  'progress', 'progressRank', 'testStatus',
 ] as const
 
 export type CampaignEntryField = (typeof CAMPAIGN_ENTRY_FIELDS)[number]
@@ -102,7 +104,7 @@ export interface DrillDownResult extends QueryResult {
 /** GH65 — objet à ouvrir pour une ligne de résultat (repo où il vit, résolu côté main). */
 export type RowTarget =
   | { kind: 'requirement' | 'test'; id: string; repoPath: string }
-  | { kind: 'campaign'; id: string; repoPath: string; status?: string }
+  | { kind: 'campaign'; id: string; repoPath: string; status?: string; /** GH71 — étape d'avancement */ progress?: string }
   | { kind: 'campaign-run'; campaignId: string; entryId: string; repoPath: string }
 
 // ─── Widgets & dashboards ─────────────────────────────────────────────────────
@@ -120,6 +122,9 @@ export interface WidgetFieldMapping {
   label?: string
   /** bar only, ignoré si `series` absent — empile les séries au lieu de les grouper. */
   stacked?: boolean
+  /** GH71 — bar avec `series` : présentation des séries comme étapes d'avancement de campagne
+   *  (ordre canonique, libellés du schéma, couleurs sémantiques). Absent : rendu standard. */
+  preset?: 'campaignProgress'
   columns?: string[]   // table
 }
 

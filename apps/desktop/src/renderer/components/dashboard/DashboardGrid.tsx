@@ -110,6 +110,7 @@ function WidgetCard({
             type={widget.type}
             result={result ?? null}
             fieldMapping={widget.fieldMapping}
+            repoPath={repoPath}
             onSelect={interactive ? setDrillValues : undefined}
             onRowClick={interactive ? (row) => void openRow(row) : undefined}
           />

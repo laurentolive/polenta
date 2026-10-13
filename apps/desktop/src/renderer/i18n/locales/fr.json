@@ -978,7 +978,12 @@
       "categoryLabel": "Catégorie",
       "seriesLabel": "Série (optionnel, multi-courbe)",
       "noneOption": "— aucune —",
-      "stackedLabel": "Empiler les barres"
+      "stackedLabel": "Empiler les barres",
+      "typeMatrix": "Matrice",
+      "matrixRowsLabel": "Lignes",
+      "matrixRowLabelLabel": "Libellé de ligne (optionnel)",
+      "matrixColumnsLabel": "Colonnes",
+      "matrixValueLabel": "Valeur des cellules"
     }
   },
   "queryPage": {
@@ -1016,6 +1021,7 @@
         "campaignTitle": "Campagne (titre)",
         "campaignStatus": "Campagne (statut)",
         "baselineRef": "Baseline",
+        "campaignCreatedAt": "Campagne (créée le)",
         "level": "Niveau",
         "campaignComponent": "Composant ciblé",
         "component": "Composant",
@@ -1043,7 +1049,8 @@
     "widget": {
       "chooseCategoryAndMeasure": "Choisissez une catégorie et une mesure.",
       "chooseMeasure": "Choisissez une mesure.",
-      "noData": "Aucune donnée pour cette requête."
+      "noData": "Aucune donnée pour cette requête.",
+      "chooseMatrixFields": "Choisissez les lignes, les colonnes et la valeur."
     },
     "resultTable": {
       "booleanTrue": "oui",

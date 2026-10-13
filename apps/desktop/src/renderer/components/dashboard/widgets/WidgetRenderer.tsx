@@ -10,6 +10,7 @@ import { PieWidget } from './PieWidget'
 import { LineWidget } from './LineWidget'
 import { KpiWidget } from './KpiWidget'
 import { TableWidget } from './TableWidget'
+import { MatrixWidget } from './MatrixWidget'
 
 interface Props {
   type: WidgetType
@@ -17,7 +18,7 @@ interface Props {
   fieldMapping: WidgetFieldMapping
   /** GH65 — drill-down (barre, part, point, KPI) ; absent (aperçu, impression) : rien de cliquable. */
   onSelect?: (values: Record<string, unknown>) => void
-  /** GH65 — ouverture de l'objet d'une ligne (widget table). */
+  /** GH65 — ouverture de l'objet d'une ligne (widget table) ; GH69 — d'un en-tête de matrice (`{ id }`). */
   onRowClick?: (row: Record<string, unknown>) => void
 }
 
@@ -33,5 +34,7 @@ export function WidgetRenderer({ type, result, fieldMapping, onSelect, onRowClic
       return <KpiWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} />
     case 'table':
       return <TableWidget result={result} fieldMapping={fieldMapping} onRowClick={onRowClick} />
+    case 'matrix':
+      return <MatrixWidget result={result} fieldMapping={fieldMapping} onSelect={onSelect} onRowClick={onRowClick} />
   }
 }

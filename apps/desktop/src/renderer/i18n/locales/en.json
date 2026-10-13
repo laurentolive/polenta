@@ -978,7 +978,12 @@
       "categoryLabel": "Category",
       "seriesLabel": "Series (optional, multi-line)",
       "noneOption": "— none —",
-      "stackedLabel": "Stack bars"
+      "stackedLabel": "Stack bars",
+      "typeMatrix": "Matrix",
+      "matrixRowsLabel": "Rows",
+      "matrixRowLabelLabel": "Row label (optional)",
+      "matrixColumnsLabel": "Columns",
+      "matrixValueLabel": "Cell value"
     }
   },
   "queryPage": {
@@ -1016,6 +1021,7 @@
         "campaignTitle": "Campaign (title)",
         "campaignStatus": "Campaign (status)",
         "baselineRef": "Baseline",
+        "campaignCreatedAt": "Campaign (created at)",
         "level": "Level",
         "campaignComponent": "Target component",
         "component": "Component",
@@ -1043,7 +1049,8 @@
     "widget": {
       "chooseCategoryAndMeasure": "Choose a category and a measure.",
       "chooseMeasure": "Choose a measure.",
-      "noData": "No data for this query."
+      "noData": "No data for this query.",
+      "chooseMatrixFields": "Choose the rows, the columns and the value."
     },
     "resultTable": {
       "booleanTrue": "yes",

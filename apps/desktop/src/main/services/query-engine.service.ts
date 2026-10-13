@@ -327,6 +327,8 @@ function flattenCampaignEntry(c: TestCampaign, run: CampaignTestRun, component: 
     objectTypeRef: c.objectTypeRef ?? null,
     campaignObjectTypeRef: c.objectTypeRef ?? null,
     baselineRef: c.baselineRef ?? null,
+    // GH69 — ordre chronologique des colonnes du widget matrice (`ORDER BY campaignCreatedAt`).
+    campaignCreatedAt: c.createdAt ?? null,
     level: c.level ?? null,
     campaignComponent: c.component ?? null,
     component,

@@ -414,7 +414,8 @@ avant chaque exécution (pas de watcher dans ce process).
 **Règles widget** (dans l'ordre) : `DASHBOARD_NOT_FOUND` → `QUERY_NOT_FOUND` →
 `PRIVATE_QUERY_IN_SHARED_DASHBOARD` → exécution de la requête → `MISSING_MAPPING` /
 `INVALID_MAPPING` (bar/line/pie : `category`+`measure` ; `series` bar/line ; `stacked` bar
-avec `series` ; kpi : `measure` ; table : `columns` optionnel ; clé inconnue rejetée par
+avec `series` ; kpi : `measure` ; table : `columns` optionnel ; matrix (GH69) : `category`
+(lignes) + `series` (colonnes) + `measure` (valeur), `label` optionnel ; clé inconnue rejetée par
 zod) → `UNKNOWN_COLUMN` (résultat vide : contrôle sauté, `warnings: COLUMNS_UNVERIFIED`) →
 `DUPLICATE_WIDGET` (même requête, type et mapping normalisé). La cohérence type ↔ forme du
 résultat n'est pas contrôlée au-delà (`SPEC-DASHBOARDS.md` §4).

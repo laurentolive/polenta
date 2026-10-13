@@ -75,7 +75,7 @@ const SYSTEM_FIELD_DEFS: { name: string; labelKey: string; type: SchemaField['ty
 const CAMPAIGN_BUILDER_HIDDEN = new Set<CampaignEntryField>(['executed', 'objectTypeRef', 'campaignObjectTypeRef', 'runId'])
 const CAMPAIGN_SYSTEM_FIELD_DEFS: { name: CampaignEntryField; type: SchemaField['type'] }[] = CAMPAIGN_ENTRY_FIELDS
   .filter((name) => !CAMPAIGN_BUILDER_HIDDEN.has(name))
-  .map((name) => ({ name, type: name === 'executedAt' ? 'date' : 'text' }))
+  .map((name) => ({ name, type: name === 'executedAt' || name === 'campaignCreatedAt' ? 'date' : 'text' }))
 
 const OPERATORS: { value: BuilderCondition['operator']; labelKey: string | null; symbol: string | null }[] = [
   { value: '=', labelKey: null, symbol: '=' },

@@ -8,6 +8,7 @@ import type { UpdateSavedQueryDto } from '../../main/services/saved-queries.serv
 import {
   findDuplicateTitle,
   mappingColumns,
+  pruneMapping,
   type SuiviWarning,
 } from '../../main/services/suivi-validation.util'
 import {
@@ -108,7 +109,7 @@ async function brokenWidgetWarnings(c: McpContainer, queryId: string, columns: s
     const dashboard = await c.dashboards.get(c.repoPath, username, dashboardId)
     for (const w of dashboard?.widgets ?? []) {
       if (w.queryId !== queryId) continue
-      const missing = mappingColumns(w.fieldMapping).filter((col) => !available.has(col))
+      const missing = mappingColumns(pruneMapping(w.type, w.fieldMapping ?? {})).filter((col) => !available.has(col))
       if (missing.length === 0) continue
       warnings.push({
         code: 'WIDGET_MAPPING_BROKEN',

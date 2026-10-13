@@ -10,7 +10,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, Hash, LineChart, PieChart, Table2, X } from 'lucide-react'
+import { BarChart3, Grid3x3, Hash, LineChart, PieChart, Table2, X } from 'lucide-react'
 import type { QueryScope, SavedQuery, Widget, WidgetFieldMapping, WidgetSize, WidgetType } from '@polenta/types'
 import { useQueryResult } from '../../hooks/useQueryResult'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
@@ -48,6 +48,7 @@ const TYPE_OPTIONS: { value: WidgetType; labelKey: string; icon: typeof BarChart
   { value: 'line', labelKey: 'dashboard.widgetModal.typeLine', icon: LineChart },
   { value: 'kpi', labelKey: 'dashboard.widgetModal.typeKpi', icon: Hash },
   { value: 'table', labelKey: 'dashboard.widgetModal.typeTable', icon: Table2 },
+  { value: 'matrix', labelKey: 'dashboard.widgetModal.typeMatrix', icon: Grid3x3 },
 ]
 
 const SIZE_OPTIONS: { value: WidgetSize; labelKey: string }[] = [
@@ -93,13 +94,15 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
       ? !!fieldMapping.measure
       : type === 'table'
         ? true
-        : !!fieldMapping.category && !!fieldMapping.measure
+        : type === 'matrix'
+          ? !!fieldMapping.category && !!fieldMapping.series && !!fieldMapping.measure
+          : !!fieldMapping.category && !!fieldMapping.measure
 
   const canSave = title.trim().length > 0 && !!queryId && mappingComplete
 
   function handleSave() {
     if (!canSave) return
-    onSave({ title: title.trim(), queryId, type, fieldMapping, size })
+    onSave({ title: title.trim(), queryId, type, fieldMapping: applicableMapping(type, fieldMapping), size })
   }
 
   useModalHotkeys(onClose, handleSave, saving)
@@ -152,7 +155,7 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
 
             <div>
               <label className="text-xs text-ink-3 block mb-1.5">{t('dashboard.widgetModal.widgetTypeLabel')}</label>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-3 gap-1.5">
                 {TYPE_OPTIONS.map(({ value, labelKey, icon: Icon }) => (
                   <button
                     key={value}
@@ -262,6 +265,25 @@ function ColumnSelect({
   )
 }
 
+// Clés de mapping que le formulaire propose pour chaque type : celles d'un ancien type (le mapping
+// est conservé quand on change de type) ne sont pas enregistrées (GH69 — ex. `label` d'une matrice).
+const APPLICABLE_KEYS: Record<WidgetType, (keyof WidgetFieldMapping)[]> = {
+  bar: ['category', 'measure', 'series', 'stacked'],
+  line: ['category', 'measure', 'series'],
+  pie: ['category', 'measure'],
+  kpi: ['measure'],
+  table: ['columns'],
+  matrix: ['category', 'label', 'series', 'measure'],
+}
+
+function applicableMapping(type: WidgetType, m: WidgetFieldMapping): WidgetFieldMapping {
+  const out: WidgetFieldMapping = {}
+  for (const key of APPLICABLE_KEYS[type]) {
+    if (m[key] !== undefined) (out as Record<string, unknown>)[key] = m[key]
+  }
+  return out
+}
+
 function FieldMappingForm({
   type,
   columns,
@@ -310,6 +332,26 @@ function FieldMappingForm({
         placeholder={t('dashboard.widgetModal.selectPlaceholder')}
         onChange={(measure) => onChange({ measure })}
       />
+    )
+  }
+
+  if (type === 'matrix') {
+    const select = (key: 'category' | 'label' | 'series' | 'measure', labelKey: string, optional = false) => (
+      <ColumnSelect
+        label={t(labelKey)}
+        value={value[key]}
+        columns={columns}
+        placeholder={t(optional ? 'dashboard.widgetModal.noneOption' : 'dashboard.widgetModal.selectPlaceholder')}
+        onChange={(v) => onChange({ [key]: v })}
+      />
+    )
+    return (
+      <div className="space-y-3">
+        {select('category', 'dashboard.widgetModal.matrixRowsLabel')}
+        {select('label', 'dashboard.widgetModal.matrixRowLabelLabel', true)}
+        {select('series', 'dashboard.widgetModal.matrixColumnsLabel')}
+        {select('measure', 'dashboard.widgetModal.matrixValueLabel')}
+      </div>
     )
   }
 

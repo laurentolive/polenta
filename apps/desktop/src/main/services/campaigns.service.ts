@@ -1,5 +1,4 @@
-﻿import { isDeepStrictEqual } from 'node:util'
-import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema } from '@polenta/types'
+﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
@@ -118,8 +117,12 @@ export class CampaignsService {
     entryId: string,
     status: TestRunStatus,
     runId?: string,
-    /** GH36 — import d'un classeur d'exécution : date et testeur lus dans le fichier. */
-    meta?: { executedAt?: string; executedBy?: string },
+    /**
+     * GH36 — import d'un classeur d'exécution : date et testeur lus dans le fichier.
+     * GH81 — `testSnapshot` : version du test affichée/exportée, figée sur une instance
+     * resynchronisable (ignorée sinon), dans la même écriture que le résultat.
+     */
+    meta?: { executedAt?: string; executedBy?: string; testSnapshot?: TestCase },
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
@@ -128,11 +131,22 @@ export class CampaignsService {
       const runIndex = campaign.runs.findIndex(r => r.entryId === entryId)
       if (runIndex === -1) throw new Error(`Entry ${entryId} not found in campaign ${campaignId}`)
 
+      const displayed = meta?.testSnapshot
+      let frozen: TestCase | undefined
+      if (displayed) {
+        if (displayed.id !== campaign.runs[runIndex].testCaseId) {
+          throw new Error(`Test ${displayed.id} does not match entry ${entryId} (${campaign.runs[runIndex].testCaseId})`)
+        }
+        const isApproved = await this.approvalPredicate(repoPath)
+        if (isResyncable(campaign, campaign.runs[runIndex], isApproved)) frozen = withoutHistory(displayed) as TestCase
+      }
+
       // `executedBy` est réécrit à chaque saisie : absent (exécution dans l'outil), il est retiré
       // pour ne pas laisser le testeur d'un import précédent sur un nouveau résultat (GH36).
       const { executedBy: _previousTester, ...previous } = campaign.runs[runIndex]
       campaign.runs[runIndex] = {
         ...previous,
+        ...(frozen && { testSnapshot: frozen }),
         status,
         ...(runId && { runId }),
         executedAt: meta?.executedAt ?? new Date().toISOString(),
@@ -165,39 +179,32 @@ export class CampaignsService {
   }
 
   /**
-   * GH68 — resynchronise la copie `testSnapshot` des instances `entryIds` qui sont encore `pending`
-   * et dont la copie n'est pas dans un statut d'approbation : elle est remplacée par l'état actuel
-   * du test. Appelé quand le testeur reçoit le contenu à exécuter (ouverture de la page
-   * d'exécution, export du classeur Excel) — c'est cette version que le résultat figera ensuite.
-   * Une instance ajoutée approuvée garde le comportement T49 (jamais resynchronisée). Sans effet
-   * sur une campagne clôturée, une entrée pré-T49 (sans copie) ou un test supprimé. Les
-   * paramètres de l'instance ne sont pas recalculés. N'écrit que si une copie change.
+   * GH81 — version effective de chaque entrée, en lecture seule (ne remplace jamais la copie) :
+   * test live (sans `history`) pour une instance resynchronisable (`isResyncable`, règle GH68),
+   * copie figée sinon, test live pour une entrée pré-T49 (sans copie). Test resynchronisable
+   * supprimé : copie existante. Entrée absente de la map : test introuvable. Les paramètres de
+   * l'instance ne sont pas recalculés. La copie n'est figée qu'à la saisie du résultat (`updateRun`).
    */
-  async refreshEntries(repoPath: string, campaignId: string, entryIds: string[]): Promise<TestCampaign> {
-    return this.enqueue(repoPath, campaignId, async () => {
-      const campaign = await this.get(repoPath, campaignId)
-      const original = historyBase(campaign)
-      if (campaign.status === 'completed' || campaign.status === 'abandoned') return campaign
-
-      const wanted = new Set(entryIds)
-      const candidates = campaign.runs.filter(r => wanted.has(r.entryId) && r.status === 'pending' && r.testSnapshot)
-      if (candidates.length === 0) return campaign
-      const isApproved = await this.approvalPredicate(repoPath)
-      const stale = candidates.filter(r => !isApproved(r.testSnapshot!))
-      if (stale.length === 0) return campaign
-
-      const live = await this.snapshotsFor(repoPath, stale.map(r => r.testCaseId))
-      let changed = false
-      for (const run of stale) {
-        const next = live.get(run.testCaseId)
-        // Comparaison sur la forme sérialisée : la copie relue du YAML n'a pas les clés `undefined`.
-        if (next && !isDeepStrictEqual(toPlain(next), toPlain(run.testSnapshot))) {
-          run.testSnapshot = next
-          changed = true
-        }
-      }
-      return changed ? this.persist(repoPath, campaignId, original, campaign) : campaign
-    })
+  async effectiveTests(
+    repoPath: string,
+    campaign: TestCampaign,
+    /** Prédicat déjà lu par l'appelant (`approvalPredicate`), pour ne pas relire le schéma. */
+    approved?: (test: TestCase) => boolean,
+  ): Promise<Map<string, { test: TestCase; resyncable: boolean }>> {
+    const isApproved = approved ?? await this.approvalPredicate(repoPath)
+    const resyncable = new Set(campaign.runs.filter(r => isResyncable(campaign, r, isApproved)).map(r => r.entryId))
+    const live = await this.snapshotsFor(
+      repoPath,
+      campaign.runs.filter(r => !r.testSnapshot || resyncable.has(r.entryId)).map(r => r.testCaseId),
+    )
+    const effective = new Map<string, { test: TestCase; resyncable: boolean }>()
+    for (const run of campaign.runs) {
+      const current = live.get(run.testCaseId)
+      if (resyncable.has(run.entryId) && current) effective.set(run.entryId, { test: current, resyncable: true })
+      else if (run.testSnapshot) effective.set(run.entryId, { test: run.testSnapshot, resyncable: false })
+      else if (current) effective.set(run.entryId, { test: current, resyncable: false })
+    }
+    return effective
   }
 
   /** GH68 — prédicat « test dans un statut d'approbation de son type », schéma lu une fois. */
@@ -692,9 +699,13 @@ function storedParamValues(
   return preview ? Object.fromEntries(preview.manual.map(k => [k, given?.[k] ?? ''])) : given
 }
 
-/** GH68 — forme sérialisée (clés `undefined` retirées), pour comparer une copie relue du YAML. */
-function toPlain(value: unknown): unknown {
-  return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
+/**
+ * GH68 — instance resynchronisable : `pending`, avec copie, campagne ouverte, copie hors statut
+ * d'approbation. Sa version effective est l'état live du test jusqu'à la saisie du résultat (GH81).
+ */
+function isResyncable(campaign: TestCampaign, run: CampaignTestRun, isApproved: (test: TestCase) => boolean): boolean {
+  return (campaign.status === 'planned' || campaign.status === 'in_progress')
+    && run.status === 'pending' && !!run.testSnapshot && !isApproved(run.testSnapshot)
 }
 
 /** GH77 — état « avant » d'une mutation, limité à ce que compare l'historique (pas de copie des entrées). */

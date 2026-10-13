@@ -624,22 +624,27 @@ compatibilité ascendante ci-dessous).
 **Tests non approuvés (GH68)** : aucun statut n'empêche un test d'entrer dans une campagne. Statut
 « approuvé » = `statuses[].isApproval` du type, repli sur `approved` (`isApprovalStatus`,
 `@polenta/types`). Exception à la copie figée ci-dessus : une instance **`pending` dont la copie
-n'est pas approuvée** est *resynchronisable* — `CampaignsService.refreshEntries()` remplace sa
-copie par l'état actuel du test (paramètres de l'instance non recalculés ; sans effet sur une
-campagne clôturée, une entrée pré-T49 ou un test supprimé ; écriture seulement si la copie change).
-Elle est appelée quand le testeur reçoit le contenu : ouverture de la page d'exécution, export du
-classeur d'exécution (§4.5). La copie est ensuite figée par la saisie du résultat (ou l'import) :
-c'est la version affichée/exportée qui est enregistrée, pas celle relue au moment de la saisie.
-Une copie resynchronisée sur une version approuvée cesse d'être resynchronisable ; une instance
-ajoutée approuvée garde le comportement T49. Signalement :
+n'est pas approuvée**, d'une campagne ouverte, est *resynchronisable* : sa **version effective**
+est l'état actuel du test (sans `history` ; paramètres de l'instance non recalculés), sa copie
+sinon (test supprimé, entrée pré-T49 : état live, campagne clôturée : copie) —
+`CampaignsService.effectiveTests()`, **lecture seule**. **GH81** : aucune consultation n'écrit la
+campagne — ni l'ouverture de la page d'exécution, ni l'export du classeur (§4.5). La copie n'est
+remplacée qu'à la saisie du résultat, dans la même écriture : la page d'exécution envoie la
+**version affichée** (`campaigns:update-run`, 6ᵉ argument), figée même si le test a changé
+depuis l'affichage ; l'import fige la version exportée (§4.5). Le main n'accepte qu'une version
+du test de l'instance (`id` = `testCaseId`, sinon refus) et l'ignore si l'instance n'est plus
+resynchronisable. Une copie figée sur une version approuvée cesse d'être resynchronisable ; une
+instance ajoutée approuvée garde le comportement T49. Signalement :
 - liste de la campagne : pastille « Non approuvé » (statut jugé sur l'état live pour une instance
   resynchronisable **d'une campagne ouverte** — GH71 —, sinon sur la copie), bandeau « N instance(s)
   à exécuter… » pour les `pending` ;
 - page d'exécution : bandeau d'avertissement, et confirmation « Exécuter quand même » à la
-  première saisie (instance `pending`) — pas de blocage. La version affichée est figée pour la
-  session d'exécution (GH71) : si la copie change pendant la saisie (export Excel, resynchronisation
-  lancée ailleurs), la saisie n'est pas réinitialisée ; un bandeau le signale et propose d'afficher
-  la nouvelle version (ce qui efface la saisie) ;
+  première saisie (instance `pending`) — pas de blocage. Instance resynchronisable : la page
+  affiche le test live, relu à l'ouverture (repli sur la copie si la relecture échoue). La version
+  affichée est figée pour la session d'exécution (GH71) : si le test change pendant la saisie
+  (modifié ailleurs, GH81), la saisie n'est pas réinitialisée ; un bandeau le signale et propose
+  d'afficher la nouvelle version (ce qui efface la saisie) ; sinon c'est la version affichée qui est
+  enregistrée avec le résultat ;
 - aperçu d'import Excel : avertissement `test_not_approved` (§4.5).
 Le passage `planned` → `in_progress` n'est pas conditionné au statut des tests. La génération
 depuis l'analyse d'impact (T46) envoie `testCaseFilter: 'include_draft'`.
@@ -749,8 +754,11 @@ ligne d'instance « (test introuvable) » sans étape.
   une feuille protégée contenant des cellules verrouillées : le tri suppose d'ôter la protection,
   sans effet sur l'import.
 - Chaque ligne porte une **clé technique** masquée (`entryId` ou `entryId#order`) ; une feuille
-  `_polenta` très masquée porte `formatVersion` (1), `campaignId`, `exportedAt`, `locale` et, par
-  instance, `entryId`, `testCaseId`, `orders`, `testFound`.
+  `_polenta` très masquée porte `formatVersion` (2 depuis GH81), `campaignId`, `exportedAt`,
+  `locale` et, par instance, `entryId`, `testCaseId`, `orders`, `testFound`, `fingerprint` (GH81 :
+  sha256 de la version exportée, forme canonique sans `history`, champs dérivés du `git log`,
+  `needsRevalidation`, `status` ni `version` — `testFingerprint`). Les classeurs v1 restent
+  importables.
 
 **Import** (« Importer des résultats… ») : sélection du fichier, **aperçu** (`ExecutionImportModal`,
 aucune écriture), puis « Importer N résultats ». À l'application, le main **relit et revalide** le
@@ -771,13 +779,16 @@ fichier contre l'état courant de la campagne (l'aperçu n'est qu'indicatif).
   existant ». Écriture séquentielle ; une erreur arrête l'import (les instances déjà écrites restent).
 - Refus global (rien d'écrit) : fichier illisible, pas de feuille `_polenta`, version inconnue,
   classeur d'une autre campagne, campagne clôturée. Erreur propre à une instance (exclue, les autres
-  importées) : instance absente de la campagne, test introuvable, étapes du fichier ≠ étapes
+  importées) : instance absente de la campagne, test introuvable, **test modifié depuis l'export**
+  (`test_changed_since_export`, GH81 : empreinte de la version effective ≠ `fingerprint` du
+  classeur ; contrôlé avant les étapes, classeur v2 seulement), étapes du fichier ≠ étapes
   exportées, verdict non reconnu, date illisible. Ligne sans clé portant une saisie : avertissement.
-  Instance importable dont la copie du test n'est pas approuvée : avertissement
+  Instance importable dont la version effective n'est pas approuvée : avertissement
   `test_not_approved`, import non refusé (GH68).
-- Export (GH68) : avant de construire le classeur, les instances `pending` resynchronisables
-  (§4.2 « Tests non approuvés ») sont mises à jour et la campagne réécrite — le classeur et la copie
-  enregistrée portent la même version.
+- Export (GH81) : **aucune écriture** — le classeur porte la version effective de chaque instance
+  (§4.2 « Tests non approuvés ») et son empreinte. À l'import d'un classeur v2, une instance
+  resynchronisable voit sa copie remplacée par cette version (empreinte vérifiée) dans la même
+  écriture que le résultat ; classeur v1 : copie actuelle conservée.
 - Relecture d'un run importé : badge « Importé depuis Excel ».
 
 `CampaignTestRun.executedBy` est désormais réécrit à chaque saisie de résultat : renseigné par un

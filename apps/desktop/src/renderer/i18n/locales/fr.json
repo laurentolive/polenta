@@ -824,9 +824,8 @@
     "executeNotApprovedConfirmTitle": "Exécuter un test non approuvé ?",
     "executeNotApprovedConfirmBody": "Le test est au statut « {{status}} ». Le résultat sera enregistré contre cette version, qui n'a pas été validée.",
     "executeNotApprovedConfirm": "Exécuter quand même",
-    "executeTestChanged": "La copie de ce test a changé depuis l'ouverture de la page (nouvelle version enregistrée dans la campagne). Votre saisie porte sur la version affichée.",
+    "executeTestChanged": "Ce test a été modifié depuis l'ouverture de la page. Votre saisie porte sur la version affichée, qui sera enregistrée avec le résultat.",
     "executeTestChangedReload": "Afficher la nouvelle version (efface la saisie)",
-    "refreshFailed": "Impossible de mettre à jour la copie du test : la version figée à l'ajout est affichée.",
     "noTestCaseInCampaign": "Aucun cas de test dans cette campagne",
     "addAnotherInstance": "Ajouter une autre instance de ce test avec d'autres valeurs",
     "editParamValues": "Modifier les valeurs des paramètres",
@@ -887,7 +886,8 @@
         "testNotFound": "test {{testCaseId}} introuvable",
         "stepsMismatch": "étapes modifiées dans le classeur (attendues : {{expected}} ; trouvées : {{found}})",
         "invalidVerdict": "verdict non reconnu « {{value}} » (ligne {{row}})",
-        "invalidDate": "date illisible « {{value}} » (ligne {{row}})"
+        "invalidDate": "date illisible « {{value}} » (ligne {{row}})",
+        "testChangedSinceExport": "le test {{testCaseId}} a changé depuis l'export du classeur — réexportez le classeur pour cette instance"
       }
     },
     "stepResult": {

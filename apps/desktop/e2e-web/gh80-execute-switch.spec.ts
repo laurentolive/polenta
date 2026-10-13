@@ -3,8 +3,8 @@ import { setupSession } from './support/session'
 
 /**
  * GH80 — page d'exécution réutilisée d'une entrée à l'autre : passer de `/execute/<A>` à
- * `/execute/<B>` sans démontage doit resynchroniser la copie de B et afficher B, pas la version
- * figée de A. Deux tests brouillons et la campagne sont créés par IPC ; la navigation passe par
+ * `/execute/<B>` sans démontage doit afficher la version actuelle de B (GH81 : sans écrire sa
+ * copie), pas la version figée de A. Deux tests brouillons et la campagne sont créés par IPC ; la navigation passe par
  * l'historique (même route, seul le paramètre change).
  */
 const s = setupSession()
@@ -59,7 +59,7 @@ test.beforeAll(async () => {
   campaign = await s.invoke<Campaign>('campaigns:add-tests', localPath, campaign.id, [testA.id, testB.id], {}, workspaceDir)
 })
 
-test('X1 — de l\'entrée A à l\'entrée B : B resynchronisée et affichée', async () => {
+test('X1 — de l\'entrée A à l\'entrée B : B affichée en version actuelle, sans écriture', async () => {
   const p = s.page
   const { localPath, workspaceDir } = s.project
   await s.invoke('tests:update', localPath, testA.id, { steps: steps('A', 2) }, workspaceDir)
@@ -75,6 +75,6 @@ test('X1 — de l\'entrée A à l\'entrée B : B resynchronisée et affichée', 
   await expect(p.getByText('Action GH80 B v2')).toBeVisible()
   await expect(p.getByText(/Action GH80 A/)).toHaveCount(0)
   await expect(p.getByTestId('execute-test-changed')).toHaveCount(0)
-  expect((await entryOf(testB.id)).testSnapshot?.steps?.[0]?.action).toBe('Action GH80 B v2')
+  expect((await entryOf(testB.id)).testSnapshot?.steps?.[0]?.action).toBe('Action GH80 B v1')
   await s.shot('gh80-x1-entree-b')
 })

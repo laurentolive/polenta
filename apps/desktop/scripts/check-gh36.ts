@@ -80,8 +80,16 @@ const executeCalls: { testCaseId: string; dto: Record<string, unknown> }[] = []
 const updateRunCalls: { entryId: string; status: string; runId?: string; meta?: unknown }[] = []
 const fakeCampaigns = {
   get: async () => structuredClone(current),
-  // GH68 — pas de resynchronisation dans ce scénario (copies figées GH36 inchangées).
-  refreshEntries: async () => structuredClone(current),
+  // GH68/GH81 — tous les tests approuvés dans ce scénario : version effective = copie figée GH36,
+  // sinon test live (entrée sans copie) ; aucune instance resynchronisable.
+  effectiveTests: async (_repo: string, c: TestCampaign) => {
+    const map = new Map<string, { test: TestCase; resyncable: boolean }>()
+    for (const r of c.runs) {
+      const test = r.testSnapshot ?? (r.testCaseId === 'TEST-4' ? T4 : undefined)
+      if (test) map.set(r.entryId, { test, resyncable: false })
+    }
+    return map
+  },
   approvalPredicate: async () => () => true,
   updateRun: async (_repo: string, _id: string, entryId: string, status: string, runId?: string, meta?: unknown) => {
     updateRunCalls.push({ entryId, status, runId, meta })
@@ -211,7 +219,7 @@ async function main(): Promise<void> {
   check('E9 _polenta veryHidden', meta?.state === 'veryHidden', meta?.state)
   const metaRows = new Map<string, string>()
   meta?.eachRow(r => metaRows.set(str(r.getCell(1).value), str(r.getCell(2).value)))
-  check('E9 formatVersion = 1', metaRows.get('formatVersion') === '1')
+  check('E9 formatVersion = 2 (GH81)', metaRows.get('formatVersion') === '2')
   check('E9 campaignId', metaRows.get('campaignId') === 'CAMP-T')
   const instRows: string[] = []
   meta?.eachRow(r => { if (/^TEST-\d+-\d+$/.test(str(r.getCell(1).value))) instRows.push([1, 2, 3, 4].map(i => str(r.getCell(i).value)).join('|')) })

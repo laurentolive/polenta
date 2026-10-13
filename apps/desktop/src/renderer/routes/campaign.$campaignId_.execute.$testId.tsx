@@ -1,7 +1,7 @@
 ﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 import { RichTextField } from '../components/RichTextField'
@@ -91,39 +91,27 @@ function ExecuteEntryPage() {
   const testCaseId = entry?.testCaseId
   const { data: schema, isError: schemaError } = useProjectSchema(repoPath)
 
-  // GH68 — le testeur reçoit ici le contenu à exécuter : une instance pending dont la copie n'est
-  // pas approuvée est d'abord resynchronisée sur l'état actuel du test (le main décide et n'écrit
-  // que si elle change). Une seule fois par ouverture ; la page attend la réponse pour ne pas
-  // initialiser la saisie des étapes sur une copie qui va changer. Échec : copie existante affichée.
-  // GH80 — copie approuvée (jamais resynchronisée) : pas d'appel ; on attend le schéma pour le savoir
-  // (schéma illisible : appel quand même, le main décide).
+  // GH68/GH81 — instance resynchronisable (pending, campagne ouverte, copie non approuvée) : la page
+  // affiche l'état actuel du test sans rien écrire ; la version affichée est envoyée à la saisie et
+  // c'est elle que le main fige. On attend le schéma pour le savoir ; schéma illisible : repli sur
+  // `approved`, comme le main (GH80).
   const campaignOpen = campaign?.status === 'planned' || campaign?.status === 'in_progress'
   const refreshCandidate = !!entry && entry.status === 'pending' && !!entry.testSnapshot && campaignOpen
   const schemaKnown = !!schema || schemaError
-  const needsRefresh = refreshCandidate && schemaKnown && !(schema && isTestApproved(entry.testSnapshot!, schema))
-  const refreshStarted = useRef(false)
-  const refreshMutation = useMutation({
-    mutationFn: () => api.campaigns.refreshEntries(repoPath, campaignId, [entryId]),
-    onSuccess: updated => qc.setQueryData(['campaign', repoPath, campaignId], updated),
-  })
-  useEffect(() => {
-    if (!needsRefresh || refreshStarted.current) return
-    refreshStarted.current = true
-    refreshMutation.mutate()
-  }, [needsRefresh, refreshMutation])
-  const refreshing = refreshCandidate && (!schemaKnown || (needsRefresh && !refreshMutation.isSuccess && !refreshMutation.isError))
+  const resyncable = refreshCandidate && schemaKnown && !isTestApproved(entry.testSnapshot!, schema)
+  const waitingSchema = refreshCandidate && !schemaKnown
 
   // T171 — instance T171 : texte brut, les références sont rendues par FrozenParamRefProvider.
   // Instance antérieure (T97) : substitution d'origine en amont, code Markdown compris.
   const runText = (text: string) => (isT171Run(entry) ? text : substituteRunParams(text, entry))
-  const { testCase: currentTest, isLoading: loadingTest } = useResolvedCampaignTest(repoPath, testCaseId, entry?.testSnapshot)
-  // GH71 (correctif GH68) — la version affichée est figée pour la session d'exécution : si la copie
-  // change pendant la saisie (export Excel, resynchronisation lancée ailleurs), la saisie n'est pas
-  // réinitialisée ; un bandeau propose d'afficher la nouvelle version (ce qui, lui, la réinitialise).
+  const { testCase: currentTest, isLoading: loadingTest } = useResolvedCampaignTest(repoPath, testCaseId, entry?.testSnapshot, { live: resyncable })
+  // GH71 (correctif GH68) — la version affichée est figée pour la session d'exécution : si le test
+  // change pendant la saisie (modifié ailleurs, GH81), la saisie n'est pas réinitialisée ; un
+  // bandeau propose d'afficher la nouvelle version (ce qui, lui, la réinitialise).
   const [lockedTest, setLockedTest] = useState<TestCase>()
   useEffect(() => {
-    if (!refreshing && currentTest && !lockedTest) setLockedTest(currentTest)
-  }, [refreshing, currentTest, lockedTest])
+    if (!waitingSchema && !loadingTest && currentTest && !lockedTest) setLockedTest(currentTest)
+  }, [waitingSchema, loadingTest, currentTest, lockedTest])
   const testCase = lockedTest ?? currentTest
   const testChanged = !!lockedTest && !!currentTest && JSON.stringify(lockedTest) !== JSON.stringify(currentTest)
 
@@ -163,7 +151,8 @@ function ExecuteEntryPage() {
         ...(entry?.requirementId && { requirementId: entry.requirementId }),
       })
       const campaignStatus = mapResultToStatus(globalResult)
-      await api.campaigns.updateRun(repoPath, campaignId, entryId, campaignStatus, run.id)
+      // GH81 — instance resynchronisable : la version affichée est figée avec le résultat.
+      await api.campaigns.updateRun(repoPath, campaignId, entryId, campaignStatus, run.id, resyncable ? testCase : undefined)
       return run
     },
     onSuccess: () => {
@@ -218,7 +207,7 @@ function ExecuteEntryPage() {
   if (!repoPath) {
     return <p className="p-6 text-sm text-ink-2"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   }
-  if (loadingCampaign || loadingTest || refreshing) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
+  if (loadingCampaign || loadingTest || waitingSchema) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
   if (!entry) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.entryNotFound', { entryId })}</p>
   if (!testCase) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.testNotFound', { testCaseId })}</p>
 
@@ -262,9 +251,6 @@ function ExecuteEntryPage() {
                 <AlertTriangle size={13} className="shrink-0" />
                 {t('campaignPage.executeNotApprovedBanner', { status: testStatusLabel(testCase, schema) })}
               </div>
-            )}
-            {refreshMutation.isError && (
-              <p className="text-xs text-ink-3">{t('campaignPage.refreshFailed')}</p>
             )}
             <RunParamsInfo run={entry} />
             {/* Preconditions */}

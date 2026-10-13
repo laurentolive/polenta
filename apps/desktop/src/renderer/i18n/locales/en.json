@@ -824,9 +824,8 @@
     "executeNotApprovedConfirmTitle": "Execute a test that is not approved?",
     "executeNotApprovedConfirmBody": "The test status is “{{status}}”. The result will be recorded against this version, which has not been validated.",
     "executeNotApprovedConfirm": "Execute anyway",
-    "executeTestChanged": "This test's copy has changed since the page was opened (a new version was saved in the campaign). Your input applies to the version shown.",
+    "executeTestChanged": "This test has been modified since the page was opened. Your input applies to the version shown, which will be saved with the result.",
     "executeTestChangedReload": "Show the new version (clears your input)",
-    "refreshFailed": "Could not update the test copy: the version frozen when it was added is shown.",
     "noTestCaseInCampaign": "No test case in this campaign",
     "addAnotherInstance": "Add another instance of this test with different values",
     "editParamValues": "Edit parameter values",
@@ -887,7 +886,8 @@
         "testNotFound": "test {{testCaseId}} not found",
         "stepsMismatch": "steps changed in the workbook (expected: {{expected}}; found: {{found}})",
         "invalidVerdict": "unrecognised verdict \"{{value}}\" (row {{row}})",
-        "invalidDate": "unreadable date \"{{value}}\" (row {{row}})"
+        "invalidDate": "unreadable date \"{{value}}\" (row {{row}})",
+        "testChangedSinceExport": "test {{testCaseId}} has changed since the workbook was exported — re-export the workbook for this instance"
       }
     },
     "stepResult": {

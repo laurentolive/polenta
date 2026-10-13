@@ -3,7 +3,7 @@ import { setupSession } from './support/session'
 
 /**
  * GH68 — tests non approuvés dans une campagne : ajout par le sélecteur, badge et bandeau,
- * resynchronisation de la copie à l'ouverture de l'exécution, avertissement et confirmation
+ * version actuelle affichée à l'exécution et figée à la saisie (GH81), avertissement et confirmation
  * (scénarios S1–S2, L3, E1–E3 et E6 de specs/GH68-tests.md). Le test brouillon et la campagne
  * sont créés par le test (IPC), l'ajout et l'exécution se font par l'interface.
  */
@@ -79,17 +79,17 @@ test('S1–S2 — un test brouillon est proposé à l\'ajout, signalé dans la c
   await s.shot('gh68-s2-campagne')
 })
 
-test('E1–E3 — exécution : copie resynchronisée, avertissement, confirmation, copie figée ensuite', async () => {
+test('E1–E3 — exécution : version actuelle affichée, avertissement, confirmation, copie figée à la saisie', async () => {
   const p = s.page
   const { localPath, workspaceDir } = s.project
   await s.invoke('tests:update', localPath, draft.id, { steps: steps(2) }, workspaceDir)
   const entry = await entryOf(draft.id)
   expect(entry.testSnapshot?.steps?.[0]?.action).toBe('Action GH68 v1')
 
-  // E1 — l'ouverture de l'exécution affiche et enregistre la version actuelle.
+  // E1 — l'ouverture de l'exécution affiche la version actuelle, sans l'enregistrer (GH81).
   await navigate(p, s.projectUrl(`/campaign/${campaign.id}/execute/${entry.entryId}`, { repoPath: localPath }))
   await expect(p.getByText('Action GH68 v2')).toBeVisible()
-  expect((await entryOf(draft.id)).testSnapshot?.steps?.[0]?.action).toBe('Action GH68 v2')
+  expect((await entryOf(draft.id)).testSnapshot?.steps?.[0]?.action).toBe('Action GH68 v1')
 
   // E2 — bandeau ; la confirmation annulée n'enregistre rien.
   await expect(p.getByText(/Ce test n'est pas approuvé/)).toBeVisible()
@@ -110,7 +110,6 @@ test('E1–E3 — exécution : copie resynchronisée, avertissement, confirmatio
 
   // Le test change encore : l'instance exécutée ne bouge plus ; badge conservé, bandeau retiré (L3).
   await s.invoke('tests:update', localPath, draft.id, { steps: steps(3) }, workspaceDir)
-  await s.invoke('campaigns:refresh-entries', localPath, campaign.id, [executed.entryId])
   expect((await entryOf(draft.id)).testSnapshot?.steps?.[0]?.action).toBe('Action GH68 v2')
   await expect(p.getByText('Non approuvé').first()).toBeVisible()
   await expect(p.getByText(/instance à exécuter porte sur/)).toHaveCount(0)

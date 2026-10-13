@@ -451,13 +451,12 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     c.campaigns.create(repoPath, dto as import('@polenta/types').CreateCampaignDto, workspaceDir))
   r.handle('campaigns:update', (_e, repoPath: string, id: string, dto: unknown) =>
     c.campaigns.update(repoPath, id, dto as import('@polenta/types').UpdateCampaignDto))
+  // GH81 — `displayed` : version du test affichée par la page d'exécution, figée sur une instance
+  // resynchronisable (GH68) dans la même écriture que le résultat.
   r.handle('campaigns:update-run',
-    (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId?: string) =>
-      c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunStatus, runId))
-  // GH68 — resynchronisation de la copie des instances pending non approuvées.
-  r.handle('campaigns:refresh-entries',
-    (_e, repoPath: string, campaignId: string, entryIds: string[]) =>
-      c.campaigns.refreshEntries(repoPath, campaignId, entryIds))
+    (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId?: string, displayed?: unknown) =>
+      c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunStatus, runId,
+        displayed ? { testSnapshot: displayed as import('@polenta/types').TestCase } : undefined))
   r.handle('campaigns:close',
     (_e, repoPath: string, id: string, status: unknown) =>
       c.campaigns.close(repoPath, id, status as 'completed' | 'abandoned'))

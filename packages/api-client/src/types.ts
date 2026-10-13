@@ -639,9 +639,8 @@ export interface ApiClient {
     get(repoPath: string, id: string): Promise<TestCampaign>
     create(repoPath: string, dto: CreateCampaignDto, workspaceDir?: string): Promise<TestCampaign>
     update(repoPath: string, id: string, dto: UpdateCampaignDto): Promise<TestCampaign>
-    updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunStatus, runId?: string): Promise<TestCampaign>
-    /** GH68 — resynchronise la copie des instances `entryIds` pending dont le test n'est pas approuvé. */
-    refreshEntries(repoPath: string, campaignId: string, entryIds: string[]): Promise<TestCampaign>
+    /** GH81 — `displayed` : version du test affichée, figée si l'instance est resynchronisable (GH68). */
+    updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunStatus, runId?: string, displayed?: TestCase): Promise<TestCampaign>
     close(repoPath: string, id: string, status: 'completed' | 'abandoned'): Promise<TestCampaign>
     /** T179 — `reqInstances` : exigences retenues (et saisies par instance) des tests itérants. */
     addTests(repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: ReqInstanceSelection, carried?: CarriedEntrySelection[]): Promise<TestCampaign>

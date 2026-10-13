@@ -6,13 +6,15 @@ import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { useSelectedRepo } from '../contexts/SelectedRepoContext'
-import { useImpactAnalysis, LOCAL_IMPACT_ANALYSIS_ID } from '../contexts/ImpactAnalysisContext'
+import { useImpactAnalysis, LOCAL_IMPACT_ANALYSIS_ID, REVALIDATION_IMPACT_ID } from '../contexts/ImpactAnalysisContext'
 import { useLocalImpactAnalysis } from '../hooks/useLocalImpactAnalysis'
 import { useFlaggedElements } from '../hooks/useFlaggedElements'
 import { useClearRevalidation } from '../hooks/useClearRevalidation'
 import { RevalidationFlag } from '../components/system/RevalidationFlag'
 import { RequirementEditModal } from '../components/impact/RequirementEditModal'
 import { TestCaseEditModal } from '../components/impact/TestCaseEditModal'
+import { RepoBadge } from '../components/impact/RepoBadge'
+import { RevalidationList } from '../components/impact/RevalidationList'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { impactAnalysisExportBaseName } from '../components/export/exportFilenames'
@@ -23,7 +25,6 @@ import type {
   Requirement,
   RequirementChangeType,
   ImpactAnalysisStatus,
-  ElementRepoRef,
   ClearRevalidationResult,
 } from '@polenta/types'
 
@@ -141,16 +142,6 @@ interface ImpactTreeViewProps {
   depth?: number
   /** T175 — analyse locale : pas de statut ni de commentaire. */
   readOnly?: boolean
-}
-
-/** T175 — nom du composant d'un élément qui n'est pas dans le repo racine de l'analyse. */
-function RepoBadge({ repo }: { repo?: ElementRepoRef }) {
-  if (!repo) return null
-  return (
-    <span className="text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0 truncate max-w-[8rem]" title={repo.path}>
-      {repo.name}
-    </span>
-  )
 }
 
 // L'énoncé EARS courant d'une exigence n'est pas assez court pour tenir dans la liste — la
@@ -416,18 +407,20 @@ function ImpactAnalysisPage() {
   const { projectId } = Route.useSearch()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { selectedRepoPath } = useSelectedRepo()
-  const { activeAnalysisId } = useImpactAnalysis()
+  const { selectedRepoPath, rootRepoPath } = useSelectedRepo()
+  const { activeAnalysisId, setActiveAnalysisId } = useImpactAnalysis()
   const repoPath = selectedRepoPath
   // T175 — analyse live des modifications locales (non persistée, lecture seule).
   const isLocal = activeAnalysisId === LOCAL_IMPACT_ANALYSIS_ID
+  // T173 — liste de repli « Impact à vérifier » (tous les éléments marqués du workspace).
+  const isRevalidation = activeAnalysisId === REVALIDATION_IMPACT_ID
   const localQuery = useLocalImpactAnalysis(projectId)
   const localAnalysis = localQuery.data
 
   const { data: activeAnalysis, isLoading: isLoadingAnalysis } = useQuery<ImpactAnalysis>({
     queryKey: ['impact-analysis:get', repoPath, activeAnalysisId],
     queryFn: () => api.impactAnalysis.get(repoPath, activeAnalysisId!),
-    enabled: !!repoPath && !!activeAnalysisId && !isLocal,
+    enabled: !!repoPath && !!activeAnalysisId && !isLocal && !isRevalidation,
   })
 
   // `analysisId` voyage dans les variables de la mutation (pas dans une fermeture sur
@@ -452,7 +445,8 @@ function ImpactAnalysisPage() {
   const [campaignDraft, setCampaignDraft] = useState<{ testCaseIds: string[]; uncoveredRequirementIds: string[] } | null>(null)
 
   // T173 — levée du flag : état live des éléments marqués, sélection multiple, échecs.
-  const { flaggedIds } = useFlaggedElements(projectId)
+  const flaggedQuery = useFlaggedElements(projectId)
+  const { flaggedIds } = flaggedQuery
   const clearMutation = useClearRevalidation(projectId)
   const [selectedFlagged, setSelectedFlagged] = useState<Set<string>>(new Set())
   const [confirmClearSelection, setConfirmClearSelection] = useState(false)
@@ -575,6 +569,15 @@ function ImpactAnalysisPage() {
     setQuickEdit({ type: node.elementType, id: node.elementId, repoPath: node.repo?.path ?? rootedRepoPath })
   }
 
+  const flaggedElements = flaggedQuery.data
+  // Dernier flag levé alors que la liste de repli est active → retour à « aucune analyse ». Porté
+  // par la page (et pas seulement par le panneau latéral, qui peut ne pas être monté).
+  useEffect(() => {
+    if (isRevalidation && flaggedElements && flaggedElements.length === 0) setActiveAnalysisId(null)
+  }, [isRevalidation, flaggedElements, setActiveAnalysisId])
+  // Vue live active (modifications locales ou liste de repli) : cible du bouton Rafraîchir.
+  const liveQuery = isRevalidation ? flaggedQuery : localQuery
+
   const closedCount = allNodes.filter((n) => CLOSED_STATUSES.has(n.status)).length
   const openCount = allNodes.length - closedCount
   const toTestCount = allNodes.filter((n) => TO_TEST_STATUSES.has(n.status)).length
@@ -584,14 +587,18 @@ function ImpactAnalysisPage() {
       <ViewHeader
         currentProjectId={projectId}
         title={
-          isLocal
+          isRevalidation
+            ? t('impactAnalysisPage.revalidation.listTitle')
+            : isLocal
             ? t('impactAnalysisPage.localTitle')
             : activeAnalysis
               ? <span className="font-mono">{activeAnalysis.fromBaseline.tag} → {activeAnalysis.toBaseline.tag}</span>
               : t('impactAnalysisPage.title')
         }
         subtitle={
-          isLocal
+          isRevalidation
+            ? (flaggedElements ? t('impactAnalysisPage.revalidation.listSubtitle', { count: flaggedElements.length }) : undefined)
+            : isLocal
             ? (localAnalysis ? t('impactAnalysisPage.localComputedAt', { time: new Date(localAnalysis.computedAt).toLocaleTimeString() }) : undefined)
             : activeAnalysis?.label
         }
@@ -607,14 +614,14 @@ function ImpactAnalysisPage() {
               {t('impactAnalysisPage.revalidation.clearSelection', { count: selectedFlagged.size })}
             </button>
           )}
-          {isLocal ? (
+          {isLocal || isRevalidation ? (
             <button
               type="button"
-              onClick={() => localQuery.refetch()}
-              disabled={localQuery.isFetching}
+              onClick={() => liveQuery.refetch()}
+              disabled={liveQuery.isFetching}
               className="btn-secondary-sm shrink-0 flex items-center gap-1.5"
             >
-              <RefreshCw size={12} className={localQuery.isFetching ? 'animate-spin' : ''} />
+              <RefreshCw size={12} className={liveQuery.isFetching ? 'animate-spin' : ''} />
               {t('impactAnalysisPage.refresh')}
             </button>
           ) : activeAnalysis && (
@@ -727,6 +734,27 @@ function ImpactAnalysisPage() {
               {t('impactAnalysisPage.selectTwoBaselinesHint')}
             </p>
           </div>
+        ) : isRevalidation ? (
+          flaggedQuery.isError ? (
+            <p className="text-sm text-status-danger px-4 py-3">
+              {t('impactAnalysisPage.revalidation.loadError', {
+                message: flaggedQuery.error instanceof Error ? flaggedQuery.error.message : String(flaggedQuery.error),
+              })}
+            </p>
+          ) : !flaggedElements ? (
+            <p className="text-sm text-ink-3 italic px-4 py-3">{t('common.loading')}</p>
+          ) : (
+            <RevalidationList
+              elements={flaggedElements}
+              rootRepoPath={rootRepoPath}
+              selected={selectedFlagged}
+              toggle={revalidationTree.toggle}
+              setSelected={setSelectedFlagged}
+              clear={clearFlags}
+              pending={clearMutation.isPending}
+              onOpen={(type, id, elementRepoPath) => setQuickEdit({ type, id, repoPath: elementRepoPath })}
+            />
+          )
         ) : isLoadingDisplayed ? (
           <p className="text-sm text-ink-3 italic px-4 py-3">{t('common.loading')}</p>
         ) : displayedChanges.length === 0 ? (

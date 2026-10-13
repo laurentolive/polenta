@@ -133,7 +133,8 @@ Aucun IPC handler ni composant React dédié. Pas de route `/traceability` dans 
 
 **[RÉSOLU T172 — spec modifiée]** ~~Bouton "Revalider" un lien (§3.3)~~ — T172 déplace le flag
 `needsRevalidation` des liens vers les éléments et l'écrit automatiquement (SPEC-REQ §5.3) ; il
-n'y a plus d'action « Revalider » par lien, la levée du flag relève de l'analyse d'impact (T173).
+n'y a plus d'action « Revalider » par lien, la levée du flag relève de l'analyse d'impact —
+**implémentée par T173** (SPEC-TRACEABILITY §4.8).
 
 **[ABSENT] Liste "Exigences couvertes mais jamais exécutées" (§3.4)**  
 Cette catégorie n'est ni calculée ni retournée par `getMissingLinks`.

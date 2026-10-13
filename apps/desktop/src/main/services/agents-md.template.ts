@@ -148,7 +148,8 @@ etc.).
   à la main.
 - Un ID n'est **jamais réutilisé**, même si l'objet passe en statut terminal/obsolète.
 - Une exigence ou un test marqué \`needsRevalidation: true\` signale un impact à vérifier
-  (un élément lié a quitté l'approbation) — ne pas lever ce flag sans analyse d'impact.
+  (un élément lié a quitté l'approbation) — ne pas lever ce flag sans analyse d'impact. Il
+  se lève depuis la vue Analyse d'impact (bouton « Lever le flag »), jamais à la main dans le YAML.
 - Le \`prefix\` de chaque type d'objet est unique sur l'ensemble du projet.
 
 ## System engineering assisté par IA — les 4 usages visés

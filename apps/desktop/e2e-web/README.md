@@ -218,6 +218,7 @@ connexion d'événements par le test avec `page.routeWebSocket` (voir `s2-core.s
 | `gh57-consent.spec.ts` (instance déployée) | GH57 T4 première connexion sans page de consentement, T5 autre application « polenta-web » : page d'origine. |
 | `s4-deployed.spec.ts` (instance déployée) | S4-5 HTTPS et en-têtes, connexion OIDC, clone, PDF imprimé dans l'image, données dans `web-data/` ; S4-7 mémoire (`POLENTA_E2E_MEASURE=1`). |
 | `gh56-activity-bar.spec.ts` (`specs/GH56-tests.md`) | E1–E7 ActivityBar : ordre par drag & drop, masquage par clic droit, réinitialisation, préférence commune aux projets ; L1–L3, L5, L6. |
+| `t173-revalidation.spec.ts` (`specs/T173-tests.md`) | N14 entrée « Impact à vérifier (N) » sans auto-sélection, éléments liés et déclencheur « non approuvé » ; N3 levée unitaire (diff limité à la clé) ; N15 levée de toute la sélection, retour à l'invite. |
 | `s3-oidc.spec.ts` (forge réelle) | S3-1/S3-2 connexion OIDC sans jeton côté navigateur, S3-3 commit à l'identité forge, S3-4 isolation de deux utilisateurs, S3-17 lecteur : écriture refusée, S3-6 compte désactivé → « accès révoqué » et travail conservé, S3-15/S3-21 projets et préférences d'équipe, S3-16 « Créer sur le serveur ». |
 
 ## Variables

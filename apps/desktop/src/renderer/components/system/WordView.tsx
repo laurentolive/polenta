@@ -55,6 +55,9 @@ interface Props {
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  /** GH83 — ids marqués `needsRevalidation` (T172) : ⚠ à côté du statut. Hors de `objects`,
+   *  dont toutes les valeurs alimentent le filtre texte. */
+  revalidationIds?: Set<string>
   testsById?: Map<string, TestCase>
   repoPath?: string
   candidateObjects?: Candidate[]
@@ -394,6 +397,7 @@ function ItemCard({
   coverageByReqId,
   testsById,
   isGotoTarget,
+  needsRevalidation = false,
 }: {
   node: TypeTreeNode
   obj: AnyObject | null
@@ -416,6 +420,7 @@ function ItemCard({
   repoPath?: string
   onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
   isGotoTarget?: boolean
+  needsRevalidation?: boolean
 }) {
   const { t } = useTranslation()
   const currentStatus = obj ? getFieldValue(obj, 'status') : ''
@@ -498,7 +503,7 @@ function ItemCard({
                     <span className={badgeClass}>{statusDef?.label ?? status}</span>
                   )
                 )}
-                <RevalidationFlag show={!!(obj as { needsRevalidation?: boolean }).needsRevalidation} />
+                <RevalidationFlag show={needsRevalidation} />
                 {version && (
                   <span className="text-[10px] font-mono text-ink-3 shrink-0">v{version}</span>
                 )}
@@ -692,6 +697,7 @@ export function WordView({
   linkTypes = [],
   linksByObjectId,
   coverageByReqId,
+  revalidationIds,
   testsById,
   repoPath,
   candidateObjects = [],
@@ -876,6 +882,7 @@ export function WordView({
             linkTypes={linkTypes}
             objectLinks={node.objectId ? (linksByObjectId?.get(node.objectId) ?? []) : []}
             coverageByReqId={coverageByReqId}
+            needsRevalidation={!!node.objectId && !!revalidationIds?.has(node.objectId)}
             testsById={testsById}
             onInlineEdit={onInlineEdit}
             onRenameNode={onRenameNode}

@@ -5,6 +5,7 @@ import { CARRY_STATUSES, versionChanged, type CarryRow } from '../../lib/carryOv
 import { RUN_CLASS, STATUS_CLASS as CAMPAIGN_STATUS_CLASS } from '../system/CampaignListView'
 import { isTestApproved } from '../../hooks/useProjectSchema'
 import { NotApprovedBadge } from './NotApproved'
+import { unapprovedCarriedTest } from '../../lib/campaignApproval'
 
 /**
  * GH64 — onglet « Depuis une campagne » du sélecteur de tests : campagnes source, filtre par statut
@@ -161,6 +162,8 @@ export function CampaignCarryPanel({
               <tbody className="divide-y divide-edge">
                 {shown.map(r => {
                   const values = Object.entries(r.paramValues).filter(([, v]) => v.trim())
+                  const live = testsById.get(r.testCaseId)
+                  const unapproved = unapprovedCarriedTest(live, tc => isTestApproved(tc, schema))
                   return (
                     <tr key={r.key} className={r.unavailable ? 'opacity-50' : 'hover:bg-hover/50'} data-entry={`${r.campaignId}/${r.entryId}`}>
                       <td className="px-3 py-1.5">
@@ -174,11 +177,8 @@ export function CampaignCarryPanel({
                       </td>
                       <td className="px-2 py-1.5 max-w-[18rem]">
                         <span className="font-mono text-ink-3">{r.testCaseId}</span>
-                        <span className="ml-2 text-ink truncate">{testsById.get(r.testCaseId)?.title ?? ''}</span>
-                        {(() => {
-                          const live = testsById.get(r.testCaseId)
-                          return live && !isTestApproved(live, schema) ? <NotApprovedBadge test={live} schema={schema} /> : null
-                        })()}
+                        <span className="ml-2 text-ink truncate">{live?.title ?? ''}</span>
+                        {unapproved && <NotApprovedBadge test={unapproved} schema={schema} />}
                       </td>
                       <td className="px-2 py-1.5 font-mono text-ink-3">{r.requirementId ?? ''}</td>
                       <td className="px-2 py-1.5 font-mono text-[10px] text-ink-3 max-w-[12rem] truncate">

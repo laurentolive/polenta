@@ -75,7 +75,7 @@ beforeEach(async () => {
   revalidation = new RevalidationService(git, reqIndex, testsIndex, schemaStub, undefined, history)
   requirements = new RequirementsService(git, reqIndex, schemaStub, undefined, revalidation, history)
   tests = new TestsService(git, testsIndex, schemaStub, undefined, revalidation, history)
-  campaigns = new CampaignsService(git, tests, undefined, history)
+  campaigns = new CampaignsService(git, tests, undefined, undefined, history)
 })
 
 afterEach(async () => {

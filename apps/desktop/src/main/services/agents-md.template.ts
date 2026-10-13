@@ -150,7 +150,8 @@ etc.).
   à la main.
 - Un ID n'est **jamais réutilisé**, même si l'objet passe en statut terminal/obsolète.
 - Une exigence ou un test marqué \`needsRevalidation: true\` signale un impact à vérifier
-  (un élément lié a quitté l'approbation) — ne pas lever ce flag sans analyse d'impact.
+  (un élément lié a quitté l'approbation) — ne pas lever ce flag sans analyse d'impact. Il
+  se lève depuis la vue Analyse d'impact (bouton « Lever le flag »), jamais à la main dans le YAML.
 - Le champ \`history\` d'un objet (exigence, test, campagne) est l'historique daté des champs
   suivis — le statut par défaut (\`trackStatusHistory\` du type), et les champs
   \`trackHistory: true\` du schéma : une liste par champ, entrées \`{ value, at, by, source }\`.

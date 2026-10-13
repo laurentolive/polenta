@@ -3,6 +3,7 @@ import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, Crea
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
+import type { SchemaService } from './schema.service'
 import type { HistoryService } from './history.service'
 import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus, renameFieldKeys, withoutHistory } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, HistoryCarrier, ObjectHistory } from '@polenta/types'
@@ -15,6 +16,8 @@ export class CampaignsService {
     private readonly testsService: TestsService,
     /** T171 — résolution des paramètres de la base à l'ajout ; absent (MCP) : comportement T97. */
     private readonly parameters?: ParametersService,
+    /** GH80 — schéma en cache pour la règle d'approbation ; absent (tests) : relu du disque. */
+    private readonly schema?: Pick<SchemaService, 'get'>,
     /** GH77 — historique des champs suivis ; absent (tests unitaires) : pas d'historique. */
     private readonly history?: HistoryService,
   ) {}
@@ -196,9 +199,12 @@ export class CampaignsService {
 
   /** GH68 — prédicat « test dans un statut d'approbation de son type », schéma lu une fois. */
   async approvalPredicate(repoPath: string): Promise<(test: TestCase) => boolean> {
-    const schema = await this.gitService.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml').catch(() => null)
+    const schema = await (this.schema
+      ? this.schema.get(repoPath)
+      : this.gitService.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
+    ).catch(() => null)
     return (test) => {
-      const typeDef = schema ? findObjectTypeDef(schema, test.objectTypeRef) : null
+      const typeDef = schema ? findObjectTypeDef(schema, test.objectTypeRef, 'test') : null
       return isApprovalStatus(typeDef && typeDef !== 'unresolvable' ? typeDef : null, test.status)
     }
   }

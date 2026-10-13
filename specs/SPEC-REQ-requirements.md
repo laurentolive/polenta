@@ -501,8 +501,10 @@ nœud `readonly` (nœud local du repo ouvert, ou repo composant monté sous un n
 ne changent pas (un élément `approved` peut être marqué).
 
 **Notification** — icône ⚠ à côté du statut (vues Excel, Word, Édition), infobulle « Impact à
-vérifier ». Pas d'action « Revalider » par lien : le flag est levé depuis l'analyse d'impact
-(**T173**).
+vérifier ». Pas d'action « Revalider » par lien : le flag est levé depuis la vue Analyse
+d'impact (**T173**, SPEC-TRACEABILITY §4.8) — sur les nœuds des arbres d'analyse ou dans la liste
+« Impact à vérifier » ; la clé est retirée du YAML (statut, version et liens inchangés), sans commit
+ni trace hors git.
 
 **Second déclencheur — paramètre modifié (T171)** : modifier `value`/`unit` d'un paramètre (ou
 créer un paramètre résolvant des références jusque-là littérales) utilisé par un élément

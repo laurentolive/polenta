@@ -1,4 +1,5 @@
 import type { CoverageStatus, ObjectTypeDefinition, Requirement, SchemaField } from '@polenta/types'
+import { isApprovalStatus } from '@polenta/types'
 
 /**
  * T77 sprint 3 — "Critères de maturité" (`specs/T77.md` § Critères de maturité,
@@ -182,22 +183,6 @@ function isMeasurableAcceptance(raw: unknown): boolean {
   return /-\s*\[[ xX]?\]/.test(text) || /\d/.test(text)
 }
 
-/**
- * Resolves the status name that means "approved" for this type, from the schema's
- * own `statuses[].isApproval` flag (`SchemaStatus.isApproval`) rather than the
- * literal string `'approved'` — a project whose approval status is named
- * differently (e.g. `valide`) would otherwise never trigger criterion 4 at all,
- * silently treating every one of its approved-equivalent requirements as mature
- * regardless of verification links. Falls back to the literal `'approved'` only
- * when the type can't be resolved or declares no `isApproval` status (schema
- * predates this flag, or genuinely doesn't use one) — matches CLAUDE.md's own
- * example schema, which always declares `approved: { isApproval: true }`.
- */
-function isApprovedStatus(req: Requirement, typeDef: ObjectTypeDefinition | null): boolean {
-  const approvalStatusName = typeDef?.statuses?.find((s) => s.isApproval)?.name
-  return req.status === (approvalStatusName ?? 'approved')
-}
-
 export function computeMaturity(
   req: Requirement,
   typeDef: ObjectTypeDefinition | null,
@@ -231,7 +216,7 @@ export function computeMaturity(
   // time: `coverageStatus !== 'not_covered'` is exactly "at least one test case is
   // linked to this requirement" — this criterion only cares that a verification link
   // exists, not whether it passed.
-  const verificationOk = !isApprovedStatus(req, typeDef) || coverageStatus !== 'not_covered'
+  const verificationOk = !isApprovalStatus(typeDef, req.status) || coverageStatus !== 'not_covered'
 
   // Critère 5 — l'exigence n'est pas marquée `needsRevalidation` (T172 : le flag est porté
   // par l'élément, posé quand un élément lié quitte l'approbation — impact à vérifier).

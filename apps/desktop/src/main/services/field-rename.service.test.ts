@@ -60,7 +60,7 @@ beforeEach(async () => {
   const historyService = new HistoryService(git, async () => ({ by: 'lolive' }), () => NOW)
   const requirements = new RequirementsService(git, reqIndex, schemaStub, undefined, undefined, historyService)
   const tests = new TestsService(git, testsIndex, schemaStub, undefined, undefined, historyService)
-  const campaigns = new CampaignsService(git, tests, undefined, historyService)
+  const campaigns = new CampaignsService(git, tests, undefined, undefined, historyService)
   service = new FieldRenameService(requirements, tests, campaigns)
 
   await git.writeYaml(dir, 'requirements/SYS-0001.yaml', {

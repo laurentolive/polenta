@@ -75,7 +75,7 @@ beforeEach(async () => {
   const history = new HistoryService(gitSvc, async () => ({ by: 'lolive' }), () => new Date((T0 + 10_000) * 1000))
   requirements = new RequirementsService(gitSvc, reqIndex, schemaStub, undefined, undefined, history)
   const tests = new TestsService(gitSvc, new TestsIndexService(gitSvc), schemaStub, undefined, undefined, history)
-  backfill = new HistoryBackfillService(gitSvc, requirements, tests, new CampaignsService(gitSvc, tests, undefined, history))
+  backfill = new HistoryBackfillService(gitSvc, requirements, tests, new CampaignsService(gitSvc, tests, undefined, undefined, history))
 })
 
 afterEach(async () => {

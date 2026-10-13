@@ -735,6 +735,13 @@ export function SystemView() {
     enabled: !!repoPath && coverageNeeded,
   })
 
+  // GH83 — ⚠ « Impact à vérifier » des vues Excel/Word : `objects` est normalisé (chaînes des
+  // champs affichables) et ne porte pas le flag T172.
+  const revalidationIds = useMemo(
+    () => new Set((rawObjects as (Requirement | TestCase)[]).filter(o => o.needsRevalidation).map(o => o.id)),
+    [rawObjects],
+  )
+
   const coverageByReqId = useMemo(() => {
     const map = new Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>()
     for (const row of matrix?.requirements ?? []) {
@@ -1401,6 +1408,7 @@ export function SystemView() {
             linkTypes={linkTypes}
             linksByObjectId={linksByObjectId}
             coverageByReqId={coverageByReqId}
+            revalidationIds={revalidationIds}
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
@@ -1443,6 +1451,7 @@ export function SystemView() {
             linkTypes={linkTypes}
             linksByObjectId={linksByObjectId}
             coverageByReqId={coverageByReqId}
+            revalidationIds={revalidationIds}
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}

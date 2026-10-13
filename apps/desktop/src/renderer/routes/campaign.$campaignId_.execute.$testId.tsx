@@ -64,7 +64,15 @@ function mapResultToStatus(result: TestRunResult) {
   }
 }
 
+// GH80 — le routeur garde le même composant quand seul `testId` change (`/execute/TC-1-1` →
+// `/execute/TC-2-1`) : la clé sur l'entrée réinitialise tout l'état de session (resynchronisation
+// à l'ouverture, version figée, saisie des étapes) d'une entrée à l'autre.
 function ExecuteTestPage() {
+  const { testId } = Route.useParams()
+  return <ExecuteEntryPage key={testId} />
+}
+
+function ExecuteEntryPage() {
   const { t } = useTranslation()
   // Le segment d'URL s'appelle historiquement "testId" mais porte désormais l'entryId de
   // l'inclusion du test dans la campagne (un même test peut être inclus plusieurs fois
@@ -81,14 +89,18 @@ function ExecuteTestPage() {
   })
   const entry = campaign?.runs.find(r => r.entryId === entryId)
   const testCaseId = entry?.testCaseId
-  const { data: schema } = useProjectSchema(repoPath)
+  const { data: schema, isError: schemaError } = useProjectSchema(repoPath)
 
   // GH68 — le testeur reçoit ici le contenu à exécuter : une instance pending dont la copie n'est
   // pas approuvée est d'abord resynchronisée sur l'état actuel du test (le main décide et n'écrit
   // que si elle change). Une seule fois par ouverture ; la page attend la réponse pour ne pas
   // initialiser la saisie des étapes sur une copie qui va changer. Échec : copie existante affichée.
+  // GH80 — copie approuvée (jamais resynchronisée) : pas d'appel ; on attend le schéma pour le savoir
+  // (schéma illisible : appel quand même, le main décide).
   const campaignOpen = campaign?.status === 'planned' || campaign?.status === 'in_progress'
-  const needsRefresh = !!entry && entry.status === 'pending' && !!entry.testSnapshot && campaignOpen
+  const refreshCandidate = !!entry && entry.status === 'pending' && !!entry.testSnapshot && campaignOpen
+  const schemaKnown = !!schema || schemaError
+  const needsRefresh = refreshCandidate && schemaKnown && !(schema && isTestApproved(entry.testSnapshot!, schema))
   const refreshStarted = useRef(false)
   const refreshMutation = useMutation({
     mutationFn: () => api.campaigns.refreshEntries(repoPath, campaignId, [entryId]),
@@ -99,7 +111,7 @@ function ExecuteTestPage() {
     refreshStarted.current = true
     refreshMutation.mutate()
   }, [needsRefresh, refreshMutation])
-  const refreshing = needsRefresh && !refreshMutation.isSuccess && !refreshMutation.isError
+  const refreshing = refreshCandidate && (!schemaKnown || (needsRefresh && !refreshMutation.isSuccess && !refreshMutation.isError))
 
   // T171 — instance T171 : texte brut, les références sont rendues par FrozenParamRefProvider.
   // Instance antérieure (T97) : substitution d'origine en amont, code Markdown compris.

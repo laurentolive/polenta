@@ -1,4 +1,4 @@
-import type { ExecutionImportPreview, ExecutionImportResult, ExecutionSheetLocale, TestCase } from '@polenta/types'
+import type { ExecutionImportPreview, ExecutionImportResult, ExecutionSheetLocale, TestCampaign, TestCase } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { CampaignsService } from './campaigns.service'
 import type { TestsService } from './tests.service'
@@ -30,12 +30,7 @@ export class CampaignExecutionService {
 
     // Même repli que l'écran (`resolveCampaignRuns`) : copie figée à l'inclusion, sinon état live
     // du test (entrées antérieures à T49) ; test introuvable → instance sans étape.
-    const liveIds = [...new Set(campaign.runs.filter(r => !r.testSnapshot).map(r => r.testCaseId))]
-    const live = new Map<string, TestCase>()
-    await Promise.all(liveIds.map(async id => {
-      const test = await this.tests.findOne(repoPath, id).catch(() => undefined)
-      if (test) live.set(id, test)
-    }))
+    const live = await this.liveTestsWithoutSnapshot(repoPath, campaign)
     const entries: ExecutionSheetEntry[] = campaign.runs.map(run => ({
       run,
       test: run.testSnapshot ?? live.get(run.testCaseId),
@@ -59,7 +54,19 @@ export class CampaignExecutionService {
       now: new Date().toISOString(),
       filePath,
       isApproved,
+      liveTests: await this.liveTestsWithoutSnapshot(repoPath, campaign),
     })
+  }
+
+  /** État live des tests des entrées sans copie figée (antérieures à T49) ; test introuvable : absent. */
+  private async liveTestsWithoutSnapshot(repoPath: string, campaign: TestCampaign): Promise<Map<string, TestCase>> {
+    const ids = [...new Set(campaign.runs.filter(r => !r.testSnapshot).map(r => r.testCaseId))]
+    const live = new Map<string, TestCase>()
+    await Promise.all(ids.map(async id => {
+      const test = await this.tests.findOne(repoPath, id).catch(() => undefined)
+      if (test) live.set(id, test)
+    }))
+    return live
   }
 
   /**

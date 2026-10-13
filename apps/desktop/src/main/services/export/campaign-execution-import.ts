@@ -134,6 +134,8 @@ export interface ExecutionImportContext {
   filePath: string
   /** GH68 — statut d'approbation d'un test ; absent : aucun avertissement `test_not_approved`. */
   isApproved?: (test: TestCase) => boolean
+  /** GH80 — état live des tests des entrées sans copie (antérieures à T49), jugées sur lui. */
+  liveTests?: Map<string, TestCase>
 }
 
 export function validateExecutionImport(
@@ -181,10 +183,12 @@ export function validateExecutionImport(
     if ('error' in result) preview.errors.push({ entryId, error: result.error })
     else {
       preview.importable.push(result.instance)
-      // GH68 — exécution d'un test non approuvé : signalée, pas refusée (copie figée de l'instance).
-      const snapshot = ctx.campaign.runs.find(r => r.entryId === entryId)?.testSnapshot
-      if (snapshot && ctx.isApproved && !ctx.isApproved(snapshot)) {
-        preview.warnings.push({ code: 'test_not_approved', entryId, status: snapshot.status })
+      // GH68 — exécution d'un test non approuvé : signalée, pas refusée (copie figée de l'instance ;
+      // GH80 : à défaut, état live du test, comme l'écran pour une entrée antérieure à T49).
+      const run = ctx.campaign.runs.find(r => r.entryId === entryId)
+      const test = run && (run.testSnapshot ?? ctx.liveTests?.get(run.testCaseId))
+      if (test && ctx.isApproved && !ctx.isApproved(test)) {
+        preview.warnings.push({ code: 'test_not_approved', entryId, status: test.status })
       }
     }
   }

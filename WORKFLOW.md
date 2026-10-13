@@ -101,12 +101,17 @@ Chaque agent reçoit une instruction courte qui lui dit quoi lire et quoi produi
 3. Charge et lit uniquement ces sections ciblées (pas les fichiers SPEC entiers)
 4. Explore le code existant pour comprendre le contexte
 5. Identifie ambiguïtés, cas limites, règles manquantes
+   - **Nouvel indicateur** (statut dérivé, agrégat, score, colonne calculée…) : appliquer le
+     principe « données brutes dans Polenta, indicateurs de suivi côté projet »
+     (`specs/SPEC-TECH-stack.md` §1.1) — *sert-il à une fonction de Polenta ?* Sinon, il
+     relève d'un script côté projet, pas de code Polenta.
 6. Pose ses questions à l'humain
 7. Rédige `specs/GH{N}.md` avec :
    - description fonctionnelle détaillée
    - comportements attendus par cas d'usage
    - critères d'acceptation mesurables
    - hors scope explicite
+   - si le ticket introduit un indicateur : la décision Polenta / côté projet et sa justification
    - `## Refs SPEC` : liste des sections consultées (ex: `SPEC-REQ.md §5`, `SPEC-TECH.md §4`)
 8. Crée le worktree et la branche :
    ```

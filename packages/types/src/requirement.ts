@@ -1,3 +1,5 @@
+import type { ObjectHistory } from './history'
+
 export type JiraLinkType = 'IMPLEMENTS' | 'RELATED_TO' | 'ORIGINATED_FROM' | 'BLOCKS'
 
 export interface JiraLink {
@@ -46,6 +48,8 @@ export interface Requirement {
   // Persisté dans le YAML uniquement quand vrai (absent = false) ; posé par
   // RevalidationService, levé par l'analyse d'impact (T173). Indépendant du statut.
   needsRevalidation?: boolean
+  // GH77 — historique des champs suivis (statut par défaut), posé par l'application seule.
+  history?: ObjectHistory
   // Dérivés du git log du fichier (premier/dernier commit le touchant), pas persistés
   // dans le YAML — `null` tant que le fichier n'a jamais été commité.
   createdAt: string | null

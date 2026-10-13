@@ -42,6 +42,8 @@ const schemaFieldSchema = z.object({
   default: z.unknown().optional(),
   placeholder: z.string().optional(),
   validator: z.string().optional(),
+  /** GH77 — historiser les changements de ce champ (`history.<name>`). */
+  trackHistory: z.boolean().optional(),
 })
 
 const schemaStatusSchema = z.object({
@@ -62,6 +64,8 @@ const objectTypeDefinitionSchema = z.object({
   category: objectCategorySchema,
   fields: z.array(schemaFieldSchema).default([]),
   statuses: z.array(schemaStatusSchema).optional(),
+  /** GH77 — historiser le statut (défaut true ; écrire false pour le désactiver). */
+  trackStatusHistory: z.boolean().optional(),
 })
 
 const linkTypeDefinitionSchema = z.object({

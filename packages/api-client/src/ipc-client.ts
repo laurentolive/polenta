@@ -60,6 +60,7 @@ export function createIpcClient(
       get: (p) => invoke('schema:get', p),
       save: (p, schema) => invoke('schema:save', p, schema),
       moveElement: (p, dto) => invoke('schema:move-element', p, dto),
+      renameFields: (p, ref, renames) => invoke('schema:rename-fields', p, ref, renames),
       invalidate: (p) => invoke('schema:invalidate', p),
     },
     tree: {
@@ -216,6 +217,10 @@ export function createIpcClient(
       testPlan: (p, dto, workspaceDir) => invoke('traceability:test-plan', p, dto, workspaceDir),
       exportCsv: (p, f, workspaceDir) => invoke('traceability:export-csv', p, f, workspaceDir),
       diffRequirements: (p, fromSha, toSha) => invoke('traceability:diff-requirements', p, fromSha, toSha),
+    },
+    history: {
+      get: (p, kind, id) => invoke('history:get', p, kind, id),
+      backfill: (p) => invoke('history:backfill', p),
     },
     revalidation: {
       list: (p, w) => invoke('revalidation:list', p, w),

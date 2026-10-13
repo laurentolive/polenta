@@ -479,7 +479,13 @@
       "cancelChangesTitle": "Annuler les modifications ?",
       "cancelChangesBody": "Les modifications seront perdues. Êtes-vous sûr ?",
       "confirmCancel": "Oui, annuler",
-      "descriptionFieldLabel": "Description"
+      "descriptionFieldLabel": "Description",
+      "colHistory": "Hist.",
+      "colHistoryTitle": "Historiser les changements de ce champ",
+      "historyValue": "Historiser : valeur, date et auteur à chaque changement",
+      "historyEvent": "Historiser : date et auteur à chaque changement (le contenu est déjà dans git)",
+      "historyNotTrackable": "Ce champ ne peut pas être historisé",
+      "trackStatusHistory": "Historiser le statut (valeur, date et auteur à chaque changement)"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -580,7 +586,11 @@
       "moveElementStale": "Cet élément a changé avant la fin du déplacement — merci de recommencer le glisser-déposer.",
       "nameAlreadyUsed": "Ce nom est déjà utilisé dans ce repo ou ce workspace.",
       "schemaLoadingForLocal": "Le schéma de ce repo est encore en cours de chargement — réessayez dans un instant.",
-      "notAWorkspace": "Ce répertoire n'est pas (ou plus) un workspace {{appName}}."
+      "notAWorkspace": "Ce répertoire n'est pas (ou plus) un workspace {{appName}}.",
+      "renameReportMigrated": "Champ(s) renommé(s) : {{count}} objet(s) migré(s), valeur et historique compris.",
+      "renameReportSkipped": "{{count}} objet(s) non migré(s) — une donnée existe déjà sous le nouveau nom : {{ids}}",
+      "renameReportFailed": "{{count}} échec(s) de migration : {{ids}}",
+      "renameReportError": "Le schéma est enregistré, mais la migration des objets a échoué : {{error}}"
     },
     "page": {
       "title": "Modèle de données",
@@ -1522,5 +1532,31 @@
     "revoked": "Votre accès au serveur {{host}} a été révoqué, a expiré ou votre compte a été désactivé. Vos modifications locales sont conservées.",
     "reconnect": "Se reconnecter",
     "readOnlyProject": "Vous avez un accès en lecture seule à ce projet ({{repo}}) : vous pouvez consulter mais pas publier."
+  },
+  "history": {
+    "title": "Historique",
+    "status": "Statut",
+    "empty": "Aucun historique",
+    "modified": "modifié",
+    "emptyValue": "(vide)",
+    "badge": {
+      "mcp": "MCP",
+      "git": "git",
+      "schema": "début du suivi",
+      "implicit": "déduite"
+    },
+    "badgeTitle": {
+      "mcp": "Écrit par le serveur MCP (agent IA)",
+      "git": "Repris de l'historique git (date et auteur du commit)",
+      "schema": "Valeur constatée au démarrage du suivi, datée du dernier commit",
+      "implicit": "Valeur actuelle absente de l'historique (fichier modifié hors de l'application) — datée du dernier commit, sera enregistrée à la prochaine modification"
+    },
+    "backfillTitle": "Historique des champs suivis",
+    "backfillHelp": "Reconstruit l'historique des champs suivis (statut et champs « Hist. ») depuis l'historique git de chaque repo : une entrée par changement, datée du commit et signée de son auteur. Les fichiers complétés sont à publier ; relancer n'ajoute pas de doublon.",
+    "backfillRun": "Reconstruire depuis git",
+    "backfillRunning": "Reconstruction…",
+    "backfillConfirm": "Reconstruire l'historique de {{repo}} depuis git ? Les fichiers modifiés seront à publier.",
+    "backfillResult": "{{objects}} objet(s) complété(s), {{entries}} entrée(s) ajoutée(s).",
+    "backfillFailed": "{{count}} fichier(s) ignoré(s) : {{files}}"
   }
 }

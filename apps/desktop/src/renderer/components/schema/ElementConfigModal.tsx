@@ -118,6 +118,15 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           {draft.category !== 'campaign' && (
             <StatusesTable statuses={draft.statuses} onChange={statuses => set({ statuses })} />
           )}
+          <label className="mt-3 flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.trackStatusHistory}
+              onChange={e => set({ trackStatusHistory: e.target.checked })}
+              className="h-3 w-3 accent-ink"
+            />
+            {t('schema.editor.trackStatusHistory')}
+          </label>
         </div>
 
         {/* Footer */}

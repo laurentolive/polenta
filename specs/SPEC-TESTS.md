@@ -71,6 +71,7 @@ La définition d'un cas de test suit le même modèle que les exigences :
 | `createdBy` | USER | — |
 | `updatedAt` | DATETIME | — |
 | `updatedBy` | USER | — |
+| `history` | map? | **GH77** — historique des champs suivis (statut par défaut), posé par l'application seule — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77) |
 
 ### 2.3 Matériel requis (EquipmentRequirement)
 
@@ -460,6 +461,7 @@ exécution (statut par test).
 | `status` | `planned` / `in_progress` / `completed` / `abandoned` |
 | `createdAt` | — |
 | `completedAt` | Renseigné à la fermeture (`completed` ou `abandoned`) |
+| `history` | **GH77** — historique du statut (`planned` à la création, `in_progress` au premier résultat, `completed` / `abandoned` à la clôture) et des champs personnalisés suivis — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77). Les entrées de `runs` n'ont pas d'historique propre (#73) |
 
 **Statut de campagne :** `planned` à la création. Passe automatiquement à `in_progress` dès la
 première saisie de résultat sur un test (`updateRun()`). Le passage à `completed` ou `abandoned` est
@@ -613,7 +615,8 @@ de l'ajout — pas seulement une référence par `testCaseId`. Toute lecture ult
 tests de la campagne, exécution, relecture d'un run, exports plan/rapport xlsx/docx/pdf) utilise
 `testSnapshot` en priorité, indépendamment des modifications faites au test source par la suite
 (changement de statut, de contenu, y compris après clôture de la campagne) — une campagne fermée
-reste un enregistrement figé. Un id qui ne résout plus au moment de l'ajout (test supprimé entre
+reste un enregistrement figé. **GH77** : la copie ne porte jamais `history` (retiré à l'ajout, au
+report et à la resynchronisation GH68) — l'historique reste celui du test source. Un id qui ne résout plus au moment de l'ajout (test supprimé entre
 l'affichage du panneau et l'appel) est simplement omis de la copie plutôt que de faire échouer tout
 l'ajout groupé ; l'entrée correspondante se comporte alors comme une entrée pré-T49 (voir
 compatibilité ascendante ci-dessous).

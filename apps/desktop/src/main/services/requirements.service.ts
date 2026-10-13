@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import type { ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
+import { renameFieldKeys } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
 import type { CreateRequirementDto, UpdateRequirementDto, TransitionRequirementDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService, RequirementFilters } from './requirements-index.service'
@@ -10,6 +11,7 @@ import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import type { HistoryService } from './history.service'
 
 export class RequirementsService {
   constructor(
@@ -18,6 +20,7 @@ export class RequirementsService {
     private readonly schema: SchemaService,
     private readonly tree?: TreeService,
     private readonly revalidation?: RevalidationService,
+    private readonly history?: HistoryService,
   ) {}
 
   findAll(repoPath: string, filters: RequirementFilters): Promise<Requirement[]> {
@@ -92,10 +95,9 @@ export class RequirementsService {
       updatedBy: null,
     }
 
-    await this.git.writeYaml(targetRepo, `requirements/${reqId}.yaml`, omitAuditFields(req))
-    this.index.upsert(repoPath, req)
-    await this.appendToTree(targetRepo, dto.objectTypeRef, req.id, req.title)
-    return req
+    const created = await this.persist(repoPath, targetRepo, null, req)
+    await this.appendToTree(targetRepo, dto.objectTypeRef, created.id, created.title)
+    return created
   }
 
   // T159 — `withKeyLock` sérialise les read-modify-write concurrents sur le même fichier
@@ -110,15 +112,11 @@ export class RequirementsService {
       // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
-      const updated: Requirement = {
+      return this.persist(repoPath, targetRepo, existing, {
         ...existing,
         ...(dto.title && { title: dto.title }),
         fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      }
-
-      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-      this.index.upsert(repoPath, updated)
-      return updated
+      })
     })
   }
 
@@ -129,14 +127,11 @@ export class RequirementsService {
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
-      const updated: Requirement = {
+      const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         status: targetStatus,
         version: (existing.version ?? 0) + 1,
-      }
-
-      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-      this.index.upsert(repoPath, updated)
+      })
       return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, targetStatus) }
     })
     // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
@@ -158,19 +153,33 @@ export class RequirementsService {
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
       const wasApproved = !!typeDef?.statuses?.find(s => s.name === existing.status)?.isApproval
 
-      const updated: Requirement = {
+      const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         status: dto.toStatus,
         ...(wasApproved && dto.toStatus !== existing.status ? { version: (existing.version ?? 0) + 1 } : {}),
-      }
-
-      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-      this.index.upsert(repoPath, updated)
+      })
       return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, dto.toStatus) }
     })
     // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
     if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
     return updated
+  }
+
+  /**
+   * Seule écriture d'un fichier d'exigence (GH77) : complète l'historique des champs suivis
+   * (`before` null = création), écrit sans les champs d'audit, met l'index à jour.
+   */
+  private async persist(
+    repoPath: string, targetRepo: string, before: Requirement | null, after: Requirement,
+    /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
+    opts: { raw?: boolean } = {},
+  ): Promise<Requirement> {
+    const stamped = this.history && !opts.raw
+      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo)
+      : after
+    await this.git.writeYaml(targetRepo, `requirements/${stamped.id}.yaml`, omitAuditFields(stamped))
+    this.index.upsert(repoPath, stamped)
+    return stamped
   }
 
   /** Définition du type de l'objet dans le schéma du repo ouvert (null si non résolvable). */
@@ -201,15 +210,51 @@ export class RequirementsService {
     const failed: { id: string; error: string }[] = []
     for (const req of matching) {
       try {
-        const updated: Requirement = { ...req, objectTypeRef: newRef }
-        await this.git.writeYaml(repoPath, `requirements/${req.id}.yaml`, omitAuditFields(updated))
-        this.index.upsert(repoPath, updated)
+        await this.persist(repoPath, repoPath, req, { ...req, objectTypeRef: newRef })
         succeeded.push(req.id)
       } catch (err) {
         failed.push({ id: req.id, error: err instanceof Error ? err.message : String(err) })
       }
     }
     return { succeeded, failed }
+  }
+
+  /**
+   * GH77 — renommage de champs dans l'éditeur de schéma : déplace valeur et historique sur chaque
+   * exigence du type (`renameFieldKeys`), sans entrée d'historique. Méthode dédiée plutôt que le
+   * DTO public, comme `retargetObjectTypeRef`. Au mieux par fichier.
+   */
+  async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    for (const { id } of await this.index.findAll(repoPath, { type: objectTypeRef })) {
+      try {
+        await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+          const existing = await this.index.findById(repoPath, id)
+          const renamed = existing ? renameFieldKeys(existing, renames) : null
+          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!renamed || renamed === 'conflict') return
+          // `before` = objet renommé : aucune valeur suivie ne change, pas d'entrée.
+          await this.persist(repoPath, repoPath, renamed, renamed, { raw: true })
+          result.migrated.push(id)
+        })
+      } catch (err) {
+        result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+  }
+
+  /**
+   * GH77 — remplace l'historique d'une exigence par `next(courante)` (reprise depuis git), sous le
+   * verrou du fichier ; `null` = rien à écrire. Vrai si le fichier a été réécrit.
+   */
+  async updateHistory(repoPath: string, id: string, next: (current: Requirement) => ObjectHistory | null): Promise<boolean> {
+    return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+      const existing = await this.index.findById(repoPath, id)
+      const history = existing ? next(existing) : null
+      if (!existing || !history) return false
+      const updated = { ...existing, history }
+      await this.persist(repoPath, repoPath, updated, updated, { raw: true })
+      return true
+    })
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────

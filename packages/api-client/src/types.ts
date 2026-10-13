@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -364,6 +364,8 @@ export interface ApiClient {
     get(repoPath: string): Promise<ProjectSchema>
     save(repoPath: string, schema: ProjectSchema): Promise<void>
     moveElement(repoPath: string, dto: MoveElementDto): Promise<MoveElementResult>
+    /** GH77 — migre valeur et historique des champs renommés sur les objets du type (après `save`). */
+    renameFields(repoPath: string, objectTypeRef: string, renames: FieldRename[]): Promise<FieldRenameResult>
     /** Drops the main-process in-memory cache for `repoPath` so the next `get()` re-reads schema.yaml from disk. */
     invalidate(repoPath: string): Promise<void>
   }
@@ -601,6 +603,12 @@ export interface ApiClient {
     exportCsv(repoPath: string, filters?: MatrixFiltersDto, workspaceDir?: string): Promise<MatrixExportRow[]>
     /** Diff exigence-par-exigence entre deux shas (T46) — indépendant de l'index vivant. */
     diffRequirements(repoPath: string, fromSha: string, toSha: string): Promise<RequirementDiffEntry[]>
+  }
+  history: {
+    /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
+    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign', id: string): Promise<ObjectHistory>
+    /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
+    backfill(repoPath: string): Promise<HistoryBackfillResult>
   }
   revalidation: {
     /** T173 — éléments marqués `needsRevalidation` du workspace, avec leurs éléments liés. */

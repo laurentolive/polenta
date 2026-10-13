@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { McpContainer } from '../container'
 import { jsonToolResult, paginate } from '../mcp-types'
+import { readEffectiveHistory } from '../../main/services/history.service'
 
 /**
  * Filtres communs `list_requirements`/`list_tests` — même forme que
@@ -95,5 +96,24 @@ export function registerReadTools(server: McpServer, container: McpContainer): v
       const all = await container.campaigns.list(container.repoPath, filters?.component, filters?.level)
       return jsonToolResult(paginate(all))
     },
+  )
+
+  // GH77 — les listes renvoient `history` tel qu'écrit ; ce tool y ajoute les entrées implicites
+  // (valeur courante différente de la dernière entrée, `implicit: true`).
+  server.registerTool(
+    'get_history',
+    {
+      title: 'Get object history',
+      description:
+        "Historique des champs suivis d'une exigence, d'un test ou d'une campagne : une liste par " +
+        'champ (`status` pour le statut), entrées `{ value?, at, by?, source?, implicit? }` triées ' +
+        "par date. `implicit: true` = valeur constatée dont la date de changement est inconnue " +
+        '(datée du dernier commit du fichier). Données brutes : aucune interprétation.',
+      inputSchema: {
+        kind: z.enum(['requirement', 'test', 'campaign']),
+        id: z.string().describe('ID de l’objet (ex. SYS-0001, CAMP-0003)'),
+      },
+    },
+    async ({ kind, id }) => jsonToolResult(await readEffectiveHistory(container, container.repoPath, kind, id)),
   )
 }

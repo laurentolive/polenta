@@ -1,3 +1,5 @@
+import type { ObjectHistory } from './history'
+
 // ─── Test Case Definition ─────────────────────────────────────────────────────
 
 export interface EquipmentRequirement {
@@ -32,6 +34,8 @@ export interface TestCase {
   fields: Record<string, unknown>
   // T172 — impact à vérifier (cf. Requirement.needsRevalidation).
   needsRevalidation?: boolean
+  // GH77 — historique des champs suivis (cf. Requirement.history).
+  history?: ObjectHistory
   // Dérivés du git log du fichier (premier/dernier commit le touchant), pas persistés
   // dans le YAML — `null` tant que le fichier n'a jamais été commité.
   createdAt: string | null

@@ -32,6 +32,9 @@ import { AppSettingsService } from './services/app-settings.service'
 import { MergeResolutionService } from './services/merge-resolution.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
+import { HistoryService } from './services/history.service'
+import { FieldRenameService } from './services/field-rename.service'
+import { HistoryBackfillService } from './services/history-backfill.service'
 import type { Container } from './ipc/index'
 import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
@@ -66,10 +69,12 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   })
   const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)
   const tree = new TreeService()
+  // GH77 — historique des champs suivis ; `by` = compte du projet (login forge, sinon `local`).
+  const history = new HistoryService(git, async repoPath => ({ by: await auth.projectUsername(repoPath) }))
   // T172 — marquage needsRevalidation des éléments liés quand un élément quitte l'approbation.
-  const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree)
-  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation)
-  const tests = new TestsService(git, testsIndex, schema, tree, revalidation)
+  const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
+  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation, history)
+  const tests = new TestsService(git, testsIndex, schema, tree, revalidation, history)
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const reviews = new ReviewsService(git)
   // T171 — base de paramètres ; marque les éléments approuvés impactés via T172, et résout les
@@ -77,10 +82,14 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // T179 — exigences liées aux tests pour les références `{req.<champ>}`.
   const reqRefs = new ReqRefsService(git, reqIndex, schema)
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree, reqRefs)
-  const campaigns = new CampaignsService(git, tests, parameters, schema)
+  const campaigns = new CampaignsService(git, tests, parameters, schema, history)
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
+  // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
+  const fieldRename = new FieldRenameService(requirements, tests, campaigns)
+  // GH77 — reprise de l'historique des champs suivis depuis git (action manuelle, par repo).
+  const historyBackfill = new HistoryBackfillService(git, requirements, tests, campaigns)
   const baseline = new BaselineService()
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree, campaigns)
   const dashboards = new DashboardsService(git)
@@ -133,6 +142,9 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     exportTemplateLibrary,
     parameters,
     revalidation,
+    history,
+    fieldRename,
+    historyBackfill,
     appSettings,
     machineConfig: host.machineConfig,
     forgeConfig,

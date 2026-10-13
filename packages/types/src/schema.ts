@@ -22,6 +22,8 @@ export interface SchemaField {
   default?: unknown
   placeholder?: string
   validator?: string         // e.g. "EARS" | "regex:<pattern>"
+  /** GH77 — historiser les changements de ce champ (`history.<name>`). Écrit seulement si vrai. */
+  trackHistory?: boolean
 }
 
 // Format de stockage d'un champ `multi_enum` : chaîne CSV (ex. "a, b, c"), pas une liste
@@ -79,6 +81,8 @@ export interface ObjectTypeDefinition {
   category: ObjectCategory
   fields: SchemaField[]
   statuses?: SchemaStatus[]
+  /** GH77 — historiser le statut (`history.status`). Absent = true ; écrit seulement si false. */
+  trackStatusHistory?: boolean
 }
 
 /** GH68 — `status` est-il le statut d'approbation du type (`statuses[].isApproval`) ? Repli sur

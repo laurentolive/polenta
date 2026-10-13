@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition } from '@polenta/types'
+import { HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, historyModeFor } from '@polenta/types'
+import type { FieldRename, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition } from '@polenta/types'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 
 // ── Editable state types ──────────────────────────────────────────────────────
@@ -10,6 +11,11 @@ import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 export interface EditableField {
   name: string; label: string; type: SchemaFieldType
   values: string; required: boolean; default: string; placeholder: string
+  /** GH77 — historiser ce champ. */
+  trackHistory: boolean
+  /** GH77 — nom du champ tel que chargé du schéma (non persisté) : absent pour un champ ajouté dans
+   *  la session. Un nom différent à l'enregistrement est un renommage (cf. `fieldRenames`). */
+  originalName?: string
 }
 
 export interface EditableStatus {
@@ -19,6 +25,8 @@ export interface EditableStatus {
 export interface EditableObjectType {
   name: string; label: string; color: string; prefix: string; category: ObjectCategory
   fields: EditableField[]; statuses: EditableStatus[]
+  /** GH77 — historiser le statut (défaut true). */
+  trackStatusHistory: boolean
 }
 
 // ── Converters ────────────────────────────────────────────────────────────────
@@ -28,7 +36,21 @@ export function fieldToEditable(f: SchemaField): EditableField {
     name: f.name, label: f.label ?? '', type: f.type,
     values: (f.values ?? []).join(', '), required: f.required ?? false,
     default: f.default !== undefined ? String(f.default) : '', placeholder: f.placeholder ?? '',
+    trackHistory: f.trackHistory ?? false, originalName: f.name,
   }
+}
+
+/** GH77 — `trackHistory` a-t-il un sens pour ce champ ? (type historisable ; pas un champ nommé `status`,
+ *  dont la clé d'historique se confondrait avec celle du statut). */
+export function canTrackHistory(f: Pick<EditableField, 'name' | 'type'>): boolean {
+  return HISTORY_TRACKABLE_TYPES.includes(f.type) && f.name !== STATUS_HISTORY_KEY
+}
+
+/** GH77 — champs renommés depuis le chargement du type (nom d'origine connu et différent). */
+export function fieldRenames(t: EditableObjectType): FieldRename[] {
+  return t.fields
+    .filter(f => f.originalName && f.name && f.originalName !== f.name)
+    .map(f => ({ from: f.originalName!, to: f.name }))
 }
 
 export function editableToField(f: EditableField): SchemaField {
@@ -38,6 +60,7 @@ export function editableToField(f: EditableField): SchemaField {
   if (f.required) result.required = true
   if (f.default) result.default = f.default
   if (f.placeholder) result.placeholder = f.placeholder
+  if (f.trackHistory && canTrackHistory(f)) result.trackHistory = true
   return result
 }
 
@@ -60,6 +83,7 @@ export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
     category: t.category,
     fields: t.fields.map(fieldToEditable),
     statuses: (t.statuses ?? []).map(statusToEditable),
+    trackStatusHistory: t.trackStatusHistory !== false,
   }
 }
 
@@ -69,6 +93,7 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
   if (t.color) result.color = t.color
   if (t.prefix) result.prefix = t.prefix
   if (t.statuses.length > 0) result.statuses = t.statuses.map(editableToStatus)
+  if (!t.trackStatusHistory) result.trackStatusHistory = false
   return result
 }
 
@@ -103,7 +128,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
 // ── Factories ─────────────────────────────────────────────────────────────────
 
 export function emptyField(): EditableField {
-  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '' }
+  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '', trackHistory: false }
 }
 
 export function emptyStatus(): EditableStatus {
@@ -130,7 +155,8 @@ export function emptyObjType(category: ObjectCategory, componentName: string, ca
   const suggested = slug ? `${slug}_${CATEGORY_SUFFIX[category]}` : ''
   return {
     name: suggested, label: categoryLabel, color: '', prefix: suggested, category,
-    fields: [{ name: 'description', label: descriptionLabel, type: 'richtext', values: '', required: false, default: '', placeholder: '' }],
+    fields: [{ name: 'description', label: descriptionLabel, type: 'richtext', values: '', required: false, default: '', placeholder: '', trackHistory: false }],
+    trackStatusHistory: true,
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
       : [],
@@ -238,6 +264,7 @@ export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onC
               <th className={thClass}>{t('schema.editor.colType')}</th>
               <th className={thClass}>{t('schema.editor.colEnumValues')}</th>
               <th className={`${thClass} text-center`}>{t('schema.editor.colRequired')}</th>
+              <th className={`${thClass} text-center`} title={t('schema.editor.colHistoryTitle')}>{t('schema.editor.colHistory')}</th>
               <th className={thClass}>{t('schema.editor.colDefault')}</th>
               <th className={thClass}></th>
             </tr>
@@ -254,6 +281,19 @@ export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onC
                 </td>
                 <td className={tdClass}><input value={f.values} onChange={e => set(i, { values: e.target.value })} disabled={f.type !== 'enum' && f.type !== 'multi_enum'} className={`${cellInput} disabled:opacity-30`} placeholder="a, b, c" /></td>
                 <td className={`${tdClass} text-center`}><input type="checkbox" checked={f.required} onChange={e => set(i, { required: e.target.checked })} className="h-3 w-3 accent-ink" /></td>
+                <td className={`${tdClass} text-center`}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('schema.editor.colHistoryTitle')}
+                    checked={f.trackHistory && canTrackHistory(f)}
+                    disabled={!canTrackHistory(f)}
+                    onChange={e => set(i, { trackHistory: e.target.checked })}
+                    title={!canTrackHistory(f)
+                      ? t('schema.editor.historyNotTrackable')
+                      : t(historyModeFor(f.type) === 'event' ? 'schema.editor.historyEvent' : 'schema.editor.historyValue')}
+                    className="h-3 w-3 accent-ink disabled:opacity-30"
+                  />
+                </td>
                 <td className={tdClass}><input value={f.default} onChange={e => set(i, { default: e.target.value })} className={cellInput} placeholder="—" /></td>
                 <td className={tdClass}>
                   <div className="flex gap-0.5 justify-end">

@@ -223,6 +223,9 @@ jiraLinks:
     linkedBy: laurent
 ```
 
+**GH77** — champ système facultatif `history` (historique des champs suivis, posé par l'application,
+absent tant que vide) : une liste par champ, entrées `{ value?, at, by?, source? }` — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77).
+
 ### 4.3 Mapping Git → Cycle de vie Polenta
 
 | Action Polenta | Opération Git |
@@ -367,7 +370,10 @@ brouillon) une **session de résolution** dans un onglet `/merge-resolve` :
   - *Objets typés* (exigences, tests, campagnes) : fusion **par unité**, c'est-à-dire chaque clé
     racine hors `fields`, et chaque `fields.<nom>`. Une unité modifiée d'un seul côté, ou à
     l'identique des deux côtés, est reprise sans conflit. `version` prend le max et
-    `needsRevalidation` le OU logique.
+    `needsRevalidation` le OU logique. **GH77** : `history` n'est jamais en conflit — union des
+    entrées des deux côtés par champ, dédoublonnées sur `(at, by, value, source)`, triées par `at`
+    (`mergeHistories`) ; si la valeur fusionnée diffère de la dernière entrée, la règle « valeur
+    courante » de SPEC-REQ §4.4 s'applique.
   - *`links/links.yaml`* : fusion par lien (`id`), union des ajouts.
   - *`parameters/parameters.yaml`* : fusion par paramètre, clés triées.
   - *Autres fichiers* : hunks `diff3`, la même bibliothèque qu'isomorphic-git.

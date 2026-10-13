@@ -1,0 +1,83 @@
+{
+  "a": {
+    "run": {
+      "ok": true,
+      "rows": 23,
+      "columns": [
+        "component",
+        "status",
+        "statusLabel",
+        "statusOrder",
+        "isApproval",
+        "isTerminal",
+        "count",
+        "_ids"
+      ]
+    },
+    "matchesReference": {
+      "equal": true,
+      "mismatches": 0,
+      "sample": []
+    },
+    "spec": {
+      "compiles": true,
+      "unknownFields": []
+    }
+  },
+  "b": {
+    "run": {
+      "ok": true,
+      "rows": 19,
+      "columns": [
+        "_ids",
+        "testId",
+        "testTitle",
+        "testLabel",
+        "testRepo",
+        "campaignId",
+        "campaignTitle",
+        "campaignLabel",
+        "campaignStatus",
+        "campaignOrder",
+        "status",
+        "severity",
+        "entryCount",
+        "entryIds",
+        "lastExecutedAt"
+      ]
+    },
+    "matchesReference": {
+      "equal": true,
+      "mismatches": 0,
+      "sample": []
+    },
+    "spec": {
+      "compiles": true,
+      "unknownFields": []
+    }
+  },
+  "c": {
+    "run": {
+      "ok": true,
+      "rows": 525,
+      "columns": [
+        "date",
+        "status",
+        "statusOrder",
+        "count",
+        "entries",
+        "campaignId",
+        "_ids"
+      ]
+    },
+    "matchesReference": {
+      "equal": true,
+      "mismatches": 0,
+      "sample": []
+    },
+    "spec": {
+      "compiles": true,
+      "unknownFields": []
+    }
+  }
+}

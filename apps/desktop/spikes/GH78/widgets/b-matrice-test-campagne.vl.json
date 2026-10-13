@@ -1,0 +1,27 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "title": "Matrice test × campagne",
+  "data": { "name": "rows" },
+  "width": "container",
+  "height": { "step": 18 },
+  "params": [{ "name": "pick", "select": { "type": "point", "on": "click", "fields": ["testId", "campaign"] } }],
+  "mark": { "type": "rect", "cursor": "pointer", "stroke": "var(--surface)", "strokeWidth": 1 },
+  "encoding": {
+    "x": { "field": "campaign", "type": "nominal", "title": null, "axis": { "orient": "top", "labelAngle": 0 } },
+    "y": { "field": "test", "type": "nominal", "title": null, "sort": "ascending" },
+    "color": {
+      "field": "status", "type": "nominal", "title": "Dernier statut",
+      "scale": {
+        "domain": ["PASS", "FAIL", "BLOCKED", "INCOMPLETE", "pending"],
+        "range": ["var(--status-success-solid)", "var(--status-danger-solid)", "var(--status-warning-solid)", "var(--status-info-solid)", "var(--status-neutral-border)"]
+      }
+    },
+    "opacity": { "condition": { "param": "pick", "value": 1 }, "value": 0.4 },
+    "tooltip": [
+      { "field": "test", "title": "Test" },
+      { "field": "campaignTitle", "title": "Campagne" },
+      { "field": "status", "title": "Statut" },
+      { "field": "entries", "title": "Instances" }
+    ]
+  }
+}

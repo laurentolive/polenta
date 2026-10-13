@@ -1,0 +1,54 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "title": "Avancement de la campagne",
+  "width": "container",
+  "height": 280,
+  "data": {"name": "rows"},
+  "encoding": {
+    "x": {
+      "field": "date",
+      "type": "temporal",
+      "timeUnit": "utcyearmonthdate",
+      "title": "Jour"
+    },
+    "y": {
+      "field": "count",
+      "type": "quantitative",
+      "stack": "zero",
+      "title": "Entrées"
+    },
+    "color": {
+      "field": "status",
+      "type": "nominal",
+      "title": "Statut",
+      "scale": {
+        "domain": ["pending", "PASS", "FAIL", "BLOCKED", "INCOMPLETE"],
+        "range": ["#b0b7c3", "#2e9e5b", "#d64545", "#e08a1e", "#7b68c4"]
+      }
+    },
+    "order": {"field": "statusOrder", "type": "quantitative"}
+  },
+  "layer": [
+    {
+      "mark": {"type": "area", "interpolate": "step-after", "opacity": 0.85}
+    },
+    {
+      "transform": [{"filter": "datum.count > 0"}],
+      "params": [
+        {
+          "name": "pick",
+          "select": {"type": "point", "on": "click", "nearest": true, "fields": ["date", "status"]}
+        }
+      ],
+      "mark": {"type": "point", "filled": true, "size": 60, "cursor": "pointer"},
+      "encoding": {
+        "opacity": {"condition": {"param": "pick", "value": 1, "empty": false}, "value": 0.35},
+        "tooltip": [
+          {"field": "date", "type": "temporal", "timeUnit": "utcyearmonthdate", "title": "Jour"},
+          {"field": "status", "type": "nominal", "title": "Statut"},
+          {"field": "count", "type": "quantitative", "title": "Entrées"}
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,293 @@
+{
+  "note": "renderer = desktop ET web (même renderer, même Vite) ; node = main Electron, serveur web et serveur MCP (même code de service).",
+  "renderer": {
+    "vega (runtime) + vega-interpreter": {
+      "js": {
+        "rawKb": 513.8,
+        "gzipKb": 182.8,
+        "brotliKb": 155.5
+      },
+      "wasm": {
+        "rawKb": 0,
+        "gzipKb": 0,
+        "brotliKb": 0
+      },
+      "all": {
+        "rawKb": 513.8,
+        "gzipKb": 182.8,
+        "brotliKb": 155.5
+      },
+      "files": [
+        {
+          "file": "assets/chunk-vega-runtime-SMFEEGkd.js",
+          "rawKb": 513.8,
+          "gzipKb": 182.8,
+          "brotliKb": 155.5
+        }
+      ]
+    },
+    "vega-lite (compilateur seul)": {
+      "js": {
+        "rawKb": 707.9,
+        "gzipKb": 243.7,
+        "brotliKb": 207.6
+      },
+      "wasm": {
+        "rawKb": 0,
+        "gzipKb": 0,
+        "brotliKb": 0
+      },
+      "all": {
+        "rawKb": 707.9,
+        "gzipKb": 243.7,
+        "brotliKb": 207.6
+      },
+      "files": [
+        {
+          "file": "assets/chunk-vega-lite-7dpQQHQ0.js",
+          "rawKb": 707.9,
+          "gzipKb": 243.7,
+          "brotliKb": 207.6
+        }
+      ]
+    },
+    "vega-embed + vega-lite + vega + interpréteur": {
+      "js": {
+        "rawKb": 841,
+        "gzipKb": 290.2,
+        "brotliKb": 241.4
+      },
+      "wasm": {
+        "rawKb": 0,
+        "gzipKb": 0,
+        "brotliKb": 0
+      },
+      "all": {
+        "rawKb": 841,
+        "gzipKb": 290.2,
+        "brotliKb": 241.4
+      },
+      "files": [
+        {
+          "file": "assets/chunk-vega-embed-qQ1rClKN.js",
+          "rawKb": 841,
+          "gzipKb": 290.2,
+          "brotliKb": 241.4
+        }
+      ]
+    },
+    "quickjs (cœur + wasm)": {
+      "js": {
+        "rawKb": 50.6,
+        "gzipKb": 14.1,
+        "brotliKb": 12.7
+      },
+      "wasm": {
+        "rawKb": 491.3,
+        "gzipKb": 228.1,
+        "brotliKb": 194.4
+      },
+      "all": {
+        "rawKb": 542,
+        "gzipKb": 242.2,
+        "brotliKb": 207.1
+      },
+      "files": [
+        {
+          "file": "assets/chunk-quickjs-D0qO-0oB.js",
+          "rawKb": 50.6,
+          "gzipKb": 14.1,
+          "brotliKb": 12.7
+        },
+        {
+          "file": "assets/emscripten-module-uFzwHH0Y.wasm",
+          "rawKb": 491.3,
+          "gzipKb": 228.1,
+          "brotliKb": 194.4
+        }
+      ]
+    },
+    "combiné (point d'entrée + 4 chargements paresseux)": {
+      "js": {
+        "rawKb": 889.7,
+        "gzipKb": 305.4,
+        "brotliKb": 262.2
+      },
+      "wasm": {
+        "rawKb": 491.3,
+        "gzipKb": 228.1,
+        "brotliKb": 194.4
+      },
+      "all": {
+        "rawKb": 1381.1,
+        "gzipKb": 533.5,
+        "brotliKb": 456.6
+      },
+      "files": [
+        {
+          "file": "assets/chunk-quickjs-DcaCU95w.js",
+          "rawKb": 0.6,
+          "gzipKb": 0.4,
+          "brotliKb": 0.3
+        },
+        {
+          "file": "assets/chunk-vega-embed-Cg5z2kSS.js",
+          "rawKb": 52.4,
+          "gzipKb": 18.6,
+          "brotliKb": 16.4
+        },
+        {
+          "file": "assets/chunk-vega-lite-VHNEUwMO.js",
+          "rawKb": 267.7,
+          "gzipKb": 86.4,
+          "brotliKb": 74.5
+        },
+        {
+          "file": "assets/chunk-vega-runtime-0gHD2_R5.js",
+          "rawKb": 5.1,
+          "gzipKb": 2.1,
+          "brotliKb": 1.8
+        },
+        {
+          "file": "assets/emscripten-module-uFzwHH0Y.wasm",
+          "rawKb": 491.3,
+          "gzipKb": 228.1,
+          "brotliKb": 194.4
+        },
+        {
+          "file": "assets/emscripten-module.browser-CJk_ujF3.js",
+          "rawKb": 8.9,
+          "gzipKb": 4.1,
+          "brotliKb": 3.7
+        },
+        {
+          "file": "assets/ffi-Boa1QuFa.js",
+          "rawKb": 6.2,
+          "gzipKb": 1,
+          "brotliKb": 0.9
+        },
+        {
+          "file": "assets/module-ES6BEMUI-DtDrHF3o.js",
+          "rawKb": 33.6,
+          "gzipKb": 8.8,
+          "brotliKb": 8
+        },
+        {
+          "file": "assets/renderer-entry-Bsol_nfA.js",
+          "rawKb": 1.5,
+          "gzipKb": 0.8,
+          "brotliKb": 0.7
+        },
+        {
+          "file": "assets/renderer-entry-CqpLK-kP.js",
+          "rawKb": 0.1,
+          "gzipKb": 0.1,
+          "brotliKb": 0.1
+        },
+        {
+          "file": "assets/vega.module-QcMhNn5j.js",
+          "rawKb": 513.6,
+          "gzipKb": 183.2,
+          "brotliKb": 155.9
+        }
+      ],
+      "entry": {
+        "rawKb": 1.5,
+        "gzipKb": 0.8,
+        "brotliKb": 0.7
+      }
+    }
+  },
+  "node": {
+    "quickjs (cœur + wasm)": {
+      "format": "cjs",
+      "cjsError": null,
+      "unminified": {
+        "js": {
+          "rawKb": 84.6,
+          "gzipKb": 18.4,
+          "brotliKb": 16.2
+        },
+        "wasm": {
+          "rawKb": 491.3,
+          "gzipKb": 228.1,
+          "brotliKb": 194.4
+        },
+        "all": {
+          "rawKb": 576,
+          "gzipKb": 246.5,
+          "brotliKb": 210.5
+        }
+      },
+      "minifiedJs": {
+        "rawKb": 51.5,
+        "gzipKb": 14.4,
+        "brotliKb": 13
+      }
+    },
+    "vega-lite (compilateur seul)": {
+      "format": "esm",
+      "cjsError": "Build failed with 1 error: ../../node_modules/.pnpm/vega-canvas@2.0.0/node_modules/vega-canvas/build/vega-canvas.node.js:16:15: ERROR: Top-level await is currently not supported with the \"cjs\" output format",
+      "unminified": {
+        "js": {
+          "rawKb": 1691.1,
+          "gzipKb": 388.8,
+          "brotliKb": 307.8
+        },
+        "wasm": {
+          "rawKb": 0,
+          "gzipKb": 0,
+          "brotliKb": 0
+        },
+        "all": {
+          "rawKb": 1691.1,
+          "gzipKb": 388.8,
+          "brotliKb": 307.8
+        }
+      },
+      "minifiedJs": {
+        "rawKb": 773.6,
+        "gzipKb": 267.2,
+        "brotliKb": 222.5
+      }
+    }
+  },
+  "baseline": {
+    "desktopRenderer": {
+      "total": {
+        "rawKb": 7499.8,
+        "gzipKb": 1760.6,
+        "brotliKb": 1401
+      },
+      "mainChunk": {
+        "file": "drawio-viewer.min.js",
+        "rawKb": 2408.3,
+        "gzipKb": 609.8,
+        "brotliKb": 476.1
+      }
+    },
+    "desktopMain": {
+      "rawKb": 5419.9,
+      "gzipKb": 1173.1,
+      "brotliKb": 910.5
+    },
+    "web": {
+      "total": {
+        "rawKb": 5057.9,
+        "gzipKb": 1441.6,
+        "brotliKb": 1180.1
+      },
+      "mainChunk": {
+        "file": "drawio-viewer.min.js",
+        "rawKb": 2408.3,
+        "gzipKb": 609.8,
+        "brotliKb": 476.1
+      }
+    },
+    "mcpServer": {
+      "rawKb": 6025.5,
+      "gzipKb": 1179,
+      "brotliKb": 816.7
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "title": "Matrice test × campagne",
+  "data": { "name": "rows" },
+  "width": { "step": 28 },
+  "height": { "step": 20 },
+  "params": [
+    {
+      "name": "cell",
+      "select": { "type": "point", "on": "click", "fields": ["testId", "campaignId"] }
+    }
+  ],
+  "mark": { "type": "rect", "stroke": "white", "strokeWidth": 1, "cursor": "pointer" },
+  "encoding": {
+    "x": {
+      "field": "campaignLabel",
+      "type": "nominal",
+      "title": "Campagne",
+      "sort": { "field": "campaignOrder", "order": "ascending" },
+      "axis": { "labelAngle": -40, "labelLimit": 180 }
+    },
+    "y": {
+      "field": "testLabel",
+      "type": "nominal",
+      "title": "Test",
+      "sort": { "field": "testId", "order": "ascending" },
+      "axis": { "labelLimit": 240 }
+    },
+    "color": {
+      "field": "status",
+      "type": "nominal",
+      "title": "Dernier statut",
+      "scale": {
+        "domain": ["PASS", "FAIL", "BLOCKED", "INCOMPLETE", "pending"],
+        "range": ["#2e9e44", "#d62728", "#f28e2b", "#1f77b4", "#b0b0b0"]
+      }
+    },
+    "opacity": {
+      "condition": { "param": "cell", "empty": true, "value": 1 },
+      "value": 0.35
+    },
+    "tooltip": [
+      { "field": "testId", "title": "Test" },
+      { "field": "testTitle", "title": "Titre" },
+      { "field": "campaignId", "title": "Campagne" },
+      { "field": "campaignTitle", "title": "Titre campagne" },
+      { "field": "status", "title": "Statut (le plus défavorable)" },
+      { "field": "entryCount", "type": "quantitative", "title": "Entrées" },
+      { "field": "entryIds", "title": "IDs d'entrée" },
+      { "field": "lastExecutedAt", "title": "Dernière exécution" }
+    ]
+  }
+}

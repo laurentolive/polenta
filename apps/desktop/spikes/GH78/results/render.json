@@ -1,0 +1,330 @@
+{
+  "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'",
+  "chromium": {
+    "version": "156.0.8078.4",
+    "report": {
+      "cspViolations": [
+        "[contrôle eval] script-src ← eval",
+        "[contrôle eval] script-src ← eval",
+        "[contrôle sans interpréteur] style-src-elem ← inline",
+        "[contrôle sans interpréteur] style-src-elem ← inline",
+        "[contrôle sans interpréteur] script-src ← eval",
+        "[contrôle sans interpréteur] script-src ← eval"
+      ],
+      "evalBlocked": "oui (EvalError)",
+      "widgets": {
+        "a": [
+          {
+            "theme": "light",
+            "ok": true,
+            "compileMs": 31,
+            "renderMs": 91,
+            "marks": 23,
+            "click": {
+              "ids": [
+                "EV-0001",
+                "EV-0002",
+                "EV-0003"
+              ],
+              "keys": {
+                "component": "electrovannes",
+                "status": "approved",
+                "label": "Approuvé",
+                "count": 3,
+                "count_start": 0,
+                "count_end": 3
+              }
+            }
+          },
+          {
+            "theme": "dark",
+            "ok": true,
+            "compileMs": 5,
+            "renderMs": 15,
+            "marks": 23,
+            "click": {
+              "ids": [
+                "EV-0001",
+                "EV-0002",
+                "EV-0003"
+              ],
+              "keys": {
+                "component": "electrovannes",
+                "status": "approved",
+                "label": "Approuvé",
+                "count": 3,
+                "count_start": 0,
+                "count_end": 3
+              }
+            }
+          }
+        ],
+        "b": [
+          {
+            "theme": "light",
+            "ok": true,
+            "compileMs": 6,
+            "renderMs": 25,
+            "marks": 19,
+            "click": {
+              "ids": [
+                "TSYS-0003",
+                "CAMP-0001"
+              ],
+              "keys": {
+                "test": "TSYS-0003 Consommation d'eau Eco 40-60",
+                "testId": "TSYS-0003",
+                "campaign": "CAMP-0001",
+                "campaignTitle": "EVT — Essais de validation technique",
+                "status": "PASS",
+                "entries": 1
+              }
+            }
+          },
+          {
+            "theme": "dark",
+            "ok": true,
+            "compileMs": 4,
+            "renderMs": 10,
+            "marks": 19,
+            "click": {
+              "ids": [
+                "TSYS-0003",
+                "CAMP-0001"
+              ],
+              "keys": {
+                "test": "TSYS-0003 Consommation d'eau Eco 40-60",
+                "testId": "TSYS-0003",
+                "campaign": "CAMP-0001",
+                "campaignTitle": "EVT — Essais de validation technique",
+                "status": "PASS",
+                "entries": 1
+              }
+            }
+          }
+        ],
+        "c": [
+          {
+            "theme": "light",
+            "ok": true,
+            "compileMs": 12,
+            "renderMs": 142,
+            "marks": 315,
+            "click": {
+              "ids": [
+                "TSYS-0002",
+                "TSYS-0004",
+                "TSYS-0006"
+              ],
+              "keys": {
+                "date": 1783987200000,
+                "status": "PASS",
+                "count": 3,
+                "color_status_sort_index": 0,
+                "count_start": 1,
+                "count_end": 4
+              }
+            }
+          },
+          {
+            "theme": "dark",
+            "ok": true,
+            "compileMs": 8,
+            "renderMs": 82,
+            "marks": 315,
+            "click": {
+              "ids": [
+                "TSYS-0002",
+                "TSYS-0004",
+                "TSYS-0006"
+              ],
+              "keys": {
+                "date": 1783987200000,
+                "status": "PASS",
+                "count": 3,
+                "color_status_sort_index": 0,
+                "count_start": 1,
+                "count_end": 4
+              }
+            }
+          }
+        ]
+      },
+      "embed": {
+        "ok": true
+      },
+      "withoutInterpreter": "bloqué comme attendu : EvalError: Evaluating a string as JavaScript violates the following Content Security Policy directive because 'unsafe-eval' is not ",
+      "done": true
+    },
+    "console": [
+      "[warning] WARN Dropping \"fit-y\" because spec has discrete height.",
+      "[warning] WARN Dropping \"fit-y\" because spec has discrete height.",
+      "[error] Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-3DGwvqeuzfpl1OM1mb285/TwB5+qWlC5a2FoZJ0askE='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked.",
+      "[error] Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-3DGwvqeuzfpl1OM1mb285/TwB5+qWlC5a2FoZJ0askE='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."
+    ]
+  },
+  "electron": {
+    "electron": "31.7.7",
+    "chrome": "126.0.6478.234",
+    "report": {
+      "cspViolations": [
+        "[contrôle eval] script-src ← eval",
+        "[contrôle eval] script-src ← eval",
+        "[contrôle sans interpréteur] style-src-elem ← inline",
+        "[contrôle sans interpréteur] style-src-elem ← inline",
+        "[contrôle sans interpréteur] script-src ← eval",
+        "[contrôle sans interpréteur] script-src ← eval"
+      ],
+      "evalBlocked": "oui (EvalError)",
+      "widgets": {
+        "a": [
+          {
+            "theme": "light",
+            "ok": true,
+            "compileMs": 38,
+            "renderMs": 100,
+            "marks": 23,
+            "click": {
+              "ids": [
+                "EV-0001",
+                "EV-0002",
+                "EV-0003"
+              ],
+              "keys": {
+                "component": "electrovannes",
+                "status": "approved",
+                "label": "Approuvé",
+                "count": 3,
+                "count_start": 0,
+                "count_end": 3
+              }
+            }
+          },
+          {
+            "theme": "dark",
+            "ok": true,
+            "compileMs": 6,
+            "renderMs": 18,
+            "marks": 23,
+            "click": {
+              "ids": [
+                "EV-0001",
+                "EV-0002",
+                "EV-0003"
+              ],
+              "keys": {
+                "component": "electrovannes",
+                "status": "approved",
+                "label": "Approuvé",
+                "count": 3,
+                "count_start": 0,
+                "count_end": 3
+              }
+            }
+          }
+        ],
+        "b": [
+          {
+            "theme": "light",
+            "ok": true,
+            "compileMs": 8,
+            "renderMs": 30,
+            "marks": 19,
+            "click": {
+              "ids": [
+                "TSYS-0003",
+                "CAMP-0001"
+              ],
+              "keys": {
+                "test": "TSYS-0003 Consommation d'eau Eco 40-60",
+                "testId": "TSYS-0003",
+                "campaign": "CAMP-0001",
+                "campaignTitle": "EVT — Essais de validation technique",
+                "status": "PASS",
+                "entries": 1
+              }
+            }
+          },
+          {
+            "theme": "dark",
+            "ok": true,
+            "compileMs": 5,
+            "renderMs": 20,
+            "marks": 19,
+            "click": {
+              "ids": [
+                "TSYS-0003",
+                "CAMP-0001"
+              ],
+              "keys": {
+                "test": "TSYS-0003 Consommation d'eau Eco 40-60",
+                "testId": "TSYS-0003",
+                "campaign": "CAMP-0001",
+                "campaignTitle": "EVT — Essais de validation technique",
+                "status": "PASS",
+                "entries": 1
+              }
+            }
+          }
+        ],
+        "c": [
+          {
+            "theme": "light",
+            "ok": true,
+            "compileMs": 13,
+            "renderMs": 153,
+            "marks": 315,
+            "click": {
+              "ids": [
+                "TSYS-0002",
+                "TSYS-0004",
+                "TSYS-0006"
+              ],
+              "keys": {
+                "date": 1783987200000,
+                "status": "PASS",
+                "count": 3,
+                "color_status_sort_index": 0,
+                "count_start": 1,
+                "count_end": 4
+              }
+            }
+          },
+          {
+            "theme": "dark",
+            "ok": true,
+            "compileMs": 8,
+            "renderMs": 121,
+            "marks": 315,
+            "click": {
+              "ids": [
+                "TSYS-0002",
+                "TSYS-0004",
+                "TSYS-0006"
+              ],
+              "keys": {
+                "date": 1783987200000,
+                "status": "PASS",
+                "count": 3,
+                "color_status_sort_index": 0,
+                "count_start": 1,
+                "count_end": 4
+              }
+            }
+          }
+        ]
+      },
+      "embed": {
+        "ok": true
+      },
+      "withoutInterpreter": "bloqué comme attendu : EvalError: Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed source of script in the following Con",
+      "done": true
+    },
+    "console": [
+      "[2] WARN Dropping \"fit-y\" because spec has discrete height.",
+      "[2] WARN Dropping \"fit-y\" because spec has discrete height.",
+      "[3] Refused to apply inline style because it violates the following Content Security Policy directive: \"style-src 'self'\". Either the 'unsafe-inline' keyword, a hash ('sha256-3DGwvqeuzfpl1OM1mb285/TwB5+qWlC5a2FoZJ0askE='), or a nonce ('nonce-...') is required to enable inline execution.\n",
+      "[3] Refused to apply inline style because it violates the following Content Security Policy directive: \"style-src 'self'\". Either the 'unsafe-inline' keyword, a hash ('sha256-3DGwvqeuzfpl1OM1mb285/TwB5+qWlC5a2FoZJ0askE='), or a nonce ('nonce-...') is required to enable inline execution.\n"
+    ]
+  }
+}

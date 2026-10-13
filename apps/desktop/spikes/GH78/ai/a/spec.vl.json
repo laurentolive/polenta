@@ -1,0 +1,34 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "title": "Répartition des statuts d'exigences",
+  "width": "container",
+  "height": 300,
+  "data": { "name": "rows" },
+  "params": [
+    {
+      "name": "drill",
+      "select": { "type": "point", "on": "click", "fields": ["component", "status"] }
+    }
+  ],
+  "mark": { "type": "bar", "cursor": "pointer" },
+  "encoding": {
+    "x": { "field": "component", "type": "nominal", "title": "Composant", "axis": { "labelAngle": 0 } },
+    "y": { "field": "count", "type": "quantitative", "title": "Exigences", "stack": "zero" },
+    "color": {
+      "field": "statusLabel",
+      "type": "nominal",
+      "title": "Statut",
+      "sort": { "field": "statusOrder", "op": "min", "order": "ascending" }
+    },
+    "order": { "field": "statusOrder", "type": "quantitative", "sort": "ascending" },
+    "opacity": {
+      "condition": { "param": "drill", "empty": true, "value": 1 },
+      "value": 0.4
+    },
+    "tooltip": [
+      { "field": "component", "type": "nominal", "title": "Composant" },
+      { "field": "statusLabel", "type": "nominal", "title": "Statut" },
+      { "field": "count", "type": "quantitative", "title": "Nombre" }
+    ]
+  }
+}

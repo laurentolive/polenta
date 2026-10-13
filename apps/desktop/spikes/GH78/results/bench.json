@@ -1,0 +1,1349 @@
+{
+  "machine": {
+    "os": "Windows_NT 10.0.26200 (x64)",
+    "cpu": "AMD Ryzen 7 7435HS                             ",
+    "cores": 16,
+    "ramGb": 16,
+    "node": "v24.15.0",
+    "date": "2026-10-13T20:14:03.895Z"
+  },
+  "quickjs": {
+    "variant": "@jitl/quickjs-wasmfile-release-sync@0.32.0",
+    "moduleLoadMs": 36.4
+  },
+  "rssMb": 2450,
+  "datasets": [
+    {
+      "factor": 1,
+      "counts": {
+        "requirements": 77,
+        "tests": 22,
+        "links": 77,
+        "campaigns": 5,
+        "entries": 24,
+        "runs": 42
+      },
+      "graphJsonKb": 127.6,
+      "build": {
+        "coldMs": 524.8,
+        "coldFetchMs": 514.9,
+        "warm": {
+          "median": 12.5,
+          "min": 12.2,
+          "max": 15.1,
+          "n": 5
+        },
+        "stringifyMs": 1.5
+      },
+      "fresh": {
+        "a": {
+          "rows": 23,
+          "total": {
+            "median": 15.5,
+            "min": 12.4,
+            "max": 53.3,
+            "n": 5
+          },
+          "copy": {
+            "median": 2.1,
+            "min": 1.9,
+            "max": 10.2,
+            "n": 5
+          },
+          "parse": {
+            "median": 4.2,
+            "min": 3.7,
+            "max": 16.7,
+            "n": 5
+          },
+          "freeze": {
+            "median": 7.1,
+            "min": 5,
+            "max": 12.5,
+            "n": 5
+          },
+          "exec": {
+            "median": 0.8,
+            "min": 0.7,
+            "max": 6.1,
+            "n": 5
+          },
+          "output": {
+            "median": 0.1,
+            "min": 0.1,
+            "max": 0.4,
+            "n": 5
+          }
+        },
+        "b": {
+          "rows": 19,
+          "total": {
+            "median": 12,
+            "min": 11.3,
+            "max": 12.6,
+            "n": 5
+          },
+          "copy": {
+            "median": 1.9,
+            "min": 1.8,
+            "max": 2,
+            "n": 5
+          },
+          "parse": {
+            "median": 3.6,
+            "min": 3.5,
+            "max": 3.9,
+            "n": 5
+          },
+          "freeze": {
+            "median": 4.6,
+            "min": 4.5,
+            "max": 5,
+            "n": 5
+          },
+          "exec": {
+            "median": 0.7,
+            "min": 0.6,
+            "max": 1.2,
+            "n": 5
+          },
+          "output": {
+            "median": 0.1,
+            "min": 0.1,
+            "max": 0.1,
+            "n": 5
+          }
+        },
+        "c (1 campagne)": {
+          "rows": 80,
+          "total": {
+            "median": 12.7,
+            "min": 12.2,
+            "max": 16.3,
+            "n": 5
+          },
+          "copy": {
+            "median": 1.8,
+            "min": 1.8,
+            "max": 2.1,
+            "n": 5
+          },
+          "parse": {
+            "median": 3.5,
+            "min": 3.4,
+            "max": 3.7,
+            "n": 5
+          },
+          "freeze": {
+            "median": 4.3,
+            "min": 4.3,
+            "max": 4.6,
+            "n": 5
+          },
+          "exec": {
+            "median": 1.9,
+            "min": 1.8,
+            "max": 5.2,
+            "n": 5
+          },
+          "output": {
+            "median": 0.1,
+            "min": 0.1,
+            "max": 0.1,
+            "n": 5
+          }
+        },
+        "c (toutes campagnes)": {
+          "rows": 815,
+          "total": {
+            "median": 22.5,
+            "min": 20.9,
+            "max": 24.8,
+            "n": 5
+          },
+          "copy": {
+            "median": 1.8,
+            "min": 1.8,
+            "max": 1.9,
+            "n": 5
+          },
+          "parse": {
+            "median": 3.5,
+            "min": 3.4,
+            "max": 4.3,
+            "n": 5
+          },
+          "freeze": {
+            "median": 4.8,
+            "min": 4.2,
+            "max": 5.6,
+            "n": 5
+          },
+          "exec": {
+            "median": 9.9,
+            "min": 8.8,
+            "max": 11.4,
+            "n": 5
+          },
+          "output": {
+            "median": 0.8,
+            "min": 0.7,
+            "max": 1.2,
+            "n": 5
+          }
+        },
+        "c (toutes, sans _ids)": {
+          "rows": 815,
+          "total": {
+            "median": 18.6,
+            "min": 18.2,
+            "max": 20.4,
+            "n": 5
+          },
+          "copy": {
+            "median": 1.8,
+            "min": 1.8,
+            "max": 1.8,
+            "n": 5
+          },
+          "parse": {
+            "median": 3.6,
+            "min": 3.4,
+            "max": 4.2,
+            "n": 5
+          },
+          "freeze": {
+            "median": 4.5,
+            "min": 4.2,
+            "max": 5.1,
+            "n": 5
+          },
+          "exec": {
+            "median": 7.1,
+            "min": 6.9,
+            "max": 8.9,
+            "n": 5
+          },
+          "output": {
+            "median": 0.5,
+            "min": 0.4,
+            "max": 0.6,
+            "n": 5
+          }
+        }
+      },
+      "native": {
+        "a": {
+          "median": 0.1,
+          "min": 0.1,
+          "max": 0.1,
+          "n": 5
+        },
+        "b": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "c (1 campagne)": {
+          "median": 0.1,
+          "min": 0.1,
+          "max": 0.2,
+          "n": 5
+        },
+        "c (toutes campagnes)": {
+          "median": 0.7,
+          "min": 0.7,
+          "max": 1.3,
+          "n": 5
+        },
+        "c (toutes, sans _ids)": {
+          "median": 1,
+          "min": 0.8,
+          "max": 2.1,
+          "n": 5
+        }
+      },
+      "cached": {
+        "prepareMs": 10.2,
+        "prepTimings": {
+          "copyMs": 2.1,
+          "parseMs": 3.5,
+          "freezeMs": 4.3
+        },
+        "memAfterPrepareMb": 0.5,
+        "memAfterRunsMb": 0.6,
+        "noFreezePrep": {
+          "copyMs": 1.6,
+          "parseMs": 3.4
+        },
+        "runs": {
+          "a": {
+            "first": 0.7,
+            "next": {
+              "median": 0.6,
+              "min": 0.6,
+              "max": 0.9,
+              "n": 10
+            },
+            "outputKb": 2.8
+          },
+          "b": {
+            "first": 0.6,
+            "next": {
+              "median": 0.5,
+              "min": 0.4,
+              "max": 0.7,
+              "n": 10
+            },
+            "outputKb": 3.8
+          },
+          "c (1 campagne)": {
+            "first": 1.7,
+            "next": {
+              "median": 1.3,
+              "min": 0.9,
+              "max": 1.9,
+              "n": 10
+            },
+            "outputKb": 5.9
+          },
+          "c (toutes campagnes)": {
+            "first": 9.8,
+            "next": {
+              "median": 8.6,
+              "min": 8.1,
+              "max": 11.1,
+              "n": 10
+            },
+            "outputKb": 80.3
+          },
+          "c (toutes, sans _ids)": {
+            "first": 6.6,
+            "next": {
+              "median": 6.4,
+              "min": 6.2,
+              "max": 9.6,
+              "n": 10
+            },
+            "outputKb": 48.2
+          }
+        },
+        "hardened": {
+          "hardenMs": 5.4,
+          "cAllCampaigns": {
+            "median": 8.4,
+            "min": 8.1,
+            "max": 8.7,
+            "n": 5
+          }
+        }
+      },
+      "memory": {
+        "quickjsHeapMb": 0.6,
+        "wasmLinearMemoryMb": 16,
+        "processRssMb": 201.4,
+        "hostHeapMb": 68.9
+      }
+    },
+    {
+      "factor": 10,
+      "counts": {
+        "requirements": 770,
+        "tests": 220,
+        "links": 770,
+        "campaigns": 50,
+        "entries": 240,
+        "runs": 425
+      },
+      "graphJsonKb": 1124.3,
+      "build": {
+        "coldMs": 1276.5,
+        "coldFetchMs": 1261.1,
+        "warm": {
+          "median": 88.3,
+          "min": 87.2,
+          "max": 99.4,
+          "n": 5
+        },
+        "stringifyMs": 10.3
+      },
+      "fresh": {
+        "a": {
+          "rows": 23,
+          "total": {
+            "median": 83.8,
+            "min": 81,
+            "max": 91.5,
+            "n": 5
+          },
+          "copy": {
+            "median": 13.6,
+            "min": 13.2,
+            "max": 14.2,
+            "n": 5
+          },
+          "parse": {
+            "median": 31.1,
+            "min": 29.6,
+            "max": 32.5,
+            "n": 5
+          },
+          "freeze": {
+            "median": 35.3,
+            "min": 34.6,
+            "max": 41.2,
+            "n": 5
+          },
+          "exec": {
+            "median": 1.7,
+            "min": 1.6,
+            "max": 1.8,
+            "n": 5
+          },
+          "output": {
+            "median": 0.3,
+            "min": 0.3,
+            "max": 0.3,
+            "n": 5
+          }
+        },
+        "b": {
+          "rows": 190,
+          "total": {
+            "median": 83.9,
+            "min": 82.1,
+            "max": 86.5,
+            "n": 5
+          },
+          "copy": {
+            "median": 13.7,
+            "min": 13.4,
+            "max": 13.9,
+            "n": 5
+          },
+          "parse": {
+            "median": 30.1,
+            "min": 29.5,
+            "max": 32.7,
+            "n": 5
+          },
+          "freeze": {
+            "median": 34.6,
+            "min": 34.2,
+            "max": 38.8,
+            "n": 5
+          },
+          "exec": {
+            "median": 2.4,
+            "min": 2.3,
+            "max": 3.6,
+            "n": 5
+          },
+          "output": {
+            "median": 0.4,
+            "min": 0.4,
+            "max": 0.5,
+            "n": 5
+          }
+        },
+        "c (1 campagne)": {
+          "rows": 80,
+          "total": {
+            "median": 84.3,
+            "min": 81.7,
+            "max": 95.2,
+            "n": 5
+          },
+          "copy": {
+            "median": 13.7,
+            "min": 13.5,
+            "max": 14.1,
+            "n": 5
+          },
+          "parse": {
+            "median": 30.1,
+            "min": 29.6,
+            "max": 31.6,
+            "n": 5
+          },
+          "freeze": {
+            "median": 36.1,
+            "min": 34.5,
+            "max": 46.5,
+            "n": 5
+          },
+          "exec": {
+            "median": 2.2,
+            "min": 1.9,
+            "max": 3.3,
+            "n": 5
+          },
+          "output": {
+            "median": 0.1,
+            "min": 0.1,
+            "max": 0.2,
+            "n": 5
+          }
+        },
+        "c (toutes campagnes)": {
+          "rows": 815,
+          "total": {
+            "median": 120.6,
+            "min": 116.8,
+            "max": 123.7,
+            "n": 5
+          },
+          "copy": {
+            "median": 13.6,
+            "min": 13.3,
+            "max": 15.3,
+            "n": 5
+          },
+          "parse": {
+            "median": 30.1,
+            "min": 29.7,
+            "max": 32.2,
+            "n": 5
+          },
+          "freeze": {
+            "median": 36,
+            "min": 34.6,
+            "max": 38.6,
+            "n": 5
+          },
+          "exec": {
+            "median": 34.4,
+            "min": 32.8,
+            "max": 35.5,
+            "n": 5
+          },
+          "output": {
+            "median": 2.9,
+            "min": 2.8,
+            "max": 3.2,
+            "n": 5
+          }
+        },
+        "c (toutes, sans _ids)": {
+          "rows": 815,
+          "total": {
+            "median": 101,
+            "min": 100.3,
+            "max": 108.8,
+            "n": 5
+          },
+          "copy": {
+            "median": 13.6,
+            "min": 13.3,
+            "max": 14.2,
+            "n": 5
+          },
+          "parse": {
+            "median": 30,
+            "min": 29.8,
+            "max": 30.7,
+            "n": 5
+          },
+          "freeze": {
+            "median": 34.3,
+            "min": 34.1,
+            "max": 41.5,
+            "n": 5
+          },
+          "exec": {
+            "median": 20.3,
+            "min": 19.8,
+            "max": 20.7,
+            "n": 5
+          },
+          "output": {
+            "median": 0.6,
+            "min": 0.5,
+            "max": 0.6,
+            "n": 5
+          }
+        }
+      },
+      "native": {
+        "a": {
+          "median": 0.5,
+          "min": 0.4,
+          "max": 0.6,
+          "n": 5
+        },
+        "b": {
+          "median": 0.3,
+          "min": 0.2,
+          "max": 0.4,
+          "n": 5
+        },
+        "c (1 campagne)": {
+          "median": 0.3,
+          "min": 0.2,
+          "max": 0.4,
+          "n": 5
+        },
+        "c (toutes campagnes)": {
+          "median": 2.9,
+          "min": 2.8,
+          "max": 5.6,
+          "n": 5
+        },
+        "c (toutes, sans _ids)": {
+          "median": 2.2,
+          "min": 2.1,
+          "max": 2.8,
+          "n": 5
+        }
+      },
+      "cached": {
+        "prepareMs": 84.6,
+        "prepTimings": {
+          "copyMs": 15.3,
+          "parseMs": 31.9,
+          "freezeMs": 37.1
+        },
+        "memAfterPrepareMb": 3.3,
+        "memAfterRunsMb": 3.4,
+        "noFreezePrep": {
+          "copyMs": 14.5,
+          "parseMs": 32.2
+        },
+        "runs": {
+          "a": {
+            "first": 1.6,
+            "next": {
+              "median": 1.5,
+              "min": 1.4,
+              "max": 2,
+              "n": 10
+            },
+            "outputKb": 11
+          },
+          "b": {
+            "first": 3.3,
+            "next": {
+              "median": 2.7,
+              "min": 2.5,
+              "max": 3.6,
+              "n": 10
+            },
+            "outputKb": 39.4
+          },
+          "c (1 campagne)": {
+            "first": 2,
+            "next": {
+              "median": 1.2,
+              "min": 1.2,
+              "max": 1.9,
+              "n": 10
+            },
+            "outputKb": 5.9
+          },
+          "c (toutes campagnes)": {
+            "first": 39.8,
+            "next": {
+              "median": 36.4,
+              "min": 35.7,
+              "max": 39.8,
+              "n": 10
+            },
+            "outputKb": 400.7
+          },
+          "c (toutes, sans _ids)": {
+            "first": 21.9,
+            "next": {
+              "median": 20.8,
+              "min": 19.3,
+              "max": 34.2,
+              "n": 10
+            },
+            "outputKb": 48.8
+          }
+        },
+        "hardened": {
+          "hardenMs": 4.8,
+          "cAllCampaigns": {
+            "median": 45,
+            "min": 35.8,
+            "max": 46.1,
+            "n": 5
+          }
+        }
+      },
+      "memory": {
+        "quickjsHeapMb": 3.4,
+        "wasmLinearMemoryMb": 16,
+        "processRssMb": 289.8,
+        "hostHeapMb": 87
+      }
+    },
+    {
+      "factor": 50,
+      "counts": {
+        "requirements": 3850,
+        "tests": 1100,
+        "links": 3850,
+        "campaigns": 250,
+        "entries": 1200,
+        "runs": 2086
+      },
+      "graphJsonKb": 5562.5,
+      "build": {
+        "coldMs": 4968.3,
+        "coldFetchMs": 4906.9,
+        "warm": {
+          "median": 387.4,
+          "min": 381.7,
+          "max": 426,
+          "n": 5
+        },
+        "stringifyMs": 48.2
+      },
+      "fresh": {
+        "a": {
+          "rows": 23,
+          "total": {
+            "median": 426.3,
+            "min": 419.3,
+            "max": 495.9,
+            "n": 5
+          },
+          "copy": {
+            "median": 71.1,
+            "min": 68.6,
+            "max": 73.8,
+            "n": 5
+          },
+          "parse": {
+            "median": 159.9,
+            "min": 156,
+            "max": 225.1,
+            "n": 5
+          },
+          "freeze": {
+            "median": 181.4,
+            "min": 176.2,
+            "max": 197,
+            "n": 5
+          },
+          "exec": {
+            "median": 7.4,
+            "min": 6.4,
+            "max": 8.2,
+            "n": 5
+          },
+          "output": {
+            "median": 0.7,
+            "min": 0.7,
+            "max": 1.7,
+            "n": 5
+          }
+        },
+        "b": {
+          "rows": 950,
+          "total": {
+            "median": 430,
+            "min": 423.3,
+            "max": 440,
+            "n": 5
+          },
+          "copy": {
+            "median": 69.4,
+            "min": 66.1,
+            "max": 71.1,
+            "n": 5
+          },
+          "parse": {
+            "median": 162.1,
+            "min": 156.9,
+            "max": 168.2,
+            "n": 5
+          },
+          "freeze": {
+            "median": 176.9,
+            "min": 174.4,
+            "max": 180.7,
+            "n": 5
+          },
+          "exec": {
+            "median": 10.8,
+            "min": 10.5,
+            "max": 13,
+            "n": 5
+          },
+          "output": {
+            "median": 2,
+            "min": 1.9,
+            "max": 3.1,
+            "n": 5
+          }
+        },
+        "c (1 campagne)": {
+          "rows": 80,
+          "total": {
+            "median": 420.3,
+            "min": 410.2,
+            "max": 462,
+            "n": 5
+          },
+          "copy": {
+            "median": 67.6,
+            "min": 66.1,
+            "max": 71.2,
+            "n": 5
+          },
+          "parse": {
+            "median": 156.3,
+            "min": 154.2,
+            "max": 211.7,
+            "n": 5
+          },
+          "freeze": {
+            "median": 177.5,
+            "min": 172.7,
+            "max": 187.1,
+            "n": 5
+          },
+          "exec": {
+            "median": 3.8,
+            "min": 3.7,
+            "max": 4.6,
+            "n": 5
+          },
+          "output": {
+            "median": 0.1,
+            "min": 0.1,
+            "max": 0.1,
+            "n": 5
+          }
+        },
+        "c (toutes campagnes)": {
+          "rows": 815,
+          "total": {
+            "median": 592.8,
+            "min": 566.4,
+            "max": 593.6,
+            "n": 5
+          },
+          "copy": {
+            "median": 69.9,
+            "min": 65.8,
+            "max": 71.4,
+            "n": 5
+          },
+          "parse": {
+            "median": 156.9,
+            "min": 154,
+            "max": 165.2,
+            "n": 5
+          },
+          "freeze": {
+            "median": 175.7,
+            "min": 172.2,
+            "max": 180,
+            "n": 5
+          },
+          "exec": {
+            "median": 150.8,
+            "min": 147.8,
+            "max": 154.9,
+            "n": 5
+          },
+          "output": {
+            "median": 13.1,
+            "min": 12.2,
+            "max": 36.1,
+            "n": 5
+          }
+        },
+        "c (toutes, sans _ids)": {
+          "rows": 815,
+          "total": {
+            "median": 504.4,
+            "min": 489.8,
+            "max": 511.3,
+            "n": 5
+          },
+          "copy": {
+            "median": 69.6,
+            "min": 68.5,
+            "max": 71.8,
+            "n": 5
+          },
+          "parse": {
+            "median": 158.4,
+            "min": 154.6,
+            "max": 170.1,
+            "n": 5
+          },
+          "freeze": {
+            "median": 178.9,
+            "min": 173.5,
+            "max": 184.1,
+            "n": 5
+          },
+          "exec": {
+            "median": 85.1,
+            "min": 79.6,
+            "max": 90.4,
+            "n": 5
+          },
+          "output": {
+            "median": 0.6,
+            "min": 0.5,
+            "max": 1.5,
+            "n": 5
+          }
+        }
+      },
+      "native": {
+        "a": {
+          "median": 1.6,
+          "min": 1.6,
+          "max": 1.7,
+          "n": 5
+        },
+        "b": {
+          "median": 0.4,
+          "min": 0.3,
+          "max": 0.4,
+          "n": 5
+        },
+        "c (1 campagne)": {
+          "median": 0.6,
+          "min": 0.6,
+          "max": 0.8,
+          "n": 5
+        },
+        "c (toutes campagnes)": {
+          "median": 15,
+          "min": 12.9,
+          "max": 16.4,
+          "n": 5
+        },
+        "c (toutes, sans _ids)": {
+          "median": 7.9,
+          "min": 7.7,
+          "max": 9.6,
+          "n": 5
+        }
+      },
+      "cached": {
+        "prepareMs": 437.2,
+        "prepTimings": {
+          "copyMs": 72.5,
+          "parseMs": 170.4,
+          "freezeMs": 194
+        },
+        "memAfterPrepareMb": 16,
+        "memAfterRunsMb": 16.1,
+        "noFreezePrep": {
+          "copyMs": 66.5,
+          "parseMs": 155
+        },
+        "runs": {
+          "a": {
+            "first": 8.2,
+            "next": {
+              "median": 6.4,
+              "min": 5.7,
+              "max": 8.6,
+              "n": 10
+            },
+            "outputKb": 50
+          },
+          "b": {
+            "first": 14.3,
+            "next": {
+              "median": 12.7,
+              "min": 12.3,
+              "max": 15.3,
+              "n": 10
+            },
+            "outputKb": 200.5
+          },
+          "c (1 campagne)": {
+            "first": 3.6,
+            "next": {
+              "median": 3.3,
+              "min": 2.9,
+              "max": 3.7,
+              "n": 10
+            },
+            "outputKb": 5.9
+          },
+          "c (toutes campagnes)": {
+            "first": 161.6,
+            "next": {
+              "median": 159.5,
+              "min": 155.2,
+              "max": 172.5,
+              "n": 10
+            },
+            "outputKb": 1914.4
+          },
+          "c (toutes, sans _ids)": {
+            "first": 89.6,
+            "next": {
+              "median": 81.2,
+              "min": 79.1,
+              "max": 86.5,
+              "n": 10
+            },
+            "outputKb": 49.2
+          }
+        },
+        "hardened": {
+          "hardenMs": 4.2,
+          "cAllCampaigns": {
+            "median": 166.7,
+            "min": 154.9,
+            "max": 218.8,
+            "n": 5
+          }
+        }
+      },
+      "memory": {
+        "quickjsHeapMb": 16.1,
+        "wasmLinearMemoryMb": 51.9,
+        "processRssMb": 440.5,
+        "hostHeapMb": 180.3
+      }
+    }
+  ],
+  "library": {
+    "bibliothèque de départ (~3 Ko) — sans import": {
+      "freshExecMs": {
+        "median": 0.1,
+        "min": 0.1,
+        "max": 0.1,
+        "n": 5
+      },
+      "cachedFirstExecMs": 0.1,
+      "cachedNextExecMs": {
+        "median": 0.1,
+        "min": 0.1,
+        "max": 0.4,
+        "n": 10
+      }
+    },
+    "bibliothèque de départ (~3 Ko) — import lib/history.js": {
+      "freshExecMs": {
+        "median": 0.3,
+        "min": 0.3,
+        "max": 0.4,
+        "n": 5
+      },
+      "cachedFirstExecMs": 0.3,
+      "cachedNextExecMs": {
+        "median": 0.1,
+        "min": 0.1,
+        "max": 0.1,
+        "n": 10
+      }
+    },
+    "bibliothèque synthétique 100 Ko — sans import": {
+      "freshExecMs": {
+        "median": 0.1,
+        "min": 0.1,
+        "max": 0.1,
+        "n": 5
+      },
+      "cachedFirstExecMs": 0.1,
+      "cachedNextExecMs": {
+        "median": 0.1,
+        "min": 0.1,
+        "max": 0.1,
+        "n": 10
+      }
+    },
+    "bibliothèque synthétique 100 Ko — import lib/history.js": {
+      "freshExecMs": {
+        "median": 0.3,
+        "min": 0.3,
+        "max": 0.4,
+        "n": 5
+      },
+      "cachedFirstExecMs": 0.5,
+      "cachedNextExecMs": {
+        "median": 0.1,
+        "min": 0.1,
+        "max": 0.3,
+        "n": 10
+      }
+    },
+    "bibliothèque synthétique 100 Ko — import lib/big.js": {
+      "freshExecMs": {
+        "median": 13.2,
+        "min": 13.1,
+        "max": 15.8,
+        "n": 5
+      },
+      "cachedFirstExecMs": 12.9,
+      "cachedNextExecMs": {
+        "median": 0.1,
+        "min": 0.1,
+        "max": 0.1,
+        "n": 10
+      }
+    },
+    "injection globale 100 Ko (évaluation seule)": {
+      "evalMs": {
+        "median": 12.4,
+        "min": 12,
+        "max": 14.6,
+        "n": 5
+      }
+    }
+  },
+  "limits": {
+    "limits": {
+      "memoryMb": 64,
+      "timeMs": 1000,
+      "stackKb": 256
+    },
+    "probes": {
+      "boucle infinie": {
+        "fresh": {
+          "ms": 1012.8,
+          "error": "InternalError: interrupted"
+        },
+        "cached": {
+          "ms": 1001.5,
+          "error": "InternalError: interrupted"
+        },
+        "cachedContextUsableAfter": true,
+        "memAfterMb": 0.5
+      },
+      "allocation massive": {
+        "fresh": {
+          "ms": 3918,
+          "error": "InternalError: out of memory"
+        },
+        "cached": {
+          "ms": 3202.9,
+          "error": "InternalError: out of memory"
+        },
+        "cachedContextUsableAfter": true,
+        "memAfterMb": 0.5
+      },
+      "chaîne géante": {
+        "fresh": {
+          "ms": 11.3,
+          "error": "InternalError: string too long"
+        },
+        "cached": {
+          "ms": 0.3,
+          "error": "InternalError: string too long"
+        },
+        "cachedContextUsableAfter": true,
+        "memAfterMb": 0.5
+      },
+      "récursion infinie": {
+        "fresh": {
+          "ms": 14.2,
+          "error": "InternalError: stack overflow"
+        },
+        "cached": {
+          "ms": 2.6,
+          "error": "InternalError: stack overflow"
+        },
+        "cachedContextUsableAfter": true,
+        "memAfterMb": 0.5
+      }
+    },
+    "capped": {
+      "capMb": 128,
+      "moduleInstantiateMs": {
+        "median": 17.4,
+        "min": 4.8,
+        "max": 66.4,
+        "n": 5
+      },
+      "probes": {
+        "boucle infinie": {
+          "ms": 1014.2,
+          "error": "InternalError: interrupted",
+          "wasmMb": 16,
+          "moduleReusableAfter": true
+        },
+        "allocation massive": {
+          "ms": 286.2,
+          "error": "InternalError: out of memory",
+          "wasmMb": 125.6,
+          "moduleReusableAfter": true
+        },
+        "chaîne géante": {
+          "ms": 11.8,
+          "error": "InternalError: string too long",
+          "wasmMb": 16,
+          "moduleReusableAfter": true
+        },
+        "récursion infinie": {
+          "ms": 21,
+          "error": "InternalError: stack overflow",
+          "wasmMb": 16,
+          "moduleReusableAfter": true
+        }
+      }
+    },
+    "wasmLinearMemoryAfterMb": 2048,
+    "processRssAfterMb": 2514.1
+  },
+  "isolation": {
+    "globals": {
+      "fetch": "undefined",
+      "require": "undefined",
+      "process": "undefined",
+      "module": "undefined",
+      "setTimeout": "undefined",
+      "setInterval": "undefined",
+      "queueMicrotask": "undefined",
+      "XMLHttpRequest": "undefined",
+      "WebSocket": "undefined",
+      "importScripts": "undefined",
+      "WebAssembly": "undefined",
+      "Deno": "undefined",
+      "Bun": "undefined",
+      "std": "undefined",
+      "os": "undefined",
+      "console": "undefined",
+      "window": "undefined",
+      "document": "undefined",
+      "navigator": "undefined",
+      "performance": "undefined",
+      "SharedArrayBuffer": "function",
+      "Atomics": "undefined"
+    },
+    "staticImports": {
+      "os": "Error: Module introuvable : \"os\" (seuls les modules lib/*.js du projet sont importables)",
+      "std": "Error: Module introuvable : \"std\" (seuls les modules lib/*.js du projet sont importables)",
+      "fs": "Error: Module introuvable : \"fs\" (seuls les modules lib/*.js du projet sont importables)",
+      "node:fs": "Error: Module introuvable : \"node:fs\" (seuls les modules lib/*.js du projet sont importables)",
+      "child_process": "Error: Module introuvable : \"child_process\" (seuls les modules lib/*.js du projet sont importables)",
+      "https://example.com/x.js": "Error: Module introuvable : \"https://example.com/x.js\" (seuls les modules lib/*.js du projet sont importables)",
+      "../../package.json": "Error: Module introuvable : \"../../package.json\" (seuls les modules lib/*.js du projet sont importables)",
+      "lib/../../secret.js": "Error: Module introuvable : \"lib/../../secret.js\" (seuls les modules lib/*.js du projet sont importables)"
+    },
+    "dynamicImport": [
+      {
+        "r": "aucune erreur synchrone",
+        "_ids": []
+      }
+    ],
+    "escapes": {
+      "Function(\"return this\")()": "ok → [{\"r\":\"undefined/undefined\",\"_ids\":[]}]",
+      "eval de code": "ok → [{\"r\":2,\"_ids\":[]}]",
+      "Date.now / Math.random": "ok → [{\"r\":\"number/number\",\"_ids\":[]}]",
+      "mutation des données": "TypeError: 'status' is read-only",
+      "remplacement de data.requirements": "TypeError: 'requirements' is read-only",
+      "Atomics.wait (blocage)": "ok → [{\"r\":\"undefined\",\"_ids\":[]}]"
+    },
+    "cachedContextLeak": {
+      "sansDurcissement": {
+        "widget1": "ok",
+        "widget2": {
+          "leak": "du widget 1",
+          "proto": "function",
+          "_ids": []
+        },
+        "widgetCStillWorks": true,
+        "hardenMs": 0
+      },
+      "avecDurcissement": {
+        "widget1": "TypeError: object is not extensible",
+        "widget2": {
+          "leak": "undefined",
+          "proto": "undefined",
+          "_ids": []
+        },
+        "widgetCStillWorks": true,
+        "hardenMs": 4.1
+      }
+    },
+    "errors": {
+      "throw ligne 3": {
+        "name": "Error",
+        "message": "seuil dépassé : 77",
+        "file": "widget.js",
+        "line": 3,
+        "column": 18
+      },
+      "champ absent ligne 4": {
+        "name": "TypeError",
+        "message": "cannot read property 'length' of undefined",
+        "file": "widget.js",
+        "line": 4,
+        "column": 17
+      },
+      "erreur de syntaxe ligne 2": {
+        "name": "SyntaxError",
+        "message": "expecting ','",
+        "file": "widget.js",
+        "line": 3,
+        "column": 1
+      },
+      "erreur dans la bibliothèque": {
+        "name": "TypeError",
+        "message": "cannot read property 'concat' of null",
+        "file": "lib/campaign.js",
+        "line": 51,
+        "column": 37
+      },
+      "pas d'export par défaut": {
+        "name": "TypeError",
+        "message": "Le script doit exporter une fonction par défaut : export default function (data, polenta) { … }",
+        "file": "widget.js",
+        "line": null,
+        "column": null
+      },
+      "ligne sans _ids": {
+        "name": "RowsError",
+        "message": "Ligne 0 : \"_ids\" doit être un tableau d'identifiants.",
+        "file": "widget.js",
+        "line": null,
+        "column": null
+      },
+      "valeur non scalaire": {
+        "name": "RowsError",
+        "message": "Ligne 0, colonne \"r\" : valeur non scalaire (object).",
+        "file": "widget.js",
+        "line": null,
+        "column": null
+      },
+      "renvoie une promesse": {
+        "name": "RowsError",
+        "message": "Le script doit renvoyer un tableau de lignes (reçu : object).",
+        "file": "widget.js",
+        "line": null,
+        "column": null
+      }
+    }
+  },
+  "variants": {
+    "@jitl/quickjs-wasmfile-release-sync": {
+      "moduleLoadMs": 36.8,
+      "prepareMs": 479.1,
+      "memMb": 16,
+      "cAllCampaigns": {
+        "median": 156.8,
+        "min": 153.3,
+        "max": 160.4,
+        "n": 5
+      }
+    },
+    "@jitl/quickjs-ng-wasmfile-release-sync": {
+      "moduleLoadMs": 63.2,
+      "prepareMs": 576.3,
+      "memMb": 18,
+      "cAllCampaigns": {
+        "median": 210.3,
+        "min": 204.1,
+        "max": 213.2,
+        "n": 5
+      }
+    }
+  }
+}

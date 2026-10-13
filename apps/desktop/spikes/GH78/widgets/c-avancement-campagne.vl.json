@@ -1,0 +1,34 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "title": "Avancement de la campagne",
+  "data": { "name": "rows" },
+  "width": "container",
+  "height": 260,
+  "encoding": {
+    "x": { "field": "date", "type": "temporal", "title": null, "axis": { "format": "%d/%m" } },
+    "y": { "field": "count", "type": "quantitative", "title": "Entrées", "stack": "zero" },
+    "color": {
+      "field": "status", "type": "nominal", "title": "Statut",
+      "sort": ["PASS", "FAIL", "BLOCKED", "INCOMPLETE", "pending"],
+      "scale": {
+        "domain": ["PASS", "FAIL", "BLOCKED", "INCOMPLETE", "pending"],
+        "range": ["var(--status-success-solid)", "var(--status-danger-solid)", "var(--status-warning-solid)", "var(--status-info-solid)", "var(--status-neutral-border)"]
+      }
+    },
+    "order": { "field": "status", "sort": "ascending" }
+  },
+  "layer": [
+    { "mark": { "type": "area", "interpolate": "step-after", "opacity": 0.9 } },
+    {
+      "params": [{ "name": "pick", "select": { "type": "point", "on": "click", "nearest": true, "fields": ["date", "status"] } }],
+      "mark": { "type": "bar", "opacity": 0.001, "cursor": "pointer" },
+      "encoding": {
+        "tooltip": [
+          { "field": "date", "type": "temporal", "title": "Date", "format": "%d/%m/%Y" },
+          { "field": "status", "title": "Statut" },
+          { "field": "count", "title": "Entrées" }
+        ]
+      }
+    }
+  ]
+}

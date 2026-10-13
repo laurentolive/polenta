@@ -1,0 +1,27 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "title": "Statut des exigences par composant",
+  "data": { "name": "rows" },
+  "width": "container",
+  "height": 260,
+  "params": [{ "name": "pick", "select": { "type": "point", "on": "click", "fields": ["component", "status"] } }],
+  "mark": { "type": "bar", "cursor": "pointer" },
+  "encoding": {
+    "x": { "field": "component", "type": "nominal", "title": null, "axis": { "labelAngle": -30 } },
+    "y": { "field": "count", "type": "quantitative", "title": "Exigences", "stack": "zero" },
+    "color": {
+      "field": "status", "type": "nominal", "title": "Statut",
+      "scale": {
+        "domain": ["draft", "review", "approved", "obsolete"],
+        "range": ["var(--status-neutral-solid)", "var(--status-info-solid)", "var(--status-success-solid)", "var(--status-warning-solid)"]
+      },
+      "legend": { "labelExpr": "{ draft: 'Brouillon', review: 'En revue', approved: 'Approuvé', obsolete: 'Obsolète' }[datum.label] || datum.label" }
+    },
+    "opacity": { "condition": { "param": "pick", "value": 1 }, "value": 0.35 },
+    "tooltip": [
+      { "field": "component", "title": "Composant" },
+      { "field": "label", "title": "Statut" },
+      { "field": "count", "title": "Nombre" }
+    ]
+  }
+}

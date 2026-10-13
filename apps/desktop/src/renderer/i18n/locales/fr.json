@@ -590,7 +590,8 @@
       "renameReportMigrated": "Champ(s) renommé(s) : {{count}} objet(s) migré(s), valeur et historique compris.",
       "renameReportSkipped": "{{count}} objet(s) non migré(s) — une donnée existe déjà sous le nouveau nom : {{ids}}",
       "renameReportFailed": "{{count}} échec(s) de migration : {{ids}}",
-      "renameReportError": "Le schéma est enregistré, mais la migration des objets a échoué : {{error}}"
+      "renameReportError": "Le schéma est enregistré, mais la migration des objets a échoué : {{error}}",
+      "renameReportSnapshots": "{{count}} copie(s) de test de campagne migrée(s)."
     },
     "page": {
       "title": "Modèle de données",
@@ -621,6 +622,17 @@
       "unresolved": "non résolu",
       "noImplements": "Aucune implémentation d'interface déclarée.",
       "addImplements": "+ Déclarer une implémentation"
+    },
+    "valueRename": {
+      "title": "Renommer des valeurs ?",
+      "intro": "Des statuts ou des valeurs d'enum ont été renommés. Les objets du type qui portent l'ancienne valeur (et leur historique, et les copies de test des campagnes) peuvent être migrés. Décochez une ligne pour ne pas la migrer.",
+      "status": "Statut",
+      "field": "Champ {{field}}",
+      "objects": "{{count}} objet(s) concerné(s)",
+      "collision": "{{count}} objet(s) portent déjà « {{value}} » : les deux seront confondus",
+      "suiviNote": "Les requêtes et dashboards du Suivi ne sont pas modifiés.",
+      "confirm": "Enregistrer et migrer",
+      "objectsUnknown": "Nombre d'objets concernés indisponible"
     }
   },
   "system": {

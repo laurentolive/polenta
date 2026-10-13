@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { recordResult } from './support/campaign'
 
 /**
  * GH64 — report d'entrées d'une campagne à l'autre depuis le sélecteur de tests (onglet « Depuis
@@ -52,8 +53,8 @@ test.beforeAll(async () => {
   ;[A, B, C] = simple
 
   source = await s.invoke<Campaign>('campaigns:create', localPath, { title: 'GH64 source', testCaseIds: [A, B, C] }, workspaceDir)
-  await s.invoke('campaigns:update-run', localPath, source.id, `${A}-1`, 'PASS')
-  await s.invoke('campaigns:update-run', localPath, source.id, `${B}-1`, 'BLOCKED')
+  await recordResult(s, source.id, `${A}-1`, 'PASS')
+  await recordResult(s, source.id, `${B}-1`, 'BLOCKED')
   source = await s.invoke<Campaign>('campaigns:close', localPath, source.id, 'completed')
   target = await s.invoke<Campaign>('campaigns:create', localPath, { title: 'GH64 cible', testCaseIds: [] }, workspaceDir)
 })

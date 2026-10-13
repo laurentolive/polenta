@@ -55,15 +55,6 @@ function computeGlobalResult(stepResults: StepResultValue[]): TestRunResult {
   return 'PASS'
 }
 
-function mapResultToStatus(result: TestRunResult) {
-  switch (result) {
-    case 'PASS': return 'PASS' as const
-    case 'FAIL': return 'FAIL' as const
-    case 'BLOCKED': return 'BLOCKED' as const
-    case 'INCOMPLETE': return 'INCOMPLETE' as const
-  }
-}
-
 // GH80 — le routeur garde le même composant quand seul `testId` change (`/execute/TC-1-1` →
 // `/execute/TC-2-1`) : la clé sur l'entrée réinitialise tout l'état de session (resynchronisation
 // à l'ouverture, version figée, saisie des étapes) d'une entrée à l'autre.
@@ -149,10 +140,11 @@ function ExecuteEntryPage() {
         result: globalResult,
         // T179 — instance générée pour une exigence : le run ne couvre qu'elle.
         ...(entry?.requirementId && { requirementId: entry.requirementId }),
+        // GH73 — le run est rattaché à cette entrée (historique daté de la campagne).
+        campaignEntry: { campaignId, entryId },
       })
-      const campaignStatus = mapResultToStatus(globalResult)
       // GH81 — instance resynchronisable : la version affichée est figée avec le résultat.
-      await api.campaigns.updateRun(repoPath, campaignId, entryId, campaignStatus, run.id, resyncable ? testCase : undefined)
+      await api.campaigns.updateRun(repoPath, campaignId, entryId, globalResult, run.id, resyncable ? testCase : undefined)
       return run
     },
     onSuccess: () => {

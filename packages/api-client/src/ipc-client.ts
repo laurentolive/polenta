@@ -61,6 +61,8 @@ export function createIpcClient(
       save: (p, schema) => invoke('schema:save', p, schema),
       moveElement: (p, dto) => invoke('schema:move-element', p, dto),
       renameFields: (p, ref, renames) => invoke('schema:rename-fields', p, ref, renames),
+      previewValueRenames: (p, ref, renames) => invoke('schema:preview-value-renames', p, ref, renames),
+      renameValues: (p, ref, renames) => invoke('schema:rename-values', p, ref, renames),
       invalidate: (p) => invoke('schema:invalidate', p),
     },
     tree: {

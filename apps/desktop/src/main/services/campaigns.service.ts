@@ -1,4 +1,4 @@
-﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema } from '@polenta/types'
+﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, RemovedCampaignTestRun, TestRunResult, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
@@ -72,6 +72,9 @@ export class CampaignsService {
     const testCaseIds = dto.testCaseIds ?? []
     const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
     const previews = await this.previewsFor(repoPath, snapshots, dto.baselineRef, workspaceDir)
+    // GH73 — les entrées initiales sont ajoutées à la création : `addedAt` = `createdAt`.
+    const now = new Date().toISOString()
+    const alloc = entryAllocator([], undefined, now)
 
     const campaign: TestCampaign = {
       id,
@@ -83,12 +86,12 @@ export class CampaignsService {
       baselineRef: dto.baselineRef,
       status: 'planned',
       testCaseIds: [],
-      runs: this.buildNewRuns([], testCaseIds, dto.paramValuesByTest, snapshots, previews, dto.reqInstances),
-      createdAt: new Date().toISOString(),
+      runs: this.buildNewRuns([], alloc, testCaseIds, dto.paramValuesByTest, snapshots, previews, dto.reqInstances),
+      createdAt: now,
       completedAt: null,
     }
     // GH64 — entrées reportées depuis d'autres campagnes, après celles de l'onglet Tests.
-    campaign.runs.push(...await this.buildCarriedRuns(repoPath, undefined, campaign.runs, dto.carried, dto.baselineRef, workspaceDir))
+    campaign.runs.push(...await this.buildCarriedRuns(repoPath, undefined, campaign.runs, alloc, dto.carried, dto.baselineRef, workspaceDir))
 
     // T179 — une occurrence par instance créée (un test itérant en a une par exigence retenue).
     campaign.testCaseIds = campaign.runs.map(r => r.testCaseId)
@@ -115,8 +118,9 @@ export class CampaignsService {
     repoPath: string,
     campaignId: string,
     entryId: string,
-    status: TestRunStatus,
-    runId?: string,
+    status: TestRunResult,
+    /** GH73 — run qui porte ce résultat : obligatoire, chaque verdict d'entrée est un fichier daté. */
+    runId: string,
     /**
      * GH36 — import d'un classeur d'exécution : date et testeur lus dans le fichier.
      * GH81 — `testSnapshot` : version du test affichée/exportée, figée sur une instance
@@ -124,6 +128,11 @@ export class CampaignsService {
      */
     meta?: { executedAt?: string; executedBy?: string; testSnapshot?: TestCase },
   ): Promise<TestCampaign> {
+    // GH73 — garde à l'exécution (canal IPC non typé) : pas de statut sans run, pas de retour à
+    // `pending` — la chronologie d'une entrée se reconstruit depuis ses runs rattachés.
+    if (typeof runId !== 'string' || !runId) throw new Error(`A test run is required to record a result on ${entryId}`)
+    if (!(RUN_RESULTS as readonly string[]).includes(status)) throw new Error(`Invalid result ${status} for ${entryId}`)
+
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
       const original = historyBase(campaign)
@@ -148,7 +157,7 @@ export class CampaignsService {
         ...previous,
         ...(frozen && { testSnapshot: frozen }),
         status,
-        ...(runId && { runId }),
+        runId,
         executedAt: meta?.executedAt ?? new Date().toISOString(),
         ...(meta?.executedBy && { executedBy: meta.executedBy }),
       }
@@ -250,9 +259,10 @@ export class CampaignsService {
       if (newIds.length === 0 && !carried?.length) return campaign
 
       const before = campaign.runs.length
-      campaign.runs = this.buildNewRuns(campaign.runs, newIds, paramValuesByTest, snapshots, previews, reqInstances)
+      const alloc = entryAllocator(campaign.runs, campaign.removedRuns, new Date().toISOString())
+      campaign.runs = this.buildNewRuns(campaign.runs, alloc, newIds, paramValuesByTest, snapshots, previews, reqInstances)
       // GH64 — entrées reportées, dédoublonnées contre l'existant et l'onglet Tests.
-      campaign.runs.push(...await this.buildCarriedRuns(repoPath, campaignId, campaign.runs, carried, campaign.baselineRef, workspaceDir))
+      campaign.runs.push(...await this.buildCarriedRuns(repoPath, campaignId, campaign.runs, alloc, carried, campaign.baselineRef, workspaceDir))
       if (campaign.runs.length === before) return campaign
       campaign.testCaseIds = [...campaign.testCaseIds, ...campaign.runs.slice(before).map(r => r.testCaseId)]
 
@@ -291,8 +301,9 @@ export class CampaignsService {
       const before = campaign.runs.length
       // T179 — duplicata d'une instance générée : même exigence, valeurs relues à la source ;
       // instance sans exigence : une seule nouvelle instance, même pour un test itérant.
+      const alloc = entryAllocator(campaign.runs, campaign.removedRuns, new Date().toISOString())
       campaign.runs = this.buildNewRuns(
-        campaign.runs, [testCaseId], { [testCaseId]: paramValues }, snapshots, previews,
+        campaign.runs, alloc, [testCaseId], { [testCaseId]: paramValues }, snapshots, previews,
         requirementId ? { [testCaseId]: [{ requirementId, paramValues }] } : undefined,
         { allowExisting: true, single: !requirementId },
       )
@@ -362,6 +373,12 @@ export class CampaignsService {
       const toRemove = new Set(entryIds)
       const removedRuns = campaign.runs.filter(r => toRemove.has(r.entryId))
       campaign.runs = campaign.runs.filter(r => !toRemove.has(r.entryId))
+      // GH73 — l'entrée retirée est conservée (datée) : l'historique d'avant le retrait reste juste
+      // et son `entryId` n'est jamais réattribué.
+      if (removedRuns.length > 0) {
+        const removedAt = new Date().toISOString()
+        campaign.removedRuns = [...(campaign.removedRuns ?? []), ...removedRuns.map(r => ({ ...r, removedAt }))]
+      }
 
       const testCaseIds = [...campaign.testCaseIds]
       for (const run of removedRuns) {
@@ -376,15 +393,58 @@ export class CampaignsService {
 
   /** GH77 — cf. `RequirementsService.renameFieldKeys`. */
   async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, c => renameFieldKeys(c, renames), result)
+  }
+
+  /** GH77/GH82 — cf. `RequirementsService.rewriteObjects`. */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string,
+    transform: (campaign: TestCampaign) => TestCampaign | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
     const matching = (await this.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef)
     for (const { id } of matching) {
       try {
         await this.enqueue(repoPath, id, async () => {
-          const renamed = renameFieldKeys(await this.get(repoPath, id), renames)
-          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
-          if (!renamed || renamed === 'conflict') return
-          await this.persist(repoPath, id, historyBase(renamed), renamed, { raw: true })
+          const next = transform(await this.get(repoPath, id))
+          if (next === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!next || next === 'conflict') return
+          await this.persist(repoPath, id, historyBase(next), next, { raw: true })
           result.migrated.push(id)
+        })
+      } catch (err) {
+        result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+  }
+
+  /**
+   * GH82 — réécrit les copies `testSnapshot` des entrées dont le test est de type `testTypeRef`,
+   * dans toutes les campagnes du repo (renommage d'un statut ou d'une valeur du type de test : seule
+   * la clé change, pas le contenu figé). Écriture brute ; la campagne compte parmi les objets migrés.
+   */
+  async rewriteSnapshots(
+    repoPath: string, testTypeRef: string, transform: (snapshot: TestCase) => TestCase | null, result: FieldRenameResult,
+  ): Promise<void> {
+    for (const { id } of await this.list(repoPath)) {
+      try {
+        await this.enqueue(repoPath, id, async () => {
+          const campaign = await this.get(repoPath, id)
+          let count = 0
+          const rewrite = <R extends CampaignTestRun>(run: R): R => {
+            if (!run.testSnapshot || run.testSnapshot.objectTypeRef !== testTypeRef) return run
+            const next = transform(run.testSnapshot)
+            if (!next) return run
+            count++
+            return { ...run, testSnapshot: next }
+          }
+          const runs = campaign.runs.map(rewrite)
+          // GH73 — les entrées retirées gardent leur copie : migrées aussi (données brutes exposées).
+          const removedRuns = campaign.removedRuns?.map(rewrite)
+          if (count === 0) return
+          const updated = { ...campaign, runs, ...(removedRuns && { removedRuns }) }
+          await this.persist(repoPath, id, historyBase(updated), updated, { raw: true })
+          result.snapshots = (result.snapshots ?? 0) + count
+          if (!result.migrated.includes(id)) result.migrated.push(id)
         })
       } catch (err) {
         result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
@@ -434,7 +494,9 @@ export class CampaignsService {
    * indépendamment des modifications ultérieures de la source.
    */
   private buildNewRuns(
+    /** Entrées actives, pour la déduplication (une entrée retirée ne bloque pas le ré-ajout). */
     existingRuns: CampaignTestRun[],
+    alloc: EntryAllocator,
     newTestCaseIds: string[],
     paramValuesByTest: Record<string, Record<string, string>> | undefined,
     snapshots: Map<string, TestCase>,
@@ -444,10 +506,8 @@ export class CampaignsService {
      *  `single` : une seule instance sans exigence, sans itérer. */
     opts: { allowExisting?: boolean; single?: boolean } = {},
   ): CampaignTestRun[] {
-    const counts = lastEntrySuffixes(existingRuns)
-
     const newRun = (tcId: string, given: Record<string, string> | undefined, requirementId?: string) =>
-      this.makeRun(counts, tcId, given, requirementId, snapshots, previews)
+      this.makeRun(alloc, tcId, given, requirementId, snapshots, previews)
 
     const newRuns: CampaignTestRun[] = []
     for (const tcId of newTestCaseIds) {
@@ -489,6 +549,7 @@ export class CampaignsService {
     repoPath: string,
     targetId: string | undefined,
     existingRuns: CampaignTestRun[],
+    alloc: EntryAllocator,
     carried: CarriedEntrySelection[] | undefined,
     baselineRef: string | undefined,
     workspaceDir: string | undefined,
@@ -515,7 +576,6 @@ export class CampaignsService {
     const snapshots = await this.snapshotsFor(repoPath, picked.map(p => p.source.testCaseId))
     const previews = await this.previewsFor(repoPath, snapshots, baselineRef, workspaceDir)
 
-    const counts = lastEntrySuffixes(existingRuns)
     const keys = new Set(existingRuns.map(r => carryKey(r.testCaseId, r.requirementId, r.paramValues)))
     const newRuns: CampaignTestRun[] = []
 
@@ -524,7 +584,7 @@ export class CampaignsService {
       const key = carryKey(tcId, requirementId, storedParamValues(previews.get(tcId), given))
       if (keys.has(key)) return
       keys.add(key)
-      const run = this.makeRun(counts, tcId, given, requirementId, snapshots, previews)
+      const run = this.makeRun(alloc, tcId, given, requirementId, snapshots, previews)
       run.carriedFrom = { campaignId: sel.campaignId, entryId: sel.entryId }
       newRuns.push(run)
     }
@@ -555,27 +615,28 @@ export class CampaignsService {
   }
 
   /**
-   * Nouvelle entrée `pending` d'un test : `entryId` unique (`${testCaseId}-${n}`, `counts` = plus
-   * grand suffixe déjà attribué par test, mis à jour — cf. `lastEntrySuffixes`), copie du test (T49), paramètres résolus (T171) et valeurs
+   * Nouvelle entrée `pending` d'un test : `entryId` unique (`${testCaseId}-${n}`, `alloc.counts` =
+   * plus grand suffixe déjà attribué par test, mis à jour — cf. `entryAllocator`), `addedAt`, copie du test (T49), paramètres résolus (T171) et valeurs
    * `{req.<champ>}` de l'exigence de l'instance (T179). Partagé par `buildNewRuns` et
    * `buildCarriedRuns` (GH64).
    */
   private makeRun(
-    counts: Map<string, number>,
+    alloc: EntryAllocator,
     tcId: string,
     given: Record<string, string> | undefined,
     requirementId: string | undefined,
     snapshots: Map<string, TestCase>,
     previews: Map<string, ParamResolutionPreview>,
   ): CampaignTestRun {
-    const n = (counts.get(tcId) ?? 0) + 1
-    counts.set(tcId, n)
+    const n = (alloc.counts.get(tcId) ?? 0) + 1
+    alloc.counts.set(tcId, n)
     const run: CampaignTestRun = {
       entryId: `${tcId}-${n}`,
       testCaseId: tcId,
       ...(requirementId && { requirementId }),
       testSnapshot: snapshots.get(tcId),
-      status: 'pending' as TestRunStatus,
+      status: 'pending',
+      addedAt: alloc.addedAt,
     }
     const preview = previews.get(tcId)
     if (!preview) {
@@ -667,6 +728,20 @@ export class CampaignsService {
   private nextCampaignId(repoPath: string): Promise<string> {
     return nextCounterId(this.gitService, repoPath, 'CAMP', 'campaigns')
   }
+}
+
+const RUN_RESULTS = ['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE'] as const satisfies readonly TestRunResult[]
+
+/**
+ * GH73 — attribution des nouvelles entrées d'une écriture : suffixes (GH66) calculés sur les entrées
+ * actives **et retirées** — un `entryId` n'est jamais réutilisé, sinon un run rattaché par
+ * `campaignEntry` serait attribué à la mauvaise instance —, date d'ajout commune. Un seul allocateur
+ * par écriture, partagé par `buildNewRuns` et `buildCarriedRuns`.
+ */
+interface EntryAllocator { counts: Map<string, number>; addedAt: string }
+
+function entryAllocator(runs: CampaignTestRun[], removed: RemovedCampaignTestRun[] | undefined, addedAt: string): EntryAllocator {
+  return { counts: lastEntrySuffixes([...runs, ...(removed ?? [])]), addedAt }
 }
 
 /**

@@ -126,15 +126,23 @@ export class TestsService {
 
   /** GH77 — cf. `RequirementsService.renameFieldKeys`. */
   async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, o => renameFieldKeys(o, renames), result)
+  }
+
+  /** GH77/GH82 — cf. `RequirementsService.rewriteObjects`. */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string,
+    transform: (obj: TestCase) => TestCase | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
     const matching = (await this.testsIndex.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef)
     for (const { id } of matching) {
       try {
         await withKeyLock(`${repoPath}::tests/${id}`, async () => {
           const existing = await this.testsIndex.findById(repoPath, id)
-          const renamed = existing ? renameFieldKeys(existing, renames) : null
-          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
-          if (!renamed || renamed === 'conflict') return
-          await this.persist(repoPath, repoPath, renamed, renamed, { raw: true })
+          const next = existing ? transform(existing) : null
+          if (next === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!next || next === 'conflict') return
+          await this.persist(repoPath, repoPath, next, next, { raw: true })
           result.migrated.push(id)
         })
       } catch (err) {
@@ -189,6 +197,13 @@ export class TestsService {
     const testCase = indexed ?? await this.git.readYaml<TestCase>(targetRepo, `tests/${testCaseId}.yaml`)
     if (!testCase) throw new Error(`Test case ${testCaseId} not found`)
 
+    // GH73 — le run est immuable : une référence d'entrée incomplète ne doit jamais y être écrite
+    // (le DTO arrive non validé par le canal IPC).
+    const entry = dto.campaignEntry
+    if (entry && !(isNonEmptyString(entry.campaignId) && isNonEmptyString(entry.entryId))) {
+      throw new Error(`Invalid campaign entry for a run of ${testCaseId}`)
+    }
+
     const runId = await this.nextRunId(targetRepo, testCaseId)
     // GH36 — un résultat importé porte la date d'exécution saisie par le testeur.
     const now = dto.executedAt ?? new Date().toISOString()
@@ -205,7 +220,8 @@ export class TestsService {
     const run: TestRun = {
       id: runId,
       testCaseId,
-      campaignRunId: null,
+      // GH73 — run rattaché à l'entrée de campagne exécutée (deux clés seulement, rien d'autre du DTO).
+      ...(entry && { campaignEntry: { campaignId: entry.campaignId, entryId: entry.entryId } }),
       // T179 — instance générée pour une exigence : le run ne couvre qu'elle.
       ...(dto.requirementId && { requirementId: dto.requirementId }),
       result,
@@ -262,3 +278,5 @@ export class TestsService {
     return `${testCaseId}-run-${String(existingRuns.length + 1).padStart(4, '0')}`
   }
 }
+
+const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v !== ''

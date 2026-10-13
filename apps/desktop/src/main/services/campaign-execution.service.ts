@@ -85,6 +85,7 @@ export class CampaignExecutionService {
           executedBy: inst.executedBy,
           executedAt: inst.executedAt,
           origin: 'excel-import',
+          campaignEntry: { campaignId, entryId: inst.entryId },
         }, workspaceDir)
         const effective = effectiveTests.get(inst.entryId)
         const exported = fingerprinted.has(inst.entryId) && effective?.resyncable ? effective.test : undefined

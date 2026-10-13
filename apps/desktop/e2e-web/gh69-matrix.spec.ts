@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { setupSession } from './support/session'
+import { recordResult } from './support/campaign'
 
 /**
  * GH69 — widget « Matrice » de la vue Suivi : résultat de chaque test dans chaque campagne.
@@ -24,9 +25,9 @@ test.beforeAll(async () => {
   // CAMP 1 : tests 0 et 1 ; CAMP 2 : tests 0, 1, 2 → test 2 absent de la 1re campagne.
   first = await s.invoke<Campaign>('campaigns:create', localPath, { title: 'GH69 A', testCaseIds: testIds.slice(0, 2) }, workspaceDir)
   second = await s.invoke<Campaign>('campaigns:create', localPath, { title: 'GH69 B', testCaseIds: testIds }, workspaceDir)
-  await s.invoke('campaigns:update-run', localPath, first.id, first.runs[0].entryId, 'PASS')
-  await s.invoke('campaigns:update-run', localPath, first.id, first.runs[1].entryId, 'FAIL')
-  await s.invoke('campaigns:update-run', localPath, second.id, second.runs[0].entryId, 'BLOCKED')
+  await recordResult(s, first.id, first.runs[0].entryId, 'PASS')
+  await recordResult(s, first.id, first.runs[1].entryId, 'FAIL')
+  await recordResult(s, second.id, second.runs[0].entryId, 'BLOCKED')
 
   const username = await s.invoke<string>('auth:project-username', localPath)
   const query = await s.invoke<{ id: string }>('queries:create', localPath, username, {

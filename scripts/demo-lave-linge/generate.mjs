@@ -70,6 +70,14 @@ function testSnapshot(id) {
 // ─── Exécutions : numérotation chronologique par test ────────────────────────
 
 const repoOfElement = Object.fromEntries(ELEMENTS.map(e => [e.id, e.repo]))
+// entryId de chaque entrée (`<test>-<n>`, n = rang parmi les instances du test dans sa campagne).
+for (const c of CAMPAIGNS) {
+  const occurrences = {}
+  for (const [testId, e] of c.entries) {
+    occurrences[testId] = (occurrences[testId] ?? 0) + 1
+    e.entryId = `${testId}-${occurrences[testId]}`
+  }
+}
 const allRuns = [
   ...ADHOC_RUNS.map(r => ({ ...r })),
   ...CAMPAIGNS.flatMap(c => c.entries.filter(([, e]) => e.run).map(([testId, e]) => ({
@@ -151,7 +159,8 @@ function writeRun(r) {
   writeYaml(repoDir(r.repo), `test-runs/${r.testId}/${r.id}.yaml`, {
     id: r.id,
     testCaseId: r.testId,
-    campaignRunId: null,
+    // GH73 — run d'une entrée de campagne : rattaché à l'entrée.
+    ...(r.campaignId ? { campaignEntry: { campaignId: r.campaignId, entryId: r.entry.entryId } } : {}),
     ...(r.requirementId ? { requirementId: r.requirementId } : {}),
     result: r.result,
     executedAt: r.at,
@@ -164,16 +173,15 @@ function writeRun(r) {
 }
 
 function writeCampaign(c) {
-  const occurrences = {}
   const runs = c.entries.map(([testId, e]) => {
-    occurrences[testId] = (occurrences[testId] ?? 0) + 1
     const run = allRuns.find(r => r.entry === e)
     return {
-      entryId: `${testId}-${occurrences[testId]}`,
+      entryId: e.entryId,
       testCaseId: testId,
       ...(e.requirementId ? { requirementId: e.requirementId } : {}),
       testSnapshot: testSnapshot(testId),
       status: run ? run.result : 'pending',
+      addedAt: c.createdAt,
       ...(run ? { runId: run.id, executedAt: run.at, executedBy: run.by.name } : {}),
       ...(e.paramValues ? { paramValues: e.paramValues } : {}),
       ...(e.resolvedParams ? { resolvedParams: e.resolvedParams } : {}),

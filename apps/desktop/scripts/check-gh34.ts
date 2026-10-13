@@ -524,7 +524,7 @@ const testCase = (id: string, title: string): TestCase => ({
 })
 
 const RUNS: TestRun[] = [{
-  id: 'RUN-1', testCaseId: 'TEST-0001', campaignRunId: null, result: 'FAIL', executedAt: '2026-09-30T14:05:00Z',
+  id: 'RUN-1', testCaseId: 'TEST-0001', result: 'FAIL', executedAt: '2026-09-30T14:05:00Z',
   executedBy: 'lolive', duration: 60, equipmentUsed: [], notes: 'Écart **constaté**',
   stepResults: [
     { order: 1, result: 'PASS', comment: '', executedAt: null },

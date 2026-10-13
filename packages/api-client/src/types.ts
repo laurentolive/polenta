@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -36,7 +36,7 @@ import type {
   ReviewStatus,
   ProjectSchema,
   TestCampaign,
-  TestRunStatus,
+  TestRunResult,
   CreateCampaignDto,
   UpdateCampaignDto,
   TypeTree,
@@ -366,6 +366,10 @@ export interface ApiClient {
     moveElement(repoPath: string, dto: MoveElementDto): Promise<MoveElementResult>
     /** GH77 — migre valeur et historique des champs renommés sur les objets du type (après `save`). */
     renameFields(repoPath: string, objectTypeRef: string, renames: FieldRename[]): Promise<FieldRenameResult>
+    /** GH82 — aperçu sans écriture : objets du type portant l'ancienne / la nouvelle valeur. */
+    previewValueRenames(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<ValueRenamePreview[]>
+    /** GH82 — migre statuts / valeurs d'enum renommés (objets, historique, copies de campagne). */
+    renameValues(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<FieldRenameResult>
     /** Drops the main-process in-memory cache for `repoPath` so the next `get()` re-reads schema.yaml from disk. */
     invalidate(repoPath: string): Promise<void>
   }
@@ -640,7 +644,7 @@ export interface ApiClient {
     create(repoPath: string, dto: CreateCampaignDto, workspaceDir?: string): Promise<TestCampaign>
     update(repoPath: string, id: string, dto: UpdateCampaignDto): Promise<TestCampaign>
     /** GH81 — `displayed` : version du test affichée, figée si l'instance est resynchronisable (GH68). */
-    updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunStatus, runId?: string, displayed?: TestCase): Promise<TestCampaign>
+    updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunResult, runId: string, displayed?: TestCase): Promise<TestCampaign>
     close(repoPath: string, id: string, status: 'completed' | 'abandoned'): Promise<TestCampaign>
     /** T179 — `reqInstances` : exigences retenues (et saisies par instance) des tests itérants. */
     addTests(repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: ReqInstanceSelection, carried?: CarriedEntrySelection[]): Promise<TestCampaign>

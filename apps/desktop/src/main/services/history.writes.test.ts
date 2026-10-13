@@ -198,8 +198,8 @@ describe('campagnes', () => {
     const tc = await newTest()
     const c = await newCampaign([tc.id])
     const entryId = c.runs[0].entryId
-    await campaigns.updateRun(dir, c.id, entryId, 'PASS')
-    await campaigns.updateRun(dir, c.id, entryId, 'FAIL')
+    await campaigns.updateRun(dir, c.id, entryId, 'PASS', 'RUN-1')
+    await campaigns.updateRun(dir, c.id, entryId, 'FAIL', 'RUN-2')
     await campaigns.close(dir, c.id, 'completed')
     const file = await onDisk<TestCampaign>(`campaigns/${c.id}.yaml`)
     expect(file.history?.status.map(e => e.value)).toEqual(['planned', 'in_progress', 'completed'])

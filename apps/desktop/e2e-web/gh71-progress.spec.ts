@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { recordResult } from './support/campaign'
 
 /**
  * GH71 — avancement des campagnes de la définition des tests au résultat : widget « Avancement par
@@ -66,8 +67,8 @@ test.beforeAll(async () => {
     title: TITLE, testCaseIds: [passed!.id, draftId, failed!.id, reviewId, ready!.id],
   }, workspaceDir)
   const entry = (id: string) => campaign.runs.find(r => r.testCaseId === id)!.entryId
-  await s.invoke('campaigns:update-run', localPath, campaign.id, entry(passed!.id), 'PASS')
-  await s.invoke('campaigns:update-run', localPath, campaign.id, entry(failed!.id), 'FAIL')
+  await recordResult(s, campaign.id, entry(passed!.id), 'PASS')
+  await recordResult(s, campaign.id, entry(failed!.id), 'FAIL')
 })
 
 test('W1 / W2 / N1 — widget du seed : étapes ordonnées, drill-down « en revue », ouverture filtrée', async () => {

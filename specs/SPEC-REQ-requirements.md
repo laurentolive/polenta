@@ -421,8 +421,17 @@ une entrée `implicit: true` datée du dernier commit (jamais avant la dernière
 
 **Évolution du schéma** : désactiver le suivi n'efface rien ; renommer un champ dans l'éditeur migre
 `fields` et `history` de tous les objets du type (`schema:rename-fields`, compte rendu des objets
-non migrés quand une donnée existe déjà sous le nouveau nom). Le renommage d'un statut ou d'une
-valeur d'enum n'est pas migré (#82).
+non migrés quand une donnée existe déjà sous le nouveau nom).
+
+**Renommer un statut ou une valeur d'enum (GH82)** : statut détecté par son nom d'origine (ligne
+de l'éditeur) ; valeur d'enum / multi_enum détectée par position, seulement si la liste garde sa
+longueur, que l'ancienne valeur en a disparu et que la nouvelle n'y figurait pas (réordonner ou
+échanger ne propose rien). Une confirmation **avant** l'enregistrement liste les renommages
+(décochables), le nombre d'objets concernés (`schema:preview-value-renames`) et les collisions
+(objets portant déjà la nouvelle valeur : confondus). Migration (`schema:rename-values`), écriture
+brute — ni entrée d'historique, ni revalidation, ni `version` : `status` / `fields.<f>` (élément de
+la liste pour multi_enum, séparateurs conservés), valeurs de `history`, copies `testSnapshot` des
+campagnes du repo, `default` du champ. Requêtes et dashboards du Suivi non modifiés.
 
 **Reprise depuis git** (Préférences du projet, par repo, `history:backfill`) : une entrée
 `source: git` par changement de valeur le long de la chaîne des premiers parents de la branche

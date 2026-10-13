@@ -40,6 +40,7 @@ import type { ParametersService } from '../services/parameters.service'
 import type { RevalidationService } from '../services/revalidation.service'
 import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } from '../services/history.service'
 import type { FieldRenameService } from '../services/field-rename.service'
+import type { ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
   CreateRequirementDto,
@@ -117,6 +118,19 @@ export interface Container {
   forgeConfig: ForgeConfigService
   /** GH45 S4 — repos, organisations, droits, membres ; création sur le serveur. */
   forge: ForgeService
+}
+
+/** GH82 — arguments des canaux de renommage de valeurs, validés avant tout accès disque. */
+function checkValueRenames(channel: string, objectTypeRef: unknown, renames: unknown): [string, ValueRename[]] {
+  if (typeof objectTypeRef !== 'string' || !objectTypeRef.includes('::')) {
+    throw new Error(`${channel} — objectTypeRef must be "<node>::<type>"`)
+  }
+  const valid = Array.isArray(renames) && renames.every(r =>
+    typeof r?.from === 'string' && typeof r?.to === 'string' && (
+      r.target?.kind === 'status'
+      || (r.target?.kind === 'field' && typeof r.target.field === 'string' && typeof r.target.multi === 'boolean')))
+  if (!valid) throw new Error(`${channel} — renames must be an array of { target, from, to }`)
+  return [objectTypeRef, renames as ValueRename[]]
 }
 
 /**
@@ -429,6 +443,11 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     }
     return c.fieldRename.renameFields(repoPath, objectTypeRef, renames as import('@polenta/types').FieldRename[])
   })
+  // GH82 — renommage de statuts / valeurs d'enum : aperçu (sans écriture) puis migration.
+  r.handle('schema:preview-value-renames', (_e, repoPath: string, objectTypeRef: string, renames: unknown) =>
+    c.fieldRename.previewValueRenames(repoPath, ...checkValueRenames('schema:preview-value-renames', objectTypeRef, renames)))
+  r.handle('schema:rename-values', (_e, repoPath: string, objectTypeRef: string, renames: unknown) =>
+    c.fieldRename.renameValues(repoPath, ...checkValueRenames('schema:rename-values', objectTypeRef, renames)))
   // Drops the in-memory cache entry so the next `schema:get` re-reads schema.yaml from disk —
   // needed because SchemaService.get() otherwise serves the cached copy forever within a
   // session, even after an out-of-band edit to the file (manual edit, git checkout/pull…).
@@ -454,8 +473,9 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   // GH81 — `displayed` : version du test affichée par la page d'exécution, figée sur une instance
   // resynchronisable (GH68) dans la même écriture que le résultat.
   r.handle('campaigns:update-run',
-    (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId?: string, displayed?: unknown) =>
-      c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunStatus, runId,
+    (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId: string, displayed?: unknown) =>
+      // GH73 — `runId` obligatoire et résultat valide : vérifiés par le service (canal non typé).
+      c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunResult, runId,
         displayed ? { testSnapshot: displayed as import('@polenta/types').TestCase } : undefined))
   r.handle('campaigns:close',
     (_e, repoPath: string, id: string, status: unknown) =>

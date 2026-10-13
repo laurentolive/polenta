@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+  ObjectHistory, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -601,6 +601,10 @@ export interface ApiClient {
     exportCsv(repoPath: string, filters?: MatrixFiltersDto, workspaceDir?: string): Promise<MatrixExportRow[]>
     /** Diff exigence-par-exigence entre deux shas (T46) — indépendant de l'index vivant. */
     diffRequirements(repoPath: string, fromSha: string, toSha: string): Promise<RequirementDiffEntry[]>
+  }
+  history: {
+    /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
+    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign', id: string): Promise<ObjectHistory>
   }
   revalidation: {
     /** T173 — éléments marqués `needsRevalidation` du workspace, avec leurs éléments liés. */

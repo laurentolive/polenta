@@ -16,6 +16,7 @@ import { TraceabilityService } from '../main/services/traceability.service'
 import { QueryEngineService } from '../main/services/query-engine.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
+import { HistoryService } from '../main/services/history.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -40,6 +41,8 @@ export interface McpContainer {
   queryEngine: QueryEngineService
   savedQueries: SavedQueriesService
   dashboards: DashboardsService
+  /** GH77 — lecture effective de l'historique (tools de lecture). */
+  history: HistoryService
 }
 
 /**
@@ -94,11 +97,13 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
   const schema = new SchemaService(auth, workspaceTree)
   const tree = new TreeService()
+  // GH77 — écritures MCP : `by` = `--user` / `POLENTA_USER` (sinon `local`), `source: mcp`.
+  const history = new HistoryService(git, async () => ({ by: user ?? 'local', source: 'mcp' }))
   // T172 — mêmes déclencheurs que l'app : un changement de statut via MCP marque aussi les pairs.
-  const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree)
-  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation)
-  const tests = new TestsService(git, testsIndex, schema, tree, revalidation)
-  const campaigns = new CampaignsService(git, tests)
+  const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
+  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation, history)
+  const tests = new TestsService(git, testsIndex, schema, tree, revalidation, history)
+  const campaigns = new CampaignsService(git, tests, undefined, history)
   // GH18 — vue Suivi : même graphe que main/container.ts (sans DashboardSeedService, le
   // seed des dashboards pré-configurés reste propre à l'app). TraceabilityService n'est
   // appelé que pour computeCoverage (pur, ni réseau ni keytar).
@@ -109,6 +114,6 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
-    user, queryEngine, savedQueries, dashboards,
+    user, queryEngine, savedQueries, dashboards, history,
   }
 }

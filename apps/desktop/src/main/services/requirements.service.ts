@@ -10,6 +10,7 @@ import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import type { HistoryService } from './history.service'
 
 export class RequirementsService {
   constructor(
@@ -18,6 +19,7 @@ export class RequirementsService {
     private readonly schema: SchemaService,
     private readonly tree?: TreeService,
     private readonly revalidation?: RevalidationService,
+    private readonly history?: HistoryService,
   ) {}
 
   findAll(repoPath: string, filters: RequirementFilters): Promise<Requirement[]> {
@@ -92,10 +94,9 @@ export class RequirementsService {
       updatedBy: null,
     }
 
-    await this.git.writeYaml(targetRepo, `requirements/${reqId}.yaml`, omitAuditFields(req))
-    this.index.upsert(repoPath, req)
-    await this.appendToTree(targetRepo, dto.objectTypeRef, req.id, req.title)
-    return req
+    const created = await this.persist(repoPath, targetRepo, null, req)
+    await this.appendToTree(targetRepo, dto.objectTypeRef, created.id, created.title)
+    return created
   }
 
   // T159 — `withKeyLock` sérialise les read-modify-write concurrents sur le même fichier
@@ -110,15 +111,11 @@ export class RequirementsService {
       // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
-      const updated: Requirement = {
+      return this.persist(repoPath, targetRepo, existing, {
         ...existing,
         ...(dto.title && { title: dto.title }),
         fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      }
-
-      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-      this.index.upsert(repoPath, updated)
-      return updated
+      })
     })
   }
 
@@ -129,14 +126,11 @@ export class RequirementsService {
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
-      const updated: Requirement = {
+      const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         status: targetStatus,
         version: (existing.version ?? 0) + 1,
-      }
-
-      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-      this.index.upsert(repoPath, updated)
+      })
       return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, targetStatus) }
     })
     // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
@@ -158,19 +152,29 @@ export class RequirementsService {
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
       const wasApproved = !!typeDef?.statuses?.find(s => s.name === existing.status)?.isApproval
 
-      const updated: Requirement = {
+      const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         status: dto.toStatus,
         ...(wasApproved && dto.toStatus !== existing.status ? { version: (existing.version ?? 0) + 1 } : {}),
-      }
-
-      await this.git.writeYaml(targetRepo, `requirements/${id}.yaml`, omitAuditFields(updated))
-      this.index.upsert(repoPath, updated)
+      })
       return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, dto.toStatus) }
     })
     // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
     if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
     return updated
+  }
+
+  /**
+   * Seule écriture d'un fichier d'exigence (GH77) : complète l'historique des champs suivis
+   * (`before` null = création), écrit sans les champs d'audit, met l'index à jour.
+   */
+  private async persist(repoPath: string, targetRepo: string, before: Requirement | null, after: Requirement): Promise<Requirement> {
+    const stamped = this.history
+      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo)
+      : after
+    await this.git.writeYaml(targetRepo, `requirements/${stamped.id}.yaml`, omitAuditFields(stamped))
+    this.index.upsert(repoPath, stamped)
+    return stamped
   }
 
   /** Définition du type de l'objet dans le schéma du repo ouvert (null si non résolvable). */
@@ -201,9 +205,7 @@ export class RequirementsService {
     const failed: { id: string; error: string }[] = []
     for (const req of matching) {
       try {
-        const updated: Requirement = { ...req, objectTypeRef: newRef }
-        await this.git.writeYaml(repoPath, `requirements/${req.id}.yaml`, omitAuditFields(updated))
-        this.index.upsert(repoPath, updated)
+        await this.persist(repoPath, repoPath, req, { ...req, objectTypeRef: newRef })
         succeeded.push(req.id)
       } catch (err) {
         failed.push({ id: req.id, error: err instanceof Error ? err.message : String(err) })

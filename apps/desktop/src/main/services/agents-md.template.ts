@@ -18,7 +18,7 @@ import type { BrandInfo } from '../../shared/brand-types'
  * AGENTS.md dans tous les projets existants pour rien. Le marqueur ne compare pas le nom : un
  * projet garde le nom de la marque qui l'a écrit, quelle que soit la marque qui l'ouvre ensuite.
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 3
+export const AGENTS_MD_TEMPLATE_VERSION = 4
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -110,6 +110,8 @@ Tools disponibles :
 - \`get_schema\` — lit le \`.polenta/schema.yaml\` résolu (nœuds, types, champs, statuts, liens).
 - \`list_requirements\` / \`list_tests\` / \`list_campaigns\` — explore l'existant (filtres
   par type/statut/texte) pour éviter les doublons avant un import.
+- \`get_history\` — historique des champs suivis d'un objet (statut par défaut), avec les
+  entrées déduites (\`implicit: true\`) quand la valeur courante diffère de la dernière entrée.
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import
   massif avec \`dryRun\` obligatoire par défaut (aperçu des IDs prévisionnels et des
   erreurs, sans rien écrire) ; \`dryRun: false\` écrit réellement, en série, best-effort.
@@ -149,6 +151,12 @@ etc.).
 - Un ID n'est **jamais réutilisé**, même si l'objet passe en statut terminal/obsolète.
 - Une exigence ou un test marqué \`needsRevalidation: true\` signale un impact à vérifier
   (un élément lié a quitté l'approbation) — ne pas lever ce flag sans analyse d'impact.
+- Le champ \`history\` d'un objet (exigence, test, campagne) est l'historique daté des champs
+  suivis — le statut par défaut (\`trackStatusHistory\` du type), et les champs
+  \`trackHistory: true\` du schéma : une liste par champ, entrées \`{ value, at, by, source }\`.
+  Il est alimenté par ${name} à chaque écriture : **ne jamais l'écrire ni le corriger à la main**.
+  Modifier la valeur d'un champ suivi hors de l'application crée un écart, comblé à la prochaine
+  écriture par l'application (entrée datée du dernier commit).
 - Le \`prefix\` de chaque type d'objet est unique sur l'ensemble du projet.
 
 ## System engineering assisté par IA — les 4 usages visés

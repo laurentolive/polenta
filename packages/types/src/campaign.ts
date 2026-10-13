@@ -1,3 +1,4 @@
+import type { ObjectHistory } from './history'
 import type { TestCase } from './test'
 
 export type CampaignStatus = 'planned' | 'in_progress' | 'completed' | 'abandoned'
@@ -16,6 +17,8 @@ export interface TestCampaign {
   runs: CampaignTestRun[]
   createdAt: string
   completedAt?: string | null
+  /** GH77 — historique du statut et des champs personnalisés suivis. */
+  history?: ObjectHistory
 }
 
 export interface CampaignTestRun {

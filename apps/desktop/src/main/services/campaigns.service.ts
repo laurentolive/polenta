@@ -3,7 +3,9 @@ import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, Crea
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
-import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus } from '@polenta/types'
+import type { HistoryService } from './history.service'
+import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus, withoutHistory } from '@polenta/types'
+import type { HistoryCarrier } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 
@@ -13,6 +15,8 @@ export class CampaignsService {
     private readonly testsService: TestsService,
     /** T171 — résolution des paramètres de la base à l'ajout ; absent (MCP) : comportement T97. */
     private readonly parameters?: ParametersService,
+    /** GH77 — historique des champs suivis ; absent (tests unitaires) : pas d'historique. */
+    private readonly history?: HistoryService,
   ) {}
 
   private writeQueues = new Map<string, Promise<unknown>>()
@@ -84,8 +88,7 @@ export class CampaignsService {
     // T179 — une occurrence par instance créée (un test itérant en a une par exigence retenue).
     campaign.testCaseIds = campaign.runs.map(r => r.testCaseId)
     await assertNewObjectFile(this.gitService, repoPath, `campaigns/${id}.yaml`, id)
-    await this.gitService.writeYaml(repoPath, `campaigns/${id}.yaml`, campaign)
-    return campaign
+    return this.persist(repoPath, id, null, campaign)
   }
 
   async update(repoPath: string, id: string, dto: UpdateCampaignDto): Promise<TestCampaign> {
@@ -99,8 +102,7 @@ export class CampaignsService {
         fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
       }
 
-      await this.gitService.writeYaml(repoPath, `campaigns/${id}.yaml`, updated)
-      return updated
+      return this.persist(repoPath, id, existing, updated)
     })
   }
 
@@ -115,6 +117,7 @@ export class CampaignsService {
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
+      const original = historyBase(campaign)
 
       const runIndex = campaign.runs.findIndex(r => r.entryId === entryId)
       if (runIndex === -1) throw new Error(`Entry ${entryId} not found in campaign ${campaignId}`)
@@ -135,8 +138,7 @@ export class CampaignsService {
         campaign.status = 'in_progress'
       }
 
-      await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
-      return campaign
+      return this.persist(repoPath, campaignId, original, campaign)
     })
   }
 
@@ -147,12 +149,12 @@ export class CampaignsService {
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, id, async () => {
       const campaign = await this.get(repoPath, id)
+      const original = historyBase(campaign)
 
       campaign.status = status as CampaignStatus
       campaign.completedAt = new Date().toISOString()
 
-      await this.gitService.writeYaml(repoPath, `campaigns/${id}.yaml`, campaign)
-      return campaign
+      return this.persist(repoPath, id, original, campaign)
     })
   }
 
@@ -168,6 +170,7 @@ export class CampaignsService {
   async refreshEntries(repoPath: string, campaignId: string, entryIds: string[]): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
+      const original = historyBase(campaign)
       if (campaign.status === 'completed' || campaign.status === 'abandoned') return campaign
 
       const wanted = new Set(entryIds)
@@ -187,8 +190,7 @@ export class CampaignsService {
           changed = true
         }
       }
-      if (changed) await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
-      return campaign
+      return changed ? this.persist(repoPath, campaignId, original, campaign) : campaign
     })
   }
 
@@ -213,6 +215,7 @@ export class CampaignsService {
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
+      const original = historyBase(campaign)
 
       if (campaign.status === 'completed' || campaign.status === 'abandoned') {
         throw new Error(`Cannot add tests to a ${campaign.status} campaign`)
@@ -237,8 +240,7 @@ export class CampaignsService {
       if (campaign.runs.length === before) return campaign
       campaign.testCaseIds = [...campaign.testCaseIds, ...campaign.runs.slice(before).map(r => r.testCaseId)]
 
-      await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
-      return campaign
+      return this.persist(repoPath, campaignId, original, campaign)
     })
   }
 
@@ -257,6 +259,7 @@ export class CampaignsService {
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
+      const original = historyBase(campaign)
 
       if (campaign.status === 'completed' || campaign.status === 'abandoned') {
         throw new Error(`Cannot add tests to a ${campaign.status} campaign`)
@@ -279,8 +282,7 @@ export class CampaignsService {
       )
       campaign.testCaseIds = [...campaign.testCaseIds, ...campaign.runs.slice(before).map(r => r.testCaseId)]
 
-      await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
-      return campaign
+      return this.persist(repoPath, campaignId, original, campaign)
     })
   }
 
@@ -311,14 +313,14 @@ export class CampaignsService {
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
+      const original = historyBase(campaign)
 
       const runIndex = campaign.runs.findIndex(r => r.entryId === entryId)
       if (runIndex === -1) throw new Error(`Entry ${entryId} not found in campaign ${campaignId}`)
 
       campaign.runs[runIndex] = { ...campaign.runs[runIndex], paramValues }
 
-      await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
-      return campaign
+      return this.persist(repoPath, campaignId, original, campaign)
     })
   }
 
@@ -335,6 +337,7 @@ export class CampaignsService {
   ): Promise<TestCampaign> {
     return this.enqueue(repoPath, campaignId, async () => {
       const campaign = await this.get(repoPath, campaignId)
+      const original = historyBase(campaign)
 
       if (campaign.status === 'completed' || campaign.status === 'abandoned') {
         throw new Error(`Cannot remove tests from a ${campaign.status} campaign`)
@@ -351,9 +354,20 @@ export class CampaignsService {
       }
       campaign.testCaseIds = testCaseIds
 
-      await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
-      return campaign
+      return this.persist(repoPath, campaignId, original, campaign)
     })
+  }
+
+  /**
+   * Seule écriture d'un fichier de campagne (GH77) : complète l'historique du statut et des champs
+   * suivis (`before` null = création) avant d'écrire.
+   */
+  private async persist(repoPath: string, id: string, before: HistoryCarrier | null, after: TestCampaign): Promise<TestCampaign> {
+    const stamped = this.history
+      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath: `campaigns/${id}.yaml` })
+      : after
+    await this.gitService.writeYaml(repoPath, `campaigns/${id}.yaml`, stamped)
+    return stamped
   }
 
   async delete(repoPath: string, id: string): Promise<void> {
@@ -574,7 +588,8 @@ export class CampaignsService {
     const snapshots = new Map<string, TestCase>()
     uniqueIds.forEach((id, i) => {
       const test = found[i]
-      if (test) snapshots.set(id, test)
+      // GH77 — la copie figée ne porte pas l'historique du test (spec §11).
+      if (test) snapshots.set(id, withoutHistory(test) as TestCase)
     })
     return snapshots
   }
@@ -637,4 +652,9 @@ function storedParamValues(
 /** GH68 — forme sérialisée (clés `undefined` retirées), pour comparer une copie relue du YAML. */
 function toPlain(value: unknown): unknown {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
+}
+
+/** GH77 — état « avant » d'une mutation, limité à ce que compare l'historique (pas de copie des entrées). */
+function historyBase(campaign: TestCampaign): HistoryCarrier {
+  return { status: campaign.status, fields: { ...campaign.fields }, history: campaign.history }
 }

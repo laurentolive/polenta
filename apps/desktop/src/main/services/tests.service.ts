@@ -10,6 +10,7 @@ import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import type { HistoryService } from './history.service'
 
 export class TestsService {
   constructor(
@@ -18,6 +19,7 @@ export class TestsService {
     private readonly schema: SchemaService,
     private readonly tree?: TreeService,
     private readonly revalidation?: RevalidationService,
+    private readonly history?: HistoryService,
   ) {}
 
   findAll(repoPath: string): Promise<TestCase[]> {
@@ -64,10 +66,9 @@ export class TestsService {
       updatedBy: null,
     }
 
-    await this.git.writeYaml(targetRepo, `tests/${testId}.yaml`, omitAuditFields(test))
-    this.testsIndex.upsertTestCase(repoPath, test)
-    await this.appendToTree(targetRepo, dto.objectTypeRef, test.id, test.title)
-    return test
+    const created = await this.persist(repoPath, targetRepo, null, test)
+    await this.appendToTree(targetRepo, dto.objectTypeRef, created.id, created.title)
+    return created
   }
 
   // T159 — cf. RequirementsService : sérialise les read-modify-write concurrents sur le
@@ -81,7 +82,7 @@ export class TestsService {
       // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
-      const updated: TestCase = {
+      const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         ...(dto.title && { title: dto.title }),
         ...(dto.objectTypeRef && { objectTypeRef: dto.objectTypeRef }),
@@ -91,10 +92,7 @@ export class TestsService {
         ...(dto.steps && { steps: dto.steps }),
         ...(dto.postconditions !== undefined && { postconditions: dto.postconditions }),
         fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      }
-
-      await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
-      this.testsIndex.upsertTestCase(repoPath, updated)
+      })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(
         await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, dto.status)
@@ -111,14 +109,11 @@ export class TestsService {
       if (!existing) throw new Error(`Test case ${id} not found`)
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-      const updated: TestCase = {
+      const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         status: targetStatus,
         version: (existing.version ?? 0) + 1,
-      }
-
-      await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
-      this.testsIndex.upsertTestCase(repoPath, updated)
+      })
       const leftApproval = RevalidationService.leavesApproval(
         await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, targetStatus)
       return { updated, leftApproval }
@@ -126,6 +121,19 @@ export class TestsService {
     // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).
     if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
     return updated
+  }
+
+  /**
+   * Seule écriture d'un fichier de cas de test (GH77) : complète l'historique des champs suivis
+   * (`before` null = création), écrit sans les champs d'audit, met l'index à jour.
+   */
+  private async persist(repoPath: string, targetRepo: string, before: TestCase | null, after: TestCase): Promise<TestCase> {
+    const stamped = this.history
+      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo)
+      : after
+    await this.git.writeYaml(targetRepo, `tests/${stamped.id}.yaml`, omitAuditFields(stamped))
+    this.testsIndex.upsertTestCase(repoPath, stamped)
+    return stamped
   }
 
   /** Définition du type de l'objet dans le schéma du repo ouvert (null si non résolvable). */

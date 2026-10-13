@@ -217,6 +217,9 @@ export function createIpcClient(
       exportCsv: (p, f, workspaceDir) => invoke('traceability:export-csv', p, f, workspaceDir),
       diffRequirements: (p, fromSha, toSha) => invoke('traceability:diff-requirements', p, fromSha, toSha),
     },
+    history: {
+      get: (p, kind, id) => invoke('history:get', p, kind, id),
+    },
     revalidation: {
       list: (p, w) => invoke('revalidation:list', p, w),
       clear: (p, ids, w) => invoke('revalidation:clear', p, ids, w),

@@ -68,6 +68,12 @@ cas depuis GH80).
 
 ## Test manuel (desktop)
 
+Les scénarios M1, E2, M2 et M3 ci-dessous sont joués par l'interface du client web, avec
+`git status` sur le clone, dans `e2e-web/gh81-verif.spec.ts` : 3/3 passés. Captures
+`gh81v-m1-execution-version-actuelle`, `gh81v-m2-apercu-test-modifie` et
+`gh81v-m3-apercu-classeur-v1` dans `e2e-web/.results/`. Seule la boîte « Enregistrer sous » du
+desktop n'est pas couverte : le web télécharge le classeur, et les handlers IPC sont les mêmes.
+
 1. **M1** — Campagne ouverte avec un test brouillon ; modifier le test ; ouvrir sa page
    d'exécution (la nouvelle version s'affiche), revenir sans saisir : `git status` propre.
 2. **E2** — Ouvrir l'exécution, modifier le test dans un autre onglet, soumettre et confirmer

@@ -46,14 +46,15 @@ const PREVIEWS = new Map<string, ParamResolutionPreview>([
   ['TEST-0004', preview('TEST-0004')],
 ])
 
-const approvedOnly = (tc: TestCase): CarryEligibility => (tc.status === 'approved' ? 'ok' : 'notApproved')
+// GH68 — à l'ajout, tout statut est éligible (plus de filtre d'approbation).
+const addEligibility = (): CarryEligibility => 'ok'
 
 function rows(overrides: Partial<Parameters<typeof buildCarryRows>[0]> = {}) {
   return buildCarryRows({
     sources: [CAMP1],
     statuses: DEFAULT_CARRY_STATUSES,
     testsById: TESTS,
-    isEligible: approvedOnly,
+    isEligible: addEligibility,
     previews: PREVIEWS,
     targetKeys: new Set(),
     ...overrides,
@@ -70,9 +71,10 @@ describe('buildCarryRows (GH64)', () => {
       .toEqual(['TEST-0002-1', 'TEST-0002-2', 'TEST-0003-1', 'TEST-0003-2', 'TEST-0004-1'])
   })
 
-  it('L3 — ajout : test non approuvé indisponible', () => {
-    expect(rows().find(r => r.testCaseId === 'TEST-0004')?.unavailable).toBe('notApproved')
-    expect(rows().filter(r => r.unavailable)).toHaveLength(1)
+  it('L3 — ajout : test non approuvé disponible (GH68)', () => {
+    expect(TESTS.get('TEST-0004')?.status).not.toBe('approved')
+    expect(rows().find(r => r.testCaseId === 'TEST-0004')?.unavailable).toBeUndefined()
+    expect(rows().filter(r => r.unavailable)).toHaveLength(0)
   })
 
   it('L4 — création : test hors périmètre indisponible', () => {
@@ -147,10 +149,12 @@ describe('sélection du report (GH64)', () => {
       ['TEST-0002-1', undefined, { tension: '' }],
       ['TEST-0002-2', undefined, { tension: '24V' }],
       ['TEST-0003-2', 'SYS-0002', undefined],
+      // GH68 — test non approuvé : reporté comme les autres.
+      ['TEST-0004-1', undefined, undefined],
     ])
     expect(isCarryComplete(picked, PREVIEWS)).toBe(false)
     expect(isCarryComplete(pickCarried(selected, PREVIEWS, { values: {}, reqSel: {} }, () => new Set()), PREVIEWS)).toBe(true)
-    expect(countCarryInstances(picked)).toBe(3)
+    expect(countCarryInstances(picked)).toBe(4)
     expect(toCarriedSelection(picked)[2]).toEqual({ campaignId: 'CAMP-0001', entryId: 'TEST-0003-2' })
   })
 

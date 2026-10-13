@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { Trash2, Play, Eye, Pencil, Copy, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
-import { useProjectSchema, getCampaignTypeDef, getTestTypeDef } from '../hooks/useProjectSchema'
+import { useProjectSchema, getCampaignTypeDef, isTestApproved } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
 import { RichTextViewer } from '../components/RichTextViewer'
 import { RichTextProvider } from '../contexts/RichTextContext'
@@ -15,6 +15,8 @@ import { TestParamFields } from '../components/TestParamFields'
 import { manualKeysForRun } from '../lib/testParams'
 import { buildReqInstances, isIteratingPreview, missingReqs, presentReqIds } from '../lib/reqInstances'
 import { carryCoverage, toCarriedSelection, withCarryPrecedence, type CarryEligibility } from '../lib/carryOver'
+import { unapprovedPendingRuns, unapprovedTestOf } from '../lib/campaignApproval'
+import { NotApprovedBadge, NotApprovedRunsBanner } from '../components/campaign/NotApproved'
 import { TestPickerModal, EMPTY_PICKER_RESULT, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
@@ -24,7 +26,7 @@ import { ExecutionSheetMenu } from '../components/campaign/ExecutionSheetMenu'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import type { TestRunStatus, TestCase, ProjectSchema, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
+import type { TestRunStatus, TestCase, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
@@ -66,16 +68,6 @@ const RUN_STATUS_CLASS: Record<TestRunStatus, string> = {
   INCOMPLETE: 'bg-status-warning-bg text-status-warning',
 }
 
-// Statut "approuvé" résolu depuis `statuses[].isApproval` du type du test (schema.yaml),
-// pas depuis le littéral 'approved' — un projet nommant son statut d'approbation
-// différemment (ex: "valide") doit quand même être respecté (même logique que
-// maturity.util.ts côté main). Repli sur 'approved' si le type n'a pas de statut isApproval.
-function isTestApproved(test: TestCase, schema: ProjectSchema | undefined): boolean {
-  const typeDef = getTestTypeDef(schema, test.objectTypeRef)
-  const approvalStatusName = typeDef?.statuses?.find(s => s.isApproval)?.name
-  return test.status === (approvalStatusName ?? 'approved')
-}
-
 // ─── Campaign detail page ─────────────────────────────────────────────────────
 
 function CampaignDetailPage() {
@@ -109,11 +101,10 @@ function CampaignDetailPage() {
   useRegisterTabDirty(editingFields !== null)
 
   const { data: schema } = useProjectSchema(repoPath)
-  // GH64 — éligibilité d'un test reporté : même règle que l'ajout normal (test approuvé).
-  const isCarryEligible = useCallback(
-    (tc: TestCase): CarryEligibility => (isTestApproved(tc, schema) ? 'ok' : 'notApproved'),
-    [schema],
-  )
+  // GH64 — éligibilité d'un test reporté : même règle que l'ajout normal. GH68 — tout statut est
+  // accepté à l'ajout (planification en amont) ; le statut est signalé, pas filtré.
+  const isCarryEligible = useCallback((): CarryEligibility => 'ok', [])
+  const isApproved = useCallback((tc: TestCase) => isTestApproved(tc, schema), [schema])
 
   const updateFieldsMutation = useMutation({
     mutationFn: (fields: Record<string, string>) =>
@@ -236,8 +227,8 @@ function CampaignDetailPage() {
   // d'instance (déduplication par couple test/exigence) ; ses références à saisir ne suffisent pas
   // (une instance de plus pour la même exigence passe par « Dupliquer »).
   const presentOf = (id: string) => presentReqIds(campaign.runs, id)
+  // GH68 — pas de filtre de statut : un test non approuvé peut entrer (campagne construite en amont).
   const availableTests = tests
-    .filter(t => isTestApproved(t, schema))
     .filter(t => {
       if (!includedIds.has(t.id)) return true
       const preview = paramPreviews.get(t.id)
@@ -500,6 +491,8 @@ function CampaignDetailPage() {
 
       {/* T171 — notification persistante : instances avec des références non résolues. */}
       <UnresolvedParamsBanner runs={campaign.runs} />
+      {/* GH68 — instances à exécuter dont le test n'est pas approuvé. */}
+      <NotApprovedRunsBanner count={unapprovedPendingRuns(campaign.runs, testMap, isApproved).length} />
 
       {/* Test case list */}
       <div className="border rounded divide-y mb-3">
@@ -526,6 +519,7 @@ function CampaignDetailPage() {
               ? paramPreviews.get(tcId)?.requirements?.find(r => r.requirementId === run.requirementId)
               : undefined
             const hasLiveParams = liveManualKeys.length > 0
+            const unapprovedTest = unapprovedTestOf(run, liveTc, isApproved)
             const isEditingParams = editingParamsFor === entryId
             const isDuplicating = duplicatingFor === entryId
             return (
@@ -574,6 +568,7 @@ function CampaignDetailPage() {
                         ↩ {run.carriedFrom.campaignId}
                       </button>
                     )}
+                    {unapprovedTest && <NotApprovedBadge test={unapprovedTest} schema={schema} />}
                     {(run.unresolvedParams?.length ?? 0) > 0 && (
                       <span
                         className="ml-2 inline-flex items-center gap-0.5 text-[10px] text-status-warning"

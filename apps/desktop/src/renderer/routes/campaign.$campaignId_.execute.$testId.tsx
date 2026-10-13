@@ -1,7 +1,8 @@
 ﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 import { RichTextField } from '../components/RichTextField'
 import { RichTextViewer } from '../components/RichTextViewer'
@@ -12,6 +13,8 @@ import { FrozenParamRefProvider } from '../contexts/ParamRefContext'
 import { isT171Run, substituteRunParams } from '../lib/testParams'
 import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
+import { useProjectSchema, isTestApproved, testStatusLabel } from '../hooks/useProjectSchema'
+import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import type { TestRunResult, StepResultValue } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId_/execute/$testId')({
@@ -78,6 +81,25 @@ function ExecuteTestPage() {
   })
   const entry = campaign?.runs.find(r => r.entryId === entryId)
   const testCaseId = entry?.testCaseId
+  const { data: schema } = useProjectSchema(repoPath)
+
+  // GH68 — le testeur reçoit ici le contenu à exécuter : une instance pending dont la copie n'est
+  // pas approuvée est d'abord resynchronisée sur l'état actuel du test (le main décide et n'écrit
+  // que si elle change). Une seule fois par ouverture ; la page attend la réponse pour ne pas
+  // initialiser la saisie des étapes sur une copie qui va changer. Échec : copie existante affichée.
+  const campaignOpen = campaign?.status === 'planned' || campaign?.status === 'in_progress'
+  const needsRefresh = !!entry && entry.status === 'pending' && !!entry.testSnapshot && campaignOpen
+  const refreshStarted = useRef(false)
+  const refreshMutation = useMutation({
+    mutationFn: () => api.campaigns.refreshEntries(repoPath, campaignId, [entryId]),
+    onSuccess: updated => qc.setQueryData(['campaign', repoPath, campaignId], updated),
+  })
+  useEffect(() => {
+    if (!needsRefresh || refreshStarted.current) return
+    refreshStarted.current = true
+    refreshMutation.mutate()
+  }, [needsRefresh, refreshMutation])
+  const refreshing = needsRefresh && !refreshMutation.isSuccess && !refreshMutation.isError
 
   // T171 — instance T171 : texte brut, les références sont rendues par FrozenParamRefProvider.
   // Instance antérieure (T97) : substitution d'origine en amont, code Markdown compris.
@@ -138,8 +160,23 @@ function ExecuteTestPage() {
     },
   })
 
+  // GH68 — test non approuvé : bandeau, et confirmation à la première saisie d'un résultat (pas
+  // pour une instance déjà exécutée qu'on ré-exécute).
+  const notApproved = !!testCase && !isTestApproved(testCase, schema)
+  const [confirmingUnapproved, setConfirmingUnapproved] = useState(false)
+  const cancelUnapproved = () => setConfirmingUnapproved(false)
+  const confirmUnapproved = () => {
+    setConfirmingUnapproved(false)
+    if (!executeMutation.isPending) executeMutation.mutate()
+  }
+  useModalHotkeys(cancelUnapproved, confirmUnapproved, !confirmingUnapproved)
+
   // Ctrl/Cmd+Entrée depuis un commentaire richtext → enregistrer le résultat d'exécution.
-  const submitExecution = () => { if (!executeMutation.isPending) executeMutation.mutate() }
+  const submitExecution = () => {
+    if (executeMutation.isPending) return
+    if (notApproved && entry?.status === 'pending') setConfirmingUnapproved(true)
+    else executeMutation.mutate()
+  }
 
   function goBack() {
     navigate({
@@ -160,7 +197,7 @@ function ExecuteTestPage() {
   if (!repoPath) {
     return <p className="p-6 text-sm text-ink-2"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   }
-  if (loadingCampaign || loadingTest) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
+  if (loadingCampaign || loadingTest || refreshing) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
   if (!entry) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.entryNotFound', { entryId })}</p>
   if (!testCase) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.testNotFound', { testCaseId })}</p>
 
@@ -190,6 +227,15 @@ function ExecuteTestPage() {
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+            {notApproved && (
+              <div className="rounded border border-status-warning-border bg-status-warning-bg px-3 py-2 text-xs text-status-warning flex items-center gap-1.5">
+                <AlertTriangle size={13} className="shrink-0" />
+                {t('campaignPage.executeNotApprovedBanner', { status: testStatusLabel(testCase, schema) })}
+              </div>
+            )}
+            {refreshMutation.isError && (
+              <p className="text-xs text-ink-3">{t('campaignPage.refreshFailed')}</p>
+            )}
             <RunParamsInfo run={entry} />
             {/* Preconditions */}
             {testCase.preconditions && (
@@ -329,7 +375,7 @@ function ExecuteTestPage() {
           </button>
           <button
             type="button"
-            onClick={() => executeMutation.mutate()}
+            onClick={submitExecution}
             disabled={executeMutation.isPending}
             className="btn-primary"
           >
@@ -337,6 +383,24 @@ function ExecuteTestPage() {
           </button>
         </div>
       </div>
+      {confirmingUnapproved && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={cancelUnapproved}>
+          <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-sm font-semibold text-ink mb-2">{t('campaignPage.executeNotApprovedConfirmTitle')}</h2>
+            <p className="text-xs text-ink-2 mb-5">
+              {t('campaignPage.executeNotApprovedConfirmBody', { status: testStatusLabel(testCase, schema) })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={cancelUnapproved} className="btn-secondary">
+                {t('common.cancel')}
+              </button>
+              <button type="button" onClick={confirmUnapproved} autoFocus className="btn-primary">
+                {t('campaignPage.executeNotApprovedConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </RichTextProvider>
     </FrozenParamRefProvider>
   )

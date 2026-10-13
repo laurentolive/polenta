@@ -519,7 +519,8 @@ function ImpactAnalysisPage() {
         const plan = await api.traceability.testPlan(repoPath, {
           title: vars.label,
           requirementIds: [...requirementIds],
-          testCaseFilter: 'approved_only',
+          // GH68 — aucun filtre de statut : un test non approuvé peut entrer dans la campagne.
+          testCaseFilter: 'include_draft',
           coverageFilter: 'all',
         })
         plan.testCaseRefs.forEach((id) => directTestIds.add(id))

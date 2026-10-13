@@ -512,9 +512,11 @@ formulaire de création » :
 2. **Paramètres** — seulement si un test sélectionné est itérant ou a des références à saisir
    (sinon sautée) : `ReqInstancePicker` / `TestParamFields`, mêmes règles de complétude.
 Annuler une sélection modifiée demande confirmation ; à la création, la modale ne fait que
-mettre à jour la sélection du formulaire (la campagne est créée par « Créer »). Les tests
-proposés sont inchangés : tous les tests (filtre composant/niveau) à la création ; à l'ajout,
-les tests approuvés, dédoublonnés comme décrit ci-dessous.
+mettre à jour la sélection du formulaire (la campagne est créée par « Créer »). Tests proposés :
+tous les tests **quel que soit leur statut** (GH68 — permet de construire une campagne en amont) ;
+filtre composant/niveau à la création ; à l'ajout, dédoublonnés comme décrit ci-dessous. La
+colonne Statut de la grille est toujours affichée (insérée après `id` si les préférences Vue Excel
+la masquent, sans les réécrire).
 
 **Report depuis une autre campagne (GH64)** : l'étape 1 du sélecteur (création comme ajout) a deux
 onglets, « Tests » (Vue Excel ci-dessus, inchangée) et « Depuis une campagne ». Ce dernier liste
@@ -528,10 +530,10 @@ Les sélections des deux onglets se cumulent.
   même clé dans plusieurs campagnes source n'est proposée qu'une fois (entrée la plus récente :
   `executedAt`, à défaut création de sa campagne ; les autres citées en remarque) ; une clé déjà
   présente dans la cible est grisée « Déjà présent ».
-- **Indisponible** (grisé, motif) : test supprimé ; non approuvé (ajout) ou hors du filtre
-  composant/niveau (création) — mêmes règles que l'onglet Tests ; instance T179 dont l'exigence
-  n'est plus liée (lue à la baseline de la cible). Version du test changée depuis la copie de la
-  source : simple avertissement.
+- **Indisponible** (grisé, motif) : test supprimé ; hors du filtre composant/niveau (création) —
+  mêmes règles que l'onglet Tests ; instance T179 dont l'exigence n'est plus liée (lue à la
+  baseline de la cible). Version du test changée depuis la copie de la source : simple
+  avertissement. Test non approuvé : disponible, pastille « Non approuvé » (GH68).
 - **Instance créée** : une par entrée retenue (deux entrées d'un test à paramètres saisis aux
   valeurs différentes → deux instances), `pending`, copie du test dans son **état actuel** (T49),
   paramètres de base relus selon la baseline de la **cible** (T171), valeurs saisies pré-remplies
@@ -616,9 +618,26 @@ l'affichage du panneau et l'appel) est simplement omis de la copie plutôt que d
 l'ajout groupé ; l'entrée correspondante se comporte alors comme une entrée pré-T49 (voir
 compatibilité ascendante ci-dessous).
 
-Le gating "test approuvé" (disponibilité dans le panneau d'ajout) reste basé sur l'état *live* des
-tests, inchangé — seul ce qui est déjà inclus dans la campagne est figé par `testSnapshot`, pas la
-sélection de ce qui peut y entrer. "Dupliquer" une instance existante (nouvelle instance
+**Tests non approuvés (GH68)** : aucun statut n'empêche un test d'entrer dans une campagne. Statut
+« approuvé » = `statuses[].isApproval` du type, repli sur `approved` (`isApprovalStatus`,
+`@polenta/types`). Exception à la copie figée ci-dessus : une instance **`pending` dont la copie
+n'est pas approuvée** est *resynchronisable* — `CampaignsService.refreshEntries()` remplace sa
+copie par l'état actuel du test (paramètres de l'instance non recalculés ; sans effet sur une
+campagne clôturée, une entrée pré-T49 ou un test supprimé ; écriture seulement si la copie change).
+Elle est appelée quand le testeur reçoit le contenu : ouverture de la page d'exécution, export du
+classeur d'exécution (§4.5). La copie est ensuite figée par la saisie du résultat (ou l'import) :
+c'est la version affichée/exportée qui est enregistrée, pas celle relue au moment de la saisie.
+Une copie resynchronisée sur une version approuvée cesse d'être resynchronisable ; une instance
+ajoutée approuvée garde le comportement T49. Signalement :
+- liste de la campagne : pastille « Non approuvé » (statut jugé sur l'état live pour une instance
+  resynchronisable, sinon sur la copie), bandeau « N instance(s) à exécuter… » pour les `pending` ;
+- page d'exécution : bandeau d'avertissement, et confirmation « Exécuter quand même » à la
+  première saisie (instance `pending`) — pas de blocage ;
+- aperçu d'import Excel : avertissement `test_not_approved` (§4.5).
+Le passage `planned` → `in_progress` n'est pas conditionné au statut des tests. La génération
+depuis l'analyse d'impact (T46) envoie `testCaseFilter: 'include_draft'`.
+
+"Dupliquer" une instance existante (nouvelle instance
 paramétrée, T97 sprint 2) capture un nouveau `testSnapshot` sur l'état *live* du test au moment de
 la duplication, pas sur le `testSnapshot` (potentiellement plus ancien) de l'instance dupliquée.
 
@@ -736,6 +755,11 @@ fichier contre l'état courant de la campagne (l'aperçu n'est qu'indicatif).
   classeur d'une autre campagne, campagne clôturée. Erreur propre à une instance (exclue, les autres
   importées) : instance absente de la campagne, test introuvable, étapes du fichier ≠ étapes
   exportées, verdict non reconnu, date illisible. Ligne sans clé portant une saisie : avertissement.
+  Instance importable dont la copie du test n'est pas approuvée : avertissement
+  `test_not_approved`, import non refusé (GH68).
+- Export (GH68) : avant de construire le classeur, les instances `pending` resynchronisables
+  (§4.2 « Tests non approuvés ») sont mises à jour et la campagne réécrite — le classeur et la copie
+  enregistrée portent la même version.
 - Relecture d'un run importé : badge « Importé depuis Excel ».
 
 `CampaignTestRun.executedBy` est désormais réécrit à chaque saisie de résultat : renseigné par un

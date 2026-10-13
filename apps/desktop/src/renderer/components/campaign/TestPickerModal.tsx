@@ -81,8 +81,8 @@ export function TestPickerModal({
   targetCampaignId?: string
   /** GH64 — instances de la campagne cible (ajout), pour les doublons du report. */
   targetRuns?: CampaignTestRun[]
-  /** GH64 — éligibilité d'un test reporté : mêmes règles que `candidates` (approbation à l'ajout,
-   *  périmètre composant/niveau à la création). */
+  /** GH64 — éligibilité d'un test reporté : mêmes règles que `candidates` (périmètre
+   *  composant/niveau à la création ; GH68 : plus de filtre d'approbation à l'ajout). */
   isEligible: (tc: TestCase) => CarryEligibility
   /** `previews` : résolution des paramètres sur laquelle la sélection a été validée (même source
    *  que `previewSource`). Rejet = erreur affichée, modale laissée ouverte. */
@@ -353,6 +353,7 @@ export function TestPickerModal({
             checked={carryChecked}
             onCheckedChange={setCarryChecked}
             testsById={testsById}
+            schema={schema}
           />
         )}
 
@@ -385,7 +386,7 @@ export function TestPickerModal({
                 {currentType && !identityPending && (
                   typeCandidates.length === 0 ? (
                     <p className="p-4 text-xs text-ink-3 italic">
-                      {mode === 'add' ? t('campaignPage.noApprovedTestAvailable') : t('campaignPage.noTestCaseAvailable')}
+                      {t('campaignPage.noTestCaseAvailable')}
                     </p>
                   ) : (
                     <TestPickerGrid

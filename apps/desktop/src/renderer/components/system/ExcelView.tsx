@@ -50,6 +50,9 @@ interface Props {
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  /** GH83 — ids marqués `needsRevalidation` (T172) : ⚠ à côté du statut. Hors de `objects`,
+   *  dont toutes les valeurs alimentent le filtre texte. */
+  revalidationIds?: Set<string>
   testsById?: Map<string, TestCase>
   repoPath?: string
   candidateObjects?: Candidate[]
@@ -1214,6 +1217,7 @@ function ExcelViewInner({
   linkTypes = [],
   linksByObjectId,
   coverageByReqId,
+  revalidationIds,
   testsById,
   repoPath,
   candidateObjects = [],
@@ -2463,7 +2467,7 @@ function ExcelViewInner({
                       freezeStyle={freezeStyle}
                       stickyBg={stickyBg}
                       paramRefs={typeDef?.category === 'requirement'}
-                      needsRevalidation={col === 'status' && !!(obj as { needsRevalidation?: boolean } | null | undefined)?.needsRevalidation}
+                      needsRevalidation={col === 'status' && !!node.objectId && !!revalidationIds?.has(node.objectId)}
                     />
                   )
                 })}

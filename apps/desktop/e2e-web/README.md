@@ -220,6 +220,7 @@ connexion d'événements par le test avec `page.routeWebSocket` (voir `s2-core.s
 | `gh56-activity-bar.spec.ts` (`specs/GH56-tests.md`) | E1–E7 ActivityBar : ordre par drag & drop, masquage par clic droit, réinitialisation, préférence commune aux projets ; L1–L3, L5, L6. |
 | `t173-revalidation.spec.ts` (`specs/T173-tests.md`) | N14 entrée « Impact à vérifier (N) » sans auto-sélection, éléments liés et déclencheur « non approuvé » ; N3 levée unitaire (diff limité à la clé) ; N15 levée de toute la sélection, retour à l'invite. |
 | `t173-verif.spec.ts` (`specs/T173-tests.md`) | N16 paramètre modifié, N9 arbres de l'analyse locale, L10 élément présent deux fois, N10/R3 levée → éditeur et matrice, N11 multi-sélection, L11 changement d'analyse, L12 modification externe, L13 échec partiel (fichier en lecture seule), N12/N13/R2 analyse baseline RE1 → RE2, N17 popup d'un élément de composant, L14 libellés anglais. |
+| `gh83-revalidation-flag.spec.ts` (`specs/GH83.md`) | ⚠ « Impact à vérifier » en vues tableau et document, filtre texte non pollué par le flag, retrait après levée sans rechargement. |
 | `s3-oidc.spec.ts` (forge réelle) | S3-1/S3-2 connexion OIDC sans jeton côté navigateur, S3-3 commit à l'identité forge, S3-4 isolation de deux utilisateurs, S3-17 lecteur : écriture refusée, S3-6 compte désactivé → « accès révoqué » et travail conservé, S3-15/S3-21 projets et préférences d'équipe, S3-16 « Créer sur le serveur ». |
 
 ## Variables

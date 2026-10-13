@@ -289,7 +289,7 @@ Un `TestRun` représente **une exécution concrète** d'un cas de test à un ins
 | `id` | string | Identifiant unique (ex. `RUN-20260601-001`) |
 | `testCaseId` | string | Référence au cas de test |
 | `testCaseVersion` | int | Version du test exécutée |
-| `campaignRunId` | string \| null | Campagne parente (null si exécution isolée) |
+| `campaignEntry` | `{ campaignId, entryId }` | *(GH73)* Entrée de campagne dont le run est l'exécution — posée par la page d'exécution et l'import Excel (§4.5), jamais réécrite (run immuable). Absente : exécution isolée, ou run antérieur à GH73 (ces fichiers portent `campaignRunId: null`, ignoré — champ retiré). Sans chemin de repo : un run d'un test de composant vit dans le repo du composant et désigne une campagne du repo produit. Limite connue : « Garder les deux » (GH37) renumérote les références du repo fusionné seulement, pas celles d'un run écrit dans un autre repo |
 | `result` | ENUM | Résultat global (voir §3.3) |
 | `executedAt` | DATETIME | Date/heure de début |
 | `executedBy` | USER | Testeur |
@@ -458,10 +458,11 @@ exécution (statut par test).
 | `component` / `level` | Filtres d'appartenance (composant, niveau), optionnels |
 | `testCaseIds` | Liste des `TestCase.id` inclus dans la campagne — un même id peut apparaître plusieurs fois si le test a des paramètres (voir §4.2, T97 sprint 2) |
 | `runs` | `CampaignTestRun[]` — une entrée par *inclusion* du test dans la campagne, chacune avec sa propre copie figée du test (`testSnapshot`, voir §4.2, T49) |
+| `removedRuns` | *(GH73)* `CampaignTestRun[]` — entrées retirées (`removeEntries`), conservées complètes avec `removedAt`, dans l'ordre des retraits. Absent tant que rien n'a été retiré. Aucun écran ni export ne les lit (voir §4.2 « Retirer un test ») |
 | `status` | `planned` / `in_progress` / `completed` / `abandoned` |
 | `createdAt` | — |
 | `completedAt` | Renseigné à la fermeture (`completed` ou `abandoned`) |
-| `history` | **GH77** — historique du statut (`planned` à la création, `in_progress` au premier résultat, `completed` / `abandoned` à la clôture) et des champs personnalisés suivis — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77). Les entrées de `runs` n'ont pas d'historique propre (#73) |
+| `history` | **GH77** — historique du statut (`planned` à la création, `in_progress` au premier résultat, `completed` / `abandoned` à la clôture) et des champs personnalisés suivis — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77). Les entrées de `runs` n'ont pas d'historique propre : leur chronologie est portée par `addedAt`, `removedAt` et les runs rattachés (GH73, §4.2 « Historique daté ») |
 
 **Statut de campagne :** `planned` à la création. Passe automatiquement à `in_progress` dès la
 première saisie de résultat sur un test (`updateRun()`). Le passage à `completed` ou `abandoned` est
@@ -483,7 +484,8 @@ nécessairement unique par `testCaseId` (T97 sprint 2) :
 | `testCaseId` | Référence au cas de test — **pas unique** au sein de `runs[]`, un test paramétré peut être inclus plusieurs fois |
 | `testSnapshot` | *(T49)* Copie complète du `TestCase` (contenu, statut, `fields`, `version`…) telle que résolue au moment de l'inclusion — voir "Snapshot à l'inclusion" ci-dessous. Optionnel : absent sur les entrées créées avant T49 (pas de backfill rétroactif). |
 | `status` | `pending` / `PASS` / `FAIL` / `BLOCKED` / `INCOMPLETE` |
-| `runId` | Référence au `TestRun` créé lors de l'exécution, optionnel tant que `pending` |
+| `addedAt` | *(GH73)* Instant d'ajout dans la campagne — posé par la sélection initiale de `create()` (= `createdAt`), `addTests()`, `duplicateTest()` et le report GH64 (date du report, pas celle de la source) ; jamais modifié. Absent sur les entrées antérieures à GH73 (pas de backfill) |
+| `runId` | Référence au **dernier** `TestRun` de l'entrée, optionnel tant que `pending` ; les runs précédents se retrouvent par `TestRun.campaignEntry` (GH73) |
 | `executedAt` | Horodatage de la dernière saisie de résultat |
 | `executedBy` | Testeur ayant saisi le résultat, optionnel |
 | `paramValues` | *(T97)* `Record<label, valeur>` — valeurs **saisies à la main** des références à saisir (§2.4a cas 2), modifiables après l'ajout. Depuis T171, toute référence à saisir y figure (vide si aucune valeur n'a été fournie) ; une référence n'est jamais à la fois ici et dans `resolvedParams`. |
@@ -492,6 +494,7 @@ nécessairement unique par `testCaseId` (T97 sprint 2) :
 | `unresolvedParams` | *(T171)* `{ ref, reason: 'tag_not_found' \| 'missing' \| 'empty' \| 'unknown_node' \| 'no_linked_requirement' }[]` — références restées non résolues à l'ajout (`no_linked_requirement` : T179, `{req.…}` d'un test sans exigence liée). |
 | `requirementId` | *(T179)* Exigence pour laquelle l'instance a été générée (test itérant, §2.4a). Absent pour un test sans `{req.…}` ou sans exigence liée. Les valeurs `{req.<champ>}` sont figées dans `resolvedParams` sous la clé `req.<champ>`. |
 | `carriedFrom` | *(GH64)* `{ campaignId, entryId }` — entrée d'une autre campagne dont l'instance a été reportée (voir « Report depuis une autre campagne » ci-dessous). Absent pour un ajout normal. |
+| `removedAt` | *(GH73)* Instant du retrait — uniquement sur les entrées de `TestCampaign.removedRuns` |
 
 Ajouter des tests à une campagne déjà démarrée (`addTests()`) est possible tant qu'elle n'est pas
 `completed`/`abandoned` ; les nouveaux tests entrent avec le statut `pending`. Si le test ajouté a
@@ -589,7 +592,37 @@ du workspace).
 campagne (refusé si `completed`/`abandoned`, même garde que `addTests()`) — ne retire que
 l'instance ciblée : si un test paramétré est inclus plusieurs fois (T97 sprint 2), les autres
 instances ne sont pas affectées. Une seule occurrence du `testCaseId` correspondant est retirée de
-`testCaseIds` par instance supprimée.
+`testCaseIds` par instance supprimée. **GH73** : l'instance n'est plus supprimée du fichier — elle
+passe, complète (statut, `runId`, copie…), de `runs` à la fin de `removedRuns` avec `removedAt`. Un
+`entryId` absent de `runs` (inconnu ou déjà retiré) est ignoré ; pas de restauration (on ré-ajoute le
+test). Les lecteurs de `runs` (page campagne, exécution/relecture, exports, classeur GH36, report
+GH64, déduplication, `campaign_entries`, traçabilité) ne voient donc pas les entrées retirées : une
+entrée retirée ne bloque pas le ré-ajout du même test et n'est pas reportable. Les **`entryId`** des
+nouvelles instances sont numérotés après le plus grand suffixe de `runs` **et** `removedRuns` (GH66,
+GH73) : un `entryId` n'est jamais réutilisé dans une campagne.
+
+**Saisie d'un résultat (GH73)** : `updateRun()` exige le `runId` du `TestRun` qui porte le résultat
+et un résultat de run (`PASS` / `FAIL` / `BLOCKED` / `INCOMPLETE`) ; sans run, ou avec `pending`,
+l'appel est refusé sans écriture. Les deux chemins de saisie (page d'exécution, import Excel §4.5)
+créent le run, rattaché à l'entrée (`campaignEntry`), puis mettent à jour l'entrée.
+
+**Historique daté (GH73)** : Polenta enregistre des faits bruts ; l'état d'une campagne à une date
+est calculé **côté projet** (bibliothèque projet, `campaignTimeline`, #74 — principe GH79). Faits
+disponibles pour une entrée `e` de la campagne `c` (dans `runs` ou `removedRuns`) :
+- présence sur `[e.addedAt, e.removedAt)` (`removedAt` absent : toujours présente) ;
+- runs de l'entrée : les `TestRun` dont `campaignEntry = { c.id, e.entryId }`, datés par
+  `executedAt` (date saisie par le testeur pour un import Excel) ; statut à une date `d` = résultat
+  du dernier run tel que `executedAt ≤ d`, aucun → `pending` ;
+- statut de la campagne : `history.status` (GH77).
+
+Polenta stocke des instants ISO 8601 et ne découpe pas par jour (fuseau = paramètre du script).
+Données antérieures à GH73 (règle de repli du script projet, approximative et signalée comme telle) :
+`addedAt` absent → `c.createdAt` ; entrée retirée avant GH73 : perdue ; run sans `campaignEntry` →
+le run `e.runId` est rattaché à `e`, un autre run l'est s'il porte sur le même test et la même
+exigence avec `c.createdAt ≤ executedAt ≤` date du run `e.runId`, et seulement si une seule entrée
+est candidate (sinon non rattaché). Étapes de préparation dans le temps : interprétation côté
+projet, depuis `history.status` du test live, `addedAt`, les runs rattachés et la règle GH68 (la
+date des resynchronisations de copie n'est pas nécessaire).
 
 **Instances multiples (T97 sprint 2)** : un test **avec au moins une référence à saisir** (T171 :
 un test dont toutes les références sont résolues depuis la base se comporte comme un test sans
@@ -617,7 +650,7 @@ tests de la campagne, exécution, relecture d'un run, exports plan/rapport xlsx/
 (changement de statut, de contenu, y compris après clôture de la campagne) — une campagne fermée
 reste un enregistrement figé. **GH77** : la copie ne porte jamais `history` (retiré à l'ajout, au
 report et à la resynchronisation GH68) — l'historique reste celui du test source. **GH82** :
-renommer un statut ou une valeur d'enum du type de test migre aussi ces clés dans les copies (seule
+renommer un statut ou une valeur d'enum du type de test migre aussi ces clés dans les copies, y compris celles des entrées retirées (`removedRuns`, GH73) (seule
 la clé change, pas le contenu figé) — un statut d'approbation renommé reste reconnu (GH68). Un id qui ne résout plus au moment de l'ajout (test supprimé entre
 l'affichage du panneau et l'appel) est simplement omis de la copie plutôt que de faire échouer tout
 l'ajout groupé ; l'entrée correspondante se comporte alors comme une entrée pré-T49 (voir
@@ -768,7 +801,7 @@ fichier contre l'état courant de la campagne (l'aperçu n'est qu'indicatif).
   = un paragraphe.
 - **Toute instance remplie écrase** le résultat existant : un nouveau `TestRun` est créé (même
   service que l'exécution dans l'outil, `origin: 'excel-import'`, `requirementId` de l'instance,
-  testeur et date du fichier), puis l'instance prend son statut, son `runId`, `executedAt` et
+  `campaignEntry` de l'instance — GH73 —, testeur et date du fichier), puis l'instance prend son statut, son `runId`, `executedAt` et
   `executedBy` ; campagne `planned` → `in_progress`. L'aperçu signale « remplace le résultat
   existant ». Écriture séquentielle ; une erreur arrête l'import (les instances déjà écrites restent).
 - Refus global (rien d'écrit) : fichier illisible, pas de feuille `_polenta`, version inconnue,
@@ -876,7 +909,9 @@ updatedBy: user-456
 id: RUN-20260601-001
 testCaseId: TEST-0042
 testCaseVersion: 1
-campaignRunId: CRUN-0001
+campaignEntry:            # GH73 — absent pour une exécution isolée
+  campaignId: CAMP-0003
+  entryId: TEST-0042-1
 result: FAIL
 executedAt: "2026-06-01T09:00:00Z"
 executedBy: user-789

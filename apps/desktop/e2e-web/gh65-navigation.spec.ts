@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { setupSession } from './support/session'
+import { recordResult } from './support/campaign'
 
 /**
  * GH65 sprint 2 — navigation depuis la vue Suivi : drill-down (popup de détail), ouverture des
@@ -18,9 +19,9 @@ test.beforeAll(async () => {
   const tests = await s.invoke<Array<{ id: string }>>('tests:list', localPath)
   campaign = await s.invoke<Campaign>('campaigns:create', localPath, { title: TITLE, testCaseIds: tests.slice(0, 4).map(t => t.id) }, workspaceDir)
   const [e1, e2, e3] = campaign.runs.map(r => r.entryId)
-  await s.invoke('campaigns:update-run', localPath, campaign.id, e1, 'PASS')
-  await s.invoke('campaigns:update-run', localPath, campaign.id, e2, 'FAIL')
-  await s.invoke('campaigns:update-run', localPath, campaign.id, e3, 'FAIL')
+  await recordResult(s, campaign.id, e1, 'PASS')
+  await recordResult(s, campaign.id, e2, 'FAIL')
+  await recordResult(s, campaign.id, e3, 'FAIL')
 })
 
 async function openCampaignsDashboard() {

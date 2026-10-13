@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { setupSession } from './support/session'
+import { recordResult } from './support/campaign'
 
 /**
  * GH65 sprint 1 — avancement des campagnes dans la vue Suivi : table `campaign_entries`, dashboard
@@ -23,9 +24,9 @@ test.beforeAll(async () => {
     testCaseIds: tests.slice(0, 4).map(t => t.id),
   }, workspaceDir)
   const [e1, e2, e3] = campaign.runs.map(r => r.entryId)
-  await s.invoke('campaigns:update-run', localPath, campaign.id, e1, 'PASS')
-  await s.invoke('campaigns:update-run', localPath, campaign.id, e2, 'PASS')
-  await s.invoke('campaigns:update-run', localPath, campaign.id, e3, 'FAIL')
+  await recordResult(s, campaign.id, e1, 'PASS')
+  await recordResult(s, campaign.id, e2, 'PASS')
+  await recordResult(s, campaign.id, e3, 'FAIL')
   username = await s.invoke<string>('auth:project-username', localPath)
 })
 
@@ -60,7 +61,7 @@ test('1.10 — un résultat saisi met à jour le dashboard ouvert sans action', 
   await expect(rowsOfCampaign).toHaveCount(1)
 
   const pending = campaign.runs[3].entryId
-  await s.invoke('campaigns:update-run', localPath, campaign.id, pending, 'BLOCKED')
+  await recordResult(s, campaign.id, pending, 'BLOCKED')
   await expect(rowsOfCampaign).toHaveCount(2, { timeout: 15_000 })
   await expect(rowsOfCampaign.filter({ hasText: pending })).toContainText('BLOCKED')
 })

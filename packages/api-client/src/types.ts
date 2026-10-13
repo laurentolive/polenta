@@ -36,7 +36,7 @@ import type {
   ReviewStatus,
   ProjectSchema,
   TestCampaign,
-  TestRunStatus,
+  TestRunResult,
   CreateCampaignDto,
   UpdateCampaignDto,
   TypeTree,
@@ -643,7 +643,7 @@ export interface ApiClient {
     get(repoPath: string, id: string): Promise<TestCampaign>
     create(repoPath: string, dto: CreateCampaignDto, workspaceDir?: string): Promise<TestCampaign>
     update(repoPath: string, id: string, dto: UpdateCampaignDto): Promise<TestCampaign>
-    updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunStatus, runId?: string): Promise<TestCampaign>
+    updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunResult, runId: string): Promise<TestCampaign>
     /** GH68 — resynchronise la copie des instances `entryIds` pending dont le test n'est pas approuvé. */
     refreshEntries(repoPath: string, campaignId: string, entryIds: string[]): Promise<TestCampaign>
     close(repoPath: string, id: string, status: 'completed' | 'abandoned'): Promise<TestCampaign>

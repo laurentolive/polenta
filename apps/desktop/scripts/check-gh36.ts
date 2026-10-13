@@ -77,13 +77,13 @@ const campaign: TestCampaign = {
 // État courant de la campagne vu par le service (modifiable par scénario).
 let current: TestCampaign = campaign
 const executeCalls: { testCaseId: string; dto: Record<string, unknown> }[] = []
-const updateRunCalls: { entryId: string; status: string; runId?: string; meta?: unknown }[] = []
+const updateRunCalls: { entryId: string; status: string; runId: string; meta?: unknown }[] = []
 const fakeCampaigns = {
   get: async () => structuredClone(current),
   // GH68 — pas de resynchronisation dans ce scénario (copies figées GH36 inchangées).
   refreshEntries: async () => structuredClone(current),
   approvalPredicate: async () => () => true,
-  updateRun: async (_repo: string, _id: string, entryId: string, status: string, runId?: string, meta?: unknown) => {
+  updateRun: async (_repo: string, _id: string, entryId: string, status: string, runId: string, meta?: unknown) => {
     updateRunCalls.push({ entryId, status, runId, meta })
   },
 } as unknown as CampaignsService
@@ -425,6 +425,9 @@ async function importScenarios(): Promise<void> {
     && executeCalls[1].testCaseId === 'TEST-2' && executeCalls[1].dto.origin === 'excel-import'
     && executeCalls[1].dto.executedBy === 'Alice' && executeCalls[1].dto.executedAt === localNoon(2026, 10, 5)
     && executeCalls[1].dto.result === 'PASS' && executeCalls[1].dto.notes === 'RAS', JSON.stringify(executeCalls[1]))
+  check('apply : run rattaché à son instance (GH73)', eq(executeCalls.map(c => c.dto.campaignEntry), [
+    { campaignId: 'CAMP-T', entryId: 'TEST-1-1' }, { campaignId: 'CAMP-T', entryId: 'TEST-2-1' },
+  ]), JSON.stringify(executeCalls.map(c => c.dto.campaignEntry)))
   check('apply : statut d\'instance, runId et méta', eq(updateRunCalls.map(u => [u.entryId, u.status, u.runId]), [
     ['TEST-1-1', 'FAIL', 'TEST-1-run-0001'], ['TEST-2-1', 'PASS', 'TEST-2-run-0002'],
   ]) && eq(updateRunCalls[1].meta, { executedAt: localNoon(2026, 10, 5), executedBy: 'Alice' }), JSON.stringify(updateRunCalls))

@@ -471,8 +471,9 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   r.handle('campaigns:update', (_e, repoPath: string, id: string, dto: unknown) =>
     c.campaigns.update(repoPath, id, dto as import('@polenta/types').UpdateCampaignDto))
   r.handle('campaigns:update-run',
-    (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId?: string) =>
-      c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunStatus, runId))
+    (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId: string) =>
+      // GH73 — `runId` obligatoire et résultat valide : vérifiés par le service (canal non typé).
+      c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunResult, runId))
   // GH68 — resynchronisation de la copie des instances pending non approuvées.
   r.handle('campaigns:refresh-entries',
     (_e, repoPath: string, campaignId: string, entryIds: string[]) =>

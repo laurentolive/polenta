@@ -90,6 +90,7 @@ export class CampaignExecutionService {
           executedBy: inst.executedBy,
           executedAt: inst.executedAt,
           origin: 'excel-import',
+          campaignEntry: { campaignId, entryId: inst.entryId },
         }, workspaceDir)
         await this.campaigns.updateRun(repoPath, campaignId, inst.entryId, inst.result, run.id, {
           executedAt: inst.executedAt,

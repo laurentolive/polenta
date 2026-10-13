@@ -142,6 +142,8 @@ setup_console() {
 
 setup_firewall() {
   local rules=(22/tcp 80/tcp 443/tcp 443/udp) r changed=0
+  # GH61 — Caddy externe : 80/443 appartiennent à un autre projet ; on n'ajoute que 22, on ne retire rien.
+  caddy_external && rules=(22/tcp)
   ufw status | grep -q "^Status: active" || {
     ufw default deny incoming >/dev/null; ufw default allow outgoing >/dev/null; changed=1
   }
@@ -149,7 +151,9 @@ setup_firewall() {
     ufw status | grep -qE "^${r//\//\\/}[[:space:]]+ALLOW" || { ufw allow "$r" >/dev/null; changed=1; }
   done
   ufw status | grep -q "^Status: active" || { ufw --force enable >/dev/null; changed=1; }
-  if [[ $changed == 1 ]]; then ok "pare-feu : seuls 22, 80, 443 ouverts"; else skip "pare-feu"; fi
+  if caddy_external; then
+    if [[ $changed == 1 ]]; then ok "pare-feu : seul 22 ouvert (Caddy externe : 80/443 non gérés)"; else skip "pare-feu (Caddy externe : 80/443 non gérés)"; fi
+  elif [[ $changed == 1 ]]; then ok "pare-feu : seuls 22, 80, 443 ouverts"; else skip "pare-feu"; fi
 }
 
 setup_fail2ban() {
@@ -275,13 +279,32 @@ setup_ssh() {
   fi
 }
 
+# GH61 — external : dossier des blocs de site (créé, jamais purgé) et ligne à ajouter au Caddyfile existant.
+setup_external_sites() {
+  if [[ -d "$CADDY_SITES_DIR" ]]; then
+    skip "dossier des blocs de site ($CADDY_SITES_DIR)"
+  else
+    mkdir -p "$CADDY_SITES_DIR" || die "création de $CADDY_SITES_DIR impossible (CADDY_SITES_DIR)."
+    chmod 755 "$CADDY_SITES_DIR"
+    ok "dossier des blocs de site ($CADDY_SITES_DIR)"
+  fi
+  ok "Caddy externe : réseau $EDGE_NETWORK, aucun conteneur Caddy créé"
+  printf '  Ajoutez à votre Caddyfile (dossier monté en lecture seule dans votre Caddy) :\n    import %s/*.caddy\n' "$CADDY_SITES_DIR"
+  [[ -n "$CADDY_RELOAD_CMD" ]] || warn "CADDY_RELOAD_CMD vide : rechargez votre Caddy à la main après chaque modification de site."
+}
+
 cmd_setup() {
   require_root; check_os
   log "Préparation de l'hôte ($PRETTY_NAME)"
+  # GH61 — configuration validée et garde-fous de bascule AVANT toute modification de l'hôte.
+  if [[ -f "$HOST_ENV" ]]; then load_host_env; fi
+  caddy_external_guard
+  caddy_managed_ports_guard
   setup_host_env
   setup_install_kit
   setup_packages
   setup_docker
+  edge_network_require
   setup_resolved
   setup_firewall
   setup_console
@@ -290,7 +313,7 @@ cmd_setup() {
   setup_ssh
   setup_cron
   setup_fail2ban_forge
-  caddy_up
+  if caddy_external; then setup_external_sites; else caddy_up; fi
   log "Hôte prêt. Ajoutez un client : polenta-host instance add <nom>"
 }
 
@@ -301,6 +324,12 @@ inst_compose() {
   # GH44 — client web actif (domaine web renseigné) : ses commandes (up, stop, down…) l'incluent.
   local -a profile=()
   [[ -n "$(env_get "$(instance_env "$name")" WEB_DOMAIN)" ]] && profile=(--profile web)
+  # GH61 — Caddy externe : surcharge rattachant forge et client web à EDGE_NETWORK (variable lue par compose).
+  if caddy_external; then
+    EDGE_NETWORK="$EDGE_NETWORK" docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" "${profile[@]}" \
+      -f "$KIT_DIR/instance/docker-compose.yml" -f "$KIT_DIR/instance/docker-compose.external.yml" "$@"
+    return
+  fi
   docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" "${profile[@]}" -f "$KIT_DIR/instance/docker-compose.yml" "$@"
 }
 
@@ -410,6 +439,38 @@ wait_https() {
   done
   docker logs --tail 30 "$CADDY_CONTAINER" >&2 || true
   die "https://$domain ne répond pas après ${timeout}s (certificat TLS ? DNS ? ports 80/443 ?)."
+}
+
+# GH61 — point de bascule : managed → wait_https (TLS réel) ; external → sonde réseau interne sur
+# EDGE_NETWORK (le chemin /healthz désigne le client web, sinon la forge).
+wait_front() {
+  local name="$1" domain="$2" timeout="${3:-180}" health="${4:-/api/healthz}"
+  if ! caddy_external; then wait_https "$domain" "$timeout" "$health"; return; fi
+  if [[ "$health" == /healthz ]]; then
+    wait_edge_http "$name" "polenta-web-$name:8787" "$health" "$timeout"
+  else
+    wait_edge_http "$name" "forgejo-$name:3000" "$health" "$timeout"
+  fi
+}
+
+# Message de succès de wait_front : managed → https vérifié ; external → routage réseau seulement.
+front_ok() {
+  local domain="$1" managed_suffix="${2:-}"
+  if caddy_external; then
+    ok "joignable sur le réseau $EDGE_NETWORK — https://$domain non vérifié (le certificat dépend de votre Caddy)"
+  else
+    ok "https://$domain$managed_suffix"
+  fi
+}
+
+# DNS : vérifié en managed ; en external il peut viser un autre proxy, donc non vérifié.
+check_front_dns() {
+  local domain="$1"
+  if caddy_external; then
+    printf '%s\n' "  ${C_DIM}· DNS $domain non vérifié (géré par votre Caddy)${C_OFF}"
+  else
+    check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  fi
 }
 
 ensure_ops_account() {
@@ -571,6 +632,7 @@ cmd_instance_add() {
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || die "nom d'instance invalide « $name » ([a-z0-9-], 2 à 31 caractères)."
   local dir; dir="$(instance_dir "$name")"
   [[ -f "$dir/.add-complete" ]] && die "l'instance « $name » existe déjà (polenta-host instance list)."
+  edge_network_require
   local env; env="$(instance_env "$name")"
   if [[ -f "$env" ]]; then
     log "Reprise de l'ajout inachevé de « $name »"
@@ -589,7 +651,7 @@ cmd_instance_add() {
   done
 
   log "Nouvelle instance « $name » — https://$domain (organisation $org)"
-  check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  check_front_dns "$domain"
   local avail; avail="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
   if (( avail < 524288 )); then
     warn "mémoire disponible faible : $((avail / 1024)) Mo (< 512 Mo)."
@@ -620,7 +682,7 @@ cmd_instance_add() {
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
   wait_healthy "$name"; ok "forge démarrée (réseau isolé polenta-$name)"
   caddy_add_site "$name" "$domain"
-  wait_https "$domain"; ok "https://$domain (certificat TLS valide)"
+  wait_front "$name" "$domain"; front_ok "$domain" " (certificat TLS valide)"
 
   ensure_ops_account "$name"
   ensure_org_and_teams "$name" "$org"
@@ -664,6 +726,16 @@ cmd_instance_sync() {
   [[ -f "$(instance_dir "$name")/.add-complete" ]] || die "instance « $name » incomplète : relancez « instance add $name »."
   local org domain; org="$(env_get "$env" ORG)"; domain="$(env_get "$env" DOMAIN)"
   log "Mise à niveau de l'instance « $name »"
+  if caddy_external; then
+    # GH61 — recrée les conteneurs d'une instance antérieure (ou migrée) pour les rattacher à
+    # EDGE_NETWORK, puis réécrit les blocs de site dans CADDY_SITES_DIR.
+    edge_network_require
+    render_forgejo_env "$name"
+    inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
+    wait_healthy "$name"; ok "conteneurs rattachés au réseau $EDGE_NETWORK"
+    caddy_add_site "$name" "$domain"
+    [[ -z "$(env_get "$env" WEB_DOMAIN)" ]] || caddy_add_web_site "$name" "$(env_get "$env" WEB_DOMAIN)"
+  fi
   ensure_ops_account "$name"
   ensure_org_and_teams "$name" "$org"
   local demo=0; api GET "/repos/$org/$DEMO_ROOT_REPO" && demo=1
@@ -740,6 +812,7 @@ cmd_instance_restore() {
   done
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ && -n "$from" ]] \
     || die "usage : polenta-host instance restore <nom> --from <id|latest> [--source <instance sauvegardée>] [--domain d] [--password-file f] [--force]"
+  edge_network_require
   source="${source:-$name}"
   local dir; dir="$(instance_dir "$name")"
   local replace=""
@@ -765,14 +838,14 @@ cmd_instance_restore() {
   env_set "$env" INSTANCE_DIR "$dir"
   env_set "$env" DOMAIN "$domain"
   env_set "$env" LAST_BACKUP "$(snapshot_time "$source" "$snapshot")"
-  check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  check_front_dns "$domain"
   render_forgejo_env "$name"
   local img; img="$(env_get "$env" FORGE_IMAGE):$(env_get "$env" FORGE_VERSION)"
   docker pull -q "$img" >/dev/null || die "image introuvable : $img"
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
   wait_healthy "$name"; ok "forge restaurée et démarrée"
   caddy_add_site "$name" "$domain"
-  wait_https "$domain"; ok "https://$domain"
+  wait_front "$name" "$domain"; front_ok "$domain"
   api_use_instance "$name"
   write_polenta_config "$name" "$domain" "$(env_get "$env" ORG)" "$(api GET "/repos/$(env_get "$env" ORG)/$DEMO_ROOT_REPO" && echo 1 || echo 0)"
   # GH44 — client web restauré avec l'instance : configuration réalignée sur le domaine de la forge.
@@ -796,6 +869,7 @@ update_instance() {
   local name="$1" version="$2" env; env="$(instance_env "$name")"
   local image old; image="$(env_get "$env" FORGE_IMAGE)"; old="$(env_get "$env" FORGE_VERSION)"
   [[ "$old" != "$version" ]] || { skip "$name déjà en $version"; return 0; }
+  edge_network_require
   log "Mise à jour de « $name » : $old → $version"
   # 1. La nouvelle version doit exister : sinon rien n'est touché (critère 17).
   docker pull -q "$image:$version" >/dev/null 2>&1 || die "version introuvable : $image:$version — rien n'a été modifié."
@@ -810,13 +884,13 @@ update_instance() {
   if [[ -n "$(env_get "$env" WEB_DOMAIN)" ]]; then install_grant_template "$name" "$image:$version" || true; fi
   inst_compose "$name" up -d >/dev/null 2>&1 || true
   local healthy=0
-  ( wait_healthy "$name" ) && ( wait_https "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
+  ( wait_healthy "$name" ) && ( wait_front "$name" "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
   # GH57 — la nouvelle version peut refuser la page de consentement générée : nouvel essai avec la
   # page d'origine avant tout retour arrière.
   if [[ $healthy == 0 ]] && remove_grant_template "$name"; then
     warn "$name ne démarre pas en $version avec la page de consentement du client web : essai avec la page d'origine."
     inst_compose "$name" restart forgejo >/dev/null 2>&1 || true
-    ( wait_healthy "$name" ) && ( wait_https "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
+    ( wait_healthy "$name" ) && ( wait_front "$name" "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
   fi
   # Crochet de test (scénario S3-7) : la NOUVELLE version est déclarée en échec, après démarrage
   # et migration de la base — jamais en exploitation.
@@ -1115,6 +1189,7 @@ restart_forge_for_grant_template() {
 web_start() {
   local name="$1" env dir; env="$(instance_env "$name")"; dir="$(instance_dir "$name")"
   local domain; domain="$(env_get "$env" WEB_DOMAIN)"
+  edge_network_require
   mkdir -p "$dir/web-data"; chown 1000:1000 "$dir/web-data"
   ensure_web_oauth_app "$name"
   # GH57 — pas de page de consentement de la forge pour le client web.
@@ -1125,7 +1200,7 @@ web_start() {
   inst_compose "$name" up -d polenta-web >/dev/null 2>&1 || inst_compose "$name" up -d polenta-web
   wait_web_healthy "$name"; ok "client web démarré"
   caddy_add_web_site "$name" "$domain"
-  wait_https "$domain" 180 /healthz; ok "https://$domain"
+  wait_front "$name" "$domain" 180 /healthz; front_ok "$domain"
 }
 
 # polenta-host instance web enable <nom> --domain <d> --version <v> [--image <i>]
@@ -1149,7 +1224,7 @@ cmd_instance_web_enable() {
   [[ "$domain" != "$(env_get "$env" DOMAIN)" ]] || die "le client web demande son propre domaine (différent de celui de la forge)."
   docker image inspect "$image:$version" >/dev/null 2>&1 || docker pull -q "$image:$version" >/dev/null \
     || die "image introuvable : $image:$version (construite avec apps/desktop/Dockerfile.web ?)"
-  check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  check_front_dns "$domain"
   env_set "$env" WEB_DOMAIN "$domain"
   env_set "$env" POLENTA_WEB_IMAGE "$image"
   env_set "$env" POLENTA_WEB_VERSION "$version"
@@ -1232,10 +1307,13 @@ cmd_instance_stop() {
 
 cmd_instance_start() {
   require_root; load_host_env; local name; name="$(resolve_instance "${1:-}")"
+  edge_network_require
   render_forgejo_env "$name"
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
   wait_healthy "$name"
-  caddy_add_site "$name" "$(env_get "$(instance_env "$name")" DOMAIN)"
+  local domain; domain="$(env_get "$(instance_env "$name")" DOMAIN)"
+  caddy_add_site "$name" "$domain"
+  wait_front "$name" "$domain"; front_ok "$domain"
   admin_log "$name" "instance start" OK
   ok "instance $name démarrée"
 }
@@ -1245,7 +1323,10 @@ cmd_status() {
   printf '  IPv4 %s  IPv6 %s\n' "$(host_ipv4)" "$(host_ipv6)"
   printf '  Mémoire disponible : %s Mo — disque / : %s libres\n' \
     "$(( $(awk '/MemAvailable/ {print $2}' /proc/meminfo) / 1024 ))" "$(df -h / | awk 'NR==2 {print $4}')"
-  if caddy_running; then printf '  Caddy : en service\n'; else printf '  Caddy : %sarrêté%s\n' "$C_RED" "$C_OFF"; fi
+  if caddy_external; then
+    printf '  Caddy : externe (blocs dans %s, réseau %s)' "$CADDY_SITES_DIR" "$EDGE_NETWORK"
+    if docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1; then printf '\n'; else printf ' — %sréseau absent%s\n' "$C_RED" "$C_OFF"; fi
+  elif caddy_running; then printf '  Caddy : en service\n'; else printf '  Caddy : %sarrêté%s\n' "$C_RED" "$C_OFF"; fi
   cmd_instance_list
 }
 

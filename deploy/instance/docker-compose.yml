@@ -1,6 +1,8 @@
 # GH45 — une instance Forgejo (un client). Lancé par polenta-host avec
 #   docker compose -p polenta-<nom> --env-file <instance>/instance.env -f <kit>/instance/docker-compose.yml
 # Aucun port publié : seul le Caddy de l'hôte, relié au réseau polenta-<nom>, y accède.
+# GH61 — en mode CADDY_MODE=external, polenta-host ajoute docker-compose.external.yml (réseau de bord
+# EDGE_NETWORK) ; ce fichier-ci reste inchangé et suffit au mode managed.
 services:
   forgejo:
     image: ${FORGE_IMAGE}:${FORGE_VERSION}

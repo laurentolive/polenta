@@ -13,6 +13,10 @@ HOST_ENV="$POLENTA_ROOT/host.env"
 DEFAULT_FORGE_IMAGE="codeberg.org/forgejo/forgejo"
 DEFAULT_FORGE_VERSION="15.0.9"      # LTS — épinglée, jamais « latest »
 DEFAULT_CADDY_VERSION="2.11.7"
+# GH61 — cohabitation avec d'autres projets dockerisés sur un même serveur (host.env).
+DEFAULT_CADDY_MODE="managed"          # managed : Caddy du kit ; external : Caddy existant
+DEFAULT_EDGE_NETWORK="polenta-edge"
+DEFAULT_CADDY_SITES_DIR="/opt/polenta/caddy-sites"
 
 if [[ -t 1 ]]; then
   C_RED=$'\e[31m'; C_GRN=$'\e[32m'; C_YEL=$'\e[33m'; C_BLU=$'\e[34m'; C_DIM=$'\e[2m'; C_OFF=$'\e[0m'
@@ -124,6 +128,20 @@ load_host_env() {
   SMTP_USER="$(env_get "$HOST_ENV" SMTP_USER)"
   SMTP_PASSWORD="$(env_get "$HOST_ENV" SMTP_PASSWORD)"
   SMTP_FROM="$(env_get "$HOST_ENV" SMTP_FROM)"
+  # GH61 — Caddy et réseau de bord optionnels ; validés ici, avant toute action sur l'hôte.
+  CADDY_MODE="$(env_get "$HOST_ENV" CADDY_MODE)"; CADDY_MODE="${CADDY_MODE:-$DEFAULT_CADDY_MODE}"
+  EDGE_NETWORK="$(env_get "$HOST_ENV" EDGE_NETWORK)"; EDGE_NETWORK="${EDGE_NETWORK:-$DEFAULT_EDGE_NETWORK}"
+  CADDY_SITES_DIR="$(env_get "$HOST_ENV" CADDY_SITES_DIR)"; CADDY_SITES_DIR="${CADDY_SITES_DIR:-$DEFAULT_CADDY_SITES_DIR}"
+  CADDY_RELOAD_CMD="$(env_get "$HOST_ENV" CADDY_RELOAD_CMD)"
+  validate_host_env
+}
+
+# GH61 — refus explicite (français, exit non nul) des valeurs invalides de CADDY_MODE, EDGE_NETWORK
+# et CADDY_SITES_DIR.
+validate_host_env() {
+  [[ "$CADDY_MODE" == managed || "$CADDY_MODE" == external ]]     || die "CADDY_MODE « $CADDY_MODE » invalide dans $HOST_ENV : valeurs acceptées managed|external."
+  [[ "$EDGE_NETWORK" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]     || die "EDGE_NETWORK « $EDGE_NETWORK » invalide dans $HOST_ENV : motif accepté [a-zA-Z0-9][a-zA-Z0-9_.-]* (ni espace, ni tiret initial)."
+  [[ "$CADDY_SITES_DIR" == /* ]]     || die "CADDY_SITES_DIR « $CADDY_SITES_DIR » invalide dans $HOST_ENV : un chemin absolu est requis."
 }
 
 # Liste des instances (noms), triée.

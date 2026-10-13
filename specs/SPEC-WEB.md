@@ -201,6 +201,13 @@ la version web »).
   et publie le site Caddy `<nom>.web.caddy` (reverse proxy vers `polenta-web-<nom>:8787`, WebSocket
   compris) ; `instance web disable` l'arrête (données conservées). Sauvegarde, restauration et export
   de l'instance incluent `web-data` et `web.env`. Procédures : `deploy/RUNBOOK.md` A15.
+  **Caddy optionnel** (GH61) : avec `CADDY_MODE=external` (`host.env`, défaut `managed`), le kit ne crée
+  aucun Caddy et n'ouvre pas 80/443 ; les blocs `<nom>.caddy` / `<nom>.web.caddy` (contenu identique)
+  sont écrits dans `CADDY_SITES_DIR`, le Caddy existant est rechargé par `CADDY_RELOAD_CMD`, forge et client
+  web rejoignent `EDGE_NETWORK` (réseau créé par l'exploitant, partagé avec ce Caddy : l'isolation réseau
+  entre instances n'est alors plus garantie) et la santé est sondée sur ce réseau interne
+  (`wait_edge_http`) au lieu de `https://`. Procédures, migrations et dépannage : `deploy/RUNBOOK.md` A16 ;
+  preuves : `deploy/tests/acceptance-external.sh` (hôte), `deploy/tests/acceptance.sh --external`.
 
 ## 10. Tests
 

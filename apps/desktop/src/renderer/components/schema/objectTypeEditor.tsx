@@ -16,10 +16,14 @@ export interface EditableField {
   /** GH77 — nom du champ tel que chargé du schéma (non persisté) : absent pour un champ ajouté dans
    *  la session. Un nom différent à l'enregistrement est un renommage (cf. `fieldRenames`). */
   originalName?: string
+  /** GH86 — clés du champ que l'éditeur n'affiche pas (`validator`…), réécrites telles quelles. */
+  extra?: Record<string, unknown>
 }
 
 export interface EditableStatus {
   name: string; label: string; color: string; isApproval: boolean; isTerminal: boolean
+  /** GH86 — clés du statut que l'éditeur n'affiche pas, réécrites telles quelles. */
+  extra?: Record<string, unknown>
 }
 
 export interface EditableObjectType {
@@ -27,7 +31,23 @@ export interface EditableObjectType {
   fields: EditableField[]; statuses: EditableStatus[]
   /** GH77 — historiser le statut (défaut true). */
   trackStatusHistory: boolean
+  /** GH86 — clés du type que l'éditeur n'affiche pas, réécrites telles quelles. */
+  extra?: Record<string, unknown>
 }
+
+/**
+ * GH86 — l'éditeur reconstruit champs, statuts et types à partir de son état éditable : toute clé
+ * qu'il ne connaît pas (`validator`, clé ajoutée à la main ou par une version plus récente) était
+ * perdue à l'enregistrement. Elles sont mises de côté au chargement et réécrites telles quelles.
+ */
+function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, unknown> | undefined {
+  const rest = Object.fromEntries(Object.entries(obj).filter(([k, v]) => !editorKeys.includes(k) && v !== undefined))
+  return Object.keys(rest).length > 0 ? rest : undefined
+}
+
+const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory'] as const
+const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
+const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory'] as const
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
@@ -37,7 +57,12 @@ export function fieldToEditable(f: SchemaField): EditableField {
     values: (f.values ?? []).join(', '), required: f.required ?? false,
     default: f.default !== undefined ? String(f.default) : '', placeholder: f.placeholder ?? '',
     trackHistory: f.trackHistory ?? false, originalName: f.name,
+    ...withExtra(extraKeys(f, FIELD_EDITOR_KEYS)),
   }
+}
+
+function withExtra(extra: Record<string, unknown> | undefined): { extra?: Record<string, unknown> } {
+  return extra ? { extra } : {}
 }
 
 /** GH77 — `trackHistory` a-t-il un sens pour ce champ ? (type historisable ; pas un champ nommé `status`,
@@ -61,11 +86,14 @@ export function editableToField(f: EditableField): SchemaField {
   if (f.default) result.default = f.default
   if (f.placeholder) result.placeholder = f.placeholder
   if (f.trackHistory && canTrackHistory(f)) result.trackHistory = true
-  return result
+  return { ...result, ...f.extra }
 }
 
 export function statusToEditable(s: SchemaStatus): EditableStatus {
-  return { name: s.name, label: s.label ?? '', color: s.color ?? '', isApproval: s.isApproval ?? false, isTerminal: s.isTerminal ?? false }
+  return {
+    name: s.name, label: s.label ?? '', color: s.color ?? '', isApproval: s.isApproval ?? false, isTerminal: s.isTerminal ?? false,
+    ...withExtra(extraKeys(s, STATUS_EDITOR_KEYS)),
+  }
 }
 
 export function editableToStatus(s: EditableStatus): SchemaStatus {
@@ -74,7 +102,7 @@ export function editableToStatus(s: EditableStatus): SchemaStatus {
   if (s.color) result.color = s.color
   if (s.isApproval) result.isApproval = true
   if (s.isTerminal) result.isTerminal = true
-  return result
+  return { ...result, ...s.extra }
 }
 
 export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
@@ -84,6 +112,7 @@ export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
     fields: t.fields.map(fieldToEditable),
     statuses: (t.statuses ?? []).map(statusToEditable),
     trackStatusHistory: t.trackStatusHistory !== false,
+    ...withExtra(extraKeys(t, TYPE_EDITOR_KEYS)),
   }
 }
 
@@ -94,7 +123,7 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
   if (t.prefix) result.prefix = t.prefix
   if (t.statuses.length > 0) result.statuses = t.statuses.map(editableToStatus)
   if (!t.trackStatusHistory) result.trackStatusHistory = false
-  return result
+  return { ...result, ...t.extra }
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────

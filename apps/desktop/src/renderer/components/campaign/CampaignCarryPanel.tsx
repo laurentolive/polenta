@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
+import type { ProjectSchema, TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
 import { CARRY_STATUSES, versionChanged, type CarryRow } from '../../lib/carryOver'
 import { RUN_CLASS, STATUS_CLASS as CAMPAIGN_STATUS_CLASS } from '../system/CampaignListView'
+import { isTestApproved } from '../../hooks/useProjectSchema'
+import { NotApprovedBadge } from './NotApproved'
 
 /**
  * GH64 — onglet « Depuis une campagne » du sélecteur de tests : campagnes source, filtre par statut
@@ -20,6 +22,7 @@ export function CampaignCarryPanel({
   checked,
   onCheckedChange,
   testsById,
+  schema,
 }: {
   /** Campagnes proposées (sans la cible), plus récente d'abord. */
   campaigns: TestCampaign[]
@@ -32,6 +35,8 @@ export function CampaignCarryPanel({
   checked: Set<string>
   onCheckedChange: (next: Set<string>) => void
   testsById: Map<string, TestCase>
+  /** GH68 — pour signaler un test non approuvé (reportable, mais signalé). */
+  schema: ProjectSchema | undefined
 }) {
   const { t } = useTranslation()
   const [filter, setFilter] = useState('')
@@ -170,6 +175,10 @@ export function CampaignCarryPanel({
                       <td className="px-2 py-1.5 max-w-[18rem]">
                         <span className="font-mono text-ink-3">{r.testCaseId}</span>
                         <span className="ml-2 text-ink truncate">{testsById.get(r.testCaseId)?.title ?? ''}</span>
+                        {(() => {
+                          const live = testsById.get(r.testCaseId)
+                          return live && !isTestApproved(live, schema) ? <NotApprovedBadge test={live} schema={schema} /> : null
+                        })()}
                       </td>
                       <td className="px-2 py-1.5 font-mono text-ink-3">{r.requirementId ?? ''}</td>
                       <td className="px-2 py-1.5 font-mono text-[10px] text-ink-3 max-w-[12rem] truncate">

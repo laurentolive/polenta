@@ -78,6 +78,9 @@ export function TestPickerGrid({
   // Numérotation de la vue système : calculée sur l'arbre complet, pas sur l'arbre élagué.
   const sectionNumbers = useMemo(() => computeSectionNumbers(tree?.root ?? []), [tree])
   const objects = useMemo(() => tests.map(normalizeObject), [tests])
+  // GH68 — tout statut est proposé : la colonne Statut est toujours affichée (insérée après `id`
+  // si les préférences Vue Excel la masquent), sans réécrire ces préférences.
+  const visibleFields = useMemo(() => withStatusColumn(prefs?.excel ?? defaultVisibleFields(typeDef)), [prefs, typeDef])
   const stepsByObjectId = useMemo(() => {
     const map = new Map<string, { action: string; expectedResult: string }[]>()
     for (const tc of tests) {
@@ -114,7 +117,7 @@ export function TestPickerGrid({
       root={root}
       typeDef={typeDef}
       objects={objects}
-      visibleFields={prefs?.excel ?? defaultVisibleFields(typeDef)}
+      visibleFields={visibleFields}
       foldersHidden={!(prefs?.showFoldersExcel ?? true)}
       sectionNumbers={sectionNumbers}
       linkTypes={schema?.linkTypes ?? []}
@@ -131,4 +134,10 @@ export function TestPickerGrid({
       selection={selection}
     />
   )
+}
+
+function withStatusColumn(fields: string[]): string[] {
+  if (fields.includes('status')) return fields
+  const at = fields.indexOf('id')
+  return at === -1 ? ['status', ...fields] : [...fields.slice(0, at + 1), 'status', ...fields.slice(at + 1)]
 }

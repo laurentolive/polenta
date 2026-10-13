@@ -13,8 +13,9 @@ export const CARRY_STATUSES: TestRunStatus[] = ['pending', 'BLOCKED', 'INCOMPLET
 /** Statuts cochés par défaut : ce qui n'a pas abouti, hors échec franc. */
 export const DEFAULT_CARRY_STATUSES: TestRunStatus[] = ['pending', 'BLOCKED', 'INCOMPLETE']
 
-export type CarryEligibility = 'ok' | 'notApproved' | 'outOfScope'
-export type CarryUnavailable = 'deleted' | 'notApproved' | 'outOfScope' | 'reqUnlinked' | 'alreadyPresent'
+// GH68 — plus de motif « non approuvé » : tout statut est reportable (signalé dans le panneau).
+export type CarryEligibility = 'ok' | 'outOfScope'
+export type CarryUnavailable = 'deleted' | 'outOfScope' | 'reqUnlinked' | 'alreadyPresent'
 
 export interface CarryRow {
   /** Clé de doublon (test, exigence, valeurs saisies de la source). */

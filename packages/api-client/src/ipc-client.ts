@@ -245,6 +245,7 @@ export function createIpcClient(
       create: (p, dto, workspaceDir) => invoke('campaigns:create', p, dto, workspaceDir),
       update: (p, id, dto) => invoke('campaigns:update', p, id, dto),
       updateRun: (p, campaignId, entryId, status, runId) => invoke('campaigns:update-run', p, campaignId, entryId, status, runId),
+      refreshEntries: (p, campaignId, entryIds) => invoke('campaigns:refresh-entries', p, campaignId, entryIds),
       close: (p, id, status) => invoke('campaigns:close', p, id, status),
       addTests: (p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances, carried) =>
         invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances, carried),

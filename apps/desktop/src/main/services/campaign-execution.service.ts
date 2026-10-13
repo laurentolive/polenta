@@ -18,10 +18,15 @@ export class CampaignExecutionService {
   ) {}
 
   async exportSheet(repoPath: string, campaignId: string, locale: ExecutionSheetLocale, destPath: string): Promise<void> {
-    const campaign = await this.campaigns.get(repoPath, campaignId)
-    if (campaign.status === 'completed' || campaign.status === 'abandoned') {
+    const current = await this.campaigns.get(repoPath, campaignId)
+    if (current.status === 'completed' || current.status === 'abandoned') {
       throw new Error(`La campagne ${campaignId} est clôturée : pas d'exécution hors outil possible.`)
     }
+    // GH68 — les testeurs reçoivent ici le contenu à exécuter : la copie des instances pending non
+    // approuvées est d'abord resynchronisée (et écrite), pour que l'import valide contre elle.
+    const campaign = await this.campaigns.refreshEntries(
+      repoPath, campaignId, current.runs.filter(r => r.status === 'pending').map(r => r.entryId),
+    )
 
     // Même repli que l'écran (`resolveCampaignRuns`) : copie figée à l'inclusion, sinon état live
     // du test (entrées antérieures à T49) ; test introuvable → instance sans étape.
@@ -42,16 +47,18 @@ export class CampaignExecutionService {
 
   /** Lit et valide un classeur rempli contre l'état courant de la campagne, sans rien écrire. */
   async preview(repoPath: string, campaignId: string, filePath: string): Promise<ExecutionImportPreview> {
-    const [campaign, raw, author] = await Promise.all([
+    const [campaign, raw, author, isApproved] = await Promise.all([
       this.campaigns.get(repoPath, campaignId),
       readExecutionWorkbook(filePath),
       this.auth.getAuthor(repoPath).catch(() => undefined),
+      this.campaigns.approvalPredicate(repoPath),
     ])
     return validateExecutionImport(raw, {
       campaign,
       fallbackUser: author?.name || 'unknown',
       now: new Date().toISOString(),
       filePath,
+      isApproved,
     })
   }
 

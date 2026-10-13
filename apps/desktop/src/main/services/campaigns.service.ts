@@ -1,9 +1,11 @@
-﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection } from '@polenta/types'
+﻿import { isDeepStrictEqual } from 'node:util'
+import type { TestCampaign, CampaignStatus, CampaignTestRun, TestRunStatus, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
-import { REQ_REF_PREFIX, carryKey, extractTestReqRefs } from '@polenta/types'
+import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
+import { findObjectTypeDef } from './schema-lookup.util'
 
 export class CampaignsService {
   constructor(
@@ -152,6 +154,51 @@ export class CampaignsService {
       await this.gitService.writeYaml(repoPath, `campaigns/${id}.yaml`, campaign)
       return campaign
     })
+  }
+
+  /**
+   * GH68 — resynchronise la copie `testSnapshot` des instances `entryIds` qui sont encore `pending`
+   * et dont la copie n'est pas dans un statut d'approbation : elle est remplacée par l'état actuel
+   * du test. Appelé quand le testeur reçoit le contenu à exécuter (ouverture de la page
+   * d'exécution, export du classeur Excel) — c'est cette version que le résultat figera ensuite.
+   * Une instance ajoutée approuvée garde le comportement T49 (jamais resynchronisée). Sans effet
+   * sur une campagne clôturée, une entrée pré-T49 (sans copie) ou un test supprimé. Les
+   * paramètres de l'instance ne sont pas recalculés. N'écrit que si une copie change.
+   */
+  async refreshEntries(repoPath: string, campaignId: string, entryIds: string[]): Promise<TestCampaign> {
+    return this.enqueue(repoPath, campaignId, async () => {
+      const campaign = await this.get(repoPath, campaignId)
+      if (campaign.status === 'completed' || campaign.status === 'abandoned') return campaign
+
+      const wanted = new Set(entryIds)
+      const candidates = campaign.runs.filter(r => wanted.has(r.entryId) && r.status === 'pending' && r.testSnapshot)
+      if (candidates.length === 0) return campaign
+      const isApproved = await this.approvalPredicate(repoPath)
+      const stale = candidates.filter(r => !isApproved(r.testSnapshot!))
+      if (stale.length === 0) return campaign
+
+      const live = await this.snapshotsFor(repoPath, stale.map(r => r.testCaseId))
+      let changed = false
+      for (const run of stale) {
+        const next = live.get(run.testCaseId)
+        // Comparaison sur la forme sérialisée : la copie relue du YAML n'a pas les clés `undefined`.
+        if (next && !isDeepStrictEqual(toPlain(next), toPlain(run.testSnapshot))) {
+          run.testSnapshot = next
+          changed = true
+        }
+      }
+      if (changed) await this.gitService.writeYaml(repoPath, `campaigns/${campaignId}.yaml`, campaign)
+      return campaign
+    })
+  }
+
+  /** GH68 — prédicat « test dans un statut d'approbation de son type », schéma lu une fois. */
+  async approvalPredicate(repoPath: string): Promise<(test: TestCase) => boolean> {
+    const schema = await this.gitService.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml').catch(() => null)
+    return (test) => {
+      const typeDef = schema ? findObjectTypeDef(schema, test.objectTypeRef) : null
+      return isApprovalStatus(typeDef && typeDef !== 'unresolvable' ? typeDef : null, test.status)
+    }
   }
 
   async addTests(
@@ -568,4 +615,9 @@ function storedParamValues(
   given: Record<string, string> | undefined,
 ): Record<string, string> | undefined {
   return preview ? Object.fromEntries(preview.manual.map(k => [k, given?.[k] ?? ''])) : given
+}
+
+/** GH68 — forme sérialisée (clés `undefined` retirées), pour comparer une copie relue du YAML. */
+function toPlain(value: unknown): unknown {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
 }

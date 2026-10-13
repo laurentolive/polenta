@@ -50,8 +50,11 @@ export class CampaignsService {
 
       // Filter by component if specified
       if (component && campaign.component !== component) continue
-      // Filter by level if specified
-      if (level && campaign.level !== level) continue
+      // Filter by level if specified. GH59 — `level` est optionnel dans les fichiers (campagnes
+      // écrites hors de l'app) : à défaut, le type de campagne se lit dans `objectTypeRef`, et une
+      // campagne sans l'un ni l'autre reste visible.
+      const campaignLevel = campaign.level ?? campaign.objectTypeRef?.split('::')[1]
+      if (level && campaignLevel && campaignLevel !== level) continue
 
       campaigns.push(this.ensureEntryIds(campaign))
     }

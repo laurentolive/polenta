@@ -186,6 +186,7 @@ function writeCampaign(c) {
     title: c.title,
     objectTypeRef: 'root::campagne-produit',
     fields: c.fields ?? {},
+    level: 'campagne-produit',
     ...(c.baselineRef ? { baselineRef: c.baselineRef } : {}),
     component: 'root',
     status: c.status,

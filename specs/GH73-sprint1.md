@@ -70,6 +70,14 @@ Spec : `specs/GH73.md` · Design : `specs/GH73-design.md` · Scénarios : `specs
 - E2E web (suite complète) : 78 passés, 13 ignorés (OIDC / déploiement, sans hôte SSH), 0 échec ;
   specs campagnes relancés après les corrections de revue.
 
+## Merge de main (GH60, GH82, GH55)
+
+- Conflit `SPEC-INDEX.md` (ligne SPEC-TESTS §4.1–4.2) : ajouts GH82 et GH73 combinés.
+- GH82 a introduit `CampaignsService.rewriteSnapshots` (migration des copies au renommage d'un
+  statut / d'une valeur) : étendu aux copies de `removedRuns` (point écarté de la revue, devenu
+  applicable) ; test ajouté (30 tests GH73) ; SPEC-TESTS §4.2 précisé.
+- Après merge : typecheck OK, `pnpm test` 493 desktop + 38 merge-core verts.
+
 ## Tester manuellement
 
 1. Ouvrir une campagne, exécuter une entrée : le fichier `test-runs/<TEST>/<run>.yaml` contient

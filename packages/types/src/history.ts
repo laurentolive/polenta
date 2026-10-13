@@ -286,6 +286,8 @@ export interface FieldRenameResult {
   /** Objet non modifié : une donnée existe déjà sous le nouveau nom. */
   skipped: Array<{ id: string; reason: 'target_exists' }>
   failed: Array<{ id: string; error: string }>
+  /** GH82 — copies `testSnapshot` de campagne migrées. */
+  snapshots?: number
 }
 
 export function emptyFieldRenameResult(): FieldRenameResult {
@@ -320,4 +322,88 @@ export interface HistoryBackfillResult {
   objects: number
   entriesAdded: number
   failed: Array<{ file: string; error: string }>
+}
+
+/** GH82 — renommage d'une valeur : statut du type, ou valeur d'un champ `enum` / `multi_enum`. */
+export type ValueRenameTarget = { kind: 'status' } | { kind: 'field'; field: string; multi: boolean }
+
+export interface ValueRename {
+  target: ValueRenameTarget
+  from: string
+  to: string
+}
+
+/** GH82 — aperçu d'un renommage de valeur : objets du type portant l'ancienne / la nouvelle valeur. */
+export interface ValueRenamePreview {
+  rename: ValueRename
+  withOld: number
+  withNew: number
+}
+
+
+/** Valeur renommée : chaîne simple, ou éléments d'une liste (CSV ou tableau YAML) pour multi_enum. */
+function renameIn(value: unknown, multi: boolean, map: Map<string, string>): unknown {
+  if (multi) {
+    if (Array.isArray(value)) return value.map(v => (typeof v === 'string' ? map.get(v) ?? v : v))
+    if (typeof value === 'string' && value) {
+      // Éléments et séparateurs alternés : seuls les éléments renommés changent, la mise en forme reste.
+      const parts = value.split(/(\s*,\s*)/)
+      return parts.map((p, i) => (i % 2 === 0 ? map.get(p.trim()) ?? p : p)).join('')
+    }
+    return value
+  }
+  return typeof value === 'string' ? map.get(value) ?? value : value
+}
+
+/** La valeur porte-t-elle `v` (élément de la liste pour multi_enum) ? */
+export function valueHas(value: unknown, multi: boolean, v: string): boolean {
+  if (multi) return parseMultiEnumValue(value).includes(v)
+  return value === v
+}
+
+/**
+ * GH82 — applique d'un coup les renommages de valeur (un échange `a ↔ b` est correct) à `status` /
+ * `fields.<f>` et aux `value` de `history.status` / `history.<f>`. Les entrées sans `value` (champ
+ * en mode événement) sont intactes. `null` si rien ne change.
+ */
+export function renameValues<T extends HistoryCarrier>(obj: T, renames: ValueRename[]): T | null {
+  // Statut et champs dans deux espaces distincts : un champ nommé `status` n'est pas le statut (et
+  // n'est jamais historisé — sa clé `history.status` est celle du statut).
+  const byTarget = new Map<string, { field: string | null; multi: boolean; map: Map<string, string> }>()
+  for (const r of renames) {
+    if (!r.from || !r.to || r.from === r.to) continue
+    const id = r.target.kind === 'status' ? 'status' : `field:${r.target.field}`
+    const entry = byTarget.get(id) ?? {
+      field: r.target.kind === 'field' ? r.target.field : null,
+      multi: r.target.kind === 'field' && r.target.multi,
+      map: new Map<string, string>(),
+    }
+    entry.map.set(r.from, r.to)
+    byTarget.set(id, entry)
+  }
+  if (byTarget.size === 0) return null
+
+  let changed = false
+  const out: T = { ...obj, fields: { ...(obj.fields ?? {}) } }
+  if (obj.history) out.history = { ...obj.history }
+  for (const { field, multi, map } of byTarget.values()) {
+    if (field === null) {
+      const next = renameIn(obj.status, false, map) as string
+      if (next !== obj.status) { out.status = next; changed = true }
+    } else if (Object.hasOwn(out.fields, field)) {
+      const next = renameIn(out.fields[field], multi, map)
+      if (JSON.stringify(next) !== JSON.stringify(out.fields[field])) { out.fields[field] = next; changed = true }
+    }
+    const key = field === null ? STATUS_HISTORY_KEY : field === STATUS_HISTORY_KEY ? null : field
+    const list = key === null ? undefined : out.history?.[key]
+    if (key !== null && list) {
+      const nextList = list.map(e => {
+        if (!('value' in e)) return e
+        const v = renameIn(e.value, multi, map)
+        return JSON.stringify(v) === JSON.stringify(e.value) ? e : { ...e, value: v }
+      })
+      if (nextList.some((e, i) => e !== list[i])) { out.history![key] = nextList; changed = true }
+    }
+  }
+  return changed ? out : null
 }

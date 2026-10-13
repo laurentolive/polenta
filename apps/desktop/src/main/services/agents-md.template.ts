@@ -17,8 +17,11 @@ import type { BrandInfo } from '../../shared/brand-types'
  * incrémentée : pour la marque polenta le texte est identique à la v3, une régénération réécrirait
  * AGENTS.md dans tous les projets existants pour rien. Le marqueur ne compare pas le nom : un
  * projet garde le nom de la marque qui l'a écrit, quelle que soit la marque qui l'ouvre ensuite.
+ *
+ * GH60 (v5) : format d'objet YAML pur (et non plus `.md` + frontmatter), champs système complets,
+ * exemples d'exigence et de test, `.polenta/trees/` et pierres tombales.
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 4
+export const AGENTS_MD_TEMPLATE_VERSION = 5
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -58,25 +61,80 @@ les clés pour respecter l'organisation du dépôt sans avoir accès au code de 
 
 ## Format d'un objet (exigence, test, campagne)
 
-Chaque objet est un fichier \`.md\` avec un frontmatter YAML :
+Chaque objet est un fichier **YAML pur**, nommé d'après son ID — pas de frontmatter
+(pas de délimiteurs \`---\`), pas de corps Markdown libre : le texte long (énoncé,
+justification, critères d'acceptance…) vit dans des champs de \`fields:\`, typiquement de
+type \`richtext\` (contenu en Markdown).
 
-\`\`\`markdown
----
-id: SYS-001                     # préfixe défini par le schéma, unique, jamais réutilisé
+| Objet | Fichier |
+|---|---|
+| Exigence | \`requirements/<ID>.yaml\` |
+| Cas de test | \`tests/<ID>.yaml\` |
+| Campagne de test | \`campaigns/<ID>.yaml\` |
+| Exécution d'un test | \`test-runs/<ID du test>/<ID du run>.yaml\` |
+| Liens entre objets | \`links/links.yaml\` (un seul fichier pour tout le projet) |
+
+Exemple d'exigence (\`requirements/SYS-0001.yaml\`) :
+
+\`\`\`yaml
+id: SYS-0001                    # <prefix>-NNNN, préfixe défini par le type dans le schéma
+projectId: ''
+branchId: ''
 objectTypeRef: root::exigence   # <nœud>::<type d'objet>, voir .polenta/schema.yaml
+title: Démarrage rapide
 status: draft                   # une valeur des statuts définis pour ce type
-fields:
-  ...                            # champs custom définis par le type dans le schéma
----
-
-Corps libre en Markdown (notes, contraintes, alternatives…).
+version: 1
+fields:                         # champs définis par le type dans le schéma
+  priority: high
+  statement: |
+    WHEN the user presses the power button
+    THE system SHALL start within 500 ms
+  acceptanceCriteria: |
+    - [ ] Démarrage mesuré < 500 ms
+jiraLinks: []
 \`\`\`
 
-- **Champs système fixes** (non configurables) : \`id\`, \`objectTypeRef\`, \`status\`.
+Exemple de cas de test (\`tests/TEST-0001.yaml\`) — mêmes champs système, plus des
+champs de structure fixes (\`preconditions\`, \`equipment\`, \`steps\`, \`postconditions\`) :
+
+\`\`\`yaml
+id: TEST-0001
+projectId: ''
+branchId: ''
+objectTypeRef: root::test
+title: Mesure du temps de démarrage
+status: draft
+version: 1
+preconditions: Batterie chargée à plus de 20 %
+equipment:
+  - id: EQ-1
+    role: chronomètre
+    description: Mesure du temps entre l'appui et la mise en route
+    required: true
+    quantity: 1
+steps:
+  - order: 1
+    action: Appuyer sur le bouton marche
+    expectedResult: Le moteur démarre en moins de 500 ms
+    notes: null
+postconditions: ''
+fields: {}
+\`\`\`
+
+- **Champs système fixes** (non configurables) : \`id\`, \`projectId\`, \`branchId\`,
+  \`objectTypeRef\`, \`title\`, \`status\`, \`version\`, \`jiraLinks\` (exigences) ; pour un test,
+  \`preconditions\`, \`equipment\`, \`steps\` (\`{ order, action, expectedResult, notes }\`),
+  \`postconditions\`. Posés par ${name} uniquement, jamais à la main : \`needsRevalidation\`
+  (écrit seulement quand vrai) et \`history\` (absent tant que vide) — voir « Invariants ».
 - **Champs métier** : tout ce qui est sous \`fields:\`, propre à chaque projet — leur
   liste, type et obligation (\`required\`) sont définis dans le schéma, pas ici.
-- **Les liens entre objets** (dérivation, vérification…) ne sont pas dans le
-  frontmatter : ce sont des ObjectLinks gérés par ${name} séparément, dans
+- **Non stockés** : \`createdAt\`, \`createdBy\`, \`updatedAt\`, \`updatedBy\` d'une exigence ou
+  d'un test sont lus depuis l'historique git du fichier — ne pas les écrire dans le YAML.
+- **Campagnes et exécutions** : leur structure (instances de test avec copie figée du test,
+  résultats…) est gérée par ${name} — les créer via l'application ou les tools MCP
+  (\`bulk_import_campaigns\`), pas à la main.
+- **Les liens entre objets** (dérivation, vérification…) ne sont pas dans le fichier de
+  l'objet : ce sont des ObjectLinks gérés par ${name} séparément, dans
   \`links/links.yaml\` (à créer/supprimer via les tools MCP \`create_links\`/\`delete_links\`).
 
 ## Où trouver les règles propres à CE projet : \`.polenta/schema.yaml\`
@@ -146,9 +204,13 @@ etc.).
 
 ## Invariants à respecter
 
-- \`tree.yaml\` (et \`.polenta/tree.cache.yaml\`) sont **générés** — ne jamais les éditer
-  à la main.
-- Un ID n'est **jamais réutilisé**, même si l'objet passe en statut terminal/obsolète.
+- \`.polenta/trees/<nœud>/<type>.yaml\` (ordre d'affichage des objets) est **maintenu par
+  ${name}** — ne jamais l'éditer à la main.
+- Un ID n'est **jamais réutilisé**, même si l'objet passe en statut terminal/obsolète. Il
+  n'y a pas de compteur : le prochain numéro d'un préfixe est le plus grand numéro trouvé
+  dans les fichiers **et** dans \`.polenta/tombstones/\` (un fichier vide par ID supprimé),
+  plus un. Ne jamais supprimer une pierre tombale, ni supprimer à la main le fichier d'un
+  objet (${name} pose la pierre tombale à la suppression).
 - Une exigence ou un test marqué \`needsRevalidation: true\` signale un impact à vérifier
   (un élément lié a quitté l'approbation) — ne pas lever ce flag sans analyse d'impact. Il
   se lève depuis la vue Analyse d'impact (bouton « Lever le flag »), jamais à la main dans le YAML.
@@ -191,7 +253,7 @@ les résultats de leurs exécutions :
 | \`covered\` | test(s) approuvé(s) lié(s), mais aucune exécution PASS |
 | \`validated\` | au moins une exécution PASS sur un test lié |
 | \`failing\` | dernière exécution = FAIL ou BLOCKED |
-| \`needs_revalidation\` | un lien est marqué comme nécessitant une revalidation |
+| \`needs_revalidation\` | l'exigence ou un test lié porte \`needsRevalidation: true\` |
 
 Priorité en cas de plusieurs statuts applicables : \`needs_revalidation\` > \`failing\`
 > \`covered\` > \`validated\` > \`not_covered\`.

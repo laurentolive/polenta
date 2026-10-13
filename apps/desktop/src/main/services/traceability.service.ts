@@ -727,20 +727,23 @@ export class TraceabilityService {
 
     const queue: QueueEntry[] = []
 
-    // Collect links from all repos
+    const allTestsArrays = await Promise.all(repoPaths.map(p => this.testsIndex.findAll(p)))
+    const allTests = allTestsArrays.flat()
+    const tcIds = new Set(allTests.map((t) => t.id))
+
+    // Collect links from all repos — GH13 : une source de lien qui est un test n'est pas une
+    // exigence dépendante ; elle est mise en file comme `test_case` ci-dessous (sinon, marquée
+    // visitée sous le mauvais type, elle disparaissait du rapport).
     const allLinksForReq = (await Promise.all(repoPaths.map(p => this.reqIndex.findLinks(p, reqId)))).flat()
     const links = allLinksForReq
-    for (const link of links.filter((l) => l.targetId === reqId)) {
+    for (const link of links.filter((l) => l.targetId === reqId && !tcIds.has(l.sourceId))) {
       if (!visited.has(link.sourceId)) {
         queue.push({ id: link.sourceId, depth: 1, linkType: link.type, elementType: 'requirement' })
       }
     }
 
-    const allTestsArrays = await Promise.all(repoPaths.map(p => this.testsIndex.findAll(p)))
-    const allTests = allTestsArrays.flat()
     const allLinksArrays = await Promise.all(repoPaths.map(p => this.reqIndex.findAllLinks(p)))
     const allLinks = allLinksArrays.flat()
-    const tcIds = new Set(allTests.map((t) => t.id))
     for (const link of allLinks) {
       if (tcIds.has(link.sourceId) && link.targetId === reqId) {
         queue.push({ id: link.sourceId, depth: 1, linkType: link.type, elementType: 'test_case' })
@@ -769,7 +772,7 @@ export class TraceabilityService {
         if (entry.depth < depth) {
           const depLinksArrays = await Promise.all(repoPaths.map(p => this.reqIndex.findLinks(p, entry.id)))
           const depLinks = depLinksArrays.flat()
-          for (const link of depLinks.filter((l) => l.targetId === entry.id)) {
+          for (const link of depLinks.filter((l) => l.targetId === entry.id && !tcIds.has(l.sourceId))) {
             if (!visited.has(link.sourceId)) {
               queue.push({ id: link.sourceId, depth: entry.depth + 1, linkType: link.type, elementType: 'requirement' })
             }

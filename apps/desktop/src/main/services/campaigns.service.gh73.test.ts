@@ -241,6 +241,20 @@ describe('entrées retirées (§3)', () => {
   })
 })
 
+describe('migration des copies GH82 et entrées retirées', () => {
+  it('rewriteSnapshots migre aussi les copies de removedRuns', async () => {
+    await writeCampaign({ id: 'CAMP-0001', runs: [run('TEST-0001-1'), run('TEST-0002-1')] })
+    await service.removeEntries(dir, 'CAMP-0001', ['TEST-0002-1'])
+    const result = { migrated: [], skipped: [], failed: [] } as unknown as Parameters<CampaignsService['rewriteSnapshots']>[3]
+    await service.rewriteSnapshots(dir, 'root::test', t => (t.status === 'approved' ? { ...t, status: 'valide' } : null), result)
+    const disk = await onDisk('CAMP-0001')
+    expect(disk.runs[0]!.testSnapshot!.status).toBe('valide')
+    expect(disk.removedRuns![0]!.testSnapshot!.status).toBe('valide')
+    expect(disk.removedRuns![0]!.removedAt).toBeDefined()
+    expect(result.snapshots).toBe(2)
+  })
+})
+
 describe('saisie sans run (§4)', () => {
   beforeEach(async () => {
     await writeCampaign({ id: 'CAMP-0001', status: 'planned', runs: [run('TEST-0001-1')] })

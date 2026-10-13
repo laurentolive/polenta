@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -14,9 +14,9 @@ import type { ServerTarget } from '../components/home/ServerTargetFields'
 import { WebProjectList } from '../components/home/WebProjectList'
 import { isWeb } from '../platform'
 import { TeamProjects } from '../components/home/TeamProjects'
-import { useTeamConfig } from '../hooks/useTeamConfig'
+import { TEAM_CONFIG_KEY } from '../hooks/useTeamConfig'
 import { projectHomeRoute } from '../lib/projectHome'
-import type { ForgeAccount, ForgeRepo, TeamProjectEntry } from '@polenta/types'
+import type { ForgeAccount, ForgeRepo, ProjectHome, TeamProjectEntry } from '@polenta/types'
 import { BrandLogo } from '../components/BrandLogo'
 
 export const Route = createFileRoute('/')({
@@ -49,8 +49,14 @@ function HomePage() {
   // GH45 — projet de démonstration selon la configuration machine : URL fournie (miroir sur la forge
   // de l'entreprise), sinon la démo publique — masquée si GitHub est masqué. `undefined` : en cours.
   const [demoUrl, setDemoUrl] = useState<string | null | undefined>(undefined)
-  // GH45 S2b — vue d'ouverture d'un projet selon l'équipe (projectHome).
-  const projectHome = useTeamConfig()?.config?.preferences.projectHome
+  // GH45 S2b — vue d'ouverture d'un projet selon l'équipe (projectHome). GH55 — lue au moment de
+  // naviguer, dans le cache partagé (posé par la connexion) : la valeur du rendu peut être encore
+  // `undefined` et faire arriver le projet sur /schema au lieu de la vue de l'équipe.
+  const teamProjectHome = useCallback(async (): Promise<ProjectHome | undefined> => {
+    const status = await qc.fetchQuery({ queryKey: TEAM_CONFIG_KEY, queryFn: () => api.app.getTeamConfig(), staleTime: Infinity })
+      .catch(() => null)
+    return status?.config?.preferences.projectHome
+  }, [qc])
   const [defaultServer, setDefaultServer] = useState<string | undefined>(undefined)
 
   useEffect(() => {
@@ -91,7 +97,11 @@ function HomePage() {
       const lastOpened = await api.workspace.getLastOpened()
       if (cancelled) return
       if (lastOpened) {
-        await navigate(projectHomeRoute(encodeProjectId(lastOpened.workspaceDir), (await api.app.getTeamConfig().catch(() => null))?.config?.preferences.projectHome))
+        // GH55 — re-checked after the team config read: a redirect resolved after the user moved
+        // on would undo their navigation.
+        const home = await teamProjectHome()
+        if (cancelled) return
+        await navigate(projectHomeRoute(encodeProjectId(lastOpened.workspaceDir), home))
         return
       }
 
@@ -99,7 +109,7 @@ function HomePage() {
     }
     init()
     return () => { cancelled = true }
-  }, [navigate])
+  }, [navigate, teamProjectHome])
 
   if (!ready) {
     return (
@@ -112,7 +122,8 @@ function HomePage() {
   async function goToProject(workspaceDir: string, action?: HomeAction) {
     await api.workspace.markRecent(workspaceDir)
     // GH45 S2b — projet existant : vue d'ouverture de l'équipe s'il y en a une ; création : /schema.
-    if (projectHome && action !== 'create') {
+    const projectHome = action === 'create' ? undefined : await teamProjectHome()
+    if (projectHome) {
       await navigate(projectHomeRoute(encodeProjectId(workspaceDir), projectHome))
       return
     }

@@ -50,8 +50,11 @@ export class CampaignsService {
 
       // Filter by component if specified
       if (component && campaign.component !== component) continue
-      // Filter by level if specified
-      if (level && campaign.level !== level) continue
+      // Filter by level if specified. GH59 — `level` est optionnel dans les fichiers (campagnes
+      // écrites hors de l'app) : à défaut, le type de campagne se lit dans `objectTypeRef`, et une
+      // campagne sans l'un ni l'autre reste visible.
+      const campaignLevel = campaign.level ?? campaign.objectTypeRef?.split('::')[1]
+      if (level && campaignLevel && campaignLevel !== level) continue
 
       campaigns.push(this.ensureEntryIds(campaign))
     }
@@ -383,15 +386,58 @@ export class CampaignsService {
 
   /** GH77 — cf. `RequirementsService.renameFieldKeys`. */
   async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, c => renameFieldKeys(c, renames), result)
+  }
+
+  /** GH77/GH82 — cf. `RequirementsService.rewriteObjects`. */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string,
+    transform: (campaign: TestCampaign) => TestCampaign | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
     const matching = (await this.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef)
     for (const { id } of matching) {
       try {
         await this.enqueue(repoPath, id, async () => {
-          const renamed = renameFieldKeys(await this.get(repoPath, id), renames)
-          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
-          if (!renamed || renamed === 'conflict') return
-          await this.persist(repoPath, id, historyBase(renamed), renamed, { raw: true })
+          const next = transform(await this.get(repoPath, id))
+          if (next === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!next || next === 'conflict') return
+          await this.persist(repoPath, id, historyBase(next), next, { raw: true })
           result.migrated.push(id)
+        })
+      } catch (err) {
+        result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+  }
+
+  /**
+   * GH82 — réécrit les copies `testSnapshot` des entrées dont le test est de type `testTypeRef`,
+   * dans toutes les campagnes du repo (renommage d'un statut ou d'une valeur du type de test : seule
+   * la clé change, pas le contenu figé). Écriture brute ; la campagne compte parmi les objets migrés.
+   */
+  async rewriteSnapshots(
+    repoPath: string, testTypeRef: string, transform: (snapshot: TestCase) => TestCase | null, result: FieldRenameResult,
+  ): Promise<void> {
+    for (const { id } of await this.list(repoPath)) {
+      try {
+        await this.enqueue(repoPath, id, async () => {
+          const campaign = await this.get(repoPath, id)
+          let count = 0
+          const rewrite = <R extends CampaignTestRun>(run: R): R => {
+            if (!run.testSnapshot || run.testSnapshot.objectTypeRef !== testTypeRef) return run
+            const next = transform(run.testSnapshot)
+            if (!next) return run
+            count++
+            return { ...run, testSnapshot: next }
+          }
+          const runs = campaign.runs.map(rewrite)
+          // GH73 — les entrées retirées gardent leur copie : migrées aussi (données brutes exposées).
+          const removedRuns = campaign.removedRuns?.map(rewrite)
+          if (count === 0) return
+          const updated = { ...campaign, runs, ...(removedRuns && { removedRuns }) }
+          await this.persist(repoPath, id, historyBase(updated), updated, { raw: true })
+          result.snapshots = (result.snapshots ?? 0) + count
+          if (!result.migrated.includes(id)) result.migrated.push(id)
         })
       } catch (err) {
         result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })

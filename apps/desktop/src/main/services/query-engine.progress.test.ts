@@ -147,6 +147,11 @@ describe('GH71 — resolveRowTarget', () => {
       .toEqual({ kind: 'campaign', id: 'CAMP-1', repoPath: ROOT })
   })
 
+  it('T5 — étape portée par la ligne (widget) : reprise telle quelle', async () => {
+    expect(await e().resolveRowTarget(ROOT, { campaignId: 'CAMP-1', entryId: 'A-1', progress: 'prep:review' }, '/ws'))
+      .toEqual({ kind: 'campaign', id: 'CAMP-1', repoPath: ROOT, progress: 'prep:review' })
+  })
+
   it('T4 — test introuvable partout, sans copie → prêt', async () => {
     const camp = campaign('CAMP-4', [run('Z', 'pending')])
     expect(await engine({ [ROOT]: [] }, { [ROOT]: [camp] }).resolveRowTarget(ROOT, { campaignId: 'CAMP-4', entryId: 'Z-1' }, '/ws'))

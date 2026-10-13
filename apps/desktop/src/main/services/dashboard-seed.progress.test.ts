@@ -19,6 +19,7 @@ function fixture() {
   const markers = new Map<string, CampaignsSeedMarker>()
   const writes: string[] = []
   let failUpdates = false
+  let failWidgetUpdates = false
   let seq = 0
 
   const git = {
@@ -59,6 +60,7 @@ function fixture() {
       return d
     },
     updateWidget: async (_r: string, _u: string, id: string, widgetId: string, dto: Partial<Widget>) => {
+      if (failWidgetUpdates) throw new Error('pref verrouillé')
       writes.push(`widget:${widgetId}`)
       const d = dashboards.get(id)!
       d.widgets = d.widgets.map(w => (w.id === widgetId ? { ...w, ...dto } : w))
@@ -87,6 +89,8 @@ function fixture() {
   return {
     service, queries, dashboards, writes, seedGh65,
     failUpdates: (v: boolean) => { failUpdates = v },
+    failWidgetUpdates: (v: boolean) => { failWidgetUpdates = v },
+    markers,
     marker: () => markers.get(`${REPO}|alice`),
     oldQuery: () => queries.get('Q-OLD')!,
     oldWidget: () => dashboards.get('D-OLD')!.widgets[0],
@@ -106,11 +110,11 @@ describe('GH71 — seed « Campagnes » : avancement', () => {
     expect(f.writes).toEqual([])
   })
 
-  it('D2 — seed GH65 intact : requête et widget mis à niveau, titres conservés', async () => {
+  it('D2 — seed GH65 intact : requête et widget mis à niveau ; titre d’origine de la requête actualisé', async () => {
     const f = fixture()
     f.seedGh65()
     await f.service.ensureSeeded(REPO, 'alice')
-    expect(f.oldQuery()).toMatchObject({ sqlText: PROGRESS_SQL, title: 'Campagnes — avancement par statut' })
+    expect(f.oldQuery()).toMatchObject({ sqlText: PROGRESS_SQL, title: 'Campagnes — avancement' })
     expect(f.oldWidget()).toMatchObject({ fieldMapping: PROGRESS_MAPPING, title: 'Avancement par campagne' })
     expect(f.marker()?.upgrades).toEqual(['progressV2'])
   })
@@ -166,5 +170,30 @@ describe('GH71 — seed « Campagnes » : avancement', () => {
     await f.service.ensureSeeded(REPO, 'alice')
     expect(f.oldQuery().sqlText).toBe(PROGRESS_SQL)
     expect(f.marker()?.upgrades).toEqual(['progressV2'])
+  })
+
+  it('D9 — échec sur le widget après la requête : la reprise termine le widget', async () => {
+    const f = fixture()
+    f.seedGh65()
+    f.failWidgetUpdates(true)
+    await f.service.ensureSeeded(REPO, 'alice')
+    expect(f.oldQuery().sqlText).toBe(PROGRESS_SQL)
+    expect(f.oldWidget().fieldMapping).toEqual(GH65_PROGRESS_MAPPING)
+    expect(f.marker()?.upgrades).toBeUndefined()
+    f.failWidgetUpdates(false)
+    await f.service.ensureSeeded(REPO, 'alice')
+    expect(f.oldWidget().fieldMapping).toEqual(PROGRESS_MAPPING)
+    expect(f.marker()?.upgrades).toEqual(['progressV2'])
+  })
+
+  it('D10 — seed GH65 interrompu (requête d’origine créée) repris : requête remise à niveau', async () => {
+    const f = fixture()
+    f.queries.set('Q-OLD', { id: 'Q-OLD', title: 'Campagnes — avancement par statut', mode: 'sql', sqlText: GH65_PROGRESS_SQL, scope: 'private' } as SavedQuery)
+    f.markers.set(`${REPO}|alice`, { state: 'partial', queries: { progress: 'Q-OLD' }, widgets: [] })
+    await f.service.ensureSeeded(REPO, 'alice')
+    expect(f.oldQuery().sqlText).toBe(PROGRESS_SQL)
+    const [d] = [...f.dashboards.values()]
+    expect(d.widgets.find(w => w.queryId === 'Q-OLD')?.fieldMapping).toEqual(PROGRESS_MAPPING)
+    expect(f.marker()).toMatchObject({ state: 'done', upgrades: ['progressV2'] })
   })
 })

@@ -64,13 +64,22 @@ campagne, pour le builder), `campaignObjectTypeRef`, `baselineRef`, `level`, `ca
 (composant ciblé), `component` (où vit le fichier, même règle que les autres tables), `entryId`,
 `testCaseId`, `requirementId`, `testTitle` (snapshot, sinon test live), `status` (statut de
 l'entrée), `executed` (booléen `status ≠ pending`), `executedAt`, `executedDay` (`AAAA-MM-JJ`,
-date UTC de l'ISO stocké), `executedBy`, `runId`. Champs personnalisés de la campagne préfixés
+date UTC de l'ISO stocké), `executedBy`, `runId`, et (GH71) `progress` (étape d'avancement :
+`prep:<statut du test>` tant que le test n'est pas approuvé, `ready` s'il l'est, puis le résultat
+`INCOMPLETE` / `BLOCKED` / `FAIL` / `PASS` une fois exécutée), `progressRank` (rang canonique : statuts
+de préparation selon leur plus petite position parmi les types de test du schéma du repo du test —
+une même étape a donc toujours le même rang —, statut inconnu après, puis `ready`, puis les résultats
+dans cet ordre ; pour trier en SQL), `testStatus` (statut du test retenu). Test retenu = règle GH68
+(SPEC-TESTS §4.2) : état live tant que l'instance est resynchronisable dans une campagne ouverte,
+sinon la copie ; statut et rang jugés dans le schéma du repo où vit le test. Règle partagée main /
+renderer : `@polenta/types/campaign-progress.ts`. Champs personnalisés de la campagne préfixés
 `campaign_<nom>` (évite les collisions avec `status`/`title`…).
 
 - Builder : un type de catégorie `campaign` est proposé « <type> (entrées) » ; allowlist =
   colonnes ci-dessus + `campaign_<nom>`. Non proposées dans le builder (SQL seulement) :
   `executed` (booléen incomparable avec la saisie texte), `objectTypeRef`,
-  `campaignObjectTypeRef`, `runId`. Une campagne sans `objectTypeRef` n'est visible qu'en SQL.
+  `campaignObjectTypeRef`, `runId`, `progressRank`. Une campagne sans `objectTypeRef` n'est visible
+  qu'en SQL.
 - Un fichier campagne illisible est ignoré (avertissement journalisé) : il ne fait pas échouer
   les requêtes sur les autres tables.
 - Tools MCP : table accessible via `run_query` / `create_query` (aucun tool dédié).
@@ -96,8 +105,10 @@ date UTC de l'ISO stocké), `executedBy`, `runId`. Champs personnalisés de la c
 `resolveRowTarget(repoPath, row, workspaceDir)` (channel `queries:resolve-row-target`) : objet à
 ouvrir pour une ligne, cherché dans les repos du périmètre — `campaignId` + `entryId` → résultat
 d'exécution (`/campaign/$id/run/$entryId`) si l'entrée est exécutée, sinon page de campagne
-filtrée `pending` ; `campaignId` seul → page de campagne (+ `status` s'il est valide) ; `id` →
-exigence, test ou campagne ; sinon `null`. La ligne ne porte jamais de chemin de repo.
+filtrée sur l'**étape d'avancement** de l'entrée (`progress`, GH71 : celle de la ligne si elle porte
+une colonne `progress` valide, sinon recalculée ; repli `status: 'pending'` si elle ne peut l'être) ; `campaignId` seul → page de campagne (+ `status` et / ou `progress`
+s'ils sont valides) ; `id` → exigence, test ou campagne ; sinon `null`. La ligne ne porte jamais
+de chemin de repo.
 
 - **Export Excel** du résultat courant via `exceljs` (infra autonome, ne dépend pas
   du ticket T43 export cahier, non encore implémenté au moment de T77).
@@ -171,6 +182,25 @@ objet référencé).
   uniquement pour un widget `bar` avec une `series` sélectionnée) — pas seulement
   câblé pour le dashboard **Status** pré-configuré (§5.1).
 
+### 4.1b Widget barres — préréglage « Avancement de campagne » (GH71)
+
+`fieldMapping.preset: 'campaignProgress'` (widget `bar` avec `series`) : les valeurs de la série qui
+sont des étapes d'avancement (`campaign_entries.progress`, §2.1) sont
+- **ordonnées** dans l'ordre canonique (statuts de préparation dans l'ordre de déclaration des types
+  de test du schéma local — un nom présent dans plusieurs types : sa plus petite position, à égalité
+  par nom ; statut inconnu après ; puis `ready`, `INCOMPLETE`, `BLOCKED`, `FAIL`, `PASS`) ;
+- **libellées** : `label` du statut dans le premier type de test qui le déclare (à défaut son nom),
+  « Prêt à exécuter », puis les libellés de résultat ;
+- **colorées** par jetons de thème `--chart-progress-*` (clair et sombre) : préparation en gris du
+  plus foncé au plus clair (4 teintes, la dernière réutilisée au-delà), prêt bleu, incomplet jaune,
+  bloqué orange, échoué rouge, passé vert.
+Les autres valeurs gardent le rendu standard, après les étapes. La clé brute reste le `dataKey` et la
+valeur transmise au drill-down. Réglage « Présentation des séries : Standard / Avancement de
+campagne » dans la popup de configuration (widget `bar` avec série). Libellés et ordre calculés
+contre le schéma du repo du dashboard : un statut déclaré seulement dans un composant d'un autre
+repo s'affiche sous son nom, après les statuts connus. Présentation partagée avec les pastilles de
+la page campagne (`progressPresentation.ts`, SPEC-TESTS §4.3).
+
 ---
 
 ## 5. Dashboards pré-configurés & critères de maturité (T77 sprint 3)
@@ -228,10 +258,22 @@ automatique. Pour le partager : requêtes puis dashboard (§3.1 ; action groupé
   `dashboards:list`. Pas de garde de branche (rien dans le repo).
 - Libellés fr / en (`en*` → anglais, sinon français ; le main n'a pas d'i18next).
 - Widgets (requêtes SQL sur `campaign_entries`) : **Avancement par campagne** (barre empilée,
-  `campaignTitle` × `status`, campagnes `planned`/`in_progress`), **% exécuté** et **% PASS** (KPI,
+  `campaignTitle` × `progress` avec le préréglage `campaignProgress` §4.1b — GH71, auparavant
+  `status` —, campagnes `planned`/`in_progress`), **% exécuté** et **% PASS** (KPI,
   campagnes `in_progress` ; `GROUP BY campaignStatus` pour rendre zéro ligne — état vide — quand
   il n'y a rien à mesurer), **Exécutions par jour** (courbe sur `executedDay`), **Entrées en
   échec** (table FAIL / BLOCKED des campagnes en cours → clic = résultat d'exécution).
+- **Mise à niveau GH71** d'un seed déjà créé (une fois par utilisateur et par repo, liste
+  `upgrades` du marqueur, `progressV2`) : le marqueur `done` des seeds GH65 n'ayant pas les ids, la
+  requête « Avancement » est retrouvée par son SQL exact (donc non modifiée) parmi les requêtes
+  **privées** ; elle et ses widgets passent aux nouvelles définitions **seulement si tous les widgets
+  qui l'utilisent** sont des barres au mapping d'origine (`campaignTitle` × `status`, empilé) — sinon
+  rien n'est touché (un widget personnalisé lisant `status` serait vidé). Titre de la requête
+  actualisé s'il est encore celui d'origine ; titre du widget conservé. Échec : journalisé, retenté
+  au prochain `dashboards:list` — reprise sans perte (une requête déjà passée au nouveau SQL est
+  reconnue, seuls les widgets restés à l'ancien mapping sont mis à jour). Un seed GH65 interrompu
+  puis repris est remis à niveau de la même façon. Le marqueur `done` conserve désormais les ids
+  (`queries`, `dashboardId`).
 
 ### 5.2 Critères de maturité — calcul exact
 

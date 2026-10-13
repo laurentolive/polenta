@@ -811,6 +811,8 @@
     "executeNotApprovedConfirmTitle": "Execute a test that is not approved?",
     "executeNotApprovedConfirmBody": "The test status is “{{status}}”. The result will be recorded against this version, which has not been validated.",
     "executeNotApprovedConfirm": "Execute anyway",
+    "executeTestChanged": "This test's copy has changed since the page was opened (a new version was saved in the campaign). Your input applies to the version shown.",
+    "executeTestChangedReload": "Show the new version (clears your input)",
     "refreshFailed": "Could not update the test copy: the version frozen when it was added is shown.",
     "noTestCaseInCampaign": "No test case in this campaign",
     "addAnotherInstance": "Add another instance of this test with different values",
@@ -953,6 +955,9 @@
       "empty": "No {{status}} entry."
     }
   },
+  "campaignProgress": {
+    "ready": "Ready to run"
+  },
   "dashboard": {
     "widgetModal": {
       "typeBar": "Bar",
@@ -986,7 +991,10 @@
       "categoryLabel": "Category",
       "seriesLabel": "Series (optional, multi-line)",
       "noneOption": "— none —",
-      "stackedLabel": "Stack bars"
+      "stackedLabel": "Stack bars",
+      "presetLabel": "Series presentation",
+      "presetStandard": "Standard",
+      "presetCampaignProgress": "Campaign progress"
     }
   },
   "queryPage": {

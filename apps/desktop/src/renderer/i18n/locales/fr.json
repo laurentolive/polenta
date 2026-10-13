@@ -811,6 +811,8 @@
     "executeNotApprovedConfirmTitle": "Exécuter un test non approuvé ?",
     "executeNotApprovedConfirmBody": "Le test est au statut « {{status}} ». Le résultat sera enregistré contre cette version, qui n'a pas été validée.",
     "executeNotApprovedConfirm": "Exécuter quand même",
+    "executeTestChanged": "La copie de ce test a changé depuis l'ouverture de la page (nouvelle version enregistrée dans la campagne). Votre saisie porte sur la version affichée.",
+    "executeTestChangedReload": "Afficher la nouvelle version (efface la saisie)",
     "refreshFailed": "Impossible de mettre à jour la copie du test : la version figée à l'ajout est affichée.",
     "noTestCaseInCampaign": "Aucun cas de test dans cette campagne",
     "addAnotherInstance": "Ajouter une autre instance de ce test avec d'autres valeurs",
@@ -953,6 +955,9 @@
       "empty": "Aucune entrée {{status}}."
     }
   },
+  "campaignProgress": {
+    "ready": "Prêt à exécuter"
+  },
   "dashboard": {
     "widgetModal": {
       "typeBar": "Barres",
@@ -986,7 +991,10 @@
       "categoryLabel": "Catégorie",
       "seriesLabel": "Série (optionnel, multi-courbe)",
       "noneOption": "— aucune —",
-      "stackedLabel": "Empiler les barres"
+      "stackedLabel": "Empiler les barres",
+      "presetLabel": "Présentation des séries",
+      "presetStandard": "Standard",
+      "presetCampaignProgress": "Avancement de campagne"
     }
   },
   "queryPage": {

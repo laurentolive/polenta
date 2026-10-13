@@ -13,6 +13,11 @@
  * `fieldMapping.stacked` (optional, only meaningful alongside `series`) stacks the
  * series on top of each other (single `stackId` shared by every `<Bar>`) instead of
  * the default grouped/side-by-side layout.
+ *
+ * `fieldMapping.preset: 'campaignProgress'` (GH71, alongside `series`) presents series values that
+ * are campaign progress steps (`prep:<status>`, `ready`, results) in canonical order, with schema /
+ * i18n labels and semantic colours (`progressPresentation.ts`); other values keep the standard
+ * rendering, after the steps. Raw keys stay the `dataKey` and the drill-down value.
  */
 import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -21,19 +26,25 @@ import { WidgetEmptyState } from './WidgetEmptyState'
 import { seriesColor } from './chartColors'
 import { toLabel, toNumber } from './numeric'
 import { rawValueIndex } from './drilldown'
+import { progressPresenter } from './progressPresentation'
+import { useProjectSchema } from '../../../hooks/useProjectSchema'
 
 interface Props {
   result: QueryResult | null
   fieldMapping: WidgetFieldMapping
   /** GH65 — clic sur une barre / un segment : valeurs brutes de la catégorie (et de la série). */
   onSelect?: (values: Record<string, unknown>) => void
+  /** GH71 — schéma (libellés des statuts) pour le préréglage `campaignProgress`. */
+  repoPath?: string
 }
 
 const CATEGORY_KEY = '__category'
 
-export function BarWidget({ result, fieldMapping, onSelect }: Props) {
+export function BarWidget({ result, fieldMapping, onSelect, repoPath }: Props) {
   const { t } = useTranslation()
-  const { category, measure, series, stacked } = fieldMapping
+  const { category, measure, series, stacked, preset } = fieldMapping
+  const progressPreset = preset === 'campaignProgress' && !!series
+  const { data: schema } = useProjectSchema(progressPreset ? repoPath ?? '' : '')
   if (!category || !measure) return <WidgetEmptyState message={t('dashboardPage.widget.chooseCategoryAndMeasure')} />
 
   const rows = result?.rows ?? []
@@ -63,6 +74,12 @@ export function BarWidget({ result, fieldMapping, onSelect }: Props) {
     data = rows.map((r) => ({ [CATEGORY_KEY]: toLabel(r[category]), [measure]: toNumber(r[measure]) }))
     seriesKeys = [measure]
   }
+
+  // GH71 — préréglage : étapes d'avancement d'abord (ordre canonique), autres valeurs ensuite.
+  const steps = progressPreset ? progressPresenter(schema, t).present(seriesKeys) : []
+  const stepByKey = new Map(steps.map((st) => [st.key, st]))
+  if (progressPreset) seriesKeys = [...steps.map((st) => st.key), ...seriesKeys.filter((k) => !stepByKey.has(k))]
+  const others = seriesKeys.filter((k) => !stepByKey.has(k))
 
   // Les libellés (`toLabel`) perdent l'information (`null` → « — », dates localisées) : le clic
   // remonte la valeur brute de la première ligne portant ce libellé.
@@ -102,8 +119,8 @@ export function BarWidget({ result, fieldMapping, onSelect }: Props) {
             <Bar
               key={sv}
               dataKey={sv}
-              name={sv}
-              fill={seriesColor(i)}
+              name={stepByKey.get(sv)?.label ?? sv}
+              fill={stepByKey.get(sv)?.color ?? seriesColor(progressPreset ? others.indexOf(sv) : i)}
               activeBar={{ style: { filter: 'brightness(0.85)' } }}
               radius={radius}
               maxBarSize={48}

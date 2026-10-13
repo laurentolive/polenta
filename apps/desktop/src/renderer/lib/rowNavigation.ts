@@ -21,7 +21,11 @@ export function rowTargetRoute(target: RowTarget, projectId: string): { pathname
     case 'test':
       return { pathname: `/test/${encodeURIComponent(target.id)}`, search: base }
     case 'campaign':
-      return { pathname: `/campaign/${encodeURIComponent(target.id)}`, search: target.status ? { ...base, status: target.status } : base }
+      // GH71 — étape d'avancement prioritaire sur le statut d'entrée (même règle que la page campagne).
+      return {
+        pathname: `/campaign/${encodeURIComponent(target.id)}`,
+        search: target.progress ? { ...base, progress: target.progress } : target.status ? { ...base, status: target.status } : base,
+      }
     case 'campaign-run':
       return {
         pathname: `/campaign/${encodeURIComponent(target.campaignId)}/run/${encodeURIComponent(target.entryId)}`,

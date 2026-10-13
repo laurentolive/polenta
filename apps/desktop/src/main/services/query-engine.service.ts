@@ -1,7 +1,7 @@
 import * as path from 'path'
 import type alasqlDefault from 'alasql'
 import type { Requirement, TestCase, ObjectLink, TestRun, ProjectSchema, TestCampaign, CampaignTestRun } from '@polenta/types'
-import { TEST_RUN_STATUS_LABELS, entryProgress, isApprovalStatus, isProgressKey, prepStatusOf, progressRank, progressSubject } from '@polenta/types'
+import { TEST_RUN_STATUS_LABELS, entryProgress, isApprovalStatus, isProgressKey, prepStatusOf, prepStatusOrder, progressRank, progressSubject } from '@polenta/types'
 import type {
   BuilderConfig,
   BuilderCondition,
@@ -359,10 +359,20 @@ interface CampaignEntryProgress {
   testStatus: string | null
 }
 
+/** Rang des statuts de préparation par schéma (calculé une fois par dataset et par schéma). */
+const prepOrderCache = new WeakMap<ProjectSchema, Map<string, number>>()
+function prepOrderOf(schema: ProjectSchema | null): Map<string, number> {
+  if (!schema) return new Map()
+  let order = prepOrderCache.get(schema)
+  if (!order) prepOrderCache.set(schema, (order = prepStatusOrder(schema)))
+  return order
+}
+
 /**
- * GH71 — étape d'avancement d'une entrée (`campaign-progress.ts`). Statut d'approbation et rang du
- * statut jugés dans le type du test, contre le schéma du repo où vit le test (`schema`) — à défaut
- * (test supprimé), celui de la campagne.
+ * GH71 — étape d'avancement d'une entrée (`campaign-progress.ts`). Statut d'approbation jugé dans le
+ * type du test, contre le schéma du repo où vit le test (`schema`) — à défaut (test supprimé), celui
+ * de la campagne. Rang : même ordre que le renderer (`prepStatusOrder`, plus petite position d'un
+ * statut parmi les types de test du schéma), pour qu'une même étape ait toujours le même rang.
  */
 function campaignEntryProgress(
   c: TestCampaign,
@@ -378,7 +388,7 @@ function campaignEntryProgress(
   const subject = progressSubject(run, live, c.status === 'planned' || c.status === 'in_progress', isApproved)
   const progress = entryProgress(run, subject, isApproved)
   const status = prepStatusOf(progress)
-  const statusIndex = status !== null && subject ? typeDefOf(subject.objectTypeRef)?.statuses?.findIndex((st) => st.name === status) : undefined
+  const statusIndex = status !== null ? prepOrderOf(schema).get(status) : undefined
   return { progress, progressRank: progressRank(progress, statusIndex), testStatus: subject?.status ?? null }
 }
 
@@ -709,8 +719,12 @@ export class QueryEngineService {
       const entry = entryId ? found.campaign.runs?.find((r) => r.entryId === entryId) : undefined
       if (entry) {
         if (entry.status !== 'pending') return { kind: 'campaign-run', campaignId, entryId: entry.entryId, repoPath: found.repoPath }
-        // GH71 — page de la campagne filtrée sur l'étape d'avancement de l'entrée.
-        const progress = await this.entryProgressFor(found.campaign, entry, found.repoPath, repos).catch(() => null)
+        // GH71 — page de la campagne filtrée sur l'étape d'avancement de l'entrée : celle de la ligne
+        // (même valeur que le widget), sinon recalculée.
+        const rowProgress = str(row.progress)
+        const progress = rowProgress && isProgressKey(rowProgress)
+          ? rowProgress
+          : await this.entryProgressFor(found.campaign, entry, found.repoPath, repos).catch(() => null)
         return progress
           ? { kind: 'campaign', id: campaignId, repoPath: found.repoPath, progress }
           : { kind: 'campaign', id: campaignId, repoPath: found.repoPath, status: 'pending' }

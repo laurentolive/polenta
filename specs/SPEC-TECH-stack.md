@@ -1,7 +1,7 @@
 # SPEC-TECH — Stack Technique
 
 > Référence parent : [SPEC.md](../SPEC.md)  
-> Dernière révision : 2026-10-11 (GH45 — mises à jour verrouillées, profils isolés)  
+> Dernière révision : 2026-10-13 (GH79 — principe données brutes / indicateurs projet, §1.1)  
 > ⚠️ Architecture cible : **client lourd Electron** — pas de serveur HTTP embarqué.
 
 ---
@@ -40,6 +40,43 @@ Remote git → source de vérité partagée entre utilisateurs
 - **Git commit = action utilisateur explicite.** Les services écrivent sur disque (`fs.writeFile`) sans committer. L'utilisateur committe via le bouton dédié.
 - **Pas de PostgreSQL, pas de SQLite obligatoire, pas de migrations.** Index en mémoire reconstruit depuis le working tree.
 - **Liens externes** : images et pièces jointes référencées par URL OneDrive dans les RICHTEXT — pas de stockage dans Polenta.
+
+### 1.1 Données brutes dans Polenta, indicateurs de suivi côté projet (décision du 2026-10-13, GH79)
+
+**Contexte.** Les statuts liés entre éléments (exigence ↔ test ↔ campagne) mènent vite à des
+besoins propres à chaque client (maturité, étapes d'avancement, etc.). Les coder dans Polenta
+ferait grossir le produit d'indicateurs que chaque client voudrait définir à sa façon.
+
+**Décision.**
+
+- **Polenta expose les données brutes du modèle** : objets, champs, liens, campagnes → entrées
+  → runs, historique (historique configurable des champs #77, historique daté des campagnes #73).
+- **Polenta calcule un indicateur seulement s'il sert à une de ses propres fonctions.**
+  Exemples actuels :
+  - la couverture test ↔ exigence (matrice de traçabilité, analyse d'impact, badges des vues) ;
+  - `needsRevalidation` (T172) ;
+  - l'approbation `isApproval` (verrouillage, éligibilité) ;
+  - la validation EARS et le contrôle des champs remplis (import en masse, résolution de conflits) ;
+  - la resynchronisation des copies de test des campagnes (GH68).
+- **Tout ce qui compose, agrège, interprète ou reconstruit des données pour le suivi vit côté
+  projet** : scripts et bibliothèque dans le repo du client (#74), livrés comme contenu de départ
+  modifiable, jamais comme code de Polenta. Exemples : la maturité, les étapes d'avancement,
+  l'état d'une campagne à une date, le dernier résultat.
+- **Les écrans de Polenta affichent les données brutes.** Un indicateur projet y apparaît par un
+  mécanisme générique (colonnes calculées définies par le projet, #70), pas par du code dédié.
+
+**Règle de décision** pour tout nouvel indicateur : *sert-il à une fonction de Polenta ?*
+Oui → calculé dans Polenta (service du main). Non → script côté projet, affiché via le
+mécanisme générique. La décision est notée dans la spec du ticket (`specs/GH{N}.md`).
+
+**Tickets concernés** : #74 (graphe de données JSON + scripts JS isolés + Vega-Lite), #78
+(prototype QuickJS / Vega-Lite avant le Design de #74), #73, #77, #70 — mis en cohérence le
+2026-10-13 ; #76 fermé à ce titre. Les indicateurs de suivi déjà livrés dans Polenta relèvent
+de l'ancien modèle et sortent de Polenta avec #74 : colonnes `progress` / `progressRank` /
+`testStatus` et règle `campaign-progress` (GH71), maturité des exigences (`maturity.util.ts`,
+colonnes `maturity*`, SPEC-DASHBOARDS §5). Restent dans Polenta `isEarsCompliant` et
+`isFilled` (import en masse, résolution de conflits) et la pastille « Non approuvé » (GH68,
+repose sur `isApproval`).
 
 ---
 

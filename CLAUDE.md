@@ -284,6 +284,21 @@ THEN THE <système> SHALL <action>
 
 ---
 
+## Principe données brutes / indicateurs projet (GH79)
+
+Polenta expose les **données brutes** du modèle (objets, champs, liens, campagnes → entrées →
+runs, historique) et ne calcule un indicateur **que s'il sert à une de ses propres fonctions**
+(couverture test ↔ exigence, `needsRevalidation`, approbation `isApproval`, validation EARS /
+champs remplis, resynchronisation des copies de campagne). Tout indicateur **de suivi**
+(maturité, étapes d'avancement, état d'une campagne à une date, dernier résultat…) vit **côté
+projet** : scripts et bibliothèque dans le repo du client, contenu de départ modifiable — jamais
+du code de Polenta. Les écrans de Polenta l'affichent via un mécanisme générique, pas du code dédié.
+
+**Règle de décision** pour tout nouvel indicateur : *sert-il à une fonction de Polenta ?* Oui →
+calculé dans Polenta ; non → script côté projet. Détail : `specs/SPEC-TECH-stack.md` §1.1.
+
+---
+
 ## Délégation aux subagents (maîtrise des coûts)
 
 Pour toute tâche **simple et mécanique** — recherche/grep sur plusieurs fichiers, lecture de statut, copie de fichiers, exécution d'un build/typecheck avec rapport des erreurs, vérification ponctuelle — déléguer via l'outil Agent en passant `model: "haiku"`, plutôt que d'exécuter la tâche directement dans la session principale (modèle haute performance) ou de laisser un subagent hériter de ce modèle par défaut.

@@ -590,7 +590,8 @@
       "renameReportMigrated": "Field(s) renamed: {{count}} object(s) migrated, value and history included.",
       "renameReportSkipped": "{{count}} object(s) not migrated — data already exists under the new name: {{ids}}",
       "renameReportFailed": "{{count}} migration failure(s): {{ids}}",
-      "renameReportError": "The schema was saved, but migrating the objects failed: {{error}}"
+      "renameReportError": "The schema was saved, but migrating the objects failed: {{error}}",
+      "renameReportSnapshots": "{{count}} campaign test copy(ies) migrated."
     },
     "page": {
       "title": "Data model",
@@ -621,6 +622,17 @@
       "unresolved": "unresolved",
       "noImplements": "No interface implementation declared.",
       "addImplements": "+ Declare an implementation"
+    },
+    "valueRename": {
+      "title": "Rename values?",
+      "intro": "Statuses or enum values were renamed. Objects of this type carrying the old value (with their history and the test copies in campaigns) can be migrated. Uncheck a line to skip it.",
+      "status": "Status",
+      "field": "Field {{field}}",
+      "objects": "{{count}} object(s) affected",
+      "collision": "{{count}} object(s) already carry \"{{value}}\": both will be merged",
+      "suiviNote": "Tracking queries and dashboards are not changed.",
+      "confirm": "Save and migrate",
+      "objectsUnknown": "Number of affected objects unavailable"
     }
   },
   "system": {

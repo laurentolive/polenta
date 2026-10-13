@@ -2224,6 +2224,8 @@ listés dans `SPEC-AUDIT.md`).
 | `schema:get` | `repoPath: string` | `ProjectSchema` |
 | `schema:save` | `repoPath: string, schema: ProjectSchema` | `void` |
 | `schema:move-element` | déplacement d'un `ObjectTypeDefinition` entre nœuds (T135) | `ProjectSchema` |
+| `schema:preview-value-renames` | **GH82** — `repoPath, objectTypeRef, renames: { target, from, to }[]` : objets du type portant l'ancienne / la nouvelle valeur, sans écriture | `ValueRenamePreview[]` |
+| `schema:rename-values` | **GH82** — mêmes paramètres : migre statuts / valeurs d'enum renommés (objets, historique, copies `testSnapshot`) | `FieldRenameResult` (+ `snapshots`) |
 | `schema:rename-fields` | **GH77** — `repoPath, objectTypeRef ('<nœud>::<type>'), renames: { from, to }[]` : après `schema:save`, migre `fields` et `history` des objets du type (au mieux par fichier) | `FieldRenameResult` (`migrated`, `skipped`, `failed`) |
 | `history:get` | **GH77** — `repoPath, kind ('requirement' \| 'test' \| 'campaign'), id` : historique effectif (entrées implicites comprises) | `ObjectHistory` |
 | `history:backfill` | **GH77** — `repoPath` : reprise de l'historique depuis git (fichiers réécrits, pas de commit) | `HistoryBackfillResult` |
@@ -2282,6 +2284,10 @@ un seul nœud vide, aucun type pré-configuré (voir §20.3).
   « Historiser le statut » (`trackStatusHistory`). Un champ renommé (nom d'origine mémorisé à
   l'ouverture, non persisté) déclenche `schema:rename-fields` après l'enregistrement ; bannière
   de compte rendu (objets migrés / non migrés / échecs) et invalidation de tout le cache.
+  **GH82** : statut renommé (nom d'origine de la ligne) ou valeur d'enum renommée (même position,
+  longueur inchangée) → `ValueRenameConfirmModal` avant l'enregistrement (lignes décochables,
+  nombre d'objets, collisions ; Annuler n'enregistre rien et laisse l'édition ouverte), puis
+  `schema:rename-values` ; compte rendu commun avec les renommages de champ.
 - **Onglet Liens** (`LiensTab.tsx`) — gestion des `linkTypes` du projet.
 
 **GH77 — Préférences du projet (`/preferences`)** : section « Historique des champs suivis », une

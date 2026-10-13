@@ -369,15 +369,55 @@ export class CampaignsService {
 
   /** GH77 — cf. `RequirementsService.renameFieldKeys`. */
   async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, c => renameFieldKeys(c, renames), result)
+  }
+
+  /** GH77/GH82 — cf. `RequirementsService.rewriteObjects`. */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string,
+    transform: (campaign: TestCampaign) => TestCampaign | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
     const matching = (await this.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef)
     for (const { id } of matching) {
       try {
         await this.enqueue(repoPath, id, async () => {
-          const renamed = renameFieldKeys(await this.get(repoPath, id), renames)
-          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
-          if (!renamed || renamed === 'conflict') return
-          await this.persist(repoPath, id, historyBase(renamed), renamed, { raw: true })
+          const next = transform(await this.get(repoPath, id))
+          if (next === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!next || next === 'conflict') return
+          await this.persist(repoPath, id, historyBase(next), next, { raw: true })
           result.migrated.push(id)
+        })
+      } catch (err) {
+        result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+  }
+
+  /**
+   * GH82 — réécrit les copies `testSnapshot` des entrées dont le test est de type `testTypeRef`,
+   * dans toutes les campagnes du repo (renommage d'un statut ou d'une valeur du type de test : seule
+   * la clé change, pas le contenu figé). Écriture brute ; la campagne compte parmi les objets migrés.
+   */
+  async rewriteSnapshots(
+    repoPath: string, testTypeRef: string, transform: (snapshot: TestCase) => TestCase | null, result: FieldRenameResult,
+  ): Promise<void> {
+    for (const { id } of await this.list(repoPath)) {
+      try {
+        await this.enqueue(repoPath, id, async () => {
+          const campaign = await this.get(repoPath, id)
+          let count = 0
+          const runs = campaign.runs.map(run => {
+            if (!run.testSnapshot || run.testSnapshot.objectTypeRef !== testTypeRef) return run
+            const next = transform(run.testSnapshot)
+            if (!next) return run
+            count++
+            return { ...run, testSnapshot: next }
+          })
+          if (count === 0) return
+          const updated = { ...campaign, runs }
+          await this.persist(repoPath, id, historyBase(updated), updated, { raw: true })
+          result.snapshots = (result.snapshots ?? 0) + count
+          if (!result.migrated.includes(id)) result.migrated.push(id)
         })
       } catch (err) {
         result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })

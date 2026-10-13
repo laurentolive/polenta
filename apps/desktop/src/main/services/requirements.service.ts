@@ -225,15 +225,26 @@ export class RequirementsService {
    * DTO public, comme `retargetObjectTypeRef`. Au mieux par fichier.
    */
   async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, o => renameFieldKeys(o, renames), result)
+  }
+
+  /**
+   * GH77/GH82 — réécrit chaque exigence du type par `transform` (renommage de champ ou de valeur),
+   * sous le verrou du fichier, en écriture brute : ni entrée d'historique, ni revalidation, ni
+   * `version`. `null` = inchangé ; `'conflict'` = non migré (listé). Au mieux par fichier.
+   */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string,
+    transform: (obj: Requirement) => Requirement | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
     for (const { id } of await this.index.findAll(repoPath, { type: objectTypeRef })) {
       try {
         await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
           const existing = await this.index.findById(repoPath, id)
-          const renamed = existing ? renameFieldKeys(existing, renames) : null
-          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
-          if (!renamed || renamed === 'conflict') return
-          // `before` = objet renommé : aucune valeur suivie ne change, pas d'entrée.
-          await this.persist(repoPath, repoPath, renamed, renamed, { raw: true })
+          const next = existing ? transform(existing) : null
+          if (next === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!next || next === 'conflict') return
+          await this.persist(repoPath, repoPath, next, next, { raw: true })
           result.migrated.push(id)
         })
       } catch (err) {

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, historyModeFor } from '@polenta/types'
-import type { FieldRename, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition } from '@polenta/types'
+import { HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, historyModeFor, renameValues } from '@polenta/types'
+import type { FieldRename, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition, ValueRename } from '@polenta/types'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 
 // ── Editable state types ──────────────────────────────────────────────────────
@@ -22,6 +22,8 @@ export interface EditableField {
 
 export interface EditableStatus {
   name: string; label: string; color: string; isApproval: boolean; isTerminal: boolean
+  /** GH82 — nom du statut tel que chargé du schéma (non persisté) : absent pour une ligne ajoutée. */
+  originalName?: string
   /** GH86 — clés du statut que l'éditeur n'affiche pas, réécrites telles quelles. */
   extra?: Record<string, unknown>
 }
@@ -78,6 +80,65 @@ export function fieldRenames(t: EditableObjectType): FieldRename[] {
     .map(f => ({ from: f.originalName!, to: f.name }))
 }
 
+const isEnum = (type: SchemaFieldType | undefined) => type === 'enum' || type === 'multi_enum'
+const splitValues = (values: string) => values.split(',').map(v => v.trim()).filter(Boolean)
+
+/**
+ * GH82 — statuts et valeurs d'enum renommés depuis le chargement du type :
+ * - statut : ligne dont le nom d'origine diffère du nom courant (une ligne supprimée puis recréée
+ *   n'a pas de nom d'origine) ;
+ * - valeur : champ existant, `enum` / `multi_enum` avant et après, même nombre de valeurs — chaque
+ *   position modifiée dont l'ancienne valeur a disparu de la liste et dont la nouvelle n'y figurait
+ *   pas. Réordonner (ou échanger deux valeurs) ne propose donc rien : la saisie ne permet pas de le
+ *   distinguer d'un renommage croisé, qui corromprait les données. Un ajout ou un retrait rend la
+ *   saisie ambiguë : rien n'est proposé non plus.
+ * La cible d'une valeur est le nom *courant* du champ (un renommage de champ est migré avant).
+ */
+export function valueRenames(updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined): ValueRename[] {
+  const out: ValueRename[] = []
+  for (const s of updated.statuses) {
+    if (s.originalName && s.name && s.originalName !== s.name) out.push({ target: { kind: 'status' }, from: s.originalName, to: s.name })
+  }
+  for (const f of updated.fields) {
+    const before = f.originalName ? original?.fields.find(o => o.name === f.originalName) : undefined
+    if (!before || !isEnum(before.type) || !isEnum(f.type) || !f.name) continue
+    const oldValues = before.values ?? []
+    const newValues = splitValues(f.values)
+    if (oldValues.length !== newValues.length) continue
+    oldValues.forEach((from, i) => {
+      const to = newValues[i]
+      if (!to || to === from || newValues.includes(from) || oldValues.includes(to)) return
+      out.push({ target: { kind: 'field', field: f.name, multi: f.type === 'multi_enum' }, from, to })
+    })
+  }
+  return out
+}
+
+/** GH82 — `default` d'un champ portant une valeur renommée (renommages retenus) : remplacé —
+ *  élément de la liste pour un `multi_enum`. */
+export function withRenamedDefaults(t: EditableObjectType, renames: ValueRename[]): EditableObjectType {
+  return {
+    ...t,
+    fields: t.fields.map(f => {
+      const mine = renames.filter(x => x.target.kind === 'field' && x.target.field === f.name)
+      if (mine.length === 0 || !f.default) return f
+      const renamed = renameValues({ status: '', fields: { [f.name]: f.default } }, mine)
+      return renamed ? { ...f, default: String(renamed.fields[f.name]) } : f
+    }),
+  }
+}
+
+/** GH82 — renommages ciblant le nom d'*origine* des champs (objets sur disque, avant la migration
+ *  d'un renommage de champ de la même édition) : pour l'aperçu. */
+export function withOriginalFieldNames(t: EditableObjectType, renames: ValueRename[]): ValueRename[] {
+  return renames.map(r => {
+    if (r.target.kind !== 'field') return r
+    const field = r.target.field
+    const original = t.fields.find(f => f.name === field)?.originalName ?? field
+    return { ...r, target: { ...r.target, field: original } }
+  })
+}
+
 export function editableToField(f: EditableField): SchemaField {
   const result: SchemaField = { name: f.name, type: f.type }
   if (f.label) result.label = f.label
@@ -92,6 +153,7 @@ export function editableToField(f: EditableField): SchemaField {
 export function statusToEditable(s: SchemaStatus): EditableStatus {
   return {
     name: s.name, label: s.label ?? '', color: s.color ?? '', isApproval: s.isApproval ?? false, isTerminal: s.isTerminal ?? false,
+    originalName: s.name,
     ...withExtra(extraKeys(s, STATUS_EDITOR_KEYS)),
   }
 }

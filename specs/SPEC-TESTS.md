@@ -616,7 +616,9 @@ tests de la campagne, exécution, relecture d'un run, exports plan/rapport xlsx/
 `testSnapshot` en priorité, indépendamment des modifications faites au test source par la suite
 (changement de statut, de contenu, y compris après clôture de la campagne) — une campagne fermée
 reste un enregistrement figé. **GH77** : la copie ne porte jamais `history` (retiré à l'ajout, au
-report et à la resynchronisation GH68) — l'historique reste celui du test source. Un id qui ne résout plus au moment de l'ajout (test supprimé entre
+report et à la resynchronisation GH68) — l'historique reste celui du test source. **GH82** :
+renommer un statut ou une valeur d'enum du type de test migre aussi ces clés dans les copies (seule
+la clé change, pas le contenu figé) — un statut d'approbation renommé reste reconnu (GH68). Un id qui ne résout plus au moment de l'ajout (test supprimé entre
 l'affichage du panneau et l'appel) est simplement omis de la copie plutôt que de faire échouer tout
 l'ajout groupé ; l'entrée correspondante se comporte alors comme une entrée pré-T49 (voir
 compatibilité ascendante ci-dessous).

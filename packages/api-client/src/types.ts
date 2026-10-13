@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -366,6 +366,10 @@ export interface ApiClient {
     moveElement(repoPath: string, dto: MoveElementDto): Promise<MoveElementResult>
     /** GH77 — migre valeur et historique des champs renommés sur les objets du type (après `save`). */
     renameFields(repoPath: string, objectTypeRef: string, renames: FieldRename[]): Promise<FieldRenameResult>
+    /** GH82 — aperçu sans écriture : objets du type portant l'ancienne / la nouvelle valeur. */
+    previewValueRenames(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<ValueRenamePreview[]>
+    /** GH82 — migre statuts / valeurs d'enum renommés (objets, historique, copies de campagne). */
+    renameValues(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<FieldRenameResult>
     /** Drops the main-process in-memory cache for `repoPath` so the next `get()` re-reads schema.yaml from disk. */
     invalidate(repoPath: string): Promise<void>
   }

@@ -264,6 +264,9 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 
 Toutes les transitions entre statuts sont autorisées — il n'y a pas de graphe de transitions à définir.
 
+**Renommage (GH82)** : renommer un statut, ou une valeur d'un champ `enum` / `multi_enum`, dans
+l'éditeur de schéma migre les objets existants après confirmation — voir SPEC-REQ §4.4.
+
 ### 3.4 Paramètre `validator`
 
 | Valeur | Comportement |

@@ -126,15 +126,23 @@ export class TestsService {
 
   /** GH77 — cf. `RequirementsService.renameFieldKeys`. */
   async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, o => renameFieldKeys(o, renames), result)
+  }
+
+  /** GH77/GH82 — cf. `RequirementsService.rewriteObjects`. */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string,
+    transform: (obj: TestCase) => TestCase | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
     const matching = (await this.testsIndex.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef)
     for (const { id } of matching) {
       try {
         await withKeyLock(`${repoPath}::tests/${id}`, async () => {
           const existing = await this.testsIndex.findById(repoPath, id)
-          const renamed = existing ? renameFieldKeys(existing, renames) : null
-          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
-          if (!renamed || renamed === 'conflict') return
-          await this.persist(repoPath, repoPath, renamed, renamed, { raw: true })
+          const next = existing ? transform(existing) : null
+          if (next === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!next || next === 'conflict') return
+          await this.persist(repoPath, repoPath, next, next, { raw: true })
           result.migrated.push(id)
         })
       } catch (err) {

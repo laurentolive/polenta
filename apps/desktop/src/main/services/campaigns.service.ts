@@ -364,8 +364,8 @@ export class CampaignsService {
 
   /**
    * Construit les nouvelles entrées `CampaignTestRun` pour `newTestCaseIds`, avec un
-   * `entryId` unique par instance (`${testCaseId}-${n}`, n = position parmi les instances
-   * de ce testCaseId, existantes + nouvellement ajoutées dans le même appel), et copie
+   * `entryId` unique par instance (`${testCaseId}-${n}`, n = plus grand suffixe de ce testCaseId
+   * parmi les instances existantes et celles ajoutées dans le même appel, + 1 — GH66), et copie
    * complète du test au moment de l'ajout dans `testSnapshot` (T49) — fige le contenu
    * indépendamment des modifications ultérieures de la source.
    */
@@ -380,8 +380,7 @@ export class CampaignsService {
      *  `single` : une seule instance sans exigence, sans itérer. */
     opts: { allowExisting?: boolean; single?: boolean } = {},
   ): CampaignTestRun[] {
-    const counts = new Map<string, number>()
-    for (const r of existingRuns) counts.set(r.testCaseId, (counts.get(r.testCaseId) ?? 0) + 1)
+    const counts = lastEntrySuffixes(existingRuns)
 
     const newRun = (tcId: string, given: Record<string, string> | undefined, requirementId?: string) =>
       this.makeRun(counts, tcId, given, requirementId, snapshots, previews)
@@ -452,8 +451,7 @@ export class CampaignsService {
     const snapshots = await this.snapshotsFor(repoPath, picked.map(p => p.source.testCaseId))
     const previews = await this.previewsFor(repoPath, snapshots, baselineRef, workspaceDir)
 
-    const counts = new Map<string, number>()
-    for (const r of existingRuns) counts.set(r.testCaseId, (counts.get(r.testCaseId) ?? 0) + 1)
+    const counts = lastEntrySuffixes(existingRuns)
     const keys = new Set(existingRuns.map(r => carryKey(r.testCaseId, r.requirementId, r.paramValues)))
     const newRuns: CampaignTestRun[] = []
 
@@ -493,8 +491,8 @@ export class CampaignsService {
   }
 
   /**
-   * Nouvelle entrée `pending` d'un test : `entryId` unique (`${testCaseId}-${n}`, `counts` = nombre
-   * d'instances par test, mis à jour), copie du test (T49), paramètres résolus (T171) et valeurs
+   * Nouvelle entrée `pending` d'un test : `entryId` unique (`${testCaseId}-${n}`, `counts` = plus
+   * grand suffixe déjà attribué par test, mis à jour — cf. `lastEntrySuffixes`), copie du test (T49), paramètres résolus (T171) et valeurs
    * `{req.<champ>}` de l'exigence de l'instance (T179). Partagé par `buildNewRuns` et
    * `buildCarriedRuns` (GH64).
    */
@@ -604,6 +602,25 @@ export class CampaignsService {
   private nextCampaignId(repoPath: string): Promise<string> {
     return nextCounterId(this.gitService, repoPath, 'CAMP', 'campaigns')
   }
+}
+
+/**
+ * GH66 — plus grand suffixe `n` des `entryId` (`${testCaseId}-${n}`) par test. Numéroter à partir
+ * du nombre d'instances redonnerait, après un retrait, un `entryId` encore porté par une autre
+ * instance. Un `entryId` hors de ce format compte comme sa position parmi les instances du test
+ * (schéma du backfill `ensureEntryIds`).
+ */
+function lastEntrySuffixes(runs: CampaignTestRun[]): Map<string, number> {
+  const last = new Map<string, number>()
+  const seen = new Map<string, number>()
+  for (const r of runs) {
+    const position = (seen.get(r.testCaseId) ?? 0) + 1
+    seen.set(r.testCaseId, position)
+    const suffix = r.entryId?.startsWith(`${r.testCaseId}-`) ? r.entryId.slice(r.testCaseId.length + 1) : ''
+    const n = /^\d+$/.test(suffix) ? Number(suffix) : position
+    last.set(r.testCaseId, Math.max(last.get(r.testCaseId) ?? 0, n))
+  }
+  return last
 }
 
 /**

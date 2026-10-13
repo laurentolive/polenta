@@ -265,3 +265,40 @@ describe('carryKey (GH64)', () => {
     expect(carryKey('T', undefined, { a: '1' })).not.toBe(carryKey('T', undefined, { a: '2' }))
   })
 })
+
+// GH66 — après le retrait d'une instance, une nouvelle instance du même test ne reprend jamais
+// un entryId encore porté : numérotation depuis le plus grand suffixe, pas le nombre d'instances.
+describe('CampaignsService — entryId après retrait (GH66)', () => {
+  beforeEach(async () => {
+    await writeCampaign({
+      id: 'CAMP-0003', runs: [
+        run('TEST-0002-1', { paramValues: { tension: '12V' } }),
+        run('TEST-0002-2', { paramValues: { tension: '24V' } }),
+        run('TEST-0003-1', { requirementId: 'SYS-0001' }),
+        run('TEST-0003-2', { requirementId: 'SYS-0002' }),
+      ],
+    })
+  })
+
+  it('duplicata après retrait : suffixe suivant le plus grand', async () => {
+    await service.removeEntries(dir, 'CAMP-0003', ['TEST-0002-1'])
+    const c = await service.duplicateTest(dir, 'CAMP-0003', 'TEST-0002', { tension: '48V' })
+    expect(c.runs.filter(r => r.testCaseId === 'TEST-0002').map(r => r.entryId)).toEqual(['TEST-0002-2', 'TEST-0002-3'])
+  })
+
+  it('ajout groupé d\'un test itérant après retrait : pas de doublon', async () => {
+    await service.removeEntries(dir, 'CAMP-0003', ['TEST-0003-1'])
+    const c = await service.addTests(dir, 'CAMP-0003', ['TEST-0003'])
+    expect(c.runs.filter(r => r.testCaseId === 'TEST-0003').map(r => [r.entryId, r.requirementId])).toEqual([
+      ['TEST-0003-2', 'SYS-0002'], ['TEST-0003-3', 'SYS-0001'],
+    ])
+  })
+
+  it('report après retrait : pas de doublon', async () => {
+    await service.removeEntries(dir, 'CAMP-0003', ['TEST-0002-1'])
+    const c = await service.addTests(dir, 'CAMP-0003', [], undefined, undefined, undefined, [
+      { campaignId: 'CAMP-0001', entryId: 'TEST-0002-1', paramValues: { tension: '12V' } },
+    ])
+    expect(c.runs.filter(r => r.testCaseId === 'TEST-0002').map(r => r.entryId)).toEqual(['TEST-0002-2', 'TEST-0002-3'])
+  })
+})

@@ -1034,7 +1034,9 @@
         "status": "Entry status",
         "executedAt": "Executed at",
         "executedDay": "Execution day",
-        "executedBy": "Executed by"
+        "executedBy": "Executed by",
+        "progress": "Progress",
+        "testStatus": "Test status"
       }
     }
   },

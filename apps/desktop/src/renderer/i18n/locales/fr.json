@@ -1034,7 +1034,9 @@
         "status": "Statut de l'entrée",
         "executedAt": "Exécutée le",
         "executedDay": "Jour d'exécution",
-        "executedBy": "Exécutée par"
+        "executedBy": "Exécutée par",
+        "progress": "Avancement",
+        "testStatus": "Statut du test"
       }
     }
   },

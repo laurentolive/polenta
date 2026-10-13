@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import type { ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
+import { renameFieldKeys } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
 import type { CreateRequirementDto, UpdateRequirementDto, TransitionRequirementDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService, RequirementFilters } from './requirements-index.service'
@@ -212,6 +213,29 @@ export class RequirementsService {
       }
     }
     return { succeeded, failed }
+  }
+
+  /**
+   * GH77 — renommage de champs dans l'éditeur de schéma : déplace valeur et historique sur chaque
+   * exigence du type (`renameFieldKeys`), sans entrée d'historique. Méthode dédiée plutôt que le
+   * DTO public, comme `retargetObjectTypeRef`. Au mieux par fichier.
+   */
+  async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    for (const { id } of await this.index.findAll(repoPath, { type: objectTypeRef })) {
+      try {
+        await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+          const existing = await this.index.findById(repoPath, id)
+          const renamed = existing ? renameFieldKeys(existing, renames) : null
+          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!renamed || renamed === 'conflict') return
+          // `before` = objet renommé : aucune valeur suivie ne change, pas d'entrée.
+          await this.persist(repoPath, repoPath, renamed, renamed)
+          result.migrated.push(id)
+        })
+      } catch (err) {
+        result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────

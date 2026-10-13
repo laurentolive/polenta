@@ -39,6 +39,7 @@ import type { ExportService } from '../services/export.service'
 import type { ParametersService } from '../services/parameters.service'
 import type { RevalidationService } from '../services/revalidation.service'
 import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } from '../services/history.service'
+import type { FieldRenameService } from '../services/field-rename.service'
 import type {
   CreateRequirementDto,
   UpdateRequirementDto,
@@ -105,6 +106,7 @@ export interface Container {
   parameters: ParametersService
   revalidation: RevalidationService
   history: HistoryService
+  fieldRename: FieldRenameService
   appSettings: AppSettingsService
   exportTemplateLibrary: ExportTemplateLibrary
   /** GH45 — configuration machine de l'hôte (cf. HostContext.machineConfig). */
@@ -414,6 +416,16 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   r.handle('schema:get', (_e, repoPath: string) => c.schema.get(repoPath))
   r.handle('schema:save', (_e, repoPath: string, schema: unknown) =>
     c.schema.save(repoPath, schema as import('@polenta/types').ProjectSchema))
+  // GH77 — après l'enregistrement d'un type dont des champs ont été renommés : migre valeur et historique.
+  r.handle('schema:rename-fields', (_e, repoPath: string, objectTypeRef: string, renames: unknown) => {
+    if (typeof objectTypeRef !== 'string' || !objectTypeRef.includes('::')) {
+      throw new Error('schema:rename-fields — objectTypeRef must be "<node>::<type>"')
+    }
+    if (!Array.isArray(renames) || !renames.every(r => typeof r?.from === 'string' && typeof r?.to === 'string')) {
+      throw new Error('schema:rename-fields — renames must be an array of { from, to } strings')
+    }
+    return c.fieldRename.renameFields(repoPath, objectTypeRef, renames as import('@polenta/types').FieldRename[])
+  })
   // Drops the in-memory cache entry so the next `schema:get` re-reads schema.yaml from disk —
   // needed because SchemaService.get() otherwise serves the cached copy forever within a
   // session, even after an out-of-band edit to the file (manual edit, git checkout/pull…).

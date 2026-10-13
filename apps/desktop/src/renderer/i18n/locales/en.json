@@ -476,7 +476,13 @@
       "cancelChangesTitle": "Discard changes?",
       "cancelChangesBody": "The changes will be lost. Are you sure?",
       "confirmCancel": "Yes, discard",
-      "descriptionFieldLabel": "Description"
+      "descriptionFieldLabel": "Description",
+      "colHistory": "Hist.",
+      "colHistoryTitle": "Track changes to this field",
+      "historyValue": "Track: value, date and author on every change",
+      "historyEvent": "Track: date and author on every change (the content is already in git)",
+      "historyNotTrackable": "This field cannot be tracked",
+      "trackStatusHistory": "Track status history (value, date and author on every change)"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -577,7 +583,11 @@
       "moveElementStale": "This element changed before the move completed — please try dragging it again.",
       "nameAlreadyUsed": "This name is already used in this repo or workspace.",
       "schemaLoadingForLocal": "This repo's schema is still loading — try again in a moment.",
-      "notAWorkspace": "This directory is not (or no longer) a {{appName}} workspace."
+      "notAWorkspace": "This directory is not (or no longer) a {{appName}} workspace.",
+      "renameReportMigrated": "Field(s) renamed: {{count}} object(s) migrated, value and history included.",
+      "renameReportSkipped": "{{count}} object(s) not migrated — data already exists under the new name: {{ids}}",
+      "renameReportFailed": "{{count}} migration failure(s): {{ids}}",
+      "renameReportError": "The schema was saved, but migrating the objects failed: {{error}}"
     },
     "page": {
       "title": "Data model",

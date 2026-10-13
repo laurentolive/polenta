@@ -476,7 +476,13 @@
       "cancelChangesTitle": "Annuler les modifications ?",
       "cancelChangesBody": "Les modifications seront perdues. Êtes-vous sûr ?",
       "confirmCancel": "Oui, annuler",
-      "descriptionFieldLabel": "Description"
+      "descriptionFieldLabel": "Description",
+      "colHistory": "Hist.",
+      "colHistoryTitle": "Historiser les changements de ce champ",
+      "historyValue": "Historiser : valeur, date et auteur à chaque changement",
+      "historyEvent": "Historiser : date et auteur à chaque changement (le contenu est déjà dans git)",
+      "historyNotTrackable": "Ce champ ne peut pas être historisé",
+      "trackStatusHistory": "Historiser le statut (valeur, date et auteur à chaque changement)"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -577,7 +583,11 @@
       "moveElementStale": "Cet élément a changé avant la fin du déplacement — merci de recommencer le glisser-déposer.",
       "nameAlreadyUsed": "Ce nom est déjà utilisé dans ce repo ou ce workspace.",
       "schemaLoadingForLocal": "Le schéma de ce repo est encore en cours de chargement — réessayez dans un instant.",
-      "notAWorkspace": "Ce répertoire n'est pas (ou plus) un workspace {{appName}}."
+      "notAWorkspace": "Ce répertoire n'est pas (ou plus) un workspace {{appName}}.",
+      "renameReportMigrated": "Champ(s) renommé(s) : {{count}} objet(s) migré(s), valeur et historique compris.",
+      "renameReportSkipped": "{{count}} objet(s) non migré(s) — une donnée existe déjà sous le nouveau nom : {{ids}}",
+      "renameReportFailed": "{{count}} échec(s) de migration : {{ids}}",
+      "renameReportError": "Le schéma est enregistré, mais la migration des objets a échoué : {{error}}"
     },
     "page": {
       "title": "Modèle de données",

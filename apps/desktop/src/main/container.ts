@@ -33,6 +33,7 @@ import { MergeResolutionService } from './services/merge-resolution.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
 import { HistoryService } from './services/history.service'
+import { FieldRenameService } from './services/field-rename.service'
 import type { Container } from './ipc/index'
 import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
@@ -84,6 +85,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
+  // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
+  const fieldRename = new FieldRenameService(requirements, tests, campaigns)
   const baseline = new BaselineService()
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree, campaigns)
   const dashboards = new DashboardsService(git)
@@ -137,6 +140,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     parameters,
     revalidation,
     history,
+    fieldRename,
     appSettings,
     machineConfig: host.machineConfig,
     forgeConfig,

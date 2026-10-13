@@ -60,6 +60,7 @@ export function createIpcClient(
       get: (p) => invoke('schema:get', p),
       save: (p, schema) => invoke('schema:save', p, schema),
       moveElement: (p, dto) => invoke('schema:move-element', p, dto),
+      renameFields: (p, ref, renames) => invoke('schema:rename-fields', p, ref, renames),
       invalidate: (p) => invoke('schema:invalidate', p),
     },
     tree: {

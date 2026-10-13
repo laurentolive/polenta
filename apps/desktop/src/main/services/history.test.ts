@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyHistory, effectiveHistory, hasHistoryGap, trackedKeys, withoutHistory } from '@polenta/types'
+import { applyHistory, effectiveHistory, hasHistoryGap, renameFieldKeys, trackedKeys, withoutHistory } from '@polenta/types'
 import type { HistoryCarrier, ObjectTypeDefinition } from '@polenta/types'
 
 // GH77 — logique pure de l'historique (scénarios P1–P17 de specs/GH77-tests.md).
@@ -211,4 +211,43 @@ describe('effectiveHistory', () => {
 it('P17 — withoutHistory retire la clé seulement', () => {
   const o = { id: 'T-1', status: 'draft', fields: { a: 1 }, history: { status: [] } }
   expect(withoutHistory(o)).toEqual({ id: 'T-1', status: 'draft', fields: { a: 1 } })
+})
+
+describe('renameFieldKeys (GH77 sprint 2)', () => {
+  const o = obj('draft', { a: 1, keep: 2, b: 3 }, { status: [], a: [{ value: 1, at: 'x' }] })
+
+  it('déplace valeur et historique, ordre des clés conservé', () => {
+    const out = renameFieldKeys(o, [{ from: 'a', to: 'z' }])
+    expect(out).not.toBe('conflict')
+    const r = out as HistoryCarrier
+    expect(Object.keys(r.fields)).toEqual(['z', 'keep', 'b'])
+    expect(r.history).toEqual({ status: [], z: [{ value: 1, at: 'x' }] })
+  })
+
+  it('R2 — nouveau nom déjà porteur d\'une donnée : conflit', () => {
+    expect(renameFieldKeys(o, [{ from: 'a', to: 'b' }])).toBe('conflict')
+  })
+
+  it('R6 — chaîne a→b, b→c appliquée d\'un coup', () => {
+    const r = renameFieldKeys(o, [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }]) as HistoryCarrier
+    expect(r.fields).toEqual({ b: 1, keep: 2, c: 3 })
+    expect(Object.keys(r.history ?? {})).toEqual(['status', 'b'])
+  })
+
+  it('champ nommé status renommé : l\'historique du statut ne bouge pas', () => {
+    const withStatusField = obj('draft', { status: 'x' }, { status: [{ value: 'draft', at: 'x' }] })
+    const r = renameFieldKeys(withStatusField, [{ from: 'status', to: 'etat' }]) as HistoryCarrier
+    expect(r.fields).toEqual({ etat: 'x' })
+    expect(r.history).toEqual({ status: [{ value: 'draft', at: 'x' }] })
+    expect(renameFieldKeys(obj('draft', { a: 1 }, { status: [] }), [{ from: 'a', to: 'status' }])).not.toBe('conflict')
+  })
+
+  it('noms hérités du prototype (constructor…) : ni conflit ni faux renommage', () => {
+    expect(renameFieldKeys(o, [{ from: 'constructor', to: 'x' }])).toBeNull()
+    expect(renameFieldKeys(o, [{ from: 'a', to: 'toString' }])).not.toBe('conflict')
+  })
+
+  it('aucune donnée sous l\'ancien nom : null', () => {
+    expect(renameFieldKeys(o, [{ from: 'absent', to: 'x' }])).toBeNull()
+  })
 })

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import type { ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
+import { renameFieldKeys } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -121,6 +122,25 @@ export class TestsService {
     // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).
     if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
     return updated
+  }
+
+  /** GH77 — cf. `RequirementsService.renameFieldKeys`. */
+  async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    const matching = (await this.testsIndex.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef)
+    for (const { id } of matching) {
+      try {
+        await withKeyLock(`${repoPath}::tests/${id}`, async () => {
+          const existing = await this.testsIndex.findById(repoPath, id)
+          const renamed = existing ? renameFieldKeys(existing, renames) : null
+          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!renamed || renamed === 'conflict') return
+          await this.persist(repoPath, repoPath, renamed, renamed)
+          result.migrated.push(id)
+        })
+      } catch (err) {
+        result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
   }
 
   /**

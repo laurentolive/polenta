@@ -247,3 +247,47 @@ export function withoutHistory<T extends { history?: unknown }>(obj: T): Omit<T,
   const { history: _history, ...rest } = obj
   return rest
 }
+
+/** GH77 — renommage d'un champ dans l'éditeur de schéma (spec §6.3). */
+export interface FieldRename {
+  from: string
+  to: string
+}
+
+/**
+ * Déplace `fields.<from>` → `fields.<to>` et `history.<from>` → `history.<to>` pour chaque
+ * renommage, tous appliqués d'un coup sur l'objet d'origine (une chaîne `a→b`, `b→c` est donc
+ * correcte), ordre des clés conservé. Aucune entrée d'historique : le nom change, pas la valeur.
+ * Renvoie `null` si l'objet n'a aucune donnée sous un ancien nom, `'conflict'` si un nouveau nom
+ * porte déjà une donnée qui n'est pas elle-même renommée (valeur orpheline d'un ancien champ).
+ */
+export function renameFieldKeys<T extends HistoryCarrier>(obj: T, renames: FieldRename[]): T | 'conflict' | null {
+  const fields = obj.fields ?? {}
+  const history = obj.history ?? {}
+  // `history.status` est l'historique du statut, jamais celui d'un champ nommé `status` (qui n'est
+  // pas suivi) : il ne bouge pas et ne fait pas conflit.
+  const inHistory = (k: string) => k !== STATUS_HISTORY_KEY && Object.hasOwn(history, k)
+  const has = (k: string) => Object.hasOwn(fields, k) || inHistory(k)
+  const active = renames.filter(r => r.from !== r.to && has(r.from))
+  if (active.length === 0) return null
+  const moved = new Map(active.map(r => [r.from, r.to]))
+  if (active.some(r => has(r.to) && !moved.has(r.to))) return 'conflict'
+  const historyMoves = new Map([...moved].filter(([from, to]) => from !== STATUS_HISTORY_KEY && to !== STATUS_HISTORY_KEY))
+  const rename = <V>(record: Record<string, V>, map: Map<string, string>): Record<string, V> =>
+    Object.fromEntries(Object.entries(record).map(([k, v]) => [map.get(k) ?? k, v]))
+  const out: T = { ...obj, fields: rename(fields, moved) }
+  if (obj.history) out.history = rename(history, historyMoves)
+  return out
+}
+
+/** Compte rendu d'un renommage de champ sur les objets d'un type (au mieux par fichier). */
+export interface FieldRenameResult {
+  migrated: string[]
+  /** Objet non modifié : une donnée existe déjà sous le nouveau nom. */
+  skipped: Array<{ id: string; reason: 'target_exists' }>
+  failed: Array<{ id: string; error: string }>
+}
+
+export function emptyFieldRenameResult(): FieldRenameResult {
+  return { migrated: [], skipped: [], failed: [] }
+}

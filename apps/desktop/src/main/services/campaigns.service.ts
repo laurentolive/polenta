@@ -4,8 +4,8 @@ import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
 import type { HistoryService } from './history.service'
-import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus, withoutHistory } from '@polenta/types'
-import type { HistoryCarrier } from '@polenta/types'
+import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus, renameFieldKeys, withoutHistory } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, HistoryCarrier } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 
@@ -356,6 +356,24 @@ export class CampaignsService {
 
       return this.persist(repoPath, campaignId, original, campaign)
     })
+  }
+
+  /** GH77 — cf. `RequirementsService.renameFieldKeys`. */
+  async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    const matching = (await this.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef)
+    for (const { id } of matching) {
+      try {
+        await this.enqueue(repoPath, id, async () => {
+          const renamed = renameFieldKeys(await this.get(repoPath, id), renames)
+          if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!renamed || renamed === 'conflict') return
+          await this.persist(repoPath, id, historyBase(renamed), renamed)
+          result.migrated.push(id)
+        })
+      } catch (err) {
+        result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
   }
 
   /**

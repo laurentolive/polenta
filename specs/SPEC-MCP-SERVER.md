@@ -217,6 +217,22 @@ filters?: { component?: string; level?: string }
 Réutilise `CampaignsService.list(repoPath, component?, level?)` tel quel. Même
 plafonnement/troncature que ci-dessus.
 
+Les trois listes renvoient `history` tel qu'il est écrit dans les fichiers (GH77).
+
+#### `get_history` (GH77)
+
+```ts
+{ kind: 'requirement' | 'test' | 'campaign'; id: string }
+```
+
+Historique effectif d'un objet (`readEffectiveHistory`, même calcul que le canal `history:get`) :
+une liste par champ suivi, avec l'entrée `implicit: true` quand la valeur courante diffère de la
+dernière entrée. Données brutes — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77).
+
+**Écritures MCP et historique (GH77)** : `createMcpContainer` injecte un acteur
+`{ by: --user ?? POLENTA_USER ?? 'local', source: 'mcp' }` dans `HistoryService` — toute création
+ou modification par un tool porte `source: mcp`.
+
 ### 4.2 Import massif (`tools/bulk-import.tools.ts`)
 
 `bulk_import_requirements` / `bulk_import_tests` / `bulk_import_campaigns` :
@@ -266,6 +282,9 @@ plafonnement/troncature que ci-dessus.
 `BulkEntryError` : `{ index: number; reason: string; field?: string }`.
 
 ### 4.3 Mutation de schéma (`tools/schema-mutation.tools.ts`)
+
+**GH77** : `add_object_type` accepte `trackStatusHistory`, `add_field` (et les champs d'un
+`add_object_type`) `trackHistory` — clés auparavant retirées par la validation zod.
 
 Un tool par méthode ciblée de `SchemaService` — chacune : `get()` → valide (lève
 `SchemaValidationError` AVANT tout `save()` si un invariant est violé) → construit une

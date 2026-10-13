@@ -2224,11 +2224,15 @@ listés dans `SPEC-AUDIT.md`).
 | `schema:get` | `repoPath: string` | `ProjectSchema` |
 | `schema:save` | `repoPath: string, schema: ProjectSchema` | `void` |
 | `schema:move-element` | déplacement d'un `ObjectTypeDefinition` entre nœuds (T135) | `ProjectSchema` |
+| `schema:rename-fields` | **GH77** — `repoPath, objectTypeRef ('<nœud>::<type>'), renames: { from, to }[]` : après `schema:save`, migre `fields` et `history` des objets du type (au mieux par fichier) | `FieldRenameResult` (`migrated`, `skipped`, `failed`) |
+| `history:get` | **GH77** — `repoPath, kind ('requirement' \| 'test' \| 'campaign'), id` : historique effectif (entrées implicites comprises) | `ObjectHistory` |
+| `history:backfill` | **GH77** — `repoPath` : reprise de l'historique depuis git (fichiers réécrits, pas de commit) | `HistoryBackfillResult` |
 
 `schema:save` ne régénère **aucun** fichier dérivé de type `.gitmodules` — c'est le seul écart avec
 la version précédente de cette section, à ne pas réintroduire dans une future correction.
 
-`ApiClient.schema` : `get(repoPath)` + `save(repoPath, schema)` + `moveElement(...)`.
+`ApiClient.schema` : `get(repoPath)` + `save(repoPath, schema)` + `moveElement(...)` + `renameFields(...)` (GH77).
+`ApiClient.history` : `get(repoPath, kind, id)` + `backfill(repoPath)` (GH77).
 
 ### 20.5 Formulaires dynamiques (renderer)
 
@@ -2273,7 +2277,18 @@ un seul nœud vide, aucun type pré-configuré (voir §20.3).
   imbrication de composants locaux à profondeur illimitée (T123), rôles/interfaces exposés
   (`roles`/`implements`, T123), collapse/expand (T131). Voir `SPEC-TEMPLATES.md` §3-3b pour le détail
   fonctionnel complet.
+  **GH77** : dans la configuration d'un type, colonne « Hist. » des champs (`trackHistory`, grisée
+  pour un champ nommé `status`, infobulle « valeur » / « date et auteur seulement ») et case
+  « Historiser le statut » (`trackStatusHistory`). Un champ renommé (nom d'origine mémorisé à
+  l'ouverture, non persisté) déclenche `schema:rename-fields` après l'enregistrement ; bannière
+  de compte rendu (objets migrés / non migrés / échecs) et invalidation de tout le cache.
 - **Onglet Liens** (`LiensTab.tsx`) — gestion des `linkTypes` du projet.
+
+**GH77 — Préférences du projet (`/preferences`)** : section « Historique des champs suivis », une
+ligne par repo du workspace, bouton « Reconstruire depuis git » (confirmation en ligne, compte
+rendu `objets complétés / entrées ajoutées / fichiers ignorés`). Section « Historique » en lecture
+seule dans le détail exigence / test / campagne et la Vue Système › Édition
+(`components/history/HistorySection.tsx`) — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77).
 
 [Enregistrer] → `api.schema.save(repoPath, …)` → invalide le cache TanStack Query `['schema',
 repoPath]`.

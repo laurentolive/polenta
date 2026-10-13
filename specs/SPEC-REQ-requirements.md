@@ -43,6 +43,7 @@ Un type est défini par :
 | `category` | enum | Toujours `requirement` pour ce module |
 | `fields` | list | Champs personnalisés — voir §3 |
 | `statuses` | list | Statuts — voir §4 |
+| `trackStatusHistory` | bool? | **GH77** — historiser le statut (`history.status`, §4.4). Absent = `true` ; écrit seulement quand `false`. Vaut aussi pour les campagnes |
 
 **Référence croisée :** un objet exigence se référence par son `objectTypeRef` au format `"nœud::nom-type"` (ex. `"root::exigence-systeme"`).
 
@@ -73,6 +74,7 @@ Chaque type possède une liste de `SchemaField` constituant son schéma métier.
 | `default` | any | Valeur par défaut à la création |
 | `placeholder` | string | Texte indicatif |
 | `validator` | string | Validation syntaxique optionnelle : `EARS` ou `regex:<pattern>` |
+| `trackHistory` | bool? | **GH77** — historiser ce champ (`history.<name>`, §4.4). Écrit seulement quand vrai. Jamais pour un champ nommé `status` |
 
 **Exposition MCP (T122)** : `validator: EARS` est la seule règle de ce champ **enforcée
 en dur** par le serveur MCP (pas seulement documentée) — `bulk_import_requirements`/
@@ -340,6 +342,7 @@ indépendamment des liens.
 | `updatedAt` | datetime | Date de dernière modification |
 | `updatedBy` | user | Auteur de la dernière modification |
 | `needsRevalidation` | bool? | **T172** — impact à vérifier : un élément lié a quitté un statut d'approbation (§5.3). Persisté uniquement quand vrai (absent = `false`), indépendant du statut. Aussi présent sur les cas de test |
+| `history` | map? | **GH77** — historique des champs suivis (§4.4) : une liste par champ, posée par l'application seule, absente tant que vide. Aussi sur les tests et les campagnes |
 
 ---
 
@@ -376,6 +379,62 @@ approved ──[rendre obsolète]──► obsolete (isTerminal)
 | `isTerminal` | bool | L'objet est masqué des listes par défaut (soft-archive) |
 
 **Toutes les transitions sont autorisées** — il n'y a pas de graphe de transitions à définir.
+
+### 4.4 Historique des champs suivis (GH77)
+
+Donnée brute : Polenta enregistre, fusionne et affiche l'historique, sans en calculer d'indicateur
+(état à une date, durées, courbes : bibliothèque projet, #74, principe #79).
+
+**Configuration** (`schema.yaml`) : le statut est suivi par défaut (`trackStatusHistory: false`
+pour le désactiver) ; un champ l'est avec `trackHistory: true`. Éditeur de schéma (onglet
+Structure) : colonne « Hist. » des champs, case « Historiser le statut ». MCP : `add_object_type`,
+`add_field`.
+
+**Stockage** — champ système `history` de l'objet (exigence, test, campagne) :
+
+```yaml
+history:
+  status:
+    - { value: draft, at: '2026-09-02T08:10:00Z', by: lolive }
+    - { value: review, at: '2026-09-20T14:02:00Z', by: lolive, source: mcp }
+  statement:
+    - { at: '2026-10-02T11:00:00Z', by: lolive }   # richtext : événement seul
+```
+
+- `value` : clé technique (nom de statut, valeur d'enum, valeur brute ; `null` = vidé). Absente
+  pour `textarea`, `richtext`, `drawio` (le contenu est dans git). Date YAML → `YYYY-MM-DD` pour
+  un champ `date` ; nombre saisi en texte → nombre pour un champ `number`.
+- `by` : login du compte du projet (desktop), de la session (client web), `--user` / `local`
+  (MCP) ; nom de l'auteur du commit pour une entrée datée d'un commit (reprise, écart comblé).
+- `source` : `mcp`, `git` (reprise), `schema` (valeur constatée au démarrage du suivi) ; absent =
+  saisie dans l'application.
+
+**Alimentation** : toute écriture d'objet passe par `HistoryService.stamp`, depuis la méthode
+d'écriture unique de chaque service (`persist`) — une entrée par champ suivi dont la valeur change,
+aucune sinon (autosave sans effet). Un test garde-fou (`history.write-paths.test.ts`) échoue si un
+fichier d'objet est écrit ailleurs.
+
+**La valeur courante fait foi** : si elle diffère de la dernière entrée (YAML édité à la main,
+ancienne version, `git revert`, fusion), la lecture (`history:get`, tool MCP `get_history`) ajoute
+une entrée `implicit: true` datée du dernier commit (jamais avant la dernière entrée) ; la prochaine
+écriture l'enregistre (`source: schema` si la liste était vide).
+
+**Évolution du schéma** : désactiver le suivi n'efface rien ; renommer un champ dans l'éditeur migre
+`fields` et `history` de tous les objets du type (`schema:rename-fields`, compte rendu des objets
+non migrés quand une donnée existe déjà sous le nouveau nom). Le renommage d'un statut ou d'une
+valeur d'enum n'est pas migré (#82).
+
+**Reprise depuis git** (Préférences du projet, par repo, `history:backfill`) : une entrée
+`source: git` par changement de valeur le long de la chaîne des premiers parents de la branche
+courante, datée du commit (date de commit) et signée de son auteur — les changements d'une branche
+fusionnée sont datés et signés du commit de fusion ; fusion sans doublon avec les entrées de
+l'application, entrées « début du suivi » redondantes retirées ; rejouable. Historique antérieur à
+un renommage de champ non repris. Mesure : 2 000 objets ×
+200 commits ≈ 1 min.
+
+**Affichage** : section repliable « Historique » en lecture seule (détail d'exigence, de test, de
+campagne, Vue Système › Édition), libellés lus dans le schéma, badges `MCP`, `git`, « début du
+suivi », « déduite ».
 
 ---
 

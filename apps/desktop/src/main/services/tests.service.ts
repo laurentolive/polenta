@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { renameFieldKeys } from '@polenta/types'
-import type { FieldRename, FieldRenameResult, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -134,7 +134,7 @@ export class TestsService {
           const renamed = existing ? renameFieldKeys(existing, renames) : null
           if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
           if (!renamed || renamed === 'conflict') return
-          await this.persist(repoPath, repoPath, renamed, renamed)
+          await this.persist(repoPath, repoPath, renamed, renamed, { raw: true })
           result.migrated.push(id)
         })
       } catch (err) {
@@ -143,12 +143,28 @@ export class TestsService {
     }
   }
 
+  /** GH77 — cf. `RequirementsService.updateHistory`. */
+  async updateHistory(repoPath: string, id: string, next: (current: TestCase) => ObjectHistory | null): Promise<boolean> {
+    return withKeyLock(`${repoPath}::tests/${id}`, async () => {
+      const existing = await this.testsIndex.findById(repoPath, id)
+      const history = existing ? next(existing) : null
+      if (!existing || !history) return false
+      const updated = { ...existing, history }
+      await this.persist(repoPath, repoPath, updated, updated, { raw: true })
+      return true
+    })
+  }
+
   /**
    * Seule écriture d'un fichier de cas de test (GH77) : complète l'historique des champs suivis
    * (`before` null = création), écrit sans les champs d'audit, met l'index à jour.
    */
-  private async persist(repoPath: string, targetRepo: string, before: TestCase | null, after: TestCase): Promise<TestCase> {
-    const stamped = this.history
+  private async persist(
+    repoPath: string, targetRepo: string, before: TestCase | null, after: TestCase,
+    /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
+    opts: { raw?: boolean } = {},
+  ): Promise<TestCase> {
+    const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo)
       : after
     await this.git.writeYaml(targetRepo, `tests/${stamped.id}.yaml`, omitAuditFields(stamped))

@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, ObjectHistory, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -607,6 +607,8 @@ export interface ApiClient {
   history: {
     /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
     get(repoPath: string, kind: 'requirement' | 'test' | 'campaign', id: string): Promise<ObjectHistory>
+    /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
+    backfill(repoPath: string): Promise<HistoryBackfillResult>
   }
   revalidation: {
     /** T173 — éléments marqués `needsRevalidation` du workspace, avec leurs éléments liés. */

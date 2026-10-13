@@ -40,6 +40,7 @@ import type { ParametersService } from '../services/parameters.service'
 import type { RevalidationService } from '../services/revalidation.service'
 import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } from '../services/history.service'
 import type { FieldRenameService } from '../services/field-rename.service'
+import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
   CreateRequirementDto,
   UpdateRequirementDto,
@@ -107,6 +108,7 @@ export interface Container {
   revalidation: RevalidationService
   history: HistoryService
   fieldRename: FieldRenameService
+  historyBackfill: HistoryBackfillService
   appSettings: AppSettingsService
   exportTemplateLibrary: ExportTemplateLibrary
   /** GH45 — configuration machine de l'hôte (cf. HostContext.machineConfig). */
@@ -394,6 +396,7 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   // ── Historique des champs suivis (GH77) — lecture effective, entrées implicites marquées ──
   r.handle('history:get', (_e, repoPath: string, kind: HistoryObjectKind, id: string) =>
     readEffectiveHistory(c, repoPath, kind, id))
+  r.handle('history:backfill', (_e, repoPath: string) => c.historyBackfill.run(repoPath))
 
   // ── Reviews ───────────────────────────────────────────────────────────────────
   r.handle('reviews:list', (_e, repoPath: string, status?: unknown) =>

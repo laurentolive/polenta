@@ -86,3 +86,54 @@ test('R1 — renommer un champ suivi migre valeur et historique, compte rendu af
   expect(history.criticite?.map(e => e.value)).toEqual(['bas', 'haut'])
   expect(history.niveau).toBeUndefined()
 })
+
+async function goto(url: string) {
+  await s.page.evaluate(u => {
+    history.pushState({}, '', u)
+    dispatchEvent(new PopStateEvent('popstate'))
+  }, url)
+  await s.page.waitForLoadState('networkidle')
+}
+
+const historySection = () => s.page.getByTestId('history-section')
+
+test('H1/H3 — section « Historique » d\'une exigence : repliée, statut puis champs, auteur', async () => {
+  await goto(s.projectUrl(`/req/${reqA}`, { repoPath: s.project.localPath }))
+  await expect(historySection()).toBeVisible()
+  await expect(historySection().getByText('Statut')).toBeHidden()
+  await historySection().getByRole('button', { name: 'Historique' }).click()
+  await expect(historySection().getByText('Statut', { exact: true })).toBeVisible()
+  await expect(historySection().getByText('niveau', { exact: true })).toBeHidden()
+  await expect(historySection().getByText('criticite', { exact: true })).toBeVisible()
+  await expect(historySection().getByText('e2e').first()).toBeVisible()
+  await expect(historySection().getByText('début du suivi')).toBeVisible()
+})
+
+test('H5 — objet sans historique : « Aucun historique »', async () => {
+  // Statut non suivi depuis C2, aucun champ suivi renseigné : rien n'est enregistré.
+  const id = (await s.invoke<ReqLike>('requirements:create', s.project.localPath, { objectTypeRef: REF, title: 'GH77 C' })).id
+  await goto(s.projectUrl(`/req/${id}`, { repoPath: s.project.localPath }))
+  await historySection().getByRole('button', { name: 'Historique' }).click()
+  await expect(historySection().getByText('Aucun historique')).toBeVisible()
+})
+
+test('H4 — section « Historique » d\'une campagne : statut planifié', async () => {
+  const c = await s.invoke<{ id: string }>('campaigns:create', s.project.localPath, { title: 'GH77 campagne', testCaseIds: [] })
+  await goto(s.projectUrl(`/campaign/${c.id}`, { repoPath: s.project.localPath }))
+  await historySection().getByRole('button', { name: 'Historique' }).click()
+  await expect(historySection().getByText('Planifiée')).toBeVisible()
+})
+
+test('B8 — reprise depuis git dans les préférences : confirmation, compte rendu, historique repris', async () => {
+  await goto(s.projectUrl('/preferences', { repoPath: s.project.localPath }))
+  const panel = s.page.getByTestId('history-backfill')
+  await panel.getByRole('button', { name: 'Reconstruire depuis git' }).first().click()
+  await panel.getByRole('button', { name: 'Oui' }).click()
+  await expect(panel.getByRole('status').first()).toContainText('objet(s) complété(s)', { timeout: 90_000 })
+
+  // Une exigence de la démo, commitée avant GH77, a maintenant des entrées `source: git`.
+  const reqs = await s.invoke<Array<{ id: string; objectTypeRef: string }>>('requirements:list', s.project.localPath)
+  const demo = reqs.find(r => r.objectTypeRef !== REF)!
+  const history = await s.invoke<History>('history:get', s.project.localPath, 'requirement', demo.id)
+  expect(history.status?.some(e => (e as { source?: string }).source === 'git')).toBe(true)
+})

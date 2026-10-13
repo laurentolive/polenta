@@ -5,7 +5,7 @@ import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
 import type { HistoryService } from './history.service'
 import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus, renameFieldKeys, withoutHistory } from '@polenta/types'
-import type { FieldRename, FieldRenameResult, HistoryCarrier } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, HistoryCarrier, ObjectHistory } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 
@@ -367,7 +367,7 @@ export class CampaignsService {
           const renamed = renameFieldKeys(await this.get(repoPath, id), renames)
           if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
           if (!renamed || renamed === 'conflict') return
-          await this.persist(repoPath, id, historyBase(renamed), renamed)
+          await this.persist(repoPath, id, historyBase(renamed), renamed, { raw: true })
           result.migrated.push(id)
         })
       } catch (err) {
@@ -376,12 +376,28 @@ export class CampaignsService {
     }
   }
 
+  /** GH77 — cf. `RequirementsService.updateHistory`. */
+  async updateHistory(repoPath: string, id: string, next: (current: TestCampaign) => ObjectHistory | null): Promise<boolean> {
+    return this.enqueue(repoPath, id, async () => {
+      const existing = await this.get(repoPath, id).catch(() => null)
+      const history = existing ? next(existing) : null
+      if (!existing || !history) return false
+      const updated = { ...existing, history }
+      await this.persist(repoPath, id, historyBase(updated), updated, { raw: true })
+      return true
+    })
+  }
+
   /**
    * Seule écriture d'un fichier de campagne (GH77) : complète l'historique du statut et des champs
    * suivis (`before` null = création) avant d'écrire.
    */
-  private async persist(repoPath: string, id: string, before: HistoryCarrier | null, after: TestCampaign): Promise<TestCampaign> {
-    const stamped = this.history
+  private async persist(
+    repoPath: string, id: string, before: HistoryCarrier | null, after: TestCampaign,
+    /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
+    opts: { raw?: boolean } = {},
+  ): Promise<TestCampaign> {
+    const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath: `campaigns/${id}.yaml` })
       : after
     await this.gitService.writeYaml(repoPath, `campaigns/${id}.yaml`, stamped)

@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { renameFieldKeys } from '@polenta/types'
-import type { FieldRename, FieldRenameResult, ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
 import type { CreateRequirementDto, UpdateRequirementDto, TransitionRequirementDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService, RequirementFilters } from './requirements-index.service'
@@ -169,8 +169,12 @@ export class RequirementsService {
    * Seule écriture d'un fichier d'exigence (GH77) : complète l'historique des champs suivis
    * (`before` null = création), écrit sans les champs d'audit, met l'index à jour.
    */
-  private async persist(repoPath: string, targetRepo: string, before: Requirement | null, after: Requirement): Promise<Requirement> {
-    const stamped = this.history
+  private async persist(
+    repoPath: string, targetRepo: string, before: Requirement | null, after: Requirement,
+    /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
+    opts: { raw?: boolean } = {},
+  ): Promise<Requirement> {
+    const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo)
       : after
     await this.git.writeYaml(targetRepo, `requirements/${stamped.id}.yaml`, omitAuditFields(stamped))
@@ -229,13 +233,28 @@ export class RequirementsService {
           if (renamed === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
           if (!renamed || renamed === 'conflict') return
           // `before` = objet renommé : aucune valeur suivie ne change, pas d'entrée.
-          await this.persist(repoPath, repoPath, renamed, renamed)
+          await this.persist(repoPath, repoPath, renamed, renamed, { raw: true })
           result.migrated.push(id)
         })
       } catch (err) {
         result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
       }
     }
+  }
+
+  /**
+   * GH77 — remplace l'historique d'une exigence par `next(courante)` (reprise depuis git), sous le
+   * verrou du fichier ; `null` = rien à écrire. Vrai si le fichier a été réécrit.
+   */
+  async updateHistory(repoPath: string, id: string, next: (current: Requirement) => ObjectHistory | null): Promise<boolean> {
+    return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+      const existing = await this.index.findById(repoPath, id)
+      const history = existing ? next(existing) : null
+      if (!existing || !history) return false
+      const updated = { ...existing, history }
+      await this.persist(repoPath, repoPath, updated, updated, { raw: true })
+      return true
+    })
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────

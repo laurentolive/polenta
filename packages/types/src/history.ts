@@ -291,3 +291,33 @@ export interface FieldRenameResult {
 export function emptyFieldRenameResult(): FieldRenameResult {
   return { migrated: [], skipped: [], failed: [] }
 }
+
+/**
+ * GH77 — entrées produites par un changement `before` → `after`, seules (sans l'historique existant
+ * ni comblement d'écart) : une par champ suivi dont la valeur change, toutes datées `at`. `before`
+ * null = première version de l'objet. Sert à la reprise depuis git (une étape par commit).
+ */
+export function changeEntries(
+  before: HistoryCarrier | null,
+  after: HistoryCarrier,
+  typeDef: Pick<ObjectTypeDefinition, 'fields' | 'trackStatusHistory'> | null | undefined,
+  actor: HistoryActor,
+  at: string,
+): ObjectHistory {
+  const out: ObjectHistory = {}
+  for (const key of trackedKeys(typeDef)) {
+    const cur = currentValue(after, key.key)
+    const changed = before ? !sameHistoryValue(key.type, currentValue(before, key.key), cur) : !isEmptyValue(cur)
+    if (!changed) continue
+    out[key.key] = [entry(key.mode === 'value' ? { value: storedValue(key.type, cur), at } : { at }, actor.by, actor.source)]
+  }
+  return out
+}
+
+/** GH77 — compte rendu de la reprise de l'historique depuis git. */
+export interface HistoryBackfillResult {
+  /** Objets dont l'historique a été complété (fichiers réécrits). */
+  objects: number
+  entriesAdded: number
+  failed: Array<{ file: string; error: string }>
+}

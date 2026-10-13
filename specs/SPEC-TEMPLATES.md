@@ -236,6 +236,7 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `category` | enum | `requirement` \| `test` \| `campaign` |
 | `fields` | list | Champs personnalisés (voir §3.2) |
 | `statuses` | list | Statuts configurables (voir §3.3) |
+| `trackStatusHistory` | bool? | **GH77** — historiser le statut ; absent = `true`, écrit seulement quand `false` — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77) |
 
 ### 3.2 Définition d'un champ (`SchemaField`)
 
@@ -249,6 +250,7 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `default` | any | Valeur par défaut à la création |
 | `placeholder` | string | Texte indicatif dans le champ vide |
 | `validator` | string | `EARS` ou `regex:<pattern>` — voir §3.4 |
+| `trackHistory` | bool? | **GH77** — historiser les changements du champ (valeur pour les types courts, date et auteur seuls pour `textarea` / `richtext` / `drawio`) ; écrit seulement quand vrai |
 
 ### 3.3 Définition d'un statut (`SchemaStatus`)
 

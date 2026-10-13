@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { HistorySection } from '../components/history/HistorySection'
 import { api } from '../api'
 import { useProjectSchema, getTestTypeDef, getAllObjectTypes } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -236,6 +237,10 @@ function TestCaseDetailPage() {
               {t('layout.viewHeader.back')}
             </button>
           </div>
+
+          {/* GH77 — historique des champs suivis (lecture seule). */}
+          <HistorySection repoPath={repoPath} kind="test" id={testId} typeDef={typeDef}
+            refreshKey={`${tc.status}:${JSON.stringify(tc.history ?? null)}`} />
         </div>
         </div>
       </div>

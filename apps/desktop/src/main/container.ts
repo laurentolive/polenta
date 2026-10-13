@@ -34,6 +34,7 @@ import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
 import { HistoryService } from './services/history.service'
 import { FieldRenameService } from './services/field-rename.service'
+import { HistoryBackfillService } from './services/history-backfill.service'
 import type { Container } from './ipc/index'
 import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
@@ -87,6 +88,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)
+  // GH77 — reprise de l'historique des champs suivis depuis git (action manuelle, par repo).
+  const historyBackfill = new HistoryBackfillService(git, requirements, tests, campaigns)
   const baseline = new BaselineService()
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree, campaigns)
   const dashboards = new DashboardsService(git)
@@ -141,6 +144,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     revalidation,
     history,
     fieldRename,
+    historyBackfill,
     appSettings,
     machineConfig: host.machineConfig,
     forgeConfig,

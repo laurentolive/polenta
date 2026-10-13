@@ -8,6 +8,7 @@ import { useVersioning } from '../contexts/VersioningContext'
 import { decodeProjectId } from '../lib/projectId'
 import { CancelConfirmModal } from '../components/schema/objectTypeEditor'
 import { ViewHeader } from '../components/layout/ViewHeader'
+import { HistoryBackfillPanel } from '../components/history/HistoryBackfillPanel'
 import { TEMPLATE_KEYS, templateKey } from '../lib/exportTemplates'
 import { DEFAULT_AUTO_PULL_MINUTES, MAX_AUTO_PULL_MINUTES, MIN_AUTO_PULL_MINUTES, effectivePullIntervalMinutes } from '../lib/autoPullInterval'
 import type { ExportTemplateKey, ProjectSchema, TemplateExportFormat } from '@polenta/types'
@@ -253,6 +254,9 @@ function PreferencesPage() {
               })}
             </div>
           </div>
+
+          {/* GH77 — reprise de l'historique des champs suivis depuis git, par repo. */}
+          <HistoryBackfillPanel workspaceDir={workspaceDir} repoPath={repoPath} />
         </div>
       </div>
     </div>

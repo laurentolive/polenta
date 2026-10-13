@@ -31,6 +31,7 @@ import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import { RUN_STATUS_CLASS, RUN_STATUS_LABEL_KEY, isTestRunStatus } from '../lib/runStatus'
 import type { CampaignTestRun, TestRunStatus, TestCase, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
+import { HistorySection } from '../components/history/HistorySection'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
@@ -760,6 +761,16 @@ function CampaignDetailPage() {
           <Trash2 size={15} />
         </button>
       </div>
+
+      {/* GH77 — historique du statut et des champs suivis (lecture seule). */}
+      <HistorySection
+        repoPath={repoPath}
+        kind="campaign"
+        id={campaignId}
+        typeDef={typeDef}
+        statusLabel={name => t(`campaignPage.carry.campaignStatus.${name}`, { defaultValue: name })}
+        refreshKey={`${campaign.status}:${JSON.stringify(campaign.history ?? null)}`}
+      />
 
       {/* Delete confirmation dialog */}
       {confirmDelete && (

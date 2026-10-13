@@ -1519,5 +1519,31 @@
     "revoked": "Your access to {{host}} was revoked or has expired, or your account was disabled. Your local changes are kept.",
     "reconnect": "Sign in again",
     "readOnlyProject": "You have read-only access to this project ({{repo}}): you can browse but not publish."
+  },
+  "history": {
+    "title": "History",
+    "status": "Status",
+    "empty": "No history",
+    "modified": "modified",
+    "emptyValue": "(empty)",
+    "badge": {
+      "mcp": "MCP",
+      "git": "git",
+      "schema": "tracking start",
+      "implicit": "inferred"
+    },
+    "badgeTitle": {
+      "mcp": "Written by the MCP server (AI agent)",
+      "git": "Recovered from git history (commit date and author)",
+      "schema": "Value found when tracking started, dated from the last commit",
+      "implicit": "Current value missing from the history (file changed outside the application) — dated from the last commit, recorded on the next change"
+    },
+    "backfillTitle": "Tracked field history",
+    "backfillHelp": "Rebuilds the history of tracked fields (status and \"Hist.\" fields) from each repo's git history: one entry per change, dated from the commit and signed by its author. Updated files must be published; running it again adds no duplicates.",
+    "backfillRun": "Rebuild from git",
+    "backfillRunning": "Rebuilding…",
+    "backfillConfirm": "Rebuild the history of {{repo}} from git? Changed files will need to be published.",
+    "backfillResult": "{{objects}} object(s) updated, {{entries}} entry(ies) added.",
+    "backfillFailed": "{{count}} file(s) skipped: {{files}}"
   }
 }

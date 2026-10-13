@@ -1519,5 +1519,31 @@
     "revoked": "Votre accès au serveur {{host}} a été révoqué, a expiré ou votre compte a été désactivé. Vos modifications locales sont conservées.",
     "reconnect": "Se reconnecter",
     "readOnlyProject": "Vous avez un accès en lecture seule à ce projet ({{repo}}) : vous pouvez consulter mais pas publier."
+  },
+  "history": {
+    "title": "Historique",
+    "status": "Statut",
+    "empty": "Aucun historique",
+    "modified": "modifié",
+    "emptyValue": "(vide)",
+    "badge": {
+      "mcp": "MCP",
+      "git": "git",
+      "schema": "début du suivi",
+      "implicit": "déduite"
+    },
+    "badgeTitle": {
+      "mcp": "Écrit par le serveur MCP (agent IA)",
+      "git": "Repris de l'historique git (date et auteur du commit)",
+      "schema": "Valeur constatée au démarrage du suivi, datée du dernier commit",
+      "implicit": "Valeur actuelle absente de l'historique (fichier modifié hors de l'application) — datée du dernier commit, sera enregistrée à la prochaine modification"
+    },
+    "backfillTitle": "Historique des champs suivis",
+    "backfillHelp": "Reconstruit l'historique des champs suivis (statut et champs « Hist. ») depuis l'historique git de chaque repo : une entrée par changement, datée du commit et signée de son auteur. Les fichiers complétés sont à publier ; relancer n'ajoute pas de doublon.",
+    "backfillRun": "Reconstruire depuis git",
+    "backfillRunning": "Reconstruction…",
+    "backfillConfirm": "Reconstruire l'historique de {{repo}} depuis git ? Les fichiers modifiés seront à publier.",
+    "backfillResult": "{{objects}} objet(s) complété(s), {{entries}} entrée(s) ajoutée(s).",
+    "backfillFailed": "{{count}} fichier(s) ignoré(s) : {{files}}"
   }
 }

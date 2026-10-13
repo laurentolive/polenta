@@ -220,6 +220,7 @@ export function createIpcClient(
     },
     history: {
       get: (p, kind, id) => invoke('history:get', p, kind, id),
+      backfill: (p) => invoke('history:backfill', p),
     },
     revalidation: {
       list: (p, w) => invoke('revalidation:list', p, w),

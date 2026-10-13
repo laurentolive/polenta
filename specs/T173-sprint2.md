@@ -73,7 +73,18 @@ composant partagé pour le badge EX/TC (trois copies).
 - e2e web : `t173-revalidation.spec.ts` 3/3 ; suite complète 52 passés, 13 ignorés (OIDC / instance
   déployée, non configurés).
 
-Non couvert automatiquement (manuel) : N9–N13, N16, N17, L10–L14, R2, R3 de `T173-tests.md`.
+Vérification des scénarios « manuels » (`e2e-web/t173-verif.spec.ts`, client web, 12/12, 3 exécutions) :
+N9, N10, N11, N12, N13, N16, N17, L10, L11, L12, L13, L14, R2, R3 conformes. Restent à l'œil : aucun
+(L12 et L13 vérifiés en conditions réelles : modification disque hors application, fichier en lecture
+seule).
+
+Écarts constatés pendant la vérification :
+- **#83 (bug T172, hors périmètre)** : les vues Excel et Word n'affichent jamais l'icône ⚠ —
+  `normalizeObject` ne recopie pas `needsRevalidation`. N10/CA6 vérifiés dans l'éditeur (EditView),
+  la matrice et l'analyse ; la disparition de ⚠ dans Excel/Word ne peut être constatée qu'après #83.
+- `t173-revalidation.spec.ts` passait un commentaire comme 3e argument de `requirements:open-draft`,
+  qui est le **statut cible** : corrigé (`'draft'`).
+- Liste de repli : marge droite manquante sur les lignes d'éléments liés (`pr-4`), corrigée.
 
 ## Tester manuellement
 

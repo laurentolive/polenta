@@ -24,7 +24,7 @@ const typeBadge = (type: 'requirement' | 'test_case') => (type === 'requirement'
 function LinkedRow({ linked, rootRepoPath, onOpen }: { linked: FlaggedLinkedElement; rootRepoPath: string; onOpen: OpenElement }) {
   const { t } = useTranslation()
   return (
-    <div className="flex items-center gap-2 py-1 text-xs" style={{ paddingLeft: '62px' }}>
+    <div className="flex items-center gap-2 py-1 pr-4 text-xs" style={{ paddingLeft: '62px' }}>
       <span className="font-mono text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0">{typeBadge(linked.elementType)}</span>
       <button
         type="button"

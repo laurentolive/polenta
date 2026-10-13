@@ -34,7 +34,7 @@ test.beforeAll(async () => {
   // approuvée dont la réouverture marque au moins un pair (déclencheur visible dans ses liés).
   const reqs = await s.invoke<Array<{ id: string; status: string }>>('requirements:list', localPath)
   for (const r of reqs.filter((r) => r.status === 'approved')) {
-    await s.invoke('requirements:open-draft', localPath, r.id, 'T173 e2e', workspaceDir)
+    await s.invoke('requirements:open-draft', localPath, r.id, 'draft', workspaceDir)
     flagged = await listFlagged()
     trigger = r.id
     if (flagged.some((f) => f.linked.some((l) => l.elementId === trigger))) break

@@ -1,0 +1,109 @@
+{
+  "files": [
+    {
+      "path": "time.js",
+      "repoPath": "dashboards/lib/time.js",
+      "id": "time",
+      "versions": [
+        {
+          "version": 1,
+          "hash": "2223fb6ac00bb12e43a7102a9484b10bb93ae7fe15a4a258b53811ebdcfb591b",
+          "summary": {
+            "fr": "Version initiale.",
+            "en": "Initial version."
+          }
+        }
+      ]
+    },
+    {
+      "path": "status.js",
+      "repoPath": "dashboards/lib/status.js",
+      "id": "status",
+      "versions": [
+        {
+          "version": 1,
+          "hash": "6f9b105b2048ad66dfefa6f9369fb887e675f8fef83ca23e092738ff32052a3d",
+          "summary": {
+            "fr": "Version initiale.",
+            "en": "Initial version."
+          }
+        }
+      ]
+    },
+    {
+      "path": "history.js",
+      "repoPath": "dashboards/lib/history.js",
+      "id": "history",
+      "versions": [
+        {
+          "version": 1,
+          "hash": "61a169cca2b64ac5c39c0f427d55efa381c191919ab55173e8d45bc1b8935d19",
+          "summary": {
+            "fr": "Version initiale.",
+            "en": "Initial version."
+          }
+        }
+      ]
+    },
+    {
+      "path": "campaign.js",
+      "repoPath": "dashboards/lib/campaign.js",
+      "id": "campaign",
+      "versions": [
+        {
+          "version": 1,
+          "hash": "c9fd78d04ad1b74ee2cb7cede20588427d63ac8a9308243958f4c50e6913daf5",
+          "summary": {
+            "fr": "Version initiale.",
+            "en": "Initial version."
+          }
+        }
+      ]
+    },
+    {
+      "path": "maturity.js",
+      "repoPath": "dashboards/lib/maturity.js",
+      "id": "maturity",
+      "versions": [
+        {
+          "version": 1,
+          "hash": "db555c95f942a3408580b10bd3784640057e97ae72e2c67fe5610509b24ee8e0",
+          "summary": {
+            "fr": "Version initiale.",
+            "en": "Initial version."
+          }
+        }
+      ]
+    },
+    {
+      "path": "polenta.d.ts",
+      "repoPath": "dashboards/lib/polenta.d.ts",
+      "id": "polenta-types",
+      "versions": [
+        {
+          "version": 1,
+          "hash": "03c1afdb3cac65b65d9a34215bb3aae45d8b090411a5397a3ceaf1d7439fa973",
+          "summary": {
+            "fr": "Version initiale.",
+            "en": "Initial version."
+          }
+        }
+      ]
+    },
+    {
+      "path": "jsconfig.json",
+      "repoPath": "dashboards/jsconfig.json",
+      "id": "jsconfig",
+      "versions": [
+        {
+          "version": 1,
+          "hash": "a3d6c1447088d7746c634ad7c6e5f719574bfc9a36be96691a41c9c37454adad",
+          "summary": {
+            "fr": "Version initiale.",
+            "en": "Initial version."
+          }
+        }
+      ]
+    }
+  ]
+}

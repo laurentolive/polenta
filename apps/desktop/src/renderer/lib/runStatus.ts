@@ -1,4 +1,7 @@
 import type { TestRunStatus } from '@polenta/types'
+import { RUN_STATUS_SEVERITY } from '@polenta/types'
+
+export { RUN_STATUS_SEVERITY }
 
 /**
  * Statuts d'une entrée de campagne (`TestRunStatus`) : libellés, pastilles et gravité. Partagé par
@@ -19,15 +22,6 @@ export const RUN_STATUS_CLASS: Record<TestRunStatus, string> = {
   FAIL:       'bg-status-danger-bg text-status-danger',
   BLOCKED:    'bg-status-warning-bg text-status-warning',
   INCOMPLETE: 'bg-status-warning-bg text-status-warning',
-}
-
-/** GH69 — gravité décroissante : le statut le plus grave d'un groupe d'entrées l'emporte. */
-export const RUN_STATUS_SEVERITY: Record<TestRunStatus, number> = {
-  FAIL: 4,
-  BLOCKED: 3,
-  INCOMPLETE: 2,
-  pending: 1,
-  PASS: 0,
 }
 
 export function isTestRunStatus(v: unknown): v is TestRunStatus {

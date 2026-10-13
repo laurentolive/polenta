@@ -188,6 +188,12 @@ Tools disponibles :
   ont \`dryRun\` par défaut. Les objets **privés** (propres à un utilisateur) ne sont
   accessibles que si le serveur est lancé avec \`--user <login>\` (ou \`POLENTA_USER\`) ; sinon
   seul le scope partagé est visible et modifiable.
+- \`get_data_contract\` / \`test_script\` — scripts JS de la vue Suivi : \`get_data_contract\` donne
+  les types du graphe de données et ses conventions ; \`test_script\` exécute un script (et une
+  transformation) sur les données réelles, sans rien enregistrer.
+- \`list_library\` / \`read_library_module\` / \`write_library_module\` — bibliothèque JS du projet
+  (\`dashboards/lib/\`), importable par les scripts (\`import { … } from 'lib/campaign.js'\`).
+  \`write_library_module\` a \`dryRun\` par défaut.
 - \`add_component\` / \`add_object_type\` / \`add_field\` / \`add_status\` / \`add_link_type\` —
   modification ciblée du modèle de données (\`.polenta/schema.yaml\`), avec vérification
   des invariants (nom déjà pris, \`prefix\` unique sur tout le projet, nœud

@@ -17,6 +17,9 @@ import { QueryEngineService } from '../main/services/query-engine.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
 import { HistoryService } from '../main/services/history.service'
+import { GraphService } from '../main/services/graph.service'
+import { DashboardLibraryService } from '../main/services/dashboard-library.service'
+import { ScriptEngineService } from '../main/services/script-engine.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -39,6 +42,10 @@ export interface McpContainer {
    *  les requêtes/dashboards privés ; absent = scope partagé uniquement. */
   user?: string
   queryEngine: QueryEngineService
+  /** GH74 — graphe de données (sans cache : pas de surveillance des fichiers), bibliothèque, moteur. */
+  graph: GraphService
+  dashboardLibrary: DashboardLibraryService
+  scriptEngine: ScriptEngineService
   savedQueries: SavedQueriesService
   dashboards: DashboardsService
   /** GH77 — lecture effective de l'historique (tools de lecture). */
@@ -111,9 +118,12 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree, campaigns)
   const dashboards = new DashboardsService(git)
   const savedQueries = new SavedQueriesService(git, schema, dashboards)
+  const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns, { cache: false })
+  const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
+  const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
-    user, queryEngine, savedQueries, dashboards, history,
+    user, queryEngine, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine,
   }
 }

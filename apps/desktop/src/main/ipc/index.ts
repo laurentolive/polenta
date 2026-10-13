@@ -26,6 +26,9 @@ import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
 import type { InterfaceComplianceService } from '../services/interface-compliance.service'
 import type { QueryEngineService } from '../services/query-engine.service'
+import type { GraphService } from '../services/graph.service'
+import type { DashboardLibraryService } from '../services/dashboard-library.service'
+import type { ScriptEngineService } from '../services/script-engine.service'
 import type { SavedQueriesService, CreateSavedQueryDto, UpdateSavedQueryDto, AddHistoryEntryDto } from '../services/saved-queries.service'
 import type {
   DashboardsService,
@@ -101,6 +104,10 @@ export interface Container {
   workspaceTree: WorkspaceTreeService
   interfaceCompliance: InterfaceComplianceService
   queryEngine: QueryEngineService
+  /** GH74 — graphe de données, bibliothèque projet, moteur de scripts. */
+  graph: GraphService
+  dashboardLibrary: DashboardLibraryService
+  scriptEngine: ScriptEngineService
   savedQueries: SavedQueriesService
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService

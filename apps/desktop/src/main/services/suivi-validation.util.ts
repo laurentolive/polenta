@@ -24,6 +24,10 @@ export type SuiviErrorCode =
   | 'UNKNOWN_COLUMN'
   | 'DUPLICATE_WIDGET'
   | 'INVALID_ORDER'
+  // GH74 — scripts de données et bibliothèque projet.
+  | 'SCRIPT_ERROR'
+  | 'LIBRARY_PATH_INVALID'
+  | 'LIBRARY_MODULE_NOT_FOUND'
 
 export type SuiviWarningCode = 'COLUMNS_UNVERIFIED' | 'WIDGET_MAPPING_BROKEN'
 

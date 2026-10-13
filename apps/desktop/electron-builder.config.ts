@@ -52,7 +52,8 @@ export function builderConfig(brand: LoadedBrand): Configuration {
     // seul, mais son détecteur de modules natifs ne suit pas la structure symlinkée de node_modules par
     // pnpm : sans cette ligne, keytar.node finit packagé DANS l'asar et le require échoue au lancement
     // ("Cannot find module '../build/Release/keytar.node'").
-    asarUnpack: ['**/keytar/build/Release/keytar.node'],
+    // GH74 — worker du moteur de scripts et .wasm de QuickJS : chargés hors asar (`new Worker(path)`).
+    asarUnpack: ['**/keytar/build/Release/keytar.node', 'out/main/script-worker.js', 'out/main/emscripten-module.wasm'],
     directories: {
       output: 'dist',
       // GH49 — les ressources de build (icônes) vivent dans le dossier de la marque.
@@ -94,6 +95,8 @@ export function builderConfig(brand: LoadedBrand): Configuration {
       // GH34 — gabarits Word d'exemple et référence des balises, copiés dans la bibliothèque de
       // l'utilisateur par « Installer les exemples » (export-templates:install-examples).
       { from: 'resources/export-templates', to: 'export-templates' },
+      // GH74 — bibliothèque de départ des scripts de dashboards (dashboards/lib/ des projets).
+      { from: 'resources/dashboard-lib', to: 'dashboard-lib' },
     ],
     win: {
       icon: icons.ico,

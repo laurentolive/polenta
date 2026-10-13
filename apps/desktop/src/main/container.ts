@@ -33,11 +33,17 @@ import { MergeResolutionService } from './services/merge-resolution.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
 import { HistoryService } from './services/history.service'
+import { GraphService } from './services/graph.service'
+import { DashboardLibraryService } from './services/dashboard-library.service'
+import { ScriptEngineService } from './services/script-engine.service'
 import { FieldRenameService } from './services/field-rename.service'
 import { HistoryBackfillService } from './services/history-backfill.service'
 import type { Container } from './ipc/index'
 import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
+
+/** GH74 — dossiers dont un changement invalide le graphe de données. */
+const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', '.polenta/', 'polenta-repo.yaml']
 
 /**
  * Instancie le noyau de services (GH44 : sans dépendance à Electron). L'hôte fournit ce qui
@@ -92,6 +98,16 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const historyBackfill = new HistoryBackfillService(git, requirements, tests, campaigns)
   const baseline = new BaselineService()
   const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree, campaigns)
+  // GH74 — graphe de données (en cache) et moteur de scripts (worker QuickJS). Le graphe et la
+  // bibliothèque projet sont oubliés dès qu'un fichier de leur périmètre change (y compris dans un
+  // repo composant), avant que le renderer ne soit notifié (abonnés appelés dans l'ordre).
+  const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns)
+  const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
+  const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
+  watcher.onFileChange((repoPath, relPath) => {
+    if (relPath === '*' || GRAPH_PATHS.some((p) => relPath.startsWith(p))) graph.invalidate(repoPath)
+    if (relPath === '*' || relPath === 'polenta-repo.yaml' || relPath.startsWith('dashboards/lib/')) dashboardLibrary.invalidate(repoPath)
+  })
   const dashboards = new DashboardsService(git)
   // dashboards is injected here (not the other way around) — SavedQueriesService needs
   // to detect widgets depending on a query (delete/setScope guards), DashboardsService
@@ -135,6 +151,9 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     workspaceTree,
     interfaceCompliance,
     queryEngine,
+    graph,
+    dashboardLibrary,
+    scriptEngine,
     savedQueries,
     dashboards,
     dashboardSeed,

@@ -4,6 +4,7 @@ import { TanStackRouterVite } from '@tanstack/router-vite-plugin'
 import { resolve } from 'path'
 import { loadBrand } from './scripts/brand'
 import { brandPlugin } from './scripts/vite-brand-plugin'
+import { scriptWorkerPlugin } from './scripts/script-worker-build'
 
 // GH49 — marque POLENTA_BRAND (défaut polenta), figée dans les trois bundles : le code applicatif
 // la lit via src/shared/brand.ts (constante __POLENTA_BRAND__). Marque invalide → build en échec.
@@ -49,6 +50,8 @@ export default defineConfig({
           '@polenta/merge-core', 'diff3',
         ],
       }),
+      // GH74 — worker du moteur de scripts (QuickJS), bundle autonome + .wasm dans out/main.
+      scriptWorkerPlugin(),
     ],
     build: {
       rollupOptions: {

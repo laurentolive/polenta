@@ -4,6 +4,20 @@ import type { TestCase } from './test'
 export type CampaignStatus = 'planned' | 'in_progress' | 'completed' | 'abandoned'
 export type TestRunStatus = 'pending' | 'PASS' | 'FAIL' | 'BLOCKED' | 'INCOMPLETE'
 
+/** GH69 — gravité décroissante : le statut le plus grave d'un groupe d'entrées l'emporte. GH74 :
+ *  partagée par la page campagne, le graphe de données (`schema.entryStatuses[].severity`) et la
+ *  bibliothèque projet (`lib/status.js`). */
+export const RUN_STATUS_SEVERITY: Record<TestRunStatus, number> = {
+  FAIL: 4,
+  BLOCKED: 3,
+  INCOMPLETE: 2,
+  pending: 1,
+  PASS: 0,
+}
+
+/** GH74 — ordre d'affichage canonique des statuts d'entrée (attente, puis résultats). */
+export const RUN_STATUS_ORDER: readonly TestRunStatus[] = ['pending', 'INCOMPLETE', 'BLOCKED', 'FAIL', 'PASS']
+
 export interface TestCampaign {
   id: string           // CAMP-0001
   title: string

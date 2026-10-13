@@ -477,7 +477,8 @@ Pour chacun des deux fichiers, `ensureAgentFiles` (factorisé dans
      pas la découverte des tools.
 2. Compare ce marqueur à la constante courante (`AGENTS_MD_TEMPLATE_VERSION` /
    `MCP_JSON_TEMPLATE_VERSION`, toutes deux `1` au sprint 4 ; `AGENTS_MD_TEMPLATE_VERSION`
-   passée à `2` par GH16 — ajout des tools de liens) :
+   passée à `2` par GH16 — ajout des tools de liens, `4` par T173/GH77, `5` par GH60 — format
+   d'objet YAML pur au lieu de `.md` + frontmatter, exemples d'exigence et de test) :
    - **Égal** → **aucune écriture** (mtime/hash strictement inchangés — vérifié
      manuellement, cf. `specs/T122-sprint4.md`).
    - **Absent** (fichier pré-T122/T106, ou créé/édité à la main sans le marqueur) ou

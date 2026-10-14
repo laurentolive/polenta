@@ -1,10 +1,10 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
-  CampaignTestRun, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
+  CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
   GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema,
-  Requirement, TestCampaign, TestCase, TestRun, TestRunStatus,
+  Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
 import {
   RUN_STATUS_ORDER, RUN_STATUS_SEVERITY, effectiveHistory, flattenSystemNodes, hasHistoryGap, historyTimestamp,
@@ -41,20 +41,6 @@ export interface GraphServiceOptions {
   cache?: boolean
   now?: () => Date
 }
-
-/** Objet du graphe désigné par un identifiant (drill-down). */
-export interface DescribedObject {
-  id: string
-  kind: 'requirement' | 'test' | 'campaign' | 'campaign-entry' | 'run' | 'unknown'
-  title: string | null
-  status: string | null
-  typeLabel: string | null
-}
-
-/** Objet à ouvrir pour un identifiant (repo où il vit, résolu côté main). */
-export type GraphTarget =
-  | { kind: 'requirement' | 'test' | 'campaign'; id: string; repoPath: string }
-  | { kind: 'campaign-entry'; campaignId: string; entryId: string; executed: boolean; status: TestRunStatus; repoPath: string }
 
 const ENTRY_LABELS: Record<'fr' | 'en', Record<TestRunStatus, string>> = {
   fr: { pending: 'En attente', INCOMPLETE: 'Incomplet', BLOCKED: 'Bloqué', FAIL: 'Échoué', PASS: 'Passé' },
@@ -159,7 +145,7 @@ export class GraphService {
   }
 
   /** Objet à ouvrir pour un identifiant, ou `null` s'il n'existe pas. */
-  async resolveTarget(repoPath: string, id: string, workspaceDir?: string): Promise<GraphTarget | null> {
+  async resolveTarget(repoPath: string, id: string, workspaceDir?: string): Promise<RowTarget | null> {
     const { graph, repoPaths } = await this.build(repoPath, workspaceDir)
     const repoOf = (name: string) => repoPaths.get(name) ?? null
     const slash = id.indexOf('/')
@@ -170,14 +156,14 @@ export class GraphService {
       if (!campaign || !entry || !rp) return null
       return { kind: 'campaign-entry', campaignId: campaign.id, entryId: entry.entryId, executed: entry.status !== 'pending', status: entry.status, repoPath: rp }
     }
-    const found: [GraphTarget['kind'], { repo: string } | undefined][] = [
+    const found: [RowTarget['kind'], { repo: string } | undefined][] = [
       ['requirement', graph.requirements.find((r) => r.id === id)],
       ['test', graph.tests.find((t) => t.id === id)],
       ['campaign', graph.campaigns.find((c) => c.id === id)],
     ]
     for (const [kind, obj] of found) {
       const rp = obj && repoOf(obj.repo)
-      if (rp) return { kind, id, repoPath: rp } as GraphTarget
+      if (rp) return { kind, id, repoPath: rp } as RowTarget
     }
     return null
   }

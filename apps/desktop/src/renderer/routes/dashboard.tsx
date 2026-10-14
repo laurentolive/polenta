@@ -28,7 +28,7 @@ import { WidgetConfigModal, type WidgetConfigResult } from '../components/dashbo
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { dashboardExportBaseName } from '../components/export/exportFilenames'
-import { widgetQueryOptions } from '../hooks/useQueryResult'
+import { toQueryResult, widgetRunOptions } from '../hooks/useScriptRun'
 import { useSetTabTitle } from '../contexts/TabsContext'
 import { orderItems } from '../components/sidebar/ReorderableSidebarSection'
 
@@ -148,7 +148,8 @@ function DashboardPage() {
   })
 
   const addWidgetMutation = useMutation({
-    mutationFn: (dto: WidgetConfigResult) => api.dashboards.addWidget(repoPath, username, dashboardId!, dto),
+    mutationFn: (dto: WidgetConfigResult) =>
+      api.dashboards.addWidget(repoPath, username, dashboardId!, 'transform' in dto ? { ...dto, transform: dto.transform ?? undefined } : dto),
     onSuccess: () => {
       invalidateDashboard()
       setShowAddWidget(false)
@@ -199,7 +200,9 @@ function DashboardPage() {
       <ViewHeader
         currentProjectId={projectId}
         title={
-          <input
+          dashboard.state.readOnly ? (
+            <span className="text-sm font-semibold text-ink" data-testid="dashboard-readonly-title">{dashboard.title}</span>
+          ) : <input
             value={titleDraft}
             onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={() => {
@@ -256,7 +259,8 @@ function DashboardPage() {
                   const q = savedQueries.find(sq => sq.id === w.queryId)
                   if (!q) return
                   try {
-                    widgetResults[w.id] = await qc.fetchQuery(widgetQueryOptions(repoPath, workspaceDir, q))
+                    const res = toQueryResult(await qc.fetchQuery(widgetRunOptions(repoPath, workspaceDir, username, dashboard.id, w, q.script)))
+                    if (res) widgetResults[w.id] = res
                   } catch {
                     // Widget en erreur (ex. requête invalide, type d'objet supprimé) — omis du
                     // payload plutôt que de faire échouer tout l'export.
@@ -272,6 +276,11 @@ function DashboardPage() {
 
       <div className="flex-1 overflow-y-auto">
       <div className="max-w-6xl p-6 pb-16 space-y-5">
+      {dashboard.state.readOnly && (
+        <p className="text-xs text-status-warning bg-status-warning-bg border border-status-warning-border rounded px-3 py-2" data-testid="dashboard-readonly">
+          {t('dashboardPage.newerFormatNotice')}
+        </p>
+      )}
       {scopeError && (
         <p className="text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
           {scopeError}
@@ -283,6 +292,7 @@ function DashboardPage() {
         savedQueries={savedQueries}
         repoPath={repoPath}
         workspaceDir={workspaceDir}
+        username={username}
         onReorder={(order) => reorderMutation.mutate(order)}
         onDeleteWidget={(widgetId) => deleteWidgetMutation.mutate(widgetId)}
         onEditWidget={(widget) => setEditingWidget(widget)}
@@ -294,6 +304,7 @@ function DashboardPage() {
           savedQueries={savedQueries}
           repoPath={repoPath}
           workspaceDir={workspaceDir}
+          username={username}
           onSave={(dto) => addWidgetMutation.mutate(dto)}
           onClose={() => setShowAddWidget(false)}
           saving={addWidgetMutation.isPending}
@@ -307,6 +318,7 @@ function DashboardPage() {
           savedQueries={savedQueries}
           repoPath={repoPath}
           workspaceDir={workspaceDir}
+          username={username}
           initialWidget={editingWidget}
           onSave={(dto) => updateWidgetMutation.mutate(dto)}
           onClose={() => setEditingWidget(null)}

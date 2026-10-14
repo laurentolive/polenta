@@ -29,7 +29,7 @@ function fixture(opts: { branch?: string; failOnQuery?: number; legacySeeded?: b
   } as unknown as GitService
 
   const savedQueries = {
-    create: async (_r: string, _u: string, dto: { title: string; sqlText: string; scope: QueryScope }) => {
+    create: async (_r: string, _u: string, dto: { title: string; template: unknown; scope: QueryScope }) => {
       if (failCountdown === 0) { failCountdown = -1; throw new Error('disque plein') }
       if (failCountdown > 0) failCountdown--
       const q = { id: `Q-${++seq}`, ...dto } as unknown as SavedQuery
@@ -70,7 +70,7 @@ describe('GH65 — seed « Campagnes »', () => {
     await f.service.ensureSeeded(REPO, 'alice')
     const [d] = campaignDashboards(f.dashboards)
     expect(d.scope).toBe('private')
-    expect(d.widgets.map(w => w.type)).toEqual(['bar', 'kpi', 'kpi', 'line', 'table'])
+    expect(d.widgets.map(w => w.template?.id)).toEqual(['bar', 'kpi', 'kpi', 'line', 'table'])
     expect(f.queries.size).toBe(CAMPAIGN_SEED_QUERIES.length)
     expect([...f.queries.values()].every(q => q.scope === 'private')).toBe(true)
     expect(new Set(d.widgets.map(w => w.queryId))).toEqual(new Set(f.queries.keys()))

@@ -71,7 +71,10 @@ test.beforeAll(async () => {
   await recordResult(s, campaign.id, entry(failed!.id), 'FAIL')
 })
 
-test('W1 / W2 / N1 — widget du seed : étapes ordonnées, drill-down « en revue », ouverture filtrée', async () => {
+// GH74 sprint 2 — le widget « Avancement par campagne » du seed passe aux statuts bruts d'entrée
+// (modèle « Entrées de campagne ») ; les étapes d'avancement reviennent au sprint 3, calculées par la
+// bibliothèque projet (`entryStep`). Scénario repris alors en e2e GH74.
+test.skip('W1 / W2 / N1 — widget du seed : étapes ordonnées, drill-down « en revue », ouverture filtrée', async () => {
   await s.openView('Suivi')
   await s.page.getByText('Campagnes', { exact: true }).last().click()
   await s.page.waitForLoadState('networkidle')

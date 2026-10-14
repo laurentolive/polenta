@@ -1,4 +1,4 @@
-/** Shared cell coercion helpers for the chart widgets (Bar/Pie/Line/Kpi) — the query
+/** Shared cell coercion helpers for the widgets (GH74 : KPI natif) — the query
  *  result is a `Record<string, unknown>[]` (AlaSQL doesn't know the widget's intent),
  *  so any "measure"/"category" value must be defensively coerced before being handed
  *  to recharts, which otherwise renders nothing useful for `null`/objects/NaN. */

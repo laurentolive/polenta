@@ -78,9 +78,11 @@ test('3.11 / 3.12 — retrait depuis la page campagne : entrée conservée dans 
   expect(after.removedRuns?.map(r => r.entryId)).toEqual([removed.entryId])
   expect(after.removedRuns?.[0]?.removedAt).toBeTruthy()
 
-  const rows = await s.invoke<{ rows: Array<{ entryId: string }> }>('queries:execute', localPath, {
-    mode: 'sql', sqlText: `SELECT entryId FROM campaign_entries WHERE campaignId = '${campaign.id}'`,
-  }, workspaceDir)
+  // GH74 — entrées actives vues par un script de données (les retirées sont dans `removedEntries`).
+  const username = await s.invoke<string>('auth:project-username', localPath)
+  const rows = await s.invoke<{ rows: Array<{ entryId: string }> }>('suivi:run', localPath, workspaceDir, username, {
+    script: `export default (data) => data.campaigns.find((c) => c.id === '${campaign.id}').entries.map((e) => ({ entryId: e.entryId }))`,
+  }, { locale: 'fr', timezone: 'UTC' })
   expect(rows.rows.map(r => r.entryId)).toEqual([campaign.runs[0]!.entryId])
   await s.shot('gh73-retrait')
 })

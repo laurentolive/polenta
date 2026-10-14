@@ -25,7 +25,8 @@ import type { CampaignExecutionService } from '../services/campaign-execution.se
 import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
 import type { InterfaceComplianceService } from '../services/interface-compliance.service'
-import type { QueryEngineService } from '../services/query-engine.service'
+import type { SuiviService } from '../services/suivi.service'
+import type { TemplateInput } from '../services/suivi-store.util'
 import type { GraphService } from '../services/graph.service'
 import type { DashboardLibraryService } from '../services/dashboard-library.service'
 import type { ScriptEngineService } from '../services/script-engine.service'
@@ -58,10 +59,9 @@ import type {
 } from '@polenta/zod-schemas'
 import type {
   ReviewStatus,
-  QueryDefinition,
-  DrillDownSelection,
-  BuilderConfig,
   QueryScope,
+  ScriptClientInfo,
+  ScriptRunRequest,
   CreateImpactAnalysisDto,
   UpdateImpactItemStatusDto,
   TemplateExportFormat,
@@ -103,11 +103,11 @@ export interface Container {
   polentaRepo: PolentaRepoService
   workspaceTree: WorkspaceTreeService
   interfaceCompliance: InterfaceComplianceService
-  queryEngine: QueryEngineService
   /** GH74 — graphe de données, bibliothèque projet, moteur de scripts. */
   graph: GraphService
   dashboardLibrary: DashboardLibraryService
   scriptEngine: ScriptEngineService
+  suivi: SuiviService
   savedQueries: SavedQueriesService
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService
@@ -141,10 +141,41 @@ function checkValueRenames(channel: string, objectTypeRef: unknown, renames: unk
 }
 
 /**
+ * GH74 — channels qui écrivent dans le périmètre du graphe de données, premier argument = repo.
+ * Le watcher n'oublie le graphe qu'après stabilisation des fichiers (≥ 300 ms) : sans oubli
+ * immédiat, un script lancé juste après l'écriture (`suivi:run`) verrait l'état précédent.
+ */
+const GRAPH_WRITE_CHANNELS = new Set([
+  'requirements:create', 'requirements:update', 'requirements:open-draft', 'requirements:transition',
+  'requirements:link-create', 'requirements:link-delete',
+  'tests:create', 'tests:update', 'tests:execute', 'tests:open-draft',
+  'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
+  'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
+  'campaigns:execution-sheet-apply',
+  'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:move-element',
+  'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
+  'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
+  'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
+])
+
+export function withGraphInvalidation(r: HandlerRegistry, graph: Container['graph']): HandlerRegistry {
+  return {
+    handle: (channel, fn) => r.handle(channel, !GRAPH_WRITE_CHANNELS.has(channel) ? fn : async (event, ...args) => {
+      try {
+        return await fn(event, ...args)
+      } finally {
+        if (typeof args[0] === 'string') graph.invalidate(args[0])
+      }
+    }),
+  }
+}
+
+/**
  * Channels partagés par le desktop et le serveur web (GH44). Les channels propres au poste local
  * (dialogues natifs, shell, mise à jour…) sont dans `desktop-only.handlers.ts`.
  */
-export function registerHandlers(r: HandlerRegistry, c: Container, platform: PlatformHost): void {
+export function registerHandlers(registry: HandlerRegistry, c: Container, platform: PlatformHost): void {
+  const r = withGraphInvalidation(registry, c.graph)
   // ── Live sync ────────────────────────────────────────────────────────────────
   // Pushes every out-of-band file change (external edit, git checkout/pull, a bulk-import
   // script writing directly to disk…) to every open window, so the renderer can invalidate
@@ -647,16 +678,20 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   ) =>
     c.interfaceCompliance.checkComponentCoverage(componentRepoPath, interfaceRepoPath, roles))
 
-  // ── Queries (T77 sprint 1) ───────────────────────────────────────────────────
-  r.handle('queries:execute', (_e, repoPath: string, queryDef: unknown, workspaceDir?: string) =>
-    c.queryEngine.execute(repoPath, queryDef as QueryDefinition, workspaceDir))
-  // GH65 — vue Suivi : lignes d'un élément de widget, objet à ouvrir pour une ligne.
-  r.handle('queries:drill-down', (_e, repoPath: string, queryDef: unknown, selection: unknown, workspaceDir?: string) =>
-    c.queryEngine.drillDown(repoPath, queryDef as QueryDefinition, selection as DrillDownSelection, workspaceDir))
-  r.handle('queries:resolve-row-target', (_e, repoPath: string, row: unknown, workspaceDir?: string) =>
-    c.queryEngine.resolveRowTarget(repoPath, (row ?? {}) as Record<string, unknown>, workspaceDir))
-  r.handle('queries:builder-to-sql', (_e, repoPath: string, config: unknown, workspaceDir?: string) =>
-    c.queryEngine.builderToSql(repoPath, config as BuilderConfig, workspaceDir))
+  // ── Vue Suivi : exécution des scripts, drill-down, modèles (GH74) ───────────
+  r.handle('suivi:run', (_e, repoPath: string, workspaceDir: string | undefined, username: string, req: unknown, client: unknown) =>
+    c.suivi.run(repoPath, workspaceDir, username, (req ?? {}) as ScriptRunRequest, (client ?? { locale: 'fr', timezone: 'UTC' }) as ScriptClientInfo))
+  r.handle('suivi:describe-ids', (_e, repoPath: string, workspaceDir: string | undefined, ids: unknown, locale?: string) =>
+    c.suivi.describeIds(repoPath, workspaceDir, Array.isArray(ids) ? ids.map(String) : [], locale))
+  r.handle('suivi:resolve-target', (_e, repoPath: string, workspaceDir: string | undefined, id: string) =>
+    c.suivi.resolveTarget(repoPath, workspaceDir, String(id)))
+  r.handle('suivi:templates', () => c.suivi.templates())
+  r.handle('suivi:render-template', (_e, kind: unknown, input: unknown) =>
+    c.suivi.renderTemplate(kind === 'query' ? 'query' : 'widget', input as TemplateInput))
+  r.handle('suivi:object-types', (_e, repoPath: string, workspaceDir?: string) =>
+    c.suivi.objectTypes(repoPath, workspaceDir))
+
+  // ── Requêtes (T77, GH74 : scripts de données) ───────────────────────────────
   r.handle('queries:list', (_e, repoPath: string, username: string) =>
     c.savedQueries.list(repoPath, username))
   r.handle('queries:create', (_e, repoPath: string, username: string, dto: unknown) =>

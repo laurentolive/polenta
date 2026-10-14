@@ -1,10 +1,11 @@
 /**
- * QueryPage — "Vue Requêtes" (T77 sprint 1).
+ * QueryPage — « Vue Requêtes » de la vue Suivi (T77 ; GH74 : scripts de données).
  *
- * Builder / SQL avancé toggle, table de résultat, sauvegarde (titre + portée),
- * liste "Historique" (filtrable, purge auto + croix de suppression), export Excel.
- * GH14 : la liste "Requêtes sauvegardées" a été retirée — elle doublonnait la
- * section Requêtes du panneau latéral Suivi (seul point d'ouverture/suppression).
+ * Deux modes : **Modèle** (formulaire d'un modèle de requête, le script est généré) et **Script**
+ * (éditeur JS, `export default (data, polenta) => rows`). Exécution dans le bac à sable du main,
+ * table des lignes ou erreur (message, fichier, ligne), enregistrement (mise à jour de la requête
+ * ouverte, ou « Enregistrer sous » : titre + portée), historique privé, export Excel / PDF.
+ * Une requête SQL d'avant GH74 s'affiche en lecture seule (non prise en charge).
  *
  * URL: /query?projectId=<encoded>&queryId=<id?>
  */
@@ -13,19 +14,20 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Save, Search as SearchIcon } from 'lucide-react'
+import { AlertTriangle, Play, Save, Search as SearchIcon } from 'lucide-react'
+import type { QueryResult, QueryScope, ScriptRunResult } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
-import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
-import { QueryBuilder } from '../components/dashboard/QueryBuilder'
-import { SqlEditor } from '../components/dashboard/SqlEditor'
 import { ResultTable } from '../components/dashboard/ResultTable'
+import { CodeEditor } from '../components/dashboard/CodeEditor'
+import { TemplateForm } from '../components/dashboard/TemplateForm'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { queryResultExportBaseName } from '../components/export/exportFilenames'
 import { useSetTabTitle } from '../contexts/TabsContext'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import type { BuilderConfig, QueryDefinition, QueryMode, QueryResult, QueryScope, SavedQuery, QueryHistoryEntry } from '@polenta/types'
+import { clientInfo, scriptErrorText, toQueryResult } from '../hooks/useScriptRun'
+import { filteredListFields, useCampaignOptions, useSuiviObjectTypes, useSuiviTemplates } from '../hooks/useSuiviCatalog'
 
 export const Route = createFileRoute('/query')({
   component: QueryPage,
@@ -35,15 +37,16 @@ export const Route = createFileRoute('/query')({
   }),
 })
 
-const EMPTY_BUILDER_CONFIG: BuilderConfig = { objectTypeRef: '', conditions: [], combinator: 'AND' }
-
-function entryFilterText(mode: QueryMode, builderConfig: BuilderConfig | undefined, sqlText: string | undefined): string {
-  const content = mode === 'sql' ? (sqlText ?? '') : JSON.stringify(builderConfig ?? {})
-  return content.toLowerCase()
+const EMPTY_SCRIPT = `// @polenta contract 1
+// Script de données : renvoie un tableau de lignes. Types : dashboards/lib/polenta.d.ts.
+export default function (data, polenta) {
+  return data.requirements.map((r) => ({ id: r.id, title: r.title, status: r.status, _ids: [r.id] }))
 }
+`
 
 function QueryPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'fr'
   const { projectId, queryId } = Route.useSearch()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -62,22 +65,20 @@ function QueryPage() {
     enabled: !!repoPath,
     retry: false,
   })
-  // GH29 — vide tant que l'identité n'est pas résolue : les lectures (gardées par `!!username`)
-  // attendent, rien n'est lu ni écrit sous `local` par erreur.
+  // GH29 — vide tant que l'identité n'est pas résolue : rien n'est lu ni écrit sous `local` par erreur.
   const username = identityLogin ?? (identityError ? 'local' : '')
 
-  // Types across every workspace component (not just root, T93) — the query-engine
-  // dataset already aggregates all of them, the picker needs to match.
-  const { flatNodes, schemasByRepoPath } = useWorkspaceStructure(workspaceDir, repoPath)
+  const { data: catalog } = useSuiviTemplates()
+  const { data: objectTypes = [] } = useSuiviObjectTypes(repoPath, workspaceDir)
+  const { data: campaigns = [] } = useCampaignOptions(repoPath)
 
   const { data: savedQueries = [] } = useQuery({
     queryKey: ['queries', repoPath, username],
     queryFn: () => api.queries.list(repoPath, username),
     enabled: !!repoPath && !!username,
   })
-  // Only a saved query has a stable name worth showing on the tab — an ad hoc/history-only
-  // query has none, so the tab keeps the generic "Requêtes" default in that case.
-  useSetTabTitle(queryId ? savedQueries.find(q => q.id === queryId)?.title : undefined)
+  const current = queryId ? savedQueries.find((q) => q.id === queryId) : undefined
+  useSetTabTitle(current?.title)
 
   const { data: history = [] } = useQuery({
     queryKey: ['queries-history', repoPath, username],
@@ -85,127 +86,113 @@ function QueryPage() {
     enabled: !!repoPath && !!username,
   })
 
-  // ── Editor state ──────────────────────────────────────────────────────────
-  const [mode, setMode] = useState<QueryMode>('builder')
-  const [builderConfig, setBuilderConfig] = useState<BuilderConfig>(EMPTY_BUILDER_CONFIG)
-  const [sqlText, setSqlText] = useState('')
-  const [result, setResult] = useState<QueryResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // ── Éditeur ───────────────────────────────────────────────────────────────
+  const [mode, setMode] = useState<'template' | 'script'>('template')
+  const [templateId, setTemplateId] = useState('filtered-list')
+  const [params, setParams] = useState<Record<string, unknown>>({ category: 'requirement' })
+  const [script, setScript] = useState(EMPTY_SCRIPT)
+  const [run, setRun] = useState<ScriptRunResult | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [saveModal, setSaveModal] = useState<{ title: string; scope: QueryScope } | null>(null)
   const [historyFilter, setHistoryFilter] = useState('')
-
   const loadedRef = useRef<string | undefined>(undefined)
-  // Identifie la requête d'exécution "actuelle" — incrémenté à chaque nouvel appel et à
-  // chaque reset (bouton "Ajouter"). Une réponse dont l'id ne correspond plus au dernier
-  // émis est ignorée : sans ce garde-fou, ouvrir une requête lente puis en rouvrir une
-  // autre avant qu'elle ne réponde ferait écraser le résultat/l'éditeur affichés par une
-  // réponse périmée qui arrive après coup.
+  // Une réponse dont l'id n'est plus le dernier émis (autre requête ouverte entre-temps) est ignorée.
   const requestIdRef = useRef(0)
 
-  async function runQueryDef(def: QueryDefinition) {
+  const template = catalog?.queries.find((q) => q.id === templateId)
+  const readOnly = current?.state.readOnly
+
+  /** Script à exécuter / enregistrer : généré par le modèle, ou celui de l'éditeur. */
+  async function currentScript(): Promise<string> {
+    if (mode === 'script') return script
+    return (await api.suivi.renderTemplate('query', { id: templateId, params })).script
+  }
+
+  async function execute(code?: string) {
+    if (!repoPath || !username) return
     const reqId = ++requestIdRef.current
     setIsExecuting(true)
     try {
-      const res = await api.queries.execute(repoPath, def, workspaceDir)
+      const text = code ?? await currentScript()
+      const res = await api.suivi.run(repoPath, workspaceDir, username, { script: text }, clientInfo())
       if (requestIdRef.current !== reqId) return
-      setResult(res)
-      setError(null)
-      api.queries
-        .historyAdd(repoPath, username, { mode: def.mode, builderConfig: def.builderConfig, sqlText: def.sqlText })
-        .then(() => qc.invalidateQueries({ queryKey: ['queries-history', repoPath, username] }))
-        .catch(() => { /* l'historique est un confort, pas une garantie — on n'échoue pas la requête pour ça */ })
+      setRun(res)
+      if (res.ok) {
+        api.queries.historyAdd(repoPath, username, { script: text })
+          .then(() => qc.invalidateQueries({ queryKey: ['queries-history', repoPath, username] }))
+          .catch(() => { /* l'historique est un confort, pas une garantie */ })
+      }
     } catch (err) {
       if (requestIdRef.current !== reqId) return
-      // Pas de résultat périmé laissé à l'écran sans indication (T77-tests.md cas limite).
-      setResult(null)
-      setError(err instanceof Error ? err.message : t('dashboard.widgetModal.queryExecutionError'))
+      setRun({ ok: false, error: { kind: 'runtime', message: err instanceof Error ? err.message : String(err), file: null, line: null, column: null } })
     } finally {
       if (requestIdRef.current === reqId) setIsExecuting(false)
     }
   }
 
-  function runCurrent() {
-    if (mode === 'builder') {
-      if (!builderConfig.objectTypeRef) return
-      void runQueryDef({ mode: 'builder', builderConfig })
-    } else {
-      if (!sqlText.trim()) return
-      void runQueryDef({ mode: 'sql', sqlText })
-    }
-  }
-
-  function loadEntry(entryMode: QueryMode, entryBuilderConfig?: BuilderConfig, entrySqlText?: string) {
-    setMode(entryMode)
-    if (entryMode === 'builder') {
-      const cfg = entryBuilderConfig ?? EMPTY_BUILDER_CONFIG
-      setBuilderConfig(cfg)
-      setSqlText('')
-      if (cfg.objectTypeRef) void runQueryDef({ mode: 'builder', builderConfig: cfg })
-    } else {
-      const sql = entrySqlText ?? ''
-      setSqlText(sql)
-      setBuilderConfig(EMPTY_BUILDER_CONFIG)
-      if (sql.trim()) void runQueryDef({ mode: 'sql', sqlText: sql })
-    }
-  }
-
-  // Reset the editor to a blank query when navigating to "Ajouter" (queryId absent).
+  // « Ajouter » (queryId absent) : éditeur vierge.
   useEffect(() => {
     if (queryId) return
     loadedRef.current = undefined
-    requestIdRef.current++ // invalide toute exécution en cours pour la requête précédente
-    setMode('builder')
-    setBuilderConfig(EMPTY_BUILDER_CONFIG)
-    setSqlText('')
-    setResult(null)
-    setError(null)
+    requestIdRef.current++
+    setMode('template')
+    setTemplateId('filtered-list')
+    setParams({ category: 'requirement' })
+    setScript(EMPTY_SCRIPT)
+    setRun(null)
   }, [queryId])
 
-  // Load a saved query or a history entry into the editor when queryId points at one.
+  // Requête enregistrée ou entrée d'historique désignée par l'URL : chargée puis exécutée.
   useEffect(() => {
     if (!queryId || loadedRef.current === queryId) return
-    const found: SavedQuery | QueryHistoryEntry | undefined =
-      savedQueries.find((q) => q.id === queryId) ?? history.find((h) => h.id === queryId)
-    if (!found) return
+    const saved = savedQueries.find((q) => q.id === queryId)
+    const hist = history.find((h) => h.id === queryId)
+    if (!saved && !hist) return
     loadedRef.current = queryId
-    loadEntry(found.mode, found.builderConfig, found.sqlText)
+    setRun(null)
+    if (saved?.state.readOnly === 'legacy-sql') return
+    if (saved?.template && !saved.state.customized) {
+      setMode('template')
+      setTemplateId(saved.template.id)
+      setParams(saved.template.params)
+    } else {
+      setMode('script')
+    }
+    const text = saved?.script ?? hist!.script
+    setScript(text)
+    void execute(text)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryId, savedQueries, history])
 
-  async function switchToSql() {
-    if (mode === 'builder' && builderConfig.objectTypeRef && repoPath) {
-      try {
-        const generated = await api.queries.builderToSql(repoPath, builderConfig, workspaceDir)
-        setSqlText(generated)
-      } catch {
-        // Le builder est incomplet ou invalide — l'utilisateur repart d'un éditeur vide.
-      }
-    }
-    setMode('sql')
-  }
+  const invalidateQueries = () => qc.invalidateQueries({ queryKey: ['queries', repoPath, username] })
 
   const createMutation = useMutation({
-    mutationFn: (dto: Parameters<typeof api.queries.create>[2]) => api.queries.create(repoPath, username, dto),
+    mutationFn: async (dto: { title: string; scope: QueryScope }) =>
+      api.queries.create(repoPath, username, {
+        ...dto, createdBy: username,
+        ...(mode === 'template' ? { template: { id: templateId, params } } : { script }),
+      }),
     onSuccess: (q) => {
       setSaveModal(null)
-      qc.invalidateQueries({ queryKey: ['queries', repoPath, username] })
+      invalidateQueries()
+      loadedRef.current = q.id
       navigate({ to: '/query', search: { projectId, queryId: q.id } })
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: () => api.queries.update(repoPath, username, current!.id, mode === 'template' ? { template: { id: templateId, params } } : { script }),
+    onSuccess: () => {
+      invalidateQueries()
+      // Les widgets qui utilisent cette requête sont réexécutés (leur clé porte le script).
+      qc.invalidateQueries({ queryKey: ['widget-query-result'] })
     },
   })
 
   function confirmSave() {
     if (!saveModal || !saveModal.title.trim()) return
-    createMutation.mutate({
-      title: saveModal.title.trim(),
-      mode,
-      builderConfig: mode === 'builder' ? builderConfig : undefined,
-      sqlText: mode === 'sql' ? sqlText : undefined,
-      scope: saveModal.scope,
-      createdBy: username,
-    })
+    createMutation.mutate({ title: saveModal.title.trim(), scope: saveModal.scope })
   }
-
   useModalHotkeys(() => setSaveModal(null), confirmSave, !saveModal || createMutation.isPending)
 
   const deleteHistoryMutation = useMutation({
@@ -213,14 +200,13 @@ function QueryPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['queries-history', repoPath, username] }),
   })
 
-  // Nom de la requête sauvegardée actuellement chargée, sinon nom générique — cf. specs/T43.md §4
-  // (pattern `request-{name}`). `QueryHistoryEntry` n'a pas de titre (requête non sauvegardée) :
-  // seule une requête réellement sauvegardée (`savedQueries`) peut fournir un nom.
-  const currentQueryName = (queryId && savedQueries.find(q => q.id === queryId)?.title) || 'resultat'
-
+  const result: QueryResult | null = run ? toQueryResult(run) : null
+  const currentQueryName = current?.title || 'resultat'
+  const firstLine = (s: string) => s.split('\n').find((l) => l.trim() && !l.trim().startsWith('//'))?.trim() ?? s.slice(0, 60)
   const visibleHistory = historyFilter.trim()
-    ? history.filter((h) => entryFilterText(h.mode, h.builderConfig, h.sqlText).includes(historyFilter.trim().toLowerCase()))
+    ? history.filter((h) => h.script.toLowerCase().includes(historyFilter.trim().toLowerCase()))
     : history
+  const fieldOptions = templateId === 'filtered-list' ? filteredListFields(params, objectTypes) : (result?.columns.map((c) => c.name) ?? [])
 
   if (!projectId) return <p className="text-sm text-ink-3 p-4">{t('common.projectNotLoaded')}</p>
 
@@ -239,15 +225,9 @@ function QueryPage() {
               getPayload={() => ({ queryName: currentQueryName, result })}
               getPrintParams={() => {
                 const resultJson = JSON.stringify(result)
-                // Le résultat complet transite en JSON dans l'URL de la fenêtre cachée
-                // (`electron-pdf.ts` → `win.loadFile(..., {search})`) faute d'ID stable à recharger
-                // pour une requête ad hoc — cf. `QueryResultExportPayload`. Au-delà d'un certain
-                // volume, la chaîne de requête risque une troncature silencieuse (constat de
-                // revue de code) plutôt qu'une erreur claire : on préfère refuser explicitement
-                // l'export PDF et orienter vers Excel, qui n'a pas cette limite.
-                if (resultJson.length > 200_000) {
-                  throw new Error(t('queryPage.resultTooLargeForPdf'))
-                }
+                // Le résultat transite en JSON dans l'URL de la fenêtre d'impression : au-delà d'un
+                // certain volume, refus explicite plutôt qu'une troncature silencieuse.
+                if (resultJson.length > 200_000) throw new Error(t('queryPage.resultTooLargeForPdf'))
                 return { queryName: currentQueryName, resultJson }
               }}
             />
@@ -256,165 +236,142 @@ function QueryPage() {
       />
 
       <div className="flex-1 overflow-y-auto">
-      <div className="max-w-5xl p-6 pb-16 space-y-6">
-      {/* ── Editeur ── */}
-      <div className="bg-surface border border-edge rounded-lg p-4 space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-edge overflow-hidden text-xs">
-            <button
-              type="button"
-              onClick={() => setMode('builder')}
-              className={`px-3 py-1.5 ${mode === 'builder' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
-            >
-              {t('queryPage.builderMode')}
-            </button>
-            <button
-              type="button"
-              onClick={switchToSql}
-              className={`px-3 py-1.5 ${mode === 'sql' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
-            >
-              {t('queryPage.sqlMode')}
-            </button>
-          </div>
-
-          <div className="flex-1" />
-
-          <button
-            type="button"
-            onClick={runCurrent}
-            disabled={isExecuting}
-            className="btn-primary-sm flex items-center gap-1.5"
-          >
-            <Play size={12} />
-            {isExecuting ? t('queryPage.executing') : t('queryPage.execute')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setSaveModal({ title: '', scope: 'private' })}
-            className="btn-secondary-sm flex items-center gap-1.5"
-          >
-            <Save size={12} />
-            {t('requirementsPage.save')}
-          </button>
-        </div>
-
-        {mode === 'builder' ? (
-          <QueryBuilder
-            flatNodes={flatNodes}
-            schemasByRepoPath={schemasByRepoPath}
-            selfRepoPath={repoPath}
-            value={builderConfig}
-            onChange={setBuilderConfig}
-          />
-        ) : (
-          <SqlEditor value={sqlText} onChange={setSqlText} />
-        )}
-
-        {error && (
-          <p className="text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
-            {error}
-          </p>
-        )}
-
-        <ResultTable result={result} />
-      </div>
-
-      {/* ── Historique ── */}
-      <div className="bg-surface border border-edge rounded-lg overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-edge flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide shrink-0">
-            {historyFilter
-              ? t('queryPage.historyCountFiltered', { visible: visibleHistory.length, total: history.length })
-              : t('queryPage.historyCount', { count: visibleHistory.length })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-edge-subtle">
-          <SearchIcon size={11} className="text-ink-3 shrink-0" />
-          <input
-            value={historyFilter}
-            onChange={(e) => setHistoryFilter(e.target.value)}
-            placeholder={t('common.filterPlaceholder')}
-            className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3"
-          />
-        </div>
-        <div className="max-h-64 overflow-y-auto">
-          {history.length === 0 ? (
-            <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noHistory')}</p>
-          ) : visibleHistory.length === 0 ? (
-            <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noResultForFilter')}</p>
+        <div className="max-w-5xl p-6 pb-16 space-y-6">
+          {readOnly === 'legacy-sql' ? (
+            <div className="bg-surface border border-edge rounded-lg p-4 space-y-3" data-testid="legacy-sql">
+              <p className="flex items-start gap-2 text-xs text-status-warning">
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {t('queryPage.legacySqlNotice')}
+              </p>
+              <pre className="text-xs font-mono bg-canvas border border-edge rounded p-3 whitespace-pre-wrap text-ink-2">{current?.legacySql}</pre>
+            </div>
           ) : (
-            visibleHistory.map((h) => (
-              <div key={h.id} className="group flex items-center gap-2 px-4 py-2 hover:bg-hover border-b border-edge-subtle last:border-0">
-                <button type="button" onClick={() => navigate({ to: '/query', search: { projectId, queryId: h.id } })} className="flex-1 flex items-center gap-2 text-left min-w-0">
-                  <span className="text-[10px] font-mono text-ink-3 shrink-0 uppercase">{h.mode}</span>
-                  <span className="text-xs text-ink truncate">
-                    {h.mode === 'sql' ? h.sqlText : h.builderConfig?.objectTypeRef}
-                  </span>
+            <div className="bg-surface border border-edge rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg border border-edge overflow-hidden text-xs">
+                  <button type="button" onClick={() => setMode('template')} className={`px-3 py-1.5 ${mode === 'template' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}>
+                    {t('queryPage.templateMode')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (mode === 'template') setScript(await currentScript())
+                      setMode('script')
+                    }}
+                    className={`px-3 py-1.5 ${mode === 'script' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
+                  >
+                    {t('queryPage.scriptMode')}
+                  </button>
+                </div>
+                {current?.state.customized && current.template && mode === 'script' && (
+                  <span className="text-[11px] text-ink-3">{t('queryPage.customizedNotice')}</span>
+                )}
+                {readOnly === 'newer-format' && <span className="text-[11px] text-status-warning">{t('queryPage.newerFormatNotice')}</span>}
+                <div className="flex-1" />
+                <button type="button" onClick={() => void execute()} disabled={isExecuting} className="btn-primary-sm flex items-center gap-1.5">
+                  <Play size={12} />
+                  {isExecuting ? t('queryPage.executing') : t('queryPage.execute')}
                 </button>
-                <span className="text-[10px] text-ink-3 shrink-0">{new Date(h.executedAt).toLocaleTimeString()}</span>
-                <button
-                  type="button"
-                  onClick={() => deleteHistoryMutation.mutate(h.id)}
-                  className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0"
-                  title={t('common.delete')}
-                >
-                  ✕
+                {current && !readOnly && (
+                  <button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} className="btn-secondary-sm flex items-center gap-1.5">
+                    <Save size={12} /> {t('requirementsPage.save')}
+                  </button>
+                )}
+                <button type="button" onClick={() => setSaveModal({ title: current ? `${current.title} (2)` : '', scope: 'private' })} className="btn-secondary-sm flex items-center gap-1.5">
+                  <Save size={12} /> {t(current ? 'queryPage.saveAs' : 'requirementsPage.save')}
                 </button>
               </div>
-            ))
-          )}
-        </div>
-      </div>
 
-      {/* ── Modal de sauvegarde ── */}
-      {saveModal && (
-        <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-20">
-          <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
-            <h2 className="font-semibold text-sm text-ink mb-4">{t('queryPage.saveQueryTitle')}</h2>
-            <label className="text-xs text-ink-3 block mb-1">{t('requirementsPage.titleLabel')}</label>
-            <input
-              value={saveModal.title}
-              onChange={(e) => setSaveModal({ ...saveModal, title: e.target.value })}
-              placeholder={t('queryPage.queryTitlePlaceholder')}
-              autoFocus
-              className="input-field w-full mb-4"
-            />
-            <label className="text-xs text-ink-3 block mb-1.5">{t('queryPage.scopeLabel')}</label>
-            <div className="flex gap-4 mb-5">
-              <label className="flex items-center gap-1.5 text-xs text-ink-2">
-                <input
-                  type="radio"
-                  checked={saveModal.scope === 'private'}
-                  onChange={() => setSaveModal({ ...saveModal, scope: 'private' })}
-                />
-                {t('queryPage.scopePrivate')}
-              </label>
-              <label className="flex items-center gap-1.5 text-xs text-ink-2">
-                <input
-                  type="radio"
-                  checked={saveModal.scope === 'shared'}
-                  onChange={() => setSaveModal({ ...saveModal, scope: 'shared' })}
-                />
-                {t('queryPage.scopeShared')}
-              </label>
+              {mode === 'template' ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-ink-3 shrink-0 w-40">{t('queryPage.templateLabel')}</label>
+                    <select value={templateId} onChange={(e) => { setTemplateId(e.target.value); setParams({}) }} className="input-field flex-1 text-xs py-1" aria-label={t('queryPage.templateLabel')}>
+                      {(catalog?.queries ?? []).map((q) => <option key={q.id} value={q.id}>{q.label[lang]}</option>)}
+                    </select>
+                  </div>
+                  {template && (
+                    <TemplateForm params={template.params} value={params} onChange={setParams} columns={fieldOptions} objectTypes={objectTypes} campaigns={campaigns} />
+                  )}
+                </div>
+              ) : (
+                <CodeEditor language="javascript" value={script} onChange={setScript} minHeight={220} ariaLabel={t('queryPage.scriptMode')}
+                  errorLine={run && !run.ok && run.error.file === 'script.js' ? run.error.line : null} />
+              )}
+
+              {(updateMutation.error || createMutation.error) && (
+                <p className="text-xs text-status-danger">{String((updateMutation.error ?? createMutation.error) instanceof Error ? (updateMutation.error ?? createMutation.error as Error).message : '')}</p>
+              )}
+              {run && !run.ok && (
+                <p className="text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2 whitespace-pre-wrap" data-testid="script-error">
+                  {scriptErrorText(run.error)}
+                </p>
+              )}
+              <ResultTable result={result} />
             </div>
-            <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setSaveModal(null)} className="btn-secondary">
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={confirmSave}
-                disabled={!saveModal.title.trim() || createMutation.isPending}
-                className="btn-primary"
-              >
-                {createMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
-              </button>
+          )}
+
+          {/* ── Historique ── */}
+          <div className="bg-surface border border-edge rounded-lg overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-edge flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide shrink-0">
+                {historyFilter
+                  ? t('queryPage.historyCountFiltered', { visible: visibleHistory.length, total: history.length })
+                  : t('queryPage.historyCount', { count: visibleHistory.length })}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-edge-subtle">
+              <SearchIcon size={11} className="text-ink-3 shrink-0" />
+              <input value={historyFilter} onChange={(e) => setHistoryFilter(e.target.value)} placeholder={t('common.filterPlaceholder')} className="flex-1 text-xs bg-transparent text-ink border-0 outline-none placeholder:text-ink-3" />
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {history.length === 0 ? (
+                <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noHistory')}</p>
+              ) : visibleHistory.length === 0 ? (
+                <p className="text-xs text-ink-3 italic px-4 py-4">{t('queryPage.noResultForFilter')}</p>
+              ) : (
+                visibleHistory.map((h) => (
+                  <div key={h.id} className="group flex items-center gap-2 px-4 py-2 hover:bg-hover border-b border-edge-subtle last:border-0">
+                    <button type="button" onClick={() => navigate({ to: '/query', search: { projectId, queryId: h.id } })} className="flex-1 flex items-center gap-2 text-left min-w-0">
+                      <span className="text-xs font-mono text-ink truncate">{firstLine(h.script)}</span>
+                    </button>
+                    <span className="text-[10px] text-ink-3 shrink-0">{new Date(h.executedAt).toLocaleTimeString()}</span>
+                    <button type="button" onClick={() => deleteHistoryMutation.mutate(h.id)} className="opacity-0 group-hover:opacity-100 text-ink-3 hover:text-status-danger transition-opacity shrink-0" title={t('common.delete')}>
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
+
+          {/* ── Enregistrer sous ── */}
+          {saveModal && (
+            <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-20">
+              <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
+                <h2 className="font-semibold text-sm text-ink mb-4">{t('queryPage.saveQueryTitle')}</h2>
+                <label className="text-xs text-ink-3 block mb-1">{t('requirementsPage.titleLabel')}</label>
+                <input value={saveModal.title} onChange={(e) => setSaveModal({ ...saveModal, title: e.target.value })} placeholder={t('queryPage.queryTitlePlaceholder')} autoFocus className="input-field w-full mb-4" />
+                <label className="text-xs text-ink-3 block mb-1.5">{t('queryPage.scopeLabel')}</label>
+                <div className="flex gap-4 mb-5">
+                  <label className="flex items-center gap-1.5 text-xs text-ink-2">
+                    <input type="radio" checked={saveModal.scope === 'private'} onChange={() => setSaveModal({ ...saveModal, scope: 'private' })} />
+                    {t('queryPage.scopePrivate')}
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-ink-2">
+                    <input type="radio" checked={saveModal.scope === 'shared'} onChange={() => setSaveModal({ ...saveModal, scope: 'shared' })} />
+                    {t('queryPage.scopeShared')}
+                  </label>
+                </div>
+                <div className="flex gap-3 justify-end">
+                  <button type="button" onClick={() => setSaveModal(null)} className="btn-secondary">{t('common.cancel')}</button>
+                  <button type="button" onClick={confirmSave} disabled={!saveModal.title.trim() || createMutation.isPending} className="btn-primary">
+                    {createMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
-      </div>
       </div>
     </div>
   )

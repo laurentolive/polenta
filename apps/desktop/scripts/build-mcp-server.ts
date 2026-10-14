@@ -26,6 +26,16 @@ build({
   // GH74 — worker du moteur de scripts et .wasm de QuickJS ; bibliothèque de départ à côté du bundle.
   .then(() => buildScriptWorker('out/mcp-server'))
   .then(() => copyDashboardLib('out/mcp-server'))
+  // GH74 — compilateur Vega-Lite en ESM séparé (Vega 6 : ESM seul, await de premier niveau).
+  .then(() => build({
+    absWorkingDir: root,
+    entryPoints: ['src/mcp-server/vega-compile.ts'],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    outfile: 'out/mcp-server/vega-compile.mjs',
+    logLevel: 'warning',
+  }))
   .catch((err) => {
     console.error(err)
     process.exit(1)

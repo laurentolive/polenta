@@ -1024,7 +1024,33 @@
       "matrixValueLabel": "Cell value",
       "presetLabel": "Series presentation",
       "presetStandard": "Standard",
-      "presetCampaignProgress": "Campaign progress"
+      "presetCampaignProgress": "Campaign progress",
+      "sharedOnlyHint": "Shared dashboard: only shared queries are offered.",
+      "templateTab": "Template",
+      "codeTab": "Code",
+      "templateLabel": "Template",
+      "revert": "Back to template",
+      "revertHint": "Regenerates the code from the template: manual changes are lost.",
+      "customizedNotice": "Customised widget: its code was modified, the template form no longer applies. \"Back to template\" regenerates the code (changes are lost).",
+      "templateUpdate": "A newer version of the template (v{{version}}) is available: it will be applied on save.",
+      "codeDetachHint": "Editing the code detaches the widget from its template.",
+      "transformLabel": "Transform (JS) — export default (rows, polenta) => rows",
+      "specLabel": "Vega-Lite spec (JSON) — data: { \"name\": \"rows\" }",
+      "aggregateWarning": "The spec aggregates with Vega-Lite (aggregate): click details will not be available. Group in the transform instead.",
+      "previewTitle": "Preview",
+      "selectQueryHint": "Choose a query to see the preview."
+    },
+    "template": {
+      "anyType": "(all objects of the category)",
+      "noOption": "No value available.",
+      "operators": {
+        "=": "=",
+        "!=": "≠",
+        ">": ">",
+        "<": "<",
+        "contains": "contains",
+        "in": "in"
+      }
     }
   },
   "queryPage": {
@@ -1077,7 +1103,14 @@
         "progress": "Progress",
         "testStatus": "Test status"
       }
-    }
+    },
+    "templateMode": "Template",
+    "scriptMode": "Script",
+    "templateLabel": "Query template",
+    "saveAs": "Save as…",
+    "legacySqlNotice": "SQL query from before the current version of Polenta: it is no longer supported. Rewrite it with a template or a script, then delete it.",
+    "customizedNotice": "Customised script: the template form no longer applies.",
+    "newerFormatNotice": "Created by a newer version of Polenta: read-only."
   },
   "dashboardPage": {
     "cannotChangeScope": "Unable to change scope.",
@@ -1110,7 +1143,27 @@
       "title": "Details",
       "fallback": "Details not available for this query — result rows shown.",
       "notFound": "Object not found.",
-      "openFailed": "Could not open: {{message}}"
+      "openFailed": "Could not open: {{message}}",
+      "noIds": "Details not available: the script provides no identifiers for this mark.",
+      "columns": {
+        "id": "Identifier",
+        "type": "Type",
+        "title": "Title",
+        "status": "Status"
+      },
+      "kinds": {
+        "requirement": "Requirement",
+        "test": "Test",
+        "campaign": "Campaign",
+        "campaign-entry": "Campaign entry",
+        "run": "Run",
+        "unknown": "Unknown"
+      }
+    },
+    "newerFormatNotice": "Dashboard created by a newer version of Polenta: read-only.",
+    "vega": {
+      "invalidJson": "Invalid spec (JSON): {{message}}",
+      "renderError": "Cannot render: {{message}}"
     }
   },
   "exportButton": {

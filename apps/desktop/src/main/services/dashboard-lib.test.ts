@@ -4,11 +4,10 @@ import ts from 'typescript'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { QuickJSWASMModule } from 'quickjs-emscripten-core'
 import type { GraphRow, PolentaGraph } from '@polenta/types'
-import { buildHost } from '@polenta/types'
+import { buildHost, findQueryTemplate } from '@polenta/types'
 import { createSandboxModule, SandboxContext } from './script-sandbox'
 import type { LibraryModules } from './script-limits'
 import { GraphService } from './graph.service'
-import { QueryEngineService } from './query-engine.service'
 import { ROOT, WS, fixtureServices } from './graph-fixture.test-util'
 import { renderGraphDts, GRAPH_DTS_PATH } from '../../../scripts/generate-graph-dts'
 import { readManifest, staleFiles, SHIPPED_DIR, SHIPPED_FILES } from '../../../scripts/dashboard-lib-manifest'
@@ -25,12 +24,16 @@ let qjs: QuickJSWASMModule
 let graphJson: string
 let ctx: SandboxContext
 
+/** Sorties de l'ancien moteur SQL sur le même jeu, figées avant sa suppression (GH74 sprint 2). */
+const LEGACY = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'gh74-legacy-reference.json'), 'utf8')) as {
+  steps: Record<string, string>
+  maturity: Record<string, string>
+  builder: { config: Record<string, unknown>; rows: unknown[] }[]
+}
+
 function services() {
   const s = fixtureServices()
-  return {
-    graph: new GraphService(s.reqIndex, s.testsIndex, s.schema, s.traceability, s.git, s.workspaceTree, s.campaigns, { now: () => NOW }),
-    engine: new QueryEngineService(s.reqIndex, s.testsIndex, s.schema, s.traceability, s.workspaceTree, s.campaigns),
-  }
+  return { graph: new GraphService(s.reqIndex, s.testsIndex, s.schema, s.traceability, s.git, s.workspaceTree, s.campaigns, { now: () => NOW }) }
 }
 
 beforeAll(async () => {
@@ -54,8 +57,7 @@ function run(script: string, timezone = 'UTC', drill: Record<string, string> | n
 
 describe('GH74 — équivalence avec l\'ancien calcul de Polenta', () => {
   it('L1 — entryStep = étape GH71 (campaign-progress) pour chaque entrée', async () => {
-    const old = await services().engine.execute(ROOT, { mode: 'sql', sqlText: 'SELECT campaignId, entryId, progress FROM campaign_entries' }, WS)
-    const expected = Object.fromEntries(old.rows.map((r) => [`${r.campaignId}/${r.entryId}`, r.progress]))
+    const expected = LEGACY.steps
     const rows = run(
       "import { entryStep, stepContext } from 'lib/campaign.js'\n" +
       'export default (data) => { const ctx = stepContext(data); return data.campaigns.flatMap((c) => c.entries.map((e) => ({ id: c.id + "/" + e.entryId, step: entryStep(data, e, ctx) }))) }',
@@ -66,8 +68,7 @@ describe('GH74 — équivalence avec l\'ancien calcul de Polenta', () => {
   })
 
   it('L2 — maturity = critères T77 (maturity.util) pour chaque exigence', async () => {
-    const old = await services().engine.execute(ROOT, { mode: 'sql', sqlText: 'SELECT id, maturityOk, maturityMissingCriteria FROM requirements' }, WS)
-    const expected = Object.fromEntries(old.rows.map((r) => [r.id, `${r.maturityOk}|${r.maturityMissingCriteria}`]))
+    const expected = LEGACY.maturity
     const rows = run(
       "import { maturity, maturityContext } from 'lib/maturity.js'\n" +
       'export default (data) => { const ctx = maturityContext(data); return data.requirements.map((r) => { const m = maturity(data, r, ctx); return { id: r.id, v: m.ok + "|" + m.missing.join(", ") } }) }',
@@ -75,6 +76,15 @@ describe('GH74 — équivalence avec l\'ancien calcul de Polenta', () => {
     expect(Object.fromEntries(rows.map((r) => [r.id, r.v]))).toEqual(expected)
     expect(expected['REQ-0001']).toBe('true|')
     expect(expected['REQ-0002']).toBe('false|EARS, critère d\'acceptance, lien de vérification')
+  })
+
+  it.each(LEGACY.builder.map((b, i) => [i, b] as const))('T2 — « Liste filtrée » = ancien builder (cas %i)', (_i, b) => {
+    const rows = run(findQueryTemplate('filtered-list')!.generate(b.config))
+    const groupBy = b.config.groupBy as string[] | undefined
+    const got = groupBy
+      ? rows.map((r) => ({ ...Object.fromEntries(groupBy.map((k) => [k, r[k] ?? null])), count: r.count })).sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y)))
+      : rows.map((r) => (r.entryId ? `${r.campaignId}/${r.entryId}` : r.id)).sort()
+    expect(got).toEqual(b.rows)
   })
 })
 

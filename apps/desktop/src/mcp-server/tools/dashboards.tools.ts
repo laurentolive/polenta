@@ -1,53 +1,41 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { Dashboard, QueryDefinition, Widget, WidgetFieldMapping } from '@polenta/types'
+import type { Dashboard, Widget } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
 import { isPrivateScopeId } from '../../main/services/id-scope.util'
-import type { UpdateWidgetDto } from '../../main/services/dashboards.service'
 import {
+  checkSpec,
   findDuplicateTitle,
   orderedWidgets,
-  pruneMapping,
   validateOrder,
-  validateWidget,
+  validateTemplateInput,
   type SuiviWarning,
 } from '../../main/services/suivi-validation.util'
+import { applyWidgetTemplate } from '../../main/services/suivi-store.util'
+import { compileSpecError } from '../spec-compile'
+import { templateSchema } from './queries.tools'
 import {
   assertWritableBranch,
   findVisibleDashboard,
   findVisibleQuery,
   peekSharedId,
+  preview as previewOf,
   PRIVATE_SCOPE_REASON,
   resolveUser,
-  resultColumnNames,
-  runDefinition,
+  runScript,
   suiviError,
 } from './suivi-common'
 
 /**
- * Tools « dashboards » de la vue Suivi (GH18 — specs/GH18-design.md §7.2) :
+ * Tools « dashboards » de la vue Suivi (GH18 ; GH74 : widgets = transformation JS + spec Vega-Lite) :
  * `list_dashboards`, `create/update/delete_dashboard`, `add/update/delete_widget`,
- * `reorder_widgets`. Écritures via `DashboardsService` (partagé :
- * `dashboards/DASHBOARD-xxxx.yaml`, widgets embarqués ; privé : `.{user}.pref`).
- * `list_dashboards` ne déclenche jamais le seed des dashboards pré-configurés.
+ * `reorder_widgets`. Écritures via `DashboardsService` (partagé : `dashboards/DASHBOARD-xxxx/` ;
+ * privé : `.{user}.pref`). `list_dashboards` ne déclenche jamais le seed des dashboards pré-configurés.
  */
 
 const scopeSchema = z.enum(['shared', 'private'])
-const widgetTypeSchema = z.enum(['bar', 'pie', 'line', 'kpi', 'table', 'matrix'])
 const widgetSizeSchema = z.enum(['sm', 'md', 'lg'])
-
-const fieldMappingSchema = z
-  .object({
-    category: z.string().optional().describe('bar/line/pie : colonne des catégories ; matrix : colonne des lignes'),
-    measure: z.string().optional().describe('bar/line/pie/kpi : colonne numérique ; matrix : valeur des cellules (statuts d’exécution → pire statut, nombres → somme)'),
-    series: z.string().optional().describe('bar/line : colonne de série (multi-série) ; matrix : colonne des colonnes'),
-    label: z.string().optional().describe('matrix : libellé affiché à côté de la valeur de ligne (ex. testTitle)'),
-    stacked: z.boolean().optional().describe('bar avec series : empiler les séries'),
-    preset: z.enum(['campaignProgress']).optional().describe('bar avec series : séries présentées comme étapes d’avancement de campagne (colonne progress de campaign_entries : ordre, libellés, couleurs)'),
-    columns: z.array(z.string()).optional().describe('table : colonnes affichées (absent = toutes)'),
-  })
-  .strict()
 
 const listDashboardsInput = {
   scope: scopeSchema.optional().describe('ne garder que ce scope'),
@@ -73,9 +61,10 @@ const deleteDashboardInput = {
 const addWidgetInput = {
   dashboardId: z.string().min(1),
   title: z.string().min(1),
-  queryId: z.string().min(1).describe('requête sauvegardée (cf. list_queries)'),
-  type: widgetTypeSchema,
-  fieldMapping: fieldMappingSchema,
+  queryId: z.string().min(1).describe('requête enregistrée (cf. list_queries)'),
+  transform: z.string().optional().describe('transformation JS `export default (rows, polenta) => rows` (regroupement, union des _ids) — exclusif avec template'),
+  spec: z.string().optional().describe('spec Vega-Lite (texte JSON, "data": { "name": "rows" }) — requise sans template'),
+  template: templateSchema.optional().describe('modèle de widget + paramètres (cf. list_templates) : transformation et spec générées'),
   size: widgetSizeSchema.optional().default('md'),
   position: z.number().int().min(0).optional().describe('index dans l’ordre des widgets, défaut = à la fin'),
   dryRun: z.boolean().optional().default(true),
@@ -86,8 +75,9 @@ const updateWidgetInput = {
   widgetId: z.string().min(1),
   title: z.string().min(1).optional(),
   queryId: z.string().min(1).optional(),
-  type: widgetTypeSchema.optional(),
-  fieldMapping: fieldMappingSchema.optional().describe('remplace entièrement le mapping existant'),
+  transform: z.string().nullable().optional().describe('nouvelle transformation (null : aucune) — détache le widget de son modèle'),
+  spec: z.string().optional().describe('nouvelle spec Vega-Lite — détache le widget de son modèle'),
+  template: templateSchema.optional().describe('nouveau modèle / paramètres : code régénéré'),
   size: widgetSizeSchema.optional(),
   dryRun: z.boolean().optional().default(true),
 }
@@ -105,11 +95,6 @@ const reorderWidgetsInput = {
 }
 
 const PENDING_ID = "(généré à l'écriture)"
-
-/** Retire les clés `undefined` (sinon le spread des services écraserait l'existant). */
-function definedOnly<T extends object>(o: T): Partial<T> {
-  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>
-}
 
 /** Dashboard tel que renvoyé par les tools : widgets dans l'ordre d'affichage. */
 function presentDashboard(d: Dashboard, queryTitles?: Map<string, string>) {
@@ -137,18 +122,20 @@ async function loadWritableDashboard(c: McpContainer, id: string): Promise<{ das
   if (isPrivateScopeId(id) && !resolveUser(c).hasUser) return { error: suiviError('PRIVATE_SCOPE_UNAVAILABLE', PRIVATE_SCOPE_REASON) }
   const dashboard = await findVisibleDashboard(c, id)
   if (!dashboard) return { error: suiviError('DASHBOARD_NOT_FOUND', `Dashboard introuvable : ${id}.`) }
+  if (dashboard.state.readOnly) return { error: suiviError('SUIVI_READ_ONLY', `Dashboard ${id} en lecture seule (${dashboard.state.readOnly}).`) }
   return { dashboard }
 }
 
 /**
- * Règles 2 à 7 d'`add_widget` pour un widget candidat (ajout ou modification) : requête
- * visible, scope, exécution de la requête, mapping/colonnes/doublon.
+ * Contrôles d'un widget candidat (ajout ou modification) : requête visible, portée, spec (forme puis
+ * compilation Vega-Lite), exécution de la requête et de la transformation (aperçu ; une erreur est
+ * un avertissement, pas un refus).
  */
 async function checkWidget(
   c: McpContainer,
   dashboard: Dashboard,
-  widget: { id?: string; type: Widget['type']; queryId: string; fieldMapping: WidgetFieldMapping },
-): Promise<{ error: ToolError } | { warnings: SuiviWarning[]; columns: unknown; total: number }> {
+  widget: { queryId: string; transform?: string; spec: string },
+): Promise<{ error: ToolError } | { warnings: SuiviWarning[]; preview: unknown }> {
   const query = await findVisibleQuery(c, widget.queryId)
   if (!query) return { error: suiviError('QUERY_NOT_FOUND', `Requête introuvable : ${widget.queryId}.`) }
   if (dashboard.scope === 'shared' && isPrivateScopeId(widget.queryId)) {
@@ -159,13 +146,28 @@ async function checkWidget(
       ),
     }
   }
-  const def: QueryDefinition = { mode: query.mode, sqlText: query.sqlText, builderConfig: query.builderConfig }
-  const run = await runDefinition(c, def)
-  if (!run.ok) return { error: suiviError(run.code, `Requête ${query.id} : ${run.reason}`) }
-  const siblings = dashboard.widgets.filter((w) => w.id !== widget.id)
-  const { issue, warnings } = validateWidget(widget, resultColumnNames(run.result), siblings)
+  const { issue, warnings } = checkSpec(widget.spec)
   if (issue) return { error: suiviError(issue.code, issue.reason) }
-  return { warnings, columns: run.result.columns, total: run.result.rows.length }
+  const compileError = await compileSpecError(widget.spec)
+  if (compileError) return { error: suiviError('SPEC_INVALID', `Spec Vega-Lite invalide : ${compileError}`) }
+  if (compileError === undefined) warnings.push({ code: 'SPEC_UNCHECKED', reason: 'Compilateur Vega-Lite indisponible : spec non compilée.' })
+  const run = await runScript(c, { queryId: widget.queryId, transform: widget.transform ?? null, transformFile: 'transform.js' })
+  if (!run.ok) warnings.push({ code: 'SCRIPT_ERROR', reason: `Exécution en erreur (${run.error.kind}) : ${run.error.message}${run.error.line ? ` — ${run.error.file}:${run.error.line}` : ''}.` })
+  return { warnings, preview: previewOf(run) }
+}
+
+/** Code d'un widget à partir de l'entrée MCP : modèle, ou transformation + spec fournies. */
+function widgetCode(input: { transform?: string | null; spec?: string; template?: { id: string; params: Record<string, unknown> } }):
+  { error: ToolError } | { transform?: string; spec: string } {
+  if (input.template) {
+    if (input.transform !== undefined || input.spec !== undefined) return { error: suiviError('INVALID_INPUT', 'Fournir template, ou transform / spec, pas les deux.') }
+    const issue = validateTemplateInput('widget', input.template)
+    if (issue) return { error: suiviError(issue.code, issue.reason) }
+    const { code } = applyWidgetTemplate(input.template)
+    return { ...(code.transform !== undefined ? { transform: code.transform } : {}), spec: code.spec }
+  }
+  if (input.spec === undefined) return { error: suiviError('INVALID_INPUT', 'spec (ou template) requise.') }
+  return { ...(typeof input.transform === 'string' ? { transform: input.transform } : {}), spec: input.spec }
 }
 
 export function registerDashboardTools(server: McpServer, container: McpContainer): void {
@@ -177,8 +179,8 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
       title: 'List dashboards',
       description:
         'Liste les dashboards de la vue Suivi (partagés ; + privés de --user si fourni), widgets ' +
-        "dans l'ordre d'affichage. Chaque widget : id, title, queryId, queryTitle, type " +
-        '(bar|pie|line|kpi|table), fieldMapping, size (sm|md|lg).',
+        "dans l'ordre d'affichage. Chaque widget : id, title, queryId, queryTitle, transform (JS), spec " +
+        "(Vega-Lite), template (modèle d'origine), state.customized, size (sm|md|lg).",
       inputSchema: listDashboardsInput,
     },
     async ({ scope }) => {
@@ -217,10 +219,12 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
           id: scope === 'shared' ? await peekSharedId(c, 'DASHBOARD') : PENDING_ID,
           title: cleanTitle,
           scope,
+          formatVersion: 1,
           widgetOrder: [],
           widgets: [],
           createdBy: 'mcp',
           createdAt: new Date().toISOString(),
+          state: { customized: false },
         }
         return jsonToolResult({ dryRun: true, dashboard })
       }
@@ -275,46 +279,44 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
     {
       title: 'Add widget',
       description:
-        'Ajoute un indicateur (widget) à un dashboard. dryRun (défaut true) : valide, EXÉCUTE la ' +
-        'requête et retourne un aperçu SANS RIEN ÉCRIRE. fieldMapping : bar/line/pie → category + ' +
-        'measure (series pour bar/line, stacked pour bar avec series) ; kpi → measure ; table → ' +
-        'columns optionnel. Les colonnes doivent exister dans le résultat de la requête (appeler ' +
-        "run_query d'abord). Un dashboard partagé n'accepte pas de requête privée. Refus d'un " +
-        'widget identique (même requête, type et mapping).',
+        'Ajoute un widget à un dashboard : un modèle + paramètres (cf. list_templates), ou une transformation JS ' +
+        'facultative + une spec Vega-Lite (cf. get_data_contract : agréger dans la transformation en faisant ' +
+        "l'union des _ids, jamais avec aggregate dans la spec ; données = { \"name\": \"rows\" }). dryRun " +
+        '(défaut true) : valide la spec, EXÉCUTE requête + transformation et retourne un aperçu SANS RIEN ÉCRIRE. ' +
+        "Un dashboard partagé n'accepte pas de requête privée.",
       inputSchema: addWidgetInput,
     },
-    async ({ dashboardId, title, queryId, type, fieldMapping, size, position, dryRun }) => {
+    async ({ dashboardId, title, queryId, transform, spec, template, size, position, dryRun }) => {
       const loaded = await loadWritableDashboard(c, dashboardId)
       if ('error' in loaded) return loaded.error
       const { dashboard } = loaded
       const cleanTitle = title.trim()
       if (!cleanTitle) return suiviError('INVALID_INPUT', 'title ne peut pas être vide.')
-
-      const mapping = definedOnly(fieldMapping) as WidgetFieldMapping
-      const checked = await checkWidget(c, dashboard, { type, queryId, fieldMapping: mapping })
+      const code = widgetCode({ transform, spec, template })
+      if ('error' in code) return code.error
+      const checked = await checkWidget(c, dashboard, { queryId, ...code })
       if ('error' in checked) return checked.error
-      const preview = { columns: checked.columns, total: checked.total }
 
       if (dryRun) {
-        const widget: Widget = { id: PENDING_ID, title: cleanTitle, queryId, type, fieldMapping: mapping, size }
+        const widget: Widget = { id: PENDING_ID, title: cleanTitle, queryId, size, ...code, state: { customized: !template } }
         const next: Dashboard = {
           ...dashboard,
           widgets: [...dashboard.widgets, widget],
           widgetOrder: insertAt(dashboard.widgetOrder, widget.id, position),
         }
-        return jsonToolResult({ dryRun: true, dashboard: presentDashboard(next), widget, preview, warnings: checked.warnings })
+        return jsonToolResult({ dryRun: true, dashboard: presentDashboard(next), widget, preview: checked.preview, warnings: checked.warnings })
       }
 
       const { username } = resolveUser(c)
       let updated = await c.dashboards.addWidget(c.repoPath, username, dashboardId, {
-        title: cleanTitle, queryId, type, fieldMapping: mapping, size,
+        title: cleanTitle, queryId, size, ...(template ? { template } : code),
       })
       const widget = updated.widgets[updated.widgets.length - 1]
       const order = insertAt(updated.widgetOrder, widget.id, position)
       if (order.join('\n') !== updated.widgetOrder.join('\n')) {
         updated = await c.dashboards.setWidgetOrder(c.repoPath, username, dashboardId, order)
       }
-      return jsonToolResult({ dryRun: false, dashboard: presentDashboard(updated), widget, preview, warnings: checked.warnings })
+      return jsonToolResult({ dryRun: false, dashboard: presentDashboard(updated), widget, preview: checked.preview, warnings: checked.warnings })
     },
   )
 
@@ -323,50 +325,63 @@ export function registerDashboardTools(server: McpServer, container: McpContaine
     {
       title: 'Update widget',
       description:
-        'Modifie un widget (titre, requête, type, mapping, taille). fieldMapping fourni REMPLACE ' +
-        "l'ancien. Le widget résultant repasse les mêmes contrôles qu'add_widget. dryRun (défaut " +
-        'true) : aperçu SANS RIEN ÉCRIRE.',
+        'Modifie un widget (titre, requête, taille, transformation / spec, ou modèle + paramètres). Une ' +
+        'transformation ou une spec fournie détache le widget de son modèle. Contenu modifié : mêmes contrôles ' +
+        "qu'add_widget. dryRun (défaut true) : aperçu SANS RIEN ÉCRIRE.",
       inputSchema: updateWidgetInput,
     },
-    async ({ dashboardId, widgetId, title, queryId, type, fieldMapping, size, dryRun }) => {
+    async ({ dashboardId, widgetId, title, queryId, transform, spec, template, size, dryRun }) => {
       const loaded = await loadWritableDashboard(c, dashboardId)
       if ('error' in loaded) return loaded.error
       const { dashboard } = loaded
       const existing = dashboard.widgets.find((w) => w.id === widgetId)
       if (!existing) return suiviError('WIDGET_NOT_FOUND', `Widget introuvable dans ${dashboardId} : ${widgetId}.`)
-
       let cleanTitle: string | undefined
       if (title !== undefined) {
         cleanTitle = title.trim()
         if (!cleanTitle) return suiviError('INVALID_INPUT', 'title ne peut pas être vide.')
       }
-      // Type changé sans nouveau mapping : on retire les clés inapplicables au nouveau type
-      // (l'éditeur de l'app les conserve) plutôt que de refuser.
-      const newMapping = fieldMapping
-        ? (definedOnly(fieldMapping) as WidgetFieldMapping)
-        : type !== undefined && type !== existing.type
-          ? pruneMapping(type, existing.fieldMapping ?? {})
-          : undefined
-      const dto: UpdateWidgetDto = definedOnly({ title: cleanTitle, queryId, type, fieldMapping: newMapping, size })
-      const merged: Widget = { ...existing, ...dto }
+      let nextCode: { transform?: string; spec: string } = { ...(existing.transform !== undefined ? { transform: existing.transform } : {}), spec: existing.spec }
+      if (template) {
+        const code = widgetCode({ template })
+        if ('error' in code) return code.error
+        nextCode = code
+      } else {
+        if (transform === null) nextCode = { spec: nextCode.spec }
+        else if (transform !== undefined) nextCode = { ...nextCode, transform }
+        if (spec !== undefined) nextCode = { ...nextCode, spec }
+      }
+      const { transform: _old, ...rest } = existing
+      const merged: Widget = {
+        ...rest,
+        ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),
+        ...(queryId !== undefined ? { queryId } : {}),
+        ...(size !== undefined ? { size } : {}),
+        ...nextCode,
+      }
 
-      // Titre/taille seuls : contenu inchangé, pas de revalidation (un widget créé dans
-      // l'app peut porter un mapping que les règles MCP refuseraient — il reste renommable).
-      const touchesContent = queryId !== undefined || type !== undefined || fieldMapping !== undefined
-      let preview: { columns: unknown; total: number } | null = null
+      // Titre / taille seuls : contenu inchangé, pas de revalidation.
+      const touchesContent = queryId !== undefined || transform !== undefined || spec !== undefined || template !== undefined
+      let preview: unknown = null
       let warnings: SuiviWarning[] = []
       if (touchesContent) {
         const checked = await checkWidget(c, dashboard, merged)
         if ('error' in checked) return checked.error
-        preview = { columns: checked.columns, total: checked.total }
+        preview = checked.preview
         warnings = checked.warnings
       }
-
       if (dryRun) {
         const next = { ...dashboard, widgets: dashboard.widgets.map((w) => (w.id === widgetId ? merged : w)) }
         return jsonToolResult({ dryRun: true, dashboard: presentDashboard(next), widget: merged, preview, warnings })
       }
-      const updated = await c.dashboards.updateWidget(c.repoPath, resolveUser(c).username, dashboardId, widgetId, dto)
+      const updated = await c.dashboards.updateWidget(c.repoPath, resolveUser(c).username, dashboardId, widgetId, {
+        ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),
+        ...(queryId !== undefined ? { queryId } : {}),
+        ...(size !== undefined ? { size } : {}),
+        ...(template ? { template } : {}),
+        ...(!template && transform !== undefined ? { transform } : {}),
+        ...(!template && spec !== undefined ? { spec } : {}),
+      })
       const widget = updated.widgets.find((w) => w.id === widgetId)
       return jsonToolResult({ dryRun: false, dashboard: presentDashboard(updated), widget, preview, warnings })
     },

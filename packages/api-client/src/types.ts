@@ -47,20 +47,19 @@ import type {
   ComplianceMatrix,
   CoverageResult,
   // ComplianceCellStatus is exported from @polenta/types but not needed directly in ApiClient
-  QueryDefinition,
-  DrillDownSelection,
-  DrillDownResult,
   RowTarget,
-  QueryResult,
-  BuilderConfig,
-  QueryMode,
+  DescribedObject,
   QueryScope,
   SavedQuery,
   QueryHistoryEntry,
   Dashboard,
-  WidgetType,
   WidgetSize,
-  WidgetFieldMapping,
+  ScriptRunRequest,
+  ScriptRunResult,
+  ScriptClientInfo,
+  QueryTemplate,
+  WidgetTemplate,
+  WidgetCode,
   ImpactAnalysis,
   ImpactAnalysisSummary,
   LocalImpactAnalysis,
@@ -126,22 +125,32 @@ export interface RequirementFilters {
   search?: string
 }
 
+/** GH74 — demande de modèle (id + paramètres du formulaire). */
+export interface TemplateInput {
+  id: string
+  params: Record<string, unknown>
+}
+
 export interface CreateSavedQueryDto {
   title: string
-  mode: QueryMode
-  builderConfig?: BuilderConfig
-  sqlText?: string
   scope: QueryScope
   createdBy: string
+  /** Script fourni, ou modèle (le script est alors généré). */
+  script?: string
+  template?: TemplateInput
 }
 
 export interface UpdateSavedQueryDto {
   title?: string
-  builderConfig?: BuilderConfig
-  sqlText?: string
+  /** Code modifié : la référence de modèle est conservée (objet détaché si le code diffère). */
+  script?: string
+  /** Modèle / paramètres : script régénéré ; `null` retire la référence. */
+  template?: TemplateInput | null
 }
 
-export type AddHistoryEntryDto = Omit<QueryHistoryEntry, 'id' | 'executedAt'>
+export interface AddHistoryEntryDto {
+  script: string
+}
 
 export interface CreateDashboardDto {
   title: string
@@ -157,12 +166,29 @@ export interface UpdateDashboardDto {
 export interface AddWidgetDto {
   title: string
   queryId: string
-  type: WidgetType
-  fieldMapping: WidgetFieldMapping
   size: WidgetSize
+  transform?: string
+  spec?: string
+  template?: TemplateInput
 }
 
-export type UpdateWidgetDto = Partial<AddWidgetDto>
+export interface UpdateWidgetDto {
+  title?: string
+  queryId?: string
+  size?: WidgetSize
+  transform?: string | null
+  spec?: string
+  template?: TemplateInput | null
+}
+
+/** GH74 — type d'objet proposé par le formulaire « Liste filtrée ». */
+export interface SuiviObjectTypeOption {
+  objectTypeRef: string
+  component: string
+  label: string
+  category: 'requirement' | 'test' | 'campaign'
+  fields: string[]
+}
 
 export interface MissingLinksResult {
   uncoveredRequirements: Requirement[]
@@ -669,16 +695,19 @@ export interface ApiClient {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>
     setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPref): Promise<void>
   }
-  /** Moteur de requêtes AlaSQL + requêtes sauvegardées / historique (T77 sprint 1) */
+  /** GH74 — vue Suivi : exécution des scripts (bac à sable du main), drill-down, modèles. */
+  suivi: {
+    /** Widget enregistré, requête enregistrée ou script fourni ; erreurs dans le résultat. */
+    run(repoPath: string, workspaceDir: string | undefined, username: string, req: ScriptRunRequest, client: ScriptClientInfo): Promise<ScriptRunResult>
+    describeIds(repoPath: string, workspaceDir: string | undefined, ids: string[], locale?: string): Promise<DescribedObject[]>
+    resolveTarget(repoPath: string, workspaceDir: string | undefined, id: string): Promise<RowTarget | null>
+    templates(): Promise<{ queries: Omit<QueryTemplate, 'generate'>[]; widgets: Omit<WidgetTemplate, 'generate'>[] }>
+    renderTemplate(kind: 'query', input: TemplateInput): Promise<{ script: string }>
+    renderTemplate(kind: 'widget', input: TemplateInput): Promise<WidgetCode>
+    objectTypes(repoPath: string, workspaceDir?: string): Promise<SuiviObjectTypeOption[]>
+  }
+  /** Requêtes enregistrées (scripts de données) / historique (T77, GH74). */
   queries: {
-    /** workspaceDir: composants submodules agrégés dans le dataset interrogé (T77) */
-    execute(repoPath: string, queryDef: QueryDefinition, workspaceDir?: string): Promise<QueryResult>
-    /** Traduit un BuilderConfig en SQL équivalent (pré-remplissage de l'éditeur SQL avancé). */
-    builderToSql(repoPath: string, config: BuilderConfig, workspaceDir?: string): Promise<string>
-    /** GH65 — lignes de l'élément cliqué d'un widget (lignes sources, ou repli sur le résultat). */
-    drillDown(repoPath: string, queryDef: QueryDefinition, selection: DrillDownSelection, workspaceDir?: string): Promise<DrillDownResult>
-    /** GH65 — objet à ouvrir pour une ligne de résultat ; `null` : ligne non navigable / introuvable. */
-    resolveRowTarget(repoPath: string, row: Record<string, unknown>, workspaceDir?: string): Promise<RowTarget | null>
     list(repoPath: string, username: string): Promise<SavedQuery[]>
     create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery>
     update(repoPath: string, username: string, id: string, dto: UpdateSavedQueryDto): Promise<SavedQuery>

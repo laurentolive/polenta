@@ -1,21 +1,17 @@
+import { useCallback, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { useQuery, useQueries } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
-import { widgetQueryOptions } from '../hooks/useQueryResult'
 import { DashboardGrid } from '../components/dashboard/DashboardGrid'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
 
 const NOOP = () => {}
 
-/** Route imprimable — dashboard (T43 sprint 3). Réutilise `DashboardGrid` en `printMode` (garde le
- *  rendu réel des widgets, y compris les graphiques Recharts, plutôt que de le reconstruire — même
- *  décision structurante que les autres routes `/print/*`). La difficulté propre à cette route :
- *  savoir quand TOUS les widgets ont fini de charger avant d'imprimer, alors que chaque widget
- *  exécute sa propre requête en interne (`DashboardGrid`/`useQueryResult`) sans remonter d'état de
- *  chargement global au parent. Résolu en exécutant ici, en parallèle, les mêmes requêtes via
- *  `useQueries` + `widgetQueryOptions` (même `queryKey` que `useQueryResult` → react-query
- *  dédoublonne l'appel réseau/IPC, pas de double exécution) uniquement pour observer leur état. */
+/** Route imprimable — dashboard (T43 sprint 3 ; GH74 : rendu Vega en SVG). Réutilise `DashboardGrid`
+ *  en `printMode`. Prêt à imprimer quand chaque widget dont la requête existe a signalé la fin de son
+ *  rendu (`onWidgetRendered` : graphe Vega dessiné, vue native, état vide ou erreur) ; un widget sans
+ *  requête affiche « Requête introuvable » de façon synchrone et n'est pas attendu. */
 export const Route = createFileRoute('/print/dashboard')({
   component: PrintDashboardPage,
   validateSearch: (s: Record<string, unknown>) => ({
@@ -29,6 +25,10 @@ export const Route = createFileRoute('/print/dashboard')({
 function PrintDashboardPage() {
   const { t } = useTranslation()
   const { repoPath, workspaceDir, username, dashboardId } = Route.useSearch()
+  const [rendered, setRendered] = useState<ReadonlySet<string>>(new Set())
+  const onWidgetRendered = useCallback((id: string) => {
+    setRendered((prev) => (prev.has(id) ? prev : new Set([...prev, id])))
+  }, [])
 
   const { data: dashboard, isSuccess: dashboardLoaded } = useQuery({
     queryKey: ['print-dashboard', repoPath, username, dashboardId],
@@ -41,22 +41,8 @@ function PrintDashboardPage() {
     enabled: !!repoPath && !!username,
   })
 
-  // Seulement les widgets dont la `SavedQuery` existe encore : `widgetQueryOptions` désactive la
-  // requête (`enabled: false`) quand `query` est introuvable (référence supprimée), et une requête
-  // react-query désactivée reste indéfiniment `status: 'pending'` — ni `isSuccess` ni `isError`,
-  // donc jamais "réglée". Un widget sans `SavedQuery` associée se rend de façon synchrone
-  // (`DashboardGrid` affiche directement "Requête introuvable"), inutile de l'attendre ici (bug
-  // trouvé en revue de code : sans ce filtre, un seul widget cassé bloquait l'export PDF jusqu'au
-  // timeout de 20s).
-  const resolvableWidgets = (dashboard?.widgets ?? []).filter(w => savedQueries.some(q => q.id === w.queryId))
-  const widgetQueries = useQueries({
-    queries: resolvableWidgets.map(w =>
-      widgetQueryOptions(repoPath, workspaceDir, savedQueries.find(q => q.id === w.queryId)),
-    ),
-  })
-  const widgetsSettled = widgetQueries.every(q => q.isSuccess || q.isError)
-
-  useNotifyPrintReady(dashboardLoaded && queriesLoaded && widgetsSettled)
+  const awaited = (dashboard?.widgets ?? []).filter((w) => savedQueries.some((q) => q.id === w.queryId))
+  useNotifyPrintReady(dashboardLoaded && queriesLoaded && awaited.every((w) => rendered.has(w.id)))
 
   if (!dashboard) return <div className="p-10 bg-print-bg min-h-screen" />
 
@@ -68,10 +54,12 @@ function PrintDashboardPage() {
         savedQueries={savedQueries}
         repoPath={repoPath}
         workspaceDir={workspaceDir}
+        username={username}
         onReorder={NOOP}
         onDeleteWidget={NOOP}
         onEditWidget={NOOP}
         printMode
+        onWidgetRendered={onWidgetRendered}
       />
     </div>
   )

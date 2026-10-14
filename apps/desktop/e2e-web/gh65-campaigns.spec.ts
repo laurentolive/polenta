@@ -10,7 +10,7 @@ import { recordResult } from './support/campaign'
 const s = setupSession()
 
 interface Campaign { id: string; runs: Array<{ entryId: string; status: string }> }
-interface Dashboard { id: string; title: string; scope: string; widgets: Array<{ title: string; type: string }> }
+interface Dashboard { id: string; title: string; scope: string; widgets: Array<{ title: string; template?: { id: string } }> }
 
 let campaign: Campaign
 let username: string
@@ -30,12 +30,17 @@ test.beforeAll(async () => {
   username = await s.invoke<string>('auth:project-username', localPath)
 })
 
-test('1.1 — campaign_entries : décompte par statut d\'une campagne', async () => {
+test('1.1 — entrées de campagne : décompte par statut d\'une campagne (GH74 : script de données)', async () => {
   const { localPath, workspaceDir } = s.project
-  const result = await s.invoke<{ rows: Array<{ status: string; n: number }> }>('queries:execute', localPath, {
-    mode: 'sql',
-    sqlText: `SELECT status, COUNT(*) AS n FROM campaign_entries WHERE campaignId = '${campaign.id}' GROUP BY status`,
-  }, workspaceDir)
+  const script = `export default (data) => {
+    const c = data.campaigns.find((x) => x.id === '${campaign.id}')
+    const n = {}
+    for (const e of c.entries) n[e.status] = (n[e.status] || 0) + 1
+    return Object.keys(n).map((status) => ({ status, n: n[status] }))
+  }`
+  const result = await s.invoke<{ ok: boolean; rows: Array<{ status: string; n: number }> }>(
+    'suivi:run', localPath, workspaceDir, username, { script }, { locale: 'fr', timezone: 'UTC' })
+  expect(result).toMatchObject({ ok: true })
   expect(Object.fromEntries(result.rows.map(r => [r.status, r.n]))).toEqual({ PASS: 2, FAIL: 1, pending: 1 })
 })
 
@@ -45,7 +50,7 @@ test('1.7 — dashboard « Campagnes » privé créé à l\'ouverture de Suivi',
   const seeded = dashboards.filter(d => d.title === 'Campagnes')
   expect(seeded).toHaveLength(1)
   expect(seeded[0].scope).toBe('private')
-  expect(seeded[0].widgets.map(w => w.type)).toEqual(['bar', 'kpi', 'kpi', 'line', 'table'])
+  expect(seeded[0].widgets.map(w => w.template?.id)).toEqual(['bar', 'kpi', 'kpi', 'line', 'table'])
   // Rien d'écrit dans le repo : ni dashboard ni requête partagés « Campagnes ».
   expect(dashboards.filter(d => d.scope === 'shared').map(d => d.title)).not.toContain('Campagnes')
 })

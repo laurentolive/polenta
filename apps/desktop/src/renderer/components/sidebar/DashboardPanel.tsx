@@ -70,10 +70,9 @@ interface Props {
   projectId: string
 }
 
-/** Text used for filtering: title + a rough serialization of the query content. */
+/** Text used for filtering: title + query content (script, or legacy SQL text). */
 function queryFilterText(q: SavedQuery): string {
-  const content = q.mode === 'sql' ? (q.sqlText ?? '') : JSON.stringify(q.builderConfig ?? {})
-  return `${q.title} ${content}`.toLowerCase()
+  return `${q.title} ${q.legacySql ?? q.script}`.toLowerCase()
 }
 
 function dashboardFilterText(d: Dashboard): string {

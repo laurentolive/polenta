@@ -36,9 +36,12 @@ export interface ScriptRunRequest {
   /** Requête enregistrée, OU script fourni (vue Requêtes non enregistrée, `test_script`). */
   queryId?: string
   script?: string
-  /** Transformation fournie (aperçu, `test_script`). La transformation d'un widget enregistré est
-   *  lue par le moteur à partir de `dashboardId` + `widgetId` (sprint 2). */
-  transform?: string
+  /** Widget enregistré : sa requête et sa transformation sont lues (prioritaires sur `queryId`). */
+  dashboardId?: string
+  widgetId?: string
+  /** Transformation fournie (aperçu de la popup de configuration, `test_script`) ; remplace celle
+   *  du widget enregistré. `null` : pas de transformation. */
+  transform?: string | null
   /** Nom de fichier rapporté dans les erreurs de la transformation (`<widgetId>.js`). */
   transformFile?: string
   drill?: Record<string, GraphDrillValue> | null

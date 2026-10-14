@@ -1,216 +1,223 @@
-import type {
-  BuilderConfig,
-  ProjectSchema,
-  QueryHistoryEntry,
-  QueryMode,
-  QueryScope,
-  SavedQuery,
-} from '@polenta/types'
+import type { QueryHistoryEntry, QueryScope, ReadQuery, SavedQuery, StoredQuery, TemplateRef } from '@polenta/types'
+import { readQueryRecord, SUIVI_FORMAT_VERSION } from '@polenta/types'
 import type { GitService } from './git.service'
-import type { SchemaService } from './schema.service'
 import type { DashboardsService } from './dashboards.service'
-import { CAMPAIGN_ENTRY_FIELDS, CAMPAIGN_FIELD_PREFIX, findObjectTypeDef, SYSTEM_QUERY_FIELDS } from './schema-lookup.util'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
-import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
+import { nextCounterId } from './id-counter.util'
+import {
+  applyQueryTemplate, computeState, dropLegacyFile, removeSharedObject, listObjectEntries, readOnlyError, readText, readYamlFile, toYaml, withHash,
+  writeObjectFolder,
+} from './suivi-store.util'
+import type { TemplateInput } from './suivi-store.util'
 
 export interface CreateSavedQueryDto {
   title: string
-  mode: QueryMode
-  builderConfig?: BuilderConfig
-  sqlText?: string
   scope: QueryScope
   createdBy: string
+  /** Script fourni (objet personnalisé d'emblée)… */
+  script?: string
+  /** …ou modèle + paramètres : le script est généré. */
+  template?: TemplateInput
 }
 
 export interface UpdateSavedQueryDto {
   title?: string
-  /** GH18 — changement de mode (tool MCP `update_query`) ; la définition de l'autre mode
-   *  est alors retirée (`withSingleDefinition`). Jamais envoyé par l'UI actuelle. */
-  mode?: QueryMode
-  builderConfig?: BuilderConfig
-  sqlText?: string
+  /** Nouveau script : l'objet garde sa référence de modèle (détaché si le code diffère). */
+  script?: string
+  /** Nouveau modèle / nouveaux paramètres : script régénéré. `null` : retire la référence. */
+  template?: TemplateInput | null
 }
 
 export type AddHistoryEntryDto = Omit<QueryHistoryEntry, 'id' | 'executedAt'>
 
-/** Deux entrées désignent la même requête si même mode et même contenu (builderConfig
- *  ou sqlText selon le mode) — ordre des conditions/clés du builder inclus, comme pour
- *  `entryFilterText` côté renderer (query.tsx). */
-function isSameHistoryQuery(a: QueryHistoryEntry, b: AddHistoryEntryDto): boolean {
-  if (a.mode !== b.mode) return false
-  if (a.mode === 'sql') return (a.sqlText ?? '') === (b.sqlText ?? '')
-  return JSON.stringify(a.builderConfig ?? {}) === JSON.stringify(b.builderConfig ?? {})
-}
-
-/** Une requête sauvegardée porte la définition de son mode, jamais les deux (GH18 :
- *  `update` peut désormais changer `mode`). */
-function withSingleDefinition(q: SavedQuery): SavedQuery {
-  // Copie + delete plutôt que déstructuration : garde l'ordre des clés du YAML (diff git minimal).
-  const out = { ...q }
-  if (out.mode === 'sql') delete out.builderConfig
-  else delete out.sqlText
-  return out
-}
+const DIR = 'queries'
+const PREFIX = 'QUERY'
 
 interface PrefStore {
-  savedQueries?: SavedQuery[]
-  queryHistory?: QueryHistoryEntry[]
-  /** Ordre d'affichage de la section "Requêtes" du panneau latéral (T77 §"Panneau
-   *  latéral") — une préférence d'affichage personnelle, indépendante du scope
-   *  privé/partagé de chaque requête référencée. */
+  savedQueries?: Record<string, unknown>[]
+  queryHistory?: Record<string, unknown>[]
+  /** Ordre d'affichage de la section "Requêtes" du panneau latéral (préférence personnelle). */
   queriesOrder?: string[]
   [key: string]: unknown
 }
 
 /**
- * SavedQueriesService — T77 sprint 1 (CRUD + historique) puis sprint 2 (règles de
- * dépendance widget/dashboard).
+ * SavedQueriesService — requêtes de la vue Suivi (GH74 : scripts de données). Partagé :
+ * `queries/QUERY-xxxx/{query.yaml,script.js}` (ID via `nextCounterId`, pierre tombale à la
+ * suppression ou au passage en privé) ; privé : clé `savedQueries` du `.{username}.pref`.
+ * Format d'avant GH74 (`queries/QUERY-xxxx.yaml`, `mode` builder / sql) lu et converti en mémoire,
+ * réécrit au format v1 à la première modification. Une requête en lecture seule (SQL d'avant GH74,
+ * format plus récent) n'est jamais réécrite.
  *
- * CRUD des requêtes sauvegardées + historique. Scope privé (stocké dans le fichier
- * de préférences `.{username}.pref`, jamais committé) ou partagé (fichier YAML
- * versionné dans `queries/`, ID via `nextCounterId`, même mécanisme que
- * ReviewsService, cf. `id-counter.util.ts`).
- *
- * `dashboards` est optionnel uniquement pour ne pas casser un appel de test qui
- * construirait ce service sans dépendance — en usage réel (`container.ts`) il est
- * toujours fourni, sans quoi delete()/setScope() ne pourraient pas détecter les
- * widgets dépendants (T77-design.md § "Règles de dépendance et de scope").
+ * `dashboards` détecte les widgets dépendants (suppression / passage en privé bloqués).
  */
 export class SavedQueriesService {
   constructor(
     private readonly git: GitService,
-    private readonly schema: SchemaService,
     private readonly dashboards?: DashboardsService,
   ) {}
 
-  // ─── Saved queries ───────────────────────────────────────────────────────────
+  // ─── Lecture ──────────────────────────────────────────────────────────────────
 
   async list(repoPath: string, username: string): Promise<SavedQuery[]> {
-    const priv = this.readPref(repoPath, username).savedQueries ?? []
-    const shared = await this.git.readYamlDir<SavedQuery>(repoPath, 'queries')
+    const priv = (this.readPref(repoPath, username).savedQueries ?? []).map((raw) => this.toQuery(readQueryRecord(raw), 'private'))
+    const entries = await listObjectEntries(repoPath, DIR, PREFIX)
+    const shared = (await Promise.all(entries.map((e) => this.readShared(repoPath, e.id)))).filter((q): q is SavedQuery => q !== null)
     return [...priv, ...shared].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }
 
-  async create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery> {
-    if (dto.scope === 'shared') {
-      const id = await nextCounterId(this.git, repoPath, 'QUERY', 'queries')
-      const query: SavedQuery = {
-        id,
-        title: dto.title,
-        mode: dto.mode,
-        builderConfig: dto.builderConfig,
-        sqlText: dto.sqlText,
-        scope: 'shared',
-        createdBy: dto.createdBy,
-        createdAt: new Date().toISOString(),
-      }
-      await assertNewObjectFile(this.git, repoPath, `queries/${id}.yaml`, id)
-      await this.git.writeYaml(repoPath, `queries/${id}.yaml`, query)
-      return query
+  async findOne(repoPath: string, username: string, id: string): Promise<SavedQuery | null> {
+    if (isPrivateScopeId(id)) {
+      const raw = this.readPref(repoPath, username).savedQueries?.find((q) => q.id === id)
+      return raw ? this.toQuery(readQueryRecord(raw), 'private') : null
     }
-
-    const pref = this.readPref(repoPath, username)
-    const list = pref.savedQueries ?? []
-    const query: SavedQuery = {
-      id: generatePrivateId(),
-      title: dto.title,
-      mode: dto.mode,
-      builderConfig: dto.builderConfig,
-      sqlText: dto.sqlText,
-      scope: 'private',
-      createdBy: dto.createdBy,
-      createdAt: new Date().toISOString(),
-    }
-    list.push(query)
-    pref.savedQueries = list
-    this.writePref(repoPath, username, pref)
-    return query
+    return this.readShared(repoPath, id)
   }
 
-  async update(repoPath: string, username: string, id: string, dto: UpdateSavedQueryDto): Promise<SavedQuery> {
-    if (isPrivateScopeId(id)) {
-      const pref = this.readPref(repoPath, username)
-      const list = pref.savedQueries ?? []
-      const idx = list.findIndex((q) => q.id === id)
-      if (idx < 0) throw new Error(`Requête introuvable : ${id}`)
-      list[idx] = withSingleDefinition({ ...list[idx], ...dto })
-      pref.savedQueries = list
-      this.writePref(repoPath, username, pref)
-      return list[idx]
-    }
+  private async readShared(repoPath: string, id: string): Promise<SavedQuery | null> {
+    const folder = await readYamlFile<Record<string, unknown>>(repoPath, `${DIR}/${id}/query.yaml`)
+    if (folder) return this.toQuery(readQueryRecord(folder, await readText(repoPath, `${DIR}/${id}/script.js`) ?? ''), 'shared')
+    const legacy = await readYamlFile<Record<string, unknown>>(repoPath, `${DIR}/${id}.yaml`)
+    return legacy ? this.toQuery(readQueryRecord(legacy), 'shared') : null
+  }
 
-    const existing = await this.git.readYaml<SavedQuery>(repoPath, `queries/${id}.yaml`)
-    if (!existing) throw new Error(`Requête introuvable : ${id}`)
-    const updated: SavedQuery = withSingleDefinition({ ...existing, ...dto })
-    await this.git.writeYaml(repoPath, `queries/${id}.yaml`, updated)
-    return updated
+  private toQuery(r: ReadQuery, scope: QueryScope): SavedQuery {
+    const template = r.template ? withHash(r.template, r.script) : undefined
+    return {
+      id: r.id,
+      title: r.title,
+      scope,
+      formatVersion: r.formatVersion,
+      script: r.script,
+      ...(template ? { template } : {}),
+      createdBy: r.createdBy,
+      createdAt: r.createdAt,
+      ...(r.legacySql !== undefined ? { legacySql: r.legacySql } : {}),
+      state: computeState(r.template, r.script, 'query', { readOnly: r.readOnly, legacyFormat: r.legacyFormat }),
+    }
+  }
+
+  // ─── Écriture ─────────────────────────────────────────────────────────────────
+
+  async create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery> {
+    const code = this.resolveCode(dto.script, dto.template)
+    const base = { title: dto.title, createdBy: dto.createdBy, createdAt: new Date().toISOString(), ...code }
+    if (dto.scope === 'shared') {
+      const id = await nextCounterId(this.git, repoPath, PREFIX, DIR)
+      if (await this.git.fileExists(repoPath, `${DIR}/${id}`)) throw new Error(`${id} already exists`)
+      await this.writeShared(repoPath, { id, ...base })
+      return (await this.readShared(repoPath, id))!
+    }
+    const pref = this.readPref(repoPath, username)
+    const stored = this.toStored({ id: generatePrivateId(), ...base })
+    pref.savedQueries = [...(pref.savedQueries ?? []), { ...stored, script: base.script }]
+    this.writePref(repoPath, username, pref)
+    return this.toQuery(readQueryRecord({ ...stored, script: base.script }), 'private')
+  }
+
+  /**
+   * `replaceLegacy` (mise à niveau des seeds, GH74) : une requête SQL d'avant GH74 reconnue est
+   * remplacée par sa définition actuelle, sous le même id. Jamais pour un format plus récent.
+   */
+  async update(repoPath: string, username: string, id: string, dto: UpdateSavedQueryDto, opts: { replaceLegacy?: boolean } = {}): Promise<SavedQuery> {
+    const current = await this.findOne(repoPath, username, id)
+    if (!current) throw new Error(`Requête introuvable : ${id}`)
+    const replacing = opts.replaceLegacy && current.state.readOnly === 'legacy-sql' && !!dto.template
+    if (current.state.readOnly && !replacing) throw readOnlyError(`Requête ${id}`, current.state.readOnly)
+    let script = current.script
+    let template: TemplateRef | undefined = current.template
+    if (dto.template === null) template = undefined
+    else if (dto.template) ({ script, template } = applyQueryTemplate(dto.template))
+    if (dto.script !== undefined && !dto.template) script = dto.script
+    const next = { id, title: dto.title ?? current.title, createdBy: current.createdBy, createdAt: current.createdAt, script, template }
+
+    if (current.scope === 'private') {
+      const pref = this.readPref(repoPath, username)
+      pref.savedQueries = (pref.savedQueries ?? []).map((q) => (q.id === id ? { ...this.toStored(next), script } : q))
+      this.writePref(repoPath, username, pref)
+      return (await this.findOne(repoPath, username, id))!
+    }
+    await this.writeShared(repoPath, next)
+    // Format d'avant GH74 : le dossier v1 remplace le fichier (même id, pas de pierre tombale).
+    if (current.state.legacyFormat) await dropLegacyFile(this.git, repoPath, DIR, id)
+    return (await this.readShared(repoPath, id))!
   }
 
   async delete(repoPath: string, username: string, id: string): Promise<void> {
     await this.assertNoDependents(repoPath, username, id, 'supprimer')
-
     if (isPrivateScopeId(id)) {
       const pref = this.readPref(repoPath, username)
       pref.savedQueries = (pref.savedQueries ?? []).filter((q) => q.id !== id)
       this.writePref(repoPath, username, pref)
       return
     }
-    await deleteWithTombstone(this.git, repoPath, `queries/${id}.yaml`, id)
+    await this.removeShared(repoPath, id)
   }
 
   /**
-   * Promote (private → shared, always free — T77.md § Visibilité) or demote (shared →
-   * private, blocked if any widget depends on this query — same rule as delete()) a
-   * saved query. Changes the query's `id` (private/shared IDs use different schemes —
-   * `local-…` vs `QUERY-0001`).
-   *
-   * Demote is safe because it's only allowed when `assertNoDependents` finds zero
-   * dependents. Promote has no such guard (per spec it's unconditional — "libre à
-   * tout moment"), so a widget could legitimately reference this query's *old* id —
-   * but only from one of the *same user's own* private dashboards (a shared
-   * dashboard could never have referenced a private query id in the first place, cf.
-   * DashboardsService.addWidget's scope guard). We fix those references up via
-   * `remapWidgetQueryId` rather than blocking the promote (which the spec forbids)
-   * or leaving them dangling.
-   *
-   * Also keeps `queriesOrder` (sidebar drag order) pointing at the new id in place,
-   * rather than letting the item silently jump to the end of the list.
+   * Passage privé → partagé (toujours libre ; les widgets des dashboards privés du même utilisateur
+   * qui la référençaient suivent le nouvel id) ou partagé → privé (bloqué si des widgets en
+   * dépendent). L'id change (schémas d'id différents). L'ordre du panneau latéral suit.
    */
   async setScope(repoPath: string, username: string, id: string, newScope: QueryScope): Promise<SavedQuery> {
     const current = await this.findOne(repoPath, username, id)
     if (!current) throw new Error(`Requête introuvable : ${id}`)
     if (current.scope === newScope) return current
+    if (current.state.readOnly) throw readOnlyError(`Requête ${id}`, current.state.readOnly)
 
+    const payload = { title: current.title, createdBy: current.createdBy, createdAt: current.createdAt, script: current.script, template: current.template }
     let moved: SavedQuery
     if (newScope === 'private') {
       await this.assertNoDependents(repoPath, username, id, 'repasser en privé')
-      await deleteWithTombstone(this.git, repoPath, `queries/${id}.yaml`, id)
-      moved = { ...current, id: generatePrivateId(), scope: 'private' }
+      await this.removeShared(repoPath, id)
+      const newId = generatePrivateId()
       const pref = this.readPref(repoPath, username)
-      pref.savedQueries = [...(pref.savedQueries ?? []), moved]
+      pref.savedQueries = [...(pref.savedQueries ?? []), { ...this.toStored({ id: newId, ...payload }), script: payload.script }]
       this.writePref(repoPath, username, pref)
+      moved = (await this.findOne(repoPath, username, newId))!
     } else {
+      // Partagé écrit AVANT de retirer le privé : un échec en route ne perd jamais la requête.
+      const newId = await nextCounterId(this.git, repoPath, PREFIX, DIR)
+      await this.writeShared(repoPath, { id: newId, ...payload })
       const pref = this.readPref(repoPath, username)
       pref.savedQueries = (pref.savedQueries ?? []).filter((q) => q.id !== id)
       this.writePref(repoPath, username, pref)
-      const newId = await nextCounterId(this.git, repoPath, 'QUERY', 'queries')
-      moved = { ...current, id: newId, scope: 'shared' }
-      await assertNewObjectFile(this.git, repoPath, `queries/${newId}.yaml`, newId)
-      await this.git.writeYaml(repoPath, `queries/${newId}.yaml`, moved)
-      // Cascade the id change to widgets in the user's own private dashboards that
-      // referenced the old (now-deleted) private id — see doc comment above.
       if (this.dashboards) await this.dashboards.remapWidgetQueryId(repoPath, username, id, newId)
+      moved = (await this.readShared(repoPath, newId))!
     }
-
     this.renameInOrder(repoPath, username, id, moved.id)
     return moved
   }
 
-  /** Keeps the sidebar drag order pointing at an object's new id after a scope
-   *  change (private↔shared) mints a fresh id — otherwise `queriesOrder` would still
-   *  reference the old, now-nonexistent id and the item would silently move to the
-   *  end of the list (`ReorderableSidebarSection` appends unknown ids last). */
+  private resolveCode(script: string | undefined, template: TemplateInput | undefined): { script: string; template?: TemplateRef } {
+    if (template) return applyQueryTemplate(template)
+    return { script: script ?? 'export default (data, polenta) => []\n' }
+  }
+
+  private toStored(q: { id: string; title: string; createdBy: string; createdAt: string; template?: TemplateRef }): StoredQuery {
+    return {
+      id: q.id,
+      title: q.title,
+      formatVersion: SUIVI_FORMAT_VERSION,
+      ...(q.template ? { template: q.template } : {}),
+      createdBy: q.createdBy,
+      createdAt: q.createdAt,
+    }
+  }
+
+  private async writeShared(repoPath: string, q: { id: string; title: string; createdBy: string; createdAt: string; script: string; template?: TemplateRef }): Promise<void> {
+    await writeObjectFolder(repoPath, `${DIR}/${q.id}`, {
+      'query.yaml': toYaml(this.toStored(q)),
+      'script.js': q.script,
+    })
+  }
+
+  private async removeShared(repoPath: string, id: string): Promise<void> {
+    await removeSharedObject(this.git, repoPath, DIR, id)
+  }
+
+  /** Garde l'ordre du panneau latéral sur le nouvel id après un changement de portée. */
   private renameInOrder(repoPath: string, username: string, oldId: string, newId: string): void {
     const pref = this.readPref(repoPath, username)
     const order = pref.queriesOrder
@@ -219,15 +226,7 @@ export class SavedQueriesService {
     this.writePref(repoPath, username, pref)
   }
 
-  async findOne(repoPath: string, username: string, id: string): Promise<SavedQuery | null> {
-    if (isPrivateScopeId(id)) {
-      return this.readPref(repoPath, username).savedQueries?.find((q) => q.id === id) ?? null
-    }
-    return this.git.readYaml<SavedQuery>(repoPath, `queries/${id}.yaml`)
-  }
-
-  /** T77-design.md § "Détection des dépendants" — throws with the dependent widgets/
-   *  dashboards listed if any exist, otherwise resolves silently. */
+  /** Lève, en listant les widgets / dashboards dépendants, s'il en existe. */
   private async assertNoDependents(repoPath: string, username: string, id: string, action: string): Promise<void> {
     if (!this.dashboards) return
     const dependents = await this.dashboards.findDependentWidgets(repoPath, username, id)
@@ -235,50 +234,28 @@ export class SavedQueriesService {
     const list = dependents
       .map((d) => `"${d.widgetTitle}" (dashboard "${d.dashboardTitle}", ${d.dashboardScope === 'shared' ? 'partagé' : 'privé'})`)
       .join(', ')
-    throw new Error(
-      `Impossible de ${action} cette requête : utilisée par ${dependents.length} widget(s) — ${list}.`,
-    )
+    throw new Error(`Impossible de ${action} cette requête : utilisée par ${dependents.length} widget(s) — ${list}.`)
   }
 
-  // ─── History (toujours privé) ────────────────────────────────────────────────
+  // ─── Historique (toujours privé) ──────────────────────────────────────────────
 
   async addHistoryEntry(repoPath: string, username: string, entry: AddHistoryEntryDto): Promise<QueryHistoryEntry> {
     const pref = this.readPref(repoPath, username)
-    // Ré-exécuter une requête déjà présente dans l'historique ne doit pas créer un
-    // doublon : on retire l'ancienne entrée équivalente pour ne garder que la plus
-    // récente en tête (comportement historique navigateur/shell).
-    const list = (pref.queryHistory ?? []).filter((e) => !isSameHistoryQuery(e, entry))
+    // Ré-exécuter un script déjà présent ne crée pas de doublon : l'entrée remonte en tête.
+    const list = this.history(pref).filter((e) => e.script !== entry.script)
     const full: QueryHistoryEntry = {
-      ...entry,
+      script: entry.script,
       id: `hist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       executedAt: new Date().toISOString(),
     }
-    list.unshift(full)
-    pref.queryHistory = list
+    pref.queryHistory = [full, ...list] as unknown as Record<string, unknown>[]
     this.writePref(repoPath, username, pref)
     return full
   }
 
-  /**
-   * List history entries, purging (and persisting the purge) any entry that has
-   * become invalid — its builder-mode objectTypeRef or a referenced field no longer
-   * exists in the schema. SQL-mode entries are never purged here: without parsing
-   * the SQL we can't reliably tell a stale field reference from a deliberate raw
-   * query, so we only purge what we can actually verify (documented sprint 1
-   * limitation — see specs/T77-sprint1.md).
-   */
+  /** Entrées de l'historique ; celles d'avant GH74 (`mode` builder / sql) sont ignorées. */
   async listHistory(repoPath: string, username: string): Promise<QueryHistoryEntry[]> {
-    const pref = this.readPref(repoPath, username)
-    const list = pref.queryHistory ?? []
-    if (list.length === 0) return list
-
-    const schema = await this.schema.get(repoPath)
-    const valid = list.filter((entry) => this.isHistoryEntryValid(entry, schema))
-    if (valid.length !== list.length) {
-      pref.queryHistory = valid
-      this.writePref(repoPath, username, pref)
-    }
-    return valid
+    return this.history(this.readPref(repoPath, username))
   }
 
   async deleteHistoryEntry(repoPath: string, username: string, id: string): Promise<void> {
@@ -287,7 +264,11 @@ export class SavedQueriesService {
     this.writePref(repoPath, username, pref)
   }
 
-  // ─── Sidebar order (liste "Requêtes" réorganisable par drag & drop) ─────────
+  private history(pref: PrefStore): QueryHistoryEntry[] {
+    return (pref.queryHistory ?? []).filter((e): e is QueryHistoryEntry & Record<string, unknown> => typeof e.script === 'string') as QueryHistoryEntry[]
+  }
+
+  // ─── Ordre du panneau latéral ─────────────────────────────────────────────────
 
   async getQueriesOrder(repoPath: string, username: string): Promise<string[]> {
     return this.readPref(repoPath, username).queriesOrder ?? []
@@ -299,30 +280,6 @@ export class SavedQueriesService {
     this.writePref(repoPath, username, pref)
   }
 
-  // ─── Private helpers ─────────────────────────────────────────────────────────
-
-  private isHistoryEntryValid(entry: QueryHistoryEntry, schema: ProjectSchema): boolean {
-    if (entry.mode !== 'builder' || !entry.builderConfig) return true
-
-    const typeDef = findObjectTypeDef(schema, entry.builderConfig.objectTypeRef)
-    if (typeDef === 'unresolvable') return true // composant non local — impossible à vérifier ici
-    if (!typeDef) return false // le type a été supprimé du schéma
-
-    // GH65 — un type de campagne se requête sur `campaign_entries` : autres colonnes système,
-    // champs du type préfixés (même allowlist que QueryEngineService.resolveTableInfo).
-    const allowed = typeDef.category === 'campaign'
-      ? new Set<string>([...CAMPAIGN_ENTRY_FIELDS, ...typeDef.fields.map((f) => CAMPAIGN_FIELD_PREFIX + f.name)])
-      : new Set<string>([...SYSTEM_QUERY_FIELDS, ...typeDef.fields.map((f) => f.name)])
-    const fieldsUsed = [
-      ...entry.builderConfig.conditions.map((c) => c.field),
-      ...(entry.builderConfig.groupBy ?? []),
-    ]
-    return fieldsUsed.every((f) => allowed.has(f))
-  }
-
-  // Thin wrappers around the shared `.{username}.pref` reader/writer (pref-store.util,
-  // also used by ipc/pref.handlers.ts for `fieldVisibility`) — just narrows the return
-  // type to this service's own known keys.
   private readPref(repoPath: string, username: string): PrefStore {
     return readPrefStore(repoPath, username) as PrefStore
   }
@@ -331,3 +288,4 @@ export class SavedQueriesService {
     writePrefStore(repoPath, username, data)
   }
 }
+

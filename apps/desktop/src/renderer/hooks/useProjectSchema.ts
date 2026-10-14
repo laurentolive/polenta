@@ -50,7 +50,7 @@ export function getTestTypeDef(schema: ProjectSchema | undefined, objectTypeRef:
 
 // Statut "approuvé" résolu depuis `statuses[].isApproval` du type du test (schema.yaml), pas
 // depuis le littéral 'approved' (repli sur 'approved' si le type n'en déclare pas) — même règle
-// que maturity.util.ts et CampaignsService.approvalPredicate côté main (GH68).
+// que field-checks.util.ts et CampaignsService.approvalPredicate côté main (GH68).
 export function isTestApproved(test: TestCase, schema: ProjectSchema | undefined): boolean {
   return isApprovalStatus(getTestTypeDef(schema, test.objectTypeRef), test.status)
 }

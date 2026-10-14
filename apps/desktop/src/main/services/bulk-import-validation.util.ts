@@ -1,6 +1,6 @@
 import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { findObjectTypeDef, findLocalNodeByRefPrefix, findOwningNode } from './schema-lookup.util'
-import { isEarsCompliant, isFilled } from './maturity.util'
+import { isEarsCompliant, isFilled } from './field-checks.util'
 
 /**
  * Couche de validation dry-run des tools `bulk_import_*` (T122 sprint 2 —
@@ -58,7 +58,7 @@ export interface BulkImportEntryDto {
  * 3. Tous les champs `required: true` du type sont présents et non vides dans
  *    `dto.fields`.
  * 4. Pour chaque champ `validator: 'EARS'` du type : le texte respecte la syntaxe
- *    EARS (réutilise `maturity.util.ts::isEarsCompliant`, même heuristique que le
+ *    EARS (réutilise `field-checks.util.ts::isEarsCompliant`, même heuristique que le
  *    calcul de maturité affiché dans l'UI — pas une seconde regex divergente).
  *
  * `nextIdPreview` est un callback FOURNI PAR L'APPELANT, appelé une fois par entrée

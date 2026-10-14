@@ -33,10 +33,11 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['revalidation:flagged'] })
       }
 
-      // GH65 — résultats des widgets de la vue Suivi : clé indexée sur le repo RACINE, mais le
-      // dataset agrège tout le workspace. Un changement de données ou de ref (avance rapide du pull
-      // automatique, résultat saisi sur ce poste) dans n'importe quel repo les rend périmés.
-      if (relPath === '*' || /^(requirements|tests|links|campaigns)\//.test(relPath)) {
+      // GH65 / GH74 — résultats des widgets de la vue Suivi : clé indexée sur le repo RACINE, mais le
+      // graphe agrège tout le workspace. Un changement de données (exécutions comprises), de ref
+      // (avance rapide du pull automatique), de la bibliothèque projet ou d'un script de requête
+      // (écrit hors de l'app, MCP) dans n'importe quel repo les rend périmés.
+      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|queries|dashboards\/lib)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }

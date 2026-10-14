@@ -138,7 +138,8 @@ export function buildDashboardData(payload: DashboardExportPayload, toTable: Tab
     return {
       id: widget.id,
       title: widget.title,
-      type: widget.type,
+      // GH74 — modèle d'origine du widget, `custom` s'il a été écrit ou modifié à la main.
+      type: widget.template && !widget.state.customized ? widget.template.id : 'custom',
       columns: columns.map(name => ({ name })),
       rows,
       hasData,

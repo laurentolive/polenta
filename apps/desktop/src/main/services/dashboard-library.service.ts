@@ -5,6 +5,7 @@ import type { GitService } from './git.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { LibraryModules } from './script-limits'
 import { workspaceStamp } from './graph.service'
+import { hashableText } from '@polenta/types'
 
 // GH74 — bibliothèque projet (`dashboards/lib/`) : modules JS importables par les scripts de
 // données et les transformations de widget (specs/GH74.md §6, GH74-design.md §2.3).
@@ -43,8 +44,12 @@ export interface LibraryUpdate {
 
 /** Empreinte d'un fichier : SHA-256 du contenu normalisé (fins de ligne LF, sans espaces de fin). */
 export function contentHash(text: string): string {
-  const normalized = text.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n*$/, '\n')
-  return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex')
+  return sha256(hashableText(text))
+}
+
+/** SHA-256 hexadécimal d'un texte déjà normalisé. */
+export function sha256(text: string): string {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex')
 }
 
 /** Dossier de la bibliothèque de départ livrée avec l'application (desktop, serveur web, MCP, tests). */

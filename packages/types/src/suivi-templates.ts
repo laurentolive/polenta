@@ -11,7 +11,7 @@ export interface TemplateRef {
   id: string
   version: number
   params: Record<string, unknown>
-  /** Empreinte du code généré (cf. `contentHash`, main). */
+  /** Empreinte du code généré : SHA-256 de `hashableText(code)` (cf. `queryCode` / `widgetCode`). */
   hash: string
 }
 
@@ -751,6 +751,31 @@ export function describeTemplates(): {
     queries: QUERY_TEMPLATES.map(({ generate: _g, ...t }) => t),
     widgets: WIDGET_TEMPLATES.map(({ generate: _g, ...t }) => t),
   }
+}
+
+/**
+ * Texte normalisé soumis à l'empreinte (SHA-256, calculée par l'appelant) : fins de ligne LF, sans
+ * espaces de fin de ligne, une seule fin de ligne finale. Partagé par l'application et par le
+ * générateur du projet de démo (`scripts/demo-lave-linge`).
+ */
+export function hashableText(text: string): string {
+  return text.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n*$/, '\n')
+}
+
+/** Script généré par un modèle de requête et sa référence ; `hash` = empreinte de `hashableText`. */
+export function queryCode(input: { id: string; params: Record<string, unknown> }, hash: (text: string) => string): { script: string; template: TemplateRef } {
+  const tpl = findQueryTemplate(input.id)
+  if (!tpl) throw new Error(`Modèle de requête inconnu : ${input.id}`)
+  const script = tpl.generate(input.params)
+  return { script, template: { id: tpl.id, version: tpl.version, params: input.params, hash: hash(hashableText(script)) } }
+}
+
+/** Code généré par un modèle de widget et sa référence. */
+export function widgetCode(input: { id: string; params: Record<string, unknown> }, hash: (text: string) => string): { code: WidgetCode; template: TemplateRef } {
+  const tpl = findWidgetTemplate(input.id)
+  if (!tpl) throw new Error(`Modèle de widget inconnu : ${input.id}`)
+  const code = tpl.generate(input.params)
+  return { code, template: { id: tpl.id, version: tpl.version, params: input.params, hash: hash(hashableText(widgetCodeForHash(code))) } }
 }
 
 /** Texte soumis à l'empreinte d'un widget : transformation + spec. */

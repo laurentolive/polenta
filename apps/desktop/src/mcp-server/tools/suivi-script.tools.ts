@@ -1,7 +1,7 @@
 import * as path from 'path'
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { GRAPH_CONTRACT_VERSION } from '@polenta/types'
+import { describeTemplates, GRAPH_CONTRACT_VERSION } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { jsonToolResult, LIST_RESULT_LIMIT } from '../mcp-types'
 import { contentHash, LIBRARY_DIR } from '../../main/services/dashboard-library.service'
@@ -76,6 +76,20 @@ export function registerSuiviScriptTools(server: McpServer, container: McpContai
       conventions: CONVENTIONS,
       types: c.dashboardLibrary.readShippedFile('polenta.d.ts'),
     }),
+  )
+
+  server.registerTool(
+    'list_templates',
+    {
+      title: 'List templates',
+      description:
+        'Modèles de la vue Suivi (GH74) : modèles de requête (script de données généré) et de widget ' +
+        '(transformation + spec Vega-Lite générées), avec leurs paramètres (nom, libellé, type, requis). ' +
+        'À utiliser avec `template: { id, params }` dans create_query / update_query / add_widget / update_widget. ' +
+        'Un paramètre `column` / `columns` désigne une colonne des lignes de la requête.',
+      inputSchema: {},
+    },
+    async () => jsonToolResult(describeTemplates()),
   )
 
   server.registerTool(

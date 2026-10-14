@@ -58,7 +58,7 @@ export const STATUS_SEED_QUERIES: SeedQuery[] = [
   },
 ]
 
-const STATUS_SEED_WIDGETS: SeedWidget[] = [
+export const STATUS_SEED_WIDGETS: SeedWidget[] = [
   { title: 'Statut des exigences par composant', queryKey: 'requirements-status-by-component', size: 'lg', template: statusBar('status') },
   { title: 'Statut de couverture des exigences par composant', queryKey: 'requirements-coverage-status-by-component', size: 'lg', template: statusBar('coverageStatus') },
 ]
@@ -126,7 +126,7 @@ export const CAMPAIGN_SEED_QUERIES: { key: CampaignSeedQueryKey; template: Templ
   { key: 'timeline', template: { id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], step: '1' } } },
 ]
 
-const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; size: WidgetSize; template: TemplateInput }[] = [
+export const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; size: WidgetSize; template: TemplateInput }[] = [
   { queryKey: 'progress', size: 'lg', template: { id: 'bar', params: { category: 'campaignTitle', series: 'stepLabel', seriesOrder: 'stepRank', seriesColor: 'stepColor', measure: 'count', stacked: true } } },
   { queryKey: 'executedPct', size: 'sm', template: { id: 'kpi', params: { measure: 'ratio', measureColumn: 'executed', ratioValues: 'true' } } },
   { queryKey: 'passPct', size: 'sm', template: { id: 'kpi', params: { measure: 'ratio', measureColumn: 'status', ratioValues: 'PASS' } } },

@@ -136,6 +136,14 @@ describe('GH74 — tools MCP du moteur de scripts', () => {
     expect(r.json.conventions.join('\n')).toContain('_ids')
   })
 
+  it('M1b — list_templates : modèles de requête et de widget, avec leurs paramètres', async () => {
+    container()
+    const r = await call('list_templates')
+    expect(r.json.queries.map((q: { id: string }) => q.id)).toEqual(['filtered-list', 'campaign-entries', 'campaign-timeline'])
+    expect(r.json.widgets.map((w: { id: string }) => w.id)).toEqual(['bar', 'pie', 'line', 'kpi', 'table', 'matrix', 'stacked-area'])
+    expect(r.json.widgets[0].params[0]).toMatchObject({ name: 'category', kind: 'column', required: true })
+  })
+
   it('M2 — test_script : transmet le script, renvoie le résultat ou l\'erreur', async () => {
     const { run } = container()
     const ok = await call('test_script', { script: 'export default () => [{ a: 1 }]', transform: 'export default (r) => r', timezone: 'Europe/Paris' })

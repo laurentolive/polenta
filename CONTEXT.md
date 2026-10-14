@@ -167,6 +167,35 @@ clients cibles) ; Elastic License 2.0 / FSL (pas open source).
 
 ---
 
+### D8 — Vue Suivi : graphe JSON + scripts JS isolés + Vega-Lite (GH74, rapport #78)
+
+**Décision** : la vue Suivi ne lance plus de SQL (AlaSQL retiré). Polenta construit un **graphe de
+données JSON** versionné (contrat v1) ; une requête est un **script JavaScript** exécuté dans un
+bac à sable **QuickJS** (wasm, dans un worker du process), un widget une transformation JS
+facultative + une **spec Vega-Lite**. Des **modèles** génèrent ce code pour les utilisateurs non
+techniques ; les indicateurs de suivi vivent dans la **bibliothèque projet** `dashboards/lib/`
+(repo du client).
+
+**Pourquoi** :
+- Le SQL sur tables plates ne savait pas exprimer les questions temporelles (état d'une campagne à
+  une date) ni les règles métier sans les coder dans Polenta (colonnes `progress`, `maturity*`) —
+  contraire au principe « données brutes » (GH79).
+- Un script JS est écrit et vérifié facilement par une IA (`get_data_contract`, `test_script`) ;
+  Vega-Lite couvre tous les types de graphe sans composant dédié.
+- QuickJS isole le code du client (pas de réseau, de disque, de globaux ; mémoire, temps et pile
+  bornés) dans les trois hôtes (desktop, serveur web, MCP) avec un seul code ; rendu Vega sans
+  `eval` (compatible avec une future CSP).
+
+**Écartés** : garder SQL à côté (deux moteurs) ; exécution dans le renderer (sérialisation du
+graphe, wasm sous CSP) ; `isolated-vm` / SES (dépendances natives ou isolation plus faible, non
+mesurés par #78).
+
+**Conséquences** : requêtes SQL existantes en lecture seule (à réécrire, seuls les seeds reconnus
+sont convertis) ; contrat, format et bibliothèque versionnés, mises à jour proposées et jamais
+imposées ; corpus de non-régression exécuté par `pnpm test`.
+
+---
+
 ## Tensions et compromis identifiés
 
 | Tension | Choix fait | Raison |

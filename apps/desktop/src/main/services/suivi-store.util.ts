@@ -2,8 +2,8 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import type { SuiviObjectState, TemplateRef, WidgetCode } from '@polenta/types'
-import { findQueryTemplate, findWidgetTemplate, widgetCodeForHash } from '@polenta/types'
-import { contentHash } from './dashboard-library.service'
+import { findQueryTemplate, findWidgetTemplate, queryCode, widgetCode } from '@polenta/types'
+import { contentHash, sha256 } from './dashboard-library.service'
 import type { GitService } from './git.service'
 import { deleteFolderWithTombstone, deleteWithTombstone } from './id-counter.util'
 
@@ -90,18 +90,12 @@ export interface TemplateInput {
 
 /** Script généré par un modèle de requête, avec sa référence (empreinte comprise). */
 export function applyQueryTemplate(input: TemplateInput): { script: string; template: TemplateRef } {
-  const tpl = findQueryTemplate(input.id)
-  if (!tpl) throw new Error(`Modèle de requête inconnu : ${input.id}`)
-  const script = tpl.generate(input.params)
-  return { script, template: { id: tpl.id, version: tpl.version, params: input.params, hash: contentHash(script) } }
+  return queryCode(input, sha256)
 }
 
 /** Code généré par un modèle de widget, avec sa référence. */
 export function applyWidgetTemplate(input: TemplateInput): { code: WidgetCode; template: TemplateRef } {
-  const tpl = findWidgetTemplate(input.id)
-  if (!tpl) throw new Error(`Modèle de widget inconnu : ${input.id}`)
-  const code = tpl.generate(input.params)
-  return { code, template: { id: tpl.id, version: tpl.version, params: input.params, hash: contentHash(widgetCodeForHash(code)) } }
+  return widgetCode(input, sha256)
 }
 
 /** Empreinte d'un modèle lu sans empreinte (format converti à la lecture) : celle du code régénéré. */

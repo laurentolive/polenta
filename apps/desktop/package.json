@@ -17,6 +17,7 @@
     "dev:web:client": "vite -c vite.web.config.ts",
     "build:web": "vite build -c vite.web.config.ts && pnpm run build:web-server",
     "build:web-server": "tsx scripts/build-web-server.ts",
+    "demo:generate": "tsx ../../scripts/demo-lave-linge/generate.mjs",
     "start:web": "node out/web-server/index.cjs",
     "test": "vitest run",
     "test:e2e:web": "pnpm build:web && playwright test",

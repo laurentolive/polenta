@@ -214,7 +214,20 @@ function QueryPage() {
 
   const result: QueryResult | null = run ? toQueryResult(run) : null
   const currentQueryName = current?.title || 'resultat'
-  const firstLine = (s: string) => s.split('\n').find((l) => l.trim() && !l.trim().startsWith('//'))?.trim() ?? s.slice(0, 60)
+  // Entrée d'historique : modèle et paramètres d'un script généré (« Modèle « filtered-list » v1
+  // {"category":…} »), sinon sa première ligne de code.
+  const firstLine = (s: string) => {
+    const header = /^\/\/ (Modèle « [^»]+ » v\d+)/m.exec(s)?.[1]
+    const params = /^const P = (\{[\s\S]*?\n\})/m.exec(s)?.[1]
+    if (header) {
+      try {
+        return params ? `${header} ${JSON.stringify(JSON.parse(params))}` : header
+      } catch {
+        return header // paramètres modifiés à la main, illisibles en JSON
+      }
+    }
+    return s.split('\n').find((l) => l.trim() && !l.trim().startsWith('//'))?.trim() ?? s.slice(0, 60)
+  }
   const visibleHistory = historyFilter.trim()
     ? history.filter((h) => h.script.toLowerCase().includes(historyFilter.trim().toLowerCase()))
     : history

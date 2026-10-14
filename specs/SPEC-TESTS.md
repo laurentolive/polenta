@@ -596,7 +596,8 @@ instances ne sont pas affectées. Une seule occurrence du `testCaseId` correspon
 passe, complète (statut, `runId`, copie…), de `runs` à la fin de `removedRuns` avec `removedAt`. Un
 `entryId` absent de `runs` (inconnu ou déjà retiré) est ignoré ; pas de restauration (on ré-ajoute le
 test). Les lecteurs de `runs` (page campagne, exécution/relecture, exports, classeur GH36, report
-GH64, déduplication, `campaign_entries`, traçabilité) ne voient donc pas les entrées retirées : une
+GH64, déduplication, traçabilité) ne voient donc pas les entrées retirées — le graphe de la vue Suivi
+les expose à part (`removedEntries`, GH74) : une
 entrée retirée ne bloque pas le ré-ajout du même test et n'est pas reportable. Les **`entryId`** des
 nouvelles instances sont numérotés après le plus grand suffixe de `runs` **et** `removedRuns` (GH66,
 GH73) : un `entryId` n'est jamais réutilisé dans une campagne.
@@ -702,26 +703,19 @@ Métriques calculées à la volée depuis l'index mémoire :
 |----------|--------|
 | Taux d'exécution | `exécutés / total` (statut de `runs` différent de `pending`) |
 | Taux de succès | `PASS / exécutés` |
-| Répartition | Nombre d'entrées par **étape d'avancement** (GH71) : une étape par statut de test non approuvé présent (`prep:<statut>`), Prêt à exécuter (`ready`), Incomplet, Bloqué, Échoué, Passé |
+| Répartition | Nombre d'entrées par **statut brut** (GH74) : Passé, Échoué, Bloqué, Incomplet, En attente |
 | Couverture req. | Exigences couvertes par au moins un PASS dans cette campagne |
 
-**Étapes d'avancement (GH71)** : l'étape d'une entrée suit la règle de la table `campaign_entries`
-(SPEC-DASHBOARDS §2.1 — `@polenta/types/campaign-progress.ts`) : résultat si elle est exécutée,
-sinon `ready` si le test retenu (règle GH68, campagne ouverte) est approuvé, sinon
-`prep:<statut>`. Les pastilles de répartition remplacent « En attente » par une pastille par étape
-de préparation présente puis « Prêt à exécuter », dans l'ordre canonique (préparation dans l'ordre du
-schéma, prêt, incomplet, bloqué, échoué, passé — même ordre et mêmes libellés que le widget
-« Avancement par campagne », SPEC-DASHBOARDS §4.1b). Une étape sans entrée n'a pas de pastille
-(sauf l'étape filtrée).
-
-**Filtre (GH65, GH71)** : les pastilles sont des boutons bascule — clic = liste des entrées réduite
-à cette étape, re-clic = retrait (lien « Filtre : X ✕ »). Filtre porté par le paramètre d'URL
-optionnel `progress` de `/campaign/$campaignId` (clé d'étape ; valeur invalide ignorée), posé aussi
-par la vue Suivi (ligne d'entrée non exécutée → page filtrée sur son étape, SPEC-DASHBOARDS §2.2).
-Le paramètre `status` (GH65) reste accepté pour les liens existants — `status=pending` = toutes les
-entrées non exécutées — ; `progress` l'emporte s'ils sont présents tous les deux. Le suivi
-multi-campagnes (avancement, % exécuté, % PASS, exécutions par jour) vit dans la vue Suivi :
-table `campaign_entries` et dashboard « Campagnes » (SPEC-DASHBOARDS §2.1, §5.1b).
+**Pastilles et filtre (GH65, GH74)** : une pastille par **statut brut** d'entrée présent (Passé,
+Échoué, Bloqué, Incomplet, En attente) ; ce sont des boutons bascule — clic = liste des entrées
+réduite à ce statut, re-clic = retrait (lien « Filtre : X ✕ »). Filtre porté par le paramètre d'URL
+optionnel `status` de `/campaign/$campaignId` (valeur invalide ignorée), posé aussi par la vue Suivi
+(entrée non exécutée → page filtrée sur son statut, SPEC-DASHBOARDS §6). Le paramètre `progress` des
+étapes d'avancement GH71 est retiré : une URL qui le porte est ignorée (page non filtrée). Les étapes
+d'avancement (préparation du test → prêt → résultat) restent disponibles dans la vue Suivi, calculées
+par la bibliothèque projet (`entryStep`, widget « Avancement par campagne »), comme le suivi
+multi-campagnes (% exécuté, % PASS, exécutions par jour, avancement dans le temps : dashboard
+« Campagnes », SPEC-DASHBOARDS §7.1). La pastille « Non approuvé » (GH68, §4.2) est conservée.
 
 ### 4.4 Substitution des paramètres à l'exécution (T97, T171)
 

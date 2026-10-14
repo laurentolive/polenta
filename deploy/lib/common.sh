@@ -124,6 +124,9 @@ load_host_env() {
   SMTP_USER="$(env_get "$HOST_ENV" SMTP_USER)"
   SMTP_PASSWORD="$(env_get "$HOST_ENV" SMTP_PASSWORD)"
   SMTP_FROM="$(env_get "$HOST_ENV" SMTP_FROM)"
+  # GH62 — niveau de durcissement et surcharge fine : lus bruts, validés par modules_resolve.
+  HARDEN_HOST_RAW="$(env_get "$HOST_ENV" HARDEN_HOST)"
+  HOST_MODULES_RAW="$(env_get "$HOST_ENV" HOST_MODULES)"
 }
 
 # Liste des instances (noms), triée.

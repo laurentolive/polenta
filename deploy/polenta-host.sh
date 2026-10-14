@@ -2,7 +2,8 @@
 # GH45 — exploitation d'un hôte Polenta : une forge Forgejo isolée par client derrière un Caddy
 # partagé (specs/GH45.md §9, specs/GH45-design.md §5).
 #
-#   polenta-host setup                         préparation de l'hôte (une fois, rejouable)
+#   polenta-host setup                         préparation de l'hôte (une fois, rejouable) ;
+#                                              HARDEN_HOST=full|basic|none dans host.env (défaut full, GH62)
 #   polenta-host status                        état de l'hôte et des instances
 #   polenta-host instance add <nom> [options]  nouvelle instance (client)
 #   polenta-host instance list
@@ -29,6 +30,8 @@ KIT_DIR="$POLENTA_ROOT/kit"
 . "$SCRIPT_DIR/lib/forgejo-api.sh"
 # shellcheck source=lib/backup.sh
 . "$SCRIPT_DIR/lib/backup.sh"
+# shellcheck source=lib/modules.sh
+. "$SCRIPT_DIR/lib/modules.sh"
 
 DEMO_SOURCE_OWNER_URL="https://github.com/laurentolive"
 DEMO_ROOT_REPO="demo-ll800-produit"
@@ -79,7 +82,7 @@ setup_host_env() {
 }
 
 setup_packages() {
-  local wanted=(ca-certificates curl jq dnsutils restic ufw fail2ban python3-systemd unattended-upgrades apt-listchanges)
+  local wanted; read -ra wanted <<<"$(modules_packages)"   # GH62 : seuls les paquets des modules actifs
   local missing=() p
   for p in "${wanted[@]}"; do
     # dnsutils est un paquet de transition sous Debian 13 / Ubuntu 24.04 : on teste la commande.
@@ -141,7 +144,8 @@ setup_console() {
 }
 
 setup_firewall() {
-  local rules=(22/tcp 80/tcp 443/tcp 443/udp) r changed=0
+  local rules=(22/tcp 80/tcp 443/tcp 443/udp) r changed=0 was_active=0
+  ufw status | grep -q "^Status: active" && was_active=1
   ufw status | grep -q "^Status: active" || {
     ufw default deny incoming >/dev/null; ufw default allow outgoing >/dev/null; changed=1
   }
@@ -149,7 +153,22 @@ setup_firewall() {
     ufw status | grep -qE "^${r//\//\\/}[[:space:]]+ALLOW" || { ufw allow "$r" >/dev/null; changed=1; }
   done
   ufw status | grep -q "^Status: active" || { ufw --force enable >/dev/null; changed=1; }
-  if [[ $changed == 1 ]]; then ok "pare-feu : seuls 22, 80, 443 ouverts"; else skip "pare-feu"; fi
+  if [[ $changed == 1 && $was_active == 1 ]]; then ok "pare-feu : 22, 80, 443 ouverts (autres règles existantes conservées)"
+  elif [[ $changed == 1 ]]; then ok "pare-feu : seuls 22, 80, 443 ouverts"
+  else skip "pare-feu"; fi
+}
+
+# GH62 — lecture seule : sans le module firewall, un ufw déjà actif peut bloquer Caddy.
+setup_firewall_warn() {
+  command -v ufw >/dev/null 2>&1 || return 0
+  local st r; st="$(ufw status 2>/dev/null || true)"
+  grep -q "^Status: active" <<<"$st" || return 0
+  for r in 80/tcp 443/tcp 443/udp; do
+    grep -qE "^${r//\//\\/}[[:space:]]+ALLOW" <<<"$st" || {
+      warn "ufw actif : Caddy sera injoignable depuis l'extérieur tant que 80/443 ne sont pas ouverts"
+      return 0
+    }
+  done
 }
 
 setup_fail2ban() {
@@ -174,10 +193,14 @@ setup_unattended() {
 APT::Periodic::Unattended-Upgrade "1";'
   local reboot='Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:00";'
-  local c=0
+  local c=0 suffix=" (sans redémarrage automatique)"
   write_if_changed /etc/apt/apt.conf.d/20auto-upgrades "$auto" && c=1
-  write_if_changed /etc/apt/apt.conf.d/52polenta-unattended "$reboot" && c=1
-  if [[ $c == 1 ]]; then ok "mises à jour de sécurité automatiques (redémarrage 04:00)"; else skip "mises à jour de sécurité automatiques"; fi
+  # GH62 : le redémarrage nocturne n'est posé qu'avec l'option unattended-reboot (full).
+  if module_enabled "$HOST_MODULE_FLAG_REBOOT"; then
+    write_if_changed /etc/apt/apt.conf.d/52polenta-unattended "$reboot" && c=1
+    suffix=" (redémarrage 04:00)"
+  fi
+  if [[ $c == 1 ]]; then ok "mises à jour de sécurité automatiques$suffix"; else skip "mises à jour de sécurité automatiques"; fi
 }
 
 # Sauvegarde nocturne (02:30) et rotation des journaux du kit.
@@ -275,21 +298,52 @@ setup_ssh() {
   fi
 }
 
+# GH62 — appelée hors setup (instance add|restore|remove) : met à jour la liste des journaux de
+# forge seulement si le module est actif ; jamais d'erreur, jamais d'installation.
+setup_fail2ban_forge_if_active() {
+  [[ -f "$HOST_ENV" ]] || return 0
+  load_host_env
+  modules_resolve 2>/dev/null || return 0
+  module_enabled fail2ban-forge || return 0
+  systemctl is-active --quiet fail2ban 2>/dev/null || return 0
+  setup_fail2ban_forge
+}
+
+# GH62 — avertissements de fin de setup : rien n'est modifié.
+setup_report() {
+  local m
+  module_enabled firewall || setup_firewall_warn
+  if ! module_enabled fail2ban && ! module_enabled fail2ban-forge && [[ -n "$(env_get "$HOST_ENV" ADMIN_IPS)" ]]; then
+    printf '  %s· ADMIN_IPS ignoré : fail2ban non géré par ce niveau%s
+' "$C_DIM" "$C_OFF"
+  fi
+  for m in "${HOST_MODULE_ORDER[@]}"; do
+    module_enabled "$m" && continue
+    module_active "$m" || continue
+    warn "module $m actif sur l'hôte mais hors niveau $HARDEN_LEVEL : conservé tel quel (procédure de retrait : RUNBOOK A2)"
+  done
+  if module_enabled unattended && ! module_enabled "$HOST_MODULE_FLAG_REBOOT" && module_active "$HOST_MODULE_FLAG_REBOOT"; then
+    warn "redémarrage automatique 04:00 actif sur l'hôte mais hors niveau $HARDEN_LEVEL : conservé tel quel (procédure de retrait : RUNBOOK A2)"
+  fi
+}
+
 cmd_setup() {
   require_root; check_os
   log "Préparation de l'hôte ($PRETTY_NAME)"
   setup_host_env
+  modules_resolve || die "$MODULES_ERR"   # avant toute modification de l'hôte
   setup_install_kit
   setup_packages
   setup_docker
-  setup_resolved
-  setup_firewall
-  setup_console
-  setup_fail2ban
-  setup_unattended
-  setup_ssh
-  setup_cron
-  setup_fail2ban_forge
+  module_enabled resolved && setup_resolved
+  module_enabled firewall && setup_firewall
+  module_enabled console && setup_console
+  module_enabled fail2ban && setup_fail2ban
+  module_enabled unattended && setup_unattended
+  module_enabled ssh-hardening && setup_ssh
+  module_enabled backup-cron && setup_cron
+  module_enabled fail2ban-forge && setup_fail2ban_forge
+  setup_report
   caddy_up
   log "Hôte prêt. Ajoutez un client : polenta-host instance add <nom>"
 }
@@ -630,7 +684,7 @@ cmd_instance_add() {
   ensure_config_repo "$name" "$org" "$demo"
   write_polenta_config "$name" "$domain" "$org" "$demo"
   touch "$dir/.add-complete"
-  setup_fail2ban_forge
+  setup_fail2ban_forge_if_active
   admin_log "$name" "instance add $name --domain $domain --org $org${admin_login:+ --client-admin $admin_login}" OK
   # Première sauvegarde (UC1), si le stockage est configuré.
   local backup_ok=0
@@ -786,7 +840,7 @@ cmd_instance_restore() {
     [[ $web_rc == 0 ]] || warn "client web non démarré — forge restaurée ; corriger puis relancer : polenta-host instance web enable $name"
   fi
   touch "$dir/.add-complete"
-  setup_fail2ban_forge
+  setup_fail2ban_forge_if_active
   admin_log "$name" "instance restore depuis $source@$snapshot (domaine $domain)" OK
   log "Instance « $name » restaurée — https://$domain"
 }
@@ -954,7 +1008,7 @@ cmd_instance_remove() {
   caddy_remove_site "$name"
   docker network rm "polenta-$name" >/dev/null 2>&1 || true
   rm -rf "$(instance_dir "$name")"
-  setup_fail2ban_forge
+  setup_fail2ban_forge_if_active
   host_log "instance remove $name ($domain), export $EXPORT_ARCHIVE" OK
   ok "instance $name supprimée — export conservé : $EXPORT_ARCHIVE"
   warn "les sauvegardes restent dans le stockage S3 ($(restic_repo_url "$name")) : purge manuelle, cf. RUNBOOK."
@@ -1246,7 +1300,31 @@ cmd_status() {
   printf '  Mémoire disponible : %s Mo — disque / : %s libres\n' \
     "$(( $(awk '/MemAvailable/ {print $2}' /proc/meminfo) / 1024 ))" "$(df -h / | awk 'NR==2 {print $4}')"
   if caddy_running; then printf '  Caddy : en service\n'; else printf '  Caddy : %sarrêté%s\n' "$C_RED" "$C_OFF"; fi
+  cmd_status_hardening
   cmd_instance_list
+}
+
+# GH62 — état détecté des modules de durcissement (lecture seule).
+cmd_status_hardening() {
+  if ! modules_resolve; then
+    printf '  Durcissement : niveau invalide : %s
+' "${HARDEN_HOST_RAW:-}"; return 0
+  fi
+  local extra=""
+  [[ -n "${HOST_MODULES_RAW//[[:space:],]/}" ]] && extra=", HOST_MODULES=${HOST_MODULES_RAW//[[:space:]]/}"
+  printf '  Durcissement : niveau %s (HARDEN_HOST), %s modules%s
+' "$HARDEN_LEVEL" "$(modules_count)" "$extra"
+  local m state mark
+  for m in "${HOST_MODULE_DISPLAY[@]}"; do
+    state="$(module_detect "$m")"; mark=""
+    if module_enabled "$m"; then
+      [[ "$state" == inactif ]] && mark="  ${C_RED}(attendu, absent)${C_OFF}"
+    else
+      [[ "$state" != inactif ]] && mark="  (hors niveau)"
+    fi
+    printf '    %-15s %s%s
+' "$m" "$state" "$mark"
+  done
 }
 
 main() {

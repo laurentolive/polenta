@@ -19,7 +19,7 @@ Toutes les commandes `polenta-host` / `polenta-admin` s'exécutent **en root** (
 
 ```
 /opt/polenta/
-├── host.env                  configuration de l'hôte (root, 600) — contient la clé S3
+├── host.env                  configuration de l'hôte (root, 600) — clé S3, niveau de durcissement HARDEN_HOST
 ├── kit/                      copie installée du kit (polenta-host, polenta-admin → /usr/local/bin)
 ├── caddy/etc/sites/          un fichier <instance>.caddy par client ; _*.caddy = sites additionnels
 ├── instances/<nom>/
@@ -54,10 +54,46 @@ un domaine.
    (`sudo nano /opt/polenta/host.env`) — `ACME_EMAIL`, `BASE_DOMAIN`, `BACKUP_S3_*`, facultatifs
    `SMTP_*`, `ADMIN_IPS` (A8), `POLENTA_DOWNLOAD_URL`, `BACKUP_PING_URL` — puis relancer
    `sudo ./polenta-host.sh setup`.
-4. `setup` est rejouable sans effet de bord. Il installe Docker, restic, le pare-feu (22/80/443),
-   fail2ban, les mises à jour de sécurité automatiques, la sauvegarde nocturne (02:30), et durcit
-   SSH (clé uniquement, root interdit) **seulement si** une clé est déjà autorisée.
-5. Vérifier : `sudo polenta-host status`.
+4. `setup` est rejouable sans effet de bord. Au niveau par défaut (`HARDEN_HOST=full`), il installe
+   Docker, restic, le pare-feu (22/80/443), fail2ban, les mises à jour de sécurité automatiques, la
+   sauvegarde nocturne (02:30), et durcit SSH (clé uniquement, root interdit) **seulement si** une
+   clé est déjà autorisée.
+5. Vérifier : `sudo polenta-host status` (bloc « Durcissement » : état détecté de chaque module).
+
+#### Serveur déjà administré : choisir le niveau de durcissement
+
+`full` convient à un VPS neuf dédié à Polenta. Sur un serveur qui héberge déjà d'autres projets
+dockerisés, il peut couper des accès existants (SSH sans mot de passe ni root, pare-feu fermé hors
+22/80/443, redémarrage nocturne des conteneurs, bannissements fail2ban). Fixer le niveau dans
+`/opt/polenta/host.env` **avant** le premier `setup` :
+
+| `HARDEN_HOST` | Ce que `setup` applique en plus de Docker, restic, sauvegarde nocturne, Caddy |
+|---|---|
+| `full` (défaut) | pare-feu ufw, fail2ban (sshd + forges), mises à jour auto avec redémarrage 04:00, SSH durci, LLMNR/mDNS coupés, console |
+| `basic` | fail2ban (sshd + forges), mises à jour auto **sans** redémarrage ; aucun changement de pare-feu ni de SSH |
+| `none` | rien d'autre : aucun paquet de durcissement, aucun fichier sous `/etc/ssh`, `/etc/fail2ban`, `/etc/apt/apt.conf.d`… |
+
+Une valeur invalide arrête `setup` avant toute modification. `HOST_MODULES=a,b,c` (facultatif)
+remplace la liste du niveau (modules : voir `host.env.example`).
+
+Limites :
+- `setup` **n'annule jamais** : passer de `full` à `none` laisse en place ce qui est déjà posé ;
+  `setup` et `status` le signalent (`hors niveau`). Retrait manuel, module par module :
+  - pare-feu : `sudo ufw disable` (ou supprimer les règles 22/80/443 ajoutées par le kit) ;
+  - SSH : `sudo rm /etc/ssh/sshd_config.d/10-polenta.conf && sudo systemctl reload ssh` ;
+  - fail2ban : `sudo rm /etc/fail2ban/jail.d/10-polenta-sshd.local /etc/fail2ban/jail.d/20-polenta-forge.local /etc/fail2ban/filter.d/polenta-forge.conf && sudo systemctl restart fail2ban` ;
+  - mises à jour : supprimer `/etc/apt/apt.conf.d/52polenta-unattended` (redémarrage 04:00) et/ou `20auto-upgrades` ;
+  - `resolved` / `console` : supprimer `/etc/systemd/resolved.conf.d/10-polenta.conf` (puis `systemctl restart systemd-resolved`) / `/etc/sysctl.d/10-polenta-console.conf`.
+- Si `ufw` est déjà actif et que le niveau ne le gère pas, `setup` ne le modifie pas mais avertit
+  si 80/443 n'y sont pas ouverts : Caddy serait injoignable. Les ports publiés par Docker
+  contournent `ufw`.
+
+Contrôler un hôte au niveau `none` (sur l'hôte, après `setup`) :
+```
+sudo ~/polenta-kit/tests/harden-none.test.sh [--ufw-before ufw.txt] [--sshd-before sshd.txt]
+deploy/tests/acceptance.sh --harden-level none <nom>.forge.mondomaine.fr   # depuis l'extérieur
+```
+Tests sans hôte : `deploy/tests/harden-modules.test.sh`.
 
 Mettre à jour le kit plus tard = recopier `deploy/` puis relancer `setup` (le kit installé dans
 `/opt/polenta/kit` est remplacé, `host.env` jamais).
@@ -183,6 +219,9 @@ Les mises à jour de sécurité de l'OS sont automatiques ; redémarrer l'hôte 
 - **SSH** : 5 échecs → bannissement. **Forges** : 10 échecs d'authentification (web, git, création
   de jeton) en 10 min → l'IP est bannie **de toutes les forges** (pas de SSH) pendant 1 h. Les
   règles des forges sont dans la chaîne `DOCKER-USER` d'iptables.
+- Aux niveaux `basic` et `none`, voir A2 : en `none`, fail2ban n'est pas géré par le kit et
+  `ADMIN_IPS` est sans effet (`setup` l'indique) ; en `basic`, fail2ban l'est, mais sans pare-feu ni
+  SSH durci.
 - `ADMIN_IPS` (host.env) : IP fixes de l'exploitant **jamais** bannies. À laisser vide avec une IP
   dynamique ou mobile ; relancer `setup` après modification. Une campagne de tests de connexion
   (mauvais mots de passe, codes 2FA faux) atteint vite le seuil : ajouter temporairement l'IP du

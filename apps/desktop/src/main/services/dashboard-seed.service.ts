@@ -3,12 +3,24 @@ import { legacyWidgetTemplate, stableJson } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { DashboardsService } from './dashboards.service'
 import type { SavedQueriesService } from './saved-queries.service'
+import type { DashboardLibraryService } from './dashboard-library.service'
 import type { TemplateInput } from './suivi-store.util'
 import { listObjectEntries } from './suivi-store.util'
 import { isReadonlyBranch } from './readonly-branch.util'
 import { readPref, writePref } from './pref-store.util'
 
 const SEED_MARKER_PATH = 'dashboards/.seeded.yaml'
+
+/** Marqueur partagé `dashboards/.seeded.yaml` : seed Status (`seededAt`) et bibliothèque (`library`). */
+export interface StatusSeedMarker {
+  seededAt?: string
+  seededBy?: string
+  /** GH74 — objets créés par le seed Status (propositions de nouvelle version de modèle). */
+  queries?: string[]
+  dashboardId?: string
+  /** GH74 §6.2 — fichiers de la bibliothèque de départ copiés (jamais recréés s'ils sont supprimés). */
+  library?: string[]
+}
 /** GH65 — clé du `.{user}.pref` portant le marqueur du seed « Campagnes » (cf. ensureCampaignsSeeded). */
 const CAMPAIGNS_SEED_PREF_KEY = 'campaignsSeed'
 
@@ -53,7 +65,7 @@ const STATUS_SEED_WIDGETS: SeedWidget[] = [
 
 type SeedLocale = 'fr' | 'en'
 
-type CampaignSeedQueryKey = 'progress' | 'executedPct' | 'passPct' | 'perDay' | 'failures'
+type CampaignSeedQueryKey = 'progress' | 'executedPct' | 'passPct' | 'perDay' | 'failures' | 'timeline'
 
 interface CampaignSeedLabels {
   dashboard: string
@@ -70,6 +82,7 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
       passPct: 'Campagnes en cours — entrées exécutées',
       perDay: 'Campagnes — entrées exécutées',
       failures: 'Campagnes en cours — entrées en échec',
+      timeline: 'Campagnes en cours — avancement dans le temps',
     },
     widgets: {
       progress: 'Avancement par campagne',
@@ -77,6 +90,7 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
       passPct: '% PASS',
       perDay: 'Exécutions par jour',
       failures: 'Entrées en échec',
+      timeline: 'Avancement dans le temps',
     },
   },
   en: {
@@ -87,6 +101,7 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
       passPct: 'Campaigns in progress — executed entries',
       perDay: 'Campaigns — executed entries',
       failures: 'Campaigns in progress — failed entries',
+      timeline: 'Campaigns in progress — progress over time',
     },
     widgets: {
       progress: 'Progress by campaign',
@@ -94,6 +109,7 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
       passPct: '% PASS',
       perDay: 'Executions per day',
       failures: 'Failed entries',
+      timeline: 'Progress over time',
     },
   },
 }
@@ -101,15 +117,17 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
 const EXECUTED = ['INCOMPLETE', 'BLOCKED', 'FAIL', 'PASS']
 
 export const CAMPAIGN_SEED_QUERIES: { key: CampaignSeedQueryKey; template: TemplateInput }[] = [
-  { key: 'progress', template: { id: 'campaign-entries', params: { campaignStatuses: ['planned', 'in_progress'] } } },
+  // Étape d'avancement (`entryStep` de la bibliothèque projet), ex-colonne `progress` (GH71).
+  { key: 'progress', template: { id: 'campaign-entries', params: { campaignStatuses: ['planned', 'in_progress'], withStep: true } } },
   { key: 'executedPct', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'] } } },
   { key: 'passPct', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], entryStatuses: EXECUTED } } },
   { key: 'perDay', template: { id: 'campaign-entries', params: { entryStatuses: EXECUTED } } },
   { key: 'failures', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], entryStatuses: ['FAIL', 'BLOCKED'] } } },
+  { key: 'timeline', template: { id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], step: '1' } } },
 ]
 
 const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; size: WidgetSize; template: TemplateInput }[] = [
-  { queryKey: 'progress', size: 'lg', template: { id: 'bar', params: { category: 'campaignTitle', series: 'status', measure: 'count', stacked: true, entryColors: true } } },
+  { queryKey: 'progress', size: 'lg', template: { id: 'bar', params: { category: 'campaignTitle', series: 'stepLabel', seriesOrder: 'stepRank', seriesColor: 'stepColor', measure: 'count', stacked: true } } },
   { queryKey: 'executedPct', size: 'sm', template: { id: 'kpi', params: { measure: 'ratio', measureColumn: 'executed', ratioValues: 'true' } } },
   { queryKey: 'passPct', size: 'sm', template: { id: 'kpi', params: { measure: 'ratio', measureColumn: 'status', ratioValues: 'PASS' } } },
   { queryKey: 'perDay', size: 'md', template: { id: 'line', params: { category: 'executedDay', measure: 'count', temporal: true } } },
@@ -118,7 +136,11 @@ const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; size: WidgetSize;
     size: 'lg',
     template: { id: 'table', params: { columns: ['campaignId', 'campaignTitle', 'entryId', 'testCaseId', 'testTitle', 'status', 'executedAt', 'executedBy'] } },
   },
+  { queryKey: 'timeline', size: 'lg', template: { id: 'stacked-area', params: { x: 'date', series: 'status', value: 'count', entryColors: true } } },
 ]
+
+/** GH74 §8 — widgets ajoutés aux seeds « Campagnes » existants via le bandeau (pas d'ajout silencieux). */
+export const PROPOSED_SEED_WIDGETS: CampaignSeedQueryKey[] = ['timeline']
 
 // ─── Seeds d'avant GH74 (requêtes SQL) : reconnus et réécrits ────────────────
 
@@ -164,7 +186,7 @@ export interface CampaignsSeedMarker {
   dashboardId?: string
   widgets?: CampaignSeedQueryKey[]
   seededAt?: string
-  /** Mises à niveau déjà appliquées (GH71, puis GH74 au sprint 3). */
+  /** Mises à niveau déjà appliquées (GH71, puis GH74). */
   upgrades?: string[]
 }
 
@@ -207,6 +229,8 @@ export class DashboardSeedService {
     private readonly savedQueries: SavedQueriesService,
     /** GH65 — marqueur du seed « Campagnes » (défaut : `.{user}.pref`). */
     private readonly campaignsMarker: CampaignsSeedMarkerStore = prefMarkerStore,
+    /** GH74 — bibliothèque de départ copiée avec le seed Status (absente : pas de copie). */
+    private readonly library?: DashboardLibraryService,
   ) {}
 
   async ensureSeeded(repoPath: string, username: string, locale?: string): Promise<void> {
@@ -214,6 +238,9 @@ export class DashboardSeedService {
     if (existing) return existing
     const attempt = (async () => {
       await this.doEnsureSeeded(repoPath, username)
+      await this.ensureLibrarySeeded(repoPath).catch((err) => {
+        console.warn(`[dashboard-seed] copie de la bibliothèque non terminée (${repoPath}) :`, err instanceof Error ? err.message : String(err))
+      })
       // Seed facultatif : un échec ne doit pas empêcher de lister les dashboards. Retenté au prochain
       // `dashboards:list` (marqueur à reprise).
       await this.ensureCampaignsSeeded(repoPath, username, seedLocale(locale)).catch((err) => {
@@ -230,8 +257,9 @@ export class DashboardSeedService {
   }
 
   private async doEnsureSeeded(repoPath: string, username: string): Promise<void> {
-    const marker = await this.git.readYaml<{ seededAt: string }>(repoPath, SEED_MARKER_PATH)
-    if (marker) return
+    const marker = await this.readStatusMarker(repoPath)
+    // Marqueur sans `seededAt` : seule la bibliothèque a été copiée.
+    if (marker?.seededAt) return
     // Écriture automatique à l'ouverture du panneau : jamais sur une branche en lecture seule (pas de
     // marqueur : retenté sur une branche inscriptible).
     const branch = await this.git.currentBranch(repoPath).catch(() => '')
@@ -251,8 +279,70 @@ export class DashboardSeedService {
       if (!queryId) continue
       await this.dashboards.addWidget(repoPath, username, dashboard.id, { title: w.title, queryId, size: w.size, template: w.template })
     }
-    // Écrit SEULEMENT après un seed complet.
-    await this.git.writeYaml(repoPath, SEED_MARKER_PATH, { seededAt: new Date().toISOString(), seededBy: username })
+    // Écrit SEULEMENT après un seed complet (relu : la bibliothèque a pu y être notée entre-temps).
+    await this.git.writeYaml(repoPath, SEED_MARKER_PATH, {
+      ...(await this.readStatusMarker(repoPath)),
+      seededAt: new Date().toISOString(), seededBy: username, queries: [...queryIds.values()], dashboardId: dashboard.id,
+    })
+  }
+
+  readStatusMarker(repoPath: string): Promise<StatusSeedMarker | null> {
+    return this.git.readYaml<StatusSeedMarker>(repoPath, SEED_MARKER_PATH)
+  }
+
+  /** Note dans le marqueur partagé des fichiers de bibliothèque copiés (mise à jour appliquée). */
+  async recordLibraryFiles(repoPath: string, files: readonly string[]): Promise<void> {
+    const marker = (await this.readStatusMarker(repoPath)) ?? {}
+    const library = Array.from(new Set([...(marker.library ?? []), ...files])).sort()
+    await this.git.writeYaml(repoPath, SEED_MARKER_PATH, { ...marker, library })
+  }
+
+  /** GH74 §6.2 — bibliothèque de départ, une fois par repo, même garde de branche que le seed Status. */
+  private async ensureLibrarySeeded(repoPath: string): Promise<void> {
+    if (!this.library) return
+    const branch = await this.git.currentBranch(repoPath).catch(() => '')
+    if (isReadonlyBranch(branch)) return
+    const marker = await this.readStatusMarker(repoPath)
+    await this.library.seedIfAbsent(repoPath, marker?.library ?? [], (files) => this.recordLibraryFiles(repoPath, files))
+  }
+
+  /** Marqueur du seed « Campagnes » de l'utilisateur (propositions du bandeau). */
+  campaignsSeedMarker(repoPath: string, username: string): CampaignsSeedMarker | null {
+    return this.campaignsMarker.read(repoPath, username)
+  }
+
+  /**
+   * GH74 §8 — widgets du seed « Campagnes » absents d'un seed existant (terminé, dashboard toujours
+   * là et modifiable) : proposés dans le bandeau.
+   */
+  async proposedSeedWidgets(repoPath: string, username: string): Promise<{ key: CampaignSeedQueryKey; dashboardId: string; dashboardTitle: string }[]> {
+    const marker = this.campaignsMarker.read(repoPath, username)
+    if (marker?.state !== 'done' || !marker.dashboardId) return []
+    const dashboard = await this.dashboards.get(repoPath, username, marker.dashboardId)
+    if (!dashboard || dashboard.state.readOnly) return []
+    return PROPOSED_SEED_WIDGETS
+      .filter((key) => !marker.queries?.[key])
+      .map((key) => ({ key, dashboardId: dashboard.id, dashboardTitle: dashboard.title }))
+  }
+
+  /** Ajoute un widget proposé au dashboard « Campagnes » (requête privée créée avec lui). */
+  async addProposedSeedWidget(repoPath: string, username: string, key: CampaignSeedQueryKey, locale?: string): Promise<void> {
+    const proposal = (await this.proposedSeedWidgets(repoPath, username)).find((p) => p.key === key)
+    if (!proposal) throw new Error(`Aucun widget « ${key} » à ajouter au dashboard Campagnes.`)
+    const labels = CAMPAIGN_SEED_LABELS[seedLocale(locale)]
+    const queryDef = CAMPAIGN_SEED_QUERIES.find((q) => q.key === key)!
+    const widgetDef = CAMPAIGN_SEED_WIDGETS.find((w) => w.queryKey === key)!
+    const query = await this.savedQueries.create(repoPath, username, { title: labels.queries[key], template: queryDef.template, scope: 'private', createdBy: username })
+    try {
+      await this.dashboards.addWidget(repoPath, username, proposal.dashboardId, { title: labels.widgets[key], queryId: query.id, size: widgetDef.size, template: widgetDef.template })
+    } catch (err) {
+      // Widget non ajouté : pas de requête orpheline, la proposition reste au bandeau.
+      await this.savedQueries.delete(repoPath, username, query.id).catch(() => undefined)
+      throw err
+    }
+    // Noté seulement une fois le widget ajouté (la proposition disparaît alors du bandeau).
+    const marker = this.campaignsMarker.read(repoPath, username)!
+    this.campaignsMarker.write(repoPath, username, { ...marker, queries: { ...marker.queries, [key]: query.id } })
   }
 
   /**

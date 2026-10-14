@@ -56,6 +56,7 @@ import type {
   WidgetSize,
   ScriptRunRequest,
   ScriptRunResult,
+  SuiviUpdatesList,
   ScriptClientInfo,
   QueryTemplate,
   WidgetTemplate,
@@ -705,6 +706,12 @@ export interface ApiClient {
     renderTemplate(kind: 'query', input: TemplateInput): Promise<{ script: string }>
     renderTemplate(kind: 'widget', input: TemplateInput): Promise<WidgetCode>
     objectTypes(repoPath: string, workspaceDir?: string): Promise<SuiviObjectTypeOption[]>
+    /** GH74 §6.3 — bandeau des mises à jour (bibliothèque, widgets du seed, versions de modèle). */
+    updatesList(repoPath: string, username: string, locale?: string): Promise<SuiviUpdatesList>
+    /** Applique les propositions choisies (écriture normale, à publier pour les fichiers partagés). */
+    updatesApply(repoPath: string, username: string, ids: string[], locale?: string): Promise<void>
+    /** Masque une version proposée pour l'utilisateur. */
+    updatesIgnore(repoPath: string, username: string, id: string, toVersion: number): Promise<void>
   }
   /** Requêtes enregistrées (scripts de données) / historique (T77, GH74). */
   queries: {

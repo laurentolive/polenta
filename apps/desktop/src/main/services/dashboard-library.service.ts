@@ -33,6 +33,14 @@ export interface ShippedManifest {
   files: ShippedLibraryFile[]
 }
 
+/** Fichier livré à proposer dans le bandeau (sans `fromVersion` : nouveau fichier). */
+export interface LibraryUpdate {
+  file: ShippedLibraryFile
+  fromVersion?: number
+  toVersion: number
+  summary: { fr: string; en: string }
+}
+
 /** Empreinte d'un fichier : SHA-256 du contenu normalisé (fins de ligne LF, sans espaces de fin). */
 export function contentHash(text: string): string {
   const normalized = text.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n*$/, '\n')
@@ -106,6 +114,64 @@ export class DashboardLibraryService {
   /** Contenu livré d'un fichier de la bibliothèque de départ (`path` du manifeste). */
   readShippedFile(file: string): string {
     return fs.readFileSync(path.join(this.shippedDir(), file), 'utf8')
+  }
+
+  /**
+   * GH74 §6.2 — copie de la bibliothèque de départ, une seule fois par repo (`alreadySeeded` : chemins
+   * du marqueur `dashboards/.seeded.yaml`) et seulement si `dashboards/lib/` est absent ; écriture
+   * normale, à publier. Ensuite, un fichier supprimé par le projet n'est jamais recréé, et un fichier
+   * livré par une version plus récente est proposé (`listLibraryUpdates`). Renvoie les chemins écrits.
+   */
+  async seedIfAbsent(repoPath: string, alreadySeeded: readonly string[], record: (files: string[]) => Promise<void>): Promise<string[]> {
+    // Déjà copiée une fois : un fichier livré depuis est proposé dans le bandeau, jamais ajouté seul.
+    if (alreadySeeded.length > 0) return []
+    if ((await this.git.listFiles(repoPath, LIBRARY_DIR)).length > 0) return []
+    const written: string[] = []
+    try {
+      for (const f of this.readShippedManifest().files) {
+        if (await this.git.fileExists(repoPath, f.repoPath)) continue
+        await this.git.writeText(repoPath, f.repoPath, this.readShippedFile(f.path))
+        written.push(f.repoPath)
+      }
+    } finally {
+      // Même interrompue, la copie note ce qu'elle a écrit (sinon `lib/` non vide bloquerait la
+      // reprise et ces fichiers seraient reproposés comme nouveaux).
+      if (written.length) {
+        this.invalidate(repoPath)
+        await record(written)
+      }
+    }
+    return written
+  }
+
+  /**
+   * GH74 §6.3 — fichiers livrés à proposer : présent dans le repo avec l'empreinte d'une version livrée
+   * antérieure (mise à jour), ou absent et jamais copié (nouveau fichier livré). Fichier modifié par
+   * le projet (empreinte inconnue) ou supprimé après copie : jamais proposé.
+   */
+  async listLibraryUpdates(repoPath: string, seeded: readonly string[]): Promise<LibraryUpdate[]> {
+    const out: LibraryUpdate[] = []
+    for (const f of this.readShippedManifest().files) {
+      const latest = f.versions[f.versions.length - 1]
+      const current = await fs.promises.readFile(path.join(repoPath, f.repoPath), 'utf8').catch(() => undefined)
+      if (current === undefined) {
+        if (!seeded.includes(f.repoPath)) out.push({ file: f, toVersion: latest.version, summary: latest.summary })
+        continue
+      }
+      const hash = contentHash(current)
+      const index = f.versions.findIndex((v) => v.hash === hash)
+      if (index === -1 || index === f.versions.length - 1) continue
+      out.push({ file: f, fromVersion: f.versions[index].version, toVersion: latest.version, summary: latest.summary })
+    }
+    return out
+  }
+
+  /** Écrit la version livrée d'un fichier du manifeste (application d'une mise à jour). */
+  async writeShipped(repoPath: string, repoRelPath: string): Promise<void> {
+    const f = this.readShippedManifest().files.find((x) => x.repoPath === repoRelPath)
+    if (!f) throw new Error(`Fichier livré inconnu : ${repoRelPath}`)
+    await this.git.writeText(repoPath, f.repoPath, this.readShippedFile(f.path))
+    this.invalidate(repoPath)
   }
 
   private async doLoad(repoPath: string, workspaceDir: string | undefined, repoPaths: Set<string>): Promise<LoadedLibrary> {

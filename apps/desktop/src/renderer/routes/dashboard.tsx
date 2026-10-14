@@ -215,6 +215,7 @@ function DashboardPage() {
         }
         actions={
           <>
+            {!dashboard.state.readOnly && (<>
             <div className="flex rounded-lg border border-edge overflow-hidden text-xs">
               <button
                 type="button"
@@ -237,6 +238,7 @@ function DashboardPage() {
               <Plus size={12} />
               {t('dashboard.widgetModal.addTitle')}
             </button>
+            </>)}
             <ExportButton
               kind="dashboard"
               formats={['docx', 'pdf']}

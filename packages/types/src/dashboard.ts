@@ -104,3 +104,32 @@ export interface DescribedObject {
 export type RowTarget =
   | { kind: 'requirement' | 'test' | 'campaign'; id: string; repoPath: string }
   | { kind: 'campaign-entry'; campaignId: string; entryId: string; executed: boolean; status: TestRunStatus; repoPath: string }
+
+// ─── Bandeau des mises à jour (GH74 §6.3) ────────────────────────────────────
+
+/**
+ * Proposition du bandeau de la vue Suivi :
+ * - `library` : fichier de la bibliothèque de départ (`dashboards/lib/`, `jsconfig.json`) resté à une
+ *   version livrée antérieure, ou nouveau fichier livré ;
+ * - `seed-widget` : widget ajouté au seed « Campagnes » depuis sa création ;
+ * - `template` : objet d'un seed (non personnalisé) dont le modèle a une version plus récente.
+ */
+export interface SuiviUpdate {
+  /** Identifiant stable (`library:<chemin>`, `seed-widget:<clé>`, `template:query:<id>`, `template:widget:<dashboard>/<widget>`). */
+  id: string
+  kind: 'library' | 'seed-widget' | 'template'
+  /** Fichier, widget ou requête concerné. */
+  title: string
+  /** Absent : nouveau (fichier ou widget). */
+  fromVersion?: number
+  toVersion: number
+  summary: { fr: string; en: string }
+  /** Écriture dans le repo (à publier) ; sinon dans les préférences de l'utilisateur. */
+  shared: boolean
+}
+
+export interface SuiviUpdatesList {
+  updates: SuiviUpdate[]
+  /** Branche en lecture seule : bandeau affiché sans « Appliquer ». */
+  readOnly: boolean
+}

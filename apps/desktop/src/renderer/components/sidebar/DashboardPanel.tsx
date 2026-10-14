@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { ReorderableSidebarSection } from './ReorderableSidebarSection'
+import { SuiviUpdatesBanner } from './SuiviUpdatesBanner'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type { Dashboard, SavedQuery } from '@polenta/types'
 
@@ -189,7 +190,7 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
 
   // ── Dashboards ───────────────────────────────────────────────────────────────
 
-  const { data: dashboards = [], isLoading: dashboardsLoading } = useQuery({
+  const { data: dashboards = [], isLoading: dashboardsLoading, isSuccess: dashboardsLoaded } = useQuery({
     queryKey: ['dashboards', repoPath, username],
     queryFn: () => api.dashboards.list(repoPath, username, i18n.resolvedLanguage),
     enabled: !!repoPath && !!username,
@@ -264,6 +265,9 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
       <div className="px-4 py-3 border-b border-edge shrink-0">
         <p className="section-label">{t('sidebar.dashboard.title')}</p>
       </div>
+
+      {/* GH74 — mises à jour proposées (bibliothèque, widgets du seed, versions de modèle). */}
+      <SuiviUpdatesBanner repoPath={repoPath} username={username} enabled={dashboardsLoaded} />
 
       <div ref={sectionsRef} className="flex-1 min-h-0 flex flex-col">
         <ReorderableSidebarSection

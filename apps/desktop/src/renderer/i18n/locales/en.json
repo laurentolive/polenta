@@ -299,7 +299,20 @@
       "titleLabel": "Title",
       "titlePlaceholder": "My dashboard…",
       "creating": "Creating…",
-      "create": "Create"
+      "create": "Create",
+      "updates": {
+        "title_one": "Update available (1)",
+        "title_other": "Updates available ({{count}})",
+        "readOnly": "Read-only branch: updates cannot be applied here.",
+        "new": "(new)",
+        "version": "(v{{from}} → v{{to}})",
+        "seedWidget": "Widget for \"{{dashboard}}\"",
+        "toPublish": "Repository change, to publish.",
+        "ignore": "Ignore",
+        "apply_one": "Apply",
+        "apply_other": "Apply ({{count}})",
+        "applying": "Applying…"
+      }
     },
     "requirements": {
       "title": "Requirements",
@@ -453,7 +466,15 @@
       "deleteTitle": "Delete?",
       "deleteBody": "<b>{{title}}</b> will be permanently deleted.",
       "shared": "Shared",
-      "private": "Private"
+      "private": "Private",
+      "readOnlyBadge": {
+        "legacy-sql": "SQL",
+        "newer-format": "Read-only"
+      },
+      "readOnly": {
+        "legacy-sql": "SQL query from before GH74, no longer supported: rewrite it as a script or delete it.",
+        "newer-format": "Created by a newer version of Polenta: read-only."
+      }
     }
   },
   "schema": {
@@ -1038,7 +1059,8 @@
       "specLabel": "Vega-Lite spec (JSON) — data: { \"name\": \"rows\" }",
       "aggregateWarning": "The spec aggregates with Vega-Lite (aggregate): click details will not be available. Group in the transform instead.",
       "previewTitle": "Preview",
-      "selectQueryHint": "Choose a query to see the preview."
+      "selectQueryHint": "Choose a query to see the preview.",
+      "revertConfirm": "The edited code will be lost."
     },
     "template": {
       "anyType": "(all objects of the category)",

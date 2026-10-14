@@ -68,6 +68,8 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
   const [spec, setSpec] = useState(initialWidget?.spec ?? '{\n  "data": { "name": "rows" },\n  "mark": "bar"\n}\n')
   /** Le code a été modifié dans l'onglet Code : enregistré tel quel (widget détaché). */
   const [codeEdited, setCodeEdited] = useState(customized)
+  /** « Revenir au modèle » demandé : confirmation (le code modifié est perdu). */
+  const [confirmRevert, setConfirmRevert] = useState(false)
 
   const template = catalog?.widgets.find((w) => w.id === templateId)
 
@@ -113,6 +115,7 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
     setTemplateId(initialWidget.template.id)
     setParams(initialWidget.template.params)
     setCodeEdited(false)
+    setConfirmRevert(false)
     setTab('template')
   }
 
@@ -163,11 +166,17 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
                   <Code2 size={12} /> {t('dashboard.widgetModal.codeTab')}
                 </button>
               </div>
-              {codeEdited && initialWidget?.template && (
-                <button type="button" onClick={revertToTemplate} className="btn-secondary-sm flex items-center gap-1.5 ml-auto" title={t('dashboard.widgetModal.revertHint')}>
+              {codeEdited && initialWidget?.template && (confirmRevert ? (
+                <span className="ml-auto flex items-center gap-2 text-xs text-ink-2" data-testid="revert-confirm">
+                  {t('dashboard.widgetModal.revertConfirm')}
+                  <button type="button" onClick={revertToTemplate} className="btn-secondary-sm">{t('dashboard.widgetModal.revert')}</button>
+                  <button type="button" onClick={() => setConfirmRevert(false)} className="text-ink-3 hover:text-ink underline">{t('common.cancel')}</button>
+                </span>
+              ) : (
+                <button type="button" onClick={() => setConfirmRevert(true)} className="btn-secondary-sm flex items-center gap-1.5 ml-auto" title={t('dashboard.widgetModal.revertHint')}>
                   <RotateCcw size={12} /> {t('dashboard.widgetModal.revert')}
                 </button>
-              )}
+              ))}
             </div>
 
             {tab === 'template' ? (

@@ -295,7 +295,7 @@ describe('GH74 — seeds d\'avant GH74 réécrits', () => {
     expect(exists('queries/QUERY-0001.yaml')).toBe(false)
     expect((await d.get(repo, U, 'DASHBOARD-0001'))!.widgets[0].template).toMatchObject({ id: 'bar', params: { category: 'component', series: 'status' } })
     expect(await q.findOne(repo, U, 'local-1')).toMatchObject({ template: { id: 'campaign-entries' } })
-    expect((await d.get(repo, U, 'local-2'))!.widgets[0].template).toMatchObject({ id: 'bar', params: { category: 'campaignTitle', series: 'status', measure: 'count' } })
+    expect((await d.get(repo, U, 'local-2'))!.widgets[0].template).toMatchObject({ id: 'bar', params: { category: 'campaignTitle', series: 'stepLabel', seriesOrder: 'stepRank', measure: 'count' } })
   })
 
   it('D3 — requête modifiée : non reconnue ; branche en lecture seule : partagé non touché', async () => {

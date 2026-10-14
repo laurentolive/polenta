@@ -65,12 +65,12 @@ function fixture(opts: { branch?: string; failOnQuery?: number; legacySeeded?: b
 const campaignDashboards = (ds: Map<string, Dashboard>) => [...ds.values()].filter(d => d.title === 'Campagnes' || d.title === 'Campaigns')
 
 describe('GH65 — seed « Campagnes »', () => {
-  it('1.7 — projet déjà seedé (Status) : dashboard + 5 requêtes privés, marqueur done, rien dans le repo', async () => {
+  it('1.7 — projet déjà seedé (Status) : dashboard + 6 requêtes privés (GH74 : + avancement dans le temps), marqueur done, rien dans le repo', async () => {
     const f = fixture({ legacySeeded: true })
     await f.service.ensureSeeded(REPO, 'alice')
     const [d] = campaignDashboards(f.dashboards)
     expect(d.scope).toBe('private')
-    expect(d.widgets.map(w => w.template?.id)).toEqual(['bar', 'kpi', 'kpi', 'line', 'table'])
+    expect(d.widgets.map(w => w.template?.id)).toEqual(['bar', 'kpi', 'kpi', 'line', 'table', 'stacked-area'])
     expect(f.queries.size).toBe(CAMPAIGN_SEED_QUERIES.length)
     expect([...f.queries.values()].every(q => q.scope === 'private')).toBe(true)
     expect(new Set(d.widgets.map(w => w.queryId))).toEqual(new Set(f.queries.keys()))
@@ -116,7 +116,7 @@ describe('GH65 — seed « Campagnes »', () => {
     await f.service.ensureSeeded(REPO, 'alice')
     expect(f.queries.size).toBe(CAMPAIGN_SEED_QUERIES.length)
     expect(campaignDashboards(f.dashboards)).toHaveLength(1)
-    expect(campaignDashboards(f.dashboards)[0].widgets).toHaveLength(5)
+    expect(campaignDashboards(f.dashboards)[0].widgets).toHaveLength(CAMPAIGN_SEED_QUERIES.length)
     expect(f.marker()).toMatchObject({ state: 'done' })
   })
 

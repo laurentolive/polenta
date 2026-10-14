@@ -40,9 +40,10 @@ const widget = (title: string) => s.page.getByTestId('widget-card').filter({ has
 const bar = (title: string, ...parts: string[]) =>
   widget(title).locator(`[aria-roledescription="bar"]${parts.map(p => `[aria-label*="${p}"]`).join('')}`)
 
-test('2.1 — clic sur le segment FAIL de la campagne → ses entrées FAIL', async () => {
+test('2.1 — clic sur le segment « Échoué » de la campagne → ses entrées FAIL', async () => {
   await openCampaignsDashboard()
-  const segment = bar('Avancement par campagne', TITLE, 'FAIL')
+  // GH74 — série = étape d'avancement (`entryStep`), libellée ; résultats sous leur libellé.
+  const segment = bar('Avancement par campagne', `campaignTitle: ${TITLE};`, 'stepLabel: Échoué')
   await expect(segment).toHaveCount(1, { timeout: 15_000 })
   await s.shot('gh65-2-1-widget')
   await segment.click()
@@ -67,7 +68,10 @@ test('2.4 / 2.7 — KPI « % exécuté » → entrées exécutées ; entrée en 
   await s.page.keyboard.press('Escape')
 
   const pending = campaign.runs[3].entryId
-  await bar('Avancement par campagne', TITLE, 'pending').click()
+  // Entrée non exécutée : segment de son étape (préparation ou « Prêt à exécuter »).
+  await widget('Avancement par campagne')
+    .locator(`[aria-roledescription="bar"][aria-label*="campaignTitle: ${TITLE};"]:not([aria-label*="stepLabel: Échoué"]):not([aria-label*="stepLabel: Passé"])`)
+    .click()
   const row = dialog().locator('tbody tr').filter({ hasText: `${campaign.id}/${pending}` })
   await expect(row).toHaveCount(1)
   await row.click()

@@ -22,6 +22,8 @@ export interface SidebarItem {
   id: string
   title: string
   scope: QueryScope
+  /** GH74 — objet en lecture seule (requête SQL d'avant GH74, format plus récent) : badge. */
+  state?: { readOnly?: 'legacy-sql' | 'newer-format' }
 }
 
 interface Props<T extends SidebarItem> {
@@ -238,6 +240,15 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
                       {item.scope === 'shared' ? <Users2 size={11} /> : <Lock size={11} />}
                     </span>
                     <span className="text-xs text-ink truncate flex-1">{item.title}</span>
+                    {item.state?.readOnly && (
+                      <span
+                        data-testid="readonly-badge"
+                        title={t(`sidebar.reorderable.readOnly.${item.state.readOnly}`)}
+                        className="shrink-0 text-[10px] px-1 rounded bg-status-warning-bg text-status-warning"
+                      >
+                        {t(`sidebar.reorderable.readOnlyBadge.${item.state.readOnly}`)}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => {

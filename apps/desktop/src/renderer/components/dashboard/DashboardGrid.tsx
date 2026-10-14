@@ -53,6 +53,7 @@ function WidgetCard({
   onRequestEdit,
   onRequestDelete,
   printMode = false,
+  readOnly = false,
   onRendered,
 }: {
   widget: Widget
@@ -64,6 +65,8 @@ function WidgetCard({
   onRequestEdit: () => void
   onRequestDelete: () => void
   printMode?: boolean
+  /** GH74 — dashboard en lecture seule (format plus récent) : ni modification ni suppression. */
+  readOnly?: boolean
   onRendered?: () => void
 }) {
   const { t } = useTranslation()
@@ -81,7 +84,7 @@ function WidgetCard({
     <div className="bg-surface border border-edge rounded-lg flex flex-col overflow-hidden h-64" data-testid="widget-card">
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-edge-subtle shrink-0">
         <p className="text-xs font-medium text-ink truncate">{widget.title}</p>
-        {!printMode && (
+        {!printMode && !readOnly && (
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
@@ -142,6 +145,8 @@ function WidgetCard({
 }
 
 export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir, username, onReorder, onDeleteWidget, onEditWidget, printMode = false, onWidgetRendered }: Props) {
+  // GH74 — réordonner : jamais en impression ni sur un dashboard en lecture seule.
+  const editable = !printMode && !dashboard.state.readOnly
   const { t } = useTranslation()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
@@ -216,11 +221,11 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
               <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-status-info-solid z-10 pointer-events-none" />
             )}
             <div
-              draggable={!printMode}
-              onDragStart={printMode ? undefined : (e) => handleDragStart(e, widget.id)}
-              onDragOver={printMode ? undefined : (e) => handleDragOver(e, widget.id)}
-              onDrop={printMode ? undefined : handleDrop}
-              onDragEnd={printMode ? undefined : handleDragEnd}
+              draggable={editable}
+              onDragStart={editable ? (e) => handleDragStart(e, widget.id) : undefined}
+              onDragOver={editable ? (e) => handleDragOver(e, widget.id) : undefined}
+              onDrop={editable ? handleDrop : undefined}
+              onDragEnd={editable ? handleDragEnd : undefined}
               className={draggingId === widget.id ? 'opacity-40' : ''}
             >
               <WidgetCard
@@ -234,6 +239,7 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
                 onRequestEdit={() => onEditWidget(widget)}
                 onRequestDelete={() => setPendingDeleteId(widget.id)}
                 printMode={printMode}
+                readOnly={!!dashboard.state.readOnly}
               />
             </div>
             {dropTarget?.id === widget.id && dropTarget.position === 'after' && (

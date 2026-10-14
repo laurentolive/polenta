@@ -56,7 +56,7 @@ function run(script: string, timezone = 'UTC', drill: Record<string, string> | n
 }
 
 describe('GH74 — équivalence avec l\'ancien calcul de Polenta', () => {
-  it('L1 — entryStep = étape GH71 (campaign-progress) pour chaque entrée', async () => {
+  it('L1 — entryStep = étape GH71 (ancien campaign-progress, références figées) pour chaque entrée', async () => {
     const expected = LEGACY.steps
     const rows = run(
       "import { entryStep, stepContext } from 'lib/campaign.js'\n" +
@@ -65,6 +65,19 @@ describe('GH74 — équivalence avec l\'ancien calcul de Polenta', () => {
     expect(Object.fromEntries(rows.map((r) => [r.id, r.step]))).toEqual(expected)
     // Le jeu couvre chaque cas : résultat, préparation (deux schémas), prêt.
     expect(new Set(Object.values(expected))).toEqual(new Set(['PASS', 'prep:draft', 'prep:brouillon', 'ready']))
+  })
+
+  it('L1b — modèle « Entrées de campagne » avec étape (seed « Avancement par campagne ») : mêmes étapes, libellé et rang', async () => {
+    const rows = run(findQueryTemplate('campaign-entries')!.generate({ withStep: true }))
+    expect(Object.fromEntries(rows.map((r) => [(r._ids as string[])[0], r.step]))).toEqual(LEGACY.steps)
+    const ready = rows.find((r) => r.step === 'ready')!
+    expect(ready).toMatchObject({ stepLabel: 'Prêt à exécuter', stepRank: 1000 })
+    const passed = rows.find((r) => r.step === 'PASS')!
+    expect(passed.stepRank as number).toBeGreaterThan(1000)
+    expect((rows.find((r) => String(r.step).startsWith('prep:'))!.stepRank as number)).toBeLessThan(1000)
+    expect(ready.stepColor).toBe('var(--chart-progress-ready)')
+    expect(passed.stepColor).toBe('var(--chart-progress-pass)')
+    expect(String(rows.find((r) => String(r.step).startsWith('prep:'))!.stepColor)).toMatch(/^var\(--chart-progress-prep-[1-4]\)$/)
   })
 
   it('L2 — maturity = critères T77 (maturity.util) pour chaque exigence', async () => {

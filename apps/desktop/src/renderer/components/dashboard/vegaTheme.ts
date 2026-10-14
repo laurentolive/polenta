@@ -26,6 +26,71 @@ export function resolveTokens<T>(value: T, resolve: (name: string) => string | n
   return value
 }
 
+/**
+ * Couleurs de série portées par les lignes (convention de l'hôte, GH74) :
+ * `usermeta.polenta.seriesColors = { field, color, order? }` → l'échelle de chaque encodage `color`
+ * sur `field` reçoit `domain` (valeurs distinctes, triées par `order` croissant puis par ordre
+ * d'apparition) et `range` (couleur de la première ligne de chaque valeur, jeton `var(--…)` accepté).
+ * Sert aux séries dont les valeurs ne sont pas connues à l'écriture de la spec (étapes d'avancement :
+ * statuts de préparation du projet). Sans la convention, la spec est rendue telle quelle.
+ */
+export function applySeriesColors<T>(spec: T, rows: readonly Record<string, unknown>[]): T {
+  const meta = (spec as { usermeta?: { polenta?: { seriesColors?: { field?: unknown; color?: unknown; order?: unknown } } } })?.usermeta?.polenta?.seriesColors
+  if (!meta || typeof meta.field !== 'string' || typeof meta.color !== 'string') return spec
+  const { field, color } = meta
+  const order = typeof meta.order === 'string' ? meta.order : null
+  // Valeurs gardées avec leur type (un domaine de chaînes ne reconnaîtrait pas des nombres).
+  const seen = new Map<unknown, { color: unknown; order: number; index: number }>()
+  rows.forEach((r, index) => {
+    const v = r[field]
+    if (v === null || v === undefined || seen.has(v)) return
+    const o = order ? Number(r[order]) : NaN
+    seen.set(v, { color: r[color], order: Number.isFinite(o) ? o : Infinity, index })
+  })
+  const entries = [...seen.entries()].sort((a, b) => a[1].order - b[1].order || a[1].index - b[1].index)
+  const scale = { domain: entries.map(([v]) => v), range: entries.map(([, e]) => e.color) }
+  const patch = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(patch)
+    if (!node || typeof node !== 'object') return node
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (k === 'color' && v && typeof v === 'object' && (v as { field?: unknown }).field === field) {
+        const { sort: _sort, ...rest } = v as Record<string, unknown>
+        out[k] = { ...rest, scale: { ...((rest.scale as object | undefined) ?? {}), ...scale } }
+      } else {
+        out[k] = patch(v)
+      }
+    }
+    return out
+  }
+  return patch(spec) as T
+}
+
+/**
+ * Ligne d'origine d'un datum Vega : Vega travaille sur des copies dérivées (champs recopiés, dates
+ * analysées en `Date`, bornes d'empilement ajoutées), l'identité d'objet est perdue. Retrouvée par
+ * contenu : la seule ligne dont chaque colonne se retrouve dans le datum (date comparée à son
+ * instant). Aucune ou plusieurs : `null` (le datum sert alors tel quel).
+ */
+export function originalRow(datum: Record<string, unknown>, rows: readonly Record<string, unknown>[]): Record<string, unknown> | null {
+  const same = (a: unknown, b: unknown): boolean => {
+    if (a === b) return true
+    if (typeof b === 'string' && (a instanceof Date || typeof a === 'number')) {
+      const t = Date.parse(b)
+      return !Number.isNaN(t) && t === +a
+    }
+    if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => x === b[i])
+    return false
+  }
+  let found: Record<string, unknown> | null = null
+  for (const r of rows) {
+    if (!Object.keys(r).every((k) => same(datum[k], r[k]))) continue
+    if (found) return null
+    found = r
+  }
+  return found
+}
+
 /** `config` Vega-Lite dérivée des jetons du thème courant. */
 export function themeConfig(resolve: (name: string) => string | null = tokenColor): Record<string, unknown> {
   const c = (name: string, fallback: string) => resolve(name) ?? fallback

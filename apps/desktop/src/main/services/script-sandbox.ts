@@ -93,6 +93,16 @@ const ASYNC_MARK = '__POLENTA_ASYNC__'
 /** Préfixe d'un import interdit (pas de caractère NUL : QuickJS manipule des chaînes C). */
 const REFUSED = 'refused:'
 
+/** Message d'un import introuvable ; module du repo ouvert (`lib/…`) : la bibliothèque de départ est
+ *  peut-être incomplète (branche en lecture seule au premier accès, `dashboards/lib/` du projet). */
+function missingModuleMessage(name: string): string {
+  const shown = name.replace(REFUSED, '')
+  if (!name.startsWith(REFUSED) && shown.startsWith('lib/')) {
+    return `Module introuvable : "${shown}" (absent de dashboards/lib/ ; un fichier de la bibliothèque de départ manquant est proposé dans les mises à jour de la vue Suivi)`
+  }
+  return `Module introuvable : "${shown}" (seuls les modules de dashboards/lib/ sont importables)`
+}
+
 const BOOT = `
 Object.defineProperty(globalThis, '__freeze', { value: ${DEEP_FREEZE}, writable: false, configurable: false });
 Object.defineProperty(globalThis, '__call', { value: Object.freeze((fn, hostJson) => {
@@ -146,7 +156,7 @@ export class SandboxContext {
       // son message — `Error.prototype` est gelé par le durcissement (« override mistake »).
       (name) => (Object.prototype.hasOwnProperty.call(modules, name)
         ? modules[name]
-        : `throw new Error(${JSON.stringify(`Module introuvable : "${name.replace(REFUSED, '')}" (seuls les modules de dashboards/lib/ sont importables)`)})`),
+        : `throw new Error(${JSON.stringify(missingModuleMessage(name))})`),
       (base, requested) => normalizeImport(base, requested) ?? `${REFUSED}${requested}`,
     )
     const vm = rt.newContext()
@@ -305,7 +315,7 @@ export function toScriptError(dumped: unknown, internal: string, file: string, i
   // d'évaluer le module de remplacement — « Could not find export 'x' in module 'os' ».
   const missing = /in module '([^']+)'/.exec(message)
   if (name === 'SyntaxError' && missing && !isKnownModule(missing[1])) {
-    return { kind: 'import', message: `Module introuvable : "${missing[1].replace(REFUSED, '')}" (seuls les modules de dashboards/lib/ sont importables)`, file, line: null, column: null }
+    return { kind: 'import', message: missingModuleMessage(missing[1]), file, line: null, column: null }
   }
 
   let kind: ScriptErrorKind = 'runtime'

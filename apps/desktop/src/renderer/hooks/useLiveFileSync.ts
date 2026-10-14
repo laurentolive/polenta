@@ -16,7 +16,7 @@ import { EVENTS_RECONNECTED } from '../lib/webEvents'
  * the `'*'` full-refresh case, where a ref change (checkout/pull/merge) gives no per-file
  * signal to narrow down.
  */
-const DASHBOARD_KEYS = ['dashboards', 'dashboard', 'print-dashboard']
+const DASHBOARD_KEYS = ['dashboards', 'dashboard', 'print-dashboard', 'suivi-updates']
 
 export function useLiveFileSync(): void {
   const qc = useQueryClient()
@@ -41,6 +41,8 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
+      // GH74 — bandeau des mises à jour : requêtes des seeds (versions de modèle).
+      if (relPath.startsWith('queries/')) qc.invalidateQueries({ queryKey: ['suivi-updates'] })
 
       if (relPath === '*') {
         qc.invalidateQueries({ predicate: (q) => q.queryKey[1] === repoPath })

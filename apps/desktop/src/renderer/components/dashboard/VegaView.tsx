@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '../../contexts/ThemeContext'
-import { resolveTokens, themeConfig } from './vegaTheme'
+import { applySeriesColors, originalRow, resolveTokens, themeConfig } from './vegaTheme'
 
 /**
  * GH74 — rendu d'une spec Vega-Lite (specs/GH74.md §3). Vega est chargé à la demande (chunk séparé)
@@ -62,13 +62,17 @@ export function VegaView({ spec, rows, onMark, printMode = false, onRendered }: 
       try {
         const { embed, expr } = await loadVega()
         if (cancelled) return
-        const resolved = resolveTokens(parsed)
+        const resolved = resolveTokens(applySeriesColors(parsed, rows))
+        // Vega modifie les données en place (dates analysées, bornes d'empilement) : il reçoit des
+        // copies, injectées après la compilation (`view.data`) ; un clic remonte la ligne d'origine
+        // (colonnes telles que produites par le script, pour la relance `polenta.drill`).
+        const copies = rows.map((r) => ({ ...r }))
         const full = {
           width: 'container',
           height: Math.max(80, el.clientHeight - 40),
           autosize: { type: 'fit', contains: 'padding' },
           ...resolved,
-          data: { ...(resolved.data as object), name: 'rows', values: rows },
+          data: { ...(resolved.data as object), name: 'rows' },
           config: { ...themeConfig(), ...((resolved.config as object | undefined) ?? {}) },
         }
         const result = await embed(el, full as never, {
@@ -86,10 +90,11 @@ export function VegaView({ spec, rows, onMark, printMode = false, onRendered }: 
         finalize = result.finalize
         result.view.addEventListener('click', (_event, item) => {
           const datum = (item as { datum?: Record<string, unknown> } | null)?.datum
-          if (datum && onMarkRef.current) onMarkRef.current(datum)
+          // Marque calculée par Vega (agrégat) : son propre datum.
+          if (datum && onMarkRef.current) onMarkRef.current(originalRow(datum, rows) ?? datum)
         })
         if (onMarkRef.current) el.style.cursor = 'pointer'
-        await result.view.runAsync()
+        await result.view.data('rows', copies).runAsync()
         onRenderedRef.current?.()
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err))

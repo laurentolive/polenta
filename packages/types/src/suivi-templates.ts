@@ -288,11 +288,43 @@ const ENTRY_STATUS_VALUES = ENTRY_ORDER.map((s) => ({ value: s, label: L(s, s) }
 const CAMPAIGN_ENTRIES_PARAMS: TemplateParamDef[] = [
   ...CAMPAIGN_FILTER_PARAMS,
   { name: 'entryStatuses', label: L('Statuts d\'entrée', 'Entry statuses'), kind: 'multiEnum', values: ENTRY_STATUS_VALUES },
+  { name: 'withStep', label: L('Étape d\'avancement (bibliothèque projet)', 'Progress step (project library)'), kind: 'boolean' },
 ]
 
 function generateCampaignEntries(raw: Record<string, unknown>): string {
   const p = pick(raw, CAMPAIGN_ENTRIES_PARAMS)
-  return `${header('Modèle', 'campaign-entries', 1)}
+  const withStep = p.withStep === true
+  delete p.withStep
+  // Étape d'avancement (`entryStep`, ex-GH71) : colonnes step / stepLabel / stepRank, calculées par la
+  // bibliothèque projet (dashboards/lib/campaign.js).
+  const stepImport = withStep
+    ? `// Nécessite la bibliothèque projet (dashboards/lib/campaign.js).
+import { entryStep, stepContext, stepLabel, stepRank } from 'lib/campaign.js'
+
+`
+    : ''
+  const stepRows = withStep
+    ? `  const ctx = stepContext(data)
+  const byId = new Map()
+  for (const c of campaigns) for (const e of c.entries) byId.set(c.id + '/' + e.entryId, e)
+  for (const r of rows) {
+    const step = entryStep(data, byId.get(r._ids[0]), ctx)
+    r.step = step
+    r.stepLabel = stepLabel(data, step, ctx, polenta.locale === 'en' ? 'en' : 'fr')
+    r.stepRank = stepRank(step, ctx)
+  }
+  // Couleur de l'étape (jeton du thème) : préparation en nuances, selon son rang parmi les étapes
+  // de préparation présentes ; prêt et résultats, couleurs fixes.
+  const prep = Array.from(new Set(rows.filter((r) => r.step.startsWith('prep:')).map((r) => r.step)))
+    .sort((a, b) => stepRank(a, ctx) - stepRank(b, ctx))
+  const STEP_COLORS = { ready: 'ready', INCOMPLETE: 'incomplete', BLOCKED: 'blocked', FAIL: 'fail', PASS: 'pass' }
+  for (const r of rows) {
+    const shade = prep.indexOf(r.step)
+    r.stepColor = 'var(--chart-progress-' + (shade >= 0 ? 'prep-' + Math.min(shade + 1, 4) : (STEP_COLORS[r.step] || 'ready')) + ')'
+  }
+`
+    : ''
+  return `${header('Modèle', 'campaign-entries', 1)}${stepImport}
 const P = ${stableJson(p, 2)}
 
 ${SCALAR}
@@ -305,7 +337,7 @@ export default function (data, polenta) {
   const campaigns = data.campaigns.filter((c) =>
     (!P.campaignStatuses || P.campaignStatuses.includes(c.status)) && (!P.campaignIds || P.campaignIds.includes(c.id)))
   const rows = entryRows(data, campaigns, polenta)
-  return P.entryStatuses ? rows.filter((r) => P.entryStatuses.includes(r.status)) : rows
+${stepRows}  return P.entryStatuses ? rows.filter((r) => P.entryStatuses.includes(r.status)) : rows
 }
 `
 }
@@ -453,8 +485,12 @@ const CATEGORY_PARAMS = (categoryLabel: { fr: string; en: string }): TemplatePar
 function groupedTransform(id: string, p: Record<string, unknown>, withSeries: boolean): { code: string; valueName: string } {
   const op = opOf(p)
   const valueName = measureColumn(op, p.measureColumn as string | undefined)
-  const keys = [p.category, ...(withSeries && p.series ? [p.series] : [])]
-  const sortSeries = withSeries && p.series
+  const order = withSeries && p.series && p.seriesOrder ? p.seriesOrder : undefined
+  const color = withSeries && p.series && p.seriesColor ? p.seriesColor : undefined
+  const keys = [p.category, ...(withSeries && p.series ? [p.series] : []), ...(order ? [order] : []), ...(color ? [color] : [])]
+  // Ordre des séries par colonne : porté par la spec (tri de la couleur), les catégories gardent
+  // leur ordre d'apparition.
+  const sortSeries = withSeries && p.series && !order
     ? `  out.sort((a, b) => compare(a[P.series], b[P.series]))\n`
     : ''
   return {
@@ -467,6 +503,8 @@ ${sortSeries}  return out`),
 const BAR_PARAMS: TemplateParamDef[] = [
   ...CATEGORY_PARAMS(L('Catégorie (axe)', 'Category (axis)')),
   { name: 'stacked', label: L('Empiler les séries', 'Stack series'), kind: 'boolean', dependsOn: 'series' },
+  { name: 'seriesOrder', label: L('Ordre des séries (colonne numérique)', 'Series order (numeric column)'), kind: 'column', dependsOn: 'series' },
+  { name: 'seriesColor', label: L('Couleur des séries (colonne)', 'Series colour (column)'), kind: 'column', dependsOn: 'series' },
 ]
 
 function generateBar(raw: Record<string, unknown>): WidgetCode {
@@ -478,9 +516,18 @@ function generateBar(raw: Record<string, unknown>): WidgetCode {
   }
   if (p.series) {
     encoding.color = colorEncoding(p.series as string, p.series as string, !!p.entryColors)
-    if (!p.stacked) encoding.xOffset = { field: p.series, sort: null }
+    const seriesSort = p.seriesOrder ? { field: p.seriesOrder, op: 'min' } : null
+    if (seriesSort) {
+      (encoding.color as Record<string, unknown>).sort = seriesSort
+      encoding.order = { field: p.seriesOrder, type: 'quantitative' }
+    }
+    if (!p.stacked) encoding.xOffset = { field: p.series, sort: seriesSort }
   }
-  return { transform: code, spec: stableJson({ data: DATA, mark: { type: 'bar', tooltip: true }, encoding }, 2) }
+  // Couleurs portées par les lignes : échelle construite par l'hôte (`usermeta.polenta.seriesColors`).
+  const usermeta = p.series && p.seriesColor
+    ? { usermeta: { polenta: { seriesColors: { field: p.series, color: p.seriesColor, ...(p.seriesOrder ? { order: p.seriesOrder } : {}) } } } }
+    : {}
+  return { transform: code, spec: stableJson({ data: DATA, mark: { type: 'bar', tooltip: true }, encoding, ...usermeta }, 2) }
 }
 
 const PIE_PARAMS: TemplateParamDef[] = CATEGORY_PARAMS(L('Catégorie (parts)', 'Category (slices)')).filter((d) => d.name !== 'series')
@@ -652,7 +699,8 @@ function generateStackedArea(raw: Record<string, unknown>): WidgetCode {
   return rows.slice().sort((a, b) => (a[P.x] < b[P.x] ? -1 : a[P.x] > b[P.x] ? 1 : compare(a[P.series], b[P.series])))`
   const x = { field: p.x, type: 'temporal', title: p.x }
   const y = { field: p.value, type: 'quantitative', stack: 'zero', title: p.value }
-  const color = colorEncoding(p.series as string, p.series as string, !!p.entryColors)
+  // Légende : symboles opaques (la couche de clic, quasi transparente, la partage).
+  const color = { ...colorEncoding(p.series as string, p.series as string, !!p.entryColors), legend: { symbolOpacity: 1 } }
   return {
     transform: transformCode('stacked-area', p, body),
     spec: stableJson({

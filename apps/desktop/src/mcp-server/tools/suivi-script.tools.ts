@@ -25,6 +25,7 @@ const CONVENTIONS = [
   'Imports : `lib/<module>.js` (dashboards/lib/ du repo ouvert), `<composant>::lib/<module>.js` (repo composant), chemins relatifs entre modules de lib/. Rien d\'autre (pas de fs, réseau, npm, timers, console).',
   'Un type d\'objet se désigne par (repo, objectTypeRef) : `root::…` n\'est pas unique entre repos.',
   'Spec Vega-Lite : `"data": { "name": "rows" }` ; couleurs par jetons `"var(--status-success-solid)"`, `"var(--chart-series-1)"`…',
+  'Conventions de l\'hôte dans `usermeta.polenta` : `view: "kpi" | "table"` (rendu natif, `field` / `suffix` / `columns`) ; `seriesColors: { field, color, order? }` — l\'échelle de couleur de `field` est construite depuis les lignes (couleur = colonne `color`, jeton `var(--…)` accepté ; ordre = colonne numérique `order`), pour des séries inconnues à l\'écriture de la spec.',
   `Limites : ${DEFAULT_SANDBOX_LIMITS.timeMs / 1000} s par exécution (script + transformation), ${DEFAULT_SANDBOX_LIMITS.memoryBytes / 1048576} Mo de mémoire.`,
 ]
 

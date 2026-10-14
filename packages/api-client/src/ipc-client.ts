@@ -299,6 +299,9 @@ export function createIpcClient(
       templates: () => invoke('suivi:templates'),
       renderTemplate: ((kind: 'query' | 'widget', input: TemplateInput) => invoke('suivi:render-template', kind, input)) as ApiClient['suivi']['renderTemplate'],
       objectTypes: (repoPath, workspaceDir) => invoke('suivi:object-types', repoPath, workspaceDir),
+      updatesList: (repoPath, username, locale) => invoke('suivi:updates-list', repoPath, username, locale),
+      updatesApply: (repoPath, username, ids, locale) => invoke('suivi:updates-apply', repoPath, username, ids, locale),
+      updatesIgnore: (repoPath, username, id, toVersion) => invoke('suivi:updates-ignore', repoPath, username, id, toVersion),
     },
     queries: {
       list: (repoPath, username) => invoke('queries:list', repoPath, username),

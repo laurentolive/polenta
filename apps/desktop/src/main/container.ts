@@ -36,6 +36,7 @@ import { GraphService } from './services/graph.service'
 import { DashboardLibraryService } from './services/dashboard-library.service'
 import { ScriptEngineService } from './services/script-engine.service'
 import { SuiviService } from './services/suivi.service'
+import { SuiviUpdatesService } from './services/suivi-updates.service'
 import { FieldRenameService } from './services/field-rename.service'
 import { HistoryBackfillService } from './services/history-backfill.service'
 import type { Container } from './ipc/index'
@@ -113,7 +114,9 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // never needs to look up a SavedQuery, so this ordering avoids a circular dependency.
   const savedQueries = new SavedQueriesService(git, dashboards)
   const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
-  const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
+  const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries, undefined, dashboardLibrary)
+  // GH74 §6.3 — bandeau des mises à jour (bibliothèque, widgets du seed, versions de modèle).
+  const suiviUpdates = new SuiviUpdatesService(git, dashboardLibrary, dashboardSeed, savedQueries, dashboards)
   // GH26 — préférences app-level.
   // GH45 S2b — configuration par équipe lue sur la forge (spec §3bis).
   const forgeConfig = new ForgeConfigService(auth, host.userDataDir)
@@ -154,6 +157,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     dashboardLibrary,
     scriptEngine,
     suivi,
+    suiviUpdates,
     savedQueries,
     dashboards,
     dashboardSeed,

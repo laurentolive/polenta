@@ -26,6 +26,7 @@ import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
 import type { InterfaceComplianceService } from '../services/interface-compliance.service'
 import type { SuiviService } from '../services/suivi.service'
+import type { SuiviUpdatesService } from '../services/suivi-updates.service'
 import type { TemplateInput } from '../services/suivi-store.util'
 import type { GraphService } from '../services/graph.service'
 import type { DashboardLibraryService } from '../services/dashboard-library.service'
@@ -108,6 +109,7 @@ export interface Container {
   dashboardLibrary: DashboardLibraryService
   scriptEngine: ScriptEngineService
   suivi: SuiviService
+  suiviUpdates: SuiviUpdatesService
   savedQueries: SavedQueriesService
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService
@@ -690,6 +692,13 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.suivi.renderTemplate(kind === 'query' ? 'query' : 'widget', input as TemplateInput))
   r.handle('suivi:object-types', (_e, repoPath: string, workspaceDir?: string) =>
     c.suivi.objectTypes(repoPath, workspaceDir))
+  // GH74 §6.3 — bandeau des mises à jour.
+  r.handle('suivi:updates-list', (_e, repoPath: string, username: string, locale?: string) =>
+    c.suiviUpdates.list(repoPath, username, typeof locale === 'string' ? locale : undefined))
+  r.handle('suivi:updates-apply', (_e, repoPath: string, username: string, ids: unknown, locale?: string) =>
+    c.suiviUpdates.apply(repoPath, username, Array.isArray(ids) ? ids.map(String) : [], typeof locale === 'string' ? locale : undefined))
+  r.handle('suivi:updates-ignore', (_e, repoPath: string, username: string, id: unknown, toVersion: unknown) =>
+    c.suiviUpdates.ignore(repoPath, username, String(id), Number(toVersion)))
 
   // ── Requêtes (T77, GH74 : scripts de données) ───────────────────────────────
   r.handle('queries:list', (_e, repoPath: string, username: string) =>

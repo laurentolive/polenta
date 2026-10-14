@@ -91,6 +91,12 @@ function QueryPage() {
   const [templateId, setTemplateId] = useState('filtered-list')
   const [params, setParams] = useState<Record<string, unknown>>({ category: 'requirement' })
   const [script, setScript] = useState(EMPTY_SCRIPT)
+  /** Texte du script tel que chargé ou généré : différent → modifié à la main (repasser au modèle
+   *  le perd : confirmation). Comparé plutôt que suivi par `onChange`, que l'éditeur émet aussi
+   *  quand sa valeur change de l'extérieur. */
+  const [scriptBaseline, setScriptBaseline] = useState(EMPTY_SCRIPT)
+  const scriptEdited = script !== scriptBaseline
+  const [confirmTemplate, setConfirmTemplate] = useState(false)
   const [run, setRun] = useState<ScriptRunResult | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [saveModal, setSaveModal] = useState<{ title: string; scope: QueryScope } | null>(null)
@@ -139,6 +145,8 @@ function QueryPage() {
     setTemplateId('filtered-list')
     setParams({ category: 'requirement' })
     setScript(EMPTY_SCRIPT)
+    setScriptBaseline(EMPTY_SCRIPT)
+    setConfirmTemplate(false)
     setRun(null)
   }, [queryId])
 
@@ -160,6 +168,8 @@ function QueryPage() {
     }
     const text = saved?.script ?? hist!.script
     setScript(text)
+    setScriptBaseline(text)
+    setConfirmTemplate(false)
     void execute(text)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryId, savedQueries, history])
@@ -184,8 +194,10 @@ function QueryPage() {
     mutationFn: () => api.queries.update(repoPath, username, current!.id, mode === 'template' ? { template: { id: templateId, params } } : { script }),
     onSuccess: () => {
       invalidateQueries()
-      // Les widgets qui utilisent cette requête sont réexécutés (leur clé porte le script).
+      // Les widgets qui utilisent cette requête sont réexécutés (leur clé porte le script) ; une
+      // requête de seed modifiée n'est plus proposée au bandeau des mises à jour.
       qc.invalidateQueries({ queryKey: ['widget-query-result'] })
+      qc.invalidateQueries({ queryKey: ['suivi-updates'] })
     },
   })
 
@@ -248,13 +260,25 @@ function QueryPage() {
             <div className="bg-surface border border-edge rounded-lg p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <div className="flex rounded-lg border border-edge overflow-hidden text-xs">
-                  <button type="button" onClick={() => setMode('template')} className={`px-3 py-1.5 ${mode === 'template' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Code modifié (ou requête personnalisée) : « Revenir au modèle » le perd.
+                      if (mode === 'script' && (scriptEdited || current?.state.customized)) setConfirmTemplate(true)
+                      else setMode('template')
+                    }}
+                    className={`px-3 py-1.5 ${mode === 'template' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
+                  >
                     {t('queryPage.templateMode')}
                   </button>
                   <button
                     type="button"
                     onClick={async () => {
-                      if (mode === 'template') setScript(await currentScript())
+                      if (mode === 'template') {
+                        const generated = await currentScript()
+                        setScript(generated)
+                        setScriptBaseline(generated)
+                      }
                       setMode('script')
                     }}
                     className={`px-3 py-1.5 ${mode === 'script' ? 'bg-status-info-solid text-status-info-fg' : 'text-ink-2 hover:bg-hover'}`}
@@ -262,8 +286,28 @@ function QueryPage() {
                     {t('queryPage.scriptMode')}
                   </button>
                 </div>
-                {current?.state.customized && current.template && mode === 'script' && (
+                {current?.state.customized && current.template && mode === 'script' && !confirmTemplate && (
                   <span className="text-[11px] text-ink-3">{t('queryPage.customizedNotice')}</span>
+                )}
+                {confirmTemplate && (
+                  <span className="flex items-center gap-2 text-[11px] text-ink-2" data-testid="revert-confirm">
+                    {t('dashboard.widgetModal.revertConfirm')}
+                    <button
+                      type="button"
+                      className="btn-secondary-sm"
+                      onClick={() => {
+                        if (current?.template) {
+                          setTemplateId(current.template.id)
+                          setParams(current.template.params)
+                        }
+                        setConfirmTemplate(false)
+                        setMode('template')
+                      }}
+                    >
+                      {t('dashboard.widgetModal.revert')}
+                    </button>
+                    <button type="button" onClick={() => setConfirmTemplate(false)} className="text-ink-3 hover:text-ink underline">{t('common.cancel')}</button>
+                  </span>
                 )}
                 {readOnly === 'newer-format' && <span className="text-[11px] text-status-warning">{t('queryPage.newerFormatNotice')}</span>}
                 <div className="flex-1" />

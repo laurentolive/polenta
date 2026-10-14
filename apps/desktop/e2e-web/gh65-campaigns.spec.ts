@@ -50,7 +50,7 @@ test('1.7 — dashboard « Campagnes » privé créé à l\'ouverture de Suivi',
   const seeded = dashboards.filter(d => d.title === 'Campagnes')
   expect(seeded).toHaveLength(1)
   expect(seeded[0].scope).toBe('private')
-  expect(seeded[0].widgets.map(w => w.template?.id)).toEqual(['bar', 'kpi', 'kpi', 'line', 'table'])
+  expect(seeded[0].widgets.map(w => w.template?.id)).toEqual(['bar', 'kpi', 'kpi', 'line', 'table', 'stacked-area'])
   // Rien d'écrit dans le repo : ni dashboard ni requête partagés « Campagnes ».
   expect(dashboards.filter(d => d.scope === 'shared').map(d => d.title)).not.toContain('Campagnes')
 })

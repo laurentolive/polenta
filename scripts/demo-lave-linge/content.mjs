@@ -993,46 +993,84 @@ export const REVIEWS = [
 ]
 
 // ─── Requêtes & dashboards partagés (repo produit) ───────────────────────────
+// GH74 — format v1 : une requête = un modèle (« Liste filtrée »…) ou un script écrit à la main ;
+// un widget = un modèle (barres, camembert…) appliqué aux lignes de sa requête. Le code est généré
+// par les modèles de Polenta au moment de la génération (cf. writeSuivi).
+
+const REQ = (params) => ({ id: 'filtered-list', params: { category: 'requirement', ...params } })
+const SUM = { measure: 'sum', measureColumn: 'count' }
+
+/** « Liens par type » : aucun modèle ne couvre les liens — script écrit à la main. */
+const LINKS_BY_TYPE = `// @polenta contract 1
+// Nombre de liens par type ; détail = objets reliés (source et cible).
+export default function (data) {
+  const groups = new Map()
+  for (const l of data.links) {
+    let g = groups.get(l.type)
+    if (!g) groups.set(l.type, (g = { type: l.type, count: 0, ids: new Set() }))
+    g.count++
+    g.ids.add(l.sourceId)
+    g.ids.add(l.targetId)
+  }
+  return Array.from(groups.values())
+    .sort((a, b) => b.count - a.count)
+    .map((g) => ({ type: g.type, count: g.count, _ids: Array.from(g.ids) }))
+}
+`
+
+/** « Exigences par version » : regroupement trié par version (script écrit à la main). */
+const REQUIREMENTS_BY_VERSION = `// @polenta contract 1
+// Nombre d'exigences par version, versions croissantes.
+export default function (data) {
+  const groups = new Map()
+  for (const r of data.requirements) {
+    let g = groups.get(r.version)
+    if (!g) groups.set(r.version, (g = { version: r.version, count: 0, _ids: [] }))
+    g.count++
+    g._ids.push(r.id)
+  }
+  return Array.from(groups.values()).sort((a, b) => a.version - b.version)
+}
+`
 
 export const QUERIES = [
-  { id: 'QUERY-0001', title: 'Exigences — statut par composant', mode: 'sql',
-    sqlText: 'SELECT [component], [status], COUNT(*) AS [count] FROM [requirements] GROUP BY [component], [status]' },
-  { id: 'QUERY-0002', title: 'Exigences — statut de couverture', mode: 'sql',
-    sqlText: 'SELECT [coverageStatus], COUNT(*) AS [count] FROM [requirements] GROUP BY [coverageStatus]' },
-  { id: 'QUERY-0003', title: 'Exigences produit prioritaires non approuvées', mode: 'builder',
-    builderConfig: { objectTypeRef: 'root::exigence-produit', conditions: [{ field: 'priority', operator: '=', value: 'high' }, { field: 'status', operator: '!=', value: 'approved' }], combinator: 'AND' } },
-  { id: 'QUERY-0004', title: 'Tests — résultat de la dernière exécution', mode: 'sql',
-    sqlText: 'SELECT [latestRunResult], COUNT(*) AS [count] FROM [tests] GROUP BY [latestRunResult]' },
-  { id: 'QUERY-0005', title: 'Exigences à revalider', mode: 'sql',
-    sqlText: 'SELECT COUNT(*) AS [count] FROM [requirements] WHERE [needsRevalidation] = true' },
-  { id: 'QUERY-0006', title: 'Exigences de sécurité', mode: 'sql',
-    sqlText: 'SELECT [id], [title], [status], [coverageStatus], [component] FROM [requirements] WHERE [securite] = true ORDER BY [id]' },
-  { id: 'QUERY-0007', title: 'Liens par type', mode: 'sql',
-    sqlText: 'SELECT [type], COUNT(*) AS [count] FROM [links] GROUP BY [type]' },
-  { id: 'QUERY-0008', title: 'Exigences moteur par statut (builder, composant)', mode: 'builder',
-    builderConfig: { objectTypeRef: 'root::exigence-moteur', component: 'comp-moteur', conditions: [], combinator: 'AND', groupBy: ['status'] } },
-  { id: 'QUERY-0009', title: 'Exigences par version', mode: 'sql',
-    sqlText: 'SELECT [version], COUNT(*) AS [count] FROM [requirements] GROUP BY [version] ORDER BY [version]' },
+  { id: 'QUERY-0001', title: 'Exigences — statut par composant', template: REQ({ groupBy: ['component', 'status'] }) },
+  { id: 'QUERY-0002', title: 'Exigences — statut de couverture', template: REQ({ groupBy: ['coverageStatus'] }) },
+  { id: 'QUERY-0003', title: 'Exigences produit prioritaires non approuvées',
+    template: { id: 'filtered-list', params: { objectTypeRef: 'root::exigence-produit', conditions: [{ field: 'priority', operator: '=', value: 'high' }, { field: 'status', operator: '!=', value: 'approved' }], combinator: 'AND' } } },
+  { id: 'QUERY-0004', title: 'Tests — résultat de la dernière exécution', template: { id: 'filtered-list', params: { category: 'test', groupBy: ['latestRunResult'] } } },
+  { id: 'QUERY-0005', title: 'Exigences à revalider', template: REQ({ conditions: [{ field: 'needsRevalidation', operator: '=', value: true }] }) },
+  { id: 'QUERY-0006', title: 'Exigences de sécurité', template: REQ({ conditions: [{ field: 'securite', operator: '=', value: true }] }) },
+  { id: 'QUERY-0007', title: 'Liens par type', script: LINKS_BY_TYPE },
+  { id: 'QUERY-0008', title: 'Exigences moteur par statut (composant)',
+    template: { id: 'filtered-list', params: { objectTypeRef: 'root::exigence-moteur', component: 'comp-moteur', conditions: [], combinator: 'AND', groupBy: ['status'] } } },
+  { id: 'QUERY-0009', title: 'Exigences par version', script: REQUIREMENTS_BY_VERSION },
 ]
 
 export const DASHBOARDS = [
   {
     id: 'DASHBOARD-0001', title: 'Pilotage LL800', createdAt: '2026-04-24T15:00:00.000Z', by: P.hugo,
     widgets: [
-      { key: 'statut', title: 'Statut des exigences par composant', queryId: 'QUERY-0001', type: 'bar', fieldMapping: { category: 'component', measure: 'count', series: 'status', stacked: true }, size: 'lg' },
-      { key: 'couverture', title: 'Couverture des exigences', queryId: 'QUERY-0002', type: 'pie', fieldMapping: { category: 'coverageStatus', measure: 'count' }, size: 'md' },
-      { key: 'revalider', title: 'À revalider', queryId: 'QUERY-0005', type: 'kpi', fieldMapping: { measure: 'count' }, size: 'sm' },
-      { key: 'runs', title: 'Dernière exécution des tests', queryId: 'QUERY-0004', type: 'bar', fieldMapping: { category: 'latestRunResult', measure: 'count' }, size: 'md' },
-      { key: 'securite', title: 'Exigences de sécurité', queryId: 'QUERY-0006', type: 'table', fieldMapping: { columns: ['id', 'title', 'status', 'coverageStatus', 'component'] }, size: 'lg' },
-      { key: 'versions', title: 'Exigences par version', queryId: 'QUERY-0009', type: 'line', fieldMapping: { category: 'version', measure: 'count' }, size: 'md' },
+      { key: 'statut', title: 'Statut des exigences par composant', queryId: 'QUERY-0001', size: 'lg',
+        template: { id: 'bar', params: { category: 'component', series: 'status', stacked: true, ...SUM } } },
+      { key: 'couverture', title: 'Couverture des exigences', queryId: 'QUERY-0002', size: 'md',
+        template: { id: 'pie', params: { category: 'coverageStatus', ...SUM } } },
+      { key: 'revalider', title: 'À revalider', queryId: 'QUERY-0005', size: 'sm', template: { id: 'kpi', params: { measure: 'count' } } },
+      { key: 'runs', title: 'Dernière exécution des tests', queryId: 'QUERY-0004', size: 'md',
+        template: { id: 'bar', params: { category: 'latestRunResult', ...SUM } } },
+      { key: 'securite', title: 'Exigences de sécurité', queryId: 'QUERY-0006', size: 'lg',
+        template: { id: 'table', params: { columns: ['id', 'title', 'status', 'coverageStatus', 'component'] } } },
+      { key: 'versions', title: 'Exigences par version', queryId: 'QUERY-0009', size: 'md',
+        template: { id: 'line', params: { category: 'version', ...SUM } } },
     ],
   },
   {
     id: 'DASHBOARD-0002', title: 'Composants & traçabilité', createdAt: '2026-04-24T15:30:00.000Z', by: P.marc,
     widgets: [
-      { key: 'liens', title: 'Liens par type', queryId: 'QUERY-0007', type: 'pie', fieldMapping: { category: 'type', measure: 'count' }, size: 'md' },
-      { key: 'moteur', title: 'Exigences moteur par statut', queryId: 'QUERY-0008', type: 'bar', fieldMapping: { category: 'status', measure: 'count' }, size: 'md' },
-      { key: 'prio', title: 'Prioritaires non approuvées', queryId: 'QUERY-0003', type: 'table', fieldMapping: { columns: ['id', 'title', 'status', 'priority'] }, size: 'lg' },
+      { key: 'liens', title: 'Liens par type', queryId: 'QUERY-0007', size: 'md', template: { id: 'pie', params: { category: 'type', ...SUM } } },
+      { key: 'moteur', title: 'Exigences moteur par statut', queryId: 'QUERY-0008', size: 'md', template: { id: 'bar', params: { category: 'status', ...SUM } } },
+      { key: 'prio', title: 'Prioritaires non approuvées', queryId: 'QUERY-0003', size: 'lg',
+        template: { id: 'table', params: { columns: ['id', 'title', 'status', 'priority'] } } },
     ],
   },
 ]

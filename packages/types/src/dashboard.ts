@@ -1,148 +1,135 @@
-// ─── Query engine & saved queries (T77 sprint 1) ─────────────────────────────
+// ─── Vue Suivi : requêtes (scripts de données) et dashboards (GH74) ──────────
 //
-// Dashboards personnalisables par requêtes façon SQL. Ce fichier définit les
-// types partagés entre le moteur de requête (main process, AlaSQL sur l'index
-// en mémoire), le stockage des requêtes sauvegardées/historique, et les
-// widgets/dashboards (sprint 2 — déclarés ici par anticipation, non câblés
-// tant que dashboards.service.ts n'existe pas).
+// Une requête est un script de données JS (`export default (data, polenta) => rows`) exécuté
+// dans le bac à sable du main ; un widget porte une transformation JS facultative et une spec
+// Vega-Lite. Les deux peuvent venir d'un modèle (`TemplateRef`, cf. suivi-templates.ts).
+// Format sur disque versionné (`formatVersion`) : migrations à la lecture (suivi-format.ts).
+
+import type { TemplateRef } from './suivi-templates'
+import type { TestRunStatus } from './campaign'
 
 export type QueryScope = 'private' | 'shared'
 
-/**
- * GH65 — colonnes de la table `campaign_entries` (une ligne par entrée de campagne) : allowlist du
- * builder côté main ET liste de champs proposée par le builder côté renderer. Les champs
- * personnalisés de la campagne y sont ajoutés sous la forme `campaign_<nom>`.
- */
-export const CAMPAIGN_ENTRY_FIELDS = [
-  'campaignId', 'campaignTitle', 'campaignStatus', 'objectTypeRef', 'campaignObjectTypeRef',
-  'baselineRef', 'campaignCreatedAt', 'level', 'campaignComponent', 'component',
-  'entryId', 'testCaseId', 'requirementId', 'testTitle',
-  'status', 'executed', 'executedAt', 'executedDay', 'executedBy', 'runId',
-  // GH71 — étape d'avancement (campaign-progress.ts), son rang canonique, statut du test retenu.
-  'progress', 'progressRank', 'testStatus',
-] as const
+/** Version du format des fichiers `queries/` et `dashboards/` (et des entrées du `.pref`). */
+export const SUIVI_FORMAT_VERSION = 1
 
-export type CampaignEntryField = (typeof CAMPAIGN_ENTRY_FIELDS)[number]
-
-/** Préfixe des champs personnalisés de campagne dans `campaign_entries`. */
-export const CAMPAIGN_FIELD_PREFIX = 'campaign_'
-export type QueryMode = 'builder' | 'sql'
-
-export interface BuilderCondition {
-  field: string
-  operator: '=' | '!=' | '>' | '<' | 'contains' | 'in'
-  value: unknown
-}
-
-// objectTypeRef format : "nodeName::objectTypeName", résolu contre le schéma LOCAL
-// du composant (cf. Requirement/TestCase — chaque repo composant est autonome,
-// CLAUDE.md). La table AlaSQL interrogée (requirements | tests) est déduite du
-// type au moment de l'exécution (query-engine.service.ts), pas stockée ici.
-export interface BuilderConfig {
-  objectTypeRef: string
-  /**
-   * Nom du mount workspace (tree.yaml) du composant auquel `objectTypeRef` fait
-   * référence — absent pour un type du repo courant/racine (comportement
-   * historique, pré-T93). Nécessaire car `objectTypeRef` seul n'est pas unique
-   * entre composants (chacun nomme son propre nœud local "root").
-   */
-  component?: string
-  conditions: BuilderCondition[]
-  combinator: 'AND' | 'OR'
-  groupBy?: string[]
-}
-
-/** Une requête prête à exécuter — builder OU sql, jamais les deux à la fois. */
-export interface QueryDefinition {
-  mode: QueryMode
-  builderConfig?: BuilderConfig
-  sqlText?: string
+/** État calculé à la lecture, jamais stocké. */
+export interface SuiviObjectState {
+  /** `newer-format` : fichier d'une version plus récente de Polenta ; `legacy-sql` : requête SQL
+   *  d'avant GH74, non convertible. Dans les deux cas l'objet n'est jamais réécrit. */
+  readOnly?: 'newer-format' | 'legacy-sql'
+  /** Code différent de celui généré par son modèle (ou objet sans modèle). */
+  customized: boolean
+  /** Version plus récente du modèle disponible (régénérée à l'enregistrement). */
+  templateUpdate?: number
+  /** Lu dans le format d'avant GH74 : converti en mémoire, réécrit au format v1 à l'enregistrement. */
+  legacyFormat?: boolean
 }
 
 export interface SavedQuery {
   id: string
   title: string
-  mode: QueryMode
-  builderConfig?: BuilderConfig   // requis si mode === 'builder'
-  sqlText?: string                // requis si mode === 'sql'
   scope: QueryScope
+  formatVersion: number
+  /** Script de données (module ES). Vide pour une requête `legacy-sql`. */
+  script: string
+  template?: TemplateRef
   createdBy: string
   createdAt: string
+  /** Requête SQL d'avant GH74 : texte conservé pour l'affichage, plus exécutable. */
+  legacySql?: string
+  state: SuiviObjectState
 }
 
-// Toujours privé — jamais partageable, même si la requête source est partagée.
+/** Historique d'exécution de la vue Requêtes — toujours privé. */
 export interface QueryHistoryEntry {
   id: string
-  mode: QueryMode
-  builderConfig?: BuilderConfig
-  sqlText?: string
+  script: string
   executedAt: string
 }
 
-export interface QueryResultColumn {
-  name: string
-  type: 'string' | 'number' | 'date' | 'boolean'
-}
-
-export interface QueryResult {
-  columns: QueryResultColumn[]
-  rows: Record<string, unknown>[]
-}
-
-/** GH65 — élément cliqué dans un widget : valeurs BRUTES (pas les libellés affichés) par colonne du
- *  résultat (catégorie, série éventuelle). Vide : KPI — toutes les lignes sources de la requête. */
-export interface DrillDownSelection {
-  values: Record<string, unknown>
-}
-
-/** GH65 — lignes d'un élément de widget. `source` : lignes sources (requête réécrite) ; `result` :
- *  repli sur les lignes du résultat (requête SQL non réécrivable : jointure, expression…). */
-export interface DrillDownResult extends QueryResult {
-  mode: 'source' | 'result'
-}
-
-/** GH65 — objet à ouvrir pour une ligne de résultat (repo où il vit, résolu côté main). */
-export type RowTarget =
-  | { kind: 'requirement' | 'test'; id: string; repoPath: string }
-  | { kind: 'campaign'; id: string; repoPath: string; status?: string; /** GH71 — étape d'avancement */ progress?: string }
-  | { kind: 'campaign-run'; campaignId: string; entryId: string; repoPath: string }
-
-// ─── Widgets & dashboards ─────────────────────────────────────────────────────
-// T77 sprint 2 — types déclarés dès sprint 1 par anticipation (cf. T77-design.md
-// § "Découpage en sprints"), mais NON câblés à un service/UI avant le sprint 2.
-
-export type WidgetType = 'bar' | 'pie' | 'line' | 'kpi' | 'table' | 'matrix'
 export type WidgetSize = 'sm' | 'md' | 'lg'
-
-export interface WidgetFieldMapping {
-  category?: string   // bar/pie/line ; matrix : lignes
-  measure?: string     // bar/pie/line/kpi ; matrix : valeur des cellules
-  series?: string      // bar/line (multi-série), optionnel ; matrix : colonnes
-  /** GH69 — matrix only, optionnel : colonne affichée à côté de la valeur de ligne (ex. `testTitle`). */
-  label?: string
-  /** bar only, ignoré si `series` absent — empile les séries au lieu de les grouper. */
-  stacked?: boolean
-  /** GH71 — bar avec `series` : présentation des séries comme étapes d'avancement de campagne
-   *  (ordre canonique, libellés du schéma, couleurs sémantiques). Absent : rendu standard. */
-  preset?: 'campaignProgress'
-  columns?: string[]   // table
-}
 
 export interface Widget {
   id: string
   title: string
   queryId: string
-  type: WidgetType
-  fieldMapping: WidgetFieldMapping
   size: WidgetSize
+  /** Transformation JS facultative (`export default (rows, polenta) => rows`). */
+  transform?: string
+  /** Spec Vega-Lite (texte JSON, conservé tel quel). */
+  spec: string
+  template?: TemplateRef
+  state: SuiviObjectState
 }
 
 export interface Dashboard {
   id: string
   title: string
   scope: QueryScope
+  formatVersion: number
   widgetOrder: string[]
   widgets: Widget[]
   createdBy: string
   createdAt: string
+  state: SuiviObjectState
+}
+
+// ─── Résultat d'exécution (exports, impression) ──────────────────────────────
+
+export interface QueryResultColumn {
+  name: string
+  type: 'string' | 'number' | 'date' | 'boolean'
+}
+
+/** Lignes produites par un script (ou un widget : script + transformation). Une ligne peut porter
+ *  `_ids` (identifiants des objets d'origine). */
+export interface QueryResult {
+  columns: QueryResultColumn[]
+  rows: Record<string, unknown>[]
+}
+
+// ─── Drill-down ──────────────────────────────────────────────────────────────
+
+/** Objet désigné par un identifiant `_ids` (popup « Détail »). */
+export interface DescribedObject {
+  id: string
+  kind: 'requirement' | 'test' | 'campaign' | 'campaign-entry' | 'run' | 'unknown'
+  title: string | null
+  status: string | null
+  typeLabel: string | null
+}
+
+/** Objet à ouvrir pour un identifiant (repo où il vit, résolu côté main). */
+export type RowTarget =
+  | { kind: 'requirement' | 'test' | 'campaign'; id: string; repoPath: string }
+  | { kind: 'campaign-entry'; campaignId: string; entryId: string; executed: boolean; status: TestRunStatus; repoPath: string }
+
+// ─── Bandeau des mises à jour (GH74 §6.3) ────────────────────────────────────
+
+/**
+ * Proposition du bandeau de la vue Suivi :
+ * - `library` : fichier de la bibliothèque de départ (`dashboards/lib/`, `jsconfig.json`) resté à une
+ *   version livrée antérieure, ou nouveau fichier livré ;
+ * - `seed-widget` : widget ajouté au seed « Campagnes » depuis sa création ;
+ * - `template` : objet d'un seed (non personnalisé) dont le modèle a une version plus récente.
+ */
+export interface SuiviUpdate {
+  /** Identifiant stable (`library:<chemin>`, `seed-widget:<clé>`, `template:query:<id>`, `template:widget:<dashboard>/<widget>`). */
+  id: string
+  kind: 'library' | 'seed-widget' | 'template'
+  /** Fichier, widget ou requête concerné. */
+  title: string
+  /** Absent : nouveau (fichier ou widget). */
+  fromVersion?: number
+  toVersion: number
+  summary: { fr: string; en: string }
+  /** Écriture dans le repo (à publier) ; sinon dans les préférences de l'utilisateur. */
+  shared: boolean
+}
+
+export interface SuiviUpdatesList {
+  updates: SuiviUpdate[]
+  /** Branche en lecture seule : bandeau affiché sans « Appliquer ». */
+  readOnly: boolean
 }

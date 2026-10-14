@@ -1,0 +1,245 @@
+{
+  "note": "GH74 — sorties de l'ancien moteur SQL (avant suppression) sur graph-fixture.test-util : références d'équivalence.",
+  "steps": {
+    "CAMP-0001/TST-0001-1": "PASS",
+    "CAMP-0001/TST-0002-1": "prep:draft",
+    "CAMP-0001/TMOT-0001-1": "prep:brouillon",
+    "CAMP-0001/TMOT-0002-1": "ready",
+    "CAMP-0001/TST-0001-2": "ready",
+    "CAMP-0002/TST-0002-1": "PASS",
+    "CAMP-0002/TST-0001-1": "prep:draft"
+  },
+  "maturity": {
+    "REQ-0001": "true|",
+    "REQ-0002": "false|EARS, critère d'acceptance, lien de vérification",
+    "REQ-0003": "false|champs requis, critère d'acceptance, impact à vérifier",
+    "HYD-0001": "true|",
+    "REQ-0004": "false|type d'objet invalide",
+    "MOT-0001": "false|lien de vérification"
+  },
+  "builder": [
+    {
+      "config": {
+        "objectTypeRef": "root::exigence",
+        "conditions": [],
+        "combinator": "AND"
+      },
+      "rows": [
+        "REQ-0001",
+        "REQ-0002",
+        "REQ-0003"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::exigence",
+        "conditions": [
+          {
+            "field": "status",
+            "operator": "=",
+            "value": "approved"
+          }
+        ],
+        "combinator": "AND"
+      },
+      "rows": [
+        "REQ-0001",
+        "REQ-0002"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::exigence",
+        "conditions": [
+          {
+            "field": "status",
+            "operator": "!=",
+            "value": "approved"
+          }
+        ],
+        "combinator": "AND"
+      },
+      "rows": [
+        "REQ-0003"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::exigence",
+        "conditions": [
+          {
+            "field": "priority",
+            "operator": "in",
+            "value": "high, low"
+          }
+        ],
+        "combinator": "AND"
+      },
+      "rows": [
+        "REQ-0001",
+        "REQ-0002"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::exigence",
+        "conditions": [
+          {
+            "field": "title",
+            "operator": "contains",
+            "value": "req-000"
+          }
+        ],
+        "combinator": "AND"
+      },
+      "rows": [
+        "REQ-0001",
+        "REQ-0002",
+        "REQ-0003"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::exigence",
+        "conditions": [],
+        "combinator": "AND",
+        "groupBy": [
+          "status"
+        ]
+      },
+      "rows": [
+        {
+          "status": "approved",
+          "count": 2
+        },
+        {
+          "status": "draft",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::exigence",
+        "conditions": [
+          {
+            "field": "priority",
+            "operator": "=",
+            "value": "high"
+          },
+          {
+            "field": "status",
+            "operator": "=",
+            "value": "draft"
+          }
+        ],
+        "combinator": "OR"
+      },
+      "rows": [
+        "REQ-0001",
+        "REQ-0003"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::test",
+        "conditions": [
+          {
+            "field": "status",
+            "operator": "=",
+            "value": "approved"
+          }
+        ],
+        "combinator": "AND"
+      },
+      "rows": [
+        "TST-0001"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::campagne",
+        "conditions": [
+          {
+            "field": "status",
+            "operator": "=",
+            "value": "pending"
+          }
+        ],
+        "combinator": "AND"
+      },
+      "rows": [
+        "CAMP-0001/TMOT-0001-1",
+        "CAMP-0001/TMOT-0002-1",
+        "CAMP-0001/TST-0001-2",
+        "CAMP-0001/TST-0002-1",
+        "CAMP-0002/TST-0001-1"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "hydraulique::exigence-hyd",
+        "component": "hydraulique",
+        "conditions": [],
+        "combinator": "AND"
+      },
+      "rows": [
+        "HYD-0001"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::exigence",
+        "conditions": [
+          {
+            "field": "version",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "field": "priority",
+            "operator": "<",
+            "value": "i"
+          }
+        ],
+        "combinator": "AND"
+      },
+      "rows": [
+        "REQ-0001"
+      ]
+    },
+    {
+      "config": {
+        "objectTypeRef": "root::campagne",
+        "conditions": [],
+        "combinator": "AND",
+        "groupBy": [
+          "campaignId",
+          "status"
+        ]
+      },
+      "rows": [
+        {
+          "campaignId": "CAMP-0001",
+          "status": "PASS",
+          "count": 1
+        },
+        {
+          "campaignId": "CAMP-0001",
+          "status": "pending",
+          "count": 4
+        },
+        {
+          "campaignId": "CAMP-0002",
+          "status": "PASS",
+          "count": 1
+        },
+        {
+          "campaignId": "CAMP-0002",
+          "status": "pending",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

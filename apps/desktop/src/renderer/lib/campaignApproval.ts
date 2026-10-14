@@ -1,18 +1,27 @@
 import type { CampaignTestRun, TestCase } from '@polenta/types'
-import { progressSubject } from '@polenta/types'
 
 // GH68 — tests non approuvés dans une campagne. Logique pure (sans React ni schéma) : le statut
-// d'approbation est fourni par l'appelant (`isTestApproved` de useProjectSchema). Le test jugé suit
-// la règle partagée `progressSubject` (GH71) : état live tant que l'instance est resynchronisable
-// dans une campagne ouverte, sinon la copie figée.
+// d'approbation est fourni par l'appelant (`isTestApproved` de useProjectSchema).
 
 export type IsApproved = (test: TestCase) => boolean
+
+/**
+ * Test jugé pour une entrée : l'état live tant que l'instance est resynchronisable — campagne
+ * ouverte, entrée `pending`, copie présente et non approuvée — sinon la copie figée, à défaut le test
+ * live (entrée pré-T49). Même règle que `entryStep` de la bibliothèque projet (`resyncable`).
+ */
+export function approvalSubject(
+  run: CampaignTestRun, live: TestCase | undefined, campaignOpen: boolean, isApproved: IsApproved,
+): TestCase | undefined {
+  const resyncable = campaignOpen && run.status === 'pending' && !!run.testSnapshot && !isApproved(run.testSnapshot)
+  return resyncable ? live ?? run.testSnapshot : run.testSnapshot ?? live
+}
 
 /** Test non approuvé à signaler sur l'instance (badge), sinon `undefined`. */
 export function unapprovedTestOf(
   run: CampaignTestRun, live: TestCase | undefined, campaignOpen: boolean, isApproved: IsApproved,
 ): TestCase | undefined {
-  const subject = progressSubject(run, live, campaignOpen, isApproved)
+  const subject = approvalSubject(run, live, campaignOpen, isApproved)
   return subject && !isApproved(subject) ? subject : undefined
 }
 

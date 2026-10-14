@@ -6,8 +6,8 @@ import { encodeProjectId } from '../lib/projectId'
 import { rowTargetRoute } from '../lib/rowNavigation'
 
 /**
- * GH65 — ouvre, dans un nouvel onglet, l'objet d'une ligne de résultat de la vue Suivi (exigence,
- * test, campagne filtrée, résultat d'exécution). `message` est renseigné quelques secondes quand la
+ * GH65 / GH74 — ouvre, dans un nouvel onglet, l'objet désigné par un identifiant de la vue Suivi
+ * (exigence, test, campagne, entrée de campagne). `message` est renseigné quelques secondes quand la
  * ligne ne correspond à aucun objet du périmètre, ou quand la résolution a échoué (pas de système
  * de toast dans l'app : l'appelant affiche la mention à côté de la table).
  */
@@ -27,11 +27,11 @@ export function useOpenRowTarget(repoPath: string, workspaceDir: string) {
     timer.current = setTimeout(() => setMessage(null), 4000)
   }, [])
 
-  const open = useCallback(async (row: Record<string, unknown>) => {
+  const open = useCallback(async (id: string) => {
     if (!tabs) return
     let target
     try {
-      target = await api.queries.resolveRowTarget(repoPath, row, workspaceDir)
+      target = await api.suivi.resolveTarget(repoPath, workspaceDir, id)
     } catch (err) {
       flash(t('dashboardPage.drillDown.openFailed', { message: err instanceof Error ? err.message : String(err) }))
       return

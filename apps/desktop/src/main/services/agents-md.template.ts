@@ -177,17 +177,26 @@ Tools disponibles :
   implémentation…). \`create_links\`/\`delete_links\` ont \`dryRun\` par défaut ; \`create_links\`
   vérifie le type (\`linkTypes\` de \`get_schema\`), l'existence des objets, la compatibilité
   \`sourceRefs\`/\`targetRefs\` et l'absence de doublon.
+- \`get_data_contract\` / \`list_templates\` / \`test_script\` — vue Suivi : une requête est un
+  **script de données** JS (\`export default (data, polenta) => rows\`) sur le graphe du projet.
+  \`get_data_contract\` donne les types du graphe et les conventions (\`_ids\`, agrégation en JS,
+  drill-down, jetons de couleur) ; \`list_templates\` les modèles (requête, widget) et leurs
+  paramètres ; \`test_script\` exécute un script (et une transformation) sur les données réelles,
+  sans rien enregistrer — itérer avec lui avant de créer une requête.
 - \`list_queries\` / \`run_query\` / \`create_query\` / \`update_query\` / \`delete_query\` —
-  requêtes de la vue Suivi (SQL en lecture seule, ou mode builder). \`run_query\` exécute une
-  requête sauvegardée ou ad hoc et retourne colonnes + lignes : à appeler avant de créer un
-  widget pour connaître les colonnes disponibles.
+  requêtes : \`script\` écrit à la main, ou \`template: { id, params }\` (code généré). \`run_query\`
+  retourne colonnes + lignes : à appeler avant de créer un widget pour connaître les colonnes.
+  Une requête SQL d'avant GH74 est en lecture seule (à réécrire en script).
 - \`list_dashboards\` / \`create_dashboard\` / \`update_dashboard\` / \`delete_dashboard\` /
-  \`add_widget\` / \`update_widget\` / \`delete_widget\` / \`reorder_widgets\` — dashboards et
-  indicateurs. Un widget référence une requête sauvegardée ; son \`fieldMapping\` (\`category\`,
-  \`measure\`, \`series\`, \`columns\`) doit citer des colonnes du résultat. Toutes les écritures
-  ont \`dryRun\` par défaut. Les objets **privés** (propres à un utilisateur) ne sont
-  accessibles que si le serveur est lancé avec \`--user <login>\` (ou \`POLENTA_USER\`) ; sinon
-  seul le scope partagé est visible et modifiable.
+  \`add_widget\` / \`update_widget\` / \`delete_widget\` / \`reorder_widgets\` — dashboards. Un widget
+  référence une requête sauvegardée et porte soit \`template: { id, params }\` (paramètres = colonnes
+  du résultat), soit \`transform\` (JS facultatif, \`(rows, polenta) => rows\`) + \`spec\` Vega-Lite
+  (\`"data": { "name": "rows" }\`, pas d'\`aggregate\`). Toutes les écritures ont \`dryRun\` par
+  défaut. Les objets **privés** ne sont accessibles que si le serveur est lancé avec
+  \`--user <login>\` (ou \`POLENTA_USER\`) ; sinon seul le scope partagé est visible et modifiable.
+- \`list_library\` / \`read_library_module\` / \`write_library_module\` — bibliothèque JS du projet
+  (\`dashboards/lib/\`), importable par les scripts (\`import { … } from 'lib/campaign.js'\`).
+  \`write_library_module\` a \`dryRun\` par défaut.
 - \`add_component\` / \`add_object_type\` / \`add_field\` / \`add_status\` / \`add_link_type\` —
   modification ciblée du modèle de données (\`.polenta/schema.yaml\`), avec vérification
   des invariants (nom déjà pris, \`prefix\` unique sur tout le projet, nœud

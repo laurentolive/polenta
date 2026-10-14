@@ -43,8 +43,8 @@ Repo **interface** : déclare les rôles \`controller\` et \`device\`. Chaque ex
 export const GUIDE = `# Guide d'évaluation — workspace de démonstration « Lave-linge LL800 »
 
 Ce workspace sert de support de test et d'évaluation de Polenta. Il est **généré** par
-\`scripts/demo-lave-linge/generate.mjs\` (repo polenta) : on peut le régénérer à l'identique à tout
-moment (\`--force\`) après l'avoir modifié pendant les tests.
+\`scripts/demo-lave-linge/generate.mjs\` (repo polenta, \`pnpm --filter @polenta/desktop demo:generate\`) :
+on peut le régénérer à l'identique à tout moment (\`--force\`) après l'avoir modifié pendant les tests.
 
 ## 1. Structure
 
@@ -171,9 +171,12 @@ Exécutions hors campagne : THYD-*, TSW-0002/0003, TMOT-0001/0002, TPOMP-* (runs
 - Baselines multi-composants : \`RE1\` et \`RE2\` existent sur les 5 repos.
 
 ### Suivi (requêtes & dashboards)
-- 9 requêtes partagées (SQL et builder, tables \`requirements\`, \`tests\`, \`links\`, builder sur composant).
-- DASHBOARD-0001 (bar empilé, pie, KPI, table, line), DASHBOARD-0002.
-- Pas de \`dashboards/.seeded.yaml\` : les dashboards de maturité pré-configurés sont semés à l'ouverture.
+- 9 requêtes partagées au format v1 (GH74) : 7 modèles « Liste filtrée » (exigences, tests,
+  composant, conditions, regroupements) et 2 scripts écrits à la main (\`links\`, tri par version).
+- DASHBOARD-0001 (barres empilées, camembert, indicateur, table, courbe), DASHBOARD-0002.
+- Pas de \`dashboards/lib/\` : la bibliothèque projet et le dashboard privé « Campagnes » sont semés à
+  la première ouverture de Suivi. Pas de dashboard « Status » (il n'est semé que dans un projet sans
+  dashboard).
 
 ## 4. Scénarios de test suggérés
 

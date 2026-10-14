@@ -9,6 +9,7 @@ import type {
   UpdateDashboardDto,
   AddWidgetDto,
   UpdateWidgetDto,
+  TemplateInput,
 } from './types'
 import type { ReviewStatus, QueryScope } from '@polenta/types'
 
@@ -291,11 +292,18 @@ export function createIpcClient(
       setFieldVisibility: (repoPath, username, typeKey, views) =>
         invoke('pref:set-field-visibility', repoPath, username, typeKey, views),
     },
+    suivi: {
+      run: (repoPath, workspaceDir, username, req, client) => invoke('suivi:run', repoPath, workspaceDir, username, req, client),
+      describeIds: (repoPath, workspaceDir, ids, locale) => invoke('suivi:describe-ids', repoPath, workspaceDir, ids, locale),
+      resolveTarget: (repoPath, workspaceDir, id) => invoke('suivi:resolve-target', repoPath, workspaceDir, id),
+      templates: () => invoke('suivi:templates'),
+      renderTemplate: ((kind: 'query' | 'widget', input: TemplateInput) => invoke('suivi:render-template', kind, input)) as ApiClient['suivi']['renderTemplate'],
+      objectTypes: (repoPath, workspaceDir) => invoke('suivi:object-types', repoPath, workspaceDir),
+      updatesList: (repoPath, username, locale) => invoke('suivi:updates-list', repoPath, username, locale),
+      updatesApply: (repoPath, username, ids, locale) => invoke('suivi:updates-apply', repoPath, username, ids, locale),
+      updatesIgnore: (repoPath, username, id, toVersion) => invoke('suivi:updates-ignore', repoPath, username, id, toVersion),
+    },
     queries: {
-      execute: (repoPath, queryDef, workspaceDir) => invoke('queries:execute', repoPath, queryDef, workspaceDir),
-      builderToSql: (repoPath, config, workspaceDir) => invoke('queries:builder-to-sql', repoPath, config, workspaceDir),
-      drillDown: (repoPath, queryDef, selection, workspaceDir) => invoke('queries:drill-down', repoPath, queryDef, selection, workspaceDir),
-      resolveRowTarget: (repoPath, row, workspaceDir) => invoke('queries:resolve-row-target', repoPath, row, workspaceDir),
       list: (repoPath, username) => invoke('queries:list', repoPath, username),
       create: (repoPath, username, dto: CreateSavedQueryDto) => invoke('queries:create', repoPath, username, dto),
       update: (repoPath, username, id, dto: UpdateSavedQueryDto) => invoke('queries:update', repoPath, username, id, dto),

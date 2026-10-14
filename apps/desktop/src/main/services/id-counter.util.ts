@@ -1,3 +1,4 @@
+import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { formatCounterId } from '@polenta/merge-core'
 import type { GitService } from './git.service'
@@ -83,6 +84,17 @@ export async function deleteWithTombstone(
   await git.deleteFile(repoPath, relPath)
 }
 
+/** GH74 — même chose pour un objet stocké dans un dossier (`queries/QUERY-0003/`) : tout le dossier. */
+export async function deleteFolderWithTombstone(
+  git: GitService,
+  repoPath: string,
+  relDir: string,
+  id: string,
+): Promise<void> {
+  await git.writeText(repoPath, `${TOMBSTONES_DIR}/${id}`, '')
+  await fsP.rm(path.join(repoPath, relDir), { recursive: true, force: true })
+}
+
 /**
  * Belt-and-suspenders before writing a freshly allocated object: `writeYaml` overwrites
  * silently, and the serialization above only covers one process — the desktop app and the
@@ -97,12 +109,20 @@ export async function assertNewObjectFile(git: GitService, repoPath: string, rel
 
 const escapeRegExp =(s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** Highest `NNNN` among `files` whose basename is `<prefix>-NNNN<suffix>`, 0 if none. */
+/** Highest `NNNN` among `files` whose basename is `<prefix>-NNNN<suffix>`, 0 if none. GH74 — a
+ *  path segment `<prefix>-NNNN/` (object stored as a folder: `queries/QUERY-0003/query.yaml`) counts
+ *  too. */
 function maxNumber(files: string[], prefix: string, suffix: string): number {
   const pattern = new RegExp(`^${escapeRegExp(prefix)}-(\\d+)${escapeRegExp(suffix)}$`)
+  const folder = new RegExp(`^${escapeRegExp(prefix)}-(\\d+)$`)
   return files.reduce((max, f) => {
     const m = pattern.exec(path.basename(f))
-    return m ? Math.max(max, Number(m[1])) : max
+    if (m) return Math.max(max, Number(m[1]))
+    for (const segment of f.split(/[\\/]/).slice(0, -1)) {
+      const d = folder.exec(segment)
+      if (d) return Math.max(max, Number(d[1]))
+    }
+    return max
   }, 0)
 }
 

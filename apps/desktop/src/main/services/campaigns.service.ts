@@ -778,7 +778,8 @@ function storedParamValues(
  * GH68 — instance resynchronisable : `pending`, avec copie, campagne ouverte, copie hors statut
  * d'approbation. Sa version effective est l'état live du test jusqu'à la saisie du résultat (GH81).
  */
-function isResyncable(campaign: TestCampaign, run: CampaignTestRun, isApproved: (test: TestCase) => boolean): boolean {
+/** GH74 — exporté : indicateur `resyncable` du graphe de données (même règle que la resynchronisation). */
+export function isResyncable(campaign: TestCampaign, run: CampaignTestRun, isApproved: (test: TestCase) => boolean): boolean {
   return (campaign.status === 'planned' || campaign.status === 'in_progress')
     && run.status === 'pending' && !!run.testSnapshot && !isApproved(run.testSnapshot)
 }

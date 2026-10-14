@@ -16,9 +16,6 @@ import { manualKeysForRun } from '../lib/testParams'
 import { buildReqInstances, isIteratingPreview, missingReqs, presentReqIds } from '../lib/reqInstances'
 import { carryCoverage, toCarriedSelection, withCarryPrecedence, type CarryEligibility } from '../lib/carryOver'
 import { unapprovedPendingRuns, unapprovedTestOf } from '../lib/campaignApproval'
-import { progressPills, runProgress } from '../lib/campaignProgress'
-import { progressPresenter } from '../components/dashboard/widgets/progressPresentation'
-import { isProgressKey, prepStatusOf, PROGRESS_READY } from '@polenta/types'
 import { NotApprovedBadge, NotApprovedRunsBanner } from '../components/campaign/NotApproved'
 import { TestPickerModal, EMPTY_PICKER_RESULT, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
@@ -39,15 +36,13 @@ export const Route = createFileRoute('/campaign/$campaignId')({
     // GH65 — filtre de la liste des entrées par statut (pastilles, navigation depuis la vue Suivi).
     // Clé optionnelle : les navigations existantes vers la page n'ont pas à la fournir.
     const status = parseRunStatus(search['status'])
-    // GH71 — filtre par étape d'avancement (pastilles, navigation depuis la vue Suivi) ; prioritaire.
-    const progress = isProgressKey(search['progress']) ? search['progress'] : undefined
+    // GH74 — le filtre par étape d'avancement (GH71, `progress`) est retiré : paramètre ignoré.
     return {
       repoPath: (search['repoPath'] as string) ?? '',
       projectId: (search['projectId'] as string) ?? '',
       component: search['component'] as string | undefined,
       level: search['level'] as string | undefined,
       ...(status ? { status } : {}),
-      ...(progress ? { progress } : {}),
     }
   },
 })
@@ -60,13 +55,6 @@ function parseRunStatus(v: unknown): TestRunStatus | undefined {
   return isTestRunStatus(v) ? v : undefined
 }
 
-/** GH71 — teinte d'une pastille d'étape : préparation neutre, prêt en bleu, résultats inchangés. */
-function progressPillClass(key: string): string {
-  if (prepStatusOf(key) !== null) return 'bg-status-neutral-bg text-status-neutral'
-  if (key === PROGRESS_READY) return 'bg-status-info-bg text-status-info'
-  return RUN_STATUS_CLASS[key as TestRunStatus] ?? 'bg-status-neutral-bg text-status-neutral'
-}
-
 // ─── Campaign detail page ─────────────────────────────────────────────────────
 
 function CampaignDetailPage() {
@@ -74,11 +62,9 @@ function CampaignDetailPage() {
   const { campaignId } = Route.useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { repoPath, projectId, component, level, status: urlStatus, progress: progressFilter } = Route.useSearch()
-  // GH71 — `progress` l'emporte sur `status` (liens GH65 : `status=pending` = toutes les entrées non exécutées).
-  const statusFilter = progressFilter ? undefined : urlStatus
-  const setProgressFilter = (progress: string | undefined) =>
-    navigate({ to: '/campaign/$campaignId', params: { campaignId }, search: { repoPath, projectId, component, level, ...(progress ? { progress } : {}) }, replace: true })
+  const { repoPath, projectId, component, level, status: statusFilter } = Route.useSearch()
+  const setStatusFilter = (status: TestRunStatus | undefined) =>
+    navigate({ to: '/campaign/$campaignId', params: { campaignId }, search: { repoPath, projectId, component, level, ...(status ? { status } : {}) }, replace: true })
   // T171 — résolution des paramètres de la base (repos composants) à l'ajout.
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
 
@@ -216,13 +202,9 @@ function CampaignDetailPage() {
 
   const testMap = new Map(tests.map(t => [t.id, t]))
   const isActive = campaign.status === 'planned' || campaign.status === 'in_progress'
-  // GH71 — étape d'avancement de chaque entrée (même règle que la vue Suivi).
-  const progressByEntry = new Map(campaign.runs.map(r => [r.entryId, runProgress(r, testMap.get(r.testCaseId), isActive, isApproved)]))
-  const progressOf = (r: CampaignTestRun) => progressByEntry.get(r.entryId)!
-  const presenter = progressPresenter(schema, t)
-  const filterLabel = progressFilter ? presenter.label(progressFilter) : statusFilter ? t(RUN_STATUS_LABEL_KEY[statusFilter]) : ''
-  const matchesFilter = (r: CampaignTestRun) =>
-    progressFilter ? progressOf(r) === progressFilter : !statusFilter || r.status === statusFilter
+  // GH65 / GH74 — filtre par statut brut d'entrée.
+  const filterLabel = statusFilter ? t(RUN_STATUS_LABEL_KEY[statusFilter]) : ''
+  const matchesFilter = (r: CampaignTestRun) => !statusFilter || r.status === statusFilter
 
   const includedIds = new Set(campaign.testCaseIds)
   // T171 — références à saisir par test, selon la résolution prévisionnelle (base à la source de
@@ -433,25 +415,27 @@ function CampaignDetailPage() {
       {/* Progress summary */}
       {campaign.runs.length > 0 && (
         <div className="flex items-center gap-3 mb-4 text-xs">
-          {progressPills(campaign.runs, progressOf, presenter.order, progressFilter).map(({ key, count }) => {
-            const active = progressFilter === key
-            // GH65 — pastille = filtre (re-clic : retiré) ; GH71 — une pastille par étape d'avancement.
+          {RUN_STATUSES.map(s => {
+            const count = campaign.runs.filter(r => r.status === s).length
+            const active = statusFilter === s
+            if (count === 0 && !active) return null
+            // GH65 — pastille = filtre par statut brut (re-clic : retiré).
             return (
               <button
-                key={key}
+                key={s}
                 type="button"
                 aria-pressed={active}
-                data-progress={key}
-                onClick={() => setProgressFilter(active ? undefined : key)}
-                title={t('campaignPage.statusFilter.toggle', { status: presenter.label(key) })}
-                className={`px-2 py-0.5 rounded-full ${progressPillClass(key)} ${active ? 'ring-2 ring-offset-1 ring-status-info' : progressFilter || statusFilter ? 'opacity-50 hover:opacity-100' : 'hover:brightness-95'}`}
+                data-status={s}
+                onClick={() => setStatusFilter(active ? undefined : s)}
+                title={t('campaignPage.statusFilter.toggle', { status: t(RUN_STATUS_LABEL_KEY[s]) })}
+                className={`px-2 py-0.5 rounded-full ${RUN_STATUS_CLASS[s]} ${active ? 'ring-2 ring-offset-1 ring-status-info' : statusFilter ? 'opacity-50 hover:opacity-100' : 'hover:brightness-95'}`}
               >
-                {count} {presenter.label(key)}
+                {count} {t(RUN_STATUS_LABEL_KEY[s])}
               </button>
             )
           })}
-          {(progressFilter || statusFilter) && (
-            <button type="button" onClick={() => setProgressFilter(undefined)} className="text-ink-3 hover:text-ink underline" data-testid="campaign-status-filter-clear">
+          {statusFilter && (
+            <button type="button" onClick={() => setStatusFilter(undefined)} className="text-ink-3 hover:text-ink underline" data-testid="campaign-status-filter-clear">
               {t('campaignPage.statusFilter.clear', { status: filterLabel })}
             </button>
           )}
@@ -505,7 +489,7 @@ function CampaignDetailPage() {
       <div className="border rounded divide-y mb-3">
         {campaign.runs.length === 0 ? (
           <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.noTestCaseInCampaign')}</p>
-        ) : (progressFilter || statusFilter) && !campaign.runs.some(matchesFilter) ? (
+        ) : statusFilter && !campaign.runs.some(matchesFilter) ? (
           <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.statusFilter.empty', { status: filterLabel })}</p>
         ) : (
           campaign.runs.filter(matchesFilter).map(run => {

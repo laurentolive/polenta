@@ -21,7 +21,6 @@ import { BaselineService } from './services/baseline.service'
 import { PolentaRepoService } from './services/polenta-repo.service'
 import { WorkspaceTreeService } from './services/workspace-tree.service'
 import { InterfaceComplianceService } from './services/interface-compliance.service'
-import { QueryEngineService } from './services/query-engine.service'
 import { SavedQueriesService } from './services/saved-queries.service'
 import { DashboardsService } from './services/dashboards.service'
 import { DashboardSeedService } from './services/dashboard-seed.service'
@@ -33,11 +32,19 @@ import { MergeResolutionService } from './services/merge-resolution.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
 import { HistoryService } from './services/history.service'
+import { GraphService } from './services/graph.service'
+import { DashboardLibraryService } from './services/dashboard-library.service'
+import { ScriptEngineService } from './services/script-engine.service'
+import { SuiviService } from './services/suivi.service'
+import { SuiviUpdatesService } from './services/suivi-updates.service'
 import { FieldRenameService } from './services/field-rename.service'
 import { HistoryBackfillService } from './services/history-backfill.service'
 import type { Container } from './ipc/index'
 import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
+
+/** GH74 — dossiers dont un changement invalide le graphe de données. */
+const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', '.polenta/', 'polenta-repo.yaml']
 
 /**
  * Instancie le noyau de services (GH44 : sans dépendance à Electron). L'hôte fournit ce qui
@@ -91,13 +98,25 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // GH77 — reprise de l'historique des champs suivis depuis git (action manuelle, par repo).
   const historyBackfill = new HistoryBackfillService(git, requirements, tests, campaigns)
   const baseline = new BaselineService()
-  const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree, campaigns)
+  // GH74 — graphe de données (en cache) et moteur de scripts (worker QuickJS). Le graphe et la
+  // bibliothèque projet sont oubliés dès qu'un fichier de leur périmètre change (y compris dans un
+  // repo composant), avant que le renderer ne soit notifié (abonnés appelés dans l'ordre).
+  const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns)
+  const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
+  const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
+  watcher.onFileChange((repoPath, relPath) => {
+    if (relPath === '*' || GRAPH_PATHS.some((p) => relPath.startsWith(p))) graph.invalidate(repoPath)
+    if (relPath === '*' || relPath === 'polenta-repo.yaml' || relPath.startsWith('dashboards/lib/')) dashboardLibrary.invalidate(repoPath)
+  })
   const dashboards = new DashboardsService(git)
   // dashboards is injected here (not the other way around) — SavedQueriesService needs
   // to detect widgets depending on a query (delete/setScope guards), DashboardsService
   // never needs to look up a SavedQuery, so this ordering avoids a circular dependency.
-  const savedQueries = new SavedQueriesService(git, schema, dashboards)
-  const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
+  const savedQueries = new SavedQueriesService(git, dashboards)
+  const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
+  const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries, undefined, dashboardLibrary)
+  // GH74 §6.3 — bandeau des mises à jour (bibliothèque, widgets du seed, versions de modèle).
+  const suiviUpdates = new SuiviUpdatesService(git, dashboardLibrary, dashboardSeed, savedQueries, dashboards)
   // GH26 — préférences app-level.
   // GH45 S2b — configuration par équipe lue sur la forge (spec §3bis).
   const forgeConfig = new ForgeConfigService(auth, host.userDataDir)
@@ -134,7 +153,11 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     polentaRepo,
     workspaceTree,
     interfaceCompliance,
-    queryEngine,
+    graph,
+    dashboardLibrary,
+    scriptEngine,
+    suivi,
+    suiviUpdates,
     savedQueries,
     dashboards,
     dashboardSeed,

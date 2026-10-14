@@ -1,20 +1,6 @@
 import type { ObjectTypeDefinition, ProjectSchema, SystemNode } from '@polenta/types'
 import { findSystemNode, flattenSystemNodes } from '@polenta/types'
 
-/**
- * System columns always present on a query-engine dataset row, independent of
- * schema.yaml — shared between query-engine.service.ts (builder → SQL field
- * allowlist) and saved-queries.service.ts (history purge validation) so the two
- * don't drift out of sync.
- */
-export const SYSTEM_QUERY_FIELDS = [
-  'id', 'objectTypeRef', 'title', 'status', 'component',
-  'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'version', 'needsRevalidation',
-] as const
-
-/** GH65 — colonnes de `campaign_entries`, partagées avec le builder du renderer. */
-export { CAMPAIGN_ENTRY_FIELDS, CAMPAIGN_FIELD_PREFIX } from '@polenta/types'
-
 export type ResolvedObjectType = ObjectTypeDefinition | null | 'unresolvable'
 
 /**

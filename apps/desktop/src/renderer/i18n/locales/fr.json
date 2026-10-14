@@ -299,7 +299,20 @@
       "titleLabel": "Titre",
       "titlePlaceholder": "Mon dashboard…",
       "creating": "Création…",
-      "create": "Créer"
+      "create": "Créer",
+      "updates": {
+        "title_one": "Mise à jour disponible (1)",
+        "title_other": "Mises à jour disponibles ({{count}})",
+        "readOnly": "Branche en lecture seule : mises à jour non applicables ici.",
+        "new": "(nouveau)",
+        "version": "(v{{from}} → v{{to}})",
+        "seedWidget": "Widget pour « {{dashboard}} »",
+        "toPublish": "Modification du repo, à publier.",
+        "ignore": "Ignorer",
+        "apply_one": "Appliquer",
+        "apply_other": "Appliquer ({{count}})",
+        "applying": "Application…"
+      }
     },
     "requirements": {
       "title": "Exigences",
@@ -453,7 +466,15 @@
       "deleteTitle": "Supprimer ?",
       "deleteBody": "<b>{{title}}</b> sera supprimé définitivement.",
       "shared": "Partagé",
-      "private": "Privé"
+      "private": "Privé",
+      "readOnlyBadge": {
+        "legacy-sql": "SQL",
+        "newer-format": "Lecture seule"
+      },
+      "readOnly": {
+        "legacy-sql": "Requête SQL d'avant GH74, non prise en charge : à réécrire en script ou à supprimer.",
+        "newer-format": "Créé par une version plus récente de Polenta : lecture seule."
+      }
     }
   },
   "schema": {
@@ -1024,7 +1045,34 @@
       "matrixValueLabel": "Valeur des cellules",
       "presetLabel": "Présentation des séries",
       "presetStandard": "Standard",
-      "presetCampaignProgress": "Avancement de campagne"
+      "presetCampaignProgress": "Avancement de campagne",
+      "sharedOnlyHint": "Dashboard partagé : seules les requêtes partagées sont proposées.",
+      "templateTab": "Modèle",
+      "codeTab": "Code",
+      "templateLabel": "Modèle",
+      "revert": "Revenir au modèle",
+      "revertHint": "Régénère le code à partir du modèle : les modifications manuelles sont perdues.",
+      "customizedNotice": "Widget personnalisé : son code a été modifié, le formulaire du modèle ne s'applique plus. « Revenir au modèle » régénère le code (les modifications sont perdues).",
+      "templateUpdate": "Une nouvelle version du modèle (v{{version}}) est disponible : elle sera appliquée à l'enregistrement.",
+      "codeDetachHint": "Modifier le code détache le widget de son modèle.",
+      "transformLabel": "Transformation (JS) — export default (rows, polenta) => rows",
+      "specLabel": "Spec Vega-Lite (JSON) — données : { \"name\": \"rows\" }",
+      "aggregateWarning": "La spec agrège avec Vega-Lite (aggregate) : le détail au clic ne sera pas disponible. Regroupez plutôt dans la transformation.",
+      "previewTitle": "Aperçu",
+      "selectQueryHint": "Choisissez une requête pour voir l'aperçu.",
+      "revertConfirm": "Le code modifié sera perdu."
+    },
+    "template": {
+      "anyType": "(tous les objets de la catégorie)",
+      "noOption": "Aucune valeur disponible.",
+      "operators": {
+        "=": "=",
+        "!=": "≠",
+        ">": ">",
+        "<": "<",
+        "contains": "contient",
+        "in": "parmi"
+      }
     }
   },
   "queryPage": {
@@ -1077,7 +1125,14 @@
         "progress": "Avancement",
         "testStatus": "Statut du test"
       }
-    }
+    },
+    "templateMode": "Modèle",
+    "scriptMode": "Script",
+    "templateLabel": "Modèle de requête",
+    "saveAs": "Enregistrer sous…",
+    "legacySqlNotice": "Requête SQL d'avant la version actuelle de Polenta : elle n'est plus prise en charge. Réécrivez-la avec un modèle ou un script, puis supprimez-la.",
+    "customizedNotice": "Script personnalisé : le formulaire du modèle ne s'applique plus.",
+    "newerFormatNotice": "Créée par une version plus récente de Polenta : lecture seule."
   },
   "dashboardPage": {
     "cannotChangeScope": "Impossible de changer la portée.",
@@ -1110,7 +1165,27 @@
       "title": "Détail",
       "fallback": "Détail non disponible pour cette requête — lignes du résultat affichées.",
       "notFound": "Objet introuvable.",
-      "openFailed": "Ouverture impossible : {{message}}"
+      "openFailed": "Ouverture impossible : {{message}}",
+      "noIds": "Détail non disponible : le script ne fournit pas d'identifiants pour cette marque.",
+      "columns": {
+        "id": "Identifiant",
+        "type": "Type",
+        "title": "Titre",
+        "status": "Statut"
+      },
+      "kinds": {
+        "requirement": "Exigence",
+        "test": "Test",
+        "campaign": "Campagne",
+        "campaign-entry": "Entrée de campagne",
+        "run": "Exécution",
+        "unknown": "Inconnu"
+      }
+    },
+    "newerFormatNotice": "Dashboard créé par une version plus récente de Polenta : lecture seule.",
+    "vega": {
+      "invalidJson": "Spec invalide (JSON) : {{message}}",
+      "renderError": "Rendu impossible : {{message}}"
     }
   },
   "exportButton": {

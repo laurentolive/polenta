@@ -1,8 +1,14 @@
-import type { Dashboard, QueryScope, Widget, WidgetFieldMapping, WidgetSize, WidgetType } from '@polenta/types'
+import type { Dashboard, QueryScope, ReadDashboard, ReadWidget, StoredDashboard, StoredWidget, TemplateRef, Widget, WidgetCode, WidgetSize } from '@polenta/types'
+import { readDashboardRecord, SUIVI_FORMAT_VERSION, widgetCodeForHash } from '@polenta/types'
 import type { GitService } from './git.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
-import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
+import { nextCounterId } from './id-counter.util'
+import {
+  applyWidgetTemplate, computeState, dropLegacyFile, removeSharedObject, listObjectEntries, readOnlyError, readText, readYamlFile, toYaml, withHash,
+  writeObjectFolder,
+} from './suivi-store.util'
+import type { TemplateInput } from './suivi-store.util'
 
 export interface CreateDashboardDto {
   title: string
@@ -18,12 +24,25 @@ export interface UpdateDashboardDto {
 export interface AddWidgetDto {
   title: string
   queryId: string
-  type: WidgetType
-  fieldMapping: WidgetFieldMapping
   size: WidgetSize
+  /** Code fourni (widget personnalisé)… */
+  transform?: string
+  spec?: string
+  /** …ou modèle + paramètres : transformation et spec générées. */
+  template?: TemplateInput
 }
 
-export type UpdateWidgetDto = Partial<AddWidgetDto>
+export interface UpdateWidgetDto {
+  title?: string
+  queryId?: string
+  size?: WidgetSize
+  /** Code modifié : la référence de modèle est conservée (widget détaché si le code diffère).
+   *  `transform: null` retire la transformation. */
+  transform?: string | null
+  spec?: string
+  /** Modèle / paramètres : code régénéré. `null` : retire la référence. */
+  template?: TemplateInput | null
+}
 
 export interface DependentWidget {
   dashboardId: string
@@ -33,90 +52,158 @@ export interface DependentWidget {
   widgetTitle: string
 }
 
+const DIR = 'dashboards'
+const PREFIX = 'DASHBOARD'
+
 interface PrefStore {
-  dashboards?: Dashboard[]
-  /** Ordre d'affichage de la section "Dashboards" du panneau latéral — même logique
-   *  que `queriesOrder` dans saved-queries.service.ts. */
+  dashboards?: Record<string, unknown>[]
+  /** Ordre d'affichage de la section "Dashboards" du panneau latéral (préférence personnelle). */
   dashboardsOrder?: string[]
   [key: string]: unknown
 }
 
+/** Dashboard en cours de modification (code des widgets inclus, sans état calculé). */
+interface DraftWidget {
+  id: string
+  title: string
+  queryId: string
+  size: WidgetSize
+  transform?: string
+  spec: string
+  template?: TemplateRef
+}
+
+interface Draft {
+  id: string
+  title: string
+  widgetOrder: string[]
+  widgets: DraftWidget[]
+  createdBy: string
+  createdAt: string
+}
+
 /**
- * DashboardsService — T77 sprint 2.
+ * DashboardsService — dashboards de la vue Suivi (GH74). Partagé :
+ * `dashboards/DASHBOARD-xxxx/{dashboard.yaml,<widget>.js,<widget>.vl.json}` ; privé : clé
+ * `dashboards` du `.{username}.pref` (code des widgets inclus). Format d'avant GH74
+ * (`dashboards/DASHBOARD-xxxx.yaml`, widgets `type` + `fieldMapping`) converti en mémoire, réécrit au
+ * format v1 à la première modification. Un dashboard d'un format plus récent n'est jamais réécrit.
  *
- * CRUD des dashboards + widgets embarqués (un dashboard = un fichier YAML contenant
- * son tableau `widgets`, pas de fichier séparé par widget — même logique que les
- * approbations embarquées dans ReviewsService). Scope privé (`.{username}.pref`) ou
- * partagé (`dashboards/DASHBOARD-xxxx.yaml`, ID via `nextCounterId`, cf. `id-counter.util.ts`).
- *
- * Un widget n'a pas de scope propre : son scope effectif est celui de son dashboard
- * parent (T77-design.md § "Règles de dépendance et de scope"). La validation
- * "un widget partagé nécessite une requête partagée" est donc appliquée à DEUX
- * endroits : au moment du passage du dashboard en scope 'shared' (`setScope`), ET à
- * chaque `addWidget`/`updateWidget` sur un dashboard déjà partagé — sans ce second
- * point, un appel IPC direct pourrait embarquer un widget référençant une requête
- * privée dans un dashboard déjà partagé, en contournant le filtre proactif de
- * `WidgetConfigModal` (qui est côté UI seulement).
- *
- * Ce service ne dépend PAS de SavedQueriesService : il détermine si le queryId d'un
- * widget est privé ou partagé uniquement via la convention d'ID partagée
- * (`id-scope.util.ts`), pour éviter une dépendance circulaire — SavedQueriesService
- * importe ce service (pour `findDependentWidgets`), pas l'inverse.
+ * Un widget n'a pas de portée propre : un dashboard partagé ne peut embarquer qu'un widget dont la
+ * requête est partagée (vérifié ici, en plus du filtre de l'UI). Ce service ne dépend pas de
+ * `SavedQueriesService` (portée déduite de l'id, `id-scope.util.ts`).
  */
 export class DashboardsService {
   constructor(private readonly git: GitService) {}
 
-  // ─── Dashboards ───────────────────────────────────────────────────────────────
+  // ─── Lecture ──────────────────────────────────────────────────────────────────
 
   async list(repoPath: string, username: string): Promise<Dashboard[]> {
-    const priv = this.readPref(repoPath, username).dashboards ?? []
-    const shared = await this.git.readYamlDir<Dashboard>(repoPath, 'dashboards')
+    const priv = (this.readPref(repoPath, username).dashboards ?? []).map((raw) => this.toDashboard(readDashboardRecord(raw), 'private'))
+    const entries = await listObjectEntries(repoPath, DIR, PREFIX)
+    const shared = (await Promise.all(entries.map((e) => this.readShared(repoPath, e.id)))).filter((d): d is Dashboard => d !== null)
     return [...priv, ...shared].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }
 
   async get(repoPath: string, username: string, id: string): Promise<Dashboard | null> {
     if (isPrivateScopeId(id)) {
-      return this.readPref(repoPath, username).dashboards?.find((d) => d.id === id) ?? null
+      const raw = this.readPref(repoPath, username).dashboards?.find((d) => d.id === id)
+      return raw ? this.toDashboard(readDashboardRecord(raw), 'private') : null
     }
-    return this.git.readYaml<Dashboard>(repoPath, `dashboards/${id}.yaml`)
+    return this.readShared(repoPath, id)
   }
 
-  async create(repoPath: string, username: string, dto: CreateDashboardDto): Promise<Dashboard> {
-    if (dto.scope === 'shared') {
-      const id = await nextCounterId(this.git, repoPath, 'DASHBOARD', 'dashboards')
-      const dashboard: Dashboard = {
-        id,
-        title: dto.title,
-        scope: 'shared',
-        widgetOrder: [],
-        widgets: [],
-        createdBy: dto.createdBy,
-        createdAt: new Date().toISOString(),
-      }
-      await assertNewObjectFile(this.git, repoPath, `dashboards/${id}.yaml`, id)
-      await this.git.writeYaml(repoPath, `dashboards/${id}.yaml`, dashboard)
-      return dashboard
-    }
+  /**
+   * Un widget, sans lire le code des autres widgets du dashboard (exécution d'un widget : appelée
+   * une fois par widget à chaque rafraîchissement).
+   */
+  async getWidget(repoPath: string, username: string, dashboardId: string, widgetId: string): Promise<Widget | null> {
+    if (isPrivateScopeId(dashboardId)) return (await this.get(repoPath, username, dashboardId))?.widgets.find((w) => w.id === widgetId) ?? null
+    const folder = await readYamlFile<Record<string, unknown>>(repoPath, `${DIR}/${dashboardId}/dashboard.yaml`)
+    if (!folder) return (await this.get(repoPath, username, dashboardId))?.widgets.find((w) => w.id === widgetId) ?? null
+    const raw = (Array.isArray(folder.widgets) ? folder.widgets as { id?: unknown }[] : []).find((w) => String(w.id) === widgetId)
+    if (!raw) return null
+    const [transform, spec] = await Promise.all([
+      readText(repoPath, `${DIR}/${dashboardId}/${widgetId}.js`),
+      readText(repoPath, `${DIR}/${dashboardId}/${widgetId}.vl.json`),
+    ])
+    const one = readDashboardRecord({ ...folder, widgets: [raw], widgetOrder: [widgetId] }, {
+      [widgetId]: { ...(transform !== undefined ? { transform } : {}), ...(spec !== undefined ? { spec } : {}) },
+    })
+    return this.toDashboard(one, 'shared').widgets[0] ?? null
+  }
 
-    const pref = this.readPref(repoPath, username)
-    const list = pref.dashboards ?? []
-    const dashboard: Dashboard = {
-      id: generatePrivateId(),
-      title: dto.title,
-      scope: 'private',
-      widgetOrder: [],
-      widgets: [],
-      createdBy: dto.createdBy,
-      createdAt: new Date().toISOString(),
+  private async readShared(repoPath: string, id: string): Promise<Dashboard | null> {
+    const folder = await readYamlFile<Record<string, unknown>>(repoPath, `${DIR}/${id}/dashboard.yaml`)
+    if (folder) {
+      const widgets = Array.isArray(folder.widgets) ? (folder.widgets as { id?: unknown }[]) : []
+      const codes: Record<string, Partial<WidgetCode>> = {}
+      await Promise.all(widgets.map(async (w) => {
+        const wid = String(w.id)
+        const [transform, spec] = await Promise.all([
+          readText(repoPath, `${DIR}/${id}/${wid}.js`),
+          readText(repoPath, `${DIR}/${id}/${wid}.vl.json`),
+        ])
+        codes[wid] = { ...(transform !== undefined ? { transform } : {}), ...(spec !== undefined ? { spec } : {}) }
+      }))
+      return this.toDashboard(readDashboardRecord(folder, codes), 'shared')
     }
-    list.push(dashboard)
-    pref.dashboards = list
+    const legacy = await readYamlFile<Record<string, unknown>>(repoPath, `${DIR}/${id}.yaml`)
+    return legacy ? this.toDashboard(readDashboardRecord(legacy), 'shared') : null
+  }
+
+  private toDashboard(d: ReadDashboard, scope: QueryScope): Dashboard {
+    return {
+      id: d.id,
+      title: d.title,
+      scope,
+      formatVersion: d.formatVersion,
+      widgetOrder: d.widgetOrder,
+      widgets: d.widgets.map((w) => this.toWidget(w, d.readOnly)),
+      createdBy: d.createdBy,
+      createdAt: d.createdAt,
+      state: { customized: false, ...(d.readOnly ? { readOnly: d.readOnly } : {}), ...(d.legacyFormat ? { legacyFormat: true } : {}) },
+    }
+  }
+
+  private toWidget(w: ReadWidget, readOnly: ReadDashboard['readOnly']): Widget {
+    const code = widgetCodeForHash({ transform: w.transform, spec: w.spec })
+    const template = w.template ? withHash(w.template, code) : undefined
+    return {
+      id: w.id,
+      title: w.title,
+      queryId: w.queryId,
+      size: w.size,
+      ...(w.transform !== undefined ? { transform: w.transform } : {}),
+      spec: w.spec,
+      ...(template ? { template } : {}),
+      state: computeState(w.template, code, 'widget', { readOnly, legacyFormat: w.legacyFormat }),
+    }
+  }
+
+  // ─── Dashboards ───────────────────────────────────────────────────────────────
+
+  async create(repoPath: string, username: string, dto: CreateDashboardDto): Promise<Dashboard> {
+    const draft: Omit<Draft, 'id'> = { title: dto.title, widgetOrder: [], widgets: [], createdBy: dto.createdBy, createdAt: new Date().toISOString() }
+    if (dto.scope === 'shared') {
+      const id = await nextCounterId(this.git, repoPath, PREFIX, DIR)
+      if (await this.git.fileExists(repoPath, `${DIR}/${id}`)) throw new Error(`${id} already exists`)
+      await this.writeShared(repoPath, { id, ...draft })
+      return (await this.readShared(repoPath, id))!
+    }
+    const id = generatePrivateId()
+    const pref = this.readPref(repoPath, username)
+    pref.dashboards = [...(pref.dashboards ?? []), this.toPrivate({ id, ...draft })]
     this.writePref(repoPath, username, pref)
-    return dashboard
+    return (await this.get(repoPath, username, id))!
   }
 
   async update(repoPath: string, username: string, id: string, dto: UpdateDashboardDto): Promise<Dashboard> {
-    return this.mutate(repoPath, username, id, (d) => ({ ...d, ...dto }))
+    return this.mutate(repoPath, username, id, (d) => ({
+      ...d,
+      ...(dto.title !== undefined ? { title: dto.title } : {}),
+      ...(dto.widgetOrder !== undefined ? { widgetOrder: dto.widgetOrder } : {}),
+    }))
   }
 
   async delete(repoPath: string, username: string, id: string): Promise<void> {
@@ -126,71 +213,78 @@ export class DashboardsService {
       this.writePref(repoPath, username, pref)
       return
     }
-    await deleteWithTombstone(this.git, repoPath, `dashboards/${id}.yaml`, id)
+    await this.removeShared(repoPath, id)
   }
 
   /**
-   * Promote (private → shared) or demote (shared → private) a dashboard.
-   * T77.md § Visibilité: "Un Dashboard ne peut être partagé que si tous ses widgets
-   * sont partagés" — checked here against the *current* widgets (proactive filtering
-   * in WidgetConfigModal keeps this from being hit in the normal flow, but it's
-   * re-checked here too, same defense-in-depth spirit as the SQL guard in
-   * query-engine.service.ts). Demoting a shared dashboard back to private has no such
-   * check: nothing else ever references a Dashboard by id (unlike SavedQuery), so
-   * there are no dependents to protect.
-   *
-   * Also keeps `dashboardsOrder` (sidebar drag order) pointing at the new id in
-   * place, rather than letting the item silently jump to the end of the list.
+   * Passage privé → partagé (refusé si un widget référence une requête privée) ou partagé → privé.
+   * L'id change ; l'ordre du panneau latéral suit.
    */
   async setScope(repoPath: string, username: string, id: string, newScope: QueryScope): Promise<Dashboard> {
     const current = await this.get(repoPath, username, id)
     if (!current) throw new Error(`Dashboard introuvable : ${id}`)
     if (current.scope === newScope) return current
-
-    let moved: Dashboard
+    if (current.state.readOnly) throw readOnlyError(`Dashboard ${id}`, current.state.readOnly)
+    const draft = this.toDraft(current)
+    let newId: string
     if (newScope === 'shared') {
-      this.assertWidgetsShareable(current.widgets)
-      const newId = await nextCounterId(this.git, repoPath, 'DASHBOARD', 'dashboards')
-      moved = { ...current, id: newId, scope: 'shared' }
-      await assertNewObjectFile(this.git, repoPath, `dashboards/${newId}.yaml`, newId)
-      await this.git.writeYaml(repoPath, `dashboards/${newId}.yaml`, moved)
+      this.assertWidgetsShareable(draft.widgets)
+      newId = await nextCounterId(this.git, repoPath, PREFIX, DIR)
+      await this.writeShared(repoPath, { ...draft, id: newId })
       const pref = this.readPref(repoPath, username)
       pref.dashboards = (pref.dashboards ?? []).filter((d) => d.id !== id)
       this.writePref(repoPath, username, pref)
     } else {
-      await deleteWithTombstone(this.git, repoPath, `dashboards/${id}.yaml`, id)
-      moved = { ...current, id: generatePrivateId(), scope: 'private' }
+      await this.removeShared(repoPath, id)
+      newId = generatePrivateId()
       const pref = this.readPref(repoPath, username)
-      pref.dashboards = [...(pref.dashboards ?? []), moved]
+      pref.dashboards = [...(pref.dashboards ?? []), this.toPrivate({ ...draft, id: newId })]
       this.writePref(repoPath, username, pref)
     }
-
-    this.renameInOrder(repoPath, username, id, moved.id)
-    return moved
+    this.renameInOrder(repoPath, username, id, newId)
+    return (await this.get(repoPath, username, newId))!
   }
 
-  // ─── Widgets (embarqués dans le dashboard parent) ────────────────────────────
+  // ─── Widgets ──────────────────────────────────────────────────────────────────
 
   async addWidget(repoPath: string, username: string, dashboardId: string, dto: AddWidgetDto): Promise<Dashboard> {
-    return this.mutate(repoPath, username, dashboardId, (d) => {
-      if (d.scope === 'shared') this.assertWidgetsShareable([{ ...dto, id: '' } as Widget])
-      const widget: Widget = { id: this.generateWidgetId(), ...dto }
+    return this.mutate(repoPath, username, dashboardId, (d, scope) => {
+      const widget: DraftWidget = { id: this.generateWidgetId(), title: dto.title, queryId: dto.queryId, size: dto.size, ...this.resolveCode(dto) }
+      if (scope === 'shared') this.assertWidgetsShareable([widget])
       return { ...d, widgets: [...d.widgets, widget], widgetOrder: [...d.widgetOrder, widget.id] }
     })
   }
 
-  async updateWidget(
-    repoPath: string,
-    username: string,
-    dashboardId: string,
-    widgetId: string,
-    dto: UpdateWidgetDto,
-  ): Promise<Dashboard> {
-    return this.mutate(repoPath, username, dashboardId, (d) => {
-      const existing = d.widgets.find((w) => w.id === widgetId)
-      const patched = existing ? { ...existing, ...dto } : undefined
-      if (d.scope === 'shared' && patched) this.assertWidgetsShareable([patched])
-      return { ...d, widgets: d.widgets.map((w) => (w.id === widgetId ? { ...w, ...dto } : w)) }
+  async updateWidget(repoPath: string, username: string, dashboardId: string, widgetId: string, dto: UpdateWidgetDto): Promise<Dashboard> {
+    return this.mutate(repoPath, username, dashboardId, (d, scope) => {
+      const widgets = d.widgets.map((w) => {
+        if (w.id !== widgetId) return w
+        let next: DraftWidget = {
+          ...w,
+          ...(dto.title !== undefined ? { title: dto.title } : {}),
+          ...(dto.queryId !== undefined ? { queryId: dto.queryId } : {}),
+          ...(dto.size !== undefined ? { size: dto.size } : {}),
+        }
+        if (dto.template === null) {
+          const { template: _t, ...rest } = next
+          next = rest
+        } else if (dto.template) {
+          const { code, template } = applyWidgetTemplate(dto.template)
+          const { transform: _old, ...rest } = next
+          next = { ...rest, ...(code.transform !== undefined ? { transform: code.transform } : {}), spec: code.spec, template }
+        }
+        if (!dto.template) {
+          if (dto.transform === null) {
+            const { transform: _t, ...rest } = next
+            next = rest
+          } else if (dto.transform !== undefined) next = { ...next, transform: dto.transform }
+          if (dto.spec !== undefined) next = { ...next, spec: dto.spec }
+        }
+        if (scope === 'shared') this.assertWidgetsShareable([next])
+        return next
+      })
+      if (!widgets.some((w) => w.id === widgetId)) throw new Error(`Widget introuvable : ${widgetId}`)
+      return { ...d, widgets }
     })
   }
 
@@ -206,7 +300,7 @@ export class DashboardsService {
     return this.mutate(repoPath, username, dashboardId, (d) => ({ ...d, widgetOrder: order }))
   }
 
-  // ─── Sidebar order (liste "Dashboards" réorganisable par drag & drop) ───────
+  // ─── Ordre du panneau latéral ─────────────────────────────────────────────────
 
   async getDashboardsOrder(repoPath: string, username: string): Promise<string[]> {
     return this.readPref(repoPath, username).dashboardsOrder ?? []
@@ -218,75 +312,53 @@ export class DashboardsService {
     this.writePref(repoPath, username, pref)
   }
 
-  // ─── Cross-service dependency check (used by SavedQueriesService) ───────────
+  // ─── Dépendances (utilisées par SavedQueriesService) ──────────────────────────
 
   /**
-   * T77-design.md § "Détection des dépendants" — scans shared dashboards + the
-   * given user's own private dashboards for widgets referencing `queryId`. Known,
-   * accepted limitation: a private dashboard belonging to a *different* user is
-   * invisible from here (its `.{username}.pref` file isn't accessible from this
-   * session) — documented in T77.md § Visibilité, not a bug to fix in this ticket.
-   *
-   * Skips the shared-dashboards disk scan entirely when `queryId` is itself private:
-   * `addWidget`/`updateWidget`/`setScope` all guarantee a shared dashboard can never
-   * embed a widget referencing a private query, so a private `queryId` can only ever
-   * be found in the current user's own private dashboards — no need to pay for
-   * reading every shared dashboard YAML in the repo to confirm that.
+   * Widgets des dashboards partagés et des dashboards privés de l'utilisateur qui utilisent
+   * `queryId`. Limite connue : les dashboards privés d'un autre utilisateur ne sont pas visibles.
+   * Une requête privée ne peut figurer que dans un dashboard privé : les partagés ne sont alors pas lus.
    */
   async findDependentWidgets(repoPath: string, username: string, queryId: string): Promise<DependentWidget[]> {
-    const isPrivateQuery = isPrivateScopeId(queryId)
-    const [shared, privateOwn] = await Promise.all([
-      isPrivateQuery ? Promise.resolve([]) : this.git.readYamlDir<Dashboard>(repoPath, 'dashboards'),
-      Promise.resolve(this.readPref(repoPath, username).dashboards ?? []),
-    ])
-    const dependents: DependentWidget[] = []
-    for (const dashboard of [...shared, ...privateOwn]) {
-      for (const widget of dashboard.widgets) {
-        if (widget.queryId === queryId) {
-          dependents.push({
-            dashboardId: dashboard.id,
-            dashboardTitle: dashboard.title,
-            dashboardScope: dashboard.scope,
-            widgetId: widget.id,
-            widgetTitle: widget.title,
-          })
-        }
+    const shared = isPrivateScopeId(queryId) ? [] : (await this.list(repoPath, username)).filter((d) => d.scope === 'shared')
+    const priv = (this.readPref(repoPath, username).dashboards ?? []).map((raw) => this.toDashboard(readDashboardRecord(raw), 'private'))
+    const out: DependentWidget[] = []
+    for (const d of [...shared, ...priv]) {
+      for (const w of d.widgets) {
+        if (w.queryId === queryId) out.push({ dashboardId: d.id, dashboardTitle: d.title, dashboardScope: d.scope, widgetId: w.id, widgetTitle: w.title })
       }
     }
-    return dependents
+    return out
   }
 
-  /**
-   * Called by `SavedQueriesService.setScope()` after promoting a private query to
-   * shared (a query's id changes across that transition) — updates any widget in the
-   * user's OWN private dashboards still pointing at the old id, so promoting a query
-   * doesn't silently orphan a widget that legitimately referenced it (promote is
-   * unconditional per spec, so it can't be blocked the way delete/demote are). Shared
-   * dashboards are never scanned here: they could never have referenced a private
-   * query id in the first place (same invariant as `findDependentWidgets`).
-   */
+  /** Après le passage en partagé d'une requête (nouvel id) : widgets des dashboards privés de
+   *  l'utilisateur remappés. */
   async remapWidgetQueryId(repoPath: string, username: string, oldQueryId: string, newQueryId: string): Promise<void> {
     const pref = this.readPref(repoPath, username)
-    const dashboards = pref.dashboards ?? []
     let changed = false
-    const updated = dashboards.map((d) => {
-      if (!d.widgets.some((w) => w.queryId === oldQueryId)) return d
+    const updated = (pref.dashboards ?? []).map((raw) => {
+      const d = this.toDraft(this.toDashboard(readDashboardRecord(raw), 'private'))
+      if (!d.widgets.some((w) => w.queryId === oldQueryId)) return raw
       changed = true
-      return { ...d, widgets: d.widgets.map((w) => (w.queryId === oldQueryId ? { ...w, queryId: newQueryId } : w)) }
+      return this.toPrivate({ ...d, widgets: d.widgets.map((w) => (w.queryId === oldQueryId ? { ...w, queryId: newQueryId } : w)) })
     })
     if (!changed) return
     pref.dashboards = updated
     this.writePref(repoPath, username, pref)
   }
 
-  // ─── Private helpers ─────────────────────────────────────────────────────────
+  // ─── Outils ───────────────────────────────────────────────────────────────────
 
-  /** T77.md § Visibilité: "un widget ne peut être partagé que si sa requête est
-   *  partagée" — throws naming the offending widgets if any reference a private
-   *  query. Used both by `setScope('shared')` (checks all existing widgets) and by
-   *  `addWidget`/`updateWidget` on an already-shared dashboard (checks the single
-   *  incoming widget) so the invariant holds regardless of entry point. */
-  private assertWidgetsShareable(widgets: Widget[]): void {
+  private resolveCode(dto: { transform?: string; spec?: string; template?: TemplateInput }): Pick<DraftWidget, 'transform' | 'spec' | 'template'> {
+    if (dto.template) {
+      const { code, template } = applyWidgetTemplate(dto.template)
+      return { ...(code.transform !== undefined ? { transform: code.transform } : {}), spec: code.spec, template }
+    }
+    return { ...(dto.transform !== undefined ? { transform: dto.transform } : {}), spec: dto.spec ?? '{\n  "data": { "name": "rows" },\n  "mark": "bar"\n}\n' }
+  }
+
+  /** Un dashboard partagé n'embarque que des widgets dont la requête est partagée. */
+  private assertWidgetsShareable(widgets: { title: string; queryId: string }[]): void {
     const offenders = widgets.filter((w) => isPrivateScopeId(w.queryId))
     if (offenders.length === 0) return
     const list = offenders.map((w) => `"${w.title}"`).join(', ')
@@ -295,10 +367,54 @@ export class DashboardsService {
     )
   }
 
-  /** Keeps the sidebar drag order pointing at an object's new id after a scope
-   *  change (private↔shared) mints a fresh id — otherwise `dashboardsOrder` would
-   *  still reference the old, now-nonexistent id and the item would silently move to
-   *  the end of the list (`ReorderableSidebarSection` appends unknown ids last). */
+  private toDraft(d: Dashboard): Draft {
+    return {
+      id: d.id,
+      title: d.title,
+      widgetOrder: d.widgetOrder,
+      createdBy: d.createdBy,
+      createdAt: d.createdAt,
+      widgets: d.widgets.map((w) => ({
+        id: w.id, title: w.title, queryId: w.queryId, size: w.size,
+        ...(w.transform !== undefined ? { transform: w.transform } : {}),
+        spec: w.spec,
+        ...(w.template ? { template: w.template } : {}),
+      })),
+    }
+  }
+
+  private storedWidget(w: DraftWidget): StoredWidget {
+    return { id: w.id, title: w.title, queryId: w.queryId, size: w.size, ...(w.template ? { template: w.template } : {}) }
+  }
+
+  private stored(d: Draft): StoredDashboard {
+    return {
+      id: d.id, title: d.title, formatVersion: SUIVI_FORMAT_VERSION, widgetOrder: d.widgetOrder,
+      widgets: d.widgets.map((w) => this.storedWidget(w)), createdBy: d.createdBy, createdAt: d.createdAt,
+    }
+  }
+
+  private toPrivate(d: Draft): Record<string, unknown> {
+    const s = this.stored(d)
+    return {
+      ...s,
+      widgets: d.widgets.map((w) => ({ ...this.storedWidget(w), ...(w.transform !== undefined ? { transform: w.transform } : {}), spec: w.spec })),
+    }
+  }
+
+  private async writeShared(repoPath: string, d: Draft): Promise<void> {
+    const files: Record<string, string> = { 'dashboard.yaml': toYaml(this.stored(d)) }
+    for (const w of d.widgets) {
+      if (w.transform !== undefined) files[`${w.id}.js`] = w.transform
+      files[`${w.id}.vl.json`] = w.spec
+    }
+    await writeObjectFolder(repoPath, `${DIR}/${d.id}`, files)
+  }
+
+  private async removeShared(repoPath: string, id: string): Promise<void> {
+    await removeSharedObject(this.git, repoPath, DIR, id)
+  }
+
   private renameInOrder(repoPath: string, username: string, oldId: string, newId: string): void {
     const pref = this.readPref(repoPath, username)
     const order = pref.dashboardsOrder
@@ -307,30 +423,21 @@ export class DashboardsService {
     this.writePref(repoPath, username, pref)
   }
 
-  /** Read-modify-write a single dashboard, private or shared, resolved by id prefix. */
-  private async mutate(
-    repoPath: string,
-    username: string,
-    id: string,
-    fn: (d: Dashboard) => Dashboard,
-  ): Promise<Dashboard> {
-    if (isPrivateScopeId(id)) {
+  /** Lecture, modification et écriture d'un dashboard (privé ou partagé) au format v1. */
+  private async mutate(repoPath: string, username: string, id: string, fn: (d: Draft, scope: QueryScope) => Draft): Promise<Dashboard> {
+    const current = await this.get(repoPath, username, id)
+    if (!current) throw new Error(`Dashboard introuvable : ${id}`)
+    if (current.state.readOnly) throw readOnlyError(`Dashboard ${id}`, current.state.readOnly)
+    const next = fn(this.toDraft(current), current.scope)
+    if (current.scope === 'private') {
       const pref = this.readPref(repoPath, username)
-      const list = pref.dashboards ?? []
-      const idx = list.findIndex((d) => d.id === id)
-      if (idx < 0) throw new Error(`Dashboard introuvable : ${id}`)
-      const updated = fn(list[idx])
-      list[idx] = updated
-      pref.dashboards = list
+      pref.dashboards = (pref.dashboards ?? []).map((d) => (d.id === id ? this.toPrivate(next) : d))
       this.writePref(repoPath, username, pref)
-      return updated
+    } else {
+      await this.writeShared(repoPath, next)
+      if (current.state.legacyFormat) await dropLegacyFile(this.git, repoPath, DIR, id)
     }
-
-    const existing = await this.git.readYaml<Dashboard>(repoPath, `dashboards/${id}.yaml`)
-    if (!existing) throw new Error(`Dashboard introuvable : ${id}`)
-    const updated = fn(existing)
-    await this.git.writeYaml(repoPath, `dashboards/${id}.yaml`, updated)
-    return updated
+    return (await this.get(repoPath, username, id))!
   }
 
   private generateWidgetId(): string {

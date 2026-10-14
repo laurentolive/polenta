@@ -3,9 +3,10 @@ import { setupSession } from './support/session'
 import { recordResult } from './support/campaign'
 
 /**
- * GH69 — widget « Matrice » de la vue Suivi : résultat de chaque test dans chaque campagne.
- * Scénarios N3, N4, N9–N12, L2, L6, L9 de specs/GH69-tests.md. Campagnes, requête et dashboard
- * (privés) sont créés par le test ; la requête ne lit que ces deux campagnes.
+ * GH69, adapté à GH74 — modèle de widget « Matrice » (heatmap Vega-Lite) : résultat de chaque test
+ * dans chaque campagne, pire statut par cellule. Campagnes, requête (modèle « Entrées de campagne »)
+ * et dashboard (privés) sont créés par le test. GH74 : les en-têtes (axes Vega) ne sont plus
+ * cliquables ; seules les cellules ouvrent le détail (leurs `_ids`).
  */
 const s = setupSession()
 
@@ -32,9 +33,7 @@ test.beforeAll(async () => {
   const username = await s.invoke<string>('auth:project-username', localPath)
   const query = await s.invoke<{ id: string }>('queries:create', localPath, username, {
     title: 'GH69 tests × campagnes',
-    mode: 'sql',
-    sqlText: `SELECT testCaseId, testTitle, campaignId, campaignTitle, campaignCreatedAt, status, entryId FROM campaign_entries
-      WHERE campaignId IN ('${first.id}', '${second.id}') ORDER BY campaignCreatedAt`,
+    template: { id: 'campaign-entries', params: { campaignIds: [first.id, second.id] } },
     scope: 'private',
     createdBy: username,
   })
@@ -42,8 +41,7 @@ test.beforeAll(async () => {
   await s.invoke('dashboards:add-widget', localPath, username, dashboard.id, {
     title: WIDGET,
     queryId: query.id,
-    type: 'matrix',
-    fieldMapping: { category: 'testCaseId', label: 'testTitle', series: 'campaignId', measure: 'status' },
+    template: { id: 'matrix', params: { row: 'testCaseId', label: 'testTitle', column: 'campaignId', value: 'status', entryColors: true } },
     size: 'lg',
   })
 })
@@ -54,70 +52,48 @@ async function openDashboard() {
   await s.page.waitForLoadState('networkidle')
 }
 
-const widget = () => s.page.locator('div.h-64').filter({ has: s.page.getByText(WIDGET, { exact: true }) })
-const cell = (testId: string, campaignId: string) => widget().locator(`td[data-cell="${testId}|${campaignId}"]`)
+const widget = () => s.page.getByTestId('widget-card').filter({ has: s.page.getByText(WIDGET, { exact: true }) })
+/** Cellule de la heatmap (rectangle Vega, rendu SVG) pour un test et une campagne. */
+const cell = (testId: string, campaignId: string) =>
+  widget().locator(`[aria-roledescription="rect mark"][aria-label*="campaignId: ${campaignId}"][aria-label*="testCaseId: ${testId}"]`)
 const dialog = () => s.page.getByRole('dialog')
 
-test('N4 / N9 — tests en lignes, campagnes en colonnes dans l\'ordre de création, cellule vide distincte', async () => {
+test('N4 / N9 — une cellule par couple présent, pire statut, cellule absente distincte', async () => {
   await openDashboard()
-  const matrix = widget().getByTestId('matrix-widget')
-  await expect(matrix).toBeVisible()
-  await expect(matrix.locator('thead th')).toHaveText(['', first.id, second.id])
-  await expect(cell(testIds[0], first.id).locator('[data-status]')).toHaveAttribute('data-status', 'PASS')
-  await expect(cell(testIds[1], first.id).locator('[data-status]')).toHaveAttribute('data-status', 'FAIL')
-  await expect(cell(testIds[0], second.id).locator('[data-status]')).toHaveAttribute('data-status', 'BLOCKED')
-  await expect(cell(testIds[2], second.id).locator('[data-status]')).toHaveAttribute('data-status', 'pending')
-  await expect(cell(testIds[2], first.id)).toHaveText('·')
-  await expect(cell(testIds[2], first.id).locator('[data-status]')).toHaveCount(0)
+  await expect(cell(testIds[0], first.id)).toHaveCount(1, { timeout: 15_000 })
+  await expect(cell(testIds[0], first.id)).toHaveAttribute('aria-label', /value: PASS/)
+  await expect(cell(testIds[1], first.id)).toHaveAttribute('aria-label', /value: FAIL/)
+  await expect(cell(testIds[0], second.id)).toHaveAttribute('aria-label', /value: BLOCKED/)
+  await expect(cell(testIds[2], second.id)).toHaveAttribute('aria-label', /value: pending/)
+  await expect(cell(testIds[2], first.id)).toHaveCount(0)
+  await s.shot('gh69-matrice')
 })
 
 test('N10 — clic sur une cellule → détail de l\'entrée, puis résultat d\'exécution', async () => {
   await openDashboard()
-  await cell(testIds[1], first.id).click()
+  // Le libellé (couche texte, même datum) recouvre la cellule : clic forcé au centre.
+  await cell(testIds[1], first.id).click({ force: true })
   await expect(dialog()).toBeVisible()
   const rows = dialog().locator('tbody tr')
   await expect(rows).toHaveCount(1)
-  await expect(rows).toContainText(first.runs[1].entryId)
+  await expect(rows).toContainText(`${first.id}/${first.runs[1].entryId}`)
   await rows.click()
   await expect(s.page).toHaveURL(new RegExp(`/campaign/${first.id}/run/${first.runs[1].entryId}`))
 })
 
-test('N9 — une cellule vide n\'ouvre rien', async () => {
-  await openDashboard()
-  await cell(testIds[2], first.id).click()
-  await expect(dialog()).toHaveCount(0)
-})
-
-test('N11 — clic sur l\'en-tête d\'une ligne → fiche du test', async () => {
-  await openDashboard()
-  await widget().locator('tbody th').getByRole('button', { name: testIds[2], exact: true }).click()
-  await expect(s.page).toHaveURL(new RegExp(`/test/${testIds[2]}`))
-})
-
-test('N12 — clic sur l\'en-tête d\'une colonne → page campagne', async () => {
-  await openDashboard()
-  await widget().locator('thead').getByRole('button', { name: second.id, exact: true }).click()
-  await expect(s.page).toHaveURL(new RegExp(`/campaign/${second.id}`))
-})
-
-test('N3 / L2 / L9 / L6 — popup : type Matrice, enregistrement bloqué tant que le mapping est incomplet', async () => {
+test('N3 — popup : modèle Matrice, enregistrement bloqué tant qu\'un paramètre requis manque', async () => {
   await openDashboard()
   await widget().getByTitle('Modifier le widget').click()
-  const modal = s.page.locator('div.fixed').filter({ hasText: 'Modifier le widget' })
-  await expect(modal.getByText('Lignes', { exact: true })).toBeVisible()
-  // Aperçu : même rendu, rien de cliquable.
-  await expect(modal.getByTestId('matrix-widget')).toBeVisible()
-  await expect(modal.getByTestId('matrix-widget').getByRole('button')).toHaveCount(0)
+  const modal = dialog()
+  await expect(modal.getByTestId('template-form')).toBeVisible()
+  await expect(modal.getByText('Lignes *', { exact: true })).toBeVisible()
 
-  const columnsSelect = modal.locator('label', { hasText: /^Colonnes$/ }).locator('xpath=following-sibling::select')
+  const columnsSelect = modal.getByTestId('template-form').locator('label', { hasText: /^Colonnes \*$/ }).locator('xpath=following-sibling::select')
   await columnsSelect.selectOption('')
-  await expect(modal.getByText('Choisissez les lignes, les colonnes et la valeur.')).toBeVisible()
-  await expect(modal.getByRole('button', { name: 'Enregistrer' })).toBeDisabled()
+  await expect(modal.getByRole('button', { name: 'Sauvegarder' })).toBeDisabled()
 
-  // Colonne non-ID (titre) : en-têtes affichés mais pas cliquables.
   await columnsSelect.selectOption('campaignTitle')
-  await modal.getByRole('button', { name: 'Enregistrer' }).click()
+  await modal.getByRole('button', { name: 'Sauvegarder' }).click()
   await expect(modal).toHaveCount(0)
-  await expect(widget().locator('thead th').filter({ hasText: 'GH69 A' })).toBeVisible()
-  await expect(widget().locator('thead').getByRole('button')).toHaveCount(0)
+  await expect(widget().locator('[aria-roledescription="rect mark"][aria-label*="campaignTitle: GH69 A"]').first()).toBeVisible()
 })

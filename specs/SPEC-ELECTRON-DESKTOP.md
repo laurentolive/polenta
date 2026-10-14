@@ -98,7 +98,8 @@ apps/
           baseline.service.ts
           interface-compliance.service.ts   ← T123, matrice de conformité par rôle
           element-move.service.ts
-          dashboards.service.ts / dashboard-seed.service.ts / query-engine.service.ts / saved-queries.service.ts
+          dashboards.service.ts / dashboard-seed.service.ts / saved-queries.service.ts / suivi.service.ts / suivi-updates.service.ts
+          graph.service.ts / script-engine.service.ts / script-worker.ts / script-sandbox.ts / dashboard-library.service.ts  ← GH74, vue Suivi
           export.service.ts / export/
           … (utilitaires : id-counter, id-scope, audit-fields, mcp-launch, agents-md.template, pdf, schema-lookup, pref-store)
         container.ts               ← DI manuel (instanciation des ~22 services + registerIpcHandlers())
@@ -827,10 +828,16 @@ const reviews = new ReviewsService(git)
 const campaigns = new CampaignsService(git, tests)
 const elementMove = new ElementMoveService(schema, requirements, tests, tree)
 const baseline = new BaselineService()
-const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)
+// GH74 — vue Suivi : graphe de données (cache oublié par le watcher et après chaque canal
+// d'écriture), bibliothèque projet, worker QuickJS.
+const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns)
+const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
+const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
 const dashboards = new DashboardsService(git)
-const savedQueries = new SavedQueriesService(git, schema, dashboards)
-const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries)
+const savedQueries = new SavedQueriesService(git, dashboards)
+const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
+const dashboardSeed = new DashboardSeedService(git, dashboards, savedQueries, undefined, dashboardLibrary)
+const suiviUpdates = new SuiviUpdatesService(git, dashboardLibrary, dashboardSeed, savedQueries, dashboards)
 const exportSvc = new ExportService()
 
 registerIpcHandlers({ /* … tous les services ci-dessus */ })
@@ -1031,6 +1038,25 @@ export default defineConfig({
   },
 })
 ```
+
+---
+
+### 14.1 Worker QuickJS et ressources de la vue Suivi (GH74)
+
+- `script-worker.ts` est bundlé **à part** (esbuild, plugin `closeBundle` de
+  `scripts/script-worker-build.ts`) en un seul fichier, avec `emscripten-module.wasm` copié à côté :
+  une entrée rollup du main partagerait ses chunks, et le worker doit être chargé hors asar. Même
+  bundle pour le serveur web et le MCP (`build-web-server.ts`, `build-mcp-server.ts`). Le paquet
+  wasm est résolu dans sa variante CommonJS (`import.meta.url` indéfini sinon).
+- Chargement du wasm par `locateQuickJSWasm()` (`POLENTA_QUICKJS_WASM`, puis à côté du bundle, à défaut le
+  fichier du paquet npm) : octets lus et passés à la variante (`wasmBinary`), mémoire wasm plafonnée
+  (`wasmMemory`).
+- `electron-builder.config.ts` : `asarUnpack` du worker et du `.wasm` ; `extraResources`
+  `resources/dashboard-lib/**` (bibliothèque de départ, lue par `resolveShippedLibraryDir` :
+  `process.resourcesPath` packagé, `resources/` en développement, à côté du bundle pour le web et
+  le MCP).
+- `vega*` sont des dépendances du renderer (chunk paresseux) ; aucune dépendance QuickJS côté
+  renderer.
 
 ---
 

@@ -3,9 +3,9 @@ import { setupSession } from './support/session'
 import { recordResult } from './support/campaign'
 
 /**
- * GH71 — avancement des campagnes de la définition des tests au résultat : widget « Avancement par
- * campagne » (préréglage, drill-down), ouverture d'une entrée depuis la vue Suivi, pastilles et
- * filtre `progress` de la page campagne. Scénarios W1, W2, N1, C1–C3 de specs/GH71-tests.md.
+ * GH71, adapté à GH74 — avancement des campagnes de la définition des tests au résultat : widget
+ * « Avancement par campagne » du seed (étape `entryStep` de la bibliothèque projet, drill-down),
+ * ouverture d'une entrée depuis la vue Suivi ; page campagne : pastilles par statut brut (GH74 §11).
  * Tests brouillon / en revue et campagne créés par le test (IPC).
  */
 const s = setupSession()
@@ -30,7 +30,7 @@ async function navigate(p: Page, url: string) {
 }
 
 const dialog = () => s.page.getByRole('dialog')
-const widget = (title: string) => s.page.locator('div.h-64').filter({ has: s.page.getByText(title, { exact: true }) })
+const widget = (title: string) => s.page.getByTestId('widget-card').filter({ has: s.page.getByText(title, { exact: true }) })
 
 test.beforeAll(async () => {
   const { localPath, workspaceDir } = s.project
@@ -71,69 +71,58 @@ test.beforeAll(async () => {
   await recordResult(s, campaign.id, entry(failed!.id), 'FAIL')
 })
 
+// GH74 — le widget du seed est un modèle « Barres » sur l'étape `entryStep` de la bibliothèque
+// projet (rendu Vega-Lite, SVG) ; l'ouverture d'une entrée filtre la campagne sur son statut brut.
 test('W1 / W2 / N1 — widget du seed : étapes ordonnées, drill-down « en revue », ouverture filtrée', async () => {
   await s.openView('Suivi')
   await s.page.getByText('Campagnes', { exact: true }).last().click()
   await s.page.waitForLoadState('networkidle')
   const bars = widget('Avancement par campagne')
-  const legend = bars.locator('.recharts-legend-item')
-  await expect(legend.filter({ hasText: new RegExp(`^${reviewLabel}$`) })).toBeVisible()
-  const labels = (await legend.allInnerTexts()).map(x => x.trim())
+  const legend = bars.locator('[aria-roledescription="legend"]')
+  await expect(legend).toHaveCount(1, { timeout: 15_000 })
   // W1 — ordre canonique (d'autres étapes peuvent venir d'autres campagnes de la démo).
+  const legendLabel = (await legend.getAttribute('aria-label')) ?? ''
+  const labels = legendLabel.replace(/^.*values?: /, '').split(', ').map(x => x.trim())
   const expected = [draftLabel, reviewLabel, 'Prêt à exécuter', 'Échoué', 'Passé']
   expect(labels.filter(l => expected.includes(l))).toEqual(expected)
+  await s.shot('gh71-w1-widget')
 
   // W2 — segment « en revue » de la campagne → son entrée seule.
-  const series = labels.indexOf(reviewLabel)
-  const segments = bars.locator('g.recharts-bar').nth(series).locator('path.recharts-rectangle')
-  await expect.poll(() => segments.count(), { timeout: 10_000 }).toBeGreaterThan(0)
-  await s.page.waitForTimeout(600) // fin de l'animation de montage des barres (capture)
-  await s.shot('gh71-w1-widget')
-  let found = false
-  for (let i = 0; i < (await segments.count()) && !found; i++) {
-    await segments.nth(i).click()
-    await expect(dialog()).toBeVisible()
-    if ((await dialog().locator('h2').innerText()).includes(TITLE)) {
-      found = true
-      await expect(dialog().locator('tbody tr')).toHaveCount(1)
-      // N1 — ouverture de l'entrée : campagne filtrée sur son étape.
-      await dialog().locator('tbody tr').filter({ hasText: reviewId }).click()
-    } else {
-      await s.page.keyboard.press('Escape')
-    }
-  }
-  expect(found).toBe(true)
-  await expect(s.page).toHaveURL(new RegExp(`/campaign/${campaign.id}\\?.*progress=prep%3A|progress=prep:`))
+  const segment = bars.locator(`[aria-roledescription="bar"][aria-label*="campaignTitle: ${TITLE};"][aria-label*="stepLabel: ${reviewLabel}"]`)
+  await expect(segment).toHaveCount(1)
+  await segment.click()
+  await expect(dialog()).toBeVisible()
+  const rows = dialog().getByTestId('drilldown-objects').locator('tbody tr')
+  await expect(rows).toHaveCount(1)
+  // N1 — ouverture de l'entrée (non exécutée) : campagne filtrée sur son statut brut.
+  await rows.filter({ hasText: campaign.id }).click()
+  await expect(s.page).toHaveURL(new RegExp(`/campaign/${campaign.id}\?.*status=pending`))
   await expect(s.page.getByText(reviewId, { exact: true })).toBeVisible()
-  await expect(s.page.getByText(draftId, { exact: true })).toHaveCount(0)
 })
 
-test('C1–C3 — pastilles par étape, filtre, compatibilité `status=pending`', async () => {
+test('C1–C3 — pastilles par statut brut, filtre ; paramètre `progress` (GH71) ignoré', async () => {
   const p = s.page
   const base = { repoPath: s.project.localPath }
   await navigate(p, s.projectUrl(`/campaign/${campaign.id}`, base))
 
-  // C1 — une pastille par étape présente, dans l'ordre canonique.
-  const pills = p.locator('button[data-progress]')
-  await expect(pills).toHaveCount(5)
-  expect(await pills.evaluateAll(els => els.map(e => e.getAttribute('data-progress')))).toEqual([
-    expect.stringMatching(/^prep:/), expect.stringMatching(/^prep:/), 'ready', 'FAIL', 'PASS',
-  ])
-  await expect(pills.first()).toContainText(`1 ${draftLabel}`)
+  // C1 — une pastille par statut d'entrée présent (GH74 : plus d'étape d'avancement).
+  const pills = p.locator('button[data-status]')
+  await expect(pills).toHaveCount(3)
+  expect(await pills.evaluateAll(els => els.map(e => e.getAttribute('data-status')))).toEqual(['PASS', 'FAIL', 'pending'])
+  await expect(p.locator('button[data-status="pending"]')).toContainText('3 ')
+  await expect(p.locator('button[data-progress]')).toHaveCount(0)
   await s.shot('gh71-c1-pastilles')
 
   // C2 — clic : filtre ; re-clic : retiré.
-  const ready = p.locator('button[data-progress="ready"]')
-  await ready.click()
-  await expect(p).toHaveURL(/progress=ready/)
-  await expect(p.getByText('Filtre : Prêt à exécuter ✕')).toBeVisible()
-  await expect(p.getByText(draftId, { exact: true })).toHaveCount(0)
-  await ready.click()
-  await expect(p).not.toHaveURL(/progress=/)
-  await expect(p.getByText(draftId, { exact: true })).toBeVisible()
-
-  // C3 — lien GH65 `status=pending` : les trois entrées non exécutées.
-  await navigate(p, s.projectUrl(`/campaign/${campaign.id}`, { ...base, status: 'pending' }))
+  const pending = p.locator('button[data-status="pending"]')
+  await pending.click()
+  await expect(p).toHaveURL(/status=pending/)
   for (const id of [draftId, reviewId]) await expect(p.getByText(id, { exact: true })).toBeVisible()
-  await expect(p.getByText('Filtre : En attente ✕')).toBeVisible()
+  await pending.click()
+  await expect(p).not.toHaveURL(/status=/)
+
+  // C3 — ancien lien GH71 `progress=ready` : ignoré, toutes les entrées affichées.
+  await navigate(p, s.projectUrl(`/campaign/${campaign.id}`, { ...base, progress: 'ready' }))
+  for (const id of [draftId, reviewId]) await expect(p.getByText(id, { exact: true })).toBeVisible()
+  await expect(p.getByTestId('campaign-status-filter-clear')).toHaveCount(0)
 })

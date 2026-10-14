@@ -75,6 +75,28 @@ specs/
 
 Les fichiers `specs/` vivent dans le worktree `mon-projet-GH{N}/` et sont mergés vers main avec le code.
 
+## Branches et pull requests
+
+Tout ticket passe par une **pull request** `GH{N}` → `main` : c'est elle qui relie le code à l'issue
+sur GitHub (panneau « Development » de l'issue, liste des commits, diff).
+
+- **Premier commit sur la branche** : la pousser et ouvrir la PR en brouillon
+  ```
+  git push -u origin GH{N}
+  gh pr create --draft --base main --head GH{N} --title "GH{N} — <titre de l'issue>" --body "Closes #{N}"
+  ```
+  Le corps peut être complété (résumé, liens `specs/…`), mais garde la ligne `Closes #{N}`.
+- **Commits suivants** : `git push` après chaque commit — la PR se met à jour toute seule.
+- **Commentaires `[STOP HUMAIN]`** sur l'issue : citer la PR (`#<numéro de PR>`) en plus du hash.
+- **Merge** (après validation humaine explicite uniquement) :
+  ```
+  gh pr ready GH{N}
+  gh pr merge GH{N} --merge          # commit de merge, comme l'historique existant
+  git -C <dossier principal> pull    # main local à jour
+  ```
+  `Closes #{N}` ferme l'issue au merge : le merge vaut validation, d'où l'exception à la règle
+  « fermeture à la main ». L'agent poste ensuite le commentaire de clôture (`gh issue comment {N}`).
+
 ---
 
 ## Vue d'ensemble
@@ -198,7 +220,7 @@ Sprint {K} : exécute uniquement le périmètre sprint {K} défini dans `specs/G
 - Non-conforme → reprend l'implémentation
 - Divergence d'attente → escalade : l'humain relance Agent Design avec le contexte de l'écart
 - Conforme → si autre sprint : l'humain lance Agent Dev sprint suivant
-- Dernier sprint : propose merge vers main ; après merge validé, ferme l'issue (`gh issue close {N} --comment "…"`)
+- Dernier sprint : passe la PR en prêt (`gh pr ready GH{N}`) et propose le merge ; après validation, merge la PR (§ Branches et pull requests) — l'issue se ferme avec la PR
 
 ---
 
@@ -227,17 +249,18 @@ Sprint {K} : exécute uniquement le périmètre sprint {K} défini dans `specs/G
 **`[STOP HUMAIN]`** — pose `status:validation`, commente l'issue (root cause en une phrase, lien vers `specs/GH{N}.md`, hash du commit), présente root cause + correctif + comment reproduire
 
 - Échec → reprend analyse
-- Validation → propose merge ; après merge validé, ferme l'issue (`gh issue close {N} --comment "…"`)
+- Validation → passe la PR en prêt et propose le merge ; après validation, merge la PR (§ Branches et pull requests) — l'issue se ferme avec la PR
 
 ---
 
 # Règles communes à tous les agents
 
 - **Chaque ticket a son propre worktree** `../mon-projet-GH{N}/` — ne jamais travailler dans le dossier principal
-- **Après merge validé** : `git worktree remove ../mon-projet-GH{N}` puis `gh issue close {N}`
+- **Chaque ticket a sa pull request** `GH{N}` → `main`, ouverte en brouillon dès le premier commit (§ Branches et pull requests) — jamais de merge local poussé directement sur main
+- **Après merge validé** : `git worktree remove ../mon-projet-GH{N}` puis `git branch -d GH{N}` (l'issue est déjà fermée par la PR)
 - Ne modifier que les fichiers liés au ticket en cours
 - Un nouveau besoin découvert en cours de route → nouvelle issue (`gh issue create`), pas d'extension silencieuse du périmètre
 - Tout livrable s'écrit dans un fichier — jamais seulement dans le chat
-- Commit atomique avec préfixe `[GH{N}]` et `Refs #{N}` dans le corps — jamais `Closes/Fixes #{N}` (la fermeture se fait à la main après validation humaine)
+- Commit atomique avec préfixe `[GH{N}]` et `Refs #{N}` dans le corps — jamais `Closes/Fixes #{N}` dans un commit (seule la PR porte `Closes #{N}`, qui ne ferme l'issue qu'au merge validé)
 - Ne jamais merger vers main sans validation humaine explicite
 - En cas de doute sur le périmètre : s'arrêter et poser une question, ne pas supposer

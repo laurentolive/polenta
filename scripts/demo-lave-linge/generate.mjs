@@ -380,9 +380,11 @@ for (const phase of PHASES) {
 function writeSuivi(dir) {
   const createdAt = '2026-04-24T15:00:00.000Z'
   for (const q of QUERIES) {
-    const { script, template } = q.template ? queryCode(q.template, sha256) : { script: q.script, template: undefined }
+    const { script, parameters, template } = q.template ? queryCode(q.template, sha256) : { script: q.script, parameters: q.parameters ?? [], template: undefined }
     writeYaml(dir, `queries/${q.id}/query.yaml`, {
-      id: q.id, title: q.title, formatVersion: 1, ...(template ? { template } : {}), createdBy: P.hugo.name, createdAt,
+      id: q.id, title: q.title, formatVersion: 1, ...(template ? { template } : {}),
+      // GH93 — paramètres choisis à l'affichage (omis si aucun, comme l'application).
+      ...(parameters.length ? { parameters } : {}), createdBy: P.hugo.name, createdAt,
     })
     writeFile(dir, `queries/${q.id}/script.js`, script)
   }

@@ -763,6 +763,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.dashboards.getDashboardsOrder(repoPath, username))
   r.handle('dashboards:order-set', (_e, repoPath: string, username: string, order: string[]) =>
     c.dashboards.setDashboardsOrder(repoPath, username, order))
+  // GH93 — valeurs choisies dans la barre de paramètres (`.pref` de l'utilisateur, jamais commité).
+  r.handle('dashboards:param-values-get', (_e, repoPath: string, username: string, dashboardId: string) =>
+    c.dashboards.getParamValues(repoPath, username, dashboardId))
+  r.handle('dashboards:param-values-set', (_e, repoPath: string, username: string, dashboardId: string, values: Record<string, unknown> | null) =>
+    c.dashboards.setParamValues(repoPath, username, dashboardId, values))
 
   // ── Git (T43) ────────────────────────────────────────────────────────────────
   r.handle('git:head-sha', (_e, repoPath: string) => c.git.headSha(repoPath))

@@ -1,5 +1,5 @@
-import type { QueryHistoryEntry, QueryScope, ReadQuery, SavedQuery, StoredQuery, TemplateRef } from '@polenta/types'
-import { readQueryRecord, SUIVI_FORMAT_VERSION } from '@polenta/types'
+import type { QueryHistoryEntry, QueryParameterDef, QueryScope, ReadQuery, SavedQuery, StoredQuery, TemplateRef } from '@polenta/types'
+import { queryCodeForHash, readQueryRecord, SUIVI_FORMAT_VERSION, validateParameterDecls } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { DashboardsService } from './dashboards.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
@@ -19,6 +19,8 @@ export interface CreateSavedQueryDto {
   script?: string
   /** …ou modèle + paramètres : le script est généré. */
   template?: TemplateInput
+  /** GH93 — paramètres choisis à l'affichage (avec `script` seulement : un modèle les génère). */
+  parameters?: QueryParameterDef[]
 }
 
 export interface UpdateSavedQueryDto {
@@ -27,6 +29,16 @@ export interface UpdateSavedQueryDto {
   script?: string
   /** Nouveau modèle / nouveaux paramètres : script régénéré. `null` : retire la référence. */
   template?: TemplateInput | null
+  /** GH93 — nouvelle déclaration (sans `template`) ; la requête est détachée de son modèle si elle
+   *  diffère de la déclaration générée. */
+  parameters?: QueryParameterDef[]
+}
+
+/** Code d'une requête : script, déclaration de paramètres (GH93), modèle éventuel. */
+interface QueryCode {
+  script: string
+  parameters: QueryParameterDef[]
+  template?: TemplateRef
 }
 
 export type AddHistoryEntryDto = Omit<QueryHistoryEntry, 'id' | 'executedAt'>
@@ -83,7 +95,9 @@ export class SavedQueriesService {
   }
 
   private toQuery(r: ReadQuery, scope: QueryScope): SavedQuery {
-    const template = r.template ? withHash(r.template, r.script) : undefined
+    const { decls: parameters, errors } = validateParameterDecls(r.parameters)
+    const hashed = queryCodeForHash(r.script, parameters)
+    const template = r.template ? withHash(r.template, hashed) : undefined
     return {
       id: r.id,
       title: r.title,
@@ -91,17 +105,19 @@ export class SavedQueriesService {
       formatVersion: r.formatVersion,
       script: r.script,
       ...(template ? { template } : {}),
+      parameters,
+      ...(errors.length ? { parametersError: errors.join(' ; ') } : {}),
       createdBy: r.createdBy,
       createdAt: r.createdAt,
       ...(r.legacySql !== undefined ? { legacySql: r.legacySql } : {}),
-      state: computeState(r.template, r.script, 'query', { readOnly: r.readOnly, legacyFormat: r.legacyFormat }),
+      state: computeState(r.template, hashed, 'query', { readOnly: r.readOnly, legacyFormat: r.legacyFormat }),
     }
   }
 
   // ─── Écriture ─────────────────────────────────────────────────────────────────
 
   async create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery> {
-    const code = this.resolveCode(dto.script, dto.template)
+    const code = this.resolveCode(dto.script, dto.template, dto.parameters)
     const base = { title: dto.title, createdBy: dto.createdBy, createdAt: new Date().toISOString(), ...code }
     if (dto.scope === 'shared') {
       const id = await nextCounterId(this.git, repoPath, PREFIX, DIR)
@@ -125,12 +141,17 @@ export class SavedQueriesService {
     if (!current) throw new Error(`Requête introuvable : ${id}`)
     const replacing = opts.replaceLegacy && current.state.readOnly === 'legacy-sql' && !!dto.template
     if (current.state.readOnly && !replacing) throw readOnlyError(`Requête ${id}`, current.state.readOnly)
+    if (dto.template && dto.parameters !== undefined) throw paramsError(['parameters est généré par le modèle : ne pas le fournir avec template'])
     let script = current.script
     let template: TemplateRef | undefined = current.template
+    let parameters = current.parameters
     if (dto.template === null) template = undefined
-    else if (dto.template) ({ script, template } = applyQueryTemplate(dto.template))
+    else if (dto.template) ({ script, parameters, template } = applyQueryTemplate(dto.template))
     if (dto.script !== undefined && !dto.template) script = dto.script
-    const next = { id, title: dto.title ?? current.title, createdBy: current.createdBy, createdAt: current.createdAt, script, template }
+    if (dto.parameters !== undefined) parameters = checkedParameters(dto.parameters)
+    // Déclaration lue invalide et non remplacée : la réécrire vide la perdrait.
+    else if (current.parametersError && !dto.template) throw paramsError([current.parametersError])
+    const next = { id, title: dto.title ?? current.title, createdBy: current.createdBy, createdAt: current.createdAt, script, parameters, template }
 
     if (current.scope === 'private') {
       const pref = this.readPref(repoPath, username)
@@ -166,7 +187,8 @@ export class SavedQueriesService {
     if (current.scope === newScope) return current
     if (current.state.readOnly) throw readOnlyError(`Requête ${id}`, current.state.readOnly)
 
-    const payload = { title: current.title, createdBy: current.createdBy, createdAt: current.createdAt, script: current.script, template: current.template }
+    if (current.parametersError) throw paramsError([current.parametersError])
+    const payload = { title: current.title, createdBy: current.createdBy, createdAt: current.createdAt, script: current.script, parameters: current.parameters, template: current.template }
     let moved: SavedQuery
     if (newScope === 'private') {
       await this.assertNoDependents(repoPath, username, id, 'repasser en privé')
@@ -190,23 +212,27 @@ export class SavedQueriesService {
     return moved
   }
 
-  private resolveCode(script: string | undefined, template: TemplateInput | undefined): { script: string; template?: TemplateRef } {
-    if (template) return applyQueryTemplate(template)
-    return { script: script ?? 'export default (data, polenta) => []\n' }
+  private resolveCode(script: string | undefined, template: TemplateInput | undefined, parameters: QueryParameterDef[] | undefined): QueryCode {
+    if (template) {
+      if (parameters !== undefined) throw paramsError(['parameters est généré par le modèle : ne pas le fournir avec template'])
+      return applyQueryTemplate(template)
+    }
+    return { script: script ?? 'export default (data, polenta) => []\n', parameters: checkedParameters(parameters) }
   }
 
-  private toStored(q: { id: string; title: string; createdBy: string; createdAt: string; template?: TemplateRef }): StoredQuery {
+  private toStored(q: { id: string; title: string; createdBy: string; createdAt: string; parameters?: QueryParameterDef[]; template?: TemplateRef }): StoredQuery {
     return {
       id: q.id,
       title: q.title,
       formatVersion: SUIVI_FORMAT_VERSION,
       ...(q.template ? { template: q.template } : {}),
+      ...(q.parameters?.length ? { parameters: q.parameters } : {}),
       createdBy: q.createdBy,
       createdAt: q.createdAt,
     }
   }
 
-  private async writeShared(repoPath: string, q: { id: string; title: string; createdBy: string; createdAt: string; script: string; template?: TemplateRef }): Promise<void> {
+  private async writeShared(repoPath: string, q: { id: string; title: string; createdBy: string; createdAt: string; script: string; parameters?: QueryParameterDef[]; template?: TemplateRef }): Promise<void> {
     await writeObjectFolder(repoPath, `${DIR}/${q.id}`, {
       'query.yaml': toYaml(this.toStored(q)),
       'script.js': q.script,
@@ -289,3 +315,13 @@ export class SavedQueriesService {
   }
 }
 
+/** Déclaration validée (GH93), sinon erreur `[PARAMS_INVALID]` listant les problèmes. */
+function checkedParameters(raw: QueryParameterDef[] | undefined): QueryParameterDef[] {
+  const { decls, errors } = validateParameterDecls(raw)
+  if (errors.length) throw paramsError(errors)
+  return decls
+}
+
+function paramsError(errors: string[]): Error {
+  return new Error(`[PARAMS_INVALID] Déclaration de paramètres invalide : ${errors.join(' ; ')}.`)
+}

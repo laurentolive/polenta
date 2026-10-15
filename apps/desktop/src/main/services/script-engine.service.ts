@@ -1,7 +1,7 @@
 import * as path from 'path'
 import { Worker } from 'worker_threads'
-import type { GraphDrillValue, GraphRow, ScriptClientInfo, ScriptError, ScriptRunResult } from '@polenta/types'
-import { GRAPH_CONTRACT_VERSION, buildHost, inferColumns, parseContractHeader } from '@polenta/types'
+import type { GraphDrillValue, GraphParamValue, GraphRow, ScriptClientInfo, ScriptError, ScriptRunResult } from '@polenta/types'
+import { GRAPH_CONTRACT_VERSION, buildHost, inferColumns, parseContractHeader, stableJson } from '@polenta/types'
 import type { GraphService } from './graph.service'
 import type { DashboardLibraryService } from './dashboard-library.service'
 import { DEFAULT_SANDBOX_LIMITS } from './script-limits'
@@ -28,6 +28,8 @@ export interface ScriptRunCode {
   /** Nom rapporté dans les erreurs de la transformation (`<widgetId>.js`). */
   transformFile?: string
   drill?: Record<string, GraphDrillValue> | null
+  /** GH93 — `polenta.params`, déjà validés et complétés par les défauts (`SuiviService.run`). */
+  params?: Record<string, GraphParamValue>
   limit?: number
 }
 
@@ -83,7 +85,8 @@ export class ScriptEngineService {
         return { ok: false, error: { kind: 'contract', message: `Contrat v${declared} non pris en charge par cette version de Polenta (v${GRAPH_CONTRACT_VERSION}).`, file, line: null, column: null } }
       }
     }
-    const host = buildHost(client, GRAPH_CONTRACT_VERSION, this.now(), code.drill ?? null)
+    const params = code.params ?? {}
+    const host = buildHost(client, GRAPH_CONTRACT_VERSION, this.now(), code.drill ?? null, params)
     let built: Awaited<ReturnType<GraphService['build']>>
     let lib: Awaited<ReturnType<DashboardLibraryService['load']>>
     try {
@@ -99,8 +102,9 @@ export class ScriptEngineService {
     const key = `${scope}\u0000${built.version}\u0000${lib.hash}`
     const prepare = () => ({ graphJson: built.json, modules: lib.modules })
 
-    // Le script : partagé entre les appels simultanés au même contexte (même script, même drill).
-    const shareKey = `${key}\u0000${host.locale}\u0000${host.timezone}\u0000${JSON.stringify(code.drill ?? null)}\u0000${code.script}`
+    // Le script : partagé entre les appels simultanés au même contexte (même script, même drill,
+    // mêmes paramètres — GH93).
+    const shareKey = `${key}\u0000${host.locale}\u0000${host.timezone}\u0000${JSON.stringify(code.drill ?? null)}\u0000${stableJson(params)}\u0000${code.script}`
     let scriptRun = this.inFlight.get(shareKey)
     if (!scriptRun) {
       scriptRun = this.exec(key, scope, prepare, { kind: 'script', code: code.script, file: 'script.js', host }, this.limits.timeMs)

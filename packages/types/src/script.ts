@@ -1,4 +1,5 @@
-import type { GraphDrillValue, GraphRow, PolentaHost } from './graph'
+import type { GraphDrillValue, GraphParamValue, GraphRow, PolentaHost } from './graph'
+import type { QueryParameterDef } from './suivi-params'
 
 // GH74 — exécution des scripts de données et des transformations de widget (specs/GH74-design.md
 // §1.2). Logique pure partagée par le main (moteur), le serveur MCP et le renderer.
@@ -6,6 +7,8 @@ import type { GraphDrillValue, GraphRow, PolentaHost } from './graph'
 export type ScriptErrorKind =
   | 'syntax' | 'import' | 'runtime' | 'timeout' | 'memory' | 'stack'
   | 'rows' | 'contract' | 'async' | 'export' | 'legacy-sql' | 'format' | 'spec'
+  /** GH93 — valeurs de paramètres refusées (clé non déclarée, hors format, obligatoire manquant). */
+  | 'params'
 
 export interface ScriptError {
   kind: ScriptErrorKind
@@ -45,6 +48,12 @@ export interface ScriptRunRequest {
   /** Nom de fichier rapporté dans les erreurs de la transformation (`<widgetId>.js`). */
   transformFile?: string
   drill?: Record<string, GraphDrillValue> | null
+  /** GH93 — valeurs des paramètres choisies à l'affichage (clés = noms déclarés). Un paramètre
+   *  déclaré absent prend son `default`, sinon `null`. */
+  params?: Record<string, unknown>
+  /** GH93 — déclaration fournie avec un `script` ad hoc, ou qui remplace celle de la requête
+   *  enregistrée (éditeur `/query` non sauvegardé). */
+  parameters?: QueryParameterDef[]
   /** Nombre maximal de lignes renvoyées (`total` donne le nombre réel). */
   limit?: number
 }
@@ -170,6 +179,7 @@ export function buildHost(
   contractVersion: number,
   now: Date,
   drill: Record<string, GraphDrillValue> | null = null,
+  params: Record<string, GraphParamValue> = {},
 ): PolentaHost {
   const locale = client.locale.toLowerCase().startsWith('en') ? 'en' : 'fr'
   let timezone = client.timezone || 'UTC'
@@ -187,5 +197,6 @@ export function buildHost(
     today: dayInTimezone(now, timezone),
     now: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
     drill,
+    params,
   }
 }

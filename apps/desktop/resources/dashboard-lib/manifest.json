@@ -87,6 +87,14 @@
             "fr": "Version initiale.",
             "en": "Initial version."
           }
+        },
+        {
+          "version": 2,
+          "hash": "f9018a9a4c64e487446aa925d30d7312c6f5754dd20493993e9222fb70e220a3",
+          "summary": {
+            "fr": "Paramètres choisis à l'affichage : polenta.params (GH93)",
+            "en": "Parameters chosen when displayed: polenta.params (GH93)"
+          }
         }
       ]
     },

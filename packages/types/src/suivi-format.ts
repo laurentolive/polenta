@@ -6,6 +6,7 @@ import { SUIVI_FORMAT_VERSION } from './dashboard'
 import type { WidgetSize } from './dashboard'
 import { findQueryTemplate, findWidgetTemplate } from './suivi-templates'
 import type { TemplateRef, WidgetCode } from './suivi-templates'
+import type { QueryParameterDef } from './suivi-params'
 
 /** `query.yaml` (partagé) ou entrée `savedQueries` du `.pref` (privé, avec `script`). */
 export interface StoredQuery {
@@ -13,6 +14,8 @@ export interface StoredQuery {
   title: string
   formatVersion: number
   template?: Omit<TemplateRef, 'hash'> & { hash: string }
+  /** GH93 — paramètres choisis à l'affichage (omis si aucun). */
+  parameters?: QueryParameterDef[]
   createdBy: string
   createdAt: string
   script?: string
@@ -46,6 +49,8 @@ export interface ReadQuery {
   formatVersion: number
   script: string
   template?: { id: string; version: number; params: Record<string, unknown>; hash?: string }
+  /** GH93 — déclaration telle que lue, NON validée (le service la valide). */
+  parameters?: unknown
   createdBy: string
   createdAt: string
   legacySql?: string
@@ -133,6 +138,7 @@ export function readQueryRecord(raw: Raw, script?: string): ReadQuery {
     formatVersion: SUIVI_FORMAT_VERSION,
     script: script ?? str(up.script),
     ...(up.template ? { template: up.template as ReadQuery['template'] } : {}),
+    ...(up.parameters !== undefined ? { parameters: up.parameters } : {}),
   }
 }
 

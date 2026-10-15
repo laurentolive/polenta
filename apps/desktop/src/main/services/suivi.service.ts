@@ -1,7 +1,7 @@
 import type {
-  DescribedObject, ProjectSchema, RowTarget, ScriptClientInfo, ScriptRunRequest, ScriptRunResult, WidgetCode,
+  DescribedObject, ProjectSchema, QueryParameterDef, RowTarget, ScriptClientInfo, ScriptRunRequest, ScriptRunResult, WidgetCode,
 } from '@polenta/types'
-import { describeTemplates, flattenSystemNodes } from '@polenta/types'
+import { describeTemplates, flattenSystemNodes, resolveRunParams, validateParameterDecls } from '@polenta/types'
 import type { GraphService } from './graph.service'
 import type { ScriptEngineService } from './script-engine.service'
 import type { SavedQueriesService } from './saved-queries.service'
@@ -45,7 +45,9 @@ export class SuiviService {
 
   /**
    * Exécute un widget enregistré (`dashboardId` + `widgetId`), une requête enregistrée (`queryId`)
-   * ou un script fourni. Une transformation fournie remplace celle du widget (aperçu).
+   * ou un script fourni. Une transformation fournie remplace celle du widget (aperçu). GH93 : les
+   * valeurs `req.params` sont validées contre la déclaration (`req.parameters`, sinon celle de la
+   * requête) ; défauts appliqués, `polenta.params` construit ici.
    */
   async run(repoPath: string, workspaceDir: string | undefined, username: string, req: ScriptRunRequest, client: ScriptClientInfo): Promise<ScriptRunResult> {
     let queryId = req.queryId
@@ -59,6 +61,7 @@ export class SuiviService {
       transformFile ??= `${widget.id}.js`
     }
     let script = req.script
+    let decls: QueryParameterDef[] = []
     if (script === undefined) {
       if (!queryId) return fail('runtime', 'Aucun script à exécuter.')
       const query = await this.queries.findOne(repoPath, username, queryId)
@@ -66,12 +69,22 @@ export class SuiviService {
       if (query.state.readOnly === 'legacy-sql') {
         return fail('legacy-sql', `Requête SQL non prise en charge depuis GH74 (« ${query.title} ») : à réécrire en script de données, ou à supprimer.`)
       }
+      if (query.parametersError && !req.parameters) return fail('format', `Déclaration de paramètres invalide (« ${query.title} ») : ${query.parametersError}.`)
       script = query.script
+      decls = query.parameters
     }
+    if (req.parameters) {
+      const checked = validateParameterDecls(req.parameters)
+      if (checked.errors.length) return fail('format', `Déclaration de paramètres invalide : ${checked.errors.join(' ; ')}.`)
+      decls = checked.decls
+    }
+    const resolved = resolveRunParams(decls, req.params)
+    if (!resolved.ok) return fail('params', resolved.message)
     return this.engine.run(repoPath, workspaceDir, {
       script,
       ...(transform !== undefined ? { transform, transformFile: transformFile ?? 'transform.js' } : {}),
       drill: req.drill ?? null,
+      params: resolved.params,
       limit: req.limit,
     }, client)
   }
@@ -88,9 +101,12 @@ export class SuiviService {
     return describeTemplates()
   }
 
-  /** Code généré par un modèle (aperçu du formulaire, sans enregistrer). */
-  renderTemplate(kind: 'query' | 'widget', input: TemplateInput): { script: string } | WidgetCode {
-    return kind === 'query' ? { script: applyQueryTemplate(input).script } : applyWidgetTemplate(input).code
+  /** Code généré par un modèle (aperçu du formulaire, sans enregistrer) ; requête : déclaration de
+   *  paramètres comprise (GH93). */
+  renderTemplate(kind: 'query' | 'widget', input: TemplateInput): { script: string; parameters: QueryParameterDef[] } | WidgetCode {
+    if (kind === 'widget') return applyWidgetTemplate(input).code
+    const { script, parameters } = applyQueryTemplate(input)
+    return { script, parameters }
   }
 
   /** Types d'objet du périmètre et leurs champs, pour le formulaire « Liste filtrée ». */
@@ -123,6 +139,6 @@ export class SuiviService {
   }
 }
 
-function fail(kind: 'runtime' | 'legacy-sql', message: string): ScriptRunResult {
+function fail(kind: 'runtime' | 'legacy-sql' | 'format' | 'params', message: string): ScriptRunResult {
   return { ok: false, error: { kind, message, file: null, line: null, column: null } }
 }

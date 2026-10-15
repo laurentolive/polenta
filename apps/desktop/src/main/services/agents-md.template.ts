@@ -186,7 +186,11 @@ Tools disponibles :
 - \`list_queries\` / \`run_query\` / \`create_query\` / \`update_query\` / \`delete_query\` —
   requêtes : \`script\` écrit à la main, ou \`template: { id, params }\` (code généré). \`run_query\`
   retourne colonnes + lignes : à appeler avant de créer un widget pour connaître les colonnes.
-  Une requête SQL d'avant GH74 est en lecture seule (à réécrire en script).
+  Une requête SQL d'avant GH74 est en lecture seule (à réécrire en script). **Paramètres choisis à
+  l'affichage** (GH93) : une requête déclare \`parameters\` (campagne, composant, type d'objet,
+  énumération, texte, période) ; le dashboard affiche un sélecteur par paramètre et le script lit
+  \`polenta.params\` (ex. une seule campagne au lieu de toutes) ; \`run_query\` / \`test_script\`
+  acceptent \`params\` pour les valeurs.
 - \`list_dashboards\` / \`create_dashboard\` / \`update_dashboard\` / \`delete_dashboard\` /
   \`add_widget\` / \`update_widget\` / \`delete_widget\` / \`reorder_widgets\` — dashboards. Un widget
   référence une requête sauvegardée et porte soit \`template: { id, params }\` (paramètres = colonnes

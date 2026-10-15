@@ -307,7 +307,16 @@ export interface PolentaHost {
   /** `null` en exécution normale. Renseigné lors d'un clic sur une marque sans `_ids` : colonnes
    *  de la ligne cliquée ; renvoyer alors cette ou ces lignes **avec** `_ids`. */
   drill: Record<string, GraphDrillValue> | null
+  /** Paramètres déclarés par la requête, valeurs choisies à l'affichage (barre du dashboard, GH93) :
+   *  une clé par paramètre déclaré, `null` sans valeur (« Tous / Toutes »). Toujours présent (`{}`
+   *  si la requête ne déclare rien), non modifiable. Campagne, composant, type d'objet
+   *  (`objectTypeRef`), valeur d'énumération, texte : chaîne ; période : `{ from, to }` (jours
+   *  `AAAA-MM-JJ`, chacun facultatif). */
+  params: Readonly<Record<string, GraphParamValue>>
 }
+
+/** Valeur d'un paramètre choisi à l'affichage (GH93). */
+export type GraphParamValue = string | { readonly from: string | null; readonly to: string | null } | null
 
 /** Une ligne : valeurs scalaires, plus `_ids` (identifiants des objets d'origine, facultatif). */
 export type GraphRow = { _ids?: string[] } & { [column: string]: GraphDrillValue | string[] | undefined }

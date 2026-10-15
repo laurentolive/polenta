@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { useProjectSchema } from '../hooks/useProjectSchema'
+import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { useVersioning } from '../contexts/VersioningContext'
 import { decodeProjectId } from '../lib/projectId'
 import { StructureTab } from '../components/schema/StructureTab'
@@ -93,13 +94,23 @@ function editableToSchema(state: EditorState, nodes: SystemNode[], preferences: 
 
 // Collect all available refs for link type selectors — flattened so local components
 // nested at any depth (T123) contribute their object types too, not just top-level nodes.
-function getAllRefs(nodes: SystemNode[]): string[] {
+// GH95 — a component mounted from its own repo declares no objectTypes in this repo's
+// schema.nodes (its own schema.yaml is authoritative): its types come from `otherSchemas`,
+// every repo of the workspace. Refs are `<node>::<type>` as written in that repo's schema —
+// the same string its objects carry in `objectTypeRef`, which is what linkUtils.matchesRefs
+// compares against. Deduplicated (the current repo is also part of the workspace).
+function getAllRefs(nodes: SystemNode[], otherSchemas: Iterable<ProjectSchema>): string[] {
   const refs = ['requirement', 'test', 'campaign']
-  for (const { node } of flattenSystemNodes(nodes)) {
-    for (const ot of node.objectTypes ?? []) {
-      if (ot.name) refs.push(`${node.name}::${ot.name}`)
+  const add = (ns: SystemNode[]) => {
+    for (const { node } of flattenSystemNodes(ns)) {
+      for (const ot of node.objectTypes ?? []) {
+        const ref = `${node.name}::${ot.name}`
+        if (ot.name && !refs.includes(ref)) refs.push(ref)
+      }
     }
   }
+  add(nodes)
+  for (const schema of otherSchemas) add(schema.nodes ?? [])
   return refs
 }
 
@@ -112,9 +123,12 @@ function RefChips({ refs, allRefs, onChange }: {
     if (refs.includes(ref)) onChange(refs.filter(r => r !== ref))
     else onChange([...refs, ref])
   }
+  // GH95 — a stored ref absent from the offered list (repo not loaded/accessible, type renamed…)
+  // is still shown, selected, so it can be seen and removed instead of silently vanishing.
+  const shown = [...allRefs, ...refs.filter(r => !allRefs.includes(r))]
   return (
     <div className="flex flex-wrap gap-1">
-      {allRefs.map(ref => (
+      {shown.map(ref => (
         <button key={ref} type="button" onClick={() => toggle(ref)}
           className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
             refs.includes(ref)
@@ -128,11 +142,12 @@ function RefChips({ refs, allRefs, onChange }: {
   )
 }
 
-function LiensTab({ state, setState, nodes }: {
+function LiensTab({ state, setState, nodes, otherSchemas }: {
   state: EditorState; setState: React.Dispatch<React.SetStateAction<EditorState | null>>; nodes: SystemNode[]
+  otherSchemas: Iterable<ProjectSchema>
 }) {
   const { t } = useTranslation()
-  const allRefs = getAllRefs(nodes)
+  const allRefs = getAllRefs(nodes, otherSchemas)
 
   const setLink = (i: number, patch: Partial<EditableLinkType>) =>
     setState(s => s ? { ...s, linkTypes: s.linkTypes.map((l, j) => j === i ? { ...l, ...patch } : l) } : s)
@@ -211,6 +226,9 @@ function SchemaEditorPage() {
   }, [workspaceDir])
 
   const { data: schema, isLoading } = useProjectSchema(repoPath)
+  // GH95 — every repo of the workspace, so the Liens tab can offer the object types of
+  // components mounted from their own repo (shares the Structure tab's query cache).
+  const { schemasByRepoPath } = useWorkspaceStructure(workspaceDir, repoPath)
   const [state, setState] = useState<EditorState | null>(null)
   const [savedState, setSavedState] = useState<EditorState | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('structure')
@@ -331,7 +349,7 @@ function SchemaEditorPage() {
       </div>
 
       {activeTab === 'structure' && <StructureTab workspaceDir={workspaceDir} repoPath={repoPath} projectId={projectId} />}
-      {activeTab === 'liens' && <LiensTab state={state} setState={setState} nodes={schema.nodes} />}
+      {activeTab === 'liens' && <LiensTab state={state} setState={setState} nodes={schema.nodes} otherSchemas={schemasByRepoPath.values()} />}
       </div>
       </div>
     </div>

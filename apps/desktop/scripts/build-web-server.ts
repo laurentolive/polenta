@@ -6,6 +6,7 @@
 import path from 'node:path'
 import { build } from 'esbuild'
 import { loadBrand } from './brand'
+import { buildScriptWorker } from './script-worker-build'
 
 const root = path.resolve(__dirname, '..')
 const brand = loadBrand()
@@ -23,4 +24,10 @@ build({
   alias: { electron: './src/mcp-server/electron-shim.ts' },
   define: { __POLENTA_BRAND__: JSON.stringify(brand.info) },
   logLevel: 'info',
-}).catch(() => process.exit(1))
+})
+  // GH74 — worker du moteur de scripts et .wasm de QuickJS (bibliothèque de départ : resources/ de l'image).
+  .then(() => buildScriptWorker('out/web-server'))
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })

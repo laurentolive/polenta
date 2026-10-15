@@ -74,7 +74,54 @@ export function mergeUnit(unit: string, b: unknown, l: unknown, r: unknown): Uni
   if (unit === 'needsRevalidation') {
     return { conflict: false, value: l === true || r === true ? true : undefined, from: l === true ? 'left' : 'right' }
   }
+  // GH77 — both sides are true: the history is the union of the entries of both branches.
+  if (unit === 'history') return { conflict: false, value: mergeHistories(l, r), from: 'both' }
   return { conflict: true, left: l, right: r }
+}
+
+/** `at` of a history entry as ISO text (an unquoted timestamp edited by hand is loaded as a Date). */
+function entryTime(e: Obj): string {
+  const at = e.at
+  return at instanceof Date ? at.toISOString().replace(/\.\d{3}Z$/, 'Z') : String(at ?? '')
+}
+
+function canonicalEntry(e: Obj): string {
+  const value = e.value instanceof Date ? e.value.toISOString() : e.value ?? null
+  return JSON.stringify([entryTime(e), e.by ?? null, value, e.source ?? null])
+}
+
+/**
+ * GH77 — union of two `history` mappings (spec §8): for each key, the entries of both sides,
+ * deduplicated on (at, by, value, source) and sorted by `at` (stable: left before right on a tie).
+ * Never a conflict. A side that is not a mapping counts as empty.
+ */
+export function mergeHistories(left: unknown, right: unknown): Obj | undefined {
+  const sides = [right, left].filter(isPlainObject)
+  if (sides.length === 0) return undefined
+  const out: Obj = {}
+  // Keys in the destination's (right) order, like every other unit.
+  for (const key of orderedKeys(...sides)) {
+    const seen = new Set<string>()
+    const entries: Obj[] = []
+    for (const side of [left, right]) {
+      const list = isPlainObject(side) ? side[key] : undefined
+      if (!Array.isArray(list)) continue
+      for (const e of list) {
+        if (!isPlainObject(e)) continue
+        const id = canonicalEntry(e)
+        if (seen.has(id)) continue
+        seen.add(id)
+        entries.push(e)
+      }
+    }
+    entries.sort((a, b) => {
+      const ta = entryTime(a)
+      const tb = entryTime(b)
+      return ta < tb ? -1 : ta > tb ? 1 : 0
+    })
+    out[key] = entries
+  }
+  return out
 }
 
 /** YAML fragment `<name>: <value>` indented by `indent`, as it appears inside the dumped object. */

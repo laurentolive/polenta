@@ -24,11 +24,13 @@ import type { Widget, QueryResult } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { DashboardGrid } from '../components/dashboard/DashboardGrid'
+import { ParamBar } from '../components/dashboard/ParamBar'
+import { useDashboardParams } from '../hooks/useDashboardParams'
 import { WidgetConfigModal, type WidgetConfigResult } from '../components/dashboard/WidgetConfigModal'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { dashboardExportBaseName } from '../components/export/exportFilenames'
-import { widgetQueryOptions } from '../hooks/useQueryResult'
+import { toQueryResult, widgetRunOptions } from '../hooks/useScriptRun'
 import { useSetTabTitle } from '../contexts/TabsContext'
 import { orderItems } from '../components/sidebar/ReorderableSidebarSection'
 
@@ -41,7 +43,7 @@ export const Route = createFileRoute('/dashboard')({
 })
 
 function DashboardPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { projectId, dashboardId } = Route.useSearch()
   const navigate = useNavigate()
   const router = useRouter()
@@ -78,13 +80,16 @@ function DashboardPage() {
     queryFn: () => api.queries.list(repoPath, username),
     enabled: !!repoPath && !!username,
   })
+  // GH93 — barre de paramètres choisis à l'affichage.
+  const lang = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'fr'
+  const params = useDashboardParams({ repoPath, workspaceDir, username, dashboard, savedQueries, locale: lang })
 
   // T109: `dashboardId` absent — need the sidebar's own list/order (same queryKey,
   // shared cache with `DashboardPanel.tsx`) to redirect to the first dashboard
   // instead of showing the "pick one" prompt. Only fetched when actually needed.
   const { data: dashboards = [], isLoading: dashboardsLoading } = useQuery({
     queryKey: ['dashboards', repoPath, username],
-    queryFn: () => api.dashboards.list(repoPath, username),
+    queryFn: () => api.dashboards.list(repoPath, username, i18n.resolvedLanguage),
     enabled: !!repoPath && !!username && !dashboardId,
   })
   const { data: dashboardsOrder = [], isLoading: dashboardsOrderLoading } = useQuery({
@@ -148,7 +153,8 @@ function DashboardPage() {
   })
 
   const addWidgetMutation = useMutation({
-    mutationFn: (dto: WidgetConfigResult) => api.dashboards.addWidget(repoPath, username, dashboardId!, dto),
+    mutationFn: (dto: WidgetConfigResult) =>
+      api.dashboards.addWidget(repoPath, username, dashboardId!, 'transform' in dto ? { ...dto, transform: dto.transform ?? undefined } : dto),
     onSuccess: () => {
       invalidateDashboard()
       setShowAddWidget(false)
@@ -199,7 +205,9 @@ function DashboardPage() {
       <ViewHeader
         currentProjectId={projectId}
         title={
-          <input
+          dashboard.state.readOnly ? (
+            <span className="text-sm font-semibold text-ink" data-testid="dashboard-readonly-title">{dashboard.title}</span>
+          ) : <input
             value={titleDraft}
             onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={() => {
@@ -212,6 +220,7 @@ function DashboardPage() {
         }
         actions={
           <>
+            {!dashboard.state.readOnly && (<>
             <div className="flex rounded-lg border border-edge overflow-hidden text-xs">
               <button
                 type="button"
@@ -234,6 +243,7 @@ function DashboardPage() {
               <Plus size={12} />
               {t('dashboard.widgetModal.addTitle')}
             </button>
+            </>)}
             <ExportButton
               kind="dashboard"
               formats={['docx', 'pdf']}
@@ -254,15 +264,17 @@ function DashboardPage() {
                 const widgetResults: Record<string, QueryResult> = {}
                 await Promise.all(dashboard.widgets.map(async (w) => {
                   const q = savedQueries.find(sq => sq.id === w.queryId)
-                  if (!q) return
+                  // GH93 — widget en attente d'un paramètre obligatoire : « Aucune donnée. ».
+                  if (!q || params.missingFor(w).length) return
                   try {
-                    widgetResults[w.id] = await qc.fetchQuery(widgetQueryOptions(repoPath, workspaceDir, q))
+                    const res = toQueryResult(await qc.fetchQuery(widgetRunOptions(repoPath, workspaceDir, username, dashboard.id, w, q.script, params.paramsFor(w))))
+                    if (res) widgetResults[w.id] = res
                   } catch {
                     // Widget en erreur (ex. requête invalide, type d'objet supprimé) — omis du
                     // payload plutôt que de faire échouer tout l'export.
                   }
                 }))
-                return { dashboard, widgetResults }
+                return { dashboard, widgetResults, parameters: params.describe() }
               }}
               getPrintParams={() => ({ repoPath, workspaceDir, username, dashboardId: dashboardId! })}
             />
@@ -272,17 +284,35 @@ function DashboardPage() {
 
       <div className="flex-1 overflow-y-auto">
       <div className="max-w-6xl p-6 pb-16 space-y-5">
+      {dashboard.state.readOnly && (
+        <p className="text-xs text-status-warning bg-status-warning-bg border border-status-warning-border rounded px-3 py-2" data-testid="dashboard-readonly">
+          {t('dashboardPage.newerFormatNotice')}
+        </p>
+      )}
       {scopeError && (
         <p className="text-xs text-status-danger bg-status-danger-bg border border-status-danger-border rounded px-3 py-2">
           {scopeError}
         </p>
       )}
 
+      <ParamBar
+        selectors={params.selectors}
+        values={params.values}
+        invalid={params.invalid}
+        options={params.options}
+        onChange={params.setValue}
+        onReset={params.reset}
+      />
+
       <DashboardGrid
         dashboard={dashboard}
         savedQueries={savedQueries}
         repoPath={repoPath}
         workspaceDir={workspaceDir}
+        username={username}
+        paramsFor={params.paramsFor}
+        missingFor={params.missingFor}
+        paramsReady={params.ready}
         onReorder={(order) => reorderMutation.mutate(order)}
         onDeleteWidget={(widgetId) => deleteWidgetMutation.mutate(widgetId)}
         onEditWidget={(widget) => setEditingWidget(widget)}
@@ -294,6 +324,8 @@ function DashboardPage() {
           savedQueries={savedQueries}
           repoPath={repoPath}
           workspaceDir={workspaceDir}
+          username={username}
+          paramsForQuery={(queryId) => params.paramsFor({ queryId })}
           onSave={(dto) => addWidgetMutation.mutate(dto)}
           onClose={() => setShowAddWidget(false)}
           saving={addWidgetMutation.isPending}
@@ -307,7 +339,9 @@ function DashboardPage() {
           savedQueries={savedQueries}
           repoPath={repoPath}
           workspaceDir={workspaceDir}
+          username={username}
           initialWidget={editingWidget}
+          paramsForQuery={(queryId) => params.paramsFor({ queryId })}
           onSave={(dto) => updateWidgetMutation.mutate(dto)}
           onClose={() => setEditingWidget(null)}
           saving={updateWidgetMutation.isPending}

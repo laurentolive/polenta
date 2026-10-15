@@ -12,6 +12,7 @@ import { RichTextField } from '../RichTextField'
 import { MultiEnumCheckboxes } from '../MultiEnumCheckboxes'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
+import { HistorySection } from '../history/HistorySection'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -733,6 +734,17 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               candidateObjects={candidateObjects}
               onLinkChange={onLinkChange}
               onNavigateToObject={onNavigateToObject}
+            />
+          )}
+
+          {/* GH77 — historique des champs suivis (lecture seule). */}
+          {repoPath && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test') && (
+            <HistorySection
+              repoPath={repoPath}
+              kind={typeDef.category}
+              id={objectData['id']}
+              typeDef={typeDef}
+              refreshKey={JSON.stringify([objectData['status'], ...typeDef.fields.filter(f => f.trackHistory).map(f => objectData[f.name])])}
             />
           )}
 

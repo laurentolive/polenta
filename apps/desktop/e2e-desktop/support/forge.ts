@@ -89,14 +89,35 @@ export function bulkRepos(prefix: string, n: number): void {
  * et des scénarios de révocation, jusqu'au seuil du jail `polenta-forge`.
  */
 export function unbanSelf(): void {
+  jailSelf('unbanip')
+}
+
+/**
+ * GH55 — IP de test exemptée du jail pendant une suite desktop : les 401 attendus des scénarios
+ * (mauvais mot de passe, révocation) s'ajoutent à ceux des exécutions précédentes dans la fenêtre
+ * de 10 min, et le bannissement tombait en pleine suite (requêtes sans réponse : « Headers Timeout
+ * Error », « Identification du serveur… » sans fin) — un test différent en échec à chaque fois.
+ * Réglage d'exécution de fail2ban, non persistant (un redémarrage du service l'efface) ;
+ * `restoreJail()` le retire en fin de fichier.
+ */
+export function exemptSelfFromJail(): void {
+  jailSelf('unbanip')
+  jailSelf('addignoreip')
+}
+
+export function restoreJail(): void {
+  jailSelf('delignoreip')
+}
+
+function jailSelf(action: 'unbanip' | 'addignoreip' | 'delignoreip'): void {
   if (!SSH) return
   // Sans shell local (cmd.exe interpréterait les caractères spéciaux) ; `${SSH_CLIENT%% *}` est
   // développé par le shell distant, avant sudo (qui ne transmet pas SSH_CLIENT).
   const [cmd, ...args] = SSH.split(/\s+/)
   try {
-    execFileSync(cmd, [...args, 'sudo fail2ban-client set polenta-forge unbanip ${SSH_CLIENT%% *}'], { stdio: 'ignore' })
+    execFileSync(cmd, [...args, `sudo fail2ban-client set polenta-forge ${action} \${SSH_CLIENT%% *}`], { stdio: 'ignore' })
   } catch {
-    // IP non bannie : fail2ban répond en erreur, rien à faire.
+    // IP non bannie (unbanip) ou déjà retirée : fail2ban répond en erreur, rien à faire.
   }
 }
 

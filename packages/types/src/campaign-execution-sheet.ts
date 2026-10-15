@@ -6,7 +6,10 @@ import type { StepResultValue, TestRunResult } from './test'
 // clé technique masquée, jamais par libellé — les libellés ci-dessous ne servent qu'à l'affichage
 // dans le classeur et à la reconnaissance des verdicts saisis (toutes langues confondues).
 
-export const EXECUTION_SHEET_FORMAT_VERSION = 1
+/** GH81 — v2 : empreinte de la version exportée par instance (feuille `_polenta`). */
+export const EXECUTION_SHEET_FORMAT_VERSION = 2
+/** GH81 — versions relues à l'import ; v1 : pas d'empreinte, pas de contrôle « test modifié ». */
+export const EXECUTION_SHEET_SUPPORTED_VERSIONS: readonly number[] = [1, 2]
 
 export type ExecutionSheetLocale = 'fr' | 'en'
 
@@ -142,6 +145,8 @@ export type ExecutionImportInstanceError =
   /** `row` : numéro de ligne Excel (1-based). */
   | { code: 'invalid_verdict'; row: number; value: string }
   | { code: 'invalid_date'; row: number; value: string }
+  /** GH81 — la version effective du test diffère de celle exportée (empreinte `_polenta`). */
+  | { code: 'test_changed_since_export'; testCaseId: string }
 
 export interface ImportedInstance {
   entryId: string
@@ -161,6 +166,11 @@ export interface ImportedInstance {
   stepResults: { order: number; result: StepResultValue; comment: string }[]
 }
 
+export type ExecutionImportWarning =
+  | { code: 'row_without_key'; row: number }
+  /** GH68 — instance importable dont la copie du test n'est pas dans un statut d'approbation. */
+  | { code: 'test_not_approved'; entryId: string; status: string }
+
 export interface ExecutionImportPreview {
   filePath: string
   fileName: string
@@ -168,7 +178,7 @@ export interface ExecutionImportPreview {
   fatal?: ExecutionImportFatal
   importable: ImportedInstance[]
   errors: { entryId: string; error: ExecutionImportInstanceError }[]
-  warnings: { code: 'row_without_key'; row: number }[]
+  warnings: ExecutionImportWarning[]
   /** Instances présentes dans le fichier mais sans aucun verdict (laissées inchangées). */
   unfilledCount: number
 }

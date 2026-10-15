@@ -25,7 +25,12 @@ import type { CampaignExecutionService } from '../services/campaign-execution.se
 import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
 import type { InterfaceComplianceService } from '../services/interface-compliance.service'
-import type { QueryEngineService } from '../services/query-engine.service'
+import type { SuiviService } from '../services/suivi.service'
+import type { SuiviUpdatesService } from '../services/suivi-updates.service'
+import type { TemplateInput } from '../services/suivi-store.util'
+import type { GraphService } from '../services/graph.service'
+import type { DashboardLibraryService } from '../services/dashboard-library.service'
+import type { ScriptEngineService } from '../services/script-engine.service'
 import type { SavedQueriesService, CreateSavedQueryDto, UpdateSavedQueryDto, AddHistoryEntryDto } from '../services/saved-queries.service'
 import type {
   DashboardsService,
@@ -38,6 +43,10 @@ import type { DashboardSeedService } from '../services/dashboard-seed.service'
 import type { ExportService } from '../services/export.service'
 import type { ParametersService } from '../services/parameters.service'
 import type { RevalidationService } from '../services/revalidation.service'
+import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } from '../services/history.service'
+import type { FieldRenameService } from '../services/field-rename.service'
+import type { ValueRename } from '@polenta/types'
+import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
   CreateRequirementDto,
   UpdateRequirementDto,
@@ -51,9 +60,9 @@ import type {
 } from '@polenta/zod-schemas'
 import type {
   ReviewStatus,
-  QueryDefinition,
-  BuilderConfig,
   QueryScope,
+  ScriptClientInfo,
+  ScriptRunRequest,
   CreateImpactAnalysisDto,
   UpdateImpactItemStatusDto,
   TemplateExportFormat,
@@ -95,13 +104,21 @@ export interface Container {
   polentaRepo: PolentaRepoService
   workspaceTree: WorkspaceTreeService
   interfaceCompliance: InterfaceComplianceService
-  queryEngine: QueryEngineService
+  /** GH74 — graphe de données, bibliothèque projet, moteur de scripts. */
+  graph: GraphService
+  dashboardLibrary: DashboardLibraryService
+  scriptEngine: ScriptEngineService
+  suivi: SuiviService
+  suiviUpdates: SuiviUpdatesService
   savedQueries: SavedQueriesService
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService
   export: ExportService
   parameters: ParametersService
   revalidation: RevalidationService
+  history: HistoryService
+  fieldRename: FieldRenameService
+  historyBackfill: HistoryBackfillService
   appSettings: AppSettingsService
   exportTemplateLibrary: ExportTemplateLibrary
   /** GH45 — configuration machine de l'hôte (cf. HostContext.machineConfig). */
@@ -112,11 +129,55 @@ export interface Container {
   forge: ForgeService
 }
 
+/** GH82 — arguments des canaux de renommage de valeurs, validés avant tout accès disque. */
+function checkValueRenames(channel: string, objectTypeRef: unknown, renames: unknown): [string, ValueRename[]] {
+  if (typeof objectTypeRef !== 'string' || !objectTypeRef.includes('::')) {
+    throw new Error(`${channel} — objectTypeRef must be "<node>::<type>"`)
+  }
+  const valid = Array.isArray(renames) && renames.every(r =>
+    typeof r?.from === 'string' && typeof r?.to === 'string' && (
+      r.target?.kind === 'status'
+      || (r.target?.kind === 'field' && typeof r.target.field === 'string' && typeof r.target.multi === 'boolean')))
+  if (!valid) throw new Error(`${channel} — renames must be an array of { target, from, to }`)
+  return [objectTypeRef, renames as ValueRename[]]
+}
+
+/**
+ * GH74 — channels qui écrivent dans le périmètre du graphe de données, premier argument = repo.
+ * Le watcher n'oublie le graphe qu'après stabilisation des fichiers (≥ 300 ms) : sans oubli
+ * immédiat, un script lancé juste après l'écriture (`suivi:run`) verrait l'état précédent.
+ */
+const GRAPH_WRITE_CHANNELS = new Set([
+  'requirements:create', 'requirements:update', 'requirements:open-draft', 'requirements:transition',
+  'requirements:link-create', 'requirements:link-delete',
+  'tests:create', 'tests:update', 'tests:execute', 'tests:open-draft',
+  'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
+  'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
+  'campaigns:execution-sheet-apply',
+  'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:move-element',
+  'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
+  'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
+  'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
+])
+
+export function withGraphInvalidation(r: HandlerRegistry, graph: Container['graph']): HandlerRegistry {
+  return {
+    handle: (channel, fn) => r.handle(channel, !GRAPH_WRITE_CHANNELS.has(channel) ? fn : async (event, ...args) => {
+      try {
+        return await fn(event, ...args)
+      } finally {
+        if (typeof args[0] === 'string') graph.invalidate(args[0])
+      }
+    }),
+  }
+}
+
 /**
  * Channels partagés par le desktop et le serveur web (GH44). Les channels propres au poste local
  * (dialogues natifs, shell, mise à jour…) sont dans `desktop-only.handlers.ts`.
  */
-export function registerHandlers(r: HandlerRegistry, c: Container, platform: PlatformHost): void {
+export function registerHandlers(registry: HandlerRegistry, c: Container, platform: PlatformHost): void {
+  const r = withGraphInvalidation(registry, c.graph)
   // ── Live sync ────────────────────────────────────────────────────────────────
   // Pushes every out-of-band file change (external edit, git checkout/pull, a bulk-import
   // script writing directly to disk…) to every open window, so the renderer can invalidate
@@ -386,6 +447,11 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     return c.revalidation.clear(repoPath, ids, workspaceDir)
   })
 
+  // ── Historique des champs suivis (GH77) — lecture effective, entrées implicites marquées ──
+  r.handle('history:get', (_e, repoPath: string, kind: HistoryObjectKind, id: string) =>
+    readEffectiveHistory(c, repoPath, kind, id))
+  r.handle('history:backfill', (_e, repoPath: string) => c.historyBackfill.run(repoPath))
+
   // ── Reviews ───────────────────────────────────────────────────────────────────
   r.handle('reviews:list', (_e, repoPath: string, status?: unknown) =>
     c.reviews.list(repoPath, status as ReviewStatus | undefined))
@@ -407,6 +473,21 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   r.handle('schema:get', (_e, repoPath: string) => c.schema.get(repoPath))
   r.handle('schema:save', (_e, repoPath: string, schema: unknown) =>
     c.schema.save(repoPath, schema as import('@polenta/types').ProjectSchema))
+  // GH77 — après l'enregistrement d'un type dont des champs ont été renommés : migre valeur et historique.
+  r.handle('schema:rename-fields', (_e, repoPath: string, objectTypeRef: string, renames: unknown) => {
+    if (typeof objectTypeRef !== 'string' || !objectTypeRef.includes('::')) {
+      throw new Error('schema:rename-fields — objectTypeRef must be "<node>::<type>"')
+    }
+    if (!Array.isArray(renames) || !renames.every(r => typeof r?.from === 'string' && typeof r?.to === 'string')) {
+      throw new Error('schema:rename-fields — renames must be an array of { from, to } strings')
+    }
+    return c.fieldRename.renameFields(repoPath, objectTypeRef, renames as import('@polenta/types').FieldRename[])
+  })
+  // GH82 — renommage de statuts / valeurs d'enum : aperçu (sans écriture) puis migration.
+  r.handle('schema:preview-value-renames', (_e, repoPath: string, objectTypeRef: string, renames: unknown) =>
+    c.fieldRename.previewValueRenames(repoPath, ...checkValueRenames('schema:preview-value-renames', objectTypeRef, renames)))
+  r.handle('schema:rename-values', (_e, repoPath: string, objectTypeRef: string, renames: unknown) =>
+    c.fieldRename.renameValues(repoPath, ...checkValueRenames('schema:rename-values', objectTypeRef, renames)))
   // Drops the in-memory cache entry so the next `schema:get` re-reads schema.yaml from disk —
   // needed because SchemaService.get() otherwise serves the cached copy forever within a
   // session, even after an out-of-band edit to the file (manual edit, git checkout/pull…).
@@ -429,15 +510,19 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     c.campaigns.create(repoPath, dto as import('@polenta/types').CreateCampaignDto, workspaceDir))
   r.handle('campaigns:update', (_e, repoPath: string, id: string, dto: unknown) =>
     c.campaigns.update(repoPath, id, dto as import('@polenta/types').UpdateCampaignDto))
+  // GH81 — `displayed` : version du test affichée par la page d'exécution, figée sur une instance
+  // resynchronisable (GH68) dans la même écriture que le résultat.
   r.handle('campaigns:update-run',
-    (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId?: string) =>
-      c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunStatus, runId))
+    (_e, repoPath: string, campaignId: string, entryId: string, status: unknown, runId: string, displayed?: unknown) =>
+      // GH73 — `runId` obligatoire et résultat valide : vérifiés par le service (canal non typé).
+      c.campaigns.updateRun(repoPath, campaignId, entryId, status as import('@polenta/types').TestRunResult, runId,
+        displayed ? { testSnapshot: displayed as import('@polenta/types').TestCase } : undefined))
   r.handle('campaigns:close',
     (_e, repoPath: string, id: string, status: unknown) =>
       c.campaigns.close(repoPath, id, status as 'completed' | 'abandoned'))
   r.handle('campaigns:add-tests',
-    (_e, repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: import('@polenta/types').ReqInstanceSelection) =>
-      c.campaigns.addTests(repoPath, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances))
+    (_e, repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: import('@polenta/types').ReqInstanceSelection, carried?: import('@polenta/types').CarriedEntrySelection[]) =>
+      c.campaigns.addTests(repoPath, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances, carried))
   r.handle('campaigns:remove-entries',
     (_e, repoPath: string, campaignId: string, entryIds: string[]) =>
       c.campaigns.removeEntries(repoPath, campaignId, entryIds))
@@ -595,11 +680,27 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
   ) =>
     c.interfaceCompliance.checkComponentCoverage(componentRepoPath, interfaceRepoPath, roles))
 
-  // ── Queries (T77 sprint 1) ───────────────────────────────────────────────────
-  r.handle('queries:execute', (_e, repoPath: string, queryDef: unknown, workspaceDir?: string) =>
-    c.queryEngine.execute(repoPath, queryDef as QueryDefinition, workspaceDir))
-  r.handle('queries:builder-to-sql', (_e, repoPath: string, config: unknown, workspaceDir?: string) =>
-    c.queryEngine.builderToSql(repoPath, config as BuilderConfig, workspaceDir))
+  // ── Vue Suivi : exécution des scripts, drill-down, modèles (GH74) ───────────
+  r.handle('suivi:run', (_e, repoPath: string, workspaceDir: string | undefined, username: string, req: unknown, client: unknown) =>
+    c.suivi.run(repoPath, workspaceDir, username, (req ?? {}) as ScriptRunRequest, (client ?? { locale: 'fr', timezone: 'UTC' }) as ScriptClientInfo))
+  r.handle('suivi:describe-ids', (_e, repoPath: string, workspaceDir: string | undefined, ids: unknown, locale?: string) =>
+    c.suivi.describeIds(repoPath, workspaceDir, Array.isArray(ids) ? ids.map(String) : [], locale))
+  r.handle('suivi:resolve-target', (_e, repoPath: string, workspaceDir: string | undefined, id: string) =>
+    c.suivi.resolveTarget(repoPath, workspaceDir, String(id)))
+  r.handle('suivi:templates', () => c.suivi.templates())
+  r.handle('suivi:render-template', (_e, kind: unknown, input: unknown) =>
+    c.suivi.renderTemplate(kind === 'query' ? 'query' : 'widget', input as TemplateInput))
+  r.handle('suivi:object-types', (_e, repoPath: string, workspaceDir?: string) =>
+    c.suivi.objectTypes(repoPath, workspaceDir))
+  // GH74 §6.3 — bandeau des mises à jour.
+  r.handle('suivi:updates-list', (_e, repoPath: string, username: string, locale?: string) =>
+    c.suiviUpdates.list(repoPath, username, typeof locale === 'string' ? locale : undefined))
+  r.handle('suivi:updates-apply', (_e, repoPath: string, username: string, ids: unknown, locale?: string) =>
+    c.suiviUpdates.apply(repoPath, username, Array.isArray(ids) ? ids.map(String) : [], typeof locale === 'string' ? locale : undefined))
+  r.handle('suivi:updates-ignore', (_e, repoPath: string, username: string, id: unknown, toVersion: unknown) =>
+    c.suiviUpdates.ignore(repoPath, username, String(id), Number(toVersion)))
+
+  // ── Requêtes (T77, GH74 : scripts de données) ───────────────────────────────
   r.handle('queries:list', (_e, repoPath: string, username: string) =>
     c.savedQueries.list(repoPath, username))
   r.handle('queries:create', (_e, repoPath: string, username: string, dto: unknown) =>
@@ -622,12 +723,13 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     c.savedQueries.setScope(repoPath, username, id, scope as QueryScope))
 
   // ── Dashboards & widgets (T77 sprint 2, seed sprint 3) ───────────────────────
-  r.handle('dashboards:list', async (_e, repoPath: string, username: string) => {
+  r.handle('dashboards:list', async (_e, repoPath: string, username: string, locale?: string) => {
     // Seed the 3 pre-configured shared dashboards on first access (empty `dashboards/`
     // folder, never seeded before) — server-side, ahead of every list() call, so it's
     // reliable regardless of which UI entry point triggers the panel's first load
     // (T77 sprint 3 — see dashboard-seed.service.ts for the "once only" guarantee).
-    await c.dashboardSeed.ensureSeeded(repoPath, username)
+    // GH65 — `locale` : langue des libellés du dashboard « Campagnes » (seed indépendant).
+    await c.dashboardSeed.ensureSeeded(repoPath, username, typeof locale === 'string' ? locale : undefined)
     return c.dashboards.list(repoPath, username)
   })
   r.handle('dashboards:get', (_e, repoPath: string, username: string, id: string) =>
@@ -661,6 +763,11 @@ export function registerHandlers(r: HandlerRegistry, c: Container, platform: Pla
     c.dashboards.getDashboardsOrder(repoPath, username))
   r.handle('dashboards:order-set', (_e, repoPath: string, username: string, order: string[]) =>
     c.dashboards.setDashboardsOrder(repoPath, username, order))
+  // GH93 — valeurs choisies dans la barre de paramètres (`.pref` de l'utilisateur, jamais commité).
+  r.handle('dashboards:param-values-get', (_e, repoPath: string, username: string, dashboardId: string) =>
+    c.dashboards.getParamValues(repoPath, username, dashboardId))
+  r.handle('dashboards:param-values-set', (_e, repoPath: string, username: string, dashboardId: string, values: Record<string, unknown> | null) =>
+    c.dashboards.setParamValues(repoPath, username, dashboardId, values))
 
   // ── Git (T43) ────────────────────────────────────────────────────────────────
   r.handle('git:head-sha', (_e, repoPath: string) => c.git.headSha(repoPath))

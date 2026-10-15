@@ -3,12 +3,14 @@
 // composants/interface, avec un historique git daté (phases P1→P8), des baselines RE1/RE2 en tags
 // annotés et une branche de développement non fusionnée.
 //
-// Usage : node scripts/demo-lave-linge/generate.mjs [--out <dossier>] [--force]
+// Usage : pnpm --filter @polenta/desktop demo:generate -- [--out <dossier>] [--force]
+//   (tsx : le générateur importe les modèles TypeScript de la vue Suivi, GH74)
 //   --out    dossier du workspace (défaut : <polenta_ws>/demo-lave-linge, à côté de ce repo)
 //   --force  supprime le dossier cible s'il existe déjà
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 import {
   writeFile, writeYaml, stableUuid, stableSuffix, initRepo, commitAll, annotatedTag, lightweightTag, headSha, git, Canvas, drawio,
 } from './lib.mjs'
@@ -17,6 +19,10 @@ import {
   REPOS, REPO_ORDER, repoUrl, P, PHASES, DEV_BRANCH, PARAMETERS, ELEMENTS, LINKS, ADHOC_RUNS, CAMPAIGNS, REVIEWS, QUERIES, DASHBOARDS,
 } from './content.mjs'
 import { README_PRODUIT, README_COMPOSANTS, GUIDE } from './docs.mjs'
+// GH74 — modèles de la vue Suivi (TypeScript sans dépendance) : générateur lancé par tsx.
+import { queryCode, widgetCode } from '../../packages/types/src/suivi-templates.ts'
+
+const sha256 = text => createHash('sha256').update(text, 'utf8').digest('hex')
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
@@ -70,6 +76,14 @@ function testSnapshot(id) {
 // ─── Exécutions : numérotation chronologique par test ────────────────────────
 
 const repoOfElement = Object.fromEntries(ELEMENTS.map(e => [e.id, e.repo]))
+// entryId de chaque entrée (`<test>-<n>`, n = rang parmi les instances du test dans sa campagne).
+for (const c of CAMPAIGNS) {
+  const occurrences = {}
+  for (const [testId, e] of c.entries) {
+    occurrences[testId] = (occurrences[testId] ?? 0) + 1
+    e.entryId = `${testId}-${occurrences[testId]}`
+  }
+}
 const allRuns = [
   ...ADHOC_RUNS.map(r => ({ ...r })),
   ...CAMPAIGNS.flatMap(c => c.entries.filter(([, e]) => e.run).map(([testId, e]) => ({
@@ -151,7 +165,8 @@ function writeRun(r) {
   writeYaml(repoDir(r.repo), `test-runs/${r.testId}/${r.id}.yaml`, {
     id: r.id,
     testCaseId: r.testId,
-    campaignRunId: null,
+    // GH73 — run d'une entrée de campagne : rattaché à l'entrée.
+    ...(r.campaignId ? { campaignEntry: { campaignId: r.campaignId, entryId: r.entry.entryId } } : {}),
     ...(r.requirementId ? { requirementId: r.requirementId } : {}),
     result: r.result,
     executedAt: r.at,
@@ -164,16 +179,15 @@ function writeRun(r) {
 }
 
 function writeCampaign(c) {
-  const occurrences = {}
   const runs = c.entries.map(([testId, e]) => {
-    occurrences[testId] = (occurrences[testId] ?? 0) + 1
     const run = allRuns.find(r => r.entry === e)
     return {
-      entryId: `${testId}-${occurrences[testId]}`,
+      entryId: e.entryId,
       testCaseId: testId,
       ...(e.requirementId ? { requirementId: e.requirementId } : {}),
       testSnapshot: testSnapshot(testId),
       status: run ? run.result : 'pending',
+      addedAt: c.createdAt,
       ...(run ? { runId: run.id, executedAt: run.at, executedBy: run.by.name } : {}),
       ...(e.paramValues ? { paramValues: e.paramValues } : {}),
       ...(e.resolvedParams ? { resolvedParams: e.resolvedParams } : {}),
@@ -186,6 +200,7 @@ function writeCampaign(c) {
     title: c.title,
     objectTypeRef: 'root::campagne-produit',
     fields: c.fields ?? {},
+    level: 'campagne-produit',
     ...(c.baselineRef ? { baselineRef: c.baselineRef } : {}),
     component: 'root',
     status: c.status,
@@ -360,23 +375,32 @@ for (const phase of PHASES) {
   for (const t of phase.tags ?? []) for (const key of REPO_ORDER) annotatedTag(repoDir(key), t.tag, t.message, P.hugo, t.date)
 }
 
+// GH74 — vue Suivi au format v1 (un dossier par requête / dashboard), code généré par les modèles
+// de Polenta (même génération et même empreinte que l'application : objets non personnalisés).
 function writeSuivi(dir) {
   const createdAt = '2026-04-24T15:00:00.000Z'
   for (const q of QUERIES) {
-    writeYaml(dir, `queries/${q.id}.yaml`, {
-      id: q.id, title: q.title, mode: q.mode,
-      ...(q.mode === 'sql' ? { sqlText: q.sqlText } : { builderConfig: q.builderConfig }),
-      scope: 'shared', createdBy: P.hugo.name, createdAt,
+    const { script, parameters, template } = q.template ? queryCode(q.template, sha256) : { script: q.script, parameters: q.parameters ?? [], template: undefined }
+    writeYaml(dir, `queries/${q.id}/query.yaml`, {
+      id: q.id, title: q.title, formatVersion: 1, ...(template ? { template } : {}),
+      // GH93 — paramètres choisis à l'affichage (omis si aucun, comme l'application).
+      ...(parameters.length ? { parameters } : {}), createdBy: P.hugo.name, createdAt,
     })
+    writeFile(dir, `queries/${q.id}/script.js`, script)
   }
   for (const d of DASHBOARDS) {
-    const widgets = d.widgets.map(w => ({
-      id: `widget-${Date.parse(d.createdAt)}-${stableSuffix(`${d.id}:${w.key}`, 6)}`,
-      title: w.title, queryId: w.queryId, type: w.type, fieldMapping: w.fieldMapping, size: w.size,
-    }))
-    writeYaml(dir, `dashboards/${d.id}.yaml`, {
-      id: d.id, title: d.title, scope: 'shared', widgetOrder: widgets.map(w => w.id), widgets, createdBy: d.by.name, createdAt: d.createdAt,
+    const widgets = d.widgets.map(w => {
+      const { code, template } = widgetCode(w.template, sha256)
+      return { id: `widget-${Date.parse(d.createdAt)}-${stableSuffix(`${d.id}:${w.key}`, 6)}`, title: w.title, queryId: w.queryId, size: w.size, template, code }
     })
+    writeYaml(dir, `dashboards/${d.id}/dashboard.yaml`, {
+      id: d.id, title: d.title, formatVersion: 1, widgetOrder: widgets.map(w => w.id),
+      widgets: widgets.map(({ code: _code, ...w }) => w), createdBy: d.by.name, createdAt: d.createdAt,
+    })
+    for (const w of widgets) {
+      if (w.code.transform !== undefined) writeFile(dir, `dashboards/${d.id}/${w.id}.js`, w.code.transform)
+      writeFile(dir, `dashboards/${d.id}/${w.id}.vl.json`, w.code.spec)
+    }
   }
 }
 

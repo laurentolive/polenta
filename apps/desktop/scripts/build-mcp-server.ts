@@ -6,6 +6,7 @@
 import path from 'node:path'
 import { build } from 'esbuild'
 import { loadBrand } from './brand'
+import { buildScriptWorker, copyDashboardLib } from './script-worker-build'
 
 const root = path.resolve(__dirname, '..')
 const brand = loadBrand()
@@ -21,4 +22,21 @@ build({
   alias: { electron: './src/mcp-server/electron-shim.ts' },
   define: { __POLENTA_BRAND__: JSON.stringify(brand.info) },
   logLevel: 'info',
-}).catch(() => process.exit(1))
+})
+  // GH74 — worker du moteur de scripts et .wasm de QuickJS ; bibliothèque de départ à côté du bundle.
+  .then(() => buildScriptWorker('out/mcp-server'))
+  .then(() => copyDashboardLib('out/mcp-server'))
+  // GH74 — compilateur Vega-Lite en ESM séparé (Vega 6 : ESM seul, await de premier niveau).
+  .then(() => build({
+    absWorkingDir: root,
+    entryPoints: ['src/mcp-server/vega-compile.ts'],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    outfile: 'out/mcp-server/vega-compile.mjs',
+    logLevel: 'warning',
+  }))
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })

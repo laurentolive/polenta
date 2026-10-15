@@ -22,6 +22,8 @@ export interface SchemaField {
   default?: unknown
   placeholder?: string
   validator?: string         // e.g. "EARS" | "regex:<pattern>"
+  /** GH77 — historiser les changements de ce champ (`history.<name>`). Écrit seulement si vrai. */
+  trackHistory?: boolean
 }
 
 // Format de stockage d'un champ `multi_enum` : chaîne CSV (ex. "a, b, c"), pas une liste
@@ -79,6 +81,16 @@ export interface ObjectTypeDefinition {
   category: ObjectCategory
   fields: SchemaField[]
   statuses?: SchemaStatus[]
+  /** GH77 — historiser le statut (`history.status`). Absent = true ; écrit seulement si false. */
+  trackStatusHistory?: boolean
+}
+
+/** GH68 — `status` est-il le statut d'approbation du type (`statuses[].isApproval`) ? Repli sur
+ *  le littéral `approved` quand le type est introuvable ou ne déclare aucun statut d'approbation
+ *  (règle unique, partagée avec le critère 4 de maturité — GH80). */
+export function isApprovalStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): boolean {
+  const approvalStatusName = typeDef?.statuses?.find(s => s.isApproval)?.name
+  return status === (approvalStatusName ?? 'approved')
 }
 
 // Noeud local : composant propre au repo produit.
@@ -162,6 +174,11 @@ export interface ProjectPreferences {
    * rendu Standard.
    */
   exportTemplates?: Partial<Record<ExportTemplateKey, string>>
+  /**
+   * GH65 — intervalle du pull automatique (minutes), lu dans le schéma du repo racine. Entier dans
+   * [1, 60] ; absent ou invalide = 5.
+   */
+  autoPullIntervalMinutes?: number
 }
 
 export interface ProjectSchema {

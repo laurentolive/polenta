@@ -81,7 +81,7 @@
       "ahead_other": "{{count}} modifications non publiées sur le serveur",
       "diverged": "Divergé : {{ahead}} en local, {{behind}} sur le serveur",
       "lastError": "Dernière erreur : {{error}}",
-      "offline": "serveur injoignable (hors ligne ?), nouvel essai automatique toutes les 5 minutes",
+      "offline": "serveur injoignable (hors ligne ?), nouvel essai automatique toutes les {{minutes}} min",
       "resync": "Resynchroniser",
       "resyncing": "Resynchronisation…",
       "resyncDirty": "Resynchronisation impossible : « {{repo}} » a des modifications en attente sur sa branche d'intégration. Publiez-les ou annulez-les d'abord.",
@@ -253,6 +253,8 @@
     "saving": "Enregistrement…",
     "autoPropagateLabel": "Propager automatiquement le pin des sous-repos vers le repo parent lors d'un commit reçu sur le sous-repo",
     "autoPropagateHelp": "Si décoché, la mise à jour du pin attend une approbation manuelle de l'intégrateur.",
+    "autoPullIntervalLabel": "Intervalle de récupération automatique (minutes)",
+    "autoPullIntervalHelp": "Fréquence à laquelle les publications des autres sont récupérées (de {{min}} à {{max}} min, {{def}} par défaut). Un dépôt avec des modifications en cours n'est jamais mis à jour automatiquement.",
     "exportTemplatesTitle": "Gabarits d'export par défaut",
     "exportTemplatesHelp": "Gabarit client présélectionné à l'export, désigné par son chemin dans la bibliothèque de gabarits de chaque utilisateur.",
     "exportTemplatesNoLibrary": "Aucune bibliothèque de gabarits configurée sur ce poste (panneau Compte › Préférences) : seuls les gabarits déjà enregistrés sont affichés.",
@@ -297,7 +299,20 @@
       "titleLabel": "Titre",
       "titlePlaceholder": "Mon dashboard…",
       "creating": "Création…",
-      "create": "Créer"
+      "create": "Créer",
+      "updates": {
+        "title_one": "Mise à jour disponible (1)",
+        "title_other": "Mises à jour disponibles ({{count}})",
+        "readOnly": "Branche en lecture seule : mises à jour non applicables ici.",
+        "new": "(nouveau)",
+        "version": "(v{{from}} → v{{to}})",
+        "seedWidget": "Widget pour « {{dashboard}} »",
+        "toPublish": "Modification du repo, à publier.",
+        "ignore": "Ignorer",
+        "apply_one": "Appliquer",
+        "apply_other": "Appliquer ({{count}})",
+        "applying": "Application…"
+      }
     },
     "requirements": {
       "title": "Exigences",
@@ -383,6 +398,9 @@
       "analyzeImpact": "Analyser l'impact",
       "existingAnalyses": "Analyses existantes",
       "noAnalysis": "Aucune analyse.",
+      "revalidationEntry": "Impact à vérifier",
+      "revalidationCount_one": "{{count}} élément",
+      "revalidationCount_other": "{{count}} éléments",
       "localChanges": "Modifications locales (vs HEAD)",
       "localChangesCount_one": "{{count}} élément",
       "localChangesCount_other": "{{count}} éléments",
@@ -448,7 +466,15 @@
       "deleteTitle": "Supprimer ?",
       "deleteBody": "<b>{{title}}</b> sera supprimé définitivement.",
       "shared": "Partagé",
-      "private": "Privé"
+      "private": "Privé",
+      "readOnlyBadge": {
+        "legacy-sql": "SQL",
+        "newer-format": "Lecture seule"
+      },
+      "readOnly": {
+        "legacy-sql": "Requête SQL d'avant GH74, non prise en charge : à réécrire en script ou à supprimer.",
+        "newer-format": "Créé par une version plus récente de Polenta : lecture seule."
+      }
     }
   },
   "schema": {
@@ -474,7 +500,13 @@
       "cancelChangesTitle": "Annuler les modifications ?",
       "cancelChangesBody": "Les modifications seront perdues. Êtes-vous sûr ?",
       "confirmCancel": "Oui, annuler",
-      "descriptionFieldLabel": "Description"
+      "descriptionFieldLabel": "Description",
+      "colHistory": "Hist.",
+      "colHistoryTitle": "Historiser les changements de ce champ",
+      "historyValue": "Historiser : valeur, date et auteur à chaque changement",
+      "historyEvent": "Historiser : date et auteur à chaque changement (le contenu est déjà dans git)",
+      "historyNotTrackable": "Ce champ ne peut pas être historisé",
+      "trackStatusHistory": "Historiser le statut (valeur, date et auteur à chaque changement)"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -575,7 +607,12 @@
       "moveElementStale": "Cet élément a changé avant la fin du déplacement — merci de recommencer le glisser-déposer.",
       "nameAlreadyUsed": "Ce nom est déjà utilisé dans ce repo ou ce workspace.",
       "schemaLoadingForLocal": "Le schéma de ce repo est encore en cours de chargement — réessayez dans un instant.",
-      "notAWorkspace": "Ce répertoire n'est pas (ou plus) un workspace {{appName}}."
+      "notAWorkspace": "Ce répertoire n'est pas (ou plus) un workspace {{appName}}.",
+      "renameReportMigrated": "Champ(s) renommé(s) : {{count}} objet(s) migré(s), valeur et historique compris.",
+      "renameReportSkipped": "{{count}} objet(s) non migré(s) — une donnée existe déjà sous le nouveau nom : {{ids}}",
+      "renameReportFailed": "{{count}} échec(s) de migration : {{ids}}",
+      "renameReportError": "Le schéma est enregistré, mais la migration des objets a échoué : {{error}}",
+      "renameReportSnapshots": "{{count}} copie(s) de test de campagne migrée(s)."
     },
     "page": {
       "title": "Modèle de données",
@@ -606,6 +643,17 @@
       "unresolved": "non résolu",
       "noImplements": "Aucune implémentation d'interface déclarée.",
       "addImplements": "+ Déclarer une implémentation"
+    },
+    "valueRename": {
+      "title": "Renommer des valeurs ?",
+      "intro": "Des statuts ou des valeurs d'enum ont été renommés. Les objets du type qui portent l'ancienne valeur (et leur historique, et les copies de test des campagnes) peuvent être migrés. Décochez une ligne pour ne pas la migrer.",
+      "status": "Statut",
+      "field": "Champ {{field}}",
+      "objects": "{{count}} objet(s) concerné(s)",
+      "collision": "{{count}} objet(s) portent déjà « {{value}} » : les deux seront confondus",
+      "suiviNote": "Les requêtes et dashboards du Suivi ne sont pas modifiés.",
+      "confirm": "Enregistrer et migrer",
+      "objectsUnknown": "Nombre d'objets concernés indisponible"
     }
   },
   "system": {
@@ -800,7 +848,17 @@
     "addTests": "Ajouter des tests",
     "adding": "Ajout…",
     "addCount": "Ajouter ({{count}})",
-    "noApprovedTestAvailable": "Aucun test approuvé disponible (déjà présents ou non approuvés)",
+    "carriedFrom": "Reporté depuis {{campaignId}} (entrée {{entryId}})",
+    "notApproved": "Non approuvé",
+    "notApprovedTooltip": "Statut du test : {{status}}",
+    "notApprovedBanner_one": "{{count}} instance à exécuter porte sur un test non approuvé",
+    "notApprovedBanner_other": "{{count}} instances à exécuter portent sur des tests non approuvés",
+    "executeNotApprovedBanner": "Ce test n'est pas approuvé (statut : {{status}}). Le résultat sera enregistré contre cette version non validée.",
+    "executeNotApprovedConfirmTitle": "Exécuter un test non approuvé ?",
+    "executeNotApprovedConfirmBody": "Le test est au statut « {{status}} ». Le résultat sera enregistré contre cette version, qui n'a pas été validée.",
+    "executeNotApprovedConfirm": "Exécuter quand même",
+    "executeTestChanged": "Ce test a été modifié depuis l'ouverture de la page. Votre saisie porte sur la version affichée, qui sera enregistrée avec le résultat.",
+    "executeTestChangedReload": "Afficher la nouvelle version (efface la saisie)",
     "noTestCaseInCampaign": "Aucun cas de test dans cette campagne",
     "addAnotherInstance": "Ajouter une autre instance de ce test avec d'autres valeurs",
     "editParamValues": "Modifier les valeurs des paramètres",
@@ -838,6 +896,7 @@
       "inError_other": "En erreur ({{count}}) — non importées",
       "warnings": "Avertissements",
       "rowWithoutKey": "Ligne {{row}} ajoutée dans le classeur (sans clé) : ignorée",
+      "testNotApproved": "{{entryId}} : test non approuvé ({{status}})",
       "unfilled_one": "{{count}} instance non remplie : laissée inchangée",
       "unfilled_other": "{{count}} instances non remplies : laissées inchangées",
       "importN_one": "Importer {{count}} résultat",
@@ -860,7 +919,8 @@
         "testNotFound": "test {{testCaseId}} introuvable",
         "stepsMismatch": "étapes modifiées dans le classeur (attendues : {{expected}} ; trouvées : {{found}})",
         "invalidVerdict": "verdict non reconnu « {{value}} » (ligne {{row}})",
-        "invalidDate": "date illisible « {{value}} » (ligne {{row}})"
+        "invalidDate": "date illisible « {{value}} » (ligne {{row}})",
+        "testChangedSinceExport": "le test {{testCaseId}} a changé depuis l'export du classeur — réexportez le classeur pour cette instance"
       }
     },
     "stepResult": {
@@ -902,8 +962,47 @@
       "instances_one": "{{count}} instance",
       "instances_other": "{{count}} instances",
       "hiddenSuffix_one": ", dont {{count}} non affiché",
-      "hiddenSuffix_other": ", dont {{count}} non affichés"
+      "hiddenSuffix_other": ", dont {{count}} non affichés",
+      "tabTests": "Tests",
+      "tabCampaign": "Depuis une campagne"
+    },
+    "carry": {
+      "sources": "Campagnes source",
+      "noCampaign": "Aucune autre campagne",
+      "statusFilter": "Statut des entrées :",
+      "pickSource": "Cochez une ou plusieurs campagnes pour lister leurs entrées.",
+      "noEntry": "Aucune entrée ne correspond",
+      "checkAll": "Tout cocher",
+      "colTest": "Test",
+      "colRequirement": "Exigence",
+      "colParams": "Paramètres",
+      "colStatus": "Statut",
+      "colExecution": "Exécution",
+      "colSource": "Campagne source",
+      "colRemark": "Remarque",
+      "versionChanged": "Test modifié depuis : v{{from}} → v{{to}}",
+      "alsoIn": "aussi dans {{ids}}",
+      "unavailable": {
+        "deleted": "Test supprimé",
+        "outOfScope": "Hors périmètre",
+        "reqUnlinked": "Exigence plus liée",
+        "alreadyPresent": "Déjà présent"
+      },
+      "campaignStatus": {
+        "planned": "Planifiée",
+        "in_progress": "En cours",
+        "completed": "Clôturée",
+        "abandoned": "Abandonnée"
+      }
+    },
+    "statusFilter": {
+      "toggle": "Filtrer sur {{status}} (re-cliquer pour retirer)",
+      "clear": "Filtre : {{status}} ✕",
+      "empty": "Aucune entrée {{status}}."
     }
+  },
+  "campaignProgress": {
+    "ready": "Prêt à exécuter"
   },
   "dashboard": {
     "widgetModal": {
@@ -938,7 +1037,42 @@
       "categoryLabel": "Catégorie",
       "seriesLabel": "Série (optionnel, multi-courbe)",
       "noneOption": "— aucune —",
-      "stackedLabel": "Empiler les barres"
+      "stackedLabel": "Empiler les barres",
+      "typeMatrix": "Matrice",
+      "matrixRowsLabel": "Lignes",
+      "matrixRowLabelLabel": "Libellé de ligne (optionnel)",
+      "matrixColumnsLabel": "Colonnes",
+      "matrixValueLabel": "Valeur des cellules",
+      "presetLabel": "Présentation des séries",
+      "presetStandard": "Standard",
+      "presetCampaignProgress": "Avancement de campagne",
+      "sharedOnlyHint": "Dashboard partagé : seules les requêtes partagées sont proposées.",
+      "templateTab": "Modèle",
+      "codeTab": "Code",
+      "templateLabel": "Modèle",
+      "revert": "Revenir au modèle",
+      "revertHint": "Régénère le code à partir du modèle : les modifications manuelles sont perdues.",
+      "customizedNotice": "Widget personnalisé : son code a été modifié, le formulaire du modèle ne s'applique plus. « Revenir au modèle » régénère le code (les modifications sont perdues).",
+      "templateUpdate": "Une nouvelle version du modèle (v{{version}}) est disponible : elle sera appliquée à l'enregistrement.",
+      "codeDetachHint": "Modifier le code détache le widget de son modèle.",
+      "transformLabel": "Transformation (JS) — export default (rows, polenta) => rows",
+      "specLabel": "Spec Vega-Lite (JSON) — données : { \"name\": \"rows\" }",
+      "aggregateWarning": "La spec agrège avec Vega-Lite (aggregate) : le détail au clic ne sera pas disponible. Regroupez plutôt dans la transformation.",
+      "previewTitle": "Aperçu",
+      "selectQueryHint": "Choisissez une requête pour voir l'aperçu.",
+      "revertConfirm": "Le code modifié sera perdu."
+    },
+    "template": {
+      "anyType": "(tous les objets de la catégorie)",
+      "noOption": "Aucune valeur disponible.",
+      "operators": {
+        "=": "=",
+        "!=": "≠",
+        ">": ">",
+        "<": "<",
+        "contains": "contient",
+        "in": "parmi"
+      }
     }
   },
   "queryPage": {
@@ -969,8 +1103,36 @@
       "valuePlaceholder": "valeur…",
       "remove": "Retirer",
       "addCondition": "Ajouter une condition",
-      "groupByLabel": "Grouper par"
-    }
+      "groupByLabel": "Grouper par",
+      "campaignEntriesType": "{{label}} (entrées)",
+      "campaignFields": {
+        "campaignId": "Campagne (ID)",
+        "campaignTitle": "Campagne (titre)",
+        "campaignStatus": "Campagne (statut)",
+        "baselineRef": "Baseline",
+        "campaignCreatedAt": "Campagne (créée le)",
+        "level": "Niveau",
+        "campaignComponent": "Composant ciblé",
+        "component": "Composant",
+        "entryId": "Entrée",
+        "testCaseId": "Test",
+        "requirementId": "Exigence",
+        "testTitle": "Titre du test",
+        "status": "Statut de l'entrée",
+        "executedAt": "Exécutée le",
+        "executedDay": "Jour d'exécution",
+        "executedBy": "Exécutée par",
+        "progress": "Avancement",
+        "testStatus": "Statut du test"
+      }
+    },
+    "templateMode": "Modèle",
+    "scriptMode": "Script",
+    "templateLabel": "Modèle de requête",
+    "saveAs": "Enregistrer sous…",
+    "legacySqlNotice": "Requête SQL d'avant la version actuelle de Polenta : elle n'est plus prise en charge. Réécrivez-la avec un modèle ou un script, puis supprimez-la.",
+    "customizedNotice": "Script personnalisé : le formulaire du modèle ne s'applique plus.",
+    "newerFormatNotice": "Créée par une version plus récente de Polenta : lecture seule."
   },
   "dashboardPage": {
     "cannotChangeScope": "Impossible de changer la portée.",
@@ -985,7 +1147,8 @@
     "widget": {
       "chooseCategoryAndMeasure": "Choisissez une catégorie et une mesure.",
       "chooseMeasure": "Choisissez une mesure.",
-      "noData": "Aucune donnée pour cette requête."
+      "noData": "Aucune donnée pour cette requête.",
+      "chooseMatrixFields": "Choisissez les lignes, les colonnes et la valeur."
     },
     "resultTable": {
       "booleanTrue": "oui",
@@ -997,6 +1160,32 @@
     },
     "sqlEditor": {
       "availableTablesHint": "Tables disponibles : <code>requirements</code>, <code>tests</code>, <code>links</code>. Lecture seule — INSERT / UPDATE / DELETE / DROP / CREATE / ATTACH sont refusés."
+    },
+    "drillDown": {
+      "title": "Détail",
+      "fallback": "Détail non disponible pour cette requête — lignes du résultat affichées.",
+      "notFound": "Objet introuvable.",
+      "openFailed": "Ouverture impossible : {{message}}",
+      "noIds": "Détail non disponible : le script ne fournit pas d'identifiants pour cette marque.",
+      "columns": {
+        "id": "Identifiant",
+        "type": "Type",
+        "title": "Titre",
+        "status": "Statut"
+      },
+      "kinds": {
+        "requirement": "Exigence",
+        "test": "Test",
+        "campaign": "Campagne",
+        "campaign-entry": "Entrée de campagne",
+        "run": "Exécution",
+        "unknown": "Inconnu"
+      }
+    },
+    "newerFormatNotice": "Dashboard créé par une version plus récente de Polenta : lecture seule.",
+    "vega": {
+      "invalidJson": "Spec invalide (JSON) : {{message}}",
+      "renderError": "Rendu impossible : {{message}}"
     }
   },
   "exportButton": {
@@ -1115,6 +1304,16 @@
       "confirmBody_one": "Lever le flag de {{count}} élément ? Son YAML sera modifié (à publier).",
       "confirmBody_other": "Lever le flag de {{count}} éléments ? Leurs YAML seront modifiés (à publier).",
       "failed": "Flag non levé : {{items}}",
+      "listTitle": "Impact à vérifier",
+      "listSubtitle_one": "{{count}} élément marqué — y compris ceux qu'aucune analyse n'atteint",
+      "listSubtitle_other": "{{count}} éléments marqués — y compris ceux qu'aucune analyse n'atteint",
+      "selectAll": "Tout sélectionner",
+      "linked_one": "{{count}} élément lié",
+      "linked_other": "{{count}} éléments liés",
+      "notApproved": "non approuvé",
+      "notApprovedHint": "Élément lié hors approbation : déclencheur probable du marquage",
+      "empty": "Aucun élément marqué « Impact à vérifier ».",
+      "loadError": "Lecture des éléments marqués impossible : {{message}}",
       "reason": {
         "not_found": "introuvable",
         "readonly": "lecture seule",
@@ -1420,5 +1619,67 @@
     "revoked": "Votre accès au serveur {{host}} a été révoqué, a expiré ou votre compte a été désactivé. Vos modifications locales sont conservées.",
     "reconnect": "Se reconnecter",
     "readOnlyProject": "Vous avez un accès en lecture seule à ce projet ({{repo}}) : vous pouvez consulter mais pas publier."
+  },
+  "history": {
+    "title": "Historique",
+    "status": "Statut",
+    "empty": "Aucun historique",
+    "modified": "modifié",
+    "emptyValue": "(vide)",
+    "badge": {
+      "mcp": "MCP",
+      "git": "git",
+      "schema": "début du suivi",
+      "implicit": "déduite"
+    },
+    "badgeTitle": {
+      "mcp": "Écrit par le serveur MCP (agent IA)",
+      "git": "Repris de l'historique git (date et auteur du commit)",
+      "schema": "Valeur constatée au démarrage du suivi, datée du dernier commit",
+      "implicit": "Valeur actuelle absente de l'historique (fichier modifié hors de l'application) — datée du dernier commit, sera enregistrée à la prochaine modification"
+    },
+    "backfillTitle": "Historique des champs suivis",
+    "backfillHelp": "Reconstruit l'historique des champs suivis (statut et champs « Hist. ») depuis l'historique git de chaque repo : une entrée par changement, datée du commit et signée de son auteur. Les fichiers complétés sont à publier ; relancer n'ajoute pas de doublon.",
+    "backfillRun": "Reconstruire depuis git",
+    "backfillRunning": "Reconstruction…",
+    "backfillConfirm": "Reconstruire l'historique de {{repo}} depuis git ? Les fichiers modifiés seront à publier.",
+    "backfillResult": "{{objects}} objet(s) complété(s), {{entries}} entrée(s) ajoutée(s).",
+    "backfillFailed": "{{count}} fichier(s) ignoré(s) : {{files}}"
+  },
+  "suiviParams": {
+    "reset": "Réinitialiser",
+    "notFound": "Valeur introuvable : {{value}}",
+    "choose": "Choisir {{label}}",
+    "from": "du",
+    "to": "au",
+    "periodInvalid": "La date de début est postérieure à la date de fin.",
+    "campaignStatus": {
+      "planned": "planifiée",
+      "in_progress": "en cours",
+      "completed": "terminée",
+      "abandoned": "abandonnée"
+    },
+    "kinds": {
+      "campaign": "Campagne",
+      "component": "Composant",
+      "objectType": "Type d'objet",
+      "enum": "Liste de valeurs",
+      "text": "Texte",
+      "period": "Période"
+    },
+    "editor": {
+      "title": "Paramètres choisis à l'affichage",
+      "empty": "Aucun paramètre : le script n'attend aucune valeur (polenta.params vide).",
+      "add": "Ajouter",
+      "name": "Nom (polenta.params)",
+      "kind": "Type",
+      "label": "Libellé",
+      "values": "Valeurs",
+      "valuesHint": "Une par ligne : valeur ou valeur=libellé",
+      "default": "Défaut",
+      "required": "Obligatoire",
+      "up": "Monter",
+      "down": "Descendre"
+    }
   }
 }

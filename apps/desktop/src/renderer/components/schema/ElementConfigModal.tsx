@@ -23,9 +23,11 @@ interface Props {
   onSave: (updated: EditableObjectType) => void
   onDelete: () => void
   onClose: () => void
+  /** GH82 — une fenêtre ouverte par-dessus (confirmation des renommages) gère Entrée / Échap. */
+  hotkeysSuspended?: boolean
 }
 
-export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, isNew, isSaving, saveError, onSave, onDelete, onClose }: Props) {
+export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, isNew, isSaving, saveError, onSave, onDelete, onClose, hotkeysSuspended = false }: Props) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<EditableObjectType>(objectType)
   const [prefixError, setPrefixError] = useState<string | null>(null)
@@ -57,6 +59,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (hotkeysSuspended) return
       if (e.key === 'Escape') {
         if (showCancelConfirm) { setShowCancelConfirm(false); return }
         requestClose()
@@ -70,7 +73,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [showCancelConfirm, isSaving, handleSave, requestClose])
+  }, [showCancelConfirm, isSaving, handleSave, requestClose, hotkeysSuspended])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={requestClose}>
@@ -118,6 +121,15 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           {draft.category !== 'campaign' && (
             <StatusesTable statuses={draft.statuses} onChange={statuses => set({ statuses })} />
           )}
+          <label className="mt-3 flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.trackStatusHistory}
+              onChange={e => set({ trackStatusHistory: e.target.checked })}
+              className="h-3 w-3 accent-ink"
+            />
+            {t('schema.editor.trackStatusHistory')}
+          </label>
         </div>
 
         {/* Footer */}

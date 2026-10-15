@@ -81,7 +81,7 @@
       "ahead_other": "{{count}} changes not published to the server",
       "diverged": "Diverged: {{ahead}} local, {{behind}} on the server",
       "lastError": "Last error: {{error}}",
-      "offline": "server unreachable (offline?), retried automatically every 5 minutes",
+      "offline": "server unreachable (offline?), retried automatically every {{minutes}} min",
       "resync": "Resynchronize",
       "resyncing": "Resynchronizing…",
       "resyncDirty": "Unable to resynchronize: “{{repo}}” has pending changes on its integration branch. Publish or discard them first.",
@@ -253,6 +253,8 @@
     "saving": "Saving…",
     "autoPropagateLabel": "Automatically propagate the sub-repo pin to the parent repo when a commit is received on the sub-repo",
     "autoPropagateHelp": "If unchecked, the pin update waits for manual approval from the integrator.",
+    "autoPullIntervalLabel": "Automatic retrieval interval (minutes)",
+    "autoPullIntervalHelp": "How often other people's publications are retrieved ({{min}} to {{max}} min, {{def}} by default). A repository with pending changes is never updated automatically.",
     "exportTemplatesTitle": "Default export templates",
     "exportTemplatesHelp": "Client template preselected on export, identified by its path in each user's template library.",
     "exportTemplatesNoLibrary": "No template library configured on this machine (Account panel › Preferences): only already saved templates are shown.",
@@ -297,7 +299,20 @@
       "titleLabel": "Title",
       "titlePlaceholder": "My dashboard…",
       "creating": "Creating…",
-      "create": "Create"
+      "create": "Create",
+      "updates": {
+        "title_one": "Update available (1)",
+        "title_other": "Updates available ({{count}})",
+        "readOnly": "Read-only branch: updates cannot be applied here.",
+        "new": "(new)",
+        "version": "(v{{from}} → v{{to}})",
+        "seedWidget": "Widget for \"{{dashboard}}\"",
+        "toPublish": "Repository change, to publish.",
+        "ignore": "Ignore",
+        "apply_one": "Apply",
+        "apply_other": "Apply ({{count}})",
+        "applying": "Applying…"
+      }
     },
     "requirements": {
       "title": "Requirements",
@@ -383,6 +398,9 @@
       "analyzeImpact": "Analyze impact",
       "existingAnalyses": "Existing analyses",
       "noAnalysis": "No analysis.",
+      "revalidationEntry": "Impact to check",
+      "revalidationCount_one": "{{count}} item",
+      "revalidationCount_other": "{{count}} items",
       "localChanges": "Local changes (vs HEAD)",
       "localChangesCount_one": "{{count}} item",
       "localChangesCount_other": "{{count}} items",
@@ -448,7 +466,15 @@
       "deleteTitle": "Delete?",
       "deleteBody": "<b>{{title}}</b> will be permanently deleted.",
       "shared": "Shared",
-      "private": "Private"
+      "private": "Private",
+      "readOnlyBadge": {
+        "legacy-sql": "SQL",
+        "newer-format": "Read-only"
+      },
+      "readOnly": {
+        "legacy-sql": "SQL query from before GH74, no longer supported: rewrite it as a script or delete it.",
+        "newer-format": "Created by a newer version of Polenta: read-only."
+      }
     }
   },
   "schema": {
@@ -474,7 +500,13 @@
       "cancelChangesTitle": "Discard changes?",
       "cancelChangesBody": "The changes will be lost. Are you sure?",
       "confirmCancel": "Yes, discard",
-      "descriptionFieldLabel": "Description"
+      "descriptionFieldLabel": "Description",
+      "colHistory": "Hist.",
+      "colHistoryTitle": "Track changes to this field",
+      "historyValue": "Track: value, date and author on every change",
+      "historyEvent": "Track: date and author on every change (the content is already in git)",
+      "historyNotTrackable": "This field cannot be tracked",
+      "trackStatusHistory": "Track status history (value, date and author on every change)"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -575,7 +607,12 @@
       "moveElementStale": "This element changed before the move completed — please try dragging it again.",
       "nameAlreadyUsed": "This name is already used in this repo or workspace.",
       "schemaLoadingForLocal": "This repo's schema is still loading — try again in a moment.",
-      "notAWorkspace": "This directory is not (or no longer) a {{appName}} workspace."
+      "notAWorkspace": "This directory is not (or no longer) a {{appName}} workspace.",
+      "renameReportMigrated": "Field(s) renamed: {{count}} object(s) migrated, value and history included.",
+      "renameReportSkipped": "{{count}} object(s) not migrated — data already exists under the new name: {{ids}}",
+      "renameReportFailed": "{{count}} migration failure(s): {{ids}}",
+      "renameReportError": "The schema was saved, but migrating the objects failed: {{error}}",
+      "renameReportSnapshots": "{{count}} campaign test copy(ies) migrated."
     },
     "page": {
       "title": "Data model",
@@ -606,6 +643,17 @@
       "unresolved": "unresolved",
       "noImplements": "No interface implementation declared.",
       "addImplements": "+ Declare an implementation"
+    },
+    "valueRename": {
+      "title": "Rename values?",
+      "intro": "Statuses or enum values were renamed. Objects of this type carrying the old value (with their history and the test copies in campaigns) can be migrated. Uncheck a line to skip it.",
+      "status": "Status",
+      "field": "Field {{field}}",
+      "objects": "{{count}} object(s) affected",
+      "collision": "{{count}} object(s) already carry \"{{value}}\": both will be merged",
+      "suiviNote": "Tracking queries and dashboards are not changed.",
+      "confirm": "Save and migrate",
+      "objectsUnknown": "Number of affected objects unavailable"
     }
   },
   "system": {
@@ -800,7 +848,17 @@
     "addTests": "Add tests",
     "adding": "Adding…",
     "addCount": "Add ({{count}})",
-    "noApprovedTestAvailable": "No approved test available (already included or not approved)",
+    "carriedFrom": "Carried over from {{campaignId}} (entry {{entryId}})",
+    "notApproved": "Not approved",
+    "notApprovedTooltip": "Test status: {{status}}",
+    "notApprovedBanner_one": "{{count}} instance to execute is based on a test that is not approved",
+    "notApprovedBanner_other": "{{count}} instances to execute are based on tests that are not approved",
+    "executeNotApprovedBanner": "This test is not approved (status: {{status}}). The result will be recorded against this unvalidated version.",
+    "executeNotApprovedConfirmTitle": "Execute a test that is not approved?",
+    "executeNotApprovedConfirmBody": "The test status is “{{status}}”. The result will be recorded against this version, which has not been validated.",
+    "executeNotApprovedConfirm": "Execute anyway",
+    "executeTestChanged": "This test has been modified since the page was opened. Your input applies to the version shown, which will be saved with the result.",
+    "executeTestChangedReload": "Show the new version (clears your input)",
     "noTestCaseInCampaign": "No test case in this campaign",
     "addAnotherInstance": "Add another instance of this test with different values",
     "editParamValues": "Edit parameter values",
@@ -838,6 +896,7 @@
       "inError_other": "In error ({{count}}) — not imported",
       "warnings": "Warnings",
       "rowWithoutKey": "Row {{row}} added in the workbook (no key): ignored",
+      "testNotApproved": "{{entryId}}: test not approved ({{status}})",
       "unfilled_one": "{{count}} instance not filled in: left unchanged",
       "unfilled_other": "{{count}} instances not filled in: left unchanged",
       "importN_one": "Import {{count}} result",
@@ -860,7 +919,8 @@
         "testNotFound": "test {{testCaseId}} not found",
         "stepsMismatch": "steps changed in the workbook (expected: {{expected}}; found: {{found}})",
         "invalidVerdict": "unrecognised verdict \"{{value}}\" (row {{row}})",
-        "invalidDate": "unreadable date \"{{value}}\" (row {{row}})"
+        "invalidDate": "unreadable date \"{{value}}\" (row {{row}})",
+        "testChangedSinceExport": "test {{testCaseId}} has changed since the workbook was exported — re-export the workbook for this instance"
       }
     },
     "stepResult": {
@@ -902,8 +962,47 @@
       "instances_one": "{{count}} instance",
       "instances_other": "{{count}} instances",
       "hiddenSuffix_one": ", {{count}} not shown",
-      "hiddenSuffix_other": ", {{count}} not shown"
+      "hiddenSuffix_other": ", {{count}} not shown",
+      "tabTests": "Tests",
+      "tabCampaign": "From a campaign"
+    },
+    "carry": {
+      "sources": "Source campaigns",
+      "noCampaign": "No other campaign",
+      "statusFilter": "Entry status:",
+      "pickSource": "Check one or more campaigns to list their entries.",
+      "noEntry": "No matching entry",
+      "checkAll": "Check all",
+      "colTest": "Test",
+      "colRequirement": "Requirement",
+      "colParams": "Parameters",
+      "colStatus": "Status",
+      "colExecution": "Execution",
+      "colSource": "Source campaign",
+      "colRemark": "Remark",
+      "versionChanged": "Test changed since: v{{from}} → v{{to}}",
+      "alsoIn": "also in {{ids}}",
+      "unavailable": {
+        "deleted": "Test deleted",
+        "outOfScope": "Out of scope",
+        "reqUnlinked": "Requirement no longer linked",
+        "alreadyPresent": "Already included"
+      },
+      "campaignStatus": {
+        "planned": "Planned",
+        "in_progress": "In progress",
+        "completed": "Closed",
+        "abandoned": "Abandoned"
+      }
+    },
+    "statusFilter": {
+      "toggle": "Filter on {{status}} (click again to remove)",
+      "clear": "Filter: {{status}} ✕",
+      "empty": "No {{status}} entry."
     }
+  },
+  "campaignProgress": {
+    "ready": "Ready to run"
   },
   "dashboard": {
     "widgetModal": {
@@ -938,7 +1037,42 @@
       "categoryLabel": "Category",
       "seriesLabel": "Series (optional, multi-line)",
       "noneOption": "— none —",
-      "stackedLabel": "Stack bars"
+      "stackedLabel": "Stack bars",
+      "typeMatrix": "Matrix",
+      "matrixRowsLabel": "Rows",
+      "matrixRowLabelLabel": "Row label (optional)",
+      "matrixColumnsLabel": "Columns",
+      "matrixValueLabel": "Cell value",
+      "presetLabel": "Series presentation",
+      "presetStandard": "Standard",
+      "presetCampaignProgress": "Campaign progress",
+      "sharedOnlyHint": "Shared dashboard: only shared queries are offered.",
+      "templateTab": "Template",
+      "codeTab": "Code",
+      "templateLabel": "Template",
+      "revert": "Back to template",
+      "revertHint": "Regenerates the code from the template: manual changes are lost.",
+      "customizedNotice": "Customised widget: its code was modified, the template form no longer applies. \"Back to template\" regenerates the code (changes are lost).",
+      "templateUpdate": "A newer version of the template (v{{version}}) is available: it will be applied on save.",
+      "codeDetachHint": "Editing the code detaches the widget from its template.",
+      "transformLabel": "Transform (JS) — export default (rows, polenta) => rows",
+      "specLabel": "Vega-Lite spec (JSON) — data: { \"name\": \"rows\" }",
+      "aggregateWarning": "The spec aggregates with Vega-Lite (aggregate): click details will not be available. Group in the transform instead.",
+      "previewTitle": "Preview",
+      "selectQueryHint": "Choose a query to see the preview.",
+      "revertConfirm": "The edited code will be lost."
+    },
+    "template": {
+      "anyType": "(all objects of the category)",
+      "noOption": "No value available.",
+      "operators": {
+        "=": "=",
+        "!=": "≠",
+        ">": ">",
+        "<": "<",
+        "contains": "contains",
+        "in": "in"
+      }
     }
   },
   "queryPage": {
@@ -969,8 +1103,36 @@
       "valuePlaceholder": "value…",
       "remove": "Remove",
       "addCondition": "Add a condition",
-      "groupByLabel": "Group by"
-    }
+      "groupByLabel": "Group by",
+      "campaignEntriesType": "{{label}} (entries)",
+      "campaignFields": {
+        "campaignId": "Campaign (ID)",
+        "campaignTitle": "Campaign (title)",
+        "campaignStatus": "Campaign (status)",
+        "baselineRef": "Baseline",
+        "campaignCreatedAt": "Campaign (created at)",
+        "level": "Level",
+        "campaignComponent": "Target component",
+        "component": "Component",
+        "entryId": "Entry",
+        "testCaseId": "Test",
+        "requirementId": "Requirement",
+        "testTitle": "Test title",
+        "status": "Entry status",
+        "executedAt": "Executed at",
+        "executedDay": "Execution day",
+        "executedBy": "Executed by",
+        "progress": "Progress",
+        "testStatus": "Test status"
+      }
+    },
+    "templateMode": "Template",
+    "scriptMode": "Script",
+    "templateLabel": "Query template",
+    "saveAs": "Save as…",
+    "legacySqlNotice": "SQL query from before the current version of Polenta: it is no longer supported. Rewrite it with a template or a script, then delete it.",
+    "customizedNotice": "Customised script: the template form no longer applies.",
+    "newerFormatNotice": "Created by a newer version of Polenta: read-only."
   },
   "dashboardPage": {
     "cannotChangeScope": "Unable to change scope.",
@@ -985,7 +1147,8 @@
     "widget": {
       "chooseCategoryAndMeasure": "Choose a category and a measure.",
       "chooseMeasure": "Choose a measure.",
-      "noData": "No data for this query."
+      "noData": "No data for this query.",
+      "chooseMatrixFields": "Choose the rows, the columns and the value."
     },
     "resultTable": {
       "booleanTrue": "yes",
@@ -997,6 +1160,32 @@
     },
     "sqlEditor": {
       "availableTablesHint": "Available tables: <code>requirements</code>, <code>tests</code>, <code>links</code>. Read-only — INSERT / UPDATE / DELETE / DROP / CREATE / ATTACH are rejected."
+    },
+    "drillDown": {
+      "title": "Details",
+      "fallback": "Details not available for this query — result rows shown.",
+      "notFound": "Object not found.",
+      "openFailed": "Could not open: {{message}}",
+      "noIds": "Details not available: the script provides no identifiers for this mark.",
+      "columns": {
+        "id": "Identifier",
+        "type": "Type",
+        "title": "Title",
+        "status": "Status"
+      },
+      "kinds": {
+        "requirement": "Requirement",
+        "test": "Test",
+        "campaign": "Campaign",
+        "campaign-entry": "Campaign entry",
+        "run": "Run",
+        "unknown": "Unknown"
+      }
+    },
+    "newerFormatNotice": "Dashboard created by a newer version of Polenta: read-only.",
+    "vega": {
+      "invalidJson": "Invalid spec (JSON): {{message}}",
+      "renderError": "Cannot render: {{message}}"
     }
   },
   "exportButton": {
@@ -1115,6 +1304,16 @@
       "confirmBody_one": "Clear the flag on {{count}} item? Its YAML will be modified (to publish).",
       "confirmBody_other": "Clear the flag on {{count}} items? Their YAML files will be modified (to publish).",
       "failed": "Flag not cleared: {{items}}",
+      "listTitle": "Impact to check",
+      "listSubtitle_one": "{{count}} flagged item — including those no analysis reaches",
+      "listSubtitle_other": "{{count}} flagged items — including those no analysis reaches",
+      "selectAll": "Select all",
+      "linked_one": "{{count}} linked item",
+      "linked_other": "{{count}} linked items",
+      "notApproved": "not approved",
+      "notApprovedHint": "Linked item outside approval: likely trigger of the flag",
+      "empty": "No item flagged “Impact to check”.",
+      "loadError": "Could not read flagged items: {{message}}",
       "reason": {
         "not_found": "not found",
         "readonly": "read-only",
@@ -1420,5 +1619,67 @@
     "revoked": "Your access to {{host}} was revoked or has expired, or your account was disabled. Your local changes are kept.",
     "reconnect": "Sign in again",
     "readOnlyProject": "You have read-only access to this project ({{repo}}): you can browse but not publish."
+  },
+  "history": {
+    "title": "History",
+    "status": "Status",
+    "empty": "No history",
+    "modified": "modified",
+    "emptyValue": "(empty)",
+    "badge": {
+      "mcp": "MCP",
+      "git": "git",
+      "schema": "tracking start",
+      "implicit": "inferred"
+    },
+    "badgeTitle": {
+      "mcp": "Written by the MCP server (AI agent)",
+      "git": "Recovered from git history (commit date and author)",
+      "schema": "Value found when tracking started, dated from the last commit",
+      "implicit": "Current value missing from the history (file changed outside the application) — dated from the last commit, recorded on the next change"
+    },
+    "backfillTitle": "Tracked field history",
+    "backfillHelp": "Rebuilds the history of tracked fields (status and \"Hist.\" fields) from each repo's git history: one entry per change, dated from the commit and signed by its author. Updated files must be published; running it again adds no duplicates.",
+    "backfillRun": "Rebuild from git",
+    "backfillRunning": "Rebuilding…",
+    "backfillConfirm": "Rebuild the history of {{repo}} from git? Changed files will need to be published.",
+    "backfillResult": "{{objects}} object(s) updated, {{entries}} entry(ies) added.",
+    "backfillFailed": "{{count}} file(s) skipped: {{files}}"
+  },
+  "suiviParams": {
+    "reset": "Reset",
+    "notFound": "Value not found: {{value}}",
+    "choose": "Choose {{label}}",
+    "from": "from",
+    "to": "to",
+    "periodInvalid": "The start date is after the end date.",
+    "campaignStatus": {
+      "planned": "planned",
+      "in_progress": "in progress",
+      "completed": "completed",
+      "abandoned": "abandoned"
+    },
+    "kinds": {
+      "campaign": "Campaign",
+      "component": "Component",
+      "objectType": "Object type",
+      "enum": "List of values",
+      "text": "Text",
+      "period": "Period"
+    },
+    "editor": {
+      "title": "Parameters chosen when displayed",
+      "empty": "No parameter: the script expects no value (empty polenta.params).",
+      "add": "Add",
+      "name": "Name (polenta.params)",
+      "kind": "Type",
+      "label": "Label",
+      "values": "Values",
+      "valuesHint": "One per line: value or value=label",
+      "default": "Default",
+      "required": "Required",
+      "up": "Move up",
+      "down": "Move down"
+    }
   }
 }

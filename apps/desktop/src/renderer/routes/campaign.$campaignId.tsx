@@ -1,10 +1,10 @@
 ﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Trash2, Play, Eye, Pencil, Copy, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
-import { useProjectSchema, getCampaignTypeDef, getTestTypeDef } from '../hooks/useProjectSchema'
+import { useProjectSchema, getCampaignTypeDef, isTestApproved } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
 import { RichTextViewer } from '../components/RichTextViewer'
 import { RichTextProvider } from '../contexts/RichTextContext'
@@ -14,6 +14,9 @@ import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import { TestParamFields } from '../components/TestParamFields'
 import { manualKeysForRun } from '../lib/testParams'
 import { buildReqInstances, isIteratingPreview, missingReqs, presentReqIds } from '../lib/reqInstances'
+import { carryCoverage, toCarriedSelection, withCarryPrecedence, type CarryEligibility } from '../lib/carryOver'
+import { unapprovedPendingRuns, unapprovedTestOf } from '../lib/campaignApproval'
+import { NotApprovedBadge, NotApprovedRunsBanner } from '../components/campaign/NotApproved'
 import { TestPickerModal, EMPTY_PICKER_RESULT, type PickerResult } from '../components/campaign/TestPickerModal'
 import { useParamPreview } from '../hooks/useParamPreview'
 import { decodeProjectId } from '../lib/projectId'
@@ -23,42 +26,33 @@ import { ExecutionSheetMenu } from '../components/campaign/ExecutionSheetMenu'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import type { TestRunStatus, TestCase, ProjectSchema, ReqInstanceSelection, ParamResolutionPreview } from '@polenta/types'
+import { RUN_STATUS_CLASS, RUN_STATUS_LABEL_KEY, isTestRunStatus } from '../lib/runStatus'
+import type { CampaignTestRun, TestRunStatus, TestCase, ReqInstanceSelection, ParamResolutionPreview, CarriedEntrySelection } from '@polenta/types'
+import { HistorySection } from '../components/history/HistorySection'
 
 export const Route = createFileRoute('/campaign/$campaignId')({
   component: CampaignDetailPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    repoPath: (search['repoPath'] as string) ?? '',
-    projectId: (search['projectId'] as string) ?? '',
-    component: search['component'] as string | undefined,
-    level: search['level'] as string | undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>) => {
+    // GH65 — filtre de la liste des entrées par statut (pastilles, navigation depuis la vue Suivi).
+    // Clé optionnelle : les navigations existantes vers la page n'ont pas à la fournir.
+    const status = parseRunStatus(search['status'])
+    // GH74 — le filtre par étape d'avancement (GH71, `progress`) est retiré : paramètre ignoré.
+    return {
+      repoPath: (search['repoPath'] as string) ?? '',
+      projectId: (search['projectId'] as string) ?? '',
+      component: search['component'] as string | undefined,
+      level: search['level'] as string | undefined,
+      ...(status ? { status } : {}),
+    }
+  },
 })
 
-export const RUN_STATUS_LABEL_KEY: Record<TestRunStatus, string> = {
-  pending:    'campaignPage.runStatus.pending',
-  PASS:       'campaignPage.runStatus.pass',
-  FAIL:       'campaignPage.runStatus.fail',
-  BLOCKED:    'campaignPage.runStatus.blocked',
-  INCOMPLETE: 'campaignPage.runStatus.incomplete',
-}
+// Ordre d'affichage des pastilles ; valeurs = statuts d'entrée de `TEST_RUN_STATUS_LABELS`.
+const RUN_STATUSES: TestRunStatus[] = ['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE', 'pending']
 
-const RUN_STATUS_CLASS: Record<TestRunStatus, string> = {
-  pending:    'bg-status-neutral-bg text-status-neutral',
-  PASS:       'bg-status-success-bg text-status-success',
-  FAIL:       'bg-status-danger-bg text-status-danger',
-  BLOCKED:    'bg-status-warning-bg text-status-warning',
-  INCOMPLETE: 'bg-status-warning-bg text-status-warning',
-}
-
-// Statut "approuvé" résolu depuis `statuses[].isApproval` du type du test (schema.yaml),
-// pas depuis le littéral 'approved' — un projet nommant son statut d'approbation
-// différemment (ex: "valide") doit quand même être respecté (même logique que
-// maturity.util.ts côté main). Repli sur 'approved' si le type n'a pas de statut isApproval.
-function isTestApproved(test: TestCase, schema: ProjectSchema | undefined): boolean {
-  const typeDef = getTestTypeDef(schema, test.objectTypeRef)
-  const approvalStatusName = typeDef?.statuses?.find(s => s.isApproval)?.name
-  return test.status === (approvalStatusName ?? 'approved')
+/** Valeur d'URL hors liste ignorée (filtre absent). */
+function parseRunStatus(v: unknown): TestRunStatus | undefined {
+  return isTestRunStatus(v) ? v : undefined
 }
 
 // ─── Campaign detail page ─────────────────────────────────────────────────────
@@ -68,7 +62,9 @@ function CampaignDetailPage() {
   const { campaignId } = Route.useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { repoPath, projectId, component, level } = Route.useSearch()
+  const { repoPath, projectId, component, level, status: statusFilter } = Route.useSearch()
+  const setStatusFilter = (status: TestRunStatus | undefined) =>
+    navigate({ to: '/campaign/$campaignId', params: { campaignId }, search: { repoPath, projectId, component, level, ...(status ? { status } : {}) }, replace: true })
   // T171 — résolution des paramètres de la base (repos composants) à l'ajout.
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
 
@@ -92,6 +88,10 @@ function CampaignDetailPage() {
   useRegisterTabDirty(editingFields !== null)
 
   const { data: schema } = useProjectSchema(repoPath)
+  // GH64 — éligibilité d'un test reporté : même règle que l'ajout normal. GH68 — tout statut est
+  // accepté à l'ajout (planification en amont) ; le statut est signalé, pas filtré.
+  const isCarryEligible = useCallback((): CarryEligibility => 'ok', [])
+  const isApproved = useCallback((tc: TestCase) => isTestApproved(tc, schema), [schema])
 
   const updateFieldsMutation = useMutation({
     mutationFn: (fields: Record<string, string>) =>
@@ -138,8 +138,14 @@ function CampaignDetailPage() {
   )
 
   const addTestsMutation = useMutation({
-    mutationFn: ({ ids, paramValues, reqInstances }: { ids: string[]; paramValues: Record<string, Record<string, string>>; reqInstances?: ReqInstanceSelection }) =>
-      api.campaigns.addTests(repoPath, campaignId, ids, paramValues, workspaceDir || undefined, reqInstances),
+    mutationFn: ({ ids, paramValues, reqInstances, carried }: {
+      ids: string[]
+      paramValues: Record<string, Record<string, string>>
+      reqInstances?: ReqInstanceSelection
+      /** GH64 — entrées reportées depuis d'autres campagnes. */
+      carried?: CarriedEntrySelection[]
+    }) =>
+      api.campaigns.addTests(repoPath, campaignId, ids, paramValues, workspaceDir || undefined, reqInstances, carried),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
@@ -196,6 +202,9 @@ function CampaignDetailPage() {
 
   const testMap = new Map(tests.map(t => [t.id, t]))
   const isActive = campaign.status === 'planned' || campaign.status === 'in_progress'
+  // GH65 / GH74 — filtre par statut brut d'entrée.
+  const filterLabel = statusFilter ? t(RUN_STATUS_LABEL_KEY[statusFilter]) : ''
+  const matchesFilter = (r: CampaignTestRun) => !statusFilter || r.status === statusFilter
 
   const includedIds = new Set(campaign.testCaseIds)
   // T171 — références à saisir par test, selon la résolution prévisionnelle (base à la source de
@@ -208,8 +217,8 @@ function CampaignDetailPage() {
   // d'instance (déduplication par couple test/exigence) ; ses références à saisir ne suffisent pas
   // (une instance de plus pour la même exigence passe par « Dupliquer »).
   const presentOf = (id: string) => presentReqIds(campaign.runs, id)
+  // GH68 — pas de filtre de statut : un test non approuvé peut entrer (campagne construite en amont).
   const availableTests = tests
-    .filter(t => isTestApproved(t, schema))
     .filter(t => {
       if (!includedIds.has(t.id)) return true
       const preview = paramPreviews.get(t.id)
@@ -251,23 +260,27 @@ function CampaignDetailPage() {
   /** GH33 — validation du sélecteur (la modale vérifie déjà la complétude). Rejet = erreur
    *  affichée dans la modale, qui reste ouverte. */
   async function handleConfirmAdd(
-    { testIds, paramValues: addParamValues, reqSel: addReqSel }: PickerResult,
+    { testIds, paramValues: addParamValues, reqSel: addReqSel, carried }: PickerResult,
     previews: Map<string, ParamResolutionPreview>,
   ) {
-    if (testIds.length === 0) return
+    if (testIds.length === 0 && carried.length === 0) return
 
     // Un id déjà présent dans la campagne (test paramétré re-sélectionné) devient une
     // nouvelle instance via duplicateTest() plutôt qu'addTests(), qui déduplique. T179 — un test
     // itérant passe toujours par addTests(), avec les exigences retenues (dédup test/exigence).
-    const ids = testIds
+    // GH64 — priorité au report : tests et exigences couverts par une entrée reportée retirés.
+    const precedence = withCarryPrecedence(testIds, presentOf, carryCoverage(carried, previews))
+    const ids = precedence.testIds
     const iterIds = ids.filter(id => isIteratingPreview(previews.get(id)))
     const newIds = ids.filter(id => !iterIds.includes(id) && !includedIds.has(id))
     const duplicateIds = ids.filter(id => !iterIds.includes(id) && includedIds.has(id))
     const addIds = [...newIds, ...iterIds]
-    const reqInstances = buildReqInstances(iterIds, previews, addReqSel, presentOf)
+    const reqInstances = buildReqInstances(iterIds, previews, addReqSel, precedence.presentOf)
 
     await Promise.all([
-      ...(addIds.length > 0 ? [addTestsMutation.mutateAsync({ ids: addIds, paramValues: addParamValues, reqInstances })] : []),
+      ...(addIds.length > 0 || carried.length > 0
+        ? [addTestsMutation.mutateAsync({ ids: addIds, paramValues: addParamValues, reqInstances, carried: toCarriedSelection(carried) })]
+        : []),
       ...duplicateIds.map(id => duplicateTestMutation.mutateAsync({ testCaseId: id, paramValues: addParamValues[id] ?? {} })),
     ])
     setAddingTests(false)
@@ -401,16 +414,31 @@ function CampaignDetailPage() {
 
       {/* Progress summary */}
       {campaign.runs.length > 0 && (
-        <div className="flex gap-3 mb-4 text-xs">
-          {(['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE', 'pending'] as TestRunStatus[]).map(s => {
+        <div className="flex items-center gap-3 mb-4 text-xs">
+          {RUN_STATUSES.map(s => {
             const count = campaign.runs.filter(r => r.status === s).length
-            if (count === 0) return null
+            const active = statusFilter === s
+            if (count === 0 && !active) return null
+            // GH65 — pastille = filtre par statut brut (re-clic : retiré).
             return (
-              <span key={s} className={`px-2 py-0.5 rounded-full ${RUN_STATUS_CLASS[s]}`}>
-                {count} {s}
-              </span>
+              <button
+                key={s}
+                type="button"
+                aria-pressed={active}
+                data-status={s}
+                onClick={() => setStatusFilter(active ? undefined : s)}
+                title={t('campaignPage.statusFilter.toggle', { status: t(RUN_STATUS_LABEL_KEY[s]) })}
+                className={`px-2 py-0.5 rounded-full ${RUN_STATUS_CLASS[s]} ${active ? 'ring-2 ring-offset-1 ring-status-info' : statusFilter ? 'opacity-50 hover:opacity-100' : 'hover:brightness-95'}`}
+              >
+                {count} {t(RUN_STATUS_LABEL_KEY[s])}
+              </button>
             )
           })}
+          {statusFilter && (
+            <button type="button" onClick={() => setStatusFilter(undefined)} className="text-ink-3 hover:text-ink underline" data-testid="campaign-status-filter-clear">
+              {t('campaignPage.statusFilter.clear', { status: filterLabel })}
+            </button>
+          )}
         </div>
       )}
 
@@ -443,6 +471,10 @@ function CampaignDetailPage() {
           initial={EMPTY_PICKER_RESULT}
           presentOf={presentOf}
           includedCount={id => campaign!.testCaseIds.filter(x => x === id).length}
+          allTests={tests}
+          targetCampaignId={campaignId}
+          targetRuns={campaign.runs}
+          isEligible={isCarryEligible}
           onConfirm={handleConfirmAdd}
           onCancel={() => setAddingTests(false)}
         />
@@ -450,13 +482,17 @@ function CampaignDetailPage() {
 
       {/* T171 — notification persistante : instances avec des références non résolues. */}
       <UnresolvedParamsBanner runs={campaign.runs} />
+      {/* GH68 — instances à exécuter dont le test n'est pas approuvé. */}
+      <NotApprovedRunsBanner count={unapprovedPendingRuns(campaign.runs, testMap, isActive, isApproved).length} />
 
       {/* Test case list */}
       <div className="border rounded divide-y mb-3">
         {campaign.runs.length === 0 ? (
           <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.noTestCaseInCampaign')}</p>
+        ) : statusFilter && !campaign.runs.some(matchesFilter) ? (
+          <p className="px-4 py-3 text-xs text-ink-3 italic">{t('campaignPage.statusFilter.empty', { status: filterLabel })}</p>
         ) : (
-          campaign.runs.map(run => {
+          campaign.runs.filter(matchesFilter).map(run => {
             const { entryId, testCaseId: tcId, status: runStatus, runId, paramValues } = run
             const tc = resolveRunTest(run, testMap)
             // Références à saisir de cette instance (les valeurs lues dans la base sont figées).
@@ -474,6 +510,7 @@ function CampaignDetailPage() {
               ? paramPreviews.get(tcId)?.requirements?.find(r => r.requirementId === run.requirementId)
               : undefined
             const hasLiveParams = liveManualKeys.length > 0
+            const unapprovedTest = unapprovedTestOf(run, liveTc, isActive, isApproved)
             const isEditingParams = editingParamsFor === entryId
             const isDuplicating = duplicatingFor === entryId
             return (
@@ -503,6 +540,26 @@ function CampaignDetailPage() {
                         </button>
                       </>
                     )}
+                    {/* GH64 — instance reportée depuis une autre campagne. */}
+                    {run.carriedFrom && (
+                      <button
+                        type="button"
+                        title={t('campaignPage.carriedFrom', { campaignId: run.carriedFrom.campaignId, entryId: run.carriedFrom.entryId })}
+                        onClick={e => {
+                          e.stopPropagation()
+                          navigate({
+                            to: '/campaign/$campaignId',
+                            params: { campaignId: run.carriedFrom!.campaignId },
+                            // Composant/niveau de la source inconnus ici : pas ceux de la cible.
+                            search: { repoPath, projectId, component: undefined, level: undefined },
+                          })
+                        }}
+                        className="ml-2 font-mono text-[10px] text-ink-3 hover:text-status-info hover:underline"
+                      >
+                        ↩ {run.carriedFrom.campaignId}
+                      </button>
+                    )}
+                    {unapprovedTest && <NotApprovedBadge test={unapprovedTest} schema={schema} />}
                     {(run.unresolvedParams?.length ?? 0) > 0 && (
                       <span
                         className="ml-2 inline-flex items-center gap-0.5 text-[10px] text-status-warning"
@@ -688,6 +745,16 @@ function CampaignDetailPage() {
           <Trash2 size={15} />
         </button>
       </div>
+
+      {/* GH77 — historique du statut et des champs suivis (lecture seule). */}
+      <HistorySection
+        repoPath={repoPath}
+        kind="campaign"
+        id={campaignId}
+        typeDef={typeDef}
+        statusLabel={name => t(`campaignPage.carry.campaignStatus.${name}`, { defaultValue: name })}
+        refreshKey={`${campaign.status}:${JSON.stringify(campaign.history ?? null)}`}
+      />
 
       {/* Delete confirmation dialog */}
       {confirmDelete && (

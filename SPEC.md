@@ -79,12 +79,12 @@ Polenta est un outil de gestion du cycle de vie des exigences et des tests, orie
 
 > Spec détaillée : [specs/SPEC-DASHBOARDS.md](specs/SPEC-DASHBOARDS.md)
 
-- **Requêtes façon SQL** sur l'index en mémoire (moteur AlaSQL, pas de moteur de stockage) — query builder guidé par `schema.yaml` ou SQL avancé en lecture seule, portant sur le repo courant et les composants submodules agrégés.
-- **Requêtes sauvegardées** (privées ou partagées) + **historique** (toujours privé, purge automatique des entrées devenues invalides).
-- **Dashboards** : grille de **widgets** à tailles prédéfinies (barres, camembert, courbe, tuile KPI, table), type de widget jamais contraint par la forme du résultat de la requête, aperçu live à la configuration.
+- **Scripts de données** (GH74) : une requête est un script JavaScript qui lit le **graphe de données** JSON du projet (repo ouvert + composants : exigences, tests, liens, campagnes → entrées, exécutions, historiques, schéma) et renvoie des lignes ; exécuté dans un bac à sable QuickJS isolé (worker du process). **Modèles** (formulaire → code) pour les utilisateurs non techniques ; **bibliothèque projet** `dashboards/lib/` (étapes d'avancement, état des campagnes dans le temps, maturité…).
+- **Requêtes sauvegardées** (privées ou partagées) + **historique** (toujours privé).
+- **Dashboards** : grille de **widgets** à tailles prédéfinies, rendus en **Vega-Lite** (barres, camembert, courbe, indicateur, table, matrice, aire empilée dans le temps), transformation JS facultative, drill-down vers les objets, aperçu live à la configuration.
 - **Visibilité privé/partagé** en cascade : un widget ne peut être partagé que si sa requête l'est, un dashboard que si tous ses widgets le sont — rétrogradation et suppression bloquées si des dépendants partagés existent.
-- **Trois dashboards pré-configurés** (Couverture, Avancement, Maturité) seedés automatiquement au premier accès si le dossier `dashboards/` est vide.
-- **Critères de maturité d'une exigence** : champs `required` remplis, syntaxe EARS du/des champ(s) `validator: EARS`, au moins un critère d'acceptance mesurable, lien de vérification si `approved`, aucun lien `needsRevalidation`.
+- **Dashboards pré-configurés** : « Status » (partagé, si `dashboards/` est vide) et « Campagnes » (privé, par utilisateur), seedés au premier accès à Suivi avec la bibliothèque de départ ; mises à jour proposées dans un bandeau, jamais appliquées sans action.
+- **Critères de maturité d'une exigence** (bibliothèque `maturity.js`) : champs `required` remplis, syntaxe EARS du/des champ(s) `validator: EARS`, au moins un critère d'acceptance mesurable, lien de vérification si approuvée, pas de `needsRevalidation`.
 - Remplace l'ancien "Tableau de bord" statique de la page Projet (StatCards/répartitions/récemment modifiées), retiré sans reprise.
 
 ---

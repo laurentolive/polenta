@@ -1,9 +1,10 @@
-import type { ExecutionImportPreview, ExecutionImportResult, ExecutionSheetLocale, TestCase } from '@polenta/types'
+import type { ExecutionImportPreview, ExecutionImportResult, ExecutionSheetLocale } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { CampaignsService } from './campaigns.service'
 import type { TestsService } from './tests.service'
 import { buildExecutionSheetModel, writeExecutionWorkbook, type ExecutionSheetEntry } from './export/campaign-execution.xlsx'
 import { readExecutionWorkbook, validateExecutionImport } from './export/campaign-execution-import'
+import { testFingerprint } from './campaign-snapshot.util'
 
 /**
  * GH36 — exécution d'une campagne hors outil : export d'un classeur Excel à remplir par les
@@ -22,19 +23,14 @@ export class CampaignExecutionService {
     if (campaign.status === 'completed' || campaign.status === 'abandoned') {
       throw new Error(`La campagne ${campaignId} est clôturée : pas d'exécution hors outil possible.`)
     }
-
-    // Même repli que l'écran (`resolveCampaignRuns`) : copie figée à l'inclusion, sinon état live
-    // du test (entrées antérieures à T49) ; test introuvable → instance sans étape.
-    const liveIds = [...new Set(campaign.runs.filter(r => !r.testSnapshot).map(r => r.testCaseId))]
-    const live = new Map<string, TestCase>()
-    await Promise.all(liveIds.map(async id => {
-      const test = await this.tests.findOne(repoPath, id).catch(() => undefined)
-      if (test) live.set(id, test)
-    }))
-    const entries: ExecutionSheetEntry[] = campaign.runs.map(run => ({
-      run,
-      test: run.testSnapshot ?? live.get(run.testCaseId),
-    }))
+    // GH81 — version effective de chaque instance, sans rien écrire : état live du test pour une
+    // instance resynchronisable (GH68), copie figée sinon, état live pour une entrée pré-T49 ; test
+    // introuvable → instance sans étape. Son empreinte est contrôlée à l'import, qui la fige.
+    const effective = await this.campaigns.effectiveTests(repoPath, campaign)
+    const entries: ExecutionSheetEntry[] = campaign.runs.map(run => {
+      const test = effective.get(run.entryId)?.test
+      return { run, test, ...(test && { fingerprint: testFingerprint(test) }) }
+    })
 
     const model = buildExecutionSheetModel({ campaign, entries, locale, exportedAt: new Date().toISOString() })
     await writeExecutionWorkbook(model, destPath)
@@ -42,17 +38,30 @@ export class CampaignExecutionService {
 
   /** Lit et valide un classeur rempli contre l'état courant de la campagne, sans rien écrire. */
   async preview(repoPath: string, campaignId: string, filePath: string): Promise<ExecutionImportPreview> {
-    const [campaign, raw, author] = await Promise.all([
+    return (await this.validate(repoPath, campaignId, filePath)).preview
+  }
+
+  private async validate(repoPath: string, campaignId: string, filePath: string) {
+    const [campaign, raw, author, isApproved] = await Promise.all([
       this.campaigns.get(repoPath, campaignId),
       readExecutionWorkbook(filePath),
       this.auth.getAuthor(repoPath).catch(() => undefined),
+      this.campaigns.approvalPredicate(repoPath),
     ])
-    return validateExecutionImport(raw, {
+    const effectiveTests = await this.campaigns.effectiveTests(repoPath, campaign, isApproved)
+    const preview = validateExecutionImport(raw, {
       campaign,
       fallbackUser: author?.name || 'unknown',
       now: new Date().toISOString(),
       filePath,
+      isApproved,
+      effectiveTests,
+      fingerprint: testFingerprint,
     })
+    // GH81 — classeur v2 : la version exportée (= version effective, empreinte vérifiée) est figée
+    // à l'import ; classeur v1 (sans empreinte) : copie actuelle conservée, comme avant.
+    const fingerprinted = new Set('fatal' in raw ? [] : raw.instances.filter(i => i.fingerprint).map(i => i.entryId))
+    return { preview, effectiveTests, fingerprinted }
   }
 
   /**
@@ -62,7 +71,7 @@ export class CampaignExecutionService {
    * le restent (spec §4.4).
    */
   async apply(repoPath: string, campaignId: string, filePath: string, workspaceDir?: string): Promise<ExecutionImportResult> {
-    const preview = await this.preview(repoPath, campaignId, filePath)
+    const { preview, effectiveTests, fingerprinted } = await this.validate(repoPath, campaignId, filePath)
     const imported: string[] = []
     if (preview.fatal) return { imported, preview }
 
@@ -76,10 +85,14 @@ export class CampaignExecutionService {
           executedBy: inst.executedBy,
           executedAt: inst.executedAt,
           origin: 'excel-import',
+          campaignEntry: { campaignId, entryId: inst.entryId },
         }, workspaceDir)
+        const effective = effectiveTests.get(inst.entryId)
+        const exported = fingerprinted.has(inst.entryId) && effective?.resyncable ? effective.test : undefined
         await this.campaigns.updateRun(repoPath, campaignId, inst.entryId, inst.result, run.id, {
           executedAt: inst.executedAt,
           executedBy: inst.executedBy,
+          ...(exported && { testSnapshot: exported }),
         })
         imported.push(inst.entryId)
       } catch (err) {

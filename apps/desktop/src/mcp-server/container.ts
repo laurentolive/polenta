@@ -13,9 +13,13 @@ import { RevalidationService } from '../main/services/revalidation.service'
 import { CampaignsService } from '../main/services/campaigns.service'
 import { TreeService } from '../main/services/tree.service'
 import { TraceabilityService } from '../main/services/traceability.service'
-import { QueryEngineService } from '../main/services/query-engine.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
+import { HistoryService } from '../main/services/history.service'
+import { GraphService } from '../main/services/graph.service'
+import { DashboardLibraryService } from '../main/services/dashboard-library.service'
+import { ScriptEngineService } from '../main/services/script-engine.service'
+import { SuiviService } from '../main/services/suivi.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -37,9 +41,15 @@ export interface McpContainer {
   /** GH18 — utilisateur Polenta (`--user` / `POLENTA_USER`) dont le `.{user}.pref` porte
    *  les requêtes/dashboards privés ; absent = scope partagé uniquement. */
   user?: string
-  queryEngine: QueryEngineService
+  /** GH74 — graphe de données (sans cache : pas de surveillance des fichiers), bibliothèque, moteur. */
+  graph: GraphService
+  dashboardLibrary: DashboardLibraryService
+  scriptEngine: ScriptEngineService
+  suivi: SuiviService
   savedQueries: SavedQueriesService
   dashboards: DashboardsService
+  /** GH77 — lecture effective de l'historique (tools de lecture). */
+  history: HistoryService
 }
 
 /**
@@ -94,21 +104,26 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
   const schema = new SchemaService(auth, workspaceTree)
   const tree = new TreeService()
+  // GH77 — écritures MCP : `by` = `--user` / `POLENTA_USER` (sinon `local`), `source: mcp`.
+  const history = new HistoryService(git, async () => ({ by: user ?? 'local', source: 'mcp' }))
   // T172 — mêmes déclencheurs que l'app : un changement de statut via MCP marque aussi les pairs.
-  const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree)
-  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation)
-  const tests = new TestsService(git, testsIndex, schema, tree, revalidation)
-  const campaigns = new CampaignsService(git, tests)
+  const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
+  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation, history)
+  const tests = new TestsService(git, testsIndex, schema, tree, revalidation, history)
+  const campaigns = new CampaignsService(git, tests, undefined, schema, history)
   // GH18 — vue Suivi : même graphe que main/container.ts (sans DashboardSeedService, le
   // seed des dashboards pré-configurés reste propre à l'app). TraceabilityService n'est
   // appelé que pour computeCoverage (pur, ni réseau ni keytar).
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
-  const queryEngine = new QueryEngineService(reqIndex, testsIndex, schema, traceability, workspaceTree)
   const dashboards = new DashboardsService(git)
-  const savedQueries = new SavedQueriesService(git, schema, dashboards)
+  const savedQueries = new SavedQueriesService(git, dashboards)
+  const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns, { cache: false })
+  const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
+  const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
+  const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
-    user, queryEngine, savedQueries, dashboards,
+    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi,
   }
 }

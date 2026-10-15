@@ -2,6 +2,7 @@
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 import { RichTextField } from '../components/RichTextField'
 import { RichTextViewer } from '../components/RichTextViewer'
@@ -12,7 +13,9 @@ import { FrozenParamRefProvider } from '../contexts/ParamRefContext'
 import { isT171Run, substituteRunParams } from '../lib/testParams'
 import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
-import type { TestRunResult, StepResultValue } from '@polenta/types'
+import { useProjectSchema, isTestApproved, testStatusLabel } from '../hooks/useProjectSchema'
+import { useModalHotkeys } from '../hooks/useModalHotkeys'
+import type { TestCase, TestRunResult, StepResultValue } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId_/execute/$testId')({
   component: ExecuteTestPage,
@@ -52,16 +55,15 @@ function computeGlobalResult(stepResults: StepResultValue[]): TestRunResult {
   return 'PASS'
 }
 
-function mapResultToStatus(result: TestRunResult) {
-  switch (result) {
-    case 'PASS': return 'PASS' as const
-    case 'FAIL': return 'FAIL' as const
-    case 'BLOCKED': return 'BLOCKED' as const
-    case 'INCOMPLETE': return 'INCOMPLETE' as const
-  }
+// GH80 — le routeur garde le même composant quand seul `testId` change (`/execute/TC-1-1` →
+// `/execute/TC-2-1`) : la clé sur l'entrée réinitialise tout l'état de session (resynchronisation
+// à l'ouverture, version figée, saisie des étapes) d'une entrée à l'autre.
+function ExecuteTestPage() {
+  const { testId } = Route.useParams()
+  return <ExecuteEntryPage key={testId} />
 }
 
-function ExecuteTestPage() {
+function ExecuteEntryPage() {
   const { t } = useTranslation()
   // Le segment d'URL s'appelle historiquement "testId" mais porte désormais l'entryId de
   // l'inclusion du test dans la campagne (un même test peut être inclus plusieurs fois
@@ -78,11 +80,31 @@ function ExecuteTestPage() {
   })
   const entry = campaign?.runs.find(r => r.entryId === entryId)
   const testCaseId = entry?.testCaseId
+  const { data: schema, isError: schemaError } = useProjectSchema(repoPath)
+
+  // GH68/GH81 — instance resynchronisable (pending, campagne ouverte, copie non approuvée) : la page
+  // affiche l'état actuel du test sans rien écrire ; la version affichée est envoyée à la saisie et
+  // c'est elle que le main fige. On attend le schéma pour le savoir ; schéma illisible : repli sur
+  // `approved`, comme le main (GH80).
+  const campaignOpen = campaign?.status === 'planned' || campaign?.status === 'in_progress'
+  const refreshCandidate = !!entry && entry.status === 'pending' && !!entry.testSnapshot && campaignOpen
+  const schemaKnown = !!schema || schemaError
+  const resyncable = refreshCandidate && schemaKnown && !isTestApproved(entry.testSnapshot!, schema)
+  const waitingSchema = refreshCandidate && !schemaKnown
 
   // T171 — instance T171 : texte brut, les références sont rendues par FrozenParamRefProvider.
   // Instance antérieure (T97) : substitution d'origine en amont, code Markdown compris.
   const runText = (text: string) => (isT171Run(entry) ? text : substituteRunParams(text, entry))
-  const { testCase, isLoading: loadingTest } = useResolvedCampaignTest(repoPath, testCaseId, entry?.testSnapshot)
+  const { testCase: currentTest, isLoading: loadingTest } = useResolvedCampaignTest(repoPath, testCaseId, entry?.testSnapshot, { live: resyncable })
+  // GH71 (correctif GH68) — la version affichée est figée pour la session d'exécution : si le test
+  // change pendant la saisie (modifié ailleurs, GH81), la saisie n'est pas réinitialisée ; un
+  // bandeau propose d'afficher la nouvelle version (ce qui, lui, la réinitialise).
+  const [lockedTest, setLockedTest] = useState<TestCase>()
+  useEffect(() => {
+    if (!waitingSchema && !loadingTest && currentTest && !lockedTest) setLockedTest(currentTest)
+  }, [waitingSchema, loadingTest, currentTest, lockedTest])
+  const testCase = lockedTest ?? currentTest
+  const testChanged = !!lockedTest && !!currentTest && JSON.stringify(lockedTest) !== JSON.stringify(currentTest)
 
   const sortedSteps = [...(testCase?.steps ?? [])].sort((a, b) => a.order - b.order)
 
@@ -118,9 +140,11 @@ function ExecuteTestPage() {
         result: globalResult,
         // T179 — instance générée pour une exigence : le run ne couvre qu'elle.
         ...(entry?.requirementId && { requirementId: entry.requirementId }),
+        // GH73 — le run est rattaché à cette entrée (historique daté de la campagne).
+        campaignEntry: { campaignId, entryId },
       })
-      const campaignStatus = mapResultToStatus(globalResult)
-      await api.campaigns.updateRun(repoPath, campaignId, entryId, campaignStatus, run.id)
+      // GH81 — instance resynchronisable : la version affichée est figée avec le résultat.
+      await api.campaigns.updateRun(repoPath, campaignId, entryId, globalResult, run.id, resyncable ? testCase : undefined)
       return run
     },
     onSuccess: () => {
@@ -138,8 +162,23 @@ function ExecuteTestPage() {
     },
   })
 
+  // GH68 — test non approuvé : bandeau, et confirmation à la première saisie d'un résultat (pas
+  // pour une instance déjà exécutée qu'on ré-exécute).
+  const notApproved = !!testCase && !isTestApproved(testCase, schema)
+  const [confirmingUnapproved, setConfirmingUnapproved] = useState(false)
+  const cancelUnapproved = () => setConfirmingUnapproved(false)
+  const confirmUnapproved = () => {
+    setConfirmingUnapproved(false)
+    if (!executeMutation.isPending) executeMutation.mutate()
+  }
+  useModalHotkeys(cancelUnapproved, confirmUnapproved, !confirmingUnapproved)
+
   // Ctrl/Cmd+Entrée depuis un commentaire richtext → enregistrer le résultat d'exécution.
-  const submitExecution = () => { if (!executeMutation.isPending) executeMutation.mutate() }
+  const submitExecution = () => {
+    if (executeMutation.isPending) return
+    if (notApproved && entry?.status === 'pending') setConfirmingUnapproved(true)
+    else executeMutation.mutate()
+  }
 
   function goBack() {
     navigate({
@@ -160,7 +199,7 @@ function ExecuteTestPage() {
   if (!repoPath) {
     return <p className="p-6 text-sm text-ink-2"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   }
-  if (loadingCampaign || loadingTest) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
+  if (loadingCampaign || loadingTest || waitingSchema) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
   if (!entry) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.entryNotFound', { entryId })}</p>
   if (!testCase) return <p className="p-6 text-sm text-ink-2">{t('campaignPage.testNotFound', { testCaseId })}</p>
 
@@ -190,6 +229,21 @@ function ExecuteTestPage() {
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+            {testChanged && (
+              <div className="rounded border border-status-warning-border bg-status-warning-bg px-3 py-2 text-xs text-status-warning flex items-center gap-2" data-testid="execute-test-changed">
+                <AlertTriangle size={13} className="shrink-0" />
+                <span className="flex-1">{t('campaignPage.executeTestChanged')}</span>
+                <button type="button" className="underline shrink-0" onClick={() => setLockedTest(currentTest)}>
+                  {t('campaignPage.executeTestChangedReload')}
+                </button>
+              </div>
+            )}
+            {notApproved && (
+              <div className="rounded border border-status-warning-border bg-status-warning-bg px-3 py-2 text-xs text-status-warning flex items-center gap-1.5">
+                <AlertTriangle size={13} className="shrink-0" />
+                {t('campaignPage.executeNotApprovedBanner', { status: testStatusLabel(testCase, schema) })}
+              </div>
+            )}
             <RunParamsInfo run={entry} />
             {/* Preconditions */}
             {testCase.preconditions && (
@@ -329,7 +383,7 @@ function ExecuteTestPage() {
           </button>
           <button
             type="button"
-            onClick={() => executeMutation.mutate()}
+            onClick={submitExecution}
             disabled={executeMutation.isPending}
             className="btn-primary"
           >
@@ -337,6 +391,24 @@ function ExecuteTestPage() {
           </button>
         </div>
       </div>
+      {confirmingUnapproved && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={cancelUnapproved}>
+          <div className="bg-surface border border-edge rounded-lg shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-sm font-semibold text-ink mb-2">{t('campaignPage.executeNotApprovedConfirmTitle')}</h2>
+            <p className="text-xs text-ink-2 mb-5">
+              {t('campaignPage.executeNotApprovedConfirmBody', { status: testStatusLabel(testCase, schema) })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={cancelUnapproved} className="btn-secondary">
+                {t('common.cancel')}
+              </button>
+              <button type="button" onClick={confirmUnapproved} autoFocus className="btn-primary">
+                {t('campaignPage.executeNotApprovedConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </RichTextProvider>
     </FrozenParamRefProvider>
   )

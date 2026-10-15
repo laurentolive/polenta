@@ -62,6 +62,8 @@ export const ExecuteTestCaseSchema = z.object({
   executedBy: z.string().optional(),
   executedAt: z.string().datetime({ offset: true }).optional(),
   origin: z.literal('excel-import').optional(),
+  /** GH73 — entrée de campagne exécutée : le run lui est rattaché. Absent : exécution isolée. */
+  campaignEntry: z.object({ campaignId: z.string().min(1), entryId: z.string().min(1) }).optional(),
 })
 
 export type CreateTestCaseDto = z.infer<typeof CreateTestCaseSchema>

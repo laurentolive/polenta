@@ -22,6 +22,7 @@ Toutes les commandes `polenta-host` / `polenta-admin` s'exécutent **en root** (
 ├── host.env                  configuration de l'hôte (root, 600) — clé S3, niveau de durcissement HARDEN_HOST
 ├── kit/                      copie installée du kit (polenta-host, polenta-admin → /usr/local/bin)
 ├── caddy/etc/sites/          un fichier <instance>.caddy par client ; _*.caddy = sites additionnels
+│                             (mode external : absent, blocs dans CADDY_SITES_DIR — voir A16)
 ├── instances/<nom>/
 │   ├── instance.env          secrets de l'instance (SECRET_KEY, mot de passe restic…) — 600
 │   ├── data/                 dépôts git, base SQLite, journaux de la forge
@@ -33,6 +34,12 @@ Toutes les commandes `polenta-host` / `polenta-admin` s'exécutent **en root** (
 
 Chaque instance = un projet Docker compose `polenta-<nom>`, un réseau `polenta-<nom>`, aucun port
 publié. Seul Caddy (ports 80/443) est exposé. Une instance ne peut joindre aucune autre.
+
+Mode `CADDY_MODE=external` (serveur qui héberge déjà d'autres projets dockerisés derrière leur propre
+Caddy, A16) : le kit ne crée aucun Caddy ni `/opt/polenta/caddy/` ; les blocs `<instance>.caddy` /
+`<instance>.web.caddy` sont écrits dans `CADDY_SITES_DIR` (défaut `/opt/polenta/caddy-sites/`), forge et
+client web rejoignent aussi le réseau `EDGE_NETWORK` et l'isolation entre instances n'est plus
+garantie par le réseau (limites en A16).
 
 ### A2. Préparer un hôte
 
@@ -54,10 +61,14 @@ un domaine.
    (`sudo nano /opt/polenta/host.env`) — `ACME_EMAIL`, `BASE_DOMAIN`, `BACKUP_S3_*`, facultatifs
    `SMTP_*`, `ADMIN_IPS` (A8), `POLENTA_DOWNLOAD_URL`, `BACKUP_PING_URL` — puis relancer
    `sudo ./polenta-host.sh setup`.
+   **Serveur déjà occupé par d'autres projets dockerisés** (80/443 pris par un Caddy existant) : ne
+   pas lancer `setup` avant d'avoir lu A16 et renseigné `CADDY_MODE=external` dans `host.env` ; sinon
+   `setup` s'arrête (80/443 occupés) sans rien modifier. Choisir aussi le niveau de durcissement
+   (ci-dessous) : sur un serveur déjà administré, `HARDEN_HOST=none`.
 4. `setup` est rejouable sans effet de bord. Au niveau par défaut (`HARDEN_HOST=full`), il installe
-   Docker, restic, le pare-feu (22/80/443), fail2ban, les mises à jour de sécurité automatiques, la
-   sauvegarde nocturne (02:30), et durcit SSH (clé uniquement, root interdit) **seulement si** une
-   clé est déjà autorisée.
+   Docker, restic, le pare-feu (22/80/443 ; en mode `external` : 22 seul, aucune règle existante n'est
+   supprimée), fail2ban, les mises à jour de sécurité automatiques, la sauvegarde nocturne (02:30), et
+   durcit SSH (clé uniquement, root interdit) **seulement si** une clé est déjà autorisée.
 5. Vérifier : `sudo polenta-host status` (bloc « Durcissement » : état détecté de chaque module).
 
 #### Serveur déjà administré : choisir le niveau de durcissement
@@ -76,6 +87,20 @@ dockerisés, il peut couper des accès existants (SSH sans mot de passe ni root,
 Une valeur invalide arrête `setup` avant toute modification. `HOST_MODULES=a,b,c` (facultatif)
 remplace la liste du niveau (modules : voir `host.env.example`).
 
+**Hôte déjà administré avec un Caddy existant** (cas d'un serveur partagé avec d'autres projets) :
+combiner les deux réglages dans `host.env`, avant le premier `setup` :
+
+```
+CADDY_MODE=external     # A16 : le Caddy existant sert les forges, aucun Caddy du kit, 80/443 non touchés
+HARDEN_HOST=none        # ni ufw, ni SSH, ni fail2ban, ni mises à jour automatiques
+```
+
+`setup` installe alors seulement Docker (s'il manque), restic et la sauvegarde nocturne, vérifie
+`EDGE_NETWORK` et crée `CADDY_SITES_DIR`. Le module `firewall` décide seul de ufw : actif (niveau `full`
+ou `HOST_MODULES` le contenant), il n'ouvre que 22 en `external` ; inactif, ufw n'est pas touché et
+aucun avertissement 80/443 n'est émis (ces ports relèvent du Caddy existant). Contrôle depuis
+l'extérieur : `deploy/tests/acceptance.sh --external --harden-level none <domaine>`.
+
 Limites :
 - `setup` **n'annule jamais** : passer de `full` à `none` laisse en place ce qui est déjà posé ;
   `setup` et `status` le signalent (`hors niveau`). Retrait manuel, module par module :
@@ -85,8 +110,8 @@ Limites :
   - mises à jour : supprimer `/etc/apt/apt.conf.d/52polenta-unattended` (redémarrage 04:00) et/ou `20auto-upgrades` ;
   - `resolved` / `console` : supprimer `/etc/systemd/resolved.conf.d/10-polenta.conf` (puis `systemctl restart systemd-resolved`) / `/etc/sysctl.d/10-polenta-console.conf`.
 - Si `ufw` est déjà actif et que le niveau ne le gère pas, `setup` ne le modifie pas mais avertit
-  si 80/443 n'y sont pas ouverts : Caddy serait injoignable. Les ports publiés par Docker
-  contournent `ufw`.
+  si 80/443 n'y sont pas ouverts : Caddy serait injoignable (pas d'avertissement en `external`). Les
+  ports publiés par Docker contournent `ufw`.
 
 Contrôler un hôte au niveau `none` (sur l'hôte, après `setup`) :
 ```
@@ -262,6 +287,11 @@ ni ne supprime jamais les fichiers `_*.caddy`. Recharger Caddy après modificati
 
 Ces sites **ne sont pas sauvegardés** par le kit : garder leurs sources ailleurs (dépôt git).
 
+**Mode `CADDY_MODE=external`** : le kit n'a plus de Caddy à lui, donc plus de sites additionnels à
+héberger ; ils vivent dans la configuration du Caddy existant. Si ce Caddy importe `CADDY_SITES_DIR`,
+la convention `_<nom>.caddy` s'y applique à l'identique (le kit ne lit, ne modifie ni ne supprime jamais
+ces fichiers) et le rechargement passe par votre Caddy (`CADDY_RELOAD_CMD`, A16).
+
 ### A11. Incidents
 
 | Symptôme | Diagnostic | Remède |
@@ -281,7 +311,9 @@ Prouvé au test S3-13 (réinstallation complète de l'OS, 2026-10-11) : `setup` 
 réinstallation du fournisseur.
 
 **Avant** une réinstallation volontaire : `instance backup --all`, puis copier hors de l'hôte
-`instance keys`, `/opt/polenta/host.env` et les sites additionnels.
+`instance keys`, `/opt/polenta/host.env` et les sites additionnels (mode `external` : aussi le
+contenu de `CADDY_SITES_DIR` s'il porte des fichiers `_*.caddy`, et la configuration de votre Caddy
+existant, que le kit ne sauvegarde pas).
 
 1. Nouvel hôte (ou OS réinstallé) : utilisateur sudo, clé SSH, mot de passe pour la console (A8).
    OVH : vérifier la version choisie dans la liste (Debian **13**, pas 11 — `setup` refuse un OS non
@@ -297,7 +329,9 @@ réinstallation du fournisseur.
    sudo polenta-host instance restore acme --from latest --password-file /root/acme.restic
    sudo rm /root/acme.restic
    ```
-5. Republier les sites additionnels (A10).
+5. Republier les sites additionnels (A10). Mode `external` : recréer d'abord le réseau `EDGE_NETWORK`
+   et rattacher le Caddy existant (A16), puis republier les `_*.caddy` de `CADDY_SITES_DIR` ; les
+   blocs des clients sont réécrits par `instance restore` (ou `instance sync <nom>`).
 6. `polenta-host status` ; les postes Polenta se reconnectent seuls (même adresse).
 
 Les verrous restic laissés par l'ancien hôte sont levés automatiquement par la sauvegarde nocturne
@@ -389,6 +423,154 @@ autre domaine de forge, `restore` réaligne `web.env` ; si le **domaine web** ch
 | Export PDF en erreur | navigateur headless de l'image | `docker logs polenta-web-<nom>` |
 
 Journaux : `docker logs polenta-web-<instance>`.
+
+### A16. Cohabitation avec d'autres projets dockerisés sur un même serveur
+
+Par défaut (`CADDY_MODE=managed`) le kit démarre **son propre Caddy** sur les ports 80/443. Sur un
+serveur qui héberge déjà d'autres projets dockerisés derrière leur propre Caddy, ce n'est pas possible
+(ports pris) : le mode `external` laisse ce Caddy existant faire le HTTPS et le routage, et le kit se
+limite à écrire les blocs de site de ses instances et à rattacher leurs conteneurs à un réseau Docker
+partagé avec lui. Comportement par défaut, commandes et fichiers du mode `managed` inchangés.
+
+**Prérequis** (à la charge de l'exploitant ; le kit ne gère, n'installe ni ne met à jour le Caddy
+existant) :
+
+1. un Caddy sous Docker (les blocs écrits restent utilisables avec un autre Caddy, mais aucune
+   joignabilité réseau n'est organisée hors Docker) ;
+2. un réseau Docker `EDGE_NETWORK`, **créé par vous** (`docker network create polenta-edge`) et auquel ce
+   Caddy est rattaché : le kit ne crée ni ne supprime jamais ce réseau en mode `external`, et ne
+   rattache jamais le Caddy à un réseau d'instance ;
+3. le dossier `CADDY_SITES_DIR` monté **en lecture seule** dans le conteneur de ce Caddy, et son
+   Caddyfile qui l'importe ;
+4. DNS, certificats TLS, ports 80/443 et pare-feu correspondants relèvent de ce Caddy.
+
+Sur un serveur déjà administré, fixer aussi `HARDEN_HOST=none` (A2, « Serveur déjà administré ») pour
+que `setup` ne touche ni à ufw, ni à SSH, ni à fail2ban, ni aux mises à jour automatiques.
+
+Exemple de montage et d'import (côté Caddy existant, à adapter à votre `docker-compose.yml`) :
+
+```
+# docker-compose.yml du Caddy existant
+services:
+  caddy:
+    volumes:
+      - /opt/polenta/caddy-sites:/etc/caddy/polenta-sites:ro
+    networks: [default, polenta-edge]
+networks:
+  polenta-edge:
+    external: true
+```
+
+```
+# Caddyfile du Caddy existant
+import /etc/caddy/polenta-sites/*.caddy
+```
+
+`polenta-host setup` affiche la ligne `import <CADDY_SITES_DIR>/*.caddy` avec le chemin **de l'hôte** : dans
+le conteneur, utiliser le chemin du montage.
+
+**Configuration** — `/opt/polenta/host.env` (valeurs par défaut entre parenthèses ; seul `CADDY_MODE`
+est obligatoire pour basculer) :
+
+```
+CADDY_MODE=external
+EDGE_NETWORK=polenta-edge                 # (polenta-edge)
+CADDY_SITES_DIR=/opt/polenta/caddy-sites  # (/opt/polenta/caddy-sites) chemin absolu
+CADDY_RELOAD_CMD='docker exec caddy caddy reload --config /etc/caddy/Caddyfile'   # (vide)
+HARDEN_HOST=none                          # (full) GH62, recommandé sur un serveur déjà administré
+```
+
+`CADDY_RELOAD_CMD` est exécutée en root (`bash -c`) après chaque écriture ou suppression **effective**
+d'un bloc (rien si le bloc est déjà à jour). Autre exemple : `systemctl reload caddy` (Caddy hors
+Docker, blocs lus depuis l'hôte). Vide : le kit affiche « rechargez votre Caddy » et conserve le bloc.
+Si la commande échoue, le bloc qui vient d'être écrit est **retiré** (sinon il empoisonnerait tous les
+rechargements suivants, y compris ceux des autres projets) et le kit s'arrête en affichant la sortie de
+la commande. `ACME_EMAIL` et `CADDY_VERSION` sont ignorés. Une valeur invalide (`CADDY_MODE` hors
+`managed|external`, `EDGE_NETWORK` avec espace, `CADDY_SITES_DIR` relatif) est refusée avant toute
+modification de l'hôte.
+
+**Ce que le kit fait en mode `external`** : `setup` vérifie `EDGE_NETWORK`, crée `CADDY_SITES_DIR` (root,
+755) ; si le module `firewall` est actif (niveau `full` ou `HOST_MODULES`), n'ouvre que 22/tcp dans ufw
+sans toucher aux règles ni aux listeners existants sur 80/443 ; sinon (`basic`, `none`) ufw n'est pas
+touché ; aucun conteneur `polenta-caddy`. `instance add / restore / update / start / remove / web enable / web disable`
+écrivent ou suppriment `<instance>.caddy` et `<instance>.web.caddy` (contenu identique au mode
+`managed`), exécutent `CADDY_RELOAD_CMD`, puis vérifient la joignabilité **sur le réseau interne**
+(`/api/healthz` depuis un conteneur éphémère rattaché à `EDGE_NETWORK`). Le kit ne vérifie **pas**
+`https://<domaine>` : le certificat dépend de votre Caddy, le DNS peut viser un autre proxy.
+`instance stop` laisse le bloc en place (502 tant que l'instance est arrêtée). `status` affiche
+« Caddy : externe (blocs dans …, réseau …) » et « réseau absent » en rouge si `EDGE_NETWORK` a disparu.
+Les fichiers `_*.caddy` du dossier ne sont jamais lus, modifiés ni supprimés.
+
+**Limites d'isolation (à lire avant de choisir `EDGE_NETWORK`)** : en mode `managed`, chaque forge est sur
+son seul réseau `polenta-<nom>` et ne peut joindre aucune autre. En mode `external`, les forges et clients
+web de **toutes les instances rejoignent `EDGE_NETWORK`** : elles peuvent se joindre entre elles, et
+joindre tout conteneur présent sur ce même réseau (le Caddy, mais aussi les autres projets s'ils y
+sont). Mitigations : aucun port n'est publié ; les noms de conteneur sont uniques (`forgejo-<nom>`,
+`polenta-web-<nom>`) ; l'authentification de chaque forge reste celle de la forge. **Recommandation** :
+un réseau d'accès dédié à Polenta (`EDGE_NETWORK=polenta-edge`, auquel seul le Caddy existant se
+rattache), et non le réseau commun des autres projets. Un cloisonnement renforcé (réseau par instance)
+est une évolution possible, non traitée. L'IP vue par la forge (et fail2ban, A8) est celle que le Caddy
+existant transmet (`X-Forwarded-For`, comportement par défaut de `reverse_proxy`).
+
+**Instances créées avant la fonctionnalité** : leurs conteneurs ne sont pas sur `EDGE_NETWORK` ;
+`polenta-host instance sync <nom>` (et `instance update`) les recrée avec le bon réseau.
+
+**Migration `managed` → `external`** (non automatique : `setup` **refuse** de passer en `external` tant
+qu'un conteneur `polenta-caddy` tourne, pour ne pas avoir deux Caddy sur 80/443). Prévoir une coupure de
+quelques minutes :
+
+1. Préparer le Caddy existant (prérequis 1 à 3) : réseau `EDGE_NETWORK` créé, Caddy rattaché, montage en
+   lecture seule de `CADDY_SITES_DIR` et ligne `import` ajoutés (sans recharger encore). Ce Caddy
+   réémettra les certificats : attention aux limites de Let's Encrypt si l'opération est répétée.
+2. Libérer 80/443 : `docker compose -f /opt/polenta/caddy/docker-compose.yml down`. Les instances
+   continuent de tourner mais ne sont plus servies.
+3. Sites additionnels du Caddy du kit (`/opt/polenta/caddy/etc/sites/_*.caddy`) : à reporter dans la
+   configuration du Caddy existant (A10). Les `<instance>.caddy` seront réécrits à l'étape 5.
+4. Dans `/opt/polenta/host.env` : `CADDY_MODE=external` (+ `EDGE_NETWORK`, `CADDY_SITES_DIR`,
+   `CADDY_RELOAD_CMD`), puis `sudo polenta-host setup` : vérifie le réseau, crée le dossier, ne touche pas
+   à ufw 80/443 (règles à retirer à la main si elles ne servent plus).
+5. Pour chaque instance : `sudo polenta-host instance sync <nom>` (recrée les conteneurs sur
+   `EDGE_NETWORK`, réécrit `<nom>.caddy` et `<nom>.web.caddy`, recharge). Vérifier : `sudo polenta-host
+   status`, puis `deploy/tests/acceptance.sh --external <domaine>` depuis un poste extérieur.
+6. Une fois validé : `rm -r /opt/polenta/caddy` (certificats du Caddy du kit, devenus inutiles).
+
+**Retour `external` → `managed`** (`setup` refuse si 80/443 sont occupés par un autre processus que
+`polenta-caddy`) :
+
+1. Libérer 80/443 : arrêter ou reconfigurer le Caddy existant (ou ses ports publiés), supprimer
+   `<instance>.caddy` / `<instance>.web.caddy` de `CADDY_SITES_DIR` (et la ligne `import` si elle ne sert
+   plus), puis recharger ce Caddy.
+2. `host.env` : `CADDY_MODE=managed` (ou retirer la ligne) ; `sudo polenta-host setup` démarre
+   `polenta-caddy` et ouvre 80/443.
+3. Pour chaque instance : `sudo polenta-host instance start <nom>` (recrée les conteneurs sans le réseau
+   externe, réécrit le bloc dans `/opt/polenta/caddy/etc/sites/`, relie Caddy au réseau de l'instance) ;
+   si le client web est actif : `sudo polenta-host instance web enable <nom> --domain <domaine web>
+   --version <v>`.
+4. `sudo polenta-host status`, puis `deploy/tests/acceptance.sh <domaine>` depuis un poste extérieur.
+
+Les sauvegardes ne contiennent ni blocs de site ni réseau : `instance restore` d'une sauvegarde faite sur
+un hôte du mode opposé est neutre, le mode de l'hôte cible s'applique.
+
+**Dépannage**
+
+| Symptôme | Diagnostic | Remède |
+|---|---|---|
+| `setup` : « réseau Docker … absent » | `docker network ls` | `docker network create <EDGE_NETWORK>` et rattacher le Caddy existant |
+| `setup` : « polenta-caddy tourne encore » | `docker ps --filter name=polenta-caddy` | migration, étape 2 |
+| `setup` : « 80/443 occupés » (managed) | `ss -ltnp 'sport = :80'` | libérer les ports ou passer en `external` |
+| Site non servi, certificat par défaut | dossier non monté, `import` absent, Caddy non rechargé, Caddy absent de `EDGE_NETWORK` | `docker exec <caddy> ls <montage>`, `docker inspect <caddy>` (réseaux), recharger |
+| 502 / 503 sur une instance démarrée | `docker inspect forgejo-<nom>` doit lister `polenta-<nom>` **et** `EDGE_NETWORK` ; Caddy sur `EDGE_NETWORK` ? | `instance sync <nom>` |
+| « ambiguous site definition » au rechargement | même domaine déjà déclaré dans le Caddy existant | retirer le doublon (le kit a retiré son bloc) |
+| « le rechargement de votre Caddy a échoué » | sortie affichée au-dessus ; tester la commande à la main | corriger `CADDY_RELOAD_CMD` (chemin, nom du conteneur) |
+| Avertissement « rechargez votre Caddy » | `CADDY_RELOAD_CMD` vide | renseigner la commande, ou recharger à la main |
+| « ne répond pas sur le réseau … » (`add`, `start`) | conteneur sur le seul réseau d'instance | `instance sync <nom>` ; vérifier que `EDGE_NETWORK` n'a pas été recréé |
+| `status` : « réseau absent » | réseau supprimé après coup | le recréer, rattacher le Caddy, puis `instance sync <nom>` pour chaque instance |
+
+**Vérification** : sur l'hôte, `sudo deploy/tests/acceptance-external.sh <domaine-de-test>` (instance de test
+créée puis supprimée, Caddy d'essai éphémère ; options `--web-domain` / `--web-version` pour le client
+web) ; depuis un poste extérieur, `deploy/tests/acceptance.sh --external <domaine>` (22 ouvert, 80/443 non
+exigés, 2222/3000/5355/8080/2375 fermés). Hôte en `HARDEN_HOST=basic|none` : ajouter `--harden-level <niveau>`
+(ports non contrôlés).
 
 ## Partie B — admin du client
 

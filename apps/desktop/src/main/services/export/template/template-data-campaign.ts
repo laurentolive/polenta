@@ -138,7 +138,8 @@ export function buildDashboardData(payload: DashboardExportPayload, toTable: Tab
     return {
       id: widget.id,
       title: widget.title,
-      type: widget.type,
+      // GH74 — modèle d'origine du widget, `custom` s'il a été écrit ou modifié à la main.
+      type: widget.template && !widget.state.customized ? widget.template.id : 'custom',
       columns: columns.map(name => ({ name })),
       rows,
       hasData,
@@ -146,7 +147,8 @@ export function buildDashboardData(payload: DashboardExportPayload, toTable: Tab
       table: hasData ? toTable(columns, rows.map(r => r.cells)) : '',
     }
   })
-  return { dashboard: { id: dashboard.id, title: dashboard.title }, widgets, count: widgets.length }
+  // GH93 — `{#parameters}{label} : {value}{/parameters}` : valeurs de la barre de paramètres.
+  return { dashboard: { id: dashboard.id, title: dashboard.title }, widgets, count: widgets.length, parameters: payload.parameters ?? [] }
 }
 
 /** Champs personnalisés en texte simple (richtext Markdown retiré, listes jointes). */

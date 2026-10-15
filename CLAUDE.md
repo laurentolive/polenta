@@ -128,6 +128,7 @@ nodes:
             type: enum
             values: [high, medium, low]
             required: true
+            trackHistory: true  # GH77 — historiser ce champ (history.priority) ; absent = non suivi
           - name: statement
             label: Énoncé
             type: richtext
@@ -144,6 +145,7 @@ nodes:
           - name: obsolete
             label: Obsolète
             isTerminal: true   # masqué des listes par défaut
+        # trackStatusHistory: false   # GH77 — statut historisé par défaut (history.status) ; écrit seulement pour le désactiver
 
   - name: motor-control      # nœud submodule (url présente) = repo git externe
     label: Contrôle moteur
@@ -231,7 +233,7 @@ jiraLinks: []
 Un cas de test suit le même principe (`tests/<ID>.yaml`), avec en plus `preconditions`,
 `equipment`, `steps: [{order, action, expectedResult, notes}]`, `postconditions`.
 
-**Champs système fixes** (non configurables) : `id`, `projectId`, `branchId`, `objectTypeRef`, `title`, `status`, `version`, `jiraLinks`, `needsRevalidation` (T172 — écrit uniquement quand vrai : un élément lié a quitté l'approbation, impact à vérifier ; posé par l'application, jamais à la main)
+**Champs système fixes** (non configurables) : `id`, `projectId`, `branchId`, `objectTypeRef`, `title`, `status`, `version`, `jiraLinks`, `needsRevalidation` (T172 — écrit uniquement quand vrai : un élément lié a quitté l'approbation, impact à vérifier ; posé par l'application, jamais à la main), `history` (GH77 — historique des champs suivis, une liste par champ : `status` et les champs `trackHistory: true`, entrées `{ value?, at, by, source? }` ; absent tant que vide ; posé par l'application, jamais à la main — y compris dans les campagnes, mais jamais dans une copie `testSnapshot`)
 **Champs personnalisés** : tout dans `fields: {}`, définis par le type dans `schema.yaml`
 **Liens entre objets** : via `ObjectLink`, dans un fichier séparé `links/links.yaml` (pas dans le fichier de l'exigence) — voir §"Sens d'un lien de couverture test ↔ exigence" plus haut
 **Champs dérivés** (non stockés dans le YAML, lus depuis `git log` du fichier) : `createdAt`, `createdBy`, `updatedAt`, `updatedBy`
@@ -281,6 +283,25 @@ THEN THE <système> SHALL <action>
     `parameters/parameters.yaml` (repo de l'élément, ou composant déclaré dans `polenta-repo.yaml`) ;
     une référence locale absente de la base est saisie à la main en campagne, toute autre reste
     littérale — ne pas supprimer un paramètre encore utilisé
+12. La valeur courante d'un champ suivi (statut, champ `trackHistory: true`) est la dernière entrée
+    de son `history` (GH77). Un écart (YAML modifié à la main, ancienne version de l'app, `git revert`)
+    apparaît à la lecture comme une entrée « déduite » (`implicit: true`) et est comblé à la
+    prochaine écriture par l'application — ne pas le corriger à la main
+
+---
+
+## Principe données brutes / indicateurs projet (GH79)
+
+Polenta expose les **données brutes** du modèle (objets, champs, liens, campagnes → entrées →
+runs, historique) et ne calcule un indicateur **que s'il sert à une de ses propres fonctions**
+(couverture test ↔ exigence, `needsRevalidation`, approbation `isApproval`, validation EARS /
+champs remplis, resynchronisation des copies de campagne). Tout indicateur **de suivi**
+(maturité, étapes d'avancement, état d'une campagne à une date, dernier résultat…) vit **côté
+projet** : scripts et bibliothèque dans le repo du client, contenu de départ modifiable — jamais
+du code de Polenta. Les écrans de Polenta l'affichent via un mécanisme générique, pas du code dédié.
+
+**Règle de décision** pour tout nouvel indicateur : *sert-il à une fonction de Polenta ?* Oui →
+calculé dans Polenta ; non → script côté projet. Détail : `specs/SPEC-TECH-stack.md` §1.1.
 
 ---
 
@@ -330,6 +351,7 @@ Ne pas définir la variable d'environnement `CLAUDE_CODE_SUBAGENT_MODEL` : elle 
 - Ne pas créer d'exigence sans syntaxe EARS dans le champ `statement`
 - Ne pas modifier un `.drawio` sans lire les exigences/tests qui le référencent
 - Ne pas réutiliser un ID même si l'exigence est `obsolete`
+- Ne pas écrire ni corriger le champ `history` d'un objet à la main (GH77) — l'application l'alimente à chaque écriture
 - Ne pas supprimer une pierre tombale `.polenta/tombstones/<ID>`, ni supprimer à la main le fichier d'un objet (passer par l'application, qui pose la pierre tombale)
 - Ne pas éditer `.polenta/trees/<nœud>/<type>.yaml` manuellement dans un vrai projet — c'est l'application qui le maintient au fil des actions dans l'UI, pas un script
 - **Ne pas éditer `.gitmodules` manuellement** — il est généré par Polenta depuis `schema.nodes` (nœuds avec `url`) via `schema:save`

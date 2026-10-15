@@ -107,13 +107,19 @@ def enroll_2fa(login, password):
     m = re.search(r'name="_csrf" value="([^"]+)"', html)
     if m: f['_csrf'] = m.group(1)
     req('POST', BASE + '/user/login', token=None, raw=True, opener=op, data=urllib.parse.urlencode(f).encode())
-    c, html = req('GET', BASE + '/user/settings/security/two_factor/enroll', token=None, raw=True, opener=op)
-    secret = re.search(r'\b([A-Z2-7]{16,})\b', html).group(1)
-    f = {'passcode': totp(secret)}
-    m = re.search(r'name="_csrf" value="([^"]+)"', html)
-    if m: f['_csrf'] = m.group(1)
-    req('POST', BASE + '/user/settings/security/two_factor/enroll', token=None, raw=True, opener=op, data=urllib.parse.urlencode(f).encode())
-    return secret
+    # GH55 — inscription vérifiée : refusée sans bruit (code calculé à la bascule de la fenêtre de
+    # 30 s), le compte restait sans 2FA et S2-5 arrivait sur l'accueil sans champ code.
+    for _ in range(3):
+        c, html = req('GET', BASE + '/user/settings/security/two_factor/enroll', token=None, raw=True, opener=op)
+        secret = re.search(r'\b([A-Z2-7]{16,})\b', html).group(1)
+        if time.time() % 30 > 25: time.sleep(30 - time.time() % 30 + 1)
+        f = {'passcode': totp(secret)}
+        m = re.search(r'name="_csrf" value="([^"]+)"', html)
+        if m: f['_csrf'] = m.group(1)
+        req('POST', BASE + '/user/settings/security/two_factor/enroll', token=None, raw=True, opener=op, data=urllib.parse.urlencode(f).encode())
+        c, html = req('GET', BASE + '/user/settings/security', token=None, raw=True, opener=op)
+        if 'two_factor/disable' in html: return secret
+    raise SystemExit(f'2FA non activée pour {login}')
 
 
 if cmd == 'accounts':

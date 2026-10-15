@@ -8,7 +8,9 @@ import {
   chooseServer, electronEnv, launch, launchWithConfig, loginInput, MAIN, newProfile, openAccountPanel, otpInput,
   passwordInput, signIn, stubFolderPicker,
 } from './support/app'
-import { admin, resetAccounts, setTeamConfig, totp, unbanSelf, uploadSetupScript, TEAM_CONFIG, type Accounts } from './support/forge'
+import {
+  admin, exemptSelfFromJail, resetAccounts, restoreJail, setTeamConfig, totp, uploadSetupScript, TEAM_CONFIG, type Accounts,
+} from './support/forge'
 
 /**
  * GH45 — tests d'interface du desktop contre une vraie forge du kit (specs/GH45-tests.md : S2b et
@@ -19,11 +21,15 @@ let A: Accounts
 
 test.beforeAll(() => {
   // Les 401 normaux des scénarios (révocation, mauvais mot de passe) cumulés sur plusieurs
-  // exécutions finissent par faire bannir l'IP de test par fail2ban.
-  unbanSelf()
+  // exécutions finissent par faire bannir l'IP de test par fail2ban : exemptée le temps du fichier (GH55).
+  exemptSelfFromJail()
   uploadSetupScript()
   A = resetAccounts()
   setTeamConfig(TEAM_CONFIG.replace(/__ORG__/g, A.org))
+})
+
+test.afterAll(() => {
+  restoreJail()
 })
 
 const HOME_ACTION = /Créer un nouveau projet|Create a new project/

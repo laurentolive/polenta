@@ -7,7 +7,7 @@ import type { FileKind, FileMerge, MarkerLabels, ParsedOutput } from './types'
 
 export * from './types'
 export { renderRegion, findRegions, resolveRegion, resolveAllRegions } from './markers'
-export { mergeObject, parseObject, deepEqual, YAML_DUMP_OPTIONS } from './object'
+export { mergeObject, mergeHistories, parseObject, deepEqual, YAML_DUMP_OPTIONS } from './object'
 export { mergeText, linesWithBreaks, changedLineIndexes } from './text'
 export { keyedKindOf, parseKeyed, entriesOf, blockKeyOf, type KeyedKind } from './keyed'
 

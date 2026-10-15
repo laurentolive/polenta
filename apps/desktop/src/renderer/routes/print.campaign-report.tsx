@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { resolveCampaignRuns } from '../lib/campaignTests'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
-import { RUN_STATUS_LABEL_KEY } from './campaign.$campaignId'
+import { RUN_STATUS_LABEL_KEY } from '../lib/runStatus'
 
 /** Route imprimable — rapport de campagne (T43 sprint 2), statut d'exécution par test. */
 export const Route = createFileRoute('/print/campaign-report')({

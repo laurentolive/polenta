@@ -1,17 +1,6 @@
 import type { ObjectTypeDefinition, ProjectSchema, SystemNode } from '@polenta/types'
 import { findSystemNode, flattenSystemNodes } from '@polenta/types'
 
-/**
- * System columns always present on a query-engine dataset row, independent of
- * schema.yaml — shared between query-engine.service.ts (builder → SQL field
- * allowlist) and saved-queries.service.ts (history purge validation) so the two
- * don't drift out of sync.
- */
-export const SYSTEM_QUERY_FIELDS = [
-  'id', 'objectTypeRef', 'title', 'status', 'component',
-  'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'version', 'needsRevalidation',
-] as const
-
 export type ResolvedObjectType = ObjectTypeDefinition | null | 'unresolvable'
 
 /**
@@ -62,7 +51,13 @@ export function resolveObjectTypeLocation(
   return null
 }
 
-export function findObjectTypeDef(schema: ProjectSchema, objectTypeRef: string): ResolvedObjectType {
+export function findObjectTypeDef(
+  schema: ProjectSchema,
+  objectTypeRef: string,
+  /** GH80 — restreint aux types de cette catégorie (même règle que `findTypeDef` du renderer) :
+   *  sans préfixe de nœud, un type d'exigence homonyme n'est alors pas retenu à la place du test. */
+  category?: ObjectTypeDefinition['category'],
+): ResolvedObjectType {
   // Defensive: `Requirement.objectTypeRef`/`TestCase.objectTypeRef` are typed as
   // always a non-empty string, but nothing normalizes hand-edited YAML at read time
   // (`requirements-index.service.ts` casts raw parsed YAML straight to `Requirement`).
@@ -75,17 +70,18 @@ export function findObjectTypeDef(schema: ProjectSchema, objectTypeRef: string):
   const [nodeName, typeName] = objectTypeRef.includes('::')
     ? objectTypeRef.split('::')
     : [undefined, objectTypeRef]
+  const matches = (t: ObjectTypeDefinition) => t.name === typeName && (!category || t.category === category)
 
   // T123 — nodeName peut désigner un composant local imbriqué à n'importe quelle profondeur
   // (SystemNode.children), pas seulement un nœud de premier niveau — recherche récursive.
   if (nodeName && nodeName !== 'root') {
     const node = findSystemNode(schema.nodes, nodeName)
     if (!node || node.objectTypes === undefined) return 'unresolvable'
-    return node.objectTypes.find((t) => t.name === typeName) ?? null
+    return node.objectTypes.find(matches) ?? null
   }
 
   for (const { node } of flattenSystemNodes(schema.nodes)) {
-    const found = node.objectTypes?.find((t) => t.name === typeName)
+    const found = node.objectTypes?.find(matches)
     if (found) return found
   }
   return null

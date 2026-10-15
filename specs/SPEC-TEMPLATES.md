@@ -29,6 +29,8 @@ schema:
   version: 1
   preferences:                    # optionnel — options d'outil au niveau du projet, hors modèle métier
     autoPropagatePin: false       # T94 — propagation auto du pin sous-repo → parent au commit, sinon approbation manuelle
+    autoPullIntervalMinutes: 5    # GH65 — intervalle du pull automatique (entier 1–60, défaut 5 ; clé omise à la valeur par
+                                  #   défaut), lu dans le schéma du repo racine, réglé dans la page Préférences
     exportTemplates:              # GH34 — gabarit Word/Excel par défaut par `<kind>:<format>`, chemin relatif à la
       requirements:docx: ACME/Cahier des exigences.docx   #   bibliothèque de gabarits de chaque utilisateur (préférence
                                   #   application `exportTemplatesDir`) ; clé absente = rendu Standard.
@@ -234,6 +236,7 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `category` | enum | `requirement` \| `test` \| `campaign` |
 | `fields` | list | Champs personnalisés (voir §3.2) |
 | `statuses` | list | Statuts configurables (voir §3.3) |
+| `trackStatusHistory` | bool? | **GH77** — historiser le statut ; absent = `true`, écrit seulement quand `false` — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77) |
 
 ### 3.2 Définition d'un champ (`SchemaField`)
 
@@ -247,6 +250,7 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `default` | any | Valeur par défaut à la création |
 | `placeholder` | string | Texte indicatif dans le champ vide |
 | `validator` | string | `EARS` ou `regex:<pattern>` — voir §3.4 |
+| `trackHistory` | bool? | **GH77** — historiser les changements du champ (valeur pour les types courts, date et auteur seuls pour `textarea` / `richtext` / `drawio`) ; écrit seulement quand vrai |
 
 ### 3.3 Définition d'un statut (`SchemaStatus`)
 
@@ -259,6 +263,9 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `isTerminal` | bool | L'objet est masqué des listes par défaut (ex: obsolète, archivé) |
 
 Toutes les transitions entre statuts sont autorisées — il n'y a pas de graphe de transitions à définir.
+
+**Renommage (GH82)** : renommer un statut, ou une valeur d'un champ `enum` / `multi_enum`, dans
+l'éditeur de schéma migre les objets existants après confirmation — voir SPEC-REQ §4.4.
 
 ### 3.4 Paramètre `validator`
 

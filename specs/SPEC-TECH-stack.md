@@ -1,7 +1,7 @@
 # SPEC-TECH — Stack Technique
 
 > Référence parent : [SPEC.md](../SPEC.md)  
-> Dernière révision : 2026-10-11 (GH45 — mises à jour verrouillées, profils isolés)  
+> Dernière révision : 2026-10-13 (GH79 — principe données brutes / indicateurs projet, §1.1)  
 > ⚠️ Architecture cible : **client lourd Electron** — pas de serveur HTTP embarqué.
 
 ---
@@ -41,6 +41,43 @@ Remote git → source de vérité partagée entre utilisateurs
 - **Pas de PostgreSQL, pas de SQLite obligatoire, pas de migrations.** Index en mémoire reconstruit depuis le working tree.
 - **Liens externes** : images et pièces jointes référencées par URL OneDrive dans les RICHTEXT — pas de stockage dans Polenta.
 
+### 1.1 Données brutes dans Polenta, indicateurs de suivi côté projet (décision du 2026-10-13, GH79)
+
+**Contexte.** Les statuts liés entre éléments (exigence ↔ test ↔ campagne) mènent vite à des
+besoins propres à chaque client (maturité, étapes d'avancement, etc.). Les coder dans Polenta
+ferait grossir le produit d'indicateurs que chaque client voudrait définir à sa façon.
+
+**Décision.**
+
+- **Polenta expose les données brutes du modèle** : objets, champs, liens, campagnes → entrées
+  → runs, historique (historique configurable des champs #77, historique daté des campagnes #73).
+- **Polenta calcule un indicateur seulement s'il sert à une de ses propres fonctions.**
+  Exemples actuels :
+  - la couverture test ↔ exigence (matrice de traçabilité, analyse d'impact, badges des vues) ;
+  - `needsRevalidation` (T172) ;
+  - l'approbation `isApproval` (verrouillage, éligibilité) ;
+  - la validation EARS et le contrôle des champs remplis (import en masse, résolution de conflits) ;
+  - la resynchronisation des copies de test des campagnes (GH68).
+- **Tout ce qui compose, agrège, interprète ou reconstruit des données pour le suivi vit côté
+  projet** : scripts et bibliothèque dans le repo du client (#74), livrés comme contenu de départ
+  modifiable, jamais comme code de Polenta. Exemples : la maturité, les étapes d'avancement,
+  l'état d'une campagne à une date, le dernier résultat.
+- **Les écrans de Polenta affichent les données brutes.** Un indicateur projet y apparaît par un
+  mécanisme générique (colonnes calculées définies par le projet, #70), pas par du code dédié.
+
+**Règle de décision** pour tout nouvel indicateur : *sert-il à une fonction de Polenta ?*
+Oui → calculé dans Polenta (service du main). Non → script côté projet, affiché via le
+mécanisme générique. La décision est notée dans la spec du ticket (`specs/GH{N}.md`).
+
+**Tickets concernés** : #74 (graphe de données JSON + scripts JS isolés + Vega-Lite), #78
+(prototype QuickJS / Vega-Lite avant le Design de #74), #73, #77, #70 — mis en cohérence le
+2026-10-13 ; #76 fermé à ce titre. Les indicateurs de suivi déjà livrés dans Polenta relèvent
+de l'ancien modèle et sortent de Polenta avec #74 : colonnes `progress` / `progressRank` /
+`testStatus` et règle `campaign-progress` (GH71), maturité des exigences (`maturity.util.ts`,
+colonnes `maturity*`, SPEC-DASHBOARDS §5). Restent dans Polenta `isEarsCompliant` et
+`isFilled` (import en masse, résolution de conflits) et la pastille « Non approuvé » (GH68,
+repose sur `isApproval`).
+
 ---
 
 ## 2. Stack par couche
@@ -65,13 +102,14 @@ Remote git → source de vérité partagée entre utilisateurs
 | Fusion 3-voies (GH37) | `@polenta/merge-core` (package du monorepo) + diff3 | — / 0.0.3 | Logique pure de résolution des conflits : fusion par champ des objets, par lien (`links.yaml`) / par paramètre (`parameters.yaml`), hunks de lignes avec **le même `diff3`** qu'isomorphic-git (un fichier est en conflit ici exactement quand il l'est pour `git.merge`), marqueurs de conflit nommés, renumérotation. Importé par le main et le renderer (source TS aliasée, bundlée dans le main comme `@polenta/types`), seul package testé par **vitest** (`pnpm --filter @polenta/merge-core test`). Cf. §6 |
 | Éditeur de code (GH37) | CodeMirror 6 (`@codemirror/state`, `view`, `commands`, `language`, `lang-yaml`) | 6.x | Panneaux Raw de l'éditeur de résolution des conflits : décorations de lignes, widgets « Prendre gauche/droite », défilement synchronisé. Monaco écarté (lourd, workers à configurer sous Electron). Chunk de la route `/merge-resolve` seulement (≈ 800 kB, chargé à la demande) |
 | **Index mémoire** | Map + MiniSearch | 7.x | Requêtes, filtres, full-text — zéro DB |
-| **Moteur de requête dashboards** | AlaSQL | 4.17.x | SQL exécuté sur tableaux JS en mémoire (pas de moteur de stockage) — dashboards/requêtes personnalisables (T77), cf. [SPEC-DASHBOARDS.md](SPEC-DASHBOARDS.md) |
+| **Scripts de la vue Suivi** (GH74) | QuickJS (`quickjs-emscripten-core` + `@jitl/quickjs-wasmfile-release-sync`) | 0.32.0 | Scripts de données et transformations JS du client exécutés dans un bac à sable wasm (mémoire plafonnée, délai, pile), dans un `worker_threads` par process (desktop, serveur web, MCP) — remplace AlaSQL. Cf. [SPEC-DASHBOARDS.md](SPEC-DASHBOARDS.md) §3 |
 | Export Excel | ExcelJS | 4.4.x | `.xlsx` pour tous les exports xlsx (T43 : cahiers d'exigences/tests/campagne, résultats de requête, analyse d'impact) — introduit en T77 pour le seul résultat de requête, généralisé par T43 via `ExportService`/canal IPC `export:save` (l'ancien canal ad hoc `queries:export-excel` a été retiré) |
 | Export Word | docx | 9.7.x | `.docx` pour les exports docx (T43 : cahiers d'exigences/tests, rapport de campagne, dashboard) — construction programmatique (`Document`/`Paragraph`/`Table`), pas de conversion HTML→docx. Sert aussi à générer les gabarits d'exemple (GH34, `scripts/build-export-templates.ts`) |
 | Export Word par gabarit client (GH34) | docxtemplater (cœur MIT) + pizzip + angular-expressions | 3.71.x / 3.x / 1.7.x | Remplissage d'un `.docx` fourni par le client (balises `{{…}}`, boucles, conditions, balises brutes `{{@…}}`). Parseur d'expressions limité au scope de données (pas d'exécution de code depuis un gabarit), filtres en liste blanche. Modules payants (images, HTML) non utilisés : le richtext est converti par Polenta (markdown-it → WordprocessingML, `export/template/markdown-to-ooxml.ts`), médias/numérotation ajoutés au paquet (`docx-package.ts`). Ces 4 libs (+ markdown-it) sont **bundlées** dans le main (`exclude` d'`externalizeDepsPlugin`, deps transitives non hissées par pnpm) et chargées en `import()` au premier export (T141). Détails : `SPEC-ELECTRON-DESKTOP.md` §19.15a |
 | Export Excel par gabarit client (GH34) | xlsx-template | 1.4.x | Remplissage d'un `.xlsx` du client (balises `${…}`, lignes modèles `${table:…}`) en conservant tout le classeur (graphiques, images, mise en page) — exceljs écarté (relecture/réécriture perdant graphiques et tableaux croisés). Complété par une réécriture des références (`xlsx-refs.ts`) que la lib ne met pas à jour. Bundlée dans le main comme docxtemplater. Détails : `SPEC-ELECTRON-DESKTOP.md` §19.15a |
 | Export PDF | `webContents.printToPDF` (Electron natif) | — | Aucune dépendance ajoutée — rend une route imprimable dédiée (`/print/*`) dans une fenêtre Electron cachée plutôt que de reconstruire du HTML côté main process (T43). Client web (GH44) : mêmes routes rendues par Chromium headless (`playwright-core`, ci-dessous) |
-| Rendu des widgets dashboards | recharts | 2.12.x | Barres/camembert/courbe — thémable via les tokens CSS du design system (T77) |
+| Rendu des widgets dashboards (GH74) | Vega-Lite (`vega` 6.4.0, `vega-lite` 6.4.3, `vega-embed` 7.3.0, `vega-interpreter` 2.3.2) | — | Specs Vega-Lite rendues sans `eval` (`ast: true` + interpréteur), SVG, chunk paresseux ; couleurs par jetons du thème. Remplace recharts |
+| Éditeur de scripts (GH74) | CodeMirror 6 (`@codemirror/lang-javascript` 6.2.2, `lang-json` 6.0.1) | 6.x | Script de données, transformation (JS) et spec (JSON) dans la vue Suivi |
 | Parsing YAML | js-yaml | 4.x | Sérialisation des fichiers du repo |
 | **Auth desktop** | keytar | 7.x | Stockage sécurisé PAT dans le keychain OS |
 | **File watching** | chokidar | 3.x | Détection des changements fichiers (pull, etc.) |
@@ -185,6 +223,9 @@ jiraLinks:
     linkedAt: "2026-04-10T09:00:00Z"
     linkedBy: laurent
 ```
+
+**GH77** — champ système facultatif `history` (historique des champs suivis, posé par l'application,
+absent tant que vide) : une liste par champ, entrées `{ value?, at, by?, source? }` — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77).
 
 ### 4.3 Mapping Git → Cycle de vie Polenta
 
@@ -330,7 +371,10 @@ brouillon) une **session de résolution** dans un onglet `/merge-resolve` :
   - *Objets typés* (exigences, tests, campagnes) : fusion **par unité**, c'est-à-dire chaque clé
     racine hors `fields`, et chaque `fields.<nom>`. Une unité modifiée d'un seul côté, ou à
     l'identique des deux côtés, est reprise sans conflit. `version` prend le max et
-    `needsRevalidation` le OU logique.
+    `needsRevalidation` le OU logique. **GH77** : `history` n'est jamais en conflit — union des
+    entrées des deux côtés par champ, dédoublonnées sur `(at, by, value, source)`, triées par `at`
+    (`mergeHistories`) ; si la valeur fusionnée diffère de la dernière entrée, la règle « valeur
+    courante » de SPEC-REQ §4.4 s'applique.
   - *`links/links.yaml`* : fusion par lien (`id`), union des ajouts.
   - *`parameters/parameters.yaml`* : fusion par paramètre, clés triées.
   - *Autres fichiers* : hunks `diff3`, la même bibliothèque qu'isomorphic-git.

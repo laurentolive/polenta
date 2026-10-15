@@ -9,6 +9,7 @@ import type {
   UpdateDashboardDto,
   AddWidgetDto,
   UpdateWidgetDto,
+  TemplateInput,
 } from './types'
 import type { ReviewStatus, QueryScope } from '@polenta/types'
 
@@ -60,6 +61,9 @@ export function createIpcClient(
       get: (p) => invoke('schema:get', p),
       save: (p, schema) => invoke('schema:save', p, schema),
       moveElement: (p, dto) => invoke('schema:move-element', p, dto),
+      renameFields: (p, ref, renames) => invoke('schema:rename-fields', p, ref, renames),
+      previewValueRenames: (p, ref, renames) => invoke('schema:preview-value-renames', p, ref, renames),
+      renameValues: (p, ref, renames) => invoke('schema:rename-values', p, ref, renames),
       invalidate: (p) => invoke('schema:invalidate', p),
     },
     tree: {
@@ -217,6 +221,10 @@ export function createIpcClient(
       exportCsv: (p, f, workspaceDir) => invoke('traceability:export-csv', p, f, workspaceDir),
       diffRequirements: (p, fromSha, toSha) => invoke('traceability:diff-requirements', p, fromSha, toSha),
     },
+    history: {
+      get: (p, kind, id) => invoke('history:get', p, kind, id),
+      backfill: (p) => invoke('history:backfill', p),
+    },
     revalidation: {
       list: (p, w) => invoke('revalidation:list', p, w),
       clear: (p, ids, w) => invoke('revalidation:clear', p, ids, w),
@@ -244,10 +252,11 @@ export function createIpcClient(
       get: (p, id) => invoke('campaigns:get', p, id),
       create: (p, dto, workspaceDir) => invoke('campaigns:create', p, dto, workspaceDir),
       update: (p, id, dto) => invoke('campaigns:update', p, id, dto),
-      updateRun: (p, campaignId, entryId, status, runId) => invoke('campaigns:update-run', p, campaignId, entryId, status, runId),
+      updateRun: (p, campaignId, entryId, status, runId, displayed) =>
+        invoke('campaigns:update-run', p, campaignId, entryId, status, runId, displayed),
       close: (p, id, status) => invoke('campaigns:close', p, id, status),
-      addTests: (p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances) =>
-        invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances),
+      addTests: (p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances, carried) =>
+        invoke('campaigns:add-tests', p, campaignId, testCaseIds, paramValuesByTest, workspaceDir, reqInstances, carried),
       removeEntries: (p, campaignId, entryIds) => invoke('campaigns:remove-entries', p, campaignId, entryIds),
       duplicateTest: (p, campaignId, testCaseId, paramValues, workspaceDir, requirementId) =>
         invoke('campaigns:duplicate-test', p, campaignId, testCaseId, paramValues, workspaceDir, requirementId),
@@ -283,9 +292,18 @@ export function createIpcClient(
       setFieldVisibility: (repoPath, username, typeKey, views) =>
         invoke('pref:set-field-visibility', repoPath, username, typeKey, views),
     },
+    suivi: {
+      run: (repoPath, workspaceDir, username, req, client) => invoke('suivi:run', repoPath, workspaceDir, username, req, client),
+      describeIds: (repoPath, workspaceDir, ids, locale) => invoke('suivi:describe-ids', repoPath, workspaceDir, ids, locale),
+      resolveTarget: (repoPath, workspaceDir, id) => invoke('suivi:resolve-target', repoPath, workspaceDir, id),
+      templates: () => invoke('suivi:templates'),
+      renderTemplate: ((kind: 'query' | 'widget', input: TemplateInput) => invoke('suivi:render-template', kind, input)) as ApiClient['suivi']['renderTemplate'],
+      objectTypes: (repoPath, workspaceDir) => invoke('suivi:object-types', repoPath, workspaceDir),
+      updatesList: (repoPath, username, locale) => invoke('suivi:updates-list', repoPath, username, locale),
+      updatesApply: (repoPath, username, ids, locale) => invoke('suivi:updates-apply', repoPath, username, ids, locale),
+      updatesIgnore: (repoPath, username, id, toVersion) => invoke('suivi:updates-ignore', repoPath, username, id, toVersion),
+    },
     queries: {
-      execute: (repoPath, queryDef, workspaceDir) => invoke('queries:execute', repoPath, queryDef, workspaceDir),
-      builderToSql: (repoPath, config, workspaceDir) => invoke('queries:builder-to-sql', repoPath, config, workspaceDir),
       list: (repoPath, username) => invoke('queries:list', repoPath, username),
       create: (repoPath, username, dto: CreateSavedQueryDto) => invoke('queries:create', repoPath, username, dto),
       update: (repoPath, username, id, dto: UpdateSavedQueryDto) => invoke('queries:update', repoPath, username, id, dto),
@@ -298,7 +316,7 @@ export function createIpcClient(
       setScope: (repoPath, username, id, scope: QueryScope) => invoke('queries:set-scope', repoPath, username, id, scope),
     },
     dashboards: {
-      list: (repoPath, username) => invoke('dashboards:list', repoPath, username),
+      list: (repoPath, username, locale?: string) => invoke('dashboards:list', repoPath, username, locale),
       get: (repoPath, username, id) => invoke('dashboards:get', repoPath, username, id),
       create: (repoPath, username, dto: CreateDashboardDto) => invoke('dashboards:create', repoPath, username, dto),
       update: (repoPath, username, id, dto: UpdateDashboardDto) => invoke('dashboards:update', repoPath, username, id, dto),
@@ -314,6 +332,8 @@ export function createIpcClient(
         invoke('dashboards:set-widget-order', repoPath, username, dashboardId, order),
       getOrder: (repoPath, username) => invoke('dashboards:order-get', repoPath, username),
       setOrder: (repoPath, username, order) => invoke('dashboards:order-set', repoPath, username, order),
+      getParamValues: (repoPath, username, dashboardId) => invoke('dashboards:param-values-get', repoPath, username, dashboardId),
+      setParamValues: (repoPath, username, dashboardId, values) => invoke('dashboards:param-values-set', repoPath, username, dashboardId, values),
     },
     parameters: {
       list: (repoPath, workspaceDir) => invoke('parameters:list', repoPath, workspaceDir),

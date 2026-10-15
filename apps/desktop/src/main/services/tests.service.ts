@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import type { ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
+import { renameFieldKeys } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -10,6 +11,7 @@ import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import type { HistoryService } from './history.service'
 
 export class TestsService {
   constructor(
@@ -18,6 +20,7 @@ export class TestsService {
     private readonly schema: SchemaService,
     private readonly tree?: TreeService,
     private readonly revalidation?: RevalidationService,
+    private readonly history?: HistoryService,
   ) {}
 
   findAll(repoPath: string): Promise<TestCase[]> {
@@ -64,10 +67,9 @@ export class TestsService {
       updatedBy: null,
     }
 
-    await this.git.writeYaml(targetRepo, `tests/${testId}.yaml`, omitAuditFields(test))
-    this.testsIndex.upsertTestCase(repoPath, test)
-    await this.appendToTree(targetRepo, dto.objectTypeRef, test.id, test.title)
-    return test
+    const created = await this.persist(repoPath, targetRepo, null, test)
+    await this.appendToTree(targetRepo, dto.objectTypeRef, created.id, created.title)
+    return created
   }
 
   // T159 — cf. RequirementsService : sérialise les read-modify-write concurrents sur le
@@ -81,7 +83,7 @@ export class TestsService {
       // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
-      const updated: TestCase = {
+      const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         ...(dto.title && { title: dto.title }),
         ...(dto.objectTypeRef && { objectTypeRef: dto.objectTypeRef }),
@@ -91,10 +93,7 @@ export class TestsService {
         ...(dto.steps && { steps: dto.steps }),
         ...(dto.postconditions !== undefined && { postconditions: dto.postconditions }),
         fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      }
-
-      await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
-      this.testsIndex.upsertTestCase(repoPath, updated)
+      })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(
         await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, dto.status)
@@ -111,14 +110,11 @@ export class TestsService {
       if (!existing) throw new Error(`Test case ${id} not found`)
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-      const updated: TestCase = {
+      const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         status: targetStatus,
         version: (existing.version ?? 0) + 1,
-      }
-
-      await this.git.writeYaml(targetRepo, `tests/${id}.yaml`, omitAuditFields(updated))
-      this.testsIndex.upsertTestCase(repoPath, updated)
+      })
       const leftApproval = RevalidationService.leavesApproval(
         await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, targetStatus)
       return { updated, leftApproval }
@@ -126,6 +122,62 @@ export class TestsService {
     // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).
     if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
     return updated
+  }
+
+  /** GH77 — cf. `RequirementsService.renameFieldKeys`. */
+  async renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, o => renameFieldKeys(o, renames), result)
+  }
+
+  /** GH77/GH82 — cf. `RequirementsService.rewriteObjects`. */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string,
+    transform: (obj: TestCase) => TestCase | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
+    const matching = (await this.testsIndex.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef)
+    for (const { id } of matching) {
+      try {
+        await withKeyLock(`${repoPath}::tests/${id}`, async () => {
+          const existing = await this.testsIndex.findById(repoPath, id)
+          const next = existing ? transform(existing) : null
+          if (next === 'conflict') result.skipped.push({ id, reason: 'target_exists' })
+          if (!next || next === 'conflict') return
+          await this.persist(repoPath, repoPath, next, next, { raw: true })
+          result.migrated.push(id)
+        })
+      } catch (err) {
+        result.failed.push({ id, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+  }
+
+  /** GH77 — cf. `RequirementsService.updateHistory`. */
+  async updateHistory(repoPath: string, id: string, next: (current: TestCase) => ObjectHistory | null): Promise<boolean> {
+    return withKeyLock(`${repoPath}::tests/${id}`, async () => {
+      const existing = await this.testsIndex.findById(repoPath, id)
+      const history = existing ? next(existing) : null
+      if (!existing || !history) return false
+      const updated = { ...existing, history }
+      await this.persist(repoPath, repoPath, updated, updated, { raw: true })
+      return true
+    })
+  }
+
+  /**
+   * Seule écriture d'un fichier de cas de test (GH77) : complète l'historique des champs suivis
+   * (`before` null = création), écrit sans les champs d'audit, met l'index à jour.
+   */
+  private async persist(
+    repoPath: string, targetRepo: string, before: TestCase | null, after: TestCase,
+    /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
+    opts: { raw?: boolean } = {},
+  ): Promise<TestCase> {
+    const stamped = this.history && !opts.raw
+      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo)
+      : after
+    await this.git.writeYaml(targetRepo, `tests/${stamped.id}.yaml`, omitAuditFields(stamped))
+    this.testsIndex.upsertTestCase(repoPath, stamped)
+    return stamped
   }
 
   /** Définition du type de l'objet dans le schéma du repo ouvert (null si non résolvable). */
@@ -145,6 +197,13 @@ export class TestsService {
     const testCase = indexed ?? await this.git.readYaml<TestCase>(targetRepo, `tests/${testCaseId}.yaml`)
     if (!testCase) throw new Error(`Test case ${testCaseId} not found`)
 
+    // GH73 — le run est immuable : une référence d'entrée incomplète ne doit jamais y être écrite
+    // (le DTO arrive non validé par le canal IPC).
+    const entry = dto.campaignEntry
+    if (entry && !(isNonEmptyString(entry.campaignId) && isNonEmptyString(entry.entryId))) {
+      throw new Error(`Invalid campaign entry for a run of ${testCaseId}`)
+    }
+
     const runId = await this.nextRunId(targetRepo, testCaseId)
     // GH36 — un résultat importé porte la date d'exécution saisie par le testeur.
     const now = dto.executedAt ?? new Date().toISOString()
@@ -161,7 +220,8 @@ export class TestsService {
     const run: TestRun = {
       id: runId,
       testCaseId,
-      campaignRunId: null,
+      // GH73 — run rattaché à l'entrée de campagne exécutée (deux clés seulement, rien d'autre du DTO).
+      ...(entry && { campaignEntry: { campaignId: entry.campaignId, entryId: entry.entryId } }),
       // T179 — instance générée pour une exigence : le run ne couvre qu'elle.
       ...(dto.requirementId && { requirementId: dto.requirementId }),
       result,
@@ -218,3 +278,5 @@ export class TestsService {
     return `${testCaseId}-run-${String(existingRuns.length + 1).padStart(4, '0')}`
   }
 }
+
+const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v !== ''

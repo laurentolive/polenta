@@ -18,6 +18,7 @@ import type { WorkspaceTreeService } from './workspace-tree.service'
 import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, isRefInReadonlyNode } from './schema-lookup.util'
 import { withKeyLock } from './serialize-writes.util'
+import type { HistoryService } from './history.service'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 
 export interface ImpactedElement {
@@ -53,6 +54,7 @@ export class RevalidationService {
     private readonly testsIndex: TestsIndexService,
     private readonly schema: SchemaService,
     private readonly workspaceTree?: WorkspaceTreeService,
+    private readonly history?: HistoryService,
   ) {}
 
   /** Vrai si l'élément passe d'un statut `isApproval` à un statut qui ne l'est pas. */
@@ -303,9 +305,13 @@ export class RevalidationService {
     return category === 'requirement' ? this.reqIndex.findById(p, id) : this.testsIndex.findById(p, id)
   }
 
-  private async writeElement(p: string, category: Category, updated: Requirement | TestCase, workspaceDir?: string): Promise<string> {
+  private async writeElement(
+    p: string, category: Category, before: Requirement | TestCase, after: Requirement | TestCase, workspaceDir?: string,
+  ): Promise<string> {
     const dir = category === 'requirement' ? 'requirements' : 'tests'
-    const targetRepo = (await this.schema.resolveComponentRepoPath(p, updated.objectTypeRef, workspaceDir)) ?? p
+    const targetRepo = (await this.schema.resolveComponentRepoPath(p, after.objectTypeRef, workspaceDir)) ?? p
+    // GH77 — le flag n'est pas un champ suivi : aucune entrée, mais un trou d'historique est comblé.
+    const updated = this.history ? await this.history.stamp(p, after.objectTypeRef, before, after, before, targetRepo) : after
     await this.git.writeYaml(targetRepo, `${dir}/${updated.id}.yaml`, omitAuditFields(updated))
     if (category === 'requirement') this.reqIndex.upsert(p, updated as Requirement)
     else this.testsIndex.upsertTestCase(p, updated as TestCase)
@@ -326,7 +332,7 @@ export class RevalidationService {
       if (typeDef && typeDef !== 'unresolvable'
         && typeDef.statuses?.find(s => s.name === existing.status)?.isTerminal) return null
 
-      const targetRepo = await this.writeElement(p, category, { ...existing, needsRevalidation: true }, ctx.workspaceDir)
+      const targetRepo = await this.writeElement(p, category, existing, { ...existing, needsRevalidation: true }, ctx.workspaceDir)
       return { id, category, repoPath: targetRepo }
     })
   }
@@ -345,7 +351,7 @@ export class RevalidationService {
       if (!existing.needsRevalidation) return 'unchanged'
       if (this.isReadonly(p, existing, ctx)) return 'readonly'
       const { needsRevalidation: _flag, ...rest } = existing
-      await this.writeElement(p, category, rest as Requirement | TestCase, ctx.workspaceDir)
+      await this.writeElement(p, category, existing, rest as Requirement | TestCase, ctx.workspaceDir)
       return 'cleared'
     })
   }

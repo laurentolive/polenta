@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { FilePen, Plus, Trash2 } from 'lucide-react'
+import { FilePen, Plus, Trash2, AlertTriangle } from 'lucide-react'
 import { api } from '../../../api'
 import { useSelectedRepo } from '../../../contexts/SelectedRepoContext'
-import { useImpactAnalysis, LOCAL_IMPACT_ANALYSIS_ID } from '../../../contexts/ImpactAnalysisContext'
+import { useImpactAnalysis, LOCAL_IMPACT_ANALYSIS_ID, REVALIDATION_IMPACT_ID } from '../../../contexts/ImpactAnalysisContext'
 import { useLocalImpactAnalysis } from '../../../hooks/useLocalImpactAnalysis'
+import { useFlaggedElements } from '../../../hooks/useFlaggedElements'
 import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
 import type { BaselineRecord } from '@polenta/api-client'
 import type { ImpactAnalysisSummary } from '@polenta/types'
@@ -130,6 +131,17 @@ export function VersionImpactSelector({ projectId }: Props) {
     if (isLocalActive && localAnalysis && localCount === 0) setActiveAnalysisId(null)
   }, [isLocalActive, localAnalysis, localCount, setActiveAnalysisId])
 
+  // T173 — liste de repli « Impact à vérifier » : entrée affichée tant qu'au moins un élément du
+  // workspace est marqué, jamais sélectionnée automatiquement ; quand le dernier flag est levé
+  // alors qu'elle est active, la vue revient à « aucune analyse ».
+  const { data: flagged } = useFlaggedElements(projectId)
+  const flaggedCount = flagged?.length ?? 0
+  const isRevalidationActive = activeAnalysisId === REVALIDATION_IMPACT_ID
+
+  useEffect(() => {
+    if (isRevalidationActive && flagged && flaggedCount === 0) setActiveAnalysisId(null)
+  }, [isRevalidationActive, flagged, flaggedCount, setActiveAnalysisId])
+
   const createMutation = useMutation({
     mutationFn: () => api.impactAnalysis.create(repoPath, { fromBaselineTag: fromTag!, toBaselineTag: toTag! }),
     onSuccess: (analysis) => {
@@ -249,6 +261,19 @@ export function VersionImpactSelector({ projectId }: Props) {
 
         <div className="px-3 py-2">
           <p className="text-xs text-ink-3 font-medium uppercase tracking-wide mb-1.5">{t('sidebar.version.existingAnalyses')}</p>
+          {(flaggedCount > 0 || isRevalidationActive) && (
+            <div className={`mb-0.5 rounded ${isRevalidationActive ? 'bg-hover ring-1 ring-prim' : ''}`}>
+              <button
+                type="button"
+                onClick={() => setActiveAnalysisId(isRevalidationActive ? null : REVALIDATION_IMPACT_ID)}
+                className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-hover transition-colors flex items-center gap-1.5 ${isRevalidationActive ? 'text-prim' : 'text-ink'}`}
+              >
+                <AlertTriangle size={13} className="shrink-0 text-status-warning" />
+                <span className="italic truncate flex-1">{t('sidebar.version.revalidationEntry')}</span>
+                <span className="text-ink-3 shrink-0">{t('sidebar.version.revalidationCount', { count: flaggedCount })}</span>
+              </button>
+            </div>
+          )}
           {localCount > 0 && (
             <div className={`mb-0.5 rounded ${isLocalActive ? 'bg-hover ring-1 ring-prim' : ''}`}>
               <button
@@ -263,7 +288,7 @@ export function VersionImpactSelector({ projectId }: Props) {
             </div>
           )}
           {analyses.length === 0 ? (
-            localCount === 0 && <p className="text-xs text-ink-3 italic">{t('sidebar.version.noAnalysis')}</p>
+            localCount === 0 && flaggedCount === 0 && <p className="text-xs text-ink-3 italic">{t('sidebar.version.noAnalysis')}</p>
           ) : (
             <ul className="space-y-0.5">
               {analyses.map((a) => {

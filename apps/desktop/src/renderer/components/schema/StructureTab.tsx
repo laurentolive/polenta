@@ -15,7 +15,10 @@ import { ElementConfigModal } from './ElementConfigModal'
 import { AddDependencyModal, type AddDependencyValues } from './AddDependencyModal'
 import { RemoveDependencyModal } from './RemoveDependencyModal'
 import { RepoBranchSelector } from './RepoBranchSelector'
-import { objTypeToEditable, editableToObjType, emptyObjType, CATEGORY_LABEL_KEY, ConfirmDelete, type EditableObjectType } from './objectTypeEditor'
+import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, CATEGORY_LABEL_KEY, ConfirmDelete, type EditableObjectType } from './objectTypeEditor'
+import { ValueRenameConfirmModal } from './ValueRenameConfirmModal'
+import { emptyFieldRenameResult } from '@polenta/types'
+import type { FieldRenameResult, ValueRename, ValueRenamePreview } from '@polenta/types'
 import { RolesExposedFields, ImplementedInterfacesFields } from './RolesImplementsFields'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type {
@@ -969,6 +972,10 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
   const [selection, setSelection] = useState<Selection | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // GH77 — compte rendu de la migration des objets après renommage de champs.
+  const [renameReport, setRenameReport] = useState<{ result?: FieldRenameResult; error?: string } | null>(null)
+  // GH82 — renommages de statut / valeur détectés : confirmation avant l'enregistrement du schéma.
+  const [pendingValueRenames, setPendingValueRenames] = useState<{ updated: EditableObjectType; previews: ValueRenamePreview[] } | null>(null)
   const [conflictError, setConflictError] = useState<string | null>(null)
   const [editingNode, setEditingNode] = useState<NodeEditTarget | null>(null)
   const [pendingDependency, setPendingDependency] = useState<PendingDependency | null>(null)
@@ -1008,27 +1015,86 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
     : undefined
   const selectedObjectType: EditableObjectType | null = selectedRaw ? objTypeToEditable(selectedRaw) : null
 
-  const applyToSelection = async (mutate: (current: ObjectTypeDefinition) => ObjectTypeDefinition | null) => {
-    if (!selection) return
+  /** Vrai si le schéma a été enregistré. */
+  const applyToSelection = async (mutate: (current: ObjectTypeDefinition) => ObjectTypeDefinition | null): Promise<boolean> => {
+    if (!selection) return false
     if (!allSchemasLoaded) {
       setSaveError(t('schema.structureTab.schemaLoadingRetry'))
-      return
+      return false
     }
     const schema = schemasByRepoPath.get(selection.repoPath)
-    if (!schema) return
+    if (!schema) return false
     setIsSaving(true)
     setSaveError(null)
     try {
       await saveSchema(selection.repoPath, withObjectTypeAt(schema, selection.nodeName, selection.typeIndex, mutate))
       setSelection(null)
+      return true
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
+      return false
     } finally {
       setIsSaving(false)
     }
   }
 
-  const handleSaveElement = (updated: EditableObjectType) => applyToSelection(() => editableToObjType(updated))
+  /** Objets du type référencés sous le nom du type *avant* cette édition. */
+  const selectedTypeRef = selection && selectedRaw ? `${selection.nodeName}::${selectedRaw.name}` : null
+
+  const handleSaveElement = async (updated: EditableObjectType) => {
+    // GH82 — statuts / valeurs d'enum renommés : aperçu puis confirmation avant d'enregistrer.
+    const detected = selection && !selection.isNew && selectedRaw ? valueRenames(updated, selectedRaw) : []
+    if (detected.length > 0 && selection && selectedTypeRef) {
+      let previews: ValueRenamePreview[]
+      try {
+        // Les objets portent encore les anciens noms de champ : l'aperçu les interroge sous ces noms,
+        // le résultat est rattaché aux renommages détectés (même ordre).
+        const counts = await api.schema.previewValueRenames(selection.repoPath, selectedTypeRef, withOriginalFieldNames(updated, detected))
+        previews = counts.map((c, i) => ({ ...c, rename: detected[i] }))
+      } catch {
+        // Comptes inconnus (-1) : la confirmation le dit, plutôt que d'annoncer « 0 objet ».
+        previews = detected.map(rename => ({ rename, withOld: -1, withNew: -1 }))
+      }
+      setPendingValueRenames({ updated, previews })
+      return
+    }
+    await saveAndMigrate(updated, [])
+  }
+
+  /**
+   * Enregistre le type puis migre les objets : champs renommés (GH77), puis statuts / valeurs
+   * retenus dans la confirmation (GH82). Un seul compte rendu pour les deux.
+   */
+  const saveAndMigrate = async (updated: EditableObjectType, chosen: ValueRename[]) => {
+    const sel = selection
+    const objectTypeRef = selectedTypeRef
+    const renames = fieldRenames(updated)
+    const saved = await applyToSelection(() => editableToObjType(withRenamedDefaults(updated, chosen)))
+    if (!saved || !sel || sel.isNew || !objectTypeRef || (renames.length === 0 && chosen.length === 0)) return
+    // Deux migrations indépendantes : l'échec de l'une n'empêche pas l'autre (le schéma est déjà
+    // enregistré, chaque migration non faite laisse des objets orphelins).
+    const result = emptyFieldRenameResult()
+    const errors: string[] = []
+    const steps = [
+      ...(renames.length > 0 ? [() => api.schema.renameFields(sel.repoPath, objectTypeRef, renames)] : []),
+      ...(chosen.length > 0 ? [() => api.schema.renameValues(sel.repoPath, objectTypeRef, chosen)] : []),
+    ]
+    for (const step of steps) {
+      try {
+        const part = await step()
+        for (const id of part.migrated) if (!result.migrated.includes(id)) result.migrated.push(id)
+        result.skipped.push(...part.skipped)
+        result.failed.push(...part.failed)
+        if (part.snapshots) result.snapshots = (result.snapshots ?? 0) + part.snapshots
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : String(err))
+      }
+    }
+    setRenameReport({ result, ...(errors.length > 0 && { error: errors.join(' ; ') }) })
+    // Toutes les vues en cache (listes, détail d'un objet, campagnes) portent l'ancien nom : une
+    // sauvegarde depuis une copie périmée réécrirait la clé orpheline.
+    await qc.invalidateQueries()
+  }
   const handleDeleteElement = () => applyToSelection(() => null)
 
   /** Deletes an element directly from its row's trash icon, bypassing the config modal (T74 sprint 3). */
@@ -1752,6 +1818,23 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         />
       )}
 
+      {renameReport && (
+        <FieldRenameBanner report={renameReport} onClose={() => setRenameReport(null)} />
+      )}
+
+      {pendingValueRenames && (
+        <ValueRenameConfirmModal
+          previews={pendingValueRenames.previews}
+          fieldLabel={name => pendingValueRenames.updated.fields.find(f => f.name === name)?.label || name}
+          onCancel={() => setPendingValueRenames(null)}
+          onConfirm={chosen => {
+            const { updated } = pendingValueRenames
+            setPendingValueRenames(null)
+            void saveAndMigrate(updated, chosen)
+          }}
+        />
+      )}
+
       {(error || conflictError) && (
         <div className="flex items-start gap-2 bg-status-danger-bg border border-status-danger-border rounded px-3 py-2 text-sm text-status-danger mb-3">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
@@ -1810,6 +1893,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           onSave={handleSaveElement}
           onDelete={handleDeleteElement}
           onClose={handleCloseElementModal}
+          hotkeysSuspended={!!pendingValueRenames}
         />
       )}
 
@@ -1857,6 +1941,35 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           onClose={() => { setRemovingDependency(null); setRemoveDependencyError(null) }}
         />
       )}
+    </div>
+  )
+}
+
+/** GH77 — compte rendu de la migration des objets après renommage de champs (spec §6.3). */
+function FieldRenameBanner({ report, onClose }: { report: { result?: FieldRenameResult; error?: string }; onClose: () => void }) {
+  const { t } = useTranslation()
+  const { result, error } = report
+  const problems = (result?.skipped.length ?? 0) + (result?.failed.length ?? 0) > 0 || !!error
+  return (
+    <div
+      role="status"
+      className={`flex items-start gap-2 rounded px-3 py-2 text-sm mb-3 border ${problems
+        ? 'bg-status-warning-bg border-status-warning-border text-status-warning'
+        : 'bg-status-info-bg border-status-info-border text-status-info'}`}
+    >
+      {problems && <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
+      <div className="flex-1 space-y-0.5">
+        {error && <p>{t('schema.structureTab.renameReportError', { error })}</p>}
+        {result && <p>{t('schema.structureTab.renameReportMigrated', { count: result.migrated.length })}</p>}
+        {result && !!result.snapshots && <p>{t('schema.structureTab.renameReportSnapshots', { count: result.snapshots })}</p>}
+        {result && result.skipped.length > 0 && (
+          <p>{t('schema.structureTab.renameReportSkipped', { count: result.skipped.length, ids: result.skipped.map(s => s.id).join(', ') })}</p>
+        )}
+        {result && result.failed.length > 0 && (
+          <p>{t('schema.structureTab.renameReportFailed', { count: result.failed.length, ids: result.failed.map(f => `${f.id} (${f.error})`).join(', ') })}</p>
+        )}
+      </div>
+      <button type="button" onClick={onClose} className="text-xs hover:underline shrink-0">{t('common.close')}</button>
     </div>
   )
 }

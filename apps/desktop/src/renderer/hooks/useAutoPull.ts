@@ -5,12 +5,13 @@ import { api } from '../api'
 import { forgeAccessNotices } from '../lib/forgeAccessNotices'
 import { decodeProjectId } from '../lib/projectId'
 import { useWorkspaceStructure } from './useWorkspaceStructure'
-
-const AUTO_PULL_INTERVAL_MS = 5 * 60 * 1000
+import { useProjectSchema } from './useProjectSchema'
+import { effectivePullIntervalMinutes } from '../lib/autoPullInterval'
 
 /**
  * T155: periodically fast-forwards every repo in the workspace (root + components/interfaces)
- * while a project is open, regardless of which panel/tab is active — the whole point is that a
+ * while a project is open — every `preferences.autoPullIntervalMinutes` of the root repo's schema
+ * (GH65, default 5; the timer is re-armed when the value changes), regardless of which panel/tab is active — the whole point is that a
  * non-git-initiated user should never have to know a manual "Rafraîchir" (T153) exists at all.
  *
  * Deliberately does NOT run on mount/project-open: opening a project already does its own (slow)
@@ -45,6 +46,8 @@ export function useAutoPull(currentProjectId: string | null): void {
 
   const rootRepoPath = project?.localPath ?? ''
   const { flatNodes } = useWorkspaceStructure(project?.workspaceDir ?? '', rootRepoPath)
+  const { data: schema } = useProjectSchema(rootRepoPath)
+  const intervalMinutes = effectivePullIntervalMinutes(schema?.preferences?.autoPullIntervalMinutes)
 
   useEffect(() => {
     if (!currentProjectId || !rootRepoPath) return
@@ -64,7 +67,7 @@ export function useAutoPull(currentProjectId: string | null): void {
           return
         }
         if (offline) {
-          qc.setQueryData(['sync:last-error', repoPath], t('layout.syncIndicator.offline'))
+          qc.setQueryData(['sync:last-error', repoPath], t('layout.syncIndicator.offline', { minutes: intervalMinutes }))
           return
         }
         // A tick that didn't fail doesn't explain away an earlier one: while the integration is
@@ -82,8 +85,8 @@ export function useAutoPull(currentProjectId: string | null): void {
 
     const id = setInterval(() => {
       for (const repoPath of repoPaths) void autoSync(repoPath)
-    }, AUTO_PULL_INTERVAL_MS)
+    }, intervalMinutes * 60 * 1000)
 
     return () => clearInterval(id)
-  }, [currentProjectId, rootRepoPath, flatNodes, qc, t])
+  }, [currentProjectId, rootRepoPath, flatNodes, qc, t, intervalMinutes])
 }

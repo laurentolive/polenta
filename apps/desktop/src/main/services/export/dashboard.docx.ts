@@ -16,6 +16,10 @@ export async function exportDashboardDocx(
   const children: (Paragraph | Table)[] = [
     new Paragraph({ text: `Dashboard — ${dashboard.title}`, heading: HeadingLevel.TITLE }),
   ]
+  // GH93 — valeurs des paramètres choisis à l'affichage.
+  for (const p of payload.parameters ?? []) {
+    children.push(new Paragraph({ children: [new TextRun({ text: `${p.label} : `, bold: true }), new TextRun({ text: p.value })] }))
+  }
 
   for (const widget of dashboard.widgets) {
     children.push(new Paragraph({ text: widget.title, heading: HeadingLevel.HEADING_2 }))

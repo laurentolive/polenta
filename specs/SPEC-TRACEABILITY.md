@@ -152,7 +152,9 @@ TEST-0007 test      ⚠  impact à vérifier
 ```
 
 Pas de bouton « Revalider » par lien : la levée du flag se fait depuis l'analyse d'impact
-(**T173**). La suppression d'un lien reste possible depuis l'éditeur de l'élément.
+(**T173**, §4.8 — arbres d'analyse ou liste « Impact à vérifier »). La suppression d'un lien reste
+possible depuis l'éditeur de l'élément. `revalidationItems` n'est pas la source de la liste §4.8
+(qui a besoin du repo et des éléments liés : `RevalidationService.listFlagged`).
 
 ### 3.4 Exigences approuvées sans test exécuté
 
@@ -347,6 +349,44 @@ génération de campagne — lecture seule, bouton Rafraîchir. Recalcul quand `
 `repo:file-changed` sur `requirements/`, `tests/`, `links/` ou un changement de ref (`'*'`) de n'importe
 quel repo, au retour du focus, ou au clic sur Rafraîchir — pas de polling. Pour un suivi (statuts,
 campagne), commiter, poser une baseline et utiliser §4.6.
+
+### 4.8 Levée du flag `needsRevalidation` (T173)
+
+L'utilisateur constate qu'il a traité l'impact sur un élément marqué (§3.3, SPEC-REQ §5.3) et lève
+le flag depuis la vue Analyse d'impact.
+
+**Règle d'écriture** (`RevalidationService.clear`, IPC `revalidation:clear`) : la clé
+`needsRevalidation` est **retirée** du YAML (jamais `false`) ; statut, `version`, autres champs et
+`links/links.yaml` inchangés. Permise quel que soit le statut (approuvé verrouillé et terminal
+compris), écrite dans le repo propriétaire de l'élément (composant compris), refusée pour un nœud
+`readonly`. Idempotente, best-effort par élément, sous le verrou par fichier de `update`/`openDraft` :
+résultat `{ cleared, unchanged, failed: [{ id, reason: not_found | readonly | error }] }` ; un échec
+partiel s'affiche dans un bandeau fermable en tête de la vue, sans annuler les levées réussies.
+**Pas de commit ni de trace** hors git : l'écriture part avec « Publier » (qui/quand = `git log`).
+
+**Dans les arbres** §4.6 (baseline) et §4.7 (local) : un nœud dont l'élément est **actuellement**
+marqué affiche ⚠, une case à cocher et « Lever le flag » (sans confirmation). L'état du flag est lu
+en direct (`RevalidationService.listFlagged`, IPC `revalidation:list`, tous repos du workspace),
+pas depuis le snapshot : une analyse baseline figée reflète le flag courant. Lever une occurrence
+lève l'élément partout. Sélection multiple dédupliquée par id, vidée au changement d'analyse ;
+bouton d'en-tête « Lever le flag de la sélection (N) » avec confirmation. La ligne « élément changé »
+n'affiche que ⚠ (levée depuis la liste de repli). La levée et le statut d'impact d'un nœud §4.6 sont
+indépendants. En analyse locale, lever un flag ne fait pas de l'élément un « élément changé ».
+
+**Liste de repli « Impact à vérifier »** : pour les flags qu'aucune analyse n'atteint (paramètre
+modifié T171, réouverture déjà publiée…). Entrée en tête de la liste des analyses, au-dessus de
+« Modifications locales », affichée ssi au moins un élément du workspace est marqué (compteur),
+**jamais sélectionnée automatiquement** ; valeur sentinelle `REVALIDATION_IMPACT_ID` dans
+`ImpactAnalysisContext.activeAnalysisId`. Contenu (`RevalidationList`) : tous les éléments marqués
+(exigences puis tests, par id) avec badge, id cliquable (popup dans le repo de l'élément), titre,
+badge de repo, statut, case et « Lever le flag » ; « Tout sélectionner » (indéterminé si sélection
+partielle). Chaque ligne se déplie sur ses éléments liés (tous liens, sens indifférent, un niveau) :
+id, titre, type de lien, `version`, statut — un lié hors approbation est signalé « non approuvé »
+(déclencheur probable). Quand le dernier flag est levé alors que la liste est active, la vue revient
+à « aucune analyse ». Rafraîchissement : mêmes déclencheurs que §4.7 et bouton Rafraîchir.
+
+Après levée, les caches renderer lisant le flag (listes, matrice, maturité, couverture, analyse
+locale, état de synchronisation) sont invalidés : ⚠ disparaît partout sans rechargement.
 
 ---
 

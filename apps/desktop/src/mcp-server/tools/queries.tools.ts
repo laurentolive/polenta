@@ -204,6 +204,9 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
         const checked = checkParameters(parameters)
         if ('error' in checked) return checked.error
         newDecls = checked.decls
+      } else if (existing.parametersError && !template) {
+        // Déclaration lue invalide (modifiée à la main) : la réécrire vide la perdrait.
+        return suiviError('PARAMS_INVALID', `Déclaration de paramètres de ${id} invalide, à corriger (parameters) : ${existing.parametersError}.`)
       }
       let cleanTitle: string | undefined
       if (title !== undefined) {

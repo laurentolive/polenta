@@ -210,14 +210,16 @@ export class DashboardsService {
   }
 
   async delete(repoPath: string, username: string, id: string): Promise<void> {
-    this.writeParamValues(repoPath, username, id, null)
     if (isPrivateScopeId(id)) {
       const pref = this.readPref(repoPath, username)
       pref.dashboards = (pref.dashboards ?? []).filter((d) => d.id !== id)
       this.writePref(repoPath, username, pref)
-      return
+    } else {
+      await this.removeShared(repoPath, id)
     }
-    await this.removeShared(repoPath, id)
+    // Après la suppression seulement (un échec garde les choix) ; ceux des autres utilisateurs
+    // restent dans leur .pref, ignorés (aucun dashboard ne porte plus cet id).
+    this.writeParamValues(repoPath, username, id, null)
   }
 
   /**

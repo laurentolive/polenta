@@ -105,6 +105,10 @@ describe('GH93 — déclaration et valeurs', () => {
     const values: Record<string, GraphParamValue> = { 'campaign:campaign': 'CAMP-0002', 'campaign:enum': 'x' }
     expect(paramsForQuery(decls.Q1, values)).toEqual({ campaign: 'CAMP-0002' })
     expect(paramsForQuery(decls.Q3, values)).toEqual({})
+    // Énumération partagée : une valeur que la requête ne déclare pas ne lui est pas transmise.
+    expect(paramsForQuery(decls.Q1, { 's:enum': 'B' })).toEqual({})
+    expect(paramsForQuery(decls.Q2, { 's:enum': 'B' })).toEqual({ s: 'B' })
+    expect(paramsForQuery(decls.Q1, { 's:enum': null })).toEqual({ s: null })
   })
 
   it('14 — valeur lisible (impression, docx)', () => {
@@ -431,5 +435,19 @@ describe('GH93 — tools MCP des requêtes', () => {
     expect((await call('run_query', { queryId: 'QUERY-0001', parameters: [CAMPAIGN] })).text).toContain('[INVALID_INPUT]')
     await call('run_query', { script: SCRIPT, parameters: [CAMPAIGN], params: { campaign: 'CAMP-0001' } })
     expect(calls[calls.length - 1].params).toEqual({ campaign: 'CAMP-0001' })
+    // Période ouverte : une seule borne.
+    const period = { name: 'p', kind: 'period', label: 'P' }
+    expect((await call('run_query', { script: SCRIPT, parameters: [period], params: { p: { from: '2026-09-01' } } })).isError).toBe(false)
+    expect(calls[calls.length - 1].params).toEqual({ p: { from: '2026-09-01', to: null } })
+  })
+
+  it('update_query : déclaration lue invalide → PARAMS_INVALID, même en dryRun ; corrigée par parameters', async () => {
+    container()
+    await call('create_query', { title: 'Q', script: SCRIPT, parameters: [CAMPAIGN], dryRun: false })
+    const file = path.join(repo, 'queries/QUERY-0001/query.yaml')
+    fs.writeFileSync(file, read('queries/QUERY-0001/query.yaml').replace('kind: campaign', 'kind: inconnu'))
+    expect((await call('update_query', { id: 'QUERY-0001', title: 'Q bis' })).text).toContain('[PARAMS_INVALID]')
+    const fixed = await call('update_query', { id: 'QUERY-0001', parameters: [CAMPAIGN], dryRun: false })
+    expect(fixed.json.query.parameters).toEqual([CAMPAIGN])
   })
 })

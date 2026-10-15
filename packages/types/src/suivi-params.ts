@@ -214,7 +214,9 @@ export function dashboardSelectors(
 
 /**
  * Valeurs de la requête d'un widget, à partir des valeurs des sélecteurs (clé `name:kind`) : un
- * sélecteur sans valeur choisie n'est pas transmis (le main applique le défaut de la déclaration).
+ * sélecteur sans valeur choisie n'est pas transmis (le main applique le défaut de la déclaration),
+ * ni une valeur d'énumération que cette requête ne déclare pas (sélecteur partagé dont les valeurs
+ * sont l'union des requêtes, ou valeur retirée de la déclaration depuis le choix).
  */
 export function paramsForQuery(
   decls: readonly QueryParameterDef[] | undefined,
@@ -223,7 +225,10 @@ export function paramsForQuery(
   const out: Record<string, GraphParamValue> = {}
   for (const d of decls ?? []) {
     const key = selectorKey(d)
-    if (Object.prototype.hasOwnProperty.call(values, key)) out[d.name] = values[key]
+    if (!Object.prototype.hasOwnProperty.call(values, key)) continue
+    const v = values[key]
+    if (d.kind === 'enum' && v !== null && !(d.values ?? []).some((x) => x.value === v)) continue
+    out[d.name] = v
   }
   return out
 }

@@ -103,7 +103,7 @@ export async function peekSharedId(c: McpContainer, key: 'QUERY' | 'DASHBOARD'):
 const labelSchema = z.union([z.string(), z.object({ fr: z.string(), en: z.string() })])
 export const paramValueSchema = z.union([
   z.string(),
-  z.object({ from: z.string().nullable(), to: z.string().nullable() }),
+  z.object({ from: z.string().nullable().optional(), to: z.string().nullable().optional() }),
   z.null(),
 ])
 

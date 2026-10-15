@@ -1,4 +1,6 @@
-import type { Dashboard, SavedQuery, ScriptClientInfo, ScriptRunRequest, ScriptRunResult } from '@polenta/types'
+import { z } from 'zod'
+import type { Dashboard, QueryParameterDef, SavedQuery, ScriptClientInfo, ScriptRunRequest, ScriptRunResult } from '@polenta/types'
+import { QUERY_PARAMETER_KINDS, validateParameterDecls } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { errorToolResult } from '../mcp-types'
 import { resolveWorkspaceRepoPaths } from '../../main/services/workspace-repos.util'
@@ -94,4 +96,34 @@ export async function findVisibleDashboard(c: McpContainer, id: string): Promise
 export async function peekSharedId(c: McpContainer, key: 'QUERY' | 'DASHBOARD'): Promise<string> {
   const dir = key === 'QUERY' ? 'queries' : 'dashboards'
   return formatCounterId(key, await peekNextCounterId(c.git, c.repoPath, key, dir))
+}
+
+// ─── Paramètres choisis à l'affichage (GH93) ─────────────────────────────────
+
+const labelSchema = z.union([z.string(), z.object({ fr: z.string(), en: z.string() })])
+export const paramValueSchema = z.union([
+  z.string(),
+  z.object({ from: z.string().nullable().optional(), to: z.string().nullable().optional() }),
+  z.null(),
+])
+
+/** Déclaration de paramètres d'une requête (validée ensuite par `validateParameterDecls`). */
+export const parametersSchema = z.array(z.object({
+  name: z.string().describe('clé dans polenta.params (lettre puis lettres, chiffres, _)'),
+  kind: z.enum(QUERY_PARAMETER_KINDS as unknown as [string, ...string[]])
+    .describe('campaign | component | objectType | enum | text | period'),
+  label: labelSchema.describe('libellé du sélecteur ({ fr, en } ou un seul texte)'),
+  values: z.array(z.object({ value: z.string(), label: labelSchema.optional() })).optional().describe('enum seulement'),
+  default: paramValueSchema.optional(),
+  required: z.boolean().optional().describe('vrai : pas de choix « Tous / Toutes »'),
+})).describe('paramètres choisis à l\'affichage (barre du dashboard) : valeurs reçues dans polenta.params')
+
+/** Valeurs des paramètres pour une exécution (clés = noms déclarés). */
+export const paramsSchema = z.record(paramValueSchema)
+  .describe('valeurs des paramètres déclarés (période : { from, to } en AAAA-MM-JJ) ; absent → défaut de la déclaration')
+
+/** Déclaration validée, ou l'erreur `PARAMS_INVALID` à renvoyer. */
+export function checkParameters(raw: unknown): { decls: QueryParameterDef[] } | { error: ReturnType<typeof suiviError> } {
+  const { decls, errors } = validateParameterDecls(raw)
+  return errors.length ? { error: suiviError('PARAMS_INVALID', errors.join(' ; ')) } : { decls }
 }

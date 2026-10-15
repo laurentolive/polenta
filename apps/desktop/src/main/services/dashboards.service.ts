@@ -1,5 +1,5 @@
-import type { Dashboard, QueryScope, ReadDashboard, ReadWidget, StoredDashboard, StoredWidget, TemplateRef, Widget, WidgetCode, WidgetSize } from '@polenta/types'
-import { readDashboardRecord, SUIVI_FORMAT_VERSION, widgetCodeForHash } from '@polenta/types'
+import type { Dashboard, GraphParamValue, QueryParameterKind, QueryScope, ReadDashboard, ReadWidget, StoredDashboard, StoredWidget, TemplateRef, Widget, WidgetCode, WidgetSize } from '@polenta/types'
+import { normalizeParamValue, QUERY_PARAMETER_KINDS, readDashboardRecord, SUIVI_FORMAT_VERSION, widgetCodeForHash } from '@polenta/types'
 import type { GitService } from './git.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
@@ -59,6 +59,9 @@ interface PrefStore {
   dashboards?: Record<string, unknown>[]
   /** Ordre d'affichage de la section "Dashboards" du panneau latéral (préférence personnelle). */
   dashboardsOrder?: string[]
+  /** GH93 — valeurs choisies dans la barre de paramètres : dashboard → sélecteur (`name:kind`) →
+   *  valeur (`null` = « Tous / Toutes » choisi). Absente : défaut de la déclaration. */
+  suiviParamValues?: Record<string, Record<string, GraphParamValue>>
   [key: string]: unknown
 }
 
@@ -211,9 +214,12 @@ export class DashboardsService {
       const pref = this.readPref(repoPath, username)
       pref.dashboards = (pref.dashboards ?? []).filter((d) => d.id !== id)
       this.writePref(repoPath, username, pref)
-      return
+    } else {
+      await this.removeShared(repoPath, id)
     }
-    await this.removeShared(repoPath, id)
+    // Après la suppression seulement (un échec garde les choix) ; ceux des autres utilisateurs
+    // restent dans leur .pref, ignorés (aucun dashboard ne porte plus cet id).
+    this.writeParamValues(repoPath, username, id, null)
   }
 
   /**
@@ -415,11 +421,42 @@ export class DashboardsService {
     await removeSharedObject(this.git, repoPath, DIR, id)
   }
 
+  /** Ordre du panneau latéral et valeurs des paramètres (GH93) suivent le nouvel id. */
   private renameInOrder(repoPath: string, username: string, oldId: string, newId: string): void {
     const pref = this.readPref(repoPath, username)
     const order = pref.dashboardsOrder
-    if (!order || !order.includes(oldId)) return
-    pref.dashboardsOrder = order.map((entryId) => (entryId === oldId ? newId : entryId))
+    const values = pref.suiviParamValues?.[oldId]
+    if ((!order || !order.includes(oldId)) && !values) return
+    if (order) pref.dashboardsOrder = order.map((entryId) => (entryId === oldId ? newId : entryId))
+    if (values && pref.suiviParamValues) {
+      delete pref.suiviParamValues[oldId]
+      pref.suiviParamValues[newId] = values
+    }
+    this.writePref(repoPath, username, pref)
+  }
+
+  // ─── Valeurs des paramètres (GH93, toujours privées) ──────────────────────────
+
+  /** Valeurs choisies par l'utilisateur dans la barre du dashboard (clé `name:kind`). */
+  async getParamValues(repoPath: string, username: string, dashboardId: string): Promise<Record<string, GraphParamValue>> {
+    return cleanParamValues(this.readPref(repoPath, username).suiviParamValues?.[dashboardId])
+  }
+
+  /** Remplace les valeurs choisies ; `null` = Réinitialiser. Jamais d'écriture dans le dashboard :
+   *  autorisé sur une branche en lecture seule et pour un dashboard en lecture seule. */
+  async setParamValues(repoPath: string, username: string, dashboardId: string, values: Record<string, unknown> | null): Promise<void> {
+    this.writeParamValues(repoPath, username, dashboardId, values)
+  }
+
+  private writeParamValues(repoPath: string, username: string, dashboardId: string, values: Record<string, unknown> | null): void {
+    const pref = this.readPref(repoPath, username)
+    const all = { ...(pref.suiviParamValues ?? {}) }
+    const clean = values ? cleanParamValues(values) : {}
+    if (Object.keys(clean).length) all[dashboardId] = clean
+    else if (dashboardId in all) delete all[dashboardId]
+    else if (!values) return
+    if (Object.keys(all).length) pref.suiviParamValues = all
+    else delete pref.suiviParamValues
     this.writePref(repoPath, username, pref)
   }
 
@@ -451,4 +488,17 @@ export class DashboardsService {
   private writePref(repoPath: string, username: string, data: PrefStore): void {
     writePrefStore(repoPath, username, data)
   }
+}
+
+/** Valeurs au format de leur type (porté par la clé `name:kind`) ; les autres sont ignorées. Une
+ *  valeur d'énumération n'est pas vérifiée ici (les valeurs déclarées peuvent changer). */
+function cleanParamValues(raw: Record<string, unknown> | undefined): Record<string, GraphParamValue> {
+  const out: Record<string, GraphParamValue> = {}
+  for (const [key, v] of Object.entries(raw ?? {})) {
+    const kind = key.slice(key.lastIndexOf(':') + 1) as QueryParameterKind
+    if (!QUERY_PARAMETER_KINDS.includes(kind)) continue
+    const n = normalizeParamValue({ kind: kind === 'enum' ? 'text' : kind }, v)
+    if (n.ok) out[key] = n.value
+  }
+  return out
 }

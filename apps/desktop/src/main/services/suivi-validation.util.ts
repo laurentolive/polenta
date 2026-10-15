@@ -25,6 +25,8 @@ export type SuiviErrorCode =
   | 'SUIVI_READ_ONLY'
   | 'LIBRARY_PATH_INVALID'
   | 'LIBRARY_MODULE_NOT_FOUND'
+  // GH93 — déclaration de paramètres choisis à l'affichage invalide.
+  | 'PARAMS_INVALID'
 
 export type SuiviWarningCode = 'SCRIPT_ERROR' | 'SPEC_AGGREGATE' | 'SPEC_UNCHECKED'
 

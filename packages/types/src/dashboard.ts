@@ -7,6 +7,7 @@
 
 import type { TemplateRef } from './suivi-templates'
 import type { TestRunStatus } from './campaign'
+import type { QueryParameterDef } from './suivi-params'
 
 export type QueryScope = 'private' | 'shared'
 
@@ -34,6 +35,10 @@ export interface SavedQuery {
   /** Script de données (module ES). Vide pour une requête `legacy-sql`. */
   script: string
   template?: TemplateRef
+  /** GH93 — paramètres choisis à l'affichage (`[]` si aucun, ou si la déclaration est invalide). */
+  parameters: QueryParameterDef[]
+  /** GH93 — déclaration lue invalide (fichier modifié à la main) : exécution refusée (`format`). */
+  parametersError?: string
   createdBy: string
   createdAt: string
   /** Requête SQL d'avant GH74 : texte conservé pour l'affichage, plus exécutable. */

@@ -413,15 +413,15 @@ opération privée → `PRIVATE_SCOPE_UNAVAILABLE`. Un id partagé hors format `
 
 | Tool | Entrée | Points clés |
 |---|---|---|
-| `get_data_contract` | — | `polenta.d.ts` (types du graphe), version du contrat, conventions (`_ids`, agrégation en JS, `polenta.drill`, fuseau, imports, jetons `var(--…)`, `usermeta.polenta.view` / `seriesColors`, limites) |
+| `get_data_contract` | — | `polenta.d.ts` (types du graphe), version du contrat, conventions (`_ids`, agrégation en JS, `polenta.drill`, `polenta.params` (GH93), fuseau, imports, jetons `var(--…)`, `usermeta.polenta.view` / `seriesColors`, limites) |
 | `list_templates` | — | modèles de requête et de widget avec leurs paramètres (`describeTemplates`) |
-| `test_script` | `{ script, transform?, drill?, limit?, locale?, timezone? }` | exécution sans enregistrement ; `{ columns, rows (≤ limit), total }` ou `SCRIPT_ERROR` (kind, fichier, ligne) |
+| `test_script` | `{ script, transform?, drill?, parameters?, params?, limit?, locale?, timezone? }` | exécution sans enregistrement ; `{ columns, rows (≤ limit), total }` ou `SCRIPT_ERROR` (kind, fichier, ligne) ; GH93 : déclaration invalide → `PARAMS_INVALID`, valeurs refusées → `SCRIPT_ERROR` `kind: params` |
 | `list_library` / `read_library_module` | `{ path }` | modules de `dashboards/lib/` du repo ouvert et des composants (`<composant>::lib/x.js` en lecture) |
 | `write_library_module` | `{ path, content, dryRun? }` | repo ouvert seulement ; chemin `.js` contrôlé (`LIBRARY_PATH_INVALID`) |
-| `list_queries` | `{ scope? }` | `script`, `template`, `state` ; historique jamais exposé |
-| `run_query` | `{ queryId? \| script?, offset?, limit? }` | exactement un des deux (`INVALID_INPUT`) ; `{ columns, rows, total, offset, limit }` ; n'écrit pas l'historique |
-| `create_query` | `{ title, script? \| template?, scope='shared', dryRun? }` | `DUPLICATE_TITLE` (même scope) ; modèle validé (`INVALID_TEMPLATE`) ; sortie `{ query, preview, warnings }` |
-| `update_query` | `{ id, title?, script? \| template?, dryRun? }` | `script` détache du modèle ; `template` régénère ; scope non modifiable |
+| `list_queries` | `{ scope? }` | `script`, `template`, `parameters` (GH93), `state` ; historique jamais exposé |
+| `run_query` | `{ queryId? \| script?, params?, parameters?, offset?, limit? }` | exactement un des deux (`INVALID_INPUT`) ; `{ columns, rows, total, offset, limit }` ; n'écrit pas l'historique ; GH93 : `params` = valeurs des paramètres déclarés (non fourni → défaut), `parameters` avec `script` seulement ; clé non déclarée / obligatoire manquant → `SCRIPT_ERROR` `kind: params` |
+| `create_query` | `{ title, script? \| template?, parameters?, scope='shared', dryRun? }` | `DUPLICATE_TITLE` (même scope) ; modèle validé (`INVALID_TEMPLATE`) ; sortie `{ query, preview, warnings }` ; GH93 : `parameters` avec `script` (généré par un modèle : `template` + `parameters` → `INVALID_INPUT`), déclaration invalide → `PARAMS_INVALID` ; aperçu avec les défauts |
+| `update_query` | `{ id, title?, script? \| template?, parameters?, dryRun? }` | `script` détache du modèle ; `template` régénère (déclaration comprise) ; scope non modifiable ; GH93 : déclaration lue invalide et non remplacée → `PARAMS_INVALID` |
 | `delete_query` | `{ id, dryRun? }` | `QUERY_IN_USE` + widgets dépendants |
 | `list_dashboards` | `{ scope? }` | widgets dans l'ordre, `template`, `state` ; **ne déclenche pas le seed** |
 | `create_dashboard` / `update_dashboard` / `delete_dashboard` | — | créé vide ; renommage seul ; requêtes conservées à la suppression |

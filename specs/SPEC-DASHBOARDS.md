@@ -2,7 +2,8 @@
 
 > Référence parent : [SPEC.md](../SPEC.md) §2.7
 > Dépend de : [SPEC-TECH-stack.md](SPEC-TECH-stack.md) §1.1/§2, [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md), [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md)
-> Introduit par T77 (sprints 1–3) ; réécrit par GH74 (graphe de données JSON, scripts JS isolés, rendu Vega-Lite)
+> Introduit par T77 (sprints 1–3) ; réécrit par GH74 (graphe de données JSON, scripts JS isolés, rendu Vega-Lite) ;
+> paramètres choisis à l'affichage : GH93 (§5.1)
 
 ---
 
@@ -12,7 +13,8 @@ Dashboards personnalisables construits sur des **scripts de données** : un scri
 **graphe de données** du projet (§2) et renvoie des lignes ; un **widget** transforme ces lignes
 (transformation JS facultative) et les rend avec une **spec Vega-Lite**. Un client non technique
 n'écrit pas de code : des **modèles** (§5) génèrent script, transformation et spec à partir d'un
-formulaire.
+formulaire. Une requête peut déclarer des **paramètres choisis à l'affichage** (§5.1) : le dashboard
+affiche une barre de sélecteurs (ex. une campagne) et le script lit les valeurs dans `polenta.params`.
 
 Trois entités, chacune privée ou partagée : **Requête** (`SavedQuery` — un script de données),
 **Widget** (dans un Dashboard), **Dashboard**.
@@ -42,8 +44,9 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
   `runs` (toutes les exécutions). Pas d'étapes de test ni de pré- / postconditions.
 - **`coverageStatus`** : `TraceabilityService.computeCoverage()` sur le graphe de liens agrégé de
   tous les repos du périmètre — identique à la matrice de traçabilité (SPEC-TRACEABILITY §2.2).
-- **Hôte** (`polenta`, second argument) : `locale`, `timezone`, `timezoneOffsets` (le moteur n'a
-  pas `Intl` : découpage par jour avec `lib/time.js`), `today`, `now`, `drill` (§6).
+- **Hôte** (`polenta`, second argument, gelé) : `locale`, `timezone`, `timezoneOffsets` (le moteur
+  n'a pas `Intl` : découpage par jour avec `lib/time.js`), `today`, `now`, `drill` (§6), `params`
+  (valeurs des paramètres déclarés par la requête, `{}` sans paramètre — §5.1, GH93).
 - **Versionnement** : `contractVersion` majeur ; un script peut déclarer `// @polenta contract 1` ;
   contrat plus récent que celui servi → erreur explicite.
 - **Cache** (`GraphService`) : par (repo, workspace, langue, arbre du workspace) ; oublié par le
@@ -64,7 +67,8 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 - **QuickJS** (wasm, `quickjs-emscripten-core`) dans un `worker_threads` par process (desktop,
   serveur web, MCP) : file d'attente, chien de garde (worker muet remplacé), contexte préparé
   (graphe et bibliothèque gelés) réutilisé, 2 contextes au plus par worker. Un script partagé par
-  plusieurs widgets n'est exécuté qu'une fois par rafraîchissement.
+  plusieurs widgets n'est exécuté qu'une fois par rafraîchissement (mêmes `drill` et mêmes valeurs de
+  paramètres).
 - **Isolation** : pas de globaux de l'hôte (`fetch`, `require`, `process`, timers, `console`…) ;
   imports limités à `lib/…`, `<composant>::lib/…` et aux chemins relatifs internes à un `lib/` ;
   données, exports de bibliothèque et intrinsèques gelés (un widget ne voit pas les modifications
@@ -72,13 +76,16 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 - **Limites** : 2 s par exécution (script + transformation), 64 Mo de tas, mémoire wasm plafonnée
   à 128 Mo, pile 256 Ko.
 - **Erreurs** : `{ kind, message, file, line, column }` (`syntax`, `import`, `runtime`, `timeout`,
-  `memory`, `stack`, `rows` (sortie invalide), `contract`, `async`, `export`, `legacy-sql`, `format`,
-  `spec`) affichées dans le widget (`message (fichier:ligne)`),
+  `memory`, `stack`, `rows` (sortie invalide), `contract`, `async`, `export`, `legacy-sql`, `format`
+  (dont déclaration de paramètres invalide), `spec`, `params` (clé non déclarée, valeur hors format,
+  paramètre obligatoire sans valeur)) affichées dans le widget (`message (fichier:ligne)`),
   jamais un graphe vide. Module `lib/…` introuvable : le message renvoie au bandeau (§8.1).
 
 Canaux : `suivi:run` (script fourni, requête enregistrée, ou widget = requête + transformation ;
-`drill` facultatif), `suivi:describe-ids`, `suivi:resolve-target`, `suivi:templates`,
-`suivi:render-template`, `suivi:object-types`, `suivi:updates-list` / `-apply` / `-ignore`.
+`drill`, `params` (valeurs), `parameters` (déclaration d'un script fourni) facultatifs),
+`suivi:describe-ids`, `suivi:resolve-target`, `suivi:templates`, `suivi:render-template` (requête :
+script + déclaration), `suivi:object-types`, `suivi:updates-list` / `-apply` / `-ignore`,
+`dashboards:param-values-get` / `-set` (§5.1).
 
 ---
 
@@ -114,17 +121,55 @@ déterministe) :
   entrée ; filtres statut de campagne / campagnes / statut d'entrée ; option « Étape d'avancement »
   → colonnes `step`, `stepLabel`, `stepRank`, `stepColor` via `lib/campaign.js`), « Avancement dans
   le temps » (`campaignsTimeline` : une ligne par jour × statut d'entrée, pas jour / semaine).
+  Options « … choisi(e) à l'affichage » (§5.1) : campagne (entrées, avancement), période (avancement),
+  composant et type d'objet (liste filtrée).
 - **Widget** (transformation + spec) : barres (groupées / empilées, ordre et couleur des séries par
   colonne), camembert, courbe, indicateur, table, matrice (pire statut par cellule), aire empilée
   temporelle (couche de marques quasi transparentes pour rendre chaque point cliquable, gestion de
   `polenta.drill`). Mesures : nombre, somme, min, max, valeurs distinctes, pire statut. Les colonnes
   proposées sont celles du résultat de la requête.
 - **Référence** stockée : `template: { id, version, params, hash }`, `hash` = SHA-256 du code
-  généré normalisé (`hashableText`). Code différent → **personnalisé** : la popup n'affiche que le
+  généré normalisé (`hashableText`) — pour une requête, script **et** déclaration de paramètres s'il
+  y en a (`queryCodeForHash`) : modifier la déclaration détache aussi la requête. Code différent → **personnalisé** : la popup n'affiche que le
   code, « Revenir au modèle » (confirmation) régénère depuis `params`. Objet sans modèle :
   personnalisé d'emblée.
 - **Nouvelle version d'un modèle** : jamais appliquée sans action — proposée dans le bandeau pour les
   objets des seeds, signalée dans la popup pour les autres (régénéré à l'enregistrement).
+
+### 5.1 Paramètres choisis à l'affichage (GH93)
+
+Logique pure : `packages/types/src/suivi-params.ts` (main, MCP, renderer).
+
+- **Déclaration** (`parameters` de la requête, dans `query.yaml` ou l'entrée du `.pref`, omise si
+  vide ; générée par un modèle, éditée dans `/query` en mode Script ou par le MCP) : `name` (clé de
+  `polenta.params`, lettre puis lettres / chiffres / `_`, unique), `kind`, `label` (`{ fr, en }` ou un
+  texte), `values` (`enum`), `default`, `required`. Déclaration invalide refusée à l'enregistrement
+  (`[PARAMS_INVALID]`) ; lue invalide (fichier modifié à la main) → `parametersError`, exécution
+  refusée (`format`), jamais réécrite vide sans être remplacée.
+- **Types et valeurs** : `campaign` (ID), `component` (nom), `objectType` (`objectTypeRef`), `enum`
+  (valeur déclarée), `text` (≤ 1 000 caractères, espaces de bord retirés), `period`
+  (`{ from, to }`, jours `AAAA-MM-JJ` facultatifs, `from ≤ to`) ; `null` = « Tous / Toutes ».
+  Sélection simple.
+- **Résolution** (main, `resolveRunParams`) : clé non déclarée → erreur `params` ; valeur fournie
+  (même `null`) → normalisée ; absente → `default`, sinon `null` ; `required` sans valeur → erreur.
+- **Barre du dashboard** (`ParamBar`, `useDashboardParams`) : un sélecteur par couple (`name`,
+  `kind`), partagé par les requêtes qui le déclarent, dans l'ordre des widgets puis des déclarations
+  (libellé de la première ; `enum` : union des valeurs, une valeur non déclarée par une requête ne lui
+  est pas transmise). Pas de barre sans paramètre. Changer une valeur ne relance que les widgets
+  concernés (valeurs dans la clé du résultat). Paramètre obligatoire sans valeur → widget « Choisir
+  <libellé> », non exécuté. **Réinitialiser** → défauts des déclarations.
+- **Valeur choisie** : par utilisateur et par dashboard dans le `.pref` (`suiviParamValues[dashboard]
+  ["name:kind"]`, jamais commité, aussi sur une branche ou un dashboard en lecture seule) ; suit le
+  dashboard au changement de portée, retirée à sa suppression. Pas de défaut propre au dashboard.
+  Valeur devenue introuvable (campagne supprimée, composant / type retiré, valeur d'énumération
+  retirée) → « Valeur introuvable : … », défaut appliqué, valeur conservée dans le `.pref`.
+- **Vue `/query`** : barre des paramètres de la requête (défauts à l'ouverture, non mémorisée) ;
+  exécution et export Excel avec ces valeurs ; déclaration éditable (`ParameterDeclEditor`) en mode
+  Script, affichée en lecture seule pour un modèle ; enregistrement impossible tant qu'elle est
+  invalide.
+- **Modèles** : campagne choisie → ses seules entrées, filtres de statut / liste de campagnes du
+  modèle ignorés (« Toutes » → filtres) ; période → bornes de `campaignsTimeline` ; composant / type
+  choisi → remplace la valeur fixée (« Tous » → valeur fixée, sinon aucun filtre).
 
 ---
 
@@ -146,13 +191,17 @@ déterministe) :
   dérive ses propres copies) ; `_ids` présents → popup « Détail » (ID, type, titre, statut ;
   `suivi:describe-ids`) ; sinon relance script + transformation avec `polenta.drill` = colonnes
   scalaires de la ligne → lignes avec `_ids` ; aucun → « Détail non disponible : le script ne fournit
-  pas d'identifiants ». KPI : union des `_ids`. Table : ligne à un seul ID → ouverture directe.
+  pas d'identifiants ». KPI : union des `_ids`. Table : ligne à un seul ID → ouverture directe. La
+  relance utilise les valeurs de paramètres du widget cliqué.
 - **Ouverture** (`suivi:resolve-target`) : exigence, test, campagne ; entrée de campagne →
   résultat d'exécution si exécutée, sinon page de campagne filtrée sur son **statut brut**
   (`status`). ID inconnu → « Objet introuvable ». Rien de cliquable dans l'aperçu ni en impression.
 - **Exports** : Excel du résultat d'une requête (colonnes du script, `_ids` joints par « , »),
   docx du dashboard (une table des lignes de chaque widget, direct et par gabarit), PDF (impression,
-  graphes SVG, prêt après rendu Vega).
+  graphes SVG, prêt après rendu Vega). Dashboard paramétré : valeurs courantes de l'utilisateur,
+  rappelées en tête (docx : paragraphes « Libellé : valeur », gabarit : `{#parameters}{label} :
+  {value}{/parameters}` ; impression : barre en texte) ; widget en attente d'un paramètre
+  obligatoire : « Aucune donnée. ».
 
 ---
 
@@ -162,9 +211,10 @@ déterministe) :
 
 | Entité | Partagé (repo) | Privé (`.{user}.pref`) |
 |---|---|---|
-| Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus), ID `local-<ts>-<rand>` |
+| Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `parameters?` (GH93), `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus), ID `local-<ts>-<rand>` |
 | Dashboard | `dashboards/DASHBOARD-NNNN/` : `dashboard.yaml` (widgets : `id`, `title`, `queryId`, `size`, `template?`) + `<widgetId>.js` (transformation) + `<widgetId>.vl.json` (spec) | `dashboards[]` (code des widgets inclus) |
 | Historique de requêtes | — | `queryHistory` (texte du script) |
+| Valeurs de la barre de paramètres (GH93) | — | `suiviParamValues` (dashboard → `name:kind` → valeur) |
 
 IDs par `nextCounterId` (fichiers **et** dossiers `<PREFIX>-NNNN/`, pierres tombales GH20).
 `state` (`customized`, `templateUpdate`, `readOnly`, `legacyFormat`) calculé à la lecture, jamais
@@ -205,7 +255,9 @@ partagées) :
   (barres empilées sur l'étape `entryStep`, ordre canonique et couleurs `--chart-progress-*`),
   **% exécuté**, **% PASS** (indicateurs), **Exécutions par jour** (courbe), **Entrées en échec**
   (table), **Avancement dans le temps** (aire empilée des statuts d'entrée, campagnes en cours, pas
-  journalier). Libellés fr / en.
+  journalier). Libellés fr / en. Les six requêtes ont la campagne « choisie à l'affichage » (GH93) :
+  un sélecteur **Campagne** commun, « Toutes » par défaut (filtres du seed). Seeds créés avant GH93 :
+  non repris.
 - **Seeds d'avant GH74** : requêtes reconnues à leur SQL **exact** d'origine (GH65, GH71) réécrites
   sous le même id, widgets restés au mapping d'origine réécrits ; objet modifié → laissé en
   `legacy-sql`. Requêtes partagées jamais réécrites sur une branche en lecture seule. Seed Campagnes
@@ -286,3 +338,6 @@ bibliothèque). Budgets (contexte préparé) : avancement des campagnes < 200 ms
 - Redimensionnement libre des widgets ; partage d'un widget entre dashboards.
 - Alertes / notifications sur seuils, requêtes planifiées.
 - Politique CSP de l'application (#88) ; le rendu Vega est déjà compatible (pas d'`eval`).
+- Paramètres (GH93) : sélection multiple, valeurs dépendantes entre sélecteurs, défaut propre au
+  dashboard, paramètres dans l'URL, paramètres déclarés par un widget ; intégration d'un widget dans
+  la page d'une campagne ; comparaison de campagnes sur un même graphique.

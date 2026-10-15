@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -139,6 +139,8 @@ export interface CreateSavedQueryDto {
   /** Script fourni, ou modèle (le script est alors généré). */
   script?: string
   template?: TemplateInput
+  /** GH93 — paramètres choisis à l'affichage (avec `script` seulement : un modèle les génère). */
+  parameters?: QueryParameterDef[]
 }
 
 export interface UpdateSavedQueryDto {
@@ -147,6 +149,8 @@ export interface UpdateSavedQueryDto {
   script?: string
   /** Modèle / paramètres : script régénéré ; `null` retire la référence. */
   template?: TemplateInput | null
+  /** GH93 — nouvelle déclaration de paramètres (sans `template`). */
+  parameters?: QueryParameterDef[]
 }
 
 export interface AddHistoryEntryDto {
@@ -703,7 +707,7 @@ export interface ApiClient {
     describeIds(repoPath: string, workspaceDir: string | undefined, ids: string[], locale?: string): Promise<DescribedObject[]>
     resolveTarget(repoPath: string, workspaceDir: string | undefined, id: string): Promise<RowTarget | null>
     templates(): Promise<{ queries: Omit<QueryTemplate, 'generate'>[]; widgets: Omit<WidgetTemplate, 'generate'>[] }>
-    renderTemplate(kind: 'query', input: TemplateInput): Promise<{ script: string }>
+    renderTemplate(kind: 'query', input: TemplateInput): Promise<{ script: string; parameters: QueryParameterDef[] }>
     renderTemplate(kind: 'widget', input: TemplateInput): Promise<WidgetCode>
     objectTypes(repoPath: string, workspaceDir?: string): Promise<SuiviObjectTypeOption[]>
     /** GH74 §6.3 — bandeau des mises à jour (bibliothèque, widgets du seed, versions de modèle). */
@@ -755,6 +759,10 @@ export interface ApiClient {
     /** Ordre d'affichage de la section "Dashboards" du panneau latéral (préférence perso). */
     getOrder(repoPath: string, username: string): Promise<string[]>
     setOrder(repoPath: string, username: string, order: string[]): Promise<void>
+    /** GH93 — valeurs choisies dans la barre de paramètres du dashboard (clé `name:kind`), privées. */
+    getParamValues(repoPath: string, username: string, dashboardId: string): Promise<Record<string, GraphParamValue>>
+    /** `null` : Réinitialiser (retour aux défauts des déclarations). */
+    setParamValues(repoPath: string, username: string, dashboardId: string, values: Record<string, GraphParamValue> | null): Promise<void>
   }
   /** Base de paramètres (T171) — `repoPath` = repo qui porte la base. */
   parameters: {

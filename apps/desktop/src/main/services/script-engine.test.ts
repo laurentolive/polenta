@@ -102,6 +102,21 @@ describe('GH74 — moteur de scripts', () => {
     expect(kinds.filter((k) => k === 'transform')).toHaveLength(3)
   })
 
+  it('GH93 / 27 — paramètres : polenta.params transmis ; valeurs différentes → exécutions distinctes', async () => {
+    const e = engine()
+    const exec = vi.spyOn(e as unknown as { exec: (...a: unknown[]) => unknown }, 'exec')
+    const script = 'export default (data, polenta) => [{ c: polenta.params.campaign }]'
+    const results = await Promise.all([
+      e.run('/repo', '/ws', { script, params: { campaign: 'A' } }, client),
+      e.run('/repo', '/ws', { script, params: { campaign: 'B' } }, client),
+      e.run('/repo', '/ws', { script, params: { campaign: 'A' } }, client),
+    ])
+    expect(results.map((r) => r.ok && r.rows[0].c)).toEqual(['A', 'B', 'A'])
+    expect(exec).toHaveBeenCalledTimes(2)
+    const none = await e.run('/repo', '/ws', { script: 'export default (data, polenta) => [{ n: Object.keys(polenta.params).length }]' }, client)
+    expect(none).toMatchObject({ ok: true, rows: [{ n: 0 }] })
+  })
+
   it('S17 — nouveau graphe ou bibliothèque modifiée : contexte reconstruit', async () => {
     const s = stubs()
     const e = engine(s)

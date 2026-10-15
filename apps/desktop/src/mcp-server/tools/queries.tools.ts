@@ -8,7 +8,10 @@ import { applyQueryTemplate } from '../../main/services/suivi-store.util'
 import { findDuplicateTitle, validateTemplateInput, type SuiviWarning } from '../../main/services/suivi-validation.util'
 import {
   assertWritableBranch,
+  checkParameters,
   findVisibleQuery,
+  parametersSchema,
+  paramsSchema,
   peekSharedId,
   preview,
   PRIVATE_SCOPE_REASON,
@@ -38,6 +41,8 @@ const listQueriesInput = {
 const runQueryInput = {
   queryId: z.string().min(1).optional().describe('requête enregistrée à exécuter (exclusif avec script)'),
   script: z.string().min(1).optional().describe('script ad hoc (exclusif avec queryId) — cf. aussi test_script'),
+  params: paramsSchema.optional(),
+  parameters: parametersSchema.optional().describe('déclaration des paramètres d\'un script ad hoc (avec script seulement)'),
   offset: z.number().int().min(0).optional().default(0),
   limit: z.number().int().min(1).max(LIST_RESULT_LIMIT).optional().default(LIST_RESULT_LIMIT),
 }
@@ -46,6 +51,7 @@ const createQueryInput = {
   title: z.string().min(1),
   script: z.string().min(1).optional().describe('script de données (exclusif avec template)'),
   template: templateSchema.optional().describe('modèle de requête + paramètres : le script est généré (exclusif avec script)'),
+  parameters: parametersSchema.optional().describe('paramètres choisis à l\'affichage (avec script ; générés par un modèle)'),
   scope: scopeSchema.optional().default('shared'),
   dryRun: z.boolean().optional().default(true),
 }
@@ -55,6 +61,7 @@ const updateQueryInput = {
   title: z.string().min(1).optional(),
   script: z.string().min(1).optional().describe('nouveau script (la requête est alors détachée de son modèle)'),
   template: templateSchema.optional().describe('nouveau modèle / paramètres : script régénéré'),
+  parameters: parametersSchema.optional().describe('nouvelle déclaration de paramètres choisis à l\'affichage (pas avec template)'),
   dryRun: z.boolean().optional().default(true),
 }
 
@@ -97,13 +104,22 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       description:
         'Exécute une requête enregistrée (queryId) ou un script ad hoc dans le bac à sable, sur les données ' +
         'réelles (repo ouvert + composants). Retourne les colonnes et les lignes (paginées par offset/limit) ' +
-        'ou l\'erreur avec fichier et ligne. À utiliser avant add_widget pour connaître les colonnes.',
+        'ou l\'erreur avec fichier et ligne. À utiliser avant add_widget pour connaître les colonnes. ' +
+        'params : valeurs des paramètres déclarés par la requête (polenta.params) ; un paramètre non fourni ' +
+        'prend son défaut ; clé non déclarée ou paramètre obligatoire sans valeur → erreur kind params.',
       inputSchema: runQueryInput,
     },
-    async ({ queryId, script, offset, limit }) => {
+    async ({ queryId, script, params, parameters, offset, limit }) => {
       if ((queryId === undefined) === (script === undefined)) return suiviError('INVALID_INPUT', 'Fournir exactement un de queryId ou script.')
+      if (parameters !== undefined && script === undefined) return suiviError('INVALID_INPUT', 'parameters seulement avec script (une requête enregistrée a sa déclaration).')
       if (queryId !== undefined && !(await findVisibleQuery(c, queryId))) return suiviError('QUERY_NOT_FOUND', `Requête introuvable : ${queryId}.`)
-      const run = await runScript(c, queryId !== undefined ? { queryId } : { script })
+      let decls
+      if (parameters !== undefined) {
+        const checked = checkParameters(parameters)
+        if ('error' in checked) return checked.error
+        decls = checked.decls
+      }
+      const run = await runScript(c, queryId !== undefined ? { queryId, params } : { script, params, parameters: decls ?? [] })
       if (!run.ok) return suiviError('SCRIPT_ERROR', JSON.stringify(run.error))
       return jsonToolResult({ columns: run.columns, rows: run.rows.slice(offset, offset + limit), total: run.total, offset, limit })
     },
@@ -115,36 +131,44 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       title: 'Create saved query',
       description:
         'Crée une requête de la vue Suivi : un script JS fourni, ou un modèle + paramètres (cf. list_templates). ' +
+        'parameters (avec script) : paramètres choisis à l\'affichage dans la barre du dashboard, lus dans ' +
+        'polenta.params (un modèle génère les siens). ' +
         'dryRun (défaut true) : EXÉCUTE le script et retourne un aperçu SANS RIEN ÉCRIRE. Un script en erreur ' +
         'est enregistré avec un avertissement SCRIPT_ERROR. Pas d\'autre requête du même scope avec le même ' +
         'titre. scope private exige --user.',
       inputSchema: createQueryInput,
     },
-    async ({ title, script, template, scope, dryRun }) => {
+    async ({ title, script, template, parameters, scope, dryRun }) => {
       const readonly = await assertWritableBranch(c)
       if (readonly) return readonly
       const { username, hasUser } = resolveUser(c)
       if (scope === 'private' && !hasUser) return suiviError('PRIVATE_SCOPE_UNAVAILABLE', PRIVATE_SCOPE_REASON)
       if ((script === undefined) === (template === undefined)) return suiviError('INVALID_INPUT', 'Fournir exactement un de script ou template.')
+      if (template && parameters !== undefined) return suiviError('INVALID_INPUT', 'parameters est généré par le modèle : ne pas le fournir avec template.')
       if (template) {
         const issue = validateTemplateInput('query', template)
         if (issue) return suiviError(issue.code, issue.reason)
       }
+      const checked = checkParameters(parameters)
+      if ('error' in checked) return checked.error
       const cleanTitle = title.trim()
       if (!cleanTitle) return suiviError('INVALID_INPUT', 'title ne peut pas être vide.')
       const existing = await c.savedQueries.list(c.repoPath, username)
       const dup = findDuplicateTitle(existing, cleanTitle, scope)
       if (dup) return suiviError('DUPLICATE_TITLE', `Une requête ${scope === 'shared' ? 'partagée' : 'privée'} porte déjà ce titre : ${dup.id} "${dup.title}".`)
 
-      const code = template ? applyQueryTemplate(template).script : script!
-      const run = await runScript(c, { script: code })
+      const generated = template ? applyQueryTemplate(template) : null
+      const code = generated ? generated.script : script!
+      const decls = generated ? generated.parameters : checked.decls
+      // Aperçu avec les valeurs par défaut (un paramètre obligatoire sans défaut → avertissement).
+      const run = await runScript(c, { script: code, parameters: decls })
       const warnings = scriptWarnings(run)
       if (dryRun) {
         const id = scope === 'shared' ? await peekSharedId(c, 'QUERY') : "(généré à l'écriture)"
-        return jsonToolResult({ dryRun: true, query: { id, title: cleanTitle, scope, script: code, ...(template ? { template } : {}) }, preview: preview(run), warnings })
+        return jsonToolResult({ dryRun: true, query: { id, title: cleanTitle, scope, script: code, parameters: decls, ...(template ? { template } : {}) }, preview: preview(run), warnings })
       }
       const query = await c.savedQueries.create(c.repoPath, username, {
-        title: cleanTitle, scope, createdBy: 'mcp', ...(template ? { template } : { script }),
+        title: cleanTitle, scope, createdBy: 'mcp', ...(template ? { template } : { script, parameters: decls }),
       })
       return jsonToolResult({ dryRun: false, query, preview: preview(run), warnings })
     },
@@ -155,13 +179,13 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
     {
       title: 'Update saved query',
       description:
-        'Modifie une requête (titre, script ou modèle + paramètres). dryRun (défaut true) : aperçu SANS RIEN ' +
+        'Modifie une requête (titre, script ou modèle + paramètres, déclaration parameters). dryRun (défaut true) : aperçu SANS RIEN ' +
         'ÉCRIRE. Un script fourni détache la requête de son modèle. Le script résultant est réexécuté ' +
         '(avertissement SCRIPT_ERROR si en erreur). Une requête en lecture seule (SQL d\'avant GH74, format ' +
         'plus récent) est refusée (SUIVI_READ_ONLY). Le scope ne se change pas ici.',
       inputSchema: updateQueryInput,
     },
-    async ({ id, title, script, template, dryRun }) => {
+    async ({ id, title, script, template, parameters, dryRun }) => {
       const readonly = await assertWritableBranch(c)
       if (readonly) return readonly
       const { username, hasUser } = resolveUser(c)
@@ -170,9 +194,19 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       if (!existing) return suiviError('QUERY_NOT_FOUND', `Requête introuvable : ${id}.`)
       if (existing.state.readOnly) return suiviError('SUIVI_READ_ONLY', `Requête ${id} en lecture seule (${existing.state.readOnly}).`)
       if (script !== undefined && template !== undefined) return suiviError('INVALID_INPUT', 'Fournir script ou template, pas les deux.')
+      if (template && parameters !== undefined) return suiviError('INVALID_INPUT', 'parameters est généré par le modèle : ne pas le fournir avec template.')
       if (template) {
         const issue = validateTemplateInput('query', template)
         if (issue) return suiviError(issue.code, issue.reason)
+      }
+      let newDecls
+      if (parameters !== undefined) {
+        const checked = checkParameters(parameters)
+        if ('error' in checked) return checked.error
+        newDecls = checked.decls
+      } else if (existing.parametersError && !template) {
+        // Déclaration lue invalide (modifiée à la main) : la réécrire vide la perdrait.
+        return suiviError('PARAMS_INVALID', `Déclaration de paramètres de ${id} invalide, à corriger (parameters) : ${existing.parametersError}.`)
       }
       let cleanTitle: string | undefined
       if (title !== undefined) {
@@ -182,14 +216,17 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
         const dup = findDuplicateTitle(all, cleanTitle, existing.scope, id)
         if (dup) return suiviError('DUPLICATE_TITLE', `Une autre requête du même scope porte déjà ce titre : ${dup.id} "${dup.title}".`)
       }
-      const code = template ? applyQueryTemplate(template).script : script ?? existing.script
-      const run = await runScript(c, { script: code })
+      const generated = template ? applyQueryTemplate(template) : null
+      const code = generated ? generated.script : script ?? existing.script
+      const decls = generated ? generated.parameters : newDecls ?? existing.parameters
+      const run = await runScript(c, { script: code, parameters: decls })
       const dto: UpdateSavedQueryDto = {
         ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),
         ...(template ? { template } : script !== undefined ? { script } : {}),
+        ...(newDecls !== undefined ? { parameters: newDecls } : {}),
       }
       if (dryRun) {
-        return jsonToolResult({ dryRun: true, query: { ...existing, ...(cleanTitle ? { title: cleanTitle } : {}), script: code }, preview: preview(run), warnings: scriptWarnings(run) })
+        return jsonToolResult({ dryRun: true, query: { ...existing, ...(cleanTitle ? { title: cleanTitle } : {}), script: code, parameters: decls }, preview: preview(run), warnings: scriptWarnings(run) })
       }
       const query = await c.savedQueries.update(c.repoPath, username, id, dto)
       return jsonToolResult({ dryRun: false, query, preview: preview(run), warnings: scriptWarnings(run) })

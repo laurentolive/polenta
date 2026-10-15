@@ -106,13 +106,13 @@ function missingModuleMessage(name: string): string {
 const BOOT = `
 Object.defineProperty(globalThis, '__freeze', { value: ${DEEP_FREEZE}, writable: false, configurable: false });
 Object.defineProperty(globalThis, '__call', { value: Object.freeze((fn, hostJson) => {
-  const r = fn(globalThis.__data, JSON.parse(hostJson));
+  const r = fn(globalThis.__data, globalThis.__freeze(JSON.parse(hostJson)));
   if (r && typeof r.then === 'function') return ${JSON.stringify(ASYNC_MARK)};
   return JSON.stringify(r === undefined ? null : r);
 }), writable: false, configurable: false });
 Object.defineProperty(globalThis, '__callT', { value: Object.freeze((fn, rowsJson, hostJson) => {
   const rows = globalThis.__freeze(JSON.parse(rowsJson));
-  const r = fn(rows, JSON.parse(hostJson));
+  const r = fn(rows, globalThis.__freeze(JSON.parse(hostJson)));
   if (r && typeof r.then === 'function') return ${JSON.stringify(ASYNC_MARK)};
   return JSON.stringify(r === undefined ? null : r);
 }), writable: false, configurable: false });

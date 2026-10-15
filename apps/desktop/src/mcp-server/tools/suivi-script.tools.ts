@@ -1,12 +1,12 @@
 import * as path from 'path'
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { describeTemplates, GRAPH_CONTRACT_VERSION } from '@polenta/types'
+import { describeTemplates, GRAPH_CONTRACT_VERSION, resolveRunParams } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { jsonToolResult, LIST_RESULT_LIMIT } from '../mcp-types'
 import { contentHash, LIBRARY_DIR } from '../../main/services/dashboard-library.service'
 import { DEFAULT_SANDBOX_LIMITS } from '../../main/services/script-limits'
-import { assertWritableBranch, freshenIndexes, suiviError } from './suivi-common'
+import { assertWritableBranch, checkParameters, freshenIndexes, parametersSchema, paramsSchema, suiviError } from './suivi-common'
 
 /**
  * Tools GH74 (sprint 1) — moteur de scripts de la vue Suivi : contrat de données, exécution d'un
@@ -21,6 +21,7 @@ const CONVENTIONS = [
   'Ligne = objet plat de valeurs scalaires (chaîne, nombre, booléen, null) + `_ids` facultatif : identifiants des objets d\'origine (drill-down). Entrée de campagne : `<campagne>/<entrée>`.',
   'Agréger en JS (script ou transformation), jamais dans la spec Vega-Lite : `aggregate` perd `_ids`. Faire l\'union des `_ids` des lignes regroupées.',
   'Séries longues : omettre `_ids` et les renvoyer seulement quand `polenta.drill` est renseigné (colonnes de la ligne cliquée).',
+  'Paramètres choisis à l\'affichage (GH93) : une requête déclare `parameters` (name, kind campaign | component | objectType | enum | text | period, label, values pour enum, default, required) ; le dashboard affiche un sélecteur par couple (name, kind), partagé entre requêtes ; script et transformation lisent `polenta.params[name]` : chaîne (ID de campagne, composant, objectTypeRef, valeur, texte), `{ from, to }` pour une période (AAAA-MM-JJ, chacun facultatif), `null` = « Tous / Toutes ». Ex. une seule campagne : `const c = polenta.params.campaign; const campaigns = c ? data.campaigns.filter((x) => x.id === c) : data.campaigns`. Les modèles campaign-entries / campaign-timeline / filtered-list le proposent (`campaignAtDisplay`, `periodAtDisplay`, `componentAtDisplay`, `objectTypeAtDisplay`).',
   'Pas de `Intl` ; l\'heure locale de `Date` est celle du serveur : découper par jour avec `lib/time.js` (`dayOf`, `dayEnd`), qui lit `polenta.timezoneOffsets`. Utiliser `polenta.now` / `polenta.today` plutôt que `Date.now()`.',
   'Imports : `lib/<module>.js` (dashboards/lib/ du repo ouvert), `<composant>::lib/<module>.js` (repo composant), chemins relatifs entre modules de lib/. Rien d\'autre (pas de fs, réseau, npm, timers, console).',
   'Un type d\'objet se désigne par (repo, objectTypeRef) : `root::…` n\'est pas unique entre repos.',
@@ -34,6 +35,8 @@ const testScriptInput = {
   transform: z.string().optional().describe('transformation de widget appliquée aux lignes du script'),
   drill: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional()
     .describe('simule un clic sur une ligne sans `_ids` (polenta.drill)'),
+  parameters: parametersSchema.optional(),
+  params: paramsSchema.optional(),
   limit: z.number().int().min(1).max(LIST_RESULT_LIMIT).optional().default(LIST_RESULT_LIMIT),
   locale: z.enum(['fr', 'en']).optional().default('fr'),
   timezone: z.string().optional().describe('fuseau IANA (défaut : celui de la machine)'),
@@ -102,10 +105,14 @@ export function registerSuiviScriptTools(server: McpServer, container: McpContai
         '(au plus `limit`) et le total, ou l\'erreur avec fichier et ligne. Cf. get_data_contract.',
       inputSchema: testScriptInput,
     },
-    async ({ script, transform, drill, limit, locale, timezone }) => {
+    async ({ script, transform, drill, parameters, params, limit, locale, timezone }) => {
+      const checked = checkParameters(parameters)
+      if ('error' in checked) return checked.error
+      const resolved = resolveRunParams(checked.decls, params)
+      if (!resolved.ok) return suiviError('SCRIPT_ERROR', JSON.stringify({ kind: 'params', message: resolved.message, file: null, line: null, column: null }))
       await freshenIndexes(c)
       c.dashboardLibrary.invalidate(c.repoPath)
-      const result = await c.scriptEngine.run(c.repoPath, c.workspaceDir, { script, transform, transformFile: 'transform.js', drill: drill ?? null, limit }, {
+      const result = await c.scriptEngine.run(c.repoPath, c.workspaceDir, { script, transform, transformFile: 'transform.js', drill: drill ?? null, params: resolved.params, limit }, {
         locale,
         timezone: timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       })

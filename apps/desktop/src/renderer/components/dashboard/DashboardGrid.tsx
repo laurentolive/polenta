@@ -13,8 +13,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
-import { AlertTriangle, Loader2, Pencil, Trash2 } from 'lucide-react'
-import type { Dashboard, SavedQuery, Widget, WidgetSize } from '@polenta/types'
+import { AlertTriangle, Loader2, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react'
+import type { Dashboard, GraphParamValue, SavedQuery, Widget, WidgetSize } from '@polenta/types'
 import { useWidgetRun } from '../../hooks/useScriptRun'
 import { DrillDownModal } from './DrillDownModal'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
@@ -35,6 +35,12 @@ interface Props {
   printMode?: boolean
   /** Impression : rendu d'un widget terminé (PDF généré quand tous le sont). */
   onWidgetRendered?: (widgetId: string) => void
+  /** GH93 — valeurs des paramètres de la requête d'un widget (barre du dashboard). */
+  paramsFor?: (widget: Widget) => Record<string, GraphParamValue>
+  /** GH93 — paramètres obligatoires sans valeur : le widget attend un choix, sans s'exécuter. */
+  missingFor?: (widget: Widget) => string[]
+  /** GH93 — choix de l'utilisateur pas encore lus : les widgets attendent (une seule exécution). */
+  paramsReady?: boolean
 }
 
 const SIZE_SPAN: Record<WidgetSize, string> = {
@@ -55,6 +61,9 @@ function WidgetCard({
   printMode = false,
   readOnly = false,
   onRendered,
+  params,
+  missing = [],
+  paramsReady = true,
 }: {
   widget: Widget
   dashboardId: string
@@ -68,14 +77,20 @@ function WidgetCard({
   /** GH74 — dashboard en lecture seule (format plus récent) : ni modification ni suppression. */
   readOnly?: boolean
   onRendered?: () => void
+  params?: Record<string, GraphParamValue>
+  missing?: string[]
+  paramsReady?: boolean
 }) {
   const { t } = useTranslation()
   const query = savedQueries.find((q) => q.id === widget.queryId)
-  const { data: run, isLoading, error } = useWidgetRun(repoPath, workspaceDir, username, dashboardId, widget, query?.script)
-  // Impression : un widget sans requête ou dont l'exécution a échoué (IPC) est « rendu » tout de suite.
+  // Choix pas encore lus : un paramètre obligatoire paraîtrait manquant (impression déclarée prête).
+  const waiting = paramsReady && missing.length > 0
+  const { data: run, isLoading, error } = useWidgetRun(repoPath, workspaceDir, username, dashboardId, widget, query?.script, params, paramsReady && !waiting)
+  // Impression : un widget sans requête, en attente d'un choix ou dont l'exécution a échoué (IPC)
+  // est « rendu » tout de suite.
   useEffect(() => {
-    if (!query || error) onRendered?.()
-  }, [query, error, onRendered])
+    if (!query || error || waiting) onRendered?.()
+  }, [query, error, waiting, onRendered])
   // GH65 / GH74 — drill-down (popup de détail) ; jamais en impression.
   const [drillRow, setDrillRow] = useState<Record<string, unknown> | null>(null)
   const interactive = !printMode && !!query
@@ -111,7 +126,12 @@ function WidgetCard({
             <AlertTriangle size={13} className="shrink-0" />
             {t('dashboardPage.queryNotFound')}
           </div>
-        ) : isLoading ? (
+        ) : waiting ? (
+          <div className="flex items-center justify-center h-full gap-2 text-xs text-ink-3 italic px-4 text-center" data-testid="widget-param-missing">
+            <SlidersHorizontal size={13} className="shrink-0" />
+            {t('suiviParams.choose', { label: missing.join(', ') })}
+          </div>
+        ) : isLoading || !paramsReady ? (
           <div className="flex items-center justify-center h-full text-ink-3">
             <Loader2 size={16} className="animate-spin" />
           </div>
@@ -133,7 +153,7 @@ function WidgetCard({
         <DrillDownModal
           widgetTitle={widget.title}
           row={drillRow}
-          request={{ dashboardId, widgetId: widget.id }}
+          request={{ dashboardId, widgetId: widget.id, params }}
           repoPath={repoPath}
           workspaceDir={workspaceDir}
           username={username}
@@ -144,7 +164,7 @@ function WidgetCard({
   )
 }
 
-export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir, username, onReorder, onDeleteWidget, onEditWidget, printMode = false, onWidgetRendered }: Props) {
+export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir, username, onReorder, onDeleteWidget, onEditWidget, printMode = false, onWidgetRendered, paramsFor, missingFor, paramsReady = true }: Props) {
   // GH74 — réordonner : jamais en impression ni sur un dashboard en lecture seule.
   const editable = !printMode && !dashboard.state.readOnly
   const { t } = useTranslation()
@@ -240,6 +260,9 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
                 onRequestDelete={() => setPendingDeleteId(widget.id)}
                 printMode={printMode}
                 readOnly={!!dashboard.state.readOnly}
+                params={paramsFor?.(widget)}
+                missing={missingFor?.(widget)}
+                paramsReady={paramsReady}
               />
             </div>
             {dropTarget?.id === widget.id && dropTarget.position === 'after' && (

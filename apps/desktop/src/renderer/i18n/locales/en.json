@@ -1645,5 +1645,41 @@
     "backfillConfirm": "Rebuild the history of {{repo}} from git? Changed files will need to be published.",
     "backfillResult": "{{objects}} object(s) updated, {{entries}} entry(ies) added.",
     "backfillFailed": "{{count}} file(s) skipped: {{files}}"
+  },
+  "suiviParams": {
+    "reset": "Reset",
+    "notFound": "Value not found: {{value}}",
+    "choose": "Choose {{label}}",
+    "from": "from",
+    "to": "to",
+    "periodInvalid": "The start date is after the end date.",
+    "campaignStatus": {
+      "planned": "planned",
+      "in_progress": "in progress",
+      "completed": "completed",
+      "abandoned": "abandoned"
+    },
+    "kinds": {
+      "campaign": "Campaign",
+      "component": "Component",
+      "objectType": "Object type",
+      "enum": "List of values",
+      "text": "Text",
+      "period": "Period"
+    },
+    "editor": {
+      "title": "Parameters chosen when displayed",
+      "empty": "No parameter: the script expects no value (empty polenta.params).",
+      "add": "Add",
+      "name": "Name (polenta.params)",
+      "kind": "Type",
+      "label": "Label",
+      "values": "Values",
+      "valuesHint": "One per line: value or value=label",
+      "default": "Default",
+      "required": "Required",
+      "up": "Move up",
+      "down": "Move down"
+    }
   }
 }

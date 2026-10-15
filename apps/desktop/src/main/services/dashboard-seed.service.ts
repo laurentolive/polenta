@@ -116,14 +116,16 @@ const CAMPAIGN_SEED_LABELS: Record<SeedLocale, CampaignSeedLabels> = {
 
 const EXECUTED = ['INCOMPLETE', 'BLOCKED', 'FAIL', 'PASS']
 
+// GH93 — campagne choisie à l'affichage sur toutes les requêtes : un seul sélecteur « Campagne » en
+// tête du dashboard (« Toutes » par défaut : filtres de statut ci-dessous).
 export const CAMPAIGN_SEED_QUERIES: { key: CampaignSeedQueryKey; template: TemplateInput }[] = [
   // Étape d'avancement (`entryStep` de la bibliothèque projet), ex-colonne `progress` (GH71).
-  { key: 'progress', template: { id: 'campaign-entries', params: { campaignStatuses: ['planned', 'in_progress'], withStep: true } } },
-  { key: 'executedPct', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'] } } },
-  { key: 'passPct', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], entryStatuses: EXECUTED } } },
-  { key: 'perDay', template: { id: 'campaign-entries', params: { entryStatuses: EXECUTED } } },
-  { key: 'failures', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], entryStatuses: ['FAIL', 'BLOCKED'] } } },
-  { key: 'timeline', template: { id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], step: '1' } } },
+  { key: 'progress', template: { id: 'campaign-entries', params: { campaignStatuses: ['planned', 'in_progress'], withStep: true, campaignAtDisplay: true } } },
+  { key: 'executedPct', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], campaignAtDisplay: true } } },
+  { key: 'passPct', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], entryStatuses: EXECUTED, campaignAtDisplay: true } } },
+  { key: 'perDay', template: { id: 'campaign-entries', params: { entryStatuses: EXECUTED, campaignAtDisplay: true } } },
+  { key: 'failures', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], entryStatuses: ['FAIL', 'BLOCKED'], campaignAtDisplay: true } } },
+  { key: 'timeline', template: { id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], step: '1', campaignAtDisplay: true } } },
 ]
 
 export const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; size: WidgetSize; template: TemplateInput }[] = [

@@ -6,6 +6,11 @@
 // stockée avec l'objet, permet de savoir s'il a été modifié à la main (« personnalisé »).
 // Le code généré n'importe rien de la bibliothèque projet, sauf « Avancement dans le temps »
 // (`lib/campaign.js`) : un projet sans bibliothèque reste utilisable.
+//
+// GH93 : une requête générée peut aussi déclarer des paramètres choisis à l'affichage (options
+// « … choisi(e) à l'affichage ») ; le code lit alors `polenta.params`.
+
+import type { QueryParameterDef } from './suivi-params'
 
 export interface TemplateRef {
   id: string
@@ -36,6 +41,8 @@ export interface QueryTemplate {
   label: { fr: string; en: string }
   params: TemplateParamDef[]
   generate(params: Record<string, unknown>): string
+  /** GH93 — paramètres choisis à l'affichage déclarés par la requête générée (déterministe). */
+  parameters(params: Record<string, unknown>): QueryParameterDef[]
 }
 
 export interface WidgetCode {
@@ -101,6 +108,35 @@ function header(kind: 'Modèle' | 'Transformation', id: string, version: number)
 
 const L = (fr: string, en: string) => ({ fr, en })
 
+// ─── Paramètres choisis à l'affichage (GH93) ────────────────────────────────
+
+const CAMPAIGN_PARAM: QueryParameterDef = { name: 'campaign', kind: 'campaign', label: L('Campagne', 'Campaign') }
+const PERIOD_PARAM: QueryParameterDef = { name: 'period', kind: 'period', label: L('Période', 'Period') }
+const COMPONENT_PARAM: QueryParameterDef = { name: 'component', kind: 'component', label: L('Composant', 'Component') }
+const OBJECT_TYPE_PARAM: QueryParameterDef = { name: 'objectType', kind: 'objectType', label: L('Type d\'objet', 'Object type') }
+
+const CAMPAIGN_AT_DISPLAY: TemplateParamDef = { name: 'campaignAtDisplay', label: L('Campagne choisie à l\'affichage', 'Campaign chosen when displayed'), kind: 'boolean' }
+
+/** Retire une option booléenne des paramètres retenus ; vrai si elle était cochée. */
+function takeFlag(p: Record<string, unknown>, name: string): boolean {
+  const on = p[name] === true
+  delete p[name]
+  return on
+}
+
+/** Campagnes retenues : campagne choisie à l'affichage (filtres ignorés), sinon filtres du modèle. */
+function campaignFilter(atDisplay: boolean): string {
+  return atDisplay
+    ? `  // Campagne choisie à l'affichage : ses seules entrées, filtres de campagne ignorés ; « Toutes » → filtres.
+  const chosen = polenta.params.campaign
+  const campaigns = chosen
+    ? data.campaigns.filter((c) => c.id === chosen)
+    : data.campaigns.filter((c) =>
+      (!P.campaignStatuses || P.campaignStatuses.includes(c.status)) && (!P.campaignIds || P.campaignIds.includes(c.id)))`
+    : `  const campaigns = data.campaigns.filter((c) =>
+    (!P.campaignStatuses || P.campaignStatuses.includes(c.status)) && (!P.campaignIds || P.campaignIds.includes(c.id)))`
+}
+
 // ─── Code commun des scripts de données ─────────────────────────────────────
 
 /** Valeur scalaire pour une ligne (tableau → « a, b », objet → JSON). */
@@ -156,10 +192,18 @@ const FILTERED_LIST_PARAMS: TemplateParamDef[] = [
   { name: 'conditions', label: L('Conditions', 'Conditions'), kind: 'conditions' },
   { name: 'combinator', label: L('Combinaison', 'Combine'), kind: 'combinator' },
   { name: 'groupBy', label: L('Regrouper par (comptage)', 'Group by (count)'), kind: 'columns' },
+  { name: 'componentAtDisplay', label: L('Composant choisi à l\'affichage', 'Component chosen when displayed'), kind: 'boolean' },
+  { name: 'objectTypeAtDisplay', label: L('Type d\'objet choisi à l\'affichage', 'Object type chosen when displayed'), kind: 'boolean' },
 ]
+
+function filteredListParameters(raw: Record<string, unknown>): QueryParameterDef[] {
+  return [...(raw.componentAtDisplay === true ? [COMPONENT_PARAM] : []), ...(raw.objectTypeAtDisplay === true ? [OBJECT_TYPE_PARAM] : [])]
+}
 
 function generateFilteredList(raw: Record<string, unknown>): string {
   const p = pick(raw, FILTERED_LIST_PARAMS)
+  const componentAtDisplay = takeFlag(p, 'componentAtDisplay')
+  const objectTypeAtDisplay = takeFlag(p, 'objectTypeAtDisplay')
   if (!p.combinator) p.combinator = 'AND'
   if (!p.conditions) p.conditions = []
   return `${header('Modèle', 'filtered-list', 1)}
@@ -214,10 +258,13 @@ function objectRow(o, extra) {
 }
 
 export default function (data, polenta) {
+${componentAtDisplay || objectTypeAtDisplay ? `  // Choisi à l'affichage : remplace la valeur fixée ; « Tous » → valeur fixée, sinon aucun filtre.
+` : ''}  const component = ${componentAtDisplay ? 'polenta.params.component || P.component' : 'P.component'}
+  const objectTypeRef = ${objectTypeAtDisplay ? 'polenta.params.objectType || P.objectTypeRef' : 'P.objectTypeRef'}
   // Un type d'objet précis, ou tous les objets d'une catégorie (P.category, sans type).
-  const types = data.schema.objectTypes.filter((t) => t.ref === P.objectTypeRef && (!P.component || t.component === P.component))
-  const category = P.objectTypeRef ? (types.length ? types[0].category : 'requirement') : (P.category || 'requirement')
-  const ofType = (o) => (!P.objectTypeRef || o.objectTypeRef === P.objectTypeRef) && (!P.component || o.component === P.component)
+  const types = data.schema.objectTypes.filter((t) => t.ref === objectTypeRef && (!component || t.component === component))
+  const category = objectTypeRef ? (types.length ? types[0].category : 'requirement') : (P.category || 'requirement')
+  const ofType = (o) => (!objectTypeRef || o.objectTypeRef === objectTypeRef) && (!component || o.component === component)
   let rows
   if (category === 'campaign') {
     rows = entryRows(data, data.campaigns.filter(ofType), polenta)
@@ -289,12 +336,17 @@ const CAMPAIGN_ENTRIES_PARAMS: TemplateParamDef[] = [
   ...CAMPAIGN_FILTER_PARAMS,
   { name: 'entryStatuses', label: L('Statuts d\'entrée', 'Entry statuses'), kind: 'multiEnum', values: ENTRY_STATUS_VALUES },
   { name: 'withStep', label: L('Étape d\'avancement (bibliothèque projet)', 'Progress step (project library)'), kind: 'boolean' },
+  CAMPAIGN_AT_DISPLAY,
 ]
+
+function campaignEntriesParameters(raw: Record<string, unknown>): QueryParameterDef[] {
+  return raw.campaignAtDisplay === true ? [CAMPAIGN_PARAM] : []
+}
 
 function generateCampaignEntries(raw: Record<string, unknown>): string {
   const p = pick(raw, CAMPAIGN_ENTRIES_PARAMS)
-  const withStep = p.withStep === true
-  delete p.withStep
+  const withStep = takeFlag(p, 'withStep')
+  const campaignAtDisplay = takeFlag(p, 'campaignAtDisplay')
   // Étape d'avancement (`entryStep`, ex-GH71) : colonnes step / stepLabel / stepRank, calculées par la
   // bibliothèque projet (dashboards/lib/campaign.js).
   const stepImport = withStep
@@ -334,8 +386,7 @@ ${DAY_OF}
 ${ENTRY_ROWS}
 
 export default function (data, polenta) {
-  const campaigns = data.campaigns.filter((c) =>
-    (!P.campaignStatuses || P.campaignStatuses.includes(c.status)) && (!P.campaignIds || P.campaignIds.includes(c.id)))
+${campaignFilter(campaignAtDisplay)}
   const rows = entryRows(data, campaigns, polenta)
 ${stepRows}  return P.entryStatuses ? rows.filter((r) => P.entryStatuses.includes(r.status)) : rows
 }
@@ -350,12 +401,20 @@ const CAMPAIGN_TIMELINE_PARAMS: TemplateParamDef[] = [
     name: 'step', label: L('Pas', 'Step'), kind: 'enum',
     values: [{ value: '1', label: L('Jour', 'Day') }, { value: '7', label: L('Semaine', 'Week') }],
   },
+  CAMPAIGN_AT_DISPLAY,
+  { name: 'periodAtDisplay', label: L('Période choisie à l\'affichage', 'Period chosen when displayed'), kind: 'boolean' },
 ]
+
+function campaignTimelineParameters(raw: Record<string, unknown>): QueryParameterDef[] {
+  return [...(raw.campaignAtDisplay === true ? [CAMPAIGN_PARAM] : []), ...(raw.periodAtDisplay === true ? [PERIOD_PARAM] : [])]
+}
 
 function generateCampaignTimeline(raw: Record<string, unknown>): string {
   const p = pick(raw, CAMPAIGN_TIMELINE_PARAMS)
   const step = Number(p.step ?? 1) === 7 ? 7 : 1
   delete p.step
+  const campaignAtDisplay = takeFlag(p, 'campaignAtDisplay')
+  const periodAtDisplay = takeFlag(p, 'periodAtDisplay')
   return `${header('Modèle', 'campaign-timeline', 1)}
 // Nécessite la bibliothèque projet (dashboards/lib/campaign.js).
 import { campaignsTimeline } from 'lib/campaign.js'
@@ -363,11 +422,14 @@ import { campaignsTimeline } from 'lib/campaign.js'
 const P = ${stableJson(p, 2)}
 
 export default function (data, polenta) {
-  const campaignIds = data.campaigns
-    .filter((c) => (!P.campaignStatuses || P.campaignStatuses.includes(c.status)) && (!P.campaignIds || P.campaignIds.includes(c.id)))
-    .map((c) => c.id)
-  // Pas d'_ids sur chaque point (série longue) : ils sont calculés au clic (polenta.drill).
-  return campaignsTimeline(data, { polenta, campaignIds, step: ${step} })
+${campaignFilter(campaignAtDisplay)}
+  const campaignIds = campaigns.map((c) => c.id)
+${periodAtDisplay ? `  // Période choisie à l'affichage ; borne absente → création de la plus ancienne campagne / aujourd'hui.
+  const period = polenta.params.period
+  const from = (period && period.from) || undefined
+  const to = (period && period.to) || undefined
+` : ''}  // Pas d'_ids sur chaque point (série longue) : ils sont calculés au clic (polenta.drill).
+  return campaignsTimeline(data, { polenta, campaignIds, step: ${step}${periodAtDisplay ? ', from, to' : ''} })
 }
 `
 }
@@ -719,9 +781,9 @@ function generateStackedArea(raw: Record<string, unknown>): WidgetCode {
 // ─── Catalogue ──────────────────────────────────────────────────────────────
 
 export const QUERY_TEMPLATES: QueryTemplate[] = [
-  { id: 'filtered-list', version: 1, label: L('Liste filtrée', 'Filtered list'), params: FILTERED_LIST_PARAMS, generate: generateFilteredList },
-  { id: 'campaign-entries', version: 1, label: L('Entrées de campagne', 'Campaign entries'), params: CAMPAIGN_ENTRIES_PARAMS, generate: generateCampaignEntries },
-  { id: 'campaign-timeline', version: 1, label: L('Avancement dans le temps', 'Progress over time'), params: CAMPAIGN_TIMELINE_PARAMS, generate: generateCampaignTimeline },
+  { id: 'filtered-list', version: 1, label: L('Liste filtrée', 'Filtered list'), params: FILTERED_LIST_PARAMS, generate: generateFilteredList, parameters: filteredListParameters },
+  { id: 'campaign-entries', version: 1, label: L('Entrées de campagne', 'Campaign entries'), params: CAMPAIGN_ENTRIES_PARAMS, generate: generateCampaignEntries, parameters: campaignEntriesParameters },
+  { id: 'campaign-timeline', version: 1, label: L('Avancement dans le temps', 'Progress over time'), params: CAMPAIGN_TIMELINE_PARAMS, generate: generateCampaignTimeline, parameters: campaignTimelineParameters },
 ]
 
 export const WIDGET_TEMPLATES: WidgetTemplate[] = [
@@ -744,11 +806,11 @@ export function findWidgetTemplate(id: string): WidgetTemplate | undefined {
 
 /** Définitions sérialisables (sans les fonctions), pour le renderer et le MCP. */
 export function describeTemplates(): {
-  queries: Omit<QueryTemplate, 'generate'>[]
+  queries: Omit<QueryTemplate, 'generate' | 'parameters'>[]
   widgets: Omit<WidgetTemplate, 'generate'>[]
 } {
   return {
-    queries: QUERY_TEMPLATES.map(({ generate: _g, ...t }) => t),
+    queries: QUERY_TEMPLATES.map(({ generate: _g, parameters: _p, ...t }) => t),
     widgets: WIDGET_TEMPLATES.map(({ generate: _g, ...t }) => t),
   }
 }
@@ -762,12 +824,20 @@ export function hashableText(text: string): string {
   return text.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n*$/, '\n')
 }
 
-/** Script généré par un modèle de requête et sa référence ; `hash` = empreinte de `hashableText`. */
-export function queryCode(input: { id: string; params: Record<string, unknown> }, hash: (text: string) => string): { script: string; template: TemplateRef } {
+/** Script et déclaration de paramètres générés par un modèle de requête, et sa référence ;
+ *  `hash` = empreinte de `hashableText(queryCodeForHash(…))`. */
+export function queryCode(input: { id: string; params: Record<string, unknown> }, hash: (text: string) => string): { script: string; parameters: QueryParameterDef[]; template: TemplateRef } {
   const tpl = findQueryTemplate(input.id)
   if (!tpl) throw new Error(`Modèle de requête inconnu : ${input.id}`)
   const script = tpl.generate(input.params)
-  return { script, template: { id: tpl.id, version: tpl.version, params: input.params, hash: hash(hashableText(script)) } }
+  const parameters = tpl.parameters(input.params)
+  return { script, parameters, template: { id: tpl.id, version: tpl.version, params: input.params, hash: hash(hashableText(queryCodeForHash(script, parameters))) } }
+}
+
+/** Texte soumis à l'empreinte d'une requête : script, plus la déclaration de paramètres s'il y en a
+ *  (GH93 — modifier la déclaration détache aussi la requête de son modèle). */
+export function queryCodeForHash(script: string, parameters: readonly QueryParameterDef[] | undefined): string {
+  return parameters && parameters.length ? `${script}\n\u0000\n${stableJson(parameters, 2)}` : script
 }
 
 /** Code généré par un modèle de widget et sa référence. */

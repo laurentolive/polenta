@@ -332,6 +332,8 @@ export function createIpcClient(
         invoke('dashboards:set-widget-order', repoPath, username, dashboardId, order),
       getOrder: (repoPath, username) => invoke('dashboards:order-get', repoPath, username),
       setOrder: (repoPath, username, order) => invoke('dashboards:order-set', repoPath, username, order),
+      getParamValues: (repoPath, username, dashboardId) => invoke('dashboards:param-values-get', repoPath, username, dashboardId),
+      setParamValues: (repoPath, username, dashboardId, values) => invoke('dashboards:param-values-set', repoPath, username, dashboardId, values),
     },
     parameters: {
       list: (repoPath, workspaceDir) => invoke('parameters:list', repoPath, workspaceDir),

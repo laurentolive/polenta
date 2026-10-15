@@ -1,7 +1,7 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import type { SuiviObjectState, TemplateRef, WidgetCode } from '@polenta/types'
+import type { QueryParameterDef, SuiviObjectState, TemplateRef, WidgetCode } from '@polenta/types'
 import { findQueryTemplate, findWidgetTemplate, queryCode, widgetCode } from '@polenta/types'
 import { contentHash, sha256 } from './dashboard-library.service'
 import type { GitService } from './git.service'
@@ -88,8 +88,9 @@ export interface TemplateInput {
   params: Record<string, unknown>
 }
 
-/** Script généré par un modèle de requête, avec sa référence (empreinte comprise). */
-export function applyQueryTemplate(input: TemplateInput): { script: string; template: TemplateRef } {
+/** Script et déclaration de paramètres (GH93) générés par un modèle de requête, avec sa référence
+ *  (empreinte comprise). */
+export function applyQueryTemplate(input: TemplateInput): { script: string; parameters: QueryParameterDef[]; template: TemplateRef } {
   return queryCode(input, sha256)
 }
 

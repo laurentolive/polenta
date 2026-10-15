@@ -156,6 +156,19 @@ describe('GH74 — tools MCP du moteur de scripts', () => {
     expect(ko.text).toContain('"line":2')
   })
 
+  it('GH93 — test_script : déclaration + valeurs (défauts, refus d\'une clé non déclarée)', async () => {
+    const { run } = container()
+    const parameters = [{ name: 'campaign', kind: 'campaign', label: 'Campagne' }, { name: 'lot', kind: 'text', label: 'Lot', default: 'L1' }]
+    await call('test_script', { script: 'export default () => []', parameters, params: { campaign: 'CAMP-0002' } })
+    expect(run).toHaveBeenLastCalledWith(root, ws, expect.objectContaining({ params: { campaign: 'CAMP-0002', lot: 'L1' } }), expect.anything())
+    run.mockClear()
+    const ko = await call('test_script', { script: 'export default () => []', params: { campaign: 'x' } })
+    expect(ko.text).toContain('"kind":"params"')
+    expect((await call('test_script', { script: 'x', parameters: [{ name: 'a', kind: 'enum', label: 'A' }] })).text).toContain('[PARAMS_INVALID]')
+    expect(run).not.toHaveBeenCalled()
+    expect((await call('get_data_contract')).json.conventions.join('\n')).toContain('polenta.params')
+  })
+
   it('list_library / read_library_module', async () => {
     container()
     const list = await call('list_library')

@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Code2, LayoutTemplate, RotateCcw, X } from 'lucide-react'
-import type { QueryScope, SavedQuery, Widget, WidgetCode, WidgetSize } from '@polenta/types'
+import type { GraphParamValue, QueryScope, SavedQuery, Widget, WidgetCode, WidgetSize } from '@polenta/types'
 import type { TemplateInput } from '@polenta/api-client'
 import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
@@ -42,6 +42,8 @@ interface Props {
   error?: string | null
   /** Widget modifié : formulaire prérempli, libellé « Modifier ». */
   initialWidget?: Widget | null
+  /** GH93 — valeurs courantes de la barre du dashboard pour une requête (colonnes, aperçu). */
+  paramsForQuery?: (queryId: string) => Record<string, GraphParamValue>
 }
 
 const SIZE_OPTIONS: { value: WidgetSize; labelKey: string }[] = [
@@ -50,7 +52,7 @@ const SIZE_OPTIONS: { value: WidgetSize; labelKey: string }[] = [
   { value: 'lg', labelKey: 'dashboard.widgetModal.sizeLarge' },
 ]
 
-export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, workspaceDir, username, onSave, onClose, saving, error, initialWidget }: Props) {
+export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, workspaceDir, username, onSave, onClose, saving, error, initialWidget, paramsForQuery }: Props) {
   const { t, i18n } = useTranslation()
   const lang = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'fr'
   const availableQueries = dashboardScope === 'shared' ? savedQueries.filter((q) => q.scope === 'shared') : savedQueries
@@ -89,14 +91,15 @@ export function WidgetConfigModal({ dashboardScope, savedQueries, repoPath, work
   }, [generated, tab, codeEdited])
 
   // Lignes de la requête seule : colonnes proposées par le formulaire.
-  const { data: queryRun } = useScriptRun(repoPath, workspaceDir, username, queryId ? { queryId, transform: null } : null)
+  const runParams = queryId ? paramsForQuery?.(queryId) : undefined
+  const { data: queryRun } = useScriptRun(repoPath, workspaceDir, username, queryId ? { queryId, transform: null, params: runParams } : null)
   const columns = useMemo(() => (queryRun?.ok ? queryRun.columns.map((c) => c.name) : []), [queryRun])
 
   // Aperçu : requête + transformation courante.
   const effective = tab === 'template' && generated && !codeEdited ? generated : { transform: transform || undefined, spec }
   const { data: previewRun, isLoading } = useScriptRun(
     repoPath, workspaceDir, username,
-    queryId ? { queryId, transform: effective.transform ?? null, transformFile: 'transform.js' } : null,
+    queryId ? { queryId, transform: effective.transform ?? null, transformFile: 'transform.js', params: runParams } : null,
   )
 
   const missingRequired = tab === 'template' && !!template?.params.some((p) => p.required && (params[p.name] === undefined || params[p.name] === ''))

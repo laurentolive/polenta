@@ -1645,5 +1645,41 @@
     "backfillConfirm": "Reconstruire l'historique de {{repo}} depuis git ? Les fichiers modifiés seront à publier.",
     "backfillResult": "{{objects}} objet(s) complété(s), {{entries}} entrée(s) ajoutée(s).",
     "backfillFailed": "{{count}} fichier(s) ignoré(s) : {{files}}"
+  },
+  "suiviParams": {
+    "reset": "Réinitialiser",
+    "notFound": "Valeur introuvable : {{value}}",
+    "choose": "Choisir {{label}}",
+    "from": "du",
+    "to": "au",
+    "periodInvalid": "La date de début est postérieure à la date de fin.",
+    "campaignStatus": {
+      "planned": "planifiée",
+      "in_progress": "en cours",
+      "completed": "terminée",
+      "abandoned": "abandonnée"
+    },
+    "kinds": {
+      "campaign": "Campagne",
+      "component": "Composant",
+      "objectType": "Type d'objet",
+      "enum": "Liste de valeurs",
+      "text": "Texte",
+      "period": "Période"
+    },
+    "editor": {
+      "title": "Paramètres choisis à l'affichage",
+      "empty": "Aucun paramètre : le script n'attend aucune valeur (polenta.params vide).",
+      "add": "Ajouter",
+      "name": "Nom (polenta.params)",
+      "kind": "Type",
+      "label": "Libellé",
+      "values": "Valeurs",
+      "valuesHint": "Une par ligne : valeur ou valeur=libellé",
+      "default": "Défaut",
+      "required": "Obligatoire",
+      "up": "Monter",
+      "down": "Descendre"
+    }
   }
 }

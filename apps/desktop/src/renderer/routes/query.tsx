@@ -10,17 +10,22 @@
  * URL: /query?projectId=<encoded>&queryId=<id?>
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Play, Save, Search as SearchIcon } from 'lucide-react'
-import type { QueryResult, QueryScope, ScriptRunResult } from '@polenta/types'
+import type { GraphParamValue, QueryParameterDef, QueryResult, QueryScope, ScriptRunResult } from '@polenta/types'
+import { dashboardSelectors, paramsForQuery, validateParameterDecls } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ResultTable } from '../components/dashboard/ResultTable'
 import { CodeEditor } from '../components/dashboard/CodeEditor'
 import { TemplateForm } from '../components/dashboard/TemplateForm'
+import { ParamBar } from '../components/dashboard/ParamBar'
+import { ParameterDeclEditor } from '../components/dashboard/ParameterDeclEditor'
+import { effectiveValues } from '../lib/suiviParamValues'
+import type { ParamOptions } from '../lib/suiviParamValues'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { queryResultExportBaseName } from '../components/export/exportFilenames'
@@ -101,6 +106,9 @@ function QueryPage() {
   const [isExecuting, setIsExecuting] = useState(false)
   const [saveModal, setSaveModal] = useState<{ title: string; scope: QueryScope } | null>(null)
   const [historyFilter, setHistoryFilter] = useState('')
+  /** GH93 — déclaration des paramètres (mode Script) et valeurs de la barre (non mémorisées). */
+  const [declaration, setDeclaration] = useState<QueryParameterDef[]>([])
+  const [paramValues, setParamValues] = useState<Record<string, GraphParamValue>>({})
   const loadedRef = useRef<string | undefined>(undefined)
   // Une réponse dont l'id n'est plus le dernier émis (autre requête ouverte entre-temps) est ignorée.
   const requestIdRef = useRef(0)
@@ -108,19 +116,48 @@ function QueryPage() {
   const template = catalog?.queries.find((q) => q.id === templateId)
   const readOnly = current?.state.readOnly
 
+  // GH93 — déclaration générée par le modèle (affichée en lecture seule).
+  const { data: rendered } = useQuery({
+    queryKey: ['suivi-render-template', 'query', templateId, JSON.stringify(params)],
+    queryFn: () => api.suivi.renderTemplate('query', { id: templateId, params }),
+    enabled: mode === 'template' && !!template,
+  })
+  const decls = mode === 'template' ? (rendered?.parameters ?? []) : declaration
+  const declErrors = mode === 'script' ? validateParameterDecls(declaration).errors : []
+  const paramOptions = useMemo<ParamOptions>(() => ({
+    campaigns,
+    components: [...new Set(objectTypes.map((o) => o.component))].sort(),
+    objectTypes,
+  }), [campaigns, objectTypes])
+  const selectorsOf = (d: QueryParameterDef[]) => dashboardSelectors([{ id: 'query', queryId: 'query' }], () => d)
+  // Barre : dernière déclaration valide (une ligne en cours de saisie n'y apparaît pas).
+  const lastValidDecls = useRef<QueryParameterDef[]>([])
+  if (declErrors.length === 0) lastValidDecls.current = decls
+  const barDecls = declErrors.length === 0 ? decls : lastValidDecls.current
+  const selectors = useMemo(() => selectorsOf(barDecls), [barDecls])
+  const effective = useMemo(() => effectiveValues(selectors, paramValues, paramOptions), [selectors, paramValues, paramOptions])
+
   /** Script à exécuter / enregistrer : généré par le modèle, ou celui de l'éditeur. */
   async function currentScript(): Promise<string> {
     if (mode === 'script') return script
     return (await api.suivi.renderTemplate('query', { id: templateId, params })).script
   }
 
-  async function execute(code?: string) {
+  /** Déclaration courante (générée par le modèle, ou celle de l'éditeur). */
+  async function currentDecls(): Promise<QueryParameterDef[]> {
+    if (mode === 'script') return declaration
+    return (await api.suivi.renderTemplate('query', { id: templateId, params })).parameters
+  }
+
+  async function execute(code?: string, withDecls?: QueryParameterDef[], values: Record<string, GraphParamValue> = paramValues) {
     if (!repoPath || !username) return
     const reqId = ++requestIdRef.current
     setIsExecuting(true)
     try {
       const text = code ?? await currentScript()
-      const res = await api.suivi.run(repoPath, workspaceDir, username, { script: text }, clientInfo())
+      const parameters = withDecls ?? await currentDecls()
+      const chosen = effectiveValues(selectorsOf(parameters), values, paramOptions).values
+      const res = await api.suivi.run(repoPath, workspaceDir, username, { script: text, parameters, params: paramsForQuery(parameters, chosen) }, clientInfo())
       if (requestIdRef.current !== reqId) return
       setRun(res)
       if (res.ok) {
@@ -146,6 +183,8 @@ function QueryPage() {
     setParams({ category: 'requirement' })
     setScript(EMPTY_SCRIPT)
     setScriptBaseline(EMPTY_SCRIPT)
+    setDeclaration([])
+    setParamValues({})
     setConfirmTemplate(false)
     setRun(null)
   }, [queryId])
@@ -167,10 +206,14 @@ function QueryPage() {
       setMode('script')
     }
     const text = saved?.script ?? hist!.script
+    // Valeurs initiales = défauts de la déclaration (pas de mémorisation dans cette vue).
+    const loadedDecls = saved?.parameters ?? []
     setScript(text)
     setScriptBaseline(text)
+    setDeclaration(loadedDecls)
+    setParamValues({})
     setConfirmTemplate(false)
-    void execute(text)
+    void execute(text, loadedDecls, {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryId, savedQueries, history])
 
@@ -180,7 +223,7 @@ function QueryPage() {
     mutationFn: async (dto: { title: string; scope: QueryScope }) =>
       api.queries.create(repoPath, username, {
         ...dto, createdBy: username,
-        ...(mode === 'template' ? { template: { id: templateId, params } } : { script }),
+        ...(mode === 'template' ? { template: { id: templateId, params } } : { script, parameters: declaration }),
       }),
     onSuccess: (q) => {
       setSaveModal(null)
@@ -191,7 +234,7 @@ function QueryPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: () => api.queries.update(repoPath, username, current!.id, mode === 'template' ? { template: { id: templateId, params } } : { script }),
+    mutationFn: () => api.queries.update(repoPath, username, current!.id, mode === 'template' ? { template: { id: templateId, params } } : { script, parameters: declaration }),
     onSuccess: () => {
       invalidateQueries()
       // Les widgets qui utilisent cette requête sont réexécutés (leur clé porte le script) ; une
@@ -288,9 +331,10 @@ function QueryPage() {
                     type="button"
                     onClick={async () => {
                       if (mode === 'template') {
-                        const generated = await currentScript()
-                        setScript(generated)
-                        setScriptBaseline(generated)
+                        const generated = await api.suivi.renderTemplate('query', { id: templateId, params })
+                        setScript(generated.script)
+                        setScriptBaseline(generated.script)
+                        setDeclaration(generated.parameters)
                       }
                       setMode('script')
                     }}
@@ -329,11 +373,11 @@ function QueryPage() {
                   {isExecuting ? t('queryPage.executing') : t('queryPage.execute')}
                 </button>
                 {current && !readOnly && (
-                  <button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} className="btn-secondary-sm flex items-center gap-1.5">
+                  <button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || declErrors.length > 0} className="btn-secondary-sm flex items-center gap-1.5">
                     <Save size={12} /> {t('requirementsPage.save')}
                   </button>
                 )}
-                <button type="button" onClick={() => setSaveModal({ title: current ? `${current.title} (2)` : '', scope: 'private' })} className="btn-secondary-sm flex items-center gap-1.5">
+                <button type="button" onClick={() => setSaveModal({ title: current ? `${current.title} (2)` : '', scope: 'private' })} disabled={declErrors.length > 0} className="btn-secondary-sm flex items-center gap-1.5">
                   <Save size={12} /> {t(current ? 'queryPage.saveAs' : 'requirementsPage.save')}
                 </button>
               </div>
@@ -354,6 +398,26 @@ function QueryPage() {
                 <CodeEditor language="javascript" value={script} onChange={setScript} minHeight={220} ariaLabel={t('queryPage.scriptMode')}
                   errorLine={run && !run.ok && run.error.file === 'script.js' ? run.error.line : null} />
               )}
+
+              {/* GH93 — paramètres choisis à l'affichage : déclaration (générée par le modèle, ou éditée). */}
+              {(mode === 'script' || decls.length > 0) && (
+                <ParameterDeclEditor value={decls} onChange={setDeclaration} readOnly={mode === 'template' || !!readOnly} />
+              )}
+              <ParamBar
+                selectors={selectors}
+                values={effective.values}
+                invalid={effective.invalid}
+                options={paramOptions}
+                onChange={(key, v) => {
+                  const next = { ...paramValues, [key]: v }
+                  setParamValues(next)
+                  if (run) void execute(undefined, undefined, next)
+                }}
+                onReset={() => {
+                  setParamValues({})
+                  if (run) void execute(undefined, undefined, {})
+                }}
+              />
 
               {(updateMutation.error || createMutation.error) && (
                 <p className="text-xs text-status-danger">{String((updateMutation.error ?? createMutation.error) instanceof Error ? (updateMutation.error ?? createMutation.error as Error).message : '')}</p>

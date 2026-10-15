@@ -22,7 +22,7 @@ export function useSuiviObjectTypes(repoPath: string, workspaceDir: string) {
 export function useCampaignOptions(repoPath: string) {
   return useQuery({
     queryKey: ['campaigns', repoPath, 'suivi-options'],
-    queryFn: async () => (await api.campaigns.list(repoPath)).map((c) => ({ id: c.id, title: c.title })),
+    queryFn: async () => (await api.campaigns.list(repoPath)).map((c) => ({ id: c.id, title: c.title, status: c.status })),
     enabled: !!repoPath,
   })
 }

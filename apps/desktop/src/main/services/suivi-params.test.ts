@@ -5,7 +5,8 @@ import * as yaml from 'js-yaml'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { QuickJSWASMModule } from 'quickjs-emscripten-core'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { GraphParamValue, QueryParameterDef, ScriptRunResult } from '@polenta/types'
+import type { Dashboard, GraphParamValue, QueryParameterDef, ScriptRunResult } from '@polenta/types'
+import { buildDashboardData } from './export/template/template-data-campaign'
 import {
   buildHost, dashboardSelectors, findQueryTemplate, normalizeParamValue, paramsForQuery, paramValueText, queryCode,
   queryCodeForHash, resolveRunParams, validateParameterDecls,
@@ -449,5 +450,14 @@ describe('GH93 — tools MCP des requêtes', () => {
     expect((await call('update_query', { id: 'QUERY-0001', title: 'Q bis' })).text).toContain('[PARAMS_INVALID]')
     const fixed = await call('update_query', { id: 'QUERY-0001', parameters: [CAMPAIGN], dryRun: false })
     expect(fixed.json.query.parameters).toEqual([CAMPAIGN])
+  })
+})
+
+describe('GH93 — export docx par gabarit', () => {
+  it('14 — valeurs des paramètres exposées au gabarit', () => {
+    const dashboard = { id: 'D', title: 'D', scope: 'shared', formatVersion: 1, widgetOrder: [], widgets: [], createdBy: U, createdAt: '', state: { customized: false } } as unknown as Dashboard
+    const parameters = [{ label: 'Campagne', value: 'CAMP-0002 — Lot 2' }]
+    expect(buildDashboardData({ dashboard, widgetResults: {}, parameters }, () => '')).toMatchObject({ parameters })
+    expect(buildDashboardData({ dashboard, widgetResults: {} }, () => '')).toMatchObject({ parameters: [] })
   })
 })

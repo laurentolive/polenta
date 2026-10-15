@@ -24,6 +24,8 @@ import type { Widget, QueryResult } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { DashboardGrid } from '../components/dashboard/DashboardGrid'
+import { ParamBar } from '../components/dashboard/ParamBar'
+import { useDashboardParams } from '../hooks/useDashboardParams'
 import { WidgetConfigModal, type WidgetConfigResult } from '../components/dashboard/WidgetConfigModal'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
@@ -78,6 +80,9 @@ function DashboardPage() {
     queryFn: () => api.queries.list(repoPath, username),
     enabled: !!repoPath && !!username,
   })
+  // GH93 — barre de paramètres choisis à l'affichage.
+  const lang = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'fr'
+  const params = useDashboardParams({ repoPath, workspaceDir, username, dashboard, savedQueries, locale: lang })
 
   // T109: `dashboardId` absent — need the sidebar's own list/order (same queryKey,
   // shared cache with `DashboardPanel.tsx`) to redirect to the first dashboard
@@ -259,16 +264,17 @@ function DashboardPage() {
                 const widgetResults: Record<string, QueryResult> = {}
                 await Promise.all(dashboard.widgets.map(async (w) => {
                   const q = savedQueries.find(sq => sq.id === w.queryId)
-                  if (!q) return
+                  // GH93 — widget en attente d'un paramètre obligatoire : « Aucune donnée. ».
+                  if (!q || params.missingFor(w).length) return
                   try {
-                    const res = toQueryResult(await qc.fetchQuery(widgetRunOptions(repoPath, workspaceDir, username, dashboard.id, w, q.script)))
+                    const res = toQueryResult(await qc.fetchQuery(widgetRunOptions(repoPath, workspaceDir, username, dashboard.id, w, q.script, params.paramsFor(w))))
                     if (res) widgetResults[w.id] = res
                   } catch {
                     // Widget en erreur (ex. requête invalide, type d'objet supprimé) — omis du
                     // payload plutôt que de faire échouer tout l'export.
                   }
                 }))
-                return { dashboard, widgetResults }
+                return { dashboard, widgetResults, parameters: params.describe() }
               }}
               getPrintParams={() => ({ repoPath, workspaceDir, username, dashboardId: dashboardId! })}
             />
@@ -289,12 +295,24 @@ function DashboardPage() {
         </p>
       )}
 
+      <ParamBar
+        selectors={params.selectors}
+        values={params.values}
+        invalid={params.invalid}
+        options={params.options}
+        onChange={params.setValue}
+        onReset={params.reset}
+      />
+
       <DashboardGrid
         dashboard={dashboard}
         savedQueries={savedQueries}
         repoPath={repoPath}
         workspaceDir={workspaceDir}
         username={username}
+        paramsFor={params.paramsFor}
+        missingFor={params.missingFor}
+        paramsReady={params.ready}
         onReorder={(order) => reorderMutation.mutate(order)}
         onDeleteWidget={(widgetId) => deleteWidgetMutation.mutate(widgetId)}
         onEditWidget={(widget) => setEditingWidget(widget)}
@@ -307,6 +325,7 @@ function DashboardPage() {
           repoPath={repoPath}
           workspaceDir={workspaceDir}
           username={username}
+          paramsForQuery={(queryId) => params.paramsFor({ queryId })}
           onSave={(dto) => addWidgetMutation.mutate(dto)}
           onClose={() => setShowAddWidget(false)}
           saving={addWidgetMutation.isPending}
@@ -322,6 +341,7 @@ function DashboardPage() {
           workspaceDir={workspaceDir}
           username={username}
           initialWidget={editingWidget}
+          paramsForQuery={(queryId) => params.paramsFor({ queryId })}
           onSave={(dto) => updateWidgetMutation.mutate(dto)}
           onClose={() => setEditingWidget(null)}
           saving={updateWidgetMutation.isPending}

@@ -147,7 +147,8 @@ export function buildDashboardData(payload: DashboardExportPayload, toTable: Tab
       table: hasData ? toTable(columns, rows.map(r => r.cells)) : '',
     }
   })
-  return { dashboard: { id: dashboard.id, title: dashboard.title }, widgets, count: widgets.length }
+  // GH93 — `{#parameters}{label} : {value}{/parameters}` : valeurs de la barre de paramètres.
+  return { dashboard: { id: dashboard.id, title: dashboard.title }, widgets, count: widgets.length, parameters: payload.parameters ?? [] }
 }
 
 /** Champs personnalisés en texte simple (richtext Markdown retiré, listes jointes). */

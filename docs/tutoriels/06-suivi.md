@@ -29,6 +29,15 @@ premier accès, Polenta crée aussi le dashboard partagé *Status* (s'il n'exist
 un dashboard privé *Campagnes* : avancement de chaque campagne (de la préparation des tests au
 résultat), % exécuté, % PASS, exécutions par jour, entrées en échec, avancement dans le temps.
 
+**Paramètres choisis à l'affichage.** Le dashboard *Campagnes* affiche en tête un sélecteur
+**Campagne** : sur *Toutes*, il montre les campagnes en cours ; une campagne choisie (même terminée)
+recentre tous ses widgets sur elle seule — par exemple l'avancement dans le temps d'une campagne
+précise. Le choix est mémorisé pour vous seul (rien à publier) ; *Réinitialiser* revient à *Toutes*.
+Toute requête peut déclarer de tels paramètres (campagne, composant, type d'objet, liste de valeurs,
+texte, période) : par les cases « … choisi(e) à l'affichage » de son modèle, ou dans la section
+*Paramètres choisis à l'affichage* de la vue Requêtes en mode Script, où le script lit les valeurs
+dans `polenta.params`. Les widgets qui partagent un même paramètre partagent le même sélecteur.
+
 ## Les requêtes
 
 Le bas du panneau latéral liste les requêtes partagées. Ouvrir *Exigences — statut de couverture* :

@@ -52,7 +52,11 @@ export function ParameterDeclEditor({ value, onChange, readOnly = false }: Props
     next.splice(i + delta, 0, d)
     onChange(next)
   }
-  const add = () => onChange([...value, { name: `param${value.length + 1}`, kind: 'campaign', label: t('suiviParams.kinds.campaign') }])
+  const add = () => {
+    let n = value.length + 1
+    while (value.some((d) => d.name === `param${n}`)) n++
+    onChange([...value, { name: `param${n}`, kind: 'campaign', label: t('suiviParams.kinds.campaign') }])
+  }
 
   return (
     <div className="border border-edge rounded-lg" data-testid="param-decl-editor">
@@ -84,6 +88,9 @@ export function ParameterDeclEditor({ value, onChange, readOnly = false }: Props
               {d.kind === 'enum' && (
                 <Field label={t('suiviParams.editor.values')} hint={t('suiviParams.editor.valuesHint')}>
                   <textarea
+                    // Non contrôlé (une ligne vide en cours de saisie serait retirée) : remonté dès que
+                    // les valeurs de la ligne changent (suppression, réordonnancement, autre requête).
+                    key={`${i}:${JSON.stringify(d.values ?? [])}`}
                     defaultValue={valuesToText(d.values, lang)}
                     disabled={readOnly}
                     onBlur={(e) => update(i, { values: textToValues(e.target.value) })}

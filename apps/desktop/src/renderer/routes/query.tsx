@@ -74,8 +74,8 @@ function QueryPage() {
   const username = identityLogin ?? (identityError ? 'local' : '')
 
   const { data: catalog } = useSuiviTemplates()
-  const { data: objectTypes = [] } = useSuiviObjectTypes(repoPath, workspaceDir)
-  const { data: campaigns = [] } = useCampaignOptions(repoPath)
+  const { data: objectTypes = [], isSuccess: objectTypesLoaded } = useSuiviObjectTypes(repoPath, workspaceDir)
+  const { data: campaigns = [], isSuccess: campaignsLoaded } = useCampaignOptions(repoPath)
 
   const { data: savedQueries = [] } = useQuery({
     queryKey: ['queries', repoPath, username],
@@ -124,11 +124,12 @@ function QueryPage() {
   })
   const decls = mode === 'template' ? (rendered?.parameters ?? []) : declaration
   const declErrors = mode === 'script' ? validateParameterDecls(declaration).errors : []
+  // Liste en chargement : absente (n'invalide aucune valeur), pas vide.
   const paramOptions = useMemo<ParamOptions>(() => ({
-    campaigns,
-    components: [...new Set(objectTypes.map((o) => o.component))].sort(),
-    objectTypes,
-  }), [campaigns, objectTypes])
+    campaigns: campaignsLoaded ? campaigns : undefined,
+    components: objectTypesLoaded ? [...new Set(objectTypes.map((o) => o.component))].sort() : undefined,
+    objectTypes: objectTypesLoaded ? objectTypes : undefined,
+  }), [campaigns, objectTypes, campaignsLoaded, objectTypesLoaded])
   const selectorsOf = (d: QueryParameterDef[]) => dashboardSelectors([{ id: 'query', queryId: 'query' }], () => d)
   // Barre : dernière déclaration valide (une ligne en cours de saisie n'y apparaît pas).
   const lastValidDecls = useRef<QueryParameterDef[]>([])
@@ -137,16 +138,10 @@ function QueryPage() {
   const selectors = useMemo(() => selectorsOf(barDecls), [barDecls])
   const effective = useMemo(() => effectiveValues(selectors, paramValues, paramOptions), [selectors, paramValues, paramOptions])
 
-  /** Script à exécuter / enregistrer : généré par le modèle, ou celui de l'éditeur. */
-  async function currentScript(): Promise<string> {
-    if (mode === 'script') return script
-    return (await api.suivi.renderTemplate('query', { id: templateId, params })).script
-  }
-
-  /** Déclaration courante (générée par le modèle, ou celle de l'éditeur). */
-  async function currentDecls(): Promise<QueryParameterDef[]> {
-    if (mode === 'script') return declaration
-    return (await api.suivi.renderTemplate('query', { id: templateId, params })).parameters
+  /** Script et déclaration courants : générés par le modèle (un seul rendu), ou ceux de l'éditeur. */
+  async function currentCode(): Promise<{ script: string; parameters: QueryParameterDef[] }> {
+    if (mode === 'script') return { script, parameters: declaration }
+    return api.suivi.renderTemplate('query', { id: templateId, params })
   }
 
   async function execute(code?: string, withDecls?: QueryParameterDef[], values: Record<string, GraphParamValue> = paramValues) {
@@ -154,8 +149,9 @@ function QueryPage() {
     const reqId = ++requestIdRef.current
     setIsExecuting(true)
     try {
-      const text = code ?? await currentScript()
-      const parameters = withDecls ?? await currentDecls()
+      const generated = code === undefined || withDecls === undefined ? await currentCode() : null
+      const text = code ?? generated!.script
+      const parameters = withDecls ?? generated!.parameters
       const chosen = effectiveValues(selectorsOf(parameters), values, paramOptions).values
       const res = await api.suivi.run(repoPath, workspaceDir, username, { script: text, parameters, params: paramsForQuery(parameters, chosen) }, clientInfo())
       if (requestIdRef.current !== reqId) return
@@ -408,14 +404,15 @@ function QueryPage() {
                 values={effective.values}
                 invalid={effective.invalid}
                 options={paramOptions}
+                // Déclaration en cours de saisie invalide : exécution avec la dernière valide (celle de la barre).
                 onChange={(key, v) => {
                   const next = { ...paramValues, [key]: v }
                   setParamValues(next)
-                  if (run) void execute(undefined, undefined, next)
+                  if (run) void execute(undefined, barDecls, next)
                 }}
                 onReset={() => {
                   setParamValues({})
-                  if (run) void execute(undefined, undefined, {})
+                  if (run) void execute(undefined, barDecls, {})
                 }}
               />
 

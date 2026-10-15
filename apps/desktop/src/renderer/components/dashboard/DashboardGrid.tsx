@@ -83,7 +83,8 @@ function WidgetCard({
 }) {
   const { t } = useTranslation()
   const query = savedQueries.find((q) => q.id === widget.queryId)
-  const waiting = missing.length > 0
+  // Choix pas encore lus : un paramètre obligatoire paraîtrait manquant (impression déclarée prête).
+  const waiting = paramsReady && missing.length > 0
   const { data: run, isLoading, error } = useWidgetRun(repoPath, workspaceDir, username, dashboardId, widget, query?.script, params, paramsReady && !waiting)
   // Impression : un widget sans requête, en attente d'un choix ou dont l'exécution a échoué (IPC)
   // est « rendu » tout de suite.

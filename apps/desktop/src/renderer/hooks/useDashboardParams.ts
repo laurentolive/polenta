@@ -36,8 +36,12 @@ export function useDashboardParams(args: {
   const kinds = new Set(selectors.map((s) => s.kind))
 
   // Options : chargées seulement si un sélecteur en a besoin.
-  const { data: campaigns } = useCampaignOptions(kinds.has('campaign') ? repoPath : '')
-  const { data: objectTypes } = useSuiviObjectTypes(kinds.has('component') || kinds.has('objectType') ? repoPath : '', workspaceDir)
+  const needsCampaigns = kinds.has('campaign')
+  const needsTypes = kinds.has('component') || kinds.has('objectType')
+  const campaignsQuery = useCampaignOptions(needsCampaigns ? repoPath : '')
+  const typesQuery = useSuiviObjectTypes(needsTypes ? repoPath : '', workspaceDir)
+  const campaigns = campaignsQuery.data
+  const objectTypes = typesQuery.data
   const options = useMemo<ParamOptions>(() => ({
     campaigns,
     components: objectTypes ? [...new Set(objectTypes.map((t) => t.component))].sort() : undefined,
@@ -53,8 +57,10 @@ export function useDashboardParams(args: {
   const storedValues = useMemo(() => stored.data ?? {}, [stored.data])
   const { values, invalid } = useMemo(() => effectiveValues(selectors, storedValues, options), [selectors, storedValues, options])
 
-  /** Choix lus (sinon les widgets s'exécuteraient deux fois : défauts, puis valeurs choisies). */
-  const ready = selectors.length === 0 || stored.isSuccess || stored.isError
+  /** Choix et listes d'options lus (sinon les widgets s'exécuteraient deux fois : défauts ou valeur
+   *  devenue introuvable, puis valeurs effectives). Une liste en erreur ne bloque pas. */
+  const settled = (q: { isSuccess: boolean; isError: boolean }) => q.isSuccess || q.isError
+  const ready = selectors.length === 0 || (settled(stored) && (!needsCampaigns || settled(campaignsQuery)) && (!needsTypes || settled(typesQuery)))
 
   const write = (next: Record<string, GraphParamValue> | null) => {
     qc.setQueryData(storedKey, next ?? {})

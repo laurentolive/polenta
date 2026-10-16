@@ -97,6 +97,7 @@ setup_packages() {
 }
 
 setup_docker() {
+  local installed=0
   if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
     skip "Docker $(docker version -f '{{.Server.Version}}' 2>/dev/null)"
   else
@@ -108,13 +109,20 @@ setup_docker() {
       "$(dpkg --print-architecture)" "$OS_ID" "$OS_CODENAME" >/etc/apt/sources.list.d/docker.list
     apt-get update -qq
     apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin >/dev/null
-    ok "Docker $(docker version -f '{{.Server.Version}}') installé"
+    ok "Docker $(docker version -f '{{.Server.Version}}') installé"; installed=1
   fi
   local daemon='{
   "log-driver": "json-file",
   "log-opts": { "max-size": "10m", "max-file": "5" }
 }'
-  if write_if_changed /etc/docker/daemon.json "$daemon"; then
+  # Docker préexistant (serveur déjà administré, GH61/GH62) : sa configuration appartient à l'exploitant.
+  # Ne jamais écraser un daemon.json existant ni redémarrer Docker (tous les conteneurs des autres
+  # projets seraient redémarrés) ; seul un Docker installé par ce setup reçoit la rotation des journaux.
+  if [[ -f /etc/docker/daemon.json ]] && [[ "$(cat /etc/docker/daemon.json)" != "$daemon" ]]; then
+    warn "/etc/docker/daemon.json existant conservé (rotation des journaux Docker du kit non appliquée)"
+  elif [[ ! -f /etc/docker/daemon.json && $installed == 0 ]]; then
+    warn "Docker préexistant : /etc/docker/daemon.json non créé, Docker non redémarré (rotation des journaux à régler par l'exploitant)"
+  elif write_if_changed /etc/docker/daemon.json "$daemon"; then
     systemctl restart docker; ok "rotation des journaux Docker"
   else
     skip "rotation des journaux Docker"
@@ -342,7 +350,8 @@ setup_external_sites() {
     chmod 755 "$CADDY_SITES_DIR"
     ok "dossier des blocs de site ($CADDY_SITES_DIR)"
   fi
-  ok "Caddy externe : réseau $EDGE_NETWORK, aucun conteneur Caddy créé"
+  # Constat, pas une action : jamais de ✓ (un rejeu de setup n'affiche que des « déjà fait », GH62 N23).
+  printf '  · Caddy externe : réseau %s, aucun conteneur Caddy créé\n' "$EDGE_NETWORK"
   printf '  Ajoutez à votre Caddyfile (dossier monté en lecture seule dans votre Caddy) :\n    import %s/*.caddy\n' "$CADDY_SITES_DIR"
   [[ -n "$CADDY_RELOAD_CMD" ]] || warn "CADDY_RELOAD_CMD vide : rechargez votre Caddy à la main après chaque modification de site."
 }

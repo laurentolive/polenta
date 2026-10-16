@@ -151,3 +151,72 @@ Environnement :
 | 12 | N42, N43 |
 | 13 | N11, N19, N47, N48, N49, N50 |
 | 14 | N51, N52, N53 |
+
+## Résultats d'exécution sur VM — 2026-10-16
+
+Environnement : VM VirtualBox jetable `polenta-test`, **Ubuntu 24.04.5** (image cloud officielle, et non Debian 13
+comme prévu ci-dessus), 2 vCPU, 4 Go, utilisateur sudo `polenta` avec clé ; kit de la branche GH62 fusionnée avec
+`main` (GH61) **plus les correctifs listés plus bas** ; chaque famille rejouée depuis un instantané « propre ».
+Écarts dus à l'environnement :
+- l'image Ubuntu **préinstalle `ufw` et `unattended-upgrades`** (avec `20auto-upgrades`) : les contrôles « paquet
+  absent », « `command -v ufw` vide » et « `20auto-upgrades` absent » ne sont pas vérifiables tels quels ; on a vérifié
+  à la place que le kit ne les modifie pas (empreinte avant/après) ;
+- pas de DNS public ni de Let's Encrypt : en `managed`, `instance add` attend un certificat valide (`wait_https`) et
+  n'est pas jouable ; les scénarios avec instance ont été joués en `CADDY_MODE=external` (Caddy tiers en TLS interne,
+  domaines dans `/etc/hosts`), cas cible d'un serveur déjà administré (`CADDY_MODE=external` + `HARDEN_HOST=none`) ;
+- S3 : stockage de test SeaweedFS local (`http://127.0.0.1:8333`) à la place d'un fournisseur externe.
+
+Arrêt demandé avant la fin : familles « none sur hôte nu » (N24–N27, N34, N35, N38, N42, N45) et « ufw préexistant »
+(N39–N41, N44) **non jouées sur VM**.
+
+| ID | Résultat | Constat |
+|---|---|---|
+| N11 | **OK** | `shellcheck 0.11 -x -S warning` : aucun avertissement nouveau par rapport à `1884fe7` (faux positifs SC2128/SC2178/SC2179 sur la variable `out` de `modules.sh`, SC2155 préexistant dans `main`). |
+| N12 | **OK** | Kit `main` puis kit GH62 (`HARDEN_HOST` absent), VM neuve chacun : empreinte des fichiers de durcissement identique, sortie de `setup` identique (diff vide). |
+| N13 | **OK** | Idem avec `HARDEN_HOST=` (vide) et `HARDEN_HOST=full` : diff vide. |
+| N14 | Non jouable | `acceptance.sh` sans option exige HTTPS public (pas de DNS) ; joué en external depuis la VM, CA du Caddy tiers approuvée : toutes les vérifications passent. |
+| N15 | **OK** (external) | Hôte simulé « déjà administré » (Docker, ufw actif avec règle tierce, Caddy tiers, crontab root), `external` + `none` : sshd effectif, ufw, crontab root, `/etc/ssh`, `/etc/ufw`, `/etc/apt/apt.conf.d` identiques avant/après ; seuls `/etc/cron.d/polenta` et `/etc/logrotate.d/polenta` ajoutés ; aucun conteneur `polenta-caddy`. Managed sur hôte nu : non joué. |
+| N16 | **OK** (external) | Docker Compose, restic, cron, logrotate présents ; Caddy tiers en service. |
+| N17 | **OK** (external) | `instance add` puis `instance backup` : code 0 (après correctifs 3 et 5), `/etc/fail2ban` absent. |
+| N18 | **OK** (external) | `instance restore acme --from latest --force --yes` (sans `--yes`, « abandon. » hors terminal), forge servie (healthz 200), `instance remove` OK, `/etc/fail2ban` absent. |
+| N19 | KO (environnement) | `harden-none.test.sh` : 4 ✗ dus à l'image et à l'admin simulé (`ufw` et `unattended-upgrades` préinstallés, `20auto-upgrades`, modules « hors niveau » non posés par le kit) ; critères 3 (ufw, sshd identiques) et 4 : ✓. Le script suppose un hôte Debian nu. |
+| N20 | **OK** (external) | ufw actif avec `8443/tcp` : `ufw status verbose` et `sshd -T` identiques avant/après. |
+| N21 | Partiel | `basic` : fail2ban actif (jail `sshd`), `52polenta-unattended` absent, ni SSH ni resolved/console, ufw et sshd inchangés. Jail `polenta-forge` désactivée faute d'instance ; « sans redémarrage » non affiché car le `20auto-upgrades` de l'image est déjà identique (« déjà fait »). |
+| N22 | Non jouable | Instance en managed (TLS). |
+| N23 | **OK** | Rejeu en `full`, `basic` et `none`/external : 0 ligne ✓, Docker/fail2ban/ssh non redémarrés. |
+| N24–N27 | Non joués sur VM | — |
+| N28 | Partiel | `niveau full (HARDEN_HOST), 10 modules`, tous actifs, annotation 04:00, **sauf** `fail2ban-forge  inactif (attendu, absent)` en rouge : sans instance la jail est désactivée (constat ci-dessous). |
+| N29 | Partiel | `basic` : conforme sauf `fail2ban-forge` (même cause). |
+| N30 | **OK** (external) | Niveau none ; « Caddy : externe (blocs dans …, réseau …) ». |
+| N31 | **OK** | 6 modules « (hors niveau) » (7 attendus, `fail2ban-forge` inactif faute d'instance) ; socle neutre. |
+| N32 | **OK** | `backup-cron  inactif (attendu, absent)` ; `setup` rejoué le restaure. |
+| N33 | **OK** | `status` : aucun fichier modifié sous `/etc` et `/opt/polenta`, aucun service redémarré. |
+| N34, N35 | Non joués sur VM | — |
+| N36 | **OK** | `full` → `none` : `ufw status` identique, fichiers conservés, fail2ban actif, 6 avertissements « hors niveau » citant RUNBOOK A2 (même cause pour le 7ᵉ). |
+| N37 | **OK** | `full` → `basic` : « redémarrage automatique 04:00 actif … conservé tel quel », fichier présent. |
+| N38 | Non joué sur VM | — |
+| N39–N41, N44 | Non joués sur VM | En external, ufw actif sans 80/443 : pas d'avertissement (voulu : ports du Caddy existant). |
+| N42 | Non joué sur VM | — |
+| N43 | Partiel | `full` et `basic` : pas de message « ADMIN_IPS ignoré » ; `ignoreip` de la jail `sshd` contient l'IP ; jail forge absente faute d'instance. |
+| N45 | Non joué sur VM | — |
+| N46 | **OK** (external) | `backup-cron` en `none` : sauvegarde nocturne réussie, ni fail2ban ni ufw. |
+| N47, N49 | **OK** | `harden-modules.test.sh` : 32 ✓ ; `acceptance.sh --harden-level bogus` : code 2. |
+| N48 | **OK** (external) | `acceptance.sh --external --harden-level none` (et options inversées) : HTTPS, en-têtes, forge protégée contrôlés, ports non contrôlés. |
+
+### Bugs trouvés sur VM et corrigés (branche GH62)
+
+1. **Scripts non exécutables** (`100644` dans git) : `sudo ./polenta-host.sh setup` (RUNBOOK A2) → « Permission denied ». Correctif : mode 755 pour `polenta-host.sh`, `polenta-admin.sh`, `tests/*.sh`.
+2. **Garde-fous du premier `setup`** (GH61) : avec le `host.env` fourni dans le kit, les garde-fous lisaient le mode par défaut (`managed`) et refusaient l'hôte partagé (« 80/443 occupés ») ; sans aucun `host.env`, `setup` mourait avant de créer l'exemple. Correctif : garde-fous évalués sur le `host.env` du kit, sautés sans configuration.
+3. **API de la forge en external** (GH61) : `instance add` appelait l'API en HTTPS sur `127.0.0.1:443`, donc par le Caddy existant dont le certificat échappe au kit → « API GET /user → HTTP 000 ». Correctif : `api_target` joint la forge sur `EDGE_NETWORK` (HTTP, port 3000 non publié).
+4. **Docker existant reconfiguré** : même en `HARDEN_HOST=none`, `setup` écrasait `/etc/docker/daemon.json` et redémarrait Docker (tous les conteneurs des autres projets). Correctif : seul un Docker installé par `setup` reçoit la rotation des journaux ; un `daemon.json` existant ou un Docker préexistant ne sont jamais modifiés (avertissement). Vérifié : conteneurs tiers non redémarrés.
+5. **Première sauvegarde impossible avec restic < 0.17** (Ubuntu 24.04 : 0.16.4 ; Debian 12 : 0.14) : codes 10/12 attendus, restic sort en 1 → « dépôt inaccessible ». Correctif : code 1 requalifié d'après le message de restic. Vérifié : dépôt créé, sauvegarde, restauration et `backup-cron` OK.
+
+Aussi corrigés : `acceptance-external.sh` comparait l'identifiant de conteneur de `docker events` à des noms (la forge passait pour intruse) ; la ligne « Caddy externe » de `setup` s'affichait en ✓ à chaque rejeu.
+
+### Constats non corrigés
+
+- `status` : `fail2ban-forge  inactif (attendu, absent)` en rouge sur un hôte sans instance.
+- Hôte déjà administré en `none` : `setup` affiche « module firewall/unattended actif … hors niveau none … procédure de retrait : RUNBOOK A2 » pour la configuration **de l'exploitant** — le message invite à retirer ce que le kit n'a pas posé.
+- `harden-none.test.sh` suppose un hôte Debian nu (faux négatifs sur Ubuntu).
+- `instance restore` : `--yes` absent du message d'usage ; sans terminal la confirmation échoue (« abandon. »).
+- `backup-cron` en échec ajoute « Erreur inattendue (code 1) ligne … : return $failed ».

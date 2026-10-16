@@ -99,7 +99,7 @@ function editableToSchema(state: EditorState, nodes: SystemNode[], preferences: 
 // every repo of the workspace. Refs are `<node>::<type>` as written in that repo's schema —
 // the same string its objects carry in `objectTypeRef`, which is what linkUtils.matchesRefs
 // compares against. Deduplicated (the current repo is also part of the workspace).
-function getAllRefs(nodes: SystemNode[], otherSchemas: Iterable<ProjectSchema>): string[] {
+function getAllRefs(nodes: SystemNode[], otherSchemas: ProjectSchema[]): string[] {
   const refs = ['requirement', 'test', 'campaign']
   const add = (ns: SystemNode[]) => {
     for (const { node } of flattenSystemNodes(ns)) {
@@ -144,7 +144,8 @@ function RefChips({ refs, allRefs, onChange }: {
 
 function LiensTab({ state, setState, nodes, otherSchemas }: {
   state: EditorState; setState: React.Dispatch<React.SetStateAction<EditorState | null>>; nodes: SystemNode[]
-  otherSchemas: Iterable<ProjectSchema>
+  /** An array, not `Map.values()`: an iterator is exhausted after one render (StrictMode renders twice). */
+  otherSchemas: ProjectSchema[]
 }) {
   const { t } = useTranslation()
   const allRefs = getAllRefs(nodes, otherSchemas)
@@ -349,7 +350,7 @@ function SchemaEditorPage() {
       </div>
 
       {activeTab === 'structure' && <StructureTab workspaceDir={workspaceDir} repoPath={repoPath} projectId={projectId} />}
-      {activeTab === 'liens' && <LiensTab state={state} setState={setState} nodes={schema.nodes} otherSchemas={schemasByRepoPath.values()} />}
+      {activeTab === 'liens' && <LiensTab state={state} setState={setState} nodes={schema.nodes} otherSchemas={[...schemasByRepoPath.values()]} />}
       </div>
       </div>
     </div>

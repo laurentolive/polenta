@@ -629,6 +629,8 @@
       "sources": "Sources",
       "targets": "Cibles",
       "addLinkType": "+ Ajouter un type de lien",
+      "linksRepo": "Types de lien du repo",
+      "linksRepoDirty": "Enregistrez ou annulez avant de changer de repo",
       "rolesTitle": "Rôles (repo interface)",
       "rolesHint": "Déclarer ici si ce repo est une interface et expose des rôles.",
       "roleNameId": "Nom (identifiant)",

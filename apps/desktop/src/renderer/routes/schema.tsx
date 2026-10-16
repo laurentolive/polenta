@@ -114,6 +114,11 @@ function getAllRefs(nodes: SystemNode[], otherSchemas: ProjectSchema[]): string[
   return refs
 }
 
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  return norm(a) === norm(b)
+}
+
 // ── Tab: Liens ────────────────────────────────────────────────────────────────
 
 function RefChips({ refs, allRefs, onChange }: {
@@ -142,10 +147,18 @@ function RefChips({ refs, allRefs, onChange }: {
   )
 }
 
-function LiensTab({ state, setState, nodes, otherSchemas }: {
+interface LinksRepoOption { repoPath: string; label: string }
+
+function LiensTab({ state, setState, nodes, otherSchemas, repos, selectedRepoPath, onSelectRepo, repoSwitchDisabled }: {
   state: EditorState; setState: React.Dispatch<React.SetStateAction<EditorState | null>>; nodes: SystemNode[]
   /** An array, not `Map.values()`: an iterator is exhausted after one render (StrictMode renders twice). */
   otherSchemas: ProjectSchema[]
+  /** GH99 — repos of the workspace whose linkTypes can be edited here (root first). */
+  repos: LinksRepoOption[]
+  selectedRepoPath: string
+  onSelectRepo: (repoPath: string) => void
+  /** Pending unsaved edits belong to the selected repo — switching would drop them. */
+  repoSwitchDisabled: boolean
 }) {
   const { t } = useTranslation()
   const allRefs = getAllRefs(nodes, otherSchemas)
@@ -157,6 +170,16 @@ function LiensTab({ state, setState, nodes, otherSchemas }: {
 
   return (
     <div>
+      {repos.length > 1 && (
+        <div className="flex items-center gap-2 mb-4">
+          <label className="text-xs text-ink-2">{t('schema.page.linksRepo')}</label>
+          <select value={selectedRepoPath} onChange={e => onSelectRepo(e.target.value)} disabled={repoSwitchDisabled}
+            className="input-field text-xs py-1 disabled:opacity-50">
+            {repos.map(r => <option key={r.repoPath} value={r.repoPath}>{r.label}</option>)}
+          </select>
+          {repoSwitchDisabled && <span className="text-xs text-ink-3">{t('schema.page.linksRepoDirty')}</span>}
+        </div>
+      )}
       {state.linkTypes.length > 0 && (
         <div className="space-y-2 mb-3">
           {state.linkTypes.map((l, i) => (
@@ -229,7 +252,15 @@ function SchemaEditorPage() {
   const { data: schema, isLoading } = useProjectSchema(repoPath)
   // GH95 — every repo of the workspace, so the Liens tab can offer the object types of
   // components mounted from their own repo (shares the Structure tab's query cache).
-  const { schemasByRepoPath } = useWorkspaceStructure(workspaceDir, repoPath)
+  const { flatNodes, schemasByRepoPath } = useWorkspaceStructure(workspaceDir, repoPath)
+  // GH99 — the repo whose linkTypes the Liens tab edits: the opened repo by default, or any
+  // component of the workspace — an object's link types come from ITS repo's schema
+  // (SystemViewContext), so a component needs its own. `flatNodes` paths are compared loosely
+  // (separators/case) to `repoPath`, which comes from another resolution (VersioningContext).
+  const [linksRepoPath, setLinksRepoPath] = useState('')
+  const editedRepoPath = linksRepoPath || repoPath
+  const { data: editedSchema } = useProjectSchema(editedRepoPath)
+  const [stateRepoPath, setStateRepoPath] = useState('')
   const [state, setState] = useState<EditorState | null>(null)
   const [savedState, setSavedState] = useState<EditorState | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('structure')
@@ -237,12 +268,18 @@ function SchemaEditorPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
   useEffect(() => {
-    if (schema && !state) {
-      const editable = schemaToEditable(schema)
+    if (editedSchema && (!state || stateRepoPath !== editedRepoPath)) {
+      const editable = schemaToEditable(editedSchema)
       setState(editable)
       setSavedState(editable)
+      setStateRepoPath(editedRepoPath)
     }
-  }, [schema, state])
+  }, [editedSchema, state, stateRepoPath, editedRepoPath])
+
+  const linksRepos: LinksRepoOption[] = flatNodes.map(n => ({
+    repoPath: samePath(n.repoPath, repoPath) ? repoPath : n.repoPath,
+    label: schemasByRepoPath.get(n.repoPath)?.nodes.find(x => x.name === 'root')?.label || n.label || n.name,
+  }))
 
   const isDirty = savedState !== null && JSON.stringify(state) !== JSON.stringify(savedState)
   useRegisterTabDirty(isDirty)
@@ -250,11 +287,11 @@ function SchemaEditorPage() {
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      if (!state || !schema) throw new Error('no state')
-      return api.schema.save(repoPath, editableToSchema(state, schema.nodes, schema.preferences))
+      if (!state || !editedSchema) throw new Error('no state')
+      return api.schema.save(editedRepoPath, editableToSchema(state, editedSchema.nodes, editedSchema.preferences))
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['schema', repoPath] })
+      qc.invalidateQueries({ queryKey: ['schema', editedRepoPath] })
       setSavedState(state)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -350,7 +387,9 @@ function SchemaEditorPage() {
       </div>
 
       {activeTab === 'structure' && <StructureTab workspaceDir={workspaceDir} repoPath={repoPath} projectId={projectId} />}
-      {activeTab === 'liens' && <LiensTab state={state} setState={setState} nodes={schema.nodes} otherSchemas={[...schemasByRepoPath.values()]} />}
+      {activeTab === 'liens' && <LiensTab state={state} setState={setState} nodes={editedSchema?.nodes ?? schema.nodes} otherSchemas={[...schemasByRepoPath.values()]}
+        repos={linksRepos} selectedRepoPath={editedRepoPath}
+        onSelectRepo={p => setLinksRepoPath(p === repoPath ? '' : p)} repoSwitchDisabled={isDirty} />}
       </div>
       </div>
     </div>

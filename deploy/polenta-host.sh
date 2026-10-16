@@ -350,10 +350,19 @@ setup_external_sites() {
 cmd_setup() {
   require_root; check_os
   log "Préparation de l'hôte ($PRETTY_NAME)"
-  # GH61 — configuration validée et garde-fous de bascule AVANT toute modification de l'hôte.
-  if [[ -f "$HOST_ENV" ]]; then load_host_env; fi
-  caddy_external_guard
-  caddy_managed_ports_guard
+  # GH61 — configuration validée et garde-fous de bascule AVANT toute modification de l'hôte. Au premier
+  # passage, host.env peut n'exister que dans le kit (copié ensuite par setup_host_env) : c'est lui qui
+  # fait foi. Sans aucun host.env, pas de garde-fou : setup_host_env crée l'exemple et s'arrête (sinon,
+  # 80/443 pris par un Caddy existant bloqueraient la création de host.env).
+  local env_src="$HOST_ENV"
+  [[ -f "$env_src" ]] || env_src="$SCRIPT_DIR/host.env"
+  if [[ -f "$env_src" ]]; then
+    local host_env_saved="$HOST_ENV"; HOST_ENV="$env_src"
+    load_host_env
+    HOST_ENV="$host_env_saved"
+    caddy_external_guard
+    caddy_managed_ports_guard
+  fi
   setup_host_env
   modules_resolve || die "$MODULES_ERR"   # avant toute modification de l'hôte
   setup_install_kit

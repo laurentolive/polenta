@@ -32,6 +32,7 @@ let prod: string
 let comp: string
 let git: GitService
 let service: TypeRenameService
+let indexes: Array<{ invalidate(repoPath: string): void }>
 
 const read = <T>(repo: string, file: string) => git.readYaml<T>(repo, file) as Promise<T>
 const exists = (repo: string, file: string) => fsP.access(path.join(repo, file)).then(() => true, () => false)
@@ -77,7 +78,8 @@ beforeEach(async () => {
     get: async (repo: string) => (await git.readYaml<ProjectSchema>(repo, '.polenta/schema.yaml'))!,
     save: async (repo: string, s: ProjectSchema) => git.writeYaml(repo, '.polenta/schema.yaml', s),
   }
-  service = new TypeRenameService(requirements, tests, campaigns, tree, schema, [reqIndex, testsIndex], async () => [prod, comp])
+  indexes = [reqIndex, testsIndex]
+  service = new TypeRenameService(requirements, tests, campaigns, tree, schema, indexes, async () => [prod, comp])
 
   // prod — repo racine : type produit, lien vers COMP_REQ-0001, campagne d'un test de comp.
   await git.writeYaml(prod, '.polenta/schema.yaml', schemaOf([reqType('PRODUCT_REQ', 'PRODUCT_REQ')],
@@ -229,6 +231,22 @@ describe('TypeRenameService', () => {
     await service.rename(comp, ws, { nodeName: 'root', category: 'test', oldName: 'COMP_TEST', newName: 'NEW_TEST', oldPrefix: 'COMP_TEST', newPrefix: 'COMP_TEST' })
     const runs = (await read<TestCampaign>(prod, 'campaigns/CAMP-0001.yaml')).runs
     expect(runs.map(r => r.testSnapshot?.objectTypeRef)).toEqual(['root::NEW_TEST', 'root::COMP_TEST'])
+  })
+
+  it('repo du type listé une seconde fois sous une autre forme (cache workspace) : traité une seule fois', async () => {
+    const dup = new TypeRenameService(
+      (service as unknown as { requirements: RequirementsService }).requirements,
+      (service as unknown as { tests: TestsService }).tests,
+      (service as unknown as { campaigns: CampaignsService }).campaigns,
+      new TreeService(),
+      { get: async (repo: string) => (await git.readYaml<ProjectSchema>(repo, '.polenta/schema.yaml'))!, save: async () => {} },
+      indexes,
+      async () => [prod, `${comp}${path.sep}`, comp],
+    )
+    await saveCompSchema([reqType('VE22D_REQ', 'VE22D_REQ'), testType('COMP_TEST', 'COMP_TEST')])
+    const result = await dup.rename(comp, ws, REQ_DTO)
+    expect(result.failed).toEqual([])
+    expect(result.migrated.sort()).toEqual(['VE22D_REQ-0001', 'VE22D_REQ-0002'])
   })
 
   it('T10 — repo absent : refus sans écriture ; type campagne : préfixe sans effet sur les IDs', async () => {

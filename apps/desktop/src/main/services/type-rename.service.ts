@@ -118,7 +118,7 @@ export class TypeRenameService {
   }
 
   private async compute(repoPath: string, workspaceDir: string | undefined, dto: TypeRenameDto): Promise<Computed> {
-    const repos = await this.resolveRepos(repoPath, workspaceDir)
+    const repos = sameRepoDeduped(repoPath, await this.resolveRepos(repoPath, workspaceDir))
     const oldRef = `${dto.nodeName}::${dto.oldName}`
     const newRef = `${dto.nodeName}::${dto.newName}`
     const plan: TypeRenamePlan = { objects: [], retargeted: 0, files: [], linkTypeRepos: [], errors: [] }
@@ -212,6 +212,26 @@ function retargetLinkRefs(schema: ProjectSchema, oldRef: string, newRef: string)
       ...(l.targetRefs && { targetRefs: map(l.targetRefs) }),
     })),
   }
+}
+
+/**
+ * Repos sans doublon : le chemin reçu du renderer et celui du cache du workspace (normalisé,
+ * `tree-cache.util.ts`) peuvent différer par la casse ou les séparateurs — le même repo serait
+ * réécrit deux fois. `repoPath` (repo du type) garde sa forme : c'est elle que comparent les étapes.
+ */
+function sameRepoDeduped(repoPath: string, repos: string[]): string[] {
+  const key = (p: string) => {
+    const abs = path.resolve(p)
+    return process.platform === 'win32' ? abs.toLowerCase() : abs
+  }
+  const seen = new Set<string>([key(repoPath)])
+  const out = [repoPath]
+  for (const repo of repos) {
+    if (seen.has(key(repo))) continue
+    seen.add(key(repo))
+    out.push(repo)
+  }
+  return out
 }
 
 async function exists(p: string): Promise<boolean> {

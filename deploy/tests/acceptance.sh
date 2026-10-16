@@ -2,18 +2,29 @@
 # GH45 — vérifications non destructives d'un hôte Polenta, lancées DEPUIS L'EXTÉRIEUR (poste de
 # l'exploitant) : critère 14 de specs/GH45.md.
 #
-#   deploy/tests/acceptance.sh [--external] <domaine-instance> [<domaine-instance>…]
+#   deploy/tests/acceptance.sh [--external] [--harden-level full|basic|none] <domaine-instance> [<domaine-instance>…]
 #
 # --external (GH61, hôte en CADDY_MODE=external) : 80/443 appartiennent au Caddy existant, donc non
 #   exigés ni testés comme ouverts, et le test HTTP → HTTPS (redirection du Caddy) est sauté ; 22 reste
 #   exigé et 2222, 3000, 5355, 8080, 2375 restent vérifiés fermés. Sans option : comportement inchangé.
+#   Les deux options se combinent, dans n'importe quel ordre (hôte partagé : --external --harden-level none).
 #
+# GH62 : hors niveau full (ou ACCEPT_HARDEN=<niveau>), les ports ne sont pas contrôlés (un hôte
+# déjà administré peut en exposer d'autres).
 # Sortie non nulle si une vérification échoue.
 set -uo pipefail
 
+HARDEN="${ACCEPT_HARDEN:-full}"
 EXTERNAL=0
-if [[ "${1:-}" == --external ]]; then EXTERNAL=1; shift; fi
-[[ $# -gt 0 ]] || { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --external) EXTERNAL=1; shift ;;
+    --harden-level) HARDEN="${2:-}"; shift 2 2>/dev/null || shift $# ;;
+    *) break ;;
+  esac
+done
+case "$HARDEN" in full|basic|none) ;; *) echo "niveau invalide : « $HARDEN » — valeurs admises : full|basic|none" >&2; exit 2 ;; esac
+[[ $# -gt 0 ]] || { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 FAIL=0
 pass() { printf '  \e[32m✓\e[0m %s\n' "$*"; }
@@ -69,7 +80,9 @@ check_instance() {
   done
   verdict "en-tête Server masqué" "en-tête Server exposé" not grep -qi '^server:' <<<"$headers"
 
-  # Ports : seuls 22, 80, 443 (external : 22 seul exigé, 80/443 non gérés par le kit).
+  # Ports : seuls 22, 80, 443 (niveau full uniquement ; external : 22 seul exigé, 80/443 non gérés
+  # par le kit).
+  if [[ "$HARDEN" != full ]]; then pass "ports non vérifiés (niveau $HARDEN)"; return; fi
   local p
   if [[ $EXTERNAL == 1 ]]; then
     verdict "port 22 ouvert" "port 22 fermé" port_open "$d" 22

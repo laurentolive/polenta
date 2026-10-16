@@ -38,6 +38,8 @@ import { ScriptEngineService } from './services/script-engine.service'
 import { SuiviService } from './services/suivi.service'
 import { SuiviUpdatesService } from './services/suivi-updates.service'
 import { FieldRenameService } from './services/field-rename.service'
+import { TypeRenameService } from './services/type-rename.service'
+import { resolveWorkspaceRepoPaths } from './services/workspace-repos.util'
 import { HistoryBackfillService } from './services/history-backfill.service'
 import type { Container } from './ipc/index'
 import type { HostContext } from './host/host-context'
@@ -95,6 +97,11 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)
+  // GH100 — renommage d'un type (nom / préfixe) : migration de ses objets dans tout le workspace.
+  const typeRename = new TypeRenameService(
+    requirements, tests, campaigns, tree, schema, [reqIndex, testsIndex],
+    (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
+  )
   // GH77 — reprise de l'historique des champs suivis depuis git (action manuelle, par repo).
   const historyBackfill = new HistoryBackfillService(git, requirements, tests, campaigns)
   const baseline = new BaselineService()
@@ -167,6 +174,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     revalidation,
     history,
     fieldRename,
+    typeRename,
     historyBackfill,
     appSettings,
     machineConfig: host.machineConfig,

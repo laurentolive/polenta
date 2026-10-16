@@ -421,9 +421,12 @@ export class CampaignsService {
    * GH82 — réécrit les copies `testSnapshot` des entrées dont le test est de type `testTypeRef`,
    * dans toutes les campagnes du repo (renommage d'un statut ou d'une valeur du type de test : seule
    * la clé change, pas le contenu figé). Écriture brute ; la campagne compte parmi les objets migrés.
+   * GH100 — `onlyIds` : seulement les copies de ces tests (renommage de type appliqué aux campagnes
+   * des autres repos, où `testTypeRef` peut désigner le type homonyme d'un autre repo).
    */
   async rewriteSnapshots(
     repoPath: string, testTypeRef: string, transform: (snapshot: TestCase) => TestCase | null, result: FieldRenameResult,
+    onlyIds?: ReadonlySet<string>,
   ): Promise<void> {
     for (const { id } of await this.list(repoPath)) {
       try {
@@ -432,6 +435,7 @@ export class CampaignsService {
           let count = 0
           const rewrite = <R extends CampaignTestRun>(run: R): R => {
             if (!run.testSnapshot || run.testSnapshot.objectTypeRef !== testTypeRef) return run
+            if (onlyIds && !onlyIds.has(run.testSnapshot.id)) return run
             const next = transform(run.testSnapshot)
             if (!next) return run
             count++

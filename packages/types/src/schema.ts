@@ -222,3 +222,25 @@ export interface TypeTree {
   typeId: string       // ObjectTypeDefinition.name
   root: TypeTreeNode[]
 }
+
+/** GH100 — renommage d'un type d'objet (nom et/ou préfixe) avec migration de ses objets. */
+export interface TypeRenameDto {
+  nodeName: string
+  category: 'requirement' | 'test' | 'campaign'
+  oldName: string
+  newName: string
+  oldPrefix: string
+  newPrefix: string
+}
+
+export interface TypeRenamePlan {
+  /** IDs renommés (préfixe changé, types exigence / test) ; vide sinon. */
+  objects: Array<{ oldId: string; newId: string }>
+  /** Objets du type dont l'`objectTypeRef` change (nom changé). */
+  retargeted: number
+  /** Fichiers de données réécrits ou renommés, hors fichiers des objets du type. */
+  files: Array<{ repoPath: string; path: string; newPath?: string }>
+  /** Repos dont des refs `<nœud>::<type>` de `linkTypes` changent. */
+  linkTypeRepos: string[]
+  errors: Array<{ code: 'ID_COLLISION' | 'REPO_MISSING'; detail: string }>
+}

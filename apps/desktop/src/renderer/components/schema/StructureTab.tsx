@@ -1348,8 +1348,10 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
     // `nodeName` is 'root' when added from a RepoRow (cf. AddMenu callers below) — in that case the
     // component name is the repo's own mount name (`repoLabel`), not the literal string 'root'.
     const componentName = nodeName === 'root' ? repoLabel : nodeName
+    // GH97 — noms des types du nœud + préfixes de tout le workspace : la proposition les évite.
+    const taken = new Set([...(findSystemNode(schema.nodes, nodeName)?.objectTypes ?? []).map(ot => ot.name), ...allPrefixes])
     const newType = editableToObjType(
-      emptyObjType(category, componentName, t(CATEGORY_LABEL_KEY[category]), t('schema.editor.descriptionFieldLabel')),
+      emptyObjType(category, componentName, t(CATEGORY_LABEL_KEY[category]), t('schema.editor.descriptionFieldLabel'), taken),
     )
     const { schema: nextSchema, typeIndex } = withObjectTypeAppended(schema, nodeName, newType)
     try {

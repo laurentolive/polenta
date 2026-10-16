@@ -240,10 +240,18 @@ function slugifyComponentName(componentName: string): string {
 }
 
 /** `categoryLabel`/`descriptionLabel` are pre-resolved by the caller (`t(CATEGORY_LABEL_KEY[category])`
- *  / a "Description" i18n key) — this module has no access to `useTranslation` outside a component. */
-export function emptyObjType(category: ObjectCategory, componentName: string, categoryLabel: string, descriptionLabel: string): EditableObjectType {
+ *  / a "Description" i18n key) — this module has no access to `useTranslation` outside a component.
+ *  GH97 — `taken` : noms de type et préfixes déjà pris ; la proposition prend le premier suffixe
+ *  libre (`_2`, `_3`…), sans quoi un 2e type de la même catégorie dans un repo reprendrait le nom et
+ *  le préfixe du premier et l'enregistrement serait refusé (préfixe unique, règle 10 CLAUDE.md). */
+export function emptyObjType(
+  category: ObjectCategory, componentName: string, categoryLabel: string, descriptionLabel: string,
+  taken: ReadonlySet<string> = new Set(),
+): EditableObjectType {
   const slug = slugifyComponentName(componentName)
-  const suggested = slug ? `${slug}_${CATEGORY_SUFFIX[category]}` : ''
+  const base = slug ? `${slug}_${CATEGORY_SUFFIX[category]}` : ''
+  let suggested = base
+  for (let n = 2; base && taken.has(suggested); n++) suggested = `${base}_${n}`
   return {
     name: suggested, label: categoryLabel, color: '', prefix: suggested, category,
     fields: [{ name: 'description', label: descriptionLabel, type: 'richtext', values: '', required: false, default: '', placeholder: '', trackHistory: false }],

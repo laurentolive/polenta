@@ -254,14 +254,18 @@ partagées) :
   (`partial` / `done`, ids) ; pas de garde de branche. Widgets : **Avancement par campagne**
   (barres empilées sur l'étape `entryStep`, ordre canonique et couleurs `--chart-progress-*`),
   **% exécuté**, **% PASS** (indicateurs), **Exécutions par jour** (courbe), **Entrées en échec**
-  (table), **Avancement dans le temps** (aire empilée des statuts d'entrée, campagnes en cours, pas
-  journalier). Libellés fr / en. Les six requêtes ont la campagne « choisie à l'affichage » (GH93) :
+  (table), **Avancement dans le temps** (aire empilée des étapes d'avancement, campagnes en cours,
+  pas journalier : `campaignsTimeline({ withStep })`, étape de préparation d'une entrée non exécutée
+  = statut du test vivant à la fin du jour d'après son historique, à défaut son étape actuelle ;
+  GH112). Libellés fr / en. Les six requêtes ont la campagne « choisie à l'affichage » (GH93) :
   un sélecteur **Campagne** commun, « Toutes » par défaut (filtres du seed). Seeds créés avant GH93 :
   non repris.
 - **Seeds d'avant GH74** : requêtes reconnues à leur SQL **exact** d'origine (GH65, GH71) réécrites
   sous le même id, widgets restés au mapping d'origine réécrits ; objet modifié → laissé en
   `legacy-sql`. Requêtes partagées jamais réécrites sur une branche en lecture seule. Seed Campagnes
-  existant sans « Avancement dans le temps » : widget **proposé** au bandeau.
+  existant sans « Avancement dans le temps » : widget **proposé** au bandeau ; avec sa version aux
+  statuts d'entrée (requête et widget non modifiés, `campaign.js` à une version livrée) : passage aux
+  étapes **proposé** au bandeau (`seed-upgrade:timeline-steps`, met `campaign.js` à jour si besoin).
 
 ### 7.2 Maturité (bibliothèque `maturity.js`)
 

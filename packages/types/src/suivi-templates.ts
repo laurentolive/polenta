@@ -401,6 +401,7 @@ const CAMPAIGN_TIMELINE_PARAMS: TemplateParamDef[] = [
     name: 'step', label: L('Pas', 'Step'), kind: 'enum',
     values: [{ value: '1', label: L('Jour', 'Day') }, { value: '7', label: L('Semaine', 'Week') }],
   },
+  { name: 'withStep', label: L('Étape d\'avancement (préparation du test avant exécution)', 'Progress step (test preparation before execution)'), kind: 'boolean' },
   CAMPAIGN_AT_DISPLAY,
   { name: 'periodAtDisplay', label: L('Période choisie à l\'affichage', 'Period chosen when displayed'), kind: 'boolean' },
 ]
@@ -415,6 +416,8 @@ function generateCampaignTimeline(raw: Record<string, unknown>): string {
   delete p.step
   const campaignAtDisplay = takeFlag(p, 'campaignAtDisplay')
   const periodAtDisplay = takeFlag(p, 'periodAtDisplay')
+  // GH112 — étapes d'avancement (préparation du test d'après son historique, puis résultats).
+  const withStep = takeFlag(p, 'withStep')
   return `${header('Modèle', 'campaign-timeline', 1)}
 // Nécessite la bibliothèque projet (dashboards/lib/campaign.js).
 import { campaignsTimeline } from 'lib/campaign.js'
@@ -429,7 +432,7 @@ ${periodAtDisplay ? `  // Période choisie à l'affichage ; borne absente → cr
   const from = (period && period.from) || undefined
   const to = (period && period.to) || undefined
 ` : ''}  // Pas d'_ids sur chaque point (série longue) : ils sont calculés au clic (polenta.drill).
-  return campaignsTimeline(data, { polenta, campaignIds, step: ${step}${periodAtDisplay ? ', from, to' : ''} })
+  return campaignsTimeline(data, { polenta, campaignIds, step: ${step}${periodAtDisplay ? ', from, to' : ''}${withStep ? ', withStep: true' : ''} })
 }
 `
 }
@@ -752,22 +755,35 @@ const STACKED_AREA_PARAMS: TemplateParamDef[] = [
   { name: 'series', label: L('Série (couches)', 'Series (layers)'), kind: 'column', required: true },
   { name: 'value', label: L('Valeur', 'Value'), kind: 'column', required: true },
   { name: 'entryColors', label: L('Couleurs des statuts d\'exécution', 'Execution status colours'), kind: 'boolean' },
+  { name: 'seriesOrder', label: L('Ordre des séries (colonne numérique)', 'Series order (numeric column)'), kind: 'column', dependsOn: 'series' },
+  { name: 'seriesColor', label: L('Couleur des séries (colonne)', 'Series colour (column)'), kind: 'column', dependsOn: 'series' },
 ]
 
 function generateStackedArea(raw: Record<string, unknown>): WidgetCode {
   const p = pick(raw, STACKED_AREA_PARAMS)
+  const bySeries = p.seriesOrder
+    ? 'Number(a[P.seriesOrder]) - Number(b[P.seriesOrder]) || compare(a[P.series], b[P.series])'
+    : 'compare(a[P.series], b[P.series])'
   const body = `  // Lignes déjà agrégées par le script (une par date × série) : ordre des séries seulement.
   // Les _ids éventuels sont conservés ; sinon l'application relance le script au clic (polenta.drill).
-  return rows.slice().sort((a, b) => (a[P.x] < b[P.x] ? -1 : a[P.x] > b[P.x] ? 1 : compare(a[P.series], b[P.series])))`
+  return rows.slice().sort((a, b) => (a[P.x] < b[P.x] ? -1 : a[P.x] > b[P.x] ? 1 : ${bySeries}))`
   const x = { field: p.x, type: 'temporal', title: p.x }
   const y = { field: p.value, type: 'quantitative', stack: 'zero', title: p.value }
   // Légende : symboles opaques (la couche de clic, quasi transparente, la partage).
-  const color = { ...colorEncoding(p.series as string, p.series as string, !!p.entryColors), legend: { symbolOpacity: 1 } }
+  const color: Record<string, unknown> = { ...colorEncoding(p.series as string, p.series as string, !!p.entryColors), legend: { symbolOpacity: 1 } }
+  // GH112 — ordre des couches (empilement des deux couches, légende) par colonne, comme « Barres ».
+  if (p.seriesOrder) color.sort = { field: p.seriesOrder, op: 'min' }
+  const order = p.seriesOrder ? { order: { field: p.seriesOrder, type: 'quantitative' } } : {}
+  // Couleurs portées par les lignes : échelle construite par l'hôte (`usermeta.polenta.seriesColors`).
+  const usermeta = p.seriesColor
+    ? { usermeta: { polenta: { seriesColors: { field: p.series, color: p.seriesColor, ...(p.seriesOrder ? { order: p.seriesOrder } : {}) } } } }
+    : {}
   return {
     transform: transformCode('stacked-area', p, body),
     spec: stableJson({
       data: DATA,
-      encoding: { x, y, color },
+      ...usermeta,
+      encoding: { x, y, color, ...order },
       layer: [
         { mark: { type: 'area', interpolate: 'monotone' } },
         // Une aire est une seule marque : une couche de barres quasi transparentes rend chaque point

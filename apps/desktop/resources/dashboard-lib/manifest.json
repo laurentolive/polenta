@@ -57,6 +57,14 @@
             "fr": "Version initiale.",
             "en": "Initial version."
           }
+        },
+        {
+          "version": 2,
+          "hash": "8307c7420e1682eb55266a3e050cae81012ca6cbfb58fb0014cef6a9c525a66e",
+          "summary": {
+            "fr": "Étapes d'avancement dans le temps : campaignsTimeline({ withStep }), stepColors (GH112)",
+            "en": "Progress steps over time: campaignsTimeline({ withStep }), stepColors (GH112)"
+          }
         }
       ]
     },

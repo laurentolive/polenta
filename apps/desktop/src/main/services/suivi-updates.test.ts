@@ -165,11 +165,14 @@ describe('GH74 — seed « Campagnes » (§8)', () => {
     const d = (await dashboards.get(repo, U, m.dashboardId!))!
     const byTitle = new Map(d.widgets.map((w) => [w.title, w]))
     expect(byTitle.get('Avancement par campagne')!.template).toMatchObject({ id: 'bar', params: { series: 'stepLabel', seriesOrder: 'stepRank' } })
-    expect(byTitle.get('Avancement dans le temps')!.template).toMatchObject({ id: 'stacked-area', params: { x: 'date', series: 'status', value: 'count' } })
+    expect(byTitle.get('Avancement dans le temps')!.template).toMatchObject({
+      id: 'stacked-area', params: { x: 'date', series: 'stepLabel', seriesOrder: 'stepRank', seriesColor: 'stepColor', value: 'count' },
+    })
     const progress = (await queries.findOne(repo, U, m.queries!.progress!))!
     expect(progress.script).toContain("import { entryStep, stepContext, stepLabel, stepRank } from 'lib/campaign.js'")
     const timeline = (await queries.findOne(repo, U, m.queries!.timeline!))!
-    expect(timeline.template).toMatchObject({ id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'] } })
+    expect(timeline.template).toMatchObject({ id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], withStep: true } })
+    expect(timeline.script).toContain('withStep: true')
   })
 
   it('S2 — seed existant sans le widget : proposé dans le bandeau, ajouté sur Appliquer', async () => {
@@ -199,5 +202,49 @@ describe('GH74 — seed « Campagnes » (§8)', () => {
   it('S3 — dashboard « Campagnes » supprimé : rien n\'est proposé', async () => {
     const { updates } = setup('main', { state: 'done', dashboardId: 'local-404', queries: {} })
     expect((await updates.list(repo, U)).updates.filter((u) => u.kind !== 'library')).toEqual([])
+  })
+})
+
+describe('GH112 — « Avancement dans le temps » des seeds existants : étapes d\'avancement', () => {
+  const OLD_QUERY = { id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], step: '1', campaignAtDisplay: true } }
+  const OLD_WIDGET = { id: 'stacked-area', params: { x: 'date', series: 'status', value: 'count', entryColors: true } }
+  const ID = 'seed-upgrade:timeline-steps'
+  /** Propositions hors `time.js` (nouveau fichier livré, sans rapport). */
+  const listed = async (updates: SuiviUpdatesService) => (await updates.list(repo, U)).updates.filter((u) => u.id !== 'library:dashboards/lib/time.js')
+
+  /** Seed « Campagnes » d'avant GH112 : requête et widget « Avancement dans le temps » aux statuts bruts. */
+  async function oldSeed(widget: { id: string; params: Record<string, unknown> } = OLD_WIDGET) {
+    const before = setup()
+    const q = await before.queries.create(repo, U, { title: 'Campagnes en cours — avancement dans le temps', scope: 'private', createdBy: U, template: OLD_QUERY })
+    const d = await before.dashboards.create(repo, U, { title: 'Campagnes', scope: 'private', createdBy: U })
+    await before.dashboards.addWidget(repo, U, d.id, { title: 'Avancement dans le temps', queryId: q.id, size: 'lg', template: widget })
+    return { q, d, ...setup('main', { state: 'done', dashboardId: d.id, queries: { timeline: q.id } }) }
+  }
+
+  it('U1 — proposé ; Appliquer : requête withStep, widget sur les étapes, campaign.js mis à jour', async () => {
+    write(repo, 'dashboards/lib/campaign.js', OLD)
+    const { q, d, updates, queries, dashboards } = await oldSeed()
+    const before = await listed(updates)
+    expect(before.map((u) => u.id)).toEqual(['library:dashboards/lib/campaign.js', ID])
+    expect(before[1]).toMatchObject({ kind: 'template', title: 'Campagnes — Avancement dans le temps', fromVersion: 1, toVersion: 2, shared: false })
+    await updates.apply(repo, U, [ID])
+    expect(read('dashboards/lib/campaign.js')).toBe(NEW)
+    expect((await queries.findOne(repo, U, q.id))!.template).toMatchObject({ id: 'campaign-timeline', params: { ...OLD_QUERY.params, withStep: true } })
+    expect((await dashboards.get(repo, U, d.id))!.widgets[0].template).toMatchObject({
+      id: 'stacked-area', params: { x: 'date', series: 'stepLabel', seriesOrder: 'stepRank', seriesColor: 'stepColor', value: 'count' },
+    })
+    expect(await listed(updates)).toEqual([])
+  })
+
+  it('U2 — widget modifié, ou campaign.js modifié par le projet : rien n\'est proposé', async () => {
+    write(repo, 'dashboards/lib/campaign.js', NEW)
+    const changed = await oldSeed({ ...OLD_WIDGET, params: { ...OLD_WIDGET.params, entryColors: false } })
+    expect(await listed(changed.updates)).toEqual([])
+
+    fs.rmSync(repo, { recursive: true, force: true })
+    fs.mkdirSync(repo)
+    write(repo, 'dashboards/lib/campaign.js', NEW + '// projet\n')
+    const custom = await oldSeed()
+    expect(await listed(custom.updates)).toEqual([])
   })
 })

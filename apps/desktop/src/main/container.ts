@@ -64,7 +64,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const watcher = new RepoWatcherService(reqIndex, testsIndex)
   const sync = new SyncService(auth)
   const polentaRepo = new PolentaRepoService()
-  const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
+  const workspaceTree = new WorkspaceTreeService(sync, polentaRepo, watcher)
   const workspace = new WorkspaceService(host, sync, workspaceTree, watcher)
   const schema = new SchemaService(auth, workspaceTree)
   // Live sync (T-schema-refresh follow-up) — an out-of-band change to schema.yaml (manual

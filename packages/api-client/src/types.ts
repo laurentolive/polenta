@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef,
+  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -405,6 +405,10 @@ export interface ApiClient {
     previewTypeRename(repoPath: string, workspaceDir: string, dto: TypeRenameDto): Promise<TypeRenamePlan>
     /** GH100 — après l'enregistrement du schéma : migre les objets du type et leurs références. */
     renameType(repoPath: string, workspaceDir: string, dto: TypeRenameDto): Promise<TypeRenameResult>
+    /** GH104 — aperçu sans écriture de la suppression en cascade d'un composant local ou d'un type. */
+    previewDelete(repoPath: string, workspaceDir: string, target: SchemaDeleteTarget): Promise<SchemaDeletePlan>
+    /** GH104 — supprime objets, liens, arbres et refs de liens, puis le nœud / type du schéma. */
+    delete(repoPath: string, workspaceDir: string, target: SchemaDeleteTarget): Promise<SchemaDeleteResult>
     /** Drops the main-process in-memory cache for `repoPath` so the next `get()` re-reads schema.yaml from disk. */
     invalidate(repoPath: string): Promise<void>
   }

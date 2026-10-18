@@ -44,8 +44,8 @@ Fixture : workspace à 2 repos.
   idem.
 - **D8** `NOT_FOUND` : type renommé entre l'aperçu et `delete` → `delete` lève, aucune écriture.
 - **D9** échec partiel : un fichier objet verrouillé / non supprimable (mock `git.deleteFile` qui
-  lève pour `A_REQ-0002`) → listé dans `failed`, les autres étapes faites, **schéma de `prod`
-  encore écrit en dernier** ; relancer `delete` termine la suppression (idempotent).
+  lève pour `A_REQ-0002`) → listé dans `failed`, les autres objets / liens supprimés, **schéma de
+  `prod` non modifié** (le composant reste visible) ; relancer `delete` termine la suppression.
 - **D10** pierres tombales (critère 8) : après D3, recréer un type de préfixe `A_REQ` puis une
   exigence → `A_REQ-0003`.
 

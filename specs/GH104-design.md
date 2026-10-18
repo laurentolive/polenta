@@ -108,7 +108,9 @@ GH100 : `resolveWorkspaceRepoPaths`).
 4. Arbres : `TreeService.deleteTypeTree(R, node, type)` (nouveau, à côté de `renameTypeTree`, même
    règle « au mieux, journalisé ») pour chaque ref de `S` ; pour un nœud supprimé, dossier
    `.polenta/trees/<nœud>/` retiré s'il est vide ensuite (`pruneEmptyDirs`).
-5. Schéma de `R` : `removeSystemNode` (nœud) ou retrait du type par nom, puis
+5. Si une étape 1–3 a échoué : **arrêt** (vérifié avant l'étape 4 : ni arbres ni schémas), liens des objets
+   restés conservés (le nœud / type reste visible, la suppression est relançable et ne reprend
+   que ce qui reste — cf. `GH104-sprint1.md`). Sinon, schéma de `R` : `removeSystemNode` (nœud) ou retrait du type par nom, puis
    `mapLinkRefs(…, r => S.has(r) ? null : r)` → `SchemaService.save` (validation, cache).
 6. Schémas des autres repos retenus en 7. : `mapLinkRefs` → `SchemaService.save`.
 7. Invalidation des index exigences / tests de chaque repo touché.

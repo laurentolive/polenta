@@ -58,21 +58,21 @@ export interface SchemaStatus {
   label?: string
   color?: string
   isApproval?: boolean
-  isTerminal?: boolean       // masque l'objet des listes par dÃ©faut (ex: obsolete)
+  isTerminal?: boolean       // masque l'objet des listes par défaut (ex: obsolete)
 }
 
-// CatÃ©gorie technique d'un type d'objet.
-// DÃ©termine les champs systÃ¨me implicites, le comportement sidebar et le workflow :
-//   requirement â€” id, title, status (from statuses[]), fields{}
-//   test        â€” id, title, status (from statuses[]), steps[], fields{}
-//   campaign    â€” id, title, status fixe (planned/in_progress/completed/abandoned),
-//                 testCaseIds[], runs[] â€” le champ statuses[] est ignorÃ© pour cette catÃ©gorie
+// Catégorie technique d'un type d'objet.
+// Détermine les champs système implicites, le comportement sidebar et le workflow :
+//   requirement — id, title, status (from statuses[]), fields{}
+//   test        — id, title, status (from statuses[]), steps[], fields{}
+//   campaign    — id, title, status fixe (planned/in_progress/completed/abandoned),
+//                 testCaseIds[], runs[] — le champ statuses[] est ignoré pour cette catégorie
 export type ObjectCategory = 'requirement' | 'test' | 'campaign'
 
-// DÃ©finition d'un type d'objet dans un composant.
-// Chaque dÃ©finition est indÃ©pendante mÃªme si crÃ©Ã©e depuis le mÃªme template.
-// fields[] = champs additionnels configurables (au-dessus des champs systÃ¨me implicites).
-// Contrainte : prefix doit Ãªtre unique sur l'ensemble du projet (tous composants confondus).
+// Définition d'un type d'objet dans un composant.
+// Chaque définition est indépendante même si créée depuis le même template.
+// fields[] = champs additionnels configurables (au-dessus des champs système implicites).
+// Contrainte : prefix doit être unique sur l'ensemble du projet (tous composants confondus).
 export interface ObjectTypeDefinition {
   name: string
   label?: string
@@ -145,12 +145,14 @@ export interface ImplementsDeclaration {
   roles: string[]
 }
 
-// Type de lien sÃ©mantique entre objets (requirements, tests, campagnes).
-// Tout lien entre objets passe par ce mÃ©canisme â€” il n'existe pas de systÃ¨me parallÃ¨le.
-// sourceRefs / targetRefs : tableau de rÃ©fÃ©rences, chaque Ã©lÃ©ment est :
-//   - une catÃ©gorie       : "requirement" | "test" | "campaign" â†’ tout objet de cette catÃ©gorie
-//   - une ref spÃ©cifique  : "componentName::objectName"         â†’ type prÃ©cis dans un composant
-// Absent ou tableau vide = non contraint.
+// Type de lien sémantique entre objets (requirements, tests, campagnes).
+// Tout lien entre objets passe par ce mécanisme — il n'existe pas de système parallèle.
+// sourceRefs / targetRefs : tableau de références, chaque élément est :
+//   - une catégorie       : "requirement" | "test" | "campaign" → tout objet de cette catégorie
+//   - une ref spécifique  : "componentName::objectName"         → type précis dans un composant
+// Tableau vide = type de lien invalide, n'accepte rien (cas d'un type cible supprimé, GH104) :
+// masqué des éditeurs (`isLinkTypeValid`, qui exige aussi les deux listes) et refusé par la
+// validation du main (serveur MCP), pour qui une liste absente reste non contrainte.
 export interface LinkTypeDefinition {
   name: string
   labelSourceToTarget: string
@@ -200,7 +202,7 @@ export interface ProjectSchema {
   preferences?: ProjectPreferences
 }
 
-// â”€â”€ Tree data model â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Tree data model ───────────────────────────────────────────────────────────
 
 // A node in the element tree (either a folder or an item).
 // Items reference an object (requirement, test, etc.) by its ID.
@@ -243,4 +245,30 @@ export interface TypeRenamePlan {
   /** Repos dont des refs `<nœud>::<type>` de `linkTypes` changent. */
   linkTypeRepos: string[]
   errors: Array<{ code: 'ID_COLLISION' | 'REPO_MISSING'; detail: string }>
+}
+
+/** GH104 — suppression en cascade d'un composant local (et de son sous-arbre) ou d'un type. */
+export type SchemaDeleteTarget =
+  | { kind: 'node'; nodeName: string }
+  | { kind: 'type'; nodeName: string; typeName: string }
+
+export interface SchemaDeletePlan {
+  /** Nœuds supprimés (le nœud cible et ses descendants) ; vide pour un type. */
+  nodes: string[]
+  /** Refs `<nœud>::<type>` supprimées. */
+  types: string[]
+  /** IDs des objets supprimés (dans le repo du schéma), par catégorie. */
+  objects: { requirement: string[]; test: string[]; campaign: string[] }
+  /** Liens supprimés, par repo du workspace (repos sans lien touché absents). */
+  links: Array<{ repoPath: string; count: number }>
+  /** Types de lien dont des refs sont retirées ; `emptied` : `sourceRefs` ou `targetRefs` devient vide. */
+  linkTypes: Array<{ repoPath: string; name: string; emptied: boolean }>
+  errors: Array<{ code: 'NOT_FOUND' | 'READONLY' | 'REPO_MISSING'; detail: string }>
+}
+
+export interface SchemaDeleteResult {
+  deleted: string[]
+  links: number
+  /** `id` : ID d'objet, ou `<repo>:<chemin>` pour un autre fichier. */
+  failed: Array<{ id: string; error: string }>
 }

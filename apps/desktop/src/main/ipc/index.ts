@@ -46,6 +46,7 @@ import type { RevalidationService } from '../services/revalidation.service'
 import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } from '../services/history.service'
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
+import type { SchemaDeleteService } from '../services/schema-delete.service'
 import type { ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
@@ -120,6 +121,7 @@ export interface Container {
   history: HistoryService
   fieldRename: FieldRenameService
   typeRename: TypeRenameService
+  schemaDelete: SchemaDeleteService
   historyBackfill: HistoryBackfillService
   appSettings: AppSettingsService
   exportTemplateLibrary: ExportTemplateLibrary
@@ -140,6 +142,15 @@ function checkTypeRename(channel: string, dto: unknown): import('@polenta/types'
     throw new Error(`${channel} — dto must be { nodeName, category, oldName, newName, oldPrefix, newPrefix }`)
   }
   return d as unknown as import('@polenta/types').TypeRenameDto
+}
+
+function checkDeleteTarget(channel: string, target: unknown): import('@polenta/types').SchemaDeleteTarget {
+  const t = target as Record<string, unknown> | null
+  const nonEmpty = (k: string) => typeof t?.[k] === 'string' && (t[k] as string).length > 0
+  if (!t || !nonEmpty('nodeName') || !(t.kind === 'node' || (t.kind === 'type' && nonEmpty('typeName')))) {
+    throw new Error(`${channel} — target must be { kind: 'node', nodeName } or { kind: 'type', nodeName, typeName }`)
+  }
+  return t as unknown as import('@polenta/types').SchemaDeleteTarget
 }
 
 function checkValueRenames(channel: string, objectTypeRef: unknown, renames: unknown): [string, ValueRename[]] {
@@ -166,7 +177,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
-  'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:move-element',
+  'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
   'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
@@ -505,6 +516,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.typeRename.plan(repoPath, workspaceDir || undefined, checkTypeRename('schema:preview-type-rename', dto)))
   r.handle('schema:rename-type', (_e, repoPath: string, workspaceDir: string | undefined, dto: unknown) =>
     c.typeRename.rename(repoPath, workspaceDir || undefined, checkTypeRename('schema:rename-type', dto)))
+  // GH104 — suppression en cascade d'un composant local ou d'un type : aperçu, puis exécution.
+  r.handle('schema:preview-delete', (_e, repoPath: string, workspaceDir: string | undefined, target: unknown) =>
+    c.schemaDelete.plan(repoPath, workspaceDir || undefined, checkDeleteTarget('schema:preview-delete', target)))
+  r.handle('schema:delete', (_e, repoPath: string, workspaceDir: string | undefined, target: unknown) =>
+    c.schemaDelete.delete(repoPath, workspaceDir || undefined, checkDeleteTarget('schema:delete', target)))
   // Drops the in-memory cache entry so the next `schema:get` re-reads schema.yaml from disk —
   // needed because SchemaService.get() otherwise serves the cached copy forever within a
   // session, even after an out-of-band edit to the file (manual edit, git checkout/pull…).

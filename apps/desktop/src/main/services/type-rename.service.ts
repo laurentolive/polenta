@@ -1,11 +1,12 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import { emptyFieldRenameResult, flattenSystemNodes } from '@polenta/types'
-import type { ProjectSchema, TypeRenameDto, TypeRenamePlan, TypeRenameResult } from '@polenta/types'
+import { emptyFieldRenameResult } from '@polenta/types'
+import type { TypeRenameDto, TypeRenamePlan, TypeRenameResult } from '@polenta/types'
 import type { CampaignsService } from './campaigns.service'
 import { TOMBSTONES_DIR } from './id-counter.util'
 import type { RequirementsService } from './requirements.service'
 import type { SchemaService } from './schema.service'
+import { declaresRef, dedupeRepos, mapLinkRefs, objectIdsOfType, pathExists as exists } from './schema-refs.util'
 import type { TestsService } from './tests.service'
 import type { TreeService } from './tree.service'
 import { idRenamer, isBinary, listDataFiles, pruneEmptyDirs, renamePath } from './type-rename.util'
@@ -109,7 +110,7 @@ export class TypeRenameService {
       for (const repo of plan.linkTypeRepos) {
         await step(async () => {
           const schema = await this.schema.get(repo)
-          await this.schema.save(repo, retargetLinkRefs(schema, oldRef, newRef))
+          await this.schema.save(repo, mapLinkRefs(schema, r => (r === oldRef ? newRef : r)))
         })
       }
       this.invalidate(repos)
@@ -118,7 +119,7 @@ export class TypeRenameService {
   }
 
   private async compute(repoPath: string, workspaceDir: string | undefined, dto: TypeRenameDto): Promise<Computed> {
-    const repos = sameRepoDeduped(repoPath, await this.resolveRepos(repoPath, workspaceDir))
+    const repos = dedupeRepos(repoPath, await this.resolveRepos(repoPath, workspaceDir))
     const oldRef = `${dto.nodeName}::${dto.oldName}`
     const newRef = `${dto.nodeName}::${dto.newName}`
     const plan: TypeRenamePlan = { objects: [], retargeted: 0, files: [], linkTypeRepos: [], errors: [] }
@@ -129,7 +130,7 @@ export class TypeRenameService {
     }
     if (plan.errors.length > 0) return { plan, repos, oldRef, newRef, writes }
 
-    const ids = await this.objectIds(repoPath, dto.category, oldRef)
+    const ids = await objectIdsOfType({ requirements: this.requirements, tests: this.tests, campaigns: this.campaigns }, repoPath, dto.category, oldRef)
     if (oldRef !== newRef) plan.retargeted = ids.length
 
     // Préfixe : campagnes exclues (`CAMP-NNNN` quel que soit le type, campaigns.service.ts).
@@ -168,7 +169,7 @@ export class TypeRenameService {
     if (oldRef !== newRef) {
       const schemas = await Promise.all(repos.map(async repo => ({ repo, schema: await this.schema.get(repo).catch(() => null) })))
       // La ref appartient à un autre repo s'il déclare lui aussi `<nœud>::<ancien nom>`.
-      const declaredElsewhere = schemas.some(({ repo, schema }) => repo !== repoPath && schema && declares(schema, oldRef))
+      const declaredElsewhere = schemas.some(({ repo, schema }) => repo !== repoPath && schema && declaresRef(schema, oldRef))
       for (const { repo, schema } of schemas) {
         if (!schema || (declaredElsewhere && repo !== repoPath)) continue
         if ((schema.linkTypes ?? []).some(l => [...(l.sourceRefs ?? []), ...(l.targetRefs ?? [])].includes(oldRef))) {
@@ -177,12 +178,6 @@ export class TypeRenameService {
       }
     }
     return { plan, repos, oldRef, newRef, writes }
-  }
-
-  private async objectIds(repoPath: string, category: TypeRenameDto['category'], ref: string): Promise<string[]> {
-    if (category === 'requirement') return (await this.requirements.findAll(repoPath, { type: ref })).map(o => o.id)
-    if (category === 'test') return (await this.tests.findAll(repoPath)).filter(o => o.objectTypeRef === ref).map(o => o.id)
-    return (await this.campaigns.list(repoPath)).filter(o => o.objectTypeRef === ref).map(o => o.id)
   }
 
   private invalidate(repos: string[]): void {
@@ -195,45 +190,4 @@ function objectFileId(w: { repoPath: string; path: string }, repoPath: string): 
   if (w.repoPath !== repoPath) return null
   const m = /^(?:requirements|tests)\/([^/]+)\.yaml$/.exec(w.path)
   return m ? m[1] : null
-}
-
-function declares(schema: ProjectSchema, ref: string): boolean {
-  const [node, type] = ref.split('::')
-  return flattenSystemNodes(schema.nodes ?? []).some(({ node: n }) => n.name === node && (n.objectTypes ?? []).some(t => t.name === type))
-}
-
-function retargetLinkRefs(schema: ProjectSchema, oldRef: string, newRef: string): ProjectSchema {
-  const map = (refs?: string[]) => refs?.map(r => (r === oldRef ? newRef : r))
-  return {
-    ...schema,
-    linkTypes: (schema.linkTypes ?? []).map(l => ({
-      ...l,
-      ...(l.sourceRefs && { sourceRefs: map(l.sourceRefs) }),
-      ...(l.targetRefs && { targetRefs: map(l.targetRefs) }),
-    })),
-  }
-}
-
-/**
- * Repos sans doublon : le chemin reçu du renderer et celui du cache du workspace (normalisé,
- * `tree-cache.util.ts`) peuvent différer par la casse ou les séparateurs — le même repo serait
- * réécrit deux fois. `repoPath` (repo du type) garde sa forme : c'est elle que comparent les étapes.
- */
-function sameRepoDeduped(repoPath: string, repos: string[]): string[] {
-  const key = (p: string) => {
-    const abs = path.resolve(p)
-    return process.platform === 'win32' ? abs.toLowerCase() : abs
-  }
-  const seen = new Set<string>([key(repoPath)])
-  const out = [repoPath]
-  for (const repo of repos) {
-    if (seen.has(key(repo))) continue
-    seen.add(key(repo))
-    out.push(repo)
-  }
-  return out
-}
-
-async function exists(p: string): Promise<boolean> {
-  return fsP.access(p).then(() => true, () => false)
 }

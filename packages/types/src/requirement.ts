@@ -33,6 +33,39 @@ export interface ObjectLink {
   createdBy: string
 }
 
+// GH105 — liens inter-repos : agrégation sur les repos du workspace (repo racine + composants).
+
+/** Exigence ou test d'un repo du workspace, candidat ou pair d'un lien. */
+export interface WorkspaceObject {
+  id: string
+  title: string
+  status: string
+  objectTypeRef: string
+  category: 'requirement' | 'test'
+  /** Repo qui stocke l'objet. */
+  repoPath: string
+  /** Libellé du repo (label du nœud workspace, sinon nom de montage). */
+  repoLabel: string
+}
+
+/** Lien lu dans le `links.yaml` d'un repo du workspace. */
+export interface WorkspaceLink extends ObjectLink {
+  /** Repo dont `links/links.yaml` contient le lien (repo de l'objet source). */
+  storedIn: string
+  /** Vrai si `storedIn` est en lecture seule (repo épinglé, nœud `readonly`) : pas de suppression. */
+  readonly: boolean
+}
+
+/** Codes d'erreur des écritures de liens (création / suppression), préfixe du message d'erreur. */
+export type LinkWriteErrorCode =
+  | 'LINK_TYPE_NOT_FOUND'
+  | 'SELF_LINK'
+  | 'OBJECT_NOT_FOUND'
+  | 'LINK_TYPE_INCOMPATIBLE'
+  | 'DUPLICATE_LINK'
+  | 'LINK_NOT_FOUND'
+  | 'READONLY_REPO'
+
 // objectTypeRef format : "componentName::objectTypeName"
 export interface Requirement {
   id: string

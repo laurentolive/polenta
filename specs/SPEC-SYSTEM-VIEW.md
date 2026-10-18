@@ -243,7 +243,7 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 | Élément | Rôle |
 |---------|------|
 | **Composant X / Élément Y** | Titre contextuel — nom du composant sélectionné et nom du type d'élément sélectionné |
-| **← Retour** | Visible uniquement si une navigation par lien interne a eu lieu (pile `backHistory`). Revient à l'élément précédent. Masqué en vue Édition. |
+| **← Retour** | Visible uniquement si une navigation par lien interne a eu lieu (pile `backHistory`). Revient à l'élément précédent. Masqué en vue Édition. GH105 : un lien vers un objet d'un autre repo du workspace bascule la sélection sur ce repo (`navigateToRepo`) ; chaque entrée de la pile mémorise son repo, « ← Retour » y revient. L'historique n'est vidé par une navigation manuelle qu'une fois la destination d'un lien atteinte (un changement de repo peut résoudre nœud et type en plusieurs rendus). |
 | **↩ ↪** | Undo / Redo |
 | **🔍** | Activer / désactiver le filtre dans le panel gauche |
 | **⚙️** | Configuration des champs visibles |

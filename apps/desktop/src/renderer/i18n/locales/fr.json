@@ -795,7 +795,20 @@
       "userPlaceholder": "Utilisateur…"
     },
     "linkCombobox": {
-      "searchPlaceholder": "Rechercher un élément…"
+      "searchPlaceholder": "Rechercher un élément…",
+      "notFound": "introuvable",
+      "notFoundHint": "Élément introuvable dans le workspace (composant retiré ou élément supprimé)",
+      "readonlyStorage": "Lien stocké dans {{repo}} (lecture seule) : suppression impossible",
+      "notReady": "Projet en cours de chargement, réessayez dans un instant.",
+      "errors": {
+        "READONLY_REPO": "Lecture seule : {{reason}}",
+        "DUPLICATE_LINK": "Ce lien existe déjà.",
+        "LINK_TYPE_INCOMPATIBLE": "Ce type de lien n'accepte pas ces éléments.",
+        "LINK_TYPE_NOT_FOUND": "Type de lien inconnu.",
+        "OBJECT_NOT_FOUND": "Élément introuvable dans le workspace.",
+        "LINK_NOT_FOUND": "Lien introuvable (supprimé entre-temps ?).",
+        "SELF_LINK": "Un élément ne peut pas être lié à lui-même."
+      }
     },
     "campaignListView": {
       "noTest": "Aucun test"

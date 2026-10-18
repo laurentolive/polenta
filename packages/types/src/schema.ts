@@ -159,6 +159,21 @@ export interface LinkTypeDefinition {
   targetRefs?: string[]
 }
 
+/** GH105 — type de lien de l'union du workspace (par nom, repo racine d'abord). */
+export interface WorkspaceLinkType extends LinkTypeDefinition {
+  /** Repo dont le schéma définit le type. */
+  definingRepo: string
+}
+
+/**
+ * GH105 — contexte de résolution d'une ref `<nœud>::<type>` sur le workspace (chaque repo a un
+ * nœud `root`). `declaredBy` : ref → repos dont le schéma déclare ce type.
+ */
+export interface LinkRefScope {
+  definingRepo: string
+  declaredBy: Record<string, string[]>
+}
+
 // Project-level tool preferences — independent of the data model (nodes/objectTypes/linkTypes).
 // Declared in schema.yaml under `preferences:`.
 export interface ProjectPreferences {

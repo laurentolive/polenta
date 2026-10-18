@@ -207,8 +207,13 @@ export function createIpcClient(
       // TODO: remove versioning API
       links: (p, id) => invoke('requirements:links', p, id),
       linksAll: (p) => invoke('requirements:links-all', p),
-      linkCreate: (p, data) => invoke('requirements:link-create', p, data),
-      linkDelete: (p, linkId) => invoke('requirements:link-delete', p, linkId),
+      linkCreate: (p, data, workspaceDir) => invoke('requirements:link-create', p, data, workspaceDir),
+      linkDelete: (p, linkId, workspaceDir) => invoke('requirements:link-delete', p, linkId, workspaceDir),
+    },
+    links: {
+      objects: (p, workspaceDir) => invoke('links:objects', p, workspaceDir),
+      list: (p, workspaceDir) => invoke('links:list', p, workspaceDir),
+      types: (p, workspaceDir) => invoke('links:types', p, workspaceDir),
     },
     tests: {
       list: (p) => invoke('tests:list', p),

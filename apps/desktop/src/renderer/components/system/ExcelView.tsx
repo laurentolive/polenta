@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, startTransition, memo, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
-import { api } from '../../api'
+import { LinkTypeEditor } from './LinkTypeEditor'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
 import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
@@ -10,7 +9,7 @@ import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { ParamRefText } from '../parameters/ParamRefText'
 import { treeFindNode, treeFindParentId, treeRemoveMany, treeInsert, treeInsertAtBeginning, treeDeepCopyWithNewIds } from '../../hooks/useTreeState'
-import { matchesRefs, filterCandidatesByRefs, getLinkTypeLabel, getPeerId, isLinkTypeValid } from './linkUtils'
+import { getLinkTypeLabel, isLinkTypeValid } from './linkUtils'
 import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { RenderGateProvider, useRenderWhenVisibleAtRest } from './useRenderWhenVisibleAtRest'
@@ -2579,15 +2578,6 @@ function ExcelViewInner({
         if (!lt || !isLinkTypeValid(lt)) return null
         const currentObjectTypeRef = (objectMap.get(objectId) as Record<string, string>)?.objectTypeRef ?? ''
         const currentCategory = typeDef?.category
-        const canBeSource = matchesRefs(currentObjectTypeRef, lt.sourceRefs, currentCategory)
-        const canBeTarget = matchesRefs(currentObjectTypeRef, lt.targetRefs, currentCategory)
-        const outgoingLinks = cellLinks.filter(l => l.sourceId === objectId)
-        const incomingLinks = cellLinks.filter(l => l.targetId === objectId)
-        // Toujours afficher les liens existants, même dans le sens non canonique pour le
-        // schéma actuel — sinon un lien créé avant un changement de sourceRefs/targetRefs
-        // devient invisible et impossible à délier. La création reste limitée au sens déclaré.
-        const showOutgoing = canBeSource || outgoingLinks.length > 0
-        const showIncoming = canBeTarget || incomingLinks.length > 0
         return (
           <div
             data-link-popover
@@ -2595,42 +2585,17 @@ function ExcelViewInner({
             style={{ top: activeLinkPopover.top, left: activeLinkPopover.left, width: activeLinkPopover.width }}
             onClick={e => e.stopPropagation()}
           >
-            {showOutgoing && (
-              <LinkCombobox
-                label={lt.labelSourceToTarget}
-                existingLinks={outgoingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={canBeSource ? filterCandidatesByRefs(candidateObjects, lt.targetRefs) : []}
-                onAdd={async peerId => {
-                  if (!repoPath) return
-                  await api.requirements.linkCreate(repoPath, { type: activeLinkPopover.typeName, sourceId: objectId, targetId: peerId })
-                  onLinkChange?.()
-                }}
-                onRemove={async linkId => {
-                  if (!repoPath) return
-                  await api.requirements.linkDelete(repoPath, linkId)
-                  onLinkChange?.()
-                }}
-                onNavigateToObject={onNavigateToObject ? (peerId, opts) => { setActiveLinkPopover(null); onNavigateToObject(peerId, opts) } : undefined}
-              />
-            )}
-            {showIncoming && (
-              <LinkCombobox
-                label={lt.labelTargetToSource}
-                existingLinks={incomingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={canBeTarget ? filterCandidatesByRefs(candidateObjects, lt.sourceRefs) : []}
-                onAdd={async peerId => {
-                  if (!repoPath) return
-                  await api.requirements.linkCreate(repoPath, { type: activeLinkPopover.typeName, sourceId: peerId, targetId: objectId })
-                  onLinkChange?.()
-                }}
-                onRemove={async linkId => {
-                  if (!repoPath) return
-                  await api.requirements.linkDelete(repoPath, linkId)
-                  onLinkChange?.()
-                }}
-                onNavigateToObject={onNavigateToObject ? (peerId, opts) => { setActiveLinkPopover(null); onNavigateToObject(peerId, opts) } : undefined}
-              />
-            )}
+            <LinkTypeEditor
+              lt={lt}
+              objectId={objectId}
+              objectTypeRef={currentObjectTypeRef}
+              category={currentCategory}
+              objectLinks={cellLinks}
+              repoPath={repoPath}
+              candidates={candidateObjects}
+              onLinkChange={onLinkChange}
+              onNavigateToObject={onNavigateToObject ? (peerId, opts) => { setActiveLinkPopover(null); onNavigateToObject(peerId, opts) } : undefined}
+            />
           </div>
         )
       })()}

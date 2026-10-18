@@ -24,6 +24,7 @@ import { RichTextToolbar } from '../system/RichTextToolbar'
 import { useVersioning } from '../../contexts/VersioningContext'
 import { useTabs } from '../../contexts/TabsContext'
 import { useProjectSchema, getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
+import { useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorkspaceLinks'
 import { flattenSystemNodes } from '@polenta/types'
 import type { ObjectLink, Requirement, TestCase, CoverageStatus, MatrixCell } from '@polenta/types'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
@@ -87,11 +88,8 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
   )
 
   // ── Liens / candidats / couverture ────────────────────────────────────────
-  const { data: allLinks = [] } = useQuery({
-    queryKey: ['links-all', repoPath],
-    queryFn: () => api.requirements.linksAll(repoPath),
-    enabled: !!repoPath,
-  })
+  // GH105 — liens et types de lien de tout le workspace (même contexte que la Vue Système).
+  const ws = useWorkspaceLinks(projectId)
   const { data: allRequirements = [] } = useQuery({
     queryKey: ['requirements-all', repoPath],
     queryFn: () => api.requirements.list(repoPath, {}),
@@ -116,21 +114,12 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
     ...(allTests as TestCase[]).map((tc) => ({ id: tc.id, title: tc.title, objectTypeRef: tc.objectTypeRef, category: refToCategory.get(tc.objectTypeRef) })),
   ], [allRequirements, allTests, refToCategory])
 
-  const linksByObjectId = useMemo((): Map<string, ObjectLink[]> => {
-    const map = new Map<string, ObjectLink[]>()
-    for (const link of allLinks) {
-      if (!map.has(link.sourceId)) map.set(link.sourceId, [])
-      map.get(link.sourceId)!.push(link)
-      if (!map.has(link.targetId)) map.set(link.targetId, [])
-      map.get(link.targetId)!.push(link)
-    }
-    return map
-  }, [allLinks])
+  const linksByObjectId: Map<string, ObjectLink[]> = ws.linksByObjectId
 
   const coverageNeeded = category === 'requirement'
   const { data: matrix } = useQuery({
-    queryKey: ['traceability-matrix', repoPath],
-    queryFn: () => api.traceability.matrix(repoPath),
+    queryKey: ['traceability-matrix', repoPath, ws.workspaceDir],
+    queryFn: () => api.traceability.matrix(repoPath, {}, ws.workspaceDir),
     enabled: !!repoPath && coverageNeeded,
   })
   const coverageByReqId = useMemo(() => {
@@ -140,10 +129,13 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
     }
     return map
   }, [matrix])
-  const testsById = useMemo(
-    () => new Map((allTests as TestCase[]).map((tc) => [tc.id, tc])),
-    [allTests],
-  )
+  const testsById = useMemo(() => {
+    const map = new Map<string, TestCase>()
+    // GH105 — tests des autres repos (couverture par des liens inter-repos) : titre seul.
+    for (const o of ws.objects) if (o.category === 'test') map.set(o.id, { id: o.id, title: o.title } as TestCase)
+    for (const tc of allTests as TestCase[]) map.set(tc.id, tc)
+    return map
+  }, [allTests, ws.objects])
 
   // ── Étapes (test) ─────────────────────────────────────────────────────────
   const [testSteps, setTestSteps] = useState<StepDraft[]>([])
@@ -273,20 +265,20 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
     return true
   }, [category, repoPath, editing.id, objectData, invalidateAfterSave])
 
-  const handleLinkChange = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['links-all', repoPath] })
-    qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
-  }, [qc, repoPath])
+  const handleLinkChange = ws.invalidate
 
+  // GH105 — l'objet lié peut vivre dans un autre repo du workspace : ouvert dans son repo.
   const handleNavigateToObject = useCallback((peerId: string) => {
-    const target = candidateObjects.find((c) => c.id === peerId)
+    const wsTarget = ws.objectsById.get(peerId)
+    const target = wsTarget ?? candidateObjects.find((c) => c.id === peerId)
     const path = target?.category === 'test' ? `/test/${peerId}` : `/req/${peerId}`
-    openTab(path, { repoPath, projectId })
-  }, [candidateObjects, openTab, repoPath, projectId])
+    openTab(path, { repoPath: wsTarget?.repoPath ?? repoPath, projectId })
+  }, [ws.objectsById, candidateObjects, openTab, repoPath, projectId])
 
   const typeLabel = typeDef?.label ?? t('sidebar.search.title')
 
   return (
+    <WorkspaceLinksProvider value={ws}>
     <RichTextProvider>
       <div className="flex flex-col h-full overflow-hidden">
         <ViewHeader
@@ -310,7 +302,7 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
             typeDef={typeDef}
             visibleFields={visibleFields}
             readOnly={isReadonly}
-            linkTypes={schema?.linkTypes ?? []}
+            linkTypes={ws.typesLoaded ? ws.linkTypes : (schema?.linkTypes ?? [])}
             objectLinks={linksByObjectId.get(editing.id) ?? []}
             coverageByReqId={coverageByReqId}
             testsById={testsById}
@@ -337,5 +329,6 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
         </div>
       </div>
     </RichTextProvider>
+    </WorkspaceLinksProvider>
   )
 }

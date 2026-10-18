@@ -20,6 +20,7 @@ import { GraphService } from '../main/services/graph.service'
 import { DashboardLibraryService } from '../main/services/dashboard-library.service'
 import { ScriptEngineService } from '../main/services/script-engine.service'
 import { SuiviService } from '../main/services/suivi.service'
+import { WorkspaceLinksService } from '../main/services/workspace-links.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -50,6 +51,8 @@ export interface McpContainer {
   dashboards: DashboardsService
   /** GH77 — lecture effective de l'historique (tools de lecture). */
   history: HistoryService
+  /** GH105 — liens agrégés sur le workspace, écrits dans le repo de leur source. */
+  workspaceLinks: WorkspaceLinksService
 }
 
 /**
@@ -121,9 +124,10 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
   const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
+  const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns)
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
-    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi,
+    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks,
   }
 }

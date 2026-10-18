@@ -72,7 +72,7 @@ type \`richtext\` (contenu en Markdown).
 | Cas de test | \`tests/<ID>.yaml\` |
 | Campagne de test | \`campaigns/<ID>.yaml\` |
 | Exécution d'un test | \`test-runs/<ID du test>/<ID du run>.yaml\` |
-| Liens entre objets | \`links/links.yaml\` (un seul fichier pour tout le projet) |
+| Liens entre objets | \`links/links.yaml\` (un fichier par repo : le lien est stocké dans le repo de sa source) |
 
 Exemple d'exigence (\`requirements/SYS-0001.yaml\`) :
 
@@ -135,7 +135,9 @@ fields: {}
   (\`bulk_import_campaigns\`), pas à la main.
 - **Les liens entre objets** (dérivation, vérification…) ne sont pas dans le fichier de
   l'objet : ce sont des ObjectLinks gérés par ${name} séparément, dans
-  \`links/links.yaml\` (à créer/supprimer via les tools MCP \`create_links\`/\`delete_links\`).
+  \`links/links.yaml\` du repo de l'objet source (côté \`sourceRefs\` du type de lien), y compris
+  quand la cible est dans un repo composant ; jamais recopiés dans le repo de la cible (à
+  créer/supprimer via les tools MCP \`create_links\`/\`delete_links\`).
 
 ## Où trouver les règles propres à CE projet : \`.polenta/schema.yaml\`
 
@@ -176,7 +178,9 @@ Tools disponibles :
 - \`list_links\` / \`create_links\` / \`delete_links\` — liens entre objets (vérification,
   implémentation…). \`create_links\`/\`delete_links\` ont \`dryRun\` par défaut ; \`create_links\`
   vérifie le type (\`linkTypes\` de \`get_schema\`), l'existence des objets, la compatibilité
-  \`sourceRefs\`/\`targetRefs\` et l'absence de doublon.
+  \`sourceRefs\`/\`targetRefs\` et l'absence de doublon, sur tous les repos du workspace ; le lien
+  est écrit dans le repo de sa source (\`storedIn\`), refusé (\`READONLY_REPO\`) si ce repo est en
+  lecture seule (composant épinglé).
 - \`get_data_contract\` / \`list_templates\` / \`test_script\` — vue Suivi : une requête est un
   **script de données** JS (\`export default (data, polenta) => rows\`) sur le graphe du projet.
   \`get_data_contract\` donne les types du graphe et les conventions (\`_ids\`, agrégation en JS,

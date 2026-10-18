@@ -612,7 +612,9 @@
       "renameReportSkipped": "{{count}} objet(s) non migré(s) — une donnée existe déjà sous le nouveau nom : {{ids}}",
       "renameReportFailed": "{{count}} échec(s) de migration : {{ids}}",
       "renameReportError": "Le schéma est enregistré, mais la migration des objets a échoué : {{error}}",
-      "renameReportSnapshots": "{{count}} copie(s) de test de campagne migrée(s)."
+      "renameReportSnapshots": "{{count}} copie(s) de test de campagne migrée(s).",
+      "renameReportType": "Type renommé : {{count}} objet(s) migré(s).",
+      "renameReportFiles": "{{count}} fichier(s) de données réécrit(s) (liens, campagnes, exécutions, arbres…)."
     },
     "page": {
       "title": "Modèle de données",
@@ -645,6 +647,19 @@
       "unresolved": "non résolu",
       "noImplements": "Aucune implémentation d'interface déclarée.",
       "addImplements": "+ Déclarer une implémentation"
+    },
+    "typeRename": {
+      "title": "Renommer le type ?",
+      "name": "Nom",
+      "prefix": "Préfixe",
+      "objects": "{{count}} objet(s) renommé(s) :",
+      "more": "… et {{count}} autre(s)",
+      "retargeted": "{{count}} objet(s) rattaché(s) au nouveau nom du type",
+      "files": "{{count}} fichier(s) de données réécrit(s) dans le workspace :",
+      "linkTypes": "Types de lien mis à jour : {{repos}}",
+      "gitDate": "La date de création (git) des objets renommés sera celle de ce renommage.",
+      "suiviNote": "Les scripts, requêtes et dashboards du Suivi ne sont pas modifiés.",
+      "confirm": "Enregistrer et migrer"
     },
     "valueRename": {
       "title": "Renommer des valeurs ?",

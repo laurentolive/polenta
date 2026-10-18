@@ -64,6 +64,8 @@ export function createIpcClient(
       renameFields: (p, ref, renames) => invoke('schema:rename-fields', p, ref, renames),
       previewValueRenames: (p, ref, renames) => invoke('schema:preview-value-renames', p, ref, renames),
       renameValues: (p, ref, renames) => invoke('schema:rename-values', p, ref, renames),
+      previewTypeRename: (p, workspaceDir, dto) => invoke('schema:preview-type-rename', p, workspaceDir, dto),
+      renameType: (p, workspaceDir, dto) => invoke('schema:rename-type', p, workspaceDir, dto),
       invalidate: (p) => invoke('schema:invalidate', p),
     },
     tree: {

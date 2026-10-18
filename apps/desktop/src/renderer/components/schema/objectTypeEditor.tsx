@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, historyModeFor, renameValues } from '@polenta/types'
-import type { FieldRename, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition, ValueRename } from '@polenta/types'
+import type {
+  FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
+  TypeRenameDto, TypeRenamePlan, TypeRenameResult, ValueRename,
+} from '@polenta/types'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 
 // ── Editable state types ──────────────────────────────────────────────────────
@@ -78,6 +81,47 @@ export function fieldRenames(t: EditableObjectType): FieldRename[] {
   return t.fields
     .filter(f => f.originalName && f.name && f.originalName !== f.name)
     .map(f => ({ from: f.originalName!, to: f.name }))
+}
+
+/** GH100 — nom et/ou préfixe d'un type existant changés depuis son chargement ; `null` sinon. */
+export function typeRename(
+  updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined, nodeName: string,
+): TypeRenameDto | null {
+  if (!original || !updated.name) return null
+  const oldPrefix = original.prefix ?? ''
+  if (updated.name === original.name && updated.prefix === oldPrefix) return null
+  return {
+    nodeName, category: original.category,
+    oldName: original.name, newName: updated.name, oldPrefix, newPrefix: updated.prefix,
+  }
+}
+
+/** GH100 — suite à donner à l'aperçu : refus (rien enregistré), enregistrement direct ou confirmation. */
+export function typeRenameDecision(plan: TypeRenamePlan): 'error' | 'direct' | 'confirm' {
+  if (plan.errors.length > 0) return 'error'
+  return plan.objects.length === 0 && plan.retargeted === 0 && plan.files.length === 0 ? 'direct' : 'confirm'
+}
+
+/** Appels de migration après l'enregistrement du schéma (sous-ensemble de l'API renderer). */
+export interface MigrationApi {
+  renameFields(repoPath: string, objectTypeRef: string, renames: FieldRename[]): Promise<FieldRenameResult>
+  renameValues(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<FieldRenameResult>
+  renameType(repoPath: string, workspaceDir: string, dto: TypeRenameDto): Promise<TypeRenameResult>
+}
+
+/**
+ * Migrations dans l'ordre champs (GH77) → valeurs (GH82) → type (GH100) : les deux premières
+ * trouvent les objets sous l'**ancien** `objectTypeRef`, que le renommage de type change ensuite.
+ */
+export function migrationSteps(
+  api: MigrationApi, repoPath: string, workspaceDir: string, objectTypeRef: string,
+  renames: FieldRename[], chosen: ValueRename[], dto: TypeRenameDto | null,
+): Array<() => Promise<FieldRenameResult & { files?: number }>> {
+  return [
+    ...(renames.length > 0 ? [() => api.renameFields(repoPath, objectTypeRef, renames)] : []),
+    ...(chosen.length > 0 ? [() => api.renameValues(repoPath, objectTypeRef, chosen)] : []),
+    ...(dto ? [() => api.renameType(repoPath, workspaceDir, dto)] : []),
+  ]
 }
 
 const isEnum = (type: SchemaFieldType | undefined) => type === 'enum' || type === 'multi_enum'

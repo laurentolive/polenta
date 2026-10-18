@@ -33,15 +33,15 @@ async function openCampaignsDashboard() {
 const dialog = () => s.page.getByRole('dialog')
 const widget = (title: string) => s.page.getByTestId('widget-card').filter({ has: s.page.getByText(title, { exact: true }) })
 
-test('T1 — « Avancement dans le temps » : aire par statut, clic sur un point → entrées de ce jour et ce statut', async () => {
+test('T1 — « Avancement dans le temps » : aire par étape d\'avancement (GH112), clic sur un point → entrées de ce jour et cette étape', async () => {
   await openCampaignsDashboard()
   const timeline = widget('Avancement dans le temps')
   await timeline.scrollIntoViewIfNeeded()
   const legend = timeline.locator('[aria-roledescription="legend"]')
-  await expect(legend).toHaveAttribute('aria-label', /pending, INCOMPLETE, BLOCKED, FAIL, PASS/, { timeout: 15_000 })
+  await expect(legend).toHaveAttribute('aria-label', /Passé/, { timeout: 15_000 })
   await s.shot('gh74-t1-timeline')
-  // Dernier jour, statut PASS : au moins l'entrée exécutée par le test (relance du script, `_ids`).
-  const point = timeline.locator('[aria-roledescription="bar"][aria-label*="status: PASS"]').last()
+  // Dernier jour, étape « Passé » : au moins l'entrée exécutée par le test (relance du script, `_ids`).
+  const point = timeline.locator('[aria-roledescription="bar"][aria-label*="stepLabel: Passé"]').last()
   await point.click({ force: true })
   await expect(dialog()).toBeVisible()
   await expect(dialog().getByTestId('drilldown-objects').locator('tbody tr').filter({ hasText: `${campaign.id}/${campaign.runs[0].entryId}` })).toHaveCount(1)

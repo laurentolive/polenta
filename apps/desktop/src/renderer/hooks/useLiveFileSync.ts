@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { EVENTS_RECONNECTED } from '../lib/webEvents'
+import { WORKSPACE_LINK_QUERY_KEYS } from './useWorkspaceLinks'
 
 /**
  * Subscribes to `repo:file-changed`, pushed by the main process (RepoWatcherService, via
@@ -31,6 +32,16 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['impact-analysis:local'] })
         // T173 — éléments marqués du workspace (même périmètre).
         qc.invalidateQueries({ queryKey: ['revalidation:flagged'] })
+      }
+
+      // GH105 — objets, liens et types de lien agrégés sur le workspace (clés indexées sur le repo
+      // racine) : tout changement d'élément, de lien, de schéma ou de la liste des composants,
+      // dans n'importe quel repo, les rend périmés.
+      if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
+        || /^(requirements|tests|links)\//.test(relPath)) {
+        for (const key of WORKSPACE_LINK_QUERY_KEYS) qc.invalidateQueries({ queryKey: [key] })
+        // Couverture calculée sur tout le workspace (clé indexée sur le repo affiché).
+        qc.invalidateQueries({ queryKey: ['traceability-matrix'] })
       }
 
       // GH65 / GH74 — résultats des widgets de la vue Suivi : clé indexée sur le repo RACINE, mais le

@@ -489,6 +489,39 @@ références `{req.<champ>}` (T179, SPEC-TESTS §2.4a) : une instance de campagn
 | `createdAt` | datetime | Date de création |
 | `createdBy` | user | Auteur |
 
+### 5.2a Liens entre repos du workspace (GH105)
+
+Un lien peut relier deux objets de **repos différents** du workspace (repo racine et composants
+en repo séparé, `polenta-repo.yaml`) dès que le composant est ajouté, y compris pour des objets non
+commités.
+
+- **Stockage unique, côté source** : le lien est écrit dans `links/links.yaml` du repo de l'objet
+  côté `sourceRefs` de son type (si le sens fourni n'est accepté qu'à l'envers, il est conservé et
+  le lien reste stocké chez l'objet côté `sourceRefs`). Jamais recopié dans le repo de la cible.
+  Repo de stockage en lecture seule (composant épinglé sur un tag / SHA, monté sous un nœud
+  `readonly`) ou objet source dans un nœud `readonly` → refus `READONLY_REPO`.
+- **Affichage des deux côtés** : un objet affiche tous les liens dont il est la source ou la
+  cible, stockés dans n'importe quel repo du workspace (vues Édition, Excel, Word, volet de la
+  recherche, couverture). Suppression possible depuis les deux objets, écrite dans le repo qui
+  stocke le lien ; désactivée (infobulle) si ce repo est en lecture seule. Un composant ouvert
+  seul, sans le produit, ne voit pas les liens stockés dans le produit.
+- **Types de lien** : union par nom des `linkTypes` des schémas du workspace (repo racine
+  prioritaire) — un composant sans `linkTypes` affiche les liens d'un type défini par le produit.
+- **Résolution des refs** : chaque repo a un nœud `root` ; une ref `<nœud>::<type>` d'un type de
+  lien vise les objets du repo qui définit le type de lien s'il déclare lui-même ce type, sinon
+  ceux des repos qui le déclarent (`link-validation.util.ts::matchesRefs`, dupliquée dans
+  `linkUtils.ts::filterCandidatesByRefs`).
+- **Candidats** : exigences et tests de tous les repos, avec le libellé de leur repo ; les objets
+  d'un repo en lecture seule ne sont proposés qu'en cible. Pair introuvable dans le workspace :
+  pastille « introuvable ». Doublon (même type, même paire, quel que soit le sens) refusé sur tout
+  le workspace (`DUPLICATE_LINK`).
+- **Navigation** : clic sur un objet lié d'un autre repo → la Vue Système bascule sur son repo,
+  « ← Retour » revient au repo de départ (`SPEC-SYSTEM-VIEW.md`).
+
+Implémentation : `WorkspaceLinksService` (main), channels `links:objects` / `links:list` /
+`links:types`, `requirements:link-create` / `link-delete` avec `workspaceDir` ;
+`useWorkspaceLinks` + `LinkTypeEditor` (renderer).
+
 ### 5.3 Revalidation (T172)
 
 Le flag `needsRevalidation` est porté par les **éléments** (exigences, cas de test), pas par

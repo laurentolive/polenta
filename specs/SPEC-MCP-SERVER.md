@@ -318,9 +318,10 @@ STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN`.
 
 ### 4.4 Liens (`tools/links.tools.ts`, GH16)
 
-Liens (`ObjectLink`) toujours lus/écrits dans `links/links.yaml` du **repo ciblé**
-(`--repo`), jamais dans un composant. Chaque tool relit ce fichier depuis le disque
-(`RequirementsIndexService.reloadLinks`) : le process MCP n'a pas de `RepoWatcherService`,
+Liens (`ObjectLink`) lus dans les `links/links.yaml` de **tous les repos du workspace**
+(`--repo` + composants avec `--workspace`) et écrits dans le repo de leur **source** (GH105,
+`WorkspaceLinksService`, cf. `SPEC-REQ-requirements.md` §5.2a). Chaque tool relit ces fichiers
+depuis le disque (`RequirementsIndexService.reloadLinks`) : le process MCP n'a pas de `RepoWatcherService`,
 son cache peut ignorer un lien créé entre-temps par l'app, et une écriture basée dessus
 l'écraserait. `reloadLinks` lève si le fichier a un contenu dont `links` n'est pas un
 tableau (fichier absent ou vide → `[]`) ; un YAML invalide lève déjà dans `readYaml`.
@@ -330,8 +331,10 @@ changement sous `links/`).
 #### `list_links`
 
 ```ts
-{ objectId?: string; type?: string }   →   { links: ObjectLink[] }
+{ objectId?: string; type?: string }   →   { links: Array<ObjectLink & { storedIn: string; readonly: boolean }> }
 ```
+`storedIn` : repo dont le `links.yaml` contient le lien ; `readonly` : ce repo est en lecture seule
+(GH105).
 `objectId` : liens dont l'objet est source **ou** cible ; `type` : `linkTypes[].name`. Filtres
 cumulés (ET). Pas de `paginate`.
 
@@ -340,15 +343,16 @@ cumulés (ET). Pas de `paginate`.
 ```ts
 { entries: Array<{ type, sourceId, targetId }>; dryRun?: boolean }   // dryRun par défaut true
 → { dryRun, summary: { total, ok, failed },
-    wouldCreate: Array<{ index, type, sourceId, targetId }>,   // dryRun: true
-    created: Array<{ index, id }>,                              // dryRun: false
+    wouldCreate: Array<{ index, type, sourceId, targetId, storedIn }>,   // dryRun: true
+    created: Array<{ index, id, storedIn }>,                              // dryRun: false
     errors: Array<{ index, code, reason }> }
 ```
 
 Validation stricte (`main/services/link-validation.util.ts::validateLinkEntries`, pure),
 par entrée, première règle en échec retenue :
 
-1. `type` ∈ `schema.linkTypes` — sinon `LINK_TYPE_NOT_FOUND`.
+1. `type` ∈ union des `linkTypes` du workspace (GH105, repo racine prioritaire) — sinon
+   `LINK_TYPE_NOT_FOUND`.
 2. `sourceId !== targetId` — sinon `SELF_LINK`.
 3. Source et cible existent — sinon `OBJECT_NOT_FOUND` (raison : « source »/« cible » + ID).
    Recherche dans `resolveWorkspaceRepoPaths` (repo ciblé seul en mono-repo ; + repos
@@ -363,10 +367,14 @@ par entrée, première règle en échec retenue :
    Valide si l'un des deux sens est compatible ; le sens fourni est **conservé** (pas de
    normalisation). Sinon `LINK_TYPE_INCOMPATIBLE`.
 5. Pas de doublon (même `type`, même paire, quel que soit le sens) avec un lien existant
-   ou une entrée valide précédente du lot — sinon `DUPLICATE_LINK` (cite l'id existant).
+   **dans le workspace** ou une entrée valide précédente du lot — sinon `DUPLICATE_LINK` (cite
+   l'id existant).
+6. GH105 — repo de stockage (repo de l'objet côté `sourceRefs`) modifiable, et objet source hors
+   nœud `readonly` — sinon `READONLY_REPO`. En mode workspace, les refs `nœud::type` sont résolues
+   avec le repo de l'objet (`SPEC-REQ-requirements.md` §5.2a).
 
-`dryRun: false` : `RequirementsIndexService.createLinks(repoPath, dtos, 'mcp')` — sous
-verrou par repo (`withKeyLock`), relit le fichier, **refait le contrôle de doublon** contre
+`dryRun: false` : `RequirementsIndexService.createLinks(storedIn, dtos, 'mcp')`, un appel par
+repo de stockage — sous verrou par repo (`withKeyLock`), relit le fichier, **refait le contrôle de doublon** contre
 cet état (appel MCP concurrent, lien ajouté par l'app entre la validation et l'écriture :
 l'entrée est alors reportée `DUPLICATE_LINK`), puis **une seule** écriture pour le lot.
 Liens créés : `createdBy: 'mcp'`, `createdAt` ISO, id `lnk_<timestamp>_<aléa>` unique.
@@ -380,15 +388,17 @@ Ne pose pas `needsRevalidation`. Lot vide → aucune écriture.
     errors: Array<{ index, code: 'LINK_NOT_FOUND', reason }> }
 ```
 Id inexistant ou répété dans le lot → `LINK_NOT_FOUND` à son index, les autres sont
-traités. `dryRun: false` : `RequirementsIndexService.deleteLinks` (même verrou, relecture,
+traités. GH105 : chaque lien est supprimé dans le repo qui le stocke ; repo en lecture seule →
+`READONLY_REPO`. `dryRun: false` : `RequirementsIndexService.deleteLinks` (même verrou, relecture,
 une seule écriture) ; un lien disparu entre-temps est reporté `LINK_NOT_FOUND`.
 
 Toutes les erreurs par entrée sont dans `errors[]` (jamais `isError`, même si tout le lot
 échoue) ; une erreur inattendue (YAML corrompu) remonte en erreur de protocole, fichier
 non modifié.
 
-Le chemin IPC de l'UI (`requirements:link-create`/`link-delete`) reste **sans
-validation** (hors scope GH16).
+GH105 : le chemin IPC de l'UI (`requirements:link-create`/`link-delete` avec `workspaceDir`)
+applique la même validation et le même stockage (`WorkspaceLinksService`) ; sans `workspaceDir`
+(appels historiques), il reste sans validation, dans le repo donné.
 
 ### 4.5 Vue Suivi — scripts, requêtes et dashboards (GH18, réécrit par GH74)
 

@@ -99,6 +99,7 @@ export class WorkspaceLinksService {
       id: o.id, title: o.title, status: o.status, objectTypeRef: o.objectTypeRef ?? '',
       category: o.category as WorkspaceObject['category'],
       repoPath: o.repoPath, repoLabel: this.labelOf(ctx, o.repoPath),
+      readonly: ctx.readonlyRepos.has(repoKey(o.repoPath)),
     }))
   }
 

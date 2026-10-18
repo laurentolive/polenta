@@ -96,6 +96,12 @@ describe('GH105 — WorkspaceLinksService : lecture', () => {
     ])
   })
 
+  it('signale les objets des repos en lecture seule', async () => {
+    const { svc } = makeService()
+    const objs = await svc.listObjects(PROD, WS)
+    expect(objs.filter((o) => o.readonly).map((o) => o.id)).toEqual(['K_REQ-0001'])
+  })
+
   it('liste les liens de chaque repo avec leur repo de stockage et le statut lecture seule', async () => {
     const { svc } = makeService({ links: { [PIN]: [link('l-pin', 'feeds', 'K_REQ-0001', 'P_REQ-0001')] } })
     const [l] = await svc.listLinks(PROD, WS)

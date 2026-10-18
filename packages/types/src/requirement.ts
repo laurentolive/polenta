@@ -46,6 +46,9 @@ export interface WorkspaceObject {
   repoPath: string
   /** Libellé du repo (label du nœud workspace, sinon nom de montage). */
   repoLabel: string
+  /** Repo en lecture seule (épinglé, monté sous un nœud `readonly`) : l'objet ne peut pas être la
+   *  source d'un nouveau lien (le lien serait écrit dans ce repo). */
+  readonly: boolean
 }
 
 /** Lien lu dans le `links.yaml` d'un repo du workspace. */

@@ -752,7 +752,20 @@
       "userPlaceholder": "User…"
     },
     "linkCombobox": {
-      "searchPlaceholder": "Search for an element…"
+      "searchPlaceholder": "Search for an element…",
+      "notFound": "not found",
+      "notFoundHint": "Element not found in the workspace (component removed or element deleted)",
+      "readonlyStorage": "Link stored in {{repo}} (read-only): cannot be deleted",
+      "notReady": "Project still loading, try again in a moment.",
+      "errors": {
+        "READONLY_REPO": "Read-only: {{reason}}",
+        "DUPLICATE_LINK": "This link already exists.",
+        "LINK_TYPE_INCOMPATIBLE": "This link type does not accept these elements.",
+        "LINK_TYPE_NOT_FOUND": "Unknown link type.",
+        "OBJECT_NOT_FOUND": "Element not found in the workspace.",
+        "LINK_NOT_FOUND": "Link not found (deleted meanwhile?).",
+        "SELF_LINK": "An element cannot be linked to itself."
+      }
     },
     "campaignListView": {
       "noTest": "No test"

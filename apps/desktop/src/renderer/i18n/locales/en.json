@@ -659,6 +659,30 @@
       "suiviNote": "Tracking queries and dashboards are not changed.",
       "confirm": "Save and migrate",
       "objectsUnknown": "Number of affected objects unavailable"
+    },
+    "integrationMenu": {
+      "label": "Integration: <mono>{{branch}}</mono>",
+      "incoherentHint": "The current branch {{branch}} is not designated: the file says {{configured}}.",
+      "nonConventionHint": "Integration branch without the int- prefix: create an integration branch.",
+      "readonlyHint": "Read-only (commit or baseline checked out).",
+      "designateCurrent": "Designate {{branch}}",
+      "remote": "remote",
+      "none": "No int-* branch",
+      "newBranch": "New integration branch…",
+      "ariaLabel": "Integration branch of {{repo}}: {{branch}}"
+    },
+    "newIntegrationBranch": {
+      "title": "New integration branch",
+      "name": "Name",
+      "invalid": "Letters, digits, \"-\", \"_\" and \".\" only (no \"..\").",
+      "taken": "{{branch}} already exists (locally or on the server).",
+      "from": "Starting point",
+      "fromCurrent": "Current integration branch ({{branch}})",
+      "fromBaseline": "A baseline",
+      "pickBaseline": "Pick a baseline…",
+      "noBaseline": "No baseline",
+      "create": "Create and designate",
+      "creating": "Creating…"
     }
   },
   "system": {
@@ -1692,6 +1716,10 @@
       "pushFailed": "{{branch}} is designated locally, but the push failed: {{error}}",
       "defaultNotAdmin": "The server's default branch was not changed to {{branch}}: repository administrators only.",
       "defaultFailed": "The server's default branch could not be changed: {{error}}"
+    },
+    "guard": {
+      "designated": "{{branch}} is the integration branch of this repo: designate another one before deleting it.",
+      "lastIntegration": "{{branch}} is the last integration branch of this repo: a repo must never be left without an integration branch."
     }
   }
 }

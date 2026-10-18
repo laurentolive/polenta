@@ -5,6 +5,7 @@ import { useVersioning } from '../contexts/VersioningContext'
 import { propagatePinToDependents, type PinPropagationOutcome } from '../lib/workspaceActions'
 import { useTranslation } from 'react-i18next'
 import { designateNotices, invalidateIntegration } from './useDesignateIntegration'
+import { branchErrorText } from '../lib/branchErrors'
 import type { BranchInfo } from '@polenta/api-client'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
@@ -109,7 +110,7 @@ export function useBranchCheckout(
       const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, name)
       setPinWarning(outcome)
     },
-    onError: err => setBranchNotices([errorText(err)]),
+    onError: err => setBranchNotices([branchErrorText(err)]),
   })
 
   const deleteBranchMutation = useMutation({
@@ -119,7 +120,7 @@ export function useBranchCheckout(
     },
     onSuccess: invalidate,
     // GH106 — e.g. the integration-branch guard refusing the deletion: never silent.
-    onError: err => setBranchNotices([errorText(err)]),
+    onError: err => setBranchNotices([branchErrorText(err)]),
   })
 
   return {
@@ -144,8 +145,3 @@ export function useBranchCheckout(
   }
 }
 
-/** Message of a failed IPC call, without Electron's "Error invoking remote method '…': X: " prefix. */
-function errorText(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err)
-  return message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, '')
-}

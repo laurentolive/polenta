@@ -7,7 +7,7 @@ import { promisify } from 'util'
 import git from 'isomorphic-git'
 import * as yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { DefaultBranchOutcome } from '@polenta/types'
+import { parseIntegrationGuard, type DefaultBranchOutcome } from '@polenta/types'
 
 import type { AuthService } from './auth.service'
 import { GitService } from './git.service'
@@ -314,6 +314,10 @@ describe('assertDeletable', () => {
     const err = await service.assertDeletable(repo, 'int-x', 'local').catch(e => e)
     expect(err).toBeInstanceOf(IntegrationBranchGuardError)
     expect(err.code).toBe('lastIntegration')
+    // Le code survit au préfixe de l'IPC Electron : le renderer traduit le refus.
+    expect(parseIntegrationGuard(`Error invoking remote method 'sync:delete-branch': Error: ${err.message}`))
+      .toEqual({ code: 'lastIntegration', branch: 'int-x' })
+    expect(parseIntegrationGuard('autre erreur')).toBeNull()
   })
 
   it("autre int-* non désignée : autorisée (T-27) ; dev-* jamais concernée (T-29)", async () => {

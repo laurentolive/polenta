@@ -9,6 +9,7 @@ import { decodeProjectId } from '../lib/projectId'
 import { useSelectedRepo } from '../contexts/SelectedRepoContext'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { propagatePinToDependents, type PinPropagationOutcome } from '../lib/workspaceActions'
+import { branchErrorText } from '../lib/branchErrors'
 import { PinPropagationWarning } from '../components/sidebar/version/PinPropagationWarning'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useSetTabTitle } from '../contexts/TabsContext'
@@ -326,7 +327,8 @@ function GraphContextMenu({
   // ── mutations ───────────────────────────────────────────────────────────────
 
   function handleMutationError(err: unknown) {
-    setMutationError(err instanceof Error ? err.message : String(err))
+    // GH106 — refus de la garde de la branche d'intégration traduit (suppressions locale/distante).
+    setMutationError(branchErrorText(err))
   }
 
   const checkoutBranchMut = useMutation({

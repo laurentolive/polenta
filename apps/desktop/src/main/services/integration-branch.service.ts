@@ -3,6 +3,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
+import { encodeIntegrationGuard, isValidIntegrationSuffix } from '@polenta/types'
 import type { DesignateOutcome, IntegrationGuardCode, IntegrationState, IntegrationStatus } from '@polenta/types'
 
 import type { GitService } from './git.service'
@@ -11,15 +12,17 @@ import type { ForgeService } from './forge/forge.service'
 
 const PROJECT_FILE = 'config/project.yaml'
 const INT_PREFIX = 'int-'
-/** Suffixe d'une `int-*` : mêmes caractères que les slugs `dev-*`, sans `..` ni `.lock` final. */
-const SUFFIX_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
-/** Refus de suppression (spec GH103 §1.5). `message` est affiché tel quel par le renderer. */
+/**
+ * Refus de suppression (spec GH103 §1.5). Le code voyage dans `message` (marqueur
+ * `⟦integration-guard …⟧`) : le renderer le traduit ; le texte français qui suit sert de repli
+ * (serveur MCP, journaux).
+ */
 export class IntegrationBranchGuardError extends Error {
   constructor(readonly code: IntegrationGuardCode, branch: string) {
-    super(code === 'designated'
+    super(encodeIntegrationGuard(code, branch, code === 'designated'
       ? `${branch} est la branche d'intégration de ce repo : désignez-en une autre avant de la supprimer.`
-      : `${branch} est la dernière branche d'intégration de ce repo : un repo ne doit jamais rester sans branche d'intégration.`)
+      : `${branch} est la dernière branche d'intégration de ce repo : un repo ne doit jamais rester sans branche d'intégration.`))
     this.name = 'IntegrationBranchGuardError'
   }
 }
@@ -47,7 +50,7 @@ export class IntegrationBranchService {
   }
 
   async designate(repoPath: string, branch: string): Promise<DesignateOutcome> {
-    if (!branch.startsWith(INT_PREFIX) || !isValidSuffix(branch.slice(INT_PREFIX.length))) {
+    if (!branch.startsWith(INT_PREFIX) || !isValidIntegrationSuffix(branch.slice(INT_PREFIX.length))) {
       throw new Error(`« ${branch} » n'est pas un nom de branche d'intégration valide (int-<nom>).`)
     }
     const current = await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)
@@ -97,7 +100,7 @@ export class IntegrationBranchService {
 
   /** Crée `int-<suffix>` à la position courante (ou sur un tag) puis la désigne (spec §1.3). */
   async createAndDesignate(repoPath: string, suffix: string, from?: { tag: string }): Promise<DesignateOutcome> {
-    if (!isValidSuffix(suffix)) throw new Error(`« ${suffix} » : lettres, chiffres, « - », « _ » et « . » seulement.`)
+    if (!isValidIntegrationSuffix(suffix)) throw new Error(`« ${suffix} » : lettres, chiffres, « - », « _ » et « . » seulement.`)
     const branch = `${INT_PREFIX}${suffix}`
     if ((await this.candidates(repoPath)).some(c => c.name === branch)) {
       throw new Error(`La branche ${branch} existe déjà (en local ou sur le serveur).`)
@@ -184,9 +187,6 @@ export class IntegrationBranchService {
   }
 }
 
-function isValidSuffix(suffix: string): boolean {
-  return SUFFIX_RE.test(suffix) && !suffix.includes('..') && !suffix.endsWith('.lock') && !suffix.endsWith('.')
-}
 
 /** `{}` si absent ou vide ; lève une erreur si le YAML est illisible ou n'est pas un objet. */
 function parseConfigStrict(raw: string | null, where: string): Record<string, unknown> {

@@ -15,6 +15,7 @@ import { ElementConfigModal } from './ElementConfigModal'
 import { AddDependencyModal, type AddDependencyValues } from './AddDependencyModal'
 import { RemoveDependencyModal } from './RemoveDependencyModal'
 import { RepoBranchSelector } from './RepoBranchSelector'
+import { IntegrationBranchMenu } from './IntegrationBranchMenu'
 import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, CATEGORY_LABEL_KEY, ConfirmDelete, type EditableObjectType } from './objectTypeEditor'
 import { ValueRenameConfirmModal } from './ValueRenameConfirmModal'
 import { emptyFieldRenameResult } from '@polenta/types'
@@ -678,6 +679,8 @@ function RepoRow({
       {/* Inline branch checkout/create (T86) — shortcut onto the same pin the "Modifier" modal
           edits, shown for every repo (root included). */}
       <RepoBranchSelector node={node} workspaceDir={workspaceDir} flatNodes={flatNodes} />
+      {/* GH106 — explicit integration branch of the repo (not on LocalNodeRow: same repo as its parent). */}
+      <IntegrationBranchMenu node={{ repoPath: node.repoPath, name: node.name, label: rootNode?.label }} workspaceDir={workspaceDir} flatNodes={flatNodes} />
       {/* Right-aligned action cluster (T74 sprint 3) — same edit/delete ordering and placement as
           ElementLeaf's actions, instead of sitting immediately after the name/pin. Reordering
           (T74 sprint 3's ↑/↓ here) is now done by dragging the row itself (T135 sprint 1). */}

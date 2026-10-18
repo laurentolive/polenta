@@ -286,10 +286,20 @@ côté gauche sont renumérotées (cf. §6.4).
 
 ### 4.5 `config/project.yaml` — configuration du projet
 
-**T130 : seul `integrationBranch` y est réellement lu/écrit** (`git.service.ts` —
-`getIntegrationBranch`/`setIntegrationBranch`). Il n'y a pas de `schemaVersion`, `name`, ni
+**T130 : seul `integrationBranch` y est réellement lu/écrit** (lecture : `git.service.ts`
+`getIntegrationBranch`, repli `main`). Il n'y a pas de `schemaVersion`, `name`, ni
 `prefixes` dans ce fichier — les types d'objets et leurs préfixes vivent entièrement dans
 `.polenta/schema.yaml` (voir `SPEC-ELECTRON-DESKTOP.md` §20).
+
+**GH106 — écriture commitée.** Le fichier est versionné **dans** chaque branche : une `int-*` créée
+depuis une autre en hérite la valeur. La désignation (`IntegrationBranchService.designate`,
+`SPEC-FORKS-BRANCHES-BASELINES.md` §2.2) pose donc l'invariant **« sur `int-X`, `project.yaml`
+désigne `int-X` »** par un commit qui ne contient que ce fichier : `SyncService.commitSingleFile`
+construit l'arbre à partir de celui de HEAD (entrée remplacée, sous-arbres réécrits) et appelle
+`git.commit({ tree, parent: [HEAD], ref: 'refs/heads/<branche>' })` — l'index n'est pas lu, les
+modifications en attente ne partent pas dans le commit (attention : `ref` doit être complet, un nom
+nu est écrit sous `.git/<nom>`). Les autres clés éventuelles sont conservées ; un YAML invalide
+(HEAD ou copie de travail) est refusé. `setIntegrationBranch` (écriture non commitée) est déprécié.
 
 ```yaml
 # config/project.yaml

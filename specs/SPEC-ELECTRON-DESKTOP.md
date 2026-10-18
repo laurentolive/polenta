@@ -2255,6 +2255,9 @@ listés dans `SPEC-AUDIT.md`).
 | `schema:rename-fields` | **GH77** — `repoPath, objectTypeRef ('<nœud>::<type>'), renames: { from, to }[]` : après `schema:save`, migre `fields` et `history` des objets du type (au mieux par fichier) | `FieldRenameResult` (`migrated`, `skipped`, `failed`) |
 | `history:get` | **GH77** — `repoPath, kind ('requirement' \| 'test' \| 'campaign'), id` : historique effectif (entrées implicites comprises) | `ObjectHistory` |
 | `history:backfill` | **GH77** — `repoPath` : reprise de l'historique depuis git (fichiers réécrits, pas de commit) | `HistoryBackfillResult` |
+| `integration:state` | **GH106** — `repoPath` : branche courante, intégration désignée, statut (`ok` / `incoherent` / `nonConvention` / `readonly`), `int-*` locales et distantes | `IntegrationState` |
+| `integration:designate` | **GH106** — `repoPath, branch` : checkout si besoin, commit du seul `config/project.yaml`, push, branche par défaut de la forge | `DesignateOutcome` |
+| `integration:create` | **GH106** — `repoPath, suffix, from?: { tag }` : crée `int-<suffix>` (position courante ou baseline) puis la désigne | `DesignateOutcome` |
 
 `schema:save` ne régénère **aucun** fichier dérivé de type `.gitmodules` — c'est le seul écart avec
 la version précédente de cette section, à ne pas réintroduire dans une future correction.
@@ -2314,6 +2317,11 @@ un seul nœud vide, aucun type pré-configuré (voir §20.3).
   longueur inchangée) → `ValueRenameConfirmModal` avant l'enregistrement (lignes décochables,
   nombre d'objets, collisions ; Annuler n'enregistre rien et laisse l'édition ouverte), puis
   `schema:rename-values` ; compte rendu commun avec les renommages de champ.
+  **GH106** : sur la ligne de chaque repo, après `RepoBranchSelector`, `IntegrationBranchMenu`
+  (« Intégration : `int-X` », pastilles incohérente / hors convention, choix d'une `int-*`,
+  « Nouvelle branche d'intégration… » → `NewIntegrationBranchModal`) — règles dans
+  `SPEC-FORKS-BRANCHES-BASELINES.md` §2.2. `CheckoutConfirmModal` (garde des modifications en
+  attente) est partagée avec `RepoBranchSelector`.
 - **Onglet Liens** (`LiensTab.tsx`) — gestion des `linkTypes` du projet.
 
 **GH77 — Préférences du projet (`/preferences`)** : section « Historique des champs suivis », une

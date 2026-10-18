@@ -659,6 +659,30 @@
       "suiviNote": "Les requêtes et dashboards du Suivi ne sont pas modifiés.",
       "confirm": "Enregistrer et migrer",
       "objectsUnknown": "Nombre d'objets concernés indisponible"
+    },
+    "integrationMenu": {
+      "label": "Intégration : <mono>{{branch}}</mono>",
+      "incoherentHint": "La branche courante {{branch}} n'est pas désignée : le fichier indique {{configured}}.",
+      "nonConventionHint": "Branche d'intégration sans préfixe int- : créez une branche d'intégration.",
+      "readonlyHint": "Lecture seule (commit ou baseline checkouté).",
+      "designateCurrent": "Désigner {{branch}}",
+      "remote": "distante",
+      "none": "Aucune branche int-*",
+      "newBranch": "Nouvelle branche d'intégration…",
+      "ariaLabel": "Branche d'intégration de {{repo}} : {{branch}}"
+    },
+    "newIntegrationBranch": {
+      "title": "Nouvelle branche d'intégration",
+      "name": "Nom",
+      "invalid": "Lettres, chiffres, « - », « _ » et « . » seulement (pas de « .. »).",
+      "taken": "{{branch}} existe déjà (en local ou sur le serveur).",
+      "from": "Point de départ",
+      "fromCurrent": "Branche d'intégration actuelle ({{branch}})",
+      "fromBaseline": "Une baseline",
+      "pickBaseline": "Choisir une baseline…",
+      "noBaseline": "Aucune baseline",
+      "create": "Créer et désigner",
+      "creating": "Création…"
     }
   },
   "system": {
@@ -1692,6 +1716,10 @@
       "pushFailed": "{{branch}} est désignée localement, mais le push a échoué : {{error}}",
       "defaultNotAdmin": "La branche par défaut sur le serveur n'a pas été changée en {{branch}} : réservé aux administrateurs du repo.",
       "defaultFailed": "La branche par défaut sur le serveur n'a pas pu être changée : {{error}}"
+    },
+    "guard": {
+      "designated": "{{branch}} est la branche d'intégration de ce repo : désignez-en une autre avant de la supprimer.",
+      "lastIntegration": "{{branch}} est la dernière branche d'intégration de ce repo : un repo ne doit jamais rester sans branche d'intégration."
     }
   }
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Trans, useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { useBranchCheckout } from '../../hooks/useBranchCheckout'
-import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { CheckoutConfirmModal } from './CheckoutConfirmModal'
 import { BranchCombobox } from '../sidebar/version/BranchCombobox'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
 import { BranchNotices } from '../sidebar/version/BranchNotices'
@@ -35,17 +35,6 @@ export function RepoBranchSelector({
   } = useBranchCheckout(node, workspaceDir, flatNodes, dropdownOpen)
 
   const [checkoutConfirm, setCheckoutConfirm] = useState<{ value: string; isCommit: boolean } | null>(null)
-
-  useModalHotkeys(
-    () => setCheckoutConfirm(null),
-    () => {
-      if (!checkoutConfirm) return
-      if (checkoutConfirm.isCommit) checkoutCommit(checkoutConfirm.value)
-      else checkout(checkoutConfirm.value)
-      setCheckoutConfirm(null)
-    },
-    !checkoutConfirm || isPending,
-  )
 
   if (!currentBranch) return null
 
@@ -95,30 +84,12 @@ export function RepoBranchSelector({
       <BranchNotices notices={branchNotices} onDismiss={dismissBranchNotices} />
 
       {checkoutConfirm && (
-        <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-20" onClick={e => e.stopPropagation()}>
-          <div className="bg-surface border border-edge rounded-lg shadow-xl p-5 w-full max-w-sm mx-4">
-            <h2 className="font-semibold text-sm text-ink mb-2">{t('schema.repoBranchSelector.changeBranchTitle')}</h2>
-            <p className="text-xs text-ink-2 mb-4">
-              <Trans
-                i18nKey="schema.repoBranchSelector.changeBranchBody"
-                values={{ value: checkoutConfirm.value }}
-                components={{ mono: <span className="font-mono font-medium" /> }}
-              />
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setCheckoutConfirm(null)} className="btn-secondary-sm">
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={confirmCheckout}
-                className="btn-danger-sm"
-              >
-                {t('schema.repoBranchSelector.forceCheckout')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CheckoutConfirmModal
+          value={checkoutConfirm.value}
+          onCancel={() => setCheckoutConfirm(null)}
+          onConfirm={confirmCheckout}
+          disabled={isPending}
+        />
       )}
     </div>
   )

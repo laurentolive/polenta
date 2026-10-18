@@ -44,3 +44,32 @@ export interface DesignateOutcome {
 
 /** Codes des refus de suppression (spec GH103 §1.5) ; le message affiché est traduit côté renderer. */
 export type IntegrationGuardCode = 'designated' | 'lastIntegration'
+
+// Le refus voyage dans le message de l'erreur, seule partie transmise par l'IPC et le bridge web
+// (même principe que `⟦forge-access …⟧`) : le renderer le traduit par code.
+const GUARD_START = '⟦integration-guard '
+const GUARD_END = '⟧ '
+
+export function encodeIntegrationGuard(code: IntegrationGuardCode, branch: string, humanMessage: string): string {
+  return `${GUARD_START}${JSON.stringify({ code, branch })}${GUARD_END}${humanMessage}`
+}
+
+/** Où qu'il soit dans le message (l'IPC Electron le préfixe) ; `null` sans marqueur valide. */
+export function parseIntegrationGuard(message: string): { code: IntegrationGuardCode; branch: string } | null {
+  const start = message.indexOf(GUARD_START)
+  if (start < 0) return null
+  const end = message.indexOf(GUARD_END, start + GUARD_START.length)
+  if (end < 0) return null
+  try {
+    const data = JSON.parse(message.slice(start + GUARD_START.length, end)) as { code?: unknown; branch?: unknown }
+    if ((data.code !== 'designated' && data.code !== 'lastIntegration') || typeof data.branch !== 'string') return null
+    return { code: data.code, branch: data.branch }
+  } catch {
+    return null
+  }
+}
+
+/** Suffixe d'une `int-*` (après `int-`) : règles communes au main et au renderer. */
+export function isValidIntegrationSuffix(suffix: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(suffix) && !suffix.includes('..') && !suffix.endsWith('.lock') && !suffix.endsWith('.')
+}

@@ -52,18 +52,10 @@
       "versions": [
         {
           "version": 1,
-          "hash": "c9fd78d04ad1b74ee2cb7cede20588427d63ac8a9308243958f4c50e6913daf5",
+          "hash": "0ec9e96f283f602d489102bc09392d97c776d9b4c700fe06600aa9c071f85909",
           "summary": {
             "fr": "Version initiale.",
             "en": "Initial version."
-          }
-        },
-        {
-          "version": 2,
-          "hash": "8307c7420e1682eb55266a3e050cae81012ca6cbfb58fb0014cef6a9c525a66e",
-          "summary": {
-            "fr": "Étapes d'avancement dans le temps : campaignsTimeline({ withStep }), stepColors (GH112)",
-            "en": "Progress steps over time: campaignsTimeline({ withStep }), stepColors (GH112)"
           }
         }
       ]

@@ -117,11 +117,10 @@ export type RowTarget =
  * - `library` : fichier de la bibliothèque de départ (`dashboards/lib/`, `jsconfig.json`) resté à une
  *   version livrée antérieure, ou nouveau fichier livré ;
  * - `seed-widget` : widget ajouté au seed « Campagnes » depuis sa création ;
- * - `template` : objet d'un seed (non personnalisé) dont le modèle a une version plus récente, ou
- *   objets d'un seed redéfinis depuis sa création (`seed-upgrade:`, GH112).
+ * - `template` : objet d'un seed (non personnalisé) dont le modèle a une version plus récente.
  */
 export interface SuiviUpdate {
-  /** Identifiant stable (`library:<chemin>`, `seed-widget:<clé>`, `seed-upgrade:<clé>`, `template:query:<id>`, `template:widget:<dashboard>/<widget>`). */
+  /** Identifiant stable (`library:<chemin>`, `seed-widget:<clé>`, `template:query:<id>`, `template:widget:<dashboard>/<widget>`). */
   id: string
   kind: 'library' | 'seed-widget' | 'template'
   /** Fichier, widget ou requête concerné. */

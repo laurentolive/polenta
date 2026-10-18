@@ -145,17 +145,6 @@ export const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; size: Widg
 /** GH74 §8 — widgets ajoutés aux seeds « Campagnes » existants via le bandeau (pas d'ajout silencieux). */
 export const PROPOSED_SEED_WIDGETS: CampaignSeedQueryKey[] = ['timeline']
 
-/** GH112 — widget « Avancement dans le temps » seedé avant GH112 (statuts d'entrée bruts). */
-const TIMELINE_STATUS_WIDGET_PARAMS = stableJson({ x: 'date', series: 'status', value: 'count', entryColors: true })
-const CAMPAIGN_LIB_PATH = 'dashboards/lib/campaign.js'
-
-/** GH112 — mise à niveau proposée du widget « Avancement dans le temps » d'un seed existant. */
-export interface TimelineStepsUpgrade {
-  dashboardTitle: string
-  widgetTitle: string
-  apply(): Promise<void>
-}
-
 // ─── Seeds d'avant GH74 (requêtes SQL) : reconnus et réécrits ────────────────
 
 /** SQL exact des requêtes seedées avant GH74 → requête actuelle. Une requête modifiée par
@@ -346,8 +335,6 @@ export class DashboardSeedService {
     const labels = CAMPAIGN_SEED_LABELS[seedLocale(locale)]
     const queryDef = CAMPAIGN_SEED_QUERIES.find((q) => q.key === key)!
     const widgetDef = CAMPAIGN_SEED_WIDGETS.find((w) => w.queryKey === key)!
-    // GH112 — la requête utilise `withStep` de `campaign.js`.
-    if (key === 'timeline') await this.updateCampaignLibrary(repoPath)
     const query = await this.savedQueries.create(repoPath, username, { title: labels.queries[key], template: queryDef.template, scope: 'private', createdBy: username })
     try {
       await this.dashboards.addWidget(repoPath, username, proposal.dashboardId, { title: labels.widgets[key], queryId: query.id, size: widgetDef.size, template: widgetDef.template })
@@ -359,48 +346,6 @@ export class DashboardSeedService {
     // Noté seulement une fois le widget ajouté (la proposition disparaît alors du bandeau).
     const marker = this.campaignsMarker.read(repoPath, username)!
     this.campaignsMarker.write(repoPath, username, { ...marker, queries: { ...marker.queries, [key]: query.id } })
-  }
-
-  /**
-   * GH112 — « Avancement dans le temps » d'un seed « Campagnes » existant resté aux statuts d'entrée
-   * bruts : passe aux étapes d'avancement (requête `withStep`, widget sur `stepLabel` / `stepRank` /
-   * `stepColor`). Proposé seulement si la requête et au moins un de ses widgets du dashboard sont
-   * restés au modèle d'origine, et si `campaign.js` du projet est une version livrée (sinon
-   * `withStep` n'y existe peut-être pas) ; une version antérieure est mise à jour avec.
-   */
-  async timelineStepsUpgrade(repoPath: string, username: string): Promise<TimelineStepsUpgrade | null> {
-    const marker = this.campaignsMarker.read(repoPath, username)
-    const queryId = marker?.queries?.timeline
-    if (marker?.state !== 'done' || !marker.dashboardId || !queryId || !this.library) return null
-    const query = await this.savedQueries.findOne(repoPath, username, queryId)
-    if (!query?.template || query.template.id !== 'campaign-timeline' || query.state.customized || query.state.readOnly) return null
-    if (query.template.params.withStep === true) return null
-    const dashboard = await this.dashboards.get(repoPath, username, marker.dashboardId)
-    if (!dashboard || dashboard.state.readOnly) return null
-    const widgets = dashboard.widgets.filter((w) => w.queryId === queryId && w.template?.id === 'stacked-area' && !w.state.customized
-      && stableJson(w.template.params) === TIMELINE_STATUS_WIDGET_PARAMS)
-    if (widgets.length === 0) return null
-    const lib = await this.library.shippedVersionOf(repoPath, CAMPAIGN_LIB_PATH)
-    if (!lib) return null
-    const queryTemplate = query.template
-    const widgetTemplate = CAMPAIGN_SEED_WIDGETS.find((w) => w.queryKey === 'timeline')!.template
-    return {
-      dashboardTitle: dashboard.title,
-      widgetTitle: widgets[0].title,
-      apply: async () => {
-        await this.updateCampaignLibrary(repoPath)
-        await this.savedQueries.update(repoPath, username, queryId, { template: { id: queryTemplate.id, params: { ...queryTemplate.params, withStep: true } } })
-        for (const w of widgets) await this.dashboards.updateWidget(repoPath, username, dashboard.id, w.id, { template: widgetTemplate })
-      },
-    }
-  }
-
-  /** GH112 — `campaign.js` resté à une version livrée antérieure : passé à la dernière (`withStep`). */
-  private async updateCampaignLibrary(repoPath: string): Promise<void> {
-    const lib = this.library ? await this.library.shippedVersionOf(repoPath, CAMPAIGN_LIB_PATH) : null
-    if (!lib || lib.version >= lib.latest) return
-    await this.library!.writeShipped(repoPath, CAMPAIGN_LIB_PATH)
-    await this.recordLibraryFiles(repoPath, [CAMPAIGN_LIB_PATH])
   }
 
   /**

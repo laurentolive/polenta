@@ -18,12 +18,6 @@ const SEED_WIDGET_SUMMARY = {
   },
 } as const
 
-/** GH112 — « Avancement dans le temps » d'un seed existant passé aux étapes d'avancement. */
-const TIMELINE_STEPS_SUMMARY = {
-  fr: 'Étapes d\'avancement (brouillon, en revue…, prêt à exécuter, résultats) au lieu des seuls statuts d\'entrée, comme « Avancement par campagne » ; met aussi à jour dashboards/lib/campaign.js si besoin.',
-  en: 'Progress steps (draft, in review…, ready to run, results) instead of entry statuses only, as in "Progress by campaign"; also updates dashboards/lib/campaign.js if needed.',
-}
-
 const ignoreKey = (u: Pick<SuiviUpdate, 'id' | 'toVersion'>) => `${u.id}@${u.toVersion}`
 
 /**
@@ -98,17 +92,6 @@ export class SuiviUpdatesService {
           toVersion: 1, summary: SEED_WIDGET_SUMMARY[p.key as keyof typeof SEED_WIDGET_SUMMARY] ?? { fr: p.key, en: p.key }, shared: false,
         },
         apply: () => this.seed.addProposedSeedWidget(repoPath, username, p.key, locale),
-      })
-    }
-
-    const timeline = await this.seed.timelineStepsUpgrade(repoPath, username)
-    if (timeline) {
-      out.push({
-        update: {
-          id: 'seed-upgrade:timeline-steps', kind: 'template', title: `${timeline.dashboardTitle} — ${timeline.widgetTitle}`,
-          fromVersion: 1, toVersion: 2, summary: TIMELINE_STEPS_SUMMARY, shared: false,
-        },
-        apply: timeline.apply,
       })
     }
 

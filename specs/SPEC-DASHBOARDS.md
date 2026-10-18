@@ -263,9 +263,7 @@ partagées) :
 - **Seeds d'avant GH74** : requêtes reconnues à leur SQL **exact** d'origine (GH65, GH71) réécrites
   sous le même id, widgets restés au mapping d'origine réécrits ; objet modifié → laissé en
   `legacy-sql`. Requêtes partagées jamais réécrites sur une branche en lecture seule. Seed Campagnes
-  existant sans « Avancement dans le temps » : widget **proposé** au bandeau ; avec sa version aux
-  statuts d'entrée (requête et widget non modifiés, `campaign.js` à une version livrée) : passage aux
-  étapes **proposé** au bandeau (`seed-upgrade:timeline-steps`, met `campaign.js` à jour si besoin).
+  existant sans « Avancement dans le temps » : widget **proposé** au bandeau.
 
 ### 7.2 Maturité (bibliothèque `maturity.js`)
 

@@ -171,19 +171,6 @@ export class DashboardLibraryService {
     return out
   }
 
-  /**
-   * GH112 — version livrée d'un fichier du repo (`repoPath` du manifeste) et dernière version livrée ;
-   * `null` si le fichier est absent ou modifié par le projet (empreinte inconnue).
-   */
-  async shippedVersionOf(repoPath: string, repoRelPath: string): Promise<{ version: number; latest: number } | null> {
-    const f = this.readShippedManifest().files.find((x) => x.repoPath === repoRelPath)
-    const current = f ? await fs.promises.readFile(path.join(repoPath, f.repoPath), 'utf8').catch(() => undefined) : undefined
-    if (!f || current === undefined) return null
-    const hash = contentHash(current)
-    const known = f.versions.find((v) => v.hash === hash)
-    return known ? { version: known.version, latest: f.versions[f.versions.length - 1].version } : null
-  }
-
   /** Écrit la version livrée d'un fichier du manifeste (application d'une mise à jour). */
   async writeShipped(repoPath: string, repoRelPath: string): Promise<void> {
     const f = this.readShippedManifest().files.find((x) => x.repoPath === repoRelPath)

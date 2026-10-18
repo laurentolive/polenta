@@ -407,3 +407,6 @@ export function renameValues<T extends HistoryCarrier>(obj: T, renames: ValueRen
   }
   return changed ? out : null
 }
+
+/** GH100 — compte rendu du renommage d'un type : objets migrés + fichiers de données réécrits. */
+export type TypeRenameResult = FieldRenameResult & { files: number }

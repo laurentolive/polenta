@@ -85,6 +85,30 @@ export class RepoWatcherService {
     }
   }
 
+  /**
+   * GH115 — arrête la surveillance de `dir` et **attend** que chokidar ait fermé ses descripteurs :
+   * sous Windows, un dossier encore ouvert ne peut pas être renommé (EPERM). Clé comparée sans
+   * tenir compte de la casse ni des séparateurs (le chemin du cache workspace est normalisé, celui
+   * de l'appelant pas forcément). Retourne les clés arrêtées, pour les relancer en cas d'échec.
+   */
+  async unwatchDir(dir: string): Promise<string[]> {
+    const key = (p: string) => {
+      const abs = path.resolve(p)
+      return process.platform === 'win32' ? abs.toLowerCase() : abs
+    }
+    const target = key(dir)
+    const stopped = Array.from(this.watchers.keys()).filter(repoPath => key(repoPath) === target)
+    const closing: Array<Promise<void>> = []
+    for (const repoPath of stopped) {
+      closing.push(Promise.resolve(this.watchers.get(repoPath)?.close()))
+      closing.push(Promise.resolve(this.refWatchers.get(repoPath)?.close()))
+      this.watchers.delete(repoPath)
+      this.refWatchers.delete(repoPath)
+    }
+    await Promise.all(closing)
+    return stopped
+  }
+
   unwatchAll(): void {
     for (const repoPath of Array.from(this.watchers.keys())) {
       this.unwatch(repoPath)

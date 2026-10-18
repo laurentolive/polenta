@@ -16,10 +16,11 @@ import { AddDependencyModal, type AddDependencyValues } from './AddDependencyMod
 import { RemoveDependencyModal } from './RemoveDependencyModal'
 import { RepoBranchSelector } from './RepoBranchSelector'
 import { IntegrationBranchMenu } from './IntegrationBranchMenu'
-import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, CATEGORY_LABEL_KEY, ConfirmDelete, type EditableObjectType } from './objectTypeEditor'
+import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, typeRename, typeRenameDecision, migrationSteps, CATEGORY_LABEL_KEY, ConfirmDelete, type EditableObjectType } from './objectTypeEditor'
 import { ValueRenameConfirmModal } from './ValueRenameConfirmModal'
+import { TypeRenameConfirmModal } from './TypeRenameConfirmModal'
 import { emptyFieldRenameResult } from '@polenta/types'
-import type { FieldRenameResult, ValueRename, ValueRenamePreview } from '@polenta/types'
+import type { FieldRenameResult, TypeRenameDto, TypeRenamePlan, ValueRename, ValueRenamePreview } from '@polenta/types'
 import { RolesExposedFields, ImplementedInterfacesFields } from './RolesImplementsFields'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type {
@@ -976,9 +977,13 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // GH77 — compte rendu de la migration des objets après renommage de champs.
-  const [renameReport, setRenameReport] = useState<{ result?: FieldRenameResult; error?: string } | null>(null)
+  const [renameReport, setRenameReport] = useState<RenameReport | null>(null)
   // GH82 — renommages de statut / valeur détectés : confirmation avant l'enregistrement du schéma.
   const [pendingValueRenames, setPendingValueRenames] = useState<{ updated: EditableObjectType; previews: ValueRenamePreview[] } | null>(null)
+  // GH100 — nom / préfixe du type changés : aperçu de la migration, confirmation avant l'enregistrement.
+  const [pendingTypeRename, setPendingTypeRename] = useState<{
+    updated: EditableObjectType; chosen: ValueRename[]; dto: TypeRenameDto; plan: TypeRenamePlan
+  } | null>(null)
   const [conflictError, setConflictError] = useState<string | null>(null)
   const [editingNode, setEditingNode] = useState<NodeEditTarget | null>(null)
   const [pendingDependency, setPendingDependency] = useState<PendingDependency | null>(null)
@@ -1061,27 +1066,46 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
       setPendingValueRenames({ updated, previews })
       return
     }
-    await saveAndMigrate(updated, [])
+    await confirmTypeRename(updated, [])
   }
 
   /**
-   * Enregistre le type puis migre les objets : champs renommés (GH77), puis statuts / valeurs
-   * retenus dans la confirmation (GH82). Un seul compte rendu pour les deux.
+   * GH100 — nom et/ou préfixe d'un type existant changés : aperçu de la migration (aucune écriture).
+   * Pré-contrôle en échec → message, rien n'est enregistré ; rien à migrer → enregistrement direct ;
+   * sinon confirmation. Sans renommage de type, enregistrement habituel.
    */
-  const saveAndMigrate = async (updated: EditableObjectType, chosen: ValueRename[]) => {
+  const confirmTypeRename = async (updated: EditableObjectType, chosen: ValueRename[]) => {
+    const dto = selection && !selection.isNew ? typeRename(updated, selectedRaw, selection.nodeName) : null
+    if (!selection || !dto) return saveAndMigrate(updated, chosen, null)
+    let plan: TypeRenamePlan
+    try {
+      plan = await api.schema.previewTypeRename(selection.repoPath, workspaceDir, dto)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err))
+      return
+    }
+    const decision = typeRenameDecision(plan)
+    if (decision === 'error') setSaveError(plan.errors.map(e => e.detail).join(' ; '))
+    else if (decision === 'direct') await saveAndMigrate(updated, chosen, dto)
+    else setPendingTypeRename({ updated, chosen, dto, plan })
+  }
+
+  /**
+   * Enregistre le type puis migre les objets : champs renommés (GH77), statuts / valeurs retenus
+   * dans la confirmation (GH82), puis nom / préfixe du type (GH100). Un seul compte rendu.
+   */
+  const saveAndMigrate = async (updated: EditableObjectType, chosen: ValueRename[], dto: TypeRenameDto | null) => {
     const sel = selection
     const objectTypeRef = selectedTypeRef
     const renames = fieldRenames(updated)
     const saved = await applyToSelection(() => editableToObjType(withRenamedDefaults(updated, chosen)))
-    if (!saved || !sel || sel.isNew || !objectTypeRef || (renames.length === 0 && chosen.length === 0)) return
-    // Deux migrations indépendantes : l'échec de l'une n'empêche pas l'autre (le schéma est déjà
+    if (!saved || !sel || sel.isNew || !objectTypeRef) return
+    const steps = migrationSteps(api.schema, sel.repoPath, workspaceDir, objectTypeRef, renames, chosen, dto)
+    if (steps.length === 0) return
+    // Migrations indépendantes : l'échec de l'une n'empêche pas les autres (le schéma est déjà
     // enregistré, chaque migration non faite laisse des objets orphelins).
-    const result = emptyFieldRenameResult()
+    const result: FieldRenameResult & { files?: number } = emptyFieldRenameResult()
     const errors: string[] = []
-    const steps = [
-      ...(renames.length > 0 ? [() => api.schema.renameFields(sel.repoPath, objectTypeRef, renames)] : []),
-      ...(chosen.length > 0 ? [() => api.schema.renameValues(sel.repoPath, objectTypeRef, chosen)] : []),
-    ]
     for (const step of steps) {
       try {
         const part = await step()
@@ -1089,11 +1113,12 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         result.skipped.push(...part.skipped)
         result.failed.push(...part.failed)
         if (part.snapshots) result.snapshots = (result.snapshots ?? 0) + part.snapshots
+        if (part.files) result.files = (result.files ?? 0) + part.files
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err))
       }
     }
-    setRenameReport({ result, ...(errors.length > 0 && { error: errors.join(' ; ') }) })
+    setRenameReport({ result, type: !!dto, ...(errors.length > 0 && { error: errors.join(' ; ') }) })
     // Toutes les vues en cache (listes, détail d'un objet, campagnes) portent l'ancien nom : une
     // sauvegarde depuis une copie périmée réécrirait la clé orpheline.
     await qc.invalidateQueries()
@@ -1835,7 +1860,24 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           onConfirm={chosen => {
             const { updated } = pendingValueRenames
             setPendingValueRenames(null)
-            void saveAndMigrate(updated, chosen)
+            void confirmTypeRename(updated, chosen)
+          }}
+        />
+      )}
+
+      {pendingTypeRename && (
+        <TypeRenameConfirmModal
+          dto={pendingTypeRename.dto}
+          plan={pendingTypeRename.plan}
+          repoLabel={repoPath => {
+            const node = flatNodes.find(n => n.repoPath === repoPath)
+            return schemasByRepoPath.get(repoPath)?.nodes.find(n => n.name === 'root')?.label || node?.label || node?.name || repoPath
+          }}
+          onCancel={() => setPendingTypeRename(null)}
+          onConfirm={() => {
+            const { updated, chosen, dto } = pendingTypeRename
+            setPendingTypeRename(null)
+            void saveAndMigrate(updated, chosen, dto)
           }}
         />
       )}
@@ -1898,7 +1940,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           onSave={handleSaveElement}
           onDelete={handleDeleteElement}
           onClose={handleCloseElementModal}
-          hotkeysSuspended={!!pendingValueRenames}
+          hotkeysSuspended={!!pendingValueRenames || !!pendingTypeRename}
         />
       )}
 
@@ -1950,8 +1992,11 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
   )
 }
 
+/** Compte rendu d'une migration : champs (GH77), valeurs (GH82), type renommé (GH100, `type`). */
+interface RenameReport { result?: FieldRenameResult & { files?: number }; error?: string; type?: boolean }
+
 /** GH77 — compte rendu de la migration des objets après renommage de champs (spec §6.3). */
-function FieldRenameBanner({ report, onClose }: { report: { result?: FieldRenameResult; error?: string }; onClose: () => void }) {
+function FieldRenameBanner({ report, onClose }: { report: RenameReport; onClose: () => void }) {
   const { t } = useTranslation()
   const { result, error } = report
   const problems = (result?.skipped.length ?? 0) + (result?.failed.length ?? 0) > 0 || !!error
@@ -1965,8 +2010,9 @@ function FieldRenameBanner({ report, onClose }: { report: { result?: FieldRename
       {problems && <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
       <div className="flex-1 space-y-0.5">
         {error && <p>{t('schema.structureTab.renameReportError', { error })}</p>}
-        {result && <p>{t('schema.structureTab.renameReportMigrated', { count: result.migrated.length })}</p>}
+        {result && <p>{t(report.type ? 'schema.structureTab.renameReportType' : 'schema.structureTab.renameReportMigrated', { count: result.migrated.length })}</p>}
         {result && !!result.snapshots && <p>{t('schema.structureTab.renameReportSnapshots', { count: result.snapshots })}</p>}
+        {result && !!result.files && <p>{t('schema.structureTab.renameReportFiles', { count: result.files })}</p>}
         {result && result.skipped.length > 0 && (
           <p>{t('schema.structureTab.renameReportSkipped', { count: result.skipped.length, ids: result.skipped.map(s => s.id).join(', ') })}</p>
         )}

@@ -615,7 +615,9 @@
       "renameReportSkipped": "{{count}} object(s) not migrated — data already exists under the new name: {{ids}}",
       "renameReportFailed": "{{count}} migration failure(s): {{ids}}",
       "renameReportError": "The schema was saved, but migrating the objects failed: {{error}}",
-      "renameReportSnapshots": "{{count}} campaign test copy(ies) migrated."
+      "renameReportSnapshots": "{{count}} campaign test copy(ies) migrated.",
+      "renameReportType": "Type renamed: {{count}} object(s) migrated.",
+      "renameReportFiles": "{{count}} data file(s) rewritten (links, campaigns, runs, trees…)."
     },
     "page": {
       "title": "Data model",
@@ -648,6 +650,19 @@
       "unresolved": "unresolved",
       "noImplements": "No interface implementation declared.",
       "addImplements": "+ Declare an implementation"
+    },
+    "typeRename": {
+      "title": "Rename the type?",
+      "name": "Name",
+      "prefix": "Prefix",
+      "objects": "{{count}} object(s) renamed:",
+      "more": "… and {{count}} more",
+      "retargeted": "{{count}} object(s) attached to the type's new name",
+      "files": "{{count}} data file(s) rewritten in the workspace:",
+      "linkTypes": "Link types updated: {{repos}}",
+      "gitDate": "The (git) creation date of renamed objects will be this rename.",
+      "suiviNote": "Suivi scripts, queries and dashboards are not modified.",
+      "confirm": "Save and migrate"
     },
     "valueRename": {
       "title": "Rename values?",

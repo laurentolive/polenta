@@ -155,6 +155,76 @@ describe('GH74 — campaignsTimeline', () => {
   })
 })
 
+describe('GH112 — campaignsTimeline par étape d\'avancement (withStep)', () => {
+  const status = (name: string, label: string, isApproval = false) => ({ name, label, isApproval, isTerminal: false })
+  const test = (id: string, current: string, history: { value: string; at: string }[]) => ({
+    id, repo: 'r', component: 'n', objectTypeRef: 'n::TST', title: id, status: current, version: 1, fields: {}, history: history.length ? { status: history } : {},
+    needsRevalidation: false, createdAt: '2026-10-01T08:00:00Z', createdBy: 'x', updatedAt: null, updatedBy: null,
+  })
+  const entry = (entryId: string, testCaseId: string, done: boolean) => ({
+    entryId, testCaseId, requirementId: null, status: done ? 'PASS' : 'pending', addedAt: '2026-10-01T09:00:00Z', runId: done ? 'R' : null,
+    executedAt: done ? '2026-10-06T10:00:00Z' : null, executedBy: null, carriedFrom: null, snapshot: null, resyncable: !done,
+  })
+  // E1 : test brouillon → en revue (03) → approuvé (05), exécuté PASS (06). E2 : test sans historique, brouillon.
+  const MINI = JSON.stringify({
+    schema: {
+      objectTypes: [{ repo: 'r', ref: 'n::TST', component: 'n', label: 'Test', prefix: null, category: 'test', fields: [], statuses: [status('draft', 'Brouillon'), status('review', 'En revue'), status('approved', 'Approuvé', true)] }],
+      linkTypes: [], campaignStatuses: [],
+      entryStatuses: ['pending', 'INCOMPLETE', 'BLOCKED', 'FAIL', 'PASS'].map((name, order) => ({ name, label: name, order })),
+    },
+    requirements: [], links: [],
+    tests: [
+      test('T1', 'approved', [{ value: 'draft', at: '2026-10-01T08:00:00Z' }, { value: 'review', at: '2026-10-03T08:00:00Z' }, { value: 'approved', at: '2026-10-05T08:00:00Z' }]),
+      test('T2', 'draft', []),
+    ],
+    campaigns: [{
+      id: 'C', repo: 'r', component: 'n', objectTypeRef: null, title: 'C', status: 'in_progress', fields: {}, history: {}, baselineRef: null, targetComponent: null, level: null,
+      createdAt: '2026-10-01T08:00:00Z', completedAt: null, removedEntries: [], entries: [entry('E1', 'T1', true), entry('E2', 'T2', false)],
+    }],
+    runs: [{ id: 'R', repo: 'r', testCaseId: 'T1', campaignEntry: { campaignId: 'C', entryId: 'E1' }, requirementId: null, result: 'PASS', executedAt: '2026-10-06T10:00:00Z', executedBy: 'x', duration: 0, origin: null }],
+  })
+  const script = (extra = '') =>
+    `import { campaignsTimeline } from 'lib/campaign.js'\nexport default (data, polenta) => campaignsTimeline(data, { polenta, from: '2026-10-01', to: '2026-10-06', withStep: true${extra} })`
+  const steps = (rows: GraphRow[]) => {
+    const out: Record<string, Record<string, number>> = {}
+    for (const r of rows) if ((r.count as number) > 0) (out[r.date as string] ??= {})[r.step as string] = r.count as number
+    return out
+  }
+
+  it('W1 — préparation d\'après l\'historique du test, puis prêt, puis résultat ; sans historique : étape actuelle', () => {
+    const rows = run(script(), 'UTC', null, MINI)
+    expect(steps(rows)).toEqual({
+      '2026-10-01': { 'prep:draft': 2 },
+      '2026-10-02': { 'prep:draft': 2 },
+      '2026-10-03': { 'prep:draft': 1, 'prep:review': 1 },
+      '2026-10-04': { 'prep:draft': 1, 'prep:review': 1 },
+      '2026-10-05': { 'prep:draft': 1, ready: 1 },
+      '2026-10-06': { 'prep:draft': 1, PASS: 1 },
+    })
+    // Mêmes étapes chaque jour (couches continues), dans l'ordre canonique, libellées et colorées.
+    expect(rows.filter((r) => r.date === '2026-10-01')).toEqual([
+      { date: '2026-10-01', step: 'prep:draft', stepLabel: 'Brouillon', stepRank: 0, stepColor: 'var(--chart-progress-prep-1)', status: 'pending', count: 2, approximate: false },
+      { date: '2026-10-01', step: 'prep:review', stepLabel: 'En revue', stepRank: 1, stepColor: 'var(--chart-progress-prep-2)', status: 'pending', count: 0, approximate: false },
+      { date: '2026-10-01', step: 'ready', stepLabel: 'Prêt à exécuter', stepRank: 1000, stepColor: 'var(--chart-progress-ready)', status: 'pending', count: 0, approximate: false },
+      { date: '2026-10-01', step: 'PASS', stepLabel: 'PASS', stepRank: 1004, stepColor: 'var(--chart-progress-pass)', status: 'PASS', count: 0, approximate: false },
+    ])
+  })
+
+  it('W2 — drill-down sur l\'étape : seule la ligne demandée, avec ses _ids', () => {
+    expect(run(script(), 'UTC', { date: '2026-10-03', step: 'prep:review' }, MINI)).toEqual([
+      expect.objectContaining({ date: '2026-10-03', step: 'prep:review', count: 1, _ids: ['C/E1'] }),
+    ])
+  })
+
+  it('W3 — modèle « Avancement dans le temps » avec étape : même résultat que la bibliothèque', () => {
+    const generated = findQueryTemplate('campaign-timeline')!.generate({ withStep: true, campaignIds: ['C'] })
+    expect(generated).toContain('withStep: true')
+    const rows = run(generated, 'UTC', null, MINI)
+    expect(steps(rows)['2026-10-04']).toEqual({ 'prep:draft': 1, 'prep:review': 1 })
+    expect(findQueryTemplate('campaign-timeline')!.generate({ campaignIds: ['C'] })).not.toContain('withStep')
+  })
+})
+
 describe('GH74 — history.js et time.js', () => {
   it('L5 — valueAt : avant la première entrée, entrée implicite, sans historique', () => {
     const rows = run(

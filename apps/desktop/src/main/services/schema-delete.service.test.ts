@@ -156,6 +156,7 @@ describe('SchemaDeleteService', () => {
     expect(result.failed).toEqual([])
     expect(result.deleted.sort()).toEqual(['A_REQ-0001', 'A_REQ-0002', 'A_TEST-0001', 'B_REQ-0001', 'CAMP-0001'])
     expect(result.links).toBe(5)
+    expect(result.schemaSaved).toBe(true)
     for (const f of ['requirements/A_REQ-0001.yaml', 'requirements/A_REQ-0002.yaml', 'requirements/B_REQ-0001.yaml',
       'tests/A_TEST-0001.yaml', 'campaigns/CAMP-0001.yaml', 'test-runs/A_TEST-0001', 'impact-acks/A_REQ-0001',
       '.polenta/trees/A', '.polenta/trees/B']) {
@@ -254,6 +255,7 @@ describe('SchemaDeleteService', () => {
     })
     const first = await service.delete(prod, ws, NODE_A)
     expect(first.failed).toEqual([{ id: 'A_REQ-0002', error: 'EBUSY' }])
+    expect(first.schemaSaved).toBe(false)
     expect(await exists(prod, 'requirements/A_REQ-0001.yaml')).toBe(false)
     expect(await exists(prod, 'requirements/A_REQ-0002.yaml')).toBe(true)
     expect((await read<ProjectSchema>(prod, '.polenta/schema.yaml')).nodes.map(n => n.name)).toEqual(['root', 'A'])

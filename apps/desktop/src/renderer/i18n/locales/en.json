@@ -648,6 +648,29 @@
       "noImplements": "No interface implementation declared.",
       "addImplements": "+ Declare an implementation"
     },
+    "deleteCascade": {
+      "titleNode": "Delete component \"{{name}}\"?",
+      "titleType": "Delete type \"{{name}}\"?",
+      "objects": {
+        "requirement_one": "{{count}} requirement deleted:",
+        "requirement_other": "{{count}} requirements deleted:",
+        "test_one": "{{count}} test deleted (and its runs):",
+        "test_other": "{{count}} tests deleted (and their runs):",
+        "campaign_one": "{{count}} campaign deleted:",
+        "campaign_other": "{{count}} campaigns deleted:"
+      },
+      "more": "… and {{count}} more",
+      "links_one": "{{count}} link deleted:",
+      "links_other": "{{count}} links deleted:",
+      "linkTypes": "Link types updated: {{names}}",
+      "linkTypesEmptied": "Become invalid (no source or target type left), fix them in the Links tab: {{names}}",
+      "tombstones": "Deleted IDs will never be reissued.",
+      "gitNote": "Nothing is committed: review the git diff before committing.",
+      "reportDone": "Deleted: {{count}} object(s) and {{links}} link(s).",
+      "reportFailed": "{{count}} failure(s) — the component or type is kept, run the deletion again: {{ids}}",
+      "reportFailedAfter": "{{count}} file(s) not cleaned up — the component or type is deleted, fix them by hand: {{ids}}",
+      "reportError": "Could not delete: {{error}}"
+    },
     "typeRename": {
       "title": "Rename the type?",
       "name": "Name",

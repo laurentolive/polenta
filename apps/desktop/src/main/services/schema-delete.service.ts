@@ -56,7 +56,7 @@ export class SchemaDeleteService {
   async delete(repoPath: string, workspaceDir: string | undefined, target: SchemaDeleteTarget): Promise<SchemaDeleteResult> {
     const { plan, repos, schema, types, links, refsByRepo } = await this.compute(repoPath, workspaceDir, target)
     if (plan.errors.length > 0 || !schema) throw new Error(plan.errors.map(e => e.detail).join(' ; '))
-    const result: SchemaDeleteResult = { deleted: [], links: 0, failed: [] }
+    const result: SchemaDeleteResult = { deleted: [], links: 0, schemaSaved: false, failed: [] }
     const step = async (id: string, fn: () => Promise<void>): Promise<boolean> => {
       try {
         await fn()
@@ -115,9 +115,9 @@ export class SchemaDeleteService {
     // 5. Schéma du repo : nœud / type et refs de liens. 6. Refs de liens des autres repos — seulement
     // si le type a bien disparu de son repo (sinon leurs types de lien perdraient un type existant).
     const removed = refsByRepo.get(repoPath) ?? new Set<string>()
-    const saved = await step(`${repoPath}:.polenta/schema.yaml`, () => this.schema.save(repoPath,
+    result.schemaSaved = await step(`${repoPath}:.polenta/schema.yaml`, () => this.schema.save(repoPath,
       mapLinkRefs(withoutTarget(schema, target), r => (removed.has(r) ? null : r))))
-    if (saved) {
+    if (result.schemaSaved) {
       for (const [repo, refs] of refsByRepo) {
         if (repo === repoPath) continue
         await step(`${repo}:.polenta/schema.yaml`, async () => {

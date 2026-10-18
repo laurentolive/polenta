@@ -269,6 +269,8 @@ export interface SchemaDeletePlan {
 export interface SchemaDeleteResult {
   deleted: string[]
   links: number
+  /** Le nœud / type a été retiré du schéma (faux : arrêt sur échec, relancer la suppression). */
+  schemaSaved: boolean
   /** `id` : ID d'objet, ou `<repo>:<chemin>` pour un autre fichier. */
   failed: Array<{ id: string; error: string }>
 }

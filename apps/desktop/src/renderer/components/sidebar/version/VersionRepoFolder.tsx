@@ -9,6 +9,7 @@ import { useBranchCheckout } from '../../../hooks/useBranchCheckout'
 import { propagatePinToDependents, type PinPropagationOutcome } from '../../../lib/workspaceActions'
 import { BranchCombobox } from './BranchCombobox'
 import { PinPropagationWarning } from './PinPropagationWarning'
+import { BranchNotices } from './BranchNotices'
 import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
 import { useOpenMergeResolution } from '../../merge/useOpenMergeResolution'
 import { useRepoIntegrationSync, useResyncIntegration } from '../../../hooks/useIntegrationSync'
@@ -62,6 +63,7 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
     currentBranch, allBranches, allTags,
     checkout, checkoutCommit, createBranch, deleteBranch, isPending: isBranchPending,
     isCheckoutError, checkoutError, pinWarning: checkoutPinWarning, dismissPinWarning,
+    branchNotices, dismissBranchNotices,
   } = useBranchCheckout(node, workspaceDir, flatNodes, branchDropdownOpen)
 
   const staged = syncStatus?.staged ?? []
@@ -260,13 +262,14 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
         </div>
       </div>
 
-      {(isCheckoutError || checkoutPinWarning) && (
+      {(isCheckoutError || checkoutPinWarning || branchNotices.length > 0) && (
         <div style={{ paddingLeft: `${8 + indent}px` }} className="px-3">
           {isCheckoutError && (
             <p className="text-xs text-status-danger leading-snug">
               {checkoutError instanceof Error ? checkoutError.message : t('sidebar.version.checkoutError')}
             </p>
           )}
+          <BranchNotices notices={branchNotices} onDismiss={dismissBranchNotices} />
           <PinPropagationWarning outcome={checkoutPinWarning} onDismiss={dismissPinWarning} />
         </div>
       )}

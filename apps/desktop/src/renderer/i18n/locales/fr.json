@@ -50,7 +50,10 @@
       "confirm": "Fermer sans enregistrer"
     },
     "modificationControl": {
-      "blockedBranch": "<mono>{{branch}}</mono> n'est pas la branche d'intégration configurée (<mono>{{integrationBranch}}</mono>) — publication impossible depuis ici.",
+      "notDesignated": "<mono>{{branch}}</mono> n'est pas désignée comme branche d'intégration (le fichier indique <mono>{{integrationBranch}}</mono>).",
+      "designate": "Désigner {{branch}}",
+      "designating": "Désignation…",
+      "designateFailed": "Désignation impossible : {{error}}",
       "publish": "Publier",
       "publishing": "Publication…",
       "pushFailed": "Fusionné localement, mais le push a échoué : {{error}}",
@@ -1682,6 +1685,13 @@
       "required": "Obligatoire",
       "up": "Monter",
       "down": "Descendre"
+    }
+  },
+  "integration": {
+    "notice": {
+      "pushFailed": "{{branch}} est désignée localement, mais le push a échoué : {{error}}",
+      "defaultNotAdmin": "La branche par défaut sur le serveur n'a pas été changée en {{branch}} : réservé aux administrateurs du repo.",
+      "defaultFailed": "La branche par défaut sur le serveur n'a pas pu être changée : {{error}}"
     }
   }
 }

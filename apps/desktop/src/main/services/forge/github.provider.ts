@@ -43,6 +43,38 @@ export const githubProvider: ForgeProvider = {
     }
     return { login: data.login, name: data.name ?? data.login, email }
   },
+
+  async repoInfo(baseUrl, token, owner, repo) {
+    try {
+      const { data } = await forgeRequest<{ default_branch?: string; permissions?: { admin?: boolean } }>(
+        repoApiUrl(baseUrl, owner, repo), { token, fixedUrl: isGithubBase(baseUrl), timeoutMs: 10_000 })
+      return { defaultBranch: data.default_branch ?? '', admin: data.permissions?.admin ?? false }
+    } catch (err) {
+      // GitHub répond 404 (pas 403) sur un repo privé sans accès ; un 403 remonte à `guard`.
+      if (err instanceof ForgeHttpError && err.status === 404) return null
+      throw err
+    }
+  },
+
+  async setDefaultBranch(baseUrl, token, owner, repo, branch) {
+    await forgeRequest(repoApiUrl(baseUrl, owner, repo), {
+      method: 'PATCH', token, fixedUrl: isGithubBase(baseUrl), json: { default_branch: branch },
+    })
+  },
+}
+
+function isGithubBase(baseUrl: string): boolean {
+  try {
+    return isGithubHost(new URL(baseUrl).host)
+  } catch {
+    return false
+  }
+}
+
+/** GH106 — `api.github.com` pour github.com, `<base>/api/v3` sinon (GitHub Enterprise Server, tests). */
+function repoApiUrl(baseUrl: string, owner: string, repo: string): string {
+  const api = isGithubBase(baseUrl) ? API : `${baseUrl}/api/v3`
+  return `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
 }
 
 // ─── OAuth Device Flow (T98) ────────────────────────────────────────────────────

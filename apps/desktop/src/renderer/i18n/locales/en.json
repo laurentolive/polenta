@@ -50,7 +50,10 @@
       "confirm": "Close without saving"
     },
     "modificationControl": {
-      "blockedBranch": "<mono>{{branch}}</mono> is not the configured integration branch (<mono>{{integrationBranch}}</mono>) — publishing isn't possible from here.",
+      "notDesignated": "<mono>{{branch}}</mono> is not designated as the integration branch (the file says <mono>{{integrationBranch}}</mono>).",
+      "designate": "Designate {{branch}}",
+      "designating": "Designating…",
+      "designateFailed": "Could not designate: {{error}}",
       "publish": "Publish",
       "publishing": "Publishing…",
       "pushFailed": "Merged locally, but the push failed: {{error}}",
@@ -1682,6 +1685,13 @@
       "required": "Required",
       "up": "Move up",
       "down": "Move down"
+    }
+  },
+  "integration": {
+    "notice": {
+      "pushFailed": "{{branch}} is designated locally, but the push failed: {{error}}",
+      "defaultNotAdmin": "The server's default branch was not changed to {{branch}}: repository administrators only.",
+      "defaultFailed": "The server's default branch could not be changed: {{error}}"
     }
   }
 }

@@ -1,5 +1,5 @@
 import type {
-  CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef,
 } from '@polenta/types'
 import type {
@@ -589,10 +589,18 @@ export interface ApiClient {
     create(repoPath: string, dto: CreateBaselineDto, workspaceDir?: string): Promise<BaselineRecord>
     /** Configured integration branch for this repo (`config/project.yaml`), `'main'` if absent/unreadable. */
     getIntegrationBranch(repoPath: string): Promise<string>
-    /** Persists the configured integration branch — merges into existing `config/project.yaml`. */
+    /** @deprecated GH106 — uncommitted write; use `integration.designate`. */
     setIntegrationBranch(repoPath: string, branch: string): Promise<void>
     /** Deletes the tag on the main repo and on every listed component repo. */
     delete(repoPath: string, tag: string, components?: BaselineComponentRef[]): Promise<void>
+  }
+  /** GH106 — branche d'intégration explicite (specs/GH106-design.md §2). */
+  integration: {
+    state(repoPath: string): Promise<IntegrationState>
+    /** Checkout si besoin, commit du seul `config/project.yaml`, push, branche par défaut de la forge. */
+    designate(repoPath: string, branch: string): Promise<DesignateOutcome>
+    /** Crée `int-<suffix>` (position courante, ou `from.tag`) puis la désigne. */
+    create(repoPath: string, suffix: string, from?: { tag: string }): Promise<DesignateOutcome>
   }
   requirements: {
     list(repoPath: string, filters?: RequirementFilters): Promise<Requirement[]>

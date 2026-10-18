@@ -190,6 +190,11 @@ export function createIpcClient(
       setIntegrationBranch: (p, branch) => invoke('baseline:set-integration-branch', p, branch),
       delete: (p, tag, components) => invoke('baseline:delete', p, tag, components),
     },
+    integration: {
+      state: (p) => invoke('integration:state', p),
+      designate: (p, branch) => invoke('integration:designate', p, branch),
+      create: (p, suffix, from) => invoke('integration:create', p, suffix, from),
+    },
     requirements: {
       list: (p, f) => invoke('requirements:list', p, f),
       get: (p, id) => invoke('requirements:get', p, id),

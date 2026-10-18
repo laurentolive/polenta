@@ -4,6 +4,7 @@ import { useBranchCheckout } from '../../hooks/useBranchCheckout'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { BranchCombobox } from '../sidebar/version/BranchCombobox'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
+import { BranchNotices } from '../sidebar/version/BranchNotices'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
 /** Compact inline branch checkout/create, shown to the right of every repo name in the Structure
@@ -30,7 +31,7 @@ export function RepoBranchSelector({
   const {
     currentBranch, allBranches, allTags, isDirty,
     checkout, checkoutCommit, createBranch, deleteBranch, isPending,
-    pinWarning, dismissPinWarning,
+    pinWarning, dismissPinWarning, branchNotices, dismissBranchNotices,
   } = useBranchCheckout(node, workspaceDir, flatNodes, dropdownOpen)
 
   const [checkoutConfirm, setCheckoutConfirm] = useState<{ value: string; isCommit: boolean } | null>(null)
@@ -91,6 +92,7 @@ export function RepoBranchSelector({
       />
 
       <PinPropagationWarning outcome={pinWarning} onDismiss={dismissPinWarning} />
+      <BranchNotices notices={branchNotices} onDismiss={dismissBranchNotices} />
 
       {checkoutConfirm && (
         <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-20" onClick={e => e.stopPropagation()}>

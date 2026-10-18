@@ -488,7 +488,7 @@ export class CampaignsService {
     await deleteWithTombstone(this.gitService, repoPath, `campaigns/${id}.yaml`, id)
   }
 
-  // â”€â”€â”€ Private helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Private helpers ───────────────────────────────────────────────────────────
 
   /**
    * Construit les nouvelles entrées `CampaignTestRun` pour `newTestCaseIds`, avec un

@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { api } from '../../api'
 import { useBranchCheckout } from '../../hooks/useBranchCheckout'
 import { CheckoutConfirmModal } from './CheckoutConfirmModal'
 import { BranchCombobox } from '../sidebar/version/BranchCombobox'
@@ -15,7 +17,11 @@ import type { WorkspaceTreeNode } from '@polenta/types'
  *  On a `dev-*` branch (in-progress modification, T83's simplified workflow), no checkout/create
  *  is offered here — only the branch name, read-only. Switching branches mid-modification goes
  *  through "Publier"/"Annuler", never through this selector. This restriction is specific to the
- *  Structure tree: the Version panel's `BranchCombobox` stays the unrestricted "advanced" tool. */
+ *  Structure tree: the Version panel's `BranchCombobox` stays the unrestricted "advanced" tool.
+ *
+ *  GH106 — the only branch control of the row: the designated integration branch is labelled in
+ *  the list (creating an `int-*` here designates it), and in detached HEAD (component pinned on a
+ *  commit) the combo shows the abbreviated commit instead of disappearing. */
 export function RepoBranchSelector({
   node, workspaceDir, flatNodes,
 }: {
@@ -35,8 +41,16 @@ export function RepoBranchSelector({
   } = useBranchCheckout(node, workspaceDir, flatNodes, dropdownOpen)
 
   const [checkoutConfirm, setCheckoutConfirm] = useState<{ value: string; isCommit: boolean } | null>(null)
+  // Shared with IntegrationBranchIndicator (same key): designated branch + HEAD commit.
+  const { data: integration } = useQuery({
+    queryKey: ['integration:state', node.repoPath],
+    queryFn: () => api.integration.state(node.repoPath),
+    enabled: !!node.repoPath,
+    refetchInterval: 10_000,
+  })
+  const shown = currentBranch || integration?.headOid.slice(0, 7) || ''
 
-  if (!currentBranch) return null
+  if (!shown) return null
 
   if (currentBranch.startsWith('dev-')) {
     return (
@@ -71,7 +85,8 @@ export function RepoBranchSelector({
       <BranchCombobox
         branches={allBranches}
         tags={allTags}
-        currentBranch={currentBranch}
+        currentBranch={shown}
+        integrationBranch={integration?.configured}
         onCheckout={handleCheckout}
         onCheckoutCommit={handleCheckoutCommit}
         onDelete={deleteBranch}

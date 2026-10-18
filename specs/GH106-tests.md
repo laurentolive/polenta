@@ -19,8 +19,8 @@ Légende : **U** = vitest (`pnpm test`, vrai repo git dans un dossier temporaire
 | T-08 | 1 | U | `createAndDesignate('PH2')` depuis `int-VE22D` | Branche `int-PH2` à la même position, puis commit de désignation, `project.yaml` = `int-PH2` |
 | T-09 | 1 | E | Workspace e2e sur `int-B` incohérente : le bandeau de « Publier » affiche « Désigner `int-B` ». Clic | Le bandeau disparaît, « Publier » est actif |
 | T-10 | 1 | M | **Cas PH2 réel** (`hmi-PH2`, `int-PH2` / `int-VE22D`) : bouton « Désigner `int-PH2` » | Critère 1 de la spec ; `origin/int-PH2` existe après coup |
-| T-11 | 2 | E | Onglet Structure : menu « Intégration » d'un repo, choix d'une autre `int-*` | Libellé mis à jour, branche courante changée, commit présent si nécessaire |
-| T-13 | 2 | E | « Nouvelle branche d'intégration… », saisie `v2` depuis l'intégration actuelle | `int-v2` créée, désignée, libellé « Intégration : `int-v2` » |
+| T-11 | 2 | E | Onglet Structure : `int-*` créée sans désignation (cas PH2) | « Désigner `int-X` comme intégration » affiché ; après clic, désignée, plus rien d'affiché à côté de la combo |
+| T-13 | 2 | E | Combo « Nouvelle branche… », saisie `int-v2` | `int-v2` créée, désignée, marquée « intégration » dans la liste ; aucun libellé « Intégration » sur la ligne |
 | T-14 | 2 | U/E | Même chose depuis une baseline (tag `v1.0`) | `int-v2` pointe sur le commit du tag + commit de désignation |
 | T-15 | 1 | E | Panneau Version : création d'une branche `int-x` | Désignée et commitée sans autre action (critère 4) |
 

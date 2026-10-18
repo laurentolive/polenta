@@ -1,4 +1,4 @@
-# GH106 — Sprint 2 : menu « Intégration » de l'onglet Structure, nouvelle branche d'intégration, SPEC
+# GH106 — Sprint 2 : branche d'intégration dans l'onglet Structure, refus traduits, SPEC
 
 Spec : `specs/GH103.md` §1. Design : `specs/GH106-design.md` (sprint 2). Tests : `specs/GH106-tests.md`.
 Sprint 1 : `specs/GH106-sprint1.md`.
@@ -7,35 +7,31 @@ Sprint 1 : `specs/GH106-sprint1.md`.
 
 | Fichier | Changement |
 |---|---|
-| `apps/desktop/src/renderer/components/schema/IntegrationBranchMenu.tsx` | **nouveau** — « Intégration : `int-X` » sur la ligne de chaque repo : pastilles, choix d'une `int-*`, « Nouvelle branche d'intégration… » |
-| `apps/desktop/src/renderer/components/schema/NewIntegrationBranchModal.tsx` | **nouveau** — préfixe `int-` imposé, nom vérifié à la saisie, départ depuis l'intégration actuelle ou une baseline |
+| `apps/desktop/src/renderer/components/schema/IntegrationBranchIndicator.tsx` | **nouveau** — intégration affichée seulement si elle diffère du checkout : « Désigner `int-X` comme intégration » ou « Intégration : `int-Y` » |
+| `apps/desktop/src/renderer/components/sidebar/version/BranchCombobox.tsx` | mention « intégration » sur la branche désignée (`integrationBranch`) |
 | `apps/desktop/src/renderer/components/schema/CheckoutConfirmModal.tsx` | **nouveau** — garde des modifications en attente, extraite de `RepoBranchSelector` |
-| `apps/desktop/src/renderer/components/schema/{StructureTab,RepoBranchSelector}.tsx` | menu inséré dans `RepoRow` ; `RepoBranchSelector` utilise `CheckoutConfirmModal` |
-| `apps/desktop/src/renderer/hooks/useDesignateIntegration.ts` | création (`integration:create`, checkout préalable avec retour à la branche de départ sur échec), invalidation immédiate, `lastKind` |
+| `apps/desktop/src/renderer/components/schema/{StructureTab,RepoBranchSelector}.tsx` | indicateur dans `RepoRow`, pin masqué s'il égale le checkout (`RepoPin`) ; `RepoBranchSelector` : `CheckoutConfirmModal`, intégration marquée, commit abrégé en detached HEAD |
+| `apps/desktop/src/renderer/hooks/useDesignateIntegration.ts` | invalidation immédiate (désignation seule : la création passe par la combo) |
 | `packages/types/src/branch.ts` | marqueur `⟦integration-guard …⟧` (`encodeIntegrationGuard` / `parseIntegrationGuard`), `isValidIntegrationSuffix` partagé main / renderer |
 | `apps/desktop/src/main/services/integration-branch.service.ts` | refus encodés avec le marqueur ; validateur partagé |
 | `apps/desktop/src/renderer/api.ts` | refus de la garde traduits dans le transport (comme `⟦forge-access …⟧`) |
 | `apps/desktop/src/renderer/lib/branchErrors.ts` | **nouveau** — message sans le préfixe de l'IPC Electron (hook, menu, fenêtre, graphe) |
 | `apps/desktop/src/renderer/routes/graph.tsx` | erreurs des mutations via `branchErrorText` |
-| `apps/desktop/src/renderer/i18n/locales/{fr,en}.json` | `schema.integrationMenu.*`, `schema.newIntegrationBranch.*`, `integration.guard.*` |
-| `apps/desktop/e2e-web/gh106-structure.spec.ts` | **nouveau** — T-11, T-13, T-30 |
+| `apps/desktop/src/renderer/i18n/locales/{fr,en}.json` | `schema.integrationIndicator.*`, `sidebar.version.integrationTag`, `integration.guard.*` |
+| `apps/desktop/e2e-web/gh106-structure.spec.ts` | **nouveau** — T-11, T-13, T-30, T-23 |
 | `apps/desktop/src/main/services/integration-branch.service.test.ts` | marqueur du refus vérifié à travers le préfixe IPC |
 | `specs/SPEC-*.md`, `specs/SPEC-INDEX.md` | cf. § Mises à jour SPEC |
 
 ## Comportement implémenté
 
-- **Onglet Structure** : sur chaque repo (pas les composants locaux), « Intégration : `int-X` ».
-  - Pastille ⚠ **incohérente** (branche courante `int-*` non désignée) : « Désigner `<courante>` »
-    en tête du menu.
-  - Pastille **hors convention** (intégration sans `int-`, p. ex. le repli `main`) : rien n'est
-    bloqué.
-  - Menu actif en detached HEAD (composant épinglé, baseline) : choisir une branche en fait le
-    checkout. Désactivé seulement sur une branche `dev-*` (modification en cours).
-  - Menu : `int-*` locales et distantes (« distante »), la désignée cochée ; choisir une autre
-    branche la désigne (checkout sous la garde des modifications en attente).
-  - « Nouvelle branche d'intégration… » : création + désignation. Départ « intégration actuelle »
-    (avec checkout préalable si on est ailleurs, et retour à la branche de départ si la création
-    échoue) ou baseline. Sans désignation écrite, le départ est la position courante.
+- **Onglet Structure**, sur chaque repo (pas les composants locaux) :
+  - La combo de branche est le seul contrôle : branche courante (commit abrégé en detached HEAD),
+    intégration désignée marquée « intégration » dans la liste, checkout sous la garde des
+    modifications en attente ; « Nouvelle branche… » `int-<nom>` crée et désigne.
+  - L'intégration n'est affichée que si elle diffère de la branche checkoutée : ⚠ « Désigner
+    `int-X` comme intégration » (branche courante `int-*` non désignée, cas PH2), sinon
+    « Intégration : `int-Y` » pour information. Rien sur `dev-*`.
+  - Le pin d'un composant n'est affiché que s'il diffère du checkout.
 - **Refus des gardes** traduits (français / anglais) dans toutes les UI, y compris le graphe.
 
 ## Divergences par rapport au design
@@ -55,26 +51,29 @@ Sprint 1 : `specs/GH106-sprint1.md`.
    le panneau Version : la traduction et l'affichage sont communs à toutes les UI (`api.ts`,
    `BranchNotices`).
 
-8. **Menu actif en detached HEAD** (retour de validation, cf. plus bas) au lieu de « menu désactivé
-   pour `readonly` » (design §3.4, spec GH103 §1.1).
+8. **Pas de menu « Intégration » ni de fenêtre de création** (retours de validation, ci-dessous) au
+   lieu du design §3.4.
 
-## Retour de validation : menu actif en detached HEAD
+## Retours de validation
 
-Constat (projet PH2) : `packBattery-7STD` et trois accessoires, épinglés sur un commit par le
-produit, sont en detached HEAD ; le menu y était désactivé alors que le sélecteur de branche voisin
-permet le même checkout. Le verrou ne protégeait rien (« Désigner » commite sur la `int-*`, jamais
-sur le commit épinglé ; la fenêtre de création propose déjà « depuis une baseline »). Décision :
-menu actif, seul `dev-*` le verrouille.
-
+**1. Menu désactivé en detached HEAD** (projet PH2 : `packBattery-7STD` et trois accessoires,
+épinglés sur un commit). Le verrou ne protégeait rien : « Désigner » commite sur la `int-*`, jamais
+sur le commit épinglé. Décision : actif ; seul `dev-*` verrouille.
 - Statut `readonly` renommé `detached` ; `IntegrationState.headOid` (commit de HEAD) ajouté.
-- Choisir une `int-*`, y compris la désignée : checkout puis désignation.
-- Nouvelle branche : depuis l'intégration désignée si elle existe (checkout préalable, retour au
-  commit de départ si la création échoue), sinon depuis le commit courant (« Commit actuel (abc1234) »).
-- `createAndDesignate` : en detached HEAD, la position de retour est le commit ; avant, l'échec
+- `createAndDesignate` : en detached HEAD, la position de retour est le commit ; avant, un échec
   laissait HEAD sur une branche supprimée.
-- Tests : 3 unitaires (`designate` et `createAndDesignate` en detached, état `detached`), e2e
-  `GH106-S2-4`.
-- Spec GH103 §1.1 et `SPEC-FORKS-BRANCHES-BASELINES.md` §2.2 mises à jour.
+- Tests unitaires : `designate` et `createAndDesignate` en detached, état `detached`.
+
+**2. Même information trois fois sur la ligne** (pin, combo, « Intégration : `int-X` »), et en
+detached HEAD pas de combo du tout. Décision : la combo seule ; l'intégration affichée seulement
+quand elle diffère du checkout.
+- `IntegrationBranchMenu` et `NewIntegrationBranchModal` supprimés, remplacés par
+  `IntegrationBranchIndicator` ; la création d'une `int-*` passe par « Nouvelle branche… » de la
+  combo (création + désignation depuis le sprint 1 ; pour partir d'une baseline, la checkouter
+  d'abord) ; `useDesignateIntegration` ne fait plus que désigner.
+- Combo : intégration marquée dans la liste, commit abrégé en detached HEAD.
+- Pin masqué s'il égale la branche ou le commit checkouté.
+- e2e `gh106-structure.spec.ts` réécrit (T-13, T-11 sur le cas PH2, T-30, T-23).
 
 ## Mises à jour SPEC
 
@@ -101,13 +100,14 @@ menu actif, seul `dev-*` le verrouille.
 
 ## Tester à la main
 
-1. Modèle de données › Structure : chaque repo affiche « Intégration : … ». Un repo en `main` sans
-   `project.yaml` a la pastille grise ; un repo épinglé sur une baseline a le menu grisé.
-2. « Nouvelle branche d'intégration… » : saisir `a b` → message d'erreur, bouton désactivé ;
-   saisir `v2` → « Créer et désigner ». Le libellé passe à `int-v2`, `git log -1` montre
-   `Branche d'intégration : int-v2`.
-3. Rouvrir le menu, choisir l'ancienne `int-*` : avec des modifications en attente, la
-   confirmation « Forcer le checkout » apparaît ; après, le libellé revient.
+1. Modèle de données › Structure : un repo sur sa branche d'intégration n'affiche que sa combo
+   (pas de pin ni de « Intégration » répétés). Ouvrir la combo : la branche désignée porte la
+   mention « intégration ».
+2. Combo › « Nouvelle branche… » `int-v2` : la combo passe à `int-v2`, rien d'autre ne s'affiche,
+   `git log -1` montre `Branche d'intégration : int-v2`.
+3. Repo épinglé sur un commit (PH2 : `packBattery-7STD`) : la combo montre le commit abrégé et
+   « Intégration : `int-VE10A` » s'affiche ; choisir `int-VE10A` dans la combo → le libellé disparaît.
 4. Panneau Version : supprimer la branche désignée → message traduit (essayer en anglais dans les
    Préférences).
-5. **Cas PH2** : dans `hmi-PH2`, le menu montre la pastille ⚠ et « Désigner `int-PH2` ».
+5. **Cas PH2** : sur `VE22D` (branche `int-PH2`, fichier à `int-VE22D`), « Désigner `int-PH2` comme
+   intégration » s'affiche à côté de la combo ; un clic le fait disparaître.

@@ -200,6 +200,11 @@ Mutation partagée par le bandeau de « Publier » et l'onglet Structure :
 
 ### 3.4 Onglet Structure (sprint 2)
 
+> **Remplacé après validation** (cf. `GH106-sprint2.md` § Retours de validation) : plus de menu
+> « Intégration » ni de `NewIntegrationBranchModal` ; la combo `RepoBranchSelector` est le seul
+> contrôle, `IntegrationBranchIndicator` n'apparaît que si l'intégration diffère du checkout.
+> Le texte ci-dessous décrit le design initial.
+
 Nouveau composant `components/schema/IntegrationBranchMenu.tsx`, rendu dans `RepoRow` juste après
 `RepoBranchSelector`. Il n'est pas rendu pour `LocalNodeRow` (même repo que le parent).
 

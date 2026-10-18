@@ -128,18 +128,15 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 ### 2.2 Règles
 
 - Chaque repo a une branche d'intégration **configurée** (pas nécessairement `main`). **GH106** :
-  - **Choix explicite** dans le Modèle de données, onglet Structure : libellé « Intégration :
-    `int-X` » sur la ligne de chaque repo (`IntegrationBranchMenu`, pas sur les composants locaux).
-    Le menu liste les `int-*` locales et distantes (« distante » si absente en local) et propose
-    « Nouvelle branche d'intégration… » (`NewIntegrationBranchModal` : préfixe `int-` imposé, nom
-    vérifié à la saisie, départ depuis l'intégration actuelle ou une baseline). Pastilles :
-    **incohérente** (branche courante `int-*` non désignée, action « Désigner » en tête du menu),
-    **hors convention** (intégration sans préfixe `int-`, p. ex. `main` par défaut — rien n'est
-    bloqué). En detached HEAD (composant épinglé sur un commit, baseline), le menu reste actif :
-    choisir une branche en fait le checkout ; une nouvelle branche part de l'intégration désignée si
-    elle existe, sinon du commit courant. Menu désactivé seulement sur `dev-*` (modification en
-    cours). (L'ancien widget `IntegrationBranchSelector` n'existe
-    plus depuis T86/T87.)
+  - **Choix explicite** dans le Modèle de données, onglet Structure, par la combo de branche de
+    chaque repo (`RepoBranchSelector`, seul contrôle de la ligne) : l'intégration désignée y porte
+    la mention « intégration » ; y créer une `int-*` la désigne. En detached HEAD (composant épinglé
+    sur un commit, baseline), la combo affiche le commit abrégé. `IntegrationBranchIndicator`
+    n'affiche l'intégration **que si elle diffère de la branche checkoutée** : ⚠ « Désigner `int-X`
+    comme intégration » si la branche courante est une `int-*` non désignée (cas PH2), sinon
+    « Intégration : `int-Y` » pour information ; rien sur `dev-*`. Le pin d'un composant n'est
+    affiché que s'il diffère de ce qui est checkouté. (L'ancien widget `IntegrationBranchSelector`
+    n'existe plus depuis T86/T87.)
   - **Désigner `int-X`** (`integration:designate`) : checkout si besoin (sous la garde des
     modifications en attente, `CheckoutConfirmModal`), commit `Branche d'intégration : int-X` ne
     contenant que `config/project.yaml` (arbre construit sur HEAD, index non lu : les modifications
@@ -148,13 +145,10 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
     admin du repo (Forgejo et GitHub — sinon simple mention). Propagation du pin vers les repos
     parents comme après un checkout (T82). Un `project.yaml` en YAML invalide est refusé sans
     écriture.
-  - **Créer une `int-*`** (onglet Structure, panneau Version, `RepoBranchSelector`) =
-    `integration:create` : création puis désignation ; en cas d'échec avant le commit de
-    désignation, la branche est retirée et HEAD revient sur la branche de départ (y compris
-    quand l'onglet Structure avait d'abord checkouté l'intégration pour partir de sa position).
-    Le menu « Intégration » est désactivé sur une branche `dev-*` (modification en cours, comme
-    `RepoBranchSelector`). Sans désignation écrite (repli `main`), « depuis l'intégration
-    actuelle » part de la position courante.
+  - **Créer une `int-*`** (combo de l'onglet Structure, panneau Version) = `integration:create` :
+    création à la position courante (commit compris, en detached HEAD) puis désignation ; en cas
+    d'échec avant le commit de désignation, la branche est retirée et HEAD revient sur la branche
+    (ou le commit) de départ.
   - **Checkout d'une `int-*`** : aucun commit, aucune écriture — si son `project.yaml` désigne une
     autre branche, « Publier » propose « Désigner » (§2.1).
   - **Jamais sans branche d'intégration** : `sync:delete-branch` et `sync:delete-remote-branch`

@@ -29,7 +29,8 @@ Sprint 1 : `specs/GH106-sprint1.md`.
     en tête du menu.
   - Pastille **hors convention** (intégration sans `int-`, p. ex. le repli `main`) : rien n'est
     bloqué.
-  - Menu désactivé en detached HEAD (baseline) et sur une branche `dev-*` (modification en cours).
+  - Menu actif en detached HEAD (composant épinglé, baseline) : choisir une branche en fait le
+    checkout. Désactivé seulement sur une branche `dev-*` (modification en cours).
   - Menu : `int-*` locales et distantes (« distante »), la désignée cochée ; choisir une autre
     branche la désigne (checkout sous la garde des modifications en attente).
   - « Nouvelle branche d'intégration… » : création + désignation. Départ « intégration actuelle »
@@ -53,6 +54,27 @@ Sprint 1 : `specs/GH106-sprint1.md`.
 7. T-30 vérifié au niveau du channel (marqueur transmis) plutôt qu'en cliquant la suppression dans
    le panneau Version : la traduction et l'affichage sont communs à toutes les UI (`api.ts`,
    `BranchNotices`).
+
+8. **Menu actif en detached HEAD** (retour de validation, cf. plus bas) au lieu de « menu désactivé
+   pour `readonly` » (design §3.4, spec GH103 §1.1).
+
+## Retour de validation : menu actif en detached HEAD
+
+Constat (projet PH2) : `packBattery-7STD` et trois accessoires, épinglés sur un commit par le
+produit, sont en detached HEAD ; le menu y était désactivé alors que le sélecteur de branche voisin
+permet le même checkout. Le verrou ne protégeait rien (« Désigner » commite sur la `int-*`, jamais
+sur le commit épinglé ; la fenêtre de création propose déjà « depuis une baseline »). Décision :
+menu actif, seul `dev-*` le verrouille.
+
+- Statut `readonly` renommé `detached` ; `IntegrationState.headOid` (commit de HEAD) ajouté.
+- Choisir une `int-*`, y compris la désignée : checkout puis désignation.
+- Nouvelle branche : depuis l'intégration désignée si elle existe (checkout préalable, retour au
+  commit de départ si la création échoue), sinon depuis le commit courant (« Commit actuel (abc1234) »).
+- `createAndDesignate` : en detached HEAD, la position de retour est le commit ; avant, l'échec
+  laissait HEAD sur une branche supprimée.
+- Tests : 3 unitaires (`designate` et `createAndDesignate` en detached, état `detached`), e2e
+  `GH106-S2-4`.
+- Spec GH103 §1.1 et `SPEC-FORKS-BRANCHES-BASELINES.md` §2.2 mises à jour.
 
 ## Mises à jour SPEC
 

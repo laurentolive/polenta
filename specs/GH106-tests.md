@@ -36,7 +36,7 @@ Légende : **U** = vitest (`pnpm test`, vrai repo git dans un dossier temporaire
 | T-20 | 1 | U | Forge en 401 au PATCH | `defaultBranch: { error }`, hôte marqué révoqué, `designate` réussit |
 | T-21 | 1 | U | `designate('main')` ou `designate('int-a b')` | Erreur de validation, aucune écriture |
 | T-22 | 1 | U | `createAndDesignate('A')` alors que `origin/int-A` existe | Erreur « nom pris » avant toute écriture |
-| T-23 | 1 | U | Detached HEAD | `state().status = 'readonly'`, `designate` d'une branche fait le checkout puis fonctionne |
+| T-23 | 1 | U | Detached HEAD | `state().status = 'detached'` ; `designate` d'une branche fait le checkout puis fonctionne ; création depuis le commit épinglé, retour sur ce commit si elle échoue ; menu actif (e2e) |
 | T-24 | 1 | U | Checkout d'une `int-*` par `sync:checkout-branch` | Aucun commit, `project.yaml` inchangé |
 
 ## Gardes de suppression (§1.5)

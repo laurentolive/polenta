@@ -89,7 +89,7 @@ describe('state', () => {
   it('int-B héritant de int-A → incoherent (T-01, avant désignation)', async () => {
     await setupInherited()
     expect(await service.state(repo)).toEqual({
-      currentBranch: 'int-B', configured: 'int-A', status: 'incoherent',
+      currentBranch: 'int-B', headOid: await git.resolveRef({ fs, dir: repo, ref: 'HEAD' }), configured: 'int-A', status: 'incoherent',
       candidates: [{ name: 'int-A', remoteOnly: false }, { name: 'int-B', remoteOnly: false }],
     })
   })
@@ -101,15 +101,24 @@ describe('state', () => {
     expect(await service.state(repo)).toMatchObject({ currentBranch: 'main', configured: 'main', status: 'nonConvention', candidates: [] })
   })
 
-  it('detached HEAD → readonly (T-23)', async () => {
+  it('detached HEAD → detached, headOid = commit (T-23)', async () => {
     await setupInherited()
     const sha = await git.resolveRef({ fs, dir: repo, ref: 'HEAD' })
     await git.checkout({ fs, dir: repo, ref: sha })
-    expect((await service.state(repo)).status).toBe('readonly')
+    expect(await service.state(repo)).toMatchObject({ currentBranch: '', headOid: sha, status: 'detached' })
   })
 })
 
 describe('designate', () => {
+  it('detached HEAD : checkout de la branche puis désignation (T-23)', async () => {
+    await setupInherited()
+    await git.checkout({ fs, dir: repo, ref: await git.resolveRef({ fs, dir: repo, ref: 'int-A' }) })
+    const outcome = await service.designate(repo, 'int-B')
+    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-B')
+    expect(outcome).toMatchObject({ branch: 'int-B', committed: true })
+    expect(yaml.load(await fileAt('int-B', PROJECT))).toEqual({ integrationBranch: 'int-B' })
+  })
+
   it('commit du seul project.yaml, WD propre (T-01)', async () => {
     await setupInherited()
     const outcome = await service.designate(repo, 'int-B')
@@ -281,6 +290,27 @@ describe('createAndDesignate', () => {
     expect(await fsP.readFile(path.join(repo, PROJECT), 'utf8')).toBe('cassé: [\n')   // WD non réécrit
     await write(PROJECT, 'integrationBranch: int-A\n')
     await expect(service.createAndDesignate(repo, 'v3')).resolves.toMatchObject({ branch: 'int-v3', committed: true })
+  })
+
+  it('detached HEAD : depuis le commit épinglé (T-23)', async () => {
+    await setupInherited()
+    const pinned = await git.resolveRef({ fs, dir: repo, ref: 'int-A' })
+    await git.checkout({ fs, dir: repo, ref: pinned })
+    const outcome = await service.createAndDesignate(repo, 'pin')
+    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-pin')
+    const { commit } = await git.readCommit({ fs, dir: repo, oid: outcome.commitSha! })
+    expect(commit.parent).toEqual([pinned])
+  })
+
+  it('detached HEAD : échec de la désignation, retour sur le commit de départ (T-23)', async () => {
+    await setupInherited()
+    const pinned = await git.resolveRef({ fs, dir: repo, ref: 'int-A' })
+    await git.checkout({ fs, dir: repo, ref: pinned })
+    await write(PROJECT, 'cassé: [\n')
+    await expect(service.createAndDesignate(repo, 'pin')).rejects.toThrow(/YAML valide/)
+    expect(await git.currentBranch({ fs, dir: repo })).toBeUndefined()
+    expect(await git.resolveRef({ fs, dir: repo, ref: 'HEAD' })).toBe(pinned)
+    expect(await git.listBranches({ fs, dir: repo })).not.toContain('int-pin')
   })
 
   it('depuis une baseline (T-14)', async () => {

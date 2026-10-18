@@ -8,7 +8,7 @@ import { branchErrorText } from '../../lib/branchErrors'
 
 export interface NewIntegrationRequest {
   suffix: string
-  /** Absent : depuis la branche d'intégration actuelle. */
+  /** Absent : depuis la branche d'intégration actuelle (ou le commit courant, cf. `atCommit`). */
   from?: { tag: string }
 }
 
@@ -17,10 +17,12 @@ export interface NewIntegrationRequest {
  * vérifié pendant la saisie (caractères, nom déjà pris en local ou sur `origin`), point de départ
  * au choix : la branche d'intégration actuelle ou une baseline. La création désigne la branche.
  */
-export function NewIntegrationBranchModal({ repoPath, repoLabel, configured, taken, onCancel, onSubmit }: {
+export function NewIntegrationBranchModal({ repoPath, repoLabel, configured, atCommit, taken, onCancel, onSubmit }: {
   repoPath: string
   repoLabel: string
   configured: string
+  /** Detached HEAD sans branche d'intégration existante : départ du commit courant (abrégé). */
+  atCommit?: string
   /** `int-*` existantes (locales et distantes). */
   taken: string[]
   onCancel: () => void
@@ -85,7 +87,9 @@ export function NewIntegrationBranchModal({ repoPath, repoLabel, configured, tak
           <legend className="text-xs text-ink-2 mb-1">{t('schema.newIntegrationBranch.from')}</legend>
           <label className="flex items-center gap-2 text-xs text-ink mb-1">
             <input type="radio" checked={source === 'current'} onChange={() => setSource('current')} />
-            {t('schema.newIntegrationBranch.fromCurrent', { branch: configured })}
+            {atCommit
+              ? t('schema.newIntegrationBranch.fromCommit', { commit: atCommit })
+              : t('schema.newIntegrationBranch.fromCurrent', { branch: configured })}
           </label>
           <label className="flex items-center gap-2 text-xs text-ink">
             <input type="radio" checked={source === 'baseline'} onChange={() => setSource('baseline')} />

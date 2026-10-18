@@ -43,10 +43,11 @@ export class IntegrationBranchService {
     const currentBranch = (await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)) ?? ''
     const configured = await this.git.getIntegrationBranch(repoPath)
     let status: IntegrationStatus = 'ok'
-    if (!currentBranch) status = 'readonly'
+    if (!currentBranch) status = 'detached'
     else if (currentBranch.startsWith(INT_PREFIX) && currentBranch !== configured) status = 'incoherent'
     else if (!configured.startsWith(INT_PREFIX)) status = 'nonConvention'
-    return { currentBranch, configured, status, candidates: await this.candidates(repoPath) }
+    const headOid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }).catch(() => '')
+    return { currentBranch, headOid, configured, status, candidates: await this.candidates(repoPath) }
   }
 
   async designate(repoPath: string, branch: string): Promise<DesignateOutcome> {
@@ -105,7 +106,9 @@ export class IntegrationBranchService {
     if ((await this.candidates(repoPath)).some(c => c.name === branch)) {
       throw new Error(`La branche ${branch} existe déjà (en local ou sur le serveur).`)
     }
-    const previous = (await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined)) || undefined
+    // Detached HEAD (composant épinglé) : la position de retour est le commit.
+    const previous = (await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined))
+      || (await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }).catch(() => undefined))
     let sha: string | null = null
     if (from) {
       sha = await this.sync.resolveTag(repoPath, from.tag)
@@ -127,8 +130,8 @@ export class IntegrationBranchService {
 
   /**
    * Échec avant la désignation (commit impossible, checkout en conflit…) : la branche créée est
-   * retirée et HEAD revient sur la branche de départ, pour qu'un nouvel essai ne bute pas sur
-   * « existe déjà » et que le repo ne reste pas sur une `int-*` non désignée. Une branche dont le
+   * retirée et HEAD revient sur la branche (ou le commit, en detached HEAD) de départ, pour qu'un
+   * nouvel essai ne bute pas sur « existe déjà » et que le repo ne reste pas sur une `int-*` non désignée. Une branche dont le
    * commit de désignation a abouti n'est jamais retirée (seul le push peut encore échouer, et il
    * ne lève pas).
    */

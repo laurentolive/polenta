@@ -16,13 +16,16 @@ export interface Branch {
  * - `ok` : branche courante = intégration désignée, ou branche qui n'est pas une `int-*`.
  * - `incoherent` : branche courante `int-X` dont `config/project.yaml` désigne une autre branche.
  * - `nonConvention` : intégration désignée sans préfixe `int-` (`main`, repli historique).
- * - `readonly` : detached HEAD.
+ * - `detached` : detached HEAD (composant épinglé sur un commit, baseline) — le menu reste actif,
+ *   choisir une branche en fait le checkout.
  */
-export type IntegrationStatus = 'ok' | 'incoherent' | 'nonConvention' | 'readonly'
+export type IntegrationStatus = 'ok' | 'incoherent' | 'nonConvention' | 'detached'
 
 export interface IntegrationState {
   /** `''` en detached HEAD. */
   currentBranch: string
+  /** Commit de HEAD (`''` dans un repo vide) : position de retour en detached HEAD. */
+  headOid: string
   /** `config/project.yaml` du WD, repli `'main'`. */
   configured: string
   status: IntegrationStatus

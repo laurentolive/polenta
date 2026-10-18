@@ -16,7 +16,9 @@ import { NewIntegrationBranchModal, type NewIntegrationRequest } from './NewInte
  * GH106 — « Intégration : int-X » sur la ligne de chaque repo de l'onglet Structure (spec GH103
  * §1.1, design §3.4). Le menu désigne une `int-*` existante (checkout si besoin, sous la garde des
  * modifications en attente) ou en crée une. Pastille : `incoherent` (la branche courante est une
- * `int-*` non désignée — cas PH2) ou `nonConvention` (intégration sans préfixe `int-`).
+ * `int-*` non désignée — cas PH2) ou `nonConvention` (intégration sans préfixe `int-`). En detached
+ * HEAD (composant épinglé sur un commit, baseline), le menu reste actif : choisir une branche en
+ * fait le checkout. Seule une modification en cours (`dev-*`) le verrouille.
  * Pas de polling serré : rafraîchi toutes les 10 s et à l'ouverture du menu.
  */
 export function IntegrationBranchMenu({ node, workspaceDir, flatNodes }: {
@@ -63,14 +65,17 @@ export function IntegrationBranchMenu({ node, workspaceDir, flatNodes }: {
   }, [open, close])
 
   if (!state) return null
-  const readonly = state.status === 'readonly'
+  const detached = state.status === 'detached'
   // Same rule as RepoBranchSelector (T83): no checkout away from a modification in progress —
   // leaving a `dev-*` branch goes through "Publier".
   const inModification = state.currentBranch.startsWith('dev-')
-  const locked = readonly || inModification
+  const locked = inModification
   // "Current integration" start point: the designated branch, or the current position when the
-  // designation is only the `main` fallback (that branch may not even exist).
-  const startBranch = state.status === 'nonConvention' ? state.currentBranch : state.configured
+  // designation is only the `main` fallback (that branch may not even exist). Detached HEAD: the
+  // designated branch if it exists, else the pinned commit ('' = stay where HEAD is).
+  const startBranch = detached
+    ? (state.candidates.some(c => c.name === state.configured) ? state.configured : '')
+    : state.status === 'nonConvention' ? state.currentBranch : state.configured
 
   function toggle() {
     if (locked || designation.isPending) return
@@ -98,8 +103,8 @@ export function IntegrationBranchMenu({ node, workspaceDir, flatNodes }: {
   function create(req: NewIntegrationRequest): Promise<boolean> {
     // From the current integration while checked out elsewhere: back to it first, then branch off
     // (and back to where the user was if the creation fails).
-    const checkoutFirst = !req.from && state!.currentBranch !== startBranch
-      ? { branch: startBranch, returnTo: state!.currentBranch }
+    const checkoutFirst = !req.from && startBranch && state!.currentBranch !== startBranch
+      ? { branch: startBranch, returnTo: state!.currentBranch || state!.headOid }
       : undefined
     designation.reset()
     return new Promise<boolean>((resolve, reject) => {
@@ -127,8 +132,8 @@ export function IntegrationBranchMenu({ node, workspaceDir, flatNodes }: {
         disabled={locked || designation.isPending}
         className="flex items-center gap-1 text-xs text-ink-3 hover:text-ink disabled:opacity-60 disabled:cursor-default"
         title={
-          readonly ? t('schema.integrationMenu.readonlyHint')
-            : inModification ? t('sidebar.version.modificationInProgress')
+          inModification ? t('sidebar.version.modificationInProgress')
+            : detached ? t('schema.integrationMenu.detachedHint', { commit: state.headOid.slice(0, 7) })
               : state.status === 'incoherent' ? t('schema.integrationMenu.incoherentHint', { branch: state.currentBranch, configured: state.configured })
                 : state.status === 'nonConvention' ? t('schema.integrationMenu.nonConventionHint') : undefined
         }
@@ -181,7 +186,8 @@ export function IntegrationBranchMenu({ node, workspaceDir, flatNodes }: {
                     type="button"
                     role="menuitemradio"
                     aria-checked={selected}
-                    onClick={() => (selected ? close() : designate(c.name))}
+                    // Detached: the designated branch is not checked out yet — choosing it does.
+                    onClick={() => (selected && !detached ? close() : designate(c.name))}
                     className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-hover ${selected ? 'text-status-info' : 'text-ink'}`}
                   >
                     {selected ? <Check size={11} className="shrink-0" /> : <span className="w-[11px] shrink-0" />}
@@ -214,6 +220,7 @@ export function IntegrationBranchMenu({ node, workspaceDir, flatNodes }: {
           repoPath={repoPath}
           repoLabel={node.label || node.name}
           configured={startBranch}
+          atCommit={startBranch ? undefined : state.headOid.slice(0, 7)}
           taken={state.candidates.map(c => c.name)}
           onCancel={() => setShowNew(false)}
           onSubmit={async req => { if (await create(req)) setShowNew(false) }}

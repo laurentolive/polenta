@@ -135,7 +135,10 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
     vérifié à la saisie, départ depuis l'intégration actuelle ou une baseline). Pastilles :
     **incohérente** (branche courante `int-*` non désignée, action « Désigner » en tête du menu),
     **hors convention** (intégration sans préfixe `int-`, p. ex. `main` par défaut — rien n'est
-    bloqué). Menu désactivé en detached HEAD. (L'ancien widget `IntegrationBranchSelector` n'existe
+    bloqué). En detached HEAD (composant épinglé sur un commit, baseline), le menu reste actif :
+    choisir une branche en fait le checkout ; une nouvelle branche part de l'intégration désignée si
+    elle existe, sinon du commit courant. Menu désactivé seulement sur `dev-*` (modification en
+    cours). (L'ancien widget `IntegrationBranchSelector` n'existe
     plus depuis T86/T87.)
   - **Désigner `int-X`** (`integration:designate`) : checkout si besoin (sous la garde des
     modifications en attente, `CheckoutConfirmModal`), commit `Branche d'intégration : int-X` ne

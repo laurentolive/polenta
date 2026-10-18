@@ -32,10 +32,11 @@ export type IntegrationStatus =
   | 'ok'            // branche courante = intégration désignée, ou branche non int-*
   | 'incoherent'    // branche courante int-X, project.yaml désigne une autre branche (cas PH2)
   | 'nonConvention' // intégration désignée sans préfixe int- (main, repli)
-  | 'readonly'      // detached HEAD
+  | 'detached'      // detached HEAD (menu actif, cf. GH106-sprint2.md « Retour de validation »)
 
 export interface IntegrationState {
   currentBranch: string            // '' si detached
+  headOid: string                  // commit de HEAD (position de retour en detached)
   configured: string               // project.yaml du WD, repli 'main' (= getIntegrationBranch actuel)
   status: IntegrationStatus
   /** int-* locales + origin/int-*, dédoublonnées, triées ; `remoteOnly` si absente en local. */
@@ -206,7 +207,7 @@ Nouveau composant `components/schema/IntegrationBranchMenu.tsx`, rendu dans `Rep
   toutes les 10 s quand la ligne est visible. On ne fait pas de polling 3 s par repo (même
   raison que `RepoBranchSelector`).
 - Libellé : `Intégration : <configured>`. Pastille `status-warning` pour `incoherent`, pastille
-  `ink-3` pour `nonConvention`, menu désactivé pour `readonly`.
+  `ink-3` pour `nonConvention`, menu actif en `detached` (choisir une branche en fait le checkout).
 - Menu : `candidates` (cochée = `configured`, mention « distante » si `remoteOnly`), séparateur,
   « Nouvelle branche d'intégration… ». En `incoherent`, l'action « Désigner `<currentBranch>` » est
   en tête du menu.

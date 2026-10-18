@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef,
+  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -404,6 +404,10 @@ export interface ApiClient {
     previewValueRenames(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<ValueRenamePreview[]>
     /** GH82 — migre statuts / valeurs d'enum renommés (objets, historique, copies de campagne). */
     renameValues(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<FieldRenameResult>
+    /** GH100 — aperçu sans écriture du renommage d'un type (nom / préfixe). */
+    previewTypeRename(repoPath: string, workspaceDir: string, dto: TypeRenameDto): Promise<TypeRenamePlan>
+    /** GH100 — après l'enregistrement du schéma : migre les objets du type et leurs références. */
+    renameType(repoPath: string, workspaceDir: string, dto: TypeRenameDto): Promise<TypeRenameResult>
     /** Drops the main-process in-memory cache for `repoPath` so the next `get()` re-reads schema.yaml from disk. */
     invalidate(repoPath: string): Promise<void>
   }

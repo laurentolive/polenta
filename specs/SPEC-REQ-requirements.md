@@ -433,6 +433,25 @@ brute — ni entrée d'historique, ni revalidation, ni `version` : `status` / `f
 la liste pour multi_enum, séparateurs conservés), valeurs de `history`, copies `testSnapshot` des
 campagnes du repo, `default` du champ. Requêtes et dashboards du Suivi non modifiés.
 
+**Renommer un type (nom / préfixe, GH100)** : détecté à l'enregistrement d'un type existant dont le
+nom ou le préfixe diffère de celui chargé. Aperçu sans écriture (`schema:preview-type-rename`) :
+pré-contrôles tout ou rien — un repo du workspace absent du disque (`REPO_MISSING`), un nouvel ID
+déjà présent comme fichier ou pierre tombale dans un repo du workspace (`ID_COLLISION`) → refus,
+rien n'est enregistré. Sinon confirmation (objets renommés, objets rattachés au nouveau nom,
+fichiers réécrits par repo, types de lien mis à jour), puis enregistrement du schéma et migration
+(`schema:rename-type`, après GH77 / GH82, qui cherchent sous l'ancien `objectTypeRef`) :
+- **préfixe** (exigences, tests ; les campagnes sont toujours `CAMP-NNNN`) : `OLD-n` → `NEW-n`
+  (même numéro), ID entier réécrit dans le contenu et les chemins des dossiers de données de tous
+  les repos du workspace (`requirements/ tests/ campaigns/ test-runs/ links/ reviews/
+  impact-analyses/ impact-acks/ .polenta/trees/`, texte des champs compris ; jamais `diagrams/`,
+  `images/`, dashboards, requêtes ni scripts) ; pierre tombale pour chaque ancien ID ;
+- **nom** : `objectTypeRef` des objets du type, `testSnapshot.objectTypeRef` des copies de ses tests
+  (campagnes de tous les repos), fichier d'ordre `.polenta/trees/<nœud>/<nom>.yaml`, refs
+  `<nœud>::<nom>` des `linkTypes` du repo et des autres repos (sauf si l'un d'eux déclare encore un
+  type `<nœud>::<ancien nom>`).
+Écriture brute, au mieux par fichier (échecs listés dans le compte rendu). Limite : la date de
+création (git) d'un objet renommé est celle du renommage (pas de suivi des renommages de fichier).
+
 **Reprise depuis git** (Préférences du projet, par repo, `history:backfill`) : une entrée
 `source: git` par changement de valeur le long de la chaîne des premiers parents de la branche
 courante, datée du commit (date de commit) et signée de son auteur — les changements d'une branche

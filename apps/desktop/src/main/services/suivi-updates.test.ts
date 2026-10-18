@@ -165,11 +165,14 @@ describe('GH74 — seed « Campagnes » (§8)', () => {
     const d = (await dashboards.get(repo, U, m.dashboardId!))!
     const byTitle = new Map(d.widgets.map((w) => [w.title, w]))
     expect(byTitle.get('Avancement par campagne')!.template).toMatchObject({ id: 'bar', params: { series: 'stepLabel', seriesOrder: 'stepRank' } })
-    expect(byTitle.get('Avancement dans le temps')!.template).toMatchObject({ id: 'stacked-area', params: { x: 'date', series: 'status', value: 'count' } })
+    expect(byTitle.get('Avancement dans le temps')!.template).toMatchObject({
+      id: 'stacked-area', params: { x: 'date', series: 'stepLabel', seriesOrder: 'stepRank', seriesColor: 'stepColor', value: 'count' },
+    })
     const progress = (await queries.findOne(repo, U, m.queries!.progress!))!
     expect(progress.script).toContain("import { entryStep, stepContext, stepLabel, stepRank } from 'lib/campaign.js'")
     const timeline = (await queries.findOne(repo, U, m.queries!.timeline!))!
-    expect(timeline.template).toMatchObject({ id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'] } })
+    expect(timeline.template).toMatchObject({ id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], withStep: true } })
+    expect(timeline.script).toContain('withStep: true')
   })
 
   it('S2 — seed existant sans le widget : proposé dans le bandeau, ajouté sur Appliquer', async () => {

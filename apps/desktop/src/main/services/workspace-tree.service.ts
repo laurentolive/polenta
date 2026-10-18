@@ -18,6 +18,7 @@ import * as yaml from 'js-yaml'
 
 import type { SyncService } from './sync.service'
 import type { PolentaRepoService } from './polenta-repo.service'
+import type { RepoWatcherService } from './repo-watcher.service'
 import { BRAND } from '../../shared/brand'
 import type {
   WorkspaceTree,
@@ -98,6 +99,12 @@ export function isSafeMountName(name: unknown): name is string {
     && !/[\\/\0]/.test(name) && !/^[a-zA-Z]:/.test(name)
 }
 
+/** GH115 — dossier verrouillé par un descripteur ouvert (Windows) : EPERM / EBUSY / EACCES. */
+function isLockError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | null)?.code
+  return code === 'EPERM' || code === 'EBUSY' || code === 'EACCES'
+}
+
 export class WorkspaceTreeService {
   /** GH32 — open/rebuild in flight per workspace (key: resolved workspaceDir). While one runs,
    *  `tree.cache.yaml` is absent or stale (e.g. right after `rebuildTree` deleted it), so
@@ -107,6 +114,10 @@ export class WorkspaceTreeService {
   constructor(
     private readonly syncService: SyncService,
     private readonly polentaRepoService: PolentaRepoService,
+    /** GH115 — surveillance des repos, arrêtée le temps de renommer un dossier de dépendance. */
+    private readonly watcher?: Pick<RepoWatcherService, 'watch' | 'unwatchDir'>,
+    /** Délai entre deux tentatives de renommage (ms) — réduit dans les tests. */
+    private readonly renameRetryDelayMs = 200,
   ) {}
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -337,7 +348,35 @@ export class WorkspaceTreeService {
     }
     const oldPath = path.join(workspaceDir, oldMountName)
     const newPath = path.join(workspaceDir, newMountName)
-    await fsP.rename(oldPath, newPath)
+    // GH115 — la surveillance du repo garde le dossier ouvert : sous Windows, rename → EPERM.
+    const stopped = (await this.watcher?.unwatchDir(oldPath)) ?? []
+    try {
+      await this.renameWithRetry(oldPath, newPath)
+    } catch (err) {
+      for (const repoPath of stopped) this.watcher?.watch(repoPath)
+      if (isLockError(err)) {
+        throw new Error(
+          `Le dossier « ${oldMountName} » est utilisé par un autre programme (explorateur, terminal, éditeur, antivirus…). ` +
+          'Fermez ce qui l\'utilise puis réessayez.',
+        )
+      }
+      throw err
+    }
+    if (stopped.length > 0) this.watcher?.watch(newPath)
+  }
+
+  /** Un verrou passager (antivirus, indexation, fermeture d'un descripteur en cours) se libère vite :
+   *  quelques tentatives espacées avant d'abandonner. */
+  private async renameWithRetry(from: string, to: string): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await fsP.rename(from, to)
+        return
+      } catch (err) {
+        if (!isLockError(err) || attempt >= 5) throw err
+        await new Promise(resolve => setTimeout(resolve, this.renameRetryDelayMs * attempt))
+      }
+    }
   }
 
   /**

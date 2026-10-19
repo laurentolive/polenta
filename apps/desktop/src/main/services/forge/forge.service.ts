@@ -3,13 +3,16 @@ import * as fsPromises from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import git from 'isomorphic-git'
-import type { CreateOnServerResult, ForgeAccount, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess } from '@polenta/types'
+import type {
+  CreateOnServerResult, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess,
+} from '@polenta/types'
 
 import type { AuthService } from '../auth.service'
 import type { SyncService } from '../sync.service'
 import type { WorkspaceService } from '../workspace.service'
-import { RepoNameTakenError } from './forge-provider'
+import { RepoNameTakenError, type ForgeProvider } from './forge-provider'
 import { forgejoProvider } from './forgejo.provider'
+import { githubProvider } from './github.provider'
 import { ForgeHttpError } from './forge-http'
 import { revokedError } from './forge-access'
 import { describeFetchError, isNetworkUnreachable } from '../net-proxy'
@@ -164,14 +167,44 @@ export class ForgeService {
     return found
   }
 
-  private async originTarget(repoPath: string): Promise<{ account: ForgeAccount; token: string; owner: string; repo: string } | null> {
+  /**
+   * GH106 — aligne la branche par défaut du repo `origin` sur la branche d'intégration (spec GH103
+   * décision 4). Jamais d'exception : c'est une aide, la désignation ne dépend pas de son succès.
+   */
+  async alignDefaultBranch(repoPath: string, branch: string): Promise<DefaultBranchOutcome> {
+    const target = await this.originTarget(repoPath, ['forgejo', 'github'])
+    const provider = target ? providerFor(target.account.provider) : null
+    if (!target || !provider?.repoInfo || !provider.setDefaultBranch) return 'no-forge'
+    const { account, token, owner, repo } = target
+    try {
+      return await this.guard(account, async (): Promise<DefaultBranchOutcome> => {
+        const info = await provider.repoInfo!(account.baseUrl, token, owner, repo)
+        if (!info) return { error: `Dépôt ${owner}/${repo} introuvable sur ${account.host} (ou inaccessible avec ce compte).` }
+        if (info.defaultBranch === branch) return 'unchanged'
+        if (!info.admin) return 'not-admin'
+        await provider.setDefaultBranch!(account.baseUrl, token, owner, repo, branch)
+        return 'set'
+      })
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  private async originTarget(
+    repoPath: string,
+    kinds: ForgeKind[] = ['forgejo'],
+  ): Promise<{ account: ForgeAccount; token: string; owner: string; repo: string } | null> {
     const url = await originUrl(repoPath)
     const parsed = url ? parseRepoUrl(url) : null
     if (!url || !parsed) return null
     const found = await this.auth.accountWithTokenForUrl(url)
-    if (!found || found.account.provider !== 'forgejo') return null
+    if (!found || !kinds.includes(found.account.provider)) return null
     return { ...found, ...parsed }
   }
+}
+
+function providerFor(kind: ForgeKind): ForgeProvider | null {
+  return kind === 'forgejo' ? forgejoProvider : kind === 'github' ? githubProvider : null
 }
 
 async function originUrl(repoPath: string): Promise<string | null> {

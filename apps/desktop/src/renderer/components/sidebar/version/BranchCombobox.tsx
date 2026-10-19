@@ -83,12 +83,14 @@ interface BranchComboboxProps {
   onDelete: (name: string) => void
   onCreateNew: (name: string) => void
   isPending: boolean
+  /** GH106 — designated integration branch, labelled in the list. */
+  integrationBranch?: string
   /** Notified when the dropdown opens/closes — lets a caller lazily enable its branches/tags
    *  fetch only while the list is actually visible (T86), instead of polling continuously. */
   onOpenChange?: (open: boolean) => void
 }
 
-export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCheckoutCommit, onDelete, onCreateNew, isPending, onOpenChange }: BranchComboboxProps) {
+export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCheckoutCommit, onDelete, onCreateNew, isPending, integrationBranch, onOpenChange }: BranchComboboxProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
@@ -235,7 +237,9 @@ export function BranchCombobox({ branches, tags, currentBranch, onCheckout, onCh
                   {b.isCurrent && <Check size={11} className="shrink-0" />}
                   {!b.isCurrent && <span className="w-[11px] shrink-0" />}
                   <span className="truncate">{b.name}</span>
-                  {b.type === 'int' && (
+                  {b.name === integrationBranch ? (
+                    <span className="ml-auto shrink-0 text-[10px] text-status-info font-sans">{t('sidebar.version.integrationTag')}</span>
+                  ) : b.type === 'int' && (
                     <span className="ml-auto shrink-0 text-[10px] text-ink-3 font-sans">int</span>
                   )}
                 </button>

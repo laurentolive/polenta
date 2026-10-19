@@ -99,6 +99,24 @@ export const forgejoProvider: ForgeProvider = {
       .map((m): ForgeMember => ({ login: m.login, name: m.full_name?.trim() || m.login }))
       .sort((a, b) => a.login.localeCompare(b.login))
   },
+
+  async repoInfo(baseUrl, token, owner, repo) {
+    try {
+      const { data } = await forgeRequest<ApiRepo>(
+        `${baseUrl}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, { token, timeoutMs: 10_000 })
+      return { defaultBranch: data.default_branch ?? '', admin: data.permissions?.admin ?? false }
+    } catch (err) {
+      // 403 propagé : `ForgeService.guard` distingue un jeton révoqué d'un refus ordinaire.
+      if (err instanceof ForgeHttpError && err.status === 404) return null
+      throw err
+    }
+  },
+
+  async setDefaultBranch(baseUrl, token, owner, repo, branch) {
+    await forgeRequest(`${baseUrl}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+      method: 'PATCH', token, json: { default_branch: branch },
+    })
+  },
 }
 
 interface ApiRepo {
@@ -107,6 +125,7 @@ interface ApiRepo {
   owner?: { login?: string; username?: string }
   description?: string
   clone_url: string
+  default_branch?: string
   permissions?: { pull?: boolean; push?: boolean; admin?: boolean }
 }
 

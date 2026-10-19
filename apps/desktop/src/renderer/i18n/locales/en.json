@@ -50,7 +50,10 @@
       "confirm": "Close without saving"
     },
     "modificationControl": {
-      "blockedBranch": "<mono>{{branch}}</mono> is not the configured integration branch (<mono>{{integrationBranch}}</mono>) — publishing isn't possible from here.",
+      "notDesignated": "<mono>{{branch}}</mono> is not designated as the integration branch (the file says <mono>{{integrationBranch}}</mono>).",
+      "designate": "Designate {{branch}}",
+      "designating": "Designating…",
+      "designateFailed": "Could not designate: {{error}}",
       "publish": "Publish",
       "publishing": "Publishing…",
       "pushFailed": "Merged locally, but the push failed: {{error}}",
@@ -460,7 +463,8 @@
       "viewRepoGraph": "View history of {{name}}",
       "baselinesTitle": "Baselines",
       "refreshConflict_one": "Conflict with the remote branch ({{count}} file): nothing was changed.",
-      "refreshConflict_other": "Conflict with the remote branch ({{count}} files): nothing was changed."
+      "refreshConflict_other": "Conflict with the remote branch ({{count}} files): nothing was changed.",
+      "integrationTag": "integration"
     },
     "reorderable": {
       "deleteTitle": "Delete?",
@@ -614,7 +618,8 @@
       "renameReportError": "The schema was saved, but migrating the objects failed: {{error}}",
       "renameReportSnapshots": "{{count}} campaign test copy(ies) migrated.",
       "renameReportType": "Type renamed: {{count}} object(s) migrated.",
-      "renameReportFiles": "{{count}} data file(s) rewritten (links, campaigns, runs, trees…)."
+      "renameReportFiles": "{{count}} data file(s) rewritten (links, campaigns, runs, trees…).",
+      "pinDiffers": "The parent repo points at {{pin}}, not at the version checked out here."
     },
     "page": {
       "title": "Data model",
@@ -694,6 +699,13 @@
       "suiviNote": "Tracking queries and dashboards are not changed.",
       "confirm": "Save and migrate",
       "objectsUnknown": "Number of affected objects unavailable"
+    },
+    "integrationIndicator": {
+      "label": "Integration: <mono>{{branch}}</mono>",
+      "designate": "Designate {{branch}} as integration",
+      "incoherentHint": "{{branch}} is not the designated integration branch (the file says {{configured}}).",
+      "detachedHint": "Pinned on commit {{commit}}, on no branch.",
+      "otherHint": "The current branch {{branch}} is not the integration branch."
     }
   },
   "system": {
@@ -1733,6 +1745,17 @@
       "required": "Required",
       "up": "Move up",
       "down": "Move down"
+    }
+  },
+  "integration": {
+    "notice": {
+      "pushFailed": "{{branch}} is designated locally, but the push failed: {{error}}",
+      "defaultNotAdmin": "The server's default branch was not changed to {{branch}}: repository administrators only.",
+      "defaultFailed": "The server's default branch could not be changed: {{error}}"
+    },
+    "guard": {
+      "designated": "{{branch}} is the integration branch of this repo: designate another one before deleting it.",
+      "lastIntegration": "{{branch}} is the last integration branch of this repo: a repo must never be left without an integration branch."
     }
   }
 }

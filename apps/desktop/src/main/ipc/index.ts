@@ -82,6 +82,7 @@ import type { BaselineService } from '../services/baseline.service'
 import type { AppSettingsService } from '../services/app-settings.service'
 import type { ForgeConfigService } from '../services/forge-config.service'
 import type { ForgeService } from '../services/forge/forge.service'
+import type { IntegrationBranchService } from '../services/integration-branch.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
 
@@ -134,6 +135,8 @@ export interface Container {
   forgeConfig: ForgeConfigService
   /** GH45 S4 — repos, organisations, droits, membres ; création sur le serveur. */
   forge: ForgeService
+  /** GH106 — désignation de la branche d'intégration, gardes de suppression. */
+  integration: IntegrationBranchService
 }
 
 /** GH82 — arguments des canaux de renommage de valeurs, validés avant tout accès disque. */
@@ -184,6 +187,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
   'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
+  'integration:designate', 'integration:create',
 ])
 
 export function withGraphInvalidation(r: HandlerRegistry, graph: Container['graph']): HandlerRegistry {
@@ -322,8 +326,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.sync.createBranch(repoPath, name))
   r.handle('sync:checkout-branch', (_e, repoPath: string, name: string) =>
     c.sync.checkoutBranch(repoPath, name))
-  r.handle('sync:delete-branch', (_e, repoPath: string, name: string) =>
-    c.sync.deleteBranch(repoPath, name))
+  // GH106 — garde ici plutôt que dans chaque UI : panneau Version, graphe et client web couverts.
+  r.handle('sync:delete-branch', async (_e, repoPath: string, name: string) => {
+    await c.integration.assertDeletable(repoPath, name, 'local')
+    return c.sync.deleteBranch(repoPath, name)
+  })
   r.handle('sync:commit-files', (_e: unknown, repoPath: string, sha: string) =>
     c.sync.commitFiles(repoPath, sha))
   r.handle('sync:commit-diff', (_e: unknown, repoPath: string, sha: string, filepath: string) =>
@@ -350,8 +357,10 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('merge-resolution:abandon', (_e, id: string) => c.mergeResolution.abandon(id))
   r.handle('sync:create-branch-at', (_e, repoPath: string, name: string, sha: string) =>
     c.sync.createBranchAt(repoPath, name, sha))
-  r.handle('sync:delete-remote-branch', (_e, repoPath: string, name: string, remote?: string) =>
-    c.sync.deleteRemoteBranch(repoPath, name, remote))
+  r.handle('sync:delete-remote-branch', async (_e, repoPath: string, name: string, remote?: string) => {
+    if (!remote || remote === 'origin') await c.integration.assertDeletable(repoPath, name, 'remote')
+    return c.sync.deleteRemoteBranch(repoPath, name, remote)
+  })
   r.handle('sync:delete-tag', (_e, repoPath: string, tagName: string) =>
     c.sync.deleteTag(repoPath, tagName))
   r.handle('sync:push-branch', (_e, repoPath: string, branchName: string, remote?: string) =>
@@ -598,7 +607,14 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('baseline:get', (_e, repoPath: string, tag: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
     c.baseline.get(repoPath, tag, components))
   r.handle('baseline:get-integration-branch', (_e, repoPath: string) => c.git.getIntegrationBranch(repoPath))
+  /** @deprecated GH106 — écriture non commitée, plus appelée par le renderer : `integration:designate`. */
   r.handle('baseline:set-integration-branch', (_e, repoPath: string, branch: string) => c.git.setIntegrationBranch(repoPath, branch))
+
+  // ── Branche d'intégration (GH106) ────────────────────────────────────────────
+  r.handle('integration:state', (_e, repoPath: string) => c.integration.state(repoPath))
+  r.handle('integration:designate', (_e, repoPath: string, branch: string) => c.integration.designate(repoPath, branch))
+  r.handle('integration:create', (_e, repoPath: string, suffix: string, from?: { tag: string }) =>
+    c.integration.createAndDesignate(repoPath, suffix, from))
   r.handle('baseline:delete', (_e, repoPath: string, tag: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
     c.baseline.delete(repoPath, tag, components))
   r.handle('baseline:create', async (_e, repoPath: string, dto: import('../services/baseline.service').CreateBaselineDto, workspaceDir?: string) => {

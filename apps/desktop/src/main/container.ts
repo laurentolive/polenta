@@ -31,6 +31,7 @@ import { AppSettingsService } from './services/app-settings.service'
 import { MergeResolutionService } from './services/merge-resolution.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
+import { IntegrationBranchService } from './services/integration-branch.service'
 import { HistoryService } from './services/history.service'
 import { GraphService } from './services/graph.service'
 import { DashboardLibraryService } from './services/dashboard-library.service'
@@ -142,6 +143,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const forgeConfig = new ForgeConfigService(auth, host.userDataDir)
   // GH45 S4 — repos, organisations, membres, droits ; création de projet/composant sur le serveur.
   const forge = new ForgeService(auth, workspace, sync)
+  // GH106 — désignation de la branche d'intégration (commit de project.yaml, push, branche par défaut).
+  const integration = new IntegrationBranchService(git, sync, forge)
   const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged())
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
@@ -195,5 +198,6 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     machineConfig: host.machineConfig,
     forgeConfig,
     forge,
+    integration,
   }
 }

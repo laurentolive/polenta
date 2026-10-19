@@ -3,7 +3,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import git from 'isomorphic-git'
+import git, { type TreeEntry } from 'isomorphic-git'
 
 import http from './git-http'
 import { isNetworkUnreachable } from './net-proxy'
@@ -337,6 +337,51 @@ export class SyncService {
       message,
       timestamp: new Date().toISOString(),
     }
+  }
+
+  /**
+   * GH106 — commits `filepath` alone with `content` on the checked-out branch. The commit tree is
+   * HEAD's tree with that single entry replaced (`git.commit({ tree })` never reads the index), so
+   * pending changes — staged or not — stay out of the commit and stay pending. The index entry of
+   * `filepath` is moved to the committed blob; the working directory is left to the caller.
+   */
+  async commitSingleFile(repoPath: string, filepath: string, content: string, message: string): Promise<string> {
+    const branch = await git.currentBranch({ fs, dir: repoPath })
+    if (!branch) throw new Error('Detached HEAD — cannot commit')
+    const head = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+    const { commit } = await git.readCommit({ fs, dir: repoPath, oid: head })
+    const blob = await git.writeBlob({ fs, dir: repoPath, blob: Buffer.from(content, 'utf8') })
+    const tree = await this.replaceTreeEntry(repoPath, commit.tree, filepath.split('/'), blob)
+    const author = await this.auth.getAuthor(repoPath)
+    // `ref` must be fully expanded: a bare `int-x` would be written as `.git/int-x`, leaving the
+    // branch itself — and HEAD — on the previous commit.
+    const sha = await git.commit({
+      fs, dir: repoPath, message, tree, parent: [head], ref: `refs/heads/${branch}`,
+      author: { name: author.name, email: author.email },
+    })
+    await git.updateIndex({ fs, dir: repoPath, filepath, oid: blob, add: true })
+    return sha
+  }
+
+  /** Content of `filepath` in the HEAD commit, `null` if absent (or no commit yet). */
+  async readFileAtHead(repoPath: string, filepath: string): Promise<string | null> {
+    try {
+      const oid = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+      const { blob } = await git.readBlob({ fs, dir: repoPath, oid, filepath })
+      return Buffer.from(blob).toString('utf8')
+    } catch {
+      return null
+    }
+  }
+
+  private async replaceTreeEntry(repoPath: string, treeOid: string | null, parts: string[], blobOid: string): Promise<string> {
+    const entries = treeOid ? (await git.readTree({ fs, dir: repoPath, oid: treeOid })).tree : []
+    const [name, ...rest] = parts
+    const existing = entries.find(e => e.path === name)
+    const entry: TreeEntry = rest.length === 0
+      ? { mode: existing?.type === 'blob' ? existing.mode : '100644', path: name, oid: blobOid, type: 'blob' }
+      : { mode: '040000', path: name, type: 'tree', oid: await this.replaceTreeEntry(repoPath, existing?.type === 'tree' ? existing.oid : null, rest, blobOid) }
+    return git.writeTree({ fs, dir: repoPath, tree: [...entries.filter(e => e.path !== name), entry] })
   }
 
   async stage(repoPath: string, filepath: string): Promise<void> {

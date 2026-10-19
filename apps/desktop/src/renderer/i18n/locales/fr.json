@@ -50,7 +50,10 @@
       "confirm": "Fermer sans enregistrer"
     },
     "modificationControl": {
-      "blockedBranch": "<mono>{{branch}}</mono> n'est pas la branche d'intégration configurée (<mono>{{integrationBranch}}</mono>) — publication impossible depuis ici.",
+      "notDesignated": "<mono>{{branch}}</mono> n'est pas désignée comme branche d'intégration (le fichier indique <mono>{{integrationBranch}}</mono>).",
+      "designate": "Désigner {{branch}}",
+      "designating": "Désignation…",
+      "designateFailed": "Désignation impossible : {{error}}",
       "publish": "Publier",
       "publishing": "Publication…",
       "pushFailed": "Fusionné localement, mais le push a échoué : {{error}}",
@@ -460,7 +463,8 @@
       "viewRepoGraph": "Voir l'historique de {{name}}",
       "baselinesTitle": "Baselines",
       "refreshConflict_one": "Conflit avec la branche distante ({{count}} fichier) : rien n'a été modifié.",
-      "refreshConflict_other": "Conflit avec la branche distante ({{count}} fichiers) : rien n'a été modifié."
+      "refreshConflict_other": "Conflit avec la branche distante ({{count}} fichiers) : rien n'a été modifié.",
+      "integrationTag": "intégration"
     },
     "reorderable": {
       "deleteTitle": "Supprimer ?",
@@ -614,7 +618,8 @@
       "renameReportError": "Le schéma est enregistré, mais la migration des objets a échoué : {{error}}",
       "renameReportSnapshots": "{{count}} copie(s) de test de campagne migrée(s).",
       "renameReportType": "Type renommé : {{count}} objet(s) migré(s).",
-      "renameReportFiles": "{{count}} fichier(s) de données réécrit(s) (liens, campagnes, exécutions, arbres…)."
+      "renameReportFiles": "{{count}} fichier(s) de données réécrit(s) (liens, campagnes, exécutions, arbres…).",
+      "pinDiffers": "Le repo parent pointe sur {{pin}}, pas sur la version checkoutée ici."
     },
     "page": {
       "title": "Modèle de données",
@@ -694,6 +699,13 @@
       "suiviNote": "Les requêtes et dashboards du Suivi ne sont pas modifiés.",
       "confirm": "Enregistrer et migrer",
       "objectsUnknown": "Nombre d'objets concernés indisponible"
+    },
+    "integrationIndicator": {
+      "label": "Intégration : <mono>{{branch}}</mono>",
+      "designate": "Désigner {{branch}} comme intégration",
+      "incoherentHint": "{{branch}} n'est pas la branche d'intégration désignée (le fichier indique {{configured}}).",
+      "detachedHint": "Épinglé sur le commit {{commit}}, hors de toute branche.",
+      "otherHint": "La branche courante {{branch}} n'est pas la branche d'intégration."
     }
   },
   "system": {
@@ -1733,6 +1745,17 @@
       "required": "Obligatoire",
       "up": "Monter",
       "down": "Descendre"
+    }
+  },
+  "integration": {
+    "notice": {
+      "pushFailed": "{{branch}} est désignée localement, mais le push a échoué : {{error}}",
+      "defaultNotAdmin": "La branche par défaut sur le serveur n'a pas été changée en {{branch}} : réservé aux administrateurs du repo.",
+      "defaultFailed": "La branche par défaut sur le serveur n'a pas pu être changée : {{error}}"
+    },
+    "guard": {
+      "designated": "{{branch}} est la branche d'intégration de ce repo : désignez-en une autre avant de la supprimer.",
+      "lastIntegration": "{{branch}} est la dernière branche d'intégration de ce repo : un repo ne doit jamais rester sans branche d'intégration."
     }
   }
 }

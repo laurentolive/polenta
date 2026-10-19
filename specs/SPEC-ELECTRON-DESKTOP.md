@@ -2257,6 +2257,9 @@ listés dans `SPEC-AUDIT.md`).
 | `schema:delete` | **GH104** — mêmes paramètres : supprime objets (pierres tombales), exécutions, acquittements d'impact, liens de tous les repos, arbres, refs de liens, puis le nœud / type ; arrêt avant arbres et schéma si un objet n'a pas pu être supprimé (SPEC-REQ §9) | `SchemaDeleteResult` (`deleted`, `links`, `schemaSaved`, `failed`) |
 | `history:get` | **GH77** — `repoPath, kind ('requirement' \| 'test' \| 'campaign'), id` : historique effectif (entrées implicites comprises) | `ObjectHistory` |
 | `history:backfill` | **GH77** — `repoPath` : reprise de l'historique depuis git (fichiers réécrits, pas de commit) | `HistoryBackfillResult` |
+| `integration:state` | **GH106** — `repoPath` : branche courante, intégration désignée, statut (`ok` / `incoherent` / `nonConvention` / `readonly`), `int-*` locales et distantes | `IntegrationState` |
+| `integration:designate` | **GH106** — `repoPath, branch` : checkout si besoin, commit du seul `config/project.yaml`, push, branche par défaut de la forge | `DesignateOutcome` |
+| `integration:create` | **GH106** — `repoPath, suffix, from?: { tag }` : crée `int-<suffix>` (position courante ou baseline) puis la désigne | `DesignateOutcome` |
 
 `schema:save` ne régénère **aucun** fichier dérivé de type `.gitmodules` — c'est le seul écart avec
 la version précédente de cette section, à ne pas réintroduire dans une future correction.
@@ -2316,6 +2319,12 @@ un seul nœud vide, aucun type pré-configuré (voir §20.3).
   longueur inchangée) → `ValueRenameConfirmModal` avant l'enregistrement (lignes décochables,
   nombre d'objets, collisions ; Annuler n'enregistre rien et laisse l'édition ouverte), puis
   `schema:rename-values` ; compte rendu commun avec les renommages de champ.
+  **GH106** : sur la ligne de chaque repo, `RepoBranchSelector` (intégration marquée dans la
+  liste ; en detached HEAD, baseline checkoutée ou commit abrégé) puis `IntegrationBranchIndicator` (affiché seulement si
+  l'intégration diffère de la branche checkoutée : « Désigner » ou « Intégration : `int-X` ») ;
+  pin affiché seulement s'il désigne une autre version que le checkout (nom ou commit) — règles dans
+  `SPEC-FORKS-BRANCHES-BASELINES.md` §2.2. `CheckoutConfirmModal` (garde des modifications en
+  attente) est partagée avec `RepoBranchSelector`.
   **GH104** : la corbeille d'un composant local, celle d'un type et le bouton Supprimer de la
   configuration d'un type passent par le même flux — `schema:preview-delete`, puis
   `SchemaDeleteConfirmModal` (sous-composants, objets par catégorie avec les 5 premiers IDs, liens

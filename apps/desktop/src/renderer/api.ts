@@ -1,6 +1,7 @@
 import { createIpcClient } from '@polenta/api-client'
-import { parseForgeAccessError } from '@polenta/types'
+import { parseForgeAccessError, parseIntegrationGuard } from '@polenta/types'
 import { forgeAccessNotices } from './lib/forgeAccessNotices'
+import i18n from './i18n'
 
 /**
  * GH45 — point unique d'interception des erreurs d'accès à une forge : une erreur portant le
@@ -27,6 +28,10 @@ async function transport(channel: string, ...args: unknown[]): Promise<unknown> 
     return scrubResult(await window.polenta.invoke(channel, ...args))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // GH106 — refus de la garde de la branche d'intégration : traduit ici, une fois pour toutes
+    // les UI (même principe que `⟦forge-access …⟧`).
+    const guard = parseIntegrationGuard(message)
+    if (guard) throw new Error(i18n.t(`integration.guard.${guard.code}`, { branch: guard.branch }))
     const parsed = parseForgeAccessError(message)
     if (!parsed) throw err
     forgeAccessNotices.report(parsed.issue)

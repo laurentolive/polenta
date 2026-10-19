@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import { useVersioning } from '../contexts/VersioningContext'
 import { propagatePinToDependents, type PinPropagationOutcome } from '../lib/workspaceActions'
+import { useTranslation } from 'react-i18next'
+import { designateNotices, invalidateIntegration } from './useDesignateIntegration'
+import { branchErrorText } from '../lib/branchErrors'
 import type { BranchInfo } from '@polenta/api-client'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
@@ -16,8 +19,9 @@ import type { WorkspaceTreeNode } from '@polenta/types'
  *  `['workspace-open', workspaceDir]` (the Structure tab's tree reads a component's displayed pin
  *  from that query) and `propagatePinToDependents` (T82 — proposes the checked-out ref as the pin
  *  in every repo of the workspace that declares this node as a dependency, as a pending/uncommitted
- *  change, never a silent commit). Deliberately **not** wired on `createBranch` — a fresh branch
- *  isn't a ref anything should pin to yet. */
+ *  change, never a silent commit). Not wired on `createBranch` for a plain branch — a fresh branch
+ *  isn't a ref anything should pin to yet — but wired for a new `int-*`, which is designated
+ *  (GH106). */
 export function useBranchCheckout(
   node: { repoPath: string; name: string; url: string },
   workspaceDir: string,
@@ -30,6 +34,8 @@ export function useBranchCheckout(
   const isRoot = repoPath === rootRepoPath
 
   const [pinWarning, setPinWarning] = useState<PinPropagationOutcome | null>(null)
+  const [branchNotices, setBranchNotices] = useState<string[]>([])
+  const { t } = useTranslation()
 
   const { data: syncStatus } = useQuery({
     queryKey: ['sync:status', repoPath],
@@ -67,19 +73,9 @@ export function useBranchCheckout(
     if (isRoot) refetchVersioning()
   }
 
-  // Checking out (or creating) an `int-*` branch now *is* designating it the configured
-  // integration branch for that repo — there's no separate "Définir comme branche d'intégration"
-  // UI anymore (T85 follow-up). Was root-only ("components/interfaces don't have a 'Publier'
-  // workflow to gate") until T87 made "Publier" work per-repo (ModificationControl resolves the
-  // repo concerné via `?repo=`, not just root) — restricting this to root left every non-root
-  // repo with no way, automatic or manual, to ever get `config/project.yaml`'s `integrationBranch`
-  // written, so `mode` stayed stuck on `'blocked'` no matter which `int-*` branch was checked out.
-  async function maybeSetIntegrationBranch(name: string) {
-    if (!name.startsWith('int-')) return
-    await api.baseline.setIntegrationBranch(repoPath, name)
-    qc.invalidateQueries({ queryKey: ['baseline:integration-branch', repoPath] })
-  }
-
+  // GH106 — a checkout never writes nor commits anything: checking out an `int-*` whose
+  // `config/project.yaml` names another branch leaves it undesignated, and "Publier" then offers
+  // "Désigner" (the old uncommitted `setIntegrationBranch` write here could be lost or never land).
   // One mutation for both branch/tag and commit checkout — a single isPending/isError/error to
   // track (two separate mutations left a stale error from one visible after the other succeeded,
   // since TanStack Query only resets a mutation's error on its own next call — T82).
@@ -88,24 +84,47 @@ export function useBranchCheckout(
       target.isCommit ? api.sync.checkoutCommit(repoPath, target.value) : api.sync.checkoutBranch(repoPath, target.value),
     onSuccess: async (_data, target) => {
       invalidate()
-      if (!target.isCommit) await maybeSetIntegrationBranch(target.value)
+      invalidateIntegration(qc, repoPath)
       // Awaited so `isPending` stays true for the whole cascade, not just the checkout itself.
       const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, target.value)
+      // The parents' manifests just changed: re-read the tree, whose displayed pins come from them.
+      if (outcome.updated.length > 0) qc.invalidateQueries({ queryKey: ['workspace-open', workspaceDir] })
       setPinWarning(outcome)
     },
   })
 
+  // GH106 — creating an `int-*` designates it: commit of `config/project.yaml` alone, push, forge
+  // default branch, then pin propagation like a checkout (it is now the ref parents should pin).
+  // Any other name: plain branch at HEAD, no pin propagation — nothing should pin to it yet.
   const createBranchMutation = useMutation({
-    mutationFn: (name: string) => api.sync.createBranch(repoPath, name),
-    onSuccess: async (_data, name) => {
-      invalidate()
-      await maybeSetIntegrationBranch(name)
+    mutationFn: async (name: string) => {
+      setBranchNotices([])
+      if (name.startsWith('int-')) return api.integration.create(repoPath, name.slice('int-'.length))
+      await api.sync.createBranch(repoPath, name)
+      return null
     },
+    onSuccess: async (designated, name) => {
+      invalidate()
+      if (!designated) return
+      invalidateIntegration(qc, repoPath)
+      // Push failed, default branch not aligned…: said here, the creation itself succeeded.
+      setBranchNotices(designateNotices(designated, t))
+      const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, name)
+      // The parents' manifests just changed: re-read the tree, whose displayed pins come from them.
+      if (outcome.updated.length > 0) qc.invalidateQueries({ queryKey: ['workspace-open', workspaceDir] })
+      setPinWarning(outcome)
+    },
+    onError: err => setBranchNotices([branchErrorText(err)]),
   })
 
   const deleteBranchMutation = useMutation({
-    mutationFn: (name: string) => api.sync.deleteBranch(repoPath, name),
+    mutationFn: (name: string) => {
+      setBranchNotices([])
+      return api.sync.deleteBranch(repoPath, name)
+    },
     onSuccess: invalidate,
+    // GH106 — e.g. the integration-branch guard refusing the deletion: never silent.
+    onError: err => setBranchNotices([branchErrorText(err)]),
   })
 
   return {
@@ -122,7 +141,11 @@ export function useBranchCheckout(
     isCheckoutError: checkoutMutation.isError,
     createError: createBranchMutation.error,
     isCreateError: createBranchMutation.isError,
+    /** GH106 — failed create/delete (integration-branch guard included) and designation notices. */
+    branchNotices,
+    dismissBranchNotices: () => setBranchNotices([]),
     pinWarning,
     dismissPinWarning: () => setPinWarning(null),
   }
 }
+

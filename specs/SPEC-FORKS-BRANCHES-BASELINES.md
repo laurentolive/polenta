@@ -30,8 +30,12 @@ Trois concepts couverts par cette spec :
 > ne reflète plus que le detached HEAD, cf. §2.1) — seule la convention de nommage subsiste, plus la
 > contrainte d'accès. Chaque repo (root ou composant, chacun projet Polenta autonome avec son propre
 > `config/project.yaml`) a une branche d'intégration **configurée**
-> (`GitService.getIntegrationBranch`/`setIntegrationBranch`, fallback `'main'` si non configurée) —
-> c'est vers cette branche que les merges automatiques du workflow ci-dessous sont dirigés.
+> (`GitService.getIntegrationBranch`, fallback `'main'` si non configurée) — c'est vers cette
+> branche que les merges automatiques du workflow ci-dessous sont dirigés. **GH106** : elle est
+> désignée par `IntegrationBranchService` (channels `integration:*`), qui **commite et pousse**
+> `config/project.yaml` sur la branche désignée — jamais une écriture laissée en attente (l'ancien
+> `setIntegrationBranch` / `baseline:set-integration-branch` est déprécié, sans appelant). Invariant :
+> sur `int-X`, `project.yaml` désigne `int-X` (cf. §2.2).
 
 ### 2.1 Cas d'usage — workflow simplifié "Publier" (T83, simplifié T87)
 
@@ -46,7 +50,7 @@ résout au clic à partir de la branche courante du repo concerné et de sa bran
 |---|---|
 | `branch === integrationBranch` (cas nominal — utilisateur non technique) | Popup titre → **fetch du remote (T154, voir note ci-dessous)** → crée `dev-<slug-du-titre>` depuis la position courante (le checkout ne touche aucun fichier, cf. note `createBranch` ci-dessous — les modifications non commitées suivent) → **fast-forward de l'intégration locale si elle est en retard (T154)** → stage + commit (message = titre) → merge dans la branche d'intégration → checkout de la branche d'intégration + suppression de `dev-<slug>` → push de la branche d'intégration vers `origin`. |
 | `branch` ne commence pas par `int-` et diffère de `integrationBranch` (branche `dev-*` ou branche libre — usage avancé, utilisateur git) | Popup titre → fetch + fast-forward de l'intégration si en retard (T154, comme ci-dessus) → stage + commit **directement sur `branch`**, aucune branche intermédiaire créée → merge vers la branche d'intégration → push. Le repo **reste checkouté sur `branch`** après coup ; cette branche n'est **jamais supprimée automatiquement** — créée par l'utilisateur, il en reste responsable. |
-| `branch` commence par `int-` mais diffère de `integrationBranch` (une autre branche d'intégration que celle configurée pour ce repo) | **Publication interdite** pour ce repo — l'édition reste possible, seul "Publier" est bloqué (mergerait deux branches d'intégration entre elles, ce qui n'a pas de sens). |
+| `branch` commence par `int-` mais diffère de `integrationBranch` (une `int-*` non désignée — typiquement créée depuis une autre `int-*` dont elle a hérité le `project.yaml`) | **Publication interdite** pour ce repo tant que la branche n'est pas désignée — l'édition reste possible. **GH106** : à la place de « Publier », bandeau « `int-X` n'est pas désignée comme branche d'intégration (le fichier indique `int-Y`) » + bouton **« Désigner `int-X` »** (§2.2) ; dans le popover de la publication multi-repo (GH38), un bouton « Désigner » par repo concerné. |
 | Detached HEAD | Édition elle-même bloquée (`VersioningContext.isReadonly` / `SystemViewContext.isRepoReadonly`) — "Publier" non pertinent. |
 
 Le discard de modifications en attente (l'ancien rôle du bouton "Annuler") reste possible mais
@@ -123,12 +127,38 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 
 ### 2.2 Règles
 
-- Chaque repo a une branche d'intégration **configurée** (pas nécessairement `main` — désignée
-  depuis le Modèle de données, onglet Structure, widget `IntegrationBranchSelector` affiché sous la
-  ligne du repo root — anciennement `IntBranchSelector` dans le "Tableau de bord" de la vue Projet,
-  retiré en T86). Depuis T87, ce widget checkoute directement une branche `int-*` (avec la même
-  garde de confirmation qu'un checkout ailleurs dans l'app si des modifications sont en attente —
-  `int-*` n'est plus garanti propre).
+- Chaque repo a une branche d'intégration **configurée** (pas nécessairement `main`). **GH106** :
+  - **Choix explicite** dans le Modèle de données, onglet Structure, par la combo de branche de
+    chaque repo (`RepoBranchSelector`, seul contrôle de la ligne) : l'intégration désignée y porte
+    la mention « intégration » ; y créer une `int-*` la désigne. En detached HEAD (composant épinglé
+    sur un commit, baseline), la combo affiche la baseline checkoutée (le tag épinglé en priorité),
+    sinon le commit abrégé. `IntegrationBranchIndicator`
+    n'affiche l'intégration **que si elle diffère de la branche checkoutée** : ⚠ « Désigner `int-X`
+    comme intégration » si la branche courante est une `int-*` non désignée (cas PH2), sinon
+    « Intégration : `int-Y` » pour information ; rien sur `dev-*`. Le pin d'un composant n'est
+    affiché (en avertissement) que s'il diffère de ce qui est checkouté — même version s'ils
+    désignent la même version (même nom, ou même commit : SHA épinglé, tag ou branche qui pointe sur HEAD). (L'ancien widget `IntegrationBranchSelector`
+    n'existe plus depuis T86/T87.)
+  - **Désigner `int-X`** (`integration:designate`) : checkout si besoin (sous la garde des
+    modifications en attente, `CheckoutConfirmModal`), commit `Branche d'intégration : int-X` ne
+    contenant que `config/project.yaml` (arbre construit sur HEAD, index non lu : les modifications
+    en attente restent en attente et hors du commit), copie de travail réalignée, push de `int-X`
+    (best-effort), puis **branche par défaut de la forge** alignée sur `int-X` si le compte est
+    admin du repo (Forgejo et GitHub — sinon simple mention). Propagation du pin vers les repos
+    parents comme après un checkout (T82). Un `project.yaml` en YAML invalide est refusé sans
+    écriture.
+  - **Créer une `int-*`** (combo de l'onglet Structure, panneau Version) = `integration:create` :
+    création à la position courante (commit compris, en detached HEAD) puis désignation ; en cas
+    d'échec avant le commit de désignation, la branche est retirée et HEAD revient sur la branche
+    (ou le commit) de départ.
+  - **Checkout d'une `int-*`** : aucun commit, aucune écriture — si son `project.yaml` désigne une
+    autre branche, « Publier » propose « Désigner » (§2.1).
+  - **Jamais sans branche d'intégration** : `sync:delete-branch` et `sync:delete-remote-branch`
+    refusent la suppression de la branche **explicitement** désignée (pas du repli `main`) et de la
+    dernière `int-*` (locale ou `origin/*`). Le refus voyage dans le message de l'erreur (marqueur
+    `⟦integration-guard {code, branch}⟧`) et est traduit une fois pour toutes par le transport du
+    renderer (`renderer/api.ts`, comme `⟦forge-access …⟧`), puis affiché par le panneau Version,
+    l'onglet Structure et le graphe.
 - Toute branche `dev-*` (éphémère ou manuelle) hérite de l'état de sa branche d'intégration au
   moment de sa création.
 - Les exigences et tests sont **isolés par branche** : modifier SW-0042 sur `dev-mode-boost` ne
@@ -157,7 +187,8 @@ position courante sans checkout matériel (cf. note `createBranch` en §2.1) pui
 
 **Création manuelle (panneau Version, avancé) :** IPC `sync:create-branch` avec un nom libre,
 depuis `BranchCombobox`/`VersionRepoFolder.tsx` — pas de contrainte de préfixe imposée par le
-backend, seule l'UI simplifiée (T83/T87) impose `dev-*` pour son propre flux.
+backend, seule l'UI simplifiée (T83/T87) impose `dev-*` pour son propre flux. **GH106** : un nom
+`int-*` passe par `integration:create` (création + désignation, §2.2), plus par `sync:create-branch`.
 
 **Merge ("Publier") :**
 1. `sync:stage-all` puis `sync:commit` sur la branche de travail (éphémère ou courante selon le cas
@@ -172,7 +203,7 @@ backend, seule l'UI simplifiée (T83/T87) impose `dev-*` pour son propre flux.
 4. Si conflit → voir §2.4
 
 **Suppression :** `sync:delete-branch` — possible sur toute branche sauf celle actuellement
-checkoutée. Seule la branche éphémère créée par le cas nominal de "Publier" est supprimée
+checkoutée, la branche d'intégration désignée et la dernière `int-*` du repo (GH106, §2.2). Seule la branche éphémère créée par le cas nominal de "Publier" est supprimée
 automatiquement ; toute branche créée manuellement par l'utilisateur (y compris via l'usage avancé
 de "Publier") ne l'est jamais.
 

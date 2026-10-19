@@ -6,6 +6,7 @@ import { GitMerge, X } from 'lucide-react'
 import { api } from '../../api'
 import { useTabs } from '../../contexts/TabsContext'
 import { useModificationMode } from '../../hooks/useModificationMode'
+import { designateNotices, useDesignateIntegration } from '../../hooks/useDesignateIntegration'
 import { useVersioning } from '../../contexts/VersioningContext'
 import type { PinPropagationOutcome } from '../../lib/workspaceActions'
 import {
@@ -50,6 +51,10 @@ function repoName(repo: { name: string; label?: string }): string {
   return repo.label || repo.name
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 export function ModificationControl({ currentProjectId }: Props) {
   const { t } = useTranslation()
   const { openTab } = useTabs()
@@ -65,6 +70,9 @@ export function ModificationControl({ currentProjectId }: Props) {
   // refresh immediately after a checkout so the header's readonly indicator doesn't lag by up
   // to 3s, same pattern as VersionRepoFolder's checkout mutations.
   const { refetch: refetchVersioning } = useVersioning()
+  // GH106 — "Désigner" replaces the dead-end "not the configured integration branch" message.
+  const designation = useDesignateIntegration(workspaceDir, flatNodes)
+  const designationNotices = designation.outcome ? designateNotices(designation.outcome, t) : []
 
   const [showPublishPopup, setShowPublishPopup] = useState(false)
   // T87: the popup can sit open while `branch` changes underneath it (someone else checks out a
@@ -83,7 +91,12 @@ export function ModificationControl({ currentProjectId }: Props) {
         integrationBranch: string; title: string; published: string[]
       }
     | { kind: 'network'; message: string }
-    | { kind: 'blocked'; message: string; repos: string[] }
+    // GH106: `designatable` = blocked repos sitting on an undesignated `int-*`, fixable in one click;
+    // `repoPaths[i]` is the repo of `repos[i]`, so a fixed repo's line can be dropped on its own.
+    | {
+        kind: 'blocked'; message: string; repos: string[]; repoPaths?: string[]
+        designatable?: { repoPath: string; branch: string; name: string }[]
+      }
     | { kind: 'generic'; message: string; published: string[] }
     | null
   >(null)
@@ -190,6 +203,10 @@ export function ModificationControl({ currentProjectId }: Props) {
           kind: 'blocked',
           message: t('layout.modificationControl.blockedRepos'),
           repos: err.repos.map(r => `${repoName(r.repo)} : ${r.branch || 'HEAD'} ≠ ${r.integrationBranch}`),
+          repoPaths: err.repos.map(r => r.repo.repoPath),
+          designatable: err.repos
+            .filter(r => r.branch.startsWith('int-'))
+            .map(r => ({ repoPath: r.repo.repoPath, branch: r.branch, name: repoName(r.repo) })),
         })
         return
       }
@@ -291,14 +308,38 @@ export function ModificationControl({ currentProjectId }: Props) {
   return (
     <div className="relative flex items-center gap-2 shrink-0">
       {mode === 'blocked' && (
-        <span className="text-xs text-ink-3 bg-surface border border-edge rounded px-2 py-1 max-w-xs text-right">
-          <Trans
-            i18nKey="layout.modificationControl.blockedBranch"
-            values={{ branch, integrationBranch }}
-            components={{ mono: <span className="font-mono" /> }}
-          />
+        <span className="text-xs text-ink-3 bg-surface border border-edge rounded px-2 py-1 max-w-sm text-right flex flex-col items-end gap-1">
+          <span>
+            <Trans
+              i18nKey="layout.modificationControl.notDesignated"
+              values={{ branch, integrationBranch }}
+              components={{ mono: <span className="font-mono" /> }}
+            />
+          </span>
+          <button
+            type="button"
+            onClick={() => designation.designate(repoPath, branch)}
+            disabled={designation.isPending}
+            className="btn-primary-sm"
+          >
+            {designation.isPending ? t('layout.modificationControl.designating') : t('layout.modificationControl.designate', { branch })}
+          </button>
+          {designation.error && (
+            <span className="text-status-danger">
+              {t('layout.modificationControl.designateFailed', { error: errorMessage(designation.error) })}
+            </span>
+          )}
         </span>
       )}
+      {mode !== 'blocked' && designationNotices.length > 0 && (
+        <span className="text-xs text-ink-3 bg-surface border border-edge rounded px-2 py-1 max-w-sm flex items-start gap-1">
+          <span className="flex flex-col">{designationNotices.map(n => <span key={n}>{n}</span>)}</span>
+          <button type="button" onClick={designation.reset} className="text-ink-3 hover:text-ink shrink-0" title={t('common.close')}>
+            <X size={12} />
+          </button>
+        </span>
+      )}
+      <PinPropagationWarning outcome={designation.pinWarning} onDismiss={designation.dismissPinWarning} />
 
       {openResolutions.length > 0 && (
         <button
@@ -417,6 +458,46 @@ export function ModificationControl({ currentProjectId }: Props) {
             <ul className="text-xs font-mono text-ink-2 mb-2 list-disc list-inside">
               {publishError.repos.map(r => <li key={r}>{r}</li>)}
             </ul>
+          )}
+          {publishError.kind === 'blocked' && (publishError.designatable ?? []).length > 0 && (
+            <div className="flex flex-col items-start gap-1 mb-2">
+              {publishError.designatable!.map(d => (
+                <button
+                  key={d.repoPath}
+                  type="button"
+                  disabled={designation.isPending}
+                  className="btn-secondary-sm"
+                  onClick={async () => {
+                    try {
+                      await designation.designateAsync(d.repoPath, d.branch)
+                    } catch {
+                      return  // shown below from designation.error
+                    }
+                    // Fixed: drop its line; repos blocked for another reason (detached HEAD…) stay
+                    // listed. Once none is left, the user just retries "Publier".
+                    setPublishError(prev => {
+                      if (prev?.kind !== 'blocked') return prev
+                      const keep = prev.repos.map((_, i) => prev.repoPaths?.[i] !== d.repoPath)
+                      const repos = prev.repos.filter((_, i) => keep[i])
+                      if (repos.length === 0) return null
+                      return {
+                        ...prev,
+                        repos,
+                        repoPaths: prev.repoPaths?.filter((_, i) => keep[i]),
+                        designatable: (prev.designatable ?? []).filter(x => x.repoPath !== d.repoPath),
+                      }
+                    })
+                  }}
+                >
+                  {d.name} — {t('layout.modificationControl.designate', { branch: d.branch })}
+                </button>
+              ))}
+              {designation.error && (
+                <p className="text-xs text-status-danger">
+                  {t('layout.modificationControl.designateFailed', { error: errorMessage(designation.error) })}
+                </p>
+              )}
+            </div>
           )}
           {(publishError.kind === 'conflict' || publishError.kind === 'generic') && publishError.published.length > 0 && (
             <p className="text-xs text-ink-3 mb-2">

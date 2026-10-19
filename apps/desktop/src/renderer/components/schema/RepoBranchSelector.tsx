@@ -25,7 +25,7 @@ import type { WorkspaceTreeNode } from '@polenta/types'
 export function RepoBranchSelector({
   node, workspaceDir, flatNodes,
 }: {
-  node: { repoPath: string; name: string; url: string }
+  node: { repoPath: string; name: string; url: string; pin?: string }
   workspaceDir: string
   flatNodes: WorkspaceTreeNode[]
 }) {
@@ -48,7 +48,18 @@ export function RepoBranchSelector({
     enabled: !!node.repoPath,
     refetchInterval: 10_000,
   })
-  const shown = currentBranch || integration?.headOid.slice(0, 7) || ''
+  // Detached HEAD: the baseline (tag) checked out if any, else the abbreviated commit.
+  const detachedOid = !currentBranch ? integration?.headOid : undefined
+  const { data: refs } = useQuery({
+    queryKey: ['sync:resolve-refs', node.repoPath],
+    queryFn: () => api.sync.resolveRefs(node.repoPath),
+    enabled: !!detachedOid,
+    refetchInterval: 10_000,
+  })
+  // Several tags on the commit: the one the parent pins, if it is one of them.
+  const tagsAtHead = detachedOid ? (refs ?? []).filter(r => r.type === 'tag' && r.sha === detachedOid).map(r => r.name) : []
+  const atTag = tagsAtHead.find(name => name === node.pin) ?? tagsAtHead[0]
+  const shown = currentBranch || atTag || detachedOid?.slice(0, 7) || ''
 
   if (!shown) return null
 

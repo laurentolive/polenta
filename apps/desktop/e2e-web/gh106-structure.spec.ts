@@ -94,3 +94,12 @@ test('GH106-S2-4 — detached HEAD : combo sur le commit, intégration affichée
   await expect(integrationLabel()).toHaveCount(0, { timeout: 15_000 })
   expect(await state()).toMatchObject({ currentBranch: 'int-e2e-s3', configured: 'int-e2e-s3', status: 'ok' })
 })
+
+test('GH106-S2-5 — composant épinglé sur une baseline : la combo montre le tag, pin non répété', async () => {
+  await openStructure()
+  // « Pompe de vidange » (démo) : pin v2.0, checkouté sur ce tag (detached HEAD).
+  const row = s.page.locator('div', { has: s.page.getByText('Pompe de vidange', { exact: true }) })
+    .filter({ has: s.page.getByPlaceholder('branche…') }).last()
+  await expect(row.getByPlaceholder('branche…')).toHaveValue('v2.0', { timeout: 15_000 })
+  await expect(row.locator('code', { hasText: 'v2.0' })).toHaveCount(0)
+})

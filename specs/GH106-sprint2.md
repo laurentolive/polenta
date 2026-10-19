@@ -25,13 +25,15 @@ Sprint 1 : `specs/GH106-sprint1.md`.
 ## Comportement implémenté
 
 - **Onglet Structure**, sur chaque repo (pas les composants locaux) :
-  - La combo de branche est le seul contrôle : branche courante (commit abrégé en detached HEAD),
+  - La combo de branche est le seul contrôle : branche courante (en detached HEAD : baseline
+    checkoutée, sinon commit abrégé),
     intégration désignée marquée « intégration » dans la liste, checkout sous la garde des
     modifications en attente ; « Nouvelle branche… » `int-<nom>` crée et désigne.
   - L'intégration n'est affichée que si elle diffère de la branche checkoutée : ⚠ « Désigner
     `int-X` comme intégration » (branche courante `int-*` non désignée, cas PH2), sinon
     « Intégration : `int-Y` » pour information. Rien sur `dev-*`.
-  - Le pin d'un composant n'est affiché que s'il diffère du checkout.
+  - Le pin d'un composant n'est affiché (en avertissement) que s'il désigne une autre version que
+    le checkout (nom, SHA, ou tag / branche résolus sur HEAD).
 - **Refus des gardes** traduits (français / anglais) dans toutes les UI, y compris le graphe.
 
 ## Divergences par rapport au design
@@ -74,6 +76,15 @@ quand elle diffère du checkout.
 - Combo : intégration marquée dans la liste, commit abrégé en detached HEAD.
 - Pin masqué s'il égale la branche ou le commit checkouté.
 - e2e `gh106-structure.spec.ts` réécrit (T-13, T-11 sur le cas PH2, T-30, T-23).
+
+**3. Pin encore répété** (PH2 : `VE22D` épinglé sur le SHA `c831de5c` que pointe `int-PH2` ;
+`packBattery-7STD` épinglé sur `int-VE10A`, sa branche courante). Le pin n'était comparé au commit
+qu'en detached HEAD, et sa lecture (10 s) pouvait retarder sur celle de la combo (3 s).
+- `RepoPin` : même version si même nom, SHA préfixe de HEAD, ou tag / branche qui résout sur HEAD
+  (`sync:resolve-refs`) ; branche lue dans `sync:status` comme la combo, HEAD dans `git:head-sha`.
+  Affiché, il l'est en avertissement, avec une infobulle (« Le repo parent pointe sur … »).
+- Combo en detached HEAD : la baseline checkoutée (le tag épinglé si plusieurs) avant le commit.
+- e2e `GH106-S2-5` (démo : « Pompe de vidange » épinglée sur `v2.0`).
 
 ## Mises à jour SPEC
 

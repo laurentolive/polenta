@@ -618,7 +618,8 @@
       "renameReportError": "The schema was saved, but migrating the objects failed: {{error}}",
       "renameReportSnapshots": "{{count}} campaign test copy(ies) migrated.",
       "renameReportType": "Type renamed: {{count}} object(s) migrated.",
-      "renameReportFiles": "{{count}} data file(s) rewritten (links, campaigns, runs, trees…)."
+      "renameReportFiles": "{{count}} data file(s) rewritten (links, campaigns, runs, trees…).",
+      "pinDiffers": "The parent repo points at {{pin}}, not at the version checked out here."
     },
     "page": {
       "title": "Data model",

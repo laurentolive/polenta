@@ -618,7 +618,8 @@
       "renameReportError": "Le schéma est enregistré, mais la migration des objets a échoué : {{error}}",
       "renameReportSnapshots": "{{count}} copie(s) de test de campagne migrée(s).",
       "renameReportType": "Type renommé : {{count}} objet(s) migré(s).",
-      "renameReportFiles": "{{count}} fichier(s) de données réécrit(s) (liens, campagnes, exécutions, arbres…)."
+      "renameReportFiles": "{{count}} fichier(s) de données réécrit(s) (liens, campagnes, exécutions, arbres…).",
+      "pinDiffers": "Le repo parent pointe sur {{pin}}, pas sur la version checkoutée ici."
     },
     "page": {
       "title": "Modèle de données",

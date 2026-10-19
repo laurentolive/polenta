@@ -184,6 +184,42 @@ function sameDragItem(a: DragItem, b: DragItem): boolean {
   return false
 }
 
+/** Pin of a dependency (ref its parent points at) — shown only when it differs from what is
+ *  checked out (branch name or commit), which the branch combo next to it already shows (GH106).
+ *  Branch read from `sync:status`, like the combo, so both refresh together. */
+function RepoPin({ repoPath, pin }: { repoPath: string; pin: string }) {
+  const { t } = useTranslation()
+  const { data: status } = useQuery({
+    queryKey: ['sync:status', repoPath],
+    queryFn: () => api.sync.status(repoPath),
+    enabled: !!repoPath,
+    refetchInterval: 3000,
+  })
+  const { data: head } = useQuery({
+    queryKey: ['git:head-sha', repoPath],
+    queryFn: () => api.git.headSha(repoPath),
+    enabled: !!repoPath,
+    refetchInterval: 3000,
+  })
+  const sameName = pin === status?.branch
+  const sameSha = /^[0-9a-f]{7,40}$/i.test(pin) && !!head?.startsWith(pin.toLowerCase())
+  // Tag (baseline) or other branch pinned: same version when it resolves to HEAD.
+  const { data: refs } = useQuery({
+    queryKey: ['sync:resolve-refs', repoPath],
+    queryFn: () => api.sync.resolveRefs(repoPath),
+    enabled: !!repoPath && !!status && head !== undefined && !sameName && !sameSha,
+    refetchInterval: 10_000,
+  })
+  if (!status || head === undefined || sameName || sameSha) return null
+  if (!refs || refs.some(r => (r.name === pin || r.name === `origin/${pin}`) && r.sha === head)) return null
+  const shown = pin.length > 10 ? pin.slice(0, 8) : pin
+  return (
+    <code className="text-xs text-status-warning font-mono ml-2" title={t('schema.structureTab.pinDiffers', { pin: shown })}>
+      {shown}
+    </code>
+  )
+}
+
 /**
  * Wraps one row's existing content with native HTML5 drag & drop — same pattern already used by
  * `ReorderableSidebarSection.tsx` (T77): a before/after drop-position indicator line, the dragged
@@ -192,18 +228,6 @@ function sameDragItem(a: DragItem, b: DragItem): boolean {
  * drop mode: a whole-row highlight when the row itself is a valid "become new parent" target for
  * the item currently being dragged.
  */
-/** Pin of a dependency (ref its parent points at) — shown only when it differs from what is
- *  checked out, which the branch combo next to it already shows (GH106). */
-function RepoPin({ repoPath, pin }: { repoPath: string; pin: string }) {
-  const { data: state } = useQuery({
-    queryKey: ['integration:state', repoPath],
-    queryFn: () => api.integration.state(repoPath),
-    enabled: !!repoPath,
-    refetchInterval: 10_000,
-  })
-  if (!state || pin === state.currentBranch || (!state.currentBranch && state.headOid.startsWith(pin))) return null
-  return <code className="text-xs text-ink-3 font-mono ml-2">{pin.length > 10 ? pin.slice(0, 8) : pin}</code>
-}
 
 function DragRow({
   item, reparentTarget, canDropInto, dragging, dropTarget,

@@ -131,11 +131,13 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
   - **Choix explicite** dans le Modèle de données, onglet Structure, par la combo de branche de
     chaque repo (`RepoBranchSelector`, seul contrôle de la ligne) : l'intégration désignée y porte
     la mention « intégration » ; y créer une `int-*` la désigne. En detached HEAD (composant épinglé
-    sur un commit, baseline), la combo affiche le commit abrégé. `IntegrationBranchIndicator`
+    sur un commit, baseline), la combo affiche la baseline checkoutée (le tag épinglé en priorité),
+    sinon le commit abrégé. `IntegrationBranchIndicator`
     n'affiche l'intégration **que si elle diffère de la branche checkoutée** : ⚠ « Désigner `int-X`
     comme intégration » si la branche courante est une `int-*` non désignée (cas PH2), sinon
     « Intégration : `int-Y` » pour information ; rien sur `dev-*`. Le pin d'un composant n'est
-    affiché que s'il diffère de ce qui est checkouté. (L'ancien widget `IntegrationBranchSelector`
+    affiché (en avertissement) que s'il diffère de ce qui est checkouté — même version s'ils
+    désignent la même version (même nom, ou même commit : SHA épinglé, tag ou branche qui pointe sur HEAD). (L'ancien widget `IntegrationBranchSelector`
     n'existe plus depuis T86/T87.)
   - **Désigner `int-X`** (`integration:designate`) : checkout si besoin (sous la garde des
     modifications en attente, `CheckoutConfirmModal`), commit `Branche d'intégration : int-X` ne

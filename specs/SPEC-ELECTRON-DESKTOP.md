@@ -2318,9 +2318,9 @@ un seul nœud vide, aucun type pré-configuré (voir §20.3).
   nombre d'objets, collisions ; Annuler n'enregistre rien et laisse l'édition ouverte), puis
   `schema:rename-values` ; compte rendu commun avec les renommages de champ.
   **GH106** : sur la ligne de chaque repo, `RepoBranchSelector` (intégration marquée dans la
-  liste, commit abrégé en detached HEAD) puis `IntegrationBranchIndicator` (affiché seulement si
+  liste ; en detached HEAD, baseline checkoutée ou commit abrégé) puis `IntegrationBranchIndicator` (affiché seulement si
   l'intégration diffère de la branche checkoutée : « Désigner » ou « Intégration : `int-X` ») ;
-  pin affiché seulement s'il diffère du checkout — règles dans
+  pin affiché seulement s'il désigne une autre version que le checkout (nom ou commit) — règles dans
   `SPEC-FORKS-BRANCHES-BASELINES.md` §2.2. `CheckoutConfirmModal` (garde des modifications en
   attente) est partagée avec `RepoBranchSelector`.
 - **Onglet Liens** (`LiensTab.tsx`) — gestion des `linkTypes` du projet.

@@ -484,6 +484,11 @@ Les types de liens sont définis dans `schema.yaml > linkTypes`. Exemples couran
 
 Il n'existe pas de lien `PARENT_CHILD` implicite — toute relation entre objets passe par un `ObjectLink` typé.
 
+`sourceRefs` / `targetRefs` d'un type de lien : une liste **vide** rend le type invalide — il
+n'accepte aucun objet (masqué des éditeurs de liens, refusé par `validateLinkEntries` côté main /
+serveur MCP). C'est l'état d'un type de lien dont le dernier type source ou cible a été supprimé
+(GH104, §9). Une liste absente reste non contrainte pour le main.
+
 **Sens d'un lien de couverture** : le calcul de couverture (`matchCoverageLink`, voir
 [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §2.2) apparie le lien à sa paire
 test/exigence quel que soit le côté — `sourceId`/`targetId` — sur lequel se trouve
@@ -628,8 +633,20 @@ Un lien Jira peut être ajouté à n'importe quel moment — il est optionnel.
 
 ## 9. Suppression d'une exigence
 
-- **Pas de suppression physique** : une exigence est désactivée en la passant dans un statut `isTerminal: true` (ex. `obsolete`).
+- **Pas de suppression physique d'une exigence individuelle** : elle est désactivée en la passant dans un statut `isTerminal: true` (ex. `obsolete`).
 - L'objet reste lisible dans l'historique et dans les liens entrants (marqués "cible obsolète").
-- Son identifiant n'est **jamais réutilisé**. Une exigence n'étant jamais supprimée
-  physiquement par l'application, son fichier suffit à le garantir ; un fichier supprimé
-  hors application (explorateur, `git rm`) ne laisse pas de pierre tombale (GH20).
+- **Exception — suppression du composant local ou du type qui la porte** (GH104, onglet
+  Structure) : après une confirmation qui affiche les comptes (objets par catégorie, liens par
+  repo, types de lien modifiés ou rendus invalides), les exigences, tests (avec `test-runs/<ID>/`)
+  et campagnes du type sont supprimés physiquement, chacun avec sa pierre tombale ; avec eux, les
+  `impact-acks/<ID>/` des exigences, les `ObjectLink` qui les citent dans le `links/links.yaml`
+  de **chaque repo du workspace**, les arbres `.polenta/trees/<nœud>/<type>.yaml` et les refs
+  `<nœud>::<type>` des `linkTypes` (dans les autres repos, sauf s'ils déclarent eux-mêmes un type
+  de même ref — collision `root::`, GH100). Un type de lien dont une liste devient vide est
+  conservé, invalide (masqué des éditeurs, refusé par la validation du main — §5.1). Restent :
+  analyses d'impact, revues, références textuelles `[[ID]]`, scripts du Suivi. Si un objet ne peut
+  être supprimé, la suppression s'arrête avant les arbres et le schéma : le composant / type reste
+  visible et la relancer termine. Rien n'est commité.
+- Son identifiant n'est **jamais réutilisé** : une exigence supprimée par l'application (cas
+  ci-dessus) laisse sa pierre tombale ; un fichier supprimé hors application (explorateur,
+  `git rm`) n'en laisse pas (GH20).

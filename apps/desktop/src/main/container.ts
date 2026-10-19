@@ -39,6 +39,7 @@ import { SuiviService } from './services/suivi.service'
 import { SuiviUpdatesService } from './services/suivi-updates.service'
 import { FieldRenameService } from './services/field-rename.service'
 import { TypeRenameService } from './services/type-rename.service'
+import { SchemaDeleteService } from './services/schema-delete.service'
 import { resolveWorkspaceRepoPaths } from './services/workspace-repos.util'
 import { HistoryBackfillService } from './services/history-backfill.service'
 import { WorkspaceLinksService } from './services/workspace-links.service'
@@ -104,6 +105,15 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const typeRename = new TypeRenameService(
     requirements, tests, campaigns, tree, schema, [reqIndex, testsIndex],
     (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
+  )
+  // GH104 — suppression en cascade d'un composant local ou d'un type (objets, liens, arbres, refs).
+  const schemaDelete = new SchemaDeleteService(
+    git, { requirements, tests, campaigns }, reqIndex, tree, schema, [reqIndex, testsIndex],
+    (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
+    async workspaceDir => {
+      const cache = workspaceDir ? await workspaceTree.readCache(workspaceDir) : null
+      return cache ? revalidation.readonlyRepoPaths(cache.logicalTree.repoPath, workspaceDir) : new Set<string>()
+    },
   )
   // GH77 — reprise de l'historique des champs suivis depuis git (action manuelle, par repo).
   const historyBackfill = new HistoryBackfillService(git, requirements, tests, campaigns)
@@ -179,6 +189,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     history,
     fieldRename,
     typeRename,
+    schemaDelete,
     historyBackfill,
     appSettings,
     machineConfig: host.machineConfig,

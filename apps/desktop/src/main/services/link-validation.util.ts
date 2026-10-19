@@ -101,6 +101,11 @@ export function validateLinkEntries(
     if (!lt) {
       return fail('LINK_TYPE_NOT_FOUND', `Type de lien "${dto.type}" absent de schema.linkTypes.`)
     }
+    // GH104 — une liste présente mais vide (dernier type cible supprimé) rend le type de lien
+    // invalide, comme `isLinkTypeValid` côté renderer : elle n'accepte rien, jamais « tout ».
+    if (lt.sourceRefs?.length === 0 || lt.targetRefs?.length === 0) {
+      return fail('LINK_TYPE_INCOMPATIBLE', `Le type "${lt.name}" est invalide : sourceRefs ou targetRefs vide.`)
+    }
     if (dto.sourceId === dto.targetId) {
       return fail('SELF_LINK', `Un objet ne peut pas être lié à lui-même (${dto.sourceId}).`)
     }

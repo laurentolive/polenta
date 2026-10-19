@@ -2253,13 +2253,15 @@ listés dans `SPEC-AUDIT.md`).
 | `schema:preview-value-renames` | **GH82** — `repoPath, objectTypeRef, renames: { target, from, to }[]` : objets du type portant l'ancienne / la nouvelle valeur, sans écriture | `ValueRenamePreview[]` |
 | `schema:rename-values` | **GH82** — mêmes paramètres : migre statuts / valeurs d'enum renommés (objets, historique, copies `testSnapshot`) | `FieldRenameResult` (+ `snapshots`) |
 | `schema:rename-fields` | **GH77** — `repoPath, objectTypeRef ('<nœud>::<type>'), renames: { from, to }[]` : après `schema:save`, migre `fields` et `history` des objets du type (au mieux par fichier) | `FieldRenameResult` (`migrated`, `skipped`, `failed`) |
+| `schema:preview-delete` | **GH104** — `repoPath, workspaceDir, target: { kind: 'node', nodeName } \| { kind: 'type', nodeName, typeName }` : aperçu sans écriture de la suppression en cascade (sous-arbre, objets, liens par repo, types de lien modifiés / vidés, erreurs `NOT_FOUND` / `READONLY` / `REPO_MISSING`) | `SchemaDeletePlan` |
+| `schema:delete` | **GH104** — mêmes paramètres : supprime objets (pierres tombales), exécutions, acquittements d'impact, liens de tous les repos, arbres, refs de liens, puis le nœud / type ; arrêt avant arbres et schéma si un objet n'a pas pu être supprimé (SPEC-REQ §9) | `SchemaDeleteResult` (`deleted`, `links`, `schemaSaved`, `failed`) |
 | `history:get` | **GH77** — `repoPath, kind ('requirement' \| 'test' \| 'campaign'), id` : historique effectif (entrées implicites comprises) | `ObjectHistory` |
 | `history:backfill` | **GH77** — `repoPath` : reprise de l'historique depuis git (fichiers réécrits, pas de commit) | `HistoryBackfillResult` |
 
 `schema:save` ne régénère **aucun** fichier dérivé de type `.gitmodules` — c'est le seul écart avec
 la version précédente de cette section, à ne pas réintroduire dans une future correction.
 
-`ApiClient.schema` : `get(repoPath)` + `save(repoPath, schema)` + `moveElement(...)` + `renameFields(...)` (GH77).
+`ApiClient.schema` : `get(repoPath)` + `save(repoPath, schema)` + `moveElement(...)` + `renameFields(...)` (GH77) + `previewDelete(...)` / `delete(...)` (GH104).
 `ApiClient.history` : `get(repoPath, kind, id)` + `backfill(repoPath)` (GH77).
 
 ### 20.5 Formulaires dynamiques (renderer)
@@ -2314,6 +2316,13 @@ un seul nœud vide, aucun type pré-configuré (voir §20.3).
   longueur inchangée) → `ValueRenameConfirmModal` avant l'enregistrement (lignes décochables,
   nombre d'objets, collisions ; Annuler n'enregistre rien et laisse l'édition ouverte), puis
   `schema:rename-values` ; compte rendu commun avec les renommages de champ.
+  **GH104** : la corbeille d'un composant local, celle d'un type et le bouton Supprimer de la
+  configuration d'un type passent par le même flux — `schema:preview-delete`, puis
+  `SchemaDeleteConfirmModal` (sous-composants, objets par catégorie avec les 5 premiers IDs, liens
+  par repo, types de lien mis à jour et ceux qui deviennent invalides, rappel « rien n'est
+  commité » ; une erreur de pré-contrôle désactive Supprimer ; Annuler ne modifie rien), puis
+  `schema:delete`, bannière de compte rendu (objets / liens supprimés, échecs à relancer) et
+  invalidation de tout le cache. Un type tout juste créé et abandonné est retiré directement.
 - **Onglet Liens** (`LiensTab.tsx`) — gestion des `linkTypes` du projet.
 
 **GH77 — Préférences du projet (`/preferences`)** : section « Historique des champs suivis », une

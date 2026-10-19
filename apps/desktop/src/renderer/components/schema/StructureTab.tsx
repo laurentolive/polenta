@@ -15,11 +15,12 @@ import { ElementConfigModal } from './ElementConfigModal'
 import { AddDependencyModal, type AddDependencyValues } from './AddDependencyModal'
 import { RemoveDependencyModal } from './RemoveDependencyModal'
 import { RepoBranchSelector } from './RepoBranchSelector'
-import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, typeRename, typeRenameDecision, migrationSteps, CATEGORY_LABEL_KEY, ConfirmDelete, type EditableObjectType } from './objectTypeEditor'
+import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, typeRename, typeRenameDecision, migrationSteps, CATEGORY_LABEL_KEY, type EditableObjectType } from './objectTypeEditor'
 import { ValueRenameConfirmModal } from './ValueRenameConfirmModal'
 import { TypeRenameConfirmModal } from './TypeRenameConfirmModal'
+import { SchemaDeleteConfirmModal } from './SchemaDeleteConfirmModal'
 import { emptyFieldRenameResult } from '@polenta/types'
-import type { FieldRenameResult, TypeRenameDto, TypeRenamePlan, ValueRename, ValueRenamePreview } from '@polenta/types'
+import type { FieldRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, TypeRenameDto, TypeRenamePlan, ValueRename, ValueRenamePreview } from '@polenta/types'
 import { RolesExposedFields, ImplementedInterfacesFields } from './RolesImplementsFields'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type {
@@ -27,7 +28,7 @@ import type {
   DiamondConflict, PolentaRepoDependency, ImplementsDeclaration, SystemNode, RoleDefinition,
 } from '@polenta/types'
 import {
-  findSystemNode, flattenSystemNodes, mapSystemNode, removeSystemNode, countSubComponents,
+  findSystemNode, flattenSystemNodes, mapSystemNode,
   reorderByKey, reorderSystemNodes, isDescendant, moveSystemNode,
 } from '@polenta/types'
 
@@ -317,11 +318,8 @@ function ElementLeaf({ objectType, item, dragging, dropTarget, onDragStartRow, o
       <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <button type="button" onClick={e => { e.stopPropagation(); onClick() }}
           className="px-1 text-ink-3 hover:text-ink" title={t('schema.structureTab.edit')}><Pencil size={12} /></button>
-        <ConfirmDelete
-          onConfirm={onDelete}
-          label={<Trash2 size={12} />}
-          className="px-1 text-ink-3 hover:text-status-danger"
-        />
+        <button type="button" onClick={e => { e.stopPropagation(); onDelete() }}
+          className="px-1 text-ink-3 hover:text-status-danger" title={t('common.delete')}><Trash2 size={12} /></button>
       </div>
     </DragRow>
   )
@@ -510,7 +508,6 @@ function LocalNodeRow({
   const [open, setOpen] = useState(true)
   const objectTypes = node.objectTypes ?? []
   const children = node.children ?? []
-  const subCount = countSubComponents(node)
   // T123 (follow-up) — repo-séparé components/interfaces added from this row's own "+" menu nest
   // here, rendered exactly as a repo's own dependencies nest under it (cf. specs/T123.md §3).
   const ownDependencies = repoDependencies.filter(d => d.localParent === node.name)
@@ -563,18 +560,15 @@ function LocalNodeRow({
           >
             <Pencil size={12} />
           </button>
-          <span className="shrink-0" onClick={e => e.stopPropagation()}>
-            <ConfirmDelete
-              onConfirm={() => handlers.onDeleteLocalComponent(repoPath, node.name)}
-              label={<Trash2 size={12} />}
-              className="text-ink-3 hover:text-status-danger shrink-0"
-              // T123 — un composant local qui a lui-même des enfants prévient explicitement du
-              // nombre de sous-composants supprimés avec lui (suppression en cascade). Le nombre
-              // d'éléments réels (exigences/tests/campagnes) n'est pas dans schema.yaml et n'est
-              // pas compté ici — cf. divergence documentée dans specs/T123-sprint2.md.
-              body={subCount > 0 ? t('schema.structureTab.deleteComponentCascadeBody', { count: subCount }) : undefined}
-            />
-          </span>
+          {/* GH104 — la confirmation (comptes d'objets, de liens, sous-composants) vient de l'aperçu. */}
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); handlers.onDeleteLocalComponent(repoPath, node.name) }}
+            className="text-ink-3 hover:text-status-danger shrink-0"
+            title={t('common.delete')}
+          >
+            <Trash2 size={12} />
+          </button>
         </div>
       </DragRow>
       {open && (
@@ -981,6 +975,14 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
   const [pendingTypeRename, setPendingTypeRename] = useState<{
     updated: EditableObjectType; chosen: ValueRename[]; dto: TypeRenameDto; plan: TypeRenamePlan
   } | null>(null)
+  // GH104 — suppression en cascade : aperçu (sans écriture) affiché dans la confirmation, compte rendu.
+  const [pendingDelete, setPendingDelete] = useState<{
+    repoPath: string; target: SchemaDeleteTarget; label: string; plan: SchemaDeletePlan
+  } | null>(null)
+  // Aperçu en cours ou suppression en cours : une seule à la fois (pas de course entre corbeilles).
+  const deleteBusy = useRef(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteReport, setDeleteReport] = useState<{ result?: SchemaDeleteResult; error?: string } | null>(null)
   const [conflictError, setConflictError] = useState<string | null>(null)
   const [editingNode, setEditingNode] = useState<NodeEditTarget | null>(null)
   const [pendingDependency, setPendingDependency] = useState<PendingDependency | null>(null)
@@ -993,6 +995,12 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
   const [removingDependency, setRemovingDependency] = useState<RemovingDependency | null>(null)
   const [isRemovingDependency, setIsRemovingDependency] = useState(false)
   const [removeDependencyError, setRemoveDependencyError] = useState<string | null>(null)
+
+  /** Libellé affiché d'un repo du workspace (GH100 / GH104). */
+  const repoLabel = (path: string) => {
+    const node = flatNodes.find(n => n.repoPath === path)
+    return schemasByRepoPath.get(path)?.nodes.find(n => n.name === 'root')?.label || node?.label || node?.name || path
+  }
 
   const saveSchema = async (targetRepoPath: string, nextSchema: ProjectSchema) => {
     await api.schema.save(targetRepoPath, nextSchema)
@@ -1120,16 +1128,54 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
     // sauvegarde depuis une copie périmée réécrirait la clé orpheline.
     await qc.invalidateQueries()
   }
-  const handleDeleteElement = () => applyToSelection(() => null)
+  /** Bouton Supprimer de la modale du type (absent pour un type tout juste créé) : même flux que
+   *  la corbeille de sa ligne (GH104). */
+  const handleDeleteElement = () => { if (selection) void handleDeleteElementAt(selection) }
 
-  /** Deletes an element directly from its row's trash icon, bypassing the config modal (T74 sprint 3). */
+  /** Corbeille d'un type (T74 sprint 3) — GH104 : aperçu de la suppression en cascade, puis confirmation. */
   const handleDeleteElementAt = async (sel: Selection) => {
-    const schema = schemasByRepoPath.get(sel.repoPath)
-    if (!schema) return
+    const type = findSystemNode(schemasByRepoPath.get(sel.repoPath)?.nodes ?? [], sel.nodeName)?.objectTypes?.[sel.typeIndex]
+    if (!type) return
+    await requestDelete(sel.repoPath, { kind: 'type', nodeName: sel.nodeName, typeName: type.name }, type.label || type.name)
+  }
+
+  /** GH104 — calcule l'aperçu (aucune écriture) et ouvre la confirmation. */
+  const requestDelete = async (targetRepoPath: string, target: SchemaDeleteTarget, label: string) => {
+    if (deleteBusy.current) return
+    deleteBusy.current = true
+    setDeleteReport(null)
     try {
-      await saveSchema(sel.repoPath, withObjectTypeAt(schema, sel.nodeName, sel.typeIndex, () => null))
+      const plan = await api.schema.previewDelete(targetRepoPath, workspaceDir, target)
+      setPendingDelete({ repoPath: targetRepoPath, target, label, plan })
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err))
+      const error = err instanceof Error ? err.message : String(err)
+      // Depuis la modale du type, la bannière de l'onglet serait masquée : erreur dans la modale.
+      if (selection) setSaveError(error)
+      else setDeleteReport({ error })
+    } finally {
+      deleteBusy.current = false
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    const { repoPath: targetRepoPath, target } = pendingDelete
+    if (deleteBusy.current) return
+    deleteBusy.current = true
+    setIsDeleting(true)
+    try {
+      setDeleteReport({ result: await api.schema.delete(targetRepoPath, workspaceDir, target) })
+    } catch (err) {
+      setDeleteReport({ error: err instanceof Error ? err.message : String(err) })
+    } finally {
+      // La sélection désigne un type par son index : le schéma a pu changer, et la modale
+      // masquerait le compte rendu.
+      setSelection(null)
+      deleteBusy.current = false
+      setIsDeleting(false)
+      setPendingDelete(null)
+      // Listes, détail des objets, liens, matrice : tout peut citer un objet supprimé.
+      await qc.invalidateQueries()
     }
   }
 
@@ -1423,16 +1469,13 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
   }
 
   /** Removes a local component (a SystemNode living in this repo's own schema.yaml, cf. T113) —
-   *  at any nesting depth (T123) — along with its whole subtree of nested local components and
-   *  their elements. */
+   *  at any nesting depth (T123) — along with its whole subtree of nested local components.
+   *  GH104 — and their objects, links, display trees and link-type refs (main process), after a
+   *  confirmation showing the preview counts. */
   const handleDeleteLocalComponent = async (targetRepoPath: string, nodeName: string) => {
-    const schema = schemasByRepoPath.get(targetRepoPath)
-    if (!schema) return
-    try {
-      await saveSchema(targetRepoPath, { ...schema, nodes: removeSystemNode(schema.nodes, nodeName) })
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err))
-    }
+    const node = findSystemNode(schemasByRepoPath.get(targetRepoPath)?.nodes ?? [], nodeName)
+    if (!node) return
+    await requestDelete(targetRepoPath, { kind: 'node', nodeName }, node.label || node.name)
   }
 
   /** T113 — "Composant local" branch of handleSubmitDependency: appends a plain SystemNode to
@@ -1845,6 +1888,8 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         />
       )}
 
+      {deleteReport && <DeleteReportBanner report={deleteReport} onClose={() => setDeleteReport(null)} />}
+
       {renameReport && (
         <FieldRenameBanner report={renameReport} onClose={() => setRenameReport(null)} />
       )}
@@ -1862,14 +1907,23 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
         />
       )}
 
+      {pendingDelete && (
+        <SchemaDeleteConfirmModal
+          target={pendingDelete.target}
+          label={pendingDelete.label}
+          plan={pendingDelete.plan}
+          repoLabel={repoLabel}
+          isDeleting={isDeleting}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => void confirmDelete()}
+        />
+      )}
+
       {pendingTypeRename && (
         <TypeRenameConfirmModal
           dto={pendingTypeRename.dto}
           plan={pendingTypeRename.plan}
-          repoLabel={repoPath => {
-            const node = flatNodes.find(n => n.repoPath === repoPath)
-            return schemasByRepoPath.get(repoPath)?.nodes.find(n => n.name === 'root')?.label || node?.label || node?.name || repoPath
-          }}
+          repoLabel={repoLabel}
           onCancel={() => setPendingTypeRename(null)}
           onConfirm={() => {
             const { updated, chosen, dto } = pendingTypeRename
@@ -1937,7 +1991,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           onSave={handleSaveElement}
           onDelete={handleDeleteElement}
           onClose={handleCloseElementModal}
-          hotkeysSuspended={!!pendingValueRenames || !!pendingTypeRename}
+          hotkeysSuspended={!!pendingValueRenames || !!pendingTypeRename || !!pendingDelete}
         />
       )}
 
@@ -1985,6 +2039,32 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
           onClose={() => { setRemovingDependency(null); setRemoveDependencyError(null) }}
         />
       )}
+    </div>
+  )
+}
+
+/** GH104 — compte rendu de la suppression en cascade (objets, liens, échecs à relancer). */
+function DeleteReportBanner({ report, onClose }: { report: { result?: SchemaDeleteResult; error?: string }; onClose: () => void }) {
+  const { t } = useTranslation()
+  const { result, error } = report
+  const problems = !!error || (result?.failed.length ?? 0) > 0
+  return (
+    <div
+      role="status"
+      className={`flex items-start gap-2 rounded px-3 py-2 text-sm mb-3 border ${problems
+        ? 'bg-status-warning-bg border-status-warning-border text-status-warning'
+        : 'bg-status-info-bg border-status-info-border text-status-info'}`}
+    >
+      {problems && <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
+      <div className="flex-1 space-y-0.5">
+        {error && <p>{t('schema.deleteCascade.reportError', { error })}</p>}
+        {result && <p>{t('schema.deleteCascade.reportDone', { count: result.deleted.length, links: result.links })}</p>}
+        {result && result.failed.length > 0 && (
+          <p>{t(result.schemaSaved ? 'schema.deleteCascade.reportFailedAfter' : 'schema.deleteCascade.reportFailed',
+            { count: result.failed.length, ids: result.failed.map(f => `${f.id} (${f.error})`).join(', ') })}</p>
+        )}
+      </div>
+      <button type="button" onClick={onClose} className="text-xs hover:underline shrink-0">{t('common.close')}</button>
     </div>
   )
 }

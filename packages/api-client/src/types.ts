@@ -1,6 +1,6 @@
 import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef,
+  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -144,6 +144,8 @@ export interface CreateSavedQueryDto {
   template?: TemplateInput
   /** GH93 — paramètres choisis à l'affichage (avec `script` seulement : un modèle les génère). */
   parameters?: QueryParameterDef[]
+  /** GH70 — colonne calculée de la Vue Système (requête partagée, avec `script` seulement). */
+  column?: QueryColumnDef | null
 }
 
 export interface UpdateSavedQueryDto {
@@ -154,6 +156,8 @@ export interface UpdateSavedQueryDto {
   template?: TemplateInput | null
   /** GH93 — nouvelle déclaration de paramètres (sans `template`). */
   parameters?: QueryParameterDef[]
+  /** GH70 — nouvelle déclaration de colonne (sans `template`) ; `null` la retire. */
+  column?: QueryColumnDef | null
 }
 
 export interface AddHistoryEntryDto {
@@ -737,8 +741,8 @@ export interface ApiClient {
     run(repoPath: string, workspaceDir: string | undefined, username: string, req: ScriptRunRequest, client: ScriptClientInfo): Promise<ScriptRunResult>
     describeIds(repoPath: string, workspaceDir: string | undefined, ids: string[], locale?: string): Promise<DescribedObject[]>
     resolveTarget(repoPath: string, workspaceDir: string | undefined, id: string): Promise<RowTarget | null>
-    templates(): Promise<{ queries: Omit<QueryTemplate, 'generate'>[]; widgets: Omit<WidgetTemplate, 'generate'>[] }>
-    renderTemplate(kind: 'query', input: TemplateInput): Promise<{ script: string; parameters: QueryParameterDef[] }>
+    templates(): Promise<{ queries: Omit<QueryTemplate, 'generate' | 'parameters' | 'column'>[]; widgets: Omit<WidgetTemplate, 'generate'>[] }>
+    renderTemplate(kind: 'query', input: TemplateInput): Promise<{ script: string; parameters: QueryParameterDef[]; column: QueryColumnDef | null }>
     renderTemplate(kind: 'widget', input: TemplateInput): Promise<WidgetCode>
     objectTypes(repoPath: string, workspaceDir?: string): Promise<SuiviObjectTypeOption[]>
     /** GH74 §6.3 — bandeau des mises à jour (bibliothèque, widgets du seed, versions de modèle). */

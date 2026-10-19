@@ -1197,7 +1197,27 @@
     "saveAs": "Save as…",
     "legacySqlNotice": "SQL query from before the current version of Polenta: it is no longer supported. Rewrite it with a template or a script, then delete it.",
     "customizedNotice": "Customised script: the template form no longer applies.",
-    "newerFormatNotice": "Created by a newer version of Polenta: read-only."
+    "newerFormatNotice": "Created by a newer version of Polenta: read-only.",
+    "column": {
+      "enable": "Use as a column in the System view",
+      "defaultLabel": "Computed column",
+      "label": "Label",
+      "categories": "Categories",
+      "category": {
+        "requirement": "Requirements",
+        "test": "Tests"
+      },
+      "objectTypes": "Specific types",
+      "objectTypesHint": "Object types <node>::<type> for which the column is also offered. Prefer categories: the same reference may exist in several repos.",
+      "type": "Field type",
+      "values": "Values",
+      "valuesHint": "One value per line",
+      "contract": "The script returns one row per item: id (requirement or test ID), value, and optionally tooltip and _ids (object opened on double-click).",
+      "sharedOnly": "shared queries only",
+      "privateRefused": "A computed column is reserved for shared queries: choose \"Shared\", or remove the declaration.",
+      "readError": "Invalid column declaration (not offered in the System view): {{message}}",
+      "appliesNowhere": "The column is offered for no type: check a category or a type."
+    }
   },
   "dashboardPage": {
     "cannotChangeScope": "Unable to change scope.",

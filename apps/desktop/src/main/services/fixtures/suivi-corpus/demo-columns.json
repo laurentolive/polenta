@@ -1,0 +1,13 @@
+{
+  "Colonne / Dernier résultat de campagne": [
+    {"id":"TSYS-0001","value":"PASS","tooltip":"CAMP-0001 — EVT — Essais de validation technique · 2026-05-05 · Marc Dubois","_ids":["CAMP-0001/TSYS-0001-1"]},
+    {"id":"TSYS-0002","value":"PASS","tooltip":"CAMP-0002 — DVT — Essais de vérification design · 2026-07-02 · Marc Dubois","_ids":["CAMP-0002/TSYS-0002-1"]},
+    {"id":"TSYS-0003","value":"PASS","tooltip":"CAMP-0001 — EVT — Essais de validation technique · 2026-05-08 · Marc Dubois","_ids":["CAMP-0001/TSYS-0003-1"]},
+    {"id":"TSYS-0004","value":"PASS","tooltip":"CAMP-0002 — DVT — Essais de vérification design · 2026-07-03 · Marc Dubois","_ids":["CAMP-0002/TSYS-0004-1"]},
+    {"id":"TSYS-0007","value":"INCOMPLETE","tooltip":"CAMP-0002 — DVT — Essais de vérification design · 2026-07-06 · Marc Dubois","_ids":["CAMP-0002/TSYS-0007-1"]},
+    {"id":"TMOT-0003","value":"FAIL","tooltip":"CAMP-0001 — EVT — Essais de validation technique · 2026-05-14 · Yann Petit","_ids":["CAMP-0001/TMOT-0003-1"]},
+    {"id":"TSW-0001","value":"PASS","tooltip":"CAMP-0001 — EVT — Essais de validation technique · 2026-05-15 · Inès Leroy","_ids":["CAMP-0001/TSW-0001-1"]},
+    {"id":"TSYS-0006","value":"PASS","tooltip":"CAMP-0002 — DVT — Essais de vérification design · 2026-07-04 · Marc Dubois","_ids":["CAMP-0002/TSYS-0006-1"]},
+    {"id":"TSYS-0005","value":"FAIL","tooltip":"CAMP-0003 — Vérification des KPI produit · 2026-07-07 · Marc Dubois","_ids":["CAMP-0003/TSYS-0005-2"]}
+  ]
+}

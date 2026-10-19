@@ -1197,7 +1197,27 @@
     "saveAs": "Enregistrer sous…",
     "legacySqlNotice": "Requête SQL d'avant la version actuelle de Polenta : elle n'est plus prise en charge. Réécrivez-la avec un modèle ou un script, puis supprimez-la.",
     "customizedNotice": "Script personnalisé : le formulaire du modèle ne s'applique plus.",
-    "newerFormatNotice": "Créée par une version plus récente de Polenta : lecture seule."
+    "newerFormatNotice": "Créée par une version plus récente de Polenta : lecture seule.",
+    "column": {
+      "enable": "Utiliser comme colonne dans la Vue Système",
+      "defaultLabel": "Colonne calculée",
+      "label": "Libellé",
+      "categories": "Catégories",
+      "category": {
+        "requirement": "Exigences",
+        "test": "Tests"
+      },
+      "objectTypes": "Types précis",
+      "objectTypesHint": "Types d'objet <nœud>::<type> pour lesquels la colonne est aussi proposée. Préférer les catégories : une même référence peut exister dans plusieurs repos.",
+      "type": "Type de champ",
+      "values": "Valeurs",
+      "valuesHint": "Une valeur par ligne",
+      "contract": "Le script renvoie une ligne par élément : id (ID de l'exigence ou du test), value, et en option tooltip (infobulle) et _ids (objet ouvert au double-clic).",
+      "sharedOnly": "réservé aux requêtes partagées",
+      "privateRefused": "Une colonne calculée est réservée aux requêtes partagées : choisir « Partagé », ou retirer la déclaration.",
+      "readError": "Déclaration de colonne invalide (non proposée dans la Vue Système) : {{message}}",
+      "appliesNowhere": "La colonne n'est proposée pour aucun type : cocher une catégorie ou un type."
+    }
   },
   "dashboardPage": {
     "cannotChangeScope": "Impossible de changer la portée.",

@@ -57,6 +57,14 @@
             "fr": "Version initiale.",
             "en": "Initial version."
           }
+        },
+        {
+          "version": 2,
+          "hash": "b4c8312f9a389b017d5c7292ccee69fcf3932d6ec2d2da466af94aae5e928261",
+          "summary": {
+            "fr": "Dernier résultat en campagne : lastEntryResults / lastEntryResult (GH70)",
+            "en": "Last campaign result: lastEntryResults / lastEntryResult (GH70)"
+          }
         }
       ]
     },

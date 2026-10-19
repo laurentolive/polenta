@@ -1,6 +1,6 @@
-// @polenta-lib campaign 1
+// @polenta-lib campaign 2
 // Bibliothèque projet (contenu de départ livré par Polenta, modifiable par le projet).
-// Campagnes : état dans le temps, étape d'avancement d'une entrée, dernier résultat d'un test.
+// Campagnes : état dans le temps, étape d'avancement d'une entrée, dernier résultat d'un test (tous runs, ou en campagne).
 import { dayEnd, dayOf, dayRange } from './time.js'
 import { ENTRY_ORDER, entryStatusLabel, isApproval, statusLabel, typeIndex } from './status.js'
 
@@ -314,6 +314,42 @@ export function lastResults(data) {
  */
 export function lastResult(data, testId) {
   return lastResults(data).get(testId) ?? null
+}
+
+/**
+ * Dernier résultat de chaque test **en campagne** (colonne « Dernier résultat » de la Vue Système,
+ * GH70) : entrée active exécutée (`executedAt` renseigné) la plus récente, toutes campagnes
+ * confondues, abandonnées comprises ; plusieurs instances d'un test (test itérant) : la plus récente
+ * l'emporte. Les runs hors campagne sont ignorés. Règles modifiables par le projet.
+ * @param {import('./polenta').PolentaGraph} data
+ * @returns {Map<string, { status: string, executedAt: string, executedBy: string | null, campaignId: string, campaignTitle: string, entryId: string }>}
+ */
+export function lastEntryResults(data) {
+  const out = new Map()
+  for (const c of data.campaigns) {
+    for (const e of c.entries) {
+      if (!e.executedAt || e.status === 'pending') continue
+      const known = out.get(e.testCaseId)
+      if (!known || e.executedAt > known.executedAt) {
+        out.set(e.testCaseId, {
+          status: e.status, executedAt: e.executedAt, executedBy: e.executedBy,
+          campaignId: c.id, campaignTitle: c.title, entryId: e.entryId,
+        })
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Dernier résultat en campagne d'un test (cf. `lastEntryResults`), ou `null` s'il n'a jamais été
+ * exécuté en campagne. Parcourt toutes les entrées à chaque appel : pour plusieurs tests, appeler
+ * `lastEntryResults(data)` une fois et lire la `Map`.
+ * @param {import('./polenta').PolentaGraph} data
+ * @param {string} testId
+ */
+export function lastEntryResult(data, testId) {
+  return lastEntryResults(data).get(testId) ?? null
 }
 
 /** Libellé d'un statut de test (copie ou test vivant) — réexporté pour les scripts. */

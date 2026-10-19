@@ -11,6 +11,7 @@
 // « … choisi(e) à l'affichage ») ; le code lit alors `polenta.params`.
 
 import type { QueryParameterDef } from './suivi-params'
+import type { QueryColumnDef } from './suivi-columns'
 
 export interface TemplateRef {
   id: string
@@ -43,6 +44,8 @@ export interface QueryTemplate {
   generate(params: Record<string, unknown>): string
   /** GH93 — paramètres choisis à l'affichage déclarés par la requête générée (déterministe). */
   parameters(params: Record<string, unknown>): QueryParameterDef[]
+  /** GH70 — colonne calculée de la Vue Système déclarée par la requête générée, sinon absent. */
+  column?(params: Record<string, unknown>): QueryColumnDef | null
 }
 
 export interface WidgetCode {
@@ -59,7 +62,7 @@ export interface WidgetTemplate {
   generate(params: Record<string, unknown>): WidgetCode
 }
 
-export type QueryTemplateId = 'filtered-list' | 'campaign-entries' | 'campaign-timeline'
+export type QueryTemplateId = 'filtered-list' | 'campaign-entries' | 'campaign-timeline' | 'campaign-last-result'
 export type WidgetTemplateId = 'bar' | 'pie' | 'line' | 'kpi' | 'table' | 'matrix' | 'stacked-area'
 
 /** Condition du modèle « Liste filtrée » (ex-builder). */
@@ -437,6 +440,39 @@ ${periodAtDisplay ? `  // Période choisie à l'affichage ; borne absente → cr
 `
 }
 
+// ─── « Dernier résultat de campagne » (colonne calculée, GH70) ───────────────
+
+function generateCampaignLastResult(): string {
+  return `${header('Modèle', 'campaign-last-result', 1)}// Colonne calculée de la Vue Système : une ligne par test exécuté en campagne.
+// Règles (dans lib/campaign.js, modifiables par le projet) : entrée exécutée la plus récente,
+// toutes campagnes, abandonnées comprises ; runs hors campagne ignorés.
+import { lastEntryResults } from 'lib/campaign.js'
+import { dayOf } from 'lib/time.js'
+
+export default function (data, polenta) {
+  const rows = []
+  for (const [testId, r] of lastEntryResults(data)) {
+    rows.push({
+      id: testId,
+      value: r.status,
+      tooltip: r.campaignId + ' — ' + r.campaignTitle + ' · ' + dayOf(r.executedAt, polenta) + (r.executedBy ? ' · ' + r.executedBy : ''),
+      _ids: [r.campaignId + '/' + r.entryId],
+    })
+  }
+  return rows
+}
+`
+}
+
+function campaignLastResultColumn(): QueryColumnDef {
+  return {
+    label: L('Dernier résultat', 'Last result'),
+    appliesTo: { categories: ['test'], objectTypes: [] },
+    type: 'enum',
+    values: ['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE'],
+  }
+}
+
 // ─── Transformations des widgets ────────────────────────────────────────────
 
 const MEASURE_VALUES = [
@@ -800,6 +836,10 @@ export const QUERY_TEMPLATES: QueryTemplate[] = [
   { id: 'filtered-list', version: 1, label: L('Liste filtrée', 'Filtered list'), params: FILTERED_LIST_PARAMS, generate: generateFilteredList, parameters: filteredListParameters },
   { id: 'campaign-entries', version: 1, label: L('Entrées de campagne', 'Campaign entries'), params: CAMPAIGN_ENTRIES_PARAMS, generate: generateCampaignEntries, parameters: campaignEntriesParameters },
   { id: 'campaign-timeline', version: 1, label: L('Avancement dans le temps', 'Progress over time'), params: CAMPAIGN_TIMELINE_PARAMS, generate: generateCampaignTimeline, parameters: campaignTimelineParameters },
+  {
+    id: 'campaign-last-result', version: 1, label: L('Dernier résultat de campagne (colonne)', 'Last campaign result (column)'), params: [],
+    generate: generateCampaignLastResult, parameters: () => [], column: campaignLastResultColumn,
+  },
 ]
 
 export const WIDGET_TEMPLATES: WidgetTemplate[] = [
@@ -822,11 +862,11 @@ export function findWidgetTemplate(id: string): WidgetTemplate | undefined {
 
 /** Définitions sérialisables (sans les fonctions), pour le renderer et le MCP. */
 export function describeTemplates(): {
-  queries: Omit<QueryTemplate, 'generate' | 'parameters'>[]
+  queries: Omit<QueryTemplate, 'generate' | 'parameters' | 'column'>[]
   widgets: Omit<WidgetTemplate, 'generate'>[]
 } {
   return {
-    queries: QUERY_TEMPLATES.map(({ generate: _g, parameters: _p, ...t }) => t),
+    queries: QUERY_TEMPLATES.map(({ generate: _g, parameters: _p, column: _c, ...t }) => t),
     widgets: WIDGET_TEMPLATES.map(({ generate: _g, ...t }) => t),
   }
 }
@@ -840,20 +880,23 @@ export function hashableText(text: string): string {
   return text.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n*$/, '\n')
 }
 
-/** Script et déclaration de paramètres générés par un modèle de requête, et sa référence ;
- *  `hash` = empreinte de `hashableText(queryCodeForHash(…))`. */
-export function queryCode(input: { id: string; params: Record<string, unknown> }, hash: (text: string) => string): { script: string; parameters: QueryParameterDef[]; template: TemplateRef } {
+/** Script, déclaration de paramètres et colonne (GH70) générés par un modèle de requête, et sa
+ *  référence ; `hash` = empreinte de `hashableText(queryCodeForHash(…))`. */
+export function queryCode(input: { id: string; params: Record<string, unknown> }, hash: (text: string) => string): { script: string; parameters: QueryParameterDef[]; column: QueryColumnDef | null; template: TemplateRef } {
   const tpl = findQueryTemplate(input.id)
   if (!tpl) throw new Error(`Modèle de requête inconnu : ${input.id}`)
   const script = tpl.generate(input.params)
   const parameters = tpl.parameters(input.params)
-  return { script, parameters, template: { id: tpl.id, version: tpl.version, params: input.params, hash: hash(hashableText(queryCodeForHash(script, parameters))) } }
+  const column = tpl.column?.(input.params) ?? null
+  return { script, parameters, column, template: { id: tpl.id, version: tpl.version, params: input.params, hash: hash(hashableText(queryCodeForHash(script, parameters, column))) } }
 }
 
 /** Texte soumis à l'empreinte d'une requête : script, plus la déclaration de paramètres s'il y en a
- *  (GH93 — modifier la déclaration détache aussi la requête de son modèle). */
-export function queryCodeForHash(script: string, parameters: readonly QueryParameterDef[] | undefined): string {
-  return parameters && parameters.length ? `${script}\n\u0000\n${stableJson(parameters, 2)}` : script
+ *  (GH93 — modifier la déclaration détache aussi la requête de son modèle), plus la colonne s'il y
+ *  en a une (GH70 — sans colonne, empreinte identique à avant GH70). */
+export function queryCodeForHash(script: string, parameters: readonly QueryParameterDef[] | undefined, column?: QueryColumnDef | null): string {
+  const base = parameters && parameters.length ? `${script}\n\u0000\n${stableJson(parameters, 2)}` : script
+  return column ? `${base}\n\u0000column\n${stableJson(column, 2)}` : base
 }
 
 /** Code généré par un modèle de widget et sa référence. */

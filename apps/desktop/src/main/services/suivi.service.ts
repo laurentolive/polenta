@@ -1,5 +1,5 @@
 import type {
-  DescribedObject, ProjectSchema, QueryParameterDef, RowTarget, ScriptClientInfo, ScriptRunRequest, ScriptRunResult, WidgetCode,
+  DescribedObject, ProjectSchema, QueryColumnDef, QueryParameterDef, RowTarget, ScriptClientInfo, ScriptRunRequest, ScriptRunResult, WidgetCode,
 } from '@polenta/types'
 import { describeTemplates, flattenSystemNodes, resolveRunParams, validateParameterDecls } from '@polenta/types'
 import type { GraphService } from './graph.service'
@@ -103,10 +103,10 @@ export class SuiviService {
 
   /** Code généré par un modèle (aperçu du formulaire, sans enregistrer) ; requête : déclaration de
    *  paramètres comprise (GH93). */
-  renderTemplate(kind: 'query' | 'widget', input: TemplateInput): { script: string; parameters: QueryParameterDef[] } | WidgetCode {
+  renderTemplate(kind: 'query' | 'widget', input: TemplateInput): { script: string; parameters: QueryParameterDef[]; column: QueryColumnDef | null } | WidgetCode {
     if (kind === 'widget') return applyWidgetTemplate(input).code
-    const { script, parameters } = applyQueryTemplate(input)
-    return { script, parameters }
+    const { script, parameters, column } = applyQueryTemplate(input)
+    return { script, parameters, column }
   }
 
   /** Types d'objet du périmètre et leurs champs, pour le formulaire « Liste filtrée ». */

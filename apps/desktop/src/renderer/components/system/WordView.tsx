@@ -1,3 +1,4 @@
+import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
@@ -80,6 +81,11 @@ interface Props {
    *  démontage de la vue (changement de vue / de type). */
   collapsedFolders: string[]
   onCollapsedFoldersChange: (ids: string[]) => void
+  /** GH70 — colonnes calculées affichables (clé `query::<ID>`) et résultats de leur script ; les
+   *  valeurs sont déjà dans `objects`. Lecture seule. */
+  computedColumns?: Map<string, { column: ComputedColumn; result?: ComputedColumnResult }>
+  /** GH70 — clic sur une valeur calculée qui désigne une cible (`_ids` du script). */
+  onOpenComputedTarget?: (target: string) => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -374,6 +380,49 @@ function getStatusClass(status: string): string {
 
 // ── ItemCard ──────────────────────────────────────────────────────────────────
 
+/** GH70 — valeur d'une colonne calculée dans une carte : lecture seule, infobulle, cible cliquable. */
+function ComputedField({
+  label,
+  queryTitle,
+  value,
+  fieldType,
+  tooltip,
+  onOpen,
+  pending,
+  repoPath,
+}: {
+  label: string
+  queryTitle: string
+  value: string
+  fieldType: string
+  tooltip?: string
+  onOpen?: () => void
+  pending: boolean
+  repoPath?: string
+}) {
+  const content = pending
+    ? <span className="text-ink-3">…</span>
+    : !value
+      ? '—'
+      : fieldType === 'richtext'
+        ? <StaticRichTextViewer value={value} repoPath={repoPath} variant="compact" />
+        : value
+  return (
+    <div className="flex items-start gap-2 py-0.5" data-computed-field="">
+      <span className="text-xs text-ink-3 w-28 shrink-0 mt-0.5" title={queryTitle}>
+        {label} <span className="text-ink-3/50">(calc)</span>
+      </span>
+      {onOpen && value && !pending ? (
+        <button type="button" onClick={onOpen} title={tooltip} className="text-xs text-ink-2 text-left hover:underline">
+          {content}
+        </button>
+      ) : (
+        <span className="text-xs text-ink-2" title={tooltip}>{content}</span>
+      )}
+    </div>
+  )
+}
+
 function ItemCard({
   node,
   obj,
@@ -397,6 +446,8 @@ function ItemCard({
   testsById,
   isGotoTarget,
   needsRevalidation = false,
+  computedColumns,
+  onOpenComputedTarget,
 }: {
   node: TypeTreeNode
   obj: AnyObject | null
@@ -420,6 +471,8 @@ function ItemCard({
   onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
   isGotoTarget?: boolean
   needsRevalidation?: boolean
+  computedColumns?: Map<string, { column: ComputedColumn; result?: ComputedColumnResult }>
+  onOpenComputedTarget?: (target: string) => void
 }) {
   const { t } = useTranslation()
   const currentStatus = obj ? getFieldValue(obj, 'status') : ''
@@ -544,6 +597,24 @@ function ItemCard({
       </div>
       <div className="space-y-0.5">
         {fields.map(col => {
+          const computed = computedColumns?.get(col)
+          if (computed) {
+            const cell = node.objectId ? computed.result?.values.get(node.objectId) : undefined
+            const target = cell?.target
+            return (
+              <ComputedField
+                key={col}
+                label={computed.column.label}
+                queryTitle={computed.column.queryTitle}
+                value={obj ? getFieldValue(obj, col) : ''}
+                fieldType={computed.column.fieldDef.type}
+                tooltip={cell?.tooltip}
+                onOpen={target && onOpenComputedTarget ? () => onOpenComputedTarget(target) : undefined}
+                pending={!!computed.result?.pending}
+                repoPath={repoPath}
+              />
+            )
+          }
           const fieldDef: SchemaField | undefined = col === 'status'
             ? (typeDef?.statuses?.length
               ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(s => s.name) }
@@ -714,6 +785,8 @@ export function WordView({
   gotoSeq,
   collapsedFolders: collapsedFolderIds,
   onCollapsedFoldersChange,
+  computedColumns,
+  onOpenComputedTarget,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -895,6 +968,8 @@ export function WordView({
             repoPath={repoPath}
             onMultiEnumEdit={repoPath ? handleMultiEnumClick : undefined}
             isGotoTarget={gotoNodeId === node.id}
+            computedColumns={computedColumns}
+            onOpenComputedTarget={onOpenComputedTarget}
           />
         )
       }

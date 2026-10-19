@@ -777,7 +777,8 @@
       "noLinkTypeForType": "No link type for this type",
       "missingRefs": "missing sourceRefs or targetRefs",
       "configureColumns": "Configure columns",
-      "showFolders": "Show folder headings"
+      "showFolders": "Show folder headings",
+      "computedColumns": "Computed columns"
     },
     "coverage": {
       "noLinkedTest": "No linked test",
@@ -837,6 +838,9 @@
     },
     "filterOptionsToggle": {
       "caseSensitive": "Case sensitive"
+    },
+    "computed": {
+      "exportPending": "A computed column is still being calculated: try again in a moment."
     }
   },
   "search": {

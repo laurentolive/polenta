@@ -777,7 +777,8 @@
       "noLinkTypeForType": "Aucun type de lien pour ce type",
       "missingRefs": "sourceRefs ou targetRefs manquant",
       "configureColumns": "Configurer les colonnes",
-      "showFolders": "Afficher les titres des dossiers"
+      "showFolders": "Afficher les titres des dossiers",
+      "computedColumns": "Colonnes calculées"
     },
     "coverage": {
       "noLinkedTest": "Aucun test lié",
@@ -837,6 +838,9 @@
     },
     "filterOptionsToggle": {
       "caseSensitive": "Sensible à la casse"
+    },
+    "computed": {
+      "exportPending": "Colonne calculée en cours de calcul : réessayer dans un instant."
     }
   },
   "search": {

@@ -4,7 +4,8 @@ import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor } from './LinkTypeEditor'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
-import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
+import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
+import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { ParamRefText } from '../parameters/ParamRefText'
@@ -88,6 +89,11 @@ interface Props {
   /** GH33 — mode sélection (sélecteur de tests d'une campagne) : lecture seule forcée, colonne
    *  de cases à cocher, sélection par objectId (cf. `lib/gridSelection.ts`). */
   selection?: ExcelSelectionMode
+  /** GH70 — colonnes calculées affichables (clé `query::<ID>`) et résultats de leur script ; les
+   *  valeurs sont déjà dans `objects`. Colonnes en lecture seule. */
+  computedColumns?: Map<string, { column: ComputedColumn; result?: ComputedColumnResult }>
+  /** GH70 — double-clic sur une cellule calculée qui désigne une cible (`_ids` du script). */
+  onOpenComputedTarget?: (target: string) => void
 }
 
 export interface ExcelSelectionMode {
@@ -180,7 +186,8 @@ function getFieldValue(obj: AnyObject, field: string): string {
 }
 
 function isSystemField(field: string): boolean {
-  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'coverageStatus'].includes(field)
+  // GH70 — une colonne calculée est en lecture seule, comme un champ système.
+  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'coverageStatus'].includes(field) || isComputedColumnKey(field)
 }
 
 function isDescendantOf(node: TypeTreeNode, targetId: string): boolean {
@@ -226,6 +233,8 @@ interface ExcelCellActions {
   openLinkPopover(nodeId: string, typeName: string, rect: DOMRect): void
   closeLinkPopover(): void
   toggleSteps(nodeId: string): void
+  /** GH70 — ouverture de la cible d'une cellule calculée. */
+  openComputedTarget(target: string): void
 }
 
 const ExcelCellActionsContext = createContext<ExcelCellActions | null>(null)
@@ -343,6 +352,9 @@ const InlineCell = memo(function InlineCell({
   stickyBg,
   needsRevalidation = false,
   paramRefs = false,
+  tooltip,
+  openTarget,
+  pending = false,
 }: {
   value: string
   field: string
@@ -362,6 +374,10 @@ const InlineCell = memo(function InlineCell({
   needsRevalidation?: boolean
   /** T171 — exigence : références de paramètres rendues dans les champs text/textarea. */
   paramRefs?: boolean
+  /** GH70 — cellule calculée : infobulle, cible ouverte au double-clic, résultat en attente. */
+  tooltip?: string
+  openTarget?: string
+  pending?: boolean
 }) {
   const labels = useCellLabels()
   const actions = useCellActions()
@@ -425,10 +441,18 @@ const InlineCell = memo(function InlineCell({
       <td
         ref={tdRef}
         style={freezeStyle}
-        className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass, g.isSelected ? CELL_SELECTED_CLASS : ''].join(' ')}
+        className={['border border-edge px-2 py-1 text-xs text-ink-3 bg-hover max-w-xs', clamp.tdClass, g.isSelected ? CELL_SELECTED_CLASS : '', openTarget ? 'cursor-pointer' : ''].join(' ')}
         onClick={g.onClick}
+        title={tooltip}
+        onDoubleClick={openTarget ? e => { e.stopPropagation(); actions.openComputedTarget(openTarget) } : undefined}
+        data-computed-cell={isComputedColumnKey(field) ? '' : undefined}
       >
-        {clamp.wrap(withAdornment(display))}
+        {pending
+          ? <span className="text-ink-3">…</span>
+          // GH70 — colonne calculée richtext : rendu mis en forme, lecture seule.
+          : isSystem && fieldDef?.type === 'richtext' && value
+            ? clamp.wrap(<StaticRichTextViewer value={value} repoPath={repoPath} variant="compact" />)
+            : clamp.wrap(withAdornment(display))}
       </td>
     )
   }
@@ -1243,6 +1267,8 @@ function ExcelViewInner({
   freezeColCount: storedFreezeColCount,
   onFreezeColCountChange,
   selection,
+  computedColumns,
+  onOpenComputedTarget,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -1465,6 +1491,8 @@ function ExcelViewInner({
   // Labels système délégués à `getExportColumnLabel` (apps/desktop/src/renderer/lib/exportColumns.ts)
   // — seule source de vérité partagée avec l'export, pour que les deux ne puissent jamais diverger.
   function getColumnLabel(col: string): string {
+    const computed = computedColumns?.get(col)
+    if (computed) return computed.column.label
     if (col.startsWith('link::')) {
       const typeName = col.slice(6)
       const lt = linkTypes.find(l => l.name === typeName)
@@ -1531,7 +1559,8 @@ function ExcelViewInner({
   const maxAutoWidth = typeof window !== 'undefined' ? Math.floor(window.innerWidth / 4) : 400
   const autoColWidths: Record<string, number> = {}
   for (const col of columns) {
-    let maxLen = getColumnLabel(col).length
+    // GH70 — en-tête d'une colonne calculée : place du suffixe « (calc) », du ⚠ et de l'icône de filtre.
+    let maxLen = getColumnLabel(col).length + (isComputedColumnKey(col) ? 12 : 0)
     for (const { node, kind } of rows) {
       if (kind === 'folder') continue
       const obj = node.objectId ? objectMap.get(node.objectId) : null
@@ -2082,6 +2111,7 @@ function ExcelViewInner({
     },
     closeLinkPopover: () => setActiveLinkPopover(null),
     toggleSteps: toggleStepExpand,
+    openComputedTarget: target => onOpenComputedTarget?.(target),
   }
   const cellLabels = useMemo<ExcelCellLabels>(() => ({
     doubleClickToEdit: t('system.excelView.doubleClickToEdit'),
@@ -2102,6 +2132,7 @@ function ExcelViewInner({
     openLinkPopover: (n, t, r) => cellActionsRef.current.openLinkPopover(n, t, r),
     closeLinkPopover: () => cellActionsRef.current.closeLinkPopover(),
     toggleSteps: n => cellActionsRef.current.toggleSteps(n),
+    openComputedTarget: target => cellActionsRef.current.openComputedTarget(target),
   }), [])
 
   return (
@@ -2223,7 +2254,13 @@ function ExcelViewInner({
                   }}
                 >
                   {getColumnLabel(col)}
-                  {isSystemField(col) && <span className="ml-1 text-ink-3 font-normal">(sys)</span>}
+                  {isSystemField(col) && !isComputedColumnKey(col) && <span className="ml-1 text-ink-3 font-normal">(sys)</span>}
+                  {isComputedColumnKey(col) && (
+                    <span className="ml-1 text-ink-3 font-normal" title={computedColumns?.get(col)?.column.queryTitle}>(calc)</span>
+                  )}
+                  {computedColumns?.get(col)?.result?.error && (
+                    <span className="ml-1 text-status-warning cursor-help" title={computedColumns.get(col)!.result!.error} data-testid="computed-column-error">⚠</span>
+                  )}
                   {isFilterableColumn(col) && (
                     <button
                       type="button"
@@ -2448,6 +2485,28 @@ function ExcelViewInner({
                     )
                   }
                   const value = getCellText(node, obj, col)
+                  const computed = computedColumns?.get(col)
+                  if (computed) {
+                    const cell = node.objectId ? computed.result?.values.get(node.objectId) : undefined
+                    return (
+                      <InlineCell
+                        key={col}
+                        value={value}
+                        field={col}
+                        nodeId={node.id}
+                        objectId={node.objectId ?? ''}
+                        isSystem
+                        fieldDef={computed.column.fieldDef}
+                        canEdit={false}
+                        repoPath={repoPath}
+                        freezeStyle={freezeStyle}
+                        stickyBg={stickyBg}
+                        tooltip={cell?.tooltip}
+                        openTarget={selection ? undefined : cell?.target}
+                        pending={!!computed.result?.pending}
+                      />
+                    )
+                  }
                   const fieldDef: SchemaField | undefined = col === 'status'
                     ? statusFieldDef
                     : typeDef?.fields.find(f => f.name === col)

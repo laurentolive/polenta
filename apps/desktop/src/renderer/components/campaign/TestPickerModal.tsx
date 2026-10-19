@@ -395,6 +395,7 @@ export function TestPickerModal({
                       typeDef={currentType.typeDef}
                       tests={typeCandidates}
                       username={username}
+                      workspaceDir={workspaceDir}
                       filter={filter}
                       filterOptions={filterOptions}
                       selection={selection}

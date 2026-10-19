@@ -3,7 +3,7 @@
 > Référence parent : [SPEC.md](../SPEC.md) §2.7
 > Dépend de : [SPEC-TECH-stack.md](SPEC-TECH-stack.md) §1.1/§2, [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md), [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md)
 > Introduit par T77 (sprints 1–3) ; réécrit par GH74 (graphe de données JSON, scripts JS isolés, rendu Vega-Lite) ;
-> paramètres choisis à l'affichage : GH93 (§5.1)
+> paramètres choisis à l'affichage : GH93 (§5.1) ; colonnes calculées de la Vue Système : GH70 (§5.2)
 
 ---
 
@@ -102,7 +102,7 @@ empreintes de chaque fichier) :
 | `time.js` | `offsetAt`, `dayOf`, `dayEnd`, `dayRange` (jours locaux via `polenta.timezoneOffsets`) |
 | `status.js` | `ENTRY_ORDER`, `ENTRY_SEVERITY`, `worst`, `typeIndex`, `isApproval`, `statusLabel`, `entryStatusLabel` |
 | `history.js` | `valueAt(obj, champ, date)`, `timeline(objets, champ, options)` (GH77) |
-| `campaign.js` | `campaignsTimeline` / `campaignTimeline` (état des entrées jour par jour, repli GH73 §6.2 marqué `approximate`, `polenta.drill`), `entryRuns`, `entryStep` / `stepRank` / `stepLabel` / `stepContext` (étapes d'avancement, ex-GH71), `lastResult(s)` |
+| `campaign.js` | `campaignsTimeline` / `campaignTimeline` (état des entrées jour par jour, repli GH73 §6.2 marqué `approximate`, `polenta.drill`), `entryRuns`, `entryStep` / `stepRank` / `stepLabel` / `stepContext` (étapes d'avancement, ex-GH71), `lastResult(s)` (tous les runs), `lastEntryResult(s)` (v2, GH70 : entrée de campagne exécutée la plus récente, toutes campagnes, abandonnées comprises, runs hors campagne ignorés) |
 | `maturity.js` | `maturity(data, exigence, ctx?, locale?)`, `maturityContext`, `isFilled`, `isEarsCompliant` : les 5 critères de maturité (§7.2) |
 | `polenta.d.ts`, `../jsconfig.json` | types du contrat ; `tsc -p dashboards/jsconfig.json` vérifie scripts et bibliothèque |
 
@@ -128,6 +128,9 @@ déterministe) :
   temporelle (couche de marques quasi transparentes pour rendre chaque point cliquable, gestion de
   `polenta.drill`). Mesures : nombre, somme, min, max, valeurs distinctes, pire statut. Les colonnes
   proposées sont celles du résultat de la requête.
+- **Requête « Dernier résultat de campagne (colonne) »** (`campaign-last-result`, GH70, sans
+  paramètre de formulaire) : génère une colonne calculée (§5.2) « Dernier résultat » / « Last
+  result » des cas de test, à partir de `lastEntryResults` (`lib/campaign.js`).
 - **Référence** stockée : `template: { id, version, params, hash }`, `hash` = SHA-256 du code
   généré normalisé (`hashableText`) — pour une requête, script **et** déclaration de paramètres s'il
   y en a (`queryCodeForHash`) : modifier la déclaration détache aussi la requête. Code différent → **personnalisé** : la popup n'affiche que le
@@ -171,6 +174,40 @@ Logique pure : `packages/types/src/suivi-params.ts` (main, MCP, renderer).
   modèle ignorés (« Toutes » → filtres) ; période → bornes de `campaignsTimeline` ; composant / type
   choisi → remplace la valeur fixée (« Tous » → valeur fixée, sinon aucun filtre).
 
+### 5.2 Colonnes calculées de la Vue Système (GH70)
+
+Une **requête partagée** peut déclarer `column` dans `query.yaml` : elle devient une colonne
+proposée dans le panneau ⚙️ de la Vue Système (SPEC-SYSTEM-VIEW §Configuration des champs) pour
+les types qu'elle désigne. Mécanisme générique : Polenta ne sait rien de ce que calcule le script
+(principe GH79).
+
+```yaml
+column:
+  label: Dernier résultat                 # ou { fr, en }
+  appliesTo: { categories: [test], objectTypes: [] }   # catégorie OU type précis <nœud>::<type>
+  type: enum                              # type de champ (hors drawio) : rendu de la cellule
+  values: [PASS, FAIL, BLOCKED, INCOMPLETE]   # enum / multi_enum seulement
+```
+
+- **Contrat de ligne** : une ligne par élément `{ id, value, tooltip?, _ids? }` — `id` = ID de
+  l'exigence ou du test, `value` = valeur du champ (`null` = vide), `tooltip` = infobulle, premier
+  `_ids` = cible ouverte au double-clic. Première ligne d'un `id` retenue, `id` inconnu ignoré,
+  valeur hors type affichée telle quelle ; ligne sans `id` ou sans `value` → erreur de la colonne.
+- **Validation** (`validateColumnDecl`, `packages/types/src/suivi-columns.ts`) : déclaration lue
+  invalide → `columnError`, requête toujours exécutable, colonne non proposée ; la réécrire sans
+  corriger est refusée (`[COLUMN_INVALID]`). Requête privée : refus `[COLUMN_PRIVATE]` (création,
+  mise à jour, modèle qui génère une colonne) ; `.pref` qui en porte une → `columnError`. Passage
+  partagé → privé : déclaration retirée, et la référence d'un modèle qui génère une colonne.
+- **Empreinte** : la déclaration entre dans l'empreinte du modèle (`queryCodeForHash(script,
+  parameters, column)`), seulement si elle est présente — sans colonne, empreinte inchangée.
+- **Saisie** : section « Utiliser comme colonne dans la Vue Système » de la vue `/query`
+  (`ColumnDeclEditor`) ; lecture seule en mode modèle ; désactivée sur une requête privée ;
+  « Enregistrer sous… » en privé refusé ; avertissement si `appliesTo` ne désigne aucun type.
+- **Exécution** : `useComputedColumns` (renderer) lit les requêtes partagées du repo ouvert du
+  projet, quel que soit le repo affiché dans la Vue Système ; une exécution `suivi:run` par colonne
+  visible (onglet Tableau ou Document), clé `['widget-query-result', …]` (rafraîchie comme les
+  widgets, §8.2).
+
 ---
 
 ## 6. Rendu, drill-down, navigation
@@ -211,7 +248,7 @@ Logique pure : `packages/types/src/suivi-params.ts` (main, MCP, renderer).
 
 | Entité | Partagé (repo) | Privé (`.{user}.pref`) |
 |---|---|---|
-| Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `parameters?` (GH93), `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus), ID `local-<ts>-<rand>` |
+| Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `parameters?` (GH93), `column?` (GH70, §5.2), `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus, jamais de `column`), ID `local-<ts>-<rand>` |
 | Dashboard | `dashboards/DASHBOARD-NNNN/` : `dashboard.yaml` (widgets : `id`, `title`, `queryId`, `size`, `template?`) + `<widgetId>.js` (transformation) + `<widgetId>.vl.json` (spec) | `dashboards[]` (code des widgets inclus) |
 | Historique de requêtes | — | `queryHistory` (texte du script) |
 | Valeurs de la barre de paramètres (GH93) | — | `suiviParamValues` (dashboard → `name:kind` → valeur) |
@@ -339,6 +376,9 @@ bibliothèque). Budgets (contexte préparé) : avancement des campagnes < 200 ms
   bandeau — réservés à l'app.
 - Redimensionnement libre des widgets ; partage d'un widget entre dashboards.
 - Alertes / notifications sur seuils, requêtes planifiées.
+- Colonnes calculées (GH70) : tri des colonnes de la Vue Excel, vue Édition et autres vues (Recherche,
+  traçabilité, page campagne), colonnes éditables, colonnes personnelles (requêtes privées), paramètres
+  choisis à l'affichage pour une colonne (valeurs toujours `null`), seed automatique de « Dernier résultat ».
 - Politique CSP de l'application (#88) ; le rendu Vega est déjà compatible (pas d'`eval`).
 - Paramètres (GH93) : sélection multiple, valeurs dépendantes entre sélecteurs, défaut propre au
   dashboard, paramètres dans l'URL, paramètres déclarés par un widget ; intégration d'un widget dans

@@ -38,7 +38,9 @@ import { requirementsExportBaseName, testsExportBaseName } from '../export/expor
 import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
-import { flattenSystemNodes } from '@polenta/types'
+import { flattenSystemNodes, isComputedColumnKey } from '@polenta/types'
+import { useComputedColumns, type ComputedColumn } from '../../hooks/useComputedColumns'
+import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { getRelevantLinkTypes, getLinkTypeLabel, isLinkTypeValid } from './linkUtils'
 
@@ -97,6 +99,7 @@ function FieldConfigModal({
   onChangeShowFoldersExcel,
   onChangeShowFoldersWord,
   onClose,
+  computedColumns,
 }: {
   typeDef: ObjectTypeDefinition | undefined
   objectTypeRef?: string
@@ -111,6 +114,8 @@ function FieldConfigModal({
   onChangeShowFoldersExcel: (v: boolean) => void
   onChangeShowFoldersWord: (v: boolean) => void
   onClose: () => void
+  /** GH70 — colonnes calculées applicables au type (requêtes partagées du projet). */
+  computedColumns: ComputedColumn[]
 }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ConfigTab>(activeTab)
@@ -144,6 +149,7 @@ function FieldConfigModal({
   // puis étapes, puis liens). Recocher un champ le remet à sa place plutôt qu'en fin de liste.
   const canonicalOrder = [
     ...allFields,
+    ...computedColumns.map(c => c.key),
     ...(hasSteps ? ['steps'] : []),
     ...relevantLinkTypes.map(lt => `link::${lt.name}`),
   ]
@@ -234,6 +240,31 @@ function FieldConfigModal({
               )}
             </label>
           ))}
+
+          {/* GH70 — colonnes calculées définies par le projet (requêtes partagées) */}
+          {computedColumns.length > 0 && (
+            <div className="pt-2 mt-1 border-t border-edge" data-testid="field-config-computed">
+              <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.computedColumns')}</p>
+              <div className="space-y-1.5">
+                {computedColumns.map(c => (
+                  <label
+                    key={c.key}
+                    title={`${c.queryId} — ${c.queryTitle}`}
+                    className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={currentFields.includes(c.key)}
+                      onChange={() => toggle(c.key)}
+                      className="h-3 w-3 accent-ink"
+                    />
+                    <span>{c.label}</span>
+                    <span className="text-ink-3">(calc)</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Steps column (test types only) */}
           {hasSteps && (
@@ -618,13 +649,15 @@ export function SystemView() {
   // gabarit client choisi, on joint l'arbre complet (dossiers, étapes détaillées) que le rendu
   // Standard n'utilise pas.
   const buildDocumentExportPayload = (format: 'xlsx' | 'docx', templated: boolean) => {
-    const fields = format === 'docx' ? visibleFieldsWord : visibleFieldsExcel
-    const { columns, rows } = buildExportRows(fields, root, objects, sectionNumbers, stepsByObjectId, effectiveType, filter)
+    const fields = format === 'docx' ? shownFieldsWord : shownFieldsExcel
+    // GH70 — une colonne calculée encore en cours de calcul s'exporterait vide.
+    if (computed.pending && fields.some(isComputedColumnKey)) throw new Error(t('system.computed.exportPending'))
+    const { columns, rows } = buildExportRows(fields, root, displayObjects, sectionNumbers, stepsByObjectId, effectiveType, filter, computed.exportColumns)
     // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
     const substitute = (values: Record<string, string>[]) => substituteExportParams(values, effectiveType, paramResolver.substitute)
     const payload = { componentLabel: effectiveNode?.label || effectiveNodeId || '', columns, rows: substitute(rows) }
     if (!templated) return payload
-    const outline = buildExportOutline(fields, root, objects, sectionNumbers, stepsByObjectId, filter, effectiveType)
+    const outline = buildExportOutline(fields, root, displayObjects, sectionNumbers, stepsByObjectId, filter, effectiveType)
     const values = substitute(outline.map(e => e.values))
     return { ...payload, outline: outline.map((e, i) => ({ ...e, values: values[i] })) }
   }
@@ -637,7 +670,7 @@ export function SystemView() {
         Object.entries(edits).map(([objectId, changes]) => {
           const WRITE_BLOCKED = SYSTEM_FIELDS_SET
           const customChanges = Object.fromEntries(
-            Object.entries(changes).filter(([k]) => !WRITE_BLOCKED.has(k) && k !== 'title')
+            Object.entries(changes).filter(([k]) => !WRITE_BLOCKED.has(k) && k !== 'title' && !isComputedColumnKey(k))
           )
           const dto = {
             ...(changes.title ? { title: changes.title } : {}),
@@ -702,6 +735,26 @@ export function SystemView() {
     retry: false,
   })
   const username = identityLogin ?? 'local'
+
+  // ── GH70 — colonnes calculées définies par le projet ─────────────────────────
+  // Exécutées si visibles dans l'onglet Tableau ou Document (les exports suivent l'un ou l'autre).
+  const workspaceDirForComputed = currentProjectId ? decodeProjectId(currentProjectId) : ''
+  const computed = useComputedColumns({
+    workspaceDir: workspaceDirForComputed,
+    category: effectiveType?.category,
+    objectTypeRef: effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : undefined,
+    visibleKeys: useMemo(() => [...visibleFieldsExcel, ...visibleFieldsWord], [visibleFieldsExcel, visibleFieldsWord]),
+    enabled: effectiveType?.category === 'requirement' || effectiveType?.category === 'test',
+  })
+  const computedColumnsMap = computed.columnsMap
+  // Clé d'une colonne dont la requête n'existe plus / n'est plus partagée / ne s'applique plus :
+  // ignorée à l'affichage, jamais réécrite dans les préférences.
+  const filterComputed = computed.filterFields
+  const shownFieldsExcel = useMemo(() => filterComputed(visibleFieldsExcel), [visibleFieldsExcel, filterComputed])
+  const shownFieldsWord = useMemo(() => filterComputed(visibleFieldsWord), [visibleFieldsWord, filterComputed])
+  const mergeComputed = computed.merge
+  const displayObjects = useMemo(() => mergeComputed(objects), [mergeComputed, objects])
+  const { open: openComputedTarget, message: computedOpenMessage } = useOpenRowTarget(computed.projectRepoPath, workspaceDirForComputed)
 
   // GH105 — liens de tous les links.yaml du workspace (un objet affiche ceux dont il est la source
   // ou la cible, quel que soit le repo qui les stocke).
@@ -1400,6 +1453,10 @@ export function SystemView() {
         }
       />
 
+      {computedOpenMessage && (
+        <p className="px-4 py-1 text-xs text-status-warning" data-testid="computed-open-message">{computedOpenMessage}</p>
+      )}
+
       {/* ── Field config popover ── */}
       {showFieldConfig && (
         <FieldConfigModal
@@ -1416,6 +1473,7 @@ export function SystemView() {
           onChangeShowFoldersExcel={handleChangeShowFoldersExcel}
           onChangeShowFoldersWord={handleChangeShowFoldersWord}
           onClose={() => setShowFieldConfig(false)}
+          computedColumns={computed.available}
         />
       )}
 
@@ -1433,8 +1491,10 @@ export function SystemView() {
           <ExcelView
             root={root}
             typeDef={effectiveType}
-            objects={objects}
-            visibleFields={visibleFieldsExcel}
+            objects={displayObjects}
+            visibleFields={shownFieldsExcel}
+            computedColumns={computedColumnsMap}
+            onOpenComputedTarget={openComputedTarget}
             foldersHidden={!showFoldersExcel}
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
@@ -1473,8 +1533,10 @@ export function SystemView() {
           <WordView
             root={root}
             typeDef={effectiveType}
-            objects={objects}
-            visibleFields={visibleFieldsWord}
+            objects={displayObjects}
+            visibleFields={shownFieldsWord}
+            computedColumns={computedColumnsMap}
+            onOpenComputedTarget={openComputedTarget}
             foldersHidden={!showFoldersWord}
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}

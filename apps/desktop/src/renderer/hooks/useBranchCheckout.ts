@@ -87,6 +87,8 @@ export function useBranchCheckout(
       invalidateIntegration(qc, repoPath)
       // Awaited so `isPending` stays true for the whole cascade, not just the checkout itself.
       const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, target.value)
+      // The parents' manifests just changed: re-read the tree, whose displayed pins come from them.
+      if (outcome.updated.length > 0) qc.invalidateQueries({ queryKey: ['workspace-open', workspaceDir] })
       setPinWarning(outcome)
     },
   })
@@ -108,6 +110,8 @@ export function useBranchCheckout(
       // Push failed, default branch not aligned…: said here, the creation itself succeeded.
       setBranchNotices(designateNotices(designated, t))
       const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, name)
+      // The parents' manifests just changed: re-read the tree, whose displayed pins come from them.
+      if (outcome.updated.length > 0) qc.invalidateQueries({ queryKey: ['workspace-open', workspaceDir] })
       setPinWarning(outcome)
     },
     onError: err => setBranchNotices([branchErrorText(err)]),

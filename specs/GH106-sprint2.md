@@ -86,6 +86,13 @@ qu'en detached HEAD, et sa lecture (10 s) pouvait retarder sur celle de la combo
 - Combo en detached HEAD : la baseline checkoutée (le tag épinglé si plusieurs) avant le commit.
 - e2e `GH106-S2-5` (démo : « Pompe de vidange » épinglée sur `v2.0`).
 
+**4. Ancien pin affiché après « Désigner »** (PH2 : `VE22D` montrait `c831de5c` en avertissement
+alors que `handstickProduct/polenta-repo.yaml` pointait déjà sur `int-PH2`). La propagation du pin
+écrit le manifeste du parent après l'invalidation de l'arbre (`workspace-open`), qui gardait donc
+l'ancien pin. L'arbre est relu après la propagation quand un manifeste a changé : désignation,
+checkout et création d'une `int-*` (`useBranchCheckout`), commit dans le panneau Version
+(`VersionRepoFolder`, même défaut). e2e `GH106-S2-6` (échoue sans le correctif).
+
 ## Mises à jour SPEC
 
 | Section | Résumé |

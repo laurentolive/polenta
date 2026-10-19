@@ -37,7 +37,11 @@ export function useDesignateIntegration(workspaceDir: string, flatNodes: Workspa
       // Refreshed right away, not after the pin-propagation cascade below.
       invalidateAll(repoPath)
       const node = flatNodes.find(n => n.repoPath === repoPath)
-      if (node) setPinWarning(await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, outcome.branch))
+      if (!node) return
+      const pinOutcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, outcome.branch)
+      // The parents' manifests just changed: re-read the tree, whose displayed pins come from them.
+      if (pinOutcome.updated.length > 0) qc.invalidateQueries({ queryKey: ['workspace-open', workspaceDir] })
+      setPinWarning(pinOutcome)
     },
     onError: (_err, { repoPath }) => invalidateAll(repoPath),
   })

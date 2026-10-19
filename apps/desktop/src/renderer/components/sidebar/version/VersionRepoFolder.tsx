@@ -110,6 +110,8 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
       // is declared as a dependency (cascade: repeats naturally when a dependent is committed).
       // Rendered outside the commit modal (which just closed) — see commitPinWarning usage below.
       const outcome = await propagatePinToDependents(workspaceDir, flatNodes, { name: node.name, url: node.url }, sha)
+      // The parents' manifests just changed: re-read the tree, whose displayed pins come from them.
+      if (outcome.updated.length > 0) qc.invalidateQueries({ queryKey: ['workspace-open', workspaceDir] })
       setCommitPinWarning(outcome)
     },
   })

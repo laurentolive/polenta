@@ -103,3 +103,16 @@ test('GH106-S2-5 — composant épinglé sur une baseline : la combo montre le t
   await expect(row.getByPlaceholder('branche…')).toHaveValue('v2.0', { timeout: 15_000 })
   await expect(row.locator('code', { hasText: 'v2.0' })).toHaveCount(0)
 })
+
+test('GH106-S2-6 — désignation d\'un composant : pin propagé au parent, plus affiché sur la ligne', async () => {
+  await openStructure()
+  const row = s.page.locator('div', { has: s.page.getByText('Pompe de vidange', { exact: true }) })
+    .filter({ has: s.page.getByPlaceholder('branche…') }).last()
+  await row.getByPlaceholder('branche…').click()
+  await s.page.getByRole('button', { name: 'Nouvelle branche…' }).click()
+  await s.page.getByPlaceholder('nom-de-branche').fill('int-e2e-pompe')
+  await s.page.getByPlaceholder('nom-de-branche').press('Enter')
+  await expect(row.getByPlaceholder('branche…')).toHaveValue('int-e2e-pompe', { timeout: 15_000 })
+  // Le commit de désignation a avancé HEAD : sans relecture de l'arbre, l'ancien pin v2.0 resterait.
+  await expect(row.locator('code')).toHaveCount(0, { timeout: 15_000 })
+})

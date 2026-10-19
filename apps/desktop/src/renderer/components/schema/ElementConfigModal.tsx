@@ -5,7 +5,6 @@ import {
   CATEGORY_LABEL_KEY,
   FieldsTable,
   StatusesTable,
-  ConfirmDelete,
   CancelConfirmModal,
 } from './objectTypeEditor'
 
@@ -136,12 +135,15 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
         <div className="flex items-center justify-between px-5 py-3 border-t border-edge">
           <div>
             {!isNew && (
-              <ConfirmDelete
-                onConfirm={onDelete}
+              // GH104 — la confirmation (aperçu de la suppression en cascade) est ouverte par StructureTab.
+              <button
+                type="button"
+                onClick={onDelete}
                 disabled={isSaving}
-                label={t('common.delete')}
                 className="text-sm text-status-danger hover:opacity-80 transition-colors disabled:opacity-50"
-              />
+              >
+                {t('common.delete')}
+              </button>
             )}
           </div>
           <div className="flex gap-2">

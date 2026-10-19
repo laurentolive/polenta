@@ -257,7 +257,8 @@ next(P) = max( plus haut P-NNNN.yaml du dossier du type (récursif),
 
 - **Pierres tombales** — `.polenta/tombstones/<ID>`, un fichier **vide** par ID, écrit par
   `deleteWithTombstone()` **avant** chaque suppression physique (campagne, dashboard ou
-  requête partagés, y compris le passage partagé → privé). Versionnées avec la suppression,
+  requête partagés, y compris le passage partagé → privé ; exigences, tests et campagnes d'un
+  composant local ou d'un type supprimé depuis l'onglet Structure, GH104). Versionnées avec la suppression,
   jamais supprimées : un ID n'est **jamais réutilisé**, pour aucun type.
 - **Sérialisation (T118)** — file de promesses par repo : deux `create()` concurrents du même
   process obtiennent des IDs distincts. Rien n'étant écrit pour réserver un ID, la mémoire de

@@ -653,6 +653,29 @@
       "noImplements": "Aucune implémentation d'interface déclarée.",
       "addImplements": "+ Déclarer une implémentation"
     },
+    "deleteCascade": {
+      "titleNode": "Supprimer le composant « {{name}} » ?",
+      "titleType": "Supprimer le type « {{name}} » ?",
+      "objects": {
+        "requirement_one": "{{count}} exigence supprimée :",
+        "requirement_other": "{{count}} exigences supprimées :",
+        "test_one": "{{count}} test supprimé (et ses exécutions) :",
+        "test_other": "{{count}} tests supprimés (et leurs exécutions) :",
+        "campaign_one": "{{count}} campagne supprimée :",
+        "campaign_other": "{{count}} campagnes supprimées :"
+      },
+      "more": "… et {{count}} autre(s)",
+      "links_one": "{{count}} lien supprimé :",
+      "links_other": "{{count}} liens supprimés :",
+      "linkTypes": "Types de lien mis à jour : {{names}}",
+      "linkTypesEmptied": "Deviennent invalides (plus aucun type source ou cible), à corriger dans l'onglet Liens : {{names}}",
+      "tombstones": "Les identifiants supprimés ne seront jamais réattribués.",
+      "gitNote": "Rien n'est commité : relisez le diff git avant de valider.",
+      "reportDone": "Suppression effectuée : {{count}} objet(s) et {{links}} lien(s) supprimés.",
+      "reportFailed": "{{count}} échec(s) — le composant ou le type est conservé, relancez la suppression : {{ids}}",
+      "reportFailedAfter": "{{count}} fichier(s) non nettoyé(s) — le composant ou le type est supprimé, à corriger à la main : {{ids}}",
+      "reportError": "Suppression impossible : {{error}}"
+    },
     "typeRename": {
       "title": "Renommer le type ?",
       "name": "Nom",

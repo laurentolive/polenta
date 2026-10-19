@@ -74,6 +74,14 @@ désactivés). La question de donner son propre repo à un composant (submodule,
 contraintes de gestion de configuration — les deux modes coexistent et sont pleinement supportés
 (création/édition/suppression d'objets identique à `root`).
 
+**Suppression d'un composant local ou d'un type (GH104)** : la corbeille d'un composant local
+supprime, après une confirmation qui en donne les comptes, le composant, tout son sous-arbre
+`children[]` et **leurs objets** (exigences, tests, campagnes, avec pierres tombales), les liens qui
+les citent dans tous les repos du workspace, leurs arbres `.polenta/trees/<nœud>/` et les refs
+`<nœud>::<type>` des types de lien ; la corbeille d'un type fait de même pour ce seul type. Un nœud
+`readonly` (ou un repo monté en lecture seule) refuse. Détail : `SPEC-REQ-requirements.md` §9.
+Le retrait d'un composant **en repo séparé** (`RemoveDependencyModal`) ne supprime pas ses objets.
+
 **Imbrication de composants locaux, profondeur non limitée (T123)** : un composant local peut lui-
 même contenir d'autres composants locaux, via le champ `children?: SystemNode[]` — récursif, sans
 limite de profondeur a priori. Dans l'UI, la ligne d'un composant local gagne une action

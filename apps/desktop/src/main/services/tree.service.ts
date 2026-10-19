@@ -73,6 +73,22 @@ export class TreeService {
     }
   }
 
+  /**
+   * GH104 — le type `typeId` du nœud `nodeId` est supprimé : son fichier d'ordre aussi, et le
+   * dossier du nœud s'il ne contient plus rien. Absent → rien. Au mieux (journalisé, jamais levé),
+   * comme `moveTypeTree`.
+   */
+  async deleteTypeTree(repoPath: string, nodeId: string, typeId: string): Promise<void> {
+    const file = this.treePath(repoPath, nodeId, typeId)
+    try {
+      await fs.rm(file, { force: true })
+      // rmdir échoue sur un dossier non vide (autre type du nœud) : voulu.
+      await fs.rmdir(path.dirname(file)).catch(() => {})
+    } catch (err) {
+      console.error(`[TreeService] Could not delete display order ${nodeId}/${typeId}:`, err)
+    }
+  }
+
   // ── ID generation ─────────────────────────────────────────────────────────────
 
   generateId(): string {

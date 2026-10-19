@@ -43,6 +43,7 @@ import type { DashboardSeedService } from '../services/dashboard-seed.service'
 import type { ExportService } from '../services/export.service'
 import type { ParametersService } from '../services/parameters.service'
 import type { RevalidationService } from '../services/revalidation.service'
+import type { WorkspaceLinksService } from '../services/workspace-links.service'
 import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } from '../services/history.service'
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
@@ -118,6 +119,8 @@ export interface Container {
   export: ExportService
   parameters: ParametersService
   revalidation: RevalidationService
+  /** GH105 — objets, liens et types de lien agrégés sur le workspace ; écriture côté source. */
+  workspaceLinks: WorkspaceLinksService
   history: HistoryService
   fieldRename: FieldRenameService
   typeRename: TypeRenameService
@@ -397,11 +400,24 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('requirements:links-all', (_e, repoPath: string) =>
     c.requirements.findAllLinks(repoPath))
 
-  r.handle('requirements:link-create', (_e, repoPath: string, data: { type: string; sourceId: string; targetId: string }) =>
-    c.requirements.createLink(repoPath, data))
+  // GH105 — avec workspaceDir : lien écrit dans le repo de l'objet côté sourceRefs (validé,
+  // refus si ce repo est en lecture seule) ; suppression dans le repo qui stocke le lien.
+  // Sans workspaceDir : comportement antérieur (repo donné, sans validation).
+  r.handle('requirements:link-create', (_e, repoPath: string, data: { type: string; sourceId: string; targetId: string }, workspaceDir?: string) =>
+    workspaceDir ? c.workspaceLinks.createLink(repoPath, data, workspaceDir) : c.requirements.createLink(repoPath, data))
 
-  r.handle('requirements:link-delete', (_e, repoPath: string, linkId: string) =>
-    c.requirements.deleteLink(repoPath, linkId))
+  r.handle('requirements:link-delete', (_e, repoPath: string, linkId: string, workspaceDir?: string) =>
+    workspaceDir ? c.workspaceLinks.deleteLink(repoPath, linkId, workspaceDir) : c.requirements.deleteLink(repoPath, linkId))
+
+  // ── Liens inter-repos (GH105) ─────────────────────────────────────────────────
+  r.handle('links:objects', (_e, repoPath: string, workspaceDir?: string) =>
+    c.workspaceLinks.listObjects(repoPath, workspaceDir))
+
+  r.handle('links:list', (_e, repoPath: string, workspaceDir?: string) =>
+    c.workspaceLinks.listLinks(repoPath, workspaceDir))
+
+  r.handle('links:types', (_e, repoPath: string, workspaceDir?: string) =>
+    c.workspaceLinks.linkTypes(repoPath, workspaceDir))
 
   // ── Paramètres (T171) ───────────────────────────────────────────────────────
   r.handle('parameters:list', (_e, repoPath: string, workspaceDir?: string) =>

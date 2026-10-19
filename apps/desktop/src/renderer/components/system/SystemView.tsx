@@ -21,6 +21,7 @@ import { useSystemView } from '../../contexts/SystemViewContext'
 import { useTabs } from '../../contexts/TabsContext'
 import { treeFindNode, treeFindByObjectId, computeSectionNumbers } from '../../hooks/useTreeState'
 import { useSystemObjects } from '../../hooks/useSystemObjects'
+import { isSameRepo, useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorkspaceLinks'
 import { ExcelView } from './ExcelView'
 import { RowMaxHeightButton, ROW_MAX_LINES_ALL, readExcelRowMaxLines } from './RowMaxHeightButton'
 import { WordView } from './WordView'
@@ -47,7 +48,12 @@ const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'ob
 
 type ViewMode = 'excel' | 'word' | 'edit'
 
+/** GH105 — délai max d'arrivée à la destination d'une navigation par lien (cf. linkNavTargetRef). */
+const LINK_NAV_TIMEOUT_MS = 3000
+
 interface BackEntry {
+  /** GH105 — repo de l'objet de départ (navigation vers un objet lié d'un autre repo). */
+  repoPath: string
   nodeId: string
   typeId: string
   objectId: string | null
@@ -322,7 +328,7 @@ export function SystemView() {
     repoPath,
     schemaLoading,
     nodes,
-    linkTypes,
+    linkTypes: schemaLinkTypes,
     effectiveNode,
     effectiveType,
     effectiveTypeId,
@@ -347,11 +353,17 @@ export function SystemView() {
     setEditingNodeId,
     generateId,
     navigateTo,
+    navigateToRepo,
     createItemObject,
     gotoNodeId,
     gotoSeq,
     clearGoto,
   } = useSystemView()
+
+  // GH105 — objets, liens et types de lien de tout le workspace (candidats, pastilles, écriture
+  // côté source) ; les types du schéma courant servent tant que ceux du workspace ne sont pas reçus.
+  const ws = useWorkspaceLinks(currentProjectId)
+  const linkTypes: LinkTypeDefinition[] = ws.typesLoaded ? ws.linkTypes : schemaLinkTypes
 
   // T171 — résolution des paramètres pour les exports (le ParamRefProvider est monté plus bas).
   const paramResolver = useParamResolver(repoPath, currentProjectId ? decodeProjectId(currentProjectId) : '')
@@ -363,6 +375,7 @@ export function SystemView() {
   const invalidateCandidateObjects = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
     qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
+    qc.invalidateQueries({ queryKey: ['links-objects'] }) // GH105 — candidats du workspace
   }, [qc, repoPath])
 
   // T172 — un élément qui quitte l'approbation marque `needsRevalidation` ses éléments liés,
@@ -424,16 +437,30 @@ export function SystemView() {
   const [backHistory, setBackHistory] = useState<BackEntry[]>([])
   const [pendingNavObjectId, setPendingNavObjectId] = useState<string | null>(null)
   const isLinkNavigationRef = useRef(false)
+  // GH105 — destination d'une navigation par lien : un changement de repo peut résoudre le nœud /
+  // type en plusieurs rendus ; l'historique n'est conservé que jusqu'à l'arrivée à destination.
+  // Expire après LINK_NAV_TIMEOUT_MS si la destination n'est jamais atteinte exactement (type d'une
+  // autre catégorie que l'onglet, repo absent de l'arbre…) : l'historique redevient alors normal.
+  const linkNavTargetRef = useRef<{ repoPath: string; nodeId: string; typeId: string; until: number } | null>(null)
 
   // Clear backHistory when the user navigates manually (not via a link click)
   useEffect(() => {
+    const target = linkNavTargetRef.current
+    if (target) {
+      const arrived = isSameRepo(target.repoPath, repoPath) && target.nodeId === effectiveNodeId && target.typeId === effectiveTypeId
+      if (arrived || Date.now() > target.until) {
+        linkNavTargetRef.current = null
+        isLinkNavigationRef.current = false
+      }
+      return
+    }
     if (isLinkNavigationRef.current) {
       isLinkNavigationRef.current = false
       return
     }
     setBackHistory([])
     setPendingNavObjectId(null)
-  }, [effectiveNodeId, effectiveTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [repoPath, effectiveNodeId, effectiveTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resolve pendingNavObjectId once the target tree has loaded
   useEffect(() => {
@@ -676,11 +703,9 @@ export function SystemView() {
   })
   const username = identityLogin ?? 'local'
 
-  const { data: allLinks = [], isPending: linksPending } = useQuery({
-    queryKey: ['links-all', repoPath],
-    queryFn: () => api.requirements.linksAll(repoPath),
-    enabled: !!repoPath,
-  })
+  // GH105 — liens de tous les links.yaml du workspace (un objet affiche ceux dont il est la source
+  // ou la cible, quel que soit le repo qui les stocke).
+  const linksPending = ws.linksPending
 
   const { data: allRequirements = [] } = useQuery({
     queryKey: ['requirements-all', repoPath],
@@ -709,16 +734,7 @@ export function SystemView() {
     ...(allTests as TestCase[]).map(t => ({ id: t.id, title: t.title, objectTypeRef: t.objectTypeRef, category: refToCategory.get(t.objectTypeRef) })),
   ], [allRequirements, allTests, refToCategory])
 
-  const linksByObjectId = useMemo((): Map<string, ObjectLink[]> => {
-    const map = new Map<string, ObjectLink[]>()
-    for (const link of allLinks) {
-      if (!map.has(link.sourceId)) map.set(link.sourceId, [])
-      map.get(link.sourceId)!.push(link)
-      if (!map.has(link.targetId)) map.set(link.targetId, [])
-      map.get(link.targetId)!.push(link)
-    }
-    return map
-  }, [allLinks])
+  const linksByObjectId: Map<string, ObjectLink[]> = ws.linksByObjectId
 
   // ── Couverture de test (T138) ────────────────────────────────────────────────
   // Champ système optionnel `coverageStatus` — désactivé par défaut dans Excel/Word (coché via le
@@ -729,9 +745,10 @@ export function SystemView() {
     || visibleFieldsWord.includes('coverageStatus')
     || (viewMode === 'edit' && effectiveType?.category === 'requirement')
 
+  // GH105 — couverture calculée sur les liens et tests de tout le workspace.
   const { data: matrix, isPending: matrixPending } = useQuery({
-    queryKey: ['traceability-matrix', repoPath],
-    queryFn: () => api.traceability.matrix(repoPath),
+    queryKey: ['traceability-matrix', repoPath, ws.workspaceDir],
+    queryFn: () => api.traceability.matrix(repoPath, {}, ws.workspaceDir),
     enabled: !!repoPath && coverageNeeded,
   })
 
@@ -752,15 +769,21 @@ export function SystemView() {
 
   const testsById = useMemo(() => {
     const map = new Map<string, TestCase>()
+    // GH105 — tests des autres repos (couverture par des liens inter-repos) : titre seul.
+    for (const o of ws.objects) if (o.category === 'test') map.set(o.id, { id: o.id, title: o.title } as TestCase)
     for (const tc of allTests as TestCase[]) map.set(tc.id, tc)
     return map
-  }, [allTests])
+  }, [allTests, ws.objects])
 
   // ── Link navigation callbacks (T37) — after candidateObjects + editingObjectId ──
 
+  // GH105 — l'objet lié peut vivre dans un autre repo du workspace : la Vue Système bascule alors
+  // sur son repo (sélection T72), « ← Retour » revient au repo de départ.
   const navigateToObject = useCallback((peerId: string, opts?: { newTab?: boolean }) => {
-    const target = candidateObjects.find(c => c.id === peerId)
+    const wsTarget = ws.objectsById.get(peerId)
+    const target = wsTarget ?? candidateObjects.find(c => c.id === peerId)
     if (!target) return
+    const targetRepoPath = wsTarget?.repoPath ?? repoPath
 
     // T134 — a new tab is a fresh route mount with no access to this component's local state
     // (viewMode/pendingNavObjectId), so it can't reuse the in-place tree navigation below. The
@@ -768,7 +791,7 @@ export function SystemView() {
     // SearchPanel's "open result" navigation.
     if (opts?.newTab) {
       const pathname = target.category === 'test' ? `/test/${peerId}` : `/req/${peerId}`
-      openTab(pathname, { repoPath, projectId: currentProjectId })
+      openTab(pathname, { repoPath: targetRepoPath, projectId: currentProjectId })
       return
     }
 
@@ -777,38 +800,46 @@ export function SystemView() {
     const [targetNodeId, targetTypeId] = parts
 
     setBackHistory(prev => [...prev, {
+      repoPath,
       nodeId: effectiveNodeId,
       typeId: effectiveTypeId,
       objectId: editingObjectId,
       viewMode,
     }])
 
-    isLinkNavigationRef.current = true
-
-    if (viewMode === 'word') {
-      navigateTo(targetNodeId, targetTypeId)
-    } else {
+    beginLinkNavigation(targetRepoPath, targetNodeId, targetTypeId)
+    if (viewMode !== 'word') {
       setPendingNavObjectId(peerId)
       setViewMode('edit')
-      navigateTo(targetNodeId, targetTypeId)
     }
-  }, [candidateObjects, effectiveNodeId, effectiveTypeId, editingObjectId, viewMode, navigateTo, openTab, repoPath, currentProjectId])
+    if (isSameRepo(targetRepoPath, repoPath)) navigateTo(targetNodeId, targetTypeId)
+    else navigateToRepo(targetRepoPath, targetNodeId, targetTypeId)
+  }, [ws.objectsById, candidateObjects, effectiveNodeId, effectiveTypeId, editingObjectId, viewMode, navigateTo, navigateToRepo, openTab, repoPath, currentProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGoBack = useCallback(() => {
     setBackHistory(prev => {
       const entry = prev[prev.length - 1]
       if (!entry) return prev
-      isLinkNavigationRef.current = true
+      beginLinkNavigation(entry.repoPath, entry.nodeId, entry.typeId)
       if (entry.viewMode === 'edit' && entry.objectId) {
         setPendingNavObjectId(entry.objectId)
         setViewMode('edit')
       } else {
         setViewMode(entry.viewMode)
       }
-      navigateTo(entry.nodeId, entry.typeId)
+      if (isSameRepo(entry.repoPath, repoPath)) navigateTo(entry.nodeId, entry.typeId)
+      else navigateToRepo(entry.repoPath, entry.nodeId, entry.typeId)
       return prev.slice(0, -1)
     })
-  }, [navigateTo])
+  }, [navigateTo, navigateToRepo, repoPath, effectiveNodeId, effectiveTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Marque une navigation par lien vers (repo, nœud, type) : l'historique n'est pas vidé tant que
+   *  la sélection n'y est pas arrivée ; destination courante = rien à attendre. */
+  function beginLinkNavigation(targetRepoPath: string, nodeId: string, typeId: string) {
+    const here = isSameRepo(targetRepoPath, repoPath) && nodeId === effectiveNodeId && typeId === effectiveTypeId
+    isLinkNavigationRef.current = !here
+    linkNavTargetRef.current = here ? null : { repoPath: targetRepoPath, nodeId, typeId, until: Date.now() + LINK_NAV_TIMEOUT_MS }
+  }
 
   // Unified back handler passed to EditView: link nav if history exists, else restore the view the user came from
   const handleEditBack = useCallback(() => {
@@ -1229,6 +1260,7 @@ export function SystemView() {
     .join(' / ')
 
   return (
+    <WorkspaceLinksProvider value={ws}>
     <ParamRefProvider repoPath={repoPath} workspaceDir={currentProjectId ? decodeProjectId(currentProjectId) : ''} projectId={currentProjectId ?? ''}>
     <RichTextProvider>
     <div className="flex flex-col h-full overflow-hidden">
@@ -1412,10 +1444,7 @@ export function SystemView() {
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={() => {
-              qc.invalidateQueries({ queryKey: ['links-all', repoPath] })
-              qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
-            }}
+            onLinkChange={ws.invalidate}
             onInlineEdit={readOnly ? undefined : handleAutoInlineEdit}
             onRenameNode={readOnly ? undefined : handleRenameNode}
             onRootChange={readOnly ? undefined : handleRootChangeDnd}
@@ -1455,10 +1484,7 @@ export function SystemView() {
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={() => {
-              qc.invalidateQueries({ queryKey: ['links-all', repoPath] })
-              qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
-            }}
+            onLinkChange={ws.invalidate}
             onInlineEdit={readOnly ? undefined : handleAutoInlineEdit}
             onRenameNode={readOnly ? undefined : handleRenameNode}
             onReopenDraft={readOnly ? undefined : handleReopenDraft}
@@ -1500,10 +1526,7 @@ export function SystemView() {
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={() => {
-              qc.invalidateQueries({ queryKey: ['links-all', repoPath] })
-              qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
-            }}
+            onLinkChange={ws.invalidate}
             onBlurField={handleEditBlurField}
             onFlushValues={handleFlushEditValues}
             onNavigateToObject={navigateToObject}
@@ -1532,5 +1555,6 @@ export function SystemView() {
     </div>
     </RichTextProvider>
     </ParamRefProvider>
+    </WorkspaceLinksProvider>
   )
 }

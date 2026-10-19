@@ -42,6 +42,7 @@ import { TypeRenameService } from './services/type-rename.service'
 import { SchemaDeleteService } from './services/schema-delete.service'
 import { resolveWorkspaceRepoPaths } from './services/workspace-repos.util'
 import { HistoryBackfillService } from './services/history-backfill.service'
+import { WorkspaceLinksService } from './services/workspace-links.service'
 import type { Container } from './ipc/index'
 import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
@@ -93,6 +94,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const reqRefs = new ReqRefsService(git, reqIndex, schema)
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree, reqRefs)
   const campaigns = new CampaignsService(git, tests, parameters, schema, history)
+  // GH105 — liens inter-repos : agrégation sur le workspace, écriture côté source.
+  const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns)
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
@@ -182,6 +185,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     exportTemplateLibrary,
     parameters,
     revalidation,
+    workspaceLinks,
     history,
     fieldRename,
     typeRename,

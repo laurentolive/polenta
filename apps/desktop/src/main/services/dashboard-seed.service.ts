@@ -125,7 +125,8 @@ export const CAMPAIGN_SEED_QUERIES: { key: CampaignSeedQueryKey; template: Templ
   { key: 'passPct', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], entryStatuses: EXECUTED, campaignAtDisplay: true } } },
   { key: 'perDay', template: { id: 'campaign-entries', params: { entryStatuses: EXECUTED, campaignAtDisplay: true } } },
   { key: 'failures', template: { id: 'campaign-entries', params: { campaignStatuses: ['in_progress'], entryStatuses: ['FAIL', 'BLOCKED'], campaignAtDisplay: true } } },
-  { key: 'timeline', template: { id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], step: '1', campaignAtDisplay: true } } },
+  // GH112 — par étape d'avancement, comme « Avancement par campagne ».
+  { key: 'timeline', template: { id: 'campaign-timeline', params: { campaignStatuses: ['in_progress'], step: '1', withStep: true, campaignAtDisplay: true } } },
 ]
 
 export const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; size: WidgetSize; template: TemplateInput }[] = [
@@ -138,7 +139,7 @@ export const CAMPAIGN_SEED_WIDGETS: { queryKey: CampaignSeedQueryKey; size: Widg
     size: 'lg',
     template: { id: 'table', params: { columns: ['campaignId', 'campaignTitle', 'entryId', 'testCaseId', 'testTitle', 'status', 'executedAt', 'executedBy'] } },
   },
-  { queryKey: 'timeline', size: 'lg', template: { id: 'stacked-area', params: { x: 'date', series: 'status', value: 'count', entryColors: true } } },
+  { queryKey: 'timeline', size: 'lg', template: { id: 'stacked-area', params: { x: 'date', series: 'stepLabel', seriesOrder: 'stepRank', seriesColor: 'stepColor', value: 'count' } } },
 ]
 
 /** GH74 §8 — widgets ajoutés aux seeds « Campagnes » existants via le bandeau (pas d'ajout silencieux). */

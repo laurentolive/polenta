@@ -2485,6 +2485,12 @@ Un objet référence un composant par son nom de montage via `objectTypeRef: <n�
 `ObjectLink` dans `links/links.yaml` — pas par un champ `children:`/`parents:` dans le fichier de
 l'objet (voir `SPEC-REQ-requirements.md` §5, déjà à jour).
 
+**Écart constaté (GH105)** : les objets d'un repo composant portent l'`objectTypeRef` de **leur
+propre** schéma (`root::<type>` pour le nœud racine du composant), et l'onglet Liens écrit les refs
+sous cette forme, pas `<montage>::<type>`. Une ref est donc résolue avec le repo qui la déclare
+(`SPEC-REQ-requirements.md` §5.2a). Un lien entre repos est stocké dans le `links.yaml` du repo de
+sa source et lu sur tout le workspace (`WorkspaceLinksService`).
+
 ### 22.4 Arbre de traçabilité — pas de vue matérialisée globale unique
 
 Il n'existe pas de fichier unique équivalent à l'ancien `tree.yaml` agrégeant tout l'arbre produit +

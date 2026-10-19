@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
-import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
-import { api } from '../../api'
+import { LinkTypeEditor, linkTypeVisibility } from './LinkTypeEditor'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
 import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
-import { matchesRefs, filterCandidatesByRefs, getRelevantLinkTypes, getPeerId, isLinkTypeValid } from './linkUtils'
+import { matchesRefs, getRelevantLinkTypes, isLinkTypeValid } from './linkUtils'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { ParamRefText } from '../parameters/ParamRefText'
@@ -946,16 +945,8 @@ export function WordView({
         const cellLinks = linksByObjectId?.get(objectId)?.filter(l => l.type === activeLinkTypeName) ?? []
         const currentObjectTypeRef = (objectMap.get(objectId) as Record<string, string>)?.objectTypeRef ?? ''
         const currentCategory = typeDef?.category
-        const canBeSource = matchesRefs(currentObjectTypeRef, activeLt.sourceRefs, currentCategory)
-        const canBeTarget = matchesRefs(currentObjectTypeRef, activeLt.targetRefs, currentCategory)
-        const outgoingLinks = cellLinks.filter(l => l.sourceId === objectId)
-        const incomingLinks = cellLinks.filter(l => l.targetId === objectId)
-
-        // Toujours afficher les liens existants, même dans le sens non canonique pour le
-        // schéma actuel — sinon un lien créé avant un changement de sourceRefs/targetRefs
-        // devient invisible et impossible à délier. La création reste limitée au sens déclaré.
-        if (activeLinkDirection === 'out' && !canBeSource && outgoingLinks.length === 0) return null
-        if (activeLinkDirection === 'in' && !canBeTarget && incomingLinks.length === 0) return null
+        const v = linkTypeVisibility(activeLt, objectId, currentObjectTypeRef, currentCategory, cellLinks)
+        if (activeLinkDirection === 'out' ? !v.showOutgoing : !v.showIncoming) return null
 
         return (
           <div
@@ -964,39 +955,17 @@ export function WordView({
             style={{ top: activeLinkPopover.top, left: activeLinkPopover.left, width: activeLinkPopover.width }}
             onClick={e => e.stopPropagation()}
           >
-            {activeLinkDirection === 'out' ? (
-              <LinkCombobox
-                label={activeLt.labelSourceToTarget}
-                existingLinks={outgoingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={canBeSource ? filterCandidatesByRefs(candidateObjects, activeLt.targetRefs) : []}
-                onAdd={async peerId => {
-                  if (!repoPath) return
-                  await api.requirements.linkCreate(repoPath, { type: activeLinkTypeName!, sourceId: objectId, targetId: peerId })
-                  onLinkChange?.()
-                }}
-                onRemove={async linkId => {
-                  if (!repoPath) return
-                  await api.requirements.linkDelete(repoPath, linkId)
-                  onLinkChange?.()
-                }}
-              />
-            ) : (
-              <LinkCombobox
-                label={activeLt.labelTargetToSource}
-                existingLinks={incomingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={canBeTarget ? filterCandidatesByRefs(candidateObjects, activeLt.sourceRefs) : []}
-                onAdd={async peerId => {
-                  if (!repoPath) return
-                  await api.requirements.linkCreate(repoPath, { type: activeLinkTypeName!, sourceId: peerId, targetId: objectId })
-                  onLinkChange?.()
-                }}
-                onRemove={async linkId => {
-                  if (!repoPath) return
-                  await api.requirements.linkDelete(repoPath, linkId)
-                  onLinkChange?.()
-                }}
-              />
-            )}
+            <LinkTypeEditor
+              lt={activeLt}
+              objectId={objectId}
+              objectTypeRef={currentObjectTypeRef}
+              category={currentCategory}
+              objectLinks={cellLinks}
+              repoPath={repoPath}
+              candidates={candidateObjects}
+              direction={activeLinkDirection === 'out' ? 'out' : 'in'}
+              onLinkChange={onLinkChange}
+            />
           </div>
         )
       })()}

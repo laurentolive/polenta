@@ -5,9 +5,9 @@ import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefini
 import { api } from '../../api'
 import { UserFieldInput } from './UserFieldInput'
 import { capabilities } from '../../platform'
-import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
-import { matchesRefs, filterCandidatesByRefs, getPeerId, isLinkTypeValid } from './linkUtils'
+import { LinkTypeEditor, linkTypeVisibility } from './LinkTypeEditor'
+import { isLinkTypeValid } from './linkUtils'
 import { RichTextField } from '../RichTextField'
 import { MultiEnumCheckboxes } from '../MultiEnumCheckboxes'
 import { CoverageBadge } from './CoverageBadge'
@@ -290,68 +290,26 @@ function LinksSection({
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
 }) {
   const { t } = useTranslation()
-  const linksByType = useMemo(() => {
-    const map = new Map<string, { outgoing: ObjectLink[]; incoming: ObjectLink[] }>()
-    for (const lt of linkTypes) map.set(lt.name, { outgoing: [], incoming: [] })
-    for (const link of objectLinks) {
-      const entry = map.get(link.type)
-      if (!entry) continue
-      if (link.sourceId === objectId) entry.outgoing.push(link)
-      else entry.incoming.push(link)
-    }
-    return map
-  }, [linkTypes, objectLinks, objectId])
-
-  const handleAdd = async (linkTypeName: string, sourceId: string, targetId: string) => {
-    if (!repoPath) return
-    await api.requirements.linkCreate(repoPath, { type: linkTypeName, sourceId, targetId })
-    onLinkChange?.()
-  }
-
-  const handleRemove = async (linkId: string) => {
-    if (!repoPath) return
-    await api.requirements.linkDelete(repoPath, linkId)
-    onLinkChange?.()
-  }
-
   return (
     <div className="border-t border-edge pt-5 space-y-4">
       <p className="text-xs font-medium text-ink-2">{t('system.fieldConfig.links')}</p>
       {linkTypes.filter(isLinkTypeValid).map(lt => {
-        const entry = linksByType.get(lt.name)!
-        const canBeSource = matchesRefs(currentObjectTypeRef, lt.sourceRefs, currentCategory)
-        const canBeTarget = matchesRefs(currentObjectTypeRef, lt.targetRefs, currentCategory)
-        // Toujours afficher les liens existants, même dans le sens non canonique pour le
-        // schéma actuel (ex. schéma modifié après coup) — sinon un lien créé avant un
-        // changement de sourceRefs/targetRefs devient invisible et impossible à délier.
-        // La création de nouveaux liens reste, elle, limitée au sens déclaré par le schéma.
-        const showOutgoing = canBeSource || entry.outgoing.length > 0
-        const showIncoming = canBeTarget || entry.incoming.length > 0
-        if (!showOutgoing && !showIncoming) return null
+        const v = linkTypeVisibility(lt, objectId, currentObjectTypeRef, currentCategory, objectLinks)
+        if (!v.showOutgoing && !v.showIncoming) return null
         return (
           <div key={lt.name} className="space-y-3">
-            {showOutgoing && (
-              <LinkCombobox
-                label={lt.labelSourceToTarget}
-                existingLinks={entry.outgoing.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={canBeSource ? filterCandidatesByRefs(candidateObjects, lt.targetRefs) : []}
-                onAdd={peerId => handleAdd(lt.name, objectId, peerId)}
-                onRemove={handleRemove}
-                onNavigateToObject={onNavigateToObject}
-                autoFocus={false}
-              />
-            )}
-            {showIncoming && (
-              <LinkCombobox
-                label={lt.labelTargetToSource}
-                existingLinks={entry.incoming.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={canBeTarget ? filterCandidatesByRefs(candidateObjects, lt.sourceRefs) : []}
-                onAdd={peerId => handleAdd(lt.name, peerId, objectId)}
-                onRemove={handleRemove}
-                onNavigateToObject={onNavigateToObject}
-                autoFocus={false}
-              />
-            )}
+            <LinkTypeEditor
+              lt={lt}
+              objectId={objectId}
+              objectTypeRef={currentObjectTypeRef}
+              category={currentCategory}
+              objectLinks={objectLinks}
+              repoPath={repoPath}
+              candidates={candidateObjects}
+              onLinkChange={onLinkChange}
+              onNavigateToObject={onNavigateToObject}
+              autoFocus={false}
+            />
           </div>
         )
       })}

@@ -60,7 +60,7 @@ test('1 / 2 / 3 / 12 — seed Campagnes : « Toutes » puis une campagne termin�
   // Avancement dans le temps : le point FAIL du dernier jour ne contient que l'entrée de cette campagne.
   const timeline = widget('Avancement dans le temps')
   await timeline.scrollIntoViewIfNeeded()
-  const point = timeline.locator('[aria-roledescription="bar"][aria-label*="status: FAIL"]').last()
+  const point = timeline.locator('[aria-roledescription="bar"][aria-label*="stepLabel: Échoué"]').last()
   await point.click({ force: true })
   await expect(dialog()).toBeVisible()
   const rows = dialog().getByTestId('drilldown-objects').locator('tbody tr')

@@ -13,8 +13,8 @@ const IGNORED_PREF_KEY = 'suiviIgnoredUpdates'
 
 const SEED_WIDGET_SUMMARY = {
   timeline: {
-    fr: 'Nouveau widget du dashboard « Campagnes » : aire empilée des statuts d\'entrée, jour par jour, des campagnes en cours.',
-    en: 'New widget of the "Campaigns" dashboard: stacked area of entry statuses, day by day, for campaigns in progress.',
+    fr: 'Nouveau widget du dashboard « Campagnes » : aire empilée des étapes d\'avancement (préparation, prêt, résultats), jour par jour, des campagnes en cours.',
+    en: 'New widget of the "Campaigns" dashboard: stacked area of progress steps (preparation, ready, results), day by day, for campaigns in progress.',
   },
 } as const
 

@@ -24,6 +24,9 @@ import type {
   ProjectInfo,
   Requirement,
   ObjectLink,
+  WorkspaceObject,
+  WorkspaceLink,
+  WorkspaceLinkType,
   TestCase,
   TestRun,
   TraceabilityMatrix,
@@ -616,8 +619,20 @@ export interface ApiClient {
     // TODO: remove versioning API
     links(repoPath: string, id: string): Promise<ObjectLink[]>
     linksAll(repoPath: string): Promise<ObjectLink[]>
-    linkCreate(repoPath: string, data: { type: string; sourceId: string; targetId: string }): Promise<ObjectLink>
-    linkDelete(repoPath: string, linkId: string): Promise<void>
+    /** GH105 — avec workspaceDir : lien écrit dans le repo de sa source (validé ; erreur préfixée
+     *  par un `LinkWriteErrorCode`, ex. `READONLY_REPO: …`). Sans : repo donné, comme avant. */
+    linkCreate(repoPath: string, data: { type: string; sourceId: string; targetId: string }, workspaceDir?: string): Promise<ObjectLink>
+    /** GH105 — avec workspaceDir : supprimé dans le repo qui stocke le lien. */
+    linkDelete(repoPath: string, linkId: string, workspaceDir?: string): Promise<void>
+  }
+  /** GH105 — liens inter-repos : agrégation sur les repos du workspace (racine d'abord). */
+  links: {
+    /** Exigences et tests de tous les repos du workspace. */
+    objects(repoPath: string, workspaceDir?: string): Promise<WorkspaceObject[]>
+    /** Liens de tous les `links.yaml` du workspace, avec leur repo de stockage. */
+    list(repoPath: string, workspaceDir?: string): Promise<WorkspaceLink[]>
+    /** Union par nom des types de lien du workspace, et repos déclarant chaque `<nœud>::<type>`. */
+    types(repoPath: string, workspaceDir?: string): Promise<{ linkTypes: WorkspaceLinkType[]; declaredBy: Record<string, string[]> }>
   }
   tests: {
     list(repoPath: string): Promise<TestCase[]>

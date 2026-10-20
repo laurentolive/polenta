@@ -54,7 +54,7 @@
 
 | Section | Modification |
 |---|---|
-| `SPEC-DASHBOARDS.md` §4 | `lastEntryResult(s)` (campaign.js v2) |
+| `SPEC-DASHBOARDS.md` §4 | `lastEntryResult(s)` (campaign.js v3) |
 | `SPEC-DASHBOARDS.md` §5, §5.2 (nouvelle) | modèle `campaign-last-result` ; colonnes calculées : déclaration, contrat de ligne, validation, empreinte, saisie, exécution |
 | `SPEC-DASHBOARDS.md` §7.0 | `column?` dans `query.yaml` (jamais dans le `.pref`) |
 | `SPEC-DASHBOARDS.md` §10 | hors scope GH70 |
@@ -83,3 +83,22 @@
 4. Filtre de colonne « FAIL » ; Vue Document (cocher dans l'onglet Document) ; export Excel.
 5. Requête script `throw new Error('x')` déclarée en colonne : ⚠ dans l'en-tête, vue utilisable.
 6. Sélecteur de tests d'une campagne (Ajouter des tests) : colonne visible, infobulle.
+
+## Correctif après test utilisateur (projet PH2)
+
+**Symptôme** : modèle « Dernier résultat de campagne » → `SyntaxError: Could not find export
+'lastEntryResults' in module 'lib/campaign.js'`, sans proposition de mise à jour au bandeau.
+
+**Cause** (antérieure à GH70) : GH112 a modifié `campaign.js` en place en le laissant « v1 » et a
+**remplacé** l'empreinte v1 du manifeste (`c9fd…`, version GH74) par la sienne (`0ec9…`), en
+supposant la v1 jamais déployée. Un projet seedé avec la version GH74 (PH2) a une empreinte
+inconnue : le fichier passe pour « modifié par le projet » et sa mise à jour n'est jamais proposée.
+
+**Correctif** : historique de `campaign.js` renuméroté dans le manifeste — v1 = GH74 (`c9fd…`),
+v2 = GH112 (`0ec9…`), v3 = GH70 (en-tête `// @polenta-lib campaign 3`). La détection se fait par
+empreinte uniquement : les projets en GH74 ou GH112 se voient proposer la v3. Test de non-régression
+`dashboard-lib.test.ts` (empreintes GH74 / GH112 toujours connues, toutes distinctes).
+
+**Pour tester dans PH2** : relancer l'app (manifeste relu), Vue Suivi → bandeau « Mises à jour
+disponibles » → `dashboards/lib/campaign.js` 1 → 3 → Appliquer ; la requête « Dernier résultat »
+s'exécute alors.

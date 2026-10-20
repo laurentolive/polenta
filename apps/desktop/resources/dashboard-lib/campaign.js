@@ -1,4 +1,4 @@
-// @polenta-lib campaign 2
+// @polenta-lib campaign 3
 // Bibliothèque projet (contenu de départ livré par Polenta, modifiable par le projet).
 // Campagnes : état dans le temps, étape d'avancement d'une entrée, dernier résultat d'un test (tous runs, ou en campagne).
 import { dayEnd, dayOf, dayRange } from './time.js'

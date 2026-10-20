@@ -298,4 +298,16 @@ describe('GH74 — fichiers livrés', () => {
     expect(manifest.files.map((f) => f.path).sort()).toEqual(SHIPPED_FILES.map((f) => f.path).sort())
     for (const f of manifest.files) expect(f.versions.map((v) => v.version)).toEqual(f.versions.map((_, i) => i + 1))
   })
+
+  it('GH70 — campaign.js : empreintes déjà copiées dans des projets (GH74, GH112) toujours connues', () => {
+    // Une empreinte retirée du manifeste rend le fichier « modifié par le projet » : sa mise à jour
+    // n'est alors plus jamais proposée (cas d'un projet seedé avec la version GH74).
+    const versions = readManifest().files.find((f) => f.path === 'campaign.js')!.versions
+    expect(versions.slice(0, 2).map((v) => v.hash)).toEqual([
+      'c9fd78d04ad1b74ee2cb7cede20588427d63ac8a9308243958f4c50e6913daf5', // GH74
+      '0ec9e96f283f602d489102bc09392d97c776d9b4c700fe06600aa9c071f85909', // GH112
+    ])
+    expect(versions.length).toBeGreaterThan(2)
+    expect(new Set(versions.map((v) => v.hash)).size).toBe(versions.length)
+  })
 })

@@ -52,7 +52,7 @@
       "versions": [
         {
           "version": 1,
-          "hash": "0ec9e96f283f602d489102bc09392d97c776d9b4c700fe06600aa9c071f85909",
+          "hash": "c9fd78d04ad1b74ee2cb7cede20588427d63ac8a9308243958f4c50e6913daf5",
           "summary": {
             "fr": "Version initiale.",
             "en": "Initial version."
@@ -60,7 +60,15 @@
         },
         {
           "version": 2,
-          "hash": "b4c8312f9a389b017d5c7292ccee69fcf3932d6ec2d2da466af94aae5e928261",
+          "hash": "0ec9e96f283f602d489102bc09392d97c776d9b4c700fe06600aa9c071f85909",
+          "summary": {
+            "fr": "Avancement dans le temps par étape d'avancement : campaignsTimeline({ withStep }) (GH112)",
+            "en": "Progress over time by progress step: campaignsTimeline({ withStep }) (GH112)"
+          }
+        },
+        {
+          "version": 3,
+          "hash": "58971442ca21abefed10a30121895dc136a5b884a6bfa8361a3920a8cc125f57",
           "summary": {
             "fr": "Dernier résultat en campagne : lastEntryResults / lastEntryResult (GH70)",
             "en": "Last campaign result: lastEntryResults / lastEntryResult (GH70)"

@@ -102,7 +102,7 @@ empreintes de chaque fichier) :
 | `time.js` | `offsetAt`, `dayOf`, `dayEnd`, `dayRange` (jours locaux via `polenta.timezoneOffsets`) |
 | `status.js` | `ENTRY_ORDER`, `ENTRY_SEVERITY`, `worst`, `typeIndex`, `isApproval`, `statusLabel`, `entryStatusLabel` |
 | `history.js` | `valueAt(obj, champ, date)`, `timeline(objets, champ, options)` (GH77) |
-| `campaign.js` | `campaignsTimeline` / `campaignTimeline` (état des entrées jour par jour, repli GH73 §6.2 marqué `approximate`, `polenta.drill`), `entryRuns`, `entryStep` / `stepRank` / `stepLabel` / `stepContext` (étapes d'avancement, ex-GH71), `lastResult(s)` (tous les runs), `lastEntryResult(s)` (v2, GH70 : entrée de campagne exécutée la plus récente, toutes campagnes, abandonnées comprises, runs hors campagne ignorés) |
+| `campaign.js` | `campaignsTimeline` / `campaignTimeline` (état des entrées jour par jour, repli GH73 §6.2 marqué `approximate`, `polenta.drill`), `entryRuns`, `entryStep` / `stepRank` / `stepLabel` / `stepContext` (étapes d'avancement, ex-GH71), `lastResult(s)` (tous les runs), `lastEntryResult(s)` (v3, GH70 : entrée de campagne exécutée la plus récente, toutes campagnes, abandonnées comprises, runs hors campagne ignorés) |
 | `maturity.js` | `maturity(data, exigence, ctx?, locale?)`, `maturityContext`, `isFilled`, `isEarsCompliant` : les 5 critères de maturité (§7.2) |
 | `polenta.d.ts`, `../jsconfig.json` | types du contrat ; `tsc -p dashboards/jsconfig.json` vérifie scripts et bibliothèque |
 

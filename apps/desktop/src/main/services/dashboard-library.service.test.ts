@@ -139,7 +139,7 @@ describe('GH74 — tools MCP du moteur de scripts', () => {
   it('M1b — list_templates : modèles de requête et de widget, avec leurs paramètres', async () => {
     container()
     const r = await call('list_templates')
-    expect(r.json.queries.map((q: { id: string }) => q.id)).toEqual(['filtered-list', 'campaign-entries', 'campaign-timeline'])
+    expect(r.json.queries.map((q: { id: string }) => q.id)).toEqual(['filtered-list', 'campaign-entries', 'campaign-timeline', 'campaign-last-result'])
     expect(r.json.widgets.map((w: { id: string }) => w.id)).toEqual(['bar', 'pie', 'line', 'kpi', 'table', 'matrix', 'stacked-area'])
     expect(r.json.widgets[0].params[0]).toMatchObject({ name: 'category', kind: 'column', required: true })
   })

@@ -368,6 +368,18 @@ Système › Arbre › Sélection).
   rendu par portail (menu de tableau, page draw.io) ne ferme pas l'édition. Une seule cellule
   en édition à la fois.
 - **Édition en masse (T149)** : si plusieurs lignes sont sélectionnées et que l'une d'elles fait l'objet d'une édition inline (statut, énumération, texte, richtext, case `multi_enum`), le changement est propagé à toutes les lignes sélectionnées. Pour `multi_enum`, seule la valeur cochée/décochée est basculée sur chaque ligne — les autres valeurs déjà cochées sur les autres lignes ne sont pas écrasées. Les colonnes de lien (`link::`) ne sont pas concernées (mécanisme dédié, par ligne).
+- **Colonnes calculées (GH70)** : colonne `query::<ID>` d'une requête partagée qui déclare
+  `column` (SPEC-DASHBOARDS §5.2). Valeurs fusionnées dans les objets affichés (cellule, filtre
+  global et T51, exports les lisent comme tout champ) ; cellule rendue selon le `type` déclaré, en
+  **lecture seule** (fond des champs système ; ni double-clic d'édition, ni F2, ni édition en
+  masse) ; richtext mis en forme ; infobulle = `tooltip` de la ligne ; **double-clic** = ouverture
+  de la cible `_ids[0]` (`useOpenRowTarget`, entrée de campagne → page d'exécution de l'entrée),
+  message d'échec temporaire sous la barre. En-tête suffixé `(calc)` (titre = requête), ⚠ si le
+  script est en erreur (infobulle `message (fichier:ligne)`) — vue toujours utilisable. La vue
+  n'attend pas les scripts : `…` dans les cellules jusqu'au résultat ; largeur auto réservant le
+  suffixe et l'icône de filtre. Rafraîchie sans rechargement sur tout changement de données
+  (`widget-query-result`). Pas de tri (aucune colonne n'est triable). Mode sélection : affichée si
+  visible dans la configuration Tableau, infobulle, pas d'ouverture.
 - **Mode sélection (GH33)** : variante de la Vue Excel utilisée par le sélecteur de tests d'une
   campagne ([SPEC-TESTS §4.2](SPEC-TESTS.md)) — prop `selection` d'`ExcelView`, logique pure dans
   `lib/gridSelection.ts`. Absente de la vue système.
@@ -402,6 +414,8 @@ Système › Arbre › Sélection).
 - **Goto depuis l'arbre (T164)** : la carte de l'élément (ou l'en-tête de section pour un
   dossier) ciblée par un clic simple dans l'arbre reçoit un **anneau bleu plein persistant**
   (`ring`). Un seul élément encadré à la fois.
+- **Colonnes calculées (GH70)** : valeur affichée dans le corps de la carte (libellé + `(calc)`),
+  lecture seule, infobulle, clic = ouverture de la cible (cf. §Vue Excel).
 - Les champs `richtext` sont rendus sans éditeur Tiptap (`StaticRichTextViewer`,
   markdown-it) pour tenir tout le document d'un coup. Les diagrammes draw.io
   qu'ils contiennent sont rendus **paresseusement** au défilement
@@ -434,6 +448,15 @@ Système › Arbre › Sélection).
 - Option **Réinitialiser par défaut** disponible par vue — remet aussi « Afficher les titres
   des dossiers » à coché.
 
+**Colonnes calculées (GH70)** — section « Colonnes calculées » (après les champs, avant Étapes /
+Liens), onglets Tableau et Document : une case par requête partagée du projet dont `column`
+s'applique au type affiché (libellé + `(calc)`, infobulle `QUERY-NNNN — titre`) ; décochées par
+défaut (absentes de « Réinitialiser »). Clé `query::<ID>` dans `fieldVisibility`. Requête
+supprimée, rendue privée ou qui ne s'applique plus : clé ignorée à l'affichage et dans les
+exports, jamais réécrite. Un script est exécuté si sa colonne est cochée dans l'onglet Tableau ou
+Document (les exports suivent l'un ou l'autre) ; export lancé avant la fin du calcul → refus
+explicite ; impression PDF : attend les résultats.
+
 **`coverageStatus` (T138)** — champ système représentant le statut de couverture de test d'une
 exigence (`not_covered`/`covered`/`validated`/`failing`/`needs_revalidation`, cf.
 [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §2.2), affiché en icône non éditable (jamais de champ
@@ -456,7 +479,7 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 | Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 21] ignorée — 21 = toutes les lignes (T170) | `localStorage` | `polenta:excelRowMaxLines` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
 | `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
-| Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord? }`, par type + par utilisateur |
+| Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162 ; colonnes calculées `query::<ID>` — GH70) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord? }`, par type + par utilisateur |
 | Dernier repo/composant/élément consulté (T52) | `localStorage`, par projet | `polenta:lastSelection:${projectId}` |
 
 Absence de `repo` dans l'URL (lien généré avant T72) : résolution sur le repo racine par défaut,

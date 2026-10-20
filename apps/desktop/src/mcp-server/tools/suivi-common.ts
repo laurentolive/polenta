@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { Dashboard, QueryParameterDef, SavedQuery, ScriptClientInfo, ScriptRunRequest, ScriptRunResult } from '@polenta/types'
-import { QUERY_PARAMETER_KINDS, validateParameterDecls } from '@polenta/types'
+import type { Dashboard, QueryColumnDef, QueryParameterDef, SavedQuery, ScriptClientInfo, ScriptRunRequest, ScriptRunResult } from '@polenta/types'
+import { COMPUTED_COLUMN_CATEGORIES, COMPUTED_COLUMN_TYPES, QUERY_PARAMETER_KINDS, validateColumnDecl, validateParameterDecls } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { errorToolResult } from '../mcp-types'
 import { resolveWorkspaceRepoPaths } from '../../main/services/workspace-repos.util'
@@ -117,6 +117,29 @@ export const parametersSchema = z.array(z.object({
   default: paramValueSchema.optional(),
   required: z.boolean().optional().describe('vrai : pas de choix « Tous / Toutes »'),
 })).describe('paramètres choisis à l\'affichage (barre du dashboard) : valeurs reçues dans polenta.params')
+
+/** GH70 — déclaration de colonne calculée de la Vue Système (requête partagée). */
+export const columnSchema = z.object({
+  label: labelSchema.describe('libellé de la colonne ({ fr, en } ou un seul texte)'),
+  appliesTo: z.object({
+    categories: z.array(z.enum(COMPUTED_COLUMN_CATEGORIES as unknown as [string, ...string[]])).optional().default([]),
+    objectTypes: z.array(z.string()).optional().default([]).describe('types précis <nœud>::<type>'),
+  }).describe('colonne proposée pour un type si sa catégorie OU son objectTypeRef figure ici'),
+  type: z.enum(COMPUTED_COLUMN_TYPES as unknown as [string, ...string[]]).describe('type de champ qui gouverne le rendu de la cellule'),
+  values: z.array(z.string()).optional().describe('enum / multi_enum : valeurs possibles'),
+  idColumn: z.string().nullable().optional().describe("colonne du résultat qui porte l'ID de l'élément (défaut id ; null = défaut)"),
+  valueColumn: z.string().nullable().optional().describe('colonne du résultat qui porte la valeur (défaut value ; null = défaut)'),
+  tooltipColumn: z.string().nullable().optional().describe("colonne du résultat qui porte l'infobulle (défaut tooltip ; null = défaut)"),
+}).describe(
+  'colonne calculée de la Vue Système (requête partagée seulement) : le script renvoie une ligne par élément ' +
+  '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible ouverte au double-clic)',
+)
+
+/** Déclaration de colonne validée (`null` = aucune), ou l'erreur `COLUMN_INVALID` à renvoyer. */
+export function checkColumn(raw: unknown): { column: QueryColumnDef | null } | { error: ReturnType<typeof suiviError> } {
+  const { decl, errors } = validateColumnDecl(raw)
+  return errors.length ? { error: suiviError('COLUMN_INVALID', errors.join(' ; ')) } : { column: decl }
+}
 
 /** Valeurs des paramètres pour une exécution (clés = noms déclarés). */
 export const paramsSchema = z.record(paramValueSchema)

@@ -8,6 +8,7 @@
 import type { TemplateRef } from './suivi-templates'
 import type { TestRunStatus } from './campaign'
 import type { QueryParameterDef } from './suivi-params'
+import type { QueryColumnDef } from './suivi-columns'
 
 export type QueryScope = 'private' | 'shared'
 
@@ -39,6 +40,10 @@ export interface SavedQuery {
   parameters: QueryParameterDef[]
   /** GH93 — déclaration lue invalide (fichier modifié à la main) : exécution refusée (`format`). */
   parametersError?: string
+  /** GH70 — déclaration de colonne calculée de la Vue Système (requête partagée), sinon `null`. */
+  column: QueryColumnDef | null
+  /** GH70 — déclaration lue invalide (fichier modifié à la main, ou portée privée) : non proposée. */
+  columnError?: string
   createdBy: string
   createdAt: string
   /** Requête SQL d'avant GH74 : texte conservé pour l'affichage, plus exécutable. */

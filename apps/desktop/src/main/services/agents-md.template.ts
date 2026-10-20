@@ -195,6 +195,12 @@ Tools disponibles :
   énumération, texte, période) ; le dashboard affiche un sélecteur par paramètre et le script lit
   \`polenta.params\` (ex. une seule campagne au lieu de toutes) ; \`run_query\` / \`test_script\`
   acceptent \`params\` pour les valeurs.
+  **Colonnes calculées** (GH70) : une requête **partagée** qui déclare \`column\` (libellé,
+  \`appliesTo\` catégories / types, type de champ, valeurs d'un enum) devient une colonne proposée
+  dans la Vue Système (panneau des champs, vues Tableau et Document) ; son script renvoie une ligne
+  par élément (colonnes \`idColumn\` / \`valueColumn\` / \`tooltipColumn\`, défaut \`id\` /
+  \`value\` / \`tooltip\` ; \`_ids\` = cible), y compris une requête générée par un modèle, sans la
+  détacher (modèle \`campaign-last-result\` : dernier résultat de campagne de chaque test).
 - \`list_dashboards\` / \`create_dashboard\` / \`update_dashboard\` / \`delete_dashboard\` /
   \`add_widget\` / \`update_widget\` / \`delete_widget\` / \`reorder_widgets\` — dashboards. Un widget
   référence une requête sauvegardée et porte soit \`template: { id, params }\` (paramètres = colonnes

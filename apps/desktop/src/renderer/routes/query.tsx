@@ -15,8 +15,8 @@ import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Play, Save, Search as SearchIcon } from 'lucide-react'
-import type { GraphParamValue, QueryParameterDef, QueryResult, QueryScope, ScriptRunResult } from '@polenta/types'
-import { dashboardSelectors, paramsForQuery, validateParameterDecls } from '@polenta/types'
+import type { GraphParamValue, QueryColumnDef, QueryParameterDef, QueryResult, QueryScope, ScriptRunResult } from '@polenta/types'
+import { dashboardSelectors, paramsForQuery, validateColumnDecl, validateParameterDecls } from '@polenta/types'
 import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ResultTable } from '../components/dashboard/ResultTable'
@@ -24,6 +24,7 @@ import { CodeEditor } from '../components/dashboard/CodeEditor'
 import { TemplateForm } from '../components/dashboard/TemplateForm'
 import { ParamBar } from '../components/dashboard/ParamBar'
 import { ParameterDeclEditor } from '../components/dashboard/ParameterDeclEditor'
+import { ColumnDeclEditor } from '../components/dashboard/ColumnDeclEditor'
 import { effectiveValues } from '../lib/suiviParamValues'
 import type { ParamOptions } from '../lib/suiviParamValues'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -109,6 +110,8 @@ function QueryPage() {
   /** GH93 — déclaration des paramètres (mode Script) et valeurs de la barre (non mémorisées). */
   const [declaration, setDeclaration] = useState<QueryParameterDef[]>([])
   const [paramValues, setParamValues] = useState<Record<string, GraphParamValue>>({})
+  /** GH70 — déclaration de colonne calculée de la Vue Système (mode Script). */
+  const [columnDecl, setColumnDecl] = useState<QueryColumnDef | null>(null)
   const loadedRef = useRef<string | undefined>(undefined)
   // Une réponse dont l'id n'est plus le dernier émis (autre requête ouverte entre-temps) est ignorée.
   const requestIdRef = useRef(0)
@@ -124,6 +127,25 @@ function QueryPage() {
   })
   const decls = mode === 'template' ? (rendered?.parameters ?? []) : declaration
   const declErrors = mode === 'script' ? validateParameterDecls(declaration).errors : []
+  // GH70 — colonne : générée par le modèle (lecture seule) ou saisie ; réservée aux requêtes partagées.
+  // GH70 — colonne indépendante du modèle (sprint 3) : saisie dans les deux modes ; un modèle peut en
+  // proposer une, préremplie à sa sélection sur une requête non enregistrée.
+  const column = columnDecl
+  const columnErrors = validateColumnDecl(columnDecl).errors
+  const columnPrefilledFor = useRef<string | null>(null)
+  /** Colonne préremplie depuis le modèle, telle quelle : non modifiée, elle n'est pas « fournie ». */
+  const prefilledColumn = useRef<QueryColumnDef | null>(null)
+  useEffect(() => {
+    if (mode !== 'template' || current || !rendered || columnPrefilledFor.current === templateId) return
+    columnPrefilledFor.current = templateId
+    // Une déclaration saisie (ou modifiée après préremplissage) n'est jamais écrasée.
+    if (columnDecl !== null && columnDecl !== prefilledColumn.current) return
+    prefilledColumn.current = rendered.column ?? null
+    setColumnDecl(rendered.column ?? null)
+  }, [mode, current, rendered, templateId, columnDecl])
+  const columnProvided = !!columnDecl && columnDecl !== prefilledColumn.current
+  // Requête privée : une colonne (générée par un modèle, ou restée cochée) n'est pas enregistrable.
+  const saveBlocked = declErrors.length > 0 || columnErrors.length > 0 || (current?.scope === 'private' && !!column)
   // Liste en chargement : absente (n'invalide aucune valeur), pas vide.
   const paramOptions = useMemo<ParamOptions>(() => ({
     campaigns: campaignsLoaded ? campaigns : undefined,
@@ -180,6 +202,9 @@ function QueryPage() {
     setScript(EMPTY_SCRIPT)
     setScriptBaseline(EMPTY_SCRIPT)
     setDeclaration([])
+    setColumnDecl(null)
+    columnPrefilledFor.current = null
+    prefilledColumn.current = null
     setParamValues({})
     setConfirmTemplate(false)
     setRun(null)
@@ -207,6 +232,8 @@ function QueryPage() {
     setScript(text)
     setScriptBaseline(text)
     setDeclaration(loadedDecls)
+    setColumnDecl(saved?.column ?? null)
+    columnPrefilledFor.current = saved?.template?.id ?? null
     setParamValues({})
     setConfirmTemplate(false)
     void execute(text, loadedDecls, {})
@@ -219,7 +246,8 @@ function QueryPage() {
     mutationFn: async (dto: { title: string; scope: QueryScope }) =>
       api.queries.create(repoPath, username, {
         ...dto, createdBy: username,
-        ...(mode === 'template' ? { template: { id: templateId, params } } : { script, parameters: declaration }),
+        // Colonne préremplie non modifiée : omise, le modèle la propose lui-même (sans objet en privé).
+        ...(mode === 'template' ? { template: { id: templateId, params }, ...(columnProvided || !columnDecl ? { column: columnDecl } : {}) } : { script, parameters: declaration, column: columnDecl }),
       }),
     onSuccess: (q) => {
       setSaveModal(null)
@@ -230,7 +258,14 @@ function QueryPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: () => api.queries.update(repoPath, username, current!.id, mode === 'template' ? { template: { id: templateId, params } } : { script, parameters: declaration }),
+    mutationFn: () => {
+      // GH70 — la colonne est envoyée si elle existe, existait, ou si la déclaration lue est invalide
+      // (`null` la retire) ; sinon le champ est omis (requête privée sans colonne : rien à toucher).
+      const columnDto = columnDecl || current?.column || current?.columnError ? { column: columnDecl } : {}
+      return api.queries.update(repoPath, username, current!.id, mode === 'template'
+        ? { template: { id: templateId, params }, ...columnDto }
+        : { script, parameters: declaration, ...columnDto })
+    },
     onSuccess: () => {
       invalidateQueries()
       // Les widgets qui utilisent cette requête sont réexécutés (leur clé porte le script) ; une
@@ -240,8 +275,10 @@ function QueryPage() {
     },
   })
 
+  // GH70 — « Enregistrer sous » en privé une requête qui déclare une colonne : refusé.
+  const saveModalColumnBlocked = !!saveModal && saveModal.scope === 'private' && (mode === 'script' ? !!column : columnProvided)
   function confirmSave() {
-    if (!saveModal || !saveModal.title.trim()) return
+    if (!saveModal || !saveModal.title.trim() || saveModalColumnBlocked) return
     createMutation.mutate({ title: saveModal.title.trim(), scope: saveModal.scope })
   }
   useModalHotkeys(() => setSaveModal(null), confirmSave, !saveModal || createMutation.isPending)
@@ -369,11 +406,11 @@ function QueryPage() {
                   {isExecuting ? t('queryPage.executing') : t('queryPage.execute')}
                 </button>
                 {current && !readOnly && (
-                  <button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || declErrors.length > 0} className="btn-secondary-sm flex items-center gap-1.5">
+                  <button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || saveBlocked} className="btn-secondary-sm flex items-center gap-1.5">
                     <Save size={12} /> {t('requirementsPage.save')}
                   </button>
                 )}
-                <button type="button" onClick={() => setSaveModal({ title: current ? `${current.title} (2)` : '', scope: 'private' })} disabled={declErrors.length > 0} className="btn-secondary-sm flex items-center gap-1.5">
+                <button type="button" onClick={() => setSaveModal({ title: current ? `${current.title} (2)` : '', scope: column ? 'shared' : 'private' })} disabled={saveBlocked} className="btn-secondary-sm flex items-center gap-1.5">
                   <Save size={12} /> {t(current ? 'queryPage.saveAs' : 'requirementsPage.save')}
                 </button>
               </div>
@@ -399,6 +436,21 @@ function QueryPage() {
               {(mode === 'script' || decls.length > 0) && (
                 <ParameterDeclEditor value={decls} onChange={setDeclaration} readOnly={mode === 'template' || !!readOnly} />
               )}
+              {/* GH70 — colonne calculée de la Vue Système (requête partagée). */}
+              {current?.columnError && (
+                <p className="flex items-start gap-2 text-xs text-status-danger" data-testid="column-error">
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {t('queryPage.column.readError', { message: current.columnError })}
+                </p>
+              )}
+              <ColumnDeclEditor
+                value={column}
+                onChange={setColumnDecl}
+                defaultLabel={current?.title ?? ''}
+                objectTypes={objectTypes}
+                resultColumns={result?.columns.map((c) => c.name) ?? []}
+                readOnly={!!readOnly}
+                unavailableReason={current?.scope === 'private' ? t('queryPage.column.sharedOnly') : undefined}
+              />
               <ParamBar
                 selectors={selectors}
                 values={effective.values}
@@ -480,9 +532,12 @@ function QueryPage() {
                     {t('queryPage.scopeShared')}
                   </label>
                 </div>
+                {saveModalColumnBlocked && (
+                  <p className="text-xs text-status-danger mb-4" data-testid="save-column-private">{t('queryPage.column.privateRefused')}</p>
+                )}
                 <div className="flex gap-3 justify-end">
                   <button type="button" onClick={() => setSaveModal(null)} className="btn-secondary">{t('common.cancel')}</button>
-                  <button type="button" onClick={confirmSave} disabled={!saveModal.title.trim() || createMutation.isPending} className="btn-primary">
+                  <button type="button" onClick={confirmSave} disabled={!saveModal.title.trim() || createMutation.isPending || saveModalColumnBlocked} className="btn-primary">
                     {createMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
                   </button>
                 </div>

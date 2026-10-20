@@ -27,6 +27,9 @@ export type SuiviErrorCode =
   | 'LIBRARY_MODULE_NOT_FOUND'
   // GH93 — déclaration de paramètres choisis à l'affichage invalide.
   | 'PARAMS_INVALID'
+  // GH70 — déclaration de colonne calculée invalide, ou portée privée.
+  | 'COLUMN_INVALID'
+  | 'COLUMN_PRIVATE'
 
 export type SuiviWarningCode = 'SCRIPT_ERROR' | 'SPEC_AGGREGATE' | 'SPEC_UNCHECKED'
 

@@ -7,6 +7,7 @@ import type { WidgetSize } from './dashboard'
 import { findQueryTemplate, findWidgetTemplate } from './suivi-templates'
 import type { TemplateRef, WidgetCode } from './suivi-templates'
 import type { QueryParameterDef } from './suivi-params'
+import type { QueryColumnDef } from './suivi-columns'
 
 /** `query.yaml` (partagé) ou entrée `savedQueries` du `.pref` (privé, avec `script`). */
 export interface StoredQuery {
@@ -16,6 +17,8 @@ export interface StoredQuery {
   template?: Omit<TemplateRef, 'hash'> & { hash: string }
   /** GH93 — paramètres choisis à l'affichage (omis si aucun). */
   parameters?: QueryParameterDef[]
+  /** GH70 — colonne calculée de la Vue Système (requête partagée ; omis si aucune). */
+  column?: QueryColumnDef
   createdBy: string
   createdAt: string
   script?: string
@@ -51,6 +54,8 @@ export interface ReadQuery {
   template?: { id: string; version: number; params: Record<string, unknown>; hash?: string }
   /** GH93 — déclaration telle que lue, NON validée (le service la valide). */
   parameters?: unknown
+  /** GH70 — déclaration de colonne telle que lue, NON validée (le service la valide). */
+  column?: unknown
   createdBy: string
   createdAt: string
   legacySql?: string
@@ -139,6 +144,7 @@ export function readQueryRecord(raw: Raw, script?: string): ReadQuery {
     script: script ?? str(up.script),
     ...(up.template ? { template: up.template as ReadQuery['template'] } : {}),
     ...(up.parameters !== undefined ? { parameters: up.parameters } : {}),
+    ...(up.column !== undefined ? { column: up.column } : {}),
   }
 }
 

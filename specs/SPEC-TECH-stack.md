@@ -63,7 +63,9 @@ ferait grossir le produit d'indicateurs que chaque client voudrait définir à s
   modifiable, jamais comme code de Polenta. Exemples : la maturité, les étapes d'avancement,
   l'état d'une campagne à une date, le dernier résultat.
 - **Les écrans de Polenta affichent les données brutes.** Un indicateur projet y apparaît par un
-  mécanisme générique (colonnes calculées définies par le projet, #70), pas par du code dédié.
+  mécanisme générique (colonnes calculées définies par le projet, livrées par GH70 :
+  SPEC-DASHBOARDS §5.2, SPEC-SYSTEM-VIEW §Configuration des champs), pas par du code dédié. Exemple
+  livré : « Dernier résultat » des tests (`lastEntryResults`, modèle `campaign-last-result`).
 
 **Règle de décision** pour tout nouvel indicateur : *sert-il à une fonction de Polenta ?*
 Oui → calculé dans Polenta (service du main). Non → script côté projet, affiché via le

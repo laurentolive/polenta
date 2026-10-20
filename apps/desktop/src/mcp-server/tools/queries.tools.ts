@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { QueryColumnDef } from '@polenta/types'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { McpContainer } from '../container'
 import { jsonToolResult, LIST_RESULT_LIMIT } from '../mcp-types'
@@ -8,7 +9,9 @@ import { applyQueryTemplate } from '../../main/services/suivi-store.util'
 import { findDuplicateTitle, validateTemplateInput, type SuiviWarning } from '../../main/services/suivi-validation.util'
 import {
   assertWritableBranch,
+  checkColumn,
   checkParameters,
+  columnSchema,
   findVisibleQuery,
   parametersSchema,
   paramsSchema,
@@ -52,6 +55,7 @@ const createQueryInput = {
   script: z.string().min(1).optional().describe('script de données (exclusif avec template)'),
   template: templateSchema.optional().describe('modèle de requête + paramètres : le script est généré (exclusif avec script)'),
   parameters: parametersSchema.optional().describe('paramètres choisis à l\'affichage (avec script ; générés par un modèle)'),
+  column: columnSchema.optional().describe('colonne calculée de la Vue Système (scope shared ; prioritaire sur celle que propose un modèle)'),
   scope: scopeSchema.optional().default('shared'),
   dryRun: z.boolean().optional().default(true),
 }
@@ -62,6 +66,7 @@ const updateQueryInput = {
   script: z.string().min(1).optional().describe('nouveau script (la requête est alors détachée de son modèle)'),
   template: templateSchema.optional().describe('nouveau modèle / paramètres : script régénéré'),
   parameters: parametersSchema.optional().describe('nouvelle déclaration de paramètres choisis à l\'affichage (pas avec template)'),
+  column: columnSchema.nullable().optional().describe('nouvelle déclaration de colonne calculée ; null la retire ; ne détache pas du modèle'),
   dryRun: z.boolean().optional().default(true),
 }
 
@@ -86,7 +91,8 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
         'Liste les requêtes enregistrées de la vue Suivi (partagées ; + privées de --user si fourni). ' +
         'Chaque requête : id, title, scope, script (JS), template (modèle d\'origine), state (customized : ' +
         'code modifié à la main ; readOnly : legacy-sql = ancienne requête SQL non prise en charge, ' +
-        'newer-format), createdBy, createdAt.',
+        'newer-format), column (colonne calculée de la Vue Système, ou null), columnError (déclaration lue invalide), ' +
+        'createdBy, createdAt.',
       inputSchema: listQueriesInput,
     },
     async ({ scope }) => {
@@ -133,12 +139,15 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
         'Crée une requête de la vue Suivi : un script JS fourni, ou un modèle + paramètres (cf. list_templates). ' +
         'parameters (avec script) : paramètres choisis à l\'affichage dans la barre du dashboard, lus dans ' +
         'polenta.params (un modèle génère les siens). ' +
+        'column (scope shared, avec script ou template — un modèle peut en proposer une) : la requête devient une ' +
+        'colonne calculée proposée dans la Vue Système (panneau des champs) ; son script renvoie une ligne par élément ' +
+        '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible). ' +
         'dryRun (défaut true) : EXÉCUTE le script et retourne un aperçu SANS RIEN ÉCRIRE. Un script en erreur ' +
         'est enregistré avec un avertissement SCRIPT_ERROR. Pas d\'autre requête du même scope avec le même ' +
         'titre. scope private exige --user.',
       inputSchema: createQueryInput,
     },
-    async ({ title, script, template, parameters, scope, dryRun }) => {
+    async ({ title, script, template, parameters, column, scope, dryRun }) => {
       const readonly = await assertWritableBranch(c)
       if (readonly) return readonly
       const { username, hasUser } = resolveUser(c)
@@ -151,6 +160,8 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       }
       const checked = checkParameters(parameters)
       if ('error' in checked) return checked.error
+      const checkedCol = checkColumn(column)
+      if ('error' in checkedCol) return checkedCol.error
       const cleanTitle = title.trim()
       if (!cleanTitle) return suiviError('INVALID_INPUT', 'title ne peut pas être vide.')
       const existing = await c.savedQueries.list(c.repoPath, username)
@@ -160,15 +171,18 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       const generated = template ? applyQueryTemplate(template) : null
       const code = generated ? generated.script : script!
       const decls = generated ? generated.parameters : checked.decls
+      if (scope === 'private' && checkedCol.column) return suiviError('COLUMN_PRIVATE', 'Une colonne calculée est réservée aux requêtes partagées (scope shared).')
+      // Colonne fournie prioritaire sur celle que propose le modèle ; aucune pour une requête privée.
+      const col = scope === 'private' ? null : column !== undefined ? checkedCol.column : generated ? generated.column : null
       // Aperçu avec les valeurs par défaut (un paramètre obligatoire sans défaut → avertissement).
       const run = await runScript(c, { script: code, parameters: decls })
       const warnings = scriptWarnings(run)
       if (dryRun) {
         const id = scope === 'shared' ? await peekSharedId(c, 'QUERY') : "(généré à l'écriture)"
-        return jsonToolResult({ dryRun: true, query: { id, title: cleanTitle, scope, script: code, parameters: decls, ...(template ? { template } : {}) }, preview: preview(run), warnings })
+        return jsonToolResult({ dryRun: true, query: { id, title: cleanTitle, scope, script: code, parameters: decls, column: col, ...(template ? { template } : {}) }, preview: preview(run), warnings })
       }
       const query = await c.savedQueries.create(c.repoPath, username, {
-        title: cleanTitle, scope, createdBy: 'mcp', ...(template ? { template } : { script, parameters: decls }),
+        title: cleanTitle, scope, createdBy: 'mcp', ...(template ? { template, ...(column !== undefined ? { column: col } : {}) } : { script, parameters: decls, column: col }),
       })
       return jsonToolResult({ dryRun: false, query, preview: preview(run), warnings })
     },
@@ -179,13 +193,14 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
     {
       title: 'Update saved query',
       description:
-        'Modifie une requête (titre, script ou modèle + paramètres, déclaration parameters). dryRun (défaut true) : aperçu SANS RIEN ' +
+        'Modifie une requête (titre, script ou modèle + paramètres, déclaration parameters, colonne calculée column — ' +
+        'requête partagée seulement, null la retire). dryRun (défaut true) : aperçu SANS RIEN ' +
         'ÉCRIRE. Un script fourni détache la requête de son modèle. Le script résultant est réexécuté ' +
         '(avertissement SCRIPT_ERROR si en erreur). Une requête en lecture seule (SQL d\'avant GH74, format ' +
         'plus récent) est refusée (SUIVI_READ_ONLY). Le scope ne se change pas ici.',
       inputSchema: updateQueryInput,
     },
-    async ({ id, title, script, template, parameters, dryRun }) => {
+    async ({ id, title, script, template, parameters, column, dryRun }) => {
       const readonly = await assertWritableBranch(c)
       if (readonly) return readonly
       const { username, hasUser } = resolveUser(c)
@@ -198,6 +213,14 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       if (template) {
         const issue = validateTemplateInput('query', template)
         if (issue) return suiviError(issue.code, issue.reason)
+      }
+      let newColumn: QueryColumnDef | null | undefined
+      if (column !== undefined) {
+        const checkedCol = checkColumn(column)
+        if ('error' in checkedCol) return checkedCol.error
+        newColumn = checkedCol.column
+      } else if (existing.columnError && existing.scope === 'shared' && !template) {
+        return suiviError('COLUMN_INVALID', `Déclaration de colonne de ${id} invalide, à corriger (column) : ${existing.columnError}.`)
       }
       let newDecls
       if (parameters !== undefined) {
@@ -219,14 +242,19 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       const generated = template ? applyQueryTemplate(template) : null
       const code = generated ? generated.script : script ?? existing.script
       const decls = generated ? generated.parameters : newDecls ?? existing.parameters
+      if (newColumn && existing.scope === 'private') return suiviError('COLUMN_PRIVATE', 'Une colonne calculée est réservée aux requêtes partagées.')
+      // Même règle que le service : colonne fournie > colonne actuelle > proposée par un modèle nouveau.
+      const newTemplate = !!template && (!existing.template || existing.template.id !== template.id)
+      const col = existing.scope === 'private' ? null : newColumn !== undefined ? newColumn : existing.column ?? (newTemplate ? generated?.column ?? null : null)
       const run = await runScript(c, { script: code, parameters: decls })
       const dto: UpdateSavedQueryDto = {
         ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),
         ...(template ? { template } : script !== undefined ? { script } : {}),
         ...(newDecls !== undefined ? { parameters: newDecls } : {}),
+        ...(newColumn !== undefined ? { column: newColumn } : {}),
       }
       if (dryRun) {
-        return jsonToolResult({ dryRun: true, query: { ...existing, ...(cleanTitle ? { title: cleanTitle } : {}), script: code, parameters: decls }, preview: preview(run), warnings: scriptWarnings(run) })
+        return jsonToolResult({ dryRun: true, query: { ...existing, ...(cleanTitle ? { title: cleanTitle } : {}), script: code, parameters: decls, column: col }, preview: preview(run), warnings: scriptWarnings(run) })
       }
       const query = await c.savedQueries.update(c.repoPath, username, id, dto)
       return jsonToolResult({ dryRun: false, query, preview: preview(run), warnings: scriptWarnings(run) })

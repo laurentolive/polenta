@@ -6,7 +6,7 @@ import * as path from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { QuickJSWASMModule } from 'quickjs-emscripten-core'
 import type { GraphRow, PolentaHost } from '@polenta/types'
-import { buildHost } from '@polenta/types'
+import { buildHost, columnValuesFromRows } from '@polenta/types'
 import { createSandboxModule, SandboxContext } from './script-sandbox'
 import type { LibraryModules } from './script-limits'
 import { GraphService } from './graph.service'
@@ -135,6 +135,7 @@ describe('GH74 — corpus : projet de démonstration (scripts/demo-lave-linge)',
   let ws: string
   let ctx: SandboxContext
   let demoCases: WidgetCase[]
+  let columnCases: WidgetCase[]
 
   beforeAll(async () => {
     ws = fs.mkdtempSync(path.join(os.tmpdir(), 'gh74-corpus-demo-'))
@@ -148,6 +149,11 @@ describe('GH74 — corpus : projet de démonstration (scripts/demo-lave-linge)',
     ctx = SandboxContext.prepare(qjs, graphJson, LIB)
     // Dashboards partagés de la démo, lus par les services de l'application (format v1).
     const savedQueries = await queries.list(repoPath, 'corpus')
+    // GH70 — requêtes déclarées comme colonnes calculées de la Vue Système.
+    columnCases = savedQueries.filter((q) => q.column).map((q) => {
+      expect(q.state.customized, `${q.title} : code généré par son modèle`).toBe(false)
+      return { name: `Colonne / ${q.title}`, script: q.script }
+    })
     demoCases = []
     for (const d of await dashboards.list(repoPath, 'corpus')) {
       expect(d.state.readOnly).toBeUndefined()
@@ -168,6 +174,15 @@ describe('GH74 — corpus : projet de démonstration (scripts/demo-lave-linge)',
     expect(demoCases).toHaveLength(9)
     await expect(json(runCases(ctx, demoCases))).toMatchFileSnapshot(path.join(REFS, 'demo-dashboards.json'))
     await expect(json(runCases(ctx, SEED_CASES))).toMatchFileSnapshot(path.join(REFS, 'demo-seeds.json'))
+  })
+
+  it('GH70 — colonne « Dernier résultat » de la démo : lignes au contrat, identiques à la référence', async () => {
+    expect(columnCases.map((c) => c.name)).toEqual(['Colonne / Dernier résultat de campagne'])
+    const out = runCases(ctx, columnCases)
+    const rows = out['Colonne / Dernier résultat de campagne'] as GraphRow[]
+    expect(Array.isArray(rows) && rows.length > 0).toBe(true)
+    expect(columnValuesFromRows(rows).error).toBeUndefined()
+    await expect(json(out)).toMatchFileSnapshot(path.join(REFS, 'demo-columns.json'))
   })
 
   it('C2 — budget : avancement des campagnes < 200 ms (contexte préparé)', () => {

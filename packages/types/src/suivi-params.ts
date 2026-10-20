@@ -41,7 +41,8 @@ export function labelText(label: ParamLabel | undefined, locale: 'fr' | 'en'): s
   return label[locale] || label.fr || label.en || ''
 }
 
-function validLabel(v: unknown): ParamLabel | null {
+/** Libellé lu (texte non vide, ou `{ fr, en }` dont un au moins est rempli), sinon `null`. */
+export function validLabel(v: unknown): ParamLabel | null {
   if (typeof v === 'string') return v.trim() ? v.trim() : null
   if (isObject(v) && typeof v.fr === 'string' && typeof v.en === 'string' && (v.fr.trim() || v.en.trim())) {
     return { fr: v.fr.trim(), en: v.en.trim() }

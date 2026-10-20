@@ -1,10 +1,11 @@
-import type { QueryHistoryEntry, QueryParameterDef, QueryScope, ReadQuery, SavedQuery, StoredQuery, TemplateRef } from '@polenta/types'
-import { queryCodeForHash, readQueryRecord, SUIVI_FORMAT_VERSION, validateParameterDecls } from '@polenta/types'
+import type { QueryColumnDef, QueryHistoryEntry, QueryParameterDef, QueryScope, ReadQuery, SavedQuery, StoredQuery, TemplateRef } from '@polenta/types'
+import { legacyQueryCodeForHashWithColumn, queryCodeForHash, readQueryRecord, SUIVI_FORMAT_VERSION, validateColumnDecl, validateParameterDecls } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { DashboardsService } from './dashboards.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
 import { nextCounterId } from './id-counter.util'
+import { contentHash } from './dashboard-library.service'
 import {
   applyQueryTemplate, computeState, dropLegacyFile, removeSharedObject, listObjectEntries, readOnlyError, readText, readYamlFile, toYaml, withHash,
   writeObjectFolder,
@@ -21,6 +22,8 @@ export interface CreateSavedQueryDto {
   template?: TemplateInput
   /** GH93 — paramètres choisis à l'affichage (avec `script` seulement : un modèle les génère). */
   parameters?: QueryParameterDef[]
+  /** GH70 — colonne calculée de la Vue Système (requête partagée, avec `script` seulement). */
+  column?: QueryColumnDef | null
 }
 
 export interface UpdateSavedQueryDto {
@@ -32,12 +35,16 @@ export interface UpdateSavedQueryDto {
   /** GH93 — nouvelle déclaration (sans `template`) ; la requête est détachée de son modèle si elle
    *  diffère de la déclaration générée. */
   parameters?: QueryParameterDef[]
+  /** GH70 — nouvelle déclaration de colonne (sans `template`) ; `null` la retire. Réservée aux
+   *  requêtes partagées. */
+  column?: QueryColumnDef | null
 }
 
-/** Code d'une requête : script, déclaration de paramètres (GH93), modèle éventuel. */
+/** Code d'une requête : script, déclaration de paramètres (GH93), colonne (GH70), modèle éventuel. */
 interface QueryCode {
   script: string
   parameters: QueryParameterDef[]
+  column: QueryColumnDef | null
   template?: TemplateRef
 }
 
@@ -96,7 +103,17 @@ export class SavedQueriesService {
 
   private toQuery(r: ReadQuery, scope: QueryScope): SavedQuery {
     const { decls: parameters, errors } = validateParameterDecls(r.parameters)
-    const hashed = queryCodeForHash(r.script, parameters)
+    const checkedColumn = validateColumnDecl(r.column)
+    // GH70 — une requête privée ne porte pas de colonne (`.pref` édité à la main) : signalée, ignorée.
+    const columnErrors = scope === 'private' && checkedColumn.decl ? [COLUMN_PRIVATE_MESSAGE] : checkedColumn.errors
+    const column = columnErrors.length ? null : checkedColumn.decl
+    // La colonne n'entre pas dans l'empreinte (GH70 sprint 3) ; une requête enregistrée pendant les
+    // sprints 1–2, dont l'empreinte comptait la colonne, reste reconnue comme non personnalisée.
+    let hashed = queryCodeForHash(r.script, parameters)
+    if (column && r.template?.hash && contentHash(hashed) !== r.template.hash) {
+      const legacy = legacyQueryCodeForHashWithColumn(r.script, parameters, column)
+      if (contentHash(legacy) === r.template.hash) hashed = legacy
+    }
     const template = r.template ? withHash(r.template, hashed) : undefined
     return {
       id: r.id,
@@ -107,6 +124,8 @@ export class SavedQueriesService {
       ...(template ? { template } : {}),
       parameters,
       ...(errors.length ? { parametersError: errors.join(' ; ') } : {}),
+      column,
+      ...(columnErrors.length ? { columnError: columnErrors.join(' ; ') } : {}),
       createdBy: r.createdBy,
       createdAt: r.createdAt,
       ...(r.legacySql !== undefined ? { legacySql: r.legacySql } : {}),
@@ -117,7 +136,10 @@ export class SavedQueriesService {
   // ─── Écriture ─────────────────────────────────────────────────────────────────
 
   async create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery> {
-    const code = this.resolveCode(dto.script, dto.template, dto.parameters)
+    if (dto.scope === 'private' && dto.column) throw columnPrivateError()
+    const code = this.resolveCode(dto.script, dto.template, dto.parameters, dto.column)
+    // Colonne proposée par un modèle : sans objet pour une requête privée.
+    if (dto.scope === 'private') code.column = null
     const base = { title: dto.title, createdBy: dto.createdBy, createdAt: new Date().toISOString(), ...code }
     if (dto.scope === 'shared') {
       const id = await nextCounterId(this.git, repoPath, PREFIX, DIR)
@@ -145,13 +167,27 @@ export class SavedQueriesService {
     let script = current.script
     let template: TemplateRef | undefined = current.template
     let parameters = current.parameters
+    let column = current.column
     if (dto.template === null) template = undefined
-    else if (dto.template) ({ script, parameters, template } = applyQueryTemplate(dto.template))
+    else if (dto.template) {
+      const generated = applyQueryTemplate(dto.template)
+      ;({ script, parameters, template } = generated)
+      // Colonne indépendante du modèle (GH70 sprint 3) : conservée (même retirée) ; celle que propose
+      // le modèle n'est reprise que pour un modèle nouveau pour cette requête.
+      if (!current.template || current.template.id !== dto.template.id) column = column ?? generated.column
+    }
     if (dto.script !== undefined && !dto.template) script = dto.script
     if (dto.parameters !== undefined) parameters = checkedParameters(dto.parameters)
     // Déclaration lue invalide et non remplacée : la réécrire vide la perdrait.
     else if (current.parametersError && !dto.template) throw paramsError([current.parametersError])
-    const next = { id, title: dto.title ?? current.title, createdBy: current.createdBy, createdAt: current.createdAt, script, parameters, template }
+    if (dto.column !== undefined) column = checkedColumn(dto.column)
+    else if (current.columnError && current.scope === 'shared' && !dto.template) throw columnError([current.columnError])
+    if (current.scope === 'private') {
+      if (dto.column) throw columnPrivateError()
+      column = null // colonne proposée par un modèle : sans objet pour une requête privée
+    }
+    if (template && !dto.template) template = refreshedHash(current, template)
+    const next = { id, title: dto.title ?? current.title, createdBy: current.createdBy, createdAt: current.createdAt, script, parameters, column, template }
 
     if (current.scope === 'private') {
       const pref = this.readPref(repoPath, username)
@@ -188,7 +224,11 @@ export class SavedQueriesService {
     if (current.state.readOnly) throw readOnlyError(`Requête ${id}`, current.state.readOnly)
 
     if (current.parametersError) throw paramsError([current.parametersError])
-    const payload = { title: current.title, createdBy: current.createdBy, createdAt: current.createdAt, script: current.script, parameters: current.parameters, template: current.template }
+    // GH70 — une colonne est réservée aux requêtes partagées : retirée au passage en privé
+    // (confirmation côté UI) ; une déclaration lue invalide n'est pas recopiée.
+    const column = newScope === 'shared' ? current.column : null
+    const template = current.template ? refreshedHash(current, current.template) : undefined
+    const payload = { title: current.title, createdBy: current.createdBy, createdAt: current.createdAt, script: current.script, parameters: current.parameters, column, template }
     let moved: SavedQuery
     if (newScope === 'private') {
       await this.assertNoDependents(repoPath, username, id, 'repasser en privé')
@@ -212,27 +252,30 @@ export class SavedQueriesService {
     return moved
   }
 
-  private resolveCode(script: string | undefined, template: TemplateInput | undefined, parameters: QueryParameterDef[] | undefined): QueryCode {
+  private resolveCode(script: string | undefined, template: TemplateInput | undefined, parameters: QueryParameterDef[] | undefined, column: QueryColumnDef | null | undefined): QueryCode {
     if (template) {
       if (parameters !== undefined) throw paramsError(['parameters est généré par le modèle : ne pas le fournir avec template'])
-      return applyQueryTemplate(template)
+      const generated = applyQueryTemplate(template)
+      // Colonne fournie (même `null`) prioritaire sur celle que propose le modèle (GH70 sprint 3).
+      return column !== undefined ? { ...generated, column: checkedColumn(column) } : generated
     }
-    return { script: script ?? 'export default (data, polenta) => []\n', parameters: checkedParameters(parameters) }
+    return { script: script ?? 'export default (data, polenta) => []\n', parameters: checkedParameters(parameters), column: checkedColumn(column) }
   }
 
-  private toStored(q: { id: string; title: string; createdBy: string; createdAt: string; parameters?: QueryParameterDef[]; template?: TemplateRef }): StoredQuery {
+  private toStored(q: { id: string; title: string; createdBy: string; createdAt: string; parameters?: QueryParameterDef[]; column?: QueryColumnDef | null; template?: TemplateRef }): StoredQuery {
     return {
       id: q.id,
       title: q.title,
       formatVersion: SUIVI_FORMAT_VERSION,
       ...(q.template ? { template: q.template } : {}),
       ...(q.parameters?.length ? { parameters: q.parameters } : {}),
+      ...(q.column ? { column: q.column } : {}),
       createdBy: q.createdBy,
       createdAt: q.createdAt,
     }
   }
 
-  private async writeShared(repoPath: string, q: { id: string; title: string; createdBy: string; createdAt: string; script: string; parameters?: QueryParameterDef[]; template?: TemplateRef }): Promise<void> {
+  private async writeShared(repoPath: string, q: { id: string; title: string; createdBy: string; createdAt: string; script: string; parameters?: QueryParameterDef[]; column?: QueryColumnDef | null; template?: TemplateRef }): Promise<void> {
     await writeObjectFolder(repoPath, `${DIR}/${q.id}`, {
       'query.yaml': toYaml(this.toStored(q)),
       'script.js': q.script,
@@ -324,4 +367,29 @@ function checkedParameters(raw: QueryParameterDef[] | undefined): QueryParameter
 
 function paramsError(errors: string[]): Error {
   return new Error(`[PARAMS_INVALID] Déclaration de paramètres invalide : ${errors.join(' ; ')}.`)
+}
+
+const COLUMN_PRIVATE_MESSAGE = 'colonne calculée réservée aux requêtes partagées'
+
+/** GH70 sprint 3 — requête qui suit son modèle : empreinte réécrite selon le calcul actuel (sans la
+ *  colonne), pour qu'une empreinte d'avant ce calcul (colonne comprise) ne la rende pas personnalisée
+ *  dès que sa colonne change. Requête personnalisée : empreinte inchangée. */
+function refreshedHash(current: SavedQuery, template: TemplateRef): TemplateRef {
+  if (current.state.customized) return template
+  return { ...template, hash: contentHash(queryCodeForHash(current.script, current.parameters)) }
+}
+
+/** GH70 — déclaration de colonne validée (`null` = aucune), sinon erreur `[COLUMN_INVALID]`. */
+function checkedColumn(raw: QueryColumnDef | null | undefined): QueryColumnDef | null {
+  const { decl, errors } = validateColumnDecl(raw)
+  if (errors.length) throw columnError(errors)
+  return decl
+}
+
+function columnError(errors: string[]): Error {
+  return new Error(`[COLUMN_INVALID] Déclaration de colonne invalide : ${errors.join(' ; ')}.`)
+}
+
+function columnPrivateError(): Error {
+  return new Error(`[COLUMN_PRIVATE] Une ${COLUMN_PRIVATE_MESSAGE} : enregistrer la requête en partagé, ou retirer la déclaration.`)
 }

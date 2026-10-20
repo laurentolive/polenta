@@ -3,11 +3,13 @@
  * (GH70, vue `/query`). Case « Utiliser comme colonne », libellé, catégories et types d'objet
  * concernés, type de champ (rendu de la cellule), valeurs pour un enum. Les erreurs de
  * `validateColumnDecl` sont affichées sous le formulaire (l'enregistrement est refusé tant qu'il y
- * en a). Désactivé avec une mention pour une requête privée ou pas encore enregistrée.
+ * en a). Désactivé avec une mention pour une requête privée. Sprint 3 : disponible aussi en mode
+ * modèle ; colonnes du résultat servant d'identifiant / valeur / infobulle choisies parmi celles du
+ * dernier résultat.
  */
 import { useTranslation } from 'react-i18next'
 import type { ComputedColumnType, QueryColumnDef } from '@polenta/types'
-import { COMPUTED_COLUMN_CATEGORIES, COMPUTED_COLUMN_TYPES, labelText, validateColumnDecl } from '@polenta/types'
+import { COLUMN_DEFAULT_ID, COLUMN_DEFAULT_TOOLTIP, COLUMN_DEFAULT_VALUE, COMPUTED_COLUMN_CATEGORIES, COMPUTED_COLUMN_TYPES, labelText, validateColumnDecl } from '@polenta/types'
 
 interface ObjectTypeOption {
   objectTypeRef: string
@@ -22,12 +24,14 @@ interface Props {
   /** Libellé proposé à l'activation (titre de la requête). */
   defaultLabel: string
   objectTypes: ObjectTypeOption[]
+  /** Colonnes du dernier résultat de la requête (choix des colonnes identifiant / valeur / infobulle). */
+  resultColumns: string[]
   readOnly?: boolean
   /** Raison d'indisponibilité (requête privée, non enregistrée) : formulaire désactivé. */
   unavailableReason?: string
 }
 
-export function ColumnDeclEditor({ value, onChange, defaultLabel, objectTypes, readOnly = false, unavailableReason }: Props) {
+export function ColumnDeclEditor({ value, onChange, defaultLabel, objectTypes, resultColumns, readOnly = false, unavailableReason }: Props) {
   const { t, i18n } = useTranslation()
   const lang = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'fr'
   const disabled = readOnly || !!unavailableReason
@@ -50,6 +54,33 @@ export function ColumnDeclEditor({ value, onChange, defaultLabel, objectTypes, r
     onChange(next)
   }
   const toggleIn = <T extends string>(list: T[], item: T): T[] => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item])
+  // Colonne du résultat : la valeur par défaut n'est pas écrite (déclaration minimale).
+  const mappingSelect = (key: 'idColumn' | 'valueColumn' | 'tooltipColumn', fallback: string, label: string) => {
+    if (!value) return null
+    const current = value[key] ?? fallback
+    const options = [...new Set([fallback, current, ...resultColumns])]
+    return (
+      <Field label={label} hint={t('queryPage.column.mappingHint')}>
+        <select
+          value={current}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = { ...value }
+            if (e.target.value === fallback) delete next[key]
+            else next[key] = e.target.value
+            onChange(next)
+          }}
+          className="input-field text-xs py-1 w-36 font-mono"
+          aria-label={label}
+          data-testid={`column-decl-${key}`}
+        >
+          {options.map((c) => (
+            <option key={c} value={c}>{c}{!resultColumns.includes(c) ? ` (${t('queryPage.column.notInResult')})` : ''}</option>
+          ))}
+        </select>
+      </Field>
+    )
+  }
 
   return (
     <div className="border border-edge rounded-lg" data-testid="column-decl-editor">
@@ -137,6 +168,9 @@ export function ColumnDeclEditor({ value, onChange, defaultLabel, objectTypes, r
               />
             </Field>
           )}
+          {mappingSelect('idColumn', COLUMN_DEFAULT_ID, t('queryPage.column.idColumn'))}
+          {mappingSelect('valueColumn', COLUMN_DEFAULT_VALUE, t('queryPage.column.valueColumn'))}
+          {mappingSelect('tooltipColumn', COLUMN_DEFAULT_TOOLTIP, t('queryPage.column.tooltipColumn'))}
           {value.appliesTo.categories.length === 0 && value.appliesTo.objectTypes.length === 0 && (
             <p className="basis-full text-[11px] text-status-warning" data-testid="column-decl-nowhere">{t('queryPage.column.appliesNowhere')}</p>
           )}

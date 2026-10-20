@@ -1216,11 +1216,16 @@
       "type": "Field type",
       "values": "Values",
       "valuesHint": "One value per line",
-      "contract": "The script returns one row per item: id (requirement or test ID), value, and optionally tooltip and _ids (object opened on double-click).",
+      "contract": "The script returns one row per item: the ID column holds the requirement or test ID, the value column the displayed value; optionally the tooltip column and _ids (object opened on double-click). Several rows for an item: the first one is kept.",
       "sharedOnly": "shared queries only",
       "privateRefused": "A computed column is reserved for shared queries: choose \"Shared\", or remove the declaration.",
       "readError": "Invalid column declaration (not offered in the System view): {{message}}",
-      "appliesNowhere": "The column is offered for no type: check a category or a type."
+      "appliesNowhere": "The column is offered for no type: check a category or a type.",
+      "idColumn": "ID column",
+      "valueColumn": "Value column",
+      "tooltipColumn": "Tooltip column",
+      "mappingHint": "Column of the query result (run the query to list its columns)",
+      "notInResult": "not in result"
     }
   },
   "dashboardPage": {

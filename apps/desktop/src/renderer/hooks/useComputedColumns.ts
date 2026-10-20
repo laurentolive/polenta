@@ -133,7 +133,7 @@ export function useComputedColumns(opts: {
         out.set(computedColumnKey(q.id), { values: EMPTY_VALUES, pending: false, error: scriptErrorText(data.error) })
         return
       }
-      const { values, error } = columnValuesFromRows(data.rows)
+      const { values, error } = columnValuesFromRows(data.rows, q.column)
       out.set(computedColumnKey(q.id), { values, pending: false, ...(error ? { error } : {}) })
     })
     return out

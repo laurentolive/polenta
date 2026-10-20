@@ -26,7 +26,7 @@ async function openQuery(title: string) {
 
 const editor = () => s.page.getByTestId('column-decl-editor')
 
-test('N1 — modèle « Dernier résultat de campagne » : colonne générée, affichée en lecture seule', async () => {
+test('N1 — modèle « Dernier résultat de campagne » : colonne proposée, modifiable en mode modèle', async () => {
   const q = await s.invoke<{ id: string; column: unknown; state: { customized: boolean } }>('queries:create', s.project.localPath, username, {
     title: 'GH70 dernier résultat', scope: 'shared', createdBy: username, template: { id: 'campaign-last-result', params: {} },
   })
@@ -36,7 +36,7 @@ test('N1 — modèle « Dernier résultat de campagne » : colonne générée, a
   })
   await openQuery('GH70 dernier résultat')
   await expect(editor().getByTestId('column-decl-enable')).toBeChecked()
-  await expect(editor().getByTestId('column-decl-enable')).toBeDisabled()
+  await expect(editor().getByTestId('column-decl-enable')).toBeEnabled()
   await expect(editor().getByTestId('column-decl-label')).toHaveValue('Dernier résultat')
   await expect(editor().getByTestId('column-decl-type')).toHaveValue('enum')
   await expect(s.page.getByTestId('script-error')).toHaveCount(0, { timeout: 15_000 })
@@ -68,6 +68,28 @@ test('N2 — requête script partagée : déclaration saisie, enregistrée, relu
   await expect(editor().getByTestId('column-decl-label')).toHaveValue('Longueur du titre')
   await expect(editor().getByTestId('column-decl-type')).toHaveValue('number')
   await s.shot('gh70-script-column')
+})
+
+test('15 / 16 — « Entrées de campagne » en mode modèle : colonnes du résultat choisies, requête non personnalisée', async () => {
+  const q = await s.invoke<{ id: string }>('queries:create', s.project.localPath, username, {
+    title: 'GH70 entrées', scope: 'shared', createdBy: username, template: { id: 'campaign-entries', params: {} },
+  })
+  await openQuery('GH70 entrées')
+  await editor().getByTestId('column-decl-enable').check()
+  await editor().getByTestId('column-decl-label').fill('Statut en campagne')
+  // Colonnes proposées : celles du résultat exécuté.
+  await expect(editor().getByTestId('column-decl-idColumn').locator('option', { hasText: 'testCaseId' })).toHaveCount(1, { timeout: 15_000 })
+  await editor().getByTestId('column-decl-idColumn').selectOption('testCaseId')
+  await editor().getByTestId('column-decl-valueColumn').selectOption('status')
+  await editor().getByTestId('column-decl-tooltipColumn').selectOption('campaignTitle')
+  await s.page.getByRole('button', { name: 'Sauvegarder', exact: true }).click()
+  await expect.poll(() => (yaml.load(fs.readFileSync(queryYaml(q.id), 'utf8')) as { column?: unknown }).column).toMatchObject({
+    label: 'Statut en campagne', idColumn: 'testCaseId', valueColumn: 'status', tooltipColumn: 'campaignTitle',
+  })
+  const saved = (await s.invoke<Array<{ id: string; template?: { id: string }; state: { customized: boolean } }>>('queries:list', s.project.localPath, username)).find((x) => x.id === q.id)!
+  expect(saved.template?.id).toBe('campaign-entries')
+  expect(saved.state.customized).toBe(false)
+  await s.shot('gh70-template-mapping')
 })
 
 test('C1 — requête privée : déclaration indisponible ; « Enregistrer sous » en privé refusé', async () => {

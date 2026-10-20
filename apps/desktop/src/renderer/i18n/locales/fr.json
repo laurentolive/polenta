@@ -1216,11 +1216,16 @@
       "type": "Type de champ",
       "values": "Valeurs",
       "valuesHint": "Une valeur par ligne",
-      "contract": "Le script renvoie une ligne par élément : id (ID de l'exigence ou du test), value, et en option tooltip (infobulle) et _ids (objet ouvert au double-clic).",
+      "contract": "Le script renvoie une ligne par élément : la colonne identifiant porte l'ID de l'exigence ou du test, la colonne valeur la valeur affichée ; en option la colonne infobulle et _ids (objet ouvert au double-clic). Plusieurs lignes pour un élément : la première est retenue.",
       "sharedOnly": "réservé aux requêtes partagées",
       "privateRefused": "Une colonne calculée est réservée aux requêtes partagées : choisir « Partagé », ou retirer la déclaration.",
       "readError": "Déclaration de colonne invalide (non proposée dans la Vue Système) : {{message}}",
-      "appliesNowhere": "La colonne n'est proposée pour aucun type : cocher une catégorie ou un type."
+      "appliesNowhere": "La colonne n'est proposée pour aucun type : cocher une catégorie ou un type.",
+      "idColumn": "Colonne identifiant",
+      "valueColumn": "Colonne valeur",
+      "tooltipColumn": "Colonne infobulle",
+      "mappingHint": "Colonne du résultat de la requête (exécuter la requête pour proposer ses colonnes)",
+      "notInResult": "absente du résultat"
     }
   },
   "dashboardPage": {

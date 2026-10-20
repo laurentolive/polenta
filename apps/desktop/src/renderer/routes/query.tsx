@@ -128,8 +128,22 @@ function QueryPage() {
   const decls = mode === 'template' ? (rendered?.parameters ?? []) : declaration
   const declErrors = mode === 'script' ? validateParameterDecls(declaration).errors : []
   // GH70 — colonne : générée par le modèle (lecture seule) ou saisie ; réservée aux requêtes partagées.
-  const column = mode === 'template' ? (rendered?.column ?? null) : columnDecl
-  const columnErrors = mode === 'script' ? validateColumnDecl(columnDecl).errors : []
+  // GH70 — colonne indépendante du modèle (sprint 3) : saisie dans les deux modes ; un modèle peut en
+  // proposer une, préremplie à sa sélection sur une requête non enregistrée.
+  const column = columnDecl
+  const columnErrors = validateColumnDecl(columnDecl).errors
+  const columnPrefilledFor = useRef<string | null>(null)
+  /** Colonne préremplie depuis le modèle, telle quelle : non modifiée, elle n'est pas « fournie ». */
+  const prefilledColumn = useRef<QueryColumnDef | null>(null)
+  useEffect(() => {
+    if (mode !== 'template' || current || !rendered || columnPrefilledFor.current === templateId) return
+    columnPrefilledFor.current = templateId
+    // Une déclaration saisie (ou modifiée après préremplissage) n'est jamais écrasée.
+    if (columnDecl !== null && columnDecl !== prefilledColumn.current) return
+    prefilledColumn.current = rendered.column ?? null
+    setColumnDecl(rendered.column ?? null)
+  }, [mode, current, rendered, templateId, columnDecl])
+  const columnProvided = !!columnDecl && columnDecl !== prefilledColumn.current
   // Requête privée : une colonne (générée par un modèle, ou restée cochée) n'est pas enregistrable.
   const saveBlocked = declErrors.length > 0 || columnErrors.length > 0 || (current?.scope === 'private' && !!column)
   // Liste en chargement : absente (n'invalide aucune valeur), pas vide.
@@ -189,6 +203,8 @@ function QueryPage() {
     setScriptBaseline(EMPTY_SCRIPT)
     setDeclaration([])
     setColumnDecl(null)
+    columnPrefilledFor.current = null
+    prefilledColumn.current = null
     setParamValues({})
     setConfirmTemplate(false)
     setRun(null)
@@ -217,6 +233,7 @@ function QueryPage() {
     setScriptBaseline(text)
     setDeclaration(loadedDecls)
     setColumnDecl(saved?.column ?? null)
+    columnPrefilledFor.current = saved?.template?.id ?? null
     setParamValues({})
     setConfirmTemplate(false)
     void execute(text, loadedDecls, {})
@@ -229,7 +246,8 @@ function QueryPage() {
     mutationFn: async (dto: { title: string; scope: QueryScope }) =>
       api.queries.create(repoPath, username, {
         ...dto, createdBy: username,
-        ...(mode === 'template' ? { template: { id: templateId, params } } : { script, parameters: declaration, column: columnDecl }),
+        // Colonne préremplie non modifiée : omise, le modèle la propose lui-même (sans objet en privé).
+        ...(mode === 'template' ? { template: { id: templateId, params }, ...(columnProvided || !columnDecl ? { column: columnDecl } : {}) } : { script, parameters: declaration, column: columnDecl }),
       }),
     onSuccess: (q) => {
       setSaveModal(null)
@@ -240,11 +258,14 @@ function QueryPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: () => api.queries.update(repoPath, username, current!.id, mode === 'template'
-      ? { template: { id: templateId, params } }
+    mutationFn: () => {
       // GH70 — la colonne est envoyée si elle existe, existait, ou si la déclaration lue est invalide
       // (`null` la retire) ; sinon le champ est omis (requête privée sans colonne : rien à toucher).
-      : { script, parameters: declaration, ...(columnDecl || current?.column || current?.columnError ? { column: columnDecl } : {}) }),
+      const columnDto = columnDecl || current?.column || current?.columnError ? { column: columnDecl } : {}
+      return api.queries.update(repoPath, username, current!.id, mode === 'template'
+        ? { template: { id: templateId, params }, ...columnDto }
+        : { script, parameters: declaration, ...columnDto })
+    },
     onSuccess: () => {
       invalidateQueries()
       // Les widgets qui utilisent cette requête sont réexécutés (leur clé porte le script) ; une
@@ -255,7 +276,7 @@ function QueryPage() {
   })
 
   // GH70 — « Enregistrer sous » en privé une requête qui déclare une colonne : refusé.
-  const saveModalColumnBlocked = !!saveModal && saveModal.scope === 'private' && !!column
+  const saveModalColumnBlocked = !!saveModal && saveModal.scope === 'private' && (mode === 'script' ? !!column : columnProvided)
   function confirmSave() {
     if (!saveModal || !saveModal.title.trim() || saveModalColumnBlocked) return
     createMutation.mutate({ title: saveModal.title.trim(), scope: saveModal.scope })
@@ -347,7 +368,6 @@ function QueryPage() {
                         setScript(generated.script)
                         setScriptBaseline(generated.script)
                         setDeclaration(generated.parameters)
-                        setColumnDecl(generated.column)
                       }
                       setMode('script')
                     }}
@@ -422,16 +442,15 @@ function QueryPage() {
                   <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {t('queryPage.column.readError', { message: current.columnError })}
                 </p>
               )}
-              {(mode === 'script' || column) && (
-                <ColumnDeclEditor
-                  value={column}
-                  onChange={setColumnDecl}
-                  defaultLabel={current?.title ?? ''}
-                  objectTypes={objectTypes}
-                  readOnly={mode === 'template' || !!readOnly}
-                  unavailableReason={current?.scope === 'private' ? t('queryPage.column.sharedOnly') : undefined}
-                />
-              )}
+              <ColumnDeclEditor
+                value={column}
+                onChange={setColumnDecl}
+                defaultLabel={current?.title ?? ''}
+                objectTypes={objectTypes}
+                resultColumns={result?.columns.map((c) => c.name) ?? []}
+                readOnly={!!readOnly}
+                unavailableReason={current?.scope === 'private' ? t('queryPage.column.sharedOnly') : undefined}
+              />
               <ParamBar
                 selectors={selectors}
                 values={effective.values}

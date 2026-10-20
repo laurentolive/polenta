@@ -130,6 +130,18 @@ test('N11 — Vue Document : valeur dans la carte si cochée dans l\'onglet Docu
   await s.shot('gh70-word-column')
 })
 
+test('15 — colonne sur une requête « Entrées de campagne » (testCaseId → status)', async () => {
+  await s.invoke('queries:create', s.project.localPath, username, {
+    title: 'GH70 statut en campagne', scope: 'shared', createdBy: username, template: { id: 'campaign-entries', params: {} },
+    column: { label: 'Statut en campagne', appliesTo: { categories: ['test'], objectTypes: [] }, type: 'text', idColumn: 'testCaseId', valueColumn: 'status', tooltipColumn: 'campaignTitle' },
+  })
+  await openTests('Vue tableau')
+  await toggleColumn('Tableau', 'Statut en campagne')
+  const cell = row().locator('[data-computed-cell]').last()
+  await expect(cell).toHaveText(/PASS|FAIL/, { timeout: 15_000 })
+  await expect(cell).toHaveAttribute('title', /GH70/)
+})
+
 test('C6 / C12 — script en erreur : vue utilisable, ⚠ dans l\'en-tête ; requête supprimée : colonne retirée', async () => {
   const { localPath } = s.project
   const broken = await s.invoke<{ id: string }>('queries:create', localPath, username, {

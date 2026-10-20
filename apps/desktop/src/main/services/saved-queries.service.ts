@@ -1,10 +1,11 @@
 import type { QueryColumnDef, QueryHistoryEntry, QueryParameterDef, QueryScope, ReadQuery, SavedQuery, StoredQuery, TemplateRef } from '@polenta/types'
-import { findQueryTemplate, queryCodeForHash, readQueryRecord, SUIVI_FORMAT_VERSION, validateColumnDecl, validateParameterDecls } from '@polenta/types'
+import { legacyQueryCodeForHashWithColumn, queryCodeForHash, readQueryRecord, SUIVI_FORMAT_VERSION, validateColumnDecl, validateParameterDecls } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { DashboardsService } from './dashboards.service'
 import { readPref as readPrefStore, writePref as writePrefStore } from './pref-store.util'
 import { generatePrivateId, isPrivateScopeId } from './id-scope.util'
 import { nextCounterId } from './id-counter.util'
+import { contentHash } from './dashboard-library.service'
 import {
   applyQueryTemplate, computeState, dropLegacyFile, removeSharedObject, listObjectEntries, readOnlyError, readText, readYamlFile, toYaml, withHash,
   writeObjectFolder,
@@ -106,7 +107,13 @@ export class SavedQueriesService {
     // GH70 — une requête privée ne porte pas de colonne (`.pref` édité à la main) : signalée, ignorée.
     const columnErrors = scope === 'private' && checkedColumn.decl ? [COLUMN_PRIVATE_MESSAGE] : checkedColumn.errors
     const column = columnErrors.length ? null : checkedColumn.decl
-    const hashed = queryCodeForHash(r.script, parameters, column)
+    // La colonne n'entre pas dans l'empreinte (GH70 sprint 3) ; une requête enregistrée pendant les
+    // sprints 1–2, dont l'empreinte comptait la colonne, reste reconnue comme non personnalisée.
+    let hashed = queryCodeForHash(r.script, parameters)
+    if (column && r.template?.hash && contentHash(hashed) !== r.template.hash) {
+      const legacy = legacyQueryCodeForHashWithColumn(r.script, parameters, column)
+      if (contentHash(legacy) === r.template.hash) hashed = legacy
+    }
     const template = r.template ? withHash(r.template, hashed) : undefined
     return {
       id: r.id,
@@ -129,8 +136,10 @@ export class SavedQueriesService {
   // ─── Écriture ─────────────────────────────────────────────────────────────────
 
   async create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery> {
+    if (dto.scope === 'private' && dto.column) throw columnPrivateError()
     const code = this.resolveCode(dto.script, dto.template, dto.parameters, dto.column)
-    if (dto.scope === 'private' && code.column) throw columnPrivateError()
+    // Colonne proposée par un modèle : sans objet pour une requête privée.
+    if (dto.scope === 'private') code.column = null
     const base = { title: dto.title, createdBy: dto.createdBy, createdAt: new Date().toISOString(), ...code }
     if (dto.scope === 'shared') {
       const id = await nextCounterId(this.git, repoPath, PREFIX, DIR)
@@ -155,20 +164,29 @@ export class SavedQueriesService {
     const replacing = opts.replaceLegacy && current.state.readOnly === 'legacy-sql' && !!dto.template
     if (current.state.readOnly && !replacing) throw readOnlyError(`Requête ${id}`, current.state.readOnly)
     if (dto.template && dto.parameters !== undefined) throw paramsError(['parameters est généré par le modèle : ne pas le fournir avec template'])
-    if (dto.template && dto.column !== undefined) throw columnError(['column est générée par le modèle : ne pas la fournir avec template'])
     let script = current.script
     let template: TemplateRef | undefined = current.template
     let parameters = current.parameters
     let column = current.column
     if (dto.template === null) template = undefined
-    else if (dto.template) ({ script, parameters, column, template } = applyQueryTemplate(dto.template))
+    else if (dto.template) {
+      const generated = applyQueryTemplate(dto.template)
+      ;({ script, parameters, template } = generated)
+      // Colonne indépendante du modèle (GH70 sprint 3) : conservée (même retirée) ; celle que propose
+      // le modèle n'est reprise que pour un modèle nouveau pour cette requête.
+      if (!current.template || current.template.id !== dto.template.id) column = column ?? generated.column
+    }
     if (dto.script !== undefined && !dto.template) script = dto.script
     if (dto.parameters !== undefined) parameters = checkedParameters(dto.parameters)
     // Déclaration lue invalide et non remplacée : la réécrire vide la perdrait.
     else if (current.parametersError && !dto.template) throw paramsError([current.parametersError])
     if (dto.column !== undefined) column = checkedColumn(dto.column)
     else if (current.columnError && current.scope === 'shared' && !dto.template) throw columnError([current.columnError])
-    if (current.scope === 'private' && column) throw columnPrivateError()
+    if (current.scope === 'private') {
+      if (dto.column) throw columnPrivateError()
+      column = null // colonne proposée par un modèle : sans objet pour une requête privée
+    }
+    if (template && !dto.template) template = refreshedHash(current, template)
     const next = { id, title: dto.title ?? current.title, createdBy: current.createdBy, createdAt: current.createdAt, script, parameters, column, template }
 
     if (current.scope === 'private') {
@@ -208,10 +226,8 @@ export class SavedQueriesService {
     if (current.parametersError) throw paramsError([current.parametersError])
     // GH70 — une colonne est réservée aux requêtes partagées : retirée au passage en privé
     // (confirmation côté UI) ; une déclaration lue invalide n'est pas recopiée.
-    // Un modèle qui génère une colonne ne peut pas s'appliquer à une requête privée : sa référence
-    // est retirée aussi (la copie privée est un script personnalisé).
     const column = newScope === 'shared' ? current.column : null
-    const template = newScope === 'private' && current.template && findQueryTemplate(current.template.id)?.column ? undefined : current.template
+    const template = current.template ? refreshedHash(current, current.template) : undefined
     const payload = { title: current.title, createdBy: current.createdBy, createdAt: current.createdAt, script: current.script, parameters: current.parameters, column, template }
     let moved: SavedQuery
     if (newScope === 'private') {
@@ -239,8 +255,9 @@ export class SavedQueriesService {
   private resolveCode(script: string | undefined, template: TemplateInput | undefined, parameters: QueryParameterDef[] | undefined, column: QueryColumnDef | null | undefined): QueryCode {
     if (template) {
       if (parameters !== undefined) throw paramsError(['parameters est généré par le modèle : ne pas le fournir avec template'])
-      if (column !== undefined) throw columnError(['column est générée par le modèle : ne pas la fournir avec template'])
-      return applyQueryTemplate(template)
+      const generated = applyQueryTemplate(template)
+      // Colonne fournie (même `null`) prioritaire sur celle que propose le modèle (GH70 sprint 3).
+      return column !== undefined ? { ...generated, column: checkedColumn(column) } : generated
     }
     return { script: script ?? 'export default (data, polenta) => []\n', parameters: checkedParameters(parameters), column: checkedColumn(column) }
   }
@@ -353,6 +370,14 @@ function paramsError(errors: string[]): Error {
 }
 
 const COLUMN_PRIVATE_MESSAGE = 'colonne calculée réservée aux requêtes partagées'
+
+/** GH70 sprint 3 — requête qui suit son modèle : empreinte réécrite selon le calcul actuel (sans la
+ *  colonne), pour qu'une empreinte d'avant ce calcul (colonne comprise) ne la rende pas personnalisée
+ *  dès que sa colonne change. Requête personnalisée : empreinte inchangée. */
+function refreshedHash(current: SavedQuery, template: TemplateRef): TemplateRef {
+  if (current.state.customized) return template
+  return { ...template, hash: contentHash(queryCodeForHash(current.script, current.parameters)) }
+}
 
 /** GH70 — déclaration de colonne validée (`null` = aucune), sinon erreur `[COLUMN_INVALID]`. */
 function checkedColumn(raw: QueryColumnDef | null | undefined): QueryColumnDef | null {

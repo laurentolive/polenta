@@ -127,9 +127,12 @@ export const columnSchema = z.object({
   }).describe('colonne proposée pour un type si sa catégorie OU son objectTypeRef figure ici'),
   type: z.enum(COMPUTED_COLUMN_TYPES as unknown as [string, ...string[]]).describe('type de champ qui gouverne le rendu de la cellule'),
   values: z.array(z.string()).optional().describe('enum / multi_enum : valeurs possibles'),
+  idColumn: z.string().nullable().optional().describe("colonne du résultat qui porte l'ID de l'élément (défaut id ; null = défaut)"),
+  valueColumn: z.string().nullable().optional().describe('colonne du résultat qui porte la valeur (défaut value ; null = défaut)'),
+  tooltipColumn: z.string().nullable().optional().describe("colonne du résultat qui porte l'infobulle (défaut tooltip ; null = défaut)"),
 }).describe(
   'colonne calculée de la Vue Système (requête partagée seulement) : le script renvoie une ligne par élément ' +
-  '{ id (ID de l\'exigence / du test), value, tooltip?, _ids? (cible ouverte au double-clic) }',
+  '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible ouverte au double-clic)',
 )
 
 /** Déclaration de colonne validée (`null` = aucune), ou l'erreur `COLUMN_INVALID` à renvoyer. */

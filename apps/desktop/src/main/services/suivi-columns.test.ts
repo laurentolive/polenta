@@ -5,9 +5,9 @@ import * as yaml from 'js-yaml'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { QuickJSWASMModule } from 'quickjs-emscripten-core'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { QueryColumnDef, ScriptRunResult } from '@polenta/types'
+import type { GraphRow, QueryColumnDef, ScriptRunResult } from '@polenta/types'
 import {
-  buildHost, columnAppliesTo, columnFieldDef, columnValuesFromRows, computedColumnKey, findQueryTemplate, hashableText, isComputedColumnKey,
+  buildHost, columnAppliesTo, columnFieldDef, columnValuesFromRows, computedColumnKey, findQueryTemplate, hashableText, isComputedColumnKey, legacyQueryCodeForHashWithColumn,
   queryCode, queryCodeForHash, validateColumnDecl,
 } from '@polenta/types'
 import { GitService } from './git.service'
@@ -98,10 +98,32 @@ describe('GH70 — déclaration de colonne', () => {
     expect(columnValuesFromRows([{ id: 'T1' }]).values.size).toBe(0)
   })
 
-  it('C4 — sans colonne, empreinte identique à avant GH70 ; avec colonne, elle change', () => {
+  it('B — colonnes du résultat choisies (idColumn / valueColumn / tooltipColumn)', () => {
+    const decl = validateColumnDecl({ ...COLUMN, idColumn: ' testCaseId ', valueColumn: 'status', tooltipColumn: 'campaignTitle' })
+    expect(decl.errors).toEqual([])
+    expect(decl.decl).toMatchObject({ idColumn: 'testCaseId', valueColumn: 'status', tooltipColumn: 'campaignTitle' })
+    // Vide / null : défaut, rien d'écrit.
+    expect(validateColumnDecl({ ...COLUMN, idColumn: '', valueColumn: null }).decl).not.toHaveProperty('idColumn')
+    expect(validateColumnDecl({ ...COLUMN, idColumn: 3 }).errors).toEqual(['column.idColumn : nom de colonne attendu'])
+    const { values, error } = columnValuesFromRows([
+      { testCaseId: 'T1', status: 'FAIL', campaignTitle: 'Camp A', _ids: ['CAMP-1/e1'] },
+      { testCaseId: 'T1', status: 'PASS', campaignTitle: 'Camp B' },
+      { testCaseId: 'T2', status: 'pending', campaignTitle: null },
+    ], decl.decl)
+    expect(error).toBeUndefined()
+    expect(values.get('T1')).toEqual({ value: 'FAIL', tooltip: 'Camp A', target: 'CAMP-1/e1' })
+    expect(values.get('T2')).toEqual({ value: 'pending' })
+    // Infobulle : texte ou nombre seulement.
+    expect(columnValuesFromRows([{ id: 'T1', value: 'x', tooltip: { a: 1 } } as unknown as GraphRow]).values.get('T1')).toEqual({ value: 'x' })
+    expect(columnValuesFromRows([{ id: 'T1', value: 'x', tooltip: 3 }]).values.get('T1')).toEqual({ value: 'x', tooltip: '3' })
+    // 17 — colonne absente du résultat : erreur nommée.
+    expect(columnValuesFromRows([{ id: 'T1', value: 'x' }], decl.decl).error).toMatch(/colonne « testCaseId » manquante/)
+    expect(columnValuesFromRows([{ testCaseId: 'T1' }], decl.decl).error).toMatch(/colonne « status » manquante/)
+  })
+
+  it('C4 — la colonne n\'entre pas dans l\'empreinte (sprint 3) ; empreinte des seeds inchangée', () => {
     expect(queryCodeForHash('s', [])).toBe('s')
-    expect(queryCodeForHash('s', [], null)).toBe('s')
-    expect(queryCodeForHash('s', [], COLUMN)).not.toBe('s')
+    expect(legacyQueryCodeForHashWithColumn('s', [], COLUMN)).not.toBe('s')
     // Seeds Campagnes (aucune colonne) : empreinte inchangée.
     for (const q of CAMPAIGN_SEED_QUERIES) {
       const code = queryCode(q.template, sha256)
@@ -226,16 +248,47 @@ describe('GH70 — stockage de la déclaration', () => {
     expect(yaml.load(read('queries/QUERY-0002/query.yaml'))).not.toHaveProperty('column')
   })
 
-  it('N1 — modèle : colonne générée, requête non personnalisée ; column avec template refusée', async () => {
+  it('N1 / 16 — modèle : colonne proposée, modifiable sans détacher la requête de son modèle', async () => {
     const q = await queries.create(repo, U, { title: 'Dernier résultat', scope: 'shared', createdBy: U, template: { id: 'campaign-last-result', params: {} } })
     expect(q.column).toEqual(COLUMN)
     expect(q.state.customized).toBe(false)
     expect(yaml.load(read('queries/QUERY-0001/query.yaml'))).toMatchObject({ column: COLUMN, template: { id: 'campaign-last-result' } })
-    // Colonne modifiée seule → personnalisée.
     const edited = await queries.update(repo, U, q.id, { column: { ...COLUMN, label: 'Résultat' } })
-    expect(edited.state.customized).toBe(true)
-    await expect(queries.update(repo, U, q.id, { template: { id: 'campaign-last-result', params: {} }, column: null })).rejects.toThrow('[COLUMN_INVALID]')
-    await expect(queries.create(repo, U, { title: 'X', scope: 'shared', createdBy: U, template: { id: 'campaign-last-result', params: {} }, column: COLUMN })).rejects.toThrow('[COLUMN_INVALID]')
+    expect(edited.state.customized).toBe(false)
+    // Modèle réappliqué : colonne actuelle conservée ; `null` explicite la retire.
+    expect((await queries.update(repo, U, q.id, { template: { id: 'campaign-last-result', params: {} } })).column?.label).toBe('Résultat')
+    expect((await queries.update(repo, U, q.id, { template: { id: 'campaign-last-result', params: {} }, column: null })).column).toBeNull()
+    // Colonne retirée : pas réintroduite quand le même modèle est réappliqué ; proposée par un autre modèle.
+    expect((await queries.update(repo, U, q.id, { template: { id: 'campaign-last-result', params: {} } })).column).toBeNull()
+    const other = await queries.create(repo, U, { title: 'O', scope: 'shared', createdBy: U, template: { id: 'campaign-entries', params: {} } })
+    expect((await queries.update(repo, U, other.id, { template: { id: 'campaign-last-result', params: {} } })).column).toEqual(COLUMN)
+    // Création : colonne fournie prioritaire sur celle du modèle.
+    const own = await queries.create(repo, U, { title: 'X', scope: 'shared', createdBy: U, template: { id: 'campaign-last-result', params: {} }, column: { ...COLUMN, label: 'Mien' } })
+    expect(own.column?.label).toBe('Mien')
+  })
+
+  it('15 — requête « Entrées de campagne » (mode modèle) déclarée en colonne, non personnalisée', async () => {
+    const col = { label: 'Statut en campagne', appliesTo: { categories: ['test' as const], objectTypes: [] }, type: 'text' as const, idColumn: 'testCaseId', valueColumn: 'status' }
+    const q = await queries.create(repo, U, { title: 'E', scope: 'shared', createdBy: U, template: { id: 'campaign-entries', params: {} }, column: col })
+    expect(q.column).toEqual(col)
+    expect(q.state.customized).toBe(false)
+    const plain = await queries.create(repo, U, { title: 'E2', scope: 'shared', createdBy: U, template: { id: 'campaign-entries', params: {} } })
+    expect((await queries.update(repo, U, plain.id, { column: col })).state.customized).toBe(false)
+  })
+
+  it('compatibilité : empreinte calculée avec la colonne (sprints 1–2) reconnue, non personnalisée', async () => {
+    const q = await queries.create(repo, U, { title: 'Q', scope: 'shared', createdBy: U, template: { id: 'campaign-last-result', params: {} } })
+    const file = path.join(repo, 'queries/QUERY-0001/query.yaml')
+    const stored = yaml.load(read('queries/QUERY-0001/query.yaml')) as { template: { hash: string } }
+    const legacy = sha256(hashableText(legacyQueryCodeForHashWithColumn(q.script, [], COLUMN)))
+    fs.writeFileSync(file, read('queries/QUERY-0001/query.yaml').replace(stored.template.hash, legacy))
+    expect((await queries.findOne(repo, U, q.id))!.state.customized).toBe(false)
+    // Colonne modifiée ensuite : empreinte réécrite, toujours non personnalisée.
+    expect((await queries.update(repo, U, q.id, { column: { ...COLUMN, label: 'Autre' } })).state.customized).toBe(false)
+    expect((await queries.update(repo, U, q.id, { column: null })).state.customized).toBe(false)
+    // Script modifié : personnalisée, quelle que soit l'empreinte.
+    fs.writeFileSync(path.join(repo, 'queries/QUERY-0001/script.js'), 'export default () => []\n')
+    expect((await queries.findOne(repo, U, q.id))!.state.customized).toBe(true)
   })
 
   it('mise à jour : ajout, retrait (null), conservée si non fournie', async () => {
@@ -248,7 +301,10 @@ describe('GH70 — stockage de la déclaration', () => {
 
   it('C1 — requête privée : column refusée (création, mise à jour)', async () => {
     await expect(queries.create(repo, U, { title: 'Q', scope: 'private', createdBy: U, script: SCRIPT, column: COLUMN })).rejects.toThrow('[COLUMN_PRIVATE]')
-    await expect(queries.create(repo, U, { title: 'Q', scope: 'private', createdBy: U, template: { id: 'campaign-last-result', params: {} } })).rejects.toThrow('[COLUMN_PRIVATE]')
+    // Colonne seulement proposée par le modèle : sans objet en privé, retirée.
+    const fromTpl = await queries.create(repo, U, { title: 'T', scope: 'private', createdBy: U, template: { id: 'campaign-last-result', params: {} } })
+    expect(fromTpl.column).toBeNull()
+    expect(fromTpl.template?.id).toBe('campaign-last-result')
     const p = await queries.create(repo, U, { title: 'Q', scope: 'private', createdBy: U, script: SCRIPT })
     expect(p.column).toBeNull()
     await expect(queries.update(repo, U, p.id, { column: COLUMN })).rejects.toThrow('[COLUMN_PRIVATE]')
@@ -264,15 +320,13 @@ describe('GH70 — stockage de la déclaration', () => {
     expect(back.column).toBeNull()
   })
 
-  it("C2 — passage en privé d'une requête issue d'un modèle à colonne : référence du modèle retirée", async () => {
+  it("C2 — passage en privé d'une requête issue d'un modèle à colonne : colonne retirée, modèle conservé", async () => {
     const q = await queries.create(repo, U, { title: 'Q', scope: 'shared', createdBy: U, template: { id: 'campaign-last-result', params: {} } })
     const priv = await queries.setScope(repo, U, q.id, 'private')
-    expect(priv.template).toBeUndefined()
+    expect(priv.template?.id).toBe('campaign-last-result')
+    expect(priv.state.customized).toBe(false)
     expect(priv.column).toBeNull()
-    expect((await queries.update(repo, U, priv.id, { title: 'Q bis' })).title).toBe('Q bis')
-    // Modèle sans colonne : référence conservée.
-    const other = await queries.create(repo, U, { title: 'E', scope: 'shared', createdBy: U, template: { id: 'campaign-entries', params: {} } })
-    expect((await queries.setScope(repo, U, other.id, 'private')).template?.id).toBe('campaign-entries')
+    expect((await queries.update(repo, U, priv.id, { template: { id: 'campaign-last-result', params: {} } })).column).toBeNull()
   })
 
   it('C3 — déclaration modifiée à la main invalide : columnError, exécution possible, pas d\'écrasement silencieux', async () => {
@@ -355,14 +409,18 @@ describe('GH70 — tools MCP des requêtes', () => {
 
   it('C1 / C5 — refus : privée, column avec template, déclaration invalide', async () => {
     expect((await call('create_query', { title: 'Q', script: SCRIPT, column: COLUMN, scope: 'private' })).text).toMatch(/PRIVATE_SCOPE_UNAVAILABLE|COLUMN_PRIVATE/)
-    expect((await call('create_query', { title: 'Q', template: { id: 'campaign-last-result', params: {} }, column: COLUMN })).text).toContain('[INVALID_INPUT]')
+    // Sprint 3 : column accepté avec un modèle (prioritaire sur celle qu'il propose).
+    const withTpl = await call('create_query', { title: 'Q', template: { id: 'campaign-entries', params: {} }, column: { ...COLUMN, idColumn: 'testCaseId', valueColumn: 'status' }, dryRun: false })
+    expect(withTpl.json.query).toMatchObject({ column: { idColumn: 'testCaseId', valueColumn: 'status' }, state: { customized: false } })
     expect((await call('create_query', { title: 'Q', script: SCRIPT, column: { ...COLUMN, values: [] } })).text).toContain('[COLUMN_INVALID]')
   })
 
-  it("C1 — update_query d'une requête privée vers un modèle à colonne : refus, dès le dryRun", async () => {
+  it("C1 — update_query d'une requête privée : colonne fournie refusée dès le dryRun ; proposée par un modèle, ignorée", async () => {
     const p = await queries.create(repo, U, { title: 'P', scope: 'private', createdBy: U, script: SCRIPT })
-    expect((await call('update_query', { id: p.id, template: { id: 'campaign-last-result', params: {} } })).text).toContain('[COLUMN_PRIVATE]')
     expect((await call('update_query', { id: p.id, column: COLUMN })).text).toContain('[COLUMN_PRIVATE]')
+    const tpl = await call('update_query', { id: p.id, template: { id: 'campaign-last-result', params: {} } })
+    expect(tpl.isError).toBe(false)
+    expect(tpl.json.query.column).toBeNull()
   })
 
   it('update_query : ajout, retrait par null ; déclaration lue invalide → COLUMN_INVALID', async () => {

@@ -22,7 +22,17 @@ export interface QueryColumnDef {
   type: ComputedColumnType
   /** `enum` / `multi_enum` : valeurs possibles (obligatoire, non vide). */
   values?: string[]
+  /** Colonne du résultat qui porte l'ID de l'élément (défaut `id`). */
+  idColumn?: string
+  /** Colonne du résultat qui porte la valeur (défaut `value`). */
+  valueColumn?: string
+  /** Colonne du résultat qui porte l'infobulle (défaut `tooltip` ; absente → pas d'infobulle). */
+  tooltipColumn?: string
 }
+
+export const COLUMN_DEFAULT_ID = 'id'
+export const COLUMN_DEFAULT_VALUE = 'value'
+export const COLUMN_DEFAULT_TOOLTIP = 'tooltip'
 
 export const COMPUTED_COLUMN_TYPES: readonly ComputedColumnType[] = [
   'text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user',
@@ -94,9 +104,18 @@ export function validateColumnDecl(raw: unknown): { decl: QueryColumnDef | null;
     errors.push('column.values : réservé aux types enum et multi_enum')
   }
 
+  // Colonnes du résultat (GH70 sprint 3) : nom non vide si fourni ; vide / null = défaut.
+  const mapping: Pick<QueryColumnDef, 'idColumn' | 'valueColumn' | 'tooltipColumn'> = {}
+  for (const key of ['idColumn', 'valueColumn', 'tooltipColumn'] as const) {
+    const v = raw[key]
+    if (v === undefined || v === null || v === '') continue
+    if (typeof v !== 'string' || !v.trim()) errors.push(`column.${key} : nom de colonne attendu`)
+    else mapping[key] = v.trim()
+  }
+
   if (errors.length) return { decl: null, errors }
   return {
-    decl: { label: label!, appliesTo: { categories, objectTypes }, type, ...(values ? { values } : {}) },
+    decl: { label: label!, appliesTo: { categories, objectTypes }, type, ...(values ? { values } : {}), ...mapping },
     errors: [],
   }
 }
@@ -136,21 +155,31 @@ function cellText(v: unknown): string {
 }
 
 /**
- * Valeurs d'une colonne à partir des lignes du script (spec §4). Première ligne d'un `id` retenue ;
- * ligne sans `id` ou sans `value` → `error` (aucune valeur rendue).
+ * Valeurs d'une colonne à partir des lignes du script (spec §4, §9). Colonnes lues : `idColumn` /
+ * `valueColumn` / `tooltipColumn` de la déclaration, à défaut `id` / `value` / `tooltip`. Première
+ * ligne d'un ID retenue ; ligne sans ID ou sans valeur → `error` (aucune valeur rendue).
  */
-export function columnValuesFromRows(rows: readonly GraphRow[]): { values: Map<string, ComputedCell>; error?: string } {
+export function columnValuesFromRows(
+  rows: readonly GraphRow[],
+  decl?: Pick<QueryColumnDef, 'idColumn' | 'valueColumn' | 'tooltipColumn'> | null,
+): { values: Map<string, ComputedCell>; error?: string } {
+  const idCol = decl?.idColumn || COLUMN_DEFAULT_ID
+  const valueCol = decl?.valueColumn || COLUMN_DEFAULT_VALUE
+  const tooltipCol = decl?.tooltipColumn || COLUMN_DEFAULT_TOOLTIP
   const values = new Map<string, ComputedCell>()
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i] as Raw
-    const id = typeof r.id === 'string' ? r.id.trim() : ''
-    if (!id) return { values: new Map(), error: `Ligne ${i + 1} : colonne « id » manquante (ID de l'élément attendu).` }
-    if (!Object.prototype.hasOwnProperty.call(r, 'value')) return { values: new Map(), error: `Ligne ${i + 1} (${id}) : colonne « value » manquante.` }
+    const rawId = r[idCol]
+    const id = typeof rawId === 'string' ? rawId.trim() : typeof rawId === 'number' ? String(rawId) : ''
+    if (!id) return { values: new Map(), error: `Ligne ${i + 1} : colonne « ${idCol} » manquante (ID de l'élément attendu).` }
+    if (!Object.prototype.hasOwnProperty.call(r, valueCol)) return { values: new Map(), error: `Ligne ${i + 1} (${id}) : colonne « ${valueCol} » manquante.` }
     if (values.has(id)) continue
     const ids = Array.isArray(r._ids) ? r._ids.filter((x): x is string => typeof x === 'string' && !!x) : []
+    const tooltip = r[tooltipCol]
     values.set(id, {
-      value: cellText(r.value),
-      ...(typeof r.tooltip === 'string' && r.tooltip ? { tooltip: r.tooltip } : {}),
+      value: cellText(r[valueCol]),
+      // Infobulle : texte ou nombre seulement (un objet s'afficherait « [object Object] »).
+      ...((typeof tooltip === 'string' && tooltip) || typeof tooltip === 'number' ? { tooltip: String(tooltip) } : {}),
       ...(ids.length ? { target: ids[0] } : {}),
     })
   }

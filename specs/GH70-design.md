@@ -341,3 +341,19 @@ privé.
 - Mises à jour SPEC (dernier sprint) : SPEC-DASHBOARDS §4, §5, §7.0 ; SPEC-SYSTEM-VIEW §Vue Excel,
   §Vue Word, §Configuration des champs, §Persistance ; SPEC-MCP-SERVER ; SPEC-TECH-stack §1.1
   (#70 livré) ; SPEC-INDEX.
+
+## 7. Sprint 3 — évolutions A et B (spec §9)
+
+- `QueryColumnDef` : `idColumn?`, `valueColumn?`, `tooltipColumn?` (chaînes non vides, validées) ;
+  `columnValuesFromRows(rows, decl?)` lit ces colonnes (défauts `id` / `value` / `tooltip`).
+- Empreinte : `queryCodeForHash(script, parameters)` sans colonne (retour au calcul d'avant GH70) ;
+  `queryCode` renvoie toujours `column` (proposée par le modèle). Compatibilité : `toQuery` compare
+  aussi l'empreinte stockée à l'ancien calcul « avec colonne » ; si c'est elle qui correspond, la
+  requête n'est pas personnalisée (requêtes créées pendant les sprints 1–2).
+- Service : `column` accepté avec `template` (création : défaut = colonne proposée par le modèle ;
+  mise à jour : `column` fourni sinon colonne actuelle, sinon colonne proposée par le nouveau modèle) ;
+  `setScope` privé retire la colonne sans toucher au modèle. MCP : refus « template + column » levés.
+- `/query` : `ColumnDeclEditor` éditable en mode modèle ; colonne proposée par le modèle préremplie à
+  la sélection du modèle sur une requête non enregistrée ; trois listes « Identifiant / Valeur /
+  Infobulle » alimentées par `result.columns`.
+- Hook : passe la déclaration à `columnValuesFromRows`.

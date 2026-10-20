@@ -176,7 +176,8 @@ Logique pure : `packages/types/src/suivi-params.ts` (main, MCP, renderer).
 
 ### 5.2 Colonnes calculées de la Vue Système (GH70)
 
-Une **requête partagée** peut déclarer `column` dans `query.yaml` : elle devient une colonne
+Une **requête partagée** — écrite en Script **ou générée par un modèle** — peut déclarer `column`
+dans `query.yaml` : elle devient une colonne
 proposée dans le panneau ⚙️ de la Vue Système (SPEC-SYSTEM-VIEW §Configuration des champs) pour
 les types qu'elle désigne. Mécanisme générique : Polenta ne sait rien de ce que calcule le script
 (principe GH79).
@@ -187,22 +188,36 @@ column:
   appliesTo: { categories: [test], objectTypes: [] }   # catégorie OU type précis <nœud>::<type>
   type: enum                              # type de champ (hors drawio) : rendu de la cellule
   values: [PASS, FAIL, BLOCKED, INCOMPLETE]   # enum / multi_enum seulement
+  idColumn: testCaseId        # colonne du résultat : ID de l'élément (défaut id)
+  valueColumn: status         # colonne du résultat : valeur (défaut value)
+  tooltipColumn: campaignTitle  # colonne du résultat : infobulle (défaut tooltip)
 ```
 
-- **Contrat de ligne** : une ligne par élément `{ id, value, tooltip?, _ids? }` — `id` = ID de
-  l'exigence ou du test, `value` = valeur du champ (`null` = vide), `tooltip` = infobulle, premier
-  `_ids` = cible ouverte au double-clic. Première ligne d'un `id` retenue, `id` inconnu ignoré,
-  valeur hors type affichée telle quelle ; ligne sans `id` ou sans `value` → erreur de la colonne.
+- **Contrat de ligne** : une ligne par élément ; la colonne `idColumn` (défaut `id`) porte l'ID de
+  l'exigence ou du test, `valueColumn` (défaut `value`) la valeur du champ (`null` = vide),
+  `tooltipColumn` (défaut `tooltip`) l'infobulle (texte ou nombre), le premier `_ids` la cible
+  ouverte au double-clic. Une requête existante (ex. « Entrées de campagne » : `testCaseId` →
+  `status`) sert donc sans code. Première ligne d'un ID retenue (l'ordre, donc la règle, est celle
+  du script), ID inconnu ignoré, valeur hors type affichée telle quelle ; colonne d'ID ou de valeur
+  absente d'une ligne → erreur de la colonne (« colonne « X » manquante »).
 - **Validation** (`validateColumnDecl`, `packages/types/src/suivi-columns.ts`) : déclaration lue
   invalide → `columnError`, requête toujours exécutable, colonne non proposée ; la réécrire sans
-  corriger est refusée (`[COLUMN_INVALID]`). Requête privée : refus `[COLUMN_PRIVATE]` (création,
-  mise à jour, modèle qui génère une colonne) ; `.pref` qui en porte une → `columnError`. Passage
-  partagé → privé : déclaration retirée, et la référence d'un modèle qui génère une colonne.
-- **Empreinte** : la déclaration entre dans l'empreinte du modèle (`queryCodeForHash(script,
-  parameters, column)`), seulement si elle est présente — sans colonne, empreinte inchangée.
+  corriger est refusée (`[COLUMN_INVALID]`). Requête privée : colonne fournie refusée
+  (`[COLUMN_PRIVATE]`), colonne seulement proposée par un modèle ignorée ; `.pref` qui en porte une
+  → `columnError`. Passage partagé → privé : déclaration retirée (modèle conservé).
+- **Indépendante du modèle** : la déclaration n'entre pas dans l'empreinte (`queryCodeForHash(script,
+  parameters)`) ; la déclarer, la modifier ou la retirer ne détache pas la requête de son modèle. Un
+  modèle peut **proposer** une déclaration (`QueryTemplate.column`, ex. `campaign-last-result`) :
+  reprise à la création (sauf colonne fournie, et jamais en privé) et quand un **autre** modèle est
+  appliqué ; réappliquer le même modèle garde la colonne actuelle, même retirée. Compatibilité :
+  une empreinte calculée avec la colonne (sprints 1–2 de GH70) est reconnue, puis réécrite à la
+  prochaine écriture.
 - **Saisie** : section « Utiliser comme colonne dans la Vue Système » de la vue `/query`
-  (`ColumnDeclEditor`) ; lecture seule en mode modèle ; désactivée sur une requête privée ;
-  « Enregistrer sous… » en privé refusé ; avertissement si `appliesTo` ne désigne aucun type.
+  (`ColumnDeclEditor`), en mode Script comme en mode modèle (colonne proposée préremplie sur une
+  requête non enregistrée, sans écraser une saisie) ; listes « Colonne identifiant / valeur /
+  infobulle » alimentées par les colonnes du dernier résultat ; désactivée sur une requête privée ;
+  « Enregistrer sous… » en privé refusé si une colonne est saisie ; avertissement si `appliesTo` ne
+  désigne aucun type.
 - **Exécution** : `useComputedColumns` (renderer) lit les requêtes partagées du repo ouvert du
   projet, quel que soit le repo affiché dans la Vue Système ; une exécution `suivi:run` par colonne
   visible (onglet Tableau ou Document), clé `['widget-query-result', …]` (rafraîchie comme les

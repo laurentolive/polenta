@@ -55,7 +55,7 @@ const createQueryInput = {
   script: z.string().min(1).optional().describe('script de données (exclusif avec template)'),
   template: templateSchema.optional().describe('modèle de requête + paramètres : le script est généré (exclusif avec script)'),
   parameters: parametersSchema.optional().describe('paramètres choisis à l\'affichage (avec script ; générés par un modèle)'),
-  column: columnSchema.optional().describe('colonne calculée de la Vue Système (avec script, scope shared ; un modèle génère la sienne)'),
+  column: columnSchema.optional().describe('colonne calculée de la Vue Système (scope shared ; prioritaire sur celle que propose un modèle)'),
   scope: scopeSchema.optional().default('shared'),
   dryRun: z.boolean().optional().default(true),
 }
@@ -66,7 +66,7 @@ const updateQueryInput = {
   script: z.string().min(1).optional().describe('nouveau script (la requête est alors détachée de son modèle)'),
   template: templateSchema.optional().describe('nouveau modèle / paramètres : script régénéré'),
   parameters: parametersSchema.optional().describe('nouvelle déclaration de paramètres choisis à l\'affichage (pas avec template)'),
-  column: columnSchema.nullable().optional().describe('nouvelle déclaration de colonne calculée (pas avec template) ; null la retire'),
+  column: columnSchema.nullable().optional().describe('nouvelle déclaration de colonne calculée ; null la retire ; ne détache pas du modèle'),
   dryRun: z.boolean().optional().default(true),
 }
 
@@ -139,8 +139,9 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
         'Crée une requête de la vue Suivi : un script JS fourni, ou un modèle + paramètres (cf. list_templates). ' +
         'parameters (avec script) : paramètres choisis à l\'affichage dans la barre du dashboard, lus dans ' +
         'polenta.params (un modèle génère les siens). ' +
-        'column (avec script, scope shared) : la requête devient une colonne calculée proposée dans la Vue Système ' +
-        '(panneau des champs) ; son script renvoie une ligne par élément { id, value, tooltip?, _ids? }. ' +
+        'column (scope shared, avec script ou template — un modèle peut en proposer une) : la requête devient une ' +
+        'colonne calculée proposée dans la Vue Système (panneau des champs) ; son script renvoie une ligne par élément ' +
+        '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible). ' +
         'dryRun (défaut true) : EXÉCUTE le script et retourne un aperçu SANS RIEN ÉCRIRE. Un script en erreur ' +
         'est enregistré avec un avertissement SCRIPT_ERROR. Pas d\'autre requête du même scope avec le même ' +
         'titre. scope private exige --user.',
@@ -153,7 +154,6 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       if (scope === 'private' && !hasUser) return suiviError('PRIVATE_SCOPE_UNAVAILABLE', PRIVATE_SCOPE_REASON)
       if ((script === undefined) === (template === undefined)) return suiviError('INVALID_INPUT', 'Fournir exactement un de script ou template.')
       if (template && parameters !== undefined) return suiviError('INVALID_INPUT', 'parameters est généré par le modèle : ne pas le fournir avec template.')
-      if (template && column !== undefined) return suiviError('INVALID_INPUT', 'column est générée par le modèle : ne pas la fournir avec template.')
       if (template) {
         const issue = validateTemplateInput('query', template)
         if (issue) return suiviError(issue.code, issue.reason)
@@ -171,8 +171,9 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       const generated = template ? applyQueryTemplate(template) : null
       const code = generated ? generated.script : script!
       const decls = generated ? generated.parameters : checked.decls
-      const col = generated ? generated.column : checkedCol.column
-      if (scope === 'private' && col) return suiviError('COLUMN_PRIVATE', 'Une colonne calculée est réservée aux requêtes partagées (scope shared).')
+      if (scope === 'private' && checkedCol.column) return suiviError('COLUMN_PRIVATE', 'Une colonne calculée est réservée aux requêtes partagées (scope shared).')
+      // Colonne fournie prioritaire sur celle que propose le modèle ; aucune pour une requête privée.
+      const col = scope === 'private' ? null : column !== undefined ? checkedCol.column : generated ? generated.column : null
       // Aperçu avec les valeurs par défaut (un paramètre obligatoire sans défaut → avertissement).
       const run = await runScript(c, { script: code, parameters: decls })
       const warnings = scriptWarnings(run)
@@ -181,7 +182,7 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
         return jsonToolResult({ dryRun: true, query: { id, title: cleanTitle, scope, script: code, parameters: decls, column: col, ...(template ? { template } : {}) }, preview: preview(run), warnings })
       }
       const query = await c.savedQueries.create(c.repoPath, username, {
-        title: cleanTitle, scope, createdBy: 'mcp', ...(template ? { template } : { script, parameters: decls, column: col }),
+        title: cleanTitle, scope, createdBy: 'mcp', ...(template ? { template, ...(column !== undefined ? { column: col } : {}) } : { script, parameters: decls, column: col }),
       })
       return jsonToolResult({ dryRun: false, query, preview: preview(run), warnings })
     },
@@ -209,7 +210,6 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       if (existing.state.readOnly) return suiviError('SUIVI_READ_ONLY', `Requête ${id} en lecture seule (${existing.state.readOnly}).`)
       if (script !== undefined && template !== undefined) return suiviError('INVALID_INPUT', 'Fournir script ou template, pas les deux.')
       if (template && parameters !== undefined) return suiviError('INVALID_INPUT', 'parameters est généré par le modèle : ne pas le fournir avec template.')
-      if (template && column !== undefined) return suiviError('INVALID_INPUT', 'column est générée par le modèle : ne pas la fournir avec template.')
       if (template) {
         const issue = validateTemplateInput('query', template)
         if (issue) return suiviError(issue.code, issue.reason)
@@ -242,8 +242,10 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
       const generated = template ? applyQueryTemplate(template) : null
       const code = generated ? generated.script : script ?? existing.script
       const decls = generated ? generated.parameters : newDecls ?? existing.parameters
-      const col = generated ? generated.column : newColumn !== undefined ? newColumn : existing.column
-      if (col && existing.scope === 'private') return suiviError('COLUMN_PRIVATE', 'Une colonne calculée est réservée aux requêtes partagées.')
+      if (newColumn && existing.scope === 'private') return suiviError('COLUMN_PRIVATE', 'Une colonne calculée est réservée aux requêtes partagées.')
+      // Même règle que le service : colonne fournie > colonne actuelle > proposée par un modèle nouveau.
+      const newTemplate = !!template && (!existing.template || existing.template.id !== template.id)
+      const col = existing.scope === 'private' ? null : newColumn !== undefined ? newColumn : existing.column ?? (newTemplate ? generated?.column ?? null : null)
       const run = await runScript(c, { script: code, parameters: decls })
       const dto: UpdateSavedQueryDto = {
         ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),

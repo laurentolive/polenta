@@ -888,15 +888,20 @@ export function queryCode(input: { id: string; params: Record<string, unknown> }
   const script = tpl.generate(input.params)
   const parameters = tpl.parameters(input.params)
   const column = tpl.column?.(input.params) ?? null
-  return { script, parameters, column, template: { id: tpl.id, version: tpl.version, params: input.params, hash: hash(hashableText(queryCodeForHash(script, parameters, column))) } }
+  return { script, parameters, column, template: { id: tpl.id, version: tpl.version, params: input.params, hash: hash(hashableText(queryCodeForHash(script, parameters))) } }
 }
 
 /** Texte soumis à l'empreinte d'une requête : script, plus la déclaration de paramètres s'il y en a
- *  (GH93 — modifier la déclaration détache aussi la requête de son modèle), plus la colonne s'il y
- *  en a une (GH70 — sans colonne, empreinte identique à avant GH70). */
-export function queryCodeForHash(script: string, parameters: readonly QueryParameterDef[] | undefined, column?: QueryColumnDef | null): string {
-  const base = parameters && parameters.length ? `${script}\n\u0000\n${stableJson(parameters, 2)}` : script
-  return column ? `${base}\n\u0000column\n${stableJson(column, 2)}` : base
+ *  (GH93 — modifier la déclaration détache aussi la requête de son modèle). La colonne calculée
+ *  (GH70) n'en fait pas partie : la déclarer ou la modifier ne détache pas la requête. */
+export function queryCodeForHash(script: string, parameters: readonly QueryParameterDef[] | undefined): string {
+  return parameters && parameters.length ? `${script}\n\u0000\n${stableJson(parameters, 2)}` : script
+}
+
+/** GH70 — empreinte telle que calculée pendant les sprints 1–2 (colonne comprise) : une requête
+ *  enregistrée alors n'est pas vue comme personnalisée. */
+export function legacyQueryCodeForHashWithColumn(script: string, parameters: readonly QueryParameterDef[] | undefined, column: QueryColumnDef): string {
+  return `${queryCodeForHash(script, parameters)}\n\u0000column\n${stableJson(column, 2)}`
 }
 
 /** Code généré par un modèle de widget et sa référence. */

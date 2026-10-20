@@ -54,31 +54,85 @@ export function ColumnDeclEditor({ value, onChange, defaultLabel, objectTypes, r
     onChange(next)
   }
   const toggleIn = <T extends string>(list: T[], item: T): T[] => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item])
+  // Liste des colonnes du résultat (valeur enregistrée comprise, signalée si absente du résultat).
+  const columnSelect = (opts: {
+    current: string; options: string[]; label: string; testId: string; onSelect: (v: string) => void; emptyLabel?: string
+  }) => (
+    <select
+      value={opts.current}
+      disabled={disabled}
+      onChange={(e) => opts.onSelect(e.target.value)}
+      className="input-field text-xs py-1 w-36 font-mono"
+      aria-label={opts.label}
+      data-testid={opts.testId}
+    >
+      {opts.emptyLabel !== undefined && <option value="">{opts.emptyLabel}</option>}
+      {[...new Set([...(opts.current ? [opts.current] : []), ...opts.options, ...resultColumns])].map((c) => (
+        <option key={c} value={c}>{c}{!resultColumns.includes(c) ? ` (${t('queryPage.column.notInResult')})` : ''}</option>
+      ))}
+    </select>
+  )
+
   // Colonne du résultat : la valeur par défaut n'est pas écrite (déclaration minimale).
   const mappingSelect = (key: 'idColumn' | 'valueColumn' | 'tooltipColumn', fallback: string, label: string) => {
     if (!value) return null
-    const current = value[key] ?? fallback
-    const options = [...new Set([fallback, current, ...resultColumns])]
     return (
       <Field label={label} hint={t('queryPage.column.mappingHint')}>
-        <select
-          value={current}
-          disabled={disabled}
-          onChange={(e) => {
+        {columnSelect({
+          current: value[key] ?? fallback, options: [fallback], label, testId: `column-decl-${key}`,
+          onSelect: (v) => {
             const next = { ...value }
-            if (e.target.value === fallback) delete next[key]
-            else next[key] = e.target.value
+            if (v === fallback) delete next[key]
+            else next[key] = v
             onChange(next)
-          }}
-          className="input-field text-xs py-1 w-36 font-mono"
-          aria-label={label}
-          data-testid={`column-decl-${key}`}
-        >
-          {options.map((c) => (
-            <option key={c} value={c}>{c}{!resultColumns.includes(c) ? ` (${t('queryPage.column.notInResult')})` : ''}</option>
-          ))}
-        </select>
+          },
+        })}
       </Field>
+    )
+  }
+
+  // GH126 — colonne éclatée : une sous-colonne par valeur de `splitColumn`, libellée par
+  // `splitLabelColumn` (option vide = la valeur). Décocher retire les deux propriétés.
+  const splitFields = () => {
+    if (!value) return null
+    const on = value.splitColumn !== undefined
+    const set = (patch: Pick<QueryColumnDef, 'splitColumn' | 'splitLabelColumn'>) => {
+      const next = { ...value, ...patch }
+      if (!next.splitColumn) { delete next.splitColumn; delete next.splitLabelColumn }
+      if (!next.splitLabelColumn) delete next.splitLabelColumn
+      onChange(next)
+    }
+    // Défaut : première colonne du résultat qui n'est ni l'identifiant, ni la valeur, ni l'infobulle
+    // (éclater sur l'ID donnerait une sous-colonne par élément).
+    const used = new Set([value.idColumn ?? COLUMN_DEFAULT_ID, value.valueColumn ?? COLUMN_DEFAULT_VALUE, value.tooltipColumn ?? COLUMN_DEFAULT_TOOLTIP, '_ids'])
+    const defaultSplit = resultColumns.find((c) => !used.has(c)) ?? resultColumns[0] ?? COLUMN_DEFAULT_ID
+    return (
+      <>
+        <Field label={t('queryPage.column.split')} hint={t('queryPage.column.splitHint')}>
+          <span className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={on}
+              disabled={disabled}
+              onChange={(e) => set({ splitColumn: e.target.checked ? defaultSplit : undefined })}
+              aria-label={t('queryPage.column.split')}
+              data-testid="column-decl-split-enable"
+            />
+            {on && columnSelect({
+              current: value.splitColumn!, options: [], label: t('queryPage.column.split'), testId: 'column-decl-splitColumn',
+              onSelect: (v) => set({ splitColumn: v }),
+            })}
+          </span>
+        </Field>
+        {on && (
+          <Field label={t('queryPage.column.splitLabelColumn')} hint={t('queryPage.column.mappingHint')}>
+            {columnSelect({
+              current: value.splitLabelColumn ?? '', options: [], label: t('queryPage.column.splitLabelColumn'), testId: 'column-decl-splitLabelColumn',
+              emptyLabel: t('queryPage.column.splitLabelDefault'), onSelect: (v) => set({ splitLabelColumn: v || undefined }),
+            })}
+          </Field>
+        )}
+      </>
     )
   }
 
@@ -171,6 +225,7 @@ export function ColumnDeclEditor({ value, onChange, defaultLabel, objectTypes, r
           {mappingSelect('idColumn', COLUMN_DEFAULT_ID, t('queryPage.column.idColumn'))}
           {mappingSelect('valueColumn', COLUMN_DEFAULT_VALUE, t('queryPage.column.valueColumn'))}
           {mappingSelect('tooltipColumn', COLUMN_DEFAULT_TOOLTIP, t('queryPage.column.tooltipColumn'))}
+          {splitFields()}
           {value.appliesTo.categories.length === 0 && value.appliesTo.objectTypes.length === 0 && (
             <p className="basis-full text-[11px] text-status-warning" data-testid="column-decl-nowhere">{t('queryPage.column.appliesNowhere')}</p>
           )}

@@ -778,7 +778,9 @@
       "missingRefs": "sourceRefs ou targetRefs manquant",
       "configureColumns": "Configurer les colonnes",
       "showFolders": "Afficher les titres des dossiers",
-      "computedColumns": "Colonnes calculées"
+      "computedColumns": "Colonnes calculées",
+      "computedGroupPending": "Calcul des colonnes…",
+      "computedGroupEmpty": "Aucune colonne dans le résultat"
     },
     "coverage": {
       "noLinkedTest": "Aucun test lié",
@@ -1225,7 +1227,11 @@
       "valueColumn": "Colonne valeur",
       "tooltipColumn": "Colonne infobulle",
       "mappingHint": "Colonne du résultat de la requête (exécuter la requête pour proposer ses colonnes)",
-      "notInResult": "absente du résultat"
+      "notInResult": "absente du résultat",
+      "split": "Une colonne par valeur de",
+      "splitHint": "Une sous-colonne par valeur distincte de cette colonne du résultat (ex. une par campagne), à cocher séparément dans ⚙️. 50 au maximum.",
+      "splitLabelColumn": "Libellé des colonnes",
+      "splitLabelDefault": "(la valeur)"
     }
   },
   "dashboardPage": {

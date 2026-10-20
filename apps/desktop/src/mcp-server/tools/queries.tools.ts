@@ -141,7 +141,8 @@ export function registerQueryTools(server: McpServer, container: McpContainer): 
         'polenta.params (un modèle génère les siens). ' +
         'column (scope shared, avec script ou template — un modèle peut en proposer une) : la requête devient une ' +
         'colonne calculée proposée dans la Vue Système (panneau des champs) ; son script renvoie une ligne par élément ' +
-        '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible). ' +
+        '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible) ; avec ' +
+        'splitColumn (+ splitLabelColumn), une sous-colonne par valeur distincte et une ligne par (élément, sous-colonne). ' +
         'dryRun (défaut true) : EXÉCUTE le script et retourne un aperçu SANS RIEN ÉCRIRE. Un script en erreur ' +
         'est enregistré avec un avertissement SCRIPT_ERROR. Pas d\'autre requête du même scope avec le même ' +
         'titre. scope private exige --user.',

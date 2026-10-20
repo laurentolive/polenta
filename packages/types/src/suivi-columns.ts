@@ -134,6 +134,10 @@ export function validateColumnDecl(raw: unknown): { decl: QueryColumnDef | null;
   if (mapping.splitLabelColumn && !mapping.splitColumn && !errors.some((e) => e.startsWith('column.splitColumn'))) {
     errors.push('column.splitLabelColumn : réservé aux colonnes éclatées (splitColumn)')
   }
+  // Éclater sur l'identifiant ou la valeur n'a pas de sens (une sous-colonne par élément / par valeur).
+  if (mapping.splitColumn && [mapping.idColumn || COLUMN_DEFAULT_ID, mapping.valueColumn || COLUMN_DEFAULT_VALUE].includes(mapping.splitColumn)) {
+    errors.push(`column.splitColumn : doit différer des colonnes identifiant et valeur (${mapping.splitColumn})`)
+  }
 
   if (errors.length) return { decl: null, errors }
   return {

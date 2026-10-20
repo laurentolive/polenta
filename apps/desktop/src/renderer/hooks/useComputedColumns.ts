@@ -91,7 +91,7 @@ interface ParsedRun {
 /** GH126 — sous-colonnes (valeur, libellé) du dernier résultat valide de chaque colonne éclatée, pour
  *  la session : colonnes de substitution fidèles pendant un chargement ou une erreur. */
 const lastKnownSplits = new Map<string, { value: string; label: string }[]>()
-const splitMemoKey = (repoPath: string, queryId: string) => `${repoPath}\u0000${queryId}`
+const splitMemoKey = (repoPath: string, queryId: string, splitColumn: string) => `${repoPath}\u0000${queryId}\u0000${splitColumn}`
 
 export function useComputedColumns(opts: {
   workspaceDir: string
@@ -184,7 +184,7 @@ export function useComputedColumns(opts: {
       const split = data?.ok ? splitColumnValuesFromRows(data.rows, column) : null
       const error = runError ?? split?.error
       if (split && !split.error) {
-        lastKnownSplits.set(splitMemoKey(projectRepoPath, query.id), split.columns.map((s) => ({ value: s.split, label: s.label })))
+        lastKnownSplits.set(splitMemoKey(projectRepoPath, query.id, column.splitColumn), split.columns.map((s) => ({ value: s.split, label: s.label })))
         out.set(query.id, { pending: false, split: split.columns })
       } else {
         out.set(query.id, { pending, ...(error ? { error } : {}) })
@@ -226,11 +226,13 @@ export function useComputedColumns(opts: {
         })
       } else {
         // Pas encore de résultat, ou erreur : les sous-colonnes visibles restent affichées (en
-        // chargement ou avec ⚠), sans saut de mise en page, et décochables dans ⚙️. D'après le
-        // dernier résultat valide de la session s'il est connu (libellés, sous-colonnes disparues
-        // écartées), sinon libellé provisoire = la valeur.
+        // chargement ou avec ⚠), sans saut de mise en page, et décochables dans ⚙️ : d'après le
+        // dernier résultat valide de la session (même `splitColumn`) s'il est connu (libellés, ordre),
+        // sinon toutes les sous-colonnes visibles, libellé provisoire = la valeur. Une sous-colonne
+        // absente de ce résultat (campagne supprimée) n'est pas ressuscitée ; un résultat arrivé par
+        // rafraîchissement remplace le précédent sans passer par ici (react-query garde l'ancien).
         const shown = new Set([...(visibleByQuery.get(query.id) ?? [])].filter((s): s is string => s !== null))
-        const known = lastKnownSplits.get(splitMemoKey(projectRepoPath, query.id))
+        const known = lastKnownSplits.get(splitMemoKey(projectRepoPath, query.id, column.splitColumn))
         const standIns = known ? known.filter((k) => shown.has(k.value)) : [...shown].map((value) => ({ value, label: value }))
         columns = standIns.map(({ value, label: subLabel }) => {
           const c = sub(value, subLabel)
@@ -261,7 +263,9 @@ export function useComputedColumns(opts: {
     })
   }, [results, visibleSet])
 
-  const pending = [...results.values()].some((r) => r.pending)
+  // Seules les colonnes visibles comptent : une exécution pour le seul panneau ⚙️ ne bloque ni
+  // l'export ni l'impression.
+  const pending = [...results].some(([key, r]) => r.pending && visibleSet.has(key))
   // Projet introuvable ou liste en échec : rien à attendre (l'impression ne doit pas rester bloquée).
   const ready = !enabled || !workspaceDir || projectFailed || queriesFailed || (queriesLoaded && !pending)
 

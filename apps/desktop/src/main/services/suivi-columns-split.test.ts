@@ -2,13 +2,16 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { QuickJSWASMModule } from 'quickjs-emscripten-core'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { GraphRow, QueryColumnDef, ScriptRunResult } from '@polenta/types'
 import {
-  columnFieldDef, columnValuesFromRows, computedColumnKey, isComputedColumnKey, MAX_SPLIT_COLUMNS, parseComputedColumnKey,
-  splitColumnValuesFromRows, validateColumnDecl,
+  buildHost, columnFieldDef, columnValuesFromRows, computedColumnKey, findQueryTemplate, isComputedColumnKey, MAX_SPLIT_COLUMNS,
+  parseComputedColumnKey, splitColumnValuesFromRows, validateColumnDecl,
 } from '@polenta/types'
+import { createSandboxModule, SandboxContext } from './script-sandbox'
+import { contentHash } from './dashboard-library.service'
 import { GitService } from './git.service'
 import { SavedQueriesService } from './saved-queries.service'
 import { DashboardsService } from './dashboards.service'
@@ -19,8 +22,9 @@ import type { SchemaService } from './schema.service'
 import { registerQueryTools } from '../../mcp-server/tools/queries.tools'
 import type { McpContainer } from '../../mcp-server/container'
 
-// GH126 — colonne calculée éclatée (`splitColumn`), sprint 1 (specs/GH126-tests.md T1–T20) :
-// déclaration, clés, éclatement des lignes, stockage, MCP.
+// GH126 — colonne calculée éclatée (`splitColumn`) (specs/GH126-tests.md) : déclaration, clés,
+// éclatement des lignes, stockage, MCP (sprint 1, T1–T20) ; bibliothèque `entryResultsByCampaign`,
+// modèle « Résultat par campagne », manifeste (sprint 2, T41–T49).
 
 const SPLIT: QueryColumnDef = {
   label: { fr: 'Résultat par campagne', en: 'Result by campaign' },
@@ -61,6 +65,10 @@ describe('GH126 — déclaration éclatée', () => {
     expect(validateColumnDecl({ ...BASE, splitLabelColumn: 'campaignTitle' }).errors)
       .toEqual(['column.splitLabelColumn : réservé aux colonnes éclatées (splitColumn)'])
     expect(validateColumnDecl({ ...BASE, splitLabelColumn: 'campaignTitle' }).decl).toBeNull()
+    // Éclater sur l'identifiant ou la valeur (effectifs) : refusé.
+    expect(validateColumnDecl({ ...BASE, splitColumn: 'id' }).errors).toEqual(['column.splitColumn : doit différer des colonnes identifiant et valeur (id)'])
+    expect(validateColumnDecl({ ...BASE, valueColumn: 'status', splitColumn: 'status' }).errors).toHaveLength(1)
+    expect(validateColumnDecl({ ...BASE, idColumn: 'testCaseId', splitColumn: 'id' }).errors).toEqual([])
   })
 
   it('T6 / T7 — clés de sous-colonne', () => {
@@ -144,6 +152,102 @@ describe('GH126 — éclatement des lignes', () => {
     ], decl)
     expect(error).toBeUndefined()
     expect(columns.map((c) => [c.label, c.values.get('T1')?.value])).toEqual([['RE2', 'PASS'], ['RP1', 'FAIL']])
+  })
+})
+
+// ─── Bibliothèque et modèle (sprint 2) ───────────────────────────────────────
+
+const ENTRY = (e: Record<string, unknown>) => ({
+  entryId: `${String(e.testCaseId)}-1`, requirementId: null, status: 'pending', executedAt: null, executedBy: null, runId: null,
+  addedAt: '2026-09-01T08:00:00Z', resyncable: false, snapshot: null, ...e,
+})
+const CAMP = (id: string, status: string, createdAt: string, entries: Record<string, unknown>[], removed: Record<string, unknown>[] = []) => ({
+  id, title: `Titre ${id}`, status, createdAt, completedAt: null, objectTypeRef: 'root::campagne', baselineRef: null,
+  level: null, targetComponent: null, component: 'produit', fields: {}, history: {}, entries: entries.map(ENTRY), removedEntries: removed.map(ENTRY),
+})
+const GRAPH = {
+  schema: { objectTypes: [], entryStatuses: [] },
+  requirements: [],
+  tests: ['T1', 'T2', 'T3', 'T4'].map((id) => ({ id, objectTypeRef: 'root::test', component: 'produit', title: id, status: 'draft', fields: {} })),
+  campaigns: [
+    // T41 — ordre de création, puis d'ID à date égale (tableau volontairement dans le désordre).
+    CAMP('CAMP-0003', 'planned', '2026-09-05T08:00:00Z', [{ testCaseId: 'T1' }]),
+    CAMP('CAMP-0002', 'in_progress', '2026-09-01T08:00:00Z', [
+      // T42 — test itérant PASS + FAIL : FAIL.
+      { entryId: 'T1-1', testCaseId: 'T1', status: 'PASS', executedAt: '2026-09-02T10:00:00Z', executedBy: 'alice' },
+      { entryId: 'T1-2', testCaseId: 'T1', status: 'FAIL', executedAt: '2026-09-03T10:00:00Z', executedBy: 'bob' },
+      // T43 — PASS + pending : pending.
+      { entryId: 'T2-1', testCaseId: 'T2', status: 'PASS', executedAt: '2026-09-02T11:00:00Z' },
+      { entryId: 'T2-2', testCaseId: 'T2', status: 'pending' },
+      // T42 bis — FAIL ancien, PASS récent : FAIL, cible et infobulle de l'instance en échec.
+      { entryId: 'T3-1', testCaseId: 'T3', status: 'FAIL', executedAt: '2026-09-02T09:00:00Z', executedBy: 'carol' },
+      { entryId: 'T3-2', testCaseId: 'T3', status: 'PASS', executedAt: '2026-09-04T09:00:00Z', executedBy: 'dave' },
+    ], [
+      // T45 — entrée retirée : ignorée.
+      { entryId: 'T4-old', testCaseId: 'T4', status: 'FAIL', executedAt: '2026-09-02T12:00:00Z', removedAt: '2026-09-03T00:00:00Z' },
+    ]),
+    // T44 — campagne abandonnée comprise.
+    CAMP('CAMP-0001', 'abandoned', '2026-09-01T08:00:00Z', [{ testCaseId: 'T3', status: 'BLOCKED', executedAt: '2026-09-01T10:00:00Z' }]),
+  ],
+  runs: [],
+}
+
+describe('GH126 — bibliothèque entryResultsByCampaign et modèle « Résultat par campagne »', () => {
+  let qjs: QuickJSWASMModule
+  let ctx: SandboxContext
+  const host = () => buildHost({ locale: 'fr', timezone: 'UTC' }, 1, new Date('2026-09-20T12:00:00Z'), null, {})
+  const lib = path.resolve(__dirname, '../../../resources/dashboard-lib')
+  beforeAll(async () => {
+    qjs = await createSandboxModule()
+    const modules = Object.fromEntries(fs.readdirSync(lib).filter((f) => f.endsWith('.js')).map((f) => [`lib/${f}`, fs.readFileSync(path.join(lib, f), 'utf8')]))
+    ctx = SandboxContext.prepare(qjs, JSON.stringify(GRAPH), modules)
+  })
+  afterAll(() => ctx.dispose())
+  const rows = (script: string) => {
+    const r = ctx.runScript(script, host())
+    if (!r.ok) throw new Error(JSON.stringify(r.error))
+    return r.rows
+  }
+
+  it('T41–T46 — ordre, pire statut, abandonnée comprise, entrées retirées ignorées, non exécuté', () => {
+    // Lignes scalaires seulement (contrat du moteur) : `statuses` joint.
+    const out = rows(`import { entryResultsByCampaign } from 'lib/campaign.js'
+export default (data) => entryResultsByCampaign(data).map((r) => ({ ...r, statuses: r.statuses.join(',') }))`)
+    expect(out.map((r) => `${String(r.campaignId)}/${String(r.testId)}`)).toEqual(['CAMP-0001/T3', 'CAMP-0002/T1', 'CAMP-0002/T2', 'CAMP-0002/T3', 'CAMP-0003/T1'])
+    const at = (c: string, t: string) => out.find((r) => r.campaignId === c && r.testId === t)
+    expect(at('CAMP-0002', 'T1')).toEqual({
+      campaignId: 'CAMP-0002', campaignTitle: 'Titre CAMP-0002', testId: 'T1', status: 'FAIL',
+      executedAt: '2026-09-03T10:00:00Z', executedBy: 'bob', entryId: 'T1-2', statuses: 'PASS,FAIL',
+    })
+    // Pire statut pending : instance non exécutée, sans date ni exécutant.
+    expect(at('CAMP-0002', 'T2')).toMatchObject({ status: 'pending', statuses: 'PASS,pending', entryId: 'T2-2', executedAt: null, executedBy: null })
+    expect(at('CAMP-0002', 'T3')).toMatchObject({ status: 'FAIL', entryId: 'T3-1', executedAt: '2026-09-02T09:00:00Z', executedBy: 'carol' })
+    expect(at('CAMP-0001', 'T3')).toMatchObject({ status: 'BLOCKED' })
+    expect(out.some((r) => r.testId === 'T4')).toBe(false)
+    expect(at('CAMP-0003', 'T1')).toMatchObject({ status: 'pending', executedAt: null, executedBy: null, entryId: 'T1-1' })
+  })
+
+  it('T47 / T48 — modèle : déclaration éclatée proposée, lignes au contrat', () => {
+    const tpl = findQueryTemplate('campaign-results')!
+    expect(tpl.parameters({})).toEqual([])
+    expect(tpl.column!({})).toEqual(SPLIT)
+    expect(validateColumnDecl(tpl.column!({})).errors).toEqual([])
+    const out = rows(tpl.generate({}))
+    const { columns, error } = splitColumnValuesFromRows(out, SPLIT)
+    expect(error).toBeUndefined()
+    expect(columns.map((c) => [c.split, c.label])).toEqual([['CAMP-0001', 'Titre CAMP-0001'], ['CAMP-0002', 'Titre CAMP-0002'], ['CAMP-0003', 'Titre CAMP-0003']])
+    expect(columns[1].values.get('T1')).toEqual({
+      value: 'FAIL', tooltip: 'CAMP-0002 — Titre CAMP-0002 · 2026-09-03 · bob · PASS, FAIL', target: 'CAMP-0002/T1-2',
+    })
+    expect(columns[2].values.get('T1')?.tooltip).toBe('CAMP-0003 — Titre CAMP-0003 · non exécuté')
+  })
+
+  it('T49 — manifeste : campaign.js v4 = contenu livré, v3 toujours connue', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(lib, 'manifest.json'), 'utf8')) as { files: { path: string; versions: { version: number; hash: string }[] }[] }
+    const versions = manifest.files.find((f) => f.path === 'campaign.js')!.versions
+    expect(versions.map((v) => v.version)).toEqual([1, 2, 3, 4])
+    expect(versions[3].hash).toBe(contentHash(fs.readFileSync(path.join(lib, 'campaign.js'), 'utf8')))
+    expect(fs.readFileSync(path.join(lib, 'campaign.js'), 'utf8')).toMatch(/^\/\/ @polenta-lib campaign 4\r?\n/)
   })
 })
 

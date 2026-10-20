@@ -203,7 +203,8 @@ Tools disponibles :
   détacher (modèle \`campaign-last-result\` : dernier résultat de campagne de chaque test).
   Colonne **éclatée** (GH126) : \`splitColumn\` (+ \`splitLabelColumn\` pour le libellé) → une
   sous-colonne par valeur distincte de cette colonne du résultat (ex. une par campagne, 50 au
-  maximum) ; le script renvoie alors une ligne par (élément, sous-colonne).
+  maximum) ; le script renvoie alors une ligne par (élément, sous-colonne) (modèle
+  \`campaign-results\` : résultat de chaque test dans chaque campagne).
 - \`list_dashboards\` / \`create_dashboard\` / \`update_dashboard\` / \`delete_dashboard\` /
   \`add_widget\` / \`update_widget\` / \`delete_widget\` / \`reorder_widgets\` — dashboards. Un widget
   référence une requête sauvegardée et porte soit \`template: { id, params }\` (paramètres = colonnes

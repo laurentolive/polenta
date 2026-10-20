@@ -103,17 +103,18 @@ export function ColumnDeclEditor({ value, onChange, defaultLabel, objectTypes, r
       onChange(next)
     }
     // Défaut : première colonne du résultat qui n'est ni l'identifiant, ni la valeur, ni l'infobulle
-    // (éclater sur l'ID donnerait une sous-colonne par élément).
+    // (éclater sur l'ID donnerait une sous-colonne par élément). Aucune (requête pas encore
+    // exécutée) : case indisponible tant qu'il n'y a pas de colonne à proposer.
     const used = new Set([value.idColumn ?? COLUMN_DEFAULT_ID, value.valueColumn ?? COLUMN_DEFAULT_VALUE, value.tooltipColumn ?? COLUMN_DEFAULT_TOOLTIP, '_ids'])
-    const defaultSplit = resultColumns.find((c) => !used.has(c)) ?? resultColumns[0] ?? COLUMN_DEFAULT_ID
+    const defaultSplit = resultColumns.find((c) => !used.has(c))
     return (
       <>
-        <Field label={t('queryPage.column.split')} hint={t('queryPage.column.splitHint')}>
+        <Field label={t('queryPage.column.split')} hint={on || defaultSplit ? t('queryPage.column.splitHint') : t('queryPage.column.mappingHint')}>
           <span className="flex items-center gap-1">
             <input
               type="checkbox"
               checked={on}
-              disabled={disabled}
+              disabled={disabled || (!on && !defaultSplit)}
               onChange={(e) => set({ splitColumn: e.target.checked ? defaultSplit : undefined })}
               aria-label={t('queryPage.column.split')}
               data-testid="column-decl-split-enable"

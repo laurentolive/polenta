@@ -197,6 +197,28 @@ test('T33 — script en erreur : ⚠ dans l\'en-tête et dans le groupe, vue uti
   await s.invoke('queries:update', localPath, username, queryId, { script: SCRIPT })
 })
 
+test('T47 — modèle « Résultat par campagne » : une sous-colonne par campagne, valeurs', async () => {
+  const { localPath } = s.project
+  const q = await s.invoke<{ id: string; column: { splitColumn?: string } }>('queries:create', localPath, username, {
+    title: 'GH126 modèle', scope: 'shared', createdBy: username, template: { id: 'campaign-results', params: {} },
+  })
+  expect(q.column.splitColumn).toBe('campaignId')
+  const groupOf = () => modal().locator(`[data-testid="field-config-computed-group"][data-query-id="${q.id}"]`)
+  // Bibliothèque livrée v4 (copiée au premier accès, ou mise à jour proposée par le bandeau).
+  expect(fs.readFileSync(path.join(localPath, 'dashboards', 'lib', 'campaign.js'), 'utf8')).toMatch(/^\/\/ @polenta-lib campaign 4/)
+
+  await openTests('Vue tableau')
+  await s.page.getByTitle('Configurer les colonnes').click()
+  await expect(groupOf()).toContainText('Résultat par campagne')
+  await expect(groupOf().getByTestId('field-config-computed-group-error')).toHaveCount(0, { timeout: 20_000 })
+  await expect(groupOf().getByRole('checkbox', { name: 'GH126 Alpha' })).toBeVisible()
+  expect(await groupOf().getByRole('checkbox').count()).toBeGreaterThan(1)
+  await groupOf().getByRole('checkbox', { name: 'GH126 Alpha' }).click()
+  await modal().click({ position: { x: 5, y: 5 } })
+  await expect(row().locator(`[data-computed-cell="query::${q.id}::${a.id}"]`)).toHaveText('FAIL', { timeout: 15_000 })
+  await s.shot('gh126-template-split')
+})
+
 test('T38 / T39 — vue Requêtes : « Une colonne par valeur de », enregistrée puis retirée', async () => {
   const q = await s.invoke<{ id: string }>('queries:create', s.project.localPath, username, {
     title: 'GH126 entrées', scope: 'shared', createdBy: username, template: { id: 'campaign-entries', params: {} },

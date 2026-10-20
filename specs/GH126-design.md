@@ -154,8 +154,9 @@ retire `splitColumn` et `splitLabelColumn`. Validation : `validateColumnDecl` (d
   ```
   campagnes triées par `createdAt` puis `id`, toutes (abandonnées comprises) ; entrées actives
   (`c.entries`) groupées par `testCaseId` dans l'ordre d'apparition ; `status = worst(statuses)`
-  (import `worst` depuis `./status.js`) ; `executedAt` / `executedBy` / `entryId` de l'entrée
-  exécutée la plus récente, à défaut de la première entrée (`executedAt: null`).
+  (import `worst` depuis `./status.js`) ; `entryId` / `executedAt` / `executedBy` de l'instance
+  qui porte ce statut (la plus récemment exécutée parmi elles, à défaut la première), nuls si ce
+  statut est `pending` (révisé au sprint 2).
 - `resources/dashboard-lib/manifest.json` : version 4 + empreinte, résumé « Résultat par
   campagne : entryResultsByCampaign (GH126) » ; la v3 reste connue → bandeau des mises à jour.
 - `packages/types/src/suivi-templates.ts` : `QueryTemplateId` + `'campaign-results'`,

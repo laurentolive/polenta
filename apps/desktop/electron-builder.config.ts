@@ -66,6 +66,8 @@ export function builderConfig(brand: LoadedBrand): Configuration {
       // `files`/app.asar (ci-dessous) — voir extraResources : il doit rester un fichier
       // ordinaire sur disque, lançable comme process séparé par un client MCP externe.
       '!out/mcp-server/**/*',
+      // GH120 — mentions tierces : livrées à côté de l'exécutable (extraResources), pas dans l'asar.
+      '!out/notices/**/*',
       // electron.vite.config.ts externalise toutes les deps npm du process main
       // (externalizeDepsPlugin) — elles restent des `require()` réels à l'exécution (keytar,
       // isomorphic-git...) et doivent donc être physiquement présentes dans le package. Le
@@ -97,6 +99,8 @@ export function builderConfig(brand: LoadedBrand): Configuration {
       { from: 'resources/export-templates', to: 'export-templates' },
       // GH74 — bibliothèque de départ des scripts de dashboards (dashboards/lib/ des projets).
       { from: 'resources/dashboard-lib', to: 'dashboard-lib' },
+      // GH120 — mentions de licences des composants tiers (pnpm build:notices).
+      { from: 'out/notices/THIRD-PARTY-NOTICES.txt', to: 'THIRD-PARTY-NOTICES.txt' },
     ],
     win: {
       icon: icons.ico,

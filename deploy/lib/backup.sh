@@ -42,8 +42,14 @@ restic_for() {
 # Crée le dépôt s'il n'existe pas. Codes de sortie de restic (≥ 0.17) : 10 = dépôt absent,
 # 12 = mot de passe incorrect — seul le premier justifie une création (constaté au test S3-3).
 restic_ensure_repo() {
-  local name="$1" rc=0
-  restic_for "$name" cat config >/dev/null 2>&1 || rc=$?
+  local name="$1" rc=0 err
+  err="$(restic_for "$name" cat config 2>&1 >/dev/null)" || rc=$?
+  # restic < 0.17 (Ubuntu 24.04 : 0.16, Debian 12 : 0.14) sort toujours en code 1 : on reconnaît alors
+  # le dépôt absent et le mauvais mot de passe à leur message (constaté sur VM Ubuntu 24.04).
+  if [[ "$rc" == 1 ]]; then
+    if grep -qiE 'unable to open config file|Is there a repository' <<<"$err"; then rc=10
+    elif grep -qiE 'wrong password|no key found' <<<"$err"; then rc=12; fi
+  fi
   case "$rc" in
     0) return 0 ;;
     10) restic_for "$name" init >/dev/null || die "création du dépôt de sauvegarde de $name impossible."

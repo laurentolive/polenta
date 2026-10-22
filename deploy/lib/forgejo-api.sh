@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # GH45 — appels à l'API Forgejo d'une instance, avec le jeton du compte d'exploitation.
 # Les requêtes passent par le Caddy de l'hôte (HTTPS, --resolve vers 127.0.0.1) : le conteneur
-# Forgejo ne publie aucun port, et c'est le même chemin que les postes Polenta.
+# Forgejo ne publie aucun port, et c'est le même chemin que les postes Polenta. En CADDY_MODE=external
+# (GH61), elles vont directement à la forge sur EDGE_NETWORK (voir api_target).
 # Sourcé après common.sh. Nécessite API_DOMAIN et API_TOKEN (voir api_use_instance).
 # shellcheck disable=SC2034  # API_LIST, TEAM_ID… sont lus par les scripts qui sourcent ce fichier
 
 API_DOMAIN=""
 API_TOKEN=""
+API_NAME=""     # instance visée (GH61 : conteneur forgejo-<nom> joint directement en mode external)
 API_STATUS=""   # statut HTTP du dernier appel (000 : forge injoignable ou délai dépassé)
 API_BODY=""     # corps de la réponse du dernier appel
 API_LIST=""     # résultat d'api_paginate (tableau JSON)
@@ -19,9 +21,25 @@ API_TIMEOUT="${API_TIMEOUT:-60}"  # secondes ; les imports de dépôts (migrate)
 
 api_use_instance() {
   local name="$1" env; env="$(instance_env "$name")"
+  API_NAME="$name"
   API_DOMAIN="$(env_get "$env" DOMAIN)"
   API_TOKEN="$(env_get "$env" OPS_TOKEN)"
   [[ -n "$API_DOMAIN" ]] || die "DOMAIN absent de $env"
+}
+
+# GH61 — cible des appels. managed : HTTPS par le Caddy du kit (--resolve 127.0.0.1). external : le
+# port 443 de l'hôte appartient au Caddy existant, dont le certificat n'est pas sous notre contrôle
+# (DNS pas encore basculé, CA interne…) ; la forge est jointe directement sur EDGE_NETWORK, en HTTP sur
+# son port 3000 (jamais publié). Remplit API_URL et API_RESOLVE.
+api_target() {
+  local mode edge ip
+  mode="${CADDY_MODE:-$(env_get "$HOST_ENV" CADDY_MODE)}"
+  if [[ "$mode" == external && -n "$API_NAME" ]]; then
+    edge="${EDGE_NETWORK:-$(env_get "$HOST_ENV" EDGE_NETWORK)}"; edge="${edge:-$DEFAULT_EDGE_NETWORK}"
+    ip="$(docker inspect -f "{{with index .NetworkSettings.Networks \"$edge\"}}{{.IPAddress}}{{end}}" "forgejo-$API_NAME" 2>/dev/null)"
+    if [[ -n "$ip" ]]; then API_URL="http://$ip:3000"; API_RESOLVE=(); return 0; fi
+  fi
+  API_URL="https://$API_DOMAIN"; API_RESOLVE=(--resolve "$API_DOMAIN:443:127.0.0.1")
 }
 
 # api METHODE CHEMIN [JSON] [en-têtes supplémentaires…]
@@ -30,13 +48,14 @@ api_use_instance() {
 api() {
   local method="$1" path="$2" data="${3:-}"; shift 3 2>/dev/null || shift $#
   local out; out="$(mktemp)"
+  api_target
   local args=(-sS -o "$out" -w '%{http_code}' -X "$method" --connect-timeout 10 --max-time "$API_TIMEOUT"
-    --resolve "$API_DOMAIN:443:127.0.0.1"
+    "${API_RESOLVE[@]}"
     -H "Accept: application/json"
     -H "Authorization: token $API_TOKEN")
   [[ -n "$data" ]] && args+=(-H "Content-Type: application/json" --data "$data")
   local h; for h in "$@"; do args+=(-H "$h"); done
-  API_STATUS="$(curl "${args[@]}" "https://$API_DOMAIN/api/v1$path" 2>/dev/null)" || true
+  API_STATUS="$(curl "${args[@]}" "$API_URL/api/v1$path" 2>/dev/null)" || true
   [[ "$API_STATUS" =~ ^[0-9]{3}$ ]] || API_STATUS=000
   API_BODY="$(cat "$out")"; rm -f "$out"
   [[ "$API_STATUS" == 2* ]]

@@ -128,6 +128,9 @@ load_host_env() {
   SMTP_USER="$(env_get "$HOST_ENV" SMTP_USER)"
   SMTP_PASSWORD="$(env_get "$HOST_ENV" SMTP_PASSWORD)"
   SMTP_FROM="$(env_get "$HOST_ENV" SMTP_FROM)"
+  # GH62 — niveau de durcissement et surcharge fine : lus bruts, validés par modules_resolve.
+  HARDEN_HOST_RAW="$(env_get "$HOST_ENV" HARDEN_HOST)"
+  HOST_MODULES_RAW="$(env_get "$HOST_ENV" HOST_MODULES)"
   # GH61 — Caddy et réseau de bord optionnels ; validés ici, avant toute action sur l'hôte.
   CADDY_MODE="$(env_get "$HOST_ENV" CADDY_MODE)"; CADDY_MODE="${CADDY_MODE:-$DEFAULT_CADDY_MODE}"
   EDGE_NETWORK="$(env_get "$HOST_ENV" EDGE_NETWORK)"; EDGE_NETWORK="${EDGE_NETWORK:-$DEFAULT_EDGE_NETWORK}"

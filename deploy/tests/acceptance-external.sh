@@ -123,6 +123,8 @@ section "réseaux de la forge (critère 6)"
 nets="$(nets_of "forgejo-$NAME")"
 check "forgejo-$NAME sur polenta-$NAME" has_word "polenta-$NAME" "$nets"
 check "forgejo-$NAME sur $EDGE" has_word "$EDGE" "$nets"
+# docker events donne l'identifiant du conteneur (Actor.Attributes.container), pas son nom.
+ALLOWED_IDS="$(docker inspect -f '{{.Id}}' "forgejo-$NAME")"
 
 # ── critère 5 : routage par un Caddy tiers ───────────────────────────────────────────────────
 section "routage via un Caddy tiers d'essai (critère 5)"
@@ -150,6 +152,7 @@ if [[ -n "$WEB_DOMAIN" ]]; then
   check "bloc $SITES/$NAME.web.caddy présent" test -f "$SITES/$NAME.web.caddy"
   expected_web="$( ( export POLENTA_ROOT="$ROOT"; . "$KIT_LIB/common.sh"; . "$KIT_LIB/caddy.sh"; caddy_render_web_site "$NAME" "$WEB_DOMAIN" ) )"
   check "bloc web identique au rendu managed (octet pour octet)" test "$(cat "$SITES/$NAME.web.caddy")" = "$expected_web"
+  ALLOWED_IDS+=" $(docker inspect -f '{{.Id}}' "polenta-web-$NAME")"
   wnets="$(nets_of "polenta-web-$NAME")"
   check "polenta-web-$NAME sur polenta-$NAME" has_word "polenta-$NAME" "$wnets"
   check "polenta-web-$NAME sur $EDGE" has_word "$EDGE" "$wnets"
@@ -163,8 +166,8 @@ fi
 # ── aucun docker network connect vers un Caddy (critère 6) ───────────────────────────────────
 section "aucun rattachement de Caddy aux réseaux d'instance (critère 6)"
 sleep 1
-bad="$(awk -v n="polenta-$NAME" -v f="forgejo-$NAME" -v w="polenta-web-$NAME" \
-  '$1 == n && $2 != f && $2 != w { print }' "$WORK/connects.log")"
+bad="$(awk -v n="polenta-$NAME" -v ok="$ALLOWED_IDS" \
+  'BEGIN { split(ok, a, " "); for (i in a) allowed[a[i]] = 1 } $1 == n && !($2 in allowed) { print $2 }' "$WORK/connects.log")"
 check "seuls forgejo-$NAME / polenta-web-$NAME ont rejoint polenta-$NAME (autres : ${bad:-aucun})" test -z "$bad"
 members="$(docker network inspect -f '{{range .Containers}}{{.Name}} {{end}}' "polenta-$NAME")"
 check "aucun conteneur Caddy sur polenta-$NAME" test -z "$(tr ' ' '\n' <<<"$members" | grep -i caddy)"

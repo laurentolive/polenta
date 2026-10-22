@@ -63,6 +63,28 @@ Poste Windows / Git Bash : ni Docker, ni ufw, ni `ss`, ni `shellcheck`, pas de d
 | S2-6 [M] (migration dans les deux sens sur VM) | **Non exécuté** : à dérouler mot pour mot sur un hôte jetable avec le mainteneur. |
 | S2-7 (`shellcheck`, `grant-template.test.sh`) | `grant-template.test.sh` **exécuté : sortie 0** ; `caddy-external.test.sh` **exécuté : OK** (sprint 1, relancé). `shellcheck` **non exécuté** (indisponible) : `bash -n` seulement, sur `polenta-host.sh`, `polenta-admin.sh`, `lib/*.sh`, `tests/*.sh`. |
 
+## Exécution sur VM — 2026-10-16
+
+VM VirtualBox jetable `polenta-test`, Ubuntu 24.04.5, hôte simulé « déjà administré » : Docker (`docker.io`), ufw actif
+avec une règle tierce (`8443/tcp`), Caddy tiers en conteneur publiant 80/443 (TLS interne, site `vitrine.test` vers
+une appli tierce), crontab root. `host.env` : `CADDY_MODE=external`, `EDGE_NETWORK=polenta-edge`,
+`CADDY_RELOAD_CMD=docker exec caddy caddy reload --config /etc/caddy/Caddyfile`, `HARDEN_HOST=none` (GH62). Domaines dans
+`/etc/hosts`, S3 de test local. Kit : GH62 fusionnée avec `main`, plus les correctifs ci-dessous.
+
+| Scénario | Résultat |
+|---|---|
+| S2-1 (`acceptance-external.sh`) | **OK** après correction du script (il comparait l'identifiant de conteneur de `docker events` à des noms) : toutes les vérifications passent (ufw et listeners 80/443 inchangés, aucun `polenta-caddy`, bloc identique au rendu managed, réseaux, routage HTTPS → 200 par le Caddy d'essai, suppression). |
+| S2-2 (écart `polenta-caddy`) | **OK** : échec attendu à « aucun conteneur polenta-caddy », instance de test nettoyée. |
+| S2-3 (`acceptance.sh --external` depuis l'extérieur) | **Partiel** : joué depuis la VM elle-même (CA du Caddy tiers approuvée) — toutes les vérifications passent, y compris combinée à `--harden-level none` (dans les deux ordres). Pas joué depuis un poste extérieur (pas de DNS public). |
+| S2-4 (`acceptance.sh` sans option sur hôte external) | **OK** depuis la VM (mêmes réserves) : toutes les vérifications passent. |
+| Cas cible complet | **OK** : `setup` (rc 0, rejeu sans ✓), `instance add`, forge servie par le Caddy existant (healthz 200) pendant que le site tiers reste servi, `status` « Caddy : externe », sauvegarde, restauration, `backup-cron`, `instance remove`. Avant/après : sshd effectif, ufw, crontab root, fail2ban (absent), unattended-upgrades inchangés ; Docker et conteneurs tiers non redémarrés ; seuls `/etc/cron.d/polenta` et `/etc/logrotate.d/polenta` ajoutés. |
+| S2-6 (migrations) | Non jouées. |
+
+Bugs trouvés et corrigés (détail dans `specs/GH62-tests.md`, section « Résultats d'exécution sur VM ») :
+garde-fous du premier `setup` qui ignoraient le `host.env` du kit (external refusé, « 80/443 occupés ») ; API de la forge
+appelée par le Caddy existant (`instance add` → « HTTP 000 ») ; `daemon.json` écrasé et Docker redémarré sur un hôte existant ;
+scripts non exécutables dans git ; première sauvegarde impossible avec restic < 0.17 (Ubuntu 24.04, Debian 12).
+
 ## Comment tester
 
 - Ici : `bash deploy/tests/caddy-external.test.sh`, `bash deploy/tests/grant-template.test.sh`, `bash -n deploy/tests/*.sh`.

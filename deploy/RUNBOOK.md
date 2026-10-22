@@ -19,7 +19,7 @@ Toutes les commandes `polenta-host` / `polenta-admin` s'exécutent **en root** (
 
 ```
 /opt/polenta/
-├── host.env                  configuration de l'hôte (root, 600) — contient la clé S3
+├── host.env                  configuration de l'hôte (root, 600) — clé S3, niveau de durcissement HARDEN_HOST
 ├── kit/                      copie installée du kit (polenta-host, polenta-admin → /usr/local/bin)
 ├── caddy/etc/sites/          un fichier <instance>.caddy par client ; _*.caddy = sites additionnels
 │                             (mode external : absent, blocs dans CADDY_SITES_DIR — voir A16)
@@ -63,12 +63,62 @@ un domaine.
    `sudo ./polenta-host.sh setup`.
    **Serveur déjà occupé par d'autres projets dockerisés** (80/443 pris par un Caddy existant) : ne
    pas lancer `setup` avant d'avoir lu A16 et renseigné `CADDY_MODE=external` dans `host.env` ; sinon
-   `setup` s'arrête (80/443 occupés) sans rien modifier.
-4. `setup` est rejouable sans effet de bord. Il installe Docker, restic, le pare-feu (22/80/443 ; en mode
-   `external` : 22 seul, aucune règle existante n'est supprimée),
-   fail2ban, les mises à jour de sécurité automatiques, la sauvegarde nocturne (02:30), et durcit
-   SSH (clé uniquement, root interdit) **seulement si** une clé est déjà autorisée.
-5. Vérifier : `sudo polenta-host status`.
+   `setup` s'arrête (80/443 occupés) sans rien modifier. Choisir aussi le niveau de durcissement
+   (ci-dessous) : sur un serveur déjà administré, `HARDEN_HOST=none`.
+4. `setup` est rejouable sans effet de bord. Au niveau par défaut (`HARDEN_HOST=full`), il installe
+   Docker, restic, le pare-feu (22/80/443 ; en mode `external` : 22 seul, aucune règle existante n'est
+   supprimée), fail2ban, les mises à jour de sécurité automatiques, la sauvegarde nocturne (02:30), et
+   durcit SSH (clé uniquement, root interdit) **seulement si** une clé est déjà autorisée.
+5. Vérifier : `sudo polenta-host status` (bloc « Durcissement » : état détecté de chaque module).
+
+#### Serveur déjà administré : choisir le niveau de durcissement
+
+`full` convient à un VPS neuf dédié à Polenta. Sur un serveur qui héberge déjà d'autres projets
+dockerisés, il peut couper des accès existants (SSH sans mot de passe ni root, pare-feu fermé hors
+22/80/443, redémarrage nocturne des conteneurs, bannissements fail2ban). Fixer le niveau dans
+`/opt/polenta/host.env` **avant** le premier `setup` :
+
+| `HARDEN_HOST` | Ce que `setup` applique en plus de Docker, restic, sauvegarde nocturne, Caddy |
+|---|---|
+| `full` (défaut) | pare-feu ufw, fail2ban (sshd + forges), mises à jour auto avec redémarrage 04:00, SSH durci, LLMNR/mDNS coupés, console |
+| `basic` | fail2ban (sshd + forges), mises à jour auto **sans** redémarrage ; aucun changement de pare-feu ni de SSH |
+| `none` | rien d'autre : aucun paquet de durcissement, aucun fichier sous `/etc/ssh`, `/etc/fail2ban`, `/etc/apt/apt.conf.d`… |
+
+Une valeur invalide arrête `setup` avant toute modification. `HOST_MODULES=a,b,c` (facultatif)
+remplace la liste du niveau (modules : voir `host.env.example`).
+
+**Hôte déjà administré avec un Caddy existant** (cas d'un serveur partagé avec d'autres projets) :
+combiner les deux réglages dans `host.env`, avant le premier `setup` :
+
+```
+CADDY_MODE=external     # A16 : le Caddy existant sert les forges, aucun Caddy du kit, 80/443 non touchés
+HARDEN_HOST=none        # ni ufw, ni SSH, ni fail2ban, ni mises à jour automatiques
+```
+
+`setup` installe alors seulement Docker (s'il manque), restic et la sauvegarde nocturne, vérifie
+`EDGE_NETWORK` et crée `CADDY_SITES_DIR`. Le module `firewall` décide seul de ufw : actif (niveau `full`
+ou `HOST_MODULES` le contenant), il n'ouvre que 22 en `external` ; inactif, ufw n'est pas touché et
+aucun avertissement 80/443 n'est émis (ces ports relèvent du Caddy existant). Contrôle depuis
+l'extérieur : `deploy/tests/acceptance.sh --external --harden-level none <domaine>`.
+
+Limites :
+- `setup` **n'annule jamais** : passer de `full` à `none` laisse en place ce qui est déjà posé ;
+  `setup` et `status` le signalent (`hors niveau`). Retrait manuel, module par module :
+  - pare-feu : `sudo ufw disable` (ou supprimer les règles 22/80/443 ajoutées par le kit) ;
+  - SSH : `sudo rm /etc/ssh/sshd_config.d/10-polenta.conf && sudo systemctl reload ssh` ;
+  - fail2ban : `sudo rm /etc/fail2ban/jail.d/10-polenta-sshd.local /etc/fail2ban/jail.d/20-polenta-forge.local /etc/fail2ban/filter.d/polenta-forge.conf && sudo systemctl restart fail2ban` ;
+  - mises à jour : supprimer `/etc/apt/apt.conf.d/52polenta-unattended` (redémarrage 04:00) et/ou `20auto-upgrades` ;
+  - `resolved` / `console` : supprimer `/etc/systemd/resolved.conf.d/10-polenta.conf` (puis `systemctl restart systemd-resolved`) / `/etc/sysctl.d/10-polenta-console.conf`.
+- Si `ufw` est déjà actif et que le niveau ne le gère pas, `setup` ne le modifie pas mais avertit
+  si 80/443 n'y sont pas ouverts : Caddy serait injoignable (pas d'avertissement en `external`). Les
+  ports publiés par Docker contournent `ufw`.
+
+Contrôler un hôte au niveau `none` (sur l'hôte, après `setup`) :
+```
+sudo ~/polenta-kit/tests/harden-none.test.sh [--ufw-before ufw.txt] [--sshd-before sshd.txt]
+deploy/tests/acceptance.sh --harden-level none <nom>.forge.mondomaine.fr   # depuis l'extérieur
+```
+Tests sans hôte : `deploy/tests/harden-modules.test.sh`.
 
 Mettre à jour le kit plus tard = recopier `deploy/` puis relancer `setup` (le kit installé dans
 `/opt/polenta/kit` est remplacé, `host.env` jamais).
@@ -194,6 +244,9 @@ Les mises à jour de sécurité de l'OS sont automatiques ; redémarrer l'hôte 
 - **SSH** : 5 échecs → bannissement. **Forges** : 10 échecs d'authentification (web, git, création
   de jeton) en 10 min → l'IP est bannie **de toutes les forges** (pas de SSH) pendant 1 h. Les
   règles des forges sont dans la chaîne `DOCKER-USER` d'iptables.
+- Aux niveaux `basic` et `none`, voir A2 : en `none`, fail2ban n'est pas géré par le kit et
+  `ADMIN_IPS` est sans effet (`setup` l'indique) ; en `basic`, fail2ban l'est, mais sans pare-feu ni
+  SSH durci.
 - `ADMIN_IPS` (host.env) : IP fixes de l'exploitant **jamais** bannies. À laisser vide avec une IP
   dynamique ou mobile ; relancer `setup` après modification. Une campagne de tests de connexion
   (mauvais mots de passe, codes 2FA faux) atteint vite le seuil : ajouter temporairement l'IP du
@@ -391,6 +444,9 @@ existant) :
    Caddyfile qui l'importe ;
 4. DNS, certificats TLS, ports 80/443 et pare-feu correspondants relèvent de ce Caddy.
 
+Sur un serveur déjà administré, fixer aussi `HARDEN_HOST=none` (A2, « Serveur déjà administré ») pour
+que `setup` ne touche ni à ufw, ni à SSH, ni à fail2ban, ni aux mises à jour automatiques.
+
 Exemple de montage et d'import (côté Caddy existant, à adapter à votre `docker-compose.yml`) :
 
 ```
@@ -421,6 +477,7 @@ CADDY_MODE=external
 EDGE_NETWORK=polenta-edge                 # (polenta-edge)
 CADDY_SITES_DIR=/opt/polenta/caddy-sites  # (/opt/polenta/caddy-sites) chemin absolu
 CADDY_RELOAD_CMD='docker exec caddy caddy reload --config /etc/caddy/Caddyfile'   # (vide)
+HARDEN_HOST=none                          # (full) GH62, recommandé sur un serveur déjà administré
 ```
 
 `CADDY_RELOAD_CMD` est exécutée en root (`bash -c`) après chaque écriture ou suppression **effective**
@@ -433,8 +490,9 @@ la commande. `ACME_EMAIL` et `CADDY_VERSION` sont ignorés. Une valeur invalide 
 modification de l'hôte.
 
 **Ce que le kit fait en mode `external`** : `setup` vérifie `EDGE_NETWORK`, crée `CADDY_SITES_DIR` (root,
-755), n'ouvre que 22/tcp dans ufw sans toucher aux règles ni aux listeners existants sur 80/443 ; aucun
-conteneur `polenta-caddy`. `instance add / restore / update / start / remove / web enable / web disable`
+755) ; si le module `firewall` est actif (niveau `full` ou `HOST_MODULES`), n'ouvre que 22/tcp dans ufw
+sans toucher aux règles ni aux listeners existants sur 80/443 ; sinon (`basic`, `none`) ufw n'est pas
+touché ; aucun conteneur `polenta-caddy`. `instance add / restore / update / start / remove / web enable / web disable`
 écrivent ou suppriment `<instance>.caddy` et `<instance>.web.caddy` (contenu identique au mode
 `managed`), exécutent `CADDY_RELOAD_CMD`, puis vérifient la joignabilité **sur le réseau interne**
 (`/api/healthz` depuis un conteneur éphémère rattaché à `EDGE_NETWORK`). Le kit ne vérifie **pas**
@@ -511,7 +569,8 @@ un hôte du mode opposé est neutre, le mode de l'hôte cible s'applique.
 **Vérification** : sur l'hôte, `sudo deploy/tests/acceptance-external.sh <domaine-de-test>` (instance de test
 créée puis supprimée, Caddy d'essai éphémère ; options `--web-domain` / `--web-version` pour le client
 web) ; depuis un poste extérieur, `deploy/tests/acceptance.sh --external <domaine>` (22 ouvert, 80/443 non
-exigés, 2222/3000/5355/8080/2375 fermés).
+exigés, 2222/3000/5355/8080/2375 fermés). Hôte en `HARDEN_HOST=basic|none` : ajouter `--harden-level <niveau>`
+(ports non contrôlés).
 
 ## Partie B — admin du client
 

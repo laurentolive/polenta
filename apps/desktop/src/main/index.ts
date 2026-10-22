@@ -8,6 +8,7 @@ import { electronPrintRenderer } from './host/electron-print'
 import { UpdateService } from './services/update.service'
 import { INVITE_SCHEME, inviteFromArgv, parseInviteLink, setPendingInvite, type InviteLink } from './host/invite-link'
 import { BRAND } from '../shared/brand'
+import { attachContextMenu } from './host/context-menu'
 
 // Aligne le dossier userData (auth.json, workspace.json…) entre `pnpm dev` et le build
 // packagé — sans ça, Electron retombe sur le "name" du package.json en dev (`@polenta/desktop`)
@@ -68,6 +69,7 @@ export function createAppWindow(): BrowserWindow {
   })
 
   win.once('ready-to-show', () => win.show())
+  attachContextMenu(win)
 
   Menu.setApplicationMenu(null)
 

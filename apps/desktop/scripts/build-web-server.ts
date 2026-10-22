@@ -20,7 +20,8 @@ build({
   format: 'cjs',
   outfile: 'out/web-server/index.cjs',
   // playwright-core (GH44 S4, impression) : binaires et chemins de navigateurs résolus à l'exécution.
-  external: ['keytar', 'fsevents', 'fastify', '@fastify/*', 'playwright-core', 'react-native', 'react-native-fetch-blob', 'react-native-fs'],
+  // @aws-sdk/client-s3 (GH131) : require paresseux de l'entrée S3 d'unzipper (GH120), non utilisée.
+  external: ['keytar', 'fsevents', 'fastify', '@fastify/*', 'playwright-core', '@aws-sdk/client-s3', 'react-native', 'react-native-fetch-blob', 'react-native-fs'],
   alias: { electron: './src/mcp-server/electron-shim.ts' },
   define: { __POLENTA_BRAND__: JSON.stringify(brand.info) },
   logLevel: 'info',

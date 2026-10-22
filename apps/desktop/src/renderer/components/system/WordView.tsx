@@ -383,7 +383,7 @@ function getStatusClass(status: string): string {
 /** GH70 — valeur d'une colonne calculée dans une carte : lecture seule, infobulle, cible cliquable. */
 function ComputedField({
   label,
-  queryTitle,
+  headerTitle,
   value,
   fieldType,
   tooltip,
@@ -392,7 +392,8 @@ function ComputedField({
   repoPath,
 }: {
   label: string
-  queryTitle: string
+  /** Infobulle du libellé : « ID — titre », ou « groupe — libellé » (GH126). */
+  headerTitle: string
   value: string
   fieldType: string
   tooltip?: string
@@ -409,7 +410,7 @@ function ComputedField({
         : value
   return (
     <div className="flex items-start gap-2 py-0.5" data-computed-field="">
-      <span className="text-xs text-ink-3 w-28 shrink-0 mt-0.5" title={queryTitle}>
+      <span className="text-xs text-ink-3 w-28 shrink-0 mt-0.5" title={headerTitle}>
         {label} <span className="text-ink-3/50">(calc)</span>
       </span>
       {onOpen && value && !pending ? (
@@ -605,7 +606,7 @@ function ItemCard({
               <ComputedField
                 key={col}
                 label={computed.column.label}
-                queryTitle={computed.column.queryTitle}
+                headerTitle={computed.column.headerTitle}
                 value={obj ? getFieldValue(obj, col) : ''}
                 fieldType={computed.column.fieldDef.type}
                 tooltip={cell?.tooltip}

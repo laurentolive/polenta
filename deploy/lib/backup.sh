@@ -12,7 +12,7 @@ BACKUP_KEEP=(--keep-daily 7 --keep-weekly 4 --keep-monthly 12)
 # client, supprimés à la sortie du script, y compris sur erreur.
 CLEANUP=()
 cleanup_tmp() { [[ ${#CLEANUP[@]} -eq 0 ]] || rm -rf "${CLEANUP[@]}"; }
-trap cleanup_tmp EXIT
+EXIT_HOOKS+=(cleanup_tmp)   # appelé par on_exit (common.sh), qui libère aussi le verrou
 
 # Dépôt restic d'une instance (URL S3), à partir de host.env.
 restic_repo_url() {

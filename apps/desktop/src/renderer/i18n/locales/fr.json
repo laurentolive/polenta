@@ -361,6 +361,8 @@
       "noComponentConfiguredBody": "Aucun composant configuré.",
       "goToDataModel": "Allez dans Projet → Modèle de données.",
       "noElementConfiguredForComponent": "Aucun élément configuré pour ce composant.",
+      "noTypeForCategory": "Aucun type « {{category}} » configuré pour ce composant.",
+      "openDataModel": "Ouvrir le Modèle de données",
       "newCampaign": "Nouvelle campagne",
       "noCampaign": "Aucune campagne",
       "createFirstCampaign": "Créer la première",

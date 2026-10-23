@@ -16,6 +16,7 @@ import { LinkedReqValues } from '../parameters/LinkedReqValues'
 import type { StepDraft } from '../StepsTable'
 import { Grid3x3, FileText, Settings } from 'lucide-react'
 import { CampaignListView } from './CampaignListView'
+import { NoTypeForCategory } from './NoTypeForCategory'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useSystemView } from '../../contexts/SystemViewContext'
 import { useTabs } from '../../contexts/TabsContext'
@@ -356,6 +357,7 @@ export function SystemView() {
   const { openTab } = useTabs()
   const {
     currentProjectId,
+    category,
     repoPath,
     schemaLoading,
     nodes,
@@ -1300,6 +1302,12 @@ export function SystemView() {
       <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">
         {t('sidebar.system.noElementConfigured')}
       </div>
+    )
+  }
+
+  if (!effectiveType) {
+    return (
+      <NoTypeForCategory category={category} repoPath={repoPath} projectId={currentProjectId ?? ''} className="flex-1 text-sm" />
     )
   }
 

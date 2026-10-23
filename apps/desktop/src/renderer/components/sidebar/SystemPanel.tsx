@@ -24,6 +24,7 @@ import { buildFilterRegex } from '../../lib/textFilter'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { api } from '../../api'
 import type { TypeTreeNode } from '@polenta/types'
+import { NoTypeForCategory } from '../system/NoTypeForCategory'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 
 interface Props {
@@ -267,7 +268,7 @@ const CATEGORY_TITLE_KEY: Record<string, string> = {
 
 // ── SystemPanel ───────────────────────────────────────────────────────────────
 
-export function SystemPanel({ currentProjectId: _currentProjectId, projectId: _projectId }: Props) {
+export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: Props) {
   const { t } = useTranslation()
   const {
     nodes,
@@ -412,7 +413,9 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId: _p
           <div className="flex items-center justify-center h-full text-ink-3 text-xs px-3 text-center">
             {t('sidebar.system.noElementConfiguredForComponent')}
           </div>
-        ) : effectiveType?.category === 'campaign' ? (
+        ) : !effectiveType ? (
+          <NoTypeForCategory category={category} repoPath={repoPath} projectId={projectId} className="text-xs" />
+        ) : effectiveType.category === 'campaign' ? (
           <CampaignNavList
             repoPath={repoPath}
             component={effectiveNodeId || undefined}

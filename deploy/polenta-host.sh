@@ -584,6 +584,38 @@ ensure_ops_account() {
   fi
 }
 
+# GH63 — jeton de service de l'instance (design D5, §5.2) : le client web de l'instance le présente à
+# l'API d'administration, qui n'en connaît que l'empreinte (service-tokens.json). Aléatoire de 256 bits
+# : une empreinte SHA-256 suffit (pas de mot de passe humain à protéger contre une recherche
+# exhaustive). Créé une fois, conservé ; régénéré par « instance sync » s'il manque.
+SERVICE_TOKENS="$POLENTA_ROOT/admin/service-tokens.json"
+ensure_service_token() {
+  local name="$1" env token; env="$(instance_env "$name")"
+  token="$(env_get "$env" ADMIN_SERVICE_TOKEN)"
+  if [[ -z "$token" ]]; then
+    token="$(random_secret 43)"
+    env_set "$env" ADMIN_SERVICE_TOKEN "$token"
+  fi
+  local hash; hash="$(printf '%s' "$token" | sha256sum | cut -d' ' -f1)"
+  mkdir -p "$(dirname "$SERVICE_TOKENS")"; chmod 700 "$(dirname "$SERVICE_TOKENS")"
+  local current='{}'; [[ -f "$SERVICE_TOKENS" ]] && current="$(cat "$SERVICE_TOKENS")"
+  if [[ "$(jq -r --arg n "$name" '.[$n].sha256 // empty' <<<"$current")" == "$hash" ]]; then
+    skip "jeton de service"; return 0
+  fi
+  jq --arg n "$name" --arg h "$hash" --arg at "$(date -Iseconds)" '.[$n] = {sha256:$h, createdAt:$at}' <<<"$current" \
+    >"$SERVICE_TOKENS.tmp.$$"
+  chmod 600 "$SERVICE_TOKENS.tmp.$$"; mv "$SERVICE_TOKENS.tmp.$$" "$SERVICE_TOKENS"
+  ok "jeton de service (empreinte dans $SERVICE_TOKENS)"
+}
+
+# Retire l'empreinte du jeton de service d'une instance supprimée.
+forget_service_token() {
+  local name="$1"
+  [[ -f "$SERVICE_TOKENS" ]] || return 0
+  jq --arg n "$name" 'del(.[$n])' "$SERVICE_TOKENS" >"$SERVICE_TOKENS.tmp.$$"
+  chmod 600 "$SERVICE_TOKENS.tmp.$$"; mv "$SERVICE_TOKENS.tmp.$$" "$SERVICE_TOKENS"
+}
+
 ensure_org_and_teams() {
   local name="$1" org="$2"
   if api GET "/orgs/$org"; then skip "organisation $org"
@@ -772,6 +804,7 @@ cmd_instance_add() {
   wait_front "$name" "$domain"; front_ok "$domain" " (certificat TLS valide)"
 
   ensure_ops_account "$name"
+  ensure_service_token "$name"
   ensure_org_and_teams "$name" "$org"
   CLIENT_ADMIN_PASSWORD=""
   [[ -n "$admin_login" ]] && ensure_client_admin "$name" "$org" "$admin_login" "$admin_email"
@@ -833,6 +866,7 @@ cmd_instance_sync() {
     [[ -z "$(env_get "$env" WEB_DOMAIN)" ]] || caddy_add_web_site "$name" "$(env_get "$env" WEB_DOMAIN)"
   fi
   ensure_ops_account "$name"
+  ensure_service_token "$name"
   ensure_org_and_teams "$name" "$org"
   local demo=0; api GET "/repos/$org/$DEMO_ROOT_REPO" && demo=1
   ensure_config_repo "$name" "$org" "$demo"
@@ -1212,6 +1246,8 @@ cmd_instance_remove() {
       || die "$E_CONFIRM" "confirmation non reçue : rien n'a été supprimé."
   fi
   [[ "$typed" == "$name" ]] || die "$E_CONFIRM" "confirmation incorrecte : rien n'a été supprimé."
+  [[ "$name" != "$ADMIN_INSTANCE" ]] \
+    || die "$E_OPS_REFUSED" "« $name » est l'instance d'exploitation (ADMIN_INSTANCE) : désignez-en une autre dans host.env avant de la supprimer."
   acquire_lock "instance remove $name"
   # Export obligatoire avant toute suppression : son échec arrête tout (pré-condition, 6).
   ( trap cleanup_tmp EXIT; cmd_instance_export "$name" ) || die "$E_PRECOND" "export de « $name » en échec : rien n'a été supprimé."
@@ -1221,6 +1257,7 @@ cmd_instance_remove() {
   caddy_remove_site "$name"
   docker network rm "polenta-$name" >/dev/null 2>&1 || true
   rm -rf "$(instance_dir "$name")"
+  forget_service_token "$name"
   setup_fail2ban_forge_if_active
   host_log "instance remove $name ($domain), export $EXPORT_ARCHIVE" OK
   ok "instance $name supprimée — export conservé : $EXPORT_ARCHIVE"
@@ -1247,6 +1284,11 @@ render_web_env() {
   api_use_instance "$name"
   api GET "/repos/$org/$DEMO_ROOT_REPO" \
     && demo_line=$'\n'"POLENTA_WEB_DEMO_PROJECT_URL=https://${forge}/${org}/${DEMO_ROOT_REPO}.git"
+  # GH63 — interface d'administration (ADMIN_UI=on) : adresse interne du service et jeton de l'instance.
+  local admin_lines=""
+  if [[ "${ADMIN_UI:-off}" == on ]]; then
+    admin_lines=$'\n'"POLENTA_ADMIN_URL=http://polenta-admin:8787"$'\n'"POLENTA_ADMIN_SERVICE_TOKEN=$(env_get "$env" ADMIN_SERVICE_TOKEN)"
+  fi
   local content
   content="$(cat <<EOF
 # Client web de l'instance ${name} — généré par polenta-host (instance web enable), ne pas éditer.
@@ -1256,7 +1298,7 @@ POLENTA_WEB_PUBLIC_URL=https://${web}
 POLENTA_WEB_GIT_HOSTS=${forge}
 POLENTA_WEB_OIDC_CLIENT_ID=$(env_get "$env" WEB_OIDC_CLIENT_ID)
 POLENTA_WEB_OIDC_CLIENT_SECRET=$(env_get "$env" WEB_OIDC_CLIENT_SECRET)
-POLENTA_WEB_SESSION_SECRET=${secret}${demo_line}
+POLENTA_WEB_SESSION_SECRET=${secret}${demo_line}${admin_lines}
 EOF
 )"
   write_if_changed "$dir/web.env" "$content" 600 || true
@@ -1761,7 +1803,7 @@ status_json() {
     --argjson edgePresent "$edge_present" --argjson level "$level" --argjson modules "$modules" \
     --arg forge "$FORGE_IMAGE_DEFAULT:$FORGE_VERSION_DEFAULT" --arg caddyVersion "$CADDY_VERSION" \
     --arg docker "$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)" --arg kit "$kit" \
-    --argjson instances "$(instances_json)" \
+    --argjson instances "$(instances_json)" --arg adminUi "$ADMIN_UI" --arg adminInstance "$ADMIN_INSTANCE" \
     --argjson s3 "$(jq -nc --arg e "$(env_get "$HOST_ENV" BACKUP_S3_ENDPOINT)" --arg b "$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)" \
       --arg h "$(s3_key_hint)" --arg at "$(env_get "$HOST_ENV" BACKUP_S3_KEY_ROTATED_AT)" \
       'if $b == "" then null else {endpoint:$e, bucket:$b, accessKeyHint:$h, rotatedAt:(if $at == "" then null else $at end)} end')" \
@@ -1770,7 +1812,8 @@ status_json() {
       caddy:{mode:$caddyMode, running:$caddyRunning, edgeNetwork:$edge, edgeNetworkPresent:$edgePresent},
       hardening:{level:$level, modules:$modules},
       versions:{forgeDefault:$forge, caddy:$caddyVersion, docker:$docker, kit:(if $kit == "" then null else $kit end)},
-      backupStorage:$s3, instances:$instances}'
+      backupStorage:$s3, admin:{ui:$adminUi, instance:(if $adminInstance == "" then null else $adminInstance end)},
+      instances:$instances}'
 }
 
 # GH62 — état détecté des modules de durcissement (lecture seule).

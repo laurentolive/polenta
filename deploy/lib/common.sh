@@ -268,6 +268,11 @@ load_host_env() {
   EDGE_NETWORK="$(env_get "$HOST_ENV" EDGE_NETWORK)"; EDGE_NETWORK="${EDGE_NETWORK:-$DEFAULT_EDGE_NETWORK}"
   CADDY_SITES_DIR="$(env_get "$HOST_ENV" CADDY_SITES_DIR)"; CADDY_SITES_DIR="${CADDY_SITES_DIR:-$DEFAULT_CADDY_SITES_DIR}"
   CADDY_RELOAD_CMD="$(env_get "$HOST_ENV" CADDY_RELOAD_CMD)"
+  # GH63 — administration depuis Polenta : interface (on|off, défaut off), instance d'exploitation
+  # (ses propriétaires administrent l'hôte), socket de l'agent hôte.
+  ADMIN_UI="$(env_get "$HOST_ENV" ADMIN_UI)"; ADMIN_UI="${ADMIN_UI:-off}"
+  ADMIN_INSTANCE="$(env_get "$HOST_ENV" ADMIN_INSTANCE)"
+  ADMIN_AGENT_SOCKET="$(env_get "$HOST_ENV" ADMIN_AGENT_SOCKET)"; ADMIN_AGENT_SOCKET="${ADMIN_AGENT_SOCKET:-/run/polenta/agent.sock}"
   validate_host_env
 }
 
@@ -276,6 +281,9 @@ load_host_env() {
 validate_host_env() {
   [[ "$CADDY_MODE" == managed || "$CADDY_MODE" == external ]]     || die "CADDY_MODE « $CADDY_MODE » invalide dans $HOST_ENV : valeurs acceptées managed|external."
   [[ "$EDGE_NETWORK" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]     || die "EDGE_NETWORK « $EDGE_NETWORK » invalide dans $HOST_ENV : motif accepté [a-zA-Z0-9][a-zA-Z0-9_.-]* (ni espace, ni tiret initial)."
+  [[ "$ADMIN_UI" == on || "$ADMIN_UI" == off ]] || die "ADMIN_UI « $ADMIN_UI » invalide dans $HOST_ENV : valeurs acceptées on|off."
+  [[ -z "$ADMIN_INSTANCE" || "$ADMIN_INSTANCE" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || die "ADMIN_INSTANCE « $ADMIN_INSTANCE » invalide dans $HOST_ENV : nom d'instance attendu."
+  [[ "$ADMIN_AGENT_SOCKET" == /* ]] || die "ADMIN_AGENT_SOCKET « $ADMIN_AGENT_SOCKET » invalide dans $HOST_ENV : un chemin absolu est requis."
   [[ "$CADDY_SITES_DIR" == /* ]]     || die "CADDY_SITES_DIR « $CADDY_SITES_DIR » invalide dans $HOST_ENV : un chemin absolu est requis."
 }
 

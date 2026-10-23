@@ -18,6 +18,12 @@
 #   polenta-host instance remove <nom>         export puis suppression définitive
 #   polenta-host instance web enable <nom> --domain d --version v [--image i]   client web (GH44)
 #   polenta-host instance web disable <nom>    arrête le client web (données conservées)
+#   polenta-host dns check <domaine>           le domaine pointe-t-il vers cet hôte ? (GH63)
+#
+# Options globales (GH63) : --json (résultat JSON sur le descripteur 3, ou POLENTA_RESULT_FILE),
+# --non-interactive (aucune question : confirmation absente = sortie 3), --confirm <valeur>.
+# Codes de sortie : specs/GH63-design.md §5.5 (2 usage, 3 confirmation, 5 verrou, 12 instance
+# inconnue, 15 DNS, 16 S3, 17 mise à jour annulée…).
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -843,17 +849,25 @@ cmd_instance_backup() {
 
 # polenta-host instance snapshots <nom>
 cmd_instance_snapshots() {
-  require_root; load_host_env
+  require_operator; load_host_env
   local name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance snapshots <nom> [--password-file f]"
   shift
   [[ "${1:-}" == --password-file ]] && RESTIC_PASSWORD_OVERRIDE="$(tr -d '[:space:]' <"$2")"
-  local rc=0
-  restic_for "$name" snapshots || rc=$?
+  [[ -f "$(instance_env "$name")" || -n "${RESTIC_PASSWORD_OVERRIDE:-}" ]] || die "$E_NO_INSTANCE" "instance « $name » inconnue."
+  local rc=0 snaps
+  if [[ "$JSON_OUT" == 1 ]]; then
+    snaps="$(restic_for "$name" snapshots --json)" || rc=$?
+    [[ $rc == 0 ]] && emit_result "$(jq -c --arg name "$name" \
+      '{instance:$name, snapshots:[.[] | {id:.short_id, fullId:.id, time, tags:(.tags // []), paths}]}' <<<"$snaps")"
+  else
+    restic_for "$name" snapshots || rc=$?
+  fi
   case "$rc" in
     0) ;;
-    10) die "aucune sauvegarde pour « $name »." ;;
-    12) die "mot de passe incorrect pour les sauvegardes de « $name »." ;;
-    *) die "sauvegardes de « $name » inaccessibles (restic, code $rc)." ;;
+    10) if [[ "$JSON_OUT" == 1 ]]; then emit_result "$(jq -nc --arg name "$name" '{instance:$name, snapshots:[]}')"; return 0; fi
+        die "aucune sauvegarde pour « $name »." ;;
+    12) die "$E_S3" "mot de passe incorrect pour les sauvegardes de « $name »." ;;
+    *) die "$E_S3" "sauvegardes de « $name » inaccessibles (restic, code $rc)." ;;
   esac
 }
 
@@ -1370,6 +1384,47 @@ cmd_instance_list() {
     printf '%-14s %-38s %-10s %-10s %-8s %s\n' "$name" "$(env_get "$env" DOMAIN)" "$(env_get "$env" FORGE_VERSION)" \
       "$state" "$(du -sh "$(instance_dir "$name")/data" 2>/dev/null | cut -f1)" "$(env_get "$env" LAST_BACKUP || true)"
   done
+  # Appelé seul (instance list) : le résultat ; depuis status, c'est status qui l'émet.
+  [[ "${FUNCNAME[1]:-}" == cmd_status ]] || emit_result "$(jq -nc --argjson i "$(instances_json)" '{instances:$i}')"
+}
+
+# GH63 — instances de l'hôte, un objet JSON par instance (instance list --json, status --json).
+instances_json() {
+  local name env rows=()
+  for name in $(list_instances); do
+    env="$(instance_env "$name")"
+    [[ -f "$env" ]] || continue
+    local state complete=true; state="$(instance_health "$name")"
+    [[ -f "$(instance_dir "$name")/.add-complete" ]] || { state="incomplète"; complete=false; }
+    rows+=("$(jq -nc --arg name "$name" --arg domain "$(env_get "$env" DOMAIN)" --arg org "$(env_get "$env" ORG)" \
+      --arg version "$(env_get "$env" FORGE_VERSION)" --arg state "$state" --argjson complete "$complete" \
+      --arg disk "$(du -sh "$(instance_dir "$name")/data" 2>/dev/null | cut -f1)" \
+      --arg lastBackup "$(env_get "$env" LAST_BACKUP || true)" --arg webDomain "$(env_get "$env" WEB_DOMAIN)" \
+      '{name:$name, domain:$domain, org:$org, forgeVersion:$version, state:$state, complete:$complete, disk:$disk,
+        lastBackup:(if $lastBackup == "" then null else $lastBackup end),
+        webDomain:(if $webDomain == "" then null else $webDomain end)}')")
+  done
+  if ((${#rows[@]})); then printf '%s\n' "${rows[@]}" | jq -sc .; else printf '[]\n'; fi
+}
+
+# polenta-host dns check <domaine> [--json] — GH63 : le domaine pointe-t-il vers cet hôte ?
+# Lecture seule, sans verrou. Sortie 15 si non, avec l'enregistrement à créer.
+cmd_dns_check() {
+  local domain="${1:-}"
+  [[ "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$ ]] \
+    || die "$E_USAGE" "usage : polenta-host dns check <domaine> [--json]"
+  require_cmd dig
+  dns_verdict "$domain"
+  local records
+  records="$(jq -nc --arg d "$domain" --arg v4 "$HOST_V4" --arg v6 "$HOST_V6" \
+    '[{type:"A", name:$d, value:$v4}] + (if $v6 == "" then [] else [{type:"AAAA", name:$d, value:$v6}] end)')"
+  emit_result "$(jq -nc --arg d "$domain" --arg v "$DNS_VERDICT" --arg m "$DNS_MESSAGE" \
+    --arg a "$DNS_A" --arg aaaa "$DNS_AAAA" --argjson rec "$records" \
+    '{domain:$d, verdict:$v, message:$m, found:{a:($a|split("\n")|map(select(.!=""))), aaaa:($aaaa|split("\n")|map(select(.!="")))},
+      expected:$rec}')"
+  if [[ "$DNS_VERDICT" == ok ]]; then ok "$DNS_MESSAGE"; return 0; fi
+  warn "enregistrement(s) attendu(s) : $(jq -r 'map("\(.type) \(.name) → \(.value)") | join(" ; ")' <<<"$records")"
+  die "$E_DNS" "$DNS_MESSAGE"
 }
 
 cmd_instance_stop() {
@@ -1403,6 +1458,41 @@ cmd_status() {
   elif caddy_running; then printf '  Caddy : en service\n'; else printf '  Caddy : %sarrêté%s\n' "$C_RED" "$C_OFF"; fi
   cmd_status_hardening
   cmd_instance_list
+  [[ "$JSON_OUT" == 1 ]] && emit_result "$(status_json)"
+  return 0
+}
+
+# GH63 — état de l'hôte en JSON : modules actifs (#62), Caddy (#61), versions, instances.
+status_json() {
+  local caddy_up=false edge_present=false modules='[]' level=null
+  caddy_running && caddy_up=true
+  docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1 && edge_present=true
+  if modules_resolve; then
+    level="\"$HARDEN_LEVEL\""
+    local m rows=()
+    for m in "${HOST_MODULE_DISPLAY[@]}"; do
+      local enabled=false; module_enabled "$m" && enabled=true
+      rows+=("$(jq -nc --arg name "$m" --argjson enabled "$enabled" --arg state "$(module_detect "$m")" \
+        '{name:$name, enabled:$enabled, active:($state|startswith("actif")), state:$state}')")
+    done
+    modules="$(printf '%s\n' "${rows[@]}" | jq -sc .)"
+  fi
+  local os ipv6 kit; os="$(. /etc/os-release && echo "$PRETTY_NAME")"; ipv6="$(host_ipv6)"
+  kit="$(cat "$SCRIPT_DIR/VERSION" 2>/dev/null || true)"
+  jq -nc --arg host "$(hostname)" --arg os "$os" --arg ipv4 "$(host_ipv4)" --arg ipv6 "$ipv6" \
+    --argjson memMb "$(( $(awk '/MemAvailable/ {print $2}' /proc/meminfo) / 1024 ))" \
+    --arg diskFree "$(df -h / | awk 'NR==2 {print $4}')" \
+    --arg caddyMode "$CADDY_MODE" --argjson caddyRunning "$caddy_up" --arg edge "$EDGE_NETWORK" \
+    --argjson edgePresent "$edge_present" --argjson level "$level" --argjson modules "$modules" \
+    --arg forge "$FORGE_IMAGE_DEFAULT:$FORGE_VERSION_DEFAULT" --arg caddyVersion "$CADDY_VERSION" \
+    --arg docker "$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)" --arg kit "$kit" \
+    --argjson instances "$(instances_json)" \
+    '{host:$host, os:$os, ipv4:$ipv4, ipv6:(if $ipv6 == "" then null else $ipv6 end),
+      memAvailableMb:$memMb, diskFree:$diskFree,
+      caddy:{mode:$caddyMode, running:$caddyRunning, edgeNetwork:$edge, edgeNetworkPresent:$edgePresent},
+      hardening:{level:$level, modules:$modules},
+      versions:{forgeDefault:$forge, caddy:$caddyVersion, docker:$docker, kit:(if $kit == "" then null else $kit end)},
+      instances:$instances}'
 }
 
 # GH62 — état détecté des modules de durcissement (lecture seule).
@@ -1429,16 +1519,21 @@ cmd_status_hardening() {
 }
 
 main() {
+  # GH63 — --json, --non-interactive, --confirm, n'importe où sur la ligne de commande.
+  parse_global_opts "$@"; set -- "${ARGS[@]+"${ARGS[@]}"}"
   local cmd="${1:-}"; shift || true
   case "$cmd" in
     setup) cmd_setup "$@" ;;
     backup-cron) cmd_backup_cron ;;
-    status) require_root; load_host_env; cmd_status ;;
+    status) require_operator; load_host_env; cmd_status ;;
+    dns)
+      [[ "${1:-}" == check ]] || usage 1
+      shift; require_operator; cmd_dns_check "$@" ;;
     instance)
       local sub="${1:-}"; shift || true
       case "$sub" in
         add) cmd_instance_add "$@" ;;
-        list) require_root; cmd_instance_list ;;
+        list) require_operator; cmd_instance_list ;;
         stop) cmd_instance_stop "$@" ;;
         start) cmd_instance_start "$@" ;;
         sync) cmd_instance_sync "$@" ;;

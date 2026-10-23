@@ -308,19 +308,36 @@ resolve_instance() {
 host_ipv4() { ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n1; }
 host_ipv6() { ip -6 route get 2606:4700:4700::1111 2>/dev/null | sed -n 's/.* src \([0-9a-f:]*\).*/\1/p' | head -n1; }
 
-# Vérifie que $1 résout vers cet hôte (A obligatoire, AAAA vérifié s'il existe), via un
-# résolveur public pour ne pas dépendre du cache local.
-check_dns_points_here() {
-  local domain="$1" v4 v6 a aaaa
-  v4="$(host_ipv4)"; v6="$(host_ipv6)"
-  a="$(dig +short A "$domain" @1.1.1.1 | grep -E '^[0-9.]+$' || true)"
-  aaaa="$(dig +short AAAA "$domain" @1.1.1.1 | grep -E '^[0-9a-f:]+$' || true)"
-  [[ -n "$a" ]] || die "« $domain » ne résout pas (A). Attendu : $v4. Créez l'enregistrement DNS puis relancez."
-  grep -qx "$v4" <<<"$a" || die "« $domain » résout vers $(tr '\n' ' ' <<<"$a")au lieu de $v4 (IP de cet hôte)."
-  if [[ -n "$aaaa" ]]; then
-    [[ -n "$v6" ]] || die "« $domain » a un AAAA ($aaaa) mais cet hôte n'a pas d'IPv6 : le certificat échouerait."
-    grep -qx "$v6" <<<"$aaaa" || die "« $domain » AAAA = $(tr '\n' ' ' <<<"$aaaa")au lieu de $v6 (IPv6 de cet hôte)."
+# GH63 — verdict DNS de $1 pour cet hôte, sans rien arrêter (dns check --json, check_dns_points_here) :
+# DNS_VERDICT = ok | no-resolve | elsewhere | aaaa-mismatch, DNS_MESSAGE (français), DNS_A / DNS_AAAA
+# (enregistrements trouvés), HOST_V4 / HOST_V6. Résolveur public uniquement (pas de cache local).
+dns_verdict() {
+  local domain="$1"
+  HOST_V4="$(host_ipv4)"; HOST_V6="$(host_ipv6)"
+  DNS_A="$(dig +short A "$domain" @1.1.1.1 | grep -E '^[0-9.]+$' || true)"
+  DNS_AAAA="$(dig +short AAAA "$domain" @1.1.1.1 | grep -E '^[0-9a-f:]+$' || true)"
+  DNS_VERDICT=ok; DNS_MESSAGE="« $domain » pointe vers cet hôte."
+  if [[ -z "$DNS_A" ]]; then
+    DNS_VERDICT=no-resolve
+    DNS_MESSAGE="« $domain » ne résout pas (A). Attendu : $HOST_V4. Créez l'enregistrement DNS puis relancez."
+  elif ! grep -qx "$HOST_V4" <<<"$DNS_A"; then
+    DNS_VERDICT=elsewhere
+    DNS_MESSAGE="« $domain » résout vers $(tr '
+' ' ' <<<"$DNS_A")au lieu de $HOST_V4 (IP de cet hôte)."
+  elif [[ -n "$DNS_AAAA" && -z "$HOST_V6" ]]; then
+    DNS_VERDICT=aaaa-mismatch
+    DNS_MESSAGE="« $domain » a un AAAA ($DNS_AAAA) mais cet hôte n'a pas d'IPv6 : le certificat échouerait."
+  elif [[ -n "$DNS_AAAA" ]] && ! grep -qx "$HOST_V6" <<<"$DNS_AAAA"; then
+    DNS_VERDICT=aaaa-mismatch
+    DNS_MESSAGE="« $domain » AAAA = $(tr '
+' ' ' <<<"$DNS_AAAA")au lieu de $HOST_V6 (IPv6 de cet hôte)."
   fi
+}
+
+# Vérifie que $1 résout vers cet hôte (A obligatoire, AAAA vérifié s'il existe) ; sinon arrêt (15).
+check_dns_points_here() {
+  dns_verdict "$1"
+  [[ "$DNS_VERDICT" == ok ]] || die "$E_DNS" "$DNS_MESSAGE"
 }
 
 # Trace des commandes d'administration (spec §9.6) — jamais de mot de passe dans $cmd.

@@ -1,0 +1,8 @@
+{
+  "comment": "GH63 — versions de forge proposées par l'interface d'administration (mise à jour d'une instance). Épinglées, jamais « latest » ; une autre version peut être saisie, validée par docker pull. Mettre à jour avec le kit.",
+  "image": "codeberg.org/forgejo/forgejo",
+  "default": "15.0.9",
+  "versions": [
+    { "version": "15.0.9", "channel": "lts", "note": "LTS — version par défaut du kit (DEFAULT_FORGE_VERSION)" }
+  ]
+}

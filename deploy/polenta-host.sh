@@ -20,6 +20,9 @@
 #   polenta-host instance web disable <nom>    arrête le client web (données conservées)
 #   polenta-host dns check <domaine>           le domaine pointe-t-il vers cet hôte ? (GH63)
 #   polenta-host exports list | exports delete <archive> --confirm <archive>   archives d'export (GH63)
+#   polenta-host s3-key rotate [--credentials-fd N]   remplace la clé S3 des sauvegardes (testée d'abord)
+#   polenta-host s3-purge <nom> [--preview] [--purge-key-fd N] [--sans-export]   efface les sauvegardes d'une
+#                                              instance supprimée (clé de purge séparée, confirmation en deux temps)
 #
 # Options globales (GH63) : --json (résultat JSON sur le descripteur 3, ou POLENTA_RESULT_FILE),
 # --non-interactive (aucune question : confirmation absente = sortie 3), --confirm <valeur>.
@@ -39,6 +42,8 @@ KIT_DIR="$POLENTA_ROOT/kit"
 . "$SCRIPT_DIR/lib/backup.sh"
 # shellcheck source=lib/modules.sh
 . "$SCRIPT_DIR/lib/modules.sh"
+# shellcheck source=lib/s3.sh
+. "$SCRIPT_DIR/lib/s3.sh"
 
 DEMO_SOURCE_OWNER_URL="https://github.com/laurentolive"
 DEMO_ROOT_REPO="demo-ll800-produit"
@@ -1515,6 +1520,163 @@ instances_json() {
   if ((${#rows[@]})); then printf '%s\n' "${rows[@]}" | jq -sc .; else printf '[]\n'; fi
 }
 
+# ─── GH63 — stockage S3 : remplacement de la clé, purge ────────────────────────────
+
+# Indice de la clé d'accès affichable (4 derniers caractères), jamais la clé.
+s3_key_hint() { local k; k="$(env_get "$HOST_ENV" BACKUP_S3_ACCESS_KEY)"; [[ -n "$k" ]] && printf '…%s' "${k: -4}"; return 0; }
+
+# polenta-host s3-key rotate [--credentials-fd N] — §3.7 : test de la nouvelle clé AVANT tout
+# remplacement (16 si refusée, rien modifié), remplacement dans host.env, sauvegarde de contrôle de
+# toutes les instances (--tag key-rotation) + restic check ; échec → clé précédente restaurée (19).
+# Identifiants : lignes endpoint=, bucket=, access_key=, secret_key= (region= facultatif) sur le
+# descripteur N ; sans lui, saisie interactive (clé secrète masquée).
+cmd_s3_key() {
+  [[ "${1:-}" == rotate ]] || die "$E_USAGE" "usage : polenta-host s3-key rotate [--credentials-fd N]"
+  shift
+  load_host_env; require_cmd restic jq curl
+  local fd=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --credentials-fd) fd="${2:-}"; shift 2 ;;
+      *) die "$E_USAGE" "option inconnue : $1" ;;
+    esac
+  done
+  local endpoint bucket access secret region
+  if [[ -n "$fd" ]]; then
+    s3_read_fd "$fd"
+    endpoint="${S3_INPUT[endpoint]:-}"; bucket="${S3_INPUT[bucket]:-}"
+    access="${S3_INPUT[access_key]:-}"; secret="${S3_INPUT[secret_key]:-}"; region="${S3_INPUT[region]:-}"
+  else
+    [[ "$NON_INTERACTIVE" == 1 ]] && die "$E_USAGE" "--non-interactive : identifiants attendus sur --credentials-fd N."
+    local cur_endpoint cur_bucket
+    cur_endpoint="$(env_get "$HOST_ENV" BACKUP_S3_ENDPOINT)"; cur_bucket="$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)"
+    read -r -p "Endpoint S3 [$cur_endpoint] : " endpoint || die "$E_USAGE" "saisie interrompue."
+    read -r -p "Bucket [$cur_bucket] : " bucket || die "$E_USAGE" "saisie interrompue."
+    read -r -p "Clé d'accès : " access || die "$E_USAGE" "saisie interrompue."
+    read -r -s -p "Clé secrète (masquée) : " secret || die "$E_USAGE" "saisie interrompue."; printf '\n'
+    endpoint="${endpoint:-$cur_endpoint}"; bucket="${bucket:-$cur_bucket}"
+  fi
+  endpoint="${endpoint:-$(env_get "$HOST_ENV" BACKUP_S3_ENDPOINT)}"; bucket="${bucket:-$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)}"
+  [[ -n "$endpoint" && -n "$bucket" && -n "$access" && -n "$secret" ]] \
+    || die "$E_USAGE" "endpoint, bucket, clé d'accès et clé secrète sont requis."
+  [[ "$access$secret$endpoint$bucket" != *[[:space:]\'\"]* ]] || die "$E_USAGE" "identifiants S3 : espaces et guillemets non supportés."
+  region="$(s3_region "$(s3_base_url "$endpoint")" "${region:-$(env_get "$HOST_ENV" BACKUP_S3_REGION)}")"
+  acquire_lock "s3-key rotate"
+
+  log "Test de la nouvelle clé (écriture et lecture d'un objet de contrôle dans $bucket)"
+  s3_keycheck "$endpoint" "$bucket" "$access" "$secret" "$region" \
+    || die "$E_S3" "nouvelle clé refusée par le stockage (lecture/écriture impossible) : rien n'a été modifié."
+  ok "nouvelle clé valide"
+
+  # Clé précédente conservée (copie octet pour octet de host.env) jusqu'à la réussite du contrôle.
+  local prev="$HOST_ENV.prev-key"
+  ( umask 077; cp -p "$HOST_ENV" "$prev" )
+  env_set "$HOST_ENV" BACKUP_S3_ENDPOINT "$endpoint"
+  env_set "$HOST_ENV" BACKUP_S3_BUCKET "$bucket"
+  env_set "$HOST_ENV" BACKUP_S3_ACCESS_KEY "$access"
+  env_set "$HOST_ENV" BACKUP_S3_SECRET_KEY "$secret"
+  env_set "$HOST_ENV" BACKUP_S3_KEY_ROTATED_AT "$(date -Iseconds)"
+  ok "host.env mis à jour (clé d'accès $(s3_key_hint))"
+
+  log "Sauvegarde de contrôle de toutes les instances avec la nouvelle clé"
+  local name failed=0 checked=()
+  for name in $(list_instances); do
+    [[ -f "$(instance_dir "$name")/.add-complete" ]] || continue
+    if ( backup_instance "$name" key-rotation ) && restic_for "$name" check >/dev/null 2>&1; then
+      checked+=("$name"); ok "$name : sauvegarde et vérification OK"
+    else
+      failed=1; warn "$name : sauvegarde de contrôle en échec"
+    fi
+  done
+  # Crochet de test (S1-7) : contrôle déclaré en échec après le remplacement — jamais en exploitation.
+  [[ "${POLENTA_TEST_FAIL_KEYCHECK:-0}" == 1 ]] && { warn "POLENTA_TEST_FAIL_KEYCHECK=1 : échec simulé du contrôle"; failed=1; }
+  if [[ $failed == 1 ]]; then
+    cp -p "$prev" "$HOST_ENV"; rm -f "$prev"
+    host_log "s3-key rotate" "ERREUR, clé précédente restaurée"
+    emit_result "$(jq -nc --arg hint "$(s3_key_hint)" '{status:"rolled-back", accessKeyHint:$hint}')"
+    die "$E_BACKUP_CHECK" "sauvegarde de contrôle en échec : la clé précédente est restaurée (host.env inchangé)."
+  fi
+  rm -f "$prev"
+  host_log "s3-key rotate (clé $(s3_key_hint))" OK
+  local list_json='[]'; ((${#checked[@]})) && list_json="$(printf '%s\n' "${checked[@]}" | jq -Rsc 'split("\n")|map(select(.!=""))')"
+  emit_result "$(jq -nc --arg e "$endpoint" --arg b "$bucket" --arg hint "$(s3_key_hint)" \
+    --arg at "$(env_get "$HOST_ENV" BACKUP_S3_KEY_ROTATED_AT)" --argjson i "$list_json" \
+    '{status:"succeeded", endpoint:$e, bucket:$b, accessKeyHint:$hint, rotatedAt:$at, checkedInstances:$i}')"
+  ok "clé S3 remplacée"
+}
+
+# Inventaire des sauvegardes d'une instance dans le stockage (objets, taille, instantanés, dates),
+# lu avec la clé $2/$3. Résultat JSON sur stdout.
+s3_inventory_json() {
+  local name="$1" access="$2" secret="$3"
+  local endpoint bucket region objects
+  endpoint="$(env_get "$HOST_ENV" BACKUP_S3_ENDPOINT)"; bucket="$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)"
+  region="$(s3_region "$(s3_base_url "$endpoint")" "$(env_get "$HOST_ENV" BACKUP_S3_REGION)")"
+  objects="$(s3_list_objects "$endpoint" "$bucket" "$name" "$access" "$secret" "$region")" \
+    || die "$E_S3" "stockage S3 inaccessible ou liste refusée (clé, bucket, réseau ?)."
+  jq -Rn --arg name "$name" '[inputs | select(. != "") | split("\t") | {key:.[0], size:(.[1]|tonumber? // 0), at:.[2]}] as $o |
+    {instance:$name, objects:($o|length), snapshots:($o|map(select(.key|test("/snapshots/")))|length),
+     bytes:($o|map(.size)|add // 0), oldest:($o|map(.at)|min), newest:($o|map(.at)|max)}' <<<"$objects"
+}
+
+# polenta-host s3-purge <nom> [--preview] [--purge-key-fd N] [--sans-export] — §3.8 : efface
+# définitivement les sauvegardes d'une instance SUPPRIMÉE. --preview : inventaire seul (clé
+# nocturne, lecture). Purge : clé de purge (access_key=, secret_key=) sur le descripteur N, jamais en
+# argument ni sur disque ; confirmation --confirm "supprimer définitivement les sauvegardes de <nom>".
+cmd_s3_purge() {
+  load_host_env; require_cmd jq curl
+  local name="${1:-}" preview=0 fd="" no_export=0; shift || true
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] \
+    || die "$E_USAGE" "usage : polenta-host s3-purge <nom> [--preview] [--purge-key-fd N] [--sans-export]"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --preview) preview=1; shift ;;
+      --purge-key-fd) fd="${2:-}"; shift 2 ;;
+      --sans-export) no_export=1; shift ;;
+      *) die "$E_USAGE" "option inconnue : $1" ;;
+    esac
+  done
+  [[ -n "$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)" ]] || die "$E_PRECOND" "sauvegardes non configurées (BACKUP_S3_* dans $HOST_ENV)."
+  # Pré-conditions, vérifiées avant toute lecture de clé.
+  [[ ! -e "$(instance_dir "$name")" ]] || die "$E_PRECOND" "l'instance « $name » existe encore : supprimez-la d'abord (instance remove). Rien n'a été effacé."
+  if ! compgen -G "$POLENTA_ROOT/exports/${name}-*.tar.gz" >/dev/null; then
+    [[ $no_export == 1 ]] || die "$E_PRECOND" "aucun export de restitution pour « $name » dans $POLENTA_ROOT/exports : --sans-export pour purger quand même. Rien n'a été effacé."
+    warn "aucun export de restitution pour « $name » (--sans-export) : ses données seront perdues."
+  fi
+  if [[ $preview == 1 ]]; then
+    local inv; inv="$(s3_inventory_json "$name" "$(env_get "$HOST_ENV" BACKUP_S3_ACCESS_KEY)" "$(env_get "$HOST_ENV" BACKUP_S3_SECRET_KEY)")"
+    log "Sauvegardes de « $name » : $(jq -r '"\(.snapshots) instantanés, \(.objects) objets, \(.bytes) octets, du \(.oldest // "-") au \(.newest // "-")"' <<<"$inv")"
+    emit_result "$(jq -c '. + {preview:true}' <<<"$inv")"
+    return 0
+  fi
+  [[ -n "$fd" ]] || die "$E_PRECOND" "clé de purge requise (--purge-key-fd N : access_key=, secret_key=). Rien n'a été effacé."
+  local phrase="supprimer définitivement les sauvegardes de $name"
+  confirm "Effacer DÉFINITIVEMENT toutes les sauvegardes de « $name » ? Tapez o après avoir lu l'inventaire (--preview)." "$phrase" \
+    || die "$E_CONFIRM" "abandon : rien n'a été effacé."
+  s3_read_fd "$fd"
+  local access="${S3_INPUT[access_key]:-}" secret="${S3_INPUT[secret_key]:-}"
+  S3_INPUT=()
+  [[ -n "$access" && -n "$secret" ]] || die "$E_PRECOND" "clé de purge incomplète (access_key=, secret_key=). Rien n'a été effacé."
+  acquire_lock "s3-purge $name"
+  local endpoint bucket region keys inv n failed=0
+  endpoint="$(env_get "$HOST_ENV" BACKUP_S3_ENDPOINT)"; bucket="$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)"
+  region="$(s3_region "$(s3_base_url "$endpoint")" "$(env_get "$HOST_ENV" BACKUP_S3_REGION)")"
+  inv="$(s3_inventory_json "$name" "$access" "$secret")"
+  keys="$(s3_list_objects "$endpoint" "$bucket" "$name" "$access" "$secret" "$region" | cut -f1)" \
+    || die "$E_S3" "stockage S3 : liste refusée avec la clé de purge."
+  n="$(grep -c . <<<"$keys" || true)"
+  log "Purge de « $name » : $n objets"
+  s3_delete_keys "$endpoint" "$bucket" "$access" "$secret" "$region" <<<"$keys" || failed=$?
+  access=""; secret=""
+  if [[ $failed -gt 0 ]]; then
+    host_log "s3-purge $name ($n objets, $failed échecs)" ERREUR
+    die "$E_S3" "purge incomplète : $failed objet(s) sur $n non effacés (droit de suppression de la clé ?)."
+  fi
+  host_log "s3-purge $name ($(jq -r .snapshots <<<"$inv") instantanés, $n objets) par ${POLENTA_ACTOR:-${SUDO_USER:-root}}" OK
+  ok "sauvegardes de « $name » effacées ($n objets)"
+  emit_result "$(jq -c '{instance, deletedObjects:.objects, deletedSnapshots:.snapshots, bytes}' <<<"$inv")"
+}
+
 # polenta-host dns check <domaine> [--json] — GH63 : le domaine pointe-t-il vers cet hôte ?
 # Lecture seule, sans verrou. Sortie 15 si non, avec l'enregistrement à créer.
 cmd_dns_check() {
@@ -1600,12 +1762,15 @@ status_json() {
     --arg forge "$FORGE_IMAGE_DEFAULT:$FORGE_VERSION_DEFAULT" --arg caddyVersion "$CADDY_VERSION" \
     --arg docker "$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)" --arg kit "$kit" \
     --argjson instances "$(instances_json)" \
+    --argjson s3 "$(jq -nc --arg e "$(env_get "$HOST_ENV" BACKUP_S3_ENDPOINT)" --arg b "$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)" \
+      --arg h "$(s3_key_hint)" --arg at "$(env_get "$HOST_ENV" BACKUP_S3_KEY_ROTATED_AT)" \
+      'if $b == "" then null else {endpoint:$e, bucket:$b, accessKeyHint:$h, rotatedAt:(if $at == "" then null else $at end)} end')" \
     '{host:$host, os:$os, ipv4:$ipv4, ipv6:(if $ipv6 == "" then null else $ipv6 end),
       memAvailableMb:$memMb, diskFree:$diskFree,
       caddy:{mode:$caddyMode, running:$caddyRunning, edgeNetwork:$edge, edgeNetworkPresent:$edgePresent},
       hardening:{level:$level, modules:$modules},
       versions:{forgeDefault:$forge, caddy:$caddyVersion, docker:$docker, kit:(if $kit == "" then null else $kit end)},
-      instances:$instances}'
+      backupStorage:$s3, instances:$instances}'
 }
 
 # GH62 — état détecté des modules de durcissement (lecture seule).
@@ -1640,6 +1805,8 @@ main() {
     backup-cron) cmd_backup_cron ;;
     status) require_operator; load_host_env; cmd_status ;;
     exports) require_operator; cmd_exports "$@" ;;
+    s3-key) require_operator; cmd_s3_key "$@" ;;
+    s3-purge) require_operator; cmd_s3_purge "$@" ;;
     dns)
       [[ "${1:-}" == check ]] || usage 1
       shift; require_operator; cmd_dns_check "$@" ;;

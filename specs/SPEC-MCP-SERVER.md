@@ -138,7 +138,7 @@ tests/campagnes (`AuthService`, `GitService`, `SyncService`, `PolentaRepoService
 `TestsIndexService`, `RequirementsService`, `TestsService`, `CampaignsService`,
 `TreeService`) — sans `RepoWatcherService` (chokidar, inutile pour un process à appels
 ponctuels) ni les autres services hors périmètre (`ReviewsService`, `TraceabilityService`,
-`QueryEngineService`, `DashboardsService`, `ExportService`, `WorkspaceService`,
+`DashboardsService`, `ExportService`, `WorkspaceService`,
 `BaselineService`, `InterfaceComplianceService`, `SavedQueriesService`,
 `DashboardSeedService`).
 
@@ -150,10 +150,11 @@ serveur MCP sont écrits sur disque mais n'apparaissent jamais dans SystemView/E
 Synchrone (pas de `createContainer()` async) — pas de fenêtre à ouvrir, pas d'attente
 `app.whenReady()`.
 
-**GH18** : le container construit aussi `TraceabilityService`, `QueryEngineService`,
-`DashboardsService`, `SavedQueriesService` (même graphe que `main/container.ts`) et expose
-`user` — `DashboardSeedService` reste exclu (le seed des dashboards pré-configurés est
-propre à l'app). `TraceabilityService` n'est appelé que via `computeCoverage` (pur).
+**GH18 / GH74** : le container construit aussi `TraceabilityService`, `DashboardsService`,
+`SavedQueriesService`, `GraphService` (**sans cache**), `DashboardLibraryService`,
+`ScriptEngineService` (worker QuickJS) et `SuiviService`, et expose `user` —
+`DashboardSeedService` et `SuiviUpdatesService` restent exclus (seeds et bandeau propres à
+l'app). `TraceabilityService` n'est appelé que via `computeCoverage` (pur).
 
 **GH16** : `McpContainer` expose aussi `reqIndex`/`testsIndex`, pour que `create_links`
 puisse invalider ces index quand un ID est introuvable (pas de watcher dans ce process).
@@ -217,6 +218,22 @@ filters?: { component?: string; level?: string }
 Réutilise `CampaignsService.list(repoPath, component?, level?)` tel quel. Même
 plafonnement/troncature que ci-dessus.
 
+Les trois listes renvoient `history` tel qu'il est écrit dans les fichiers (GH77).
+
+#### `get_history` (GH77)
+
+```ts
+{ kind: 'requirement' | 'test' | 'campaign'; id: string }
+```
+
+Historique effectif d'un objet (`readEffectiveHistory`, même calcul que le canal `history:get`) :
+une liste par champ suivi, avec l'entrée `implicit: true` quand la valeur courante diffère de la
+dernière entrée. Données brutes — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77).
+
+**Écritures MCP et historique (GH77)** : `createMcpContainer` injecte un acteur
+`{ by: --user ?? POLENTA_USER ?? 'local', source: 'mcp' }` dans `HistoryService` — toute création
+ou modification par un tool porte `source: mcp`.
+
 ### 4.2 Import massif (`tools/bulk-import.tools.ts`)
 
 `bulk_import_requirements` / `bulk_import_tests` / `bulk_import_campaigns` :
@@ -267,6 +284,9 @@ plafonnement/troncature que ci-dessus.
 
 ### 4.3 Mutation de schéma (`tools/schema-mutation.tools.ts`)
 
+**GH77** : `add_object_type` accepte `trackStatusHistory`, `add_field` (et les champs d'un
+`add_object_type`) `trackHistory` — clés auparavant retirées par la validation zod.
+
 Un tool par méthode ciblée de `SchemaService` — chacune : `get()` → valide (lève
 `SchemaValidationError` AVANT tout `save()` si un invariant est violé) → construit une
 copie immuable du schéma → `save()` (réécriture complète du fichier — atomicité au
@@ -298,9 +318,10 @@ STATUS_NAME_TAKEN | LINK_TYPE_NAME_TAKEN`.
 
 ### 4.4 Liens (`tools/links.tools.ts`, GH16)
 
-Liens (`ObjectLink`) toujours lus/écrits dans `links/links.yaml` du **repo ciblé**
-(`--repo`), jamais dans un composant. Chaque tool relit ce fichier depuis le disque
-(`RequirementsIndexService.reloadLinks`) : le process MCP n'a pas de `RepoWatcherService`,
+Liens (`ObjectLink`) lus dans les `links/links.yaml` de **tous les repos du workspace**
+(`--repo` + composants avec `--workspace`) et écrits dans le repo de leur **source** (GH105,
+`WorkspaceLinksService`, cf. `SPEC-REQ-requirements.md` §5.2a). Chaque tool relit ces fichiers
+depuis le disque (`RequirementsIndexService.reloadLinks`) : le process MCP n'a pas de `RepoWatcherService`,
 son cache peut ignorer un lien créé entre-temps par l'app, et une écriture basée dessus
 l'écraserait. `reloadLinks` lève si le fichier a un contenu dont `links` n'est pas un
 tableau (fichier absent ou vide → `[]`) ; un YAML invalide lève déjà dans `readYaml`.
@@ -310,8 +331,10 @@ changement sous `links/`).
 #### `list_links`
 
 ```ts
-{ objectId?: string; type?: string }   →   { links: ObjectLink[] }
+{ objectId?: string; type?: string }   →   { links: Array<ObjectLink & { storedIn: string; readonly: boolean }> }
 ```
+`storedIn` : repo dont le `links.yaml` contient le lien ; `readonly` : ce repo est en lecture seule
+(GH105).
 `objectId` : liens dont l'objet est source **ou** cible ; `type` : `linkTypes[].name`. Filtres
 cumulés (ET). Pas de `paginate`.
 
@@ -320,15 +343,16 @@ cumulés (ET). Pas de `paginate`.
 ```ts
 { entries: Array<{ type, sourceId, targetId }>; dryRun?: boolean }   // dryRun par défaut true
 → { dryRun, summary: { total, ok, failed },
-    wouldCreate: Array<{ index, type, sourceId, targetId }>,   // dryRun: true
-    created: Array<{ index, id }>,                              // dryRun: false
+    wouldCreate: Array<{ index, type, sourceId, targetId, storedIn }>,   // dryRun: true
+    created: Array<{ index, id, storedIn }>,                              // dryRun: false
     errors: Array<{ index, code, reason }> }
 ```
 
 Validation stricte (`main/services/link-validation.util.ts::validateLinkEntries`, pure),
 par entrée, première règle en échec retenue :
 
-1. `type` ∈ `schema.linkTypes` — sinon `LINK_TYPE_NOT_FOUND`.
+1. `type` ∈ union des `linkTypes` du workspace (GH105, repo racine prioritaire) — sinon
+   `LINK_TYPE_NOT_FOUND`.
 2. `sourceId !== targetId` — sinon `SELF_LINK`.
 3. Source et cible existent — sinon `OBJECT_NOT_FOUND` (raison : « source »/« cible » + ID).
    Recherche dans `resolveWorkspaceRepoPaths` (repo ciblé seul en mono-repo ; + repos
@@ -343,10 +367,14 @@ par entrée, première règle en échec retenue :
    Valide si l'un des deux sens est compatible ; le sens fourni est **conservé** (pas de
    normalisation). Sinon `LINK_TYPE_INCOMPATIBLE`.
 5. Pas de doublon (même `type`, même paire, quel que soit le sens) avec un lien existant
-   ou une entrée valide précédente du lot — sinon `DUPLICATE_LINK` (cite l'id existant).
+   **dans le workspace** ou une entrée valide précédente du lot — sinon `DUPLICATE_LINK` (cite
+   l'id existant).
+6. GH105 — repo de stockage (repo de l'objet côté `sourceRefs`) modifiable, et objet source hors
+   nœud `readonly` — sinon `READONLY_REPO`. En mode workspace, les refs `nœud::type` sont résolues
+   avec le repo de l'objet (`SPEC-REQ-requirements.md` §5.2a).
 
-`dryRun: false` : `RequirementsIndexService.createLinks(repoPath, dtos, 'mcp')` — sous
-verrou par repo (`withKeyLock`), relit le fichier, **refait le contrôle de doublon** contre
+`dryRun: false` : `RequirementsIndexService.createLinks(storedIn, dtos, 'mcp')`, un appel par
+repo de stockage — sous verrou par repo (`withKeyLock`), relit le fichier, **refait le contrôle de doublon** contre
 cet état (appel MCP concurrent, lien ajouté par l'app entre la validation et l'écriture :
 l'entrée est alors reportée `DUPLICATE_LINK`), puis **une seule** écriture pour le lot.
 Liens créés : `createdBy: 'mcp'`, `createdAt` ISO, id `lnk_<timestamp>_<aléa>` unique.
@@ -360,66 +388,66 @@ Ne pose pas `needsRevalidation`. Lot vide → aucune écriture.
     errors: Array<{ index, code: 'LINK_NOT_FOUND', reason }> }
 ```
 Id inexistant ou répété dans le lot → `LINK_NOT_FOUND` à son index, les autres sont
-traités. `dryRun: false` : `RequirementsIndexService.deleteLinks` (même verrou, relecture,
+traités. GH105 : chaque lien est supprimé dans le repo qui le stocke ; repo en lecture seule →
+`READONLY_REPO`. `dryRun: false` : `RequirementsIndexService.deleteLinks` (même verrou, relecture,
 une seule écriture) ; un lien disparu entre-temps est reporté `LINK_NOT_FOUND`.
 
 Toutes les erreurs par entrée sont dans `errors[]` (jamais `isError`, même si tout le lot
 échoue) ; une erreur inattendue (YAML corrompu) remonte en erreur de protocole, fichier
 non modifié.
 
-Le chemin IPC de l'UI (`requirements:link-create`/`link-delete`) reste **sans
-validation** (hors scope GH16).
+GH105 : le chemin IPC de l'UI (`requirements:link-create`/`link-delete` avec `workspaceDir`)
+applique la même validation et le même stockage (`WorkspaceLinksService`) ; sans `workspaceDir`
+(appels historiques), il reste sans validation, dans le repo donné.
 
-### 4.5 Vue Suivi — requêtes et dashboards (`tools/queries.tools.ts`, `tools/dashboards.tools.ts`, GH18)
+### 4.5 Vue Suivi — scripts, requêtes et dashboards (GH18, réécrit par GH74)
 
-Helpers communs : `tools/suivi-common.ts` ; règles pures : `main/services/suivi-validation.util.ts`.
-Écritures via `SavedQueriesService` / `DashboardsService` (formats et ids de
-`SPEC-DASHBOARDS.md` §3), `createdBy: 'mcp'`.
+Fichiers : `tools/suivi-script.tools.ts` (contrat, modèles, exécution, bibliothèque),
+`tools/queries.tools.ts`, `tools/dashboards.tools.ts` ; helpers `tools/suivi-common.ts` ; règles
+pures `main/services/suivi-validation.util.ts` ; compilation Vega-Lite `mcp-server/spec-compile.ts`
+(bundle ESM séparé `vega-compile.mjs`, chargé par `import()` dynamique depuis le serveur CJS).
+Écritures via `SavedQueriesService` / `DashboardsService` (format v1, `SPEC-DASHBOARDS.md` §7),
+`createdBy: 'mcp'`. Exécutions par le `ScriptEngineService` du process (worker QuickJS), graphe
+**sans cache** (pas de watcher) ; les index sont rafraîchis avant chaque exécution.
 
-**Règles communes aux écritures** : un objet par appel ; `dryRun` par défaut `true`
-(validation complète, requête comprise, aperçu sans écriture — l'id partagé prévu est
-calculé par `peekNextCounterId`, lecture seule, GH20) ; branche `''`/`prj-*` → `READONLY_BRANCH`
-même en dryRun (`readonly-branch.util.ts`, règle partagée avec `DashboardSeedService`).
-Erreur attendue → `isError` avec message `[CODE] raison`.
+**Règles communes aux écritures** : un objet par appel ; `dryRun` par défaut `true` (validation
+complète, script exécuté, aperçu sans écriture — l'id partagé prévu est calculé par
+`peekNextCounterId`, GH20) ; branche `''`/`prj-*` → `READONLY_BRANCH` même en dryRun ; objet en
+lecture seule (SQL d'avant GH74, format plus récent) → `SUIVI_READ_ONLY`. Erreur attendue →
+`isError` avec `[CODE] raison`. Un script en erreur n'empêche pas l'enregistrement : avertissement
+`SCRIPT_ERROR` (fichier, ligne).
 
-**Scope** : sans `--user`, les services reçoivent une sentinelle `NO_USER` (caractère nul) :
-lecture `.pref` → vide, écriture `.pref` physiquement impossible ; toute opération privée →
-`PRIVATE_SCOPE_UNAVAILABLE`, un id privé n'est jamais résolu. Un id partagé hors format
-`QUERY-NNNN` / `DASHBOARD-NNNN` n'est jamais résolu (`*_NOT_FOUND`) — il servirait de chemin.
-
-**Exécution d'une requête** (`runDefinition`) — échec classé dans l'ordre :
-`INVALID_QUERY_DEFINITION` (sqlText XOR builderConfig selon `mode`) → `FORBIDDEN_SQL`
-(`isReadOnlySql`) → `INVALID_BUILDER_CONFIG` (`QueryEngineService.inspectBuilderTarget` :
-type ou `component` introuvable — **sans** le repli historique de l'exécution UI —, champ
-hors allowlist ; opérateurs contrôlés par l'enum zod d'entrée) → `QUERY_EXECUTION_ERROR`
-(message AlaSQL). Les index exigences/tests de tous les repos du périmètre sont invalidés
-avant chaque exécution (pas de watcher dans ce process).
+**Scope** : sans `--user`, sentinelle `NO_USER` : lecture `.pref` vide, écriture impossible ; toute
+opération privée → `PRIVATE_SCOPE_UNAVAILABLE`. Un id partagé hors format `QUERY-NNNN` /
+`DASHBOARD-NNNN` n'est jamais résolu (`*_NOT_FOUND`).
 
 | Tool | Entrée | Points clés |
 |---|---|---|
-| `list_queries` | `{ scope? }` | historique jamais exposé |
-| `run_query` | `{ queryId? \| definition?, offset?, limit? }` | exactement un des deux (`INVALID_INPUT`) ; sortie `{ sql, columns, rows, total, offset, limit }`, `limit ≤ LIST_RESULT_LIMIT` ; n'écrit pas l'historique |
-| `create_query` | `{ title, mode, sqlText?, builderConfig?, scope='shared', dryRun? }` | `DUPLICATE_TITLE` (même scope, casse/espaces ignorés) ; sortie `{ query, preview: { columns, total, sample(5) } }` |
-| `update_query` | `{ id, title?, mode?, sqlText?, builderConfig?, dryRun? }` | changer de mode exige la définition complète ; l'autre définition est retirée du YAML ; `warnings: WIDGET_MAPPING_BROKEN` (non bloquant) pour les widgets dont une colonne disparaît ; scope non modifiable |
-| `delete_query` | `{ id, dryRun? }` | `QUERY_IN_USE` + liste des widgets (même limite que l'app : dashboards privés d'un autre utilisateur invisibles) |
-| `list_dashboards` | `{ scope? }` | widgets dans l'ordre `widgetOrder`, `queryTitle` ; **ne déclenche pas le seed** |
-| `create_dashboard` | `{ title, scope='shared', dryRun? }` | créé vide ; `DUPLICATE_TITLE` |
-| `update_dashboard` | `{ id, title, dryRun? }` | renommage seul |
-| `delete_dashboard` | `{ id, dryRun? }` | widgets embarqués supprimés, requêtes conservées |
-| `add_widget` | `{ dashboardId, title, queryId, type, fieldMapping, size='md', position?, dryRun? }` | règles widget ci-dessous ; `position` = index dans `widgetOrder` |
-| `update_widget` | `{ dashboardId, widgetId, title?, queryId?, type?, fieldMapping?, size?, dryRun? }` | `fieldMapping` fourni **remplace** l'ancien ; mêmes règles |
-| `delete_widget` | `{ dashboardId, widgetId, dryRun? }` | retire aussi l'id de `widgetOrder` |
-| `reorder_widgets` | `{ dashboardId, order, dryRun? }` | permutation exacte, sinon `INVALID_ORDER` |
+| `get_data_contract` | — | `polenta.d.ts` (types du graphe), version du contrat, conventions (`_ids`, agrégation en JS, `polenta.drill`, `polenta.params` (GH93), fuseau, imports, jetons `var(--…)`, `usermeta.polenta.view` / `seriesColors`, limites) |
+| `list_templates` | — | modèles de requête et de widget avec leurs paramètres (`describeTemplates`) |
+| `test_script` | `{ script, transform?, drill?, parameters?, params?, limit?, locale?, timezone? }` | exécution sans enregistrement ; `{ columns, rows (≤ limit), total }` ou `SCRIPT_ERROR` (kind, fichier, ligne) ; GH93 : déclaration invalide → `PARAMS_INVALID`, valeurs refusées → `SCRIPT_ERROR` `kind: params` |
+| `list_library` / `read_library_module` | `{ path }` | modules de `dashboards/lib/` du repo ouvert et des composants (`<composant>::lib/x.js` en lecture) |
+| `write_library_module` | `{ path, content, dryRun? }` | repo ouvert seulement ; chemin `.js` contrôlé (`LIBRARY_PATH_INVALID`) |
+| `list_queries` | `{ scope? }` | `script`, `template`, `parameters` (GH93), `column` / `columnError` (GH70), `state` ; historique jamais exposé |
+| `run_query` | `{ queryId? \| script?, params?, parameters?, offset?, limit? }` | exactement un des deux (`INVALID_INPUT`) ; `{ columns, rows, total, offset, limit }` ; n'écrit pas l'historique ; GH93 : `params` = valeurs des paramètres déclarés (non fourni → défaut), `parameters` avec `script` seulement ; clé non déclarée / obligatoire manquant → `SCRIPT_ERROR` `kind: params` |
+| `create_query` | `{ title, script? \| template?, parameters?, column?, scope='shared', dryRun? }` | `DUPLICATE_TITLE` (même scope) ; modèle validé (`INVALID_TEMPLATE`) ; sortie `{ query, preview, warnings }` ; GH93 : `parameters` avec `script` (généré par un modèle : `template` + `parameters` → `INVALID_INPUT`), déclaration invalide → `PARAMS_INVALID` ; aperçu avec les défauts ; GH70 : `column` (colonne calculée de la Vue Système, `idColumn` / `valueColumn` / `tooltipColumn` facultatifs) avec `script` ou `template` (prioritaire sur la colonne que propose le modèle), invalide → `COLUMN_INVALID`, fournie sur une requête privée → `COLUMN_PRIVATE` (dry-run compris) ; colonne proposée par un modèle ignorée en privé |
+| `update_query` | `{ id, title?, script? \| template?, parameters?, column?, dryRun? }` | `script` détache du modèle ; `template` régénère (déclaration comprise) ; scope non modifiable ; GH93 : déclaration lue invalide et non remplacée → `PARAMS_INVALID` ; GH70 : `column` (`null` la retire ; ne détache pas du modèle) ; déclaration de colonne lue invalide et non remplacée → `COLUMN_INVALID` ; colonne fournie sur une requête privée → `COLUMN_PRIVATE` |
+| `delete_query` | `{ id, dryRun? }` | `QUERY_IN_USE` + widgets dépendants |
+| `list_dashboards` | `{ scope? }` | widgets dans l'ordre, `template`, `state` ; **ne déclenche pas le seed** |
+| `create_dashboard` / `update_dashboard` / `delete_dashboard` | — | créé vide ; renommage seul ; requêtes conservées à la suppression |
+| `add_widget` | `{ dashboardId, title, queryId, template? \| (transform?, spec), size='md', position?, dryRun? }` | règles widget ci-dessous ; `position` = index dans `widgetOrder` |
+| `update_widget` | `{ dashboardId, widgetId, title?, queryId?, template? \| transform? / spec?, size?, dryRun? }` | code fourni → widget personnalisé |
+| `delete_widget` / `reorder_widgets` | — | `reorder_widgets` : permutation exacte |
 
-**Règles widget** (dans l'ordre) : `DASHBOARD_NOT_FOUND` → `QUERY_NOT_FOUND` →
-`PRIVATE_QUERY_IN_SHARED_DASHBOARD` → exécution de la requête → `MISSING_MAPPING` /
-`INVALID_MAPPING` (bar/line/pie : `category`+`measure` ; `series` bar/line ; `stacked` bar
-avec `series` ; kpi : `measure` ; table : `columns` optionnel ; clé inconnue rejetée par
-zod) → `UNKNOWN_COLUMN` (résultat vide : contrôle sauté, `warnings: COLUMNS_UNVERIFIED`) →
-`DUPLICATE_WIDGET` (même requête, type et mapping normalisé). La cohérence type ↔ forme du
-résultat n'est pas contrôlée au-delà (`SPEC-DASHBOARDS.md` §4).
+**Règles widget** (dans l'ordre) : `DASHBOARD_NOT_FOUND` / `SUIVI_READ_ONLY` → `INVALID_INPUT`
+(`template` exclusif avec `transform` / `spec` ; `spec` requise sans modèle) → `INVALID_TEMPLATE` →
+`QUERY_NOT_FOUND` → `PRIVATE_QUERY_IN_SHARED_DASHBOARD` → contrôle de spec (`checkSpec` : JSON,
+`"data": { "name": "rows" }`, ni `url` ni `datasets` ; avertissement si `aggregate`) →
+`SPEC_INVALID` (compilation Vega-Lite ; compilateur indisponible → avertissement
+`SPEC_UNCHECKED`) → exécution requête + transformation (avertissement `SCRIPT_ERROR`, aperçu des
+lignes).
 
-**Rafraîchissement de l'app** : cf. `SPEC-DASHBOARDS.md` §6.1.
+**Rafraîchissement de l'app** : cf. `SPEC-DASHBOARDS.md` §8.2.
 
 ---
 
@@ -457,7 +485,8 @@ Pour chacun des deux fichiers, `ensureAgentFiles` (factorisé dans
      pas la découverte des tools.
 2. Compare ce marqueur à la constante courante (`AGENTS_MD_TEMPLATE_VERSION` /
    `MCP_JSON_TEMPLATE_VERSION`, toutes deux `1` au sprint 4 ; `AGENTS_MD_TEMPLATE_VERSION`
-   passée à `2` par GH16 — ajout des tools de liens) :
+   passée à `2` par GH16 — ajout des tools de liens, `4` par T173/GH77, `5` par GH60 — format
+   d'objet YAML pur au lieu de `.md` + frontmatter, exemples d'exigence et de test) :
    - **Égal** → **aucune écriture** (mtime/hash strictement inchangés — vérifié
      manuellement, cf. `specs/T122-sprint4.md`).
    - **Absent** (fichier pré-T122/T106, ou créé/édité à la main sans le marqueur) ou
@@ -533,8 +562,10 @@ Deux catégories (cf. §4) :
   anti-écrasement — GH20) et sur un même fichier de dashboard (écriture app + MCP
   simultanées) ; `run_query` reconstruit les index à chaque appel (coûteux sur un très gros
   workspace).
-- **Bundle `alasql`** (GH18) : la build Node d'alasql contient des `require('react-native…')`
-  (try/catch ou branches React Native) — marqués `--external` dans `build:mcp-server`.
+- **Bundles GH74** : `build:mcp-server` produit aussi le worker QuickJS autonome (avec son
+  `.wasm`), copie la bibliothèque de départ (`dashboard-lib/`) à côté du bundle, et un bundle ESM
+  `vega-compile.mjs` (Vega 6 est ESM seul, avec `await` de premier niveau) chargé par `import()`
+  dynamique depuis le serveur CJS — absent : spec non compilée, avertissement `SPEC_UNCHECKED`.
 - **Packaging non vérifié de bout en bout** (§2.4) : bundle + mécanisme
   `ELECTRON_RUN_AS_NODE` vérifiés directement ; un build `electron-builder` complet
   (installeur réel) ne l'a pas été dans cet environnement.

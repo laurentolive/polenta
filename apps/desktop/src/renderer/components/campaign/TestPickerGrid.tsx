@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ObjectLink, ObjectTypeDefinition, TestCase } from '@polenta/types'
+import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { api } from '../../api'
 import { ExcelView, type ExcelSelectionMode } from '../system/ExcelView'
 import { ROW_MAX_LINES_ALL, readExcelRowMaxLines } from '../system/RowMaxHeightButton'
@@ -24,6 +25,7 @@ export function TestPickerGrid({
   typeDef,
   tests,
   username,
+  workspaceDir,
   filter,
   filterOptions,
   selection,
@@ -35,6 +37,8 @@ export function TestPickerGrid({
   /** Tests proposés de ce type (règles d'éligibilité appliquées par l'appelant). */
   tests: TestCase[]
   username: string
+  /** GH70 — projet ouvert (colonnes calculées : requêtes partagées du projet). */
+  workspaceDir: string
   filter: string
   filterOptions: FilterOptions
   selection: ExcelSelectionMode
@@ -77,7 +81,17 @@ export function TestPickerGrid({
   }, [tree, tests])
   // Numérotation de la vue système : calculée sur l'arbre complet, pas sur l'arbre élagué.
   const sectionNumbers = useMemo(() => computeSectionNumbers(tree?.root ?? []), [tree])
-  const objects = useMemo(() => tests.map(normalizeObject), [tests])
+  const normalized = useMemo(() => tests.map(normalizeObject), [tests])
+  // GH68 — tout statut est proposé : la colonne Statut est toujours affichée (insérée après `id`
+  // si les préférences Vue Excel la masquent), sans réécrire ces préférences.
+  const prefFields = useMemo(() => withStatusColumn(prefs?.excel ?? defaultVisibleFields(typeDef)), [prefs, typeDef])
+  // GH70 — colonnes calculées visibles dans la Vue Excel de ce type : affichées, sans ouverture.
+  const computed = useComputedColumns({ workspaceDir, category: 'test', objectTypeRef: typeRef, visibleKeys: prefFields })
+  const computedColumns = computed.columnsMap
+  const filterComputed = computed.filterFields
+  const visibleFields = useMemo(() => filterComputed(prefFields), [prefFields, filterComputed])
+  const mergeComputed = computed.merge
+  const objects = useMemo(() => mergeComputed(normalized), [mergeComputed, normalized])
   const stepsByObjectId = useMemo(() => {
     const map = new Map<string, { action: string; expectedResult: string }[]>()
     for (const tc of tests) {
@@ -114,7 +128,7 @@ export function TestPickerGrid({
       root={root}
       typeDef={typeDef}
       objects={objects}
-      visibleFields={prefs?.excel ?? defaultVisibleFields(typeDef)}
+      visibleFields={visibleFields}
       foldersHidden={!(prefs?.showFoldersExcel ?? true)}
       sectionNumbers={sectionNumbers}
       linkTypes={schema?.linkTypes ?? []}
@@ -129,6 +143,13 @@ export function TestPickerGrid({
       freezeColCount={freezeColCount}
       onFreezeColCountChange={setFreezeColCount}
       selection={selection}
+      computedColumns={computedColumns}
     />
   )
+}
+
+function withStatusColumn(fields: string[]): string[] {
+  if (fields.includes('status')) return fields
+  const at = fields.indexOf('id')
+  return at === -1 ? ['status', ...fields] : [...fields.slice(0, at + 1), 'status', ...fields.slice(at + 1)]
 }

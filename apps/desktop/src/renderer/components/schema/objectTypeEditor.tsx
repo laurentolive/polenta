@@ -1,6 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition } from '@polenta/types'
+import { HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, historyModeFor, renameValues } from '@polenta/types'
+import type {
+  FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
+  TypeRenameDto, TypeRenamePlan, TypeRenameResult, ValueRename,
+} from '@polenta/types'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 
 // ── Editable state types ──────────────────────────────────────────────────────
@@ -10,16 +14,45 @@ import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 export interface EditableField {
   name: string; label: string; type: SchemaFieldType
   values: string; required: boolean; default: string; placeholder: string
+  /** GH77 — historiser ce champ. */
+  trackHistory: boolean
+  /** GH77 — nom du champ tel que chargé du schéma (non persisté) : absent pour un champ ajouté dans
+   *  la session. Un nom différent à l'enregistrement est un renommage (cf. `fieldRenames`). */
+  originalName?: string
+  /** GH86 — clés du champ que l'éditeur n'affiche pas (`validator`…), réécrites telles quelles. */
+  extra?: Record<string, unknown>
 }
 
 export interface EditableStatus {
   name: string; label: string; color: string; isApproval: boolean; isTerminal: boolean
+  /** GH82 — nom du statut tel que chargé du schéma (non persisté) : absent pour une ligne ajoutée. */
+  originalName?: string
+  /** GH86 — clés du statut que l'éditeur n'affiche pas, réécrites telles quelles. */
+  extra?: Record<string, unknown>
 }
 
 export interface EditableObjectType {
   name: string; label: string; color: string; prefix: string; category: ObjectCategory
   fields: EditableField[]; statuses: EditableStatus[]
+  /** GH77 — historiser le statut (défaut true). */
+  trackStatusHistory: boolean
+  /** GH86 — clés du type que l'éditeur n'affiche pas, réécrites telles quelles. */
+  extra?: Record<string, unknown>
 }
+
+/**
+ * GH86 — l'éditeur reconstruit champs, statuts et types à partir de son état éditable : toute clé
+ * qu'il ne connaît pas (`validator`, clé ajoutée à la main ou par une version plus récente) était
+ * perdue à l'enregistrement. Elles sont mises de côté au chargement et réécrites telles quelles.
+ */
+function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, unknown> | undefined {
+  const rest = Object.fromEntries(Object.entries(obj).filter(([k, v]) => !editorKeys.includes(k) && v !== undefined))
+  return Object.keys(rest).length > 0 ? rest : undefined
+}
+
+const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory'] as const
+const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
+const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory'] as const
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
@@ -28,7 +61,126 @@ export function fieldToEditable(f: SchemaField): EditableField {
     name: f.name, label: f.label ?? '', type: f.type,
     values: (f.values ?? []).join(', '), required: f.required ?? false,
     default: f.default !== undefined ? String(f.default) : '', placeholder: f.placeholder ?? '',
+    trackHistory: f.trackHistory ?? false, originalName: f.name,
+    ...withExtra(extraKeys(f, FIELD_EDITOR_KEYS)),
   }
+}
+
+function withExtra(extra: Record<string, unknown> | undefined): { extra?: Record<string, unknown> } {
+  return extra ? { extra } : {}
+}
+
+/** GH77 — `trackHistory` a-t-il un sens pour ce champ ? (type historisable ; pas un champ nommé `status`,
+ *  dont la clé d'historique se confondrait avec celle du statut). */
+export function canTrackHistory(f: Pick<EditableField, 'name' | 'type'>): boolean {
+  return HISTORY_TRACKABLE_TYPES.includes(f.type) && f.name !== STATUS_HISTORY_KEY
+}
+
+/** GH77 — champs renommés depuis le chargement du type (nom d'origine connu et différent). */
+export function fieldRenames(t: EditableObjectType): FieldRename[] {
+  return t.fields
+    .filter(f => f.originalName && f.name && f.originalName !== f.name)
+    .map(f => ({ from: f.originalName!, to: f.name }))
+}
+
+/** GH100 — nom et/ou préfixe d'un type existant changés depuis son chargement ; `null` sinon. */
+export function typeRename(
+  updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined, nodeName: string,
+): TypeRenameDto | null {
+  if (!original || !updated.name) return null
+  const oldPrefix = original.prefix ?? ''
+  if (updated.name === original.name && updated.prefix === oldPrefix) return null
+  return {
+    nodeName, category: original.category,
+    oldName: original.name, newName: updated.name, oldPrefix, newPrefix: updated.prefix,
+  }
+}
+
+/** GH100 — suite à donner à l'aperçu : refus (rien enregistré), enregistrement direct ou confirmation. */
+export function typeRenameDecision(plan: TypeRenamePlan): 'error' | 'direct' | 'confirm' {
+  if (plan.errors.length > 0) return 'error'
+  return plan.objects.length === 0 && plan.retargeted === 0 && plan.files.length === 0 ? 'direct' : 'confirm'
+}
+
+/** Appels de migration après l'enregistrement du schéma (sous-ensemble de l'API renderer). */
+export interface MigrationApi {
+  renameFields(repoPath: string, objectTypeRef: string, renames: FieldRename[]): Promise<FieldRenameResult>
+  renameValues(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<FieldRenameResult>
+  renameType(repoPath: string, workspaceDir: string, dto: TypeRenameDto): Promise<TypeRenameResult>
+}
+
+/**
+ * Migrations dans l'ordre champs (GH77) → valeurs (GH82) → type (GH100) : les deux premières
+ * trouvent les objets sous l'**ancien** `objectTypeRef`, que le renommage de type change ensuite.
+ */
+export function migrationSteps(
+  api: MigrationApi, repoPath: string, workspaceDir: string, objectTypeRef: string,
+  renames: FieldRename[], chosen: ValueRename[], dto: TypeRenameDto | null,
+): Array<() => Promise<FieldRenameResult & { files?: number }>> {
+  return [
+    ...(renames.length > 0 ? [() => api.renameFields(repoPath, objectTypeRef, renames)] : []),
+    ...(chosen.length > 0 ? [() => api.renameValues(repoPath, objectTypeRef, chosen)] : []),
+    ...(dto ? [() => api.renameType(repoPath, workspaceDir, dto)] : []),
+  ]
+}
+
+const isEnum = (type: SchemaFieldType | undefined) => type === 'enum' || type === 'multi_enum'
+const splitValues = (values: string) => values.split(',').map(v => v.trim()).filter(Boolean)
+
+/**
+ * GH82 — statuts et valeurs d'enum renommés depuis le chargement du type :
+ * - statut : ligne dont le nom d'origine diffère du nom courant (une ligne supprimée puis recréée
+ *   n'a pas de nom d'origine) ;
+ * - valeur : champ existant, `enum` / `multi_enum` avant et après, même nombre de valeurs — chaque
+ *   position modifiée dont l'ancienne valeur a disparu de la liste et dont la nouvelle n'y figurait
+ *   pas. Réordonner (ou échanger deux valeurs) ne propose donc rien : la saisie ne permet pas de le
+ *   distinguer d'un renommage croisé, qui corromprait les données. Un ajout ou un retrait rend la
+ *   saisie ambiguë : rien n'est proposé non plus.
+ * La cible d'une valeur est le nom *courant* du champ (un renommage de champ est migré avant).
+ */
+export function valueRenames(updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined): ValueRename[] {
+  const out: ValueRename[] = []
+  for (const s of updated.statuses) {
+    if (s.originalName && s.name && s.originalName !== s.name) out.push({ target: { kind: 'status' }, from: s.originalName, to: s.name })
+  }
+  for (const f of updated.fields) {
+    const before = f.originalName ? original?.fields.find(o => o.name === f.originalName) : undefined
+    if (!before || !isEnum(before.type) || !isEnum(f.type) || !f.name) continue
+    const oldValues = before.values ?? []
+    const newValues = splitValues(f.values)
+    if (oldValues.length !== newValues.length) continue
+    oldValues.forEach((from, i) => {
+      const to = newValues[i]
+      if (!to || to === from || newValues.includes(from) || oldValues.includes(to)) return
+      out.push({ target: { kind: 'field', field: f.name, multi: f.type === 'multi_enum' }, from, to })
+    })
+  }
+  return out
+}
+
+/** GH82 — `default` d'un champ portant une valeur renommée (renommages retenus) : remplacé —
+ *  élément de la liste pour un `multi_enum`. */
+export function withRenamedDefaults(t: EditableObjectType, renames: ValueRename[]): EditableObjectType {
+  return {
+    ...t,
+    fields: t.fields.map(f => {
+      const mine = renames.filter(x => x.target.kind === 'field' && x.target.field === f.name)
+      if (mine.length === 0 || !f.default) return f
+      const renamed = renameValues({ status: '', fields: { [f.name]: f.default } }, mine)
+      return renamed ? { ...f, default: String(renamed.fields[f.name]) } : f
+    }),
+  }
+}
+
+/** GH82 — renommages ciblant le nom d'*origine* des champs (objets sur disque, avant la migration
+ *  d'un renommage de champ de la même édition) : pour l'aperçu. */
+export function withOriginalFieldNames(t: EditableObjectType, renames: ValueRename[]): ValueRename[] {
+  return renames.map(r => {
+    if (r.target.kind !== 'field') return r
+    const field = r.target.field
+    const original = t.fields.find(f => f.name === field)?.originalName ?? field
+    return { ...r, target: { ...r.target, field: original } }
+  })
 }
 
 export function editableToField(f: EditableField): SchemaField {
@@ -38,11 +190,16 @@ export function editableToField(f: EditableField): SchemaField {
   if (f.required) result.required = true
   if (f.default) result.default = f.default
   if (f.placeholder) result.placeholder = f.placeholder
-  return result
+  if (f.trackHistory && canTrackHistory(f)) result.trackHistory = true
+  return { ...result, ...f.extra }
 }
 
 export function statusToEditable(s: SchemaStatus): EditableStatus {
-  return { name: s.name, label: s.label ?? '', color: s.color ?? '', isApproval: s.isApproval ?? false, isTerminal: s.isTerminal ?? false }
+  return {
+    name: s.name, label: s.label ?? '', color: s.color ?? '', isApproval: s.isApproval ?? false, isTerminal: s.isTerminal ?? false,
+    originalName: s.name,
+    ...withExtra(extraKeys(s, STATUS_EDITOR_KEYS)),
+  }
 }
 
 export function editableToStatus(s: EditableStatus): SchemaStatus {
@@ -51,7 +208,7 @@ export function editableToStatus(s: EditableStatus): SchemaStatus {
   if (s.color) result.color = s.color
   if (s.isApproval) result.isApproval = true
   if (s.isTerminal) result.isTerminal = true
-  return result
+  return { ...result, ...s.extra }
 }
 
 export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
@@ -60,6 +217,8 @@ export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
     category: t.category,
     fields: t.fields.map(fieldToEditable),
     statuses: (t.statuses ?? []).map(statusToEditable),
+    trackStatusHistory: t.trackStatusHistory !== false,
+    ...withExtra(extraKeys(t, TYPE_EDITOR_KEYS)),
   }
 }
 
@@ -69,7 +228,8 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
   if (t.color) result.color = t.color
   if (t.prefix) result.prefix = t.prefix
   if (t.statuses.length > 0) result.statuses = t.statuses.map(editableToStatus)
-  return result
+  if (!t.trackStatusHistory) result.trackStatusHistory = false
+  return { ...result, ...t.extra }
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -103,7 +263,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
 // ── Factories ─────────────────────────────────────────────────────────────────
 
 export function emptyField(): EditableField {
-  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '' }
+  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '', trackHistory: false }
 }
 
 export function emptyStatus(): EditableStatus {
@@ -124,13 +284,22 @@ function slugifyComponentName(componentName: string): string {
 }
 
 /** `categoryLabel`/`descriptionLabel` are pre-resolved by the caller (`t(CATEGORY_LABEL_KEY[category])`
- *  / a "Description" i18n key) — this module has no access to `useTranslation` outside a component. */
-export function emptyObjType(category: ObjectCategory, componentName: string, categoryLabel: string, descriptionLabel: string): EditableObjectType {
+ *  / a "Description" i18n key) — this module has no access to `useTranslation` outside a component.
+ *  GH97 — `taken` : noms de type et préfixes déjà pris ; la proposition prend le premier suffixe
+ *  libre (`_2`, `_3`…), sans quoi un 2e type de la même catégorie dans un repo reprendrait le nom et
+ *  le préfixe du premier et l'enregistrement serait refusé (préfixe unique, règle 10 CLAUDE.md). */
+export function emptyObjType(
+  category: ObjectCategory, componentName: string, categoryLabel: string, descriptionLabel: string,
+  taken: ReadonlySet<string> = new Set(),
+): EditableObjectType {
   const slug = slugifyComponentName(componentName)
-  const suggested = slug ? `${slug}_${CATEGORY_SUFFIX[category]}` : ''
+  const base = slug ? `${slug}_${CATEGORY_SUFFIX[category]}` : ''
+  let suggested = base
+  for (let n = 2; base && taken.has(suggested); n++) suggested = `${base}_${n}`
   return {
     name: suggested, label: categoryLabel, color: '', prefix: suggested, category,
-    fields: [{ name: 'description', label: descriptionLabel, type: 'richtext', values: '', required: false, default: '', placeholder: '' }],
+    fields: [{ name: 'description', label: descriptionLabel, type: 'richtext', values: '', required: false, default: '', placeholder: '', trackHistory: false }],
+    trackStatusHistory: true,
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
       : [],
@@ -238,6 +407,7 @@ export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onC
               <th className={thClass}>{t('schema.editor.colType')}</th>
               <th className={thClass}>{t('schema.editor.colEnumValues')}</th>
               <th className={`${thClass} text-center`}>{t('schema.editor.colRequired')}</th>
+              <th className={`${thClass} text-center`} title={t('schema.editor.colHistoryTitle')}>{t('schema.editor.colHistory')}</th>
               <th className={thClass}>{t('schema.editor.colDefault')}</th>
               <th className={thClass}></th>
             </tr>
@@ -254,6 +424,19 @@ export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onC
                 </td>
                 <td className={tdClass}><input value={f.values} onChange={e => set(i, { values: e.target.value })} disabled={f.type !== 'enum' && f.type !== 'multi_enum'} className={`${cellInput} disabled:opacity-30`} placeholder="a, b, c" /></td>
                 <td className={`${tdClass} text-center`}><input type="checkbox" checked={f.required} onChange={e => set(i, { required: e.target.checked })} className="h-3 w-3 accent-ink" /></td>
+                <td className={`${tdClass} text-center`}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('schema.editor.colHistoryTitle')}
+                    checked={f.trackHistory && canTrackHistory(f)}
+                    disabled={!canTrackHistory(f)}
+                    onChange={e => set(i, { trackHistory: e.target.checked })}
+                    title={!canTrackHistory(f)
+                      ? t('schema.editor.historyNotTrackable')
+                      : t(historyModeFor(f.type) === 'event' ? 'schema.editor.historyEvent' : 'schema.editor.historyValue')}
+                    className="h-3 w-3 accent-ink disabled:opacity-30"
+                  />
+                </td>
                 <td className={tdClass}><input value={f.default} onChange={e => set(i, { default: e.target.value })} className={cellInput} placeholder="—" /></td>
                 <td className={tdClass}>
                   <div className="flex gap-0.5 justify-end">

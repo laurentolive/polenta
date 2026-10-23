@@ -1,258 +1,400 @@
-# SPEC-DASHBOARDS — Module Dashboards & Requêtes
+# SPEC-DASHBOARDS — Module Dashboards & Requêtes (vue Suivi)
 
 > Référence parent : [SPEC.md](../SPEC.md) §2.7
-> Dépend de : [SPEC-TECH-stack.md](SPEC-TECH-stack.md) §2/§5, [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md), [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md)
-> Introduit par T77 (sprints 1–3)
+> Dépend de : [SPEC-TECH-stack.md](SPEC-TECH-stack.md) §1.1/§2, [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md), [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md)
+> Introduit par T77 (sprints 1–3) ; réécrit par GH74 (graphe de données JSON, scripts JS isolés, rendu Vega-Lite) ;
+> paramètres choisis à l'affichage : GH93 (§5.1) ; colonnes calculées de la Vue Système : GH70 (§5.2)
 
 ---
 
 ## 1. Vue d'ensemble
 
-Système de **dashboards personnalisables par requêtes façon SQL**, remplaçant l'ancien
-"Tableau de bord" statique de la page Projet (StatCards/répartitions/récemment
-modifiées — retiré sans reprise en sprint 3).
+Dashboards personnalisables construits sur des **scripts de données** : un script JavaScript lit le
+**graphe de données** du projet (§2) et renvoie des lignes ; un **widget** transforme ces lignes
+(transformation JS facultative) et les rend avec une **spec Vega-Lite**. Un client non technique
+n'écrit pas de code : des **modèles** (§5) génèrent script, transformation et spec à partir d'un
+formulaire. Une requête peut déclarer des **paramètres choisis à l'affichage** (§5.1) : le dashboard
+affiche une barre de sélecteurs (ex. une campagne) et le script lit les valeurs dans `polenta.params`.
 
-Trois entités, chacune privée ou partagée : **Requête** (`SavedQuery`), **Widget**
-(embarqué dans un Dashboard, pas d'entité/fichier propre), **Dashboard**.
+Trois entités, chacune privée ou partagée : **Requête** (`SavedQuery` — un script de données),
+**Widget** (dans un Dashboard), **Dashboard**.
 
-Nouvel onglet `ActivityBar` "Suivi" — panneau latéral à deux sections repliables
-empilées (Dashboards / Requêtes, §6), deux familles de vues (`/query`, `/dashboard`).
-La vue Requêtes contient l'éditeur, le résultat, la sauvegarde, l'historique et l'export.
-Les requêtes sauvegardées ne sont listées que dans le panneau latéral (GH14).
+Onglet `ActivityBar` « Suivi » : panneau latéral (bandeau des mises à jour, sections Dashboards /
+Requêtes, §8), vues `/query` (éditeur, résultat, sauvegarde, historique, export) et `/dashboard`.
 
----
-
-## 2. Moteur de requête (`query-engine.service.ts`)
-
-- **AlaSQL** — SQL exécuté directement sur des tableaux JS en mémoire, pas de moteur
-  de stockage. Cohérent avec `SPEC.md` §5 / `CONTEXT.md` D1 ("pas de base de données
-  applicative").
-- **Dataset** reconstruit à chaque exécution depuis les index en mémoire déjà
-  maintenus par `RequirementsIndexService`/`TestsIndexService` — jamais persisté ni
-  mis en cache sur disque. Trois tables : `requirements`, `tests`, `links`, une ligne
-  par objet, champs `fields{}` étalés au premier niveau (accessibles directement en
-  SQL). Colonne `component` sur chaque ligne (`requirements`/`tests`/`links`) —
-  résolue en deux temps (`query-engine.service.ts`, `rowComponentFor()`) : d'abord le
-  repo/submodule (repo courant + composants submodules agrégés via
-  `WorkspaceTreeService`), puis affinée au composant local (`SystemNode`, T123 — un
-  composant local a les mêmes capacités qu'un composant en repo séparé, cf.
-  CLAUDE.md) que l'`objectTypeRef` de la ligne résout réellement, à n'importe quelle
-  profondeur d'imbrication. Le tag repo/submodule ne reste utilisé que pour le nœud
-  `root` par défaut (repo sans composants locaux additionnels, cas historique
-  inchangé) ou quand la ref est irrésolvable. `links` n'a pas d'`objectTypeRef`
-  propre (un lien référence deux objets via `sourceId`/`targetId`) — reste taggé au
-  niveau repo/submodule uniquement.
-- **Colonnes dérivées sur `requirements`** (T77 sprint 3, cf. §5 ci-dessous) :
-  `coverageStatus` + 5 colonnes booléennes `maturity*` + `maturityMissingCriteria`.
-- **Deux modes** : builder guidé (traduit en SQL côté service, champs limités à une
-  allowlist par type d'objet — protection contre l'injection d'un `BuilderCondition`
-  corrompu) et SQL avancé (texte libre, lecture seule).
-- **Garde-fou lecture seule** : rejette `INSERT/UPDATE/DELETE/DROP/CREATE/ALTER/
-  TRUNCATE/ATTACH/INTO` (ce dernier car AlaSQL implémente `SELECT ... INTO
-  CSV/JSON/.../SQL(path)`, un vecteur d'écriture fichier) sur la SQL finale, quel
-  que soit le mode d'origine.
-- **Export Excel** du résultat courant via `exceljs` (infra autonome, ne dépend pas
-  du ticket T43 export cahier, non encore implémenté au moment de T77).
+Principe « données brutes » (SPEC-TECH-stack §1.1, GH79) : Polenta expose les faits (objets,
+champs, liens, campagnes, exécutions, historiques) ; les **indicateurs de suivi** (maturité, étapes
+d'avancement, état d'une campagne à une date…) sont calculés par les scripts et la **bibliothèque
+projet** (`dashboards/lib/`, §4), contenu du repo du client.
 
 ---
 
-## 3. Stockage — privé / partagé
+## 2. Graphe de données (contrat v1)
 
-| Entité | Partagé | Privé |
+Contrat : `packages/types/src/graph.ts` (`PolentaGraph`, `PolentaHost`, `GraphRow`) — ses JSDoc
+sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/lib/`) en est généré
+(`scripts/generate-graph-dts.ts`, vérifié par `pnpm test`).
+
+- **Contenu** : `repos` (repo ouvert + composants), `components` (nœuds locaux des schémas et repos
+  composants), `schema` (types par (repo, `objectTypeRef`) avec champs, `validator`, statuts et
+  `isApproval` ; types de liens ; `entryStatuses` ordre / gravité / libellés ; `campaignStatuses`),
+  `requirements` et `tests` (champs, historique effectif GH77 avec entrées implicites,
+  `needsRevalidation`, `coverageStatus` sur les exigences, dates et auteurs tirés de git),
+  `links`, `campaigns` (entrées actives et retirées, copie figée `snapshot` réduite, `resyncable`),
+  `runs` (toutes les exécutions). Pas d'étapes de test ni de pré- / postconditions.
+- **`coverageStatus`** : `TraceabilityService.computeCoverage()` sur le graphe de liens agrégé de
+  tous les repos du périmètre — identique à la matrice de traçabilité (SPEC-TRACEABILITY §2.2).
+- **Hôte** (`polenta`, second argument, gelé) : `locale`, `timezone`, `timezoneOffsets` (le moteur
+  n'a pas `Intl` : découpage par jour avec `lib/time.js`), `today`, `now`, `drill` (§6), `params`
+  (valeurs des paramètres déclarés par la requête, `{}` sans paramètre — §5.1, GH93).
+- **Versionnement** : `contractVersion` majeur ; un script peut déclarer `// @polenta contract 1` ;
+  contrat plus récent que celui servi → erreur explicite.
+- **Cache** (`GraphService`) : par (repo, workspace, langue, arbre du workspace) ; oublié par le
+  watcher (`requirements/`, `tests/`, `test-runs/`, `links/`, `campaigns/`, `.polenta/`,
+  `polenta-repo.yaml`, changement de ref) et **immédiatement** après tout canal IPC d'écriture du
+  périmètre (`withGraphInvalidation`, `main/ipc/index.ts`) — le watcher attend la stabilisation des
+  fichiers. Sans cache dans le serveur MCP.
+
+---
+
+## 3. Exécution (bac à sable)
+
+- **Script de données** : module ES, `export default function (data, polenta) { return rows }`,
+  synchrone. **Transformation** de widget : `export default function (rows, polenta) { return rows }`.
+- **Ligne** : objet plat de valeurs scalaires + `_ids` facultatif (identifiants des objets
+  d'origine ; entrée de campagne `CAMP-xxxx/<entryId>`). L'agrégation se fait en JS, jamais dans la
+  spec (`aggregate` perd `_ids` : avertissement dans l'éditeur et le MCP).
+- **QuickJS** (wasm, `quickjs-emscripten-core`) dans un `worker_threads` par process (desktop,
+  serveur web, MCP) : file d'attente, chien de garde (worker muet remplacé), contexte préparé
+  (graphe et bibliothèque gelés) réutilisé, 2 contextes au plus par worker. Un script partagé par
+  plusieurs widgets n'est exécuté qu'une fois par rafraîchissement (mêmes `drill` et mêmes valeurs de
+  paramètres).
+- **Isolation** : pas de globaux de l'hôte (`fetch`, `require`, `process`, timers, `console`…) ;
+  imports limités à `lib/…`, `<composant>::lib/…` et aux chemins relatifs internes à un `lib/` ;
+  données, exports de bibliothèque et intrinsèques gelés (un widget ne voit pas les modifications
+  d'un autre).
+- **Limites** : 2 s par exécution (script + transformation), 64 Mo de tas, mémoire wasm plafonnée
+  à 128 Mo, pile 256 Ko.
+- **Erreurs** : `{ kind, message, file, line, column }` (`syntax`, `import`, `runtime`, `timeout`,
+  `memory`, `stack`, `rows` (sortie invalide), `contract`, `async`, `export`, `legacy-sql`, `format`
+  (dont déclaration de paramètres invalide), `spec`, `params` (clé non déclarée, valeur hors format,
+  paramètre obligatoire sans valeur)) affichées dans le widget (`message (fichier:ligne)`),
+  jamais un graphe vide. Module `lib/…` introuvable : le message renvoie au bandeau (§8.1).
+
+Canaux : `suivi:run` (script fourni, requête enregistrée, ou widget = requête + transformation ;
+`drill`, `params` (valeurs), `parameters` (déclaration d'un script fourni) facultatifs),
+`suivi:describe-ids`, `suivi:resolve-target`, `suivi:templates`, `suivi:render-template` (requête :
+script + déclaration), `suivi:object-types`, `suivi:updates-list` / `-apply` / `-ignore`,
+`dashboards:param-values-get` / `-set` (§5.1).
+
+---
+
+## 4. Bibliothèque projet (`dashboards/lib/`)
+
+Modules JS importables par les scripts et transformations : `lib/<chemin>.js` (repo ouvert),
+`<composant>::lib/<chemin>.js` (repo composant du workspace, nom de montage).
+
+Contenu de départ livré (`apps/desktop/resources/dashboard-lib/`, `manifest.json` = versions et
+empreintes de chaque fichier) :
+
+| Module | Fonctions |
+|---|---|
+| `time.js` | `offsetAt`, `dayOf`, `dayEnd`, `dayRange` (jours locaux via `polenta.timezoneOffsets`) |
+| `status.js` | `ENTRY_ORDER`, `ENTRY_SEVERITY`, `worst`, `typeIndex`, `isApproval`, `statusLabel`, `entryStatusLabel` |
+| `history.js` | `valueAt(obj, champ, date)`, `timeline(objets, champ, options)` (GH77) |
+| `campaign.js` | `campaignsTimeline` / `campaignTimeline` (état des entrées jour par jour, repli GH73 §6.2 marqué `approximate`, `polenta.drill`), `entryRuns`, `entryStep` / `stepRank` / `stepLabel` / `stepContext` (étapes d'avancement, ex-GH71), `lastResult(s)` (tous les runs), `lastEntryResult(s)` (v3, GH70 : entrée de campagne exécutée la plus récente, toutes campagnes, abandonnées comprises, runs hors campagne ignorés) |
+| `maturity.js` | `maturity(data, exigence, ctx?, locale?)`, `maturityContext`, `isFilled`, `isEarsCompliant` : les 5 critères de maturité (§7.2) |
+| `polenta.d.ts`, `../jsconfig.json` | types du contrat ; `tsc -p dashboards/jsconfig.json` vérifie scripts et bibliothèque |
+
+Chaque fichier livré porte `// @polenta-lib <id> <version>`. Copie au premier accès (§7.1), mises à
+jour proposées dans le bandeau (§8.1).
+
+---
+
+## 5. Modèles
+
+Un modèle génère du code à partir d'un formulaire (`packages/types/src/suivi-templates.ts`, pur,
+déterministe) :
+
+- **Requête** : « Liste filtrée » (ex-builder : catégorie ou type d'objet, composant, conditions
+  `= != > < contient dans`, ET / OU, regroupement → `count`), « Entrées de campagne » (une ligne par
+  entrée ; filtres statut de campagne / campagnes / statut d'entrée ; option « Étape d'avancement »
+  → colonnes `step`, `stepLabel`, `stepRank`, `stepColor` via `lib/campaign.js`), « Avancement dans
+  le temps » (`campaignsTimeline` : une ligne par jour × statut d'entrée, pas jour / semaine).
+  Options « … choisi(e) à l'affichage » (§5.1) : campagne (entrées, avancement), période (avancement),
+  composant et type d'objet (liste filtrée).
+- **Widget** (transformation + spec) : barres (groupées / empilées, ordre et couleur des séries par
+  colonne), camembert, courbe, indicateur, table, matrice (pire statut par cellule), aire empilée
+  temporelle (couche de marques quasi transparentes pour rendre chaque point cliquable, gestion de
+  `polenta.drill`). Mesures : nombre, somme, min, max, valeurs distinctes, pire statut. Les colonnes
+  proposées sont celles du résultat de la requête.
+- **Requête « Dernier résultat de campagne (colonne) »** (`campaign-last-result`, GH70, sans
+  paramètre de formulaire) : génère une colonne calculée (§5.2) « Dernier résultat » / « Last
+  result » des cas de test, à partir de `lastEntryResults` (`lib/campaign.js`).
+- **Référence** stockée : `template: { id, version, params, hash }`, `hash` = SHA-256 du code
+  généré normalisé (`hashableText`) — pour une requête, script **et** déclaration de paramètres s'il
+  y en a (`queryCodeForHash`) : modifier la déclaration détache aussi la requête. Code différent → **personnalisé** : la popup n'affiche que le
+  code, « Revenir au modèle » (confirmation) régénère depuis `params`. Objet sans modèle :
+  personnalisé d'emblée.
+- **Nouvelle version d'un modèle** : jamais appliquée sans action — proposée dans le bandeau pour les
+  objets des seeds, signalée dans la popup pour les autres (régénéré à l'enregistrement).
+
+### 5.1 Paramètres choisis à l'affichage (GH93)
+
+Logique pure : `packages/types/src/suivi-params.ts` (main, MCP, renderer).
+
+- **Déclaration** (`parameters` de la requête, dans `query.yaml` ou l'entrée du `.pref`, omise si
+  vide ; générée par un modèle, éditée dans `/query` en mode Script ou par le MCP) : `name` (clé de
+  `polenta.params`, lettre puis lettres / chiffres / `_`, unique), `kind`, `label` (`{ fr, en }` ou un
+  texte), `values` (`enum`), `default`, `required`. Déclaration invalide refusée à l'enregistrement
+  (`[PARAMS_INVALID]`) ; lue invalide (fichier modifié à la main) → `parametersError`, exécution
+  refusée (`format`), jamais réécrite vide sans être remplacée.
+- **Types et valeurs** : `campaign` (ID), `component` (nom), `objectType` (`objectTypeRef`), `enum`
+  (valeur déclarée), `text` (≤ 1 000 caractères, espaces de bord retirés), `period`
+  (`{ from, to }`, jours `AAAA-MM-JJ` facultatifs, `from ≤ to`) ; `null` = « Tous / Toutes ».
+  Sélection simple.
+- **Résolution** (main, `resolveRunParams`) : clé non déclarée → erreur `params` ; valeur fournie
+  (même `null`) → normalisée ; absente → `default`, sinon `null` ; `required` sans valeur → erreur.
+- **Barre du dashboard** (`ParamBar`, `useDashboardParams`) : un sélecteur par couple (`name`,
+  `kind`), partagé par les requêtes qui le déclarent, dans l'ordre des widgets puis des déclarations
+  (libellé de la première ; `enum` : union des valeurs, une valeur non déclarée par une requête ne lui
+  est pas transmise). Pas de barre sans paramètre. Changer une valeur ne relance que les widgets
+  concernés (valeurs dans la clé du résultat). Paramètre obligatoire sans valeur → widget « Choisir
+  <libellé> », non exécuté. **Réinitialiser** → défauts des déclarations.
+- **Valeur choisie** : par utilisateur et par dashboard dans le `.pref` (`suiviParamValues[dashboard]
+  ["name:kind"]`, jamais commité, aussi sur une branche ou un dashboard en lecture seule) ; suit le
+  dashboard au changement de portée, retirée à sa suppression. Pas de défaut propre au dashboard.
+  Valeur devenue introuvable (campagne supprimée, composant / type retiré, valeur d'énumération
+  retirée) → « Valeur introuvable : … », défaut appliqué, valeur conservée dans le `.pref`.
+- **Vue `/query`** : barre des paramètres de la requête (défauts à l'ouverture, non mémorisée) ;
+  exécution et export Excel avec ces valeurs ; déclaration éditable (`ParameterDeclEditor`) en mode
+  Script, affichée en lecture seule pour un modèle ; enregistrement impossible tant qu'elle est
+  invalide.
+- **Modèles** : campagne choisie → ses seules entrées, filtres de statut / liste de campagnes du
+  modèle ignorés (« Toutes » → filtres) ; période → bornes de `campaignsTimeline` ; composant / type
+  choisi → remplace la valeur fixée (« Tous » → valeur fixée, sinon aucun filtre).
+
+### 5.2 Colonnes calculées de la Vue Système (GH70)
+
+Une **requête partagée** — écrite en Script **ou générée par un modèle** — peut déclarer `column`
+dans `query.yaml` : elle devient une colonne
+proposée dans le panneau ⚙️ de la Vue Système (SPEC-SYSTEM-VIEW §Configuration des champs) pour
+les types qu'elle désigne. Mécanisme générique : Polenta ne sait rien de ce que calcule le script
+(principe GH79).
+
+```yaml
+column:
+  label: Dernier résultat                 # ou { fr, en }
+  appliesTo: { categories: [test], objectTypes: [] }   # catégorie OU type précis <nœud>::<type>
+  type: enum                              # type de champ (hors drawio) : rendu de la cellule
+  values: [PASS, FAIL, BLOCKED, INCOMPLETE]   # enum / multi_enum seulement
+  idColumn: testCaseId        # colonne du résultat : ID de l'élément (défaut id)
+  valueColumn: status         # colonne du résultat : valeur (défaut value)
+  tooltipColumn: campaignTitle  # colonne du résultat : infobulle (défaut tooltip)
+```
+
+- **Contrat de ligne** : une ligne par élément ; la colonne `idColumn` (défaut `id`) porte l'ID de
+  l'exigence ou du test, `valueColumn` (défaut `value`) la valeur du champ (`null` = vide),
+  `tooltipColumn` (défaut `tooltip`) l'infobulle (texte ou nombre), le premier `_ids` la cible
+  ouverte au double-clic. Une requête existante (ex. « Entrées de campagne » : `testCaseId` →
+  `status`) sert donc sans code. Première ligne d'un ID retenue (l'ordre, donc la règle, est celle
+  du script), ID inconnu ignoré, valeur hors type affichée telle quelle ; colonne d'ID ou de valeur
+  absente d'une ligne → erreur de la colonne (« colonne « X » manquante »).
+- **Validation** (`validateColumnDecl`, `packages/types/src/suivi-columns.ts`) : déclaration lue
+  invalide → `columnError`, requête toujours exécutable, colonne non proposée ; la réécrire sans
+  corriger est refusée (`[COLUMN_INVALID]`). Requête privée : colonne fournie refusée
+  (`[COLUMN_PRIVATE]`), colonne seulement proposée par un modèle ignorée ; `.pref` qui en porte une
+  → `columnError`. Passage partagé → privé : déclaration retirée (modèle conservé).
+- **Indépendante du modèle** : la déclaration n'entre pas dans l'empreinte (`queryCodeForHash(script,
+  parameters)`) ; la déclarer, la modifier ou la retirer ne détache pas la requête de son modèle. Un
+  modèle peut **proposer** une déclaration (`QueryTemplate.column`, ex. `campaign-last-result`) :
+  reprise à la création (sauf colonne fournie, et jamais en privé) et quand un **autre** modèle est
+  appliqué ; réappliquer le même modèle garde la colonne actuelle, même retirée. Compatibilité :
+  une empreinte calculée avec la colonne (sprints 1–2 de GH70) est reconnue, puis réécrite à la
+  prochaine écriture.
+- **Saisie** : section « Utiliser comme colonne dans la Vue Système » de la vue `/query`
+  (`ColumnDeclEditor`), en mode Script comme en mode modèle (colonne proposée préremplie sur une
+  requête non enregistrée, sans écraser une saisie) ; listes « Colonne identifiant / valeur /
+  infobulle » alimentées par les colonnes du dernier résultat ; désactivée sur une requête privée ;
+  « Enregistrer sous… » en privé refusé si une colonne est saisie ; avertissement si `appliesTo` ne
+  désigne aucun type.
+- **Exécution** : `useComputedColumns` (renderer) lit les requêtes partagées du repo ouvert du
+  projet, quel que soit le repo affiché dans la Vue Système ; une exécution `suivi:run` par colonne
+  visible (onglet Tableau ou Document), clé `['widget-query-result', …]` (rafraîchie comme les
+  widgets, §8.2).
+
+---
+
+## 6. Rendu, drill-down, navigation
+
+- **Vega-Lite** (`vega`, `vega-lite`, `vega-embed`, `vega-interpreter`, chunk paresseux),
+  **sans `eval`** (`ast: true` + interpréteur), rendu SVG partout (écran et impression). Source de
+  données nommée `"data": { "name": "rows" }`, alimentée par `view.data` ; `url` / `datasets`
+  refusés.
+- **Thème** : une valeur `"var(--jeton)"` de la spec est remplacée par la couleur du thème courant ;
+  `config` (axes, légendes, fond, palette `chart-series-1…8`) dérivée des jetons ; changement de
+  thème → recompilation.
+- **Conventions de l'hôte** (`usermeta.polenta`) : `view: "kpi" | "table"` → rendu natif
+  (lisible, sélectionnable ; `field`, `suffix`, `columns`) ; `seriesColors: { field, color, order? }`
+  → échelle de couleur de `field` construite depuis les lignes (couleur = colonne `color`, jeton
+  accepté ; ordre = colonne numérique `order`), pour des séries inconnues à l'écriture de la spec
+  (étapes de préparation du projet).
+- **Drill-down** : clic sur une marque → ligne d'origine du script (retrouvée par contenu : Vega
+  dérive ses propres copies) ; `_ids` présents → popup « Détail » (ID, type, titre, statut ;
+  `suivi:describe-ids`) ; sinon relance script + transformation avec `polenta.drill` = colonnes
+  scalaires de la ligne → lignes avec `_ids` ; aucun → « Détail non disponible : le script ne fournit
+  pas d'identifiants ». KPI : union des `_ids`. Table : ligne à un seul ID → ouverture directe. La
+  relance utilise les valeurs de paramètres du widget cliqué.
+- **Ouverture** (`suivi:resolve-target`) : exigence, test, campagne ; entrée de campagne →
+  résultat d'exécution si exécutée, sinon page de campagne filtrée sur son **statut brut**
+  (`status`). ID inconnu → « Objet introuvable ». Rien de cliquable dans l'aperçu ni en impression.
+- **Exports** : Excel du résultat d'une requête (colonnes du script, `_ids` joints par « , »),
+  docx du dashboard (une table des lignes de chaque widget, direct et par gabarit), PDF (impression,
+  graphes SVG, prêt après rendu Vega). Dashboard paramétré : valeurs courantes de l'utilisateur,
+  rappelées en tête (docx : paragraphes « Libellé : valeur », gabarit : `{#parameters}{label} :
+  {value}{/parameters}` ; impression : barre en texte) ; widget en attente d'un paramètre
+  obligatoire : « Aucune donnée. ».
+
+---
+
+## 7. Stockage, seeds, maturité
+
+### 7.0 Format v1
+
+| Entité | Partagé (repo) | Privé (`.{user}.pref`) |
 |---|---|---|
-| Requête (`SavedQuery`) | `queries/QUERY-xxxx.yaml`, un fichier par requête, ID via `nextCounterId` (pierre tombale à la suppression ou au passage en privé, GH20) | clé `savedQueries` dans `.{username}.pref`, ID `local-<ts>-<rand>` |
-| Dashboard (`Dashboard`) | `dashboards/DASHBOARD-xxxx.yaml`, widgets **embarqués** dans le YAML (pas de fichier séparé par widget) | clé `dashboards` dans `.{username}.pref` |
-| Historique de requêtes | — | toujours privé (`queryHistory` dans `.pref`), sans exception |
-| Widget | pas de stockage propre — scope hérité du Dashboard parent | idem |
+| Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `parameters?` (GH93), `column?` (GH70, §5.2), `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus, jamais de `column`), ID `local-<ts>-<rand>` |
+| Dashboard | `dashboards/DASHBOARD-NNNN/` : `dashboard.yaml` (widgets : `id`, `title`, `queryId`, `size`, `template?`) + `<widgetId>.js` (transformation) + `<widgetId>.vl.json` (spec) | `dashboards[]` (code des widgets inclus) |
+| Historique de requêtes | — | `queryHistory` (texte du script) |
+| Valeurs de la barre de paramètres (GH93) | — | `suiviParamValues` (dashboard → `name:kind` → valeur) |
 
-Ordre d'affichage des sections du panneau latéral : `queriesOrder`/`dashboardsOrder`
-dans `.{username}.pref` (préférence d'affichage, indépendante du scope de chaque
-objet référencé).
+IDs par `nextCounterId` (fichiers **et** dossiers `<PREFIX>-NNNN/`, pierres tombales GH20).
+`state` (`customized`, `templateUpdate`, `readOnly`, `legacyFormat`) calculé à la lecture, jamais
+écrit.
 
-### 3.1 Règles de dépendance et de scope
+**Migrations à la lecture** : fichier d'avant GH74 (`QUERY-NNNN.yaml`, `DASHBOARD-NNNN.yaml`)
+converti en mémoire (builder → « Liste filtrée », widgets → modèles), réécrit en dossier à la
+prochaine écriture (une seule modification à publier). Requête **SQL** (ou builder utilisant une
+colonne retirée : `progress*`, `testStatus`, `maturity*`) → lecture seule `legacy-sql` : SQL affiché,
+non exécutable, à réécrire ou supprimer. `formatVersion` supérieure → lecture seule `newer-format`,
+jamais réécrit. Écriture d'un objet en lecture seule → refus `SUIVI_READ_ONLY` (service, MCP).
 
-- Un widget ne peut être partagé que si sa requête l'est — appliqué à la fois côté
-  UI (filtre proactif du sélecteur de requête) et côté service
-  (`DashboardsService.setScope`/`addWidget`/`updateWidget`), défense en profondeur.
-- Rétrogradation (partagé → privé) d'une requête bloquée si des widgets partagés en
-  dépendent (`SavedQueriesService.findDependentWidgets`, via `DashboardsService`).
-- Suppression d'une requête utilisée par au moins un widget : bloquée, liste des
-  dépendants affichée.
-- Promotion (privé → partagé) toujours libre ; l'id de la requête change (schémas
-  d'id différents privé/partagé) — les widgets des dashboards privés du même
-  utilisateur qui la référencaient sont remappés vers le nouvel id
-  (`DashboardsService.remapWidgetQueryId`), pour ne jamais laisser de référence
-  pendante.
-- **Limite connue** : la détection de dépendants ne voit pas les dashboards privés
-  d'un *autre* utilisateur (fichier `.pref` non accessible depuis la session
-  courante) — compromis assumé, pas un bug à corriger dans ce périmètre.
+### 7.0b Règles de dépendance et de scope
 
----
+- Un widget ne peut être partagé que si sa requête l'est — UI (filtre du sélecteur) et service
+  (`DashboardsService.setScope` / `addWidget` / `updateWidget`).
+- Rétrogradation (partagé → privé) d'une requête bloquée si des widgets partagés en dépendent ;
+  suppression d'une requête utilisée par un widget bloquée (dépendants affichés).
+- Promotion (privé → partagé) libre ; l'id change, les widgets privés de l'utilisateur sont
+  remappés ; la copie partagée est écrite avant le retrait de la privée.
+- Limite connue : les dashboards privés d'un autre utilisateur ne sont pas visibles.
 
-## 4. Vue Dashboard — widgets
+### 7.1 Seeds
 
-- Grille à tailles prédéfinies (`sm`/`md`/`lg` → 1/2/4 colonnes sur une grille à 4
-  colonnes), réordonnable par drag & drop natif HTML5 (même pattern que
-  l'`ElementTree` de la vue Système) — pas de redimensionnement libre en pixels.
-- 5 types de widget : barres, camembert, courbe (recharts), tuile KPI, table. Le
-  type n'est **jamais contraint** par la forme du résultat de la requête — aperçu
-  live dans la popup de configuration, l'utilisateur reste seul juge.
-- Chaque widget gère explicitement le résultat vide et le mapping incomplet (état
-  vide dédié, jamais un chart cassé) — y compris le cas "widget dont la requête
-  sous-jacente a été supprimée" (ne devrait pas arriver grâce aux garde-fous de
-  §3.1, mais affiche un état "requête introuvable" en défense plutôt que de
-  planter).
+Déclenchés par `dashboards:list` (`DashboardSeedService.ensureSeeded`, tentatives simultanées
+partagées) :
 
-### 4.1 Widget barres — empilement (`fieldMapping.stacked`)
+- **Status** (partagé) : au premier accès si `dashboards/` ne contient aucun dashboard et n'a jamais
+  été seedé (`dashboards/.seeded.yaml`, `seededAt` écrit après un seed complet, avec les ids
+  créés) ; sauté sur une branche en lecture seule (`''`, `prj-*`). Deux barres empilées par
+  composant (statut, `coverageStatus`) sur « Liste filtrée ».
+- **Bibliothèque de départ** : au premier accès sur une branche inscriptible, si `dashboards/lib/`
+  est absent, copie des fichiers livrés (à publier), notés dans `.seeded.yaml` (`library`, même si
+  la copie est interrompue). Un fichier supprimé n'est jamais recréé ; un `dashboards/lib/` du
+  projet n'est jamais écrasé (fichiers livrés absents proposés au bandeau).
+- **Campagnes** (privé, par utilisateur, GH65) : marqueur à reprise `campaignsSeed` du `.pref`
+  (`partial` / `done`, ids) ; pas de garde de branche. Widgets : **Avancement par campagne**
+  (barres empilées sur l'étape `entryStep`, ordre canonique et couleurs `--chart-progress-*`),
+  **% exécuté**, **% PASS** (indicateurs), **Exécutions par jour** (courbe), **Entrées en échec**
+  (table), **Avancement dans le temps** (aire empilée des étapes d'avancement, campagnes en cours,
+  pas journalier : `campaignsTimeline({ withStep })`, étape de préparation d'une entrée non exécutée
+  = statut du test vivant à la fin du jour d'après son historique, à défaut son étape actuelle ;
+  GH112). Libellés fr / en. Les six requêtes ont la campagne « choisie à l'affichage » (GH93) :
+  un sélecteur **Campagne** commun, « Toutes » par défaut (filtres du seed). Seeds créés avant GH93 :
+  non repris.
+- **Seeds d'avant GH74** : requêtes reconnues à leur SQL **exact** d'origine (GH65, GH71) réécrites
+  sous le même id, widgets restés au mapping d'origine réécrits ; objet modifié → laissé en
+  `legacy-sql`. Requêtes partagées jamais réécrites sur une branche en lecture seule. Seed Campagnes
+  existant sans « Avancement dans le temps » : widget **proposé** au bandeau.
 
-- Uniquement significatif quand `series` est renseigné (multi-série) — ignoré sinon.
-- Par défaut (`stacked` absent/`false`) : une barre groupée par valeur de série,
-  comportement historique inchangé.
-- `stacked: true` : les séries partagent un même `stackId` recharts et s'empilent au
-  lieu d'être juxtaposées — seul le segment le plus haut de la pile reçoit des coins
-  arrondis (les segments inférieurs restent carrés, sans quoi un arrondi médian
-  laisserait un espace visible avec le segment empilé au-dessus).
-- Réglable dans la popup de configuration du widget (case à cocher visible
-  uniquement pour un widget `bar` avec une `series` sélectionnée) — pas seulement
-  câblé pour le dashboard **Status** pré-configuré (§5.1).
+### 7.2 Maturité (bibliothèque `maturity.js`)
 
----
+Calculée par le projet (`maturity(data, exigence, ctx)` → `{ ok, missing }`, `ctx = maturityContext(data)`), règles d'origine
+(T77, `CLAUDE.md` § Règles de cohérence) :
 
-## 5. Dashboards pré-configurés & critères de maturité (T77 sprint 3)
+| # | Critère | Règle |
+|---|---|---|
+| 1 | Champs `required: true` remplis | non vide (texte sans HTML non blanc, tableau non vide) ; type introuvable → passant |
+| 2 | Énoncé EARS | tout champ `validator: EARS` : commence par `WHEN`/`WHILE`/`WHERE`/`IF`/`THE` et contient `SHALL` |
+| 3 | Critère d'acceptance mesurable | champ dont le nom ou le libellé contient « accept » : checklist `- [ ]` ou chiffre |
+| 4 | Approuvée → vérifiée | statut `isApproval` ⇒ `coverageStatus ≠ not_covered` |
+| 5 | Pas d'impact à vérifier | `needsRevalidation` absent |
 
-### 5.1 Seed automatique
-
-Un dashboard **partagé** est créé automatiquement au premier accès à
-l'onglet "Suivi" si le dossier `dashboards/` est vide et n'a jamais été seedé
-(marqueur `dashboards/.seeded.yaml`, invisible du listing car les fichiers dont le
-nom commence par `.` sont ignorés par `GitService.listFiles`) : **Status**
-(T148 : les templates **Couverture**, **Avancement**, **Maturité** livrés en T77
-sprint 3 ont été retirés du seed — plus jugés utiles une fois `coverageStatus`
-disponible directement en colonne de dataset SQL). Le seed ne se redéclenche
-jamais si le dossier est non vide au premier accès (contient déjà des dashboards
-partagés) ni s'il a déjà eu lieu — un utilisateur qui supprime le template ne le
-voit pas revenir. Implémenté côté main process (`DashboardSeedService`, appelé
-depuis le handler IPC `dashboards:list`), pas côté renderer.
-
-Chaque dashboard pré-configuré est un dashboard partagé normal : modifiable,
-supprimable, widgets ajoutables/retirables comme n'importe quel dashboard partagé —
-aucune UI ni contrainte spéciale ne le distingue après sa création.
-
-**Garde-fous** (trouvés en revue sprint 3) : le marqueur n'est écrit qu'une fois le
-seed **entièrement réussi** (jamais sur le chemin "dossier déjà non vide", qu'il
-s'agisse de dashboards pré-existants ou des restes d'une tentative précédente
-échouée à mi-chemin) — un échec partiel reste donc retentable plutôt que figé
-indéfiniment. Deux appels quasi simultanés à `dashboards:list` (deux fenêtres, ou un
-double-fetch) partagent la même tentative en cours via un cache en mémoire
-(`DashboardSeedService.inFlightSeeds`), pour ne jamais créer les dashboards en
-double. Le seed est également sauté (sans écrire de marqueur, pour retenter plus
-tard) si la branche courante est en lecture seule (`''` ou `prj-*`, même règle que
-`VersioningContext.isReadonly` côté renderer) — `dashboards:list` est passé de
-lecture pure à lecture+écriture avec ce seed, et rien d'autre dans le process
-principal n'empêchait jusqu'ici une écriture sur une baseline.
-
-- **Status** : une barre empilée par composant (`fieldMapping.stacked: true`),
-  chaque segment représentant le nombre d'exigences de ce composant dans un
-  `status` donné (`category: component`, `series: status`, `measure: count`) — voir
-  §4.1 pour l'option d'empilement générique introduite pour ce widget — plus une
-  seconde barre empilée par composant, même principe mais un segment par
-  `coverageStatus` (`category: component`, `series: coverageStatus`,
-  `measure: count`) au lieu de `status`.
-
-### 5.2 Critères de maturité — calcul exact
-
-Basé sur `CLAUDE.md` § "Règles de cohérence — à vérifier systématiquement".
-Implémenté dans `apps/desktop/src/main/services/maturity.util.ts`, appelé depuis
-`query-engine.service.ts` pour chaque ligne de la table `requirements`. Schema-driven
-(aucun nom de champ n'est codé en dur — `schema.yaml` est configurable par projet).
-
-| # | Critère (T77.md) | Colonne dataset | Implémentation |
-|---|---|---|---|
-| 1 | Tous les champs `required: true` du type sont remplis | `maturityRequiredFieldsOk` | Pour chaque champ custom du type (`ObjectTypeDefinition.fields`) marqué `required: true`, vérifie que `r.fields[nom]` est non vide (chaîne non blanche après suppression du HTML pour les champs richtext, tableau non vide, sinon présent). Type non résolvable (cross-composant, ou type supprimé du schéma) → passant par défaut (impossible à vérifier ≠ invalide). |
-| 2 | `statement` respecte la syntaxe EARS | `maturityEarsOk` | Appliqué à **tout champ dont `validator: EARS`** dans le schéma (pas seulement un champ nommé `statement`). Heuristique : après suppression du HTML, le texte doit commencer par un des 5 mots-clés EARS (`WHEN`/`WHILE`/`WHERE`/`IF`/`THE`) et contenir `SHALL` ensuite (regex `^\s*(WHEN\|WHILE\|WHERE\|IF\|THE)\b[\s\S]*\bSHALL\b`, insensible à la casse). Pas de parseur grammatical complet. Aucun champ `validator: EARS` déclaré → passant par défaut. |
-| 3 | Au moins un critère d'acceptance mesurable | `maturityAcceptanceOk` | Cherche un champ dont le `name` ou le `label` contient "accept" (insensible à la casse — correspond à la convention `acceptanceCriteria` de `CLAUDE.md` sans la coder en dur). "Mesurable" = non vide ET (contient un item de checklist markdown `- [ ]`/`- [x]`, ou contient un chiffre — seuil/valeur en prose). Aucun champ correspondant dans le type → passant par défaut. |
-| 4 | Si `status: approved` → au moins un lien de vérification vers un test | `maturityVerificationOk` | Réutilise `coverageStatus` (voir §5.3) : `!isApproved OR coverageStatus !== 'not_covered'`. Le statut "approuvé" est résolu depuis `typeDef.statuses[].isApproval` (pas la chaîne littérale `'approved'`) — un projet dont le statut d'approbation porte un autre nom (ex. `valide`) est géré correctement ; repli sur `'approved'` uniquement si le type n'est pas résolvable ou ne déclare aucun statut `isApproval`. Ne re-dérive pas le matching lien test↔exigence une seconde fois. |
-| 5 | L'exigence n'est pas marquée `needsRevalidation` | `maturityNoRevalidation` | T172 : lecture directe du flag de l'exigence (posé quand un élément lié quitte l'approbation, SPEC-REQ §5.3) — plus de scan des liens ; `TraceabilityService.computeRevalidationReqIds()` supprimé. Libellé du critère manquant : « impact à vérifier ». |
-
-**Robustesse supplémentaire** (trouvée en revue sprint 3) : un `objectTypeRef` manquant ou malformé sur une exigence (frontmatter édité à la main) ne fait plus planter la construction du dataset (`findObjectTypeDef` traite désormais toute valeur non-string/vide comme `'unresolvable'` plutôt que de lever une exception) — et une telle exigence est explicitement comptée comme non mûre (`"type d'objet invalide"` dans `maturityMissingCriteria`), plutôt que silencieusement traitée comme "impossible à vérifier donc conforme".
-| — | Agrégat | `maturityOk` (ET des 5), `maturityMissingCriteria` (libellés des critères manquants, séparés par virgule) | — |
-
-**Robustesse** : toutes les lectures de `r.fields[...]` sont défensives
-(`req.fields ?? {}`) — `requirements-index.service.ts` caste le YAML brut en
-`Requirement` sans normalisation runtime, donc un frontmatter édité à la main sans
-bloc `fields:` ne fait pas planter le calcul (c'est justement le cas d'usage visé :
-lister ce qui est incomplet).
-
-### 5.3 Couverture (`coverageStatus`)
-
-Colonne exposée directement sur `requirements`, réutilisant
-`TraceabilityService.computeCoverage()` (méthode publique extraite en sprint 3 de
-la boucle jusque-là interne à `getMatrix()`) — aucune ré-implémentation du matching
-lien test↔exigence ni du calcul d'agrégat `CoverageStatus` dans le moteur de
-requête. Voir [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §2.2 pour la définition
-et la priorité de calcul des statuts.
-
-**Calculée sur le graphe de liens agrégé de TOUS les composants du périmètre**, pas
-repo par repo : un lien de vérification pertinent pour une exigence d'un composant
-peut être stocké dans — ou référencer un cas de test vivant dans — le repo d'un
-autre composant (liens cross-composant T69/T70). `query-engine.service.ts` agrège
-requirements/tests/links de tous les repos avant d'appeler `computeCoverage()` une
-seule fois, exactement comme `getMatrix()` le fait déjà via `resolveRepoPaths()` —
-sans quoi `coverageStatus` divergerait silencieusement de la Matrice de traçabilité
-pour toute exigence à couverture cross-composant. La résolution du schéma
-(critères 1-3, spécifique à chaque composant) reste en revanche par repo, chaque
-composant étant schema-autonome (cf. `CLAUDE.md`).
+`field-checks.util.ts` (main) garde `isFilled` / `isEarsCompliant` pour l'import en masse et la
+résolution de conflits.
 
 ---
 
-## 6. Panneau latéral
+## 8. Panneau latéral
 
-Deux sections indépendantes ("Dashboards", "Requêtes"), chacune réorganisable par
-glisser-déposer (composant générique `ReorderableSidebarSection`, partagé), filtre
-texte dynamique. Clic sur un dashboard → vue Dashboard ; clic sur une requête → vue
-Requêtes avec cette requête chargée dans l'éditeur adapté à son mode d'origine.
+Sections « Dashboards » et « Requêtes » réorganisables par glisser-déposer
+(`ReorderableSidebarSection`), filtre texte (titre + script ou SQL). Disposition GH14 : sections
+empilées, repliables (`localStorage['polenta:suiviCollapsed']`), séparateur déplaçable
+(`localStorage['polenta:suiviSplit']`), section dépliée automatiquement quand elle contient l'élément
+actif. Badge « SQL » / « Lecture seule » sur un objet en lecture seule. Suppression d'une requête
+depuis le panneau uniquement.
 
-**Disposition (GH14 — remplace les onglets à icônes de T92)** : les deux sections sont
-affichées ensemble, empilées (Dashboards en haut), sous l'en-tête « Suivi ».
-- Chaque section se replie ou se déplie par clic sur son en-tête (chevron + libellé). Le
-  bouton « + » reste actif quand la section est repliée.
-- Une section repliée n'affiche que son en-tête.
-- Les sections dépliées se partagent la hauteur : toute la hauteur si une seule est
-  dépliée. Si les deux le sont, le partage suit un séparateur déplaçable entre elles
-  (défaut 50/50, 140 px minimum par section, double-clic → 50/50). Le ratio est
-  persisté en `localStorage['polenta:suiviSplit']`.
-- L'état replié/déplié est persisté en `localStorage['polenta:suiviCollapsed']`
-  (`{dashboards, queries}`, commun à tous les projets). Par défaut, les deux sections
-  sont dépliées, y compris en cas de valeur illisible.
-- Une section se déplie automatiquement quand l'élément actif de l'URL (`dashboardId` /
-  `queryId`) figure dans sa liste. Un id d'historique ne déplie rien.
+### 8.1 Bandeau des mises à jour
 
-La suppression d'une requête sauvegardée se fait uniquement depuis ce panneau (la vue
-Requêtes n'a plus de liste « Requêtes sauvegardées » depuis GH14).
+En tête du panneau, si des propositions existent : « Mises à jour disponibles (N) », repliable ;
+une ligne par proposition (fichier ou widget, version actuelle → nouvelle ou « nouveau », résumé,
+« à publier » pour une écriture du repo), cases à cocher, **Appliquer**, **Ignorer** (masque cette
+version pour l'utilisateur : `suiviIgnoredUpdates` du `.pref`). Propositions
+(`SuiviUpdatesService`) :
+- `library` : fichier livré présent avec l'empreinte d'une version livrée **antérieure**, ou absent
+  et jamais copié. Empreinte inconnue (modifié par le projet) ou supprimé après copie → jamais
+  proposé ;
+- `seed-widget` : widget ajouté au seed Campagnes depuis sa création ;
+- `template` : objet d'un seed, non personnalisé, dont le modèle a une version plus récente.
+Toutes vérifiées avant la première écriture (liste périmée → rien d'appliqué). Branche en lecture
+seule : liste affichée sans « Appliquer », application refusée côté main.
 
-### 6.1 Rafraîchissement sur écriture externe (GH18)
+### 8.2 Rafraîchissement
 
-Requêtes et dashboards peuvent être écrits hors de l'app (tools MCP, `SPEC-MCP-SERVER.md`
-§4.5). `useLiveFileSync` (renderer, alimenté par `RepoWatcherService`) invalide :
-- `queries/**` → clés `['queries', repoPath, …]` ;
-- `dashboards/**` → `['dashboards' | 'dashboard' | 'print-dashboard', repoPath, …]` (liste
-  **et** dashboard ouvert) ;
-- `.{user}.pref` → toutes les clés ci-dessus + `queries-order` / `dashboards-order`.
-
-Match par préfixe `[clé, repoPath]`, quel que soit l'utilisateur. Une écriture de l'app
-elle-même (dont l'historique de requêtes, stocké dans `.pref`) déclenche aussi un refetch —
-redondant et sans conséquence. Un objet créé hors de l'app n'est pas ajouté à
-`queriesOrder`/`dashboardsOrder` : il apparaît en fin de section.
+`useLiveFileSync` (renderer, alimenté par `RepoWatcherService`) invalide :
+- `queries/**` → requêtes, résultats des widgets, bandeau ;
+- `dashboards/**` → liste, dashboard ouvert, impression, bandeau ; `dashboards/lib/**` → résultats ;
+- `.{user}.pref` → requêtes, dashboards, ordres ;
+- résultats des widgets et popup de détail (`['widget-query-result']`, `['widget-drilldown']`) sur
+  tout changement `requirements/`, `tests/`, `test-runs/`, `links/`, `campaigns/`, `queries/`,
+  `dashboards/lib/` ou de ref, dans n'importe quel repo du workspace : un résultat saisi ailleurs ou
+  récupéré par le pull automatique met à jour le dashboard ouvert.
 
 ---
 
-## 7. Hors scope
+## 9. Non-régression
 
-- Via MCP (GH18) : changement de scope privé ↔ partagé, ordre du panneau latéral,
-  historique de requêtes, seed — réservés à l'app.
-- Redimensionnement libre des widgets en pixels — grille à tailles prédéfinies
-  seulement.
-- Partage/duplication d'un widget entre plusieurs dashboards.
-- Export des dashboards complets (PDF/Excel).
-- Alertes/notifications sur seuils, requêtes planifiées, historique/versioning des
-  résultats de dashboard dans le temps.
+Corpus de non-régression exécuté par `pnpm test` (`apps/desktop/src/main/services/suivi-corpus.test.ts`, références
+`fixtures/suivi-corpus/*.json`, une ligne de résultat par ligne) : sur le projet de démonstration
+généré (`scripts/demo-lave-linge/generate.mjs`), un projet minimal et un jeu gonflé ×50, chaque
+widget des dashboards de la démo et des seeds est exécuté et comparé à sa référence ; mise à jour
+volontaire par `vitest -u` (le diff montre l'effet d'une évolution du contrat, d'un modèle ou de la
+bibliothèque). Budgets (contexte préparé) : avancement des campagnes < 200 ms sur la démo, < 1 s sur
+×50. Équivalence avec l'ancien moteur SQL (étapes GH71, maturité T77, 12 cas de builder) figée dans
+`fixtures/gh74-legacy-reference.json`.
+
+---
+
+## 10. Hors scope
+
+- Via MCP : changement de scope privé ↔ partagé, ordre du panneau latéral, historique, seeds,
+  bandeau — réservés à l'app.
+- Redimensionnement libre des widgets ; partage d'un widget entre dashboards.
+- Alertes / notifications sur seuils, requêtes planifiées.
+- Colonnes calculées (GH70) : tri des colonnes de la Vue Excel, vue Édition et autres vues (Recherche,
+  traçabilité, page campagne), colonnes éditables, colonnes personnelles (requêtes privées), paramètres
+  choisis à l'affichage pour une colonne (valeurs toujours `null`), seed automatique de « Dernier résultat ».
+- Politique CSP de l'application (#88) ; le rendu Vega est déjà compatible (pas d'`eval`).
+- Paramètres (GH93) : sélection multiple, valeurs dépendantes entre sélecteurs, défaut propre au
+  dashboard, paramètres dans l'URL, paramètres déclarés par un widget ; intégration d'un widget dans
+  la page d'une campagne ; comparaison de campagnes sur un même graphique.

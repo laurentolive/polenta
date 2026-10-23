@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { Trans, useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { api } from '../../api'
 import { useBranchCheckout } from '../../hooks/useBranchCheckout'
-import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { CheckoutConfirmModal } from './CheckoutConfirmModal'
 import { BranchCombobox } from '../sidebar/version/BranchCombobox'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
+import { BranchNotices } from '../sidebar/version/BranchNotices'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
 /** Compact inline branch checkout/create, shown to the right of every repo name in the Structure
@@ -14,11 +17,15 @@ import type { WorkspaceTreeNode } from '@polenta/types'
  *  On a `dev-*` branch (in-progress modification, T83's simplified workflow), no checkout/create
  *  is offered here — only the branch name, read-only. Switching branches mid-modification goes
  *  through "Publier"/"Annuler", never through this selector. This restriction is specific to the
- *  Structure tree: the Version panel's `BranchCombobox` stays the unrestricted "advanced" tool. */
+ *  Structure tree: the Version panel's `BranchCombobox` stays the unrestricted "advanced" tool.
+ *
+ *  GH106 — the only branch control of the row: the designated integration branch is labelled in
+ *  the list (creating an `int-*` here designates it), and in detached HEAD (component pinned on a
+ *  commit) the combo shows the abbreviated commit instead of disappearing. */
 export function RepoBranchSelector({
   node, workspaceDir, flatNodes,
 }: {
-  node: { repoPath: string; name: string; url: string }
+  node: { repoPath: string; name: string; url: string; pin?: string }
   workspaceDir: string
   flatNodes: WorkspaceTreeNode[]
 }) {
@@ -30,23 +37,31 @@ export function RepoBranchSelector({
   const {
     currentBranch, allBranches, allTags, isDirty,
     checkout, checkoutCommit, createBranch, deleteBranch, isPending,
-    pinWarning, dismissPinWarning,
+    pinWarning, dismissPinWarning, branchNotices, dismissBranchNotices,
   } = useBranchCheckout(node, workspaceDir, flatNodes, dropdownOpen)
 
   const [checkoutConfirm, setCheckoutConfirm] = useState<{ value: string; isCommit: boolean } | null>(null)
+  // Shared with IntegrationBranchIndicator (same key): designated branch + HEAD commit.
+  const { data: integration } = useQuery({
+    queryKey: ['integration:state', node.repoPath],
+    queryFn: () => api.integration.state(node.repoPath),
+    enabled: !!node.repoPath,
+    refetchInterval: 10_000,
+  })
+  // Detached HEAD: the baseline (tag) checked out if any, else the abbreviated commit.
+  const detachedOid = !currentBranch ? integration?.headOid : undefined
+  const { data: refs } = useQuery({
+    queryKey: ['sync:resolve-refs', node.repoPath],
+    queryFn: () => api.sync.resolveRefs(node.repoPath),
+    enabled: !!detachedOid,
+    refetchInterval: 10_000,
+  })
+  // Several tags on the commit: the one the parent pins, if it is one of them.
+  const tagsAtHead = detachedOid ? (refs ?? []).filter(r => r.type === 'tag' && r.sha === detachedOid).map(r => r.name) : []
+  const atTag = tagsAtHead.find(name => name === node.pin) ?? tagsAtHead[0]
+  const shown = currentBranch || atTag || detachedOid?.slice(0, 7) || ''
 
-  useModalHotkeys(
-    () => setCheckoutConfirm(null),
-    () => {
-      if (!checkoutConfirm) return
-      if (checkoutConfirm.isCommit) checkoutCommit(checkoutConfirm.value)
-      else checkout(checkoutConfirm.value)
-      setCheckoutConfirm(null)
-    },
-    !checkoutConfirm || isPending,
-  )
-
-  if (!currentBranch) return null
+  if (!shown) return null
 
   if (currentBranch.startsWith('dev-')) {
     return (
@@ -81,7 +96,8 @@ export function RepoBranchSelector({
       <BranchCombobox
         branches={allBranches}
         tags={allTags}
-        currentBranch={currentBranch}
+        currentBranch={shown}
+        integrationBranch={integration?.configured}
         onCheckout={handleCheckout}
         onCheckoutCommit={handleCheckoutCommit}
         onDelete={deleteBranch}
@@ -91,32 +107,15 @@ export function RepoBranchSelector({
       />
 
       <PinPropagationWarning outcome={pinWarning} onDismiss={dismissPinWarning} />
+      <BranchNotices notices={branchNotices} onDismiss={dismissBranchNotices} />
 
       {checkoutConfirm && (
-        <div className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-20" onClick={e => e.stopPropagation()}>
-          <div className="bg-surface border border-edge rounded-lg shadow-xl p-5 w-full max-w-sm mx-4">
-            <h2 className="font-semibold text-sm text-ink mb-2">{t('schema.repoBranchSelector.changeBranchTitle')}</h2>
-            <p className="text-xs text-ink-2 mb-4">
-              <Trans
-                i18nKey="schema.repoBranchSelector.changeBranchBody"
-                values={{ value: checkoutConfirm.value }}
-                components={{ mono: <span className="font-mono font-medium" /> }}
-              />
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setCheckoutConfirm(null)} className="btn-secondary-sm">
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={confirmCheckout}
-                className="btn-danger-sm"
-              >
-                {t('schema.repoBranchSelector.forceCheckout')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CheckoutConfirmModal
+          value={checkoutConfirm.value}
+          onCancel={() => setCheckoutConfirm(null)}
+          onConfirm={confirmCheckout}
+          disabled={isPending}
+        />
       )}
     </div>
   )

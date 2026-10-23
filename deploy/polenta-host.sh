@@ -2,7 +2,8 @@
 # GH45 — exploitation d'un hôte Polenta : une forge Forgejo isolée par client derrière un Caddy
 # partagé (specs/GH45.md §9, specs/GH45-design.md §5).
 #
-#   polenta-host setup                         préparation de l'hôte (une fois, rejouable)
+#   polenta-host setup                         préparation de l'hôte (une fois, rejouable) ;
+#                                              HARDEN_HOST=full|basic|none dans host.env (défaut full, GH62)
 #   polenta-host status                        état de l'hôte et des instances
 #   polenta-host instance add <nom> [options]  nouvelle instance (client)
 #   polenta-host instance list
@@ -29,6 +30,8 @@ KIT_DIR="$POLENTA_ROOT/kit"
 . "$SCRIPT_DIR/lib/forgejo-api.sh"
 # shellcheck source=lib/backup.sh
 . "$SCRIPT_DIR/lib/backup.sh"
+# shellcheck source=lib/modules.sh
+. "$SCRIPT_DIR/lib/modules.sh"
 
 DEMO_SOURCE_OWNER_URL="https://github.com/laurentolive"
 DEMO_ROOT_REPO="demo-ll800-produit"
@@ -79,7 +82,7 @@ setup_host_env() {
 }
 
 setup_packages() {
-  local wanted=(ca-certificates curl jq dnsutils restic ufw fail2ban python3-systemd unattended-upgrades apt-listchanges)
+  local wanted; read -ra wanted <<<"$(modules_packages)"   # GH62 : seuls les paquets des modules actifs
   local missing=() p
   for p in "${wanted[@]}"; do
     # dnsutils est un paquet de transition sous Debian 13 / Ubuntu 24.04 : on teste la commande.
@@ -94,6 +97,7 @@ setup_packages() {
 }
 
 setup_docker() {
+  local installed=0
   if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
     skip "Docker $(docker version -f '{{.Server.Version}}' 2>/dev/null)"
   else
@@ -105,13 +109,20 @@ setup_docker() {
       "$(dpkg --print-architecture)" "$OS_ID" "$OS_CODENAME" >/etc/apt/sources.list.d/docker.list
     apt-get update -qq
     apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin >/dev/null
-    ok "Docker $(docker version -f '{{.Server.Version}}') installé"
+    ok "Docker $(docker version -f '{{.Server.Version}}') installé"; installed=1
   fi
   local daemon='{
   "log-driver": "json-file",
   "log-opts": { "max-size": "10m", "max-file": "5" }
 }'
-  if write_if_changed /etc/docker/daemon.json "$daemon"; then
+  # Docker préexistant (serveur déjà administré, GH61/GH62) : sa configuration appartient à l'exploitant.
+  # Ne jamais écraser un daemon.json existant ni redémarrer Docker (tous les conteneurs des autres
+  # projets seraient redémarrés) ; seul un Docker installé par ce setup reçoit la rotation des journaux.
+  if [[ -f /etc/docker/daemon.json ]] && [[ "$(cat /etc/docker/daemon.json)" != "$daemon" ]]; then
+    warn "/etc/docker/daemon.json existant conservé (rotation des journaux Docker du kit non appliquée)"
+  elif [[ ! -f /etc/docker/daemon.json && $installed == 0 ]]; then
+    warn "Docker préexistant : /etc/docker/daemon.json non créé, Docker non redémarré (rotation des journaux à régler par l'exploitant)"
+  elif write_if_changed /etc/docker/daemon.json "$daemon"; then
     systemctl restart docker; ok "rotation des journaux Docker"
   else
     skip "rotation des journaux Docker"
@@ -141,7 +152,10 @@ setup_console() {
 }
 
 setup_firewall() {
-  local rules=(22/tcp 80/tcp 443/tcp 443/udp) r changed=0
+  local rules=(22/tcp 80/tcp 443/tcp 443/udp) r changed=0 was_active=0
+  # GH61 — Caddy externe : 80/443 appartiennent à un autre projet ; on n'ajoute que 22, on ne retire rien.
+  caddy_external && rules=(22/tcp)
+  ufw status | grep -q "^Status: active" && was_active=1
   ufw status | grep -q "^Status: active" || {
     ufw default deny incoming >/dev/null; ufw default allow outgoing >/dev/null; changed=1
   }
@@ -149,7 +163,26 @@ setup_firewall() {
     ufw status | grep -qE "^${r//\//\\/}[[:space:]]+ALLOW" || { ufw allow "$r" >/dev/null; changed=1; }
   done
   ufw status | grep -q "^Status: active" || { ufw --force enable >/dev/null; changed=1; }
-  if [[ $changed == 1 ]]; then ok "pare-feu : seuls 22, 80, 443 ouverts"; else skip "pare-feu"; fi
+  if caddy_external; then
+    if [[ $changed == 1 ]]; then ok "pare-feu : seul 22 ouvert (Caddy externe : 80/443 non gérés)"; else skip "pare-feu (Caddy externe : 80/443 non gérés)"; fi
+  elif [[ $changed == 1 && $was_active == 1 ]]; then ok "pare-feu : 22, 80, 443 ouverts (autres règles existantes conservées)"
+  elif [[ $changed == 1 ]]; then ok "pare-feu : seuls 22, 80, 443 ouverts"
+  else skip "pare-feu"; fi
+}
+
+# GH62 — lecture seule : sans le module firewall, un ufw déjà actif peut bloquer Caddy.
+# GH61 — external : 80/443 relèvent du Caddy existant, aucun avertissement.
+setup_firewall_warn() {
+  caddy_external && return 0
+  command -v ufw >/dev/null 2>&1 || return 0
+  local st r; st="$(ufw status 2>/dev/null || true)"
+  grep -q "^Status: active" <<<"$st" || return 0
+  for r in 80/tcp 443/tcp 443/udp; do
+    grep -qE "^${r//\//\\/}[[:space:]]+ALLOW" <<<"$st" || {
+      warn "ufw actif : Caddy sera injoignable depuis l'extérieur tant que 80/443 ne sont pas ouverts"
+      return 0
+    }
+  done
 }
 
 setup_fail2ban() {
@@ -174,10 +207,14 @@ setup_unattended() {
 APT::Periodic::Unattended-Upgrade "1";'
   local reboot='Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:00";'
-  local c=0
+  local c=0 suffix=" (sans redémarrage automatique)"
   write_if_changed /etc/apt/apt.conf.d/20auto-upgrades "$auto" && c=1
-  write_if_changed /etc/apt/apt.conf.d/52polenta-unattended "$reboot" && c=1
-  if [[ $c == 1 ]]; then ok "mises à jour de sécurité automatiques (redémarrage 04:00)"; else skip "mises à jour de sécurité automatiques"; fi
+  # GH62 : le redémarrage nocturne n'est posé qu'avec l'option unattended-reboot (full).
+  if module_enabled "$HOST_MODULE_FLAG_REBOOT"; then
+    write_if_changed /etc/apt/apt.conf.d/52polenta-unattended "$reboot" && c=1
+    suffix=" (redémarrage 04:00)"
+  fi
+  if [[ $c == 1 ]]; then ok "mises à jour de sécurité automatiques$suffix"; else skip "mises à jour de sécurité automatiques"; fi
 }
 
 # Sauvegarde nocturne (02:30) et rotation des journaux du kit.
@@ -275,22 +312,82 @@ setup_ssh() {
   fi
 }
 
+# GH62 — appelée hors setup (instance add|restore|remove) : met à jour la liste des journaux de
+# forge seulement si le module est actif ; jamais d'erreur, jamais d'installation.
+setup_fail2ban_forge_if_active() {
+  [[ -f "$HOST_ENV" ]] || return 0
+  load_host_env
+  modules_resolve 2>/dev/null || return 0
+  module_enabled fail2ban-forge || return 0
+  systemctl is-active --quiet fail2ban 2>/dev/null || return 0
+  setup_fail2ban_forge
+}
+
+# GH62 — avertissements de fin de setup : rien n'est modifié.
+setup_report() {
+  local m
+  module_enabled firewall || setup_firewall_warn
+  if ! module_enabled fail2ban && ! module_enabled fail2ban-forge && [[ -n "$(env_get "$HOST_ENV" ADMIN_IPS)" ]]; then
+    printf '  %s· ADMIN_IPS ignoré : fail2ban non géré par ce niveau%s
+' "$C_DIM" "$C_OFF"
+  fi
+  for m in "${HOST_MODULE_ORDER[@]}"; do
+    module_enabled "$m" && continue
+    module_active "$m" || continue
+    warn "module $m actif sur l'hôte mais hors niveau $HARDEN_LEVEL : conservé tel quel (procédure de retrait : RUNBOOK A2)"
+  done
+  if module_enabled unattended && ! module_enabled "$HOST_MODULE_FLAG_REBOOT" && module_active "$HOST_MODULE_FLAG_REBOOT"; then
+    warn "redémarrage automatique 04:00 actif sur l'hôte mais hors niveau $HARDEN_LEVEL : conservé tel quel (procédure de retrait : RUNBOOK A2)"
+  fi
+}
+
+# GH61 — external : dossier des blocs de site (créé, jamais purgé) et ligne à ajouter au Caddyfile existant.
+setup_external_sites() {
+  if [[ -d "$CADDY_SITES_DIR" ]]; then
+    skip "dossier des blocs de site ($CADDY_SITES_DIR)"
+  else
+    mkdir -p "$CADDY_SITES_DIR" || die "création de $CADDY_SITES_DIR impossible (CADDY_SITES_DIR)."
+    chmod 755 "$CADDY_SITES_DIR"
+    ok "dossier des blocs de site ($CADDY_SITES_DIR)"
+  fi
+  # Constat, pas une action : jamais de ✓ (un rejeu de setup n'affiche que des « déjà fait », GH62 N23).
+  printf '  · Caddy externe : réseau %s, aucun conteneur Caddy créé\n' "$EDGE_NETWORK"
+  printf '  Ajoutez à votre Caddyfile (dossier monté en lecture seule dans votre Caddy) :\n    import %s/*.caddy\n' "$CADDY_SITES_DIR"
+  [[ -n "$CADDY_RELOAD_CMD" ]] || warn "CADDY_RELOAD_CMD vide : rechargez votre Caddy à la main après chaque modification de site."
+}
+
 cmd_setup() {
   require_root; check_os
   log "Préparation de l'hôte ($PRETTY_NAME)"
+  # GH61 — configuration validée et garde-fous de bascule AVANT toute modification de l'hôte. Au premier
+  # passage, host.env peut n'exister que dans le kit (copié ensuite par setup_host_env) : c'est lui qui
+  # fait foi. Sans aucun host.env, pas de garde-fou : setup_host_env crée l'exemple et s'arrête (sinon,
+  # 80/443 pris par un Caddy existant bloqueraient la création de host.env).
+  local env_src="$HOST_ENV"
+  [[ -f "$env_src" ]] || env_src="$SCRIPT_DIR/host.env"
+  if [[ -f "$env_src" ]]; then
+    local host_env_saved="$HOST_ENV"; HOST_ENV="$env_src"
+    load_host_env
+    HOST_ENV="$host_env_saved"
+    caddy_external_guard
+    caddy_managed_ports_guard
+  fi
   setup_host_env
+  modules_resolve || die "$MODULES_ERR"   # avant toute modification de l'hôte
   setup_install_kit
   setup_packages
   setup_docker
-  setup_resolved
-  setup_firewall
-  setup_console
-  setup_fail2ban
-  setup_unattended
-  setup_ssh
-  setup_cron
-  setup_fail2ban_forge
-  caddy_up
+  edge_network_require
+  module_enabled resolved && setup_resolved
+  module_enabled firewall && setup_firewall
+  module_enabled console && setup_console
+  module_enabled fail2ban && setup_fail2ban
+  module_enabled unattended && setup_unattended
+  module_enabled ssh-hardening && setup_ssh
+  module_enabled backup-cron && setup_cron
+  module_enabled fail2ban-forge && setup_fail2ban_forge
+  setup_report
+  if caddy_external; then setup_external_sites; else caddy_up; fi
   log "Hôte prêt. Ajoutez un client : polenta-host instance add <nom>"
 }
 
@@ -301,6 +398,12 @@ inst_compose() {
   # GH44 — client web actif (domaine web renseigné) : ses commandes (up, stop, down…) l'incluent.
   local -a profile=()
   [[ -n "$(env_get "$(instance_env "$name")" WEB_DOMAIN)" ]] && profile=(--profile web)
+  # GH61 — Caddy externe : surcharge rattachant forge et client web à EDGE_NETWORK (variable lue par compose).
+  if caddy_external; then
+    EDGE_NETWORK="$EDGE_NETWORK" docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" "${profile[@]}" \
+      -f "$KIT_DIR/instance/docker-compose.yml" -f "$KIT_DIR/instance/docker-compose.external.yml" "$@"
+    return
+  fi
   docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" "${profile[@]}" -f "$KIT_DIR/instance/docker-compose.yml" "$@"
 }
 
@@ -410,6 +513,38 @@ wait_https() {
   done
   docker logs --tail 30 "$CADDY_CONTAINER" >&2 || true
   die "https://$domain ne répond pas après ${timeout}s (certificat TLS ? DNS ? ports 80/443 ?)."
+}
+
+# GH61 — point de bascule : managed → wait_https (TLS réel) ; external → sonde réseau interne sur
+# EDGE_NETWORK (le chemin /healthz désigne le client web, sinon la forge).
+wait_front() {
+  local name="$1" domain="$2" timeout="${3:-180}" health="${4:-/api/healthz}"
+  if ! caddy_external; then wait_https "$domain" "$timeout" "$health"; return; fi
+  if [[ "$health" == /healthz ]]; then
+    wait_edge_http "$name" "polenta-web-$name:8787" "$health" "$timeout"
+  else
+    wait_edge_http "$name" "forgejo-$name:3000" "$health" "$timeout"
+  fi
+}
+
+# Message de succès de wait_front : managed → https vérifié ; external → routage réseau seulement.
+front_ok() {
+  local domain="$1" managed_suffix="${2:-}"
+  if caddy_external; then
+    ok "joignable sur le réseau $EDGE_NETWORK — https://$domain non vérifié (le certificat dépend de votre Caddy)"
+  else
+    ok "https://$domain$managed_suffix"
+  fi
+}
+
+# DNS : vérifié en managed ; en external il peut viser un autre proxy, donc non vérifié.
+check_front_dns() {
+  local domain="$1"
+  if caddy_external; then
+    printf '%s\n' "  ${C_DIM}· DNS $domain non vérifié (géré par votre Caddy)${C_OFF}"
+  else
+    check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  fi
 }
 
 ensure_ops_account() {
@@ -571,6 +706,7 @@ cmd_instance_add() {
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || die "nom d'instance invalide « $name » ([a-z0-9-], 2 à 31 caractères)."
   local dir; dir="$(instance_dir "$name")"
   [[ -f "$dir/.add-complete" ]] && die "l'instance « $name » existe déjà (polenta-host instance list)."
+  edge_network_require
   local env; env="$(instance_env "$name")"
   if [[ -f "$env" ]]; then
     log "Reprise de l'ajout inachevé de « $name »"
@@ -589,7 +725,7 @@ cmd_instance_add() {
   done
 
   log "Nouvelle instance « $name » — https://$domain (organisation $org)"
-  check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  check_front_dns "$domain"
   local avail; avail="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
   if (( avail < 524288 )); then
     warn "mémoire disponible faible : $((avail / 1024)) Mo (< 512 Mo)."
@@ -620,7 +756,7 @@ cmd_instance_add() {
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
   wait_healthy "$name"; ok "forge démarrée (réseau isolé polenta-$name)"
   caddy_add_site "$name" "$domain"
-  wait_https "$domain"; ok "https://$domain (certificat TLS valide)"
+  wait_front "$name" "$domain"; front_ok "$domain" " (certificat TLS valide)"
 
   ensure_ops_account "$name"
   ensure_org_and_teams "$name" "$org"
@@ -630,7 +766,7 @@ cmd_instance_add() {
   ensure_config_repo "$name" "$org" "$demo"
   write_polenta_config "$name" "$domain" "$org" "$demo"
   touch "$dir/.add-complete"
-  setup_fail2ban_forge
+  setup_fail2ban_forge_if_active
   admin_log "$name" "instance add $name --domain $domain --org $org${admin_login:+ --client-admin $admin_login}" OK
   # Première sauvegarde (UC1), si le stockage est configuré.
   local backup_ok=0
@@ -664,6 +800,16 @@ cmd_instance_sync() {
   [[ -f "$(instance_dir "$name")/.add-complete" ]] || die "instance « $name » incomplète : relancez « instance add $name »."
   local org domain; org="$(env_get "$env" ORG)"; domain="$(env_get "$env" DOMAIN)"
   log "Mise à niveau de l'instance « $name »"
+  if caddy_external; then
+    # GH61 — recrée les conteneurs d'une instance antérieure (ou migrée) pour les rattacher à
+    # EDGE_NETWORK, puis réécrit les blocs de site dans CADDY_SITES_DIR.
+    edge_network_require
+    render_forgejo_env "$name"
+    inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
+    wait_healthy "$name"; ok "conteneurs rattachés au réseau $EDGE_NETWORK"
+    caddy_add_site "$name" "$domain"
+    [[ -z "$(env_get "$env" WEB_DOMAIN)" ]] || caddy_add_web_site "$name" "$(env_get "$env" WEB_DOMAIN)"
+  fi
   ensure_ops_account "$name"
   ensure_org_and_teams "$name" "$org"
   local demo=0; api GET "/repos/$org/$DEMO_ROOT_REPO" && demo=1
@@ -740,6 +886,7 @@ cmd_instance_restore() {
   done
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ && -n "$from" ]] \
     || die "usage : polenta-host instance restore <nom> --from <id|latest> [--source <instance sauvegardée>] [--domain d] [--password-file f] [--force]"
+  edge_network_require
   source="${source:-$name}"
   local dir; dir="$(instance_dir "$name")"
   local replace=""
@@ -765,14 +912,14 @@ cmd_instance_restore() {
   env_set "$env" INSTANCE_DIR "$dir"
   env_set "$env" DOMAIN "$domain"
   env_set "$env" LAST_BACKUP "$(snapshot_time "$source" "$snapshot")"
-  check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  check_front_dns "$domain"
   render_forgejo_env "$name"
   local img; img="$(env_get "$env" FORGE_IMAGE):$(env_get "$env" FORGE_VERSION)"
   docker pull -q "$img" >/dev/null || die "image introuvable : $img"
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
   wait_healthy "$name"; ok "forge restaurée et démarrée"
   caddy_add_site "$name" "$domain"
-  wait_https "$domain"; ok "https://$domain"
+  wait_front "$name" "$domain"; front_ok "$domain"
   api_use_instance "$name"
   write_polenta_config "$name" "$domain" "$(env_get "$env" ORG)" "$(api GET "/repos/$(env_get "$env" ORG)/$DEMO_ROOT_REPO" && echo 1 || echo 0)"
   # GH44 — client web restauré avec l'instance : configuration réalignée sur le domaine de la forge.
@@ -786,7 +933,7 @@ cmd_instance_restore() {
     [[ $web_rc == 0 ]] || warn "client web non démarré — forge restaurée ; corriger puis relancer : polenta-host instance web enable $name"
   fi
   touch "$dir/.add-complete"
-  setup_fail2ban_forge
+  setup_fail2ban_forge_if_active
   admin_log "$name" "instance restore depuis $source@$snapshot (domaine $domain)" OK
   log "Instance « $name » restaurée — https://$domain"
 }
@@ -796,6 +943,7 @@ update_instance() {
   local name="$1" version="$2" env; env="$(instance_env "$name")"
   local image old; image="$(env_get "$env" FORGE_IMAGE)"; old="$(env_get "$env" FORGE_VERSION)"
   [[ "$old" != "$version" ]] || { skip "$name déjà en $version"; return 0; }
+  edge_network_require
   log "Mise à jour de « $name » : $old → $version"
   # 1. La nouvelle version doit exister : sinon rien n'est touché (critère 17).
   docker pull -q "$image:$version" >/dev/null 2>&1 || die "version introuvable : $image:$version — rien n'a été modifié."
@@ -810,13 +958,13 @@ update_instance() {
   if [[ -n "$(env_get "$env" WEB_DOMAIN)" ]]; then install_grant_template "$name" "$image:$version" || true; fi
   inst_compose "$name" up -d >/dev/null 2>&1 || true
   local healthy=0
-  ( wait_healthy "$name" ) && ( wait_https "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
+  ( wait_healthy "$name" ) && ( wait_front "$name" "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
   # GH57 — la nouvelle version peut refuser la page de consentement générée : nouvel essai avec la
   # page d'origine avant tout retour arrière.
   if [[ $healthy == 0 ]] && remove_grant_template "$name"; then
     warn "$name ne démarre pas en $version avec la page de consentement du client web : essai avec la page d'origine."
     inst_compose "$name" restart forgejo >/dev/null 2>&1 || true
-    ( wait_healthy "$name" ) && ( wait_https "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
+    ( wait_healthy "$name" ) && ( wait_front "$name" "$(env_get "$env" DOMAIN)" 60 ) && healthy=1
   fi
   # Crochet de test (scénario S3-7) : la NOUVELLE version est déclarée en échec, après démarrage
   # et migration de la base — jamais en exploitation.
@@ -954,7 +1102,7 @@ cmd_instance_remove() {
   caddy_remove_site "$name"
   docker network rm "polenta-$name" >/dev/null 2>&1 || true
   rm -rf "$(instance_dir "$name")"
-  setup_fail2ban_forge
+  setup_fail2ban_forge_if_active
   host_log "instance remove $name ($domain), export $EXPORT_ARCHIVE" OK
   ok "instance $name supprimée — export conservé : $EXPORT_ARCHIVE"
   warn "les sauvegardes restent dans le stockage S3 ($(restic_repo_url "$name")) : purge manuelle, cf. RUNBOOK."
@@ -1115,6 +1263,7 @@ restart_forge_for_grant_template() {
 web_start() {
   local name="$1" env dir; env="$(instance_env "$name")"; dir="$(instance_dir "$name")"
   local domain; domain="$(env_get "$env" WEB_DOMAIN)"
+  edge_network_require
   mkdir -p "$dir/web-data"; chown 1000:1000 "$dir/web-data"
   ensure_web_oauth_app "$name"
   # GH57 — pas de page de consentement de la forge pour le client web.
@@ -1125,7 +1274,7 @@ web_start() {
   inst_compose "$name" up -d polenta-web >/dev/null 2>&1 || inst_compose "$name" up -d polenta-web
   wait_web_healthy "$name"; ok "client web démarré"
   caddy_add_web_site "$name" "$domain"
-  wait_https "$domain" 180 /healthz; ok "https://$domain"
+  wait_front "$name" "$domain" 180 /healthz; front_ok "$domain"
 }
 
 # polenta-host instance web enable <nom> --domain <d> --version <v> [--image <i>]
@@ -1149,7 +1298,7 @@ cmd_instance_web_enable() {
   [[ "$domain" != "$(env_get "$env" DOMAIN)" ]] || die "le client web demande son propre domaine (différent de celui de la forge)."
   docker image inspect "$image:$version" >/dev/null 2>&1 || docker pull -q "$image:$version" >/dev/null \
     || die "image introuvable : $image:$version (construite avec apps/desktop/Dockerfile.web ?)"
-  check_dns_points_here "$domain"; ok "DNS $domain → cet hôte"
+  check_front_dns "$domain"
   env_set "$env" WEB_DOMAIN "$domain"
   env_set "$env" POLENTA_WEB_IMAGE "$image"
   env_set "$env" POLENTA_WEB_VERSION "$version"
@@ -1232,10 +1381,13 @@ cmd_instance_stop() {
 
 cmd_instance_start() {
   require_root; load_host_env; local name; name="$(resolve_instance "${1:-}")"
+  edge_network_require
   render_forgejo_env "$name"
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
   wait_healthy "$name"
-  caddy_add_site "$name" "$(env_get "$(instance_env "$name")" DOMAIN)"
+  local domain; domain="$(env_get "$(instance_env "$name")" DOMAIN)"
+  caddy_add_site "$name" "$domain"
+  wait_front "$name" "$domain"; front_ok "$domain"
   admin_log "$name" "instance start" OK
   ok "instance $name démarrée"
 }
@@ -1245,8 +1397,35 @@ cmd_status() {
   printf '  IPv4 %s  IPv6 %s\n' "$(host_ipv4)" "$(host_ipv6)"
   printf '  Mémoire disponible : %s Mo — disque / : %s libres\n' \
     "$(( $(awk '/MemAvailable/ {print $2}' /proc/meminfo) / 1024 ))" "$(df -h / | awk 'NR==2 {print $4}')"
-  if caddy_running; then printf '  Caddy : en service\n'; else printf '  Caddy : %sarrêté%s\n' "$C_RED" "$C_OFF"; fi
+  if caddy_external; then
+    printf '  Caddy : externe (blocs dans %s, réseau %s)' "$CADDY_SITES_DIR" "$EDGE_NETWORK"
+    if docker network inspect "$EDGE_NETWORK" >/dev/null 2>&1; then printf '\n'; else printf ' — %sréseau absent%s\n' "$C_RED" "$C_OFF"; fi
+  elif caddy_running; then printf '  Caddy : en service\n'; else printf '  Caddy : %sarrêté%s\n' "$C_RED" "$C_OFF"; fi
+  cmd_status_hardening
   cmd_instance_list
+}
+
+# GH62 — état détecté des modules de durcissement (lecture seule).
+cmd_status_hardening() {
+  if ! modules_resolve; then
+    printf '  Durcissement : niveau invalide : %s
+' "${HARDEN_HOST_RAW:-}"; return 0
+  fi
+  local extra=""
+  [[ -n "${HOST_MODULES_RAW//[[:space:],]/}" ]] && extra=", HOST_MODULES=${HOST_MODULES_RAW//[[:space:]]/}"
+  printf '  Durcissement : niveau %s (HARDEN_HOST), %s modules%s
+' "$HARDEN_LEVEL" "$(modules_count)" "$extra"
+  local m state mark
+  for m in "${HOST_MODULE_DISPLAY[@]}"; do
+    state="$(module_detect "$m")"; mark=""
+    if module_enabled "$m"; then
+      [[ "$state" == inactif ]] && mark="  ${C_RED}(attendu, absent)${C_OFF}"
+    else
+      [[ "$state" != inactif ]] && mark="  (hors niveau)"
+    fi
+    printf '    %-15s %s%s
+' "$m" "$state" "$mark"
+  done
 }
 
 main() {

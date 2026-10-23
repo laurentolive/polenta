@@ -6,6 +6,7 @@ import { api } from '../api'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
 import { normalizeObject } from '../lib/normalizeObject'
 import { buildExportRows, substituteExportParams } from '../lib/exportColumns'
+import { useComputedColumns } from '../hooks/useComputedColumns'
 import { useParamResolver } from '../contexts/ParamRefContext'
 import { computeSectionNumbers } from '../hooks/useTreeState'
 import { getTestTypeDef } from '../hooks/useProjectSchema'
@@ -56,7 +57,10 @@ function PrintTestsPage() {
     enabled: !!repoPath && !!username && !!objectTypeRef,
   })
 
-  useNotifyPrintReady(testsLoaded && treeLoaded && schemaLoaded && prefsLoaded && paramResolver.ready)
+  // GH70 — colonnes calculées cochées dans l'onglet Document : valeurs attendues avant l'impression.
+  const computed = useComputedColumns({ workspaceDir, category: 'test', objectTypeRef, visibleKeys: prefs?.word ?? [] })
+
+  useNotifyPrintReady(testsLoaded && treeLoaded && schemaLoaded && prefsLoaded && paramResolver.ready && computed.ready)
 
   const typeDef = getTestTypeDef(schema, objectTypeRef)
   // Même ordre que le fallback de `SystemView.tsx` (section/name/id/status/steps puis champs
@@ -65,7 +69,9 @@ function PrintTestsPage() {
   const fallbackFields = ['section', 'name', 'id', 'status', 'steps', ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? [])]
   const fields = prefs?.word ?? fallbackFields
 
-  const objects = (tests ?? []).map(normalizeObject)
+  // Colonne calculée inconnue (requête supprimée, privée, non applicable) : ignorée.
+  const shownFields = computed.filterFields(fields)
+  const objects = computed.merge((tests ?? []).map(normalizeObject))
   const stepsByObjectId = new Map<string, { action: string; expectedResult: string }[]>()
   for (const tc of (tests ?? []) as TestCase[]) {
     if (tc.id) {
@@ -73,7 +79,7 @@ function PrintTestsPage() {
     }
   }
   const sectionNumbers = computeSectionNumbers(tree?.root ?? [])
-  const { rows: rawRows, columns } = buildExportRows(fields, tree?.root ?? [], objects, sectionNumbers, stepsByObjectId, typeDef, filter)
+  const { rows: rawRows, columns } = buildExportRows(shownFields, tree?.root ?? [], objects, sectionNumbers, stepsByObjectId, typeDef, filter, computed.exportColumns)
   // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
   const rows = substituteExportParams(rawRows, typeDef, paramResolver.substitute)
 

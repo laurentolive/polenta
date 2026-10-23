@@ -17,7 +17,7 @@ import type { SchemaService } from './schema.service'
 import type { SyncService } from './sync.service'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { TOMBSTONES_DIR } from './id-counter.util'
-import { isEarsCompliant, isFilled } from './maturity.util'
+import { isEarsCompliant, isFilled } from './field-checks.util'
 
 /**
  * GH37 — résolution des conflits de merge dans l'outil (specs/GH37-design.md §2.2, §4, §5).

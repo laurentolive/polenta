@@ -43,13 +43,15 @@ export interface ExecutionSheetModel {
   exportedAt: string
   rows: ExecutionSheetRow[]
   /** Une entrée par instance, dans l'ordre de la campagne — recopiée dans `_polenta`. */
-  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean }[]
+  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string }[]
 }
 
 export interface ExecutionSheetEntry {
   run: CampaignTestRun
-  /** `testSnapshot` sinon test live ; absent : test source introuvable. Paramètres non substitués. */
+  /** Version effective (GH81) ; absent : test source introuvable. Paramètres non substitués. */
   test?: TestCase
+  /** GH81 — empreinte de `test`, contrôlée à l'import. */
+  fingerprint?: string
 }
 
 /** Clé technique d'une ligne d'étape (colonne A masquée) ; une ligne d'instance a pour clé son `entryId`. */
@@ -67,7 +69,7 @@ export function buildExecutionSheetModel(input: {
   const rows: ExecutionSheetRow[] = []
   const instances: ExecutionSheetModel['instances'] = []
 
-  for (const { run, test } of input.entries) {
+  for (const { run, test, fingerprint } of input.entries) {
     const steps = [...(test?.steps ?? [])].sort((a, b) => a.order - b.order)
     const text = (md: string | null | undefined) => richtextToCellText(substituteRunParams(md ?? '', run), labels)
 
@@ -97,7 +99,10 @@ export function buildExecutionSheetModel(input: {
         expected: text(step.expectedResult),
       })
     }
-    instances.push({ entryId: run.entryId, testCaseId: run.testCaseId, orders: steps.map(s => s.order), testFound: !!test })
+    instances.push({
+      entryId: run.entryId, testCaseId: run.testCaseId, orders: steps.map(s => s.order), testFound: !!test,
+      ...(test && fingerprint && { fingerprint }),
+    })
   }
 
   return {
@@ -279,9 +284,9 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   meta.addRow(['exportedAt', model.exportedAt])
   meta.addRow(['locale', model.locale])
   meta.addRow([])
-  meta.addRow(['entryId', 'testCaseId', 'orders', 'testFound'])
+  meta.addRow(['entryId', 'testCaseId', 'orders', 'testFound', 'fingerprint'])
   for (const inst of model.instances) {
-    meta.addRow([inst.entryId, inst.testCaseId, inst.orders.join(','), inst.testFound ? 1 : 0])
+    meta.addRow([inst.entryId, inst.testCaseId, inst.orders.join(','), inst.testFound ? 1 : 0, inst.fingerprint ?? ''])
   }
 
   return workbook

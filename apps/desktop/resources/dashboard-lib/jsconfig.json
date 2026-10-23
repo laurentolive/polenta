@@ -1,0 +1,18 @@
+{
+  "//": "Généré par Polenta : vérification des scripts de dashboards par l'éditeur ou l'IA (tsc -p dashboards/jsconfig.json). Les imports de composant (<composant>::lib/x.js) ne sont pas résolus ici.",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2020",
+    "lib": ["es2020"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": { "lib/*": ["lib/*"] },
+    "types": [],
+    "strict": true,
+    "noImplicitAny": false
+  },
+  "include": ["lib/**/*.js", "**/*.js", "../queries/**/*.js"]
+}

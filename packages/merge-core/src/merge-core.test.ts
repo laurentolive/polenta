@@ -63,6 +63,44 @@ describe('mergeObject (field level)', () => {
     expect(yaml.load(m.output)).toMatchObject({ needsRevalidation: true, title: 'Autre titre' })
   })
 
+  // GH77 — scénarios F1–F4 de specs/GH77-tests.md.
+  describe('history (GH77)', () => {
+    const e = (value: string, at: string, by = 'lolive') => ({ value, at, by })
+    const hBase = { ...base, history: { status: [e('draft', '2026-09-01T08:00:00Z')] } }
+
+    it('F1 — entries added on both sides: sorted union, no block', () => {
+      const left = { ...hBase, status: 'review', history: { status: [...hBase.history.status, e('review', '2026-09-03T08:00:00Z')] } }
+      const right = { ...hBase, title: 'T', history: { status: [...hBase.history.status, e('approved', '2026-09-02T08:00:00Z', 'mdupont')] } }
+      const m = mergeFile(dump(hBase), dump(left), dump(right), labels)
+      expect(m.blocks).toEqual([])
+      expect((yaml.load(m.output) as typeof hBase).history.status.map(x => x.value)).toEqual(['draft', 'approved', 'review'])
+    })
+
+    it('F2 — identical entry on both sides is kept once', () => {
+      const added = e('review', '2026-09-03T08:00:00Z')
+      const left = { ...hBase, title: 'L', history: { status: [...hBase.history.status, added] } }
+      const right = { ...hBase, title: 'L', history: { status: [...hBase.history.status, added, e('approved', '2026-09-04T08:00:00Z')] } }
+      const m = mergeFile(dump(hBase), dump(left), dump(right), labels)
+      expect((yaml.load(m.output) as typeof hBase).history.status).toHaveLength(3)
+    })
+
+    it('F3 — history absent on one side (added on both sides): no block', () => {
+      const left = { ...base, history: { status: [e('draft', '2026-09-01T08:00:00Z')] } }
+      const m = mergeFile(null, dump(left), dump(base), labels)
+      expect(m.blocks).toEqual([])
+      expect(yaml.load(m.output)).toMatchObject({ history: left.history })
+    })
+
+    it('F4 — different keys on each side are both kept', () => {
+      const left = { ...hBase, history: { ...hBase.history, priority: [e('high', '2026-09-05T08:00:00Z')] } }
+      const right = { ...hBase, history: { status: [...hBase.history.status, e('review', '2026-09-06T08:00:00Z')] } }
+      const m = mergeFile(dump(hBase), dump(left), dump(right), labels)
+      const out = yaml.load(m.output) as { history: Record<string, unknown[]> }
+      expect(Object.keys(out.history).sort()).toEqual(['priority', 'status'])
+      expect(out.history.status).toHaveLength(2)
+    })
+  })
+
   it('U6 — added on both sides: every differing unit is a block', () => {
     const left = { ...base, title: 'A' }
     const right = { ...base, title: 'B', fields: { ...base.fields, priority: 'high' } }

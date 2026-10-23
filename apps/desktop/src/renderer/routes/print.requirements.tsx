@@ -5,6 +5,7 @@ import { api } from '../api'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
 import { normalizeObject } from '../lib/normalizeObject'
 import { buildExportRows, substituteExportParams } from '../lib/exportColumns'
+import { useComputedColumns } from '../hooks/useComputedColumns'
 import { useParamResolver } from '../contexts/ParamRefContext'
 import { computeSectionNumbers } from '../hooks/useTreeState'
 import { getReqTypeDef } from '../hooks/useProjectSchema'
@@ -58,15 +59,20 @@ function PrintRequirementsPage() {
     enabled: !!repoPath && !!username && !!objectTypeRef,
   })
 
-  useNotifyPrintReady(reqLoaded && treeLoaded && schemaLoaded && prefsLoaded && paramResolver.ready)
+  // GH70 — colonnes calculées cochées dans l'onglet Document : valeurs attendues avant l'impression.
+  const computed = useComputedColumns({ workspaceDir, category: 'requirement', objectTypeRef, visibleKeys: prefs?.word ?? [] })
+
+  useNotifyPrintReady(reqLoaded && treeLoaded && schemaLoaded && prefsLoaded && paramResolver.ready && computed.ready)
 
   const typeDef = getReqTypeDef(schema, objectTypeRef)
   const fallbackFields = ['section', 'name', 'id', 'status', 'version', ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? [])]
   const fields = prefs?.word ?? fallbackFields
 
-  const objects = (requirements ?? []).map(normalizeObject)
+  // Colonne calculée inconnue (requête supprimée, privée, non applicable) : ignorée.
+  const shownFields = computed.filterFields(fields)
+  const objects = computed.merge((requirements ?? []).map(normalizeObject))
   const sectionNumbers = computeSectionNumbers(tree?.root ?? [])
-  const { rows: rawRows, columns } = buildExportRows(fields, tree?.root ?? [], objects, sectionNumbers, undefined, typeDef, filter)
+  const { rows: rawRows, columns } = buildExportRows(shownFields, tree?.root ?? [], objects, sectionNumbers, undefined, typeDef, filter, computed.exportColumns)
   // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
   const rows = substituteExportParams(rawRows, typeDef, paramResolver.substitute)
 

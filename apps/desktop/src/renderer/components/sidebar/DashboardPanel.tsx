@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { ReorderableSidebarSection } from './ReorderableSidebarSection'
+import { SuiviUpdatesBanner } from './SuiviUpdatesBanner'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import type { Dashboard, SavedQuery } from '@polenta/types'
 
@@ -70,10 +71,9 @@ interface Props {
   projectId: string
 }
 
-/** Text used for filtering: title + a rough serialization of the query content. */
+/** Text used for filtering: title + query content (script, or legacy SQL text). */
 function queryFilterText(q: SavedQuery): string {
-  const content = q.mode === 'sql' ? (q.sqlText ?? '') : JSON.stringify(q.builderConfig ?? {})
-  return `${q.title} ${content}`.toLowerCase()
+  return `${q.title} ${q.legacySql ?? q.script}`.toLowerCase()
 }
 
 function dashboardFilterText(d: Dashboard): string {
@@ -81,7 +81,7 @@ function dashboardFilterText(d: Dashboard): string {
 }
 
 export function DashboardPanel({ currentProjectId, projectId }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { searchStr } = useRouterState({ select: (s) => ({ searchStr: s.location.searchStr }) })
@@ -190,9 +190,9 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
 
   // ── Dashboards ───────────────────────────────────────────────────────────────
 
-  const { data: dashboards = [], isLoading: dashboardsLoading } = useQuery({
+  const { data: dashboards = [], isLoading: dashboardsLoading, isSuccess: dashboardsLoaded } = useQuery({
     queryKey: ['dashboards', repoPath, username],
-    queryFn: () => api.dashboards.list(repoPath, username),
+    queryFn: () => api.dashboards.list(repoPath, username, i18n.resolvedLanguage),
     enabled: !!repoPath && !!username,
   })
 
@@ -265,6 +265,9 @@ export function DashboardPanel({ currentProjectId, projectId }: Props) {
       <div className="px-4 py-3 border-b border-edge shrink-0">
         <p className="section-label">{t('sidebar.dashboard.title')}</p>
       </div>
+
+      {/* GH74 — mises à jour proposées (bibliothèque, widgets du seed, versions de modèle). */}
+      <SuiviUpdatesBanner repoPath={repoPath} username={username} enabled={dashboardsLoaded} />
 
       <div ref={sectionsRef} className="flex-1 min-h-0 flex flex-col">
         <ReorderableSidebarSection

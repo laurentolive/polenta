@@ -1,7 +1,22 @@
+import type { ObjectHistory } from './history'
 import type { TestCase } from './test'
 
 export type CampaignStatus = 'planned' | 'in_progress' | 'completed' | 'abandoned'
 export type TestRunStatus = 'pending' | 'PASS' | 'FAIL' | 'BLOCKED' | 'INCOMPLETE'
+
+/** GH69 — gravité décroissante : le statut le plus grave d'un groupe d'entrées l'emporte. GH74 :
+ *  partagée par la page campagne, le graphe de données (`schema.entryStatuses[].severity`) et la
+ *  bibliothèque projet (`lib/status.js`). */
+export const RUN_STATUS_SEVERITY: Record<TestRunStatus, number> = {
+  FAIL: 4,
+  BLOCKED: 3,
+  INCOMPLETE: 2,
+  pending: 1,
+  PASS: 0,
+}
+
+/** GH74 — ordre d'affichage canonique des statuts d'entrée (attente, puis résultats). */
+export const RUN_STATUS_ORDER: readonly TestRunStatus[] = ['pending', 'INCOMPLETE', 'BLOCKED', 'FAIL', 'PASS']
 
 export interface TestCampaign {
   id: string           // CAMP-0001
@@ -14,8 +29,13 @@ export interface TestCampaign {
   status: CampaignStatus
   testCaseIds: string[]
   runs: CampaignTestRun[]
+  /** GH73 — entrées retirées (`removeEntries`), conservées avec `removedAt` : un historique daté
+   *  reste juste après un retrait. Absent si aucune. Les lecteurs de `runs` ne les voient pas. */
+  removedRuns?: RemovedCampaignTestRun[]
   createdAt: string
   completedAt?: string | null
+  /** GH77 — historique du statut et des champs personnalisés suivis. */
+  history?: ObjectHistory
 }
 
 export interface CampaignTestRun {
@@ -33,6 +53,8 @@ export interface CampaignTestRun {
    *  entrées continuent de se résoudre contre l'état live du test. */
   testSnapshot?: TestCase
   status: TestRunStatus
+  /** GH73 — instant d'ajout de l'entrée dans la campagne. Absent : entrée antérieure à GH73. */
+  addedAt?: string
   runId?: string
   executedAt?: string
   executedBy?: string
@@ -48,6 +70,46 @@ export interface CampaignTestRun {
   paramSourceRef?: string
   /** T171 — références de base restées non résolues à l'ajout, avec leur raison. */
   unresolvedParams?: UnresolvedParam[]
+  /** GH64 — instance reportée depuis une autre campagne (entrée source). Absent : ajout normal. */
+  carriedFrom?: CarriedFrom
+}
+
+/** GH73 — entrée retirée d'une campagne (`TestCampaign.removedRuns`), avec l'instant du retrait. */
+export type RemovedCampaignTestRun = CampaignTestRun & { removedAt: string }
+
+/** GH73 — référence à une entrée de campagne (campagne + instance). */
+export interface CampaignEntryRef {
+  campaignId: string
+  entryId: string
+}
+
+/** GH64 — entrée d'une autre campagne dont une instance a été reportée. */
+export type CarriedFrom = CampaignEntryRef
+
+/** GH64 — entrée source retenue pour un report, avec les saisies de l'étape 2 du sélecteur. */
+export interface CarriedEntrySelection extends CarriedFrom {
+  /** Valeurs saisies à la main (pré-remplies depuis l'entrée source, éditables). */
+  paramValues?: Record<string, string>
+  /** Entrée source sans exigence d'un test devenu itérant (T179) : exigences retenues, une instance
+   *  chacune. Absent : toutes les exigences liées. Ignoré pour une entrée qui a une exigence. */
+  reqInstances?: Array<{ requirementId: string; paramValues?: Record<string, string> }>
+}
+
+/**
+ * GH64 — clé de doublon d'une instance de campagne : (test, exigence, valeurs saisies à la main).
+ * Valeurs normalisées (clés triées, `trim()`, vides retirées) : un test sans référence à saisir se
+ * réduit à (test, exigence), soit la règle « une seule inclusion d'un test sans paramètre ».
+ */
+export function carryKey(
+  testCaseId: string,
+  requirementId: string | undefined,
+  paramValues: Record<string, string> | undefined,
+): string {
+  const values = Object.entries(paramValues ?? {})
+    .map(([k, v]) => [k, (v ?? '').trim()] as const)
+    .filter(([, v]) => v !== '')
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return JSON.stringify([testCaseId, requirementId ?? '', values])
 }
 
 export type UnresolvedParamReason = 'tag_not_found' | 'missing' | 'empty' | 'unknown_node' | 'no_linked_requirement'
@@ -97,6 +159,8 @@ export interface CreateCampaignDto {
   paramValuesByTest?: Record<string, Record<string, string>>
   /** T179 — exigences retenues par test itérant (voir `ReqInstanceSelection`). */
   reqInstances?: ReqInstanceSelection
+  /** GH64 — entrées reportées depuis d'autres campagnes. */
+  carried?: CarriedEntrySelection[]
 }
 
 export interface UpdateCampaignDto {

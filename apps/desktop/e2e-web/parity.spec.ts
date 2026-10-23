@@ -51,9 +51,10 @@ test('P-2 — créer un dashboard et y ajouter un widget', async () => {
 
   await s.page.getByRole('button', { name: 'Ajouter un widget' }).click()
   await s.page.getByPlaceholder('Mon widget…').fill('Sécurité (E2E)')
-  await s.page.getByRole('combobox').selectOption({ label: 'Exigences de sécurité' })
-  await s.page.getByRole('button', { name: 'Table', exact: true }).click()
-  await s.page.getByRole('button', { name: 'Ajouter', exact: true }).click()
+  await s.page.getByLabel('Requête', { exact: true }).selectOption({ label: 'Exigences de sécurité' })
+  // GH74 — contenu du widget : modèle « Table » (le code est généré).
+  await s.page.getByLabel('Modèle', { exact: true }).selectOption({ label: 'Table' })
+  await s.page.getByRole('dialog').getByRole('button', { name: 'Sauvegarder', exact: true }).click()
 
   await expect(s.page.getByText('Sécurité (E2E)')).toBeVisible()
   await expect(s.page.getByText('Aucun widget dans ce dashboard.')).toHaveCount(0)

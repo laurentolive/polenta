@@ -1,4 +1,4 @@
-import type { ExportColumn, ObjectTypeDefinition, TemplateOutlineEntry, TypeTreeNode } from '@polenta/types'
+import type { ExportColumn, ObjectTypeDefinition, SchemaFieldType, TemplateOutlineEntry, TypeTreeNode } from '@polenta/types'
 import { treeFlatten } from '../hooks/useTreeState'
 
 // Miroir de `ExcelView.getColumnLabel` (components/system/ExcelView.tsx) pour les colonnes
@@ -37,8 +37,13 @@ export function defaultVisibleFields(typeDef: ObjectTypeDefinition | undefined):
 /** Libellé d'une colonne pour l'export — même résolution que `ExcelView.getColumnLabel`, sans les
  *  colonnes `link::*` (relations), non prises en charge par l'export (T43) : filtrées par
  *  `buildExportRows` avant construction des colonnes. */
-export function getExportColumnLabel(col: string, typeDef: ObjectTypeDefinition | undefined): string {
+/** GH70 — colonnes hors schéma (colonnes calculées `query::<ID>`) : libellé et type déclarés. */
+export type ExtraExportColumns = ReadonlyMap<string, { label: string; type?: SchemaFieldType }>
+
+export function getExportColumnLabel(col: string, typeDef: ObjectTypeDefinition | undefined, extra?: ExtraExportColumns): string {
   if (SYSTEM_COLUMN_LABELS[col]) return SYSTEM_COLUMN_LABELS[col]
+  const extraCol = extra?.get(col)
+  if (extraCol) return extraCol.label
   const field = typeDef?.fields.find(f => f.name === col)
   return field?.label ?? col
 }
@@ -64,6 +69,8 @@ export function buildExportRows(
   stepsByObjectId: Map<string, unknown[]> | undefined,
   typeDef: ObjectTypeDefinition | undefined,
   filter: string,
+  /** GH70 — colonnes calculées affichées : libellé et type (valeurs déjà fusionnées dans `objects`). */
+  extra?: ExtraExportColumns,
 ): { columns: ExportColumn[]; rows: Record<string, string>[] } {
   const exportFields = getExportFields(fields)
   const objectsById = new Map(objects.map(o => [o['id'], o]))
@@ -77,7 +84,7 @@ export function buildExportRows(
     rows.push(buildRow(node, obj, exportFields, sectionNumbers, stepsByObjectId))
   }
 
-  return { columns: buildColumns(exportFields, typeDef), rows }
+  return { columns: buildColumns(exportFields, typeDef, extra), rows }
 }
 
 /**
@@ -142,10 +149,10 @@ function getExportFields(fields: string[]): string[] {
   return fields.filter(f => !f.startsWith('link::') && f !== 'coverageStatus')
 }
 
-function buildColumns(exportFields: string[], typeDef: ObjectTypeDefinition | undefined): ExportColumn[] {
+function buildColumns(exportFields: string[], typeDef: ObjectTypeDefinition | undefined, extra?: ExtraExportColumns): ExportColumn[] {
   return exportFields.map(key => {
-    const type = typeDef?.fields.find(f => f.name === key)?.type
-    return { key, label: getExportColumnLabel(key, typeDef), ...(type ? { type } : {}) }
+    const type = typeDef?.fields.find(f => f.name === key)?.type ?? extra?.get(key)?.type
+    return { key, label: getExportColumnLabel(key, typeDef, extra), ...(type ? { type } : {}) }
   })
 }
 

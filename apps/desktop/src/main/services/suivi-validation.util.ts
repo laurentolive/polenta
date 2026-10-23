@@ -1,31 +1,37 @@
-import type { BuilderConfig, QueryMode, QueryScope, Widget, WidgetFieldMapping, WidgetType } from '@polenta/types'
+import type { QueryScope, Widget } from '@polenta/types'
+import { findQueryTemplate, findWidgetTemplate } from '@polenta/types'
 
 /**
- * Validation pure des tools MCP de la vue Suivi (GH18 — specs/GH18-design.md §5) : aucune
- * I/O, les tools font les lectures (services existants) et appellent ces fonctions.
+ * Validation pure des tools MCP de la vue Suivi (GH18 — specs/GH18-design.md §5 ; GH74 : scripts,
+ * transformations et specs Vega-Lite) : aucune I/O, les tools font les lectures et appellent ces
+ * fonctions.
  */
 
 export type SuiviErrorCode =
   | 'INVALID_INPUT'
   | 'PRIVATE_SCOPE_UNAVAILABLE'
   | 'READONLY_BRANCH'
-  | 'INVALID_QUERY_DEFINITION'
-  | 'FORBIDDEN_SQL'
-  | 'INVALID_BUILDER_CONFIG'
-  | 'QUERY_EXECUTION_ERROR'
   | 'QUERY_NOT_FOUND'
   | 'QUERY_IN_USE'
   | 'DASHBOARD_NOT_FOUND'
   | 'WIDGET_NOT_FOUND'
   | 'DUPLICATE_TITLE'
   | 'PRIVATE_QUERY_IN_SHARED_DASHBOARD'
-  | 'MISSING_MAPPING'
-  | 'INVALID_MAPPING'
-  | 'UNKNOWN_COLUMN'
-  | 'DUPLICATE_WIDGET'
   | 'INVALID_ORDER'
+  // GH74 — scripts de données, modèles, specs, bibliothèque projet.
+  | 'SCRIPT_ERROR'
+  | 'INVALID_TEMPLATE'
+  | 'SPEC_INVALID'
+  | 'SUIVI_READ_ONLY'
+  | 'LIBRARY_PATH_INVALID'
+  | 'LIBRARY_MODULE_NOT_FOUND'
+  // GH93 — déclaration de paramètres choisis à l'affichage invalide.
+  | 'PARAMS_INVALID'
+  // GH70 — déclaration de colonne calculée invalide, ou portée privée.
+  | 'COLUMN_INVALID'
+  | 'COLUMN_PRIVATE'
 
-export type SuiviWarningCode = 'COLUMNS_UNVERIFIED' | 'WIDGET_MAPPING_BROKEN'
+export type SuiviWarningCode = 'SCRIPT_ERROR' | 'SPEC_AGGREGATE' | 'SPEC_UNCHECKED'
 
 export interface SuiviIssue {
   code: SuiviErrorCode
@@ -37,42 +43,6 @@ export interface SuiviWarning {
   reason: string
   dashboardId?: string
   widgetId?: string
-}
-
-export interface QueryDefinitionInput {
-  mode: QueryMode
-  sqlText?: string
-  builderConfig?: BuilderConfig
-}
-
-/** Exclusivité sqlText / builderConfig selon `mode` (une SavedQuery ne porte jamais les deux). */
-export function validateQueryDefinitionShape(def: QueryDefinitionInput): SuiviIssue | null {
-  const invalid = (reason: string): SuiviIssue => ({ code: 'INVALID_QUERY_DEFINITION', reason })
-  if (def.mode === 'sql') {
-    if (def.builderConfig !== undefined) return invalid('mode "sql" : builderConfig interdit (fournir sqlText seul).')
-    if (typeof def.sqlText !== 'string' || def.sqlText.trim() === '') return invalid('mode "sql" : sqlText requis et non vide.')
-    return null
-  }
-  if (def.sqlText !== undefined) return invalid('mode "builder" : sqlText interdit (fournir builderConfig seul).')
-  const b = def.builderConfig
-  if (!b) return invalid('mode "builder" : builderConfig requis.')
-  if (typeof b.objectTypeRef !== 'string' || b.objectTypeRef.trim() === '') return invalid('builderConfig.objectTypeRef requis.')
-  if (!Array.isArray(b.conditions)) return invalid('builderConfig.conditions doit être un tableau.')
-  if (b.combinator !== 'AND' && b.combinator !== 'OR') return invalid('builderConfig.combinator doit valoir "AND" ou "OR".')
-  return null
-}
-
-/** Champs d'un builderConfig hors allowlist du type ciblé (conditions + groupBy). */
-export function unknownBuilderFields(config: BuilderConfig, allowedFields: readonly string[]): string[] {
-  const allowed = new Set(allowedFields)
-  const used = [...config.conditions.map((c) => c.field), ...(config.groupBy ?? [])]
-  return [...new Set(used.filter((f) => !allowed.has(f)))]
-}
-
-/** Colonnes de résultat citées par un mapping de widget. */
-export function mappingColumns(m: WidgetFieldMapping): string[] {
-  const cols = [m.category, m.measure, m.series, ...(m.columns ?? [])]
-  return [...new Set(cols.filter((c): c is string => typeof c === 'string' && c !== ''))]
 }
 
 export function normalizeTitle(title: string): string {
@@ -90,105 +60,59 @@ export function findDuplicateTitle<T extends { id: string; title: string; scope:
   return items.find((i) => i.id !== excludeId && i.scope === scope && normalizeTitle(i.title) === wanted) ?? null
 }
 
-// ─── Widgets (sprint 2) ─────────────────────────────────────────────────────────
-
-type MappingKey = keyof WidgetFieldMapping
-
-/** Mapping requis / autorisé par type de widget (GH18-design §5). */
-const MAPPING_RULES: Record<WidgetType, { required: MappingKey[]; allowed: MappingKey[] }> = {
-  bar: { required: ['category', 'measure'], allowed: ['category', 'measure', 'series', 'stacked'] },
-  line: { required: ['category', 'measure'], allowed: ['category', 'measure', 'series'] },
-  pie: { required: ['category', 'measure'], allowed: ['category', 'measure'] },
-  kpi: { required: ['measure'], allowed: ['measure'] },
-  table: { required: [], allowed: ['columns'] },
+/** Modèle connu et paramètres requis renseignés. */
+export function validateTemplateInput(kind: 'query' | 'widget', input: { id: string; params: Record<string, unknown> }): SuiviIssue | null {
+  const tpl = kind === 'query' ? findQueryTemplate(input.id) : findWidgetTemplate(input.id)
+  if (!tpl) return { code: 'INVALID_TEMPLATE', reason: `Modèle ${kind === 'query' ? 'de requête' : 'de widget'} inconnu : ${input.id} (cf. list_templates).` }
+  const missing = tpl.params.filter((p) => p.required && (input.params[p.name] === undefined || input.params[p.name] === null || input.params[p.name] === ''))
+  if (missing.length) return { code: 'INVALID_TEMPLATE', reason: `Modèle ${input.id} : paramètre(s) requis manquant(s) — ${missing.map((p) => p.name).join(', ')}.` }
+  if (kind === 'query' && input.id === 'filtered-list' && !input.params.objectTypeRef && !input.params.category) {
+    return { code: 'INVALID_TEMPLATE', reason: 'Modèle filtered-list : objectTypeRef ou category requis.' }
+  }
+  return null
 }
 
-function isSet(m: WidgetFieldMapping, key: MappingKey): boolean {
-  const v = m[key]
-  if (v === undefined || v === null) return false
-  if (typeof v === 'string') return v.trim() !== ''
-  if (Array.isArray(v)) return v.length > 0
-  // `stacked: false` ≡ absent (valeur par défaut, laissée par l'éditeur de l'app).
-  if (typeof v === 'boolean') return v
-  return true
-}
-
-/**
- * Mapping réduit aux clés applicables à `type` (et sans `stacked` sans `series`). Sert à
- * `update_widget` quand le type change sans nouveau mapping : l'éditeur de l'app
- * (`WidgetConfigModal`) conserve les clés d'un ancien type, qu'on retire plutôt que de
- * refuser la modification.
- */
-export function pruneMapping(type: WidgetType, m: WidgetFieldMapping): WidgetFieldMapping {
-  const out: WidgetFieldMapping = {}
-  for (const key of MAPPING_RULES[type].allowed) {
-    if (isSet(m, key)) (out as Record<string, unknown>)[key] = m[key]
-  }
-  if (out.stacked && !isSet(out, 'series')) delete out.stacked
-  return out
-}
-
-/** Forme canonique d'un mapping pour comparer deux widgets (stacked absent ≡ false). */
-function canonicalMapping(type: WidgetType, m: WidgetFieldMapping): string {
-  const out: Record<string, unknown> = {}
-  for (const key of MAPPING_RULES[type].allowed) {
-    if (key === 'stacked') out.stacked = m.stacked === true
-    else if (isSet(m, key)) out[key] = m[key]
-  }
-  return JSON.stringify(out, Object.keys(out).sort())
-}
-
-export interface WidgetCandidate {
-  id?: string
-  type: WidgetType
-  queryId: string
-  fieldMapping: WidgetFieldMapping
-}
-
-/**
- * Règles 5 à 7 d'`add_widget` (spec GH18 §3) : mapping requis, mapping autorisé, colonnes
- * existantes dans le résultat, pas de doublon. `resultColumns = null` (résultat vide,
- * colonnes indéterminables) → contrôle des colonnes sauté + `COLUMNS_UNVERIFIED`.
- * `siblings` = autres widgets du dashboard (le widget modifié lui-même exclu).
- */
-export function validateWidget(
-  widget: WidgetCandidate,
-  resultColumns: string[] | null,
-  siblings: readonly Widget[],
-): { issue: SuiviIssue | null; warnings: SuiviWarning[] } {
-  const m = widget.fieldMapping ?? {}
-  const rules = MAPPING_RULES[widget.type]
-  const fail = (code: SuiviErrorCode, reason: string) => ({ issue: { code, reason }, warnings: [] })
-
-  const missing = rules.required.filter((k) => !isSet(m, k))
-  if (missing.length > 0) {
-    return fail('MISSING_MAPPING', `Widget "${widget.type}" : fieldMapping.${missing.join(', fieldMapping.')} requis.`)
-  }
-  const forbidden = (Object.keys(m) as MappingKey[]).filter((k) => isSet(m, k) && !rules.allowed.includes(k))
-  if (forbidden.length > 0) {
-    return fail('INVALID_MAPPING', `Widget "${widget.type}" : fieldMapping.${forbidden.join(', fieldMapping.')} non applicable à ce type.`)
-  }
-  if (widget.type === 'bar' && m.stacked === true && !isSet(m, 'series')) {
-    return fail('INVALID_MAPPING', 'Widget "bar" : stacked exige une series.')
-  }
-
-  const warnings: SuiviWarning[] = []
-  if (resultColumns === null) {
-    warnings.push({ code: 'COLUMNS_UNVERIFIED', reason: 'Résultat de la requête vide : colonnes du mapping non vérifiables.' })
-  } else {
-    const available = new Set(resultColumns)
-    const unknown = mappingColumns(m).filter((col) => !available.has(col))
-    if (unknown.length > 0) {
-      return fail('UNKNOWN_COLUMN', `Colonne(s) absente(s) du résultat : ${unknown.join(', ')}. Colonnes disponibles : ${resultColumns.join(', ')}.`)
+/** Encodages agrégeants d'une spec Vega-Lite (perdent `_ids`), cherchés à toute profondeur. */
+function findAggregate(node: unknown, path: string): string | null {
+  if (!node || typeof node !== 'object') return null
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i++) {
+      const hit = findAggregate(node[i], `${path}[${i}]`)
+      if (hit) return hit
     }
+    return null
   }
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    if (k === 'aggregate' || (k === 'transform' && Array.isArray(v) && v.some((t) => t && typeof t === 'object' && 'aggregate' in t))) return `${path}.${k}`
+    const hit = findAggregate(v, `${path}.${k}`)
+    if (hit) return hit
+  }
+  return null
+}
 
-  const key = canonicalMapping(widget.type, m)
-  const dup = siblings.find(
-    (w) => w.id !== widget.id && w.queryId === widget.queryId && w.type === widget.type && canonicalMapping(w.type, w.fieldMapping ?? {}) === key,
-  )
-  if (dup) return fail('DUPLICATE_WIDGET', `Widget identique déjà présent : ${dup.id} "${dup.title}".`)
-
+/**
+ * Contrôles de forme d'une spec Vega-Lite (specs/GH74.md §3) : JSON objet, source de données
+ * nommée `rows`, pas de données externes (`url`, `datasets`). Un `aggregate` donne un
+ * avertissement (rendu, mais drill-down indisponible sur ces marques).
+ */
+export function checkSpec(text: string): { issue: SuiviIssue | null; warnings: SuiviWarning[] } {
+  let spec: unknown
+  try {
+    spec = JSON.parse(text)
+  } catch (err) {
+    return { issue: { code: 'SPEC_INVALID', reason: `Spec : JSON invalide — ${err instanceof Error ? err.message : String(err)}.` }, warnings: [] }
+  }
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return { issue: { code: 'SPEC_INVALID', reason: 'Spec : objet JSON attendu.' }, warnings: [] }
+  const s = spec as Record<string, unknown>
+  const data = s.data as { name?: unknown; url?: unknown; values?: unknown } | undefined
+  if (!data || data.name !== 'rows') return { issue: { code: 'SPEC_INVALID', reason: 'Spec : la source de données doit être "data": { "name": "rows" } (lignes du script).' }, warnings: [] }
+  const json = JSON.stringify(spec)
+  if (/"url"\s*:/.test(json) || 'datasets' in s) {
+    return { issue: { code: 'SPEC_INVALID', reason: 'Spec : données externes interdites (url, datasets) — seules les lignes du script sont disponibles.' }, warnings: [] }
+  }
+  const warnings: SuiviWarning[] = []
+  const agg = findAggregate(spec, 'spec')
+  if (agg) warnings.push({ code: 'SPEC_AGGREGATE', reason: `Spec : agrégation Vega-Lite (${agg}) — les _ids sont perdus, le drill-down ne fonctionnera pas sur ces marques. Agréger dans la transformation.` })
   return { issue: null, warnings }
 }
 

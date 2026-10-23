@@ -22,6 +22,8 @@ export interface SchemaField {
   default?: unknown
   placeholder?: string
   validator?: string         // e.g. "EARS" | "regex:<pattern>"
+  /** GH77 — historiser les changements de ce champ (`history.<name>`). Écrit seulement si vrai. */
+  trackHistory?: boolean
 }
 
 // Format de stockage d'un champ `multi_enum` : chaîne CSV (ex. "a, b, c"), pas une liste
@@ -56,21 +58,21 @@ export interface SchemaStatus {
   label?: string
   color?: string
   isApproval?: boolean
-  isTerminal?: boolean       // masque l'objet des listes par dÃ©faut (ex: obsolete)
+  isTerminal?: boolean       // masque l'objet des listes par défaut (ex: obsolete)
 }
 
-// CatÃ©gorie technique d'un type d'objet.
-// DÃ©termine les champs systÃ¨me implicites, le comportement sidebar et le workflow :
-//   requirement â€” id, title, status (from statuses[]), fields{}
-//   test        â€” id, title, status (from statuses[]), steps[], fields{}
-//   campaign    â€” id, title, status fixe (planned/in_progress/completed/abandoned),
-//                 testCaseIds[], runs[] â€” le champ statuses[] est ignorÃ© pour cette catÃ©gorie
+// Catégorie technique d'un type d'objet.
+// Détermine les champs système implicites, le comportement sidebar et le workflow :
+//   requirement — id, title, status (from statuses[]), fields{}
+//   test        — id, title, status (from statuses[]), steps[], fields{}
+//   campaign    — id, title, status fixe (planned/in_progress/completed/abandoned),
+//                 testCaseIds[], runs[] — le champ statuses[] est ignoré pour cette catégorie
 export type ObjectCategory = 'requirement' | 'test' | 'campaign'
 
-// DÃ©finition d'un type d'objet dans un composant.
-// Chaque dÃ©finition est indÃ©pendante mÃªme si crÃ©Ã©e depuis le mÃªme template.
-// fields[] = champs additionnels configurables (au-dessus des champs systÃ¨me implicites).
-// Contrainte : prefix doit Ãªtre unique sur l'ensemble du projet (tous composants confondus).
+// Définition d'un type d'objet dans un composant.
+// Chaque définition est indépendante même si créée depuis le même template.
+// fields[] = champs additionnels configurables (au-dessus des champs système implicites).
+// Contrainte : prefix doit être unique sur l'ensemble du projet (tous composants confondus).
 export interface ObjectTypeDefinition {
   name: string
   label?: string
@@ -79,6 +81,16 @@ export interface ObjectTypeDefinition {
   category: ObjectCategory
   fields: SchemaField[]
   statuses?: SchemaStatus[]
+  /** GH77 — historiser le statut (`history.status`). Absent = true ; écrit seulement si false. */
+  trackStatusHistory?: boolean
+}
+
+/** GH68 — `status` est-il le statut d'approbation du type (`statuses[].isApproval`) ? Repli sur
+ *  le littéral `approved` quand le type est introuvable ou ne déclare aucun statut d'approbation
+ *  (règle unique, partagée avec le critère 4 de maturité — GH80). */
+export function isApprovalStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): boolean {
+  const approvalStatusName = typeDef?.statuses?.find(s => s.isApproval)?.name
+  return status === (approvalStatusName ?? 'approved')
 }
 
 // Noeud local : composant propre au repo produit.
@@ -133,18 +145,35 @@ export interface ImplementsDeclaration {
   roles: string[]
 }
 
-// Type de lien sÃ©mantique entre objets (requirements, tests, campagnes).
-// Tout lien entre objets passe par ce mÃ©canisme â€” il n'existe pas de systÃ¨me parallÃ¨le.
-// sourceRefs / targetRefs : tableau de rÃ©fÃ©rences, chaque Ã©lÃ©ment est :
-//   - une catÃ©gorie       : "requirement" | "test" | "campaign" â†’ tout objet de cette catÃ©gorie
-//   - une ref spÃ©cifique  : "componentName::objectName"         â†’ type prÃ©cis dans un composant
-// Absent ou tableau vide = non contraint.
+// Type de lien sémantique entre objets (requirements, tests, campagnes).
+// Tout lien entre objets passe par ce mécanisme — il n'existe pas de système parallèle.
+// sourceRefs / targetRefs : tableau de références, chaque élément est :
+//   - une catégorie       : "requirement" | "test" | "campaign" → tout objet de cette catégorie
+//   - une ref spécifique  : "componentName::objectName"         → type précis dans un composant
+// Tableau vide = type de lien invalide, n'accepte rien (cas d'un type cible supprimé, GH104) :
+// masqué des éditeurs (`isLinkTypeValid`, qui exige aussi les deux listes) et refusé par la
+// validation du main (serveur MCP), pour qui une liste absente reste non contrainte.
 export interface LinkTypeDefinition {
   name: string
   labelSourceToTarget: string
   labelTargetToSource: string
   sourceRefs?: string[]
   targetRefs?: string[]
+}
+
+/** GH105 — type de lien de l'union du workspace (par nom, repo racine d'abord). */
+export interface WorkspaceLinkType extends LinkTypeDefinition {
+  /** Repo dont le schéma définit le type. */
+  definingRepo: string
+}
+
+/**
+ * GH105 — contexte de résolution d'une ref `<nœud>::<type>` sur le workspace (chaque repo a un
+ * nœud `root`). `declaredBy` : ref → repos dont le schéma déclare ce type.
+ */
+export interface LinkRefScope {
+  definingRepo: string
+  declaredBy: Record<string, string[]>
 }
 
 // Project-level tool preferences — independent of the data model (nodes/objectTypes/linkTypes).
@@ -162,6 +191,11 @@ export interface ProjectPreferences {
    * rendu Standard.
    */
   exportTemplates?: Partial<Record<ExportTemplateKey, string>>
+  /**
+   * GH65 — intervalle du pull automatique (minutes), lu dans le schéma du repo racine. Entier dans
+   * [1, 60] ; absent ou invalide = 5.
+   */
+  autoPullIntervalMinutes?: number
 }
 
 export interface ProjectSchema {
@@ -183,7 +217,7 @@ export interface ProjectSchema {
   preferences?: ProjectPreferences
 }
 
-// â”€â”€ Tree data model â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Tree data model ───────────────────────────────────────────────────────────
 
 // A node in the element tree (either a folder or an item).
 // Items reference an object (requirement, test, etc.) by its ID.
@@ -204,4 +238,54 @@ export interface TypeTree {
   nodeId: string       // SystemNode.name
   typeId: string       // ObjectTypeDefinition.name
   root: TypeTreeNode[]
+}
+
+/** GH100 — renommage d'un type d'objet (nom et/ou préfixe) avec migration de ses objets. */
+export interface TypeRenameDto {
+  nodeName: string
+  category: 'requirement' | 'test' | 'campaign'
+  oldName: string
+  newName: string
+  oldPrefix: string
+  newPrefix: string
+}
+
+export interface TypeRenamePlan {
+  /** IDs renommés (préfixe changé, types exigence / test) ; vide sinon. */
+  objects: Array<{ oldId: string; newId: string }>
+  /** Objets du type dont l'`objectTypeRef` change (nom changé). */
+  retargeted: number
+  /** Fichiers de données réécrits ou renommés, hors fichiers des objets du type. */
+  files: Array<{ repoPath: string; path: string; newPath?: string }>
+  /** Repos dont des refs `<nœud>::<type>` de `linkTypes` changent. */
+  linkTypeRepos: string[]
+  errors: Array<{ code: 'ID_COLLISION' | 'REPO_MISSING'; detail: string }>
+}
+
+/** GH104 — suppression en cascade d'un composant local (et de son sous-arbre) ou d'un type. */
+export type SchemaDeleteTarget =
+  | { kind: 'node'; nodeName: string }
+  | { kind: 'type'; nodeName: string; typeName: string }
+
+export interface SchemaDeletePlan {
+  /** Nœuds supprimés (le nœud cible et ses descendants) ; vide pour un type. */
+  nodes: string[]
+  /** Refs `<nœud>::<type>` supprimées. */
+  types: string[]
+  /** IDs des objets supprimés (dans le repo du schéma), par catégorie. */
+  objects: { requirement: string[]; test: string[]; campaign: string[] }
+  /** Liens supprimés, par repo du workspace (repos sans lien touché absents). */
+  links: Array<{ repoPath: string; count: number }>
+  /** Types de lien dont des refs sont retirées ; `emptied` : `sourceRefs` ou `targetRefs` devient vide. */
+  linkTypes: Array<{ repoPath: string; name: string; emptied: boolean }>
+  errors: Array<{ code: 'NOT_FOUND' | 'READONLY' | 'REPO_MISSING'; detail: string }>
+}
+
+export interface SchemaDeleteResult {
+  deleted: string[]
+  links: number
+  /** Le nœud / type a été retiré du schéma (faux : arrêt sur échec, relancer la suppression). */
+  schemaSaved: boolean
+  /** `id` : ID d'objet, ou `<repo>:<chemin>` pour un autre fichier. */
+  failed: Array<{ id: string; error: string }>
 }

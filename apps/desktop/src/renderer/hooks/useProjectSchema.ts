@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
-import type { ProjectSchema, ObjectTypeDefinition } from '@polenta/types'
-import { findSystemNode, flattenSystemNodes } from '@polenta/types'
+import type { ProjectSchema, ObjectTypeDefinition, TestCase } from '@polenta/types'
+import { findSystemNode, flattenSystemNodes, isApprovalStatus } from '@polenta/types'
 
 export function useProjectSchema(repoPath: string) {
   return useQuery<ProjectSchema>({
@@ -46,6 +46,18 @@ export function getReqTypeDef(schema: ProjectSchema | undefined, objectTypeRef: 
 // Returns all ObjectTypeDefinition of category 'test' across all local nodes
 export function getTestTypeDef(schema: ProjectSchema | undefined, objectTypeRef: string): ObjectTypeDefinition | undefined {
   return findTypeDef(schema, objectTypeRef, 'test')
+}
+
+// Statut "approuvé" résolu depuis `statuses[].isApproval` du type du test (schema.yaml), pas
+// depuis le littéral 'approved' (repli sur 'approved' si le type n'en déclare pas) — même règle
+// que field-checks.util.ts et CampaignsService.approvalPredicate côté main (GH68).
+export function isTestApproved(test: TestCase, schema: ProjectSchema | undefined): boolean {
+  return isApprovalStatus(getTestTypeDef(schema, test.objectTypeRef), test.status)
+}
+
+/** Libellé du statut d'un test (`statuses[].label` de son type), à défaut son nom. */
+export function testStatusLabel(test: TestCase, schema: ProjectSchema | undefined): string {
+  return getTestTypeDef(schema, test.objectTypeRef)?.statuses?.find(s => s.name === test.status)?.label ?? test.status
 }
 
 // Returns all ObjectTypeDefinition of category 'campaign' across all local nodes

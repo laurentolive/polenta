@@ -1,22 +1,18 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { ObjectLink } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
-import { resolveWorkspaceRepoPaths } from '../../main/services/workspace-repos.util'
-import {
-  validateLinkEntries,
-  type LinkEntryDto,
-  type LinkEntryError,
-  type ResolvedLinkObject,
-} from '../../main/services/link-validation.util'
 
 /**
  * Tools de gestion des liens (GH16 — specs/GH16-design.md) : `list_links`,
- * `create_links`, `delete_links`. Les liens sont toujours lus/écrits dans
- * `links/links.yaml` du repo ciblé (`container.repoPath`), jamais dans un composant.
+ * `create_links`, `delete_links`.
  *
- * Chaque tool relit `links.yaml` depuis le disque (`reloadLinks`) : ce process n'a pas de
+ * GH105 — liens inter-repos (specs/GH105-design.md D7) : les liens sont lus dans les
+ * `links/links.yaml` de tous les repos du workspace ; un lien est écrit dans le repo de l'objet
+ * côté `sourceRefs` de son type (refus `READONLY_REPO` si ce repo est en lecture seule) et
+ * supprimé dans le repo qui le stocke (`WorkspaceLinksService`).
+ *
+ * Chaque tool relit `links.yaml` depuis le disque (`fresh`) : ce process n'a pas de
  * `RepoWatcherService`, son cache peut ignorer un lien créé entre-temps par l'app — une
  * écriture basée dessus l'écraserait.
  */
@@ -42,55 +38,20 @@ const deleteLinksInput = {
   dryRun: z.boolean().optional().default(true),
 }
 
-type ObjectTable = Map<string, ResolvedLinkObject>
-
-/** Table id → objet (exigences, tests, campagnes) sur le repo ciblé + composants du workspace. */
-async function buildObjectTable(container: McpContainer, repoPaths: string[]): Promise<ObjectTable> {
-  const table: ObjectTable = new Map()
-  for (const p of repoPaths) {
-    const [reqs, tests, campaigns] = await Promise.all([
-      container.requirements.findAll(p, {}),
-      container.tests.findAll(p),
-      container.campaigns.list(p),
-    ])
-    for (const r of reqs) table.set(r.id, { id: r.id, category: 'requirement', objectTypeRef: r.objectTypeRef })
-    for (const t of tests) table.set(t.id, { id: t.id, category: 'test', objectTypeRef: t.objectTypeRef })
-    for (const c of campaigns) table.set(c.id, { id: c.id, category: 'campaign', objectTypeRef: c.objectTypeRef })
-  }
-  return table
-}
-
-/**
- * Résout les IDs du lot ; si au moins un est introuvable, invalide les index (objet
- * possiblement créé par l'app après leur construction) et reconstruit la table une fois.
- */
-async function resolveObjects(container: McpContainer, entries: LinkEntryDto[]): Promise<ObjectTable> {
-  const repoPaths = await resolveWorkspaceRepoPaths(container.workspaceTree, container.repoPath, container.workspaceDir)
-  let table = await buildObjectTable(container, repoPaths)
-  const missing = entries.some((e) => !table.has(e.sourceId) || !table.has(e.targetId))
-  if (missing) {
-    for (const p of repoPaths) {
-      container.reqIndex.invalidate(p)
-      container.testsIndex.invalidate(p)
-    }
-    table = await buildObjectTable(container, repoPaths)
-  }
-  return table
-}
-
 export function registerLinkTools(server: McpServer, container: McpContainer): void {
   server.registerTool(
     'list_links',
     {
       title: 'List links',
       description:
-        'Liste les liens entre objets (links/links.yaml du repo). Filtres optionnels : ' +
+        'Liste les liens entre objets (links/links.yaml de tous les repos du workspace ; ' +
+        'storedIn = repo qui stocke le lien, readonly = suppression impossible). Filtres optionnels : ' +
         'objectId (liens dont cet objet est source OU cible), type (linkTypes[].name). ' +
         'Utile avant create_links pour éviter les doublons.',
       inputSchema: listLinksInput,
     },
     async ({ objectId, type }) => {
-      let links = await container.requirements.reloadLinks(container.repoPath)
+      let links = await container.workspaceLinks.listLinks(container.repoPath, container.workspaceDir, true)
       if (objectId) links = links.filter((l) => l.sourceId === objectId || l.targetId === objectId)
       if (type) links = links.filter((l) => l.type === type)
       return jsonToolResult({ links })
@@ -106,52 +67,31 @@ export function registerLinkTools(server: McpServer, container: McpContainer): v
         "valide chaque entrée et retourne un aperçu SANS RIEN ÉCRIRE. Validation : type " +
         "existant dans schema.linkTypes, pas d'auto-lien, objets existants, compatibilité " +
         "sourceRefs/targetRefs dans un sens ou dans l'autre (le sens fourni est conservé), " +
-        "pas de doublon (même type et même paire, quel que soit le sens). dryRun: false : " +
+        "pas de doublon (même type et même paire, quel que soit le sens), repo de stockage " +
+        "modifiable. Le lien est écrit dans le repo de l'objet côté sourceRefs (storedIn). dryRun: false : " +
         "écrit les entrées valides en une fois (best-effort : une entrée en erreur n'empêche " +
         "pas les autres). Appeler get_schema d'abord pour connaître les linkTypes.",
       inputSchema: createLinksInput,
     },
     async ({ entries, dryRun }) => {
-      const schema = await container.schema.get(container.repoPath)
-      const existing = await container.requirements.reloadLinks(container.repoPath)
-      const table = await resolveObjects(container, entries)
-      const { valid, errors } = validateLinkEntries(
-        schema.linkTypes ?? [],
-        entries,
-        (id) => table.get(id) ?? null,
-        existing,
-      )
-      const summary = { total: entries.length, ok: valid.length, failed: errors.length }
-
+      const links = container.workspaceLinks
       if (dryRun) {
+        const { valid, errors } = await links.plan(container.repoPath, entries, container.workspaceDir, true)
         return jsonToolResult({
           dryRun: true,
-          summary,
-          wouldCreate: valid.map((v) => ({ index: v.index, ...v.dto })),
+          summary: { total: entries.length, ok: valid.length, failed: errors.length },
+          wouldCreate: valid.map((v) => ({ index: v.index, ...v.dto, storedIn: v.storedIn })),
           created: [],
           errors,
         })
       }
 
-      const written = await container.requirements.createLinks(
-        container.repoPath,
-        valid.map((v) => v.dto),
-        'mcp',
-      )
-      // createLinks refait le contrôle de doublon sous verrou : null = lien créé entre-temps
-      // (autre appel MCP concurrent, ou l'app) — reporté comme doublon.
-      const created: Array<{ index: number; id: string }> = []
-      written.forEach((link, i) => {
-        const { index, dto } = valid[i]
-        if (link) created.push({ index, id: link.id })
-        else errors.push({ index, code: 'DUPLICATE_LINK', reason: `Un lien "${dto.type}" relie déjà ${dto.sourceId} et ${dto.targetId} (créé entre-temps).` })
-      })
-      errors.sort((a, b) => a.index - b.index)
+      const { created, errors } = await links.createLinks(container.repoPath, entries, 'mcp', container.workspaceDir, true)
       return jsonToolResult({
         dryRun: false,
         summary: { total: entries.length, ok: created.length, failed: errors.length },
         wouldCreate: [],
-        created,
+        created: created.map((c) => ({ index: c.index, id: c.link.id, storedIn: c.link.storedIn })),
         errors,
       })
     },
@@ -162,47 +102,21 @@ export function registerLinkTools(server: McpServer, container: McpContainer): v
     {
       title: 'Delete links',
       description:
-        'Supprime des liens par id (cf. list_links). dryRun (défaut true) : retourne les ' +
+        'Supprime des liens par id (cf. list_links), chacun dans le repo qui le stocke ; un lien ' +
+        "d'un repo en lecture seule est reporté en erreur (READONLY_REPO). dryRun (défaut true) : retourne les " +
         'liens qui seraient supprimés, SANS RIEN ÉCRIRE. Un id introuvable est reporté ' +
         'dans errors (LINK_NOT_FOUND) sans empêcher la suppression des autres.',
       inputSchema: deleteLinksInput,
     },
     async ({ ids, dryRun }) => {
-      const links = await container.requirements.reloadLinks(container.repoPath)
-      const byId = new Map(links.map((l) => [l.id, l]))
-      const found: ObjectLink[] = []
-      const errors: LinkEntryError[] = []
-      const seen = new Set<string>()
-      ids.forEach((id, index) => {
-        const link = byId.get(id)
-        if (!link || seen.has(id)) {
-          errors.push({ index, code: 'LINK_NOT_FOUND', reason: `Lien "${id}" introuvable${seen.has(id) ? ' (déjà traité dans ce lot)' : ''}.` })
-          return
-        }
-        seen.add(id)
-        found.push(link)
-      })
-      const summary = { total: ids.length, ok: found.length, failed: errors.length }
-
-      if (dryRun) {
-        return jsonToolResult({ dryRun: true, summary, wouldDelete: found, deleted: [], errors })
-      }
-
-      const deleted = await container.requirements.deleteLinks(container.repoPath, found.map((l) => l.id))
-      // deleteLinks relit le fichier sous verrou : un lien supprimé entre-temps (par l'app)
-      // n'est plus là — reporté comme introuvable plutôt que compté comme supprimé.
-      const deletedSet = new Set(deleted)
-      ids.forEach((id, index) => {
-        if (found.some((l) => l.id === id) && !deletedSet.has(id) && !errors.some((e) => e.index === index)) {
-          errors.push({ index, code: 'LINK_NOT_FOUND', reason: `Lien "${id}" supprimé entre-temps par un autre processus.` })
-        }
-      })
-      errors.sort((a, b) => a.index - b.index)
+      const { deleted, errors } = await container.workspaceLinks.deleteLinks(container.repoPath, ids, container.workspaceDir, dryRun)
+      const summary = { total: ids.length, ok: deleted.length, failed: errors.length }
+      if (dryRun) return jsonToolResult({ dryRun: true, summary, wouldDelete: deleted, deleted: [], errors })
       return jsonToolResult({
         dryRun: false,
-        summary: { total: ids.length, ok: deleted.length, failed: errors.length },
+        summary,
         wouldDelete: [],
-        deleted,
+        deleted: deleted.map((l) => l.id),
         errors,
       })
     },

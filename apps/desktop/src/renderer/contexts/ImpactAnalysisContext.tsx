@@ -4,6 +4,10 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
  *  (non persistée, pas d'id de fichier). */
 export const LOCAL_IMPACT_ANALYSIS_ID = '__local__'
 
+/** T173 — valeur de `activeAnalysisId` désignant la liste de repli « Impact à vérifier » (tous
+ *  les éléments marqués `needsRevalidation` du workspace, non persistée). */
+export const REVALIDATION_IMPACT_ID = '__revalidation__'
+
 interface ImpactAnalysisContextValue {
   activeAnalysisId: string | null
   setActiveAnalysisId: (id: string | null) => void

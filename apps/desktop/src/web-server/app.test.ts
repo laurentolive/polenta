@@ -175,6 +175,26 @@ describe('upload et download', () => {
   })
 })
 
+describe('historique des champs (GH77)', () => {
+  it('W16 — une écriture via le client web signe l\'historique du login de la session', async () => {
+    const repo = path.join(base, 'users', 'alice', 'workspaces', 'gh77', 'repo')
+    await fsP.mkdir(path.join(repo, '.polenta'), { recursive: true })
+    await fsP.writeFile(path.join(repo, '.polenta', 'schema.yaml'), [
+      'version: 1',
+      'nodes:',
+      '  - name: root',
+      '    objectTypes:',
+      '      - { name: exigence, prefix: SYS, category: requirement, fields: [] }',
+      'linkTypes: []',
+    ].join('\n'))
+    const res = await rpc('requirements:create', [repo, { objectTypeRef: 'root::exigence', title: 'R' }])
+    expect(res.statusCode).toBe(200)
+    const id = res.json().value.id as string
+    const file = await fsP.readFile(path.join(repo, 'requirements', `${id}.yaml`), 'utf-8')
+    expect(file).toMatch(/by: alice/)
+  })
+})
+
 describe('configuration', () => {
   it('mode dev refusé en production (S2-19)', () => {
     const saved = { ...process.env }

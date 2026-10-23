@@ -1,16 +1,13 @@
-import type { Dashboard, QueryDefinition, QueryResult, SavedQuery } from '@polenta/types'
+import { z } from 'zod'
+import type { Dashboard, QueryColumnDef, QueryParameterDef, SavedQuery, ScriptClientInfo, ScriptRunRequest, ScriptRunResult } from '@polenta/types'
+import { COMPUTED_COLUMN_CATEGORIES, COMPUTED_COLUMN_TYPES, QUERY_PARAMETER_KINDS, validateColumnDecl, validateParameterDecls } from '@polenta/types'
 import type { McpContainer } from '../container'
 import { errorToolResult } from '../mcp-types'
 import { resolveWorkspaceRepoPaths } from '../../main/services/workspace-repos.util'
 import { isReadonlyBranch } from '../../main/services/readonly-branch.util'
-import { isReadOnlySql } from '../../main/services/query-engine.service'
 import { isPrivateScopeId } from '../../main/services/id-scope.util'
 import { formatCounterId, peekNextCounterId } from '../../main/services/id-counter.util'
-import {
-  unknownBuilderFields,
-  validateQueryDefinitionShape,
-  type SuiviErrorCode,
-} from '../../main/services/suivi-validation.util'
+import type { SuiviErrorCode } from '../../main/services/suivi-validation.util'
 
 /**
  * Helpers communs aux tools de la vue Suivi (GH18 — specs/GH18-design.md §3–4).
@@ -56,62 +53,24 @@ export async function freshenIndexes(c: McpContainer): Promise<void> {
   }
 }
 
-export type RunOutcome =
-  | { ok: true; sql: string; result: QueryResult }
-  | { ok: false; code: SuiviErrorCode; reason: string }
-
-/**
- * Valide puis exécute une définition de requête, en classant l'échec (GH18-design §4) :
- * forme → FORBIDDEN_SQL → builder strict → exécution. Invalide les index avant d'exécuter.
- */
-export async function runDefinition(c: McpContainer, def: QueryDefinition): Promise<RunOutcome> {
-  const shape = validateQueryDefinitionShape(def)
-  if (shape) return { ok: false, ...shape }
-
-  let sql: string
-  if (def.mode === 'sql') {
-    sql = (def.sqlText ?? '').trim()
-    if (!isReadOnlySql(sql)) {
-      return {
-        ok: false,
-        code: 'FORBIDDEN_SQL',
-        reason: 'Requête refusée : INSERT / UPDATE / DELETE / DROP / CREATE / ALTER / TRUNCATE / ATTACH / INTO interdits (lecture seule).',
-      }
-    }
-  } else {
-    const config = def.builderConfig!
-    const target = await c.queryEngine.inspectBuilderTarget(c.repoPath, config.objectTypeRef, config.component, c.workspaceDir)
-    if (!target.resolved) {
-      return {
-        ok: false,
-        code: 'INVALID_BUILDER_CONFIG',
-        reason: `Type d'objet introuvable : ${config.objectTypeRef}${config.component ? ` (composant ${config.component})` : ''}.`,
-      }
-    }
-    const unknown = unknownBuilderFields(config, target.allowedFields)
-    if (unknown.length > 0) {
-      return {
-        ok: false,
-        code: 'INVALID_BUILDER_CONFIG',
-        reason: `Champ(s) inconnu(s) pour ${config.objectTypeRef} : ${unknown.join(', ')}. Champs autorisés : ${target.allowedFields.join(', ')}.`,
-      }
-    }
-    sql = await c.queryEngine.builderToSql(c.repoPath, config, c.workspaceDir)
-  }
-
-  await freshenIndexes(c)
-  try {
-    const result = await c.queryEngine.execute(c.repoPath, def, c.workspaceDir)
-    return { ok: true, sql, result }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { ok: false, code: 'QUERY_EXECUTION_ERROR', reason: message.replace(/^Requête invalide : /, '') }
-  }
+/** Informations « client » des exécutions MCP : langue française, fuseau de la machine. */
+export function mcpClient(locale: 'fr' | 'en' = 'fr'): ScriptClientInfo {
+  return { locale, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }
 }
 
-/** Colonnes du résultat, ou null si indéterminables (0 ligne : `inferColumns` ne voit rien). */
-export function resultColumnNames(result: QueryResult): string[] | null {
-  return result.rows.length === 0 ? null : result.columns.map((col) => col.name)
+/** Exécute (requête / widget enregistré, ou code fourni) après avoir rafraîchi les index. */
+export async function runScript(c: McpContainer, req: ScriptRunRequest): Promise<ScriptRunResult> {
+  await freshenIndexes(c)
+  c.dashboardLibrary.invalidate(c.repoPath)
+  const { username } = resolveUser(c)
+  return c.suivi.run(c.repoPath, c.workspaceDir, username, req, mcpClient())
+}
+
+/** Aperçu d'un résultat : colonnes, total, premières lignes. */
+export function preview(result: ScriptRunResult, size = 5) {
+  return result.ok
+    ? { columns: result.columns, total: result.total, sample: result.rows.slice(0, size) }
+    : { error: result.error }
 }
 
 const SHARED_QUERY_ID = /^QUERY-\d+$/
@@ -137,4 +96,57 @@ export async function findVisibleDashboard(c: McpContainer, id: string): Promise
 export async function peekSharedId(c: McpContainer, key: 'QUERY' | 'DASHBOARD'): Promise<string> {
   const dir = key === 'QUERY' ? 'queries' : 'dashboards'
   return formatCounterId(key, await peekNextCounterId(c.git, c.repoPath, key, dir))
+}
+
+// ─── Paramètres choisis à l'affichage (GH93) ─────────────────────────────────
+
+const labelSchema = z.union([z.string(), z.object({ fr: z.string(), en: z.string() })])
+export const paramValueSchema = z.union([
+  z.string(),
+  z.object({ from: z.string().nullable().optional(), to: z.string().nullable().optional() }),
+  z.null(),
+])
+
+/** Déclaration de paramètres d'une requête (validée ensuite par `validateParameterDecls`). */
+export const parametersSchema = z.array(z.object({
+  name: z.string().describe('clé dans polenta.params (lettre puis lettres, chiffres, _)'),
+  kind: z.enum(QUERY_PARAMETER_KINDS as unknown as [string, ...string[]])
+    .describe('campaign | component | objectType | enum | text | period'),
+  label: labelSchema.describe('libellé du sélecteur ({ fr, en } ou un seul texte)'),
+  values: z.array(z.object({ value: z.string(), label: labelSchema.optional() })).optional().describe('enum seulement'),
+  default: paramValueSchema.optional(),
+  required: z.boolean().optional().describe('vrai : pas de choix « Tous / Toutes »'),
+})).describe('paramètres choisis à l\'affichage (barre du dashboard) : valeurs reçues dans polenta.params')
+
+/** GH70 — déclaration de colonne calculée de la Vue Système (requête partagée). */
+export const columnSchema = z.object({
+  label: labelSchema.describe('libellé de la colonne ({ fr, en } ou un seul texte)'),
+  appliesTo: z.object({
+    categories: z.array(z.enum(COMPUTED_COLUMN_CATEGORIES as unknown as [string, ...string[]])).optional().default([]),
+    objectTypes: z.array(z.string()).optional().default([]).describe('types précis <nœud>::<type>'),
+  }).describe('colonne proposée pour un type si sa catégorie OU son objectTypeRef figure ici'),
+  type: z.enum(COMPUTED_COLUMN_TYPES as unknown as [string, ...string[]]).describe('type de champ qui gouverne le rendu de la cellule'),
+  values: z.array(z.string()).optional().describe('enum / multi_enum : valeurs possibles'),
+  idColumn: z.string().nullable().optional().describe("colonne du résultat qui porte l'ID de l'élément (défaut id ; null = défaut)"),
+  valueColumn: z.string().nullable().optional().describe('colonne du résultat qui porte la valeur (défaut value ; null = défaut)'),
+  tooltipColumn: z.string().nullable().optional().describe("colonne du résultat qui porte l'infobulle (défaut tooltip ; null = défaut)"),
+}).describe(
+  'colonne calculée de la Vue Système (requête partagée seulement) : le script renvoie une ligne par élément ' +
+  '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible ouverte au double-clic)',
+)
+
+/** Déclaration de colonne validée (`null` = aucune), ou l'erreur `COLUMN_INVALID` à renvoyer. */
+export function checkColumn(raw: unknown): { column: QueryColumnDef | null } | { error: ReturnType<typeof suiviError> } {
+  const { decl, errors } = validateColumnDecl(raw)
+  return errors.length ? { error: suiviError('COLUMN_INVALID', errors.join(' ; ')) } : { column: decl }
+}
+
+/** Valeurs des paramètres pour une exécution (clés = noms déclarés). */
+export const paramsSchema = z.record(paramValueSchema)
+  .describe('valeurs des paramètres déclarés (période : { from, to } en AAAA-MM-JJ) ; absent → défaut de la déclaration')
+
+/** Déclaration validée, ou l'erreur `PARAMS_INVALID` à renvoyer. */
+export function checkParameters(raw: unknown): { decls: QueryParameterDef[] } | { error: ReturnType<typeof suiviError> } {
+  const { decls, errors } = validateParameterDecls(raw)
+  return errors.length ? { error: suiviError('PARAMS_INVALID', errors.join(' ; ')) } : { decls }
 }

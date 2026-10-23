@@ -1,6 +1,6 @@
 import type {
-  CreateOnServerResult, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
-  PasswordLoginResult, TeamConfigStatus, TeamProjectEntry,
+  CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -15,6 +15,7 @@ import type {
   Parameter,
   ParamResolutionPreview,
   ReqInstanceSelection,
+  CarriedEntrySelection,
   ParameterDeleteResult,
   ParameterUsage,
   ParameterWriteResult,
@@ -23,6 +24,9 @@ import type {
   ProjectInfo,
   Requirement,
   ObjectLink,
+  WorkspaceObject,
+  WorkspaceLink,
+  WorkspaceLinkType,
   TestCase,
   TestRun,
   TraceabilityMatrix,
@@ -35,7 +39,7 @@ import type {
   ReviewStatus,
   ProjectSchema,
   TestCampaign,
-  TestRunStatus,
+  TestRunResult,
   CreateCampaignDto,
   UpdateCampaignDto,
   TypeTree,
@@ -46,17 +50,20 @@ import type {
   ComplianceMatrix,
   CoverageResult,
   // ComplianceCellStatus is exported from @polenta/types but not needed directly in ApiClient
-  QueryDefinition,
-  QueryResult,
-  BuilderConfig,
-  QueryMode,
+  RowTarget,
+  DescribedObject,
   QueryScope,
   SavedQuery,
   QueryHistoryEntry,
   Dashboard,
-  WidgetType,
   WidgetSize,
-  WidgetFieldMapping,
+  ScriptRunRequest,
+  ScriptRunResult,
+  SuiviUpdatesList,
+  ScriptClientInfo,
+  QueryTemplate,
+  WidgetTemplate,
+  WidgetCode,
   ImpactAnalysis,
   ImpactAnalysisSummary,
   LocalImpactAnalysis,
@@ -122,22 +129,40 @@ export interface RequirementFilters {
   search?: string
 }
 
+/** GH74 — demande de modèle (id + paramètres du formulaire). */
+export interface TemplateInput {
+  id: string
+  params: Record<string, unknown>
+}
+
 export interface CreateSavedQueryDto {
   title: string
-  mode: QueryMode
-  builderConfig?: BuilderConfig
-  sqlText?: string
   scope: QueryScope
   createdBy: string
+  /** Script fourni, ou modèle (le script est alors généré). */
+  script?: string
+  template?: TemplateInput
+  /** GH93 — paramètres choisis à l'affichage (avec `script` seulement : un modèle les génère). */
+  parameters?: QueryParameterDef[]
+  /** GH70 — colonne calculée de la Vue Système (requête partagée, avec `script` seulement). */
+  column?: QueryColumnDef | null
 }
 
 export interface UpdateSavedQueryDto {
   title?: string
-  builderConfig?: BuilderConfig
-  sqlText?: string
+  /** Code modifié : la référence de modèle est conservée (objet détaché si le code diffère). */
+  script?: string
+  /** Modèle / paramètres : script régénéré ; `null` retire la référence. */
+  template?: TemplateInput | null
+  /** GH93 — nouvelle déclaration de paramètres (sans `template`). */
+  parameters?: QueryParameterDef[]
+  /** GH70 — nouvelle déclaration de colonne (sans `template`) ; `null` la retire. */
+  column?: QueryColumnDef | null
 }
 
-export type AddHistoryEntryDto = Omit<QueryHistoryEntry, 'id' | 'executedAt'>
+export interface AddHistoryEntryDto {
+  script: string
+}
 
 export interface CreateDashboardDto {
   title: string
@@ -153,12 +178,29 @@ export interface UpdateDashboardDto {
 export interface AddWidgetDto {
   title: string
   queryId: string
-  type: WidgetType
-  fieldMapping: WidgetFieldMapping
   size: WidgetSize
+  transform?: string
+  spec?: string
+  template?: TemplateInput
 }
 
-export type UpdateWidgetDto = Partial<AddWidgetDto>
+export interface UpdateWidgetDto {
+  title?: string
+  queryId?: string
+  size?: WidgetSize
+  transform?: string | null
+  spec?: string
+  template?: TemplateInput | null
+}
+
+/** GH74 — type d'objet proposé par le formulaire « Liste filtrée ». */
+export interface SuiviObjectTypeOption {
+  objectTypeRef: string
+  component: string
+  label: string
+  category: 'requirement' | 'test' | 'campaign'
+  fields: string[]
+}
 
 export interface MissingLinksResult {
   uncoveredRequirements: Requirement[]
@@ -360,6 +402,20 @@ export interface ApiClient {
     get(repoPath: string): Promise<ProjectSchema>
     save(repoPath: string, schema: ProjectSchema): Promise<void>
     moveElement(repoPath: string, dto: MoveElementDto): Promise<MoveElementResult>
+    /** GH77 — migre valeur et historique des champs renommés sur les objets du type (après `save`). */
+    renameFields(repoPath: string, objectTypeRef: string, renames: FieldRename[]): Promise<FieldRenameResult>
+    /** GH82 — aperçu sans écriture : objets du type portant l'ancienne / la nouvelle valeur. */
+    previewValueRenames(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<ValueRenamePreview[]>
+    /** GH82 — migre statuts / valeurs d'enum renommés (objets, historique, copies de campagne). */
+    renameValues(repoPath: string, objectTypeRef: string, renames: ValueRename[]): Promise<FieldRenameResult>
+    /** GH100 — aperçu sans écriture du renommage d'un type (nom / préfixe). */
+    previewTypeRename(repoPath: string, workspaceDir: string, dto: TypeRenameDto): Promise<TypeRenamePlan>
+    /** GH100 — après l'enregistrement du schéma : migre les objets du type et leurs références. */
+    renameType(repoPath: string, workspaceDir: string, dto: TypeRenameDto): Promise<TypeRenameResult>
+    /** GH104 — aperçu sans écriture de la suppression en cascade d'un composant local ou d'un type. */
+    previewDelete(repoPath: string, workspaceDir: string, target: SchemaDeleteTarget): Promise<SchemaDeletePlan>
+    /** GH104 — supprime objets, liens, arbres et refs de liens, puis le nœud / type du schéma. */
+    delete(repoPath: string, workspaceDir: string, target: SchemaDeleteTarget): Promise<SchemaDeleteResult>
     /** Drops the main-process in-memory cache for `repoPath` so the next `get()` re-reads schema.yaml from disk. */
     invalidate(repoPath: string): Promise<void>
   }
@@ -548,10 +604,18 @@ export interface ApiClient {
     create(repoPath: string, dto: CreateBaselineDto, workspaceDir?: string): Promise<BaselineRecord>
     /** Configured integration branch for this repo (`config/project.yaml`), `'main'` if absent/unreadable. */
     getIntegrationBranch(repoPath: string): Promise<string>
-    /** Persists the configured integration branch — merges into existing `config/project.yaml`. */
+    /** @deprecated GH106 — uncommitted write; use `integration.designate`. */
     setIntegrationBranch(repoPath: string, branch: string): Promise<void>
     /** Deletes the tag on the main repo and on every listed component repo. */
     delete(repoPath: string, tag: string, components?: BaselineComponentRef[]): Promise<void>
+  }
+  /** GH106 — branche d'intégration explicite (specs/GH106-design.md §2). */
+  integration: {
+    state(repoPath: string): Promise<IntegrationState>
+    /** Checkout si besoin, commit du seul `config/project.yaml`, push, branche par défaut de la forge. */
+    designate(repoPath: string, branch: string): Promise<DesignateOutcome>
+    /** Crée `int-<suffix>` (position courante, ou `from.tag`) puis la désigne. */
+    create(repoPath: string, suffix: string, from?: { tag: string }): Promise<DesignateOutcome>
   }
   requirements: {
     list(repoPath: string, filters?: RequirementFilters): Promise<Requirement[]>
@@ -567,8 +631,20 @@ export interface ApiClient {
     // TODO: remove versioning API
     links(repoPath: string, id: string): Promise<ObjectLink[]>
     linksAll(repoPath: string): Promise<ObjectLink[]>
-    linkCreate(repoPath: string, data: { type: string; sourceId: string; targetId: string }): Promise<ObjectLink>
-    linkDelete(repoPath: string, linkId: string): Promise<void>
+    /** GH105 — avec workspaceDir : lien écrit dans le repo de sa source (validé ; erreur préfixée
+     *  par un `LinkWriteErrorCode`, ex. `READONLY_REPO: …`). Sans : repo donné, comme avant. */
+    linkCreate(repoPath: string, data: { type: string; sourceId: string; targetId: string }, workspaceDir?: string): Promise<ObjectLink>
+    /** GH105 — avec workspaceDir : supprimé dans le repo qui stocke le lien. */
+    linkDelete(repoPath: string, linkId: string, workspaceDir?: string): Promise<void>
+  }
+  /** GH105 — liens inter-repos : agrégation sur les repos du workspace (racine d'abord). */
+  links: {
+    /** Exigences et tests de tous les repos du workspace. */
+    objects(repoPath: string, workspaceDir?: string): Promise<WorkspaceObject[]>
+    /** Liens de tous les `links.yaml` du workspace, avec leur repo de stockage. */
+    list(repoPath: string, workspaceDir?: string): Promise<WorkspaceLink[]>
+    /** Union par nom des types de lien du workspace, et repos déclarant chaque `<nœud>::<type>`. */
+    types(repoPath: string, workspaceDir?: string): Promise<{ linkTypes: WorkspaceLinkType[]; declaredBy: Record<string, string[]> }>
   }
   tests: {
     list(repoPath: string): Promise<TestCase[]>
@@ -597,6 +673,12 @@ export interface ApiClient {
     exportCsv(repoPath: string, filters?: MatrixFiltersDto, workspaceDir?: string): Promise<MatrixExportRow[]>
     /** Diff exigence-par-exigence entre deux shas (T46) — indépendant de l'index vivant. */
     diffRequirements(repoPath: string, fromSha: string, toSha: string): Promise<RequirementDiffEntry[]>
+  }
+  history: {
+    /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
+    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign', id: string): Promise<ObjectHistory>
+    /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
+    backfill(repoPath: string): Promise<HistoryBackfillResult>
   }
   revalidation: {
     /** T173 — éléments marqués `needsRevalidation` du workspace, avec leurs éléments liés. */
@@ -627,10 +709,11 @@ export interface ApiClient {
     get(repoPath: string, id: string): Promise<TestCampaign>
     create(repoPath: string, dto: CreateCampaignDto, workspaceDir?: string): Promise<TestCampaign>
     update(repoPath: string, id: string, dto: UpdateCampaignDto): Promise<TestCampaign>
-    updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunStatus, runId?: string): Promise<TestCampaign>
+    /** GH81 — `displayed` : version du test affichée, figée si l'instance est resynchronisable (GH68). */
+    updateRun(repoPath: string, campaignId: string, entryId: string, status: TestRunResult, runId: string, displayed?: TestCase): Promise<TestCampaign>
     close(repoPath: string, id: string, status: 'completed' | 'abandoned'): Promise<TestCampaign>
     /** T179 — `reqInstances` : exigences retenues (et saisies par instance) des tests itérants. */
-    addTests(repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: ReqInstanceSelection): Promise<TestCampaign>
+    addTests(repoPath: string, campaignId: string, testCaseIds: string[], paramValuesByTest?: Record<string, Record<string, string>>, workspaceDir?: string, reqInstances?: ReqInstanceSelection, carried?: CarriedEntrySelection[]): Promise<TestCampaign>
     removeEntries(repoPath: string, campaignId: string, entryIds: string[]): Promise<TestCampaign>
     /** T179 — `requirementId` : duplicata d'une instance générée pour cette exigence. */
     duplicateTest(repoPath: string, campaignId: string, testCaseId: string, paramValues: Record<string, string>, workspaceDir?: string, requirementId?: string): Promise<TestCampaign>
@@ -652,12 +735,25 @@ export interface ApiClient {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>
     setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPref): Promise<void>
   }
-  /** Moteur de requêtes AlaSQL + requêtes sauvegardées / historique (T77 sprint 1) */
+  /** GH74 — vue Suivi : exécution des scripts (bac à sable du main), drill-down, modèles. */
+  suivi: {
+    /** Widget enregistré, requête enregistrée ou script fourni ; erreurs dans le résultat. */
+    run(repoPath: string, workspaceDir: string | undefined, username: string, req: ScriptRunRequest, client: ScriptClientInfo): Promise<ScriptRunResult>
+    describeIds(repoPath: string, workspaceDir: string | undefined, ids: string[], locale?: string): Promise<DescribedObject[]>
+    resolveTarget(repoPath: string, workspaceDir: string | undefined, id: string): Promise<RowTarget | null>
+    templates(): Promise<{ queries: Omit<QueryTemplate, 'generate' | 'parameters' | 'column'>[]; widgets: Omit<WidgetTemplate, 'generate'>[] }>
+    renderTemplate(kind: 'query', input: TemplateInput): Promise<{ script: string; parameters: QueryParameterDef[]; column: QueryColumnDef | null }>
+    renderTemplate(kind: 'widget', input: TemplateInput): Promise<WidgetCode>
+    objectTypes(repoPath: string, workspaceDir?: string): Promise<SuiviObjectTypeOption[]>
+    /** GH74 §6.3 — bandeau des mises à jour (bibliothèque, widgets du seed, versions de modèle). */
+    updatesList(repoPath: string, username: string, locale?: string): Promise<SuiviUpdatesList>
+    /** Applique les propositions choisies (écriture normale, à publier pour les fichiers partagés). */
+    updatesApply(repoPath: string, username: string, ids: string[], locale?: string): Promise<void>
+    /** Masque une version proposée pour l'utilisateur. */
+    updatesIgnore(repoPath: string, username: string, id: string, toVersion: number): Promise<void>
+  }
+  /** Requêtes enregistrées (scripts de données) / historique (T77, GH74). */
   queries: {
-    /** workspaceDir: composants submodules agrégés dans le dataset interrogé (T77) */
-    execute(repoPath: string, queryDef: QueryDefinition, workspaceDir?: string): Promise<QueryResult>
-    /** Traduit un BuilderConfig en SQL équivalent (pré-remplissage de l'éditeur SQL avancé). */
-    builderToSql(repoPath: string, config: BuilderConfig, workspaceDir?: string): Promise<string>
     list(repoPath: string, username: string): Promise<SavedQuery[]>
     create(repoPath: string, username: string, dto: CreateSavedQueryDto): Promise<SavedQuery>
     update(repoPath: string, username: string, id: string, dto: UpdateSavedQueryDto): Promise<SavedQuery>
@@ -679,7 +775,8 @@ export interface ApiClient {
   }
   /** Dashboards personnalisables + widgets embarqués (T77 sprint 2) */
   dashboards: {
-    list(repoPath: string, username: string): Promise<Dashboard[]>
+    /** GH65 — `locale` : langue des libellés du seed « Campagnes » (absent : français). */
+    list(repoPath: string, username: string, locale?: string): Promise<Dashboard[]>
     get(repoPath: string, username: string, id: string): Promise<Dashboard | null>
     create(repoPath: string, username: string, dto: CreateDashboardDto): Promise<Dashboard>
     update(repoPath: string, username: string, id: string, dto: UpdateDashboardDto): Promise<Dashboard>
@@ -697,6 +794,10 @@ export interface ApiClient {
     /** Ordre d'affichage de la section "Dashboards" du panneau latéral (préférence perso). */
     getOrder(repoPath: string, username: string): Promise<string[]>
     setOrder(repoPath: string, username: string, order: string[]): Promise<void>
+    /** GH93 — valeurs choisies dans la barre de paramètres du dashboard (clé `name:kind`), privées. */
+    getParamValues(repoPath: string, username: string, dashboardId: string): Promise<Record<string, GraphParamValue>>
+    /** `null` : Réinitialiser (retour aux défauts des déclarations). */
+    setParamValues(repoPath: string, username: string, dashboardId: string, values: Record<string, GraphParamValue> | null): Promise<void>
   }
   /** Base de paramètres (T171) — `repoPath` = repo qui porte la base. */
   parameters: {

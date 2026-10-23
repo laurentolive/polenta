@@ -1,12 +1,12 @@
 import * as path from 'path'
 import ExcelJS from 'exceljs'
 import {
-  EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_FORMAT_VERSION, EXECUTION_SHEET_HEADER_ROW, EXECUTION_SHEET_META_NAME,
+  EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_HEADER_ROW, EXECUTION_SHEET_META_NAME, EXECUTION_SHEET_SUPPORTED_VERSIONS,
   parseGlobalVerdict, parseStepVerdict,
 } from '@polenta/types'
 import type {
   ExecutionImportFatal, ExecutionImportInstanceError, ExecutionImportPreview, ExecutionSheetColumn,
-  ImportedInstance, StepResultValue, TestCampaign, TestRunResult,
+  ImportedInstance, StepResultValue, TestCampaign, TestCase, TestRunResult,
 } from '@polenta/types'
 
 /**
@@ -29,8 +29,8 @@ export interface RawExecutionRow {
 export interface RawExecutionSheet {
   formatVersion: string
   campaignId: string
-  /** Instances exportées, dans l'ordre de la campagne au moment de l'export. */
-  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean }[]
+  /** Instances exportées, dans l'ordre de la campagne au moment de l'export ; `fingerprint` : v2 (GH81). */
+  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string }[]
   rows: RawExecutionRow[]
   /** Lignes sans clé technique mais avec une saisie (ajoutées par le testeur). */
   rowsWithoutKey: number[]
@@ -90,11 +90,13 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
       return
     }
     const orders = cellText(r.getCell(3).value).split(',').map(s => s.trim()).filter(Boolean).map(Number)
+    const fingerprint = cellText(r.getCell(5).value).trim()
     instances.push({
       entryId: first,
       testCaseId: cellText(r.getCell(2).value).trim(),
       orders,
       testFound: cellText(r.getCell(4).value).trim() !== '0',
+      ...(fingerprint && { fingerprint }),
     })
   })
   const campaignId = props.get('campaignId')
@@ -132,6 +134,15 @@ export interface ExecutionImportContext {
   /** Date d'import (ISO), retenue quand la colonne Date est vide. */
   now: string
   filePath: string
+  /** GH68 — statut d'approbation d'un test ; absent : aucun avertissement `test_not_approved`. */
+  isApproved?: (test: TestCase) => boolean
+  /**
+   * GH81 — version effective de chaque entrée (`CampaignsService.effectiveTests`) : avertissement
+   * `test_not_approved` jugé sur elle, empreinte comparée à celle du classeur.
+   */
+  effectiveTests?: Map<string, { test: TestCase; resyncable: boolean }>
+  /** GH81 — empreinte d'une version de test ; absent : pas de contrôle « test modifié ». */
+  fingerprint?: (test: TestCase) => string
 }
 
 export function validateExecutionImport(
@@ -177,13 +188,21 @@ export function validateExecutionImport(
     }
     const result = validateInstance(entryId, group, metaById.get(entryId), ctx)
     if ('error' in result) preview.errors.push({ entryId, error: result.error })
-    else preview.importable.push(result.instance)
+    else {
+      preview.importable.push(result.instance)
+      // GH68 — exécution d'un test non approuvé : signalée, pas refusée ; jugée sur la version
+      // effective (GH81 : live pour une instance resynchronisable, copie sinon, live pré-T49).
+      const test = ctx.effectiveTests?.get(entryId)?.test
+      if (test && ctx.isApproved && !ctx.isApproved(test)) {
+        preview.warnings.push({ code: 'test_not_approved', entryId, status: test.status })
+      }
+    }
   }
   return preview
 }
 
 function fatalOf(sheet: RawExecutionSheet, campaign: TestCampaign): ExecutionImportFatal | undefined {
-  if (sheet.formatVersion !== String(EXECUTION_SHEET_FORMAT_VERSION)) {
+  if (!EXECUTION_SHEET_SUPPORTED_VERSIONS.some(v => sheet.formatVersion === String(v))) {
     return { code: 'unsupported_version', version: sheet.formatVersion }
   }
   if (sheet.campaignId !== campaign.id) return { code: 'wrong_campaign', fileCampaignId: sheet.campaignId }
@@ -202,6 +221,13 @@ function validateInstance(
   const run = ctx.campaign.runs.find(r => r.entryId === entryId)
   if (!run || !meta) return { error: { code: 'entry_not_found' } }
   if (!meta.testFound) return { error: { code: 'test_not_found', testCaseId: meta.testCaseId } }
+
+  // GH81 (#75) — le test a changé depuis l'export : les verdicts porteraient sur une autre version.
+  // Avant le contrôle des étapes, plus explicite pour une étape insérée ou retirée.
+  const effective = ctx.effectiveTests?.get(entryId)?.test
+  if (meta.fingerprint && effective && ctx.fingerprint && ctx.fingerprint(effective) !== meta.fingerprint) {
+    return { error: { code: 'test_changed_since_export', testCaseId: run.testCaseId } }
+  }
 
   const found = group.steps.map(s => s.order).sort((a, b) => a - b)
   const expected = [...meta.orders].sort((a, b) => a - b)

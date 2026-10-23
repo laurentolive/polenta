@@ -33,6 +33,7 @@ import { registerSchemaMutationTools } from './tools/schema-mutation.tools'
 import { registerLinkTools } from './tools/links.tools'
 import { registerQueryTools } from './tools/queries.tools'
 import { registerDashboardTools } from './tools/dashboards.tools'
+import { registerSuiviScriptTools } from './tools/suivi-script.tools'
 
 interface ParsedArgs {
   repo?: string
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
   registerLinkTools(server, container)
   registerQueryTools(server, container)
   registerDashboardTools(server, container)
+  registerSuiviScriptTools(server, container)
 
   const transport = new StdioServerTransport()
   await server.connect(transport)

@@ -10,7 +10,14 @@ export async function exportQueryResultXlsx(
 ): Promise<void> {
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Résultat')
-  sheet.columns = payload.result.columns.map(c => ({ header: c.name, key: c.name }))
-  for (const row of payload.result.rows) sheet.addRow(row)
+  // GH74 — `_ids` (identifiants des objets d'origine) exporté en dernière colonne, joint par « , ».
+  const withIds = payload.result.rows.some(r => Array.isArray(r._ids))
+  sheet.columns = [
+    ...payload.result.columns.map(c => ({ header: c.name, key: c.name })),
+    ...(withIds ? [{ header: '_ids', key: '_ids' }] : []),
+  ]
+  for (const row of payload.result.rows) {
+    sheet.addRow(Array.isArray(row._ids) ? { ...row, _ids: (row._ids as unknown[]).join(', ') } : row)
+  }
   await workbook.xlsx.writeFile(destPath)
 }

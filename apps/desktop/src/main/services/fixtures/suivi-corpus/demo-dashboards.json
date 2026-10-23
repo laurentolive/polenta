@@ -1,0 +1,75 @@
+{
+  "Pilotage LL800 / Statut des exigences par composant": [
+    {"component":"bus-ihm","status":"approved","sum_count":4,"_ids":["BIHM-0001","BIHM-0002","BIHM-0003","BIHM-0004"]},
+    {"component":"carte-commande","status":"approved","sum_count":5,"_ids":["CC-0001","CC-0002","CC-0003","CC-0004","CC-0005"]},
+    {"component":"electrovannes","status":"approved","sum_count":3,"_ids":["EV-0001","EV-0002","EV-0003"]},
+    {"component":"hydraulique","status":"approved","sum_count":3,"_ids":["HYD-0001","HYD-0002","HYD-0003"]},
+    {"component":"ihm","status":"approved","sum_count":4,"_ids":["IHM-0001","IHM-0002","IHM-0003","IHM-0004"]},
+    {"component":"ll800-produit","status":"approved","sum_count":17,"_ids":["PRD-0001","PRD-0002","PRD-0003","PRD-0004","PRD-0005","PRD-0007","PRD-0008","PRD-0009","SYS-0001","SYS-0003","SYS-0004","SYS-0005","SYS-0006","SYS-0008","SYS-0009","SYS-0010","SYS-0014"]},
+    {"component":"logiciel","status":"approved","sum_count":4,"_ids":["SW-0001","SW-0002","SW-0003","SW-0005"]},
+    {"component":"firmware-moteur","status":"approved","sum_count":3,"_ids":["FWM-0001","FWM-0002","FWM-0003"]},
+    {"component":"comp-moteur","status":"approved","sum_count":6,"_ids":["MOT-0001","MOT-0002","MOT-0003","MOT-0004","MOT-0005","MOT-0006"]},
+    {"component":"if-bus-interne","status":"approved","sum_count":6,"_ids":["BUS-0001","BUS-0002","BUS-0003","BUS-0004","BUS-0005","BUS-0006"]},
+    {"component":"comp-pompe-vidange","status":"approved","sum_count":3,"_ids":["POMP-0001","POMP-0002","POMP-0003"]},
+    {"component":"comp-module-wifi","status":"approved","sum_count":2,"_ids":["WIFI-0001","WIFI-0004"]},
+    {"component":"hydraulique","status":"draft","sum_count":1,"_ids":["HYD-0004"]},
+    {"component":"ll800-produit","status":"draft","sum_count":3,"_ids":["PRD-0012","SYS-0011","SYS-0013"]},
+    {"component":"logiciel","status":"draft","sum_count":1,"_ids":["SW-0006"]},
+    {"component":"comp-module-wifi","status":"draft","sum_count":1,"_ids":["WIFI-0003"]},
+    {"component":"ll800-produit","status":"obsolete","sum_count":1,"_ids":["PRD-0011"]},
+    {"component":"ll800-produit","status":"rejected","sum_count":1,"_ids":["PRD-0013"]},
+    {"component":"ll800-produit","status":"review","sum_count":5,"_ids":["PRD-0006","PRD-0010","SYS-0002","SYS-0007","SYS-0012"]},
+    {"component":"logiciel","status":"review","sum_count":1,"_ids":["SW-0004"]},
+    {"component":"comp-moteur","status":"review","sum_count":1,"_ids":["MOT-0007"]},
+    {"component":"comp-pompe-vidange","status":"review","sum_count":1,"_ids":["POMP-0004"]},
+    {"component":"comp-module-wifi","status":"review","sum_count":1,"_ids":["WIFI-0002"]}
+  ],
+  "Pilotage LL800 / Couverture des exigences": [
+    {"coverageStatus":"not_covered","sum_count":49,"_ids":["BIHM-0001","BIHM-0002","BIHM-0003","BIHM-0004","CC-0001","CC-0002","CC-0003","CC-0004","CC-0005","EV-0001","EV-0002","EV-0003","HYD-0002","HYD-0004","IHM-0001","IHM-0002","IHM-0003","IHM-0004","PRD-0006","PRD-0010","PRD-0011","PRD-0012","PRD-0013","SW-0004","SW-0006","SYS-0001","SYS-0003","SYS-0005","SYS-0006","SYS-0007","SYS-0008","SYS-0012","SYS-0013","FWM-0001","FWM-0002","FWM-0003","MOT-0005","MOT-0007","BUS-0001","BUS-0002","BUS-0003","BUS-0004","BUS-0005","BUS-0006","POMP-0002","POMP-0004","WIFI-0001","WIFI-0002","WIFI-0003"]},
+    {"coverageStatus":"validated","sum_count":12,"_ids":["HYD-0001","HYD-0003","PRD-0001","PRD-0007","PRD-0008","SW-0001","SW-0002","SW-0005","SYS-0014","MOT-0003","POMP-0001","POMP-0003"]},
+    {"coverageStatus":"needs_revalidation","sum_count":5,"_ids":["PRD-0002","SYS-0002","MOT-0001","MOT-0006","WIFI-0004"]},
+    {"coverageStatus":"covered","sum_count":9,"_ids":["PRD-0003","PRD-0004","PRD-0005","SW-0003","SYS-0004","SYS-0009","SYS-0010","SYS-0011","MOT-0002"]},
+    {"coverageStatus":"failing","sum_count":2,"_ids":["PRD-0009","MOT-0004"]}
+  ],
+  "Pilotage LL800 / À revalider": [
+    {"value":4,"_ids":["PRD-0002","MOT-0001","MOT-0006","WIFI-0004"]}
+  ],
+  "Pilotage LL800 / Dernière exécution des tests": [
+    {"latestRunResult":"PASS","sum_count":14,"_ids":["THYD-0001","THYD-0002","TSW-0001","TSW-0002","TSW-0003","TSYS-0001","TSYS-0002","TSYS-0003","TSYS-0004","TSYS-0006","TMOT-0001","TMOT-0002","TPOMP-0001","TPOMP-0002"]},
+    {"latestRunResult":"FAIL","sum_count":2,"_ids":["TSYS-0005","TMOT-0003"]},
+    {"latestRunResult":"INCOMPLETE","sum_count":1,"_ids":["TSYS-0007"]},
+    {"latestRunResult":null,"sum_count":5,"_ids":["TSYS-0008","TSYS-0009","TSYS-0010","TSYS-0011","TMOT-0004"]}
+  ],
+  "Pilotage LL800 / Exigences de sécurité": [
+    {"id":"CC-0002","title":"Alimentation secteur","status":"approved","coverageStatus":"not_covered","component":"carte-commande","_ids":["CC-0002"]},
+    {"id":"CC-0003","title":"Pilotage de la résistance","status":"approved","coverageStatus":"not_covered","component":"carte-commande","_ids":["CC-0003"]},
+    {"id":"EV-0003","title":"Fermeture sans alimentation","status":"approved","coverageStatus":"not_covered","component":"electrovannes","_ids":["EV-0003"]},
+    {"id":"SW-0002","title":"Chien de garde","status":"approved","coverageStatus":"validated","component":"logiciel","_ids":["SW-0002"]},
+    {"id":"SYS-0004","title":"Détection de balourd","status":"approved","coverageStatus":"covered","component":"ll800-produit","_ids":["SYS-0004"]},
+    {"id":"SYS-0008","title":"Surchauffe de la résistance","status":"approved","coverageStatus":"not_covered","component":"ll800-produit","_ids":["SYS-0008"]},
+    {"id":"SYS-0012","title":"Détection de fermeture du hublot","status":"review","coverageStatus":"not_covered","component":"ll800-produit","_ids":["SYS-0012"]},
+    {"id":"SYS-0014","title":"Commande du verrou de hublot","status":"approved","coverageStatus":"validated","component":"ll800-produit","_ids":["SYS-0014"]},
+    {"id":"FWM-0003","title":"Arrêt sûr","status":"approved","coverageStatus":"not_covered","component":"firmware-moteur","_ids":["FWM-0003"]},
+    {"id":"MOT-0003","title":"Protection thermique du bobinage","status":"approved","coverageStatus":"validated","component":"comp-moteur","_ids":["MOT-0003"]},
+    {"id":"MOT-0004","title":"Protection contre les surintensités","status":"approved","coverageStatus":"failing","component":"comp-moteur","_ids":["MOT-0004"]},
+    {"id":"POMP-0003","title":"Fonctionnement à sec","status":"approved","coverageStatus":"validated","component":"comp-pompe-vidange","_ids":["POMP-0003"]}
+  ],
+  "Pilotage LL800 / Exigences par version": [
+    {"version":1,"sum_count":74,"_ids":["BIHM-0001","BIHM-0002","BIHM-0003","BIHM-0004","CC-0001","CC-0002","CC-0003","CC-0004","CC-0005","EV-0001","EV-0002","EV-0003","HYD-0001","HYD-0002","HYD-0003","HYD-0004","IHM-0001","IHM-0002","IHM-0003","IHM-0004","PRD-0001","PRD-0002","PRD-0003","PRD-0004","PRD-0005","PRD-0007","PRD-0008","PRD-0009","PRD-0010","PRD-0011","PRD-0012","PRD-0013","SW-0001","SW-0002","SW-0003","SW-0004","SW-0005","SW-0006","SYS-0001","SYS-0003","SYS-0004","SYS-0005","SYS-0006","SYS-0007","SYS-0008","SYS-0009","SYS-0010","SYS-0011","SYS-0012","SYS-0013","SYS-0014","FWM-0001","FWM-0002","FWM-0003","MOT-0001","MOT-0002","MOT-0003","MOT-0004","MOT-0005","MOT-0006","MOT-0007","BUS-0001","BUS-0003","BUS-0004","BUS-0005","BUS-0006","POMP-0001","POMP-0002","POMP-0003","POMP-0004","WIFI-0001","WIFI-0002","WIFI-0003","WIFI-0004"]},
+    {"version":2,"sum_count":3,"_ids":["PRD-0006","SYS-0002","BUS-0002"]}
+  ],
+  "Composants & traçabilité / Liens par type": [
+    {"type":"verification","sum_count":31,"_ids":["TSYS-0001","PRD-0001","TSYS-0002","SYS-0002","TSYS-0003","PRD-0003","TSYS-0004","PRD-0004","TSYS-0005","PRD-0002","PRD-0005","SYS-0009","TSYS-0006","PRD-0008","SYS-0014","TSYS-0007","PRD-0009","TSYS-0008","SYS-0004","TSYS-0009","TSYS-0010","SYS-0010","SW-0003","THYD-0001","HYD-0003","THYD-0002","HYD-0001","TSW-0001","SW-0001","TSW-0002","SW-0002","TSW-0003","SW-0005","PRD-0007","TSYS-0011","SYS-0011","TMOT-0001","MOT-0001","TMOT-0002","MOT-0003","TMOT-0003","MOT-0004","TMOT-0004","MOT-0002","TPOMP-0001","POMP-0001","TPOMP-0002","POMP-0003"]},
+    {"type":"implementation","sum_count":19,"_ids":["SYS-0001","CC-0001","SYS-0002","MOT-0001","FWM-0001","SYS-0004","MOT-0005","FWM-0002","SYS-0005","HYD-0001","EV-0002","SYS-0006","POMP-0001","SYS-0007","CC-0003","SYS-0008","SYS-0003","SW-0001","SYS-0010","SW-0003","SYS-0014","CC-0002","EV-0001","SW-0002","MOT-0004","FWM-0003"]},
+    {"type":"raffinement","sum_count":13,"_ids":["PRD-0002","SYS-0002","PRD-0003","SYS-0005","SYS-0007","PRD-0004","SYS-0011","PRD-0005","SYS-0003","PRD-0006","SW-0004","PRD-0007","SW-0005","PRD-0008","SYS-0014","PRD-0009","HYD-0002","PRD-0011","PRD-0010","SYS-0013"]},
+    {"type":"implements-interface","sum_count":13,"_ids":["CC-0004","BUS-0001","BUS-0004","BUS-0005","CC-0005","BIHM-0001","BIHM-0003","IHM-0004","BIHM-0002","BIHM-0004","MOT-0006","BUS-0002","BUS-0003","WIFI-0004"]},
+    {"type":"relation","sum_count":1,"_ids":["SYS-0004","SYS-0002"]}
+  ],
+  "Composants & traçabilité / Exigences moteur par statut": [
+    {"status":"approved","sum_count":6,"_ids":["MOT-0001","MOT-0002","MOT-0003","MOT-0004","MOT-0005","MOT-0006"]},
+    {"status":"review","sum_count":1,"_ids":["MOT-0007"]}
+  ],
+  "Composants & traçabilité / Prioritaires non approuvées": [
+    {"id":"PRD-0012","title":"Facilité d'entretien du filtre","status":"draft","priority":"high","_ids":["PRD-0012"]}
+  ]
+}

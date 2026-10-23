@@ -24,6 +24,7 @@ import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
+import { normRepoPath } from '../components/system/linkUtils'
 import { useTreeState, treeUpdateObjectId, treeFindNode } from '../hooks/useTreeState'
 import { useVersioning } from './VersioningContext'
 import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
@@ -170,6 +171,11 @@ export interface SystemViewState {
 
   // Handlers
   navigateTo: (nodeId: string, typeId: string) => void
+  /** GH105 — comme `navigateTo`, dans le repo `repoPath` (lien vers un objet d'un autre repo du
+   *  workspace) ; repo inconnu de l'arbre = repo courant. */
+  navigateToRepo: (repoPath: string, nodeId: string, typeId: string) => void
+  /** GH105 — nom de montage du repo `repoPath` (`undefined` s'il n'est pas dans l'arbre). */
+  repoNameOf: (repoPath: string) => string | undefined
 
   // Tree
   root: TypeTreeNode[]
@@ -265,7 +271,11 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // Which of the three activity-bar tabs (Exigences/Tests/Campagnes) is active — defaults to
   // 'requirement' for old links/tabs saved before that param existed rather than leaving it
   // unset, so every selection/filtering step below can assume a valid category.
-  const urlCategory: ObjectCategory = (sp.get('category') as ObjectCategory | null) ?? 'requirement'
+  // Doc routes (/req/, /test/, /campaign/) carry no ?category= — their path names the kind
+  // (GH72 — opening a campaign used to flip the sidebar header/combobox to Exigences).
+  const urlCategory: ObjectCategory =
+    (sp.get('category') as ObjectCategory | null) ??
+    (pathname.startsWith('/campaign/') ? 'campaign' : pathname.startsWith('/test/') ? 'test' : 'requirement')
 
   // ── Root repo path (project root, always editable) ────────────────────────
   const { data: project } = useQuery({
@@ -474,6 +484,14 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // (T129) always knows the repo, the target SystemNode and the target type at once (an entry is
   // a (repo, node, type) triple), so a single handler just navigates, with no intermediate
   // "resolve the first type of this node" step to perform.
+  // GH105 — repo d'un objet lié d'un autre repo du workspace (chemins comparés sans tenir compte
+  // de leur écriture, `c:\…` / `C:/…`).
+  const repoNameOf = useCallback(
+    (targetRepoPath: string) => componentOptions.find(o => normRepoPath(o.repoPath) === normRepoPath(targetRepoPath))?.repoName,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [componentOptions.map(o => `${o.repoName}=${o.repoPath}`).join('|')],
+  )
+
   const handleTargetChange = useCallback(
     (repoName: string, nodeId: string, typeId: string) => navigateWith(repoName, nodeId, typeId),
     [navigateWith],
@@ -732,6 +750,9 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     effectiveType,
     effectiveTypeId,
     navigateTo: (nodeId: string, typeId: string) => navigateWith(selectedRepoName, nodeId, typeId),
+    navigateToRepo: (targetRepoPath: string, nodeId: string, typeId: string) =>
+      navigateWith(repoNameOf(targetRepoPath) ?? selectedRepoName, nodeId, typeId),
+    repoNameOf,
     root,
     setRoot,
     canUndo,

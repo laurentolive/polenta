@@ -22,11 +22,20 @@ import { parseCropAttr, type CropRectAttr } from '../tiptap/mediaAttrs'
 const FALLBACK_W = 400
 const FALLBACK_H = 300
 
+// Delai avant de liberer le graphe au teardown (GH117). Le ResizeSensor du
+// viewer vendore (addSizeHandler) observe le conteneur par un ResizeObserver
+// jamais deconnecte, debounce 200 ms, dont le callback lit `this.graph` sans
+// garde : le conteneur detache passe a 0x0, le callback tombe 200 ms plus tard
+// et doit encore trouver un graphe vivant. Detache, le conteneur ne bouge plus :
+// passe ce delai, plus aucun callback de taille ne peut tomber.
+const DISPOSE_DELAY_MS = 1000
+
 // Vue minimale du GraphViewer vendore : on n'a besoin que de demonter le graphe
 // mxGraph au teardown (le viewer n'expose pas de `destroy()` et se retient
 // lui-meme via un listener `matchMedia` non retirable - `graph.destroy()` libere
 // au moins le gros, cf. commentaire dans renderStaticDrawio).
 interface MxGraphLike {
+  container?: HTMLElement | null
   destroy?(): void
 }
 interface GraphViewerLike {
@@ -146,13 +155,21 @@ export function renderStaticDrawio(
     // MediaQueryList sans jamais se retirer ; `graph.destroy()` libere au moins
     // le graphe mxGraph, sa vue et ses handlers. Nuller `viewer.graph` rend le
     // callback dark-mode residuel inoffensif (il garde sur `this.graph != null`).
-    try {
-      viewer?.graph?.destroy?.()
-    } catch {
-      /* best effort */
-    }
-    if (viewer) viewer.graph = null
+    // Liberation differee (GH117, cf. DISPOSE_DELAY_MS) : le conteneur est
+    // detache tout de suite pour qu'aucun redimensionnement ne puisse plus le
+    // toucher, le graphe reste vivant le temps du dernier callback de taille.
+    const v = viewer
     viewer = null
+    if (!v) return
+    v.graph?.container?.remove()
+    window.setTimeout(() => {
+      try {
+        v.graph?.destroy?.()
+      } catch {
+        /* best effort */
+      }
+      v.graph = null
+    }, DISPOSE_DELAY_MS)
   }
 
   const teardown = () => {

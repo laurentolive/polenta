@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import { useProjectSchema, getReqTypeDef } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
+import { HistorySection } from '../components/history/HistorySection'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { Requirement } from '@polenta/types'
@@ -265,6 +266,10 @@ function RequirementDetailPage() {
             </div>
           </div>
         )}
+
+        {/* GH77 — historique des champs suivis (lecture seule). */}
+        <HistorySection repoPath={repoPath} kind="requirement" id={reqId} typeDef={typeDef}
+          refreshKey={`${req.status}:${JSON.stringify(req.history ?? null)}`} />
       </div>
       </div>
     </div>

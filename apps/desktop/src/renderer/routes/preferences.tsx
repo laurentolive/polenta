@@ -8,7 +8,9 @@ import { useVersioning } from '../contexts/VersioningContext'
 import { decodeProjectId } from '../lib/projectId'
 import { CancelConfirmModal } from '../components/schema/objectTypeEditor'
 import { ViewHeader } from '../components/layout/ViewHeader'
+import { HistoryBackfillPanel } from '../components/history/HistoryBackfillPanel'
 import { TEMPLATE_KEYS, templateKey } from '../lib/exportTemplates'
+import { DEFAULT_AUTO_PULL_MINUTES, MAX_AUTO_PULL_MINUTES, MIN_AUTO_PULL_MINUTES, effectivePullIntervalMinutes } from '../lib/autoPullInterval'
 import type { ExportTemplateKey, ProjectSchema, TemplateExportFormat } from '@polenta/types'
 
 export const Route = createFileRoute('/preferences')({
@@ -27,17 +29,20 @@ interface EditorState {
   autoPropagatePin: boolean
   /** GH34 — gabarit d'export par défaut par `<kind>:<format>` ; absent = Standard. */
   exportTemplates: Partial<Record<ExportTemplateKey, string>>
+  /** GH65 — intervalle du pull automatique (minutes), valeur effective. */
+  autoPullIntervalMinutes: number
 }
 
 function schemaToEditable(schema: ProjectSchema): EditorState {
   return {
     autoPropagatePin: schema.preferences?.autoPropagatePin ?? false,
     exportTemplates: { ...schema.preferences?.exportTemplates },
+    autoPullIntervalMinutes: effectivePullIntervalMinutes(schema.preferences?.autoPullIntervalMinutes),
   }
 }
 
 function editableToSchema(state: EditorState, schema: ProjectSchema): ProjectSchema {
-  const { exportTemplates: _previous, ...otherPreferences } = schema.preferences ?? {}
+  const { exportTemplates: _previous, autoPullIntervalMinutes: _previousInterval, ...otherPreferences } = schema.preferences ?? {}
   // Entrées « Standard » retirées plutôt qu'écrites vides ; clé entière omise si rien n'est défini.
   const exportTemplates = Object.fromEntries(Object.entries(state.exportTemplates).filter(([, v]) => !!v))
   return {
@@ -46,6 +51,8 @@ function editableToSchema(state: EditorState, schema: ProjectSchema): ProjectSch
       ...otherPreferences,
       autoPropagatePin: state.autoPropagatePin,
       ...(Object.keys(exportTemplates).length > 0 ? { exportTemplates } : {}),
+      // Clé omise à la valeur par défaut : pas de diff schema.yaml pour qui ne touche pas au réglage.
+      ...(state.autoPullIntervalMinutes !== DEFAULT_AUTO_PULL_MINUTES ? { autoPullIntervalMinutes: state.autoPullIntervalMinutes } : {}),
     },
   }
 }
@@ -79,6 +86,8 @@ function PreferencesPage() {
   const [savedState, setSavedState] = useState<EditorState | null>(null)
   const [saved, setSaved] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  /** GH65 — saisie en cours de l'intervalle (libre : vide, « 1 » avant « 10 »…), bornée à la sortie. */
+  const [intervalDraft, setIntervalDraft] = useState<string | null>(null)
 
   useEffect(() => {
     if (schema && !state) {
@@ -179,6 +188,36 @@ function PreferencesPage() {
             </span>
           </label>
 
+          {/* GH65 — intervalle du pull automatique, partagé par l'équipe via schema.yaml. */}
+          <label className="flex items-start gap-2 mt-6">
+            <input
+              type="number"
+              min={MIN_AUTO_PULL_MINUTES}
+              max={MAX_AUTO_PULL_MINUTES}
+              step={1}
+              value={intervalDraft ?? String(state.autoPullIntervalMinutes)}
+              onChange={e => setIntervalDraft(e.target.value)}
+              onBlur={() => {
+                if (intervalDraft === null) return
+                const n = Number.parseInt(intervalDraft, 10)
+                const next = Number.isNaN(n)
+                  ? state.autoPullIntervalMinutes
+                  : Math.min(MAX_AUTO_PULL_MINUTES, Math.max(MIN_AUTO_PULL_MINUTES, n))
+                setState(s => s ? { ...s, autoPullIntervalMinutes: next } : s)
+                setIntervalDraft(null)
+              }}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+              className="input-field w-20 text-sm"
+              data-testid="auto-pull-interval"
+            />
+            <span className="text-sm text-ink">
+              {t('preferences.autoPullIntervalLabel')}
+              <span className="block text-xs text-ink-3 mt-0.5">
+                {t('preferences.autoPullIntervalHelp', { min: MIN_AUTO_PULL_MINUTES, max: MAX_AUTO_PULL_MINUTES, def: DEFAULT_AUTO_PULL_MINUTES })}
+              </span>
+            </span>
+          </label>
+
           {/* GH34 — gabarit d'export par défaut, partagé par l'équipe via schema.yaml. */}
           <div className="mt-6">
             <p className="text-sm text-ink">{t('preferences.exportTemplatesTitle')}</p>
@@ -215,6 +254,9 @@ function PreferencesPage() {
               })}
             </div>
           </div>
+
+          {/* GH77 — reprise de l'historique des champs suivis depuis git, par repo. */}
+          <HistoryBackfillPanel workspaceDir={workspaceDir} repoPath={repoPath} />
         </div>
       </div>
     </div>

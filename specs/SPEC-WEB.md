@@ -82,7 +82,7 @@ apps/desktop/
 
 | Mesure | Règle |
 |---|---|
-| Liste blanche | `WEB_EXPOSED` (noyau), `WEB_ONLY_CHANNELS` (`web:*`, `app:get-version`). `WEB_HIDDEN` (jetons) et `DESKTOP_ONLY_CHANNELS` (`main/ipc/channels.ts` : dialogues, shell, mises à jour, Device Flow) ne sont jamais exposés. Un test vérifie que **tout** channel enregistré est classé : un nouveau channel non classé fait échouer la CI. |
+| Liste blanche | `WEB_EXPOSED` (noyau), `WEB_ONLY_CHANNELS` (`web:*`, `app:get-version`). `WEB_HIDDEN` (jetons) et `DESKTOP_ONLY_CHANNELS` (`main/ipc/channels.ts` : dialogues, shell, mises à jour, Device Flow) ne sont jamais exposés. Un test vérifie que **tout** channel enregistré est classé : un nouveau channel non classé fait échouer la CI. GH106 : `integration:state` / `integration:designate` / `integration:create` exposés (argument racine `[0]`). |
 | Garde de chemins | Arguments racine (`ROOT_ARGS` : `repoPath`, `workspaceDir`…) absolus et sous `<data>/users/<login>/` après résolution des liens ; autres chaînes et clés de chemin des DTO sans `..`, `\0` ni lecteur ; `CONTENT_ARGS` (texte libre) non inspectés. Violation → 403 journalisé (login, channel, index — jamais la valeur). |
 | Process | Dossier courant vide (`<data>/.cwd`) ; liens symboliques des repos recréés en fichiers (comme `core.symlinks=false`) ; git et API des forges limités à `POLENTA_WEB_GIT_HOSTS` en HTTPS (`remote-guard.ts`, anti-SSRF). |
 | Login | Normalisé en minuscules, `[a-z0-9][a-z0-9._-]{0,63}`, sinon connexion refusée (nom de dossier). |
@@ -201,6 +201,13 @@ la version web »).
   et publie le site Caddy `<nom>.web.caddy` (reverse proxy vers `polenta-web-<nom>:8787`, WebSocket
   compris) ; `instance web disable` l'arrête (données conservées). Sauvegarde, restauration et export
   de l'instance incluent `web-data` et `web.env`. Procédures : `deploy/RUNBOOK.md` A15.
+  **Caddy optionnel** (GH61) : avec `CADDY_MODE=external` (`host.env`, défaut `managed`), le kit ne crée
+  aucun Caddy et n'ouvre pas 80/443 ; les blocs `<nom>.caddy` / `<nom>.web.caddy` (contenu identique)
+  sont écrits dans `CADDY_SITES_DIR`, le Caddy existant est rechargé par `CADDY_RELOAD_CMD`, forge et client
+  web rejoignent `EDGE_NETWORK` (réseau créé par l'exploitant, partagé avec ce Caddy : l'isolation réseau
+  entre instances n'est alors plus garantie) et la santé est sondée sur ce réseau interne
+  (`wait_edge_http`) au lieu de `https://`. Procédures, migrations et dépannage : `deploy/RUNBOOK.md` A16 ;
+  preuves : `deploy/tests/acceptance-external.sh` (hôte), `deploy/tests/acceptance.sh --external`.
 
 ## 10. Tests
 

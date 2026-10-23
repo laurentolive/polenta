@@ -55,6 +55,40 @@ export class TreeService {
     }
   }
 
+  /**
+   * GH100 — le type `fromTypeId` du nœud `nodeId` a été renommé `toTypeId` : son fichier d'ordre le
+   * suit (sinon `get()` repartirait d'un arbre vide sous le nouveau nom). Même règles que
+   * `moveTypeTree` : no-op si rien à déplacer, au mieux (journalisé, jamais levé).
+   */
+  async renameTypeTree(repoPath: string, nodeId: string, fromTypeId: string, toTypeId: string): Promise<void> {
+    if (fromTypeId === toTypeId) return
+    try {
+      const existing = await this.get(repoPath, nodeId, fromTypeId)
+      if (existing.root.length > 0) {
+        await this.save(repoPath, { nodeId, typeId: toTypeId, root: existing.root })
+      }
+      await fs.unlink(this.treePath(repoPath, nodeId, fromTypeId)).catch(() => {})
+    } catch (err) {
+      console.error(`[TreeService] Could not rename display order ${nodeId}/${fromTypeId} to ${toTypeId}:`, err)
+    }
+  }
+
+  /**
+   * GH104 — le type `typeId` du nœud `nodeId` est supprimé : son fichier d'ordre aussi, et le
+   * dossier du nœud s'il ne contient plus rien. Absent → rien. Au mieux (journalisé, jamais levé),
+   * comme `moveTypeTree`.
+   */
+  async deleteTypeTree(repoPath: string, nodeId: string, typeId: string): Promise<void> {
+    const file = this.treePath(repoPath, nodeId, typeId)
+    try {
+      await fs.rm(file, { force: true })
+      // rmdir échoue sur un dossier non vide (autre type du nœud) : voulu.
+      await fs.rmdir(path.dirname(file)).catch(() => {})
+    } catch (err) {
+      console.error(`[TreeService] Could not delete display order ${nodeId}/${typeId}:`, err)
+    }
+  }
+
   // ── ID generation ─────────────────────────────────────────────────────────────
 
   generateId(): string {

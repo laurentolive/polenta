@@ -1,12 +1,12 @@
+import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
-import { LinkCombobox } from './LinkCombobox'
 import type { Candidate } from './LinkCombobox'
-import { api } from '../../api'
+import { LinkTypeEditor, linkTypeVisibility } from './LinkTypeEditor'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
 import { parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
-import { matchesRefs, filterCandidatesByRefs, getRelevantLinkTypes, getPeerId, isLinkTypeValid } from './linkUtils'
+import { matchesRefs, getRelevantLinkTypes, isLinkTypeValid } from './linkUtils'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { ParamRefText } from '../parameters/ParamRefText'
@@ -55,6 +55,9 @@ interface Props {
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  /** GH83 — ids marqués `needsRevalidation` (T172) : ⚠ à côté du statut. Hors de `objects`,
+   *  dont toutes les valeurs alimentent le filtre texte. */
+  revalidationIds?: Set<string>
   testsById?: Map<string, TestCase>
   repoPath?: string
   candidateObjects?: Candidate[]
@@ -78,6 +81,11 @@ interface Props {
    *  démontage de la vue (changement de vue / de type). */
   collapsedFolders: string[]
   onCollapsedFoldersChange: (ids: string[]) => void
+  /** GH70 — colonnes calculées affichables (clé `query::<ID>`) et résultats de leur script ; les
+   *  valeurs sont déjà dans `objects`. Lecture seule. */
+  computedColumns?: Map<string, { column: ComputedColumn; result?: ComputedColumnResult }>
+  /** GH70 — clic sur une valeur calculée qui désigne une cible (`_ids` du script). */
+  onOpenComputedTarget?: (target: string) => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -372,6 +380,49 @@ function getStatusClass(status: string): string {
 
 // ── ItemCard ──────────────────────────────────────────────────────────────────
 
+/** GH70 — valeur d'une colonne calculée dans une carte : lecture seule, infobulle, cible cliquable. */
+function ComputedField({
+  label,
+  queryTitle,
+  value,
+  fieldType,
+  tooltip,
+  onOpen,
+  pending,
+  repoPath,
+}: {
+  label: string
+  queryTitle: string
+  value: string
+  fieldType: string
+  tooltip?: string
+  onOpen?: () => void
+  pending: boolean
+  repoPath?: string
+}) {
+  const content = pending
+    ? <span className="text-ink-3">…</span>
+    : !value
+      ? '—'
+      : fieldType === 'richtext'
+        ? <StaticRichTextViewer value={value} repoPath={repoPath} variant="compact" />
+        : value
+  return (
+    <div className="flex items-start gap-2 py-0.5" data-computed-field="">
+      <span className="text-xs text-ink-3 w-28 shrink-0 mt-0.5" title={queryTitle}>
+        {label} <span className="text-ink-3/50">(calc)</span>
+      </span>
+      {onOpen && value && !pending ? (
+        <button type="button" onClick={onOpen} title={tooltip} className="text-xs text-ink-2 text-left hover:underline">
+          {content}
+        </button>
+      ) : (
+        <span className="text-xs text-ink-2" title={tooltip}>{content}</span>
+      )}
+    </div>
+  )
+}
+
 function ItemCard({
   node,
   obj,
@@ -394,6 +445,9 @@ function ItemCard({
   coverageByReqId,
   testsById,
   isGotoTarget,
+  needsRevalidation = false,
+  computedColumns,
+  onOpenComputedTarget,
 }: {
   node: TypeTreeNode
   obj: AnyObject | null
@@ -416,6 +470,9 @@ function ItemCard({
   repoPath?: string
   onMultiEnumEdit?: (objectId: string, field: string, rect: DOMRect) => void
   isGotoTarget?: boolean
+  needsRevalidation?: boolean
+  computedColumns?: Map<string, { column: ComputedColumn; result?: ComputedColumnResult }>
+  onOpenComputedTarget?: (target: string) => void
 }) {
   const { t } = useTranslation()
   const currentStatus = obj ? getFieldValue(obj, 'status') : ''
@@ -498,7 +555,7 @@ function ItemCard({
                     <span className={badgeClass}>{statusDef?.label ?? status}</span>
                   )
                 )}
-                <RevalidationFlag show={!!(obj as { needsRevalidation?: boolean }).needsRevalidation} />
+                <RevalidationFlag show={needsRevalidation} />
                 {version && (
                   <span className="text-[10px] font-mono text-ink-3 shrink-0">v{version}</span>
                 )}
@@ -540,6 +597,24 @@ function ItemCard({
       </div>
       <div className="space-y-0.5">
         {fields.map(col => {
+          const computed = computedColumns?.get(col)
+          if (computed) {
+            const cell = node.objectId ? computed.result?.values.get(node.objectId) : undefined
+            const target = cell?.target
+            return (
+              <ComputedField
+                key={col}
+                label={computed.column.label}
+                queryTitle={computed.column.queryTitle}
+                value={obj ? getFieldValue(obj, col) : ''}
+                fieldType={computed.column.fieldDef.type}
+                tooltip={cell?.tooltip}
+                onOpen={target && onOpenComputedTarget ? () => onOpenComputedTarget(target) : undefined}
+                pending={!!computed.result?.pending}
+                repoPath={repoPath}
+              />
+            )
+          }
           const fieldDef: SchemaField | undefined = col === 'status'
             ? (typeDef?.statuses?.length
               ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(s => s.name) }
@@ -692,6 +767,7 @@ export function WordView({
   linkTypes = [],
   linksByObjectId,
   coverageByReqId,
+  revalidationIds,
   testsById,
   repoPath,
   candidateObjects = [],
@@ -709,6 +785,8 @@ export function WordView({
   gotoSeq,
   collapsedFolders: collapsedFolderIds,
   onCollapsedFoldersChange,
+  computedColumns,
+  onOpenComputedTarget,
 }: Props) {
   const { t } = useTranslation()
   // T126 sprint 2 — catalogue de rôles du repo courant, pour le champ multi_enum nommé `roles`.
@@ -876,6 +954,7 @@ export function WordView({
             linkTypes={linkTypes}
             objectLinks={node.objectId ? (linksByObjectId?.get(node.objectId) ?? []) : []}
             coverageByReqId={coverageByReqId}
+            needsRevalidation={!!node.objectId && !!revalidationIds?.has(node.objectId)}
             testsById={testsById}
             onInlineEdit={onInlineEdit}
             onRenameNode={onRenameNode}
@@ -889,6 +968,8 @@ export function WordView({
             repoPath={repoPath}
             onMultiEnumEdit={repoPath ? handleMultiEnumClick : undefined}
             isGotoTarget={gotoNodeId === node.id}
+            computedColumns={computedColumns}
+            onOpenComputedTarget={onOpenComputedTarget}
           />
         )
       }
@@ -939,16 +1020,8 @@ export function WordView({
         const cellLinks = linksByObjectId?.get(objectId)?.filter(l => l.type === activeLinkTypeName) ?? []
         const currentObjectTypeRef = (objectMap.get(objectId) as Record<string, string>)?.objectTypeRef ?? ''
         const currentCategory = typeDef?.category
-        const canBeSource = matchesRefs(currentObjectTypeRef, activeLt.sourceRefs, currentCategory)
-        const canBeTarget = matchesRefs(currentObjectTypeRef, activeLt.targetRefs, currentCategory)
-        const outgoingLinks = cellLinks.filter(l => l.sourceId === objectId)
-        const incomingLinks = cellLinks.filter(l => l.targetId === objectId)
-
-        // Toujours afficher les liens existants, même dans le sens non canonique pour le
-        // schéma actuel — sinon un lien créé avant un changement de sourceRefs/targetRefs
-        // devient invisible et impossible à délier. La création reste limitée au sens déclaré.
-        if (activeLinkDirection === 'out' && !canBeSource && outgoingLinks.length === 0) return null
-        if (activeLinkDirection === 'in' && !canBeTarget && incomingLinks.length === 0) return null
+        const v = linkTypeVisibility(activeLt, objectId, currentObjectTypeRef, currentCategory, cellLinks)
+        if (activeLinkDirection === 'out' ? !v.showOutgoing : !v.showIncoming) return null
 
         return (
           <div
@@ -957,39 +1030,17 @@ export function WordView({
             style={{ top: activeLinkPopover.top, left: activeLinkPopover.left, width: activeLinkPopover.width }}
             onClick={e => e.stopPropagation()}
           >
-            {activeLinkDirection === 'out' ? (
-              <LinkCombobox
-                label={activeLt.labelSourceToTarget}
-                existingLinks={outgoingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={canBeSource ? filterCandidatesByRefs(candidateObjects, activeLt.targetRefs) : []}
-                onAdd={async peerId => {
-                  if (!repoPath) return
-                  await api.requirements.linkCreate(repoPath, { type: activeLinkTypeName!, sourceId: objectId, targetId: peerId })
-                  onLinkChange?.()
-                }}
-                onRemove={async linkId => {
-                  if (!repoPath) return
-                  await api.requirements.linkDelete(repoPath, linkId)
-                  onLinkChange?.()
-                }}
-              />
-            ) : (
-              <LinkCombobox
-                label={activeLt.labelTargetToSource}
-                existingLinks={incomingLinks.map(l => ({ linkId: l.id, peerId: getPeerId(l, objectId) }))}
-                candidates={canBeTarget ? filterCandidatesByRefs(candidateObjects, activeLt.sourceRefs) : []}
-                onAdd={async peerId => {
-                  if (!repoPath) return
-                  await api.requirements.linkCreate(repoPath, { type: activeLinkTypeName!, sourceId: peerId, targetId: objectId })
-                  onLinkChange?.()
-                }}
-                onRemove={async linkId => {
-                  if (!repoPath) return
-                  await api.requirements.linkDelete(repoPath, linkId)
-                  onLinkChange?.()
-                }}
-              />
-            )}
+            <LinkTypeEditor
+              lt={activeLt}
+              objectId={objectId}
+              objectTypeRef={currentObjectTypeRef}
+              category={currentCategory}
+              objectLinks={cellLinks}
+              repoPath={repoPath}
+              candidates={candidateObjects}
+              direction={activeLinkDirection === 'out' ? 'out' : 'in'}
+              onLinkChange={onLinkChange}
+            />
           </div>
         )
       })()}

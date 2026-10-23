@@ -128,4 +128,7 @@ export interface ImpactAnalysisExportPayload {
 export interface DashboardExportPayload {
   dashboard: Dashboard
   widgetResults: Record<string, QueryResult>
+  /** GH93 — valeurs de la barre de paramètres au moment de l'export (libellé, valeur lisible),
+   *  rappelées en tête du document. */
+  parameters?: { label: string; value: string }[]
 }

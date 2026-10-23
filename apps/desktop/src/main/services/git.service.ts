@@ -265,6 +265,66 @@ export class GitService {
     return result
   }
 
+  /**
+   * GH77 — commits de la **chaîne des premiers parents** de `ref` qui modifient un fichier sous l'un
+   * des `prefixes`, du plus ancien au plus récent, avec les fichiers modifiés (comparaison au premier
+   * parent, élagage des sous-arbres identiques, comme `fileHistoryMap`). Les commits d'une branche
+   * fusionnée ne sont pas parcourus : leurs changements apparaissent au commit de fusion — l'histoire
+   * de la branche d'intégration. Date = date de commit (monotone le long de la chaîne, contrairement
+   * à la date d'auteur après un rebase). Base de la reprise de l'historique des champs.
+   */
+  async commitChanges(
+    repoPath: string, prefixes: string[], ref = 'HEAD',
+  ): Promise<Array<{ oid: string; at: string; by: string; files: string[] }>> {
+    let oid: string | undefined
+    try {
+      oid = await git.resolveRef({ fs, dir: repoPath, ref })
+    } catch {
+      return [] // repo sans commit
+    }
+    const chain: Array<{ oid: string; commit: { parent: string[]; author: { name: string }; committer: { timestamp: number } } }> = []
+    while (oid) {
+      const { commit } = await git.readCommit({ fs, dir: repoPath, oid })
+      chain.push({ oid, commit })
+      oid = commit.parent[0]
+    }
+    const out: Array<{ oid: string; at: string; by: string; files: string[] }> = []
+    for (const commit of chain.reverse()) {
+      const parentOid = commit.commit.parent[0]
+      const files: string[] = []
+      for (const prefix of prefixes) {
+        const [oidA, oidB] = await Promise.all([
+          this.readSubtreeOid(repoPath, commit.oid, prefix),
+          parentOid ? this.readSubtreeOid(repoPath, parentOid, prefix) : Promise.resolve(null),
+        ])
+        await this.diffSubtrees(repoPath, prefix, oidA, oidB, files)
+      }
+      if (files.length === 0) continue
+      out.push({
+        oid: commit.oid,
+        at: new Date(commit.commit.committer.timestamp * 1000).toISOString(),
+        by: commit.commit.author.name,
+        files,
+      })
+    }
+    return out
+  }
+
+  /**
+   * GH77 — contenu texte d'un fichier dans un commit ; `null` si le fichier n'y existe pas. Toute
+   * autre erreur (objet manquant, pack corrompu) est levée : elle ne doit pas passer pour une
+   * suppression.
+   */
+  async readTextAt(repoPath: string, commitOid: string, filePath: string): Promise<string | null> {
+    try {
+      const { blob } = await git.readBlob({ fs, dir: repoPath, oid: commitOid, filepath: filePath })
+      return Buffer.from(blob).toString('utf-8')
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'NotFoundError') return null
+      throw err
+    }
+  }
+
   /** oid of the tree at `path` inside `commitOid`, or `null` if `path` doesn't exist there. */
   private async readSubtreeOid(repoPath: string, commitOid: string, path: string): Promise<string | null> {
     try {

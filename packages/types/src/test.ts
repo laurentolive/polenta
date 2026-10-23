@@ -1,3 +1,6 @@
+import type { ObjectHistory } from './history'
+import type { CampaignEntryRef } from './campaign'
+
 // ─── Test Case Definition ─────────────────────────────────────────────────────
 
 export interface EquipmentRequirement {
@@ -32,6 +35,8 @@ export interface TestCase {
   fields: Record<string, unknown>
   // T172 — impact à vérifier (cf. Requirement.needsRevalidation).
   needsRevalidation?: boolean
+  // GH77 — historique des champs suivis (cf. Requirement.history).
+  history?: ObjectHistory
   // Dérivés du git log du fichier (premier/dernier commit le touchant), pas persistés
   // dans le YAML — `null` tant que le fichier n'a jamais été commité.
   createdAt: string | null
@@ -74,7 +79,9 @@ export interface StepResult {
 export interface TestRun {
   id: string
   testCaseId: string
-  campaignRunId: string | null
+  /** GH73 — entrée de campagne dont ce run est l'exécution. Absent : exécution isolée, ou run
+   *  antérieur à GH73 (les anciens fichiers portent `campaignRunId: null`, ignoré). */
+  campaignEntry?: CampaignEntryRef
   /** T179 — exigence de l'instance de campagne exécutée : le run ne compte, en couverture, que pour
    *  elle. Absent : compte pour toutes les exigences liées au test. */
   requirementId?: string

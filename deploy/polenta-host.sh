@@ -9,16 +9,17 @@
 #   polenta-host instance list
 #   polenta-host instance stop|start <nom>
 #   polenta-host instance sync <nom>           remet à niveau une instance existante (idempotent)
-#   polenta-host instance backup <nom>|--all   sauvegarde chiffrée (arrêt de quelques secondes)
+#   polenta-host instance backup <nom>|--all [--tag t]   sauvegarde chiffrée (arrêt de quelques secondes)
 #   polenta-host instance snapshots <nom>      liste des sauvegardes
 #   polenta-host instance keys                 mots de passe des sauvegardes (à garder HORS de l'hôte)
 #   polenta-host instance restore <nom> --from <id|latest> [--source s] [--domain d] [--password-file f] [--force]
 #   polenta-host instance update <nom>|--all <version>   avec retour arrière automatique
 #   polenta-host instance export <nom>         archive de restitution au client
-#   polenta-host instance remove <nom>         export puis suppression définitive
+#   polenta-host instance remove <nom> [--confirm <nom>]   export puis suppression définitive
 #   polenta-host instance web enable <nom> --domain d --version v [--image i]   client web (GH44)
 #   polenta-host instance web disable <nom>    arrête le client web (données conservées)
 #   polenta-host dns check <domaine>           le domaine pointe-t-il vers cet hôte ? (GH63)
+#   polenta-host exports list | exports delete <archive> --confirm <archive>   archives d'export (GH63)
 #
 # Options globales (GH63) : --json (résultat JSON sur le descripteur 3, ou POLENTA_RESULT_FILE),
 # --non-interactive (aucune question : confirmation absente = sortie 3), --confirm <valeur>.
@@ -363,7 +364,7 @@ setup_external_sites() {
 }
 
 cmd_setup() {
-  require_root; check_os
+  require_root; check_os; acquire_lock setup
   log "Préparation de l'hôte ($PRETTY_NAME)"
   # GH61 — configuration validée et garde-fous de bascule AVANT toute modification de l'hôte. Au premier
   # passage, host.env peut n'exister que dans le kit (copié ensuite par setup_host_env) : c'est lui qui
@@ -490,13 +491,13 @@ render_forgejo_env() {
   fi
   # Valeurs entre apostrophes : docker compose (env_file) interpole $VAR et coupe à « # » dans une
   # valeur nue, ce qui corromprait un mot de passe SMTP. Entre apostrophes, la valeur est littérale.
-  local line key val out=""
+  local line key val env_lines=""
   for line in "${kv[@]}"; do
     key="${line%%=*}"; val="${line#*=}"
     [[ "$val" != *"'"* ]] || die "la valeur de $key contient une apostrophe, non supportée (host.env)."
-    out+="GITEA__${key}='${val}'"$'\n'
+    env_lines+="GITEA__${key}='${val}'"$'\n'
   done
-  write_if_changed "$(instance_dir "$name")/forgejo.env" "${out%$'\n'}" 600 || true
+  write_if_changed "$(instance_dir "$name")/forgejo.env" "${env_lines%$'\n'}" 600 || true
 }
 
 wait_healthy() {
@@ -692,7 +693,7 @@ write_polenta_config() {
 }
 
 cmd_instance_add() {
-  require_root; require_cmd docker jq dig curl; load_host_env
+  require_operator; require_cmd docker jq dig curl; load_host_env
   local name="" domain="" org="" admin_login="" admin_email="" demo=1 image="" version="" app_name=""
   name="${1:-}"; [[ -n "$name" ]] || die "usage : polenta-host instance add <nom> [--domain d] [--org o] [--client-admin login email] [--app-name \"Nom affiché\"] [--no-demo] [--image i] [--version v] [--yes]"
   shift
@@ -706,12 +707,13 @@ cmd_instance_add() {
       --app-name) app_name="$2"; shift 2 ;;
       --version) version="$2"; shift 2 ;;
       --yes|-y) ASSUME_YES=1; shift ;;
-      *) die "option inconnue : $1" ;;
+      *) die "$E_USAGE" "option inconnue : $1" ;;
     esac
   done
-  [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || die "nom d'instance invalide « $name » ([a-z0-9-], 2 à 31 caractères)."
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || die "$E_USAGE" "nom d'instance invalide « $name » ([a-z0-9-], 2 à 31 caractères)."
   local dir; dir="$(instance_dir "$name")"
-  [[ -f "$dir/.add-complete" ]] && die "l'instance « $name » existe déjà (polenta-host instance list)."
+  [[ -f "$dir/.add-complete" ]] && die "$E_EXISTS" "l'instance « $name » existe déjà (polenta-host instance list)."
+  acquire_lock "instance add $name"
   edge_network_require
   local env; env="$(instance_env "$name")"
   if [[ -f "$env" ]]; then
@@ -735,7 +737,7 @@ cmd_instance_add() {
   local avail; avail="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
   if (( avail < 524288 )); then
     warn "mémoire disponible faible : $((avail / 1024)) Mo (< 512 Mo)."
-    confirm "Continuer quand même ?" || die "abandon."
+    confirm "Continuer quand même ?" || die "$E_PRECOND" "abandon : mémoire insuffisante."
   fi
 
   mkdir -p "$dir/data" "$dir/web-data"; chmod 700 "$dir"
@@ -752,7 +754,7 @@ cmd_instance_add() {
   [[ -n "$(env_get "$env" OPS_PASSWORD)" ]] || env_set "$env" OPS_PASSWORD "$(random_secret 32)"
   [[ -n "$(env_get "$env" RESTIC_PASSWORD)" ]] || env_set "$env" RESTIC_PASSWORD "$(random_secret 40)"
   local img; img="$(env_get "$env" FORGE_IMAGE):$(env_get "$env" FORGE_VERSION)"
-  docker pull -q "$img" >/dev/null || die "image introuvable : $img"
+  docker pull -q "$img" >/dev/null || die "$E_NO_VERSION" "image introuvable : $img"
   ok "image $img"
   ensure_generated_secret "$env" "$img" SECRET_KEY
   ensure_generated_secret "$env" "$img" INTERNAL_TOKEN
@@ -787,21 +789,30 @@ cmd_instance_add() {
   printf '  Organisation        %s (équipes : auteurs, testeurs, lecteurs)\n' "$org"
   if [[ -n "$admin_login" ]]; then
     printf '  Admin client        %s' "$admin_login"
-    if [[ -n "$CLIENT_ADMIN_PASSWORD" ]]; then printf ' — mot de passe temporaire : %s (à changer à la 1re connexion)\n' "$CLIENT_ADMIN_PASSWORD"; else printf '\n'; fi
+    # GH63 — en --json, le mot de passe temporaire n'est que dans le résultat, jamais dans le journal.
+    if [[ -n "$CLIENT_ADMIN_PASSWORD" && "$JSON_OUT" == 1 ]]; then printf ' — mot de passe temporaire : dans le résultat\n'
+    elif [[ -n "$CLIENT_ADMIN_PASSWORD" ]]; then printf ' — mot de passe temporaire : %s (à changer à la 1re connexion)\n' "$CLIENT_ADMIN_PASSWORD"; else printf '\n'; fi
   fi
   printf '  Compte exploitation polenta-ops (mot de passe et jeton dans %s)\n' "$env"
   printf '  Config Polenta      %s/polenta-config.json (à distribuer aux postes)\n' "$dir"
   if [[ $backup_ok == 1 ]]; then
     printf '  Sauvegardes         OK — mot de passe à ranger HORS de l'"'"'hôte : polenta-host instance keys\n'
   fi
+  emit_result "$(jq -nc --arg name "$name" --arg url "https://$domain" --arg org "$org" --arg login "$admin_login" \
+    --arg pw "$CLIENT_ADMIN_PASSWORD" --argjson backup "$([[ $backup_ok == 1 ]] && echo true || echo false)" \
+    --arg config "$dir/polenta-config.json" \
+    '{instance:$name, url:$url, org:$org, teams:["auteurs","testeurs","lecteurs"], opsAccount:"polenta-ops",
+      clientAdmin:(if $login == "" then null else {login:$login, temporaryPassword:(if $pw == "" then null else $pw end)} end),
+      firstBackup:$backup, configFile:$config}')"
 }
 
 # GH45 S2b — rejoue les étapes idempotentes d'après installation sur une instance existante
 # (instances créées avec une version antérieure du kit) : compte d'exploitation, organisation,
 # équipes, repo de configuration.
 cmd_instance_sync() {
-  require_root; require_cmd docker jq curl; load_host_env
+  require_operator; require_cmd docker jq curl; load_host_env
   local name; name="$(resolve_instance "${1:-}")"
+  acquire_lock "instance sync $name"
   local env; env="$(instance_env "$name")"
   [[ -f "$(instance_dir "$name")/.add-complete" ]] || die "instance « $name » incomplète : relancez « instance add $name »."
   local org domain; org="$(env_get "$env" ORG)"; domain="$(env_get "$env" DOMAIN)"
@@ -829,9 +840,13 @@ cmd_instance_sync() {
 
 # polenta-host instance backup <nom>|--all [--tag t]
 cmd_instance_backup() {
-  require_root; load_host_env; require_cmd restic jq
+  require_operator; load_host_env; require_cmd restic jq
   local target="${1:-}" tag=manual; shift || true
-  [[ "${1:-}" == --tag ]] && tag="$2"
+  [[ "${1:-}" == --tag ]] && tag="${2:-}"
+  [[ "$target" == --all ]] && acquire_lock "instance backup --all"
+  # GH63 — étiquette libre de l'interface (avant une opération, « avant-migration »…), sans espace.
+  [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$ ]] || die "$E_USAGE" "étiquette de sauvegarde invalide « $tag » ([A-Za-z0-9._-], 40 caractères au plus)."
+  [[ -n "$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)" ]] || die "$E_PRECOND" "sauvegardes non configurées (BACKUP_S3_* dans $HOST_ENV)."
   if [[ "$target" == --all ]]; then
     local name failed=0
     for name in $(list_instances); do
@@ -839,12 +854,15 @@ cmd_instance_backup() {
       ( backup_instance "$name" "$tag" ) || { failed=1; host_log "backup $name ($tag)" ERREUR; continue; }
       host_log "backup $name ($tag)" OK
     done
-    if [[ $failed == 0 ]]; then backup_ping ok; else backup_ping fail; die "au moins une sauvegarde a échoué (voir ci-dessus)."; fi
+    if [[ $failed == 0 ]]; then backup_ping ok; else backup_ping fail; die "$E_S3" "au moins une sauvegarde a échoué (voir ci-dessus)."; fi
     return
   fi
   local name; name="$(resolve_instance "$target")"
+  acquire_lock "instance backup $name"
   backup_instance "$name" "$tag"
   admin_log "$name" "instance backup ($tag)" OK
+  emit_result "$(jq -nc --arg n "$name" --arg t "$tag" --arg s "$(resolve_snapshot "$name" "latest:$tag")" \
+    '{instance:$n, tag:$t, snapshot:$s}')"
 }
 
 # polenta-host instance snapshots <nom>
@@ -885,7 +903,7 @@ cmd_instance_keys() {
 
 # polenta-host instance restore <nom> --from <id|latest> [--domain d] [--password-file f] [--source <nom>] [--force]
 cmd_instance_restore() {
-  require_root; load_host_env; require_cmd docker restic jq dig curl
+  require_operator; load_host_env; require_cmd docker restic jq dig curl
   local name="${1:-}" from="" domain="" source="" force=0; shift || true
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -895,20 +913,21 @@ cmd_instance_restore() {
       --source) source="$2"; shift 2 ;;
       --force) force=1; shift ;;
       --yes|-y) ASSUME_YES=1; shift ;;
-      *) die "option inconnue : $1" ;;
+      *) die "$E_USAGE" "option inconnue : $1" ;;
     esac
   done
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{1,30}$ && -n "$from" ]] \
-    || die "usage : polenta-host instance restore <nom> --from <id|latest> [--source <instance sauvegardée>] [--domain d] [--password-file f] [--force]"
+    || die "$E_USAGE" "usage : polenta-host instance restore <nom> --from <id|latest> [--source <instance sauvegardée>] [--domain d] [--password-file f] [--force]"
   edge_network_require
   source="${source:-$name}"
   local dir; dir="$(instance_dir "$name")"
   local replace=""
   if [[ -e "$dir" ]]; then
-    [[ $force == 1 ]] || die "l'instance « $name » existe déjà sur cet hôte (--force pour la remplacer par la sauvegarde)."
-    confirm "Remplacer TOUTES les données actuelles de « $name » par la sauvegarde « $from » ?" || die "abandon."
+    [[ $force == 1 ]] || die "$E_EXISTS" "l'instance « $name » existe déjà sur cet hôte (--force pour la remplacer par la sauvegarde)."
+    confirm "Remplacer TOUTES les données actuelles de « $name » par la sauvegarde « $from » ?" "$name" || die "$E_CONFIRM" "abandon."
     replace="$name"
   fi
+  acquire_lock "instance restore $name"
   # Mot de passe : instance.env local de l'instance source s'il existe, sinon --password-file.
   if [[ -z "${RESTIC_PASSWORD_OVERRIDE:-}" && -f "$(instance_env "$source")" ]]; then
     RESTIC_PASSWORD_OVERRIDE="$(env_get "$(instance_env "$source")" RESTIC_PASSWORD)"
@@ -916,6 +935,14 @@ cmd_instance_restore() {
   # Snapshot et mot de passe vérifiés AVANT d'arrêter l'instance remplacée : une erreur la laisse en
   # service (elle n'est arrêtée qu'une fois le snapshot extrait, par restore_snapshot_to).
   local snapshot; snapshot="$(resolve_snapshot "$source" "$from")"
+  # GH63 — étape pre-restore : l'état actuel de l'instance remplacée est sauvegardé d'abord (retour
+  # possible à « avant la restauration »). Échec : rien n'est remplacé.
+  local pre_restore=""
+  if [[ -n "$replace" && -f "$dir/.add-complete" && -n "$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)" ]]; then
+    log "Sauvegarde pre-restore de l'état actuel de « $name »"
+    ( backup_instance "$name" pre-restore ) || die "$E_S3" "sauvegarde pre-restore en échec : rien n'a été remplacé."
+    pre_restore="$(resolve_snapshot "$name" latest:pre-restore)"
+  fi
   log "Restauration de « $source » (sauvegarde $snapshot) vers l'instance « $name »"
   restore_snapshot_to "$source" "$dir" "$snapshot" "$replace"
   chmod 700 "$dir"; chown -R 1000:1000 "$dir/data"
@@ -929,7 +956,7 @@ cmd_instance_restore() {
   check_front_dns "$domain"
   render_forgejo_env "$name"
   local img; img="$(env_get "$env" FORGE_IMAGE):$(env_get "$env" FORGE_VERSION)"
-  docker pull -q "$img" >/dev/null || die "image introuvable : $img"
+  docker pull -q "$img" >/dev/null || die "$E_NO_VERSION" "image introuvable : $img"
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
   wait_healthy "$name"; ok "forge restaurée et démarrée"
   caddy_add_site "$name" "$domain"
@@ -950,6 +977,9 @@ cmd_instance_restore() {
   setup_fail2ban_forge_if_active
   admin_log "$name" "instance restore depuis $source@$snapshot (domaine $domain)" OK
   log "Instance « $name » restaurée — https://$domain"
+  emit_result "$(jq -nc --arg name "$name" --arg source "$source" --arg snap "$snapshot" --arg url "https://$domain" \
+    --arg pre "$pre_restore" '{instance:$name, source:$source, snapshot:$snap, url:$url,
+      preRestoreSnapshot:(if $pre == "" then null else $pre end)}')"
 }
 
 # polenta-host instance update <nom>|--all <version> — sauvegarde, mise à jour, retour arrière si échec.
@@ -960,7 +990,7 @@ update_instance() {
   edge_network_require
   log "Mise à jour de « $name » : $old → $version"
   # 1. La nouvelle version doit exister : sinon rien n'est touché (critère 17).
-  docker pull -q "$image:$version" >/dev/null 2>&1 || die "version introuvable : $image:$version — rien n'a été modifié."
+  docker pull -q "$image:$version" >/dev/null 2>&1 || die "$E_NO_VERSION" "version introuvable : $image:$version — rien n'a été modifié."
   # 2. Sauvegarde de retour arrière.
   backup_instance "$name" pre-update
   local snapshot; snapshot="$(resolve_snapshot "$name" latest:pre-update)"
@@ -988,6 +1018,8 @@ update_instance() {
   if [[ $healthy == 1 ]]; then
     admin_log "$name" "instance update $old → $version" OK
     ok "$name en version $version"
+    UPDATE_RESULTS+=("$(jq -nc --arg n "$name" --arg o "$old" --arg v "$version" --arg s "$snapshot" \
+      '{instance:$n, from:$o, to:$v, status:"updated", preUpdateSnapshot:$s}')")
     return 0
   fi
   # 4. Retour arrière : la base a pu être migrée → restauration du snapshot pre-update.
@@ -1002,32 +1034,50 @@ update_instance() {
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
   wait_healthy "$name"
   admin_log "$name" "instance update $old → $version" "ERREUR, retour à $old (snapshot $snapshot)"
-  die "mise à jour de $name annulée : instance revenue en $old avec les données d'avant (snapshot $snapshot)."
+  UPDATE_RESULTS+=("$(jq -nc --arg n "$name" --arg o "$old" --arg v "$version" --arg s "$snapshot" \
+    '{instance:$n, from:$o, to:$v, status:"rolled-back", version:$o, preUpdateSnapshot:$s}')")
+  emit_update_result
+  die "$E_ROLLED_BACK" "mise à jour de $name annulée : instance revenue en $old avec les données d'avant (snapshot $snapshot)."
+}
+
+UPDATE_RESULTS=()
+emit_update_result() {
+  local list_json='[]'
+  ((${#UPDATE_RESULTS[@]})) && list_json="$(printf '%s\n' "${UPDATE_RESULTS[@]}" | jq -sc .)"
+  emit_result "$(jq -nc --argjson u "$list_json" '{updates:$u}')"
 }
 
 cmd_instance_update() {
-  require_root; load_host_env; require_cmd docker restic jq
+  require_operator; load_host_env; require_cmd docker restic jq
   local target="${1:-}" version="${2:-}"
+  # --version <v> accepté (forme de l'interface d'administration) en plus de la forme positionnelle.
+  [[ "$version" == --version ]] && version="${3:-}"
   [[ -n "$target" && -n "$version" && "$version" != latest ]] \
-    || die "usage : polenta-host instance update <nom>|--all <version> (jamais « latest »)"
+    || die "$E_USAGE" "usage : polenta-host instance update <nom>|--all <version> (jamais « latest »)"
   if [[ "$target" == --all ]]; then
     local name
     for name in $(list_instances); do
       [[ -f "$(instance_dir "$name")/.add-complete" ]] || continue
+      acquire_lock "instance update --all"
       update_instance "$name" "$version"
     done
+    emit_update_result
     return
   fi
-  update_instance "$(resolve_instance "$target")" "$version"
+  local name; name="$(resolve_instance "$target")"
+  acquire_lock "instance update $name"
+  update_instance "$name" "$version"
+  emit_update_result
 }
 
 # polenta-host instance export <nom> — archive de restitution au client.
 cmd_instance_export() {
-  require_root; load_host_env; require_cmd docker tar sha256sum
+  require_operator; load_host_env; require_cmd docker tar sha256sum
   local name; name="$(resolve_instance "${1:-}")"
+  acquire_lock "instance export $name"
   local dir env; dir="$(instance_dir "$name")"; env="$(instance_env "$name")"
   local stamp; stamp="$(date +%Y%m%d-%H%M%S)"
-  local out="$POLENTA_ROOT/exports"; mkdir -p "$out"; chmod 700 "$out"
+  local exports_dir="$POLENTA_ROOT/exports"; mkdir -p "$exports_dir"; chmod 700 "$exports_dir"
   local work; work="$(mktemp -d "$POLENTA_ROOT/.export.XXXXXX")"
   CLEANUP+=("$work")   # contient des secrets : supprimé même en cas d'échec (trap EXIT)
   log "Export de « $name »"
@@ -1090,27 +1140,77 @@ Le port 3000 (HTTP, non chiffré) n'écoute que sur la machine elle-même : le s
 GITEA__server__DOMAIN dans forge.env pour une autre adresse). Les postes Polenta se reconnectent à la
 nouvelle adresse.
 EOF
-  local archive="$out/${name}-${stamp}.tar.gz"
+  local archive="$exports_dir/${name}-${stamp}.tar.gz"
   tar -C "$work" -czf "$archive" .
   rm -rf "$work"
-  (cd "$out" && sha256sum "$(basename "$archive")" >"$(basename "$archive").sha256")
+  (cd "$exports_dir" && sha256sum "$(basename "$archive")" >"$(basename "$archive").sha256")
   chmod 600 "$archive" "$archive.sha256"
   admin_log "$name" "instance export → $archive" OK
   ok "export : $archive (+ .sha256, $(du -h "$archive" | cut -f1))"
   EXPORT_ARCHIVE="$archive"
+  [[ "${FUNCNAME[1]:-}" == cmd_instance_remove ]] && return 0
+  emit_result "$(export_json "$archive" "$name")"
+}
+
+# GH63 — description JSON d'une archive d'export (instance export --json, exports list --json).
+export_json() {
+  local archive="$1" name="$2"
+  jq -nc --arg file "$(basename "$archive")" --arg path "$archive" --arg inst "$name" \
+    --argjson size "$(stat -c %s "$archive")" --arg sha "$(cut -d' ' -f1 "$archive.sha256" 2>/dev/null || true)" \
+    --arg at "$(date -Iseconds -r "$archive")" \
+    '{file:$file, path:$path, instance:$inst, sizeBytes:$size, sha256:$sha, createdAt:$at}'
+}
+
+# polenta-host exports list [--json] | exports delete <fichier> --confirm <fichier> — GH63 :
+# archives de restitution conservées dans $POLENTA_ROOT/exports (remises au client, puis effacées).
+cmd_exports() {
+  local sub="${1:-}" exports_dir="$POLENTA_ROOT/exports"; shift || true
+  case "$sub" in
+    list)
+      local f rows=() inst
+      printf '%-40s %-10s %s\n' ARCHIVE TAILLE DATE
+      for f in "$exports_dir"/*.tar.gz; do
+        [[ -f "$f" ]] || continue
+        inst="$(basename "$f")"; inst="${inst%-[0-9]*-[0-9]*.tar.gz}"
+        printf '%-40s %-10s %s\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(date -Iseconds -r "$f")"
+        rows+=("$(export_json "$f" "$inst")")
+      done
+      local list_json='[]'; ((${#rows[@]})) && list_json="$(printf '%s\n' "${rows[@]}" | jq -sc .)"
+      emit_result "$(jq -nc --argjson e "$list_json" '{exports:$e}')"
+      ;;
+    delete)
+      local file="${1:-}"
+      [[ "$file" =~ ^[a-z0-9][a-z0-9-]{1,30}-[0-9]{8}-[0-9]{6}\.tar\.gz$ ]] \
+        || die "$E_USAGE" "usage : polenta-host exports delete <archive>.tar.gz --confirm <archive>.tar.gz"
+      [[ -f "$exports_dir/$file" ]] || die "$E_USAGE" "archive « $file » introuvable dans $exports_dir."
+      confirm "Effacer définitivement l'archive « $file » ?" "$file" || die "$E_CONFIRM" "abandon : rien n'a été effacé."
+      acquire_lock "exports delete $file"
+      rm -f "$exports_dir/$file" "$exports_dir/$file.sha256"
+      host_log "exports delete $file" OK
+      ok "archive $file effacée"
+      emit_result "$(jq -nc --arg f "$file" '{deleted:$f}')"
+      ;;
+    *) die "$E_USAGE" "usage : polenta-host exports list | exports delete <archive> --confirm <archive>" ;;
+  esac
 }
 
 # polenta-host instance remove <nom> [--confirm <nom>] — export obligatoire, puis suppression.
 cmd_instance_remove() {
-  require_root; load_host_env
+  require_operator; load_host_env
   local name; name="$(resolve_instance "${1:-}")"; shift || true
-  local typed=""
-  [[ "${1:-}" == --confirm ]] && typed="${2:-}"
+  # Confirmation : --confirm <nom> (option globale), sinon question interactive ; --non-interactive
+  # ou entrée fermée sans --confirm : sortie 3, rien n'est touché.
+  local typed="$CONFIRM_VALUE"
   if [[ -z "$typed" ]]; then
-    read -r -p "Suppression DÉFINITIVE de l'instance « $name » (un export est fait avant). Tapez son nom pour confirmer : " typed
+    [[ "$NON_INTERACTIVE" == 1 ]] && die "$E_CONFIRM" "confirmation requise : --confirm $name. Rien n'a été supprimé."
+    read -r -p "Suppression DÉFINITIVE de l'instance « $name » (un export est fait avant). Tapez son nom pour confirmer : " typed \
+      || die "$E_CONFIRM" "confirmation non reçue : rien n'a été supprimé."
   fi
-  [[ "$typed" == "$name" ]] || die "confirmation incorrecte : rien n'a été supprimé."
-  cmd_instance_export "$name"
+  [[ "$typed" == "$name" ]] || die "$E_CONFIRM" "confirmation incorrecte : rien n'a été supprimé."
+  acquire_lock "instance remove $name"
+  # Export obligatoire avant toute suppression : son échec arrête tout (pré-condition, 6).
+  ( trap cleanup_tmp EXIT; cmd_instance_export "$name" ) || die "$E_PRECOND" "export de « $name » en échec : rien n'a été supprimé."
+  EXPORT_ARCHIVE="$(find "$POLENTA_ROOT/exports" -maxdepth 1 -name "${name}-*.tar.gz" -printf '%T@ %p\n' | sort -n | tail -n1 | cut -d' ' -f2-)"
   local domain; domain="$(env_get "$(instance_env "$name")" DOMAIN)"
   inst_compose "$name" down -v >/dev/null 2>&1 || true
   caddy_remove_site "$name"
@@ -1119,7 +1219,13 @@ cmd_instance_remove() {
   setup_fail2ban_forge_if_active
   host_log "instance remove $name ($domain), export $EXPORT_ARCHIVE" OK
   ok "instance $name supprimée — export conservé : $EXPORT_ARCHIVE"
-  warn "les sauvegardes restent dans le stockage S3 ($(restic_repo_url "$name")) : purge manuelle, cf. RUNBOOK."
+  local repo=""
+  if [[ -n "$(env_get "$HOST_ENV" BACKUP_S3_BUCKET)" ]]; then
+    repo="$(restic_repo_url "$name")"
+    warn "les sauvegardes restent dans le stockage S3 ($repo) : purge manuelle (polenta-host s3-purge), cf. RUNBOOK."
+  fi
+  emit_result "$(jq -nc --arg n "$name" --arg d "$domain" --arg e "$EXPORT_ARCHIVE" --arg r "$repo" \
+    '{removed:$n, domain:$d, export:$e, backupsKeptIn:(if $r == "" then null else $r end)}')"
 }
 
 # ─── Client web (GH44) ────────────────────────────────────────────────────────────
@@ -1156,7 +1262,7 @@ EOF
 # Recréée si elle manque ou si le domaine a changé (le secret n'est lisible qu'à la création).
 ensure_web_oauth_app() {
   local name="$1" env; env="$(instance_env "$name")"
-  local redirect="https://$(env_get "$env" WEB_DOMAIN)/auth/callback"
+  local redirect; redirect="https://$(env_get "$env" WEB_DOMAIN)/auth/callback"
   local current; current="$(env_get "$env" WEB_OIDC_CLIENT_ID)"
   api_use_instance "$name"
   api_ok GET /user/applications/oauth2
@@ -1293,8 +1399,9 @@ web_start() {
 
 # polenta-host instance web enable <nom> --domain <d> --version <v> [--image <i>]
 cmd_instance_web_enable() {
-  require_root; load_host_env; require_cmd docker jq dig curl
+  require_operator; load_host_env; require_cmd docker jq dig curl
   local name; name="$(resolve_instance "${1:-}")"; shift || true
+  acquire_lock "instance web enable $name"
   local env; env="$(instance_env "$name")"
   local domain image version
   domain="$(env_get "$env" WEB_DOMAIN)"; image="$(env_get "$env" POLENTA_WEB_IMAGE)"; version="$(env_get "$env" POLENTA_WEB_VERSION)"
@@ -1324,8 +1431,9 @@ cmd_instance_web_enable() {
 
 # polenta-host instance web disable <nom> — arrêt du client web ; web-data et web.env conservés.
 cmd_instance_web_disable() {
-  require_root; load_host_env
+  require_operator; load_host_env
   local name; name="$(resolve_instance "${1:-}")"
+  acquire_lock "instance web disable $name"
   local env; env="$(instance_env "$name")"
   [[ -n "$(env_get "$env" WEB_DOMAIN)" ]] || { skip "client web de $name déjà désactivé"; return 0; }
   inst_compose "$name" rm -sf polenta-web >/dev/null 2>&1 || true
@@ -1342,7 +1450,7 @@ cmd_instance_web_disable() {
 
 # Tâche nocturne (cron) : sauvegarde de toutes les instances, rétention, purge hebdomadaire.
 cmd_backup_cron() {
-  require_root; load_host_env
+  require_root; load_host_env; acquire_lock backup-cron
   log "Sauvegarde nocturne $(date -Iseconds)"
   local name failed=0
   for name in $(list_instances); do
@@ -1428,14 +1536,16 @@ cmd_dns_check() {
 }
 
 cmd_instance_stop() {
-  require_root; local name; name="$(resolve_instance "${1:-}")"
+  require_operator; local name; name="$(resolve_instance "${1:-}")"
+  acquire_lock "instance stop $name"
   inst_compose "$name" stop >/dev/null 2>&1
   admin_log "$name" "instance stop" OK
   ok "instance $name arrêtée (données conservées)"
 }
 
 cmd_instance_start() {
-  require_root; load_host_env; local name; name="$(resolve_instance "${1:-}")"
+  require_operator; load_host_env; local name; name="$(resolve_instance "${1:-}")"
+  acquire_lock "instance start $name"
   edge_network_require
   render_forgejo_env "$name"
   inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
@@ -1448,6 +1558,7 @@ cmd_instance_start() {
 }
 
 cmd_status() {
+  # shellcheck disable=SC1091
   log "Hôte $(hostname) — $(. /etc/os-release && echo "$PRETTY_NAME")"
   printf '  IPv4 %s  IPv6 %s\n' "$(host_ipv4)" "$(host_ipv6)"
   printf '  Mémoire disponible : %s Mo — disque / : %s libres\n' \
@@ -1477,7 +1588,9 @@ status_json() {
     done
     modules="$(printf '%s\n' "${rows[@]}" | jq -sc .)"
   fi
-  local os ipv6 kit; os="$(. /etc/os-release && echo "$PRETTY_NAME")"; ipv6="$(host_ipv6)"
+  local os ipv6 kit
+  # shellcheck disable=SC1091
+  os="$(. /etc/os-release && echo "$PRETTY_NAME")"; ipv6="$(host_ipv6)"
   kit="$(cat "$SCRIPT_DIR/VERSION" 2>/dev/null || true)"
   jq -nc --arg host "$(hostname)" --arg os "$os" --arg ipv4 "$(host_ipv4)" --arg ipv6 "$ipv6" \
     --argjson memMb "$(( $(awk '/MemAvailable/ {print $2}' /proc/meminfo) / 1024 ))" \
@@ -1526,6 +1639,7 @@ main() {
     setup) cmd_setup "$@" ;;
     backup-cron) cmd_backup_cron ;;
     status) require_operator; load_host_env; cmd_status ;;
+    exports) require_operator; cmd_exports "$@" ;;
     dns)
       [[ "${1:-}" == check ]] || usage 1
       shift; require_operator; cmd_dns_check "$@" ;;

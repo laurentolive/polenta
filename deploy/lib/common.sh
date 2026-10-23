@@ -292,15 +292,15 @@ instance_env() { printf '%s/%s/instance.env' "$POLENTA_INSTANCES" "$1"; }
 resolve_instance() {
   local wanted="$1"
   if [[ -n "$wanted" ]]; then
-    [[ -f "$(instance_env "$wanted")" ]] || die "instance « $wanted » inconnue. Instances : $(list_instances | tr '\n' ' ')"
+    [[ -f "$(instance_env "$wanted")" ]] || die "$E_NO_INSTANCE" "instance « $wanted » inconnue. Instances : $(list_instances | tr '\n' ' ')"
     printf '%s' "$wanted"; return
   fi
   local all; all="$(list_instances)"
   local n; n="$(printf '%s' "$all" | grep -c . || true)"
   case "$n" in
-    0) die "aucune instance sur cet hôte." ;;
+    0) die "$E_NO_INSTANCE" "aucune instance sur cet hôte." ;;
     1) printf '%s' "$all" ;;
-    *) die "plusieurs instances : précisez --instance <nom> parmi : $(printf '%s' "$all" | tr '\n' ' ')" ;;
+    *) die "$E_USAGE" "plusieurs instances : précisez --instance <nom> parmi : $(printf '%s' "$all" | tr '\n' ' ')" ;;
   esac
 }
 

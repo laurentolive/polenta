@@ -4,7 +4,7 @@ import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor } from './LinkTypeEditor'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
-import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
+import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
@@ -432,9 +432,11 @@ const InlineCell = memo(function InlineCell({
   const withAdornment = (content: React.ReactNode) => adornment
     ? <span className="inline-flex items-center gap-1">{content}{adornment}</span>
     : content
+  // GH136 — enum à libellés (statut) : le libellé est affiché, la valeur stockée reste en info-bulle.
+  const valueLabel = fieldDef?.type === 'enum' && value ? fieldDef.valueLabels?.[value] : undefined
   const display = paramRefs && !isSystem && value && (fieldDef?.type === 'text' || fieldDef?.type === 'textarea')
     ? <ParamRefText text={value} />
-    : value
+    : valueLabel ?? value
 
   if (!editable) {
     return (
@@ -475,7 +477,7 @@ const InlineCell = memo(function InlineCell({
           className="w-full px-2 py-1 text-xs text-ink bg-surface border-0 outline-none"
         >
           {(fieldDef.values ?? []).map(v => (
-            <option key={v} value={v}>{v}</option>
+            <option key={v} value={v} title={fieldDef.valueLabels?.[v] ? v : undefined}>{fieldDef.valueLabels?.[v] ?? v}</option>
           ))}
         </select>
       </td>
@@ -518,7 +520,7 @@ const InlineCell = memo(function InlineCell({
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={labels.doubleClickToEdit}
+      title={valueLabel ? `${valueLabel} (${value}) — ${labels.doubleClickToEdit}` : labels.doubleClickToEdit}
     >
       {isMultiEnum
         ? clamp.wrap(value || <span className="text-ink-3 italic">—</span>)
@@ -1518,6 +1520,14 @@ function ExcelViewInner({
     return parts.join(' | ')
   }
 
+  // T176 — définition « enum » de la colonne statut, stable (prop d'une cellule mémoïsée).
+  const statusFieldDef = useMemo<SchemaField | undefined>(
+    () => typeDef?.statuses?.length
+      ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(st => st.name), valueLabels: statusValueLabels(typeDef.statuses) }
+      : undefined,
+    [typeDef],
+  )
+
   // Valeur texte affichée pour une colonne donnée — point de vérité unique partagé par le
   // calcul de largeur auto, le rendu de cellule et le filtrage (global + par colonne, T51).
   function getCellText(node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string {
@@ -1525,6 +1535,13 @@ function ExcelViewInner({
     if (col === 'name') return node.name
     if (col.startsWith('link::')) return getLinkCellValue(node.objectId ?? '', col.slice(6))
     return obj ? getFieldValue(obj, col) : (col === 'id' ? node.objectId ?? '' : '')
+  }
+
+  // GH136 — texte tel qu'affiché : libellé du statut à la place de son nom technique. Sert à la
+  // largeur auto et au filtre de colonne ; `getCellText` reste la valeur éditée.
+  function getCellDisplayText(node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string {
+    const text = getCellText(node, obj, col)
+    return col === 'status' ? statusFieldDef?.valueLabels?.[text] ?? text : text
   }
 
   // Flatten tree to render rows in order
@@ -1564,7 +1581,7 @@ function ExcelViewInner({
     for (const { node, kind } of rows) {
       if (kind === 'folder') continue
       const obj = node.objectId ? objectMap.get(node.objectId) : null
-      const val = getCellText(node, obj, col)
+      const val = getCellDisplayText(node, obj, col)
       if (val.length > maxLen) maxLen = val.length
     }
     autoColWidths[col] = Math.min(Math.max(maxLen * 7 + 24, 60), maxAutoWidth)
@@ -1761,14 +1778,6 @@ function ExcelViewInner({
     return !!nodeId && effectiveSelectedIds.length > 1 && effectiveSelectedIds.includes(nodeId)
   }
 
-  // T176 — définition « enum » de la colonne statut, stable (prop d'une cellule mémoïsée).
-  const statusFieldDef = useMemo<SchemaField | undefined>(
-    () => typeDef?.statuses?.length
-      ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(st => st.name) }
-      : undefined,
-    [typeDef],
-  )
-
   /** Édition simple (status/enum/texte/richtext) : même valeur écrasée sur toute la sélection. */
   function applyInlineEditToSelection(objectId: string, field: string, value: string) {
     if (!onInlineEdit) return
@@ -1954,7 +1963,7 @@ function ExcelViewInner({
       ]
       if (!values.some(v => filterRe.test(v))) return false
     }
-    return activeColumnFilters.every(({ col, re }) => re.test(getCellText(node, obj, col)))
+    return activeColumnFilters.every(({ col, re }) => re.test(getCellDisplayText(node, obj, col)))
   }
 
   // Un dossier/section ne doit s'afficher, quand un filtre est actif, que s'il contient au

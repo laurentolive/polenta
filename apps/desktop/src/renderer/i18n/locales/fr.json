@@ -1467,6 +1467,13 @@
     "tagNameLabel": "Nom du tag",
     "inProgress": "En cours…",
     "checkoutBranch": "Checkout branche",
+    "remoteCheckout": {
+      "behind": "Vous êtes sur {{branch}}, en retard sur {{remoteRef}}.",
+      "ahead": "Vous êtes sur {{branch}}, qui contient des commits absents de {{remoteRef}}.",
+      "diverged": "Vous êtes sur {{branch}}, qui a divergé de {{remoteRef}} : rien n'a été écrasé. Pousser, ou merger {{remoteRef}} dans {{branch}}, pour les réconcilier.",
+      "fastForward": "Avance rapide",
+      "ffFailed": "L'avance rapide a échoué (conflit)."
+    },
     "mergeBranchInto": "Merger branche dans…",
     "rebaseCurrentOnBranch": "Rebaser courant sur branche",
     "pushBranch": "Pousser branche",

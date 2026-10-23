@@ -302,6 +302,13 @@ export type MergeResult =
 // T154 — SyncService.ensureIntegrationUpToDate()'s outcome.
 export type IntegrationSyncResult = 'up-to-date' | 'fast-forwarded' | 'diverged' | 'no-remote-branch'
 
+// GH138 — mirrors SyncService's CheckoutBranchResult.
+export interface CheckoutBranchResult {
+  branch: string
+  remote?: 'created' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
+  remoteRef?: string
+}
+
 // GH39 — mirrors SyncService's IntegrationRemoteState / ResyncOutcome.
 export type IntegrationRemoteStateKind = 'no-remote' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
 export interface IntegrationRemoteState {
@@ -564,7 +571,8 @@ export interface ApiClient {
     commitDiff(repoPath: string, sha: string, filepath: string): Promise<{ oldContent: string; newContent: string }>
     branches(repoPath: string): Promise<BranchInfo[]>
     createBranch(repoPath: string, name: string): Promise<void>
-    checkoutBranch(repoPath: string, name: string): Promise<void>
+    /** GH138 — `origin/<branch>` checks out the local `<branch>` (created if absent), never a detached HEAD. */
+    checkoutBranch(repoPath: string, name: string): Promise<CheckoutBranchResult>
     deleteBranch(repoPath: string, name: string): Promise<void>
     tags(repoPath: string): Promise<string[]>
     createTag(repoPath: string, tagName: string, commitSha?: string): Promise<void>

@@ -1447,7 +1447,9 @@
     "localTitle": "Local changes (vs HEAD)",
     "localComputedAt": "Computed at {{time}}",
     "refresh": "Refresh",
-    "noChangedRequirement": "No requirement changed between these two baselines."
+    "noChangedRequirement": "No requirement changed between these two baselines.",
+    "statementDiff": "Statement: before / after",
+    "howToRead": "Each changed element is the cause of the analysis; the elements of its tree (linked downstream, then upstream) are to be handled one by one: status, comment, and clearing the “Impact to check” flag."
   },
   "graphPage": {
     "tabTitle": "Version tree — {{repoName}}",

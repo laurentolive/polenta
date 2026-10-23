@@ -1447,7 +1447,9 @@
     "localTitle": "Modifications locales (vs HEAD)",
     "localComputedAt": "Calculée à {{time}}",
     "refresh": "Rafraîchir",
-    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines."
+    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines.",
+    "statementDiff": "Énoncé : avant / après",
+    "howToRead": "Chaque élément modifié est la cause de l'analyse ; les éléments de son arbre (liés en aval, puis en amont) sont à traiter un par un : statut, commentaire, et levée du flag « Impact à vérifier »."
   },
   "graphPage": {
     "tabTitle": "Arbre de versions — {{repoName}}",

@@ -27,7 +27,9 @@ test.beforeAll(async () => {
     statuses: [{ name: 'brouillon', label: 'Brouillon GH136' }, { name: 'valide', label: 'Validé Allo Médic', isApproval: true }],
   }]
   await s.invoke('schema:save', localPath, schema)
-  reqId = (await s.invoke<{ id: string }>('requirements:create', localPath, { objectTypeRef: REF, title: 'GH136 A', status: 'valide' })).id
+  // `requirements:create` pose toujours `draft` : passage à `valide` par une transition.
+  reqId = (await s.invoke<{ id: string }>('requirements:create', localPath, { objectTypeRef: REF, title: 'GH136 A' })).id
+  await s.invoke('requirements:transition', localPath, reqId, { toStatus: 'valide' }, s.project.workspaceDir)
 })
 
 const row = () => s.page.locator('tr').filter({ hasText: reqId }).first()

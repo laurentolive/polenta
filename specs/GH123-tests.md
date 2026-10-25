@@ -11,9 +11,9 @@ Spec : `specs/GH123.md` — design : `specs/GH123-design.md`.
 | U3 | clé `"0"`, `"true"`, `"x"` | `false` |
 | U4 | `localStorage.getItem` lève | `false`, pas d'exception |
 | U5 | `saveSidebarCollapsed(true)` puis `(false)` | `"1"` puis clé supprimée |
-| U6 | `isSidebarToggleShortcut` Ctrl+b, Ctrl+B (Caps Lock), Cmd+b | `true` |
-| U7 | b seul, Ctrl+Shift+B, Ctrl+Alt+B, Ctrl+N | `false` |
-| U8 | Ctrl+B avec `defaultPrevented` | `false` |
+| U6 | `isSidebarToggleShortcut` Ctrl+b, Ctrl+B (Caps Lock), Cmd+b sur macOS, touche physique B sur disposition non latine | `true` |
+| U7 | b seul, Ctrl+Shift+B, Ctrl+Alt+B, Ctrl+N, Ctrl+B sur macOS, Cmd+B hors macOS | `false` |
+| U8 | Ctrl+B avec `defaultPrevented` ou en auto-répétition | `false` |
 | U9 | Ctrl+B cible `INPUT`, `TEXTAREA`, `SELECT`, `isContentEditable`, descendant d'un `[contenteditable]` | `false` |
 | U10 | Ctrl+B cible `BUTTON`, `DIV`, `null` | `true` |
 

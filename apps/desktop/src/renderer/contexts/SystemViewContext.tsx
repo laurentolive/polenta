@@ -27,6 +27,7 @@ import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { normRepoPath } from '../components/system/linkUtils'
 import { useTreeState, treeUpdateObjectId, treeFindNode } from '../hooks/useTreeState'
 import { useVersioning } from './VersioningContext'
+import { isEditableTarget } from '../lib/editableTarget'
 import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { findSystemNode, flattenSystemNodes } from '@polenta/types'
@@ -703,10 +704,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const focused = document.activeElement
-      const isInInput =
-        focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA')
-      if (isInInput) return
+      // GH152 : contenteditable compris — dans l'éditeur richtext, Ctrl+Z/Y/S appartiennent à l'éditeur.
+      if (isEditableTarget(document.activeElement)) return
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()

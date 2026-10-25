@@ -39,7 +39,7 @@ import { buildExportOutline, buildExportRows, substituteExportParams, defaultVis
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
 import { flattenSystemNodes, isComputedColumnKey } from '@polenta/types'
-import { useComputedColumns, type ComputedColumn } from '../../hooks/useComputedColumns'
+import { useComputedColumns, type ComputedColumn, type ComputedColumnPanelEntry } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { getRelevantLinkTypes, getLinkTypeLabel, isLinkTypeValid } from './linkUtils'
@@ -100,6 +100,7 @@ function FieldConfigModal({
   onChangeShowFoldersWord,
   onClose,
   computedColumns,
+  computedPanel,
 }: {
   typeDef: ObjectTypeDefinition | undefined
   objectTypeRef?: string
@@ -114,8 +115,10 @@ function FieldConfigModal({
   onChangeShowFoldersExcel: (v: boolean) => void
   onChangeShowFoldersWord: (v: boolean) => void
   onClose: () => void
-  /** GH70 — colonnes calculées applicables au type (requêtes partagées du projet). */
+  /** GH70 — colonnes calculées applicables au type (requêtes partagées du projet), à plat. */
   computedColumns: ComputedColumn[]
+  /** GH126 — mêmes colonnes en entrées du panneau (colonnes simples, groupes de colonnes éclatées). */
+  computedPanel: ComputedColumnPanelEntry[]
 }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ConfigTab>(activeTab)
@@ -242,25 +245,59 @@ function FieldConfigModal({
           ))}
 
           {/* GH70 — colonnes calculées définies par le projet (requêtes partagées) */}
-          {computedColumns.length > 0 && (
+          {computedPanel.length > 0 && (
             <div className="pt-2 mt-1 border-t border-edge" data-testid="field-config-computed">
               <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.computedColumns')}</p>
               <div className="space-y-1.5">
-                {computedColumns.map(c => (
+                {computedPanel.map(entry => entry.kind === 'column' ? (
                   <label
-                    key={c.key}
-                    title={`${c.queryId} — ${c.queryTitle}`}
+                    key={entry.column.key}
+                    title={entry.column.headerTitle}
                     className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded"
                   >
                     <input
                       type="checkbox"
-                      checked={currentFields.includes(c.key)}
-                      onChange={() => toggle(c.key)}
+                      checked={currentFields.includes(entry.column.key)}
+                      onChange={() => toggle(entry.column.key)}
                       className="h-3 w-3 accent-ink"
                     />
-                    <span>{c.label}</span>
+                    <span>{entry.column.label}</span>
                     <span className="text-ink-3">(calc)</span>
                   </label>
+                ) : (
+                  // GH126 — colonne éclatée : titre du groupe, puis une case par sous-colonne.
+                  <div key={entry.queryId} data-testid="field-config-computed-group" data-query-id={entry.queryId}>
+                    <p className="flex items-center gap-2 text-xs text-ink px-1 py-0.5" title={`${entry.queryId} — ${entry.queryTitle}`}>
+                      <span>{entry.label}</span>
+                      <span className="text-ink-3">(calc)</span>
+                      {entry.error && (
+                        <span className="text-status-warning cursor-help" title={entry.error} data-testid="field-config-computed-group-error">⚠</span>
+                      )}
+                    </p>
+                    {entry.pending && (
+                      <p className="pl-6 text-xs text-ink-3 italic">{t('system.fieldConfig.computedGroupPending')}</p>
+                    )}
+                    {!entry.pending && !entry.error && entry.columns.length === 0 && (
+                      <p className="pl-6 text-xs text-ink-3 italic">{t('system.fieldConfig.computedGroupEmpty')}</p>
+                    )}
+                    <div className="space-y-1.5 mt-1">
+                      {entry.columns.map(c => (
+                        <label
+                          key={c.key}
+                          title={`${entry.queryId} — ${entry.queryTitle} · ${c.split?.value ?? ''}`}
+                          className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover pl-6 pr-1 py-0.5 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={currentFields.includes(c.key)}
+                            onChange={() => toggle(c.key)}
+                            className="h-3 w-3 accent-ink"
+                          />
+                          <span>{c.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -745,6 +782,8 @@ export function SystemView() {
     objectTypeRef: effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : undefined,
     visibleKeys: useMemo(() => [...visibleFieldsExcel, ...visibleFieldsWord], [visibleFieldsExcel, visibleFieldsWord]),
     enabled: effectiveType?.category === 'requirement' || effectiveType?.category === 'test',
+    // GH126 — panneau ⚙️ ouvert : exécuter les colonnes éclatées pour lister leurs sous-colonnes.
+    discover: showFieldConfig,
   })
   const computedColumnsMap = computed.columnsMap
   // Clé d'une colonne dont la requête n'existe plus / n'est plus partagée / ne s'applique plus :
@@ -1474,6 +1513,7 @@ export function SystemView() {
           onChangeShowFoldersWord={handleChangeShowFoldersWord}
           onClose={() => setShowFieldConfig(false)}
           computedColumns={computed.available}
+          computedPanel={computed.panel}
         />
       )}
 

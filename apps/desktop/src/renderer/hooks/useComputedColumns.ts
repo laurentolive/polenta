@@ -1,7 +1,10 @@
 import { useCallback, useMemo } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import type { ComputedCell, SavedQuery, ScriptRunResult, SchemaField, SchemaFieldType } from '@polenta/types'
-import { columnAppliesTo, columnFieldDef, columnLabel, columnValuesFromRows, computedColumnKey, isComputedColumnKey } from '@polenta/types'
+import type { ComputedCell, SavedQuery, ScriptRunResult, SchemaField, SchemaFieldType, SplitColumnValues } from '@polenta/types'
+import {
+  columnAppliesTo, columnFieldDef, columnLabel, columnValuesFromRows, computedColumnKey, isComputedColumnKey,
+  parseComputedColumnKey, splitColumnValuesFromRows,
+} from '@polenta/types'
 import { api } from '../api'
 import i18n from '../i18n'
 import { runOptions, scriptErrorText } from './useScriptRun'
@@ -14,10 +17,14 @@ import { runOptions, scriptErrorText } from './useScriptRun'
  * comme les widgets) et ses valeurs sont fusionnées dans les objets affichés sous la clé
  * `query::<ID>` — les vues les lisent alors comme tout autre champ (cellule, filtres, exports).
  * Aucune connaissance de ce que calcule le script.
+ *
+ * GH126 — une colonne **éclatée** (`splitColumn`) est déployée ici en sous-colonnes ordinaires de clé
+ * `query::<ID>::<valeur>` (specs/GH126-design.md §2) : les vues n'en savent rien, seul le panneau ⚙️
+ * les présente en groupe (`panel`).
  */
 
 export interface ComputedColumn {
-  /** `query::<ID>` */
+  /** `query::<ID>`, ou `query::<ID>::<valeur>` pour une sous-colonne (GH126). */
   key: string
   queryId: string
   /** Libellé dans la langue courante. */
@@ -25,7 +32,17 @@ export interface ComputedColumn {
   queryTitle: string
   /** Champ synthétique : la cellule est rendue comme un champ de ce type. */
   fieldDef: SchemaField
+  /** GH126 — infobulle d'en-tête : « ID — titre », ou « libellé du groupe — libellé » (sous-colonne). */
+  headerTitle: string
+  /** GH126 — sous-colonne d'une colonne éclatée : sa valeur et le libellé du groupe. */
+  split?: { value: string; groupLabel: string }
 }
+
+/** GH126 — entrée du panneau ⚙️ : colonne simple, ou groupe d'une colonne éclatée (sous-colonnes du
+ *  résultat ; en chargement ou en erreur, les sous-colonnes visibles, pour rester décochables). */
+export type ComputedColumnPanelEntry =
+  | { kind: 'column'; column: ComputedColumn }
+  | { kind: 'group'; queryId: string; label: string; queryTitle: string; pending: boolean; error?: string; columns: ComputedColumn[] }
 
 export interface ComputedColumnResult {
   values: Map<string, ComputedCell>
@@ -35,28 +52,46 @@ export interface ComputedColumnResult {
 }
 
 export interface ComputedColumnsState {
-  /** Colonnes applicables au type affiché (panneau ⚙️), triées par libellé. */
+  /** Colonnes applicables au type affiché, à plat (sous-colonnes déployées), dans l'ordre du ⚙️ :
+   *  par libellé (de groupe), sous-colonnes dans l'ordre du script. */
   available: ComputedColumn[]
-  /** Résultats des colonnes visibles, par clé. */
+  /** GH126 — entrées du panneau ⚙️ (colonnes simples et groupes), même ordre. */
+  panel: ComputedColumnPanelEntry[]
+  /** Résultats des colonnes exécutées, par clé. */
   results: Map<string, ComputedColumnResult>
   /** Vrai tant qu'une colonne visible attend son résultat. */
   pending: boolean
   /** Liste des colonnes connue et résultats des colonnes visibles reçus (impression). */
   ready: boolean
-  /** Objets normalisés + valeurs `query::…` des colonnes visibles. */
+  /** Objets normalisés + valeurs `query::…` des colonnes exécutées. */
   merge: <T extends Record<string, string>>(objects: T[]) => T[]
   /** Colonnes applicables et leur résultat, par clé (props `computedColumns` des vues). */
   columnsMap: Map<string, { column: ComputedColumn; result?: ComputedColumnResult }>
   /** Libellé et type de chaque colonne applicable (exports). */
   exportColumns: Map<string, { label: string; type: SchemaFieldType }>
-  /** Retire les clés de colonnes inconnues (requête supprimée, privée, non applicable) — sans
-   *  jamais réécrire les préférences. */
+  /** Retire les clés de colonnes inconnues (requête supprimée, privée, non applicable, sous-colonne
+   *  absente du résultat) — sans jamais réécrire les préférences. */
   filterFields: (fields: string[]) => string[]
   /** Repo ouvert du projet (celui des requêtes), pour ouvrir la cible d'une cellule. */
   projectRepoPath: string
 }
 
 const EMPTY_VALUES = new Map<string, ComputedCell>()
+
+/** Résultat d'une colonne exécutée, analysé. */
+interface ParsedRun {
+  pending: boolean
+  error?: string
+  /** Colonne simple. */
+  values?: Map<string, ComputedCell>
+  /** Colonne éclatée, résultat valide. */
+  split?: SplitColumnValues[]
+}
+
+/** GH126 — sous-colonnes (valeur, libellé) du dernier résultat valide de chaque colonne éclatée, pour
+ *  la session : colonnes de substitution fidèles pendant un chargement ou une erreur. */
+const lastKnownSplits = new Map<string, { value: string; label: string }[]>()
+const splitMemoKey = (repoPath: string, queryId: string, splitColumn: string) => `${repoPath}\u0000${queryId}\u0000${splitColumn}`
 
 export function useComputedColumns(opts: {
   workspaceDir: string
@@ -65,8 +100,11 @@ export function useComputedColumns(opts: {
   /** Clés de colonnes affichées dans la vue courante (seules celles-ci sont exécutées). */
   visibleKeys: readonly string[]
   enabled?: boolean
+  /** GH126 — exécuter aussi les colonnes éclatées applicables non visibles, pour lister leurs
+   *  sous-colonnes (panneau ⚙️ ouvert). */
+  discover?: boolean
 }): ComputedColumnsState {
-  const { workspaceDir, category, objectTypeRef, visibleKeys, enabled = true } = opts
+  const { workspaceDir, category, objectTypeRef, visibleKeys, enabled = true, discover = false } = opts
   const locale = (i18n.resolvedLanguage ?? i18n.language ?? 'fr').startsWith('en') ? 'en' : 'fr'
 
   // Repo ouvert du projet, quel que soit le repo sélectionné dans la Vue Système (T72) : les
@@ -94,23 +132,28 @@ export function useComputedColumns(opts: {
     .filter((q) => q.scope === 'shared' && q.column && !q.state.readOnly && columnAppliesTo(q.column, category, objectTypeRef))
     .map((q) => ({ query: q, column: q.column! })), [queries, category, objectTypeRef])
 
-  const available = useMemo<ComputedColumn[]>(() => applicable
-    .map(({ query, column }) => ({
-      key: computedColumnKey(query.id),
-      queryId: query.id,
-      label: columnLabel(column, locale),
-      queryTitle: query.title,
-      fieldDef: columnFieldDef(query.id, column, locale),
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label)), [applicable, locale])
+  // Clés visibles par requête : `null` = la colonne simple, sinon les valeurs des sous-colonnes (GH126).
+  const visibleByQuery = useMemo(() => {
+    const out = new Map<string, Set<string | null>>()
+    for (const k of visibleKeys) {
+      const p = parseComputedColumnKey(k)
+      if (!p) continue
+      if (!out.has(p.queryId)) out.set(p.queryId, new Set())
+      out.get(p.queryId)!.add(p.split ?? null)
+    }
+    return out
+  }, [visibleKeys])
 
-  const visible = useMemo(() => {
-    const keys = new Set(visibleKeys.filter(isComputedColumnKey))
-    return applicable.filter(({ query }) => keys.has(computedColumnKey(query.id))).map(({ query }) => query)
-  }, [applicable, visibleKeys])
+  // Requêtes exécutées : colonne simple visible ; colonne éclatée dont une sous-colonne est visible,
+  // ou toute colonne éclatée applicable quand `discover` (panneau ⚙️ ouvert, GH126).
+  const toRun = useMemo(() => applicable.filter(({ query, column }) => {
+    const shown = visibleByQuery.get(query.id)
+    if (!column.splitColumn) return !!shown?.has(null)
+    return discover || (!!shown && [...shown].some((s) => s !== null))
+  }).map(({ query }) => query), [applicable, visibleByQuery, discover])
 
   const runs = useQueries({
-    queries: visible.map((q) => ({
+    queries: toRun.map((q) => ({
       ...runOptions(projectRepoPath, workspaceDir, username, { queryId: q.id }),
       // Le script fait partie de la clé : une requête modifiée est réexécutée.
       queryKey: ['widget-query-result', projectRepoPath, workspaceDir, username, 'column', q.id, q.script],
@@ -119,42 +162,115 @@ export function useComputedColumns(opts: {
   // `useQueries` renvoie un nouveau tableau à chaque rendu : la signature des données sert de clé.
   const runsSig = runs.map((r) => `${r.dataUpdatedAt}:${r.errorUpdatedAt}:${r.isPending ? 'p' : 'd'}`).join('|')
 
-  const results = useMemo(() => {
-    const out = new Map<string, ComputedColumnResult>()
-    visible.forEach((q, i) => {
-      const r = runs[i]
-      const data = r?.data as ScriptRunResult | undefined
-      if (!data) {
-        const message = r?.error instanceof Error ? r.error.message : r?.error ? String(r.error) : undefined
-        out.set(computedColumnKey(q.id), { values: EMPTY_VALUES, pending: !!r?.isPending, ...(message ? { error: message } : {}) })
-        return
+  // Résultats analysés, une fois par résultat reçu (pas à chaque bascule de champ) : valeurs d'une
+  // colonne simple, sous-colonnes d'une colonne éclatée ; chargement ou erreur.
+  const parsed = useMemo(() => {
+    const runOf = new Map(toRun.map((q, i) => [q.id, runs[i]]))
+    const out = new Map<string, ParsedRun>()
+    for (const { query, column } of applicable) {
+      const r = runOf.get(query.id)
+      if (!r) continue
+      const data = r.data as ScriptRunResult | undefined
+      const runError = !data
+        ? (r.error instanceof Error ? r.error.message : r.error ? String(r.error) : undefined)
+        : !data.ok ? scriptErrorText(data.error) : undefined
+      const pending = !data && !!r.isPending
+      if (!column.splitColumn) {
+        const fromRows = data?.ok ? columnValuesFromRows(data.rows, column) : null
+        const error = runError ?? fromRows?.error
+        out.set(query.id, { pending, ...(error ? { error } : {}), values: fromRows && !fromRows.error ? fromRows.values : EMPTY_VALUES })
+        continue
       }
-      if (!data.ok) {
-        out.set(computedColumnKey(q.id), { values: EMPTY_VALUES, pending: false, error: scriptErrorText(data.error) })
-        return
+      const split = data?.ok ? splitColumnValuesFromRows(data.rows, column) : null
+      const error = runError ?? split?.error
+      if (split && !split.error) {
+        lastKnownSplits.set(splitMemoKey(projectRepoPath, query.id, column.splitColumn), split.columns.map((s) => ({ value: s.split, label: s.label })))
+        out.set(query.id, { pending: false, split: split.columns })
+      } else {
+        out.set(query.id, { pending, ...(error ? { error } : {}) })
       }
-      const { values, error } = columnValuesFromRows(data.rows, q.column)
-      out.set(computedColumnKey(q.id), { values, pending: false, ...(error ? { error } : {}) })
-    })
+    }
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, runsSig])
+  }, [applicable, toRun, projectRepoPath, runsSig])
 
+  // Colonnes déployées (une colonne éclatée → ses sous-colonnes) selon la visibilité courante.
+  const { available, panel, results } = useMemo(() => {
+    const results = new Map<string, ComputedColumnResult>()
+    const entries: { label: string; entry: ComputedColumnPanelEntry; columns: ComputedColumn[] }[] = []
+    for (const { query, column } of applicable) {
+      const label = columnLabel(column, locale)
+      const p = parsed.get(query.id)
+
+      if (!column.splitColumn) {
+        const c: ComputedColumn = {
+          key: computedColumnKey(query.id), queryId: query.id, label, queryTitle: query.title,
+          fieldDef: columnFieldDef(query.id, column, locale), headerTitle: `${query.id} — ${query.title}`,
+        }
+        if (p) results.set(c.key, { values: p.values ?? EMPTY_VALUES, pending: p.pending, ...(p.error ? { error: p.error } : {}) })
+        entries.push({ label, entry: { kind: 'column', column: c }, columns: [c] })
+        continue
+      }
+
+      const sub = (value: string, subLabel: string): ComputedColumn => ({
+        key: computedColumnKey(query.id, value), queryId: query.id, label: subLabel, queryTitle: query.title,
+        fieldDef: columnFieldDef(query.id, column, locale, { value, label: subLabel }),
+        headerTitle: `${label} — ${subLabel}`, split: { value, groupLabel: label },
+      })
+      let columns: ComputedColumn[]
+      if (p?.split) {
+        columns = p.split.map((s) => {
+          const c = sub(s.split, s.label)
+          results.set(c.key, { values: s.values, pending: false })
+          return c
+        })
+      } else {
+        // Pas encore de résultat, ou erreur : les sous-colonnes visibles restent affichées (en
+        // chargement ou avec ⚠), sans saut de mise en page, et décochables dans ⚙️ : d'après le
+        // dernier résultat valide de la session (même `splitColumn`) s'il est connu (libellés, ordre),
+        // sinon toutes les sous-colonnes visibles, libellé provisoire = la valeur. Une sous-colonne
+        // absente de ce résultat (campagne supprimée) n'est pas ressuscitée ; un résultat arrivé par
+        // rafraîchissement remplace le précédent sans passer par ici (react-query garde l'ancien).
+        const shown = new Set([...(visibleByQuery.get(query.id) ?? [])].filter((s): s is string => s !== null))
+        const known = lastKnownSplits.get(splitMemoKey(projectRepoPath, query.id, column.splitColumn))
+        const standIns = known ? known.filter((k) => shown.has(k.value)) : [...shown].map((value) => ({ value, label: value }))
+        columns = standIns.map(({ value, label: subLabel }) => {
+          const c = sub(value, subLabel)
+          results.set(c.key, { values: EMPTY_VALUES, pending: !!p?.pending, ...(p?.error ? { error: p.error } : {}) })
+          return c
+        })
+      }
+      entries.push({
+        label,
+        entry: { kind: 'group', queryId: query.id, label, queryTitle: query.title, pending: !!p?.pending, ...(p?.error ? { error: p.error } : {}), columns },
+        columns,
+      })
+    }
+    entries.sort((a, b) => a.label.localeCompare(b.label))
+    return { available: entries.flatMap((e) => e.columns), panel: entries.map((e) => e.entry), results }
+  }, [applicable, parsed, visibleByQuery, locale, projectRepoPath])
+
+  // Seules les colonnes visibles sont fusionnées : une sous-colonne exécutée pour le seul panneau ⚙️
+  // (`discover`) ne doit pas peser sur le filtre global, qui lit toutes les valeurs des objets.
+  const visibleSet = useMemo(() => new Set(visibleKeys), [visibleKeys])
   const merge = useCallback(<T extends Record<string, string>>(objects: T[]): T[] => {
-    if (results.size === 0) return objects
+    const shown = [...results].filter(([key]) => visibleSet.has(key))
+    if (shown.length === 0) return objects
     return objects.map((o) => {
       const extra: Record<string, string> = {}
-      for (const [key, res] of results) extra[key] = res.values.get(o.id)?.value ?? ''
+      for (const [key, res] of shown) extra[key] = res.values.get(o.id)?.value ?? ''
       return { ...o, ...extra }
     })
-  }, [results])
+  }, [results, visibleSet])
 
-  const pending = [...results.values()].some((r) => r.pending)
+  // Seules les colonnes visibles comptent : une exécution pour le seul panneau ⚙️ ne bloque ni
+  // l'export ni l'impression.
+  const pending = [...results].some(([key, r]) => r.pending && visibleSet.has(key))
   // Projet introuvable ou liste en échec : rien à attendre (l'impression ne doit pas rester bloquée).
   const ready = !enabled || !workspaceDir || projectFailed || queriesFailed || (queriesLoaded && !pending)
 
   const columnsMap = useMemo(() => new Map(available.map((c) => [c.key, { column: c, result: results.get(c.key) }])), [available, results])
   const exportColumns = useMemo(() => new Map(available.map((c) => [c.key, { label: c.label, type: c.fieldDef.type }])), [available])
   const filterFields = useCallback((fields: string[]) => fields.filter((f) => !isComputedColumnKey(f) || columnsMap.has(f)), [columnsMap])
-  return { available, results, pending, ready, merge, projectRepoPath, columnsMap, exportColumns, filterFields }
+  return { available, panel, results, pending, ready, merge, projectRepoPath, columnsMap, exportColumns, filterFields }
 }

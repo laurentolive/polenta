@@ -445,7 +445,7 @@ const InlineCell = memo(function InlineCell({
         onClick={g.onClick}
         title={tooltip}
         onDoubleClick={openTarget ? e => { e.stopPropagation(); actions.openComputedTarget(openTarget) } : undefined}
-        data-computed-cell={isComputedColumnKey(field) ? '' : undefined}
+        data-computed-cell={isComputedColumnKey(field) ? field : undefined}
       >
         {pending
           ? <span className="text-ink-3">…</span>
@@ -2256,7 +2256,7 @@ function ExcelViewInner({
                   {getColumnLabel(col)}
                   {isSystemField(col) && !isComputedColumnKey(col) && <span className="ml-1 text-ink-3 font-normal">(sys)</span>}
                   {isComputedColumnKey(col) && (
-                    <span className="ml-1 text-ink-3 font-normal" title={computedColumns?.get(col)?.column.queryTitle}>(calc)</span>
+                    <span className="ml-1 text-ink-3 font-normal" title={computedColumns?.get(col)?.column.headerTitle}>(calc)</span>
                   )}
                   {computedColumns?.get(col)?.result?.error && (
                     <span className="ml-1 text-status-warning cursor-help" title={computedColumns.get(col)!.result!.error} data-testid="computed-column-error">⚠</span>

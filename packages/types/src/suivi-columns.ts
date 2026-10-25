@@ -28,7 +28,14 @@ export interface QueryColumnDef {
   valueColumn?: string
   /** Colonne du résultat qui porte l'infobulle (défaut `tooltip` ; absente → pas d'infobulle). */
   tooltipColumn?: string
+  /** GH126 — colonne éclatée : une sous-colonne par valeur distincte de cette colonne du résultat. */
+  splitColumn?: string
+  /** GH126 — libellé de chaque sous-colonne (défaut : la valeur de `splitColumn`). */
+  splitLabelColumn?: string
 }
+
+/** GH126 — nombre maximal de sous-colonnes d'une colonne éclatée. */
+export const MAX_SPLIT_COLUMNS = 50
 
 export const COLUMN_DEFAULT_ID = 'id'
 export const COLUMN_DEFAULT_VALUE = 'value'
@@ -42,9 +49,20 @@ const CATEGORIES = COMPUTED_COLUMN_CATEGORIES
 
 export const COMPUTED_COLUMN_PREFIX = 'query::'
 
-/** Clé de la colonne dans `fieldVisibility` et dans les objets affichés. */
-export function computedColumnKey(queryId: string): string {
-  return `${COMPUTED_COLUMN_PREFIX}${queryId}`
+/** Clé de la colonne dans `fieldVisibility` et dans les objets affichés : `query::<ID>`, ou pour une
+ *  sous-colonne d'une colonne éclatée (GH126) `query::<ID>::<valeur>`. */
+export function computedColumnKey(queryId: string, split?: string): string {
+  return split === undefined ? `${COMPUTED_COLUMN_PREFIX}${queryId}` : `${COMPUTED_COLUMN_PREFIX}${queryId}::${split}`
+}
+
+/** Inverse de `computedColumnKey` (`null` si ce n'est pas une clé de colonne calculée). L'ID de
+ *  requête ne contient jamais `::` : tout ce qui suit le premier `::` est la valeur. */
+export function parseComputedColumnKey(key: string): { queryId: string; split?: string } | null {
+  if (!key.startsWith(COMPUTED_COLUMN_PREFIX)) return null
+  const rest = key.slice(COMPUTED_COLUMN_PREFIX.length)
+  const i = rest.indexOf('::')
+  if (i === -1) return rest ? { queryId: rest } : null
+  return { queryId: rest.slice(0, i), split: rest.slice(i + 2) }
 }
 
 export function isComputedColumnKey(col: string): boolean {
@@ -105,12 +123,20 @@ export function validateColumnDecl(raw: unknown): { decl: QueryColumnDef | null;
   }
 
   // Colonnes du résultat (GH70 sprint 3) : nom non vide si fourni ; vide / null = défaut.
-  const mapping: Pick<QueryColumnDef, 'idColumn' | 'valueColumn' | 'tooltipColumn'> = {}
-  for (const key of ['idColumn', 'valueColumn', 'tooltipColumn'] as const) {
+  // Colonne éclatée (GH126) : `splitColumn` / `splitLabelColumn`, même règle.
+  const mapping: Pick<QueryColumnDef, 'idColumn' | 'valueColumn' | 'tooltipColumn' | 'splitColumn' | 'splitLabelColumn'> = {}
+  for (const key of ['idColumn', 'valueColumn', 'tooltipColumn', 'splitColumn', 'splitLabelColumn'] as const) {
     const v = raw[key]
     if (v === undefined || v === null || v === '') continue
     if (typeof v !== 'string' || !v.trim()) errors.push(`column.${key} : nom de colonne attendu`)
     else mapping[key] = v.trim()
+  }
+  if (mapping.splitLabelColumn && !mapping.splitColumn && !errors.some((e) => e.startsWith('column.splitColumn'))) {
+    errors.push('column.splitLabelColumn : réservé aux colonnes éclatées (splitColumn)')
+  }
+  // Éclater sur l'identifiant ou la valeur n'a pas de sens (une sous-colonne par élément / par valeur).
+  if (mapping.splitColumn && [mapping.idColumn || COLUMN_DEFAULT_ID, mapping.valueColumn || COLUMN_DEFAULT_VALUE].includes(mapping.splitColumn)) {
+    errors.push(`column.splitColumn : doit différer des colonnes identifiant et valeur (${mapping.splitColumn})`)
   }
 
   if (errors.length) return { decl: null, errors }
@@ -130,11 +156,12 @@ export function columnLabel(decl: QueryColumnDef, locale: 'fr' | 'en'): string {
   return labelText(decl.label, locale)
 }
 
-/** `SchemaField` synthétique : la cellule est rendue comme un champ de ce type. */
-export function columnFieldDef(queryId: string, decl: QueryColumnDef, locale: 'fr' | 'en'): SchemaField {
+/** `SchemaField` synthétique : la cellule est rendue comme un champ de ce type. Sous-colonne d'une
+ *  colonne éclatée (GH126) : `split` donne sa valeur (clé) et son libellé. */
+export function columnFieldDef(queryId: string, decl: QueryColumnDef, locale: 'fr' | 'en', split?: { value: string; label: string }): SchemaField {
   return {
-    name: computedColumnKey(queryId),
-    label: columnLabel(decl, locale),
+    name: computedColumnKey(queryId, split?.value),
+    label: split ? split.label : columnLabel(decl, locale),
     type: decl.type,
     ...(decl.values ? { values: decl.values } : {}),
   }
@@ -163,25 +190,85 @@ export function columnValuesFromRows(
   rows: readonly GraphRow[],
   decl?: Pick<QueryColumnDef, 'idColumn' | 'valueColumn' | 'tooltipColumn'> | null,
 ): { values: Map<string, ComputedCell>; error?: string } {
+  const read = rowReader(decl)
+  const values = new Map<string, ComputedCell>()
+  for (let i = 0; i < rows.length; i++) {
+    const r = read(rows[i] as Raw, i)
+    if ('error' in r) return { values: new Map(), error: r.error }
+    if (!values.has(r.id)) values.set(r.id, r.cell)
+  }
+  return { values }
+}
+
+/** Sous-colonne d'une colonne éclatée (GH126). */
+export interface SplitColumnValues {
+  /** Valeur de `splitColumn` (texte) : suffixe de la clé `query::<ID>::<valeur>`. */
+  split: string
+  label: string
+  values: Map<string, ComputedCell>
+}
+
+/**
+ * GH126 — lignes d'une colonne éclatée → sous-colonnes, dans l'ordre de première apparition de leur
+ * valeur de `splitColumn`. Libellé = premier `splitLabelColumn` non vide (texte ou nombre) parmi les
+ * lignes de la sous-colonne, à défaut la valeur. Première ligne d'un couple (élément, sous-colonne)
+ * retenue. Ligne sans ID, valeur ou valeur de split, ou plus de `MAX_SPLIT_COLUMNS` valeurs → `error`
+ * (aucune sous-colonne rendue).
+ */
+export function splitColumnValuesFromRows(
+  rows: readonly GraphRow[],
+  decl: Pick<QueryColumnDef, 'idColumn' | 'valueColumn' | 'tooltipColumn' | 'splitColumn' | 'splitLabelColumn'>,
+): { columns: SplitColumnValues[]; error?: string } {
+  const splitCol = decl.splitColumn ?? ''
+  const read = rowReader(decl)
+  const columns = new Map<string, SplitColumnValues>()
+  for (let i = 0; i < rows.length; i++) {
+    const raw = rows[i] as Raw
+    const r = read(raw, i)
+    if ('error' in r) return { columns: [], error: r.error }
+    const split = scalarText(raw[splitCol])
+    if (!split) return { columns: [], error: `Ligne ${i + 1} (${r.id}) : colonne « ${splitCol} » manquante.` }
+    let col = columns.get(split)
+    if (!col) {
+      if (columns.size >= MAX_SPLIT_COLUMNS) {
+        const total = new Set(rows.map((x) => scalarText((x as Raw)[splitCol])).filter(Boolean)).size
+        return { columns: [], error: `${MAX_SPLIT_COLUMNS} sous-colonnes au maximum (${total} trouvées).` }
+      }
+      col = { split, label: '', values: new Map() }
+      columns.set(split, col)
+    }
+    // Libellé : premier `splitLabelColumn` non vide parmi les lignes de la sous-colonne.
+    if (!col.label && decl.splitLabelColumn) col.label = scalarText(raw[decl.splitLabelColumn])
+    if (!col.values.has(r.id)) col.values.set(r.id, r.cell)
+  }
+  for (const col of columns.values()) if (!col.label) col.label = col.split
+  return { columns: [...columns.values()] }
+}
+
+/** Texte d'un scalaire (chaîne non vide après `trim`, ou nombre) ; sinon `''`. */
+function scalarText(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : ''
+}
+
+/** Lecture d'une ligne : ID et cellule, ou l'erreur de la colonne. */
+function rowReader(decl?: Pick<QueryColumnDef, 'idColumn' | 'valueColumn' | 'tooltipColumn'> | null) {
   const idCol = decl?.idColumn || COLUMN_DEFAULT_ID
   const valueCol = decl?.valueColumn || COLUMN_DEFAULT_VALUE
   const tooltipCol = decl?.tooltipColumn || COLUMN_DEFAULT_TOOLTIP
-  const values = new Map<string, ComputedCell>()
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i] as Raw
-    const rawId = r[idCol]
-    const id = typeof rawId === 'string' ? rawId.trim() : typeof rawId === 'number' ? String(rawId) : ''
-    if (!id) return { values: new Map(), error: `Ligne ${i + 1} : colonne « ${idCol} » manquante (ID de l'élément attendu).` }
-    if (!Object.prototype.hasOwnProperty.call(r, valueCol)) return { values: new Map(), error: `Ligne ${i + 1} (${id}) : colonne « ${valueCol} » manquante.` }
-    if (values.has(id)) continue
+  return (r: Raw, i: number): { id: string; cell: ComputedCell } | { error: string } => {
+    const id = scalarText(r[idCol])
+    if (!id) return { error: `Ligne ${i + 1} : colonne « ${idCol} » manquante (ID de l'élément attendu).` }
+    if (!Object.prototype.hasOwnProperty.call(r, valueCol)) return { error: `Ligne ${i + 1} (${id}) : colonne « ${valueCol} » manquante.` }
     const ids = Array.isArray(r._ids) ? r._ids.filter((x): x is string => typeof x === 'string' && !!x) : []
     const tooltip = r[tooltipCol]
-    values.set(id, {
-      value: cellText(r[valueCol]),
-      // Infobulle : texte ou nombre seulement (un objet s'afficherait « [object Object] »).
-      ...((typeof tooltip === 'string' && tooltip) || typeof tooltip === 'number' ? { tooltip: String(tooltip) } : {}),
-      ...(ids.length ? { target: ids[0] } : {}),
-    })
+    return {
+      id,
+      cell: {
+        value: cellText(r[valueCol]),
+        // Infobulle : texte ou nombre seulement (un objet s'afficherait « [object Object] »).
+        ...((typeof tooltip === 'string' && tooltip) || typeof tooltip === 'number' ? { tooltip: String(tooltip) } : {}),
+        ...(ids.length ? { target: ids[0] } : {}),
+      },
+    }
   }
-  return { values }
 }

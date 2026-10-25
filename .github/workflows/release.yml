@@ -16,6 +16,8 @@ on:
 
 permissions:
   contents: write
+  # GH154 — notes de version : lecture des issues fermées depuis la dernière release.
+  issues: read
 
 jobs:
   release:
@@ -46,6 +48,8 @@ jobs:
       - name: Generate release notes
         if: github.event_name == 'push'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
 
       - name: Install dependencies

@@ -7,6 +7,7 @@ import path from 'node:path'
 import { build } from 'esbuild'
 import { loadBrand } from './brand'
 import { buildScriptWorker } from './script-worker-build'
+import { appVersion } from './app-version'
 
 const root = path.resolve(__dirname, '..')
 const brand = loadBrand()
@@ -23,7 +24,8 @@ build({
   // @aws-sdk/client-s3 (GH131) : require paresseux de l'entrée S3 d'unzipper (GH120), non utilisée.
   external: ['keytar', 'fsevents', 'fastify', '@fastify/*', 'playwright-core', '@aws-sdk/client-s3', 'react-native', 'react-native-fetch-blob', 'react-native-fs'],
   alias: { electron: './src/mcp-server/electron-shim.ts' },
-  define: { __POLENTA_BRAND__: JSON.stringify(brand.info) },
+  // GH158 — version déduite du tag git (POLENTA_VERSION dans l'image Docker, sans .git).
+  define: { __POLENTA_BRAND__: JSON.stringify(brand.info), __POLENTA_VERSION__: JSON.stringify(appVersion()) },
   logLevel: 'info',
 })
   // GH74 — worker du moteur de scripts et .wasm de QuickJS (bibliothèque de départ : resources/ de l'image).

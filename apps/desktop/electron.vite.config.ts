@@ -57,6 +57,13 @@ export default defineConfig({
       rollupOptions: {
         input: resolve(__dirname, 'src/main/index.ts'),
       },
+      // GH156 — unzipper 0.12 (bundlé avec exceljs, override GH120) fait un
+      // require('@aws-sdk/client-s3') paresseux dans Open.s3_v3, jamais appelé ici. Converti par
+      // le plugin commonjs, il remontait en tête du bundle et s'exécutait au boot : « Cannot find
+      // module '@aws-sdk/client-s3' » dans l'app installée. Laissé tel quel, il reste paresseux.
+      commonjsOptions: {
+        ignore: ['@aws-sdk/client-s3'],
+      },
     },
     resolve: {
       alias: {

@@ -1344,9 +1344,27 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 
 **Règles :**
 - Le panneau actif (`activePanel`) est calculé depuis `pathname` : pas de `useState`, dérivé pur.
-- Recliquer le panneau déjà actif re-navigue vers la route par défaut.
+- Recliquer le panneau déjà actif **replie/déplie le panneau latéral** (GH123, voir ci-dessous) ; il
+  ne re-navigue plus vers la route par défaut.
 - "Version", "Produit", "Composants" sont grisés si aucun projet n'est chargé.
 - Lorsque le main frame affiche un diff (`/diff`), le panel Version expose une icône `History` pour revenir à `/graph`.
+
+**Panneau latéral masquable (GH123)** — style VS Code, pas d'icône dédiée. Logique pure dans
+`layout/sidebarCollapse.ts`, état dans `AppLayout`.
+- **Bascule** : clic sur le bouton du panneau actif, ou `Ctrl+B` (`Cmd+B` seul sur macOS). Aucune
+  navigation. Replié : ni Sidebar ni poignée de redimensionnement, la vue principale prend la largeur ;
+  le bouton actif reste surligné et porte `aria-expanded` (vrai si déplié, absent sur les autres).
+- **Clic sur un autre panneau** : navigation habituelle **et** dépli. Toute autre navigation (onglets,
+  liens, URL) laisse le panneau replié.
+- **Compte** (sans route) : recliquer Compte actif replie et retire la surcharge — au dépli suivant,
+  le panneau affiché est celui de la route. Au clavier, la surcharge est conservée.
+- **`Ctrl+B` ignoré** dans un champ éditable (`input`, `textarea`, `select`, `contenteditable` — gras de
+  l'éditeur richtext), si déjà traité (`defaultPrevented`) et en auto-répétition ; touche physique B
+  (`code: KeyB`) acceptée pour les dispositions non latines. `preventDefault` (Firefox : marque-pages).
+- **Masqué, pas démonté** (`display: none`) : les panneaux gardent leur état local (message de commit,
+  dossiers dépliés, défilement).
+- Préférence **par poste** : `localStorage` `polenta.sidebarCollapsed` = `"1"` si replié, clé absente
+  sinon (toute autre valeur → déplié). La largeur `polenta.sidebarWidth` n'est pas touchée par le repli.
 
 **Personnalisation (GH56)** — ordre et visibilité des boutons, préférence d'interface **par poste**,
 commune à tous les projets (`localStorage`, clé `polenta.activityBarLayout` = `{order, hidden}` ;

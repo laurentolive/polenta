@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isEditableTarget } from '../../lib/editableTarget'
 import {
-  SIDEBAR_COLLAPSED_KEY, isEditableTarget, isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed,
+  SIDEBAR_COLLAPSED_KEY, isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed,
 } from './sidebarCollapse'
 
 function memoryStorage(): Storage {

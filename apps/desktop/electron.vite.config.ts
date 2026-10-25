@@ -5,15 +5,18 @@ import { resolve } from 'path'
 import { loadBrand } from './scripts/brand'
 import { brandPlugin } from './scripts/vite-brand-plugin'
 import { scriptWorkerPlugin } from './scripts/script-worker-build'
+import { appVersion } from './scripts/app-version'
 
 // GH49 — marque POLENTA_BRAND (défaut polenta), figée dans les trois bundles : le code applicatif
 // la lit via src/shared/brand.ts (constante __POLENTA_BRAND__). Marque invalide → build en échec.
 const brand = loadBrand()
 const brandDefine = { __POLENTA_BRAND__: JSON.stringify(brand.info) }
+// GH158 — version déduite du tag git, lue en dev par src/main/app-version.ts.
+const versionDefine = { __POLENTA_VERSION__: JSON.stringify(appVersion()) }
 
 export default defineConfig({
   main: {
-    define: brandDefine,
+    define: { ...brandDefine, ...versionDefine },
     // @polenta/types est aliasé vers sa source TS brute (pas de dist compilé) — sans l'exclure
     // ici, externalizeDepsPlugin le laisse en `require()` externe non transformé, que Node ne
     // sait pas charger (syntaxe ESM `export`). Restait invisible tant que tous les imports

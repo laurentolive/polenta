@@ -34,17 +34,6 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Check tag matches package.json version
-        if: github.event_name == 'push'
-        shell: bash
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(node -p "require('./apps/desktop/package.json').version")
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag v$TAG_VERSION ne correspond pas a apps/desktop/package.json ($PKG_VERSION)"
-            exit 1
-          fi
-
       - name: Generate release notes
         if: github.event_name == 'push'
         shell: bash
@@ -54,6 +43,24 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # GH158 — la version est déduite du tag (scripts/app-version.ts), package.json n'est plus
+      # modifié : on vérifie seulement que le tag est une version X.Y.Z et qu'elle est bien retenue.
+      - name: Check version from tag
+        if: github.event_name == 'push'
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$TAG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $GITHUB_REF_NAME : attendu vX.Y.Z"
+            exit 1
+          fi
+          BUILD_VERSION=$(pnpm exec tsx scripts/print-version.ts)
+          if [ "$TAG_VERSION" != "$BUILD_VERSION" ]; then
+            echo "Version deduite ($BUILD_VERSION) differente du tag $GITHUB_REF_NAME"
+            exit 1
+          fi
 
       - name: Package desktop app
         working-directory: apps/desktop

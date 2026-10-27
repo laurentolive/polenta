@@ -50,6 +50,12 @@ const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'ob
 
 type ViewMode = 'excel' | 'word' | 'edit'
 
+function readStoredViewMode(repoPath: string): 'excel' | 'word' | null {
+  if (!repoPath) return null
+  const stored = localStorage.getItem(`polenta:viewMode:${repoPath}`)
+  return stored === 'excel' || stored === 'word' ? stored : null
+}
+
 /** GH105 — délai max d'arrivée à la destination d'une navigation par lien (cf. linkNavTargetRef). */
 const LINK_NAV_TIMEOUT_MS = 3000
 
@@ -456,10 +462,16 @@ export function SystemView() {
   }, [qc, repoPath, invalidateCandidateObjects])
 
   // View mode — persisted per project in localStorage
-  const [viewMode, setViewMode] = useState<ViewMode>('excel')
-  const viewModeRestoredRef = useRef(false)
+  // GH170 — valeur initiale posée dès le premier rendu (l'effet ci-dessous ne sert plus qu'au cas
+  // où `repoPath` n'est pas encore résolu au montage) : au remontage de la vue (retour sur un
+  // onglet), partir de 'excel' faisait peindre un rendu intermédiaire — zone vide, ou Tableau avant
+  // la Vue Édition encore ouverte (`editingNodeId` vit dans SystemViewContext, qui survit au
+  // changement de route).
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    editingNodeId !== null ? 'edit' : (readStoredViewMode(repoPath) ?? 'excel'))
+  const viewModeRestoredRef = useRef(!!repoPath)
   // Remembers the last non-edit view mode so we can restore it when leaving edit
-  const prevViewModeRef = useRef<'excel' | 'word'>('excel')
+  const prevViewModeRef = useRef<'excel' | 'word'>(readStoredViewMode(repoPath) ?? 'excel')
   // T92 — lets ViewHeader's "Retour" button (edit mode) trigger EditView's own
   // flush-then-navigate sequence, now that EditView no longer renders its own back button.
   const editViewRef = useRef<EditViewHandle>(null)
@@ -467,8 +479,8 @@ export function SystemView() {
   useEffect(() => {
     if (!repoPath || viewModeRestoredRef.current) return
     viewModeRestoredRef.current = true
-    const stored = localStorage.getItem(`polenta:viewMode:${repoPath}`)
-    if (stored === 'excel' || stored === 'word') {
+    const stored = readStoredViewMode(repoPath)
+    if (stored) {
       setViewMode(stored)
       prevViewModeRef.current = stored
     }
@@ -566,7 +578,11 @@ export function SystemView() {
       return null
     },
     enabled: !!editingObjectId && !!effectiveType?.category && !!repoPath,
-    gcTime: 0,
+    // GH170 — gardé en cache (était `gcTime: 0`) : au remontage de la vue (retour sur un onglet),
+    // la fiche s'affiche aussitôt au lieu de « Chargement… ». Relue quand même à chaque montage
+    // pour ne jamais rester sur une version périmée (modifiée entre-temps dans un autre onglet) ;
+    // EditView adopte ce refetch sans écraser une saisie en cours (cf. son effet [objectData]).
+    refetchOnMount: 'always',
   })
 
   const objectData = useMemo((): Record<string, string> | null => {
@@ -944,9 +960,6 @@ export function SystemView() {
   }, [backHistory, handleGoBack, setEditingNodeId])
 
   const typeKey = effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : null
-  // Type dont les colonnes visibles (prefs) sont appliquées — cf. `viewReady`.
-  const [prefsAppliedKey, setPrefsAppliedKey] = useState<string | null>(null)
-
   const { data: savedPrefs, isPlaceholderData: isPrefsPlaceholder, isPending: prefsPending } = useQuery({
     queryKey: ['pref-visibility', repoPath, username, typeKey],
     queryFn: async () => {
@@ -963,11 +976,16 @@ export function SystemView() {
     placeholderData: keepPreviousData,
   })
 
-  useEffect(() => {
-    // Tant que les prefs affichées sont celles de l'ancien type (placeholder en attendant le
-    // fetch du nouveau), ne pas re-dériver les colonnes visibles — sinon on écrase l'affichage
-    // courant par le fallback avant que les vraies prefs du nouveau type n'arrivent.
-    if (isPrefsPlaceholder || prefsPending) return
+  // Prefs (et type) dont dérivent les colonnes visibles actuelles.
+  // GH170 — appliquées pendant le rendu, pas dans un effet : un effet laissait committer (et
+  // peindre) un premier rendu sans prefs appliquées, donc la zone vide de `viewReady`, à chaque
+  // remontage de la vue — même avec les prefs en cache (retour sur un onglet).
+  const [appliedPrefs, setAppliedPrefs] = useState<{ prefs: typeof savedPrefs; key: string | null } | null>(null)
+  // Tant que les prefs affichées sont celles de l'ancien type (placeholder en attendant le
+  // fetch du nouveau), ne pas re-dériver les colonnes visibles — sinon on écrase l'affichage
+  // courant par le fallback avant que les vraies prefs du nouveau type n'arrivent.
+  if (!isPrefsPlaceholder && !prefsPending && (!appliedPrefs || appliedPrefs.prefs !== savedPrefs || appliedPrefs.key !== typeKey)) {
+    setAppliedPrefs({ prefs: savedPrefs, key: typeKey })
     const fallback = defaultVisibleFields(effectiveType)
     const excel = savedPrefs?.excel ?? fallback
     const word = savedPrefs?.word ?? fallback
@@ -992,8 +1010,7 @@ export function SystemView() {
       collapsedFoldersExcel: collapsedFoldersExcelNext, collapsedFoldersWord: collapsedFoldersWordNext,
       freezeColCountExcel: freezeColCountExcelNext,
     }
-    setPrefsAppliedKey(typeKey)
-  }, [savedPrefs, typeKey, isPrefsPlaceholder, prefsPending]) // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   const autoSaveMutation = useMutation({
     mutationFn: async ({ objectId, field, value }: { objectId: string; field: string; value: string }) => {
@@ -1310,7 +1327,7 @@ export function SystemView() {
   // cellules vides, puis données, puis vraies colonnes) — autant de glitches, et autant de
   // rendus complets du tableau qui retardaient l'affichage final.
   const shownFields = viewMode === 'word' ? visibleFieldsWord : visibleFieldsExcel
-  const viewReady = prefsAppliedKey === typeKey
+  const viewReady = appliedPrefs?.key === typeKey
     && rootKey === `${effectiveNodeId}|${effectiveTypeId}`
     && !objectsPending
     && !(linksPending && shownFields.some(f => f.startsWith('link::')))

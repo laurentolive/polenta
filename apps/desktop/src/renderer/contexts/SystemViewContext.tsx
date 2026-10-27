@@ -519,22 +519,24 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   }, [])
 
   const savedRootRef = useRef<TypeTreeNode[]>([])
-  // Track the previous node+type key to distinguish a node/type switch (→ resetRoot)
-  // from a refetch after save (→ update savedRootRef only, preserve undo history).
-  const prevNodeTypeKeyRef = useRef('')
+  // `rootKey` distinguishes a node/type switch (→ resetRoot) from a refetch after save
+  // (→ update savedRootRef only, preserve undo history).
+  // GH170 — synchronisé pendant le rendu, pas dans un effet : un effet laissait passer un rendu
+  // committé (et peint) avec l'arbre de l'ancien type, que SystemView affiche comme une zone vide
+  // (`viewReady` attend `rootKey`). Au retour sur un onglet Tests depuis une fiche /req/…, ce type
+  // change à chaque fois → page blanche le temps du rendu suivant (secondes sur un PC lent).
   const [rootKey, setRootKey] = useState('')
-  useEffect(() => {
-    if (!treeData) return
+  const [syncedTreeData, setSyncedTreeData] = useState<typeof treeData>(undefined)
+  if (treeData && treeData !== syncedTreeData) {
+    setSyncedTreeData(treeData)
     const key = `${effectiveNodeId}|${effectiveTypeId}`
-    const isKeyChange = key !== prevNodeTypeKeyRef.current
-    prevNodeTypeKeyRef.current = key
     savedRootRef.current = treeData.root ?? []
-    if (isKeyChange) {
+    if (key !== rootKey) {
       resetRoot(treeData.root ?? [])
       setRootKey(key)
       setGotoTarget({ nodeId: null, seq: 0 }) // T164 — nouveau composant/type : aucune cible goto
     }
-  }, [treeData]) // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   const rootRef = useRef(root)
   useEffect(() => { rootRef.current = root }, [root])

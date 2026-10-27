@@ -1496,6 +1496,28 @@
   "diffPage": {
     "noDifference": "Aucune différence"
   },
+  "diffView": {
+    "raw": "Raw",
+    "rendered": "Rendu",
+    "hideUnchanged": "Masquer les inchangés",
+    "unchangedCount_one": "{{count}} champ inchangé",
+    "unchangedCount_other": "{{count}} champs inchangés",
+    "before": "Avant",
+    "after": "Après",
+    "workingTree": "working tree",
+    "absentFile": "Fichier absent de cette version",
+    "absentUnit": "— absent",
+    "renderUnavailable": "Rendu indisponible pour ce contenu — voir Raw",
+    "stepAction": "Action",
+    "stepExpected": "Résultat attendu",
+    "unit": {
+      "title": "Titre",
+      "status": "Statut",
+      "preconditions": "Préconditions",
+      "steps": "Étapes",
+      "postconditions": "Postconditions"
+    }
+  },
   "versionDiffPage": {
     "selectFileHint": "Sélectionnez un fichier dans le panel Version"
   },

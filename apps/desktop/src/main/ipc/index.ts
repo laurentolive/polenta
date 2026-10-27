@@ -85,6 +85,7 @@ import type { ForgeService } from '../services/forge/forge.service'
 import type { IntegrationBranchService } from '../services/integration-branch.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
+import { readFileAt } from '../services/read-file-at.util'
 
 export interface Container {
   auth: AuthService
@@ -519,6 +520,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
 
   // ── Schema ───────────────────────────────────────────────────────────────────
   r.handle('schema:get', (_e, repoPath: string) => c.schema.get(repoPath))
+  r.handle('schema:get-at', (_e, repoPath: string, ref: string) => c.schema.getAt(repoPath, ref))
   r.handle('schema:save', (_e, repoPath: string, schema: unknown) =>
     c.schema.save(repoPath, schema as import('@polenta/types').ProjectSchema))
   // GH77 — après l'enregistrement d'un type dont des champs ont été renommés : migre valeur et historique.
@@ -661,26 +663,18 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
 
 
   // ── Draw.io (T47) ────────────────────────────────────────────────────────────
-  r.handle('drawio:read', async (_e, repoPath: string, relativePath: string) => {
-    let raw: string
-    try {
-      raw = await fsP.readFile(path.join(repoPath, relativePath), 'utf-8')
-    } catch {
-      return null
-    }
-    return parseDrawioPages(raw)
+  // GH178 — `ref` : lu à cette version git (vues de diff) ; absent / null = working tree.
+  r.handle('drawio:read', async (_e, repoPath: string, relativePath: string, ref?: string | null) => {
+    const bytes = await readFileAt(repoPath, ref ?? null, relativePath)
+    return bytes ? parseDrawioPages(new TextDecoder().decode(bytes)) : null
   })
 
   // ── Image (T76) ──────────────────────────────────────────────────────────────
-  r.handle('image:read', async (_e, repoPath: string, relativePath: string) => {
+  r.handle('image:read', async (_e, repoPath: string, relativePath: string, ref?: string | null) => {
     const ext = path.extname(relativePath).toLowerCase().replace('.', '')
     const mimeType = IMAGE_MIME_BY_EXT[ext] ?? 'image/png'
-    try {
-      const data = await fsP.readFile(path.join(repoPath, relativePath), { encoding: 'base64' })
-      return { mimeType, base64: data }
-    } catch {
-      return null
-    }
+    const bytes = await readFileAt(repoPath, ref ?? null, relativePath)
+    return bytes ? { mimeType, base64: Buffer.from(bytes).toString('base64') } : null
   })
   r.handle('image:write-paste', async (_e, repoPath: string, mimeType: string, base64: string) => {
     try {

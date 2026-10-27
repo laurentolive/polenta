@@ -186,6 +186,7 @@ export function StaticRichTextViewer({
   repoPath,
   highlightRegex,
   variant = 'default',
+  at,
 }: {
   value: string
   repoPath?: string
@@ -194,6 +195,9 @@ export function StaticRichTextViewer({
   /** T169 — `compact` : typographie resserrée pour une cellule de la Vue Excel (text-xs,
    *  titres ramenés au corps du texte, marges verticales quasi nulles). */
   variant?: 'default' | 'compact'
+  /** GH178 — version git à laquelle lire les images et diagrammes référencés (vues de diff) ;
+   *  absent ou `null` = working tree. */
+  at?: string | null
 }) {
   // T171 — références de paramètres : résolues via le ParamRefProvider englobant, s'il existe.
   const paramRefs = useParamRefs()
@@ -220,13 +224,13 @@ export function StaticRichTextViewer({
     for (const img of imgs) {
       const src = img.getAttribute('data-static-img-src') ?? ''
       if (!src || isLiteralSrc(src)) continue
-      void api.image.read(repoPath, src).then(result => {
+      void api.image.read(repoPath, src, at).then(result => {
         if (cancelled || !result) return
         img.src = `data:${result.mimeType};base64,${result.base64}`
       })
     }
     return () => { cancelled = true }
-  }, [html, repoPath])
+  }, [html, repoPath, at])
 
   // Diagrammes draw.io (T163) : la *fence* `drawio` a émis un placeholder
   // `<span class="static-drawio">`. On monte le viewer mxGraph réel dedans, mais
@@ -248,7 +252,7 @@ export function StaticRichTextViewer({
         if (!entry.isIntersecting) continue
         const el = entry.target as HTMLElement
         io.unobserve(el)
-        teardowns.push(renderStaticDrawio(el, repoPath))
+        teardowns.push(renderStaticDrawio(el, repoPath, undefined, at))
       }
     }, { root: nearestScrollParent(container), rootMargin: '300px' })
 
@@ -258,7 +262,7 @@ export function StaticRichTextViewer({
       io.disconnect()
       for (const fn of teardowns) fn()
     }
-  }, [html, repoPath])
+  }, [html, repoPath, at])
 
   // T167 — surbrillance des occurrences (Vue Recherche). `html` change → React
   // réinitialise l'innerHTML ; `regex` seul change → il faut nettoyer nous-mêmes

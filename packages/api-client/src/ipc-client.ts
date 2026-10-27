@@ -59,6 +59,7 @@ export function createIpcClient(
     },
     schema: {
       get: (p) => invoke('schema:get', p),
+      getAt: (p, ref) => invoke('schema:get-at', p, ref),
       save: (p, schema) => invoke('schema:save', p, schema),
       moveElement: (p, dto) => invoke('schema:move-element', p, dto),
       renameFields: (p, ref, renames) => invoke('schema:rename-fields', p, ref, renames),
@@ -292,12 +293,12 @@ export function createIpcClient(
     },
     drawio: {
       pickFile: (repoPath) => invoke('dialog:pick-drawio-file', repoPath),
-      read: (repoPath, relativePath) => invoke('drawio:read', repoPath, relativePath),
+      read: (repoPath, relativePath, ref) => invoke('drawio:read', repoPath, relativePath, ref ?? null),
       openExternal: (repoPath, relativePath) => invoke('drawio:open-external', repoPath, relativePath),
     },
     image: {
       pickFile: (repoPath) => invoke('image:pick-file', repoPath),
-      read: (repoPath, relativePath) => invoke('image:read', repoPath, relativePath),
+      read: (repoPath, relativePath, ref) => invoke('image:read', repoPath, relativePath, ref ?? null),
       writePaste: (repoPath, mimeType, base64) => invoke('image:write-paste', repoPath, mimeType, base64),
     },
     pref: {

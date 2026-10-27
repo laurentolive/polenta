@@ -450,6 +450,12 @@ Système › Arbre › Sélection).
 - Stockage : fichier local `.{githubaccount}.pref` (clé `fieldVisibility["<nœud>::<type>"]`).
 - Option **Réinitialiser par défaut** disponible par vue — remet aussi « Afficher les titres
   des dossiers » à coché.
+- **Sélecteur de tests d'une campagne (GH176)** : le même panneau (`FieldConfigModal`,
+  `components/system/FieldConfigModal.tsx`) est ouvert par le ⚙️ du sélecteur, avec un seul onglet
+  (pas de barre Tableau / Document), la case Statut cochée et désactivée (infobulle : toujours
+  affichée, GH68), un « Réinitialiser » qui supprime `picker` / `showFoldersPicker` (retour aux
+  colonnes de la Vue Excel), rendu en portail au-dessus de la modale (`z-[60]`) — `Échap` y est
+  intercepté en capture et ne ferme que le panneau. Voir [SPEC-TESTS.md](SPEC-TESTS.md) §4.1–4.2.
 
 **Colonnes calculées (GH70)** — section « Colonnes calculées » (après les champs, avant Étapes /
 Liens), onglets Tableau et Document : une case par requête partagée du projet dont `column`
@@ -488,8 +494,15 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 | Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 21] ignorée — 21 = toutes les lignes (T170) | `localStorage` | `polenta:excelRowMaxLines` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
 | `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
-| Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162 ; colonnes calculées `query::<ID>` — GH70 ; sous-colonnes `query::<ID>::<valeur>` — GH126) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord? }`, par type + par utilisateur |
+| Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162 ; colonnes calculées `query::<ID>` — GH70 ; sous-colonnes `query::<ID>::<valeur>` — GH126) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord?, collapsedFolders*?, freezeColCountExcel?, picker?, showFoldersPicker? }`, par type + par utilisateur (`picker` / `showFoldersPicker` : sélecteur de tests, GH176) |
 | Dernier repo/composant/élément consulté (T52) | `localStorage`, par projet | `polenta:lastSelection:${projectId}` |
+
+**Écriture partielle (GH176)** : `pref:set-field-visibility` fusionne les clés reçues dans
+l'entrée existante — une clé absente est conservée, une clé à `null` est supprimée, une entrée
+vidée est retirée. La Vue Système n'envoie que la clé modifiée (plus d'objet complet recopié d'une
+copie en mémoire) et fusionne le cache `['pref-visibility', …]`, partagé avec le sélecteur. **À la
+lecture**, le défaut de l'équipe (`polenta-config`, GH45) est fusionné vue par vue sous le choix
+personnel : une vue non choisie personnellement prend le défaut de l'équipe, sinon celui de Polenta.
 
 Absence de `repo` dans l'URL (lien généré avant T72) : résolution sur le repo racine par défaut,
 sans erreur.

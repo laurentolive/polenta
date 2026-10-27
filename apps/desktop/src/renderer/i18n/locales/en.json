@@ -765,6 +765,7 @@
     },
     "fieldConfig": {
       "visibleFields": "Visible fields",
+      "reset": "Reset",
       "colSection": "Section",
       "colCreatedAt": "Created on",
       "colUpdatedAt": "Modified on",
@@ -1025,6 +1026,7 @@
       "withoutParams_other": "{{count}} tests without parameters",
       "alreadyIncluded_one": "Already included {{count}} time in the campaign",
       "alreadyIncluded_other": "Already included {{count}} times in the campaign",
+      "statusAlwaysShown": "Always shown in the picker: tests of every status are offered",
       "abandonTitle": "Discard the selection?",
       "abandon": "Discard",
       "keepEditing": "Keep editing",

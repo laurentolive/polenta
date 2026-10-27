@@ -5,6 +5,7 @@ import { app, shell } from 'electron'
 import type { HostContext, TokenStore } from './host-context'
 import { resolveMcpServerLaunchConfig } from './mcp-launch'
 import { loadMachineConfig } from '../services/machine-config'
+import { setNetworkTimeoutSeconds } from '../services/net-timeouts'
 import { BRAND } from '../../shared/brand'
 
 // GH49 — comptes séparés par marque ; Polenta garde 'polenta' (comptes existants retrouvés).
@@ -45,5 +46,6 @@ export function createElectronHostContext(): HostContext {
       warn: (message) => console.warn(message),
     }),
     deviceLabel: os.hostname(),
+    applyNetworkTimeout: setNetworkTimeoutSeconds,
   }
 }

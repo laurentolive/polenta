@@ -1242,7 +1242,9 @@ function StepsPanel({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ExcelView(props: Props) {
+// GH170 — mémoïsé : un re-rendu de SystemView sans changement de props (refetch en arrière-plan)
+// ne refait plus tout le tableau.
+export const ExcelView = memo(function ExcelView(props: Props) {
   // GH33 — mode sélection : lecture seule forcée quels que soient les callbacks passés (pas
   // d'édition inline, de renommage, de DnD, d'étapes, de création ni d'ouverture en édition).
   if (!props.selection) return <ExcelViewInner {...props} />
@@ -1259,7 +1261,7 @@ export function ExcelView(props: Props) {
       onLinkChange={undefined}
     />
   )
-}
+})
 
 function ExcelViewInner({
   root,

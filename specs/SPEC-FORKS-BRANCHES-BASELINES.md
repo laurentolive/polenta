@@ -714,6 +714,12 @@ L'UI permet de **naviguer dans une baseline** comme si on était dans l'état du
 > (`field`/`from`/`to`), `titleFrom`/`titleTo` — plus proche de la forme ci-dessous que de l'exemple
 > `testCoverageChange`/`componentUpdates`, qui ne sont **pas** implémentés (pas de diff de couverture ni
 > de comparaison multi-composant, cf. `T46.md` Hors scope).
+>
+> **GH178 — comparaison fichier par fichier** : dans le panneau Version (`/version-diff`), le diff
+> d'un fichier entre deux refs (baselines comprises) propose un mode **Rendu** pour une exigence,
+> un test ou un `.drawio` : deux colonnes Avant | Après, unités et mots modifiés marqués,
+> diagrammes lus à la version de chaque colonne (`SPEC-ELECTRON-DESKTOP.md` §19.8b,
+> `SPEC-TECH-stack.md` §6.5).
 
 ```yaml
 addedRequirements:

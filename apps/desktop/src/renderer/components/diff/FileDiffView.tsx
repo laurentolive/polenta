@@ -10,6 +10,7 @@ import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/use
 import { useSchemaAt } from '../../hooks/useSchemaAt'
 import { LineDiffView } from './LineDiffView'
 import { ObjectDiffView } from './ObjectDiffView'
+import { DrawioFileDiffView } from './DrawioFileDiffView'
 
 type Obj = Record<string, unknown>
 type Parsed = { obj: Obj | null; invalid: boolean }
@@ -17,7 +18,7 @@ type Parsed = { obj: Obj | null; invalid: boolean }
 /**
  * GH178 — diff d'un fichier, commun aux trois écrans (`/version-diff`, `/diff` working tree et
  * commit) : sous-en-tête (chemin, `+n / −n`, bascule Raw / Rendu) puis le diff dans le mode choisi.
- * Le Rendu n'est proposé que pour une exigence ou un test dont le type se résout dans le schéma.
+ * Le Rendu est proposé pour une exigence ou un test dont le type se résout dans le schéma, et pour un `.drawio`.
  */
 export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath = true }: {
   repoPath: string
@@ -62,14 +63,28 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
   )
   const schemaLoading = !!objectTypeRef && (current.isLoading || afterSchema.isLoading || beforeSchema.isLoading)
 
-  const canRender = !!typeDef
+  const isDrawio = /\.drawio$/i.test(filepath)
+  const canRender = isDrawio || !!typeDef
   const rendered = mode === 'rendered' && canRender
+  const beforeLabel = sideLabel(t('diffView.before'), oldRef, false, t)
+  const afterLabel = sideLabel(t('diffView.after'), newRef, true, t)
 
   let body: ReactNode
   if (isLoading || (mode === 'rendered' && schemaLoading)) {
     body = <p className="text-ink-3 italic p-6">{t('common.loading')}</p>
   } else if (!rendered) {
     body = <div className="h-full overflow-auto font-mono text-xs"><LineDiffView lines={lines} /></div>
+  } else if (isDrawio) {
+    body = (
+      <DrawioFileDiffView
+        key={`${filepath}@${oldRef}..${newRef}`}
+        repoPath={repoPath}
+        filepath={filepath}
+        before={{ at: oldRef, missing: !!contents?.oldMissing, label: beforeLabel }}
+        after={{ at: newRef, missing: !!contents?.newMissing, label: afterLabel }}
+        hideUnchanged={hideUnchanged}
+      />
+    )
   } else if (before.invalid || after.invalid) {
     body = <p className="p-6 text-xs text-status-warning">{t('diffView.renderUnavailable')}</p>
   } else {
@@ -77,8 +92,8 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
       <ObjectDiffView
         // Un autre fichier ou d'autres versions : les groupes dépliés repartent de zéro.
         key={`${filepath}@${oldRef}..${newRef}`}
-        before={{ value: before.obj, at: oldRef, label: sideLabel(t('diffView.before'), oldRef, false, t), typeDef: beforeTypeDef }}
-        after={{ value: after.obj, at: newRef, label: sideLabel(t('diffView.after'), newRef, true, t), typeDef }}
+        before={{ value: before.obj, at: oldRef, label: beforeLabel, typeDef: beforeTypeDef }}
+        after={{ value: after.obj, at: newRef, label: afterLabel, typeDef }}
         typeDef={typeDef}
         repoPath={repoPath}
         hideUnchanged={hideUnchanged}

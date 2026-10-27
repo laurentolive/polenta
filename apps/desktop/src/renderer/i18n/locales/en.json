@@ -1510,6 +1510,11 @@
     "renderUnavailable": "Rendering unavailable for this content — see Raw",
     "stepAction": "Action",
     "stepExpected": "Expected result",
+    "stepNumber": "Step {{n}}",
+    "page": "Page “{{name}}”",
+    "absentPage": "— page absent",
+    "unchangedPages_one": "{{count}} unchanged page",
+    "unchangedPages_other": "{{count}} unchanged pages",
     "unit": {
       "title": "Title",
       "status": "Status",

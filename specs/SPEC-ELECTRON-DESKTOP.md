@@ -1391,7 +1391,8 @@ par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, 
 | `/` | Workspace (création, clone, récents) | Projet |
 | `/schema?repoPath&projectId` | **Modèle de données** (onglet Structure par défaut) — page d'atterrissage du projet depuis T86, remplace `/project/$id` (retiré) | Projet |
 | `/graph?projectId` | **Arbre de versions** (commits, refs de branches, checkout) | Version |
-| `/diff?projectId&filepath` | Vue diff d'un fichier | Version |
+| `/diff?projectId&repoPath&filepath&commitSha?` | Vue diff d'un fichier : working tree vs `HEAD`, ou commit vs son parent (`commitSha`) — bascule Raw / Rendu (GH178, cf. §19.8b) | Version |
+| `/version-diff?projectId` | Comparaison d'un fichier entre deux refs choisies dans le panneau Version — même vue de diff Raw / Rendu (GH178) | Version |
 | `/merge-resolve?id&projectId` | **Résolution des conflits** d'un merge (GH37) — session `id` (`merge-resolution:*`), ouverte dans son propre onglet « Conflits — <repo> » depuis Publier, la vue graphe ou Rafraîchir ; en-tête propre (pas de `ViewHeader`, donc pas de bouton Publier pendant la résolution) | — |
 | `/branch/new` | Formulaire nouvelle branche | Version |
 | `/product?projectId&tab` | **Panel Produit** — liste exigences / tests / campagnes selon tab | Produit |
@@ -1537,6 +1538,15 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >   composants, suppression avec confirmation) ; sinon → arbre des repos. La vue `/baseline` est
 >   le formulaire de création (ex-popup, voir SPEC-FORKS-BRANCHES-BASELINES §5.2). Liste et
 >   formulaire partagent `useBaselines` (même clé `baseline:list`).
+> - **Vues de diff (GH178)** : `/version-diff`, `/diff` (fichier stagé / modifié) et `/diff?commitSha`
+>   (fichier d'un commit de la vue graphe) affichent `FileDiffView`. Sous-en-tête : chemin,
+>   « Masquer les inchangés » (Rendu), bascule **Raw / Rendu**, `+n / −n`. Raw = diff texte ligne à
+>   ligne. Rendu (exigence ou test dont le type se résout, fichier `.drawio`) = deux colonnes
+>   `Avant · <sha>` / `Après · <sha | working tree>` alignées, unités modifiées sur fond rouge /
+>   vert, mots changés barrés / surlignés, diagrammes et images lus à la version de leur colonne.
+>   Les autres fichiers restent en Raw, sans bascule. Mode et case mémorisés par poste
+>   (`polenta:diffViewMode`, `polenta:diffHideUnchanged`). Détails : `specs/GH178.md`,
+>   `SPEC-TECH-stack.md` §6.5.
 
 ```
 ┌─────────────────────────────┐

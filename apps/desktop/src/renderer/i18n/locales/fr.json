@@ -1510,6 +1510,11 @@
     "renderUnavailable": "Rendu indisponible pour ce contenu — voir Raw",
     "stepAction": "Action",
     "stepExpected": "Résultat attendu",
+    "stepNumber": "Étape {{n}}",
+    "page": "Page « {{name}} »",
+    "absentPage": "— page absente",
+    "unchangedPages_one": "{{count}} page inchangée",
+    "unchangedPages_other": "{{count}} pages inchangées",
     "unit": {
       "title": "Titre",
       "status": "Statut",

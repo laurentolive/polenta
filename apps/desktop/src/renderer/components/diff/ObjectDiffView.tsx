@@ -2,9 +2,11 @@ import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
 import { unitValue } from '@polenta/merge-core'
-import type { ObjectTypeDefinition } from '@polenta/types'
+import type { ObjectTypeDefinition, TestStep } from '@polenta/types'
 import { diffUnits, unitChanged, type DiffUnit } from '../../lib/objectUnits'
 import { DiffValue } from './DiffValue'
+import { StepsDiff } from './StepsDiff'
+import { useMediaDiff } from './useMediaDiff'
 
 type Obj = Record<string, unknown>
 
@@ -33,10 +35,19 @@ export function ObjectDiffView({ before, after, typeDef, repoPath, hideUnchanged
   const { t } = useTranslation()
   const units = useMemo(() => diffUnits(before.value, after.value, typeDef), [before.value, after.value, typeDef])
   const present = units.filter(u => unitValue(before.value, u.key) !== undefined || unitValue(after.value, u.key) !== undefined)
+  // Richtexts compared on their referenced media too (diagram / image changed at the other version).
+  const richTexts = useMemo(() => units
+    .filter(u => u.kind === 'richtext')
+    .map(u => ({ key: u.key, before: asText(unitValue(before.value, u.key)), after: asText(unitValue(after.value, u.key)) }))
+    .filter(r => r.before || r.after), [units, before.value, after.value])
+  const media = useMediaDiff(richTexts, repoPath, before.at, after.at)
   const changed = useMemo(
-    () => new Set(present.filter(u => unitChanged(before.value, after.value, u.key)).map(u => u.key)),
+    () => new Set(present
+      .filter(u => unitChanged(before.value, after.value, u.key)
+        || (media.get(u.key)?.before.size ?? 0) > 0 || (media.get(u.key)?.after.size ?? 0) > 0)
+      .map(u => u.key)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [units, before.value, after.value],
+    [units, before.value, after.value, media],
   )
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
@@ -60,7 +71,12 @@ export function ObjectDiffView({ before, after, typeDef, repoPath, hideUnchanged
       : 'bg-status-success-bg dark:bg-status-success-bg/15'
     return (
       <div className={`px-3 py-2 min-w-0 ${side === 'after' ? 'border-l border-edge' : ''} ${tone}`}>
-        {s.value && <DiffValue unit={u} value={unitValue(s.value, u.key)} typeDef={s.typeDef ?? typeDef} repoPath={repoPath} at={s.at} />}
+        {s.value && (
+          <DiffValue unit={u} value={unitValue(s.value, u.key)} side={side}
+            other={isChanged ? unitValue((side === 'before' ? after : before).value, u.key) : undefined}
+            media={media.get(u.key)?.[side]}
+            typeDef={s.typeDef ?? typeDef} repoPath={repoPath} at={s.at} />
+        )}
       </div>
     )
   }
@@ -82,8 +98,10 @@ export function ObjectDiffView({ before, after, typeDef, repoPath, hideUnchanged
               className="col-span-2 px-3 pt-2 text-[11px] uppercase tracking-wide text-ink-3 border-t border-edge-subtle">
               {row.unit.labelKey ? t(row.unit.labelKey) : row.unit.label}
             </div>
-            {cell('before', row.unit)}
-            {cell('after', row.unit)}
+            {row.unit.kind === 'steps' && isSteps(before.value, after.value, row.unit.key)
+              ? <StepsDiff before={steps(before.value, row.unit.key)} after={steps(after.value, row.unit.key)}
+                  repoPath={repoPath} beforeAt={before.at} afterAt={after.at} />
+              : <>{cell('before', row.unit)}{cell('after', row.unit)}</>}
           </Fragment>
         ) : (
           <button key={`fold-${row.folded[0].key}`} type="button"
@@ -96,6 +114,20 @@ export function ObjectDiffView({ before, after, typeDef, repoPath, hideUnchanged
       </div>
     </div>
   )
+}
+
+function asText(v: unknown): string {
+  return typeof v === 'string' ? v : ''
+}
+
+/** Steps aligned row by row when each present side is a list (a file absent on one side counts). */
+function isSteps(a: Obj | null, b: Obj | null, key: string): boolean {
+  return [a, b].every(o => !o || unitValue(o, key) === undefined || Array.isArray(unitValue(o, key)))
+}
+
+function steps(o: Obj | null, key: string): TestStep[] {
+  const v = unitValue(o, key)
+  return Array.isArray(v) ? (v as TestStep[]) : []
 }
 
 function ColumnTitle({ children, border }: { children: ReactNode; border?: boolean }) {

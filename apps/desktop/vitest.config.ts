@@ -13,7 +13,8 @@ export default defineConfig({
   test: {
     // GH45 — aussi les services du process main (forges, configuration machine, comptes).
     // GH56 — et la logique pure du renderer (sans DOM).
-    include: ['src/web-server/**/*.test.ts', 'src/main/services/**/*.test.ts', 'src/renderer/**/*.test.ts'],
+    // GH134 — et les adaptateurs hôte testables sans Electron (menu contextuel).
+    include: ['src/web-server/**/*.test.ts', 'src/main/services/**/*.test.ts', 'src/main/host/**/*.test.ts', 'src/renderer/**/*.test.ts'],
     environment: 'node',
     // GH49 — les services partagés lisent la marque au chargement (src/shared/brand.ts).
     setupFiles: ['scripts/register-brand.ts'],

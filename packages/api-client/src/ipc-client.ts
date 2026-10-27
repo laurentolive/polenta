@@ -142,6 +142,7 @@ export function createIpcClient(
       canMergeRemoteIntoIntegration: (p, branch) => invoke('sync:can-merge-remote', p, branch),
       resyncIntegration: (p, branch) => invoke('sync:resync-integration', p, branch),
       autoSync: (p, branch) => invoke('sync:auto-sync', p, branch),
+      settleAutoBranch: (p, branch) => invoke('sync:settle-auto-branch', p, branch),
       isMergedInto: (p, branch, into) => invoke('sync:is-merged', p, branch, into),
       log: (p, limit) => invoke('sync:log', p, limit),
       checkoutCommit: (p, sha) => invoke('sync:checkout-commit', p, sha),

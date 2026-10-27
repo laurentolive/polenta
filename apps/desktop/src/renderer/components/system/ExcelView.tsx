@@ -232,6 +232,8 @@ interface ExcelCellActions {
   toggleMultiEnum(objectId: string, field: string, rect: DOMRect): void
   openLinkPopover(nodeId: string, typeName: string, rect: DOMRect): void
   closeLinkPopover(): void
+  /** GH169 — clic sur un ID d'une cellule de lien : ouvre l'objet lié (comme la vue Word). */
+  navigateToObject(peerId: string, opts?: { newTab?: boolean }): void
   toggleSteps(nodeId: string): void
   /** GH70 — ouverture de la cible d'une cellule calculée. */
   openComputedTarget(target: string): void
@@ -252,6 +254,7 @@ interface ExcelCellLabels {
   hideSteps: string
   noSteps: string
   stepsCount: (count: number) => string
+  clickToNavigate: string
 }
 
 const ExcelCellLabelsContext = createContext<ExcelCellLabels | null>(null)
@@ -563,7 +566,10 @@ const LinkCell = memo(function LinkCell({
   return (
     <td
       ref={tdRef}
-      data-link-popover
+      data-link-cell
+      // GH169 — seule la cellule ouverte compte comme « dans le popover » (son clic le referme
+      // via le geste de la cellule) ; un clic sur une autre cellule de lien le referme.
+      data-link-popover={isOpen || undefined}
       style={freezeStyle}
       className={[
         `border border-edge px-2 py-1 text-xs text-ink-2 max-w-xs cursor-pointer ${CELL_EDITABLE_CLASS}`,
@@ -576,7 +582,28 @@ const LinkCell = memo(function LinkCell({
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
     >
-      <ClampedContent>{value || <span className="text-ink-3 italic">—</span>}</ClampedContent>
+      <ClampedContent>
+        {value
+          // GH169 — chaque ID est cliquable (navigation, Ctrl/Cmd+clic : nouvel onglet) ; le clic
+          // ailleurs dans la cellule garde son geste (sélection ; double-clic = édition des liens).
+          ? value.split(' | ').map((group, gi) => (
+              <span key={gi}>
+                {gi > 0 && ' | '}
+                {group.split(', ').map((id, i) => (
+                  <span key={id}>
+                    {i > 0 && ', '}
+                    <span
+                      data-cell-dblclick-ignore
+                      className="cursor-pointer hover:underline"
+                      title={labels.clickToNavigate}
+                      onClick={e => { e.stopPropagation(); actions.navigateToObject(id, { newTab: e.ctrlKey || e.metaKey }) }}
+                    >{id}</span>
+                  </span>
+                ))}
+              </span>
+            ))
+          : <span className="text-ink-3 italic">—</span>}
+      </ClampedContent>
     </td>
   )
 })
@@ -1317,8 +1344,14 @@ function ExcelViewInner({
       const target = e.target as HTMLElement
       if (!target.closest('[data-link-popover]')) setActiveLinkPopover(null)
     }
+    // GH169 — Échap referme le popover, où que soit le focus.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActiveLinkPopover(null) }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [activeLinkPopover])
 
   // T169 — cellule richtext en cours d'édition en place (une seule à la fois). Identifiée par
@@ -2121,6 +2154,7 @@ function ExcelViewInner({
       setActiveLinkPopover({ nodeId, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
     },
     closeLinkPopover: () => setActiveLinkPopover(null),
+    navigateToObject: (peerId, opts) => onNavigateToObject?.(peerId, opts),
     toggleSteps: toggleStepExpand,
     openComputedTarget: target => onOpenComputedTarget?.(target),
   }
@@ -2129,6 +2163,7 @@ function ExcelViewInner({
     hideSteps: t('system.excelView.hideSteps'),
     noSteps: t('system.excelView.noSteps'),
     stepsCount: count => t('system.excelView.stepsCount', { count }),
+    clickToNavigate: t('system.shared.clickToNavigate'),
   }), [t])
   const cellActionsRef = useRef(cellActionsImpl)
   cellActionsRef.current = cellActionsImpl
@@ -2142,6 +2177,7 @@ function ExcelViewInner({
     toggleMultiEnum: (o, f, r) => cellActionsRef.current.toggleMultiEnum(o, f, r),
     openLinkPopover: (n, t, r) => cellActionsRef.current.openLinkPopover(n, t, r),
     closeLinkPopover: () => cellActionsRef.current.closeLinkPopover(),
+    navigateToObject: (p, o) => cellActionsRef.current.navigateToObject(p, o),
     toggleSteps: n => cellActionsRef.current.toggleSteps(n),
     openComputedTarget: target => cellActionsRef.current.openComputedTarget(target),
   }), [])

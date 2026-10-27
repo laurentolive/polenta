@@ -11,6 +11,7 @@ import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
 
 export class RequirementsService {
@@ -103,7 +104,11 @@ export class RequirementsService {
   // T159 — `withKeyLock` sérialise les read-modify-write concurrents sur le même fichier
   // (`findById` → merge → `writeYaml`) : sans ça un autosave et une transition de statut
   // simultanés sur la même exigence pouvaient se marcher dessus (un champ perdu).
-  async update(repoPath: string, id: string, dto: UpdateRequirementDto, workspaceDir?: string): Promise<Requirement> {
+  async update(
+    repoPath: string, id: string, dto: UpdateRequirementDto, workspaceDir?: string,
+    /** GH150 — `update_requirements` (MCP) : une clé de `fields` à `null` retire le champ. */
+    opts: { removeNullFields?: boolean } = {},
+  ): Promise<Requirement> {
     return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
       const existing = await this.index.findById(repoPath, id)
       if (!existing) throw new Error(`Requirement ${id} not found`)
@@ -115,7 +120,9 @@ export class RequirementsService {
       return this.persist(repoPath, targetRepo, existing, {
         ...existing,
         ...(dto.title && { title: dto.title }),
-        fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
+        fields: opts.removeNullFields
+          ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
+          : { ...(existing.fields as object), ...(dto.fields ?? {}) },
       })
     })
   }

@@ -1,14 +1,12 @@
-import { randomUUID } from 'crypto'
 import { renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
-import type { TreeService } from './tree.service'
 import { RevalidationService } from './revalidation.service'
 import { omitAuditFields } from './audit-fields.util'
-import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
+import { findObjectTypeDef } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
 import type { HistoryService } from './history.service'
@@ -18,7 +16,6 @@ export class TestsService {
     private readonly git: GitService,
     private readonly testsIndex: TestsIndexService,
     private readonly schema: SchemaService,
-    private readonly tree?: TreeService,
     private readonly revalidation?: RevalidationService,
     private readonly history?: HistoryService,
   ) {}
@@ -68,7 +65,6 @@ export class TestsService {
     }
 
     const created = await this.persist(repoPath, targetRepo, null, test)
-    await this.appendToTree(targetRepo, dto.objectTypeRef, created.id, created.title)
     return created
   }
 
@@ -240,23 +236,6 @@ export class TestsService {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
-
-  /** See RequirementsService.appendToTree — same reasoning, same tree format (T138). */
-  private async appendToTree(repoPath: string, objectTypeRef: string, objectId: string, title: string): Promise<void> {
-    if (!this.tree) return
-    try {
-      const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
-      const location = schema ? resolveObjectTypeLocation(schema, objectTypeRef) : null
-      if (!location || location === 'unresolvable') return
-
-      const { nodeName, typeDef } = location
-      const current = await this.tree.get(repoPath, nodeName, typeDef.name)
-      const node = { id: randomUUID(), kind: 'item' as const, name: title, objectId, children: [] }
-      await this.tree.save(repoPath, { nodeId: nodeName, typeId: typeDef.name, root: [...current.root, node] })
-    } catch (err) {
-      console.error(`Erreur insertion arbre pour ${objectId}:`, err)
-    }
-  }
 
   /** Prefix resolved from `repoPath`'s schema, number allocated in `targetRepo` — see
    *  RequirementsService.nextId (GH20). */

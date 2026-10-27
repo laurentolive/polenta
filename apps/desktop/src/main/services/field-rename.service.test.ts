@@ -58,8 +58,8 @@ beforeEach(async () => {
   reqIndex = new RequirementsIndexService(git)
   const testsIndex = new TestsIndexService(git)
   const historyService = new HistoryService(git, async () => ({ by: 'lolive' }), () => NOW)
-  const requirements = new RequirementsService(git, reqIndex, schemaStub, undefined, undefined, historyService)
-  const tests = new TestsService(git, testsIndex, schemaStub, undefined, undefined, historyService)
+  const requirements = new RequirementsService(git, reqIndex, schemaStub, undefined, historyService)
+  const tests = new TestsService(git, testsIndex, schemaStub, undefined, historyService)
   const campaigns = new CampaignsService(git, tests, undefined, undefined, historyService)
   service = new FieldRenameService(requirements, tests, campaigns)
 

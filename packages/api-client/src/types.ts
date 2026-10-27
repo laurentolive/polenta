@@ -349,7 +349,15 @@ export interface FieldVisibilityPref {
   collapsedFoldersWord?: string[]
   /** GH24 — nombre de colonnes figées (depuis la gauche) de la vue Tableau. Absent ⇒ 0. */
   freezeColCountExcel?: number
+  /** GH176 — colonnes du sélecteur de tests d'une campagne. Absent ⇒ celles de la vue Tableau. */
+  picker?: string[]
+  /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
+  showFoldersPicker?: boolean
 }
+
+/** GH176 — écriture partielle de `FieldVisibilityPref` : une clé absente est conservée telle quelle,
+ *  une clé à `null` est supprimée. */
+export type FieldVisibilityPatch = { [K in keyof FieldVisibilityPref]?: FieldVisibilityPref[K] | null }
 
 /** GH44 — un projet de « Mes projets » (espace serveur de l'utilisateur, version web). */
 export interface WebWorkspaceEntry {
@@ -733,7 +741,8 @@ export interface ApiClient {
   }
   pref: {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>
-    setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPref): Promise<void>
+    /** GH176 — fusionne `views` dans l'entrée existante (`null` = clé supprimée) ; ne remplace pas l'entrée. */
+    setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPatch): Promise<void>
   }
   /** GH74 — vue Suivi : exécution des scripts (bac à sable du main), drill-down, modèles. */
   suivi: {

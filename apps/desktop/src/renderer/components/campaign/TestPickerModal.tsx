@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { Settings } from 'lucide-react'
 import type { CampaignTestRun, ParamResolutionPreview, TestCase, TestRunStatus } from '@polenta/types'
 import { api } from '../../api'
 import { useProjectSchema, getTestTypeRefs } from '../../hooks/useProjectSchema'
@@ -101,6 +102,9 @@ export function TestPickerModal({
   const username = identityLogin ?? 'local'
 
   const [step, setStep] = useState<1 | 2>(1)
+  // GH176 — panneau ⚙️ des colonnes du sélecteur (onglet Tests, étape 1).
+  const [columnsOpen, setColumnsOpen] = useState(false)
+  const closeColumns = useCallback(() => setColumnsOpen(false), [])
   const [chosenTypeRef, setChosenTypeRef] = useState<string | null>(null)
   // Type par défaut : celui de la route s'il existe, sinon le premier type ayant des tests
   // proposés (ex. route filtrée par composant seul), sinon le premier type.
@@ -118,6 +122,8 @@ export function TestPickerModal({
   const [confirmAbandon, setConfirmAbandon] = useState(false)
   // GH64 — onglet « Depuis une campagne ».
   const [tab, setTab] = useState<'tests' | 'campaign'>('tests')
+  // GH176 — le panneau ⚙️ ne survit pas à un changement de type, d'onglet ou d'étape.
+  useEffect(() => { setColumnsOpen(false) }, [typeRef, tab, step])
   const [carrySources, setCarrySources] = useState(() => new Set(initial.carryState.sources))
   const [carryStatuses, setCarryStatuses] = useState(() => new Set<TestRunStatus>(initial.carryState.statuses))
   const [carryChecked, setCarryChecked] = useState(() => new Set(initial.carryState.checked))
@@ -263,7 +269,8 @@ export function TestPickerModal({
     if (isDirty()) setConfirmAbandon(true)
     else onCancel()
   }, [isDirty, onCancel, submitting])
-  useModalHotkeys(requestCancel, undefined, confirmAbandon)
+  // GH176 — panneau ⚙️ ouvert : `Échap` le ferme lui (cf. FieldConfigModal `layer="modal"`).
+  useModalHotkeys(requestCancel, undefined, confirmAbandon || columnsOpen)
   useModalHotkeys(() => setConfirmAbandon(false), undefined, !confirmAbandon)
 
   async function confirm() {
@@ -381,6 +388,17 @@ export function TestPickerModal({
                   className="input-field text-xs flex-1 min-w-[12rem]"
                 />
                 <FilterOptionsToggle options={filterOptions} onChange={setFilterOptions} />
+                {currentType && !identityPending && typeCandidates.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setColumnsOpen(v => !v)}
+                    title={t('system.fieldConfig.configureColumns')}
+                    className="text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
+                    data-testid="picker-columns-button"
+                  >
+                    <Settings size={14} />
+                  </button>
+                )}
               </div>
               <div className="flex-1 min-h-0 flex flex-col">
                 {currentType && !identityPending && (
@@ -399,6 +417,8 @@ export function TestPickerModal({
                       filter={filter}
                       filterOptions={filterOptions}
                       selection={selection}
+                      columnsOpen={columnsOpen}
+                      onColumnsClose={closeColumns}
                     />
                   )
                 )}

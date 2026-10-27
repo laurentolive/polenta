@@ -476,6 +476,8 @@ const InlineCell = memo(function InlineCell({
           onClick={e => e.stopPropagation()}
           className="w-full px-2 py-1 text-xs text-ink bg-surface border-0 outline-none"
         >
+          {/* GH165 — sans option vide, une valeur absente s'affiche comme la 1re valeur et ne peut pas être choisie. */}
+          {(!fieldDef.required || !value) && <option value="">—</option>}
           {(fieldDef.values ?? []).map(v => (
             <option key={v} value={v} title={fieldDef.valueLabels?.[v] ? v : undefined}>{fieldDef.valueLabels?.[v] ?? v}</option>
           ))}

@@ -20,8 +20,10 @@ import type { BrandInfo } from '../../shared/brand-types'
  *
  * GH60 (v5) : format d'objet YAML pur (et non plus `.md` + frontmatter), champs système complets,
  * exemples d'exigence et de test, `.polenta/trees/` et pierres tombales.
+ *
+ * GH149 (v6) : le statut des exemples vient des statuts du type (premier de la liste à la création).
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 5
+export const AGENTS_MD_TEMPLATE_VERSION = 6
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -82,7 +84,7 @@ projectId: ''
 branchId: ''
 objectTypeRef: root::exigence   # <nœud>::<type d'objet>, voir .polenta/schema.yaml
 title: Démarrage rapide
-status: draft                   # une valeur des statuts définis pour ce type
+status: draft                   # une valeur des statuts du type ; à la création, le premier de la liste
 version: 1
 fields:                         # champs définis par le type dans le schéma
   priority: high
@@ -103,7 +105,7 @@ projectId: ''
 branchId: ''
 objectTypeRef: root::test
 title: Mesure du temps de démarrage
-status: draft
+status: draft                   # idem : statuts du type dans le schéma
 version: 1
 preconditions: Batterie chargée à plus de 20 %
 equipment:

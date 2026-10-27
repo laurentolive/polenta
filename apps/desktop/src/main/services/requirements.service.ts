@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { renameFieldKeys } from '@polenta/types'
+import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
 import type { CreateRequirementDto, UpdateRequirementDto, TransitionRequirementDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
@@ -66,6 +66,11 @@ export class RequirementsService {
   }
 
   async create(repoPath: string, dto: CreateRequirementDto, workspaceDir?: string): Promise<Requirement> {
+    // GH149 — statut initial lu dans le schéma (premier statut du type), pas `draft` en dur.
+    const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
+    if (dto.status && isUnknownStatus(typeDef, dto.status)) {
+      throw new Error(`Statut inconnu pour le type ${dto.objectTypeRef} : "${dto.status}"`)
+    }
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
     const reqId = await this.nextId(repoPath, targetRepo, dto.objectTypeRef)
 
@@ -83,7 +88,7 @@ export class RequirementsService {
       branchId: '',
       objectTypeRef: dto.objectTypeRef,
       title: dto.title,
-      status: 'draft',
+      status: dto.status ?? initialStatus(typeDef),
       version: 1,
       fields: dto.fields ?? {},
       jiraLinks: [],

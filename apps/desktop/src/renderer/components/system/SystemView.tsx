@@ -30,6 +30,7 @@ import { api } from '../../api'
 import type { FieldVisibilityPref } from '@polenta/api-client'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { ParamRefProvider, useParamResolver } from '../../contexts/ParamRefContext'
+import { useStableCallback } from '../../hooks/useStableCallback'
 import { decodeProjectId } from '../../lib/projectId'
 import { RichTextToolbar } from './RichTextToolbar'
 import { ViewHeader } from '../layout/ViewHeader'
@@ -538,7 +539,9 @@ export function SystemView() {
       isLinkNavigationRef.current = false
       return
     }
-    setBackHistory([])
+    // GH170 — `prev` conservé s'il est déjà vide : un `[]` neuf re-rendait toute la vue (tableau
+    // compris) à chaque montage, ce qui doublait le coût du retour sur un onglet.
+    setBackHistory(prev => (prev.length === 0 ? prev : []))
     setPendingNavObjectId(null)
   }, [repoPath, effectiveNodeId, effectiveTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1333,6 +1336,26 @@ export function SystemView() {
     && !(linksPending && shownFields.some(f => f.startsWith('link::')))
     && !(matrixPending && shownFields.includes('coverageStatus'))
 
+  // GH170 — callbacks des vues Tableau / Document à identité stable : recréés à chaque rendu, ils
+  // re-rendaient toutes les cellules (mémoïsées) à chaque re-rendu de la vue, refetch compris.
+  const stableOpenComputedTarget = useStableCallback(openComputedTarget)
+  const stableLinkChange = useStableCallback(ws.invalidate)
+  const stableInlineEdit = useStableCallback(handleAutoInlineEdit)
+  const stableRenameNode = useStableCallback(handleRenameNode)
+  const stableRootChangeDnd = useStableCallback(handleRootChangeDnd)
+  const stableReopenDraft = useStableCallback(handleReopenDraft)
+  const stableChangeExcel = useStableCallback(handleChangeExcel)
+  const stableStepsChange = useStableCallback(handleWordViewStepsChange)
+  const stableEditOpen = useStableCallback((nodeId: string) => {
+    setEditingNodeId(nodeId)
+    setViewMode('edit')
+  })
+  const stableNavigateToObject = useStableCallback(navigateToObject)
+  const stableCreateItemObject = useStableCallback(createItemObject)
+  const stableCollapsedFoldersExcelChange = useStableCallback(handleCollapsedFoldersExcelChange)
+  const stableCollapsedFoldersWordChange = useStableCallback(handleCollapsedFoldersWordChange)
+  const stableFreezeColCountExcelChange = useStableCallback(handleFreezeColCountExcelChange)
+
   // ── Empty / loading states ────────────────────────────────────────────────
 
   if (schemaLoading) {
@@ -1546,12 +1569,13 @@ export function SystemView() {
         {effectiveType?.category !== 'campaign' && viewMode !== 'edit' && !viewReady && <ViewLoading />}
         {effectiveType?.category !== 'campaign' && viewMode === 'excel' && viewReady && (
           <ExcelView
+            key={typeKey ?? ''}
             root={root}
             typeDef={effectiveType}
             objects={displayObjects}
             visibleFields={shownFieldsExcel}
             computedColumns={computedColumnsMap}
-            onOpenComputedTarget={openComputedTarget}
+            onOpenComputedTarget={stableOpenComputedTarget}
             foldersHidden={!showFoldersExcel}
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
@@ -1561,39 +1585,37 @@ export function SystemView() {
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={ws.invalidate}
-            onInlineEdit={readOnly ? undefined : handleAutoInlineEdit}
-            onRenameNode={readOnly ? undefined : handleRenameNode}
-            onRootChange={readOnly ? undefined : handleRootChangeDnd}
-            onColumnsReorder={handleChangeExcel}
+            onLinkChange={stableLinkChange}
+            onInlineEdit={readOnly ? undefined : stableInlineEdit}
+            onRenameNode={readOnly ? undefined : stableRenameNode}
+            onRootChange={readOnly ? undefined : stableRootChangeDnd}
+            onColumnsReorder={stableChangeExcel}
             generateId={generateId}
             stepsByObjectId={stepsByObjectId}
-            onStepsChange={readOnly ? undefined : handleWordViewStepsChange}
-            onEditOpen={nodeId => {
-              setEditingNodeId(nodeId)
-              setViewMode('edit')
-            }}
-            onNavigateToObject={navigateToObject}
+            onStepsChange={readOnly ? undefined : stableStepsChange}
+            onEditOpen={stableEditOpen}
+            onNavigateToObject={stableNavigateToObject}
             filter={filter}
             filterOptions={filterOptions}
-            onItemNodeAdded={readOnly ? undefined : createItemObject}
+            onItemNodeAdded={readOnly ? undefined : stableCreateItemObject}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}
             collapsedFolders={collapsedFoldersExcel}
-            onCollapsedFoldersChange={handleCollapsedFoldersExcelChange}
+            onCollapsedFoldersChange={stableCollapsedFoldersExcelChange}
             freezeColCount={freezeColCountExcel}
-            onFreezeColCountChange={handleFreezeColCountExcelChange}
+            onFreezeColCountChange={stableFreezeColCountExcelChange}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'word' && viewReady && (
           <WordView
+            key={typeKey ?? ''}
             root={root}
             typeDef={effectiveType}
             objects={displayObjects}
             visibleFields={shownFieldsWord}
             computedColumns={computedColumnsMap}
-            onOpenComputedTarget={openComputedTarget}
+            onOpenComputedTarget={stableOpenComputedTarget}
             foldersHidden={!showFoldersWord}
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
@@ -1603,23 +1625,20 @@ export function SystemView() {
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={ws.invalidate}
-            onInlineEdit={readOnly ? undefined : handleAutoInlineEdit}
-            onRenameNode={readOnly ? undefined : handleRenameNode}
-            onReopenDraft={readOnly ? undefined : handleReopenDraft}
+            onLinkChange={stableLinkChange}
+            onInlineEdit={readOnly ? undefined : stableInlineEdit}
+            onRenameNode={readOnly ? undefined : stableRenameNode}
+            onReopenDraft={readOnly ? undefined : stableReopenDraft}
             stepsByObjectId={stepsByObjectId}
-            onStepsChange={readOnly ? undefined : handleWordViewStepsChange}
-            onEditOpen={nodeId => {
-              setEditingNodeId(nodeId)
-              setViewMode('edit')
-            }}
-            onNavigateToObject={navigateToObject}
+            onStepsChange={readOnly ? undefined : stableStepsChange}
+            onEditOpen={stableEditOpen}
+            onNavigateToObject={stableNavigateToObject}
             filter={filter}
             filterOptions={filterOptions}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             collapsedFolders={collapsedFoldersWord}
-            onCollapsedFoldersChange={handleCollapsedFoldersWordChange}
+            onCollapsedFoldersChange={stableCollapsedFoldersWordChange}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'edit' && (

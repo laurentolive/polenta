@@ -1,5 +1,5 @@
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
-import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
 import type { Candidate } from './LinkCombobox'
@@ -760,7 +760,9 @@ function ItemCard({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function WordView({
+// GH170 — mémoïsé : un re-rendu de SystemView sans changement de props (refetch en arrière-plan)
+// ne refait plus tout le document.
+export const WordView = memo(function WordView({
   root,
   typeDef,
   objects,
@@ -1049,4 +1051,4 @@ export function WordView({
       })()}
     </div>
   )
-}
+})

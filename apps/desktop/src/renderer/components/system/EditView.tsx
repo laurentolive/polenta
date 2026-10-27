@@ -115,6 +115,8 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
           onChange={e => { const v = e.target.value; set(v); onBlur(v) }}
           className={base}
         >
+          {/* GH165 — sans option vide, une valeur absente s'affiche comme la 1re valeur et ne peut pas être choisie. */}
+          {(!field.required || !localVal) && <option value="">—</option>}
           {opts.map(v => (
             <option key={v} value={v}>{v}</option>
           ))}

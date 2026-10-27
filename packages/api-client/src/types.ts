@@ -317,6 +317,10 @@ export interface IntegrationRemoteState {
 export type ResyncOutcome =
   | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
   | { outcome: 'set-aside'; branch: string }
+// GH173 — mirrors SyncService's AutoBranchOutcome.
+export type AutoBranchOutcome =
+  | { action: 'none' }
+  | { action: 'switched' | 'returned'; branch: string }
 
 export interface DeviceFlowSession {
   deviceCode: string
@@ -548,6 +552,9 @@ export interface ApiClient {
     resyncIntegration(repoPath: string, branch: string): Promise<ResyncOutcome>
     /** GH39: one auto-pull tick — fetch, fast-forward if clean, push retry if the integration is only ahead. */
     autoSync(repoPath: string, integrationBranch: string): Promise<IntegrationRemoteState>
+    /** GH173: local only — moves pending changes on the integration onto `dev-auto`, or goes back
+     *  to the integration from an idle `dev-auto` (and deletes it). */
+    settleAutoBranch(repoPath: string, integrationBranch: string): Promise<AutoBranchOutcome>
     /** GH39: true when `branch` has no commit absent from `into`. */
     isMergedInto(repoPath: string, branch: string, into: string): Promise<boolean>
     log(repoPath: string, limit?: number): Promise<CommitEntry[]>

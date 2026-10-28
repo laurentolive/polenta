@@ -134,6 +134,8 @@ export function renderStaticDrawio(
   /** GH34 — appelé une fois : `true` quand le diagramme est rendu et mis en page, `false` en
    *  erreur (badge d'erreur affiché). Sert à la capture en image pour l'export Word. */
   onDone?: (ok: boolean) => void,
+  /** GH178 — version git du fichier `.drawio` à afficher (vues de diff) ; absent = working tree. */
+  at?: string | null,
 ): () => void {
   const { path, nodeId, width, height, crop } = readAttrs(placeholder)
   let done = false
@@ -187,7 +189,7 @@ export function renderStaticDrawio(
   const run = async () => {
     let pages
     try {
-      pages = await api.drawio.read(repoPath, path)
+      pages = await api.drawio.read(repoPath, path, at)
     } catch {
       pages = null
     }

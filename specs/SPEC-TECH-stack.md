@@ -101,7 +101,7 @@ repose sur `isApproval`).
 | État serveur | TanStack Query | 5.x | Cache, invalidation, optimistic updates |
 | Formulaires | Zod (sans react-hook-form) | 3.x | Validation schema-driven — pas de `react-hook-form` (T130 ; il n'était utilisé que par `apps/web`, supprimé par GH44) |
 | **Git engine** | isomorphic-git | 1.25.x | Pur JS — clone, commit, push, pull, merge, branch |
-| Fusion 3-voies (GH37) | `@polenta/merge-core` (package du monorepo) + diff3 | — / 0.0.3 | Logique pure de résolution des conflits : fusion par champ des objets, par lien (`links.yaml`) / par paramètre (`parameters.yaml`), hunks de lignes avec **le même `diff3`** qu'isomorphic-git (un fichier est en conflit ici exactement quand il l'est pour `git.merge`), marqueurs de conflit nommés, renumérotation. Importé par le main et le renderer (source TS aliasée, bundlée dans le main comme `@polenta/types`), seul package testé par **vitest** (`pnpm --filter @polenta/merge-core test`). Cf. §6 |
+| Fusion 3-voies (GH37) | `@polenta/merge-core` (package du monorepo) + diff3 | — / 0.0.3 | Logique pure de résolution des conflits : fusion par champ des objets, par lien (`links.yaml`) / par paramètre (`parameters.yaml`), hunks de lignes avec **le même `diff3`** qu'isomorphic-git (un fichier est en conflit ici exactement quand il l'est pour `git.merge`), marqueurs de conflit nommés, renumérotation. Importé par le main et le renderer (source TS aliasée, bundlée dans le main comme `@polenta/types`), seul package testé par **vitest** (`pnpm --filter @polenta/merge-core test`). Cf. §6. Les vues de diff en mode Rendu (GH178) réutilisent ses unités (`unitValue`, `deepEqual`) ; leur diff mot à mot est une LCS maison (`renderer/lib/wordDiff.ts`), **sans** dépendance de diff ajoutée (cf. §6.5) |
 | Éditeur de code (GH37) | CodeMirror 6 (`@codemirror/state`, `view`, `commands`, `language`, `lang-yaml`) | 6.x | Panneaux Raw de l'éditeur de résolution des conflits : décorations de lignes, widgets « Prendre gauche/droite », défilement synchronisé. Monaco écarté (lourd, workers à configurer sous Electron). Chunk de la route `/merge-resolve` seulement (≈ 800 kB, chargé à la demande) |
 | **Index mémoire** | Map + MiniSearch | 7.x | Requêtes, filtres, full-text — zéro DB |
 | **Scripts de la vue Suivi** (GH74) | QuickJS (`quickjs-emscripten-core` + `@jitl/quickjs-wasmfile-release-sync`) | 0.32.0 | Scripts de données et transformations JS du client exécutés dans un bac à sable wasm (mémoire plafonnée, délai, pile), dans un `worker_threads` par process (desktop, serveur web, MCP) — remplace AlaSQL. Cf. [SPEC-DASHBOARDS.md](SPEC-DASHBOARDS.md) §3 |
@@ -460,6 +460,37 @@ détection (`instanceof` sur la classe typée) en même temps qu'il peuple `conf
 - mode Rendu des campagnes, liens, paramètres, arbres et `.drawio` (Raw seulement).
 
 Les fichiers `.drawio` (XML texte) bénéficient du merge git ligne par ligne — rarement en conflit grâce aux IDs de nœuds stables.
+
+### 6.5 Vues de diff en mode Rendu (GH178)
+
+Hors résolution de conflits, les trois vues de diff (`/version-diff`, `/diff` working tree et
+`/diff?commitSha`) partagent `components/diff/FileDiffView` : bascule Raw (diff ligne à ligne,
+`lib/lineDiff.ts`) / Rendu, préférences par poste (`lib/diffPrefs.ts`, Rendu par défaut).
+Spécification fonctionnelle : `specs/GH178.md`.
+
+- **Lecture à une version** : `readFileAt(repoPath, ref, filepath)` (`read-file-at.util.ts`, `ref`
+  null = working tree, chemin normalisé, garde hors repo). Les réponses de `sync:diff`,
+  `sync:commit-diff` et `sync:diff-file-between` portent `oldRef` / `newRef` (SHA lus, `null` =
+  working tree) et `oldMissing` / `newMissing`. `drawio:read` et `image:read` acceptent un 3ᵉ
+  argument `ref` ; `schema:get-at(repoPath, ref)` lit `.polenta/schema.yaml` à la ref (cache par
+  commit borné). Chaque colonne lit ainsi ses diagrammes, images et schéma à sa propre version.
+- **Rendu objet** (exigence, test) : grille à deux colonnes dans un seul conteneur défilant, une
+  rangée par unité (`lib/objectUnits.ts` ; `id`, `projectId`, `branchId`, `objectTypeRef` et
+  `history` exclus). Type résolu dans le schéma Après, puis Avant, puis courant ; libellés de la
+  colonne Avant d'abord dans son propre schéma.
+- **Diff mot à mot** : jetons (mots, espaces, ponctuation), LCS après retrait du préfixe et du
+  suffixe communs, au-delà de 4 000 jetons tout le milieu est marqué sans détail. Un richtext est
+  comparé sur son **DOM rendu** (`StaticRichTextViewer` prop `diffAgainst` : l'autre version est
+  rendue dans un `<template>` inerte, puis `<del>` / `<ins>` posés nœud texte par nœud texte), pas
+  sur le markdown source.
+- **Étapes** : `alignSteps` (`lib/align.ts`), LCS sur action + résultat attendu, puis appariement
+  par position entre deux ancres.
+- **Blocs média** (`lib/mediaDiff.ts`, `useMediaDiff`) : blocs drawio / image alignés par chemin ;
+  encadrés si ajoutés, retirés, de référence différente ou de contenu référencé différent (page
+  ciblée, image) entre les deux versions. Une unité richtext dont un bloc est encadré compte comme
+  modifiée.
+- **Fichier `.drawio`** : pages alignées par nom (par nom + id si doublon), rendues par le viewer
+  statique à la version de chaque colonne ; diff au niveau de la page.
 
 ---
 

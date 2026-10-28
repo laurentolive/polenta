@@ -1,16 +1,15 @@
-import { randomUUID } from 'crypto'
-import { renameFieldKeys } from '@polenta/types'
+import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
-import type { TreeService } from './tree.service'
 import { RevalidationService } from './revalidation.service'
 import { omitAuditFields } from './audit-fields.util'
-import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
+import { findObjectTypeDef } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
 
 export class TestsService {
@@ -18,7 +17,6 @@ export class TestsService {
     private readonly git: GitService,
     private readonly testsIndex: TestsIndexService,
     private readonly schema: SchemaService,
-    private readonly tree?: TreeService,
     private readonly revalidation?: RevalidationService,
     private readonly history?: HistoryService,
   ) {}
@@ -38,6 +36,11 @@ export class TestsService {
   }
 
   async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
+    // GH149 — cf. RequirementsService.create : statut initial lu dans le schéma.
+    const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
+    if (dto.status && isUnknownStatus(typeDef, dto.status)) {
+      throw new Error(`Statut inconnu pour le type ${dto.objectTypeRef} : "${dto.status}"`)
+    }
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
     const testId = await this.nextTestId(repoPath, targetRepo, dto.objectTypeRef)
 
@@ -53,7 +56,7 @@ export class TestsService {
       branchId: '',
       objectTypeRef: dto.objectTypeRef,
       title: dto.title,
-      status: 'draft',
+      status: dto.status ?? initialStatus(typeDef),
       preconditions: dto.preconditions ?? '',
       equipment: dto.equipment ?? [],
       steps: dto.steps,
@@ -68,13 +71,16 @@ export class TestsService {
     }
 
     const created = await this.persist(repoPath, targetRepo, null, test)
-    await this.appendToTree(targetRepo, dto.objectTypeRef, created.id, created.title)
     return created
   }
 
   // T159 — cf. RequirementsService : sérialise les read-modify-write concurrents sur le
   // fichier du cas de test.
-  async update(repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
+  async update(
+    repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string,
+    /** GH150 — `update_tests` (MCP) : une clé de `fields` à `null` retire le champ. */
+    opts: { removeNullFields?: boolean } = {},
+  ): Promise<TestCase> {
     const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
@@ -92,7 +98,9 @@ export class TestsService {
         ...(dto.equipment && { equipment: dto.equipment }),
         ...(dto.steps && { steps: dto.steps }),
         ...(dto.postconditions !== undefined && { postconditions: dto.postconditions }),
-        fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
+        fields: opts.removeNullFields
+          ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
+          : { ...(existing.fields as object), ...(dto.fields ?? {}) },
       })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(
@@ -240,23 +248,6 @@ export class TestsService {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
-
-  /** See RequirementsService.appendToTree — same reasoning, same tree format (T138). */
-  private async appendToTree(repoPath: string, objectTypeRef: string, objectId: string, title: string): Promise<void> {
-    if (!this.tree) return
-    try {
-      const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
-      const location = schema ? resolveObjectTypeLocation(schema, objectTypeRef) : null
-      if (!location || location === 'unresolvable') return
-
-      const { nodeName, typeDef } = location
-      const current = await this.tree.get(repoPath, nodeName, typeDef.name)
-      const node = { id: randomUUID(), kind: 'item' as const, name: title, objectId, children: [] }
-      await this.tree.save(repoPath, { nodeId: nodeName, typeId: typeDef.name, root: [...current.root, node] })
-    } catch (err) {
-      console.error(`Erreur insertion arbre pour ${objectId}:`, err)
-    }
-  }
 
   /** Prefix resolved from `repoPath`'s schema, number allocated in `targetRepo` — see
    *  RequirementsService.nextId (GH20). */

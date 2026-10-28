@@ -16,7 +16,7 @@ import { SchemaService } from './services/schema.service'
 import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
-import { TreeService } from './services/tree.service'
+import { TreeService, indexObjectLister } from './services/tree.service'
 import { BaselineService } from './services/baseline.service'
 import { PolentaRepoService } from './services/polenta-repo.service'
 import { WorkspaceTreeService } from './services/workspace-tree.service'
@@ -80,13 +80,13 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     if (relPath === '.polenta/schema.yaml' || relPath === '*') schema.invalidate(repoPath)
   })
   const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)
-  const tree = new TreeService()
+  const tree = new TreeService(indexObjectLister(reqIndex, testsIndex))
   // GH77 — historique des champs suivis ; `by` = compte du projet (login forge, sinon `local`).
   const history = new HistoryService(git, async repoPath => ({ by: await auth.projectUsername(repoPath) }))
   // T172 — marquage needsRevalidation des éléments liés quand un élément quitte l'approbation.
   const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
-  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation, history)
-  const tests = new TestsService(git, testsIndex, schema, tree, revalidation, history)
+  const requirements = new RequirementsService(git, reqIndex, schema, revalidation, history)
+  const tests = new TestsService(git, testsIndex, schema, revalidation, history)
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const reviews = new ReviewsService(git)
   // T171 — base de paramètres ; marque les éléments approuvés impactés via T172, et résout les

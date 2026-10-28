@@ -1457,7 +1457,9 @@
     "localTitle": "Modifications locales (vs HEAD)",
     "localComputedAt": "Calculée à {{time}}",
     "refresh": "Rafraîchir",
-    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines."
+    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines.",
+    "statementDiff": "Énoncé : avant / après",
+    "howToRead": "Chaque élément modifié est la cause de l'analyse ; les éléments de son arbre (liés en aval, puis en amont) sont à traiter un par un : statut, commentaire, et levée du flag « Impact à vérifier »."
   },
   "graphPage": {
     "tabTitle": "Arbre de versions — {{repoName}}",
@@ -1499,6 +1501,33 @@
   },
   "diffPage": {
     "noDifference": "Aucune différence"
+  },
+  "diffView": {
+    "raw": "Raw",
+    "rendered": "Rendu",
+    "hideUnchanged": "Masquer les inchangés",
+    "unchangedCount_one": "{{count}} champ inchangé",
+    "unchangedCount_other": "{{count}} champs inchangés",
+    "before": "Avant",
+    "after": "Après",
+    "workingTree": "working tree",
+    "absentFile": "Fichier absent de cette version",
+    "absentUnit": "— absent",
+    "renderUnavailable": "Rendu indisponible pour ce contenu — voir Raw",
+    "stepAction": "Action",
+    "stepExpected": "Résultat attendu",
+    "stepNumber": "Étape {{n}}",
+    "page": "Page « {{name}} »",
+    "absentPage": "— page absente",
+    "unchangedPages_one": "{{count}} page inchangée",
+    "unchangedPages_other": "{{count}} pages inchangées",
+    "unit": {
+      "title": "Titre",
+      "status": "Statut",
+      "preconditions": "Préconditions",
+      "steps": "Étapes",
+      "postconditions": "Postconditions"
+    }
   },
   "versionDiffPage": {
     "selectFileHint": "Sélectionnez un fichier dans le panel Version"

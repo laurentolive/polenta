@@ -142,10 +142,10 @@ ponctuels) ni les autres services hors périmètre (`ReviewsService`, `Traceabil
 `BaselineService`, `InterfaceComplianceService`, `SavedQueriesService`,
 `DashboardSeedService`).
 
-**T130 : `TreeService` EST construit** (T138, `container.ts` du serveur MCP) — retiré de la
-liste "hors périmètre" ci-dessus où il figurait par erreur. Sans lui, les objets créés par ce
-serveur MCP sont écrits sur disque mais n'apparaissent jamais dans SystemView/ExcelView (arbre
-`.polenta/trees/<nœud>/<type>.yaml` jamais mis à jour).
+**GH180 : `TreeService` n'est plus construit.** T138 l'avait ajouté pour inscrire chaque objet
+créé dans `.polenta/trees/<nœud>/<type>.yaml`, faute de quoi SystemView/ExcelView ne l'affichaient
+pas. Depuis GH180, l'app complète l'arbre à la lecture avec les objets non classés : créer un objet
+n'écrit plus l'arbre, côté app comme côté MCP (`SPEC-ELECTRON-DESKTOP.md` §22.4).
 
 Synchrone (pas de `createContainer()` async) — pas de fenêtre à ouvrir, pas d'attente
 `app.whenReady()`.
@@ -450,6 +450,39 @@ lignes).
 **Rafraîchissement de l'app** : cf. `SPEC-DASHBOARDS.md` §8.2.
 
 ---
+
+### 4.6 Modification d'objets et base de paramètres (GH150)
+
+`tools/update.tools.ts`, `tools/parameters.tools.ts`. Même contrat que l'import massif (§4.2) :
+`dryRun` par défaut `true`, écriture en série, best-effort, erreurs par entrée.
+
+#### `update_requirements` / `update_tests`
+
+Entrée `{ entries: [{ id, title?, status?, fields? }], dryRun? }` ; pour un test, en plus
+`preconditions`, `postconditions`, `steps`, `equipment` (remplacés en bloc). `fields` est fusionné
+avec l'existant, une clé à `null` retire le champ (`mergeFields`, `field-merge.util.ts`).
+
+Validation (`update-validation.util.ts::planUpdate`, première règle en échec) : type de l'objet connu
+(`'unresolvable'` accepté sans contrôle de champs), nœud pas `readonly`, `status` parmi les statuts
+du type, clés de `fields` déclarées, valeurs d'`enum` / `multi_enum` dans `values`, et pour les seuls
+champs modifiés : `required` non vidé, `validator: EARS` conforme.
+
+`dryRun: true` → `preview: [{ index, id, changes: { <champ>: { before, after } } }]` (champs de
+`fields` notés `fields.<nom>`). `dryRun: false` → contenu écrit par `update()` du service
+(`removeNullFields`), puis statut : `RequirementsService.transition()` pour une exigence (version +1
+en sortie d'approbation, revalidation T172), `TestsService.update({ status })` pour un test (version
+non incrémentée : #164). Une entrée sans changement est renvoyée `changed: false` sans écriture ;
+une erreur sur le statut après écriture du contenu est rapportée `partial: true`.
+`modificationComment` n'est pas exposé (non conservé par les services : #163).
+
+#### `list_parameters` / `set_parameters` / `delete_parameter`
+
+Branchés sur `ParametersService` (instancié dans le conteneur MCP, sans `ReqRefsService`).
+`repo` = nom de montage (`repoName` de `list_parameters`), absent = repo ouvert ; repo en lecture seule
+→ `READONLY_REPO` (`isError`). `set_parameters` crée ou modifie (`create` / `update` du service :
+clés triées, marquage des éléments approuvés si `value` / `unit` changent) ; en `dryRun`, `wouldMark`
+liste les éléments approuvés qui seraient marqués. `delete_parameter` est refusé tant qu'un élément
+non terminal référence le paramètre (`deleted: false` + `usages`).
 
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 

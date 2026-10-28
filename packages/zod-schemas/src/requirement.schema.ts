@@ -13,6 +13,8 @@ export const JiraLinkSchema = z.object({
 export const CreateRequirementSchema = z.object({
   objectTypeRef: z.string().min(1),
   title: z.string().min(1).max(500),
+  /** GH149 — facultatif : à défaut, premier statut du type dans le schéma. */
+  status: z.string().min(1).optional(),
   fields: z.record(z.unknown()).default({}),
 })
 

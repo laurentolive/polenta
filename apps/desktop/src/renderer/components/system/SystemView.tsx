@@ -165,6 +165,8 @@ export function SystemView() {
     qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
     qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
     qc.invalidateQueries({ queryKey: ['links-objects'] }) // GH105 — candidats du workspace
+    // GH180 — le nom d'un élément d'arbre est le titre de son objet, lu au chargement de l'arbre.
+    qc.invalidateQueries({ queryKey: ['tree', repoPath] })
   }, [qc, repoPath])
 
   // T172 — un élément qui quitte l'approbation marque `needsRevalidation` ses éléments liés,

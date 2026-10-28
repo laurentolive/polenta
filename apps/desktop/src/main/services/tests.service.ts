@@ -89,11 +89,17 @@ export class TestsService {
       // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
+      const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
+      // GH164 — un test approuvé qui quitte ce statut voit sa version incrémentée, comme une
+      // exigence (`RequirementsService.transition`, T150) : même règle quel que soit le chemin.
+      const wasApproved = !!typeDef?.statuses?.find(s => s.name === existing.status)?.isApproval
+      const statusChanged = !!dto.status && dto.status !== existing.status
       const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         ...(dto.title && { title: dto.title }),
         ...(dto.objectTypeRef && { objectTypeRef: dto.objectTypeRef }),
         ...(dto.status && { status: dto.status }),
+        ...(wasApproved && statusChanged ? { version: (existing.version ?? 0) + 1 } : {}),
         ...(dto.preconditions !== undefined && { preconditions: dto.preconditions }),
         ...(dto.equipment && { equipment: dto.equipment }),
         ...(dto.steps && { steps: dto.steps }),
@@ -103,8 +109,7 @@ export class TestsService {
           : { ...(existing.fields as object), ...(dto.fields ?? {}) },
       })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
-      const leftApproval = !!dto.status && RevalidationService.leavesApproval(
-        await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, dto.status)
+      const leftApproval = !!dto.status && RevalidationService.leavesApproval(typeDef, existing.status, dto.status)
       return { updated, leftApproval }
     })
     // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).

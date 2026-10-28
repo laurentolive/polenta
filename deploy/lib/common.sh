@@ -313,8 +313,9 @@ resolve_instance() {
 }
 
 # Adresses publiques de l'hôte (source de la route par défaut).
-host_ipv4() { ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n1; }
-host_ipv6() { ip -6 route get 2606:4700:4700::1111 2>/dev/null | sed -n 's/.* src \([0-9a-f:]*\).*/\1/p' | head -n1; }
+# Pas de route (hôte sans IPv6, réseau absent) : vide, jamais une erreur sous pipefail (status --json).
+host_ipv4() { ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n1 || true; }
+host_ipv6() { ip -6 route get 2606:4700:4700::1111 2>/dev/null | sed -n 's/.* src \([0-9a-f:]*\).*/\1/p' | head -n1 || true; }
 
 # GH63 — verdict DNS de $1 pour cet hôte, sans rien arrêter (dns check --json, check_dns_points_here) :
 # DNS_VERDICT = ok | no-resolve | elsewhere | aaaa-mismatch, DNS_MESSAGE (français), DNS_A / DNS_AAAA

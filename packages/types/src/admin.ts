@@ -52,6 +52,7 @@ export type OperationId =
   | 'host.setup'
   | 'fail2ban.unban'
   | 'fail2ban.status'
+  | 'firewall.status'
   | 'host.reboot'
   | 's3.rotate'
   | 's3.purge'

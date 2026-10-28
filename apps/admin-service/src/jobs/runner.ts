@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { JobState } from '@polenta/types'
+import type { AgentAction, AgentClient } from '../agent-client'
 import { redact } from '../secrets/redact'
 import type { JobRecord, JobStore } from './store'
 import { writeAtomic } from './store'
@@ -91,6 +92,25 @@ export interface RunnerOptions {
   pollMs?: number
   /** Valeurs à masquer en plus des motifs (jetons connus du service). */
   secretValues?: () => string[]
+  /** Délai de retour de l'hôte après redémarrage (REBOOT_WAIT_MIN, 15 min par défaut). */
+  rebootWaitMs?: number
+  rebootPollMs?: number
+  /** Lecture du boot_id (tests). */
+  bootId?: () => string
+}
+
+/** Message lisible d'une erreur de l'agent. */
+function agentMessage(error: string | undefined): string {
+  if (!error) return "échec de l'agent hôte"
+  if (error.startsWith('module-absent:')) return `module « ${error.slice(14)} » non installé sur cet hôte (#62)`
+  const known: Record<string, string> = {
+    'ssh-hardening-confirmation-required': 'le durcissement SSH est actif : confirmation explicite requise (sshHardeningConfirmed)',
+    locked: 'une autre opération est en cours (verrou de l\'hôte)',
+    'agent-absent': 'agent hôte absent',
+    invalid: "requête refusée par l'agent hôte",
+    'setup-failed': 'polenta-host setup a échoué (voir le journal)',
+  }
+  return known[error] ?? error
 }
 
 export interface StartArgs {
@@ -103,6 +123,10 @@ export interface StartArgs {
 export class JobRunner {
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly partial = new Map<string, { out: string; err: string }>()
+
+  private boot(): string {
+    return (this.opts.bootId ?? bootId)()
+  }
 
   constructor(
     private readonly store: JobStore,
@@ -152,7 +176,7 @@ export class JobRunner {
     })
     job.pid = child.pid
     job.procStart = child.pid ? procStart(child.pid) : undefined
-    job.bootId = bootId()
+    job.bootId = this.boot()
     job.state = 'running'
     job.startedAt = new Date().toISOString()
     job.rawOffsets = { out: 0, err: 0 }
@@ -161,10 +185,111 @@ export class JobRunner {
     this.follow(job.id, args.oneTime)
   }
 
+  /**
+   * Opération exécutée par l'agent hôte (Sprint 3) : journal relayé (filtré), réponse → état. Pas de
+   * processus local : un redémarrage du service pendant l'action la passe à `interrupted`.
+   */
+  startAgent(job: JobRecord, args: { action: AgentAction; params: Record<string, unknown>; actor: string; agent: AgentClient }): void {
+    job.state = 'running'
+    job.startedAt = new Date().toISOString()
+    job.bootId = this.boot()
+    if (job.steps[0]) job.steps[0].state = 'running'
+    this.store.save(job)
+    const secrets = this.opts.secretValues?.() ?? []
+    args.agent
+      .request(args.action, args.params, args.actor, (line) => {
+        const cur = this.store.get(job.id)
+        if (!cur) return
+        cur.logSize += this.store.appendLog(job.id, [{ s: 'out', m: redact(line, secrets) }])
+        this.store.save(cur)
+      })
+      .then((r) => {
+        const cur = this.store.get(job.id) ?? job
+        if (r.ok) {
+          if (r.result) {
+            this.store.writeResult(job.id, r.result)
+            cur.result = r.result
+          }
+          cur.state = 'succeeded'
+        } else {
+          const code = typeof r.code === 'number' ? r.code : 1
+          cur.state = stateForExit(code === 0 ? 1 : code)
+          cur.error = { code, cause: EXIT_CAUSES[code] ?? r.error ?? 'general', message: agentMessage(r.error) }
+        }
+        cur.endedAt = new Date().toISOString()
+        for (const step of cur.steps) step.state = cur.state === 'succeeded' ? 'done' : step.state === 'running' ? 'failed' : step.state
+        this.store.save(cur)
+        this.opts.onFinish(cur)
+      })
+  }
+
+  /**
+   * Redémarrage de l'hôte (design §6.6) : le travail passe à `rebooting` AVANT l'appel à l'agent ; il
+   * réussit quand le `boot_id` a changé (vu au démarrage du service, après le retour de l'hôte), échoue
+   * avec la consigne console si l'hôte n'est pas revenu dans le délai.
+   */
+  startReboot(job: JobRecord, args: { actor: string; agent: AgentClient }): void {
+    job.state = 'rebooting'
+    job.startedAt = new Date().toISOString()
+    job.bootId = this.boot()
+    if (job.steps[0]) job.steps[0].state = 'running'
+    this.store.save(job)
+    this.store.appendLog(job.id, [{ s: 'out', m: "redémarrage demandé à l'agent hôte" }])
+    args.agent.request('host.reboot', {}, args.actor).then((r) => {
+      const cur = this.store.get(job.id) ?? job
+      if (!r.ok) {
+        cur.state = 'failed'
+        cur.endedAt = new Date().toISOString()
+        cur.error = { code: r.code ?? 1, cause: r.error ?? 'general', message: agentMessage(r.error) }
+        this.store.save(cur)
+        this.opts.onFinish(cur)
+        return
+      }
+      this.followReboot(job.id)
+    })
+  }
+
+  private followReboot(id: string): void {
+    const check = () => {
+      const job = this.store.get(id)
+      if (!job || job.state !== 'rebooting') return this.unfollow(id)
+      if (job.bootId && job.bootId !== this.boot()) {
+        this.unfollow(id)
+        job.state = 'succeeded'
+        job.endedAt = new Date().toISOString()
+        job.result = { previousBootId: job.bootId, bootId: this.boot() }
+        for (const step of job.steps) step.state = 'done'
+        this.store.appendLog(job.id, [{ s: 'out', m: "hôte redémarré (nouveau boot_id)" }])
+        this.store.save(job)
+        this.opts.onFinish(job)
+        return
+      }
+      const waited = Date.now() - Date.parse(job.startedAt ?? job.createdAt)
+      if (waited > (this.opts.rebootWaitMs ?? 15 * 60_000)) {
+        this.unfollow(id)
+        job.state = 'failed'
+        job.endedAt = new Date().toISOString()
+        job.error = {
+          code: -1,
+          cause: 'reboot-timeout',
+          message: "l'hôte n'est pas revenu dans le délai : ouvrez la console (KVM / VNC) de l'hébergeur, RUNBOOK A8",
+        }
+        this.store.save(job)
+        this.opts.onFinish(job)
+      }
+    }
+    this.timers.set(id, setInterval(check, this.opts.rebootPollMs ?? 5000))
+    check()
+  }
+
   /** Reprise au démarrage du service (design §5.4). */
   recover(oneTimeFor: (job: JobRecord) => string[][] | undefined): void {
-    const boot = bootId()
+    const boot = this.boot()
     for (const job of this.store.list()) {
+      if (job.state === 'rebooting') {
+        this.followReboot(job.id)
+        continue
+      }
       if (job.state !== 'running' && job.state !== 'queued') continue
       const done = fs.existsSync(path.join(this.store.jobDir(job.id), 'exit.code'))
       if (job.state === 'running' && (done || (job.bootId === boot && alive(job.pid, job.procStart)))) {

@@ -214,12 +214,14 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get('/me', async (req): Promise<AdminMe> => {
     const p = principal(req)
     const settings = hostSettings(cfg)
+    const agent = await deps.agent.state()
     return {
       level: p.level,
       instance: p.instance,
       hostName: cfg.hostName,
-      agent: deps.agent.state(),
-      modules: settings.modules,
+      agent,
+      // Modules déclarés par l'agent (état réel) ; sans agent, ceux de host.env (#62).
+      modules: { ...settings.modules, ...(agent === 'up' ? ((await deps.agent.modules()) ?? {}) : {}) },
       caddyMode: settings.caddyMode,
     }
   })
@@ -376,18 +378,27 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         throw new HttpError(fresh.status === 502 ? 502 : fresh.status, 'forbidden', 'droit propriétaire non confirmé par la forge')
       }
     }
-    // Pas d'attente entre ce contrôle et la création : aucun autre travail ne peut s'intercaler.
-    if (def.mutating) {
+    const lockCheck = () => {
+      if (!def.mutating) return
       const running = runningJobInfo()
       if (running) {
         refuse(req, def.id, target, 'locked')
         throw new HttpError(409, 'locked', 'une autre opération est en cours', { runningJob: running })
       }
     }
-    if (def.agent && deps.agent.state() !== 'up') {
-      refuse(req, def.id, target, 'agent-absent')
-      throw new HttpError(503, 'agent-absent', "agent hôte absent : opération indisponible (polenta-host en SSH reste possible)")
+    lockCheck()
+    if (def.agent) {
+      if ((await deps.agent.state()) !== 'up') {
+        refuse(req, def.id, target, 'agent-absent')
+        throw new HttpError(503, 'agent-absent', "agent hôte absent : opération indisponible (polenta-host en SSH reste possible)")
+      }
+      if (def.module && !(await deps.agent.modules())?.[def.module]) {
+        refuse(req, def.id, target, `module-absent:${def.module}`)
+        throw new HttpError(422, 'module-absent', `module « ${def.module} » non actif sur cet hôte (HARDEN_HOST / HOST_MODULES) : rien n'est installé depuis l'interface`)
+      }
     }
+    // Revérifié sans attente avant la création : aucun autre travail ne peut s'intercaler.
+    lockCheck()
     const now = new Date().toISOString()
     const auditParams = pickAudit(def, params.params)
     const job: JobRecord = {
@@ -407,7 +418,10 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }
     store.create(job)
     audit.write({ actor: p.login, actorInstance: p.instance, ip: p.ip, origin: 'ui', operation: def.id, target, params: auditParams, jobId: job.id, result: 'accepted' })
-    runner.start(job, { script: def.script, argv: job.argv, actor: `${p.login}@${p.instance}`, oneTime: def.oneTime })
+    const actor = `${p.login}@${p.instance}`
+    if (def.agent === 'host.reboot') runner.startReboot(job, { actor, agent: deps.agent })
+    else if (def.agent) runner.startAgent(job, { action: def.agent, params: params.params, actor, agent: deps.agent })
+    else runner.start(job, { script: def.script, argv: job.argv, actor, oneTime: def.oneTime })
     return reply.status(202).send({ jobId: job.id })
   })
 

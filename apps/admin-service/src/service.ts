@@ -3,7 +3,7 @@
  * de travail, rétention quotidienne, expiration des secrets à usage unique.
  */
 import type { FastifyInstance } from 'fastify'
-import { absentAgent, type AgentClient } from './agent-client'
+import { SocketAgent, type AgentClient } from './agent-client'
 import { buildApp, auditFinish } from './app'
 import { AuditLog } from './audit'
 import { ForgeOwnerChecker } from './auth/forge-owner'
@@ -22,6 +22,8 @@ export interface ServiceOverrides {
   agent?: AgentClient
   instances?: () => InstanceInfo[]
   pollMs?: number
+  rebootPollMs?: number
+  bootId?: () => string
   now?: () => number
 }
 
@@ -33,7 +35,11 @@ export function createService(cfg: AdminConfig, o: ServiceOverrides = {}): Fasti
     root: cfg.root,
     pollMs: o.pollMs,
     onFinish: (job) => auditFinish(audit, job),
+    rebootWaitMs: cfg.rebootWaitMs,
+    rebootPollMs: o.rebootPollMs,
+    bootId: o.bootId,
   })
+  const agent = o.agent ?? new SocketAgent(cfg.agentSocket)
   runner.recover((job) => REGISTRY.get(job.operation)?.oneTime)
   const app = buildApp({
     cfg,
@@ -49,7 +55,7 @@ export function createService(cfg: AdminConfig, o: ServiceOverrides = {}): Fasti
     }),
     lock: new HostLock(cfg.root, o.lockProbe ?? new FlockProbe(cfg.root)),
     limiter: new FailureLimiter(10, 60_000, o.now),
-    agent: o.agent ?? absentAgent,
+    agent,
     instances: o.instances,
   })
   store.purge(Date.now(), cfg.retentionDays, cfg.retentionCount)

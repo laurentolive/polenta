@@ -47,7 +47,9 @@ services:
       EDGE_NETWORK: ${EDGE_NETWORK:-}
     volumes:
       - /opt/polenta:/opt/polenta
-      # Agent hôte (Sprint 3) : socket monté quand l'agent est installé (surcharge docker-compose.agent.yml).
+      # Agent hôte (host-agent/install-agent.sh) : son socket seul vit dans /run/polenta ; agent non
+      # installé = dossier vide, agent « absent ».
+      - /run/polenta:/run/polenta:ro
     networks: [polenta-admin-net, docker-proxy-net]
     read_only: true
     tmpfs: ["/tmp"]

@@ -5,6 +5,7 @@
  * indisponibles tant que l'agent est absent (S3) ; opérations sensibles (S5) absentes du catalogue.
  */
 import type { AdminLevel, OperationId } from '@polenta/types'
+import type { AgentAction } from '../agent-client'
 import { v, type Validator } from '../validators'
 
 export interface ParamDef {
@@ -24,8 +25,10 @@ export interface OperationDef {
   /** `name` : nom exact de la cible ; `simple` : `true` ou le nom ; `hostname` : nom d'hôte. */
   confirm?: 'name' | 'simple' | 'hostname'
   cancellable: boolean
-  /** Action exécutée par l'agent hôte (Sprint 3). */
-  agent?: boolean
+  /** Action de l'agent hôte qui exécute l'opération (Sprint 3) ; absent = script du kit. */
+  agent?: AgentAction
+  /** Module de durcissement requis (#62), actif selon l'agent. */
+  module?: 'fail2ban' | 'firewall'
   script: 'host' | 'admin'
   params: Record<string, ParamDef>
   /** Paramètres recopiés dans l'audit (liste blanche ; le reste n'est jamais écrit). */
@@ -218,28 +221,31 @@ const OPS: OperationDef[] = [
     selfGuard: 'self-target',
     argv: (t) => ['instance', 'web', 'disable', s(t)],
   },
-  // Actions de l'agent hôte (Sprint 3) : déclarées pour les contrôles de droit et de verrou ; 503
-  // tant que l'agent est absent.
+  // Actions de l'agent hôte (Sprint 3) : niveau hôte, exécutées par le socket de l'agent (503 s'il est
+  // absent), refusées si le module requis n'est pas actif (#62 : aucune installation implicite).
   ...(
     [
-      ['host.setup', true, false],
-      ['fail2ban.status', false, false],
-      ['fail2ban.unban', true, false],
-      ['host.reboot', true, true],
+      ['host.setup', true, false, undefined],
+      ['fail2ban.status', false, false, 'fail2ban'],
+      ['fail2ban.unban', true, false, 'fail2ban'],
+      ['firewall.status', false, false, 'firewall'],
+      ['host.reboot', true, true, undefined],
     ] as const
   ).map(
-    ([id, mutating, destructive]): OperationDef => ({
+    ([id, mutating, destructive, module]): OperationDef => ({
       id,
       level: 'host',
       needsInstance: false,
       mutating,
       destructive,
       confirm: id === 'host.reboot' ? 'hostname' : undefined,
-      cancellable: id === 'fail2ban.unban',
-      agent: true,
+      // Actions brèves (fail2ban, ufw) ou non interruptibles (setup, redémarrage) : pas d'annulation.
+      cancellable: false,
+      agent: id,
+      module,
       script: 'host',
       params: id === 'fail2ban.unban' ? { ip: { validate: v.ip, required: true } } : id === 'host.setup' ? { sshHardeningConfirmed: { validate: v.bool } } : {},
-      audit: id === 'fail2ban.unban' ? ['ip'] : [],
+      audit: id === 'fail2ban.unban' ? ['ip'] : id === 'host.setup' ? ['sshHardeningConfirmed'] : [],
       argv: () => [],
     }),
   ),

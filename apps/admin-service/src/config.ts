@@ -24,6 +24,10 @@ export interface AdminConfig {
   retentionCount: number
   /** Délai maximal d'une lecture exécutée en direct (liste, instantanés, DNS). */
   inlineTimeoutMs: number
+  /** Socket de l'agent hôte (ADMIN_AGENT_SOCKET de host.env, monté en lecture seule). */
+  agentSocket: string
+  /** Délai de retour de l'hôte après un redémarrage demandé (REBOOT_WAIT_MIN). */
+  rebootWaitMs: number
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AdminConfig {
@@ -38,6 +42,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AdminConfig {
     retentionDays: 90,
     retentionCount: 200,
     inlineTimeoutMs: Number(env.POLENTA_ADMIN_INLINE_TIMEOUT_MS || 120_000),
+    agentSocket: env.POLENTA_AGENT_SOCKET || '/run/polenta/agent.sock',
+    rebootWaitMs: Number(env.REBOOT_WAIT_MIN || 15) * 60_000,
   }
 }
 

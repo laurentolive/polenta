@@ -72,6 +72,14 @@ check "instantané : id court, étiquettes" jqe '.snapshots[0] | .id=="abcdef01"
 run instance snapshots inconnue --json; RC=$?
 check "instance inconnue : sortie 12" test "$RC" -eq 12
 
+echo "== instance keys <nom> --json (GH63 S5-2)"
+run instance keys acme --json; RC=$?
+check "sortie 0" test "$RC" -eq 0
+check "clé dans le résultat (fd 3)" jqe '.instance=="acme" and .resticPassword=="Sentinel-restic"'
+check "clé absente du journal (stdout, stderr)" bash -c "! grep -q Sentinel-restic '$tmp/out' '$tmp/err'"
+run instance keys inconnue --json; RC=$?
+check "instance inconnue : sortie 12" test "$RC" -eq 12
+
 echo "== dns check --json (S1-4)"
 dns() { DIG_A="$1" DIG_AAAA="$2" run dns check forge.exemple.fr --json; RC=$?; }
 dns "203.0.113.10" ""

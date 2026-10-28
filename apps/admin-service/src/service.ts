@@ -15,6 +15,7 @@ import { FlockProbe, HostLock, type LockProbe } from './jobs/lock'
 import { REGISTRY } from './jobs/registry'
 import { JobRunner } from './jobs/runner'
 import { JobStore } from './jobs/store'
+import { purgeUploads } from './sensitive-routes'
 
 export interface ServiceOverrides {
   fetchImpl?: typeof fetch
@@ -60,7 +61,10 @@ export function createService(cfg: AdminConfig, o: ServiceOverrides = {}): Fasti
   })
   store.purge(Date.now(), cfg.retentionDays, cfg.retentionCount)
   const daily = setInterval(() => store.purge(Date.now(), cfg.retentionDays, cfg.retentionCount), 86_400_000)
-  const minutely = setInterval(() => store.expireSecrets(), 60_000)
+  const minutely = setInterval(() => {
+    store.expireSecrets()
+    purgeUploads(cfg.root)
+  }, 60_000)
   daily.unref()
   minutely.unref()
   app.addHook('onClose', async () => {

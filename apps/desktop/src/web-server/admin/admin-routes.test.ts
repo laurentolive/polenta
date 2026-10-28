@@ -20,6 +20,10 @@ beforeAll(async () => {
     req.on('data', c => (body += c))
     req.on('end', () => {
       seen.push({ method: req.method!, url: req.url!, headers: req.headers, body })
+      if (req.url?.endsWith('/download')) {
+        res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': 'attachment; filename="acme-20261028-101500.tar.gz"' })
+        return res.end(Buffer.alloc(3 * 1024 * 1024, 7))
+      }
       if (req.url === '/audit.csv') {
         res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="audit.csv"' })
         return res.end('ts,actor\n')
@@ -110,6 +114,20 @@ describe('relais /admin/api', () => {
     const res = await app.inject({ url: '/admin/api/audit.csv', headers: { cookie } })
     expect(res.headers['content-type']).toContain('text/csv')
     expect(res.headers['content-disposition']).toContain('audit.csv')
+  })
+
+  it('S5 : archive relayée en flux (type, nom, taille), routes S5 relayées', async () => {
+    const { app, cookie, csrf } = await start({ url: fakeUrl, serviceToken: SERVICE_TOKEN, dev: true })
+    const dl = await app.inject({ url: '/admin/api/exports/acme-20261028-101500.tar.gz/download', headers: { cookie } })
+    expect(dl.statusCode).toBe(200)
+    expect(dl.headers['content-disposition']).toContain('acme-20261028-101500.tar.gz')
+    expect(dl.rawPayload.length).toBe(3 * 1024 * 1024)
+    for (const url of ['/admin/api/exports', '/admin/api/host/s3', '/admin/api/s3/purge-preview?name=ancien', '/admin/api/users/access-report', '/admin/api/users/invite?login=zoe']) {
+      expect((await app.inject({ url, headers: { cookie } })).statusCode).toBeLessThan(400)
+    }
+    const prev = await app.inject({ method: 'POST', url: '/admin/api/users/import/preview', headers: { cookie, 'x-polenta-csrf': csrf }, payload: { csv: 'login,email\n' } })
+    expect(prev.statusCode).toBeLessThan(400)
+    expect(seen.map(s => s.url)).toContain('/s3/purge-preview?name=ancien')
   })
 
   it('service injoignable : 503 propre', async () => {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { JobView as Job } from '@polenta/types'
 import { adminApi } from '../../lib/adminApi'
 import { useJobFollow } from '../../hooks/useAdmin'
+import { OneTimeSecret } from './OneTimeSecret'
 
 const STATE_CLASS: Record<string, string> = {
   succeeded: 'text-status-success',
@@ -74,16 +75,7 @@ export function JobView({ jobId, onEnd, onClose }: { jobId: string; onEnd?: (job
           <p className="text-xs text-ink-3 mt-1">{t('admin.job.secretOnce')}</p>
         </div>
       )}
-      {secret && (
-        <dl className="px-4 pb-3 text-sm">
-          {Object.entries(secret).map(([k, v]) => (
-            <div key={k} className="flex gap-2">
-              <dt className="text-ink-3">{k}</dt>
-              <dd className="font-mono text-ink select-all">{String(v)}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      {secret && <OneTimeSecret secret={secret} jobResult={job?.result} fileName={`${job?.operation ?? 'secret'}-${jobId}`} />}
       {error && <p className="px-4 pb-2 text-sm text-status-danger" role="alert">{error}</p>}
     </section>
   )

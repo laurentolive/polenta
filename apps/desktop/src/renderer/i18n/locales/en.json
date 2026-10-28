@@ -1895,7 +1895,10 @@
       "backups": "Backups",
       "host": "Host",
       "journal": "Journal",
-      "dns": "DNS"
+      "dns": "DNS",
+      "exports": "Exports",
+      "users": "Users",
+      "storage": "S3 storage"
     },
     "state": {
       "queued": "Queued",
@@ -1924,7 +1927,14 @@
       "host.reboot": "Host reboot",
       "fail2ban.status": "fail2ban status",
       "fail2ban.unban": "Unban address",
-      "firewall.status": "Firewall status"
+      "firewall.status": "Firewall status",
+      "backup.keys": "Backup key",
+      "backup.restore": "Restore",
+      "export.run": "Handover export",
+      "export.delete": "Delete archive",
+      "s3.rotate": "S3 key rotation",
+      "s3.purge": "Backup purge",
+      "users.import": "User import"
     },
     "audit": {
       "accepted": "accepted",
@@ -1985,7 +1995,13 @@
       "none": "No backups.",
       "id": "Snapshot",
       "time": "Date",
-      "tags": "Tags"
+      "tags": "Tags",
+      "showKey": "Show backup key",
+      "restore": "Restore",
+      "restoreTitle": "Restore {{name}} from snapshot {{snapshot}}?",
+      "restoreMessage": "A “pre-restore” backup is made automatically, then ALL current data of the instance is replaced.",
+      "keyTitle": "Show the backup key of {{name}}?",
+      "keyMessage": "Without this key no restore is possible on a new host. It is shown only once: store it in a password manager, off the server."
     },
     "host": {
       "state": "Host state",
@@ -2023,6 +2039,69 @@
     "dns": {
       "domain": "Domain",
       "check": "Check"
+    },
+    "secret": {
+      "show": "Show",
+      "hide": "Hide",
+      "copy": "Copy",
+      "download": "Download"
+    },
+    "exports": {
+      "run": "Create an export",
+      "hint": "Complete handover archive (repositories, accounts, configuration), to hand over to the customer and then delete.",
+      "none": "No archive.",
+      "file": "Archive",
+      "size": "Size",
+      "download": "Download",
+      "deleteTitle": "Delete archive {{file}}?",
+      "deleteMessage": "The archive is erased from the server. S3 backups are not affected."
+    },
+    "storage": {
+      "current": "Current storage",
+      "none": "Backups are not configured on this host.",
+      "endpoint": "Endpoint",
+      "bucket": "Bucket",
+      "key": "Access key",
+      "rotatedAt": "Rotated on",
+      "rotateTitle": "Replace the S3 key",
+      "rotateHint": "The new key is tested (control object) before anything is replaced, then a control backup runs; on failure the previous key is restored. Entered values are never displayed nor kept by the interface.",
+      "endpointPlaceholder": "Endpoint (unchanged if empty)",
+      "bucketPlaceholder": "Bucket (unchanged if empty)",
+      "accessKey": "Access key",
+      "secretKey": "Secret key",
+      "rotate": "Replace key",
+      "purgeTitle": "Purge the backups of a removed instance",
+      "purgeHint": "Irreversible. Read the inventory first; the purge needs a separate S3 deletion key, never kept by the server.",
+      "purgeName": "Removed instance",
+      "inventory": "Read inventory",
+      "inventoryLine": "{{snapshots}} snapshots, {{objects}} objects, {{mb}} MB, from {{oldest}} to {{newest}}.",
+      "purgeKey": "Purge key",
+      "purgeAccessKey": "Purge access key",
+      "purgeSecretKey": "Purge secret key",
+      "withoutExport": "Purge without a handover export",
+      "withoutExportWarning": "No export exists for this instance: its data will be permanently lost.",
+      "purge": "Purge",
+      "purgeConfirmTitle": "Permanently purge the backups of {{name}}?",
+      "purgeConfirmMessage": "All backups of this instance will be erased from S3 storage. This cannot be undone."
+    },
+    "users": {
+      "forgeAdmin": "Forge administration ↗",
+      "importTitle": "User import (CSV)",
+      "importHint": "Columns: login, email, full name, teams. 5 MB and 2,000 lines at most. A preview is shown before anything is created.",
+      "importFile": "CSV file",
+      "tooBig": "File larger than 5 MB.",
+      "previewLine": "{{valid}} valid line(s), {{rejected}} rejected.",
+      "rejectedLine": "Line {{line}} {{login}}: {{cause}}",
+      "unknownTeams": "Unknown teams (ignored): {{teams}}",
+      "import": "Create {{count}} account(s)",
+      "inviteTitle": "Invitation message",
+      "login": "Login",
+      "inviteBuild": "Prepare message",
+      "reportTitle": "Access report",
+      "reportFilter": "Filter by user or repository",
+      "user": "User",
+      "repo": "Repository",
+      "permission": "Permission"
     }
   }
 }

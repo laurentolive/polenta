@@ -940,8 +940,23 @@ cmd_instance_snapshots() {
 
 # polenta-host instance keys — mots de passe des sauvegardes, à conserver HORS de l'hôte.
 cmd_instance_keys() {
-  require_root
+  require_operator
   local name
+  # GH63 — une instance (interface d'administration) : la clé n'est que dans le résultat (fd 3), jamais
+  # dans le journal ; l'interface l'affiche une seule fois.
+  if [[ -n "${1:-}" ]]; then
+    name="$(resolve_instance "$1")"
+    local key; key="$(env_get "$(instance_env "$name")" RESTIC_PASSWORD)"
+    [[ -n "$key" ]] || die "$E_PRECOND" "aucune clé de sauvegarde pour « $name »."
+    if [[ "$JSON_OUT" == 1 ]]; then
+      log "Clé de sauvegarde de « $name » remise dans le résultat (à usage unique)."
+      admin_log "$name" "instance keys" OK
+      emit_result "$(jq -nc --arg n "$name" --arg k "$key" '{instance:$n, resticPassword:$k}')"
+    else
+      printf '%-16s %s\n' "$name" "$key"
+    fi
+    return 0
+  fi
   printf '%-16s %s\n' INSTANCE "MOT DE PASSE DES SAUVEGARDES (restic)"
   for name in $(list_instances); do
     [[ -f "$(instance_env "$name")" ]] || continue

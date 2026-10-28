@@ -210,7 +210,7 @@ describe('confirmations et refus (S2-25 à S2-27)', () => {
     expect(job.result.oneTime).toBe(true)
     const s = await a.inject({ url: `/jobs/${jobId}/secret`, headers: hdr('svc-ops', 'u-olga') })
     expect(s.json().secret['clientAdmin.temporaryPassword']).toBe('Tmp-Pass-123456')
-    expect((await a.inject({ url: `/jobs/${jobId}/secret`, headers: hdr('svc-ops', 'u-olga') })).statusCode).toBe(410)
+    expect((await a.inject({ url: `/jobs/${jobId}/secret`, headers: hdr('svc-ops', 'u-olga') })).statusCode).toBe(404)
     expect(fs.readFileSync(path.join(env.root, 'admin', 'audit.log'), 'utf8')).not.toContain('Tmp-Pass')
   })
 })

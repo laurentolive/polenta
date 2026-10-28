@@ -27,6 +27,22 @@ export class AdminClient {
     private readonly timeoutMs = 30_000,
   ) {}
 
+  /** Réponse brute (corps en flux) : téléchargement d'archive. Erreur réseau → 503 sans corps. */
+  async stream(args: Omit<ForwardArgs, 'method' | 'body'>): Promise<Response> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.config.serviceToken}`,
+      'X-Polenta-Forge-Token': args.userToken,
+      'X-Polenta-Actor': args.actor,
+    }
+    if (args.clientIp) headers['X-Polenta-Client-Ip'] = args.clientIp
+    try {
+      // Pas de délai global : une archive de plusieurs Go dépasse 30 s ; la connexion suit le client.
+      return await this.fetchImpl(this.config.url + args.path, { headers })
+    } catch {
+      return new Response(null, { status: 503 })
+    }
+  }
+
   async forward(args: ForwardArgs): Promise<ForwardResult> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.config.serviceToken}`,

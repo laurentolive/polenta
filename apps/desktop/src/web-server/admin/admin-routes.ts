@@ -9,6 +9,7 @@
  * Hors `channel-policy.ts` : ce n'est pas un channel `/rpc` (critère 19).
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { Readable } from 'stream'
 import type { AdminConfig } from '../config'
 import type { Session } from '../session'
 import { AdminClient } from './admin-client'
@@ -37,9 +38,19 @@ const ROUTES: { method: string; re: RegExp }[] = [
   { method: 'GET', re: /^\/dns$/ },
   { method: 'GET', re: /^\/audit$/ },
   { method: 'GET', re: /^\/audit\.csv$/ },
+  // Sprint 5
+  { method: 'GET', re: /^\/exports$/ },
+  { method: 'GET', re: new RegExp(`^/exports/${SEGMENT}/download$`) },
+  { method: 'GET', re: /^\/host\/s3$/ },
+  { method: 'GET', re: /^\/s3\/purge-preview$/ },
+  { method: 'POST', re: /^\/users\/import\/preview$/ },
+  { method: 'GET', re: /^\/users\/access-report$/ },
+  { method: 'GET', re: /^\/users\/invite$/ },
 ]
 
-const QUERY_KEYS = new Set(['state', 'instance', 'offset', 'from', 'domain'])
+const QUERY_KEYS = new Set(['state', 'instance', 'offset', 'from', 'domain', 'name', 'login'])
+// Téléchargement d'une archive d'export : relayé en flux (plusieurs Go), jamais mis en mémoire.
+const DOWNLOAD_RE = new RegExp(`^/exports/${SEGMENT}/download$`)
 
 function deny(reply: FastifyReply, code: number, message: string) {
   return reply.code(code).header('Cache-Control', 'no-store').send({ ok: false, error: { code: code === 404 ? 'not-found' : 'forbidden', message } })
@@ -86,6 +97,15 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
       for (const [k, v] of url.searchParams) if (QUERY_KEYS.has(k)) query.set(k, v.slice(0, 256))
       const token = await deps.userToken(session)
       if (!token) return deny(reply, 403, 'Jeton de la forge indisponible pour cette session.')
+      if (DOWNLOAD_RE.test(sub)) {
+        const res = await client.stream({ path: sub, userToken: token, actor: session.login, clientIp: req.ip })
+        void reply.code(res.status).header('Cache-Control', 'no-store')
+        for (const h of ['content-type', 'content-length', 'content-disposition']) {
+          const value = res.headers.get(h)
+          if (value) void reply.header(h, value)
+        }
+        return reply.send(res.body ? Readable.fromWeb(res.body as import('stream/web').ReadableStream) : '')
+      }
       const res = await client.forward({
         method: req.method as 'GET' | 'POST',
         path: sub + (query.size ? `?${query}` : ''),

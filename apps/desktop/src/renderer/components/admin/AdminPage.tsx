@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { adminApi } from '../../lib/adminApi'
+import { adminApi, type InstanceRow } from '../../lib/adminApi'
 import { useAdminMe } from '../../hooks/useAdmin'
 import { ViewHeader } from '../layout/ViewHeader'
 import { BackupsPanel } from './BackupsPanel'
 import { DnsCheck } from './DnsCheck'
+import { ExportsPanel } from './ExportsPanel'
 import { HostPanel } from './HostPanel'
 import { InstancesPanel } from './InstancesPanel'
 import { JournalPanel } from './JournalPanel'
+import { StoragePanel } from './StoragePanel'
+import { UsersPanel } from './UsersPanel'
 
-type Tab = 'instances' | 'backups' | 'host' | 'journal' | 'dns'
+type Tab = 'instances' | 'backups' | 'exports' | 'users' | 'host' | 'storage' | 'journal' | 'dns'
 
 /**
  * GH63 — page Administration (version web, propriétaires de l'organisation). Niveau « instance » :
@@ -19,16 +22,19 @@ export function AdminPage() {
   const { t } = useTranslation()
   const { me, loading } = useAdminMe()
   const [tab, setTab] = useState<Tab>('instances')
-  const [instances, setInstances] = useState<string[]>([])
+  const [rows, setRows] = useState<InstanceRow[]>([])
+  const instances = rows.map(r => r.name)
 
   useEffect(() => {
-    if (me) adminApi.instances().then(rows => setInstances(rows.map(r => r.name))).catch(() => {})
+    if (me) adminApi.instances().then(setRows).catch(() => {})
   }, [me])
 
   if (loading) return <p className="text-sm text-ink-3 p-4">{t('common.loading')}</p>
   if (!me) return <p className="text-sm text-ink-3 p-4" role="status">{t('admin.unavailable')}</p>
 
-  const tabs: Tab[] = me.level === 'host' ? ['instances', 'backups', 'host', 'journal', 'dns'] : ['instances', 'backups', 'journal', 'dns']
+  const tabs: Tab[] = me.level === 'host'
+    ? ['instances', 'backups', 'exports', 'users', 'host', 'storage', 'journal', 'dns']
+    : ['instances', 'backups', 'exports', 'users', 'journal', 'dns']
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -55,7 +61,10 @@ export function AdminPage() {
       <div className="flex-1 overflow-y-auto p-6" role="tabpanel" id={`admin-panel-${tab}`} aria-labelledby={`admin-tab-${tab}`}>
         {tab === 'instances' && <InstancesPanel me={me} />}
         {tab === 'backups' && <BackupsPanel me={me} instances={instances.length ? instances : [me.instance]} />}
+        {tab === 'exports' && <ExportsPanel me={me} instances={instances.length ? instances : [me.instance]} />}
+        {tab === 'users' && <UsersPanel me={me} rows={rows} />}
         {tab === 'host' && <HostPanel me={me} />}
+        {tab === 'storage' && <StoragePanel />}
         {tab === 'journal' && <JournalPanel />}
         {tab === 'dns' && <DnsCheck />}
       </div>

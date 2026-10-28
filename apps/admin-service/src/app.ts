@@ -6,6 +6,7 @@
  * garde « instance d'exploitation », verrou. Tout refus = ligne d'audit `refused`.
  */
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
+import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import type { AdminLevel, AdminMe, JobView } from '@polenta/types'
@@ -18,7 +19,8 @@ import { ServiceTokens, fingerprint } from './auth/service-token'
 import { hostSettings, type AdminConfig } from './config'
 import { listInstances, type InstanceInfo } from './instances'
 import { HostLock } from './jobs/lock'
-import { REGISTRY, checkConfirm, checkParams, pickAudit, type OperationDef } from './jobs/registry'
+import { REGISTRY, checkConfirm, checkParams, expectedConfirm, fdSecretsOf, pickAudit, type OperationDef } from './jobs/registry'
+import { registerSensitiveRoutes, uploadPath } from './sensitive-routes'
 import { JobRunner, runInline } from './jobs/runner'
 import { JobStore, publicView, ulid, type JobRecord } from './jobs/store'
 import { redact } from './secrets/redact'
@@ -52,7 +54,7 @@ export interface AppDeps {
   instances?: () => InstanceInfo[]
 }
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
@@ -195,15 +197,18 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return null
   }
 
-  const inline = async (p: Principal, argv: string[]) => {
+  const inline = async (p: Principal, argv: string[], script: 'host' | 'admin' = 'host') => {
     const r = await runInline(runner, {
-      script: 'host',
+      script,
       argv,
       actor: `${p.login}@${p.instance}`,
       timeoutMs: cfg.inlineTimeoutMs,
       tmpDir: path.join(cfg.root, 'admin', 'tmp'),
     })
     if (r.code === 12) throw new HttpError(404, 'instance-not-found', 'instance introuvable')
+    const why = r.stderr.trim().split('\n').pop()?.replace(/^\s*(✗|Erreur\s*:)\s*/, '')
+    if (r.code === 2 || r.code === 3) throw new HttpError(400, 'invalid-param', why || 'paramètre refusé par le kit')
+    if (r.code === 6) throw new HttpError(422, 'precondition', why || 'pré-condition non remplie')
     if (r.code !== 0 || !r.result) {
       throw new HttpError(502, 'kit-error', r.stderr.trim().split('\n').pop() || `commande du kit en échec (${r.code})`)
     }
@@ -278,6 +283,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return '﻿' + auditCsv(audit.read({ from: req.query.from, instance }))
   })
 
+  // ── Sprint 5 : exports, stockage S3, utilisateurs (lectures et dépôt) ──────
+  registerSensitiveRoutes(app, { root: cfg.root, audit, principal, inline, refuse })
+
   // ── travaux ────────────────────────────────────────────────────────────────
   app.get<{ Querystring: { state?: string; instance?: string } }>('/jobs', async (req) => {
     const p = principal(req)
@@ -316,7 +324,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       throw new HttpError(403, 'forbidden', "seul l'auteur du travail peut lire ce résultat")
     }
     const secret = store.takeSecret(job.id)
-    if (!secret) throw new HttpError(410, 'secret-gone', 'valeur déjà consultée ou expirée')
+    if (!secret) throw new HttpError(404, 'secret-gone', 'valeur déjà consultée ou expirée')
     audit.write({ actor: p.login, actorInstance: p.instance, ip: p.ip, origin: 'ui', operation: `${job.operation}.secret`, target: job.instance ?? '', params: {}, jobId: job.id, result: 'succeeded' })
     return { secret }
   })
@@ -357,14 +365,34 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       refuse(req, def.id, String(requested ?? ''), sc.reason)
       throw new HttpError(403, 'forbidden', def.level === 'host' && p.level !== 'host' ? "opération réservée au niveau hôte" : 'instance hors de votre portée')
     }
-    const target = sc.target ?? (def.id === 'instance.add' ? String(params.params.name) : '')
+    // Cible sans instance existante : nom de la nouvelle instance (ajout) ou de l'instance purgée.
+    const target = sc.target ?? (def.id === 'instance.add' || def.id === 's3.purge' ? String(params.params.name) : '')
     if (def.needsInstance && !instances().some((i) => i.name === target)) {
       refuse(req, def.id, target, 'instance-not-found')
       throw new HttpError(404, 'instance-not-found', 'instance introuvable')
     }
-    if (!checkConfirm(def, body.confirm, def.confirm === 'hostname' ? cfg.hostName : target)) {
+    const expected = expectedConfirm(def, target, cfg.hostName, params.params)
+    if (!checkConfirm(def, body.confirm, expected)) {
       refuse(req, def.id, target, 'confirmation')
-      throw new HttpError(400, 'confirmation-required', def.confirm === 'simple' ? 'confirmation requise' : `confirmation requise : saisissez « ${def.confirm === 'hostname' ? cfg.hostName : target} »`)
+      throw new HttpError(400, 'confirmation-required', def.confirm === 'simple' ? 'confirmation requise' : `confirmation requise : saisissez « ${expected} »`)
+    }
+    const why = def.check?.(target, params.params)
+    if (why) {
+      refuse(req, def.id, target, why)
+      throw new HttpError(403, 'forbidden', why)
+    }
+    // Purge : jamais une instance encore présente sur l'hôte (le kit le refuse aussi).
+    if (def.id === 's3.purge' && instances().some((i) => i.name === target)) {
+      refuse(req, def.id, target, 'instance-exists')
+      throw new HttpError(422, 'precondition', `l'instance « ${target} » existe encore : supprimez-la avant de purger ses sauvegardes`)
+    }
+    let uploadFile: string | null = null
+    if (def.id === 'users.import') {
+      uploadFile = uploadPath(cfg.root, String(params.params.uploadId))
+      if (!fs.existsSync(uploadFile)) {
+        refuse(req, def.id, target, 'upload-missing')
+        throw new HttpError(422, 'precondition', 'fichier déposé introuvable ou expiré : refaites l\'aperçu')
+      }
     }
     const settings = hostSettings(cfg)
     if (def.selfGuard && (target === p.instance || (def.id === 'instance.remove' && target === settings.adminInstance))) {
@@ -412,7 +440,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       steps: (def.steps ?? []).map((name) => ({ name, state: 'pending' })),
       cancellable: def.cancellable,
       logSize: 0,
-      argv: def.argv(sc.target, params.params),
+      argv: def.argv(sc.target, params.params).map((a) => (uploadFile && a.startsWith('@upload:') ? uploadFile : a)),
       target,
       auditParams,
     }
@@ -421,7 +449,16 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const actor = `${p.login}@${p.instance}`
     if (def.agent === 'host.reboot') runner.startReboot(job, { actor, agent: deps.agent })
     else if (def.agent) runner.startAgent(job, { action: def.agent, params: params.params, actor, agent: deps.agent })
-    else runner.start(job, { script: def.script, argv: job.argv, actor, oneTime: def.oneTime })
+    else {
+      runner.start(job, {
+        script: def.script,
+        argv: job.argv,
+        actor,
+        oneTime: def.oneTime,
+        fdSecrets: fdSecretsOf(def, params.params),
+        cleanup: uploadFile ? [uploadFile] : undefined,
+      })
+    }
     return reply.status(202).send({ jobId: job.id })
   })
 

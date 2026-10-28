@@ -15,6 +15,7 @@ let seq = 0
 const instances = () => [
   { name: 'acme', domain: 'acme.forge.test', org: 'acme', forgeVersion: '11.0.3', state: 'ok', complete: true, disk: '120M', lastBackup: '2026-10-28 03:00', webDomain: 'polenta.acme.test' },
   { name: 'globex', domain: 'globex.forge.test', org: 'globex', forgeVersion: '11.0.3', state: 'ok', complete: true, disk: '80M', lastBackup: null, webDomain: null },
+  { name: 'ops', domain: 'ops.forge.test', org: 'ops', forgeVersion: '11.0.3', state: 'ok', complete: true, disk: '60M', lastBackup: null, webDomain: 'polenta.ops.test' },
 ]
 
 function send(res, status, body) {
@@ -44,10 +45,25 @@ function createJob(body, actor) {
     job.lines.push('Terminé.')
     job.state = 'succeeded'
     job.endedAt = new Date().toISOString()
-    job.result = body.operation === 'backup.run' ? { instance, snapshot: 'abc123' } : {}
+    job.result = resultFor(body, instance, id)
     audit.push({ ts: new Date().toISOString(), actor, actorInstance: 'acme', origin: 'ui', operation: body.operation, target: instance ?? '', params: {}, jobId: id, result: 'succeeded' })
   }, durationMs)
   return id
+}
+
+// GH63 S5 — valeurs à usage unique (clé restic, mots de passe d'import), rendues une seule fois.
+const secrets = new Map()
+function resultFor(body, instance, id) {
+  if (body.operation === 'backup.run') return { instance, snapshot: 'abc123' }
+  if (body.operation === 'backup.keys') {
+    secrets.set(id, { resticPassword: 'e2e-restic-cle-0123456789' })
+    return { instance, resticPassword: null, oneTime: true }
+  }
+  if (body.operation === 'users.import') {
+    secrets.set(id, { 'created.0.temporaryPassword': 'Tmp-zoe-12345', 'created.1.temporaryPassword': 'Tmp-yann-67890' })
+    return { created: [{ login: 'zoe', temporaryPassword: null }, { login: 'yann', temporaryPassword: null }], errors: [], oneTime: true }
+  }
+  return {}
 }
 
 const view = ({ lines, ...j }) => ({ ...j, logSize: lines.length })
@@ -98,6 +114,34 @@ http.createServer((req, res) => {
       const r = running()
       if (r) return err(res, 409, 'locked', 'une autre opération est en cours', { runningJob: { id: r.id, operation: r.operation, actor: r.actor.login, since: r.startedAt } })
       return send(res, 202, { jobId: createJob(body, actor) })
+    }
+    if ((m = /^\/jobs\/([A-Z0-9]+)\/secret$/.exec(path))) {
+      const s = secrets.get(m[1])
+      secrets.delete(m[1])
+      return s ? send(res, 200, { secret: s }) : err(res, 404, 'secret-gone', 'valeur déjà consultée ou expirée')
+    }
+    if (path === '/exports') return send(res, 200, { exports: [{ file: 'acme-20261028-101500.tar.gz', instance: 'acme', sizeBytes: 7340032, sha256: 'ab12cd34ef56ab12cd34' }] })
+    if ((m = /^\/exports\/([a-z0-9-]+-\d{8}-\d{6}\.tar\.gz)\/download$/.exec(path))) {
+      res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': `attachment; filename="${m[1]}"` })
+      return res.end('ARCHIVE-E2E')
+    }
+    if (path === '/host/s3') return send(res, 200, { s3: { endpoint: 'https://s3.e2e.test', bucket: 'polenta-e2e', accessKeyHint: '…7XYZ', rotatedAt: null } })
+    if (path === '/s3/purge-preview') {
+      return send(res, 200, { instance: url.searchParams.get('name'), snapshots: 4, objects: 12, bytes: 3145728, oldest: '2026-09-01', newest: '2026-10-20', preview: true })
+    }
+    if (path === '/users/import/preview') {
+      return send(res, 200, {
+        uploadId: 'f'.repeat(32), instance: body.instance ?? 'acme', preview: true,
+        rows: [{ line: 2, login: 'zoe' }, { line: 3, login: 'yann' }], rejected: [{ line: 4, login: 'zoe', cause: 'login en double' }], unknownTeams: ['inconnue'],
+      })
+    }
+    if (path === '/users/access-report') {
+      return send(res, 200, { org: 'acme', rows: [{ user: 'alice', repo: 'produit', permission: 'admin' }, { user: 'zoe', repo: 'produit', permission: 'write' }, { user: 'zoe', repo: 'comp-moteur', permission: 'read' }] })
+    }
+    if (path === '/users/invite') {
+      const login = url.searchParams.get('login')
+      const link = `polenta://connect?server=https://acme.forge.test&login=${login}`
+      return send(res, 200, { login, inviteLink: link, message: `Bonjour ${login}, connectez-vous : ${link}` })
     }
     if ((m = /^\/jobs\/([A-Z0-9]+)(\/log|\/cancel)?$/.exec(path))) {
       const job = jobs.get(m[1])

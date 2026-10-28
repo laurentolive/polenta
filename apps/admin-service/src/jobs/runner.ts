@@ -117,12 +117,22 @@ export interface StartArgs {
   script: 'host' | 'admin'
   argv: string[]
   actor: string
-  oneTime?: string[][]
+  oneTime?: string[]
+  /**
+   * Secrets du travail (clé S3, clé de purge) : écrits sur le descripteur 4 du script (`k=v` par ligne),
+   * jamais en argument ni en variable d'environnement, puis masqués dans son journal.
+   */
+  fdSecrets?: Record<string, string>
+  /** Fichiers à effacer à la fin du travail (CSV déposé). */
+  cleanup?: string[]
 }
 
 export class JobRunner {
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly partial = new Map<string, { out: string; err: string }>()
+  /** Valeurs masquées par travail, en mémoire seulement (jamais écrites). */
+  private readonly jobSecrets = new Map<string, string[]>()
+  private readonly jobCleanup = new Map<string, string[]>()
 
   private boot(): string {
     return (this.opts.bootId ?? bootId)()
@@ -160,7 +170,8 @@ export class JobRunner {
       ['-c', WRAPPER, this.scriptPath(args.script), ...args.argv, '--json', '--non-interactive'],
       {
         detached: true,
-        stdio: ['ignore', out, err],
+        // fd 4 : secrets du travail (tube), lus par le script avec --credentials-fd 4 / --purge-key-fd 4.
+        stdio: args.fdSecrets ? ['ignore', out, err, 'ignore', 'pipe'] : ['ignore', out, err],
         env: this.scriptEnv(args.actor, {
           POLENTA_JOB_DIR: dir,
           POLENTA_JOB_ID: job.id,
@@ -170,6 +181,14 @@ export class JobRunner {
     )
     fs.closeSync(out)
     fs.closeSync(err)
+    if (args.fdSecrets) {
+      const values = Object.values(args.fdSecrets)
+      this.jobSecrets.set(job.id, values)
+      const pipe = child.stdio[4] as NodeJS.WritableStream | null
+      pipe?.on('error', () => {})
+      pipe?.end(Object.entries(args.fdSecrets).map(([k, v]) => `${k}=${v}`).join('\n') + '\n')
+    }
+    if (args.cleanup?.length) this.jobCleanup.set(job.id, args.cleanup)
     child.unref()
     child.on('error', () => {
       writeAtomic(path.join(dir, 'exit.code'), '127')
@@ -283,7 +302,7 @@ export class JobRunner {
   }
 
   /** Reprise au démarrage du service (design §5.4). */
-  recover(oneTimeFor: (job: JobRecord) => string[][] | undefined): void {
+  recover(oneTimeFor: (job: JobRecord) => string[] | undefined): void {
     const boot = this.boot()
     for (const job of this.store.list()) {
       if (job.state === 'rebooting') {
@@ -326,7 +345,7 @@ export class JobRunner {
     this.timers.clear()
   }
 
-  private follow(id: string, oneTime: string[][] | undefined): void {
+  private follow(id: string, oneTime: string[] | undefined): void {
     const tick = () => {
       const job = this.store.get(id)
       if (!job) return this.unfollow(id)
@@ -354,7 +373,7 @@ export class JobRunner {
     const dir = this.store.jobDir(job.id)
     const offsets = job.rawOffsets ?? { out: 0, err: 0 }
     const buf = this.partial.get(job.id) ?? { out: '', err: '' }
-    const secrets = this.opts.secretValues?.() ?? []
+    const secrets = [...(this.opts.secretValues?.() ?? []), ...(this.jobSecrets.get(job.id) ?? [])]
     for (const s of ['out', 'err'] as const) {
       const file = path.join(dir, `${s}.raw`)
       let chunk = ''
@@ -388,7 +407,7 @@ export class JobRunner {
     this.partial.set(job.id, buf)
   }
 
-  private finish(job: JobRecord, code: number, oneTime: string[][] | undefined): void {
+  private finish(job: JobRecord, code: number, oneTime: string[] | undefined): void {
     const dir = this.store.jobDir(job.id)
     let result: Record<string, unknown> | undefined
     try {
@@ -398,10 +417,7 @@ export class JobRunner {
     }
     if (result && oneTime?.length) {
       const secret: Record<string, unknown> = {}
-      for (const p of oneTime) {
-        const value = takePath(result, p)
-        if (value !== undefined && value !== null) secret[p.join('.')] = value
-      }
+      takeKeys(result, new Set(oneTime), '', secret)
       if (Object.keys(secret).length) {
         this.store.writeSecret(job.id, secret)
         result.oneTime = true
@@ -429,6 +445,9 @@ export class JobRunner {
     this.store.save(job)
     this.cleanupRaw(job.id)
     this.partial.delete(job.id)
+    this.jobSecrets.delete(job.id)
+    for (const f of this.jobCleanup.get(job.id) ?? []) fs.rmSync(f, { force: true })
+    this.jobCleanup.delete(job.id)
     this.opts.onFinish(job)
   }
 
@@ -438,18 +457,21 @@ export class JobRunner {
   }
 }
 
-/** Retire et rend la valeur au chemin `p` de `obj`. */
-function takePath(obj: Record<string, unknown>, p: string[]): unknown {
-  let cur: unknown = obj
-  for (let i = 0; i < p.length - 1; i++) {
-    if (!cur || typeof cur !== 'object') return undefined
-    cur = (cur as Record<string, unknown>)[p[i]]
+/**
+ * Retire de `node` (récursivement, tableaux compris) les clés de `keys` et range leurs valeurs dans
+ * `out` sous leur chemin (`created.3.temporaryPassword`) ; la valeur est remplacée par `null`.
+ */
+export function takeKeys(node: unknown, keys: Set<string>, prefix: string, out: Record<string, unknown>): void {
+  if (!node || typeof node !== 'object') return
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    const p = prefix ? `${prefix}.${k}` : k
+    if (keys.has(k) && v !== null && v !== undefined && typeof v !== 'object') {
+      out[p] = v
+      ;(node as Record<string, unknown>)[k] = null
+    } else {
+      takeKeys(v, keys, p, out)
+    }
   }
-  if (!cur || typeof cur !== 'object') return undefined
-  const last = p[p.length - 1]
-  const value = (cur as Record<string, unknown>)[last]
-  if (value !== undefined) (cur as Record<string, unknown>)[last] = null
-  return value
 }
 
 /** Lecture exécutée en direct (liste, instantanés, DNS) : pas de verrou, pas de travail persisté. */

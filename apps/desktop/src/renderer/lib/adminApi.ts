@@ -83,6 +83,26 @@ export const adminApi = {
   cancel: (id: string) => call<{ ok: true }>(`/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   audit: (filter: { from?: string; instance?: string } = {}) => call<{ lines: AuditLine[] }>(`/audit${q(filter)}`).then(r => r.lines),
   auditCsvUrl: (filter: { from?: string; instance?: string } = {}) => `/admin/api/audit.csv${q(filter)}`,
+  // Sprint 5
+  exports: () => call<{ exports: ExportRow[] }>('/exports').then(r => r.exports),
+  exportDownloadUrl: (file: string) => `/admin/api/exports/${encodeURIComponent(file)}/download`,
+  hostS3: () => call<{ s3: S3Info | null }>('/host/s3').then(r => r.s3),
+  purgePreview: (name: string) => call<PurgeInventory>(`/s3/purge-preview${q({ name })}`),
+  importPreview: (csv: string, instance?: string) => call<ImportPreview>('/users/import/preview', { method: 'POST', body: { csv, instance } }),
+  accessReport: (instance?: string) => call<{ rows: AccessRow[] }>(`/users/access-report${q({ instance })}`),
+  invite: (login: string, instance?: string) => call<{ login: string; inviteLink: string; message: string }>(`/users/invite${q({ login, instance })}`),
 }
+
+export interface ExportRow { file: string; instance: string; sizeBytes: number; sha256?: string; createdAt?: string }
+export interface S3Info { endpoint: string; bucket: string; accessKeyHint: string; rotatedAt: string | null }
+export interface PurgeInventory { instance: string; snapshots: number; objects: number; bytes: number; oldest?: string | null; newest?: string | null }
+export interface ImportPreview {
+  uploadId: string
+  instance: string
+  rows: { line: number; login: string; email?: string; teams?: string[] }[]
+  rejected: { line: number; cause: string; login?: string }[]
+  unknownTeams: string[]
+}
+export interface AccessRow { user: string; repo: string; permission: string; via?: string }
 
 export const ACTIVE_JOB_STATES = new Set(['queued', 'running', 'rebooting'])

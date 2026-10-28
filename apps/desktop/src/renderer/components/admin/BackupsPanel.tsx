@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AdminMe } from '@polenta/types'
 import { adminApi, type Snapshot } from '../../lib/adminApi'
+import { ConfirmByName } from './ConfirmByName'
 import { JobView } from './JobView'
 import { useLaunch } from './useLaunch'
 
@@ -12,6 +13,7 @@ export function BackupsPanel({ me, instances }: { me: AdminMe; instances: string
   const [snapshots, setSnapshots] = useState<Snapshot[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tag, setTag] = useState('')
+  const [confirm, setConfirm] = useState<{ kind: 'restore'; snapshot: string } | { kind: 'keys' } | null>(null)
   const { jobId, error: launchError, launch, clear } = useLaunch()
 
   const reload = useCallback(() => {
@@ -45,6 +47,9 @@ export function BackupsPanel({ me, instances }: { me: AdminMe; instances: string
           </label>
           <button type="submit" className="btn-primary">{t('admin.backups.run')}</button>
         </form>
+        {me.level === 'host' && (
+          <button type="button" className="btn-secondary" onClick={() => setConfirm({ kind: 'keys' })}>{t('admin.backups.showKey')}</button>
+        )}
       </div>
       {jobId && <JobView jobId={jobId} onEnd={reload} onClose={clear} />}
       {launchError && <p className="text-sm text-status-danger" role="alert">{launchError}</p>}
@@ -56,7 +61,8 @@ export function BackupsPanel({ me, instances }: { me: AdminMe; instances: string
             <tr className="text-left text-xs text-ink-3 border-b border-edge">
               <th className="py-2 pr-3">{t('admin.backups.id')}</th>
               <th className="py-2 pr-3">{t('admin.backups.time')}</th>
-              <th className="py-2">{t('admin.backups.tags')}</th>
+              <th className="py-2 pr-3">{t('admin.backups.tags')}</th>
+              <th className="py-2" />
             </tr>
           </thead>
           <tbody>
@@ -64,11 +70,42 @@ export function BackupsPanel({ me, instances }: { me: AdminMe; instances: string
               <tr key={s.id} className="border-b border-edge">
                 <td className="py-1.5 pr-3 font-mono text-xs">{String(s.id).slice(0, 8)}</td>
                 <td className="py-1.5 pr-3 text-xs">{s.time ? new Date(s.time).toLocaleString() : '—'}</td>
-                <td className="py-1.5 text-xs">{(s.tags ?? []).join(', ')}</td>
+                <td className="py-1.5 pr-3 text-xs">{(s.tags ?? []).join(', ')}</td>
+                <td className="py-1.5 text-right">
+                  <button type="button" className="btn-secondary-sm" onClick={() => setConfirm({ kind: 'restore', snapshot: String(s.id) })}>{t('admin.backups.restore')}</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {confirm?.kind === 'restore' && (
+        <ConfirmByName
+          title={t('admin.backups.restoreTitle', { name: instance, snapshot: confirm.snapshot.slice(0, 8) })}
+          message={t('admin.backups.restoreMessage')}
+          expected={instance}
+          danger
+          confirmLabel={t('admin.backups.restore')}
+          onCancel={() => setConfirm(null)}
+          onConfirm={typed => {
+            const snapshot = confirm.snapshot
+            setConfirm(null)
+            void launch({ operation: 'backup.restore', instance, params: { from: snapshot }, confirm: typed })
+          }}
+        />
+      )}
+      {confirm?.kind === 'keys' && (
+        <ConfirmByName
+          title={t('admin.backups.keyTitle', { name: instance })}
+          message={t('admin.backups.keyMessage')}
+          expected={instance}
+          confirmLabel={t('admin.backups.showKey')}
+          onCancel={() => setConfirm(null)}
+          onConfirm={typed => {
+            setConfirm(null)
+            void launch({ operation: 'backup.keys', instance, confirm: typed })
+          }}
+        />
       )}
     </div>
   )

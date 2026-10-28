@@ -23,7 +23,7 @@ export interface OperationDef {
   /** Revérification du droit sans cache à la création du travail. */
   destructive: boolean
   /** `name` : nom exact de la cible ; `simple` : `true` ou le nom ; `hostname` : nom d'hôte. */
-  confirm?: 'name' | 'simple' | 'hostname'
+  confirm?: 'name' | 'simple' | 'hostname' | 'phrase'
   cancellable: boolean
   /** Action de l'agent hôte qui exécute l'opération (Sprint 3) ; absent = script du kit. */
   agent?: AgentAction
@@ -35,10 +35,17 @@ export interface OperationDef {
   audit: string[]
   /** Refus « instance d'exploitation / client web courant » (code 18, design §6.6). */
   selfGuard?: 'self-target'
-  /** Chemins du résultat déplacés vers le secret à usage unique (`GET /jobs/:id/secret`). */
-  oneTime?: string[][]
+  /** Clés du résultat (à toute profondeur) déplacées vers le secret à usage unique (`GET /jobs/:id/secret`). */
+  oneTime?: string[]
   /** Étapes affichées au suivi (indicatives, mises à jour par le runner). */
   steps?: string[]
+  /**
+   * Paramètres secrets (S5) : retirés de l'argv, de `job.json` et de l'audit, transmis au script sur le
+   * descripteur 4 sous la clé indiquée (`access_key=…`), masqués dans le journal.
+   */
+  fdSecrets?: Record<string, string>
+  /** Contrôle propre à l'opération (cible ↔ paramètres) : message de refus, ou `null`. */
+  check?(target: string | null, p: Record<string, unknown>): string | null
   argv(target: string | null, p: Record<string, unknown>): string[]
 }
 
@@ -76,7 +83,7 @@ const OPS: OperationDef[] = [
       demo: { validate: v.bool },
     },
     audit: ['name', 'domain', 'org', 'version', 'clientAdminLogin', 'demo'],
-    oneTime: [['clientAdmin', 'temporaryPassword']],
+    oneTime: ['temporaryPassword'],
     steps: ['dns', 'image', 'forge', 'organisation', 'sauvegarde'],
     argv: (_t, p) => {
       const a = ['instance', 'add', s(p.name)]
@@ -221,6 +228,125 @@ const OPS: OperationDef[] = [
     selfGuard: 'self-target',
     argv: (t) => ['instance', 'web', 'disable', s(t)],
   },
+  // ── Sprint 5 : opérations sensibles ──────────────────────────────────────────
+  {
+    // Clé restic : seulement dans le résultat à usage unique (jamais au journal ni à l'audit).
+    id: 'backup.keys',
+    level: 'host',
+    needsInstance: true,
+    mutating: false,
+    destructive: true,
+    confirm: 'name',
+    cancellable: false,
+    script: 'host',
+    params: {},
+    audit: [],
+    oneTime: ['resticPassword'],
+    argv: (t) => ['instance', 'keys', s(t)],
+  },
+  {
+    id: 'backup.restore',
+    level: 'instance',
+    needsInstance: true,
+    mutating: true,
+    destructive: true,
+    confirm: 'name',
+    cancellable: false,
+    script: 'host',
+    params: { from: { validate: v.snapshot, required: true }, source: { validate: v.instance }, domain: { validate: v.domain } },
+    audit: ['from', 'source', 'domain'],
+    steps: ['sauvegarde pre-restore', 'restauration', 'contrôle'],
+    argv: (t, p) => {
+      const a = ['instance', 'restore', s(t), '--from', s(p.from)]
+      if (p.source) a.push('--source', s(p.source))
+      if (p.domain) a.push('--domain', s(p.domain))
+      return [...a, '--confirm', s(t)]
+    },
+  },
+  {
+    id: 'export.run',
+    level: 'instance',
+    needsInstance: true,
+    mutating: true,
+    destructive: false,
+    cancellable: true,
+    script: 'host',
+    params: {},
+    audit: [],
+    argv: (t) => ['instance', 'export', s(t)],
+  },
+  {
+    id: 'export.delete',
+    level: 'instance',
+    needsInstance: true,
+    mutating: true,
+    destructive: true,
+    confirm: 'simple',
+    cancellable: false,
+    script: 'host',
+    params: { file: { validate: v.exportFile, required: true } },
+    audit: ['file'],
+    // Une archive appartient à l'instance de son nom (<instance>-AAAAMMJJ-HHMMSS.tar.gz).
+    check: (t, p) => (String(p.file).startsWith(`${t}-`) ? null : 'archive d\'une autre instance'),
+    argv: (_t, p) => ['exports', 'delete', s(p.file), '--confirm', s(p.file)],
+  },
+  {
+    id: 's3.rotate',
+    level: 'host',
+    needsInstance: false,
+    mutating: true,
+    destructive: true,
+    cancellable: false,
+    script: 'host',
+    params: {
+      endpoint: { validate: v.httpsUrl },
+      bucket: { validate: v.bucket },
+      accessKey: { validate: v.secret, required: true },
+      secretKey: { validate: v.secret, required: true },
+    },
+    audit: ['endpoint', 'bucket'],
+    fdSecrets: { endpoint: 'endpoint', bucket: 'bucket', accessKey: 'access_key', secretKey: 'secret_key' },
+    steps: ['test de la clé', 'remplacement', 'sauvegarde de contrôle', 'vérification'],
+    argv: () => ['s3-key', 'rotate', '--credentials-fd', '4'],
+  },
+  {
+    // Purge des sauvegardes d'une instance SUPPRIMÉE : cible = nom saisi (plus une instance).
+    id: 's3.purge',
+    level: 'host',
+    needsInstance: false,
+    mutating: true,
+    destructive: true,
+    confirm: 'phrase',
+    cancellable: false,
+    script: 'host',
+    params: {
+      name: { validate: v.instance, required: true },
+      purgeAccessKey: { validate: v.secret, required: true },
+      purgeSecretKey: { validate: v.secret, required: true },
+      withoutExport: { validate: v.bool },
+    },
+    audit: ['name', 'withoutExport'],
+    fdSecrets: { purgeAccessKey: 'access_key', purgeSecretKey: 'secret_key' },
+    argv: (_t, p) => {
+      const a = ['s3-purge', s(p.name), '--purge-key-fd', '4', '--confirm', purgePhrase(s(p.name))]
+      if (p.withoutExport === true) a.push('--sans-export')
+      return a
+    },
+  },
+  {
+    id: 'users.import',
+    level: 'instance',
+    needsInstance: true,
+    mutating: true,
+    destructive: false,
+    cancellable: false,
+    script: 'admin',
+    // Fichier déposé par POST /users/import/preview (admin/tmp/uploads/<id>.csv), effacé en fin de travail.
+    params: { uploadId: { validate: v.uploadId, required: true } },
+    audit: [],
+    oneTime: ['temporaryPassword'],
+    argv: (t, p) => ['--instance', s(t), 'user', 'import', `@upload:${s(p.uploadId)}`],
+  },
   // Actions de l'agent hôte (Sprint 3) : niveau hôte, exécutées par le socket de l'agent (503 s'il est
   // absent), refusées si le module requis n'est pas actif (#62 : aucune installation implicite).
   ...(
@@ -282,6 +408,7 @@ export function checkConfirm(def: OperationDef, confirm: unknown, expected: stri
       return confirm === true || confirm === expected
     case 'name':
     case 'hostname':
+    case 'phrase':
       return typeof confirm === 'string' && confirm === expected
   }
 }
@@ -289,5 +416,25 @@ export function checkConfirm(def: OperationDef, confirm: unknown, expected: stri
 export function pickAudit(def: OperationDef, params: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const k of def.audit) if (params[k] !== undefined) out[k] = params[k]
+  return out
+}
+
+/** Phrase de confirmation de la purge S3 (identique au kit, `cmd_s3_purge`). */
+export function purgePhrase(name: string): string {
+  return `supprimer définitivement les sauvegardes de ${name}`
+}
+
+/** Valeur de confirmation attendue pour `def` : nom de la cible, nom d'hôte ou phrase de purge. */
+export function expectedConfirm(def: OperationDef, target: string, hostName: string, params: Record<string, unknown>): string {
+  if (def.confirm === 'hostname') return hostName
+  if (def.confirm === 'phrase') return purgePhrase(String(params.name ?? ''))
+  return target
+}
+
+/** Paramètres secrets d'une opération, sous les clés du descripteur 4 (`access_key`…). */
+export function fdSecretsOf(def: OperationDef, params: Record<string, unknown>): Record<string, string> | undefined {
+  if (!def.fdSecrets) return undefined
+  const out: Record<string, string> = {}
+  for (const [param, key] of Object.entries(def.fdSecrets)) if (params[param] !== undefined) out[key] = String(params[param])
   return out
 }

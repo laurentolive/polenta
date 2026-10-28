@@ -75,7 +75,7 @@ test('S4-5 — niveau hôte : toutes les instances, onglet Hôte, suppression co
   await s.page.waitForLoadState('networkidle')
   await openAdmin(s.page)
   await expect(s.page.getByRole('tab', { name: 'Hôte' })).toBeVisible()
-  await expect(s.page.getByTestId('admin-instances').getByRole('row')).toHaveCount(3)
+  await expect(s.page.getByTestId('admin-instances').getByRole('row')).toHaveCount(4)
   await s.page.getByRole('button', { name: 'Supprimer' }).first().click()
   const dialog = s.page.getByRole('dialog')
   const confirm = dialog.getByRole('button', { name: 'Supprimer' })

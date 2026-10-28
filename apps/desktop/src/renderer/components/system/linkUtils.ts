@@ -63,6 +63,63 @@ export function getRelevantLinkTypes(
     .filter(({ canBeSource, canBeTarget }) => canBeSource || canBeTarget)
 }
 
+/** GH137 — sens d'une colonne de lien de la vue tableau : `both` = colonne unique `link::<type>`
+ *  (le type affiché n'est que d'un côté du lien), `out` / `in` = colonnes `link-out::` / `link-in::`
+ *  d'un type à la fois source et cible. */
+export type LinkColumnDirection = 'both' | 'out' | 'in'
+
+const LINK_COLUMN_PREFIXES: Array<[string, LinkColumnDirection]> = [['link::', 'both'], ['link-out::', 'out'], ['link-in::', 'in']]
+
+/** Type de lien et sens d'une clé de colonne, `null` si ce n'est pas une colonne de lien. */
+export function parseLinkColumn(key: string): { typeName: string; direction: LinkColumnDirection } | null {
+  for (const [prefix, direction] of LINK_COLUMN_PREFIXES) {
+    if (key.startsWith(prefix)) return { typeName: key.slice(prefix.length), direction }
+  }
+  return null
+}
+
+export function isLinkColumn(key: string): boolean {
+  return parseLinkColumn(key) !== null
+}
+
+/** Clés de colonne proposées pour `lt` dans la vue tableau du type affiché. */
+export function linkColumnKeys(lt: LinkTypeDefinition, objectTypeRef: string | undefined, category: string | undefined): string[] {
+  const canBeSource = matchesRefs(objectTypeRef ?? '', lt.sourceRefs, category)
+  const canBeTarget = matchesRefs(objectTypeRef ?? '', lt.targetRefs, category)
+  return canBeSource && canBeTarget ? [`link-out::${lt.name}`, `link-in::${lt.name}`] : [`link::${lt.name}`]
+}
+
+/** Titre d'une colonne de lien : libellé du sens (`link::` garde la règle de `getLinkTypeLabel`). */
+export function linkColumnLabel(
+  lt: LinkTypeDefinition, direction: LinkColumnDirection, objectTypeRef: string | undefined, category: string | undefined,
+): string {
+  if (direction === 'out') return lt.labelSourceToTarget
+  if (direction === 'in') return lt.labelTargetToSource
+  return getLinkTypeLabel(lt, objectTypeRef, category)
+}
+
+/**
+ * GH137 — normalise les colonnes de lien d'une liste de champs visibles pour le type affiché, sans
+ * rien réécrire : `link::<type>` d'un type « deux sens » vaut ses deux colonnes de sens (à sa place,
+ * sortants puis entrants) ; `link-out::` / `link-in::` d'un type redevenu « un sens » vaut `link::`.
+ * Type de lien inconnu : clé laissée telle quelle. Sans doublon.
+ */
+export function normalizeLinkColumns(
+  fields: string[], linkTypes: LinkTypeDefinition[], objectTypeRef: string | undefined, category: string | undefined,
+): string[] {
+  const out: string[] = []
+  for (const f of fields) {
+    const parsed = parseLinkColumn(f)
+    const lt = parsed && linkTypes.find(l => l.name === parsed.typeName)
+    const keys = !lt
+      ? [f]
+      : parsed!.direction === 'both' ? linkColumnKeys(lt, objectTypeRef, category)
+        : linkColumnKeys(lt, objectTypeRef, category).length === 2 ? [f] : [`link::${lt.name}`]
+    for (const k of keys) if (!out.includes(k)) out.push(k)
+  }
+  return out
+}
+
 export function getPeerId(link: ObjectLink, objectId: string): string {
   return link.sourceId === objectId ? link.targetId : link.sourceId
 }

@@ -136,6 +136,7 @@ const TITLE_OVERRIDE_KEYS: Record<string, string> = {
   '/dashboard': 'layout.activityBar.dashboard',
   '/preferences': 'preferences.title',
   '/compliance': 'layout.tabTitles.compliance',
+  '/constellation': 'layout.tabTitles.constellation',
   '/workspace': 'layout.tabTitles.workspace',
   '/req/new': 'layout.tabTitles.newRequirement',
   '/test/new': 'layout.tabTitles.newTest',

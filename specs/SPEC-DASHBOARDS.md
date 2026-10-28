@@ -102,7 +102,7 @@ empreintes de chaque fichier) :
 | `time.js` | `offsetAt`, `dayOf`, `dayEnd`, `dayRange` (jours locaux via `polenta.timezoneOffsets`) |
 | `status.js` | `ENTRY_ORDER`, `ENTRY_SEVERITY`, `worst`, `typeIndex`, `isApproval`, `statusLabel`, `entryStatusLabel` |
 | `history.js` | `valueAt(obj, champ, date)`, `timeline(objets, champ, options)` (GH77) |
-| `campaign.js` | `campaignsTimeline` / `campaignTimeline` (état des entrées jour par jour, repli GH73 §6.2 marqué `approximate`, `polenta.drill`), `entryRuns`, `entryStep` / `stepRank` / `stepLabel` / `stepContext` (étapes d'avancement, ex-GH71), `lastResult(s)` (tous les runs), `lastEntryResult(s)` (v3, GH70 : entrée de campagne exécutée la plus récente, toutes campagnes, abandonnées comprises, runs hors campagne ignorés) |
+| `campaign.js` | `campaignsTimeline` / `campaignTimeline` (état des entrées jour par jour, repli GH73 §6.2 marqué `approximate`, `polenta.drill`), `entryRuns`, `entryStep` / `stepRank` / `stepLabel` / `stepContext` (étapes d'avancement, ex-GH71), `lastResult(s)` (tous les runs), `lastEntryResult(s)` (v3, GH70 : entrée de campagne exécutée la plus récente, toutes campagnes, abandonnées comprises, runs hors campagne ignorés), `entryResultsByCampaign` (v4, GH126 : une ligne par (campagne, test ayant une entrée active), campagnes par `createdAt` puis ID, abandonnées comprises ; test itérant → pire statut `worst`, `statuses` de toutes les instances, `entryId` / `executedAt` / `executedBy` de l'instance qui porte ce statut (la plus récemment exécutée parmi elles, à défaut la première), nuls si ce statut est `pending`) |
 | `maturity.js` | `maturity(data, exigence, ctx?, locale?)`, `maturityContext`, `isFilled`, `isEarsCompliant` : les 5 critères de maturité (§7.2) |
 | `polenta.d.ts`, `../jsconfig.json` | types du contrat ; `tsc -p dashboards/jsconfig.json` vérifie scripts et bibliothèque |
 
@@ -131,6 +131,13 @@ déterministe) :
 - **Requête « Dernier résultat de campagne (colonne) »** (`campaign-last-result`, GH70, sans
   paramètre de formulaire) : génère une colonne calculée (§5.2) « Dernier résultat » / « Last
   result » des cas de test, à partir de `lastEntryResults` (`lib/campaign.js`).
+- **Requête « Résultat par campagne (colonnes) »** (`campaign-results`, GH126, sans paramètre) :
+  colonne calculée **éclatée** (§5.2) « Résultat par campagne » / « Result by campaign » des cas de
+  test, une sous-colonne par campagne, à partir de `entryResultsByCampaign` (`lib/campaign.js` v4) ;
+  lignes `id`, `value` (statut, `pending` si non exécuté), `campaignId`, `campaignTitle`, `tooltip`
+  (« `CAMP-xxxx` — titre · date · exécutant », « · non exécuté », « · PASS, FAIL » pour plusieurs
+  instances), `_ids` ; déclaration proposée : `values: [PASS, FAIL, BLOCKED, INCOMPLETE, pending]`,
+  `splitColumn: campaignId`, `splitLabelColumn: campaignTitle`.
 - **Référence** stockée : `template: { id, version, params, hash }`, `hash` = SHA-256 du code
   généré normalisé (`hashableText`) — pour une requête, script **et** déclaration de paramètres s'il
   y en a (`queryCodeForHash`) : modifier la déclaration détache aussi la requête. Code différent → **personnalisé** : la popup n'affiche que le
@@ -191,6 +198,8 @@ column:
   idColumn: testCaseId        # colonne du résultat : ID de l'élément (défaut id)
   valueColumn: status         # colonne du résultat : valeur (défaut value)
   tooltipColumn: campaignTitle  # colonne du résultat : infobulle (défaut tooltip)
+  splitColumn: campaignId       # GH126 — colonne éclatée : une sous-colonne par valeur distincte
+  splitLabelColumn: campaignTitle  # GH126 — libellé des sous-colonnes (défaut : la valeur)
 ```
 
 - **Contrat de ligne** : une ligne par élément ; la colonne `idColumn` (défaut `id`) porte l'ID de
@@ -200,6 +209,14 @@ column:
   `status`) sert donc sans code. Première ligne d'un ID retenue (l'ordre, donc la règle, est celle
   du script), ID inconnu ignoré, valeur hors type affichée telle quelle ; colonne d'ID ou de valeur
   absente d'une ligne → erreur de la colonne (« colonne « X » manquante »).
+- **Colonne éclatée (GH126)** : avec `splitColumn`, une ligne par (élément, sous-colonne) ; chaque
+  valeur distincte non vide de `splitColumn` définit une sous-colonne de clé
+  `query::<ID>::<valeur>` (`computedColumnKey` / `parseComputedColumnKey`), dans l'ordre de
+  première apparition (le script décide) ; libellé = premier `splitLabelColumn` non vide de ses
+  lignes, à défaut la valeur ; type, valeurs, infobulle et cible communs
+  (`splitColumnValuesFromRows`). Ligne sans valeur de split → « colonne « X » manquante » ;
+  plus de `MAX_SPLIT_COLUMNS` (50) valeurs → erreur de la colonne. `splitLabelColumn` sans
+  `splitColumn` → déclaration invalide. Hors empreinte du modèle, comme le reste de `column`.
 - **Validation** (`validateColumnDecl`, `packages/types/src/suivi-columns.ts`) : déclaration lue
   invalide → `columnError`, requête toujours exécutable, colonne non proposée ; la réécrire sans
   corriger est refusée (`[COLUMN_INVALID]`). Requête privée : colonne fournie refusée
@@ -215,13 +232,20 @@ column:
 - **Saisie** : section « Utiliser comme colonne dans la Vue Système » de la vue `/query`
   (`ColumnDeclEditor`), en mode Script comme en mode modèle (colonne proposée préremplie sur une
   requête non enregistrée, sans écraser une saisie) ; listes « Colonne identifiant / valeur /
-  infobulle » alimentées par les colonnes du dernier résultat ; désactivée sur une requête privée ;
+  infobulle » alimentées par les colonnes du dernier résultat ; « Une colonne par valeur de » +
+  « Libellé des colonnes » (GH126 ; défaut : première colonne du résultat qui n'est ni
+  l'identifiant, ni la valeur, ni l'infobulle ; décocher retire les deux propriétés) ; désactivée sur une requête privée ;
   « Enregistrer sous… » en privé refusé si une colonne est saisie ; avertissement si `appliesTo` ne
   désigne aucun type.
 - **Exécution** : `useComputedColumns` (renderer) lit les requêtes partagées du repo ouvert du
   projet, quel que soit le repo affiché dans la Vue Système ; une exécution `suivi:run` par colonne
   visible (onglet Tableau ou Document), clé `['widget-query-result', …]` (rafraîchie comme les
-  widgets, §8.2).
+  widgets, §8.2). GH126 : une colonne éclatée est déployée dans le hook en sous-colonnes ordinaires
+  (les vues n'en savent rien) ; une seule exécution pour toutes ses sous-colonnes, dès qu'une est
+  visible ou que le panneau ⚙️ est ouvert (`discover`, pour les lister) ; seules les colonnes
+  visibles sont fusionnées dans les objets ; pendant le chargement ou en erreur, les sous-colonnes
+  visibles restent affichées (colonnes de substitution, d'après le dernier résultat valide de la
+  session, sinon libellé = la valeur).
 
 ---
 
@@ -263,7 +287,7 @@ column:
 
 | Entité | Partagé (repo) | Privé (`.{user}.pref`) |
 |---|---|---|
-| Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `parameters?` (GH93), `column?` (GH70, §5.2), `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus, jamais de `column`), ID `local-<ts>-<rand>` |
+| Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `parameters?` (GH93), `column?` (GH70, §5.2 ; `splitColumn` / `splitLabelColumn` GH126), `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus, jamais de `column`), ID `local-<ts>-<rand>` |
 | Dashboard | `dashboards/DASHBOARD-NNNN/` : `dashboard.yaml` (widgets : `id`, `title`, `queryId`, `size`, `template?`) + `<widgetId>.js` (transformation) + `<widgetId>.vl.json` (spec) | `dashboards[]` (code des widgets inclus) |
 | Historique de requêtes | — | `queryHistory` (texte du script) |
 | Valeurs de la barre de paramètres (GH93) | — | `suiviParamValues` (dashboard → `name:kind` → valeur) |

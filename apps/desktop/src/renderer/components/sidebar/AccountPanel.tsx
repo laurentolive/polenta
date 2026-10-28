@@ -10,6 +10,7 @@ import { useCurrentAccount } from '../../hooks/useCurrentAccount'
 import { useAdminMe } from '../../hooks/useAdmin'
 import { useTeamConfig } from '../../hooks/useTeamConfig'
 import { BRAND } from '../../../shared/brand'
+import { NETWORK_TIMEOUT_MAX, NETWORK_TIMEOUT_MIN, normalizeNetworkTimeout } from '../../../shared/network-timeout'
 
 export function AccountPanel() {
   const { t } = useTranslation()
@@ -24,12 +25,19 @@ export function AccountPanel() {
   const [autoUpdateLocked, setAutoUpdateLocked] = useState(false)
   // GH34 — dossier de la bibliothèque de gabarits d'export (préférence app-level).
   const [templatesDir, setTemplatesDir] = useState<string | null>(null)
+  // GH15 — délai de connexion réseau (s) : valeur enregistrée et saisie en cours.
+  const [networkTimeout, setNetworkTimeout] = useState<number | null>(null)
+  const [networkTimeoutDraft, setNetworkTimeoutDraft] = useState('')
 
   useEffect(() => {
     api.app.getSettings().then(s => {
       setAutoCheckUpdates(s.autoCheckUpdates)
       setAutoUpdateLocked(s.autoCheckUpdatesLocked === true)
       setTemplatesDir(s.exportTemplatesDir ?? '')
+      if (s.networkTimeoutSeconds !== undefined) {
+        setNetworkTimeout(s.networkTimeoutSeconds)
+        setNetworkTimeoutDraft(String(s.networkTimeoutSeconds))
+      }
     }).catch(() => {})
   }, [])
 
@@ -60,6 +68,23 @@ export function AccountPanel() {
       setAutoCheckUpdates(saved.autoCheckUpdates)
     } catch {
       setAutoCheckUpdates(!value)
+    }
+  }
+
+  async function handleCommitNetworkTimeout() {
+    if (networkTimeout === null) return
+    const value = Number(networkTimeoutDraft)
+    // Saisie invalide (hors bornes, décimale, texte) : on revient à la valeur enregistrée.
+    if (normalizeNetworkTimeout(value) !== value || value === networkTimeout) {
+      setNetworkTimeoutDraft(String(networkTimeout))
+      return
+    }
+    try {
+      const saved = await api.app.setSettings({ networkTimeoutSeconds: value })
+      setNetworkTimeout(saved.networkTimeoutSeconds ?? value)
+      setNetworkTimeoutDraft(String(saved.networkTimeoutSeconds ?? value))
+    } catch {
+      setNetworkTimeoutDraft(String(networkTimeout))
     }
   }
 
@@ -183,6 +208,22 @@ export function AccountPanel() {
               checked={autoCheckUpdates}
               disabled={autoUpdateLocked}
               onChange={e => void handleToggleAutoUpdate(e.target.checked)}
+            />
+          </label>
+        )}
+        {capabilities.networkTimeout && networkTimeout !== null && (
+          <label className="flex items-center justify-between gap-2" title={t('account.panel.networkTimeoutHint')}>
+            <span className="text-xs text-ink-2">{t('account.panel.networkTimeout')}</span>
+            <input
+              type="number"
+              min={NETWORK_TIMEOUT_MIN}
+              max={NETWORK_TIMEOUT_MAX}
+              step={1}
+              value={networkTimeoutDraft}
+              onChange={e => setNetworkTimeoutDraft(e.target.value)}
+              onBlur={() => void handleCommitNetworkTimeout()}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+              className="w-16 px-1.5 py-0.5 rounded border border-edge bg-transparent text-xs text-ink-2 text-right"
             />
           </label>
         )}

@@ -22,4 +22,6 @@ export const capabilities = {
    * `GET /admin/api/me` (propriétaire de l'organisation). Le desktop n'envoie aucune requête admin.
    */
   serverAdmin: isWeb,
+  /** GH15 — délai de connexion réseau : réglage du process desktop (le serveur web garde les défauts). */
+  networkTimeout: !isWeb,
 } as const

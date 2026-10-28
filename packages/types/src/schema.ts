@@ -18,6 +18,9 @@ export interface SchemaField {
   label?: string
   type: SchemaFieldType
   values?: string[]          // enum / multi_enum only
+  /** GH136 — libellé affiché par valeur d'enum (la valeur reste stockée). Posé par le renderer
+   * pour le pseudo-champ statut (`statuses[].label`) ; jamais écrit dans schema.yaml. */
+  valueLabels?: Record<string, string>
   required?: boolean
   default?: unknown
   placeholder?: string
@@ -61,6 +64,13 @@ export interface SchemaStatus {
   isTerminal?: boolean       // masque l'objet des listes par défaut (ex: obsolete)
 }
 
+/** GH136 — `valueLabels` du pseudo-champ statut : libellé de chaque statut qui en a un. */
+export function statusValueLabels(statuses: SchemaStatus[]): Record<string, string> {
+  const labels: Record<string, string> = {}
+  for (const s of statuses) if (s.label) labels[s.name] = s.label
+  return labels
+}
+
 // Catégorie technique d'un type d'objet.
 // Détermine les champs système implicites, le comportement sidebar et le workflow :
 //   requirement — id, title, status (from statuses[]), fields{}
@@ -91,6 +101,19 @@ export interface ObjectTypeDefinition {
 export function isApprovalStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): boolean {
   const approvalStatusName = typeDef?.statuses?.find(s => s.isApproval)?.name
   return status === (approvalStatusName ?? 'approved')
+}
+
+/** GH149 — statut d'un objet à sa création : premier statut déclaré par le type (ordre de
+ *  `statuses[]`, celui que l'éditeur affiche par défaut). Repli sur le littéral `draft` quand le
+ *  type est introuvable ou ne déclare aucun statut. */
+export function initialStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined): string {
+  return typeDef?.statuses?.[0]?.name ?? 'draft'
+}
+
+/** GH149 — `status` est-il refusé pour ce type ? Seulement quand le type déclare des statuts et
+ *  qu'aucun ne porte ce nom (type introuvable ou sans statuts : rien à vérifier). */
+export function isUnknownStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): boolean {
+  return !!typeDef?.statuses?.length && !typeDef.statuses.some(s => s.name === status)
 }
 
 // Noeud local : composant propre au repo produit.
@@ -227,13 +250,14 @@ export type TreeNodeKind = 'folder' | 'item'
 export interface TypeTreeNode {
   id: string           // unique, immutable, auto-generated UUID
   kind: TreeNodeKind
-  name: string         // display name (folder name or item title override)
+  name: string         // folder name; for an item, its object's title — filled on read, never stored (GH180)
   objectId?: string    // for kind='item': ID of the underlying object
   children: TypeTreeNode[]
 }
 
 // The full tree for a given (SystemNode, ObjectTypeDefinition) pair.
-// Stored in .polenta/trees/{nodeName}/{typeName}.yaml
+// Stored in .polenta/trees/{nodeName}/{typeName}.yaml — curated layout only (GH180): TreeService.get
+// appends the type's unclassified objects and fills item names from titles.
 export interface TypeTree {
   nodeId: string       // SystemNode.name
   typeId: string       // ObjectTypeDefinition.name

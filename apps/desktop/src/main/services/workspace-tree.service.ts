@@ -30,7 +30,7 @@ import type {
   ProjectSchema,
 } from '@polenta/types'
 import type { PolentaRepoDependency } from '@polenta/types'
-import { findSystemNode } from '@polenta/types'
+import { findSystemNode, isAutoBranch } from '@polenta/types'
 import { parseTreeCache, serializeTreeCache } from './tree-cache.util'
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -705,7 +705,12 @@ export class WorkspaceTreeService {
 
       try {
         const pinnedSha = await git.resolveRef({ fs, dir: repoPath, ref: pin })
-        return head === pinnedSha
+        if (head === pinnedSha) return true
+        // GH173: pending changes of the pinned branch moved onto `dev-auto`, which the auto-pull
+        // then fast-forwarded by reference — still that branch, a checkout would take the edits away.
+        const current = await git.currentBranch({ fs, dir: repoPath })
+        return !!current && isAutoBranch(current)
+          && await git.isDescendent({ fs, dir: repoPath, oid: pinnedSha, ancestor: head, depth: -1 }).catch(() => false)
       } catch {
         // Branch/tag pin not resolvable locally — needs a (re)checkout.
         return false

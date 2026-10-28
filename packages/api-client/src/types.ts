@@ -282,6 +282,20 @@ export interface CommitEntry {
   date: string
 }
 
+/**
+ * GH178 — contenu des deux côtés d'un diff de fichier. `oldRef` / `newRef` : SHA effectivement lus
+ * (`null` = working tree), pour relire à la même version les fichiers référencés (diagrammes,
+ * images, schéma). `*Missing` : fichier absent de ce côté (`*Content` vaut alors `''`).
+ */
+export interface FileDiffContents {
+  oldContent: string
+  newContent: string
+  oldRef?: string | null
+  newRef?: string | null
+  oldMissing?: boolean
+  newMissing?: boolean
+}
+
 export interface DrawioPage {
   id: string
   name: string
@@ -302,6 +316,13 @@ export type MergeResult =
 // T154 — SyncService.ensureIntegrationUpToDate()'s outcome.
 export type IntegrationSyncResult = 'up-to-date' | 'fast-forwarded' | 'diverged' | 'no-remote-branch'
 
+// GH138 — mirrors SyncService's CheckoutBranchResult.
+export interface CheckoutBranchResult {
+  branch: string
+  remote?: 'created' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
+  remoteRef?: string
+}
+
 // GH39 — mirrors SyncService's IntegrationRemoteState / ResyncOutcome.
 export type IntegrationRemoteStateKind = 'no-remote' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
 export interface IntegrationRemoteState {
@@ -317,6 +338,10 @@ export interface IntegrationRemoteState {
 export type ResyncOutcome =
   | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
   | { outcome: 'set-aside'; branch: string }
+// GH173 — mirrors SyncService's AutoBranchOutcome.
+export type AutoBranchOutcome =
+  | { action: 'none' }
+  | { action: 'switched' | 'returned'; branch: string }
 
 export interface DeviceFlowSession {
   deviceCode: string
@@ -349,7 +374,15 @@ export interface FieldVisibilityPref {
   collapsedFoldersWord?: string[]
   /** GH24 — nombre de colonnes figées (depuis la gauche) de la vue Tableau. Absent ⇒ 0. */
   freezeColCountExcel?: number
+  /** GH176 — colonnes du sélecteur de tests d'une campagne. Absent ⇒ celles de la vue Tableau. */
+  picker?: string[]
+  /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
+  showFoldersPicker?: boolean
 }
+
+/** GH176 — écriture partielle de `FieldVisibilityPref` : une clé absente est conservée telle quelle,
+ *  une clé à `null` est supprimée. */
+export type FieldVisibilityPatch = { [K in keyof FieldVisibilityPref]?: FieldVisibilityPref[K] | null }
 
 /** GH44 — un projet de « Mes projets » (espace serveur de l'utilisateur, version web). */
 export interface WebWorkspaceEntry {
@@ -400,6 +433,8 @@ export interface ApiClient {
   }
   schema: {
     get(repoPath: string): Promise<ProjectSchema>
+    /** GH178 — `.polenta/schema.yaml` du repo lu à une ref git (lecture seule), `null` s'il n'y existe pas. */
+    getAt(repoPath: string, ref: string): Promise<ProjectSchema | null>
     save(repoPath: string, schema: ProjectSchema): Promise<void>
     moveElement(repoPath: string, dto: MoveElementDto): Promise<MoveElementResult>
     /** GH77 — migre valeur et historique des champs renommés sur les objets du type (après `save`). */
@@ -507,8 +542,9 @@ export interface ApiClient {
       | { status: 'canceled' }
       | { status: 'error'; message: string }
     >
-    /** Pages décompressées (XML mxGraphModel prêt à parser), ou null si le fichier n'existe pas / n'est pas un .drawio valide. */
-    read(repoPath: string, relativePath: string): Promise<DrawioPage[] | null>
+    /** Pages décompressées (XML mxGraphModel prêt à parser), ou null si le fichier n'existe pas / n'est pas un .drawio valide.
+     *  `ref` (GH178) : lu à ce commit / cette ref git ; absent ou `null` = working tree. */
+    read(repoPath: string, relativePath: string, ref?: string | null): Promise<DrawioPage[] | null>
     /** Ouvre le fichier dans l'application associée du poste (best effort, aucune erreur si absente). */
     openExternal(repoPath: string, relativePath: string): Promise<void>
   }
@@ -525,7 +561,7 @@ export interface ApiClient {
       | { status: 'error'; message: string }
     >
     /** Octets du fichier référencé (base64), ou null si introuvable. Jamais stocké — sert uniquement à construire un data URI de rendu en mémoire. */
-    read(repoPath: string, relativePath: string): Promise<{ mimeType: string; base64: string } | null>
+    read(repoPath: string, relativePath: string, ref?: string | null): Promise<{ mimeType: string; base64: string } | null>
     /** Écrit les octets d'une image collée (presse-papiers, pas de fichier source) dans `images/` sous un nom généré, dédupliqué si collision. */
     writePaste(repoPath: string, mimeType: string, base64: string): Promise<
       | { status: 'ok'; path: string }
@@ -548,6 +584,9 @@ export interface ApiClient {
     resyncIntegration(repoPath: string, branch: string): Promise<ResyncOutcome>
     /** GH39: one auto-pull tick — fetch, fast-forward if clean, push retry if the integration is only ahead. */
     autoSync(repoPath: string, integrationBranch: string): Promise<IntegrationRemoteState>
+    /** GH173: local only — moves pending changes on the integration onto `dev-auto`, or goes back
+     *  to the integration from an idle `dev-auto` (and deletes it). */
+    settleAutoBranch(repoPath: string, integrationBranch: string): Promise<AutoBranchOutcome>
     /** GH39: true when `branch` has no commit absent from `into`. */
     isMergedInto(repoPath: string, branch: string, into: string): Promise<boolean>
     log(repoPath: string, limit?: number): Promise<CommitEntry[]>
@@ -559,12 +598,13 @@ export interface ApiClient {
     discard(repoPath: string, filepath: string): Promise<void>
     discardAll(repoPath: string): Promise<void>
     graph(repoPath: string, limit?: number): Promise<GraphCommit[]>
-    diff(repoPath: string, filepath: string): Promise<{ oldContent: string; newContent: string }>
+    diff(repoPath: string, filepath: string): Promise<FileDiffContents>
     commitFiles(repoPath: string, sha: string): Promise<SyncFileStatus[]>
-    commitDiff(repoPath: string, sha: string, filepath: string): Promise<{ oldContent: string; newContent: string }>
+    commitDiff(repoPath: string, sha: string, filepath: string): Promise<FileDiffContents>
     branches(repoPath: string): Promise<BranchInfo[]>
     createBranch(repoPath: string, name: string): Promise<void>
-    checkoutBranch(repoPath: string, name: string): Promise<void>
+    /** GH138 — `origin/<branch>` checks out the local `<branch>` (created if absent), never a detached HEAD. */
+    checkoutBranch(repoPath: string, name: string): Promise<CheckoutBranchResult>
     deleteBranch(repoPath: string, name: string): Promise<void>
     tags(repoPath: string): Promise<string[]>
     createTag(repoPath: string, tagName: string, commitSha?: string): Promise<void>
@@ -576,7 +616,7 @@ export interface ApiClient {
     pushBranch(repoPath: string, branchName: string, remote?: string): Promise<void>
     rebase(repoPath: string, onto: string): Promise<void>
     diffBetween(repoPath: string, sha1: string, sha2: string): Promise<SyncFileStatus[]>
-    diffFileBetween(repoPath: string, sha1: string, sha2: string, filepath: string): Promise<{ oldContent: string; newContent: string }>
+    diffFileBetween(repoPath: string, sha1: string, sha2: string, filepath: string): Promise<FileDiffContents>
     resolveRefs(repoPath: string): Promise<GitRef[]>
   }
   /** Opérations git bas niveau ne relevant pas du domaine `sync` (T43). */
@@ -733,7 +773,11 @@ export interface ApiClient {
   }
   pref: {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>
-    setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPref): Promise<void>
+    /** GH176 — fusionne `views` dans l'entrée existante (`null` = clé supprimée) ; ne remplace pas l'entrée. */
+    setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPatch): Promise<void>
+    /** GH133 — choix « Fusionner dans <intégration> » mémorisé pour `branch` (`null` : aucun). */
+    getPublishMerge(repoPath: string, username: string, branch: string): Promise<boolean | null>
+    setPublishMerge(repoPath: string, username: string, branch: string, merge: boolean): Promise<void>
   }
   /** GH74 — vue Suivi : exécution des scripts (bac à sable du main), drill-down, modèles. */
   suivi: {

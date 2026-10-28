@@ -50,8 +50,8 @@ beforeEach(async () => {
   await git.writeYaml(dir, '.polenta/schema.yaml', SCHEMA)
   reqIndex = new RequirementsIndexService(git)
   const history = new HistoryService(git, async () => ({ by: 'lolive' }))
-  const requirements = new RequirementsService(git, reqIndex, schemaStub, undefined, undefined, history)
-  const tests = new TestsService(git, new TestsIndexService(git), schemaStub, undefined, undefined, history)
+  const requirements = new RequirementsService(git, reqIndex, schemaStub, undefined, history)
+  const tests = new TestsService(git, new TestsIndexService(git), schemaStub, undefined, history)
   service = new FieldRenameService(requirements, tests, new CampaignsService(git, tests, undefined, undefined, history))
 
   await git.writeYaml(dir, 'requirements/SYS-0001.yaml', {

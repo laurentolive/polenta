@@ -8,9 +8,12 @@ import path from 'node:path'
 import { build } from 'electron-builder'
 import { builderConfig } from '../electron-builder.config'
 import { loadBrand } from './brand'
+import { appVersion } from './app-version'
 
 const brand = loadBrand()
-console.log(`[package] marque ${brand.info.id} — ${brand.info.productName}`)
+// GH158 — version déduite du tag git, pas du package.json du repo (figé à 0.0.0-dev).
+const version = appVersion()
+console.log(`[package] marque ${brand.info.id} — ${brand.info.productName} ${version}`)
 
 // Les bundles (electron-vite build, build:mcp-server) lisent POLENTA_BRAND chacun de leur côté :
 // refuser de packager un mélange de marques (ex. serveur MCP lisant les comptes d'une autre marque).
@@ -24,9 +27,14 @@ for (const bundle of ['out/main/index.js', 'out/mcp-server/index.cjs']) {
   }
 }
 
+// Réécrite dans le package.json packagé : app.getVersion(), macro ${version} (nom de l'installeur)
+// et latest.yml la lisent.
+const config = builderConfig(brand)
+config.extraMetadata = { ...config.extraMetadata, version }
+
 build({
   projectDir: path.resolve(__dirname, '..'),
-  config: builderConfig(brand),
+  config,
   publish: 'never',
 }).catch((err) => {
   console.error(err)

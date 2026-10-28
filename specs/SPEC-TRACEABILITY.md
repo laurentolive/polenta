@@ -492,3 +492,20 @@ matrix:
     status: not_covered
     tests: []
 ```
+
+---
+
+## 8. Vue Constellation (GH183)
+
+Vue de lecture seule de l'arbre de raffinement et de sa couverture, route `/constellation`,
+ouverte depuis le panneau Analyse d'impact.
+
+- **Nœuds** : exigences du workspace (`links:objects`, catégorie `requirement`).
+- **Arêtes** : liens dont les deux extrémités sont des exigences ; par défaut la source raffine
+  la cible (bouton « Inverser le sens » sinon) ; filtrables par type de lien.
+- **Disposition** : racines (sans parent) au centre, un pétale par racine ; un anneau par type
+  d'exigence rangé par profondeur moyenne (un seul type → un anneau par profondeur).
+- **Couverture** : une exigence terminale est couverte si son `coverageStatus` (§1–2) vaut autre
+  chose que `not_covered` ; un nœud affiche la part de ses exigences terminales couvertes. Valeur
+  d'affichage, jamais stockée (GH79).
+- Logique pure : `apps/desktop/src/renderer/lib/constellationLayout.ts`.

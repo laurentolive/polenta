@@ -47,8 +47,11 @@ export class CampaignsService {
       const campaign = await this.gitService.readYaml<TestCampaign>(repoPath, file)
       if (!campaign) continue
 
-      // Filter by component if specified
-      if (component && campaign.component !== component) continue
+      // Filter by component if specified. GH146 — même repli que pour `level` : à défaut de
+      // `component`, le nœud se lit dans `objectTypeRef` ; une campagne sans l'un ni l'autre reste visible.
+      const campaignComponent = campaign.component
+        ?? (campaign.objectTypeRef?.includes('::') ? campaign.objectTypeRef.split('::')[0] : undefined)
+      if (component && campaignComponent && campaignComponent !== component) continue
       // Filter by level if specified. GH59 — `level` est optionnel dans les fichiers (campagnes
       // écrites hors de l'app) : à défaut, le type de campagne se lit dans `objectTypeRef`, et une
       // campagne sans l'un ni l'autre reste visible.

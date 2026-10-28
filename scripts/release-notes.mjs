@@ -1,70 +1,53 @@
 #!/usr/bin/env node
-// Génère les release notes (markdown, stdout) : tickets passés à "traité" entre deux tags.
-// Usage : node scripts/release-notes.mjs <tag> [<tag-précédent>]
-// Env   : GITHUB_REPOSITORY (owner/repo) pour construire les liens.
+// Génère les release notes (markdown, stdout) : issues GitHub fermées comme terminées depuis la
+// dernière release publiée (GH154 — remplace TICKETS.md / tickets_archive.md, abandonnés).
+// Usage : node scripts/release-notes.mjs <tag>
+// Env   : GH_TOKEN (lecture des issues et releases, fourni par le workflow), GITHUB_REPOSITORY
+//         (owner/repo ; à défaut, repo courant selon `gh`).
+// Requiert la CLI `gh` (présente sur les runners GitHub).
 import { execFileSync } from "node:child_process";
 
 const tag = process.argv[2];
 if (!tag) {
-  console.error("Usage: release-notes.mjs <tag> [<previous-tag>]");
+  console.error("Usage: release-notes.mjs <tag>");
   process.exit(1);
 }
-const repo = process.env.GITHUB_REPOSITORY;
 
-const git = (...args) =>
-  execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+const gh = (...args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+const repo = process.env.GITHUB_REPOSITORY || gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner").trim();
 
-function previousTag() {
-  try {
-    return git("describe", "--tags", "--abbrev=0", `${tag}^`).trim();
-  } catch {
-    return "";
-  }
+// Dernière release publiée autre que celle du tag en cours (relance du workflow : elle existe déjà).
+function previousRelease() {
+  const releases = JSON.parse(gh("release", "list", "--repo", repo, "--limit", "100", "--json", "tagName,publishedAt,isDraft,isPrerelease"));
+  return releases
+    .filter((r) => !r.isDraft && !r.isPrerelease && r.tagName !== tag && r.publishedAt)
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))[0];
 }
 
-function show(ref, path) {
-  try {
-    return git("show", `${ref}:${path}`);
-  } catch {
-    return "";
-  }
+// Fermées comme terminées : les doublons et « not planned » sont exclus.
+function closedIssuesSince(since) {
+  const q = [`repo:${repo}`, "is:issue", "is:closed", "reason:completed", since && `closed:>${since}`].filter(Boolean).join(" ");
+  const out = gh("api", "-X", "GET", "search/issues", "--paginate", "-f", `q=${q}`, "-f", "per_page=100",
+    "--jq", ".items[] | {number, title, labels: [.labels[].name]}");
+  return out.split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l));
 }
 
-const HEADING = /^### (T\d+[\w-]*) — (.+?)\s*$/;
+const prev = previousRelease();
+const issues = closedIssuesSince(prev?.publishedAt).sort((a, b) => b.number - a.number);
 
-// Tickets traités : tous ceux de tickets_archive.md + ceux de la section "## Done" de TICKETS.md.
-function doneTickets(ref) {
-  const found = new Map();
-  const collect = (text) => {
-    for (const line of text.split(/\r?\n/)) {
-      const m = HEADING.exec(line);
-      if (m) found.set(m[1], m[2]);
-    }
-  };
-  collect(show(ref, "tickets_archive.md"));
-  const tickets = show(ref, "TICKETS.md");
-  const doneAt = tickets.search(/^## Done\s*$/m);
-  if (doneAt >= 0) collect(tickets.slice(doneAt));
-  return found;
-}
-
-const prev = process.argv[3] ?? previousTag();
-const before = prev ? doneTickets(prev) : new Map();
-const after = doneTickets(tag);
-
-const added = [...after].filter(([id]) => !before.has(id));
-added.sort((a, b) => parseInt(b[0].slice(1), 10) - parseInt(a[0].slice(1), 10));
-
-const specExists = (id) => show(tag, `specs/${id}.md`) !== "";
-const blob = (path) => `https://github.com/${repo}/blob/${tag}/${path}`;
-
-const lines = added.map(([id, title]) => {
-  const link = repo && specExists(id) ? `[${id}](${blob(`specs/${id}.md`)})` : id;
-  return `- ${link} — ${title}`;
-});
-
+const sections = [
+  ["Nouveautés", (i) => i.labels.includes("type:feature")],
+  ["Corrections", (i) => i.labels.includes("type:bug")],
+  ["Autres", () => true],
+];
 const out = [];
-out.push(lines.length ? "## Tickets traités" : "## Tickets traités\n\nAucun ticket traité depuis la version précédente.");
-if (lines.length) out.push("", ...lines);
-if (prev && repo) out.push("", `**Changelog complet** : https://github.com/${repo}/compare/${prev}...${tag}`);
-console.log(out.join("\n"));
+const placed = new Set();
+for (const [heading, match] of sections) {
+  const items = issues.filter((i) => !placed.has(i.number) && match(i));
+  if (!items.length) continue;
+  items.forEach((i) => placed.add(i.number));
+  out.push(`## ${heading}`, "", ...items.map((i) => `- #${i.number} — ${i.title}`), "");
+}
+if (!out.length) out.push("Aucune issue fermée depuis la version précédente.", "");
+if (prev) out.push(`**Changelog complet** : https://github.com/${repo}/compare/${prev.tagName}...${tag}`);
+console.log(out.join("\n").trimEnd());

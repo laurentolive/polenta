@@ -1,5 +1,5 @@
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
-import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
 import type { Candidate } from './LinkCombobox'
@@ -322,6 +322,8 @@ function InlineField({
             onKeyDown={e => { if (e.key === 'Escape') { setDraft(value); setEditing(false) } }}
             className="flex-1 text-xs text-ink bg-surface border border-edge rounded px-1 outline-none"
           >
+            {/* GH165 — sans option vide, une valeur absente s'affiche comme la 1re valeur et ne peut pas être choisie. */}
+            {(!fieldDef.required || !draft) && <option value="">—</option>}
             {(fieldDef.values ?? []).map(v => (
               <option key={v} value={v}>{v}</option>
             ))}
@@ -383,7 +385,7 @@ function getStatusClass(status: string): string {
 /** GH70 — valeur d'une colonne calculée dans une carte : lecture seule, infobulle, cible cliquable. */
 function ComputedField({
   label,
-  queryTitle,
+  headerTitle,
   value,
   fieldType,
   tooltip,
@@ -392,7 +394,8 @@ function ComputedField({
   repoPath,
 }: {
   label: string
-  queryTitle: string
+  /** Infobulle du libellé : « ID — titre », ou « groupe — libellé » (GH126). */
+  headerTitle: string
   value: string
   fieldType: string
   tooltip?: string
@@ -409,7 +412,7 @@ function ComputedField({
         : value
   return (
     <div className="flex items-start gap-2 py-0.5" data-computed-field="">
-      <span className="text-xs text-ink-3 w-28 shrink-0 mt-0.5" title={queryTitle}>
+      <span className="text-xs text-ink-3 w-28 shrink-0 mt-0.5" title={headerTitle}>
         {label} <span className="text-ink-3/50">(calc)</span>
       </span>
       {onOpen && value && !pending ? (
@@ -605,7 +608,7 @@ function ItemCard({
               <ComputedField
                 key={col}
                 label={computed.column.label}
-                queryTitle={computed.column.queryTitle}
+                headerTitle={computed.column.headerTitle}
                 value={obj ? getFieldValue(obj, col) : ''}
                 fieldType={computed.column.fieldDef.type}
                 tooltip={cell?.tooltip}
@@ -617,7 +620,7 @@ function ItemCard({
           }
           const fieldDef: SchemaField | undefined = col === 'status'
             ? (typeDef?.statuses?.length
-              ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(s => s.name) }
+              ? { name: 'status', type: 'enum' as const, required: true, values: typeDef.statuses.map(s => s.name) }
               : undefined)
             : typeDef?.fields.find(f => f.name === col)
           const value = col === 'section'
@@ -757,7 +760,9 @@ function ItemCard({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function WordView({
+// GH170 — mémoïsé : un re-rendu de SystemView sans changement de props (refetch en arrière-plan)
+// ne refait plus tout le document.
+export const WordView = memo(function WordView({
   root,
   typeDef,
   objects,
@@ -1046,4 +1051,4 @@ export function WordView({
       })()}
     </div>
   )
-}
+})

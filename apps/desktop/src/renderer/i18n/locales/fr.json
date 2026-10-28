@@ -72,6 +72,11 @@
       "repoFiles_one": "({{count}} fichier)",
       "repoFiles_other": "({{count}} fichiers)",
       "setAsideCommits": "(commits mis de côté)",
+      "offIntegrationMerge": "Vous êtes sur <mono>{{branch}}</mono>. Publier fusionnera cette branche dans <mono>{{integration}}</mono> puis poussera <mono>{{integration}}</mono>.",
+      "offIntegrationNoMerge": "Publier commitera sur <mono>{{branch}}</mono> et poussera <mono>{{branch}}</mono>. <mono>{{integration}}</mono> ne sera pas modifiée.",
+      "mergeInto": "Fusionner dans <mono>{{integration}}</mono>",
+      "mergeIntoIntegration": "Fusionner dans la branche d'intégration",
+      "publishedUnmerged": "Publié sur <mono>{{branch}}</mono> (non fusionné dans <mono>{{integration}}</mono>).",
       "parentsNote": "Les repos parents sont aussi publiés pour mettre à jour les pins.",
       "resolveConflicts": "Résoudre les conflits",
       "resumeResolution_one": "Reprendre la résolution des conflits",
@@ -113,7 +118,8 @@
       "requirement": "Exigence",
       "test": "Test",
       "campaign": "Campagne",
-      "mergeResolve": "Conflits"
+      "mergeResolve": "Conflits",
+      "constellation": "Constellation"
     }
   },
   "account": {
@@ -132,6 +138,8 @@
       "english": "English",
       "autoUpdate": "Mises à jour auto.",
       "autoUpdateHint": "Rechercher et télécharger les mises à jour au démarrage (effectif au prochain lancement)",
+      "networkTimeout": "Délai de connexion réseau (s)",
+      "networkTimeoutHint": "À augmenter si les opérations échouent sur un délai dépassé (réseau lent ou filtré, ex. accès à GitHub depuis la Chine). De 10 à 120 s, effectif immédiatement.",
       "exportTemplates": "Gabarits d'export",
       "exportTemplatesHint": "Dossier contenant les gabarits Word/Excel des clients (dossier local, partage réseau ou repo cloné), partagé entre projets.",
       "exportTemplatesChoose": "Choisir…",
@@ -767,6 +775,7 @@
     },
     "fieldConfig": {
       "visibleFields": "Champs visibles",
+      "reset": "Réinitialiser",
       "colSection": "Section",
       "colCreatedAt": "Créé le",
       "colUpdatedAt": "Modifié le",
@@ -780,7 +789,9 @@
       "missingRefs": "sourceRefs ou targetRefs manquant",
       "configureColumns": "Configurer les colonnes",
       "showFolders": "Afficher les titres des dossiers",
-      "computedColumns": "Colonnes calculées"
+      "computedColumns": "Colonnes calculées",
+      "computedGroupPending": "Calcul des colonnes…",
+      "computedGroupEmpty": "Aucune colonne dans le résultat"
     },
     "coverage": {
       "noLinkedTest": "Aucun test lié",
@@ -1025,6 +1036,7 @@
       "withoutParams_other": "{{count}} tests sans paramètre",
       "alreadyIncluded_one": "Déjà présent {{count}} fois dans la campagne",
       "alreadyIncluded_other": "Déjà présent {{count}} fois dans la campagne",
+      "statusAlwaysShown": "Toujours affichée dans le sélecteur : tous les statuts sont proposés",
       "abandonTitle": "Abandonner la sélection ?",
       "abandon": "Abandonner",
       "keepEditing": "Continuer",
@@ -1227,7 +1239,11 @@
       "valueColumn": "Colonne valeur",
       "tooltipColumn": "Colonne infobulle",
       "mappingHint": "Colonne du résultat de la requête (exécuter la requête pour proposer ses colonnes)",
-      "notInResult": "absente du résultat"
+      "notInResult": "absente du résultat",
+      "split": "Une colonne par valeur de",
+      "splitHint": "Une sous-colonne par valeur distincte de cette colonne du résultat (ex. une par campagne), à cocher séparément dans ⚙️. 50 au maximum.",
+      "splitLabelColumn": "Libellé des colonnes",
+      "splitLabelDefault": "(la valeur)"
     }
   },
   "dashboardPage": {
@@ -1449,7 +1465,9 @@
     "localTitle": "Modifications locales (vs HEAD)",
     "localComputedAt": "Calculée à {{time}}",
     "refresh": "Rafraîchir",
-    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines."
+    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines.",
+    "statementDiff": "Énoncé : avant / après",
+    "howToRead": "Chaque élément modifié est la cause de l'analyse ; les éléments de son arbre (liés en aval, puis en amont) sont à traiter un par un : statut, commentaire, et levée du flag « Impact à vérifier »."
   },
   "graphPage": {
     "tabTitle": "Arbre de versions — {{repoName}}",
@@ -1469,6 +1487,13 @@
     "tagNameLabel": "Nom du tag",
     "inProgress": "En cours…",
     "checkoutBranch": "Checkout branche",
+    "remoteCheckout": {
+      "behind": "Vous êtes sur {{branch}}, en retard sur {{remoteRef}}.",
+      "ahead": "Vous êtes sur {{branch}}, qui contient des commits absents de {{remoteRef}}.",
+      "diverged": "Vous êtes sur {{branch}}, qui a divergé de {{remoteRef}} : rien n'a été écrasé. Pousser, ou merger {{remoteRef}} dans {{branch}}, pour les réconcilier.",
+      "fastForward": "Avance rapide",
+      "ffFailed": "L'avance rapide a échoué (conflit)."
+    },
     "mergeBranchInto": "Merger branche dans…",
     "rebaseCurrentOnBranch": "Rebaser courant sur branche",
     "pushBranch": "Pousser branche",
@@ -1491,6 +1516,33 @@
   },
   "diffPage": {
     "noDifference": "Aucune différence"
+  },
+  "diffView": {
+    "raw": "Raw",
+    "rendered": "Rendu",
+    "hideUnchanged": "Masquer les inchangés",
+    "unchangedCount_one": "{{count}} champ inchangé",
+    "unchangedCount_other": "{{count}} champs inchangés",
+    "before": "Avant",
+    "after": "Après",
+    "workingTree": "working tree",
+    "absentFile": "Fichier absent de cette version",
+    "absentUnit": "— absent",
+    "renderUnavailable": "Rendu indisponible pour ce contenu — voir Raw",
+    "stepAction": "Action",
+    "stepExpected": "Résultat attendu",
+    "stepNumber": "Étape {{n}}",
+    "page": "Page « {{name}} »",
+    "absentPage": "— page absente",
+    "unchangedPages_one": "{{count}} page inchangée",
+    "unchangedPages_other": "{{count}} pages inchangées",
+    "unit": {
+      "title": "Titre",
+      "status": "Statut",
+      "preconditions": "Préconditions",
+      "steps": "Étapes",
+      "postconditions": "Postconditions"
+    }
   },
   "versionDiffPage": {
     "selectFileHint": "Sélectionnez un fichier dans le panel Version"
@@ -1788,5 +1840,50 @@
       "designated": "{{branch}} est la branche d'intégration de ce repo : désignez-en une autre avant de la supprimer.",
       "lastIntegration": "{{branch}} est la dernière branche d'intégration de ce repo : un repo ne doit jamais rester sans branche d'intégration."
     }
+  },
+  "constellation": {
+    "title": "Constellation des exigences",
+    "subtitle": "Raffinements et couverture par les tests",
+    "ariaLabel": "Exigences en anneaux : haut niveau au centre, raffinements vers l'extérieur",
+    "searchPlaceholder": "Chercher un ID ou un titre",
+    "colorBy": "Couleur :",
+    "colorByType": "Type d'objet",
+    "noValue": "Non renseigné",
+    "reverse": "Inverser le sens",
+    "reverseHint": "Le sens de chaque type de lien est déduit des données (le parent est le côté le moins nombreux). Inverser si la constellation apparaît à l'envers.",
+    "empty": "Aucune exigence dans ce projet.",
+    "kpi": {
+      "requirements": "exigences",
+      "links": "liens entre exigences",
+      "notRefined": "exigences intermédiaires non raffinées",
+      "coverage": "couverture par les tests"
+    },
+    "legend": {
+      "halo": "Halo = part couverte par des tests",
+      "uncovered": "Pointillé = non couverte",
+      "rings": "Centre : haut niveau · bord : niveau le plus fin"
+    },
+    "card": {
+      "coverage": "Couverture par les tests",
+      "leavesCovered_one": "{{covered}} sur {{count}} exigence terminale couverte",
+      "leavesCovered_other": "{{covered}} sur {{count}} exigences terminales couvertes",
+      "topLevel": "Exigence de plus haut niveau",
+      "notRefined": "Pas encore raffinée",
+      "reversed": "Sens des liens inversé par rapport au sens déduit.",
+      "open": "Ouvrir {{id}}"
+    },
+    "overview": {
+      "label": "Vue d'ensemble",
+      "title_one": "{{count}} exigence, {{links}} liens",
+      "title_other": "{{count}} exigences, {{links}} liens",
+      "help": "Chaque pétale part d'une exigence de haut niveau au centre et s'ouvre vers les exigences qui la raffinent. Survolez un point pour suivre sa lignée, cliquez pour l'épingler.",
+      "watch": "À regarder",
+      "notRefined": "exigences intermédiaires sans raffinement",
+      "uncoveredLeaves": "exigences terminales sans cas de test",
+      "tests": "cas de test dans le projet",
+      "petals": "Pétales"
+    },
+    "openFromPanel": "Constellation des exigences",
+    "openFromPanelHint": "Vue d'ensemble des raffinements et de la couverture"
   }
 }

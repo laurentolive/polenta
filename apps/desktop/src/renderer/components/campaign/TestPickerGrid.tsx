@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ObjectLink, ObjectTypeDefinition, TestCase } from '@polenta/types'
+import type { FieldVisibilityPatch, FieldVisibilityPref } from '@polenta/api-client'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { api } from '../../api'
 import { ExcelView, type ExcelSelectionMode } from '../system/ExcelView'
+import { FieldConfigModal } from '../system/FieldConfigModal'
 import { ROW_MAX_LINES_ALL, readExcelRowMaxLines } from '../system/RowMaxHeightButton'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { computeSectionNumbers } from '../../hooks/useTreeState'
@@ -18,6 +20,9 @@ import type { FilterOptions } from '../../lib/textFilter'
  * sélection, avec les colonnes / l'arbre / les réglages de la Vue Excel de l'utilisateur pour ce
  * type. Repli des dossiers et colonnes figées partent des préférences mais restent locaux : rien
  * n'est jamais réécrit (la vue système n'est pas affectée par ce qu'on fait ici).
+ *
+ * GH176 — colonnes et titres de dossiers configurables (panneau ⚙️) : préférence propre au
+ * sélecteur (`picker` / `showFoldersPicker`), qui suit la Vue Excel tant qu'elle est absente.
  */
 export function TestPickerGrid({
   repoPath,
@@ -29,6 +34,8 @@ export function TestPickerGrid({
   filter,
   filterOptions,
   selection,
+  columnsOpen = false,
+  onColumnsClose,
 }: {
   repoPath: string
   /** `<nœud>::<type>` */
@@ -42,6 +49,9 @@ export function TestPickerGrid({
   filter: string
   filterOptions: FilterOptions
   selection: ExcelSelectionMode
+  /** GH176 — panneau ⚙️ des colonnes ouvert (bouton de la modale). */
+  columnsOpen?: boolean
+  onColumnsClose?: () => void
 }) {
   const { t } = useTranslation()
   const [nodeId, typeId] = typeRef.split('::')
@@ -52,8 +62,9 @@ export function TestPickerGrid({
     queryFn: () => api.tree.get(repoPath, nodeId!, typeId!),
     enabled: !!repoPath && !!nodeId && !!typeId,
   })
+  const prefsKey = useMemo(() => ['pref-visibility', repoPath, username, typeRef], [repoPath, username, typeRef])
   const { data: prefs, isPending: prefsPending } = useQuery({
-    queryKey: ['pref-visibility', repoPath, username, typeRef],
+    queryKey: prefsKey,
     queryFn: () => api.pref.getFieldVisibility(repoPath, username, typeRef),
     enabled: !!repoPath && !!username,
   })
@@ -64,14 +75,41 @@ export function TestPickerGrid({
   })
   const { data: schema } = useProjectSchema(repoPath)
 
-  // Copies locales, initialisées depuis les préférences une fois chargées.
+  // Copies locales, initialisées depuis les préférences une fois chargées — une fois par type :
+  // l'enregistrement des colonnes (GH176) renouvelle `prefs` et ne doit pas les réinitialiser.
   const [collapsedFolders, setCollapsedFolders] = useState<string[]>([])
   const [freezeColCount, setFreezeColCount] = useState(0)
+  const initializedFor = useRef<string | null>(null)
   useEffect(() => {
-    if (prefsPending) return
+    const key = prefsKey.join('|')
+    if (prefsPending || initializedFor.current === key) return
+    initializedFor.current = key
     setCollapsedFolders(prefs?.collapsedFoldersExcel ?? [])
     setFreezeColCount(prefs?.freezeColCountExcel ?? 0)
-  }, [prefs, prefsPending])
+  }, [prefs, prefsPending, prefsKey])
+
+  // GH176 — écriture partielle (le main fusionne, `null` supprime), appliquée d'abord au cache
+  // partagé avec la Vue Système pour un affichage immédiat, puis relue : après une suppression,
+  // seul le main sait à quoi l'entrée retombe (défaut de l'équipe, ou rien).
+  const qc = useQueryClient()
+  const savePrefs = useCallback((patch: FieldVisibilityPatch) => {
+    // Une relecture en cours ramènerait la valeur d'avant ce changement.
+    void qc.cancelQueries({ queryKey: prefsKey })
+    qc.setQueryData<FieldVisibilityPref | null>(prefsKey, prev => {
+      const next: Record<string, unknown> = { ...prev }
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === null) delete next[key]
+        else if (value !== undefined) next[key] = value
+      }
+      return next as unknown as FieldVisibilityPref
+    })
+    api.pref.setFieldVisibility(repoPath, username, typeRef, patch)
+      .catch(err => console.error('[TestPickerGrid] Enregistrement des colonnes du sélecteur :', err))
+      .finally(() => { void qc.invalidateQueries({ queryKey: prefsKey }) })
+  }, [qc, prefsKey, repoPath, username, typeRef])
+  const onPickerFieldsChange = useCallback((fields: string[]) => savePrefs({ picker: fields }), [savePrefs])
+  const onPickerFoldersChange = useCallback((show: boolean) => savePrefs({ showFoldersPicker: show }), [savePrefs])
+  const onPickerReset = useCallback(() => savePrefs({ picker: null, showFoldersPicker: null }), [savePrefs])
 
   const [rowMaxLines] = useState(readExcelRowMaxLines)
 
@@ -82,11 +120,15 @@ export function TestPickerGrid({
   // Numérotation de la vue système : calculée sur l'arbre complet, pas sur l'arbre élagué.
   const sectionNumbers = useMemo(() => computeSectionNumbers(tree?.root ?? []), [tree])
   const normalized = useMemo(() => tests.map(normalizeObject), [tests])
+  // GH176 — colonnes du sélecteur, à défaut celles de la Vue Excel du type.
+  const pickerFields = useMemo(() => prefs?.picker ?? prefs?.excel ?? defaultVisibleFields(typeDef), [prefs, typeDef])
+  const showFolders = prefs?.showFoldersPicker ?? prefs?.showFoldersExcel ?? true
   // GH68 — tout statut est proposé : la colonne Statut est toujours affichée (insérée après `id`
-  // si les préférences Vue Excel la masquent), sans réécrire ces préférences.
-  const prefFields = useMemo(() => withStatusColumn(prefs?.excel ?? defaultVisibleFields(typeDef)), [prefs, typeDef])
-  // GH70 — colonnes calculées visibles dans la Vue Excel de ce type : affichées, sans ouverture.
-  const computed = useComputedColumns({ workspaceDir, category: 'test', objectTypeRef: typeRef, visibleKeys: prefFields })
+  // si les colonnes suivies la masquent), sans réécrire ces préférences.
+  const prefFields = useMemo(() => withStatusColumn(pickerFields), [pickerFields])
+  // GH70 — colonnes calculées visibles : affichées, sans ouverture. GH126 — panneau ⚙️ ouvert :
+  // colonnes éclatées exécutées pour lister leurs sous-colonnes.
+  const computed = useComputedColumns({ workspaceDir, category: 'test', objectTypeRef: typeRef, visibleKeys: prefFields, discover: columnsOpen })
   const computedColumns = computed.columnsMap
   const filterComputed = computed.filterFields
   const visibleFields = useMemo(() => filterComputed(prefFields), [prefFields, filterComputed])
@@ -122,6 +164,7 @@ export function TestPickerGrid({
   }
 
   return (
+    <>
     <ExcelView
       // Changement de type : filtres colonne (état local T51) et ancre réinitialisés.
       key={typeRef}
@@ -129,7 +172,7 @@ export function TestPickerGrid({
       typeDef={typeDef}
       objects={objects}
       visibleFields={visibleFields}
-      foldersHidden={!(prefs?.showFoldersExcel ?? true)}
+      foldersHidden={!showFolders}
       sectionNumbers={sectionNumbers}
       linkTypes={schema?.linkTypes ?? []}
       linksByObjectId={linksByObjectId}
@@ -145,6 +188,26 @@ export function TestPickerGrid({
       selection={selection}
       computedColumns={computedColumns}
     />
+    {columnsOpen && (
+      <FieldConfigModal
+        typeDef={typeDef}
+        objectTypeRef={typeRef}
+        linkTypes={schema?.linkTypes ?? []}
+        activeTab="excel"
+        tabs={['excel']}
+        layer="modal"
+        visibleFieldsExcel={pickerFields}
+        onChangeExcel={onPickerFieldsChange}
+        showFoldersExcel={showFolders}
+        onChangeShowFoldersExcel={onPickerFoldersChange}
+        lockedFields={{ status: t('campaignPage.picker.statusAlwaysShown') }}
+        onReset={onPickerReset}
+        onClose={onColumnsClose ?? (() => {})}
+        computedColumns={computed.available}
+        computedPanel={computed.panel}
+      />
+    )}
+    </>
   )
 }
 

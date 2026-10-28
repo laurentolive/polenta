@@ -145,9 +145,20 @@ export function VersionRepoFolder({ node, depth, projectId, workspaceDir, flatNo
   })
 
   const discardAllMutation = useMutation({
-    mutationFn: () => api.sync.discardAll(repoPath),
+    mutationFn: async () => {
+      await api.sync.discardAll(repoPath)
+      // GH173: an emptied `dev-auto` goes straight back to the integration (and is deleted).
+      // Best effort: the discard is done, the next auto-pull tick retries.
+      try {
+        await api.sync.settleAutoBranch(repoPath, await api.baseline.getIntegrationBranch(repoPath))
+      } catch (err) {
+        console.warn('[discardAll] settleAutoBranch:', err)
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sync:status', repoPath] })
+      qc.invalidateQueries({ queryKey: ['sync:branches', repoPath] })
+      qc.invalidateQueries({ queryKey: ['sync:integration-state', repoPath] })
       setConfirmDiscardAll(false)
     },
   })

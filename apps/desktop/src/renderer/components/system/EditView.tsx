@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, forwardRef, u
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink, CoverageStatus, MatrixCell, TestCase } from '@polenta/types'
+import { statusValueLabels } from '@polenta/types'
 import { api } from '../../api'
 import { UserFieldInput } from './UserFieldInput'
 import { capabilities } from '../../platform'
@@ -115,8 +116,10 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
           onChange={e => { const v = e.target.value; set(v); onBlur(v) }}
           className={base}
         >
+          {/* GH165 — sans option vide, une valeur absente s'affiche comme la 1re valeur et ne peut pas être choisie. */}
+          {(!field.required || !localVal) && <option value="">—</option>}
           {opts.map(v => (
-            <option key={v} value={v}>{v}</option>
+            <option key={v} value={v} title={field.valueLabels?.[v] ? v : undefined}>{field.valueLabels?.[v] ?? v}</option>
           ))}
         </select>
       )
@@ -572,7 +575,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
       }
       if (name === 'status') {
         const statusField: SchemaField = typeDef?.statuses?.length
-          ? { name: 'status', type: 'enum' as const, label: t('system.wordView.colStatus'), values: typeDef.statuses.map(s => s.name) }
+          ? { name: 'status', type: 'enum' as const, required: true, label: t('system.wordView.colStatus'), values: typeDef.statuses.map(s => s.name), valueLabels: statusValueLabels(typeDef.statuses) }
           : { name: 'status', type: 'text' as const, label: t('system.wordView.colStatus') }
         return { field: statusField, system: false }
       }

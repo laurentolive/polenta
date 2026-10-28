@@ -73,8 +73,8 @@ beforeEach(async () => {
   testsIndex = new TestsIndexService(git)
   history = new HistoryService(git, async () => ({ by: 'lolive' }), () => NOW)
   revalidation = new RevalidationService(git, reqIndex, testsIndex, schemaStub, undefined, history)
-  requirements = new RequirementsService(git, reqIndex, schemaStub, undefined, revalidation, history)
-  tests = new TestsService(git, testsIndex, schemaStub, undefined, revalidation, history)
+  requirements = new RequirementsService(git, reqIndex, schemaStub, revalidation, history)
+  tests = new TestsService(git, testsIndex, schemaStub, revalidation, history)
   campaigns = new CampaignsService(git, tests, undefined, undefined, history)
 })
 
@@ -121,7 +121,7 @@ describe('exigences', () => {
   it('acteur résolu seulement quand une entrée est ajoutée', async () => {
     let calls = 0
     const counting = new HistoryService(git, async () => { calls++; return { by: 'lolive' } }, () => NOW)
-    const reqs = new RequirementsService(git, reqIndex, schemaStub, undefined, undefined, counting)
+    const reqs = new RequirementsService(git, reqIndex, schemaStub, undefined, counting)
     const req = await reqs.create(dir, { objectTypeRef: 'root::exigence', title: 'R' } as never)
     expect(calls).toBe(1)
     await reqs.update(dir, req.id, { fields: { owner: 'x' } } as never)

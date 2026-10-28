@@ -31,6 +31,7 @@ import { api } from '../../api'
 import type { FieldVisibilityPref } from '@polenta/api-client'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { ParamRefProvider, useParamResolver } from '../../contexts/ParamRefContext'
+import { useStableCallback } from '../../hooks/useStableCallback'
 import { decodeProjectId } from '../../lib/projectId'
 import { RichTextToolbar } from './RichTextToolbar'
 import { ViewHeader } from '../layout/ViewHeader'
@@ -40,16 +41,22 @@ import { buildExportOutline, buildExportRows, substituteExportParams, defaultVis
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
 import { flattenSystemNodes, isComputedColumnKey } from '@polenta/types'
-import { useComputedColumns, type ComputedColumn } from '../../hooks/useComputedColumns'
+import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
-import { getRelevantLinkTypes, getLinkTypeLabel, isLinkTypeValid } from './linkUtils'
+import { FieldConfigModal } from './FieldConfigModal'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status'])
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ViewMode = 'excel' | 'word' | 'edit'
+
+function readStoredViewMode(repoPath: string): 'excel' | 'word' | null {
+  if (!repoPath) return null
+  const stored = localStorage.getItem(`polenta:viewMode:${repoPath}`)
+  return stored === 'excel' || stored === 'word' ? stored : null
+}
 
 /** GH105 — délai max d'arrivée à la destination d'une navigation par lien (cf. linkNavTargetRef). */
 const LINK_NAV_TIMEOUT_MS = 3000
@@ -81,255 +88,6 @@ function renameNodeInTree(nodes: TypeTreeNode[], nodeId: string, name: string): 
   })
 }
 
-
-// ── FieldConfig modal (⚙) — 3 onglets indépendants ──────────────────────────
-
-type ConfigTab = 'excel' | 'word'
-
-function FieldConfigModal({
-  typeDef,
-  objectTypeRef,
-  linkTypes,
-  activeTab,
-  visibleFieldsExcel,
-  visibleFieldsWord,
-  onChangeExcel,
-  onChangeWord,
-  showFoldersExcel,
-  showFoldersWord,
-  onChangeShowFoldersExcel,
-  onChangeShowFoldersWord,
-  onClose,
-  computedColumns,
-}: {
-  typeDef: ObjectTypeDefinition | undefined
-  objectTypeRef?: string
-  linkTypes: LinkTypeDefinition[]
-  activeTab: ConfigTab
-  visibleFieldsExcel: string[]
-  visibleFieldsWord: string[]
-  onChangeExcel: (fields: string[]) => void
-  onChangeWord: (fields: string[]) => void
-  showFoldersExcel: boolean
-  showFoldersWord: boolean
-  onChangeShowFoldersExcel: (v: boolean) => void
-  onChangeShowFoldersWord: (v: boolean) => void
-  onClose: () => void
-  /** GH70 — colonnes calculées applicables au type (requêtes partagées du projet). */
-  computedColumns: ComputedColumn[]
-}) {
-  const { t } = useTranslation()
-  const [tab, setTab] = useState<ConfigTab>(activeTab)
-
-  const systemFieldLabels: Record<string, string> = {
-    section: t('system.fieldConfig.colSection'), name: t('schema.editor.colLabel'), id: t('system.wordView.colId'), status: t('system.wordView.colStatus'), version: t('system.wordView.colVersion'),
-    createdAt: t('system.fieldConfig.colCreatedAt'), updatedAt: t('system.fieldConfig.colUpdatedAt'), author: t('system.fieldConfig.colAuthor'),
-    steps: t('system.wordView.stepsHeading'), coverageStatus: t('system.fieldConfig.colCoverage'),
-  }
-
-  const systemFields = ['section', 'name', 'id', 'status', 'version', 'createdAt', 'author', 'coverageStatus']
-  const customFields = (typeDef?.fields ?? []).map(f => f.name)
-  const category = typeDef?.category
-  const relevantLinkTypes = getRelevantLinkTypes(linkTypes, objectTypeRef, category).map(r => r.lt)
-  // section / name / id / status / version sont toujours affichés dans l'en-tête de la carte en vue
-  // Document (cf. WordView.ItemCard) — les proposer à cocher là n'aurait aucun effet visible
-  const fieldsAlwaysInWordHeader = new Set(['section', 'name', 'id', 'status', 'version'])
-  // coverageStatus (T138) n'a de sens que pour les exigences — un TestCase n'a pas de statut de
-  // couverture, ne pas le proposer à cocher pour ce type d'objet.
-  const allFields = [...new Set([...systemFields, ...customFields])]
-    .filter(f => tab !== 'word' || !fieldsAlwaysInWordHeader.has(f))
-    .filter(f => f !== 'coverageStatus' || category === 'requirement')
-  const hasSteps = category === 'test'
-
-  const currentFields = tab === 'excel' ? visibleFieldsExcel : visibleFieldsWord
-  const onChangeCurrent = tab === 'excel' ? onChangeExcel : onChangeWord
-  const showFolders = tab === 'excel' ? showFoldersExcel : showFoldersWord
-  const onChangeShowFolders = tab === 'excel' ? onChangeShowFoldersExcel : onChangeShowFoldersWord
-
-  // Ordre canonique = celui de la liste affichée dans ce panneau (champs système, puis custom,
-  // puis étapes, puis liens). Recocher un champ le remet à sa place plutôt qu'en fin de liste.
-  const canonicalOrder = [
-    ...allFields,
-    ...computedColumns.map(c => c.key),
-    ...(hasSteps ? ['steps'] : []),
-    ...relevantLinkTypes.map(lt => `link::${lt.name}`),
-  ]
-
-  const toggle = (f: string) => {
-    const next = currentFields.includes(f)
-      ? currentFields.filter(x => x !== f)
-      : [...currentFields, f]
-    const ordered = canonicalOrder.filter(x => next.includes(x))
-    const extra = next.filter(x => !canonicalOrder.includes(x))
-    onChangeCurrent([...ordered, ...extra])
-  }
-
-  const defaultFields = ['section', 'name', 'id', 'status', ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? [])]
-
-  const tabLabels: Record<ConfigTab, string> = {
-    excel: t('system.fieldConfig.tabExcel'),
-    word: t('system.fieldConfig.tabWord'),
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-end pt-12 pr-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface border border-edge rounded-lg shadow-xl p-4 w-72"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-ink">{t('system.fieldConfig.visibleFields')}</p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-ink-3 hover:text-ink text-xs"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border border-edge rounded overflow-hidden mb-3 text-xs">
-          {(['excel', 'word'] as ConfigTab[]).map(configTab => (
-            <button
-              key={configTab}
-              type="button"
-              onClick={() => setTab(configTab)}
-              className={[
-                'flex-1 py-1 transition-colors',
-                tab === configTab
-                  ? 'bg-ink text-prim-fg font-medium'
-                  : 'text-ink-3 hover:text-ink hover:bg-hover',
-              ].join(' ')}
-            >
-              {tabLabels[configTab]}
-            </button>
-          ))}
-        </div>
-
-        {/* T162 — afficher / masquer les titres de dossiers (par vue) */}
-        <label className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded mb-2 pb-2 border-b border-edge">
-          <input
-            type="checkbox"
-            checked={showFolders}
-            onChange={e => onChangeShowFolders(e.target.checked)}
-            className="h-3 w-3 accent-ink"
-          />
-          <span>{t('system.fieldConfig.showFolders')}</span>
-        </label>
-
-        {/* Scrollable field list */}
-        <div className="overflow-y-auto max-h-80 space-y-1.5">
-          {allFields.map(f => (
-            <label
-              key={f}
-              className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded"
-            >
-              <input
-                type="checkbox"
-                checked={currentFields.includes(f)}
-                onChange={() => toggle(f)}
-                className="h-3 w-3 accent-ink"
-              />
-              <span>{systemFieldLabels[f] ?? typeDef?.fields.find(cf => cf.name === f)?.label ?? f}</span>
-              {systemFields.includes(f) && (
-                <span className="text-ink-3">(sys)</span>
-              )}
-            </label>
-          ))}
-
-          {/* GH70 — colonnes calculées définies par le projet (requêtes partagées) */}
-          {computedColumns.length > 0 && (
-            <div className="pt-2 mt-1 border-t border-edge" data-testid="field-config-computed">
-              <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.computedColumns')}</p>
-              <div className="space-y-1.5">
-                {computedColumns.map(c => (
-                  <label
-                    key={c.key}
-                    title={`${c.queryId} — ${c.queryTitle}`}
-                    className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={currentFields.includes(c.key)}
-                      onChange={() => toggle(c.key)}
-                      className="h-3 w-3 accent-ink"
-                    />
-                    <span>{c.label}</span>
-                    <span className="text-ink-3">(calc)</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Steps column (test types only) */}
-          {hasSteps && (
-            <div className="pt-2 mt-1 border-t border-edge">
-              <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.testCase')}</p>
-              <label className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded">
-                <input
-                  type="checkbox"
-                  checked={currentFields.includes('steps')}
-                  onChange={() => toggle('steps')}
-                  className="h-3 w-3 accent-ink"
-                />
-                <span>{t('system.wordView.stepsHeading')}</span>
-              </label>
-            </div>
-          )}
-
-          {/* Link type columns */}
-          <div className="pt-2 mt-1 border-t border-edge">
-            <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.links')}</p>
-            {relevantLinkTypes.length === 0 ? (
-              <p className="text-xs text-ink-3 italic">{t('system.fieldConfig.noLinkTypeForType')}</p>
-            ) : (
-              <div className="space-y-1.5">
-                {relevantLinkTypes.map(lt => {
-                  const key = `link::${lt.name}`
-                  const displayLabel = getLinkTypeLabel(lt, objectTypeRef, category)
-                  return (
-                    <label
-                      key={key}
-                      className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={currentFields.includes(key)}
-                        onChange={() => toggle(key)}
-                        className="h-3 w-3 accent-ink"
-                      />
-                      <span>{displayLabel || lt.name}</span>
-                      {!isLinkTypeValid(lt) && (
-                        <span className="text-status-warning" title={t('system.fieldConfig.missingRefs')}>⚠</span>
-                      )}
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-
-
-        {/* Reset */}
-        <button
-          type="button"
-          onClick={() => { onChangeCurrent(defaultFields); onChangeShowFolders(true) }}
-          className="mt-3 text-xs text-ink-3 hover:text-ink underline"
-        >
-          Réinitialiser
-        </button>
-      </div>
-    </div>
-  )
-}
 
 // ── ViewLoading — attente des données des vues Tableau / Document ───────────
 
@@ -409,6 +167,8 @@ export function SystemView() {
     qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
     qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
     qc.invalidateQueries({ queryKey: ['links-objects'] }) // GH105 — candidats du workspace
+    // GH180 — le nom d'un élément d'arbre est le titre de son objet, lu au chargement de l'arbre.
+    qc.invalidateQueries({ queryKey: ['tree', repoPath] })
   }, [qc, repoPath])
 
   // T172 — un élément qui quitte l'approbation marque `needsRevalidation` ses éléments liés,
@@ -421,10 +181,16 @@ export function SystemView() {
   }, [qc, repoPath, invalidateCandidateObjects])
 
   // View mode — persisted per project in localStorage
-  const [viewMode, setViewMode] = useState<ViewMode>('excel')
-  const viewModeRestoredRef = useRef(false)
+  // GH170 — valeur initiale posée dès le premier rendu (l'effet ci-dessous ne sert plus qu'au cas
+  // où `repoPath` n'est pas encore résolu au montage) : au remontage de la vue (retour sur un
+  // onglet), partir de 'excel' faisait peindre un rendu intermédiaire — zone vide, ou Tableau avant
+  // la Vue Édition encore ouverte (`editingNodeId` vit dans SystemViewContext, qui survit au
+  // changement de route).
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    editingNodeId !== null ? 'edit' : (readStoredViewMode(repoPath) ?? 'excel'))
+  const viewModeRestoredRef = useRef(!!repoPath)
   // Remembers the last non-edit view mode so we can restore it when leaving edit
-  const prevViewModeRef = useRef<'excel' | 'word'>('excel')
+  const prevViewModeRef = useRef<'excel' | 'word'>(readStoredViewMode(repoPath) ?? 'excel')
   // T92 — lets ViewHeader's "Retour" button (edit mode) trigger EditView's own
   // flush-then-navigate sequence, now that EditView no longer renders its own back button.
   const editViewRef = useRef<EditViewHandle>(null)
@@ -432,8 +198,8 @@ export function SystemView() {
   useEffect(() => {
     if (!repoPath || viewModeRestoredRef.current) return
     viewModeRestoredRef.current = true
-    const stored = localStorage.getItem(`polenta:viewMode:${repoPath}`)
-    if (stored === 'excel' || stored === 'word') {
+    const stored = readStoredViewMode(repoPath)
+    if (stored) {
       setViewMode(stored)
       prevViewModeRef.current = stored
     }
@@ -491,7 +257,9 @@ export function SystemView() {
       isLinkNavigationRef.current = false
       return
     }
-    setBackHistory([])
+    // GH170 — `prev` conservé s'il est déjà vide : un `[]` neuf re-rendait toute la vue (tableau
+    // compris) à chaque montage, ce qui doublait le coût du retour sur un onglet.
+    setBackHistory(prev => (prev.length === 0 ? prev : []))
     setPendingNavObjectId(null)
   }, [repoPath, effectiveNodeId, effectiveTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -531,7 +299,11 @@ export function SystemView() {
       return null
     },
     enabled: !!editingObjectId && !!effectiveType?.category && !!repoPath,
-    gcTime: 0,
+    // GH170 — gardé en cache (était `gcTime: 0`) : au remontage de la vue (retour sur un onglet),
+    // la fiche s'affiche aussitôt au lieu de « Chargement… ». Relue quand même à chaque montage
+    // pour ne jamais rester sur une version périmée (modifiée entre-temps dans un autre onglet) ;
+    // EditView adopte ce refetch sans écraser une saisie en cours (cf. son effet [objectData]).
+    refetchOnMount: 'always',
   })
 
   const objectData = useMemo((): Record<string, string> | null => {
@@ -728,7 +500,6 @@ export function SystemView() {
   // T162 — miroir synchrone de l'objet de pref complet, pour éviter qu'un enregistrement
   // n'écrase un champ voisin avec une valeur d'état périmée (closures) quand deux réglages
   // changent coup sur coup (ex. « Réinitialiser » = colonnes + titres en deux appels).
-  const prefsRef = useRef<FieldVisibilityPref>({ excel: [], word: [], edit: [], showFoldersExcel: true, showFoldersWord: true })
 
   const { data: identityLogin, isPending: identityPending } = useQuery({
     queryKey: ['project-username', repoPath],
@@ -747,6 +518,8 @@ export function SystemView() {
     objectTypeRef: effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : undefined,
     visibleKeys: useMemo(() => [...visibleFieldsExcel, ...visibleFieldsWord], [visibleFieldsExcel, visibleFieldsWord]),
     enabled: effectiveType?.category === 'requirement' || effectiveType?.category === 'test',
+    // GH126 — panneau ⚙️ ouvert : exécuter les colonnes éclatées pour lister leurs sous-colonnes.
+    discover: showFieldConfig,
   })
   const computedColumnsMap = computed.columnsMap
   // Clé d'une colonne dont la requête n'existe plus / n'est plus partagée / ne s'applique plus :
@@ -907,9 +680,6 @@ export function SystemView() {
   }, [backHistory, handleGoBack, setEditingNodeId])
 
   const typeKey = effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : null
-  // Type dont les colonnes visibles (prefs) sont appliquées — cf. `viewReady`.
-  const [prefsAppliedKey, setPrefsAppliedKey] = useState<string | null>(null)
-
   const { data: savedPrefs, isPlaceholderData: isPrefsPlaceholder, isPending: prefsPending } = useQuery({
     queryKey: ['pref-visibility', repoPath, username, typeKey],
     queryFn: async () => {
@@ -926,11 +696,16 @@ export function SystemView() {
     placeholderData: keepPreviousData,
   })
 
-  useEffect(() => {
-    // Tant que les prefs affichées sont celles de l'ancien type (placeholder en attendant le
-    // fetch du nouveau), ne pas re-dériver les colonnes visibles — sinon on écrase l'affichage
-    // courant par le fallback avant que les vraies prefs du nouveau type n'arrivent.
-    if (isPrefsPlaceholder || prefsPending) return
+  // Prefs (et type) dont dérivent les colonnes visibles actuelles.
+  // GH170 — appliquées pendant le rendu, pas dans un effet : un effet laissait committer (et
+  // peindre) un premier rendu sans prefs appliquées, donc la zone vide de `viewReady`, à chaque
+  // remontage de la vue — même avec les prefs en cache (retour sur un onglet).
+  const [appliedPrefs, setAppliedPrefs] = useState<{ prefs: typeof savedPrefs; key: string | null } | null>(null)
+  // Tant que les prefs affichées sont celles de l'ancien type (placeholder en attendant le
+  // fetch du nouveau), ne pas re-dériver les colonnes visibles — sinon on écrase l'affichage
+  // courant par le fallback avant que les vraies prefs du nouveau type n'arrivent.
+  if (!isPrefsPlaceholder && !prefsPending && (!appliedPrefs || appliedPrefs.prefs !== savedPrefs || appliedPrefs.key !== typeKey)) {
+    setAppliedPrefs({ prefs: savedPrefs, key: typeKey })
     const fallback = defaultVisibleFields(effectiveType)
     const excel = savedPrefs?.excel ?? fallback
     const word = savedPrefs?.word ?? fallback
@@ -949,14 +724,7 @@ export function SystemView() {
     setCollapsedFoldersExcel(collapsedFoldersExcelNext)
     setCollapsedFoldersWord(collapsedFoldersWordNext)
     setFreezeColCountExcel(freezeColCountExcelNext)
-    prefsRef.current = {
-      excel, word, edit,
-      showFoldersExcel: showFoldersExcelNext, showFoldersWord: showFoldersWordNext,
-      collapsedFoldersExcel: collapsedFoldersExcelNext, collapsedFoldersWord: collapsedFoldersWordNext,
-      freezeColCountExcel: freezeColCountExcelNext,
-    }
-    setPrefsAppliedKey(typeKey)
-  }, [savedPrefs, typeKey, isPrefsPlaceholder, prefsPending]) // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   const autoSaveMutation = useMutation({
     mutationFn: async ({ objectId, field, value }: { objectId: string; field: string; value: string }) => {
@@ -1202,29 +970,28 @@ export function SystemView() {
   }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects])
 
   const savePrefsMutation = useMutation({
-    mutationFn: async (views: FieldVisibilityPref) => {
+    mutationFn: async (patch: Partial<FieldVisibilityPref>) => {
       if (!repoPath || !username || !typeKey) return
-      await api.pref.setFieldVisibility(repoPath, username, typeKey, views)
-      return views
+      await api.pref.setFieldVisibility(repoPath, username, typeKey, patch)
+      return patch
     },
     // Sans ceci, la query ['pref-visibility', ...] garde en cache la valeur d'avant
     // modification (staleTime 60s) : un aller-retour de vue dans ce délai fait rejouer
     // le useEffect ci-dessus avec l'ancien savedPrefs et écrase silencieusement le choix
-    // de visibilité qu'on vient pourtant d'enregistrer sur disque.
-    onSuccess: (views) => {
-      if (!views) return
-      qc.setQueryData(['pref-visibility', repoPath, username, typeKey], views)
+    // de visibilité qu'on vient pourtant d'enregistrer sur disque. GH176 — fusionné dans
+    // l'entrée en cache, partagée avec le sélecteur de tests (`picker`…), sans la remplacer.
+    onSuccess: (patch) => {
+      if (!patch) return
+      qc.setQueryData<FieldVisibilityPref | null>(['pref-visibility', repoPath, username, typeKey],
+        prev => ({ ...prev, ...patch }) as FieldVisibilityPref)
     },
   })
 
-  // T162 — un seul objet de pref porte les colonnes des 3 vues + les 2 booléens « titres de
-  // dossiers ». Chaque handler applique son override sur `prefsRef` (miroir synchrone) et
-  // enregistre l'objet COMPLET : sans ça, changer une colonne remettrait `showFolders*` à
-  // `undefined`, et deux appels successifs s'écraseraient mutuellement (closures périmées).
+  // T162 — un seul objet de pref porte les colonnes des 3 vues + les booléens « titres de
+  // dossiers ». GH176 — chaque handler n'envoie que sa clé : le main fusionne dans l'entrée
+  // (plus besoin de renvoyer l'objet complet, qui effaçait les clés écrites ailleurs).
   const persistPrefs = useCallback((override: Partial<FieldVisibilityPref>) => {
-    const next = { ...prefsRef.current, ...override }
-    prefsRef.current = next
-    savePrefsMutation.mutate(next)
+    savePrefsMutation.mutate(override)
   }, [savePrefsMutation])
 
   const handleChangeExcel = useCallback((fields: string[]) => {
@@ -1273,11 +1040,31 @@ export function SystemView() {
   // cellules vides, puis données, puis vraies colonnes) — autant de glitches, et autant de
   // rendus complets du tableau qui retardaient l'affichage final.
   const shownFields = viewMode === 'word' ? visibleFieldsWord : visibleFieldsExcel
-  const viewReady = prefsAppliedKey === typeKey
+  const viewReady = appliedPrefs?.key === typeKey
     && rootKey === `${effectiveNodeId}|${effectiveTypeId}`
     && !objectsPending
     && !(linksPending && shownFields.some(f => f.startsWith('link::')))
     && !(matrixPending && shownFields.includes('coverageStatus'))
+
+  // GH170 — callbacks des vues Tableau / Document à identité stable : recréés à chaque rendu, ils
+  // re-rendaient toutes les cellules (mémoïsées) à chaque re-rendu de la vue, refetch compris.
+  const stableOpenComputedTarget = useStableCallback(openComputedTarget)
+  const stableLinkChange = useStableCallback(ws.invalidate)
+  const stableInlineEdit = useStableCallback(handleAutoInlineEdit)
+  const stableRenameNode = useStableCallback(handleRenameNode)
+  const stableRootChangeDnd = useStableCallback(handleRootChangeDnd)
+  const stableReopenDraft = useStableCallback(handleReopenDraft)
+  const stableChangeExcel = useStableCallback(handleChangeExcel)
+  const stableStepsChange = useStableCallback(handleWordViewStepsChange)
+  const stableEditOpen = useStableCallback((nodeId: string) => {
+    setEditingNodeId(nodeId)
+    setViewMode('edit')
+  })
+  const stableNavigateToObject = useStableCallback(navigateToObject)
+  const stableCreateItemObject = useStableCallback(createItemObject)
+  const stableCollapsedFoldersExcelChange = useStableCallback(handleCollapsedFoldersExcelChange)
+  const stableCollapsedFoldersWordChange = useStableCallback(handleCollapsedFoldersWordChange)
+  const stableFreezeColCountExcelChange = useStableCallback(handleFreezeColCountExcelChange)
 
   // ── Empty / loading states ────────────────────────────────────────────────
 
@@ -1482,6 +1269,7 @@ export function SystemView() {
           onChangeShowFoldersWord={handleChangeShowFoldersWord}
           onClose={() => setShowFieldConfig(false)}
           computedColumns={computed.available}
+          computedPanel={computed.panel}
         />
       )}
 
@@ -1497,12 +1285,13 @@ export function SystemView() {
         {effectiveType?.category !== 'campaign' && viewMode !== 'edit' && !viewReady && <ViewLoading />}
         {effectiveType?.category !== 'campaign' && viewMode === 'excel' && viewReady && (
           <ExcelView
+            key={typeKey ?? ''}
             root={root}
             typeDef={effectiveType}
             objects={displayObjects}
             visibleFields={shownFieldsExcel}
             computedColumns={computedColumnsMap}
-            onOpenComputedTarget={openComputedTarget}
+            onOpenComputedTarget={stableOpenComputedTarget}
             foldersHidden={!showFoldersExcel}
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
@@ -1512,39 +1301,37 @@ export function SystemView() {
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={ws.invalidate}
-            onInlineEdit={readOnly ? undefined : handleAutoInlineEdit}
-            onRenameNode={readOnly ? undefined : handleRenameNode}
-            onRootChange={readOnly ? undefined : handleRootChangeDnd}
-            onColumnsReorder={handleChangeExcel}
+            onLinkChange={stableLinkChange}
+            onInlineEdit={readOnly ? undefined : stableInlineEdit}
+            onRenameNode={readOnly ? undefined : stableRenameNode}
+            onRootChange={readOnly ? undefined : stableRootChangeDnd}
+            onColumnsReorder={stableChangeExcel}
             generateId={generateId}
             stepsByObjectId={stepsByObjectId}
-            onStepsChange={readOnly ? undefined : handleWordViewStepsChange}
-            onEditOpen={nodeId => {
-              setEditingNodeId(nodeId)
-              setViewMode('edit')
-            }}
-            onNavigateToObject={navigateToObject}
+            onStepsChange={readOnly ? undefined : stableStepsChange}
+            onEditOpen={stableEditOpen}
+            onNavigateToObject={stableNavigateToObject}
             filter={filter}
             filterOptions={filterOptions}
-            onItemNodeAdded={readOnly ? undefined : createItemObject}
+            onItemNodeAdded={readOnly ? undefined : stableCreateItemObject}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}
             collapsedFolders={collapsedFoldersExcel}
-            onCollapsedFoldersChange={handleCollapsedFoldersExcelChange}
+            onCollapsedFoldersChange={stableCollapsedFoldersExcelChange}
             freezeColCount={freezeColCountExcel}
-            onFreezeColCountChange={handleFreezeColCountExcelChange}
+            onFreezeColCountChange={stableFreezeColCountExcelChange}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'word' && viewReady && (
           <WordView
+            key={typeKey ?? ''}
             root={root}
             typeDef={effectiveType}
             objects={displayObjects}
             visibleFields={shownFieldsWord}
             computedColumns={computedColumnsMap}
-            onOpenComputedTarget={openComputedTarget}
+            onOpenComputedTarget={stableOpenComputedTarget}
             foldersHidden={!showFoldersWord}
             sectionNumbers={sectionNumbers}
             linkTypes={linkTypes}
@@ -1554,23 +1341,20 @@ export function SystemView() {
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
-            onLinkChange={ws.invalidate}
-            onInlineEdit={readOnly ? undefined : handleAutoInlineEdit}
-            onRenameNode={readOnly ? undefined : handleRenameNode}
-            onReopenDraft={readOnly ? undefined : handleReopenDraft}
+            onLinkChange={stableLinkChange}
+            onInlineEdit={readOnly ? undefined : stableInlineEdit}
+            onRenameNode={readOnly ? undefined : stableRenameNode}
+            onReopenDraft={readOnly ? undefined : stableReopenDraft}
             stepsByObjectId={stepsByObjectId}
-            onStepsChange={readOnly ? undefined : handleWordViewStepsChange}
-            onEditOpen={nodeId => {
-              setEditingNodeId(nodeId)
-              setViewMode('edit')
-            }}
-            onNavigateToObject={navigateToObject}
+            onStepsChange={readOnly ? undefined : stableStepsChange}
+            onEditOpen={stableEditOpen}
+            onNavigateToObject={stableNavigateToObject}
             filter={filter}
             filterOptions={filterOptions}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             collapsedFolders={collapsedFoldersWord}
-            onCollapsedFoldersChange={handleCollapsedFoldersWordChange}
+            onCollapsedFoldersChange={stableCollapsedFoldersWordChange}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'edit' && (

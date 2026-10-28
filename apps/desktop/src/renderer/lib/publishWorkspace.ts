@@ -10,7 +10,7 @@
  */
 
 import { api } from '../api'
-import type { WorkspaceTreeNode } from '@polenta/types'
+import { isAutoBranch, type WorkspaceTreeNode } from '@polenta/types'
 import { propagatePinToDependents, type PinPropagationOutcome } from './workspaceActions'
 
 const DIACRITICS = /[̀-ͯ]/g
@@ -160,10 +160,19 @@ export async function publishRepo(opts: {
    *  committing would only create an empty commit. */
   hasPendingChanges: boolean
   onEphemeralChange: (b: EphemeralBranch | null) => void
+  /** GH133: `false` on a repo off its integration branch whose user unticked « Fusionner dans … » —
+   *  commit on the current branch only, the integration is neither advanced nor merged into. */
+  merge?: boolean
 }): Promise<{ sha: string }> {
   const { repoPath, branch, integrationBranch, title, continuingEphemeral, hasPendingChanges, onEphemeralChange } = opts
   const isNominal = branch === integrationBranch || continuingEphemeral
   let workBranch = branch
+
+  if (opts.merge === false && !isNominal) {
+    await api.sync.stageAll(repoPath)
+    const { sha } = await api.sync.commit(repoPath, title.trim() || `Modification sur ${branch}`)
+    return { sha }
+  }
 
   if (branch === integrationBranch) {
     const branches = await api.sync.branches(repoPath)
@@ -242,7 +251,9 @@ export async function resumePublishAfterResolution(opts: {
 }): Promise<ResumePublishResult> {
   const { workspaceDir, flatNodes, roots, repoPath, workBranch, ephemeral, integrationBranch, title, sha } = opts
   const node = flatNodes.find(n => n.repoPath === repoPath)
-  const resolved: PublishedRepo = { name: node?.name ?? 'root', label: node?.label, repoPath, integrationBranch, sha }
+  const resolved: PublishedRepo = {
+    name: node?.name ?? 'root', label: node?.label, repoPath, integrationBranch, sha, pushBranch: integrationBranch, merged: true,
+  }
   const pinOutcome: PinPropagationOutcome = { updated: [], conflicted: [], failed: [] }
 
   if (ephemeral) {
@@ -280,6 +291,18 @@ export async function resumePublishAfterResolution(opts: {
 export interface PublishedRepo extends PublishRepoRef {
   integrationBranch: string
   sha: string
+  /** GH133: branch to push — the integration branch, or the current branch when not merged. */
+  pushBranch: string
+  /** GH133: `false` = committed on `pushBranch` only, not merged into the integration branch. */
+  merged: boolean
+}
+
+/** GH133: a repo whose publication would merge a user-owned branch into its integration branch —
+ *  the ones « Publier » warns about and lets the user publish without merging. */
+export interface OffIntegrationRepo {
+  repo: PublishRepoRef
+  branch: string
+  integrationBranch: string
 }
 
 export interface PublishWorkspaceResult {
@@ -302,17 +325,55 @@ async function readRepoState(repoPath: string, ephemeral: EphemeralBranch | null
   ])
   // GH39: a `dev-resync` branch left by "Resynchroniser" behaves like the ephemeral branch of a
   // conflicted publish — published (even without pending changes) while it holds commits the
-  // integration doesn't have, then deleted.
-  const continuingEphemeral = (ephemeral?.repoPath === repoPath && ephemeral.branch === status.branch)
-    || (isResyncBranch(status.branch) && !(await api.sync.isMergedInto(repoPath, status.branch, integrationBranch)))
+  // integration doesn't have, then deleted. GH173: so does a `dev-auto` branch the auto-pull moved
+  // pending changes onto — always merged and deleted, never a user-owned branch.
+  const auto = isAutoBranch(status.branch)
+  const sameEphemeral = ephemeral?.repoPath === repoPath && ephemeral.branch === status.branch
+  const setAside = (isResyncBranch(status.branch) || auto)
+    && !(await api.sync.isMergedInto(repoPath, status.branch, integrationBranch))
+  const continuingEphemeral = sameEphemeral || auto || setAside
   const hasPendingChanges = status.staged.length + status.unstaged.length > 0
   return {
-    branch: status.branch, integrationBranch, hasWork: hasPendingChanges || continuingEphemeral, hasPendingChanges, continuingEphemeral,
+    branch: status.branch, integrationBranch, hasWork: hasPendingChanges || sameEphemeral || setAside, hasPendingChanges, continuingEphemeral,
   }
 }
 
 function ref(node: WorkspaceTreeNode): PublishRepoRef {
   return { name: node.name, label: node.label, repoPath: node.repoPath }
+}
+
+/** GH133: on a user-owned branch — not the integration branch, not an `int-*` (blocked, GH106), not
+ *  a branch « Publier » itself created or set aside (ephemeral `dev-<slug>`, `dev-resync*`, `dev-auto`),
+ *  which always merge. */
+export function isOffIntegration(s: Pick<RepoState, 'branch' | 'integrationBranch' | 'continuingEphemeral'>): boolean {
+  return s.branch !== s.integrationBranch
+    && !s.continuingEphemeral
+    && !isBlockedBranch(s.branch, s.integrationBranch)
+    && !isResyncBranch(s.branch)
+    && !isAutoBranch(s.branch)
+}
+
+/** Repos with work + their ancestors (pin targets), in publication order, with their state. */
+async function planCandidates(roots: WorkspaceTreeNode[], ephemeral: EphemeralBranch | null) {
+  const order = publishOrder(roots)
+  const states = new Map<string, RepoState>()
+  for (const node of order) states.set(node.repoPath, await readRepoState(node.repoPath, ephemeral))
+
+  const withWork = new Set(order.filter(n => states.get(n.repoPath)!.hasWork).map(n => n.repoPath))
+  const pinTargets = ancestorRepoPaths(roots, withWork)
+  const candidates = order.filter(n => withWork.has(n.repoPath) || pinTargets.has(n.repoPath))
+  return { states, candidates }
+}
+
+/** GH133: the repos « Publier » would publish from a user-owned branch (see `isOffIntegration`) —
+ *  read when the popup opens, to show the warning and the « Fusionner dans … » checkbox. Only repos
+ *  with work: a pin target never receives a pin from an unmerged child. */
+export async function offIntegrationRepos(roots: WorkspaceTreeNode[], ephemeral: EphemeralBranch | null): Promise<OffIntegrationRepo[]> {
+  const { states, candidates } = await planCandidates(roots, ephemeral)
+  return candidates
+    .map(n => ({ node: n, state: states.get(n.repoPath)! }))
+    .filter(({ state }) => state.hasWork && isOffIntegration(state))
+    .map(({ node, state }) => ({ repo: ref(node), branch: state.branch, integrationBranch: state.integrationBranch }))
 }
 
 /**
@@ -334,18 +395,17 @@ export async function publishWorkspace(opts: {
   title: string
   ephemeral: EphemeralBranch | null
   onEphemeralChange: (b: EphemeralBranch | null) => void
+  /** GH133: « Fusionner dans … » — `false` publishes the repos off their integration branch
+   *  (`isOffIntegration`) on their current branch only; the others are published as usual. */
+  merge?: boolean
 }): Promise<PublishWorkspaceResult> {
   const { workspaceDir, flatNodes, roots, title, onEphemeralChange } = opts
+  const merge = opts.merge ?? true
   let ephemeral = opts.ephemeral
   const trackEphemeral = (b: EphemeralBranch | null) => { ephemeral = b; onEphemeralChange(b) }
+  const unmerged = (s: RepoState) => !merge && isOffIntegration(s)
 
-  const order = publishOrder(roots)
-  const states = new Map<string, RepoState>()
-  for (const node of order) states.set(node.repoPath, await readRepoState(node.repoPath, ephemeral))
-
-  const withWork = new Set(order.filter(n => states.get(n.repoPath)!.hasWork).map(n => n.repoPath))
-  const pinTargets = ancestorRepoPaths(roots, withWork)
-  const candidates = order.filter(n => withWork.has(n.repoPath) || pinTargets.has(n.repoPath))
+  const { states, candidates } = await planCandidates(roots, ephemeral)
 
   const pinOutcome: PinPropagationOutcome = { updated: [], conflicted: [], failed: [] }
   if (candidates.length === 0) return { published: [], pinOutcome }
@@ -372,6 +432,8 @@ export async function publishWorkspace(opts: {
   // piling a new merge onto it would only deepen the divergence.
   const diverged: { repo: PublishRepoRef; conflicts: string[] }[] = []
   for (const node of candidates) {
+    // GH133: published without merging — its integration branch isn't touched.
+    if (unmerged(states.get(node.repoPath)!)) continue
     const { integrationBranch } = states.get(node.repoPath)!
     const { state } = await api.sync.integrationState(node.repoPath, integrationBranch)
     if (state !== 'diverged') continue
@@ -386,6 +448,7 @@ export async function publishWorkspace(opts: {
     try {
       state = await readRepoState(node.repoPath, ephemeral)
       if (!state.hasWork) continue
+      const merged = !unmerged(state)
       const { sha } = await publishRepo({
         repoPath: node.repoPath,
         branch: state.branch,
@@ -394,8 +457,14 @@ export async function publishWorkspace(opts: {
         continuingEphemeral: state.continuingEphemeral,
         hasPendingChanges: state.hasPendingChanges,
         onEphemeralChange: trackEphemeral,
+        merge: merged,
       })
-      published.push({ ...ref(node), integrationBranch: state.integrationBranch, sha })
+      published.push({
+        ...ref(node), integrationBranch: state.integrationBranch, sha,
+        pushBranch: merged ? state.integrationBranch : state.branch, merged,
+      })
+      // GH133 (Q4): a commit that isn't on the integration branch is never pinned in the parents.
+      if (!merged) continue
 
       // T82: propose the merge SHA as pin wherever this repo is declared as a dependency — the
       // dependents come later in `candidates`, so the pin update is published with them.
@@ -428,10 +497,10 @@ async function reattachPublished(published: PublishedRepo[]): Promise<void> {
     try {
       const status = await api.sync.status(repo.repoPath)
       if (status.branch === '' && status.staged.length + status.unstaged.length === 0) {
-        await api.sync.checkoutBranch(repo.repoPath, repo.integrationBranch)
+        await api.sync.checkoutBranch(repo.repoPath, repo.pushBranch)
       }
     } catch (err) {
-      console.warn(`[publishWorkspace] Could not reattach ${repo.name} to ${repo.integrationBranch}:`, err)
+      console.warn(`[publishWorkspace] Could not reattach ${repo.name} to ${repo.pushBranch}:`, err)
     }
   }
 }

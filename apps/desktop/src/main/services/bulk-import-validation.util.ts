@@ -1,3 +1,4 @@
+import { isUnknownStatus } from '@polenta/types'
 import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { findObjectTypeDef, findLocalNodeByRefPrefix, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
@@ -41,6 +42,8 @@ export interface BulkValidationResult<TDto> {
  */
 export interface BulkImportEntryDto {
   objectTypeRef?: string
+  /** GH149 — statut demandé (exigences, tests) ; absent = premier statut du type. */
+  status?: string
   fields?: Record<string, unknown>
 }
 
@@ -60,6 +63,7 @@ export interface BulkImportEntryDto {
  * 4. Pour chaque champ `validator: 'EARS'` du type : le texte respecte la syntaxe
  *    EARS (réutilise `field-checks.util.ts::isEarsCompliant`, même heuristique que le
  *    calcul de maturité affiché dans l'UI — pas une seconde regex divergente).
+ * 5. GH149 — un `status` fourni fait partie des statuts déclarés par le type.
  *
  * `nextIdPreview` est un callback FOURNI PAR L'APPELANT, appelé une fois par entrée
  * VALIDE (dans l'ordre du batch) pour obtenir son `predictedId` — cette fonction
@@ -136,6 +140,13 @@ function validateEntry(
     return {
       reason: `le champ '${nonCompliant.name}' ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF...THEN/THE ... SHALL ...)`,
       field: nonCompliant.name,
+    }
+  }
+
+  if (dto.status && isUnknownStatus(resolved, dto.status)) {
+    return {
+      reason: `statut inconnu : "${dto.status}" (statuts du type : ${resolved.statuses!.map((s) => s.name).join(', ')})`,
+      field: 'status',
     }
   }
 

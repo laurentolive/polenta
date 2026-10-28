@@ -12,11 +12,18 @@ interface Props {
   activePanel: Panel
   currentProjectId: string | null
   width: number
+  /** GH123: hidden with CSS rather than unmounted, so panels keep their local state
+   *  (commit message being typed, expanded folders, scroll). */
+  collapsed?: boolean
 }
 
-export function Sidebar({ activePanel, currentProjectId, width }: Props) {
+export function Sidebar({ activePanel, currentProjectId, width, collapsed }: Props) {
   return (
-    <div className="bg-surface border-r border-edge flex flex-col overflow-hidden shrink-0" style={{ width }}>
+    <div
+      data-testid="sidebar"
+      className={`bg-surface border-r border-edge flex flex-col overflow-hidden shrink-0${collapsed ? ' hidden' : ''}`}
+      style={{ width }}
+    >
       {activePanel === 'account' && <AccountPanel />}
       {activePanel === 'project' && <ProjectPanel currentProjectId={currentProjectId} />}
       {activePanel === 'search'  && currentProjectId && (

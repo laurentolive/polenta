@@ -85,6 +85,7 @@ import type { ForgeService } from '../services/forge/forge.service'
 import type { IntegrationBranchService } from '../services/integration-branch.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
+import { readFileAt } from '../services/read-file-at.util'
 
 export interface Container {
   auth: AuthService
@@ -187,6 +188,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
   'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
+  'sync:settle-auto-branch',
   'integration:designate', 'integration:create',
 ])
 
@@ -288,6 +290,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('sync:resync-integration', (_e, repoPath: string, branch: string) =>
     c.sync.resyncIntegration(repoPath, branch))
   r.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch))
+  r.handle('sync:settle-auto-branch', (_e, repoPath: string, branch: string) =>
+    c.sync.settleAutoBranch(repoPath, branch))
   r.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>
     c.sync.isMergedInto(repoPath, branch, into))
   r.handle('sync:log', async (_e, repoPath: string, limit = 20) => {
@@ -519,6 +523,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
 
   // ── Schema ───────────────────────────────────────────────────────────────────
   r.handle('schema:get', (_e, repoPath: string) => c.schema.get(repoPath))
+  r.handle('schema:get-at', (_e, repoPath: string, ref: string) => c.schema.getAt(repoPath, ref))
   r.handle('schema:save', (_e, repoPath: string, schema: unknown) =>
     c.schema.save(repoPath, schema as import('@polenta/types').ProjectSchema))
   // GH77 — après l'enregistrement d'un type dont des champs ont été renommés : migre valeur et historique.
@@ -661,26 +666,18 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
 
 
   // ── Draw.io (T47) ────────────────────────────────────────────────────────────
-  r.handle('drawio:read', async (_e, repoPath: string, relativePath: string) => {
-    let raw: string
-    try {
-      raw = await fsP.readFile(path.join(repoPath, relativePath), 'utf-8')
-    } catch {
-      return null
-    }
-    return parseDrawioPages(raw)
+  // GH178 — `ref` : lu à cette version git (vues de diff) ; absent / null = working tree.
+  r.handle('drawio:read', async (_e, repoPath: string, relativePath: string, ref?: string | null) => {
+    const bytes = await readFileAt(repoPath, ref ?? null, relativePath)
+    return bytes ? parseDrawioPages(new TextDecoder().decode(bytes)) : null
   })
 
   // ── Image (T76) ──────────────────────────────────────────────────────────────
-  r.handle('image:read', async (_e, repoPath: string, relativePath: string) => {
+  r.handle('image:read', async (_e, repoPath: string, relativePath: string, ref?: string | null) => {
     const ext = path.extname(relativePath).toLowerCase().replace('.', '')
     const mimeType = IMAGE_MIME_BY_EXT[ext] ?? 'image/png'
-    try {
-      const data = await fsP.readFile(path.join(repoPath, relativePath), { encoding: 'base64' })
-      return { mimeType, base64: data }
-    } catch {
-      return null
-    }
+    const bytes = await readFileAt(repoPath, ref ?? null, relativePath)
+    return bytes ? { mimeType, base64: Buffer.from(bytes).toString('base64') } : null
   })
   r.handle('image:write-paste', async (_e, repoPath: string, mimeType: string, base64: string) => {
     try {

@@ -344,6 +344,7 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
       qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
       qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
       if (cat) qc.invalidateQueries({ queryKey: ['object', repoPath, cat, objectId] })
+      qc.invalidateQueries({ queryKey: ['tree', repoPath] }) // GH180 — nom d'élément = titre de l'objet
     }
     if (cat === 'requirement') {
       api.requirements.update(repoPath, objectId, { title: name }).then(done)

@@ -1,5 +1,6 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
+import { scaledTimeout } from '../../net-timeouts'
 
 export interface LoadedImage {
   data: Buffer
@@ -14,7 +15,7 @@ const MAX_BYTES = 10 * 1024 * 1024
 
 /**
  * GH34 sprint 2 — charge une image référencée par un champ richtext : chemin relatif au repo
- * (`images/…`, SPEC-REQ §3.2b), URL `data:` ou `http(s)` (timeout 10 s, 10 Mo max). `null` si
+ * (`images/…`, SPEC-REQ §3.2b), URL `data:` ou `http(s)` (timeout 10 s × réglage réseau GH15, 10 Mo max). `null` si
  * l'image est introuvable, illisible ou dans un format que Word n'affiche pas nativement en
  * l'état (SVG, WebP…) — l'appelant insère alors un paragraphe de repli.
  */
@@ -25,7 +26,7 @@ export async function loadImage(src: string, repoPath: string): Promise<LoadedIm
       const m = /^data:[^;,]*;base64,(.*)$/s.exec(src)
       data = m ? Buffer.from(m[1], 'base64') : null
     } else if (/^https?:\/\//i.test(src)) {
-      const res = await fetch(src, { signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS) })
+      const res = await fetch(src, { signal: AbortSignal.timeout(scaledTimeout(REMOTE_TIMEOUT_MS)) })
       if (res.ok) {
         const buf = Buffer.from(await res.arrayBuffer())
         data = buf.length <= MAX_BYTES ? buf : null

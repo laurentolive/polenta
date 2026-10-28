@@ -62,7 +62,7 @@ export interface WidgetTemplate {
   generate(params: Record<string, unknown>): WidgetCode
 }
 
-export type QueryTemplateId = 'filtered-list' | 'campaign-entries' | 'campaign-timeline' | 'campaign-last-result'
+export type QueryTemplateId = 'filtered-list' | 'campaign-entries' | 'campaign-timeline' | 'campaign-last-result' | 'campaign-results'
 export type WidgetTemplateId = 'bar' | 'pie' | 'line' | 'kpi' | 'table' | 'matrix' | 'stacked-area'
 
 /** Condition du modèle « Liste filtrée » (ex-builder). */
@@ -473,6 +473,41 @@ function campaignLastResultColumn(): QueryColumnDef {
   }
 }
 
+// ─── « Résultat par campagne » (colonne calculée éclatée, GH126) ─────────────
+
+function generateCampaignResults(): string {
+  return `${header('Modèle', 'campaign-results', 1)}// Colonne calculée éclatée de la Vue Système : une sous-colonne par campagne, une ligne par
+// (campagne, test). Règles (dans lib/campaign.js, modifiables par le projet) : toutes les campagnes,
+// abandonnées comprises, par date de création ; test itérant : pire statut des instances.
+import { entryResultsByCampaign } from 'lib/campaign.js'
+import { dayOf } from 'lib/time.js'
+
+export default function (data, polenta) {
+  return entryResultsByCampaign(data).map((r) => ({
+    id: r.testId,
+    value: r.status,
+    campaignId: r.campaignId,
+    campaignTitle: r.campaignTitle,
+    tooltip: r.campaignId + ' — ' + r.campaignTitle
+      + (r.executedAt ? ' · ' + dayOf(r.executedAt, polenta) + (r.executedBy ? ' · ' + r.executedBy : '') : polenta.locale === 'en' ? ' · not executed' : ' · non exécuté')
+      + (r.statuses.length > 1 ? ' · ' + r.statuses.join(', ') : ''),
+    _ids: [r.campaignId + '/' + r.entryId],
+  }))
+}
+`
+}
+
+function campaignResultsColumn(): QueryColumnDef {
+  return {
+    label: L('Résultat par campagne', 'Result by campaign'),
+    appliesTo: { categories: ['test'], objectTypes: [] },
+    type: 'enum',
+    values: ['PASS', 'FAIL', 'BLOCKED', 'INCOMPLETE', 'pending'],
+    splitColumn: 'campaignId',
+    splitLabelColumn: 'campaignTitle',
+  }
+}
+
 // ─── Transformations des widgets ────────────────────────────────────────────
 
 const MEASURE_VALUES = [
@@ -839,6 +874,10 @@ export const QUERY_TEMPLATES: QueryTemplate[] = [
   {
     id: 'campaign-last-result', version: 1, label: L('Dernier résultat de campagne (colonne)', 'Last campaign result (column)'), params: [],
     generate: generateCampaignLastResult, parameters: () => [], column: campaignLastResultColumn,
+  },
+  {
+    id: 'campaign-results', version: 1, label: L('Résultat par campagne (colonnes)', 'Result by campaign (columns)'), params: [],
+    generate: generateCampaignResults, parameters: () => [], column: campaignResultsColumn,
   },
 ]
 

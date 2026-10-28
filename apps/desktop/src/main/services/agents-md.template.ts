@@ -20,8 +20,12 @@ import type { BrandInfo } from '../../shared/brand-types'
  *
  * GH60 (v5) : format d'objet YAML pur (et non plus `.md` + frontmatter), champs système complets,
  * exemples d'exigence et de test, `.polenta/trees/` et pierres tombales.
+ *
+ * GH149 (v6) : le statut des exemples vient des statuts du type (premier de la liste à la création).
+ * GH150 (v6) : outils de modification (`update_requirements` / `update_tests`) et de la base de
+ * paramètres ; l'écriture à la main n'est plus le repli pour ces cas.
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 5
+export const AGENTS_MD_TEMPLATE_VERSION = 6
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -82,7 +86,7 @@ projectId: ''
 branchId: ''
 objectTypeRef: root::exigence   # <nœud>::<type d'objet>, voir .polenta/schema.yaml
 title: Démarrage rapide
-status: draft                   # une valeur des statuts définis pour ce type
+status: draft                   # une valeur des statuts du type ; à la création, le premier de la liste
 version: 1
 fields:                         # champs définis par le type dans le schéma
   priority: high
@@ -103,7 +107,7 @@ projectId: ''
 branchId: ''
 objectTypeRef: root::test
 title: Mesure du temps de démarrage
-status: draft
+status: draft                   # idem : statuts du type dans le schéma
 version: 1
 preconditions: Batterie chargée à plus de 20 %
 equipment:
@@ -175,6 +179,13 @@ Tools disponibles :
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import
   massif avec \`dryRun\` obligatoire par défaut (aperçu des IDs prévisionnels et des
   erreurs, sans rien écrire) ; \`dryRun: false\` écrit réellement, en série, best-effort.
+- \`update_requirements\` / \`update_tests\` — modifie des objets existants par ID (titre,
+  statut, \`fields\` en fusion partielle, une clé à \`null\` retire le champ ; pour un test,
+  \`preconditions\`, \`postconditions\`, \`steps\`, \`equipment\`). \`dryRun\` par défaut (avant/après
+  par champ) ; l'écriture alimente l'historique, la version et la revalidation des éléments liés.
+- \`list_parameters\` / \`set_parameters\` / \`delete_parameter\` — base de paramètres
+  (\`parameters/parameters.yaml\`, références \`{nom}\`). \`set_parameters\` crée ou modifie, avec
+  \`dryRun\` par défaut ; \`delete_parameter\` est refusé tant qu'un élément non terminal l'utilise.
 - \`list_links\` / \`create_links\` / \`delete_links\` — liens entre objets (vérification,
   implémentation…). \`create_links\`/\`delete_links\` ont \`dryRun\` par défaut ; \`create_links\`
   vérifie le type (\`linkTypes\` de \`get_schema\`), l'existence des objets, la compatibilité
@@ -201,6 +212,10 @@ Tools disponibles :
   par élément (colonnes \`idColumn\` / \`valueColumn\` / \`tooltipColumn\`, défaut \`id\` /
   \`value\` / \`tooltip\` ; \`_ids\` = cible), y compris une requête générée par un modèle, sans la
   détacher (modèle \`campaign-last-result\` : dernier résultat de campagne de chaque test).
+  Colonne **éclatée** (GH126) : \`splitColumn\` (+ \`splitLabelColumn\` pour le libellé) → une
+  sous-colonne par valeur distincte de cette colonne du résultat (ex. une par campagne, 50 au
+  maximum) ; le script renvoie alors une ligne par (élément, sous-colonne) (modèle
+  \`campaign-results\` : résultat de chaque test dans chaque campagne).
 - \`list_dashboards\` / \`create_dashboard\` / \`update_dashboard\` / \`delete_dashboard\` /
   \`add_widget\` / \`update_widget\` / \`delete_widget\` / \`reorder_widgets\` — dashboards. Un widget
   référence une requête sauvegardée et porte soit \`template: { id, params }\` (paramètres = colonnes
@@ -223,7 +238,8 @@ committe/publie explicitement ensuite depuis l'app.
 **Si votre client ne supporte pas MCP** (ou si \`.mcp.json\` est absent) : la lecture/
 écriture directe des fichiers YAML documentée ci-dessus reste le repli — appliquez
 alors vous-même les règles de ce fichier (format, ID jamais réutilisé, \`prefix\` unique,
-etc.).
+etc.). Avec MCP, ne modifiez pas à la main un objet existant ni \`parameters/parameters.yaml\` :
+passez par \`update_*\` et \`set_parameters\`.
 
 ## Invariants à respecter
 

@@ -1,14 +1,12 @@
-import { randomUUID } from 'crypto'
-import { renameFieldKeys } from '@polenta/types'
+import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
 import type { SchemaService } from './schema.service'
-import type { TreeService } from './tree.service'
 import { RevalidationService } from './revalidation.service'
 import { omitAuditFields } from './audit-fields.util'
-import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
+import { findObjectTypeDef } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
 import { mergeFields } from './field-merge.util'
@@ -19,7 +17,6 @@ export class TestsService {
     private readonly git: GitService,
     private readonly testsIndex: TestsIndexService,
     private readonly schema: SchemaService,
-    private readonly tree?: TreeService,
     private readonly revalidation?: RevalidationService,
     private readonly history?: HistoryService,
   ) {}
@@ -39,6 +36,11 @@ export class TestsService {
   }
 
   async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
+    // GH149 — cf. RequirementsService.create : statut initial lu dans le schéma.
+    const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
+    if (dto.status && isUnknownStatus(typeDef, dto.status)) {
+      throw new Error(`Statut inconnu pour le type ${dto.objectTypeRef} : "${dto.status}"`)
+    }
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
     const testId = await this.nextTestId(repoPath, targetRepo, dto.objectTypeRef)
 
@@ -54,7 +56,7 @@ export class TestsService {
       branchId: '',
       objectTypeRef: dto.objectTypeRef,
       title: dto.title,
-      status: 'draft',
+      status: dto.status ?? initialStatus(typeDef),
       preconditions: dto.preconditions ?? '',
       equipment: dto.equipment ?? [],
       steps: dto.steps,
@@ -69,7 +71,6 @@ export class TestsService {
     }
 
     const created = await this.persist(repoPath, targetRepo, null, test)
-    await this.appendToTree(targetRepo, dto.objectTypeRef, created.id, created.title)
     return created
   }
 
@@ -88,11 +89,17 @@ export class TestsService {
       // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
+      const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
+      // GH164 — un test approuvé qui quitte ce statut voit sa version incrémentée, comme une
+      // exigence (`RequirementsService.transition`, T150) : même règle quel que soit le chemin.
+      const wasApproved = !!typeDef?.statuses?.find(s => s.name === existing.status)?.isApproval
+      const statusChanged = !!dto.status && dto.status !== existing.status
       const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         ...(dto.title && { title: dto.title }),
         ...(dto.objectTypeRef && { objectTypeRef: dto.objectTypeRef }),
         ...(dto.status && { status: dto.status }),
+        ...(wasApproved && statusChanged ? { version: (existing.version ?? 0) + 1 } : {}),
         ...(dto.preconditions !== undefined && { preconditions: dto.preconditions }),
         ...(dto.equipment && { equipment: dto.equipment }),
         ...(dto.steps && { steps: dto.steps }),
@@ -102,8 +109,7 @@ export class TestsService {
           : { ...(existing.fields as object), ...(dto.fields ?? {}) },
       })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
-      const leftApproval = !!dto.status && RevalidationService.leavesApproval(
-        await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, dto.status)
+      const leftApproval = !!dto.status && RevalidationService.leavesApproval(typeDef, existing.status, dto.status)
       return { updated, leftApproval }
     })
     // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).
@@ -247,23 +253,6 @@ export class TestsService {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
-
-  /** See RequirementsService.appendToTree — same reasoning, same tree format (T138). */
-  private async appendToTree(repoPath: string, objectTypeRef: string, objectId: string, title: string): Promise<void> {
-    if (!this.tree) return
-    try {
-      const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
-      const location = schema ? resolveObjectTypeLocation(schema, objectTypeRef) : null
-      if (!location || location === 'unresolvable') return
-
-      const { nodeName, typeDef } = location
-      const current = await this.tree.get(repoPath, nodeName, typeDef.name)
-      const node = { id: randomUUID(), kind: 'item' as const, name: title, objectId, children: [] }
-      await this.tree.save(repoPath, { nodeId: nodeName, typeId: typeDef.name, root: [...current.root, node] })
-    } catch (err) {
-      console.error(`Erreur insertion arbre pour ${objectId}:`, err)
-    }
-  }
 
   /** Prefix resolved from `repoPath`'s schema, number allocated in `targetRepo` — see
    *  RequirementsService.nextId (GH20). */

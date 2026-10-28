@@ -118,7 +118,8 @@
       "requirement": "Requirement",
       "test": "Test",
       "campaign": "Campaign",
-      "mergeResolve": "Conflicts"
+      "mergeResolve": "Conflicts",
+      "constellation": "Constellation"
     }
   },
   "account": {
@@ -137,6 +138,8 @@
       "english": "English",
       "autoUpdate": "Auto updates",
       "autoUpdateHint": "Check for and download updates at startup (applies on next launch)",
+      "networkTimeout": "Network connection timeout (s)",
+      "networkTimeoutHint": "Increase if operations fail with a timeout (slow or filtered network, e.g. accessing GitHub from China). 10 to 120 s, applies immediately.",
       "exportTemplates": "Export templates",
       "exportTemplatesHint": "Folder holding client Word/Excel templates (local folder, network share or cloned repo), shared across projects.",
       "exportTemplatesChoose": "Choose…",
@@ -1505,6 +1508,33 @@
   "diffPage": {
     "noDifference": "No difference"
   },
+  "diffView": {
+    "raw": "Raw",
+    "rendered": "Rendered",
+    "hideUnchanged": "Hide unchanged",
+    "unchangedCount_one": "{{count}} unchanged field",
+    "unchangedCount_other": "{{count}} unchanged fields",
+    "before": "Before",
+    "after": "After",
+    "workingTree": "working tree",
+    "absentFile": "File absent from this version",
+    "absentUnit": "— absent",
+    "renderUnavailable": "Rendering unavailable for this content — see Raw",
+    "stepAction": "Action",
+    "stepExpected": "Expected result",
+    "stepNumber": "Step {{n}}",
+    "page": "Page “{{name}}”",
+    "absentPage": "— page absent",
+    "unchangedPages_one": "{{count}} unchanged page",
+    "unchangedPages_other": "{{count}} unchanged pages",
+    "unit": {
+      "title": "Title",
+      "status": "Status",
+      "preconditions": "Preconditions",
+      "steps": "Steps",
+      "postconditions": "Postconditions"
+    }
+  },
   "versionDiffPage": {
     "selectFileHint": "Select a file in the Version panel"
   },
@@ -1801,5 +1831,50 @@
       "designated": "{{branch}} is the integration branch of this repo: designate another one before deleting it.",
       "lastIntegration": "{{branch}} is the last integration branch of this repo: a repo must never be left without an integration branch."
     }
+  },
+  "constellation": {
+    "title": "Requirements constellation",
+    "subtitle": "Refinements and test coverage",
+    "ariaLabel": "Requirements in rings: top level at the centre, refinements outwards",
+    "searchPlaceholder": "Search an ID or a title",
+    "colorBy": "Colour:",
+    "colorByType": "Object type",
+    "noValue": "Not set",
+    "reverse": "Reverse direction",
+    "reverseHint": "Each link type's direction is inferred from the data (the parent is the side with fewer objects). Reverse it if the constellation looks upside down.",
+    "empty": "No requirements in this project.",
+    "kpi": {
+      "requirements": "requirements",
+      "links": "links between requirements",
+      "notRefined": "intermediate requirements not refined",
+      "coverage": "test coverage"
+    },
+    "legend": {
+      "halo": "Halo = share covered by tests",
+      "uncovered": "Dotted = not covered",
+      "rings": "Centre: top level · edge: finest level"
+    },
+    "card": {
+      "coverage": "Test coverage",
+      "leavesCovered_one": "{{covered}} of {{count}} leaf requirement covered",
+      "leavesCovered_other": "{{covered}} of {{count}} leaf requirements covered",
+      "topLevel": "Top-level requirement",
+      "notRefined": "Not refined yet",
+      "reversed": "Link direction reversed from the inferred one.",
+      "open": "Open {{id}}"
+    },
+    "overview": {
+      "label": "Overview",
+      "title_one": "{{count}} requirement, {{links}} links",
+      "title_other": "{{count}} requirements, {{links}} links",
+      "help": "Each petal starts from a top-level requirement at the centre and opens towards the requirements that refine it. Hover a point to follow its lineage, click to pin it.",
+      "watch": "Worth a look",
+      "notRefined": "intermediate requirements without refinement",
+      "uncoveredLeaves": "leaf requirements without a test case",
+      "tests": "test cases in the project",
+      "petals": "Petals"
+    },
+    "openFromPanel": "Requirements constellation",
+    "openFromPanelHint": "Overview of refinements and coverage"
   }
 }

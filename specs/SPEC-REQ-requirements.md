@@ -149,7 +149,13 @@ référencer plusieurs diagrammes positionnés librement dans le texte.
   `initialCaret?: 'end' | (() => { left, top } | null)` (avec `autoFocus`) :
   position initiale du curseur — `'end'` par défaut, ou coordonnées client lues
   une fois l'éditeur monté (`posAtCoords`), utilisé par la Vue Excel pour placer
-  le curseur au point double-cliqué.
+  le curseur au point double-cliqué. Depuis GH178 (vues de diff), `StaticRichTextViewer`
+  accepte aussi `at?: string | null` (version git à laquelle lire images et
+  diagrammes, absent = working tree ; `renderStaticDrawio` prend le même `at`),
+  `diffAgainst?: { other, side }` (diff mot à mot du rendu contre l'autre version :
+  `<del class="diff-del">` / `<ins class="diff-ins">`, `.static-drawio` ignoré) et
+  `changedMedia?: Set<number>` (index, dans l'ordre du rendu, des blocs
+  diagramme / image à encadrer) ; inertes sans les props.
 - **Édition** : pas d'éditeur draw.io intégré. Double-clic sur le diagramme
   rendu ouvre le fichier dans l'application draw.io externe du poste ; le
   rendu inline se rafraîchit automatiquement au retour de focus sur la fenêtre

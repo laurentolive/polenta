@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { FilePen, Plus, Trash2, AlertTriangle } from 'lucide-react'
@@ -95,6 +95,13 @@ export function VersionImpactSelector({ projectId }: Props) {
   const { selectedRepoPath } = useSelectedRepo()
   const { activeAnalysisId, setActiveAnalysisId } = useImpactAnalysis()
   const repoPath = selectedRepoPath
+  // GH183 — le panneau sert aussi la Constellation : choisir une analyse depuis cette vue
+  // ramène sur la page d'analyse d'impact, qui l'affiche.
+  const pathname = useRouterState({ select: s => s.location.pathname })
+  const pickAnalysis = (id: string | null) => {
+    setActiveAnalysisId(id)
+    if (id && pathname === '/constellation') navigate({ to: '/impact-analysis', search: { projectId } })
+  }
 
   const [fromTag, setFromTag] = useState<string | undefined>(undefined)
   const [toTag, setToTag] = useState<string | undefined>(undefined)
@@ -146,7 +153,7 @@ export function VersionImpactSelector({ projectId }: Props) {
     mutationFn: () => api.impactAnalysis.create(repoPath, { fromBaselineTag: fromTag!, toBaselineTag: toTag! }),
     onSuccess: (analysis) => {
       qc.invalidateQueries({ queryKey: ['impact-analysis:list', repoPath] })
-      setActiveAnalysisId(analysis.id)
+      pickAnalysis(analysis.id)
     },
   })
 
@@ -183,7 +190,7 @@ export function VersionImpactSelector({ projectId }: Props) {
   }
 
   function openAnalysis(summary: ImpactAnalysisSummary) {
-    setActiveAnalysisId(activeAnalysisId === summary.id ? null : summary.id)
+    pickAnalysis(activeAnalysisId === summary.id ? null : summary.id)
   }
 
   function backToSelection() {
@@ -265,7 +272,7 @@ export function VersionImpactSelector({ projectId }: Props) {
             <div className={`mb-0.5 rounded ${isRevalidationActive ? 'bg-hover ring-1 ring-prim' : ''}`}>
               <button
                 type="button"
-                onClick={() => setActiveAnalysisId(isRevalidationActive ? null : REVALIDATION_IMPACT_ID)}
+                onClick={() => pickAnalysis(isRevalidationActive ? null : REVALIDATION_IMPACT_ID)}
                 className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-hover transition-colors flex items-center gap-1.5 ${isRevalidationActive ? 'text-prim' : 'text-ink'}`}
               >
                 <AlertTriangle size={13} className="shrink-0 text-status-warning" />
@@ -278,7 +285,7 @@ export function VersionImpactSelector({ projectId }: Props) {
             <div className={`mb-0.5 rounded ${isLocalActive ? 'bg-hover ring-1 ring-prim' : ''}`}>
               <button
                 type="button"
-                onClick={() => setActiveAnalysisId(isLocalActive ? null : LOCAL_IMPACT_ANALYSIS_ID)}
+                onClick={() => pickAnalysis(isLocalActive ? null : LOCAL_IMPACT_ANALYSIS_ID)}
                 className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-hover transition-colors flex items-center gap-1.5 ${isLocalActive ? 'text-prim' : 'text-ink'}`}
               >
                 <FilePen size={13} className="shrink-0" />

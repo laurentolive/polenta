@@ -41,7 +41,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
   if (pathname === '/parameters') return 'parameters'
-  if (pathname === '/impact-analysis') return 'impact'
+  if (pathname === '/impact-analysis' || pathname === '/constellation') return 'impact'
 
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'

@@ -1,6 +1,7 @@
 import { request as undiciRequest, type Dispatcher } from 'undici'
 
 import { resolveProxyDispatcher } from '../net-proxy'
+import { FORGE_TIMEOUT_BASE_MS, scaledTimeout } from '../net-timeouts'
 import { checkRemote } from './remote-guard'
 import { BRAND } from '../../../shared/brand'
 
@@ -23,7 +24,7 @@ export interface ForgeRequestOptions {
   otp?: string
   json?: unknown
   headers?: Record<string, string>
-  /** Délai total en ms (défaut 20 s). */
+  /** Délai en-têtes / corps en ms (défaut 20 s), pour le réglage réseau par défaut — mis à l'échelle (GH15). */
   timeoutMs?: number
   /**
    * URL fixe du code (API GitHub), jamais fournie par l'utilisateur : le garde anti-SSRF du web
@@ -80,7 +81,7 @@ export async function forgeRequest<T = unknown>(url: string, opts: ForgeRequestO
     headers['Content-Type'] = 'application/json'
     body = JSON.stringify(opts.json)
   }
-  const timeout = opts.timeoutMs ?? 20_000
+  const timeout = scaledTimeout(opts.timeoutMs ?? FORGE_TIMEOUT_BASE_MS)
   const method = opts.method ?? 'GET'
   // undici.request ne suit pas les redirections (fetch le faisait) : suivies ici pour GET/HEAD
   // (http → https, hôte canonique), en repassant par le garde d'URL à chaque saut.

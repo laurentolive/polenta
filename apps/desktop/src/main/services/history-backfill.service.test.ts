@@ -73,8 +73,8 @@ beforeEach(async () => {
   await commit({ '.polenta/schema.yaml': SCHEMA }, 'Admin', T0 - 100)
   reqIndex = new RequirementsIndexService(gitSvc)
   const history = new HistoryService(gitSvc, async () => ({ by: 'lolive' }), () => new Date((T0 + 10_000) * 1000))
-  requirements = new RequirementsService(gitSvc, reqIndex, schemaStub, undefined, undefined, history)
-  const tests = new TestsService(gitSvc, new TestsIndexService(gitSvc), schemaStub, undefined, undefined, history)
+  requirements = new RequirementsService(gitSvc, reqIndex, schemaStub, undefined, history)
+  const tests = new TestsService(gitSvc, new TestsIndexService(gitSvc), schemaStub, undefined, history)
   backfill = new HistoryBackfillService(gitSvc, requirements, tests, new CampaignsService(gitSvc, tests, undefined, undefined, history))
 })
 

@@ -142,10 +142,10 @@ ponctuels) ni les autres services hors périmètre (`ReviewsService`, `Traceabil
 `BaselineService`, `InterfaceComplianceService`, `SavedQueriesService`,
 `DashboardSeedService`).
 
-**T130 : `TreeService` EST construit** (T138, `container.ts` du serveur MCP) — retiré de la
-liste "hors périmètre" ci-dessus où il figurait par erreur. Sans lui, les objets créés par ce
-serveur MCP sont écrits sur disque mais n'apparaissent jamais dans SystemView/ExcelView (arbre
-`.polenta/trees/<nœud>/<type>.yaml` jamais mis à jour).
+**GH180 : `TreeService` n'est plus construit.** T138 l'avait ajouté pour inscrire chaque objet
+créé dans `.polenta/trees/<nœud>/<type>.yaml`, faute de quoi SystemView/ExcelView ne l'affichaient
+pas. Depuis GH180, l'app complète l'arbre à la lecture avec les objets non classés : créer un objet
+n'écrit plus l'arbre, côté app comme côté MCP (`SPEC-ELECTRON-DESKTOP.md` §22.4).
 
 Synchrone (pas de `createContainer()` async) — pas de fenêtre à ouvrir, pas d'attente
 `app.whenReady()`.

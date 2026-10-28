@@ -282,6 +282,20 @@ export interface CommitEntry {
   date: string
 }
 
+/**
+ * GH178 — contenu des deux côtés d'un diff de fichier. `oldRef` / `newRef` : SHA effectivement lus
+ * (`null` = working tree), pour relire à la même version les fichiers référencés (diagrammes,
+ * images, schéma). `*Missing` : fichier absent de ce côté (`*Content` vaut alors `''`).
+ */
+export interface FileDiffContents {
+  oldContent: string
+  newContent: string
+  oldRef?: string | null
+  newRef?: string | null
+  oldMissing?: boolean
+  newMissing?: boolean
+}
+
 export interface DrawioPage {
   id: string
   name: string
@@ -412,6 +426,8 @@ export interface ApiClient {
   }
   schema: {
     get(repoPath: string): Promise<ProjectSchema>
+    /** GH178 — `.polenta/schema.yaml` du repo lu à une ref git (lecture seule), `null` s'il n'y existe pas. */
+    getAt(repoPath: string, ref: string): Promise<ProjectSchema | null>
     save(repoPath: string, schema: ProjectSchema): Promise<void>
     moveElement(repoPath: string, dto: MoveElementDto): Promise<MoveElementResult>
     /** GH77 — migre valeur et historique des champs renommés sur les objets du type (après `save`). */
@@ -519,8 +535,9 @@ export interface ApiClient {
       | { status: 'canceled' }
       | { status: 'error'; message: string }
     >
-    /** Pages décompressées (XML mxGraphModel prêt à parser), ou null si le fichier n'existe pas / n'est pas un .drawio valide. */
-    read(repoPath: string, relativePath: string): Promise<DrawioPage[] | null>
+    /** Pages décompressées (XML mxGraphModel prêt à parser), ou null si le fichier n'existe pas / n'est pas un .drawio valide.
+     *  `ref` (GH178) : lu à ce commit / cette ref git ; absent ou `null` = working tree. */
+    read(repoPath: string, relativePath: string, ref?: string | null): Promise<DrawioPage[] | null>
     /** Ouvre le fichier dans l'application associée du poste (best effort, aucune erreur si absente). */
     openExternal(repoPath: string, relativePath: string): Promise<void>
   }
@@ -537,7 +554,7 @@ export interface ApiClient {
       | { status: 'error'; message: string }
     >
     /** Octets du fichier référencé (base64), ou null si introuvable. Jamais stocké — sert uniquement à construire un data URI de rendu en mémoire. */
-    read(repoPath: string, relativePath: string): Promise<{ mimeType: string; base64: string } | null>
+    read(repoPath: string, relativePath: string, ref?: string | null): Promise<{ mimeType: string; base64: string } | null>
     /** Écrit les octets d'une image collée (presse-papiers, pas de fichier source) dans `images/` sous un nom généré, dédupliqué si collision. */
     writePaste(repoPath: string, mimeType: string, base64: string): Promise<
       | { status: 'ok'; path: string }
@@ -574,9 +591,9 @@ export interface ApiClient {
     discard(repoPath: string, filepath: string): Promise<void>
     discardAll(repoPath: string): Promise<void>
     graph(repoPath: string, limit?: number): Promise<GraphCommit[]>
-    diff(repoPath: string, filepath: string): Promise<{ oldContent: string; newContent: string }>
+    diff(repoPath: string, filepath: string): Promise<FileDiffContents>
     commitFiles(repoPath: string, sha: string): Promise<SyncFileStatus[]>
-    commitDiff(repoPath: string, sha: string, filepath: string): Promise<{ oldContent: string; newContent: string }>
+    commitDiff(repoPath: string, sha: string, filepath: string): Promise<FileDiffContents>
     branches(repoPath: string): Promise<BranchInfo[]>
     createBranch(repoPath: string, name: string): Promise<void>
     checkoutBranch(repoPath: string, name: string): Promise<void>
@@ -591,7 +608,7 @@ export interface ApiClient {
     pushBranch(repoPath: string, branchName: string, remote?: string): Promise<void>
     rebase(repoPath: string, onto: string): Promise<void>
     diffBetween(repoPath: string, sha1: string, sha2: string): Promise<SyncFileStatus[]>
-    diffFileBetween(repoPath: string, sha1: string, sha2: string, filepath: string): Promise<{ oldContent: string; newContent: string }>
+    diffFileBetween(repoPath: string, sha1: string, sha2: string, filepath: string): Promise<FileDiffContents>
     resolveRefs(repoPath: string): Promise<GitRef[]>
   }
   /** Opérations git bas niveau ne relevant pas du domaine `sync` (T43). */

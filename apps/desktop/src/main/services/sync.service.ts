@@ -13,6 +13,7 @@ import { AUTO_BRANCH_PREFIX, isAutoBranch } from '@polenta/types'
 
 import { extractHost, type AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
+import { readFileAt, resolveCommitSha } from './read-file-at.util'
 
 const execFileAsync = promisify(execFile)
 
@@ -101,6 +102,37 @@ const DIVERGENCE_LOG_DEPTH = 500
  */
 function isHttpRemote(url: string): boolean {
   return /^https?:\/\//i.test(url)
+}
+
+/** GH178 — both sides of a file diff, with the refs actually read (`null` = working tree). */
+export interface FileDiffContents {
+  oldContent: string
+  newContent: string
+  oldRef: string | null
+  newRef: string | null
+  oldMissing: boolean
+  newMissing: boolean
+}
+
+async function fileDiffContents(
+  repoPath: string,
+  filepath: string,
+  oldRef: string | null,
+  newRef: string | null,
+  /** No "before" commit (initial commit, empty repo): the old side is absent, not the working tree. */
+  noOldSide: boolean,
+): Promise<FileDiffContents> {
+  const decode = (b: Uint8Array | null) => (b ? new TextDecoder().decode(b) : '')
+  const oldBytes = noOldSide ? null : await readFileAt(repoPath, oldRef, filepath)
+  const newBytes = await readFileAt(repoPath, newRef, filepath)
+  return {
+    oldContent: decode(oldBytes),
+    newContent: decode(newBytes),
+    oldRef: noOldSide ? null : oldRef,
+    newRef,
+    oldMissing: oldBytes === null,
+    newMissing: newBytes === null,
+  }
 }
 
 /**
@@ -969,20 +1001,9 @@ export class SyncService {
     }
   }
 
-  async diff(repoPath: string, filepath: string): Promise<{ oldContent: string; newContent: string }> {
-    let oldContent = ''
-    try {
-      const headSha = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
-      const { blob } = await git.readBlob({ fs, dir: repoPath, oid: headSha, filepath })
-      oldContent = new TextDecoder().decode(blob)
-    } catch {}
-
-    let newContent = ''
-    try {
-      newContent = await fsP.readFile(path.join(repoPath, filepath), 'utf-8')
-    } catch {}
-
-    return { oldContent, newContent }
+  async diff(repoPath: string, filepath: string): Promise<FileDiffContents> {
+    const headSha = await resolveCommitSha(repoPath, 'HEAD')
+    return fileDiffContents(repoPath, filepath, headSha, null, headSha === null)
   }
 
   async commitFiles(repoPath: string, sha: string): Promise<SyncFileStatus[]> {
@@ -1027,25 +1048,10 @@ export class SyncService {
     return files
   }
 
-  async commitDiff(repoPath: string, sha: string, filepath: string): Promise<{ oldContent: string; newContent: string }> {
+  async commitDiff(repoPath: string, sha: string, filepath: string): Promise<FileDiffContents> {
     const { commit } = await git.readCommit({ fs, dir: repoPath, oid: sha })
-    const parentSha = commit.parent[0]
-
-    let oldContent = ''
-    if (parentSha) {
-      try {
-        const { blob } = await git.readBlob({ fs, dir: repoPath, oid: parentSha, filepath })
-        oldContent = new TextDecoder().decode(blob)
-      } catch {}
-    }
-
-    let newContent = ''
-    try {
-      const { blob } = await git.readBlob({ fs, dir: repoPath, oid: sha, filepath })
-      newContent = new TextDecoder().decode(blob)
-    } catch {}
-
-    return { oldContent, newContent }
+    const parentSha = commit.parent[0] ?? null
+    return fileDiffContents(repoPath, filepath, parentSha, sha, parentSha === null)
   }
 
   async listBranches(repoPath: string): Promise<{ name: string; isCurrent: boolean; type: 'int' | 'dev' | 'other' }[]> {
@@ -1202,20 +1208,8 @@ export class SyncService {
     sha1: string,
     sha2: string,
     filepath: string,
-  ): Promise<{ oldContent: string; newContent: string }> {
-    let oldContent = ''
-    try {
-      const { blob } = await git.readBlob({ fs, dir: repoPath, oid: sha1, filepath })
-      oldContent = new TextDecoder().decode(blob)
-    } catch {}
-
-    let newContent = ''
-    try {
-      const { blob } = await git.readBlob({ fs, dir: repoPath, oid: sha2, filepath })
-      newContent = new TextDecoder().decode(blob)
-    } catch {}
-
-    return { oldContent, newContent }
+  ): Promise<FileDiffContents> {
+    return fileDiffContents(repoPath, filepath, sha1, sha2, false)
   }
 
   async resolveRefs(repoPath: string): Promise<GitRef[]> {

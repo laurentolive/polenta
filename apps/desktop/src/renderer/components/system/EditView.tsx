@@ -575,7 +575,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
       }
       if (name === 'status') {
         const statusField: SchemaField = typeDef?.statuses?.length
-          ? { name: 'status', type: 'enum' as const, label: t('system.wordView.colStatus'), values: typeDef.statuses.map(s => s.name), valueLabels: statusValueLabels(typeDef.statuses) }
+          ? { name: 'status', type: 'enum' as const, required: true, label: t('system.wordView.colStatus'), values: typeDef.statuses.map(s => s.name), valueLabels: statusValueLabels(typeDef.statuses) }
           : { name: 'status', type: 'text' as const, label: t('system.wordView.colStatus') }
         return { field: statusField, system: false }
       }

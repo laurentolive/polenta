@@ -3,7 +3,8 @@ import { Readable } from 'stream'
 import { request as undiciRequest, type Dispatcher } from 'undici'
 import type { HttpClient, GitHttpRequest, GitHttpResponse } from 'isomorphic-git/http/node'
 
-import { resolveProxyDispatcher } from './net-proxy'
+import { describeTimeout, isTimeoutError, resolveProxyDispatcher } from './net-proxy'
+import { GIT_IO_TIMEOUT_BASE_MS, scaledTimeout } from './net-timeouts'
 import { checkRemote } from './forge/remote-guard'
 
 /**
@@ -19,6 +20,25 @@ import { checkRemote } from './forge/remote-guard'
 /** GH44 — alias conservé : le garde (forge/remote-guard.ts) couvre désormais aussi l'API de forge (GH45). */
 export { setRemoteGuard as setGitRemoteGuard } from './forge/remote-guard'
 
+/**
+ * GH15 — un délai dépassé devient une erreur dont le message cite le réglage ; le code d'origine
+ * est conservé pour que `isNetworkUnreachable` (auto-pull, Publier) la classe comme avant.
+ */
+function translateTimeout(err: unknown): unknown {
+  if (!isTimeoutError(err)) return err
+  const translated = new Error(describeTimeout((err as Error).message), { cause: err })
+  return Object.assign(translated, { code: (err as { code?: unknown }).code })
+}
+
+// Le délai de corps peut expirer pendant la lecture du flux par isomorphic-git, après `request`.
+async function* translateTimeouts(body: AsyncIterable<Uint8Array>): AsyncIterableIterator<Uint8Array> {
+  try {
+    yield* body
+  } catch (err) {
+    throw translateTimeout(err)
+  }
+}
+
 async function request({
   url,
   method = 'GET',
@@ -29,12 +49,20 @@ async function request({
   const dispatcher = await resolveProxyDispatcher(url)
   const reqBody = body ? (Array.isArray(body) ? Buffer.concat(body.map(chunk => Buffer.from(chunk))) : Readable.from(body)) : undefined
 
-  const res = await undiciRequest(url, {
-    dispatcher,
-    method: method as Dispatcher.HttpMethod,
-    headers,
-    body: reqBody,
-  })
+  const timeout = scaledTimeout(GIT_IO_TIMEOUT_BASE_MS)
+  let res: Dispatcher.ResponseData
+  try {
+    res = await undiciRequest(url, {
+      dispatcher,
+      method: method as Dispatcher.HttpMethod,
+      headers,
+      body: reqBody,
+      headersTimeout: timeout,
+      bodyTimeout: timeout,
+    })
+  } catch (err) {
+    throw translateTimeout(err)
+  }
 
   const flatHeaders: Record<string, string> = {}
   for (const [key, value] of Object.entries(res.headers)) {
@@ -48,7 +76,7 @@ async function request({
     statusCode: res.statusCode,
     statusMessage: http.STATUS_CODES[res.statusCode] ?? '',
     headers: flatHeaders,
-    body: res.body[Symbol.asyncIterator](),
+    body: translateTimeouts(res.body),
   }
 }
 

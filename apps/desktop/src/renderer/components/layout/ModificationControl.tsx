@@ -9,6 +9,7 @@ import { useModificationMode } from '../../hooks/useModificationMode'
 import { designateNotices, useDesignateIntegration } from '../../hooks/useDesignateIntegration'
 import { useVersioning } from '../../contexts/VersioningContext'
 import type { PinPropagationOutcome } from '../../lib/workspaceActions'
+import { branchErrorText } from '../../lib/branchErrors'
 import {
   offIntegrationRepos, publishWorkspace, PublishBlockedError, PublishConflictError, PublishDivergedError, PublishNetworkError,
   PublishRepoError, type EphemeralBranch, type PublishedRepo,
@@ -90,7 +91,8 @@ export function ModificationControl({ currentProjectId }: Props) {
         kind: 'conflict'; message: string; files: string[]; workBranch: string; ephemeral: boolean; repoPath: string
         integrationBranch: string; title: string; published: string[]
       }
-    | { kind: 'network'; message: string }
+    // GH15: `detail` = cause from the main process (e.g. a timeout naming the network setting).
+    | { kind: 'network'; message: string; detail: string }
     // GH106: `designatable` = blocked repos sitting on an undesignated `int-*`, fixable in one click;
     // `repoPaths[i]` is the repo of `repos[i]`, so a fixed repo's line can be dropped on its own.
     | {
@@ -267,6 +269,7 @@ export function ModificationControl({ currentProjectId }: Props) {
         setPublishError({
           kind: 'network',
           message: t('layout.modificationControl.networkErrorRepo', { repo: repoName(err.repo) }),
+          detail: branchErrorText(new Error(err.detail)),
         })
         return
       }
@@ -541,6 +544,9 @@ export function ModificationControl({ currentProjectId }: Props) {
           <p className="text-xs text-ink-2 mb-2">
             {publishError.message}
           </p>
+          {publishError.kind === 'network' && publishError.detail && (
+            <p className="text-xs text-ink-3 mb-2 break-words">{publishError.detail}</p>
+          )}
           {publishError.kind === 'conflict' && publishError.files.length > 0 && (
             <ul className="text-xs font-mono text-ink-2 mb-2 list-disc list-inside">
               {publishError.files.map(f => <li key={f}>{f}</li>)}

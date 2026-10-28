@@ -620,7 +620,7 @@ function ItemCard({
           }
           const fieldDef: SchemaField | undefined = col === 'status'
             ? (typeDef?.statuses?.length
-              ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(s => s.name) }
+              ? { name: 'status', type: 'enum' as const, required: true, values: typeDef.statuses.map(s => s.name) }
               : undefined)
             : typeDef?.fields.find(f => f.name === col)
           const value = col === 'section'

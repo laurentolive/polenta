@@ -145,6 +145,24 @@
 }
 
 @layer components {
+  /* GH178 — vues de diff, mode Rendu : mots retirés (Avant) / ajoutés (Après), blocs média modifiés. */
+  .diff-del {
+    @apply rounded-sm line-through;
+    background-color: rgb(var(--status-danger-solid) / 0.25);
+    text-decoration-color: rgb(var(--status-danger));
+  }
+  .diff-ins {
+    @apply rounded-sm no-underline;
+    background-color: rgb(var(--status-success-solid) / 0.3);
+  }
+  .diff-media-del {
+    outline: 2px solid rgb(var(--status-danger-solid));
+    outline-offset: 2px;
+  }
+  .diff-media-ins {
+    outline: 2px solid rgb(var(--status-success-solid));
+    outline-offset: 2px;
+  }
   /* T171 — référence de paramètre ({nom}) : même style partout (lecture markdown-it, éditeur
      Tiptap, texte brut). Variante non résolue : référence littérale en couleur d'alerte. */
   .param-ref {

@@ -129,8 +129,8 @@ export class JobRunner {
 
   start(job: JobRecord, args: StartArgs): void {
     const dir = this.store.jobDir(job.id)
-    const out = fs.openSync(path.join(dir, 'out.raw'), 'a', 0o600)
-    const err = fs.openSync(path.join(dir, 'err.raw'), 'a', 0o600)
+    const out = fs.openSync(path.join(dir, 'out.raw'), 'w', 0o600)
+    const err = fs.openSync(path.join(dir, 'err.raw'), 'w', 0o600)
     const child = spawn(
       'bash',
       ['-c', WRAPPER, this.scriptPath(args.script), ...args.argv, '--json', '--non-interactive'],

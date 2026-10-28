@@ -132,7 +132,8 @@ describe('verrou (S2-19 à S2-21)', () => {
 })
 
 describe('annulation et retour arrière (S2-22, S2-23)', () => {
-  it('backup.run annulé → cancelled ; forge.update non annulable', async () => {
+  // SIGTERM n'atteint pas un bash MSYS depuis Node sous Windows : scénario vérifié sous Linux seulement.
+  it.skipIf(process.platform === 'win32')('backup.run annulé → cancelled ; forge.update non annulable', async () => {
     const env = setupRoot()
     env.fake('FAKE_SLEEP=100')
     const a = start(env)

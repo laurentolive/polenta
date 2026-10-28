@@ -50,10 +50,18 @@ socket ni port) : repli documenté au design, à trancher sur la VM.
 
 ## Tests
 
-Écrits (`apps/admin-service/test/`) mais **pas encore exécutés** : le poste de ce sprint n'a ni Node,
-ni Docker, ni WSL. Couverts en automatique : S2-2, S2-3/S2-5 (reprise), S2-6 à S2-13, S2-15 à S2-23,
-S2-24, S2-25 à S2-27. À faire sur une VM Linux avec Docker : S2-1, S2-4, S2-14, S2-17 en réel
-(`docker compose up/down` d'une instance derrière le proxy, risque R2), image et `install.sh`.
+`pnpm --filter @polenta/admin-service typecheck` : zéro erreur. `pnpm --filter @polenta/admin-service
+test` (vitest, Windows, Node 20) : **81 verts, 1 sauté** — l'annulation par SIGTERM (S2-22) ne se
+teste pas sous Windows (signal non transmis à bash MSYS), à exécuter sous Linux. Bundle `pnpm build`
+démarré à la main : `/healthz` 200, `/me` sans jeton 401, proxy `POST /build` 403.
+
+Couverts en automatique : S2-2, S2-3/S2-5 (reprise), S2-6 à S2-13, S2-15 à S2-21, S2-23, S2-24,
+S2-25 à S2-27. À faire sur une VM Linux avec Docker : S2-22 (annulation), S2-1, S2-4, S2-14, S2-17 en
+réel (`docker compose up/down` d'une instance derrière le proxy, risque R2), image, `install.sh`,
+`shellcheck` des scripts modifiés.
+
+Note Windows : les sorties brutes sont ouvertes en `w` (pas `a`) — bash MSYS n'écrit rien dans un
+fichier ouvert en ajout par Node.
 
 ## Comment tester (VM de test, jamais la production)
 

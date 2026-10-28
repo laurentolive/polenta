@@ -1480,6 +1480,13 @@
     "tagNameLabel": "Tag name",
     "inProgress": "In progress…",
     "checkoutBranch": "Checkout branch",
+    "remoteCheckout": {
+      "behind": "You are on {{branch}}, behind {{remoteRef}}.",
+      "ahead": "You are on {{branch}}, which has commits that {{remoteRef}} doesn't.",
+      "diverged": "You are on {{branch}}, which has diverged from {{remoteRef}}: nothing was overwritten. Push, or merge {{remoteRef}} into {{branch}}, to reconcile them.",
+      "fastForward": "Fast-forward",
+      "ffFailed": "Fast-forward failed (conflict)."
+    },
     "mergeBranchInto": "Merge branch into…",
     "rebaseCurrentOnBranch": "Rebase current on branch",
     "pushBranch": "Push branch",

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../api'
@@ -15,7 +15,7 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useSetTabTitle } from '../contexts/TabsContext'
 import { useOpenMergeResolution } from '../components/merge/useOpenMergeResolution'
 import { toIntlLocale } from '../i18n/useLocale'
-import type { GraphCommit, SyncFileStatus, MergeResult } from '@polenta/api-client'
+import type { GraphCommit, SyncFileStatus, MergeResult, CheckoutBranchResult } from '@polenta/api-client'
 import type { WorkspaceTreeNode } from '@polenta/types'
 
 export const Route = createFileRoute('/graph')({
@@ -273,11 +273,13 @@ interface GraphContextMenuProps {
   onClose: () => void
   onInvalidate: (keys: Array<'status' | 'graph' | 'branches' | 'tags'>) => void
   onPinWarning: (outcome: PinPropagationOutcome) => void
+  /** GH138 — checkout of `origin/<branch>`: where the local branch stands, for the page notice. */
+  onCheckoutResult: (result: CheckoutBranchResult) => void
 }
 
 function GraphContextMenu({
   state, repoPath, isClean, currentBranch, allBranches, headSha, projectId,
-  workspaceDir, flatNodes, node, onClose, onInvalidate, onPinWarning,
+  workspaceDir, flatNodes, node, onClose, onInvalidate, onPinWarning, onCheckoutResult,
 }: GraphContextMenuProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -333,10 +335,12 @@ function GraphContextMenu({
 
   const checkoutBranchMut = useMutation({
     mutationFn: (name: string) => api.sync.checkoutBranch(repoPath, name),
-    onSuccess: async (_data, name) => {
+    onSuccess: async (result) => {
       onInvalidate(['status', 'graph', 'branches'])
+      onCheckoutResult(result)
       onClose()
-      if (node) onPinWarning(await propagatePinToDependents(workspaceDir, flatNodes, node, name))
+      // GH138 — `origin/<branch>` checks out the local `<branch>` : c'est elle qu'on épingle.
+      if (node) onPinWarning(await propagatePinToDependents(workspaceDir, flatNodes, node, result.branch))
     },
     onError: handleMutationError,
   })
@@ -772,6 +776,44 @@ function GraphContextMenu({
   )
 }
 
+// ─── GH138 — checkout d'une branche distante ──────────────────────────────────
+
+/** Bandeau après le checkout de `origin/<branche>` sur une branche locale existante qui n'est pas
+ *  au même point : en retard (avance rapide proposée), en avance ou divergée (signalé, rien
+ *  n'est écrasé). Rien à afficher quand la locale vient d'être créée ou est à jour. */
+function RemoteCheckoutNotice({ result, repoPath, onDone, onDismiss }: {
+  result: CheckoutBranchResult
+  repoPath: string
+  onDone: () => void
+  onDismiss: () => void
+}) {
+  const { t } = useTranslation()
+  const ffMut = useMutation({
+    mutationFn: () => api.sync.merge(repoPath, result.remoteRef!),
+    onSuccess: (res) => { if (res.success) onDone() },
+  })
+  if (result.remote !== 'behind' && result.remote !== 'ahead' && result.remote !== 'diverged') return null
+  const vars = { branch: result.branch, remoteRef: result.remoteRef }
+  const failed = ffMut.error ? branchErrorText(ffMut.error) : ffMut.data && !ffMut.data.success ? t('graphPage.remoteCheckout.ffFailed') : null
+  return (
+    <div className="flex items-start gap-2 text-xs text-status-warning leading-snug" role="status">
+      <span className="flex-1">
+        {t(`graphPage.remoteCheckout.${result.remote}`, vars)}
+        {failed && <span className="block text-status-danger mt-1">{failed}</span>}
+      </span>
+      {result.remote === 'behind' && (
+        <button type="button" className="btn-sm shrink-0 inline-flex items-center gap-1" disabled={ffMut.isPending} onClick={() => ffMut.mutate()}>
+          {ffMut.isPending ? <Loader2 size={11} className="animate-spin" /> : null}
+          {t('graphPage.remoteCheckout.fastForward')}
+        </button>
+      )}
+      <button type="button" onClick={onDismiss} className="shrink-0 hover:opacity-70" aria-label={t('common.close')}>
+        <X size={11} />
+      </button>
+    </div>
+  )
+}
+
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 function GraphPage() {
@@ -782,6 +824,8 @@ function GraphPage() {
   const [selectedSha, setSelectedSha] = useState<string>(initialSha ?? '')
   const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null)
   const [pinWarning, setPinWarning] = useState<PinPropagationOutcome | null>(null)
+  // GH138 — checkout d'une étiquette distante : la branche locale est en retard, en avance ou a divergé.
+  const [checkoutNotice, setCheckoutNotice] = useState<CheckoutBranchResult | null>(null)
 
   useEffect(() => {
     if (initialSha) setSelectedSha(initialSha)
@@ -902,6 +946,17 @@ function GraphPage() {
       {pinWarning && (pinWarning.conflicted.length > 0 || pinWarning.failed.length > 0) && (
         <div className="px-6 pt-3 shrink-0">
           <PinPropagationWarning outcome={pinWarning} onDismiss={() => setPinWarning(null)} />
+        </div>
+      )}
+
+      {checkoutNotice && (
+        <div className="px-6 pt-3 shrink-0">
+          <RemoteCheckoutNotice
+            result={checkoutNotice}
+            repoPath={repoPath}
+            onDone={() => { setCheckoutNotice(null); handleInvalidate(['status', 'graph', 'branches']) }}
+            onDismiss={() => setCheckoutNotice(null)}
+          />
         </div>
       )}
 
@@ -1040,6 +1095,7 @@ function GraphPage() {
           onClose={() => setContextMenu(null)}
           onInvalidate={handleInvalidate}
           onPinWarning={setPinWarning}
+          onCheckoutResult={setCheckoutNotice}
         />
       )}
     </div>

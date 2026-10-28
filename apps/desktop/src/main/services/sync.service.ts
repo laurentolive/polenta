@@ -78,6 +78,15 @@ export interface IntegrationRemoteState {
   revokedServer?: string
 }
 
+/** GH138 — outcome of `checkoutBranch`: the branch checked out and, when `name` was a
+ * remote-tracking label, where that local branch stands against it. */
+export interface CheckoutBranchResult {
+  branch: string
+  remote?: 'created' | 'up-to-date' | 'behind' | 'ahead' | 'diverged'
+  /** `<remote>/<branch>`, with `remote`. */
+  remoteRef?: string
+}
+
 export type ResyncOutcome =
   | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
   | { outcome: 'set-aside'; branch: string }
@@ -1078,8 +1087,53 @@ export class SyncService {
     await git.checkout({ fs, dir: repoPath, ref: name, noCheckout: true })
   }
 
-  async checkoutBranch(repoPath: string, name: string): Promise<void> {
-    await git.checkout({ fs, dir: repoPath, ref: name })
+  /**
+   * GH138 — `name` may be a remote-tracking label (`origin/<branch>`, as shown in the graph).
+   * Checking it out as-is would detach HEAD; like `git switch <branch>`, the local `<branch>` is
+   * checked out instead, created on `origin/<branch>` (with its upstream) when it doesn't exist.
+   * An existing local branch is never moved: `remote` tells the caller where it stands against
+   * `origin/<branch>` (`behind` → the caller may offer a fast-forward, `diverged` → report it).
+   */
+  async checkoutBranch(repoPath: string, name: string): Promise<CheckoutBranchResult> {
+    const tracking = await this.remoteTrackingBranch(repoPath, name)
+    if (!tracking) {
+      await git.checkout({ fs, dir: repoPath, ref: name })
+      return { branch: name }
+    }
+    const { remote, branch } = tracking
+    const remoteOid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/remotes/${remote}/${branch}` })
+    const localOid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${branch}` }).catch(() => null)
+    let state: CheckoutBranchResult['remote']
+    if (!localOid) {
+      await git.branch({ fs, dir: repoPath, ref: branch, object: remoteOid, checkout: false })
+      await git.setConfig({ fs, dir: repoPath, path: `branch.${branch}.remote`, value: remote })
+      await git.setConfig({ fs, dir: repoPath, path: `branch.${branch}.merge`, value: `refs/heads/${branch}` })
+      state = 'created'
+    } else if (localOid === remoteOid) {
+      state = 'up-to-date'
+    } else if (await git.isDescendent({ fs, dir: repoPath, oid: remoteOid, ancestor: localOid }).catch(() => false)) {
+      state = 'behind'
+    } else if (await git.isDescendent({ fs, dir: repoPath, oid: localOid, ancestor: remoteOid }).catch(() => false)) {
+      state = 'ahead'
+    } else {
+      state = 'diverged'
+    }
+    await git.checkout({ fs, dir: repoPath, ref: branch })
+    return { branch, remote: state, remoteRef: `${remote}/${branch}` }
+  }
+
+  /** GH138 — `<remote>/<branch>` when `name` is a remote-tracking ref and not a local branch. */
+  private async remoteTrackingBranch(repoPath: string, name: string): Promise<{ remote: string; branch: string } | null> {
+    const slash = name.indexOf('/')
+    if (slash <= 0) return null
+    const isLocal = await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${name}` }).then(() => true, () => false)
+    if (isLocal) return null
+    const remote = name.slice(0, slash)
+    const branch = name.slice(slash + 1)
+    const remotes = await git.listRemotes({ fs, dir: repoPath }).catch(() => [])
+    if (!branch || !remotes.some(r => r.remote === remote)) return null
+    const exists = await git.resolveRef({ fs, dir: repoPath, ref: `refs/remotes/${remote}/${branch}` }).then(() => true, () => false)
+    return exists ? { remote, branch } : null
   }
 
   async deleteBranch(repoPath: string, name: string): Promise<void> {

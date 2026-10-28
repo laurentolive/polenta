@@ -1560,7 +1560,7 @@ function ExcelViewInner({
   // T176 — définition « enum » de la colonne statut, stable (prop d'une cellule mémoïsée).
   const statusFieldDef = useMemo<SchemaField | undefined>(
     () => typeDef?.statuses?.length
-      ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(st => st.name), valueLabels: statusValueLabels(typeDef.statuses) }
+      ? { name: 'status', type: 'enum' as const, required: true, values: typeDef.statuses.map(st => st.name), valueLabels: statusValueLabels(typeDef.statuses) }
       : undefined,
     [typeDef],
   )

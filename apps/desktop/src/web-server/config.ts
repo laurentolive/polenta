@@ -32,6 +32,17 @@ export interface WebConfig {
   auth: DevAuthConfig | OidcAuthConfig
   /** GH45 — équivalent web de la configuration machine du desktop (POLENTA_WEB_DEFAULT_SERVER…). */
   machineConfig: MachineConfig
+  /**
+   * GH63 — API d'administration du serveur (service interne `polenta-admin`) : absente = `/admin/*` en
+   * 404. `dev` : autorisée en mode d'authentification dev (tests), jamais avec NODE_ENV=production.
+   */
+  admin?: AdminConfig | null
+}
+
+export interface AdminConfig {
+  url: string
+  serviceToken: string
+  dev: boolean
 }
 
 export interface DevAuthConfig {
@@ -115,6 +126,7 @@ function loadAuth(): DevAuthConfig | OidcAuthConfig {
 
 export function loadConfig(appRoot: string): WebConfig {
   const auth = loadAuth()
+  const admin = loadAdmin(auth.mode)
   const forgeUrl = auth.mode === 'oidc' ? auth.forgeUrl : auth.remote
   const staticDir = process.env['POLENTA_WEB_STATIC_DIR'] ?? path.join(appRoot, 'out', 'web')
   const gitHosts = env('POLENTA_WEB_GIT_HOSTS', new URL(forgeUrl).hostname)
@@ -141,6 +153,7 @@ export function loadConfig(appRoot: string): WebConfig {
     gitAllowHttp: env('POLENTA_WEB_GIT_ALLOW_HTTP', 'false') === 'true',
     auth,
     machineConfig: webMachineConfig(gitHosts),
+    admin,
   }
 }
 
@@ -157,4 +170,22 @@ export function webMachineConfig(gitHosts: string[]): MachineConfig {
     hideGithub: !defaultServer || !isGithubHost(new URL(defaultServer).hostname),
     ...(demo ? { demoProjectUrl: demo } : {}),
   }
+}
+
+/**
+ * GH63 — API d'administration (POLENTA_ADMIN_URL + POLENTA_ADMIN_SERVICE_TOKEN, écrits dans web.env
+ * par le kit quand ADMIN_UI=on). En mode dev, seulement avec POLENTA_WEB_ADMIN_DEV=1, refusé au
+ * démarrage avec NODE_ENV=production.
+ */
+export function loadAdmin(authMode: 'dev' | 'oidc'): AdminConfig | null {
+  const devFlag = process.env['POLENTA_WEB_ADMIN_DEV'] === '1'
+  if (devFlag && process.env['NODE_ENV'] === 'production') {
+    throw new Error('POLENTA_WEB_ADMIN_DEV=1 est interdit avec NODE_ENV=production.')
+  }
+  const url = process.env['POLENTA_ADMIN_URL']
+  if (!url) return null
+  const serviceToken = env('POLENTA_ADMIN_SERVICE_TOKEN')
+  if (serviceToken.length < 32) throw new Error('POLENTA_ADMIN_SERVICE_TOKEN : 32 caractères au moins.')
+  if (authMode === 'dev' && !devFlag) return null
+  return { url: origin('POLENTA_ADMIN_URL', url), serviceToken, dev: authMode === 'dev' }
 }

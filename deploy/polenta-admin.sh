@@ -2,15 +2,18 @@
 # GH45 — opérations courantes dans une instance Forgejo (specs/GH45.md §9.6).
 #
 #   polenta-admin [--instance <nom>] user add <login> <email> [--name "Nom"] [--team <équipe>]…
-#   polenta-admin [--instance <nom>] user import <fichier.csv>      (login;email;nom;équipes séparées par ,)
+#   polenta-admin [--instance <nom>] user import <fichier.csv> [--preview]   (login;email;nom;équipes séparées par ,)
 #   polenta-admin [--instance <nom>] user disable|enable <login>
 #   polenta-admin [--instance <nom>] team add <nom> <read|write> [repo…]
 #   polenta-admin [--instance <nom>] team member add|rm <équipe> <login>
 #   polenta-admin [--instance <nom>] project create <nom> [--team <équipe>]…
 #   polenta-admin [--instance <nom>] oauth-app create <nom> <redirect-uri>
-#   polenta-admin [--instance <nom>] access report [--csv]
+#   polenta-admin [--instance <nom>] access report [--csv]          (alias : access-report)
+#   polenta-admin [--instance <nom>] invite <login>                 lien et message d'invitation
 #
-# --instance est facultatif quand l'hôte n'a qu'une instance.
+# --instance est facultatif quand l'hôte n'a qu'une instance. Options globales (GH63) : --json
+# (résultat sur le descripteur 3), --non-interactive, --confirm <valeur> ; codes de sortie :
+# specs/GH63-design.md §5.5.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -19,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=lib/forgejo-api.sh
 . "$SCRIPT_DIR/lib/forgejo-api.sh"
 
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit "${1:-0}"; }
 
 INSTANCE=""
 ORG=""
@@ -52,6 +55,8 @@ announce_invitation() {
   printf '  Identifiant : %s\n' "$login"
   if smtp_enabled; then
     printf '  Mot de passe temporaire : envoyé dans un e-mail séparé.\n'
+  elif [[ "$JSON_OUT" == 1 ]]; then
+    printf '  Mot de passe temporaire : (dans le résultat)\n'
   else
     printf '  Mot de passe temporaire : %s (à changer à la première connexion)\n' "$USER_PASSWORD"
   fi
@@ -67,6 +72,8 @@ announce_password() {
   local login="$1" email="$2"
   if smtp_enabled; then
     printf '  %s : mot de passe temporaire envoyé à %s (changement imposé à la première connexion).\n' "$login" "$email"
+  elif [[ "$JSON_OUT" == 1 ]]; then
+    printf '  %s : mot de passe temporaire dans le résultat (changement imposé à la première connexion)\n' "$login"
   else
     printf '  %s : mot de passe temporaire %s (à transmettre ; changement imposé à la première connexion)\n' "$login" "$USER_PASSWORD"
   fi
@@ -115,6 +122,9 @@ cmd_user_add() {
   ok "utilisateur $login créé"
   announce_password "$login" "$email"
   announce_invitation "$login" "$fullname"
+  local pw=""; smtp_enabled || pw="$USER_PASSWORD"
+  emit_result "$(jq -nc --arg l "$login" --arg e "$email" --arg pw "$pw" --arg link "$(invite_link "$login")" \
+    '{created:{login:$l, email:$e, temporaryPassword:(if $pw == "" then null else $pw end), inviteLink:$link}}')"
   for t in "${teams[@]}"; do
     if ! add_to_team "$t" "$login"; then
       admin_log "$INSTANCE" "$CMDLINE" "ERREUR compte créé, $USER_ERROR"
@@ -125,49 +135,119 @@ cmd_user_add() {
   admin_log "$INSTANCE" "$CMDLINE" OK
 }
 
-cmd_user_import() {
-  local file="${1:-}"; [[ -f "$file" ]] || die "fichier CSV introuvable : ${file:-?}"
-  local header; header="$(head -n1 "$file" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+# GH63 — limites de l'import (spec §3.10) : vérifiées avant tout traitement (sortie 2).
+IMPORT_MAX_BYTES=$((5 * 1024 * 1024))
+IMPORT_MAX_ROWS=2000
+
+# Lit et valide le CSV $1 sans rien créer : IMPORT_ROWS (lignes valides, JSON {line, login, email,
+# name, teams}), IMPORT_REJECTED (JSON {line, login, cause}), IMPORT_UNKNOWN_TEAMS. Équipes et
+# logins existants lus sur la forge (lecture seule). En-tête « login;email;nom;équipes », UTF-8
+# avec ou sans BOM, séparateur « ; », équipes séparées par « , ».
+import_validate() {
+  local file="$1"
+  [[ -f "$file" ]] || die "$E_USAGE" "fichier CSV introuvable : ${file:-?}"
+  local size; size="$(stat -c %s "$file")"
+  (( size <= IMPORT_MAX_BYTES )) || die "$E_USAGE" "fichier trop volumineux ($size octets > 5 Mo) : rien n'a été importé."
+  local rows; rows="$(tail -n +2 "$file" | grep -c '[^[:space:]]' || true)"
+  (( rows <= IMPORT_MAX_ROWS )) || die "$E_USAGE" "trop de lignes ($rows > $IMPORT_MAX_ROWS) : découpez le fichier. Rien n'a été importé."
+  local header; header="$(head -n1 "$file" | tr -d '\r' | sed $'1s/^\xEF\xBB\xBF//' | tr '[:upper:]' '[:lower:]')"
   [[ "$header" == "login;email;nom;équipes" || "$header" == "login;email;nom;equipes" ]] \
-    || die "en-tête attendu : login;email;nom;équipes (trouvé : $header)"
-  local n=0 nok=0 nerr=0 login email fullname teams t line
-  printf '%-20s %-8s %s\n' LOGIN RÉSULTAT DÉTAIL
+    || die "$E_USAGE" "en-tête attendu : login;email;nom;équipes (trouvé : $header)"
+  api_paginate "/orgs/$ORG/teams"
+  local known; known="$(jq -r '.[].name' <<<"$API_LIST")"
+  local n=0 line login email fullname teams t cause seen=" " valid=() rejected=() unknown=()
   while IFS= read -r line || [[ -n "$line" ]]; do
     n=$((n + 1)); [[ $n -eq 1 ]] && continue
     line="${line%$'\r'}"; [[ -z "${line// }" ]] && continue
     IFS=';' read -r login email fullname teams <<<"$line"
-    USER_ERROR=""; USER_PASSWORD=""
-    local okline=1
-    if [[ -n "$teams" ]]; then
-      for t in ${teams//,/ }; do
-        api_team_id "$ORG" "$t"
-        [[ -n "$TEAM_ID" ]] || { USER_ERROR="équipe « $t » inconnue"; okline=0; break; }
-      done
+    cause=""
+    if [[ ! "$login" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,38}$ ]]; then cause="login invalide"
+    elif [[ ! "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then cause="e-mail invalide"
+    elif [[ "$seen" == *" $login "* ]]; then cause="login en double dans le fichier"
     fi
-    if [[ $okline == 1 ]] && create_user "$login" "$email" "$fullname"; then
+    if [[ -z "$cause" && -n "$teams" ]]; then
       for t in ${teams//,/ }; do
-        # Compte créé mais équipe en échec : le mot de passe figure dans la ligne d'erreur.
-        if ! add_to_team "$t" "$login"; then
-          okline=0
-          smtp_enabled || USER_ERROR="compte créé (mot de passe temporaire : $USER_PASSWORD), mais $USER_ERROR"
-          break
+        if ! grep -qxF -- "$t" <<<"$known"; then
+          cause="équipe « $t » inconnue"
+          [[ " ${unknown[*]} " == *" $t "* ]] || unknown+=("$t")
         fi
       done
-    else
-      okline=0
     fi
+    if [[ -z "$cause" ]] && api GET "/users/$login"; then cause="login déjà utilisé"; fi
+    seen+="$login "
+    if [[ -n "$cause" ]]; then
+      rejected+=("$(jq -nc --argjson l "$n" --arg u "$login" --arg c "$cause" '{line:$l, login:$u, cause:$c}')")
+    else
+      valid+=("$(jq -nc --argjson l "$n" --arg u "$login" --arg e "$email" --arg f "$fullname" --arg t "$teams" \
+        '{line:$l, login:$u, email:$e, name:$f, teams:($t|split(",")|map(select(.!="")))}')")
+    fi
+  done < <(sed $'1s/^\xEF\xBB\xBF//' "$file")
+  IMPORT_ROWS="$( ((${#valid[@]})) && printf '%s\n' "${valid[@]}" | jq -sc . || echo '[]')"
+  IMPORT_REJECTED="$( ((${#rejected[@]})) && printf '%s\n' "${rejected[@]}" | jq -sc . || echo '[]')"
+  IMPORT_UNKNOWN_TEAMS="$( ((${#unknown[@]})) && printf '%s\n' "${unknown[@]}" | jq -Rsc 'split("\n")|map(select(.!=""))' || echo '[]')"
+}
+
+cmd_user_import() {
+  local file="${1:-}" preview=0; shift || true
+  [[ "${1:-}" == --preview ]] && preview=1
+  import_validate "$file"
+  local nvalid nrej; nvalid="$(jq length <<<"$IMPORT_ROWS")"; nrej="$(jq length <<<"$IMPORT_REJECTED")"
+  if [[ $preview == 1 ]]; then
+    printf '%-6s %-20s %s\n' LIGNE LOGIN "RÉSULTAT"
+    jq -r '.[] | [.line, .login, "valide"] | @tsv' <<<"$IMPORT_ROWS" | awk -F'\t' '{ printf "%-6s %-20s %s\n", $1, $2, $3 }'
+    jq -r '.[] | [.line, .login, ("rejetée : " + .cause)] | @tsv' <<<"$IMPORT_REJECTED" | awk -F'\t' '{ printf "%-6s %-20s %s\n", $1, $2, $3 }'
+    log "Aperçu : $nvalid ligne(s) valide(s), $nrej rejetée(s) — rien n'a été créé."
+    emit_result "$(jq -nc --argjson v "$IMPORT_ROWS" --argjson r "$IMPORT_REJECTED" --argjson u "$IMPORT_UNKNOWN_TEAMS" \
+      '{preview:true, valid:($v|length), rejected:$r, unknownTeams:$u, rows:$v}')"
+    return 0
+  fi
+  local nok=0 nerr=0 row login email fullname t created=() errors=()
+  printf '%-20s %-8s %s\n' LOGIN RÉSULTAT DÉTAIL
+  # Lignes rejetées à la validation : signalées comme avant, sans rien créer.
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    nerr=$((nerr + 1)); errors+=("$row")
+    printf '%-20s %-8s %s\n' "$(jq -r '.login // "?"' <<<"$row")" ERREUR "$(jq -r .cause <<<"$row")"
+    admin_log "$INSTANCE" "user import $(jq -r '.login // "?"' <<<"$row")" "ERREUR $(jq -r .cause <<<"$row")"
+  done < <(jq -c '.[]' <<<"$IMPORT_REJECTED")
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    login="$(jq -r .login <<<"$row")"; email="$(jq -r .email <<<"$row")"; fullname="$(jq -r .name <<<"$row")"
+    USER_ERROR=""; USER_PASSWORD=""
+    local okline=1
+    if create_user "$login" "$email" "$fullname"; then
+      for t in $(jq -r '.teams[]' <<<"$row"); do
+        # Compte créé mais équipe en échec : le mot de passe figure dans la ligne d'erreur.
+        if ! add_to_team "$t" "$login"; then okline=0; break; fi
+      done
+    else
+      okline=0; USER_PASSWORD=""
+    fi
+    local pw=""; smtp_enabled || pw="$USER_PASSWORD"
     if [[ $okline == 1 ]]; then
       nok=$((nok + 1))
+      created+=("$(jq -nc --arg l "$login" --arg e "$email" --arg pw "$pw" --arg link "$(invite_link "$login")" \
+        '{login:$l, email:$e, temporaryPassword:(if $pw == "" then null else $pw end), inviteLink:$link}')")
       if smtp_enabled; then printf '%-20s %-8s %s\n' "$login" OK "e-mail envoyé — $(invite_link "$login")"
+      elif [[ "$JSON_OUT" == 1 ]]; then printf '%-20s %-8s %s\n' "$login" OK "mot de passe temporaire dans le résultat — $(invite_link "$login")"
       else printf '%-20s %-8s %s\n' "$login" OK "mot de passe temporaire : $USER_PASSWORD — $(invite_link "$login")"; fi
       admin_log "$INSTANCE" "user import $login" OK
     else
       nerr=$((nerr + 1))
-      printf '%-20s %-8s %s\n' "${login:-?}" ERREUR "$USER_ERROR"
-      admin_log "$INSTANCE" "user import ${login:-?}" "ERREUR $USER_ERROR"
+      local detail="$USER_ERROR"
+      [[ -n "$pw" && "$JSON_OUT" != 1 ]] && detail="compte créé (mot de passe temporaire : $pw), mais $USER_ERROR"
+      [[ -n "$pw" && "$JSON_OUT" == 1 ]] && detail="compte créé (mot de passe dans le résultat), mais $USER_ERROR"
+      errors+=("$(jq -nc --argjson line "$(jq .line <<<"$row")" --arg l "$login" --arg c "$USER_ERROR" --arg pw "$pw" \
+        '{line:$line, login:$l, cause:$c, temporaryPassword:(if $pw == "" then null else $pw end)}')")
+      printf '%-20s %-8s %s\n' "$login" ERREUR "$detail"
+      admin_log "$INSTANCE" "user import $login" "ERREUR $USER_ERROR"
     fi
-  done <"$file"
+  done < <(jq -c '.[]' <<<"$IMPORT_ROWS")
   log "Import terminé : $nok créé(s), $nerr erreur(s)."
+  local cj='[]' ej='[]'
+  ((${#created[@]})) && cj="$(printf '%s\n' "${created[@]}" | jq -sc .)"
+  ((${#errors[@]})) && ej="$(printf '%s\n' "${errors[@]}" | jq -sc .)"
+  emit_result "$(jq -nc --argjson c "$cj" --argjson e "$ej" '{created:$c, errors:$e}')"
 }
 
 cmd_user_disable() {
@@ -305,22 +385,72 @@ cmd_access_report() {
     printf '%s\n' "$result" | awk -F';' 'NF==3 { printf "%-20s %-34s %s\n", $1, $2, $3 }'
   fi
   admin_log "$INSTANCE" "access report" OK
+  emit_result "$(jq -Rnc --arg org "$ORG" '[inputs | select(. != "") | split(";") | {user:.[0], repo:.[1], permission:.[2]}] as $r
+    | {org:$org, rows:$r}' <<<"$result")"
+}
+
+# ─── invite (GH63) ────────────────────────────────────────────────────────────
+
+# polenta-admin invite <login> — lien et message d'invitation d'un compte existant (spec §3.10). Le
+# mot de passe temporaire n'est pas connu ici : il n'est donné qu'à la création (user add / import).
+cmd_invite() {
+  local login="${1:-}"
+  [[ "$login" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,38}$ ]] || die "$E_USAGE" "usage : polenta-admin invite <login>"
+  api GET "/users/$login" || die "$E_USAGE" "utilisateur « $login » inconnu sur la forge de $INSTANCE."
+  local fullname; fullname="$(jq -r '.full_name // empty' <<<"$API_BODY")"
+  local download; download="$(env_get "$HOST_ENV" POLENTA_DOWNLOAD_URL)"
+  local message
+  message="$(
+    printf 'Bonjour %s,
+
+' "${fullname:-$login}"
+    printf 'Votre compte Polenta est prêt sur le serveur https://%s
+' "$API_DOMAIN"
+    printf 'Identifiant : %s
+' "$login"
+    printf 'Mot de passe : celui reçu à la création du compte (sinon, demandez sa réinitialisation).
+'
+    [[ -n "$download" ]] && printf '
+1. Installez Polenta : %s
+' "$download"
+    printf '%s Cliquez sur ce lien pour vous connecter : %s
+' "$([[ -n "$download" ]] && printf '2.' || printf '→')" "$(invite_link "$login")"
+  )"
+  printf '%s
+' "$message" | sed 's/^/  /'
+  admin_log "$INSTANCE" "invite $login" OK
+  emit_result "$(jq -nc --arg l "$login" --arg s "https://$API_DOMAIN" --arg link "$(invite_link "$login")" --arg m "$message" \
+    '{login:$l, server:$s, inviteLink:$link, message:$m}')"
 }
 
 # ─── main ─────────────────────────────────────────────────────────────────────
 
 main() {
-  require_root; require_cmd jq curl
+  parse_global_opts "$@"; set -- "${ARGS[@]+"${ARGS[@]}"}"
+  require_operator; require_cmd jq curl
   local wanted=""
   if [[ "${1:-}" == --instance ]]; then wanted="${2:-}"; shift 2; fi
   [[ $# -gt 0 ]] || usage 0
   case "$1" in -h|--help|help) usage 0 ;; esac
   INSTANCE="$(resolve_instance "$wanted")"
   api_use_instance "$INSTANCE"
-  [[ -n "$API_TOKEN" ]] || die "jeton d'exploitation absent : l'instance $INSTANCE est-elle complète ?"
+  [[ -n "$API_TOKEN" ]] || die "$E_PRECOND" "jeton d'exploitation absent : l'instance $INSTANCE est-elle complète ?"
   ORG="$(env_get "$(instance_env "$INSTANCE")" ORG)"
   CMDLINE="$*"
-  local a="${1:-}" b="${2:-}"; shift 2 || shift $#
+  local a="${1:-}" b="${2:-}"
+  # Commandes d'un seul mot (GH63).
+  case "$a" in
+    access-report) shift; cmd_access_report "$@"; return ;;
+    invite) shift; cmd_invite "$@"; return ;;
+  esac
+  shift 2 || shift $#
+  # Écritures : verrou de l'hôte (lectures et aperçus sans verrou).
+  case "$a $b" in
+    "user import")
+      [[ " $* " == *" --preview "* ]] || acquire_lock "polenta-admin $INSTANCE $a $b" ;;
+    "user add"|"user disable"|"user enable"|"team add"|"team member"|"project create"|"oauth-app create")
+      acquire_lock "polenta-admin $INSTANCE $a $b" ;;
+  esac
   case "$a $b" in
     "user add") cmd_user_add "$@" ;;
     "user import") cmd_user_import "$@" ;;

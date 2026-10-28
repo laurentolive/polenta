@@ -32,6 +32,16 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: [
+    // GH63 — faux service d'administration (API interne de polenta-admin), avant le serveur web.
+    {
+      command: 'node e2e-web/support/fake-admin-service.mjs',
+      url: `${E2E.adminUrl}/healthz`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'ignore',
+      stderr: 'pipe',
+      env: { POLENTA_E2E_ADMIN_PORT: String(E2E.adminPort), POLENTA_E2E_ADMIN_TOKEN: E2E.adminToken },
+    },
     {
       command: 'node out/web-server/index.cjs',
       url: `${E2E.baseUrl}/healthz`,

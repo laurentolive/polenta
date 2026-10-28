@@ -9,6 +9,8 @@ import http from './git-http'
 import { isNetworkUnreachable } from './net-proxy'
 import { ForgeAccessError, httpStatusOf, isNonGitResponse, isPushDeclined, revokedError, writeDeniedError } from './forge/forge-access'
 
+import { AUTO_BRANCH_PREFIX, isAutoBranch } from '@polenta/types'
+
 import { extractHost, type AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
 
@@ -78,6 +80,12 @@ export interface IntegrationRemoteState {
 export type ResyncOutcome =
   | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
   | { outcome: 'set-aside'; branch: string }
+
+/** GH173 — what `settleAutoBranch` did: moved pending changes off the integration onto a fresh
+ *  `dev-auto[-n]`, or went back to the integration from an idle one (deleted). */
+export type AutoBranchOutcome =
+  | { action: 'none' }
+  | { action: 'switched' | 'returned'; branch: string }
 
 /** GH39 — prefix of the branch `resyncIntegration` sets diverged local commits aside on. */
 export const RESYNC_BRANCH_PREFIX = 'dev-resync'
@@ -622,6 +630,9 @@ export class SyncService {
    *   ordinary conflict flow (§2.4). Nothing in the working tree is touched.
    */
   async resyncIntegration(repoPath: string, branch: string, remote = 'origin'): Promise<ResyncOutcome> {
+    // GH173: pending changes on the checked-out integration go onto `dev-auto` first — the
+    // integration is then resynchronized by reference, without touching them.
+    await this.settleAutoBranch(repoPath, branch, remote)
     await this.fetch(repoPath, '', remote)
     const { state } = await this.integrationState(repoPath, branch, remote)
     if (state === 'no-remote' || state === 'up-to-date') return { outcome: 'up-to-date' }
@@ -661,16 +672,68 @@ export class SyncService {
    *  realigns `branch` on `<remote>/<branch>`. HEAD is moved first (same commit, no file touched —
    *  `createBranch`'s T87 technique), so the ref rewrite never desyncs a checkout. */
   private async setAside(repoPath: string, branch: string, checkedOut: boolean, remote: string): Promise<string> {
-    const existing = new Set(await git.listBranches({ fs, dir: repoPath }))
-    let name = RESYNC_BRANCH_PREFIX
-    for (let n = 2; existing.has(name); n += 1) name = `${RESYNC_BRANCH_PREFIX}-${n}`
-
     const localOid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/heads/${branch}` })
     const remoteOid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/remotes/${remote}/${branch}` })
+    // GH173: checked out on a `dev-auto` grown from those very commits (pending changes moved off
+    // the integration) — it already carries them: no second branch, "Publier" merges it.
+    const current = await git.currentBranch({ fs, dir: repoPath })
+    if (current && isAutoBranch(current) && await this.isMergedInto(repoPath, branch, current).catch(() => false)) {
+      await git.writeRef({ fs, dir: repoPath, ref: `refs/heads/${branch}`, value: remoteOid, force: true })
+      return current
+    }
+    const name = await this.nextFreeBranchName(repoPath, RESYNC_BRANCH_PREFIX)
     await git.branch({ fs, dir: repoPath, ref: name, object: localOid, checkout: false })
     if (checkedOut) await git.checkout({ fs, dir: repoPath, ref: name, noCheckout: true })
     await git.writeRef({ fs, dir: repoPath, ref: `refs/heads/${branch}`, value: remoteOid, force: true })
     return name
+  }
+
+  /** `prefix`, else `prefix-2`, `prefix-3`… — the first name no local branch has. */
+  private async nextFreeBranchName(repoPath: string, prefix: string): Promise<string> {
+    const existing = new Set(await git.listBranches({ fs, dir: repoPath }))
+    let name = prefix
+    for (let n = 2; existing.has(name); n += 1) name = `${prefix}-${n}`
+    return name
+  }
+
+  /**
+   * GH173: keeps the integration branch free of pending changes, so that the auto-pull can move it
+   * forward (specs/GH173-design.md §2.2). Local git operations only — never the network:
+   * - idle `dev-auto[-n]` branches (not checked out, fully merged into the integration) are deleted
+   *   first, so the switch below reuses the freed name;
+   * - integration checked out with pending changes → a fresh `dev-auto[-n]` at the same commit,
+   *   HEAD moved onto it without touching a file (`createBranch`, T87);
+   * - checked out on a clean `dev-auto[-n]` fully merged into the integration → back on the
+   *   integration (clean tree: the checkout can't overwrite anything), branch deleted.
+   * Nothing happens without a remote (nothing to unblock) nor on a detached HEAD.
+   */
+  async settleAutoBranch(repoPath: string, integrationBranch: string, remote = 'origin'): Promise<AutoBranchOutcome> {
+    const none: AutoBranchOutcome = { action: 'none' }
+    if (!integrationBranch || !(await getRemoteUrl(repoPath, remote))) return none
+    const current = await git.currentBranch({ fs, dir: repoPath })
+
+    for (const branch of await git.listBranches({ fs, dir: repoPath })) {
+      if (branch === current || !isAutoBranch(branch)) continue
+      if (await this.isMergedInto(repoPath, branch, integrationBranch).catch(() => false)) {
+        await this.deleteBranch(repoPath, branch).catch(() => {})
+      }
+    }
+
+    if (!current) return none
+    const { staged, unstaged } = await this.status(repoPath)
+    const dirty = staged.length + unstaged.length > 0
+    if (current === integrationBranch && dirty) {
+      const branch = await this.nextFreeBranchName(repoPath, AUTO_BRANCH_PREFIX)
+      await this.createBranch(repoPath, branch)
+      return { action: 'switched', branch }
+    }
+    if (isAutoBranch(current) && !dirty
+      && await this.isMergedInto(repoPath, current, integrationBranch).catch(() => false)) {
+      await git.checkout({ fs, dir: repoPath, ref: integrationBranch })
+      await this.deleteBranch(repoPath, current).catch(() => {})
+      return { action: 'returned', branch: current }
+    }
+    return none
   }
 
   /**
@@ -680,6 +743,8 @@ export class SyncService {
    * - clean repo → fast-forward-only of the current branch onto its fetched remote counterpart
    *   (never a 3-way merge — T155); a branch that can't fast-forward is left alone;
    * - integration `ahead` only (a previous push failed) → push retried — push never touches files.
+   * GH173: before the fetch (so offline too), `settleAutoBranch` moves pending changes off the
+   * integration; whenever the integration isn't checked out, it is fast-forwarded by reference.
    * Returns the final integration state. An unreachable server (offline, DNS — GH43) is an
    * expected condition, not an error: the state as of the last fetch is returned flagged
    * `offline` (a rejected IPC handler would be logged by Electron at every tick). Other errors
@@ -695,6 +760,9 @@ export class SyncService {
       accessRevoked: true,
       revokedServer: new URL(remoteUrl).origin,
     })
+    // A local git failure here must not cost the tick its fetch and push retry.
+    await this.settleAutoBranch(repoPath, integrationBranch, remote)
+      .catch(err => console.warn(`[autoSync] ${repoPath}: settleAutoBranch failed:`, err))
     if (isHttpRemote(remoteUrl) && this.auth.isAccessRevoked(extractHost(remoteUrl))) return revoked()
     const offline = async (err: unknown): Promise<IntegrationRemoteState> => {
       if (err instanceof ForgeAccessError && err.issue.status === 401) return revoked()
@@ -727,6 +795,14 @@ export class SyncService {
           .then(r => !r.alreadyMerged, () => false)
         if (fastForwarded) await git.checkout({ fs, dir: repoPath, ref: current })
       }
+    }
+    // GH173: not checked out → only its ref moves, never the working directory. Only while the
+    // current branch holds no commit of its own (pending changes at most): a work branch with
+    // commits may be in a publication whose merge editor recorded the integration's tip — moving
+    // it would turn that resolution stale (GH37).
+    if (current && current !== integrationBranch
+      && await this.isMergedInto(repoPath, current, integrationBranch).catch(() => false)) {
+      await this.fastForwardBranch(repoPath, integrationBranch, remote).catch(() => {})
     }
 
     const state = await this.integrationState(repoPath, integrationBranch, remote)

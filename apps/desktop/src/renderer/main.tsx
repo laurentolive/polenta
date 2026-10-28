@@ -6,8 +6,11 @@ import { routeTree } from './routeTree.gen'
 import './index.css'
 import './i18n'
 
+// GH170 — gcTime 30 min (défaut React Query : 5 min) : changer d'onglet remonte la route, et une
+// vue quittée plus de 5 min avait perdu son cache → rechargement complet, page vide le temps de
+// relire le disque au retour sur l'onglet.
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 1000 * 60 } },
+  defaultOptions: { queries: { staleTime: 1000 * 60, gcTime: 1000 * 60 * 30 } },
 })
 
 const router = createRouter({ routeTree })

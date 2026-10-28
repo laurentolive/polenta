@@ -1,5 +1,5 @@
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
-import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
 import type { Candidate } from './LinkCombobox'
@@ -322,6 +322,8 @@ function InlineField({
             onKeyDown={e => { if (e.key === 'Escape') { setDraft(value); setEditing(false) } }}
             className="flex-1 text-xs text-ink bg-surface border border-edge rounded px-1 outline-none"
           >
+            {/* GH165 — sans option vide, une valeur absente s'affiche comme la 1re valeur et ne peut pas être choisie. */}
+            {(!fieldDef.required || !draft) && <option value="">—</option>}
             {(fieldDef.values ?? []).map(v => (
               <option key={v} value={v}>{v}</option>
             ))}
@@ -758,7 +760,9 @@ function ItemCard({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function WordView({
+// GH170 — mémoïsé : un re-rendu de SystemView sans changement de props (refetch en arrière-plan)
+// ne refait plus tout le document.
+export const WordView = memo(function WordView({
   root,
   typeDef,
   objects,
@@ -1047,4 +1051,4 @@ export function WordView({
       })()}
     </div>
   )
-}
+})

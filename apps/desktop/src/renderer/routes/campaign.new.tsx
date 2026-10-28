@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import { useProjectSchema, getAllObjectTypes, getTestTypeRefs } from '../hooks/useProjectSchema'
+import { useProjectSchema, getObjectTypeRefs, getTestTypeRefs } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
 import { RichTextProvider } from '../contexts/RichTextContext'
 import { RichTextToolbar } from '../components/system/RichTextToolbar'
@@ -79,7 +79,8 @@ function NewCampaignPage() {
   }, [prefillTitle, prefillTestCaseIds])
 
   const { data: schema } = useProjectSchema(repoPath)
-  const campaignTypes = getAllObjectTypes(schema, 'campaign')
+  // GH146 — `type` est la ref complète `<nœud>::<type>` (comme `objectTypeRef`), pas le seul nom.
+  const campaignTypes = getObjectTypeRefs(schema, 'campaign')
 
   const [type, setType] = useState<string>('')
   const [fields, setFields] = useState<Record<string, string>>({})
@@ -87,20 +88,27 @@ function NewCampaignPage() {
 
   useEffect(() => {
     if (schema && !fieldsInitialized) {
-      const allTypes = getAllObjectTypes(schema, 'campaign')
-      const resolvedType = allTypes[0]?.name ?? ''
-      setType(resolvedType)
-      setFields(buildDefaultFields(allTypes.find(t => t.name === resolvedType)))
+      const allTypes = getObjectTypeRefs(schema, 'campaign')
+      // Depuis le panneau Campagnes, `level` est le type de campagne sélectionné : le présélectionner.
+      const fromPanel = level
+        ? allTypes.find(r => r.ref === `${component}::${level}`) ?? allTypes.find(r => r.typeDef.name === level)
+        : undefined
+      const resolved = fromPanel ?? allTypes[0]
+      setType(resolved?.ref ?? '')
+      setFields(buildDefaultFields(resolved?.typeDef))
       setFieldsInitialized(true)
     }
-  }, [schema, fieldsInitialized])
+  }, [schema, fieldsInitialized, component, level])
 
   const handleTypeChange = (newType: string) => {
     setType(newType)
-    setFields(buildDefaultFields(campaignTypes.find(t => t.name === newType)))
+    setFields(buildDefaultFields(campaignTypes.find(r => r.ref === newType)?.typeDef))
   }
 
-  const typeDef = campaignTypes.find(t => t.name === type)
+  const typeDef = campaignTypes.find(r => r.ref === type)?.typeDef
+  // GH146 — sans composant/niveau fournis (création depuis l'analyse d'impact), on les déduit du
+  // type choisi : la campagne doit rester listée dans le panneau Campagnes, filtré par composant.
+  const [typeNode, typeName] = type.includes('::') ? type.split('::') : [undefined, undefined]
 
   const { data: allTests = [] } = useQuery({
     queryKey: ['tests', repoPath],
@@ -169,8 +177,8 @@ function NewCampaignPage() {
         paramValuesByTest: paramValues,
         reqInstances: buildReqInstances(precedence.testIds, paramPreviews, reqSel, precedence.presentOf),
         carried: toCarriedSelection(carried),
-        component: component || undefined,
-        level: level || undefined,
+        component: component || typeNode || undefined,
+        level: level || typeName || undefined,
       }, workspaceDir || undefined),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
@@ -234,8 +242,8 @@ function NewCampaignPage() {
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">{t('system.editView.colType')}</label>
                 <select value={type} onChange={e => handleTypeChange(e.target.value)} className="input-field w-full">
-                  {campaignTypes.map(t => (
-                    <option key={t.name} value={t.name}>{t.label ?? t.name}</option>
+                  {campaignTypes.map(r => (
+                    <option key={r.ref} value={r.ref}>{r.label}</option>
                   ))}
                 </select>
               </div>

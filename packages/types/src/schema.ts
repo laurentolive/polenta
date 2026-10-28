@@ -18,6 +18,9 @@ export interface SchemaField {
   label?: string
   type: SchemaFieldType
   values?: string[]          // enum / multi_enum only
+  /** GH136 — libellé affiché par valeur d'enum (la valeur reste stockée). Posé par le renderer
+   * pour le pseudo-champ statut (`statuses[].label`) ; jamais écrit dans schema.yaml. */
+  valueLabels?: Record<string, string>
   required?: boolean
   default?: unknown
   placeholder?: string
@@ -59,6 +62,13 @@ export interface SchemaStatus {
   color?: string
   isApproval?: boolean
   isTerminal?: boolean       // masque l'objet des listes par défaut (ex: obsolete)
+}
+
+/** GH136 — `valueLabels` du pseudo-champ statut : libellé de chaque statut qui en a un. */
+export function statusValueLabels(statuses: SchemaStatus[]): Record<string, string> {
+  const labels: Record<string, string> = {}
+  for (const s of statuses) if (s.label) labels[s.name] = s.label
+  return labels
 }
 
 // Catégorie technique d'un type d'objet.

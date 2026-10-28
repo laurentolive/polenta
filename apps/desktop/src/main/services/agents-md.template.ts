@@ -22,6 +22,8 @@ import type { BrandInfo } from '../../shared/brand-types'
  * exemples d'exigence et de test, `.polenta/trees/` et pierres tombales.
  *
  * GH149 (v6) : le statut des exemples vient des statuts du type (premier de la liste à la création).
+ * GH150 (v6) : outils de modification (`update_requirements` / `update_tests`) et de la base de
+ * paramètres ; l'écriture à la main n'est plus le repli pour ces cas.
  */
 export const AGENTS_MD_TEMPLATE_VERSION = 6
 
@@ -177,6 +179,13 @@ Tools disponibles :
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import
   massif avec \`dryRun\` obligatoire par défaut (aperçu des IDs prévisionnels et des
   erreurs, sans rien écrire) ; \`dryRun: false\` écrit réellement, en série, best-effort.
+- \`update_requirements\` / \`update_tests\` — modifie des objets existants par ID (titre,
+  statut, \`fields\` en fusion partielle, une clé à \`null\` retire le champ ; pour un test,
+  \`preconditions\`, \`postconditions\`, \`steps\`, \`equipment\`). \`dryRun\` par défaut (avant/après
+  par champ) ; l'écriture alimente l'historique, la version et la revalidation des éléments liés.
+- \`list_parameters\` / \`set_parameters\` / \`delete_parameter\` — base de paramètres
+  (\`parameters/parameters.yaml\`, références \`{nom}\`). \`set_parameters\` crée ou modifie, avec
+  \`dryRun\` par défaut ; \`delete_parameter\` est refusé tant qu'un élément non terminal l'utilise.
 - \`list_links\` / \`create_links\` / \`delete_links\` — liens entre objets (vérification,
   implémentation…). \`create_links\`/\`delete_links\` ont \`dryRun\` par défaut ; \`create_links\`
   vérifie le type (\`linkTypes\` de \`get_schema\`), l'existence des objets, la compatibilité
@@ -229,7 +238,8 @@ committe/publie explicitement ensuite depuis l'app.
 **Si votre client ne supporte pas MCP** (ou si \`.mcp.json\` est absent) : la lecture/
 écriture directe des fichiers YAML documentée ci-dessus reste le repli — appliquez
 alors vous-même les règles de ce fichier (format, ID jamais réutilisé, \`prefix\` unique,
-etc.).
+etc.). Avec MCP, ne modifiez pas à la main un objet existant ni \`parameters/parameters.yaml\` :
+passez par \`update_*\` et \`set_parameters\`.
 
 ## Invariants à respecter
 

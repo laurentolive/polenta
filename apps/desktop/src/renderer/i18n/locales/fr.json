@@ -113,7 +113,8 @@
       "requirement": "Exigence",
       "test": "Test",
       "campaign": "Campagne",
-      "mergeResolve": "Conflits"
+      "mergeResolve": "Conflits",
+      "constellation": "Constellation"
     }
   },
   "account": {
@@ -1825,5 +1826,50 @@
       "designated": "{{branch}} est la branche d'intégration de ce repo : désignez-en une autre avant de la supprimer.",
       "lastIntegration": "{{branch}} est la dernière branche d'intégration de ce repo : un repo ne doit jamais rester sans branche d'intégration."
     }
+  },
+  "constellation": {
+    "title": "Constellation des exigences",
+    "subtitle": "Raffinements et couverture par les tests",
+    "ariaLabel": "Exigences en anneaux : haut niveau au centre, raffinements vers l'extérieur",
+    "searchPlaceholder": "Chercher un ID ou un titre",
+    "colorBy": "Couleur :",
+    "colorByType": "Type d'objet",
+    "noValue": "Non renseigné",
+    "reverse": "Inverser le sens",
+    "reverseHint": "Le sens de chaque type de lien est déduit des données (le parent est le côté le moins nombreux). Inverser si la constellation apparaît à l'envers.",
+    "empty": "Aucune exigence dans ce projet.",
+    "kpi": {
+      "requirements": "exigences",
+      "links": "liens entre exigences",
+      "notRefined": "exigences intermédiaires non raffinées",
+      "coverage": "couverture par les tests"
+    },
+    "legend": {
+      "halo": "Halo = part couverte par des tests",
+      "uncovered": "Pointillé = non couverte",
+      "rings": "Centre : haut niveau · bord : niveau le plus fin"
+    },
+    "card": {
+      "coverage": "Couverture par les tests",
+      "leavesCovered_one": "{{covered}} sur {{count}} exigence terminale couverte",
+      "leavesCovered_other": "{{covered}} sur {{count}} exigences terminales couvertes",
+      "topLevel": "Exigence de plus haut niveau",
+      "notRefined": "Pas encore raffinée",
+      "reversed": "Sens des liens inversé par rapport au sens déduit.",
+      "open": "Ouvrir {{id}}"
+    },
+    "overview": {
+      "label": "Vue d'ensemble",
+      "title_one": "{{count}} exigence, {{links}} liens",
+      "title_other": "{{count}} exigences, {{links}} liens",
+      "help": "Chaque pétale part d'une exigence de haut niveau au centre et s'ouvre vers les exigences qui la raffinent. Survolez un point pour suivre sa lignée, cliquez pour l'épingler.",
+      "watch": "À regarder",
+      "notRefined": "exigences intermédiaires sans raffinement",
+      "uncoveredLeaves": "exigences terminales sans cas de test",
+      "tests": "cas de test dans le projet",
+      "petals": "Pétales"
+    },
+    "openFromPanel": "Constellation des exigences",
+    "openFromPanelHint": "Vue d'ensemble des raffinements et de la couverture"
   }
 }

@@ -331,6 +331,10 @@ export interface IntegrationRemoteState {
 export type ResyncOutcome =
   | { outcome: 'up-to-date' | 'fast-forwarded' | 'pushed' | 'merged' }
   | { outcome: 'set-aside'; branch: string }
+// GH173 — mirrors SyncService's AutoBranchOutcome.
+export type AutoBranchOutcome =
+  | { action: 'none' }
+  | { action: 'switched' | 'returned'; branch: string }
 
 export interface DeviceFlowSession {
   deviceCode: string
@@ -363,7 +367,15 @@ export interface FieldVisibilityPref {
   collapsedFoldersWord?: string[]
   /** GH24 — nombre de colonnes figées (depuis la gauche) de la vue Tableau. Absent ⇒ 0. */
   freezeColCountExcel?: number
+  /** GH176 — colonnes du sélecteur de tests d'une campagne. Absent ⇒ celles de la vue Tableau. */
+  picker?: string[]
+  /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
+  showFoldersPicker?: boolean
 }
+
+/** GH176 — écriture partielle de `FieldVisibilityPref` : une clé absente est conservée telle quelle,
+ *  une clé à `null` est supprimée. */
+export type FieldVisibilityPatch = { [K in keyof FieldVisibilityPref]?: FieldVisibilityPref[K] | null }
 
 /** GH44 — un projet de « Mes projets » (espace serveur de l'utilisateur, version web). */
 export interface WebWorkspaceEntry {
@@ -565,6 +577,9 @@ export interface ApiClient {
     resyncIntegration(repoPath: string, branch: string): Promise<ResyncOutcome>
     /** GH39: one auto-pull tick — fetch, fast-forward if clean, push retry if the integration is only ahead. */
     autoSync(repoPath: string, integrationBranch: string): Promise<IntegrationRemoteState>
+    /** GH173: local only — moves pending changes on the integration onto `dev-auto`, or goes back
+     *  to the integration from an idle `dev-auto` (and deletes it). */
+    settleAutoBranch(repoPath: string, integrationBranch: string): Promise<AutoBranchOutcome>
     /** GH39: true when `branch` has no commit absent from `into`. */
     isMergedInto(repoPath: string, branch: string, into: string): Promise<boolean>
     log(repoPath: string, limit?: number): Promise<CommitEntry[]>
@@ -750,7 +765,8 @@ export interface ApiClient {
   }
   pref: {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>
-    setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPref): Promise<void>
+    /** GH176 — fusionne `views` dans l'entrée existante (`null` = clé supprimée) ; ne remplace pas l'entrée. */
+    setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPatch): Promise<void>
   }
   /** GH74 — vue Suivi : exécution des scripts (bac à sable du main), drill-down, modèles. */
   suivi: {

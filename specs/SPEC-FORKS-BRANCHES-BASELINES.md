@@ -102,7 +102,8 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
 
 > **Règle :** toute modification d'exigence ou de test finit par transiter par une branche `dev-*`
 > avant merge dans l'intégration — soit une branche éphémère créée par "Publier" (cas nominal), soit
-> une branche `dev-*`/libre créée manuellement depuis le panneau Version (usage avancé).  
+> la branche automatique `dev-auto[-n]` (GH173, §2.3), soit une branche `dev-*`/libre créée
+> manuellement depuis le panneau Version (usage avancé).  
 > Pas de fichier YAML de métadonnées associé à la branche — elle est son propre identifiant. L'ancien
 > flux "Action" (`ActionService`, IDs `ACT-XXXX`, review obligatoire avant merge) a été retiré (T83
 > sprint 2) — il n'était atteignable depuis aucune navigation de l'UI et faisait doublon avec ce
@@ -184,6 +185,28 @@ int-v1 (intégration, éditable depuis T87) ────────────
 **Création d'une branche (workflow "Publier", cas nominal) :** IPC `sync:create-branch` avec un nom
 `dev-<slug>` dérivé du titre saisi (collision résolue par suffixe numérique). Crée la branche à la
 position courante sans checkout matériel (cf. note `createBranch` en §2.1) puis y déplace `HEAD`.
+
+**Branche automatique `dev-auto` (GH173) :** dès que l'intégration **désignée** checkoutée d'un
+repo **avec remote** a des modifications en attente (toute modification du working tree, y compris
+hors application), `SyncService.settleAutoBranch` (IPC `sync:settle-auto-branch`) crée `dev-auto`
+(`dev-auto-2`… si pris) à la position courante et y déplace `HEAD` sans toucher aucun fichier
+(`createBranch`). L'intégration n'étant plus checkoutée, l'auto-pull peut l'avancer par référence
+(§2.5). Bascule transparente : aucun message, le panneau Version affiche simplement la branche
+courante. Appelée à chaque tick d'auto-pull (avant le fetch, donc aussi hors ligne), au début de
+« Resynchroniser » et après « Tout annuler ». Reconnue par son nom exact (`isAutoBranch`,
+`@polenta/types`), y compris après redémarrage :
+- « Publier » la traite comme la `dev-<slug>` éphémère : commit, fusion **toujours** dans
+  l'intégration, retour sur l'intégration, suppression ; en conflit, flux §2.4 puis mêmes étapes ;
+  « Publier » reste actif sur une `dev-auto` propre portant des commits non fusionnés ;
+- `dev-auto` checkoutée, propre et entièrement fusionnée dans l'intégration (modifications annulées)
+  → retour sur l'intégration (la copie de travail suit l'intégration, éventuellement avancée) et
+  suppression — immédiat après « Tout annuler », sinon au tick suivant ;
+- une `dev-auto` non checkoutée et fusionnée est supprimée au tick ; non fusionnée, conservée ;
+- un composant épinglé par nom de branche reste considéré « au pin » sur une `dev-auto` issue de
+  cette branche (`WorkspaceTreeService.repoExistsAtPin`) : pas de checkout qui retirerait les
+  modifications.
+
+Pas de bascule sans remote, en detached HEAD, sur une `int-*` non désignée ni sur une autre branche.
 
 **Création manuelle (panneau Version, avancé) :** IPC `sync:create-branch` avec un nom libre,
 depuis `BranchCombobox`/`VersionRepoFolder.tsx` — pas de contrainte de préfixe imposée par le
@@ -296,6 +319,14 @@ fetch réseau) :
    pouvoir écrire des marqueurs de conflit dans les fichiers de l'utilisateur pendant qu'il
    travaille sur autre chose. Une branche qui ne peut pas avancer en fast-forward est laissée telle
    quelle.
+   **GH173** : avant le fetch, `settleAutoBranch` déplace les modifications en attente de
+   l'intégration sur `dev-auto` (§2.3) — l'intégration n'est donc plus checkoutée. Intégration
+   **non checkoutée** et branche courante sans commit propre (entièrement fusionnée dans
+   l'intégration : `dev-auto`, `dev-*` manuelle sans commit) → fast-forward **par référence** de
+   l'intégration (`fastForwardBranch`), répertoire de travail intact. Jamais sous une branche qui
+   porte ses propres commits : une publication en conflit y a ouvert l'éditeur de résolution, qui a
+   mémorisé la pointe de l'intégration (GH37). Les publications des autres restent invisibles dans
+   la copie de travail jusqu'à « Publier » (divergence acceptée, GH173).
 3. Intégration **seulement en avance** sur `origin` (push d'une publication resté en échec) → push
    relancé, même repo sale (le push ne touche pas les fichiers). Intégration **divergée** → aucune
    action automatique, l'indicateur la signale (§2.6).
@@ -360,6 +391,11 @@ branche courante) comparée à `origin/<intégration>` :
    Intégration checkoutée → le répertoire de travail suit (merge puis checkout, comme `git.pull`).
 2. Garde : intégration checkoutée **avec** modifications en attente et état `behind`/`diverged` →
    refus (`integration-dirty`, message « publiez-les ou annulez-les d'abord »), rien n'est modifié.
+   **GH173** : `settleAutoBranch` est appelé d'abord — les modifications passent sur `dev-auto`,
+   l'intégration est resynchronisée par référence ; la garde ne subsiste qu'en filet de sécurité.
+   En conflit (étape 3) depuis une `dev-auto` issue des commits locaux divergés, ces commits sont
+   déjà portés par `dev-auto` : pas de `dev-resync`, l'intégration est réalignée sur `origin` et
+   « Publier » fusionne `dev-auto`.
 3. Conflit sur le merge → les commits locaux sont **mis de côté** : branche `dev-resync` (`-2`, `-3`…
    si prise) créée sur l'ancien commit local, `HEAD` déplacé dessus sans toucher aucun fichier si
    l'intégration était checkoutée, puis intégration réalignée sur `origin/<intégration>`. Un message

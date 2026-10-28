@@ -509,9 +509,16 @@ campagne active), les tests se choisissent dans une **modale à deux étapes**
 formulaire de création » :
 1. **Sélection** dans la Vue Excel du type de test choisi (combobox des types `test` du repo,
    un type à la fois, sélection conservée d'un type à l'autre), en mode sélection
-   ([SPEC-SYSTEM-VIEW §Vue Excel](SPEC-SYSTEM-VIEW.md#vue-excel)) : colonnes/dossiers/repli/
-   colonnes figées repris des préférences Vue Excel de l'utilisateur (lus, jamais réécrits),
-   lecture seule, cases à cocher (ligne, dossier, en-tête), Ctrl/Maj, filtre global et filtres
+   ([SPEC-SYSTEM-VIEW §Vue Excel](SPEC-SYSTEM-VIEW.md#vue-excel)) : repli des dossiers et
+   colonnes figées repris des préférences Vue Excel de l'utilisateur (lus, jamais réécrits) ;
+   **colonnes et titres de dossiers configurables** par le bouton ⚙️ de la barre d'outils (GH176 —
+   même panneau que l'onglet Tableau de la Vue Excel, sans onglets, Statut coché et verrouillé),
+   enregistrés comme préférence **propre au sélecteur** (par utilisateur et par type, clés
+   `picker` / `showFoldersPicker`, cf. [SPEC-SYSTEM-VIEW §Persistance](SPEC-SYSTEM-VIEW.md#persistance-de-létat)) :
+   tant qu'elle est absente, le sélecteur suit la Vue Excel ; « Réinitialiser » la supprime ; la
+   Vue Excel n'est jamais modifiée. Changer une colonne conserve sélection, filtres, repli et
+   colonnes figées ; `Échap` ferme le panneau sans fermer la modale ; changer de type, d'onglet ou
+   d'étape le ferme. Lecture seule, cases à cocher (ligne, dossier, en-tête), Ctrl/Maj, filtre global et filtres
    colonne (T51). Compteur « N sélectionnés, dont M non affichés ». Un test présent dans
    `tests/` mais absent de l'arbre du type est listé en fin de grille.
 2. **Paramètres** — seulement si un test sélectionné est itérant ou a des références à saisir
@@ -521,7 +528,7 @@ mettre à jour la sélection du formulaire (la campagne est créée par « Crée
 tous les tests **quel que soit leur statut** (GH68 — permet de construire une campagne en amont) ;
 filtre composant/niveau à la création ; à l'ajout, dédoublonnés comme décrit ci-dessous. La
 colonne Statut de la grille est toujours affichée (insérée après `id` si les préférences Vue Excel
-la masquent, sans les réécrire).
+la masquent, sans les réécrire ; jamais écrite dans `picker` par le sélecteur).
 
 **Report depuis une autre campagne (GH64)** : l'étape 1 du sélecteur (création comme ajout) a deux
 onglets, « Tests » (Vue Excel ci-dessus, inchangée) et « Depuis une campagne ». Ce dernier liste

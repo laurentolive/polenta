@@ -49,3 +49,17 @@ describe('CampaignsService.list — filtre level (GH59)', () => {
     expect((await service.list(dir, 'root')).map(c => c.id)).toEqual(['CAMP-0001'])
   })
 })
+
+describe('CampaignsService.list — filtre component (GH146)', () => {
+  it('à défaut de component, lit le nœud dans objectTypeRef ; sans l'un ni l'autre, reste visible', async () => {
+    // Forme écrite avant le correctif par « Générer la campagne » (analyse d'impact) : ni component ni level.
+    const withoutComponent = (id: string, objectTypeRef: string) => git.writeYaml(dir, `campaigns/${id}.yaml`, {
+      id, title: id, fields: {}, status: 'planned', objectTypeRef, testCaseIds: [], runs: [],
+      createdAt: `2026-10-0${id.slice(-1)}T00:00:00.000Z`,
+    })
+    await withoutComponent('CAMP-0001', 'root::campagne-test')
+    await withoutComponent('CAMP-0002', 'bms::campagne-test')
+    await withoutComponent('CAMP-0003', 'campagne-test')
+    expect((await service.list(dir, 'root', 'campagne-test')).map(c => c.id)).toEqual(['CAMP-0001', 'CAMP-0003'])
+  })
+})

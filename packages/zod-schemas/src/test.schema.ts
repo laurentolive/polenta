@@ -18,6 +18,8 @@ export const TestStepSchema = z.object({
 export const CreateTestCaseSchema = z.object({
   title: z.string().min(1).max(500),
   objectTypeRef: z.string().min(1),
+  /** GH149 — facultatif : à défaut, premier statut du type dans le schéma. */
+  status: z.string().min(1).optional(),
   preconditions: z.string().optional(),
   equipment: z.array(EquipmentRequirementSchema).optional(),
   steps: z.array(TestStepSchema),

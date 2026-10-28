@@ -188,6 +188,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
   'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
+  'sync:settle-auto-branch',
   'integration:designate', 'integration:create',
 ])
 
@@ -289,6 +290,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('sync:resync-integration', (_e, repoPath: string, branch: string) =>
     c.sync.resyncIntegration(repoPath, branch))
   r.handle('sync:auto-sync', (_e, repoPath: string, branch: string) => c.sync.autoSync(repoPath, branch))
+  r.handle('sync:settle-auto-branch', (_e, repoPath: string, branch: string) =>
+    c.sync.settleAutoBranch(repoPath, branch))
   r.handle('sync:is-merged', (_e, repoPath: string, branch: string, into: string) =>
     c.sync.isMergedInto(repoPath, branch, into))
   r.handle('sync:log', async (_e, repoPath: string, limit = 20) => {

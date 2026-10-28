@@ -10,7 +10,7 @@
  */
 
 import { api } from '../api'
-import type { WorkspaceTreeNode } from '@polenta/types'
+import { isAutoBranch, type WorkspaceTreeNode } from '@polenta/types'
 import { propagatePinToDependents, type PinPropagationOutcome } from './workspaceActions'
 
 const DIACRITICS = /[̀-ͯ]/g
@@ -302,12 +302,16 @@ async function readRepoState(repoPath: string, ephemeral: EphemeralBranch | null
   ])
   // GH39: a `dev-resync` branch left by "Resynchroniser" behaves like the ephemeral branch of a
   // conflicted publish — published (even without pending changes) while it holds commits the
-  // integration doesn't have, then deleted.
-  const continuingEphemeral = (ephemeral?.repoPath === repoPath && ephemeral.branch === status.branch)
-    || (isResyncBranch(status.branch) && !(await api.sync.isMergedInto(repoPath, status.branch, integrationBranch)))
+  // integration doesn't have, then deleted. GH173: so does a `dev-auto` branch the auto-pull moved
+  // pending changes onto — always merged and deleted, never a user-owned branch.
+  const auto = isAutoBranch(status.branch)
+  const sameEphemeral = ephemeral?.repoPath === repoPath && ephemeral.branch === status.branch
+  const setAside = (isResyncBranch(status.branch) || auto)
+    && !(await api.sync.isMergedInto(repoPath, status.branch, integrationBranch))
+  const continuingEphemeral = sameEphemeral || auto || setAside
   const hasPendingChanges = status.staged.length + status.unstaged.length > 0
   return {
-    branch: status.branch, integrationBranch, hasWork: hasPendingChanges || continuingEphemeral, hasPendingChanges, continuingEphemeral,
+    branch: status.branch, integrationBranch, hasWork: hasPendingChanges || sameEphemeral || setAside, hasPendingChanges, continuingEphemeral,
   }
 }
 

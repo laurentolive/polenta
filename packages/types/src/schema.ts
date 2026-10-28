@@ -103,6 +103,19 @@ export function isApprovalStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'>
   return status === (approvalStatusName ?? 'approved')
 }
 
+/** GH149 — statut d'un objet à sa création : premier statut déclaré par le type (ordre de
+ *  `statuses[]`, celui que l'éditeur affiche par défaut). Repli sur le littéral `draft` quand le
+ *  type est introuvable ou ne déclare aucun statut. */
+export function initialStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined): string {
+  return typeDef?.statuses?.[0]?.name ?? 'draft'
+}
+
+/** GH149 — `status` est-il refusé pour ce type ? Seulement quand le type déclare des statuts et
+ *  qu'aucun ne porte ce nom (type introuvable ou sans statuts : rien à vérifier). */
+export function isUnknownStatus(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): boolean {
+  return !!typeDef?.statuses?.length && !typeDef.statuses.some(s => s.name === status)
+}
+
 // Noeud local : composant propre au repo produit.
 //   objectTypes defini ici dans le schema produit.
 // Un noeud peut reference un composant d'un autre repo dans le workspace plat

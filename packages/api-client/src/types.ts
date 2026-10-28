@@ -775,6 +775,9 @@ export interface ApiClient {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>
     /** GH176 — fusionne `views` dans l'entrée existante (`null` = clé supprimée) ; ne remplace pas l'entrée. */
     setFieldVisibility(repoPath: string, username: string, typeKey: string, views: FieldVisibilityPatch): Promise<void>
+    /** GH133 — choix « Fusionner dans <intégration> » mémorisé pour `branch` (`null` : aucun). */
+    getPublishMerge(repoPath: string, username: string, branch: string): Promise<boolean | null>
+    setPublishMerge(repoPath: string, username: string, branch: string, merge: boolean): Promise<void>
   }
   /** GH74 — vue Suivi : exécution des scripts (bac à sable du main), drill-down, modèles. */
   suivi: {

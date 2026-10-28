@@ -39,4 +39,23 @@ export function registerPrefHandlers(r: HandlerRegistry, forgeConfig?: ForgeConf
       writePref(repoPath, username, pref)
     }
   )
+
+  // GH133 — « Fusionner dans <intégration> » mémorisé par branche (`publishMerge[branch]`), dans le
+  // `.pref` du repo publié. `null` : jamais publié depuis cette branche (la case reprend cochée).
+  r.handle('pref:get-publish-merge',
+    (_e, repoPath: string, username: string, branch: string) => {
+      const choices = readPref(repoPath, username)['publishMerge'] as Record<string, unknown> | undefined
+      const value = choices?.[branch]
+      return typeof value === 'boolean' ? value : null
+    }
+  )
+
+  r.handle('pref:set-publish-merge',
+    (_e, repoPath: string, username: string, branch: string, merge: boolean) => {
+      if (!branch || typeof merge !== 'boolean') throw new Error('pref:set-publish-merge : branche et booléen attendus')
+      const pref = readPref(repoPath, username)
+      pref['publishMerge'] = { ...(pref['publishMerge'] as Record<string, boolean> | undefined), [branch]: merge }
+      writePref(repoPath, username, pref)
+    }
+  )
 }

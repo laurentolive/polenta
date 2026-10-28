@@ -132,6 +132,8 @@
       "english": "English",
       "autoUpdate": "Auto updates",
       "autoUpdateHint": "Check for and download updates at startup (applies on next launch)",
+      "networkTimeout": "Network connection timeout (s)",
+      "networkTimeoutHint": "Increase if operations fail with a timeout (slow or filtered network, e.g. accessing GitHub from China). 10 to 120 s, applies immediately.",
       "exportTemplates": "Export templates",
       "exportTemplatesHint": "Folder holding client Word/Excel templates (local folder, network share or cloned repo), shared across projects.",
       "exportTemplatesChoose": "Choose…",

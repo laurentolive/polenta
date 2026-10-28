@@ -132,6 +132,8 @@
       "english": "English",
       "autoUpdate": "Mises à jour auto.",
       "autoUpdateHint": "Rechercher et télécharger les mises à jour au démarrage (effectif au prochain lancement)",
+      "networkTimeout": "Délai de connexion réseau (s)",
+      "networkTimeoutHint": "À augmenter si les opérations échouent sur un délai dépassé (réseau lent ou filtré, ex. accès à GitHub depuis la Chine). De 10 à 120 s, effectif immédiatement.",
       "exportTemplates": "Gabarits d'export",
       "exportTemplatesHint": "Dossier contenant les gabarits Word/Excel des clients (dossier local, partage réseau ou repo cloné), partagé entre projets.",
       "exportTemplatesChoose": "Choisir…",

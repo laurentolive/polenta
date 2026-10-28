@@ -33,4 +33,9 @@ export interface HostContext {
   machineConfig: MachineConfig
   /** GH45 — nom du poste dans le nom des jetons créés à la connexion (`polenta-<poste>-<date>`). */
   deviceLabel?: string
+  /**
+   * GH15 — applique le délai de connexion réseau au process (`net-timeouts.ts`). Desktop seulement :
+   * le serveur web sert plusieurs utilisateurs dans un même process et garde les délais par défaut.
+   */
+  applyNetworkTimeout?: (seconds: number) => void
 }

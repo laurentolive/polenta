@@ -38,6 +38,8 @@ services:
       POLENTA_ROOT: /opt/polenta
       # Le kit installé sur l'hôte (même version que l'usage SSH), pas la copie de l'image.
       POLENTA_KIT_DIR: /opt/polenta/kit
+      # uid attendu par require_operator (common.sh) : celui du conteneur.
+      POLENTA_OPERATOR_UID: ${POLENTA_ADMIN_UID:-1500}
       POLENTA_HOST_NAME: ${POLENTA_HOST_NAME:-}
       EDGE_NETWORK: ${EDGE_NETWORK:-}
     volumes:

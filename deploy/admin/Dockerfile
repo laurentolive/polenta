@@ -9,14 +9,18 @@
 
 FROM node:22-bookworm AS build
 WORKDIR /src
-RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+# npm (et non corepack) : suit HTTP(S)_PROXY lors d'un build derrière un proxy.
+RUN npm i -g pnpm@9.15.9
 COPY . .
 ENV CI=true ELECTRON_SKIP_BINARY_DOWNLOAD=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN pnpm install --frozen-lockfile --ignore-scripts --filter @polenta/admin-service... \
  && pnpm --filter @polenta/admin-service build
 
 FROM node:22-alpine
-RUN apk add --no-cache bash jq curl bind-tools restic util-linux-misc git coreutils tar gzip \
+# Outils GNU (sed -u, find -printf, grep -P…) : les scripts du kit sont écrits pour Debian/Ubuntu,
+# pas pour les variantes busybox d'Alpine.
+RUN apk add --no-cache bash jq curl bind-tools restic util-linux util-linux-misc git coreutils tar gzip \
+      sed grep gawk findutils diffutils procps-ng iproute2 openssl \
       docker-cli docker-cli-compose tini \
  && addgroup -g 1500 polenta-ops \
  && adduser -D -H -u 1500 -G polenta-ops -s /sbin/nologin polenta-ops

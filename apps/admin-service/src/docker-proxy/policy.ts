@@ -151,7 +151,8 @@ export async function decide(req: RequestInfo, resolver: Resolver, opts: PolicyO
   if (read && p === '/containers/json') return ALLOW
   if (method === 'POST' && p === '/containers/create') {
     const name = req.query.get('name') ?? ''
-    if (!KIT_CONTAINER_RE.test(name)) return deny(`création d'un conteneur hors kit (« ${name} »)`)
+    // compose recrée un conteneur sous un nom temporaire <id court>_<nom> avant de le renommer.
+    if (!KIT_CONTAINER_RE.test(name) && !RECREATE_NAME_RE.test(name)) return deny(`création d'un conteneur hors kit (« ${name} »)`)
     if (!req.body) return deny('corps de création illisible')
     return checkCreateBody(req.body, opts)
   }

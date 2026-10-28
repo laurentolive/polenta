@@ -41,24 +41,45 @@ Périmètre : `specs/GH63-design.md` §7 Sprint 2. Scénarios : `specs/GH63-test
 6. **Reprise après redémarrage** : un travail survit à un redémarrage du **processus** Node ; un
    redémarrage du **conteneur** arrête ses processus, le travail passe alors à `interrupted`.
 
-## Risque R1 (non levé)
+## Risque R1 (spike fait sur VM le 2026-10-28)
 
-Le spike « scripts du kit sous l'uid 1500 » n'a pas pu être fait (pas d'hôte Linux). Points connus :
-`instance.env` et la plupart des fichiers d'état sont `root 0600`, `instance add` fait des `chown
-1000:1000`. `install.sh --root-fallback` lance le service en root **dans** le conteneur (toujours sans
-socket ni port) : repli documenté au design, à trancher sur la VM.
+Sous l'uid 1500, les scripts du kit ne peuvent pas fonctionner : `instance.env` (root 0600) est
+illisible, `instance list --json` rend une liste vide, les données de la forge (1000:1000, 0700) sont
+illisibles (sauvegarde impossible) et les dossiers d'instance non inscriptibles. Le service lui-même
+refuse alors tout jeton (instance d'origine inconnue).
+
+Repli mesuré : `install.sh --root-fallback` → root **dans** le conteneur avec `cap_drop: ALL` puis
+`cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER]` (`deploy/admin/docker-compose.root.yml`),
+`no-new-privileges`, système de fichiers en lecture seule, un seul montage `/opt/polenta`, aucun
+socket Docker, aucun port. Tout passe (état lisible, données de la forge lisibles, dossiers
+inscriptibles). Le critère 4 devient « pas de root **hôte** » : **décision humaine à acter** ; l'uid
+1500 resterait possible au prix d'une refonte des droits de fichiers du kit (ticket séparé).
 
 ## Tests
 
-`pnpm --filter @polenta/admin-service typecheck` : zéro erreur. `pnpm --filter @polenta/admin-service
-test` (vitest, Windows, Node 20) : **81 verts, 1 sauté** — l'annulation par SIGTERM (S2-22) ne se
-teste pas sous Windows (signal non transmis à bash MSYS), à exécuter sous Linux. Bundle `pnpm build`
-démarré à la main : `/healthz` 200, `/me` sans jeton 401, proxy `POST /build` 403.
+**Unitaires** (`pnpm --filter @polenta/admin-service test`, typecheck zéro erreur) :
+- Linux (conteneur `node:22-bookworm`) : **82/82 verts**, annulation par SIGTERM (S2-22) comprise ;
+- Windows (Node 20 portable) : 82 verts, 1 sauté (SIGTERM non transmis à bash MSYS).
 
-Couverts en automatique : S2-2, S2-3/S2-5 (reprise), S2-6 à S2-13, S2-15 à S2-21, S2-23, S2-24,
-S2-25 à S2-27. À faire sur une VM Linux avec Docker : S2-22 (annulation), S2-1, S2-4, S2-14, S2-17 en
-réel (`docker compose up/down` d'une instance derrière le proxy, risque R2), image, `install.sh`,
-`shellcheck` des scripts modifiés.
+**Hôte de test** (VM WSL2 Ubuntu 24.04, Docker 29.1, kit réel copié dans `/opt/polenta/kit`,
+instances simulées sans forge) : 36 contrôles en mode repli root, tous verts :
+- `install.sh` (image locale), deux services en marche, **aucun port publié** (S2-1) ;
+- `polenta-admin` sans socket Docker, `Privileged=false`, `CapDrop=ALL`, `no-new-privileges` (S2-14 ;
+  en mode uid 1500, `CapAdd` vide également) ; seul le proxy monte le socket ;
+- API joignable seulement depuis `polenta-admin-net` ; `/me` sans jeton 401, forge absente 502 ;
+- via le proxy (S2-17) : `ps`, `compose pull`, `compose up -d`, `inspect`, `logs`, `exec`,
+  `stop/start/restart`, `compose up --force-recreate`, `compose down` d'un projet `polenta-*` ;
+- refus (S2-15, S2-16, S2-18) : `--privileged`, `-v /:/host`, `-v /etc`, `-v docker.sock`, `--network
+  host`, `--cap-add`, nom hors kit, `build`, `volume create` hors `polenta-*`, `swarm init`,
+  `container prune`, `exec`/`stop` d'un conteneur étranger, rattachement au réseau du proxy ;
+  chaque refus journalisé par le proxy.
+
+Corrigé grâce à la VM : recréation compose (nom temporaire `<id>_<nom>` refusé à la création) ;
+image sans outils GNU (`sed -u`, `find -printf` du kit en échec sous busybox) ; `POLENTA_OPERATOR_UID`
+du conteneur transmis au kit ; `pnpm` installé par npm dans l'image (corepack ignore le proxy HTTP).
+
+Restent pour un hôte complet (forge réelle, DNS, sauvegarde S3) : S2-2 de bout en bout avec une vraie
+forge, S2-4 (`docker restart polenta-web-*`), S2-23 réel, `acceptance.sh`.
 
 Note Windows : les sorties brutes sont ouvertes en `w` (pas `a`) — bash MSYS n'écrit rien dans un
 fichier ouvert en ajout par Node.

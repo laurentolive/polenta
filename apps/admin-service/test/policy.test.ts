@@ -39,6 +39,11 @@ describe('proxy Docker — créations refusées (S2-15)', () => {
     expect(d.allow).toBe(false)
   })
 
+  it('recréation compose sous nom temporaire autorisée', async () => {
+    const d = await req('POST', '/containers/create?name=dd1aeee8bdd2_polenta-demo-app', { HostConfig: {} })
+    expect(d).toEqual({ allow: true })
+  })
+
   it('nom de conteneur hors kit', async () => {
     const d = await req('POST', '/containers/create?name=pirate', { HostConfig: {} })
     expect(d).toMatchObject({ allow: false })

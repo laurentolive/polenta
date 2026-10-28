@@ -9,8 +9,9 @@
 # niveau hôte, ADMIN_INSTANCE dans /opt/polenta/host.env. L'image est tirée (--image/--version) ou
 # construite depuis un clone du monorepo (--build, Dockerfile deploy/admin/Dockerfile).
 #
-# --root-fallback : repli du risque R1 (design §9) si les scripts ne peuvent pas tourner sous l'uid 1500
-# sur cet hôte — le service tourne en root DANS le conteneur, toujours sans socket Docker ni port.
+# --root-fallback : repli du risque R1 (design §9) — sous l'uid 1500 les scripts ne lisent ni l'état du kit
+# (root 0600) ni les données de la forge (1000). Root DANS le conteneur + capacités de fichier
+# (docker-compose.root.yml), toujours sans socket Docker ni port.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -25,7 +26,10 @@ OPERATOR_UID=1500
 usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 admin_compose() {
-  docker compose -p polenta-admin --env-file "$ADMIN_ENV" -f "$COMPOSE_FILE" "$@"
+  local -a files=(-f "$COMPOSE_FILE")
+  # Repli R1 (root dans le conteneur + capacités de fichier) mémorisé dans admin.env.
+  [[ "$(env_get "$ADMIN_ENV" POLENTA_ADMIN_UID)" == 0 ]] && files+=(-f "$SCRIPT_DIR/docker-compose.root.yml")
+  docker compose -p polenta-admin --env-file "$ADMIN_ENV" "${files[@]}" "$@"
 }
 
 remove() {

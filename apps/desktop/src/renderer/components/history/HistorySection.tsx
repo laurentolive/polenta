@@ -75,6 +75,7 @@ export function HistorySection({ repoPath, kind, id, typeDef, statusLabel, refre
                         {t(`history.badge.${b}`)}
                       </span>
                     ))}
+                    {r.comment && <span className="text-ink-2 italic" data-testid="history-comment">« {r.comment} »</span>}
                   </li>
                 ))}
               </ul>

@@ -341,7 +341,8 @@ export interface EditViewProps {
   repoPath?: string
   candidateObjects?: { id: string; title: string; objectTypeRef: string }[]
   onLinkChange?: () => void
-  onBlurField: (field: string, value: string) => void
+  /** GH163 — `comment` : commentaire de modification saisi avec un changement de statut. */
+  onBlurField: (field: string, value: string, comment?: string) => void
   /** Persiste en une requête les champs de `values` qui diffèrent de leur valeur serveur.
    *  T159 — `target` cible explicitement un objet + sa baseline (au lieu de l'objet
    *  couramment édité) : nécessaire quand on persiste l'objet SORTANT après un changement
@@ -404,6 +405,8 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   // flush so a switch/unmount right after an autosave fired doesn't send a duplicate
   // `update` for the same object (concurrent writes on the same unserialized file).
   const dirtyRef = useRef(false)
+  // GH163 — commentaire du prochain changement de statut fait dans ce formulaire.
+  const [statusComment, setStatusComment] = useState('')
 
   const onFlushValuesRef = useRef(onFlushValues)
   useEffect(() => { onFlushValuesRef.current = onFlushValues }, [onFlushValues])
@@ -656,6 +659,13 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                     // annuler le timer (le richtext reste `dirty`, il sera flushé au
                     // prochain déclencheur) pour garder un seul write en vol.
                     cancelAutosave()
+                    if (f.name === 'status') {
+                      // GH163 — le commentaire accompagne le changement de statut, puis est vidé.
+                      const comment = statusComment.trim() || undefined
+                      setStatusComment('')
+                      onBlurField(f.name, v, comment)
+                      return
+                    }
                     onBlurField(f.name, v)
                   }}
                   onChange={v => { if (!sys && !readOnly) { localValuesRef.current[f.name] = v; dirtyRef.current = true } }}
@@ -666,16 +676,33 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                     ? <RevalidationFlag show={objectData?.needsRevalidation === 'true'} /> : undefined}
                 />
               )
+              // GH163 — commentaire facultatif, enregistré dans l'historique avec le prochain changement de statut.
+              const makeStatusRow = (f: SchemaField, sys: boolean) => (
+                <div key={f.name} className="flex flex-col gap-1">
+                  {makeRow(f, sys)}
+                  {!sys && !readOnly && objectData && (
+                    <input
+                      type="text"
+                      value={statusComment}
+                      onChange={e => setStatusComment(e.target.value)}
+                      placeholder={t('system.editView.statusCommentPlaceholder')}
+                      className="input-field text-xs"
+                      data-testid="status-comment"
+                    />
+                  )}
+                </div>
+              )
+              const rowOf = (f: SchemaField, sys: boolean) => f.name === 'status' ? makeStatusRow(f, sys) : makeRow(f, sys)
               if (compact && nextCompact) {
                 result.push(
                   <div key={`row-${i}`} className="grid grid-cols-2 gap-4">
-                    {makeRow(field, system)}
-                    {makeRow(next.field, next.system)}
+                    {rowOf(field, system)}
+                    {rowOf(next.field, next.system)}
                   </div>
                 )
                 i += 2
               } else {
-                result.push(makeRow(field, system))
+                result.push(rowOf(field, system))
                 i += 1
               }
             }

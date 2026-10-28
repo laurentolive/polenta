@@ -11,6 +11,8 @@ export interface HistoryRow {
   value: string | null | undefined
   at: string
   by?: string
+  /** GH163 — commentaire de modification saisi avec le changement. */
+  comment?: string
   badges: HistoryBadge[]
 }
 
@@ -31,7 +33,7 @@ function row(entry: HistoryEntry, label: (v: string) => string): HistoryRow {
   if (entry.source) badges.push(entry.source)
   if (entry.implicit) badges.push('implicit')
   const value = !('value' in entry) ? undefined : entry.value === null ? null : label(valueText(entry.value))
-  return { value, at: String(entry.at), ...(entry.by && { by: entry.by }), badges }
+  return { value, at: String(entry.at), ...(entry.by && { by: entry.by }), ...(entry.comment && { comment: entry.comment }), badges }
 }
 
 /**

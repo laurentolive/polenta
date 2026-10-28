@@ -17,6 +17,8 @@ export interface HistoryEntry {
   /** Login ; absent seulement pour une entrée implicite d'un fichier jamais commité. */
   by?: string
   source?: HistorySource
+  /** GH163 — commentaire de modification saisi avec le changement (statut, MCP) ; absent si aucun. */
+  comment?: string
   /** Lecture seulement (spec §7) : valeur constatée dont la date de changement est inconnue. Jamais écrit. */
   implicit?: true
 }
@@ -27,6 +29,8 @@ export type ObjectHistory = Record<string, HistoryEntry[]>
 export interface HistoryActor {
   by: string
   source?: HistorySource
+  /** GH163 — posé sur chaque entrée créée par cette écriture (jamais sur une entrée de rattrapage). */
+  comment?: string
 }
 
 /** Date et auteur du dernier commit du fichier, pour dater une valeur dont on ignore le moment de pose. */
@@ -130,10 +134,14 @@ function currentValue(obj: HistoryCarrier, key: string): unknown {
   return key === STATUS_HISTORY_KEY ? obj.status : obj.fields?.[key]
 }
 
-function entry(base: Omit<HistoryEntry, 'by' | 'source'>, by: string | null | undefined, source: HistorySource | undefined): HistoryEntry {
+function entry(
+  base: Omit<HistoryEntry, 'by' | 'source' | 'comment'>, by: string | null | undefined, source: HistorySource | undefined,
+  comment?: string,
+): HistoryEntry {
   const e: HistoryEntry = { ...base }
   if (by) e.by = by
   if (source) e.source = source
+  if (comment?.trim()) e.comment = comment.trim()
   return e
 }
 
@@ -187,14 +195,14 @@ export function applyHistory<T extends HistoryCarrier>(
 
     if (!before) {
       if (isEmptyValue(cur)) continue
-      list.push(entry(key.mode === 'value' ? { value: storedValue(key.type, cur), at } : { at }, actor.by, actor.source))
+      list.push(entry(key.mode === 'value' ? { value: storedValue(key.type, cur), at } : { at }, actor.by, actor.source, actor.comment))
     } else {
       const prev = currentValue(before, key.key)
       if (hasGap(list, key, prev)) {
         list.push(entry({ value: storedValue(key.type, prev), at: gapTime(list, fallback.at, at) }, fallback.by, list.length === 0 ? 'schema' : undefined))
       }
       if (!sameHistoryValue(key.type, prev, cur)) {
-        list.push(entry(key.mode === 'value' ? { value: storedValue(key.type, cur), at } : { at }, actor.by, actor.source))
+        list.push(entry(key.mode === 'value' ? { value: storedValue(key.type, cur), at } : { at }, actor.by, actor.source, actor.comment))
       }
     }
 

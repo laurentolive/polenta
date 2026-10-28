@@ -398,8 +398,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('requirements:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.update(repoPath, id, dto as UpdateRequirementDto, workspaceDir))
 
-  r.handle('requirements:open-draft', (_e, repoPath: string, id: string, comment: string, workspaceDir?: string) =>
-    c.requirements.openDraft(repoPath, id, comment, workspaceDir))
+  r.handle('requirements:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string) =>
+    c.requirements.openDraft(repoPath, id, targetStatus, workspaceDir, comment))
 
   r.handle('requirements:transition', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.transition(repoPath, id, dto as TransitionRequirementDto, workspaceDir))
@@ -456,8 +456,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.tests.execute(repoPath, tcId, dto as ExecuteTestCaseDto, workspaceDir))
   r.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
     c.tests.findRuns(repoPath, tcId))
-  r.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string) =>
-    c.tests.openDraft(repoPath, id, targetStatus, workspaceDir))
+  r.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string) =>
+    c.tests.openDraft(repoPath, id, targetStatus, workspaceDir, comment))
 
   // ── Traceability ─────────────────────────────────────────────────────────────
   r.handle('traceability:matrix', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>

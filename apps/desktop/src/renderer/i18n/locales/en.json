@@ -813,6 +813,7 @@
     "editView": {
       "colType": "Type",
       "noConfiguredValue": "No configured value",
+      "statusCommentPlaceholder": "Status change comment (optional)",
       "userPlaceholder": "User…"
     },
     "linkCombobox": {

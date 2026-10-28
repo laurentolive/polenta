@@ -665,7 +665,8 @@ export interface ApiClient {
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     update(repoPath: string, id: string, dto: UpdateRequirementDto, workspaceDir?: string): Promise<Requirement>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
-    openDraft(repoPath: string, id: string, comment: string, workspaceDir?: string): Promise<Requirement>
+    /** GH163 — `comment` : commentaire de modification (historique du statut). */
+    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<Requirement>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     transition(repoPath: string, id: string, dto: TransitionRequirementDto, workspaceDir?: string): Promise<Requirement>
     // TODO: remove versioning API
@@ -697,7 +698,7 @@ export interface ApiClient {
     execute(repoPath: string, tcId: string, dto: ExecuteTestCaseDto, workspaceDir?: string): Promise<TestRun>
     runs(repoPath: string, tcId: string): Promise<TestRun[]>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
-    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string): Promise<TestCase>
+    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<TestCase>
   }
   traceability: {
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */

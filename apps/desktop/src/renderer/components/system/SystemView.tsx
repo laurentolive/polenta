@@ -736,12 +736,13 @@ export function SystemView() {
   }
 
   const autoSaveMutation = useMutation({
-    mutationFn: async ({ objectId, field, value }: { objectId: string; field: string; value: string }) => {
+    // GH163 — `comment` : commentaire de modification d'un changement de statut (formulaire).
+    mutationFn: async ({ objectId, field, value, comment }: { objectId: string; field: string; value: string; comment?: string }) => {
       const cat = effectiveType?.category
       if (!cat || !repoPath || !objectId) return
       if (field === 'status') {
-        if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value })
-        if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value } as UpdateTestCaseDto)
+        if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value, comment })
+        if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto)
         return
       }
       if (SYSTEM_FIELDS_SET.has(field)) return
@@ -850,13 +851,13 @@ export function SystemView() {
       .catch(err => console.error('[DndRow] Erreur save tree:', err))
   }, [repoPath, effectiveNodeId, effectiveTypeId, setRoot, qc])
 
-  const handleEditBlurField = useCallback(async (field: string, value: string) => {
+  const handleEditBlurField = useCallback(async (field: string, value: string, comment?: string) => {
     if (field === 'name' && editingNodeId && value.trim()) {
       handleRenameNode(editingNodeId, value.trim())
       return
     }
     if (editingObjectId) {
-      autoSaveMutation.mutate({ objectId: editingObjectId, field, value })
+      autoSaveMutation.mutate({ objectId: editingObjectId, field, value, comment })
     } else if (field === 'title' && value.trim() && editingNodeId && effectiveType && repoPath) {
       const objectTypeRef = `${effectiveNodeId}::${effectiveTypeId}`
       setIsCreating(true)

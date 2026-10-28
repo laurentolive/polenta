@@ -168,7 +168,9 @@ export const ROOT_PARAM_NAME = /^(?!rel)[a-zA-Z]*(RepoPath|repoPath|repoPaths|Di
 export const CONTENT_ARGS: Record<string, number[]> = {
   'sync:commit': [1], // message
   'merge-resolution:validate': [2], // contenu du fichier
-  'requirements:open-draft': [2], // commentaire
+  // GH163 — commentaire de modification (index 4) ; l'index 2 est le statut visé.
+  'requirements:open-draft': [2, 4],
+  'tests:open-draft': [4],
 }
 
 /**

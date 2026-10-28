@@ -107,7 +107,7 @@ export class TestsService {
         fields: opts.removeNullFields
           ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
           : { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      })
+      }, { comment: dto.modificationComment })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(typeDef, existing.status, dto.status)
       return { updated, leftApproval }
@@ -117,7 +117,8 @@ export class TestsService {
     return updated
   }
 
-  async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string): Promise<TestCase> {
+  /** GH163 — `comment` : commentaire de modification, conservé sur l'entrée d'historique du statut. */
+  async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<TestCase> {
     const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
@@ -127,7 +128,7 @@ export class TestsService {
         ...existing,
         status: targetStatus,
         version: (existing.version ?? 0) + 1,
-      })
+      }, { comment })
       const leftApproval = RevalidationService.leavesApproval(
         await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, targetStatus)
       return { updated, leftApproval }
@@ -183,10 +184,10 @@ export class TestsService {
   private async persist(
     repoPath: string, targetRepo: string, before: TestCase | null, after: TestCase,
     /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
-    opts: { raw?: boolean } = {},
+    opts: { raw?: boolean; comment?: string } = {},
   ): Promise<TestCase> {
     const stamped = this.history && !opts.raw
-      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo)
+      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, opts.comment)
       : after
     await this.git.writeYaml(targetRepo, `tests/${stamped.id}.yaml`, omitAuditFields(stamped))
     this.testsIndex.upsertTestCase(repoPath, stamped)

@@ -30,8 +30,9 @@
 
 ## Vérification
 
-- **Non exécutée sur ce poste** (pas de Node) : `pnpm typecheck`, `pnpm lint`, `pnpm test`
-  restent à lancer, ainsi que la vérification visuelle dans l'appli.
+- `pnpm typecheck` : 0 erreur (après fusion de main, correctif GH185).
+- `constellationLayout.test.ts` : 8/8 ; `pnpm test` : 663 tests OK, 20 suites non chargées faute de binaire Electron sur le poste (sans lien).
+- Contrôle visuel dans l'appli : à faire.
 
 ## Tester à la main
 

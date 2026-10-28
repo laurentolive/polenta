@@ -306,6 +306,9 @@ export function createIpcClient(
         invoke('pref:get-field-visibility', repoPath, username, typeKey),
       setFieldVisibility: (repoPath, username, typeKey, views) =>
         invoke('pref:set-field-visibility', repoPath, username, typeKey, views),
+      getPublishMerge: (repoPath, username, branch) => invoke('pref:get-publish-merge', repoPath, username, branch),
+      setPublishMerge: (repoPath, username, branch, merge) =>
+        invoke('pref:set-publish-merge', repoPath, username, branch, merge),
     },
     suivi: {
       run: (repoPath, workspaceDir, username, req, client) => invoke('suivi:run', repoPath, workspaceDir, username, req, client),

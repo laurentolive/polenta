@@ -10,8 +10,8 @@ import { designateNotices, useDesignateIntegration } from '../../hooks/useDesign
 import { useVersioning } from '../../contexts/VersioningContext'
 import type { PinPropagationOutcome } from '../../lib/workspaceActions'
 import {
-  publishWorkspace, PublishBlockedError, PublishConflictError, PublishDivergedError, PublishNetworkError, PublishRepoError,
-  type EphemeralBranch, type PublishedRepo,
+  offIntegrationRepos, publishWorkspace, PublishBlockedError, PublishConflictError, PublishDivergedError, PublishNetworkError,
+  PublishRepoError, type EphemeralBranch, type PublishedRepo,
 } from '../../lib/publishWorkspace'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
 
@@ -102,6 +102,12 @@ export function ModificationControl({ currentProjectId }: Props) {
   >(null)
   const [pushError, setPushError] = useState<string | null>(null)
   const [pinWarning, setPinWarning] = useState<PinPropagationOutcome | null>(null)
+  // GH133: « Fusionner dans <intégration> » — only offered when a repo to publish sits on a
+  // user-owned branch; initialized from the choice remembered per branch once those repos are known.
+  const [merge, setMerge] = useState(true)
+  const [mergeInitialized, setMergeInitialized] = useState(false)
+  // GH133: repos just published on their own branch, without merging — confirmation to the user.
+  const [unmergedNotice, setUnmergedNotice] = useState<PublishedRepo[]>([])
   // T87: an ephemeral `dev-<slug>` branch created by a previous "Publier" attempt that conflicted
   // and was therefore never cleaned up — the user is left checked out on it. Tracked (scoped to
   // the repo it was created for) so that retrying "Publier" from that same branch still finishes
@@ -137,6 +143,41 @@ export function ModificationControl({ currentProjectId }: Props) {
     refetchVersioning()
   }
 
+  // Plain repo, or workspace structure still loading: `tree` is empty — fall back to the repo
+  // concerné alone, i.e. exactly the pre-GH38 behavior.
+  const publishRoots = tree.length > 0
+    ? tree
+    : [{ name: 'root', repoPath, url: '', pin: '', isInterface: false, children: [] }]
+
+  const { data: username = 'local' } = useQuery({
+    queryKey: ['project-username', repoPath],
+    queryFn: () => api.auth.projectUsername(repoPath),
+    enabled: !!repoPath,
+    retry: false,
+  })
+
+  // GH133: read when the popup opens (and again if the pending repos change under it).
+  const { data: offRepos = [] } = useQuery({
+    queryKey: ['publish-off-integration', repoPath, branch, pendingSignature],
+    queryFn: () => offIntegrationRepos(publishRoots, ephemeralBranch),
+    enabled: showPublishPopup && !!repoPath,
+  })
+
+  // GH133 (Q2/Q3): unticked only if every repo off its integration branch was last published from
+  // that same branch without merging; no remembered choice, or differing ones → ticked.
+  useEffect(() => {
+    if (!showPublishPopup) { setMergeInitialized(false); return }
+    if (mergeInitialized || offRepos.length === 0) return
+    let cancelled = false
+    Promise.all(offRepos.map(r => api.pref.getPublishMerge(r.repo.repoPath, username, r.branch).catch(() => null)))
+      .then(choices => {
+        if (cancelled) return
+        setMerge(!choices.every(c => c === false))
+        setMergeInitialized(true)
+      })
+    return () => { cancelled = true }
+  }, [showPublishPopup, offRepos, username, mergeInitialized])
+
   // Push is best-effort and doesn't gate "Publier" completing — the merges are already durable
   // locally at this point. Deliberately not awaited: a slow/flaky remote shouldn't keep the dialog
   // on "Publication…" once the local work is safely merged. GH38: one push per published repo,
@@ -146,7 +187,9 @@ export function ModificationControl({ currentProjectId }: Props) {
   // ignores a repo flagged `sync:pushing` (legitimately ahead until its push lands).
   function pushPublished(published: PublishedRepo[]) {
     published.forEach(r => qc.setQueryData(['sync:pushing', r.repoPath], true))
-    Promise.allSettled(published.map(r => api.sync.pushBranch(r.repoPath, r.integrationBranch)))
+    // GH133: a repo published without merging pushes its own branch (created on origin if absent;
+    // a non fast-forward is refused, never forced).
+    Promise.allSettled(published.map(r => api.sync.pushBranch(r.repoPath, r.pushBranch)))
       .then(results => {
         results.forEach((res, i) => {
           const { repoPath } = published[i]
@@ -167,19 +210,17 @@ export function ModificationControl({ currentProjectId }: Props) {
   // `mode` (repo concerné) still drives the button's visibility; a candidate repo on a blocked
   // branch is refused by `publishWorkspace` before anything is touched.
   const publishMutation = useMutation({
-    mutationFn: () => {
-      // Plain repo, or workspace structure still loading: `tree` is empty — fall back to the repo
-      // concerné alone, i.e. exactly the pre-GH38 behavior.
-      const roots = tree.length > 0
-        ? tree
-        : [{ name: 'root', repoPath, url: '', pin: '', isInterface: false, children: [] }]
+    mutationFn: async () => {
+      // GH133 (Q2): the choice is remembered for each repo published from a user-owned branch.
+      await Promise.all(offRepos.map(r => api.pref.setPublishMerge(r.repo.repoPath, username, r.branch, merge).catch(() => {})))
       return publishWorkspace({
         workspaceDir,
         flatNodes,
-        roots,
+        roots: publishRoots,
         title,
         ephemeral: ephemeralBranch,
         onEphemeralChange: setEphemeralBranch,
+        merge: offRepos.length > 0 ? merge : true,
       })
     },
     onSuccess: (result) => {
@@ -187,6 +228,7 @@ export function ModificationControl({ currentProjectId }: Props) {
       setPopupOpenedFor(null)
       setTitle('')
       setPublishError(null)
+      setUnmergedNotice(result.published.filter(r => !r.merged))
       // T82: set before invalidateAll() below, which can flip `mode`/`branch` and would otherwise
       // race the reset effect that clears pinWarning.
       setPinWarning(result.pinOutcome)
@@ -303,7 +345,11 @@ export function ModificationControl({ currentProjectId }: Props) {
     publishMutation.mutate()
   }
 
-  const showNotifications = !!pushError || (!!pinWarning && (pinWarning.conflicted.length > 0 || pinWarning.failed.length > 0))
+  const showNotifications = !!pushError || unmergedNotice.length > 0
+    || (!!pinWarning && (pinWarning.conflicted.length > 0 || pinWarning.failed.length > 0))
+  // GH133: one line per repo off its integration branch, prefixed with the repo name in multi-repo.
+  const prefixRepo = flatNodes.length > 1 || offRepos.length > 1
+  const integrations = new Set(offRepos.map(r => r.integrationBranch))
 
   return (
     <div className="relative flex items-center gap-2 shrink-0">
@@ -367,6 +413,26 @@ export function ModificationControl({ currentProjectId }: Props) {
 
       {showNotifications && (
         <div className="absolute right-0 top-full mt-1.5 z-40 flex flex-col items-end gap-1.5">
+          {unmergedNotice.length > 0 && (
+            <div className="bg-surface border border-edge rounded px-2 py-1.5 max-w-xs shadow flex items-start gap-2">
+              <div className="text-xs text-ink-2 leading-snug">
+                {unmergedNotice.map(r => (
+                  <p key={r.repoPath}>
+                    {prefixRepo && `${repoName(r)} : `}
+                    <Trans
+                      i18nKey="layout.modificationControl.publishedUnmerged"
+                      values={{ branch: r.pushBranch, integration: r.integrationBranch }}
+                      components={{ mono: <span className="font-mono" /> }}
+                    />
+                  </p>
+                ))}
+              </div>
+              <button type="button" onClick={() => setUnmergedNotice([])} className="text-ink-3 hover:text-ink shrink-0">
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
           {pushError && (
             <div className="bg-surface border border-edge rounded px-2 py-1.5 max-w-xs shadow flex items-start gap-2">
               <p className="text-xs text-status-warning leading-snug">
@@ -389,6 +455,32 @@ export function ModificationControl({ currentProjectId }: Props) {
       {mode === 'active' && showPublishPopup && (
         <PublishPopover onClose={() => setShowPublishPopup(false)}>
           <h2 className="font-semibold mb-4 text-sm text-ink">{t('layout.modificationControl.publish')}</h2>
+          {offRepos.length > 0 && (
+            <div className="mb-4 rounded border border-status-warning-border bg-status-warning-bg px-3 py-2">
+              {offRepos.map(r => (
+                <p key={r.repo.repoPath} className="text-xs text-ink-2 leading-snug mb-1">
+                  {prefixRepo && `${repoName(r.repo)} : `}
+                  <Trans
+                    i18nKey={merge ? 'layout.modificationControl.offIntegrationMerge' : 'layout.modificationControl.offIntegrationNoMerge'}
+                    values={{ branch: r.branch, integration: r.integrationBranch }}
+                    components={{ mono: <span className="font-mono" /> }}
+                  />
+                </p>
+              ))}
+              <label className="flex items-center gap-2 text-xs text-ink mt-2 cursor-pointer">
+                <input type="checkbox" checked={merge} onChange={e => setMerge(e.target.checked)} />
+                {integrations.size === 1
+                  ? (
+                    <Trans
+                      i18nKey="layout.modificationControl.mergeInto"
+                      values={{ integration: [...integrations][0] }}
+                      components={{ mono: <span className="font-mono" /> }}
+                    />
+                  )
+                  : t('layout.modificationControl.mergeIntoIntegration')}
+              </label>
+            </div>
+          )}
           <input
             type="text"
             value={title}

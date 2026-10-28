@@ -11,6 +11,8 @@ import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
 import { RepoAccessBanner } from './RepoAccessBanner'
+import { JobBanner } from '../admin/JobBanner'
+import { capabilities } from '../../platform'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
 
@@ -238,6 +240,7 @@ export function AppLayout() {
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <ForgeAccessBanner />
+        {capabilities.serverAdmin && <JobBanner />}
         {currentProjectId && <RepoAccessBanner projectId={currentProjectId} />}
         <main className="flex-1 overflow-auto">
           <Outlet />

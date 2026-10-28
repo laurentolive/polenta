@@ -29,6 +29,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as ComplianceRouteImport } from './routes/compliance'
 import { Route as BaselineRouteImport } from './routes/baseline'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TestNewRouteImport } from './routes/test.new'
@@ -148,6 +149,11 @@ const BaselineRoute = BaselineRouteImport.update({
   path: '/baseline',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AccountRoute = AccountRouteImport.update({
   id: '/account',
   path: '/account',
@@ -244,6 +250,7 @@ const CampaignCampaignIdExecuteTestIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
@@ -284,6 +291,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
@@ -325,6 +333,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
@@ -367,6 +376,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/account'
+    | '/admin'
     | '/baseline'
     | '/compliance'
     | '/components'
@@ -407,6 +417,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/account'
+    | '/admin'
     | '/baseline'
     | '/compliance'
     | '/components'
@@ -447,6 +458,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/account'
+    | '/admin'
     | '/baseline'
     | '/compliance'
     | '/components'
@@ -488,6 +500,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountRoute: typeof AccountRoute
+  AdminRoute: typeof AdminRoute
   BaselineRoute: typeof BaselineRoute
   ComplianceRoute: typeof ComplianceRoute
   ComponentsRoute: typeof ComponentsRoute
@@ -668,6 +681,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BaselineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/account': {
       id: '/account'
       path: '/account'
@@ -800,6 +820,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRoute,
+  AdminRoute: AdminRoute,
   BaselineRoute: BaselineRoute,
   ComplianceRoute: ComplianceRoute,
   ComponentsRoute: ComponentsRoute,

@@ -17,4 +17,9 @@ export const capabilities = {
   autoUpdate: !isWeb,
   /** Comptes multiples, PAT, Device Flow : sur le web, le compte est celui de la session. */
   accountManagement: !isWeb,
+  /**
+   * GH63 — administration du serveur (version web) : la visibilité réelle vient de
+   * `GET /admin/api/me` (propriétaire de l'organisation). Le desktop n'envoie aucune requête admin.
+   */
+  serverAdmin: isWeb,
 } as const

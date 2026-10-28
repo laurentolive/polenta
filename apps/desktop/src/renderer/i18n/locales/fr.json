@@ -1786,5 +1786,146 @@
       "designated": "{{branch}} est la branche d'intégration de ce repo : désignez-en une autre avant de la supprimer.",
       "lastIntegration": "{{branch}} est la dernière branche d'intégration de ce repo : un repo ne doit jamais rester sans branche d'intégration."
     }
+  },
+  "admin": {
+    "title": "Administration",
+    "menuEntry": "Administration du serveur",
+    "unavailable": "Administration indisponible : réservée aux propriétaires de l'organisation, sur un serveur où elle est activée.",
+    "levelInstance": "Vous administrez l'instance {{instance}}.",
+    "levelHost": "Vous administrez l'hôte {{host}} et toutes ses instances (instance d'exploitation : {{instance}}).",
+    "tabs": {
+      "instances": "Instances",
+      "backups": "Sauvegardes",
+      "host": "Hôte",
+      "journal": "Journal",
+      "dns": "DNS"
+    },
+    "state": {
+      "queued": "En attente",
+      "running": "En cours",
+      "rebooting": "Redémarrage…",
+      "succeeded": "Réussi",
+      "failed": "Échec",
+      "rolled-back": "Annulé, retour arrière effectué",
+      "cancelled": "Interrompu",
+      "interrupted": "Interrompu (redémarrage)"
+    },
+    "op": {
+      "instance.list": "Liste des instances",
+      "instance.add": "Ajout d'instance",
+      "instance.stop": "Arrêt",
+      "instance.start": "Démarrage",
+      "instance.sync": "Remise à niveau",
+      "instance.remove": "Suppression d'instance",
+      "forge.update": "Mise à jour de la forge",
+      "backup.run": "Sauvegarde",
+      "backup.list": "Liste des sauvegardes",
+      "dns.check": "Vérification DNS",
+      "web.enable": "Activation du client web",
+      "web.disable": "Désactivation du client web",
+      "host.setup": "Remise à niveau de l'hôte",
+      "host.reboot": "Redémarrage de l'hôte",
+      "fail2ban.status": "État fail2ban",
+      "fail2ban.unban": "Déblocage d'une adresse",
+      "firewall.status": "État du pare-feu"
+    },
+    "audit": {
+      "accepted": "accepté",
+      "succeeded": "réussi",
+      "failed": "échec",
+      "rolled-back": "retour arrière",
+      "cancelled": "annulé",
+      "refused": "refusé",
+      "interrupted": "interrompu"
+    },
+    "confirm": {
+      "typeName": "Saisissez « {{name}} » pour confirmer"
+    },
+    "errors": {
+      "locked": "Une autre opération est en cours : {{operation}} par {{actor}} depuis {{since}}."
+    },
+    "job": {
+      "title": "Opération",
+      "cancel": "Annuler l'opération",
+      "reconnecting": "Connexion perdue, nouvelle tentative…",
+      "rebooting": "L'hôte redémarre ; cette page reprend le suivi à son retour.",
+      "revealSecret": "Afficher la valeur à usage unique",
+      "secretOnce": "Elle ne sera affichée qu'une fois : copiez-la maintenant.",
+      "result": "Résultat"
+    },
+    "banner": {
+      "running": "Opération en cours sur le serveur : {{operation}} ({{actor}}, {{origin}}).",
+      "open": "Voir"
+    },
+    "instances": {
+      "name": "Instance",
+      "domain": "Domaine",
+      "version": "Forge",
+      "state": "État",
+      "lastBackup": "Dernière sauvegarde",
+      "actions": "Actions",
+      "current": "celle-ci",
+      "backup": "Sauvegarder",
+      "sync": "Remettre à niveau",
+      "start": "Démarrer",
+      "stop": "Arrêter",
+      "webDisable": "Désactiver le client web",
+      "remove": "Supprimer",
+      "update": "Mettre à jour",
+      "versionInput": "Version de la forge pour {{name}}",
+      "stopTitle": "Arrêter l'instance {{name}} ?",
+      "stopMessage": "La forge et le client web de cette instance seront arrêtés. Les données sont conservées.",
+      "removeTitle": "Supprimer définitivement l'instance {{name}} ?",
+      "removeMessage": "Un export est fait avant la suppression. Les données de la forge sont ensuite effacées de l'hôte.",
+      "updateTitle": "Mettre à jour la forge de {{name}} en {{version}} ?",
+      "updateMessage": "Une sauvegarde est faite avant ; en cas d'échec, la version précédente est rétablie automatiquement.",
+      "updateSelfWarning": "C'est la forge de cette instance : la page perdra la connexion quelques minutes puis reprendra le suivi. Une sauvegarde est faite avant, avec retour arrière automatique en cas d'échec."
+    },
+    "backups": {
+      "instance": "Instance",
+      "tag": "Étiquette",
+      "run": "Lancer une sauvegarde",
+      "none": "Aucune sauvegarde.",
+      "id": "Instantané",
+      "time": "Date",
+      "tags": "Étiquettes"
+    },
+    "host": {
+      "state": "État de l'hôte",
+      "agent": "Agent hôte",
+      "agent_up": "présent",
+      "agent_absent": "absent",
+      "caddy": "Caddy",
+      "modules": "Modules actifs",
+      "agentAbsent": "Agent hôte absent : action disponible par SSH seulement.",
+      "moduleAbsent": "Module « {{module}} » non actif sur cet hôte.",
+      "fail2banStatus": "Afficher l'état",
+      "ip": "Adresse IP à débloquer",
+      "unban": "Débloquer",
+      "firewall": "Pare-feu",
+      "firewallStatus": "Afficher l'état",
+      "maintenance": "Maintenance",
+      "setup": "Remettre l'hôte à niveau",
+      "reboot": "Redémarrer l'hôte",
+      "setupTitle": "Remettre l'hôte à niveau ?",
+      "setupMessage": "Rejoue « polenta-host setup » avec les modules déjà choisis. Aucun module n'est ajouté.",
+      "sshHardeningConfirm": "Le durcissement SSH est actif : je confirme que des clés SSH valides sont en place.",
+      "rebootTitle": "Redémarrer l'hôte ?",
+      "rebootMessage": "Toutes les instances seront indisponibles pendant quelques minutes."
+    },
+    "journal": {
+      "from": "Depuis le",
+      "exportCsv": "Exporter en CSV",
+      "empty": "Aucune entrée.",
+      "when": "Quand",
+      "who": "Qui",
+      "operation": "Opération",
+      "target": "Cible",
+      "result": "Résultat"
+    },
+    "dns": {
+      "domain": "Domaine",
+      "check": "Vérifier"
+    }
   }
 }

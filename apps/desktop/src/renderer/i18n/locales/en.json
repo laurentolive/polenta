@@ -1786,5 +1786,146 @@
       "designated": "{{branch}} is the integration branch of this repo: designate another one before deleting it.",
       "lastIntegration": "{{branch}} is the last integration branch of this repo: a repo must never be left without an integration branch."
     }
+  },
+  "admin": {
+    "title": "Administration",
+    "menuEntry": "Server administration",
+    "unavailable": "Administration unavailable: reserved to organization owners, on a server where it is enabled.",
+    "levelInstance": "You administer the {{instance}} instance.",
+    "levelHost": "You administer host {{host}} and all its instances (operations instance: {{instance}}).",
+    "tabs": {
+      "instances": "Instances",
+      "backups": "Backups",
+      "host": "Host",
+      "journal": "Journal",
+      "dns": "DNS"
+    },
+    "state": {
+      "queued": "Queued",
+      "running": "Running",
+      "rebooting": "Rebooting…",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "rolled-back": "Failed, rolled back",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted (restart)"
+    },
+    "op": {
+      "instance.list": "Instance list",
+      "instance.add": "Add instance",
+      "instance.stop": "Stop",
+      "instance.start": "Start",
+      "instance.sync": "Resync",
+      "instance.remove": "Remove instance",
+      "forge.update": "Forge update",
+      "backup.run": "Backup",
+      "backup.list": "Backup list",
+      "dns.check": "DNS check",
+      "web.enable": "Enable web client",
+      "web.disable": "Disable web client",
+      "host.setup": "Host setup",
+      "host.reboot": "Host reboot",
+      "fail2ban.status": "fail2ban status",
+      "fail2ban.unban": "Unban address",
+      "firewall.status": "Firewall status"
+    },
+    "audit": {
+      "accepted": "accepted",
+      "succeeded": "succeeded",
+      "failed": "failed",
+      "rolled-back": "rolled back",
+      "cancelled": "cancelled",
+      "refused": "refused",
+      "interrupted": "interrupted"
+    },
+    "confirm": {
+      "typeName": "Type “{{name}}” to confirm"
+    },
+    "errors": {
+      "locked": "Another operation is running: {{operation}} by {{actor}} since {{since}}."
+    },
+    "job": {
+      "title": "Operation",
+      "cancel": "Cancel operation",
+      "reconnecting": "Connection lost, retrying…",
+      "rebooting": "The host is rebooting; this page resumes when it is back.",
+      "revealSecret": "Show the one-time value",
+      "secretOnce": "It is shown only once: copy it now.",
+      "result": "Result"
+    },
+    "banner": {
+      "running": "Operation running on the server: {{operation}} ({{actor}}, {{origin}}).",
+      "open": "Open"
+    },
+    "instances": {
+      "name": "Instance",
+      "domain": "Domain",
+      "version": "Forge",
+      "state": "State",
+      "lastBackup": "Last backup",
+      "actions": "Actions",
+      "current": "this one",
+      "backup": "Back up",
+      "sync": "Resync",
+      "start": "Start",
+      "stop": "Stop",
+      "webDisable": "Disable web client",
+      "remove": "Remove",
+      "update": "Update",
+      "versionInput": "Forge version for {{name}}",
+      "stopTitle": "Stop instance {{name}}?",
+      "stopMessage": "The forge and web client of this instance will be stopped. Data is kept.",
+      "removeTitle": "Permanently remove instance {{name}}?",
+      "removeMessage": "An export is made first. The forge data is then erased from the host.",
+      "updateTitle": "Update the forge of {{name}} to {{version}}?",
+      "updateMessage": "A backup is made first; on failure the previous version is restored automatically.",
+      "updateSelfWarning": "This is this instance's forge: the page will lose its connection for a few minutes, then resume. A backup is made first, with automatic rollback on failure."
+    },
+    "backups": {
+      "instance": "Instance",
+      "tag": "Tag",
+      "run": "Run a backup",
+      "none": "No backups.",
+      "id": "Snapshot",
+      "time": "Date",
+      "tags": "Tags"
+    },
+    "host": {
+      "state": "Host state",
+      "agent": "Host agent",
+      "agent_up": "present",
+      "agent_absent": "absent",
+      "caddy": "Caddy",
+      "modules": "Active modules",
+      "agentAbsent": "Host agent absent: available over SSH only.",
+      "moduleAbsent": "Module “{{module}}” not active on this host.",
+      "fail2banStatus": "Show status",
+      "ip": "IP address to unban",
+      "unban": "Unban",
+      "firewall": "Firewall",
+      "firewallStatus": "Show status",
+      "maintenance": "Maintenance",
+      "setup": "Re-run host setup",
+      "reboot": "Reboot host",
+      "setupTitle": "Re-run host setup?",
+      "setupMessage": "Replays “polenta-host setup” with the modules already chosen. No module is added.",
+      "sshHardeningConfirm": "SSH hardening is active: I confirm valid SSH keys are in place.",
+      "rebootTitle": "Reboot the host?",
+      "rebootMessage": "All instances will be unavailable for a few minutes."
+    },
+    "journal": {
+      "from": "Since",
+      "exportCsv": "Export CSV",
+      "empty": "No entries.",
+      "when": "When",
+      "who": "Who",
+      "operation": "Operation",
+      "target": "Target",
+      "result": "Result"
+    },
+    "dns": {
+      "domain": "Domain",
+      "check": "Check"
+    }
   }
 }

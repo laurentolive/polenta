@@ -7,6 +7,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { useLocale } from '../../i18n/useLocale'
 import { capabilities } from '../../platform'
 import { useCurrentAccount } from '../../hooks/useCurrentAccount'
+import { useAdminMe } from '../../hooks/useAdmin'
 import { useTeamConfig } from '../../hooks/useTeamConfig'
 import { BRAND } from '../../../shared/brand'
 
@@ -16,6 +17,7 @@ export function AccountPanel() {
   const { theme, toggle } = useTheme()
   const { locale, setLocale } = useLocale()
   const { account: identity, loading, logout } = useCurrentAccount()
+  const { me: adminMe } = useAdminMe()
   // GH26 — préférence app-level (userData), lue par le main au démarrage suivant.
   const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean | null>(null)
   // GH45 — verrouillée par la configuration machine (autoUpdate: false).
@@ -94,6 +96,17 @@ export function AccountPanel() {
           </div>
 
           <div className="border-t border-edge-subtle pt-4 flex flex-col gap-2">
+            {/* GH63 — propriétaires seulement (GET /admin/api/me), version web seulement. */}
+            {adminMe && (
+              <button
+                type="button"
+                onClick={() => navigate({ to: '/admin' })}
+                className="w-full text-left px-3 py-2 text-sm rounded border border-edge text-ink-2 hover:bg-hover transition-colors"
+                data-testid="account-admin"
+              >
+                {t('admin.menuEntry')}
+              </button>
+            )}
             {capabilities.accountManagement && (
               <button
                 type="button"

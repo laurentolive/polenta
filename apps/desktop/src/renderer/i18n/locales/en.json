@@ -369,6 +369,8 @@
       "noComponentConfiguredBody": "No component configured.",
       "goToDataModel": "Go to Project → Data model.",
       "noElementConfiguredForComponent": "No element configured for this component.",
+      "noTypeForCategory": "No “{{category}}” type configured for this component.",
+      "openDataModel": "Open the Data model",
       "newCampaign": "New campaign",
       "noCampaign": "No campaign",
       "createFirstCampaign": "Create the first one",

@@ -368,13 +368,14 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const effectiveNode = findSystemNode(nodes, selectedNodeId) ?? nodes[0]
   const effectiveNodeId = effectiveNode?.name ?? ''
   const objectTypes = effectiveNode?.objectTypes ?? []
-  // Falls back to a type matching the active tab's category before an unfiltered objectTypes[0]
-  // — an invalid/stale `type` param (deleted type, old link) should still land on this tab's own
-  // content rather than momentarily showing a type from a different category (T145).
+  // Restricted to the active tab's category — an invalid/stale `type` param (deleted type, old
+  // link) should still land on this tab's own content rather than showing a type from a different
+  // category (T145). No type of this category on the node → undefined, and the views show their
+  // "no type of this category" state instead of e.g. requirements under Campagnes (GH144).
+  const categoryTypes = objectTypes.filter(t => t.category === urlCategory)
   const effectiveType =
-    objectTypes.find(t => t.name === selectedTypeId) ??
-    objectTypes.find(t => t.category === urlCategory) ??
-    objectTypes[0]
+    categoryTypes.find(t => t.name === selectedTypeId) ??
+    categoryTypes[0]
   const effectiveTypeId = effectiveType?.name ?? ''
 
   // Helper: navigate to update repo/node/type in URL, preserving route-specific params

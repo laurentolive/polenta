@@ -473,7 +473,7 @@ champs modifiés : `required` non vidé, `validator: EARS` conforme.
 en sortie d'approbation, revalidation T172), `TestsService.update({ status })` pour un test (version
 non incrémentée : #164). Une entrée sans changement est renvoyée `changed: false` sans écriture ;
 une erreur sur le statut après écriture du contenu est rapportée `partial: true`.
-`modificationComment` n'est pas exposé (non conservé par les services : #163).
+`modificationComment` (GH163) est posé sur les entrées d'historique créées par l'entrée ; sans changement de champ suivi, il n'est conservé nulle part et l'entrée de `updated` porte un `warning`.
 
 #### `list_parameters` / `set_parameters` / `delete_parameter`
 

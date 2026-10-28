@@ -206,7 +206,7 @@ export function createIpcClient(
       get: (p, id) => invoke('requirements:get', p, id),
       create: (p, dto, workspaceDir) => invoke('requirements:create', p, dto, workspaceDir),
       update: (p, id, dto, workspaceDir) => invoke('requirements:update', p, id, dto, workspaceDir),
-      openDraft: (p, id, c, workspaceDir) => invoke('requirements:open-draft', p, id, c, workspaceDir),
+      openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('requirements:open-draft', p, id, targetStatus, workspaceDir, comment),
       transition: (p, id, dto, workspaceDir) => invoke('requirements:transition', p, id, dto, workspaceDir),
       // TODO: remove versioning API
       links: (p, id) => invoke('requirements:links', p, id),
@@ -226,7 +226,7 @@ export function createIpcClient(
       update: (p, id, dto, workspaceDir) => invoke('tests:update', p, id, dto, workspaceDir),
       execute: (p, id, dto, workspaceDir) => invoke('tests:execute', p, id, dto, workspaceDir),
       runs: (p, id) => invoke('tests:runs', p, id),
-      openDraft: (p, id, targetStatus, workspaceDir) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir),
+      openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment),
     },
     traceability: {
       matrix: (p, f, workspaceDir) => invoke('traceability:matrix', p, f, workspaceDir),

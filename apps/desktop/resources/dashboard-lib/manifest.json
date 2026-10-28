@@ -119,6 +119,14 @@
             "fr": "Paramètres choisis à l'affichage : polenta.params (GH93)",
             "en": "Parameters chosen when displayed: polenta.params (GH93)"
           }
+        },
+        {
+          "version": 3,
+          "hash": "250cd7f4a82902fc3cfed01c66f7aca383a54064d8bbecab65e4f4831904e2c0",
+          "summary": {
+            "fr": "Historique : commentaire de modification (comment) sur les entrées (GH163)",
+            "en": "History: modification comment (comment) on entries (GH163)"
+          }
         }
       ]
     },

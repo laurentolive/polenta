@@ -36,6 +36,8 @@ export const UpdateTestCaseSchema = z.object({
   steps: z.array(TestStepSchema).optional(),
   postconditions: z.string().optional(),
   fields: z.record(z.unknown()).optional(),
+  /** GH163 — conservé sur les entrées d'historique créées par la modification. */
+  modificationComment: z.string().optional(),
 })
 
 export const StepResultSchema = z.object({

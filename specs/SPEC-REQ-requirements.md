@@ -414,6 +414,13 @@ history:
   (MCP) ; nom de l'auteur du commit pour une entrée datée d'un commit (reprise, écart comblé).
 - `source` : `mcp`, `git` (reprise), `schema` (valeur constatée au démarrage du suivi) ; absent =
   saisie dans l'application.
+- `comment` (**GH163**) : commentaire de modification saisi avec le changement, posé sur chaque entrée
+  créée par cette écriture (jamais sur une entrée de rattrapage) ; absent si vide. Saisie : champ
+  « Commentaire du changement de statut » sous le statut du formulaire d'édition ;
+  `TransitionRequirementDto.comment`, `modificationComment` des DTO de modification,
+  `openDraft(…, comment)` ; MCP `update_requirements` / `update_tests` (`modificationComment`).
+  Sans changement de champ suivi, il n'est conservé nulle part. Affiché dans la section Historique,
+  renvoyé par `get_history`.
 
 **Alimentation** : toute écriture d'objet passe par `HistoryService.stamp`, depuis la méthode
 d'écriture unique de chaque service (`persist`) — une entrée par champ suivi dont la valeur change,

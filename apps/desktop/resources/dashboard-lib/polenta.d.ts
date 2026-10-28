@@ -340,6 +340,8 @@ export interface HistoryEntry {
   /** Login ; absent seulement pour une entrée implicite d'un fichier jamais commité. */
   by?: string
   source?: HistorySource
+  /** GH163 — commentaire de modification saisi avec le changement (statut, MCP) ; absent si aucun. */
+  comment?: string
   /** Lecture seulement (spec §7) : valeur constatée dont la date de changement est inconnue. Jamais écrit. */
   implicit?: true
 }

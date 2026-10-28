@@ -124,11 +124,12 @@ export class RequirementsService {
         fields: opts.removeNullFields
           ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
           : { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      })
+      }, { comment: dto.modificationComment })
     })
   }
 
-  async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string): Promise<Requirement> {
+  /** GH163 — `comment` : commentaire de modification, conservé sur l'entrée d'historique du statut. */
+  async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<Requirement> {
     const { updated, leftApproval } = await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
       const existing = await this.index.findById(repoPath, id)
       if (!existing) throw new Error(`Requirement ${id} not found`)
@@ -139,7 +140,7 @@ export class RequirementsService {
         ...existing,
         status: targetStatus,
         version: (existing.version ?? 0) + 1,
-      })
+      }, { comment })
       return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, targetStatus) }
     })
     // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
@@ -165,7 +166,7 @@ export class RequirementsService {
         ...existing,
         status: dto.toStatus,
         ...(wasApproved && dto.toStatus !== existing.status ? { version: (existing.version ?? 0) + 1 } : {}),
-      })
+      }, { comment: dto.comment })
       return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, dto.toStatus) }
     })
     // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
@@ -179,11 +180,12 @@ export class RequirementsService {
    */
   private async persist(
     repoPath: string, targetRepo: string, before: Requirement | null, after: Requirement,
-    /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
-    opts: { raw?: boolean } = {},
+    /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel.
+     *  `comment` (GH163) : commentaire de modification, posé sur les entrées d'historique créées. */
+    opts: { raw?: boolean; comment?: string } = {},
   ): Promise<Requirement> {
     const stamped = this.history && !opts.raw
-      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo)
+      ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, opts.comment)
       : after
     await this.git.writeYaml(targetRepo, `requirements/${stamped.id}.yaml`, omitAuditFields(stamped))
     this.index.upsert(repoPath, stamped)

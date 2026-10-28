@@ -40,6 +40,8 @@ export class HistoryService {
     after: T,
     audit: AuditDates | { filePath: string },
     ownerRepo?: string,
+    /** GH163 — commentaire de modification, posé sur les entrées créées par cette écriture. */
+    comment?: string,
   ): Promise<T> {
     const typeDef = await this.typeDef(repoPath, objectTypeRef, ownerRepo)
     const now = this.now()
@@ -48,7 +50,7 @@ export class HistoryService {
     const fallback = before && hasHistoryGap(before, typeDef) ? await this.fallback(ownerRepo ?? repoPath, audit) : { at: null, by: null }
     if (applyHistory(before, after, typeDef, { by: '' }, now, fallback) === after) return after
     const actor = await this.actor(repoPath).catch((): HistoryActor => ({ by: 'local' }))
-    return applyHistory(before, after, typeDef, actor, now, fallback)
+    return applyHistory(before, after, typeDef, { ...actor, ...(comment && { comment }) }, now, fallback)
   }
 
   /** Lecture effective (spec §7) : historique + entrées implicites, rien n'est écrit. */

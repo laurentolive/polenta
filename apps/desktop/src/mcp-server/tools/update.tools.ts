@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { ObjectCategory } from '@polenta/types'
+import type { ObjectCategory, ObjectHistory } from '@polenta/types'
 import { UpdateRequirementSchema, UpdateTestCaseSchema } from '@polenta/zod-schemas'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { McpContainer } from '../container'
@@ -14,12 +14,12 @@ import { planUpdate, type FieldChange, type UpdatableObject } from '../../main/s
  * Les écritures passent par les services de l'appli (`history` avec `source: mcp`, version,
  * revalidation T172). Une entrée qui change contenu et statut écrit d'abord le contenu
  * (`update`), puis le statut (exigences : `transition()` ; tests : `update({ status })`) — décision
- * 1 de specs/GH150.md. `modificationComment` n'est pas exposé : aucun service ne le conserve (#163).
+ * 1 de specs/GH150.md. GH163 — `modificationComment` est posé sur les entrées d'historique créées ;
+ * sans changement de champ suivi, il n'est conservé nulle part : avertissement sur l'entrée.
  */
 
 // `fields` : `z.unknown()` accepte `null`, qui retire le champ (fusion `mergeFields`).
 const requirementEntrySchema = UpdateRequirementSchema
-  .omit({ modificationComment: true })
   .extend({ id: z.string().min(1), status: z.string().min(1).optional() })
   .strict()
 
@@ -34,22 +34,30 @@ interface UpdateToolResult {
   dryRun: boolean
   summary: { total: number; ok: number; failed: number }
   /** `dryRun: false` uniquement — objets réécrits (ou inchangés : `changed: false`). */
-  updated: Array<{ index: number; id: string; version?: number; changed: boolean }>
+  updated: Array<{ index: number; id: string; version?: number; changed: boolean; warning?: string }>
   /** `dryRun: true` uniquement — modifications prévues, par champ. */
   preview: Array<{ index: number; id: string; changes: Record<string, FieldChange> }>
   errors: Array<{ index: number; id: string; reason: string; field?: string; partial?: boolean }>
 }
 
+type Written = { version?: number; history?: ObjectHistory }
+
 interface UpdateTarget<TEntry> {
   category: ObjectCategory
   extraKeys: readonly string[]
-  find: (id: string) => Promise<UpdatableObject & { version?: number }>
+  find: (id: string) => Promise<UpdatableObject & Written>
   /** Écrit le contenu (tout sauf `status`) ; renvoie l'objet écrit. */
-  writeContent: (entry: TEntry) => Promise<{ version?: number }>
-  writeStatus: (id: string, status: string) => Promise<{ version?: number }>
+  writeContent: (entry: TEntry) => Promise<Written>
+  writeStatus: (id: string, status: string, comment?: string) => Promise<Written>
 }
 
-async function runUpdate<TEntry extends { id: string; status?: string }>(
+/** Nombre total d'entrées d'historique (tous champs suivis). */
+const historySize = (o: Written | undefined) => Object.values(o?.history ?? {}).reduce((n, l) => n + l.length, 0)
+
+const NO_TRACKED_CHANGE = "modificationComment non conservé : aucun champ suivi (statut, champ trackHistory) n'a changé"
+
+
+async function runUpdate<TEntry extends { id: string; status?: string; modificationComment?: string }>(
   container: McpContainer,
   entries: TEntry[],
   dryRun: boolean,
@@ -62,7 +70,7 @@ async function runUpdate<TEntry extends { id: string; status?: string }>(
 
   // Série, jamais Promise.all : deux entrées sur le même ID s'appliquent dans l'ordre.
   for (const [index, entry] of entries.entries()) {
-    let existing: UpdatableObject & { version?: number }
+    let existing: UpdatableObject & Written
     try {
       existing = await target.find(entry.id)
     } catch {
@@ -84,11 +92,14 @@ async function runUpdate<TEntry extends { id: string; status?: string }>(
       result.updated.push({ index, id: entry.id, version: existing.version, changed: false })
       continue
     }
-    let written: { version?: number } | undefined
+    let written: Written | undefined
     try {
       if (changedKeys.some(k => k !== 'status')) written = await target.writeContent(entry)
-      if (plan.changes.status) written = await target.writeStatus(entry.id, entry.status!)
-      result.updated.push({ index, id: entry.id, version: written?.version, changed: true })
+      if (plan.changes.status) written = await target.writeStatus(entry.id, entry.status!, entry.modificationComment)
+      const commentLost = !!entry.modificationComment?.trim() && historySize(written) <= historySize(existing)
+      result.updated.push({
+        index, id: entry.id, version: written?.version, changed: true, ...(commentLost && { warning: NO_TRACKED_CHANGE }),
+      })
     } catch (e) {
       result.errors.push({
         index, id: entry.id, reason: e instanceof Error ? e.message : String(e),
@@ -117,16 +128,19 @@ export function registerUpdateTools(server: McpServer, container: McpContainer):
         "champs déclarés, valeurs d'enum, champs required non vidés, syntaxe EARS des champs modifiés) " +
         "et retourne l'avant/après par champ SANS RIEN ÉCRIRE. dryRun: false : écrit en série, " +
         "best-effort, par les règles de l'appli (historique, version, revalidation des éléments liés " +
-        "en sortie d'approbation). Ne jamais réécrire un YAML d'exigence à la main.",
+        "en sortie d'approbation). modificationComment (facultatif) : conservé sur les entrées d'historique " +
+        "créées par l'entrée (changement de statut ou de champ suivi), sinon avertissement. Ne jamais " +
+        "réécrire un YAML d'exigence à la main.",
       inputSchema: { entries: z.array(requirementEntrySchema), dryRun: z.boolean().optional().default(true) },
     },
     async ({ entries, dryRun }) => jsonToolResult(await runUpdate(container, entries, dryRun, {
       category: 'requirement',
       extraKeys: [],
       find: id => container.requirements.findOne(repoPath, id),
-      writeContent: ({ id, title, fields }) =>
-        container.requirements.update(repoPath, id, { title, fields }, workspaceDir, { removeNullFields: true }),
-      writeStatus: (id, status) => container.requirements.transition(repoPath, id, { toStatus: status }, workspaceDir),
+      writeContent: ({ id, title, fields, modificationComment }) =>
+        container.requirements.update(repoPath, id, { title, fields, modificationComment }, workspaceDir, { removeNullFields: true }),
+      writeStatus: (id, status, comment) =>
+        container.requirements.transition(repoPath, id, { toStatus: status, comment }, workspaceDir),
     })),
   )
 
@@ -143,11 +157,13 @@ export function registerUpdateTools(server: McpServer, container: McpContainer):
       category: 'test',
       extraKeys: TEST_STRUCTURE_KEYS,
       find: id => container.tests.findOne(repoPath, id),
-      writeContent: ({ id, title, fields, preconditions, postconditions, steps, equipment }) =>
+      writeContent: ({ id, title, fields, preconditions, postconditions, steps, equipment, modificationComment }) =>
         container.tests.update(
-          repoPath, id, { title, fields, preconditions, postconditions, steps, equipment }, workspaceDir, { removeNullFields: true },
+          repoPath, id, { title, fields, preconditions, postconditions, steps, equipment, modificationComment }, workspaceDir,
+          { removeNullFields: true },
         ),
-      writeStatus: (id, status) => container.tests.update(repoPath, id, { status }, workspaceDir),
+      writeStatus: (id, status, comment) =>
+        container.tests.update(repoPath, id, { status, modificationComment: comment }, workspaceDir),
     })),
   )
 }

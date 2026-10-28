@@ -820,9 +820,9 @@ const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)     // T69
 const workspace = new WorkspaceService(sync, workspaceTree, watcher)
 const schema = new SchemaService(auth, workspaceTree)
 const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)  // T123
-const tree = new TreeService()                                        // .polenta/trees/
-const requirements = new RequirementsService(git, reqIndex, schema, tree)
-const tests = new TestsService(git, testsIndex, schema, tree)
+const tree = new TreeService(indexObjectLister(reqIndex, testsIndex)) // .polenta/trees/ (GH180)
+const requirements = new RequirementsService(git, reqIndex, schema)
+const tests = new TestsService(git, testsIndex, schema)
 const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
 const reviews = new ReviewsService(git)
 const campaigns = new CampaignsService(git, tests)
@@ -2495,7 +2495,7 @@ Aucune limite de nombre de composants n'est imposée par le code (l'ancienne lim
 
 | Fichier | Maintenu par | Déclencheur |
 |---|---|---|
-| `.polenta/trees/<nœud>/<type>.yaml` | `TreeService` | Actions dans l'UI (création/déplacement/suppression d'élément) — un fichier par (nœud, type d'objet), **pas** un `tree.yaml` unique |
+| `.polenta/trees/<nœud>/<type>.yaml` | `TreeService` | Rangement dans l'UI (dossiers, déplacement, ordre, suppression d'élément) — un fichier par (nœud, type d'objet), **pas** un `tree.yaml` unique ; la création d'un objet ne l'écrit plus (GH180, §22.4) |
 | `<workspace>/.polenta/tree.cache.yaml` | `WorkspaceTreeService` | Ouverture du workspace / `workspace:rebuild-tree` |
 | `<workspace>/.polenta/workspace.yaml` | `WorkspaceService.initWorkspace()` | Création du workspace |
 
@@ -2535,6 +2535,23 @@ composants. Chaque (nœud, type d'objet) a son propre fichier d'ordre d'affichag
 `.polenta/trees/<nœud>/<type>.yaml` (`TypeTree`/`TypeTreeNode`, `packages/types/src/schema.ts`),
 maintenu par l'app à chaque action UI — jamais par un script de régénération, jamais commité comme
 un artefact "généré à la volée" à committer manuellement.
+
+**Rangement curaté seul (GH180)** — pour limiter les conflits git entre branches, ce fichier ne
+porte que ce qu'un utilisateur a réellement rangé :
+
+- **Inventaire = fichiers objets.** `TreeService.get` complète l'arbre stocké avec les objets du
+  type absents du fichier (« non classés »), triés par ID en fin de racine, nœud d'id stable
+  `item-<ID>` (`hydrateTree`). `RequirementsService`/`TestsService.create` n'écrivent plus
+  l'arbre (fin de `appendToTree`, T138) ; le serveur MCP ne construit plus de `TreeService`.
+- **Pas de titre recopié.** Un nœud `item` lié à un objet est stocké sans `name` : le libellé est
+  le `title` de l'objet, relu à chaque `get` (un ancien fichier avec `name` reste lisible ; repli
+  sur l'ID pour un objet disparu). Seuls les dossiers ont un `name`.
+- **Écriture minimale.** `TreeService.save` (`stripTree`) retire les `name` des éléments et la
+  queue de racine que `hydrateTree` reconstruirait à l'identique (éléments sans enfant, présents une
+  fois, en ordre d'ID strictement croissant). Créer un objet en fin de liste, même depuis l'arbre,
+  laisse le fichier inchangé ; un arbre sans rangement n'est pas créé sur disque.
+- `moveTypeTree`/`renameTypeTree` déplacent le fichier stocké tel quel, sans complétion.
+- Renderer : une mise à jour de titre invalide la requête `['tree', repoPath]`.
 
 ### 22.5 Résolution des composants en repo séparé
 

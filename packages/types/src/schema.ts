@@ -250,13 +250,14 @@ export type TreeNodeKind = 'folder' | 'item'
 export interface TypeTreeNode {
   id: string           // unique, immutable, auto-generated UUID
   kind: TreeNodeKind
-  name: string         // display name (folder name or item title override)
+  name: string         // folder name; for an item, its object's title — filled on read, never stored (GH180)
   objectId?: string    // for kind='item': ID of the underlying object
   children: TypeTreeNode[]
 }
 
 // The full tree for a given (SystemNode, ObjectTypeDefinition) pair.
-// Stored in .polenta/trees/{nodeName}/{typeName}.yaml
+// Stored in .polenta/trees/{nodeName}/{typeName}.yaml — curated layout only (GH180): TreeService.get
+// appends the type's unclassified objects and fills item names from titles.
 export interface TypeTree {
   nodeId: string       // SystemNode.name
   typeId: string       // ObjectTypeDefinition.name

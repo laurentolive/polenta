@@ -118,7 +118,7 @@ async function realGraph(repoPath: string, workspaceDir: string): Promise<{ json
   const schema = new SchemaService(auth, workspaceTree)
   const history = new HistoryService(git, async () => ({ by: 'corpus', source: 'mcp' }))
   const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
-  const tests = new TestsService(git, testsIndex, schema, new TreeService(), revalidation, history)
+  const tests = new TestsService(git, testsIndex, schema, revalidation, history)
   const campaigns = new CampaignsService(git, tests, undefined, schema, history)
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const built = await workspaceTree.buildTree(workspaceDir, repoPath, [])

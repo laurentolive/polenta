@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildConstellation, lineage, type ConstellationInputNode } from './constellationLayout'
+import { buildConstellation, detectChildSide, lineage, type ConstellationInputNode } from './constellationLayout'
 
 const node = (id: string, type: string, covered = false): ConstellationInputNode =>
   ({ id, title: id, objectTypeRef: `root::${type}`, covered })
@@ -42,7 +42,7 @@ describe('buildConstellation (GH183)', () => {
 
   it('sens inversé : la cible raffine la source', () => {
     const reversed = links.map((l, i) => link(l.targetId, l.sourceId, i))
-    const { nodes: out } = buildConstellation(nodes, reversed, { childIs: 'target' })
+    const { nodes: out } = buildConstellation(nodes, reversed, { childSideOf: () => 'target' })
     expect(out.get('EF-1')!.parents).toEqual(['EM-1'])
     expect(out.get('EF-1')!.children).toEqual(['ET-1', 'ET-2'])
   })
@@ -71,5 +71,21 @@ describe('buildConstellation (GH183)', () => {
   it('lignée : ancêtres et descendants, pas les cousins', () => {
     const { nodes: out } = buildConstellation(nodes, links)
     expect([...lineage(out, 'EF-1')].sort()).toEqual(['EF-1', 'EM-1', 'ET-1', 'ET-2'])
+  })
+})
+
+describe('detectChildSide (GH183)', () => {
+  it('le parent est le côté le moins nombreux', () => {
+    // EF → EM : beaucoup de sources pour peu de cibles, la source raffine la cible
+    expect(detectChildSide([link('EF-1', 'EM-1'), link('EF-2', 'EM-1')])).toBe('source')
+    // SYS → MOT : une source pour plusieurs cibles, la cible raffine la source
+    expect(detectChildSide([link('SYS-1', 'MOT-1'), link('SYS-1', 'MOT-2')])).toBe('target')
+  })
+
+  it('à égalité, un libellé passif désigne la source comme parent', () => {
+    const ls = [link('PRD-1', 'SYS-1'), link('PRD-2', 'SYS-2')]
+    expect(detectChildSide(ls, 'est raffinée par')).toBe('target')
+    expect(detectChildSide(ls, 'is refined by')).toBe('target')
+    expect(detectChildSide(ls, 'raffine')).toBe('source')
   })
 })

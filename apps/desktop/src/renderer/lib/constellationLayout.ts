@@ -59,9 +59,11 @@ export interface ConstellationLayout {
   ringRadii: number[]
 }
 
+export type ChildSide = 'source' | 'target'
+
 export interface LayoutOptions {
-  /** Sens du raffinement : `source` (défaut) = la source du lien raffine sa cible. */
-  childIs?: 'source' | 'target'
+  /** Sens du raffinement par type de lien : `source` (défaut) = la source raffine sa cible. */
+  childSideOf?: (linkType: string) => ChildSide
   /** Rayon de l'anneau intérieur et de l'anneau extérieur. */
   innerRadius?: number
   outerRadius?: number
@@ -79,7 +81,7 @@ export function buildConstellation(
   inputLinks: ConstellationInputLink[],
   opts: LayoutOptions = {},
 ): ConstellationLayout {
-  const childIs = opts.childIs ?? 'source'
+  const childSideOf = opts.childSideOf ?? (() => 'source')
   const inner = opts.innerRadius ?? 170
   const outer = opts.outerRadius ?? 440
 
@@ -94,8 +96,7 @@ export function buildConstellation(
   const seen = new Set<string>()
   for (const l of inputLinks) {
     if (l.sourceId === l.targetId) continue
-    const childId = childIs === 'source' ? l.sourceId : l.targetId
-    const parentId = childIs === 'source' ? l.targetId : l.sourceId
+    const { childId, parentId } = endpoints(l, childSideOf(l.type))
     const child = nodes.get(childId), parent = nodes.get(parentId)
     if (!child || !parent) continue
     links.push(l)
@@ -198,6 +199,25 @@ export function buildConstellation(
   }
 
   return { nodes, links, petals, ringRadii }
+}
+
+export function endpoints(l: ConstellationInputLink, childSide: ChildSide): { childId: string; parentId: string } {
+  return childSide === 'source'
+    ? { childId: l.sourceId, parentId: l.targetId }
+    : { childId: l.targetId, parentId: l.sourceId }
+}
+
+/**
+ * Sens probable d'un type de lien exigence ↔ exigence, que le schéma ne dit pas : le parent est le
+ * côté qui compte le moins d'objets distincts (une exigence se raffine en plusieurs). À égalité,
+ * un libellé source → cible passif (« est raffinée par », « is refined by ») désigne la source
+ * comme parent ; sinon la source raffine la cible.
+ */
+export function detectChildSide(links: ConstellationInputLink[], labelSourceToTarget?: string): ChildSide {
+  const sources = new Set(links.map(l => l.sourceId)).size
+  const targets = new Set(links.map(l => l.targetId)).size
+  if (sources !== targets) return sources < targets ? 'target' : 'source'
+  return labelSourceToTarget && /\b(par|by)\s*$/i.test(labelSourceToTarget.trim()) ? 'target' : 'source'
 }
 
 export function descendants(nodes: Map<string, ConstellationNode>, id: string): Set<string> {

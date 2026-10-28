@@ -12,7 +12,7 @@
  * URL: /constellation?projectId=<encoded project id>
  */
 
-import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
@@ -24,7 +24,7 @@ import { useTabs } from '../contexts/TabsContext'
 import { useWorkspaceLinks } from '../hooks/useWorkspaceLinks'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import {
-  arcPath, buildConstellation, lineage, linkPath, type ConstellationNode,
+  arcPath, buildConstellation, detectChildSide, endpoints, lineage, linkPath, type ChildSide, type ConstellationNode,
 } from '../lib/constellationLayout'
 
 export const Route = createFileRoute('/constellation')({
@@ -89,7 +89,8 @@ function ConstellationPage() {
     enabled: !!repoPath,
   })
 
-  const [childIs, setChildIs] = useState<'source' | 'target'>('source')
+  // Sens déduit par type de lien (detectChildSide) ; le bouton « Inverser » le retourne pour tous.
+  const [reversed, setReversed] = useState(false)
   const [colorBy, setColorBy] = useState(COLOR_BY_TYPE)
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
   const [disabledLinkTypes, setDisabledLinkTypes] = useState<Set<string>>(new Set())
@@ -132,11 +133,23 @@ function ConstellationPage() {
   const linkTypeNames = useMemo(() => [...new Set(reqLinks.map(l => l.type))].sort(), [reqLinks])
   const linkTypeDef = (name: string) => ws.linkTypes.find(lt => lt.name === name) ?? schema?.linkTypes.find(lt => lt.name === name)
 
+  const detectedSide = useMemo(() => {
+    const map = new Map<string, ChildSide>()
+    for (const name of linkTypeNames) {
+      map.set(name, detectChildSide(reqLinks.filter(l => l.type === name), linkTypeDef(name)?.labelSourceToTarget))
+    }
+    return map
+  }, [linkTypeNames, reqLinks]) // eslint-disable-line react-hooks/exhaustive-deps
+  const childSideOf = useCallback((type: string): ChildSide => {
+    const side = detectedSide.get(type) ?? 'source'
+    return reversed ? (side === 'source' ? 'target' : 'source') : side
+  }, [detectedSide, reversed])
+
   const layout = useMemo(() => buildConstellation(
     requirements.map(r => ({ id: r.id, title: r.title, objectTypeRef: r.objectTypeRef, covered: reqById.get(r.id)?.covered ?? false })),
     reqLinks.filter(l => !disabledLinkTypes.has(l.type)),
-    { childIs },
-  ), [requirements, reqById, reqLinks, disabledLinkTypes, childIs])
+    { childSideOf },
+  ), [requirements, reqById, reqLinks, disabledLinkTypes, childSideOf])
 
   const nodes = useMemo(() => [...layout.nodes.values()], [layout])
   const typeRefs = useMemo(() => [...new Set(nodes.map(n => n.objectTypeRef))]
@@ -279,7 +292,7 @@ function ConstellationPage() {
             type="button"
             className="btn-secondary-sm inline-flex items-center gap-1"
             title={t('constellation.reverseHint')}
-            onClick={() => setChildIs(c => (c === 'source' ? 'target' : 'source'))}
+            onClick={() => setReversed(r => !r)}
           >
             <ArrowLeftRight size={12} />
             {t('constellation.reverse')}
@@ -322,8 +335,9 @@ function ConstellationPage() {
                 <Petals layout={layout} colorOf={colorOf} focus={focus} />
                 <g>
                   {layout.links.map(l => {
-                    const child = layout.nodes.get(childIs === 'source' ? l.sourceId : l.targetId)!
-                    const parent = layout.nodes.get(childIs === 'source' ? l.targetId : l.sourceId)!
+                    const { childId, parentId } = endpoints(l, childSideOf(l.type))
+                    const child = layout.nodes.get(childId)!
+                    const parent = layout.nodes.get(parentId)!
                     const on = focus ? focus.has(child.id) && focus.has(parent.id) : visible(child) && visible(parent)
                     return (
                       <path
@@ -383,7 +397,7 @@ function ConstellationPage() {
               <NodeCard
                 node={layout.nodes.get(selected)!}
                 layout={layout}
-                childIs={childIs}
+                reversed={reversed}
                 requirement={reqById.get(selected)?.requirement}
                 coverageStatus={reqById.get(selected)?.status}
                 typeDef={typeDefs.get(layout.nodes.get(selected)!.objectTypeRef)}
@@ -514,10 +528,10 @@ function LinkButtons({ ids, layout, empty, onGo }: {
   )
 }
 
-function NodeCard({ node: n, layout, childIs, requirement, coverageStatus, typeDef, typeLabel, linkLabel, color, onGo, onOpen }: {
+function NodeCard({ node: n, layout, reversed, requirement, coverageStatus, typeDef, typeLabel, linkLabel, color, onGo, onOpen }: {
   node: ConstellationNode
   layout: ReturnType<typeof buildConstellation>
-  childIs: 'source' | 'target'
+  reversed: boolean
   requirement: Requirement | undefined
   coverageStatus: string | undefined
   typeDef: ObjectTypeDefinition | undefined
@@ -582,7 +596,7 @@ function NodeCard({ node: n, layout, childIs, requirement, coverageStatus, typeD
       {(parentsLabel || childrenLabel) && (
         <p className="text-xs italic text-ink-3">{[parentsLabel, childrenLabel].filter(Boolean).join(' · ')}</p>
       )}
-      {childIs === 'target' && <p className="text-xs text-ink-3">{t('constellation.card.reversed')}</p>}
+      {reversed && <p className="text-xs text-ink-3">{t('constellation.card.reversed')}</p>}
 
       <button type="button" className="btn-primary-sm inline-flex items-center gap-1.5" onClick={() => onOpen(n.id)}>
         <ExternalLink size={12} />

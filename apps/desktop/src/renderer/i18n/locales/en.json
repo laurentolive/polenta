@@ -1836,7 +1836,7 @@
     "colorByType": "Object type",
     "noValue": "Not set",
     "reverse": "Reverse direction",
-    "reverseHint": "By default the source of a link refines its target. Reverse it if your link model goes the other way.",
+    "reverseHint": "Each link type's direction is inferred from the data (the parent is the side with fewer objects). Reverse it if the constellation looks upside down.",
     "empty": "No requirements in this project.",
     "kpi": {
       "requirements": "requirements",
@@ -1855,7 +1855,7 @@
       "leavesCovered_other": "{{covered}} of {{count}} leaf requirements covered",
       "topLevel": "Top-level requirement",
       "notRefined": "Not refined yet",
-      "reversed": "Link direction reversed: the target refines the source.",
+      "reversed": "Link direction reversed from the inferred one.",
       "open": "Open {{id}}"
     },
     "overview": {

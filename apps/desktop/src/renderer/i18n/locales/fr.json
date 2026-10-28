@@ -1836,7 +1836,7 @@
     "colorByType": "Type d'objet",
     "noValue": "Non renseigné",
     "reverse": "Inverser le sens",
-    "reverseHint": "Par défaut, la source d'un lien raffine sa cible. Inverser si votre modèle de liens va dans l'autre sens.",
+    "reverseHint": "Le sens de chaque type de lien est déduit des données (le parent est le côté le moins nombreux). Inverser si la constellation apparaît à l'envers.",
     "empty": "Aucune exigence dans ce projet.",
     "kpi": {
       "requirements": "exigences",
@@ -1855,7 +1855,7 @@
       "leavesCovered_other": "{{covered}} sur {{count}} exigences terminales couvertes",
       "topLevel": "Exigence de plus haut niveau",
       "notRefined": "Pas encore raffinée",
-      "reversed": "Sens des liens inversé : la cible raffine la source.",
+      "reversed": "Sens des liens inversé par rapport au sens déduit.",
       "open": "Ouvrir {{id}}"
     },
     "overview": {

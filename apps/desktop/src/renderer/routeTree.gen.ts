@@ -26,8 +26,8 @@ import { Route as ImpactAnalysisRouteImport } from './routes/impact-analysis'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as DiffRouteImport } from './routes/diff'
 import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as ConstellationRouteImport } from './routes/constellation'
+import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as ComplianceRouteImport } from './routes/compliance'
 import { Route as BaselineRouteImport } from './routes/baseline'
 import { Route as AccountRouteImport } from './routes/account'
@@ -134,14 +134,14 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ComponentsRoute = ComponentsRouteImport.update({
-  id: '/components',
-  path: '/components',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ConstellationRoute = ConstellationRouteImport.update({
   id: '/constellation',
   path: '/constellation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComponentsRoute = ComponentsRouteImport.update({
+  id: '/components',
+  path: '/components',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ComplianceRoute = ComplianceRouteImport.update({
@@ -252,8 +252,8 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/baseline': typeof BaselineRoute
   '/compliance': typeof ComplianceRoute
-  '/constellation': typeof ConstellationRoute
   '/components': typeof ComponentsRoute
+  '/constellation': typeof ConstellationRoute
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
   '/graph': typeof GraphRoute
@@ -293,8 +293,8 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/baseline': typeof BaselineRoute
   '/compliance': typeof ComplianceRoute
-  '/constellation': typeof ConstellationRoute
   '/components': typeof ComponentsRoute
+  '/constellation': typeof ConstellationRoute
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
   '/graph': typeof GraphRoute
@@ -335,8 +335,8 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/baseline': typeof BaselineRoute
   '/compliance': typeof ComplianceRoute
-  '/constellation': typeof ConstellationRoute
   '/components': typeof ComponentsRoute
+  '/constellation': typeof ConstellationRoute
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
   '/graph': typeof GraphRoute
@@ -378,8 +378,8 @@ export interface FileRouteTypes {
     | '/account'
     | '/baseline'
     | '/compliance'
-    | '/constellation'
     | '/components'
+    | '/constellation'
     | '/dashboard'
     | '/diff'
     | '/graph'
@@ -419,8 +419,8 @@ export interface FileRouteTypes {
     | '/account'
     | '/baseline'
     | '/compliance'
-    | '/constellation'
     | '/components'
+    | '/constellation'
     | '/dashboard'
     | '/diff'
     | '/graph'
@@ -460,8 +460,8 @@ export interface FileRouteTypes {
     | '/account'
     | '/baseline'
     | '/compliance'
-    | '/constellation'
     | '/components'
+    | '/constellation'
     | '/dashboard'
     | '/diff'
     | '/graph'
@@ -502,8 +502,8 @@ export interface RootRouteChildren {
   AccountRoute: typeof AccountRoute
   BaselineRoute: typeof BaselineRoute
   ComplianceRoute: typeof ComplianceRoute
-  ConstellationRoute: typeof ConstellationRoute
   ComponentsRoute: typeof ComponentsRoute
+  ConstellationRoute: typeof ConstellationRoute
   DashboardRoute: typeof DashboardRoute
   DiffRoute: typeof DiffRoute
   GraphRoute: typeof GraphRoute
@@ -660,18 +660,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/components': {
-      id: '/components'
-      path: '/components'
-      fullPath: '/components'
-      preLoaderRoute: typeof ComponentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/constellation': {
       id: '/constellation'
       path: '/constellation'
       fullPath: '/constellation'
       preLoaderRoute: typeof ConstellationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/components': {
+      id: '/components'
+      path: '/components'
+      fullPath: '/components'
+      preLoaderRoute: typeof ComponentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/compliance': {
@@ -822,8 +822,8 @@ const rootRouteChildren: RootRouteChildren = {
   AccountRoute: AccountRoute,
   BaselineRoute: BaselineRoute,
   ComplianceRoute: ComplianceRoute,
-  ConstellationRoute: ConstellationRoute,
   ComponentsRoute: ComponentsRoute,
+  ConstellationRoute: ConstellationRoute,
   DashboardRoute: DashboardRoute,
   DiffRoute: DiffRoute,
   GraphRoute: GraphRoute,

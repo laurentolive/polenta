@@ -17,4 +17,6 @@ export const capabilities = {
   autoUpdate: !isWeb,
   /** Comptes multiples, PAT, Device Flow : sur le web, le compte est celui de la session. */
   accountManagement: !isWeb,
+  /** GH15 — délai de connexion réseau : réglage du process desktop (le serveur web garde les défauts). */
+  networkTimeout: !isWeb,
 } as const

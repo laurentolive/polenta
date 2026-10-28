@@ -47,3 +47,56 @@ describe('champs visibles par défaut de l’équipe (S2b-11, critère 23)', () 
     expect(get('root::exigence')).toBeNull()
   })
 })
+
+describe('GH176 — écriture partielle et colonnes du sélecteur de tests', () => {
+  const readEntry = async (typeKey: string) => {
+    const pref = JSON.parse(await fsP.readFile(path.join(repo, '.bob.pref'), 'utf-8')) as { fieldVisibility: Record<string, unknown> }
+    return pref.fieldVisibility[typeKey]
+  }
+
+  it('U1 — une clé seule est ajoutée sans toucher aux autres', async () => {
+    withTeamDefault(undefined)
+    set('root::test', { excel: ['x'], word: ['y'] })
+    set('root::test', { picker: ['a'] })
+    expect(await readEntry('root::test')).toEqual({ excel: ['x'], word: ['y'], picker: ['a'] })
+  })
+
+  it('U2 — une écriture complète de la Vue Système conserve picker', async () => {
+    withTeamDefault(undefined)
+    set('root::test', { picker: ['a'], showFoldersPicker: false })
+    set('root::test', { excel: ['x'], word: ['y'], edit: ['z'], showFoldersExcel: true })
+    expect(await readEntry('root::test')).toEqual({ picker: ['a'], showFoldersPicker: false, excel: ['x'], word: ['y'], edit: ['z'], showFoldersExcel: true })
+  })
+
+  it('U3 — null supprime la clé', async () => {
+    withTeamDefault(undefined)
+    set('root::test', { excel: ['x'], picker: ['a'], showFoldersPicker: false })
+    set('root::test', { picker: null, showFoldersPicker: null })
+    expect(await readEntry('root::test')).toEqual({ excel: ['x'] })
+  })
+
+  it('U4 — une entrée vidée est retirée, la lecture retombe sur le défaut', async () => {
+    withTeamDefault({ 'root::test': { excel: ['e'] } })
+    set('root::test', { picker: ['a'] })
+    set('root::test', { picker: null })
+    expect(await readEntry('root::test')).toBeUndefined()
+    expect(get('root::test')).toEqual({ excel: ['e'] })
+  })
+
+  it('U5 — le défaut de l’équipe complète une entrée qui ne porte que picker', () => {
+    withTeamDefault({ 'root::test': { excel: ['e'] } })
+    set('root::test', { picker: ['p'] })
+    expect(get('root::test')).toEqual({ excel: ['e'], picker: ['p'] })
+  })
+
+  it('U6 — le choix personnel l’emporte vue par vue', () => {
+    withTeamDefault({ 'root::test': { excel: ['e'], word: ['w'] } })
+    set('root::test', { excel: ['m'] })
+    expect(get('root::test')).toEqual({ excel: ['m'], word: ['w'] })
+  })
+
+  it('U7 — ni défaut ni choix personnel : null', () => {
+    withTeamDefault({ 'root::autre': { excel: ['e'] } })
+    expect(get('root::test')).toBeNull()
+  })
+})

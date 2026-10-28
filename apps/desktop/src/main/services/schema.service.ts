@@ -14,6 +14,7 @@ import type {
 import { findSystemNode, flattenSystemNodes, mapSystemNode } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
+import { readFileAt, resolveCommitSha } from './read-file-at.util'
 
 const DEFAULT_SCHEMA: ProjectSchema = {
   version: 1,
@@ -54,6 +55,8 @@ export class SchemaValidationError extends Error {
 
 export class SchemaService {
   private cache = new Map<string, ProjectSchema>()
+  /** GH178 — schemas read at a commit, by `repoPath@sha`. */
+  private atCache = new Map<string, ProjectSchema | null>()
 
   constructor(
     private readonly auth: AuthService,
@@ -64,6 +67,31 @@ export class SchemaService {
     if (this.cache.has(repoPath)) return this.cache.get(repoPath)!
     const schema = await this.readFromDisk(repoPath)
     this.cache.set(repoPath, schema)
+    return schema
+  }
+
+  /**
+   * GH178 — `.polenta/schema.yaml` as it was at `ref` (read-only, for showing an object of that
+   * version). Null when the file does not exist there. Cached by commit: its content never changes.
+   */
+  async getAt(repoPath: string, ref: string): Promise<ProjectSchema | null> {
+    const sha = await resolveCommitSha(repoPath, ref)
+    if (!sha) return null
+    const key = `${repoPath}@${sha}`
+    if (this.atCache.has(key)) return this.atCache.get(key)!
+    const bytes = await readFileAt(repoPath, sha, '.polenta/schema.yaml')
+    let schema: ProjectSchema | null = null
+    if (bytes) {
+      try {
+        const parsed = yaml.load(new TextDecoder().decode(bytes)) as ProjectSchema
+        if (parsed && parsed.nodes) schema = this.migrateRootRolesImplements(parsed)
+      } catch {
+        schema = null
+      }
+    }
+    // Bounded: a long session browsing history must not keep every schema it has shown.
+    if (this.atCache.size >= 50) this.atCache.delete(this.atCache.keys().next().value!)
+    this.atCache.set(key, schema)
     return schema
   }
 

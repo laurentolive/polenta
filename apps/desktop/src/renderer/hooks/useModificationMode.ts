@@ -16,7 +16,7 @@ import { useVersioning } from '../contexts/VersioningContext'
 import { useIntegrationBranch } from './useIntegrationBranch'
 import { useWorkspaceStructure } from './useWorkspaceStructure'
 import { isResyncBranch } from '../lib/publishWorkspace'
-import type { WorkspaceTreeNode } from '@polenta/types'
+import { isAutoBranch, type WorkspaceTreeNode } from '@polenta/types'
 
 export type ModificationMode = 'active' | 'blocked' | 'other'
 
@@ -50,7 +50,8 @@ export interface PendingRepo {
   repoPath: string
   count: number
   /** GH39: checked out on a `dev-resync` branch — commits set aside by "Resynchroniser", to be
-   *  published even with no pending file (`count` may be 0). */
+   *  published even with no pending file (`count` may be 0). GH173: also a `dev-auto` branch with
+   *  no pending file but commits the integration lacks (publication stopped by a conflict). */
   setAside: boolean
 }
 
@@ -81,10 +82,28 @@ export function useModificationMode(currentProjectId: string | null): Modificati
       refetchInterval: 3000,
     })),
   })
+  // GH173: a clean `dev-auto` only has something to publish if it holds unmerged commits — asked
+  // only for those (rare), the routine case makes no extra query.
+  const idleAutoNodes = flatNodes.filter((_, i) => {
+    const d = statusQueries[i]?.data
+    return !!d && isAutoBranch(d.branch) && d.staged.length + d.unstaged.length === 0
+  })
+  const idleAutoMerged = useQueries({
+    queries: idleAutoNodes.map(node => {
+      const branch = statusQueries[flatNodes.indexOf(node)]?.data?.branch ?? ''
+      return {
+        queryKey: ['sync:is-merged', node.repoPath, branch],
+        queryFn: async () => api.sync.isMergedInto(node.repoPath, branch, await api.baseline.getIntegrationBranch(node.repoPath)),
+        refetchInterval: 3000,
+      }
+    }),
+  })
+  const unmergedAuto = new Set(idleAutoNodes.filter((_, i) => idleAutoMerged[i]?.data === false).map(n => n.repoPath))
+
   const pendingRepos: PendingRepo[] = []
   statusQueries.forEach((q, i) => {
     const count = (q.data?.staged.length ?? 0) + (q.data?.unstaged.length ?? 0)
-    const setAside = isResyncBranch(q.data?.branch ?? '')
+    const setAside = isResyncBranch(q.data?.branch ?? '') || unmergedAuto.has(flatNodes[i].repoPath)
     if (count > 0 || setAside) {
       const node = flatNodes[i]
       pendingRepos.push({ name: node.name, label: node.label, repoPath: node.repoPath, count, setAside })

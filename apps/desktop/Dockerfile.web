@@ -1,7 +1,11 @@
 # GH44 S4 — image du serveur web Polenta (specs/GH44-design.md §6.2, révisé §10.3).
 #
 # Contexte de build = racine du monorepo :
-#   docker build -f apps/desktop/Dockerfile.web --build-arg POLENTA_BRAND=polenta -t polenta-web:<version> .
+#   docker build -f apps/desktop/Dockerfile.web --build-arg POLENTA_BRAND=polenta \
+#     --build-arg POLENTA_VERSION=<version> -t polenta-web:<version> .
+#
+# GH158 — POLENTA_VERSION : version affichée par le client web (le contexte de build exclut .git,
+# d'où la version ne peut pas être déduite du tag) ; absente → 0.0.0-dev de package.json.
 #
 # Exécution : Node 20 « slim » et le seul Chromium headless de playwright-core (impression des PDF
 # et des diagrammes), avec ses dépendances système — pas l'image Playwright complète (Firefox et
@@ -16,8 +20,9 @@ COPY . .
 ENV CI=true ELECTRON_SKIP_BINARY_DOWNLOAD=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN pnpm install --frozen-lockfile --ignore-scripts
 ARG POLENTA_BRAND=polenta
+ARG POLENTA_VERSION=
 RUN cd apps/desktop \
- && POLENTA_BRAND="$POLENTA_BRAND" pnpm build:web \
+ && POLENTA_BRAND="$POLENTA_BRAND" POLENTA_VERSION="$POLENTA_VERSION" pnpm build:web \
  && mkdir -p /out/app \
  && cp -r out/web-server out/web resources package.json /out/app/ \
  && node scripts/web-runtime-package.mjs > /out/runtime-package.json

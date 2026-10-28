@@ -4,7 +4,7 @@ import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor } from './LinkTypeEditor'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
-import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions } from '@polenta/types'
+import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
@@ -232,6 +232,8 @@ interface ExcelCellActions {
   toggleMultiEnum(objectId: string, field: string, rect: DOMRect): void
   openLinkPopover(nodeId: string, typeName: string, rect: DOMRect): void
   closeLinkPopover(): void
+  /** GH169 — clic sur un ID d'une cellule de lien : ouvre l'objet lié (comme la vue Word). */
+  navigateToObject(peerId: string, opts?: { newTab?: boolean }): void
   toggleSteps(nodeId: string): void
   /** GH70 — ouverture de la cible d'une cellule calculée. */
   openComputedTarget(target: string): void
@@ -252,6 +254,7 @@ interface ExcelCellLabels {
   hideSteps: string
   noSteps: string
   stepsCount: (count: number) => string
+  clickToNavigate: string
 }
 
 const ExcelCellLabelsContext = createContext<ExcelCellLabels | null>(null)
@@ -432,9 +435,11 @@ const InlineCell = memo(function InlineCell({
   const withAdornment = (content: React.ReactNode) => adornment
     ? <span className="inline-flex items-center gap-1">{content}{adornment}</span>
     : content
+  // GH136 — enum à libellés (statut) : le libellé est affiché, la valeur stockée reste en info-bulle.
+  const valueLabel = fieldDef?.type === 'enum' && value ? fieldDef.valueLabels?.[value] : undefined
   const display = paramRefs && !isSystem && value && (fieldDef?.type === 'text' || fieldDef?.type === 'textarea')
     ? <ParamRefText text={value} />
-    : value
+    : valueLabel ?? value
 
   if (!editable) {
     return (
@@ -445,7 +450,7 @@ const InlineCell = memo(function InlineCell({
         onClick={g.onClick}
         title={tooltip}
         onDoubleClick={openTarget ? e => { e.stopPropagation(); actions.openComputedTarget(openTarget) } : undefined}
-        data-computed-cell={isComputedColumnKey(field) ? '' : undefined}
+        data-computed-cell={isComputedColumnKey(field) ? field : undefined}
       >
         {pending
           ? <span className="text-ink-3">…</span>
@@ -474,8 +479,10 @@ const InlineCell = memo(function InlineCell({
           onClick={e => e.stopPropagation()}
           className="w-full px-2 py-1 text-xs text-ink bg-surface border-0 outline-none"
         >
+          {/* GH165 — sans option vide, une valeur absente s'affiche comme la 1re valeur et ne peut pas être choisie. */}
+          {(!fieldDef.required || !value) && <option value="">—</option>}
           {(fieldDef.values ?? []).map(v => (
-            <option key={v} value={v}>{v}</option>
+            <option key={v} value={v} title={fieldDef.valueLabels?.[v] ? v : undefined}>{fieldDef.valueLabels?.[v] ?? v}</option>
           ))}
         </select>
       </td>
@@ -518,7 +525,7 @@ const InlineCell = memo(function InlineCell({
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={labels.doubleClickToEdit}
+      title={valueLabel ? `${valueLabel} (${value}) — ${labels.doubleClickToEdit}` : labels.doubleClickToEdit}
     >
       {isMultiEnum
         ? clamp.wrap(value || <span className="text-ink-3 italic">—</span>)
@@ -559,7 +566,10 @@ const LinkCell = memo(function LinkCell({
   return (
     <td
       ref={tdRef}
-      data-link-popover
+      data-link-cell
+      // GH169 — seule la cellule ouverte compte comme « dans le popover » (son clic le referme
+      // via le geste de la cellule) ; un clic sur une autre cellule de lien le referme.
+      data-link-popover={isOpen || undefined}
       style={freezeStyle}
       className={[
         `border border-edge px-2 py-1 text-xs text-ink-2 max-w-xs cursor-pointer ${CELL_EDITABLE_CLASS}`,
@@ -572,7 +582,28 @@ const LinkCell = memo(function LinkCell({
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
     >
-      <ClampedContent>{value || <span className="text-ink-3 italic">—</span>}</ClampedContent>
+      <ClampedContent>
+        {value
+          // GH169 — chaque ID est cliquable (navigation, Ctrl/Cmd+clic : nouvel onglet) ; le clic
+          // ailleurs dans la cellule garde son geste (sélection ; double-clic = édition des liens).
+          ? value.split(' | ').map((group, gi) => (
+              <span key={gi}>
+                {gi > 0 && ' | '}
+                {group.split(', ').map((id, i) => (
+                  <span key={id}>
+                    {i > 0 && ', '}
+                    <span
+                      data-cell-dblclick-ignore
+                      className="cursor-pointer hover:underline"
+                      title={labels.clickToNavigate}
+                      onClick={e => { e.stopPropagation(); actions.navigateToObject(id, { newTab: e.ctrlKey || e.metaKey }) }}
+                    >{id}</span>
+                  </span>
+                ))}
+              </span>
+            ))
+          : <span className="text-ink-3 italic">—</span>}
+      </ClampedContent>
     </td>
   )
 })
@@ -1211,7 +1242,9 @@ function StepsPanel({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ExcelView(props: Props) {
+// GH170 — mémoïsé : un re-rendu de SystemView sans changement de props (refetch en arrière-plan)
+// ne refait plus tout le tableau.
+export const ExcelView = memo(function ExcelView(props: Props) {
   // GH33 — mode sélection : lecture seule forcée quels que soient les callbacks passés (pas
   // d'édition inline, de renommage, de DnD, d'étapes, de création ni d'ouverture en édition).
   if (!props.selection) return <ExcelViewInner {...props} />
@@ -1228,7 +1261,7 @@ export function ExcelView(props: Props) {
       onLinkChange={undefined}
     />
   )
-}
+})
 
 function ExcelViewInner({
   root,
@@ -1313,8 +1346,14 @@ function ExcelViewInner({
       const target = e.target as HTMLElement
       if (!target.closest('[data-link-popover]')) setActiveLinkPopover(null)
     }
+    // GH169 — Échap referme le popover, où que soit le focus.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActiveLinkPopover(null) }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [activeLinkPopover])
 
   // T169 — cellule richtext en cours d'édition en place (une seule à la fois). Identifiée par
@@ -1518,6 +1557,14 @@ function ExcelViewInner({
     return parts.join(' | ')
   }
 
+  // T176 — définition « enum » de la colonne statut, stable (prop d'une cellule mémoïsée).
+  const statusFieldDef = useMemo<SchemaField | undefined>(
+    () => typeDef?.statuses?.length
+      ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(st => st.name), valueLabels: statusValueLabels(typeDef.statuses) }
+      : undefined,
+    [typeDef],
+  )
+
   // Valeur texte affichée pour une colonne donnée — point de vérité unique partagé par le
   // calcul de largeur auto, le rendu de cellule et le filtrage (global + par colonne, T51).
   function getCellText(node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string {
@@ -1525,6 +1572,13 @@ function ExcelViewInner({
     if (col === 'name') return node.name
     if (col.startsWith('link::')) return getLinkCellValue(node.objectId ?? '', col.slice(6))
     return obj ? getFieldValue(obj, col) : (col === 'id' ? node.objectId ?? '' : '')
+  }
+
+  // GH136 — texte tel qu'affiché : libellé du statut à la place de son nom technique. Sert à la
+  // largeur auto et au filtre de colonne ; `getCellText` reste la valeur éditée.
+  function getCellDisplayText(node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string {
+    const text = getCellText(node, obj, col)
+    return col === 'status' ? statusFieldDef?.valueLabels?.[text] ?? text : text
   }
 
   // Flatten tree to render rows in order
@@ -1564,7 +1618,7 @@ function ExcelViewInner({
     for (const { node, kind } of rows) {
       if (kind === 'folder') continue
       const obj = node.objectId ? objectMap.get(node.objectId) : null
-      const val = getCellText(node, obj, col)
+      const val = getCellDisplayText(node, obj, col)
       if (val.length > maxLen) maxLen = val.length
     }
     autoColWidths[col] = Math.min(Math.max(maxLen * 7 + 24, 60), maxAutoWidth)
@@ -1761,14 +1815,6 @@ function ExcelViewInner({
     return !!nodeId && effectiveSelectedIds.length > 1 && effectiveSelectedIds.includes(nodeId)
   }
 
-  // T176 — définition « enum » de la colonne statut, stable (prop d'une cellule mémoïsée).
-  const statusFieldDef = useMemo<SchemaField | undefined>(
-    () => typeDef?.statuses?.length
-      ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(st => st.name) }
-      : undefined,
-    [typeDef],
-  )
-
   /** Édition simple (status/enum/texte/richtext) : même valeur écrasée sur toute la sélection. */
   function applyInlineEditToSelection(objectId: string, field: string, value: string) {
     if (!onInlineEdit) return
@@ -1954,7 +2000,7 @@ function ExcelViewInner({
       ]
       if (!values.some(v => filterRe.test(v))) return false
     }
-    return activeColumnFilters.every(({ col, re }) => re.test(getCellText(node, obj, col)))
+    return activeColumnFilters.every(({ col, re }) => re.test(getCellDisplayText(node, obj, col)))
   }
 
   // Un dossier/section ne doit s'afficher, quand un filtre est actif, que s'il contient au
@@ -2110,6 +2156,7 @@ function ExcelViewInner({
       setActiveLinkPopover({ nodeId, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
     },
     closeLinkPopover: () => setActiveLinkPopover(null),
+    navigateToObject: (peerId, opts) => onNavigateToObject?.(peerId, opts),
     toggleSteps: toggleStepExpand,
     openComputedTarget: target => onOpenComputedTarget?.(target),
   }
@@ -2118,6 +2165,7 @@ function ExcelViewInner({
     hideSteps: t('system.excelView.hideSteps'),
     noSteps: t('system.excelView.noSteps'),
     stepsCount: count => t('system.excelView.stepsCount', { count }),
+    clickToNavigate: t('system.shared.clickToNavigate'),
   }), [t])
   const cellActionsRef = useRef(cellActionsImpl)
   cellActionsRef.current = cellActionsImpl
@@ -2131,6 +2179,7 @@ function ExcelViewInner({
     toggleMultiEnum: (o, f, r) => cellActionsRef.current.toggleMultiEnum(o, f, r),
     openLinkPopover: (n, t, r) => cellActionsRef.current.openLinkPopover(n, t, r),
     closeLinkPopover: () => cellActionsRef.current.closeLinkPopover(),
+    navigateToObject: (p, o) => cellActionsRef.current.navigateToObject(p, o),
     toggleSteps: n => cellActionsRef.current.toggleSteps(n),
     openComputedTarget: target => cellActionsRef.current.openComputedTarget(target),
   }), [])
@@ -2256,7 +2305,7 @@ function ExcelViewInner({
                   {getColumnLabel(col)}
                   {isSystemField(col) && !isComputedColumnKey(col) && <span className="ml-1 text-ink-3 font-normal">(sys)</span>}
                   {isComputedColumnKey(col) && (
-                    <span className="ml-1 text-ink-3 font-normal" title={computedColumns?.get(col)?.column.queryTitle}>(calc)</span>
+                    <span className="ml-1 text-ink-3 font-normal" title={computedColumns?.get(col)?.column.headerTitle}>(calc)</span>
                   )}
                   {computedColumns?.get(col)?.result?.error && (
                     <span className="ml-1 text-status-warning cursor-help" title={computedColumns.get(col)!.result!.error} data-testid="computed-column-error">⚠</span>

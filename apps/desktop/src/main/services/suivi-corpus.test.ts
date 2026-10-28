@@ -6,7 +6,8 @@ import * as path from 'path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { QuickJSWASMModule } from 'quickjs-emscripten-core'
 import type { GraphRow, PolentaHost } from '@polenta/types'
-import { buildHost, columnValuesFromRows } from '@polenta/types'
+import { buildHost, columnValuesFromRows, splitColumnValuesFromRows } from '@polenta/types'
+import type { QueryColumnDef } from '@polenta/types'
 import { createSandboxModule, SandboxContext } from './script-sandbox'
 import type { LibraryModules } from './script-limits'
 import { GraphService } from './graph.service'
@@ -117,7 +118,7 @@ async function realGraph(repoPath: string, workspaceDir: string): Promise<{ json
   const schema = new SchemaService(auth, workspaceTree)
   const history = new HistoryService(git, async () => ({ by: 'corpus', source: 'mcp' }))
   const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
-  const tests = new TestsService(git, testsIndex, schema, new TreeService(), revalidation, history)
+  const tests = new TestsService(git, testsIndex, schema, revalidation, history)
   const campaigns = new CampaignsService(git, tests, undefined, schema, history)
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const built = await workspaceTree.buildTree(workspaceDir, repoPath, [])
@@ -136,6 +137,7 @@ describe('GH74 — corpus : projet de démonstration (scripts/demo-lave-linge)',
   let ctx: SandboxContext
   let demoCases: WidgetCase[]
   let columnCases: WidgetCase[]
+  let splitColumn: QueryColumnDef | null
 
   beforeAll(async () => {
     ws = fs.mkdtempSync(path.join(os.tmpdir(), 'gh74-corpus-demo-'))
@@ -149,11 +151,12 @@ describe('GH74 — corpus : projet de démonstration (scripts/demo-lave-linge)',
     ctx = SandboxContext.prepare(qjs, graphJson, LIB)
     // Dashboards partagés de la démo, lus par les services de l'application (format v1).
     const savedQueries = await queries.list(repoPath, 'corpus')
-    // GH70 — requêtes déclarées comme colonnes calculées de la Vue Système.
+    // GH70 — requêtes déclarées comme colonnes calculées de la Vue Système (GH126 : éclatées comprises).
     columnCases = savedQueries.filter((q) => q.column).map((q) => {
       expect(q.state.customized, `${q.title} : code généré par son modèle`).toBe(false)
       return { name: `Colonne / ${q.title}`, script: q.script }
     })
+    splitColumn = savedQueries.find((q) => q.column?.splitColumn)?.column ?? null
     demoCases = []
     for (const d of await dashboards.list(repoPath, 'corpus')) {
       expect(d.state.readOnly).toBeUndefined()
@@ -177,11 +180,15 @@ describe('GH74 — corpus : projet de démonstration (scripts/demo-lave-linge)',
   })
 
   it('GH70 — colonne « Dernier résultat » de la démo : lignes au contrat, identiques à la référence', async () => {
-    expect(columnCases.map((c) => c.name)).toEqual(['Colonne / Dernier résultat de campagne'])
+    expect(columnCases.map((c) => c.name)).toEqual(['Colonne / Dernier résultat de campagne', 'Colonne / Résultat par campagne'])
     const out = runCases(ctx, columnCases)
     const rows = out['Colonne / Dernier résultat de campagne'] as GraphRow[]
     expect(Array.isArray(rows) && rows.length > 0).toBe(true)
     expect(columnValuesFromRows(rows).error).toBeUndefined()
+    // GH126 — colonne éclatée : une sous-colonne par campagne de la démo, lignes au contrat.
+    const split = splitColumnValuesFromRows(out['Colonne / Résultat par campagne'] as GraphRow[], splitColumn!)
+    expect(split.error).toBeUndefined()
+    expect(split.columns.length).toBeGreaterThan(1)
     await expect(json(out)).toMatchFileSnapshot(path.join(REFS, 'demo-columns.json'))
   })
 

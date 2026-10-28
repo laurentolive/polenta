@@ -31,6 +31,8 @@ import { registerReadTools } from './tools/read.tools'
 import { registerBulkImportTools } from './tools/bulk-import.tools'
 import { registerSchemaMutationTools } from './tools/schema-mutation.tools'
 import { registerLinkTools } from './tools/links.tools'
+import { registerUpdateTools } from './tools/update.tools'
+import { registerParameterTools } from './tools/parameters.tools'
 import { registerQueryTools } from './tools/queries.tools'
 import { registerDashboardTools } from './tools/dashboards.tools'
 import { registerSuiviScriptTools } from './tools/suivi-script.tools'
@@ -106,6 +108,8 @@ async function main(): Promise<void> {
   registerBulkImportTools(server, container)
   registerSchemaMutationTools(server, container)
   registerLinkTools(server, container)
+  registerUpdateTools(server, container)
+  registerParameterTools(server, container)
   registerQueryTools(server, container)
   registerDashboardTools(server, container)
   registerSuiviScriptTools(server, container)

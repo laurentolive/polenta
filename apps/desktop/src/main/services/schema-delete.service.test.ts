@@ -68,8 +68,8 @@ beforeEach(async () => {
   const reqIndex = new RequirementsIndexService(git)
   const testsIndex = new TestsIndexService(git)
   const tree = new TreeService()
-  const requirements = new RequirementsService(git, reqIndex, schemaStub, tree, undefined, history)
-  const tests = new TestsService(git, testsIndex, schemaStub, tree, undefined, history)
+  const requirements = new RequirementsService(git, reqIndex, schemaStub, undefined, history)
+  const tests = new TestsService(git, testsIndex, schemaStub, undefined, history)
   const campaigns = new CampaignsService(git, tests, undefined, undefined, history)
   const schema = schemaApi = {
     get: async (repo: string) => {

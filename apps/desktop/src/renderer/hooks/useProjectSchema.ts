@@ -81,10 +81,15 @@ export interface TestTypeRef {
 /** GH33 — types `test` de tous les nœuds locaux, avec leur ref (`getAllObjectTypes` ne donne pas le
  *  nom du nœud). Libellé préfixé du chemin du composant (`›`) quand le schéma a plusieurs nœuds. */
 export function getTestTypeRefs(schema: ProjectSchema | undefined): TestTypeRef[] {
+  return getObjectTypeRefs(schema, 'test')
+}
+
+/** GH146 — même chose pour une catégorie quelconque (types de campagne de `/campaign/new`). */
+export function getObjectTypeRefs(schema: ProjectSchema | undefined, category: 'requirement' | 'test' | 'campaign'): TestTypeRef[] {
   if (!schema) return []
   const flat = flattenSystemNodes(schema.nodes)
   return flat.flatMap(({ node, ancestors }) => (node.objectTypes ?? [])
-    .filter(t => t.category === 'test')
+    .filter(t => t.category === category)
     .map(t => ({
       ref: `${node.name}::${t.name}`,
       label: flat.length > 1

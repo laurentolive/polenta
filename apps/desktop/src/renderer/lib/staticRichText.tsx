@@ -7,6 +7,7 @@ import { renderStaticDrawio } from './staticDrawio'
 import { markdownParamRefs, type ParamRefsEnv } from './markdownParamRefs'
 import { useParamRefs } from '../contexts/ParamRefContext'
 import { useTranslation } from 'react-i18next'
+import { applyWordDiff, clearWordDiff } from './wordDiff'
 
 /**
  * Read-only counterpart to RichTextField/RichTextViewer, for lists that render many objects at
@@ -186,6 +187,9 @@ export function StaticRichTextViewer({
   repoPath,
   highlightRegex,
   variant = 'default',
+  at,
+  diffAgainst,
+  changedMedia,
 }: {
   value: string
   repoPath?: string
@@ -194,6 +198,14 @@ export function StaticRichTextViewer({
   /** T169 — `compact` : typographie resserrée pour une cellule de la Vue Excel (text-xs,
    *  titres ramenés au corps du texte, marges verticales quasi nulles). */
   variant?: 'default' | 'compact'
+  /** GH178 — version git à laquelle lire les images et diagrammes référencés (vues de diff) ;
+   *  absent ou `null` = working tree. */
+  at?: string | null
+  /** GH178 — diff mot à mot : marque les mots de ce rendu absents de `other` (rendu de l'autre
+   *  version), `<del>` côté Avant, `<ins>` côté Après. */
+  diffAgainst?: { other: string; side: 'before' | 'after' }
+  /** GH178 — index (ordre du rendu) des blocs diagramme / image à encadrer comme modifiés. */
+  changedMedia?: Set<number>
 }) {
   // T171 — références de paramètres : résolues via le ParamRefProvider englobant, s'il existe.
   const paramRefs = useParamRefs()
@@ -220,13 +232,13 @@ export function StaticRichTextViewer({
     for (const img of imgs) {
       const src = img.getAttribute('data-static-img-src') ?? ''
       if (!src || isLiteralSrc(src)) continue
-      void api.image.read(repoPath, src).then(result => {
+      void api.image.read(repoPath, src, at).then(result => {
         if (cancelled || !result) return
         img.src = `data:${result.mimeType};base64,${result.base64}`
       })
     }
     return () => { cancelled = true }
-  }, [html, repoPath])
+  }, [html, repoPath, at])
 
   // Diagrammes draw.io (T163) : la *fence* `drawio` a émis un placeholder
   // `<span class="static-drawio">`. On monte le viewer mxGraph réel dedans, mais
@@ -248,7 +260,7 @@ export function StaticRichTextViewer({
         if (!entry.isIntersecting) continue
         const el = entry.target as HTMLElement
         io.unobserve(el)
-        teardowns.push(renderStaticDrawio(el, repoPath))
+        teardowns.push(renderStaticDrawio(el, repoPath, undefined, at))
       }
     }, { root: nearestScrollParent(container), rootMargin: '300px' })
 
@@ -258,7 +270,7 @@ export function StaticRichTextViewer({
       io.disconnect()
       for (const fn of teardowns) fn()
     }
-  }, [html, repoPath])
+  }, [html, repoPath, at])
 
   // T167 — surbrillance des occurrences (Vue Recherche). `html` change → React
   // réinitialise l'innerHTML ; `regex` seul change → il faut nettoyer nous-mêmes
@@ -269,6 +281,31 @@ export function StaticRichTextViewer({
     clearSearchHighlights(container)
     if (highlightRegex) highlightTextNodes(container, highlightRegex)
   }, [html, highlightRegex])
+
+  // GH178 — diff mot à mot. L'autre version est rendue dans un `<template>` (DOM inerte : ni image
+  // chargée, ni viewer monté). `html` change → React a déjà remis l'innerHTML ; seul `other` change
+  // → nettoyage des marques du passage précédent.
+  const diffOther = diffAgainst?.other
+  const diffSide = diffAgainst?.side
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    clearWordDiff(container)
+    if (diffOther === undefined || !diffSide || diffOther === value) return
+    const other = document.createElement('template')
+    other.innerHTML = getMarkdownIt().render(diffOther, { paramRefs, unresolvedLabel } satisfies ParamRefsEnv)
+    applyWordDiff(container, other.content, diffSide)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html, diffOther, diffSide])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !diffSide) return
+    const cls = diffSide === 'before' ? 'diff-media-del' : 'diff-media-ins'
+    container.querySelectorAll('.static-drawio, img[data-static-img-src]').forEach((el, i) => {
+      el.classList.toggle(cls, !!changedMedia?.has(i))
+    })
+  }, [html, changedMedia, diffSide])
 
   if (!value) return null
   return (

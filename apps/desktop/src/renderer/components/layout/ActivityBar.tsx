@@ -14,6 +14,7 @@ interface Props {
   activePanel: Panel
   onSelect: (p: Panel) => void
   hasProject: boolean
+  sidebarCollapsed: boolean
 }
 
 const PANELS: {
@@ -37,7 +38,7 @@ const PANELS: {
 const DEFAULT_ORDER = PANELS.map(p => p.id)
 const PANEL_BY_ID = new Map(PANELS.map(p => [p.id, p]))
 
-export function ActivityBar({ activePanel, onSelect, hasProject }: Props) {
+export function ActivityBar({ activePanel, onSelect, hasProject, sidebarCollapsed }: Props) {
   const { t } = useTranslation()
   // GH56 — ordre (drag & drop) et boutons masqués (clic droit), préférence par poste.
   const [layout, setLayout] = useState<ActivityBarLayout | null>(loadLayout)
@@ -108,6 +109,8 @@ export function ActivityBar({ activePanel, onSelect, hasProject }: Props) {
             <button
               title={t(p.labelKey)}
               aria-disabled={disabled}
+              // GH123 — reclic sur le bouton actif = repli/dépli du panneau latéral.
+              aria-expanded={activePanel === p.id ? !sidebarCollapsed : undefined}
               draggable
               onDragStart={e => {
                 setDraggingId(id)

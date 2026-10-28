@@ -23,7 +23,28 @@ export function readPref(repoPath: string, username: string): Record<string, unk
 }
 
 export function writePref(repoPath: string, username: string, data: Record<string, unknown>): void {
+  ensurePrefIgnored(repoPath)
   fs.writeFileSync(prefPath(repoPath, username), JSON.stringify(data, null, 2), 'utf-8')
+}
+
+/**
+ * GH167 — `*.pref` is only written to `.gitignore` when Polenta creates the project or a node
+ * (`workspace.service.ts`, `schema.service.ts`): a cloned/adopted/older repo lacks it, and the
+ * `.pref` then shows up as a change to commit. Same fix as `ensureCacheIgnored` (T156): add the
+ * line right where the file is written.
+ */
+function ensurePrefIgnored(repoPath: string): void {
+  const gitignorePath = path.join(repoPath, '.gitignore')
+  const line = '*.pref'
+  let existing = ''
+  try {
+    existing = fs.readFileSync(gitignorePath, 'utf-8')
+  } catch {
+    // no .gitignore yet
+  }
+  if (existing.split(/\r?\n/).includes(line)) return
+  const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : ''
+  fs.appendFileSync(gitignorePath, `${prefix}${line}\n`)
 }
 
 /**

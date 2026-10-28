@@ -1047,6 +1047,8 @@ export const QUERIES = [
   { id: 'QUERY-0009', title: 'Exigences par version', script: REQUIREMENTS_BY_VERSION },
   // GH70 — colonne calculée « Dernier résultat » de la Vue Système (cas de test).
   { id: 'QUERY-0010', title: 'Dernier résultat de campagne', template: { id: 'campaign-last-result', params: {} } },
+  // GH126 — colonne éclatée « Résultat par campagne » (une sous-colonne par campagne).
+  { id: 'QUERY-0011', title: 'Résultat par campagne', template: { id: 'campaign-results', params: {} } },
 ]
 
 export const DASHBOARDS = [

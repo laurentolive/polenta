@@ -73,6 +73,14 @@
             "fr": "Dernier résultat en campagne : lastEntryResults / lastEntryResult (GH70)",
             "en": "Last campaign result: lastEntryResults / lastEntryResult (GH70)"
           }
+        },
+        {
+          "version": 4,
+          "hash": "fb0ff0a6820eeccc3335c294a7aef165f49c80c98f0391a252857f18328d96f1",
+          "summary": {
+            "fr": "Résultat par campagne : entryResultsByCampaign (GH126)",
+            "en": "Result by campaign: entryResultsByCampaign (GH126)"
+          }
         }
       ]
     },

@@ -145,7 +145,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const forge = new ForgeService(auth, workspace, sync)
   // GH106 — désignation de la branche d'intégration (commit de project.yaml, push, branche par défaut).
   const integration = new IntegrationBranchService(git, sync, forge)
-  const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged())
+  const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged(), host.applyNetworkTimeout)
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)

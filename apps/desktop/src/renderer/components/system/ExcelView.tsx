@@ -10,7 +10,7 @@ import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { ParamRefText } from '../parameters/ParamRefText'
 import { treeFindNode, treeFindParentId, treeRemoveMany, treeInsert, treeInsertAtBeginning, treeDeepCopyWithNewIds } from '../../hooks/useTreeState'
-import { getLinkTypeLabel, isLinkTypeValid } from './linkUtils'
+import { isLinkTypeValid, linkColumnLabel, parseLinkColumn, type LinkColumnDirection } from './linkUtils'
 import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { RenderGateProvider, useRenderWhenVisibleAtRest } from './useRenderWhenVisibleAtRest'
@@ -230,7 +230,8 @@ interface ExcelCellActions {
   cancelRichtext(field: string): void
   richtextEditorMouseDown(): void
   toggleMultiEnum(objectId: string, field: string, rect: DOMRect): void
-  openLinkPopover(nodeId: string, typeName: string, rect: DOMRect): void
+  /** GH137 — `col` : clé de la colonne de lien (`link::`, `link-out::` ou `link-in::`). */
+  openLinkPopover(nodeId: string, col: string, rect: DOMRect): void
   closeLinkPopover(): void
   /** GH169 — clic sur un ID d'une cellule de lien : ouvre l'objet lié (comme la vue Word). */
   navigateToObject(peerId: string, opts?: { newTab?: boolean }): void
@@ -561,7 +562,7 @@ const LinkCell = memo(function LinkCell({
   const g = useCellGestures(nodeId, col, () => {
     if (isOpen) { actions.closeLinkPopover(); return }
     const rect = tdRef.current?.getBoundingClientRect()
-    if (rect) actions.openLinkPopover(nodeId, typeName, rect)
+    if (rect) actions.openLinkPopover(nodeId, col, rect)
   })
   return (
     <td
@@ -1339,7 +1340,7 @@ function ExcelViewInner({
   const colDragState = useRef<{ startX: number; startWidth: number; col: string } | null>(null)
   const autoColWidthsRef = useRef<Record<string, number>>({})
   const frozenAutoWidthsRef = useRef<Record<string, number> | null>(null)
-  const [activeLinkPopover, setActiveLinkPopover] = useState<{ nodeId: string; typeName: string; top: number; left: number; width: number } | null>(null)
+  const [activeLinkPopover, setActiveLinkPopover] = useState<{ nodeId: string; col: string; top: number; left: number; width: number } | null>(null)
   useEffect(() => {
     if (!activeLinkPopover) return
     const handler = (e: MouseEvent) => {
@@ -1532,21 +1533,23 @@ function ExcelViewInner({
   function getColumnLabel(col: string): string {
     const computed = computedColumns?.get(col)
     if (computed) return computed.column.label
-    if (col.startsWith('link::')) {
-      const typeName = col.slice(6)
-      const lt = linkTypes.find(l => l.name === typeName)
-      if (!lt) return typeName
-      return getLinkTypeLabel(lt, viewObjectTypeRef, typeDef?.category)
+    const link = parseLinkColumn(col)
+    if (link) {
+      const lt = linkTypes.find(l => l.name === link.typeName)
+      if (!lt) return link.typeName
+      return linkColumnLabel(lt, link.direction, viewObjectTypeRef, typeDef?.category)
     }
     return getExportColumnLabel(col, typeDef)
   }
 
-  function getLinkCellValue(objectId: string, linkTypeName: string): string {
+  // GH137 — `direction` : colonne d'un seul sens (`link-out::` / `link-in::`) d'un type à la fois
+  // source et cible ; `both` (colonne `link::`) garde les deux sens séparés par ` | `.
+  function getLinkCellValue(objectId: string, linkTypeName: string, direction: LinkColumnDirection = 'both'): string {
     if (!linksByObjectId || !objectId) return ''
     const links = linksByObjectId.get(objectId) ?? []
     const filtered = links.filter(l => l.type === linkTypeName)
-    const outgoing = filtered.filter(l => l.sourceId === objectId).map(l => l.targetId)
-    const incoming = filtered.filter(l => l.targetId === objectId).map(l => l.sourceId)
+    const outgoing = direction === 'in' ? [] : filtered.filter(l => l.sourceId === objectId).map(l => l.targetId)
+    const incoming = direction === 'out' ? [] : filtered.filter(l => l.targetId === objectId).map(l => l.sourceId)
     const parts: string[] = []
     if (outgoing.length > 0) {
       parts.push(outgoing.join(', '))
@@ -1560,7 +1563,7 @@ function ExcelViewInner({
   // T176 — définition « enum » de la colonne statut, stable (prop d'une cellule mémoïsée).
   const statusFieldDef = useMemo<SchemaField | undefined>(
     () => typeDef?.statuses?.length
-      ? { name: 'status', type: 'enum' as const, values: typeDef.statuses.map(st => st.name), valueLabels: statusValueLabels(typeDef.statuses) }
+      ? { name: 'status', type: 'enum' as const, required: true, values: typeDef.statuses.map(st => st.name), valueLabels: statusValueLabels(typeDef.statuses) }
       : undefined,
     [typeDef],
   )
@@ -1570,7 +1573,8 @@ function ExcelViewInner({
   function getCellText(node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string {
     if (col === 'section') return sectionNumbers?.get(node.id) ?? ''
     if (col === 'name') return node.name
-    if (col.startsWith('link::')) return getLinkCellValue(node.objectId ?? '', col.slice(6))
+    const link = parseLinkColumn(col)
+    if (link) return getLinkCellValue(node.objectId ?? '', link.typeName, link.direction)
     return obj ? getFieldValue(obj, col) : (col === 'id' ? node.objectId ?? '' : '')
   }
 
@@ -2151,9 +2155,9 @@ function ExcelViewInner({
       if (isOpen) { setActiveMultiEnumPopover(null); return }
       setActiveMultiEnumPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: rect.width })
     },
-    openLinkPopover: (nodeId, typeName, rect) => {
+    openLinkPopover: (nodeId, col, rect) => {
       if (selection) return // GH33 — lecture seule : liens affichés, pas éditables
-      setActiveLinkPopover({ nodeId, typeName, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
+      setActiveLinkPopover({ nodeId, col, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
     },
     closeLinkPopover: () => setActiveLinkPopover(null),
     navigateToObject: (peerId, opts) => onNavigateToObject?.(peerId, opts),
@@ -2514,11 +2518,12 @@ function ExcelViewInner({
                       />
                     )
                   }
-                  if (col.startsWith('link::')) {
-                    const typeName = col.slice(6)
+                  const link = parseLinkColumn(col)
+                  if (link) {
+                    const typeName = link.typeName
                     const objectId = node.objectId ?? ''
-                    const value = getLinkCellValue(objectId, typeName)
-                    const isOpen = activeLinkPopover?.nodeId === node.id && activeLinkPopover.typeName === typeName
+                    const value = getLinkCellValue(objectId, typeName, link.direction)
+                    const isOpen = activeLinkPopover?.nodeId === node.id && activeLinkPopover.col === col
                     return (
                       <LinkCell
                         key={col}
@@ -2680,9 +2685,12 @@ function ExcelViewInner({
 
       {/* Link popover — fixed position to escape overflow-auto clipping */}
       {activeLinkPopover && (() => {
-        const lt = linkTypes.find(l => l.name === activeLinkPopover.typeName)
+        // GH137 (Q1) — ouvert depuis une colonne de sens : ne montre et ne crée que ce sens.
+        const link = parseLinkColumn(activeLinkPopover.col)
+        if (!link) return null
+        const lt = linkTypes.find(l => l.name === link.typeName)
         const objectId = rows.find(r => r.node.id === activeLinkPopover.nodeId)?.node.objectId ?? ''
-        const cellLinks = linksByObjectId?.get(objectId)?.filter(l => l.type === activeLinkPopover.typeName) ?? []
+        const cellLinks = linksByObjectId?.get(objectId)?.filter(l => l.type === link.typeName) ?? []
         if (!lt || !isLinkTypeValid(lt)) return null
         const currentObjectTypeRef = (objectMap.get(objectId) as Record<string, string>)?.objectTypeRef ?? ''
         const currentCategory = typeDef?.category
@@ -2701,6 +2709,7 @@ function ExcelViewInner({
               objectLinks={cellLinks}
               repoPath={repoPath}
               candidates={candidateObjects}
+              direction={link.direction}
               onLinkChange={onLinkChange}
               onNavigateToObject={onNavigateToObject ? (peerId, opts) => { setActiveLinkPopover(null); onNavigateToObject(peerId, opts) } : undefined}
             />

@@ -11,6 +11,8 @@ import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
 import { RepoAccessBanner } from './RepoAccessBanner'
+import { JobBanner } from '../admin/JobBanner'
+import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
@@ -41,7 +43,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
   if (pathname === '/parameters') return 'parameters'
-  if (pathname === '/impact-analysis') return 'impact'
+  if (pathname === '/impact-analysis' || pathname === '/constellation') return 'impact'
 
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
@@ -271,6 +273,7 @@ export function AppLayout() {
       )}
       <div className="flex-1 flex flex-col overflow-hidden">
         <ForgeAccessBanner />
+        {capabilities.serverAdmin && <JobBanner />}
         {currentProjectId && <RepoAccessBanner projectId={currentProjectId} />}
         <main className="flex-1 overflow-auto">
           <Outlet />

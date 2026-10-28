@@ -1,0 +1,71 @@
+# GH63 — module « admin » : service d'administration et proxy Docker filtrant
+# (specs/GH63-design.md §6.1). Lancé par deploy/admin/install.sh :
+#   docker compose -p polenta-admin --env-file /opt/polenta/admin/admin.env -f <kit>/admin/docker-compose.yml up -d
+#
+# Aucun port publié, aucune route Caddy : le service n'est joignable que des clients web des instances
+# (réseau polenta-admin-net). Seul le proxy monte le socket Docker ; le service n'a que DOCKER_HOST.
+name: polenta-admin
+services:
+  polenta-docker-proxy:
+    image: ${POLENTA_ADMIN_IMAGE:-polenta-admin}:${POLENTA_ADMIN_VERSION:-none}
+    container_name: polenta-docker-proxy
+    restart: unless-stopped
+    # Root du conteneur sans aucune capacité : propriétaire du socket (root:docker 0660), rien d'autre.
+    user: "0:0"
+    entrypoint: ["/sbin/tini", "--"]
+    command: ["node", "/app/dist/docker-proxy/server.cjs"]
+    environment:
+      EDGE_NETWORK: ${EDGE_NETWORK:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [docker-proxy-net]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(2375,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  polenta-admin:
+    image: ${POLENTA_ADMIN_IMAGE:-polenta-admin}:${POLENTA_ADMIN_VERSION:-none}
+    container_name: polenta-admin
+    restart: unless-stopped
+    # Root DANS le conteneur (design D10, décidé le 2026-10-28 après le spike R1) : les scripts du kit
+    # écrivent leur état en root 0600 et la forge ses données en 1000:1000. Seules capacités rendues :
+    # celles des fichiers (sauvegarde des données de la forge, restauration, chown 1000 d'instance add).
+    user: "0:0"
+    environment:
+      DOCKER_HOST: tcp://polenta-docker-proxy:2375
+      POLENTA_ROOT: /opt/polenta
+      # Le kit installé sur l'hôte (même version que l'usage SSH), pas la copie de l'image.
+      POLENTA_KIT_DIR: /opt/polenta/kit
+      # uid attendu par require_operator (common.sh) : celui du conteneur.
+      POLENTA_OPERATOR_UID: "0"
+      POLENTA_HOST_NAME: ${POLENTA_HOST_NAME:-}
+      EDGE_NETWORK: ${EDGE_NETWORK:-}
+    volumes:
+      - /opt/polenta:/opt/polenta
+      # Agent hôte (host-agent/install-agent.sh) : son socket seul vit dans /run/polenta ; agent non
+      # installé = dossier vide, agent « absent ».
+      - /run/polenta:/run/polenta:ro
+    networks: [polenta-admin-net, docker-proxy-net]
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      polenta-docker-proxy:
+        condition: service_healthy
+
+networks:
+  # Service ↔ clients web et forges des instances (ADMIN_UI=on). Interne : aucune sortie vers Internet.
+  polenta-admin-net:
+    name: polenta-admin-net
+    internal: true
+  # Service ↔ proxy du socket, rien d'autre.
+  docker-proxy-net:
+    name: polenta-docker-proxy-net
+    internal: true

@@ -122,6 +122,7 @@ const PANEL_LABEL_KEYS: Record<Panel, string> = {
 const TITLE_OVERRIDE_KEYS: Record<string, string> = {
   '/': 'layout.tabTitles.home',
   '/account': 'layout.activityBar.account',
+  '/admin': 'admin.title',
   '/schema': 'layout.tabTitles.schema',
   '/graph': 'layout.tabTitles.graph',
   '/diff': 'layout.tabTitles.diff',
@@ -136,6 +137,7 @@ const TITLE_OVERRIDE_KEYS: Record<string, string> = {
   '/dashboard': 'layout.activityBar.dashboard',
   '/preferences': 'preferences.title',
   '/compliance': 'layout.tabTitles.compliance',
+  '/constellation': 'layout.tabTitles.constellation',
   '/workspace': 'layout.tabTitles.workspace',
   '/req/new': 'layout.tabTitles.newRequirement',
   '/test/new': 'layout.tabTitles.newTest',

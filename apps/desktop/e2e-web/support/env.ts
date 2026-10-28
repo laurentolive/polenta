@@ -11,6 +11,7 @@ if (!process.env['POLENTA_E2E_RUN']) process.env['POLENTA_E2E_RUN'] = `${Date.no
 const root = path.join(os.tmpdir(), 'polenta-e2e-web', process.env['POLENTA_E2E_RUN'])
 const port = Number(process.env['POLENTA_E2E_PORT'] ?? 8797)
 const gitPort = Number(process.env['POLENTA_E2E_GIT_PORT'] ?? 8798)
+const adminPort = Number(process.env['POLENTA_E2E_ADMIN_PORT'] ?? 8799)
 
 export const E2E = {
   root,
@@ -23,6 +24,9 @@ export const E2E = {
   demoRemote: `http://127.0.0.1:${gitPort}/demo-ll800-produit.git`,
   demoSource: process.env['POLENTA_E2E_DEMO_SOURCE'] ?? 'https://github.com/laurentolive/demo-ll800-produit.git',
   user: { login: 'e2e', name: 'E2E Tester', email: 'e2e@polenta.test' },
+  adminPort,
+  adminUrl: `http://127.0.0.1:${adminPort}`,
+  adminToken: 'e2e-admin-service-token-0123456789abcdef',
   get serverEnv(): Record<string, string> {
     return {
       POLENTA_WEB_PORT: String(port),
@@ -37,6 +41,10 @@ export const E2E = {
       POLENTA_WEB_GIT_ALLOW_HTTP: 'true',
       POLENTA_WEB_LOG_LEVEL: 'warn',
       POLENTA_E2E_RUN: process.env['POLENTA_E2E_RUN']!,
+      // GH63 — administration du serveur contre un faux service (support/fake-admin-service.mjs).
+      POLENTA_WEB_ADMIN_DEV: '1',
+      POLENTA_ADMIN_URL: this.adminUrl,
+      POLENTA_ADMIN_SERVICE_TOKEN: this.adminToken,
     }
   },
 }

@@ -22,10 +22,11 @@ import { OidcClient, pkcePair } from './auth/oidc'
 import { HeadlessPrinter, type PrintSession } from './print/headless-print'
 import { IMAGE_MIME_BY_EXT } from '../main/ipc/file-ops'
 import { forgejoProvider, probeAccess } from '../main/services/forge/forgejo.provider'
+import { registerAdminRoutes } from './admin/admin-routes'
 
 /** Extensions acceptées en upload : celles des sélecteurs du desktop (images, draw.io, classeur). */
 const UPLOAD_EXTENSIONS = new Set([...Object.keys(IMAGE_MIME_BY_EXT), 'drawio', 'xlsx'])
-const API_PREFIXES = ['/rpc/', '/auth/', '/events', '/upload', '/download/', '/healthz']
+const API_PREFIXES = ['/rpc/', '/auth/', '/events', '/upload', '/download/', '/healthz', '/admin/api/', '/admin/status']
 
 /** Vérification des accès des utilisateurs connectés (compte désactivé sans opération git). */
 const ACCESS_CHECK_MS = 5 * 60_000
@@ -435,6 +436,20 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
       rt.downloads.remove(req.params.id).catch(err => req.log.warn({ err: String(err) }, 'download non supprimé'))
     })
     return reply.send(stream)
+  })
+
+  // ── GH63 — administration du serveur (relais vers le service interne) ─────────
+  registerAdminRoutes(app, {
+    admin: config.admin ?? null,
+    requireSession,
+    userToken: async (session) => {
+      if (auth.mode === 'dev') return auth.token || null
+      try {
+        return await pool.tokenStore(session.login).freshAccessToken()
+      } catch {
+        return null
+      }
+    },
   })
 
   // ── Build web du renderer ─────────────────────────────────────────────────────

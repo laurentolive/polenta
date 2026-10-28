@@ -572,6 +572,99 @@ web) ; depuis un poste extérieur, `deploy/tests/acceptance.sh --external <domai
 exigés, 2222/3000/5355/8080/2375 fermés). Hôte en `HARDEN_HOST=basic|none` : ajouter `--harden-level <niveau>`
 (ports non contrôlés).
 
+### A17. Administration depuis Polenta (GH63)
+
+Les propriétaires d'une organisation administrent **leur instance** depuis le client web
+(compte → « Administration du serveur ») ; ceux de l'**instance d'exploitation** (`ADMIN_INSTANCE`)
+administrent aussi **l'hôte et toutes les instances**. L'usage SSH reste entier : chaque opération de
+l'interface lance la même commande du kit, sous le même verrou (`/opt/polenta/.lock`), journalisée
+dans le même `host.log` / `admin.log`.
+
+**Architecture** : `polenta-web` (instance) → `polenta-admin` (service interne, réseau
+`polenta-admin-net`, aucun port publié) → scripts du kit ; Docker via `polenta-docker-proxy` (seul à
+monter le socket, liste fermée) ; actions hors Docker via `polenta-host-agent` (systemd, socket
+`/run/polenta/agent.sock`, aucun réseau). Le service tourne en root **dans son conteneur** avec quatre
+capacités de fichier seulement (design D10) ; jamais root sur l'hôte.
+
+**Installation** (une fois, root, SSH) :
+
+```bash
+# 1. host.env : ADMIN_UI=on, ADMIN_INSTANCE=<instance d'exploitation> (vide : personne n'a le niveau hôte)
+sudo polenta-host setup
+# 2. Service + proxy (image construite depuis le monorepo, ou --image/--version)
+sudo /opt/polenta/kit/admin/install.sh --build ~/polenta
+# 3. Agent hôte (facultatif : sans lui, les actions « hôte » restent possibles par SSH seulement)
+sudo /opt/polenta/kit/admin/host-agent/install-agent.sh
+```
+
+`install.sh` rattache chaque instance à `polenta-admin-net` (`instance sync`), écrit
+`POLENTA_ADMIN_URL` et le jeton de service de l'instance dans son `web.env` ; l'entrée « Administration »
+apparaît après le prochain démarrage du client web.
+
+**Droits** : le droit « propriétaire » (`is_owner` de l'organisation Forgejo) est revérifié auprès de la
+forge à chaque requête (cache 60 s pour les lectures, aucun pour une opération destructive). Retirer
+quelqu'un de l'équipe *Owners* suffit à lui retirer l'administration.
+
+**Audit** : `/opt/polenta/admin/audit.log` (JSON par ligne, ajout seul, jamais purgé) — acteur, instance
+d'origine, IP, opération, cible, résultat, sans aucun secret ; export CSV dans l'onglet Journal. Les
+travaux sont dans `/opt/polenta/admin/jobs/` (90 jours et 200 derniers conservés).
+
+**Secrets** : clé restic et mots de passe temporaires affichés **une seule fois** (puis effacés, ou après
+10 min) ; clé S3 et clé de purge transmises au kit par descripteur de fichier, jamais en argument, sur
+disque, dans un journal ou dans l'audit.
+
+**Opérations de l'interface et commande SSH équivalente** :
+
+| Opération (`OperationId`) | Niveau | Commande SSH |
+|---|---|---|
+| `instance.list` | instance | `polenta-host instance list` |
+| `instance.add` | hôte | `polenta-host instance add <nom> [--domain d] [--org o] [--version v]` |
+| `instance.stop` | instance | `polenta-host instance stop <nom>` |
+| `instance.start` | instance | `polenta-host instance start <nom>` |
+| `instance.sync` | instance | `polenta-host instance sync <nom>` |
+| `instance.remove` | hôte | `polenta-host instance remove <nom> --confirm <nom>` |
+| `forge.update` | instance | `polenta-host instance update <nom> <version>` |
+| `backup.run` | instance | `polenta-host instance backup <nom> --tag <t>` |
+| `backup.list` | instance | `polenta-host instance snapshots <nom>` |
+| `backup.keys` | hôte | `polenta-host instance keys <nom>` |
+| `backup.restore` | instance | `polenta-host instance restore <nom> --from <id> [--source s] [--domain d]` |
+| `export.run` | instance | `polenta-host instance export <nom>` |
+| `export.delete` | instance | `polenta-host exports delete <archive> --confirm <archive>` |
+| `web.enable` | instance | `polenta-host instance web enable <nom> [--domain d] [--version v]` |
+| `web.disable` | instance | `polenta-host instance web disable <nom>` |
+| `dns.check` | instance | `polenta-host dns check <domaine>` |
+| `host.setup` | hôte | `polenta-host setup` |
+| `fail2ban.status` | hôte | `fail2ban-client status polenta-forge` / `sshd` |
+| `fail2ban.unban` | hôte | `fail2ban-client set <prison> unbanip <ip>` |
+| `firewall.status` | hôte | `ufw status verbose` |
+| `host.reboot` | hôte | `systemctl reboot` |
+| `s3.rotate` | hôte | `polenta-host s3-key rotate` |
+| `s3.purge` | hôte | `polenta-host s3-purge <nom> --preview` puis `polenta-host s3-purge <nom>` |
+| `users.import` | instance | `polenta-admin --instance <nom> user import <fichier.csv> [--preview]` |
+| `users.accessReport` | instance | `polenta-admin --instance <nom> access-report` |
+| `users.invite` | instance | `polenta-admin --instance <nom> invite <login>` |
+
+Les comptes, équipes et dépôts se gèrent dans **l'administration de la forge** (lien dans l'onglet
+Utilisateurs) : l'interface ne les reproduit pas.
+
+**Refus volontaires** : arrêter, supprimer ou couper le client web de l'instance depuis laquelle on
+administre (code 18) ; purger les sauvegardes d'une instance encore présente ; toute opération pendant
+une autre (409, « qui, quoi, depuis »), y compris lancée par SSH.
+
+**Sans agent / agent arrêté** : `/me` le signale « absent », les actions hôte sont grisées ; tout reste
+faisable par SSH. Redémarrage de l'hôte depuis l'interface : suivi jusqu'au retour (`boot_id`) ; au-delà
+de 15 min, consigne console KVM (A8).
+
+**Désinstallation** :
+
+```bash
+sudo /opt/polenta/kit/admin/host-agent/install-agent.sh --remove
+sudo /opt/polenta/kit/admin/install.sh --remove          # service + proxy ; audit et travaux conservés
+# host.env : ADMIN_UI=off, puis pour chaque instance :
+sudo polenta-host instance sync <nom>                    # retire polenta-admin-net et l'entrée du client web
+docker network rm polenta-admin-net polenta-docker-proxy-net
+```
+
 ## Partie B — admin du client
 
 Vous êtes propriétaire de l'organisation de votre entreprise sur votre forge

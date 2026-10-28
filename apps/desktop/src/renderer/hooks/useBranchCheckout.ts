@@ -80,8 +80,10 @@ export function useBranchCheckout(
   // track (two separate mutations left a stale error from one visible after the other succeeded,
   // since TanStack Query only resets a mutation's error on its own next call — T82).
   const checkoutMutation = useMutation({
-    mutationFn: (target: { value: string; isCommit: boolean }) =>
-      target.isCommit ? api.sync.checkoutCommit(repoPath, target.value) : api.sync.checkoutBranch(repoPath, target.value),
+    mutationFn: async (target: { value: string; isCommit: boolean }) => {
+      if (target.isCommit) await api.sync.checkoutCommit(repoPath, target.value)
+      else await api.sync.checkoutBranch(repoPath, target.value)
+    },
     onSuccess: async (_data, target) => {
       invalidate()
       invalidateIntegration(qc, repoPath)

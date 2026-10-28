@@ -1,0 +1,38 @@
+# GH63 — agent hôte de l'administration Polenta (specs/GH63-design.md §5.6). Installé par
+# deploy/admin/host-agent/install-agent.sh. Root (fail2ban, redémarrage, setup), mais aucun réseau :
+# seulement le socket Unix /run/polenta/agent.sock.
+[Unit]
+Description=Polenta — agent hôte de l'administration (socket Unix)
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/node /opt/polenta/kit/admin/host-agent/polenta-host-agent.js
+Restart=on-failure
+RestartSec=5
+Environment=POLENTA_ROOT=/opt/polenta
+Environment=POLENTA_AGENT_SOCKET=/run/polenta/agent.sock
+RuntimeDirectory=polenta
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+# Les commandes du kit (status, setup) tournent dans une unité transitoire (systemd-run), hors de ce
+# bac à sable. L'agent lui-même n'écrit que l'état du kit, son socket, et parle à fail2ban et systemd.
+ReadWritePaths=/opt/polenta /run/polenta -/run/fail2ban -/run/systemd -/run/dbus
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

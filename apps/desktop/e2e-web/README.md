@@ -42,6 +42,9 @@ Playwright (runner)
   l'historique du repo nu (`support/forge.ts`).
 - **L'utilisateur** est fixe (mode dev du serveur) : `E2E Tester <e2e@polenta.test>`, login `e2e`.
 - **Hôtes git autorisés** : `127.0.0.1` (la forge locale) et `github.com` (dépendances de la démo).
+- **Administration du serveur** (GH63) : un faux service d'administration (`support/fake-admin-service.mjs`,
+  127.0.0.1:8799, état en mémoire) remplace `polenta-admin` ; le serveur web l'utilise en mode dev
+  (`POLENTA_WEB_ADMIN_DEV=1`). Le test fixe le rôle de l'utilisateur par `POST /__role {"level": "instance"|"host"|null}`.
 
 ## Tests contre la forge réelle (connexion OIDC)
 

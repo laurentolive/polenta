@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, LinkTypeDefinition } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnPanelEntry } from '../../hooks/useComputedColumns'
-import { getRelevantLinkTypes, getLinkTypeLabel, isLinkTypeValid } from './linkUtils'
+import { getRelevantLinkTypes, isLinkTypeValid, linkColumnKeys, linkColumnLabel, parseLinkColumn } from './linkUtils'
 
 // ── FieldConfig modal (⚙) — onglets Tableau / Document indépendants ─────────
 
@@ -90,11 +90,16 @@ export function FieldConfigModal({
 
   // Ordre canonique = celui de la liste affichée dans ce panneau (champs système, puis custom,
   // puis étapes, puis liens). Recocher un champ le remet à sa place plutôt qu'en fin de liste.
+  // GH137 — onglet Tableau : un type de lien dont ce type est source et cible a deux colonnes
+  // (sortants, entrants) ; onglet Document : une case par type de lien, inchangé (Q3).
+  const linkKeysOf = (lt: LinkTypeDefinition) =>
+    tab === 'excel' ? linkColumnKeys(lt, objectTypeRef, category) : [`link::${lt.name}`]
+
   const canonicalOrder = [
     ...allFields,
     ...computedColumns.map(c => c.key),
     ...(hasSteps ? ['steps'] : []),
-    ...relevantLinkTypes.map(lt => `link::${lt.name}`),
+    ...relevantLinkTypes.flatMap(linkKeysOf),
   ]
 
   const toggle = (f: string) => {
@@ -285,9 +290,8 @@ export function FieldConfigModal({
               <p className="text-xs text-ink-3 italic">{t('system.fieldConfig.noLinkTypeForType')}</p>
             ) : (
               <div className="space-y-1.5">
-                {relevantLinkTypes.map(lt => {
-                  const key = `link::${lt.name}`
-                  const displayLabel = getLinkTypeLabel(lt, objectTypeRef, category)
+                {relevantLinkTypes.flatMap(lt => linkKeysOf(lt).map(key => ({ lt, key }))).map(({ lt, key }) => {
+                  const displayLabel = linkColumnLabel(lt, parseLinkColumn(key)!.direction, objectTypeRef, category)
                   return (
                     <label
                       key={key}

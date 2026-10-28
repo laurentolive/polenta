@@ -260,7 +260,7 @@ export function MergeResolvePage({ id, projectId }: Props) {
           title: origin.title,
           sha,
         })
-        const pushes = await Promise.allSettled(result.published.map(r => api.sync.pushBranch(r.repoPath, r.integrationBranch)))
+        const pushes = await Promise.allSettled(result.published.map(r => api.sync.pushBranch(r.repoPath, r.pushBranch)))
         const pushErrors = pushes.flatMap((p, i) => p.status === 'rejected'
           ? [`${result.published[i].label || result.published[i].name} : ${p.reason instanceof Error ? p.reason.message : String(p.reason)}`]
           : [])

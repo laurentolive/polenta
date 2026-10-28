@@ -145,7 +145,7 @@ apps/desktop/
 ## 7. Renderer : capacités et adaptateurs
 
 `renderer/platform.ts` : `isWeb`, `capabilities` (`localFilesystem`, `externalDrawioEditor`,
-`autoUpdate`, `accountManagement`) — faux sur le web. Les fonctions propres au poste sont
+`autoUpdate`, `accountManagement`) — faux sur le web ; `serverAdmin` (GH63) vrai sur le web seulement. Les fonctions propres au poste sont
 **masquées**, pas réécrites :
 
 | Desktop | Web |
@@ -158,6 +158,7 @@ apps/desktop/
 | Mise à jour automatique | masquée ; « À propos » affiche la version du serveur |
 | `Ctrl+T` / `Ctrl+W` | `Alt+T` / `Alt+W` en plus (raccourcis capturés par le navigateur) |
 | Titre de fenêtre | `document.title` |
+| Administration du serveur | Page « Administration » pour les propriétaires (GH63, §12) — absente du desktop |
 
 Un channel desktop appelé par erreur depuis le web est rejeté par le bridge (« Non disponible dans
 la version web »).
@@ -184,6 +185,8 @@ la version web »).
 | `POLENTA_WEB_DEMO_PROJECT_URL` | démo | Projet de démonstration proposé. |
 | `POLENTA_WEB_STATIC_DIR`, `_RESOURCES_DIR`, `_APP_ROOT`, `_NO_STATIC` | build local | Emplacements (image, dev Vite). |
 | `POLENTA_WEB_DEV_LOGIN`, `_TOKEN`, `_REMOTE`, `_NAME`, `_EMAIL` | — | Mode dev uniquement. |
+| `POLENTA_ADMIN_URL` / `POLENTA_ADMIN_SERVICE_TOKEN` | — | API d'administration (GH63, écrits par le kit si `ADMIN_UI=on`) ; absents = `/admin/*` en 404. |
+| `POLENTA_WEB_ADMIN_DEV` | — | `1` : administration en mode dev (tests) ; démarrage refusé avec `NODE_ENV=production`. |
 
 ## 9. Build, image et déploiement
 
@@ -224,3 +227,27 @@ la version web »).
 - Isolation par conteneur de services dans un seul process (pas un process par utilisateur) ;
   dossier courant partagé mais vide.
 - Révocation constatée au plus tard après 5 min pour un utilisateur sans opération git.
+
+## 12. Administration du serveur (GH63)
+
+Zone « Administration » du client web, réservée aux **propriétaires** de l'organisation Forgejo de
+l'instance (`is_owner`) : niveau **instance** (sa propre instance) ou **hôte** (propriétaires de
+l'instance d'exploitation `ADMIN_INSTANCE` : toutes les instances et l'hôte). Détail : `specs/GH63.md`,
+`specs/GH63-design.md`, exploitation : `deploy/RUNBOOK.md` A17.
+
+- **Chemin** : navigateur → `/admin/api/*` (web-server, session + CSRF, sessions d'impression refusées,
+  liste fermée de chemins) → service interne `polenta-admin` (`apps/admin-service`, réseau
+  `polenta-admin-net`, aucun port publié) → scripts du kit `deploy/`, Docker par `polenta-docker-proxy`,
+  hôte par `polenta-host-agent`. Hors `ChannelPolicy` : aucun channel `admin:*`.
+- **Droit** : jamais stocké côté web ; le service le revérifie auprès de la forge avec le jeton de
+  l'utilisateur (cache 60 s, aucun pour une opération destructive). Le web-server transmet le jeton de
+  service de l'instance (`POLENTA_ADMIN_SERVICE_TOKEN`) et le jeton forge de la session.
+- **Découverte** : `GET /admin/status` (toujours 200, `{available, me}`) ; pas d'erreur console pour un
+  non-propriétaire ni sur un serveur sans administration.
+- **Renderer** : entrée « Administration du serveur » dans le panneau Compte ; onglets Instances,
+  Sauvegardes, Exports, Utilisateurs, Journal, DNS (+ Hôte, Stockage S3 au niveau hôte) ; suivi des
+  travaux par sondage, bandeau global « opération en cours » (interface ou SSH) ; confirmation par saisie
+  du nom pour les opérations destructives ; valeurs à usage unique (clé de sauvegarde, mots de passe
+  temporaires) affichées une fois, masquées par défaut.
+- **Tests** : `src/web-server/admin/admin-routes.test.ts` ; e2e `gh63-admin.spec.ts`,
+  `gh63-sensitive.spec.ts` contre `e2e-web/support/fake-admin-service.mjs`.

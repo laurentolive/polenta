@@ -820,9 +820,9 @@ const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)     // T69
 const workspace = new WorkspaceService(sync, workspaceTree, watcher)
 const schema = new SchemaService(auth, workspaceTree)
 const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)  // T123
-const tree = new TreeService()                                        // .polenta/trees/
-const requirements = new RequirementsService(git, reqIndex, schema, tree)
-const tests = new TestsService(git, testsIndex, schema, tree)
+const tree = new TreeService(indexObjectLister(reqIndex, testsIndex)) // .polenta/trees/ (GH180)
+const requirements = new RequirementsService(git, reqIndex, schema)
+const tests = new TestsService(git, testsIndex, schema)
 const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
 const reviews = new ReviewsService(git)
 const campaigns = new CampaignsService(git, tests)
@@ -1344,9 +1344,27 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 
 **Règles :**
 - Le panneau actif (`activePanel`) est calculé depuis `pathname` : pas de `useState`, dérivé pur.
-- Recliquer le panneau déjà actif re-navigue vers la route par défaut.
+- Recliquer le panneau déjà actif **replie/déplie le panneau latéral** (GH123, voir ci-dessous) ; il
+  ne re-navigue plus vers la route par défaut.
 - "Version", "Produit", "Composants" sont grisés si aucun projet n'est chargé.
 - Lorsque le main frame affiche un diff (`/diff`), le panel Version expose une icône `History` pour revenir à `/graph`.
+
+**Panneau latéral masquable (GH123)** — style VS Code, pas d'icône dédiée. Logique pure dans
+`layout/sidebarCollapse.ts`, état dans `AppLayout`.
+- **Bascule** : clic sur le bouton du panneau actif, ou `Ctrl+B` (`Cmd+B` seul sur macOS). Aucune
+  navigation. Replié : ni Sidebar ni poignée de redimensionnement, la vue principale prend la largeur ;
+  le bouton actif reste surligné et porte `aria-expanded` (vrai si déplié, absent sur les autres).
+- **Clic sur un autre panneau** : navigation habituelle **et** dépli. Toute autre navigation (onglets,
+  liens, URL) laisse le panneau replié.
+- **Compte** (sans route) : recliquer Compte actif replie et retire la surcharge — au dépli suivant,
+  le panneau affiché est celui de la route. Au clavier, la surcharge est conservée.
+- **`Ctrl+B` ignoré** dans un champ éditable (`input`, `textarea`, `select`, `contenteditable` — gras de
+  l'éditeur richtext), si déjà traité (`defaultPrevented`) et en auto-répétition ; touche physique B
+  (`code: KeyB`) acceptée pour les dispositions non latines. `preventDefault` (Firefox : marque-pages).
+- **Masqué, pas démonté** (`display: none`) : les panneaux gardent leur état local (message de commit,
+  dossiers dépliés, défilement).
+- Préférence **par poste** : `localStorage` `polenta.sidebarCollapsed` = `"1"` si replié, clé absente
+  sinon (toute autre valeur → déplié). La largeur `polenta.sidebarWidth` n'est pas touchée par le repli.
 
 **Personnalisation (GH56)** — ordre et visibilité des boutons, préférence d'interface **par poste**,
 commune à tous les projets (`localStorage`, clé `polenta.activityBarLayout` = `{order, hidden}` ;
@@ -1373,7 +1391,8 @@ par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, 
 | `/` | Workspace (création, clone, récents) | Projet |
 | `/schema?repoPath&projectId` | **Modèle de données** (onglet Structure par défaut) — page d'atterrissage du projet depuis T86, remplace `/project/$id` (retiré) | Projet |
 | `/graph?projectId` | **Arbre de versions** (commits, refs de branches, checkout) | Version |
-| `/diff?projectId&filepath` | Vue diff d'un fichier | Version |
+| `/diff?projectId&repoPath&filepath&commitSha?` | Vue diff d'un fichier : working tree vs `HEAD`, ou commit vs son parent (`commitSha`) — bascule Raw / Rendu (GH178, cf. §19.8b) | Version |
+| `/version-diff?projectId` | Comparaison d'un fichier entre deux refs choisies dans le panneau Version — même vue de diff Raw / Rendu (GH178) | Version |
 | `/merge-resolve?id&projectId` | **Résolution des conflits** d'un merge (GH37) — session `id` (`merge-resolution:*`), ouverte dans son propre onglet « Conflits — <repo> » depuis Publier, la vue graphe ou Rafraîchir ; en-tête propre (pas de `ViewHeader`, donc pas de bouton Publier pendant la résolution) | — |
 | `/branch/new` | Formulaire nouvelle branche | Version |
 | `/product?projectId&tab` | **Panel Produit** — liste exigences / tests / campagnes selon tab | Produit |
@@ -1519,6 +1538,15 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >   composants, suppression avec confirmation) ; sinon → arbre des repos. La vue `/baseline` est
 >   le formulaire de création (ex-popup, voir SPEC-FORKS-BRANCHES-BASELINES §5.2). Liste et
 >   formulaire partagent `useBaselines` (même clé `baseline:list`).
+> - **Vues de diff (GH178)** : `/version-diff`, `/diff` (fichier stagé / modifié) et `/diff?commitSha`
+>   (fichier d'un commit de la vue graphe) affichent `FileDiffView`. Sous-en-tête : chemin,
+>   « Masquer les inchangés » (Rendu), bascule **Raw / Rendu**, `+n / −n`. Raw = diff texte ligne à
+>   ligne. Rendu (exigence ou test dont le type se résout, fichier `.drawio`) = deux colonnes
+>   `Avant · <sha>` / `Après · <sha | working tree>` alignées, unités modifiées sur fond rouge /
+>   vert, mots changés barrés / surlignés, diagrammes et images lus à la version de leur colonne.
+>   Les autres fichiers restent en Raw, sans bascule. Mode et case mémorisés par poste
+>   (`polenta:diffViewMode`, `polenta:diffHideUnchanged`). Détails : `specs/GH178.md`,
+>   `SPEC-TECH-stack.md` §6.5.
 
 ```
 ┌─────────────────────────────┐
@@ -2467,7 +2495,7 @@ Aucune limite de nombre de composants n'est imposée par le code (l'ancienne lim
 
 | Fichier | Maintenu par | Déclencheur |
 |---|---|---|
-| `.polenta/trees/<nœud>/<type>.yaml` | `TreeService` | Actions dans l'UI (création/déplacement/suppression d'élément) — un fichier par (nœud, type d'objet), **pas** un `tree.yaml` unique |
+| `.polenta/trees/<nœud>/<type>.yaml` | `TreeService` | Rangement dans l'UI (dossiers, déplacement, ordre, suppression d'élément) — un fichier par (nœud, type d'objet), **pas** un `tree.yaml` unique ; la création d'un objet ne l'écrit plus (GH180, §22.4) |
 | `<workspace>/.polenta/tree.cache.yaml` | `WorkspaceTreeService` | Ouverture du workspace / `workspace:rebuild-tree` |
 | `<workspace>/.polenta/workspace.yaml` | `WorkspaceService.initWorkspace()` | Création du workspace |
 
@@ -2507,6 +2535,23 @@ composants. Chaque (nœud, type d'objet) a son propre fichier d'ordre d'affichag
 `.polenta/trees/<nœud>/<type>.yaml` (`TypeTree`/`TypeTreeNode`, `packages/types/src/schema.ts`),
 maintenu par l'app à chaque action UI — jamais par un script de régénération, jamais commité comme
 un artefact "généré à la volée" à committer manuellement.
+
+**Rangement curaté seul (GH180)** — pour limiter les conflits git entre branches, ce fichier ne
+porte que ce qu'un utilisateur a réellement rangé :
+
+- **Inventaire = fichiers objets.** `TreeService.get` complète l'arbre stocké avec les objets du
+  type absents du fichier (« non classés »), triés par ID en fin de racine, nœud d'id stable
+  `item-<ID>` (`hydrateTree`). `RequirementsService`/`TestsService.create` n'écrivent plus
+  l'arbre (fin de `appendToTree`, T138) ; le serveur MCP ne construit plus de `TreeService`.
+- **Pas de titre recopié.** Un nœud `item` lié à un objet est stocké sans `name` : le libellé est
+  le `title` de l'objet, relu à chaque `get` (un ancien fichier avec `name` reste lisible ; repli
+  sur l'ID pour un objet disparu). Seuls les dossiers ont un `name`.
+- **Écriture minimale.** `TreeService.save` (`stripTree`) retire les `name` des éléments et la
+  queue de racine que `hydrateTree` reconstruirait à l'identique (éléments sans enfant, présents une
+  fois, en ordre d'ID strictement croissant). Créer un objet en fin de liste, même depuis l'arbre,
+  laisse le fichier inchangé ; un arbre sans rangement n'est pas créé sur disque.
+- `moveTypeTree`/`renameTypeTree` déplacent le fichier stocké tel quel, sans complétion.
+- Renderer : une mise à jour de titre invalide la requête `['tree', repoPath]`.
 
 ### 22.5 Résolution des composants en repo séparé
 

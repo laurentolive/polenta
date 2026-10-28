@@ -72,6 +72,11 @@
       "repoFiles_one": "({{count}} file)",
       "repoFiles_other": "({{count}} files)",
       "setAsideCommits": "(set-aside commits)",
+      "offIntegrationMerge": "You are on <mono>{{branch}}</mono>. Publishing will merge this branch into <mono>{{integration}}</mono> and then push <mono>{{integration}}</mono>.",
+      "offIntegrationNoMerge": "Publishing will commit on <mono>{{branch}}</mono> and push <mono>{{branch}}</mono>. <mono>{{integration}}</mono> will not be modified.",
+      "mergeInto": "Merge into <mono>{{integration}}</mono>",
+      "mergeIntoIntegration": "Merge into the integration branch",
+      "publishedUnmerged": "Published on <mono>{{branch}}</mono> (not merged into <mono>{{integration}}</mono>).",
       "parentsNote": "Parent repos are published too, to update their pins.",
       "resolveConflicts": "Resolve conflicts",
       "resumeResolution_one": "Resume conflict resolution",
@@ -113,7 +118,8 @@
       "requirement": "Requirement",
       "test": "Test",
       "campaign": "Campaign",
-      "mergeResolve": "Conflicts"
+      "mergeResolve": "Conflicts",
+      "constellation": "Constellation"
     }
   },
   "account": {
@@ -132,6 +138,8 @@
       "english": "English",
       "autoUpdate": "Auto updates",
       "autoUpdateHint": "Check for and download updates at startup (applies on next launch)",
+      "networkTimeout": "Network connection timeout (s)",
+      "networkTimeoutHint": "Increase if operations fail with a timeout (slow or filtered network, e.g. accessing GitHub from China). 10 to 120 s, applies immediately.",
       "exportTemplates": "Export templates",
       "exportTemplatesHint": "Folder holding client Word/Excel templates (local folder, network share or cloned repo), shared across projects.",
       "exportTemplatesChoose": "Choose…",
@@ -765,6 +773,7 @@
     },
     "fieldConfig": {
       "visibleFields": "Visible fields",
+      "reset": "Reset",
       "colSection": "Section",
       "colCreatedAt": "Created on",
       "colUpdatedAt": "Modified on",
@@ -778,7 +787,9 @@
       "missingRefs": "missing sourceRefs or targetRefs",
       "configureColumns": "Configure columns",
       "showFolders": "Show folder headings",
-      "computedColumns": "Computed columns"
+      "computedColumns": "Computed columns",
+      "computedGroupPending": "Computing columns…",
+      "computedGroupEmpty": "No column in the result"
     },
     "coverage": {
       "noLinkedTest": "No linked test",
@@ -1023,6 +1034,7 @@
       "withoutParams_other": "{{count}} tests without parameters",
       "alreadyIncluded_one": "Already included {{count}} time in the campaign",
       "alreadyIncluded_other": "Already included {{count}} times in the campaign",
+      "statusAlwaysShown": "Always shown in the picker: tests of every status are offered",
       "abandonTitle": "Discard the selection?",
       "abandon": "Discard",
       "keepEditing": "Keep editing",
@@ -1225,7 +1237,11 @@
       "valueColumn": "Value column",
       "tooltipColumn": "Tooltip column",
       "mappingHint": "Column of the query result (run the query to list its columns)",
-      "notInResult": "not in result"
+      "notInResult": "not in result",
+      "split": "One column per value of",
+      "splitHint": "One sub-column per distinct value of this result column (e.g. one per campaign), each checked separately in ⚙️. 50 at most.",
+      "splitLabelColumn": "Column labels",
+      "splitLabelDefault": "(the value)"
     }
   },
   "dashboardPage": {
@@ -1447,7 +1463,9 @@
     "localTitle": "Local changes (vs HEAD)",
     "localComputedAt": "Computed at {{time}}",
     "refresh": "Refresh",
-    "noChangedRequirement": "No requirement changed between these two baselines."
+    "noChangedRequirement": "No requirement changed between these two baselines.",
+    "statementDiff": "Statement: before / after",
+    "howToRead": "Each changed element is the cause of the analysis; the elements of its tree (linked downstream, then upstream) are to be handled one by one: status, comment, and clearing the “Impact to check” flag."
   },
   "graphPage": {
     "tabTitle": "Version tree — {{repoName}}",
@@ -1467,6 +1485,13 @@
     "tagNameLabel": "Tag name",
     "inProgress": "In progress…",
     "checkoutBranch": "Checkout branch",
+    "remoteCheckout": {
+      "behind": "You are on {{branch}}, behind {{remoteRef}}.",
+      "ahead": "You are on {{branch}}, which has commits that {{remoteRef}} doesn't.",
+      "diverged": "You are on {{branch}}, which has diverged from {{remoteRef}}: nothing was overwritten. Push, or merge {{remoteRef}} into {{branch}}, to reconcile them.",
+      "fastForward": "Fast-forward",
+      "ffFailed": "Fast-forward failed (conflict)."
+    },
     "mergeBranchInto": "Merge branch into…",
     "rebaseCurrentOnBranch": "Rebase current on branch",
     "pushBranch": "Push branch",
@@ -1489,6 +1514,33 @@
   },
   "diffPage": {
     "noDifference": "No difference"
+  },
+  "diffView": {
+    "raw": "Raw",
+    "rendered": "Rendered",
+    "hideUnchanged": "Hide unchanged",
+    "unchangedCount_one": "{{count}} unchanged field",
+    "unchangedCount_other": "{{count}} unchanged fields",
+    "before": "Before",
+    "after": "After",
+    "workingTree": "working tree",
+    "absentFile": "File absent from this version",
+    "absentUnit": "— absent",
+    "renderUnavailable": "Rendering unavailable for this content — see Raw",
+    "stepAction": "Action",
+    "stepExpected": "Expected result",
+    "stepNumber": "Step {{n}}",
+    "page": "Page “{{name}}”",
+    "absentPage": "— page absent",
+    "unchangedPages_one": "{{count}} unchanged page",
+    "unchangedPages_other": "{{count}} unchanged pages",
+    "unit": {
+      "title": "Title",
+      "status": "Status",
+      "preconditions": "Preconditions",
+      "steps": "Steps",
+      "postconditions": "Postconditions"
+    }
   },
   "versionDiffPage": {
     "selectFileHint": "Select a file in the Version panel"
@@ -1786,5 +1838,50 @@
       "designated": "{{branch}} is the integration branch of this repo: designate another one before deleting it.",
       "lastIntegration": "{{branch}} is the last integration branch of this repo: a repo must never be left without an integration branch."
     }
+  },
+  "constellation": {
+    "title": "Requirements constellation",
+    "subtitle": "Refinements and test coverage",
+    "ariaLabel": "Requirements in rings: top level at the centre, refinements outwards",
+    "searchPlaceholder": "Search an ID or a title",
+    "colorBy": "Colour:",
+    "colorByType": "Object type",
+    "noValue": "Not set",
+    "reverse": "Reverse direction",
+    "reverseHint": "Each link type's direction is inferred from the data (the parent is the side with fewer objects). Reverse it if the constellation looks upside down.",
+    "empty": "No requirements in this project.",
+    "kpi": {
+      "requirements": "requirements",
+      "links": "links between requirements",
+      "notRefined": "intermediate requirements not refined",
+      "coverage": "test coverage"
+    },
+    "legend": {
+      "halo": "Halo = share covered by tests",
+      "uncovered": "Dotted = not covered",
+      "rings": "Centre: top level · edge: finest level"
+    },
+    "card": {
+      "coverage": "Test coverage",
+      "leavesCovered_one": "{{covered}} of {{count}} leaf requirement covered",
+      "leavesCovered_other": "{{covered}} of {{count}} leaf requirements covered",
+      "topLevel": "Top-level requirement",
+      "notRefined": "Not refined yet",
+      "reversed": "Link direction reversed from the inferred one.",
+      "open": "Open {{id}}"
+    },
+    "overview": {
+      "label": "Overview",
+      "title_one": "{{count}} requirement, {{links}} links",
+      "title_other": "{{count}} requirements, {{links}} links",
+      "help": "Each petal starts from a top-level requirement at the centre and opens towards the requirements that refine it. Hover a point to follow its lineage, click to pin it.",
+      "watch": "Worth a look",
+      "notRefined": "intermediate requirements without refinement",
+      "uncoveredLeaves": "leaf requirements without a test case",
+      "tests": "test cases in the project",
+      "petals": "Petals"
+    },
+    "openFromPanel": "Requirements constellation",
+    "openFromPanelHint": "Overview of refinements and coverage"
   }
 }

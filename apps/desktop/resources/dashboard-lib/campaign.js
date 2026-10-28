@@ -1,8 +1,9 @@
-// @polenta-lib campaign 3
+// @polenta-lib campaign 4
 // Bibliothèque projet (contenu de départ livré par Polenta, modifiable par le projet).
-// Campagnes : état dans le temps, étape d'avancement d'une entrée, dernier résultat d'un test (tous runs, ou en campagne).
+// Campagnes : état dans le temps, étape d'avancement d'une entrée, dernier résultat d'un test (tous runs, ou en campagne),
+// résultat de chaque test par campagne.
 import { dayEnd, dayOf, dayRange } from './time.js'
-import { ENTRY_ORDER, entryStatusLabel, isApproval, statusLabel, typeIndex } from './status.js'
+import { ENTRY_ORDER, entryStatusLabel, isApproval, statusLabel, typeIndex, worst } from './status.js'
 
 const sep = '/'
 
@@ -350,6 +351,53 @@ export function lastEntryResults(data) {
  */
 export function lastEntryResult(data, testId) {
   return lastEntryResults(data).get(testId) ?? null
+}
+
+// ─── Résultat par campagne ───────────────────────────────────────────────────
+
+/**
+ * Résultat de chaque test dans chaque campagne (colonne « Résultat par campagne » de la Vue Système,
+ * GH126) : une ligne par (campagne, test ayant au moins une entrée active), campagnes dans l'ordre de
+ * création (`createdAt`, puis ID), **toutes**, abandonnées comprises ; tests dans l'ordre de leur
+ * première entrée. Test itérant (plusieurs entrées) : `status` = pire statut des instances
+ * (`worst`, `pending` si une instance n'est pas exécutée et aucune n'a échoué) ; `entryId` /
+ * `executedAt` / `executedBy` de l'instance qui porte ce statut (la plus récemment exécutée) —
+ * `executedAt` / `executedBy` nuls si ce statut est `pending`.
+ * Règles modifiables par le projet.
+ * @param {import('./polenta').PolentaGraph} data
+ * @returns {{ campaignId: string, campaignTitle: string, testId: string, status: string, executedAt: string | null, executedBy: string | null, entryId: string, statuses: string[] }[]}
+ */
+export function entryResultsByCampaign(data) {
+  const campaigns = data.campaigns.slice().sort((a, b) =>
+    a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  const out = []
+  for (const c of campaigns) {
+    /** @type {Map<string, import('./polenta').GraphEntry[]>} */
+    const byTest = new Map()
+    for (const e of c.entries) {
+      const list = byTest.get(e.testCaseId)
+      if (list) list.push(e)
+      else byTest.set(e.testCaseId, [e])
+    }
+    for (const [testId, entries] of byTest) {
+      const statuses = entries.map((e) => e.status)
+      const status = worst(statuses) ?? 'pending'
+      // Instance qui porte le statut retenu : la plus récemment exécutée, à défaut la première.
+      /** @type {import('./polenta').GraphEntry | null} */
+      let ref = null
+      for (const e of entries) {
+        if (e.status !== status) continue
+        if (!ref || (e.executedAt && (!ref.executedAt || e.executedAt > ref.executedAt))) ref = e
+      }
+      const at = ref ?? entries[0]
+      const executed = status !== 'pending' && !!at.executedAt
+      out.push({
+        campaignId: c.id, campaignTitle: c.title, testId, status,
+        executedAt: executed ? at.executedAt : null, executedBy: executed ? at.executedBy : null, entryId: at.entryId, statuses,
+      })
+    }
+  }
+  return out
 }
 
 /** Libellé d'un statut de test (copie ou test vivant) — réexporté pour les scripts. */

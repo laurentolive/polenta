@@ -1,16 +1,15 @@
-import { randomUUID } from 'crypto'
-import { renameFieldKeys } from '@polenta/types'
+import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
 import type { CreateRequirementDto, UpdateRequirementDto, TransitionRequirementDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService, RequirementFilters } from './requirements-index.service'
 import type { SchemaService } from './schema.service'
-import type { TreeService } from './tree.service'
 import { RevalidationService } from './revalidation.service'
 import { omitAuditFields } from './audit-fields.util'
-import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
+import { findObjectTypeDef } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
 
 export class RequirementsService {
@@ -18,7 +17,6 @@ export class RequirementsService {
     private readonly git: GitService,
     private readonly index: RequirementsIndexService,
     private readonly schema: SchemaService,
-    private readonly tree?: TreeService,
     private readonly revalidation?: RevalidationService,
     private readonly history?: HistoryService,
   ) {}
@@ -66,6 +64,11 @@ export class RequirementsService {
   }
 
   async create(repoPath: string, dto: CreateRequirementDto, workspaceDir?: string): Promise<Requirement> {
+    // GH149 — statut initial lu dans le schéma (premier statut du type), pas `draft` en dur.
+    const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
+    if (dto.status && isUnknownStatus(typeDef, dto.status)) {
+      throw new Error(`Statut inconnu pour le type ${dto.objectTypeRef} : "${dto.status}"`)
+    }
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
     const reqId = await this.nextId(repoPath, targetRepo, dto.objectTypeRef)
 
@@ -83,7 +86,7 @@ export class RequirementsService {
       branchId: '',
       objectTypeRef: dto.objectTypeRef,
       title: dto.title,
-      status: 'draft',
+      status: dto.status ?? initialStatus(typeDef),
       version: 1,
       fields: dto.fields ?? {},
       jiraLinks: [],
@@ -96,14 +99,17 @@ export class RequirementsService {
     }
 
     const created = await this.persist(repoPath, targetRepo, null, req)
-    await this.appendToTree(targetRepo, dto.objectTypeRef, created.id, created.title)
     return created
   }
 
   // T159 — `withKeyLock` sérialise les read-modify-write concurrents sur le même fichier
   // (`findById` → merge → `writeYaml`) : sans ça un autosave et une transition de statut
   // simultanés sur la même exigence pouvaient se marcher dessus (un champ perdu).
-  async update(repoPath: string, id: string, dto: UpdateRequirementDto, workspaceDir?: string): Promise<Requirement> {
+  async update(
+    repoPath: string, id: string, dto: UpdateRequirementDto, workspaceDir?: string,
+    /** GH150 — `update_requirements` (MCP) : une clé de `fields` à `null` retire le champ. */
+    opts: { removeNullFields?: boolean } = {},
+  ): Promise<Requirement> {
     return withKeyLock(`${repoPath}::requirements/${id}`, async () => {
       const existing = await this.index.findById(repoPath, id)
       if (!existing) throw new Error(`Requirement ${id} not found`)
@@ -115,7 +121,9 @@ export class RequirementsService {
       return this.persist(repoPath, targetRepo, existing, {
         ...existing,
         ...(dto.title && { title: dto.title }),
-        fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
+        fields: opts.removeNullFields
+          ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
+          : { ...(existing.fields as object), ...(dto.fields ?? {}) },
       })
     })
   }
@@ -269,32 +277,6 @@ export class RequirementsService {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
-
-  /**
-   * Inserts a leaf `TypeTreeNode` for the newly created object into its
-   * `.polenta/trees/<node>/<type>.yaml` — without this, the object is written to disk
-   * but never enumerated by SystemView/ExcelView, which read that tree rather than
-   * scanning `requirements/` (T138: objects created via the MCP server were invisible
-   * in the app because this step only happened in the renderer's create flow).
-   * `this.tree` is optional (absent in some MCP-container wiring) and any failure here
-   * is swallowed — a missing/corrupt tree entry must never fail the object creation
-   * itself, since the YAML file (the source of truth) is already written.
-   */
-  private async appendToTree(repoPath: string, objectTypeRef: string, objectId: string, title: string): Promise<void> {
-    if (!this.tree) return
-    try {
-      const schema = await this.git.readYaml<ProjectSchema>(repoPath, '.polenta/schema.yaml')
-      const location = schema ? resolveObjectTypeLocation(schema, objectTypeRef) : null
-      if (!location || location === 'unresolvable') return
-
-      const { nodeName, typeDef } = location
-      const current = await this.tree.get(repoPath, nodeName, typeDef.name)
-      const node = { id: randomUUID(), kind: 'item' as const, name: title, objectId, children: [] }
-      await this.tree.save(repoPath, { nodeId: nodeName, typeId: typeDef.name, root: [...current.root, node] })
-    } catch (err) {
-      console.error(`Erreur insertion arbre pour ${objectId}:`, err)
-    }
-  }
 
   /**
    * The prefix is resolved from `repoPath`'s schema (it declares every node), but the number is

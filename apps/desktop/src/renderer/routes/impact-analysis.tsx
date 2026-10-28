@@ -18,6 +18,7 @@ import { RevalidationList } from '../components/impact/RevalidationList'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { ExportButton } from '../components/export/ExportButton'
 import { impactAnalysisExportBaseName } from '../components/export/exportFilenames'
+import { wordDiff, diffValueText } from '../lib/wordDiff'
 import type {
   ImpactAnalysis,
   ChangedRequirement,
@@ -306,6 +307,39 @@ function ImpactTreeView({ nodes, repoPath, onOpen, onUpdateStatus, depth = 0, re
   )
 }
 
+// ── StatementDiff ────────────────────────────────────────────────────────────
+
+/** Au-delà, le diff est replié par défaut (un énoncé EARS tient d'ordinaire en quelques lignes). */
+const STATEMENT_DIFF_COLLAPSE_CHARS = 400
+
+// GH145 — avant/après de l'énoncé d'un élément modifié, mot à mot : ancien barré, nouveau
+// surligné. C'est presque toujours ce qui a changé, et ce qui permet de juger l'impact sur l'arbre.
+function StatementDiff({ from, to }: { from: unknown; to: unknown }) {
+  const { t } = useTranslation()
+  const before = diffValueText(from)
+  const after = diffValueText(to)
+  const parts = useMemo(() => wordDiff(before, after), [before, after])
+  const long = Math.max(before.length, after.length) > STATEMENT_DIFF_COLLAPSE_CHARS
+  const [open, setOpen] = useState(!long)
+  return (
+    <div className="text-xs">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-ink-3 hover:text-ink-2">
+        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        {t('impactAnalysisPage.statementDiff')}
+      </button>
+      {open && (
+        <p className="mt-1 whitespace-pre-wrap text-ink-2 border-l-2 border-edge pl-2" data-testid="statement-diff">
+          {parts.map((p, i) => p.kind === 'same'
+            ? <span key={i}>{p.text}</span>
+            : p.kind === 'removed'
+              ? <del key={i} className="text-status-danger bg-status-danger-bg line-through">{p.text}</del>
+              : <ins key={i} className="text-status-success bg-status-success-bg no-underline">{p.text}</ins>)}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── ChangedRequirementRow ────────────────────────────────────────────────────
 
 function ChangedRequirementRow({
@@ -331,8 +365,8 @@ function ChangedRequirementRow({
   const hasTrees = changed.descendantTree.length > 0 || changed.ascendantTree.length > 0
   const onUpdateDescendant: UpdateNodeStatus = (node, status, comment) => onUpdateItemStatus(changed.reqId, 'descendant', node, status, comment)
   const onUpdateAscendant: UpdateNodeStatus = (node, status, comment) => onUpdateItemStatus(changed.reqId, 'ascendant', node, status, comment)
-  // Le diff brut du champ statement (EARS, potentiellement long/multi-lignes) est redondant avec
-  // l'énoncé déjà consultable au survol du titre/id — retiré de la liste des champs changés.
+  // L'énoncé a son propre affichage, mot à mot (GH145) — retiré de la liste brute des champs changés.
+  const statementChange = changed.changedFields.find((f) => f.field === 'fields.statement')
   const changedFields = changed.changedFields.filter((f) => f.field !== 'fields.statement')
   const statementTooltip = useRequirementStatementTooltip(isRequirement ? repoPath : '', isRequirement ? changed.reqId : '', changed.title)
   // T173 — l'élément changé n'est normalement pas marqué (T171 `includeSelf` excepté) : icône
@@ -367,6 +401,12 @@ function ChangedRequirementRow({
           {t(CHANGE_TYPE_LABEL_KEY[changed.changeType])}
         </span>
       </div>
+
+      {statementChange && (
+        <div className="px-10 pb-2">
+          <StatementDiff from={statementChange.from} to={statementChange.to} />
+        </div>
+      )}
 
       {changedFields.length > 0 && (
         <div className="px-10 pb-2 space-y-0.5">
@@ -761,6 +801,9 @@ function ImpactAnalysisPage() {
           <p className="text-sm text-ink-3 italic px-4 py-3">{t('impactAnalysisPage.noChangedRequirement')}</p>
         ) : (
           <RevalidationTreeContext.Provider value={revalidationTree}>
+            {!isLocal && (
+              <p className="text-xs text-ink-3 px-4 py-2 border-b border-edge-subtle">{t('impactAnalysisPage.howToRead')}</p>
+            )}
             {displayedChanges.map((cr) => (
               <ChangedRequirementRow
                 key={`${cr.elementType ?? 'requirement'}-${cr.reqId}`}

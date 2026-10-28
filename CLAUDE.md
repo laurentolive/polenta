@@ -47,7 +47,7 @@ product-aspirateur-v1/               ← repo produit principal
     ├── tombstones/                   ← un fichier vide par ID supprimé physiquement (GH20), jamais supprimé
     └── trees/
         └── root/
-            ├── exigence-systeme.yaml ← ordre d'affichage des SYS (un fichier par type d'objet)
+            ├── exigence-systeme.yaml ← rangement curaté des SYS (un fichier par type d'objet ; objets absents = non classés)
             └── ...                   ← généré/maintenu par l'app, jamais par un script — ne pas éditer à la main
 ```
 
@@ -277,7 +277,9 @@ THEN THE <système> SHALL <action>
 6. Pas d'élément `needsRevalidation: true` laissé sans analyse d'impact (le flag est porté par les exigences/tests, plus par les liens — T172)
 7. **Dans un repo composant** : `schema.yaml` ne déclare pas de `url` sur ses propres nœuds — un composant est autonome
 8. **Dans un repo produit** : les `objectTypeRef` cross-composant utilisent le nom du nœud submodule (ex: `motor-control::exigence-fw`)
-9. `.polenta/trees/<nœud>/<type>.yaml` est maintenu par l'application — ne jamais l'éditer à la main en dehors d'un projet d'exemple/fixture
+9. `.polenta/trees/<nœud>/<type>.yaml` est maintenu par l'application — ne jamais l'éditer à la main en dehors d'un projet d'exemple/fixture.
+   Il ne contient que le rangement curaté (GH180) : un objet absent est affiché « non classé » en fin de liste, et un élément
+   ne porte pas de `name` (le libellé est le `title` de l'objet) — créer un objet n'écrit pas ce fichier
 10. `prefix` est unique sur l'ensemble du projet (tous nœuds confondus)
 11. Une référence de paramètre `{nom}` / `{<nœud>::nom}` (T171) vise un paramètre existant de
     `parameters/parameters.yaml` (repo de l'élément, ou composant déclaré dans `polenta-repo.yaml`) ;

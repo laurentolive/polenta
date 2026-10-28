@@ -5,15 +5,18 @@ import { resolve } from 'path'
 import { loadBrand } from './scripts/brand'
 import { brandPlugin } from './scripts/vite-brand-plugin'
 import { scriptWorkerPlugin } from './scripts/script-worker-build'
+import { appVersion } from './scripts/app-version'
 
 // GH49 — marque POLENTA_BRAND (défaut polenta), figée dans les trois bundles : le code applicatif
 // la lit via src/shared/brand.ts (constante __POLENTA_BRAND__). Marque invalide → build en échec.
 const brand = loadBrand()
 const brandDefine = { __POLENTA_BRAND__: JSON.stringify(brand.info) }
+// GH158 — version déduite du tag git, lue en dev par src/main/app-version.ts.
+const versionDefine = { __POLENTA_VERSION__: JSON.stringify(appVersion()) }
 
 export default defineConfig({
   main: {
-    define: brandDefine,
+    define: { ...brandDefine, ...versionDefine },
     // @polenta/types est aliasé vers sa source TS brute (pas de dist compilé) — sans l'exclure
     // ici, externalizeDepsPlugin le laisse en `require()` externe non transformé, que Node ne
     // sait pas charger (syntaxe ESM `export`). Restait invisible tant que tous les imports
@@ -56,6 +59,13 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: resolve(__dirname, 'src/main/index.ts'),
+      },
+      // GH156 — unzipper 0.12 (bundlé avec exceljs, override GH120) fait un
+      // require('@aws-sdk/client-s3') paresseux dans Open.s3_v3, jamais appelé ici. Converti par
+      // le plugin commonjs, il remontait en tête du bundle et s'exécutait au boot : « Cannot find
+      // module '@aws-sdk/client-s3' » dans l'app installée. Laissé tel quel, il reste paresseux.
+      commonjsOptions: {
+        ignore: ['@aws-sdk/client-s3'],
       },
     },
     resolve: {

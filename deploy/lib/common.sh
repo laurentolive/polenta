@@ -50,9 +50,9 @@ require_root() {
   [[ $EUID -eq 0 ]] || die "$E_PERM" "à lancer en root (sudo $0 …)."
 }
 
-# GH63 — exécuté par le service d'administration (POLENTA_ADMIN_MODE=1) : uid opérateur au lieu
-# de root ; sinon, comme avant, root.
-POLENTA_OPERATOR_UID="${POLENTA_OPERATOR_UID:-1500}"
+# GH63 — exécuté par le service d'administration (POLENTA_ADMIN_MODE=1) : uid opérateur du conteneur
+# (root, design D10 ; surchargeable) ; sinon, comme avant, root.
+POLENTA_OPERATOR_UID="${POLENTA_OPERATOR_UID:-0}"
 require_operator() {
   if [[ "${POLENTA_ADMIN_MODE:-0}" == 1 ]]; then
     [[ $EUID -eq "$POLENTA_OPERATOR_UID" ]] || die "$E_PERM" "mode administration : à lancer sous l'uid opérateur $POLENTA_OPERATOR_UID."

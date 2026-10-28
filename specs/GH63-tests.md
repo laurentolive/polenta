@@ -69,7 +69,7 @@ d'`acme`, `bob` membre non propriétaire d'`acme`, `carl` désactivé, `olga` pr
 ### Proxy Docker (critère 3)
 | ID | Scénario | Attendu |
 |---|---|---|
-| S2-14 [A] | `docker inspect polenta-admin` : montages et `HostConfig`. | Pas de `/var/run/docker.sock` ; `Privileged=false`, `CapAdd` vide, `CapDrop=[ALL]`, `no-new-privileges`, `User=1500`. |
+| S2-14 [A] | `docker inspect polenta-admin` : montages et `HostConfig`. | Pas de `/var/run/docker.sock` ; `Privileged=false`, `CapDrop=[ALL]`, `CapAdd` limité à CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER, `no-new-privileges`, seul montage `/opt/polenta` (D10 révisé : root conteneur). |
 | S2-15 [A] | Via le proxy : `containers/create` avec `Privileged:true` ; avec `Binds:["/:/host"]` ; avec `Binds:["/etc:/x"]` ; avec `NetworkMode:host` ; `CapAdd:[SYS_ADMIN]`. | Chaque cas : 403, motif journalisé. |
 | S2-16 [A] | Via le proxy : `POST /build`, `swarm/init`, `volumes/create` (nom hors `polenta-*`), `plugins/install`, `containers/prune`, chemin inconnu. | 403. |
 | S2-17 [A] | Via le proxy : `ps`, `inspect`, `logs`, `exec`, `start/stop/restart` sur `forgejo-acme`, `docker compose up/down/pull` d'un projet `polenta-*`. | Autorisés (200/201/204). |

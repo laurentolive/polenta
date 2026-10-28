@@ -18,7 +18,7 @@ Périmètre : `specs/GH63-design.md` §7 Sprint 2. Scénarios : `specs/GH63-test
 | `src/docker-proxy/{policy,server,main}.ts` | `polenta-docker-proxy` : liste fermée méthode + chemin (défaut refus), inspection des corps de création (privilèges, capacités, espaces de noms de l'hôte, montages hors `/opt/polenta/`, réseaux), conteneurs résolus par le démon (nom ou projet compose du kit), relais des connexions `exec`. |
 | `apps/admin-service/test/*` | Vitest : proxy, droits, travaux, verrou, reprise, contre un kit et une forge simulés. |
 | `packages/types/src/admin.ts` | Types partagés §4 (`AdminApiError` au lieu de `ApiError`, nom libre dans le paquet). |
-| `deploy/admin/{Dockerfile,docker-compose.yml,install.sh}` | Image (node 22 alpine + outils du kit, uid 1500), compose du module (aucun port, socket monté par le proxy seul, réseaux internes), installation rejouable et `--remove`. |
+| `deploy/admin/{Dockerfile,docker-compose.yml,install.sh}` | Image (node 22 alpine + outils GNU du kit), compose (root conteneur limité, D10) du module (aucun port, socket monté par le proxy seul, réseaux internes), installation rejouable et `--remove`. |
 | `deploy/instance/docker-compose.admin.yml` | Surcharge : forge et client web rejoignent `polenta-admin-net` quand `ADMIN_UI=on`. |
 | `deploy/polenta-host.sh` | `inst_compose` ajoute cette surcharge ; `instance sync` rend `web.env` et recrée les conteneurs quand `ADMIN_UI=on` ; `service-tokens.json` appartient à l'uid du service. |
 | `pnpm-lock.yaml` | Entrée du nouveau paquet (versions déjà présentes dans le lockfile). |
@@ -48,12 +48,12 @@ illisible, `instance list --json` rend une liste vide, les données de la forge 
 illisibles (sauvegarde impossible) et les dossiers d'instance non inscriptibles. Le service lui-même
 refuse alors tout jeton (instance d'origine inconnue).
 
-Repli mesuré : `install.sh --root-fallback` → root **dans** le conteneur avec `cap_drop: ALL` puis
-`cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER]` (`deploy/admin/docker-compose.root.yml`),
-`no-new-privileges`, système de fichiers en lecture seule, un seul montage `/opt/polenta`, aucun
-socket Docker, aucun port. Tout passe (état lisible, données de la forge lisibles, dossiers
-inscriptibles). Le critère 4 devient « pas de root **hôte** » : **décision humaine à acter** ; l'uid
-1500 resterait possible au prix d'une refonte des droits de fichiers du kit (ticket séparé).
+**Décision (Benoit, 2026-10-28) : option « root limité dans le conteneur »**, design D10 et R1 révisés.
+Root **dans** le conteneur avec `cap_drop: ALL` puis `cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH,
+FOWNER]`, `no-new-privileges`, système de fichiers en lecture seule, un seul montage `/opt/polenta`,
+aucun socket Docker, aucun port ; c'est le seul mode (`deploy/admin/docker-compose.yml`), sans option
+d'installation. `POLENTA_OPERATOR_UID` vaut 0 par défaut (`common.sh`). Le critère 4 devient « pas de
+root **hôte** ». L'uid 1500 resterait possible au prix d'une refonte des droits de fichiers du kit.
 
 ## Tests
 
@@ -62,10 +62,11 @@ inscriptibles). Le critère 4 devient « pas de root **hôte** » : **décision 
 - Windows (Node 20 portable) : 82 verts, 1 sauté (SIGTERM non transmis à bash MSYS).
 
 **Hôte de test** (VM WSL2 Ubuntu 24.04, Docker 29.1, kit réel copié dans `/opt/polenta/kit`,
-instances simulées sans forge) : 36 contrôles en mode repli root, tous verts :
+instances simulées sans forge) : 37 contrôles, tous verts :
 - `install.sh` (image locale), deux services en marche, **aucun port publié** (S2-1) ;
-- `polenta-admin` sans socket Docker, `Privileged=false`, `CapDrop=ALL`, `no-new-privileges` (S2-14 ;
-  en mode uid 1500, `CapAdd` vide également) ; seul le proxy monte le socket ;
+- `polenta-admin` sans socket Docker, un seul montage `/opt/polenta`, `Privileged=false`,
+  `CapDrop=ALL`, `CapAdd` = les 4 capacités de fichier, `no-new-privileges`, utilisateur `0:0` (S2-14) ;
+  seul le proxy monte le socket ; état du kit et données de la forge lisibles par les scripts ;
 - API joignable seulement depuis `polenta-admin-net` ; `/me` sans jeton 401, forge absente 502 ;
 - via le proxy (S2-17) : `ps`, `compose pull`, `compose up -d`, `inspect`, `logs`, `exec`,
   `stop/start/restart`, `compose up --force-recreate`, `compose down` d'un projet `polenta-*` ;
@@ -77,6 +78,10 @@ instances simulées sans forge) : 36 contrôles en mode repli root, tous verts :
 Corrigé grâce à la VM : recréation compose (nom temporaire `<id>_<nom>` refusé à la création) ;
 image sans outils GNU (`sed -u`, `find -printf` du kit en échec sous busybox) ; `POLENTA_OPERATOR_UID`
 du conteneur transmis au kit ; `pnpm` installé par npm dans l'image (corepack ignore le proxy HTTP).
+
+**Kit** (Debian 13 jetable, après passage de `POLENTA_OPERATOR_UID` à 0) : `lib-common` 39,
+`host-json` 26, `host-ops` 36, `admin-users` 22, `host-admin-env` 13, tous verts ; `shellcheck -x -S
+warning` sur `polenta-host.sh`, `polenta-admin.sh`, `admin/install.sh`, `lib/*.sh` : zéro avertissement.
 
 Restent pour un hôte complet (forge réelle, DNS, sauvegarde S3) : S2-2 de bout en bout avec une vraie
 forge, S2-4 (`docker restart polenta-web-*`), S2-23 réel, `acceptance.sh`.

@@ -1,9 +1,0 @@
-# GH63 — repli du risque R1 (install.sh --root-fallback), validé sur VM le 2026-10-28 : les scripts du
-# kit écrivent leur état en root 0600 et la forge ses données en 1000:1000, que l'uid 1500 ne peut ni
-# lire ni écrire. Le service tourne alors en root DANS le conteneur avec les seules capacités de fichier
-# nécessaires (sauvegarde des données de la forge, restauration, chown 1000 de `instance add`).
-# Toujours : aucun socket Docker, aucun port, no-new-privileges, système de fichiers en lecture seule,
-# un seul montage (/opt/polenta).
-services:
-  polenta-admin:
-    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER]

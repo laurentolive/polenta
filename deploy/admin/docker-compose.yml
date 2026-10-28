@@ -32,14 +32,17 @@ services:
     image: ${POLENTA_ADMIN_IMAGE:-polenta-admin}:${POLENTA_ADMIN_VERSION:-none}
     container_name: polenta-admin
     restart: unless-stopped
-    user: "${POLENTA_ADMIN_UID:-1500}:${POLENTA_ADMIN_GID:-1500}"
+    # Root DANS le conteneur (design D10, décidé le 2026-10-28 après le spike R1) : les scripts du kit
+    # écrivent leur état en root 0600 et la forge ses données en 1000:1000. Seules capacités rendues :
+    # celles des fichiers (sauvegarde des données de la forge, restauration, chown 1000 d'instance add).
+    user: "0:0"
     environment:
       DOCKER_HOST: tcp://polenta-docker-proxy:2375
       POLENTA_ROOT: /opt/polenta
       # Le kit installé sur l'hôte (même version que l'usage SSH), pas la copie de l'image.
       POLENTA_KIT_DIR: /opt/polenta/kit
       # uid attendu par require_operator (common.sh) : celui du conteneur.
-      POLENTA_OPERATOR_UID: ${POLENTA_ADMIN_UID:-1500}
+      POLENTA_OPERATOR_UID: "0"
       POLENTA_HOST_NAME: ${POLENTA_HOST_NAME:-}
       EDGE_NETWORK: ${EDGE_NETWORK:-}
     volumes:
@@ -49,6 +52,7 @@ services:
     read_only: true
     tmpfs: ["/tmp"]
     cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER]
     security_opt: ["no-new-privileges:true"]
     depends_on:
       polenta-docker-proxy:

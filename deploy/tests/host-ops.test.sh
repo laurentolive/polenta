@@ -122,6 +122,8 @@ echo "== Droits"
 run instance list; RC=$?
 check "root : sortie 0" test "$RC" -eq 0
 POLENTA_ADMIN_MODE=1 run instance list; RC=$?
-check "mode administration sous root (≠ uid 1500) : sortie 4" test "$RC" -eq 4
+check "mode administration sous root (uid opérateur par défaut) : sortie 0" test "$RC" -eq 0
+POLENTA_ADMIN_MODE=1 POLENTA_OPERATOR_UID=1500 run instance list; RC=$?
+check "mode administration, uid opérateur 1500 attendu sous root : sortie 4" test "$RC" -eq 4
 
 exit $FAIL

@@ -2,16 +2,16 @@
 # GH63 — module « admin » : installe (ou remet à niveau) le service d'administration et le proxy
 # Docker sur un hôte du kit (specs/GH63-design.md §3.1, §6.1). Rejouable. Hors interface : root, SSH.
 #
-#   sudo /opt/polenta/kit/admin/install.sh [--image i] [--version v] [--build <monorepo>] [--root-fallback]
+#   sudo /opt/polenta/kit/admin/install.sh [--image i] [--version v] [--build <monorepo>]
 #   sudo /opt/polenta/kit/admin/install.sh --remove
 #
 # Pré-requis : `polenta-host setup` fait (Docker, kit dans /opt/polenta/kit), ADMIN_UI=on et, pour le
 # niveau hôte, ADMIN_INSTANCE dans /opt/polenta/host.env. L'image est tirée (--image/--version) ou
 # construite depuis un clone du monorepo (--build, Dockerfile deploy/admin/Dockerfile).
 #
-# --root-fallback : repli du risque R1 (design §9) — sous l'uid 1500 les scripts ne lisent ni l'état du kit
-# (root 0600) ni les données de la forge (1000). Root DANS le conteneur + capacités de fichier
-# (docker-compose.root.yml), toujours sans socket Docker ni port.
+# Le service tourne en root DANS son conteneur (décision du 2026-10-28, design D10) : les scripts du kit
+# écrivent leur état en root 0600 et la forge ses données en 1000:1000. Il n'a que quatre capacités de
+# fichier, aucun socket Docker, aucun port, un seul montage (/opt/polenta).
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -21,15 +21,11 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 ADMIN_DIR="$POLENTA_ROOT/admin"
 ADMIN_ENV="$ADMIN_DIR/admin.env"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
-OPERATOR_UID=1500
 
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 admin_compose() {
-  local -a files=(-f "$COMPOSE_FILE")
-  # Repli R1 (root dans le conteneur + capacités de fichier) mémorisé dans admin.env.
-  [[ "$(env_get "$ADMIN_ENV" POLENTA_ADMIN_UID)" == 0 ]] && files+=(-f "$SCRIPT_DIR/docker-compose.root.yml")
-  docker compose -p polenta-admin --env-file "$ADMIN_ENV" "${files[@]}" "$@"
+  docker compose -p polenta-admin --env-file "$ADMIN_ENV" -f "$COMPOSE_FILE" "$@"
 }
 
 remove() {
@@ -39,13 +35,12 @@ remove() {
 }
 
 main() {
-  local image="" version="" build="" root_fallback=0
+  local image="" version="" build=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --image) image="$2"; shift 2 ;;
       --version) version="$2"; shift 2 ;;
       --build) build="$2"; shift 2 ;;
-      --root-fallback) root_fallback=1; shift ;;
       --remove) require_root; remove; return ;;
       -h|--help) usage 0 ;;
       *) die "$E_USAGE" "option inconnue : $1" ;;
@@ -61,13 +56,8 @@ main() {
   mkdir -p "$ADMIN_DIR/jobs" "$ADMIN_DIR/tmp"
   touch "$ADMIN_DIR/audit.log"
   chmod 700 "$ADMIN_DIR" "$ADMIN_DIR/jobs" "$ADMIN_DIR/tmp"; chmod 600 "$ADMIN_DIR/audit.log"
-  local uid="$OPERATOR_UID"
-  [[ "$root_fallback" == 1 ]] && uid=0
-  # État du service à l'uid du service (jetons de service : lecture seule pour lui, écrits par le kit).
-  chown -R "$uid:$uid" "$ADMIN_DIR/jobs" "$ADMIN_DIR/tmp" "$ADMIN_DIR/audit.log"
-  chown "$uid:$uid" "$ADMIN_DIR"
-  [[ -f "$ADMIN_DIR/service-tokens.json" ]] && chown "$uid:$uid" "$ADMIN_DIR/service-tokens.json"
-  ok "dossier d'état $ADMIN_DIR (uid $uid)"
+  chown -R 0:0 "$ADMIN_DIR"
+  ok "dossier d'état $ADMIN_DIR"
 
   [[ -f "$ADMIN_ENV" ]] || { touch "$ADMIN_ENV"; chmod 600 "$ADMIN_ENV"; }
   [[ -n "$image" ]] || image="$(env_get "$ADMIN_ENV" POLENTA_ADMIN_IMAGE)"; image="${image:-polenta-admin}"
@@ -85,8 +75,6 @@ main() {
   fi
   env_set "$ADMIN_ENV" POLENTA_ADMIN_IMAGE "$image"
   env_set "$ADMIN_ENV" POLENTA_ADMIN_VERSION "$version"
-  env_set "$ADMIN_ENV" POLENTA_ADMIN_UID "$uid"
-  env_set "$ADMIN_ENV" POLENTA_ADMIN_GID "$uid"
   env_set "$ADMIN_ENV" POLENTA_HOST_NAME "$(hostname)"
   env_set "$ADMIN_ENV" EDGE_NETWORK "$(caddy_mode_external && printf '%s' "$EDGE_NETWORK" || true)"
 

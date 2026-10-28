@@ -37,7 +37,7 @@ Nommage : le service s'appelle `polenta-admin` (compose) ; le script existant `d
 | D7 | Verrou unique `/opt/polenta/.lock` pris par `flock` **dans les scripts** (donc SSH inclus) ; le service lit le propriétaire du verrou (`.lock.owner`, JSON) pour le 409 | Verrou applicatif dans le service : ne protégerait pas contre SSH. |
 | D8 | Résultats structurés : le script écrit le JSON de résultat sur le descripteur **3** (`--json`) ; stdout/stderr = journal humain. Mots de passe temporaires et clés restic uniquement dans ce résultat | Analyser la sortie texte : fragile. |
 | D9 | Transport interne HTTP simple sur `polenta-admin-net` (Q10) | TLS mutuel : coût d'exploitation disproportionné. |
-| D10 | Conteneur `polenta-admin` **non root** (uid 1500), `cap_drop: [ALL]`, `no-new-privileges`, système de fichiers en lecture seule sauf volumes | Root conteneur : contredit le critère 4. Risque R1 (§11). |
+| D10 | Conteneur `polenta-admin` **root dans le conteneur, capacités limitées** : `cap_drop: [ALL]` puis `cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER]`, `no-new-privileges`, système de fichiers en lecture seule, un seul montage `/opt/polenta`, ni socket Docker ni port. Critère 4 = « pas de root **hôte** ». (Révisé le 2026-10-28 après le spike R1, décision de Benoit.) | uid 1500 non root : spike R1 négatif (état du kit root 0600, données de la forge 1000:1000 illisibles) ; exigerait une refonte des droits de fichiers du kit. `userns-remap` : réglage global du démon, inacceptable sur un hôte partagé. |
 | D11 | Versions de forge proposées : fichier `deploy/forge-versions.json` livré avec le kit + saisie libre validée par `docker pull` (Q12) | `host.env` : oblige l'exploitant à maintenir la liste. |
 | D12 | Vérification DNS : commande `polenta-host dns check <domaine> --json`, résolveur public interrogé par `dig @1.1.1.1 +short` (lecture seule) | Appel d'API DNS fournisseur : hors scope. |
 | D13 | Notifications de suivi par **sondage** (`GET jobs/{id}?since=<offset>`, 1 s) avec SSE en option si le proxy Caddy le permet ; le sondage seul reste correct | SSE seul : la reprise après coupure (mise à jour de la forge) est plus simple avec offset. |
@@ -49,12 +49,12 @@ Nommage : le service s'appelle `polenta-admin` (compose) ; le script existant `d
 
 | Fichier | Changement |
 |---|---|
-| `deploy/lib/common.sh` | Options globales `--non-interactive`, `--json` ; `emit_result <json>` (fd 3, ou fichier `POLENTA_RESULT_FILE`) ; `die <code> <msg>` avec codes par cause ; `with_lock` (`flock -n 9` sur `/opt/polenta/.lock`, écrit `.lock.owner` : `{op, actor, origin: ssh\|ui, pid, since}`) ; `confirm_arg` (la confirmation est donnée par `--confirm <valeur>`, jamais `read` en `--non-interactive`) ; `redact` (masque `password|secret|token|key` dans le journal) ; `require_operator` remplace `require_root` quand `POLENTA_ADMIN_MODE=1` (uid 1500). |
+| `deploy/lib/common.sh` | Options globales `--non-interactive`, `--json` ; `emit_result <json>` (fd 3, ou fichier `POLENTA_RESULT_FILE`) ; `die <code> <msg>` avec codes par cause ; `with_lock` (`flock -n 9` sur `/opt/polenta/.lock`, écrit `.lock.owner` : `{op, actor, origin: ssh\|ui, pid, since}`) ; `confirm_arg` (la confirmation est donnée par `--confirm <valeur>`, jamais `read` en `--non-interactive`) ; `redact` (masque `password|secret|token|key` dans le journal) ; `require_operator` remplace `require_root` quand `POLENTA_ADMIN_MODE=1` (uid du conteneur, `POLENTA_OPERATOR_UID`, 0 par défaut — D10). |
 | `deploy/polenta-host.sh` | Chaque commande mutante passe par `with_lock`. Nouvelles commandes : `status --json` (modules actifs de #62, Caddy, versions), `instance list --json`, `instance snapshots --json`, `dns check <domaine> --json` (extrait `check_dns_points_here`), `instance export --json`, `instance restore` : étape `pre-restore`, `instance backup --tag`, `s3-key rotate` (§3.7 de la spec), `s3-purge` (§3.8), `exports list|delete`, `instance remove --confirm <nom>`. Mots de passe temporaires hors journal (fd 3). `instance add` crée `polenta-ops` + son jeton **et** le jeton de service §5.2 (`ADMIN_SERVICE_TOKEN`, haché dans `/opt/polenta/admin/service-tokens.json`). `host.env` : `ADMIN_UI`, `ADMIN_INSTANCE`, `ADMIN_AGENT_SOCKET`. `setup` reste rejouable ; nouveau module `admin` (compose `polenta-admin` + proxy + agent) activable. |
 | `deploy/polenta-admin.sh` | `--non-interactive`, `--json`, verrou, codes de sortie ; nouvelles commandes `user import --preview --json`, `access-report --json`, `invite <login> --json`. |
 | `deploy/lib/backup.sh` | `--tag`, `restic check`, utilisation de la clé de purge par `RESTIC_*` passées par fd (`/dev/fd/N`), jamais en argument. |
 | `deploy/admin/docker-compose.yml` | Projet `polenta-admin` : services `polenta-admin`, `polenta-docker-proxy`, réseaux `polenta-admin-net` (interne aux deux services + `polenta-web` des instances) et `docker-proxy-net` (interne, seulement service + proxy). Aucun `ports:`. |
-| `deploy/admin/Dockerfile` | Image du service : `node:22-alpine` + bash, restic, jq, curl, bind-tools, git, docker-cli, docker-cli-compose ; copie `deploy/` en `/opt/polenta-kit` ; utilisateur 1500. |
+| `deploy/admin/Dockerfile` | Image du service : `node:22-alpine` + bash, restic, jq, curl, bind-tools, git, docker-cli, docker-cli-compose ; copie `deploy/` en `/opt/polenta-kit` ; outils GNU (sed, find, grep) ; root, capacités fixées par le compose (D10). |
 | `deploy/admin/host-agent/` | `polenta-host-agent.js` (Node, sans dépendance), `polenta-host-agent.service` (systemd : `User=root`, `ProtectSystem=strict`, `ReadWritePaths=/opt/polenta /run/polenta`, `PrivateTmp`, `NoNewPrivileges`, `RestrictAddressFamilies=AF_UNIX`), `install-agent.sh`. |
 | `deploy/instance/docker-compose.yml` | `polenta-web` rejoint `polenta-admin-net` si `ADMIN_UI=on` ; variables `ADMIN_URL`, `ADMIN_SERVICE_TOKEN` dans `web.env`. |
 | `deploy/install.sh` (nouveau) | Première installation à commande unique (Docker, kit, agent, service). Hors interface. |
@@ -264,7 +264,8 @@ services:
     security_opt: ["no-new-privileges:true"]
   polenta-admin:
     image: ${POLENTA_ADMIN_IMAGE}
-    user: "1500:1500"
+    user: "0:0"                     # D10 révisé : root conteneur, capacités de fichier seulement
+    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER]
     environment: { DOCKER_HOST: tcp://polenta-docker-proxy:2375, ADMIN_INSTANCE: ${ADMIN_INSTANCE}, … }
     volumes:
       - /opt/polenta:/opt/polenta
@@ -395,10 +396,11 @@ Dépendances de sprints : S1 → S2 → S3 ; S4 dépend de S2 (et de S3 pour les
 
 ## 9. Risques
 
-- **R1** — Service non root vs scripts écrits pour root : `require_operator` + propriété `1500` des dossiers
-  d'état ; les données Forgejo (`1000:1000`) ne sont touchées que par `docker exec`. À valider par un
-  **spike en début de S2** ; repli documenté : root dans le conteneur avec `cap_drop: ALL` et `userns-remap`,
-  critère 4 reformulé « pas de root hôte ».
+- **R1** — Service non root vs scripts écrits pour root. **Spike fait le 2026-10-28 (VM WSL2, Sprint 2) :
+  négatif.** Sous l'uid 1500, `instance.env` (root 0600) et les données de la forge (`1000:1000`, 0700)
+  sont illisibles, les dossiers d'instance non inscriptibles. Repli retenu (D10, décision de Benoit) :
+  root dans le conteneur, `cap_drop: ALL` + 4 capacités de fichier ; critère 4 reformulé « pas de root
+  hôte ». `userns-remap` écarté (réglage global du démon).
 - **R2** — Politique du proxy trop stricte pour `docker compose up` : liste construite en rejouant
   `acceptance.sh` derrière le proxy (S2) ; tout nouveau chemin = changement revu.
 - **R3** — Verrou `flock` sur volume partagé entre conteneur et hôte : fonctionne sur bind mount local ; test S1/S2.

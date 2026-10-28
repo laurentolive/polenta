@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater'
 import type { UpdateState } from '@polenta/types'
 import type { AppSettingsService } from './app-settings.service'
 import { BRAND } from '../../shared/brand'
+import { appVersion } from '../app-version'
 
 /** GH49 — notes de version de la marque : page du tag pour GitHub, page `releasesUrl` telle quelle
  * pour une source `generic` ; absente → pas de lien. */
@@ -19,7 +20,7 @@ function releaseUrl(version: string): string | undefined {
  * seulement journalisées : le renderer n'affiche que l'état 'ready'.
  */
 export class UpdateService {
-  private state: UpdateState = { status: 'idle', currentVersion: app.getVersion() }
+  private state: UpdateState = { status: 'idle', currentVersion: appVersion() }
   private scheduled = false
 
   constructor(private readonly settings: AppSettingsService) {}

@@ -765,6 +765,7 @@
     },
     "fieldConfig": {
       "visibleFields": "Champs visibles",
+      "reset": "Réinitialiser",
       "colSection": "Section",
       "colCreatedAt": "Créé le",
       "colUpdatedAt": "Modifié le",
@@ -778,7 +779,9 @@
       "missingRefs": "sourceRefs ou targetRefs manquant",
       "configureColumns": "Configurer les colonnes",
       "showFolders": "Afficher les titres des dossiers",
-      "computedColumns": "Colonnes calculées"
+      "computedColumns": "Colonnes calculées",
+      "computedGroupPending": "Calcul des colonnes…",
+      "computedGroupEmpty": "Aucune colonne dans le résultat"
     },
     "coverage": {
       "noLinkedTest": "Aucun test lié",
@@ -1023,6 +1026,7 @@
       "withoutParams_other": "{{count}} tests sans paramètre",
       "alreadyIncluded_one": "Déjà présent {{count}} fois dans la campagne",
       "alreadyIncluded_other": "Déjà présent {{count}} fois dans la campagne",
+      "statusAlwaysShown": "Toujours affichée dans le sélecteur : tous les statuts sont proposés",
       "abandonTitle": "Abandonner la sélection ?",
       "abandon": "Abandonner",
       "keepEditing": "Continuer",
@@ -1225,7 +1229,11 @@
       "valueColumn": "Colonne valeur",
       "tooltipColumn": "Colonne infobulle",
       "mappingHint": "Colonne du résultat de la requête (exécuter la requête pour proposer ses colonnes)",
-      "notInResult": "absente du résultat"
+      "notInResult": "absente du résultat",
+      "split": "Une colonne par valeur de",
+      "splitHint": "Une sous-colonne par valeur distincte de cette colonne du résultat (ex. une par campagne), à cocher séparément dans ⚙️. 50 au maximum.",
+      "splitLabelColumn": "Libellé des colonnes",
+      "splitLabelDefault": "(la valeur)"
     }
   },
   "dashboardPage": {
@@ -1447,7 +1455,9 @@
     "localTitle": "Modifications locales (vs HEAD)",
     "localComputedAt": "Calculée à {{time}}",
     "refresh": "Rafraîchir",
-    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines."
+    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines.",
+    "statementDiff": "Énoncé : avant / après",
+    "howToRead": "Chaque élément modifié est la cause de l'analyse ; les éléments de son arbre (liés en aval, puis en amont) sont à traiter un par un : statut, commentaire, et levée du flag « Impact à vérifier »."
   },
   "graphPage": {
     "tabTitle": "Arbre de versions — {{repoName}}",

@@ -374,7 +374,10 @@ Système › Arbre › Sélection).
   **lecture seule** (fond des champs système ; ni double-clic d'édition, ni F2, ni édition en
   masse) ; richtext mis en forme ; infobulle = `tooltip` de la ligne ; **double-clic** = ouverture
   de la cible `_ids[0]` (`useOpenRowTarget`, entrée de campagne → page d'exécution de l'entrée),
-  message d'échec temporaire sous la barre. En-tête suffixé `(calc)` (titre = requête), ⚠ si le
+  message d'échec temporaire sous la barre. GH126 : chaque sous-colonne `query::<ID>::<valeur>`
+  d'une colonne éclatée est une colonne calculée à part entière (filtre T51, double-clic, exports,
+  Vue Word), en-tête = libellé de la sous-colonne. En-tête suffixé `(calc)` (titre = requête, ou
+  « libellé du groupe — libellé » pour une sous-colonne), ⚠ si le
   script est en erreur (infobulle `message (fichier:ligne)`) — vue toujours utilisable. La vue
   n'attend pas les scripts : `…` dans les cellules jusqu'au résultat ; largeur auto réservant le
   suffixe et l'icône de filtre. Rafraîchie sans rechargement sur tout changement de données
@@ -447,11 +450,23 @@ Système › Arbre › Sélection).
 - Stockage : fichier local `.{githubaccount}.pref` (clé `fieldVisibility["<nœud>::<type>"]`).
 - Option **Réinitialiser par défaut** disponible par vue — remet aussi « Afficher les titres
   des dossiers » à coché.
+- **Sélecteur de tests d'une campagne (GH176)** : le même panneau (`FieldConfigModal`,
+  `components/system/FieldConfigModal.tsx`) est ouvert par le ⚙️ du sélecteur, avec un seul onglet
+  (pas de barre Tableau / Document), la case Statut cochée et désactivée (infobulle : toujours
+  affichée, GH68), un « Réinitialiser » qui supprime `picker` / `showFoldersPicker` (retour aux
+  colonnes de la Vue Excel), rendu en portail au-dessus de la modale (`z-[60]`) — `Échap` y est
+  intercepté en capture et ne ferme que le panneau. Voir [SPEC-TESTS.md](SPEC-TESTS.md) §4.1–4.2.
 
 **Colonnes calculées (GH70)** — section « Colonnes calculées » (après les champs, avant Étapes /
 Liens), onglets Tableau et Document : une case par requête partagée du projet dont `column`
 s'applique au type affiché (libellé + `(calc)`, infobulle `QUERY-NNNN — titre`) ; décochées par
-défaut (absentes de « Réinitialiser »). Clé `query::<ID>` dans `fieldVisibility`. Requête
+défaut (absentes de « Réinitialiser »). Clé `query::<ID>` dans `fieldVisibility`. Colonne
+éclatée (GH126) : un **groupe** (libellé + `(calc)`, infobulle `QUERY-NNNN — titre`, « Calcul des
+colonnes… » pendant l'exécution, ⚠ + message en erreur) puis **une case par sous-colonne** dans
+l'ordre du script, clé `query::<ID>::<valeur>`, décochée par défaut — une nouvelle valeur
+(campagne) apparaît décochée sans recharger ; ouvrir ⚙️ exécute les colonnes éclatées pour les
+lister ; en chargement ou en erreur, les sous-colonnes cochées restent listées (décochables).
+Sous-colonne absente du résultat : clé ignorée, jamais réécrite. Requête
 supprimée, rendue privée ou qui ne s'applique plus : clé ignorée à l'affichage et dans les
 exports, jamais réécrite. Un script est exécuté si sa colonne est cochée dans l'onglet Tableau ou
 Document (les exports suivent l'un ou l'autre) ; export lancé avant la fin du calcul → refus
@@ -479,8 +494,15 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 | Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 21] ignorée — 21 = toutes les lignes (T170) | `localStorage` | `polenta:excelRowMaxLines` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
 | `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
-| Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162 ; colonnes calculées `query::<ID>` — GH70) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord? }`, par type + par utilisateur |
+| Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162 ; colonnes calculées `query::<ID>` — GH70 ; sous-colonnes `query::<ID>::<valeur>` — GH126) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord?, collapsedFolders*?, freezeColCountExcel?, picker?, showFoldersPicker? }`, par type + par utilisateur (`picker` / `showFoldersPicker` : sélecteur de tests, GH176) |
 | Dernier repo/composant/élément consulté (T52) | `localStorage`, par projet | `polenta:lastSelection:${projectId}` |
+
+**Écriture partielle (GH176)** : `pref:set-field-visibility` fusionne les clés reçues dans
+l'entrée existante — une clé absente est conservée, une clé à `null` est supprimée, une entrée
+vidée est retirée. La Vue Système n'envoie que la clé modifiée (plus d'objet complet recopié d'une
+copie en mémoire) et fusionne le cache `['pref-visibility', …]`, partagé avec le sélecteur. **À la
+lecture**, le défaut de l'équipe (`polenta-config`, GH45) est fusionné vue par vue sous le choix
+personnel : une vue non choisie personnellement prend le défaut de l'équipe, sinon celui de Polenta.
 
 Absence de `repo` dans l'URL (lien généré avant T72) : résolution sur le repo racine par défaut,
 sans erreur.

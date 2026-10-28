@@ -130,9 +130,14 @@ export const columnSchema = z.object({
   idColumn: z.string().nullable().optional().describe("colonne du résultat qui porte l'ID de l'élément (défaut id ; null = défaut)"),
   valueColumn: z.string().nullable().optional().describe('colonne du résultat qui porte la valeur (défaut value ; null = défaut)'),
   tooltipColumn: z.string().nullable().optional().describe("colonne du résultat qui porte l'infobulle (défaut tooltip ; null = défaut)"),
+  splitColumn: z.string().nullable().optional().describe(
+    'colonne éclatée (GH126) : une sous-colonne par valeur distincte de cette colonne du résultat (ex. campaignId), 50 au maximum ; null = colonne simple',
+  ),
+  splitLabelColumn: z.string().nullable().optional().describe('libellé de chaque sous-colonne (ex. campaignTitle ; défaut : la valeur) ; exige splitColumn'),
 }).describe(
   'colonne calculée de la Vue Système (requête partagée seulement) : le script renvoie une ligne par élément ' +
-  '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible ouverte au double-clic)',
+  '(colonnes idColumn / valueColumn / tooltipColumn, défaut id / value / tooltip ; _ids = cible ouverte au double-clic) ; ' +
+  'avec splitColumn, une ligne par (élément, sous-colonne)',
 )
 
 /** Déclaration de colonne validée (`null` = aucune), ou l'erreur `COLUMN_INVALID` à renvoyer. */

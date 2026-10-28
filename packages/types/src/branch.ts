@@ -76,3 +76,15 @@ export function parseIntegrationGuard(message: string): { code: IntegrationGuard
 export function isValidIntegrationSuffix(suffix: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(suffix) && !suffix.includes('..') && !suffix.endsWith('.lock') && !suffix.endsWith('.')
 }
+
+// ─── Branche de travail automatique (GH173, specs/GH173-design.md §2.1) ──────
+
+/** Branche créée par l'auto-pull dès que l'intégration checkoutée a des modifications en attente. */
+export const AUTO_BRANCH_PREFIX = 'dev-auto'
+
+const AUTO_BRANCH_PATTERN = new RegExp(`^${AUTO_BRANCH_PREFIX}(-[0-9]+)?$`)
+
+/** Noms exacts générés (`dev-auto`, `dev-auto-<n>`) — pas `dev-auto-notes` d'un utilisateur. */
+export function isAutoBranch(branch: string): boolean {
+  return AUTO_BRANCH_PATTERN.test(branch)
+}

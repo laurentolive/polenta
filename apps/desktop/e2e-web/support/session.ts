@@ -95,7 +95,12 @@ export function setupSession(options: SessionOptions = {}) {
     /** Ouvre une vue par le bouton de la barre d'activité (titre exact : « Exigences », « Suivi »…). */
     async openView(title: string): Promise<void> {
       await page.keyboard.press('Escape')
-      await activityBar(page).and(page.locator(`[title="${title}"]`)).click()
+      const button = activityBar(page).and(page.locator(`[title="${title}"]`))
+      // GH123 : recliquer le bouton actif replie le panneau latéral — vue déjà ouverte et dépliée,
+      // rien à faire ; si le clic l'a replié (vue active mais repliée avant), on redéplie.
+      if (await button.getAttribute('aria-expanded') === 'true') return
+      await button.click()
+      if (await button.getAttribute('aria-expanded') === 'false') await button.click()
       await page.waitForLoadState('networkidle')
     },
     /** Capture dans `e2e-web/.results/<nom>.png`. */

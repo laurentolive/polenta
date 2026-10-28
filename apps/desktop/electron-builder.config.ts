@@ -107,9 +107,8 @@ export function builderConfig(brand: LoadedBrand): Configuration {
       // GH26 — installeur NSIS (plus de portable) : seule cible Windows qu'electron-updater sait
       // mettre à jour. Installation par utilisateur (cf. bloc nsis), sans droits admin.
       target: 'nsis',
-      // ${version} vient de package.json ("version") — même string que celle exposée en
-      // renderer via app:get-version et affichée dans la barre de titre : un seul endroit à
-      // modifier à chaque release.
+      // ${version} : extraMetadata.version, posée par scripts/package.ts depuis le tag git (GH158)
+      // — même string que celle exposée en renderer via app:get-version (barre de titre).
       artifactName: artifactBaseName(info.productName) + '-Setup-${version}.${ext}',
     },
     nsis: {

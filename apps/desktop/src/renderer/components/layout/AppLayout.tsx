@@ -11,6 +11,7 @@ import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
 import { RepoAccessBanner } from './RepoAccessBanner'
+import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
 
@@ -142,9 +143,39 @@ export function AppLayout() {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth))
   }, [sidebarWidth])
 
+  // GH123: sidebar collapsed/expanded, VS Code style — re-clicking the active activity-bar icon or
+  // Ctrl+B toggles it. Per-machine preference, like the width above.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(loadSidebarCollapsed)
+
+  useEffect(() => {
+    saveSidebarCollapsed(sidebarCollapsed)
+  }, [sidebarCollapsed])
+
+  useEffect(() => {
+    // Bubble phase on window: a richtext editor (Ctrl+B = bold) has already handled the key, and
+    // isSidebarToggleShortcut skips editable targets anyway.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isSidebarToggleShortcut(e)) return
+      e.preventDefault() // web client: Firefox opens its bookmarks sidebar on Ctrl+B
+      setSidebarCollapsed(c => !c)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   function handleSelectPanel(p: Panel) {
+    // GH123: the active icon no longer re-navigates to the panel's default route, it only
+    // collapses/expands the sidebar. Collapsing Account also drops the override, so the next
+    // expand shows the route's panel.
+    if (p === activePanel) {
+      if (!sidebarCollapsed) setSidebarOverride(null)
+      setSidebarCollapsed(!sidebarCollapsed)
+      return
+    }
+    setSidebarCollapsed(false)
+
     if (SIDEBAR_ONLY_PANELS.includes(p)) {
-      setSidebarOverride(prev => prev === p ? null : p)
+      setSidebarOverride(p)
       return
     }
     setSidebarOverride(null)
@@ -229,13 +260,15 @@ export function AppLayout() {
 
   const inner = (
     <div className="flex h-full overflow-hidden bg-canvas">
-      <ActivityBar activePanel={activePanel} onSelect={handleSelectPanel} hasProject={!!currentProjectId} />
-      <Sidebar activePanel={activePanel} currentProjectId={currentProjectId} width={sidebarWidth} />
-      <div
-        className="bg-edge hover:bg-status-info-solid cursor-col-resize shrink-0 transition-colors"
-        style={{ width: 4 }}
-        onMouseDown={handleDragMouseDown}
-      />
+      <ActivityBar activePanel={activePanel} onSelect={handleSelectPanel} hasProject={!!currentProjectId} sidebarCollapsed={sidebarCollapsed} />
+      <Sidebar activePanel={activePanel} currentProjectId={currentProjectId} width={sidebarWidth} collapsed={sidebarCollapsed} />
+      {!sidebarCollapsed && (
+        <div
+          className="bg-edge hover:bg-status-info-solid cursor-col-resize shrink-0 transition-colors"
+          style={{ width: 4 }}
+          onMouseDown={handleDragMouseDown}
+        />
+      )}
       <div className="flex-1 flex flex-col overflow-hidden">
         <ForgeAccessBanner />
         {currentProjectId && <RepoAccessBanner projectId={currentProjectId} />}

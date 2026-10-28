@@ -765,6 +765,7 @@
     },
     "fieldConfig": {
       "visibleFields": "Visible fields",
+      "reset": "Reset",
       "colSection": "Section",
       "colCreatedAt": "Created on",
       "colUpdatedAt": "Modified on",
@@ -778,7 +779,9 @@
       "missingRefs": "missing sourceRefs or targetRefs",
       "configureColumns": "Configure columns",
       "showFolders": "Show folder headings",
-      "computedColumns": "Computed columns"
+      "computedColumns": "Computed columns",
+      "computedGroupPending": "Computing columns…",
+      "computedGroupEmpty": "No column in the result"
     },
     "coverage": {
       "noLinkedTest": "No linked test",
@@ -1023,6 +1026,7 @@
       "withoutParams_other": "{{count}} tests without parameters",
       "alreadyIncluded_one": "Already included {{count}} time in the campaign",
       "alreadyIncluded_other": "Already included {{count}} times in the campaign",
+      "statusAlwaysShown": "Always shown in the picker: tests of every status are offered",
       "abandonTitle": "Discard the selection?",
       "abandon": "Discard",
       "keepEditing": "Keep editing",
@@ -1225,7 +1229,11 @@
       "valueColumn": "Value column",
       "tooltipColumn": "Tooltip column",
       "mappingHint": "Column of the query result (run the query to list its columns)",
-      "notInResult": "not in result"
+      "notInResult": "not in result",
+      "split": "One column per value of",
+      "splitHint": "One sub-column per distinct value of this result column (e.g. one per campaign), each checked separately in ⚙️. 50 at most.",
+      "splitLabelColumn": "Column labels",
+      "splitLabelDefault": "(the value)"
     }
   },
   "dashboardPage": {
@@ -1447,7 +1455,9 @@
     "localTitle": "Local changes (vs HEAD)",
     "localComputedAt": "Computed at {{time}}",
     "refresh": "Refresh",
-    "noChangedRequirement": "No requirement changed between these two baselines."
+    "noChangedRequirement": "No requirement changed between these two baselines.",
+    "statementDiff": "Statement: before / after",
+    "howToRead": "Each changed element is the cause of the analysis; the elements of its tree (linked downstream, then upstream) are to be handled one by one: status, comment, and clearing the “Impact to check” flag."
   },
   "graphPage": {
     "tabTitle": "Version tree — {{repoName}}",

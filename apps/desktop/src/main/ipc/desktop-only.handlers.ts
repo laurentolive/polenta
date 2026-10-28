@@ -10,6 +10,7 @@ import type { PlatformHost } from '../host/platform-host'
 import type { UpdateService } from '../services/update.service'
 import { IMAGE_MIME_BY_EXT, importFileIntoRepo, saveExport, saveExecutionSheet } from './file-ops'
 import { BRAND } from '../../shared/brand'
+import { appVersion } from '../app-version'
 
 /**
  * GH44 — channels propres au poste local : dialogues natifs, `shell`, fenêtres, mise à jour
@@ -63,11 +64,9 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   handle('app:set-title', (_event, title: string) => {
     BrowserWindow.getFocusedWindow()?.setTitle(title)
   })
-  // app.getVersion() lit le champ "version" de package.json (packagé dans app.asar par
-  // electron-builder) — c'est aussi ce champ qui alimente le macro ${version} de
-  // electron-builder.yml pour le nom de l'exe généré : une seule string à modifier à
-  // chaque release.
-  handle('app:get-version', () => app.getVersion())
+  // GH158 — version déduite du tag git au build (scripts/app-version.ts) : la même que le nom de
+  // l'installeur et que latest.yml.
+  handle('app:get-version', () => appVersion())
   // GH26 — restreint aux pages de release : seul usage (lien « Voir les nouveautés »), pas un
   // ouvreur d'URL générique exposé au renderer. GH49 : celles de la marque (`releasesUrl`, ou une
   // page sous celle-ci) ; marque sans `releasesUrl` → rien n'est ouvert.

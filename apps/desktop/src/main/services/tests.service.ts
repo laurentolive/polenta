@@ -11,6 +11,7 @@ import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
 
 export class TestsService {
@@ -74,7 +75,11 @@ export class TestsService {
 
   // T159 — cf. RequirementsService : sérialise les read-modify-write concurrents sur le
   // fichier du cas de test.
-  async update(repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
+  async update(
+    repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string,
+    /** GH150 — `update_tests` (MCP) : une clé de `fields` à `null` retire le champ. */
+    opts: { removeNullFields?: boolean } = {},
+  ): Promise<TestCase> {
     const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
@@ -92,7 +97,9 @@ export class TestsService {
         ...(dto.equipment && { equipment: dto.equipment }),
         ...(dto.steps && { steps: dto.steps }),
         ...(dto.postconditions !== undefined && { postconditions: dto.postconditions }),
-        fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
+        fields: opts.removeNullFields
+          ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
+          : { ...(existing.fields as object), ...(dto.fields ?? {}) },
       })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(

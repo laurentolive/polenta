@@ -21,6 +21,7 @@ import { DashboardLibraryService } from '../main/services/dashboard-library.serv
 import { ScriptEngineService } from '../main/services/script-engine.service'
 import { SuiviService } from '../main/services/suivi.service'
 import { WorkspaceLinksService } from '../main/services/workspace-links.service'
+import { ParametersService } from '../main/services/parameters.service'
 
 export interface McpContainer {
   /** Repo produit ciblé par cette instance de serveur MCP (un repo fixe par instance). */
@@ -53,6 +54,8 @@ export interface McpContainer {
   history: HistoryService
   /** GH105 — liens agrégés sur le workspace, écrits dans le repo de leur source. */
   workspaceLinks: WorkspaceLinksService
+  /** GH150 — base de paramètres (`list_parameters` / `set_parameters` / `delete_parameter`). */
+  parameters: ParametersService
 }
 
 /**
@@ -125,9 +128,12 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
   const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
   const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns)
+  // GH150 — sans ReqRefsService : les références `{req.<champ>}` restent littérales (lecture seule,
+  // sans effet sur les écritures de paramètres).
+  const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
-    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks,
+    user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters,
   }
 }

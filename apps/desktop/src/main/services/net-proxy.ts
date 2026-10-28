@@ -1,14 +1,19 @@
 import { session } from 'electron'
-import { ProxyAgent, type Dispatcher } from 'undici'
+import { Agent, ProxyAgent, type Dispatcher } from 'undici'
+import { CONNECT_TIMEOUT_BASE_MS, getNetworkTimeoutSeconds, isNetworkTimeoutAdjustable, scaledTimeout } from './net-timeouts'
 
 // Les réseaux d'entreprise exposent rarement HTTP_PROXY/HTTPS_PROXY comme variables
 // d'environnement — le proxy y est en général configuré au niveau du système (WPAD/PAC ou
 // poste par poste) et seule la pile réseau de Chromium (donc `session` côté Electron) le
 // connaît. Le fetch global de Node (utilisé par le reste du service) ignore ces réglages
 // système par défaut, d'où les échecs "fetch failed" sur les postes derrière un tel proxy.
-const dispatcherCache = new Map<string, ProxyAgent>()
+// GH15 — le délai de connexion (TCP + TLS) est toujours explicite, réglable : en connexion directe
+// comme via proxy, où c'est la négociation TLS avec la cible à travers le tunnel (`requestTls`)
+// qui expire sur un lien filtré. Cache par (proxy, délai) : un changement de réglage vaut pour
+// la requête suivante, les agents précédents servent encore les requêtes en cours.
+const dispatcherCache = new Map<string, Dispatcher>()
 
-export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatcher | undefined> {
+export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatcher> {
   const envProxy =
     process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
   let proxyUrl = envProxy ? normalizeProxyUrl(envProxy) : undefined
@@ -22,12 +27,14 @@ export async function resolveProxyDispatcher(targetUrl: string): Promise<Dispatc
     }
   }
 
-  if (!proxyUrl) return undefined
-
-  let agent = dispatcherCache.get(proxyUrl)
+  const timeout = scaledTimeout(CONNECT_TIMEOUT_BASE_MS)
+  const key = `${proxyUrl ?? 'DIRECT'}|${timeout}`
+  let agent = dispatcherCache.get(key)
   if (!agent) {
-    agent = new ProxyAgent(proxyUrl)
-    dispatcherCache.set(proxyUrl, agent)
+    agent = proxyUrl
+      ? new ProxyAgent({ uri: proxyUrl, proxyTls: { timeout }, requestTls: { timeout } })
+      : new Agent({ connect: { timeout } })
+    dispatcherCache.set(key, agent)
   }
   return agent
 }
@@ -62,12 +69,35 @@ export function isNetworkUnreachable(err: unknown): boolean {
   return UNREACHABLE_GIT_STDERR.test(err.message)
 }
 
+const TIMEOUT_CODES = new Set(['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'])
+
+// `undici.request` porte le code sur l'erreur elle-même, `fetch` sur sa cause.
+function errorCode(err: unknown): string | undefined {
+  if (!(err instanceof Error)) return undefined
+  const code = (err as { code?: unknown }).code ?? (err.cause as { code?: unknown } | undefined)?.code
+  return typeof code === 'string' ? code : undefined
+}
+
+/** GH15 — délai d'attente dépassé (connexion, en-têtes ou corps). */
+export function isTimeoutError(err: unknown): boolean {
+  const code = errorCode(err)
+  return code !== undefined && TIMEOUT_CODES.has(code)
+}
+
+/** GH15 — message d'un délai dépassé, qui cite le réglage à modifier quand il est proposé (desktop). */
+export function describeTimeout(detail: string): string {
+  if (!isNetworkTimeoutAdjustable()) {
+    return `Délai d'attente dépassé — vérifiez le proxy/pare-feu de l'entreprise. (${detail})`
+  }
+  return `Délai d'attente dépassé (délai de connexion réseau : ${getNetworkTimeoutSeconds()} s) — augmentez-le dans Compte → Délai de connexion réseau si le réseau est lent ou filtré, ou vérifiez le proxy/pare-feu de l'entreprise. (${detail})`
+}
+
 // Traduit les erreurs réseau bas niveau (fetch/undici) en message compréhensible pour
 // l'utilisateur final, avec la piste la plus probable (proxy/pare-feu/certificat).
 export function describeFetchError(err: unknown): string {
   const isError = err instanceof Error
   const cause = isError ? (err.cause as { code?: string; message?: string } | undefined) : undefined
-  const code = cause?.code
+  const code = errorCode(err)
   const detail = cause?.message ?? (isError ? err.message : String(err))
 
   switch (code) {
@@ -78,7 +108,9 @@ export function describeFetchError(err: unknown): string {
       return `Connexion refusée — un pare-feu ou un proxy d'entreprise bloque probablement la requête. (${detail})`
     case 'ETIMEDOUT':
     case 'UND_ERR_CONNECT_TIMEOUT':
-      return `Délai de connexion dépassé — vérifiez le proxy/pare-feu de l'entreprise. (${detail})`
+    case 'UND_ERR_HEADERS_TIMEOUT':
+    case 'UND_ERR_BODY_TIMEOUT':
+      return describeTimeout(detail)
     case 'DEPTH_ZERO_SELF_SIGNED_CERT':
     case 'SELF_SIGNED_CERT_IN_CHAIN':
     case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':

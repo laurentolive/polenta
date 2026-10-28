@@ -133,6 +133,8 @@
       "english": "English",
       "autoUpdate": "Auto updates",
       "autoUpdateHint": "Check for and download updates at startup (applies on next launch)",
+      "networkTimeout": "Network connection timeout (s)",
+      "networkTimeoutHint": "Increase if operations fail with a timeout (slow or filtered network, e.g. accessing GitHub from China). 10 to 120 s, applies immediately.",
       "exportTemplates": "Export templates",
       "exportTemplatesHint": "Folder holding client Word/Excel templates (local folder, network share or cloned repo), shared across projects.",
       "exportTemplatesChoose": "Choose…",
@@ -1500,6 +1502,33 @@
   },
   "diffPage": {
     "noDifference": "No difference"
+  },
+  "diffView": {
+    "raw": "Raw",
+    "rendered": "Rendered",
+    "hideUnchanged": "Hide unchanged",
+    "unchangedCount_one": "{{count}} unchanged field",
+    "unchangedCount_other": "{{count}} unchanged fields",
+    "before": "Before",
+    "after": "After",
+    "workingTree": "working tree",
+    "absentFile": "File absent from this version",
+    "absentUnit": "— absent",
+    "renderUnavailable": "Rendering unavailable for this content — see Raw",
+    "stepAction": "Action",
+    "stepExpected": "Expected result",
+    "stepNumber": "Step {{n}}",
+    "page": "Page “{{name}}”",
+    "absentPage": "— page absent",
+    "unchangedPages_one": "{{count}} unchanged page",
+    "unchangedPages_other": "{{count}} unchanged pages",
+    "unit": {
+      "title": "Title",
+      "status": "Status",
+      "preconditions": "Preconditions",
+      "steps": "Steps",
+      "postconditions": "Postconditions"
+    }
   },
   "versionDiffPage": {
     "selectFileHint": "Select a file in the Version panel"

@@ -11,7 +11,6 @@ import { RequirementsService } from '../main/services/requirements.service'
 import { TestsService } from '../main/services/tests.service'
 import { RevalidationService } from '../main/services/revalidation.service'
 import { CampaignsService } from '../main/services/campaigns.service'
-import { TreeService } from '../main/services/tree.service'
 import { TraceabilityService } from '../main/services/traceability.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
@@ -85,10 +84,9 @@ const mcpHostContext: HostContext = {
  * `ExportService`, `WorkspaceService`, `BaselineService`, `InterfaceComplianceService`,
  * `DashboardSeedService`). `TraceabilityService`, `QueryEngineService`,
  * `DashboardsService` et `SavedQueriesService` sont construits depuis GH18 (vue Suivi).
- * `TreeService` est en revanche bien construit (T138) : sans lui, les objets créés par
- * ce serveur MCP sont écrits sur disque mais n'apparaissent jamais dans SystemView/
- * ExcelView, qui énumèrent les objets via `.polenta/trees/<node>/<type>.yaml` et non en
- * scannant `requirements/`/`tests/`.
+ * Pas de `TreeService` non plus : depuis GH180, un objet créé n'est plus inscrit dans
+ * `.polenta/trees/<node>/<type>.yaml` — l'app l'affiche quand même (objets « non classés »
+ * complétés à la lecture de l'arbre), ce qui couvre le besoin de T138.
  *
  * Synchrone — pas de fenêtre à ouvrir, pas d'attente d'`app.whenReady()`.
  *
@@ -109,13 +107,12 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const polentaRepo = new PolentaRepoService()
   const workspaceTree = new WorkspaceTreeService(sync, polentaRepo)
   const schema = new SchemaService(auth, workspaceTree)
-  const tree = new TreeService()
   // GH77 — écritures MCP : `by` = `--user` / `POLENTA_USER` (sinon `local`), `source: mcp`.
   const history = new HistoryService(git, async () => ({ by: user ?? 'local', source: 'mcp' }))
   // T172 — mêmes déclencheurs que l'app : un changement de statut via MCP marque aussi les pairs.
   const revalidation = new RevalidationService(git, reqIndex, testsIndex, schema, workspaceTree, history)
-  const requirements = new RequirementsService(git, reqIndex, schema, tree, revalidation, history)
-  const tests = new TestsService(git, testsIndex, schema, tree, revalidation, history)
+  const requirements = new RequirementsService(git, reqIndex, schema, revalidation, history)
+  const tests = new TestsService(git, testsIndex, schema, revalidation, history)
   const campaigns = new CampaignsService(git, tests, undefined, schema, history)
   // GH18 — vue Suivi : même graphe que main/container.ts (sans DashboardSeedService, le
   // seed des dashboards pré-configurés reste propre à l'app). TraceabilityService n'est

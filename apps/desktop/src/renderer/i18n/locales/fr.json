@@ -765,6 +765,7 @@
     },
     "fieldConfig": {
       "visibleFields": "Champs visibles",
+      "reset": "Réinitialiser",
       "colSection": "Section",
       "colCreatedAt": "Créé le",
       "colUpdatedAt": "Modifié le",
@@ -1025,6 +1026,7 @@
       "withoutParams_other": "{{count}} tests sans paramètre",
       "alreadyIncluded_one": "Déjà présent {{count}} fois dans la campagne",
       "alreadyIncluded_other": "Déjà présent {{count}} fois dans la campagne",
+      "statusAlwaysShown": "Toujours affichée dans le sélecteur : tous les statuts sont proposés",
       "abandonTitle": "Abandonner la sélection ?",
       "abandon": "Abandonner",
       "keepEditing": "Continuer",
@@ -1453,7 +1455,9 @@
     "localTitle": "Modifications locales (vs HEAD)",
     "localComputedAt": "Calculée à {{time}}",
     "refresh": "Rafraîchir",
-    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines."
+    "noChangedRequirement": "Aucune exigence modifiée entre ces deux baselines.",
+    "statementDiff": "Énoncé : avant / après",
+    "howToRead": "Chaque élément modifié est la cause de l'analyse ; les éléments de son arbre (liés en aval, puis en amont) sont à traiter un par un : statut, commentaire, et levée du flag « Impact à vérifier »."
   },
   "graphPage": {
     "tabTitle": "Arbre de versions — {{repoName}}",

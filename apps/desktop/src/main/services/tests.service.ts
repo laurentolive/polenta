@@ -1,4 +1,4 @@
-import { renameFieldKeys } from '@polenta/types'
+import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
@@ -9,6 +9,7 @@ import { omitAuditFields } from './audit-fields.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
+import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
 
 export class TestsService {
@@ -35,6 +36,11 @@ export class TestsService {
   }
 
   async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
+    // GH149 — cf. RequirementsService.create : statut initial lu dans le schéma.
+    const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
+    if (dto.status && isUnknownStatus(typeDef, dto.status)) {
+      throw new Error(`Statut inconnu pour le type ${dto.objectTypeRef} : "${dto.status}"`)
+    }
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
     const testId = await this.nextTestId(repoPath, targetRepo, dto.objectTypeRef)
 
@@ -50,7 +56,7 @@ export class TestsService {
       branchId: '',
       objectTypeRef: dto.objectTypeRef,
       title: dto.title,
-      status: 'draft',
+      status: dto.status ?? initialStatus(typeDef),
       preconditions: dto.preconditions ?? '',
       equipment: dto.equipment ?? [],
       steps: dto.steps,
@@ -70,7 +76,11 @@ export class TestsService {
 
   // T159 — cf. RequirementsService : sérialise les read-modify-write concurrents sur le
   // fichier du cas de test.
-  async update(repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
+  async update(
+    repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string,
+    /** GH150 — `update_tests` (MCP) : une clé de `fields` à `null` retire le champ. */
+    opts: { removeNullFields?: boolean } = {},
+  ): Promise<TestCase> {
     const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
@@ -88,7 +98,9 @@ export class TestsService {
         ...(dto.equipment && { equipment: dto.equipment }),
         ...(dto.steps && { steps: dto.steps }),
         ...(dto.postconditions !== undefined && { postconditions: dto.postconditions }),
-        fields: { ...(existing.fields as object), ...(dto.fields ?? {}) },
+        fields: opts.removeNullFields
+          ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
+          : { ...(existing.fields as object), ...(dto.fields ?? {}) },
       })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(

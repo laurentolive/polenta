@@ -45,6 +45,7 @@ import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { FieldConfigModal } from './FieldConfigModal'
+import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status'])
 
@@ -525,7 +526,15 @@ export function SystemView() {
   // Clé d'une colonne dont la requête n'existe plus / n'est plus partagée / ne s'applique plus :
   // ignorée à l'affichage, jamais réécrite dans les préférences.
   const filterComputed = computed.filterFields
-  const shownFieldsExcel = useMemo(() => filterComputed(visibleFieldsExcel), [visibleFieldsExcel, filterComputed])
+  // GH137 — colonnes de lien ramenées au schéma courant (`link::` d'un type « deux sens » → ses deux
+  // colonnes de sens) : affichage et panneau « Champs visibles » ; la préférence n'est réécrite qu'à
+  // la prochaine modification par l'utilisateur.
+  const viewTypeRef = effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : undefined
+  const excelFields = useMemo(
+    () => normalizeLinkColumns(visibleFieldsExcel, linkTypes, viewTypeRef, effectiveType?.category),
+    [visibleFieldsExcel, linkTypes, viewTypeRef, effectiveType?.category],
+  )
+  const shownFieldsExcel = useMemo(() => filterComputed(excelFields), [excelFields, filterComputed])
   const shownFieldsWord = useMemo(() => filterComputed(visibleFieldsWord), [visibleFieldsWord, filterComputed])
   const mergeComputed = computed.merge
   const displayObjects = useMemo(() => mergeComputed(objects), [mergeComputed, objects])
@@ -1043,7 +1052,7 @@ export function SystemView() {
   const viewReady = appliedPrefs?.key === typeKey
     && rootKey === `${effectiveNodeId}|${effectiveTypeId}`
     && !objectsPending
-    && !(linksPending && shownFields.some(f => f.startsWith('link::')))
+    && !(linksPending && shownFields.some(isLinkColumn))
     && !(matrixPending && shownFields.includes('coverageStatus'))
 
   // GH170 — callbacks des vues Tableau / Document à identité stable : recréés à chaque rendu, ils
@@ -1259,7 +1268,7 @@ export function SystemView() {
           objectTypeRef={effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : undefined}
           linkTypes={linkTypes}
           activeTab={viewMode === 'word' ? 'word' : 'excel'}
-          visibleFieldsExcel={visibleFieldsExcel}
+          visibleFieldsExcel={excelFields}
           visibleFieldsWord={visibleFieldsWord}
           onChangeExcel={handleChangeExcel}
           onChangeWord={handleChangeWord}

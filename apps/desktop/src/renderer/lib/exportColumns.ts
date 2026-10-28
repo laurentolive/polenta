@@ -146,7 +146,8 @@ export interface ExportStep {
 // l'objet — obj[key] serait toujours vide dans l'export, donc exclu plutôt que d'afficher une
 // colonne "Couverture" vide dans les documents générés.
 function getExportFields(fields: string[]): string[] {
-  return fields.filter(f => !f.startsWith('link::') && f !== 'coverageStatus')
+  // GH137 — colonnes de lien par sens (`link-out::` / `link-in::`) : pas plus exportées que `link::`.
+  return fields.filter(f => !/^link(-out|-in)?::/.test(f) && f !== 'coverageStatus')
 }
 
 function buildColumns(exportFields: string[], typeDef: ObjectTypeDefinition | undefined, extra?: ExtraExportColumns): ExportColumn[] {

@@ -200,10 +200,11 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
       description:
         "Crée plusieurs exigences en une fois. dryRun (défaut true) : valide chaque " +
         "entrée (objectTypeRef résolu, champs required, syntaxe EARS si validator: " +
-        "EARS, nœud pas readonly) et retourne un aperçu (IDs prévisionnels + erreurs) " +
+        "EARS, nœud pas readonly, status parmi les statuts du type) et retourne un aperçu (IDs prévisionnels + erreurs) " +
         "SANS RIEN ÉCRIRE. dryRun: false : écrit réellement, en série, best-effort " +
         "(une entrée en échec n'annule pas les précédentes). Appeler get_schema " +
-        "d'abord pour connaître les objectTypeRef valides et leurs champs requis.",
+        "d'abord pour connaître les objectTypeRef valides et leurs champs requis. " +
+        "status est facultatif : sans lui, l'exigence prend le premier statut du type.",
       inputSchema: bulkImportRequirementsInput,
     },
     async ({ entries, dryRun }) => {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { renameFieldKeys } from '@polenta/types'
+import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
@@ -39,6 +39,11 @@ export class TestsService {
   }
 
   async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
+    // GH149 — cf. RequirementsService.create : statut initial lu dans le schéma.
+    const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
+    if (dto.status && isUnknownStatus(typeDef, dto.status)) {
+      throw new Error(`Statut inconnu pour le type ${dto.objectTypeRef} : "${dto.status}"`)
+    }
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
     const testId = await this.nextTestId(repoPath, targetRepo, dto.objectTypeRef)
 
@@ -54,7 +59,7 @@ export class TestsService {
       branchId: '',
       objectTypeRef: dto.objectTypeRef,
       title: dto.title,
-      status: 'draft',
+      status: dto.status ?? initialStatus(typeDef),
       preconditions: dto.preconditions ?? '',
       equipment: dto.equipment ?? [],
       steps: dto.steps,

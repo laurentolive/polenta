@@ -410,13 +410,13 @@ inst_compose() {
   # GH44 — client web actif (domaine web renseigné) : ses commandes (up, stop, down…) l'incluent.
   local -a profile=()
   [[ -n "$(env_get "$(instance_env "$name")" WEB_DOMAIN)" ]] && profile=(--profile web)
+  local -a files=(-f "$KIT_DIR/instance/docker-compose.yml")
   # GH61 — Caddy externe : surcharge rattachant forge et client web à EDGE_NETWORK (variable lue par compose).
-  if caddy_external; then
-    EDGE_NETWORK="$EDGE_NETWORK" docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" "${profile[@]}" \
-      -f "$KIT_DIR/instance/docker-compose.yml" -f "$KIT_DIR/instance/docker-compose.external.yml" "$@"
-    return
-  fi
-  docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" "${profile[@]}" -f "$KIT_DIR/instance/docker-compose.yml" "$@"
+  caddy_external && files+=(-f "$KIT_DIR/instance/docker-compose.external.yml")
+  # GH63 — interface d'administration : forge et client web rejoignent polenta-admin-net (module admin).
+  [[ "$(env_get "$HOST_ENV" ADMIN_UI)" == on ]] && files+=(-f "$KIT_DIR/instance/docker-compose.admin.yml")
+  EDGE_NETWORK="${EDGE_NETWORK:-$DEFAULT_EDGE_NETWORK}" docker compose -p "polenta-$name" --env-file "$(instance_env "$name")" \
+    "${profile[@]}" "${files[@]}" "$@"
 }
 
 forge_container() { printf 'forgejo-%s' "$1"; }
@@ -589,6 +589,12 @@ ensure_ops_account() {
 # : une empreinte SHA-256 suffit (pas de mot de passe humain à protéger contre une recherche
 # exhaustive). Créé une fois, conservé ; régénéré par « instance sync » s'il manque.
 SERVICE_TOKENS="$POLENTA_ROOT/admin/service-tokens.json"
+# Le service d'administration (uid de admin.env, 1500 par défaut) lit les empreintes : fichier à lui.
+service_tokens_owner() {
+  [[ $EUID -eq 0 && -f "$POLENTA_ROOT/admin/admin.env" ]] || return 0
+  local uid; uid="$(env_get "$POLENTA_ROOT/admin/admin.env" POLENTA_ADMIN_UID)"
+  chown "${uid:-1500}:${uid:-1500}" "$SERVICE_TOKENS" 2>/dev/null || true
+}
 ensure_service_token() {
   local name="$1" env token; env="$(instance_env "$name")"
   token="$(env_get "$env" ADMIN_SERVICE_TOKEN)"
@@ -605,6 +611,7 @@ ensure_service_token() {
   jq --arg n "$name" --arg h "$hash" --arg at "$(date -Iseconds)" '.[$n] = {sha256:$h, createdAt:$at}' <<<"$current" \
     >"$SERVICE_TOKENS.tmp.$$"
   chmod 600 "$SERVICE_TOKENS.tmp.$$"; mv "$SERVICE_TOKENS.tmp.$$" "$SERVICE_TOKENS"
+  service_tokens_owner
   ok "jeton de service (empreinte dans $SERVICE_TOKENS)"
 }
 
@@ -614,6 +621,7 @@ forget_service_token() {
   [[ -f "$SERVICE_TOKENS" ]] || return 0
   jq --arg n "$name" 'del(.[$n])' "$SERVICE_TOKENS" >"$SERVICE_TOKENS.tmp.$$"
   chmod 600 "$SERVICE_TOKENS.tmp.$$"; mv "$SERVICE_TOKENS.tmp.$$" "$SERVICE_TOKENS"
+  service_tokens_owner
 }
 
 ensure_org_and_teams() {
@@ -867,6 +875,16 @@ cmd_instance_sync() {
   fi
   ensure_ops_account "$name"
   ensure_service_token "$name"
+  # GH63 — interface d'administration : web.env reçoit l'adresse du service et le jeton de l'instance,
+  # forge et client web rejoignent polenta-admin-net (surcharge docker-compose.admin.yml).
+  if [[ "$ADMIN_UI" == on ]]; then
+    [[ -z "$(env_get "$env" WEB_DOMAIN)" ]] || render_web_env "$name"
+    if ! caddy_external; then
+      inst_compose "$name" up -d >/dev/null 2>&1 || inst_compose "$name" up -d
+      wait_healthy "$name"
+    fi
+    ok "rattachée à l'administration (polenta-admin-net)"
+  fi
   ensure_org_and_teams "$name" "$org"
   local demo=0; api GET "/repos/$org/$DEMO_ROOT_REPO" && demo=1
   ensure_config_repo "$name" "$org" "$demo"

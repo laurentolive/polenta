@@ -1,0 +1,17 @@
+# GH63 — surcharge compose ajoutée par polenta-host (inst_compose) quand ADMIN_UI=on :
+#   docker compose … -f instance/docker-compose.yml [-f docker-compose.external.yml] -f instance/docker-compose.admin.yml
+# Le client web rejoint polenta-admin-net pour joindre l'API d'administration ; la forge aussi, pour que
+# le service revérifie le droit « propriétaire » auprès d'elle (http://forgejo-<nom>:3000) sans sortir
+# du réseau interne. Réseau créé par le module admin (deploy/admin/install.sh). Aucun port publié.
+services:
+  forgejo:
+    networks:
+      - admin
+  polenta-web:
+    networks:
+      - admin
+
+networks:
+  admin:
+    external: true
+    name: polenta-admin-net

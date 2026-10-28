@@ -51,7 +51,7 @@ describe('CampaignsService.list — filtre level (GH59)', () => {
 })
 
 describe('CampaignsService.list — filtre component (GH146)', () => {
-  it('à défaut de component, lit le nœud dans objectTypeRef ; sans l'un ni l'autre, reste visible', async () => {
+  it("à défaut de component, lit le nœud dans objectTypeRef ; sans l'un ni l'autre, reste visible", async () => {
     // Forme écrite avant le correctif par « Générer la campagne » (analyse d'impact) : ni component ni level.
     const withoutComponent = (id: string, objectTypeRef: string) => git.writeYaml(dir, `campaigns/${id}.yaml`, {
       id, title: id, fields: {}, status: 'planned', objectTypeRef, testCaseIds: [], runs: [],

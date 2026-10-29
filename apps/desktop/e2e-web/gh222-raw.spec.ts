@@ -158,6 +158,9 @@ test.describe('résolution de conflits Raw', () => {
 
   test('H11 — la liste des fichiers montre les conflits restants', async () => {
     await openSession()
+    // GH233 — the list is the side panel « Fichiers en conflit », not the « Projet » panel.
+    await expect(s.page.getByTestId('sidebar').getByTestId('merge-files-panel')).toBeVisible()
+    await expect(s.page.getByTestId('sidebar')).not.toContainText('Modèle de données')
     await expect(file('conflit-a.yaml').getByTestId('file-conflict-count')).toHaveText('2 conflits')
     await expect(file('conflit-b.yaml').getByTestId('file-conflict-count')).toHaveText('1 conflit')
   })

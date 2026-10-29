@@ -15,7 +15,7 @@ import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters' | 'merge'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -48,6 +48,8 @@ export function deducePanel(pathname: string, category?: string): Panel {
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
   if (pathname.startsWith('/campaign/')) return 'campaigns'
+  // GH233 — pendant une résolution de conflits : « Fichiers en conflit » (pas d'icône dédiée).
+  if (pathname === '/merge-resolve') return 'merge'
 
   if (
     pathname === '/graph' ||

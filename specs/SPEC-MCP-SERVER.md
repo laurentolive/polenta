@@ -488,6 +488,19 @@ clés triées, marquage des éléments approuvés si `value` / `unit` changent) 
 liste les éléments approuvés qui seraient marqués. `delete_parameter` est refusé tant qu'un élément
 non terminal référence le paramètre (`deleted: false` + `usages`).
 
+### 4.7 Changes (GH198)
+
+`tools/changes.tools.ts`, branché sur `ChangesService` (mêmes contrôles que l'application).
+
+- `list_changes` — changes de tous les repos du workspace (`ChangeSummary` : id, `repoPath` de
+  stockage, type, titre, statut, composant, nombres d'éléments à modifier / impactés) ; filtres
+  `status`, `objectTypeRef`.
+- `get_change` — un change complet (`repoPath` de stockage, défaut repo ouvert).
+- `create_change` — demande de changement (`mode: request`) : type de catégorie `change`,
+  `component` obligatoire si le repo porte plusieurs composants locaux, `toModify` (`planned`) et
+  `impacted` (`impact_non_verifie`, `declared`). Mise à jour des listes : lot L3 (#199).
+- `get_object_history` accepte `kind: change` (repo ouvert).
+
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 
 ### 5.1 À la création d'un nouveau projet
@@ -620,6 +633,7 @@ Deux catégories (cf. §4) :
 | `apps/desktop/src/mcp-server/electron-shim.ts` | Substitut d'`electron` pour le bundle packagé (esbuild `--alias`) |
 | `apps/desktop/src/mcp-server/tools/schema.tools.ts` | `get_schema` |
 | `apps/desktop/src/mcp-server/tools/read.tools.ts` | `list_requirements`, `list_tests`, `list_campaigns` |
+| `apps/desktop/src/mcp-server/tools/changes.tools.ts` | `list_changes`, `get_change`, `create_change` (GH198) |
 | `apps/desktop/src/mcp-server/tools/bulk-import.tools.ts` | `bulk_import_requirements`, `bulk_import_tests`, `bulk_import_campaigns` |
 | `apps/desktop/src/mcp-server/tools/schema-mutation.tools.ts` | `add_component`, `add_object_type`, `add_field`, `add_status`, `add_link_type` |
 | `apps/desktop/src/mcp-server/tools/links.tools.ts` | `list_links`, `create_links`, `delete_links` (GH16) |

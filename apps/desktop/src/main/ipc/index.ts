@@ -188,6 +188,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
+  'changes:create', 'changes:update', 'changes:delete',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',

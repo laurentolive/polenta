@@ -668,3 +668,39 @@ Un lien Jira peut être ajouté à n'importe quel moment — il est optionnel.
 - Son identifiant n'est **jamais réutilisé** : une exigence supprimée par l'application (cas
   ci-dessus) laisse sa pierre tombale ; un fichier supprimé hors application (explorateur,
   `git rm`) n'en laisse pas (GH20).
+
+---
+
+## 10. Changes (GH198)
+
+Un **change** porte une modification pilotée d'un composant : cause et description (champs du
+type), éléments à modifier, éléments impactés, cycle de vie. Détail : `specs/GH198.md` ; épique
+`specs/GH193.md`.
+
+- **Catégorie `change`** : types déclarés dans le modèle de données (préfixe, `fields`,
+  `statuses`) ; Polenta ne prête aucune sémantique aux types. Cycle de vie proposé à la création
+  d'un type (`DEFAULT_CHANGE_STATUSES`, modifiable) : `ouvert → analyse → implemente → verifie →
+  clos`, `rejete` ; `clos` et `rejete` terminaux ; aucune contrainte de transition (L1, #206).
+  Pas de couverture ni de maturité.
+- **Stockage** : `changes/<ID>.yaml` dans le repo du **composant concerné** (`component`) ; ID
+  préfixé du type, pierres tombales (GH20). Champs système : `id`, `objectTypeRef`, `title`,
+  `status`, `version`, `component`, `mode` (`request`), `toModify` (`{ id, state: planned |
+  modified }`), `impacted` (`{ id, status, comment?, source: declared | computed }`, statut parmi
+  les 8 statuts d'impact de SPEC-TRACEABILITY §4.6, défaut `impact_non_verifie`), `origin`,
+  `integratedIn`, `campaigns`, `history` (GH77). Écritures par `ChangesService.persist`
+  (`applyFieldsWrite` #195, historique GH77).
+- **Composant** : déduit si le repo ne porte qu'un composant local, obligatoire sinon ; modifiable
+  au statut initial seulement.
+- **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du change ; « Ajouter les
+  éléments repassés en brouillon » propose les exigences et tests déjà approuvés une fois (statut
+  `isApproval` dans l'historique, repli `version > 1`) qui ne le sont plus, hors éléments listés.
+- **Vue Changements** : entrée de la barre d'activité ; panneau (changes du workspace par repo,
+  ID décroissant ; filtres type, statut, repo, « mes changes » = auteur du premier statut,
+  « masquer les terminés ») ; pages `/changes`, `/change/new` (`?element=` : élément pré-rempli dans
+  « à modifier », depuis « Créer un change » de la vue Édition et des pages exigence / test) et
+  `/change/<ID>` (statut, titre, composant, champs, listes, historique).
+- **Suppression** : tant que le fichier n'a jamais été commité ; ensuite, statut terminal. Le
+  renommage d'un préfixe réécrit aussi les IDs cités dans `changes/` ; la suppression d'un type de
+  change supprime ses changes (GH104).
+- Graphe de données : collection `changes` (SPEC-DASHBOARDS §2) ; MCP : `list_changes`,
+  `get_change`, `create_change` (SPEC-MCP-SERVER §4.7).

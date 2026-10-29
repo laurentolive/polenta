@@ -48,7 +48,7 @@ export function useLiveFileSync(): void {
       // graphe agrège tout le workspace. Un changement de données (exécutions comprises), de ref
       // (avance rapide du pull automatique), de la bibliothèque projet ou d'un script de requête
       // (écrit hors de l'app, MCP) dans n'importe quel repo les rend périmés.
-      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|queries|dashboards\/lib)\//.test(relPath)) {
+      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|changes|queries|dashboards\/lib)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
@@ -102,6 +102,11 @@ export function useLiveFileSync(): void {
         })
         return
       }
+
+      // GH198 — changes : liste du panneau (workspace) et page du change.
+      const changeMatch = /^changes\/([^/]+)\.yaml$/.exec(relPath)
+      if (relPath === '*' || changeMatch) qc.invalidateQueries({ queryKey: ['changes'] })
+      if (changeMatch) qc.invalidateQueries({ queryKey: ['change', repoPath, changeMatch[1]] })
 
       const objectMatch = /^(requirements|tests|campaigns)\/([^/]+)\.yaml$/.exec(relPath)
       if (objectMatch) {

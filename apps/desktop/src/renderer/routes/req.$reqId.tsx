@@ -1,4 +1,5 @@
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
+import { CreateChangeButton } from '../components/changes/CreateChangeButton'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
@@ -141,9 +142,12 @@ function RequirementDetailPage() {
         title={req.title}
         subtitle={<span className="font-mono">{req.id}</span>}
         actions={
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusClass}`}>
-            {req.status}
-          </span>
+          <>
+            <CreateChangeButton repoPath={repoPath} projectId={projectId} elementId={req.id} objectTypeRef={req.objectTypeRef} />
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusClass}`}>
+              {req.status}
+            </span>
+          </>
         }
       />
 

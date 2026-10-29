@@ -61,6 +61,8 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 
 > **GH196 (contrat v1, ajout)** — `GraphTestRun.fields`, `notes` (Markdown), `stepResults` (`GraphStepResult` : `order`, `result`, `comment`, `fields`) ; `GraphObjectType.runFields` / `stepFields`. `polenta.d.ts` régénéré (manifeste v5).
 
+> **GH198 (contrat v1, ajout)** — collection `changes` (`GraphChange` : base commune statut / champs / historique, `component`, `mode`, `toModify`, `impacted` avec statut d'impact et `source`, `origin`, `integratedIn`, `campaigns`) ; catégorie `change` dans `GraphObjectCategory` et les types. Fichiers `changes/` dans le périmètre du cache (watcher, canaux `changes:*`). `polenta.d.ts` régénéré (manifeste v6).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

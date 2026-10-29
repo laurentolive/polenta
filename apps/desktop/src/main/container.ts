@@ -51,7 +51,7 @@ import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
 
 /** GH74 — dossiers dont un changement invalide le graphe de données. */
-const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', '.polenta/', 'polenta-repo.yaml']
+const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', 'changes/', '.polenta/', 'polenta-repo.yaml']
 
 /**
  * Instancie le noyau de services (GH44 : sans dépendance à Electron). L'hôte fournit ce qui

@@ -9,7 +9,7 @@ const s = setupSession()
 
 const KEY = 'polenta.activityBarLayout'
 const DEFAULT_TITLES = [
-  'Compte', 'Projet', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Paramètres', 'Recherche', 'Version', "Analyse d'impact",
+  'Compte', 'Projet', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Changements', 'Paramètres', 'Recherche', 'Version', "Analyse d'impact",
 ]
 
 function button(page: Page, title: string) {
@@ -45,7 +45,7 @@ test.beforeEach(async () => {
 test('E1 — drag & drop : Version avant Suivi, persistant', async () => {
   expect(await titles(s.page)).toEqual(DEFAULT_TITLES)
   await dragBefore(s.page, 'Version', 'Suivi')
-  const expected = ['Compte', 'Projet', 'Version', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Paramètres', 'Recherche', "Analyse d'impact"]
+  const expected = ['Compte', 'Projet', 'Version', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Changements', 'Paramètres', 'Recherche', "Analyse d'impact"]
   expect(await titles(s.page)).toEqual(expected)
   await s.page.reload()
   expect(await titles(s.page)).toEqual(expected)

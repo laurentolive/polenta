@@ -311,6 +311,8 @@ expose `readYamlRef`/`listFilesAtRef`/`readYamlDirAtRef` (et, depuis T171, `read
 tag introuvable et fichier absent — lecture des paramètres à la baseline d'une campagne) pour lire ces données à un sha arbitraire (utilisé
 par le diff et le snapshot ci-dessus).
 
+> **GH198** — les 8 statuts d'impact ci-dessus sont aussi ceux des éléments impactés d'un change (`Change.impacted[].status`, saisis à la main en L2 ; calcul et complétude : #199). Voir SPEC-REQ §10.
+
 ### 4.7 Analyse d'impact des modifications locales (T175)
 
 Troisième flux, **live** : l'impact des modifications non commitées (working tree) par rapport au dernier

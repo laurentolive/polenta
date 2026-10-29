@@ -1,4 +1,5 @@
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
+import { CreateChangeButton } from '../components/changes/CreateChangeButton'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
@@ -164,7 +165,12 @@ function TestCaseDetailPage() {
               <span className="text-xs font-mono text-ink-3 font-normal">{tc.id}</span>
             </span>
           }
-          actions={<RichTextToolbar repoPath={repoPath} />}
+          actions={
+            <>
+              <CreateChangeButton repoPath={repoPath} projectId={projectId} elementId={tc.id} objectTypeRef={tc.objectTypeRef} />
+              <RichTextToolbar repoPath={repoPath} />
+            </>
+          }
         />
 
         <div className="flex-1 overflow-y-auto">

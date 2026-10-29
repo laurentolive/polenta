@@ -105,6 +105,8 @@ test('G5 — étapes : insertion alignée, étapes suivantes non décalées, mod
 test('G8 — fichier .drawio : pages alignées par nom, page modifiée et page ajoutée encadrées', async () => {
   await openCommitDiff(DRAWIO)
   const view = s.page.getByTestId('drawio-diff')
+  // The pages are read asynchronously: wait for them before reading their attributes.
+  await expect(view.locator('[data-page]')).toHaveCount(3)
   const pages = await view.locator('[data-page]').evaluateAll(els => els.map(e => `${e.getAttribute('data-page')}${e.hasAttribute('data-changed') ? '*' : ''}`))
   expect(pages).toEqual(['Vue', 'Détail*', 'Annexe*'])
   await expect(view.locator('.static-drawio')).toHaveCount(5)

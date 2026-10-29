@@ -98,7 +98,8 @@ test('G2/G3 — bascule Raw : diff texte ; le mode est mémorisé', async () => 
   await commitDiff(c2, reqFile)
   await toggle().getByRole('button', { name: 'Raw' }).click()
   await expect(grid()).toHaveCount(0)
-  await expect(s.page.locator('table tr').filter({ hasText: 'title: GH178 après' })).toHaveCount(1)
+  // GH222 — Raw sur @codemirror/merge : la ligne est dans le côté Après.
+  await expect(s.page.getByTestId('raw-diff').locator('.cm-merge-b .cm-line').filter({ hasText: 'title: GH178 après' })).toHaveCount(1)
 
   await commitDiff(c1, reqFile)
   await expect(toggle().getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'true')
@@ -114,7 +115,7 @@ test('L2 — fichier ajouté : colonne Avant « Fichier absent de cette version 
 
 test('L1 — fichier sans Rendu : pas de bascule, diff Raw', async () => {
   await commitDiff(c1, otherFile)
-  await expect(s.page.locator('table').first()).toBeVisible()
+  await expect(s.page.getByTestId('raw-diff')).toBeVisible()
   await expect(toggle()).toHaveCount(0)
 })
 

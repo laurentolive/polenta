@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
 import { Check, Columns3, Eye, FileCode } from 'lucide-react'
 import {
-  changedLineIndexes, changedUnits, shortRef, findRegions, parseOutput, regionFragments, resolveAllRegions, resolveRegion,
-  updateObjectOutput, type Side,
+  changedUnits, shortRef, findRegions, parseOutput, regionFragments, resolveAllRegions, resolveRegion,
+  resolveRegionBoth, updateObjectOutput, type Side,
 } from '@polenta/merge-core'
 import type {
   MergeFileDetail, MergeFileDraft, MergeKeepBothResult, MergeSessionInfo, MergeValidationIssue, ObjectTypeDefinition,
@@ -12,7 +12,10 @@ import type {
 import { api } from '../../api'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/useProjectSchema'
-import { RawPane } from './RawPane'
+import { RawPane, type PaneAction, type PaneLabels } from './RawPane'
+import { resetBlock, sideAnchors, type ResolvedBlock } from './blockLocator'
+import { NavBar } from '../diffkit/NavBar'
+import { useChangeNavigation } from '../diffkit/useChangeNavigation'
 import { RenderedObjectPane } from './RenderedObjectPane'
 import { mergePrefs, useElementSync, useScrollSyncGroup, type ScrollSyncGroup } from './scrollSync'
 import { useMergeFile, useOutputValidation } from './useMergeSession'
@@ -24,6 +27,8 @@ interface Props {
   onMerged: () => void
   /** « Garder les deux » a recalculé la session (fichiers en conflit renumérotés). */
   onSessionChanged: (session: MergeSessionInfo) => void
+  /** GH222 — `F7` après le dernier conflit résolu : fichier suivant à résoudre. */
+  onNextFile?: () => void
 }
 
 const SAVE_DELAY_MS = 500
@@ -65,7 +70,7 @@ function loadObject(text: string | null): Obj | null {
   }
 }
 
-function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail }: Props & { detail: MergeFileDetail }) {
+function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextFile, detail }: Props & { detail: MergeFileDetail }) {
   const { t } = useTranslation()
   const choiceMode = isChoiceFile(detail)
   const [text, setText] = useState<string>(detail.draft?.text ?? detail.initialOutput ?? '')
@@ -149,15 +154,87 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
     left: objects.left ? changedUnits(objects.base, objects.left) : new Set<string>(),
     right: objects.right ? changedUnits(objects.base, objects.right) : new Set<string>(),
   }), [objects])
-  const lineHighlight = useMemo(() => ({
-    left: detail.left === null ? null : withSide('left', changedLineIndexes(detail.base, detail.left)),
-    right: detail.right === null ? null : withSide('right', changedLineIndexes(detail.base, detail.right)),
-  }), [detail.base, detail.left, detail.right])
+  // GH222 — ce que chaque côté a changé depuis l'ancêtre (ligne et caractères).
+  const against = useMemo(() => ({
+    left: { base: detail.base, side: 'left' as Side },
+    right: { base: detail.base, side: 'right' as Side },
+  }), [detail.base])
 
   const yamlSyntax = /\.ya?ml$/i.test(path)
-  const takeLabels = useMemo(() => ({ takeLeft: t('mergeResolve.takeLeft'), takeRight: t('mergeResolve.takeRight') }), [t])
+  const paneLabels: PaneLabels = useMemo(() => ({
+    takeLeft: t('mergeResolve.takeLeft'),
+    takeRight: t('mergeResolve.takeRight'),
+    takeBoth: t('mergeResolve.takeBoth'),
+    reset: t('mergeResolve.reset'),
+    resolved: { left: t('mergeResolve.resolvedLeft'), right: t('mergeResolve.resolvedRight'), both: t('mergeResolve.resolvedBoth') },
+    ruler: t('diffkit.change.ruler'),
+  }), [t])
   const group = useScrollSyncGroup()
   const units = detail.kind === 'object'
+
+  // ─── GH222 : blocs dans chaque panneau, résolus, navigation ──────────────────────
+  const markerLabels = useMemo(() => ({ left: shortRef(session.leftRef), right: shortRef(session.rightRef) }), [session.leftRef, session.rightRef])
+  // Open blocks as a stable signature: typing in the output does not rebuild the side actions.
+  const openSig = regions.regions.map(r => r.key).join('\u0000')
+  // Latest output and updater, for the actions built once per set of open blocks.
+  const latest = useRef({ text, regions, updateText })
+  latest.current = { text, regions, updateText }
+
+  // Where each block's region is (or was when resolved): the resolved text and the side
+  // fragments are looked for nearest to it (a short fragment may appear elsewhere in the file).
+  const initialHints = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const r of findRegions(detail.initialOutput ?? '').regions) m.set(r.key, r.start)
+    return m
+  }, [detail.initialOutput])
+  const [resolvedAt, setResolvedAt] = useState<Map<string, number>>(new Map())
+  const hints = useMemo(() => new Map([...initialHints, ...resolvedAt]), [initialHints, resolvedAt])
+  const resolveWith = (key: string, next: (current: string) => string) => {
+    const { text: current, regions: open, updateText: update } = latest.current
+    const at = open.regions.find(r => r.key === key)?.start
+    if (at !== undefined) setResolvedAt(prev => new Map(prev).set(key, at))
+    update(next(current))
+  }
+
+  const sideActions = useMemo(() => {
+    const open = new Map(latest.current.regions.regions.map(r => [r.key, r.start] as const))
+    const make = (side: Side): PaneAction[] => {
+      const sideText = side === 'left' ? detail.left : detail.right
+      if (sideText === null || choiceMode) return []
+      return sideAnchors(sideText, detail.blocks, open, side).map(a => ({
+        key: a.key,
+        line: a.line,
+        label: side === 'left' ? t('mergeResolve.takeLeft') : t('mergeResolve.takeRight'),
+        run: () => resolveWith(a.key, current => resolveRegion(current, a.key, side)),
+      }))
+    }
+    return { left: make('left'), right: make('right') }
+    // resolveWith reads the latest state through `latest`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, openSig, choiceMode, t])
+  const resetBlockOf = (found: ResolvedBlock) => {
+    const block = detail.blocks.find(b => b.key === found.key)
+    if (block) updateText(resetBlock(text, block, found, markerLabels))
+  }
+  const outputLabels = useMemo(() => ({ ...paneLabels, ruler: t('diffkit.conflict.ruler') }), [paneLabels, t])
+
+  const outputBox = useRef<HTMLDivElement>(null)
+  const [reveal, setReveal] = useState<{ from: number; to: number } | null>(null)
+  const goConflict = (i: number) => {
+    const r = regions.regions[i]
+    if (!r) return
+    if (rendered) {
+      outputBox.current?.querySelector(`[data-unit="${CSS.escape(r.key)}"]`)?.scrollIntoView({ block: 'start' })
+    } else {
+      setReveal({ from: r.start, to: r.end })
+    }
+  }
+  const nav = useChangeNavigation(regions.regions.length, goConflict, {
+    onPastEnd: regions.regions.length === 0 ? onNextFile : undefined,
+    listKey: openSig,
+    // A file resolved by choosing a side has no conflict to walk through: F7 stays put.
+    enabled: !choiceMode,
+  })
 
   // ─── Séparateur haut / sortie ────────────────────────────────────────────────────
   const body = useRef<HTMLDivElement>(null)
@@ -207,8 +284,9 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
       )
     } else {
       content = (
-        <RawPane value={textOf} readOnly yamlSyntax={yamlSyntax}
-          highlight={pane === 'base' ? null : lineHighlight[pane]}
+        <RawPane value={textOf} readOnly yamlSyntax={yamlSyntax} labels={paneLabels}
+          against={pane === 'base' ? null : against[pane]}
+          actions={pane === 'base' ? undefined : sideActions[pane]}
           sync={{ group, id: pane, units }} />
       )
     }
@@ -240,8 +318,14 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
     output = <p className="p-4 text-xs text-status-warning">{t('mergeResolve.renderUnavailable')}</p>
   } else {
     output = (
-      <RawPane value={text} onChange={updateText} labels={takeLabels} yamlSyntax={yamlSyntax}
-        onResolve={(key, side) => updateText(resolveRegion(text, key, side))}
+      <RawPane value={text} onChange={updateText} labels={outputLabels} yamlSyntax={yamlSyntax}
+        onResolve={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
+        onBoth={key => resolveWith(key, current => resolveRegionBoth(current, key))}
+        blocks={detail.blocks}
+        markerLabels={markerLabels}
+        hints={hints}
+        onReset={resetBlockOf}
+        reveal={reveal}
         sync={{ group, id: 'output', units }} />
     )
   }
@@ -275,6 +359,7 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
         </button>
         {!choiceMode && (
           <>
+            <NavBar kind="conflict" index={nav.index} count={regions.regions.length} onPrev={nav.prev} onNext={nav.next} />
             <button type="button" className="btn-secondary-sm shrink-0" disabled={regions.regions.length === 0}
               onClick={() => updateText(resolveAllRegions(text, 'left'))}>
               {t('mergeResolve.allLeft')}
@@ -316,17 +401,13 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
             {detail.conflict === 'both-added' && detail.kind === 'object' && (
               <KeepBothBar session={session} path={path} onApplied={onSessionChanged} />
             )}
-            <div className="flex-1 min-h-0">{output}</div>
+            <div ref={outputBox} className="flex-1 min-h-0">{output}</div>
             {!choiceMode && <ValidationBar parseError={regions.error} issues={validation} />}
           </div>
         </div>
       </RichTextProvider>
     </div>
   )
-}
-
-function withSide(side: Side, set: Set<number> | null) {
-  return set ? { side, lines: set } : null
 }
 
 function SyncedRendered(props: { group: ScrollSyncGroup; id: string } & Omit<React.ComponentProps<typeof RenderedObjectPane>, 'onScroll'>) {

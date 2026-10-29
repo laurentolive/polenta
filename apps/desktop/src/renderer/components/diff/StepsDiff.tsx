@@ -17,8 +17,8 @@ export function StepsDiff({ before, after, repoPath, beforeAt, afterAt }: {
 
   const cell = (side: 'before' | 'after', step: TestStep | undefined, num: number | null, other: TestStep | undefined, changed: boolean) => {
     const tone = !changed ? '' : side === 'before'
-      ? 'bg-status-danger-bg dark:bg-status-danger-bg/15'
-      : 'bg-status-success-bg dark:bg-status-success-bg/15'
+      ? 'bg-diff-line-del'
+      : 'bg-diff-line-ins'
     const at = side === 'before' ? beforeAt : afterAt
     return (
       <div className={`px-3 py-1.5 min-w-0 text-sm ${side === 'after' ? 'border-l border-edge' : ''} ${tone}`}>

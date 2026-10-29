@@ -1,14 +1,14 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
-import { Eye, FileCode } from 'lucide-react'
+import { Columns2, Eye, FileCode, Rows2 } from 'lucide-react'
 import type { FileDiffContents } from '@polenta/api-client'
 import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
-import { computeLineDiff } from '../../lib/lineDiff'
+import { lineStats } from '../../lib/diffStats'
 import { diffPrefs } from '../../lib/diffPrefs'
 import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/useProjectSchema'
 import { useSchemaAt } from '../../hooks/useSchemaAt'
-import { LineDiffView } from './LineDiffView'
+import { RawDiffView } from './RawDiffView'
 import { ObjectDiffView } from './ObjectDiffView'
 import { DrawioFileDiffView } from './DrawioFileDiffView'
 
@@ -19,6 +19,7 @@ type Parsed = { obj: Obj | null; invalid: boolean }
  * GH178 — diff d'un fichier, commun aux trois écrans (`/version-diff`, `/diff` working tree et
  * commit) : sous-en-tête (chemin, `+n / −n`, bascule Raw / Rendu) puis le diff dans le mode choisi.
  * Le Rendu est proposé pour une exigence ou un test dont le type se résout dans le schéma, et pour un `.drawio`.
+ * GH222 : Raw sur `@codemirror/merge` (côte à côte / en ligne, navigation, règle de vue d'ensemble).
  */
 export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath = true }: {
   repoPath: string
@@ -33,13 +34,15 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
   const [hideUnchanged, setHideUnchangedState] = useState(diffPrefs.hideUnchanged)
   const setMode = (m: 'raw' | 'rendered') => { setModeState(m); diffPrefs.setMode(m) }
   const setHideUnchanged = (v: boolean) => { setHideUnchangedState(v); diffPrefs.setHideUnchanged(v) }
+  const [layout, setLayoutState] = useState(diffPrefs.layout)
+  const setLayout = (v: 'side' | 'inline') => { setLayoutState(v); diffPrefs.setLayout(v) }
+  // The Raw view mounts its navigation (« 3 / 12 », précédent / suivant) in this sub-header.
+  const [navSlot, setNavSlot] = useState<HTMLElement | null>(null)
 
-  const lines = useMemo(
-    () => (contents ? computeLineDiff(contents.oldContent, contents.newContent) : []),
+  const stats = useMemo(
+    () => (contents ? lineStats(contents.oldContent, contents.newContent) : { added: 0, removed: 0 }),
     [contents],
   )
-  const addCount = lines.filter(l => l.type === 'add').length
-  const removeCount = lines.filter(l => l.type === 'remove').length
 
   const oldRef = contents?.oldRef ?? null
   const newRef = contents?.newRef ?? null
@@ -73,7 +76,19 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
   if (isLoading || (mode === 'rendered' && schemaLoading)) {
     body = <p className="text-ink-3 italic p-6">{t('common.loading')}</p>
   } else if (!rendered) {
-    body = <div className="h-full overflow-auto font-mono text-xs"><LineDiffView lines={lines} /></div>
+    body = contents && contents.oldContent === contents.newContent
+      ? <p className="text-ink-3 italic p-6">{t('diffPage.noDifference')}</p>
+      : (
+        <RawDiffView
+          // Another file or other versions: the navigation starts over.
+          key={`${filepath}@${oldRef}..${newRef}`}
+          before={contents?.oldContent ?? ''}
+          after={contents?.newContent ?? ''}
+          layout={layout}
+          yamlSyntax={isYaml}
+          navBarSlot={navSlot}
+        />
+      )
   } else if (isDrawio) {
     body = (
       <DrawioFileDiffView
@@ -106,6 +121,13 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
       <div className="px-4 py-2 border-b border-edge shrink-0 flex items-center gap-3">
         {showPath && <p className="font-mono text-sm text-ink font-medium truncate flex-1">{filepath}</p>}
         {!showPath && <div className="flex-1" />}
+        {!rendered && <span ref={setNavSlot} className="contents" />}
+        {!rendered && (
+          <div className="flex rounded border border-edge overflow-hidden shrink-0" role="group" data-testid="diff-layout-toggle">
+            <ToggleButton active={layout === 'side'} onClick={() => setLayout('side')} icon={<Columns2 size={12} />} label={t('diffView.sideBySide')} />
+            <ToggleButton active={layout === 'inline'} onClick={() => setLayout('inline')} icon={<Rows2 size={12} />} label={t('diffView.inline')} />
+          </div>
+        )}
         {canRender && rendered && (
           <label className="flex items-center gap-1 text-xs text-ink-2 shrink-0 cursor-pointer">
             <input type="checkbox" checked={hideUnchanged} onChange={e => setHideUnchanged(e.target.checked)} />
@@ -120,9 +142,9 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
         )}
         {!isLoading && contents && (
           <p className="text-xs text-ink-3 shrink-0">
-            <span className="text-status-success">+{addCount}</span>
+            <span className="text-status-success">+{stats.added}</span>
             {' / '}
-            <span className="text-status-danger">−{removeCount}</span>
+            <span className="text-status-danger">−{stats.removed}</span>
           </p>
         )}
       </div>

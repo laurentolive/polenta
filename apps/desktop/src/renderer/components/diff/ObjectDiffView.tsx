@@ -67,8 +67,8 @@ export function ObjectDiffView({ before, after, typeDef, repoPath, hideUnchanged
     const s = side === 'before' ? before : after
     const isChanged = changed.has(u.key)
     const tone = !isChanged ? '' : side === 'before'
-      ? 'bg-status-danger-bg dark:bg-status-danger-bg/15'
-      : 'bg-status-success-bg dark:bg-status-success-bg/15'
+      ? 'bg-diff-line-del'
+      : 'bg-diff-line-ins'
     return (
       <div className={`px-3 py-2 min-w-0 ${side === 'after' ? 'border-l border-edge' : ''} ${tone}`}>
         {s.value && (

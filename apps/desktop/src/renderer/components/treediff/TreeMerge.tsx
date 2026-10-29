@@ -6,7 +6,7 @@ import type { DiffNode, OutputPath, Side } from '@polenta/merge-core'
 import { parseMultiEnumValue, type ObjectTypeDefinition, type SchemaField } from '@polenta/types'
 import { DynamicField } from '../DynamicField'
 import { diffPrefs } from '../../lib/diffPrefs'
-import type { ResolvedBlock } from '../merge/blockLocator'
+import type { ResolvedBlock, Taken } from '../merge/blockLocator'
 import { Value } from './TreeDiffView'
 import { outputAt, type MergeRow, type MergeTreeModel } from './mergeModel'
 import type { Presentation } from './presentation'
@@ -74,6 +74,10 @@ function HeaderCell({ children, border }: { children: ReactNode; border?: boolea
 
 const ACTION = 'px-1.5 py-px rounded border border-edge bg-surface text-[11px] text-ink hover:bg-hover'
 
+const TAKE_LABEL: Record<Taken, string> = {
+  left: 'mergeResolve.takeLeft', right: 'mergeResolve.takeRight', both: 'mergeResolve.takeBoth', base: 'mergeResolve.takeBase',
+}
+
 /** Rangée du haut : mes modifications | [ancêtre commun] | destination. */
 export function MergeTreeTop({ model, showBase, labels, typeDef, repoPath, onTake, onBase, canBase }: {
   model: MergeTreeModel
@@ -96,7 +100,11 @@ export function MergeTreeTop({ model, showBase, labels, typeDef, repoPath, onTak
     const value = pane === 'left' ? n.before : pane === 'right' ? n.after : b?.value
     const changed = pane === 'left' ? model.changedLeft.has(n.key) : pane === 'right' ? model.changedRight.has(n.key) : false
     const tone = !changed ? '' : pane === 'left' ? 'bg-diff-left-line' : 'bg-diff-right-line'
-    const blocks = model.rowConflicts.get(n.key) ?? []
+    // Open blocks, and blocks resolved with another choice (changing one's mind).
+    const blocks = [
+      ...(model.rowConflicts.get(n.key) ?? []),
+      ...(model.rowResolved.get(n.key) ?? []).filter(r => r.taken !== pane).map(r => r.key),
+    ]
     const border = pane === 'left' ? '' : 'border-l border-edge'
     return (
       <div key={pane} className={`min-w-0 px-3 py-1 ${border} ${tone} ${has ? '' : 'diff-hatch'}`}>
@@ -137,7 +145,7 @@ export function MergeTreeTop({ model, showBase, labels, typeDef, repoPath, onTak
 }
 
 /** Sortie du merge : valeurs éditables, cartes de conflit, blocs résolus. */
-export function MergeTreeOutput({ model, typeDef, repoPath, canBoth, onTake, onBoth, onBase, canBase, onReset, onEdit, labels }: {
+export function MergeTreeOutput({ model, typeDef, repoPath, canBoth, onTake, onBoth, onBase, canBase, onReset, otherChoices, onSwitch, onEdit, labels }: {
   model: MergeTreeModel
   typeDef?: ObjectTypeDefinition
   repoPath: string
@@ -148,6 +156,9 @@ export function MergeTreeOutput({ model, typeDef, repoPath, canBoth, onTake, onB
   onBase?: (blockKey: string) => void
   canBase: (blockKey: string) => boolean
   onReset: (block: ResolvedBlock) => void
+  /** Changer d'avis : les autres choix d'un bloc résolu, et la reprise avec l'un d'eux. */
+  otherChoices: (block: ResolvedBlock) => Taken[]
+  onSwitch: (block: ResolvedBlock, taken: Taken) => void
   onEdit: (path: OutputPath, value: unknown) => void
   labels: { output: string; resolved: Record<'left' | 'right' | 'both' | 'base', string> }
 }) {
@@ -185,6 +196,9 @@ export function MergeTreeOutput({ model, typeDef, repoPath, canBoth, onTake, onB
         {resolvedHere.map(r => (
           <p key={r.key} className="text-[11px] text-ink-3 mb-1 flex items-center gap-2" data-resolved={r.key}>
             {labels.resolved[r.taken]}
+            {otherChoices(r).map(c => (
+              <button key={c} type="button" className={ACTION} onClick={() => onSwitch(r, c)}>{t(TAKE_LABEL[c])}</button>
+            ))}
             <button type="button" className={ACTION} onClick={() => onReset(r)}>{t('mergeResolve.reset')}</button>
           </p>
         ))}

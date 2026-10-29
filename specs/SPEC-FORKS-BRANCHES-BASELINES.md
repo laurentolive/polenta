@@ -262,7 +262,8 @@ L'éditeur, fichier par fichier :
 - **Blocs** : « ← Prendre gauche / Prendre droite → » par bloc — dans la sortie et, depuis GH222,
   dans le panneau de chaque côté —, « Prendre l'ancêtre » quand l'ancêtre commun est affiché,
   « Prendre les deux » quand c'est sensé (liste, texte), un bloc
-  résolu marqué avec « Réinitialiser » ; ou pour tout le fichier.
+  résolu marqué avec les autres choix (changer d'avis) et « Réinitialiser » ; ou pour tout le
+  fichier. Ctrl+Z / Ctrl+Y annulent / rétablissent les choix et les saisies de la sortie.
   - Un bloc est un **champ** pour les objets (une **étape** pour un test, un **run** pour une
     campagne), un **lien** pour `links.yaml`, un **paramètre** pour `parameters.yaml`, un **nœud**
     pour tout autre YAML écrit par l'app (GH222 : deux changements sur des nœuds différents ne

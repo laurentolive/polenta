@@ -105,6 +105,12 @@ test('R1/R4 — liens : même arbre en haut et dans la sortie, repli partagé ; 
   await expect(counter()).toHaveText('Aucun conflit restant')
   await expect(output().locator('[data-resolved="link:L2"]')).toBeVisible()
   await s.shot('gh222-tree-merge-links')
+  // Changing one's mind in Rendu: the other side from the output, Ctrl+Z back.
+  await output().locator('[data-resolved="link:L2"]').getByRole('button', { name: '← Prendre gauche' }).click()
+  await expect(output().locator('[data-resolved="link:L2"]')).toContainText('gauche')
+  await s.page.keyboard.press('Control+z')
+  await expect(output().locator('[data-resolved="link:L2"]')).toContainText('droite')
+
 })
 
 test('R2 — YAML générique : carte de conflit, édition en place reflétée en Raw', async () => {

@@ -3,7 +3,7 @@ import { EditorState, StateEffect, StateField, Text, type Extension, type Range 
 import {
   Decoration, EditorView, WidgetType, keymap, lineNumbers, type DecorationSet,
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { defaultKeymap } from '@codemirror/commands'
 import { yaml } from '@codemirror/lang-yaml'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { Chunk } from '@codemirror/merge'
@@ -12,7 +12,7 @@ import { programmaticScroller, ratioOf, type ScrollSyncGroup } from './scrollSyn
 import { currentBlockField, setCurrentBlock } from '../diffkit/cmDiff'
 import { OverviewRuler, type RulerMark, type RulerTone } from '../diffkit/OverviewRuler'
 import { DIFF_CONFIG } from '../../lib/diffStats'
-import { resolvedBlocks, type BlockFragments, type ResolvedBlock } from './blockLocator'
+import { choices, resolvedBlocks, type BlockFragments, type ResolvedBlock, type Taken } from './blockLocator'
 
 /**
  * GH37 — panneau Raw de l'éditeur de résolution (CodeMirror 6, design §3.2). GH222 :
@@ -21,8 +21,9 @@ import { resolvedBlocks, type BlockFragments, type ResolvedBlock } from './block
  *   **et caractères** (`@codemirror/merge`), et au-dessus de chaque bloc encore en conflit
  *   l'action de ce côté (`actions`, « Prendre gauche » / « Prendre droite ») ;
  * - sortie (éditable) : chaque région de marqueurs est colorée et précédée de
- *   « Prendre gauche · Prendre droite · Prendre les deux » ; un bloc résolu est marqué, avec
- *   « Réinitialiser » ;
+ *   « Prendre gauche · Prendre droite · Prendre les deux » ; un bloc résolu est marqué, avec les
+ *   autres choix (changer d'avis) et « Réinitialiser » ; Ctrl+Z / Ctrl+Y passent par l'historique
+ *   du parent (`onUndo` / `onRedo`), commun aux vues Raw et Rendu ;
  * - partout : règle de vue d'ensemble, bloc courant de la navigation (`reveal`).
  *
  * Le texte vit dans le parent (`value`) : une frappe remonte par `onChange`, une valeur changée de
@@ -63,6 +64,10 @@ interface Props {
   markerLabels?: MarkerLabels
   hints?: Map<string, number>
   onReset?: (block: ResolvedBlock) => void
+  /** Changer d'avis sur un bloc résolu : un autre choix à sa place. */
+  onSwitch?: (block: ResolvedBlock, taken: Taken) => void
+  onUndo?: () => void
+  onRedo?: () => void
   actions?: PaneAction[]
   labels: PaneLabels
   yamlSyntax?: boolean
@@ -115,6 +120,7 @@ type Act =
   | { type: 'both'; key: string }
   | { type: 'base'; key: string }
   | { type: 'reset'; key: string }
+  | { type: 'switch'; key: string; taken: Taken }
   | { type: 'side'; key: string }
 
 interface ButtonSpec { label: string; act: Act }
@@ -153,6 +159,9 @@ class ActionsWidget extends WidgetType {
 
   ignoreEvent() { return true }
 }
+
+const takeLabel = (l: PaneLabels, taken: Taken) =>
+  taken === 'left' ? l.takeLeft : taken === 'right' ? l.takeRight : taken === 'both' ? l.takeBoth : l.takeBase
 
 const lineClass = (cls: string) => Decoration.line({ class: cls })
 const refresh = StateEffect.define<null>()
@@ -209,7 +218,15 @@ function buildDecorations(state: EditorState, p: Props, marked: Marked[], run: (
     resolvedOut.push(...resolved)
     for (const b of resolved) {
       if (b.to >= doc.lines) continue
-      const buttons: ButtonSpec[] = p.onReset ? [{ label: p.labels.reset, act: { type: 'reset', key: b.key } }] : []
+      const block = p.blocks!.find(x => x.key === b.key)!
+      const buttons: ButtonSpec[] = []
+      if (p.onSwitch) {
+        for (const c of choices(block, p.markerLabels!)) {
+          if (c === b.taken || (c === 'base' && !p.onBase)) continue
+          buttons.push({ label: takeLabel(p.labels, c), act: { type: 'switch', key: b.key, taken: c } })
+        }
+      }
+      if (p.onReset) buttons.push({ label: p.labels.reset, act: { type: 'reset', key: b.key } })
       ranges.push(Decoration.widget({ widget: new ActionsWidget(`s:${b.key}`, p.labels.resolved[b.taken], buttons, true, run), block: true, side: -1 }).range(lineFrom(b.from)))
       for (let i = b.from; i <= b.to; i++) ranges.push(lineClass('cm-block-resolved').range(lineFrom(i)))
       marked.push({ from: b.from, to: b.to, tone: 'resolved' })
@@ -242,7 +259,8 @@ export function RawPane(props: Props) {
     else if (act.type === 'side') p.actions?.find(a => a.key === act.key)?.run()
     else {
       const found = resolvedNow.current.find(r => r.key === act.key)
-      if (found) p.onReset?.(found)
+      if (found && act.type === 'switch') p.onSwitch?.(found, act.taken)
+      else if (found) p.onReset?.(found)
     }
   })
 
@@ -282,9 +300,15 @@ export function RawPane(props: Props) {
     ]
     if (yamlSyntax) extensions.push(yaml())
     if (!readOnly) {
+      const step = (dir: 'undo' | 'redo') => () => { (dir === 'undo' ? cb.current.onUndo : cb.current.onRedo)?.(); return true }
       extensions.push(
-        history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        // The output's history is the parent's (choices and typing alike, shared with Rendu).
+        keymap.of([
+          { key: 'Mod-z', run: step('undo'), preventDefault: true },
+          { key: 'Mod-y', run: step('redo'), preventDefault: true },
+          { key: 'Mod-Shift-z', run: step('redo'), preventDefault: true },
+          ...defaultKeymap,
+        ]),
         EditorView.updateListener.of(u => { if (u.docChanged) cb.current.onChange?.(u.state.doc.toString()) }),
       )
     }
@@ -301,8 +325,14 @@ export function RawPane(props: Props) {
     const v = view.current
     if (!v) return
     const current = v.state.doc.toString()
-    // The whole document is replaced: the navigation's current block no longer applies.
-    if (current !== value) v.dispatch({ changes: { from: 0, to: current.length, insert: value }, effects: setCurrentBlock.of(null) })
+    if (current === value) return
+    // Only the part that changed is replaced (a choice, an undo): the cursor and the scroll stay.
+    // The navigation's current block no longer applies.
+    let from = 0
+    while (from < current.length && from < value.length && current[from] === value[from]) from++
+    let end = 0
+    while (end < current.length - from && end < value.length - from && current[current.length - 1 - end] === value[value.length - 1 - end]) end++
+    v.dispatch({ changes: { from, to: current.length - end, insert: value.slice(from, value.length - end) }, effects: setCurrentBlock.of(null) })
   }, [value])
 
   // Decorations that depend on props other than the text.

@@ -1792,7 +1792,9 @@
     "drawioPage": "Page « {{page}} » modifiée des deux côtés",
     "drawioHunk": "Bloc de texte {{key}} (détail en Raw)",
     "takeBase": "Prendre l'ancêtre",
-    "resolvedBase": "✓ Résolu : ancêtre"
+    "resolvedBase": "✓ Résolu : ancêtre",
+    "undo": "Annuler (Ctrl+Z)",
+    "redo": "Rétablir (Ctrl+Y)"
   },
   "forgeAccess": {
     "revoked": "Votre accès au serveur {{host}} a été révoqué, a expiré ou votre compte a été désactivé. Vos modifications locales sont conservées.",

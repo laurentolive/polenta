@@ -201,6 +201,42 @@ test.describe('résolution de conflits Raw', () => {
     await expect(s.page.locator('p.font-mono').filter({ hasText: 'gh222/conflit-a.yaml' })).toBeVisible()
   })
 
+  test('changer d\'avis sur un bloc résolu ; Ctrl+Z / Ctrl+Y', async () => {
+    await openSession()
+    await file('conflit-b.yaml').click()
+    const raw = s.page.getByRole('button', { name: 'Raw' })
+    if (await raw.count()) await raw.click()
+    const allRight = s.page.getByRole('button', { name: 'Tout prendre à droite' })
+    if (await allRight.isEnabled()) await allRight.click()
+    const resolvedBar = () => output().locator('.cm-merge-actions-resolved')
+    await expect(resolvedBar()).toContainText('droite')
+
+    // Change one's mind from the output: the other choices sit on the resolved block.
+    await resolvedBar().getByRole('button', { name: '← Prendre gauche' }).click()
+    await expect(resolvedBar()).toContainText('gauche')
+    await expect(output()).toContainText('value: gauche')
+    // …and from the left pane, which offers its side again once the block went another way.
+    await resolvedBar().getByRole('button', { name: 'Prendre droite →' }).click()
+    await expect(output()).toContainText('value: droite')
+    await leftPane().locator('.cm-merge-actions').getByRole('button', { name: '← Prendre gauche' }).click()
+    await expect(output()).toContainText('value: gauche')
+
+    // Ctrl+Z goes back one choice at a time, Ctrl+Y forward again.
+    await s.page.keyboard.press('Control+z')
+    await expect(output()).toContainText('value: droite')
+    await s.page.keyboard.press('Control+z')
+    await expect(output()).toContainText('value: gauche')
+    await s.page.keyboard.press('Control+y')
+    await expect(output()).toContainText('value: droite')
+    // In the editor itself too, and from the toolbar.
+    await output().locator('.cm-content').click()
+    await s.page.keyboard.press('Control+z')
+    await expect(output()).toContainText('value: gauche')
+    await s.page.getByRole('button', { name: 'Rétablir (Ctrl+Y)' }).click()
+    await expect(output()).toContainText('value: droite')
+    await expect(counter()).toHaveText('Aucun conflit restant')
+  })
+
   test('ancêtre commun affiché : « Prendre l\'ancêtre » dans la sortie', async () => {
     await openSession()
     await file('conflit-a.yaml').click()
@@ -209,7 +245,7 @@ test.describe('résolution de conflits Raw', () => {
     const before = await counter().textContent()
     await output().locator('.cm-merge-actions:not(.cm-merge-actions-resolved)').first()
       .getByRole('button', { name: "Prendre l'ancêtre" }).click()
-    await expect(output().locator('.cm-merge-actions-resolved').filter({ hasText: 'ancêtre' })).toHaveCount(1)
+    await expect(output().locator('.cm-merge-actions-resolved').filter({ hasText: 'Résolu : ancêtre' })).toHaveCount(1)
     await expect(counter()).not.toHaveText(before ?? '')
     await showBase.click()
   })

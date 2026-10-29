@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import yaml from 'js-yaml'
 import { findRegions, mergeFile, resolveRegion, resolveRegionBoth, resolveRegionWith } from '@polenta/merge-core'
-import { findLines, resetBlock, resolvedBlocks, sideAnchors } from './blockLocator'
+import { choices, findLines, resetBlock, resolvedBlocks, sideAnchors } from './blockLocator'
 
 /** GH222 — repérage des blocs dans les panneaux et dans la sortie (actions, « Réinitialiser »). */
 
@@ -58,6 +58,18 @@ describe('blockLocator', () => {
     const [found] = resolvedBlocks(out, m.blocks, labels)
     expect(found).toMatchObject({ key: '/title', taken: 'base' })
     expect(resetBlock(out, block, found, labels)).toBe(m.output)
+  })
+
+  it('changing one\'s mind: reset then another choice; every choice is listed', () => {
+    const title = m.blocks.find(b => b.key === '/title')!
+    const rows = m.blocks.find(b => b.key.startsWith('/rows'))!
+    expect(choices(title, labels)).toEqual(['left', 'right', 'base'])
+    expect(choices(rows, labels)).toContain('both')
+    const out = resolveRegion(m.output, '/title', 'left')
+    const [found] = resolvedBlocks(out, m.blocks, labels)
+    const switched = resolveRegion(resetBlock(out, title, found, labels), '/title', 'right')
+    expect(switched).toBe(resolveRegion(m.output, '/title', 'right'))
+    expect(resolvedBlocks(switched, m.blocks, labels)).toEqual([expect.objectContaining({ key: '/title', taken: 'right' })])
   })
 
   it('a block edited by hand is not reported as resolved', () => {

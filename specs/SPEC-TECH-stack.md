@@ -524,6 +524,8 @@ Spécification fonctionnelle : `specs/GH222.md` ; conception : `specs/GH222-desi
     (`yaml.dump` `lineWidth: 120` ou style Suivi `lineWidth: -1`) — sinon `text` ;
   - `updateOutputAt(texte, chemin, valeur)` (édition en place, régions intactes),
     `canTakeBoth` / `resolveRegionBoth`, `resolveRegion` traite toutes les régions d'une clé ;
+    chaque bloc porte le fragment de l'ancêtre (`MergeBlock.base`, `''` = absent de l'ancêtre) et
+    `resolveRegionWith` le reprend (« Prendre l'ancêtre », ancêtre commun affiché) ;
   - `canonicalOutput` à la finalisation : réécriture au format de l'app **seulement si nécessaire**
     (ligne `-` seule, `!!seq`, étapes à renuméroter).
 - **Session** : `MergeFileEntry.counts` (conflits, repris) ; validation `invalidDrawio`.

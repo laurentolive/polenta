@@ -1790,7 +1790,9 @@
     "autoCount_one": "{{count}} taken",
     "autoCount_other": "{{count}} taken",
     "drawioPage": "Page “{{page}}” changed on both sides",
-    "drawioHunk": "Text block {{key}} (details in Raw)"
+    "drawioHunk": "Text block {{key}} (details in Raw)",
+    "takeBase": "Take ancestor",
+    "resolvedBase": "✓ Resolved: ancestor"
   },
   "forgeAccess": {
     "revoked": "Your access to {{host}} was revoked or has expired, or your account was disabled. Your local changes are kept.",

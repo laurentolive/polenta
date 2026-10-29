@@ -11,7 +11,7 @@ import { key } from './path'
 import type { FileKind, FileMerge, MarkerLabels, ParsedOutput } from './types'
 
 export * from './types'
-export { renderRegion, findRegions, resolveRegion, resolveAllRegions, resolveRegionBoth, canTakeBoth } from './markers'
+export { renderRegion, findRegions, resolveRegion, resolveAllRegions, resolveRegionBoth, resolveRegionWith, canTakeBoth } from './markers'
 export { mergeHistories, parseObject, deepEqual, isPlainObject, YAML_DUMP_OPTIONS } from './object'
 export { mergeObject, mergeTree, MergeContext } from './merge-tree'
 export { mergeText, linesWithBreaks, changedLineIndexes } from './text'

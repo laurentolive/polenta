@@ -80,7 +80,9 @@ export function mergeDrawio(base: string | null, left: string, right: string, la
     }
     if (xml === undefined) continue
     if (xml !== null) { parts.push(`${xml}\n`); continue }
-    const block: MergeBlock = { key, left: lx === undefined ? undefined : `${lx}\n`, right: rx === undefined ? undefined : `${rx}\n` }
+    const block: MergeBlock = {
+      key, left: lx === undefined ? undefined : `${lx}\n`, right: rx === undefined ? undefined : `${rx}\n`, base: bx === undefined ? '' : `${bx}\n`,
+    }
     blocks.push(block)
     parts.push(renderRegion(key, block.left, block.right, labels))
   }

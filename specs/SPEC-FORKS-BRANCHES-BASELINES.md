@@ -260,7 +260,8 @@ L'éditeur, fichier par fichier :
   l'ancêtre (ligne et caractères) ; règle de vue d'ensemble ; navigation « Conflit n / N »
   (`F7`, puis fichier suivant à résoudre) ; liste des fichiers avec les conflits restants.
 - **Blocs** : « ← Prendre gauche / Prendre droite → » par bloc — dans la sortie et, depuis GH222,
-  dans le panneau de chaque côté —, « Prendre les deux » quand c'est sensé (liste, texte), un bloc
+  dans le panneau de chaque côté —, « Prendre l'ancêtre » quand l'ancêtre commun est affiché,
+  « Prendre les deux » quand c'est sensé (liste, texte), un bloc
   résolu marqué avec « Réinitialiser » ; ou pour tout le fichier.
   - Un bloc est un **champ** pour les objets (une **étape** pour un test, un **run** pour une
     campagne), un **lien** pour `links.yaml`, un **paramètre** pour `parameters.yaml`, un **nœud**

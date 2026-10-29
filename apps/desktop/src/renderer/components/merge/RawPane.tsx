@@ -41,8 +41,9 @@ export interface PaneLabels {
   takeLeft: string
   takeRight: string
   takeBoth: string
+  takeBase: string
   reset: string
-  resolved: Record<'left' | 'right' | 'both', string>
+  resolved: Record<'left' | 'right' | 'both' | 'base', string>
   ruler: string
 }
 
@@ -54,6 +55,8 @@ interface Props {
   onChange?: (text: string) => void
   onResolve?: (key: string, side: Side) => void
   onBoth?: (key: string) => void
+  /** « Prendre l'ancêtre » (ancêtre commun affiché), pour un bloc dont l'ancêtre est connu. */
+  onBase?: (key: string) => void
   /** Sortie : blocs du merge initial, pour marquer ceux qui sont résolus (repérés dans le texte
    *  courant, au plus près de `hints`, la ligne où était leur région) et les réinitialiser. */
   blocks?: BlockFragments[]
@@ -110,6 +113,7 @@ const theme = EditorView.theme({
 type Act =
   | { type: 'take'; key: string; side: Side }
   | { type: 'both'; key: string }
+  | { type: 'base'; key: string }
   | { type: 'reset'; key: string }
   | { type: 'side'; key: string }
 
@@ -193,6 +197,7 @@ function buildDecorations(state: EditorState, p: Props, marked: Marked[], run: (
         buttons.push({ label: p.labels.takeRight, act: { type: 'take', key: r.key, side: 'right' } })
       }
       if (p.onBoth && canTakeBoth(text, r.key)) buttons.push({ label: p.labels.takeBoth, act: { type: 'both', key: r.key } })
+      if (p.onBase && p.blocks?.find(b => b.key === r.key)?.base !== undefined) buttons.push({ label: p.labels.takeBase, act: { type: 'base', key: r.key } })
       ranges.push(Decoration.widget({ widget: new ActionsWidget(`r:${r.key}:${r.start}`, null, buttons, false, run), block: true, side: -1 }).range(lineFrom(r.start)))
       for (let i = r.start; i <= r.end; i++) {
         const cls = i === r.start || i === r.sep || i === r.end ? 'cm-merge-marker' : i < r.sep ? 'cm-merge-left' : 'cm-merge-right'
@@ -233,6 +238,7 @@ export function RawPane(props: Props) {
     const p = cb.current
     if (act.type === 'take') p.onResolve?.(act.key, act.side)
     else if (act.type === 'both') p.onBoth?.(act.key)
+    else if (act.type === 'base') p.onBase?.(act.key)
     else if (act.type === 'side') p.actions?.find(a => a.key === act.key)?.run()
     else {
       const found = resolvedNow.current.find(r => r.key === act.key)
@@ -303,7 +309,7 @@ export function RawPane(props: Props) {
   useEffect(() => {
     view.current?.dispatch({ effects: refresh.of(null) })
     requestAnimationFrame(measure)
-  }, [props.against, props.blocks, props.hints, props.actions, props.labels, measure])
+  }, [props.against, props.blocks, props.hints, props.actions, props.labels, !!props.onBase, measure])
 
   useEffect(() => {
     const v = view.current

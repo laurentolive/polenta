@@ -75,13 +75,16 @@ function HeaderCell({ children, border }: { children: ReactNode; border?: boolea
 const ACTION = 'px-1.5 py-px rounded border border-edge bg-surface text-[11px] text-ink hover:bg-hover'
 
 /** Rangée du haut : mes modifications | [ancêtre commun] | destination. */
-export function MergeTreeTop({ model, showBase, labels, typeDef, repoPath, onTake }: {
+export function MergeTreeTop({ model, showBase, labels, typeDef, repoPath, onTake, onBase, canBase }: {
   model: MergeTreeModel
   showBase: boolean
   labels: { left: string; base: string; right: string }
   typeDef?: ObjectTypeDefinition
   repoPath: string
   onTake: (blockKey: string, side: Side) => void
+  /** « Prendre l'ancêtre », dans la colonne de l'ancêtre commun. */
+  onBase: (blockKey: string) => void
+  canBase: (blockKey: string) => boolean
 }) {
   const { t } = useTranslation()
   const treeWidth = diffPrefs.treeWidth()
@@ -97,10 +100,10 @@ export function MergeTreeTop({ model, showBase, labels, typeDef, repoPath, onTak
     const border = pane === 'left' ? '' : 'border-l border-edge'
     return (
       <div key={pane} className={`min-w-0 px-3 py-1 ${border} ${tone} ${has ? '' : 'diff-hatch'}`}>
-        {pane !== 'base' && blocks.map(block => (
-          <button key={block} type="button" className={`${ACTION} mb-1 mr-1`} onClick={() => onTake(block, pane)}
-            title={blocks.length > 1 ? block : undefined}>
-            {pane === 'left' ? t('mergeResolve.takeLeft') : t('mergeResolve.takeRight')}
+        {blocks.filter(block => pane !== 'base' || canBase(block)).map(block => (
+          <button key={block} type="button" className={`${ACTION} mb-1 mr-1`} title={blocks.length > 1 ? block : undefined}
+            onClick={() => (pane === 'base' ? onBase(block) : onTake(block, pane))}>
+            {pane === 'left' ? t('mergeResolve.takeLeft') : pane === 'right' ? t('mergeResolve.takeRight') : t('mergeResolve.takeBase')}
           </button>
         ))}
         {!has
@@ -134,16 +137,19 @@ export function MergeTreeTop({ model, showBase, labels, typeDef, repoPath, onTak
 }
 
 /** Sortie du merge : valeurs éditables, cartes de conflit, blocs résolus. */
-export function MergeTreeOutput({ model, typeDef, repoPath, canBoth, onTake, onBoth, onReset, onEdit, labels }: {
+export function MergeTreeOutput({ model, typeDef, repoPath, canBoth, onTake, onBoth, onBase, canBase, onReset, onEdit, labels }: {
   model: MergeTreeModel
   typeDef?: ObjectTypeDefinition
   repoPath: string
   canBoth: (blockKey: string) => boolean
   onTake: (blockKey: string, side: Side) => void
   onBoth: (blockKey: string) => void
+  /** « Prendre l'ancêtre » : seulement quand l'ancêtre commun est affiché. */
+  onBase?: (blockKey: string) => void
+  canBase: (blockKey: string) => boolean
   onReset: (block: ResolvedBlock) => void
   onEdit: (path: OutputPath, value: unknown) => void
-  labels: { output: string; resolved: Record<'left' | 'right' | 'both', string> }
+  labels: { output: string; resolved: Record<'left' | 'right' | 'both' | 'base', string> }
 }) {
   const { t } = useTranslation()
   const treeWidth = diffPrefs.treeWidth()
@@ -156,6 +162,7 @@ export function MergeTreeOutput({ model, typeDef, repoPath, canBoth, onTake, onB
         <button type="button" className={ACTION} onClick={() => onTake(block, 'left')}>{t('mergeResolve.takeLeft')}</button>
         <button type="button" className={ACTION} onClick={() => onTake(block, 'right')}>{t('mergeResolve.takeRight')}</button>
         {canBoth(block) && <button type="button" className={ACTION} onClick={() => onBoth(block)}>{t('mergeResolve.takeBoth')}</button>}
+        {onBase && canBase(block) && <button type="button" className={ACTION} onClick={() => onBase(block)}>{t('mergeResolve.takeBase')}</button>}
       </div>
     </div>
   )

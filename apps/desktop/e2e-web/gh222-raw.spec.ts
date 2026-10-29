@@ -200,4 +200,17 @@ test.describe('résolution de conflits Raw', () => {
     await s.page.keyboard.press('F7')
     await expect(s.page.locator('p.font-mono').filter({ hasText: 'gh222/conflit-a.yaml' })).toBeVisible()
   })
+
+  test('ancêtre commun affiché : « Prendre l\'ancêtre » dans la sortie', async () => {
+    await openSession()
+    await file('conflit-a.yaml').click()
+    const showBase = s.page.getByRole('button', { name: 'Ancêtre commun' })
+    if ((await showBase.getAttribute('aria-pressed')) !== 'true') await showBase.click()
+    const before = await counter().textContent()
+    await output().locator('.cm-merge-actions:not(.cm-merge-actions-resolved)').first()
+      .getByRole('button', { name: "Prendre l'ancêtre" }).click()
+    await expect(output().locator('.cm-merge-actions-resolved').filter({ hasText: 'ancêtre' })).toHaveCount(1)
+    await expect(counter()).not.toHaveText(before ?? '')
+    await showBase.click()
+  })
 })

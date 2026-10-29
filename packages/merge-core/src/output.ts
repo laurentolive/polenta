@@ -18,9 +18,10 @@ import type { MarkerLabels, MergeBlock } from './types'
  * Retirer une région (fragment choisi ou vide) laisse toujours un YAML valide.
  */
 
+/** `base` : the ancestor's value (entry) or elements (items) of the block, when known. */
 export type Pending =
-  | { key: string; form: 'entry'; name: string; left: unknown; right: unknown }
-  | { key: string; form: 'items'; left: unknown[]; right: unknown[] }
+  | { key: string; form: 'entry'; name: string; left: unknown; right: unknown; base?: { value: unknown } }
+  | { key: string; form: 'items'; left: unknown[]; right: unknown[]; base?: unknown[] }
 
 export const placeholder = (i: number) => `__POLENTA_MERGE_${i}__`
 const ITEM_LINE = /^( *)- __POLENTA_MERGE_(\d+)__$/
@@ -46,8 +47,14 @@ export function dumpWithRegions(
   const blocks: MergeBlock[] = []
   const region = (p: Pending, indent: string) => {
     const block: MergeBlock = p.form === 'entry'
-      ? { key: p.key, left: entryFragment(p.name, p.left, indent, opts), right: entryFragment(p.name, p.right, indent, opts) }
-      : { key: p.key, left: itemsFragment(p.left, indent, opts), right: itemsFragment(p.right, indent, opts) }
+      ? {
+        key: p.key, left: entryFragment(p.name, p.left, indent, opts), right: entryFragment(p.name, p.right, indent, opts),
+        ...(p.base ? { base: entryFragment(p.name, p.base.value, indent, opts) ?? '' } : {}),
+      }
+      : {
+        key: p.key, left: itemsFragment(p.left, indent, opts), right: itemsFragment(p.right, indent, opts),
+        ...(p.base ? { base: itemsFragment(p.base, indent, opts) ?? '' } : {}),
+      }
     blocks.push(block)
     // `renderRegion` ends with a line break, and this line is joined back with one: drop it.
     return renderRegion(block.key, block.left, block.right, labels).replace(/\n$/, '')

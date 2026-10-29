@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import yaml from 'js-yaml'
-import { findRegions, mergeFile, resolveRegion, resolveRegionBoth } from '@polenta/merge-core'
+import { findRegions, mergeFile, resolveRegion, resolveRegionBoth, resolveRegionWith } from '@polenta/merge-core'
 import { findLines, resetBlock, resolvedBlocks, sideAnchors } from './blockLocator'
 
 /** GH222 — repérage des blocs dans les panneaux et dans la sortie (actions, « Réinitialiser »). */
@@ -50,6 +50,14 @@ describe('blockLocator', () => {
     const out = resolveRegion(mm.output, '/b/t', 'left')
     const [found] = resolvedBlocks(out, mm.blocks, labels, new Map([['/b/t', region.start]]))
     expect(found.from).toBe(region.start)
+  })
+
+  it('a block resolved with the ancestor is reported as such, and reset restores the region', () => {
+    const block = m.blocks.find(b => b.key === '/title')!
+    const out = resolveRegionWith(m.output, '/title', block.base!)
+    const [found] = resolvedBlocks(out, m.blocks, labels)
+    expect(found).toMatchObject({ key: '/title', taken: 'base' })
+    expect(resetBlock(out, block, found, labels)).toBe(m.output)
   })
 
   it('a block edited by hand is not reported as resolved', () => {

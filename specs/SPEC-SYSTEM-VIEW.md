@@ -438,6 +438,22 @@ Système › Arbre › Sélection).
 
 ---
 
+**Historique des exécutions (GH197)** — section repliable « Exécutions (N) » de la vue Édition d'un
+test ou d'une exigence (aussi sur les pages de détail `test.$testId` / `req.$reqId`), entre « Liens » et
+« Historique », chargée à l'ouverture. Grille `ExecutionHistoryGrid` (composant réutilisable) : une
+ligne par run du test, ou des tests reliés à l'exigence (tout lien test ↔ exigence, règle T179), plus
+les entrées en attente des campagnes ouvertes ; entrée retirée (GH73), run remplacé par un nouvel
+essai, campagne introuvable marqués. Colonnes (bouton ⚙️ de la grille) par groupe : Exécution (verdict,
+date, testeur, durée, origine, notes, équipement, champs d'exécution), Campagne (ID / titre, statut,
+baseline, champs), Entrée (`entryId`, exigence de l'instance, paramètres, version du test, report),
+Test (grille d'exigence) ; préférence `fieldVisibility[<type>].executions`, défaut verdict / date /
+testeur / campagne / entrée + champs d'exécution `defaultVisible`, Réinitialiser. Tri par en-tête
+(nombres comparés numériquement), étapes dépliables (verdict, commentaire, champs d'étape). L'ID
+d'entrée ouvre la page d'exécution si la campagne est ouverte, la consultation du run sinon. Données :
+canal `executions:history` (lecture seule), rafraîchi sur tout changement de `tests/`, `test-runs/`,
+`links/`, `campaigns/`. Limite : une exigence couverte par un test d'un autre repo du workspace n'en
+liste pas les exécutions (portée du repo ouvert).
+
 ## Configuration des champs — ⚙️
 
 - Choisir les champs à afficher parmi les champs du type d'élément + les champs système.

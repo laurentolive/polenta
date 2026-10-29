@@ -2,13 +2,13 @@ import { Fragment, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { fieldValueToText, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue } from '@polenta/types'
+import { fieldValueToText, isOpenCampaignStatus, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue } from '@polenta/types'
 import type { FieldVisibilityPref } from '@polenta/api-client'
 import { api } from '../../api'
 import { RichTextViewer } from '../RichTextViewer'
 import { RunFieldValue } from '../runs/RunFieldValues'
 import {
-  availableColumns, defaultExecutionColumns, sortValue, unionRunFields, type ExecutionColumn, type ExecutionColumnGroup,
+  availableColumns, defaultExecutionColumns, isSortable, sortValue, unionRunFields, type ExecutionColumn, type ExecutionColumnGroup,
 } from './executionColumns'
 
 // GH197 — grille d'historique des exécutions (specs/GH197.md §1–§3) : une ligne par run (ou entrée en
@@ -29,7 +29,6 @@ const VERDICT_CLASS: Record<string, string> = {
   INCOMPLETE: 'bg-status-warning-bg text-status-warning', SKIP: 'bg-status-warning-bg text-status-warning',
   NOT_EXECUTED: 'bg-status-neutral-bg text-status-neutral',
 }
-const OPEN_CAMPAIGN = new Set(['planned', 'in_progress'])
 const GROUPS: ExecutionColumnGroup[] = ['execution', 'campaign', 'entry', 'test']
 
 interface Props {
@@ -80,15 +79,15 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
     return [...history.rows].sort((a, b) => {
       const va = sortValue(a, sort.key)
       const vb = sortValue(b, sort.key)
-      return va < vb ? -sort.dir : va > vb ? sort.dir : 0
+      return va.localeCompare(vb, undefined, { numeric: true }) * sort.dir
     })
   }, [history.rows, sort])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [panelOpen, setPanelOpen] = useState(false)
 
   const open = (row: ExecutionHistoryRow) => {
-    if (!row.campaign || !row.entry || row.removed) return
-    const execute = OPEN_CAMPAIGN.has(row.campaign.status)        // Q5 — campagne ouverte : exécution
+    if (!row.campaign || !row.entry || row.removed || row.superseded) return
+    const execute = isOpenCampaignStatus(row.campaign.status)        // Q5 — campagne ouverte : exécution
     void navigate({
       to: execute ? '/campaign/$campaignId/execute/$testId' : '/campaign/$campaignId/run/$testId',
       params: { campaignId: row.campaign.id, testId: row.entry.entryId },
@@ -122,13 +121,14 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
       case 'baseline': return row.campaign?.baselineRef ?? ''
       case 'entry': {
         if (!row.entry) return ''
-        const clickable = !!row.campaign && !row.removed
+        const clickable = !!row.campaign && !row.removed && !row.superseded
         return (
           <span className="inline-flex items-center gap-1">
             {clickable
               ? <button type="button" className="font-mono text-status-info hover:underline" onClick={() => open(row)}>{row.entry.entryId}</button>
               : <span className="font-mono">{row.entry.entryId}</span>}
             {row.removed && <span className="text-[10px] px-1 rounded bg-status-neutral-bg text-status-neutral">{t('executionHistory.removed')}</span>}
+            {row.superseded && <span className="text-[10px] px-1 rounded bg-status-neutral-bg text-status-neutral" title={t('executionHistory.supersededTitle')}>{t('executionHistory.superseded')}</span>}
           </span>
         )
       }
@@ -175,7 +175,7 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
                     <input type="checkbox" className="h-3 w-3 accent-ink" checked={visibleKeys.includes(c.key)}
                       data-testid={`execution-column-${c.key}`}
                       onChange={e => void savePrefs(e.target.checked
-                        ? columns.map(x => x.key).filter(k => k === c.key || visibleKeys.includes(k))
+                        ? [...visibleKeys.filter(k => columns.some(x => x.key === k)), c.key]
                         : visibleKeys.filter(k => k !== c.key))} />
                     {label(c)}
                   </label>
@@ -194,8 +194,8 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
             <tr className="bg-hover">
               <th className="w-6" />
               {visible.map(c => (
-                <th key={c.key} className="text-left font-medium text-ink-2 px-2 py-1 border-b border-edge cursor-pointer select-none whitespace-nowrap"
-                  onClick={() => setSort(s => (s?.key === c.key ? { key: c.key, dir: s.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 }))}>
+                <th key={c.key} className={`text-left font-medium text-ink-2 px-2 py-1 border-b border-edge select-none whitespace-nowrap ${isSortable(c.key) ? 'cursor-pointer' : ''}`}
+                  onClick={isSortable(c.key) ? () => setSort(s => (s?.key === c.key ? { key: c.key, dir: s.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 })) : undefined}>
                   {label(c)}{sort?.key === c.key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
                 </th>
               ))}

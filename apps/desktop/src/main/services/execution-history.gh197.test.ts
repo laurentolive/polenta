@@ -18,6 +18,8 @@ const RUNS: Record<string, TestRun[]> = {
     run('R2', 'T1', '2026-10-03T10:00:00Z', { campaignEntry: { campaignId: 'C2', entryId: 'T1-1' } }),
     run('R3', 'T1', '2026-10-02T10:00:00Z'),
     run('R4', 'T1', '2026-10-04T10:00:00Z', { campaignEntry: { campaignId: 'GONE', entryId: 'T1-1' } }),
+    // Premier essai de l'entrée C2/T1-1, remplacé par R2.
+    run('R0', 'T1', '2026-09-30T10:00:00Z', { campaignEntry: { campaignId: 'C2', entryId: 'T1-1' } }),
   ],
   // Test itérant (T179) : une instance par exigence.
   T2: [
@@ -56,12 +58,14 @@ const service = new ExecutionHistoryService(
 describe('ExecutionHistoryService', () => {
   it('test : runs (campagnes, isolé, retiré, campagne introuvable), pending des campagnes ouvertes, ordre', async () => {
     const h = await service.history('repo', { testId: 'T1' })
-    expect(h.rows.map(r => r.key)).toEqual(['pending:C2:T1-2', 'R4', 'R2', 'R3', 'R1'])
+    expect(h.rows.map(r => r.key)).toEqual(['pending:C2:T1-2', 'R4', 'R2', 'R3', 'R1', 'R0'])
     const byKey = Object.fromEntries(h.rows.map(r => [r.key, r]))
     expect(byKey.R1).toMatchObject({ removed: true, campaign: { id: 'C1' }, entry: { entryId: 'T1-1' } })
     expect(byKey.R2).toMatchObject({ campaign: { id: 'C2', fields: { banc: 'B1' } }, entry: { testVersion: 3 } })
     expect(byKey.R3.campaign).toBeUndefined()
     expect(byKey.R4.campaignMissing).toBe(true)
+    expect(byKey.R0).toMatchObject({ superseded: true, campaign: { id: 'C2' }, entry: { entryId: 'T1-1' } })
+    expect(byKey.R0.entry).not.toHaveProperty('testVersion')
     expect(h.rows.some(r => r.key.includes('C3'))).toBe(false)                    // campagne clôturée
     expect(h.runFieldDefs['root::essai'].runFields.map(f => f.name)).toEqual(['temp'])
   })
@@ -70,5 +74,14 @@ describe('ExecutionHistoryService', () => {
     const h = await service.history('repo', { requirementId: 'SYS-1' })
     expect(h.rows.map(r => r.key)).toEqual(['R7', 'R5'])                         // pas R6 (instance SYS-2), ni T2-3
     expect(h.rows.map(r => r.testCaseId)).toEqual(['T3', 'T2'])
+  })
+
+  it('erreur de lecture des campagnes : remontée (pas de « campagne introuvable » partout)', async () => {
+    const failing = new ExecutionHistoryService(
+      { findAll: async () => TESTS, findRuns: async () => [], typeDefFor: async () => null } as unknown as TestsService,
+      { list: async () => { throw new Error('campagne illisible') } } as unknown as CampaignsService,
+      { findLinks: async () => [] },
+    )
+    await expect(failing.history('repo', { testId: 'T1' })).rejects.toThrow(/illisible/)
   })
 })

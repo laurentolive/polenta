@@ -271,7 +271,7 @@ function RequirementDetailPage() {
         )}
 
         {/* GH197 — historique des exécutions des tests qui couvrent l'exigence. */}
-        <ExecutionsSection repoPath={repoPath} projectId={projectId} target={{ requirementId: reqId }} typeKey={req.objectTypeRef} />
+        <ExecutionsSection repoPath={repoPath} projectId={projectId} workspaceDir={projectId ? decodeProjectId(projectId) : undefined} target={{ requirementId: reqId }} typeKey={req.objectTypeRef} />
 
         {/* GH77 — historique des champs suivis (lecture seule). */}
         <HistorySection repoPath={repoPath} kind="requirement" id={reqId} typeDef={typeDef}

@@ -19,3 +19,26 @@
 
 Panneau de colonnes dédié (même gabarit que ⚙️) plutôt qu'un onglet de `FieldConfigModal`,
 construit autour des vues Tableau / Document et des champs d'objet (design §3).
+
+## Revue de code et sprint 2 (finalisation)
+
+Corrigé : grille rafraîchie sur changement de `tests/`, `test-runs/`, `links/`, `campaigns/`
+(`useLiveFileSync`) ; run remplacé par un nouvel essai : campagne et `entryId` gardés, données d'entrée
+et ouverture non reprises (`superseded`) ; projet transmis (vue Édition, pages de détail :
+`workspaceDir` pour le type d'un test de composant, `projectId` pour la navigation) ; erreur de lecture
+des campagnes remontée ; tri numérique ; ordre des colonnes conservé à l'ajout ; en-têtes non triables
+(notes, équipement, paramètres, report) ; statuts « ouverts » partagés (`isOpenCampaignStatus`) ;
+lectures en parallèle. Reporté : exigence couverte par un test d'un autre repo du workspace (portée
+du repo ouvert, documentée).
+
+## Mises à jour SPEC
+
+| Section | Modification |
+|---|---|
+| SPEC-SYSTEM-VIEW §Vue Édition | section « Exécutions », grille, colonnes, préférence, ouverture, limite |
+| SPEC-TESTS §3.2 | renvoi vers l'historique des exécutions |
+
+## Comment tester manuellement
+
+`specs/GH197-tests.md` scénarios 9–10 : ID d'une ligne (campagne ouverte → exécution, clôturée →
+consultation) ; préférence de colonnes retrouvée, Réinitialiser.

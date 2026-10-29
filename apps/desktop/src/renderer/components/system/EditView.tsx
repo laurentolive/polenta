@@ -15,6 +15,7 @@ import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { HistorySection } from '../history/HistorySection'
 import { ExecutionsSection } from '../executions/ExecutionsSection'
+import { decodeProjectId } from '../../lib/projectId'
 import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
 
@@ -343,6 +344,8 @@ function LinksSection({
 
 export interface EditViewProps {
   nodeId: string | null
+  /** GH197 — projet ouvert (navigation depuis l'historique des exécutions, repo des composants). */
+  projectId?: string
   nodeName?: string
   objectData: Record<string, string> | null
   /** T159 — l'objet du nœud existe mais sa requête est encore en vol (typiquement juste
@@ -397,6 +400,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   coverageByReqId,
   testsById,
   repoPath,
+  projectId,
   candidateObjects = [],
   onLinkChange,
   onBlurField,
@@ -755,6 +759,8 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
             <ExecutionsSection
               key={objectData['id']}
               repoPath={repoPath}
+              projectId={projectId}
+              workspaceDir={projectId ? decodeProjectId(projectId) : undefined}
               target={typeDef.category === 'test' ? { testId: objectData['id'] } : { requirementId: objectData['id'] }}
               typeKey={objectData['objectTypeRef'] ?? ''}
             />

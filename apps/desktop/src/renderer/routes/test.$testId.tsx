@@ -242,7 +242,7 @@ function TestCaseDetailPage() {
           </div>
 
           {/* GH197 — historique des exécutions. */}
-          <ExecutionsSection repoPath={repoPath} projectId={projectId} target={{ testId }} typeKey={tc.objectTypeRef} />
+          <ExecutionsSection repoPath={repoPath} projectId={projectId} workspaceDir={projectId ? decodeProjectId(projectId) : undefined} target={{ testId }} typeKey={tc.objectTypeRef} />
 
           {/* GH77 — historique des champs suivis (lecture seule). */}
           <HistorySection repoPath={repoPath} kind="test" id={testId} typeDef={typeDef}

@@ -52,6 +52,10 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
+      // GH197 — historique des exécutions : runs, campagnes, tests et liens (couverture d'une exigence).
+      if (relPath === '*' || /^(tests|test-runs|links|campaigns)\//.test(relPath)) {
+        qc.invalidateQueries({ queryKey: ['execution-history'] })
+      }
       // GH74 — bandeau des mises à jour : requêtes des seeds (versions de modèle).
       if (relPath.startsWith('queries/')) qc.invalidateQueries({ queryKey: ['suivi-updates'] })
 

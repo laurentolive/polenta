@@ -360,6 +360,10 @@ equipmentUsed:
 - Les équipements optionnels (`required: false`) peuvent être omis.
 - L'`identification` est un champ libre — pas de base de données d'équipements en V1.
 
+> **Historique des exécutions (GH197)** : tous les runs d'un test (ou des tests reliés à une
+> exigence, règle T179) se consultent dans la section « Exécutions » de l'éditeur
+> (SPEC-SYSTEM-VIEW §Vue Édition), avec campagne, entrée, champs d'exécution et étapes.
+
 ### 3.3 Résultats possibles
 
 **Résultat global du TestRun :**

@@ -62,20 +62,27 @@ export function defaultExecutionColumns(history: ExecutionHistory, withTestColum
   ]
 }
 
-/** Valeur triable d'une colonne (texte, ou date ISO). */
+const UNSORTABLE = new Set(['notes', 'equipment', 'params', 'carriedFrom'])
+
+/** En-tête triable (texte libre ou valeurs composées : non). */
+export function isSortable(key: string): boolean {
+  return !UNSORTABLE.has(key)
+}
+
+/** Valeur triable d'une colonne (texte, ou date ISO ; nombres comparés numériquement par la grille). */
 export function sortValue(row: ExecutionHistoryRow, key: string): string {
   switch (key) {
     case 'verdict': return row.run?.result ?? 'pending'
     case 'date': return row.run?.executedAt ?? ''
     case 'tester': return row.run?.executedBy ?? ''
-    case 'duration': return String(row.run?.duration ?? '').padStart(10, '0')
+    case 'duration': return String(row.run?.duration ?? '')
     case 'origin': return row.run?.origin ?? ''
     case 'campaign': return row.campaign?.id ?? ''
     case 'campaignStatus': return row.campaign?.status ?? ''
     case 'baseline': return row.campaign?.baselineRef ?? ''
     case 'entry': return row.entry?.entryId ?? ''
     case 'entryRequirement': return row.entry?.requirementId ?? ''
-    case 'testVersion': return String(row.entry?.testVersion ?? '').padStart(6, '0')
+    case 'testVersion': return String(row.entry?.testVersion ?? '')
     case 'test': return row.testCaseId
     default:
       if (key.startsWith('run:')) return String(row.run?.fields?.[key.slice(4)] ?? '')

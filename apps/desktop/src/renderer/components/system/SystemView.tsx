@@ -1389,6 +1389,7 @@ export function SystemView() {
           <EditView
             ref={editViewRef}
             nodeId={editingNodeId}
+            projectId={currentProjectId}
             nodeName={editingTreeNode?.name}
             objectData={objectData}
             // `isLoading` (pas juste `!objectData`) : sur erreur de la query (objet

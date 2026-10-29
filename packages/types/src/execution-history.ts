@@ -30,6 +30,14 @@ export interface ExecutionHistoryRow {
   removed?: boolean
   /** Run rattaché à une campagne introuvable (supprimée, autre repo). */
   campaignMissing?: boolean
+  /** Run remplacé par un nouvel essai sur la même entrée : données d'entrée et ouverture non reprises. */
+  superseded?: boolean
+}
+
+/** Campagne ouverte (planifiée ou en cours) : ses entrées en attente sont listées, une ligne ouvre
+ *  la page d'exécution (Q5) ; clôturée : consultation. */
+export function isOpenCampaignStatus(status: string): boolean {
+  return status === 'planned' || status === 'in_progress'
 }
 
 export interface ExecutionHistory {

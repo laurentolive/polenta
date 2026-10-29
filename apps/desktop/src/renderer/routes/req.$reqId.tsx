@@ -7,6 +7,7 @@ import { api } from '../api'
 import { useProjectSchema, getReqTypeDef } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
 import { HistorySection } from '../components/history/HistorySection'
+import { ExecutionsSection } from '../components/executions/ExecutionsSection'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { Requirement } from '@polenta/types'
@@ -268,6 +269,9 @@ function RequirementDetailPage() {
             </div>
           </div>
         )}
+
+        {/* GH197 — historique des exécutions des tests qui couvrent l'exigence. */}
+        <ExecutionsSection repoPath={repoPath} projectId={projectId} target={{ requirementId: reqId }} typeKey={req.objectTypeRef} />
 
         {/* GH77 — historique des champs suivis (lecture seule). */}
         <HistorySection repoPath={repoPath} kind="requirement" id={reqId} typeDef={typeDef}

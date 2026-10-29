@@ -15,6 +15,7 @@ import { RepoWatcherService } from './services/repo-watcher.service'
 import { SchemaService } from './services/schema.service'
 import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
+import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TreeService, indexObjectLister } from './services/tree.service'
 import { BaselineService } from './services/baseline.service'
@@ -99,6 +100,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns)
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
+  // GH197 — historique des exécutions d'un test ou d'une exigence.
+  const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)
@@ -171,6 +174,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     elementMove,
     campaigns,
     campaignExecution,
+    executionHistory,
     tree,
     baseline,
     polentaRepo,

@@ -14,6 +14,7 @@ import { MultiEnumCheckboxes } from '../MultiEnumCheckboxes'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { HistorySection } from '../history/HistorySection'
+import { ExecutionsSection } from '../executions/ExecutionsSection'
 import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
 
@@ -746,6 +747,16 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               candidateObjects={candidateObjects}
               onLinkChange={onLinkChange}
               onNavigateToObject={onNavigateToObject}
+            />
+          )}
+
+          {/* GH197 — historique des exécutions (test, exigence), chargé à l'ouverture. */}
+          {repoPath && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test') && (
+            <ExecutionsSection
+              key={objectData['id']}
+              repoPath={repoPath}
+              target={typeDef.category === 'test' ? { testId: objectData['id'] } : { requirementId: objectData['id'] }}
+              typeKey={objectData['objectTypeRef'] ?? ''}
             />
           )}
 

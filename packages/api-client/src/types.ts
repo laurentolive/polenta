@@ -1,7 +1,7 @@
 import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
-  ObjectTypeDefinition,
+  ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -377,6 +377,8 @@ export interface FieldVisibilityPref {
   freezeColCountExcel?: number
   /** GH176 — colonnes du sélecteur de tests d'une campagne. Absent ⇒ celles de la vue Tableau. */
   picker?: string[]
+  /** GH197 — colonnes de la grille d'historique des exécutions. Absent ⇒ défaut (verdict, date…). */
+  executions?: string[]
   /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
   showFoldersPicker?: boolean
 }
@@ -534,6 +536,10 @@ export interface ApiClient {
   dialog: {
     pickFolder(title?: string): Promise<string | null>
     pickImageFile(): Promise<{ mimeType: string; base64: string } | null>
+  }
+  /** GH197 — historique des exécutions d'un test ou d'une exigence. */
+  executions: {
+    history(repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string): Promise<ExecutionHistory>
   }
   drawio: {
     /**

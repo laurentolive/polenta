@@ -21,6 +21,7 @@ import type { RepoWatcherService } from '../services/repo-watcher.service'
 import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
+import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
@@ -48,7 +49,7 @@ import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } fro
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
 import type { SchemaDeleteService } from '../services/schema-delete.service'
-import type { ValueRename } from '@polenta/types'
+import type { ExecutionHistoryTarget, ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
   CreateRequirementDto,
@@ -104,6 +105,7 @@ export interface Container {
   elementMove: ElementMoveService
   campaigns: CampaignsService
   campaignExecution: CampaignExecutionService
+  executionHistory: ExecutionHistoryService
   tree: TreeService
   baseline: BaselineService
   polentaRepo: PolentaRepoService
@@ -461,6 +463,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   })
   r.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
     c.tests.findRuns(repoPath, tcId))
+  // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
+  r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
+    c.executionHistory.history(repoPath, target, workspaceDir))
   // GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris.
   r.handle('tests:type-def', (_e, repoPath: string, objectTypeRef: string, workspaceDir?: string) =>
     c.tests.typeDefFor(repoPath, objectTypeRef, workspaceDir))

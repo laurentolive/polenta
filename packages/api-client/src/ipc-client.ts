@@ -294,6 +294,10 @@ export function createIpcClient(
       pickFolder: (title) => invoke('dialog:pick-folder', title),
       pickImageFile: () => invoke('dialog:pick-image-file'),
     },
+    // GH197 — historique des exécutions
+    executions: {
+      history: (p, target, workspaceDir) => invoke('executions:history', p, target, workspaceDir ?? null),
+    },
     drawio: {
       pickFile: (repoPath) => invoke('dialog:pick-drawio-file', repoPath),
       read: (repoPath, relativePath, ref) => invoke('drawio:read', repoPath, relativePath, ref ?? null),

@@ -2140,5 +2140,47 @@
     "pasteRejected_one": "{{count}} link ignored (unsupported URL scheme).",
     "pasteRejected_other": "{{count}} links ignored (unsupported URL scheme).",
     "pasteSingleOnly": "This field keeps a single link: only the first one was pasted."
+  },
+  "executionHistory": {
+    "title": "Executions",
+    "empty": "No execution.",
+    "columns": "Columns",
+    "configure": "Choose columns",
+    "toggleSteps": "Show steps",
+    "removed": "entry removed",
+    "isolated": "standalone run",
+    "campaignMissing": "campaign not found",
+    "originApp": "entered",
+    "originExcel": "Excel import",
+    "group": {
+      "execution": "Execution",
+      "campaign": "Campaign",
+      "entry": "Entry",
+      "test": "Test"
+    },
+    "col": {
+      "verdict": "Verdict",
+      "date": "Date",
+      "tester": "Tester",
+      "duration": "Duration",
+      "origin": "Origin",
+      "notes": "Notes",
+      "equipment": "Equipment",
+      "campaign": "Campaign",
+      "campaignStatus": "Campaign status",
+      "baseline": "Baseline",
+      "entry": "Entry",
+      "entryRequirement": "Instance requirement",
+      "params": "Parameters",
+      "testVersion": "Test version",
+      "carriedFrom": "Carried from",
+      "test": "Test"
+    },
+    "campaignStatus": {
+      "planned": "Planned",
+      "in_progress": "In progress",
+      "completed": "Completed",
+      "abandoned": "Abandoned"
+    }
   }
 }

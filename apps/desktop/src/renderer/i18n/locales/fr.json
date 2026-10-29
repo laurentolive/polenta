@@ -2140,5 +2140,47 @@
     "pasteRejected_one": "{{count}} lien ignoré (schéma d’URL non pris en charge).",
     "pasteRejected_other": "{{count}} liens ignorés (schéma d’URL non pris en charge).",
     "pasteSingleOnly": "Ce champ ne garde qu’un lien : seul le premier a été collé."
+  },
+  "executionHistory": {
+    "title": "Exécutions",
+    "empty": "Aucune exécution.",
+    "columns": "Colonnes",
+    "configure": "Choisir les colonnes",
+    "toggleSteps": "Afficher les étapes",
+    "removed": "entrée retirée",
+    "isolated": "exécution isolée",
+    "campaignMissing": "campagne introuvable",
+    "originApp": "saisie",
+    "originExcel": "import Excel",
+    "group": {
+      "execution": "Exécution",
+      "campaign": "Campagne",
+      "entry": "Entrée",
+      "test": "Test"
+    },
+    "col": {
+      "verdict": "Verdict",
+      "date": "Date",
+      "tester": "Testeur",
+      "duration": "Durée",
+      "origin": "Origine",
+      "notes": "Notes",
+      "equipment": "Équipement",
+      "campaign": "Campagne",
+      "campaignStatus": "Statut de la campagne",
+      "baseline": "Baseline",
+      "entry": "Entrée",
+      "entryRequirement": "Exigence de l'instance",
+      "params": "Paramètres",
+      "testVersion": "Version du test",
+      "carriedFrom": "Reportée de",
+      "test": "Test"
+    },
+    "campaignStatus": {
+      "planned": "Planifiée",
+      "in_progress": "En cours",
+      "completed": "Terminée",
+      "abandoned": "Abandonnée"
+    }
   }
 }

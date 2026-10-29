@@ -22,7 +22,7 @@ export function RunFieldValues({ defs, values, repoPath }: Props) {
     <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm" data-testid="run-field-values">
       {known.map(def => (
         <Row key={def.name} label={def.label ?? def.name}>
-          <Value def={def} value={values![def.name]} repoPath={repoPath} />
+          <RunFieldValue def={def} value={values![def.name]} repoPath={repoPath} />
         </Row>
       ))}
       {unknown.map(([name, value]) => (
@@ -43,7 +43,8 @@ function Row({ label, children }: { label: React.ReactNode; children: React.Reac
   )
 }
 
-function Value({ def, value, repoPath }: { def: SchemaField; value: unknown; repoPath: string }) {
+/** Valeur typée d'un champ d'exécution / d'étape (réutilisée par la grille d'historique, GH197). */
+export function RunFieldValue({ def, value, repoPath }: { def: SchemaField; value: unknown; repoPath: string }) {
   const { t } = useTranslation()
   if (def.type === 'link') return <LinkList value={value} />
   if (def.type === 'richtext' && typeof value === 'string') return <RichTextViewer value={value} repoPath={repoPath} />

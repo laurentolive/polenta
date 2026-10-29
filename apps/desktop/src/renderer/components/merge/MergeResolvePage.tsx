@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, Circle, GitMerge } from 'lucide-react'
+import { CheckCircle2, GitMerge } from 'lucide-react'
 import type { MergeFinalizeResult, MergeSessionInfo } from '@polenta/types'
 import { shortRef } from '@polenta/merge-core'
 import { api } from '../../api'
@@ -18,6 +18,9 @@ import { useMergeSession } from './useMergeSession'
 interface Props {
   id: string
   projectId: string
+  /** GH233 — fichier ouvert (URL), choisi aussi depuis le panneau latéral « Fichiers en conflit ». */
+  selected: string | null
+  onSelect: (path: string) => void
 }
 
 /** Outcome shown once the merge is finalized (the tab stays open so it can be read). */
@@ -33,10 +36,10 @@ const repoLabel = (repoPath: string) => repoPath.replace(/[\\/]+$/, '').split(/[
 
 /**
  * GH37 — éditeur de résolution des conflits d'un merge (specs/GH37.md, design §3).
- * Liste des fichiers en conflit à gauche, résolution du fichier sélectionné à droite, finalisation
+ * Liste des fichiers en conflit dans le panneau latéral (GH233), résolution du fichier sélectionné, finalisation
  * (commit de merge en main) puis suite de l'opération d'origine (Publier : fin de la publication).
  */
-export function MergeResolvePage({ id, projectId }: Props) {
+export function MergeResolvePage({ id, projectId, selected, onSelect: setSelected }: Props) {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -45,7 +48,6 @@ export function MergeResolvePage({ id, projectId }: Props) {
   const session = sessionQuery.data ?? null
   const { workspaceDir, flatNodes, tree } = useModificationMode(projectId || null)
 
-  const [selected, setSelected] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<Extract<MergeFinalizeResult, { ok: false }> | { reason: 'error'; message: string } | null>(null)
   const [confirmAbandon, setConfirmAbandon] = useState(false)
@@ -55,8 +57,11 @@ export function MergeResolvePage({ id, projectId }: Props) {
 
   useEffect(() => {
     if (session && (selected === null || !session.files.some(f => f.path === selected))) {
-      setSelected((session.files.find(f => f.state === 'todo') ?? session.files[0])?.path ?? null)
+      const first = (session.files.find(f => f.state === 'todo') ?? session.files[0])?.path
+      if (first) setSelected(first)
     }
+    // setSelected changes with the URL; the selection only depends on the session and the file.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, selected])
 
   if (done) {
@@ -193,43 +198,6 @@ export function MergeResolvePage({ id, projectId }: Props) {
       )}
 
       <div className="flex flex-1 min-h-0">
-        {/* Liste des fichiers en conflit */}
-        <aside className="w-72 shrink-0 border-r border-edge overflow-auto">
-          <p className="section-label px-3 pt-3 pb-1">{t('mergeResolve.files')}</p>
-          <ul>
-            {session.files.map(f => (
-              <li key={f.path}>
-                <button
-                  type="button"
-                  onClick={() => setSelected(f.path)}
-                  className={`w-full text-left px-3 py-1.5 flex items-start gap-2 hover:bg-surface-hover ${selected === f.path ? 'bg-surface-hover' : ''}`}
-                >
-                  {f.state === 'merged'
-                    ? <CheckCircle2 size={14} className="text-status-success shrink-0 mt-0.5" />
-                    : <Circle size={14} className="text-status-warning shrink-0 mt-0.5" />}
-                  <span className="min-w-0">
-                    <span className="block text-xs text-ink truncate">
-                      {f.objectId ? `${f.objectId}${f.title ? ` — ${f.title}` : ''}` : f.path.split('/').pop()}
-                    </span>
-                    <span className="block text-[11px] text-ink-3 font-mono truncate">{f.path}</span>
-                    <span className="block text-[11px] text-ink-3">
-                      {t(`mergeResolve.conflict.${f.conflict}`)}
-                      {f.state === 'todo' && f.counts && f.counts.conflicts > 0 && (
-                        <span className="ml-1.5 px-1 rounded bg-diff-conflict-bg text-status-warning font-medium" data-testid="file-conflict-count">
-                          {t('mergeResolve.conflictCount', { count: f.counts.conflicts })}
-                        </span>
-                      )}
-                      {f.counts && f.counts.auto > 0 && (
-                        <span className="ml-1.5 text-ink-3">{t('mergeResolve.autoCount', { count: f.counts.auto })}</span>
-                      )}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </aside>
-
         <main className="flex-1 min-w-0 min-h-0">
           {selected ? (
             <FileResolver session={session} path={selected} saveFile={saveFile} onSessionChanged={onSessionChanged}

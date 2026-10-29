@@ -4,8 +4,9 @@ import { findRegions, renderRegion, resolveRegion, resolveRegionBoth, resolveReg
  * GH222 — où est un bloc de conflit dans un texte :
  * - dans un panneau du haut (mes modifications / destination) : la ligne de son fragment, pour y
  *   poser « Prendre gauche / droite » ;
- * - dans la sortie, une fois résolu : le texte retenu (gauche, droite ou les deux), pour le
- *   marquer « résolu » et pouvoir le réinitialiser (rétablir la région de marqueurs).
+ * - dans la sortie, une fois résolu : le texte retenu (gauche, droite, les deux ou l'ancêtre),
+ *   pour le marquer « résolu », le réinitialiser (rétablir la région de marqueurs) ou changer
+ *   d'avis (réinitialiser puis prendre un autre choix).
  */
 
 export interface BlockFragments {
@@ -86,6 +87,17 @@ export function takenTexts(block: BlockFragments, labels: MarkerLabels): { taken
   for (const side of ['left', 'right'] as const) out.push({ taken: side, text: resolveRegion(region, block.key, side) })
   if (block.base !== undefined) out.push({ taken: 'base', text: resolveRegionWith(region, block.key, block.base) })
   return out.filter(x => x.text.trim() !== '')
+}
+
+/** Everything a block can be resolved to — to change one's mind on a resolved block. `base` only
+ *  when the ancestor's fragment is known; `both` only when « Prendre les deux » applies. */
+export function choices(block: BlockFragments, labels: MarkerLabels): Taken[] {
+  const region = renderRegion(block.key, block.left, block.right, labels)
+  const out: Taken[] = []
+  if (resolveRegionBoth(region, block.key) !== region) out.push('both')
+  out.push('left', 'right')
+  if (block.base !== undefined) out.push('base')
+  return out
 }
 
 /** Blocks no longer open whose chosen text is found in the output (an edited one is not), at the

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
-import { Check, Columns3, Eye, FileCode } from 'lucide-react'
+import { Check, Columns3, Eye, FileCode, Redo2, Undo2 } from 'lucide-react'
 import {
   canTakeBoth, shortRef, findRegions, parseOutput, resolveAllRegions, resolveRegion, resolveRegionBoth, resolveRegionWith, updateOutputAt,
   yamlStyleOf, type Side,
@@ -10,10 +10,12 @@ import type {
   MergeFileDetail, MergeFileDraft, MergeKeepBothResult, MergeSessionInfo, MergeValidationIssue, ObjectTypeDefinition,
 } from '@polenta/types'
 import { api } from '../../api'
+import { isEditableTarget } from '../../lib/editableTarget'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/useProjectSchema'
 import { RawPane, type PaneAction, type PaneLabels } from './RawPane'
-import { resetBlock, resolvedBlocks, sideAnchors, type ResolvedBlock } from './blockLocator'
+import { choices, resetBlock, resolvedBlocks, sideAnchors, type ResolvedBlock, type Taken } from './blockLocator'
+import { emptyHistory, historyKey, record, redo, undo } from './outputHistory'
 import { NavBar } from '../diffkit/NavBar'
 import { useChangeNavigation } from '../diffkit/useChangeNavigation'
 import { genericPresentation, typedPresentation } from '../treediff/presentation'
@@ -43,7 +45,8 @@ type Pane = 'left' | 'base' | 'right'
  * GH37 — résolution d'un fichier. En haut : mes modifications | [ancêtre commun] | destination,
  * en bas sur toute la largeur : la sortie du merge (séparateur redimensionnable). Bascule Raw /
  * Rendu commune à tous les panneaux ; le texte de la sortie reste la seule source de vérité, le
- * mode Rendu l'édite unité par unité (`updateObjectOutput`).
+ * mode Rendu l'édite unité par unité (`updateObjectOutput`). GH222 : un bloc résolu peut être
+ * repris avec un autre choix ; Ctrl+Z / Ctrl+Y annulent / rétablissent (historique de la sortie).
  */
 export function FileResolver(props: Props) {
   const { t } = useTranslation()
@@ -113,10 +116,52 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     scheduleSave(draft)
     if (wasMerged) flush()
   }
-  const updateText = (next: string) => {
+  // GH222 — historique de la sortie (Ctrl+Z / Ctrl+Y) ; `textNow` suit le texte sans attendre un
+  // rendu (deux changements rapprochés).
+  const textNow = useRef(text)
+  const hist = useRef(emptyHistory())
+  const [, bump] = useState(0)
+  const setOutput = (next: string) => {
+    textNow.current = next
     setText(next)
     update({ state: 'todo', text: next })
   }
+  /** A new output text; `group` merges a burst of typing in one place into one undo step. */
+  const updateText = (next: string, group?: string) => {
+    if (next === textNow.current) return
+    hist.current = record(hist.current, textNow.current, group, Date.now())
+    bump(n => n + 1)
+    setOutput(next)
+  }
+  const step = (dir: 'undo' | 'redo') => {
+    const r = (dir === 'undo' ? undo : redo)(hist.current, textNow.current)
+    if (!r) return
+    hist.current = r.history
+    bump(n => n + 1)
+    setOutput(r.text)
+  }
+  // Ctrl+Z / Ctrl+Y anywhere in the resolver — or with the focus nowhere, as after a click on a
+  // choice whose button then goes away. A text field (Rendu) or the Raw editor handles its own.
+  const root = useRef<HTMLDivElement>(null)
+  const stepNow = useRef(step)
+  stepNow.current = step
+  useEffect(() => {
+    if (choiceMode) return
+    const onKey = (e: KeyboardEvent) => {
+      const dir = historyKey(e)
+      const el = e.target as HTMLElement
+      const box = root.current
+      if (!dir || e.defaultPrevented || !box || box.offsetParent === null) return
+      if (el !== document.body && !box.contains(el)) return
+      if (isEditableTarget(el) || el.closest('select')) return
+      // Not the System view's own Ctrl+Z (listening on `window`): this one is the merge's.
+      e.preventDefault()
+      e.stopPropagation()
+      stepNow.current(dir)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [choiceMode])
   const updateChoice = (side: Side) => {
     setChoice(side)
     update({ state: 'todo', choice: side })
@@ -181,9 +226,6 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
   const markerLabels = useMemo(() => ({ left: shortRef(session.leftRef), right: shortRef(session.rightRef) }), [session.leftRef, session.rightRef])
   // Open blocks as a stable signature: typing in the output does not rebuild the side actions.
   const openSig = regions.regions.map(r => r.key).join('\u0000')
-  // Latest output and updater, for the actions built once per set of open blocks.
-  const latest = useRef({ text, regions, updateText })
-  latest.current = { text, regions, updateText }
 
   // Where each block's region is (or was when resolved): the resolved text and the side
   // fragments are looked for nearest to it (a short fragment may appear elsewhere in the file).
@@ -194,36 +236,61 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
   }, [detail.initialOutput])
   const [resolvedAt, setResolvedAt] = useState<Map<string, number>>(new Map())
   const hints = useMemo(() => new Map([...initialHints, ...resolvedAt]), [initialHints, resolvedAt])
-  const resolveWith = (key: string, next: (current: string) => string) => {
-    const { text: current, regions: open, updateText: update } = latest.current
-    const at = open.regions.find(r => r.key === key)?.start
-    if (at !== undefined) setResolvedAt(prev => new Map(prev).set(key, at))
-    update(next(current))
-  }
+  const resolved = useMemo(() => (choiceMode ? NONE : resolvedBlocks(text, detail.blocks, markerLabels, hints)), [choiceMode, text, detail.blocks, markerLabels, hints])
+  // Latest output, resolved blocks and updater, for the actions built once per set of blocks.
+  const latest = useRef({ text, regions, resolved, updateText })
+  latest.current = { text, regions, resolved, updateText }
 
-  // « Prendre l'ancêtre » : the block's ancestor fragment (`''` = the node goes away).
-  const takeBase = (key: string) => {
-    const base = detail.blocks.find(b => b.key === key)?.base
-    if (base !== undefined) resolveWith(key, current => resolveRegionWith(current, key, base))
+  /** Resolves a block with `taken` — an open one, or a resolved one (changing one's mind: its
+   *  region is put back, then the new choice taken). « Prendre l'ancêtre » takes the block's
+   *  ancestor fragment (`''` = the node goes away). */
+  const choose = (key: string, taken: Taken) => {
+    const { text: current, regions: open, resolved: done, updateText: update } = latest.current
+    const block = detail.blocks.find(b => b.key === key)
+    let from = current
+    let at = open.regions.find(r => r.key === key)?.start
+    if (at === undefined) {
+      const found = done.find(r => r.key === key)
+      if (!found || !block) return
+      from = resetBlock(current, block, found, markerLabels)
+      at = found.from
+    }
+    const next = taken === 'both' ? resolveRegionBoth(from, key)
+      : taken === 'base' ? (block?.base === undefined ? from : resolveRegionWith(from, key, block.base))
+        : resolveRegion(from, key, taken)
+    if (next === from) return
+    const line = at
+    setResolvedAt(prev => new Map(prev).set(key, line))
+    update(next)
   }
+  const takeBase = (key: string) => choose(key, 'base')
   const canTakeBase = (key: string) => detail.blocks.find(b => b.key === key)?.base !== undefined
+  /** Choices still possible on a resolved block (Rendu). */
+  const otherChoices = (r: ResolvedBlock): Taken[] => {
+    const block = detail.blocks.find(b => b.key === r.key)
+    return block ? choices(block, markerLabels).filter(c => c !== r.taken && (c !== 'base' || showBase)) : []
+  }
 
+  // Each side's action, on open blocks and on blocks resolved otherwise (changing one's mind).
+  const resolvedSig = resolved.map(r => `${r.key}\u0000${r.taken}\u0000${r.from}`).join('\u0001')
   const sideActions = useMemo(() => {
-    const open = new Map(latest.current.regions.regions.map(r => [r.key, r.start] as const))
+    const at = new Map<string, number>(latest.current.regions.regions.map(r => [r.key, r.start] as const))
+    const taken = new Map<string, Taken>()
+    for (const r of latest.current.resolved) { at.set(r.key, r.from); taken.set(r.key, r.taken) }
     const make = (side: Side | 'base'): PaneAction[] => {
       const sideText = side === 'left' ? detail.left : side === 'right' ? detail.right : detail.base
       if (sideText === null || choiceMode) return []
-      return sideAnchors(sideText, detail.blocks, open, side).map(a => ({
+      return sideAnchors(sideText, detail.blocks, at, side).filter(a => taken.get(a.key) !== side).map(a => ({
         key: a.key,
         line: a.line,
         label: side === 'left' ? t('mergeResolve.takeLeft') : side === 'right' ? t('mergeResolve.takeRight') : t('mergeResolve.takeBase'),
-        run: () => (side === 'base' ? takeBase(a.key) : resolveWith(a.key, current => resolveRegion(current, a.key, side))),
+        run: () => choose(a.key, side),
       }))
     }
     return { left: make('left'), right: make('right'), base: make('base') }
-    // resolveWith reads the latest state through `latest`.
+    // choose reads the latest state through `latest`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail, openSig, choiceMode, t])
+  }, [detail, openSig, resolvedSig, choiceMode, t])
   const resetBlockOf = (found: ResolvedBlock) => {
     const block = detail.blocks.find(b => b.key === found.key)
     if (block) updateText(resetBlock(text, block, found, markerLabels))
@@ -232,16 +299,15 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
 
   // ─── GH222 : vue générique (Rendu) ───────────────────────────────────────────────
   const parsedOutput = useMemo(() => (rendered ? parseOutput(detail.kind, text) : null), [rendered, detail.kind, text])
-  const resolvedNow = useMemo(() => (rendered ? resolvedBlocks(text, detail.blocks, markerLabels, hints) : []), [rendered, text, detail.blocks, markerLabels, hints])
   const openKeys = useMemo(() => regions.regions.map(r => r.key), [regions])
   const tree = useMergeTree({
-    enabled: rendered && detail.kind !== 'drawio', detail, presentation, openKeys, resolved: resolvedNow, parsedOutput: parsedOutput?.value,
+    enabled: rendered && detail.kind !== 'drawio', detail, presentation, openKeys, resolved: rendered ? resolved : NONE, parsedOutput: parsedOutput?.value,
   })
   // An edit in place is written in the file's own YAML style.
   const outputStyle = useMemo(() => yamlStyleOf(detail.right ?? detail.left ?? '') ?? undefined, [detail.right, detail.left])
   const editAt = (outPath: (string | number)[], value: unknown) => {
     const next = updateOutputAt(latest.current.text, outPath, value, outputStyle)
-    if (next !== null) updateText(next)
+    if (next !== null) updateText(next, `edit:${JSON.stringify(outPath)}`)
   }
 
   const outputBox = useRef<HTMLDivElement>(null)
@@ -325,18 +391,20 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     output = (
       <DrawioMergeOutput text={text} repoPath={session.repoPath} filepath={path}
         leftAt={session.leftOid} rightAt={session.rightOid}
-        onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))} />
+        onTake={choose} />
     )
   } else if (rendered && parsedOutput?.value && !parsedOutput.error) {
     output = (
       <SyncedTree group={group} id="output">
         <MergeTreeOutput model={tree} typeDef={typeDef} repoPath={session.repoPath}
           canBoth={key => canTakeBoth(text, key)}
-          onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
-          onBoth={key => resolveWith(key, current => resolveRegionBoth(current, key))}
+          onTake={choose}
+          onBoth={key => choose(key, 'both')}
           onBase={showBase ? takeBase : undefined}
           canBase={canTakeBase}
           onReset={resetBlockOf}
+          otherChoices={otherChoices}
+          onSwitch={(r, taken) => choose(r.key, taken)}
           onEdit={editAt}
           labels={{ output: t('mergeResolve.outputPane'), resolved: paneLabels.resolved }} />
       </SyncedTree>
@@ -345,21 +413,24 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     output = <p className="p-4 text-xs text-status-warning">{t('mergeResolve.renderUnavailable')}</p>
   } else {
     output = (
-      <RawPane value={text} onChange={updateText} labels={outputLabels} yamlSyntax={yamlSyntax}
-        onResolve={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
-        onBoth={key => resolveWith(key, current => resolveRegionBoth(current, key))}
+      <RawPane value={text} onChange={next => updateText(next, 'type')} labels={outputLabels} yamlSyntax={yamlSyntax}
+        onResolve={choose}
+        onBoth={key => choose(key, 'both')}
         onBase={showBase ? takeBase : undefined}
         blocks={detail.blocks}
         markerLabels={markerLabels}
         hints={hints}
         onReset={resetBlockOf}
+        onSwitch={(r, taken) => choose(r.key, taken)}
+        onUndo={() => step('undo')}
+        onRedo={() => step('redo')}
         reveal={reveal}
         sync={{ group, id: 'output', units }} />
     )
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div ref={root} className="flex flex-col h-full min-h-0">
       {/* En-tête du fichier */}
       <div className="px-4 pt-2 shrink-0 flex items-center gap-2">
         <div className="flex-1 min-w-0">
@@ -388,6 +459,18 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
         {!choiceMode && (
           <>
             <NavBar kind="conflict" index={nav.index} count={regions.regions.length} onPrev={nav.prev} onNext={nav.next} />
+            <div className="flex rounded border border-edge overflow-hidden shrink-0" role="group">
+              <button type="button" className="px-1.5 py-1 bg-surface text-ink-2 hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={hist.current.past.length === 0} onClick={() => step('undo')}
+                title={t('mergeResolve.undo')} aria-label={t('mergeResolve.undo')}>
+                <Undo2 size={12} />
+              </button>
+              <button type="button" className="px-1.5 py-1 bg-surface text-ink-2 hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed border-l border-edge"
+                disabled={hist.current.future.length === 0} onClick={() => step('redo')}
+                title={t('mergeResolve.redo')} aria-label={t('mergeResolve.redo')}>
+                <Redo2 size={12} />
+              </button>
+            </div>
             <button type="button" className="btn-secondary-sm shrink-0" disabled={regions.regions.length === 0}
               onClick={() => updateText(resolveAllRegions(text, 'left'))}>
               {t('mergeResolve.allLeft')}
@@ -423,7 +506,7 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
                       base: t('mergeResolve.basePane'),
                       right: t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }),
                     }}
-                    onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
+                    onTake={choose}
                     onBase={takeBase} canBase={canTakeBase} />
                 </SyncedTree>
               </div>
@@ -464,6 +547,8 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     </div>
   )
 }
+
+const NONE: ResolvedBlock[] = []
 
 /** File kinds the generic view can show (YAML). */
 const RENDERABLE = new Set<MergeFileDetail['kind']>(['object', 'links', 'parameters', 'yaml', 'trees', 'drawio'])

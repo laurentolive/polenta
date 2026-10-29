@@ -25,6 +25,13 @@ lues sur github.com. Pour travailler hors ligne, passez un clone local dans
 > **Rebuild.** Les tests tournent sur le build. Après une modification du renderer ou du serveur,
 > utilisez `pnpm test:e2e:web`, ou lancez `pnpm build:web` avant `npx playwright test`.
 
+> **Plusieurs worktrees en parallèle.** Les ports par défaut (8797 serveur web, 8798 forge, 8799
+> administration) sont fixes : deux suites lancées depuis deux worktrees se bloquent (« … is already
+> used »). Chaque run ayant son propre dossier de données, il suffit de décaler les ports de l'une :
+> ```bash
+> POLENTA_E2E_PORT=8897 POLENTA_E2E_GIT_PORT=8898 POLENTA_E2E_ADMIN_PORT=8899 npx playwright test
+> ```
+
 ## Architecture
 
 ```

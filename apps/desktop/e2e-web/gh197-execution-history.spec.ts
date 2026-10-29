@@ -66,7 +66,10 @@ test('GH197-1 — test : section Exécutions, colonne d\'un champ d\'exécution,
   await expect(row).toContainText(campaign.id)
 
   await section.getByTestId('execution-columns-button').click()
-  await section.getByTestId('execution-column-run:gh197Temp').check()
+  // React Query notifie ses abonnés en différé : clic, puis attente de l'état coché.
+  const tempColumn = section.getByTestId('execution-column-run:gh197Temp')
+  await tempColumn.click()
+  await expect(tempColumn).toBeChecked()
   await expect(section.locator('th', { hasText: 'Température GH197' })).toBeVisible()
   await expect(row).toContainText('23.5')
 

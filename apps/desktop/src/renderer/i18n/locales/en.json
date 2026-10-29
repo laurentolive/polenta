@@ -1774,7 +1774,9 @@
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
     "autoCount_one": "{{count}} taken",
-    "autoCount_other": "{{count}} taken"
+    "autoCount_other": "{{count}} taken",
+    "drawioPage": "Page “{{page}}” changed on both sides",
+    "drawioHunk": "Text block {{key}} (details in Raw)"
   },
   "forgeAccess": {
     "revoked": "Your access to {{host}} was revoked or has expired, or your account was disabled. Your local changes are kept.",
@@ -2145,6 +2147,7 @@
     "movedFrom": "moved from its former place",
     "collapse": "Collapse",
     "expand": "Expand",
-    "empty": "—"
+    "empty": "—",
+    "unplaced": "Outside the structure"
   }
 }

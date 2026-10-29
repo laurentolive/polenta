@@ -90,24 +90,25 @@ export const mergePrefs = {
   setMode: (v: 'raw' | 'rendered') => write(MODE_KEY, v),
 }
 
-/** Same synchronization for an HTML pane whose units carry `data-unit` (mode « Rendu »). */
-export function useElementSync(group: ScrollSyncGroup, id: string) {
+/** Same synchronization for an HTML pane whose units carry an anchor attribute — `data-unit`, or
+ *  GH222 `data-row-key` (a row of the generic view: same key in every pane). */
+export function useElementSync(group: ScrollSyncGroup, id: string, attr = 'data-unit') {
   const ref = useRef<HTMLDivElement>(null)
   const [scroller] = useState(programmaticScroller)
   useEffect(() => group.register(id, {
     scrollTo(anchor) {
       const el = ref.current
       if (!el) return
-      const target = anchor.key ? el.querySelector<HTMLElement>(`[data-unit="${CSS.escape(anchor.key)}"]`) : null
+      const target = anchor.key ? el.querySelector<HTMLElement>(`[${attr}="${CSS.escape(anchor.key)}"]`) : null
       scroller.set(el, target ? target.offsetTop : anchor.ratio * (el.scrollHeight - el.clientHeight))
     },
-  }), [group, id, scroller])
+  }), [group, id, scroller, attr])
   const onScroll = useCallback(() => {
     const el = ref.current
     if (!el || scroller.isEcho(el)) return
-    const units = [...el.querySelectorAll<HTMLElement>('[data-unit]')]
+    const units = [...el.querySelectorAll<HTMLElement>(`[${attr}]`)]
     const top = units.find(u => u.offsetTop + u.offsetHeight > el.scrollTop)
-    group.publish(id, { key: top?.dataset.unit ?? null, offset: 0, ratio: ratioOf(el) })
-  }, [group, id, scroller])
+    group.publish(id, { key: top?.getAttribute(attr) ?? null, offset: 0, ratio: ratioOf(el) })
+  }, [group, id, scroller, attr])
   return { ref, onScroll }
 }

@@ -284,7 +284,7 @@ export function TreeDiffView({ before, after, presentation, desc, repoPath, hide
   )
 }
 
-function Value({ node, value, other, side, presentation, typeDef, media, repoPath, at }: {
+export function Value({ node, value, other, side, presentation, typeDef, media, repoPath, at }: {
   node: DiffNode
   value: unknown
   other?: unknown

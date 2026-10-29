@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
 import { Check, Columns3, Eye, FileCode } from 'lucide-react'
 import {
-  changedUnits, shortRef, findRegions, parseOutput, regionFragments, resolveAllRegions, resolveRegion,
-  resolveRegionBoth, updateObjectOutput, type Side,
+  canTakeBoth, shortRef, findRegions, parseOutput, resolveAllRegions, resolveRegion, resolveRegionBoth, updateOutputAt,
+  yamlStyleOf, type Side,
 } from '@polenta/merge-core'
 import type {
   MergeFileDetail, MergeFileDraft, MergeKeepBothResult, MergeSessionInfo, MergeValidationIssue, ObjectTypeDefinition,
@@ -13,10 +13,13 @@ import { api } from '../../api'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/useProjectSchema'
 import { RawPane, type PaneAction, type PaneLabels } from './RawPane'
-import { resetBlock, sideAnchors, type ResolvedBlock } from './blockLocator'
+import { resetBlock, resolvedBlocks, sideAnchors, type ResolvedBlock } from './blockLocator'
 import { NavBar } from '../diffkit/NavBar'
 import { useChangeNavigation } from '../diffkit/useChangeNavigation'
-import { RenderedObjectPane } from './RenderedObjectPane'
+import { genericPresentation, typedPresentation } from '../treediff/presentation'
+import { MergeTreeOutput, MergeTreeTop, useMergeTree } from '../treediff/TreeMerge'
+import { DrawioFileDiffView } from '../diff/DrawioFileDiffView'
+import { DrawioMergeOutput } from './DrawioMergeOutput'
 import { mergePrefs, useElementSync, useScrollSyncGroup, type ScrollSyncGroup } from './scrollSync'
 import { useMergeFile, useOutputValidation } from './useMergeSession'
 
@@ -147,13 +150,11 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     const ref = String((objects.right ?? objects.left)?.objectTypeRef ?? '')
     return ref ? getReqTypeDef(schema, ref) ?? getTestTypeDef(schema, ref) : undefined
   }, [schema, objects])
-  const canRender = detail.kind === 'object' && !!typeDef
+  // GH222 — every YAML file has a Rendu (generic view); typed objects get their schema's labels.
+  // A file to resolve by choosing a side (deleted on one side) can be read rendered too.
+  const canRender = RENDERABLE.has(detail.kind)
   const rendered = mode === 'rendered' && canRender
-
-  const changed = useMemo(() => ({
-    left: objects.left ? changedUnits(objects.base, objects.left) : new Set<string>(),
-    right: objects.right ? changedUnits(objects.base, objects.right) : new Set<string>(),
-  }), [objects])
+  const presentation = useMemo(() => (typeDef ? typedPresentation(typeDef, t) : genericPresentation), [typeDef, t])
   // GH222 — ce que chaque côté a changé depuis l'ancêtre (ligne et caractères).
   const against = useMemo(() => ({
     left: { base: detail.base, side: 'left' as Side },
@@ -218,6 +219,20 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
   }
   const outputLabels = useMemo(() => ({ ...paneLabels, ruler: t('diffkit.conflict.ruler') }), [paneLabels, t])
 
+  // ─── GH222 : vue générique (Rendu) ───────────────────────────────────────────────
+  const parsedOutput = useMemo(() => (rendered ? parseOutput(detail.kind, text) : null), [rendered, detail.kind, text])
+  const resolvedNow = useMemo(() => (rendered ? resolvedBlocks(text, detail.blocks, markerLabels, hints) : []), [rendered, text, detail.blocks, markerLabels, hints])
+  const openKeys = useMemo(() => regions.regions.map(r => r.key), [regions])
+  const tree = useMergeTree({
+    enabled: rendered && detail.kind !== 'drawio', detail, presentation, openKeys, resolved: resolvedNow, parsedOutput: parsedOutput?.value,
+  })
+  // An edit in place is written in the file's own YAML style.
+  const outputStyle = useMemo(() => yamlStyleOf(detail.right ?? detail.left ?? '') ?? undefined, [detail.right, detail.left])
+  const editAt = (outPath: (string | number)[], value: unknown) => {
+    const next = updateOutputAt(latest.current.text, outPath, value, outputStyle)
+    if (next !== null) updateText(next)
+  }
+
   const outputBox = useRef<HTMLDivElement>(null)
   const [reveal, setReveal] = useState<{ from: number; to: number } | null>(null)
   const goConflict = (i: number) => {
@@ -257,7 +272,6 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
 
   const sidePane = (pane: Pane) => {
     const textOf = pane === 'left' ? detail.left : pane === 'right' ? detail.right : detail.base
-    const obj = objects[pane]
     const title = pane === 'left'
       ? t('mergeResolve.leftPane', { ref: shortRef(session.leftRef) })
       : pane === 'right' ? t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }) : t('mergeResolve.basePane')
@@ -277,11 +291,6 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
             : pane === 'base' ? t('mergeResolve.absentInBase') : t('mergeResolve.absentOnSide')}
         </p>
       )
-    } else if (rendered && obj) {
-      content = (
-        <SyncedRendered group={group} id={pane} value={obj} typeDef={typeDef} repoPath={session.repoPath}
-          tone={tone} changed={pane === 'base' ? undefined : changed[pane]} />
-      )
     } else {
       content = (
         <RawPane value={textOf} readOnly yamlSyntax={yamlSyntax} labels={paneLabels}
@@ -298,21 +307,26 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     )
   }
 
-  const parsed = useMemo(() => (rendered ? parseOutput('object', text) : null), [rendered, text])
-  const conflicts = useMemo(() => (rendered ? regionFragments(text) : undefined), [rendered, text])
-
   let output: ReactNode
   if (choiceMode) {
     output = <ChoicePanel detail={detail} choice={choice} onChoose={updateChoice} />
-  } else if (rendered && parsed?.value && !parsed.error) {
+  } else if (rendered && detail.kind === 'drawio') {
     output = (
-      <SyncedRendered group={group} id="output" value={parsed.value} typeDef={typeDef} repoPath={session.repoPath}
-        conflicts={conflicts}
-        onResolve={(key, side) => updateText(resolveRegion(text, key, side))}
-        onChangeUnit={(key, value) => {
-          const next = updateObjectOutput(text, key, value)
-          if (next !== null) updateText(next)
-        }} />
+      <DrawioMergeOutput text={text} repoPath={session.repoPath} filepath={path}
+        leftAt={session.leftOid} rightAt={session.rightOid}
+        onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))} />
+    )
+  } else if (rendered && parsedOutput?.value && !parsedOutput.error) {
+    output = (
+      <SyncedTree group={group} id="output">
+        <MergeTreeOutput model={tree} typeDef={typeDef} repoPath={session.repoPath}
+          canBoth={key => canTakeBoth(text, key)}
+          onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
+          onBoth={key => resolveWith(key, current => resolveRegionBoth(current, key))}
+          onReset={resetBlockOf}
+          onEdit={editAt}
+          labels={{ output: t('mergeResolve.outputPane'), resolved: paneLabels.resolved }} />
+      </SyncedTree>
     )
   } else if (rendered) {
     output = <p className="p-4 text-xs text-status-warning">{t('mergeResolve.renderUnavailable')}</p>
@@ -375,11 +389,37 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
       <RichTextProvider>
         <div ref={body} className="flex-1 min-h-0 flex flex-col">
           {/* Rangée du haut : mes modifications | [ancêtre commun] | destination */}
-          <div className={`grid min-h-0 ${showBase ? 'grid-cols-3' : 'grid-cols-2'}`} style={{ height: `${split}%` }}>
-            {sidePane('left')}
-            {showBase && sidePane('base')}
-            {sidePane('right')}
-          </div>
+          {rendered && detail.kind === 'drawio'
+            ? (
+              // GH222 — `.drawio` : pages de chaque côté, à leur commit (même vue que les diffs).
+              <div className="min-h-0" style={{ height: `${split}%` }}>
+                <DrawioFileDiffView repoPath={session.repoPath} filepath={path} hideUnchanged={false}
+                  before={{ at: session.leftOid, missing: detail.left === null, label: t('mergeResolve.leftPane', { ref: shortRef(session.leftRef) }) }}
+                  after={{ at: session.rightOid, missing: detail.right === null, label: t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }) }} />
+              </div>
+            )
+            : rendered
+            ? (
+              // GH222 — vue générique : une seule grille, colonne Structure + un panneau par version.
+              <div className="min-h-0" style={{ height: `${split}%` }}>
+                <SyncedTree group={group} id="top">
+                  <MergeTreeTop model={tree} showBase={showBase} typeDef={typeDef} repoPath={session.repoPath}
+                    labels={{
+                      left: t('mergeResolve.leftPane', { ref: shortRef(session.leftRef) }),
+                      base: t('mergeResolve.basePane'),
+                      right: t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }),
+                    }}
+                    onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))} />
+                </SyncedTree>
+              </div>
+            )
+            : (
+              <div className={`grid min-h-0 ${showBase ? 'grid-cols-3' : 'grid-cols-2'}`} style={{ height: `${split}%` }}>
+                {sidePane('left')}
+                {showBase && sidePane('base')}
+                {sidePane('right')}
+              </div>
+            )}
 
           <div
             role="separator"
@@ -410,10 +450,13 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
   )
 }
 
-function SyncedRendered(props: { group: ScrollSyncGroup; id: string } & Omit<React.ComponentProps<typeof RenderedObjectPane>, 'onScroll'>) {
-  const { group, id, ...rest } = props
-  const { ref, onScroll } = useElementSync(group, id)
-  return <RenderedObjectPane ref={ref} onScroll={onScroll} {...rest} />
+/** File kinds the generic view can show (YAML). */
+const RENDERABLE = new Set<MergeFileDetail['kind']>(['object', 'links', 'parameters', 'yaml', 'trees', 'drawio'])
+
+/** A scrolling pane of the generic view, kept on the same row as the other panes. */
+function SyncedTree({ group, id, children }: { group: ScrollSyncGroup; id: string; children: ReactNode }) {
+  const { ref, onScroll } = useElementSync(group, id, 'data-row-key')
+  return <div ref={ref} onScroll={onScroll} className="relative h-full overflow-auto" data-testid={`merge-tree-${id}`}>{children}</div>
 }
 
 function ToggleButton({ active, disabled, onClick, icon, label, title }: {

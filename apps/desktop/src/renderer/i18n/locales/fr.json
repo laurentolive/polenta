@@ -1774,7 +1774,9 @@
     "conflictCount_one": "{{count}} conflit",
     "conflictCount_other": "{{count}} conflits",
     "autoCount_one": "{{count}} repris",
-    "autoCount_other": "{{count}} repris"
+    "autoCount_other": "{{count}} repris",
+    "drawioPage": "Page « {{page}} » modifiée des deux côtés",
+    "drawioHunk": "Bloc de texte {{key}} (détail en Raw)"
   },
   "forgeAccess": {
     "revoked": "Votre accès au serveur {{host}} a été révoqué, a expiré ou votre compte a été désactivé. Vos modifications locales sont conservées.",
@@ -2145,6 +2147,7 @@
     "movedFrom": "déplacé depuis son ancienne place",
     "collapse": "Replier",
     "expand": "Déplier",
-    "empty": "—"
+    "empty": "—",
+    "unplaced": "Hors structure"
   }
 }

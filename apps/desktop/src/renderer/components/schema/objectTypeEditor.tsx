@@ -456,8 +456,9 @@ export function FieldsTable({ fields, onChange, statuses, category, variant = 'o
     isRunList ? { key: RUN_RESULT_KEY, values: [...(variant === 'run' ? RUN_RESULT_VALUES : STEP_RESULT_VALUES)] } : undefined,
   )
   return (
-    <div className="mt-3">
-      <p className="section-label mb-1">{title ?? t('schema.editor.fields')}</p>
+    <div className={title === '' ? 'mt-1' : 'mt-3'}>
+      {/* `title=""` : titre porté par le conteneur (section repliable des listes d'exécution). */}
+      {title !== '' && <p className="section-label mb-1">{title ?? t('schema.editor.fields')}</p>}
       {help && <p className="text-xs text-ink-3 mb-1">{help}</p>}
       {fields.length > 0 && (
         <table className="w-full text-xs border-collapse mb-1">
@@ -498,7 +499,7 @@ export function FieldsTable({ fields, onChange, statuses, category, variant = 'o
                 <td className={`${tdClass} text-center`}><input type="checkbox" checked={f.required} onChange={e => set(i, { required: e.target.checked })} className="h-3 w-3 accent-ink" /></td>
                 <td className={tdClass}>
                   <RequiredWhenInput
-                    placeholder={isRunList ? 'result = FAIL' : 'status = approved'}
+                    placeholder={isRunList ? 'result = FAIL' : category === 'campaign' ? 'status = completed' : 'status = approved'}
                     value={f.requiredWhen}
                     onChange={v => set(i, { requiredWhen: v })}
                     issues={f.requiredWhen.trim() ? issues.filter(x => x.field === f.name) : []}

@@ -2231,6 +2231,28 @@
     "componentHelp": "The change is stored in the component repo, with its types: it follows the component when reused in another product.",
     "pickToModify": "Add elements to modify",
     "pickImpacted": "Add impacted elements",
-    "noFlagged": "No element to re-check."
+    "noFlagged": "No element to re-check.",
+    "mode": {
+      "label": "Kind",
+      "request": "Change request",
+      "range": "On existing work",
+      "from": "From (baseline or commit)",
+      "to": "To (baseline or commit)",
+      "rangeHelp": "Requirements and tests changed between the two bounds are added to the elements to modify; the analysis uses the state at the second bound."
+    },
+    "openOnly": "Open only",
+    "unreached": "no longer reached",
+    "analysis": {
+      "title": "Impact analysis",
+      "request": "Request — current state",
+      "range": "On existing work: {{from}} → {{to}}",
+      "computed": "computed {{when}}",
+      "frozen": "frozen {{when}}",
+      "noRoot": "No starting element.",
+      "noImpact": "no impact",
+      "campaigns": "Ongoing campaigns concerned"
+    },
+    "analyzeImpact": "Analyze impact",
+    "openChange": "Open"
   }
 }

@@ -67,6 +67,10 @@ function NewChangePage() {
   const [title, setTitle] = useState('')
   const [targetKey, setTargetKey] = useState('')
   const [fields, setFields] = useState<Record<string, string>>({})
+  // GH199 — demande, ou sur l'existant entre deux bornes (baseline ou commit).
+  const [mode, setMode] = useState<'request' | 'range'>('request')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
 
   const keyOf = (x: { repoPath: string; node: string }) => `${x.repoPath}\n${x.node}`
   const elementRepo = repoFromSearch || openRepo
@@ -89,6 +93,7 @@ function NewChangePage() {
 
   const create = useMutation({
     mutationFn: () => api.changes.create(repoPath, {
+      ...(mode === 'range' && { mode, range: { from: from.trim(), to: to.trim() } }),
       objectTypeRef: selectedRef,
       title,
       ...(effectiveComponent && { component: effectiveComponent }),
@@ -100,7 +105,7 @@ function NewChangePage() {
       navigate({ to: '/change/$changeId', params: { changeId: change.id }, search: { projectId, repoPath: change.repoPath } })
     },
   })
-  const canCreate = !!target && !!selectedRef && !!title.trim() && !create.isPending
+  const canCreate = !!target && !!selectedRef && !!title.trim() && (mode === 'request' || (!!from.trim() && !!to.trim())) && !create.isPending
   const submit = () => { if (canCreate) create.mutate() }
 
   const labelClass = 'block text-sm font-medium text-ink mb-1'
@@ -141,6 +146,24 @@ function NewChangePage() {
                 </div>
               )}
               <div>
+                <label className={labelClass}>{t('changes.mode.label')}</label>
+                <div className="flex gap-4 text-sm text-ink">
+                  {(['request', 'range'] as const).map(m => (
+                    <label key={m} className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="change-mode" checked={mode === m} onChange={() => setMode(m)} data-testid={`change-new-mode-${m}`} />
+                      {t(`changes.mode.${m}`)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {mode === 'range' && repoPath && (
+                <div className="grid grid-cols-2 gap-3">
+                  <RangeBoundInput repoPath={repoPath} label={t('changes.mode.from')} value={from} onChange={setFrom} testId="change-new-from" />
+                  <RangeBoundInput repoPath={repoPath} label={t('changes.mode.to')} value={to} onChange={setTo} testId="change-new-to" />
+                  <p className="col-span-2 text-xs text-ink-3">{t('changes.mode.rangeHelp')}</p>
+                </div>
+              )}
+              <div>
                 <label className={labelClass}>{t('changes.titleLabel')}<span className="text-status-danger ml-1">*</span></label>
                 <input className={inputClass} value={title} onChange={e => setTitle(e.target.value)} autoFocus data-testid="change-new-title" />
               </div>
@@ -172,5 +195,35 @@ function NewChangePage() {
         </div>
       </div>
     </RichTextProvider>
+  )
+}
+
+/** Borne d'un change « sur l'existant » : tag de baseline ou SHA ; propositions = baselines et
+ *  50 derniers commits de la branche courante, saisie libre acceptée (Q3). */
+function RangeBoundInput({ repoPath, label, value, onChange, testId }: {
+  repoPath: string
+  label: string
+  value: string
+  onChange: (v: string) => void
+  testId: string
+}) {
+  const { data: baselines = [] } = useQuery({ queryKey: ['baseline:list', repoPath], queryFn: () => api.baseline.list(repoPath), enabled: !!repoPath })
+  const { data: commits = [] } = useQuery({ queryKey: ['sync:log', repoPath, 50], queryFn: () => api.sync.log(repoPath, 50), enabled: !!repoPath })
+  const listId = `${testId}-options`
+  return (
+    <div>
+      <label className="block text-sm font-medium text-ink mb-1">{label}<span className="text-status-danger ml-1">*</span></label>
+      <input
+        className="w-full text-sm bg-surface border border-edge rounded px-2 py-1.5 text-ink font-mono"
+        list={listId}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        data-testid={testId}
+      />
+      <datalist id={listId}>
+        {baselines.map(b => <option key={`t-${b.tag}`} value={b.tag}>{b.message}</option>)}
+        {commits.map(c => <option key={`c-${c.sha}`} value={c.sha.slice(0, 7)}>{c.message.split('\n')[0]}</option>)}
+      </datalist>
+    </div>
   )
 }

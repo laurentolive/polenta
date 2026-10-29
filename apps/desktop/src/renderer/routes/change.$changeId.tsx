@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Trash2 } from 'lucide-react'
-import { fieldValueToText, flattenSystemNodes, isFieldRequiredNow, objectFieldReader, type UpdateChangeDto } from '@polenta/types'
+import { fieldValueToText, flattenSystemNodes, isFieldRequiredNow, objectFieldReader, type ChangeImpactRow, type ChangeImpactStatus, type UpdateChangeDto } from '@polenta/types'
 import { api } from '../api'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { DynamicField } from '../components/DynamicField'
@@ -12,6 +12,7 @@ import { LinkList } from '../components/links/LinkList'
 import { RichTextProvider } from '../contexts/RichTextContext'
 import { HistorySection } from '../components/history/HistorySection'
 import { ImpactedList, ToModifyList, useRepoElements } from '../components/changes/ChangeElements'
+import { ChangeAnalysisSection } from '../components/changes/ChangeAnalysisSection'
 import { decodeProjectId } from '../lib/projectId'
 import { useProjectSchema, getChangeTypeDef } from '../hooks/useProjectSchema'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
@@ -51,8 +52,15 @@ function ChangePage() {
     onSuccess: saved => {
       qc.setQueryData(['change', repoPath, changeId], (prev: typeof change) => ({ ...prev, ...saved }))
       qc.invalidateQueries({ queryKey: ['changes'] })
+      qc.invalidateQueries({ queryKey: ['change-analysis', repoPath, changeId] })
       setEditingFields(null)
     },
+  })
+  // GH199 — analyse d'impact (live ; instantané figé au statut terminal).
+  const analysisQuery = useQuery({
+    queryKey: ['change-analysis', repoPath, changeId],
+    queryFn: () => api.changes.analysis(repoPath, changeId),
+    enabled: !!repoPath,
   })
   const remove = useMutation({
     mutationFn: () => api.changes.delete(repoPath, changeId),
@@ -75,6 +83,20 @@ function ChangePage() {
   const fieldText = (key: string) => fieldValueToText(change.fields?.[key])
   const startEditingFields = () => setEditingFields(Object.fromEntries((typeDef?.fields ?? []).map(f => [f.name, fieldText(f.name)])))
   const saveFields = () => { if (editingFields && !update.isPending) update.mutate({ fields: editingFields }) }
+  // Lignes des impactés : celles de l'analyse (déclarées + calculées) ; à défaut, les déclarées.
+  const frozen = !!analysisQuery.data?.frozen
+  const impactRows: ChangeImpactRow[] = analysisQuery.data?.rows
+    ?? change.impacted.map(i => ({ id: i.id, elementType: null, title: null, status: i.status, ...(i.comment && { comment: i.comment }), source: i.source, reached: true }))
+  // Statut d'un élément (ligne de la liste ou nœud d'arbre) : ligne existante mise à jour, sinon
+  // ligne calculée ajoutée ; le main n'écrit que les lignes portant une saisie (Q2).
+  const setImpact = (id: string, status: ChangeImpactStatus, comment: string | undefined) => {
+    const exists = change.impacted.some(i => i.id === id)
+    update.mutate({
+      impacted: exists
+        ? change.impacted.map(i => (i.id === id ? { ...i, status, comment } : i))
+        : [...change.impacted, { id, status, comment, source: 'computed' as const }],
+    })
+  }
   const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
   return (
@@ -180,12 +202,25 @@ function ChangePage() {
               disabled={update.isPending}
             />
             <ImpactedList
-              items={change.impacted}
-              onChange={impacted => update.mutate({ impacted })}
+              rows={impactRows}
+              onSetImpact={setImpact}
+              onAddDeclared={ids => update.mutate({ impacted: [...change.impacted, ...ids.map(id => ({ id, status: 'impact_non_verifie' as const, source: 'declared' as const }))] })}
+              onRemoveDeclared={id => update.mutate({ impacted: change.impacted.filter(i => i.id !== id) })}
               repoPath={repoPath}
               projectId={projectId}
               workspaceDir={workspaceDir}
               elements={elements}
+              disabled={update.isPending || frozen}
+            />
+
+            <ChangeAnalysisSection
+              change={change}
+              analysis={analysisQuery.data}
+              isFetching={analysisQuery.isFetching}
+              onRefresh={() => analysisQuery.refetch()}
+              onSetImpact={setImpact}
+              repoPath={repoPath}
+              projectId={projectId}
               disabled={update.isPending}
             />
 

@@ -117,6 +117,8 @@ export interface ChangeSummary {
   impactedCount: number
   /** Auteur du premier statut (historique GH77), pour le filtre « mes changes ». */
   createdBy: string | null
+  /** GH199 — éléments listés (à modifier et impactés), pour « Analyser l'impact » d'un élément. */
+  elementIds: string[]
 }
 
 export interface CreateChangeDto {

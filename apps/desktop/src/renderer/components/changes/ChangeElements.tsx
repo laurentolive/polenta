@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
-import { CHANGE_IMPACT_STATUSES, type ChangeImpacted, type ChangeImpactStatus, type ChangeToModify, type ProjectSchema } from '@polenta/types'
+import { CHANGE_IMPACT_STATUSES, CLOSED_IMPACT_STATUSES, type ChangeImpactRow, type ChangeImpactStatus, type ChangeToModify, type ProjectSchema } from '@polenta/types'
 import { api } from '../../api'
 import { getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
 import { ChangeElementPicker } from './ChangeElementPicker'
@@ -111,41 +111,56 @@ export function ToModifyList({ items, onChange, ...p }: ListProps & {
   )
 }
 
-export function ImpactedList({ items, onChange, ...p }: ListProps & {
-  items: ChangeImpacted[]
-  onChange: (items: ChangeImpacted[]) => void
+/**
+ * Éléments impactés : déclarés et calculés par l'analyse (GH199), un statut par élément. Seuls les
+ * déclarés se retirent ; une ligne calculée qui n'est plus atteinte est signalée.
+ */
+export function ImpactedList({ rows, onSetImpact, onAddDeclared, onRemoveDeclared, ...p }: ListProps & {
+  rows: ChangeImpactRow[]
+  onSetImpact: (id: string, status: ChangeImpactStatus, comment: string | undefined) => void
+  onAddDeclared: (ids: string[]) => void
+  onRemoveDeclared: (id: string) => void
 }) {
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
-  const patch = (id: string, change: Partial<ChangeImpacted>) => onChange(items.map(i => (i.id === id ? { ...i, ...change } : i)))
+  const [openOnly, setOpenOnly] = useState(false)
+  const shown = openOnly ? rows.filter(r => !CLOSED_IMPACT_STATUSES.includes(r.status)) : rows
   return (
     <section className="border rounded p-3 mb-4" data-testid="change-impacted">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-3">
         <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">{t('changes.impacted')}</p>
+        <div className="flex-1" />
+        {rows.length > 0 && (
+          <label className="flex items-center gap-1 text-xs text-ink-3 cursor-pointer">
+            <input type="checkbox" checked={openOnly} onChange={e => setOpenOnly(e.target.checked)} data-testid="change-impacted-open-only" />
+            {t('changes.openOnly')}
+          </label>
+        )}
         {!p.disabled && (
           <button type="button" className="text-xs text-prim hover:underline" onClick={() => setPicking(true)} data-testid="change-impacted-add">
             {t('changes.add')}
           </button>
         )}
       </div>
-      {items.length === 0 ? <p className="text-xs text-ink-3">{t('changes.none')}</p> : (
+      {shown.length === 0 ? <p className="text-xs text-ink-3">{t('changes.none')}</p> : (
         <ul className="space-y-2">
-          {items.map(it => (
+          {shown.map(it => (
             <li key={it.id} className="text-sm" data-testid={`change-impacted-${it.id}`}>
               <div className="flex items-center gap-2">
                 <span className="flex-1 min-w-0"><ElementRef id={it.id} info={p.elements.get(it.id)} repoPath={p.repoPath} projectId={p.projectId} /></span>
                 {it.source === 'computed' && <span className="text-xs text-ink-3 shrink-0">{t('changes.computed')}</span>}
+                {!it.reached && <span className="text-xs text-status-warning shrink-0" data-testid="change-impacted-unreached">{t('changes.unreached')}</span>}
                 <select
                   className="text-xs bg-surface border border-edge rounded px-1 py-0.5 text-ink shrink-0"
                   value={it.status}
                   disabled={p.disabled}
                   aria-label={t('changes.impactStatus')}
-                  onChange={e => patch(it.id, { status: e.target.value as ChangeImpactStatus })}
+                  onChange={e => onSetImpact(it.id, e.target.value as ChangeImpactStatus, it.comment)}
                 >
                   {CHANGE_IMPACT_STATUSES.map(s => <option key={s} value={s}>{t(STATUS_LABEL_KEY[s])}</option>)}
                 </select>
-                {!p.disabled && (
-                  <button type="button" className="text-ink-3 hover:text-status-danger" title={t('changes.remove')} onClick={() => onChange(items.filter(i => i.id !== it.id))}>
+                {!p.disabled && it.source === 'declared' && (
+                  <button type="button" className="text-ink-3 hover:text-status-danger" title={t('changes.remove')} onClick={() => onRemoveDeclared(it.id)}>
                     <X size={13} />
                   </button>
                 )}
@@ -153,7 +168,7 @@ export function ImpactedList({ items, onChange, ...p }: ListProps & {
               <CommentInput
                 value={it.comment ?? ''}
                 disabled={p.disabled}
-                onCommit={comment => { if (comment !== (it.comment ?? '')) patch(it.id, { comment: comment || undefined }) }}
+                onCommit={comment => { if (comment !== (it.comment ?? '')) onSetImpact(it.id, it.status, comment || undefined) }}
               />
             </li>
           ))}
@@ -164,12 +179,9 @@ export function ImpactedList({ items, onChange, ...p }: ListProps & {
           repoPath={p.repoPath}
           workspaceDir={p.workspaceDir}
           title={t('changes.pickImpacted')}
-          excluded={new Set(items.map(i => i.id))}
+          excluded={new Set(rows.map(r => r.id))}
           onClose={() => setPicking(false)}
-          onAdd={ids => {
-            onChange([...items, ...ids.map(id => ({ id, status: 'impact_non_verifie' as const, source: 'declared' as const }))])
-            setPicking(false)
-          }}
+          onAdd={ids => { onAddDeclared(ids); setPicking(false) }}
         />
       )}
     </section>

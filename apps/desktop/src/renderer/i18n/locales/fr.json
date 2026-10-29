@@ -2231,6 +2231,28 @@
     "componentHelp": "Le change est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit.",
     "pickToModify": "Ajouter des éléments à modifier",
     "pickImpacted": "Ajouter des éléments impactés",
-    "noFlagged": "Aucun élément à revérifier."
+    "noFlagged": "Aucun élément à revérifier.",
+    "mode": {
+      "label": "Nature",
+      "request": "Demande de changement",
+      "range": "Sur l'existant",
+      "from": "Depuis (baseline ou commit)",
+      "to": "Jusqu'à (baseline ou commit)",
+      "rangeHelp": "Les exigences et tests modifiés entre les deux bornes sont ajoutés aux éléments à modifier ; l'analyse porte sur l'état à la seconde borne."
+    },
+    "openOnly": "Ouverts seulement",
+    "unreached": "n'est plus atteint",
+    "analysis": {
+      "title": "Analyse d'impact",
+      "request": "Demande — état courant",
+      "range": "Sur l'existant : {{from}} → {{to}}",
+      "computed": "calculée le {{when}}",
+      "frozen": "figée le {{when}}",
+      "noRoot": "Aucun élément de départ.",
+      "noImpact": "aucun impact",
+      "campaigns": "Campagnes en cours concernées"
+    },
+    "analyzeImpact": "Analyser l'impact",
+    "openChange": "Ouvrir"
   }
 }

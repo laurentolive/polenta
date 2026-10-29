@@ -98,6 +98,7 @@ export class ChangesService {
         id: c.id, repoPath: repo, objectTypeRef: c.objectTypeRef, title: c.title, status: c.status,
         component: c.component, toModifyCount: c.toModify.length, impactedCount: c.impacted.length,
         createdBy: c.history?.status?.[0]?.by ?? null,
+        elementIds: [...new Set([...c.toModify.map(t => t.id), ...c.impacted.map(i => i.id)])],
       }))))
     return perRepo.flat()
   }

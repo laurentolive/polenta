@@ -77,7 +77,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={requestClose}>
       <div
-        className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto"
+        className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-5xl mx-4 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

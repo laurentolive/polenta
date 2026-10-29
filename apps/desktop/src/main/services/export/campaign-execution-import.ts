@@ -123,6 +123,8 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
   const campaignId = props.get('campaignId')
   if (!campaignId) return { fatal: { code: 'not_an_execution_sheet' } }
 
+  // La carte ne vaut que pour un classeur v3 ; v1 / v2 : ordre fixe des colonnes.
+  if (Number(props.get('formatVersion')) < 3) columnIds = [...EXECUTION_SHEET_COLUMNS]
   const col = (c: ExecutionSheetColumn) => columnIds.indexOf(c) + 1
   const fieldColumns = columnIds.map((id, i) => ({ id, index: i + 1 })).filter(c => c.id.startsWith('run:') || c.id.startsWith('step:'))
   const rows: RawExecutionRow[] = []

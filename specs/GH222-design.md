@@ -321,3 +321,32 @@ nœuds masqués) ; `ObjectDiffView`, `StepsDiff`, `RenderedObjectPane`, `Conflic
 | **2 — Mise en évidence** | §4 : jetons, `@codemirror/merge` (Raw des vues de diff), `rawDiff.ts` (Raw du merge), règle de vue d'ensemble, navigation, actions dans tous les panneaux, gauche / droite / les deux / réinitialiser, liste de fichiers | e2e `gh222-raw-*` ; vues Rendu existantes inchangées |
 | **3 — Vue générique : diff** | §5.1, §5.2 en diff : `TreeDiffLayout`, `StructureColumn`, `TreeDiffView`, rendu typé, `.drawio` ; retrait `ObjectDiffView` / `StepsDiff` | e2e `gh178-*` adaptés, `gh222-tree-diff-*` |
 | **4 — Vue générique : merge** | §5 en merge : `TreeMergeView`, édition en place, actions en ligne, pages `.drawio` ; retrait `RenderedObjectPane` ; mises à jour SPEC | e2e `gh222-tree-merge-*` ; validation finale |
+| **5 — Édition depuis le diff** | §9 : enregistrement d'un fichier du working tree depuis `/diff`, Raw éditable (rétablir un bloc), Rendu éditable (modifier, rétablir, ajouter) | e2e `gh222-diff-edit` ; re-validation |
+
+## 9. Édition depuis la vue de diff (spec §12, sprint 5)
+
+- **Main** : `DiffEditService.saveWorkingFile(repoPath, filepath, text, baseline, workspaceDir?)`
+  (`diff-edit.service.ts`), canal `diff:save-working-file` (ajouté à `GRAPH_WRITE_CHANNELS` et à la
+  liste blanche du client web, argument repo `[0]`). Résultat `{ ok: true }` ou
+  `{ ok: false, reason: 'changed' | 'invalid' | 'unsupported' | 'outside', message?, keys? }` :
+  - chemin hors du repo → `outside` ; contenu du disque ≠ `baseline` (le texte chargé) → `changed` ;
+  - exigence / test (type résolu, catégorie `requirement` / `test`) : validations du merge (YAML,
+    `id` = nom de fichier, type, statut connus) puis **service de l'objet** —
+    `requirements.update({ title, fields }, removeNullFields)` + `requirements.transition` si le
+    statut change ; `tests.update({ title, status, preconditions, equipment, steps,
+    postconditions, fields })`. Les clés gérées par l'app (`history`, `version`,
+    `needsRevalidation`, dates) sont ignorées ; une autre clé racine modifiée → `unsupported`
+    (avec la liste) : à faire depuis l'éditeur de l'objet ;
+  - autre fichier : YAML valide exigé pour un `.yaml`, puis écriture du texte.
+- **Renderer** : `FileDiffView` porte le **brouillon** (texte du côté Après) quand le diff est une
+  modification locale d'un fichier présent et texte ; bouton « Enregistrer » / `Ctrl+S`,
+  `useRegisterTabDirty`, « Recharger » sur `changed`. Le diff (Raw et Rendu) est calculé contre ce
+  brouillon.
+  - Raw : `MergeView` avec le côté B éditable et `revertControls: 'a-to-b'` (« ← Rétablir » entre
+    les colonnes) ; en ligne : `mergeControls` limité à « Rétablir » (rejet du bloc).
+  - Rendu : `TreeDiffView` reçoit `edit` (texte, `onChange`) : valeurs éditables côté Après
+    (mêmes widgets que la sortie du merge), « ← Rétablir » sur une rangée modifiée / ajoutée /
+    retirée, « + Ajouter » sous une liste (copie du dernier élément ou élément vide) et sous un
+    mapping (clé saisie). Les modifications passent par `lib/yamlEdit.ts` (chargement, modification
+    au chemin de la rangée — éléments retrouvés comme `outputAt` —, réécriture dans le style du
+    fichier).

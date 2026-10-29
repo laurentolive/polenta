@@ -89,6 +89,11 @@ describe('classeur v3', () => {
     expect(tbRow.getCell(c + 2).protection?.locked).not.toBe(false)
     expect(tbRow.getCell(c + 5).protection?.locked).toBe(false)
     expect(tbRow.getCell(c + 5).dataValidation?.formulae).toEqual(['"B1,B2"'])
+    // Champ `link` vide : visuel de lien (bleu souligné) ; la ligne d'instance reste en gras.
+    const tnRow = sheet.getRow(EXECUTION_SHEET_HEADER_ROW + 1)
+    expect(tnRow.getCell(1).value).toBe('TN-1-1')
+    expect(tnRow.getCell(c + 4).font).toMatchObject({ underline: true, color: { argb: 'FF0563C1' } })
+    expect(tnRow.getCell(c + 2).font?.bold).toBe(true)
     // Feuille protégée mais liens hypertexte autorisés (sinon Excel ne colle que le libellé).
     const protection = (sheet as unknown as { sheetProtection: Record<string, unknown> }).sheetProtection
     expect(protection.sheet).toBe(true)
@@ -210,6 +215,27 @@ describe('classeur v3', () => {
     expect(tn.fields).toMatchObject({ reportNumber: 'RE-119', report: { label: 'RE-118', url: 'https://ged/118' } })
     expect(tn.executedBy).toBe('alice')
     expect(tn.executedAt).toBe(new Date(2026, 9, 28, 14, 30).toISOString())
+  })
+
+  it('ancien run « TODO:current-user » : testeur vide à l\'export ; testeur saisi (sans compte) conservé au réimport', async () => {
+    const done = { ...campaign, runs: [{ ...campaign.runs[1], status: 'PASS', runId: 'RUN-2' }] } as unknown as TestCampaign
+    const prefill = {
+      id: 'RUN-2', testCaseId: 'TB-1', result: 'PASS', executedAt: new Date(2026, 9, 28, 9, 0).toISOString(), executedBy: 'TODO:current-user',
+      duration: 0, equipmentUsed: [], notes: '', fields: { bench: 'B1' }, stepResults: [{ order: 1, result: 'PASS', comment: '', executedAt: null }],
+    } as never
+    const model = buildExecutionSheetModel({
+      campaign: done, locale: 'fr', exportedAt: '2026-10-29T10:00:00Z',
+      entries: [{ run: done.runs[0], test: test('TB-1', 'root::tb'), typeDef: TB, prefill }],
+    })
+    const file = path.join(dir, 't.xlsx')
+    await (await buildExecutionWorkbook(model)).xlsx.writeFile(file)
+    await fill(file, (sheet, col, rowOf) => {
+      const head = sheet.getRow(rowOf('TB-1-1'))
+      expect(head.getCell(col('Testeur')).value ?? null).toBeNull()
+      head.getCell(col('Testeur')).value = 'LOL'
+    })
+    const preview = validateExecutionImport(await readExecutionWorkbook(file), { ...ctx(file), campaign: done })
+    expect(preview.importable.map(i => [i.entryId, i.executedBy])).toEqual([['TB-1-1', 'LOL']])
   })
 
   it('campagne sans champ d\'exécution : aucune colonne supplémentaire', async () => {

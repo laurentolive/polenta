@@ -452,8 +452,13 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.tests.create(repoPath, dto as CreateTestCaseDto, workspaceDir))
   r.handle('tests:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.tests.update(repoPath, id, dto as UpdateTestCaseDto, workspaceDir))
-  r.handle('tests:execute', (_e, repoPath: string, tcId: string, dto: unknown, workspaceDir?: string) =>
-    c.tests.execute(repoPath, tcId, dto as ExecuteTestCaseDto, workspaceDir))
+  r.handle('tests:execute', async (_e, repoPath: string, tcId: string, dto: unknown, workspaceDir?: string) => {
+    const exec = dto as ExecuteTestCaseDto
+    // GH196 — exécution saisie dans l'application : testeur = identité git de l'utilisateur (le classeur
+    // importé fournit le sien, libre : un technicien n'a pas forcément de compte).
+    const executedBy = exec.executedBy || (await c.auth.getAuthor(repoPath).catch(() => null))?.name || undefined
+    return c.tests.execute(repoPath, tcId, { ...exec, ...(executedBy && { executedBy }) }, workspaceDir)
+  })
   r.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
     c.tests.findRuns(repoPath, tcId))
   // GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris.

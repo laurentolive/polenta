@@ -145,7 +145,8 @@ export function buildExecutionSheetModel(input: {
       ...(prefill && test && {
         prefill: {
           verdict: labels.globalVerdicts[prefill.result],
-          tester: prefill.executedBy,
+          // Runs écrits avant GH196 par l'application : marqueur sans valeur, laissé vide.
+          tester: prefill.executedBy === 'TODO:current-user' ? '' : prefill.executedBy,
           date: excelDate(prefill.executedAt),
           comment: plain(prefill.notes),
           fields: prefill.fields,
@@ -331,6 +332,10 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
 
     const editable = new Set<string>([...EDITABLE[r.kind], ...r.fieldIds])
     const lockedFill = solid(r.kind === 'instance' ? FILL_INSTANCE : FILL_LOCKED)
+    // Police de ligne posée avant les cellules : `row.font` s'applique à toutes les cellules et
+    // écraserait le style « lien » des champs `link`.
+    if (r.kind === 'instance') row.font = { bold: true }
+    else row.outlineLevel = 1
     columns.forEach((sc, i) => {
       const cell = row.getCell(i + 1)
       const id = columnId(sc)
@@ -341,6 +346,8 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
         if (!editable.has(id)) { cell.fill = lockedFill; return }        // sans objet : grisée, verrouillée
         cell.protection = { locked: false }
         cell.fill = solid(FILL_INPUT)
+        // Champ `link` : visuel de lien (bleu souligné) même vide — un lien collé ou saisi en a l'allure.
+        if (f.type === 'link') cell.font = { ...(cell.font ?? {}), color: { argb: 'FF0563C1' }, underline: true }
         const existing = r.prefill?.fields?.[f.name]
         if (existing !== undefined && existing !== null && existing !== '') {
           // GH196 — valeur déjà saisie (dernier run).
@@ -390,11 +397,6 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
       }
       if (c === 'date' && r.kind === 'instance') cell.numFmt = model.locale === 'fr' ? 'dd/mm/yyyy hh:mm' : 'yyyy-mm-dd hh:mm'
     })
-    if (r.kind === 'instance') {
-      row.font = { bold: true }
-    } else {
-      row.outlineLevel = 1
-    }
   }
 
   sheet.autoFilter = {

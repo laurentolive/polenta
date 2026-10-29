@@ -520,7 +520,11 @@
       "historyValue": "Historiser : valeur, date et auteur à chaque changement",
       "historyEvent": "Historiser : date et auteur à chaque changement (le contenu est déjà dans git)",
       "historyNotTrackable": "Ce champ ne peut pas être historisé",
-      "trackStatusHistory": "Historiser le statut (valeur, date et auteur à chaque changement)"
+      "trackStatusHistory": "Historiser le statut (valeur, date et auteur à chaque changement)",
+      "colRequiredWhen": "Oblig. si",
+      "colRequiredWhenTitle": "Obligatoire quand un champ a une des valeurs : « status = approved » ou « champ = v1, v2 ; autre = v3 » (statut, enum, multi_enum, boolean du type)",
+      "linkMultiple": "Multiple",
+      "linkMultipleTitle": "Plusieurs liens dans ce champ"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -2106,5 +2110,23 @@
       "repo": "Dépôt",
       "permission": "Droit"
     }
+  },
+  "linkField": {
+    "label": "Libellé",
+    "labelPlaceholder": "Libellé (facultatif)",
+    "url": "URL",
+    "urlPlaceholder": "https://…, file://… ou \\\\serveur\\partage\\…",
+    "invalidUrl": "URL non prise en charge : http(s)://, file:// ou chemin réseau \\\\serveur\\partage.",
+    "invalidLabel": "Le libellé ne peut contenir ni « | » ni retour à la ligne.",
+    "add": "+ Ajouter un lien",
+    "remove": "Retirer ce lien",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "ok": "OK",
+    "copy": "Copier",
+    "copied": "Copié",
+    "pasteRejected_one": "{{count}} lien ignoré (schéma d’URL non pris en charge).",
+    "pasteRejected_other": "{{count}} liens ignorés (schéma d’URL non pris en charge).",
+    "pasteSingleOnly": "Ce champ ne garde qu’un lien : seul le premier a été collé."
   }
 }

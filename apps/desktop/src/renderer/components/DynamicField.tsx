@@ -2,6 +2,7 @@ import type { SchemaField } from '@polenta/types'
 import { RichTextField } from './RichTextField'
 import { MultiEnumCheckboxes } from './MultiEnumCheckboxes'
 import { UserFieldInput } from './system/UserFieldInput'
+import { LinkEditor } from './links/LinkEditor'
 
 interface Props {
   field: SchemaField
@@ -15,16 +16,20 @@ interface Props {
   /** Ctrl/Cmd+Entrée dans un champ `richtext` : valide la saisie (soumet le formulaire,
    *  déclenche « Enregistrer »…). Ignoré pour les autres types de champ. */
   onSubmit?: () => void
+  /** GH195 — obligatoire en ce moment (`required` ou condition `requiredWhen` vraie), calculé par
+   *  l'appelant sur les valeurs en cours ; absent = `field.required`. */
+  requiredNow?: boolean
 }
 
-export function DynamicField({ field, value, onChange, disabled, repoPath, interfaceRoles, onSubmit }: Props) {
+export function DynamicField({ field, value, onChange, disabled, repoPath, interfaceRoles, onSubmit, requiredNow }: Props) {
   const label = field.label ?? field.name ?? ''
+  const required = requiredNow ?? field.required
 
   return (
     <div>
       <label className="block text-sm font-medium text-ink mb-1">
         {label}
-        {field.required && <span className="text-status-danger ml-1">*</span>}
+        {required && <span className="text-status-danger ml-1">*</span>}
       </label>
       {field.type === 'richtext' ? (
         <RichTextField
@@ -72,6 +77,8 @@ export function DynamicField({ field, value, onChange, disabled, repoPath, inter
           disabled={disabled}
           interfaceRoles={interfaceRoles}
         />
+      ) : field.type === 'link' ? (
+        <LinkEditor value={value} onChange={onChange} multiple={field.multiple} disabled={disabled} />
       ) : field.type === 'user' ? (
         // GH45 S4 — membres de l'organisation proposés (forge Forgejo), saisie libre conservée.
         <UserFieldInput

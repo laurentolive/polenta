@@ -1,6 +1,7 @@
 import {
   TEST_RUN_STATUS_LABELS,
   isLinkValue,
+  linkPlainText,
   readLinkValues,
   type CampaignExportPayload,
   type CampaignStatus,
@@ -10,7 +11,6 @@ import {
 } from '@polenta/types'
 import { markdownToPlainText } from './markdown-to-text'
 import { defineRich, type RichConverter } from './template-data'
-import { linkPlainText } from '../link-cell.util'
 
 // Libellés français des statuts sans table partagée (l'écran de campagne affiche la valeur brute ;
 // les résultats d'étape suivent `campaignPage.stepResult` / `runStatus` de l'i18n).

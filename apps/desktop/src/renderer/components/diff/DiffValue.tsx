@@ -42,7 +42,7 @@ export function DiffValue({ unit, value, other, side, media, typeDef, repoPath, 
       // Lists of steps are aligned by StepsDiff; anything else is shown as is.
       return <RawValue value={value} />
     case 'field':
-      if (typeof value === 'object' && unit.field?.type !== 'multi_enum') return <RawValue value={value} />
+      if (typeof value === 'object' && unit.field?.type !== 'multi_enum' && unit.field?.type !== 'link') return <RawValue value={value} />
       if (unit.field?.type === 'text' && typeof value === 'string') {
         return <p className="text-sm text-ink whitespace-pre-wrap"><WordDiffText text={value} other={otherText} side={side} /></p>
       }

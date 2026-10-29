@@ -25,7 +25,7 @@ import { useVersioning } from '../../contexts/VersioningContext'
 import { useTabs } from '../../contexts/TabsContext'
 import { useProjectSchema, getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
 import { useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorkspaceLinks'
-import { flattenSystemNodes } from '@polenta/types'
+import { flattenSystemNodes, fieldValueToText } from '@polenta/types'
 import type { ObjectLink, Requirement, TestCase, CoverageStatus, MatrixCell } from '@polenta/types'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 
@@ -72,7 +72,7 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
       author: o.createdBy ?? '',
       objectTypeRef: o.objectTypeRef ?? '',
       ...Object.fromEntries(
-        Object.entries(o.fields ?? {}).map(([k, v]) => [k, v == null ? '' : String(v)]),
+        Object.entries(o.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)]),
       ),
     }
   }, [loadedObject])

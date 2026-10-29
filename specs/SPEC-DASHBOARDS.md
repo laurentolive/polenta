@@ -57,6 +57,8 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 
 ---
 
+> **GH195 (contrat v1, ajout)** — type de champ `link` : valeur `GraphLinkValue` `{ label?, url }` ou liste (`GraphFieldDef.multiple`) ; `GraphFieldDef.requiredWhen` exposé tel que déclaré. `polenta.d.ts` régénéré (manifeste v4).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

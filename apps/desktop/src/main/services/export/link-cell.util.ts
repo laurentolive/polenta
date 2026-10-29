@@ -9,11 +9,6 @@ import {
 // stockée HYPERLINK dans le fichier), URL brute, `libellé | URL`, plusieurs lignes. `writeLinkCell`
 // écrit une cellule que `readLinkCell` relit sans perte.
 
-/** Texte d'un lien pour un document imprimable : `libellé (URL)`, ou l'URL seule. */
-export function linkPlainText(link: LinkValue): string {
-  return link.label ? `${link.label} (${link.url})` : link.url
-}
-
 /** Export docx Standard (lib `docx`) : un paragraphe par lien, hyperlien natif. `text` : forme
  *  texte `libellé | URL` reçue du renderer. */
 export function linkParagraphsDocx(text: string): Paragraph[] {

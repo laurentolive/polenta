@@ -40,7 +40,7 @@ import { requirementsExportBaseName, testsExportBaseName } from '../export/expor
 import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
-import { flattenSystemNodes, isComputedColumnKey } from '@polenta/types'
+import { flattenSystemNodes, isComputedColumnKey, fieldValueToText } from '@polenta/types'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
@@ -322,7 +322,7 @@ export function SystemView() {
         author: req.createdBy ?? '',
         objectTypeRef: req.objectTypeRef ?? '',
         ...Object.fromEntries(
-          Object.entries(req.fields ?? {}).map(([k, v]) => [k, v == null ? '' : String(v)]),
+          Object.entries(req.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)]),
         ),
       }
     }
@@ -338,7 +338,7 @@ export function SystemView() {
         author: tc.createdBy ?? '',
         objectTypeRef: tc.objectTypeRef ?? '',
         ...Object.fromEntries(
-          Object.entries(tc.fields ?? {}).map(([k, v]) => [k, v == null ? '' : String(v)]),
+          Object.entries(tc.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)]),
         ),
       }
     }

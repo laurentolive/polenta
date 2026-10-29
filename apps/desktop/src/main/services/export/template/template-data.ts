@@ -5,10 +5,9 @@ import type {
   TemplateOutlineEntry,
   TestsExportPayload,
 } from '@polenta/types'
-import { parseLinksText, type LinkValue } from '@polenta/types'
+import { linkPlainText, parseLinksText, type LinkValue } from '@polenta/types'
 import { markdownToPlainText } from './markdown-to-text'
 import { textParagraphs, type RichFragment } from './markdown-to-ooxml'
-import { linkPlainText } from '../link-cell.util'
 
 /** GH195 — liens d'un champ `link` → fragment OOXML (hyperliens natifs du paquet du gabarit). */
 export type LinkRenderer = (links: LinkValue[]) => RichFragment

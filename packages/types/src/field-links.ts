@@ -53,6 +53,11 @@ export function formatLinksText(links: LinkValue[]): string {
   return links.map(formatLinkText).join('\n')
 }
 
+/** Texte d'un lien pour un document ou un diff : `libellé (URL)`, ou l'URL seule. */
+export function linkPlainText(link: LinkValue): string {
+  return link.label ? `${link.label} (${link.url})` : link.url
+}
+
 /** Libellé affiché : le libellé, ou l'URL quand il est vide. */
 export function linkDisplayText(link: LinkValue): string {
   return link.label || link.url

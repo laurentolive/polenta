@@ -13,7 +13,9 @@ import { FrozenParamRefProvider } from '../contexts/ParamRefContext'
 import { isT171Run, substituteRunParams } from '../lib/testParams'
 import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
-import { useProjectSchema, isTestApproved, testStatusLabel, getTestTypeDef } from '../hooks/useProjectSchema'
+import { useProjectSchema, isTestApproved, testStatusLabel } from '../hooks/useProjectSchema'
+import { useTestTypeDef } from '../hooks/useTestTypeDef'
+import { decodeProjectId } from '../lib/projectId'
 import { DynamicField } from '../components/DynamicField'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import { isFieldRequiredNow, runFieldReader } from '@polenta/types'
@@ -51,6 +53,8 @@ interface StepExecState {
   /** GH196 — valeurs des champs d'étape (chaînes, converties par le main). */
   fields: Record<string, string>
 }
+
+const EMPTY_DEFS: SchemaField[] = []
 
 /** GH196 — valeurs initiales d'une liste de champs : `default` du schéma pré-rempli (Q7). */
 function defaultFieldValues(defs: SchemaField[]): Record<string, string> {
@@ -122,11 +126,11 @@ function ExecuteEntryPage() {
   const testChanged = !!lockedTest && !!currentTest && JSON.stringify(lockedTest) !== JSON.stringify(currentTest)
 
   const sortedSteps = [...(testCase?.steps ?? [])].sort((a, b) => a.order - b.order)
-  // GH196 — champs d'exécution et d'étape du type du test (schéma du repo ouvert ; un test de
-  // composant non résolu ici est contrôlé par le main, qui lit le schéma du composant).
-  const testTypeDef = testCase ? getTestTypeDef(schema, testCase.objectTypeRef) : undefined
-  const runDefs = testTypeDef?.runFields ?? []
-  const stepDefs = testTypeDef?.stepFields ?? []
+  // GH196 — champs d'exécution et d'étape du type du test, lu par le main (schéma du composant
+  // compris : même type que celui qui contrôle l'écriture du run).
+  const { data: testTypeDef } = useTestTypeDef(repoPath, testCase?.objectTypeRef, projectId ? decodeProjectId(projectId) : undefined)
+  const runDefs = testTypeDef?.runFields ?? EMPTY_DEFS
+  const stepDefs = testTypeDef?.stepFields ?? EMPTY_DEFS
   const [runFieldValues, setRunFieldValues] = useState<Record<string, string>>({})
 
   const [stepStates, setStepStates] = useState<StepExecState[]>([])
@@ -147,7 +151,13 @@ function ExecuteEntryPage() {
       )
       setRunFieldValues(defaultFieldValues(runDefs))
     }
-  }, [testCase]) // eslint-disable-line react-hooks/exhaustive-deps -- défauts lus avec la version du test
+  }, [testCase]) // eslint-disable-line react-hooks/exhaustive-deps -- défauts complétés par l'effet suivant
+
+  // Q7 — le type peut arriver après le test : défauts ajoutés sans écraser une saisie.
+  useEffect(() => {
+    setRunFieldValues(prev => ({ ...defaultFieldValues(runDefs), ...prev }))
+    setStepStates(prev => prev.map(s => ({ ...s, fields: { ...defaultFieldValues(stepDefs), ...s.fields } })))
+  }, [runDefs, stepDefs])
 
   useEffect(() => {
     if (!resultOverridden) {

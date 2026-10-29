@@ -277,7 +277,8 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
 
   const globalList = listFormula(Object.values(labels.globalVerdicts))
   const stepList = listFormula(Object.values(labels.stepVerdicts))
-  const booleanList = listFormula(model.locale === 'fr' ? ['Oui', 'Non'] : ['Yes', 'No'])
+  const booleanWords = model.locale === 'fr' ? ['Oui', 'Non'] : ['Yes', 'No']
+  const booleanList = listFormula(booleanWords)
 
   let rowNumber = EXECUTION_SHEET_HEADER_ROW
   for (const r of model.rows) {
@@ -305,9 +306,13 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
         // Q7 — valeur par défaut pré-remplie.
         if (f.default !== undefined && f.default !== '') {
           if (f.type === 'link') writeLinkCell(cell, readLinkValues(f.default))
+          else if (f.type === 'boolean') cell.value = booleanWords[String(f.default) === 'true' ? 0 : 1]
           else cell.value = f.type === 'number' && Number.isFinite(Number(f.default)) ? Number(f.default) : String(f.default)
         }
-        const list = f.type === 'enum' && f.values?.length ? listFormula(f.values) : f.type === 'boolean' ? booleanList : null
+        // Liste déroulante seulement si Excel peut la porter (pas de virgule, 255 caractères au plus) ;
+        // sinon les valeurs restent dans le commentaire d'en-tête.
+        const enumList = f.type === 'enum' && f.values?.length && f.values.every(v => !v.includes(',')) ? listFormula(f.values) : null
+        const list = enumList && enumList.length <= 257 ? enumList : f.type === 'boolean' ? booleanList : null
         if (list) {
           cell.dataValidation = { type: 'list', allowBlank: true, formulae: [list], showErrorMessage: f.type === 'boolean' || f.type === 'enum', errorTitle: f.label ?? f.name }
         }

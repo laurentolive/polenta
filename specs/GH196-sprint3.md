@@ -34,3 +34,14 @@
 mixte (listes déroulantes, commentaires d'en-tête, cellules grisées non modifiables), le remplir
 (dont un lien hypertexte), le réimporter ; consulter un run (liens cliquables, « hors schéma »
 après retrait d'un champ du schéma).
+
+## Revue de code (`/code-review` sur la PR #219)
+
+Corrigé : test d'un composant (la page d'exécution lit désormais le type par le main, canal
+`tests:type-def`, au lieu du seul schéma du repo ouvert) ; défauts pré-remplis perdus quand le type
+arrive après le test ; import : saisie sur un test dont le type est introuvable refusée au lieu d'être
+perdue, cellules d'une étape non exécutée ni lues ni contrôlées ; liste déroulante Excel omise pour un
+enum avec virgule ou trop long ; nom `result` réservé ; dates / datetimes validées et normalisées
+(cellule Excel lue en heure locale) ; défaut booléen écrit Oui / Non. Laissé : double lecture du schéma
+à l'import (contrôle répété dans `execute`, optimisation possible) ; taille du graphe (notes et étapes
+des runs exposées, choix de la spec §7).

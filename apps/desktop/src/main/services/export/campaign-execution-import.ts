@@ -300,6 +300,11 @@ function validateInstance(
   // GH196 — champs d'exécution (ligne d'instance) et d'étape (lignes d'étape exécutées).
   const typeDef = ctx.typeDefs?.get(entryId)
   let runFields: Record<string, unknown> | undefined
+  // Champs saisis mais type du test introuvable : refus plutôt que perte silencieuse (run immuable).
+  const filledRow = [head, ...stepRows].find(r => Object.keys(r.fields).length > 0)
+  if (ctx.typeDefs && !typeDef && filledRow) {
+    return { error: { code: 'invalid_field_value', row: filledRow.row, field: Object.keys(filledRow.fields)[0], message: `type du test ${run.testCaseId} introuvable : champs d'exécution non lisibles` } }
+  }
   if (typeDef) {
     const read = (
       defs: SchemaField[], list: 'runFields' | 'stepFields', row: RawExecutionRow,
@@ -324,9 +329,11 @@ function validateInstance(
     if ('error' in runRead) return { error: runRead.error }
     const stepValues: Record<string, unknown>[] = []
     for (const [i, row] of stepRows.entries()) {
+      // Q3 — étape non exécutée : ses cellules ne sont ni lues ni contrôlées.
+      if (stepResults[i].result === 'NOT_EXECUTED') { stepValues.push({}); continue }
       const sr = read(typeDef.stepFields ?? [], 'stepFields', row)
       if ('error' in sr) return { error: sr.error }
-      stepValues.push(stepResults[i].result === 'NOT_EXECUTED' ? {} : sr.values)
+      stepValues.push(sr.values)
     }
     const prepared = prepareRunFields(typeDef, {
       result, fields: runRead.values,

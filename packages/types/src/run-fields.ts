@@ -76,13 +76,45 @@ export function convertFieldValue(def: SchemaField, raw: unknown): FieldConversi
       const n = normalizeLinkField(def, raw)
       return n.ok ? { ok: true, value: n.value } : { ok: false, reason: n.reason }
     }
-    case 'date':
-      return { ok: true, value: raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).trim() }
-    case 'datetime':
-      return { ok: true, value: raw instanceof Date ? raw.toISOString() : String(raw).trim() }
+    case 'date': {
+      const d = parseDateParts(raw)
+      return d ? { ok: true, value: `${d.y}-${pad(d.mo)}-${pad(d.d)}` } : refuse('date AAAA-MM-JJ ou JJ/MM/AAAA attendue')
+    }
+    case 'datetime': {
+      const d = parseDateParts(raw)
+      if (!d) return refuse('date et heure attendues')
+      const local = new Date(d.y, d.mo - 1, d.d, d.h, d.mi)
+      return Number.isNaN(local.getTime()) ? refuse('date et heure attendues') : { ok: true, value: local.toISOString() }
+    }
     default:
       return { ok: true, value: typeof raw === 'string' ? raw : String(raw) }
   }
+}
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/**
+ * Composantes d'une date saisie : `Date` d'une cellule Excel (sans fuseau, lue en UTC : composantes
+ * UTC = heure locale saisie), ou texte `AAAA-MM-JJ[ HH:mm]` / `JJ/MM/AAAA[ HH:mm]` / ISO complet.
+ */
+function parseDateParts(raw: unknown): { y: number; mo: number; d: number; h: number; mi: number } | null {
+  if (raw instanceof Date) {
+    if (Number.isNaN(raw.getTime())) return null
+    return { y: raw.getUTCFullYear(), mo: raw.getUTCMonth() + 1, d: raw.getUTCDate(), h: raw.getUTCHours(), mi: raw.getUTCMinutes() }
+  }
+  const text = String(raw).trim()
+  if (/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:?\d{2})$/.test(text)) {
+    const t = new Date(text)
+    if (Number.isNaN(t.getTime())) return null
+    return { y: t.getFullYear(), mo: t.getMonth() + 1, d: t.getDate(), h: t.getHours(), mi: t.getMinutes() }
+  }
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?$/.exec(text)
+  const parts = m ? { y: +m[1], mo: +m[2], d: +m[3], h: m[4] ? +m[4] : 0, mi: m[5] ? +m[5] : 0 } : null
+  m = parts ? null : /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(text)
+  const result = parts ?? (m ? { y: +m[3], mo: +m[2], d: +m[1], h: m[4] ? +m[4] : 0, mi: m[5] ? +m[5] : 0 } : null)
+  if (!result) return null
+  const check = new Date(result.y, result.mo - 1, result.d, result.h, result.mi)
+  return check.getFullYear() === result.y && check.getMonth() === result.mo - 1 && check.getDate() === result.d ? result : null
 }
 
 function verdictLabel(value: string): string {
@@ -175,6 +207,7 @@ export function runFieldIssues(types: ObjectTypeDefinition[]): RunFieldIssue[] {
       const names = new Set<string>()
       for (const def of defs) {
         if (!isRunFieldTypeAllowed(def.type)) push(def.name, `'${def.name}' : type ${def.type} non admis`)
+        if (def.name === RUN_RESULT_KEY) push(def.name, `'${RUN_RESULT_KEY}' est réservé (verdict)`)
         if (names.has(def.name)) push(def.name, `'${def.name}' déclaré deux fois`)
         names.add(def.name)
         const prev = seen.get(def.name)

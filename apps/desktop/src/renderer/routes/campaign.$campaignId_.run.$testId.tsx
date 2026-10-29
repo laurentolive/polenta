@@ -9,7 +9,8 @@ import { isT171Run, substituteRunParams } from '../lib/testParams'
 import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
 import { toIntlLocale } from '../i18n/useLocale'
-import { useProjectSchema, getTestTypeDef } from '../hooks/useProjectSchema'
+import { useTestTypeDef } from '../hooks/useTestTypeDef'
+import { decodeProjectId } from '../lib/projectId'
 import { RunFieldValues } from '../components/runs/RunFieldValues'
 import type { StepResultValue, TestRunResult } from '@polenta/types'
 
@@ -84,7 +85,7 @@ function TestRunViewPage() {
 
   const run = runId ? runs.find(r => r.id === runId) : undefined
   // GH196 — définitions des champs d'exécution / d'étape (valeurs hors schéma affichées quand même).
-  const { data: schema } = useProjectSchema(repoPath)
+  const { data: testTypeDef } = useTestTypeDef(repoPath, tc?.objectTypeRef, projectId ? decodeProjectId(projectId) : undefined)
 
   if (!repoPath) return <p className="p-6 text-sm text-ink-2"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   if (loadingCampaign || loadingTc || (!!runId && loadingRuns)) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
@@ -92,7 +93,6 @@ function TestRunViewPage() {
   if (!tc) return <p className="p-6 text-sm text-ink-2">{t('testsPage.notFound', { testId: testCaseId })}</p>
 
   const sortedSteps = [...(tc.steps ?? [])].sort((a, b) => a.order - b.order)
-  const testTypeDef = getTestTypeDef(schema, tc.objectTypeRef)
 
   return (
     <FrozenParamRefProvider run={campaignRun}>

@@ -136,6 +136,36 @@ describe('classeur v3', () => {
     expect(preview.errors[0].error).toMatchObject({ code: 'invalid_field_value', field: 'ambientTemp' })
   })
 
+  it('étape non exécutée : cellule de champ illisible ignorée (Q3) ; type introuvable avec saisie : refus', async () => {
+    const file = await exportFile()
+    await fill(file, (sheet, col, rowOf) => {
+      const head = sheet.getRow(rowOf('TN-1-1'))
+      head.getCell(col('Verdict')).value = 'Passé'
+      sheet.getRow(rowOf('TN-1-1#1')).getCell(col('Mesure')).value = 'n/a'   // étape sans verdict
+    })
+    let preview = validateExecutionImport(await readExecutionWorkbook(file), ctx(file))
+    expect(preview.errors).toEqual([])
+    expect(preview.importable[0].stepResults[0]).not.toHaveProperty('fields')
+
+    await fill(file, (sheet, col, rowOf) => { sheet.getRow(rowOf('TN-1-1')).getCell(col('N° de rapport')).value = 'RE' })
+    const lost = { ...ctx(file), typeDefs: new Map<string, ObjectTypeDefinition | null>([['TN-1-1', null], ['TB-1-1', TB]]) }
+    preview = validateExecutionImport(await readExecutionWorkbook(file), lost)
+    expect(preview.errors[0]).toMatchObject({ entryId: 'TN-1-1', error: { code: 'invalid_field_value' } })
+  })
+
+  it('enum avec virgule : pas de liste déroulante', () => {
+    const model = buildExecutionSheetModel({
+      campaign, locale: 'fr', exportedAt: '2026-10-29T10:00:00Z',
+      entries: [{ run: campaign.runs[1], test: test('TB-1', 'root::tb'), typeDef: { runFields: [{ name: 'bench', type: 'enum', values: ['Banc A, salle 1', 'B'] }] } }],
+    })
+    return buildExecutionWorkbook(model).then(wb => {
+      const sheet = wb.worksheets[0]
+      const row = sheet.getRow(EXECUTION_SHEET_HEADER_ROW + 1)
+      const benchCol = headers(sheet).indexOf('bench') + 1
+      expect(row.getCell(benchCol).dataValidation).toBeUndefined()
+    })
+  })
+
   it('campagne sans champ d\'exécution : aucune colonne supplémentaire', async () => {
     const model = buildExecutionSheetModel({
       campaign, locale: 'fr', exportedAt: '2026-10-29T10:00:00Z',

@@ -37,6 +37,22 @@ describe('convertFieldValue', () => {
     expect(convertFieldValue(def('link'), 'RE | https://x')).toEqual({ ok: true, value: { label: 'RE', url: 'https://x' } })
     expect(convertFieldValue(def('text'), '  ')).toEqual({ ok: true, value: undefined })
   })
+
+  it('dates normalisées ; cellule Excel (UTC) lue en heure locale ; texte illisible refusé', () => {
+    expect(convertFieldValue(def('date'), '29/10/2026')).toEqual({ ok: true, value: '2026-10-29' })
+    expect(convertFieldValue(def('date'), new Date(Date.UTC(2026, 9, 29)))).toEqual({ ok: true, value: '2026-10-29' })
+    expect(convertFieldValue(def('date'), 'demain').ok).toBe(false)
+    expect(convertFieldValue(def('date'), '31/02/2026').ok).toBe(false)
+    expect(convertFieldValue(def('datetime'), new Date(Date.UTC(2026, 9, 29, 14, 0))))
+      .toEqual({ ok: true, value: new Date(2026, 9, 29, 14, 0).toISOString() })
+  })
+})
+
+describe('nom réservé', () => {
+  it('un champ d\'exécution ne peut pas s\'appeler result', () => {
+    const issues = runFieldIssues([{ name: 't', category: 'test', fields: [], stepFields: [{ name: 'result', type: 'enum', values: ['ok'] }] }])
+    expect(issues.some(i => i.level === 'error' && /réservé/.test(i.message))).toBe(true)
+  })
 })
 
 describe('prepareRunFields', () => {

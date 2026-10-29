@@ -111,6 +111,10 @@ export interface GraphObjectType {
   fields: GraphFieldDef[]
   /** Statuts dans l'ordre de déclaration ; vide pour une campagne (cf. `campaignStatuses`). */
   statuses: GraphStatusDef[]
+  /** GH196 — types de test : champs saisis à chaque exécution (`GraphTestRun.fields`) ; vide sinon. */
+  runFields: GraphFieldDef[]
+  /** GH196 — types de test : champs saisis à chaque étape exécutée (`GraphStepResult.fields`) ; vide sinon. */
+  stepFields: GraphFieldDef[]
 }
 
 export interface GraphStatusDef {
@@ -296,7 +300,25 @@ export interface GraphTestRun {
   duration: number
   /** `excel-import` : résultat importé du classeur d'exécution ; `null` : saisi dans l'outil. */
   origin: string | null
+  /** GH196 — valeurs des champs d'exécution du type de test (`{}` si aucun) ; un champ retiré du
+   *  schéma garde sa valeur (pas de réécriture d'un run). */
+  fields: Record<string, unknown>
+  /** GH196 — notes globales du testeur (Markdown), `''` si vides. */
+  notes: string
+  /** GH196 — verdicts d'étape, commentaires et champs d'étape, par ordre d'étape. */
+  stepResults: GraphStepResult[]
 }
+
+/** GH196 — résultat d'une étape d'un run. */
+export interface GraphStepResult {
+  order: number
+  result: GraphStepResultValue
+  /** Commentaire du testeur (Markdown), `''` si vide. */
+  comment: string
+  fields: Record<string, unknown>
+}
+
+export type GraphStepResultValue = 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIP' | 'NOT_EXECUTED'
 
 // ─── Hôte et sortie ──────────────────────────────────────────────────────────
 

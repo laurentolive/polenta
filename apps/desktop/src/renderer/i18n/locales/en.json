@@ -526,7 +526,11 @@
       "linkMultiple": "Multiple",
       "linkMultipleTitle": "Several links in this field",
       "colDefaultVisible": "Vis.",
-      "colDefaultVisibleTitle": "Column shown by default (Table and Document views) until the user makes their own choice — team default"
+      "colDefaultVisibleTitle": "Column shown by default (Table and Document views) until the user makes their own choice — team default",
+      "runFields": "Run fields",
+      "runFieldsHelp": "Entered at each run (report number, temperature, report link…). Information common to the whole campaign is a campaign field. “Req. if”: result = PASS, FAIL, BLOCKED or INCOMPLETE (overall verdict). A name designates a single field across the project.",
+      "stepFields": "Step fields",
+      "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict)."
     },
     "addDependency": {
       "editComponentTitle": "Edit component",

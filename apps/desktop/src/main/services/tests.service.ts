@@ -1,4 +1,4 @@
-import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
+import { initialStatus, isUnknownStatus, prepareRunFields, renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
@@ -11,7 +11,7 @@ import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
 import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
-import { applyFieldsWrite } from './field-write.util'
+import { applyFieldsWrite, FieldWriteError, readOwnedTypeDef } from './field-write.util'
 
 export class TestsService {
   constructor(
@@ -234,6 +234,12 @@ export class TestsService {
       else if (stepResults.some((s) => s.result === 'NOT_EXECUTED')) result = 'INCOMPLETE'
     }
 
+    // GH196 — champs d'exécution et d'étape : convertis et contrôlés sur le verdict final, avec le type
+    // du test lu dans le repo du test (composant compris). Refus : rien n'est écrit.
+    const typeDef = await readOwnedTypeDef(this.git, repoPath, testCase.objectTypeRef, targetRepo)
+    const prepared = prepareRunFields(typeDef, { result, fields: dto.fields, stepResults })
+    if (!prepared.ok) throw new FieldWriteError(prepared.field, prepared.reason)
+
     const run: TestRun = {
       id: runId,
       testCaseId,
@@ -246,9 +252,13 @@ export class TestsService {
       executedBy: dto.executedBy || 'TODO:current-user',
       duration: 0,
       equipmentUsed: dto.equipmentUsed ?? [],
-      stepResults: stepResults.map((s) => ({ ...s, executedAt: now })),
+      stepResults: stepResults.map(({ fields: _raw, ...s }, i) => {
+        const fields = prepared.stepFields[i]
+        return { ...s, executedAt: now, ...(fields && { fields }) }
+      }),
       notes: dto.notes ?? '',
       ...(dto.origin && { origin: dto.origin }),
+      ...(prepared.fields && { fields: prepared.fields }),
     }
 
     await this.git.writeYaml(targetRepo, `test-runs/${testCaseId}/${runId}.yaml`, run)

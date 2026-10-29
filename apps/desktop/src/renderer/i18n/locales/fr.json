@@ -526,7 +526,11 @@
       "linkMultiple": "Multiple",
       "linkMultipleTitle": "Plusieurs liens dans ce champ",
       "colDefaultVisible": "Vis.",
-      "colDefaultVisibleTitle": "Colonne affichée par défaut (vues Tableau et Document) tant que l’utilisateur n’a pas fait son propre choix — défaut de l’équipe"
+      "colDefaultVisibleTitle": "Colonne affichée par défaut (vues Tableau et Document) tant que l’utilisateur n’a pas fait son propre choix — défaut de l’équipe",
+      "runFields": "Champs d'exécution",
+      "runFieldsHelp": "Saisis à chaque exécution (n° de rapport, température, lien vers le rapport…). Une information commune à toute la campagne est un champ de campagne. « Oblig. si » : result = PASS, FAIL, BLOCKED ou INCOMPLETE (verdict global). Un nom désigne un seul champ dans tout le projet.",
+      "stepFields": "Champs d'étape",
+      "stepFieldsHelp": "Saisis sur chaque étape exécutée (valeur mesurée, capture…). « Oblig. si » : result = PASS, FAIL, BLOCKED, SKIP (verdict de l'étape)."
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",

@@ -105,6 +105,8 @@ const addFieldInput = {
   nodeName: z.string().min(1),
   typeName: z.string().min(1),
   field: schemaFieldSchema,
+  /** GH196 — liste visée : champs de l'objet (défaut), champs d'exécution ou d'étape (types de test). */
+  list: z.enum(['fields', 'runFields', 'stepFields']).optional(),
 }
 
 const addStatusInput = {

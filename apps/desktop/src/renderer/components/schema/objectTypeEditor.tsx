@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, historyModeFor, renameValues, requiredWhenIssues } from '@polenta/types'
+import {
+  HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES, historyModeFor, renameValues,
+  requiredWhenIssues,
+} from '@polenta/types'
 import type {
   FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
   TypeRenameDto, TypeRenamePlan, TypeRenameResult, ValueRename,
@@ -40,6 +43,8 @@ export interface EditableStatus {
 export interface EditableObjectType {
   name: string; label: string; color: string; prefix: string; category: ObjectCategory
   fields: EditableField[]; statuses: EditableStatus[]
+  /** GH196 — types de test : champs saisis à chaque exécution / à chaque étape exécutée. */
+  runFields: EditableField[]; stepFields: EditableField[]
   /** GH77 — historiser le statut (défaut true). */
   trackStatusHistory: boolean
   /** GH86 — clés du type que l'éditeur n'affiche pas, réécrites telles quelles. */
@@ -58,7 +63,7 @@ function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, u
 
 const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory', 'multiple', 'requiredWhen', 'defaultVisible'] as const
 const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
-const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory'] as const
+const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'runFields', 'stepFields'] as const
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
@@ -247,6 +252,8 @@ export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
     category: t.category,
     fields: t.fields.map(fieldToEditable),
     statuses: (t.statuses ?? []).map(statusToEditable),
+    runFields: (t.runFields ?? []).map(fieldToEditable),
+    stepFields: (t.stepFields ?? []).map(fieldToEditable),
     trackStatusHistory: t.trackStatusHistory !== false,
     ...withExtra(extraKeys(t, TYPE_EDITOR_KEYS)),
   }
@@ -259,6 +266,12 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
   if (t.prefix) result.prefix = t.prefix
   if (t.statuses.length > 0) result.statuses = t.statuses.map(editableToStatus)
   if (!t.trackStatusHistory) result.trackStatusHistory = false
+  // GH196 — listes d'exécution : types de test seulement, sans historique ni visibilité par défaut.
+  if (t.category === 'test') {
+    const runField = (f: EditableField) => editableToField({ ...f, trackHistory: false, defaultVisible: false })
+    if (t.runFields.length > 0) result.runFields = t.runFields.map(runField)
+    if (t.stepFields.length > 0) result.stepFields = t.stepFields.map(runField)
+  }
   return { ...result, ...t.extra }
 }
 
@@ -329,6 +342,7 @@ export function emptyObjType(
   return {
     name: suggested, label: categoryLabel, color: '', prefix: suggested, category,
     fields: [{ ...emptyField(), name: 'description', label: descriptionLabel, type: 'richtext' }],
+    runFields: [], stepFields: [],
     trackStatusHistory: true,
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
@@ -420,25 +434,31 @@ export function CancelConfirmModal({ onConfirm, onClose }: { onConfirm: () => vo
 
 // ── FieldsTable ───────────────────────────────────────────────────────────────
 
-export function FieldsTable({ fields, onChange, statuses, category }: {
+export function FieldsTable({ fields, onChange, statuses, category, variant = 'object', title, help }: {
   fields: EditableField[]
   onChange: (f: EditableField[]) => void
   /** GH195 — statuts et catégorie du type, pour contrôler les `requiredWhen` qui les référencent. */
   statuses?: EditableStatus[]
   category?: ObjectCategory
+  /** GH196 — `run` / `step` : liste d'exécution (pas d'historique ni de visibilité par défaut ;
+   *  pseudo-champ `result` pour `requiredWhen`). */
+  variant?: 'object' | 'run' | 'step'
+  title?: string
+  help?: string
 }) {
+  const isRunList = variant !== 'object'
   const { t } = useTranslation()
   const set = (i: number, patch: Partial<EditableField>) => {
     const next = [...fields]; next[i] = { ...next[i], ...patch }; onChange(next)
   }
-  const issues = requiredWhenIssues({
-    category: category ?? 'requirement',
-    statuses: statuses?.map(s => ({ name: s.name })),
-    fields: fields.map(editableToField),
-  })
+  const issues = requiredWhenIssues(
+    { category: category ?? 'requirement', statuses: statuses?.map(s => ({ name: s.name })), fields: fields.map(editableToField) },
+    isRunList ? { key: RUN_RESULT_KEY, values: [...(variant === 'run' ? RUN_RESULT_VALUES : STEP_RESULT_VALUES)] } : undefined,
+  )
   return (
     <div className="mt-3">
-      <p className="section-label mb-1">{t('schema.editor.fields')}</p>
+      <p className="section-label mb-1">{title ?? t('schema.editor.fields')}</p>
+      {help && <p className="text-xs text-ink-3 mb-1">{help}</p>}
       {fields.length > 0 && (
         <table className="w-full text-xs border-collapse mb-1">
           <thead>
@@ -449,8 +469,8 @@ export function FieldsTable({ fields, onChange, statuses, category }: {
               <th className={thClass}>{t('schema.editor.colEnumValues')}</th>
               <th className={`${thClass} text-center`}>{t('schema.editor.colRequired')}</th>
               <th className={thClass} title={t('schema.editor.colRequiredWhenTitle')}>{t('schema.editor.colRequiredWhen')}</th>
-              <th className={`${thClass} text-center`} title={t('schema.editor.colHistoryTitle')}>{t('schema.editor.colHistory')}</th>
-              <th className={`${thClass} text-center`} title={t('schema.editor.colDefaultVisibleTitle')}>{t('schema.editor.colDefaultVisible')}</th>
+              {!isRunList && <th className={`${thClass} text-center`} title={t('schema.editor.colHistoryTitle')}>{t('schema.editor.colHistory')}</th>}
+              {!isRunList && <th className={`${thClass} text-center`} title={t('schema.editor.colDefaultVisibleTitle')}>{t('schema.editor.colDefaultVisible')}</th>}
               <th className={thClass}>{t('schema.editor.colDefault')}</th>
               <th className={thClass}></th>
             </tr>
@@ -478,12 +498,13 @@ export function FieldsTable({ fields, onChange, statuses, category }: {
                 <td className={`${tdClass} text-center`}><input type="checkbox" checked={f.required} onChange={e => set(i, { required: e.target.checked })} className="h-3 w-3 accent-ink" /></td>
                 <td className={tdClass}>
                   <RequiredWhenInput
+                    placeholder={isRunList ? 'result = FAIL' : 'status = approved'}
                     value={f.requiredWhen}
                     onChange={v => set(i, { requiredWhen: v })}
                     issues={f.requiredWhen.trim() ? issues.filter(x => x.field === f.name) : []}
                   />
                 </td>
-                <td className={`${tdClass} text-center`}>
+                {!isRunList && <td className={`${tdClass} text-center`}>
                   <input
                     type="checkbox"
                     aria-label={t('schema.editor.colHistoryTitle')}
@@ -495,8 +516,8 @@ export function FieldsTable({ fields, onChange, statuses, category }: {
                       : t(historyModeFor(f.type) === 'event' ? 'schema.editor.historyEvent' : 'schema.editor.historyValue')}
                     className="h-3 w-3 accent-ink disabled:opacity-30"
                   />
-                </td>
-                <td className={`${tdClass} text-center`}>
+                </td>}
+                {!isRunList && <td className={`${tdClass} text-center`}>
                   <input
                     type="checkbox"
                     aria-label={t('schema.editor.colDefaultVisibleTitle')}
@@ -505,7 +526,7 @@ export function FieldsTable({ fields, onChange, statuses, category }: {
                     className="h-3 w-3 accent-ink"
                     data-testid="default-visible-checkbox"
                   />
-                </td>
+                </td>}
                 <td className={tdClass}><input value={f.default} onChange={e => set(i, { default: e.target.value })} className={cellInput} placeholder="—" /></td>
                 <td className={tdClass}>
                   <div className="flex gap-0.5 justify-end">
@@ -526,7 +547,8 @@ export function FieldsTable({ fields, onChange, statuses, category }: {
 
 /** GH195 — saisie de `requiredWhen` (`champ = v1, v2; autre = v3`), ⚠ si incohérent : rouge = refusé à
  *  l'enregistrement, orange = condition inerte (champ ou valeur inconnus). */
-function RequiredWhenInput({ value, onChange, issues }: {
+function RequiredWhenInput({ value, onChange, issues, placeholder }: {
+  placeholder: string
   value: string
   onChange: (v: string) => void
   issues: { level: 'error' | 'warning'; message: string }[]
@@ -540,7 +562,7 @@ function RequiredWhenInput({ value, onChange, issues }: {
         value={value}
         onChange={e => onChange(e.target.value)}
         className={`${cellInput} font-mono ${level === 'error' ? 'text-status-danger' : ''}`}
-        placeholder="status = approved"
+        placeholder={placeholder}
         title={messages || t('schema.editor.colRequiredWhenTitle')}
         data-testid="required-when-input"
       />

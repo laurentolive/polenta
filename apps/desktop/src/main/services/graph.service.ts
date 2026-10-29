@@ -3,7 +3,7 @@ import * as path from 'path'
 import type {
   CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
   GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun,
-  HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema,
+  HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
 import {
@@ -370,6 +370,20 @@ function typeResolver(schema: ProjectSchema | null): TypeResolver {
   }
 }
 
+function toGraphFieldDef(f: SchemaField): GraphFieldDef {
+  return {
+    name: f.name,
+    label: f.label ?? f.name,
+    type: f.type,
+    ...(f.values ? { values: [...f.values] } : {}),
+    required: !!f.required,
+    ...(f.validator ? { validator: f.validator } : {}),
+    trackHistory: !!f.trackHistory,
+    ...(f.multiple ? { multiple: true } : {}),
+    ...(f.requiredWhen ? { requiredWhen: f.requiredWhen } : {}),
+  }
+}
+
 function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, component: string): GraphObjectType {
   return {
     repo,
@@ -378,20 +392,12 @@ function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, co
     label: t.label ?? t.name,
     prefix: t.prefix ?? null,
     category: t.category,
-    fields: (t.fields ?? []).map((f): GraphFieldDef => ({
-      name: f.name,
-      label: f.label ?? f.name,
-      type: f.type,
-      ...(f.values ? { values: [...f.values] } : {}),
-      required: !!f.required,
-      ...(f.validator ? { validator: f.validator } : {}),
-      trackHistory: !!f.trackHistory,
-      ...(f.multiple ? { multiple: true } : {}),
-      ...(f.requiredWhen ? { requiredWhen: f.requiredWhen } : {}),
-    })),
+    fields: (t.fields ?? []).map(toGraphFieldDef),
     statuses: t.category === 'campaign' ? [] : (t.statuses ?? []).map((s) => ({
       name: s.name, label: s.label ?? s.name, isApproval: !!s.isApproval, isTerminal: !!s.isTerminal,
     })),
+    runFields: t.category === 'test' ? (t.runFields ?? []).map(toGraphFieldDef) : [],
+    stepFields: t.category === 'test' ? (t.stepFields ?? []).map(toGraphFieldDef) : [],
   }
 }
 
@@ -434,6 +440,14 @@ function toGraphRun(run: TestRun, repo: string): GraphTestRun {
     executedBy: run.executedBy,
     duration: typeof run.duration === 'number' ? run.duration : 0,
     origin: run.origin ?? null,
+    fields: { ...(run.fields ?? {}) },
+    notes: typeof run.notes === 'string' ? run.notes : '',
+    stepResults: (run.stepResults ?? []).map((sr) => ({
+      order: sr.order,
+      result: sr.result,
+      comment: typeof sr.comment === 'string' ? sr.comment : '',
+      fields: { ...(sr.fields ?? {}) },
+    })),
   }
 }
 

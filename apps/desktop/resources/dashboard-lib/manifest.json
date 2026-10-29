@@ -135,6 +135,14 @@
             "fr": "Champs de type lien (GH195) : GraphLinkValue, multiple, requiredWhen",
             "en": "Link fields (GH195): GraphLinkValue, multiple, requiredWhen"
           }
+        },
+        {
+          "version": 5,
+          "hash": "c850be161ca5f7b33c0a955ae747389c2fbed50e93a5c96b0ee3fdad8c1d48df",
+          "summary": {
+            "fr": "Champs d'exécution (GH196) : GraphTestRun.fields / notes / stepResults, runFields / stepFields des types",
+            "en": "Run fields (GH196): GraphTestRun.fields / notes / stepResults, runFields / stepFields on types"
+          }
         }
       ]
     },

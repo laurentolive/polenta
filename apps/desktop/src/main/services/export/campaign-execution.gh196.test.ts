@@ -89,6 +89,11 @@ describe('classeur v3', () => {
     expect(tbRow.getCell(c + 2).protection?.locked).not.toBe(false)
     expect(tbRow.getCell(c + 5).protection?.locked).toBe(false)
     expect(tbRow.getCell(c + 5).dataValidation?.formulae).toEqual(['"B1,B2"'])
+    // Feuille protégée mais liens hypertexte autorisés (sinon Excel ne colle que le libellé).
+    const protection = (sheet as unknown as { sheetProtection: Record<string, unknown> }).sheetProtection
+    expect(protection.sheet).toBe(true)
+    expect(protection.insertHyperlinks).not.toBe(false)
+    expect(protection.formatCells).not.toBe(false)
     const meta = wb.getWorksheet(EXECUTION_SHEET_META_NAME)!
     let columns: unknown[] = []
     meta.eachRow(r => { if (r.getCell(1).value === 'columns') columns = (r.values as unknown[]).slice(2) })

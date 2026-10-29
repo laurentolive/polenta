@@ -11,6 +11,7 @@ import type {
   MergeConflictKind, MergeFileDetail, MergeFileDraft, MergeFileEntry, MergeFileKind, MergeFinalizeResult,
   MergeKeepBothResult, MergeOrigin, MergeSessionInfo, MergeSide, MergeValidation, MergeValidationIssue,
 } from '@polenta/types'
+import { activeRequiredWhen, objectFieldReader } from '@polenta/types'
 
 import type { AuthService } from './auth.service'
 import type { SchemaService } from './schema.service'
@@ -653,9 +654,12 @@ export class MergeResolutionService {
       // Non bloquant (sprint 2) : mêmes règles que l'import en masse et la maturité, signalées
       // sans empêcher « Merger » — un merge n'a pas à corriger ce que les deux côtés acceptaient.
       const fields = (obj.fields && typeof obj.fields === 'object' ? obj.fields : {}) as Record<string, unknown>
+      // GH195 — `requiredWhen` vrai après fusion : même avertissement que `required`.
+      const read = objectFieldReader(typeDef, { status: typeof obj.status === 'string' ? obj.status : undefined, fields })
       for (const f of typeDef.fields ?? []) {
         const label = f.label ?? f.name
-        if (f.required && !isFilled(fields[f.name])) warnings.push({ code: 'requiredEmpty', params: { field: label } })
+        const required = f.required || activeRequiredWhen(f, read) !== null
+        if (required && !isFilled(fields[f.name])) warnings.push({ code: 'requiredEmpty', params: { field: label } })
         else if (f.validator === 'EARS' && isFilled(fields[f.name]) && !isEarsCompliant(fields[f.name])) {
           warnings.push({ code: 'ears', params: { field: label } })
         }

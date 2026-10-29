@@ -386,6 +386,8 @@ function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, co
       required: !!f.required,
       ...(f.validator ? { validator: f.validator } : {}),
       trackHistory: !!f.trackHistory,
+      ...(f.multiple ? { multiple: true } : {}),
+      ...(f.requiredWhen ? { requiredWhen: f.requiredWhen } : {}),
     })),
     statuses: t.category === 'campaign' ? [] : (t.statuses ?? []).map((s) => ({
       name: s.name, label: s.label ?? s.name, isApproval: !!s.isApproval, isTerminal: !!s.isTerminal,

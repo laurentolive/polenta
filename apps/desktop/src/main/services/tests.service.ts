@@ -11,6 +11,7 @@ import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
 import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
+import { applyFieldsWrite } from './field-write.util'
 
 export class TestsService {
   constructor(
@@ -186,6 +187,8 @@ export class TestsService {
     /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
     opts: { raw?: boolean; comment?: string } = {},
   ): Promise<TestCase> {
+    // GH195 — liens normalisés, `requiredWhen` contrôlé (lève FieldWriteError).
+    if (!opts.raw) after = await applyFieldsWrite(this.git, repoPath, before, after, targetRepo)
     const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, opts.comment)
       : after

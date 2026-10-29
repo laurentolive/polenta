@@ -1,4 +1,5 @@
 import { parseMultiEnumValue } from './schema'
+import { readLinkValues } from './field-links'
 import type { ObjectTypeDefinition, SchemaFieldType } from './schema'
 
 // GH77 — historique configurable des champs (specs/GH77.md, specs/GH77-design.md §1.2).
@@ -60,7 +61,7 @@ const EVENT_ONLY_TYPES: ReadonlySet<SchemaFieldType> = new Set<SchemaFieldType>(
 
 /** Types de champ acceptant `trackHistory` (spec §3) — aujourd'hui tous. */
 export const HISTORY_TRACKABLE_TYPES: SchemaFieldType[] = [
-  'text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user', 'drawio',
+  'text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user', 'drawio', 'link',
 ]
 
 /** Valeur enregistrée, ou événement seul (date et auteur) quand le contenu est déjà dans git. */
@@ -112,6 +113,11 @@ function comparable(type: TrackedKey['type'], v: unknown): unknown {
   if (type === 'multi_enum') {
     const set = [...new Set(parseMultiEnumValue(v))].sort()
     return set.length === 0 ? null : set
+  }
+  // GH195 — forme texte, objet seul et liste d'objets sont la même valeur de lien.
+  if (type === 'link') {
+    const links = readLinkValues(v)
+    return links.length === 0 ? null : links
   }
   return v
 }

@@ -30,7 +30,7 @@ import { SchemaValidationError } from '../../main/services/schema.service'
 // au code interne à l'app qui n'a pas besoin de cette validation runtime.
 
 const schemaFieldTypeSchema = z.enum([
-  'text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user', 'drawio',
+  'text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user', 'drawio', 'link',
 ])
 
 const schemaFieldSchema = z.object({
@@ -44,6 +44,10 @@ const schemaFieldSchema = z.object({
   validator: z.string().optional(),
   /** GH77 — historiser les changements de ce champ (`history.<name>`). */
   trackHistory: z.boolean().optional(),
+  /** GH195 — champ `link` : liste de liens. */
+  multiple: z.boolean().optional(),
+  /** GH195 — obligatoire quand un champ (`status`, enum, multi_enum, boolean du type) a une des valeurs. */
+  requiredWhen: z.record(z.string(), z.array(z.union([z.string(), z.boolean()])).min(1)).optional(),
 })
 
 const schemaStatusSchema = z.object({

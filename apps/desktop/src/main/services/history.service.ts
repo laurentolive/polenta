@@ -2,10 +2,10 @@ import {
   applyHistory, effectiveHistory, hasHistoryGap, historyTimestamp,
 } from '@polenta/types'
 import type {
-  HistoryActor, HistoryCarrier, HistoryFallback, ObjectHistory, ObjectTypeDefinition, ProjectSchema,
+  HistoryActor, HistoryCarrier, HistoryFallback, ObjectHistory, ObjectTypeDefinition,
 } from '@polenta/types'
 import type { GitService } from './git.service'
-import { findObjectTypeDef } from './schema-lookup.util'
+import { readOwnedTypeDef } from './field-write.util'
 
 /** Repli connu sans appel git (exigences / tests : dates du dernier commit fournies par l'index). */
 export interface AuditDates {
@@ -68,16 +68,8 @@ export class HistoryService {
    * `readTypeDef` des services : un processus long (serveur MCP) voit le schéma enregistré par
    * l'application. Introuvable : null, seul le statut est alors suivi.
    */
-  private async typeDef(repoPath: string, objectTypeRef: string | undefined, ownerRepo?: string): Promise<ObjectTypeDefinition | null> {
-    if (!objectTypeRef) return null
-    const resolve = async (repo: string, ref: string) => {
-      const schema = await this.git.readYaml<ProjectSchema>(repo, '.polenta/schema.yaml').catch(() => null)
-      const resolved = schema ? findObjectTypeDef(schema, ref) : null
-      return resolved && resolved !== 'unresolvable' ? resolved : null
-    }
-    const own = await resolve(repoPath, objectTypeRef)
-    if (own || !ownerRepo || ownerRepo === repoPath) return own
-    return resolve(ownerRepo, objectTypeRef.split('::').pop() ?? objectTypeRef)
+  private typeDef(repoPath: string, objectTypeRef: string | undefined, ownerRepo?: string): Promise<ObjectTypeDefinition | null> {
+    return readOwnedTypeDef(this.git, repoPath, objectTypeRef, ownerRepo)
   }
 
   private async fallback(repoPath: string, audit: AuditDates | { filePath: string }): Promise<HistoryFallback> {

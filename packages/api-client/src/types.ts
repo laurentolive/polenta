@@ -414,6 +414,9 @@ export interface ApiClient {
     setSettings(patch: Partial<AppSettings>): Promise<AppSettings>
     /** GH26 — ouvre une page de release GitHub dans le navigateur système. */
     openReleasePage(url: string): Promise<void>
+    /** GH195 — ouvre la valeur d'un champ `link` (desktop seulement) : schéma revalidé, confirmation
+     *  hors http(s). `false` si refusé, annulé ou en échec. */
+    openLink(url: string): Promise<boolean>
     /** GH45 — configuration machine (DSI sur le desktop, exploitant sur le web). */
     getMachineConfig(): Promise<MachineConfig>
     /** GH45 S2b — configuration par équipe (cache, sans réseau). */

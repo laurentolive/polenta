@@ -11,7 +11,7 @@ import type {
   SchemaStatus,
   SystemNode,
 } from '@polenta/types'
-import { findSystemNode, flattenSystemNodes, mapSystemNode } from '@polenta/types'
+import { findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
@@ -36,6 +36,7 @@ export type SchemaValidationErrorCode =
   | 'PREFIX_TAKEN'
   | 'FIELD_NAME_TAKEN'
   | 'STATUS_NAME_TAKEN'
+  | 'REQUIRED_WHEN_INVALID'
   | 'LINK_TYPE_NAME_TAKEN'
 
 /**
@@ -97,12 +98,27 @@ export class SchemaService {
 
   async save(repoPath: string, schema: ProjectSchema): Promise<void> {
     this.assertUniquePrefixes(schema)
+    this.assertRequiredWhen(schema)
     const toWrite = this.mirrorRootRolesImplements(schema)
     const dir = path.join(repoPath, '.polenta')
     await fsP.mkdir(dir, { recursive: true })
     const filePath = path.join(dir, 'schema.yaml')
     await fsP.writeFile(filePath, yaml.dump(toWrite, { lineWidth: 120 }), 'utf-8')
     this.cache.set(repoPath, toWrite)
+  }
+
+  /**
+   * GH195 — `requiredWhen` : seules les erreurs de structure sont refusées (auto-référence, liste
+   * vide, référence d'un type non admis). Champ ou valeur de référence inconnus = condition inerte,
+   * signalée par l'éditeur sans bloquer : retirer une valeur d'enum reste possible (design §2.3).
+   */
+  private assertRequiredWhen(schema: ProjectSchema): void {
+    for (const { node } of flattenSystemNodes(schema.nodes)) {
+      for (const type of node.objectTypes ?? []) {
+        const issue = requiredWhenIssues({ ...type, fields: type.fields ?? [] }).find((i) => i.level === 'error')
+        if (issue) throw new SchemaValidationError('REQUIRED_WHEN_INVALID', `Type "${type.name}" : ${issue.message}`)
+      }
+    }
   }
 
   /**
@@ -361,6 +377,9 @@ export class SchemaService {
         )
       }
       const updatedType: ObjectTypeDefinition = { ...type, fields: [...fields, dto.field] }
+      // GH195 — à la déclaration (MCP), une référence ou une valeur inconnue est refusée aussi.
+      const issue = requiredWhenIssues(updatedType).find((i) => i.field === dto.field.name)
+      if (issue) throw new SchemaValidationError('REQUIRED_WHEN_INVALID', issue.message)
       const updated = this.replaceObjectType(schema, node, type, updatedType)
       await this.save(repoPath, updated)
       return updated

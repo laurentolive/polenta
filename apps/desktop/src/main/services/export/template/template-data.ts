@@ -5,8 +5,16 @@ import type {
   TemplateOutlineEntry,
   TestsExportPayload,
 } from '@polenta/types'
+import { parseLinksText, type LinkValue } from '@polenta/types'
 import { markdownToPlainText } from './markdown-to-text'
 import { textParagraphs, type RichFragment } from './markdown-to-ooxml'
+import { linkPlainText } from '../link-cell.util'
+
+/** GH195 — liens d'un champ `link` → fragment OOXML (hyperliens natifs du paquet du gabarit). */
+export type LinkRenderer = (links: LinkValue[]) => RichFragment
+
+/** Repli sans paquet : `libellé (URL)` par paragraphe. */
+const PLAIN_LINKS: LinkRenderer = links => ({ render: () => textParagraphs(links.map(linkPlainText).join('\n')) })
 
 /** GH34 — données communes à tous les gabarits (spec §2.4). */
 export interface TemplateCommonData {
@@ -99,6 +107,7 @@ const RESERVED = new Set(['isFolder', 'isItem', 'level', 'section', 'name', 'col
 export async function buildItemsData(
   payload: RequirementsExportPayload | TestsExportPayload,
   toRich: RichConverter,
+  toLinks: LinkRenderer = PLAIN_LINKS,
 ): Promise<{ items: TemplateItem[]; count: number }> {
   const outline: TemplateOutlineEntry[] = payload.outline ?? payload.rows.map(values => ({
     kind: 'item' as const,
@@ -109,11 +118,13 @@ export async function buildItemsData(
   }))
   const items: TemplateItem[] = []
   // Séquentiel : l'ordre d'allocation des images/listes suit celui du document.
-  for (const entry of outline) items.push(await toItem(entry, payload.columns, toRich))
+  for (const entry of outline) items.push(await toItem(entry, payload.columns, toRich, toLinks))
   return { items, count: items.filter(i => i.isItem).length }
 }
 
-async function toItem(entry: TemplateOutlineEntry, columns: ExportColumn[], toRich: RichConverter): Promise<TemplateItem> {
+async function toItem(
+  entry: TemplateOutlineEntry, columns: ExportColumn[], toRich: RichConverter, toLinks: LinkRenderer,
+): Promise<TemplateItem> {
   const item: TemplateItem = {
     isFolder: entry.kind === 'folder',
     isItem: entry.kind === 'item',
@@ -144,11 +155,13 @@ async function toItem(entry: TemplateOutlineEntry, columns: ExportColumn[], toRi
 
   for (const col of columns) {
     const raw = entry.values[col.key] ?? ''
-    const isRich = col.type === 'richtext'
-    const value = isRich ? markdownToPlainText(raw) : raw
+    // GH195 — champ `link` : `{{x}}` en `libellé (URL)`, `{{@rich.x}}` en hyperliens natifs.
+    const links = col.type === 'link' ? parseLinksText(raw) : null
+    const isRich = col.type === 'richtext' || links !== null
+    const value = links ? links.map(linkPlainText).join('\n') : isRich ? markdownToPlainText(raw) : raw
     // Colonne non richtext : paragraphes de texte simple, pour qu'une boucle sur `columns` puisse
     // utiliser `{{@rich}}` uniformément.
-    const fragment: RichFragment = isRich ? await toRich(raw) : { render: () => textParagraphs(raw) }
+    const fragment: RichFragment = links ? toLinks(links) : isRich ? await toRich(raw) : { render: () => textParagraphs(raw) }
     if (!RESERVED.has(col.key)) {
       item[col.key] = value
       if (isRich) defineRich(item.rich, col.key, fragment)

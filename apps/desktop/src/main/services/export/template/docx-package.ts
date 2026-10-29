@@ -6,6 +6,7 @@ import type PizZip from 'pizzip'
 // Markdown → OOXML (avant le rendu docxtemplater) et matérialisés par `finalize` après le rendu.
 
 const REL_IMAGE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'
+const REL_HYPERLINK = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink'
 const REL_NUMBERING = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering'
 const CT_NUMBERING = 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml'
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -35,6 +36,7 @@ export class DocxPackage {
   readonly contentWidthEmu: number
 
   private readonly media: { rId: string; path: string; ext: string; data: Buffer }[] = []
+  private readonly hyperlinks: { rId: string; target: string }[] = []
   private readonly nums: { numId: number; kind: ListKind; start: number; level: number }[] = []
   private nextNumId: number
   private readonly abstractIds: Record<ListKind, number>
@@ -61,6 +63,15 @@ export class DocxPackage {
     const n = this.media.length + 1
     const rId = `rIdPolenta${n}`
     this.media.push({ rId, path: `media/polenta-${n}.${ext}`, ext, data })
+    return rId
+  }
+
+  /** GH195 — lien hypertexte externe : renvoie l'ID de relation à référencer (`w:hyperlink r:id`). */
+  addHyperlink(target: string): string {
+    const existing = this.hyperlinks.find(h => h.target === target)
+    if (existing) return existing.rId
+    const rId = `rIdPolentaLink${this.hyperlinks.length + 1}`
+    this.hyperlinks.push({ rId, target })
     return rId
   }
 
@@ -104,6 +115,10 @@ export class DocxPackage {
       }
     }
 
+    for (const h of this.hyperlinks) {
+      rels = rels.replace('</Relationships>', `<Relationship Id="${h.rId}" Type="${REL_HYPERLINK}" Target="${escapeAttr(h.target)}" TargetMode="External"/></Relationships>`)
+    }
+
     if (this.nums.length > 0) {
       let numbering = zip.file('word/numbering.xml')?.asText()
       if (!numbering) {
@@ -119,6 +134,10 @@ export class DocxPackage {
     zip.file(relsPath, rels)
     if (contentTypes) zip.file('[Content_Types].xml', contentTypes)
   }
+}
+
+function escapeAttr(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 function maxAttr(xml: string, re: RegExp): number {

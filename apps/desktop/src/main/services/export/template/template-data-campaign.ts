@@ -1,5 +1,7 @@
 import {
   TEST_RUN_STATUS_LABELS,
+  isLinkValue,
+  readLinkValues,
   type CampaignExportPayload,
   type CampaignStatus,
   type DashboardExportPayload,
@@ -8,6 +10,7 @@ import {
 } from '@polenta/types'
 import { markdownToPlainText } from './markdown-to-text'
 import { defineRich, type RichConverter } from './template-data'
+import { linkPlainText } from '../link-cell.util'
 
 // Libellés français des statuts sans table partagée (l'écran de campagne affiche la valeur brute ;
 // les résultats d'étape suivent `campaignPage.stepResult` / `runStatus` de l'i18n).
@@ -156,6 +159,8 @@ function plainFields(fields: Record<string, unknown> | undefined): Record<string
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(fields ?? {})) {
     if (value == null) out[key] = ''
+    // GH195 — champ `link` (objet ou liste d'objets) : `libellé (URL)`, un par ligne.
+    else if (isLinkValue(value) || (Array.isArray(value) && value.some(isLinkValue))) out[key] = readLinkValues(value).map(linkPlainText).join('\n')
     else if (Array.isArray(value)) out[key] = value.map(String).join(', ')
     else if (typeof value === 'string') out[key] = markdownToPlainText(value)
     else out[key] = String(value)

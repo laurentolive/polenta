@@ -12,6 +12,7 @@ export type SchemaFieldType =
   | 'richtext'
   | 'user'
   | 'drawio'
+  | 'link'
 
 export interface SchemaField {
   name: string
@@ -27,6 +28,11 @@ export interface SchemaField {
   validator?: string         // e.g. "EARS" | "regex:<pattern>"
   /** GH77 — historiser les changements de ce champ (`history.<name>`). Écrit seulement si vrai. */
   trackHistory?: boolean
+  /** GH195 — champ `link` : liste de liens au lieu d'un seul. Écrit seulement si vrai. */
+  multiple?: boolean
+  /** GH195 — obligatoire quand un des champs nommés a une des valeurs listées (OU entre les clés).
+   *  Références : `status` ou un champ enum / multi_enum / boolean du même type (cf. required-when.ts). */
+  requiredWhen?: Record<string, unknown[]>
 }
 
 // Format de stockage d'un champ `multi_enum` : chaîne CSV (ex. "a, b, c"), pas une liste

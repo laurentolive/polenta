@@ -2,6 +2,7 @@ import { app, ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
+import { isAcceptedLinkUrl, isHttpLinkUrl } from '@polenta/types'
 import type { ExportKind, ExportFormat, ExportResult, ExecutionSheetLocale, ExecutionImportPreview } from '@polenta/types'
 import type { Container } from './index'
 import type { HandlerRegistry, Handler } from './registry'
@@ -73,6 +74,37 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
   handle('app:open-release-page', (_e, url: string) => {
     const base = BRAND.releasesUrl?.replace(/\/+$/, '')
     if (base && (url === base || url.startsWith(`${base}/`))) return shell.openExternal(url)
+  })
+  // GH195 — lien d'un champ `link`. Le schéma est revalidé ici (le renderer n'est pas cru sur
+  // parole) ; hors http(s), l'utilisateur confirme. Chemin UNC : `openPath` (application du poste).
+  handle('app:open-link', async (_e, raw: string): Promise<boolean> => {
+    const url = typeof raw === 'string' ? raw.trim() : ''
+    if (!isAcceptedLinkUrl(url)) return false
+    if (!isHttpLinkUrl(url)) {
+      const win = BrowserWindow.getFocusedWindow()
+      const options = {
+        type: 'question' as const,
+        buttons: ['Ouvrir', 'Annuler'],
+        defaultId: 0,
+        cancelId: 1,
+        message: 'Ouvrir ce lien avec l’application du poste ?',
+        detail: url,
+      }
+      const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
+      if (response !== 0) return false
+    }
+    try {
+      if (url.startsWith('\\\\')) {
+        const error = await shell.openPath(url)
+        if (error) throw new Error(error)
+      } else {
+        await shell.openExternal(url)
+      }
+      return true
+    } catch (err) {
+      dialog.showErrorBox('Lien inaccessible', `${url}\n\n${err instanceof Error ? err.message : String(err)}`)
+      return false
+    }
   })
 
   // ── Update (GH26) ─────────────────────────────────────────────────────────────

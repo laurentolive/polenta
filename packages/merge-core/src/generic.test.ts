@@ -376,3 +376,26 @@ describe('Revue sprint 3', () => {
     expect(root.children![0].children!.map(c => c.indexes)).toEqual([[null, 0], [null, 1]])
   })
 })
+
+describe('Prendre l\'ancêtre', () => {
+  it('a block carries its ancestor fragment; resolving with it restores the ancestor', async () => {
+    const { resolveRegionWith } = await import('./index')
+    const base = { a: { x: 1 }, b: 1 }
+    const m = mergeFile(dump(base), dump({ a: { x: 2 }, b: 1 }), dump({ a: { x: 3 }, b: 1 }), labels, 'f.yaml')
+    expect(m.blocks[0]).toMatchObject({ key: '/a/x', base: '  x: 1\n' })
+    expect(loadOut(resolveRegionWith(m.output, '/a/x', m.blocks[0].base!))).toEqual(base)
+  })
+
+  it('a node absent from the ancestor has an empty ancestor fragment (taking it removes the node)', async () => {
+    const { resolveRegionWith } = await import('./index')
+    const m = mergeFile(dump({ b: 1 }), dump({ a: 2, b: 1 }), dump({ a: 3, b: 1 }), labels, 'f.yaml')
+    expect(m.blocks[0].base).toBe('')
+    expect(loadOut(resolveRegionWith(m.output, '/a', ''))).toEqual({ b: 1 })
+  })
+
+  it('a text hunk carries the ancestor lines', () => {
+    const m = mergeFile('a\nb\nc\n', 'a\nB1\nc\n', 'a\nB2\nc\n', labels)
+    expect(m.blocks[0].base).toBe('b\n')
+  })
+})
+

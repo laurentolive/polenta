@@ -18,6 +18,9 @@ export interface MergeBlock {
   /** Side fragments as they appear in a marker region — `undefined` = absent on that side. */
   left?: string
   right?: string
+  /** Fragment of the common ancestor (« Prendre l'ancêtre ») : `''` = absent from the ancestor,
+   *  `undefined` = not available for this block (a display tree position). */
+  base?: string
 }
 
 /** Outcome of the 3-way merge of one file, before any user action. */

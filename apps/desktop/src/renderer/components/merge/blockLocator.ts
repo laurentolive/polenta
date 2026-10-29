@@ -1,4 +1,4 @@
-import { findRegions, renderRegion, resolveRegion, resolveRegionBoth, type MarkerLabels } from '@polenta/merge-core'
+import { findRegions, renderRegion, resolveRegion, resolveRegionBoth, resolveRegionWith, type MarkerLabels } from '@polenta/merge-core'
 
 /**
  * GH222 — où est un bloc de conflit dans un texte :
@@ -12,9 +12,11 @@ export interface BlockFragments {
   key: string
   left?: string
   right?: string
+  /** Ancestor fragment (« Prendre l'ancêtre »), `''` = absent from the ancestor. */
+  base?: string
 }
 
-export type Taken = 'left' | 'right' | 'both'
+export type Taken = 'left' | 'right' | 'both' | 'base'
 
 export interface ResolvedBlock {
   key: string
@@ -65,11 +67,11 @@ function nearest(found: { from: number; to: number }[], hint: number | undefined
 /** Line of each still-open block's fragment in a side pane (`side` = which fragment). `open`
  *  gives the line of each open region in the output: the side and the output share their layout,
  *  so the fragment closest to that line is the block's. */
-export function sideAnchors(sideText: string, blocks: BlockFragments[], open: Map<string, number>, side: 'left' | 'right'): { key: string; line: number }[] {
+export function sideAnchors(sideText: string, blocks: BlockFragments[], open: Map<string, number>, side: 'left' | 'right' | 'base'): { key: string; line: number }[] {
   const out: { key: string; line: number }[] = []
   for (const b of blocks) {
     if (!open.has(b.key)) continue
-    const found = nearest(findAllLines(sideText, (side === 'left' ? b.left : b.right) ?? ''), open.get(b.key))
+    const found = nearest(findAllLines(sideText, (side === 'left' ? b.left : side === 'right' ? b.right : b.base) ?? ''), open.get(b.key))
     if (found) out.push({ key: b.key, line: found.from })
   }
   return out
@@ -82,6 +84,7 @@ export function takenTexts(block: BlockFragments, labels: MarkerLabels): { taken
   const out: { taken: Taken; text: string }[] = []
   if (both !== region) out.push({ taken: 'both', text: both })
   for (const side of ['left', 'right'] as const) out.push({ taken: side, text: resolveRegion(region, block.key, side) })
+  if (block.base !== undefined) out.push({ taken: 'base', text: resolveRegionWith(region, block.key, block.base) })
   return out.filter(x => x.text.trim() !== '')
 }
 

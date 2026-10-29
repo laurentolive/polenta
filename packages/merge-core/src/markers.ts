@@ -110,6 +110,13 @@ function replaceRegions(text: string, key: string, pick: (left: string[], right:
   return lines.join('\n')
 }
 
+/** Replaces the regions `key` by `fragment` (« Prendre l'ancêtre » : the block's ancestor
+ *  fragment, `''` = the node is removed). Text unchanged if no such region. */
+export function resolveRegionWith(text: string, key: string, fragment: string): string {
+  const lines = fragment === '' ? [] : fragment.replace(/\n$/, '').split('\n')
+  return replaceRegions(text, key, () => lines)
+}
+
 // ─── « Prendre les deux » (GH222) ──────────────────────────────────────────────────
 
 type FragmentShape =

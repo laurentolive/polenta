@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
 import { Check, Columns3, Eye, FileCode } from 'lucide-react'
 import {
-  canTakeBoth, shortRef, findRegions, parseOutput, resolveAllRegions, resolveRegion, resolveRegionBoth, updateOutputAt,
+  canTakeBoth, shortRef, findRegions, parseOutput, resolveAllRegions, resolveRegion, resolveRegionBoth, resolveRegionWith, updateOutputAt,
   yamlStyleOf, type Side,
 } from '@polenta/merge-core'
 import type {
@@ -166,8 +166,12 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     takeLeft: t('mergeResolve.takeLeft'),
     takeRight: t('mergeResolve.takeRight'),
     takeBoth: t('mergeResolve.takeBoth'),
+    takeBase: t('mergeResolve.takeBase'),
     reset: t('mergeResolve.reset'),
-    resolved: { left: t('mergeResolve.resolvedLeft'), right: t('mergeResolve.resolvedRight'), both: t('mergeResolve.resolvedBoth') },
+    resolved: {
+      left: t('mergeResolve.resolvedLeft'), right: t('mergeResolve.resolvedRight'), both: t('mergeResolve.resolvedBoth'),
+      base: t('mergeResolve.resolvedBase'),
+    },
     ruler: t('diffkit.change.ruler'),
   }), [t])
   const group = useScrollSyncGroup()
@@ -197,19 +201,26 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     update(next(current))
   }
 
+  // « Prendre l'ancêtre » : the block's ancestor fragment (`''` = the node goes away).
+  const takeBase = (key: string) => {
+    const base = detail.blocks.find(b => b.key === key)?.base
+    if (base !== undefined) resolveWith(key, current => resolveRegionWith(current, key, base))
+  }
+  const canTakeBase = (key: string) => detail.blocks.find(b => b.key === key)?.base !== undefined
+
   const sideActions = useMemo(() => {
     const open = new Map(latest.current.regions.regions.map(r => [r.key, r.start] as const))
-    const make = (side: Side): PaneAction[] => {
-      const sideText = side === 'left' ? detail.left : detail.right
+    const make = (side: Side | 'base'): PaneAction[] => {
+      const sideText = side === 'left' ? detail.left : side === 'right' ? detail.right : detail.base
       if (sideText === null || choiceMode) return []
       return sideAnchors(sideText, detail.blocks, open, side).map(a => ({
         key: a.key,
         line: a.line,
-        label: side === 'left' ? t('mergeResolve.takeLeft') : t('mergeResolve.takeRight'),
-        run: () => resolveWith(a.key, current => resolveRegion(current, a.key, side)),
+        label: side === 'left' ? t('mergeResolve.takeLeft') : side === 'right' ? t('mergeResolve.takeRight') : t('mergeResolve.takeBase'),
+        run: () => (side === 'base' ? takeBase(a.key) : resolveWith(a.key, current => resolveRegion(current, a.key, side))),
       }))
     }
-    return { left: make('left'), right: make('right') }
+    return { left: make('left'), right: make('right'), base: make('base') }
     // resolveWith reads the latest state through `latest`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail, openSig, choiceMode, t])
@@ -295,7 +306,7 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
       content = (
         <RawPane value={textOf} readOnly yamlSyntax={yamlSyntax} labels={paneLabels}
           against={pane === 'base' ? null : against[pane]}
-          actions={pane === 'base' ? undefined : sideActions[pane]}
+          actions={sideActions[pane]}
           sync={{ group, id: pane, units }} />
       )
     }
@@ -323,6 +334,8 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
           canBoth={key => canTakeBoth(text, key)}
           onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
           onBoth={key => resolveWith(key, current => resolveRegionBoth(current, key))}
+          onBase={showBase ? takeBase : undefined}
+          canBase={canTakeBase}
           onReset={resetBlockOf}
           onEdit={editAt}
           labels={{ output: t('mergeResolve.outputPane'), resolved: paneLabels.resolved }} />
@@ -335,6 +348,7 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
       <RawPane value={text} onChange={updateText} labels={outputLabels} yamlSyntax={yamlSyntax}
         onResolve={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
         onBoth={key => resolveWith(key, current => resolveRegionBoth(current, key))}
+        onBase={showBase ? takeBase : undefined}
         blocks={detail.blocks}
         markerLabels={markerLabels}
         hints={hints}
@@ -409,7 +423,8 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
                       base: t('mergeResolve.basePane'),
                       right: t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }),
                     }}
-                    onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))} />
+                    onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
+                    onBase={takeBase} canBase={canTakeBase} />
                 </SyncedTree>
               </div>
             )

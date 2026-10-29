@@ -47,10 +47,10 @@ export class MergeContext {
       if (Array.isArray(l) && Array.isArray(r) && (b === undefined || Array.isArray(b))) {
         const merged = this.list(path, (b ?? []) as unknown[], l, r)
         if (merged !== 'conflict') return merged
-        return this.conflict(slot, `${this.desc.blockKey(path)}~order`, l, r)
+        return this.conflict(slot, `${this.desc.blockKey(path)}~order`, l, r, b)
       }
     }
-    return this.conflict(slot, this.desc.blockKey(path), l, r)
+    return this.conflict(slot, this.desc.blockKey(path), l, r, b)
   }
 
   /** Merges a whole document whose root is a mapping on every side present. */
@@ -59,8 +59,8 @@ export class MergeContext {
   }
 
   /** A block of list elements (`left` / `right` = the elements of each side, maybe none). */
-  items(blockKey: string, left: unknown[], right: unknown[]): string {
-    this.pending.push({ key: blockKey, form: 'items', left, right })
+  items(blockKey: string, left: unknown[], right: unknown[], base?: unknown[]): string {
+    this.pending.push({ key: blockKey, form: 'items', left, right, ...(base ? { base } : {}) })
     return placeholder(this.pending.length - 1)
   }
 
@@ -69,9 +69,9 @@ export class MergeContext {
     return { kind, output, blocks, auto: this.auto }
   }
 
-  private conflict(slot: Slot, blockKey: string, l: unknown, r: unknown): string {
-    if (slot === 'item') return this.items(blockKey, l === undefined ? [] : [l], r === undefined ? [] : [r])
-    this.pending.push({ key: blockKey, form: 'entry', name: slot.name, left: l, right: r })
+  private conflict(slot: Slot, blockKey: string, l: unknown, r: unknown, b: unknown): string {
+    if (slot === 'item') return this.items(blockKey, l === undefined ? [] : [l], r === undefined ? [] : [r], b === undefined ? [] : [b])
+    this.pending.push({ key: blockKey, form: 'entry', name: slot.name, left: l, right: r, base: { value: b } })
     return placeholder(this.pending.length - 1)
   }
 
@@ -141,7 +141,7 @@ export class MergeContext {
         continue
       }
       const blockKey = this.desc.blockKey([...path, pos(out.length)])
-      out.push(this.items(blockKey, chunk.conflict.a.map(c => value.get(c)), chunk.conflict.b.map(c => value.get(c))))
+      out.push(this.items(blockKey, chunk.conflict.a.map(c => value.get(c)), chunk.conflict.b.map(c => value.get(c)), chunk.conflict.o.map(c => value.get(c))))
     }
     if (rule.renumber) renumber(out, rule.renumber)
     return out

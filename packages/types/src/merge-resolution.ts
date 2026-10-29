@@ -99,7 +99,7 @@ export interface MergeFileDetail extends MergeFileEntry {
   images?: { base?: string; left?: string; right?: string }
   /** Sortie initiale calculée (régions de marqueurs comprises) — `null` pour un choix de côté. */
   initialOutput: string | null
-  blocks: { key: string; left?: string; right?: string }[]
+  blocks: { key: string; left?: string; right?: string; base?: string }[]
   auto: { key: string; from: MergeSide | 'both' }[]
   draft?: MergeFileDraft
 }

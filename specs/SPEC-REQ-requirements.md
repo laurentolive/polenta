@@ -682,16 +682,17 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   d'un type (`DEFAULT_CHANGE_STATUSES`, modifiable) : `ouvert → analyse → implemente → verifie →
   clos`, `rejete` ; `clos` et `rejete` terminaux ; aucune contrainte de transition (L1, #206).
   Pas de couverture ni de maturité.
-- **Stockage** : `changes/<ID>.yaml` dans le repo ouvert, pour un de ses composants locaux
-  (`component` ; composant externe : L7, #208) ; ID
+- **Stockage** : `changes/<ID>.yaml` dans le repo du composant concerné (`component`, composant
+  local de n'importe quel repo du workspace), avec les types de ce repo — un change de
+  sous-composant voyage avec lui (#193 §4) ; ID
   préfixé du type, pierres tombales (GH20). Champs système : `id`, `objectTypeRef`, `title`,
   `status`, `version`, `component`, `mode` (`request`), `toModify` (`{ id, state: planned |
   modified }`), `impacted` (`{ id, status, comment?, source: declared | computed }`, statut parmi
   les 8 statuts d'impact de SPEC-TRACEABILITY §4.6, défaut `impact_non_verifie`), `origin`,
   `integratedIn`, `campaigns`, `history` (GH77). Écritures par `ChangesService.persist`
   (`applyFieldsWrite` #195, historique GH77).
-- **Composant** : déduit si le repo ne porte qu'un composant local, obligatoire sinon ; modifiable
-  au statut initial seulement.
+- **Composant** : choisi parmi les composants locaux des repos du workspace (déduit s'il n'y en a
+  qu'un utilisable) ; modifiable au statut initial seulement, dans le même repo.
 - **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du change ; « Ajouter les
   éléments repassés en brouillon » propose les exigences et tests déjà approuvés une fois (statut
   `isApproval` dans l'historique, repli `version > 1`) qui ne le sont plus, hors éléments listés.

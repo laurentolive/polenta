@@ -14,6 +14,8 @@ interface SchemaLike { nodes: Array<{ name: string; objectTypes?: TypeLike[] }> 
 interface ChangeLike { id: string; status: string; toModify: Array<{ id: string; state: string }>; impacted: Array<{ id: string; status: string; comment?: string }> }
 
 let reqId = ''
+// Exigence d'un repo composant (modifiable) et ce repo : change tracé dans le composant (#193 §4).
+let compReq = { id: '', repoPath: '' }
 
 async function navigate(p: Page, url: string) {
   await p.evaluate(u => {
@@ -37,6 +39,18 @@ test.beforeAll(async () => {
   await s.invoke('schema:save', localPath, schema)
   const reqTypes = schema.nodes.flatMap(n => (n.objectTypes ?? []).filter(t => t.category === 'requirement').map(t => `${n.name}::${t.name}`))
   reqId = (await s.invoke<{ id: string }>('requirements:create', localPath, { objectTypeRef: reqTypes[0], title: 'GH198 R' })).id
+
+  const norm = (x: string) => x.replace(/\\/g, '/').toLowerCase()
+  const objs = await s.invoke<Array<{ id: string; category: string; repoPath: string; readonly: boolean }>>('links:objects', localPath, s.project.workspaceDir)
+  compReq = objs.find(o => o.category === 'requirement' && norm(o.repoPath) !== norm(localPath) && !o.readonly)!
+  await s.invoke('schema:invalidate', compReq.repoPath)
+  const compSchema = await s.invoke<SchemaLike>('schema:get', compReq.repoPath)
+  const compRoot = compSchema.nodes.find(n => n.objectTypes !== undefined)!
+  compRoot.objectTypes = [...(compRoot.objectTypes ?? []), {
+    name: 'gh198_evo', label: 'GH198 Évolution', prefix: 'GHD', category: 'change', fields: [],
+    statuses: [{ name: 'ouvert', label: 'Ouvert' }, { name: 'clos', label: 'Clos', isTerminal: true }],
+  } as TypeLike]
+  await s.invoke('schema:save', compReq.repoPath, compSchema)
 })
 
 test('GH198-1 — nouveau change, listes, statut', async () => {
@@ -44,12 +58,13 @@ test('GH198-1 — nouveau change, listes, statut', async () => {
   const { localPath } = s.project
   await navigate(p, s.projectUrl('/change/new', {}))
   const form = p.getByTestId('change-new-form')
-  // Plusieurs types de change possibles dans le projet de démo : choisir le nôtre s'il y a un sélecteur.
+  // Composant concerné : le nœud `root` du repo ouvert (valeur `<repo>\n<nœud>`), puis notre type.
+  const componentSelect = form.getByTestId('change-new-component')
+  const values = await componentSelect.locator('option').evaluateAll(os => os.map(o => (o as HTMLOptionElement).value))
+  await componentSelect.selectOption(values.find(v => v.endsWith('\nroot') && v.startsWith(localPath))!)
   const typeSelect = form.getByTestId('change-new-type')
   if (await typeSelect.count()) await typeSelect.selectOption('root::gh198_nc')
   await form.getByTestId('change-new-title').fill('GH198 surcharge')
-  const componentSelect = form.getByTestId('change-new-component')
-  if (await componentSelect.count() && !(await componentSelect.inputValue())) await componentSelect.selectOption('root')
   await form.getByTestId('change-new-submit').click()
   await expect(p.getByTestId('change-page')).toBeVisible()
   const id = changeIdFromUrl(p)
@@ -104,4 +119,22 @@ test('GH198-2 — « Créer un change » depuis une exigence : élément pré-re
   await expect(p.getByTestId(`change-to-modify-${reqId}`)).toBeVisible()
   const c = await s.invoke<ChangeLike>('changes:get', localPath, changeIdFromUrl(p))
   expect(c.toModify).toEqual([{ id: reqId, state: 'planned' }])
+})
+
+test('GH198-3 — change d\'un sous-composant : stocké dans son repo, avec ses types', async () => {
+  const p = s.page
+  await navigate(p, s.projectUrl(`/req/${compReq.id}`, { repoPath: compReq.repoPath }))
+  await p.getByTestId('create-change').click()
+  const form = p.getByTestId('change-new-form')
+  await expect(form).toContainText(compReq.id)
+  await form.getByTestId('change-new-title').fill('GH198 dans le composant')
+  await form.getByTestId('change-new-submit').click()
+  await expect(p.getByTestId('change-page')).toBeVisible()
+  const id = changeIdFromUrl(p)
+  expect(id).toMatch(/^GHD-\d+$/)
+  const c = await s.invoke<ChangeLike>('changes:get', compReq.repoPath, id)
+  expect(c.toModify).toEqual([{ id: compReq.id, state: 'planned' }])
+  // Panneau : listé sous le repo du composant.
+  await expect(p.getByTestId(`change-row-${id}`)).toBeVisible()
+  await s.shot('gh198-component-change')
 })

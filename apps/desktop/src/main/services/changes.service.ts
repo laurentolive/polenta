@@ -18,8 +18,8 @@ import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 const DIR = 'changes'
 
 /**
- * GH198 — objet change (specs/GH198.md) : `changes/<ID>.yaml` dans le repo ouvert, pour un de ses
- * composants locaux (un composant externe — autre repo du workspace — relève de L7, #208).
+ * GH198 — objet change (specs/GH198.md) : `changes/<ID>.yaml` dans le repo du composant concerné
+ * (`repoPath` = repo de stockage, dont le schéma porte le type et le composant local, #193 §4).
  * Création (demande de changement), lecture, mise à jour (titre, statut, champs, listes, composant
  * au statut initial), suppression tant que jamais commité, candidats « repassés en brouillon ».
  * Écriture unique par `persist` : contrôles #195 et historique GH77, comme les autres objets.

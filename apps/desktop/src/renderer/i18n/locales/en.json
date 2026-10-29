@@ -2235,6 +2235,8 @@
     "campaigns": "Campaigns",
     "requirement": "Requirement",
     "test": "Test",
-    "notFound": "Change not found."
+    "notFound": "Change not found.",
+    "noTypeInRepo": "no change type in this repo",
+    "componentHelp": "The change is stored in the component repo, with its types: it follows the component when reused in another product."
   }
 }

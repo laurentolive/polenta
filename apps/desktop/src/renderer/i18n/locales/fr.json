@@ -2235,6 +2235,8 @@
     "campaigns": "Campagnes",
     "requirement": "Exigence",
     "test": "Test",
-    "notFound": "Change introuvable."
+    "notFound": "Change introuvable.",
+    "noTypeInRepo": "aucun type de change dans ce repo",
+    "componentHelp": "Le change est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit."
   }
 }

@@ -6,6 +6,25 @@
 
 export type MergeSide = 'left' | 'right'
 
+/** GH222 — résultat de l'enregistrement d'un fichier du working tree depuis la vue de diff :
+ *  `outside` (chemin hors du repo), `changed` (modifié sur le disque depuis son chargement),
+ *  `invalid` (YAML ou objet invalide, `message`), `unsupported` (clés que l'éditeur de l'objet
+ *  n'écrit pas, `keys`). */
+/**
+ * GH222 — fichiers que la vue de diff ne modifie pas : ceux que l'app maintient elle-même
+ * (`.git/`, schéma — `.gitmodules` en est dérivé —, arbres d'affichage, pierres tombales,
+ * `.gitmodules`), à modifier par leurs écrans.
+ */
+export function isAppMaintainedFile(filepath: string): boolean {
+  const p = filepath.replace(/\\/g, '/').replace(/^\.\//, '')
+  return /^\.git(\/|$)/.test(p) || p === '.gitmodules' || p === '.polenta/schema.yaml'
+    || p.startsWith('.polenta/trees/') || p.startsWith('.polenta/tombstones/')
+}
+
+export type DiffSaveResult =
+  | { ok: true }
+  | { ok: false; reason: 'outside' | 'changed' | 'invalid' | 'unsupported'; message?: string; keys?: string[] }
+
 /** Opération qui a produit le conflit — détermine les libellés, la branche avancée par la
  *  finalisation et la suite après finalisation. */
 export type MergeOrigin =

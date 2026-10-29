@@ -1,7 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
-import { Columns2, Eye, FileCode, Rows2 } from 'lucide-react'
+import { Columns2, Eye, FileCode, Pencil, Rows2, Save } from 'lucide-react'
 import type { FileDiffContents } from '@polenta/api-client'
 import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { lineStats } from '../../lib/diffStats'
@@ -9,7 +10,10 @@ import { diffPrefs } from '../../lib/diffPrefs'
 import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/useProjectSchema'
 import { useSchemaAt } from '../../hooks/useSchemaAt'
 import { RawDiffView } from './RawDiffView'
-import { keyedKindOf, LINKS_DESC, OBJECT_DESC, PARAMETERS_DESC, type StructureDesc } from '@polenta/merge-core'
+import { keyedKindOf, LINKS_DESC, OBJECT_DESC, PARAMETERS_DESC, yamlStyleOf, type StructureDesc } from '@polenta/merge-core'
+import { isAppMaintainedFile, type DiffSaveResult } from '@polenta/types'
+import { api } from '../../api'
+import { useRegisterTabDirty } from '../../contexts/TabsContext'
 import { TreeDiffView } from '../treediff/TreeDiffView'
 import { genericPresentation, typedPresentation } from '../treediff/presentation'
 import { DrawioFileDiffView } from './DrawioFileDiffView'
@@ -23,6 +27,8 @@ type Parsed = { value: unknown; obj: Obj | null; invalid: boolean }
  * commit) : sous-en-tête (chemin, `+n / −n`, bascule Raw / Rendu) puis le diff dans le mode choisi.
  * Le Rendu est proposé pour une exigence ou un test dont le type se résout dans le schéma, et pour un `.drawio`.
  * GH222 : Raw sur `@codemirror/merge` (côte à côte / en ligne, navigation, règle de vue d'ensemble).
+ * GH222 §12 : une modification locale (Après = working tree) se modifie dans le diff — brouillon,
+ * « ← Rétablir », « Enregistrer » / `Ctrl+S`.
  */
 export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath = true }: {
   repoPath: string
@@ -42,16 +48,63 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
   // The Raw view mounts its navigation (« 3 / 12 », précédent / suivant) in this sub-header.
   const [navSlot, setNavSlot] = useState<HTMLElement | null>(null)
 
+  // ─── GH222 §12 : côté Après modifiable (modification locale) ──────────────────────
+  const editable = !!contents && contents.newRef === null && !contents.newMissing && !isAppMaintainedFile(filepath)
+  // The draft keeps the text it started from (`baseline`): a re-read of the file (window focus,
+  // another tool) never drops it, and a change on disk is caught when saving (`changed`).
+  const [draft, setDraft] = useState<{ text: string; baseline: string } | null>(null)
+  const [saveState, setSaveState] = useState<{ busy?: boolean; error?: DiffSaveResult; saved?: boolean }>({})
+  useEffect(() => { setDraft(null); setSaveState({}) }, [filepath, repoPath])
+  const afterText = draft?.text ?? contents?.newContent ?? ''
+  const dirty = editable && draft !== null && draft.text !== draft.baseline
+  useRegisterTabDirty(dirty)
+  const qc = useQueryClient()
+  const editDraft = (text: string) => {
+    setDraft(d => ({ text, baseline: d?.baseline ?? contents?.newContent ?? '' }))
+    setSaveState({})
+  }
+  const save = async () => {
+    if (!dirty || draft === null) return
+    setSaveState({ busy: true })
+    try {
+      const res = await api.diffEdit.saveWorkingFile(repoPath, filepath, draft.text, draft.baseline)
+      if (!res.ok) { setSaveState({ error: res }); return }
+      setDraft(null)
+      setSaveState({ saved: true })
+      await refresh()
+    } catch (err) {
+      setSaveState({ error: { ok: false, reason: 'invalid', message: err instanceof Error ? err.message : String(err) } })
+    }
+  }
+  // The diff, the Version panel and the object views read the file again — not the whole app.
+  const refresh = () => qc.invalidateQueries({
+    predicate: q => typeof q.queryKey[0] === 'string' && /^(sync|status|requirements|tests|links|history|diff)/.test(q.queryKey[0]),
+  })
+  const reload = async () => { setDraft(null); setSaveState({}); await refresh() }
+  const saveRef = useRef(save)
+  saveRef.current = save
+  useEffect(() => {
+    if (!editable) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void saveRef.current() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editable])
+
   const stats = useMemo(
-    () => (contents ? lineStats(contents.oldContent, contents.newContent) : { added: 0, removed: 0 }),
-    [contents],
+    () => (contents ? lineStats(contents.oldContent, afterText) : { added: 0, removed: 0 }),
+    [contents, afterText],
   )
 
   const oldRef = contents?.oldRef ?? null
   const newRef = contents?.newRef ?? null
   const isYaml = /\.ya?ml$/i.test(filepath)
   const before = useMemo(() => parseSide(isYaml, contents?.oldContent, contents?.oldMissing), [isYaml, contents])
-  const after = useMemo(() => parseSide(isYaml, contents?.newContent, contents?.newMissing), [isYaml, contents])
+  const after = useMemo(() => parseSide(isYaml, afterText, contents?.newMissing), [isYaml, afterText, contents])
+  // Rendu edits rewrite the YAML: only for a file written as the app writes it (no comment lost).
+  const editStyle = useMemo(() => (editable && isYaml ? yamlStyleOf(contents?.newContent ?? '') : null), [editable, isYaml, contents])
   const objectTypeRef = String((after.obj ?? before.obj)?.objectTypeRef ?? '')
 
   const current = useProjectSchema(repoPath)
@@ -81,17 +134,18 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
   if (isLoading || (mode === 'rendered' && schemaLoading)) {
     body = <p className="text-ink-3 italic p-6">{t('common.loading')}</p>
   } else if (!rendered) {
-    body = contents && contents.oldContent === contents.newContent
+    body = contents && !editable && contents.oldContent === contents.newContent
       ? <p className="text-ink-3 italic p-6">{t('diffPage.noDifference')}</p>
       : (
         <RawDiffView
           // Another file or other versions: the navigation starts over.
           key={`${filepath}@${oldRef}..${newRef}`}
           before={contents?.oldContent ?? ''}
-          after={contents?.newContent ?? ''}
+          after={afterText}
           layout={layout}
           yamlSyntax={isYaml}
           navBarSlot={navSlot}
+          onChange={editable ? editDraft : undefined}
         />
       )
   } else if (isDrawio) {
@@ -120,6 +174,7 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
         hideUnchanged={hideUnchanged}
         navSlot={navSlot}
         testId={typeDef ? 'object-diff' : 'tree-diff'}
+        edit={editStyle ? { text: afterText, style: editStyle, onChange: editDraft } : undefined}
       />
     )
   }
@@ -156,6 +211,29 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
           </p>
         )}
       </div>
+      {editable && (
+        <div className="px-4 py-1 border-b border-edge shrink-0 flex items-center gap-2 text-xs bg-canvas" data-testid="diff-edit-bar">
+          <Pencil size={12} className="text-ink-3" />
+          <span className="text-ink-3">{t('diffView.editable')}</span>
+          {dirty && <span className="text-status-warning">{t('diffView.unsaved')}</span>}
+          {saveState.saved && !dirty && <span className="text-status-success">{t('diffView.saved')}</span>}
+          {saveState.error && !saveState.error.ok && (
+            <span className="text-status-danger truncate" data-testid="diff-save-error">
+              {t(`diffView.saveError.${saveState.error.reason}`, {
+                message: saveState.error.message ?? '', keys: (saveState.error.keys ?? []).join(', '),
+              })}
+            </span>
+          )}
+          <div className="flex-1" />
+          {saveState.error && !saveState.error.ok && saveState.error.reason === 'changed' && (
+            <button type="button" className="btn-secondary-sm" onClick={() => void reload()}>{t('diffView.reload')}</button>
+          )}
+          <button type="button" className="btn-primary-sm flex items-center gap-1" disabled={!dirty || saveState.busy}
+            onClick={() => void save()} title="Ctrl+S">
+            <Save size={12} />{t('diffView.save')}
+          </button>
+        </div>
+      )}
       <div className="flex-1 min-h-0">{body}</div>
     </div>
   )

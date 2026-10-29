@@ -123,7 +123,8 @@ test('G6 — modification locale : Avant = HEAD, Après = working tree', async (
   await goto(s.projectUrl('/diff', { repoPath: s.project.localPath, filepath: reqFile }))
   await expect(grid()).toContainText(`Avant · ${c2.slice(0, 7)}`)
   await expect(grid()).toContainText('Après · working tree')
-  await expect(grid()).toContainText('GH178 local')
+  // GH222 §12 — the working-tree side of a local change is editable: its value is in a field.
+  await expect(grid().locator('[data-node="/title"] input')).toHaveValue('GH178 local')
   await expect(unit('title')).toHaveAttribute('data-changed', 'true')
   await expect(unit('status')).not.toHaveAttribute('data-changed', 'true')
 })

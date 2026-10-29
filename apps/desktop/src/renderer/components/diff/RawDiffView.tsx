@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { EditorState, type Extension } from '@codemirror/state'
-import { EditorView, lineNumbers } from '@codemirror/view'
+import { Annotation, EditorState, type Extension } from '@codemirror/state'
+import { EditorView, keymap, lineNumbers } from '@codemirror/view'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { yaml } from '@codemirror/lang-yaml'
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { MergeView, getChunks, unifiedMergeView, type Chunk } from '@codemirror/merge'
@@ -20,15 +21,18 @@ import { useChangeNavigation } from '../diffkit/useChangeNavigation'
  */
 
 const COLLAPSE = { margin: 3, minSize: 4 }
+/** A change of the edited side that comes from outside the editor (save, reload, Rendu). */
+const fromOutside = Annotation.define<boolean>()
 
-function baseExtensions(yamlSyntax: boolean): Extension[] {
+function baseExtensions(yamlSyntax: boolean, editable = false): Extension[] {
   const ext: Extension[] = [
     lineNumbers(),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-    EditorState.readOnly.of(true),
-    EditorView.editable.of(false),
+    EditorState.readOnly.of(!editable),
+    EditorView.editable.of(editable),
     ...diffExtensions,
   ]
+  if (editable) ext.push(history(), keymap.of([...defaultKeymap, ...historyKeymap]))
   if (yamlSyntax) ext.push(yaml())
   return ext
 }
@@ -43,15 +47,20 @@ function toneOf(c: Chunk): RulerMark['tone'] {
   return 'mod'
 }
 
-export function RawDiffView({ before, after, layout, yamlSyntax, navBarSlot }: {
+export function RawDiffView({ before, after, layout, yamlSyntax, navBarSlot, onChange }: {
   before: string
   after: string
   layout: 'side' | 'inline'
   yamlSyntax: boolean
   /** Où monter la barre de navigation (sous-en-tête de la vue). */
   navBarSlot?: HTMLElement | null
+  /** GH222 §12 — côté Après modifiable (modification locale) : texte édité, « ← Rétablir » par bloc. */
+  onChange?: (text: string) => void
 }) {
   const { t } = useTranslation()
+  const editable = !!onChange
+  const latest = useRef({ onChange, after })
+  latest.current = { onChange, after }
   const host = useRef<HTMLDivElement>(null)
   const handle = useRef<Handle | null>(null)
   const [chunks, setChunks] = useState<readonly Chunk[]>([])
@@ -86,15 +95,22 @@ export function RawDiffView({ before, after, layout, yamlSyntax, navBarSlot }: {
   useEffect(() => {
     const parent = host.current!
     const listener = EditorView.updateListener.of(u => { if (u.geometryChanged || u.docChanged) requestAnimationFrame(measure) })
+    // The edited side reports its text (a typed change or « ← Rétablir »).
+    const changes = EditorView.updateListener.of(u => {
+      if (u.docChanged && !u.transactions.some(tr => tr.annotation(fromOutside))) latest.current.onChange?.(u.state.doc.toString())
+    })
+    // Built from the current text; later edits come from the editor itself (below for outside ones).
+    const doc = latest.current.after
     if (layout === 'side') {
       const view = new MergeView({
         a: { doc: before, extensions: [...baseExtensions(yamlSyntax), listener] },
-        b: { doc: after, extensions: [...baseExtensions(yamlSyntax), listener] },
+        b: { doc, extensions: [...baseExtensions(yamlSyntax, editable), listener, ...(editable ? [changes] : [])] },
         parent,
         highlightChanges: true,
         gutter: true,
         collapseUnchanged: COLLAPSE,
         diffConfig: DIFF_CONFIG,
+        ...(editable ? { revertControls: 'a-to-b' as const, renderRevertControl: () => revertButton(t('diffView.restore')) } : {}),
       })
       view.dom.style.height = '100%'
       view.dom.style.overflow = 'auto'
@@ -103,11 +119,19 @@ export function RawDiffView({ before, after, layout, yamlSyntax, navBarSlot }: {
       const view = new EditorView({
         parent,
         state: EditorState.create({
-          doc: after,
+          doc,
           extensions: [
-            ...baseExtensions(yamlSyntax),
+            ...baseExtensions(yamlSyntax, editable),
             listener,
-            unifiedMergeView({ original: before, mergeControls: false, gutter: true, highlightChanges: true, collapseUnchanged: COLLAPSE, diffConfig: DIFF_CONFIG }),
+            ...(editable ? [changes] : []),
+            unifiedMergeView({
+              original: before,
+              // Editable: « Rétablir » (reject = back to Avant) only; accepting a local change is a no-op.
+              mergeControls: editable
+                ? (type, action) => (type === 'reject' ? revertButton(t('diffView.restore'), action) : document.createElement('span'))
+                : false,
+              gutter: true, highlightChanges: true, collapseUnchanged: COLLAPSE, diffConfig: DIFF_CONFIG,
+            }),
           ],
         }),
       })
@@ -121,7 +145,20 @@ export function RawDiffView({ before, after, layout, yamlSyntax, navBarSlot }: {
       handle.current?.view.destroy()
       handle.current = null
     }
-  }, [before, after, layout, yamlSyntax, measure])
+    // `after` is read at creation only when editable: the editor owns the text from then on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [before, editable ? null : after, layout, yamlSyntax, editable, measure])
+
+  // An outside change of the edited text (« Recharger », an edit in Rendu): the editor follows.
+  useEffect(() => {
+    const h = handle.current
+    if (!editable || !h) return
+    const v = h.layout === 'side' ? h.view.b : h.view
+    const current = v.state.doc.toString()
+    // Not reported back as an edit: after a save, the old text shown until the re-read must not
+    // become a draft again.
+    if (current !== after) v.dispatch({ changes: { from: 0, to: current.length, insert: after }, annotations: fromOutside.of(true) })
+  }, [after, editable])
 
   const go = useCallback((i: number) => {
     const h = handle.current
@@ -154,4 +191,15 @@ export function RawDiffView({ before, after, layout, yamlSyntax, navBarSlot }: {
 
 function NavSlot({ slot, children }: { slot: HTMLElement | null; children: ReactNode }) {
   return slot ? createPortal(children, slot) : null
+}
+
+/** « ← Rétablir » : takes the block of Avant back (revert control of `@codemirror/merge`). */
+function revertButton(label: string, action?: (e: MouseEvent) => void): HTMLElement {
+  const b = document.createElement('button')
+  b.type = 'button'
+  b.className = 'cm-diff-restore'
+  b.textContent = `← ${label}`
+  b.title = label
+  if (action) b.onmousedown = e => { e.preventDefault(); action(e) }
+  return b
 }

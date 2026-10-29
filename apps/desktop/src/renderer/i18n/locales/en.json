@@ -1545,7 +1545,21 @@
       "postconditions": "Postconditions"
     },
     "sideBySide": "Side by side",
-    "inline": "Inline"
+    "inline": "Inline",
+    "restore": "Restore",
+    "editable": "Editable — working tree",
+    "save": "Save",
+    "saved": "Saved",
+    "reload": "Reload",
+    "add": "Add",
+    "newKey": "New key",
+    "unsaved": "Unsaved changes",
+    "saveError": {
+      "changed": "The file changed on disk since it was opened: reload it before saving.",
+      "invalid": "Invalid content: {{message}}",
+      "unsupported": "These keys are not saved from the diff ({{keys}}): use the object editor.",
+      "outside": "Path outside the repository."
+    }
   },
   "versionDiffPage": {
     "selectFileHint": "Select a file in the Version panel"

@@ -193,6 +193,13 @@
     outline: 2px solid rgb(var(--diff-gutter-ins));
     outline-offset: 2px;
   }
+  /* GH222 §12 — « ← Rétablir » d'un bloc, entre les colonnes du diff Raw (hors des éditeurs). */
+  .cm-diff-restore {
+    @apply px-1 rounded border border-edge bg-surface text-[10px] text-ink-2 whitespace-nowrap;
+  }
+  .cm-diff-restore:hover {
+    @apply bg-hover text-ink;
+  }
   /* GH222 — absence alignée en face d'un ajout / d'un retrait (Raw et Rendu). */
   .diff-hatch {
     background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(var(--diff-hatch) / 0.55) 4px 6px);

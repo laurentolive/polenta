@@ -1545,7 +1545,21 @@
       "postconditions": "Postconditions"
     },
     "sideBySide": "Côte à côte",
-    "inline": "En ligne"
+    "inline": "En ligne",
+    "restore": "Rétablir",
+    "editable": "Modifiable — working tree",
+    "save": "Enregistrer",
+    "saved": "Enregistré",
+    "reload": "Recharger",
+    "add": "Ajouter",
+    "newKey": "Nouvelle clé",
+    "unsaved": "Modifications non enregistrées",
+    "saveError": {
+      "changed": "Le fichier a changé sur le disque depuis son ouverture : rechargez-le avant d'enregistrer.",
+      "invalid": "Contenu invalide : {{message}}",
+      "unsupported": "Ces clés ne s'enregistrent pas depuis le diff ({{keys}}) : utilisez l'éditeur de l'objet.",
+      "outside": "Chemin hors du dépôt."
+    }
   },
   "versionDiffPage": {
     "selectFileHint": "Sélectionnez un fichier dans le panel Version"

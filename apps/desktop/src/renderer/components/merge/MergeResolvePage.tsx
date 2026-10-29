@@ -13,7 +13,7 @@ import {
 } from '../../lib/publishWorkspace'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
 import { FileResolver } from './FileResolver'
-import { useMergeSession } from './useMergeSession'
+import { primeMergeSession, useMergeSession } from './useMergeSession'
 
 interface Props {
   id: string
@@ -97,6 +97,7 @@ export function MergeResolvePage({ id, projectId, selected, onSelect: setSelecte
         await api.sync.fastForwardBranch(session.repoPath, origin.integrationBranch).catch(() => {})
       }
       const next = await api.mergeResolution.open(session.repoPath, session.leftRef, session.rightRef, origin)
+      primeMergeSession(qc, next)
       void qc.invalidateQueries({ queryKey: ['merge-resolution'] })
       void navigate({ to: '/merge-resolve', search: { id: next.id, projectId } })
     } catch (err) {
@@ -139,7 +140,8 @@ export function MergeResolvePage({ id, projectId, selected, onSelect: setSelecte
   async function abandon() {
     if (!session) return
     await api.mergeResolution.abandon(session.id)
-    qc.setQueryData(['merge-resolution', session.id], null)
+    // GH234 — forgotten, not cached as `null`: reopening the same merge gets the same id back.
+    qc.removeQueries({ queryKey: ['merge-resolution', session.id] })
     void qc.invalidateQueries({ queryKey: ['merge-resolution', 'list'] })
     closeTab(activeTabId)
   }
@@ -257,6 +259,7 @@ export function MergeResolvePage({ id, projectId, selected, onSelect: setSelecte
     const next = await api.mergeResolution.open(err.repo.repoPath, err.reason.workBranch, err.integrationBranch, {
       kind: 'publish', workBranch: err.reason.workBranch, integrationBranch: err.integrationBranch, title, ephemeral: err.reason.ephemeral,
     })
+    primeMergeSession(qc, next)
     setDone(null)
     void navigate({ to: '/merge-resolve', search: { id: next.id, projectId } })
   }

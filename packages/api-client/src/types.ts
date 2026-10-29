@@ -2,7 +2,7 @@ import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
-  Change, ChangeSummary, CreateChangeDto, UpdateChangeDto,
+  Change, ChangeAnalysis, ChangeSummary, CreateChangeDto, UpdateChangeDto,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -32,8 +32,7 @@ import type {
   TestCase,
   TestRun,
   TraceabilityMatrix,
-  ImpactReport,
-  ImpactAcknowledgement,
+  LegacyImpactAck,
   TestPlanDraft,
   MatrixExportRow,
   RevalidationItem,
@@ -66,12 +65,8 @@ import type {
   QueryTemplate,
   WidgetTemplate,
   WidgetCode,
-  ImpactAnalysis,
-  ImpactAnalysisSummary,
   LocalImpactAnalysis,
   RequirementDiffEntry,
-  CreateImpactAnalysisDto,
-  UpdateImpactItemStatusDto,
   ExportKind,
   ExportFormat,
   ExportTemplateListResult,
@@ -91,7 +86,6 @@ import type {
   UpdateTestCaseDto,
   ExecuteTestCaseDto,
   MatrixFiltersDto,
-  AcknowledgeImpactDto,
   GenerateTestPlanDto,
 } from '@polenta/zod-schemas'
 
@@ -545,6 +539,8 @@ export interface ApiClient {
     create(repoPath: string, dto: CreateChangeDto, workspaceDir?: string): Promise<Change & { repoPath: string }>
     update(repoPath: string, id: string, dto: UpdateChangeDto): Promise<Change>
     delete(repoPath: string, id: string): Promise<void>
+    /** GH199 — analyse d'impact : instantané si figée, sinon calculée. */
+    analysis(repoPath: string, id: string): Promise<ChangeAnalysis>
   }
   /** GH197 — historique des exécutions d'un test ou d'une exigence. */
   executions: {
@@ -727,8 +723,8 @@ export interface ApiClient {
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
     missingLinks(repoPath: string, workspaceDir?: string): Promise<MissingLinksResult>
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
-    impact(repoPath: string, reqId: string, depth?: number, workspaceDir?: string): Promise<ImpactReport>
-    acknowledge(repoPath: string, reqId: string, dto: AcknowledgeImpactDto): Promise<ImpactAcknowledgement>
+    /** GH199 — acquittements de l'ancien flux élément unique (`impact-acks/<id>/`), lecture seule. */
+    legacyAcks(repoPath: string, elementId: string): Promise<LegacyImpactAck[]>
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
     testPlan(repoPath: string, dto: GenerateTestPlanDto, workspaceDir?: string): Promise<TestPlanDraft>
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
@@ -749,14 +745,8 @@ export interface ApiClient {
     clear(repoPath: string, ids: string[], workspaceDir?: string): Promise<ClearRevalidationResult>
   }
   impactAnalysis: {
-    /** Crée et persiste une analyse d'impact entre deux baselines (T46) — figée à la création. */
-    create(repoPath: string, dto: CreateImpactAnalysisDto): Promise<ImpactAnalysis>
-    list(repoPath: string): Promise<ImpactAnalysisSummary[]>
     /** T175 — analyse live des modifications locales vs HEAD (racine + composants), jamais persistée. */
     local(repoPath: string, workspaceDir?: string): Promise<LocalImpactAnalysis>
-    get(repoPath: string, id: string): Promise<ImpactAnalysis>
-    updateStatus(repoPath: string, id: string, dto: UpdateImpactItemStatusDto): Promise<ImpactAnalysis>
-    delete(repoPath: string, id: string): Promise<void>
   }
   reviews: {
     list(repoPath: string, status?: ReviewStatus): Promise<Review[]>

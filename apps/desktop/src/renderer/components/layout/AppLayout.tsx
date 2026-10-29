@@ -7,7 +7,6 @@ import { SearchProvider } from '../../contexts/SearchContext'
 import { VersioningProvider } from '../../contexts/VersioningContext'
 import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
-import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
 import { RepoAccessBanner } from './RepoAccessBanner'
@@ -15,7 +14,7 @@ import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'changes' | 'dashboard' | 'parameters'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'changes' | 'dashboard' | 'parameters'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -43,8 +42,9 @@ export function deducePanel(pathname: string, category?: string): Panel {
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
   if (pathname === '/parameters') return 'parameters'
-  if (pathname === '/changes' || pathname.startsWith('/change/')) return 'changes'
-  if (pathname === '/impact-analysis' || pathname === '/constellation') return 'impact'
+  // GH199 — la vue Analyse d'impact est intégrée à la vue Changements (modifications locales,
+  // « Impact à vérifier », Constellation).
+  if (pathname === '/changes' || pathname.startsWith('/changes/') || pathname.startsWith('/change/') || pathname === '/constellation') return 'changes'
 
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
@@ -232,11 +232,6 @@ export function AppLayout() {
         navigate({ to: '/product', search: { projectId: currentProjectId ?? '', tab: undefined, repo: searchParams.get('repo') ?? undefined, node: undefined, type: undefined, category } })
         break
       }
-      case 'impact':
-        // T174: own activity-bar entry (was a sub-view of Version). The open analysis is
-        // kept by ImpactAnalysisContext, so a bare /impact-analysis restores it.
-        if (currentProjectId) navigate({ to: '/impact-analysis', search: { projectId: currentProjectId } })
-        break
       case 'parameters':
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
         break
@@ -299,7 +294,7 @@ export function AppLayout() {
   // on that panel used to make `inner` change JSX type at that slot every time the user
   // entered/left Système, forcing React to unmount and remount the entire app shell
   // (ActivityBar, Sidebar, main/Outlet) — wiping any in-memory state living below AppLayout,
-  // including which impact analysis was open and the Version panel's remembered sub-view.
+  // including the Version panel's remembered sub-view.
   // SystemViewProvider's own effects already no-op outside /product and /components.
   if (!currentProjectId) return inner
 
@@ -307,13 +302,11 @@ export function AppLayout() {
     <VersioningProvider currentProjectId={currentProjectId}>
       <SelectedRepoProvider key={currentProjectId}>
         <CompareRefsProvider>
-          <ImpactAnalysisProvider>
             <SystemViewProvider currentProjectId={currentProjectId}>
               <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
                 {inner}
               </SearchProvider>
             </SystemViewProvider>
-          </ImpactAnalysisProvider>
         </CompareRefsProvider>
       </SelectedRepoProvider>
     </VersioningProvider>

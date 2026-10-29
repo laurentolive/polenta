@@ -433,6 +433,13 @@ function toGraphChange(c: Change, repo: string, types: TypeResolver, now: Date):
     origin: { runs: c.origin?.runs ?? [], decisions: c.origin?.decisions ?? [] },
     integratedIn: c.integratedIn ?? null,
     campaigns: c.campaigns ?? [],
+    range: c.range ?? null,
+    analysis: c.analysis?.frozen ? {
+      computedAt: c.analysis.computedAt,
+      rows: c.analysis.rows.map((r) => ({ id: r.id, elementType: r.elementType, status: r.status, comment: r.comment ?? null, source: r.source, reached: r.reached })),
+      rootIds: c.analysis.roots.map((r) => r.elementId),
+      campaigns: c.analysis.campaigns.map((x) => ({ id: x.id, testIds: x.testIds })),
+    } : null,
   }
 }
 

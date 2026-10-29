@@ -1,4 +1,4 @@
-import type { ImpactAnalysisStatus } from './impact-analysis'
+import type { ImpactAnalysisStatus, ImpactNode } from './impact-analysis'
 import type { ObjectHistory } from './history'
 import type { SchemaStatus } from './schema'
 
@@ -34,6 +34,45 @@ export interface ChangeOrigin {
   decisions: { conformityId: string; objectId: string }[]
 }
 
+/** GH199 — bornes d'un change « sur l'existant » (`ref` : tag de baseline ou SHA court). */
+export interface ChangeRange {
+  from: { ref: string; sha: string }
+  to: { ref: string; sha: string }
+}
+
+/** GH199 — racine de l'analyse : élément de départ et ses deux arbres (SPEC-TRACEABILITY §4.6). */
+export interface ChangeAnalysisRoot {
+  elementId: string
+  elementType: 'requirement' | 'test_case'
+  title: string
+  descendantTree: ImpactNode[]
+  ascendantTree: ImpactNode[]
+}
+
+/** GH199 — ligne des éléments impactés (déclarée ou calculée), un statut par élément. */
+export interface ChangeImpactRow {
+  id: string
+  /** null : élément introuvable dans le snapshot (supprimé). */
+  elementType: 'requirement' | 'test_case' | null
+  title: string | null
+  status: ChangeImpactStatus
+  comment?: string
+  source: 'declared' | 'computed'
+  /** Ligne calculée atteinte par l'analyse courante (false : « n'est plus atteint »). */
+  reached: boolean
+}
+
+/** GH199 — analyse d'impact d'un change : calculée (live) ou instantané figé au statut terminal. */
+export interface ChangeAnalysis {
+  computedAt: string
+  frozen: boolean
+  snapshot: { kind: 'workdir' } | { kind: 'ref'; sha: string }
+  roots: ChangeAnalysisRoot[]
+  rows: ChangeImpactRow[]
+  /** Campagnes non closes contenant un test racine ou atteint. */
+  campaigns: { id: string; title: string; status: string; testIds: string[] }[]
+}
+
 export interface Change {
   id: string
   projectId: string
@@ -45,8 +84,10 @@ export interface Change {
   fields: Record<string, unknown>
   /** Nœud du schéma que le change fait évoluer (repo de stockage). */
   component: string
-  /** `request` : demande de changement ; `range` : sur l'existant (L3). */
+  /** `request` : demande de changement ; `range` : sur l'existant (GH199). */
   mode: 'request' | 'range'
+  /** GH199 — bornes d'un change `range`. */
+  range?: ChangeRange
   toModify: ChangeToModify[]
   impacted: ChangeImpacted[]
   origin: ChangeOrigin
@@ -54,6 +95,8 @@ export interface Change {
   integratedIn: string | null
   /** Campagnes créées / alimentées par le change (L6). */
   campaigns: string[]
+  /** GH199 — analyse figée au passage dans un statut terminal (absente sinon). */
+  analysis?: ChangeAnalysis
   history?: ObjectHistory
   /** Audit dérivé de git (non stocké). */
   createdAt?: string | null
@@ -77,6 +120,9 @@ export interface ChangeSummary {
 }
 
 export interface CreateChangeDto {
+  /** GH199 — `range` : sur l'existant, avec `range` (tag de baseline ou SHA de chaque borne). */
+  mode?: 'request' | 'range'
+  range?: { from: string; to: string }
   objectTypeRef: string
   title: string
   component?: string
@@ -108,4 +154,15 @@ export const DEFAULT_CHANGE_STATUSES: SchemaStatus[] = [
 export function uniqueById<T extends { id: string }>(items: T[]): T[] {
   const seen = new Set<string>()
   return items.filter(i => (seen.has(i.id) ? false : (seen.add(i.id), true)))
+}
+
+/** GH199 — statuts d'impact « clos » pour la complétude (SPEC-TRACEABILITY §4.6). */
+export const CLOSED_IMPACT_STATUSES: readonly ChangeImpactStatus[] = ['pas_d_impact_reel', 'impact_teste', 'modification_verifiee']
+
+/**
+ * GH199 — lignes à écrire dans le change (Q2) : déclarées, et calculées portant une saisie
+ * (statut autre que `impact_non_verifie` ou commentaire). Les autres sont recalculées.
+ */
+export function pruneImpacted(items: ChangeImpacted[]): ChangeImpacted[] {
+  return items.filter(i => i.source === 'declared' || i.status !== 'impact_non_verifie' || !!i.comment?.trim())
 }

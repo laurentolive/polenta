@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { User, Settings, Search, GitBranch, ClipboardList, FlaskConical, Rocket, PieChart, Variable, GitPullRequestArrow } from 'lucide-react'
 import type { Panel } from './AppLayout'
-import { ImpactAnalysisIcon } from './ImpactAnalysisIcon'
 import { UpdateBadge } from './UpdateBadge'
 import { ActivityBarMenu } from './ActivityBarMenu'
 import {
@@ -33,7 +32,6 @@ const PANELS: {
   { id: 'parameters',   icon: <Variable size={20} />,       labelKey: 'layout.activityBar.parameters',   requiresProject: true },
   { id: 'search',  icon: <Search size={20} />,     labelKey: 'layout.activityBar.search', requiresProject: true },
   { id: 'version', icon: <GitBranch size={20} />,  labelKey: 'layout.activityBar.version',   requiresProject: true },
-  { id: 'impact',  icon: <ImpactAnalysisIcon size={20} />, labelKey: 'layout.activityBar.impact', requiresProject: true },
 ]
 
 const DEFAULT_ORDER = PANELS.map(p => p.id)

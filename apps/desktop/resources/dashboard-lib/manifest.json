@@ -151,6 +151,14 @@
             "fr": "Changes (GH198)",
             "en": "Changes (GH198)"
           }
+        },
+        {
+          "version": 7,
+          "hash": "53eabb6b46ced99da0acef3c2ca0d8058f0036b1adea2b78a0a74407f1aea9c3",
+          "summary": {
+            "fr": "Changes : bornes et analyse figée (GH199)",
+            "en": "Changes: range and frozen analysis (GH199)"
+          }
         }
       ]
     },

@@ -1,9 +1,12 @@
 import type {
-  Change, ChangeImpacted, ChangeSummary, ChangeToModify, CreateChangeDto, ObjectTypeDefinition, ProjectSchema,
-  UpdateChangeDto,
+  Change, ChangeAnalysis, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify, CreateChangeDto,
+  ObjectTypeDefinition, ProjectSchema, TestCampaign, UpdateChangeDto,
 } from '@polenta/types'
-import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isUnknownStatus, uniqueById } from '@polenta/types'
+import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isUnknownStatus, pruneImpacted, uniqueById } from '@polenta/types'
 import type { GitService } from './git.service'
+import type { SyncService } from './sync.service'
+import type { TraceabilityService } from './traceability.service'
+import { computeChangeAnalysis } from './change-analysis.util'
 import type { HistoryService } from './history.service'
 import type { SchemaService } from './schema.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
@@ -21,6 +24,7 @@ const DIR = 'changes'
  * Création (demande de changement), lecture, mise à jour (titre, statut, champs, listes, composant
  * au statut initial), suppression tant que jamais commité.
  * Écriture unique par `persist` : contrôles #195 et historique GH77, comme les autres objets.
+ * GH199 — analyse d'impact (live, figée au statut terminal), change « sur l'existant » (`range`).
  */
 export class ChangesService {
   constructor(
@@ -28,7 +32,55 @@ export class ChangesService {
     private readonly schema: Pick<SchemaService, 'get'>,
     private readonly workspaceTree?: WorkspaceTreeService,
     private readonly history?: HistoryService,
+    private readonly impact?: {
+      traceability: Pick<TraceabilityService, 'loadSnapshotAtRef' | 'loadWorkingTreeSnapshot' | 'buildImpactTreesFromSnapshot' | 'diffElementsBetweenRefs'>
+      sync: Pick<SyncService, 'resolveCommitish'>
+      campaigns: { list(repoPath: string): Promise<TestCampaign[]> }
+    },
   ) {}
+
+  /** GH199 — analyse d'impact : instantané si figée, sinon calculée sur l'état courant. */
+  async analysis(repoPath: string, id: string): Promise<ChangeAnalysis> {
+    const change = await this.get(repoPath, id)
+    if (change.analysis?.frozen) return change.analysis
+    return this.computeAnalysis(repoPath, change)
+  }
+
+  private async computeAnalysis(repoPath: string, change: Change): Promise<ChangeAnalysis> {
+    if (!this.impact) throw new Error('Analyse d\'impact indisponible')
+    const { traceability, campaigns } = this.impact
+    const range = change.mode === 'range' ? change.range : undefined
+    const [snapshot, schema, repoCampaigns] = await Promise.all([
+      range ? traceability.loadSnapshotAtRef(repoPath, range.to.sha) : traceability.loadWorkingTreeSnapshot(repoPath, [repoPath]),
+      this.schema.get(repoPath),
+      campaigns.list(repoPath).catch(() => [] as TestCampaign[]),
+    ])
+    // Exigences du composant : types `requirement` du nœud, réf. par son nom (ou l'alias `root::`).
+    const node = flattenSystemNodes(schema?.nodes ?? []).map(({ node: n }) => n).find(n => n.name === change.component)
+    const typeNames = new Set((node?.objectTypes ?? []).filter(t => t.category === 'requirement').map(t => t.name))
+    const isComponentRequirement = (ref: string | undefined) => {
+      const [n, t] = (ref ?? '').split('::')
+      return !!t && typeNames.has(t) && (n === change.component || n === 'root')
+    }
+    return computeChangeAnalysis({
+      change, snapshot, campaigns: repoCampaigns, isComponentRequirement,
+      trees: (elementId, type) => traceability.buildImpactTreesFromSnapshot(snapshot, elementId, type),
+      snapshotKind: range ? { kind: 'ref', sha: range.to.sha } : { kind: 'workdir' },
+    })
+  }
+
+  /** GH199 — bornes d'un change « sur l'existant » et éléments changés entre elles (`modified`). */
+  private async resolveRange(repoPath: string, range: { from: string; to: string }): Promise<{ range: ChangeRange; changed: ChangeToModify[] }> {
+    if (!this.impact) throw new Error('Change sur l\'existant indisponible')
+    const resolve = async (ref: string) => {
+      const sha = ref?.trim() ? await this.impact!.sync.resolveCommitish(repoPath, ref.trim()) : null
+      if (!sha) throw new Error(`Borne introuvable : "${ref ?? ''}"`)
+      return { ref: ref.trim(), sha }
+    }
+    const [from, to] = await Promise.all([resolve(range.from), resolve(range.to)])
+    const diff = await this.impact.traceability.diffElementsBetweenRefs(repoPath, from.sha, to.sha)
+    return { range: { from, to }, changed: diff.map(d => ({ id: d.reqId, state: 'modified' as const })) }
+  }
 
   /** Changes stockés dans un repo. */
   async listRepo(repoPath: string): Promise<Change[]> {
@@ -64,13 +116,18 @@ export class ChangesService {
     const schema = await this.schema.get(repoPath)
     const typeDef = this.changeType(schema, dto.objectTypeRef)
     const component = this.resolveComponent(schema, dto.component)
+    const ranged = dto.mode === 'range'
+      ? await this.resolveRange(repoPath, dto.range ?? { from: '', to: '' })
+      : null
     const id = await nextCounterId(this.git, repoPath, typeDef.prefix || 'CHG', DIR)
     await assertNewObjectFile(this.git, repoPath, `${DIR}/${id}.yaml`, id)
     const change: Change = {
       id, projectId: '', branchId: '', objectTypeRef: dto.objectTypeRef, title,
       status: initialStatus(typeDef), version: 1, fields: dto.fields ?? {},
-      component, mode: 'request',
-      toModify: cleanToModify(dto.toModify ?? []), impacted: cleanImpacted(dto.impacted ?? []),
+      component, mode: ranged ? 'range' : 'request',
+      ...(ranged && { range: ranged.range }),
+      toModify: cleanToModify([...(dto.toModify ?? []), ...(ranged?.changed ?? [])]),
+      impacted: pruneImpacted(cleanImpacted(dto.impacted ?? [])),
       origin: { runs: [], decisions: [] }, integratedIn: null, campaigns: [],
     }
     return { ...(await this.persist(repoPath, null, change)), repoPath }
@@ -92,15 +149,23 @@ export class ChangesService {
         component = this.resolveComponent(schema, dto.component)
       }
       if (dto.title !== undefined && !dto.title.trim()) throw new Error('Titre obligatoire')
-      return this.persist(repoPath, existing, {
+      const next: Change = {
         ...existing,
         ...(dto.title !== undefined && { title: dto.title.trim() }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.fields !== undefined && { fields: { ...existing.fields, ...dto.fields } }),
         component,
         ...(dto.toModify !== undefined && { toModify: cleanToModify(dto.toModify) }),
-        ...(dto.impacted !== undefined && { impacted: cleanImpacted(dto.impacted) }),
-      })
+        ...(dto.impacted !== undefined && { impacted: pruneImpacted(cleanImpacted(dto.impacted)) }),
+      }
+      // Analyse figée à l'entrée dans un statut terminal, rendue au live à la sortie (§2, Q12).
+      const terminal = (s: string) => !!typeDef.statuses?.find(x => x.name === s)?.isTerminal
+      const { analysis: _frozen, ...withoutAnalysis } = next
+      const written: Change = terminal(next.status)
+        ? (existing.analysis?.frozen && terminal(existing.status) ? next
+          : this.impact ? { ...next, analysis: { ...(await this.computeAnalysis(repoPath, next)), frozen: true } } : next)
+        : withoutAnalysis
+      return this.persist(repoPath, existing, written)
     })
   }
 

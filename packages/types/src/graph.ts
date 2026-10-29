@@ -82,6 +82,15 @@ export interface GraphChange extends GraphObjectBase {
   origin: { runs: string[]; decisions: { conformityId: string; objectId: string }[] }
   integratedIn: string | null
   campaigns: string[]
+  /** GH199 — bornes d'un change « sur l'existant » (`mode: range`), sinon null. */
+  range: { from: { ref: string; sha: string }; to: { ref: string; sha: string } } | null
+  /** GH199 — analyse figée au statut terminal (lignes, racines), sinon null. Non recalculée par le graphe. */
+  analysis: {
+    computedAt: string
+    rows: { id: string; elementType: 'requirement' | 'test_case' | null; status: string; comment: string | null; source: 'declared' | 'computed'; reached: boolean }[]
+    rootIds: string[]
+    campaigns: { id: string; testIds: string[] }[]
+  } | null
 }
 
 export interface GraphRepo {

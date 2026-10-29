@@ -104,7 +104,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // GH197 — historique des exécutions d'un test ou d'une exigence.
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
   // GH198 — objet change.
-  const changes = new ChangesService(git, schema, workspaceTree, history)
+  const changes = new ChangesService(git, schema, workspaceTree, history, { traceability, sync, campaigns })
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)

@@ -5,7 +5,7 @@ import { errorToolResult, jsonToolResult } from '../mcp-types'
 
 /**
  * GH198 — changes (specs/GH198.md §6) : `list_changes`, `get_change`, `create_change` (demande de
- * changement). Mêmes contrôles que l'application (`ChangesService`). Mise à jour des listes : lot L3.
+ * changement). Mêmes contrôles que l'application (`ChangesService`). GH199 : `get_change` renvoie aussi l'analyse.
  */
 
 const changeItemSchema = z.object({ id: z.string().min(1) })
@@ -39,12 +39,16 @@ export function registerChangeTools(server: McpServer, container: McpContainer):
       description:
         "Lit un change : champs, composant, éléments à modifier (toModify : id, state planned|modified), " +
         'éléments impactés (impacted : id, status d\'impact, comment, source declared|computed), origine, ' +
-        'version intégrée, campagnes, historique. repoPath : repo de stockage (cf. list_changes), défaut repo ouvert.',
+        'version intégrée, campagnes, historique ; et son analyse d\'impact (`analysis` : racines, arbres, lignes des impactés ' +
+        'déclarées et calculées, campagnes en cours concernées ; figée si le change est terminal). repoPath : repo de stockage ' +
+        '(cf. list_changes), défaut repo ouvert.',
       inputSchema: { id: z.string().min(1), repoPath: z.string().optional() },
     },
     async ({ id, repoPath }) => {
       try {
-        return jsonToolResult({ change: await container.changes.get(repoPath ?? container.repoPath, id) })
+        const rp = repoPath ?? container.repoPath
+        const [change, analysis] = await Promise.all([container.changes.get(rp, id), container.changes.analysis(rp, id)])
+        return jsonToolResult({ change, analysis })
       } catch (err) {
         return errorToolResult(err instanceof Error ? err.message : String(err))
       }

@@ -22,7 +22,6 @@ import { Route as PreferencesRouteImport } from './routes/preferences'
 import { Route as ParametersRouteImport } from './routes/parameters'
 import { Route as MergeResolveRouteImport } from './routes/merge-resolve'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as ImpactAnalysisRouteImport } from './routes/impact-analysis'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as DiffRouteImport } from './routes/diff'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -46,6 +45,8 @@ import { Route as PrintDrawioSnapshotRouteImport } from './routes/print.drawio-s
 import { Route as PrintDashboardRouteImport } from './routes/print.dashboard'
 import { Route as PrintCampaignReportRouteImport } from './routes/print.campaign-report'
 import { Route as PrintCampaignPlanRouteImport } from './routes/print.campaign-plan'
+import { Route as ChangesRevalidationRouteImport } from './routes/changes_.revalidation'
+import { Route as ChangesLocalRouteImport } from './routes/changes_.local'
 import { Route as ChangeNewRouteImport } from './routes/change.new'
 import { Route as ChangeChangeIdRouteImport } from './routes/change.$changeId'
 import { Route as CampaignNewRouteImport } from './routes/campaign.new'
@@ -116,11 +117,6 @@ const MergeResolveRoute = MergeResolveRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ImpactAnalysisRoute = ImpactAnalysisRouteImport.update({
-  id: '/impact-analysis',
-  path: '/impact-analysis',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GraphRoute = GraphRouteImport.update({
@@ -238,6 +234,16 @@ const PrintCampaignPlanRoute = PrintCampaignPlanRouteImport.update({
   path: '/print/campaign-plan',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangesRevalidationRoute = ChangesRevalidationRouteImport.update({
+  id: '/changes_/revalidation',
+  path: '/changes/revalidation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangesLocalRoute = ChangesLocalRouteImport.update({
+  id: '/changes_/local',
+  path: '/changes/local',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChangeNewRoute = ChangeNewRouteImport.update({
   id: '/change/new',
   path: '/change/new',
@@ -283,7 +289,6 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
   '/graph': typeof GraphRoute
-  '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
   '/merge-resolve': typeof MergeResolveRoute
   '/parameters': typeof ParametersRoute
@@ -301,6 +306,8 @@ export interface FileRoutesByFullPath {
   '/campaign/new': typeof CampaignNewRoute
   '/change/$changeId': typeof ChangeChangeIdRoute
   '/change/new': typeof ChangeNewRoute
+  '/changes/local': typeof ChangesLocalRoute
+  '/changes/revalidation': typeof ChangesRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -328,7 +335,6 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
   '/graph': typeof GraphRoute
-  '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
   '/merge-resolve': typeof MergeResolveRoute
   '/parameters': typeof ParametersRoute
@@ -346,6 +352,8 @@ export interface FileRoutesByTo {
   '/campaign/new': typeof CampaignNewRoute
   '/change/$changeId': typeof ChangeChangeIdRoute
   '/change/new': typeof ChangeNewRoute
+  '/changes/local': typeof ChangesLocalRoute
+  '/changes/revalidation': typeof ChangesRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -374,7 +382,6 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/diff': typeof DiffRoute
   '/graph': typeof GraphRoute
-  '/impact-analysis': typeof ImpactAnalysisRoute
   '/login': typeof LoginRoute
   '/merge-resolve': typeof MergeResolveRoute
   '/parameters': typeof ParametersRoute
@@ -392,6 +399,8 @@ export interface FileRoutesById {
   '/campaign/new': typeof CampaignNewRoute
   '/change/$changeId': typeof ChangeChangeIdRoute
   '/change/new': typeof ChangeNewRoute
+  '/changes_/local': typeof ChangesLocalRoute
+  '/changes_/revalidation': typeof ChangesRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -421,7 +430,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/diff'
     | '/graph'
-    | '/impact-analysis'
     | '/login'
     | '/merge-resolve'
     | '/parameters'
@@ -439,6 +447,8 @@ export interface FileRouteTypes {
     | '/campaign/new'
     | '/change/$changeId'
     | '/change/new'
+    | '/changes/local'
+    | '/changes/revalidation'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -466,7 +476,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/diff'
     | '/graph'
-    | '/impact-analysis'
     | '/login'
     | '/merge-resolve'
     | '/parameters'
@@ -484,6 +493,8 @@ export interface FileRouteTypes {
     | '/campaign/new'
     | '/change/$changeId'
     | '/change/new'
+    | '/changes/local'
+    | '/changes/revalidation'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -511,7 +522,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/diff'
     | '/graph'
-    | '/impact-analysis'
     | '/login'
     | '/merge-resolve'
     | '/parameters'
@@ -529,6 +539,8 @@ export interface FileRouteTypes {
     | '/campaign/new'
     | '/change/$changeId'
     | '/change/new'
+    | '/changes_/local'
+    | '/changes_/revalidation'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -557,7 +569,6 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   DiffRoute: typeof DiffRoute
   GraphRoute: typeof GraphRoute
-  ImpactAnalysisRoute: typeof ImpactAnalysisRoute
   LoginRoute: typeof LoginRoute
   MergeResolveRoute: typeof MergeResolveRoute
   ParametersRoute: typeof ParametersRoute
@@ -575,6 +586,8 @@ export interface RootRouteChildren {
   CampaignNewRoute: typeof CampaignNewRoute
   ChangeChangeIdRoute: typeof ChangeChangeIdRoute
   ChangeNewRoute: typeof ChangeNewRoute
+  ChangesLocalRoute: typeof ChangesLocalRoute
+  ChangesRevalidationRoute: typeof ChangesRevalidationRoute
   PrintCampaignPlanRoute: typeof PrintCampaignPlanRoute
   PrintCampaignReportRoute: typeof PrintCampaignReportRoute
   PrintDashboardRoute: typeof PrintDashboardRoute
@@ -682,13 +695,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/impact-analysis': {
-      id: '/impact-analysis'
-      path: '/impact-analysis'
-      fullPath: '/impact-analysis'
-      preLoaderRoute: typeof ImpactAnalysisRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/graph': {
@@ -852,6 +858,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrintCampaignPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/changes_/revalidation': {
+      id: '/changes_/revalidation'
+      path: '/changes/revalidation'
+      fullPath: '/changes/revalidation'
+      preLoaderRoute: typeof ChangesRevalidationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/changes_/local': {
+      id: '/changes_/local'
+      path: '/changes/local'
+      fullPath: '/changes/local'
+      preLoaderRoute: typeof ChangesLocalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/change/new': {
       id: '/change/new'
       path: '/change/new'
@@ -909,7 +929,6 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   DiffRoute: DiffRoute,
   GraphRoute: GraphRoute,
-  ImpactAnalysisRoute: ImpactAnalysisRoute,
   LoginRoute: LoginRoute,
   MergeResolveRoute: MergeResolveRoute,
   ParametersRoute: ParametersRoute,
@@ -927,6 +946,8 @@ const rootRouteChildren: RootRouteChildren = {
   CampaignNewRoute: CampaignNewRoute,
   ChangeChangeIdRoute: ChangeChangeIdRoute,
   ChangeNewRoute: ChangeNewRoute,
+  ChangesLocalRoute: ChangesLocalRoute,
+  ChangesRevalidationRoute: ChangesRevalidationRoute,
   PrintCampaignPlanRoute: PrintCampaignPlanRoute,
   PrintCampaignReportRoute: PrintCampaignReportRoute,
   PrintDashboardRoute: PrintDashboardRoute,

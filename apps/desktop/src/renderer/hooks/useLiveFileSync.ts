@@ -106,6 +106,8 @@ export function useLiveFileSync(): void {
       // GH198 — changes : liste du panneau (workspace) et page du change.
       const changeMatch = /^changes\/([^/]+)\.yaml$/.exec(relPath)
       if (relPath === '*' || changeMatch) qc.invalidateQueries({ queryKey: ['changes'] })
+      // GH199 — analyse d'impact d'un change : recalculée sur un changement d'élément, de lien ou de change.
+      if (relPath === '*' || /^(requirements|tests|links|changes)\//.test(relPath)) qc.invalidateQueries({ queryKey: ['change-analysis'] })
       if (changeMatch) qc.invalidateQueries({ queryKey: ['change', repoPath, changeMatch[1]] })
 
       const objectMatch = /^(requirements|tests|campaigns)\/([^/]+)\.yaml$/.exec(relPath)

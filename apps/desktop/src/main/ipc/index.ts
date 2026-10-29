@@ -60,7 +60,6 @@ import type {
   UpdateTestCaseDto,
   ExecuteTestCaseDto,
   MatrixFiltersDto,
-  AcknowledgeImpactDto,
   GenerateTestPlanDto,
 } from '@polenta/zod-schemas'
 import type {
@@ -68,8 +67,6 @@ import type {
   QueryScope,
   ScriptClientInfo,
   ScriptRunRequest,
-  CreateImpactAnalysisDto,
-  UpdateImpactItemStatusDto,
   TemplateExportFormat,
   Parameter,
   AppSettings,
@@ -472,6 +469,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('changes:create', (_e, repoPath: string, dto: CreateChangeDto, workspaceDir?: string) => c.changes.create(repoPath, dto, workspaceDir))
   r.handle('changes:update', (_e, repoPath: string, id: string, dto: UpdateChangeDto) => c.changes.update(repoPath, id, dto))
   r.handle('changes:delete', (_e, repoPath: string, id: string) => c.changes.delete(repoPath, id))
+  r.handle('changes:analysis', (_e, repoPath: string, id: string) => c.changes.analysis(repoPath, id))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))
@@ -486,10 +484,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.traceability.getMatrix(repoPath, (filters as MatrixFiltersDto | undefined) ?? {}, workspaceDir))
   r.handle('traceability:missing-links', (_e, repoPath: string, workspaceDir?: string) =>
     c.traceability.getMissingLinks(repoPath, workspaceDir))
-  r.handle('traceability:impact', (_e, repoPath: string, reqId: string, depth?: number, workspaceDir?: string) =>
-    c.traceability.getImpactReport(repoPath, reqId, depth ?? 1, workspaceDir))
-  r.handle('traceability:acknowledge', (_e, repoPath: string, reqId: string, dto: unknown) =>
-    c.traceability.acknowledgeImpact(repoPath, reqId, dto as AcknowledgeImpactDto))
+  // GH199 — acquittements de l'ancien flux élément unique, lecture seule.
+  r.handle('traceability:legacy-acks', (_e, repoPath: string, elementId: string) =>
+    c.traceability.listLegacyAcks(repoPath, elementId))
   r.handle('traceability:test-plan', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.traceability.generateTestPlan(repoPath, dto as GenerateTestPlanDto, workspaceDir))
   r.handle('traceability:export-csv', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>
@@ -497,19 +494,10 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('traceability:diff-requirements', (_e, repoPath: string, fromSha: string, toSha: string) =>
     c.traceability.diffRequirementsBetweenRefs(repoPath, fromSha, toSha))
 
-  // ── Analyse d'impact (T46) ──────────────────────────────────────────────────────
-  r.handle('impact-analysis:create', (_e, repoPath: string, dto: unknown) =>
-    c.traceability.createImpactAnalysis(repoPath, dto as CreateImpactAnalysisDto))
+  // ── Analyse d'impact des modifications locales (T175) — les analyses entre baselines (T46) sont
+  //    remplacées par l'analyse d'un change (GH199, `changes:analysis`).
   r.handle('impact-analysis:local', (_e, repoPath: string, workspaceDir?: string) =>
     c.traceability.computeLocalImpactAnalysis(repoPath, workspaceDir))
-  r.handle('impact-analysis:list', (_e, repoPath: string) =>
-    c.traceability.listImpactAnalyses(repoPath))
-  r.handle('impact-analysis:get', (_e, repoPath: string, id: string) =>
-    c.traceability.getImpactAnalysis(repoPath, id))
-  r.handle('impact-analysis:update-status', (_e, repoPath: string, id: string, dto: unknown) =>
-    c.traceability.updateImpactItemStatus(repoPath, id, dto as UpdateImpactItemStatusDto))
-  r.handle('impact-analysis:delete', (_e, repoPath: string, id: string) =>
-    c.traceability.deleteImpactAnalysis(repoPath, id))
 
   // ── Revalidation (T173) — levée du flag needsRevalidation ──────────────────────
   r.handle('revalidation:list', (_e, repoPath: string, workspaceDir?: string) =>

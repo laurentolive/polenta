@@ -233,8 +233,7 @@ export function createIpcClient(
     traceability: {
       matrix: (p, f, workspaceDir) => invoke('traceability:matrix', p, f, workspaceDir),
       missingLinks: (p, workspaceDir) => invoke('traceability:missing-links', p, workspaceDir),
-      impact: (p, id, d, workspaceDir) => invoke('traceability:impact', p, id, d, workspaceDir),
-      acknowledge: (p, id, dto) => invoke('traceability:acknowledge', p, id, dto),
+      legacyAcks: (p, id) => invoke('traceability:legacy-acks', p, id),
       testPlan: (p, dto, workspaceDir) => invoke('traceability:test-plan', p, dto, workspaceDir),
       exportCsv: (p, f, workspaceDir) => invoke('traceability:export-csv', p, f, workspaceDir),
       diffRequirements: (p, fromSha, toSha) => invoke('traceability:diff-requirements', p, fromSha, toSha),
@@ -248,12 +247,7 @@ export function createIpcClient(
       clear: (p, ids, w) => invoke('revalidation:clear', p, ids, w),
     },
     impactAnalysis: {
-      create: (p, dto) => invoke('impact-analysis:create', p, dto),
-      list: (p) => invoke('impact-analysis:list', p),
       local: (p, w) => invoke('impact-analysis:local', p, w),
-      get: (p, id) => invoke('impact-analysis:get', p, id),
-      updateStatus: (p, id, dto) => invoke('impact-analysis:update-status', p, id, dto),
-      delete: (p, id) => invoke('impact-analysis:delete', p, id),
     },
     reviews: {
       list: (p, status?: ReviewStatus) => invoke('reviews:list', p, status),
@@ -301,6 +295,7 @@ export function createIpcClient(
       create: (p, dto, workspaceDir) => invoke('changes:create', p, dto, workspaceDir ?? null),
       update: (p, id, dto) => invoke('changes:update', p, id, dto),
       delete: (p, id) => invoke('changes:delete', p, id),
+      analysis: (p, id) => invoke('changes:analysis', p, id),
     },
     // GH197 — historique des exécutions
     executions: {

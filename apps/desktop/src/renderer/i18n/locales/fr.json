@@ -29,7 +29,6 @@
       "parameters": "Paramètres",
       "search": "Recherche",
       "version": "Version",
-      "impact": "Analyse d'impact",
       "menu": {
         "hide": "Masquer « {{label}} »",
         "reset": "Réinitialiser la disposition"
@@ -106,7 +105,6 @@
       "graph": "Arbre de versions",
       "diff": "Diff",
       "baseline": "Baselines",
-      "impactAnalysis": "Analyse d'impact",
       "versionDiff": "Comparer versions",
       "product": "Produit",
       "components": "Composants",
@@ -1585,12 +1583,11 @@
     "title": "Dashboard — {{title}}"
   },
   "printImpactAnalysisPage": {
-    "title": "Analyse d'impact — {{from}} → {{to}}",
-    "changedRequirementsCount_one": "{{count}} exigence modifiée",
-    "changedRequirementsCount_other": "{{count}} exigences modifiées",
-    "changeType": "Type de changement : {{type}}",
+    "title": "Analyse d'impact — {{id}} {{title}}",
     "descendantTree": "Arbre descendant",
-    "ascendantTree": "Arbre ascendant"
+    "ascendantTree": "Arbre ascendant",
+    "rootsCount_one": "{{count}} élément de départ",
+    "rootsCount_other": "{{count}} éléments de départ"
   },
   "printQueryResultPage": {
     "title": "Résultats de requête — {{queryName}}"
@@ -2233,6 +2230,7 @@
     "noTypeInRepo": "aucun type de change dans ce repo",
     "componentHelp": "Le change est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit.",
     "pickToModify": "Ajouter des éléments à modifier",
-    "pickImpacted": "Ajouter des éléments impactés"
+    "pickImpacted": "Ajouter des éléments impactés",
+    "noFlagged": "Aucun élément à revérifier."
   }
 }

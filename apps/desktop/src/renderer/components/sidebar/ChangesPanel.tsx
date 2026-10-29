@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { AlertTriangle, FileDiff, Plus, Sparkles } from 'lucide-react'
 import type { ChangeSummary, ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { getChangeTypeDef } from '../../hooks/useProjectSchema'
+import { useLocalImpactAnalysis } from '../../hooks/useLocalImpactAnalysis'
+import { useFlaggedElements } from '../../hooks/useFlaggedElements'
 
 interface Props {
   projectId: string
@@ -20,13 +22,16 @@ export function repoName(repoPath: string): string {
 /**
  * GH198 — panneau de la vue Changements (specs/GH198.md §5) : changes du workspace regroupés par
  * repo, triés par ID décroissant ; filtres type / statut / repo / mes changes / masquer les terminés.
+ * GH199 — reprend les entrées de l'ancienne vue Analyse d'impact : « Impact à vérifier »,
+ * « Modifications locales » et la Constellation.
  */
 export function ChangesPanel({ projectId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const workspaceDir = decodeProjectId(projectId)
-  const { activeId, activeRepo } = useRouterState({
+  const { activeId, activeRepo, pathname } = useRouterState({
     select: s => ({
+      pathname: s.location.pathname,
       activeId: s.location.pathname.startsWith('/change/') ? decodeURIComponent(s.location.pathname.slice('/change/'.length)) : null,
       activeRepo: new URLSearchParams(s.location.searchStr).get('repoPath'),
     }),
@@ -80,10 +85,26 @@ export function ChangesPanel({ projectId }: Props) {
     navigate({ to: '/change/$changeId', params: { changeId: c.id }, search: { projectId, repoPath: c.repoPath } })
   const selectClass = 'w-full text-xs bg-surface border border-edge rounded px-1.5 py-1 text-ink'
 
+  // GH199 — entrées live, affichées seulement quand elles ont du contenu (compteur).
+  const flaggedCount = useFlaggedElements(projectId).data?.length ?? 0
+  const localCount = useLocalImpactAnalysis(projectId).data?.changedRequirements.length ?? 0
+  const entryClass = (active: boolean) =>
+    `w-full flex items-center gap-2 px-4 py-1.5 text-xs text-left border-b border-edge-subtle ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2 hover:bg-hover'}`
+
   return (
     <div className="flex flex-col h-full overflow-hidden" data-testid="changes-panel">
       <div className="px-4 py-3 border-b border-edge shrink-0 flex items-center justify-between gap-2">
         <p className="section-label">{t('changes.title')}</p>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={() => navigate({ to: '/constellation', search: { projectId } })}
+          className={pathname === '/constellation' ? 'text-ink' : 'text-ink-3 hover:text-ink'}
+          title={t('constellation.openFromPanel')}
+          data-testid="changes-constellation"
+        >
+          <Sparkles size={14} />
+        </button>
         <button
           type="button"
           onClick={() => navigate({ to: '/change/new', search: { projectId, repoPath: undefined, element: undefined, component: undefined } })}
@@ -94,6 +115,22 @@ export function ChangesPanel({ projectId }: Props) {
           <Plus size={14} />
         </button>
       </div>
+      {flaggedCount > 0 && (
+        <button type="button" onClick={() => navigate({ to: '/changes/revalidation', search: { projectId } })}
+          className={entryClass(pathname === '/changes/revalidation')} data-testid="changes-revalidation-entry">
+          <AlertTriangle size={13} className="shrink-0 text-status-warning" />
+          <span className="flex-1 truncate">{t('impactAnalysisPage.revalidation.listTitle')}</span>
+          <span className="text-ink-3">{flaggedCount}</span>
+        </button>
+      )}
+      {localCount > 0 && (
+        <button type="button" onClick={() => navigate({ to: '/changes/local', search: { projectId } })}
+          className={entryClass(pathname === '/changes/local')} data-testid="changes-local-entry">
+          <FileDiff size={13} className="shrink-0" />
+          <span className="flex-1 truncate">{t('impactAnalysisPage.localTitle')}</span>
+          <span className="text-ink-3">{localCount}</span>
+        </button>
+      )}
       <div className="px-4 py-2 border-b border-edge shrink-0 space-y-1.5">
         <select className={selectClass} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} aria-label={t('changes.type')}>
           <option value="">{t('changes.allTypes')}</option>

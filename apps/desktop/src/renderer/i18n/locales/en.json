@@ -1016,7 +1016,9 @@
         "invalidDate": "unreadable date \"{{value}}\" (row {{row}})",
         "testChangedSinceExport": "test {{testCaseId}} has changed since the workbook was exported — re-export the workbook for this instance",
         "fieldError": "{{message}} (row {{row}})"
-      }
+      },
+      "unchanged_one": "{{count}} already executed instance, unchanged: skipped",
+      "unchanged_other": "{{count}} already executed instances, unchanged: skipped"
     },
     "stepResult": {
       "notExecuted": "Not executed",

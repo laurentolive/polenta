@@ -202,6 +202,8 @@ export interface ExecutionImportPreview {
   warnings: ExecutionImportWarning[]
   /** Instances présentes dans le fichier mais sans aucun verdict (laissées inchangées). */
   unfilledCount: number
+  /** GH196 — instances pré-remplies à l'export (résultat déjà saisi) et non modifiées : ignorées. */
+  unchangedCount?: number
 }
 
 export interface ExecutionImportResult {

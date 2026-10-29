@@ -157,7 +157,7 @@ pas champ par champ.
     "@polenta/api-client": "workspace:*"
   },
   "devDependencies": {
-    "electron": "^31.0.0",
+    "electron": "^45.1.0",
     "electron-builder": "^24.0.0",
     "electron-vite": "^2.3.0",
     "vite": "^5.0.0",

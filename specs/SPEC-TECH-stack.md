@@ -89,7 +89,7 @@ repose sur `isApproval`).
 | Monorepo | Turborepo | 2.x | Builds incrémentaux, scripts partagés |
 | Package manager | pnpm | 9.x | Workspaces, performance |
 | Langage | TypeScript | 5.4+ | Full-stack |
-| **Desktop shell** | Electron | 31.x | Fenêtre native, main process Node.js |
+| **Desktop shell** | Electron | 45.x | Fenêtre native, main process Node.js (31 → 45 : GH218, build 31 révoquée par macOS) |
 | Build desktop | electron-vite | 2.x | Bundling main + preload + renderer |
 | Distribution | electron-builder | 24.x | Packaging Windows / macOS / Linux |
 | **Frontend** | React | 18.x | UI (renderer Electron) |

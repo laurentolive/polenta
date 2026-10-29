@@ -404,11 +404,16 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   // Sans mot de passe : guide le testeur sans le bloquer, la vraie garantie est la validation à
   // l'import. Excel refuse le tri d'une plage contenant des cellules verrouillées même avec
   // `sort: true` (filtre OK) — sans effet sur l'import, qui identifie les lignes par leur clé.
+  // GH196 — `insertHyperlinks` / `formatCells` : sans eux, Excel ne colle que le libellé d'un lien
+  // hypertexte (et ne convertit pas une URL saisie) dans une feuille protégée ; un champ `link` doit
+  // pouvoir recevoir un vrai lien, relu par `readLinkCell`.
   await sheet.protect('', {
     selectLockedCells: true,
     selectUnlockedCells: true,
+    formatCells: true,
     formatColumns: true,
     formatRows: true,
+    insertHyperlinks: true,
     autoFilter: true,
     sort: true,
   })

@@ -1810,7 +1810,9 @@
     "backfillRunning": "Reconstruction…",
     "backfillConfirm": "Reconstruire l'historique de {{repo}} depuis git ? Les fichiers modifiés seront à publier.",
     "backfillResult": "{{objects}} objet(s) complété(s), {{entries}} entrée(s) ajoutée(s).",
-    "backfillFailed": "{{count}} fichier(s) ignoré(s) : {{files}}"
+    "backfillFailed": "{{count}} fichier(s) ignoré(s) : {{files}}",
+    "legacyAcks_one": "Acquittement d'impact (ancien) : {{count}}",
+    "legacyAcks_other": "Acquittements d'impact (anciens) : {{count}}"
   },
   "suiviParams": {
     "reset": "Réinitialiser",

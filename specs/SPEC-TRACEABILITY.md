@@ -168,150 +168,75 @@ SW-0044  Exigence SW — Mode Normal  [couvert]  [jamais exécuté]
 
 ## 4. Analyse d'impact
 
-### 4.1 Principe
+### 4.1 Principe (GH199)
 
-Quand un élément est modifié (exigence ou test), l'analyse d'impact calcule la liste de tout ce qui doit être **revu ou revalidé**. Elle est déclenchée :
-- Automatiquement à l'ouverture d'un brouillon ("Modifier") sur une exigence ou un test approuvé
-- Manuellement depuis la fiche d'un élément (bouton "Analyser l'impact")
+L'analyse d'impact vit **dans le change** (SPEC-REQ §10) : elle calcule, à partir des éléments que
+le change modifie, tout ce qui doit être **revu ou revalidé**. Deux flux sont retirés par GH199 :
 
-### 4.2 Impact d'une modification d'exigence
+- l'**analyse élément unique** (ex-§4.1–4.5 : `getImpactReport` à l'ouverture d'un brouillon,
+  profondeur configurable, acquittements `ImpactAcknowledgement`) — les fichiers
+  `impact-acks/<id>/*.yaml` existants restent lisibles dans l'historique de l'élément
+  (« Acquittements d'impact (anciens) », IPC `traceability:legacy-acks`) ;
+- l'**analyse entre deux baselines** (ex-§4.6, T46, `impact-analyses/<id>.yaml`) — remplacée par le
+  change « sur l'existant » ; les fichiers existants sont ignorés.
 
-Quand l'exigence `REQ` est modifiée (nouveau brouillon ouvert) :
+La vue Analyse d'impact (barre d'activité) est retirée : « Modifications locales » (§4.7),
+« Impact à vérifier » (§4.8) et la Constellation (§8) sont des entrées du panneau Changements.
+Sur une exigence ou un test, **« Analyser l'impact »** ouvre un change non terminal du repo qui
+liste l'élément (menu), ou crée un change avec l'élément dans « à modifier ».
 
-**Niveau 1 — Liens directs :**
+### 4.2 Racines et arbres
 
-| Élément impacté | Type | Action requise |
-|----------------|------|----------------|
-| TestCases couvrant `REQ` | Lien de couverture | Vérifier que le test couvre toujours l'exigence modifiée |
-| Exigences ayant `REQ` comme parent | Lien PARENT_CHILD | Vérifier la cohérence avec la nouvelle version |
-| Exigences liées par DERIVES_FROM, SATISFIES, REFINES | Lien sémantique | Vérifier la cohérence |
+- **Racines** : éléments « à modifier » + éléments impactés **déclarés** du change ; listes vides :
+  toutes les exigences du composant concerné.
+- **Arbres** (`buildImpactTreesFromSnapshot`) : pour chaque racine exigence, arbre **descendant**
+  (exigences dont elle est la cible, récursivement, et tests qui couvrent chaque nœud) et
+  **montant** (exigences qu'elle cible, récursivement) ; pour une racine test, arbre montant
+  depuis les exigences qu'il couvre. Profondeur illimitée ; un élément n'apparaît qu'une fois par
+  racine (garde anti-cycle partagée par les deux arbres) ; **couverture test ↔ exigence suivie
+  dans les deux sens** (T175, `matchCoverageLink`) ; liens exigence ↔ exigence orientés (source =
+  enfant, cible = parent).
+- **Snapshot** : change **demande** → état courant **sur disque** du repo du change
+  (`loadWorkingTreeSnapshot`) ; change **sur l'existant** → état à la borne `to`
+  (`loadSnapshotAtRef`).
 
-**Niveau 2 — Impacts transitifs (propagation) :**
+### 4.3 Lignes des éléments impactés
 
-Les exigences enfants et les tests qui les couvrent sont également listés, avec indication que l'impact est indirect.
+- Chaque élément atteint (hors racines) est un impacté **calculé** ; un élément atteint depuis
+  plusieurs racines n'a **qu'une ligne** et **un statut**, affiché sur chacun de ses nœuds.
+- **Statut** — enum plat à 8 valeurs, librement modifiable : `impact_non_verifie` (défaut),
+  `pas_d_impact_reel`, `impact_a_tester`, `impact_teste`, `modification_a_faire`,
+  `modification_faite`, `modification_a_tester`, `modification_verifiee`, avec un commentaire.
+- **Persistance** (`Change.impacted`) : lignes déclarées, et lignes calculées portant une saisie
+  (statut ≠ défaut ou commentaire) — `pruneImpacted`. Les autres sont recalculées.
+- Une ligne calculée persistée qui n'est plus atteinte reste, marquée « n'est plus atteint ».
+- **Complétude** : `pas_d_impact_reel`, `impact_teste`, `modification_verifiee` = clos ; « N ouverts
+  / M » ou « Analyse complète ». Informatif.
+- **Campagnes en cours** (non closes) contenant un test racine ou atteint : listées.
 
-**Format de la liste d'impact :**
+### 4.4 Live, figée
 
-```
-Impact de la modification de SW-0042
+- **Live** tant que le change n'est pas dans un statut terminal : recalcul à l'ouverture de la page,
+  sur changement de fichier (`requirements/`, `tests/`, `links/`, `changes/`) et par
+  « Rafraîchir » (IPC `changes:analysis`).
+- **Figée** au passage dans un statut `isTerminal` : `ChangeAnalysis` (racines, arbres, lignes,
+  campagnes) écrite dans `Change.analysis` (`frozen: true`), relue telle quelle ; statuts non
+  modifiables. Retour dans un statut non terminal : instantané retiré, retour au live, statuts
+  conservés.
 
-▸ Tests à revalider (liens directs)
-  TEST-0007  "Démarrage moteur — mode Éco"         [dernier run: PASS  2026-05-01]
-  TEST-0012  "Démarrage moteur — batterie faible"   [dernier run: FAIL  2026-04-15]
+### 4.5 Change « sur l'existant »
 
-▸ Exigences filles à vérifier
-  COMP-0007  "Composant — Contrôleur moteur"        [approuvé v1]
-  COMP-0008  "Composant — Capteur température"      [brouillon en cours]
+Bornes `from` / `to` : tag de baseline ou SHA (complet ou abrégé) d'un commit du repo du change
+(`SyncService.resolveCommitish`). À la création, les exigences **et tests** changés entre les
+bornes (`diffElementsBetweenRefs`, mêmes règles de comparaison qu'en §4.7) sont ajoutés à « à
+modifier » (`state: modified`) ; `Change.range` garde les bornes et leurs SHA. Multi-repo : #208.
 
-▸ Exigences liées à vérifier
-  SYS-0003  SATISFIES  "Exigence sys — Performance aspiration"  [approuvé v2]
+### 4.6 Export
 
-▸ Campagnes en cours utilisant ces tests
-  CAMP-0002  "Validation release v1.5"  [en cours — 3/8 tests exécutés]
-```
-
-### 4.3 Impact d'une modification de cas de test
-
-Quand le TestCase `TC` est modifié :
-
-| Élément impacté | Raison |
-|----------------|--------|
-| Exigences couvertes par `TC` | Le test peut ne plus couvrir la même chose |
-| Campagnes `in_progress` incluant `TC` | L'exécution en cours repose sur la version précédente |
-| TestRuns passés de `TC` | Ne sont plus valides pour la nouvelle version (informationnel) |
-
-### 4.4 Propagation configurable
-
-La profondeur de propagation est configurable :
-
-| Niveau | Ce qui est inclus |
-|--------|------------------|
-| 1 | Liens directs seulement |
-| 2 | Liens directs + un niveau de transitivité |
-| Complet | Tout le graphe de dépendance (peut être large) |
-
-Défaut : **niveau 1** — suffisant pour la majorité des cas, évite le bruit sur les grands projets.
-
-> **T46** : cette section décrit `getImpactReport` (élément unique, déclenché à l'édition, index
-> vivant). Le flux d'analyse d'impact entre deux baselines (§4.6) ne suit pas cette règle — il parcourt
-> toujours le graphe complet dans les deux directions, sans réglage de profondeur.
-
-### 4.5 Marquer les impacts comme vérifiés
-
-Depuis la liste d'impact, chaque élément peut être marqué **"Vérifié"** (avec commentaire optionnel). Cela enregistre un `ImpactAcknowledgement` dans git :
-
-```yaml
-# impact-acknowledgements/<uuid>.yaml
-elementId: TEST-0007
-elementType: test_case
-triggerReqId: SW-0042
-triggerReqVersion: 3
-acknowledgedAt: "2026-06-01T14:00:00Z"
-acknowledgedBy: user-456
-comment: "Test toujours valide — le délai de 500ms n'a pas changé dans la nouvelle version."
-```
-
-Les acknowledgements sont affichés dans la liste d'impact et dans l'historique de l'élément.
-
-### 4.6 Analyse d'impact entre deux baselines (T46)
-
-Flux séparé de celui décrit en §4.1–4.5 (qui reste inchangé) — pour le cas d'usage "comparer deux
-jalons figés" plutôt que "je viens d'éditer un élément". Accessible depuis le panneau Version →
-"Analyse d'impact" (`/impact-analysis`).
-
-**Bornes toujours des baselines.** Les deux bornes comparées sont exclusivement des baselines existantes
-(tags immuables, `BaselineService.list`) — jamais une branche ou un commit arbitraire. Si on veut
-comparer par rapport à l'état courant de l'intégration (ex. mesurer l'impact d'une modification sur une
-branche `dev-*` avant de la livrer), il faut d'abord poser une baseline sur cet état — la création de
-baseline (§5) n'est plus verrouillée à la branche d'intégration configurée depuis T46 : seule une
-modification en attente (staged/unstaged) bloque encore la création, sur n'importe quelle branche.
-
-**Calcul, entièrement figé à la création :**
-1. **Diff exigence-par-exigence** entre les deux baselines — ajoutée/supprimée/modifiée avec le détail
-   des champs changés (`status`, `title`, `fields.*`), calculé sur les blobs git bruts des deux tags
-   (`TraceabilityService.diffRequirementsBetweenRefs`), indépendant de l'index vivant.
-2. **Deux arbres d'impact par exigence changée** (montant et descendant), calculés sur un **snapshot
-   chargé à la baseline B** (`loadSnapshotAtRef` + `buildImpactTreesFromSnapshot`) — pas l'index vivant.
-   Contrairement à `getImpactReport` (§4.2) : profondeur illimitée (tout le graphe, pas de niveau 1 par
-   défaut), les deux directions sont suivies (montant = liens sortants de l'exigence, jamais parcouru par
-   `getImpactReport`), et chaque nœud visité (pas seulement l'exigence déclenchante) porte les tests qui
-   le couvrent directement. Un même élément n'apparaît qu'une fois par exigence changée (garde-fou
-   anti-cycle partagé entre les deux arbres) ; il peut réapparaître sous une autre exigence changée de la
-   même analyse. **Liens de couverture test ↔ exigence suivis dans les deux sens** (T175) : un test
-   est rattaché à une exigence que le lien ait été créé depuis le test (`sourceId` = test) ou depuis
-   l'exigence (`targetId` = test) — même règle que `matchCoverageLink`. Avant T175 seul le premier sens
-   était suivi ; les analyses déjà persistées ne sont pas recalculées. Les liens exigence ↔ exigence
-   gardent leur sens (source = enfant, cible = parent).
-
-Une fois créée, une analyse est un **instantané reproductible** : la rouvrir plus tard restitue
-exactement le même diff et les mêmes arbres, quoi qu'il arrive au projet depuis. Il n'y a pas de
-"recalcul" — comparer une évolution ultérieure nécessite une nouvelle baseline et une nouvelle analyse.
-
-**Statut par élément impacté** — enum plat à 8 valeurs, librement modifiable (pas de machine à états) :
-`impact_non_verifie` (défaut), `pas_d_impact_reel`, `impact_a_tester`, `impact_teste`,
-`modification_a_faire`, `modification_faite`, `modification_a_tester`, `modification_verifiee`. Un
-commentaire optionnel peut accompagner chaque changement de statut. Persisté avec l'analyse — pas de
-mécanisme d'acquittement séparé comme en §4.5 (`ImpactAcknowledgement` reste dédié au flux élément-unique).
-
-**Indicateur de complétude** : `pas_d_impact_reel`, `impact_teste`, `modification_verifiee` comptent comme
-**clos** ; tout le reste comme **ouvert**. Un bandeau signale l'analyse "complète" quand zéro élément
-reste ouvert — informatif, pas bloquant.
-
-**Génération de campagne** : un bouton collecte tous les éléments en statut `impact_a_tester` ou
-`modification_a_tester`, ajoute directement les TestCases, résout les exigences vers leurs TestCases
-approuvés couvrants via `generateTestPlan` (§5, réutilisé tel quel), déduplique, puis pré-remplit
-`/campaign/new` (titre + sélection de TestCases) plutôt que de dupliquer l'écran de création.
-
-**Persistance** : `impact-analyses/<id>.yaml`, un fichier par analyse (même pattern que
-`impact-acks/<reqId>/<ackId>.yaml`, §4.5).
-
-**Stockage réel** : les exigences/tests sont des fichiers `.yaml` purs sous `requirements/`/`tests/`
-(pas de frontmatter Markdown) ; les liens vivent dans un fichier unique `links/links.yaml`. `GitService`
-expose `readYamlRef`/`listFilesAtRef`/`readYamlDirAtRef` (et, depuis T171, `readYamlAtTag`, qui distingue
-tag introuvable et fichier absent — lecture des paramètres à la baseline d'une campagne) pour lire ces données à un sha arbitraire (utilisé
-par le diff et le snapshot ci-dessus).
-
-> **GH198** — les 8 statuts d'impact ci-dessus sont aussi ceux des éléments impactés d'un change (`Change.impacted[].status`, saisis à la main en L2 ; calcul et complétude : #199). Voir SPEC-REQ §10.
+Export de l'analyse d'un change (`kind: 'impact-analysis'`) : xlsx (racines puis arbres aplatis,
+colonne Profondeur ; feuille « Éléments impactés »), modèle xlsx (mêmes clés que l'ancien export
+§4.6 + `impacted`), PDF (route `/print/impact-analysis?repoPath&changeId`). Génération de campagne
+depuis le change : #207.
 
 ### 4.7 Analyse d'impact des modifications locales (T175)
 
@@ -319,14 +244,9 @@ Troisième flux, **live** : l'impact des modifications non commitées (working t
 commit (`HEAD`) — le cas « je viens de modifier des exigences/tests, qu'est-ce que ça touche ? » sans
 passer par une baseline.
 
-**Présentation** : dans le panneau Analyse d'impact, une entrée « Modifications locales (vs HEAD) » s'affiche
-en tête de la liste des analyses tant qu'au moins un élément diffère de `HEAD` (compteur d'éléments, pas de
-date ni de suppression). À l'ouverture de la vue (montage du panneau) sans analyse active, elle est
-sélectionnée automatiquement — une seule fois : une désélection par l'utilisateur n'est pas annulée, et une
-analyse enregistrée sélectionnée n'est jamais remplacée. Quand les modifications disparaissent (commit,
-Publier, abandon), l'entrée disparaît et, si elle était active, la vue revient à « aucune analyse ». Le
-sélecteur de baselines reste utilisable. Valeur sentinelle `LOCAL_IMPACT_ANALYSIS_ID` dans
-`ImpactAnalysisContext.activeAnalysisId`.
+**Présentation** (GH199) : entrée « Modifications locales (vs HEAD) » du panneau Changements, affichée
+tant qu'au moins un élément diffère de `HEAD` (compteur) ; route `/changes/local`. Plus de sélection
+automatique.
 
 **Périmètre** : repo racine **et** composants (`resolveWorkspaceRepoPaths`), chacun comparé à **son** `HEAD`,
 quel que soit le repo sélectionné. Seuls `requirements/**/*.yaml` et `tests/**/*.yaml` sont des **éléments
@@ -339,7 +259,7 @@ identique champ à champ à `HEAD` (reformatage) ne compte pas. Champs comparés
 (id = nom de fichier si besoin) sans détail de champs, jamais pris pour une suppression.
 
 **Calcul** (`TraceabilityService.computeLocalImpactAnalysis`, IPC `impact-analysis:local`) : mêmes arbres
-qu'en §4.6 (`buildImpactTreesFromSnapshot`) mais sur un **snapshot du working tree multi-repo** (lecture
+qu'en §4.2 (`buildImpactTreesFromSnapshot`) mais sur un **snapshot du working tree multi-repo** (lecture
 disque, pas l'index vivant ; exigences, tests et liens de tous les repos agrégés, doublon d'id → le repo
 racine gagne). Pour un **test** changé : arbre descendant vide, arbre montant = exigences qu'il couvre puis
 leurs ascendants. Un élément hors du repo racine porte `repo: { path, name }` (badge dans l'UI, popup ouvert
@@ -350,12 +270,12 @@ dans son repo). Sans aucun changement, le snapshot n'est pas chargé. Type `Loca
 génération de campagne — lecture seule, bouton Rafraîchir. Recalcul quand `useLiveFileSync` reçoit un
 `repo:file-changed` sur `requirements/`, `tests/`, `links/` ou un changement de ref (`'*'`) de n'importe
 quel repo, au retour du focus, ou au clic sur Rafraîchir — pas de polling. Pour un suivi (statuts,
-campagne), commiter, poser une baseline et utiliser §4.6.
+campagne), créer un change (§4.1).
 
 ### 4.8 Levée du flag `needsRevalidation` (T173)
 
 L'utilisateur constate qu'il a traité l'impact sur un élément marqué (§3.3, SPEC-REQ §5.3) et lève
-le flag depuis la vue Analyse d'impact.
+le flag depuis la vue Changements (arbres d'un change, analyse locale, « Impact à vérifier »).
 
 **Règle d'écriture** (`RevalidationService.clear`, IPC `revalidation:clear`) : la clé
 `needsRevalidation` est **retirée** du YAML (jamais `false`) ; statut, `version`, autres champs et
@@ -366,26 +286,25 @@ résultat `{ cleared, unchanged, failed: [{ id, reason: not_found | readonly | e
 partiel s'affiche dans un bandeau fermable en tête de la vue, sans annuler les levées réussies.
 **Pas de commit ni de trace** hors git : l'écriture part avec « Publier » (qui/quand = `git log`).
 
-**Dans les arbres** §4.6 (baseline) et §4.7 (local) : un nœud dont l'élément est **actuellement**
+**Dans les arbres** d'un change (§4.2) et §4.7 (local) : un nœud dont l'élément est **actuellement**
 marqué affiche ⚠, une case à cocher et « Lever le flag » (sans confirmation). L'état du flag est lu
 en direct (`RevalidationService.listFlagged`, IPC `revalidation:list`, tous repos du workspace),
 pas depuis le snapshot : une analyse baseline figée reflète le flag courant. Lever une occurrence
 lève l'élément partout. Sélection multiple dédupliquée par id, vidée au changement d'analyse ;
 bouton d'en-tête « Lever le flag de la sélection (N) » avec confirmation. La ligne « élément changé »
-n'affiche que ⚠ (levée depuis la liste de repli). La levée et le statut d'impact d'un nœud §4.6 sont
+n'affiche que ⚠ (levée depuis la liste de repli). La levée et le statut d'impact d'un nœud de change sont
 indépendants. En analyse locale, lever un flag ne fait pas de l'élément un « élément changé ».
 
 **Liste de repli « Impact à vérifier »** : pour les flags qu'aucune analyse n'atteint (paramètre
-modifié T171, réouverture déjà publiée…). Entrée en tête de la liste des analyses, au-dessus de
-« Modifications locales », affichée ssi au moins un élément du workspace est marqué (compteur),
-**jamais sélectionnée automatiquement** ; valeur sentinelle `REVALIDATION_IMPACT_ID` dans
-`ImpactAnalysisContext.activeAnalysisId`. Contenu (`RevalidationList`) : tous les éléments marqués
+modifié T171, réouverture déjà publiée…). Entrée en tête du panneau Changements (GH199), au-dessus
+de « Modifications locales », affichée ssi au moins un élément du workspace est marqué (compteur) ;
+route `/changes/revalidation`. Contenu (`RevalidationList`) : tous les éléments marqués
 (exigences puis tests, par id) avec badge, id cliquable (popup dans le repo de l'élément), titre,
 badge de repo, statut, case et « Lever le flag » ; « Tout sélectionner » (indéterminé si sélection
 partielle). Chaque ligne se déplie sur ses éléments liés (tous liens, sens indifférent, un niveau) :
 id, titre, type de lien, `version`, statut — un lié hors approbation est signalé « non approuvé »
-(déclencheur probable). Quand le dernier flag est levé alors que la liste est active, la vue revient
-à « aucune analyse ». Rafraîchissement : mêmes déclencheurs que §4.7 et bouton Rafraîchir.
+(déclencheur probable). Quand le dernier flag est levé, la liste affiche « Aucun élément à revérifier »
+et l'entrée disparaît du panneau. Rafraîchissement : mêmes déclencheurs que §4.7 et bouton Rafraîchir.
 
 Après levée, les caches renderer lisant le flag (listes, matrice, maturité, couverture, analyse
 locale, état de synchronisation) sont invalidés : ⚠ disparaît partout sans rechargement.
@@ -500,7 +419,7 @@ matrix:
 ## 8. Vue Constellation (GH183)
 
 Vue de lecture seule de l'arbre de raffinement et de sa couverture, route `/constellation`,
-ouverte depuis le panneau Analyse d'impact.
+ouverte depuis le panneau Changements (GH199).
 
 - **Nœuds** : exigences du workspace (`links:objects`, catégorie `requirement`).
 - **Arêtes** : liens dont les deux extrémités sont des exigences ; par défaut la source raffine

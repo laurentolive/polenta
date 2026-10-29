@@ -37,6 +37,12 @@ export function HistorySection({ repoPath, kind, id, typeDef, statusLabel, refre
     queryFn: () => api.history.get(repoPath, kind, id),
     enabled: open && !!repoPath && !!id,
   })
+  // GH199 — acquittements de l'ancien flux d'impact élément unique, lus seulement s'il en existe.
+  const { data: legacyAcks = [] } = useQuery({
+    queryKey: ['legacy-acks', repoPath, id],
+    queryFn: () => api.traceability.legacyAcks(repoPath, id),
+    enabled: open && !!repoPath && !!id && (kind === 'requirement' || kind === 'test'),
+  })
   const sections = history ? historySections(history, typeDef, { status: t('history.status'), statusLabel }) : []
   const date = (at: string) => {
     const d = new Date(at)
@@ -81,6 +87,21 @@ export function HistorySection({ repoPath, kind, id, typeDef, statusLabel, refre
               </ul>
             </div>
           ))}
+          {legacyAcks.length > 0 && (
+            <details data-testid="history-legacy-acks">
+              <summary className="text-xs font-medium text-ink cursor-pointer">{t('history.legacyAcks', { count: legacyAcks.length })}</summary>
+              <ul className="mt-1 space-y-0.5">
+                {legacyAcks.map(a => (
+                  <li key={a.id} className="flex items-baseline gap-2 text-xs text-ink-2">
+                    <span className="text-ink-3 tabular-nums shrink-0">{date(a.acknowledgedAt)}</span>
+                    <span className="font-mono">{a.triggerReqId}</span>
+                    {a.acknowledgedBy && <span className="text-ink-3">{a.acknowledgedBy}</span>}
+                    {a.comment && <span className="italic">« {a.comment} »</span>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
     </section>

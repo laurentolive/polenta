@@ -63,6 +63,8 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 
 > **GH198 (contrat v1, ajout)** — collection `changes` (`GraphChange` : base commune statut / champs / historique, `component`, `mode`, `toModify`, `impacted` avec statut d'impact et `source`, `origin`, `integratedIn`, `campaigns`) ; catégorie `change` dans `GraphObjectCategory` et les types. Fichiers `changes/` dans le périmètre du cache (watcher, canaux `changes:*`). `polenta.d.ts` régénéré (manifeste v6).
 
+> **GH199 (contrat v1, ajout)** — `GraphChange.range` (bornes d'un change sur l'existant) et `GraphChange.analysis` (instantané figé au statut terminal : lignes, racines, campagnes ; jamais recalculé par le graphe). `polenta.d.ts` régénéré (manifeste v7).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

@@ -47,8 +47,8 @@ const flagIcon = (row: Locator) => row.getByRole('img', { name: /Impact à véri
 const clearBtn = (row: Locator) => row.getByRole('button', { name: /^(Lever le flag|Clear flag)$/ })
 const selectionBtn = () => s.page.getByRole('button', { name: /^Lever le flag de la sélection/ })
 const modal = () => s.page.locator('div.fixed.inset-0')
-const revalidationEntry = () => s.page.getByRole('button', { name: /Impact à vérifier/ })
-const localEntry = () => s.page.getByRole('button', { name: /Modifications locales/ })
+const revalidationEntry = () => s.page.getByTestId('changes-revalidation-entry')
+const localEntry = () => s.page.getByTestId('changes-local-entry')
 
 async function activate(entry: Locator) {
   const active = await entry.locator('xpath=..').evaluate((el) => el.className.includes('ring-1'))
@@ -56,7 +56,7 @@ async function activate(entry: Locator) {
 }
 
 async function openImpactView() {
-  await s.openView('Analyse d\'impact')
+  await s.openView('Changements')
 }
 
 let localFlagged: string[] = [] // éléments marqués présents dans les arbres de l'analyse locale
@@ -271,69 +271,6 @@ test('L13 — échec partiel (fichier en lecture seule) : bandeau, les autres le
   }
 })
 
-test('N12 / N13 / R2 — analyse baseline figée : flag live, levée et statut d\'impact indépendants', async () => {
-  const analysis = await s.invoke<Analysis>('impact-analysis:create', P(), { fromBaselineTag: 'RE1', toBaselineTag: 'RE2', label: 'T173 vérif' })
-  const nodesOf = (a: Analysis) => a.changedRequirements.flatMap((cr) => [
-    ...flatten(cr.descendantTree).map((n) => ({ n, reqId: cr.reqId, direction: 'descendant' as const })),
-    ...flatten(cr.ascendantTree).map((n) => ({ n, reqId: cr.reqId, direction: 'ascendant' as const })),
-  ])
-  let flagged = await flaggedIds()
-  let hit = nodesOf(analysis).find((x) => flagged.has(x.n.elementId) && !x.n.repo)
-  if (!hit) {
-    // Marque un nœud de l'analyse en rouvrant une exigence approuvée qui lui est liée.
-    const reqs = await s.invoke<Array<{ id: string; status: string }>>('requirements:list', P())
-    for (const r of reqs.filter((r) => r.status === 'approved')) {
-      await s.invoke('requirements:open-draft', P(), r.id, 'draft', W())
-      flagged = await flaggedIds()
-      hit = nodesOf(analysis).find((x) => flagged.has(x.n.elementId) && !x.n.repo)
-      if (hit) break
-    }
-  }
-  expect(hit, 'un nœud de RE1 → RE2 marqué').toBeTruthy()
-  const id = hit!.n.elementId
-  expect(nodesOf(analysis).filter((x) => x.n.elementId === id).length).toBeGreaterThanOrEqual(1)
-
-  // Analyse créée par le bridge : recharger pour que la liste du panneau la contienne.
-  await s.page.reload()
-  await s.page.waitForLoadState('networkidle')
-  await openImpactView()
-  await s.page.getByRole('button', { name: /T173 vérif/ }).click()
-  await expect(s.page.getByText('RE1 → RE2')).toBeVisible()
-  const row = nodeRows(id).first()
-  await expect(flagIcon(row)).toBeVisible()
-  await expect(clearBtn(row)).toBeVisible()
-
-  // N13 — statut d'impact « Impact testé » + commentaire : le flag reste.
-  await row.locator('textarea').fill('vérifié T173')
-  await row.locator('select').selectOption('impact_teste')
-  await expect.poll(async () => {
-    const a = await s.invoke<Analysis>('impact-analysis:get', P(), analysis.id)
-    return nodesOf(a).find((x) => x.n.elementId === id)?.n.status
-  }).toBe('impact_teste')
-  expect(await flaggedIds()).toContain(id)
-  await expect(flagIcon(row)).toBeVisible()
-
-  // Levée : statut d'impact et commentaire inchangés (CA8).
-  await clearBtn(row).click()
-  await expect(flagIcon(row)).toHaveCount(0)
-  expect(await flaggedIds()).not.toContain(id)
-  const a = await s.invoke<Analysis>('impact-analysis:get', P(), analysis.id)
-  const node = nodesOf(a).find((x) => x.n.elementId === id)!.n
-  expect(node.status).toBe('impact_teste')
-  expect(node.comment).toBe('vérifié T173')
-  await expect(row.locator('select')).toHaveValue('impact_teste')
-
-  // R2 — export et génération de campagne toujours disponibles.
-  const other = nodesOf(a).find((x) => x.n.elementId !== id)
-  if (other) {
-    await nodeRows(other.n.elementId).first().locator('select').selectOption('impact_a_tester')
-    await s.page.getByRole('button', { name: /^Générer une campagne \(\d+\)$/ }).click()
-    await expect(s.page.getByText(/TestCases? trouvés?/)).toBeVisible()
-  }
-  await expect(s.page.getByRole('button', { name: /Export/i }).first()).toBeVisible()
-  await s.shot('t173-n12-baseline')
-})
-
 test('N17 — clic sur un id d\'un composant (liste de repli) : popup ouvert dans le bon repo', async () => {
   const comp = (await listFlagged()).find((f) => f.repo)
   expect(comp, 'élément marqué d\'un composant').toBeTruthy()
@@ -347,7 +284,7 @@ test('N17 — clic sur un id d\'un composant (liste de repli) : popup ouvert dan
 
 test('N14 bis — compteur exact et dépliage des éléments liés', async () => {
   const flagged = await listFlagged()
-  await expect(revalidationEntry()).toContainText(`${flagged.length} élément`)
+  await expect(revalidationEntry()).toContainText(`${flagged.length}`)
   const withPeers = flagged.find((f) => f.linked.some((l) => !l.approved))
   if (withPeers) {
     const row = s.page.locator('div.border-b').filter({ has: s.page.getByRole('checkbox', { name: `Sélectionner ${withPeers.elementId}` }) })
@@ -362,10 +299,10 @@ test('L14 — libellés T173 en anglais', async () => {
   await s.page.reload()
   await s.page.waitForLoadState('networkidle')
   try {
-    await s.openView('Impact analysis')
-    const entry = s.page.getByRole('button', { name: /Impact to check/ })
+    await s.openView('Changes')
+    const entry = revalidationEntry()
     await expect(entry).toBeVisible()
-    await expect(entry).toContainText(/\d+ items?/)
+    await expect(entry).toContainText(/Impact to check\s*\d+/)
     await entry.click()
     await expect(s.page.getByText('Select all')).toBeVisible()
     await expect(s.page.getByRole('button', { name: 'Clear flag', exact: true }).first()).toBeVisible()

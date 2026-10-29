@@ -703,5 +703,11 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
 - **Suppression** : tant que le fichier n'a jamais été commité ; ensuite, statut terminal. Le
   renommage d'un préfixe réécrit aussi les IDs cités dans `changes/` ; la suppression d'un type de
   change supprime ses changes (GH104).
+- **Analyse d'impact** (GH199, SPEC-TRACEABILITY §4) : racines = listes (sinon exigences du
+  composant), arbres, une ligne par élément impacté (déclaré ou calculé), complétude, campagnes en
+  cours concernées ; live, figée dans `analysis` au statut terminal. Seules les lignes portant une
+  saisie sont écrites dans `impacted`.
+- **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
+  entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
 - Graphe de données : collection `changes` (SPEC-DASHBOARDS §2) ; MCP : `list_changes`,
-  `get_change`, `create_change` (SPEC-MCP-SERVER §4.7).
+  `get_change` (avec l'analyse), `create_change` (SPEC-MCP-SERVER §4.7).

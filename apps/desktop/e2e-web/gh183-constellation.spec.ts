@@ -2,14 +2,14 @@ import { test, expect } from '@playwright/test'
 import { setupSession } from './support/session'
 
 /**
- * GH183 — vue « Constellation » : ouverte depuis le panneau Analyse d'impact, elle dessine les
+ * GH183 — vue « Constellation » : ouverte depuis le panneau Changements (GH199), elle dessine les
  * exigences de la démo LL800 et leurs liens exigence ↔ exigence ; un clic sur un nœud affiche sa
  * fiche, « Ouvrir » ouvre l'exigence.
  */
 const s = setupSession()
 
 async function openConstellation() {
-  await s.openView("Analyse d'impact")
+  await s.openView('Changements')
   await s.page.getByRole('button', { name: 'Constellation des exigences' }).click()
   await expect(s.page.getByRole('img', { name: /Exigences en anneaux/ })).toBeVisible()
 }

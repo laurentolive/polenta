@@ -1810,7 +1810,9 @@
     "backfillRunning": "Rebuilding…",
     "backfillConfirm": "Rebuild the history of {{repo}} from git? Changed files will need to be published.",
     "backfillResult": "{{objects}} object(s) updated, {{entries}} entry(ies) added.",
-    "backfillFailed": "{{count}} file(s) skipped: {{files}}"
+    "backfillFailed": "{{count}} file(s) skipped: {{files}}",
+    "legacyAcks_one": "Impact acknowledgement (legacy): {{count}}",
+    "legacyAcks_other": "Impact acknowledgements (legacy): {{count}}"
   },
   "suiviParams": {
     "reset": "Reset",

@@ -495,7 +495,8 @@ non terminal référence le paramètre (`deleted: false` + `usages`).
 - `list_changes` — changes de tous les repos du workspace (`ChangeSummary` : id, `repoPath` de
   stockage, type, titre, statut, composant, nombres d'éléments à modifier / impactés) ; filtres
   `status`, `objectTypeRef`.
-- `get_change` — un change complet (`repoPath` de stockage, défaut repo ouvert).
+- `get_change` — un change complet (`repoPath` de stockage, défaut repo ouvert) et son analyse
+  d'impact (`analysis`, GH199 : calculée, ou figée si le change est terminal).
 - `create_change` — demande de changement (`mode: request`) : type de catégorie `change`,
   `component` obligatoire si le repo porte plusieurs composants locaux, `toModify` (`planned`) et
   `impacted` (`impact_non_verifie`, `declared`). Mise à jour des listes : lot L3 (#199).

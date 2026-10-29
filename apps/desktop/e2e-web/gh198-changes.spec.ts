@@ -117,6 +117,8 @@ test('GH198-2 — « Créer un change » depuis une exigence : élément pré-re
   const { localPath } = s.project
   await navigate(p, s.projectUrl(`/req/${reqId}`, { repoPath: localPath }))
   await p.getByTestId('create-change').click()
+  // GH199 — l'exigence figure déjà dans le change ouvert de GH198-1 : menu « Ouvrir … / Créer un change ».
+  await p.getByTestId('create-change-menu').getByRole('button', { name: 'Créer un change' }).click()
   const form = p.getByTestId('change-new-form')
   await expect(form).toContainText(reqId)
   const typeSelect = form.getByTestId('change-new-type')

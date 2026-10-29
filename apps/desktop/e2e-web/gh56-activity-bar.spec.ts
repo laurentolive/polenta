@@ -9,7 +9,7 @@ const s = setupSession()
 
 const KEY = 'polenta.activityBarLayout'
 const DEFAULT_TITLES = [
-  'Compte', 'Projet', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Changements', 'Paramètres', 'Recherche', 'Version', "Analyse d'impact",
+  'Compte', 'Projet', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Changements', 'Paramètres', 'Recherche', 'Version',
 ]
 
 function button(page: Page, title: string) {
@@ -45,7 +45,7 @@ test.beforeEach(async () => {
 test('E1 — drag & drop : Version avant Suivi, persistant', async () => {
   expect(await titles(s.page)).toEqual(DEFAULT_TITLES)
   await dragBefore(s.page, 'Version', 'Suivi')
-  const expected = ['Compte', 'Projet', 'Version', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Changements', 'Paramètres', 'Recherche', "Analyse d'impact"]
+  const expected = ['Compte', 'Projet', 'Version', 'Suivi', 'Exigences', 'Tests', 'Campagnes', 'Changements', 'Paramètres', 'Recherche']
   expect(await titles(s.page)).toEqual(expected)
   await s.page.reload()
   expect(await titles(s.page)).toEqual(expected)
@@ -53,15 +53,15 @@ test('E1 — drag & drop : Version avant Suivi, persistant', async () => {
 })
 
 test('E2/E3 — masquer par clic droit puis réafficher depuis la zone vide', async () => {
-  await openMenu(s.page, "Analyse d'impact")
-  await s.page.getByRole('menuitem', { name: "Masquer « Analyse d'impact »" }).click()
-  await expect(button(s.page, "Analyse d'impact")).toHaveCount(0)
+  await openMenu(s.page, 'Recherche')
+  await s.page.getByRole('menuitem', { name: 'Masquer « Recherche »' }).click()
+  await expect(button(s.page, 'Recherche')).toHaveCount(0)
   await s.page.reload()
-  await expect(button(s.page, "Analyse d'impact")).toHaveCount(0)
+  await expect(button(s.page, 'Recherche')).toHaveCount(0)
 
   await openMenu(s.page, null)
   await s.shot('gh56-e3-menu')
-  const entry = s.page.getByRole('menuitemcheckbox', { name: "Analyse d'impact" })
+  const entry = s.page.getByRole('menuitemcheckbox', { name: 'Recherche' })
   await expect(entry).toHaveAttribute('aria-checked', 'false')
   await entry.click()
   expect(await titles(s.page)).toEqual(DEFAULT_TITLES)

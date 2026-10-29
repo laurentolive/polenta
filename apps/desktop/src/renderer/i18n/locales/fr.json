@@ -1016,7 +1016,9 @@
         "invalidDate": "date illisible « {{value}} » (ligne {{row}})",
         "testChangedSinceExport": "le test {{testCaseId}} a changé depuis l'export du classeur — réexportez le classeur pour cette instance",
         "fieldError": "{{message}} (ligne {{row}})"
-      }
+      },
+      "unchanged_one": "{{count}} instance déjà exécutée, non modifiée : ignorée",
+      "unchanged_other": "{{count}} instances déjà exécutées, non modifiées : ignorées"
     },
     "stepResult": {
       "notExecuted": "Non exécuté",

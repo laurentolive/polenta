@@ -6,9 +6,20 @@ import {
 } from '@polenta/types'
 import type {
   CampaignTestRun, ExecutionSheetColumn, ExecutionSheetFieldColumn, ExecutionSheetLabels, ExecutionSheetLocale,
-  ObjectTypeDefinition, TestCampaign, TestCase,
+  ObjectTypeDefinition, TestCampaign, TestCase, TestRun,
 } from '@polenta/types'
 import { writeLinkCell } from './link-cell.util'
+import { instanceSignature, readSheetRows } from './campaign-execution-import'
+
+/** GH196 — valeurs déjà saisies (dernier run de l'instance), recopiées dans les cases jaunes. */
+export interface RowPrefill {
+  verdict?: string
+  tester?: string
+  /** Date « Excel » : composantes UTC = heure locale (une cellule date n'a pas de fuseau). */
+  date?: Date
+  comment?: string
+  fields?: Record<string, unknown>
+}
 import { markdownToPlainText } from './template/markdown-to-text'
 import { BRAND } from '../../../shared/brand'
 
@@ -31,6 +42,7 @@ export type ExecutionSheetRow =
       currentStatus: string
       /** GH196 — colonnes de champ saisissables sur cette ligne (champs d'exécution du type). */
       fieldIds: string[]
+      prefill?: RowPrefill
     }
   | {
       kind: 'step'
@@ -40,6 +52,7 @@ export type ExecutionSheetRow =
       expected: string
       /** GH196 — colonnes de champ saisissables sur cette ligne (champs d'étape du type). */
       fieldIds: string[]
+      prefill?: RowPrefill
     }
 
 export interface ExecutionSheetModel {
@@ -53,7 +66,7 @@ export interface ExecutionSheetModel {
    *  une colonne, Q6), dans l'ordre de première apparition. */
   fieldColumns: ExecutionSheetFieldColumn[]
   /** Une entrée par instance, dans l'ordre de la campagne — recopiée dans `_polenta`. */
-  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string }[]
+  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string; prefilled?: boolean }[]
 }
 
 export interface ExecutionSheetEntry {
@@ -64,6 +77,15 @@ export interface ExecutionSheetEntry {
   fingerprint?: string
   /** GH196 — type du test (champs d'exécution / d'étape) ; absent : pas de colonne de champ. */
   typeDef?: Pick<ObjectTypeDefinition, 'runFields' | 'stepFields'> | null
+  /** GH196 — run du résultat déjà saisi (instance exécutée) : valeurs recopiées dans le classeur. */
+  prefill?: TestRun
+}
+
+/** Instant ISO → `Date` dont les composantes UTC sont l'heure locale (relue telle quelle à l'import). */
+function excelDate(iso: string): Date | undefined {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return undefined
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()))
 }
 
 /** GH196 — union ordonnée des colonnes de champs : tous les champs d'exécution, puis d'étape. */
@@ -97,7 +119,8 @@ export function buildExecutionSheetModel(input: {
   const instances: ExecutionSheetModel['instances'] = []
   const fieldColumns = fieldColumnsOf(input.entries)
 
-  for (const { run, test, fingerprint, typeDef } of input.entries) {
+  for (const { run, test, fingerprint, typeDef, prefill } of input.entries) {
+    const plain = (md: string | null | undefined) => (md ? markdownToPlainText(md).trim() : '')
     const idsOf = (list: 'runFields' | 'stepFields') => (test ? (typeDef?.[list] ?? []).map(f => executionFieldColumnId(list, f.name)) : [])
     const steps = [...(test?.steps ?? [])].sort((a, b) => a.order - b.order)
     const text = (md: string | null | undefined) => richtextToCellText(substituteRunParams(md ?? '', run), labels)
@@ -119,6 +142,15 @@ export function buildExecutionSheetModel(input: {
       params: formatParams(run),
       currentStatus: labels.runStatuses[run.status] ?? run.status,
       fieldIds: idsOf('runFields'),
+      ...(prefill && test && {
+        prefill: {
+          verdict: labels.globalVerdicts[prefill.result],
+          tester: prefill.executedBy,
+          date: excelDate(prefill.executedAt),
+          comment: plain(prefill.notes),
+          fields: prefill.fields,
+        },
+      }),
     })
     for (const step of steps) {
       rows.push({
@@ -128,11 +160,17 @@ export function buildExecutionSheetModel(input: {
         text: text(step.action),
         expected: text(step.expectedResult),
         fieldIds: idsOf('stepFields'),
+        ...((): { prefill?: RowPrefill } => {
+          const sr = prefill?.stepResults.find(s => s.order === step.order)
+          if (!sr || sr.result === 'NOT_EXECUTED') return {}
+          return { prefill: { verdict: labels.stepVerdicts[sr.result], comment: plain(sr.comment), fields: sr.fields } }
+        })(),
       })
     }
     instances.push({
       entryId: run.entryId, testCaseId: run.testCaseId, orders: steps.map(s => s.order), testFound: !!test,
       ...(test && fingerprint && { fingerprint }),
+      ...(test && prefill && { prefilled: true }),
     })
   }
 
@@ -303,8 +341,14 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
         if (!editable.has(id)) { cell.fill = lockedFill; return }        // sans objet : grisée, verrouillée
         cell.protection = { locked: false }
         cell.fill = solid(FILL_INPUT)
-        // Q7 — valeur par défaut pré-remplie.
-        if (f.default !== undefined && f.default !== '') {
+        const existing = r.prefill?.fields?.[f.name]
+        if (existing !== undefined && existing !== null && existing !== '') {
+          // GH196 — valeur déjà saisie (dernier run).
+          if (f.type === 'link') writeLinkCell(cell, readLinkValues(existing))
+          else if (f.type === 'boolean') cell.value = booleanWords[existing === true || existing === 'true' ? 0 : 1]
+          else cell.value = typeof existing === 'number' ? existing : String(existing)
+        } else if (f.default !== undefined && f.default !== '') {
+          // Q7 — valeur par défaut pré-remplie.
           if (f.type === 'link') writeLinkCell(cell, readLinkValues(f.default))
           else if (f.type === 'boolean') cell.value = booleanWords[String(f.default) === 'true' ? 0 : 1]
           else cell.value = f.type === 'number' && Number.isFinite(Number(f.default)) ? Number(f.default) : String(f.default)
@@ -321,6 +365,12 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
       const c = sc.c
       const value = values[c]
       if (value !== undefined && value !== '') cell.value = value
+      // GH196 — résultat déjà saisi recopié dans les cases jaunes.
+      const pre = r.prefill
+      if (pre && c === 'verdict' && pre.verdict) cell.value = pre.verdict
+      if (pre && c === 'tester' && pre.tester) cell.value = pre.tester
+      if (pre && c === 'date' && pre.date) cell.value = pre.date
+      if (pre && c === 'comment' && pre.comment) cell.value = pre.comment
       cell.alignment = { vertical: 'top', wrapText: WRAPPED.includes(c) }
       if (editable.has(c)) {
         cell.protection = { locked: false }
@@ -371,9 +421,15 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   // GH196 — carte des colonnes de la feuille de saisie : la lecture d'un v3 se fait par elle.
   meta.addRow(['columns', ...columns.map(columnId)])
   meta.addRow([])
-  meta.addRow(['entryId', 'testCaseId', 'orders', 'testFound', 'fingerprint'])
+  // GH196 — signature des valeurs pré-remplies, relues comme à l'import : une instance non modifiée
+  // dans le fichier rempli est reconnue et ignorée.
+  const { rows: written } = readSheetRows(sheet, columns.map(columnId))
+  const signatureOf = (entryId: string) =>
+    instanceSignature(written.filter(r => r.key === entryId || r.key.startsWith(`${entryId}#`)))
+  meta.addRow(['entryId', 'testCaseId', 'orders', 'testFound', 'fingerprint', 'prefill'])
   for (const inst of model.instances) {
-    meta.addRow([inst.entryId, inst.testCaseId, inst.orders.join(','), inst.testFound ? 1 : 0, inst.fingerprint ?? ''])
+    meta.addRow([inst.entryId, inst.testCaseId, inst.orders.join(','), inst.testFound ? 1 : 0, inst.fingerprint ?? '',
+      inst.prefilled ? signatureOf(inst.entryId) : ''])
   }
 
   return workbook

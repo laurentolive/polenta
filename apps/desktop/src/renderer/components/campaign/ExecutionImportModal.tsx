@@ -155,6 +155,9 @@ export function ExecutionImportModal({ repoPath, campaignId, workspaceDir, previ
                 </section>
               )}
 
+              {(preview.unchangedCount ?? 0) > 0 && (
+                <p className="text-xs text-ink-3">{t('campaignPage.executionSheet.unchanged', { count: preview.unchangedCount })}</p>
+              )}
               {preview.unfilledCount > 0 && (
                 <p className="text-xs text-ink-3">{t('campaignPage.executionSheet.unfilled', { count: preview.unfilledCount })}</p>
               )}

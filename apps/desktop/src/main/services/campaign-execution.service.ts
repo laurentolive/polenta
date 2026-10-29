@@ -1,4 +1,4 @@
-import type { ExecutionImportPreview, ExecutionImportResult, ExecutionSheetLocale, ObjectTypeDefinition, TestCampaign, TestCase } from '@polenta/types'
+import type { ExecutionImportPreview, ExecutionImportResult, ExecutionSheetLocale, ObjectTypeDefinition, TestCampaign, TestCase, TestRun } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { CampaignsService } from './campaigns.service'
 import type { TestsService } from './tests.service'
@@ -29,10 +29,17 @@ export class CampaignExecutionService {
     const effective = await this.campaigns.effectiveTests(repoPath, campaign)
     // GH196 — colonnes des champs d'exécution / d'étape : type de chaque test.
     const typeDefs = await this.typeDefsOf(repoPath, campaign, effective)
-    const entries: ExecutionSheetEntry[] = campaign.runs.map(run => {
+    // GH196 — instance déjà exécutée : son résultat (run de l'entrée) est recopié dans le classeur.
+    const runsByTest = new Map<string, Promise<TestRun[]>>()
+    const runOf = async (testCaseId: string, runId: string) => {
+      if (!runsByTest.has(testCaseId)) runsByTest.set(testCaseId, this.tests.findRuns(repoPath, testCaseId).catch(() => []))
+      return (await runsByTest.get(testCaseId)!).find(r => r.id === runId)
+    }
+    const entries: ExecutionSheetEntry[] = await Promise.all(campaign.runs.map(async run => {
       const test = effective.get(run.entryId)?.test
-      return { run, test, typeDef: typeDefs.get(run.entryId), ...(test && { fingerprint: testFingerprint(test) }) }
-    })
+      const prefill = run.status !== 'pending' && run.runId ? await runOf(run.testCaseId, run.runId) : undefined
+      return { run, test, typeDef: typeDefs.get(run.entryId), ...(prefill && { prefill }), ...(test && { fingerprint: testFingerprint(test) }) }
+    }))
 
     const model = buildExecutionSheetModel({ campaign, entries, locale, exportedAt: new Date().toISOString() })
     await writeExecutionWorkbook(model, destPath)

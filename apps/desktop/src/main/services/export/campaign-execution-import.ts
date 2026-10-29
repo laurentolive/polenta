@@ -32,8 +32,9 @@ export interface RawExecutionRow {
 export interface RawExecutionSheet {
   formatVersion: string
   campaignId: string
-  /** Instances exportées, dans l'ordre de la campagne au moment de l'export ; `fingerprint` : v2 (GH81). */
-  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string }[]
+  /** Instances exportées, dans l'ordre de la campagne au moment de l'export ; `fingerprint` : v2 (GH81) ;
+   *  `prefill` (GH196) : signature des valeurs pré-remplies d'une instance déjà exécutée. */
+  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string; prefill?: string }[]
   rows: RawExecutionRow[]
   /** Lignes sans clé technique mais avec une saisie (ajoutées par le testeur). */
   rowsWithoutKey: number[]
@@ -112,12 +113,14 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
     }
     const orders = cellText(r.getCell(3).value).split(',').map(s => s.trim()).filter(Boolean).map(Number)
     const fingerprint = cellText(r.getCell(5).value).trim()
+    const prefill = cellText(r.getCell(6).value).trim()
     instances.push({
       entryId: first,
       testCaseId: cellText(r.getCell(2).value).trim(),
       orders,
       testFound: cellText(r.getCell(4).value).trim() !== '0',
       ...(fingerprint && { fingerprint }),
+      ...(prefill && { prefill }),
     })
   })
   const campaignId = props.get('campaignId')
@@ -125,6 +128,15 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
 
   // La carte ne vaut que pour un classeur v3 ; v1 / v2 : ordre fixe des colonnes.
   if (Number(props.get('formatVersion')) < 3) columnIds = [...EXECUTION_SHEET_COLUMNS]
+  const { rows, rowsWithoutKey } = readSheetRows(sheet, columnIds)
+  return { formatVersion: props.get('formatVersion') ?? '', campaignId, instances, rows, rowsWithoutKey }
+}
+
+/**
+ * Lignes de la feuille de saisie, lues par la carte des colonnes (`columnIds`, ordre de la feuille).
+ * Partagée avec l'export (signature des valeurs pré-remplies, GH196) : même lecture des deux côtés.
+ */
+export function readSheetRows(sheet: ExcelJS.Worksheet, columnIds: string[]): { rows: RawExecutionRow[]; rowsWithoutKey: number[] } {
   const col = (c: ExecutionSheetColumn) => columnIds.indexOf(c) + 1
   const fieldColumns = columnIds.map((id, i) => ({ id, index: i + 1 })).filter(c => c.id.startsWith('run:') || c.id.startsWith('step:'))
   const rows: RawExecutionRow[] = []
@@ -152,8 +164,31 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
     if (key) rows.push(raw)
     else if (raw.verdict || raw.tester || raw.date !== null || raw.comment) rowsWithoutKey.push(r)
   }
+  return { rows, rowsWithoutKey }
+}
 
-  return { formatVersion: props.get('formatVersion') ?? '', campaignId, instances, rows, rowsWithoutKey }
+/** Valeur de cellule normalisée pour la signature (lien : texte et cible ; date : à la minute). */
+function signatureValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : new Date(Math.round(value.getTime() / 60000) * 60000).toISOString()
+  if (typeof value === 'object' && 'hyperlink' in (value as object)) {
+    const v = value as { text?: unknown; hyperlink?: unknown }
+    return `${cellText((v.text ?? '') as ExcelJS.CellValue)}|${String(v.hyperlink ?? '')}`
+  }
+  return cellText(value as ExcelJS.CellValue).replace(/\r\n?/g, '\n').trim()
+}
+
+/**
+ * GH196 — signature des valeurs saisissables d'une instance (ligne d'instance puis lignes d'étape) :
+ * calculée à l'export sur les valeurs pré-remplies, recalculée à l'import ; égale = instance non
+ * modifiée, ignorée (pas de nouveau run).
+ */
+export function instanceSignature(rows: RawExecutionRow[]): string {
+  const sorted = [...rows].sort((a, b) => a.key.localeCompare(b.key))
+  return JSON.stringify(sorted.map(r => [
+    r.key, r.verdict, r.tester, signatureValue(r.date), r.comment,
+    Object.keys(r.fields).sort().map(id => [id, signatureValue(r.fields[id].value)]),
+  ]))
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -214,6 +249,12 @@ export function validateExecutionImport(
   for (const entryId of entryIds) {
     const group = byEntry.get(entryId)
     if (!group) continue
+    // GH196 — résultat pré-rempli à l'export et non modifié : ignoré (pas de doublon de run).
+    const prefill = metaById.get(entryId)?.prefill
+    if (prefill && instanceSignature([...(group.instance ? [group.instance] : []), ...group.steps.map(s => s.row)]) === prefill) {
+      preview.unchangedCount = (preview.unchangedCount ?? 0) + 1
+      continue
+    }
     const filled = !!group.instance?.verdict || group.steps.some(s => s.row.verdict)
     if (!filled) {
       preview.unfilledCount++

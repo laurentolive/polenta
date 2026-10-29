@@ -166,6 +166,47 @@ describe('classeur v3', () => {
     })
   })
 
+  it('résultat déjà saisi recopié ; réimport sans modification ignoré, modification importée', async () => {
+    const done = { ...campaign, runs: [{ ...campaign.runs[0], status: 'FAIL', runId: 'RUN-1' }, campaign.runs[1]] } as unknown as TestCampaign
+    const prefill = {
+      id: 'RUN-1', testCaseId: 'TN-1', result: 'FAIL', executedAt: new Date(2026, 9, 28, 14, 30).toISOString(), executedBy: 'alice',
+      duration: 0, equipmentUsed: [], notes: 'coupure tardive', fields: { reportNumber: 'RE-118', report: { label: 'RE-118', url: 'https://ged/118' } },
+      stepResults: [{ order: 1, result: 'FAIL', comment: 'trop bas', executedAt: null, fields: { measured: 13.1 } }],
+    } as never
+    const model = buildExecutionSheetModel({
+      campaign: done, locale: 'fr', exportedAt: '2026-10-29T10:00:00Z',
+      entries: [
+        { run: done.runs[0], test: test('TN-1', 'root::tn'), typeDef: TN, prefill },
+        { run: done.runs[1], test: test('TB-1', 'root::tb'), typeDef: TB },
+      ],
+    })
+    const file = path.join(dir, 'p.xlsx')
+    await (await buildExecutionWorkbook(model)).xlsx.writeFile(file)
+    const ctxDone = { ...ctx(file), campaign: done }
+
+    // Cases pré-remplies.
+    await fill(file, (sheet, col, rowOf) => {
+      const head = sheet.getRow(rowOf('TN-1-1'))
+      expect(head.getCell(col('Verdict')).value).toBe('Échoué')
+      expect(head.getCell(col('Testeur')).value).toBe('alice')
+      expect(head.getCell(col('Commentaire')).value).toBe('coupure tardive')
+      expect(head.getCell(col('N° de rapport')).value).toBe('RE-118')
+      expect(sheet.getRow(rowOf('TN-1-1#1')).getCell(col('Mesure')).value).toBe(13.1)
+    })
+    let preview = validateExecutionImport(await readExecutionWorkbook(file), ctxDone)
+    expect(preview.unchangedCount).toBe(1)
+    expect(preview.importable).toEqual([])
+    expect(preview.errors).toEqual([])
+
+    await fill(file, (sheet, col, rowOf) => { sheet.getRow(rowOf('TN-1-1')).getCell(col('N° de rapport')).value = 'RE-119' })
+    preview = validateExecutionImport(await readExecutionWorkbook(file), ctxDone)
+    expect(preview.unchangedCount).toBeUndefined()
+    const tn = preview.importable.find(i => i.entryId === 'TN-1-1')!
+    expect(tn.fields).toMatchObject({ reportNumber: 'RE-119', report: { label: 'RE-118', url: 'https://ged/118' } })
+    expect(tn.executedBy).toBe('alice')
+    expect(tn.executedAt).toBe(new Date(2026, 9, 28, 14, 30).toISOString())
+  })
+
   it('campagne sans champ d\'exécution : aucune colonne supplémentaire', async () => {
     const model = buildExecutionSheetModel({
       campaign, locale: 'fr', exportedAt: '2026-10-29T10:00:00Z',

@@ -2087,7 +2087,7 @@ function ExcelViewInner({
     if (!selection) return
     const r = rowClick({
       selected: selection.selected, displayed: displayedObjectIds, anchor: selectionAnchor,
-      target: objectId, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey,
+      target: objectId, shift: e.shiftKey,
     })
     setSelectionAnchor(r.anchor)
     selection.onChange(r.selected)

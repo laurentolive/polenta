@@ -1,6 +1,7 @@
 import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
+  ObjectTypeDefinition,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -700,6 +701,8 @@ export interface ApiClient {
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     execute(repoPath: string, tcId: string, dto: ExecuteTestCaseDto, workspaceDir?: string): Promise<TestRun>
     runs(repoPath: string, tcId: string): Promise<TestRun[]>
+    /** GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris ; null si introuvable. */
+    typeDef(repoPath: string, objectTypeRef: string, workspaceDir?: string): Promise<ObjectTypeDefinition | null>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<TestCase>
   }

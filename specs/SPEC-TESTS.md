@@ -298,6 +298,22 @@ Un `TestRun` représente **une exécution concrète** d'un cas de test à un ins
 | `stepResults` | list | Résultat par étape (voir §3.4) |
 | `notes` | RICHTEXT | Observations générales, contexte global de l'exécution. Liens OneDrive pour les fichiers annexes (logs, exports CSV). |
 | `origin` | `'excel-import'` | *(GH36)* Origine du résultat : absent = saisi dans l'outil ; `excel-import` = réimporté depuis le classeur d'exécution (§4.5), avec testeur et date lus dans le fichier |
+| `fields` | map? | *(GH196)* Valeurs des **champs d'exécution** (`runFields` du type de test), typées comme des champs d'objet ; absent tant que vide. Chaque `stepResults[]` porte de même `fields` (champs d'étape, `stepFields`), sur une étape exécutée seulement |
+
+**Champs d'exécution et d'étape (GH196)** — déclarés sur un type de **test** : `runFields` (saisis à
+chaque exécution : n° de rapport, température, lien vers le rapport…) et `stepFields` (saisis sur
+chaque étape exécutée : valeur mesurée…). Tous les types de champ sauf `drawio`. `requiredWhen` y
+référence le pseudo-champ `result` (verdict global pour `runFields`, verdict de l'étape pour
+`stepFields`) ou un champ enum / multi_enum / boolean de la même liste. **Nom unique dans le projet** :
+deux types de test peuvent partager un nom (même colonne dans le classeur) avec le même type de champ
+et dans la même liste ; refusé à l'enregistrement du schéma sinon. Écriture : `TestsService.execute`
+(point unique : page d'exécution et import du classeur) convertit les saisies, refuse clé inconnue /
+valeur illisible et contrôle `required` / `requiredWhen` sur le verdict final ; rien n'est écrit en cas
+de refus. Saisie sur la page d'exécution (champs d'exécution sous le verdict global, champs d'étape sur
+les étapes exécutées, défauts pré-remplis, astérisque dynamique) ; consultation d'un run en lecture
+seule (« hors schéma » pour un champ retiré, ⚠ pour une valeur d'enum disparue). Un run n'est jamais
+réécrit, y compris au renommage d'un champ (limite). Éditeur de schéma : sections repliables « Champs
+d'exécution » / « Champs d'étape » ; MCP `add_field` `list`.
 
 ### 3.2 Identification du matériel utilisé (EquipmentUsed)
 
@@ -768,6 +784,15 @@ campagne `completed`/`abandoned` (export et import y sont aussi refusés côté 
 fixe, indépendant des gabarits client (GH34). Code : `CampaignExecutionService`,
 `export/campaign-execution.xlsx.ts` (export), `export/campaign-execution-import.ts` (import),
 libellés et types partagés dans `@polenta/types` (`campaign-execution-sheet.ts`).
+
+> **Format v3 (GH196)** : une colonne jaune par champ d'exécution (ligne d'instance) puis par champ
+> d'étape (lignes d'étape), insérées **après « Commentaire »** ; union des types de la campagne (un
+> nom = une colonne) ; cellule sans objet grisée et verrouillée ; en-tête avec `*` (obligatoire) et
+> commentaire de cellule (type, valeurs, condition) ; liste déroulante pour enum / boolean ; défaut
+> pré-rempli ; lien = hyperlien, URL ou `libellé | URL`. La feuille `_polenta` porte la **carte des
+> colonnes** (ligne `columns`) : un v3 est lu par elle, v1 / v2 restent lus par l'ordre fixe (sans
+> champs). Import : erreurs par instance `invalid_field_value` / `required_field_missing` (ligne, champ,
+> message), les autres instances importées.
 
 > **Client web (GH44)** : l'export est **téléchargé** (`web:execution-sheet-export`) ; à l'import,
 > le classeur est choisi dans le navigateur, envoyé (`POST /upload`) et prévisualisé par

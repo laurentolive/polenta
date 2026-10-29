@@ -102,6 +102,10 @@ export interface ObjectTypeDefinition {
   statuses?: SchemaStatus[]
   /** GH77 — historiser le statut (`history.status`). Absent = true ; écrit seulement si false. */
   trackStatusHistory?: boolean
+  /** GH196 — catégorie `test` : champs saisis à chaque exécution (bloc `fields` du run). */
+  runFields?: SchemaField[]
+  /** GH196 — catégorie `test` : champs saisis à chaque étape exécutée (bloc `fields` d'un `StepResult`). */
+  stepFields?: SchemaField[]
 }
 
 /** GH68 — `status` est-il le statut d'approbation du type (`statuses[].isApproval`) ? Repli sur

@@ -1,11 +1,14 @@
 import ExcelJS from 'exceljs'
 import {
   EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_FORMAT_VERSION, EXECUTION_SHEET_HEADER_ROW,
-  EXECUTION_SHEET_LABELS, EXECUTION_SHEET_META_NAME, substituteRunParams,
+  EXECUTION_SHEET_LABELS, EXECUTION_SHEET_META_NAME, executionFieldColumnId, formatRequiredWhenText,
+  readLinkValues, substituteRunParams,
 } from '@polenta/types'
 import type {
-  CampaignTestRun, ExecutionSheetColumn, ExecutionSheetLabels, ExecutionSheetLocale, TestCampaign, TestCase,
+  CampaignTestRun, ExecutionSheetColumn, ExecutionSheetFieldColumn, ExecutionSheetLabels, ExecutionSheetLocale,
+  ObjectTypeDefinition, TestCampaign, TestCase,
 } from '@polenta/types'
+import { writeLinkCell } from './link-cell.util'
 import { markdownToPlainText } from './template/markdown-to-text'
 import { BRAND } from '../../../shared/brand'
 
@@ -26,6 +29,8 @@ export type ExecutionSheetRow =
       requirementId: string
       params: string
       currentStatus: string
+      /** GH196 — colonnes de champ saisissables sur cette ligne (champs d'exécution du type). */
+      fieldIds: string[]
     }
   | {
       kind: 'step'
@@ -33,6 +38,8 @@ export type ExecutionSheetRow =
       order: number
       text: string
       expected: string
+      /** GH196 — colonnes de champ saisissables sur cette ligne (champs d'étape du type). */
+      fieldIds: string[]
     }
 
 export interface ExecutionSheetModel {
@@ -42,6 +49,9 @@ export interface ExecutionSheetModel {
   baselineRef?: string
   exportedAt: string
   rows: ExecutionSheetRow[]
+  /** GH196 — colonnes des champs d'exécution puis d'étape, union des types de la campagne (un nom =
+   *  une colonne, Q6), dans l'ordre de première apparition. */
+  fieldColumns: ExecutionSheetFieldColumn[]
   /** Une entrée par instance, dans l'ordre de la campagne — recopiée dans `_polenta`. */
   instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string }[]
 }
@@ -52,6 +62,23 @@ export interface ExecutionSheetEntry {
   test?: TestCase
   /** GH81 — empreinte de `test`, contrôlée à l'import. */
   fingerprint?: string
+  /** GH196 — type du test (champs d'exécution / d'étape) ; absent : pas de colonne de champ. */
+  typeDef?: Pick<ObjectTypeDefinition, 'runFields' | 'stepFields'> | null
+}
+
+/** GH196 — union ordonnée des colonnes de champs : tous les champs d'exécution, puis d'étape. */
+function fieldColumnsOf(entries: ExecutionSheetEntry[]): ExecutionSheetFieldColumn[] {
+  const out: ExecutionSheetFieldColumn[] = []
+  for (const list of ['runFields', 'stepFields'] as const) {
+    for (const { typeDef, test } of entries) {
+      if (!test) continue
+      for (const field of typeDef?.[list] ?? []) {
+        const id = executionFieldColumnId(list, field.name)
+        if (!out.some(c => c.id === id)) out.push({ id, list, field })
+      }
+    }
+  }
+  return out
 }
 
 /** Clé technique d'une ligne d'étape (colonne A masquée) ; une ligne d'instance a pour clé son `entryId`. */
@@ -68,8 +95,10 @@ export function buildExecutionSheetModel(input: {
   const labels = EXECUTION_SHEET_LABELS[input.locale]
   const rows: ExecutionSheetRow[] = []
   const instances: ExecutionSheetModel['instances'] = []
+  const fieldColumns = fieldColumnsOf(input.entries)
 
-  for (const { run, test, fingerprint } of input.entries) {
+  for (const { run, test, fingerprint, typeDef } of input.entries) {
+    const idsOf = (list: 'runFields' | 'stepFields') => (test ? (typeDef?.[list] ?? []).map(f => executionFieldColumnId(list, f.name)) : [])
     const steps = [...(test?.steps ?? [])].sort((a, b) => a.order - b.order)
     const text = (md: string | null | undefined) => richtextToCellText(substituteRunParams(md ?? '', run), labels)
 
@@ -89,6 +118,7 @@ export function buildExecutionSheetModel(input: {
       requirementId: run.requirementId ?? '',
       params: formatParams(run),
       currentStatus: labels.runStatuses[run.status] ?? run.status,
+      fieldIds: idsOf('runFields'),
     })
     for (const step of steps) {
       rows.push({
@@ -97,6 +127,7 @@ export function buildExecutionSheetModel(input: {
         order: step.order,
         text: text(step.action),
         expected: text(step.expectedResult),
+        fieldIds: idsOf('stepFields'),
       })
     }
     instances.push({
@@ -112,6 +143,7 @@ export function buildExecutionSheetModel(input: {
     baselineRef: input.campaign.baselineRef || undefined,
     exportedAt: input.exportedAt,
     rows,
+    fieldColumns,
     instances,
   }
 }
@@ -164,12 +196,35 @@ const FILL_INPUT = 'FFFFF2CC'
 const FILL_INPUT_HEADER = 'FFBF8F00'
 const FONT_HEADER = 'FFFFFFFF'
 
-const colIndex = (c: ExecutionSheetColumn) => EXECUTION_SHEET_COLUMNS.indexOf(c) + 1
 const solid = (argb: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } })
 
 /** Formule d'une liste déroulante Excel : valeurs entre guillemets, séparées par des virgules. */
 function listFormula(values: string[]): string {
   return `"${values.map(v => v.replace(/"/g, '""')).join(',')}"`
+}
+
+/** GH196 — colonnes de la feuille : fixes jusqu'à « Commentaire », champs, puis colonnes d'information. */
+type SheetColumn = { kind: 'fixed'; c: ExecutionSheetColumn } | { kind: 'field'; col: ExecutionSheetFieldColumn }
+
+function sheetColumns(fieldColumns: ExecutionSheetFieldColumn[]): SheetColumn[] {
+  const fixed = EXECUTION_SHEET_COLUMNS.map((c): SheetColumn => ({ kind: 'fixed', c }))
+  const cut = EXECUTION_SHEET_COLUMNS.indexOf('comment') + 1
+  return [...fixed.slice(0, cut), ...fieldColumns.map((col): SheetColumn => ({ kind: 'field', col })), ...fixed.slice(cut)]
+}
+
+const columnId = (sc: SheetColumn) => (sc.kind === 'fixed' ? sc.c : sc.col.id)
+
+/** Commentaire d'en-tête d'une colonne de champ : type, valeurs, obligation en clair. */
+function fieldNote(col: ExecutionSheetFieldColumn, model: ExecutionSheetModel): string {
+  const f = col.field
+  const fr = model.locale === 'fr'
+  const lines = [`${fr ? 'Type' : 'Type'} : ${f.type}`]
+  if (f.values?.length) lines.push(`${fr ? 'Valeurs' : 'Values'} : ${f.values.join(', ')}`)
+  if (f.type === 'boolean') lines.push(fr ? 'Oui / Non' : 'Yes / No')
+  if (f.type === 'link') lines.push(fr ? 'Lien hypertexte, URL ou « libellé | URL », un par ligne' : 'Hyperlink, URL or “label | URL”, one per line')
+  if (f.required) lines.push(fr ? 'Obligatoire' : 'Required')
+  if (f.requiredWhen) lines.push(`${fr ? 'Obligatoire si' : 'Required if'} ${formatRequiredWhenText(f.requiredWhen)}`)
+  return lines.join('\n')
 }
 
 export async function writeExecutionWorkbook(model: ExecutionSheetModel, destPath: string): Promise<void> {
@@ -180,18 +235,20 @@ export async function writeExecutionWorkbook(model: ExecutionSheetModel, destPat
 /** Classeur en mémoire (séparé de l'écriture pour le script de contrôle). */
 export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promise<ExcelJS.Workbook> {
   const labels = EXECUTION_SHEET_LABELS[model.locale]
+  const columns = sheetColumns(model.fieldColumns ?? [])
+  const colIndex = (c: ExecutionSheetColumn) => columns.findIndex(sc => sc.kind === 'fixed' && sc.c === c) + 1
   const workbook = new ExcelJS.Workbook()
   workbook.creator = BRAND.productName
   const sheet = workbook.addWorksheet(labels.sheetName, {
     // Volet figé : en-têtes + colonnes Clé/Instance/Étape (repère en défilement horizontal).
-    views: [{ state: 'frozen', ySplit: EXECUTION_SHEET_HEADER_ROW, xSplit: EXECUTION_SHEET_COLUMNS.indexOf('step') + 1 }],
+    views: [{ state: 'frozen', ySplit: EXECUTION_SHEET_HEADER_ROW, xSplit: colIndex('step') }],
     properties: { outlineProperties: { summaryBelow: false, summaryRight: false } },
   })
 
-  EXECUTION_SHEET_COLUMNS.forEach((c, i) => {
+  columns.forEach((sc, i) => {
     const column = sheet.getColumn(i + 1)
-    column.width = COLUMN_WIDTHS[c]
-    if (c === 'key') column.hidden = true
+    column.width = sc.kind === 'fixed' ? COLUMN_WIDTHS[sc.c] : (sc.col.field.type === 'link' || sc.col.field.type === 'richtext' ? 32 : 16)
+    if (sc.kind === 'fixed' && sc.c === 'key') column.hidden = true
   })
 
   // En-tête du classeur (lignes 1-3).
@@ -208,16 +265,20 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   banner.font = { italic: true, color: { argb: 'FFC00000' } }
 
   const header = sheet.getRow(EXECUTION_SHEET_HEADER_ROW)
-  EXECUTION_SHEET_COLUMNS.forEach((c, i) => {
+  columns.forEach((sc, i) => {
     const cell = header.getCell(i + 1)
-    cell.value = labels.headers[c]
+    const input = sc.kind === 'field' || INPUT_COLUMNS.has(sc.c)
+    cell.value = sc.kind === 'fixed' ? labels.headers[sc.c] : `${sc.col.field.label ?? sc.col.field.name}${sc.col.field.required ? ' *' : ''}`
+    if (sc.kind === 'field') cell.note = fieldNote(sc.col, model)
     cell.font = { bold: true, color: { argb: FONT_HEADER } }
-    cell.fill = solid(INPUT_COLUMNS.has(c) ? FILL_INPUT_HEADER : FILL_HEADER)
+    cell.fill = solid(input ? FILL_INPUT_HEADER : FILL_HEADER)
     cell.alignment = { vertical: 'middle', wrapText: true }
   })
 
   const globalList = listFormula(Object.values(labels.globalVerdicts))
   const stepList = listFormula(Object.values(labels.stepVerdicts))
+  const booleanWords = model.locale === 'fr' ? ['Oui', 'Non'] : ['Yes', 'No']
+  const booleanList = listFormula(booleanWords)
 
   let rowNumber = EXECUTION_SHEET_HEADER_ROW
   for (const r of model.rows) {
@@ -230,18 +291,42 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
         }
       : { key: r.key, step: r.order, text: r.text, expected: r.expected }
 
-    const editable = new Set(EDITABLE[r.kind])
-    EXECUTION_SHEET_COLUMNS.forEach((c, i) => {
+    const editable = new Set<string>([...EDITABLE[r.kind], ...r.fieldIds])
+    const lockedFill = solid(r.kind === 'instance' ? FILL_INSTANCE : FILL_LOCKED)
+    columns.forEach((sc, i) => {
       const cell = row.getCell(i + 1)
+      const id = columnId(sc)
+      cell.border = { bottom: { style: 'hair', color: { argb: 'FFBFBFBF' } } }
+      if (sc.kind === 'field') {
+        const f = sc.col.field
+        cell.alignment = { vertical: 'top', wrapText: f.type === 'link' || f.type === 'richtext' || f.type === 'textarea' }
+        if (!editable.has(id)) { cell.fill = lockedFill; return }        // sans objet : grisée, verrouillée
+        cell.protection = { locked: false }
+        cell.fill = solid(FILL_INPUT)
+        // Q7 — valeur par défaut pré-remplie.
+        if (f.default !== undefined && f.default !== '') {
+          if (f.type === 'link') writeLinkCell(cell, readLinkValues(f.default))
+          else if (f.type === 'boolean') cell.value = booleanWords[String(f.default) === 'true' ? 0 : 1]
+          else cell.value = f.type === 'number' && Number.isFinite(Number(f.default)) ? Number(f.default) : String(f.default)
+        }
+        // Liste déroulante seulement si Excel peut la porter (pas de virgule, 255 caractères au plus) ;
+        // sinon les valeurs restent dans le commentaire d'en-tête.
+        const enumList = f.type === 'enum' && f.values?.length && f.values.every(v => !v.includes(',')) ? listFormula(f.values) : null
+        const list = enumList && enumList.length <= 257 ? enumList : f.type === 'boolean' ? booleanList : null
+        if (list) {
+          cell.dataValidation = { type: 'list', allowBlank: true, formulae: [list], showErrorMessage: f.type === 'boolean' || f.type === 'enum', errorTitle: f.label ?? f.name }
+        }
+        return
+      }
+      const c = sc.c
       const value = values[c]
       if (value !== undefined && value !== '') cell.value = value
       cell.alignment = { vertical: 'top', wrapText: WRAPPED.includes(c) }
-      cell.border = { bottom: { style: 'hair', color: { argb: 'FFBFBFBF' } } }
       if (editable.has(c)) {
         cell.protection = { locked: false }
         cell.fill = solid(FILL_INPUT)
       } else {
-        cell.fill = solid(r.kind === 'instance' ? FILL_INSTANCE : FILL_LOCKED)
+        cell.fill = lockedFill
       }
       if (c === 'verdict') {
         cell.dataValidation = {
@@ -264,7 +349,7 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
 
   sheet.autoFilter = {
     from: { row: EXECUTION_SHEET_HEADER_ROW, column: 1 },
-    to: { row: Math.max(rowNumber, EXECUTION_SHEET_HEADER_ROW), column: EXECUTION_SHEET_COLUMNS.length },
+    to: { row: Math.max(rowNumber, EXECUTION_SHEET_HEADER_ROW), column: columns.length },
   }
   // Sans mot de passe : guide le testeur sans le bloquer, la vraie garantie est la validation à
   // l'import. Excel refuse le tri d'une plage contenant des cellules verrouillées même avec
@@ -283,6 +368,8 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   meta.addRow(['campaignId', model.campaignId])
   meta.addRow(['exportedAt', model.exportedAt])
   meta.addRow(['locale', model.locale])
+  // GH196 — carte des colonnes de la feuille de saisie : la lecture d'un v3 se fait par elle.
+  meta.addRow(['columns', ...columns.map(columnId)])
   meta.addRow([])
   meta.addRow(['entryId', 'testCaseId', 'orders', 'testFound', 'fingerprint'])
   for (const inst of model.instances) {

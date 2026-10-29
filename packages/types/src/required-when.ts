@@ -80,6 +80,11 @@ function valueLabel(typeDef: TypeDefLike, key: string, value: string): string {
   return value
 }
 
+/** GH196 — `requiredWhen` en clair : `result = FAIL ; safety = true`. */
+export function formatRequiredWhenText(rw: Record<string, unknown[]>): string {
+  return Object.entries(rw).map(([k, v]) => `${k} = ${(Array.isArray(v) ? v : []).map(String).join(', ')}`).join(' ; ')
+}
+
 /** Message de refus : `« Justification » est obligatoire quand Statut = Approuvé`. */
 export function requiredWhenMessage(typeDef: TypeDefLike, field: SchemaField, key: string): string {
   const ref = key === REQUIRED_WHEN_STATUS ? 'Statut' : (typeDef.fields.find(f => f.name === key)?.label ?? key)
@@ -99,7 +104,13 @@ export interface RequiredWhenIssue {
  * auto-référence, liste vide, référence d'un type non admis. Avertissements : champ de référence
  * absent, valeur inconnue — une évolution du schéma rend la condition inerte sans rien bloquer.
  */
-export function requiredWhenIssues(typeDef: TypeDefLike): RequiredWhenIssue[] {
+export function requiredWhenIssues(
+  typeDef: TypeDefLike,
+  /** GH196 — pseudo-champ admis comme référence et ses valeurs (`null` : non contrôlées). Défaut :
+   *  `status` et les statuts du type ; `result` et les verdicts pour une liste de run / d'étape. */
+  pseudo?: { key: string; values: string[] | null },
+): RequiredWhenIssue[] {
+  const pseudoKey = pseudo?.key ?? REQUIRED_WHEN_STATUS
   const issues: RequiredWhenIssue[] = []
   for (const field of typeDef.fields) {
     const rw = field.requiredWhen as unknown
@@ -119,8 +130,8 @@ export function requiredWhenIssues(typeDef: TypeDefLike): RequiredWhenIssue[] {
         continue
       }
       let known: string[] | null
-      if (key === REQUIRED_WHEN_STATUS) {
-        known = statusNames(typeDef)
+      if (key === pseudoKey) {
+        known = pseudo ? pseudo.values : statusNames(typeDef)
       } else {
         const ref = typeDef.fields.find(f => f.name === key)
         if (!ref) {

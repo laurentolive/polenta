@@ -227,6 +227,7 @@ export function createIpcClient(
       update: (p, id, dto, workspaceDir) => invoke('tests:update', p, id, dto, workspaceDir),
       execute: (p, id, dto, workspaceDir) => invoke('tests:execute', p, id, dto, workspaceDir),
       runs: (p, id) => invoke('tests:runs', p, id),
+      typeDef: (p, ref, workspaceDir) => invoke('tests:type-def', p, ref, workspaceDir ?? null),
       openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment),
     },
     traceability: {

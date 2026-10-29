@@ -456,6 +456,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.tests.execute(repoPath, tcId, dto as ExecuteTestCaseDto, workspaceDir))
   r.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
     c.tests.findRuns(repoPath, tcId))
+  // GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris.
+  r.handle('tests:type-def', (_e, repoPath: string, objectTypeRef: string, workspaceDir?: string) =>
+    c.tests.typeDefFor(repoPath, objectTypeRef, workspaceDir))
   r.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string) =>
     c.tests.openDraft(repoPath, id, targetStatus, workspaceDir, comment))
 

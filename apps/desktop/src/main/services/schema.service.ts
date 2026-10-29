@@ -11,7 +11,7 @@ import type {
   SchemaStatus,
   SystemNode,
 } from '@polenta/types'
-import { findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues } from '@polenta/types'
+import { findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
@@ -37,6 +37,7 @@ export type SchemaValidationErrorCode =
   | 'FIELD_NAME_TAKEN'
   | 'STATUS_NAME_TAKEN'
   | 'REQUIRED_WHEN_INVALID'
+  | 'RUN_FIELD_INVALID'
   | 'LINK_TYPE_NAME_TAKEN'
 
 /**
@@ -99,6 +100,7 @@ export class SchemaService {
   async save(repoPath: string, schema: ProjectSchema): Promise<void> {
     this.assertUniquePrefixes(schema)
     this.assertRequiredWhen(schema)
+    this.assertRunFields(schema)
     const toWrite = this.mirrorRootRolesImplements(schema)
     const dir = path.join(repoPath, '.polenta')
     await fsP.mkdir(dir, { recursive: true })
@@ -119,6 +121,17 @@ export class SchemaService {
         if (issue) throw new SchemaValidationError('REQUIRED_WHEN_INVALID', `Type "${type.name}" : ${issue.message}`)
       }
     }
+  }
+
+  /**
+   * GH196 — listes d'exécution (`runFields` / `stepFields`) : réservées aux types de test, types de
+   * champ admis, nom unique dans le projet (même nom = même liste et même type de champ, Q6),
+   * `requiredWhen` sur `result`. Les avertissements (référence inconnue) ne bloquent pas.
+   */
+  private assertRunFields(schema: ProjectSchema): void {
+    const types = flattenSystemNodes(schema.nodes).flatMap(({ node }) => node.objectTypes ?? [])
+    const issue = runFieldIssues(types).find((i) => i.level === 'error')
+    if (issue) throw new SchemaValidationError('RUN_FIELD_INVALID', issue.message)
   }
 
   /**
@@ -358,13 +371,30 @@ export class SchemaService {
   /** Ajoute un `SchemaField` à un type d'objet existant. */
   async addField(
     repoPath: string,
-    dto: { nodeName: string; typeName: string; field: SchemaField },
+    /** GH196 — `list` : liste visée (défaut `fields`) ; `runFields` / `stepFields` réservés aux types de test. */
+    dto: { nodeName: string; typeName: string; field: SchemaField; list?: 'fields' | 'runFields' | 'stepFields' },
   ): Promise<ProjectSchema> {
     return this.withMutationQueue(repoPath, async () => {
       const schema = await this.get(repoPath)
       const node = this.requireNode(schema, dto.nodeName)
       this.requireNotReadonly(node)
       const type = this.requireObjectType(node, dto.typeName)
+      if (dto.list === 'runFields' || dto.list === 'stepFields') {
+        if (type.category !== 'test') {
+          throw new SchemaValidationError('RUN_FIELD_INVALID', `Les ${dto.list} sont réservés aux types de test ("${dto.typeName}" est ${type.category}).`)
+        }
+        const list = type[dto.list] ?? []
+        if (list.some((f) => f.name === dto.field.name)) {
+          throw new SchemaValidationError('FIELD_NAME_TAKEN', `Le champ "${dto.field.name}" existe déjà dans ${dto.list} du type "${dto.typeName}".`)
+        }
+        const withField: ObjectTypeDefinition = { ...type, [dto.list]: [...list, dto.field] }
+        const others = flattenSystemNodes(schema.nodes).flatMap(({ node: n }) => n.objectTypes ?? []).filter((t) => t !== type)
+        const issue = runFieldIssues([...others, withField]).find((i) => i.field === dto.field.name)
+        if (issue) throw new SchemaValidationError('RUN_FIELD_INVALID', issue.message)
+        const updated = this.replaceObjectType(schema, node, type, withField)
+        await this.save(repoPath, updated)
+        return updated
+      }
       // `?? []` défensif : `ObjectTypeDefinition.fields` est typé non-optionnel, mais
       // `readFromDisk()` caste le YAML brut sans validation runtime — un schema.yaml
       // édité à la main sans `fields:` sur un type planterait sinon ici avec une

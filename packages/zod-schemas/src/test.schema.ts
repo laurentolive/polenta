@@ -44,6 +44,8 @@ export const StepResultSchema = z.object({
   order: z.number().int().positive(),
   result: z.enum(['PASS', 'FAIL', 'BLOCKED', 'SKIP', 'NOT_EXECUTED']),
   comment: z.string().default(''),
+  /** GH196 — valeurs des `stepFields` (chaînes ou valeurs typées, converties par le main). */
+  fields: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const EquipmentUsedSchema = z.object({
@@ -68,6 +70,8 @@ export const ExecuteTestCaseSchema = z.object({
   origin: z.literal('excel-import').optional(),
   /** GH73 — entrée de campagne exécutée : le run lui est rattaché. Absent : exécution isolée. */
   campaignEntry: z.object({ campaignId: z.string().min(1), entryId: z.string().min(1) }).optional(),
+  /** GH196 — valeurs des `runFields` (chaînes ou valeurs typées, converties par le main). */
+  fields: z.record(z.string(), z.unknown()).optional(),
 })
 
 export type CreateTestCaseDto = z.infer<typeof CreateTestCaseSchema>

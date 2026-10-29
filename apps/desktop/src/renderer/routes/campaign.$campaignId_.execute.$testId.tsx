@@ -14,8 +14,12 @@ import { isT171Run, substituteRunParams } from '../lib/testParams'
 import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
 import { useProjectSchema, isTestApproved, testStatusLabel } from '../hooks/useProjectSchema'
+import { useTestTypeDef } from '../hooks/useTestTypeDef'
+import { decodeProjectId } from '../lib/projectId'
+import { DynamicField } from '../components/DynamicField'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
-import type { TestCase, TestRunResult, StepResultValue } from '@polenta/types'
+import { isFieldRequiredNow, runFieldReader } from '@polenta/types'
+import type { SchemaField, TestCase, TestRunResult, StepResultValue } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId_/execute/$testId')({
   component: ExecuteTestPage,
@@ -46,6 +50,21 @@ interface StepExecState {
   order: number
   result: StepResultValue
   comment: string
+  /** GH196 — valeurs des champs d'étape (chaînes, converties par le main). */
+  fields: Record<string, string>
+}
+
+const EMPTY_DEFS: SchemaField[] = []
+
+/** GH196 — valeurs initiales d'une liste de champs : `default` du schéma pré-rempli (Q7). */
+function defaultFieldValues(defs: SchemaField[]): Record<string, string> {
+  return Object.fromEntries(defs.filter(d => d.default !== undefined && d.default !== '').map(d => [d.name, String(d.default)]))
+}
+
+/** Valeurs renseignées seulement (une chaîne vide n'est pas envoyée). */
+function filledValues(values: Record<string, string>): Record<string, string> | undefined {
+  const out = Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== ''))
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function computeGlobalResult(stepResults: StepResultValue[]): TestRunResult {
@@ -107,6 +126,12 @@ function ExecuteEntryPage() {
   const testChanged = !!lockedTest && !!currentTest && JSON.stringify(lockedTest) !== JSON.stringify(currentTest)
 
   const sortedSteps = [...(testCase?.steps ?? [])].sort((a, b) => a.order - b.order)
+  // GH196 — champs d'exécution et d'étape du type du test, lu par le main (schéma du composant
+  // compris : même type que celui qui contrôle l'écriture du run).
+  const { data: testTypeDef } = useTestTypeDef(repoPath, testCase?.objectTypeRef, projectId ? decodeProjectId(projectId) : undefined)
+  const runDefs = testTypeDef?.runFields ?? EMPTY_DEFS
+  const stepDefs = testTypeDef?.stepFields ?? EMPTY_DEFS
+  const [runFieldValues, setRunFieldValues] = useState<Record<string, string>>({})
 
   const [stepStates, setStepStates] = useState<StepExecState[]>([])
   const [globalNotes, setGlobalNotes] = useState('')
@@ -121,10 +146,18 @@ function ExecuteEntryPage() {
           order: s.order,
           result: 'NOT_EXECUTED' as StepResultValue,
           comment: '',
+          fields: defaultFieldValues(stepDefs),
         }))
       )
+      setRunFieldValues(defaultFieldValues(runDefs))
     }
-  }, [testCase])
+  }, [testCase]) // eslint-disable-line react-hooks/exhaustive-deps -- défauts complétés par l'effet suivant
+
+  // Q7 — le type peut arriver après le test : défauts ajoutés sans écraser une saisie.
+  useEffect(() => {
+    setRunFieldValues(prev => ({ ...defaultFieldValues(runDefs), ...prev }))
+    setStepStates(prev => prev.map(s => ({ ...s, fields: { ...defaultFieldValues(stepDefs), ...s.fields } })))
+  }, [runDefs, stepDefs])
 
   useEffect(() => {
     if (!resultOverridden) {
@@ -135,8 +168,12 @@ function ExecuteEntryPage() {
   const executeMutation = useMutation({
     mutationFn: async () => {
       const run = await api.tests.execute(repoPath, testCaseId!, {
-        stepResults: stepStates.map(s => ({ order: s.order, result: s.result, comment: s.comment })),
+        stepResults: stepStates.map(s => {
+          const fields = s.result === 'NOT_EXECUTED' ? undefined : filledValues(s.fields)
+          return { order: s.order, result: s.result, comment: s.comment, ...(fields && { fields }) }
+        }),
         notes: globalNotes.trim() || undefined,
+        ...(filledValues(runFieldValues) && { fields: filledValues(runFieldValues) }),
         result: globalResult,
         // T179 — instance générée pour une exigence : le run ne couvre qu'elle.
         ...(entry?.requirementId && { requirementId: entry.requirementId }),
@@ -194,6 +231,10 @@ function ExecuteEntryPage() {
 
   function setStepComment(order: number, comment: string) {
     setStepStates(prev => prev.map(s => s.order === order ? { ...s, comment } : s))
+  }
+
+  function setStepField(order: number, name: string, value: string) {
+    setStepStates(prev => prev.map(s => s.order === order ? { ...s, fields: { ...s.fields, [name]: value } } : s))
   }
 
   if (!repoPath) {
@@ -302,6 +343,22 @@ function ExecuteEntryPage() {
                           onSubmit={submitExecution}
                         />
                       </div>
+
+                      {/* GH196 — champs d'étape, sur une étape exécutée seulement (Q3) */}
+                      {state && state.result !== 'NOT_EXECUTED' && stepDefs.length > 0 && (
+                        <div className="px-4 pb-3 pt-2 border-t border-edge grid grid-cols-2 gap-3" data-testid={`step-fields-${step.order}`}>
+                          {stepDefs.map(def => (
+                            <DynamicField
+                              key={def.name}
+                              field={def}
+                              value={state.fields[def.name] ?? ''}
+                              onChange={v => setStepField(step.order, def.name, v)}
+                              repoPath={repoPath}
+                              requiredNow={isFieldRequiredNow(def, runFieldReader(stepDefs, state.result, state.fields))}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -364,6 +421,25 @@ function ExecuteEntryPage() {
                 )}
               </div>
             </div>
+
+            {/* GH196 — champs d'exécution, sous le verdict global */}
+            {runDefs.length > 0 && (
+              <div data-testid="run-fields">
+                <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('campaignPage.runFields')}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {runDefs.map(def => (
+                    <DynamicField
+                      key={def.name}
+                      field={def}
+                      value={runFieldValues[def.name] ?? ''}
+                      onChange={v => setRunFieldValues(prev => ({ ...prev, [def.name]: v }))}
+                      repoPath={repoPath}
+                      requiredNow={isFieldRequiredNow(def, runFieldReader(runDefs, globalResult, runFieldValues))}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {execError && (
               <p className="text-sm text-status-danger">{execError}</p>

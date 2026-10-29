@@ -117,6 +117,24 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           {prefixError && <p className="text-xs text-status-danger mb-3">{prefixError}</p>}
           {saveError && <p className="text-xs text-status-danger mb-3">{saveError}</p>}
           <FieldsTable fields={draft.fields} onChange={fields => set({ fields })} statuses={draft.statuses} category={draft.category} />
+          {draft.category === 'test' && (
+            <>
+              <details className="mt-3" open={draft.runFields.length > 0} data-testid="run-fields-section">
+                <summary className="text-xs text-ink-2 cursor-pointer select-none">
+                  {t('schema.editor.runFields')} ({draft.runFields.length})
+                </summary>
+                <FieldsTable fields={draft.runFields} onChange={runFields => set({ runFields })} category="test" variant="run"
+                  title={t('schema.editor.runFields')} help={t('schema.editor.runFieldsHelp')} />
+              </details>
+              <details className="mt-1" open={draft.stepFields.length > 0} data-testid="step-fields-section">
+                <summary className="text-xs text-ink-2 cursor-pointer select-none">
+                  {t('schema.editor.stepFields')} ({draft.stepFields.length})
+                </summary>
+                <FieldsTable fields={draft.stepFields} onChange={stepFields => set({ stepFields })} category="test" variant="step"
+                  title={t('schema.editor.stepFields')} help={t('schema.editor.stepFieldsHelp')} />
+              </details>
+            </>
+          )}
           {draft.category !== 'campaign' && (
             <StatusesTable statuses={draft.statuses} onChange={statuses => set({ statuses })} />
           )}

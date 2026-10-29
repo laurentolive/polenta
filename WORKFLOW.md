@@ -98,6 +98,36 @@ voit que la tête de la branche est dans `main` et marque la PR « merged » d'e
   pas validé ; le commit de merge porte `Closes #{N}`, qui ferme l'issue au push (détail :
   § Validation finale). On n'utilise plus `gh pr merge`.
 
+## Branche d'intégration de milestone
+
+Un milestone de plusieurs tickets peut être intégré dans une **branche dédiée** `milestone-<X>`
+(ex. `milestone-D`) plutôt que dans `main`, sur décision de l'humain. Elle a son propre worktree
+`../mon-projet-milestone-<X>/` et une **PR parapluie** en brouillon `milestone-<X>` → `main`.
+
+Tant que le milestone est ouvert, partout où ce document écrit `main` / « dossier principal » pour
+un ticket du milestone, lire `milestone-<X>` / « worktree du milestone » :
+
+- **Création** (une fois, par le premier agent du milestone) :
+  ```
+  git worktree add ../mon-projet-milestone-<X> -b milestone-<X> origin/main
+  git push -u origin milestone-<X>
+  gh pr create --draft --base main --head milestone-<X> --title "Milestone <X> — <titre du milestone>" --body "<objet>"
+  ```
+- **Ticket** : worktree créé depuis la branche du milestone
+  (`git worktree add ../mon-projet-GH{N} -b GH{N} milestone-<X>`), PR `--base milestone-<X>`.
+- **Validation finale** : mêmes préconditions et mêmes étapes, appliquées au worktree du milestone
+  (propre ; `rev-list origin/milestone-<X>..milestone-<X>` vide) : `git merge milestone-<X>` dans le
+  worktree du ticket, puis `merge --no-ff GH{N}` dans le worktree du milestone, non poussé.
+- **Après validation** : `git -C ../mon-projet-milestone-<X> push`, ajout de `Closes #{N}` au corps
+  de la PR parapluie, puis **fermeture de l'issue à la main** (`gh issue close`) : `Closes` ne ferme
+  une issue qu'au merge dans la branche par défaut. Nettoyage du worktree et de la branche du ticket
+  comme d'habitude.
+- **Fin du milestone** : la PR parapluie suit le même cycle qu'un ticket (merge local `--no-ff`
+  dans le dossier principal, validation humaine, push de `main`).
+
+> Une PR de ticket ouverte vers `main` et déjà mergée dans la branche du milestone ne peut pas être
+> réorientée (GitHub : « no new commits ») : la fermer avec un renvoi vers la PR parapluie.
+
 ---
 
 ## Vue d'ensemble
@@ -330,7 +360,7 @@ correctif + comment vérifier.
 
 - **Chaque ticket a son propre worktree** `../mon-projet-GH{N}/` — ne jamais développer dans le dossier principal (on n'y fait que le merge local de la validation finale)
 - **Chaque ticket a sa pull request** `GH{N}` → `main`, ouverte en brouillon dès le premier commit (§ Branches et pull requests)
-- **Ne jamais pousser `main` sans validation humaine explicite** du ticket mergé localement (§ Validation finale) — un seul ticket à la fois en attente de push
+- **Ne jamais pousser `main` sans validation humaine explicite** du ticket mergé localement (§ Validation finale) — un seul ticket à la fois en attente de push (même règle pour une branche de milestone, § Branche d'intégration de milestone)
 - **Stops** : seulement la spec et la validation finale. En dehors, l'agent ne s'arrête que pour
   une question qui change le résultat (ambiguïté de périmètre, spec contradictoire, choix
   structurant non tranché) — pas pour faire valider un livrable intermédiaire

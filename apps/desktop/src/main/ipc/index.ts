@@ -840,5 +840,5 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('export-templates:install-examples', () =>
     c.exportTemplateLibrary.installExamples(platform.exportTemplateExamplesDir()))
 
-  registerPrefHandlers(r, c.forgeConfig)
+  registerPrefHandlers(r)
 }

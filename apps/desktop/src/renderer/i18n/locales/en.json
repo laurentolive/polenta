@@ -524,7 +524,9 @@
       "colRequiredWhen": "Req. if",
       "colRequiredWhenTitle": "Required when a field has one of the values: “status = approved” or “field = v1, v2; other = v3” (status, enum, multi_enum, boolean of the type)",
       "linkMultiple": "Multiple",
-      "linkMultipleTitle": "Several links in this field"
+      "linkMultipleTitle": "Several links in this field",
+      "colDefaultVisible": "Vis.",
+      "colDefaultVisibleTitle": "Column shown by default (Table and Document views) until the user makes their own choice — team default"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -665,7 +667,8 @@
       "implementedVersion": "Implemented version",
       "unresolved": "unresolved",
       "noImplements": "No interface implementation declared.",
-      "addImplements": "+ Declare an implementation"
+      "addImplements": "+ Declare an implementation",
+      "linkDefaultVisible": "Column shown by default"
     },
     "deleteCascade": {
       "titleNode": "Delete component \"{{name}}\"?",

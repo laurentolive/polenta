@@ -2214,13 +2214,7 @@
     "toModify": "Elements to modify",
     "impacted": "Impacted elements",
     "add": "Add",
-    "addReopened": "Add elements back in draft",
-    "reopenedTitle": "Elements back in draft",
-    "reopenedHelp": "Approved once and no longer approved; elements already listed are not offered.",
-    "reopenedNone": "No element back in draft.",
     "addSelected": "Add selection",
-    "pickTitle": "Add elements",
-    "pickFilter": "Filter by ID or title…",
     "pickNone": "No element available.",
     "remove": "Remove",
     "removed": "deleted",
@@ -2237,6 +2231,8 @@
     "test": "Test",
     "notFound": "Change not found.",
     "noTypeInRepo": "no change type in this repo",
-    "componentHelp": "The change is stored in the component repo, with its types: it follows the component when reused in another product."
+    "componentHelp": "The change is stored in the component repo, with its types: it follows the component when reused in another product.",
+    "pickToModify": "Add elements to modify",
+    "pickImpacted": "Add impacted elements"
   }
 }

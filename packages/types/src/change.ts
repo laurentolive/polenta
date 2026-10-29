@@ -94,14 +94,6 @@ export interface UpdateChangeDto {
   impacted?: ChangeImpacted[]
 }
 
-/** Élément déjà approuvé une fois puis repassé hors approbation : candidat à « à modifier ». */
-export interface ReopenedCandidate {
-  id: string
-  title: string
-  category: 'requirement' | 'test'
-  status: string
-}
-
 /** Cycle de vie par défaut d'un type `change` (modifiable dans le modèle de données). */
 export const DEFAULT_CHANGE_STATUSES: SchemaStatus[] = [
   { name: 'ouvert', label: 'Ouvert', color: '#475569' },

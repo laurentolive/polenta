@@ -2214,13 +2214,7 @@
     "toModify": "Éléments à modifier",
     "impacted": "Éléments impactés",
     "add": "Ajouter",
-    "addReopened": "Ajouter les éléments repassés en brouillon",
-    "reopenedTitle": "Éléments repassés en brouillon",
-    "reopenedHelp": "Déjà approuvés une fois et qui ne sont plus approuvés ; ceux déjà listés ne sont pas proposés.",
-    "reopenedNone": "Aucun élément repassé en brouillon.",
     "addSelected": "Ajouter la sélection",
-    "pickTitle": "Ajouter des éléments",
-    "pickFilter": "Filtrer par ID ou titre…",
     "pickNone": "Aucun élément disponible.",
     "remove": "Retirer",
     "removed": "supprimé",
@@ -2237,6 +2231,8 @@
     "test": "Test",
     "notFound": "Change introuvable.",
     "noTypeInRepo": "aucun type de change dans ce repo",
-    "componentHelp": "Le change est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit."
+    "componentHelp": "Le change est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit.",
+    "pickToModify": "Ajouter des éléments à modifier",
+    "pickImpacted": "Ajouter des éléments impactés"
   }
 }

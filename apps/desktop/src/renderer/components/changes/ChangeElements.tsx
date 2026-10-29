@@ -6,7 +6,7 @@ import { X } from 'lucide-react'
 import { CHANGE_IMPACT_STATUSES, type ChangeImpacted, type ChangeImpactStatus, type ChangeToModify, type ProjectSchema } from '@polenta/types'
 import { api } from '../../api'
 import { getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
-import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { ChangeElementPicker } from './ChangeElementPicker'
 import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 
 // GH198 — listes « à modifier » / « impactés » d'un change et sélecteur d'éléments (specs/GH198.md §4).
@@ -35,8 +35,6 @@ export function useRepoElements(repoPath: string, schema: ProjectSchema | undefi
   }, [reqs, tests, schema])
 }
 
-const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id, undefined, { numeric: true })
-
 /** ID cliquable vers la page de l'élément ; « supprimé » quand il n'existe plus. */
 function ElementRef({ id, info, repoPath, projectId }: { id: string; info?: ElementInfo; repoPath: string; projectId: string }) {
   const { t } = useTranslation()
@@ -63,14 +61,14 @@ function ElementRef({ id, info, repoPath, projectId }: { id: string; info?: Elem
 interface ListProps {
   repoPath: string
   projectId: string
+  workspaceDir: string
   elements: Map<string, ElementInfo>
   disabled?: boolean
 }
 
-export function ToModifyList({ items, onChange, onAddReopened, ...p }: ListProps & {
+export function ToModifyList({ items, onChange, ...p }: ListProps & {
   items: ChangeToModify[]
   onChange: (items: ChangeToModify[]) => void
-  onAddReopened?: () => void
 }) {
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
@@ -79,16 +77,9 @@ export function ToModifyList({ items, onChange, onAddReopened, ...p }: ListProps
       <div className="flex items-center justify-between mb-2 gap-2">
         <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">{t('changes.toModify')}</p>
         {!p.disabled && (
-          <div className="flex gap-3">
-            {onAddReopened && (
-              <button type="button" className="text-xs text-prim hover:underline" onClick={onAddReopened} data-testid="change-add-reopened">
-                {t('changes.addReopened')}
-              </button>
-            )}
-            <button type="button" className="text-xs text-prim hover:underline" onClick={() => setPicking(true)} data-testid="change-to-modify-add">
-              {t('changes.add')}
-            </button>
-          </div>
+          <button type="button" className="text-xs text-prim hover:underline" onClick={() => setPicking(true)} data-testid="change-to-modify-add">
+            {t('changes.add')}
+          </button>
         )}
       </div>
       {items.length === 0 ? <p className="text-xs text-ink-3">{t('changes.none')}</p> : (
@@ -107,9 +98,11 @@ export function ToModifyList({ items, onChange, onAddReopened, ...p }: ListProps
         </ul>
       )}
       {picking && (
-        <ElementPickerModal
-          title={t('changes.pickTitle')}
-          candidates={[...p.elements.values()].filter(e => !items.some(i => i.id === e.id)).sort(byId)}
+        <ChangeElementPicker
+          repoPath={p.repoPath}
+          workspaceDir={p.workspaceDir}
+          title={t('changes.pickToModify')}
+          excluded={new Set(items.map(i => i.id))}
           onClose={() => setPicking(false)}
           onAdd={ids => { onChange([...items, ...ids.map(id => ({ id, state: 'planned' as const }))]); setPicking(false) }}
         />
@@ -167,9 +160,11 @@ export function ImpactedList({ items, onChange, ...p }: ListProps & {
         </ul>
       )}
       {picking && (
-        <ElementPickerModal
-          title={t('changes.pickTitle')}
-          candidates={[...p.elements.values()].filter(e => !items.some(i => i.id === e.id)).sort(byId)}
+        <ChangeElementPicker
+          repoPath={p.repoPath}
+          workspaceDir={p.workspaceDir}
+          title={t('changes.pickImpacted')}
+          excluded={new Set(items.map(i => i.id))}
           onClose={() => setPicking(false)}
           onAdd={ids => {
             onChange([...items, ...ids.map(id => ({ id, status: 'impact_non_verifie' as const, source: 'declared' as const }))])
@@ -198,61 +193,5 @@ function CommentInput({ value, disabled, onCommit }: { value: string; disabled?:
       onBlur={() => onCommit(draft.trim())}
       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
     />
-  )
-}
-
-/** Sélection multiple d'éléments (ID, titre, type), filtrable. */
-export function ElementPickerModal({ title, help, candidates, onAdd, onClose, emptyLabel }: {
-  title: string
-  help?: string
-  candidates: ElementInfo[]
-  onAdd: (ids: string[]) => void
-  onClose: () => void
-  emptyLabel?: string
-}) {
-  const { t } = useTranslation()
-  const [filter, setFilter] = useState('')
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const confirm = () => { if (selected.size > 0) onAdd([...selected]) }
-  useModalHotkeys(onClose, confirm)
-  const q = filter.trim().toLowerCase()
-  const shown = q ? candidates.filter(c => c.id.toLowerCase().includes(q) || c.title.toLowerCase().includes(q)) : candidates
-  const toggle = (id: string) => setSelected(prev => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    return next
-  })
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay/40" onClick={onClose}>
-      <div role="dialog" aria-label={title} className="bg-surface border border-edge rounded-lg shadow-xl p-5 max-w-xl w-full mx-4 flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-        <h2 className="text-sm font-semibold text-ink mb-1">{title}</h2>
-        {help && <p className="text-xs text-ink-3 mb-2">{help}</p>}
-        <input
-          type="text"
-          autoFocus
-          className="w-full text-sm bg-surface border border-edge rounded px-2 py-1 text-ink mb-2"
-          placeholder={t('changes.pickFilter')}
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-        />
-        <div className="flex-1 overflow-y-auto border border-edge rounded">
-          {shown.length === 0 ? <p className="p-3 text-xs text-ink-3">{emptyLabel ?? t('changes.pickNone')}</p> : shown.map(c => (
-            <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-hover cursor-pointer" data-testid={`change-pick-${c.id}`}>
-              <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
-              <span className="font-mono whitespace-nowrap">{c.id}</span>
-              <span className="truncate flex-1 text-ink">{c.title}</span>
-              <span className="text-xs text-ink-3 shrink-0">{t(c.category === 'requirement' ? 'changes.requirement' : 'changes.test')} · {c.status}</span>
-            </label>
-          ))}
-        </div>
-        <div className="flex justify-end gap-2 mt-3">
-          <button type="button" className="text-xs text-ink-3 hover:text-ink" onClick={onClose}>{t('common.cancel')}</button>
-          <button type="button" className="btn-primary-sm" disabled={selected.size === 0} onClick={confirm} data-testid="change-pick-confirm">
-            {t('changes.addSelected')}
-          </button>
-        </div>
-      </div>
-    </div>
   )
 }

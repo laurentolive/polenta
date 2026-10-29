@@ -1,13 +1,11 @@
 import type {
   Change, ChangeImpacted, ChangeSummary, ChangeToModify, CreateChangeDto, ObjectTypeDefinition, ProjectSchema,
-  ReopenedCandidate, UpdateChangeDto,
+  UpdateChangeDto,
 } from '@polenta/types'
-import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isApprovalStatus, isUnknownStatus, uniqueById } from '@polenta/types'
+import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isUnknownStatus, uniqueById } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { HistoryService } from './history.service'
-import type { RequirementsService } from './requirements.service'
 import type { SchemaService } from './schema.service'
-import type { TestsService } from './tests.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import { applyFieldsWrite } from './field-write.util'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
@@ -21,15 +19,13 @@ const DIR = 'changes'
  * GH198 — objet change (specs/GH198.md) : `changes/<ID>.yaml` dans le repo du composant concerné
  * (`repoPath` = repo de stockage, dont le schéma porte le type et le composant local, #193 §4).
  * Création (demande de changement), lecture, mise à jour (titre, statut, champs, listes, composant
- * au statut initial), suppression tant que jamais commité, candidats « repassés en brouillon ».
+ * au statut initial), suppression tant que jamais commité.
  * Écriture unique par `persist` : contrôles #195 et historique GH77, comme les autres objets.
  */
 export class ChangesService {
   constructor(
     private readonly git: GitService,
     private readonly schema: Pick<SchemaService, 'get'>,
-    private readonly requirements: Pick<RequirementsService, 'findAll'>,
-    private readonly tests: Pick<TestsService, 'findAll'>,
     private readonly workspaceTree?: WorkspaceTreeService,
     private readonly history?: HistoryService,
   ) {}
@@ -119,28 +115,6 @@ export class ChangesService {
       }
       await deleteWithTombstone(this.git, repoPath, rel, id)
     })
-  }
-
-  /**
-   * Éléments du repo déjà approuvés une fois (statut d'approbation dans l'historique GH77, repli
-   * `version > 1`) et qui ne sont plus dans un statut d'approbation, hors « à modifier ».
-   */
-  async reopenedCandidates(repoPath: string, id: string): Promise<ReopenedCandidate[]> {
-    const change = await this.get(repoPath, id)
-    const listed = new Set(change.toModify.map(t => t.id))
-    const schema = await this.schema.get(repoPath)
-    const out: ReopenedCandidate[] = []
-    const consider = (category: ReopenedCandidate['category'], o: { id: string; title: string; status: string; objectTypeRef: string; version?: number; history?: Change['history'] }) => {
-      if (listed.has(o.id)) return
-      const resolved = findObjectTypeDef(schema, o.objectTypeRef, category)
-      const typeDef = resolved && resolved !== 'unresolvable' ? resolved : null
-      if (isApprovalStatus(typeDef, o.status)) return
-      const wasApproved = (o.history?.status ?? []).some(e => typeof e.value === 'string' && isApprovalStatus(typeDef, e.value)) || (o.version ?? 1) > 1
-      if (wasApproved) out.push({ id: o.id, title: o.title, category, status: o.status })
-    }
-    for (const r of await this.requirements.findAll(repoPath, {})) consider('requirement', r)
-    for (const t of await this.tests.findAll(repoPath)) consider('test', t)
-    return out.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
   }
 
   private changeType(schema: ProjectSchema | null, ref: string): ObjectTypeDefinition {

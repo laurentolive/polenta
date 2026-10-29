@@ -4,13 +4,13 @@ import * as path from 'path'
 import { execFileSync } from 'child_process'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import type { Change, ObjectTypeDefinition, ProjectSchema, Requirement, TestCase } from '@polenta/types'
+import type { Change, ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { DEFAULT_CHANGE_STATUSES } from '@polenta/types'
 import { ChangesService } from './changes.service'
 import { GitService } from './git.service'
 import type { SchemaService } from './schema.service'
 
-// GH198 — objet change (specs/GH198-tests.md, scénarios 1 à 6).
+// GH198 — objet change (specs/GH198-tests.md, scénarios 1 à 5).
 
 const NC: ObjectTypeDefinition = {
   name: 'non-conformite', label: 'Non-conformité', prefix: 'NC', category: 'change', fields: [], statuses: DEFAULT_CHANGE_STATUSES,
@@ -19,22 +19,11 @@ const schemaOf = (nodes: unknown[]) => ({ version: 1, nodes, linkTypes: [] }) as
 const ONE = schemaOf([{ name: 'root', label: 'Produit', objectTypes: [NC] }])
 const TWO = schemaOf([{ name: 'root', label: 'Produit', objectTypes: [NC], children: [{ name: 'bms', label: 'BMS', objectTypes: [] }] }])
 
-const REQ_TYPE = { name: 'exigence', category: 'requirement', fields: [], statuses: [{ name: 'draft' }, { name: 'approved', isApproval: true }] }
-const reqs = [
-  { id: 'SYS-1', title: 'rouverte', objectTypeRef: 'root::exigence', status: 'draft', version: 2 },
-  { id: 'SYS-2', title: 'jamais approuvée', objectTypeRef: 'root::exigence', status: 'draft', version: 1 },
-  { id: 'SYS-3', title: 'approuvée', objectTypeRef: 'root::exigence', status: 'approved', version: 1 },
-  { id: 'SYS-4', title: 'rouverte (historique)', objectTypeRef: 'root::exigence', status: 'draft', version: 1,
-    history: { status: [{ value: 'approved', at: '2026-10-01T00:00:00Z', by: 'a' }, { value: 'draft', at: '2026-10-02T00:00:00Z', by: 'a' }] } },
-] as unknown as Requirement[]
-
 let dir: string
 let git: GitService
 const make = (schema: ProjectSchema) => new ChangesService(
   git,
-  { get: async () => schema, resolveComponentRepoPath: async () => null } as unknown as SchemaService,
-  { findAll: async () => reqs },
-  { findAll: async () => [] as TestCase[] },
+  { get: async () => schema } as unknown as SchemaService,
 )
 
 beforeEach(async () => {
@@ -104,14 +93,6 @@ describe('ChangesService', () => {
     const g = (...args: string[]) => execFileSync('git', ['-C', dir, '-c', 'user.name=T', '-c', 'user.email=t@t', ...args])
     g('init', '-q'); g('add', '-A'); g('commit', '-q', '-m', 'init')
     await expect(svc.delete(dir, 'NC-0002')).rejects.toThrow(/déjà été commité/)
-  })
-
-  it('candidats « repassés en brouillon » : déjà approuvés puis rouverts, hors liste', async () => {
-    const schema = schemaOf([{ name: 'root', label: 'Produit', objectTypes: [NC, REQ_TYPE] }])
-    const svc = make(schema)
-    await svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'A', toModify: [{ id: 'SYS-4', state: 'planned' }] })
-    const candidates = await svc.reopenedCandidates(dir, 'NC-0001')
-    expect(candidates.map(c => c.id)).toEqual(['SYS-1'])            // SYS-4 déjà listé, SYS-2 jamais approuvée, SYS-3 approuvée
   })
 
   it('liste : résumé avec repo de stockage', async () => {

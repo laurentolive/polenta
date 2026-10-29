@@ -2,7 +2,7 @@ import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
-  Change, ChangeSummary, CreateChangeDto, UpdateChangeDto, ReopenedCandidate,
+  Change, ChangeSummary, CreateChangeDto, UpdateChangeDto,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -538,14 +538,13 @@ export interface ApiClient {
     pickFolder(title?: string): Promise<string | null>
     pickImageFile(): Promise<{ mimeType: string; base64: string } | null>
   }
-  /** GH198 — changes ; `repoPath` de get / update / delete / candidats = repo de stockage (`ChangeSummary.repoPath`). */
+  /** GH198 — changes ; `repoPath` de get / update / delete = repo de stockage (`ChangeSummary.repoPath`). */
   changes: {
     list(repoPath: string, workspaceDir?: string): Promise<ChangeSummary[]>
     get(repoPath: string, id: string): Promise<Change>
     create(repoPath: string, dto: CreateChangeDto, workspaceDir?: string): Promise<Change & { repoPath: string }>
     update(repoPath: string, id: string, dto: UpdateChangeDto): Promise<Change>
     delete(repoPath: string, id: string): Promise<void>
-    reopenedCandidates(repoPath: string, id: string): Promise<ReopenedCandidate[]>
   }
   /** GH197 — historique des exécutions d'un test ou d'une exigence. */
   executions: {

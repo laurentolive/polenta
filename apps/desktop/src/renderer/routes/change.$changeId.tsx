@@ -11,7 +11,8 @@ import { RichTextViewer } from '../components/RichTextViewer'
 import { LinkList } from '../components/links/LinkList'
 import { RichTextProvider } from '../contexts/RichTextContext'
 import { HistorySection } from '../components/history/HistorySection'
-import { ElementPickerModal, ImpactedList, ToModifyList, useRepoElements } from '../components/changes/ChangeElements'
+import { ImpactedList, ToModifyList, useRepoElements } from '../components/changes/ChangeElements'
+import { decodeProjectId } from '../lib/projectId'
 import { useProjectSchema, getChangeTypeDef } from '../hooks/useProjectSchema'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
@@ -32,7 +33,6 @@ function ChangePage() {
   const { changeId } = Route.useParams()
   const { projectId, repoPath } = Route.useSearch()
   const [editingFields, setEditingFields] = useState<Record<string, string> | null>(null)
-  const [reopenedOpen, setReopenedOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   useRegisterTabDirty(editingFields !== null)
 
@@ -62,11 +62,7 @@ function ChangePage() {
     },
     onSettled: () => setConfirmDelete(false),
   })
-  const { data: reopened = [], isFetching: reopenedLoading } = useQuery({
-    queryKey: ['change-reopened', repoPath, changeId, change?.toModify.length],
-    queryFn: () => api.changes.reopenedCandidates(repoPath, changeId),
-    enabled: reopenedOpen && !!change,
-  })
+  const workspaceDir = projectId ? decodeProjectId(projectId) : ''
 
   if (isLoading || !change) {
     return <p className="p-8 text-sm text-ink-3">{loadError ? t('changes.notFound') : t('common.loading')}</p>
@@ -177,9 +173,9 @@ function ChangePage() {
             <ToModifyList
               items={change.toModify}
               onChange={toModify => update.mutate({ toModify })}
-              onAddReopened={() => setReopenedOpen(true)}
               repoPath={repoPath}
               projectId={projectId}
+              workspaceDir={workspaceDir}
               elements={elements}
               disabled={update.isPending}
             />
@@ -188,6 +184,7 @@ function ChangePage() {
               onChange={impacted => update.mutate({ impacted })}
               repoPath={repoPath}
               projectId={projectId}
+              workspaceDir={workspaceDir}
               elements={elements}
               disabled={update.isPending}
             />
@@ -212,19 +209,6 @@ function ChangePage() {
           </div>
         </div>
 
-        {reopenedOpen && (
-          <ElementPickerModal
-            title={t('changes.reopenedTitle')}
-            help={t('changes.reopenedHelp')}
-            emptyLabel={reopenedLoading ? t('common.loading') : t('changes.reopenedNone')}
-            candidates={reopened.map(c => ({ ...c, status: elements.get(c.id)?.status ?? c.status }))}
-            onClose={() => setReopenedOpen(false)}
-            onAdd={ids => {
-              update.mutate({ toModify: [...change.toModify, ...ids.map(id => ({ id, state: 'planned' as const }))] })
-              setReopenedOpen(false)
-            }}
-          />
-        )}
         {confirmDelete && (
           <ConfirmDelete id={change.id} pending={remove.isPending} onConfirm={() => remove.mutate()} onCancel={() => setConfirmDelete(false)} />
         )}

@@ -693,9 +693,8 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   (`applyFieldsWrite` #195, historique GH77).
 - **Composant** : choisi parmi les composants locaux des repos du workspace (déduit s'il n'y en a
   qu'un utilisable) ; modifiable au statut initial seulement, dans le même repo.
-- **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du change ; « Ajouter les
-  éléments repassés en brouillon » propose les exigences et tests déjà approuvés une fois (statut
-  `isApproval` dans l'historique, repli `version > 1`) qui ne le sont plus, hors éléments listés.
+- **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du change, le même que celui
+  des tests d'une campagne (grille Excel par type, filtres de colonne, colonnes ⚙️ `picker`).
 - **Vue Changements** : entrée de la barre d'activité ; panneau (changes du workspace par repo,
   ID décroissant ; filtres type, statut, repo, « mes changes » = auteur du premier statut,
   « masquer les terminés ») ; pages `/changes`, `/change/new` (`?element=` : élément pré-rempli dans

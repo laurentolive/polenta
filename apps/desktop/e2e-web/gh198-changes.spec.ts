@@ -14,6 +14,7 @@ interface SchemaLike { nodes: Array<{ name: string; objectTypes?: TypeLike[] }> 
 interface ChangeLike { id: string; status: string; toModify: Array<{ id: string; state: string }>; impacted: Array<{ id: string; status: string; comment?: string }> }
 
 let reqId = ''
+let reqType = ''
 // Exigence d'un repo composant (modifiable) et ce repo : change tracé dans le composant (#193 §4).
 let compReq = { id: '', repoPath: '' }
 
@@ -23,6 +24,14 @@ async function navigate(p: Page, url: string) {
     dispatchEvent(new PopStateEvent('popstate'))
   }, url)
   await p.waitForLoadState('networkidle')
+}
+
+/** Sélecteur d'éléments (grille Excel) : type, ligne de l'élément cochée, ajout. */
+async function pick(p: Page, typeRef: string, id: string) {
+  await p.getByTestId('change-pick-type').selectOption(typeRef)
+  await p.getByTestId('change-pick-filter').fill(id)
+  await p.locator('tr', { hasText: id }).getByRole('checkbox').click()
+  await p.getByTestId('change-pick-confirm').click()
 }
 
 const changeIdFromUrl = (p: Page) => decodeURIComponent(new URL(p.url()).pathname.split('/change/')[1] ?? '')
@@ -38,7 +47,8 @@ test.beforeAll(async () => {
   } as TypeLike]
   await s.invoke('schema:save', localPath, schema)
   const reqTypes = schema.nodes.flatMap(n => (n.objectTypes ?? []).filter(t => t.category === 'requirement').map(t => `${n.name}::${t.name}`))
-  reqId = (await s.invoke<{ id: string }>('requirements:create', localPath, { objectTypeRef: reqTypes[0], title: 'GH198 R' })).id
+  reqType = reqTypes[0]
+  reqId = (await s.invoke<{ id: string }>('requirements:create', localPath, { objectTypeRef: reqType, title: 'GH198 R' })).id
 
   const norm = (x: string) => x.replace(/\\/g, '/').toLowerCase()
   const objs = await s.invoke<Array<{ id: string; category: string; repoPath: string; readonly: boolean }>>('links:objects', localPath, s.project.workspaceDir)
@@ -72,14 +82,12 @@ test('GH198-1 — nouveau change, listes, statut', async () => {
 
   // À modifier : sélecteur d'éléments.
   await p.getByTestId('change-to-modify-add').click()
-  await p.getByTestId(`change-pick-${reqId}`).click()
-  await p.getByTestId('change-pick-confirm').click()
+  await pick(p, reqType, reqId)
   await expect(p.getByTestId(`change-to-modify-${reqId}`)).toContainText('GH198 R')
 
   // Impactés : statut d'impact et commentaire.
   await p.getByTestId('change-impacted-add').click()
-  await p.getByTestId(`change-pick-${reqId}`).click()
-  await p.getByTestId('change-pick-confirm').click()
+  await pick(p, reqType, reqId)
   const impacted = p.getByTestId(`change-impacted-${reqId}`)
   await expect(impacted).toBeVisible()
   await impacted.locator('select').selectOption('impact_a_tester')

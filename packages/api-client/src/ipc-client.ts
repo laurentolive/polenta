@@ -301,7 +301,6 @@ export function createIpcClient(
       create: (p, dto, workspaceDir) => invoke('changes:create', p, dto, workspaceDir ?? null),
       update: (p, id, dto) => invoke('changes:update', p, id, dto),
       delete: (p, id) => invoke('changes:delete', p, id),
-      reopenedCandidates: (p, id) => invoke('changes:reopened-candidates', p, id),
     },
     // GH197 — historique des exécutions
     executions: {

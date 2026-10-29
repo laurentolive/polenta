@@ -472,7 +472,6 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('changes:create', (_e, repoPath: string, dto: CreateChangeDto, workspaceDir?: string) => c.changes.create(repoPath, dto, workspaceDir))
   r.handle('changes:update', (_e, repoPath: string, id: string, dto: UpdateChangeDto) => c.changes.update(repoPath, id, dto))
   r.handle('changes:delete', (_e, repoPath: string, id: string) => c.changes.delete(repoPath, id))
-  r.handle('changes:reopened-candidates', (_e, repoPath: string, id: string) => c.changes.reopenedCandidates(repoPath, id))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))

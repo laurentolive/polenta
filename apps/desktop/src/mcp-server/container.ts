@@ -132,7 +132,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   // sans effet sur les écritures de paramètres).
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
-  const changes = new ChangesService(git, schema, requirements, tests, workspaceTree, history)
+  const changes = new ChangesService(git, schema, workspaceTree, history)
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,

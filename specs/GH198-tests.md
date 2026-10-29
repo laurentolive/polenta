@@ -6,7 +6,7 @@
 2. [U] composant : déduit (un composant local) ; obligatoire si plusieurs ; inconnu refusé.
 3. [U] mise à jour : listes dédoublonnées ; composant refusé hors statut initial ; statut changé (historique).
 4. [U] suppression : jamais commité → supprimé + pierre tombale ; commité → refus.
-5. [U] candidats « repassés en brouillon » : approuvé puis rouvert proposé ; jamais approuvé non proposé ; déjà listé non proposé.
+5. ~~[U] candidats « repassés en brouillon »~~ — retiré (filtre du sélecteur d'éléments).
 6. [U] liste workspace : changes de deux repos, `repoPath` renseigné.
 7. [U] graphe : `changes` exposé ; MCP `create_change` / `list_changes`.
 8. [E] modèle de données : type de catégorie change (statuts par défaut) ; « Nouveau change » ; ajout à « à modifier » et aux impactés (statut, commentaire) ; changement de statut.

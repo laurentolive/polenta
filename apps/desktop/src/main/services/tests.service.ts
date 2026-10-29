@@ -249,7 +249,9 @@ export class TestsService {
       ...(dto.requirementId && { requirementId: dto.requirementId }),
       result,
       executedAt: now,
-      executedBy: dto.executedBy || 'TODO:current-user',
+      // GH196 — testeur fourni par l'appelant (identité git dans l'application, saisie libre du classeur) ;
+      // inconnu : vide (plus de marqueur `TODO:current-user`).
+      executedBy: dto.executedBy || '',
       duration: 0,
       equipmentUsed: dto.equipmentUsed ?? [],
       stepResults: stepResults.map(({ fields: _raw, ...s }, i) => {

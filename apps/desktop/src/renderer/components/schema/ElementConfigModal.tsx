@@ -119,19 +119,24 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           <FieldsTable fields={draft.fields} onChange={fields => set({ fields })} statuses={draft.statuses} category={draft.category} />
           {draft.category === 'test' && (
             <>
+              {/* GH196 — sections repliables ; le contenu déplié est indenté sous son titre. */}
               <details className="mt-3" open={draft.runFields.length > 0} data-testid="run-fields-section">
-                <summary className="text-xs text-ink-2 cursor-pointer select-none">
+                <summary className="section-label cursor-pointer select-none">
                   {t('schema.editor.runFields')} ({draft.runFields.length})
                 </summary>
-                <FieldsTable fields={draft.runFields} onChange={runFields => set({ runFields })} category="test" variant="run"
-                  title={t('schema.editor.runFields')} help={t('schema.editor.runFieldsHelp')} />
+                <div className="ml-2 pl-4 border-l border-edge">
+                  <FieldsTable fields={draft.runFields} onChange={runFields => set({ runFields })} category="test" variant="run"
+                    title="" help={t('schema.editor.runFieldsHelp')} />
+                </div>
               </details>
-              <details className="mt-1" open={draft.stepFields.length > 0} data-testid="step-fields-section">
-                <summary className="text-xs text-ink-2 cursor-pointer select-none">
+              <details className="mt-3" open={draft.stepFields.length > 0} data-testid="step-fields-section">
+                <summary className="section-label cursor-pointer select-none">
                   {t('schema.editor.stepFields')} ({draft.stepFields.length})
                 </summary>
-                <FieldsTable fields={draft.stepFields} onChange={stepFields => set({ stepFields })} category="test" variant="step"
-                  title={t('schema.editor.stepFields')} help={t('schema.editor.stepFieldsHelp')} />
+                <div className="ml-2 pl-4 border-l border-edge">
+                  <FieldsTable fields={draft.stepFields} onChange={stepFields => set({ stepFields })} category="test" variant="step"
+                    title="" help={t('schema.editor.stepFieldsHelp')} />
+                </div>
               </details>
             </>
           )}

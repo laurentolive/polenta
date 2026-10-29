@@ -682,7 +682,8 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   d'un type (`DEFAULT_CHANGE_STATUSES`, modifiable) : `ouvert → analyse → implemente → verifie →
   clos`, `rejete` ; `clos` et `rejete` terminaux ; aucune contrainte de transition (L1, #206).
   Pas de couverture ni de maturité.
-- **Stockage** : `changes/<ID>.yaml` dans le repo du **composant concerné** (`component`) ; ID
+- **Stockage** : `changes/<ID>.yaml` dans le repo ouvert, pour un de ses composants locaux
+  (`component` ; composant externe : L7, #208) ; ID
   préfixé du type, pierres tombales (GH20). Champs système : `id`, `objectTypeRef`, `title`,
   `status`, `version`, `component`, `mode` (`request`), `toModify` (`{ id, state: planned |
   modified }`), `impacted` (`{ id, status, comment?, source: declared | computed }`, statut parmi

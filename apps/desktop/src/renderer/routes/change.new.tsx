@@ -43,8 +43,8 @@ function NewChangePage() {
   const { data: schema } = useProjectSchema(repoPath)
 
   const types = getObjectTypeRefs(schema, 'change')
-  const nodes = flattenSystemNodes(schema?.nodes ?? []).map(({ node }) => node)
-  const localNodes = nodes.filter(n => n.objectTypes !== undefined)
+  // Composants locaux du repo (un composant externe relève de L7, #208).
+  const localNodes = flattenSystemNodes(schema?.nodes ?? []).map(({ node }) => node).filter(n => n.objectTypes !== undefined)
   const [typeRef, setTypeRef] = useState('')
   const [title, setTitle] = useState('')
   const [component, setComponent] = useState(componentFromSearch ?? '')
@@ -57,7 +57,7 @@ function NewChangePage() {
   const requiredFields = typeDef && reader ? typeDef.fields.filter(f => isFieldRequiredNow(f, reader)) : []
   // Composant : déduit quand le repo ne porte qu'un composant local, sinon à choisir (§3).
   const effectiveComponent = component || (localNodes.length === 1 ? localNodes[0].name : '')
-  const componentMissing = nodes.length > 1 && !effectiveComponent
+  const componentMissing = localNodes.length > 1 && !effectiveComponent
 
   const create = useMutation({
     mutationFn: () => api.changes.create(repoPath, {
@@ -102,15 +102,14 @@ function NewChangePage() {
                 <label className={labelClass}>{t('changes.titleLabel')}<span className="text-status-danger ml-1">*</span></label>
                 <input className={inputClass} value={title} onChange={e => setTitle(e.target.value)} autoFocus data-testid="change-new-title" />
               </div>
-              {nodes.length > 1 && (
+              {localNodes.length > 1 && (
                 <div>
                   <label className={labelClass}>
-                    {t('changes.component')}
-                    {localNodes.length !== 1 && <span className="text-status-danger ml-1">*</span>}
+                    {t('changes.component')}<span className="text-status-danger ml-1">*</span>
                   </label>
                   <select className={inputClass} value={effectiveComponent} onChange={e => setComponent(e.target.value)} data-testid="change-new-component">
                     <option value="">{t('changes.componentPick')}</option>
-                    {nodes.map(n => <option key={n.name} value={n.name}>{n.label || n.name}</option>)}
+                    {localNodes.map(n => <option key={n.name} value={n.name}>{n.label || n.name}</option>)}
                   </select>
                 </div>
               )}

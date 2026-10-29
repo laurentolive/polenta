@@ -18,7 +18,8 @@ import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 const DIR = 'changes'
 
 /**
- * GH198 — objet change (specs/GH198.md) : `changes/<ID>.yaml` dans le repo du composant concerné.
+ * GH198 — objet change (specs/GH198.md) : `changes/<ID>.yaml` dans le repo ouvert, pour un de ses
+ * composants locaux (un composant externe — autre repo du workspace — relève de L7, #208).
  * Création (demande de changement), lecture, mise à jour (titre, statut, champs, listes, composant
  * au statut initial), suppression tant que jamais commité, candidats « repassés en brouillon ».
  * Écriture unique par `persist` : contrôles #195 et historique GH77, comme les autres objets.
@@ -26,7 +27,7 @@ const DIR = 'changes'
 export class ChangesService {
   constructor(
     private readonly git: GitService,
-    private readonly schema: Pick<SchemaService, 'get' | 'resolveComponentRepoPath'>,
+    private readonly schema: Pick<SchemaService, 'get'>,
     private readonly requirements: Pick<RequirementsService, 'findAll'>,
     private readonly tests: Pick<TestsService, 'findAll'>,
     private readonly workspaceTree?: WorkspaceTreeService,
@@ -36,28 +37,21 @@ export class ChangesService {
   /** Changes stockés dans un repo. */
   async listRepo(repoPath: string): Promise<Change[]> {
     const files = (await this.git.listFiles(repoPath, DIR)).filter(f => f.endsWith('.yaml'))
-    const out: Change[] = []
-    for (const file of files) {
-      const change = await this.git.readYaml<Change>(repoPath, file)
-      if (change?.id) out.push(normalize(change))
-    }
-    return out
+    const changes = await Promise.all(files.map(file => this.git.readYaml<Change>(repoPath, file)))
+    return changes.filter((c): c is Change => !!c?.id).map(normalize)
   }
 
   /** Changes de tous les repos du workspace (panneau Changements), ID décroissant par repo. */
   async list(repoPath: string, workspaceDir?: string): Promise<ChangeSummary[]> {
     const repos = await resolveWorkspaceRepoPaths(this.workspaceTree, repoPath, workspaceDir)
-    const out: ChangeSummary[] = []
-    for (const repo of repos) {
-      for (const c of await this.listRepo(repo)) {
-        out.push({
-          id: c.id, repoPath: repo, objectTypeRef: c.objectTypeRef, title: c.title, status: c.status,
-          component: c.component, toModifyCount: c.toModify.length, impactedCount: c.impacted.length,
-          createdBy: c.history?.status?.[0]?.by ?? null,
-        })
-      }
-    }
-    return out.sort((a, b) => (a.repoPath === b.repoPath ? b.id.localeCompare(a.id, undefined, { numeric: true }) : 0))
+    const perRepo = await Promise.all(repos.map(async repo => (await this.listRepo(repo))
+      .sort((a, b) => b.id.localeCompare(a.id, undefined, { numeric: true }))
+      .map((c): ChangeSummary => ({
+        id: c.id, repoPath: repo, objectTypeRef: c.objectTypeRef, title: c.title, status: c.status,
+        component: c.component, toModifyCount: c.toModify.length, impactedCount: c.impacted.length,
+        createdBy: c.history?.status?.[0]?.by ?? null,
+      }))))
+    return perRepo.flat()
   }
 
   async get(repoPath: string, id: string): Promise<Change> {
@@ -67,22 +61,23 @@ export class ChangesService {
     return { ...normalize(change), createdAt: audit?.createdAt ?? null, createdBy: audit?.createdBy ?? null, updatedAt: audit?.updatedAt ?? null, updatedBy: audit?.updatedBy ?? null }
   }
 
-  async create(repoPath: string, dto: CreateChangeDto, workspaceDir?: string): Promise<Change & { repoPath: string }> {
+  async create(repoPath: string, dto: CreateChangeDto, _workspaceDir?: string): Promise<Change & { repoPath: string }> {
+    const title = typeof dto.title === 'string' ? dto.title.trim() : ''
+    // Contrôles avant d'émettre l'ID : un refus ne consomme pas de numéro.
+    if (!title) throw new Error('Titre obligatoire')
     const schema = await this.schema.get(repoPath)
     const typeDef = this.changeType(schema, dto.objectTypeRef)
     const component = this.resolveComponent(schema, dto.component)
-    const targetRepo = await this.componentRepo(repoPath, schema, component, dto.objectTypeRef, workspaceDir)
-    const id = await nextCounterId(this.git, targetRepo, typeDef.prefix || 'CHG', DIR)
-    await assertNewObjectFile(this.git, targetRepo, `${DIR}/${id}.yaml`, id)
+    const id = await nextCounterId(this.git, repoPath, typeDef.prefix || 'CHG', DIR)
+    await assertNewObjectFile(this.git, repoPath, `${DIR}/${id}.yaml`, id)
     const change: Change = {
-      id, projectId: '', branchId: '', objectTypeRef: dto.objectTypeRef, title: dto.title.trim(),
+      id, projectId: '', branchId: '', objectTypeRef: dto.objectTypeRef, title,
       status: initialStatus(typeDef), version: 1, fields: dto.fields ?? {},
       component, mode: 'request',
       toModify: cleanToModify(dto.toModify ?? []), impacted: cleanImpacted(dto.impacted ?? []),
       origin: { runs: [], decisions: [] }, integratedIn: null, campaigns: [],
     }
-    if (!change.title) throw new Error('Titre obligatoire')
-    return { ...(await this.persist(repoPath, targetRepo, null, change)), repoPath: targetRepo }
+    return { ...(await this.persist(repoPath, null, change)), repoPath }
   }
 
   /** `repoPath` : repo où le change est stocké (`ChangeSummary.repoPath`). */
@@ -101,7 +96,7 @@ export class ChangesService {
         component = this.resolveComponent(schema, dto.component)
       }
       if (dto.title !== undefined && !dto.title.trim()) throw new Error('Titre obligatoire')
-      return this.persist(repoPath, repoPath, existing, {
+      return this.persist(repoPath, existing, {
         ...existing,
         ...(dto.title !== undefined && { title: dto.title.trim() }),
         ...(dto.status !== undefined && { status: dto.status }),
@@ -116,11 +111,14 @@ export class ChangesService {
   /** Q6 — suppression seulement tant que le fichier n'a jamais été commité (sinon : statut terminal). */
   async delete(repoPath: string, id: string): Promise<void> {
     const rel = `${DIR}/${id}.yaml`
-    if (!(await this.git.fileExists(repoPath, rel))) throw new Error(`Change introuvable : ${id}`)
-    if (await this.git.fileHistory(repoPath, rel).catch(() => null)) {
-      throw new Error(`${id} a déjà été commité : il ne peut plus être supprimé, passez-le dans un statut terminal`)
-    }
-    await deleteWithTombstone(this.git, repoPath, rel, id)
+    // Même verrou que `update` : une écriture en vol ne recrée pas le fichier après la pierre tombale.
+    return withKeyLock(`${repoPath}::${DIR}/${id}`, async () => {
+      if (!(await this.git.fileExists(repoPath, rel))) throw new Error(`Change introuvable : ${id}`)
+      if (await this.git.fileHistory(repoPath, rel).catch(() => null)) {
+        throw new Error(`${id} a déjà été commité : il ne peut plus être supprimé, passez-le dans un statut terminal`)
+      }
+      await deleteWithTombstone(this.git, repoPath, rel, id)
+    })
   }
 
   /**
@@ -151,35 +149,28 @@ export class ChangesService {
     return resolved
   }
 
-  /** Composant concerné : donné (nœud existant), sinon déduit si le repo ne porte qu'un composant local. */
+  /**
+   * Composant concerné : un composant local du repo (nœud qui déclare ses types ; un nœud de
+   * composant externe n'en déclare pas), donné ou déduit s'il est seul.
+   */
   private resolveComponent(schema: ProjectSchema | null, component: string | undefined): string {
-    const nodes = flattenSystemNodes(schema?.nodes ?? []).map(({ node }) => node)
+    const local = flattenSystemNodes(schema?.nodes ?? []).map(({ node }) => node).filter(n => n.objectTypes !== undefined)
     if (component) {
-      if (!nodes.some(n => n.name === component)) throw new Error(`Composant inconnu : "${component}"`)
+      if (!local.some(n => n.name === component)) throw new Error(`Composant inconnu : "${component}"`)
       return component
     }
-    // Composant local : nœud qui déclare ses types (un nœud de composant externe n'en déclare pas).
-    const local = nodes.filter(n => n.objectTypes !== undefined)
     if (local.length === 1) return local[0].name
     throw new Error('Composant concerné obligatoire : ce repo porte plusieurs composants')
   }
 
-  /** Repo de stockage : celui du composant (nœud externe, sans `objectTypes`), sinon le repo ouvert. */
-  private async componentRepo(repoPath: string, schema: ProjectSchema | null, component: string, ref: string, workspaceDir?: string): Promise<string> {
-    const node = flattenSystemNodes(schema?.nodes ?? []).map(({ node: n }) => n).find(n => n.name === component)
-    if (!node || node.objectTypes !== undefined) return repoPath
-    const typeName = ref.split('::').pop() ?? ref
-    return (await this.schema.resolveComponentRepoPath(repoPath, `${component}::${typeName}`, workspaceDir)) ?? repoPath
-  }
-
   /** Seule écriture d'un change : contrôles #195 (champs), historique GH77, fichier sans champs d'audit. */
-  private async persist(repoPath: string, targetRepo: string, before: Change | null, after: Change): Promise<Change> {
-    const checked = await applyFieldsWrite(this.git, repoPath, before, after, targetRepo)
+  private async persist(repoPath: string, before: Change | null, after: Change): Promise<Change> {
+    const checked = await applyFieldsWrite(this.git, repoPath, before, after)
     const stamped = this.history
-      ? await this.history.stamp(repoPath, checked.objectTypeRef, before, checked, { filePath: `${DIR}/${checked.id}.yaml` }, targetRepo)
+      ? await this.history.stamp(repoPath, checked.objectTypeRef, before, checked, { filePath: `${DIR}/${checked.id}.yaml` })
       : checked
     const { createdAt: _a, createdBy: _b, updatedAt: _c, updatedBy: _d, ...toWrite } = stamped
-    await this.git.writeYaml(targetRepo, `${DIR}/${stamped.id}.yaml`, toWrite)
+    await this.git.writeYaml(repoPath, `${DIR}/${stamped.id}.yaml`, toWrite)
     return stamped
   }
 }

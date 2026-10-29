@@ -74,7 +74,7 @@ function ChangePage() {
 
   const statuses = typeDef?.statuses ?? []
   const atInitial = !statuses.length || change.status === statuses[0].name
-  const nodes = flattenSystemNodes(schema?.nodes ?? []).map(({ node }) => node)
+  const nodes = flattenSystemNodes(schema?.nodes ?? []).map(({ node }) => node).filter(n => n.objectTypes !== undefined)
   const componentLabel = (name: string) => nodes.find(n => n.name === name)?.label || name
   const fieldText = (key: string) => fieldValueToText(change.fields?.[key])
   const startEditingFields = () => setEditingFields(Object.fromEntries((typeDef?.fields ?? []).map(f => [f.name, fieldText(f.name)])))

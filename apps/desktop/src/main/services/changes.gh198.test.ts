@@ -60,6 +60,18 @@ describe('ChangesService', () => {
     expect((await svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'X', component: 'bms' })).component).toBe('bms')
   })
 
+  it('titre vide refusé sans consommer d\'ID', async () => {
+    const svc = make(ONE)
+    await expect(svc.create(dir, { objectTypeRef: 'root::non-conformite', title: '   ' })).rejects.toThrow(/Titre obligatoire/)
+    expect((await svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'A' })).id).toBe('NC-0001')
+  })
+
+  it('composant externe (nœud sans types) refusé : L7', async () => {
+    const svc = make(schemaOf([{ name: 'root', label: 'Produit', objectTypes: [NC] }, { name: 'motor', label: 'Moteur', url: 'git@x:motor.git' }]))
+    await expect(svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'X', component: 'motor' })).rejects.toThrow(/inconnu/)
+    expect((await svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'X' })).component).toBe('root')
+  })
+
   it('type hors catégorie change refusé', async () => {
     await expect(make(ONE).create(dir, { objectTypeRef: 'root::exigence', title: 'X' })).rejects.toThrow(/Type de change/)
   })

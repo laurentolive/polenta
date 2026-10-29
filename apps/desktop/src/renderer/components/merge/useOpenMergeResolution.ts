@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { MergeOrigin } from '@polenta/types'
 import { api } from '../../api'
 import { useTabs } from '../../contexts/TabsContext'
+import { primeMergeSession } from './useMergeSession'
 
 /**
  * GH37 — opens (or reopens, with its draft) the resolution of a conflicting merge in a tab of its
@@ -20,6 +21,7 @@ export function useOpenMergeResolution(projectId: string | null | undefined) {
     setError(null)
     try {
       const session = await api.mergeResolution.open(repoPath, leftRef, rightRef, origin)
+      primeMergeSession(qc, session)
       void qc.invalidateQueries({ queryKey: ['merge-resolution', 'list'] })
       // After an await, not in the click any more: without flushSync the router's (synchronous)
       // location update renders before the new tab becomes active, and TabsContext's tab-sync

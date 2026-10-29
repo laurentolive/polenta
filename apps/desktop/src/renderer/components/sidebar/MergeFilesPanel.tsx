@@ -17,7 +17,9 @@ export function MergeFilesPanel() {
   const session = sessionQuery.data ?? null
   const select = (file: string) => navigate({ to: '/merge-resolve', search: { id, projectId: search.projectId ?? '', file }, replace: true })
 
-  if (!session) return <p className="p-3 text-xs text-ink-3 italic">{t('common.loading')}</p>
+  if (sessionQuery.isLoading) return <p className="p-3 text-xs text-ink-3 italic">{t('common.loading')}</p>
+  // GH234 — a session that no longer exists is said so, not « Chargement… » forever.
+  if (!session) return <p className="p-3 text-xs text-ink-3">{t('mergeResolve.noSession')}</p>
   const mergedCount = session.files.filter(f => f.state === 'merged').length
   return (
     <div className="flex flex-col min-h-0 h-full" data-testid="merge-files-panel">

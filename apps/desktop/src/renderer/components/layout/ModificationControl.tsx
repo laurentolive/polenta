@@ -15,6 +15,7 @@ import {
   PublishRepoError, type EphemeralBranch, type PublishedRepo,
 } from '../../lib/publishWorkspace'
 import { PinPropagationWarning } from '../sidebar/version/PinPropagationWarning'
+import { primeMergeSession } from '../merge/useMergeSession'
 
 /** Popover anchored under its trigger (T92 — replaces the old full-screen centered `Overlay`).
  *  GH39: also used by `SyncIndicator`, the other header control.
@@ -319,6 +320,7 @@ export function ModificationControl({ currentProjectId }: Props) {
       }),
     onSuccess: (session) => {
       setPublishError(null)
+      primeMergeSession(qc, session)
       void qc.invalidateQueries({ queryKey: ['merge-resolution', 'list'] })
       // Called from an async callback, not a click: without flushSync the router's (synchronous)
       // location update renders before the new tab becomes active, and the tab-sync effect of

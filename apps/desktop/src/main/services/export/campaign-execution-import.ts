@@ -2,12 +2,13 @@ import * as path from 'path'
 import ExcelJS from 'exceljs'
 import {
   EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_HEADER_ROW, EXECUTION_SHEET_META_NAME, EXECUTION_SHEET_SUPPORTED_VERSIONS,
-  parseGlobalVerdict, parseStepVerdict,
+  convertFieldValue, executionFieldColumnId, parseGlobalVerdict, parseStepVerdict, prepareRunFields,
 } from '@polenta/types'
 import type {
   ExecutionImportFatal, ExecutionImportInstanceError, ExecutionImportPreview, ExecutionSheetColumn,
-  ImportedInstance, StepResultValue, TestCampaign, TestCase, TestRunResult,
+  ImportedInstance, ObjectTypeDefinition, SchemaField, StepResultValue, TestCampaign, TestCase, TestRunResult,
 } from '@polenta/types'
+import { readLinkCell } from './link-cell.util'
 
 /**
  * GH36 sprint 2 — relecture d'un classeur d'exécution rempli (specs/GH36-design.md §3.4).
@@ -24,6 +25,8 @@ export interface RawExecutionRow {
   tester: string
   date: Date | string | number | null
   comment: string
+  /** GH196 — cellules des colonnes de champ (v3), par id de colonne (`run:<nom>` / `step:<nom>`). */
+  fields: Record<string, { value: ExcelJS.CellValue; address: string }>
 }
 
 export interface RawExecutionSheet {
@@ -36,7 +39,17 @@ export interface RawExecutionSheet {
   rowsWithoutKey: number[]
 }
 
-const col = (c: ExecutionSheetColumn) => EXECUTION_SHEET_COLUMNS.indexOf(c) + 1
+/** Lettre de colonne Excel (1 → A, 27 → AA), pour nommer une cellule dans un message. */
+function columnLetter(index: number): string {
+  let n = index
+  let out = ''
+  while (n > 0) {
+    const m = (n - 1) % 26
+    out = String.fromCharCode(65 + m) + out
+    n = Math.floor((n - 1) / 26)
+  }
+  return out
+}
 
 /** Texte d'une cellule exceljs, quel que soit son type (texte riche, formule, lien…). */
 function cellText(value: ExcelJS.CellValue): string {
@@ -77,12 +90,20 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
 
   const props = new Map<string, string>()
   const instances: RawExecutionSheet['instances'] = []
+  // GH196 — v3 : carte des colonnes de la feuille de saisie ; v1 / v2 : ordre fixe.
+  let columnIds: string[] = [...EXECUTION_SHEET_COLUMNS]
   let inInstances = false
   meta.eachRow(r => {
     const first = cellText(r.getCell(1).value).trim()
     if (!first) return
     if (first === 'entryId') {
       inInstances = true
+      return
+    }
+    if (!inInstances && first === 'columns') {
+      const ids: string[] = []
+      for (let c = 2; c <= r.cellCount; c++) ids.push(cellText(r.getCell(c).value).trim())
+      if (ids.length > 0) columnIds = ids
       return
     }
     if (!inInstances) {
@@ -102,10 +123,17 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
   const campaignId = props.get('campaignId')
   if (!campaignId) return { fatal: { code: 'not_an_execution_sheet' } }
 
+  const col = (c: ExecutionSheetColumn) => columnIds.indexOf(c) + 1
+  const fieldColumns = columnIds.map((id, i) => ({ id, index: i + 1 })).filter(c => c.id.startsWith('run:') || c.id.startsWith('step:'))
   const rows: RawExecutionRow[] = []
   const rowsWithoutKey: number[] = []
   for (let r = EXECUTION_SHEET_HEADER_ROW + 1; r <= sheet.rowCount; r++) {
     const row = sheet.getRow(r)
+    const fields: RawExecutionRow['fields'] = {}
+    for (const fc of fieldColumns) {
+      const value = row.getCell(fc.index).value
+      if (value !== null && value !== undefined && cellText(value).trim() !== '') fields[fc.id] = { value, address: `${columnLetter(fc.index)}${r}` }
+    }
     const get = (c: ExecutionSheetColumn) => cellText(row.getCell(col(c)).value).trim()
     const key = get('key')
     const raw: RawExecutionRow = {
@@ -117,6 +145,7 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
       date: dateCell(row.getCell(col('date')).value),
       // Pas de trim des lignes intérieures : le commentaire garde sa mise en page.
       comment: cellText(row.getCell(col('comment')).value).replace(/\r\n?/g, '\n').trim(),
+      fields,
     }
     if (key) rows.push(raw)
     else if (raw.verdict || raw.tester || raw.date !== null || raw.comment) rowsWithoutKey.push(r)
@@ -143,6 +172,8 @@ export interface ExecutionImportContext {
   effectiveTests?: Map<string, { test: TestCase; resyncable: boolean }>
   /** GH81 — empreinte d'une version de test ; absent : pas de contrôle « test modifié ». */
   fingerprint?: (test: TestCase) => string
+  /** GH196 — type du test de chaque entrée (champs d'exécution / d'étape) ; absent : champs ignorés. */
+  typeDefs?: Map<string, Pick<ObjectTypeDefinition, 'runFields' | 'stepFields'> | null>
 }
 
 export function validateExecutionImport(
@@ -245,6 +276,7 @@ function validateInstance(
     }
     stepResults.push({ order, result, comment: plainTextToMarkdown(row.comment) })
   }
+  const stepRows = [...group.steps].sort((a, b) => a.order - b.order).map(s => s.row)
 
   const head = group.instance
   let result: TestRunResult
@@ -265,6 +297,49 @@ function validateInstance(
     executedAt = parsed
   }
 
+  // GH196 — champs d'exécution (ligne d'instance) et d'étape (lignes d'étape exécutées).
+  const typeDef = ctx.typeDefs?.get(entryId)
+  let runFields: Record<string, unknown> | undefined
+  if (typeDef) {
+    const read = (
+      defs: SchemaField[], list: 'runFields' | 'stepFields', row: RawExecutionRow,
+    ): { error: ExecutionImportInstanceError } | { values: Record<string, unknown> } => {
+      const out: Record<string, unknown> = {}
+      for (const def of defs) {
+        const cell = row.fields[executionFieldColumnId(list, def.name)]
+        if (!cell) continue
+        let raw: unknown = plainCellValue(cell.value)
+        if (def.type === 'link') {
+          const links = readLinkCell({ value: cell.value, address: cell.address })
+          if (!links.ok) return { error: { code: 'invalid_field_value' as const, row: row.row, field: def.name, message: links.reason } }
+          raw = links.links
+        }
+        const c = convertFieldValue(def, raw)
+        if (!c.ok) return { error: { code: 'invalid_field_value' as const, row: row.row, field: def.name, message: c.reason } }
+        if (c.value !== undefined) out[def.name] = c.value
+      }
+      return { values: out }
+    }
+    const runRead = read(typeDef.runFields ?? [], 'runFields', head)
+    if ('error' in runRead) return { error: runRead.error }
+    const stepValues: Record<string, unknown>[] = []
+    for (const [i, row] of stepRows.entries()) {
+      const sr = read(typeDef.stepFields ?? [], 'stepFields', row)
+      if ('error' in sr) return { error: sr.error }
+      stepValues.push(stepResults[i].result === 'NOT_EXECUTED' ? {} : sr.values)
+    }
+    const prepared = prepareRunFields(typeDef, {
+      result, fields: runRead.values,
+      stepResults: stepResults.map((s, i) => ({ order: s.order, result: s.result, fields: stepValues[i] })),
+    })
+    if (!prepared.ok) {
+      const row = prepared.step !== undefined ? stepRows[stepResults.findIndex(s => s.order === prepared.step)]?.row ?? head.row : head.row
+      return { error: { code: 'required_field_missing', row, field: prepared.field, message: prepared.reason } }
+    }
+    runFields = prepared.fields
+    prepared.stepFields.forEach((fields, i) => { if (fields) stepResults[i].fields = fields })
+  }
+
   const title = run.testSnapshot?.title ?? head.text.split(' — ').slice(1).join(' — ')
   return {
     instance: {
@@ -279,8 +354,16 @@ function validateInstance(
       executedAt,
       notes: plainTextToMarkdown(head.comment),
       stepResults,
+      ...(runFields && { fields: runFields }),
     },
   }
+}
+
+/** Valeur d'une cellule de champ, hors lien : nombre, booléen ou date gardés, texte sinon. */
+function plainCellValue(value: ExcelJS.CellValue): unknown {
+  if (typeof value === 'number' || typeof value === 'boolean' || value instanceof Date) return value
+  if (value && typeof value === 'object' && 'result' in value) return plainCellValue((value as { result?: ExcelJS.CellValue }).result ?? null)
+  return cellText(value).replace(/\r\n?/g, '\n').trim()
 }
 
 /** Règle SPEC-TESTS §3.3 (identique à l'écran d'exécution). */

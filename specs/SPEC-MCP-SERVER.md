@@ -236,6 +236,8 @@ ou modification par un tool porte `source: mcp`.
 
 ### 4.2 Import massif (`tools/bulk-import.tools.ts`)
 
+> **GH196** — `add_field` accepte `list: fields | runFields | stepFields` (champs d'exécution / d'étape, types de test seulement ; nom unique dans le projet : `RUN_FIELD_INVALID`). Aucun outil n'écrit de run.
+
 > **GH195** — un champ `link` accepte l'objet `{label?, url}`, la liste, ou la forme texte `libellé | URL` (une ligne par lien), convertie avant écriture ; URL hors `http(s)://`, `file://`, `\\serveur\partage` refusée. `requiredWhen` est contrôlé comme à l'écriture réelle (`prepareFieldsWrite`), en `dryRun` comme en écriture, et pour `update_requirements` / `update_tests`. `add_field` accepte `type: link`, `multiple`, `requiredWhen` (référence ou valeur inconnue refusée : `REQUIRED_WHEN_INVALID`).
 
 `bulk_import_requirements` / `bulk_import_tests` / `bulk_import_campaigns` :

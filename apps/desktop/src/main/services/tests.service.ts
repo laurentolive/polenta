@@ -266,6 +266,12 @@ export class TestsService {
     return run
   }
 
+  /** GH196 — type d'un test (champs d'exécution / d'étape), lu dans le repo du test (composant compris). */
+  async typeDefFor(repoPath: string, objectTypeRef: string, workspaceDir?: string): Promise<ObjectTypeDefinition | null> {
+    const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, objectTypeRef, workspaceDir)) ?? repoPath
+    return readOwnedTypeDef(this.git, repoPath, objectTypeRef, targetRepo)
+  }
+
   // ─── Private helpers ────────────────────────────────────────────────────────
 
   /** Prefix resolved from `repoPath`'s schema, number allocated in `targetRepo` — see

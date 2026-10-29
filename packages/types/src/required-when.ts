@@ -80,6 +80,11 @@ function valueLabel(typeDef: TypeDefLike, key: string, value: string): string {
   return value
 }
 
+/** GH196 — `requiredWhen` en clair : `result = FAIL ; safety = true`. */
+export function formatRequiredWhenText(rw: Record<string, unknown[]>): string {
+  return Object.entries(rw).map(([k, v]) => `${k} = ${(Array.isArray(v) ? v : []).map(String).join(', ')}`).join(' ; ')
+}
+
 /** Message de refus : `« Justification » est obligatoire quand Statut = Approuvé`. */
 export function requiredWhenMessage(typeDef: TypeDefLike, field: SchemaField, key: string): string {
   const ref = key === REQUIRED_WHEN_STATUS ? 'Statut' : (typeDef.fields.find(f => f.name === key)?.label ?? key)

@@ -228,5 +228,7 @@ function instanceErrorMessage(t: T, err: ExecutionImportInstanceError): string {
     case 'invalid_verdict': return t('campaignPage.executionSheet.error.invalidVerdict', { row: err.row, value: err.value })
     case 'invalid_date': return t('campaignPage.executionSheet.error.invalidDate', { row: err.row, value: err.value })
     case 'test_changed_since_export': return t('campaignPage.executionSheet.error.testChangedSinceExport', { testCaseId: err.testCaseId })
+    case 'invalid_field_value':
+    case 'required_field_missing': return t('campaignPage.executionSheet.error.fieldError', { row: err.row, message: err.message })
   }
 }

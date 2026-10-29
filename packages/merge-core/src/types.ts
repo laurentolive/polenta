@@ -1,7 +1,9 @@
 export type Side = 'left' | 'right'
 
-/** How a conflicting file is merged and edited (GH37 design §2.1). */
-export type FileKind = 'object' | 'links' | 'parameters' | 'text' | 'binary'
+/** How a conflicting file is merged and edited (GH37 design §2.1). GH222: `yaml` = any other YAML
+ *  written by the app (generic structural merge), `trees` = display trees (`.polenta/trees`),
+ *  `drawio` = merged page by page. */
+export type FileKind = 'object' | 'links' | 'parameters' | 'yaml' | 'trees' | 'drawio' | 'text' | 'binary'
 
 /** Labels written on the conflict markers of a region (`<<<<<<< <left> [key]`). */
 export interface MarkerLabels {
@@ -9,7 +11,8 @@ export interface MarkerLabels {
   right: string
 }
 
-/** One conflict block: an object field (`title`, `fields.statement`…) or a text hunk (`hunk:0`). */
+/** One conflict block: an object field (`title`, `fields.statement`…), a text hunk (`hunk:0`), or
+ *  any node of a YAML file (GH222: `steps~2`, `link:<id>`, a pointer `/nodes/@root/label`…). */
 export interface MergeBlock {
   key: string
   /** Side fragments as they appear in a marker region — `undefined` = absent on that side. */
@@ -31,7 +34,7 @@ export interface FileMerge {
 export interface ParsedOutput {
   /** Keys of the regions still present in the text, in order. */
   unresolved: string[]
-  /** `kind: 'object'` only — the YAML outside the regions, when it parses. */
+  /** YAML kinds only — the YAML outside the regions, when it parses. */
   value?: Record<string, unknown>
   /** Malformed markers or invalid YAML outside the regions. */
   error?: string

@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
 import { Check, Columns3, Eye, FileCode } from 'lucide-react'
 import {
-  changedLineIndexes, changedUnits, shortRef, findRegions, parseOutput, regionFragments, resolveAllRegions, resolveRegion,
-  updateObjectOutput, type Side,
+  canTakeBoth, shortRef, findRegions, parseOutput, resolveAllRegions, resolveRegion, resolveRegionBoth, updateOutputAt,
+  yamlStyleOf, type Side,
 } from '@polenta/merge-core'
 import type {
   MergeFileDetail, MergeFileDraft, MergeKeepBothResult, MergeSessionInfo, MergeValidationIssue, ObjectTypeDefinition,
@@ -12,8 +12,14 @@ import type {
 import { api } from '../../api'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/useProjectSchema'
-import { RawPane } from './RawPane'
-import { RenderedObjectPane } from './RenderedObjectPane'
+import { RawPane, type PaneAction, type PaneLabels } from './RawPane'
+import { resetBlock, resolvedBlocks, sideAnchors, type ResolvedBlock } from './blockLocator'
+import { NavBar } from '../diffkit/NavBar'
+import { useChangeNavigation } from '../diffkit/useChangeNavigation'
+import { genericPresentation, typedPresentation } from '../treediff/presentation'
+import { MergeTreeOutput, MergeTreeTop, useMergeTree } from '../treediff/TreeMerge'
+import { DrawioFileDiffView } from '../diff/DrawioFileDiffView'
+import { DrawioMergeOutput } from './DrawioMergeOutput'
 import { mergePrefs, useElementSync, useScrollSyncGroup, type ScrollSyncGroup } from './scrollSync'
 import { useMergeFile, useOutputValidation } from './useMergeSession'
 
@@ -24,6 +30,8 @@ interface Props {
   onMerged: () => void
   /** « Garder les deux » a recalculé la session (fichiers en conflit renumérotés). */
   onSessionChanged: (session: MergeSessionInfo) => void
+  /** GH222 — `F7` après le dernier conflit résolu : fichier suivant à résoudre. */
+  onNextFile?: () => void
 }
 
 const SAVE_DELAY_MS = 500
@@ -65,7 +73,7 @@ function loadObject(text: string | null): Obj | null {
   }
 }
 
-function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail }: Props & { detail: MergeFileDetail }) {
+function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextFile, detail }: Props & { detail: MergeFileDetail }) {
   const { t } = useTranslation()
   const choiceMode = isChoiceFile(detail)
   const [text, setText] = useState<string>(detail.draft?.text ?? detail.initialOutput ?? '')
@@ -142,22 +150,106 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
     const ref = String((objects.right ?? objects.left)?.objectTypeRef ?? '')
     return ref ? getReqTypeDef(schema, ref) ?? getTestTypeDef(schema, ref) : undefined
   }, [schema, objects])
-  const canRender = detail.kind === 'object' && !!typeDef
+  // GH222 — every YAML file has a Rendu (generic view); typed objects get their schema's labels.
+  // A file to resolve by choosing a side (deleted on one side) can be read rendered too.
+  const canRender = RENDERABLE.has(detail.kind)
   const rendered = mode === 'rendered' && canRender
-
-  const changed = useMemo(() => ({
-    left: objects.left ? changedUnits(objects.base, objects.left) : new Set<string>(),
-    right: objects.right ? changedUnits(objects.base, objects.right) : new Set<string>(),
-  }), [objects])
-  const lineHighlight = useMemo(() => ({
-    left: detail.left === null ? null : withSide('left', changedLineIndexes(detail.base, detail.left)),
-    right: detail.right === null ? null : withSide('right', changedLineIndexes(detail.base, detail.right)),
-  }), [detail.base, detail.left, detail.right])
+  const presentation = useMemo(() => (typeDef ? typedPresentation(typeDef, t) : genericPresentation), [typeDef, t])
+  // GH222 — ce que chaque côté a changé depuis l'ancêtre (ligne et caractères).
+  const against = useMemo(() => ({
+    left: { base: detail.base, side: 'left' as Side },
+    right: { base: detail.base, side: 'right' as Side },
+  }), [detail.base])
 
   const yamlSyntax = /\.ya?ml$/i.test(path)
-  const takeLabels = useMemo(() => ({ takeLeft: t('mergeResolve.takeLeft'), takeRight: t('mergeResolve.takeRight') }), [t])
+  const paneLabels: PaneLabels = useMemo(() => ({
+    takeLeft: t('mergeResolve.takeLeft'),
+    takeRight: t('mergeResolve.takeRight'),
+    takeBoth: t('mergeResolve.takeBoth'),
+    reset: t('mergeResolve.reset'),
+    resolved: { left: t('mergeResolve.resolvedLeft'), right: t('mergeResolve.resolvedRight'), both: t('mergeResolve.resolvedBoth') },
+    ruler: t('diffkit.change.ruler'),
+  }), [t])
   const group = useScrollSyncGroup()
   const units = detail.kind === 'object'
+
+  // ─── GH222 : blocs dans chaque panneau, résolus, navigation ──────────────────────
+  const markerLabels = useMemo(() => ({ left: shortRef(session.leftRef), right: shortRef(session.rightRef) }), [session.leftRef, session.rightRef])
+  // Open blocks as a stable signature: typing in the output does not rebuild the side actions.
+  const openSig = regions.regions.map(r => r.key).join('\u0000')
+  // Latest output and updater, for the actions built once per set of open blocks.
+  const latest = useRef({ text, regions, updateText })
+  latest.current = { text, regions, updateText }
+
+  // Where each block's region is (or was when resolved): the resolved text and the side
+  // fragments are looked for nearest to it (a short fragment may appear elsewhere in the file).
+  const initialHints = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const r of findRegions(detail.initialOutput ?? '').regions) m.set(r.key, r.start)
+    return m
+  }, [detail.initialOutput])
+  const [resolvedAt, setResolvedAt] = useState<Map<string, number>>(new Map())
+  const hints = useMemo(() => new Map([...initialHints, ...resolvedAt]), [initialHints, resolvedAt])
+  const resolveWith = (key: string, next: (current: string) => string) => {
+    const { text: current, regions: open, updateText: update } = latest.current
+    const at = open.regions.find(r => r.key === key)?.start
+    if (at !== undefined) setResolvedAt(prev => new Map(prev).set(key, at))
+    update(next(current))
+  }
+
+  const sideActions = useMemo(() => {
+    const open = new Map(latest.current.regions.regions.map(r => [r.key, r.start] as const))
+    const make = (side: Side): PaneAction[] => {
+      const sideText = side === 'left' ? detail.left : detail.right
+      if (sideText === null || choiceMode) return []
+      return sideAnchors(sideText, detail.blocks, open, side).map(a => ({
+        key: a.key,
+        line: a.line,
+        label: side === 'left' ? t('mergeResolve.takeLeft') : t('mergeResolve.takeRight'),
+        run: () => resolveWith(a.key, current => resolveRegion(current, a.key, side)),
+      }))
+    }
+    return { left: make('left'), right: make('right') }
+    // resolveWith reads the latest state through `latest`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, openSig, choiceMode, t])
+  const resetBlockOf = (found: ResolvedBlock) => {
+    const block = detail.blocks.find(b => b.key === found.key)
+    if (block) updateText(resetBlock(text, block, found, markerLabels))
+  }
+  const outputLabels = useMemo(() => ({ ...paneLabels, ruler: t('diffkit.conflict.ruler') }), [paneLabels, t])
+
+  // ─── GH222 : vue générique (Rendu) ───────────────────────────────────────────────
+  const parsedOutput = useMemo(() => (rendered ? parseOutput(detail.kind, text) : null), [rendered, detail.kind, text])
+  const resolvedNow = useMemo(() => (rendered ? resolvedBlocks(text, detail.blocks, markerLabels, hints) : []), [rendered, text, detail.blocks, markerLabels, hints])
+  const openKeys = useMemo(() => regions.regions.map(r => r.key), [regions])
+  const tree = useMergeTree({
+    enabled: rendered && detail.kind !== 'drawio', detail, presentation, openKeys, resolved: resolvedNow, parsedOutput: parsedOutput?.value,
+  })
+  // An edit in place is written in the file's own YAML style.
+  const outputStyle = useMemo(() => yamlStyleOf(detail.right ?? detail.left ?? '') ?? undefined, [detail.right, detail.left])
+  const editAt = (outPath: (string | number)[], value: unknown) => {
+    const next = updateOutputAt(latest.current.text, outPath, value, outputStyle)
+    if (next !== null) updateText(next)
+  }
+
+  const outputBox = useRef<HTMLDivElement>(null)
+  const [reveal, setReveal] = useState<{ from: number; to: number } | null>(null)
+  const goConflict = (i: number) => {
+    const r = regions.regions[i]
+    if (!r) return
+    if (rendered) {
+      outputBox.current?.querySelector(`[data-unit="${CSS.escape(r.key)}"]`)?.scrollIntoView({ block: 'start' })
+    } else {
+      setReveal({ from: r.start, to: r.end })
+    }
+  }
+  const nav = useChangeNavigation(regions.regions.length, goConflict, {
+    onPastEnd: regions.regions.length === 0 ? onNextFile : undefined,
+    listKey: openSig,
+    // A file resolved by choosing a side has no conflict to walk through: F7 stays put.
+    enabled: !choiceMode,
+  })
 
   // ─── Séparateur haut / sortie ────────────────────────────────────────────────────
   const body = useRef<HTMLDivElement>(null)
@@ -180,7 +272,6 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
 
   const sidePane = (pane: Pane) => {
     const textOf = pane === 'left' ? detail.left : pane === 'right' ? detail.right : detail.base
-    const obj = objects[pane]
     const title = pane === 'left'
       ? t('mergeResolve.leftPane', { ref: shortRef(session.leftRef) })
       : pane === 'right' ? t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }) : t('mergeResolve.basePane')
@@ -200,15 +291,11 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
             : pane === 'base' ? t('mergeResolve.absentInBase') : t('mergeResolve.absentOnSide')}
         </p>
       )
-    } else if (rendered && obj) {
-      content = (
-        <SyncedRendered group={group} id={pane} value={obj} typeDef={typeDef} repoPath={session.repoPath}
-          tone={tone} changed={pane === 'base' ? undefined : changed[pane]} />
-      )
     } else {
       content = (
-        <RawPane value={textOf} readOnly yamlSyntax={yamlSyntax}
-          highlight={pane === 'base' ? null : lineHighlight[pane]}
+        <RawPane value={textOf} readOnly yamlSyntax={yamlSyntax} labels={paneLabels}
+          against={pane === 'base' ? null : against[pane]}
+          actions={pane === 'base' ? undefined : sideActions[pane]}
           sync={{ group, id: pane, units }} />
       )
     }
@@ -220,28 +307,39 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
     )
   }
 
-  const parsed = useMemo(() => (rendered ? parseOutput('object', text) : null), [rendered, text])
-  const conflicts = useMemo(() => (rendered ? regionFragments(text) : undefined), [rendered, text])
-
   let output: ReactNode
   if (choiceMode) {
     output = <ChoicePanel detail={detail} choice={choice} onChoose={updateChoice} />
-  } else if (rendered && parsed?.value && !parsed.error) {
+  } else if (rendered && detail.kind === 'drawio') {
     output = (
-      <SyncedRendered group={group} id="output" value={parsed.value} typeDef={typeDef} repoPath={session.repoPath}
-        conflicts={conflicts}
-        onResolve={(key, side) => updateText(resolveRegion(text, key, side))}
-        onChangeUnit={(key, value) => {
-          const next = updateObjectOutput(text, key, value)
-          if (next !== null) updateText(next)
-        }} />
+      <DrawioMergeOutput text={text} repoPath={session.repoPath} filepath={path}
+        leftAt={session.leftOid} rightAt={session.rightOid}
+        onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))} />
+    )
+  } else if (rendered && parsedOutput?.value && !parsedOutput.error) {
+    output = (
+      <SyncedTree group={group} id="output">
+        <MergeTreeOutput model={tree} typeDef={typeDef} repoPath={session.repoPath}
+          canBoth={key => canTakeBoth(text, key)}
+          onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
+          onBoth={key => resolveWith(key, current => resolveRegionBoth(current, key))}
+          onReset={resetBlockOf}
+          onEdit={editAt}
+          labels={{ output: t('mergeResolve.outputPane'), resolved: paneLabels.resolved }} />
+      </SyncedTree>
     )
   } else if (rendered) {
     output = <p className="p-4 text-xs text-status-warning">{t('mergeResolve.renderUnavailable')}</p>
   } else {
     output = (
-      <RawPane value={text} onChange={updateText} labels={takeLabels} yamlSyntax={yamlSyntax}
-        onResolve={(key, side) => updateText(resolveRegion(text, key, side))}
+      <RawPane value={text} onChange={updateText} labels={outputLabels} yamlSyntax={yamlSyntax}
+        onResolve={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))}
+        onBoth={key => resolveWith(key, current => resolveRegionBoth(current, key))}
+        blocks={detail.blocks}
+        markerLabels={markerLabels}
+        hints={hints}
+        onReset={resetBlockOf}
+        reveal={reveal}
         sync={{ group, id: 'output', units }} />
     )
   }
@@ -275,6 +373,7 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
         </button>
         {!choiceMode && (
           <>
+            <NavBar kind="conflict" index={nav.index} count={regions.regions.length} onPrev={nav.prev} onNext={nav.next} />
             <button type="button" className="btn-secondary-sm shrink-0" disabled={regions.regions.length === 0}
               onClick={() => updateText(resolveAllRegions(text, 'left'))}>
               {t('mergeResolve.allLeft')}
@@ -290,11 +389,37 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
       <RichTextProvider>
         <div ref={body} className="flex-1 min-h-0 flex flex-col">
           {/* Rangée du haut : mes modifications | [ancêtre commun] | destination */}
-          <div className={`grid min-h-0 ${showBase ? 'grid-cols-3' : 'grid-cols-2'}`} style={{ height: `${split}%` }}>
-            {sidePane('left')}
-            {showBase && sidePane('base')}
-            {sidePane('right')}
-          </div>
+          {rendered && detail.kind === 'drawio'
+            ? (
+              // GH222 — `.drawio` : pages de chaque côté, à leur commit (même vue que les diffs).
+              <div className="min-h-0" style={{ height: `${split}%` }}>
+                <DrawioFileDiffView repoPath={session.repoPath} filepath={path} hideUnchanged={false}
+                  before={{ at: session.leftOid, missing: detail.left === null, label: t('mergeResolve.leftPane', { ref: shortRef(session.leftRef) }) }}
+                  after={{ at: session.rightOid, missing: detail.right === null, label: t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }) }} />
+              </div>
+            )
+            : rendered
+            ? (
+              // GH222 — vue générique : une seule grille, colonne Structure + un panneau par version.
+              <div className="min-h-0" style={{ height: `${split}%` }}>
+                <SyncedTree group={group} id="top">
+                  <MergeTreeTop model={tree} showBase={showBase} typeDef={typeDef} repoPath={session.repoPath}
+                    labels={{
+                      left: t('mergeResolve.leftPane', { ref: shortRef(session.leftRef) }),
+                      base: t('mergeResolve.basePane'),
+                      right: t('mergeResolve.rightPane', { ref: shortRef(session.rightRef) }),
+                    }}
+                    onTake={(key, side) => resolveWith(key, current => resolveRegion(current, key, side))} />
+                </SyncedTree>
+              </div>
+            )
+            : (
+              <div className={`grid min-h-0 ${showBase ? 'grid-cols-3' : 'grid-cols-2'}`} style={{ height: `${split}%` }}>
+                {sidePane('left')}
+                {showBase && sidePane('base')}
+                {sidePane('right')}
+              </div>
+            )}
 
           <div
             role="separator"
@@ -316,7 +441,7 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
             {detail.conflict === 'both-added' && detail.kind === 'object' && (
               <KeepBothBar session={session} path={path} onApplied={onSessionChanged} />
             )}
-            <div className="flex-1 min-h-0">{output}</div>
+            <div ref={outputBox} className="flex-1 min-h-0">{output}</div>
             {!choiceMode && <ValidationBar parseError={regions.error} issues={validation} />}
           </div>
         </div>
@@ -325,14 +450,13 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, detail 
   )
 }
 
-function withSide(side: Side, set: Set<number> | null) {
-  return set ? { side, lines: set } : null
-}
+/** File kinds the generic view can show (YAML). */
+const RENDERABLE = new Set<MergeFileDetail['kind']>(['object', 'links', 'parameters', 'yaml', 'trees', 'drawio'])
 
-function SyncedRendered(props: { group: ScrollSyncGroup; id: string } & Omit<React.ComponentProps<typeof RenderedObjectPane>, 'onScroll'>) {
-  const { group, id, ...rest } = props
-  const { ref, onScroll } = useElementSync(group, id)
-  return <RenderedObjectPane ref={ref} onScroll={onScroll} {...rest} />
+/** A scrolling pane of the generic view, kept on the same row as the other panes. */
+function SyncedTree({ group, id, children }: { group: ScrollSyncGroup; id: string; children: ReactNode }) {
+  const { ref, onScroll } = useElementSync(group, id, 'data-row-key')
+  return <div ref={ref} onScroll={onScroll} className="relative h-full overflow-auto" data-testid={`merge-tree-${id}`}>{children}</div>
 }
 
 function ToggleButton({ active, disabled, onClick, icon, label, title }: {

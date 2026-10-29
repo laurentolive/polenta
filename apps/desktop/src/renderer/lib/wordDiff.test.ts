@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_DIFF_TOKENS, diffTokens, diffValueText, tokenize, wordDiff, wordSegments } from './wordDiff'
-import { alignByKey, alignSteps, pageKeys } from './align'
+import { alignByKey, pageKeys } from './align'
 import { alignMedia, changedMedia, mediaBlocks } from './mediaDiff'
 
 /** GH178 sprint 2 — diff mot à mot, alignements (étapes, médias, pages). */
@@ -48,21 +48,6 @@ describe('alignByKey', () => {
   it('ancres par clé ; restants appariés par position seulement si demandé', () => {
     expect(alignByKey(['a', 'b', 'c'], ['a', 'x', 'c'])).toEqual([[0, 0], [1, null], [null, 1], [2, 2]])
     expect(alignByKey(['a', 'b', 'c'], ['a', 'x', 'c'], true)).toEqual([[0, 0], [1, 1], [2, 2]])
-  })
-})
-
-describe('alignSteps', () => {
-  const s = (action: string, expectedResult = 'ok') => ({ order: 0, action, expectedResult, notes: null })
-
-  it('étape insérée : les suivantes restent appariées à l’identique', () => {
-    const before = [s('A'), s('B'), s('C')]
-    const after = [s('A'), s('N'), s('B'), s('C')]
-    expect(alignSteps(before, after)).toEqual([[0, 0], [null, 1], [1, 2], [2, 3]])
-  })
-
-  it('étape modifiée en place : appariée par position ; suppression : rangée seule', () => {
-    expect(alignSteps([s('A'), s('B'), s('C')], [s('A'), s('B2'), s('C')])).toEqual([[0, 0], [1, 1], [2, 2]])
-    expect(alignSteps([s('A'), s('B'), s('C')], [s('A'), s('C')])).toEqual([[0, 0], [1, null], [2, 1]])
   })
 })
 

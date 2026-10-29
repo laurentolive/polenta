@@ -93,18 +93,21 @@ test('G4 — richtext : seuls les mots changés sont marqués', async () => {
 
 test('G5 — étapes : insertion alignée, étapes suivantes non décalées, modification en place', async () => {
   await openCommitDiff(TEST)
-  const rows = s.page.getByTestId('steps-diff').locator('[data-step-row]')
+  // GH222 — étapes dans la vue générique : une rangée par étape (colonne Structure).
+  const rows = s.page.getByTestId('object-diff').locator('[data-step-row]')
   await expect(rows).toHaveCount(4)
   const attrs = await rows.evaluateAll(els => els.map(e => `${e.getAttribute('data-step-row')}${e.hasAttribute('data-changed') ? '*' : ''}`))
   expect(attrs).toEqual(['0:0', '-:1*', '1:2', '2:3*'])
-  await expect(s.page.getByTestId('steps-diff').locator('del.diff-del')).toHaveCount(0)
-  await expect(s.page.getByTestId('steps-diff').locator('ins.diff-ins')).toHaveText(['bis'])
+  await expect(s.page.getByTestId('object-diff').locator('del.diff-del')).toHaveCount(0)
+  await expect(s.page.getByTestId('object-diff').locator('ins.diff-ins')).toHaveText(['bis'])
   await s.shot('gh178-steps')
 })
 
 test('G8 — fichier .drawio : pages alignées par nom, page modifiée et page ajoutée encadrées', async () => {
   await openCommitDiff(DRAWIO)
   const view = s.page.getByTestId('drawio-diff')
+  // The pages are read asynchronously: wait for them before reading their attributes.
+  await expect(view.locator('[data-page]')).toHaveCount(3)
   const pages = await view.locator('[data-page]').evaluateAll(els => els.map(e => `${e.getAttribute('data-page')}${e.hasAttribute('data-changed') ? '*' : ''}`))
   expect(pages).toEqual(['Vue', 'Détail*', 'Annexe*'])
   await expect(view.locator('.static-drawio')).toHaveCount(5)

@@ -212,7 +212,17 @@ export function MergeResolvePage({ id, projectId }: Props) {
                       {f.objectId ? `${f.objectId}${f.title ? ` — ${f.title}` : ''}` : f.path.split('/').pop()}
                     </span>
                     <span className="block text-[11px] text-ink-3 font-mono truncate">{f.path}</span>
-                    <span className="block text-[11px] text-ink-3">{t(`mergeResolve.conflict.${f.conflict}`)}</span>
+                    <span className="block text-[11px] text-ink-3">
+                      {t(`mergeResolve.conflict.${f.conflict}`)}
+                      {f.state === 'todo' && f.counts && f.counts.conflicts > 0 && (
+                        <span className="ml-1.5 px-1 rounded bg-diff-conflict-bg text-status-warning font-medium" data-testid="file-conflict-count">
+                          {t('mergeResolve.conflictCount', { count: f.counts.conflicts })}
+                        </span>
+                      )}
+                      {f.counts && f.counts.auto > 0 && (
+                        <span className="ml-1.5 text-ink-3">{t('mergeResolve.autoCount', { count: f.counts.auto })}</span>
+                      )}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -223,6 +233,7 @@ export function MergeResolvePage({ id, projectId }: Props) {
         <main className="flex-1 min-w-0 min-h-0">
           {selected ? (
             <FileResolver session={session} path={selected} saveFile={saveFile} onSessionChanged={onSessionChanged}
+              onNextFile={() => selectNextTodo(qc.getQueryData<MergeSessionInfo>(['merge-resolution', session.id]) ?? session, selected)}
               onMerged={() => {
                 const s = qc.getQueryData<MergeSessionInfo>(['merge-resolution', session.id]) ?? session
                 selectNextTodo(s, selected)

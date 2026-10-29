@@ -252,11 +252,21 @@ un « Rafraîchir » en conflit.
 L'éditeur, fichier par fichier :
 - **Disposition** : mes modifications | destination en haut (plus l'ancêtre commun en 3ᵉ colonne à
   la demande), sortie éditable en bas, séparateur réglable.
-- **Bascule Raw / Rendu** : le Rendu est disponible pour les exigences et les tests, en lecture
-  pour les côtés et en formulaire pour la sortie.
-- **Blocs** : « ← Prendre gauche / Prendre droite → » par bloc, ou pour tout le fichier.
-  - Un bloc est un **champ** pour les objets, un **lien** pour `links.yaml`, un **paramètre** pour
-    `parameters.yaml`, et un hunk de lignes ailleurs.
+- **Bascule Raw / Rendu** : le Rendu est disponible pour **tout fichier YAML** (GH222, vue
+  générique : colonne Structure dans le haut et dans la sortie, mêmes rangées, défilement
+  synchronisé ; exigences et tests avec les libellés et widgets de leur schéma) et pour les
+  `.drawio` (choix gauche / droite par page).
+- **Mise en évidence (GH222)** : chaque panneau du haut montre ce que son côté a changé depuis
+  l'ancêtre (ligne et caractères) ; règle de vue d'ensemble ; navigation « Conflit n / N »
+  (`F7`, puis fichier suivant à résoudre) ; liste des fichiers avec les conflits restants.
+- **Blocs** : « ← Prendre gauche / Prendre droite → » par bloc — dans la sortie et, depuis GH222,
+  dans le panneau de chaque côté —, « Prendre les deux » quand c'est sensé (liste, texte), un bloc
+  résolu marqué avec « Réinitialiser » ; ou pour tout le fichier.
+  - Un bloc est un **champ** pour les objets (une **étape** pour un test, un **run** pour une
+    campagne), un **lien** pour `links.yaml`, un **paramètre** pour `parameters.yaml`, un **nœud**
+    pour tout autre YAML écrit par l'app (GH222 : deux changements sur des nœuds différents ne
+    sont plus en conflit), une **position** pour un arbre d'affichage, une **page** pour un
+    `.drawio`, et un hunk de lignes ailleurs.
   - Un champ modifié d'un seul côté est repris automatiquement : la vision ci-dessous est
     **implémentée**.
 - **Choix d'un côté** pour les cas « supprimé d'un côté / modifié de l'autre » et pour les binaires.
@@ -752,10 +762,10 @@ L'UI permet de **naviguer dans une baseline** comme si on était dans l'état du
 > de comparaison multi-composant, cf. `T46.md` Hors scope).
 >
 > **GH178 — comparaison fichier par fichier** : dans le panneau Version (`/version-diff`), le diff
-> d'un fichier entre deux refs (baselines comprises) propose un mode **Rendu** pour une exigence,
-> un test ou un `.drawio` : deux colonnes Avant | Après, unités et mots modifiés marqués,
-> diagrammes lus à la version de chaque colonne (`SPEC-ELECTRON-DESKTOP.md` §19.8b,
-> `SPEC-TECH-stack.md` §6.5).
+> d'un fichier entre deux refs (baselines comprises) propose un mode **Rendu** — depuis GH222 pour
+> **tout fichier YAML** (vue générique, colonne Structure) et les `.drawio` : Avant | Après, nœuds
+> et mots modifiés marqués, diagrammes lus à la version de chaque colonne
+> (`SPEC-ELECTRON-DESKTOP.md` §19.8b, `SPEC-TECH-stack.md` §6.5–6.6).
 
 ```yaml
 addedRequirements:

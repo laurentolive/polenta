@@ -101,8 +101,9 @@ repose sur `isApproval`).
 | État serveur | TanStack Query | 5.x | Cache, invalidation, optimistic updates |
 | Formulaires | Zod (sans react-hook-form) | 3.x | Validation schema-driven — pas de `react-hook-form` (T130 ; il n'était utilisé que par `apps/web`, supprimé par GH44) |
 | **Git engine** | isomorphic-git | 1.25.x | Pur JS — clone, commit, push, pull, merge, branch |
-| Fusion 3-voies (GH37) | `@polenta/merge-core` (package du monorepo) + diff3 | — / 0.0.3 | Logique pure de résolution des conflits : fusion par champ des objets, par lien (`links.yaml`) / par paramètre (`parameters.yaml`), hunks de lignes avec **le même `diff3`** qu'isomorphic-git (un fichier est en conflit ici exactement quand il l'est pour `git.merge`), marqueurs de conflit nommés, renumérotation. Importé par le main et le renderer (source TS aliasée, bundlée dans le main comme `@polenta/types`), seul package testé par **vitest** (`pnpm --filter @polenta/merge-core test`). Cf. §6. Les vues de diff en mode Rendu (GH178) réutilisent ses unités (`unitValue`, `deepEqual`) ; leur diff mot à mot est une LCS maison (`renderer/lib/wordDiff.ts`), **sans** dépendance de diff ajoutée (cf. §6.5) |
-| Éditeur de code (GH37) | CodeMirror 6 (`@codemirror/state`, `view`, `commands`, `language`, `lang-yaml`) | 6.x | Panneaux Raw de l'éditeur de résolution des conflits : décorations de lignes, widgets « Prendre gauche/droite », défilement synchronisé. Monaco écarté (lourd, workers à configurer sous Electron). Chunk de la route `/merge-resolve` seulement (≈ 800 kB, chargé à la demande) |
+| Fusion 3-voies (GH37) | `@polenta/merge-core` (package du monorepo) + diff3 | — / 0.0.3 | Logique pure du diff et du merge. **GH222** : un seul moteur YAML générique (diff 2 voies `diffTree`, merge 3 voies `MergeContext`) paramétré par des **descriptions de structure** (objets, liens, paramètres, YAML générique, arbres d'affichage) ; `.drawio` par page ; texte non YAML en hunks de lignes avec **le même `diff3`** qu'isomorphic-git ; marqueurs de conflit nommés à toute profondeur, renumérotation. Importé par le main et le renderer (source TS aliasée, bundlée dans le main comme `@polenta/types`), testé par **vitest** (`pnpm --filter @polenta/merge-core test`). Cf. §6. Le diff mot à mot du mode Rendu est une LCS maison (`renderer/lib/wordDiff.ts`) |
+| Diff ligne / caractère (GH222) | `@codemirror/merge` | 6.12.2 (MIT) | Mode Raw des vues de diff (`MergeView` côte à côte, `unifiedMergeView` en ligne : caractères changés, gouttière, alignement, régions repliées, navigation) et diff des panneaux de la résolution de conflits contre l'ancêtre (`Chunk.build`). `DIFF_CONFIG` (`lib/diffStats.ts`) : `scanLimit` 50 000, budget 1 s — la limite par défaut (500 caractères) fusionnait les changements éloignés d'un gros fichier. Remplace la LCS plafonnée à 2 000 lignes de GH178 |
+| Éditeur de code (GH37) | CodeMirror 6 (`@codemirror/state`, `view`, `commands`, `language`, `lang-yaml`) | 6.x | Panneaux Raw de l'éditeur de résolution des conflits : décorations de lignes et de caractères (GH222), widgets « Prendre gauche / droite / les deux / Réinitialiser » dans chaque panneau, règle de vue d'ensemble, défilement synchronisé. Monaco écarté (lourd, workers à configurer sous Electron). Chunk de la route `/merge-resolve` seulement (≈ 800 kB, chargé à la demande) |
 | **Index mémoire** | Map + MiniSearch | 7.x | Requêtes, filtres, full-text — zéro DB |
 | **Scripts de la vue Suivi** (GH74) | QuickJS (`quickjs-emscripten-core` + `@jitl/quickjs-wasmfile-release-sync`) | 0.32.0 | Scripts de données et transformations JS du client exécutés dans un bac à sable wasm (mémoire plafonnée, délai, pile), dans un `worker_threads` par process (desktop, serveur web, MCP) — remplace AlaSQL. Cf. [SPEC-DASHBOARDS.md](SPEC-DASHBOARDS.md) §3 |
 | Export Excel | ExcelJS | 4.4.x | `.xlsx` pour tous les exports xlsx (T43 : cahiers d'exigences/tests/campagne, résultats de requête, analyse d'impact) — introduit en T77 pour le seul résultat de requête, généralisé par T43 via `ExportService`/canal IPC `export:save` (l'ancien canal ad hoc `queries:export-excel` a été retiré) |
@@ -380,9 +381,13 @@ brouillon) une **session de résolution** dans un onglet `/merge-resolve` :
   `open/list/get/get-file/save-file/validate/keep-both/finalize/abandon`). Il ne travaille que sur
   les objets git : il parcourt les trois arbres (gauche, ancêtre commun, droite) avec `git.walk` et
   ne lit le contenu que des chemins modifiés des deux côtés.
-- **Logique pure** : `@polenta/merge-core`, partagée entre le main et le renderer.
+- **Logique pure** : `@polenta/merge-core`, partagée entre le main et le renderer. Depuis GH222,
+  un **moteur YAML générique** récursif (`MergeContext`) paramétré par une **description de
+  structure** par type de fichier (identité des listes, nœuds atomiques, réconciliations, clé de
+  bloc) — détail §6.6. Les règles ci-dessous en sont des descriptions :
   - *Objets typés* (exigences, tests, campagnes) : fusion **par unité**, c'est-à-dire chaque clé
-    racine hors `fields`, et chaque `fields.<nom>`. Une unité modifiée d'un seul côté, ou à
+    racine hors `fields`, et chaque `fields.<nom>` ; GH222 : une étape de test (`steps~<n>`, `order`
+    renuméroté), un run de campagne par `entryId` (`runs~<entryId>`), `testCaseIds` par valeur. Une unité modifiée d'un seul côté, ou à
     l'identique des deux côtés, est reprise sans conflit. `version` prend le max et
     `needsRevalidation` le OU logique. **GH77** : `history` n'est jamais en conflit — union des
     entrées des deux côtés par champ, dédoublonnées sur `(at, by, value, source)`, triées par `at`
@@ -390,7 +395,12 @@ brouillon) une **session de résolution** dans un onglet `/merge-resolve` :
     courante » de SPEC-REQ §4.4 s'applique.
   - *`links/links.yaml`* : fusion par lien (`id`), union des ajouts.
   - *`parameters/parameters.yaml`* : fusion par paramètre, clés triées.
-  - *Autres fichiers* : hunks `diff3`, la même bibliothèque qu'isomorphic-git.
+  - *Autre YAML écrit par l'app* (GH222, `kind: 'yaml'`) : fusion structurelle générique — schéma,
+    requêtes, dashboards, `polenta-repo.yaml`… ; *arbres d'affichage* (`kind: 'trees'`) : à plat
+    par `id`, conflit de position `pos:<id>` ; *`.drawio`* (`kind: 'drawio'`) : par page
+    (`page:<id>`), une page modifiée des deux côtés d'abord fusionnée ligne à ligne.
+  - *Autres fichiers*, et YAML **non canonique** (commentaire, autre mise en forme : la fusion
+    structurelle le réécrirait) : hunks `diff3`, la même bibliothèque qu'isomorphic-git.
   - *Binaires* : choix d'un côté, avec aperçu pour les images.
   - Conséquence : un objet dont des **champs différents** ont changé de chaque côté n'est **pas**
     en conflit, même si git l'aurait signalé ligne à ligne.
@@ -454,18 +464,21 @@ le `throw err`, jamais dans la branche `{ success: false, conflicts: [...] }` : 
 remontait comme une erreur non gérée plutôt que comme l'échec binaire documenté. `T84` corrige la
 détection (`instanceof` sur la classe typée) en même temps qu'il peuple `conflicts`.
 
-**Non implémenté (hors périmètre GH37) :**
+**Non implémenté :**
 - résolution d'un rebase en conflit (toujours abandonné automatiquement) ;
 - choix à l'intérieur d'un champ (se fait par édition libre) ;
-- mode Rendu des campagnes, liens, paramètres, arbres et `.drawio` (Raw seulement).
+- (GH37, levé par GH222) ~~mode Rendu des campagnes, liens, paramètres, arbres et `.drawio`~~ :
+  tout YAML a un Rendu (vue générique), un `.drawio` un choix par page (§6.6).
 
-Les fichiers `.drawio` (XML texte) bénéficient du merge git ligne par ligne — rarement en conflit grâce aux IDs de nœuds stables.
+Les fichiers `.drawio` (XML texte) sont fusionnés page par page depuis GH222 ; une page modifiée des deux côtés passe d'abord par le merge ligne à ligne de git — rarement en conflit grâce aux IDs de nœuds stables.
 
 ### 6.5 Vues de diff en mode Rendu (GH178)
 
 Hors résolution de conflits, les trois vues de diff (`/version-diff`, `/diff` working tree et
-`/diff?commitSha`) partagent `components/diff/FileDiffView` : bascule Raw (diff ligne à ligne,
-`lib/lineDiff.ts`) / Rendu, préférences par poste (`lib/diffPrefs.ts`, Rendu par défaut).
+`/diff?commitSha`) partagent `components/diff/FileDiffView` : bascule Raw / Rendu, préférences
+par poste (`lib/diffPrefs.ts`, Rendu par défaut). GH222 : Raw sur `@codemirror/merge`
+(`RawDiffView`), Rendu dans la vue générique (`TreeDiffView`) — §6.6 ; ce qui suit reste vrai pour
+le rendu des valeurs d'un objet typé.
 Spécification fonctionnelle : `specs/GH178.md`.
 
 - **Lecture à une version** : `readFileAt(repoPath, ref, filepath)` (`read-file-at.util.ts`, `ref`
@@ -474,23 +487,62 @@ Spécification fonctionnelle : `specs/GH178.md`.
   working tree) et `oldMissing` / `newMissing`. `drawio:read` et `image:read` acceptent un 3ᵉ
   argument `ref` ; `schema:get-at(repoPath, ref)` lit `.polenta/schema.yaml` à la ref (cache par
   commit borné). Chaque colonne lit ainsi ses diagrammes, images et schéma à sa propre version.
-- **Rendu objet** (exigence, test) : grille à deux colonnes dans un seul conteneur défilant, une
-  rangée par unité (`lib/objectUnits.ts` ; `id`, `projectId`, `branchId`, `objectTypeRef` et
-  `history` exclus). Type résolu dans le schéma Après, puis Avant, puis courant ; libellés de la
+- **Rendu objet** (exigence, test) : ~~grille à deux colonnes, une rangée par unité~~ (GH222 : vue
+  générique, présentation typée `treediff/presentation.ts` ; `id`, `projectId`, `branchId`,
+  `objectTypeRef` et `history` masqués). Type résolu dans le schéma Après, puis Avant, puis courant ; libellés de la
   colonne Avant d'abord dans son propre schéma.
 - **Diff mot à mot** : jetons (mots, espaces, ponctuation), LCS après retrait du préfixe et du
   suffixe communs, au-delà de 4 000 jetons tout le milieu est marqué sans détail. Un richtext est
   comparé sur son **DOM rendu** (`StaticRichTextViewer` prop `diffAgainst` : l'autre version est
   rendue dans un `<template>` inerte, puis `<del>` / `<ins>` posés nœud texte par nœud texte), pas
   sur le markdown source.
-- **Étapes** : `alignSteps` (`lib/align.ts`), LCS sur action + résultat attendu, puis appariement
-  par position entre deux ancres.
+- **Étapes** : alignées par `diffTree` (LCS sur l'étape sans `order`, puis appariement par position
+  entre deux ancres — GH222, remplace `alignSteps`).
 - **Blocs média** (`lib/mediaDiff.ts`, `useMediaDiff`) : blocs drawio / image alignés par chemin ;
   encadrés si ajoutés, retirés, de référence différente ou de contenu référencé différent (page
   ciblée, image) entre les deux versions. Une unité richtext dont un bloc est encadré compte comme
   modifiée.
 - **Fichier `.drawio`** : pages alignées par nom (par nom + id si doublon), rendues par le viewer
   statique à la version de chaque colonne ; diff au niveau de la page.
+
+
+### 6.6 Moteur générique, mise en évidence, vue générique (GH222)
+
+Spécification fonctionnelle : `specs/GH222.md` ; conception : `specs/GH222-design.md`.
+
+- **Moteur** (`@polenta/merge-core`) :
+  - `diffTree(avant, après, desc?)` : arbre de nœuds alignés (`DiffNode` : clé = pointeur
+    échappé `/a/@id/#n`, état `unchanged|added|removed|modified|moved`, `indexes` des éléments
+    alignés) ;
+  - `MergeContext` / `mergeTree` : fusion récursive ; une région de marqueurs peut être à toute
+    profondeur (entrée de mapping, élément ou plage de liste, première clé d'un élément) ; une liste
+    devenue vide reste une liste (`!!seq`) ;
+  - descriptions : `OBJECT_DESC`, `LINKS_DESC`, `PARAMETERS_DESC`, `genericDesc` ; heuristiques
+    d'identité des listes (`id`, `entryId`, `name`, `key`, valeur unique, sinon `diff3` sur la forme
+    canonique) ; un horodatage YAML (`Date`) est un scalaire (`isPlainObject` l'exclut) ;
+  - `detectKind` : `yaml` / `trees` seulement si chaque côté est **exactement** ce qu'écrit l'app
+    (`yaml.dump` `lineWidth: 120` ou style Suivi `lineWidth: -1`) — sinon `text` ;
+  - `updateOutputAt(texte, chemin, valeur)` (édition en place, régions intactes),
+    `canTakeBoth` / `resolveRegionBoth`, `resolveRegion` traite toutes les régions d'une clé ;
+  - `canonicalOutput` à la finalisation : réécriture au format de l'app **seulement si nécessaire**
+    (ligne `-` seule, `!!seq`, étapes à renuméroter).
+- **Session** : `MergeFileEntry.counts` (conflits, repris) ; validation `invalidDrawio`.
+- **Mise en évidence** : jetons `diff-*` (`theme.config.ts`, clair / sombre, fonds opaques, texte
+  ≥ 4,5:1 — `lib/diffTokens.test.ts`) ; `components/diffkit/` : `OverviewRuler`, `NavBar`,
+  `useChangeNavigation` (`F7` / `Maj+F7`, `Alt+↓↑` hors champ éditable), `cmDiff.ts`.
+- **Raw** : vues de diff `RawDiffView` (côte à côte / en ligne, préférence `layout`) ; résolution
+  `RawPane` : côtés décorés contre l'ancêtre, actions par bloc dans chaque panneau
+  (`blockLocator.ts` : fragment au plus près de la ligne de la région), « Prendre les deux »,
+  bloc résolu marqué et « Réinitialiser », navigation des conflits, `F7` → fichier suivant.
+- **Vue générique** (`components/treediff/`) : colonne Structure (12 px par niveau, plafond 6,
+  largeur 180 px réglable, préférence `treeWidth`), une rangée par nœud dans une grille CSS unique,
+  valeurs à la même position X ; `presentation.ts` (générique / objet typé) ; `TreeDiffView` (diff) ;
+  `mergeModel.ts` + `TreeMerge.tsx` (merge : mêmes rangées en haut et dans la sortie, défilement
+  synchronisé par `data-row-key`, cartes de conflit, édition en place) ; `.drawio` en merge :
+  `DrawioMergeOutput` (choix par page).
+- **Thème** : `theme:generate` réécrit tout le bloc des variables de `index.css` — toute variable
+  doit être déclarée dans `theme.config.ts` (les `chart-progress-*` de GH71 l'ont été par GH222 ;
+  `themeTokens.gh222.test.ts`).
 
 ---
 

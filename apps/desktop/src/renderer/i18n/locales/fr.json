@@ -1543,7 +1543,9 @@
       "preconditions": "Préconditions",
       "steps": "Étapes",
       "postconditions": "Postconditions"
-    }
+    },
+    "sideBySide": "Côte à côte",
+    "inline": "En ligne"
   },
   "versionDiffPage": {
     "selectFileHint": "Sélectionnez un fichier dans le panel Version"
@@ -1717,7 +1719,8 @@
       "requiredEmpty": "Champ requis vide : {{field}}",
       "ears": "« {{field}} » ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)",
       "invalidLinks": "links.yaml invalide (chaque lien a un id unique, un type, une source et une cible) {{id}}",
-      "invalidParameters": "parameters.yaml invalide (une table « parameters » attendue)"
+      "invalidParameters": "parameters.yaml invalide (une table « parameters » attendue)",
+      "invalidDrawio": "Fichier .drawio invalide (un élément <mxfile> et ses pages sont attendus)"
     },
     "failure": {
       "stale": "Une des deux branches a bougé depuis l'ouverture : rien n'a été écrit. Relancez l'opération d'origine.",
@@ -1762,7 +1765,18 @@
       "button": "Garder les deux…",
       "preview": "{{oldId}} (mes modifications) deviendra {{newId}} ; fichiers réécrits de mon côté :",
       "confirm": "Renuméroter en {{newId}}"
-    }
+    },
+    "takeBoth": "Prendre les deux",
+    "reset": "Réinitialiser",
+    "resolvedLeft": "✓ Résolu : gauche",
+    "resolvedRight": "✓ Résolu : droite",
+    "resolvedBoth": "✓ Résolu : les deux",
+    "conflictCount_one": "{{count}} conflit",
+    "conflictCount_other": "{{count}} conflits",
+    "autoCount_one": "{{count}} repris",
+    "autoCount_other": "{{count}} repris",
+    "drawioPage": "Page « {{page}} » modifiée des deux côtés",
+    "drawioHunk": "Bloc de texte {{key}} (détail en Raw)"
   },
   "forgeAccess": {
     "revoked": "Votre accès au serveur {{host}} a été révoqué, a expiré ou votre compte a été désactivé. Vos modifications locales sont conservées.",
@@ -2106,5 +2120,34 @@
       "repo": "Dépôt",
       "permission": "Droit"
     }
+  },
+  "diffkit": {
+    "change": {
+      "none": "Aucun changement",
+      "counter": "Changement {{current}} / {{total}}",
+      "prev": "Changement précédent (Maj+F7)",
+      "next": "Changement suivant (F7)",
+      "ruler": "Changements"
+    },
+    "conflict": {
+      "none": "Aucun conflit restant",
+      "counter": "Conflit {{current}} / {{total}}",
+      "prev": "Conflit précédent (Maj+F7)",
+      "next": "Conflit suivant (F7)",
+      "ruler": "Conflits"
+    }
+  },
+  "treediff": {
+    "structure": "Structure",
+    "fields": "Champs",
+    "stepNotes": "Notes",
+    "summary_one": "{{count}} élément, {{changed}} modifié(s)",
+    "summary_other": "{{count}} éléments, {{changed}} modifié(s)",
+    "movedTo": "déplacé vers sa nouvelle place",
+    "movedFrom": "déplacé depuis son ancienne place",
+    "collapse": "Replier",
+    "expand": "Déplier",
+    "empty": "—",
+    "unplaced": "Hors structure"
   }
 }

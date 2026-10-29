@@ -1,4 +1,5 @@
 import yaml from 'js-yaml'
+import { updateOutputAt } from './output'
 import { findRegions, splitLines } from './markers'
 import { deepEqual, isPlainObject, YAML_DUMP_OPTIONS } from './object'
 
@@ -68,66 +69,14 @@ export function fragmentValue(fragment: string): unknown {
   }
 }
 
-const REGION_PLACEHOLDER = (i: number) => `__polenta_region_${i}__`
-const REGION_PLACEHOLDER_LINE = /^ *__polenta_region_(\d+)__: null$/
-
 /**
  * Sets (or removes, with `undefined`) one resolved unit of an object output **without touching
- * its open regions** — the form edit of the "Rendu" mode. Each region is swapped for a placeholder
- * key at its indentation, the YAML is loaded, changed and dumped again (canonical `writeYaml`
- * format), and the regions are put back verbatim. `null` when the text outside the regions is
- * not valid YAML (the caller keeps the text as is).
+ * its open regions** — the form edit of the "Rendu" mode (GH222: `updateOutputAt` on its path).
+ * `null` when the text outside the regions is not valid YAML (the caller keeps the text as is).
  */
 export function updateObjectOutput(text: string, unit: string, value: unknown): string | null {
-  const { regions, error } = findRegions(text)
-  if (error) return null
-  const lines = splitLines(text)
-  const regionText: string[] = []
-  const out: string[] = []
-  let r = 0
-  for (let i = 0; i < lines.length; i++) {
-    const region = regions[r]
-    if (region && i === region.start) {
-      const body = [...lines.slice(region.start + 1, region.sep), ...lines.slice(region.sep + 1, region.end)]
-      const first = body.find(l => l.trim() !== '') ?? ''
-      const indent = first.length - first.trimStart().length
-      out.push(`${' '.repeat(indent)}${REGION_PLACEHOLDER(regionText.length)}: null`)
-      regionText.push(lines.slice(region.start, region.end + 1).join('\n'))
-      i = region.end
-      r++
-      continue
-    }
-    out.push(lines[i])
-  }
-
-  let obj: unknown
-  try {
-    obj = yaml.load(out.join('\n'))
-  } catch {
-    return null
-  }
-  if (!isPlainObject(obj)) return null
-
-  if (unit.startsWith(FIELD_PREFIX)) {
-    const name = unit.slice(FIELD_PREFIX.length)
-    if (!isPlainObject(obj.fields)) obj.fields = {}
-    const fields = obj.fields as Obj
-    if (value === undefined) delete fields[name]
-    else fields[name] = value
-  } else if (value === undefined) {
-    delete obj[unit]
-  } else {
-    obj[unit] = value
-  }
-
-  return yaml
-    .dump(obj, YAML_DUMP_OPTIONS)
-    .split('\n')
-    .map(line => {
-      const m = REGION_PLACEHOLDER_LINE.exec(line)
-      return m ? regionText[Number(m[1])] : line
-    })
-    .join('\n')
+  const path = unit.startsWith(FIELD_PREFIX) ? ['fields', unit.slice(FIELD_PREFIX.length)] : [unit]
+  return updateOutputAt(text, path, value, YAML_DUMP_OPTIONS)
 }
 
 /**

@@ -78,5 +78,23 @@ export const themeColors = {
     "ink": "rgb(var(--print-ink) / <alpha-value>)",
     "ink-2": "rgb(var(--print-ink-2) / <alpha-value>)",
     "border": "rgb(var(--print-border) / <alpha-value>)"
+  },
+  "diff": {
+    "line-del": "rgb(var(--diff-line-del) / <alpha-value>)",
+    "char-del": "rgb(var(--diff-char-del) / <alpha-value>)",
+    "line-ins": "rgb(var(--diff-line-ins) / <alpha-value>)",
+    "char-ins": "rgb(var(--diff-char-ins) / <alpha-value>)",
+    "gutter-del": "rgb(var(--diff-gutter-del) / <alpha-value>)",
+    "gutter-ins": "rgb(var(--diff-gutter-ins) / <alpha-value>)",
+    "left-line": "rgb(var(--diff-left-line) / <alpha-value>)",
+    "left-char": "rgb(var(--diff-left-char) / <alpha-value>)",
+    "right-line": "rgb(var(--diff-right-line) / <alpha-value>)",
+    "right-char": "rgb(var(--diff-right-char) / <alpha-value>)",
+    "conflict": "rgb(var(--diff-conflict) / <alpha-value>)",
+    "conflict-bg": "rgb(var(--diff-conflict-bg) / <alpha-value>)",
+    "resolved": "rgb(var(--diff-resolved) / <alpha-value>)",
+    "auto-left": "rgb(var(--diff-auto-left) / <alpha-value>)",
+    "auto-right": "rgb(var(--diff-auto-right) / <alpha-value>)",
+    "hatch": "rgb(var(--diff-hatch) / <alpha-value>)"
   }
 }

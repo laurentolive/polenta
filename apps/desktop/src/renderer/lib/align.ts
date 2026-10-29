@@ -1,4 +1,3 @@
-import type { TestStep } from '@polenta/types'
 
 /**
  * GH178 — alignement de deux suites (étapes de test, blocs média d'un richtext, pages d'un
@@ -45,15 +44,6 @@ export function alignByKey(a: string[], b: string[], pairLeftovers = false): Ali
   }
   flush()
   return rows
-}
-
-/**
- * Étapes de test : appariement par contenu (action + résultat attendu), puis par position entre
- * deux étapes identiques (étape modifiée en place). Une étape insérée ne décale pas les suivantes.
- */
-export function alignSteps(before: TestStep[], after: TestStep[]): AlignedRow[] {
-  const key = (s: TestStep) => `${s?.action ?? ''}\u0000${s?.expectedResult ?? ''}`
-  return alignByKey(before.map(key), after.map(key), true)
 }
 
 type Page = { id: string; name: string }

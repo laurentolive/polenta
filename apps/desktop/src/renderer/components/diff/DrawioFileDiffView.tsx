@@ -113,7 +113,7 @@ export function DrawioFileDiffView({ repoPath, filepath, before, after, hideUnch
 }
 
 /** Une page rendue par le viewer statique (même rendu que les diagrammes de la Vue Word). */
-function DrawioPageView({ repoPath, filepath, pageId, at, frame }: {
+export function DrawioPageView({ repoPath, filepath, pageId, at, frame }: {
   repoPath: string; filepath: string; pageId: string; at: string | null; frame?: string
 }) {
   const ref = useRef<HTMLSpanElement>(null)

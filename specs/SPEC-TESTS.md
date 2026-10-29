@@ -793,6 +793,12 @@ libellés et types partagés dans `@polenta/types` (`campaign-execution-sheet.ts
 > colonnes** (ligne `columns`) : un v3 est lu par elle, v1 / v2 restent lus par l'ordre fixe (sans
 > champs). Import : erreurs par instance `invalid_field_value` / `required_field_missing` (ligne, champ,
 > message), les autres instances importées.
+>
+> **Résultats déjà saisis (GH196)** : une instance déjà exécutée est exportée avec son résultat
+> (dernier run de l'entrée : verdicts, testeur, date, commentaires en texte simple, champs). La feuille
+> `_polenta` porte, par instance pré-remplie, la signature de ces valeurs (colonne `prefill`) ; au
+> réimport, une instance dont les valeurs donnent la même signature est **ignorée** (« N instances déjà
+> exécutées, non modifiées »), une instance modifiée crée un nouveau run comme une saisie.
 
 > **Client web (GH44)** : l'export est **téléchargé** (`web:execution-sheet-export`) ; à l'import,
 > le classeur est choisi dans le navigateur, envoyé (`POST /upload`) et prévisualisé par

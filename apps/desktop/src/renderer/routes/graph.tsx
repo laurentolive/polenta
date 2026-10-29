@@ -371,10 +371,13 @@ function GraphContextMenu({
     onError: handleMutationError,
   })
 
+  // GH231 — the error and « Résoudre les conflits » are shown by the main menu: leave the branch
+  // selector, or the merge looks like it did nothing until « Retour ».
   const mergeIntoMut = useMutation({
     mutationFn: ({ from, into }: { from: string; into: string }) => api.sync.mergeInto(repoPath, from, into),
     onSuccess: (result: MergeResult, { from, into }) => {
       if (!result.success) {
+        setSelectorMode(null)
         setMutationError(t('graphPage.mergeConflicts', { conflicts: result.conflicts.join(', ') }))
         if (result.leftRef && result.rightRef) setMergeConflict({ leftRef: result.leftRef, rightRef: result.rightRef, from, into })
         return
@@ -382,7 +385,10 @@ function GraphContextMenu({
       onInvalidate(['status', 'graph'])
       onClose()
     },
-    onError: handleMutationError,
+    onError: (err: unknown) => {
+      setSelectorMode(null)
+      handleMutationError(err)
+    },
   })
 
   const rebaseMut = useMutation({

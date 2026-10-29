@@ -1,3 +1,4 @@
+import { fieldValueToText, linkPlainText, readLinkValues } from '@polenta/types'
 import { forwardRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
@@ -139,7 +140,7 @@ function richtext(v: unknown, repoPath: string, onChange?: (v: unknown) => void)
 /** Same widgets as the object editor; the value keeps its YAML type (number, boolean). */
 function fieldBody(field: SchemaField, v: unknown, repoPath: string, onChange?: (v: unknown) => void): ReactNode {
   if (!onChange) return <FieldValue field={field} value={v} repoPath={repoPath} />
-  const asString = v === undefined || v === null ? '' : String(v)
+  const asString = fieldValueToText(v)
   return (
     <DynamicField
       field={{ ...field, label: '' }}
@@ -159,12 +160,17 @@ function toFieldValue(field: SchemaField, s: string): unknown {
     return s === '' || Number.isNaN(n) ? s : n
   }
   if (field.type === 'boolean') return s === 'true'
+  if (field.type === 'link') {
+    const links = readLinkValues(s)
+    return links.length === 0 ? undefined : field.multiple ? links : links[0]
+  }
   return s
 }
 
 function FieldValue({ field, value, repoPath }: { field?: SchemaField; value: unknown; repoPath: string }) {
   if (value === undefined || value === null || value === '') return <Empty />
   if (field?.type === 'richtext' && typeof value === 'string') return <RichTextViewer value={value} repoPath={repoPath} />
+  if (field?.type === 'link') return <p className="text-sm text-ink whitespace-pre-wrap">{readLinkValues(value).map(linkPlainText).join('\n')}</p>
   if (typeof value === 'object') return <RawValue value={value} />
   return <p className="text-sm text-ink whitespace-pre-wrap">{String(value)}</p>
 }

@@ -171,7 +171,7 @@ async function callPrintHook(name: string, args: unknown[]): Promise<unknown> {
 /** Channels propres au poste local : l'interface web les masque ; un appel résiduel échoue net. */
 const UNAVAILABLE = new Set([
   'dialog:pick-folder', 'drawio:open-external', 'export:show-in-folder', 'export:open-file',
-  'app:open-release-page', 'update:install', 'auth:device-flow-start', 'auth:device-flow-poll',
+  'app:open-release-page', 'app:open-link', 'update:install', 'auth:device-flow-start', 'auth:device-flow-poll',
 ])
 
 // ── Événements ──────────────────────────────────────────────────────────────────

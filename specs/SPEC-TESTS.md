@@ -280,7 +280,7 @@ Un `TestRun` représente **une exécution concrète** d'un cas de test à un ins
 
 **Retest :** quand un TestRun échoue et qu'on veut retester (après correction), on crée simplement un **nouveau TestRun** indépendant. Pas de lien structurel entre runs — la séquence chronologique et le filtre par `testCaseId` suffisent pour voir l'évolution des résultats.
 
-**Pièces jointes :** il n'y a pas de stockage de fichiers dans Polenta. Toute pièce jointe (capture oscilloscope, log, photo de banc) est partagée via **OneDrive** et son lien est inséré directement dans le champ `comment` RICHTEXT de l'étape concernée, ou dans le champ `notes` global du run.
+**Pièces jointes :** il n'y a pas de stockage de fichiers dans Polenta. Toute pièce jointe (capture oscilloscope, log, photo de banc) est partagée via la GED du client (OneDrive…). La voie **structurée** est un champ de type `link` (GH195, SPEC-REQ §3.2) : colonne, champ obligatoire (`requiredWhen`), hyperlien d'export. Coller le lien dans un `richtext` (`comment` de l'étape, `notes` du run) reste possible.
 
 ### 3.2 Attributs d'un TestRun
 
@@ -992,7 +992,7 @@ TestsIndex (par projet/branche)
 |-------|----------|
 | Étapes hiérarchiques | **Non** — toujours à plat. Structuration par étapes-titre si besoin. |
 | Retest | **Nouveau TestRun indépendant** — pas de lien `retestOf`. L'historique chronologique suffit. |
-| Pièces jointes | **Liens OneDrive dans les RICHTEXT** — pas de stockage dans Polenta. Pas d'AWS S3. |
+| Pièces jointes | **Champ `link` structuré** (GH195), ou lien collé dans un RICHTEXT — pas de stockage dans Polenta. Pas d'AWS S3. |
 | Statut de campagne | **Manuel uniquement** — le testeur décide quand clôturer. Pas d'auto-complete. |
 | Import JUnit XML | **TestRun isolés** — pas de rattachement automatique à une campagne. Rattachement manuel si besoin. |
 | Paramètres de test | **Détection automatique par `{label}`** — pas de liste déclarée séparément (T97). |

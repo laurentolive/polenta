@@ -14,12 +14,14 @@ import type { GitService } from '../../git.service'
 import type { SchemaService } from '../../schema.service'
 import type { AuthService } from '../../auth.service'
 import type { TestsService } from '../../tests.service'
-import type { RichConverter } from './template-data'
+import type { LinkRenderer, RichConverter } from './template-data'
 import type { RunLoader, TableBuilder } from './template-data-campaign'
 import type { DrawioSnapshotter } from './drawio-ref'
 
 interface BuilderContext {
   toRich: RichConverter
+  /** GH195 — hyperliens natifs des champs `link` (absent : texte `libellé (URL)`). */
+  toLinks?: LinkRenderer
   loadRun: RunLoader
   toTable: TableBuilder
 }
@@ -43,8 +45,8 @@ const campaignData: KindDataBuilder = async (p, c) =>
   (await import('./template-data-campaign')).buildCampaignData(p as CampaignExportPayload, c.toRich, c.loadRun)
 
 const DATA_BUILDERS: Partial<Record<`${ExportKind}:${TemplateExportFormat}`, KindDataBuilder>> = {
-  'requirements:docx': async (p, c) => (await import('./template-data')).buildItemsData(p as RequirementsExportPayload, c.toRich),
-  'tests:docx': async (p, c) => (await import('./template-data')).buildItemsData(p as TestsExportPayload, c.toRich),
+  'requirements:docx': async (p, c) => (await import('./template-data')).buildItemsData(p as RequirementsExportPayload, c.toRich, c.toLinks),
+  'tests:docx': async (p, c) => (await import('./template-data')).buildItemsData(p as TestsExportPayload, c.toRich, c.toLinks),
   'campaign-plan:docx': campaignData,
   'campaign-report:docx': campaignData,
   'dashboard:docx': async (p, c) => (await import('./template-data-campaign')).buildDashboardData(p as DashboardExportPayload, c.toTable),
@@ -105,7 +107,7 @@ export class TemplateExportService {
       return
     }
 
-    const [{ buildCommonData }, { renderDocxTemplate }, { MarkdownToOoxml, textTableXml }, { collectDrawioRefs }] = await Promise.all([
+    const [{ buildCommonData }, { renderDocxTemplate }, { MarkdownToOoxml, linkParagraphs, textTableXml }, { collectDrawioRefs }] = await Promise.all([
       import('./template-data'),
       import('./docx-template'),
       import('./markdown-to-ooxml'),
@@ -133,7 +135,8 @@ export class TemplateExportService {
       }
       const toRich: RichConverter = async md => (converter ? converter.convert(md) : NO_RICH)
       const toTable: TableBuilder = (header, rows) => textTableXml(pkg, header, rows)
-      return { ...common, ...(await builder(payload, { toRich, loadRun, toTable })) }
+      const toLinks: LinkRenderer = links => ({ render: () => linkParagraphs(links, pkg) })
+      return { ...common, ...(await builder(payload, { toRich, toLinks, loadRun, toTable })) }
     })
     await fsP.writeFile(destPath, buffer)
   }

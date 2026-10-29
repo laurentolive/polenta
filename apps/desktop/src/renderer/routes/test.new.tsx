@@ -1,3 +1,4 @@
+import { isFieldRequiredNow, objectFieldReader, initialStatus } from '@polenta/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
@@ -155,6 +156,7 @@ function NewTestCasePage() {
           {typeDef?.fields.map(f => (
             <DynamicField key={f.name} field={f}
               value={fields[f.name] ?? String(f.default ?? '')}
+              requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: initialStatus(typeDef), fields: fields }))}
               onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
               disabled={isDisabled}
               repoPath={repoPath}

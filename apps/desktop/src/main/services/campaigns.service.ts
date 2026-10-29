@@ -8,6 +8,7 @@ import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus, renameF
 import type { FieldRename, FieldRenameResult, HistoryCarrier, ObjectHistory } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
+import { applyFieldsWrite } from './field-write.util'
 
 export class CampaignsService {
   constructor(
@@ -480,6 +481,12 @@ export class CampaignsService {
     /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
     opts: { raw?: boolean } = {},
   ): Promise<TestCampaign> {
+    // GH195 — liens normalisés, `requiredWhen` contrôlé (lève FieldWriteError).
+    // Le passage implicite planned → in_progress (premier résultat enregistré) n'est pas un
+    // changement de statut demandé : il ne déclenche pas les `requiredWhen` sur le statut.
+    const implicitStart = before?.status === 'planned' && after.status === 'in_progress'
+    const checkedBefore = implicitStart ? { ...before, status: after.status } : before
+    if (!opts.raw) after = await applyFieldsWrite(this.gitService, repoPath, checkedBefore, after)
     const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath: `campaigns/${id}.yaml` })
       : after

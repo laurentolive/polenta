@@ -137,7 +137,17 @@ export interface GraphFixedStatus {
 
 export type GraphFieldType =
   | 'text' | 'textarea' | 'number' | 'enum' | 'multi_enum' | 'boolean' | 'date' | 'datetime'
-  | 'richtext' | 'user' | 'drawio'
+  | 'richtext' | 'user' | 'drawio' | 'link'
+
+/**
+ * GH195 — valeur d'un champ `link` dans `fields` : un lien, ou une liste si le champ est
+ * `multiple`. `label` est absent quand il est vide (afficher alors l'URL). Un fichier édité à la
+ * main peut encore porter une chaîne `libellé | URL` : la lire avec prudence.
+ */
+export interface GraphLinkValue {
+  label?: string
+  url: string
+}
 
 export interface GraphFieldDef {
   name: string
@@ -150,6 +160,10 @@ export interface GraphFieldDef {
   validator?: string
   /** Vrai si l'historique du champ est conservé dans `history[<name>]`. */
   trackHistory: boolean
+  /** GH195 — champ `link` : valeur liste ({@link GraphLinkValue}[]) au lieu d'un seul lien. */
+  multiple?: boolean
+  /** GH195 — obligation conditionnelle, telle que déclarée dans le schéma. */
+  requiredWhen?: Record<string, unknown[]>
 }
 
 export interface GraphLinkType {

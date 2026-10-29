@@ -1,3 +1,4 @@
+import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
@@ -31,7 +32,7 @@ const STATUS_CLASSES: Record<string, string> = {
 
 function getStringField(fields: Record<string, unknown>, key: string): string {
   const v = fields[key]
-  return typeof v === 'string' ? v : (v !== undefined && v !== null ? String(v) : '')
+  return fieldValueToText(v)
 }
 
 function RequirementDetailPage() {
@@ -63,7 +64,7 @@ function RequirementDetailPage() {
       const stringFields: Record<string, string> = {}
       if (req.fields && typeof req.fields === 'object') {
         for (const [k, v] of Object.entries(req.fields as Record<string, unknown>)) {
-          stringFields[k] = v !== undefined && v !== null ? String(v) : ''
+          stringFields[k] = fieldValueToText(v)
         }
       }
       setFields(stringFields)
@@ -164,6 +165,7 @@ function RequirementDetailPage() {
             key={f.name}
             field={f}
             value={fields[f.name] ?? String(f.default ?? '')}
+            requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: req.status, fields: fields }))}
             onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
             repoPath={repoPath}
             interfaceRoles={schema?.roles?.map(r => r.name)}

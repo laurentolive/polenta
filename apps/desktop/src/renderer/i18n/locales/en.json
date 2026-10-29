@@ -520,7 +520,11 @@
       "historyValue": "Track: value, date and author on every change",
       "historyEvent": "Track: date and author on every change (the content is already in git)",
       "historyNotTrackable": "This field cannot be tracked",
-      "trackStatusHistory": "Track status history (value, date and author on every change)"
+      "trackStatusHistory": "Track status history (value, date and author on every change)",
+      "colRequiredWhen": "Req. if",
+      "colRequiredWhenTitle": "Required when a field has one of the values: “status = approved” or “field = v1, v2; other = v3” (status, enum, multi_enum, boolean of the type)",
+      "linkMultiple": "Multiple",
+      "linkMultipleTitle": "Several links in this field"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -2106,5 +2110,23 @@
       "repo": "Repository",
       "permission": "Permission"
     }
+  },
+  "linkField": {
+    "label": "Label",
+    "labelPlaceholder": "Label (optional)",
+    "url": "URL",
+    "urlPlaceholder": "https://…, file://… or \\\\server\\share\\…",
+    "invalidUrl": "Unsupported URL: http(s)://, file:// or network path \\\\server\\share.",
+    "invalidLabel": "The label cannot contain “|” or a line break.",
+    "add": "+ Add a link",
+    "remove": "Remove this link",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "ok": "OK",
+    "copy": "Copy",
+    "copied": "Copied",
+    "pasteRejected_one": "{{count}} link ignored (unsupported URL scheme).",
+    "pasteRejected_other": "{{count}} links ignored (unsupported URL scheme).",
+    "pasteSingleOnly": "This field keeps a single link: only the first one was pasted."
   }
 }

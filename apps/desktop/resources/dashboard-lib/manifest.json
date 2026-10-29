@@ -127,6 +127,14 @@
             "fr": "Historique : commentaire de modification (comment) sur les entrées (GH163)",
             "en": "History: modification comment (comment) on entries (GH163)"
           }
+        },
+        {
+          "version": 4,
+          "hash": "fc1619e5a158f93fc94519b73a6c14f8293bbeaaa63735189dba76a8623819dd",
+          "summary": {
+            "fr": "Champs de type lien (GH195) : GraphLinkValue, multiple, requiredWhen",
+            "en": "Link fields (GH195): GraphLinkValue, multiple, requiredWhen"
+          }
         }
       ]
     },

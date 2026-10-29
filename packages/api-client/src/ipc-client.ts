@@ -47,6 +47,7 @@ export function createIpcClient(
       getSettings: () => invoke('app:get-settings'),
       setSettings: (patch) => invoke('app:set-settings', patch),
       openReleasePage: (url) => invoke('app:open-release-page', url),
+      openLink: (url) => invoke('app:open-link', url),
       getMachineConfig: () => invoke('app:get-machine-config'),
       getTeamConfig: () => invoke('app:get-team-config'),
       refreshTeamConfig: () => invoke('app:refresh-team-config'),

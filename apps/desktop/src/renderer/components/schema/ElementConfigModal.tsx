@@ -116,7 +116,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           </div>
           {prefixError && <p className="text-xs text-status-danger mb-3">{prefixError}</p>}
           {saveError && <p className="text-xs text-status-danger mb-3">{saveError}</p>}
-          <FieldsTable fields={draft.fields} onChange={fields => set({ fields })} />
+          <FieldsTable fields={draft.fields} onChange={fields => set({ fields })} statuses={draft.statuses} category={draft.category} />
           {draft.category !== 'campaign' && (
             <StatusesTable statuses={draft.statuses} onChange={statuses => set({ statuses })} />
           )}

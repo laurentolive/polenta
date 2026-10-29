@@ -1,5 +1,5 @@
 import { deepEqual, unitValue } from '@polenta/merge-core'
-import { parseMultiEnumValue, type ObjectTypeDefinition, type SchemaField } from '@polenta/types'
+import { linkPlainText, parseMultiEnumValue, readLinkValues, type ObjectTypeDefinition, type SchemaField } from '@polenta/types'
 
 /**
  * GH178 — unités d'un objet typé (exigence, test) pour le mode Rendu des vues de diff : clés racine
@@ -77,6 +77,7 @@ export function scalarLabel(field: SchemaField | undefined, value: unknown): str
   const label = (v: string) => field?.valueLabels?.[v] ?? v
   if (field?.type === 'multi_enum') return parseMultiEnumValue(value).map(label).join(', ')
   if (field?.type === 'enum') return label(String(value))
+  if (field?.type === 'link') return readLinkValues(value).map(linkPlainText).join('\n')
   return String(value)
 }
 

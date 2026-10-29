@@ -1,3 +1,4 @@
+import { fieldValueToText } from '@polenta/types'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api'
@@ -21,7 +22,7 @@ const STATUS_CLASSES: Record<string, string> = {
 
 function fieldToString(fields: Record<string, unknown>, key: string): string {
   const v = fields[key]
-  return typeof v === 'string' ? v : (v !== undefined && v !== null ? String(v) : '')
+  return fieldValueToText(v)
 }
 
 // Popup de consultation en lecture seule — pas d'édition, pas de transitions de statut. La liste
@@ -83,7 +84,7 @@ export function RequirementEditModal({ repoPath, reqId, onClose }: Props) {
                 Object.entries(fields).map(([key, val]) => (
                   <div key={key}>
                     <label className="block text-sm font-medium text-ink mb-1">{key}</label>
-                    <input type="text" value={val !== undefined && val !== null ? String(val) : ''} disabled className="input-field w-full" />
+                    <input type="text" value={fieldValueToText(val)} disabled className="input-field w-full" />
                   </div>
                 ))
               )}

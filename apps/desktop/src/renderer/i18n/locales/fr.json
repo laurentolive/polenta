@@ -2134,5 +2134,17 @@
       "next": "Conflit suivant (F7)",
       "ruler": "Conflits"
     }
+  },
+  "treediff": {
+    "structure": "Structure",
+    "fields": "Champs",
+    "stepNotes": "Notes",
+    "summary_one": "{{count}} élément, {{changed}} modifié(s)",
+    "summary_other": "{{count}} éléments, {{changed}} modifié(s)",
+    "movedTo": "déplacé vers sa nouvelle place",
+    "movedFrom": "déplacé depuis son ancienne place",
+    "collapse": "Replier",
+    "expand": "Déplier",
+    "empty": "—"
   }
 }

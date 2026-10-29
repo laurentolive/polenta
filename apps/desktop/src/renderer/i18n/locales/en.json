@@ -2134,5 +2134,17 @@
       "next": "Next conflict (F7)",
       "ruler": "Conflicts"
     }
+  },
+  "treediff": {
+    "structure": "Structure",
+    "fields": "Fields",
+    "stepNotes": "Notes",
+    "summary_one": "{{count}} item, {{changed}} changed",
+    "summary_other": "{{count}} items, {{changed}} changed",
+    "movedTo": "moved to its new place",
+    "movedFrom": "moved from its former place",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "empty": "—"
   }
 }

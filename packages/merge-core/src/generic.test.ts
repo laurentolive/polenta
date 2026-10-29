@@ -364,3 +364,15 @@ describe('Revue de code — non-régressions', () => {
     expect(canonicalOutput('object', text)).toBe(text)
   })
 })
+
+describe('Revue sprint 3', () => {
+  it('a changed timestamp is a modified scalar, not an empty mapping', () => {
+    const root = diffTree(yaml.load('d: 2026-01-01'), yaml.load('d: 2026-02-01'))
+    expect(root.children![0]).toMatchObject({ key: '/d', state: 'modified', kind: 'scalar' })
+  })
+
+  it('elements of an added aligned list carry their index', () => {
+    const root = diffTree(undefined, { steps: [{ action: 'a' }, { action: 'b' }] })
+    expect(root.children![0].children!.map(c => c.indexes)).toEqual([[null, 0], [null, 1]])
+  })
+})

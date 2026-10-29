@@ -28,6 +28,8 @@ export interface DiffNode {
   changedCount: number
   /** `moved`: key of the node at the other place. */
   movedPeer?: string
+  /** Element of a list aligned as a whole: its index in each version (`null` = absent there). */
+  indexes?: [number | null, number | null]
 }
 
 type Obj = Record<string, unknown>
@@ -104,7 +106,11 @@ class Differ {
     if (isPlainObject(v)) return Object.keys(v).map(k => mk([...path, key(k)], k, v[k]))
     if (Array.isArray(v)) {
       const rule = this.rule(path, [v])
-      return v.map((x, i) => 'lcs' in rule ? mk([...path, pos(i)], `#${i + 1}`, x) : mk([...path, item(identityOf(rule, x))], identityOf(rule, x), x))
+      // Aligned elements keep their index on each side present (step numbers).
+      const indexes = (i: number): [number | null, number | null] => [side === false ? null : i, side === true ? null : i]
+      return v.map((x, i) => ('lcs' in rule
+        ? { ...mk([...path, pos(i)], `#${i + 1}`, x), indexes: indexes(i) }
+        : mk([...path, item(identityOf(rule, x))], identityOf(rule, x), x)))
     }
     return undefined
   }
@@ -141,10 +147,11 @@ class Differ {
       const p = [...path, pos(row)]
       const label = `#${(j ?? i!) + 1}`
       // Equal but for the ignored keys (a step whose `order` moved): unchanged.
+      const indexes: [number | null, number | null] = [i, j]
       if (i !== null && j !== null && ac[i] === bc[j]) {
-        return { ...this.node(p, label, b[j], b[j], true, true), before: a[i] }
+        return { ...this.node(p, label, b[j], b[j], true, true), before: a[i], indexes }
       }
-      return this.node(p, label, i === null ? undefined : a[i], j === null ? undefined : b[j], i !== null, j !== null)
+      return { ...this.node(p, label, i === null ? undefined : a[i], j === null ? undefined : b[j], i !== null, j !== null), indexes }
     })
   }
 }

@@ -88,9 +88,9 @@ const commitDiff = (sha: string, filepath: string) =>
 const raw = () => s.page.getByTestId('raw-diff')
 const counter = () => s.page.getByTestId('diff-nav-counter')
 
+/** Raw mode for a YAML file (GH222: every YAML file has a Rendu, the default). */
 async function rawMode() {
-  const toggle = s.page.getByTestId('diff-mode-toggle')
-  if (await toggle.count()) await toggle.getByRole('button', { name: 'Raw' }).click()
+  await s.page.getByTestId('diff-mode-toggle').getByRole('button', { name: 'Raw' }).click()
 }
 
 test.describe('diff Raw', () => {

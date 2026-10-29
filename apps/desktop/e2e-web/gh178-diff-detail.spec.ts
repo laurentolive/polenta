@@ -93,12 +93,13 @@ test('G4 — richtext : seuls les mots changés sont marqués', async () => {
 
 test('G5 — étapes : insertion alignée, étapes suivantes non décalées, modification en place', async () => {
   await openCommitDiff(TEST)
-  const rows = s.page.getByTestId('steps-diff').locator('[data-step-row]')
+  // GH222 — étapes dans la vue générique : une rangée par étape (colonne Structure).
+  const rows = s.page.getByTestId('object-diff').locator('[data-step-row]')
   await expect(rows).toHaveCount(4)
   const attrs = await rows.evaluateAll(els => els.map(e => `${e.getAttribute('data-step-row')}${e.hasAttribute('data-changed') ? '*' : ''}`))
   expect(attrs).toEqual(['0:0', '-:1*', '1:2', '2:3*'])
-  await expect(s.page.getByTestId('steps-diff').locator('del.diff-del')).toHaveCount(0)
-  await expect(s.page.getByTestId('steps-diff').locator('ins.diff-ins')).toHaveText(['bis'])
+  await expect(s.page.getByTestId('object-diff').locator('del.diff-del')).toHaveCount(0)
+  await expect(s.page.getByTestId('object-diff').locator('ins.diff-ins')).toHaveText(['bis'])
   await s.shot('gh178-steps')
 })
 

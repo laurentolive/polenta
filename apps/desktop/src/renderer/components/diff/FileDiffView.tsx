@@ -9,11 +9,14 @@ import { diffPrefs } from '../../lib/diffPrefs'
 import { getReqTypeDef, getTestTypeDef, useProjectSchema } from '../../hooks/useProjectSchema'
 import { useSchemaAt } from '../../hooks/useSchemaAt'
 import { RawDiffView } from './RawDiffView'
-import { ObjectDiffView } from './ObjectDiffView'
+import { keyedKindOf, LINKS_DESC, OBJECT_DESC, PARAMETERS_DESC, type StructureDesc } from '@polenta/merge-core'
+import { TreeDiffView } from '../treediff/TreeDiffView'
+import { genericPresentation, typedPresentation } from '../treediff/presentation'
 import { DrawioFileDiffView } from './DrawioFileDiffView'
 
 type Obj = Record<string, unknown>
-type Parsed = { obj: Obj | null; invalid: boolean }
+/** `value` : the parsed YAML (`undefined` = absent from that version), `obj` : the same when it is a mapping. */
+type Parsed = { value: unknown; obj: Obj | null; invalid: boolean }
 
 /**
  * GH178 — diff d'un fichier, commun aux trois écrans (`/version-diff`, `/diff` working tree et
@@ -67,7 +70,9 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
   const schemaLoading = !!objectTypeRef && (current.isLoading || afterSchema.isLoading || beforeSchema.isLoading)
 
   const isDrawio = /\.drawio$/i.test(filepath)
-  const canRender = isDrawio || !!typeDef
+  // GH222 — every YAML file has a Rendu (generic view); typed objects get their schema's labels.
+  const canRender = isDrawio || !!typeDef || isYaml
+  const presentation = useMemo(() => (typeDef ? typedPresentation(typeDef, t) : genericPresentation), [typeDef, t])
   const rendered = mode === 'rendered' && canRender
   const beforeLabel = sideLabel(t('diffView.before'), oldRef, false, t)
   const afterLabel = sideLabel(t('diffView.after'), newRef, true, t)
@@ -104,14 +109,17 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
     body = <p className="p-6 text-xs text-status-warning">{t('diffView.renderUnavailable')}</p>
   } else {
     body = (
-      <ObjectDiffView
-        // Un autre fichier ou d'autres versions : les groupes dépliés repartent de zéro.
+      <TreeDiffView
+        // Un autre fichier ou d'autres versions : les nœuds dépliés repartent de zéro.
         key={`${filepath}@${oldRef}..${newRef}`}
-        before={{ value: before.obj, at: oldRef, label: beforeLabel, typeDef: beforeTypeDef }}
-        after={{ value: after.obj, at: newRef, label: afterLabel, typeDef }}
-        typeDef={typeDef}
+        before={{ value: before.value, at: oldRef, label: beforeLabel, typeDef: beforeTypeDef }}
+        after={{ value: after.value, at: newRef, label: afterLabel, typeDef }}
+        presentation={presentation}
+        desc={descFor(filepath, !!objectTypeRef)}
         repoPath={repoPath}
         hideUnchanged={hideUnchanged}
+        navSlot={navSlot}
+        testId={typeDef ? 'object-diff' : 'tree-diff'}
       />
     )
   }
@@ -121,7 +129,7 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
       <div className="px-4 py-2 border-b border-edge shrink-0 flex items-center gap-3">
         {showPath && <p className="font-mono text-sm text-ink font-medium truncate flex-1">{filepath}</p>}
         {!showPath && <div className="flex-1" />}
-        {!rendered && <span ref={setNavSlot} className="contents" />}
+        {(!rendered || !isDrawio) && <span ref={setNavSlot} className="contents" />}
         {!rendered && (
           <div className="flex rounded border border-edge overflow-hidden shrink-0" role="group" data-testid="diff-layout-toggle">
             <ToggleButton active={layout === 'side'} onClick={() => setLayout('side')} icon={<Columns2 size={12} />} label={t('diffView.sideBySide')} />
@@ -154,13 +162,22 @@ export function FileDiffView({ repoPath, filepath, contents, isLoading, showPath
 }
 
 function parseSide(isYaml: boolean, text: string | undefined, missing: boolean | undefined): Parsed {
-  if (!isYaml || missing || text === undefined) return { obj: null, invalid: false }
+  if (!isYaml || missing || text === undefined) return { value: undefined, obj: null, invalid: false }
   try {
-    const v = yaml.load(text)
-    return v && typeof v === 'object' && !Array.isArray(v) ? { obj: v as Obj, invalid: false } : { obj: null, invalid: true }
+    // An empty or comment-only file is an empty document, not an absent one.
+    const v = yaml.load(text) ?? null
+    return { value: v, obj: v && typeof v === 'object' && !Array.isArray(v) ? v as Obj : null, invalid: false }
   } catch {
-    return { obj: null, invalid: true }
+    return { value: undefined, obj: null, invalid: true }
   }
+}
+
+/** Same pairing of list elements as the merge of the file (GH222 design §2.3): links by `id`,
+ *  parameters by name, typed objects by their own rules; other YAML by the generic heuristics. */
+function descFor(filepath: string, typed: boolean): StructureDesc | undefined {
+  if (typed) return OBJECT_DESC
+  const keyed = keyedKindOf(filepath)
+  return keyed === 'links' ? LINKS_DESC : keyed === 'parameters' ? PARAMETERS_DESC : undefined
 }
 
 function findType(schemas: Array<ProjectSchema | null | undefined>, ref: string): ObjectTypeDefinition | undefined {

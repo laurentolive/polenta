@@ -13,8 +13,9 @@ export function orderedKeys(...objs: Obj[]): string[] {
   return out
 }
 
+/** A YAML mapping — not a list, and not a timestamp (js-yaml loads one as a `Date`, a scalar). */
 export function isPlainObject(v: unknown): v is Obj {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
+  return typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date)
 }
 
 export function deepEqual(a: unknown, b: unknown): boolean {

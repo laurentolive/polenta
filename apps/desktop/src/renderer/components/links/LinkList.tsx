@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function LinkList({ value, inline, className }: Props) {
-  const links = readLinkValues(value)
+  const links = readLinkValues(value).filter(l => l.url)
   if (links.length === 0) return null
   return (
     <span className={[inline ? 'inline' : 'flex flex-col gap-0.5', className ?? ''].join(' ')} data-link-list>

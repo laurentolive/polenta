@@ -8,10 +8,16 @@ export interface LinkValue {
   url: string
 }
 
-const HTTP_URL = /^https?:\/\/\S+$/i
-const FILE_URL = /^file:\/\/\S+$/i
+// `|` brut refusé dans une URL (encodé `%7C`) : c'est le séparateur de la forme texte `libellé | URL`.
+const HTTP_URL = /^https?:\/\/[^\s|]+$/i
+const FILE_URL = /^file:\/\/[^\s|]+$/i
 // Chemin réseau `\\serveur\partage\…` : espaces admis dans le chemin, pas dans le nom du serveur.
-const UNC_PATH = /^\\\\[^\\/\s]+\\.+$/
+const UNC_PATH = /^\\\\[^\\/\s|]+\\[^|]+$/
+
+/** URL reçue d'une source externe (ancre collée, hyperlien Excel) : `|` brut encodé en `%7C`. */
+export function encodeLinkSeparator(url: string): string {
+  return url.replace(/\|/g, '%7C')
+}
 
 /** Schémas acceptés (spec §1.3) : `http(s)://`, `file://`, chemin réseau UNC. */
 export function isAcceptedLinkUrl(url: string): boolean {
@@ -28,7 +34,11 @@ export function isLinkValue(v: unknown): v is LinkValue {
   return !!v && typeof v === 'object' && !Array.isArray(v) && typeof (v as { url?: unknown }).url === 'string'
 }
 
-/** Une ligne de la forme texte (§1.6) : `libellé | URL` (dernier `|`) ou `URL` seule. Vide → null. */
+/**
+ * Une ligne de la forme texte (§1.6) : `libellé | URL` (dernier `|`) ou `URL` seule. Vide → null.
+ * `libellé |` (URL pas encore saisie) donne `{ label, url: '' }`, refusé par `normalizeLinkField`
+ * avec un message « URL manquante » plutôt que de prendre le libellé pour l'URL.
+ */
 export function parseLinkLine(line: string): LinkValue | null {
   const text = line.trim()
   if (!text) return null
@@ -36,7 +46,7 @@ export function parseLinkLine(line: string): LinkValue | null {
   if (bar < 0) return { url: text }
   const label = text.slice(0, bar).trim()
   const url = text.slice(bar + 1).trim()
-  if (!url) return label ? { url: label } : null
+  if (!url) return label ? { label, url: '' } : null
   return label ? { label, url } : { url }
 }
 
@@ -65,7 +75,8 @@ export function linkDisplayText(link: LinkValue): string {
 
 /**
  * Valeur stockée, quelle que soit sa forme (§1.2) : chaîne (forme texte), objet `{label?, url}`,
- * liste de l'un ou l'autre. Les éléments sans URL sont ignorés.
+ * liste de l'un ou l'autre. Un objet sans URL est ignoré ; une ligne texte `libellé |` est gardée
+ * (`url: ''`) pour que l'écriture la refuse avec un message clair — l'affichage la filtre.
  */
 export function readLinkValues(raw: unknown): LinkValue[] {
   if (raw === undefined || raw === null) return []
@@ -92,6 +103,7 @@ export type LinkNormalization =
 export function normalizeLinkField(field: Pick<SchemaField, 'name' | 'multiple'>, raw: unknown): LinkNormalization {
   const links = readLinkValues(raw)
   for (const l of links) {
+    if (!l.url) return { ok: false, reason: `URL manquante pour '${field.name}' (libellé « ${l.label ?? ''} »)` }
     if (!isAcceptedLinkUrl(l.url)) {
       return { ok: false, reason: `URL refusée pour '${field.name}' : "${l.url}" (schémas acceptés : http(s)://, file://, \\\\serveur\\partage)` }
     }

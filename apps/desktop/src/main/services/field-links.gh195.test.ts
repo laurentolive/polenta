@@ -13,6 +13,7 @@ import { RequirementsIndexService } from './requirements-index.service'
 import { RequirementsService } from './requirements.service'
 import { SchemaService, SchemaValidationError } from './schema.service'
 import { validateBulkEntries } from './bulk-import-validation.util'
+import { CampaignsService } from './campaigns.service'
 import { planUpdate } from './update-validation.util'
 
 // GH195 — type de champ `link` et obligation conditionnelle `requiredWhen` (specs/GH195-tests.md).
@@ -108,6 +109,13 @@ describe('prepareFieldsWrite', () => {
       expect(r.fields.reports).toEqual(legacy.fields.reports)
       expect('proof' in r.fields).toBe(false)
     }
+  })
+
+  it('« | » brut refusé dans une URL (séparateur de la forme texte) ; « libellé | » = URL manquante', () => {
+    expect(isAcceptedLinkUrl('https://jira/x?jql=a|b')).toBe(false)
+    expect(isAcceptedLinkUrl('https://jira/x?jql=a%7Cb')).toBe(true)
+    const r = prepareFieldsWrite(TYPE, null, { status: 'draft', fields: { datasheet: 'Spec doc |' } })
+    expect(r).toEqual({ ok: false, field: 'datasheet', reason: "URL manquante pour 'datasheet' (libellé « Spec doc »)" })
   })
 
   it('lien vidé : clé retirée', () => {
@@ -218,6 +226,31 @@ describe('écritures réelles et MCP', () => {
     const existing = { id: 'SYS-0001', objectTypeRef: 'root::exigence', title: 'R', status: 'draft', fields: {} }
     const plan = planUpdate(SCHEMA, 'requirement', existing as never, { id: 'SYS-0001', status: 'approved' } as never)
     expect(plan).toMatchObject({ ok: false, field: 'rationale' })
+  })
+})
+
+describe('campagne', () => {
+  let dir: string
+  beforeEach(async () => { dir = await fsP.mkdtemp(path.join(os.tmpdir(), 'gh195c-')) })
+  afterEach(async () => { await fsP.rm(dir, { recursive: true, force: true }) })
+
+  it('passage implicite planned → in_progress au premier résultat : requiredWhen sur le statut non déclenché', async () => {
+    const git = new GitService()
+    const campaignType = {
+      name: 'campagne', prefix: 'CAMP', category: 'campaign', fields: [
+        { name: 'bench', label: 'Banc', type: 'text', requiredWhen: { status: ['in_progress', 'completed'] } },
+      ],
+    }
+    await git.writeYaml(dir, '.polenta/schema.yaml', { version: 1, nodes: [{ name: 'root', objectTypes: [campaignType] }], linkTypes: [] })
+    const tc = { id: 'TEST-0001', title: 'T', objectTypeRef: 'root::test', status: 'approved', version: 1, fields: {}, steps: [] }
+    await git.writeYaml(dir, 'campaigns/CAMP-0001.yaml', {
+      id: 'CAMP-0001', title: 'C', objectTypeRef: 'root::campagne', fields: {}, status: 'planned',
+      createdAt: '2026-10-01T00:00:00.000Z', completedAt: null, testCaseIds: ['TEST-0001'],
+      runs: [{ entryId: 'TEST-0001-1', testCaseId: 'TEST-0001', status: 'pending', testSnapshot: tc }],
+    })
+    const service = new CampaignsService(git, { findOne: async () => tc } as never, {} as never)
+    const updated = await service.updateRun(dir, 'CAMP-0001', 'TEST-0001-1', 'PASS', 'RUN-1')
+    expect(updated.status).toBe('in_progress')
   })
 })
 

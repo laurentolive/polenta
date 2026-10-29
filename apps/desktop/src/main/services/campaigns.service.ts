@@ -482,7 +482,11 @@ export class CampaignsService {
     opts: { raw?: boolean } = {},
   ): Promise<TestCampaign> {
     // GH195 — liens normalisés, `requiredWhen` contrôlé (lève FieldWriteError).
-    if (!opts.raw) after = await applyFieldsWrite(this.gitService, repoPath, before, after)
+    // Le passage implicite planned → in_progress (premier résultat enregistré) n'est pas un
+    // changement de statut demandé : il ne déclenche pas les `requiredWhen` sur le statut.
+    const implicitStart = before?.status === 'planned' && after.status === 'in_progress'
+    const checkedBefore = implicitStart ? { ...before, status: after.status } : before
+    if (!opts.raw) after = await applyFieldsWrite(this.gitService, repoPath, checkedBefore, after)
     const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath: `campaigns/${id}.yaml` })
       : after

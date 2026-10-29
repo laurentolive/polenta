@@ -1,7 +1,7 @@
 import type ExcelJS from 'exceljs'
 import { ExternalHyperlink, Paragraph, TextRun } from 'docx'
 import {
-  formatLinksText, isAcceptedLinkUrl, linkDisplayText, parseLinkLine, parseLinksText, type LinkValue,
+  encodeLinkSeparator, formatLinksText, isAcceptedLinkUrl, linkDisplayText, parseLinkLine, parseLinksText, type LinkValue,
 } from '@polenta/types'
 
 // GH195 — cellules Excel d'un champ `link` (specs/GH195.md §1.7, §1.10). `readLinkCell` reconnaît
@@ -49,12 +49,12 @@ function cellContent(value: ExcelJS.CellValue): { text: string; target?: string 
   if (rich !== null) return { text: rich }
   if ('hyperlink' in value && typeof value.hyperlink === 'string') {
     const text = typeof value.text === 'string' ? value.text : (richTextOf(value.text) ?? '')
-    return { text, target: value.hyperlink }
+    return { text, target: encodeLinkSeparator(value.hyperlink) }
   }
   if ('formula' in value && typeof value.formula === 'string') {
     const m = HYPERLINK_FORMULA.exec(value.formula.trim())
     if (m) {
-      const url = unquote(m[1])
+      const url = encodeLinkSeparator(unquote(m[1]))
       return { text: m[2] !== undefined ? unquote(m[2]) : url, target: url }
     }
     const result = (value as { result?: unknown }).result

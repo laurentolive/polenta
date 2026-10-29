@@ -47,3 +47,13 @@
 
 Voir `specs/GH195-tests.md` scénarios 21 à 24 (desktop : ouverture http / UNC / file ; collage depuis
 Word et Excel ; exports xlsx / docx ouverts dans Excel / Word ; client web : « Copier »).
+
+## Revue de code (`/code-review` sur la PR #213)
+
+Corrigé : URL contenant un `|` brut (refusée, encodée `%7C` au collage et à la lecture Excel) ;
+passage implicite planned → in_progress d'une campagne qui déclenchait un `requiredWhen` sur le
+statut ; vue Word qui n'enregistrait pas un clic hors de l'éditeur sur une zone non focusable ;
+`libellé |` sans URL (message « URL manquante », libellé plus perdu sans prévenir) ; JSDoc déplacé.
+Reporté : migration des `requiredWhen` au renommage d'un champ / statut / valeur → #214. Laissé :
+`readLinkCell` sans appelant (branché par L2 #196) ; double lecture du schéma par écriture (`persist`
++ historique), optimisation possible.

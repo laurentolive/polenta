@@ -29,10 +29,12 @@ interface Props {
 
 const toRows = (value: unknown): Row[] => readLinkValues(value).map(l => ({ label: l.label ?? '', url: l.url }))
 
+// Une ligne avec un libellé mais sans URL est gardée (`libellé |`) : l'écriture la refuse avec
+// « URL manquante » au lieu de perdre le libellé sans prévenir.
 function toLinks(rows: Row[]): LinkValue[] {
   return rows
     .map(r => ({ label: r.label.trim(), url: r.url.trim() }))
-    .filter(r => r.url)
+    .filter(r => r.url || r.label)
     .map(r => (r.label ? r : { url: r.url }))
 }
 
@@ -104,7 +106,7 @@ export function LinkEditor({ value, onChange, multiple, disabled, autoFocus, onS
   return (
     <div className="space-y-1" data-link-editor>
       {rows.map((row, i) => {
-        const invalidUrl = row.url.trim() !== '' && !isAcceptedLinkUrl(row.url)
+        const invalidUrl = (row.url.trim() !== '' && !isAcceptedLinkUrl(row.url)) || (row.url.trim() === '' && row.label.trim() !== '')
         const invalidLabel = /[|\r\n]/.test(row.label)
         return (
           <div key={i}>

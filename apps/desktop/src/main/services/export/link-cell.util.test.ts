@@ -30,6 +30,7 @@ describe('readLinkCell', () => {
       s.getCell('A7').value = 'RE-118 | https://ged/118\n\\\\srv\\essais\\photos'
       s.getCell('A8').value = { text: 'Rapport\nPhotos | file:///C:/p', hyperlink: 'https://ged/118' }
       s.getCell('A9').value = { text: 'www.ged.fr', hyperlink: 'http://www.ged.fr/' }
+      s.getCell('A10').value = { text: 'Filtre', hyperlink: 'https://jira/x?jql=a|b' }
     })
     const read = (a: string) => readLinkCell(sheet.getCell(a))
     expect(read('A1')).toEqual({ ok: true, links: [{ label: 'RE-118', url: 'https://ged/118' }] })
@@ -41,6 +42,7 @@ describe('readLinkCell', () => {
     expect(read('A7')).toEqual({ ok: true, links: [{ label: 'RE-118', url: 'https://ged/118' }, { url: '\\\\srv\\essais\\photos' }] })
     expect(read('A8')).toEqual({ ok: true, links: [{ label: 'Rapport', url: 'https://ged/118' }, { label: 'Photos', url: 'file:///C:/p' }] })
     expect(read('A9')).toEqual({ ok: true, links: [{ label: 'www.ged.fr', url: 'http://www.ged.fr/' }] })
+    expect(read('A10')).toEqual({ ok: true, links: [{ label: 'Filtre', url: 'https://jira/x?jql=a%7Cb' }] })
   })
 
   it('cellule vide : aucun lien ; ligne sans URL : erreur nommant la cellule', async () => {

@@ -320,7 +320,7 @@ function InlineField({
       ) : isLink && editing ? (
         <div
           className="flex-1"
-          onBlur={e => { if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget as Node)) commitLink() }}
+          onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commitLink() }}
           onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setDraft(value); setEditing(false) } }}
         >
           <LinkEditor value={draft} onChange={setDraft} multiple={fieldDef?.multiple} autoFocus onSubmit={commitLink} />

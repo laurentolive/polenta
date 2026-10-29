@@ -21,7 +21,7 @@ Spec : `specs/GH222.md` · Design : `specs/GH222-design.md`.
 | M11 | Campagne : même run (`entryId`) modifié différemment | un bloc `runs~<entryId>` seul | U |
 | M12 | Arbre d'affichage : déplacements de deux nœuds différents | pas de bloc, arbre reconstruit | U |
 | M13 | Arbre : même nœud déplacé sous deux parents différents | bloc `pos:<id>` ; aucun doublon possible quel que soit le choix | U |
-| M14 | Arbre : cycle (A sous B à gauche, B sous A à droite) | bloc `pos` ; sortie résolue sans cycle | U |
+| M14 | Arbre : cycle (A sous B à gauche, B sous A à droite) | un bloc sur toute la liste `root` ; sortie résolue sans cycle | U |
 | M15 | YAML non canonique (commentaire `#` d'un côté) | kind `text`, `diff3` ligne à ligne, commentaires conservés | U |
 | M16 | Fichier Suivi écrit en `lineWidth: -1` | structurel ; sortie au même style (octet pour octet sur la partie non modifiée) | U |
 | M17 | `.drawio` : pages différentes modifiées | pas de bloc | U |
@@ -32,7 +32,7 @@ Spec : `specs/GH222.md` · Design : `specs/GH222-design.md`.
 | M22 | `resolveRegionBoth` sur une plage de liste / un texte | éléments gauche puis droite / textes concaténés ; refusé pour un scalaire | U |
 | M23 | `diffTree` : ajouté / supprimé / modifié / déplacé, `changedCount` des parents | conforme | U |
 | M24 | Clé de bloc avec `/`, `~`, `]` dans une identité | échappée (`~1`, `~0`, `~2`) ; marqueurs relus | U |
-| M25 | Session : merge de deux branches où seul `schema.yaml` diffère sur des éléments distincts | aucun fichier en conflit, merge direct | U (service) |
+| M25 | Session : merge de deux branches où `schema.yaml` diffère sur des éléments distincts | `schema.yaml` absent des fichiers en conflit, fusionné à la finalisation | U (service) |
 
 ## 2. Mise en évidence (sprint 2)
 

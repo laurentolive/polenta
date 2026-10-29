@@ -4,8 +4,8 @@ import * as path from 'path'
 import { createHash } from 'crypto'
 import git, { TREE, type WalkerEntry } from 'isomorphic-git'
 import {
-  detectKind, entriesOf, isBinaryContent, mergeFile, nextFreeId, parseObject, parseOutput, prefixOf,
-  renumberPath, renumberText, shortRef, type MarkerLabels,
+  canonicalOutput, detectKind, entriesOf, isBinaryContent, mergeFile, nextFreeId, parseDrawio, parseObject, parseOutput,
+  prefixOf, renumberPath, renumberText, shortRef, type MarkerLabels,
 } from '@polenta/merge-core'
 import type {
   MergeConflictKind, MergeFileDetail, MergeFileDraft, MergeFileEntry, MergeFileKind, MergeFinalizeResult,
@@ -484,8 +484,12 @@ export class MergeResolutionService {
     if (left.binary || right.binary || base.binary) kind = 'binary'
     else kind = detectKind([left.text, right.text], filepath)
 
+    let counts: MergeFileEntry['counts']
     if (kind !== 'binary' && left.text !== null && right.text !== null) {
-      if (mergeFile(base.text, left.text, right.text, labels, filepath).blocks.length === 0) return null
+      const merged = mergeFile(base.text, left.text, right.text, labels, filepath)
+      if (merged.blocks.length === 0) return null
+      // A display tree's position conflict has two regions of the same key: one block.
+      counts = { conflicts: new Set(merged.blocks.map(b => b.key)).size, auto: merged.auto.length }
     }
 
     const sample = parseObject(right.text ?? left.text ?? '')
@@ -494,6 +498,7 @@ export class MergeResolutionService {
       conflict,
       kind,
       ...(kind === 'object' && sample ? { objectId: sample.id as string, title: typeof sample.title === 'string' ? sample.title : undefined } : {}),
+      ...(counts ? { counts } : {}),
       state: 'todo',
     }
   }
@@ -533,7 +538,11 @@ export class MergeResolutionService {
         }
         const d = files[filepath]
         if (d.text !== undefined) {
-          entries.push({ path: filepath, oid: await this.writeBlob(repoPath, d.text), mode: await modeFrom(), type: 'blob' })
+          // GH222 — a YAML output is written exactly as the app writes it (a nested block's region
+          // leaves a `-` on its own line; test steps are renumbered).
+          const sides = await Promise.all([textOf(t.left), textOf(t.right)])
+          const text = canonicalOutput(entry.kind, d.text, sides.map(x => x.text))
+          entries.push({ path: filepath, oid: await this.writeBlob(repoPath, text), mode: await modeFrom(), type: 'blob' })
           return
         }
         const chosen = d.choice === 'left' ? t.left : t.right
@@ -550,7 +559,8 @@ export class MergeResolutionService {
           // output (the draft) is what lands in the result.
           const d = e.type === 'blob' && conflicts.has(e.path) ? files[e.path] : undefined
           if (d?.text !== undefined) {
-            entries.push({ ...e, oid: await this.writeBlob(repoPath, d.text), mode: modeString(await taken.mode()) })
+            const text = canonicalOutput(conflicts.get(e.path)!.kind, d.text, [(await textOf(taken)).text])
+            entries.push({ ...e, oid: await this.writeBlob(repoPath, text), mode: modeString(await taken.mode()) })
             return
           }
           entries.push(e)
@@ -631,6 +641,10 @@ export class MergeResolutionService {
         }) as { id?: string } | undefined
         if (bad) errors.push({ code: 'invalidLinks', params: { id: bad.id ?? '' } })
       }
+      return { errors, warnings }
+    }
+    if (entry.kind === 'drawio') {
+      if (!parseDrawio(text)) errors.push({ code: 'invalidDrawio' })
       return { errors, warnings }
     }
     if (entry.kind !== 'object') return { errors, warnings }

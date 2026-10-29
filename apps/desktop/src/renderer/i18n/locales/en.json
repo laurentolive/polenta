@@ -1717,7 +1717,8 @@
       "requiredEmpty": "Required field is empty: {{field}}",
       "ears": "\"{{field}}\" does not follow the EARS syntax (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)",
       "invalidLinks": "Invalid links.yaml (each link needs a unique id, a type, a source and a target) {{id}}",
-      "invalidParameters": "Invalid parameters.yaml (a \"parameters\" mapping is expected)"
+      "invalidParameters": "Invalid parameters.yaml (a \"parameters\" mapping is expected)",
+      "invalidDrawio": "Invalid .drawio file (an <mxfile> element with its pages is expected)"
     },
     "failure": {
       "stale": "One of the two branches moved since opening: nothing was written. Run the original operation again.",

@@ -179,8 +179,12 @@ régions réinsérées). `updateObjectOutput` reste en façade.
   finesse est automatique.
 - Validation : `kind: 'yaml'` → YAML valide et mapping (`notObject`) ; `kind: 'drawio'` → XML
   `<mxfile>` bien formé (nouveau code `invalidDrawio`).
-- `MergeFileDetail` gagne `tree?: MergeNode` (arbre du merge initial, pour les vues) — calculé dans
-  le main, sérialisable (valeurs YAML).
+- ~~`MergeFileDetail` gagne `tree?: MergeNode`~~ — abandonné au sprint 1 : `@polenta/merge-core`
+  est partagé avec le renderer, qui recalcule `diffTree` / `mergeFile` à partir de
+  `base` / `left` / `right` déjà présents dans le détail. `MergeNode` n'existe pas.
+- Finalisation : `canonicalOutput(kind, texte, côtés)` réécrit une sortie YAML au format de l'app
+  **seulement si nécessaire** (ligne `-` seule ou balise `!!seq` laissées par une région imbriquée,
+  `order` des étapes à renuméroter) ; sinon le texte de l'utilisateur est gardé tel quel.
 - `MergeFileEntry` gagne `counts?: { conflicts: number; auto: number }` pour la liste des fichiers.
 
 ## 4. Mise en évidence (renderer)

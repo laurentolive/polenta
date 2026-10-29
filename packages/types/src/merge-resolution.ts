@@ -20,8 +20,10 @@ export type MergeOrigin =
 export type MergeConflictKind = 'both-modified' | 'both-added' | 'deleted-left' | 'deleted-right' | 'renumbered'
 
 /** `object` = exigence/test/campagne… (fusion par champ), `links`/`parameters` = par lien / par
- *  paramètre, `text` = hunks de lignes, `binary` = choix d'un côté. */
-export type MergeFileKind = 'object' | 'links' | 'parameters' | 'text' | 'binary'
+ *  paramètre, `yaml` = autre YAML écrit par l'app (fusion structurelle générique, GH222), `trees` =
+ *  arbres d'affichage (par position), `drawio` = par page, `text` = hunks de lignes, `binary` =
+ *  choix d'un côté. */
+export type MergeFileKind = 'object' | 'links' | 'parameters' | 'yaml' | 'trees' | 'drawio' | 'text' | 'binary'
 
 export interface MergeFileEntry {
   path: string
@@ -30,6 +32,8 @@ export interface MergeFileEntry {
   objectId?: string
   title?: string
   state: 'todo' | 'merged'
+  /** GH222 — blocs en conflit et blocs repris automatiquement du merge initial (liste des fichiers). */
+  counts?: { conflicts: number; auto: number }
 }
 
 export interface MergeRenumber {
@@ -95,6 +99,7 @@ export interface MergeValidationIssue {
     | 'ears'
     | 'invalidLinks'
     | 'invalidParameters'
+    | 'invalidDrawio'
   params?: Record<string, string | number>
 }
 

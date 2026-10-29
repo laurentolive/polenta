@@ -1,3 +1,4 @@
+import yaml from 'js-yaml'
 import type { MarkerLabels, Side } from './types'
 
 /**
@@ -86,17 +87,116 @@ export function stripRegions(text: string, regions: MarkerRegion[]): string {
   return lines.filter((_, i) => !drop.has(i)).join('\n')
 }
 
-/** Replaces the region `key` by the chosen side's fragment. Text unchanged if no such region. */
+/**
+ * Replaces the regions `key` by the chosen side's fragment — every region of that key: a display
+ * tree's position conflict has one at each place (GH222), one choice settles both. Text unchanged
+ * if no such region.
+ */
 export function resolveRegion(text: string, key: string, side: Side): string {
+  return replaceRegions(text, key, (left, right) => (side === 'left' ? left : right))
+}
+
+function replaceRegions(text: string, key: string, pick: (left: string[], right: string[]) => string[]): string {
   const { regions, error } = findRegions(text)
   if (error) return text
-  const region = regions.find(r => r.key === key)
-  if (!region) return text
+  const mine = regions.filter(r => r.key === key)
+  if (mine.length === 0) return text
   const lines = splitLines(text)
-  const kept = side === 'left'
-    ? lines.slice(region.start + 1, region.sep)
-    : lines.slice(region.sep + 1, region.end)
-  return [...lines.slice(0, region.start), ...kept, ...lines.slice(region.end + 1)].join('\n')
+  // From the last region up, so the line indexes of the earlier ones stay valid.
+  for (const region of mine.reverse()) {
+    const kept = pick(lines.slice(region.start + 1, region.sep), lines.slice(region.sep + 1, region.end))
+    lines.splice(region.start, region.end - region.start + 1, ...kept)
+  }
+  return lines.join('\n')
+}
+
+// ─── « Prendre les deux » (GH222) ──────────────────────────────────────────────────
+
+type FragmentShape =
+  | { form: 'items' }
+  | { form: 'entry'; indent: string; name: string; value: unknown }
+  | { form: 'text' }
+  | { form: 'empty' }
+
+function shapeOf(lines: string[]): FragmentShape {
+  const body = lines.filter(l => l.trim() !== '')
+  if (body.length === 0) return { form: 'empty' }
+  const first = body[0]
+  if (/^-( |$)/.test(first.trimStart())) return { form: 'items' }
+  const indent = first.slice(0, first.length - first.trimStart().length)
+  try {
+    const v = yaml.load(lines.map(l => l.slice(indent.length)).join('\n'))
+    if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 1) {
+      const [name, value] = Object.entries(v)[0]
+      return { form: 'entry', indent, name, value }
+    }
+  } catch {
+    // Not a YAML entry: a text hunk.
+  }
+  return { form: 'text' }
+}
+
+const isMultiline = (v: unknown) => typeof v === 'string' && v.includes('\n')
+
+/** Elements of an items fragment (`- …` lines at some indentation). */
+function itemsOf(lines: string[]): unknown[] {
+  const first = lines.find(l => l.trim() !== '') ?? ''
+  const indent = first.length - first.trimStart().length
+  try {
+    const v = yaml.load(lines.map(l => l.slice(indent)).join('\n'))
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
+}
+
+const IDENTITY_KEYS = ['id', 'entryId', 'name', 'key']
+
+/** Both lists hold the same element — by an identity key, or as a whole: keeping both would
+ *  write it twice (a run, a link, a tree node). */
+function sharesIdentity(a: unknown[], b: unknown[]): boolean {
+  const ids = (list: unknown[]) => new Set(list.flatMap(x => {
+    if (x === null || typeof x !== 'object' || Array.isArray(x)) return [JSON.stringify(x)]
+    const o = x as Record<string, unknown>
+    return IDENTITY_KEYS.filter(k => typeof o[k] === 'string' || typeof o[k] === 'number').map(k => `${k}=${String(o[k])}`)
+  }))
+  const ib = ids(b)
+  return [...ids(a)].some(id => ib.has(id))
+}
+
+/** What « Prendre les deux » writes, `null` when it has no meaning (a scalar, a removed side, the
+ *  same element on both sides). */
+function bothOf(left: string[], right: string[]): string[] | null {
+  const [l, r] = [shapeOf(left), shapeOf(right)]
+  if (l.form === 'empty' || r.form === 'empty') return null
+  if (l.form === 'items' && r.form === 'items') return sharesIdentity(itemsOf(left), itemsOf(right)) ? null : [...left, ...right]
+  if (l.form === 'text' && r.form === 'text') return [...left, ...right]
+  if (l.form !== 'entry' || r.form !== 'entry' || l.name !== r.name) return null
+  let value: unknown
+  if (Array.isArray(l.value) && Array.isArray(r.value)) {
+    if (sharesIdentity(l.value, r.value)) return null
+    value = [...l.value, ...r.value]
+  }
+  else if (typeof l.value === 'string' && typeof r.value === 'string' && (isMultiline(l.value) || isMultiline(r.value))) {
+    value = `${l.value.replace(/\n+$/, '')}\n${r.value}`
+  } else return null
+  return yaml.dump({ [l.name]: value }, { lineWidth: 120 }).replace(/\n$/, '').split('\n').map(x => (x === '' ? x : l.indent + x))
+}
+
+/** « Prendre les deux » has a meaning for this block: list elements (those of both sides), a text
+ *  hunk or a multi-line text (left then right), a list value (concatenated) — not a scalar. */
+export function canTakeBoth(text: string, key: string): boolean {
+  const { regions, error } = findRegions(text)
+  const region = error ? undefined : regions.find(r => r.key === key)
+  if (!region) return false
+  const lines = splitLines(text)
+  return bothOf(lines.slice(region.start + 1, region.sep), lines.slice(region.sep + 1, region.end)) !== null
+}
+
+/** Replaces the regions `key` by both sides (`canTakeBoth`); text unchanged otherwise. */
+export function resolveRegionBoth(text: string, key: string): string {
+  if (!canTakeBoth(text, key)) return text
+  return replaceRegions(text, key, (left, right) => bothOf(left, right)!)
 }
 
 /** Resolves every remaining region with the same side ("Tout prendre à gauche/droite"). */

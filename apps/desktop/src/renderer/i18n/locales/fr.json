@@ -1717,7 +1717,8 @@
       "requiredEmpty": "Champ requis vide : {{field}}",
       "ears": "« {{field}} » ne respecte pas la syntaxe EARS (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)",
       "invalidLinks": "links.yaml invalide (chaque lien a un id unique, un type, une source et une cible) {{id}}",
-      "invalidParameters": "parameters.yaml invalide (une table « parameters » attendue)"
+      "invalidParameters": "parameters.yaml invalide (une table « parameters » attendue)",
+      "invalidDrawio": "Fichier .drawio invalide (un élément <mxfile> et ses pages sont attendus)"
     },
     "failure": {
       "stale": "Une des deux branches a bougé depuis l'ouverture : rien n'a été écrit. Relancez l'opération d'origine.",

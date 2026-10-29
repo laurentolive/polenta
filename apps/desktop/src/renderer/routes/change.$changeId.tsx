@@ -134,9 +134,9 @@ function ChangePage() {
             </div>
 
             {typeDef && typeDef.fields.length > 0 && (
-              <div className="border rounded p-3 mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">{typeDef.label ?? typeDef.name}</p>
+              <div className="relative border rounded p-3 mb-4">
+                {/* Boutons d'édition dans le coin, au niveau du libellé du premier champ (pas de titre de section). */}
+                <div className="absolute top-2 right-3">
                   {editingFields === null ? (
                     <button type="button" onClick={startEditingFields} className="text-ink-3 hover:text-ink p-1 rounded hover:bg-hover" data-testid="change-edit-fields">
                       <Pencil size={13} />

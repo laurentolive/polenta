@@ -524,7 +524,9 @@
       "colRequiredWhen": "Oblig. si",
       "colRequiredWhenTitle": "Obligatoire quand un champ a une des valeurs : « status = approved » ou « champ = v1, v2 ; autre = v3 » (statut, enum, multi_enum, boolean du type)",
       "linkMultiple": "Multiple",
-      "linkMultipleTitle": "Plusieurs liens dans ce champ"
+      "linkMultipleTitle": "Plusieurs liens dans ce champ",
+      "colDefaultVisible": "Vis.",
+      "colDefaultVisibleTitle": "Colonne affichée par défaut (vues Tableau et Document) tant que l’utilisateur n’a pas fait son propre choix — défaut de l’équipe"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -665,7 +667,8 @@
       "implementedVersion": "Version implémentée",
       "unresolved": "non résolu",
       "noImplements": "Aucune implémentation d'interface déclarée.",
-      "addImplements": "+ Déclarer une implémentation"
+      "addImplements": "+ Déclarer une implémentation",
+      "linkDefaultVisible": "Colonne affichée par défaut"
     },
     "deleteCascade": {
       "titleNode": "Supprimer le composant « {{name}} » ?",

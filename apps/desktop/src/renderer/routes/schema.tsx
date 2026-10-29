@@ -38,6 +38,8 @@ export const Route = createFileRoute('/schema')({
 
 interface EditableLinkType {
   name: string; labelSourceToTarget: string; labelTargetToSource: string; sourceRefs: string[]; targetRefs: string[]
+  /** GH139 — colonne(s) de ce lien affichée(s) par défaut dans les vues. */
+  defaultVisible: boolean
 }
 
 interface EditorState {
@@ -57,6 +59,7 @@ function schemaToEditable(schema: ProjectSchema): EditorState {
       labelSourceToTarget: l.labelSourceToTarget ?? '',
       labelTargetToSource: l.labelTargetToSource ?? '',
       sourceRefs: l.sourceRefs ?? [], targetRefs: l.targetRefs ?? [],
+      defaultVisible: l.defaultVisible ?? false,
     })),
     roles: schema.roles ?? [],
     // Rebuild explicitly rather than passing the parsed YAML array through as-is —
@@ -83,6 +86,7 @@ function editableToSchema(state: EditorState, nodes: SystemNode[], preferences: 
       }
       if (l.sourceRefs.length > 0) result.sourceRefs = l.sourceRefs
       if (l.targetRefs.length > 0) result.targetRefs = l.targetRefs
+      if (l.defaultVisible) result.defaultVisible = true
       return result
     }),
   }
@@ -211,7 +215,11 @@ function LiensTab({ state, setState, nodes, otherSchemas, repos, selectedRepoPat
                   <RefChips refs={l.targetRefs} allRefs={allRefs} onChange={targetRefs => setLink(i, { targetRefs })} />
                 </div>
               </div>
-              <div className="flex justify-end mt-2">
+              <div className="flex items-center justify-between mt-2">
+                <label className="flex items-center gap-1.5 text-xs text-ink-2" title={t('schema.editor.colDefaultVisibleTitle')}>
+                  <input type="checkbox" checked={l.defaultVisible} onChange={e => setLink(i, { defaultVisible: e.target.checked })} className="h-3 w-3 accent-ink" />
+                  {t('schema.page.linkDefaultVisible')}
+                </label>
                 <ConfirmDelete onConfirm={() => deleteLink(i)} className="text-xs text-status-danger hover:opacity-80" />
               </div>
             </div>
@@ -219,7 +227,7 @@ function LiensTab({ state, setState, nodes, otherSchemas, repos, selectedRepoPat
         </div>
       )}
       <button type="button"
-        onClick={() => setState(s => s ? { ...s, linkTypes: [...s.linkTypes, { name: '', labelSourceToTarget: '', labelTargetToSource: '', sourceRefs: [], targetRefs: [] }] } : s)}
+        onClick={() => setState(s => s ? { ...s, linkTypes: [...s.linkTypes, { name: '', labelSourceToTarget: '', labelTargetToSource: '', sourceRefs: [], targetRefs: [], defaultVisible: false }] } : s)}
         className="text-sm text-status-info hover:underline">
         {t('schema.page.addLinkType')}
       </button>

@@ -1,22 +1,17 @@
 import type { HandlerRegistry } from './registry'
 import { readPref, writePref } from '../services/pref-store.util'
-import type { ForgeConfigService } from '../services/forge-config.service'
 
 /** Entrée `fieldVisibility[typeKey]` du `.pref` (cf. `FieldVisibilityPref` de l'api-client). */
 type FieldVisibilityEntry = Record<string, unknown>
 
-export function registerPrefHandlers(r: HandlerRegistry, forgeConfig?: ForgeConfigService) {
+export function registerPrefHandlers(r: HandlerRegistry) {
   r.handle('pref:get-field-visibility',
     (_e, repoPath: string, username: string, typeKey: string) => {
       const pref = readPref(repoPath, username)
       const visibility = (pref['fieldVisibility'] as Record<string, FieldVisibilityEntry> | undefined) ?? {}
-      const personal = visibility[typeKey]
-      // GH45 S2b — défaut de l'équipe (jamais écrit dans le .pref ; une vue non définie garde le
-      // défaut de Polenta). GH176 — fusionné vue par vue avec le choix personnel : une entrée qui
-      // ne porte que les colonnes du sélecteur ne doit pas priver la vue Tableau de ce défaut.
-      const teamDefault = forgeConfig?.status().config?.preferences.fieldVisibility?.[typeKey]
-      if (!personal && !teamDefault) return null
-      return { ...teamDefault, ...personal }
+      // GH139 — choix personnel seul : sans entrée (ou pour une vue absente de l'entrée), le renderer
+      // applique le défaut du schéma (`defaultVisible` des champs et types de lien).
+      return visibility[typeKey] ?? null
     }
   )
 

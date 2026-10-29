@@ -15,7 +15,7 @@ import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'changes' | 'dashboard' | 'parameters'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -43,6 +43,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
   if (pathname === '/parameters') return 'parameters'
+  if (pathname === '/changes' || pathname.startsWith('/change/')) return 'changes'
   if (pathname === '/impact-analysis' || pathname === '/constellation') return 'impact'
 
   if (pathname.startsWith('/req/')) return 'requirements'
@@ -238,6 +239,10 @@ export function AppLayout() {
         break
       case 'parameters':
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
+        break
+      case 'changes':
+        // GH198 — vue Changements : page d'accueil (le panneau liste les changes du workspace).
+        if (currentProjectId) navigate({ to: '/changes', search: { projectId: currentProjectId } })
         break
       case 'dashboard':
         if (currentProjectId) {

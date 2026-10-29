@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { STATUS_LABEL_KEY } from '../lib/impactStatus'
 import { useTranslation } from 'react-i18next'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -50,17 +51,6 @@ const CHANGE_TYPE_COLOR: Record<RequirementChangeType, string> = {
   added: 'text-status-success',
   removed: 'text-status-danger',
   modified: 'text-status-warning',
-}
-
-export const STATUS_LABEL_KEY: Record<ImpactAnalysisStatus, string> = {
-  impact_non_verifie: 'impactAnalysisPage.status.impactNonVerifie',
-  pas_d_impact_reel: 'impactAnalysisPage.status.pasDImpactReel',
-  impact_a_tester: 'impactAnalysisPage.status.impactATester',
-  impact_teste: 'impactAnalysisPage.status.impactTeste',
-  modification_a_faire: 'impactAnalysisPage.status.modificationAFaire',
-  modification_faite: 'impactAnalysisPage.status.modificationFaite',
-  modification_a_tester: 'impactAnalysisPage.status.modificationATester',
-  modification_verifiee: 'impactAnalysisPage.status.modificationVerifiee',
 }
 
 const STATUS_ORDER: ImpactAnalysisStatus[] = [

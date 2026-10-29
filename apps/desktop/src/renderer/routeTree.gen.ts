@@ -29,6 +29,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConstellationRouteImport } from './routes/constellation'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as ComplianceRouteImport } from './routes/compliance'
+import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as BaselineRouteImport } from './routes/baseline'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AccountRouteImport } from './routes/account'
@@ -45,6 +46,8 @@ import { Route as PrintDrawioSnapshotRouteImport } from './routes/print.drawio-s
 import { Route as PrintDashboardRouteImport } from './routes/print.dashboard'
 import { Route as PrintCampaignReportRouteImport } from './routes/print.campaign-report'
 import { Route as PrintCampaignPlanRouteImport } from './routes/print.campaign-plan'
+import { Route as ChangeNewRouteImport } from './routes/change.new'
+import { Route as ChangeChangeIdRouteImport } from './routes/change.$changeId'
 import { Route as CampaignNewRouteImport } from './routes/campaign.new'
 import { Route as CampaignCampaignIdRouteImport } from './routes/campaign.$campaignId'
 import { Route as CampaignCampaignIdRunTestIdRouteImport } from './routes/campaign.$campaignId_.run.$testId'
@@ -150,6 +153,11 @@ const ComplianceRoute = ComplianceRouteImport.update({
   path: '/compliance',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangesRoute = ChangesRouteImport.update({
+  id: '/changes',
+  path: '/changes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BaselineRoute = BaselineRouteImport.update({
   id: '/baseline',
   path: '/baseline',
@@ -230,6 +238,16 @@ const PrintCampaignPlanRoute = PrintCampaignPlanRouteImport.update({
   path: '/print/campaign-plan',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangeNewRoute = ChangeNewRouteImport.update({
+  id: '/change/new',
+  path: '/change/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangeChangeIdRoute = ChangeChangeIdRouteImport.update({
+  id: '/change/$changeId',
+  path: '/change/$changeId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CampaignNewRoute = CampaignNewRouteImport.update({
   id: '/campaign/new',
   path: '/campaign/new',
@@ -258,6 +276,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
+  '/changes': typeof ChangesRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
   '/constellation': typeof ConstellationRoute
@@ -280,6 +299,8 @@ export interface FileRoutesByFullPath {
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
+  '/change/$changeId': typeof ChangeChangeIdRoute
+  '/change/new': typeof ChangeNewRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -300,6 +321,7 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
+  '/changes': typeof ChangesRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
   '/constellation': typeof ConstellationRoute
@@ -322,6 +344,8 @@ export interface FileRoutesByTo {
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
+  '/change/$changeId': typeof ChangeChangeIdRoute
+  '/change/new': typeof ChangeNewRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -343,6 +367,7 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
+  '/changes': typeof ChangesRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
   '/constellation': typeof ConstellationRoute
@@ -365,6 +390,8 @@ export interface FileRoutesById {
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
+  '/change/$changeId': typeof ChangeChangeIdRoute
+  '/change/new': typeof ChangeNewRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -387,6 +414,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/baseline'
+    | '/changes'
     | '/compliance'
     | '/components'
     | '/constellation'
@@ -409,6 +437,8 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
+    | '/change/$changeId'
+    | '/change/new'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -429,6 +459,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/baseline'
+    | '/changes'
     | '/compliance'
     | '/components'
     | '/constellation'
@@ -451,6 +482,8 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
+    | '/change/$changeId'
+    | '/change/new'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -471,6 +504,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/baseline'
+    | '/changes'
     | '/compliance'
     | '/components'
     | '/constellation'
@@ -493,6 +527,8 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
+    | '/change/$changeId'
+    | '/change/new'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -514,6 +550,7 @@ export interface RootRouteChildren {
   AccountRoute: typeof AccountRoute
   AdminRoute: typeof AdminRoute
   BaselineRoute: typeof BaselineRoute
+  ChangesRoute: typeof ChangesRoute
   ComplianceRoute: typeof ComplianceRoute
   ComponentsRoute: typeof ComponentsRoute
   ConstellationRoute: typeof ConstellationRoute
@@ -536,6 +573,8 @@ export interface RootRouteChildren {
   WorkspaceRoute: typeof WorkspaceRoute
   CampaignCampaignIdRoute: typeof CampaignCampaignIdRoute
   CampaignNewRoute: typeof CampaignNewRoute
+  ChangeChangeIdRoute: typeof ChangeChangeIdRoute
+  ChangeNewRoute: typeof ChangeNewRoute
   PrintCampaignPlanRoute: typeof PrintCampaignPlanRoute
   PrintCampaignReportRoute: typeof PrintCampaignReportRoute
   PrintDashboardRoute: typeof PrintDashboardRoute
@@ -694,6 +733,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComplianceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/changes': {
+      id: '/changes'
+      path: '/changes'
+      fullPath: '/changes'
+      preLoaderRoute: typeof ChangesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/baseline': {
       id: '/baseline'
       path: '/baseline'
@@ -806,6 +852,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrintCampaignPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/change/new': {
+      id: '/change/new'
+      path: '/change/new'
+      fullPath: '/change/new'
+      preLoaderRoute: typeof ChangeNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change/$changeId': {
+      id: '/change/$changeId'
+      path: '/change/$changeId'
+      fullPath: '/change/$changeId'
+      preLoaderRoute: typeof ChangeChangeIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/campaign/new': {
       id: '/campaign/new'
       path: '/campaign/new'
@@ -842,6 +902,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountRoute: AccountRoute,
   AdminRoute: AdminRoute,
   BaselineRoute: BaselineRoute,
+  ChangesRoute: ChangesRoute,
   ComplianceRoute: ComplianceRoute,
   ComponentsRoute: ComponentsRoute,
   ConstellationRoute: ConstellationRoute,
@@ -864,6 +925,8 @@ const rootRouteChildren: RootRouteChildren = {
   WorkspaceRoute: WorkspaceRoute,
   CampaignCampaignIdRoute: CampaignCampaignIdRoute,
   CampaignNewRoute: CampaignNewRoute,
+  ChangeChangeIdRoute: ChangeChangeIdRoute,
+  ChangeNewRoute: ChangeNewRoute,
   PrintCampaignPlanRoute: PrintCampaignPlanRoute,
   PrintCampaignReportRoute: PrintCampaignReportRoute,
   PrintDashboardRoute: PrintDashboardRoute,

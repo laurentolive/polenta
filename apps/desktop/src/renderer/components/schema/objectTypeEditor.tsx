@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES, historyModeFor, renameValues,
-  requiredWhenIssues,
+  requiredWhenIssues, DEFAULT_CHANGE_STATUSES,
 } from '@polenta/types'
 import type {
   FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
@@ -350,6 +350,8 @@ export function emptyObjType(
     trackStatusHistory: true,
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
+      // GH198 — cycle de vie par défaut d'un type de change (modifiable).
+      : category === 'change' ? DEFAULT_CHANGE_STATUSES.map(statusToEditable)
       : [],
   }
 }

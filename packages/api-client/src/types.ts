@@ -739,7 +739,7 @@ export interface ApiClient {
   }
   history: {
     /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
-    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign', id: string): Promise<ObjectHistory>
+    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign' | 'change', id: string): Promise<ObjectHistory>
     /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
     backfill(repoPath: string): Promise<HistoryBackfillResult>
   }

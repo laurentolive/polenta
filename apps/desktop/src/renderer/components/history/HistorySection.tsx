@@ -8,7 +8,7 @@ import { historySections, type HistoryBadge } from './historySections'
 
 interface Props {
   repoPath: string
-  kind: 'requirement' | 'test' | 'campaign'
+  kind: 'requirement' | 'test' | 'campaign' | 'change'
   id: string
   typeDef?: Pick<ObjectTypeDefinition, 'fields' | 'statuses'> | null
   /** Libellé d'un statut quand il ne vient pas du schéma (campagnes : statuts fixes). */

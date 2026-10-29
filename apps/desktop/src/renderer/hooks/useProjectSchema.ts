@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
-import type { ProjectSchema, ObjectTypeDefinition, TestCase } from '@polenta/types'
+import type { ProjectSchema, ObjectCategory, ObjectTypeDefinition, TestCase } from '@polenta/types'
 import { findSystemNode, flattenSystemNodes, isApprovalStatus } from '@polenta/types'
 
 export function useProjectSchema(repoPath: string) {
@@ -19,7 +19,7 @@ export function useProjectSchema(repoPath: string) {
 function findTypeDef(
   schema: ProjectSchema | undefined,
   objectTypeRef: string | undefined,
-  category: 'requirement' | 'test' | 'campaign',
+  category: ObjectCategory,
 ): ObjectTypeDefinition | undefined {
   if (!schema || !objectTypeRef) return undefined
   const [compName, typeName] = objectTypeRef.includes('::')
@@ -65,8 +65,13 @@ export function getCampaignTypeDef(schema: ProjectSchema | undefined, objectType
   return findTypeDef(schema, objectTypeRef, 'campaign')
 }
 
+/** GH198 — type d'un change (`objectTypeRef` <nœud>::<type>). */
+export function getChangeTypeDef(schema: ProjectSchema | undefined, objectTypeRef: string | undefined): ObjectTypeDefinition | undefined {
+  return findTypeDef(schema, objectTypeRef, 'change')
+}
+
 // Collect all objectTypes of a given category from all local nodes (any depth)
-export function getAllObjectTypes(schema: ProjectSchema | undefined, category: 'requirement' | 'test' | 'campaign'): ObjectTypeDefinition[] {
+export function getAllObjectTypes(schema: ProjectSchema | undefined, category: ObjectCategory): ObjectTypeDefinition[] {
   if (!schema) return []
   return flattenSystemNodes(schema.nodes).flatMap(({ node }) => (node.objectTypes ?? []).filter(t => t.category === category))
 }
@@ -85,7 +90,7 @@ export function getTestTypeRefs(schema: ProjectSchema | undefined): TestTypeRef[
 }
 
 /** GH146 — même chose pour une catégorie quelconque (types de campagne de `/campaign/new`). */
-export function getObjectTypeRefs(schema: ProjectSchema | undefined, category: 'requirement' | 'test' | 'campaign'): TestTypeRef[] {
+export function getObjectTypeRefs(schema: ProjectSchema | undefined, category: ObjectCategory): TestTypeRef[] {
   if (!schema) return []
   const flat = flattenSystemNodes(schema.nodes)
   return flat.flatMap(({ node, ancestors }) => (node.objectTypes ?? [])

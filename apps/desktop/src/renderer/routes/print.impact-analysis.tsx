@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import type { ImpactNode } from '@polenta/types'
 import { api } from '../api'
 import { useNotifyPrintReady } from '../lib/useNotifyPrintReady'
-import { CHANGE_TYPE_LABEL_KEY, STATUS_LABEL_KEY } from './impact-analysis'
+import { CHANGE_TYPE_LABEL_KEY } from './impact-analysis'
+import { STATUS_LABEL_KEY } from '../lib/impactStatus'
 
 /** Route imprimable — analyse d'impact (T43 sprint 3). Contrairement à `print.query-result.tsx`,
  *  une analyse d'impact est un objet persisté avec un ID stable — suit le pattern standard

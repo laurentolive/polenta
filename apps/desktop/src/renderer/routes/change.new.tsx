@@ -54,7 +54,12 @@ function NewChangePage() {
       const repoLabel = flatNodes.find(n => n.repoPath === rp)?.label || repoName(rp)
       const hasType = getObjectTypeRefs(repoSchema, 'change').length > 0
       return flattenSystemNodes(repoSchema?.nodes ?? []).map(({ node }) => node).filter(n => n.objectTypes !== undefined)
-        .map(n => ({ repoPath: rp, node: n.name, hasType, label: multiRepo ? `${repoLabel} › ${n.label || n.name}` : n.label || n.name }))
+        .map(n => {
+          // Nœud racine d'un repo : même libellé que le repo, affiché une seule fois.
+          const nodeLabel = n.label || n.name
+          const label = multiRepo && nodeLabel !== repoLabel ? `${repoLabel} › ${nodeLabel}` : nodeLabel
+          return { repoPath: rp, node: n.name, hasType, label }
+        })
     })
   }, [openRepo, flatNodes, schemasByRepoPath])
 

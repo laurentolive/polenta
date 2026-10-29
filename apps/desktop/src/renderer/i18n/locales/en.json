@@ -1094,7 +1094,9 @@
       "toggle": "Filter on {{status}} (click again to remove)",
       "clear": "Filter: {{status}} ✕",
       "empty": "No {{status}} entry."
-    }
+    },
+    "runFields": "Run fields",
+    "outOfSchema": "not in schema"
   },
   "campaignProgress": {
     "ready": "Ready to run"

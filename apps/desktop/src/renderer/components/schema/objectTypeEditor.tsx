@@ -18,6 +18,8 @@ export interface EditableField {
   trackHistory: boolean
   /** GH195 — champ `link` : liste de liens. */
   multiple: boolean
+  /** GH139 — colonne affichée par défaut (défaut de l'équipe, porté par le schéma). */
+  defaultVisible: boolean
   /** GH195 — `requiredWhen` en texte : `champ = v1, v2; autre = v3` (cf. `parseRequiredWhen`). */
   requiredWhen: string
   /** GH77 — nom du champ tel que chargé du schéma (non persisté) : absent pour un champ ajouté dans
@@ -54,7 +56,7 @@ function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, u
   return Object.keys(rest).length > 0 ? rest : undefined
 }
 
-const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory', 'multiple', 'requiredWhen'] as const
+const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory', 'multiple', 'requiredWhen', 'defaultVisible'] as const
 const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
 const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory'] as const
 
@@ -66,7 +68,7 @@ export function fieldToEditable(f: SchemaField): EditableField {
     values: (f.values ?? []).join(', '), required: f.required ?? false,
     default: f.default !== undefined ? String(f.default) : '', placeholder: f.placeholder ?? '',
     trackHistory: f.trackHistory ?? false, originalName: f.name,
-    multiple: f.multiple ?? false, requiredWhen: formatRequiredWhen(f.requiredWhen),
+    multiple: f.multiple ?? false, requiredWhen: formatRequiredWhen(f.requiredWhen), defaultVisible: f.defaultVisible ?? false,
     ...withExtra(extraKeys(f, FIELD_EDITOR_KEYS)),
   }
 }
@@ -216,6 +218,7 @@ export function editableToField(f: EditableField): SchemaField {
   if (f.placeholder) result.placeholder = f.placeholder
   if (f.trackHistory && canTrackHistory(f)) result.trackHistory = true
   if (f.type === 'link' && f.multiple) result.multiple = true
+  if (f.defaultVisible) result.defaultVisible = true
   const requiredWhen = parseRequiredWhen(f.requiredWhen)
   if (requiredWhen) result.requiredWhen = requiredWhen
   return { ...result, ...f.extra }
@@ -290,7 +293,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
 // ── Factories ─────────────────────────────────────────────────────────────────
 
 export function emptyField(): EditableField {
-  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '', trackHistory: false, multiple: false, requiredWhen: '' }
+  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '', trackHistory: false, multiple: false, requiredWhen: '', defaultVisible: false }
 }
 
 export function emptyStatus(): EditableStatus {
@@ -447,6 +450,7 @@ export function FieldsTable({ fields, onChange, statuses, category }: {
               <th className={`${thClass} text-center`}>{t('schema.editor.colRequired')}</th>
               <th className={thClass} title={t('schema.editor.colRequiredWhenTitle')}>{t('schema.editor.colRequiredWhen')}</th>
               <th className={`${thClass} text-center`} title={t('schema.editor.colHistoryTitle')}>{t('schema.editor.colHistory')}</th>
+              <th className={`${thClass} text-center`} title={t('schema.editor.colDefaultVisibleTitle')}>{t('schema.editor.colDefaultVisible')}</th>
               <th className={thClass}>{t('schema.editor.colDefault')}</th>
               <th className={thClass}></th>
             </tr>
@@ -490,6 +494,16 @@ export function FieldsTable({ fields, onChange, statuses, category }: {
                       ? t('schema.editor.historyNotTrackable')
                       : t(historyModeFor(f.type) === 'event' ? 'schema.editor.historyEvent' : 'schema.editor.historyValue')}
                     className="h-3 w-3 accent-ink disabled:opacity-30"
+                  />
+                </td>
+                <td className={`${tdClass} text-center`}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('schema.editor.colDefaultVisibleTitle')}
+                    checked={f.defaultVisible}
+                    onChange={e => set(i, { defaultVisible: e.target.checked })}
+                    className="h-3 w-3 accent-ink"
+                    data-testid="default-visible-checkbox"
                   />
                 </td>
                 <td className={tdClass}><input value={f.default} onChange={e => set(i, { default: e.target.value })} className={cellInput} placeholder="—" /></td>

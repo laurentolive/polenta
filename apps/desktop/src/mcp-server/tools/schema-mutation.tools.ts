@@ -48,6 +48,8 @@ const schemaFieldSchema = z.object({
   multiple: z.boolean().optional(),
   /** GH195 — obligatoire quand un champ (`status`, enum, multi_enum, boolean du type) a une des valeurs. */
   requiredWhen: z.record(z.string(), z.array(z.union([z.string(), z.boolean()])).min(1)).optional(),
+  /** GH139 — colonne affichée par défaut dans les vues (défaut de l'équipe). */
+  defaultVisible: z.boolean().optional(),
 })
 
 const schemaStatusSchema = z.object({
@@ -78,6 +80,8 @@ const linkTypeDefinitionSchema = z.object({
   labelTargetToSource: z.string().min(1),
   sourceRefs: z.array(z.string()).optional(),
   targetRefs: z.array(z.string()).optional(),
+  /** GH139 — colonne(s) de ce type de lien affichée(s) par défaut dans les vues. */
+  defaultVisible: z.boolean().optional(),
 })
 
 const addComponentInput = {

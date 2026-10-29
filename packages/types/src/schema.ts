@@ -33,6 +33,9 @@ export interface SchemaField {
   /** GH195 — obligatoire quand un des champs nommés a une des valeurs listées (OU entre les clés).
    *  Références : `status` ou un champ enum / multi_enum / boolean du même type (cf. required-when.ts). */
   requiredWhen?: Record<string, unknown[]>
+  /** GH139 — colonne affichée par défaut (vues Tableau / Document) tant que l'utilisateur n'a pas
+   *  fait son propre choix ; défaut de l'équipe, porté par le schéma. Écrit seulement si vrai. */
+  defaultVisible?: boolean
 }
 
 // Format de stockage d'un champ `multi_enum` : chaîne CSV (ex. "a, b, c"), pas une liste
@@ -188,6 +191,8 @@ export interface LinkTypeDefinition {
   labelTargetToSource: string
   sourceRefs?: string[]
   targetRefs?: string[]
+  /** GH139 — colonne(s) de ce type de lien affichée(s) par défaut (cf. `SchemaField.defaultVisible`). */
+  defaultVisible?: boolean
 }
 
 /** GH105 — type de lien de l'union du workspace (par nom, repo racine d'abord). */

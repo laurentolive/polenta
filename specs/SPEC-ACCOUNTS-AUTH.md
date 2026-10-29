@@ -93,7 +93,7 @@ L'utilisateur se contente de se connecter. Sa configuration vient de la forge : 
 - `defaults`, puis une section par **équipe** (`teams.<nom exact>`) dont l'utilisateur est membre :
   - `projects` (« Projets de votre équipe » à l'accueil, seulement ceux auxquels il a accès) — cumulés ;
   - `updates: auto | managed` — `managed` l'emporte (mises à jour verrouillées) ;
-  - `preferences` (`language`, `theme`, `projectHome`, `fieldVisibility`) : **valeurs par défaut**, jamais imposées à qui a fait son propre choix ; la première équipe du fichier qui définit une clé l'emporte (`fieldVisibility` : type d'objet par type d'objet).
+  - `preferences` (`language`, `theme`, `projectHome`) : **valeurs par défaut**, jamais imposées à qui a fait son propre choix ; la première équipe du fichier qui définit une clé l'emporte. GH139 — `fieldVisibility` n'est plus lu (avertissement) : les colonnes par défaut sont déclarées dans `schema.yaml` (`defaultVisible`, SPEC-SYSTEM-VIEW §Configuration des champs).
 - Relue à la connexion, au démarrage et toutes les 30 minutes (`app:refresh-team-config`) ; gardée en cache (`userData/forge-config.json`) pour le hors-ligne ; une clé invalide est ignorée et signalée dans le panneau Compte.
 - Une politique de la configuration machine (§6) l'emporte toujours sur la configuration d'équipe.
 

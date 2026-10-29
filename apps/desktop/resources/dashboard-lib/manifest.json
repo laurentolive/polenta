@@ -143,6 +143,14 @@
             "fr": "Champs d'exécution (GH196) : GraphTestRun.fields / notes / stepResults, runFields / stepFields des types",
             "en": "Run fields (GH196): GraphTestRun.fields / notes / stepResults, runFields / stepFields on types"
           }
+        },
+        {
+          "version": 6,
+          "hash": "166972abf8bef9532f8d4de6f5cf7e7b58a528d0552e5d37ac9f6dd0e6b06560",
+          "summary": {
+            "fr": "Changes (GH198)",
+            "en": "Changes (GH198)"
+          }
         }
       ]
     },

@@ -119,6 +119,8 @@ export function typeRename(
   updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined, nodeName: string,
 ): TypeRenameDto | null {
   if (!original || !updated.name) return null
+  // GH198 — renommage d'un type de change : migration de ses objets non prise en charge (lot suivant).
+  if (original.category === 'change') return null
   const oldPrefix = original.prefix ?? ''
   if (updated.name === original.name && updated.prefix === oldPrefix) return null
   return {
@@ -301,6 +303,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   requirement: 'schema.editor.requirement',
   test: 'schema.editor.test',
   campaign: 'schema.editor.campaign',
+  change: 'schema.editor.change',
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -320,6 +323,7 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   requirement: 'REQ',
   test: 'TEST',
   campaign: 'CAMP',
+  change: 'CHG',
 }
 
 function slugifyComponentName(componentName: string): string {

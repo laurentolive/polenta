@@ -33,7 +33,8 @@
       "menu": {
         "hide": "Hide \"{{label}}\"",
         "reset": "Reset layout"
-      }
+      },
+      "changes": "Changes"
     },
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
@@ -530,7 +531,8 @@
       "runFields": "Run fields",
       "runFieldsHelp": "Entered at each run (report number, temperature, report link…). Information common to the whole campaign is a campaign field. “Req. if”: result = PASS, FAIL, BLOCKED or INCOMPLETE (overall verdict). A name designates a single field across the project.",
       "stepFields": "Step fields",
-      "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict)."
+      "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict).",
+      "change": "Change"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",

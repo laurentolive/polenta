@@ -21,6 +21,7 @@ import type { RepoWatcherService } from '../services/repo-watcher.service'
 import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
+import type { ChangesService } from '../services/changes.service'
 import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
@@ -49,7 +50,7 @@ import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } fro
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
 import type { SchemaDeleteService } from '../services/schema-delete.service'
-import type { ExecutionHistoryTarget, ValueRename } from '@polenta/types'
+import type { CreateChangeDto, ExecutionHistoryTarget, UpdateChangeDto, ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
   CreateRequirementDto,
@@ -106,6 +107,7 @@ export interface Container {
   campaigns: CampaignsService
   campaignExecution: CampaignExecutionService
   executionHistory: ExecutionHistoryService
+  changes: ChangesService
   tree: TreeService
   baseline: BaselineService
   polentaRepo: PolentaRepoService
@@ -463,6 +465,13 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   })
   r.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
     c.tests.findRuns(repoPath, tcId))
+  // GH198 — changes (repoPath = repo de stockage pour get / update / delete / candidats).
+  r.handle('changes:list', (_e, repoPath: string, workspaceDir?: string) => c.changes.list(repoPath, workspaceDir))
+  r.handle('changes:get', (_e, repoPath: string, id: string) => c.changes.get(repoPath, id))
+  r.handle('changes:create', (_e, repoPath: string, dto: CreateChangeDto, workspaceDir?: string) => c.changes.create(repoPath, dto, workspaceDir))
+  r.handle('changes:update', (_e, repoPath: string, id: string, dto: UpdateChangeDto) => c.changes.update(repoPath, id, dto))
+  r.handle('changes:delete', (_e, repoPath: string, id: string) => c.changes.delete(repoPath, id))
+  r.handle('changes:reopened-candidates', (_e, repoPath: string, id: string) => c.changes.reopenedCandidates(repoPath, id))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))

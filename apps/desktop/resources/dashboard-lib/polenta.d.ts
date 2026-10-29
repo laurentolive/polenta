@@ -68,6 +68,21 @@ export interface PolentaGraph {
   campaigns: GraphCampaign[]
   /** Toutes les exécutions de test enregistrées (fichiers `test-runs/`), campagne ou non. */
   runs: GraphTestRun[]
+  /** GH198 — changes de tous les repos (`changes/`). */
+  changes: GraphChange[]
+}
+
+/** GH198 — change : modification pilotée d'un composant, ses éléments à modifier et impactés. */
+export interface GraphChange extends GraphObjectBase {
+  /** Composant concerné (nœud du schéma). */
+  component: string
+  mode: 'request' | 'range'
+  toModify: { id: string; state: 'planned' | 'modified' }[]
+  /** Statut d'impact : les 8 valeurs de l'analyse d'impact entre baselines. */
+  impacted: { id: string; status: string; comment: string | null; source: 'declared' | 'computed' }[]
+  origin: { runs: string[]; decisions: { conformityId: string; objectId: string }[] }
+  integratedIn: string | null
+  campaigns: string[]
 }
 
 export interface GraphRepo {
@@ -97,7 +112,7 @@ export interface GraphSchema {
   campaignStatuses: GraphFixedStatus[]
 }
 
-export type GraphObjectCategory = 'requirement' | 'test' | 'campaign'
+export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'change'
 
 export interface GraphObjectType {
   /** Repo dont le schéma déclare le type. */

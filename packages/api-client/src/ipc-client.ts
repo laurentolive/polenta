@@ -294,6 +294,15 @@ export function createIpcClient(
       pickFolder: (title) => invoke('dialog:pick-folder', title),
       pickImageFile: () => invoke('dialog:pick-image-file'),
     },
+    // GH198 — changes
+    changes: {
+      list: (p, workspaceDir) => invoke('changes:list', p, workspaceDir ?? null),
+      get: (p, id) => invoke('changes:get', p, id),
+      create: (p, dto, workspaceDir) => invoke('changes:create', p, dto, workspaceDir ?? null),
+      update: (p, id, dto) => invoke('changes:update', p, id, dto),
+      delete: (p, id) => invoke('changes:delete', p, id),
+      reopenedCandidates: (p, id) => invoke('changes:reopened-candidates', p, id),
+    },
     // GH197 — historique des exécutions
     executions: {
       history: (p, target, workspaceDir) => invoke('executions:history', p, target, workspaceDir ?? null),

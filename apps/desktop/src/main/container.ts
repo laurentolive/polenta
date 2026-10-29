@@ -15,6 +15,7 @@ import { RepoWatcherService } from './services/repo-watcher.service'
 import { SchemaService } from './services/schema.service'
 import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
+import { ChangesService } from './services/changes.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TreeService, indexObjectLister } from './services/tree.service'
@@ -102,6 +103,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   // GH197 — historique des exécutions d'un test ou d'une exigence.
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
+  // GH198 — objet change.
+  const changes = new ChangesService(git, schema, requirements, tests, workspaceTree, history)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)
@@ -112,7 +115,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   )
   // GH104 — suppression en cascade d'un composant local ou d'un type (objets, liens, arbres, refs).
   const schemaDelete = new SchemaDeleteService(
-    git, { requirements, tests, campaigns }, reqIndex, tree, schema, [reqIndex, testsIndex],
+    git, { requirements, tests, campaigns, changes }, reqIndex, tree, schema, [reqIndex, testsIndex],
     (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
     async workspaceDir => {
       const cache = workspaceDir ? await workspaceTree.readCache(workspaceDir) : null
@@ -175,6 +178,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     campaigns,
     campaignExecution,
     executionHistory,
+    changes,
     tree,
     baseline,
     polentaRepo,

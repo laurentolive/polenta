@@ -141,7 +141,7 @@ describe('SchemaDeleteService', () => {
     expect(plan.errors).toEqual([])
     expect(plan.nodes).toEqual(['A', 'B'])
     expect(plan.types).toEqual(['A::A_REQ', 'A::A_TEST', 'A::A_CAMP', 'B::B_REQ'])
-    expect(plan.objects).toEqual({ requirement: ['A_REQ-0001', 'A_REQ-0002', 'B_REQ-0001'], test: ['A_TEST-0001'], campaign: ['CAMP-0001'] })
+    expect(plan.objects).toEqual({ requirement: ['A_REQ-0001', 'A_REQ-0002', 'B_REQ-0001'], test: ['A_TEST-0001'], campaign: ['CAMP-0001'], change: [] })
     expect(plan.links).toEqual([{ repoPath: prod, count: 4 }, { repoPath: comp, count: 1 }])
     expect(plan.linkTypes).toEqual([
       { repoPath: prod, name: 'implements', emptied: true },
@@ -182,7 +182,7 @@ describe('SchemaDeleteService', () => {
     const target: SchemaDeleteTarget = { kind: 'type', nodeName: 'A', typeName: 'A_TEST' }
     const plan = await service.plan(prod, ws, target)
     expect(plan.nodes).toEqual([])
-    expect(plan.objects).toEqual({ requirement: [], test: ['A_TEST-0001'], campaign: [] })
+    expect(plan.objects).toEqual({ requirement: [], test: ['A_TEST-0001'], campaign: [], change: [] })
     const result = await service.delete(prod, ws, target)
     expect(result.failed).toEqual([])
     expect(await exists(prod, 'tests/A_TEST-0001.yaml')).toBe(false)

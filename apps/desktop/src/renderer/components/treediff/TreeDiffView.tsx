@@ -1,3 +1,4 @@
+import yaml from 'js-yaml'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -12,6 +13,8 @@ import { OverviewRuler, type RulerMark } from '../diffkit/OverviewRuler'
 import { NavBar } from '../diffkit/NavBar'
 import { useChangeNavigation } from '../diffkit/useChangeNavigation'
 import type { Presentation } from './presentation'
+import { OutputValue } from './TreeMerge'
+import { addUnder, restoreRow, setRowValue } from './draftEdit'
 
 /**
  * GH222 — vue générique d'un diff (spec §4.1) : à gauche la colonne **Structure** (arbre repliable,
@@ -35,7 +38,14 @@ type Row =
   | { type: 'node'; node: DiffNode; depth: number; children: DiffNode[]; expanded: boolean; trail: string }
   | { type: 'fold'; depth: number; keys: string[] }
 
-export function TreeDiffView({ before, after, presentation, desc, repoPath, hideUnchanged, navSlot, testId = 'tree-diff' }: {
+/** GH222 §12 — côté Après modifiable : texte du brouillon, style YAML du fichier, mise à jour. */
+export interface TreeEdit {
+  text: string
+  style: yaml.DumpOptions
+  onChange: (text: string) => void
+}
+
+export function TreeDiffView({ before, after, presentation, desc, repoPath, hideUnchanged, navSlot, testId = 'tree-diff', edit }: {
   before: TreeSide
   after: TreeSide
   presentation: Presentation
@@ -44,10 +54,19 @@ export function TreeDiffView({ before, after, presentation, desc, repoPath, hide
   hideUnchanged: boolean
   navSlot?: HTMLElement | null
   testId?: string
+  edit?: TreeEdit
 }) {
   const { t } = useTranslation()
   const root = useMemo(() => diffTree(before.value, after.value, desc), [before.value, after.value, desc])
   const p = presentation
+  const nodes = useMemo(() => {
+    const m = new Map<string, DiffNode>()
+    const walk = (n: DiffNode) => { m.set(n.key, n); n.children?.forEach(walk) }
+    walk(root)
+    return m
+  }, [root])
+  /** Applies an edit of the draft (`null` = no place for it: nothing changes). */
+  const apply = (next: string | null) => { if (next !== null && edit) edit.onChange(next) }
 
   // Richtexts are also compared on the media they reference (a diagram changed at the other version).
   const richTexts = useMemo(() => {
@@ -181,8 +200,22 @@ export function TreeDiffView({ before, after, presentation, desc, repoPath, hide
     const s = side === 'before' ? before : after
     const isChanged = changed.has(n.key)
     const border = side === 'after' ? 'border-l border-edge' : ''
+    // GH222 §12 — « ← Rétablir » on a row the local change touched (its value of Avant comes back).
+    const restore = edit && side === 'after' && n.state !== 'unchanged'
+      ? (
+        <button type="button" className="cm-diff-restore mb-1 mr-1" data-restore={n.key}
+          onClick={() => apply(restoreRow(edit.text, n, nodes, edit.style))}>
+          ← {t('diffView.restore')}
+        </button>
+      )
+      : null
     if (!has) {
-      return <div className={`diff-hatch min-w-0 px-3 py-1 ${border}`} data-absent><span className="text-[11px] text-ink-3 italic">{t('diffView.absentUnit')}</span></div>
+      return (
+        <div className={`diff-hatch min-w-0 px-3 py-1 ${border}`} data-absent>
+          {restore}
+          <span className="text-[11px] text-ink-3 italic">{t('diffView.absentUnit')}</span>
+        </div>
+      )
     }
     const tone = !isChanged ? '' : side === 'before' ? 'bg-diff-line-del' : 'bg-diff-line-ins'
     let body: ReactNode
@@ -190,14 +223,23 @@ export function TreeDiffView({ before, after, presentation, desc, repoPath, hide
       body = r.expanded
         ? null
         : <span className="text-[11px] text-ink-3">{t('treediff.summary', { count: r.children.length, changed: leaves.get(n.key) ?? 0 })}</span>
+    } else if (edit && side === 'after') {
+      body = <OutputValue node={n} value={n.after} presentation={p} typeDef={after.typeDef} repoPath={repoPath}
+        onChange={v => apply(setRowValue(edit.text, n, nodes, v, edit.style))} />
     } else {
       const v = side === 'before' ? n.before : n.after
       const other = isChanged && n.hasBefore && n.hasAfter ? (side === 'before' ? n.after : n.before) : undefined
       body = <Value node={n} value={v} other={other} side={side} presentation={p} typeDef={s.typeDef ?? after.typeDef}
         media={media.get(n.key)?.[side]} repoPath={repoPath} at={s.at} />
     }
+    // « + Ajouter » under a list or a mapping of the edited side.
+    const add = edit && side === 'after' && (n.kind === 'list' || n.kind === 'map') && !p.leaf(n)
+      ? <AddControl kind={n.kind} onAdd={key => apply(addUnder(edit.text, n, nodes, edit.style, key))} />
+      : null
     return (
       <div className={`min-w-0 px-3 ${r.children.length && r.expanded ? 'py-0.5' : 'py-1'} ${border} ${tone}`}>
+        {restore}
+        {add}
         {n.state === 'moved' && (
           <p className="text-[11px] text-ink-3 flex items-center gap-1"><ArrowLeftRight size={11} />{side === 'before' ? t('treediff.movedTo') : t('treediff.movedFrom')}</p>
         )}
@@ -269,7 +311,7 @@ export function TreeDiffView({ before, after, presentation, desc, repoPath, hide
             )
             : (
               <button key={`fold:${r.keys[0]}`} type="button"
-                className="col-span-3 py-0.5 text-[11px] text-ink-3 hover:bg-surface-hover border-t border-edge-subtle flex items-center gap-1 text-left"
+                className="col-span-3 py-0.5 text-[11px] text-ink-3 hover:bg-hover border-t border-edge-subtle flex items-center gap-1 text-left"
                 style={{ paddingLeft: 4 + Math.min(r.depth, MAX_INDENT_LEVELS) * INDENT }}
                 onClick={() => setRevealed(prev => new Set([...prev, ...r.keys]))}>
                 <ChevronRight size={12} />
@@ -320,6 +362,34 @@ export function Value({ node, value, other, side, presentation, typeDef, media, 
     default:
       return <span className="text-sm text-ink whitespace-pre-wrap break-words font-mono"><WordDiffText text={String(value)} other={otherText} side={side} /></span>
   }
+}
+
+/** « + Ajouter » : an element (list) at once, or a key to type first (mapping). */
+function AddControl({ kind, onAdd }: { kind: 'list' | 'map'; onAdd: (key?: string) => void }) {
+  const { t } = useTranslation()
+  const [key, setKey] = useState<string | null>(null)
+  if (kind === 'list' || key === null) {
+    return (
+      <button type="button" className="cm-diff-restore mb-1 mr-1" data-add
+        onClick={() => (kind === 'list' ? onAdd() : setKey(''))}>
+        + {t('diffView.add')}
+      </button>
+    )
+  }
+  // Enter / Escape settle the input; the blur that follows when it unmounts must not add again.
+  const finish = (add: boolean) => {
+    if (key === null) return
+    if (add && key.trim()) onAdd(key.trim())
+    setKey(null)
+  }
+  return (
+    <input autoFocus className="input-field text-xs mb-1" placeholder={t('diffView.newKey')} value={key}
+      onChange={e => setKey(e.target.value)} onBlur={() => finish(true)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); finish(true) }
+        if (e.key === 'Escape') { e.preventDefault(); setKey(null) }
+      }} />
+  )
 }
 
 function ColumnTitle({ children, border }: { children: ReactNode; border?: boolean }) {

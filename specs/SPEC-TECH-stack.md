@@ -540,6 +540,16 @@ Spécification fonctionnelle : `specs/GH222.md` ; conception : `specs/GH222-desi
   `mergeModel.ts` + `TreeMerge.tsx` (merge : mêmes rangées en haut et dans la sortie, défilement
   synchronisé par `data-row-key`, cartes de conflit, édition en place) ; `.drawio` en merge :
   `DrawioMergeOutput` (choix par page).
+- **Édition depuis le diff** (spec §12) : `DiffEditService.saveWorkingFile` (canal
+  `diff:save-working-file`, liste blanche web, texte et texte de départ déclarés `CONTENT_ARGS`).
+  Garde de chemin (y compris `realpath`), fichiers maintenus par l'app refusés
+  (`isAppMaintainedFile` : `.git/`, `.gitmodules`, schéma, arbres, pierres tombales), refus si le
+  disque a changé depuis le chargement (BOM ignoré). Exigence / test : par leur service
+  (`requirements.update` + `transition`, `tests.update`, champs retirés en `null`), seulement pour
+  `requirements/<id>.yaml` / `tests/<id>.yaml` ; clés non écrites par le service → `unsupported`
+  avec la liste ; campagne refusée ; autre fichier écrit tel quel (YAML valide exigé). Renderer :
+  brouillon avec son texte de départ (`FileDiffView`), Raw éditable (`revertControls`),
+  `treediff/draftEdit.ts` (valeur, « Rétablir », « Ajouter »).
 - **Thème** : `theme:generate` réécrit tout le bloc des variables de `index.css` — toute variable
   doit être déclarée dans `theme.config.ts` (les `chart-progress-*` de GH71 l'ont été par GH222 ;
   `themeTokens.gh222.test.ts`).

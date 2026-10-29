@@ -1550,7 +1550,12 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >     valeurs à la même position X, `Avant · <sha>` / `Après · <sha | working tree>` ; une exigence
 >     ou un test y a les libellés de son schéma, ses richtexts (mot à mot, médias à la version de
 >     leur colonne) et une rangée par étape. `.drawio` : pages alignées (GH178).
->   - Mémorisés par poste : `polenta:diffViewMode`, `polenta:diffHideUnchanged`,
+>   - **Modification locale** (`/diff` sans `commitSha`, GH222 §12) : barre « Modifiable — working
+    tree » ; côté Après éditable en Raw (« ← Rétablir » par bloc) et en Rendu (valeurs,
+    « ← Rétablir », « + Ajouter ») ; « Enregistrer » / `Ctrl+S`, onglet marqué modifié, « Recharger »
+    si le fichier a changé sur le disque. Exigence / test enregistrés par leur service ; fichiers
+    maintenus par l'app non modifiables.
+  - Mémorisés par poste : `polenta:diffViewMode`, `polenta:diffHideUnchanged`,
 >     `polenta:diffLayout`, `polenta:diffTreeWidth`. Détails : `specs/GH178.md`, `specs/GH222.md`,
 >     `SPEC-TECH-stack.md` §6.5–6.6.
 

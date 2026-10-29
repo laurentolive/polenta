@@ -72,7 +72,7 @@ function HeaderCell({ children, border }: { children: ReactNode; border?: boolea
   )
 }
 
-const ACTION = 'px-1.5 py-px rounded border border-edge bg-surface text-[11px] text-ink hover:bg-surface-hover'
+const ACTION = 'px-1.5 py-px rounded border border-edge bg-surface text-[11px] text-ink hover:bg-hover'
 
 /** Rangée du haut : mes modifications | [ancêtre commun] | destination. */
 export function MergeTreeTop({ model, showBase, labels, typeDef, repoPath, onTake }: {
@@ -228,7 +228,7 @@ function coerce(previous: unknown, s: string, field?: SchemaField): unknown {
   return s
 }
 
-function OutputValue({ node, value, presentation, typeDef, repoPath, onChange }: {
+export function OutputValue({ node, value, presentation, typeDef, repoPath, onChange }: {
   node: DiffNode
   value: unknown
   presentation: Presentation

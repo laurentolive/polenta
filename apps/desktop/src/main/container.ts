@@ -29,6 +29,7 @@ import { ExportTemplateLibrary } from './services/export-template-library'
 import { TemplateExportService } from './services/export/template/template-export.service'
 import { AppSettingsService } from './services/app-settings.service'
 import { MergeResolutionService } from './services/merge-resolution.service'
+import { DiffEditService } from './services/diff-edit.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
 import { IntegrationBranchService } from './services/integration-branch.service'
@@ -147,6 +148,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const integration = new IntegrationBranchService(git, sync, forge)
   const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged(), host.applyNetworkTimeout)
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
+  // GH222 — enregistrement depuis la vue de diff (service de l'objet pour une exigence / un test).
+  const diffEdit = new DiffEditService(requirements, tests, schema)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
   const exportSvc = new ExportService(
@@ -159,6 +162,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     git,
     sync,
     mergeResolution,
+    diffEdit,
     workspace,
     reqIndex,
     testsIndex,

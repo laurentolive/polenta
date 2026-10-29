@@ -10,19 +10,23 @@ interface Props {
   defs: SchemaField[]
   values: Record<string, unknown> | undefined
   repoPath: string
+  /** Lister aussi les champs du schéma sans valeur (« — ») : consultation d'un run. */
+  showEmpty?: boolean
 }
 
-export function RunFieldValues({ defs, values, repoPath }: Props) {
+export function RunFieldValues({ defs, values, repoPath, showEmpty }: Props) {
   const { t } = useTranslation()
   const entries = Object.entries(values ?? {})
-  if (entries.length === 0) return null
-  const known = defs.filter(d => values?.[d.name] !== undefined)
+  if (entries.length === 0 && !(showEmpty && defs.length > 0)) return null
+  const known = showEmpty ? defs : defs.filter(d => values?.[d.name] !== undefined)
   const unknown = entries.filter(([name]) => !defs.some(d => d.name === name))
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm" data-testid="run-field-values">
       {known.map(def => (
         <Row key={def.name} label={def.label ?? def.name}>
-          <RunFieldValue def={def} value={values![def.name]} repoPath={repoPath} />
+          {values?.[def.name] === undefined
+            ? <span className="text-ink-3">—</span>
+            : <RunFieldValue def={def} value={values[def.name]} repoPath={repoPath} />}
         </Row>
       ))}
       {unknown.map(([name, value]) => (

@@ -188,6 +188,9 @@ function ExecuteEntryPage() {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
       qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
+      // Consultation du run et historique des exécutions : la liste des runs du test a changé.
+      qc.invalidateQueries({ queryKey: ['test-runs', repoPath, testCaseId] })
+      qc.invalidateQueries({ queryKey: ['execution-history'] })
       navigate({
         to: '/campaign/$campaignId',
         params: { campaignId },

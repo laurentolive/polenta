@@ -56,6 +56,9 @@ export function useLiveFileSync(): void {
       if (relPath === '*' || /^(tests|test-runs|links|campaigns)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['execution-history'] })
       }
+      // Runs d'un test (consultation d'un run) : sans cela, un run écrit ailleurs restait introuvable
+      // dans la liste en cache (« Non exécuté ») jusqu'au prochain rechargement.
+      if (relPath === '*' || relPath.startsWith('test-runs/')) qc.invalidateQueries({ queryKey: ['test-runs'] })
       // GH74 — bandeau des mises à jour : requêtes des seeds (versions de modèle).
       if (relPath.startsWith('queries/')) qc.invalidateQueries({ queryKey: ['suivi-updates'] })
 

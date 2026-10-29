@@ -522,7 +522,7 @@ function CampaignDetailPage() {
                   onClick={!isActive ? () => navigateToView(entryId) : undefined}
                 >
                   <div className="flex-1 min-w-0">
-                    <span className="font-mono text-xs text-ink-3">{tcId}</span>
+                    <span className="font-mono text-xs text-ink-3 whitespace-nowrap">{tcId}</span>
                     {tc && (
                       <span className="text-xs text-ink ml-2 truncate">{tc.title}</span>
                     )}

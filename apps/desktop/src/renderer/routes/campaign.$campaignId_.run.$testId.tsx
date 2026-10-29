@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { api } from '../api'
 import { RichTextViewer } from '../components/RichTextViewer'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -77,13 +78,17 @@ function TestRunViewPage() {
   const runText = (text: string) => (isT171Run(campaignRun) ? text : substituteRunParams(text, campaignRun))
   const { testCase: tc, isLoading: loadingTc } = useResolvedCampaignTest(repoPath, testCaseId, campaignRun?.testSnapshot)
 
-  const { data: runs = [], isLoading: loadingRuns } = useQuery({
+  const { data: runs = [], isLoading: loadingRuns, isFetching: fetchingRuns, refetch: refetchRuns } = useQuery({
     queryKey: ['test-runs', repoPath, testCaseId],
     queryFn: () => api.tests.runs(repoPath, testCaseId!),
     enabled: !!repoPath && !!runId && !!testCaseId,
   })
 
   const run = runId ? runs.find(r => r.id === runId) : undefined
+  // Le run de l'entrée manque à la liste en cache (écrit depuis) : relecture plutôt que « Non exécuté ».
+  useEffect(() => {
+    if (runId && !loadingRuns && !fetchingRuns && !run) void refetchRuns()
+  }, [runId, loadingRuns, run]) // eslint-disable-line react-hooks/exhaustive-deps -- une relecture par run manquant
   // GH196 — définitions des champs d'exécution / d'étape (valeurs hors schéma affichées quand même).
   const { data: testTypeDef } = useTestTypeDef(repoPath, tc?.objectTypeRef, projectId ? decodeProjectId(projectId) : undefined)
 
@@ -215,12 +220,12 @@ function TestRunViewPage() {
           </div>
         )}
 
-        {/* GH196 — champs d'exécution */}
-        {run?.fields && (
+        {/* GH196 — champs d'exécution (listés même vides : le type en déclare) */}
+        {run && (run.fields || (testTypeDef?.runFields?.length ?? 0) > 0) && (
           <div>
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('campaignPage.runFields')}</p>
             <div className="border border-edge rounded px-3 py-2 bg-hover">
-              <RunFieldValues defs={testTypeDef?.runFields ?? []} values={run.fields} repoPath={repoPath} />
+              <RunFieldValues defs={testTypeDef?.runFields ?? []} values={run.fields} repoPath={repoPath} showEmpty />
             </div>
           </div>
         )}

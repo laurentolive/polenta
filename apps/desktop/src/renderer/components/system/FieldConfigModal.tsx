@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, LinkTypeDefinition } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnPanelEntry } from '../../hooks/useComputedColumns'
 import { getRelevantLinkTypes, isLinkTypeValid, linkColumnKeys, linkColumnLabel, parseLinkColumn } from './linkUtils'
+import { toggleVisibleField } from './fieldToggle'
 
 // ── FieldConfig modal (⚙) — onglets Tableau / Document indépendants ─────────
 
@@ -89,7 +90,8 @@ export function FieldConfigModal({
   const isChecked = (f: string) => f in lockedFields || currentFields.includes(f)
 
   // Ordre canonique = celui de la liste affichée dans ce panneau (champs système, puis custom,
-  // puis étapes, puis liens). Recocher un champ le remet à sa place plutôt qu'en fin de liste.
+  // puis étapes, puis liens). Recocher un champ le remet à sa place plutôt qu'en fin de liste ;
+  // l'ordre des autres colonnes (glisser-déposer) est conservé (GH235).
   // GH137 — onglet Tableau : un type de lien dont ce type est source et cible a deux colonnes
   // (sortants, entrants) ; onglet Document : une case par type de lien, inchangé (Q3).
   const linkKeysOf = (lt: LinkTypeDefinition) =>
@@ -104,12 +106,7 @@ export function FieldConfigModal({
 
   const toggle = (f: string) => {
     if (f in lockedFields) return
-    const next = currentFields.includes(f)
-      ? currentFields.filter(x => x !== f)
-      : [...currentFields, f]
-    const ordered = canonicalOrder.filter(x => next.includes(x))
-    const extra = next.filter(x => !canonicalOrder.includes(x))
-    onChangeCurrent([...ordered, ...extra])
+    onChangeCurrent(toggleVisibleField(currentFields, f, canonicalOrder))
   }
 
   const defaultFields = ['section', 'name', 'id', 'status', ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? [])]

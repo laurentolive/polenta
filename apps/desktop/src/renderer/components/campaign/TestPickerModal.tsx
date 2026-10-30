@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Settings } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import type { CampaignTestRun, ParamResolutionPreview, TestCase, TestRunStatus } from '@polenta/types'
 import { api } from '../../api'
 import { useProjectSchema, getTestTypeRefs } from '../../hooks/useProjectSchema'
@@ -396,7 +396,7 @@ export function TestPickerModal({
                     className="text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
                     data-testid="picker-columns-button"
                   >
-                    <Settings size={14} />
+                    <Eye size={14} />
                   </button>
                 )}
               </div>

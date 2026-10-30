@@ -250,7 +250,7 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 | **Retour (lien interne)** | GH228 : plus de bouton propre ni de pile `backHistory`. Un lien interne est une nouvelle page de l'historique de l'onglet (`showObject` : `repo`/`node`/`type`/`view`/`item` dans l'URL), et le bouton Précédent `<` de la barre d'onglets y revient, y compris vers un autre repo du workspace (GH105). La vue Édition n'a plus de bouton « Retour » : `Échap` revient à la page précédente de l'onglet si c'est encore la vue système, sinon au dernier mode Tableau / Document positionné sur l'élément. |
 | **↩ ↪** | Undo / Redo |
 | **🔍** | Activer / désactiver le filtre dans le panel gauche |
-| **⚙️** | Configuration des champs visibles |
+| **👁** | Configuration des champs visibles (icône œil depuis GH235, anciennement ⚙️) |
 | **↕▯** | Hauteur max des lignes — Vue Excel uniquement, masqué pour les campagnes (T168, cf. §Vue Excel) |
 | **[vue]** | Sélecteur de vue : Excel / Word (le mode Édition s'active par double-clic ou icône inline, pas par ce sélecteur) |
 | **Enregistrer** | Apparaît uniquement si des modifications sont en attente |
@@ -444,7 +444,15 @@ Système › Arbre › Sélection).
 
 ## Configuration des champs — ⚙️
 
+> GH235 : le bouton d'ouverture du panneau (barre d'outils, sélecteur de tests) porte une icône
+> **œil** (`Eye`, infobulle « Configurer les colonnes ») et non plus une roue crantée ; « ⚙️ » désigne
+> ce panneau dans le reste des specs.
+
 - Choisir les champs à afficher parmi les champs du type d'élément + les champs système.
+- **Ordre des colonnes (GH235)** : cocher / décocher une case ne déplace que cette colonne —
+  l'ordre réorganisé par glisser-déposer est conservé. Une colonne recochée s'insère juste après
+  la plus proche colonne affichée qui la précède dans l'ordre du panneau (en tête sinon)
+  (`toggleVisibleField`, `components/system/fieldToggle.ts`).
 - **Réglages indépendants par vue** : Excel, Word et Édition ont chacun leur propre sélection de champs.
 - **Titres de dossiers (T162)** : case « Afficher les titres des dossiers » en haut du panneau,
   propre à l'onglet courant (Tableau / Document), cochée par défaut. Décochée ⇒ liste plate

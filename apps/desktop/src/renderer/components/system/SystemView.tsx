@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { StepsTable } from '../StepsTable'
 import { LinkedReqValues } from '../parameters/LinkedReqValues'
 import type { StepDraft } from '../StepsTable'
-import { Grid3x3, FileText, Settings } from 'lucide-react'
+import { Grid3x3, FileText, Eye } from 'lucide-react'
 import { CampaignListView } from './CampaignListView'
 import { NoTypeForCategory } from './NoTypeForCategory'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
@@ -1080,7 +1080,7 @@ export function SystemView() {
                 title={t('system.fieldConfig.configureColumns')}
                 className="text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
               >
-                <Settings size={14} />
+                <Eye size={14} />
               </button>
             )}
 

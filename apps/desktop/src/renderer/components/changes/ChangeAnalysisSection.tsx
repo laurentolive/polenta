@@ -31,6 +31,7 @@ export function ChangeAnalysisSection({ change, analysis, isFetching, onRefresh,
   const { t, i18n } = useTranslation()
   const revalidation = useRevalidationTree(projectId, change.id)
   const [quickEdit, setQuickEdit] = useState<{ type: 'requirement' | 'test_case'; id: string; repoPath: string } | null>(null)
+  const [sectionOpen, setSectionOpen] = useState(true)
   const readOnly = disabled || !!analysis?.frozen
   const open = (type: 'requirement' | 'test_case', id: string, rp?: string) => setQuickEdit({ type, id, repoPath: rp ?? repoPath })
   const onUpdateStatus = (node: ImpactNode, status: ChangeImpactStatus, comment: string | null) => onSetImpact(node.elementId, status, comment ?? undefined)
@@ -41,8 +42,14 @@ export function ChangeAnalysisSection({ change, analysis, isFetching, onRefresh,
 
   return (
     <section className="border rounded mb-4" data-testid="change-analysis">
-      <div className="flex flex-wrap items-center gap-3 px-3 py-2 border-b border-edge-subtle">
-        <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">{t('changes.analysis.title')}</p>
+      <div className={`flex flex-wrap items-center gap-3 px-3 py-2 ${sectionOpen ? 'border-b border-edge-subtle' : ''}`}>
+        {/* Repliable comme les listes du change (GH199) ; le nombre de racines reste visible. */}
+        <button type="button" onClick={() => setSectionOpen(o => !o)} aria-expanded={sectionOpen} data-testid="change-analysis-toggle"
+          className="flex items-center gap-1 text-xs font-semibold text-ink-2 uppercase tracking-wide hover:text-ink">
+          {sectionOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          {t('changes.analysis.title')}
+          {analysis && <span className="font-normal text-ink-3 normal-case">({analysis.roots.length})</span>}
+        </button>
         <span className="text-xs text-ink-3">
           {change.mode === 'range' && change.range
             ? t('changes.analysis.range', { from: change.range.from.ref, to: change.range.to.ref })
@@ -77,6 +84,7 @@ export function ChangeAnalysisSection({ change, analysis, isFetching, onRefresh,
           </button>
         )}
       </div>
+      {sectionOpen && <>
       <ClearFailuresBanner state={revalidation} />
 
       {!analysis ? (
@@ -115,6 +123,7 @@ export function ChangeAnalysisSection({ change, analysis, isFetching, onRefresh,
           </ul>
         </div>
       )}
+      </>}
 
       {quickEdit?.type === 'requirement' && <RequirementEditModal repoPath={quickEdit.repoPath} reqId={quickEdit.id} onClose={() => setQuickEdit(null)} />}
       {quickEdit?.type === 'test_case' && <TestCaseEditModal repoPath={quickEdit.repoPath} testId={quickEdit.id} onClose={() => setQuickEdit(null)} />}

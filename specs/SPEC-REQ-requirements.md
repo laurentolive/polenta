@@ -712,7 +712,7 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
 - **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
   entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
 - **Page d'un change** (GH199) : origine, version intégrée et campagnes au-dessus des listes ;
-  listes repliables avec leur nombre d'éléments ; `toModify` est affiché « Éléments changés ».
+  listes et analyse d'impact repliables avec leur nombre d'éléments ; `toModify` est affiché « Éléments changés ».
 - **Backlog et assignation** (GH199 §8bis) : un élément **à traiter** (statut ni `isApproval` ni
   `isTerminal`) est **assigné** quand il figure dans `toModify` d'un change ouvert de son repo
   (plusieurs possibles, signalé « aussi dans … »). Entrée **« Backlog (N) »** du panneau

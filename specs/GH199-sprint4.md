@@ -38,7 +38,7 @@
 
 Page d'un change : origine, version intégrée et campagnes remontées au-dessus des listes ; listes
 « Éléments changés » (ex-« à modifier », libellé seulement : le champ reste `toModify`) et
-« Éléments impactés » repliables, avec leur nombre.
+« Éléments impactés » repliables, avec leur nombre ; section « Analyse d'impact » repliable aussi (nombre de racines).
 
 ## Mises à jour SPEC
 

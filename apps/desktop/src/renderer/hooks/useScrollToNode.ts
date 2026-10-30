@@ -32,6 +32,9 @@ export function useScrollToNode(
   // L'arbre change à chaque modification : lu par référence, il ne relance pas le défilement.
   const rootRef = useRef(root)
   useEffect(() => { rootRef.current = root }, [root])
+  // GH230 — premier défilement d'une vue qui vient de s'afficher (bascule de mode, Précédent /
+  // Suivant, ouverture sur un élément) : instantané, l'animation depuis le haut serait trop longue.
+  const scrolledRef = useRef(false)
 
   useEffect(() => {
     const container = containerRef.current
@@ -43,6 +46,8 @@ export function useScrollToNode(
       const id = scrollCandidates(rootRef.current, nodeId).find(c => rendered.has(c))
       target = id ? find(id) : null
     }
-    target?.scrollIntoView({ block, behavior })
+    if (!target) return
+    target.scrollIntoView({ block, behavior: scrolledRef.current ? behavior : 'instant' })
+    scrolledRef.current = true
   }, [containerRef, nodeId, seq, ready, block, behavior])
 }

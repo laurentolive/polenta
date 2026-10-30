@@ -28,6 +28,10 @@ dans la vue cible : nœud rendu le plus proche (aussi pour le goto d'un clic dan
   d'ancrage pendant la bascule (la vue quittée ne se recale pas) ; dossier déjà ciblé : pas de
   nouveau goto.
 
+- Retour de validation (« le scroll est trop long ») : le premier défilement d'une vue qui vient de
+  s'afficher (bascule, Précédent / Suivant, ouverture sur un élément) est instantané ; l'animation
+  ne reste que pour un goto dans une vue déjà affichée (clic dans l'arbre).
+
 ## Mises à jour SPEC
 
 - `SPEC-SYSTEM-VIEW.md` §Panel / Sélection (goto T164) : repli sur le nœud rendu le plus proche au

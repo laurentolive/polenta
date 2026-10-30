@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
 import { Check, Columns3, Eye, FileCode, Redo2, Undo2 } from 'lucide-react'
 import {
-  canTakeBoth, shortRef, findRegions, parseOutput, resolveAllRegions, resolveRegion, resolveRegionBoth, resolveRegionWith, updateOutputAt,
+  canTakeBoth, shortRef, findRegions, parseOutput, resolveRegion, resolveRegionBoth, resolveRegionWith, updateOutputAt,
   yamlStyleOf, type Side,
 } from '@polenta/merge-core'
 import type {
@@ -263,6 +263,25 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
     setResolvedAt(prev => new Map(prev).set(key, line))
     update(next)
   }
+  /** « Tout à gauche / droite » : every block, open or resolved otherwise, takes `side`. Bottom-up,
+   *  so that each block's line stays valid. */
+  const takeAll = (side: Side) => {
+    let next = text
+    const others = resolved.filter(r => r.taken !== side).sort((a, b) => b.from - a.from)
+    for (const r of others) {
+      const block = detail.blocks.find(b => b.key === r.key)
+      if (block) next = resetBlock(next, block, r, markerLabels)
+    }
+    const at = new Map<string, number>()
+    for (const r of [...findRegions(next).regions].sort((a, b) => b.start - a.start)) {
+      next = resolveRegion(next, r.key, side)
+      at.set(r.key, r.start)
+    }
+    if (next === text) return
+    setResolvedAt(prev => new Map([...prev, ...at]))
+    updateText(next)
+  }
+  const canTakeAll = (side: Side) => regions.regions.length > 0 || resolved.some(r => r.taken !== side)
   const takeBase = (key: string) => choose(key, 'base')
   const canTakeBase = (key: string) => detail.blocks.find(b => b.key === key)?.base !== undefined
   /** Choices still possible on a resolved block (Rendu). */
@@ -440,48 +459,44 @@ function Resolver({ session, path, saveFile, onMerged, onSessionChanged, onNextF
             {detail.objectId && <> · {detail.objectId}{detail.title ? ` — ${detail.title}` : ''}</>}
           </p>
         </div>
-        <button type="button" className="btn-primary-sm flex items-center gap-1 shrink-0" disabled={!canMerge || saving} onClick={merge}>
-          <Check size={12} />
-          {merged ? t('mergeResolve.merged') : t('mergeResolve.merge')}
-        </button>
-      </div>
-      <div className="px-4 py-2 border-b border-edge shrink-0 flex flex-wrap items-center gap-2">
+        {/* Raw / Rendu et ancêtre commun : icônes seules, libellé en info-bulle. */}
         <div className="flex rounded border border-edge overflow-hidden shrink-0" role="group">
           <ToggleButton active={!rendered} onClick={() => setMode('raw')} icon={<FileCode size={12} />} label={t('mergeResolve.modeRaw')} />
           <ToggleButton active={rendered} disabled={!canRender} onClick={() => setMode('rendered')} icon={<Eye size={12} />}
             label={t('mergeResolve.modeRendered')} title={canRender ? undefined : t('mergeResolve.renderNotSupported')} />
         </div>
-        <button type="button" onClick={() => setShowBase(!showBase)} aria-pressed={showBase}
-          className={`${showBase ? 'btn-primary-sm' : 'btn-secondary-sm'} flex items-center gap-1 shrink-0`}>
-          <Columns3 size={12} />
-          {t('mergeResolve.showBase')}
+        <ToggleButton active={showBase} onClick={() => setShowBase(!showBase)} icon={<Columns3 size={12} />}
+          label={t('mergeResolve.showBase')} framed />
+        <button type="button" className="btn-primary-sm flex items-center gap-1 shrink-0" disabled={!canMerge || saving} onClick={merge}>
+          <Check size={12} />
+          {merged ? t('mergeResolve.merged') : t('mergeResolve.merge')}
         </button>
-        {!choiceMode && (
-          <>
-            <NavBar kind="conflict" index={nav.index} count={regions.regions.length} onPrev={nav.prev} onNext={nav.next} />
-            <div className="flex rounded border border-edge overflow-hidden shrink-0" role="group">
-              <button type="button" className="px-1.5 py-1 bg-surface text-ink-2 hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
-                disabled={hist.current.past.length === 0} onClick={() => step('undo')}
-                title={t('mergeResolve.undo')} aria-label={t('mergeResolve.undo')}>
-                <Undo2 size={12} />
-              </button>
-              <button type="button" className="px-1.5 py-1 bg-surface text-ink-2 hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed border-l border-edge"
-                disabled={hist.current.future.length === 0} onClick={() => step('redo')}
-                title={t('mergeResolve.redo')} aria-label={t('mergeResolve.redo')}>
-                <Redo2 size={12} />
-              </button>
-            </div>
-            <button type="button" className="btn-secondary-sm shrink-0" disabled={regions.regions.length === 0}
-              onClick={() => updateText(resolveAllRegions(text, 'left'))}>
-              {t('mergeResolve.allLeft')}
-            </button>
-            <button type="button" className="btn-secondary-sm shrink-0" disabled={regions.regions.length === 0}
-              onClick={() => updateText(resolveAllRegions(text, 'right'))}>
-              {t('mergeResolve.allRight')}
-            </button>
-          </>
-        )}
       </div>
+      {!choiceMode && (
+        <div className="px-4 py-2 border-b border-edge shrink-0 flex flex-wrap items-center gap-2">
+          <NavBar kind="conflict" index={nav.index} count={regions.regions.length} onPrev={nav.prev} onNext={nav.next} />
+          <div className="flex rounded border border-edge overflow-hidden shrink-0" role="group">
+            <button type="button" className="px-1.5 py-1 bg-surface text-ink-2 hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={hist.current.past.length === 0} onClick={() => step('undo')}
+              title={t('mergeResolve.undo')} aria-label={t('mergeResolve.undo')}>
+              <Undo2 size={12} />
+            </button>
+            <button type="button" className="px-1.5 py-1 bg-surface text-ink-2 hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed border-l border-edge"
+              disabled={hist.current.future.length === 0} onClick={() => step('redo')}
+              title={t('mergeResolve.redo')} aria-label={t('mergeResolve.redo')}>
+              <Redo2 size={12} />
+            </button>
+          </div>
+          <button type="button" className="btn-secondary-sm shrink-0" disabled={!canTakeAll('left')}
+            onClick={() => takeAll('left')}>
+            {t('mergeResolve.allLeft')}
+          </button>
+          <button type="button" className="btn-secondary-sm shrink-0" disabled={!canTakeAll('right')}
+            onClick={() => takeAll('right')}>
+            {t('mergeResolve.allRight')}
+          </button>
+        </div>
+      )}
 
       <RichTextProvider>
         <div ref={body} className="flex-1 min-h-0 flex flex-col">
@@ -559,13 +574,14 @@ function SyncedTree({ group, id, children }: { group: ScrollSyncGroup; id: strin
   return <div ref={ref} onScroll={onScroll} className="relative h-full overflow-auto" data-testid={`merge-tree-${id}`}>{children}</div>
 }
 
-function ToggleButton({ active, disabled, onClick, icon, label, title }: {
-  active: boolean; disabled?: boolean; onClick: () => void; icon: ReactNode; label: string; title?: string
+/** Icon-only toggle; `label` is its tooltip (`title` replaces it). `framed`: standalone, with its own border. */
+function ToggleButton({ active, disabled, onClick, icon, label, title, framed }: {
+  active: boolean; disabled?: boolean; onClick: () => void; icon: ReactNode; label: string; title?: string; framed?: boolean
 }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active}
-      className={`px-2 py-1 text-xs flex items-center gap-1 ${active ? 'bg-prim text-prim-fg' : 'bg-surface text-ink-2 hover:bg-surface-hover'} disabled:opacity-40 disabled:cursor-not-allowed`}>
-      {icon}{label}
+    <button type="button" onClick={onClick} disabled={disabled} title={title ?? label} aria-label={label} aria-pressed={active}
+      className={`px-2 py-1.5 flex items-center shrink-0 ${framed ? 'rounded border border-edge' : ''} ${active ? 'bg-prim text-prim-fg' : 'bg-surface text-ink-2 hover:bg-surface-hover'} disabled:opacity-40 disabled:cursor-not-allowed`}>
+      {icon}
     </button>
   )
 }

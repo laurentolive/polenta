@@ -78,7 +78,8 @@ export function sideAnchors(sideText: string, blocks: BlockFragments[], open: Ma
   return out
 }
 
-/** The three texts a block can be resolved to (`both` only when « Prendre les deux » applies). */
+/** The texts a block can be resolved to (`both` only when « Prendre les deux » applies) — an
+ *  empty one when that choice removes the block (absent from the ancestor or from a side). */
 export function takenTexts(block: BlockFragments, labels: MarkerLabels): { taken: Taken; text: string }[] {
   const region = renderRegion(block.key, block.left, block.right, labels)
   const both = resolveRegionBoth(region, block.key)
@@ -86,7 +87,7 @@ export function takenTexts(block: BlockFragments, labels: MarkerLabels): { taken
   if (both !== region) out.push({ taken: 'both', text: both })
   for (const side of ['left', 'right'] as const) out.push({ taken: side, text: resolveRegion(region, block.key, side) })
   if (block.base !== undefined) out.push({ taken: 'base', text: resolveRegionWith(region, block.key, block.base) })
-  return out.filter(x => x.text.trim() !== '')
+  return out.map(x => (x.text.trim() === '' ? { ...x, text: '' } : x))
 }
 
 /** Everything a block can be resolved to — to change one's mind on a resolved block. `base` only
@@ -101,22 +102,33 @@ export function choices(block: BlockFragments, labels: MarkerLabels): Taken[] {
 }
 
 /** Blocks no longer open whose chosen text is found in the output (an edited one is not), at the
- *  occurrence closest to `hints` (where the block's region was). */
+ *  occurrence closest to `hints` (where the block's region was). A choice that removed the block
+ *  leaves no text to find: it is resolved, empty (`to` = `from` - 1), where its region was. */
 export function resolvedBlocks(output: string, blocks: BlockFragments[], labels: MarkerLabels, hints: Map<string, number> = new Map()): ResolvedBlock[] {
   const { regions } = findRegions(output)
   const open = new Set(regions.map(r => r.key))
   const skip: [number, number][] = regions.map(r => [r.start, r.end])
   const out: ResolvedBlock[] = []
+  const total = output.split('\n').length
   for (const b of blocks) {
     if (open.has(b.key)) continue
+    const candidates = takenTexts(b, labels)
     // Longest candidate first: « both » contains each side's text.
-    for (const c of takenTexts(b, labels)) {
-      const found = nearest(findAllLines(output, c.text, [...skip, ...out.map(r => [r.from, r.to] as [number, number])]), hints.get(b.key))
-      if (found) {
-        out.push({ key: b.key, taken: c.taken, from: found.from, to: found.to, text: c.text })
+    let found: ResolvedBlock | null = null
+    for (const c of candidates) {
+      if (c.text === '') continue
+      const at = nearest(findAllLines(output, c.text, [...skip, ...out.map(r => [r.from, r.to] as [number, number])]), hints.get(b.key))
+      if (at) {
+        found = { key: b.key, taken: c.taken, from: at.from, to: at.to, text: c.text }
         break
       }
     }
+    const hint = hints.get(b.key)
+    const removed = candidates.find(c => c.text === '')
+    if (!found && removed && hint !== undefined && hint <= total) {
+      found = { key: b.key, taken: removed.taken, from: hint, to: hint - 1, text: '' }
+    }
+    if (found) out.push(found)
   }
   return out
 }

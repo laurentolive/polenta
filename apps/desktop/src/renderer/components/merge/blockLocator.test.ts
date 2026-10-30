@@ -60,6 +60,22 @@ describe('blockLocator', () => {
     expect(resetBlock(out, block, found, labels)).toBe(m.output)
   })
 
+  it('an ancestor without the block: taking it removes the block, still resolved where its region was', () => {
+    const b0 = { a: 'x', z: 'y' }
+    const mm = mergeFile(dump(b0), dump({ ...b0, n: 'gauche' }), dump({ ...b0, n: 'droite' }), labels, 'n.yaml')
+    const block = mm.blocks.find(b => b.base === '')!
+    expect(block).toBeDefined()
+    const region = findRegions(mm.output).regions.find(r => r.key === block.key)!
+    const out = resolveRegionWith(mm.output, block.key, '')
+    const hints = new Map([[block.key, region.start]])
+    const [found] = resolvedBlocks(out, mm.blocks, labels, hints)
+    expect(found).toMatchObject({ key: block.key, taken: 'base', from: region.start, to: region.start - 1 })
+    // …so one can change one's mind: reset restores the region, another side can be taken.
+    expect(resetBlock(out, block, found, labels)).toBe(mm.output)
+    // Without knowing where it was, nothing is claimed.
+    expect(resolvedBlocks(out, mm.blocks, labels)).toEqual([])
+  })
+
   it('changing one\'s mind: reset then another choice; every choice is listed', () => {
     const title = m.blocks.find(b => b.key === '/title')!
     const rows = m.blocks.find(b => b.key.startsWith('/rows'))!

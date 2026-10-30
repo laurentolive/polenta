@@ -330,7 +330,7 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
   const handleGoto = useCallback((nodeId: string | null) => {
     if (editingNodeId !== null) return
     if (nodeId) requestGoto(nodeId)
-    else clearGoto()
+    else clearGoto({ dropItem: true })
   }, [editingNodeId, requestGoto, clearGoto])
 
   // T161 — le renommage inline d'un élément dans l'arbre latéral ne mettait à jour que le

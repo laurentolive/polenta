@@ -17,7 +17,7 @@
 - E1 (CA1, CA2) Exigences en vue Tableau → vue Document → Édition d'un élément → panneau
   Version. `Alt+←` ×3 ramène Édition, Document, Tableau (URL `view=…`, `item=…`) ; `Alt+→`
   refait le chemin.
-- E2 (CA2) recharger la page sur une URL `view=edit&item=X` réaffiche l'Édition de X.
+- E2 (CA2) naviguer vers une URL `view=edit&item=X` depuis une autre page réaffiche l'Édition de X.
 - E3 (CA5) onglet neuf : `<` grisé ; après un recul, `>` actif ; naviguer grise `>`.
 - E4 (CA4) deux onglets : historiques indépendants, changer d'onglet n'ajoute rien.
 - E5 (CA7, CA8) fiche `/req/…` modifiée → `<` → popup ; Rester garde la saisie ; Quitter sans

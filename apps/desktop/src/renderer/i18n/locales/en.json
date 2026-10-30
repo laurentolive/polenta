@@ -37,7 +37,9 @@
     },
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
-      "allTabs": "All tabs"
+      "allTabs": "All tabs",
+      "back": "Back ({{shortcut}}) — right-click: history",
+      "forward": "Forward ({{shortcut}}) — right-click: history"
     },
     "tabListMenu": {
       "filterPlaceholder": "Filter tabs…",
@@ -48,6 +50,12 @@
       "title": "Close without saving?",
       "message": "This tab has unsaved changes. They will be lost.",
       "confirm": "Close without saving"
+    },
+    "confirmLeavePage": {
+      "title": "Leave this page?",
+      "message": "Some changes are not saved and will be lost.",
+      "stay": "Stay",
+      "leave": "Leave without saving"
     },
     "modificationControl": {
       "notDesignated": "<mono>{{branch}}</mono> is not designated as the integration branch (the file says <mono>{{integrationBranch}}</mono>).",

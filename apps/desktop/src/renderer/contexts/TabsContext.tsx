@@ -1,10 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { deducePanel, deriveCurrentProjectId, type Panel } from '../components/layout/AppLayout'
+import { recordLocation, sameDestination, type TabHistory } from '../lib/tabHistory'
 
-export interface Tab {
+/** GH228 — `history[historyIndex]` est la page affichée ; `pathname`/`searchParams`/`title` en
+ *  restent la copie courante (activation d'onglet, menu, « Récemment fermés »). */
+export interface Tab extends TabHistory {
   id: string
   pathname: string
   searchParams: Record<string, string>
@@ -29,6 +32,14 @@ interface TabsContextValue {
   cancelCloseTab: () => void
   setTabDirty: (id: string, dirty: boolean) => void
   setTabTitleOverride: (id: string, title: string) => void
+  /** GH228 — onglet actif (historique Précédent / Suivant). */
+  activeTab: Tab
+  /** GH228 — point d'entrée de l'UI pour aller à l'entrée `index` de l'historique de l'onglet
+   *  actif : quitte le champ actif puis navigue, ou ouvre la popup si l'onglet est dirty. */
+  attemptHistoryNav: (index: number) => void
+  pendingHistoryIndex: number | null
+  confirmHistoryNav: () => void
+  cancelHistoryNav: () => void
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null)
@@ -71,11 +82,14 @@ export function useRegisterTabDirty(dirty: boolean): void {
  *  `null`/`undefined` means "not loaded yet" (skip); `''` is a legitimate saved empty title, not
  *  treated as "no title". */
 export function useSetTabTitle(title: string | null | undefined): void {
-  const { activeTabId, setTabTitleOverride } = useTabs()
+  const { activeTabId, activeTab, setTabTitleOverride } = useTabs()
+  // GH228 — re-applied when a navigation resets the tab to its route default title (every URL
+  // change does), even if `title` itself didn't change (word → excel on the same element).
+  const currentTitle = activeTab.title
   useEffect(() => {
     if (title === null || title === undefined) return
     setTabTitleOverride(activeTabId, title)
-  }, [activeTabId, title, setTabTitleOverride])
+  }, [activeTabId, title, currentTitle, setTabTitleOverride])
 }
 
 function isEditableElement(el: Element): boolean {
@@ -83,14 +97,6 @@ function isEditableElement(el: Element): boolean {
 }
 
 const RECENTLY_CLOSED_LIMIT = 10
-
-function sameDestination(a: Tab, b: Tab): boolean {
-  if (a.pathname !== b.pathname) return false
-  const aKeys = Object.keys(a.searchParams)
-  const bKeys = Object.keys(b.searchParams)
-  if (aKeys.length !== bKeys.length) return false
-  return aKeys.every(key => a.searchParams[key] === b.searchParams[key])
-}
 
 /** Re-closing a destination already in the history moves it back to the front instead of
  *  creating a second entry — "Récemment fermés" lists distinct destinations, not close events. */
@@ -165,13 +171,20 @@ function parseSearch(search: string): Record<string, string> {
 }
 
 function makeTab(pathname: string, searchParams: Record<string, string>, t: TFunction): Tab {
+  const title = defaultTitleForPathname(pathname, t)
   return {
     id: crypto.randomUUID(),
     pathname,
     searchParams,
-    title: defaultTitleForPathname(pathname, t),
+    title,
+    history: [{ pathname, searchParams, title }],
+    historyIndex: 0,
   }
 }
+
+/** GH228 — marque une navigation faite par `TabsProvider` lui-même (activation d'onglet,
+ *  Précédent / Suivant…) : elle ne crée pas d'entrée dans l'historique de l'onglet. */
+const TAB_NAV_STATE = { polentaTabNav: true }
 
 /** Same landing route AppLayout's ActivityBar "Projet" click already navigates to
  *  (AppLayout.tsx handleSelectPanel, case 'project') — kept in sync with T102 once merged. */
@@ -200,10 +213,14 @@ interface Props {
 // time TabsProvider remounts — caching them would show a dirty dot for a draft that no longer
 // exists anywhere in memory.
 let sessionCache: { tabs: Tab[]; activeTabId: string; recentlyClosed: Tab[] } | null = null
+// GH228 — module-level for the same reason: the PUSH that remounts TabsProvider is seen by the
+// outgoing provider's history subscriber and must still count for the remounted one.
+let pendingPush = false
 
 export function TabsProvider({ children }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const router = useRouter()
   const { pathname, search } = useRouterState({
     select: s => ({ pathname: s.location.pathname, search: s.location.searchStr }),
   })
@@ -218,22 +235,45 @@ export function TabsProvider({ children }: Props) {
   const [recentlyClosed, setRecentlyClosed] = useState<Tab[]>(() => sessionCache?.recentlyClosed ?? [])
   const [dirtyTabIds, setDirtyTabIds] = useState<Set<string>>(new Set())
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null)
+  const [pendingHistoryIndex, setPendingHistoryIndex] = useState<number | null>(null)
 
   useEffect(() => {
     sessionCache = { tabs, activeTabId, recentlyClosed }
   })
 
-  const goTo = useCallback((tab: Tab) => {
-    navigate({ to: tab.pathname as never, search: tab.searchParams as never })
+  const goTo = useCallback((tab: Pick<Tab, 'pathname' | 'searchParams'>, replace = false) => {
+    navigate({ to: tab.pathname as never, search: tab.searchParams as never, replace, state: TAB_NAV_STATE as never })
   }, [navigate])
+
+  // GH228 — une navigation PUSH de l'application (hors TabsProvider) vers une autre URL depuis le
+  // dernier rendu = nouvelle page dans l'historique de l'onglet. Consommé par l'effet ci-dessous :
+  // un PUSH suivi d'une redirection REPLACE avant le rendu ne donne qu'une entrée, à l'URL finale.
+  // Un PUSH vers l'URL courante (re-clic) ne compte pas : l'effet ne tournerait pas pour le
+  // consommer. Les retours natifs du navigateur (client web : BACK/FORWARD/GO) ne font que
+  // remplacer l'entrée courante.
+  useEffect(() => {
+    let lastHref = router.history.location.href
+    return router.history.subscribe(({ location, action }) => {
+      const sameUrl = location.href === lastHref
+      lastHref = location.href
+      if ((location.state as { polentaTabNav?: boolean } | undefined)?.polentaTabNav) return
+      if (action.type === 'PUSH' && !sameUrl) pendingPush = true
+    })
+  }, [router])
 
   // Keeps the active tab's stored URL in sync with normal in-app navigation (clicking a
   // requirement, changing a filter…) — this is what lets switching away and back restore the
   // exact position without every navigate() having to know about tabs.
-  useEffect(() => {
+  // GH228 — layout effect: runs before the views' useSetTabTitle (passive) effects of the same
+  // commit, so a refined title lands on the new history entry, never on the page just left.
+  useLayoutEffect(() => {
+    const push = pendingPush
+    pendingPush = false
+    const searchParams = parseSearch(search)
+    const title = defaultTitleForPathname(pathname, t)
     setTabs(prev => prev.map(tab =>
       tab.id === activeTabId
-        ? { ...tab, pathname, searchParams: parseSearch(search), title: defaultTitleForPathname(pathname, t) }
+        ? { ...tab, pathname, searchParams, title, ...recordLocation(tab, { pathname, searchParams, title }, push) }
         : tab
     ))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -310,7 +350,7 @@ export function TabsProvider({ children }: Props) {
       // "Récemment fermés", same as closing any other tab.
       const original = tabs[0]
       const home = resolveHomeRoute(currentProjectId)
-      const tab: Tab = { id: original.id, pathname: home.pathname, searchParams: home.searchParams, title: defaultTitleForPathname(home.pathname, t) }
+      const tab: Tab = { ...makeTab(home.pathname, home.searchParams, t), id: original.id }
       setTabs([tab])
       setActiveTabId(tab.id)
       setRecentlyClosed(prev => pushRecentlyClosed(prev, original))
@@ -382,7 +422,9 @@ export function TabsProvider({ children }: Props) {
       if (!tab) return prev
       const nextTitle = title || defaultTitleForPathname(tab.pathname, tRef.current)
       if (tab.title === nextTitle) return prev
-      return prev.map(item => item.id === id ? { ...item, title: nextTitle } : item)
+      // GH228 — l'entrée courante de l'historique porte le même titre (menu Précédent / Suivant).
+      const history = tab.history.map((entry, i) => i === tab.historyIndex ? { ...entry, title: nextTitle } : entry)
+      return prev.map(item => item.id === id ? { ...item, title: nextTitle, history } : item)
     })
   }, [])
 
@@ -390,16 +432,51 @@ export function TabsProvider({ children }: Props) {
     const closed = recentlyClosed.find(item => item.id === id)
     if (!closed) return
     setRecentlyClosed(prev => prev.filter(rc => rc.id !== id))
-    const tab = makeTab(closed.pathname, closed.searchParams, t)
+    // GH228 — l'onglet rouvert retrouve son historique, comme dans un navigateur.
+    const tab: Tab = { ...closed, id: crypto.randomUUID() }
     setTabs(prev => [...prev, tab])
     setActiveTabId(tab.id)
     goTo(tab)
+  }
+
+  const activeTab = tabs.find(tab => tab.id === activeTabId) ?? tabs[0]
+
+  /** GH228 — va à l'entrée `index` de l'historique de l'onglet actif, sans garde. L'effet de
+   *  synchronisation remplace ensuite cette entrée par l'URL normalisée par le routeur. */
+  function goToHistoryIndex(index: number) {
+    const entry = activeTab.history[index]
+    if (!entry) return
+    setTabs(prev => prev.map(tab => tab.id === activeTab.id ? { ...tab, historyIndex: index } : tab))
+    goTo(entry, true)
+  }
+
+  /** See TabsContextValue.attemptHistoryNav. */
+  function attemptHistoryNav(index: number) {
+    if (index === activeTab.historyIndex || !activeTab.history[index]) return
+    // Même séquence que attemptCloseTab : l'enregistrement au blur du champ actif d'abord.
+    const active = document.activeElement
+    if (active && isEditableElement(active)) (active as HTMLElement).blur()
+    if (dirtyTabIds.has(activeTab.id)) {
+      setPendingHistoryIndex(index)
+      return
+    }
+    goToHistoryIndex(index)
+  }
+
+  function confirmHistoryNav() {
+    if (pendingHistoryIndex !== null) goToHistoryIndex(pendingHistoryIndex)
+    setPendingHistoryIndex(null)
+  }
+
+  function cancelHistoryNav() {
+    setPendingHistoryIndex(null)
   }
 
   return (
     <TabsContext.Provider value={{
       tabs, activeTabId, recentlyClosed, dirtyTabIds, openTab, closeTab, attemptCloseTab, activateTab, reopenClosedTab,
       pendingCloseId, confirmCloseTab, cancelCloseTab, setTabDirty, setTabTitleOverride,
+      activeTab, attemptHistoryNav, pendingHistoryIndex, confirmHistoryNav, cancelHistoryNav,
     }}>
       {children}
     </TabsContext.Provider>

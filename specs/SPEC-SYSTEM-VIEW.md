@@ -247,7 +247,7 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 | Élément | Rôle |
 |---------|------|
 | **Composant X / Élément Y** | Titre contextuel — nom du composant sélectionné et nom du type d'élément sélectionné |
-| **← Retour** | Visible uniquement si une navigation par lien interne a eu lieu (pile `backHistory`). Revient à l'élément précédent. Masqué en vue Édition. GH105 : un lien vers un objet d'un autre repo du workspace bascule la sélection sur ce repo (`navigateToRepo`) ; chaque entrée de la pile mémorise son repo, « ← Retour » y revient. L'historique n'est vidé par une navigation manuelle qu'une fois la destination d'un lien atteinte (un changement de repo peut résoudre nœud et type en plusieurs rendus). |
+| **Retour (lien interne)** | GH228 : plus de bouton propre ni de pile `backHistory`. Un lien interne est une nouvelle page de l'historique de l'onglet (`showObject` : `repo`/`node`/`type`/`view`/`item` dans l'URL), et le bouton Précédent `<` de la barre d'onglets y revient, y compris vers un autre repo du workspace (GH105). En vue Édition, « Retour » (T92) revient à la page précédente de l'onglet si c'est encore la vue système, sinon au dernier mode Tableau / Document positionné sur l'élément. |
 | **↩ ↪** | Undo / Redo |
 | **🔍** | Activer / désactiver le filtre dans le panel gauche |
 | **⚙️** | Configuration des champs visibles |
@@ -495,7 +495,8 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 
 | État | Mécanisme | Clé |
 |------|-----------|-----|
-| Mode de vue (Excel / Word) | `localStorage` | `polenta:viewMode:${repoPath}` |
+| Mode de vue affiché (Excel / Word / Édition) et élément édité ou ciblé par un goto (GH228) | URL (TanStack Router search params) | `view` (`excel`/`word`/`edit`), `item` (objectId) — `/product` et `/components` |
+| Dernier mode Tableau / Document (mode par défaut sans `view`) | `localStorage` | `polenta:viewMode:${repoPath}` |
 | Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 21] ignorée — 21 = toutes les lignes (T170) | `localStorage` | `polenta:excelRowMaxLines` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
 | `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
@@ -512,7 +513,19 @@ personnel : une vue non choisie personnellement prend le défaut de l'équipe, s
 Absence de `repo` dans l'URL (lien généré avant T72) : résolution sur le repo racine par défaut,
 sans erreur.
 
-La persistance via URL permet de partager un lien direct vers un composant/type précis.
+La persistance via URL permet de partager un lien direct vers un composant/type précis — et,
+depuis GH228, vers un élément dans un mode donné.
+
+**GH228 — page dans l'URL, historique Précédent / Suivant** : `SystemViewContext` dérive le mode
+(`viewMode`) et l'élément en Édition (`editingNodeId`, nœud dont l'objectId est `item`) de l'URL.
+Nouvelle page (PUSH) : choix dans la combobox Composant / Élément (`view`/`item` abandonnés), bascule
+Tableau / Document (`showView`), entrée en Édition (`setEditingNodeId`), lien interne
+(`showObject`). Même page (REPLACE) : résolutions automatiques (gardent `view`/`item`), goto d'un
+clic simple ou d'un dépôt dans l'arbre (`item` seul), clic dans le vide (`item` retiré). Un `item`
+encore en résolution garde la vue Édition ; introuvable une fois l'arbre chargé, la vue retombe sur
+le dernier mode Tableau / Document. En Tableau / Document, `item` est la cible goto (contour et
+défilement au retour sur la page). Nœud sans objet (création en cours) : Édition sans `item`,
+complété en REPLACE dès l'objet créé.
 
 **T52 — restauration au retour sur la vue** : quand l'URL arrive sans aucun `repo` (retour depuis
 un autre panneau, redémarrage de l'app, ancien lien pré-T72), la dernière sélection valide

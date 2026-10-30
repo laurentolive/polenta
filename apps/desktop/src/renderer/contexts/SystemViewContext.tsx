@@ -15,6 +15,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
   type ReactNode,
 } from 'react'
@@ -25,7 +26,7 @@ import { decodeProjectId } from '../lib/projectId'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { normRepoPath } from '../components/system/linkUtils'
-import { useTreeState, treeUpdateObjectId, treeFindNode } from '../hooks/useTreeState'
+import { useTreeState, treeUpdateObjectId, treeFindNode, treeFindByObjectId } from '../hooks/useTreeState'
 import { useVersioning } from './VersioningContext'
 import { isEditableTarget } from '../lib/editableTarget'
 import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
@@ -34,6 +35,15 @@ import { findSystemNode, flattenSystemNodes } from '@polenta/types'
 import type { FilterOptions } from '../lib/textFilter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+/** GH228 — mode d'affichage de la vue système, porté par l'URL (`view`). */
+export type SystemViewMode = 'excel' | 'word' | 'edit'
+
+function readStoredViewMode(repoPath: string): 'excel' | 'word' | null {
+  if (!repoPath) return null
+  const stored = localStorage.getItem(`polenta:viewMode:${repoPath}`)
+  return stored === 'excel' || stored === 'word' ? stored : null
+}
 
 /** One (repo, SystemNode) pair — intermediate building block for `componentTypeOptions` below.
  *  No longer exposed to SystemPanel directly (T129 merged Composant+Élément into one combobox);
@@ -170,11 +180,18 @@ export interface SystemViewState {
   effectiveType: ObjectTypeDefinition | undefined
   effectiveTypeId: string
 
-  // Handlers
-  navigateTo: (nodeId: string, typeId: string) => void
-  /** GH105 — comme `navigateTo`, dans le repo `repoPath` (lien vers un objet d'un autre repo du
-   *  workspace) ; repo inconnu de l'arbre = repo courant. */
-  navigateToRepo: (repoPath: string, nodeId: string, typeId: string) => void
+  // GH228 — page affichée, portée par l'URL (`view`, `item`) : chaque changement voulu par
+  // l'utilisateur est une entrée de l'historique Précédent / Suivant de l'onglet.
+  /** Mode effectif : `edit` tant que l'élément de l'URL est en cours de résolution ; un élément
+   *  introuvable une fois l'arbre chargé retombe sur `storedViewMode`. */
+  viewMode: SystemViewMode
+  /** Dernier mode Tableau / Document de ce repo (`localStorage`) — mode par défaut sans `view`. */
+  storedViewMode: 'excel' | 'word'
+  /** Nouvelle page : mode Tableau / Document, positionné (goto) sur l'objet `item` s'il est donné. */
+  showView: (mode: 'excel' | 'word', item?: string | null) => void
+  /** Nouvelle page : objet `item` du type `nodeId::typeId` du repo `repoPath` (lien T37, GH105 :
+   *  objet d'un autre repo du workspace ; repo inconnu de l'arbre = repo courant). */
+  showObject: (repoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory) => void
   /** GH105 — nom de montage du repo `repoPath` (`undefined` s'il n'est pas dans l'arbre). */
   repoNameOf: (repoPath: string) => string | undefined
 
@@ -215,7 +232,8 @@ export interface SystemViewState {
   clearPendingEditsFor: (objectId: string, field?: string, expectedValue?: string) => void
   isEditsDirty: boolean
 
-  // Edit view
+  // Edit view — GH228 : dérivé de l'URL (`view=edit&item=<objectId>`). `setEditingNodeId` ouvre
+  // l'Édition du nœud (nouvelle page) ; `null` revient au mode Tableau / Document mémorisé.
   editingNodeId: string | null
   setEditingNodeId: (id: string | null) => void
 
@@ -226,8 +244,10 @@ export interface SystemViewState {
   // même quand la cible est identique (re-clic, re-drop du même nœud).
   gotoNodeId: string | null
   gotoSeq: number
+  /** GH228 — pose aussi `item` dans l'URL de la page courante quand le nœud a un objet. */
   requestGoto: (nodeId: string) => void
-  clearGoto: () => void
+  /** `dropItem` (clic dans le vide de l'arbre) retire aussi `item` de l'URL, sans nouvelle page. */
+  clearGoto: (opts?: { dropItem?: boolean }) => void
 
   // Immediate object creation on item insert
   // sourceObjectId: when provided, the new object is a copy of the source (paste);
@@ -269,6 +289,11 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const urlRepo = sp.get('repo') ?? null
   const urlNode = sp.get('node') ?? sp.get('component') ?? null
   const urlType = sp.get('type') ?? sp.get('level') ?? null
+  // GH228 — mode d'affichage et élément (édité, ou cible goto en Tableau / Document).
+  const urlViewParam = sp.get('view')
+  const urlView: SystemViewMode | null =
+    urlViewParam === 'excel' || urlViewParam === 'word' || urlViewParam === 'edit' ? urlViewParam : null
+  const urlItem = sp.get('item') || null
   // Which of the three activity-bar tabs (Exigences/Tests/Campagnes) is active — defaults to
   // 'requirement' for old links/tabs saved before that param existed rather than leaving it
   // unset, so every selection/filtering step below can assume a valid category.
@@ -379,24 +404,30 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const effectiveTypeId = effectiveType?.name ?? ''
 
   // Helper: navigate to update repo/node/type in URL, preserving route-specific params
+  // GH228 — `replace` (résolution automatique) précise la page courante et en garde le mode et
+  // l'élément ; une nouvelle page (`replace: false`) part de `page` (rien = mode par défaut).
   const navigateWith = useCallback(
-    (repoName: string, nodeId: string, typeId: string | undefined, replace = true) => {
+    (repoName: string, nodeId: string, typeId: string | undefined, replace = true, page?: { view?: SystemViewMode; item?: string; category?: ObjectCategory }) => {
+      const keep = replace && !page
+      const view = keep ? (urlView ?? undefined) : page?.view
+      const item = keep ? (urlItem ?? undefined) : page?.item
+      const category = page?.category ?? urlCategory
       if (pathname === '/components') {
         navigate({
           to: '/components',
-          search: { projectId, repo: repoName, component: nodeId, type: typeId, level: undefined, tab: undefined, category: urlCategory },
+          search: { projectId, repo: repoName, component: nodeId, type: typeId, level: undefined, tab: undefined, category, view, item },
           replace,
         })
       } else {
         // default to /product
         navigate({
           to: '/product',
-          search: { projectId, repo: repoName, node: nodeId, type: typeId, tab: undefined, category: urlCategory },
+          search: { projectId, repo: repoName, node: nodeId, type: typeId, tab: undefined, category, view, item },
           replace,
         })
       }
     },
-    [navigate, pathname, projectId, urlCategory],
+    [navigate, pathname, projectId, urlCategory, urlView, urlItem],
   )
 
   // Set URL defaults when schema loads (first visit with no URL params, or an
@@ -494,8 +525,9 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     [componentOptions.map(o => `${o.repoName}=${o.repoPath}`).join('|')],
   )
 
+  // GH228 — choix de l'utilisateur : nouvelle page.
   const handleTargetChange = useCallback(
-    (repoName: string, nodeId: string, typeId: string) => navigateWith(repoName, nodeId, typeId),
+    (repoName: string, nodeId: string, typeId: string) => navigateWith(repoName, nodeId, typeId, false),
     [navigateWith],
   )
 
@@ -512,12 +544,6 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // ── T164 — "goto" dans la vue document ─────────────────────────────────────
   // Déclaré ici (avant l'effet [treeData] qui le réinitialise sur changement de nœud/type).
   const [gotoTarget, setGotoTarget] = useState<{ nodeId: string | null; seq: number }>({ nodeId: null, seq: 0 })
-  const requestGoto = useCallback((nodeId: string) => {
-    setGotoTarget(g => ({ nodeId, seq: g.seq + 1 }))
-  }, [])
-  const clearGoto = useCallback(() => {
-    setGotoTarget(g => (g.nodeId === null ? g : { nodeId: null, seq: g.seq + 1 }))
-  }, [])
 
   const savedRootRef = useRef<TypeTreeNode[]>([])
   // `rootKey` distinguishes a node/type switch (→ resetRoot) from a refetch after save
@@ -596,8 +622,85 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const [pendingEdits, setPendingEdits] = useState<Record<string, Record<string, string>>>({})
   const isEditsDirty = Object.keys(pendingEdits).length > 0
 
-  // ── Edit view ──────────────────────────────────────────────────────────────
-  const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
+  // ── Page affichée : mode, élément édité, goto (GH228) ────────────────────────
+  // Relu à chaque changement de `view` : l'effet ci-dessous a écrit le mode de la page précédente.
+  const storedViewMode = useMemo(() => readStoredViewMode(repoPath) ?? 'excel', [repoPath, urlView])
+  useEffect(() => {
+    if (repoPath && (urlView === 'excel' || urlView === 'word')) localStorage.setItem(`polenta:viewMode:${repoPath}`, urlView)
+  }, [repoPath, urlView])
+
+  // Arbre chargé pour la sélection courante : un `item` absent de cet arbre est introuvable.
+  const treeReady = !treeLoading && rootKey === `${effectiveNodeId}|${effectiveTypeId}`
+  // Nœud en cours de création, pas encore d'objet (createItemObject) : ouvert en Édition sans
+  // `item`, complété dans l'URL dès que l'objet est créé (effet ci-dessous).
+  const [localEditingNodeId, setLocalEditingNodeId] = useState<string | null>(null)
+  const urlEditingNodeId = useMemo(
+    () => (urlView === 'edit' && urlItem ? treeFindByObjectId(root, urlItem)?.id ?? null : null),
+    [root, urlView, urlItem],
+  )
+  const editingNodeId = urlView !== 'edit' ? null : urlItem ? urlEditingNodeId : localEditingNodeId
+  const viewMode: SystemViewMode =
+    urlView === 'edit'
+      ? (editingNodeId !== null || (!!urlItem && !treeReady) ? 'edit' : storedViewMode)
+      : urlView ?? storedViewMode
+
+  const showView = useCallback((mode: 'excel' | 'word', item?: string | null) => {
+    navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, false, { view: mode, item: item ?? undefined })
+  }, [navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
+
+  // `category` : un lien peut viser un objet d'une autre catégorie (test lié depuis Exigences) —
+  // l'onglet Exigences / Tests suit l'objet, sinon son type n'y serait pas affichable.
+  const showObject = useCallback((targetRepoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory) => {
+    navigateWith(repoNameOf(targetRepoPath) ?? selectedRepoName, nodeId, typeId, false, { view, item, category })
+  }, [navigateWith, repoNameOf, selectedRepoName])
+
+  const setEditingNodeId = useCallback((nodeId: string | null) => {
+    if (nodeId === null) {
+      showView(storedViewMode)
+      return
+    }
+    const objectId = treeFindNode(rootRef.current, nodeId)?.objectId
+    setLocalEditingNodeId(objectId ? null : nodeId)
+    navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, false, { view: 'edit', item: objectId })
+  }, [showView, storedViewMode, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
+
+  useEffect(() => {
+    if (urlView !== 'edit' || urlItem || !localEditingNodeId) return
+    const objectId = treeFindNode(root, localEditingNodeId)?.objectId
+    if (objectId) navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, true, { view: 'edit', item: objectId })
+  }, [root, localEditingNodeId, urlView, urlItem]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // T164 / GH228 — goto : cible locale (re-clic = re-défilement) et `item` dans l'URL de la page
+  // courante (REPLACE : un clic dans l'arbre n'est pas une nouvelle page, mais Précédent revient
+  // sur l'élément ciblé). `appliedGotoRef` = dernier `(arbre, item)` appliqué depuis l'URL ; remis
+  // à zéro en Édition pour que le retour en Tableau / Document re-cible.
+  const appliedGotoRef = useRef('')
+  const requestGoto = useCallback((nodeId: string) => {
+    setGotoTarget(g => ({ nodeId, seq: g.seq + 1 }))
+    const objectId = treeFindNode(rootRef.current, nodeId)?.objectId
+    if (!objectId || objectId === urlItem) return
+    appliedGotoRef.current = `${rootKey}|${objectId}`
+    navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, true, { view: urlView ?? undefined, item: objectId })
+  }, [urlItem, urlView, rootKey, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
+  const clearGoto = useCallback((opts?: { dropItem?: boolean }) => {
+    setGotoTarget(g => (g.nodeId === null ? g : { nodeId: null, seq: g.seq + 1 }))
+    if (opts?.dropItem && urlItem && urlView !== 'edit') {
+      navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, true, { view: urlView ?? undefined })
+    }
+  }, [urlItem, urlView, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
+
+  useEffect(() => {
+    if (urlView === 'edit' || !urlItem) {
+      appliedGotoRef.current = ''
+      return
+    }
+    if (!treeReady) return
+    const key = `${rootKey}|${urlItem}`
+    if (appliedGotoRef.current === key) return
+    appliedGotoRef.current = key
+    const node = treeFindByObjectId(root, urlItem)
+    if (node) setGotoTarget(g => (g.nodeId === node.id ? g : { nodeId: node.id, seq: g.seq + 1 }))
+  }, [urlView, urlItem, rootKey, root, treeReady])
 
   const handleInlineEdit = useCallback((objectId: string, field: string, value: string) => {
     setPendingEdits(prev => ({
@@ -751,9 +854,10 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     objectTypes,
     effectiveType,
     effectiveTypeId,
-    navigateTo: (nodeId: string, typeId: string) => navigateWith(selectedRepoName, nodeId, typeId),
-    navigateToRepo: (targetRepoPath: string, nodeId: string, typeId: string) =>
-      navigateWith(repoNameOf(targetRepoPath) ?? selectedRepoName, nodeId, typeId),
+    viewMode,
+    storedViewMode,
+    showView,
+    showObject,
     repoNameOf,
     root,
     setRoot,

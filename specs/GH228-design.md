@@ -71,8 +71,8 @@ Dans le contexte :
   REPLACE dès que l'objectId est attribué.
 - `showObject(repoPath, nodeId, typeId, view, item)` (push) — navigation par lien (T37/GH105),
   remplace `navigateTo` / `navigateToRepo`.
-- `requestGoto(nodeId)` : cible locale (comme aujourd'hui) **et** push `item=<objectId>` si
-  différent de l'URL. `clearGoto({ dropItem })` : `dropItem` (clic dans le vide de l'arbre)
+- `requestGoto(nodeId)` : cible locale (comme aujourd'hui) **et** `item=<objectId>` en REPLACE
+  si différent de l'URL (un clic dans l'arbre n'empile pas de pages). `clearGoto({ dropItem })` : `dropItem` (clic dans le vide de l'arbre)
   retire `item` en REPLACE.
 - Effet URL → goto : à chaque `(rootKey, item)` nouveau hors Édition, l'item résolu devient la
   cible goto (retour arrière sur une page « ciblée » → contour et défilement).
@@ -81,7 +81,12 @@ Dans le contexte :
 
 Dans `SystemView` : suppression de `viewMode` local, `prevViewModeRef`, `backHistory`,
 `pendingNavObjectId`, `beginLinkNavigation`, `linkNavTargetRef`, `BackEntry`, du bouton
-« ← Retour » hors Édition. `navigateToObject` → `showObject`. `handleEditBack` → `showView`.
+« ← Retour » hors Édition. `navigateToObject` → `showObject`. `handleEditBack` (« Retour » T92) → Précédent si l'entrée
+précédente de l'onglet est la même route, sinon `showView(storedViewMode, item)`. `SystemView`
+pose le titre d'onglet (`useSetTabTitle` : « ID — titre » en Édition, sinon composant / type) pour
+que le menu d'historique distingue les pages ; `useSetTabTitle` se ré-applique quand une
+navigation remet le titre par défaut, et l'effet de synchronisation de `TabsProvider` est un
+`useLayoutEffect` (il précède les effets des vues : le titre affiné va sur la nouvelle entrée).
 
 **Saisie non enregistrée de la vue système** : `EditView` vide son miroir au démontage et au
 changement d'objet (T159), les cellules Excel enregistrent au `blur` ; rien n'est perdu en

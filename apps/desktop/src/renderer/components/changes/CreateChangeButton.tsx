@@ -32,10 +32,10 @@ export function CreateChangeButton({ repoPath, projectId, elementId, objectTypeR
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: schema } = useProjectSchema(repoPath)
-  const hasType = getAllObjectTypes(schema, 'change').length > 0
+  const hasType = getAllObjectTypes(schema, 'changeset').length > 0
   const { data: changes = [] } = useQuery({
-    queryKey: ['changes', 'repo', repoPath],
-    queryFn: () => api.changes.list(repoPath),
+    queryKey: ['changesets', 'repo', repoPath],
+    queryFn: () => api.changesets.list(repoPath),
     enabled: !!repoPath && hasType,
   })
   const [open, setOpen] = useState(false)
@@ -50,7 +50,7 @@ export function CreateChangeButton({ repoPath, projectId, elementId, objectTypeR
   if (!projectId || !hasType) return null
   const listing = changes.filter(c => c.elementIds.includes(elementId)
     && !getChangeTypeDef(schema, c.objectTypeRef)?.statuses?.find(s => s.name === c.status)?.isTerminal)
-  const create = () => navigate({ to: '/change/new', search: { projectId, repoPath, element: elementId, component: elementComponent(schema, objectTypeRef) } })
+  const create = () => navigate({ to: '/changeset/new', search: { projectId, repoPath, element: elementId, component: elementComponent(schema, objectTypeRef) } })
 
   return (
     <div ref={ref} className="relative inline-block">
@@ -70,7 +70,7 @@ export function CreateChangeButton({ repoPath, projectId, elementId, objectTypeR
               key={c.id}
               type="button"
               className="w-full text-left px-3 py-1.5 text-xs hover:bg-hover flex gap-2"
-              onClick={() => { setOpen(false); navigate({ to: '/change/$changeId', params: { changeId: c.id }, search: { projectId, repoPath: c.repoPath } }) }}
+              onClick={() => { setOpen(false); navigate({ to: '/changeset/$changeId', params: { changeId: c.id }, search: { projectId, repoPath: c.repoPath } }) }}
             >
               <span className="text-ink-3 shrink-0">{t('changes.openChange')}</span>
               <span className="font-mono shrink-0">{c.id}</span>

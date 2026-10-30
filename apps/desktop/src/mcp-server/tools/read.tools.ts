@@ -110,7 +110,7 @@ export function registerReadTools(server: McpServer, container: McpContainer): v
         "par date. `implicit: true` = valeur constatée dont la date de changement est inconnue " +
         '(datée du dernier commit du fichier). Données brutes : aucune interprétation.',
       inputSchema: {
-        kind: z.enum(['requirement', 'test', 'campaign', 'change']),
+        kind: z.enum(['requirement', 'test', 'campaign', 'changeset']),
         id: z.string().describe('ID de l’objet (ex. SYS-0001, CAMP-0003)'),
       },
     },

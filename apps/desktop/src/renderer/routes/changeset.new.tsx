@@ -19,7 +19,7 @@ import { useSetTabTitle } from '../contexts/TabsContext'
  * /change/new?projectId=<encoded>[&repoPath=<repo de l'élément>][&element=<ID>][&component=<nœud>]
  * `element` : « Créer un change » depuis un élément, ajouté à « à modifier » (Q4).
  */
-export const Route = createFileRoute('/change/new')({
+export const Route = createFileRoute('/changeset/new')({
   component: NewChangePage,
   validateSearch: (s: Record<string, unknown>) => ({
     projectId: (s['projectId'] as string) ?? '',
@@ -52,7 +52,7 @@ function NewChangePage() {
     return repos.flatMap(rp => {
       const repoSchema = schemasByRepoPath.get(rp)
       const repoLabel = flatNodes.find(n => n.repoPath === rp)?.label || repoName(rp)
-      const hasType = getObjectTypeRefs(repoSchema, 'change').length > 0
+      const hasType = getObjectTypeRefs(repoSchema, 'changeset').length > 0
       return flattenSystemNodes(repoSchema?.nodes ?? []).map(({ node }) => node).filter(n => n.objectTypes !== undefined)
         .map(n => {
           // Nœud racine d'un repo : même libellé que le repo, affiché une seule fois.
@@ -81,7 +81,7 @@ function NewChangePage() {
   const repoPath = target?.repoPath ?? ''
   const schema = schemasByRepoPath.get(repoPath)
 
-  const types = getObjectTypeRefs(schema, 'change')
+  const types = getObjectTypeRefs(schema, 'changeset')
   const selectedRef = types.some(x => x.ref === typeRef) ? typeRef : types.length === 1 ? types[0].ref : ''
   const typeDef = types.find(x => x.ref === selectedRef)?.typeDef
   const initial = typeDef?.statuses?.[0]?.name ?? ''
@@ -92,7 +92,7 @@ function NewChangePage() {
   const effectiveComponent = target?.node ?? ''
 
   const create = useMutation({
-    mutationFn: () => api.changes.create(repoPath, {
+    mutationFn: () => api.changesets.create(repoPath, {
       ...(mode === 'range' && { mode, range: { from: from.trim(), to: to.trim() } }),
       objectTypeRef: selectedRef,
       title,
@@ -101,8 +101,8 @@ function NewChangePage() {
       ...(prefill && { toModify: [{ id: prefill, state: 'planned' as const }] }),
     }, workspaceDir || undefined),
     onSuccess: change => {
-      qc.invalidateQueries({ queryKey: ['changes'] })
-      navigate({ to: '/change/$changeId', params: { changeId: change.id }, search: { projectId, repoPath: change.repoPath } })
+      qc.invalidateQueries({ queryKey: ['changesets'] })
+      navigate({ to: '/changeset/$changeId', params: { changeId: change.id }, search: { projectId, repoPath: change.repoPath } })
     },
   })
   const canCreate = !!target && !!selectedRef && !!title.trim() && (mode === 'request' || (!!from.trim() && !!to.trim())) && !create.isPending
@@ -119,7 +119,7 @@ function NewChangePage() {
           {!openRepo || (targets.length === 0 && flatNodes.length === 0) ? (
             <p className="p-8 text-sm text-ink-3">{openRepo ? t('common.loading') : t('common.projectNotLoaded')}</p>
           ) : usable.length === 0 ? (
-            <NoTypeForCategory category="change" repoPath={openRepo} projectId={projectId} />
+            <NoTypeForCategory category="changeset" repoPath={openRepo} projectId={projectId} />
           ) : (
             <form className="max-w-2xl p-6 space-y-4" onSubmit={e => { e.preventDefault(); submit() }} data-testid="change-new-form">
               {targets.length > 1 && (

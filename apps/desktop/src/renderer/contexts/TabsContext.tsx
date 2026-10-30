@@ -111,7 +111,7 @@ const PANEL_LABEL_KEYS: Record<Panel, string> = {
   tests: 'layout.activityBar.tests',
   campaigns: 'layout.activityBar.campaigns',
   dashboard: 'layout.activityBar.dashboard',
-  changes: 'layout.activityBar.changes',
+  changesets: 'layout.activityBar.changes',
   parameters: 'layout.activityBar.parameters',
 }
 
@@ -127,8 +127,8 @@ const TITLE_OVERRIDE_KEYS: Record<string, string> = {
   '/graph': 'layout.tabTitles.graph',
   '/diff': 'layout.tabTitles.diff',
   '/baseline': 'layout.tabTitles.baseline',
-  '/changes/local': 'impactAnalysisPage.localTitle',
-  '/changes/revalidation': 'impactAnalysisPage.revalidation.listTitle',
+  '/changesets/local': 'impactAnalysisPage.localTitle',
+  '/changesets/revalidation': 'impactAnalysisPage.revalidation.listTitle',
   '/version-diff': 'layout.tabTitles.versionDiff',
   '/merge-resolve': 'layout.tabTitles.mergeResolve',
   '/versioning': 'layout.activityBar.version',

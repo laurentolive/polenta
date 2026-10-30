@@ -61,9 +61,9 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 
 > **GH196 (contrat v1, ajout)** — `GraphTestRun.fields`, `notes` (Markdown), `stepResults` (`GraphStepResult` : `order`, `result`, `comment`, `fields`) ; `GraphObjectType.runFields` / `stepFields`. `polenta.d.ts` régénéré (manifeste v5).
 
-> **GH198 (contrat v1, ajout)** — collection `changes` (`GraphChange` : base commune statut / champs / historique, `component`, `mode`, `toModify`, `impacted` avec statut d'impact et `source`, `origin`, `integratedIn`, `campaigns`) ; catégorie `change` dans `GraphObjectCategory` et les types. Fichiers `changes/` dans le périmètre du cache (watcher, canaux `changes:*`). `polenta.d.ts` régénéré (manifeste v6).
+> **GH198 (contrat v1, ajout)** — collection `changesets` (`GraphChangeset` : base commune statut / champs / historique, `component`, `mode`, `toModify`, `impacted` avec statut d'impact et `source`, `origin`, `integratedIn`, `campaigns`) ; catégorie `changeset` dans `GraphObjectCategory` et les types. Fichiers `changesets/` dans le périmètre du cache (watcher, canaux `changes:*`). `polenta.d.ts` régénéré (manifeste v6).
 
-> **GH199 (contrat v1, ajout)** — `GraphChange.range` (bornes d'un change sur l'existant) et `GraphChange.analysis` (instantané figé au statut terminal : lignes, racines, campagnes ; jamais recalculé par le graphe). `polenta.d.ts` régénéré (manifeste v7).
+> **GH199 (contrat v1, ajout)** — `GraphChangeset.range` (bornes d'un change sur l'existant) et `GraphChangeset.analysis` (instantané figé au statut terminal : lignes, racines, campagnes ; jamais recalculé par le graphe). `polenta.d.ts` régénéré (manifeste v7).
 
 ## 3. Exécution (bac à sable)
 

@@ -30,13 +30,13 @@ export function AssignToChangeDialog({ mode, repoPath, elementIds, component, so
   const qc = useQueryClient()
   const { data: schema } = useProjectSchema(repoPath)
   const { data: listed } = useQuery({
-    queryKey: ['changes', 'repo', repoPath],
-    queryFn: () => api.changes.list(repoPath),
+    queryKey: ['changesets', 'repo', repoPath],
+    queryFn: () => api.changesets.list(repoPath),
     enabled: !openChanges && !!repoPath,
   })
   const candidates = (openChanges ?? (listed ?? []).filter(c => c.repoPath === repoPath && c.open))
     .filter(c => c.id !== sourceChangeId)
-  const types = getObjectTypeRefs(schema, 'change')
+  const types = getObjectTypeRefs(schema, 'changeset')
   const [title, setTitle] = useState('')
   const [typeRef, setTypeRef] = useState('')
   const [busy, setBusy] = useState(false)
@@ -51,8 +51,8 @@ export function AssignToChangeDialog({ mode, repoPath, elementIds, component, so
     try {
       const changeId = await target()
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ['changes'] }),
-        qc.invalidateQueries({ queryKey: ['change'] }),
+        qc.invalidateQueries({ queryKey: ['changesets'] }),
+        qc.invalidateQueries({ queryKey: ['changeset'] }),
         qc.invalidateQueries({ queryKey: ['changes-backlog'] }),
       ])
       onDone(changeId)
@@ -62,18 +62,18 @@ export function AssignToChangeDialog({ mode, repoPath, elementIds, component, so
     }
   }
   const toExisting = (changeId: string) => run(async () => {
-    if (mode === 'move' && sourceChangeId) await api.changes.move(repoPath, sourceChangeId, changeId, elementIds)
-    else await api.changes.assign(repoPath, changeId, elementIds)
+    if (mode === 'move' && sourceChangeId) await api.changesets.move(repoPath, sourceChangeId, changeId, elementIds)
+    else await api.changesets.assign(repoPath, changeId, elementIds)
     return changeId
   })
   const toNew = () => run(async () => {
-    const created = await api.changes.create(repoPath, {
+    const created = await api.changesets.create(repoPath, {
       objectTypeRef: typeRef || types[0]!.ref,
       title: title.trim(),
       ...(component && { component }),
       toModify: elementIds.map(id => ({ id, state: 'planned' as const })),
     })
-    if (mode === 'move' && sourceChangeId) await api.changes.move(repoPath, sourceChangeId, created.id, elementIds)
+    if (mode === 'move' && sourceChangeId) await api.changesets.move(repoPath, sourceChangeId, created.id, elementIds)
     return created.id
   })
 

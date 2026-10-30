@@ -4,19 +4,19 @@ import type { McpContainer } from '../container'
 import { errorToolResult, jsonToolResult } from '../mcp-types'
 
 /**
- * GH198 — changes (specs/GH198.md §6) : `list_changes`, `get_change`, `create_change` (demande de
- * changement). Mêmes contrôles que l'application (`ChangesService`). GH199 : `get_change` renvoie aussi l'analyse.
+ * GH198 — changes (specs/GH198.md §6) : `list_changesets`, `get_changeset`, `create_changeset` (demande de
+ * changement). Mêmes contrôles que l'application (`ChangesService`). GH199 : `get_changeset` renvoie aussi l'analyse.
  */
 
 const changeItemSchema = z.object({ id: z.string().min(1) })
 
 export function registerChangeTools(server: McpServer, container: McpContainer): void {
   server.registerTool(
-    'list_changes',
+    'list_changesets',
     {
-      title: 'List changes',
+      title: 'List changesets',
       description:
-        "Liste les changes (modifications pilotées d'un composant) de tous les repos du workspace : " +
+        "Liste les changesets (modifications pilotées d'un composant) de tous les repos du workspace : " +
         'id, repo de stockage (repoPath), type (objectTypeRef), titre, statut, composant, nombres d\'éléments ' +
         'à modifier et impactés. Filtres optionnels : status, objectTypeRef.',
       inputSchema: {
@@ -28,27 +28,27 @@ export function registerChangeTools(server: McpServer, container: McpContainer):
       let changes = await container.changes.list(container.repoPath, container.workspaceDir)
       if (status) changes = changes.filter((c) => c.status === status)
       if (objectTypeRef) changes = changes.filter((c) => c.objectTypeRef === objectTypeRef)
-      return jsonToolResult({ changes })
+      return jsonToolResult({ changesets: changes })
     },
   )
 
   server.registerTool(
-    'get_change',
+    'get_changeset',
     {
-      title: 'Get change',
+      title: 'Get changeset',
       description:
-        "Lit un change : champs, composant, éléments à modifier (toModify : id, state planned|modified), " +
+        "Lit un changeset : champs, composant, éléments à modifier (toModify : id, state planned|modified), " +
         'éléments impactés (impacted : id, status d\'impact, comment, source declared|computed), origine, ' +
         'version intégrée, campagnes, historique ; et son analyse d\'impact (`analysis` : racines, arbres, lignes des impactés ' +
-        'déclarées et calculées, campagnes en cours concernées ; figée si le change est terminal). repoPath : repo de stockage ' +
-        '(cf. list_changes), défaut repo ouvert.',
+        'déclarées et calculées, campagnes en cours concernées ; figée si le changeset est terminal). repoPath : repo de stockage ' +
+        '(cf. list_changesets), défaut repo ouvert.',
       inputSchema: { id: z.string().min(1), repoPath: z.string().optional() },
     },
     async ({ id, repoPath }) => {
       try {
         const rp = repoPath ?? container.repoPath
         const [change, analysis] = await Promise.all([container.changes.get(rp, id), container.changes.analysis(rp, id)])
-        return jsonToolResult({ change, analysis })
+        return jsonToolResult({ changeset: change, analysis })
       } catch (err) {
         return errorToolResult(err instanceof Error ? err.message : String(err))
       }
@@ -56,11 +56,11 @@ export function registerChangeTools(server: McpServer, container: McpContainer):
   )
 
   server.registerTool(
-    'create_change',
+    'create_changeset',
     {
-      title: 'Create change',
+      title: 'Create changeset',
       description:
-        "Crée une demande de changement (mode request). objectTypeRef : type de catégorie change du schéma " +
+        "Crée un changeset (demande de changement, mode request). objectTypeRef : type de catégorie changeset du schéma " +
         "(cf. get_schema). component : nœud concerné, obligatoire si le repo porte plusieurs composants locaux. " +
         "toModify : exigences / tests prévus à modifier ; impacted : éléments impactés déclarés (statut " +
         "impact_non_verifie). Champs du type contrôlés comme dans l'application (required, requiredWhen, liens).",
@@ -80,7 +80,7 @@ export function registerChangeTools(server: McpServer, container: McpContainer):
           toModify: (toModify ?? []).map((t) => ({ id: t.id, state: 'planned' as const })),
           impacted: (impacted ?? []).map((i) => ({ id: i.id, status: 'impact_non_verifie' as const, source: 'declared' as const })),
         }, container.workspaceDir)
-        return jsonToolResult({ change })
+        return jsonToolResult({ changeset: change })
       } catch (err) {
         return errorToolResult(err instanceof Error ? err.message : String(err))
       }

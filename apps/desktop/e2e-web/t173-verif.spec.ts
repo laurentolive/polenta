@@ -56,7 +56,7 @@ async function activate(entry: Locator) {
 }
 
 async function openImpactView() {
-  await s.openView('Changements')
+  await s.openView('Changesets')
 }
 
 let localFlagged: string[] = [] // éléments marqués présents dans les arbres de l'analyse locale
@@ -299,7 +299,7 @@ test('L14 — libellés T173 en anglais', async () => {
   await s.page.reload()
   await s.page.waitForLoadState('networkidle')
   try {
-    await s.openView('Changes')
+    await s.openView('Changesets')
     const entry = revalidationEntry()
     await expect(entry).toBeVisible()
     await expect(entry).toContainText(/Impact to check\s*\d+/)

@@ -28,7 +28,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConstellationRouteImport } from './routes/constellation'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as ComplianceRouteImport } from './routes/compliance'
-import { Route as ChangesRouteImport } from './routes/changes'
+import { Route as ChangesetsRouteImport } from './routes/changesets'
 import { Route as BaselineRouteImport } from './routes/baseline'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AccountRouteImport } from './routes/account'
@@ -45,11 +45,11 @@ import { Route as PrintDrawioSnapshotRouteImport } from './routes/print.drawio-s
 import { Route as PrintDashboardRouteImport } from './routes/print.dashboard'
 import { Route as PrintCampaignReportRouteImport } from './routes/print.campaign-report'
 import { Route as PrintCampaignPlanRouteImport } from './routes/print.campaign-plan'
-import { Route as ChangesRevalidationRouteImport } from './routes/changes_.revalidation'
-import { Route as ChangesLocalRouteImport } from './routes/changes_.local'
-import { Route as ChangesBacklogRouteImport } from './routes/changes_.backlog'
-import { Route as ChangeNewRouteImport } from './routes/change.new'
-import { Route as ChangeChangeIdRouteImport } from './routes/change.$changeId'
+import { Route as ChangesetsRevalidationRouteImport } from './routes/changesets_.revalidation'
+import { Route as ChangesetsLocalRouteImport } from './routes/changesets_.local'
+import { Route as ChangesetsBacklogRouteImport } from './routes/changesets_.backlog'
+import { Route as ChangesetNewRouteImport } from './routes/changeset.new'
+import { Route as ChangesetChangeIdRouteImport } from './routes/changeset.$changeId'
 import { Route as CampaignNewRouteImport } from './routes/campaign.new'
 import { Route as CampaignCampaignIdRouteImport } from './routes/campaign.$campaignId'
 import { Route as CampaignCampaignIdRunTestIdRouteImport } from './routes/campaign.$campaignId_.run.$testId'
@@ -150,9 +150,9 @@ const ComplianceRoute = ComplianceRouteImport.update({
   path: '/compliance',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChangesRoute = ChangesRouteImport.update({
-  id: '/changes',
-  path: '/changes',
+const ChangesetsRoute = ChangesetsRouteImport.update({
+  id: '/changesets',
+  path: '/changesets',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BaselineRoute = BaselineRouteImport.update({
@@ -235,29 +235,29 @@ const PrintCampaignPlanRoute = PrintCampaignPlanRouteImport.update({
   path: '/print/campaign-plan',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChangesRevalidationRoute = ChangesRevalidationRouteImport.update({
-  id: '/changes_/revalidation',
-  path: '/changes/revalidation',
+const ChangesetsRevalidationRoute = ChangesetsRevalidationRouteImport.update({
+  id: '/changesets_/revalidation',
+  path: '/changesets/revalidation',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChangesLocalRoute = ChangesLocalRouteImport.update({
-  id: '/changes_/local',
-  path: '/changes/local',
+const ChangesetsLocalRoute = ChangesetsLocalRouteImport.update({
+  id: '/changesets_/local',
+  path: '/changesets/local',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChangesBacklogRoute = ChangesBacklogRouteImport.update({
-  id: '/changes_/backlog',
-  path: '/changes/backlog',
+const ChangesetsBacklogRoute = ChangesetsBacklogRouteImport.update({
+  id: '/changesets_/backlog',
+  path: '/changesets/backlog',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChangeNewRoute = ChangeNewRouteImport.update({
-  id: '/change/new',
-  path: '/change/new',
+const ChangesetNewRoute = ChangesetNewRouteImport.update({
+  id: '/changeset/new',
+  path: '/changeset/new',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChangeChangeIdRoute = ChangeChangeIdRouteImport.update({
-  id: '/change/$changeId',
-  path: '/change/$changeId',
+const ChangesetChangeIdRoute = ChangesetChangeIdRouteImport.update({
+  id: '/changeset/$changeId',
+  path: '/changeset/$changeId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CampaignNewRoute = CampaignNewRouteImport.update({
@@ -288,7 +288,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
-  '/changes': typeof ChangesRoute
+  '/changesets': typeof ChangesetsRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
   '/constellation': typeof ConstellationRoute
@@ -310,11 +310,11 @@ export interface FileRoutesByFullPath {
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
-  '/change/$changeId': typeof ChangeChangeIdRoute
-  '/change/new': typeof ChangeNewRoute
-  '/changes/backlog': typeof ChangesBacklogRoute
-  '/changes/local': typeof ChangesLocalRoute
-  '/changes/revalidation': typeof ChangesRevalidationRoute
+  '/changeset/$changeId': typeof ChangesetChangeIdRoute
+  '/changeset/new': typeof ChangesetNewRoute
+  '/changesets/backlog': typeof ChangesetsBacklogRoute
+  '/changesets/local': typeof ChangesetsLocalRoute
+  '/changesets/revalidation': typeof ChangesetsRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -335,7 +335,7 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
-  '/changes': typeof ChangesRoute
+  '/changesets': typeof ChangesetsRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
   '/constellation': typeof ConstellationRoute
@@ -357,11 +357,11 @@ export interface FileRoutesByTo {
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
-  '/change/$changeId': typeof ChangeChangeIdRoute
-  '/change/new': typeof ChangeNewRoute
-  '/changes/backlog': typeof ChangesBacklogRoute
-  '/changes/local': typeof ChangesLocalRoute
-  '/changes/revalidation': typeof ChangesRevalidationRoute
+  '/changeset/$changeId': typeof ChangesetChangeIdRoute
+  '/changeset/new': typeof ChangesetNewRoute
+  '/changesets/backlog': typeof ChangesetsBacklogRoute
+  '/changesets/local': typeof ChangesetsLocalRoute
+  '/changesets/revalidation': typeof ChangesetsRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -383,7 +383,7 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/baseline': typeof BaselineRoute
-  '/changes': typeof ChangesRoute
+  '/changesets': typeof ChangesetsRoute
   '/compliance': typeof ComplianceRoute
   '/components': typeof ComponentsRoute
   '/constellation': typeof ConstellationRoute
@@ -405,11 +405,11 @@ export interface FileRoutesById {
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
-  '/change/$changeId': typeof ChangeChangeIdRoute
-  '/change/new': typeof ChangeNewRoute
-  '/changes_/backlog': typeof ChangesBacklogRoute
-  '/changes_/local': typeof ChangesLocalRoute
-  '/changes_/revalidation': typeof ChangesRevalidationRoute
+  '/changeset/$changeId': typeof ChangesetChangeIdRoute
+  '/changeset/new': typeof ChangesetNewRoute
+  '/changesets_/backlog': typeof ChangesetsBacklogRoute
+  '/changesets_/local': typeof ChangesetsLocalRoute
+  '/changesets_/revalidation': typeof ChangesetsRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
   '/print/campaign-report': typeof PrintCampaignReportRoute
   '/print/dashboard': typeof PrintDashboardRoute
@@ -432,7 +432,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/baseline'
-    | '/changes'
+    | '/changesets'
     | '/compliance'
     | '/components'
     | '/constellation'
@@ -454,11 +454,11 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
-    | '/change/$changeId'
-    | '/change/new'
-    | '/changes/backlog'
-    | '/changes/local'
-    | '/changes/revalidation'
+    | '/changeset/$changeId'
+    | '/changeset/new'
+    | '/changesets/backlog'
+    | '/changesets/local'
+    | '/changesets/revalidation'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -479,7 +479,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/baseline'
-    | '/changes'
+    | '/changesets'
     | '/compliance'
     | '/components'
     | '/constellation'
@@ -501,11 +501,11 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
-    | '/change/$changeId'
-    | '/change/new'
-    | '/changes/backlog'
-    | '/changes/local'
-    | '/changes/revalidation'
+    | '/changeset/$changeId'
+    | '/changeset/new'
+    | '/changesets/backlog'
+    | '/changesets/local'
+    | '/changesets/revalidation'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -526,7 +526,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/baseline'
-    | '/changes'
+    | '/changesets'
     | '/compliance'
     | '/components'
     | '/constellation'
@@ -548,11 +548,11 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
-    | '/change/$changeId'
-    | '/change/new'
-    | '/changes_/backlog'
-    | '/changes_/local'
-    | '/changes_/revalidation'
+    | '/changeset/$changeId'
+    | '/changeset/new'
+    | '/changesets_/backlog'
+    | '/changesets_/local'
+    | '/changesets_/revalidation'
     | '/print/campaign-plan'
     | '/print/campaign-report'
     | '/print/dashboard'
@@ -574,7 +574,7 @@ export interface RootRouteChildren {
   AccountRoute: typeof AccountRoute
   AdminRoute: typeof AdminRoute
   BaselineRoute: typeof BaselineRoute
-  ChangesRoute: typeof ChangesRoute
+  ChangesetsRoute: typeof ChangesetsRoute
   ComplianceRoute: typeof ComplianceRoute
   ComponentsRoute: typeof ComponentsRoute
   ConstellationRoute: typeof ConstellationRoute
@@ -596,11 +596,11 @@ export interface RootRouteChildren {
   WorkspaceRoute: typeof WorkspaceRoute
   CampaignCampaignIdRoute: typeof CampaignCampaignIdRoute
   CampaignNewRoute: typeof CampaignNewRoute
-  ChangeChangeIdRoute: typeof ChangeChangeIdRoute
-  ChangeNewRoute: typeof ChangeNewRoute
-  ChangesBacklogRoute: typeof ChangesBacklogRoute
-  ChangesLocalRoute: typeof ChangesLocalRoute
-  ChangesRevalidationRoute: typeof ChangesRevalidationRoute
+  ChangesetChangeIdRoute: typeof ChangesetChangeIdRoute
+  ChangesetNewRoute: typeof ChangesetNewRoute
+  ChangesetsBacklogRoute: typeof ChangesetsBacklogRoute
+  ChangesetsLocalRoute: typeof ChangesetsLocalRoute
+  ChangesetsRevalidationRoute: typeof ChangesetsRevalidationRoute
   PrintCampaignPlanRoute: typeof PrintCampaignPlanRoute
   PrintCampaignReportRoute: typeof PrintCampaignReportRoute
   PrintDashboardRoute: typeof PrintDashboardRoute
@@ -752,11 +752,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComplianceRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/changes': {
-      id: '/changes'
-      path: '/changes'
-      fullPath: '/changes'
-      preLoaderRoute: typeof ChangesRouteImport
+    '/changesets': {
+      id: '/changesets'
+      path: '/changesets'
+      fullPath: '/changesets'
+      preLoaderRoute: typeof ChangesetsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/baseline': {
@@ -871,39 +871,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrintCampaignPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/changes_/revalidation': {
-      id: '/changes_/revalidation'
-      path: '/changes/revalidation'
-      fullPath: '/changes/revalidation'
-      preLoaderRoute: typeof ChangesRevalidationRouteImport
+    '/changesets_/revalidation': {
+      id: '/changesets_/revalidation'
+      path: '/changesets/revalidation'
+      fullPath: '/changesets/revalidation'
+      preLoaderRoute: typeof ChangesetsRevalidationRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/changes_/local': {
-      id: '/changes_/local'
-      path: '/changes/local'
-      fullPath: '/changes/local'
-      preLoaderRoute: typeof ChangesLocalRouteImport
+    '/changesets_/local': {
+      id: '/changesets_/local'
+      path: '/changesets/local'
+      fullPath: '/changesets/local'
+      preLoaderRoute: typeof ChangesetsLocalRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/changes_/backlog': {
-      id: '/changes_/backlog'
-      path: '/changes/backlog'
-      fullPath: '/changes/backlog'
-      preLoaderRoute: typeof ChangesBacklogRouteImport
+    '/changesets_/backlog': {
+      id: '/changesets_/backlog'
+      path: '/changesets/backlog'
+      fullPath: '/changesets/backlog'
+      preLoaderRoute: typeof ChangesetsBacklogRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/change/new': {
-      id: '/change/new'
-      path: '/change/new'
-      fullPath: '/change/new'
-      preLoaderRoute: typeof ChangeNewRouteImport
+    '/changeset/new': {
+      id: '/changeset/new'
+      path: '/changeset/new'
+      fullPath: '/changeset/new'
+      preLoaderRoute: typeof ChangesetNewRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/change/$changeId': {
-      id: '/change/$changeId'
-      path: '/change/$changeId'
-      fullPath: '/change/$changeId'
-      preLoaderRoute: typeof ChangeChangeIdRouteImport
+    '/changeset/$changeId': {
+      id: '/changeset/$changeId'
+      path: '/changeset/$changeId'
+      fullPath: '/changeset/$changeId'
+      preLoaderRoute: typeof ChangesetChangeIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/campaign/new': {
@@ -942,7 +942,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountRoute: AccountRoute,
   AdminRoute: AdminRoute,
   BaselineRoute: BaselineRoute,
-  ChangesRoute: ChangesRoute,
+  ChangesetsRoute: ChangesetsRoute,
   ComplianceRoute: ComplianceRoute,
   ComponentsRoute: ComponentsRoute,
   ConstellationRoute: ConstellationRoute,
@@ -964,11 +964,11 @@ const rootRouteChildren: RootRouteChildren = {
   WorkspaceRoute: WorkspaceRoute,
   CampaignCampaignIdRoute: CampaignCampaignIdRoute,
   CampaignNewRoute: CampaignNewRoute,
-  ChangeChangeIdRoute: ChangeChangeIdRoute,
-  ChangeNewRoute: ChangeNewRoute,
-  ChangesBacklogRoute: ChangesBacklogRoute,
-  ChangesLocalRoute: ChangesLocalRoute,
-  ChangesRevalidationRoute: ChangesRevalidationRoute,
+  ChangesetChangeIdRoute: ChangesetChangeIdRoute,
+  ChangesetNewRoute: ChangesetNewRoute,
+  ChangesetsBacklogRoute: ChangesetsBacklogRoute,
+  ChangesetsLocalRoute: ChangesetsLocalRoute,
+  ChangesetsRevalidationRoute: ChangesetsRevalidationRoute,
   PrintCampaignPlanRoute: PrintCampaignPlanRoute,
   PrintCampaignReportRoute: PrintCampaignReportRoute,
   PrintDashboardRoute: PrintDashboardRoute,

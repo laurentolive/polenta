@@ -673,9 +673,9 @@ Un lien Jira peut être ajouté à n'importe quel moment — il est optionnel.
 
 ---
 
-## 10. Changes (GH198)
+## 10. Changesets (GH198)
 
-Un **change** porte une modification pilotée d'un composant : cause et description (champs du
+Un **changeset** porte une modification pilotée d'un composant : cause et description (champs du
 type), éléments à modifier, éléments impactés, cycle de vie. Détail : `specs/GH198.md` ; épique
 `specs/GH193.md`.
 
@@ -684,8 +684,8 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   d'un type (`DEFAULT_CHANGE_STATUSES`, modifiable) : `ouvert → analyse → implemente → verifie →
   clos`, `rejete` ; `clos` et `rejete` terminaux ; aucune contrainte de transition (L1, #206).
   Pas de couverture ni de maturité.
-- **Stockage** : `changes/<ID>.yaml` dans le repo du composant concerné (`component`, composant
-  local de n'importe quel repo du workspace), avec les types de ce repo — un change de
+- **Stockage** : `changesets/<ID>.yaml` dans le repo du composant concerné (`component`, composant
+  local de n'importe quel repo du workspace), avec les types de ce repo — un changeset de
   sous-composant voyage avec lui (#193 §4) ; ID
   préfixé du type, pierres tombales (GH20). Champs système : `id`, `objectTypeRef`, `title`,
   `status`, `version`, `component`, `mode` (`request`), `toModify` (`{ id, state: planned |
@@ -695,35 +695,35 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   (`applyFieldsWrite` #195, historique GH77).
 - **Composant** : choisi parmi les composants locaux des repos du workspace (déduit s'il n'y en a
   qu'un utilisable) ; modifiable au statut initial seulement, dans le même repo.
-- **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du change, le même que celui
+- **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du changeset, le même que celui
   des tests d'une campagne (grille Excel par type, filtres de colonne, colonnes ⚙️ `picker`).
-- **Vue Changements** : entrée de la barre d'activité ; panneau (changes du workspace par repo,
-  ID décroissant ; filtres type, statut, repo, « mes changes » = auteur du premier statut,
-  « masquer les terminés ») ; pages `/changes`, `/change/new` (`?element=` : élément pré-rempli dans
-  « à modifier », depuis « Créer un change » de la vue Édition et des pages exigence / test) et
-  `/change/<ID>` (statut, titre, composant, champs, listes, historique).
+- **Vue Changesets** : entrée de la barre d'activité ; panneau (changesets du workspace par repo,
+  ID décroissant ; filtres type, statut, repo, « mes changesets » = auteur du premier statut,
+  « masquer les terminés ») ; pages `/changesets`, `/changeset/new` (`?element=` : élément pré-rempli dans
+  « à modifier », depuis « Créer un changeset » de la vue Édition et des pages exigence / test) et
+  `/changeset/<ID>` (statut, titre, composant, champs, listes, historique).
 - **Suppression** : tant que le fichier n'a jamais été commité ; ensuite, statut terminal. Le
-  renommage d'un préfixe réécrit aussi les IDs cités dans `changes/` ; la suppression d'un type de
-  change supprime ses changes (GH104).
+  renommage d'un préfixe réécrit aussi les IDs cités dans `changesets/` ; la suppression d'un type de
+  changeset supprime ses changesets (GH104).
 - **Analyse d'impact** (GH199, SPEC-TRACEABILITY §4) : racines = listes (vides : pas
   d'analyse), arbres, une ligne par élément impacté (déclaré ou calculé), complétude, campagnes en
   cours concernées ; live, figée dans `analysis` au statut terminal. Seules les lignes portant une
   saisie sont écrites dans `impacted`.
 - **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
   entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
-- **Page d'un change** (GH199) : origine, version intégrée et campagnes au-dessus des listes ;
+- **Page d'un changeset** (GH199) : origine, version intégrée et campagnes au-dessus des listes ;
   listes et analyse d'impact repliables avec leur nombre d'éléments ; `toModify` est affiché « Éléments changés ».
 - **Backlog et assignation** (GH199 §8bis) : un élément **à traiter** (statut ni `isApproval` ni
-  `isTerminal`) est **assigné** quand il figure dans `toModify` d'un change ouvert de son repo
+  `isTerminal`) est **assigné** quand il figure dans `toModify` d'un changeset ouvert de son repo
   (plusieurs possibles, signalé « aussi dans … »). Entrée **« Backlog (N) »** du panneau
-  Changements, une par composant local non vide : éléments à traiter non assignés, **calculés**
-  (`changes:backlog`, rien n'est stocké) ; page `/changes/backlog` (`repoPath`, `component`) avec
-  « Assigner à… » (`changes:assign`). Dans un change, « Déplacer vers… » (`changes:move`, état
-  conservé, « modifié » l'emporte ; changes clos refusés).
+  Changesets, une par composant local non vide : éléments à traiter non assignés, **calculés**
+  (`changesets:backlog`, rien n'est stocké) ; page `/changesets/backlog` (`repoPath`, `component`) avec
+  « Assigner à… » (`changesets:assign`). Dans un changeset, « Déplacer vers… » (`changesets:move`, état
+  conservé, « modifié » l'emporte ; changesets clos refusés).
 - **Approbation d'un élément non assigné** (GH199 §8bis) : depuis l'interface (vue Édition, tableau,
   document, recherche, pages exigence / test), passer un élément vers un statut `isApproval` alors
-  qu'aucun change ouvert ne le liste (`changes:approval-check`) ouvre « Assigner à un change » :
-  change ouvert, nouveau change, ou « Approuver sans change » ; Annuler n'écrit pas le statut. MCP
+  qu'aucun changeset ouvert ne le liste (`changesets:approval-check`) ouvre « Assigner à un changeset » :
+  changeset ouvert, nouveau changeset, ou « Approuver sans changeset » ; Annuler n'écrit pas le statut. MCP
   et écritures hors interface non contrôlés ; condition `assignedToChange` avec #206.
-- Graphe de données : collection `changes` (SPEC-DASHBOARDS §2) ; MCP : `list_changes`,
-  `get_change` (avec l'analyse), `create_change` (SPEC-MCP-SERVER §4.7).
+- Graphe de données : collection `changesets` (SPEC-DASHBOARDS §2) ; MCP : `list_changesets`,
+  `get_changeset` (avec l'analyse), `create_changeset` (SPEC-MCP-SERVER §4.7).

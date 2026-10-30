@@ -11,7 +11,7 @@ import type { TestsService } from './tests.service'
  * (GH100, `type-rename.service.ts`) et la suppression en cascade (GH104, `schema-delete.service.ts`).
  */
 
-export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'change'
+export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'changeset'
 
 export interface ObjectServices {
   requirements: Pick<RequirementsService, 'findAll'>
@@ -47,7 +47,7 @@ export function mapLinkRefs(schema: ProjectSchema, fn: (ref: string) => string |
 export async function objectIdsOfType(services: ObjectServices, repoPath: string, category: ObjectCategory, ref: string): Promise<string[]> {
   if (category === 'requirement') return (await services.requirements.findAll(repoPath, { type: ref })).map(o => o.id)
   if (category === 'test') return (await services.tests.findAll(repoPath)).filter(o => o.objectTypeRef === ref).map(o => o.id)
-  if (category === 'change') return ((await services.changes?.listRepo(repoPath)) ?? []).filter(o => o.objectTypeRef === ref).map(o => o.id)
+  if (category === 'changeset') return ((await services.changes?.listRepo(repoPath)) ?? []).filter(o => o.objectTypeRef === ref).map(o => o.id)
   return (await services.campaigns.list(repoPath)).filter(o => o.objectTypeRef === ref).map(o => o.id)
 }
 

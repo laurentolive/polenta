@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test'
 import { setupSession } from './support/session'
 
 /**
- * T173 (#5) — liste de repli « Impact à vérifier » de la vue Changements (GH199) : entrée du panneau,
+ * T173 (#5) — liste de repli « Impact à vérifier » de la vue Changesets (GH199) : entrée du panneau,
  * éléments marqués et leurs éléments liés, levée unitaire et multiple. Scénarios N14, N15, N3
  * (diff limité à la clé) et L11 de specs/T173-tests.md. Le marquage est obtenu comme dans l'app :
  * réouverture en brouillon d'une exigence approuvée liée (T172).
@@ -47,7 +47,7 @@ const entry = () => s.page.getByTestId('changes-revalidation-entry')
 const rows = () => s.page.getByRole('checkbox', { name: /^Sélectionner / })
 
 test('N14 — entrée « Impact à vérifier (N) », non sélectionnée d\'office, liste et éléments liés', async () => {
-  await s.openView('Changements')
+  await s.openView('Changesets')
   await expect(entry()).toBeVisible()
   await expect(entry()).toContainText(`${flagged.length}`)
   // Pas d'auto-sélection : la page n'affiche pas la liste tant qu'on n'a pas cliqué.

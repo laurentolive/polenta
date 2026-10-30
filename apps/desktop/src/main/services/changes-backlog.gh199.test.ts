@@ -17,8 +17,8 @@ const STATUSES = [
   { name: 'obsolete', label: 'Obsolète', isTerminal: true },
 ]
 const type = (name: string, prefix: string, category: ObjectTypeDefinition['category']): ObjectTypeDefinition =>
-  ({ name, label: name, prefix, category, fields: [], statuses: category === 'change' ? DEFAULT_CHANGE_STATUSES : STATUSES })
-const NC = type('nc', 'NC', 'change')
+  ({ name, label: name, prefix, category, fields: [], statuses: category === 'changeset' ? DEFAULT_CHANGE_STATUSES : STATUSES })
+const NC = type('nc', 'NC', 'changeset')
 const SCHEMA = {
   version: 1, linkTypes: [],
   nodes: [{ name: 'root', label: 'Produit', objectTypes: [type('exigence', 'SYS', 'requirement'), type('test', 'TEST', 'test'), NC],

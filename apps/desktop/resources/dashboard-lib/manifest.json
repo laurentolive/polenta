@@ -154,10 +154,10 @@
         },
         {
           "version": 7,
-          "hash": "53eabb6b46ced99da0acef3c2ca0d8058f0036b1adea2b78a0a74407f1aea9c3",
+          "hash": "0d22975c09ec64ab326ed4a6a8bc433358a3265f0a5e3e227e739d83cd8237eb",
           "summary": {
-            "fr": "Changes : bornes et analyse figée (GH199)",
-            "en": "Changes: range and frozen analysis (GH199)"
+            "fr": "Changesets (ex-changes) : collection `changesets`, bornes et analyse figée (GH199)",
+            "en": "Changesets (formerly changes): `changesets` collection, range and frozen analysis (GH199)"
           }
         }
       ]

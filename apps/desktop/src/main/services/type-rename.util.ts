@@ -7,7 +7,7 @@ import * as path from 'path'
  * projet, GH79 — non réécrits).
  */
 export const ID_DATA_DIRS = [
-  'requirements', 'tests', 'campaigns', 'changes', 'test-runs', 'links', 'reviews',
+  'requirements', 'tests', 'campaigns', 'changesets', 'test-runs', 'links', 'reviews',
   'impact-analyses', 'impact-acks', '.polenta/trees',
 ]
 

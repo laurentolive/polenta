@@ -56,7 +56,7 @@ export interface McpContainer {
   workspaceLinks: WorkspaceLinksService
   /** GH150 — base de paramètres (`list_parameters` / `set_parameters` / `delete_parameter`). */
   parameters: ParametersService
-  /** GH198 — changes (`list_changes` / `get_change` / `create_change`). */
+  /** GH198 — changes (`list_changesets` / `get_changeset` / `create_changeset`). */
   changes: ChangesService
 }
 

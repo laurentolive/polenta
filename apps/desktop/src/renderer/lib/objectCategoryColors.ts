@@ -13,12 +13,12 @@ export const CATEGORY_CHART_TEXT: Record<ObjectCategory, string> = {
   requirement: 'text-chart-1',
   test: 'text-chart-2',
   campaign: 'text-chart-7',
-  change: 'text-chart-4',
+  changeset: 'text-chart-4',
 }
 
 export const CATEGORY_CHART_BG: Record<ObjectCategory, string> = {
   requirement: 'bg-chart-1',
   test: 'bg-chart-2',
   campaign: 'bg-chart-7',
-  change: 'bg-chart-4',
+  changeset: 'bg-chart-4',
 }

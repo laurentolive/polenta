@@ -4,7 +4,7 @@ import { setupSession } from './support/session'
 /**
  * GH145 — sous chaque élément dont l'énoncé a changé, l'avant/après de l'énoncé, mot à mot (ancien
  * barré, nouveau surligné). GH199 : les analyses entre baselines sont retirées ; vérifié sur
- * l'analyse des modifications locales (vue Changements).
+ * l'analyse des modifications locales (vue Changesets).
  */
 const s = setupSession()
 test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
@@ -22,7 +22,7 @@ test('GH145-1 — énoncé modifié : avant barré, après surligné', async () 
 
   await s.page.reload()
   await s.page.waitForLoadState('networkidle')
-  await s.openView('Changements')
+  await s.openView('Changesets')
   await s.page.getByTestId('changes-local-entry').click()
   const row = s.page.locator('div.border-b').filter({ has: s.page.getByRole('button', { name: target.id, exact: true }) }).first()
   const diff = row.getByTestId('statement-diff')

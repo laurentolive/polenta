@@ -34,7 +34,7 @@ export function ChangesPanel({ projectId }: Props) {
     select: s => ({
       pathname: s.location.pathname,
       searchStr: s.location.searchStr,
-      activeId: s.location.pathname.startsWith('/change/') ? decodeURIComponent(s.location.pathname.slice('/change/'.length)) : null,
+      activeId: s.location.pathname.startsWith('/changeset/') ? decodeURIComponent(s.location.pathname.slice('/changeset/'.length)) : null,
       activeRepo: new URLSearchParams(s.location.searchStr).get('repoPath'),
     }),
   })
@@ -52,8 +52,8 @@ export function ChangesPanel({ projectId }: Props) {
   })
   const repoPath = project?.localPath ?? ''
   const { data: changes = [] } = useQuery({
-    queryKey: ['changes', workspaceDir, repoPath],
-    queryFn: () => api.changes.list(repoPath, workspaceDir || undefined),
+    queryKey: ['changesets', workspaceDir, repoPath],
+    queryFn: () => api.changesets.list(repoPath, workspaceDir || undefined),
     enabled: !!repoPath,
   })
   const { data: me } = useQuery({
@@ -84,7 +84,7 @@ export function ChangesPanel({ projectId }: Props) {
   const groups = repos.filter(rp => visible.some(c => c.repoPath === rp))
 
   const open = (c: ChangeSummary) =>
-    navigate({ to: '/change/$changeId', params: { changeId: c.id }, search: { projectId, repoPath: c.repoPath } })
+    navigate({ to: '/changeset/$changeId', params: { changeId: c.id }, search: { projectId, repoPath: c.repoPath } })
   const selectClass = 'w-full text-xs bg-surface border border-edge rounded px-1.5 py-1 text-ink'
 
   // GH199 — entrées live, affichées seulement quand elles ont du contenu (compteur).
@@ -112,7 +112,7 @@ export function ChangesPanel({ projectId }: Props) {
         </button>
         <button
           type="button"
-          onClick={() => navigate({ to: '/change/new', search: { projectId, repoPath: undefined, element: undefined, component: undefined } })}
+          onClick={() => navigate({ to: '/changeset/new', search: { projectId, repoPath: undefined, element: undefined, component: undefined } })}
           className="text-ink-3 hover:text-ink"
           title={t('changes.new')}
           data-testid="changes-new"
@@ -121,26 +121,26 @@ export function ChangesPanel({ projectId }: Props) {
         </button>
       </div>
       {flaggedCount > 0 && (
-        <button type="button" onClick={() => navigate({ to: '/changes/revalidation', search: { projectId } })}
-          className={entryClass(pathname === '/changes/revalidation')} data-testid="changes-revalidation-entry">
+        <button type="button" onClick={() => navigate({ to: '/changesets/revalidation', search: { projectId } })}
+          className={entryClass(pathname === '/changesets/revalidation')} data-testid="changes-revalidation-entry">
           <AlertTriangle size={13} className="shrink-0 text-status-warning" />
           <span className="flex-1 truncate">{t('impactAnalysisPage.revalidation.listTitle')}</span>
           <span className="text-ink-3">{flaggedCount}</span>
         </button>
       )}
       {localCount > 0 && (
-        <button type="button" onClick={() => navigate({ to: '/changes/local', search: { projectId } })}
-          className={entryClass(pathname === '/changes/local')} data-testid="changes-local-entry">
+        <button type="button" onClick={() => navigate({ to: '/changesets/local', search: { projectId } })}
+          className={entryClass(pathname === '/changesets/local')} data-testid="changes-local-entry">
           <FileDiff size={13} className="shrink-0" />
           <span className="flex-1 truncate">{t('impactAnalysisPage.localTitle')}</span>
           <span className="text-ink-3">{localCount}</span>
         </button>
       )}
       {backlogs.map(b => {
-        const active = pathname === '/changes/backlog' && backlogSearch.get('repoPath') === b.repoPath && backlogSearch.get('component') === b.component
+        const active = pathname === '/changesets/backlog' && backlogSearch.get('repoPath') === b.repoPath && backlogSearch.get('component') === b.component
         return (
           <button key={`${b.repoPath}|${b.component}`} type="button"
-            onClick={() => navigate({ to: '/changes/backlog', search: { projectId, repoPath: b.repoPath, component: b.component } })}
+            onClick={() => navigate({ to: '/changesets/backlog', search: { projectId, repoPath: b.repoPath, component: b.component } })}
             className={entryClass(active)} data-testid={`changes-backlog-entry-${repoName(b.repoPath)}-${b.component}`}>
             <Inbox size={13} className="shrink-0" />
             <span className="flex-1 truncate">{backlogs.length > 1 ? `${t('changes.backlog.title')} — ${b.label}` : t('changes.backlog.title')}</span>

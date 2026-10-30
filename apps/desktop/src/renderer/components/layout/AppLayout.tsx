@@ -15,7 +15,7 @@ import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'changes' | 'dashboard' | 'parameters'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'changesets' | 'dashboard' | 'parameters'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -45,7 +45,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
   if (pathname === '/parameters') return 'parameters'
   // GH199 — la vue Analyse d'impact est intégrée à la vue Changements (modifications locales,
   // « Impact à vérifier », Constellation).
-  if (pathname === '/changes' || pathname.startsWith('/changes/') || pathname.startsWith('/change/') || pathname === '/constellation') return 'changes'
+  if (pathname === '/changesets' || pathname.startsWith('/changesets/') || pathname.startsWith('/changeset/') || pathname === '/constellation') return 'changesets'
 
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
@@ -236,9 +236,9 @@ export function AppLayout() {
       case 'parameters':
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
         break
-      case 'changes':
+      case 'changesets':
         // GH198 — vue Changements : page d'accueil (le panneau liste les changes du workspace).
-        if (currentProjectId) navigate({ to: '/changes', search: { projectId: currentProjectId } })
+        if (currentProjectId) navigate({ to: '/changesets', search: { projectId: currentProjectId } })
         break
       case 'dashboard':
         if (currentProjectId) {

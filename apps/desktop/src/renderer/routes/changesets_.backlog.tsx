@@ -12,7 +12,7 @@ import { useSetTabTitle } from '../contexts/TabsContext'
  * GH199 §8bis — backlog d'un composant : éléments à traiter (ni approuvés ni terminaux) assignés à
  * aucun change ouvert ; « Assigner à… » un change. URL : /changes/backlog?projectId&repoPath&component
  */
-export const Route = createFileRoute('/changes_/backlog')({
+export const Route = createFileRoute('/changesets_/backlog')({
   component: BacklogPage,
   validateSearch: (s: Record<string, unknown>) => ({
     projectId: (s['projectId'] as string) ?? '',

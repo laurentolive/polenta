@@ -109,7 +109,7 @@ describe('pruneImpacted', () => {
 
 // ─── ChangesService : figé, range ─────────────────────────────────────────────
 
-const NC: ObjectTypeDefinition = { name: 'nc', label: 'NC', prefix: 'NC', category: 'change', fields: [], statuses: DEFAULT_CHANGE_STATUSES }
+const NC: ObjectTypeDefinition = { name: 'nc', label: 'NC', prefix: 'NC', category: 'changeset', fields: [], statuses: DEFAULT_CHANGE_STATUSES }
 const SCHEMA = { version: 1, linkTypes: [], nodes: [{ name: 'root', label: 'P', objectTypes: [NC, { name: 'exigence', category: 'requirement', fields: [], statuses: [] }] }] } as unknown as ProjectSchema
 
 let dir: string
@@ -131,7 +131,7 @@ describe('ChangesService — analyse', () => {
     expect((await s.analysis(dir, 'NC-0001')).frozen).toBe(false)
 
     await s.update(dir, 'NC-0001', { status: 'clos' })
-    const onDisk = await git.readYaml<Change>(dir, 'changes/NC-0001.yaml')
+    const onDisk = await git.readYaml<Change>(dir, 'changesets/NC-0001.yaml')
     expect(onDisk?.analysis?.frozen).toBe(true)
     expect(onDisk?.analysis?.rows.map(r => r.id)).toEqual(['SYS-1'])
     // Un lien retiré après la clôture ne change pas l'analyse figée.
@@ -139,7 +139,7 @@ describe('ChangesService — analyse', () => {
     expect((await s.analysis(dir, 'NC-0001')).rows.map(r => r.id)).toEqual(['SYS-1'])
 
     await s.update(dir, 'NC-0001', { status: 'analyse' })
-    expect((await git.readYaml<Change>(dir, 'changes/NC-0001.yaml'))?.analysis).toBeUndefined()
+    expect((await git.readYaml<Change>(dir, 'changesets/NC-0001.yaml'))?.analysis).toBeUndefined()
     expect((await s.analysis(dir, 'NC-0001')).rows).toEqual([])
   })
 

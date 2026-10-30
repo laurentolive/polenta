@@ -13,7 +13,7 @@ import { useSetTabTitle } from '../contexts/TabsContext'
 
 /** GH199 — analyse des modifications locales vs HEAD (SPEC-TRACEABILITY §4.7), dans la vue
  *  Changements (ex-entrée de la vue Analyse d'impact). URL : /changes/local?projectId=… */
-export const Route = createFileRoute('/changes_/local')({
+export const Route = createFileRoute('/changesets_/local')({
   component: LocalImpactPage,
   validateSearch: (s: Record<string, unknown>) => ({ projectId: (s['projectId'] as string) ?? '' }),
 })

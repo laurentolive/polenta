@@ -40,11 +40,20 @@ Page d'un change : origine, version intégrée et campagnes remontées au-dessus
 « Éléments changés » (ex-« à modifier », libellé seulement : le champ reste `toModify`) et
 « Éléments impactés » repliables, avec leur nombre ; section « Analyse d'impact » repliable aussi (nombre de racines).
 
+## Renommage change → changeset (2026-10-30)
+
+Format compris (spec §8ter) : catégorie, dossier, IPC, MCP (noms et clés de réponse), graphe
+(`changesets`, `GraphChangeset`, `polenta.d.ts` v7 : empreinte mise à jour, version non poussée),
+routes, vue, libellés fr / en, messages d'erreur, `AGENTS.md`. Identifiants internes inchangés.
+Aussi : historique encadré comme les autres sections ; champs du changeset éditables d'un clic ;
+listes vides = pas d'analyse (repli sur toutes les exigences du composant retiré).
+
 ## Mises à jour SPEC
 
 | Section | Modification |
 |---|---|
 | SPEC-REQ §10 | backlog, assignation, déplacement, dialogue d'approbation ; ordre de la page, listes repliables, « Éléments changés » |
+| SPEC-REQ §10, SPEC-TRACEABILITY §4, SPEC-MCP-SERVER §4.7, SPEC-DASHBOARDS §2 | renommage changeset |
 | SPEC-REQ §4.3 | exception d'interface à « toutes les transitions sont autorisées » |
 | SPEC-TRACEABILITY §4.3 | élément à traiter atteint : badge, « Passer en changé » |
 | GH193 §7.2 | condition `assignedToChange` (par défaut, avec #206) |

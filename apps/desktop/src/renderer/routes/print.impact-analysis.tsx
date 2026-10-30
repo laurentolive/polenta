@@ -40,7 +40,7 @@ function PrintImpactAnalysisPage() {
   const { data, isSuccess } = useQuery({
     queryKey: ['print-change-analysis', repoPath, changeId],
     queryFn: async () => {
-      const [change, analysis] = await Promise.all([api.changes.get(repoPath, changeId), api.changes.analysis(repoPath, changeId)])
+      const [change, analysis] = await Promise.all([api.changesets.get(repoPath, changeId), api.changesets.analysis(repoPath, changeId)])
       return { change, analysis }
     },
     enabled: !!repoPath && !!changeId,

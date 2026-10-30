@@ -31,7 +31,7 @@ export function SchemaDeleteConfirmModal({ target, label, plan, repoLabel, isDel
   const subCount = Math.max(0, plan.nodes.length - 1)
 
   const title = t(target.kind === 'node' ? 'schema.deleteCascade.titleNode' : 'schema.deleteCascade.titleType', { name: label })
-  const categories = (['requirement', 'test', 'campaign', 'change'] as const).filter(c => plan.objects[c].length > 0)
+  const categories = (['requirement', 'test', 'campaign', 'changeset'] as const).filter(c => plan.objects[c].length > 0)
   const linkCount = plan.links.reduce((n, l) => n + l.count, 0)
   const emptied = plan.linkTypes.filter(l => l.emptied)
   const changed = plan.linkTypes.filter(l => !l.emptied)

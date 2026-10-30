@@ -34,7 +34,7 @@ async function pick(p: Page, typeRef: string, id: string) {
   await p.getByTestId('change-pick-confirm').click()
 }
 
-const changeIdFromUrl = (p: Page) => decodeURIComponent(new URL(p.url()).pathname.split('/change/')[1] ?? '')
+const changeIdFromUrl = (p: Page) => decodeURIComponent(new URL(p.url()).pathname.split('/changeset/')[1] ?? '')
 
 test.beforeAll(async () => {
   const { localPath } = s.project
@@ -42,7 +42,7 @@ test.beforeAll(async () => {
   const schema = await s.invoke<SchemaLike>('schema:get', localPath)
   const root = schema.nodes.find(n => n.name === 'root')!
   root.objectTypes = [...(root.objectTypes ?? []), {
-    name: 'gh198_nc', label: 'GH198 NC', prefix: 'GHC', category: 'change', fields: [],
+    name: 'gh198_nc', label: 'GH198 NC', prefix: 'GHC', category: 'changeset', fields: [],
     statuses: [{ name: 'ouvert', label: 'Ouvert' }, { name: 'analyse', label: 'Analysé' }, { name: 'clos', label: 'Clos', isTerminal: true }],
   } as TypeLike]
   await s.invoke('schema:save', localPath, schema)
@@ -57,7 +57,7 @@ test.beforeAll(async () => {
   const compSchema = await s.invoke<SchemaLike>('schema:get', compReq.repoPath)
   const compRoot = compSchema.nodes.find(n => n.objectTypes !== undefined)!
   compRoot.objectTypes = [...(compRoot.objectTypes ?? []), {
-    name: 'gh198_evo', label: 'GH198 Évolution', prefix: 'GHD', category: 'change', fields: [],
+    name: 'gh198_evo', label: 'GH198 Évolution', prefix: 'GHD', category: 'changeset', fields: [],
     statuses: [{ name: 'ouvert', label: 'Ouvert' }, { name: 'clos', label: 'Clos', isTerminal: true }],
   } as TypeLike]
   await s.invoke('schema:save', compReq.repoPath, compSchema)
@@ -66,7 +66,7 @@ test.beforeAll(async () => {
 test('GH198-1 — nouveau change, listes, statut', async () => {
   const p = s.page
   const { localPath } = s.project
-  await navigate(p, s.projectUrl('/change/new', {}))
+  await navigate(p, s.projectUrl('/changeset/new', {}))
   const form = p.getByTestId('change-new-form')
   // Composant concerné : le nœud `root` du repo ouvert (valeur `<repo>\n<nœud>`), puis notre type.
   const componentSelect = form.getByTestId('change-new-component')
@@ -100,7 +100,7 @@ test('GH198-1 — nouveau change, listes, statut', async () => {
   await expect(p.getByTestId('change-status')).toHaveValue('analyse')
 
   await expect.poll(async () => {
-    const c = await s.invoke<ChangeLike>('changes:get', localPath, id)
+    const c = await s.invoke<ChangeLike>('changesets:get', localPath, id)
     return { status: c.status, toModify: c.toModify, impacted: c.impacted }
   }).toEqual({
     status: 'analyse',
@@ -127,7 +127,7 @@ test('GH198-2 — « Créer un change » depuis une exigence : élément pré-re
   await form.getByTestId('change-new-submit').click()
   await expect(p.getByTestId('change-page')).toBeVisible()
   await expect(p.getByTestId(`change-to-modify-${reqId}`)).toBeVisible()
-  const c = await s.invoke<ChangeLike>('changes:get', localPath, changeIdFromUrl(p))
+  const c = await s.invoke<ChangeLike>('changesets:get', localPath, changeIdFromUrl(p))
   expect(c.toModify).toEqual([{ id: reqId, state: 'planned' }])
 })
 
@@ -142,7 +142,7 @@ test('GH198-3 — change d\'un sous-composant : stocké dans son repo, avec ses 
   await expect(p.getByTestId('change-page')).toBeVisible()
   const id = changeIdFromUrl(p)
   expect(id).toMatch(/^GHD-\d+$/)
-  const c = await s.invoke<ChangeLike>('changes:get', compReq.repoPath, id)
+  const c = await s.invoke<ChangeLike>('changesets:get', compReq.repoPath, id)
   expect(c.toModify).toEqual([{ id: compReq.id, state: 'planned' }])
   // Panneau : listé sous le repo du composant.
   await expect(p.getByTestId(`change-row-${id}`)).toBeVisible()

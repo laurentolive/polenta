@@ -9,7 +9,7 @@ import { useProjectSchema, getAllObjectTypes } from '../hooks/useProjectSchema'
 import { useSetTabTitle } from '../contexts/TabsContext'
 
 /** GH198 — accueil de la vue Changements. URL : /changes?projectId=<encoded> */
-export const Route = createFileRoute('/changes')({
+export const Route = createFileRoute('/changesets')({
   component: ChangesHomePage,
   validateSearch: (s: Record<string, unknown>) => ({
     projectId: (s['projectId'] as string) ?? '',
@@ -29,7 +29,7 @@ function ChangesHomePage() {
   })
   const repoPath = project?.localPath ?? ''
   const { data: schema } = useProjectSchema(repoPath)
-  const hasType = getAllObjectTypes(schema, 'change').length > 0
+  const hasType = getAllObjectTypes(schema, 'changeset').length > 0
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -37,11 +37,11 @@ function ChangesHomePage() {
       {!repoPath || !schema ? (
         <p className="p-8 text-sm text-ink-3">{repoPath ? t('common.loading') : t('common.projectNotLoaded')}</p>
       ) : !hasType ? (
-        <NoTypeForCategory category="change" repoPath={repoPath} projectId={projectId} />
+        <NoTypeForCategory category="changeset" repoPath={repoPath} projectId={projectId} />
       ) : (
         <div className="p-8 space-y-3">
           <p className="text-sm text-ink-3">{t('changes.home')}</p>
-          <button type="button" className="btn-primary-sm" onClick={() => navigate({ to: '/change/new', search: { projectId, repoPath: undefined, element: undefined, component: undefined } })}>
+          <button type="button" className="btn-primary-sm" onClick={() => navigate({ to: '/changeset/new', search: { projectId, repoPath: undefined, element: undefined, component: undefined } })}>
             {t('changes.new')}
           </button>
         </div>

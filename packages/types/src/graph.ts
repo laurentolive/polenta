@@ -67,12 +67,12 @@ export interface PolentaGraph {
   campaigns: GraphCampaign[]
   /** Toutes les exécutions de test enregistrées (fichiers `test-runs/`), campagne ou non. */
   runs: GraphTestRun[]
-  /** GH198 — changes de tous les repos (`changes/`). */
-  changes: GraphChange[]
+  /** GH198 — changesets de tous les repos (`changesets/`). */
+  changesets: GraphChangeset[]
 }
 
 /** GH198 — change : modification pilotée d'un composant, ses éléments à modifier et impactés. */
-export interface GraphChange extends GraphObjectBase {
+export interface GraphChangeset extends GraphObjectBase {
   /** Composant concerné (nœud du schéma). */
   component: string
   mode: 'request' | 'range'
@@ -120,7 +120,7 @@ export interface GraphSchema {
   campaignStatuses: GraphFixedStatus[]
 }
 
-export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'change'
+export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'changeset'
 
 export interface GraphObjectType {
   /** Repo dont le schéma déclare le type. */

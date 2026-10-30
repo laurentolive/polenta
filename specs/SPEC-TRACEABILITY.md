@@ -170,24 +170,24 @@ SW-0044  Exigence SW — Mode Normal  [couvert]  [jamais exécuté]
 
 ### 4.1 Principe (GH199)
 
-L'analyse d'impact vit **dans le change** (SPEC-REQ §10) : elle calcule, à partir des éléments que
-le change modifie, tout ce qui doit être **revu ou revalidé**. Deux flux sont retirés par GH199 :
+L'analyse d'impact vit **dans le changeset** (SPEC-REQ §10) : elle calcule, à partir des éléments que
+le changeset modifie, tout ce qui doit être **revu ou revalidé**. Deux flux sont retirés par GH199 :
 
 - l'**analyse élément unique** (ex-§4.1–4.5 : `getImpactReport` à l'ouverture d'un brouillon,
   profondeur configurable, acquittements `ImpactAcknowledgement`) — les fichiers
   `impact-acks/<id>/*.yaml` existants restent lisibles dans l'historique de l'élément
   (« Acquittements d'impact (anciens) », IPC `traceability:legacy-acks`) ;
 - l'**analyse entre deux baselines** (ex-§4.6, T46, `impact-analyses/<id>.yaml`) — remplacée par le
-  change « sur l'existant » ; les fichiers existants sont ignorés.
+  changeset « sur l'existant » ; les fichiers existants sont ignorés.
 
 La vue Analyse d'impact (barre d'activité) est retirée : « Modifications locales » (§4.7),
-« Impact à vérifier » (§4.8) et la Constellation (§8) sont des entrées du panneau Changements.
-Sur une exigence ou un test, **« Analyser l'impact »** ouvre un change non terminal du repo qui
-liste l'élément (menu), ou crée un change avec l'élément dans « à modifier ».
+« Impact à vérifier » (§4.8) et la Constellation (§8) sont des entrées du panneau Changesets.
+Sur une exigence ou un test, **« Analyser l'impact »** ouvre un changeset non terminal du repo qui
+liste l'élément (menu), ou crée un changeset avec l'élément dans « à modifier ».
 
 ### 4.2 Racines et arbres
 
-- **Racines** : éléments changés (`toModify`) + éléments impactés **déclarés** du change ; listes
+- **Racines** : éléments changés (`toModify`) + éléments impactés **déclarés** du changeset ; listes
   vides : aucune racine, rien n'est impacté (rien par défaut).
 - **Arbres** (`buildImpactTreesFromSnapshot`) : pour chaque racine exigence, arbre **descendant**
   (exigences dont elle est la cible, récursivement, et tests qui couvrent chaque nœud) et
@@ -196,8 +196,8 @@ liste l'élément (menu), ou crée un change avec l'élément dans « à modifie
   racine (garde anti-cycle partagée par les deux arbres) ; **couverture test ↔ exigence suivie
   dans les deux sens** (T175, `matchCoverageLink`) ; liens exigence ↔ exigence orientés (source =
   enfant, cible = parent).
-- **Snapshot** : change **demande** → état courant **sur disque** du repo du change
-  (`loadWorkingTreeSnapshot`) ; change **sur l'existant** → état à la borne `to`
+- **Snapshot** : changeset **demande** → état courant **sur disque** du repo du changeset
+  (`loadWorkingTreeSnapshot`) ; changeset **sur l'existant** → état à la borne `to`
   (`loadSnapshotAtRef`).
 
 ### 4.3 Lignes des éléments impactés
@@ -207,7 +207,7 @@ liste l'élément (menu), ou crée un change avec l'élément dans « à modifie
 - **Statut** — enum plat à 8 valeurs, librement modifiable : `impact_non_verifie` (défaut),
   `pas_d_impact_reel`, `impact_a_tester`, `impact_teste`, `modification_a_faire`,
   `modification_faite`, `modification_a_tester`, `modification_verifiee`, avec un commentaire.
-- **Persistance** (`Change.impacted`) : lignes déclarées, et lignes calculées portant une saisie
+- **Persistance** (`Changeset.impacted`) : lignes déclarées, et lignes calculées portant une saisie
   (statut ≠ défaut ou commentaire) — `pruneImpacted`. Les autres sont recalculées.
 - Une ligne calculée persistée qui n'est plus atteinte reste, marquée « n'est plus atteint ».
 - **Complétude** : `pas_d_impact_reel`, `impact_teste`, `modification_verifiee` = clos ; « N ouverts
@@ -219,27 +219,27 @@ liste l'élément (menu), ou crée un change avec l'élément dans « à modifie
 
 ### 4.4 Live, figée
 
-- **Live** tant que le change n'est pas dans un statut terminal : recalcul à l'ouverture de la page,
-  sur changement de fichier (`requirements/`, `tests/`, `links/`, `changes/`) et par
-  « Rafraîchir » (IPC `changes:analysis`).
+- **Live** tant que le changeset n'est pas dans un statut terminal : recalcul à l'ouverture de la page,
+  sur changement de fichier (`requirements/`, `tests/`, `links/`, `changesets/`) et par
+  « Rafraîchir » (IPC `changesets:analysis`).
 - **Figée** au passage dans un statut `isTerminal` : `ChangeAnalysis` (racines, arbres, lignes,
-  campagnes) écrite dans `Change.analysis` (`frozen: true`), relue telle quelle ; statuts non
+  campagnes) écrite dans `Changeset.analysis` (`frozen: true`), relue telle quelle ; statuts non
   modifiables. Retour dans un statut non terminal : instantané retiré, retour au live, statuts
   conservés.
 
-### 4.5 Change « sur l'existant »
+### 4.5 Changeset « sur l'existant »
 
-Bornes `from` / `to` : tag de baseline ou SHA (complet ou abrégé) d'un commit du repo du change
+Bornes `from` / `to` : tag de baseline ou SHA (complet ou abrégé) d'un commit du repo du changeset
 (`SyncService.resolveCommitish`). À la création, les exigences **et tests** changés entre les
 bornes (`diffElementsBetweenRefs`, mêmes règles de comparaison qu'en §4.7) sont ajoutés à « à
-modifier » (`state: modified`) ; `Change.range` garde les bornes et leurs SHA. Multi-repo : #208.
+modifier » (`state: modified`) ; `Changeset.range` garde les bornes et leurs SHA. Multi-repo : #208.
 
 ### 4.6 Export
 
-Export de l'analyse d'un change (`kind: 'impact-analysis'`) : xlsx (racines puis arbres aplatis,
+Export de l'analyse d'un changeset (`kind: 'impact-analysis'`) : xlsx (racines puis arbres aplatis,
 colonne Profondeur ; feuille « Éléments impactés »), modèle xlsx (mêmes clés que l'ancien export
 §4.6 + `impacted`), PDF (route `/print/impact-analysis?repoPath&changeId`). Génération de campagne
-depuis le change : #207.
+depuis le changeset : #207.
 
 ### 4.7 Analyse d'impact des modifications locales (T175)
 
@@ -247,8 +247,8 @@ Troisième flux, **live** : l'impact des modifications non commitées (working t
 commit (`HEAD`) — le cas « je viens de modifier des exigences/tests, qu'est-ce que ça touche ? » sans
 passer par une baseline.
 
-**Présentation** (GH199) : entrée « Modifications locales (vs HEAD) » du panneau Changements, affichée
-tant qu'au moins un élément diffère de `HEAD` (compteur) ; route `/changes/local`. Plus de sélection
+**Présentation** (GH199) : entrée « Modifications locales (vs HEAD) » du panneau Changesets, affichée
+tant qu'au moins un élément diffère de `HEAD` (compteur) ; route `/changesets/local`. Plus de sélection
 automatique.
 
 **Périmètre** : repo racine **et** composants (`resolveWorkspaceRepoPaths`), chacun comparé à **son** `HEAD`,
@@ -273,12 +273,12 @@ dans son repo). Sans aucun changement, le snapshot n'est pas chargé. Type `Loca
 génération de campagne — lecture seule, bouton Rafraîchir. Recalcul quand `useLiveFileSync` reçoit un
 `repo:file-changed` sur `requirements/`, `tests/`, `links/` ou un changement de ref (`'*'`) de n'importe
 quel repo, au retour du focus, ou au clic sur Rafraîchir — pas de polling. Pour un suivi (statuts,
-campagne), créer un change (§4.1).
+campagne), créer un changeset (§4.1).
 
 ### 4.8 Levée du flag `needsRevalidation` (T173)
 
 L'utilisateur constate qu'il a traité l'impact sur un élément marqué (§3.3, SPEC-REQ §5.3) et lève
-le flag depuis la vue Changements (arbres d'un change, analyse locale, « Impact à vérifier »).
+le flag depuis la vue Changesets (arbres d'un changeset, analyse locale, « Impact à vérifier »).
 
 **Règle d'écriture** (`RevalidationService.clear`, IPC `revalidation:clear`) : la clé
 `needsRevalidation` est **retirée** du YAML (jamais `false`) ; statut, `version`, autres champs et
@@ -289,19 +289,19 @@ résultat `{ cleared, unchanged, failed: [{ id, reason: not_found | readonly | e
 partiel s'affiche dans un bandeau fermable en tête de la vue, sans annuler les levées réussies.
 **Pas de commit ni de trace** hors git : l'écriture part avec « Publier » (qui/quand = `git log`).
 
-**Dans les arbres** d'un change (§4.2) et §4.7 (local) : un nœud dont l'élément est **actuellement**
+**Dans les arbres** d'un changeset (§4.2) et §4.7 (local) : un nœud dont l'élément est **actuellement**
 marqué affiche ⚠, une case à cocher et « Lever le flag » (sans confirmation). L'état du flag est lu
 en direct (`RevalidationService.listFlagged`, IPC `revalidation:list`, tous repos du workspace),
 pas depuis le snapshot : une analyse baseline figée reflète le flag courant. Lever une occurrence
 lève l'élément partout. Sélection multiple dédupliquée par id, vidée au changement d'analyse ;
 bouton d'en-tête « Lever le flag de la sélection (N) » avec confirmation. La ligne « élément changé »
-n'affiche que ⚠ (levée depuis la liste de repli). La levée et le statut d'impact d'un nœud de change sont
+n'affiche que ⚠ (levée depuis la liste de repli). La levée et le statut d'impact d'un nœud de changeset sont
 indépendants. En analyse locale, lever un flag ne fait pas de l'élément un « élément changé ».
 
 **Liste de repli « Impact à vérifier »** : pour les flags qu'aucune analyse n'atteint (paramètre
-modifié T171, réouverture déjà publiée…). Entrée en tête du panneau Changements (GH199), au-dessus
+modifié T171, réouverture déjà publiée…). Entrée en tête du panneau Changesets (GH199), au-dessus
 de « Modifications locales », affichée ssi au moins un élément du workspace est marqué (compteur) ;
-route `/changes/revalidation`. Contenu (`RevalidationList`) : tous les éléments marqués
+route `/changesets/revalidation`. Contenu (`RevalidationList`) : tous les éléments marqués
 (exigences puis tests, par id) avec badge, id cliquable (popup dans le repo de l'élément), titre,
 badge de repo, statut, case et « Lever le flag » ; « Tout sélectionner » (indéterminé si sélection
 partielle). Chaque ligne se déplie sur ses éléments liés (tous liens, sens indifférent, un niveau) :
@@ -422,7 +422,7 @@ matrix:
 ## 8. Vue Constellation (GH183)
 
 Vue de lecture seule de l'arbre de raffinement et de sa couverture, route `/constellation`,
-ouverte depuis le panneau Changements (GH199).
+ouverte depuis le panneau Changesets (GH199).
 
 - **Nœuds** : exigences du workspace (`links:objects`, catégorie `requirement`).
 - **Arêtes** : liens dont les deux extrémités sont des exigences ; par défaut la source raffine

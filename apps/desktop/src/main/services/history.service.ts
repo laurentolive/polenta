@@ -81,7 +81,7 @@ export class HistoryService {
   }
 }
 
-export type HistoryObjectKind = 'requirement' | 'test' | 'campaign' | 'change'
+export type HistoryObjectKind = 'requirement' | 'test' | 'campaign' | 'changeset'
 
 /** Services de lecture des objets, pour `readEffectiveHistory` (évite une dépendance circulaire). */
 export interface HistoryObjectReaders {
@@ -109,9 +109,9 @@ export async function readEffectiveHistory(
     const campaign = await c.campaigns.get(repoPath, id)
     return c.history.effective(repoPath, campaign, { filePath: `campaigns/${id}.yaml` })
   }
-  if (kind === 'change' && c.changes) {
+  if (kind === 'changeset' && c.changes) {
     const change = await c.changes.get(repoPath, id)
-    return c.history.effective(repoPath, change, { filePath: `changes/${id}.yaml` })
+    return c.history.effective(repoPath, change, { filePath: `changesets/${id}.yaml` })
   }
   throw new Error(`history:get — unknown object kind: ${String(kind)}`)
 }

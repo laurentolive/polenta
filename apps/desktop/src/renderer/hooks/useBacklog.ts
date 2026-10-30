@@ -12,7 +12,7 @@ export function useBacklog(projectId: string) {
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
   return useQuery({
     queryKey: ['changes-backlog', rootRepoPath, workspaceDir],
-    queryFn: () => api.changes.backlog(rootRepoPath, workspaceDir || undefined),
+    queryFn: () => api.changesets.backlog(rootRepoPath, workspaceDir || undefined),
     enabled: !!rootRepoPath,
   })
 }

@@ -33,7 +33,7 @@
         "hide": "Hide \"{{label}}\"",
         "reset": "Reset layout"
       },
-      "changes": "Changes"
+      "changes": "Changesets"
     },
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
@@ -530,7 +530,7 @@
       "runFieldsHelp": "Entered at each run (report number, temperature, report link…). Information common to the whole campaign is a campaign field. “Req. if”: result = PASS, FAIL, BLOCKED or INCOMPLETE (overall verdict). A name designates a single field across the project.",
       "stepFields": "Step fields",
       "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict).",
-      "change": "Change"
+      "changeset": "Changeset"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -684,8 +684,8 @@
         "test_other": "{{count}} tests deleted (and their runs):",
         "campaign_one": "{{count}} campaign deleted:",
         "campaign_other": "{{count}} campaigns deleted:",
-        "change_one": "{{count}} change deleted:",
-        "change_other": "{{count}} changes deleted:"
+        "changeset_one": "{{count}} changeset deleted:",
+        "changeset_other": "{{count}} changesets deleted:"
       },
       "more": "… and {{count}} more",
       "links_one": "{{count}} link deleted:",
@@ -2189,16 +2189,16 @@
     "supersededTitle": "Run replaced by a new attempt on the same entry"
   },
   "changes": {
-    "title": "Changes",
-    "new": "New change",
-    "empty": "No change.",
-    "emptyFiltered": "No change matches the filters.",
+    "title": "Changesets",
+    "new": "New changeset",
+    "empty": "No changeset.",
+    "emptyFiltered": "No changeset matches the filters.",
     "allTypes": "All types",
     "allStatuses": "All statuses",
     "allRepos": "All repos",
-    "mine": "My changes",
+    "mine": "My changesets",
     "hideTerminal": "Hide closed",
-    "home": "Select a change in the panel, or create one.",
+    "home": "Select a changeset in the panel, or create one.",
     "type": "Type",
     "titleLabel": "Title",
     "component": "Component",
@@ -2207,7 +2207,7 @@
     "status": "Status",
     "create": "Create",
     "creating": "Creating…",
-    "createFromElement": "Create a change",
+    "createFromElement": "Create a changeset",
     "delete": "Delete",
     "deleteConfirm": "Delete {{id}}? The file was never committed; the ID will not be reused.",
     "toModify": "Changed elements",
@@ -2228,9 +2228,9 @@
     "campaigns": "Campaigns",
     "requirement": "Requirement",
     "test": "Test",
-    "notFound": "Change not found.",
-    "noTypeInRepo": "no change type in this repo",
-    "componentHelp": "The change is stored in the component repo, with its types: it follows the component when reused in another product.",
+    "notFound": "Changeset not found.",
+    "noTypeInRepo": "no changeset type in this repo",
+    "componentHelp": "The changeset is stored in the component repo, with its types: it follows the component when reused in another product.",
     "pickToModify": "Add changed elements",
     "pickImpacted": "Add impacted elements",
     "noFlagged": "No element to re-check.",
@@ -2264,12 +2264,12 @@
     "clickToEdit": "Click to edit",
     "backlog": {
       "title": "Backlog",
-      "subtitle_one": "{{count}} element to process, assigned to no open change",
-      "subtitle_other": "{{count}} elements to process, assigned to no open change",
+      "subtitle_one": "{{count}} element to process, assigned to no open changeset",
+      "subtitle_other": "{{count}} elements to process, assigned to no open changeset",
       "assign_one": "Assign to…",
       "assign_other": "Assign ({{count}}) to…",
       "filter": "Filter (ID, title)",
-      "help": "Elements neither approved nor terminal, absent from open changes.",
+      "help": "Elements neither approved nor terminal, absent from open changesets.",
       "empty": "Nothing to process.",
       "selectAll": "Select all",
       "select": "Select {{id}}",
@@ -2278,16 +2278,16 @@
       "flagged": "Impact to check"
     },
     "assign": {
-      "approveTitle": "Assign to a change",
-      "assignTitle": "Assign to a change",
-      "moveTitle": "Move to a change",
-      "approveHelp": "{{id}} is assigned to no open change. Pick the change that carries its approval.",
+      "approveTitle": "Assign to a changeset",
+      "assignTitle": "Assign to a changeset",
+      "moveTitle": "Move to a changeset",
+      "approveHelp": "{{id}} is assigned to no open changeset. Pick the changeset that carries its approval.",
       "elements": "Elements: {{ids}}",
-      "openChanges": "Open changes",
-      "noOpen": "No open change in this repo.",
-      "newTitle": "New change title",
+      "openChanges": "Open changesets",
+      "noOpen": "No open changeset in this repo.",
+      "newTitle": "New changeset title",
       "create": "Create",
-      "approveWithout": "Approve without a change"
+      "approveWithout": "Approve without a changeset"
     }
   }
 }

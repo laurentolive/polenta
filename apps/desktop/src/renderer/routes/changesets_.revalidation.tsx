@@ -12,7 +12,7 @@ import { useSetTabTitle } from '../contexts/TabsContext'
 
 /** GH199 — liste « Impact à vérifier » (éléments marqués needsRevalidation, SPEC-TRACEABILITY §4.8),
  *  dans la vue Changements (ex-entrée de la vue Analyse d'impact). URL : /changes/revalidation?projectId=… */
-export const Route = createFileRoute('/changes_/revalidation')({
+export const Route = createFileRoute('/changesets_/revalidation')({
   component: RevalidationPage,
   validateSearch: (s: Record<string, unknown>) => ({ projectId: (s['projectId'] as string) ?? '' }),
 })

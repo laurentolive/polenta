@@ -13,7 +13,7 @@ import type { SchemaService } from './schema.service'
 // GH198 — objet change (specs/GH198-tests.md, scénarios 1 à 5).
 
 const NC: ObjectTypeDefinition = {
-  name: 'non-conformite', label: 'Non-conformité', prefix: 'NC', category: 'change', fields: [], statuses: DEFAULT_CHANGE_STATUSES,
+  name: 'non-conformite', label: 'Non-conformité', prefix: 'NC', category: 'changeset', fields: [], statuses: DEFAULT_CHANGE_STATUSES,
 }
 const schemaOf = (nodes: unknown[]) => ({ version: 1, nodes, linkTypes: [] }) as unknown as ProjectSchema
 const ONE = schemaOf([{ name: 'root', label: 'Produit', objectTypes: [NC] }])
@@ -37,7 +37,7 @@ describe('ChangesService', () => {
     const svc = make(ONE)
     const c = await svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'Surcharge', toModify: [{ id: 'SW-1', state: 'planned' }, { id: 'SW-1', state: 'planned' }] })
     expect(c).toMatchObject({ id: 'NC-0001', status: 'ouvert', component: 'root', mode: 'request', toModify: [{ id: 'SW-1', state: 'planned' }] })
-    const onDisk = await git.readYaml<Change>(dir, 'changes/NC-0001.yaml')
+    const onDisk = await git.readYaml<Change>(dir, 'changesets/NC-0001.yaml')
     expect(onDisk?.title).toBe('Surcharge')
     expect((await svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'B' })).id).toBe('NC-0002')
   })
@@ -86,7 +86,7 @@ describe('ChangesService', () => {
     const svc = make(ONE)
     await svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'A' })
     await svc.delete(dir, 'NC-0001')
-    expect(await git.fileExists(dir, 'changes/NC-0001.yaml')).toBe(false)
+    expect(await git.fileExists(dir, 'changesets/NC-0001.yaml')).toBe(false)
     expect(await git.fileExists(dir, '.polenta/tombstones/NC-0001')).toBe(true)
 
     await svc.create(dir, { objectTypeRef: 'root::non-conformite', title: 'B' })

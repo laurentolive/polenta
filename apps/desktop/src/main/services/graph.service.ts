@@ -1,7 +1,7 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
-  CampaignTestRun, Change, DescribedObject, GraphCampaign, GraphChange, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
+  CampaignTestRun, Change, DescribedObject, GraphCampaign, GraphChangeset, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
   GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
@@ -63,7 +63,7 @@ interface RawRepo {
   links: ObjectLink[]
   schema: ProjectSchema | null
   campaigns: TestCampaign[]
-  /** GH198 — fichiers `changes/` du repo. */
+  /** GH198 — fichiers `changesets/` du repo. */
   changes: Change[]
 }
 
@@ -209,7 +209,7 @@ export class GraphService {
   private async listChanges(rp: string): Promise<Change[]> {
     const out: Change[] = []
     try {
-      const files = (await this.git.listFiles(rp, 'changes')).filter((f) => f.endsWith('.yaml'))
+      const files = (await this.git.listFiles(rp, 'changesets')).filter((f) => f.endsWith('.yaml'))
       for (const f of files) {
         const c = await this.git.readYaml<Change>(rp, f).catch(() => null)
         if (c?.id) out.push(c)
@@ -275,7 +275,7 @@ export class GraphService {
     const links: GraphLink[] = []
     const campaigns: GraphCampaign[] = []
     const runs: GraphTestRun[] = []
-    const changes: GraphChange[] = []
+    const changes: GraphChangeset[] = []
     for (const r of perRepo) {
       const types = typeResolver(r.schema)
       for (const q of r.requirements) {
@@ -294,7 +294,7 @@ export class GraphService {
         return isApprovalStatus(typeDef && typeDef !== 'unresolvable' ? typeDef : null, test.status)
       }
       campaigns.push(...await Promise.all(r.campaigns.map((c) => this.toGraphCampaign(c, r, types, isApproved, now))))
-      for (const c of r.changes) changes.push(toGraphChange(c, r.name, types, now))
+      for (const c of r.changes) changes.push(toGraphChangeset(c, r.name, types, now))
     }
 
     const graph: PolentaGraph = {
@@ -315,7 +315,7 @@ export class GraphService {
       links,
       campaigns,
       runs,
-      changes,
+      changesets: changes,
     }
     return {
       graph,
@@ -423,7 +423,7 @@ function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, co
 }
 
 /** GH198 — change du graphe : base commune (statut, champs, historique) + listes et liens système. */
-function toGraphChange(c: Change, repo: string, types: TypeResolver, now: Date): GraphChange {
+function toGraphChangeset(c: Change, repo: string, types: TypeResolver, now: Date): GraphChangeset {
   return {
     ...objectBase(c as unknown as Requirement, repo, types, now),
     component: c.component ?? '',

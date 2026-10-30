@@ -288,18 +288,18 @@ export function createIpcClient(
       pickFolder: (title) => invoke('dialog:pick-folder', title),
       pickImageFile: () => invoke('dialog:pick-image-file'),
     },
-    // GH198 — changes
-    changes: {
-      list: (p, workspaceDir) => invoke('changes:list', p, workspaceDir ?? null),
-      get: (p, id) => invoke('changes:get', p, id),
-      create: (p, dto, workspaceDir) => invoke('changes:create', p, dto, workspaceDir ?? null),
-      update: (p, id, dto) => invoke('changes:update', p, id, dto),
-      delete: (p, id) => invoke('changes:delete', p, id),
-      analysis: (p, id) => invoke('changes:analysis', p, id),
-      backlog: (p, workspaceDir) => invoke('changes:backlog', p, workspaceDir ?? null),
-      assign: (p, id, elementIds) => invoke('changes:assign', p, id, elementIds),
-      move: (p, fromId, toId, elementIds) => invoke('changes:move', p, fromId, toId, elementIds),
-      approvalCheck: (p, element, toStatus) => invoke('changes:approval-check', p, element, toStatus),
+    // GH198 — changesets
+    changesets: {
+      list: (p, workspaceDir) => invoke('changesets:list', p, workspaceDir ?? null),
+      get: (p, id) => invoke('changesets:get', p, id),
+      create: (p, dto, workspaceDir) => invoke('changesets:create', p, dto, workspaceDir ?? null),
+      update: (p, id, dto) => invoke('changesets:update', p, id, dto),
+      delete: (p, id) => invoke('changesets:delete', p, id),
+      analysis: (p, id) => invoke('changesets:analysis', p, id),
+      backlog: (p, workspaceDir) => invoke('changesets:backlog', p, workspaceDir ?? null),
+      assign: (p, id, elementIds) => invoke('changesets:assign', p, id, elementIds),
+      move: (p, fromId, toId, elementIds) => invoke('changesets:move', p, fromId, toId, elementIds),
+      approvalCheck: (p, element, toStatus) => invoke('changesets:approval-check', p, element, toStatus),
     },
     // GH197 — historique des exécutions
     executions: {

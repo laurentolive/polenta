@@ -185,7 +185,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
-  'changes:create', 'changes:update', 'changes:delete', 'changes:assign', 'changes:move',
+  'changesets:create', 'changesets:update', 'changesets:delete', 'changesets:assign', 'changesets:move',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
@@ -464,16 +464,16 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
     c.tests.findRuns(repoPath, tcId))
   // GH198 — changes (repoPath = repo de stockage pour get / update / delete / candidats).
-  r.handle('changes:list', (_e, repoPath: string, workspaceDir?: string) => c.changes.list(repoPath, workspaceDir))
-  r.handle('changes:get', (_e, repoPath: string, id: string) => c.changes.get(repoPath, id))
-  r.handle('changes:create', (_e, repoPath: string, dto: CreateChangeDto, workspaceDir?: string) => c.changes.create(repoPath, dto, workspaceDir))
-  r.handle('changes:update', (_e, repoPath: string, id: string, dto: UpdateChangeDto) => c.changes.update(repoPath, id, dto))
-  r.handle('changes:delete', (_e, repoPath: string, id: string) => c.changes.delete(repoPath, id))
-  r.handle('changes:analysis', (_e, repoPath: string, id: string) => c.changes.analysis(repoPath, id))
-  r.handle('changes:backlog', (_e, repoPath: string, workspaceDir?: string) => c.changes.backlog(repoPath, workspaceDir))
-  r.handle('changes:assign', (_e, repoPath: string, id: string, elementIds: string[]) => c.changes.assign(repoPath, id, elementIds))
-  r.handle('changes:move', (_e, repoPath: string, fromId: string, toId: string, elementIds: string[]) => c.changes.move(repoPath, fromId, toId, elementIds))
-  r.handle('changes:approval-check', (_e, repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string) =>
+  r.handle('changesets:list', (_e, repoPath: string, workspaceDir?: string) => c.changes.list(repoPath, workspaceDir))
+  r.handle('changesets:get', (_e, repoPath: string, id: string) => c.changes.get(repoPath, id))
+  r.handle('changesets:create', (_e, repoPath: string, dto: CreateChangeDto, workspaceDir?: string) => c.changes.create(repoPath, dto, workspaceDir))
+  r.handle('changesets:update', (_e, repoPath: string, id: string, dto: UpdateChangeDto) => c.changes.update(repoPath, id, dto))
+  r.handle('changesets:delete', (_e, repoPath: string, id: string) => c.changes.delete(repoPath, id))
+  r.handle('changesets:analysis', (_e, repoPath: string, id: string) => c.changes.analysis(repoPath, id))
+  r.handle('changesets:backlog', (_e, repoPath: string, workspaceDir?: string) => c.changes.backlog(repoPath, workspaceDir))
+  r.handle('changesets:assign', (_e, repoPath: string, id: string, elementIds: string[]) => c.changes.assign(repoPath, id, elementIds))
+  r.handle('changesets:move', (_e, repoPath: string, fromId: string, toId: string, elementIds: string[]) => c.changes.move(repoPath, fromId, toId, elementIds))
+  r.handle('changesets:approval-check', (_e, repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string) =>
     c.changes.approvalCheck(repoPath, element, toStatus))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>

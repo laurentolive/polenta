@@ -16,10 +16,10 @@ import { findObjectTypeDef } from './schema-lookup.util'
 import { withKeyLock } from './serialize-writes.util'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 
-const DIR = 'changes'
+const DIR = 'changesets'
 
 /**
- * GH198 — objet change (specs/GH198.md) : `changes/<ID>.yaml` dans le repo du composant concerné
+ * GH198 — objet change (specs/GH198.md) : `changesets/<ID>.yaml` dans le repo du composant concerné
  * (`repoPath` = repo de stockage, dont le schéma porte le type et le composant local, #193 §4).
  * Création (demande de changement), lecture, mise à jour (titre, statut, champs, listes, composant
  * au statut initial), suppression tant que jamais commité.
@@ -63,7 +63,7 @@ export class ChangesService {
 
   /** GH199 — bornes d'un change « sur l'existant » et éléments changés entre elles (`modified`). */
   private async resolveRange(repoPath: string, range: { from: string; to: string }): Promise<{ range: ChangeRange; changed: ChangeToModify[] }> {
-    if (!this.impact) throw new Error('Change sur l\'existant indisponible')
+    if (!this.impact) throw new Error('Changeset sur l\'existant indisponible')
     const resolve = async (ref: string) => {
       const sha = ref?.trim() ? await this.impact!.sync.resolveCommitish(repoPath, ref.trim()) : null
       if (!sha) throw new Error(`Borne introuvable : "${ref ?? ''}"`)
@@ -96,7 +96,7 @@ export class ChangesService {
         component: c.component, toModifyCount: c.toModify.length, impactedCount: c.impacted.length,
         createdBy: c.history?.status?.[0]?.by ?? null,
         elementIds: [...new Set([...c.toModify.map(t => t.id), ...c.impacted.map(i => i.id)])],
-        open: !isTerminalStatus(schema, c.objectTypeRef, 'change', c.status),
+        open: !isTerminalStatus(schema, c.objectTypeRef, 'changeset', c.status),
         toModifyIds: c.toModify.map(t => t.id),
       }))
   }
@@ -155,7 +155,7 @@ export class ChangesService {
     if (fromId === toId) return
     const ids = new Set(elementIds)
     const source = await this.get(repoPath, fromId)
-    if (isTerminalStatus(await this.schema.get(repoPath), source.objectTypeRef, 'change', source.status)) {
+    if (isTerminalStatus(await this.schema.get(repoPath), source.objectTypeRef, 'changeset', source.status)) {
       throw new Error(`${fromId} est clos : ses éléments ne se déplacent plus`)
     }
     const moved = source.toModify.filter(t => ids.has(t.id))
@@ -204,7 +204,7 @@ export class ChangesService {
     return withKeyLock(`${repoPath}::${DIR}/${id}`, async () => {
       const existing = await this.get(repoPath, id)
       const schema = await this.schema.get(repoPath)
-      if (isTerminalStatus(schema, existing.objectTypeRef, 'change', existing.status)) {
+      if (isTerminalStatus(schema, existing.objectTypeRef, 'changeset', existing.status)) {
         throw new Error(`${id} est clos : il ne reçoit plus d'éléments`)
       }
       return this.persist(repoPath, existing, { ...existing, toModify: cleanToModify(edit(existing.toModify)) })
@@ -220,7 +220,7 @@ export class ChangesService {
 
   async get(repoPath: string, id: string): Promise<Change> {
     const change = await this.git.readYaml<Change>(repoPath, `${DIR}/${id}.yaml`)
-    if (!change) throw new Error(`Change introuvable : ${id}`)
+    if (!change) throw new Error(`Changeset introuvable : ${id}`)
     const audit = await this.git.fileHistory(repoPath, `${DIR}/${id}.yaml`).catch(() => null)
     return { ...normalize(change), createdAt: audit?.createdAt ?? null, createdBy: audit?.createdBy ?? null, updatedAt: audit?.updatedAt ?? null, updatedBy: audit?.updatedBy ?? null }
   }
@@ -290,7 +290,7 @@ export class ChangesService {
     const rel = `${DIR}/${id}.yaml`
     // Même verrou que `update` : une écriture en vol ne recrée pas le fichier après la pierre tombale.
     return withKeyLock(`${repoPath}::${DIR}/${id}`, async () => {
-      if (!(await this.git.fileExists(repoPath, rel))) throw new Error(`Change introuvable : ${id}`)
+      if (!(await this.git.fileExists(repoPath, rel))) throw new Error(`Changeset introuvable : ${id}`)
       if (await this.git.fileHistory(repoPath, rel).catch(() => null)) {
         throw new Error(`${id} a déjà été commité : il ne peut plus être supprimé, passez-le dans un statut terminal`)
       }
@@ -299,8 +299,8 @@ export class ChangesService {
   }
 
   private changeType(schema: ProjectSchema | null, ref: string): ObjectTypeDefinition {
-    const resolved = schema ? findObjectTypeDef(schema, ref, 'change') : null
-    if (!resolved || resolved === 'unresolvable') throw new Error(`Type de change introuvable : "${ref}"`)
+    const resolved = schema ? findObjectTypeDef(schema, ref, 'changeset') : null
+    if (!resolved || resolved === 'unresolvable') throw new Error(`Type de changeset introuvable : "${ref}"`)
     return resolved
   }
 

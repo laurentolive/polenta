@@ -19,7 +19,7 @@ import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 
 /** GH198 — page d'un change (specs/GH198.md §5). URL : /change/<ID>?projectId=…&repoPath=<repo de stockage> */
-export const Route = createFileRoute('/change/$changeId')({
+export const Route = createFileRoute('/changeset/$changeId')({
   component: ChangePage,
   validateSearch: (s: Record<string, unknown>) => ({
     projectId: (s['projectId'] as string) ?? '',
@@ -38,8 +38,8 @@ function ChangePage() {
   useRegisterTabDirty(editingFields !== null)
 
   const { data: change, isLoading, error: loadError } = useQuery({
-    queryKey: ['change', repoPath, changeId],
-    queryFn: () => api.changes.get(repoPath, changeId),
+    queryKey: ['changeset', repoPath, changeId],
+    queryFn: () => api.changesets.get(repoPath, changeId),
     enabled: !!repoPath,
   })
   useSetTabTitle(change ? `${change.id} ${change.title}` : changeId)
@@ -48,10 +48,10 @@ function ChangePage() {
   const elements = useRepoElements(repoPath, schema)
 
   const update = useMutation({
-    mutationFn: (dto: UpdateChangeDto) => api.changes.update(repoPath, changeId, dto),
+    mutationFn: (dto: UpdateChangeDto) => api.changesets.update(repoPath, changeId, dto),
     onSuccess: saved => {
-      qc.setQueryData(['change', repoPath, changeId], (prev: typeof change) => ({ ...prev, ...saved }))
-      qc.invalidateQueries({ queryKey: ['changes'] })
+      qc.setQueryData(['changeset', repoPath, changeId], (prev: typeof change) => ({ ...prev, ...saved }))
+      qc.invalidateQueries({ queryKey: ['changesets'] })
       qc.invalidateQueries({ queryKey: ['change-analysis', repoPath, changeId] })
       qc.invalidateQueries({ queryKey: ['changes-backlog'] })
       setEditingFields(null)
@@ -59,8 +59,8 @@ function ChangePage() {
   })
   // GH199 §8bis — autres changes ouverts du repo qui listent un élément « à modifier ».
   const { data: repoChanges = [] } = useQuery({
-    queryKey: ['changes', 'repo', repoPath],
-    queryFn: () => api.changes.list(repoPath),
+    queryKey: ['changesets', 'repo', repoPath],
+    queryFn: () => api.changesets.list(repoPath),
     enabled: !!repoPath,
   })
   const alsoIn = new Map<string, string[]>()
@@ -71,14 +71,14 @@ function ChangePage() {
   // GH199 — analyse d'impact (live ; instantané figé au statut terminal).
   const analysisQuery = useQuery({
     queryKey: ['change-analysis', repoPath, changeId],
-    queryFn: () => api.changes.analysis(repoPath, changeId),
+    queryFn: () => api.changesets.analysis(repoPath, changeId),
     enabled: !!repoPath,
   })
   const remove = useMutation({
-    mutationFn: () => api.changes.delete(repoPath, changeId),
+    mutationFn: () => api.changesets.delete(repoPath, changeId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['changes'] })
-      navigate({ to: '/changes', search: { projectId } })
+      qc.invalidateQueries({ queryKey: ['changesets'] })
+      navigate({ to: '/changesets', search: { projectId } })
     },
     onSettled: () => setConfirmDelete(false),
   })
@@ -259,7 +259,7 @@ function ChangePage() {
 
             <HistorySection
               repoPath={repoPath}
-              kind="change"
+              kind="changeset"
               id={change.id}
               typeDef={typeDef}
               refreshKey={JSON.stringify(change.history ?? null)}

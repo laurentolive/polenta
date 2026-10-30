@@ -39,7 +39,7 @@ export function Sidebar({ activePanel, currentProjectId, width, collapsed }: Pro
         <DashboardPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
       {activePanel === 'parameters' && currentProjectId && <ParametersPanel projectId={currentProjectId} />}
-      {activePanel === 'changes' && currentProjectId && <ChangesPanel projectId={currentProjectId} />}
+      {activePanel === 'changesets' && currentProjectId && <ChangesPanel projectId={currentProjectId} />}
     </div>
   )
 }

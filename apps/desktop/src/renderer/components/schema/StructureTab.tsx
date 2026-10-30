@@ -409,7 +409,7 @@ function AddMenu({ node, hasRoot, onAddComponent, onAddInterface, onAddElement }
           {hasRoot && (
             <>
               <div className="border-t border-edge my-1" />
-              {(['requirement', 'test', 'campaign', 'change'] as ObjectCategory[]).map(cat => (
+              {(['requirement', 'test', 'campaign', 'changeset'] as ObjectCategory[]).map(cat => (
                 <button key={cat} type="button" onClick={() => { onAddElement(cat); setOpen(false) }} className={menuItemClass}>
                   + {t(CATEGORY_LABEL_KEY[cat])}
                 </button>
@@ -448,7 +448,7 @@ function AddElementMenu({ onAddElement, onAddComponent, onAddInterface }: {
           <button type="button" onClick={() => { onAddComponent(); setOpen(false) }} className={menuItemClass}>{t('schema.structureTab.addComponent')}</button>
           <button type="button" onClick={() => { onAddInterface(); setOpen(false) }} className={menuItemClass}>{t('schema.structureTab.addInterface')}</button>
           <div className="border-t border-edge my-1" />
-          {(['requirement', 'test', 'campaign', 'change'] as ObjectCategory[]).map(cat => (
+          {(['requirement', 'test', 'campaign', 'changeset'] as ObjectCategory[]).map(cat => (
             <button key={cat} type="button" onClick={() => { onAddElement(cat); setOpen(false) }} className={menuItemClass}>
               + {t(CATEGORY_LABEL_KEY[cat])}
             </button>

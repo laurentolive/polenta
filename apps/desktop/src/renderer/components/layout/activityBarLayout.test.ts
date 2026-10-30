@@ -4,7 +4,7 @@ import {
   ACTIVITY_BAR_LAYOUT_KEY, applyOrder, hiddenSet, loadLayout, movePanel, saveLayout, toggleHidden,
 } from './activityBarLayout'
 
-const DEFAULTS: Panel[] = ['account', 'project', 'dashboard', 'requirements', 'version', 'changes']
+const DEFAULTS: Panel[] = ['account', 'project', 'dashboard', 'requirements', 'version', 'changesets']
 
 function memoryStorage(): Storage {
   const data = new Map<string, string>()
@@ -23,8 +23,8 @@ describe('applyOrder', () => {
     expect(applyOrder(DEFAULTS, null)).toEqual(DEFAULTS)
   })
   it('U2 — panneaux absents de la préférence ajoutés en fin', () => {
-    expect(applyOrder(DEFAULTS, { order: ['changes', 'account', 'project'], hidden: [] }))
-      .toEqual(['changes', 'account', 'project', 'dashboard', 'requirements', 'version'])
+    expect(applyOrder(DEFAULTS, { order: ['changesets', 'account', 'project'], hidden: [] }))
+      .toEqual(['changesets', 'account', 'project', 'dashboard', 'requirements', 'version'])
   })
   it('U3 — ids inconnus ignorés', () => {
     expect(applyOrder(DEFAULTS, { order: ['foo' as Panel, 'version'], hidden: [] })[0]).toBe('version')
@@ -34,7 +34,7 @@ describe('applyOrder', () => {
 
 describe('hiddenSet', () => {
   it('U4 — Compte et Projet jamais masqués', () => {
-    expect([...hiddenSet(DEFAULTS, { order: [], hidden: ['account', 'project', 'changes'] })]).toEqual(['changes'])
+    expect([...hiddenSet(DEFAULTS, { order: [], hidden: ['account', 'project', 'changesets'] })]).toEqual(['changesets'])
   })
   it('U5 — ids inconnus ignorés', () => {
     expect(hiddenSet(DEFAULTS, { order: [], hidden: ['foo' as Panel] }).size).toBe(0)
@@ -44,18 +44,18 @@ describe('hiddenSet', () => {
 describe('movePanel', () => {
   it('U6 — avant, après, sur soi-même', () => {
     expect(movePanel(DEFAULTS, 'version', 'dashboard', 'before'))
-      .toEqual(['account', 'project', 'version', 'dashboard', 'requirements', 'changes'])
-    expect(movePanel(DEFAULTS, 'account', 'changes', 'after'))
-      .toEqual(['project', 'dashboard', 'requirements', 'version', 'changes', 'account'])
+      .toEqual(['account', 'project', 'version', 'dashboard', 'requirements', 'changesets'])
+    expect(movePanel(DEFAULTS, 'account', 'changesets', 'after'))
+      .toEqual(['project', 'dashboard', 'requirements', 'version', 'changesets', 'account'])
     expect(movePanel(DEFAULTS, 'version', 'version', 'before')).toBe(DEFAULTS)
   })
 })
 
 describe('toggleHidden', () => {
   it('U7 — aller-retour, no-op sur Compte', () => {
-    const hidden = toggleHidden([], 'changes')
-    expect(hidden).toEqual(['changes'])
-    expect(toggleHidden(hidden, 'changes')).toEqual([])
+    const hidden = toggleHidden([], 'changesets')
+    expect(hidden).toEqual(['changesets'])
+    expect(toggleHidden(hidden, 'changesets')).toEqual([])
     expect(toggleHidden([], 'account')).toEqual([])
   })
 })
@@ -70,8 +70,8 @@ describe('loadLayout / saveLayout', () => {
     expect(loadLayout()).toBeNull()
     localStorage.setItem(ACTIVITY_BAR_LAYOUT_KEY, '{"order":3,"hidden":[]}')
     expect(loadLayout()).toBeNull()
-    saveLayout({ order: ['changes'], hidden: ['version'] })
-    expect(loadLayout()).toEqual({ order: ['changes'], hidden: ['version'] })
+    saveLayout({ order: ['changesets'], hidden: ['version'] })
+    expect(loadLayout()).toEqual({ order: ['changesets'], hidden: ['version'] })
   })
 
   it('U9 — localStorage qui lève', () => {

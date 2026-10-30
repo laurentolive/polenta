@@ -28,7 +28,7 @@ const PANELS: {
   { id: 'requirements', icon: <ClipboardList size={20} />, labelKey: 'layout.activityBar.requirements', requiresProject: true },
   { id: 'tests',        icon: <FlaskConical size={20} />,  labelKey: 'layout.activityBar.tests',        requiresProject: true },
   { id: 'campaigns',    icon: <Rocket size={20} />,         labelKey: 'layout.activityBar.campaigns',    requiresProject: true },
-  { id: 'changes',      icon: <GitPullRequestArrow size={20} />, labelKey: 'layout.activityBar.changes', requiresProject: true },
+  { id: 'changesets',      icon: <GitPullRequestArrow size={20} />, labelKey: 'layout.activityBar.changes', requiresProject: true },
   { id: 'parameters',   icon: <Variable size={20} />,       labelKey: 'layout.activityBar.parameters',   requiresProject: true },
   { id: 'search',  icon: <Search size={20} />,     labelKey: 'layout.activityBar.search', requiresProject: true },
   { id: 'version', icon: <GitBranch size={20} />,  labelKey: 'layout.activityBar.version',   requiresProject: true },

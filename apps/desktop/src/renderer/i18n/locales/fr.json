@@ -33,7 +33,7 @@
         "hide": "Masquer « {{label}} »",
         "reset": "Réinitialiser la disposition"
       },
-      "changes": "Changements"
+      "changes": "Changesets"
     },
     "tabBar": {
       "newTab": "Nouvel onglet (Ctrl+T)",
@@ -530,7 +530,7 @@
       "runFieldsHelp": "Saisis à chaque exécution (n° de rapport, température, lien vers le rapport…). Une information commune à toute la campagne est un champ de campagne. « Oblig. si » : result = PASS, FAIL, BLOCKED ou INCOMPLETE (verdict global). Un nom désigne un seul champ dans tout le projet.",
       "stepFields": "Champs d'étape",
       "stepFieldsHelp": "Saisis sur chaque étape exécutée (valeur mesurée, capture…). « Oblig. si » : result = PASS, FAIL, BLOCKED, SKIP (verdict de l'étape).",
-      "change": "Change"
+      "changeset": "Changeset"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -684,8 +684,8 @@
         "test_other": "{{count}} tests supprimés (et leurs exécutions) :",
         "campaign_one": "{{count}} campagne supprimée :",
         "campaign_other": "{{count}} campagnes supprimées :",
-        "change_one": "{{count}} change supprimé :",
-        "change_other": "{{count}} changes supprimés :"
+        "changeset_one": "{{count}} changeset supprimé :",
+        "changeset_other": "{{count}} changesets supprimés :"
       },
       "more": "… et {{count}} autre(s)",
       "links_one": "{{count}} lien supprimé :",
@@ -2189,16 +2189,16 @@
     "supersededTitle": "Run remplacé par un nouvel essai sur la même entrée"
   },
   "changes": {
-    "title": "Changements",
-    "new": "Nouveau change",
-    "empty": "Aucun change.",
-    "emptyFiltered": "Aucun change ne correspond aux filtres.",
+    "title": "Changesets",
+    "new": "Nouveau changeset",
+    "empty": "Aucun changeset.",
+    "emptyFiltered": "Aucun changeset ne correspond aux filtres.",
     "allTypes": "Tous les types",
     "allStatuses": "Tous les statuts",
     "allRepos": "Tous les repos",
-    "mine": "Mes changes",
+    "mine": "Mes changesets",
     "hideTerminal": "Masquer les terminés",
-    "home": "Sélectionnez un change dans le panneau, ou créez-en un.",
+    "home": "Sélectionnez un changeset dans le panneau, ou créez-en un.",
     "type": "Type",
     "titleLabel": "Titre",
     "component": "Composant concerné",
@@ -2207,7 +2207,7 @@
     "status": "Statut",
     "create": "Créer",
     "creating": "Création…",
-    "createFromElement": "Créer un change",
+    "createFromElement": "Créer un changeset",
     "delete": "Supprimer",
     "deleteConfirm": "Supprimer {{id}} ? Le fichier n’a jamais été commité ; l’ID ne sera pas réutilisé.",
     "toModify": "Éléments changés",
@@ -2228,9 +2228,9 @@
     "campaigns": "Campagnes",
     "requirement": "Exigence",
     "test": "Test",
-    "notFound": "Change introuvable.",
-    "noTypeInRepo": "aucun type de change dans ce repo",
-    "componentHelp": "Le change est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit.",
+    "notFound": "Changeset introuvable.",
+    "noTypeInRepo": "aucun type de changeset dans ce repo",
+    "componentHelp": "Le changeset est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit.",
     "pickToModify": "Ajouter des éléments changés",
     "pickImpacted": "Ajouter des éléments impactés",
     "noFlagged": "Aucun élément à revérifier.",
@@ -2264,12 +2264,12 @@
     "clickToEdit": "Cliquer pour modifier",
     "backlog": {
       "title": "Backlog",
-      "subtitle_one": "{{count}} élément à traiter, assigné à aucun change ouvert",
-      "subtitle_other": "{{count}} éléments à traiter, assignés à aucun change ouvert",
+      "subtitle_one": "{{count}} élément à traiter, assigné à aucun changeset ouvert",
+      "subtitle_other": "{{count}} éléments à traiter, assignés à aucun changeset ouvert",
       "assign_one": "Assigner à…",
       "assign_other": "Assigner ({{count}}) à…",
       "filter": "Filtrer (ID, titre)",
-      "help": "Éléments ni approuvés ni terminaux, absents des changes ouverts.",
+      "help": "Éléments ni approuvés ni terminaux, absents des changesets ouverts.",
       "empty": "Rien à traiter.",
       "selectAll": "Tout sélectionner",
       "select": "Sélectionner {{id}}",
@@ -2278,16 +2278,16 @@
       "flagged": "Impact à vérifier"
     },
     "assign": {
-      "approveTitle": "Assigner à un change",
-      "assignTitle": "Assigner à un change",
-      "moveTitle": "Déplacer vers un change",
-      "approveHelp": "{{id}} n'est assigné à aucun change ouvert. Choisissez le change qui porte son approbation.",
+      "approveTitle": "Assigner à un changeset",
+      "assignTitle": "Assigner à un changeset",
+      "moveTitle": "Déplacer vers un changeset",
+      "approveHelp": "{{id}} n'est assigné à aucun changeset ouvert. Choisissez le changeset qui porte son approbation.",
       "elements": "Éléments : {{ids}}",
-      "openChanges": "Changes ouverts",
-      "noOpen": "Aucun change ouvert dans ce repo.",
-      "newTitle": "Titre du nouveau change",
+      "openChanges": "Changesets ouverts",
+      "noOpen": "Aucun changeset ouvert dans ce repo.",
+      "newTitle": "Titre du nouveau changeset",
       "create": "Créer",
-      "approveWithout": "Approuver sans change"
+      "approveWithout": "Approuver sans changeset"
     }
   }
 }

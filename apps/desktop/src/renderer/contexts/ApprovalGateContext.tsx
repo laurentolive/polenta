@@ -33,7 +33,7 @@ export function ApprovalGateProvider({ children }: { children: ReactNode }) {
   const gate = useCallback<Gate>((repoPath, element, toStatus) => {
     const turn = queueRef.current.then(async () => {
       // Contrôle indisponible (ancien serveur, erreur de lecture) : on n'empêche pas l'écriture.
-      const check = await api.changes.approvalCheck(repoPath, element, toStatus).catch(() => null)
+      const check = await api.changesets.approvalCheck(repoPath, element, toStatus).catch(() => null)
       if (!check?.needsAssignment) return true
       return new Promise<boolean>(resolve => setPending({ repoPath, element, check, resolve }))
     })

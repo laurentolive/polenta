@@ -120,7 +120,7 @@ export function typeRename(
 ): TypeRenameDto | null {
   if (!original || !updated.name) return null
   // GH198 — renommage d'un type de change : migration de ses objets non prise en charge (lot suivant).
-  if (original.category === 'change') return null
+  if (original.category === 'changeset') return null
   const oldPrefix = original.prefix ?? ''
   if (updated.name === original.name && updated.prefix === oldPrefix) return null
   return {
@@ -303,7 +303,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   requirement: 'schema.editor.requirement',
   test: 'schema.editor.test',
   campaign: 'schema.editor.campaign',
-  change: 'schema.editor.change',
+  changeset: 'schema.editor.changeset',
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -323,7 +323,7 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   requirement: 'REQ',
   test: 'TEST',
   campaign: 'CAMP',
-  change: 'CHG',
+  changeset: 'CHG',
 }
 
 function slugifyComponentName(componentName: string): string {
@@ -351,7 +351,7 @@ export function emptyObjType(
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
       // GH198 — cycle de vie par défaut d'un type de change (modifiable).
-      : category === 'change' ? DEFAULT_CHANGE_STATUSES.map(statusToEditable)
+      : category === 'changeset' ? DEFAULT_CHANGE_STATUSES.map(statusToEditable)
       : [],
   }
 }

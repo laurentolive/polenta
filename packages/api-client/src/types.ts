@@ -532,8 +532,8 @@ export interface ApiClient {
     pickFolder(title?: string): Promise<string | null>
     pickImageFile(): Promise<{ mimeType: string; base64: string } | null>
   }
-  /** GH198 — changes ; `repoPath` de get / update / delete = repo de stockage (`ChangeSummary.repoPath`). */
-  changes: {
+  /** GH198 — changesets ; `repoPath` de get / update / delete = repo de stockage (`ChangeSummary.repoPath`). */
+  changesets: {
     list(repoPath: string, workspaceDir?: string): Promise<ChangeSummary[]>
     get(repoPath: string, id: string): Promise<Change>
     create(repoPath: string, dto: CreateChangeDto, workspaceDir?: string): Promise<Change & { repoPath: string }>
@@ -740,7 +740,7 @@ export interface ApiClient {
   }
   history: {
     /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
-    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign' | 'change', id: string): Promise<ObjectHistory>
+    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign' | 'changeset', id: string): Promise<ObjectHistory>
     /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
     backfill(repoPath: string): Promise<HistoryBackfillResult>
   }

@@ -204,6 +204,16 @@ function ChangePage() {
               </div>
             )}
 
+            {/* Origine, version intégrée, campagnes : alimentées par les lots suivants (L5, L6, L8). */}
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm mb-4">
+              <dt className="text-ink-3">{t('changes.origin')}</dt>
+              <dd className="text-ink-2">{[...change.origin.runs, ...change.origin.decisions.map(d => `${d.conformityId} / ${d.objectId}`)].join(', ') || '—'}</dd>
+              <dt className="text-ink-3">{t('changes.integratedIn')}</dt>
+              <dd className="text-ink-2">{change.integratedIn || '—'}</dd>
+              <dt className="text-ink-3">{t('changes.campaigns')}</dt>
+              <dd className="text-ink-2">{change.campaigns.join(', ') || '—'}</dd>
+            </dl>
+
             <ToModifyList
               items={change.toModify}
               onChange={toModify => update.mutate({ toModify })}
@@ -242,16 +252,6 @@ function ChangePage() {
               projectId={projectId}
               disabled={update.isPending}
             />
-
-            {/* Origine, version intégrée, campagnes : alimentées par les lots suivants (L5, L6, L8). */}
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm mb-4">
-              <dt className="text-ink-3">{t('changes.origin')}</dt>
-              <dd className="text-ink-2">{[...change.origin.runs, ...change.origin.decisions.map(d => `${d.conformityId} / ${d.objectId}`)].join(', ') || '—'}</dd>
-              <dt className="text-ink-3">{t('changes.integratedIn')}</dt>
-              <dd className="text-ink-2">{change.integratedIn || '—'}</dd>
-              <dt className="text-ink-3">{t('changes.campaigns')}</dt>
-              <dd className="text-ink-2">{change.campaigns.join(', ') || '—'}</dd>
-            </dl>
 
             <HistorySection
               repoPath={repoPath}

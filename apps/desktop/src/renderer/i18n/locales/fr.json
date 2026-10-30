@@ -2210,7 +2210,7 @@
     "createFromElement": "Créer un change",
     "delete": "Supprimer",
     "deleteConfirm": "Supprimer {{id}} ? Le fichier n’a jamais été commité ; l’ID ne sera pas réutilisé.",
-    "toModify": "Éléments à modifier",
+    "toModify": "Éléments changés",
     "impacted": "Éléments impactés",
     "add": "Ajouter",
     "addSelected": "Ajouter la sélection",
@@ -2231,7 +2231,7 @@
     "notFound": "Change introuvable.",
     "noTypeInRepo": "aucun type de change dans ce repo",
     "componentHelp": "Le change est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit.",
-    "pickToModify": "Ajouter des éléments à modifier",
+    "pickToModify": "Ajouter des éléments changés",
     "pickImpacted": "Ajouter des éléments impactés",
     "noFlagged": "Aucun élément à revérifier.",
     "mode": {
@@ -2240,7 +2240,7 @@
       "range": "Sur l'existant",
       "from": "Depuis (baseline ou commit)",
       "to": "Jusqu'à (baseline ou commit)",
-      "rangeHelp": "Les exigences et tests modifiés entre les deux bornes sont ajoutés aux éléments à modifier ; l'analyse porte sur l'état à la seconde borne."
+      "rangeHelp": "Les exigences et tests modifiés entre les deux bornes sont ajoutés aux éléments changés ; l'analyse porte sur l'état à la seconde borne."
     },
     "openOnly": "Ouverts seulement",
     "unreached": "n'est plus atteint",
@@ -2260,7 +2260,7 @@
     "moveTo_other": "Déplacer ({{count}}) vers…",
     "alsoIn": "aussi dans {{ids}}",
     "toProcess": "à traiter",
-    "promote": "Passer en à modifier",
+    "promote": "Passer en changé",
     "backlog": {
       "title": "Backlog",
       "subtitle_one": "{{count}} élément à traiter, assigné à aucun change ouvert",

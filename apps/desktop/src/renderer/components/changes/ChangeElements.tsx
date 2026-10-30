@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { X } from 'lucide-react'
+import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import { CHANGE_IMPACT_STATUSES, CLOSED_IMPACT_STATUSES, isToProcess, type ChangeImpactRow, type ChangeImpactStatus, type ChangeToModify, type ProjectSchema } from '@polenta/types'
 import { api } from '../../api'
 import { getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
@@ -63,6 +63,18 @@ function ElementRef({ id, info, repoPath, projectId }: { id: string; info?: Elem
   )
 }
 
+/** Titre de section repliable, avec le nombre d'éléments (visible une fois repliée). */
+function SectionToggle({ label, count, open, onToggle, testId }: { label: string; count: number; open: boolean; onToggle: () => void; testId: string }) {
+  return (
+    <button type="button" onClick={onToggle} aria-expanded={open} data-testid={testId}
+      className="flex items-center gap-1 text-xs font-semibold text-ink-2 uppercase tracking-wide hover:text-ink">
+      {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+      {label}
+      <span className="font-normal text-ink-3 normal-case">({count})</span>
+    </button>
+  )
+}
+
 interface ListProps {
   repoPath: string
   projectId: string
@@ -84,6 +96,7 @@ export function ToModifyList({ items, onChange, changeId, component, alsoIn, ...
   const [picking, setPicking] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [moving, setMoving] = useState(false)
+  const [open, setOpen] = useState(true)
   const chosen = items.filter(i => selected.has(i.id)).map(i => i.id)
   const toggle = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -94,7 +107,7 @@ export function ToModifyList({ items, onChange, changeId, component, alsoIn, ...
   return (
     <section className="border rounded p-3 mb-4" data-testid="change-to-modify">
       <div className="flex items-center justify-between mb-2 gap-2">
-        <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">{t('changes.toModify')}</p>
+        <SectionToggle label={t('changes.toModify')} count={items.length} open={open} onToggle={() => setOpen(o => !o)} testId="change-to-modify-toggle" />
         <div className="flex-1" />
         {!p.disabled && chosen.length > 0 && (
           <button type="button" className="text-xs text-prim hover:underline" onClick={() => setMoving(true)} data-testid="change-to-modify-move">
@@ -107,7 +120,7 @@ export function ToModifyList({ items, onChange, changeId, component, alsoIn, ...
           </button>
         )}
       </div>
-      {items.length === 0 ? <p className="text-xs text-ink-3">{t('changes.none')}</p> : (
+      {!open ? null : items.length === 0 ? <p className="text-xs text-ink-3">{t('changes.none')}</p> : (
         <ul className="space-y-1">
           {items.map(it => (
             <li key={it.id} className="flex items-center gap-2 text-sm" data-testid={`change-to-modify-${it.id}`}>
@@ -168,11 +181,12 @@ export function ImpactedList({ rows, onSetImpact, onAddDeclared, onRemoveDeclare
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
   const [openOnly, setOpenOnly] = useState(false)
+  const [open, setOpen] = useState(true)
   const shown = openOnly ? rows.filter(r => !CLOSED_IMPACT_STATUSES.includes(r.status)) : rows
   return (
     <section className="border rounded p-3 mb-4" data-testid="change-impacted">
       <div className="flex items-center justify-between mb-2 gap-3">
-        <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">{t('changes.impacted')}</p>
+        <SectionToggle label={t('changes.impacted')} count={rows.length} open={open} onToggle={() => setOpen(o => !o)} testId="change-impacted-toggle" />
         <div className="flex-1" />
         {rows.length > 0 && (
           <label className="flex items-center gap-1 text-xs text-ink-3 cursor-pointer">
@@ -186,7 +200,7 @@ export function ImpactedList({ rows, onSetImpact, onAddDeclared, onRemoveDeclare
           </button>
         )}
       </div>
-      {shown.length === 0 ? <p className="text-xs text-ink-3">{t('changes.none')}</p> : (
+      {!open ? null : shown.length === 0 ? <p className="text-xs text-ink-3">{t('changes.none')}</p> : (
         <ul className="space-y-2">
           {shown.map(it => (
             <li key={it.id} className="text-sm" data-testid={`change-impacted-${it.id}`}>

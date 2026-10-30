@@ -2210,7 +2210,7 @@
     "createFromElement": "Create a change",
     "delete": "Delete",
     "deleteConfirm": "Delete {{id}}? The file was never committed; the ID will not be reused.",
-    "toModify": "Elements to modify",
+    "toModify": "Changed elements",
     "impacted": "Impacted elements",
     "add": "Add",
     "addSelected": "Add selection",
@@ -2231,7 +2231,7 @@
     "notFound": "Change not found.",
     "noTypeInRepo": "no change type in this repo",
     "componentHelp": "The change is stored in the component repo, with its types: it follows the component when reused in another product.",
-    "pickToModify": "Add elements to modify",
+    "pickToModify": "Add changed elements",
     "pickImpacted": "Add impacted elements",
     "noFlagged": "No element to re-check.",
     "mode": {
@@ -2240,7 +2240,7 @@
       "range": "On existing work",
       "from": "From (baseline or commit)",
       "to": "To (baseline or commit)",
-      "rangeHelp": "Requirements and tests changed between the two bounds are added to the elements to modify; the analysis uses the state at the second bound."
+      "rangeHelp": "Requirements and tests changed between the two bounds are added to the changed elements; the analysis uses the state at the second bound."
     },
     "openOnly": "Open only",
     "unreached": "no longer reached",
@@ -2260,7 +2260,7 @@
     "moveTo_other": "Move ({{count}}) to…",
     "alsoIn": "also in {{ids}}",
     "toProcess": "to process",
-    "promote": "Move to “to modify”",
+    "promote": "Move to changed",
     "backlog": {
       "title": "Backlog",
       "subtitle_one": "{{count}} element to process, assigned to no open change",

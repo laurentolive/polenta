@@ -14,7 +14,7 @@
     tableau, document), `SearchEditPane`, `req.$reqId`, `test.$testId`.
   - `useBacklog`, entrées « Backlog (N) » du panneau Changements, route `/changes/backlog`.
   - `ToModifyList` : cases, « Déplacer vers… », « aussi dans … ». `ImpactedList` : badge
-    « à traiter », « Passer en à modifier ».
+    « à traiter », « Passer en changé ».
   - `useLiveFileSync` : invalidation de `changes-backlog`. i18n fr / en.
 - Tests : `changes-backlog.gh199.test.ts` (8) ; e2e `gh199-backlog.spec.ts` (B1/B2, B3, B5, B6).
 
@@ -34,13 +34,19 @@
   - L'invalidation du backlog à chaque écriture d'élément ne coûte que si le panneau Changements
     est affiché.
 
+## Retour de validation (2026-10-30)
+
+Page d'un change : origine, version intégrée et campagnes remontées au-dessus des listes ; listes
+« Éléments changés » (ex-« à modifier », libellé seulement : le champ reste `toModify`) et
+« Éléments impactés » repliables, avec leur nombre.
+
 ## Mises à jour SPEC
 
 | Section | Modification |
 |---|---|
-| SPEC-REQ §10 | backlog, assignation, déplacement, dialogue d'approbation |
+| SPEC-REQ §10 | backlog, assignation, déplacement, dialogue d'approbation ; ordre de la page, listes repliables, « Éléments changés » |
 | SPEC-REQ §4.3 | exception d'interface à « toutes les transitions sont autorisées » |
-| SPEC-TRACEABILITY §4.3 | élément à traiter atteint : badge, « Passer en à modifier » |
+| SPEC-TRACEABILITY §4.3 | élément à traiter atteint : badge, « Passer en changé » |
 | GH193 §7.2 | condition `assignedToChange` (par défaut, avec #206) |
 
 ## Comment tester manuellement

@@ -4,7 +4,7 @@ import { setupSession } from './support/session'
 /**
  * GH199 §8bis — backlog et assignation des éléments (specs/GH199-tests.md, scénarios 17 à 20) :
  * backlog d'un composant, « Assigner à… », « Déplacer vers… », dialogue à l'approbation d'un
- * élément non assigné, « Passer en à modifier » depuis l'analyse.
+ * élément non assigné, « Passer en changé » depuis l'analyse.
  */
 const s = setupSession()
 test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
@@ -80,7 +80,7 @@ test('GH199-B3 — « Déplacer vers… » un autre change', async () => {
   expect((await getChange(changeB)).toModify).toEqual([{ id: reqA, state: 'planned' }])
 })
 
-test('GH199-B6 — élément à traiter atteint par l\'analyse : « Passer en à modifier »', async () => {
+test('GH199-B6 — élément à traiter atteint par l\'analyse : « Passer en changé »', async () => {
   const p = s.page
   const { localPath } = s.project
   await navigate(p, s.projectUrl(`/change/${changeB}`, { repoPath: localPath }))

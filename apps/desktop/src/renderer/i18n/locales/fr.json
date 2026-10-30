@@ -37,7 +37,9 @@
     },
     "tabBar": {
       "newTab": "Nouvel onglet (Ctrl+T)",
-      "allTabs": "Tous les onglets"
+      "allTabs": "Tous les onglets",
+      "back": "Précédent ({{shortcut}}) — clic droit : historique",
+      "forward": "Suivant ({{shortcut}}) — clic droit : historique"
     },
     "tabListMenu": {
       "filterPlaceholder": "Filtrer les onglets…",
@@ -48,6 +50,12 @@
       "title": "Fermer sans enregistrer ?",
       "message": "Cet onglet a des modifications non enregistrées. Elles seront perdues.",
       "confirm": "Fermer sans enregistrer"
+    },
+    "confirmLeavePage": {
+      "title": "Quitter cette page ?",
+      "message": "Des modifications ne sont pas enregistrées et seront perdues.",
+      "stay": "Rester",
+      "leave": "Quitter sans enregistrer"
     },
     "modificationControl": {
       "notDesignated": "<mono>{{branch}}</mono> n'est pas désignée comme branche d'intégration (le fichier indique <mono>{{integrationBranch}}</mono>).",

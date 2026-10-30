@@ -12,6 +12,10 @@ export const Route = createFileRoute('/product')({
     node: search['node'] as string | undefined,
     type: search['type'] as string | undefined,
     category: search['category'] as string | undefined,
+    // GH228 — mode d'affichage et élément de la vue système (historique Précédent / Suivant).
+    // Clés optionnelles : les liens existants vers cette route n'ont pas à les fournir.
+    ...(search['view'] ? { view: search['view'] as 'excel' | 'word' | 'edit' } : {}),
+    ...(search['item'] ? { item: search['item'] as string } : {}),
   }),
 })
 

@@ -19,14 +19,14 @@ import { CampaignListView } from './CampaignListView'
 import { NoTypeForCategory } from './NoTypeForCategory'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useSystemView } from '../../contexts/SystemViewContext'
-import { useTabs } from '../../contexts/TabsContext'
-import { treeFindNode, treeFindByObjectId, computeSectionNumbers } from '../../hooks/useTreeState'
+import { useSetTabTitle, useTabs } from '../../contexts/TabsContext'
+import { treeFindNode, computeSectionNumbers } from '../../hooks/useTreeState'
 import { useSystemObjects } from '../../hooks/useSystemObjects'
-import { isSameRepo, useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorkspaceLinks'
+import { useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorkspaceLinks'
 import { ExcelView } from './ExcelView'
 import { RowMaxHeightButton, ROW_MAX_LINES_ALL, readExcelRowMaxLines } from './RowMaxHeightButton'
 import { WordView } from './WordView'
-import { EditView, type EditViewHandle } from './EditView'
+import { EditView } from './EditView'
 import { api } from '../../api'
 import type { FieldVisibilityPref } from '@polenta/api-client'
 import { RichTextProvider } from '../../contexts/RichTextContext'
@@ -39,7 +39,7 @@ import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
 import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
-import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
+import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
 import { flattenSystemNodes, isComputedColumnKey } from '@polenta/types'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
@@ -48,28 +48,6 @@ import { FieldConfigModal } from './FieldConfigModal'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status'])
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type ViewMode = 'excel' | 'word' | 'edit'
-
-function readStoredViewMode(repoPath: string): 'excel' | 'word' | null {
-  if (!repoPath) return null
-  const stored = localStorage.getItem(`polenta:viewMode:${repoPath}`)
-  return stored === 'excel' || stored === 'word' ? stored : null
-}
-
-/** GH105 — délai max d'arrivée à la destination d'une navigation par lien (cf. linkNavTargetRef). */
-const LINK_NAV_TIMEOUT_MS = 3000
-
-interface BackEntry {
-  /** GH105 — repo de l'objet de départ (navigation vers un objet lié d'un autre repo). */
-  repoPath: string
-  nodeId: string
-  typeId: string
-  objectId: string | null
-  viewMode: ViewMode
-}
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -113,7 +91,7 @@ function ViewLoading() {
 export function SystemView() {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const { openTab } = useTabs()
+  const { openTab, activeTab, attemptHistoryNav } = useTabs()
   const {
     currentProjectId,
     category,
@@ -144,8 +122,10 @@ export function SystemView() {
     editingNodeId,
     setEditingNodeId,
     generateId,
-    navigateTo,
-    navigateToRepo,
+    viewMode,
+    storedViewMode,
+    showView,
+    showObject,
     createItemObject,
     gotoNodeId,
     gotoSeq,
@@ -181,37 +161,6 @@ export function SystemView() {
     invalidateCandidateObjects()
   }, [qc, repoPath, invalidateCandidateObjects])
 
-  // View mode — persisted per project in localStorage
-  // GH170 — valeur initiale posée dès le premier rendu (l'effet ci-dessous ne sert plus qu'au cas
-  // où `repoPath` n'est pas encore résolu au montage) : au remontage de la vue (retour sur un
-  // onglet), partir de 'excel' faisait peindre un rendu intermédiaire — zone vide, ou Tableau avant
-  // la Vue Édition encore ouverte (`editingNodeId` vit dans SystemViewContext, qui survit au
-  // changement de route).
-  const [viewMode, setViewMode] = useState<ViewMode>(() =>
-    editingNodeId !== null ? 'edit' : (readStoredViewMode(repoPath) ?? 'excel'))
-  const viewModeRestoredRef = useRef(!!repoPath)
-  // Remembers the last non-edit view mode so we can restore it when leaving edit
-  const prevViewModeRef = useRef<'excel' | 'word'>(readStoredViewMode(repoPath) ?? 'excel')
-  // T92 — lets ViewHeader's "Retour" button (edit mode) trigger EditView's own
-  // flush-then-navigate sequence, now that EditView no longer renders its own back button.
-  const editViewRef = useRef<EditViewHandle>(null)
-
-  useEffect(() => {
-    if (!repoPath || viewModeRestoredRef.current) return
-    viewModeRestoredRef.current = true
-    const stored = readStoredViewMode(repoPath)
-    if (stored) {
-      setViewMode(stored)
-      prevViewModeRef.current = stored
-    }
-  }, [repoPath])
-
-  useEffect(() => {
-    if (repoPath && (viewMode === 'excel' || viewMode === 'word')) {
-      localStorage.setItem(`polenta:viewMode:${repoPath}`, viewMode)
-      prevViewModeRef.current = viewMode
-    }
-  }, [viewMode, repoPath])
 
   // Hauteur max des lignes de la vue tableau (en lignes de texte) — préférence d'affichage
   // de l'utilisateur, persistée en localStorage, commune à tous les projets.
@@ -220,10 +169,9 @@ export function SystemView() {
     localStorage.setItem('polenta:excelRowMaxLines', String(excelRowMaxLines))
   }, [excelRowMaxLines])
 
-  // When a node is set for editing (from tree double-click), switch to edit mode
+  // GH228 — the edit mode itself comes from the URL (SystemViewContext).
   useEffect(() => {
     if (editingNodeId !== null) {
-      setViewMode('edit')
       // T164 — entrer en Vue Édition efface toute cible "goto" (le clic simple qui précède
       // un double-clic en a posé une). `SystemPanel.handleGoto` ignore ensuite toute requête
       // tant que `editingNodeId !== null`, donc aucune cible ne peut réapparaître avant la
@@ -232,50 +180,6 @@ export function SystemView() {
     }
   }, [editingNodeId, clearGoto])
 
-  // ── Link navigation (T37) ─────────────────────────────────────────────────
-
-  const [backHistory, setBackHistory] = useState<BackEntry[]>([])
-  const [pendingNavObjectId, setPendingNavObjectId] = useState<string | null>(null)
-  const isLinkNavigationRef = useRef(false)
-  // GH105 — destination d'une navigation par lien : un changement de repo peut résoudre le nœud /
-  // type en plusieurs rendus ; l'historique n'est conservé que jusqu'à l'arrivée à destination.
-  // Expire après LINK_NAV_TIMEOUT_MS si la destination n'est jamais atteinte exactement (type d'une
-  // autre catégorie que l'onglet, repo absent de l'arbre…) : l'historique redevient alors normal.
-  const linkNavTargetRef = useRef<{ repoPath: string; nodeId: string; typeId: string; until: number } | null>(null)
-
-  // Clear backHistory when the user navigates manually (not via a link click)
-  useEffect(() => {
-    const target = linkNavTargetRef.current
-    if (target) {
-      const arrived = isSameRepo(target.repoPath, repoPath) && target.nodeId === effectiveNodeId && target.typeId === effectiveTypeId
-      if (arrived || Date.now() > target.until) {
-        linkNavTargetRef.current = null
-        isLinkNavigationRef.current = false
-      }
-      return
-    }
-    if (isLinkNavigationRef.current) {
-      isLinkNavigationRef.current = false
-      return
-    }
-    // GH170 — `prev` conservé s'il est déjà vide : un `[]` neuf re-rendait toute la vue (tableau
-    // compris) à chaque montage, ce qui doublait le coût du retour sur un onglet.
-    setBackHistory(prev => (prev.length === 0 ? prev : []))
-    setPendingNavObjectId(null)
-  }, [repoPath, effectiveNodeId, effectiveTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Resolve pendingNavObjectId once the target tree has loaded
-  useEffect(() => {
-    if (!pendingNavObjectId || root.length === 0) return
-    const node = treeFindByObjectId(root, pendingNavObjectId)
-    if (node) {
-      setEditingNodeId(node.id)
-      setPendingNavObjectId(null)
-      // Clear the ref here too: for same-type navigation, effectiveNodeId/TypeId
-      // don't change so the other effect never fires, leaving the ref stale.
-      isLinkNavigationRef.current = false
-    }
-  }, [root, pendingNavObjectId, setEditingNodeId])
 
   const sectionNumbers = useMemo(() => computeSectionNumbers(root), [root])
 
@@ -615,7 +519,7 @@ export function SystemView() {
   // ── Link navigation callbacks (T37) — after candidateObjects + editingObjectId ──
 
   // GH105 — l'objet lié peut vivre dans un autre repo du workspace : la Vue Système bascule alors
-  // sur son repo (sélection T72), « ← Retour » revient au repo de départ.
+  // sur son repo (sélection T72), Précédent (GH228) revient au repo de départ.
   const navigateToObject = useCallback((peerId: string, opts?: { newTab?: boolean }) => {
     const wsTarget = ws.objectsById.get(peerId)
     const target = wsTarget ?? candidateObjects.find(c => c.id === peerId)
@@ -636,57 +540,26 @@ export function SystemView() {
     if (parts.length !== 2) return
     const [targetNodeId, targetTypeId] = parts
 
-    setBackHistory(prev => [...prev, {
-      repoPath,
-      nodeId: effectiveNodeId,
-      typeId: effectiveTypeId,
-      objectId: editingObjectId,
-      viewMode,
-    }])
+    // GH228 — une nouvelle page de l'historique de l'onglet : Précédent revient à l'objet de départ.
+    showObject(targetRepoPath, targetNodeId, targetTypeId, viewMode === 'word' ? 'word' : 'edit', peerId, target.category as ObjectCategory | undefined)
+  }, [ws.objectsById, candidateObjects, viewMode, showObject, openTab, repoPath, currentProjectId])
 
-    beginLinkNavigation(targetRepoPath, targetNodeId, targetTypeId)
-    if (viewMode !== 'word') {
-      setPendingNavObjectId(peerId)
-      setViewMode('edit')
-    }
-    if (isSameRepo(targetRepoPath, repoPath)) navigateTo(targetNodeId, targetTypeId)
-    else navigateToRepo(targetRepoPath, targetNodeId, targetTypeId)
-  }, [ws.objectsById, candidateObjects, effectiveNodeId, effectiveTypeId, editingObjectId, viewMode, navigateTo, navigateToRepo, openTab, repoPath, currentProjectId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleGoBack = useCallback(() => {
-    setBackHistory(prev => {
-      const entry = prev[prev.length - 1]
-      if (!entry) return prev
-      beginLinkNavigation(entry.repoPath, entry.nodeId, entry.typeId)
-      if (entry.viewMode === 'edit' && entry.objectId) {
-        setPendingNavObjectId(entry.objectId)
-        setViewMode('edit')
-      } else {
-        setViewMode(entry.viewMode)
-      }
-      if (isSameRepo(entry.repoPath, repoPath)) navigateTo(entry.nodeId, entry.typeId)
-      else navigateToRepo(entry.repoPath, entry.nodeId, entry.typeId)
-      return prev.slice(0, -1)
-    })
-  }, [navigateTo, navigateToRepo, repoPath, effectiveNodeId, effectiveTypeId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  /** Marque une navigation par lien vers (repo, nœud, type) : l'historique n'est pas vidé tant que
-   *  la sélection n'y est pas arrivée ; destination courante = rien à attendre. */
-  function beginLinkNavigation(targetRepoPath: string, nodeId: string, typeId: string) {
-    const here = isSameRepo(targetRepoPath, repoPath) && nodeId === effectiveNodeId && typeId === effectiveTypeId
-    isLinkNavigationRef.current = !here
-    linkNavTargetRef.current = here ? null : { repoPath: targetRepoPath, nodeId, typeId, until: Date.now() + LINK_NAV_TIMEOUT_MS }
-  }
-
-  // Unified back handler passed to EditView: link nav if history exists, else restore the view the user came from
+  // Leaving the Edit view (Escape). GH228 — no "Retour" button any more (the tab's Précédent does
+  // the same); Escape goes to the previous page of the tab when it is
+  // still the system view (the table / document the element was opened from, the object a link
+  // was followed from — T37, GH105); otherwise the remembered Tableau / Document mode, positioned
+  // on the element just edited.
+  const prevHistoryEntry = activeTab.history[activeTab.historyIndex - 1]
+  const backInHistory = prevHistoryEntry?.pathname === activeTab.pathname
   const handleEditBack = useCallback(() => {
-    if (backHistory.length > 0) {
-      handleGoBack()
-    } else {
-      setEditingNodeId(null)
-      setViewMode(prevViewModeRef.current)
-    }
-  }, [backHistory, handleGoBack, setEditingNodeId])
+    if (backInHistory) attemptHistoryNav(activeTab.historyIndex - 1)
+    else showView(storedViewMode, editingObjectId)
+  }, [backInHistory, attemptHistoryNav, activeTab.historyIndex, showView, storedViewMode, editingObjectId])
+
+  // GH228 — titre de l'onglet et de l'entrée d'historique (menu Précédent / Suivant) : l'élément
+  // édité, sinon le composant / type affiché.
+  const editedTitle = viewMode === 'edit' && objectData?.['id'] ? `${objectData['id']} — ${objectData['title'] ?? ''}` : ''
+  useSetTabTitle(editedTitle || [effectiveNode?.label || effectiveNodeId, effectiveType?.label || effectiveTypeId].filter(Boolean).join(' / ') || null)
 
   const typeKey = effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : null
   const { data: savedPrefs, isPlaceholderData: isPrefsPlaceholder, isPending: prefsPending } = useQuery({
@@ -1068,7 +941,6 @@ export function SystemView() {
   const stableStepsChange = useStableCallback(handleWordViewStepsChange)
   const stableEditOpen = useStableCallback((nodeId: string) => {
     setEditingNodeId(nodeId)
-    setViewMode('edit')
   })
   const stableNavigateToObject = useStableCallback(navigateToObject)
   const stableCreateItemObject = useStableCallback(createItemObject)
@@ -1131,14 +1003,6 @@ export function SystemView() {
               <span className="ml-2 text-xs font-mono text-ink-3 font-normal">{objectData['id']}</span>
             </>
           ) : titleLabel
-        }
-        back={
-          viewMode === 'edit'
-            // T92 — flush-then-navigate, same sequence EditView's own "Retour" used to run.
-            ? { label: t('layout.viewHeader.back'), onClick: () => editViewRef.current?.triggerBack() }
-            : backHistory.length > 0
-              ? { label: t('layout.viewHeader.back'), onClick: handleGoBack }
-              : undefined
         }
         actions={
           <>
@@ -1230,17 +1094,14 @@ export function SystemView() {
               <div className="flex border border-edge rounded overflow-hidden">
                 {(
                   [
-                    { mode: 'excel' as ViewMode, icon: <Grid3x3 size={13} />, title: t('system.systemView.tableView') },
-                    { mode: 'word' as ViewMode, icon: <FileText size={13} />, title: t('system.systemView.documentView') },
+                    { mode: 'excel' as const, icon: <Grid3x3 size={13} />, title: t('system.systemView.tableView') },
+                    { mode: 'word' as const, icon: <FileText size={13} />, title: t('system.systemView.documentView') },
                   ] as const
                 ).map(({ mode, icon, title }) => (
                   <button
                     key={mode}
                     type="button"
-                    onClick={() => {
-                      setEditingNodeId(null)
-                      setViewMode(mode)
-                    }}
+                    onClick={() => showView(mode)}
                     title={title}
                     className={[
                       'flex items-center justify-center w-7 h-6 transition-colors',
@@ -1369,7 +1230,6 @@ export function SystemView() {
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'edit' && (
           <EditView
-            ref={editViewRef}
             nodeId={editingNodeId}
             nodeName={editingTreeNode?.name}
             objectData={objectData}

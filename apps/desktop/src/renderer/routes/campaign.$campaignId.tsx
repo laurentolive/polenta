@@ -707,14 +707,6 @@ function CampaignDetailPage() {
 
       {/* Actions */}
       <div className="flex gap-3 items-center flex-wrap">
-        <button
-          type="button"
-          onClick={() => window.history.back()}
-          className="btn-secondary"
-        >
-          {t('layout.viewHeader.back')}
-        </button>
-
         {isActive && (
           <>
             <button

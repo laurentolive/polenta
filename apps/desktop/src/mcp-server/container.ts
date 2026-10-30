@@ -1,3 +1,4 @@
+import { ChangesService } from '../main/services/changes.service'
 import type { HostContext } from '../main/host/host-context'
 import { AuthService } from '../main/services/auth.service'
 import { GitService } from '../main/services/git.service'
@@ -55,6 +56,8 @@ export interface McpContainer {
   workspaceLinks: WorkspaceLinksService
   /** GH150 — base de paramètres (`list_parameters` / `set_parameters` / `delete_parameter`). */
   parameters: ParametersService
+  /** GH198 — changes (`list_changesets` / `get_changeset` / `create_changeset`). */
+  changes: ChangesService
 }
 
 /**
@@ -129,8 +132,11 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   // sans effet sur les écritures de paramètres).
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
+  const changes = new ChangesService(git, schema, workspaceTree, history, { traceability, sync, campaigns })
+
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
     user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters,
+    changes,
   }
 }

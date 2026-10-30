@@ -109,7 +109,9 @@ export function typedPresentation(typeDef: ObjectTypeDefinition | undefined, t: 
       return isMultiline(n.after ?? n.before) ? 'text' : 'field'
     },
     leaf(n) {
-      return this.field(n)?.type === 'multi_enum'
+      // GH195 — un champ `link` ({ label, url } ou liste) est une seule valeur, pas un sous-arbre.
+      const type = this.field(n)?.type
+      return type === 'multi_enum' || type === 'link'
     },
     field(n) {
       const { depth, a, b } = where(n)

@@ -1,15 +1,30 @@
 import type { CampaignStatus, TestRunStatus } from './campaign'
 import type { StepResultValue, TestRunResult } from './test'
+import type { SchemaField } from './schema'
 
 // GH36 — classeur Excel d'exécution hors outil (export d'une campagne, saisie par les testeurs,
 // réimport des résultats). Format natif fixe : la lecture se fait par position de colonne et par
 // clé technique masquée, jamais par libellé — les libellés ci-dessous ne servent qu'à l'affichage
 // dans le classeur et à la reconnaissance des verdicts saisis (toutes langues confondues).
 
-/** GH81 — v2 : empreinte de la version exportée par instance (feuille `_polenta`). */
-export const EXECUTION_SHEET_FORMAT_VERSION = 2
-/** GH81 — versions relues à l'import ; v1 : pas d'empreinte, pas de contrôle « test modifié ». */
-export const EXECUTION_SHEET_SUPPORTED_VERSIONS: readonly number[] = [1, 2]
+/** GH81 — v2 : empreinte de la version exportée par instance (feuille `_polenta`). GH196 — v3 :
+ *  colonnes des champs d'exécution / d'étape après « Commentaire », carte des colonnes (`columns`)
+ *  dans `_polenta` ; la lecture d'un v3 se fait par cette carte. */
+export const EXECUTION_SHEET_FORMAT_VERSION = 3
+/** GH81 — versions relues à l'import ; v1 : pas d'empreinte, pas de contrôle « test modifié » ;
+ *  v1 / v2 : colonnes fixes, sans champs d'exécution. */
+export const EXECUTION_SHEET_SUPPORTED_VERSIONS: readonly number[] = [1, 2, 3]
+
+/** GH196 — colonne d'un champ d'exécution (`run:<nom>`) ou d'étape (`step:<nom>`) du classeur v3. */
+export interface ExecutionSheetFieldColumn {
+  id: string
+  list: 'runFields' | 'stepFields'
+  field: SchemaField
+}
+
+export function executionFieldColumnId(list: 'runFields' | 'stepFields', name: string): string {
+  return `${list === 'runFields' ? 'run' : 'step'}:${name}`
+}
 
 export type ExecutionSheetLocale = 'fr' | 'en'
 
@@ -68,7 +83,7 @@ export const EXECUTION_SHEET_LABELS: Record<ExecutionSheetLocale, ExecutionSheet
     stepVerdicts: { PASS: 'Passé', FAIL: 'Échoué', BLOCKED: 'Bloqué', SKIP: 'Ignoré', NOT_EXECUTED: 'Non exécuté' },
     globalVerdicts: { PASS: 'Passé', FAIL: 'Échoué', BLOCKED: 'Bloqué', INCOMPLETE: 'Incomplet' },
     runStatuses: { pending: 'En attente', PASS: 'Passé', FAIL: 'Échoué', BLOCKED: 'Bloqué', INCOMPLETE: 'Incomplet' },
-    banner: 'Remplir uniquement les cases en jaune (Verdict, Testeur, Date, Commentaire). Ne pas modifier les autres colonnes ni supprimer de lignes : le fichier sera réimporté dans Polenta.',
+    banner: 'Remplir uniquement les cases en jaune (Verdict, Testeur, Date, Commentaire, champs d’exécution). Ne pas modifier les autres colonnes ni supprimer de lignes : le fichier sera réimporté dans Polenta.',
     exportedAt: 'Exporté le',
     baseline: 'Baseline',
     preconditions: 'Préconditions',
@@ -96,7 +111,7 @@ export const EXECUTION_SHEET_LABELS: Record<ExecutionSheetLocale, ExecutionSheet
     stepVerdicts: { PASS: 'Passed', FAIL: 'Failed', BLOCKED: 'Blocked', SKIP: 'Skipped', NOT_EXECUTED: 'Not executed' },
     globalVerdicts: { PASS: 'Passed', FAIL: 'Failed', BLOCKED: 'Blocked', INCOMPLETE: 'Incomplete' },
     runStatuses: { pending: 'Pending', PASS: 'Passed', FAIL: 'Failed', BLOCKED: 'Blocked', INCOMPLETE: 'Incomplete' },
-    banner: 'Fill in only the yellow cells (Verdict, Tester, Date, Comment). Do not change other columns or delete rows: the file will be re-imported into Polenta.',
+    banner: 'Fill in only the yellow cells (Verdict, Tester, Date, Comment, run fields). Do not change other columns or delete rows: the file will be re-imported into Polenta.',
     exportedAt: 'Exported on',
     baseline: 'Baseline',
     preconditions: 'Preconditions',
@@ -147,6 +162,10 @@ export type ExecutionImportInstanceError =
   | { code: 'invalid_date'; row: number; value: string }
   /** GH81 — la version effective du test diffère de celle exportée (empreinte `_polenta`). */
   | { code: 'test_changed_since_export'; testCaseId: string }
+  /** GH196 — valeur d'un champ d'exécution / d'étape illisible (`message` : détail, champ nommé). */
+  | { code: 'invalid_field_value'; row: number; field: string; message: string }
+  /** GH196 — champ d'exécution / d'étape obligatoire vide (`message` : champ et condition). */
+  | { code: 'required_field_missing'; row: number; field: string; message: string }
 
 export interface ImportedInstance {
   entryId: string
@@ -163,7 +182,9 @@ export interface ImportedInstance {
   executedAt: string
   /** Markdown. */
   notes: string
-  stepResults: { order: number; result: StepResultValue; comment: string }[]
+  stepResults: { order: number; result: StepResultValue; comment: string; fields?: Record<string, unknown> }[]
+  /** GH196 — champs d'exécution convertis (absent si aucun). */
+  fields?: Record<string, unknown>
 }
 
 export type ExecutionImportWarning =
@@ -181,6 +202,8 @@ export interface ExecutionImportPreview {
   warnings: ExecutionImportWarning[]
   /** Instances présentes dans le fichier mais sans aucun verdict (laissées inchangées). */
   unfilledCount: number
+  /** GH196 — instances pré-remplies à l'export (résultat déjà saisi) et non modifiées : ignorées. */
+  unchangedCount?: number
 }
 
 export interface ExecutionImportResult {

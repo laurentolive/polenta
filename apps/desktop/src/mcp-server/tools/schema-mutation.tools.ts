@@ -30,7 +30,7 @@ import { SchemaValidationError } from '../../main/services/schema.service'
 // au code interne à l'app qui n'a pas besoin de cette validation runtime.
 
 const schemaFieldTypeSchema = z.enum([
-  'text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user', 'drawio',
+  'text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user', 'drawio', 'link',
 ])
 
 const schemaFieldSchema = z.object({
@@ -44,6 +44,12 @@ const schemaFieldSchema = z.object({
   validator: z.string().optional(),
   /** GH77 — historiser les changements de ce champ (`history.<name>`). */
   trackHistory: z.boolean().optional(),
+  /** GH195 — champ `link` : liste de liens. */
+  multiple: z.boolean().optional(),
+  /** GH195 — obligatoire quand un champ (`status`, enum, multi_enum, boolean du type) a une des valeurs. */
+  requiredWhen: z.record(z.string(), z.array(z.union([z.string(), z.boolean()])).min(1)).optional(),
+  /** GH139 — colonne affichée par défaut dans les vues (défaut de l'équipe). */
+  defaultVisible: z.boolean().optional(),
 })
 
 const schemaStatusSchema = z.object({
@@ -74,6 +80,8 @@ const linkTypeDefinitionSchema = z.object({
   labelTargetToSource: z.string().min(1),
   sourceRefs: z.array(z.string()).optional(),
   targetRefs: z.array(z.string()).optional(),
+  /** GH139 — colonne(s) de ce type de lien affichée(s) par défaut dans les vues. */
+  defaultVisible: z.boolean().optional(),
 })
 
 const addComponentInput = {
@@ -97,6 +105,8 @@ const addFieldInput = {
   nodeName: z.string().min(1),
   typeName: z.string().min(1),
   field: schemaFieldSchema,
+  /** GH196 — liste visée : champs de l'objet (défaut), champs d'exécution ou d'étape (types de test). */
+  list: z.enum(['fields', 'runFields', 'stepFields']).optional(),
 }
 
 const addStatusInput = {

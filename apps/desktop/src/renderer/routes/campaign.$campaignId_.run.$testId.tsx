@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { api } from '../api'
 import { RichTextViewer } from '../components/RichTextViewer'
 import { ViewHeader } from '../components/layout/ViewHeader'
@@ -9,6 +10,9 @@ import { isT171Run, substituteRunParams } from '../lib/testParams'
 import { RunParamsInfo } from '../components/RunParamsInfo'
 import { useResolvedCampaignTest } from '../hooks/useResolvedCampaignTest'
 import { toIntlLocale } from '../i18n/useLocale'
+import { useTestTypeDef } from '../hooks/useTestTypeDef'
+import { decodeProjectId } from '../lib/projectId'
+import { RunFieldValues } from '../components/runs/RunFieldValues'
 import type { StepResultValue, TestRunResult } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId_/run/$testId')({
@@ -74,13 +78,19 @@ function TestRunViewPage() {
   const runText = (text: string) => (isT171Run(campaignRun) ? text : substituteRunParams(text, campaignRun))
   const { testCase: tc, isLoading: loadingTc } = useResolvedCampaignTest(repoPath, testCaseId, campaignRun?.testSnapshot)
 
-  const { data: runs = [], isLoading: loadingRuns } = useQuery({
+  const { data: runs = [], isLoading: loadingRuns, isFetching: fetchingRuns, refetch: refetchRuns } = useQuery({
     queryKey: ['test-runs', repoPath, testCaseId],
     queryFn: () => api.tests.runs(repoPath, testCaseId!),
     enabled: !!repoPath && !!runId && !!testCaseId,
   })
 
   const run = runId ? runs.find(r => r.id === runId) : undefined
+  // Le run de l'entrée manque à la liste en cache (écrit depuis) : relecture plutôt que « Non exécuté ».
+  useEffect(() => {
+    if (runId && !loadingRuns && !fetchingRuns && !run) void refetchRuns()
+  }, [runId, loadingRuns, run]) // eslint-disable-line react-hooks/exhaustive-deps -- une relecture par run manquant
+  // GH196 — définitions des champs d'exécution / d'étape (valeurs hors schéma affichées quand même).
+  const { data: testTypeDef } = useTestTypeDef(repoPath, tc?.objectTypeRef, projectId ? decodeProjectId(projectId) : undefined)
 
   if (!repoPath) return <p className="p-6 text-sm text-ink-2"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   if (loadingCampaign || loadingTc || (!!runId && loadingRuns)) return <p className="p-6 text-sm text-ink-3">{t('common.loading')}</p>
@@ -186,6 +196,13 @@ function TestRunViewPage() {
                         <RichTextViewer value={stepResult.comment} repoPath={repoPath} />
                       </div>
                     )}
+
+                    {/* GH196 — champs d'étape */}
+                    {stepResult?.fields && (
+                      <div className="px-3 pb-2 pt-1 border-t border-edge">
+                        <RunFieldValues defs={testTypeDef?.stepFields ?? []} values={stepResult.fields} repoPath={repoPath} />
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -199,6 +216,16 @@ function TestRunViewPage() {
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('testsPage.postconditions')}</p>
             <div className="border border-edge rounded px-3 py-2 bg-hover">
               <RichTextViewer value={runText(tc.postconditions)} repoPath={repoPath} />
+            </div>
+          </div>
+        )}
+
+        {/* GH196 — champs d'exécution (listés même vides : le type en déclare) */}
+        {run && (run.fields || (testTypeDef?.runFields?.length ?? 0) > 0) && (
+          <div>
+            <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('campaignPage.runFields')}</p>
+            <div className="border border-edge rounded px-3 py-2 bg-hover">
+              <RunFieldValues defs={testTypeDef?.runFields ?? []} values={run.fields} repoPath={repoPath} showEmpty />
             </div>
           </div>
         )}

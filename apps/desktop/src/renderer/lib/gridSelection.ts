@@ -10,8 +10,6 @@ export interface ClickInput {
   displayed: readonly string[]
   anchor: string | null
   target: string
-  /** ctrlKey || metaKey */
-  ctrl: boolean
   shift: boolean
 }
 
@@ -29,30 +27,24 @@ function rangeOf(displayed: readonly string[], anchor: string | null, target: st
   return displayed.slice(Math.min(a, b), Math.max(a, b) + 1)
 }
 
-/** Clic sur une ligne de test (hors case) — simple / Ctrl / Maj / Ctrl+Maj. */
-export function rowClick({ selected, displayed, anchor, target, ctrl, shift }: ClickInput): ClickResult {
+/** Clic sur une ligne de test (hors case) : bascule la ligne, le reste est inchangé ; avec Maj, la
+ *  plage visible depuis l'ancre est ajoutée. GH198 — un clic ajoute à la sélection, il ne la
+ *  remplace plus (Ctrl indifférent). */
+export function rowClick({ selected, displayed, anchor, target, shift }: ClickInput): ClickResult {
+  const next = new Set(selected)
   const range = shift ? rangeOf(displayed, anchor, target) : null
   if (range) {
-    const next = new Set(selected)
-    if (!ctrl) for (const id of displayed) next.delete(id)
     for (const id of range) next.add(id)
     return { selected: next, anchor }
   }
-  if (ctrl) {
-    const next = new Set(selected)
-    if (next.has(target)) next.delete(target)
-    else next.add(target)
-    return { selected: next, anchor: target }
-  }
-  const next = new Set(selected)
-  for (const id of displayed) next.delete(id)
-  next.add(target)
+  if (next.has(target)) next.delete(target)
+  else next.add(target)
   return { selected: next, anchor: target }
 }
 
 /** Clic sur la case d'une ligne de test : bascule sans toucher au reste ; avec Maj, l'état cible
  *  de la case cliquée s'applique à toute la plage affichée depuis l'ancre. */
-export function checkboxClick({ selected, displayed, anchor, target, shift }: Omit<ClickInput, 'ctrl'>): ClickResult {
+export function checkboxClick({ selected, displayed, anchor, target, shift }: ClickInput): ClickResult {
   const check = !selected.has(target)
   const range = shift ? rangeOf(displayed, anchor, target) : null
   const next = new Set(selected)

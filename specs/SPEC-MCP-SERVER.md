@@ -236,6 +236,10 @@ ou modification par un tool porte `source: mcp`.
 
 ### 4.2 Import massif (`tools/bulk-import.tools.ts`)
 
+> **GH196** — `add_field` accepte `list: fields | runFields | stepFields` (champs d'exécution / d'étape, types de test seulement ; nom unique dans le projet : `RUN_FIELD_INVALID`). Aucun outil n'écrit de run.
+
+> **GH195** — un champ `link` accepte l'objet `{label?, url}`, la liste, ou la forme texte `libellé | URL` (une ligne par lien), convertie avant écriture ; URL hors `http(s)://`, `file://`, `\\serveur\partage` refusée. `requiredWhen` est contrôlé comme à l'écriture réelle (`prepareFieldsWrite`), en `dryRun` comme en écriture, et pour `update_requirements` / `update_tests`. `add_field` accepte `type: link`, `multiple`, `requiredWhen` (référence ou valeur inconnue refusée : `REQUIRED_WHEN_INVALID`).
+
 `bulk_import_requirements` / `bulk_import_tests` / `bulk_import_campaigns` :
 
 ```ts
@@ -484,6 +488,20 @@ clés triées, marquage des éléments approuvés si `value` / `unit` changent) 
 liste les éléments approuvés qui seraient marqués. `delete_parameter` est refusé tant qu'un élément
 non terminal référence le paramètre (`deleted: false` + `usages`).
 
+### 4.7 Changesets (GH198)
+
+`tools/changes.tools.ts`, branché sur `ChangesService` (mêmes contrôles que l'application).
+
+- `list_changesets` — changesets de tous les repos du workspace (`ChangeSummary` : id, `repoPath` de
+  stockage, type, titre, statut, composant, nombres d'éléments à modifier / impactés) ; filtres
+  `status`, `objectTypeRef`.
+- `get_changeset` — un changeset complet (`repoPath` de stockage, défaut repo ouvert) et son analyse
+  d'impact (`analysis`, GH199 : calculée, ou figée si le changeset est terminal).
+- `create_changeset` — demande de changement (`mode: request`) : type de catégorie `changeset`,
+  `component` obligatoire si le repo porte plusieurs composants locaux, `toModify` (`planned`) et
+  `impacted` (`impact_non_verifie`, `declared`). Mise à jour des listes : lot L3 (#199).
+- `get_object_history` accepte `kind: change` (repo ouvert).
+
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 
 ### 5.1 À la création d'un nouveau projet
@@ -616,6 +634,7 @@ Deux catégories (cf. §4) :
 | `apps/desktop/src/mcp-server/electron-shim.ts` | Substitut d'`electron` pour le bundle packagé (esbuild `--alias`) |
 | `apps/desktop/src/mcp-server/tools/schema.tools.ts` | `get_schema` |
 | `apps/desktop/src/mcp-server/tools/read.tools.ts` | `list_requirements`, `list_tests`, `list_campaigns` |
+| `apps/desktop/src/mcp-server/tools/changes.tools.ts` | `list_changesets`, `get_changeset`, `create_changeset` (GH198) |
 | `apps/desktop/src/mcp-server/tools/bulk-import.tools.ts` | `bulk_import_requirements`, `bulk_import_tests`, `bulk_import_campaigns` |
 | `apps/desktop/src/mcp-server/tools/schema-mutation.tools.ts` | `add_component`, `add_object_type`, `add_field`, `add_status`, `add_link_type` |
 | `apps/desktop/src/mcp-server/tools/links.tools.ts` | `list_links`, `create_links`, `delete_links` (GH16) |

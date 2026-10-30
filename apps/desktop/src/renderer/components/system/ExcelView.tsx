@@ -4,7 +4,7 @@ import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor } from './LinkTypeEditor'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
-import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels } from '@polenta/types'
+import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels, fieldValueToText } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
@@ -15,6 +15,8 @@ import { RichTextField } from '../RichTextField'
 import { StaticRichTextViewer } from '../../lib/staticRichText'
 import { RenderGateProvider, useRenderWhenVisibleAtRest } from './useRenderWhenVisibleAtRest'
 import { MultiEnumPopover } from './MultiEnumPopover'
+import { LinkFieldPopover } from '../links/LinkFieldPopover'
+import { LinkList } from '../links/LinkList'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { useScrollToNode } from '../../hooks/useScrollToNode'
 import { StepsTable } from '../StepsTable'
@@ -229,6 +231,8 @@ interface ExcelCellActions {
   cancelRichtext(field: string): void
   richtextEditorMouseDown(): void
   toggleMultiEnum(objectId: string, field: string, rect: DOMRect): void
+  /** GH195 — champ de type `link` (URL) : popover d'édition ancré sur la cellule. */
+  editLinkField(objectId: string, field: string, rect: DOMRect): void
   /** GH137 — `col` : clé de la colonne de lien (`link::`, `link-out::` ou `link-in::`). */
   openLinkPopover(nodeId: string, col: string, rect: DOMRect): void
   closeLinkPopover(): void
@@ -404,6 +408,7 @@ const InlineCell = memo(function InlineCell({
   const isRichtext = fieldDef?.type === 'richtext' && !isSystem && !!richtext
   const editable = !isRichtext && !isSystem && !!onEdit
   const isMultiEnum = fieldDef?.type === 'multi_enum'
+  const isLinkField = fieldDef?.type === 'link'
   // GH45 S4 — champ `user` : membres de l'organisation proposés à l'édition (requête partagée).
   const members = useOrgMembers(fieldDef?.type === 'user' ? repoPath : undefined)
   // Hook appelé inconditionnellement (règle des hooks) ; une cellule richtext a ses propres gestes
@@ -413,6 +418,11 @@ const InlineCell = memo(function InlineCell({
         if (isMultiEnum) {
           const rect = tdRef.current?.getBoundingClientRect()
           if (rect) onMultiEnumEdit?.(objectId, field, rect)
+          return
+        }
+        if (isLinkField) {
+          const rect = tdRef.current?.getBoundingClientRect()
+          if (rect) actions.editLinkField(objectId, field, rect)
           return
         }
         setEdit({ caret: caretOffsetFor(caret, tdRef.current, value) })
@@ -439,7 +449,9 @@ const InlineCell = memo(function InlineCell({
   const valueLabel = fieldDef?.type === 'enum' && value ? fieldDef.valueLabels?.[value] : undefined
   const display = paramRefs && !isSystem && value && (fieldDef?.type === 'text' || fieldDef?.type === 'textarea')
     ? <ParamRefText text={value} />
-    : valueLabel ?? value
+    : isLinkField && value
+      ? <LinkList value={value} />
+      : valueLabel ?? value
 
   if (!editable) {
     return (
@@ -1386,6 +1398,15 @@ function ExcelViewInner({
     return () => document.removeEventListener('mousedown', handler)
   }, [activeRichtextEdit])
 
+  // GH195 — popover d'édition d'un champ `link` (il gère lui-même le clic extérieur : il enregistre).
+  const [activeLinkFieldPopover, setActiveLinkFieldPopover] = useState<{
+    objectId: string
+    field: string
+    top: number
+    left: number
+    width: number
+  } | null>(null)
+
   const [activeMultiEnumPopover, setActiveMultiEnumPopover] = useState<{
     objectId: string
     field: string
@@ -2004,7 +2025,7 @@ function ExcelViewInner({
       const values = [
         node.name,
         node.objectId ?? '',
-        ...(obj ? Object.values(obj as Record<string, unknown>).map(v => String(v ?? '')) : []),
+        ...(obj ? Object.values(obj as Record<string, unknown>).map(fieldValueToText) : []),
       ]
       if (!values.some(v => filterRe.test(v))) return false
     }
@@ -2070,7 +2091,7 @@ function ExcelViewInner({
     if (!selection) return
     const r = rowClick({
       selected: selection.selected, displayed: displayedObjectIds, anchor: selectionAnchor,
-      target: objectId, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey,
+      target: objectId, shift: e.shiftKey,
     })
     setSelectionAnchor(r.anchor)
     selection.onChange(r.selected)
@@ -2159,6 +2180,9 @@ function ExcelViewInner({
       if (isOpen) { setActiveMultiEnumPopover(null); return }
       setActiveMultiEnumPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: rect.width })
     },
+    editLinkField: (objId, f, rect) => {
+      setActiveLinkFieldPopover({ objectId: objId, field: f, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 420) })
+    },
     openLinkPopover: (nodeId, col, rect) => {
       if (selection) return // GH33 — lecture seule : liens affichés, pas éditables
       setActiveLinkPopover({ nodeId, col, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
@@ -2185,6 +2209,7 @@ function ExcelViewInner({
     cancelRichtext: f => cellActionsRef.current.cancelRichtext(f),
     richtextEditorMouseDown: () => cellActionsRef.current.richtextEditorMouseDown(),
     toggleMultiEnum: (o, f, r) => cellActionsRef.current.toggleMultiEnum(o, f, r),
+    editLinkField: (o, f, r) => cellActionsRef.current.editLinkField(o, f, r),
     openLinkPopover: (n, t, r) => cellActionsRef.current.openLinkPopover(n, t, r),
     closeLinkPopover: () => cellActionsRef.current.closeLinkPopover(),
     navigateToObject: (p, o) => cellActionsRef.current.navigateToObject(p, o),
@@ -2683,6 +2708,22 @@ function ExcelViewInner({
             }}
             onClose={() => setActiveMultiEnumPopover(null)}
             style={{ top: activeMultiEnumPopover.top, left: activeMultiEnumPopover.left, minWidth: activeMultiEnumPopover.width }}
+          />
+        )
+      })()}
+
+      {/* GH195 — popover d'un champ `link` (URL) */}
+      {activeLinkFieldPopover && (() => {
+        const popoverObj = objectMap.get(activeLinkFieldPopover.objectId)
+        const fieldDef = typeDef?.fields.find(f => f.name === activeLinkFieldPopover.field)
+        return (
+          <LinkFieldPopover
+            key={`${activeLinkFieldPopover.objectId}:${activeLinkFieldPopover.field}`}
+            value={popoverObj ? getFieldValue(popoverObj, activeLinkFieldPopover.field) : ''}
+            multiple={fieldDef?.multiple}
+            onCommit={text => cellActionsImpl.inlineEdit(activeLinkFieldPopover.objectId, activeLinkFieldPopover.field, text)}
+            onClose={() => setActiveLinkFieldPopover(null)}
+            style={{ top: activeLinkFieldPopover.top, left: activeLinkFieldPopover.left, width: activeLinkFieldPopover.width }}
           />
         )
       })()}

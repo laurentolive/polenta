@@ -90,27 +90,8 @@ export interface ClearRevalidationResult {
 
 export type ImpactElementType = 'requirement' | 'test_case'
 
-export interface ImpactItem {
-  elementId: string
-  elementType: ImpactElementType
-  title: string
-  linkType: string
-  depth: number
-  lastRunResult?: string
-  lastRunDate?: string
-  acknowledged: boolean
-}
-
-export interface ImpactReport {
-  triggerId: string
-  triggerType: ImpactElementType
-  depth: number
-  items: ImpactItem[]
-  activeCampaignRuns: Array<{ id: string; title: string; progress: string }>
-  generatedAt: string
-}
-
-export interface ImpactAcknowledgement {
+/** GH199 — acquittement de l'ancien flux élément unique (`impact-acks/<id>/*.yaml`), lu seulement. */
+export interface LegacyImpactAck {
   id: string
   elementId: string
   elementType: ImpactElementType

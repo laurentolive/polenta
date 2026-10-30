@@ -72,7 +72,7 @@ test('GH83-3 — levée du flag depuis l\'analyse d\'impact : ⚠ retiré des de
   await openTargetType('Vue tableau')
   await expect(excelRow().first().getByRole('img', { name: 'Impact à vérifier' })).toBeVisible()
 
-  await s.openView('Analyse d\'impact')
+  await s.openView('Changesets')
   await s.page.getByRole('button', { name: /Impact à vérifier/ }).click()
   const row = s.page.locator('div.border-b').filter({ has: s.page.getByRole('checkbox', { name: `Sélectionner ${target}` }) })
   await row.getByRole('button', { name: 'Lever le flag', exact: true }).click()

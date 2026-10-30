@@ -39,10 +39,9 @@ export function queryResultExportBaseName(queryName: string): string {
   return `request-${sanitize(queryName)}`
 }
 
-/** `impactAnalisys-{baselineOld}-{baselineNew}` — cf. specs/T43.md §4 (orthographe reprise
- *  littéralement du ticket d'origine). T43 sprint 3. */
-export function impactAnalysisExportBaseName(baselineOld: string, baselineNew: string): string {
-  return `impactAnalisys-${sanitize(baselineOld)}-${sanitize(baselineNew)}`
+/** `impactAnalysis-{changeId}` — analyse d'impact d'un change (GH199). */
+export function impactAnalysisExportBaseName(changeId: string): string {
+  return `impactAnalysis-${sanitize(changeId)}`
 }
 
 /** `dashboard-{name}` — cf. specs/T43.md §4. T43 sprint 3. */

@@ -52,9 +52,9 @@ racine: x
 `)
     expect(config.defaults).toEqual({
       projects: [{ repo: 'acme/ok' }],
-      preferences: { theme: 'dark', fieldVisibility: { 'root::exigence': { excel: ['a', 'b'] } } },
+      preferences: { theme: 'dark' },
     })
-    expect(warnings.length).toBeGreaterThanOrEqual(9)
+    expect(warnings.length).toBeGreaterThanOrEqual(8)
     expect(warnings.join('\n')).toMatch(/version 2/)
   })
 
@@ -94,8 +94,8 @@ describe('resolveTeamConfig (spec §3bis-4, critère 22)', () => {
     expect(resolveTeamConfig(config, ['auteurs', 'lecteurs']).updates).toBe('managed')
   })
 
-  it('champs visibles résolus par type : une équipe ne fait pas perdre les défauts des autres types', () => {
-    const { config: c } = parseTeamConfig(`
+  it('GH139 — champs visibles : plus lus (défaut porté par schema.yaml), avertissement de dépréciation', () => {
+    const { config: c, warnings } = parseTeamConfig(`
 defaults:
   preferences:
     fieldVisibility:
@@ -105,20 +105,9 @@ teams:
     preferences:
       fieldVisibility:
         root::test: { excel: [steps] }
-  auteurs:
-    preferences:
-      fieldVisibility:
-        root::test: { excel: [title] }
-        root::exigence: { word: [statement] }
 `)
-    expect(resolveTeamConfig(c, ['testeurs', 'auteurs']).preferences.fieldVisibility).toEqual({
-      'root::exigence': { word: ['statement'] },   // seule auteurs règle ce type
-      'root::test': { excel: ['steps'] },          // testeurs, première du fichier
-    })
-    expect(resolveTeamConfig(c, ['testeurs']).preferences.fieldVisibility).toEqual({
-      'root::exigence': { excel: ['priority'] },   // défaut conservé
-      'root::test': { excel: ['steps'] },
-    })
+    expect(warnings.filter(w => /fieldVisibility : n'est plus lu/.test(w))).toHaveLength(2)
+    expect(resolveTeamConfig(c, ['testeurs']).preferences).toEqual({})
   })
 
   it('équipe absente de la configuration : sans effet', () => {

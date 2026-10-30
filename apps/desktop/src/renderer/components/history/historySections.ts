@@ -1,4 +1,4 @@
-import { STATUS_HISTORY_KEY } from '@polenta/types'
+import { STATUS_HISTORY_KEY, isLinkValue, linkPlainText, readLinkValues } from '@polenta/types'
 import type { HistoryEntry, ObjectHistory, ObjectTypeDefinition } from '@polenta/types'
 
 // GH77 — mise en forme de l'historique pour la section « Historique » (spec §10) : données brutes,
@@ -23,6 +23,8 @@ export interface HistorySectionData {
 }
 
 function valueText(v: unknown): string {
+  // GH195 — champ `link` : `libellé (URL)`, liens séparés par une virgule.
+  if (isLinkValue(v) || (Array.isArray(v) && v.length > 0 && v.every(isLinkValue))) return readLinkValues(v).map(linkPlainText).join(', ')
   if (Array.isArray(v)) return v.join(', ')
   if (v && typeof v === 'object') return JSON.stringify(v)
   return String(v)

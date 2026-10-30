@@ -1,4 +1,4 @@
-import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
+import { initialStatus, isUnknownStatus, prepareRunFields, renameFieldKeys } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
@@ -11,6 +11,7 @@ import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
 import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
+import { applyFieldsWrite, FieldWriteError, readOwnedTypeDef } from './field-write.util'
 
 export class TestsService {
   constructor(
@@ -186,6 +187,8 @@ export class TestsService {
     /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
     opts: { raw?: boolean; comment?: string } = {},
   ): Promise<TestCase> {
+    // GH195 — liens normalisés, `requiredWhen` contrôlé (lève FieldWriteError).
+    if (!opts.raw) after = await applyFieldsWrite(this.git, repoPath, before, after, targetRepo)
     const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, opts.comment)
       : after
@@ -231,6 +234,12 @@ export class TestsService {
       else if (stepResults.some((s) => s.result === 'NOT_EXECUTED')) result = 'INCOMPLETE'
     }
 
+    // GH196 — champs d'exécution et d'étape : convertis et contrôlés sur le verdict final, avec le type
+    // du test lu dans le repo du test (composant compris). Refus : rien n'est écrit.
+    const typeDef = await readOwnedTypeDef(this.git, repoPath, testCase.objectTypeRef, targetRepo)
+    const prepared = prepareRunFields(typeDef, { result, fields: dto.fields, stepResults })
+    if (!prepared.ok) throw new FieldWriteError(prepared.field, prepared.reason)
+
     const run: TestRun = {
       id: runId,
       testCaseId,
@@ -240,17 +249,29 @@ export class TestsService {
       ...(dto.requirementId && { requirementId: dto.requirementId }),
       result,
       executedAt: now,
-      executedBy: dto.executedBy || 'TODO:current-user',
+      // GH196 — testeur fourni par l'appelant (identité git dans l'application, saisie libre du classeur) ;
+      // inconnu : vide (plus de marqueur `TODO:current-user`).
+      executedBy: dto.executedBy || '',
       duration: 0,
       equipmentUsed: dto.equipmentUsed ?? [],
-      stepResults: stepResults.map((s) => ({ ...s, executedAt: now })),
+      stepResults: stepResults.map(({ fields: _raw, ...s }, i) => {
+        const fields = prepared.stepFields[i]
+        return { ...s, executedAt: now, ...(fields && { fields }) }
+      }),
       notes: dto.notes ?? '',
       ...(dto.origin && { origin: dto.origin }),
+      ...(prepared.fields && { fields: prepared.fields }),
     }
 
     await this.git.writeYaml(targetRepo, `test-runs/${testCaseId}/${runId}.yaml`, run)
     this.testsIndex.upsertRun(repoPath, run)
     return run
+  }
+
+  /** GH196 — type d'un test (champs d'exécution / d'étape), lu dans le repo du test (composant compris). */
+  async typeDefFor(repoPath: string, objectTypeRef: string, workspaceDir?: string): Promise<ObjectTypeDefinition | null> {
+    const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, objectTypeRef, workspaceDir)) ?? repoPath
+    return readOwnedTypeDef(this.git, repoPath, objectTypeRef, targetRepo)
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────

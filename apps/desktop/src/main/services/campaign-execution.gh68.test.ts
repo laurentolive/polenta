@@ -53,6 +53,10 @@ const testsService = {
   async execute(_repo: string, testCaseId: string) {
     return { id: `RUN-${++runSeq}`, testCaseId }
   },
+  // GH196 — type sans champs d'exécution : classeur sans colonne de champ.
+  async typeDefFor() {
+    return null
+  },
 } as unknown as TestsService
 
 async function writeCampaign(runs: CampaignTestRun[], status: TestCampaign['status'] = 'in_progress'): Promise<void> {
@@ -97,9 +101,10 @@ async function fill(file: string, entryIds: string[], tweakMeta?: (meta: ExcelJS
   await workbook.xlsx.writeFile(file)
 }
 
-/** Classeur au format GH36/GH68 (v1) : pas de colonne d'empreinte. */
+/** Classeur au format GH36/GH68 (v1) : pas de colonne d'empreinte, pas de carte des colonnes (GH196). */
 function asV1(meta: ExcelJS.Worksheet): void {
   meta.eachRow(row => {
+    if (row.getCell(1).value === 'columns') { row.values = []; return }
     if (row.getCell(1).value === 'formatVersion') row.getCell(2).value = 1
     row.getCell(5).value = null
   })
@@ -131,7 +136,7 @@ describe('export du classeur', () => {
     if ('fatal' in raw) throw new Error(raw.fatal.code)
     expect(raw.rows.some(r => r.text.includes('Action TEST-A v2'))).toBe(true)
     expect(raw.rows.some(r => r.text.includes('Action TEST-A v1'))).toBe(false)
-    expect(raw.formatVersion).toBe('2')
+    expect(raw.formatVersion).toBe('3')
     expect(raw.instances[0]!.fingerprint).toMatch(/^[0-9a-f]{64}$/)
     expect(await campaignFile()).toBe(before)
   })
@@ -207,10 +212,10 @@ describe('import du classeur', () => {
     await writeCampaign([pending('TEST-A', testCase('TEST-A', 'draft', 1))])
     const file = await exportSheet()
     await fill(file, ['TEST-A-1'], meta => meta.eachRow(row => {
-      if (row.getCell(1).value === 'formatVersion') row.getCell(2).value = 3
+      if (row.getCell(1).value === 'formatVersion') row.getCell(2).value = 99
     }))
     const preview = await service.preview(dir, 'CAMP-0001', file)
-    expect(preview.fatal).toEqual({ code: 'unsupported_version', version: '3' })
+    expect(preview.fatal).toEqual({ code: 'unsupported_version', version: '99' })
   })
 
   it('X12 — même classeur réimporté après le gel : la copie relue du YAML a la même empreinte', async () => {

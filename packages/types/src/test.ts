@@ -74,6 +74,8 @@ export interface StepResult {
   result: StepResultValue
   comment: string              // HTML (RICHTEXT)
   executedAt: string | null
+  /** GH196 — valeurs des `stepFields` du type de test ; absent tant que vide. */
+  fields?: Record<string, unknown>
 }
 
 export interface TestRun {
@@ -94,6 +96,8 @@ export interface TestRun {
   notes: string                // HTML (RICHTEXT)
   /** GH36 — origine du résultat ; absent = saisi dans l'outil. */
   origin?: 'excel-import'
+  /** GH196 — valeurs des `runFields` du type de test ; absent tant que vide. Immuable comme le run. */
+  fields?: Record<string, unknown>
 }
 
 // ─── Campaigns ───────────────────────────────────────────────────────────────

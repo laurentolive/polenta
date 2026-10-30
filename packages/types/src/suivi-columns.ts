@@ -10,7 +10,7 @@ import { labelText, validLabel } from './suivi-params'
 // entièrement dans le script du projet.
 
 export type ComputedColumnCategory = 'requirement' | 'test'
-export type ComputedColumnType = Exclude<SchemaFieldType, 'drawio'>
+export type ComputedColumnType = Exclude<SchemaFieldType, 'drawio' | 'link'>
 
 /** Déclaration `column` d'une requête partagée. */
 export interface QueryColumnDef {

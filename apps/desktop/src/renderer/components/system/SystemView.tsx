@@ -28,7 +28,7 @@ import { RowMaxHeightButton, ROW_MAX_LINES_ALL, readExcelRowMaxLines } from './R
 import { WordView } from './WordView'
 import { EditView } from './EditView'
 import { api } from '../../api'
-import type { FieldVisibilityPref } from '@polenta/api-client'
+import type { FieldVisibilityPatch, FieldVisibilityPref } from '@polenta/api-client'
 import { RichTextProvider } from '../../contexts/RichTextContext'
 import { ParamRefProvider, useParamResolver } from '../../contexts/ParamRefContext'
 import { useStableCallback } from '../../hooks/useStableCallback'
@@ -40,11 +40,12 @@ import { requirementsExportBaseName, testsExportBaseName } from '../export/expor
 import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
-import { flattenSystemNodes, isComputedColumnKey } from '@polenta/types'
+import { flattenSystemNodes, isComputedColumnKey, fieldValueToText } from '@polenta/types'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { FieldConfigModal } from './FieldConfigModal'
+import { useApprovalGate } from '../../contexts/ApprovalGateContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status'])
@@ -226,7 +227,7 @@ export function SystemView() {
         author: req.createdBy ?? '',
         objectTypeRef: req.objectTypeRef ?? '',
         ...Object.fromEntries(
-          Object.entries(req.fields ?? {}).map(([k, v]) => [k, v == null ? '' : String(v)]),
+          Object.entries(req.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)]),
         ),
       }
     }
@@ -242,7 +243,7 @@ export function SystemView() {
         author: tc.createdBy ?? '',
         objectTypeRef: tc.objectTypeRef ?? '',
         ...Object.fromEntries(
-          Object.entries(tc.fields ?? {}).map(([k, v]) => [k, v == null ? '' : String(v)]),
+          Object.entries(tc.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)]),
         ),
       }
     }
@@ -562,6 +563,9 @@ export function SystemView() {
   useSetTabTitle(editedTitle || [effectiveNode?.label || effectiveNodeId, effectiveType?.label || effectiveTypeId].filter(Boolean).join(' / ') || null)
 
   const typeKey = effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : null
+  // GH139 — colonnes par défaut d'une vue : défaut du schéma (`defaultVisible`), liens compris.
+  const schemaDefaultFields = useCallback((view: 'excel' | 'word') =>
+    defaultVisibleFields(effectiveType, { linkTypes, objectTypeRef: typeKey ?? undefined, view }), [effectiveType, linkTypes, typeKey])
   const { data: savedPrefs, isPlaceholderData: isPrefsPlaceholder, isPending: prefsPending } = useQuery({
     queryKey: ['pref-visibility', repoPath, username, typeKey],
     queryFn: async () => {
@@ -582,16 +586,16 @@ export function SystemView() {
   // GH170 — appliquées pendant le rendu, pas dans un effet : un effet laissait committer (et
   // peindre) un premier rendu sans prefs appliquées, donc la zone vide de `viewReady`, à chaque
   // remontage de la vue — même avec les prefs en cache (retour sur un onglet).
-  const [appliedPrefs, setAppliedPrefs] = useState<{ prefs: typeof savedPrefs; key: string | null } | null>(null)
+  const [appliedPrefs, setAppliedPrefs] = useState<{ prefs: typeof savedPrefs; key: string | null; linkCount: number } | null>(null)
   // Tant que les prefs affichées sont celles de l'ancien type (placeholder en attendant le
   // fetch du nouveau), ne pas re-dériver les colonnes visibles — sinon on écrase l'affichage
   // courant par le fallback avant que les vraies prefs du nouveau type n'arrivent.
-  if (!isPrefsPlaceholder && !prefsPending && (!appliedPrefs || appliedPrefs.prefs !== savedPrefs || appliedPrefs.key !== typeKey)) {
-    setAppliedPrefs({ prefs: savedPrefs, key: typeKey })
-    const fallback = defaultVisibleFields(effectiveType)
-    const excel = savedPrefs?.excel ?? fallback
-    const word = savedPrefs?.word ?? fallback
-    const edit = savedPrefs?.edit ?? fallback
+  // GH139 — défaut du schéma, recalculé aussi quand les types de lien arrivent.
+  if (!isPrefsPlaceholder && !prefsPending && (!appliedPrefs || appliedPrefs.prefs !== savedPrefs || appliedPrefs.key !== typeKey || appliedPrefs.linkCount !== linkTypes.length)) {
+    setAppliedPrefs({ prefs: savedPrefs, key: typeKey, linkCount: linkTypes.length })
+    const excel = savedPrefs?.excel ?? schemaDefaultFields('excel')
+    const word = savedPrefs?.word ?? schemaDefaultFields('word')
+    const edit = savedPrefs?.edit ?? schemaDefaultFields('word')
     // T162 — absent d'une pref écrite avant ce ticket ⇒ titres affichés (défaut)
     const showFoldersExcelNext = savedPrefs?.showFoldersExcel ?? true
     const showFoldersWordNext = savedPrefs?.showFoldersWord ?? true
@@ -608,12 +612,16 @@ export function SystemView() {
     setFreezeColCountExcel(freezeColCountExcelNext)
   }
 
+  const approvalGate = useApprovalGate()
   const autoSaveMutation = useMutation({
     // GH163 — `comment` : commentaire de modification d'un changement de statut (formulaire).
     mutationFn: async ({ objectId, field, value, comment }: { objectId: string; field: string; value: string; comment?: string }) => {
       const cat = effectiveType?.category
       if (!cat || !repoPath || !objectId) return
       if (field === 'status') {
+        // GH199 §8bis — approbation d'un élément non assigné : proposer un change (annuler = rien n'est écrit).
+        if ((cat === 'requirement' || cat === 'test') && effectiveNodeId && effectiveTypeId
+          && !(await approvalGate(repoPath, { id: objectId, objectTypeRef: `${effectiveNodeId}::${effectiveTypeId}`, category: cat }, value))) return
         if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value, comment })
         if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto)
         return
@@ -853,7 +861,7 @@ export function SystemView() {
   }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects])
 
   const savePrefsMutation = useMutation({
-    mutationFn: async (patch: Partial<FieldVisibilityPref>) => {
+    mutationFn: async (patch: FieldVisibilityPatch) => {
       if (!repoPath || !username || !typeKey) return
       await api.pref.setFieldVisibility(repoPath, username, typeKey, patch)
       return patch
@@ -873,7 +881,7 @@ export function SystemView() {
   // T162 — un seul objet de pref porte les colonnes des 3 vues + les booléens « titres de
   // dossiers ». GH176 — chaque handler n'envoie que sa clé : le main fusionne dans l'entrée
   // (plus besoin de renvoyer l'objet complet, qui effaçait les clés écrites ailleurs).
-  const persistPrefs = useCallback((override: Partial<FieldVisibilityPref>) => {
+  const persistPrefs = useCallback((override: FieldVisibilityPatch) => {
     savePrefsMutation.mutate(override)
   }, [savePrefsMutation])
 
@@ -901,6 +909,20 @@ export function SystemView() {
     setShowFoldersWord(show)
     persistPrefs({ showFoldersWord: show })
   }, [persistPrefs])
+
+  // GH139 — « Réinitialiser » retire le choix personnel de la vue (au lieu d'écrire un défaut codé
+  // en dur) : la vue retombe sur le défaut du schéma, et le suivra s'il évolue.
+  const handleResetView = useCallback((tab: 'excel' | 'word') => {
+    if (tab === 'excel') {
+      setVisibleFieldsExcel(schemaDefaultFields('excel'))
+      setShowFoldersExcel(true)
+      persistPrefs({ excel: null, showFoldersExcel: null })
+    } else {
+      setVisibleFieldsWord(schemaDefaultFields('word'))
+      setShowFoldersWord(true)
+      persistPrefs({ word: null, showFoldersWord: null })
+    }
+  }, [persistPrefs, schemaDefaultFields])
 
   const handleCollapsedFoldersExcelChange = useCallback((ids: string[]) => {
     setCollapsedFoldersExcel(ids)
@@ -1139,6 +1161,7 @@ export function SystemView() {
           onChangeShowFoldersExcel={handleChangeShowFoldersExcel}
           onChangeShowFoldersWord={handleChangeShowFoldersWord}
           onClose={() => setShowFieldConfig(false)}
+          onReset={handleResetView}
           computedColumns={computed.available}
           computedPanel={computed.panel}
         />
@@ -1231,6 +1254,7 @@ export function SystemView() {
         {effectiveType?.category !== 'campaign' && viewMode === 'edit' && (
           <EditView
             nodeId={editingNodeId}
+            projectId={currentProjectId}
             nodeName={editingTreeNode?.name}
             objectData={objectData}
             // `isLoading` (pas juste `!objectData`) : sur erreur de la query (objet

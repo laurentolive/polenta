@@ -75,6 +75,10 @@ Chaque type possède une liste de `SchemaField` constituant son schéma métier.
 | `placeholder` | string | Texte indicatif |
 | `validator` | string | Validation syntaxique optionnelle : `EARS` ou `regex:<pattern>` |
 | `trackHistory` | bool? | **GH77** — historiser ce champ (`history.<name>`, §4.4). Écrit seulement quand vrai. Jamais pour un champ nommé `status` |
+| — | — | **GH196** — un type de test porte en plus `runFields` / `stepFields` (listes de `SchemaField` saisies à chaque exécution / étape) : SPEC-TESTS §3.2 |
+| `defaultVisible` | bool? | **GH139** — colonne affichée par défaut (vues Tableau / Document) tant que l'utilisateur n'a pas fait son propre choix : défaut de l'équipe porté par le schéma. Même attribut sur un type de lien. Écrit seulement quand vrai (SPEC-SYSTEM-VIEW §Configuration des champs) |
+| `multiple` | bool? | **GH195** — champ `link` seulement : liste de liens au lieu d'un seul. Écrit seulement quand vrai |
+| `requiredWhen` | map? | **GH195** — `{ <champ>: [valeurs] }` : obligatoire quand un des champs nommés a une des valeurs (OU entre les clés). Références admises : `status` (statuts du type ; statuts fixes pour une campagne), champ `enum` / `multi_enum` (intersection) / `boolean` du même type. Contrôlé **à chaque écriture** (UI, MCP), sur l'état résultant, mais seulement si l'écriture modifie le champ ou une de ses références (un objet ancien reste modifiable sur ses autres champs) ; refus avec message nommant le champ et la condition ; astérisque dynamique dans les éditeurs ; avertissement `requiredEmpty` en fusion GH37. `schema:save` refuse auto-référence, liste vide, référence d'un type non admis ; référence ou valeur inconnue = condition inerte, ⚠ dans l'éditeur (refusée par `add_field` MCP). Moteur partagé `packages/types/src/required-when.ts` (lecteur de valeurs paramétrable : réutilisé par les `runFields` / décisions) |
 
 **Exposition MCP (T122)** : `validator: EARS` est la seule règle de ce champ **enforcée
 en dur** par le serveur MCP (pas seulement documentée) — `bulk_import_requirements`/
@@ -98,6 +102,7 @@ dans `AGENTS.md`). Voir `SPEC-MCP-SERVER.md` §4.2.
 | `date` | Date |
 | `datetime` | Date et heure |
 | `drawio` | Référence à un fichier `.drawio` du repo (chemin) + bouton d'ouverture dans l'application draw.io externe du poste — pas d'éditeur intégré, pas d'iframe réseau |
+| `link` | **GH195** — lien `{ label?, url }` (liste si `multiple`). URL acceptées : `http(s)://`, `file://`, chemin réseau `\\serveur\partage\…` ; tout autre schéma refusé à l'écriture (UI, MCP). Forme texte d'échange `libellé \| URL` (dernier `\|`, une ligne par lien) acceptée en saisie, au collage et au MCP, convertie par le main ; un champ non modifié n'est jamais réécrit (une chaîne ou une liste sur un champ simple, éditée à la main, est tolérée en lecture). Affichage : libellé cliquable, URL en infobulle ; desktop : ouverture par `app:open-link` (schéma revalidé côté main, confirmation hors http(s), `openPath` pour un UNC) ; client web : http(s) cliquables, autres liens « Copier ». Collage de liens hypertexte copiés depuis Word / Excel / un navigateur (`text/html`, ancres seules). Exports : xlsx Standard = hyperlien natif (plusieurs liens : le premier en hyperlien de la cellule, texte `libellé \| URL` de tous), docx Standard et gabarit = un hyperlien natif par lien (`{{x}}` = `libellé (URL)`, `{{@rich.x}}` = hyperliens), gabarit xlsx = texte `libellé \| URL`. Lecture d'une cellule Excel saisie par un technicien (`readLinkCell` : hyperlien natif, `LIEN_HYPERTEXTE`/`HYPERLINK`, URL brute, `libellé \| URL`, multi-lignes). Historique GH77 en valeur. Pas de colonne calculée `link`. Polenta ne vérifie pas que le lien répond : la pérennité des URL relève de la GED du client |
 | `user` | Référence utilisateur : la valeur enregistrée est le **login** (chaîne, format YAML inchangé). GH45 S4 — quand l'`origin` du repo est sur une forge Forgejo/Gitea dont le propriétaire est une organisation, les **membres de l'organisation** (login, nom affiché) sont proposés en autocomplétion (`<datalist>`), chargés une fois par session (`forge:org-members`, SPEC-PROJECT-MANAGEMENT §9.3), dans la Vue Système (`EditView`), les formulaires (`DynamicField`) et l'édition inline de la Vue Tableau. La saisie reste libre (utilisateur externe, hors ligne) ; repo personnel, GitHub ou forge injoignable : texte libre, sans message. |
 
 ### 3.2a Diagrammes draw.io dans un champ `richtext` (T47)
@@ -385,6 +390,8 @@ approved ──[rendre obsolète]──► obsolete (isTerminal)
 | `isTerminal` | bool | L'objet est masqué des listes par défaut (soft-archive) |
 
 **Toutes les transitions sont autorisées** — il n'y a pas de graphe de transitions à définir.
+Seule exception côté interface : l'approbation d'un élément assigné à aucun change ouvert propose
+de l'assigner (§10, GH199 §8bis).
 
 ### 4.4 Historique des champs suivis (GH77)
 
@@ -663,3 +670,64 @@ Un lien Jira peut être ajouté à n'importe quel moment — il est optionnel.
 - Son identifiant n'est **jamais réutilisé** : une exigence supprimée par l'application (cas
   ci-dessus) laisse sa pierre tombale ; un fichier supprimé hors application (explorateur,
   `git rm`) n'en laisse pas (GH20).
+
+---
+
+## 10. Changesets (GH198)
+
+Un **changeset** porte une modification pilotée d'un composant : cause et description (champs du
+type), éléments à modifier, éléments impactés, cycle de vie. Détail : `specs/GH198.md` ; épique
+`specs/GH193.md`.
+
+- **Catégorie `change`** : types déclarés dans le modèle de données (préfixe, `fields`,
+  `statuses`) ; Polenta ne prête aucune sémantique aux types. Cycle de vie proposé à la création
+  d'un type (`DEFAULT_CHANGE_STATUSES`, modifiable) : `ouvert → analyse → implemente → verifie →
+  clos`, `rejete` ; `clos` et `rejete` terminaux ; aucune contrainte de transition (L1, #206).
+  Pas de couverture ni de maturité.
+- **Stockage** : `changesets/<ID>.yaml` dans le repo du composant concerné (`component`, composant
+  local de n'importe quel repo du workspace), avec les types de ce repo — un changeset de
+  sous-composant voyage avec lui (#193 §4) ; ID
+  préfixé du type, pierres tombales (GH20). Champs système : `id`, `objectTypeRef`, `title`,
+  `status`, `version`, `component`, `mode` (`request`), `toModify` (`{ id, state: planned |
+  modified }`), `impacted` (`{ id, status, comment?, source: declared | computed }`, statut parmi
+  les 8 statuts d'impact de SPEC-TRACEABILITY §4.6, défaut `impact_non_verifie`), `origin`,
+  `integratedIn`, `campaigns`, `history` (GH77). Écritures par `ChangesService.persist`
+  (`applyFieldsWrite` #195, historique GH77).
+- **Composant** : choisi parmi les composants locaux des repos du workspace (déduit s'il n'y en a
+  qu'un utilisable) ; modifiable au statut initial seulement, dans le même repo.
+- **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du changeset, le même que celui
+  des tests d'une campagne (grille Excel par type, filtres de colonne, colonnes ⚙️ `picker`).
+- **Vue Changesets** : entrée de la barre d'activité ; panneau avec, comme les vues Exigences / Tests /
+  Campagnes, une **liste déroulante du composant** affiché (composants locaux de tous les repos,
+  choix mémorisé par projet, suit le changeset ouvert) : son backlog et ses seuls changesets, ID
+  décroissant ; filtres type, statut, « mes changesets » = auteur du premier statut,
+  « masquer les terminés ») ; pages `/changesets`, `/changeset/new` (`?element=` : élément pré-rempli dans
+  « à modifier », depuis « Créer un changeset » de la vue Édition et des pages exigence / test) et
+  `/changeset/<ID>` (statut, titre, composant, champs, listes, historique).
+- **Suppression** : tant que le fichier n'a jamais été commité ; ensuite, statut terminal. Le
+  renommage d'un préfixe réécrit aussi les IDs cités dans `changesets/` ; la suppression d'un type de
+  changeset supprime ses changesets (GH104).
+- **Analyse d'impact** (GH199, SPEC-TRACEABILITY §4) : racines = listes (vides : pas
+  d'analyse), arbres, une ligne par élément impacté (déclaré ou calculé), complétude, campagnes en
+  cours concernées ; live, figée dans `analysis` au statut terminal. Seules les lignes portant une
+  saisie sont écrites dans `impacted`.
+- **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
+  entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
+- **Page d'un changeset** (GH199) : titre et composant sur une ligne (libellé, valeur) ; champs
+  éditables d'un clic, Annuler / Enregistrer sous les champs ; origine, version intégrée et
+  campagnes au-dessus des listes ; historique encadré comme les autres sections ;
+  listes et analyse d'impact repliables avec leur nombre d'éléments ; `toModify` est affiché « Éléments changés ».
+- **Backlog et assignation** (GH199 §8bis) : un élément **à traiter** (statut ni `isApproval` ni
+  `isTerminal`) est **assigné** quand il figure dans `toModify` d'un changeset ouvert de son repo
+  (plusieurs possibles, signalé « aussi dans … »). Entrée **« Backlog (N) »** du panneau
+  Changesets, une par composant local non vide : éléments à traiter non assignés, **calculés**
+  (`changesets:backlog`, rien n'est stocké) ; page `/changesets/backlog` (`repoPath`, `component`) avec
+  « Assigner à… » (`changesets:assign`). Dans un changeset, « Déplacer vers… » (`changesets:move`, état
+  conservé, « modifié » l'emporte ; changesets clos refusés).
+- **Approbation d'un élément non assigné** (GH199 §8bis) : depuis l'interface (vue Édition, tableau,
+  document, recherche, pages exigence / test), passer un élément vers un statut `isApproval` alors
+  qu'aucun changeset ouvert ne le liste (`changesets:approval-check`) ouvre « Assigner à un changeset » :
+  changeset ouvert, nouveau changeset, ou « Approuver sans changeset » ; Annuler n'écrit pas le statut. MCP
+  et écritures hors interface non contrôlés ; condition `assignedToChange` avec #206.
+- Graphe de données : collection `changesets` (SPEC-DASHBOARDS §2) ; MCP : `list_changesets`,
+  `get_changeset` (avec l'analyse), `create_changeset` (SPEC-MCP-SERVER §4.7).

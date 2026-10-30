@@ -1,4 +1,4 @@
-import { isUnknownStatus } from '@polenta/types'
+import { initialStatus, isUnknownStatus, prepareFieldsWrite } from '@polenta/types'
 import type { ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { findObjectTypeDef, findLocalNodeByRefPrefix, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
@@ -149,6 +149,10 @@ function validateEntry(
       field: 'status',
     }
   }
+
+  // GH195 — liens (forme texte `libellé | URL` acceptée, URL contrôlées) et `requiredWhen`.
+  const prepared = prepareFieldsWrite(resolved, null, { status: dto.status ?? initialStatus(resolved), fields: dto.fields })
+  if (!prepared.ok) return { reason: prepared.reason, field: prepared.field }
 
   return null
 }

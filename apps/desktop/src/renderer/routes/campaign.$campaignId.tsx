@@ -1,4 +1,5 @@
 ﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
@@ -191,7 +192,7 @@ function CampaignDetailPage() {
 
   function getStringField(key: string): string {
     const v = campaign!.fields?.[key]
-    return typeof v === 'string' ? v : (v !== undefined && v !== null ? String(v) : '')
+    return fieldValueToText(v)
   }
 
   function startEditingFields() {
@@ -386,6 +387,7 @@ function CampaignDetailPage() {
                   key={f.name}
                   field={f}
                   value={editingFields[f.name] ?? ''}
+                  requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: campaign.status, fields: editingFields }))}
                   onChange={v => setEditingFields(prev => ({ ...(prev ?? {}), [f.name]: v }))}
                   repoPath={repoPath}
                   interfaceRoles={schema?.roles?.map(r => r.name)}
@@ -520,7 +522,7 @@ function CampaignDetailPage() {
                   onClick={!isActive ? () => navigateToView(entryId) : undefined}
                 >
                   <div className="flex-1 min-w-0">
-                    <span className="font-mono text-xs text-ink-3">{tcId}</span>
+                    <span className="font-mono text-xs text-ink-3 whitespace-nowrap">{tcId}</span>
                     {tc && (
                       <span className="text-xs text-ink ml-2 truncate">{tc.title}</span>
                     )}

@@ -1,8 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
+import { CreateChangeButton } from '../components/changes/CreateChangeButton'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { HistorySection } from '../components/history/HistorySection'
+import { ExecutionsSection } from '../components/executions/ExecutionsSection'
 import { api } from '../api'
 import { useProjectSchema, getTestTypeDef, getAllObjectTypes } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -15,6 +18,7 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { TestCase } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
+import { useApprovalGate } from '../contexts/ApprovalGateContext'
 import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/test/$testId')({
@@ -29,7 +33,7 @@ export const Route = createFileRoute('/test/$testId')({
 
 function getStringField(fields: Record<string, unknown>, key: string): string {
   const v = fields[key]
-  return typeof v === 'string' ? v : (v !== undefined && v !== null ? String(v) : '')
+  return fieldValueToText(v)
 }
 
 function TestCaseDetailPage() {
@@ -66,7 +70,7 @@ function TestCaseDetailPage() {
       const stringFields: Record<string, string> = {}
       if (tc.fields && typeof tc.fields === 'object') {
         for (const [k, v] of Object.entries(tc.fields as Record<string, unknown>)) {
-          stringFields[k] = v !== undefined && v !== null ? String(v) : ''
+          stringFields[k] = fieldValueToText(v)
         }
       }
       setFields(stringFields)
@@ -97,17 +101,27 @@ function TestCaseDetailPage() {
   useRegisterTabDirty(hasChanges)
   useSetTabTitle(tc?.title)
 
+  const approvalGate = useApprovalGate()
   const saveMutation = useMutation({
-    mutationFn: () => api.tests.update(repoPath, testId, {
-      title,
-      objectTypeRef: type,
-      status,
-      preconditions: preconditions.trim() || undefined,
-      steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
-      postconditions: postconditions.trim() || undefined,
-      fields,
-    }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      // GH199 §8bis — approbation d'un élément non assigné : proposer un change ; annuler = rien n'est écrit.
+      // Les autres modifications de la page sont conservées, seul le statut revient.
+      if (tc && status !== (tc.status ?? '') && !(await approvalGate(repoPath, { id: testId, objectTypeRef: type || tc.objectTypeRef, category: 'test' }, status))) {
+        setStatus(tc.status ?? '')
+        return 'cancelled' as const
+      }
+      return api.tests.update(repoPath, testId, {
+        title,
+        objectTypeRef: type,
+        status,
+        preconditions: preconditions.trim() || undefined,
+        steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
+        postconditions: postconditions.trim() || undefined,
+        fields,
+      })
+    },
+    onSuccess: result => {
+      if (result === 'cancelled') return
       qc.invalidateQueries({ queryKey: ['tests', repoPath] })
       qc.invalidateQueries({ queryKey: ['test', repoPath, testId] })
       setInitialized(false)
@@ -161,7 +175,12 @@ function TestCaseDetailPage() {
               <span className="text-xs font-mono text-ink-3 font-normal">{tc.id}</span>
             </span>
           }
-          actions={<RichTextToolbar repoPath={repoPath} />}
+          actions={
+            <>
+              <CreateChangeButton repoPath={repoPath} projectId={projectId} elementId={tc.id} objectTypeRef={tc.objectTypeRef} />
+              <RichTextToolbar repoPath={repoPath} />
+            </>
+          }
         />
 
         <div className="flex-1 overflow-y-auto">
@@ -186,6 +205,7 @@ function TestCaseDetailPage() {
           {typeDef?.fields.map(f => (
             <DynamicField key={f.name} field={f}
               value={fields[f.name] ?? String(f.default ?? '')}
+              requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: tc.status, fields: fields }))}
               onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
               repoPath={repoPath}
               interfaceRoles={schema?.roles?.map(r => r.name)}
@@ -231,6 +251,9 @@ function TestCaseDetailPage() {
               {saveMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
             </button>
           </div>
+
+          {/* GH197 — historique des exécutions. */}
+          <ExecutionsSection repoPath={repoPath} projectId={projectId} workspaceDir={projectId ? decodeProjectId(projectId) : undefined} target={{ testId }} typeKey={tc.objectTypeRef} />
 
           {/* GH77 — historique des champs suivis (lecture seule). */}
           <HistorySection repoPath={repoPath} kind="test" id={testId} typeDef={typeDef}

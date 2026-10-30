@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test'
 import { setupSession } from './support/session'
 
 /**
- * T173 (#5) — liste de repli « Impact à vérifier » de la vue Analyse d'impact : entrée du panneau,
+ * T173 (#5) — liste de repli « Impact à vérifier » de la vue Changesets (GH199) : entrée du panneau,
  * éléments marqués et leurs éléments liés, levée unitaire et multiple. Scénarios N14, N15, N3
  * (diff limité à la clé) et L11 de specs/T173-tests.md. Le marquage est obtenu comme dans l'app :
  * réouverture en brouillon d'une exigence approuvée liée (T172).
@@ -43,13 +43,13 @@ test.beforeAll(async () => {
   expect(flagged.some((f) => f.linked.some((l) => l.elementId === trigger))).toBe(true)
 })
 
-const entry = () => s.page.getByRole('button', { name: /Impact à vérifier/ })
+const entry = () => s.page.getByTestId('changes-revalidation-entry')
 const rows = () => s.page.getByRole('checkbox', { name: /^Sélectionner / })
 
 test('N14 — entrée « Impact à vérifier (N) », non sélectionnée d\'office, liste et éléments liés', async () => {
-  await s.openView('Analyse d\'impact')
+  await s.openView('Changesets')
   await expect(entry()).toBeVisible()
-  await expect(entry()).toContainText(`${flagged.length} éléments`)
+  await expect(entry()).toContainText(`${flagged.length}`)
   // Pas d'auto-sélection : la page n'affiche pas la liste tant qu'on n'a pas cliqué.
   await expect(s.page.getByText('Tout sélectionner')).toHaveCount(0)
 
@@ -74,14 +74,14 @@ test('N3 — « Lever le flag » sur une ligne : seule la clé needsRevalidation
   const row = s.page.locator('div.border-b').filter({ has: s.page.getByRole('checkbox', { name: `Sélectionner ${target.elementId}` }) })
   await row.getByRole('button', { name: 'Lever le flag' }).click()
   await expect(rows()).toHaveCount(flagged.length - 1)
-  await expect(entry()).toContainText(`${flagged.length - 1} élément`)
+  await expect(entry()).toContainText(`${flagged.length - 1}`)
 
   const after = yamlOf(target)
   expect(after).not.toMatch(/needsRevalidation/)
   expect(after).toBe(before.replace(/^needsRevalidation: true\r?\n/m, ''))
 })
 
-test('N15 — tout sélectionner puis lever : l\'entrée disparaît, retour à l\'invite', async () => {
+test('N15 — tout sélectionner puis lever : l\'entrée disparaît, liste vide', async () => {
   const remaining = flagged.length - 1
   await s.page.getByText('Tout sélectionner').click()
   await s.page.getByRole('button', { name: `Lever le flag de la sélection (${remaining})` }).click()
@@ -89,6 +89,6 @@ test('N15 — tout sélectionner puis lever : l\'entrée disparaît, retour à l
   await s.page.locator('div.fixed').getByRole('button', { name: 'Lever le flag', exact: true }).click()
 
   await expect(entry()).toHaveCount(0)
-  await expect(s.page.getByText(/Sélectionnez deux baselines/)).toBeVisible()
+  await expect(s.page.getByText('Aucun élément à revérifier.')).toBeVisible()
   expect(await listFlagged()).toEqual([])
 })

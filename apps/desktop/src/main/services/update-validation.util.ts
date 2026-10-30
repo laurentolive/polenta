@@ -1,4 +1,4 @@
-import { parseMultiEnumValue } from '@polenta/types'
+import { parseMultiEnumValue, prepareFieldsWrite } from '@polenta/types'
 import type { ObjectCategory, ProjectSchema } from '@polenta/types'
 import { findLocalNodeByRefPrefix, findObjectTypeDef, findOwningNode } from './schema-lookup.util'
 import { isEarsCompliant, isFilled } from './field-checks.util'
@@ -16,6 +16,8 @@ import { mergeFields } from './field-merge.util'
  * 5. champs **modifiés** : un champ `required` n'est pas vidé, un champ `validator: EARS` reste conforme.
  *    Seuls les champs touchés par l'entrée sont contrôlés : un énoncé existant non conforme ne bloque
  *    pas la modification d'un autre champ.
+ * 6. GH195 — champs `link` modifiés normalisés (URL contrôlées), `requiredWhen` touchés satisfaits
+ *    (`prepareFieldsWrite`, même contrôle que l'écriture réelle).
  */
 
 export interface UpdateEntryBase {
@@ -100,7 +102,12 @@ export function planUpdate(
   for (const key of extraKeys) {
     if (entry[key] !== undefined && !same(current[key], entry[key])) changes[key] = { before: current[key], after: entry[key] }
   }
-  const merged = mergeFields(existing.fields, entry.fields)
+  let merged = mergeFields(existing.fields, entry.fields)
+  if (resolved !== 'unresolvable') {
+    const prepared = prepareFieldsWrite(resolved, existing, { status: entry.status ?? existing.status, fields: merged })
+    if (!prepared.ok) return { ok: false, field: prepared.field, reason: prepared.reason }
+    merged = prepared.fields
+  }
   for (const name of Object.keys(entry.fields ?? {})) {
     const before = existing.fields?.[name]
     if (!same(before, merged[name])) changes[`fields.${name}`] = { before, after: merged[name] }

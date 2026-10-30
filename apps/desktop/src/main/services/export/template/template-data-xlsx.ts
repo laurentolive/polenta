@@ -98,7 +98,8 @@ export function buildQueryResultXlsxData(payload: QueryResultExportPayload): obj
 
 /** Analyse d'impact : une ligne par exigence modifiée puis par nœud de ses arbres d'impact. */
 export function buildImpactXlsxData(payload: ImpactAnalysisExportPayload): object {
-  const { analysis } = payload
+  // GH199 — analyse d'un change : mêmes clés de modèle qu'avant (racines au lieu des exigences changées).
+  const { change, analysis } = payload
   const rows: Record<string, unknown>[] = []
   const addNode = (reqId: string, node: ImpactNode, direction: string, depth: number) => {
     rows.push({
@@ -107,18 +108,19 @@ export function buildImpactXlsxData(payload: ImpactAnalysisExportPayload): objec
     })
     for (const child of node.children) addNode(reqId, child, direction, depth + 1)
   }
-  for (const req of analysis.changedRequirements) {
-    rows.push({ reqId: req.reqId, direction: 'Modification', depth: 0, id: req.reqId, title: req.title, type: req.changeType, status: '', comment: '', updatedBy: '' })
-    for (const node of req.descendantTree) addNode(req.reqId, node, 'Descendant', 1)
-    for (const node of req.ascendantTree) addNode(req.reqId, node, 'Ascendant', 1)
+  for (const r of analysis.roots) {
+    rows.push({ reqId: r.elementId, direction: 'Racine', depth: 0, id: r.elementId, title: r.title, type: r.elementType, status: '', comment: '', updatedBy: '' })
+    for (const node of r.descendantTree) addNode(r.elementId, node, 'Descendant', 1)
+    for (const node of r.ascendantTree) addNode(r.elementId, node, 'Ascendant', 1)
   }
   return {
     analysis: {
-      id: analysis.id, label: analysis.label, from: analysis.fromBaseline.tag, to: analysis.toBaseline.tag,
-      createdAt: analysis.createdAt, createdBy: analysis.createdBy,
+      id: change.id, label: change.title, from: change.range?.from.ref ?? '', to: change.range?.to.ref ?? '',
+      createdAt: analysis.computedAt, createdBy: '',
     },
     rows,
-    changes: analysis.changedRequirements.length,
+    impacted: analysis.rows,
+    changes: analysis.roots.length,
     count: rows.length,
   }
 }

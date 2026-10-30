@@ -47,6 +47,7 @@ export function createIpcClient(
       getSettings: () => invoke('app:get-settings'),
       setSettings: (patch) => invoke('app:set-settings', patch),
       openReleasePage: (url) => invoke('app:open-release-page', url),
+      openLink: (url) => invoke('app:open-link', url),
       getMachineConfig: () => invoke('app:get-machine-config'),
       getTeamConfig: () => invoke('app:get-team-config'),
       refreshTeamConfig: () => invoke('app:refresh-team-config'),
@@ -230,13 +231,13 @@ export function createIpcClient(
       update: (p, id, dto, workspaceDir) => invoke('tests:update', p, id, dto, workspaceDir),
       execute: (p, id, dto, workspaceDir) => invoke('tests:execute', p, id, dto, workspaceDir),
       runs: (p, id) => invoke('tests:runs', p, id),
+      typeDef: (p, ref, workspaceDir) => invoke('tests:type-def', p, ref, workspaceDir ?? null),
       openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment),
     },
     traceability: {
       matrix: (p, f, workspaceDir) => invoke('traceability:matrix', p, f, workspaceDir),
       missingLinks: (p, workspaceDir) => invoke('traceability:missing-links', p, workspaceDir),
-      impact: (p, id, d, workspaceDir) => invoke('traceability:impact', p, id, d, workspaceDir),
-      acknowledge: (p, id, dto) => invoke('traceability:acknowledge', p, id, dto),
+      legacyAcks: (p, id) => invoke('traceability:legacy-acks', p, id),
       testPlan: (p, dto, workspaceDir) => invoke('traceability:test-plan', p, dto, workspaceDir),
       exportCsv: (p, f, workspaceDir) => invoke('traceability:export-csv', p, f, workspaceDir),
       diffRequirements: (p, fromSha, toSha) => invoke('traceability:diff-requirements', p, fromSha, toSha),
@@ -250,12 +251,7 @@ export function createIpcClient(
       clear: (p, ids, w) => invoke('revalidation:clear', p, ids, w),
     },
     impactAnalysis: {
-      create: (p, dto) => invoke('impact-analysis:create', p, dto),
-      list: (p) => invoke('impact-analysis:list', p),
       local: (p, w) => invoke('impact-analysis:local', p, w),
-      get: (p, id) => invoke('impact-analysis:get', p, id),
-      updateStatus: (p, id, dto) => invoke('impact-analysis:update-status', p, id, dto),
-      delete: (p, id) => invoke('impact-analysis:delete', p, id),
     },
     reviews: {
       list: (p, status?: ReviewStatus) => invoke('reviews:list', p, status),
@@ -295,6 +291,23 @@ export function createIpcClient(
     dialog: {
       pickFolder: (title) => invoke('dialog:pick-folder', title),
       pickImageFile: () => invoke('dialog:pick-image-file'),
+    },
+    // GH198 — changesets
+    changesets: {
+      list: (p, workspaceDir) => invoke('changesets:list', p, workspaceDir ?? null),
+      get: (p, id) => invoke('changesets:get', p, id),
+      create: (p, dto, workspaceDir) => invoke('changesets:create', p, dto, workspaceDir ?? null),
+      update: (p, id, dto) => invoke('changesets:update', p, id, dto),
+      delete: (p, id) => invoke('changesets:delete', p, id),
+      analysis: (p, id) => invoke('changesets:analysis', p, id),
+      backlog: (p, workspaceDir) => invoke('changesets:backlog', p, workspaceDir ?? null),
+      assign: (p, id, elementIds) => invoke('changesets:assign', p, id, elementIds),
+      move: (p, fromId, toId, elementIds) => invoke('changesets:move', p, fromId, toId, elementIds),
+      approvalCheck: (p, element, toStatus) => invoke('changesets:approval-check', p, element, toStatus),
+    },
+    // GH197 — historique des exécutions
+    executions: {
+      history: (p, target, workspaceDir) => invoke('executions:history', p, target, workspaceDir ?? null),
     },
     drawio: {
       pickFile: (repoPath) => invoke('dialog:pick-drawio-file', repoPath),

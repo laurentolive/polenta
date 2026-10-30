@@ -1,3 +1,4 @@
+import { fieldValueToText } from '@polenta/types'
 import type { Requirement, TestCase } from '@polenta/types'
 
 /** Aplati un `Requirement`/`TestCase` en `Record<string,string>` — champs système + `fields{}`
@@ -16,7 +17,7 @@ export function normalizeObject(obj: Requirement | TestCase): Record<string, str
     author: obj.createdBy ?? '',
     objectTypeRef: obj.objectTypeRef ?? '',
     ...Object.fromEntries(
-      Object.entries(obj.fields ?? {}).map(([k, v]) => [k, v == null ? '' : String(v)])
+      Object.entries(obj.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)])
     ),
   }
 }

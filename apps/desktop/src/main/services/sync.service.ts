@@ -979,6 +979,19 @@ export class SyncService {
     }
   }
 
+  /** GH199 — borne d'un change « sur l'existant » : tag, puis SHA (complet ou abrégé) d'un commit. */
+  async resolveCommitish(repoPath: string, ref: string): Promise<string | null> {
+    const tag = await this.resolveTag(repoPath, ref)
+    if (tag) return tag
+    try {
+      const oid = await git.expandOid({ fs, dir: repoPath, oid: ref.trim() })
+      await git.readCommit({ fs, dir: repoPath, oid })
+      return oid
+    } catch {
+      return null
+    }
+  }
+
   async tagsForCommit(repoPath: string, commitSha: string): Promise<string[]> {
     try {
       const allTags = await git.listTags({ fs, dir: repoPath })

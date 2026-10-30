@@ -8,12 +8,6 @@ export const MatrixFiltersSchema = z.object({
   testType: z.enum(['manual', 'automated', 'semi-automated']).optional(),
 })
 
-export const AcknowledgeImpactSchema = z.object({
-  elementId: z.string().min(1),
-  elementType: z.enum(['requirement', 'test_case']),
-  comment: z.string().nullable().default(null),
-})
-
 export const GenerateTestPlanSchema = z.object({
   title: z.string().min(1).max(500),
   requirementIds: z.array(z.string()).optional(),
@@ -24,5 +18,4 @@ export const GenerateTestPlanSchema = z.object({
 })
 
 export type MatrixFiltersDto = z.infer<typeof MatrixFiltersSchema>
-export type AcknowledgeImpactDto = z.infer<typeof AcknowledgeImpactSchema>
 export type GenerateTestPlanDto = z.infer<typeof GenerateTestPlanSchema>

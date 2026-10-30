@@ -20,7 +20,6 @@ export interface TeamConfig {
 }
 
 const PROJECT_HOMES: ProjectHome[] = ['dashboard', 'requirements', 'tests', 'campaigns']
-const VIEWS = ['excel', 'word', 'edit'] as const
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -82,23 +81,10 @@ function parsePreferences(raw: unknown, where: string, warnings: string[]): Team
         if (typeof value === 'string' && (PROJECT_HOMES as string[]).includes(value)) prefs.projectHome = value as ProjectHome
         else warnings.push(`${where}.projectHome : ${PROJECT_HOMES.join(' | ')} attendu`)
         break
-      case 'fieldVisibility': {
-        if (!isRecord(value)) { warnings.push(`${where}.fieldVisibility : objet attendu`); break }
-        const out: NonNullable<TeamConfigPreferences['fieldVisibility']> = {}
-        for (const [typeKey, views] of Object.entries(value)) {
-          if (!isRecord(views)) { warnings.push(`${where}.fieldVisibility.${typeKey} : objet attendu`); continue }
-          const entry: Partial<Record<typeof VIEWS[number], string[]>> = {}
-          for (const view of VIEWS) {
-            const fields = views[view]
-            if (fields === undefined) continue
-            if (Array.isArray(fields) && fields.every(f => typeof f === 'string')) entry[view] = fields as string[]
-            else warnings.push(`${where}.fieldVisibility.${typeKey}.${view} : liste de champs attendue`)
-          }
-          if (Object.keys(entry).length > 0) out[typeKey] = entry
-        }
-        prefs.fieldVisibility = out
+      // GH139 — les champs visibles par défaut sont déclarés dans schema.yaml (`defaultVisible`).
+      case 'fieldVisibility':
+        warnings.push(`${where}.fieldVisibility : n'est plus lu — déclarer \`defaultVisible: true\` sur les champs et types de lien de schema.yaml`)
         break
-      }
       default:
         warnings.push(`${where} : préférence inconnue « ${key} » ignorée`)
     }
@@ -157,17 +143,5 @@ export function resolveTeamConfig(config: TeamConfig, userTeams: string[]): Omit
     const value = fromTeam ?? config.defaults.preferences?.[key]
     if (value !== undefined) (preferences as Record<string, unknown>)[key] = value
   }
-  // Champs visibles : résolus PAR TYPE d'objet (une équipe qui règle un type ne fait pas perdre les
-  // défauts des autres types).
-  const fieldVisibility: NonNullable<TeamConfigPreferences['fieldVisibility']> = { ...config.defaults.preferences?.fieldVisibility }
-  const teamTypes = new Set<string>()
-  for (const s of teamSections) {
-    for (const [typeKey, views] of Object.entries(s.preferences?.fieldVisibility ?? {})) {
-      if (teamTypes.has(typeKey)) continue          // première équipe du fichier qui règle ce type
-      teamTypes.add(typeKey)
-      fieldVisibility[typeKey] = views
-    }
-  }
-  if (Object.keys(fieldVisibility).length > 0) preferences.fieldVisibility = fieldVisibility
   return { projects, updates, preferences }
 }

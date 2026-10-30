@@ -1,3 +1,4 @@
+import { isFieldRequiredNow, objectFieldReader } from '@polenta/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -251,6 +252,7 @@ function NewCampaignPage() {
               {typeDef?.fields.map(f => (
                 <DynamicField key={f.name} field={f}
                   value={fields[f.name] ?? String(f.default ?? '')}
+                  requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: 'planned', fields: fields }))}
                   onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
                   repoPath={repoPath}
                   interfaceRoles={schema?.roles?.map(r => r.name)}

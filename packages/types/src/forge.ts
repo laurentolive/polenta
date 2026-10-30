@@ -72,8 +72,6 @@ export interface TeamConfigPreferences {
   language?: 'fr' | 'en'
   theme?: 'light' | 'dark'
   projectHome?: ProjectHome
-  /** Champs visibles par défaut, par type d'objet (`<nœud>::<type>`) et par vue. */
-  fieldVisibility?: Record<string, Partial<Record<'excel' | 'word' | 'edit', string[]>>>
 }
 
 /** Configuration effective de l'utilisateur courant (defaults + ses équipes). */

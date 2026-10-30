@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react'
+import { CreateChangeButton } from '../changes/CreateChangeButton'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink, CoverageStatus, MatrixCell, TestCase } from '@polenta/types'
-import { statusValueLabels } from '@polenta/types'
+import { isFieldRequiredNow, objectFieldReader, statusValueLabels } from '@polenta/types'
 import { api } from '../../api'
 import { UserFieldInput } from './UserFieldInput'
 import { capabilities } from '../../platform'
@@ -14,6 +15,10 @@ import { MultiEnumCheckboxes } from '../MultiEnumCheckboxes'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
 import { HistorySection } from '../history/HistorySection'
+import { ExecutionsSection } from '../executions/ExecutionsSection'
+import { decodeProjectId } from '../../lib/projectId'
+import { LinkEditor } from '../links/LinkEditor'
+import { LinkList } from '../links/LinkList'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -65,6 +70,7 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
     'w-full text-sm text-ink-2 bg-hover border border-edge rounded px-3 py-1.5 cursor-default select-all'
 
   if (readOnly) {
+    if (field.type === 'link' && localVal) return <div className={roBase}><LinkList value={localVal} /></div>
     return <div className={roBase}>{localVal || <span className="text-ink-3 italic">—</span>}</div>
   }
 
@@ -190,6 +196,18 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
         />
       )
 
+    case 'link':
+      // GH195 — enregistré quand le focus quitte l'éditeur (comme le blur des autres champs).
+      return (
+        <div
+          onBlur={e => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onBlur(localValRef.current)
+          }}
+        >
+          <LinkEditor value={localVal} onChange={v => { localValRef.current = v; set(v) }} multiple={field.multiple} />
+        </div>
+      )
+
     case 'drawio':
       return (
         <div className="flex items-center gap-2">
@@ -243,6 +261,7 @@ function FieldRow({
   repoPath,
   interfaceRoles,
   labelAdornment,
+  requiredNow,
 }: {
   field: SchemaField
   label: string
@@ -255,13 +274,15 @@ function FieldRow({
   interfaceRoles?: string[]
   /** T172 — contenu affiché après le libellé (ex. ⚠ « Impact à vérifier » du statut). */
   labelAdornment?: React.ReactNode
+  /** GH195 — obligatoire en ce moment (`required` ou `requiredWhen` vrai) ; absent = `field.required`. */
+  requiredNow?: boolean
 }) {
   return (
     <div className="flex flex-col gap-1">
       <label className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
         {label}
         {system && <span className="text-ink-3 font-normal">(sys)</span>}
-        {field.required && !system && <span className="text-status-danger">*</span>}
+        {(requiredNow ?? field.required) && !system && <span className="text-status-danger">*</span>}
         {labelAdornment}
       </label>
       <FieldControl field={field} value={value} onBlur={onBlur} onChange={onChange} onEdit={onEdit} readOnly={system} repoPath={repoPath} interfaceRoles={interfaceRoles} />
@@ -324,6 +345,8 @@ function LinksSection({
 
 export interface EditViewProps {
   nodeId: string | null
+  /** GH197 — projet ouvert (navigation depuis l'historique des exécutions, repo des composants). */
+  projectId?: string
   nodeName?: string
   objectData: Record<string, string> | null
   /** T159 — l'objet du nœud existe mais sa requête est encore en vol (typiquement juste
@@ -378,6 +401,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   coverageByReqId,
   testsById,
   repoPath,
+  projectId,
   candidateObjects = [],
   onLinkChange,
   onBlurField,
@@ -614,6 +638,12 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
       {/* ── Form ── */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-8 py-6 space-y-5">
+          {/* GH198 — « Créer un change » avec l'élément dans « à modifier ». */}
+          {repoPath && projectId && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test') && (
+            <div className="flex justify-end -mb-3">
+              <CreateChangeButton repoPath={repoPath} projectId={projectId} elementId={objectData['id']} objectTypeRef={objectData['objectTypeRef']} />
+            </div>
+          )}
           {/* T138 — badge de couverture, toujours affiché pour une exigence (pas d'onglet "Édition"
               dans FieldConfigModal pour le rendre désactivable, cf. specs/T138-design.md §3.4) ;
               hors du pipeline orderedFields/FieldRow — champ non éditable, pas un SchemaField. */}
@@ -639,6 +669,11 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
           <React.Fragment key={nodeId ?? 'new'}>
           {(() => {
             const result: React.ReactNode[] = []
+            // GH195 — astérisque des champs `requiredWhen`, sur les valeurs en cours.
+            const readCurrent = typeDef ? objectFieldReader(typeDef, {
+              status: getValue('status'),
+              fields: Object.fromEntries(typeDef.fields.map(x => [x.name, getValue(x.name)])),
+            }) : null
             let i = 0
             while (i < orderedFields.length) {
               const { field, system } = orderedFields[i]
@@ -674,6 +709,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                   interfaceRoles={f.name === 'roles' ? interfaceRoles : undefined}
                   labelAdornment={f.name === 'status'
                     ? <RevalidationFlag show={objectData?.needsRevalidation === 'true'} /> : undefined}
+                  requiredNow={readCurrent ? isFieldRequiredNow(f, readCurrent) : undefined}
                 />
               )
               // GH163 — commentaire facultatif, enregistré dans l'historique avec le prochain changement de statut.
@@ -722,6 +758,18 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               candidateObjects={candidateObjects}
               onLinkChange={onLinkChange}
               onNavigateToObject={onNavigateToObject}
+            />
+          )}
+
+          {/* GH197 — historique des exécutions (test, exigence), chargé à l'ouverture. */}
+          {repoPath && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test') && (
+            <ExecutionsSection
+              key={objectData['id']}
+              repoPath={repoPath}
+              projectId={projectId}
+              workspaceDir={projectId ? decodeProjectId(projectId) : undefined}
+              target={typeDef.category === 'test' ? { testId: objectData['id'] } : { requirementId: objectData['id'] }}
+              typeKey={objectData['objectTypeRef'] ?? ''}
             />
           )}
 

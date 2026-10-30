@@ -1,4 +1,5 @@
 import { ChangesService } from '../main/services/changes.service'
+import { ChangeTrackingService } from '../main/services/change-tracking.service'
 import type { HostContext } from '../main/host/host-context'
 import { AuthService } from '../main/services/auth.service'
 import { GitService } from '../main/services/git.service'
@@ -58,6 +59,8 @@ export interface McpContainer {
   parameters: ParametersService
   /** GH198 — changes (`list_changesets` / `get_changeset` / `create_changeset`). */
   changes: ChangesService
+  /** GH200 — rattachement par élément (`unassigned` des outils d'écriture). */
+  changeTracking: ChangeTrackingService
 }
 
 /**
@@ -133,10 +136,15 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
   const changes = new ChangesService(git, schema, workspaceTree, history, { traceability, sync, campaigns })
+  // GH200 — rattachement par élément : création / réouverture assignées à un changeset.
+  const changeTracking = new ChangeTrackingService(git, schema, changes)
+  requirements.setModificationTracker(changeTracking)
+  tests.setModificationTracker(changeTracking)
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
     user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters,
     changes,
+    changeTracking,
   }
 }

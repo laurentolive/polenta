@@ -16,6 +16,8 @@ export const CreateRequirementSchema = z.object({
   /** GH149 — facultatif : à défaut, premier statut du type dans le schéma. */
   status: z.string().min(1).optional(),
   fields: z.record(z.unknown()).default({}),
+  /** GH200 — changeset ouvert qui reçoit l'élément créé / rouvert (sinon : seul ouvert, ou backlog). */
+  changesetId: z.string().min(1).optional(),
 })
 
 export const UpdateRequirementSchema = z.object({
@@ -27,6 +29,8 @@ export const UpdateRequirementSchema = z.object({
 export const TransitionRequirementSchema = z.object({
   toStatus: z.string().min(1),
   comment: z.string().optional(),
+  /** GH200 — changeset ouvert qui reçoit l'élément créé / rouvert (sinon : seul ouvert, ou backlog). */
+  changesetId: z.string().min(1).optional(),
 })
 
 export const AddJiraLinkSchema = JiraLinkSchema.pick({ key: true, type: true })

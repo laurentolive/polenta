@@ -1,5 +1,5 @@
 import type {
-  ApprovalCheck, BacklogItem, Change, ChangeAnalysis, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify,
+  ApprovalCheck, BacklogItem, Change, ChangeAnalysis, ChangeElementRef, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify,
   ComponentBacklog, CreateChangeDto, ObjectTypeDefinition, ProjectSchema, TestCampaign, UpdateChangeDto,
 } from '@polenta/types'
 import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isToProcess, isUnknownStatus, pruneImpacted, uniqueById } from '@polenta/types'
@@ -142,6 +142,32 @@ export class ChangesService {
     }))
   }
 
+  /** GH200 — changesets d'un seul repo (repo de stockage d'un élément). */
+  repoSummaries(repo: string): Promise<ChangeSummary[]> {
+    return this.summaries(repo)
+  }
+
+  /** GH200 — composant local d'un élément de `repo` (création d'un changeset depuis le dialogue). */
+  async componentOf(repo: string, objectTypeRef: string): Promise<string | null> {
+    return componentOfRef(localNodes(await this.schema.get(repo).catch(() => null)), objectTypeRef)
+  }
+
+  /**
+   * GH200 — ajoute des éléments à `toModify` d'un changeset ouvert ; un élément déjà présent garde
+   * son état et reçoit `base` s'il n'en avait pas.
+   */
+  async attach(repoPath: string, changeId: string, entries: { id: string; base?: ChangeElementRef }[]): Promise<Change> {
+    return this.editToModify(repoPath, changeId, items => {
+      const byId = new Map(items.map(i => [i.id, i]))
+      for (const e of entries) {
+        const prev = byId.get(e.id)
+        if (prev) byId.set(e.id, { ...prev, ...(!prev.base && e.base && { base: e.base }) })
+        else byId.set(e.id, { id: e.id, state: 'planned', ...(e.base && { base: e.base }) })
+      }
+      return [...byId.values()]
+    })
+  }
+
   /** GH199 §8bis — assigne des éléments à un change ouvert (`planned`, sans doublon). */
   async assign(repoPath: string, changeId: string, elementIds: string[]): Promise<Change> {
     return this.editToModify(repoPath, changeId, items => [...items, ...elementIds.map(id => ({ id, state: 'planned' as const }))])
@@ -165,7 +191,8 @@ export class ChangesService {
       const byId = new Map(items.map(i => [i.id, i]))
       for (const m of moved) {
         const prev = byId.get(m.id)
-        byId.set(m.id, { id: m.id, state: prev?.state === 'modified' || m.state === 'modified' ? 'modified' : 'planned' })
+        const base = prev?.base ?? m.base
+        byId.set(m.id, { id: m.id, state: prev?.state === 'modified' || m.state === 'modified' ? 'modified' : 'planned', ...(base && { base }) })
       }
       return [...byId.values()]
     })
@@ -271,7 +298,7 @@ export class ChangesService {
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.fields !== undefined && { fields: { ...existing.fields, ...dto.fields } }),
         component,
-        ...(dto.toModify !== undefined && { toModify: cleanToModify(dto.toModify) }),
+        ...(dto.toModify !== undefined && { toModify: cleanToModify(keepTrace(dto.toModify, existing.toModify)) }),
         ...(dto.impacted !== undefined && { impacted: pruneImpacted(cleanImpacted(dto.impacted)) }),
       }
       // Analyse figée à l'entrée dans un statut terminal, rendue au live à la sortie (§2, Q12).
@@ -370,7 +397,34 @@ function normalize(c: Change): Change {
 }
 
 function cleanToModify(items: ChangeToModify[]): ChangeToModify[] {
-  return uniqueById(items.filter(i => i?.id).map(i => ({ id: i.id, state: i.state === 'modified' ? 'modified' : 'planned' })))
+  return uniqueById(items.filter(i => i?.id).map(i => ({
+    id: i.id,
+    state: i.state === 'modified' ? 'modified' : 'planned',
+    ...(cleanRef(i.base) && { base: cleanRef(i.base)! }),
+    ...(cleanRef(i.approved) && { approved: cleanRef(i.approved)! }),
+  })))
+}
+
+/** GH200 — `base` / `approved` d'une ligne : `{ sha, version }`, sinon ignoré. */
+function cleanRef(ref: ChangeElementRef | undefined): ChangeElementRef | null {
+  if (!ref || typeof ref !== 'object' || typeof ref.version !== 'number') return null
+  return { sha: typeof ref.sha === 'string' && ref.sha ? ref.sha : null, version: ref.version }
+}
+
+/**
+ * GH200 — une liste `toModify` envoyée par un client (page du changeset) ne porte pas forcément
+ * `base` / `approved` : on garde ceux de la ligne existante du même élément.
+ */
+function keepTrace(next: ChangeToModify[], existing: ChangeToModify[]): ChangeToModify[] {
+  const byId = new Map(existing.map(e => [e.id, e]))
+  return next.map(n => {
+    const prev = byId.get(n.id)
+    return {
+      ...n,
+      ...(!n.base && prev?.base && { base: prev.base }),
+      ...(!n.approved && prev?.approved && { approved: prev.approved }),
+    }
+  })
 }
 
 function cleanImpacted(items: ChangeImpacted[]): ChangeImpacted[] {

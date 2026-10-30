@@ -211,7 +211,7 @@ export function createIpcClient(
       get: (p, id) => invoke('requirements:get', p, id),
       create: (p, dto, workspaceDir) => invoke('requirements:create', p, dto, workspaceDir),
       update: (p, id, dto, workspaceDir) => invoke('requirements:update', p, id, dto, workspaceDir),
-      openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('requirements:open-draft', p, id, targetStatus, workspaceDir, comment),
+      openDraft: (p, id, targetStatus, workspaceDir, comment, changesetId) => invoke('requirements:open-draft', p, id, targetStatus, workspaceDir, comment, changesetId),
       transition: (p, id, dto, workspaceDir) => invoke('requirements:transition', p, id, dto, workspaceDir),
       // TODO: remove versioning API
       links: (p, id) => invoke('requirements:links', p, id),
@@ -232,7 +232,7 @@ export function createIpcClient(
       execute: (p, id, dto, workspaceDir) => invoke('tests:execute', p, id, dto, workspaceDir),
       runs: (p, id) => invoke('tests:runs', p, id),
       typeDef: (p, ref, workspaceDir) => invoke('tests:type-def', p, ref, workspaceDir ?? null),
-      openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment),
+      openDraft: (p, id, targetStatus, workspaceDir, comment, changesetId) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment, changesetId),
     },
     traceability: {
       matrix: (p, f, workspaceDir) => invoke('traceability:matrix', p, f, workspaceDir),
@@ -304,6 +304,7 @@ export function createIpcClient(
       assign: (p, id, elementIds) => invoke('changesets:assign', p, id, elementIds),
       move: (p, fromId, toId, elementIds) => invoke('changesets:move', p, fromId, toId, elementIds),
       approvalCheck: (p, element, toStatus) => invoke('changesets:approval-check', p, element, toStatus),
+      modificationCheck: (p, element, kind, workspaceDir) => invoke('changesets:modification-check', p, element, kind, workspaceDir ?? null),
     },
     // GH197 — historique des exécutions
     executions: {

@@ -23,6 +23,7 @@ import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
 import type { ChangesService } from '../services/changes.service'
+import type { ChangeTrackingService } from '../services/change-tracking.service'
 import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
@@ -51,7 +52,7 @@ import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } fro
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
 import type { SchemaDeleteService } from '../services/schema-delete.service'
-import type { CreateChangeDto, ExecutionHistoryTarget, UpdateChangeDto, ValueRename } from '@polenta/types'
+import type { CreateChangeDto, ExecutionHistoryTarget, ModificationKind, UpdateChangeDto, ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
   CreateRequirementDto,
@@ -107,6 +108,7 @@ export interface Container {
   campaignExecution: CampaignExecutionService
   executionHistory: ExecutionHistoryService
   changes: ChangesService
+  changeTracking: ChangeTrackingService
   tree: TreeService
   baseline: BaselineService
   polentaRepo: PolentaRepoService
@@ -406,8 +408,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('requirements:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.update(repoPath, id, dto as UpdateRequirementDto, workspaceDir))
 
-  r.handle('requirements:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string) =>
-    c.requirements.openDraft(repoPath, id, targetStatus, workspaceDir, comment))
+  r.handle('requirements:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string) =>
+    c.requirements.openDraft(repoPath, id, targetStatus, workspaceDir, comment, changesetId))
 
   r.handle('requirements:transition', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.transition(repoPath, id, dto as TransitionRequirementDto, workspaceDir))
@@ -481,14 +483,17 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('changesets:move', (_e, repoPath: string, fromId: string, toId: string, elementIds: string[]) => c.changes.move(repoPath, fromId, toId, elementIds))
   r.handle('changesets:approval-check', (_e, repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string) =>
     c.changes.approvalCheck(repoPath, element, toStatus))
+  // GH200 — création / réouverture d'un élément : changeset à demander ?
+  r.handle('changesets:modification-check', (_e, repoPath: string, element: { id?: string; objectTypeRef: string }, kind: ModificationKind, workspaceDir?: string) =>
+    c.changeTracking.check(repoPath, element, kind, workspaceDir ?? undefined))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))
   // GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris.
   r.handle('tests:type-def', (_e, repoPath: string, objectTypeRef: string, workspaceDir?: string) =>
     c.tests.typeDefFor(repoPath, objectTypeRef, workspaceDir))
-  r.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string) =>
-    c.tests.openDraft(repoPath, id, targetStatus, workspaceDir, comment))
+  r.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string) =>
+    c.tests.openDraft(repoPath, id, targetStatus, workspaceDir, comment, changesetId))
 
   // ── Traceability ─────────────────────────────────────────────────────────────
   r.handle('traceability:matrix', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>

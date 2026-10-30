@@ -10,7 +10,7 @@ import { TestCaseEditModal } from '../impact/TestCaseEditModal'
 import { ExportButton } from '../export/ExportButton'
 import { impactAnalysisExportBaseName } from '../export/exportFilenames'
 
-/** Au-delà, les racines sont repliées à l'ouverture (listes vides → tout le composant, Q5). */
+/** Au-delà, les racines sont repliées à l'ouverture. */
 const EXPANDED_ROOTS_MAX = 5
 
 /**

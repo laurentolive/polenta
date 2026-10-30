@@ -4,7 +4,7 @@
 
 1. [U] `computeChangeAnalysis` : racines = listes ; arbres montant / descendant ; un élément atteint
    depuis deux racines = une ligne ; statut d'une ligne reporté sur tous ses nœuds.
-2. [U] listes vides → racines = exigences du composant.
+2. [U] listes vides → aucune racine, aucune ligne (repli retiré le 2026-10-30).
 3. [U] ligne calculée persistée non atteinte → `reached: false` ; ligne calculée par défaut non atteinte → absente.
 4. [U] `pruneImpacted` : calculées par défaut sans commentaire retirées ; déclarées gardées.
 5. [U] campagnes non closes contenant un test impacté listées ; campagne close ignorée.

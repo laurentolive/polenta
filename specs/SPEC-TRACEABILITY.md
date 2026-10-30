@@ -187,8 +187,8 @@ liste l'élément (menu), ou crée un change avec l'élément dans « à modifie
 
 ### 4.2 Racines et arbres
 
-- **Racines** : éléments « à modifier » + éléments impactés **déclarés** du change ; listes vides :
-  toutes les exigences du composant concerné.
+- **Racines** : éléments changés (`toModify`) + éléments impactés **déclarés** du change ; listes
+  vides : aucune racine, rien n'est impacté (rien par défaut).
 - **Arbres** (`buildImpactTreesFromSnapshot`) : pour chaque racine exigence, arbre **descendant**
   (exigences dont elle est la cible, récursivement, et tests qui couvrent chaque nœud) et
   **montant** (exigences qu'elle cible, récursivement) ; pour une racine test, arbre montant

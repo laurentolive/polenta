@@ -192,7 +192,11 @@ function ChangePage() {
                         onSubmit={saveFields}
                       />
                     ) : (
-                      <div key={f.name}>
+                      // Un clic sur un champ ouvre l'édition, comme le titre.
+                      <div key={f.name} role="button" tabIndex={0} title={t('changes.clickToEdit')} data-testid={`change-field-${f.name}`}
+                        className="cursor-text rounded -mx-1 px-1 hover:bg-hover"
+                        onClick={e => { if (!(e.target as HTMLElement).closest('a')) startEditingFields() }}
+                        onKeyDown={e => { if (e.key === 'Enter') startEditingFields() }}>
                         <p className="text-sm font-medium text-ink mb-1">{f.label ?? f.name}</p>
                         {f.type === 'richtext' ? <RichTextViewer value={fieldText(f.name)} repoPath={repoPath} />
                           : f.type === 'link' ? (fieldText(f.name) ? <LinkList value={change.fields?.[f.name]} /> : <p className="text-sm text-ink-2">—</p>)
@@ -259,6 +263,7 @@ function ChangePage() {
               id={change.id}
               typeDef={typeDef}
               refreshKey={JSON.stringify(change.history ?? null)}
+              framed
             />
           </div>
         </div>

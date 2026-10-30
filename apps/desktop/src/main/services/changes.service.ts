@@ -50,20 +50,12 @@ export class ChangesService {
     if (!this.impact) throw new Error('Analyse d\'impact indisponible')
     const { traceability, campaigns } = this.impact
     const range = change.mode === 'range' ? change.range : undefined
-    const [snapshot, schema, repoCampaigns] = await Promise.all([
+    const [snapshot, repoCampaigns] = await Promise.all([
       range ? traceability.loadSnapshotAtRef(repoPath, range.to.sha) : traceability.loadWorkingTreeSnapshot(repoPath, [repoPath]),
-      this.schema.get(repoPath),
       campaigns.list(repoPath).catch(() => [] as TestCampaign[]),
     ])
-    // Exigences du composant : types `requirement` du nœud, réf. par son nom (ou l'alias `root::`).
-    const node = flattenSystemNodes(schema?.nodes ?? []).map(({ node: n }) => n).find(n => n.name === change.component)
-    const typeNames = new Set((node?.objectTypes ?? []).filter(t => t.category === 'requirement').map(t => t.name))
-    const isComponentRequirement = (ref: string | undefined) => {
-      const [n, t] = (ref ?? '').split('::')
-      return !!t && typeNames.has(t) && (n === change.component || n === 'root')
-    }
     return computeChangeAnalysis({
-      change, snapshot, campaigns: repoCampaigns, isComponentRequirement,
+      change, snapshot, campaigns: repoCampaigns,
       trees: (elementId, type) => traceability.buildImpactTreesFromSnapshot(snapshot, elementId, type),
       snapshotKind: range ? { kind: 'ref', sha: range.to.sha } : { kind: 'workdir' },
     })

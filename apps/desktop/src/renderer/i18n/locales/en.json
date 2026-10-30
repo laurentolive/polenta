@@ -2250,7 +2250,7 @@
       "range": "On existing work: {{from}} → {{to}}",
       "computed": "computed {{when}}",
       "frozen": "frozen {{when}}",
-      "noRoot": "No starting element.",
+      "noRoot": "No starting element: add changed or impacted elements.",
       "noImpact": "no impact",
       "campaigns": "Ongoing campaigns concerned"
     },
@@ -2261,6 +2261,7 @@
     "alsoIn": "also in {{ids}}",
     "toProcess": "to process",
     "promote": "Move to changed",
+    "clickToEdit": "Click to edit",
     "backlog": {
       "title": "Backlog",
       "subtitle_one": "{{count}} element to process, assigned to no open change",

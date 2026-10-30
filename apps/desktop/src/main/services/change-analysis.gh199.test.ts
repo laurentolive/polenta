@@ -44,7 +44,6 @@ const run = (change: Change, links = LINKS, campaigns: TestCampaign[] = []) => {
   const snapshot = snapshotOf(links)
   return computeChangeAnalysis({
     change, snapshot, campaigns, snapshotKind: { kind: 'workdir' },
-    isComponentRequirement: ref => (ref ?? '').startsWith('root::'),
     trees: (id, type) => traceability.buildImpactTreesFromSnapshot(snapshot, id, type),
   })
 }
@@ -66,9 +65,10 @@ describe('computeChangeAnalysis', () => {
     expect(sys1.children.find(n => n.elementId === 'TEST-2')?.status).toBe('impact_a_tester')
   })
 
-  it('listes vides → exigences du composant', () => {
+  it('listes vides → aucune racine, rien d\'impacté (rien par défaut)', () => {
     const a = run(baseChange())
-    expect(a.roots.map(r => r.elementId)).toEqual(['SW-1', 'SW-2', 'SYS-1'])
+    expect(a.roots).toEqual([])
+    expect(a.rows).toEqual([])
   })
 
   it('ligne calculée persistée non atteinte → « n\'est plus atteint » ; non persistée → absente', () => {

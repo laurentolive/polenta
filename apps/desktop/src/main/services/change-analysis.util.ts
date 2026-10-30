@@ -16,8 +16,6 @@ export interface ChangeAnalysisInput {
   snapshot: ImpactSnapshot
   trees: TreeBuilder
   campaigns: TestCampaign[]
-  /** Exigence du composant concerné (racines quand les listes sont vides). */
-  isComponentRequirement: (objectTypeRef: string | undefined) => boolean
   snapshotKind: ChangeAnalysis['snapshot']
   now?: Date
 }
@@ -41,14 +39,9 @@ export function computeChangeAnalysis(input: ChangeAnalysisInput): ChangeAnalysi
   const declared = change.impacted.filter(i => i.source === 'declared')
   const persistedComputed = new Map(change.impacted.filter(i => i.source === 'computed').map(i => [i.id, i]))
 
-  // Racines : à modifier + impactés déclarés ; listes vides → exigences du composant.
-  let rootIds = [...new Set([...change.toModify.map(t => t.id), ...declared.map(i => i.id)])]
-  if (rootIds.length === 0) {
-    rootIds = [...snapshot.requirements.entries()]
-      .filter(([, r]) => input.isComponentRequirement(r.objectTypeRef))
-      .map(([id]) => id)
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-  }
+  // Racines : éléments changés + impactés déclarés. Listes vides : pas d'analyse (rien par défaut,
+  // retour de validation du 2026-10-30 — l'ancien repli sur toutes les exigences est retiré).
+  const rootIds = [...new Set([...change.toModify.map(t => t.id), ...declared.map(i => i.id)])]
   const rootSet = new Set(rootIds)
 
   const roots: ChangeAnalysisRoot[] = rootIds.map(id => {

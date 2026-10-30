@@ -56,8 +56,10 @@ test('GH200-A8 — rouvrir, modifier, réapprouver, publier : départ / approbat
   await s.invoke('requirements:transition', localPath, reqId, { toStatus: 'approved' })
   await publish('GH200 — réapprouvée')
   await navigate(p, s.projectUrl(`/changeset/${changeId}`, { repoPath: localPath }))
-  await expect(p.getByTestId(`change-trace-base-${reqId}`)).toContainText('v1')
-  await expect(p.getByTestId(`change-trace-approved-${reqId}`)).toContainText('v2')
+  // GH207 (2026-10-31) : la page ne montre plus que le lien vers le diff ; la trace reste exposée.
+  const [trace] = await s.invoke<Array<{ base: { version: number } | null; approved: { version: number } | null }>>('changesets:trace', localPath, changeId)
+  expect(trace.base?.version).toBe(1)
+  expect(trace.approved?.version).toBe(2)
   await p.getByTestId(`change-trace-diff-${reqId}`).click()
   await expect(p.getByText('Après').first()).toBeVisible()
 })

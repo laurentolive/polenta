@@ -1,20 +1,22 @@
 import type { Change, ChangeImpactRow, ChangeTestToRun, LinkedCampaign, TestCampaign } from '@polenta/types'
 import { matchCoverageLink, type ImpactSnapshot } from './traceability.service'
 
-/** GH207 — statuts d'impact qui demandent une exécution. */
-const TO_RUN_STATUSES = new Set(['impact_a_tester', 'modification_a_tester'])
+/** GH207 — statut d'impact qui écarte un élément de la campagne (retour de validation du 2026-10-31). */
+const NO_IMPACT = 'pas_d_impact_reel'
 /** Campagne qui peut encore recevoir des entrées. */
 const OPEN_CAMPAIGN = new Set(['planned', 'in_progress'])
 
 /**
- * GH207 §1 — tests à exécuter d'un changeset : éléments à modifier (Q1) et impactés « à tester ».
- * Un test vient lui-même ; une exigence amène les tests qui la couvrent (lien de couverture dans un
- * sens ou l'autre), avec son instance (T179). Exigence sans test : `uncovered`.
+ * GH207 §1 — tests à exécuter d'un changeset : éléments à modifier (Q1) et tous les impactés
+ * identifiés (déclarés et calculés), sauf ceux marqués « pas d'impact réel » — un test ainsi marqué
+ * n'est jamais proposé. Un test vient lui-même ; une exigence amène les tests qui la couvrent (lien de
+ * couverture dans un sens ou l'autre), avec son instance (T179). Exigence sans test : `uncovered`.
  */
 export function computeTestsToRun(change: Change, rows: ChangeImpactRow[], snapshot: ImpactSnapshot): { tests: ChangeTestToRun[]; uncovered: string[] } {
+  const excluded = new Set(rows.filter(r => r.status === NO_IMPACT).map(r => r.id))
   const sources = [
     ...change.toModify.map(t => t.id),
-    ...rows.filter(r => TO_RUN_STATUSES.has(r.status)).map(r => r.id),
+    ...rows.filter(r => r.status !== NO_IMPACT).map(r => r.id),
   ]
   const testIds = new Set(snapshot.tests.keys())
   const reqIds = new Set(snapshot.requirements.keys())
@@ -42,7 +44,7 @@ export function computeTestsToRun(change: Change, rows: ChangeImpactRow[], snaps
       e.sources.add(source)
     }
   }
-  const tests = [...byTest].map(([testId, e]) => ({
+  const tests = [...byTest].filter(([testId]) => !excluded.has(testId)).map(([testId, e]) => ({
     testId,
     requirementIds: e.whole ? [] : [...e.requirementIds].sort(),
     sources: [...e.sources].sort(),

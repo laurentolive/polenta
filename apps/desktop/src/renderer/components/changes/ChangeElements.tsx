@@ -83,34 +83,22 @@ interface ListProps {
   disabled?: boolean
 }
 
-/** GH200 — départ et approbation d'un élément à modifier, et lien vers ses modifications. */
-function TraceCells({ trace, repoPath, projectId }: { trace?: ChangeToModifyTrace; repoPath: string; projectId: string }) {
+/** GH200 — lien vers les modifications de l'élément (version de départ → approbation, ou disque). */
+function TraceDiffLink({ trace, repoPath, projectId }: { trace?: ChangeToModifyTrace; repoPath: string; projectId: string }) {
   const { t } = useTranslation()
-  if (!trace) return null
-  const short = (sha: string | null) => (sha ? sha.slice(0, 7) : t('changes.trace.unpublished'))
+  if (!trace?.filePath) return null
   return (
-    <>
-      <span className="text-xs text-ink-3 shrink-0 font-mono" data-testid={`change-trace-base-${trace.id}`}>
-        {trace.base ? `v${trace.base.version} · ${short(trace.base.sha)}` : t('changes.trace.creation')}
-      </span>
-      <span className="text-xs text-ink-3 shrink-0" aria-hidden>→</span>
-      <span className="text-xs text-ink-3 shrink-0 font-mono" data-testid={`change-trace-approved-${trace.id}`}>
-        {trace.approved ? `v${trace.approved.version} · ${short(trace.approved.sha)}` : t('changes.trace.pending')}
-      </span>
-      {trace.filePath && (
-        <Link
-          to="/diff"
-          search={{
-            projectId, repoPath, filepath: trace.filePath, commitSha: undefined, element: '1',
-            ...(trace.base?.sha && { baseSha: trace.base.sha }), ...(trace.approved?.sha && { toSha: trace.approved.sha }),
-          }}
-          className="text-xs text-prim hover:underline shrink-0"
-          data-testid={`change-trace-diff-${trace.id}`}
-        >
-          {t('changes.trace.diff')}
-        </Link>
-      )}
-    </>
+    <Link
+      to="/diff"
+      search={{
+        projectId, repoPath, filepath: trace.filePath, commitSha: undefined, element: '1',
+        ...(trace.base?.sha && { baseSha: trace.base.sha }), ...(trace.approved?.sha && { toSha: trace.approved.sha }),
+      }}
+      className="text-xs text-prim hover:underline shrink-0"
+      data-testid={`change-trace-diff-${trace.id}`}
+    >
+      {t('changes.trace.diff')}
+    </Link>
   )
 }
 
@@ -164,8 +152,7 @@ export function ToModifyList({ items, traces, onChange, changeId, component, als
               {!!alsoIn.get(it.id)?.length && (
                 <span className="text-xs text-ink-3 shrink-0" data-testid={`change-to-modify-also-${it.id}`}>{t('changes.alsoIn', { ids: alsoIn.get(it.id)!.join(', ') })}</span>
               )}
-              <TraceCells trace={traces?.get(it.id)} repoPath={p.repoPath} projectId={p.projectId} />
-              <span className="text-xs text-ink-3 shrink-0">{t((traces?.get(it.id)?.state ?? it.state) === 'modified' ? 'changes.modified' : 'changes.planned')}</span>
+              <TraceDiffLink trace={traces?.get(it.id)} repoPath={p.repoPath} projectId={p.projectId} />
               {!p.disabled && (
                 <button type="button" className="text-ink-3 hover:text-status-danger" title={t('changes.remove')} onClick={() => onChange(items.filter(i => i.id !== it.id))}>
                   <X size={13} />

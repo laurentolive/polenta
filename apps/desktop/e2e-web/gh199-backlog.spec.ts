@@ -110,6 +110,8 @@ test('GH199-B3 — « Déplacer vers… » un autre change', async () => {
 test('GH199-B6 — élément à traiter atteint par l\'analyse : « Passer en changé »', async () => {
   const p = s.page
   const { localPath } = s.project
+  // GH207 (2026-10-31) : la liste des impactés ne montre que les déclarés — l'élément y est déclaré.
+  await s.invoke('changesets:update', localPath, changeB, { impacted: [{ id: testId, status: 'impact_non_verifie', source: 'declared' }] })
   await navigate(p, s.projectUrl(`/changeset/${changeB}`, { repoPath: localPath }))
   await expect(p.getByTestId(`change-impacted-to-process-${testId}`)).toBeVisible()
   await p.getByTestId(`change-impacted-promote-${testId}`).click()

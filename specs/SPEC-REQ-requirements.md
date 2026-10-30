@@ -713,6 +713,9 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   saisie sont écrites dans `impacted`.
 - **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
   entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
+- **Liste « Éléments impactés »** (GH207, 2026-10-31) : éléments déclarés seulement ; les calculés
+  sont dans l'analyse d'impact, dont chaque nœud porte le libellé du lien dans sa direction (vu du
+  parent).
 - **Page d'un changeset** (GH199) : titre et composant sur une ligne (libellé, valeur) ; champs
   éditables d'un clic, Annuler / Enregistrer sous les champs ; origine, version intégrée et
   campagnes au-dessus des listes ; historique encadré comme les autres sections ;
@@ -749,16 +752,17 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
     l'assignation ; absent = création) et `toModify[].approved` (commit où l'élément est entré pour la
     dernière fois dans un statut `isApproval` après `base`, calculé — `changesets:trace` — et **figé**
     au statut terminal du changeset, retiré à sa réouverture) ; `state: modified` dès qu'un commit
-    postérieur à `base` ou le disque modifie l'élément. Page d'un changeset : colonnes Départ /
-    Approbation et « Voir les modifications » (`/diff?element=1&baseSha&toSha`, `sync:diff-element`).
+    postérieur à `base` ou le disque modifie l'élément. Page d'un changeset : « Voir les
+    modifications » (`/diff?element=1&baseSha&toSha`, `sync:diff-element`) — ni état ni versions
+    affichés (retour GH207 du 2026-10-31).
   - **Hors interface** : un élément approuvé dont le contenu diffère de son état d'approbation (commit
     direct, éditeur de texte) apparaît dans le backlog « modifié hors interface », avec le diff et
     « Rouvrir et assigner… » ; rien n'est écrit. Limite : un renommage de champ / valeur du schéma
     (GH77, GH82) réécrit les éléments approuvés et les fait signaler jusqu'à leur réouverture.
 - **Campagnes d'un changeset** (GH207, `specs/GH207.md`) : **tests à exécuter** calculés
-  (`changesets:tests-to-run`) — tests des éléments à modifier et des impactés `impact_a_tester` /
-  `modification_a_tester` (exigence → tests couvrants, instance T179 ; exigence sans test « non
-  couverte »). Section **Campagnes** de la page : campagnes liées (statut, PASS / total, entrées du
+  (`changesets:tests-to-run`) — tests des éléments à modifier et de tous les impactés (déclarés et
+  calculés), sauf ceux marqués `pas_d_impact_reel` (exigence → tests couvrants, instance T179 ;
+  exigence sans test « non couverte »). Section **Campagnes** de la page, sous l'analyse d'impact : campagnes liées (statut, PASS / total, entrées du
   changeset), « Créer la campagne » (`/campaign/new?changeset&instances`, lien écrit des deux côtés :
   `campaigns` du changeset, `changeset` de la campagne) et « N tests à ajouter » (tests absents des
   campagnes liées ouvertes) → sélecteur de la campagne pré-coché (`?addTests&instances`), jamais

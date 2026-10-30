@@ -46,3 +46,7 @@ Conforme à `specs/GH207.md`. Les conditions de clôture sont reportées dans #2
    le sélecteur pré-coché ; valider.
 3. Test itérant couvrant deux exigences dont une seule dans le changeset : seule son instance cochée.
 4. Clore la campagne : seul « Créer la campagne » reste.
+
+## Retour de validation du 2026-10-31 (corrections)
+
+Voir `specs/GH207.md` §10bis : tests proposés = tous les identifiés sauf « pas d'impact réel » ; Campagnes sous l'analyse ; impactés déclarés seuls dans la liste ; libellé du lien par nœud dans les arbres (`ImpactNode.parentIsTarget`) ; éléments changés réduits au diff. Tests adaptés : GH199-1 (statut saisi sur le nœud), GH199-B6 (élément déclaré), GH200-A8 (trace lue par l'API), T2.

@@ -164,10 +164,7 @@ function RootRow({ root, repoPath, defaultExpanded, onOpen, onUpdateStatus, read
         <div className="pb-1">
           <ImpactTreeView nodes={root.descendantTree} repoPath={repoPath} onOpen={openNode} onUpdateStatus={onUpdateStatus} depth={1} readOnly={readOnly} />
           {root.ascendantTree.length > 0 && (
-            <>
-              <p className="text-xs text-ink-3 uppercase tracking-wide pt-1" style={{ paddingLeft: '26px' }}>{t('impactAnalysisPage.ascendantTree')}</p>
-              <ImpactTreeView nodes={root.ascendantTree} repoPath={repoPath} onOpen={openNode} onUpdateStatus={onUpdateStatus} depth={1} readOnly={readOnly} />
-            </>
+            <ImpactTreeView nodes={root.ascendantTree} repoPath={repoPath} onOpen={openNode} onUpdateStatus={onUpdateStatus} depth={1} readOnly={readOnly} />
           )}
         </div>
       )}

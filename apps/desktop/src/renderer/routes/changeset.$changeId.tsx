@@ -225,7 +225,6 @@ function ChangePage() {
               <dd className="text-ink-2">{change.integratedIn || '—'}</dd>
             </dl>
 
-            <ChangeCampaignsSection repoPath={repoPath} projectId={projectId} change={change} />
             <ToModifyList
               items={change.toModify}
               traces={new Map(traces.map(tr => [tr.id, tr]))}
@@ -239,8 +238,10 @@ function ChangePage() {
               elements={elements}
               disabled={update.isPending}
             />
+            {/* Retour de validation du 2026-10-31 : la liste sert aux éléments que l'utilisateur
+                identifie lui-même ; les calculés sont dans l'analyse d'impact. */}
             <ImpactedList
-              rows={impactRows}
+              rows={impactRows.filter(r => r.source === 'declared')}
               onSetImpact={setImpact}
               onAddDeclared={ids => update.mutate({ impacted: [...change.impacted, ...ids.map(id => ({ id, status: 'impact_non_verifie' as const, source: 'declared' as const }))] })}
               onRemoveDeclared={id => update.mutate({ impacted: change.impacted.filter(i => i.id !== id) })}
@@ -265,6 +266,8 @@ function ChangePage() {
               projectId={projectId}
               disabled={update.isPending}
             />
+
+            <ChangeCampaignsSection repoPath={repoPath} projectId={projectId} change={change} />
 
             <HistorySection
               repoPath={repoPath}

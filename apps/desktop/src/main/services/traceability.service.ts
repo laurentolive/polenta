@@ -479,7 +479,7 @@ export class TraceabilityService {
         if (!snapshot.tests.has(otherId)) continue
         if (visited.has(otherId)) continue
         visited.add(otherId)
-        leaves.push(makeNode(otherId, 'test_case', snapshot.tests.get(otherId)!.title, link.type))
+        leaves.push({ ...makeNode(otherId, 'test_case', snapshot.tests.get(otherId)!.title, link.type), parentIsTarget: link.targetId === parentReqId })
       }
       return leaves
     }
@@ -493,7 +493,8 @@ export class TraceabilityService {
         visited.add(nextId)
         children.push(buildReqNode(nextId, link.type, direction))
       }
-      return makeNode(id, 'requirement', snapshot.requirements.get(id)!.title, linkType, children)
+      // Descendant : le parent est la cible du lien ; montant : sa source.
+      return { ...makeNode(id, 'requirement', snapshot.requirements.get(id)!.title, linkType, children), parentIsTarget: direction === 'descendant' }
     }
 
     const collectDirect = (direction: 'descendant' | 'ascendant'): ImpactNode[] => {
@@ -513,7 +514,7 @@ export class TraceabilityService {
       for (const { otherId, link } of coverageLinksOf(reqId)) {
         if (visited.has(otherId) || !snapshot.requirements.has(otherId)) continue
         visited.add(otherId)
-        ascendantTree.push(buildReqNode(otherId, link.type, 'ascendant'))
+        ascendantTree.push({ ...buildReqNode(otherId, link.type, 'ascendant'), parentIsTarget: link.targetId === reqId })
       }
       return { descendantTree: [], ascendantTree }
     }

@@ -8,6 +8,7 @@ import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 import { wordDiff, diffValueText } from '../../lib/wordDiff'
 import { RevalidationFlag } from '../system/RevalidationFlag'
 import { RepoBadge } from './RepoBadge'
+import { useProjectSchema } from '../../hooks/useProjectSchema'
 
 // Arbres d'impact (SPEC-TRACEABILITY §4.6) et levée du flag needsRevalidation (§4.8), partagés par
 // l'analyse d'un change (GH199) et l'analyse des modifications locales (§4.7). Extraits de l'ancienne
@@ -202,12 +203,18 @@ function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateS
   const { t } = useTranslation()
   const revalidation = useContext(RevalidationTreeContext)
   const flagged = revalidation.flaggedIds.has(node.elementId)
+  // Libellé du lien dans sa direction, vu du parent (« est implémentée par », « est vérifiée par »…).
+  const { data: schema } = useProjectSchema(analysisRepoPath)
+  const linkType = schema?.linkTypes?.find(l => l.name === node.linkType)
+  const relation = node.parentIsTarget === undefined ? null
+    : (node.parentIsTarget ? linkType?.labelTargetToSource : linkType?.labelSourceToTarget) || node.linkType
 
   return (
     <div>
       <div
         className="flex items-center gap-2 py-1.5 text-sm hover:bg-hover rounded transition-colors group"
         style={{ paddingLeft: `${depth * 18 + 8}px` }}
+        data-testid={`impact-node-${node.elementId}`}
       >
         {hasChildren ? (
           <button type="button" onClick={() => setExpanded((e) => !e)} className="text-ink-3 shrink-0">
@@ -225,6 +232,7 @@ function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateS
             aria-label={t('impactAnalysisPage.revalidation.select', { id: node.elementId })}
           />
         )}
+        {relation && <span className="text-xs text-ink-3 italic shrink-0" data-testid={`impact-relation-${node.elementId}`}>{relation}</span>}
         <span className="font-mono text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0">{badge}</span>
         <button
           type="button"
@@ -386,12 +394,7 @@ export function ChangedRequirementRow({
             <ImpactTreeView nodes={changed.descendantTree} repoPath={analysisRepoPath} onOpen={onOpenElement} onUpdateStatus={onUpdateDescendant} depth={1} readOnly={readOnly} />
           )}
           {changed.ascendantTree.length > 0 && (
-            <>
-              <p className="text-xs text-ink-3 uppercase tracking-wide px-2 pt-1" style={{ paddingLeft: '26px' }}>
-                {t('impactAnalysisPage.ascendantTree')}
-              </p>
-              <ImpactTreeView nodes={changed.ascendantTree} repoPath={analysisRepoPath} onOpen={onOpenElement} onUpdateStatus={onUpdateAscendant} depth={1} readOnly={readOnly} />
-            </>
+            <ImpactTreeView nodes={changed.ascendantTree} repoPath={analysisRepoPath} onOpen={onOpenElement} onUpdateStatus={onUpdateAscendant} depth={1} readOnly={readOnly} />
           )}
         </div>
       )}

@@ -39,8 +39,9 @@ describe('computeTestsToRun', () => {
     expect(r.uncovered).toEqual([])
   })
 
-  it('T2 : statuts qui ne demandent pas d\'exécution ignorés', () => {
-    expect(computeTestsToRun(change([]), [row('TEST-0009', 'impact_non_verifie'), row('TEST-0007', 'impact_teste')], snap).tests).toEqual([])
+  it('T2 : tous les identifiés proposés, sauf « pas d\'impact réel » — même amené par un élément à modifier', () => {
+    expect(computeTestsToRun(change([]), [row('TEST-0009', 'impact_non_verifie')], snap).tests.map(x => x.testId)).toEqual(['TEST-0009'])
+    expect(computeTestsToRun(change(['SW-0042']), [row('TEST-0007', 'pas_d_impact_reel'), row('TEST-0009', 'pas_d_impact_reel')], snap).tests).toEqual([])
   })
 
   it('T3 / T4 : exigence sans test → non couverte ; lien dans l\'autre sens compté', () => {

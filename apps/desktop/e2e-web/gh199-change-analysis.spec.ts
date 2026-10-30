@@ -47,12 +47,15 @@ test('GH199-1 — impacté calculé, statut saisi écrit', async () => {
   const { localPath } = s.project
   await navigate(p, s.projectUrl(`/changeset/${changeId}`, { repoPath: localPath }))
   await expect(p.getByTestId(`change-analysis-root-${reqId}`)).toBeVisible()
-  const row = p.getByTestId(`change-impacted-${testId}`)
-  await expect(row).toContainText('calculé')
+  // Retour de validation GH207 (2026-10-31) : les calculés sont dans l'analyse, plus dans la liste
+  // des impactés (réservée aux éléments déclarés) ; le nœud porte le libellé du lien.
+  await expect(p.getByTestId(`change-impacted-${testId}`)).toHaveCount(0)
+  const node = p.getByTestId(`impact-node-${testId}`).first()
+  await expect(p.getByTestId(`impact-relation-${testId}`).first()).toBeVisible()
   // Calculé au statut par défaut : non écrit.
   expect((await s.invoke<ChangeLike>('changesets:get', localPath, changeId)).impacted).toEqual([])
 
-  await row.locator('select').selectOption('impact_a_tester')
+  await node.locator('select').selectOption('impact_a_tester')
   await expect.poll(async () => (await s.invoke<ChangeLike>('changesets:get', localPath, changeId)).impacted)
     .toEqual([{ id: testId, status: 'impact_a_tester', source: 'computed' }])
   await expect(p.getByTestId('change-analysis-open')).toBeVisible()

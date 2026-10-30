@@ -85,6 +85,17 @@ export function createAppWindow(): BrowserWindow {
     }
   })
 
+  // GH228 — Précédent / Suivant système : boutons latéraux de la souris et touches multimédia
+  // (Windows), balayage du trackpad (macOS). Le renderer tient l'historique de chaque onglet.
+  win.on('app-command', (_event, command) => {
+    if (command === 'browser-backward') win.webContents.send('nav:history', 'back')
+    else if (command === 'browser-forward') win.webContents.send('nav:history', 'forward')
+  })
+  win.on('swipe', (_event, direction) => {
+    if (direction === 'left') win.webContents.send('nav:history', 'back')
+    else if (direction === 'right') win.webContents.send('nav:history', 'forward')
+  })
+
   return win
 }
 

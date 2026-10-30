@@ -4,6 +4,8 @@ import { Plus, ChevronDown, X } from 'lucide-react'
 import { useTabs } from '../../contexts/TabsContext'
 import { TabListMenu } from './TabListMenu'
 import { ConfirmCloseTabModal } from './ConfirmCloseTabModal'
+import { ConfirmLeavePageModal } from './ConfirmLeavePageModal'
+import { HistoryNavButtons } from './HistoryNavButtons'
 
 export function TabBar() {
   const { t } = useTranslation()
@@ -12,6 +14,7 @@ export function TabBar() {
 
   return (
     <div className="relative flex items-center h-8 shrink-0 bg-surface border-b border-edge">
+      <HistoryNavButtons />
       <button
         type="button"
         onClick={() => setShowMenu(v => !v)}
@@ -63,6 +66,7 @@ export function TabBar() {
 
       {showMenu && <TabListMenu onClose={() => setShowMenu(false)} />}
       <ConfirmCloseTabModal />
+      <ConfirmLeavePageModal />
     </div>
   )
 }

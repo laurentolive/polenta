@@ -110,7 +110,8 @@ test('GH105-2 — lien affiché sur la cible, navigation vers le repo de la sour
 
   await line.getByText(R.id, { exact: true }).click()
   await expect(card(R.id)).toBeVisible()
-  await s.page.getByRole('button', { name: /Retour/ }).first().click()
+  // GH228 — le « ← Retour » de la vue système est remplacé par Précédent.
+  await s.page.getByTestId('history-back').click()
   await expect(card(C.id)).toBeVisible()
 })
 

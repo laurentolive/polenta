@@ -41,7 +41,6 @@ function getStringField(fields: Record<string, unknown>, key: string): string {
 function RequirementDetailPage() {
   const { t } = useTranslation()
   const { reqId } = Route.useParams()
-  const navigate = useNavigate()
   const qc = useQueryClient()
   const { repoPath, projectId } = Route.useSearch()
 
@@ -209,13 +208,6 @@ function RequirementDetailPage() {
             className="btn-primary"
           >
             {saveMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate({ to: '/schema', search: { repoPath, projectId } })}
-            className="btn-secondary"
-          >
-            {t('layout.viewHeader.back')}
           </button>
         </div>
 

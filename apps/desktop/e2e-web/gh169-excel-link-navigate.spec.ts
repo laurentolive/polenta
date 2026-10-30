@@ -44,9 +44,9 @@ test('GH169-1 — clic sur un ID d\'une cellule de lien : navigation vers l\'obj
 
   await linkId.click()
 
-  // L'objet lié est ouvert (même navigation que la vue document : éditeur de l'élément, « Retour »).
+  // L'objet lié est ouvert (même navigation que la vue document : éditeur de l'élément ; retour
+  // par Précédent, GH228).
   const main = s.page.getByRole('main')
-  await expect(main.getByRole('button', { name: 'Retour' })).toBeVisible()
   await expect(main).toContainText(new RegExp(`ID\\s*\\(sys\\)\\s*${peerId}`))
   // Le clic sur l'ID n'ouvre pas l'éditeur de liens de la cellule.
   await expect(popover()).toHaveCount(0)

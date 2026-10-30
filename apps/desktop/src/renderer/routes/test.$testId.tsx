@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -35,7 +35,6 @@ function getStringField(fields: Record<string, unknown>, key: string): string {
 function TestCaseDetailPage() {
   const { t } = useTranslation()
   const { testId } = Route.useParams()
-  const navigate = useNavigate()
   const qc = useQueryClient()
   const { repoPath, projectId } = Route.useSearch()
 
@@ -230,11 +229,6 @@ function TestCaseDetailPage() {
             <button type="button" onClick={handleSave}
               disabled={!hasChanges || saveMutation.isPending} className="btn-primary">
               {saveMutation.isPending ? t('requirementsPage.saving') : t('requirementsPage.save')}
-            </button>
-            <button type="button"
-              onClick={() => navigate({ to: '/schema', search: { repoPath, projectId } })}
-              className="btn-secondary">
-              {t('layout.viewHeader.back')}
             </button>
           </div>
 

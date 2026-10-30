@@ -47,19 +47,17 @@ function DiffPage() {
   const isLoading = commitSha ? isLoadingCommit : isLoadingWorking
 
 
-  function handleBack() {
-    if (commitSha) {
-      navigate({ to: '/graph', search: { projectId, sha: commitSha } })
-    } else {
-      window.history.back()
-    }
+  // GH228 — diff d'un commit : retour au graphe positionné sur ce commit (page parente). Diff du
+  // répertoire de travail : plus de bouton, Précédent de l'onglet fait la même chose.
+  function backToGraph() {
+    navigate({ to: '/graph', search: { projectId, sha: commitSha } })
   }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <ViewHeader
         currentProjectId={projectId}
-        back={{ onClick: handleBack }}
+        back={commitSha ? { onClick: backToGraph } : undefined}
         title={
           <span className="flex items-center gap-2 font-mono">
             {commitSha && (

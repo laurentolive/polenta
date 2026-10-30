@@ -247,7 +247,7 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 | Élément | Rôle |
 |---------|------|
 | **Composant X / Élément Y** | Titre contextuel — nom du composant sélectionné et nom du type d'élément sélectionné |
-| **Retour (lien interne)** | GH228 : plus de bouton propre ni de pile `backHistory`. Un lien interne est une nouvelle page de l'historique de l'onglet (`showObject` : `repo`/`node`/`type`/`view`/`item` dans l'URL), et le bouton Précédent `<` de la barre d'onglets y revient, y compris vers un autre repo du workspace (GH105). En vue Édition, « Retour » (T92) revient à la page précédente de l'onglet si c'est encore la vue système, sinon au dernier mode Tableau / Document positionné sur l'élément. |
+| **Retour (lien interne)** | GH228 : plus de bouton propre ni de pile `backHistory`. Un lien interne est une nouvelle page de l'historique de l'onglet (`showObject` : `repo`/`node`/`type`/`view`/`item` dans l'URL), et le bouton Précédent `<` de la barre d'onglets y revient, y compris vers un autre repo du workspace (GH105). La vue Édition n'a plus de bouton « Retour » : `Échap` revient à la page précédente de l'onglet si c'est encore la vue système, sinon au dernier mode Tableau / Document positionné sur l'élément. |
 | **↩ ↪** | Undo / Redo |
 | **🔍** | Activer / désactiver le filtre dans le panel gauche |
 | **⚙️** | Configuration des champs visibles |

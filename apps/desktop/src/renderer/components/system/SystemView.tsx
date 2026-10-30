@@ -26,7 +26,7 @@ import { useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorksp
 import { ExcelView } from './ExcelView'
 import { RowMaxHeightButton, ROW_MAX_LINES_ALL, readExcelRowMaxLines } from './RowMaxHeightButton'
 import { WordView } from './WordView'
-import { EditView, type EditViewHandle } from './EditView'
+import { EditView } from './EditView'
 import { api } from '../../api'
 import type { FieldVisibilityPref } from '@polenta/api-client'
 import { RichTextProvider } from '../../contexts/RichTextContext'
@@ -161,10 +161,6 @@ export function SystemView() {
     invalidateCandidateObjects()
   }, [qc, repoPath, invalidateCandidateObjects])
 
-
-  // T92 — lets ViewHeader's "Retour" button (edit mode) trigger EditView's own
-  // flush-then-navigate sequence, now that EditView no longer renders its own back button.
-  const editViewRef = useRef<EditViewHandle>(null)
 
   // Hauteur max des lignes de la vue tableau (en lignes de texte) — préférence d'affichage
   // de l'utilisateur, persistée en localStorage, commune à tous les projets.
@@ -548,7 +544,8 @@ export function SystemView() {
     showObject(targetRepoPath, targetNodeId, targetTypeId, viewMode === 'word' ? 'word' : 'edit', peerId, target.category as ObjectCategory | undefined)
   }, [ws.objectsById, candidateObjects, viewMode, showObject, openTab, repoPath, currentProjectId])
 
-  // Leaving the Edit view (ViewHeader "Retour", T92). GH228 — previous page of the tab when it is
+  // Leaving the Edit view (Escape). GH228 — no "Retour" button any more (the tab's Précédent does
+  // the same); Escape goes to the previous page of the tab when it is
   // still the system view (the table / document the element was opened from, the object a link
   // was followed from — T37, GH105); otherwise the remembered Tableau / Document mode, positioned
   // on the element just edited.
@@ -1007,12 +1004,6 @@ export function SystemView() {
             </>
           ) : titleLabel
         }
-        back={
-          viewMode === 'edit'
-            // T92 — flush-then-navigate, same sequence EditView's own "Retour" used to run.
-            ? { label: t('layout.viewHeader.back'), onClick: () => editViewRef.current?.triggerBack() }
-            : undefined
-        }
         actions={
           <>
             {/* Richtext toolbar — apparaît contextuellement quand un champ richtext est actif */}
@@ -1239,7 +1230,6 @@ export function SystemView() {
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'edit' && (
           <EditView
-            ref={editViewRef}
             nodeId={editingNodeId}
             nodeName={editingTreeNode?.name}
             objectData={objectData}

@@ -11,7 +11,8 @@
 | `renderer/components/layout/ConfirmLeavePageModal.tsx` | nouveau — « Quitter cette page ? » |
 | `renderer/components/layout/TabBar.tsx` | intégration |
 | `renderer/contexts/SystemViewContext.tsx` | `view` / `item` dans l'URL, `viewMode`, `storedViewMode`, `showView`, `showObject`, `editingNodeId` dérivé, goto → `item` |
-| `renderer/components/system/SystemView.tsx` | état de vue local, `backHistory` et « ← Retour » retirés ; « Retour » d'Édition = page précédente ; titre d'onglet |
+| `renderer/components/system/SystemView.tsx` | état de vue local, `backHistory`, « ← Retour » et « Retour » d'Édition retirés ; `Échap` = page précédente ; titre d'onglet |
+| `renderer/routes/req.$reqId.tsx`, `test.$testId.tsx`, `campaign.$campaignId.tsx`, `diff.tsx` | « Retour » doublon de Précédent retiré (diff d'un commit : retour au graphe conservé) |
 | `renderer/components/sidebar/SystemPanel.tsx` | clic dans le vide de l'arbre retire `item` |
 | `renderer/routes/product.tsx`, `components.tsx` | `validateSearch` : `view`, `item` optionnels |
 | `main/index.ts` | `app-command` / `swipe` → `nav:history` |
@@ -28,9 +29,12 @@ Conforme à `specs/GH228.md`, avec les ajustements ci-dessous.
   `item` à jour dans l'URL de la page courante. Une nouvelle entrée par clic remplissait la pile
   (50 entrées) et faisait atterrir Précédent, depuis l'Édition, sur le clic qui précède le
   double-clic. Spec §3 mise à jour.
-- **« Retour » de la vue Édition (T92)** : revient à la page précédente de l'onglet quand c'est
-  encore la vue système (rétablit le retour vers l'objet d'origine après un lien, que l'ancien
-  `backHistory` assurait), sinon au dernier mode Tableau / Document positionné sur l'élément.
+- **Boutons « Retour » doublons de Précédent supprimés** (demande après validation, spec §2.2
+  bis) : vue système en Édition, fiche campagne, diff du répertoire de travail, fiches `/req/…` et
+  `/test/…`. `Échap` en Édition revient à la page précédente de l'onglet quand c'est encore la vue
+  système (rétablit le retour vers l'objet d'origine après un lien, que l'ancien `backHistory`
+  assurait), sinon au dernier mode Tableau / Document positionné sur l'élément. Les liens vers
+  une page parente (campagne, graphe, Structure) sont conservés.
 - **Titres** : la vue système pose son titre d'onglet (« ID — titre » en Édition, sinon
   « composant / type ») pour que le menu d'historique distingue les pages ; `useSetTabTitle` se
   ré-applique quand une navigation remet le titre par défaut ; synchronisation `TabsProvider` en

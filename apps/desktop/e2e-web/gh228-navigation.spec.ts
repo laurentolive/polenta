@@ -28,6 +28,11 @@ async function press(keys: string) {
   await s.page.keyboard.press(keys)
 }
 
+/** Vue Édition de l'élément `id` (champ système ID). */
+async function expectEditing(id: string) {
+  await expect(s.page.locator('main')).toContainText(new RegExp(`ID\\s*\\(sys\\)\\s*${id}`))
+}
+
 async function expectView(view: string) {
   await expect.poll(() => param('view')).toBe(view)
 }
@@ -49,7 +54,7 @@ test('E1/E2 — vue système dans l\'URL : Précédent / Suivant au clavier, lie
   await press('Alt+ArrowLeft')
   await expectView('edit')
   expect(param('item')).toBe(item)
-  await expect(s.page.locator('main').getByRole('button', { name: 'Retour' })).toBeVisible()
+  await expectEditing(item!)
   await press('Alt+ArrowLeft')
   await expectView('word')
   await press('Alt+ArrowLeft')
@@ -66,7 +71,7 @@ test('E1/E2 — vue système dans l\'URL : Précédent / Suivant au clavier, lie
   await activityBar(s.page).and(s.page.locator('[title="Version"]')).click()
   await expect.poll(() => new URL(s.page.url()).pathname).not.toBe('/product')
   await goto(url)
-  await expect(s.page.locator('main').getByRole('button', { name: 'Retour' })).toBeVisible()
+  await expectEditing(item!)
   expect(param('item')).toBe(item)
 })
 

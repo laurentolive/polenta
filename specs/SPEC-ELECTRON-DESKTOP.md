@@ -1912,7 +1912,9 @@ Toutes les vues principales (routes + `SystemView`) partagent un unique composan
 `components/layout/ViewHeader.tsx`, plutôt que de redéfinir chacune leur propre `<h1>` :
 
 - Conteneur : `shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-edge bg-surface`.
-- Slots : `back` (bouton retour optionnel), `title` (chaîne ou nœud React — un titre éditable
+- Slots : `back` (bouton retour optionnel — GH228 : réservé au retour vers une **page parente**,
+  ex. « Retour à la campagne », graphe d'un commit ; un retour à la page précédente est le
+  Précédent `<` de l'onglet, pas un bouton de vue), `title` (chaîne ou nœud React — un titre éditable
   inline comme sur Suivi passe directement son `<input>`), `subtitle` (ligne secondaire, ex. le
   nom de branche sur Version), `actions` (boutons propres à la vue : Enregistrer, Ajouter un
   widget, undo/redo, sélecteur de vue, `RichTextToolbar`…).

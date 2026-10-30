@@ -19,3 +19,21 @@
     plus d'entrée « Analyse d'impact » dans la barre d'activité.
 12. [E] t173 / gh83 / gh145 / gh183 portés sur la vue Changements.
 13. [M] nouveau change sur l'existant entre une baseline et un commit ; export de l'analyse.
+
+## Avenant §8bis (sprint 4)
+
+14. [U] `backlog` : brouillon non assigné listé ; approuvé, terminal ou dans `toModify` d'un change
+    ouvert absent ; change clos → l'élément revient ; regroupement par composant.
+15. [U] `assign` / `move` : ajout `planned` sans doublon, état conservé au déplacement, change
+    terminal refusé.
+16. [U] `approvalCheck` : vers `isApproval` non assigné → `needsAssignment` ; assigné, déjà
+    approuvé ou vers un statut non approuvé → non.
+17. [E] B1–B2 : entrée « Backlog (N) », « Assigner à… » un change ouvert → l'élément quitte le
+    backlog et apparaît dans « À modifier ».
+18. [E] B3 : « Déplacer vers… » d'un change à l'autre.
+19. [E] B5 : approuver un brouillon non assigné → dialogue ; Annuler → statut inchangé ; choisir un
+    change → approuvé et assigné.
+20. [E] B6 : élément à traiter atteint par l'analyse → badge « à traiter », « Passer en à
+    modifier ».
+21. [M] « Nouveau change » depuis le dialogue (approbation et backlog) ; plusieurs composants
+    dans un repo : un backlog par composant.

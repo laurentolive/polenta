@@ -94,3 +94,56 @@ remplis depuis les lignes au calcul).
   `range`, « Analyser l'impact ».
 - S3 : intégration panneau (revalidation, local, constellation), retrait de la vue Analyse
   d'impact, export, acks anciens, e2e (ports 8897–8899), revue, SPEC.
+
+## 5. Avenant §8bis — backlog et assignation (sprint 4)
+
+### Types (`packages/types/src/change.ts`)
+
+- `ChangeSummary` : `open` (statut non terminal) et `toModifyIds` (assignation, « aussi dans … »).
+- `BacklogItem { id, title, category, status, objectTypeRef, needsRevalidation }` ;
+  `ComponentBacklog { repoPath, component, label, items }`.
+- `ApprovalCheck { needsAssignment, component, openChanges: ChangeSummary[] }`.
+- `isToProcess(typeDef, status)` : ni `isApproval` ni `isTerminal` (statut inconnu : à traiter).
+
+### Main (`ChangesService`)
+
+- `backlog(repoPath, workspaceDir?)` : pour chaque repo du workspace, exigences et tests lus sur
+  disque, à traiter, absents de `toModify` des changes ouverts du repo ; regroupés par composant
+  (nœud de `objectTypeRef` s'il est local, sinon le seul composant local du repo). Calculé à
+  chaque appel, rien n'est écrit.
+- `assign(repoPath, changeId, elementIds)` : ajoute en `planned` (sans doublon) ; refusé si le
+  change est terminal.
+- `move(repoPath, fromId, toId, elementIds)` : retire de `fromId`, ajoute à `toId` en gardant
+  l'état (`planned` / `modified`).
+- `approvalCheck(repoPath, { id, objectTypeRef, category }, toStatus)` : `needsAssignment` si
+  `toStatus` est `isApproval`, le statut courant ne l'est pas et l'élément n'est dans aucun change
+  ouvert du repo ; renvoie les changes ouverts du repo et le composant de l'élément.
+- IPC / web : `changes:backlog`, `changes:assign`, `changes:move`, `changes:approval-check`
+  (assign / move en écriture) ; api-client.
+
+### Renderer
+
+- `AssignToChangeDialog` (`components/changes/`) : changes ouverts du repo (moins le change
+  source), « Nouveau change » (titre + type de change du schéma, composant donné), et en mode
+  approbation « Approuver sans change ». Sert à l'approbation, au backlog (« Assigner à… ») et à
+  « Déplacer vers… ».
+- `ApprovalGateContext` (provider dans `AppLayout`) : `gate(repoPath, element, toStatus)` →
+  `Promise<boolean>` ; appelle `changes:approval-check`, ouvre le dialogue si besoin. Branché sur
+  les quatre écritures de statut de l'interface : `SystemView` (tableau, document, édition),
+  `SearchEditPane`, page exigence (`req.$reqId`), page test (`test.$testId`). Refus → le statut
+  n'est pas écrit (la vue relit le fichier).
+- Backlog : hook `useBacklog(projectId)`, entrées « Backlog (N) » du panneau Changements (une par
+  composant non vide, libellé du composant s'il y en a plusieurs), route `/changes/backlog`
+  (`repoPath`, `component`) : tableau, filtre, sélection, « Assigner à… ».
+- `ToModifyList` : cases à cocher, « Déplacer vers… », mention « aussi dans NC-… ».
+- `ImpactedList` : badge « à traiter » et « Passer en à modifier » (retire de `impacted`, ajoute à
+  `toModify` en une écriture).
+- Invalidation : `changes`, `change`, `changes-backlog` après assign / move / approbation ;
+  `useLiveFileSync` invalide `changes-backlog` sur `requirements/`, `tests/`, `changes/`.
+
+### Alternatives rejetées
+
+- Backlog stocké comme un change (`changes/BACKLOG.yaml`) : double source de vérité avec les
+  statuts des éléments, écritures à chaque création d'exigence (Q15).
+- Contrôle d'approbation dans le main (`requirements:transition`) : bloquerait le MCP et
+  supposerait le moteur de transitions de #206 ; ici un dialogue côté interface suffit.

@@ -16,6 +16,8 @@
 - E5 Tableau, clic sur une ligne (sélection), bascule : Document avec contour sur cet élément.
 - E6 Édition d'un élément → bouton Document : élément encadré, `item=<id>`.
 - E7 Clic sur le bouton du mode actif : URL et historique inchangés.
+- E8 Section cliquée dans l'arbre aussitôt après une bascule (ancrage `top` posé) : `top` retiré,
+  la section en haut de la vue, sans retour à l'ancrage.
 
 ## Manuels
 

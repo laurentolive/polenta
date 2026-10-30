@@ -1435,10 +1435,9 @@ function ExcelViewInner({
 
   // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
   // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
-  // GH230 — après le rendu complet des lignes (sinon le repli viserait une des premières) ;
-  // ancrage aligné en haut, sans animation.
+  // GH230 — après le rendu complet des lignes (sinon le repli viserait une des premières).
   useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root, ready: renderAllRows })
-  useScrollToNode(containerRef, anchorNodeId, undefined, { root, ready: renderAllRows, block: 'start', behavior: 'instant' })
+  useScrollToNode(containerRef, anchorNodeId, undefined, { root, ready: renderAllRows })
   useEffect(() => {
     if (renderAllRows) return
     // Après la première peinture (rAF + tâche), pas dans la même frame.

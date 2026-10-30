@@ -28,9 +28,14 @@ dans la vue cible : nœud rendu le plus proche (aussi pour le goto d'un clic dan
   d'ancrage pendant la bascule (la vue quittée ne se recale pas) ; dossier déjà ciblé : pas de
   nouveau goto.
 
-- Retour de validation (« le scroll est trop long ») : le premier défilement d'une vue qui vient de
-  s'afficher (bascule, Précédent / Suivant, ouverture sur un élément) est instantané ; l'animation
-  ne reste que pour un goto dans une vue déjà affichée (clic dans l'arbre).
+- Retours de validation :
+  - « le scroll est trop long », puis « supprime le scroll même sur la sélection depuis le panel
+    latéral » : tout défilement (goto, ancrage, Vue Recherche) est instantané ;
+  - « l'élément sélectionné apparaît en bas » : le goto place l'élément en haut de la zone
+    (`block: 'nearest'` → haut) ; défilement calculé sur la seule zone de la vue — `scrollIntoView`
+    décalait aussi le cadre de l'application, ce qui faisait manquer le double-clic de l'arbre ;
+  - « la sélection d'une section juste après l'affichage ne marche pas » : l'ancrage `top` restait
+    dans l'URL et le Tableau s'y recalait au rendu complet de ses lignes ; un goto le retire (E8).
 
 ## Mises à jour SPEC
 

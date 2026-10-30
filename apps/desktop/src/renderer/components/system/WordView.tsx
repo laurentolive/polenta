@@ -809,8 +809,8 @@ export const WordView = memo(function WordView({
   // T164 — "goto" : défiler jusqu'à la carte / l'en-tête portant data-node-id.
   const containerRef = useRef<HTMLDivElement>(null)
   useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root })
-  // GH230 — ancrage `top` : nœud aligné en haut, sans contour ni animation.
-  useScrollToNode(containerRef, anchorNodeId, undefined, { root, block: 'start', behavior: 'instant' })
+  // GH230 — ancrage `top` : nœud aligné en haut, sans contour.
+  useScrollToNode(containerRef, anchorNodeId, undefined, { root })
 
   // Ref plutôt que dépendances : garde `toggleFolder` stable (passé aux lignes mémoïsées).
   const collapsedFoldersRef = useRef({ set: collapsedFolders, onChange: onCollapsedFoldersChange })

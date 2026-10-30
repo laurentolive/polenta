@@ -151,3 +151,23 @@ test('E6/E7 — depuis l\'Édition : élément édité ; bouton du mode actif sa
   await s.page.getByTestId('history-back').click()
   await expect.poll(() => param('view')).toBe('edit')
 })
+
+test('E8 — section choisie dans l\'arbre juste après la bascule : en haut de la vue, ancrage retiré', async () => {
+  await s.openView('Exigences')
+  // Clic dans le vide de l'arbre : plus de cible goto ni d'`item` laissés par les tests précédents.
+  await sidebar().locator('div.min-h-12').last().click()
+  await expect.poll(() => param('item')).toBeNull()
+  await tableView().click()
+  await expect.poll(() => param('view')).toBe('excel')
+  await scrollToMiddle()
+  await documentView().click()
+  await expect.poll(() => param('top')).toBeTruthy()
+  await tableView().click()
+  await expect.poll(() => param('view')).toBe('excel')
+  // Aussitôt affiché (rendu complet des lignes encore en cours) : la section l'emporte sur `top`.
+  await sidebar().getByText('Performance', { exact: true }).click()
+  await expect.poll(() => param('top')).toBeNull()
+  await expect.poll(async () => (await firstVisible()).text).toContain('Performance')
+  await s.page.waitForTimeout(300)
+  expect((await firstVisible()).text).toContain('Performance')
+})

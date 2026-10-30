@@ -688,10 +688,16 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const requestGoto = useCallback((nodeId: string) => {
     setGotoTarget(g => ({ nodeId, seq: g.seq + 1 }))
     const objectId = treeFindNode(rootRef.current, nodeId)?.objectId
-    if (!objectId || objectId === urlItem) return
+    // GH230 — un goto remplace l'ancrage `top` (sinon la vue s'y recalerait, ex. au rendu complet
+    // des lignes du Tableau juste après l'affichage) ; un dossier n'a pas d'objectId pour `item`.
+    if (!objectId) {
+      if (urlTop) navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, true, { view: urlView ?? undefined })
+      return
+    }
+    if (objectId === urlItem) return
     appliedGotoRef.current = `${rootKey}|${objectId}`
     navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, true, { view: urlView ?? undefined, item: objectId })
-  }, [urlItem, urlView, rootKey, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
+  }, [urlItem, urlView, urlTop, rootKey, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
   const clearGoto = useCallback((opts?: { dropItem?: boolean }) => {
     setGotoTarget(g => (g.nodeId === null ? g : { nodeId: null, seq: g.seq + 1 }))
     if (opts?.dropItem && urlItem && urlView !== 'edit') {

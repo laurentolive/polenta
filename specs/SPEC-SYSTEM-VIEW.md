@@ -200,9 +200,10 @@ par une sélection multiple, ni par la navigation clavier, ni en Vue Édition. L
 changement de composant/type et à l'entrée en Vue Édition. Si l'élément visé n'est pas rendu
 dans la vue (dossier replié dans la vue document) : défilement jusqu'au nœud rendu le plus proche
 — ancêtre (dossier replié), descendant (titres de dossiers masqués), sinon voisin — sans contour
-(GH230, `scrollCandidates` ; avant : no-op silencieux). Le premier défilement d'une vue qui vient de s'afficher
-(bascule de mode, Précédent / Suivant, ouverture sur un élément) est instantané ; seul un goto
-dans une vue déjà affichée est animé (GH230). Depuis T166, l'arbre et la
+(GH230, `scrollCandidates` ; avant : no-op silencieux). Depuis GH230, le goto place l'élément **en haut** de la zone
+de défilement (sous l'en-tête figé du Tableau), **sans animation**, en ne faisant défiler que la
+zone de la vue (pas de `scrollIntoView`, qui décalait aussi le cadre de l'application). Un goto
+retire l'ancrage `top` de l'URL (sinon la vue s'y recalait au rendu complet des lignes). Depuis T166, l'arbre et la
 vue document appliquent le même filtre (mode + périmètre) — un résultat visible dans l'arbre
 l'est aussi dans la vue, il n'y a plus de divergence de filtre en mode regex.
 

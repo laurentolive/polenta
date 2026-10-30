@@ -181,6 +181,95 @@ describe('U7–U10 — réouverture et passage terminal', () => {
   })
 })
 
+describe('U13–U18 — trace départ / approbation, hors interface', () => {
+  const tracker = () => new ChangeTrackingService(gitSvc, { get: async () => schema, resolveComponentRepoPath: async () => null } as unknown as SchemaService, changes)
+  const writeReq = (patch: Record<string, unknown>) => gitSvc.writeYaml(dir, 'requirements/SYS-0001.yaml', {
+    id: 'SYS-0001', projectId: '', branchId: '', objectTypeRef: 'root::exigence', title: 'R', status: 'approved', version: 3, fields: {}, jiraLinks: [], ...patch,
+  })
+
+  it('U13 / U16 : rouvrir, modifier, réapprouver, lever le flag → approbation = commit de réapprobation ; figée à la clôture', async () => {
+    const id = await approvedRequirement()
+    const base = await head()
+    await newChange('A')
+    await requirements.openDraft(dir, id, 'draft')
+    await commitAll('réouverture', T0 + 20)
+    await writeReq({ status: 'draft', version: 4, title: 'R2' })
+    await commitAll('modification', T0 + 30)
+    await writeReq({ status: 'approved', version: 4, title: 'R2' })
+    await commitAll('réapprobation', T0 + 40)
+    const approvedSha = await head()
+    await writeReq({ status: 'approved', version: 4, title: 'R2', needsRevalidation: false })
+    await commitAll('flag levé', T0 + 50)
+    changes.setTracker(tracker())
+    const [line] = await changes.trace(dir, 'NC-0001')
+    expect(line).toMatchObject({ id, state: 'modified', base: { sha: base, version: 3 }, created: false, approved: { sha: approvedSha, version: 4 }, approvalPending: false })
+
+    await changes.update(dir, 'NC-0001', { status: 'clos' })
+    expect((await toModify('NC-0001'))[0]).toMatchObject({ state: 'modified', approved: { sha: approvedSha, version: 4 } })
+    await changes.update(dir, 'NC-0001', { status: 'ouvert' })
+    expect((await toModify('NC-0001'))[0].approved).toBeUndefined()
+  })
+
+  it('U14 : deux cycles rouvrir / approuver → départ = premier état, approbation = dernière', async () => {
+    const id = await approvedRequirement()
+    const base = await head()
+    await newChange('A')
+    await requirements.openDraft(dir, id, 'draft')
+    await commitAll('r1', T0 + 20)
+    await writeReq({ status: 'approved', version: 4 })
+    await commitAll('a1', T0 + 30)
+    await writeReq({ status: 'draft', version: 5 })
+    await commitAll('r2', T0 + 40)
+    await writeReq({ status: 'approved', version: 5, title: 'R3' })
+    await commitAll('a2', T0 + 50)
+    const last = await head()
+    changes.setTracker(tracker())
+    const [line] = await changes.trace(dir, 'NC-0001')
+    expect(line.base?.sha).toBe(base)
+    expect(line.approved).toEqual({ sha: last, version: 5 })
+  })
+
+  it('U13bis : réouverture et réapprobation publiées dans un seul commit → approbation reconnue (version)', async () => {
+    const id = await approvedRequirement()
+    await newChange('A')
+    await requirements.openDraft(dir, id, 'draft')
+    await writeReq({ status: 'approved', version: 4, title: 'R2' })
+    await commitAll('rouverte et réapprouvée', T0 + 20)
+    const sha = await head()
+    changes.setTracker(tracker())
+    const [line] = await changes.trace(dir, 'NC-0001')
+    expect(line.approved).toEqual({ sha, version: 4 })
+  })
+
+  it('U15 : réapprouvée sur disque, non publiée → en attente', async () => {
+    const id = await approvedRequirement()
+    await newChange('A')
+    await requirements.openDraft(dir, id, 'draft')
+    await commitAll('réouverture', T0 + 20)
+    await writeReq({ status: 'approved', version: 4 })
+    changes.setTracker(tracker())
+    const [line] = await changes.trace(dir, 'NC-0001')
+    expect(line).toMatchObject({ state: 'modified', approved: null, approvalPending: true })
+  })
+
+  it('U17 / U18 : titre d\'une approuvée modifié par commit direct → hors interface ; seul le flag → non', async () => {
+    await approvedRequirement()
+    const approvedSha = await head()
+    const t = tracker()
+    await writeReq({ needsRevalidation: false })
+    await commitAll('flag', T0 + 20)
+    expect(await t.outsideModifications(dir)).toEqual([])
+    await writeReq({ needsRevalidation: false, title: 'Changé hors interface' })
+    expect(await t.outsideModifications(dir)).toEqual([
+      { id: 'SYS-0001', category: 'requirement', approvedSha, dirty: true, filePath: 'requirements/SYS-0001.yaml' },
+    ])
+    await commitAll('commit direct', T0 + 30)
+    expect((await t.outsideModifications(dir))[0]).toMatchObject({ approvedSha, dirty: false })
+    changes.setTracker(t)
+    expect((await changes.backlog(dir)).flatMap(b => b.items).find(i => i.id === 'SYS-0001')?.outside?.approvedSha).toBe(approvedSha)
+  })
+})
+
 describe('ChangesService — trace conservée', () => {
   it('update de toModify sans base : base de la ligne existante gardée', async () => {
     const id = await approvedRequirement()

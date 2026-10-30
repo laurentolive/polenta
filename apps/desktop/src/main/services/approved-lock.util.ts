@@ -13,15 +13,16 @@ const isApproval = (typeDef: ObjectTypeDefinition | null, status: string) =>
 
 /**
  * GH200 §2 — le contenu d'un élément approuvé ne se modifie pas : refus si le statut est
- * `isApproval` avant **et** après l'écriture et qu'un champ de contenu est fourni. Une écriture qui
- * fait aussi quitter l'approbation est une réouverture : acceptée.
+ * `isApproval` avant **et** après l'écriture et qu'un champ de contenu change de valeur (un
+ * formulaire qui renvoie tout le contenu inchangé passe). Une écriture qui fait aussi quitter
+ * l'approbation est une réouverture : acceptée.
  */
-export function assertContentEditable(
-  typeDef: ObjectTypeDefinition | null, id: string, before: string, after: string,
-  dto: Record<string, unknown>, contentKeys: readonly string[],
+export function assertContentEditable<T extends { id: string; status: string }>(
+  typeDef: ObjectTypeDefinition | null, before: T, after: T, contentKeys: readonly (keyof T & string)[],
 ): void {
-  if (!isApproval(typeDef, before) || !isApproval(typeDef, after)) return
-  if (contentKeys.some(k => dto[k] !== undefined)) throw new ApprovedLockedError(id)
+  if (!isApproval(typeDef, before.status) || !isApproval(typeDef, after.status)) return
+  const same = (k: keyof T) => JSON.stringify(before[k] ?? null) === JSON.stringify(after[k] ?? null)
+  if (!contentKeys.every(same)) throw new ApprovedLockedError(before.id)
 }
 
 /**

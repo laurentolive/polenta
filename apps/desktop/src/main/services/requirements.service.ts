@@ -129,18 +129,19 @@ export class RequirementsService {
       if (!existing) throw new Error(`Requirement ${id} not found`)
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-      // GH200 — contenu d'une exigence approuvée : réouverture d'abord.
-      assertContentEditable(await this.readTypeDef(repoPath, existing.objectTypeRef), id, existing.status, existing.status, dto, ['title', 'fields'])
       // createdAt/createdBy/updatedAt/updatedBy viennent de `...existing` (dérivés du
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
-      return this.persist(repoPath, targetRepo, existing, {
+      const next: Requirement = {
         ...existing,
         ...(dto.title && { title: dto.title }),
         fields: opts.removeNullFields
           ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
           : { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      }, { comment: dto.modificationComment })
+      }
+      // GH200 — contenu d'une exigence approuvée : réouverture d'abord.
+      assertContentEditable(await this.readTypeDef(repoPath, existing.objectTypeRef), existing, next, ['title', 'fields'])
+      return this.persist(repoPath, targetRepo, existing, next, { comment: dto.modificationComment })
     })
   }
 

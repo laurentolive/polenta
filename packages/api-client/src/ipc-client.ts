@@ -173,6 +173,7 @@ export function createIpcClient(
       rebase: (p, onto) => invoke('sync:rebase', p, onto),
       diffBetween: (p, sha1, sha2) => invoke('sync:diff-between', p, sha1, sha2),
       diffFileBetween: (p, sha1, sha2, filepath) => invoke('sync:diff-file-between', p, sha1, sha2, filepath),
+      diffElement: (p, filepath, baseSha, newSha) => invoke('sync:diff-element', p, filepath, baseSha, newSha),
       resolveRefs: (p) => invoke('sync:resolve-refs', p),
     },
     diffEdit: {
@@ -305,6 +306,7 @@ export function createIpcClient(
       move: (p, fromId, toId, elementIds) => invoke('changesets:move', p, fromId, toId, elementIds),
       approvalCheck: (p, element, toStatus) => invoke('changesets:approval-check', p, element, toStatus),
       modificationCheck: (p, element, kind, workspaceDir) => invoke('changesets:modification-check', p, element, kind, workspaceDir ?? null),
+      trace: (p, id) => invoke('changesets:trace', p, id),
     },
     // GH197 — historique des exécutions
     executions: {

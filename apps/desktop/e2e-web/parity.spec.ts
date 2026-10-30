@@ -88,7 +88,9 @@ test('P-4 — conflit à la publication, résolu dans le navigateur (GH37)', asy
   other.write(rel, other.read(rel).replace(/^title: .*$/m, 'title: Capacité de charge (autre poste)'))
   other.commitAndPush('autre poste : titre PRD-0001')
 
-  // Même champ, autre valeur, dans le navigateur.
+  // Même champ, autre valeur, dans le navigateur (GH200 : rouverte d'abord si approuvée).
+  const prd = await s.invoke<{ status: string }>('requirements:get', s.project.localPath, 'PRD-0001')
+  if (prd.status === 'approved') await s.invoke('requirements:transition', s.project.localPath, 'PRD-0001', { toStatus: 'draft' })
   await s.invoke('requirements:update', s.project.localPath, 'PRD-0001', { title: 'Capacité de charge (web)' }, s.project.workspaceDir)
   await publish(s.page, 'web : titre PRD-0001')
 

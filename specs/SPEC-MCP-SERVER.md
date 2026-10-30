@@ -496,7 +496,13 @@ non terminal référence le paramètre (`deleted: false` + `usages`).
   stockage, type, titre, statut, composant, nombres d'éléments à modifier / impactés) ; filtres
   `status`, `objectTypeRef`.
 - `get_changeset` — un changeset complet (`repoPath` de stockage, défaut repo ouvert) et son analyse
-  d'impact (`analysis`, GH199 : calculée, ou figée si le changeset est terminal).
+  d'impact (`analysis`, GH199 : calculée, ou figée si le changeset est terminal) ; `trace` (GH200) :
+  départ et commit d'approbation de chaque élément à modifier.
+- GH200 — `bulk_import_requirements` / `bulk_import_tests` : `changesetId` facultatif par entrée ;
+  réponse `unassigned` (éléments créés sans changeset alors que la règle est active).
+  `update_requirements` / `update_tests` : `changesetId` ; une entrée qui fait quitter l'approbation
+  écrit d'abord le statut (réouverture) puis le contenu ; le contenu d'un élément approuvé est refusé ;
+  `unassigned` pour les réouvertures non assignées.
 - `create_changeset` — demande de changement (`mode: request`) : type de catégorie `changeset`,
   `component` obligatoire si le repo porte plusieurs composants locaux, `toModify` (`planned`) et
   `impacted` (`impact_non_verifie`, `declared`). Mise à jour des listes : lot L3 (#199).

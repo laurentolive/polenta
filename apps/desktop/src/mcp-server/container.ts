@@ -140,6 +140,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const changeTracking = new ChangeTrackingService(git, schema, changes)
   requirements.setModificationTracker(changeTracking)
   tests.setModificationTracker(changeTracking)
+  changes.setTracker(changeTracking)
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,

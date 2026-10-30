@@ -3,7 +3,7 @@ import type {
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   ApprovalCheck, Change, ChangeAnalysis, ChangeSummary, ComponentBacklog, CreateChangeDto, UpdateChangeDto,
-  ModificationCheck, ModificationKind,
+  ModificationCheck, ModificationKind, ChangeToModifyTrace,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -549,7 +549,9 @@ export interface ApiClient {
     /** GH199 §8bis — l'approbation de l'élément exige-t-elle de l'assigner à un change ? */
     approvalCheck(repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string): Promise<ApprovalCheck>
     /** GH200 — création / réouverture d'un élément : changesets éligibles, assignation existante. */
-    modificationCheck(repoPath: string, element: { id?: string; objectTypeRef: string }, kind: ModificationKind, workspaceDir?: string): Promise<ModificationCheck>
+    modificationCheck(repoPath: string, element: { id?: string; objectTypeRef: string; category?: 'requirement' | 'test'; toStatus?: string }, kind: ModificationKind, workspaceDir?: string): Promise<ModificationCheck>
+    /** GH200 — trace départ / approbation des éléments à modifier. */
+    trace(repoPath: string, id: string): Promise<ChangeToModifyTrace[]>
   }
   /** GH197 — historique des exécutions d'un test ou d'une exigence. */
   executions: {
@@ -641,6 +643,8 @@ export interface ApiClient {
     rebase(repoPath: string, onto: string): Promise<void>
     diffBetween(repoPath: string, sha1: string, sha2: string): Promise<SyncFileStatus[]>
     diffFileBetween(repoPath: string, sha1: string, sha2: string, filepath: string): Promise<FileDiffContents>
+    /** GH200 — élément entre sa version de départ (`null` : création) et un commit (`null` : disque). */
+    diffElement(repoPath: string, filepath: string, baseSha: string | null, newSha: string | null): Promise<FileDiffContents>
     resolveRefs(repoPath: string): Promise<GitRef[]>
   }
   /** Opérations git bas niveau ne relevant pas du domaine `sync` (T43). */

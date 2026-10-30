@@ -1270,6 +1270,14 @@ export class SyncService {
     }
   }
 
+  /**
+   * GH200 — diff d'un élément entre sa version de départ et un état ultérieur : `baseSha` null =
+   * création (côté gauche vide), `newSha` null = fichier sur disque.
+   */
+  async diffElement(repoPath: string, filepath: string, baseSha: string | null, newSha: string | null): Promise<FileDiffContents> {
+    return fileDiffContents(repoPath, filepath, baseSha, newSha, baseSha === null)
+  }
+
   async diffFileBetween(
     repoPath: string,
     sha1: string,

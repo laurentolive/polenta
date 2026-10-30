@@ -77,7 +77,16 @@ export interface GraphChangeset extends GraphObjectBase {
   /** Composant concerné (nœud du schéma). */
   component: string
   mode: 'request' | 'range'
-  toModify: { id: string; state: 'planned' | 'modified' }[]
+  /**
+   * GH200 — `base` : version de départ (absente : création) ; `approved` : commit d'approbation,
+   * figé au statut terminal (null tant que le changeset est ouvert : lire le statut de l'élément).
+   */
+  toModify: {
+    id: string
+    state: 'planned' | 'modified'
+    base: { sha: string | null; version: number } | null
+    approved: { sha: string | null; version: number } | null
+  }[]
   /** Statut d'impact : les 8 valeurs de l'analyse d'impact entre baselines. */
   impacted: { id: string; status: string; comment: string | null; source: 'declared' | 'computed' }[]
   origin: { runs: string[]; decisions: { conformityId: string; objectId: string }[] }

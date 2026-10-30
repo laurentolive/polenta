@@ -483,8 +483,12 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('changesets:move', (_e, repoPath: string, fromId: string, toId: string, elementIds: string[]) => c.changes.move(repoPath, fromId, toId, elementIds))
   r.handle('changesets:approval-check', (_e, repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string) =>
     c.changes.approvalCheck(repoPath, element, toStatus))
+  // GH200 — trace départ / approbation des éléments à modifier ; diff d'un élément entre deux états.
+  r.handle('changesets:trace', (_e, repoPath: string, id: string) => c.changes.trace(repoPath, id))
+  r.handle('sync:diff-element', (_e, repoPath: string, filepath: string, baseSha: string | null, newSha: string | null) =>
+    c.sync.diffElement(repoPath, filepath, baseSha, newSha))
   // GH200 — création / réouverture d'un élément : changeset à demander ?
-  r.handle('changesets:modification-check', (_e, repoPath: string, element: { id?: string; objectTypeRef: string }, kind: ModificationKind, workspaceDir?: string) =>
+  r.handle('changesets:modification-check', (_e, repoPath: string, element: { id?: string; objectTypeRef: string; category?: 'requirement' | 'test'; toStatus?: string }, kind: ModificationKind, workspaceDir?: string) =>
     c.changeTracking.check(repoPath, element, kind, workspaceDir ?? undefined))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>

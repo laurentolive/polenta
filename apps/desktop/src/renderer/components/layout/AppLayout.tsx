@@ -305,13 +305,13 @@ export function AppLayout() {
     <VersioningProvider currentProjectId={currentProjectId}>
       <SelectedRepoProvider key={currentProjectId}>
         <CompareRefsProvider>
+          <ApprovalGateProvider>
             <SystemViewProvider currentProjectId={currentProjectId}>
               <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
-                <ApprovalGateProvider>
-                  {inner}
-                </ApprovalGateProvider>
+                {inner}
               </SearchProvider>
             </SystemViewProvider>
+          </ApprovalGateProvider>
         </CompareRefsProvider>
       </SelectedRepoProvider>
     </VersioningProvider>

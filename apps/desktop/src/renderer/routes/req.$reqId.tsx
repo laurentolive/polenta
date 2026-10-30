@@ -13,7 +13,7 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { Requirement } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
-import { useApprovalGate } from '../contexts/ApprovalGateContext'
+import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/req/$reqId')({
@@ -99,12 +99,14 @@ function RequirementDetailPage() {
   // Ctrl/Cmd+Entrée depuis un champ richtext → « Enregistrer » (no-op sans modification).
   const submitEdit = () => { if (hasChanges && !saveMutation.isPending) saveMutation.mutate() }
 
-  const approvalGate = useApprovalGate()
+  const gates = useModificationGate()
   const transitionMutation = useMutation({
     // GH199 §8bis — approbation d'un élément non assigné : proposer un change (annuler = rien n'est écrit).
     mutationFn: async (toStatus: string) => {
-      if (req && !(await approvalGate(repoPath, { id: reqId, objectTypeRef: req.objectTypeRef, category: 'requirement' }, toStatus))) return 'cancelled' as const
-      return api.requirements.transition(repoPath, reqId, { toStatus })
+      // GH200 — réouverture : changeset de la modification.
+      const gate = req ? await gates.status(repoPath, { id: reqId, objectTypeRef: req.objectTypeRef, category: 'requirement' }, toStatus) : { ok: true }
+      if (!gate.ok) return 'cancelled' as const
+      return api.requirements.transition(repoPath, reqId, { toStatus, changesetId: gate.changesetId })
     },
     onSuccess: result => {
       if (result === 'cancelled') return
@@ -139,6 +141,8 @@ function RequirementDetailPage() {
     : null
   const obsoleteStatus = statuses.find(s => s.name === 'obsolete')
   const canMarkObsolete = req.status !== 'obsolete' && obsoleteStatus !== undefined && (!nextStatus || nextStatus.name !== 'obsolete')
+  // GH200 — exigence approuvée : contenu en lecture seule, les transitions restent (réouverture).
+  const locked = !!statuses.find(s => s.name === req.status)?.isApproval
 
   return (
     <ParamRefProvider repoPath={repoPath} workspaceDir={projectId ? decodeProjectId(projectId) : ''} projectId={projectId}>
@@ -159,6 +163,11 @@ function RequirementDetailPage() {
 
       <div className="flex-1 overflow-y-auto">
       <div className="max-w-2xl p-6 space-y-4">
+        {locked && (
+          <p className="text-xs text-ink-3 bg-surface-2 border border-edge rounded px-2 py-1" data-testid="approved-lock-banner">
+            {t('system.editView.approvedLocked')}
+          </p>
+        )}
         <div>
           <label className="block text-sm font-medium text-ink mb-1">
             {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
@@ -167,6 +176,7 @@ function RequirementDetailPage() {
             type="text"
             value={title}
             onChange={e => setTitle(e.target.value)}
+            readOnly={locked}
             className="input-field w-full"
           />
         </div>
@@ -178,6 +188,7 @@ function RequirementDetailPage() {
             value={fields[f.name] ?? String(f.default ?? '')}
             requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: req.status, fields: fields }))}
             onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
+            disabled={locked}
             repoPath={repoPath}
             interfaceRoles={schema?.roles?.map(r => r.name)}
             onSubmit={submitEdit}
@@ -192,6 +203,7 @@ function RequirementDetailPage() {
                 type="text"
                 value={fields[key] ?? String(val ?? '')}
                 onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))}
+                readOnly={locked}
                 className="input-field w-full"
               />
             </div>

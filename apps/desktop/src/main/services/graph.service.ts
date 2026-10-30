@@ -428,7 +428,7 @@ function toGraphChangeset(c: Change, repo: string, types: TypeResolver, now: Dat
     ...objectBase(c as unknown as Requirement, repo, types, now),
     component: c.component ?? '',
     mode: c.mode ?? 'request',
-    toModify: (c.toModify ?? []).map((t) => ({ id: t.id, state: t.state })),
+    toModify: (c.toModify ?? []).map((t) => ({ id: t.id, state: t.state, base: t.base ?? null, approved: t.approved ?? null })),
     impacted: (c.impacted ?? []).map((i) => ({ id: i.id, status: i.status, comment: i.comment ?? null, source: i.source })),
     origin: { runs: c.origin?.runs ?? [], decisions: c.origin?.decisions ?? [] },
     integratedIn: c.integratedIn ?? null,

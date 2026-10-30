@@ -107,14 +107,12 @@ export class TestsService {
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
-      // GH200 — contenu d'un test approuvé : réouverture d'abord (dans la même écriture, acceptée).
-      assertContentEditable(typeDef, id, existing.status, dto.status ?? existing.status, dto, TEST_CONTENT_KEYS)
       if (dto.changesetId) await this.tracker?.assertChangeset(targetRepo, dto.changesetId)
       // GH164 — un test approuvé qui quitte ce statut voit sa version incrémentée, comme une
       // exigence (`RequirementsService.transition`, T150) : même règle quel que soit le chemin.
       const wasApproved = !!typeDef?.statuses?.find(s => s.name === existing.status)?.isApproval
       const statusChanged = !!dto.status && dto.status !== existing.status
-      const updated = await this.persist(repoPath, targetRepo, existing, {
+      const next: TestCase = {
         ...existing,
         ...(dto.title && { title: dto.title }),
         ...(dto.objectTypeRef && { objectTypeRef: dto.objectTypeRef }),
@@ -127,7 +125,10 @@ export class TestsService {
         fields: opts.removeNullFields
           ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
           : { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      }, { comment: dto.modificationComment })
+      }
+      // GH200 — contenu d'un test approuvé : réouverture d'abord (dans la même écriture, acceptée).
+      assertContentEditable(typeDef, existing, next, TEST_CONTENT_KEYS)
+      const updated = await this.persist(repoPath, targetRepo, existing, next, { comment: dto.modificationComment })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(typeDef, existing.status, dto.status)
       const kind = dto.status ? statusModificationKind(typeDef, existing.status, dto.status) : null

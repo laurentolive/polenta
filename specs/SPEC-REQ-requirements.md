@@ -728,6 +728,32 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   document, recherche, pages exigence / test), passer un élément vers un statut `isApproval` alors
   qu'aucun changeset ouvert ne le liste (`changesets:approval-check`) ouvre « Assigner à un changeset » :
   changeset ouvert, nouveau changeset, ou « Approuver sans changeset » ; Annuler n'écrit pas le statut. MCP
-  et écritures hors interface non contrôlés ; condition `assignedToChange` avec #206.
+  et écritures hors interface non contrôlés ; condition `assignedToChange` avec #206. Depuis GH200, ce
+  dialogue ne sert plus que de filet (éléments jamais assignés).
+- **Rattachement par élément** (GH200, `specs/GH200.md`) : toute modification d'une exigence ou d'un
+  test passe par un changeset. Préférence `changeTracking: on | off` du schéma de chaque repo
+  (absente : `on` si le repo déclare un type changeset).
+  - **Verrou de l'approuvé** : le contenu (titre, champs, étapes, pré/postconditions, matériel) d'un
+    élément au statut `isApproval` ne se modifie pas — refus dans les services (`ApprovedLockedError`,
+    MCP compris) si le contenu change de valeur alors que le statut reste approuvé ; lecture seule dans
+    les vues Excel, Édition, Word et les pages de détail (bandeau). Le statut reste éditable : en sortir
+    est la réouverture (une écriture qui rouvre et modifie à la fois est acceptée). Indépendant de
+    `changeTracking`.
+  - **Assignation** à la création, à la réouverture (quitte `isApproval`) et au passage terminal depuis
+    l'approuvé : ajout à `toModify` d'un changeset ouvert du repo — celui demandé (`changesetId` des
+    DTO), sinon le seul ouvert (notice « Ajouté à … »), sinon dialogue « Dans quel changeset ? » (choix,
+    création ; Annuler n'écrit rien). Un élément déjà dans un changeset non clos y reste. Créations en
+    lot (même repo, < 3 s) : un seul choix. Sans choix possible (MCP sans `changesetId`, plusieurs
+    ouverts) : non assigné, dans le backlog. `ChangeTrackingService`, porte `useModificationGate`.
+  - **Trace** : `toModify[].base` (`{ sha, version }`, état approuvé avant réouverture, enregistré à
+    l'assignation ; absent = création) et `toModify[].approved` (commit où l'élément est entré pour la
+    dernière fois dans un statut `isApproval` après `base`, calculé — `changesets:trace` — et **figé**
+    au statut terminal du changeset, retiré à sa réouverture) ; `state: modified` dès qu'un commit
+    postérieur à `base` ou le disque modifie l'élément. Page d'un changeset : colonnes Départ /
+    Approbation et « Voir les modifications » (`/diff?element=1&baseSha&toSha`, `sync:diff-element`).
+  - **Hors interface** : un élément approuvé dont le contenu diffère de son état d'approbation (commit
+    direct, éditeur de texte) apparaît dans le backlog « modifié hors interface », avec le diff et
+    « Rouvrir et assigner… » ; rien n'est écrit. Limite : un renommage de champ / valeur du schéma
+    (GH77, GH82) réécrit les éléments approuvés et les fait signaler jusqu'à leur réouverture.
 - Graphe de données : collection `changesets` (SPEC-DASHBOARDS §2) ; MCP : `list_changesets`,
-  `get_changeset` (avec l'analyse), `create_changeset` (SPEC-MCP-SERVER §4.7).
+  `get_changeset` (avec l'analyse et la trace GH200), `create_changeset` (SPEC-MCP-SERVER §4.7).

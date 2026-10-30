@@ -12,11 +12,16 @@ export const Route = createFileRoute('/diff')({
     repoPath: (s['repoPath'] as string) || undefined,
     filepath: (s['filepath'] as string) ?? '',
     commitSha: (s['commitSha'] as string) || undefined,
+    /** GH200 — diff d'un élément de changeset : `baseSha` absent = création, `toSha` absent = disque.
+     *  Clés facultatives : les autres liens vers `/diff` ne les portent pas. */
+    ...(s['element'] ? { element: '1' } : {}),
+    ...(s['baseSha'] ? { baseSha: s['baseSha'] as string } : {}),
+    ...(s['toSha'] ? { toSha: s['toSha'] as string } : {}),
   }),
 })
 
 function DiffPage() {
-  const { projectId, repoPath: searchRepoPath, filepath, commitSha } = Route.useSearch()
+  const { projectId, repoPath: searchRepoPath, filepath, commitSha, element, baseSha, toSha } = Route.useSearch()
   const navigate = useNavigate()
 
   // `repoPath` identifies which repo the file lives in (root or a submodule component) — passed
@@ -29,22 +34,29 @@ function DiffPage() {
   })
   const repoPath = searchRepoPath ?? project?.localPath ?? ''
 
+  // GH200 — élément d'un changeset : version de départ → approbation (ou disque).
+  const { data: elementDiffData, isLoading: isLoadingElement } = useQuery({
+    queryKey: ['sync:diff-element', repoPath, filepath, baseSha, toSha],
+    queryFn: () => api.sync.diffElement(repoPath, filepath, baseSha ?? null, toSha ?? null),
+    enabled: !!repoPath && !!element && !!filepath,
+  })
+
   // Historical commit diff
   const { data: commitDiffData, isLoading: isLoadingCommit } = useQuery({
     queryKey: ['sync:commit-diff', repoPath, commitSha, filepath],
     queryFn: () => api.sync.commitDiff(repoPath, commitSha!, filepath),
-    enabled: !!repoPath && !!commitSha && !!filepath,
+    enabled: !!repoPath && !!commitSha && !element && !!filepath,
   })
 
   // Working tree diff (current, no commit)
   const { data: workingDiffData, isLoading: isLoadingWorking } = useQuery({
     queryKey: ['sync:diff', repoPath, filepath],
     queryFn: () => api.sync.diff(repoPath, filepath),
-    enabled: !!repoPath && !commitSha && !!filepath,
+    enabled: !!repoPath && !commitSha && !element && !!filepath,
   })
 
-  const diffData = commitSha ? commitDiffData : workingDiffData
-  const isLoading = commitSha ? isLoadingCommit : isLoadingWorking
+  const diffData = element ? elementDiffData : commitSha ? commitDiffData : workingDiffData
+  const isLoading = element ? isLoadingElement : commitSha ? isLoadingCommit : isLoadingWorking
 
 
   // GH228 — diff d'un commit : retour au graphe positionné sur ce commit (page parente). Diff du

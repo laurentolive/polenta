@@ -1,5 +1,6 @@
 import type {
   ApprovalCheck, BacklogItem, Change, ChangeAnalysis, ChangeElementRef, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify,
+  ChangeToModifyTrace,
   ComponentBacklog, CreateChangeDto, ObjectTypeDefinition, ProjectSchema, TestCampaign, UpdateChangeDto,
 } from '@polenta/types'
 import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isToProcess, isUnknownStatus, pruneImpacted, uniqueById } from '@polenta/types'
@@ -10,6 +11,7 @@ import { computeChangeAnalysis } from './change-analysis.util'
 import type { HistoryService } from './history.service'
 import type { SchemaService } from './schema.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
+import type { ChangeTrackingService } from './change-tracking.service'
 import { applyFieldsWrite } from './field-write.util'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
@@ -136,10 +138,34 @@ export class ChangesService {
     }
     collect(reqs, 'requirement')
     collect(tests, 'test')
+    // GH200 §5 — approuvés modifiés hors interface : dans le backlog de leur composant (filet).
+    for (const o of await this.tracker?.outsideModifications(repo).catch(() => []) ?? []) {
+      const el = (o.category === 'requirement' ? reqs : tests).find(e => e.id === o.id)
+      const component = componentOfRef(local, el?.objectTypeRef)
+      if (!el || !component) continue
+      groups.get(component)!.push({
+        id: el.id, title: el.title ?? '', category: o.category, status: el.status, objectTypeRef: el.objectTypeRef,
+        needsRevalidation: el.needsRevalidation === true,
+        outside: { approvedSha: o.approvedSha, dirty: o.dirty, filePath: o.filePath },
+      })
+    }
     return local.map(n => ({
       repoPath: repo, component: n.name, label: n.label || n.name,
       items: groups.get(n.name)!.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
     }))
+  }
+
+  /** GH200 — trace par élément (§4) et modifications hors interface (§5) ; posé après construction. */
+  private tracker?: Pick<ChangeTrackingService, 'trace' | 'outsideModifications'>
+
+  setTracker(tracker: Pick<ChangeTrackingService, 'trace' | 'outsideModifications'>): void {
+    this.tracker = tracker
+  }
+
+  /** GH200 §4 — trace des éléments à modifier d'un changeset. */
+  async trace(repoPath: string, id: string): Promise<ChangeToModifyTrace[]> {
+    const change = await this.get(repoPath, id)
+    return this.tracker ? this.tracker.trace(repoPath, change) : []
   }
 
   /** GH200 — changesets d'un seul repo (repo de stockage d'un élément). */
@@ -308,6 +334,18 @@ export class ChangesService {
         ? (existing.analysis?.frozen && terminal(existing.status) ? next
           : this.impact ? { ...next, analysis: { ...(await this.computeAnalysis(repoPath, next)), frozen: true } } : next)
         : withoutAnalysis
+      // GH200 §4 — approbation et état de chaque élément figés à l'entrée dans un statut terminal,
+      // retirés à la sortie (calculés de nouveau).
+      if (terminal(next.status) && !terminal(existing.status) && this.tracker) {
+        // Trace calculée sur le changeset encore ouvert (au statut terminal, elle ne lit que le fichier).
+        const traces = new Map((await this.tracker.trace(repoPath, { ...written, status: existing.status })).map(tr => [tr.id, tr]))
+        written.toModify = written.toModify.map(t => {
+          const tr = traces.get(t.id)
+          return { ...t, state: tr?.state ?? t.state, ...(tr?.approved && { approved: tr.approved }) }
+        })
+      } else if (!terminal(next.status)) {
+        written.toModify = written.toModify.map(({ approved: _approved, ...t }) => t)
+      }
       return this.persist(repoPath, existing, written)
     })
   }

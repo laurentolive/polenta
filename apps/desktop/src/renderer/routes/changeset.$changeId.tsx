@@ -53,6 +53,7 @@ function ChangePage() {
       qc.setQueryData(['changeset', repoPath, changeId], (prev: typeof change) => ({ ...prev, ...saved }))
       qc.invalidateQueries({ queryKey: ['changesets'] })
       qc.invalidateQueries({ queryKey: ['change-analysis', repoPath, changeId] })
+      qc.invalidateQueries({ queryKey: ['change-trace', repoPath, changeId] })
       qc.invalidateQueries({ queryKey: ['changes-backlog'] })
       setEditingFields(null)
     },
@@ -68,6 +69,12 @@ function ChangePage() {
     if (c.id === changeId || c.repoPath !== repoPath || !c.open) continue
     for (const id of c.toModifyIds) alsoIn.set(id, [...(alsoIn.get(id) ?? []), c.id])
   }
+  // GH200 — trace départ / approbation des éléments à modifier.
+  const { data: traces = [] } = useQuery({
+    queryKey: ['change-trace', repoPath, changeId, change?.toModify.length, change?.status],
+    queryFn: () => api.changesets.trace(repoPath, changeId),
+    enabled: !!repoPath && !!change,
+  })
   // GH199 — analyse d'impact (live ; instantané figé au statut terminal).
   const analysisQuery = useQuery({
     queryKey: ['change-analysis', repoPath, changeId],
@@ -221,6 +228,7 @@ function ChangePage() {
 
             <ToModifyList
               items={change.toModify}
+              traces={new Map(traces.map(tr => [tr.id, tr]))}
               onChange={toModify => update.mutate({ toModify })}
               changeId={change.id}
               component={change.component}

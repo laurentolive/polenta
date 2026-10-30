@@ -213,6 +213,9 @@ liste l'élément (menu), ou crée un change avec l'élément dans « à modifie
 - **Complétude** : `pas_d_impact_reel`, `impact_teste`, `modification_verifiee` = clos ; « N ouverts
   / M » ou « Analyse complète ». Informatif.
 - **Campagnes en cours** (non closes) contenant un test racine ou atteint : listées.
+- **Élément à traiter** (ni `isApproval` ni `isTerminal`, GH199 §8bis) atteint par l'analyse : pas
+  exclu (sa vérification reste tracée), badge « à traiter » et action « Passer en à modifier »
+  (ligne retirée de `impacted`, élément ajouté à `toModify`).
 
 ### 4.4 Live, figée
 

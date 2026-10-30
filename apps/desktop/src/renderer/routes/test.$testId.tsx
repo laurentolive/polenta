@@ -18,6 +18,7 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { TestCase } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
+import { useApprovalGate } from '../contexts/ApprovalGateContext'
 import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/test/$testId')({
@@ -101,17 +102,27 @@ function TestCaseDetailPage() {
   useRegisterTabDirty(hasChanges)
   useSetTabTitle(tc?.title)
 
+  const approvalGate = useApprovalGate()
   const saveMutation = useMutation({
-    mutationFn: () => api.tests.update(repoPath, testId, {
-      title,
-      objectTypeRef: type,
-      status,
-      preconditions: preconditions.trim() || undefined,
-      steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
-      postconditions: postconditions.trim() || undefined,
-      fields,
-    }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      // GH199 §8bis — approbation d'un élément non assigné : proposer un change ; annuler = rien n'est écrit.
+      // Les autres modifications de la page sont conservées, seul le statut revient.
+      if (tc && status !== (tc.status ?? '') && !(await approvalGate(repoPath, { id: testId, objectTypeRef: type || tc.objectTypeRef, category: 'test' }, status))) {
+        setStatus(tc.status ?? '')
+        return 'cancelled' as const
+      }
+      return api.tests.update(repoPath, testId, {
+        title,
+        objectTypeRef: type,
+        status,
+        preconditions: preconditions.trim() || undefined,
+        steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
+        postconditions: postconditions.trim() || undefined,
+        fields,
+      })
+    },
+    onSuccess: result => {
+      if (result === 'cancelled') return
       qc.invalidateQueries({ queryKey: ['tests', repoPath] })
       qc.invalidateQueries({ queryKey: ['test', repoPath, testId] })
       setInitialized(false)

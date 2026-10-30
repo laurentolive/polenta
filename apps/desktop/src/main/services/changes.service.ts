@@ -1,8 +1,8 @@
 import type {
-  Change, ChangeAnalysis, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify, CreateChangeDto,
-  ObjectTypeDefinition, ProjectSchema, TestCampaign, UpdateChangeDto,
+  ApprovalCheck, BacklogItem, Change, ChangeAnalysis, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify,
+  ComponentBacklog, CreateChangeDto, ObjectTypeDefinition, ProjectSchema, TestCampaign, UpdateChangeDto,
 } from '@polenta/types'
-import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isUnknownStatus, pruneImpacted, uniqueById } from '@polenta/types'
+import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isToProcess, isUnknownStatus, pruneImpacted, uniqueById } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { TraceabilityService } from './traceability.service'
@@ -92,15 +92,138 @@ export class ChangesService {
   /** Changes de tous les repos du workspace (panneau Changements), ID décroissant par repo. */
   async list(repoPath: string, workspaceDir?: string): Promise<ChangeSummary[]> {
     const repos = await resolveWorkspaceRepoPaths(this.workspaceTree, repoPath, workspaceDir)
-    const perRepo = await Promise.all(repos.map(async repo => (await this.listRepo(repo))
+    return (await Promise.all(repos.map(repo => this.summaries(repo)))).flat()
+  }
+
+  private async summaries(repo: string): Promise<ChangeSummary[]> {
+    const [changes, schema] = await Promise.all([this.listRepo(repo), this.schema.get(repo).catch(() => null)])
+    return changes
       .sort((a, b) => b.id.localeCompare(a.id, undefined, { numeric: true }))
       .map((c): ChangeSummary => ({
         id: c.id, repoPath: repo, objectTypeRef: c.objectTypeRef, title: c.title, status: c.status,
         component: c.component, toModifyCount: c.toModify.length, impactedCount: c.impacted.length,
         createdBy: c.history?.status?.[0]?.by ?? null,
         elementIds: [...new Set([...c.toModify.map(t => t.id), ...c.impacted.map(i => i.id)])],
-      }))))
-    return perRepo.flat()
+        open: !isTerminalStatus(schema, c.objectTypeRef, 'change', c.status),
+        toModifyIds: c.toModify.map(t => t.id),
+      }))
+  }
+
+  /**
+   * GH199 §8bis — backlog de chaque composant local du workspace : exigences et tests à traiter
+   * (ni approuvés ni terminaux) absents de `toModify` des changes ouverts de leur repo. Calculé.
+   */
+  async backlog(repoPath: string, workspaceDir?: string): Promise<ComponentBacklog[]> {
+    const repos = await resolveWorkspaceRepoPaths(this.workspaceTree, repoPath, workspaceDir)
+    return (await Promise.all(repos.map(repo => this.repoBacklog(repo)))).flat()
+  }
+
+  private async repoBacklog(repo: string): Promise<ComponentBacklog[]> {
+    const [schema, summaries, reqs, tests] = await Promise.all([
+      this.schema.get(repo).catch(() => null),
+      this.summaries(repo),
+      this.readElements(repo, 'requirements'),
+      this.readElements(repo, 'tests'),
+    ])
+    const local = localNodes(schema)
+    if (!schema || local.length === 0) return []
+    const assigned = new Set(summaries.filter(s => s.open).flatMap(s => s.toModifyIds))
+    const groups = new Map<string, BacklogItem[]>(local.map(n => [n.name, []]))
+    const collect = (elements: ElementRecord[], category: BacklogItem['category']) => {
+      for (const el of elements) {
+        if (assigned.has(el.id)) continue
+        const typeDef = findObjectTypeDef(schema, el.objectTypeRef, category)
+        if (!isToProcess(typeDef && typeDef !== 'unresolvable' ? typeDef.statuses : undefined, el.status)) continue
+        const component = componentOfRef(local, el.objectTypeRef)
+        if (!component) continue
+        groups.get(component)!.push({
+          id: el.id, title: el.title ?? '', category, status: el.status, objectTypeRef: el.objectTypeRef,
+          needsRevalidation: el.needsRevalidation === true,
+        })
+      }
+    }
+    collect(reqs, 'requirement')
+    collect(tests, 'test')
+    return local.map(n => ({
+      repoPath: repo, component: n.name, label: n.label || n.name,
+      items: groups.get(n.name)!.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
+    }))
+  }
+
+  /** GH199 §8bis — assigne des éléments à un change ouvert (`planned`, sans doublon). */
+  async assign(repoPath: string, changeId: string, elementIds: string[]): Promise<Change> {
+    return this.editToModify(repoPath, changeId, items => [...items, ...elementIds.map(id => ({ id, state: 'planned' as const }))])
+  }
+
+  /**
+   * GH199 §8bis — déplace des éléments d'un change à un autre. État conservé ; déjà présent dans la
+   * cible : « modifié » l'emporte. Les deux changes doivent être ouverts (contrôlé avant d'écrire).
+   */
+  async move(repoPath: string, fromId: string, toId: string, elementIds: string[]): Promise<void> {
+    if (fromId === toId) return
+    const ids = new Set(elementIds)
+    const source = await this.get(repoPath, fromId)
+    if (isTerminalStatus(await this.schema.get(repoPath), source.objectTypeRef, 'change', source.status)) {
+      throw new Error(`${fromId} est clos : ses éléments ne se déplacent plus`)
+    }
+    const moved = source.toModify.filter(t => ids.has(t.id))
+    if (moved.length === 0) return
+    // Cible d'abord : un échec ne perd pas l'élément.
+    await this.editToModify(repoPath, toId, items => {
+      const byId = new Map(items.map(i => [i.id, i]))
+      for (const m of moved) {
+        const prev = byId.get(m.id)
+        byId.set(m.id, { id: m.id, state: prev?.state === 'modified' || m.state === 'modified' ? 'modified' : 'planned' })
+      }
+      return [...byId.values()]
+    })
+    const movedIds = new Set(moved.map(m => m.id))
+    await this.editToModify(repoPath, fromId, items => items.filter(i => !movedIds.has(i.id)))
+  }
+
+  /**
+   * GH199 §8bis — passer `element` à `toStatus` exige-t-il de l'assigner à un change ? Oui si
+   * `toStatus` est `isApproval`, que l'élément ne l'est pas encore et qu'aucun change ouvert du
+   * repo ne le liste dans `toModify`.
+   */
+  async approvalCheck(
+    repoPath: string,
+    element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' },
+    toStatus: string,
+  ): Promise<ApprovalCheck> {
+    const [schema, summaries] = await Promise.all([this.schema.get(repoPath).catch(() => null), this.summaries(repoPath)])
+    const openChanges = summaries.filter(s => s.open)
+    const component = componentOfRef(localNodes(schema), element.objectTypeRef)
+    const typeDef = schema ? findObjectTypeDef(schema, element.objectTypeRef, element.category) : null
+    const statuses = typeDef && typeDef !== 'unresolvable' ? typeDef.statuses : undefined
+    let needsAssignment = !!statuses?.find(s => s.name === toStatus)?.isApproval
+      && !openChanges.some(s => s.toModifyIds.includes(element.id))
+    if (needsAssignment) {
+      // Statut courant lu dans le seul fichier de l'élément (déjà approuvé : rien à proposer).
+      const dir = element.category === 'requirement' ? 'requirements' : 'tests'
+      const file = (await this.git.listFiles(repoPath, dir)).find(f => f === `${dir}/${element.id}.yaml` || f.endsWith(`/${element.id}.yaml`))
+      const current = file ? await this.git.readYaml<ElementRecord>(repoPath, file).catch(() => null) : null
+      if (current && statuses?.find(s => s.name === current.status)?.isApproval) needsAssignment = false
+    }
+    return { needsAssignment, component, openChanges }
+  }
+
+  private async editToModify(repoPath: string, id: string, edit: (items: ChangeToModify[]) => ChangeToModify[]): Promise<Change> {
+    return withKeyLock(`${repoPath}::${DIR}/${id}`, async () => {
+      const existing = await this.get(repoPath, id)
+      const schema = await this.schema.get(repoPath)
+      if (isTerminalStatus(schema, existing.objectTypeRef, 'change', existing.status)) {
+        throw new Error(`${id} est clos : il ne reçoit plus d'éléments`)
+      }
+      return this.persist(repoPath, existing, { ...existing, toModify: cleanToModify(edit(existing.toModify)) })
+    })
+  }
+
+  /** Exigences ou tests lus sur disque ; un fichier illisible est ignoré. */
+  private async readElements(repo: string, dir: 'requirements' | 'tests'): Promise<ElementRecord[]> {
+    const files = (await this.git.listFiles(repo, dir)).filter(f => f.endsWith('.yaml'))
+    const items = await Promise.all(files.map(f => this.git.readYaml<ElementRecord>(repo, f).catch(() => null)))
+    return items.filter((e): e is ElementRecord => !!e?.id)
   }
 
   async get(repoPath: string, id: string): Promise<Change> {
@@ -194,7 +317,7 @@ export class ChangesService {
    * composant externe n'en déclare pas), donné ou déduit s'il est seul.
    */
   private resolveComponent(schema: ProjectSchema | null, component: string | undefined): string {
-    const local = flattenSystemNodes(schema?.nodes ?? []).map(({ node }) => node).filter(n => n.objectTypes !== undefined)
+    const local = localNodes(schema)
     if (component) {
       if (!local.some(n => n.name === component)) throw new Error(`Composant inconnu : "${component}"`)
       return component
@@ -213,6 +336,31 @@ export class ChangesService {
     await this.git.writeYaml(repoPath, `${DIR}/${stamped.id}.yaml`, toWrite)
     return stamped
   }
+}
+
+interface ElementRecord {
+  id: string
+  title?: string
+  status: string
+  objectTypeRef: string
+  needsRevalidation?: boolean
+}
+
+/** Composants locaux d'un repo : nœuds qui déclarent leurs types (un nœud externe n'en déclare pas). */
+function localNodes(schema: ProjectSchema | null) {
+  return flattenSystemNodes(schema?.nodes ?? []).map(({ node }) => node).filter(n => n.objectTypes !== undefined)
+}
+
+/** Composant d'un élément : le nœud de son `objectTypeRef` s'il est local, sinon le seul composant local. */
+function componentOfRef(local: ReturnType<typeof localNodes>, objectTypeRef: string | undefined): string | null {
+  const node = (objectTypeRef ?? '').split('::')[0]
+  if (local.some(n => n.name === node)) return node
+  return local.length === 1 ? local[0].name : null
+}
+
+function isTerminalStatus(schema: ProjectSchema | null, ref: string, category: ObjectTypeDefinition['category'], status: string): boolean {
+  const typeDef = schema ? findObjectTypeDef(schema, ref, category) : null
+  return !!(typeDef && typeDef !== 'unresolvable' && typeDef.statuses?.find(s => s.name === status)?.isTerminal)
 }
 
 /** Valeurs par défaut des champs système (fichier édité à la main, ancienne version). */

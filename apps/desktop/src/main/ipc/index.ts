@@ -185,7 +185,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
-  'changes:create', 'changes:update', 'changes:delete',
+  'changes:create', 'changes:update', 'changes:delete', 'changes:assign', 'changes:move',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
@@ -470,6 +470,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('changes:update', (_e, repoPath: string, id: string, dto: UpdateChangeDto) => c.changes.update(repoPath, id, dto))
   r.handle('changes:delete', (_e, repoPath: string, id: string) => c.changes.delete(repoPath, id))
   r.handle('changes:analysis', (_e, repoPath: string, id: string) => c.changes.analysis(repoPath, id))
+  r.handle('changes:backlog', (_e, repoPath: string, workspaceDir?: string) => c.changes.backlog(repoPath, workspaceDir))
+  r.handle('changes:assign', (_e, repoPath: string, id: string, elementIds: string[]) => c.changes.assign(repoPath, id, elementIds))
+  r.handle('changes:move', (_e, repoPath: string, fromId: string, toId: string, elementIds: string[]) => c.changes.move(repoPath, fromId, toId, elementIds))
+  r.handle('changes:approval-check', (_e, repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string) =>
+    c.changes.approvalCheck(repoPath, element, toStatus))
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))

@@ -2255,6 +2255,38 @@
       "campaigns": "Ongoing campaigns concerned"
     },
     "analyzeImpact": "Analyze impact",
-    "openChange": "Open"
+    "openChange": "Open",
+    "moveTo_one": "Move to…",
+    "moveTo_other": "Move ({{count}}) to…",
+    "alsoIn": "also in {{ids}}",
+    "toProcess": "to process",
+    "promote": "Move to “to modify”",
+    "backlog": {
+      "title": "Backlog",
+      "subtitle_one": "{{count}} element to process, assigned to no open change",
+      "subtitle_other": "{{count}} elements to process, assigned to no open change",
+      "assign_one": "Assign to…",
+      "assign_other": "Assign ({{count}}) to…",
+      "filter": "Filter (ID, title)",
+      "help": "Elements neither approved nor terminal, absent from open changes.",
+      "empty": "Nothing to process.",
+      "selectAll": "Select all",
+      "select": "Select {{id}}",
+      "titleCol": "Title",
+      "statusCol": "Status",
+      "flagged": "Impact to check"
+    },
+    "assign": {
+      "approveTitle": "Assign to a change",
+      "assignTitle": "Assign to a change",
+      "moveTitle": "Move to a change",
+      "approveHelp": "{{id}} is assigned to no open change. Pick the change that carries its approval.",
+      "elements": "Elements: {{ids}}",
+      "openChanges": "Open changes",
+      "noOpen": "No open change in this repo.",
+      "newTitle": "New change title",
+      "create": "Create",
+      "approveWithout": "Approve without a change"
+    }
   }
 }

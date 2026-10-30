@@ -13,6 +13,7 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { Requirement } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
+import { useApprovalGate } from '../contexts/ApprovalGateContext'
 import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/req/$reqId')({
@@ -99,9 +100,15 @@ function RequirementDetailPage() {
   // Ctrl/Cmd+Entrée depuis un champ richtext → « Enregistrer » (no-op sans modification).
   const submitEdit = () => { if (hasChanges && !saveMutation.isPending) saveMutation.mutate() }
 
+  const approvalGate = useApprovalGate()
   const transitionMutation = useMutation({
-    mutationFn: (toStatus: string) => api.requirements.transition(repoPath, reqId, { toStatus }),
-    onSuccess: () => {
+    // GH199 §8bis — approbation d'un élément non assigné : proposer un change (annuler = rien n'est écrit).
+    mutationFn: async (toStatus: string) => {
+      if (req && !(await approvalGate(repoPath, { id: reqId, objectTypeRef: req.objectTypeRef, category: 'requirement' }, toStatus))) return 'cancelled' as const
+      return api.requirements.transition(repoPath, reqId, { toStatus })
+    },
+    onSuccess: result => {
+      if (result === 'cancelled') return
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       qc.invalidateQueries({ queryKey: ['requirement', repoPath, reqId] })
       setConfirmObsolete(false)

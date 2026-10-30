@@ -119,6 +119,44 @@ export interface ChangeSummary {
   createdBy: string | null
   /** GH199 — éléments listés (à modifier et impactés), pour « Analyser l'impact » d'un élément. */
   elementIds: string[]
+  /** GH199 §8bis — statut non terminal : le change peut recevoir des éléments. */
+  open: boolean
+  /** GH199 §8bis — éléments assignés (`toModify`). */
+  toModifyIds: string[]
+}
+
+/** GH199 §8bis — élément à traiter non assigné à un change ouvert. */
+export interface BacklogItem {
+  id: string
+  title: string
+  category: 'requirement' | 'test'
+  status: string
+  objectTypeRef: string
+  needsRevalidation: boolean
+}
+
+/** GH199 §8bis — backlog d'un composant local (calculé, non stocké). */
+export interface ComponentBacklog {
+  repoPath: string
+  component: string
+  label: string
+  items: BacklogItem[]
+}
+
+/** GH199 §8bis — réponse au contrôle d'approbation d'un élément. */
+export interface ApprovalCheck {
+  /** Passage vers un statut `isApproval` d'un élément assigné à aucun change ouvert. */
+  needsAssignment: boolean
+  /** Composant de l'élément (création d'un change depuis le dialogue). */
+  component: string | null
+  /** Changes ouverts du repo de l'élément. */
+  openChanges: ChangeSummary[]
+}
+
+/** GH199 §8bis — élément « à traiter » : statut ni `isApproval` ni `isTerminal` (inconnu : à traiter). */
+export function isToProcess(statuses: SchemaStatus[] | undefined, status: string): boolean {
+  const s = statuses?.find(x => x.name === status)
+  return !s?.isApproval && !s?.isTerminal
 }
 
 export interface CreateChangeDto {

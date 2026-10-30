@@ -108,6 +108,8 @@ export function useLiveFileSync(): void {
       if (relPath === '*' || changeMatch) qc.invalidateQueries({ queryKey: ['changes'] })
       // GH199 — analyse d'impact d'un change : recalculée sur un changement d'élément, de lien ou de change.
       if (relPath === '*' || /^(requirements|tests|links|changes)\//.test(relPath)) qc.invalidateQueries({ queryKey: ['change-analysis'] })
+      // GH199 §8bis — backlog : statut d'un élément ou assignation dans un change.
+      if (relPath === '*' || /^(requirements|tests|changes)\//.test(relPath)) qc.invalidateQueries({ queryKey: ['changes-backlog'] })
       if (changeMatch) qc.invalidateQueries({ queryKey: ['change', repoPath, changeMatch[1]] })
 
       const objectMatch = /^(requirements|tests|campaigns)\/([^/]+)\.yaml$/.exec(relPath)

@@ -45,6 +45,7 @@ import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { FieldConfigModal } from './FieldConfigModal'
+import { useApprovalGate } from '../../contexts/ApprovalGateContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status'])
@@ -738,12 +739,16 @@ export function SystemView() {
     setFreezeColCountExcel(freezeColCountExcelNext)
   }
 
+  const approvalGate = useApprovalGate()
   const autoSaveMutation = useMutation({
     // GH163 — `comment` : commentaire de modification d'un changement de statut (formulaire).
     mutationFn: async ({ objectId, field, value, comment }: { objectId: string; field: string; value: string; comment?: string }) => {
       const cat = effectiveType?.category
       if (!cat || !repoPath || !objectId) return
       if (field === 'status') {
+        // GH199 §8bis — approbation d'un élément non assigné : proposer un change (annuler = rien n'est écrit).
+        if ((cat === 'requirement' || cat === 'test') && effectiveNodeId && effectiveTypeId
+          && !(await approvalGate(repoPath, { id: objectId, objectTypeRef: `${effectiveNodeId}::${effectiveTypeId}`, category: cat }, value))) return
         if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value, comment })
         if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto)
         return

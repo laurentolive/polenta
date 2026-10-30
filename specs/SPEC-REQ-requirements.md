@@ -390,6 +390,8 @@ approved ──[rendre obsolète]──► obsolete (isTerminal)
 | `isTerminal` | bool | L'objet est masqué des listes par défaut (soft-archive) |
 
 **Toutes les transitions sont autorisées** — il n'y a pas de graphe de transitions à définir.
+Seule exception côté interface : l'approbation d'un élément assigné à aucun change ouvert propose
+de l'assigner (§10, GH199 §8bis).
 
 ### 4.4 Historique des champs suivis (GH77)
 
@@ -709,5 +711,17 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   saisie sont écrites dans `impacted`.
 - **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
   entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
+- **Backlog et assignation** (GH199 §8bis) : un élément **à traiter** (statut ni `isApproval` ni
+  `isTerminal`) est **assigné** quand il figure dans `toModify` d'un change ouvert de son repo
+  (plusieurs possibles, signalé « aussi dans … »). Entrée **« Backlog (N) »** du panneau
+  Changements, une par composant local non vide : éléments à traiter non assignés, **calculés**
+  (`changes:backlog`, rien n'est stocké) ; page `/changes/backlog` (`repoPath`, `component`) avec
+  « Assigner à… » (`changes:assign`). Dans un change, « Déplacer vers… » (`changes:move`, état
+  conservé, « modifié » l'emporte ; changes clos refusés).
+- **Approbation d'un élément non assigné** (GH199 §8bis) : depuis l'interface (vue Édition, tableau,
+  document, recherche, pages exigence / test), passer un élément vers un statut `isApproval` alors
+  qu'aucun change ouvert ne le liste (`changes:approval-check`) ouvre « Assigner à un change » :
+  change ouvert, nouveau change, ou « Approuver sans change » ; Annuler n'écrit pas le statut. MCP
+  et écritures hors interface non contrôlés ; condition `assignedToChange` avec #206.
 - Graphe de données : collection `changes` (SPEC-DASHBOARDS §2) ; MCP : `list_changes`,
   `get_change` (avec l'analyse), `create_change` (SPEC-MCP-SERVER §4.7).

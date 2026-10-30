@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
-import { CHANGE_IMPACT_STATUSES, CLOSED_IMPACT_STATUSES, type ChangeImpactRow, type ChangeImpactStatus, type ChangeToModify, type ProjectSchema } from '@polenta/types'
+import { CHANGE_IMPACT_STATUSES, CLOSED_IMPACT_STATUSES, isToProcess, type ChangeImpactRow, type ChangeImpactStatus, type ChangeToModify, type ProjectSchema } from '@polenta/types'
 import { api } from '../../api'
 import { getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
 import { ChangeElementPicker } from './ChangeElementPicker'
+import { AssignToChangeDialog } from './AssignToChangeDialog'
 import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 
 // GH198 — listes « à modifier » / « impactés » d'un change et sélecteur d'éléments (specs/GH198.md §4).
@@ -17,6 +18,8 @@ export interface ElementInfo {
   category: 'requirement' | 'test'
   /** Libellé du statut (schéma), repli sur le nom. */
   status: string
+  /** GH199 §8bis — ni approuvé ni terminal : travail à faire sur l'élément. */
+  toProcess: boolean
 }
 
 /** Exigences et tests du repo du change (Q3), indexés par ID. */
@@ -26,10 +29,12 @@ export function useRepoElements(repoPath: string, schema: ProjectSchema | undefi
   return useMemo(() => {
     const m = new Map<string, ElementInfo>()
     for (const r of reqs) {
-      m.set(r.id, { id: r.id, title: r.title, category: 'requirement', status: getReqTypeDef(schema, r.objectTypeRef)?.statuses?.find(s => s.name === r.status)?.label || r.status })
+      const statuses = getReqTypeDef(schema, r.objectTypeRef)?.statuses
+      m.set(r.id, { id: r.id, title: r.title, category: 'requirement', status: statuses?.find(s => s.name === r.status)?.label || r.status, toProcess: isToProcess(statuses, r.status) })
     }
     for (const tc of tests) {
-      m.set(tc.id, { id: tc.id, title: tc.title, category: 'test', status: getTestTypeDef(schema, tc.objectTypeRef)?.statuses?.find(s => s.name === tc.status)?.label || tc.status })
+      const statuses = getTestTypeDef(schema, tc.objectTypeRef)?.statuses
+      m.set(tc.id, { id: tc.id, title: tc.title, category: 'test', status: statuses?.find(s => s.name === tc.status)?.label || tc.status, toProcess: isToProcess(statuses, tc.status) })
     }
     return m
   }, [reqs, tests, schema])
@@ -66,16 +71,36 @@ interface ListProps {
   disabled?: boolean
 }
 
-export function ToModifyList({ items, onChange, ...p }: ListProps & {
+export function ToModifyList({ items, onChange, changeId, component, alsoIn, ...p }: ListProps & {
   items: ChangeToModify[]
   onChange: (items: ChangeToModify[]) => void
+  /** GH199 §8bis — « Déplacer vers… » : change courant et son composant. */
+  changeId: string
+  component: string
+  /** GH199 §8bis — autres changes ouverts qui listent l'élément. */
+  alsoIn: Map<string, string[]>
 }) {
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [moving, setMoving] = useState(false)
+  const chosen = items.filter(i => selected.has(i.id)).map(i => i.id)
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
   return (
     <section className="border rounded p-3 mb-4" data-testid="change-to-modify">
       <div className="flex items-center justify-between mb-2 gap-2">
         <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">{t('changes.toModify')}</p>
+        <div className="flex-1" />
+        {!p.disabled && chosen.length > 0 && (
+          <button type="button" className="text-xs text-prim hover:underline" onClick={() => setMoving(true)} data-testid="change-to-modify-move">
+            {t('changes.moveTo', { count: chosen.length })}
+          </button>
+        )}
         {!p.disabled && (
           <button type="button" className="text-xs text-prim hover:underline" onClick={() => setPicking(true)} data-testid="change-to-modify-add">
             {t('changes.add')}
@@ -86,7 +111,13 @@ export function ToModifyList({ items, onChange, ...p }: ListProps & {
         <ul className="space-y-1">
           {items.map(it => (
             <li key={it.id} className="flex items-center gap-2 text-sm" data-testid={`change-to-modify-${it.id}`}>
+              {!p.disabled && (
+                <input type="checkbox" checked={selected.has(it.id)} onChange={() => toggle(it.id)} aria-label={t('changes.backlog.select', { id: it.id })} />
+              )}
               <span className="flex-1 min-w-0"><ElementRef id={it.id} info={p.elements.get(it.id)} repoPath={p.repoPath} projectId={p.projectId} /></span>
+              {!!alsoIn.get(it.id)?.length && (
+                <span className="text-xs text-ink-3 shrink-0" data-testid={`change-to-modify-also-${it.id}`}>{t('changes.alsoIn', { ids: alsoIn.get(it.id)!.join(', ') })}</span>
+              )}
               <span className="text-xs text-ink-3 shrink-0">{t(it.state === 'modified' ? 'changes.modified' : 'changes.planned')}</span>
               {!p.disabled && (
                 <button type="button" className="text-ink-3 hover:text-status-danger" title={t('changes.remove')} onClick={() => onChange(items.filter(i => i.id !== it.id))}>
@@ -107,6 +138,17 @@ export function ToModifyList({ items, onChange, ...p }: ListProps & {
           onAdd={ids => { onChange([...items, ...ids.map(id => ({ id, state: 'planned' as const }))]); setPicking(false) }}
         />
       )}
+      {moving && (
+        <AssignToChangeDialog
+          mode="move"
+          repoPath={p.repoPath}
+          elementIds={chosen}
+          component={component}
+          sourceChangeId={changeId}
+          onDone={() => { setMoving(false); setSelected(new Set()) }}
+          onCancel={() => setMoving(false)}
+        />
+      )}
     </section>
   )
 }
@@ -115,11 +157,13 @@ export function ToModifyList({ items, onChange, ...p }: ListProps & {
  * Éléments impactés : déclarés et calculés par l'analyse (GH199), un statut par élément. Seuls les
  * déclarés se retirent ; une ligne calculée qui n'est plus atteinte est signalée.
  */
-export function ImpactedList({ rows, onSetImpact, onAddDeclared, onRemoveDeclared, ...p }: ListProps & {
+export function ImpactedList({ rows, onSetImpact, onAddDeclared, onRemoveDeclared, onPromote, ...p }: ListProps & {
   rows: ChangeImpactRow[]
   onSetImpact: (id: string, status: ChangeImpactStatus, comment: string | undefined) => void
   onAddDeclared: (ids: string[]) => void
   onRemoveDeclared: (id: string) => void
+  /** GH199 §8bis — « Passer en à modifier » un élément à traiter. */
+  onPromote: (id: string) => void
 }) {
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
@@ -150,6 +194,16 @@ export function ImpactedList({ rows, onSetImpact, onAddDeclared, onRemoveDeclare
                 <span className="flex-1 min-w-0"><ElementRef id={it.id} info={p.elements.get(it.id)} repoPath={p.repoPath} projectId={p.projectId} /></span>
                 {it.source === 'computed' && <span className="text-xs text-ink-3 shrink-0">{t('changes.computed')}</span>}
                 {!it.reached && <span className="text-xs text-status-warning shrink-0" data-testid="change-impacted-unreached">{t('changes.unreached')}</span>}
+                {p.elements.get(it.id)?.toProcess && (
+                  <>
+                    <span className="text-xs text-status-warning shrink-0" data-testid={`change-impacted-to-process-${it.id}`}>{t('changes.toProcess')}</span>
+                    {!p.disabled && (
+                      <button type="button" className="text-xs text-prim hover:underline shrink-0" onClick={() => onPromote(it.id)} data-testid={`change-impacted-promote-${it.id}`}>
+                        {t('changes.promote')}
+                      </button>
+                    )}
+                  </>
+                )}
                 <select
                   className="text-xs bg-surface border border-edge rounded px-1 py-0.5 text-ink shrink-0"
                   value={it.status}

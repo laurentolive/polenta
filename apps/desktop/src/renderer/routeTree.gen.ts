@@ -47,6 +47,7 @@ import { Route as PrintCampaignReportRouteImport } from './routes/print.campaign
 import { Route as PrintCampaignPlanRouteImport } from './routes/print.campaign-plan'
 import { Route as ChangesRevalidationRouteImport } from './routes/changes_.revalidation'
 import { Route as ChangesLocalRouteImport } from './routes/changes_.local'
+import { Route as ChangesBacklogRouteImport } from './routes/changes_.backlog'
 import { Route as ChangeNewRouteImport } from './routes/change.new'
 import { Route as ChangeChangeIdRouteImport } from './routes/change.$changeId'
 import { Route as CampaignNewRouteImport } from './routes/campaign.new'
@@ -244,6 +245,11 @@ const ChangesLocalRoute = ChangesLocalRouteImport.update({
   path: '/changes/local',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangesBacklogRoute = ChangesBacklogRouteImport.update({
+  id: '/changes_/backlog',
+  path: '/changes/backlog',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChangeNewRoute = ChangeNewRouteImport.update({
   id: '/change/new',
   path: '/change/new',
@@ -306,6 +312,7 @@ export interface FileRoutesByFullPath {
   '/campaign/new': typeof CampaignNewRoute
   '/change/$changeId': typeof ChangeChangeIdRoute
   '/change/new': typeof ChangeNewRoute
+  '/changes/backlog': typeof ChangesBacklogRoute
   '/changes/local': typeof ChangesLocalRoute
   '/changes/revalidation': typeof ChangesRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
@@ -352,6 +359,7 @@ export interface FileRoutesByTo {
   '/campaign/new': typeof CampaignNewRoute
   '/change/$changeId': typeof ChangeChangeIdRoute
   '/change/new': typeof ChangeNewRoute
+  '/changes/backlog': typeof ChangesBacklogRoute
   '/changes/local': typeof ChangesLocalRoute
   '/changes/revalidation': typeof ChangesRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
@@ -399,6 +407,7 @@ export interface FileRoutesById {
   '/campaign/new': typeof CampaignNewRoute
   '/change/$changeId': typeof ChangeChangeIdRoute
   '/change/new': typeof ChangeNewRoute
+  '/changes_/backlog': typeof ChangesBacklogRoute
   '/changes_/local': typeof ChangesLocalRoute
   '/changes_/revalidation': typeof ChangesRevalidationRoute
   '/print/campaign-plan': typeof PrintCampaignPlanRoute
@@ -447,6 +456,7 @@ export interface FileRouteTypes {
     | '/campaign/new'
     | '/change/$changeId'
     | '/change/new'
+    | '/changes/backlog'
     | '/changes/local'
     | '/changes/revalidation'
     | '/print/campaign-plan'
@@ -493,6 +503,7 @@ export interface FileRouteTypes {
     | '/campaign/new'
     | '/change/$changeId'
     | '/change/new'
+    | '/changes/backlog'
     | '/changes/local'
     | '/changes/revalidation'
     | '/print/campaign-plan'
@@ -539,6 +550,7 @@ export interface FileRouteTypes {
     | '/campaign/new'
     | '/change/$changeId'
     | '/change/new'
+    | '/changes_/backlog'
     | '/changes_/local'
     | '/changes_/revalidation'
     | '/print/campaign-plan'
@@ -586,6 +598,7 @@ export interface RootRouteChildren {
   CampaignNewRoute: typeof CampaignNewRoute
   ChangeChangeIdRoute: typeof ChangeChangeIdRoute
   ChangeNewRoute: typeof ChangeNewRoute
+  ChangesBacklogRoute: typeof ChangesBacklogRoute
   ChangesLocalRoute: typeof ChangesLocalRoute
   ChangesRevalidationRoute: typeof ChangesRevalidationRoute
   PrintCampaignPlanRoute: typeof PrintCampaignPlanRoute
@@ -872,6 +885,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChangesLocalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/changes_/backlog': {
+      id: '/changes_/backlog'
+      path: '/changes/backlog'
+      fullPath: '/changes/backlog'
+      preLoaderRoute: typeof ChangesBacklogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/change/new': {
       id: '/change/new'
       path: '/change/new'
@@ -946,6 +966,7 @@ const rootRouteChildren: RootRouteChildren = {
   CampaignNewRoute: CampaignNewRoute,
   ChangeChangeIdRoute: ChangeChangeIdRoute,
   ChangeNewRoute: ChangeNewRoute,
+  ChangesBacklogRoute: ChangesBacklogRoute,
   ChangesLocalRoute: ChangesLocalRoute,
   ChangesRevalidationRoute: ChangesRevalidationRoute,
   PrintCampaignPlanRoute: PrintCampaignPlanRoute,

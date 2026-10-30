@@ -2,7 +2,7 @@ import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
-  Change, ChangeAnalysis, ChangeSummary, CreateChangeDto, UpdateChangeDto,
+  ApprovalCheck, Change, ChangeAnalysis, ChangeSummary, ComponentBacklog, CreateChangeDto, UpdateChangeDto,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -541,6 +541,12 @@ export interface ApiClient {
     delete(repoPath: string, id: string): Promise<void>
     /** GH199 — analyse d'impact : instantané si figée, sinon calculée. */
     analysis(repoPath: string, id: string): Promise<ChangeAnalysis>
+    /** GH199 §8bis — backlog calculé de chaque composant local du workspace. */
+    backlog(repoPath: string, workspaceDir?: string): Promise<ComponentBacklog[]>
+    assign(repoPath: string, id: string, elementIds: string[]): Promise<Change>
+    move(repoPath: string, fromId: string, toId: string, elementIds: string[]): Promise<void>
+    /** GH199 §8bis — l'approbation de l'élément exige-t-elle de l'assigner à un change ? */
+    approvalCheck(repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string): Promise<ApprovalCheck>
   }
   /** GH197 — historique des exécutions d'un test ou d'une exigence. */
   executions: {

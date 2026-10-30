@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, FileDiff, Plus, Sparkles } from 'lucide-react'
+import { AlertTriangle, FileDiff, Inbox, Plus, Sparkles } from 'lucide-react'
 import type { ChangeSummary, ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { getChangeTypeDef } from '../../hooks/useProjectSchema'
 import { useLocalImpactAnalysis } from '../../hooks/useLocalImpactAnalysis'
 import { useFlaggedElements } from '../../hooks/useFlaggedElements'
+import { useBacklog } from '../../hooks/useBacklog'
 
 interface Props {
   projectId: string
@@ -29,9 +30,10 @@ export function ChangesPanel({ projectId }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const workspaceDir = decodeProjectId(projectId)
-  const { activeId, activeRepo, pathname } = useRouterState({
+  const { activeId, activeRepo, pathname, searchStr } = useRouterState({
     select: s => ({
       pathname: s.location.pathname,
+      searchStr: s.location.searchStr,
       activeId: s.location.pathname.startsWith('/change/') ? decodeURIComponent(s.location.pathname.slice('/change/'.length)) : null,
       activeRepo: new URLSearchParams(s.location.searchStr).get('repoPath'),
     }),
@@ -88,6 +90,9 @@ export function ChangesPanel({ projectId }: Props) {
   // GH199 — entrées live, affichées seulement quand elles ont du contenu (compteur).
   const flaggedCount = useFlaggedElements(projectId).data?.length ?? 0
   const localCount = useLocalImpactAnalysis(projectId).data?.changedRequirements.length ?? 0
+  // GH199 §8bis — un backlog par composant non vide ; libellé du composant s'il y en a plusieurs.
+  const backlogs = (useBacklog(projectId).data ?? []).filter(b => b.items.length > 0)
+  const backlogSearch = new URLSearchParams(searchStr)
   const entryClass = (active: boolean) =>
     `w-full flex items-center gap-2 px-4 py-1.5 text-xs text-left border-b border-edge-subtle ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2 hover:bg-hover'}`
 
@@ -131,6 +136,18 @@ export function ChangesPanel({ projectId }: Props) {
           <span className="text-ink-3">{localCount}</span>
         </button>
       )}
+      {backlogs.map(b => {
+        const active = pathname === '/changes/backlog' && backlogSearch.get('repoPath') === b.repoPath && backlogSearch.get('component') === b.component
+        return (
+          <button key={`${b.repoPath}|${b.component}`} type="button"
+            onClick={() => navigate({ to: '/changes/backlog', search: { projectId, repoPath: b.repoPath, component: b.component } })}
+            className={entryClass(active)} data-testid={`changes-backlog-entry-${repoName(b.repoPath)}-${b.component}`}>
+            <Inbox size={13} className="shrink-0" />
+            <span className="flex-1 truncate">{backlogs.length > 1 ? `${t('changes.backlog.title')} — ${b.label}` : t('changes.backlog.title')}</span>
+            <span className="text-ink-3">{b.items.length}</span>
+          </button>
+        )
+      })}
       <div className="px-4 py-2 border-b border-edge shrink-0 space-y-1.5">
         <select className={selectClass} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} aria-label={t('changes.type')}>
           <option value="">{t('changes.allTypes')}</option>

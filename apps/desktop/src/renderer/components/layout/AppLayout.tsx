@@ -7,6 +7,7 @@ import { SearchProvider } from '../../contexts/SearchContext'
 import { VersioningProvider } from '../../contexts/VersioningContext'
 import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
+import { ApprovalGateProvider } from '../../contexts/ApprovalGateContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
 import { RepoAccessBanner } from './RepoAccessBanner'
@@ -304,7 +305,9 @@ export function AppLayout() {
         <CompareRefsProvider>
             <SystemViewProvider currentProjectId={currentProjectId}>
               <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
-                {inner}
+                <ApprovalGateProvider>
+                  {inner}
+                </ApprovalGateProvider>
               </SearchProvider>
             </SystemViewProvider>
         </CompareRefsProvider>

@@ -296,6 +296,10 @@ export function createIpcClient(
       update: (p, id, dto) => invoke('changes:update', p, id, dto),
       delete: (p, id) => invoke('changes:delete', p, id),
       analysis: (p, id) => invoke('changes:analysis', p, id),
+      backlog: (p, workspaceDir) => invoke('changes:backlog', p, workspaceDir ?? null),
+      assign: (p, id, elementIds) => invoke('changes:assign', p, id, elementIds),
+      move: (p, fromId, toId, elementIds) => invoke('changes:move', p, fromId, toId, elementIds),
+      approvalCheck: (p, element, toStatus) => invoke('changes:approval-check', p, element, toStatus),
     },
     // GH197 — historique des exécutions
     executions: {

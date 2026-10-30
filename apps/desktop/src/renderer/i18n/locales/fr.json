@@ -2255,6 +2255,38 @@
       "campaigns": "Campagnes en cours concernées"
     },
     "analyzeImpact": "Analyser l'impact",
-    "openChange": "Ouvrir"
+    "openChange": "Ouvrir",
+    "moveTo_one": "Déplacer vers…",
+    "moveTo_other": "Déplacer ({{count}}) vers…",
+    "alsoIn": "aussi dans {{ids}}",
+    "toProcess": "à traiter",
+    "promote": "Passer en à modifier",
+    "backlog": {
+      "title": "Backlog",
+      "subtitle_one": "{{count}} élément à traiter, assigné à aucun change ouvert",
+      "subtitle_other": "{{count}} éléments à traiter, assignés à aucun change ouvert",
+      "assign_one": "Assigner à…",
+      "assign_other": "Assigner ({{count}}) à…",
+      "filter": "Filtrer (ID, titre)",
+      "help": "Éléments ni approuvés ni terminaux, absents des changes ouverts.",
+      "empty": "Rien à traiter.",
+      "selectAll": "Tout sélectionner",
+      "select": "Sélectionner {{id}}",
+      "titleCol": "Titre",
+      "statusCol": "Statut",
+      "flagged": "Impact à vérifier"
+    },
+    "assign": {
+      "approveTitle": "Assigner à un change",
+      "assignTitle": "Assigner à un change",
+      "moveTitle": "Déplacer vers un change",
+      "approveHelp": "{{id}} n'est assigné à aucun change ouvert. Choisissez le change qui porte son approbation.",
+      "elements": "Éléments : {{ids}}",
+      "openChanges": "Changes ouverts",
+      "noOpen": "Aucun change ouvert dans ce repo.",
+      "newTitle": "Titre du nouveau change",
+      "create": "Créer",
+      "approveWithout": "Approuver sans change"
+    }
   }
 }

@@ -53,9 +53,21 @@ function ChangePage() {
       qc.setQueryData(['change', repoPath, changeId], (prev: typeof change) => ({ ...prev, ...saved }))
       qc.invalidateQueries({ queryKey: ['changes'] })
       qc.invalidateQueries({ queryKey: ['change-analysis', repoPath, changeId] })
+      qc.invalidateQueries({ queryKey: ['changes-backlog'] })
       setEditingFields(null)
     },
   })
+  // GH199 §8bis — autres changes ouverts du repo qui listent un élément « à modifier ».
+  const { data: repoChanges = [] } = useQuery({
+    queryKey: ['changes', 'repo', repoPath],
+    queryFn: () => api.changes.list(repoPath),
+    enabled: !!repoPath,
+  })
+  const alsoIn = new Map<string, string[]>()
+  for (const c of repoChanges) {
+    if (c.id === changeId || c.repoPath !== repoPath || !c.open) continue
+    for (const id of c.toModifyIds) alsoIn.set(id, [...(alsoIn.get(id) ?? []), c.id])
+  }
   // GH199 — analyse d'impact (live ; instantané figé au statut terminal).
   const analysisQuery = useQuery({
     queryKey: ['change-analysis', repoPath, changeId],
@@ -195,6 +207,9 @@ function ChangePage() {
             <ToModifyList
               items={change.toModify}
               onChange={toModify => update.mutate({ toModify })}
+              changeId={change.id}
+              component={change.component}
+              alsoIn={alsoIn}
               repoPath={repoPath}
               projectId={projectId}
               workspaceDir={workspaceDir}
@@ -206,6 +221,10 @@ function ChangePage() {
               onSetImpact={setImpact}
               onAddDeclared={ids => update.mutate({ impacted: [...change.impacted, ...ids.map(id => ({ id, status: 'impact_non_verifie' as const, source: 'declared' as const }))] })}
               onRemoveDeclared={id => update.mutate({ impacted: change.impacted.filter(i => i.id !== id) })}
+              onPromote={id => update.mutate({
+                toModify: [...change.toModify, { id, state: 'planned' }],
+                impacted: change.impacted.filter(i => i.id !== id),
+              })}
               repoPath={repoPath}
               projectId={projectId}
               workspaceDir={workspaceDir}

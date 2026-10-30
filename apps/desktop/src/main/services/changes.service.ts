@@ -1,6 +1,6 @@
 import type {
   ApprovalCheck, BacklogItem, Change, ChangeAnalysis, ChangeElementRef, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify,
-  ChangeToModifyTrace,
+  ChangeToModifyTrace, ChangeTestsToRun,
   ComponentBacklog, CreateChangeDto, ObjectTypeDefinition, ProjectSchema, TestCampaign, UpdateChangeDto,
 } from '@polenta/types'
 import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isToProcess, isUnknownStatus, pruneImpacted, uniqueById } from '@polenta/types'
@@ -8,6 +8,7 @@ import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { TraceabilityService } from './traceability.service'
 import { computeChangeAnalysis } from './change-analysis.util'
+import { computeTestsToRun, linkedCampaigns } from './change-tests.util'
 import type { HistoryService } from './history.service'
 import type { SchemaService } from './schema.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
@@ -153,6 +154,36 @@ export class ChangesService {
       repoPath: repo, component: n.name, label: n.label || n.name,
       items: groups.get(n.name)!.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
     }))
+  }
+
+  /** GH207 §1–§4 — tests à exécuter (analyse courante ou figée), campagnes liées, tests à ajouter. */
+  async testsToRun(repoPath: string, id: string): Promise<ChangeTestsToRun> {
+    if (!this.impact) throw new Error('Analyse d\'impact indisponible')
+    const change = await this.get(repoPath, id)
+    const range = change.mode === 'range' ? change.range : undefined
+    const [analysis, snapshot, campaigns] = await Promise.all([
+      this.analysis(repoPath, id),
+      range ? this.impact.traceability.loadSnapshotAtRef(repoPath, range.to.sha) : this.impact.traceability.loadWorkingTreeSnapshot(repoPath, [repoPath]),
+      this.impact.campaigns.list(repoPath).catch(() => [] as TestCampaign[]),
+    ])
+    const { tests, uncovered } = computeTestsToRun(change, analysis.rows, snapshot)
+    return { tests, uncovered, ...linkedCampaigns(change, tests, campaigns) }
+  }
+
+  /** GH207 — le changeset existe et est ouvert (création d'une campagne liée, avant son ID). */
+  async assertOpen(repoPath: string, id: string): Promise<void> {
+    const summary = (await this.summaries(repoPath)).find(s => s.id === id)
+    if (!summary) throw new Error(`Changeset introuvable : ${id}`)
+    if (!summary.open) throw new Error(`${id} est clos : il ne reçoit plus de campagne`)
+  }
+
+  /** GH207 — ajoute une campagne à `campaigns` (sans doublon). */
+  async linkCampaign(repoPath: string, id: string, campaignId: string): Promise<Change> {
+    return withKeyLock(`${repoPath}::${DIR}/${id}`, async () => {
+      const existing = await this.get(repoPath, id)
+      if (existing.campaigns.includes(campaignId)) return existing
+      return this.persist(repoPath, existing, { ...existing, campaigns: [...existing.campaigns, campaignId] })
+    })
   }
 
   /** GH200 — trace par élément (§4) et modifications hors interface (§5) ; posé après construction. */

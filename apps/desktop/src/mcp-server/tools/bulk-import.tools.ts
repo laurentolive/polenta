@@ -47,6 +47,8 @@ const bulkImportTestsInput = {
 // MCP uniquement (surface externe, contrairement à l'IPC interne à l'app).
 const createCampaignEntrySchema = z.object({
   title: z.string().min(1),
+  /** GH207 — changeset ouvert du repo qui crée la campagne (lien écrit des deux côtés). */
+  changeset: z.string().min(1).optional(),
   objectTypeRef: z.string().optional(),
   fields: z.record(z.unknown()).optional(),
   baselineRef: z.string().optional(),

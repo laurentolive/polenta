@@ -124,3 +124,17 @@ export function countInstances(
   }
   return n
 }
+
+/**
+ * GH207 — instances pré-cochées passées dans l'URL (`TEST-1:SW-1|SW-2,TEST-2:SW-3`) : état de
+ * sélection où seules ces exigences sont retenues pour ces tests (les autres tests : défaut).
+ */
+export function decodeInstances(encoded: string | undefined): ReqSelectionState {
+  const state: ReqSelectionState = {}
+  for (const part of (encoded ?? '').split(',').filter(Boolean)) {
+    const [testId, reqs] = part.split(':')
+    if (!testId || !reqs) continue
+    state[testId] = Object.fromEntries(reqs.split('|').filter(Boolean).map(r => [r, {}]))
+  }
+  return state
+}

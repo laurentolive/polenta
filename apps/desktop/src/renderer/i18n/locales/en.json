@@ -2322,6 +2322,20 @@
       "statusCol": "Status",
       "flagged": "Impact to check"
     },
+    "campaignSection": {
+      "create": "Create the campaign",
+      "toRun_one": "{{count}} test to run",
+      "toRun_other": "{{count}} tests to run",
+      "uncovered": "not covered: {{ids}}",
+      "toAdd_one": "{{count}} test to add",
+      "toAdd_other": "{{count}} tests to add",
+      "addTo": "Add to {{id}}",
+      "addToMany": "Add to…",
+      "progress": "{{passed}} / {{total}} PASS",
+      "changesetTests_one": "{{count}} changeset entry",
+      "changesetTests_other": "{{count}} changeset entries",
+      "link": "Changeset"
+    },
     "trace": {
       "creation": "creation",
       "pending": "not approved",

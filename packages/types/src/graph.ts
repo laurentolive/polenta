@@ -278,6 +278,8 @@ export interface GraphCampaign {
   baselineRef: string | null
   /** Composant ciblé par la campagne, si renseigné. */
   targetComponent: string | null
+  /** GH207 — changeset qui a créé la campagne, sinon null. */
+  changeset: string | null
   level: string | null
   createdAt: string
   /** Instant de clôture (`completed` ou `abandoned`), `null` tant qu'elle est ouverte. */

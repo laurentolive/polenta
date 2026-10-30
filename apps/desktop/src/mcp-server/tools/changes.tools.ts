@@ -41,17 +41,19 @@ export function registerChangeTools(server: McpServer, container: McpContainer):
         'éléments impactés (impacted : id, status d\'impact, comment, source declared|computed), origine, ' +
         'version intégrée, campagnes, historique ; et son analyse d\'impact (`analysis` : racines, arbres, lignes des impactés ' +
         'déclarées et calculées, campagnes en cours concernées ; figée si le changeset est terminal) ; `trace` : pour chaque ' +
-        'élément à modifier, version de départ (base, absente : création) et commit d\'approbation (approved). repoPath : repo de stockage ' +
+        'élément à modifier, version de départ (base, absente : création) et commit d\'approbation (approved) ; `testsToRun` ' +
+        '(GH207) : tests à exécuter et exigences sources, exigences non couvertes, campagnes liées, tests à ajouter. repoPath : repo de stockage ' +
         '(cf. list_changesets), défaut repo ouvert.',
       inputSchema: { id: z.string().min(1), repoPath: z.string().optional() },
     },
     async ({ id, repoPath }) => {
       try {
         const rp = repoPath ?? container.repoPath
-        const [change, analysis, trace] = await Promise.all([
+        const [change, analysis, trace, testsToRun] = await Promise.all([
           container.changes.get(rp, id), container.changes.analysis(rp, id), container.changes.trace(rp, id),
+          container.changes.testsToRun(rp, id),
         ])
-        return jsonToolResult({ changeset: change, analysis, trace })
+        return jsonToolResult({ changeset: change, analysis, trace, testsToRun })
       } catch (err) {
         return errorToolResult(err instanceof Error ? err.message : String(err))
       }

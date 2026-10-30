@@ -2322,6 +2322,20 @@
       "statusCol": "Statut",
       "flagged": "Impact à vérifier"
     },
+    "campaignSection": {
+      "create": "Créer la campagne",
+      "toRun_one": "{{count}} test à exécuter",
+      "toRun_other": "{{count}} tests à exécuter",
+      "uncovered": "non couvertes : {{ids}}",
+      "toAdd_one": "{{count}} test à ajouter",
+      "toAdd_other": "{{count}} tests à ajouter",
+      "addTo": "Ajouter à {{id}}",
+      "addToMany": "Ajouter à…",
+      "progress": "{{passed}} / {{total}} PASS",
+      "changesetTests_one": "{{count}} entrée du changeset",
+      "changesetTests_other": "{{count}} entrées du changeset",
+      "link": "Changeset"
+    },
     "trace": {
       "creation": "création",
       "pending": "non approuvé",

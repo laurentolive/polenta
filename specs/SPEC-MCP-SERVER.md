@@ -497,7 +497,9 @@ non terminal référence le paramètre (`deleted: false` + `usages`).
   `status`, `objectTypeRef`.
 - `get_changeset` — un changeset complet (`repoPath` de stockage, défaut repo ouvert) et son analyse
   d'impact (`analysis`, GH199 : calculée, ou figée si le changeset est terminal) ; `trace` (GH200) :
-  départ et commit d'approbation de chaque élément à modifier.
+  départ et commit d'approbation de chaque élément à modifier ; `testsToRun` (GH207) : tests à
+  exécuter et exigences sources, exigences non couvertes, campagnes liées, tests à ajouter.
+- GH207 — `bulk_import_campaigns` : `changeset` facultatif par entrée (lien écrit des deux côtés).
 - GH200 — `bulk_import_requirements` / `bulk_import_tests` : `changesetId` facultatif par entrée ;
   réponse `unassigned` (éléments créés sans changeset alors que la règle est active).
   `update_requirements` / `update_tests` : `changesetId` ; une entrée qui fait quitter l'approbation

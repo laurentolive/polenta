@@ -141,6 +141,8 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   requirements.setModificationTracker(changeTracking)
   tests.setModificationTracker(changeTracking)
   changes.setTracker(changeTracking)
+  // GH207 — campagne créée depuis un changeset : lien des deux côtés.
+  campaigns.setChangesetLinker({ assertOpen: (r, id) => changes.assertOpen(r, id), link: (r, id, c) => changes.linkCampaign(r, id, c) })
 
   return {
     repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,

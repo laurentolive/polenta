@@ -755,5 +755,14 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
     direct, éditeur de texte) apparaît dans le backlog « modifié hors interface », avec le diff et
     « Rouvrir et assigner… » ; rien n'est écrit. Limite : un renommage de champ / valeur du schéma
     (GH77, GH82) réécrit les éléments approuvés et les fait signaler jusqu'à leur réouverture.
+- **Campagnes d'un changeset** (GH207, `specs/GH207.md`) : **tests à exécuter** calculés
+  (`changesets:tests-to-run`) — tests des éléments à modifier et des impactés `impact_a_tester` /
+  `modification_a_tester` (exigence → tests couvrants, instance T179 ; exigence sans test « non
+  couverte »). Section **Campagnes** de la page : campagnes liées (statut, PASS / total, entrées du
+  changeset), « Créer la campagne » (`/campaign/new?changeset&instances`, lien écrit des deux côtés :
+  `campaigns` du changeset, `changeset` de la campagne) et « N tests à ajouter » (tests absents des
+  campagnes liées ouvertes) → sélecteur de la campagne pré-coché (`?addTests&instances`), jamais
+  d'ajout automatique. Conditions de clôture (`linkedCampaignsPassed`…) : #206.
 - Graphe de données : collection `changesets` (SPEC-DASHBOARDS §2) ; MCP : `list_changesets`,
-  `get_changeset` (avec l'analyse et la trace GH200), `create_changeset` (SPEC-MCP-SERVER §4.7).
+  `get_changeset` (avec l'analyse, la trace GH200 et `testsToRun` GH207), `create_changeset`
+  (SPEC-MCP-SERVER §4.7).

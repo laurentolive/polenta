@@ -69,6 +69,9 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 > création) et `approved` (commit d'approbation, renseigné une fois le changeset figé au statut
 > terminal ; null tant qu'il est ouvert : le statut courant de l'élément est dans sa collection).
 > `polenta.d.ts` régénéré (manifeste v8).
+>
+> **GH207 (contrat v1, ajout)** — `GraphCampaign.changeset` (changeset qui a créé la campagne, sinon
+> null) ; `GraphChangeset.campaigns` alimenté. `polenta.d.ts` régénéré (manifeste v9).
 
 ## 3. Exécution (bac à sable)
 

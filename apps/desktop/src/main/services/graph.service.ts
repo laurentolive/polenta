@@ -363,6 +363,7 @@ export class GraphService {
       history: effectiveHistory(carrier, typeDef, fallback, now),
       baselineRef: c.baselineRef ?? null,
       targetComponent: c.component ?? null,
+      changeset: c.changeset ?? null,
       level: c.level ?? null,
       createdAt: c.createdAt,
       completedAt: c.completedAt ?? null,

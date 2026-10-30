@@ -112,6 +112,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   requirements.setModificationTracker(changeTracking)
   tests.setModificationTracker(changeTracking)
   changes.setTracker(changeTracking)
+  // GH207 — campagne créée depuis un changeset : lien des deux côtés.
+  campaigns.setChangesetLinker({ assertOpen: (r, id) => changes.assertOpen(r, id), link: (r, id, c) => changes.linkCampaign(r, id, c) })
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)

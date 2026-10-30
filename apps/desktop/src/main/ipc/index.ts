@@ -485,6 +485,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.changes.approvalCheck(repoPath, element, toStatus))
   // GH200 — trace départ / approbation des éléments à modifier ; diff d'un élément entre deux états.
   r.handle('changesets:trace', (_e, repoPath: string, id: string) => c.changes.trace(repoPath, id))
+  // GH207 — tests à exécuter, campagnes liées, tests à ajouter.
+  r.handle('changesets:tests-to-run', (_e, repoPath: string, id: string) => c.changes.testsToRun(repoPath, id))
   r.handle('sync:diff-element', (_e, repoPath: string, filepath: string, baseSha: string | null, newSha: string | null) =>
     c.sync.diffElement(repoPath, filepath, baseSha, newSha))
   // GH200 — création / réouverture d'un élément : changeset à demander ?

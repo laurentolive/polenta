@@ -3,7 +3,7 @@ import type {
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   ApprovalCheck, Change, ChangeAnalysis, ChangeSummary, ComponentBacklog, CreateChangeDto, UpdateChangeDto,
-  ModificationCheck, ModificationKind, ChangeToModifyTrace,
+  ModificationCheck, ModificationKind, ChangeToModifyTrace, ChangeTestsToRun,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -552,6 +552,8 @@ export interface ApiClient {
     modificationCheck(repoPath: string, element: { id?: string; objectTypeRef: string; category?: 'requirement' | 'test'; toStatus?: string }, kind: ModificationKind, workspaceDir?: string): Promise<ModificationCheck>
     /** GH200 — trace départ / approbation des éléments à modifier. */
     trace(repoPath: string, id: string): Promise<ChangeToModifyTrace[]>
+    /** GH207 — tests à exécuter, campagnes liées, tests à ajouter. */
+    testsToRun(repoPath: string, id: string): Promise<ChangeTestsToRun>
   }
   /** GH197 — historique des exécutions d'un test ou d'une exigence. */
   executions: {

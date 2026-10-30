@@ -56,6 +56,39 @@ export interface OutsideModification {
   filePath: string
 }
 
+/** GH207 — test à exécuter pour un changeset, et ce qui l'y amène. */
+export interface ChangeTestToRun {
+  testId: string
+  /** Exigences sources (instances T179) ; vide : le test vient lui-même (toutes ses instances). */
+  requirementIds: string[]
+  /** Éléments du changeset (à modifier, impactés « à tester ») qui amènent ce test. */
+  sources: string[]
+}
+
+/** GH207 — campagne liée à un changeset (section Campagnes). */
+export interface LinkedCampaign {
+  id: string
+  title: string
+  status: string
+  /** Entrées PASS / total (avancement affiché). */
+  passed: number
+  total: number
+  /** Entrées de la campagne portant un test à exécuter du changeset. */
+  changesetTests: number
+  /** ID listé dans `campaigns` mais campagne introuvable. */
+  missing: boolean
+}
+
+/** GH207 — tests à exécuter d'un changeset et campagnes liées. */
+export interface ChangeTestsToRun {
+  tests: ChangeTestToRun[]
+  /** Exigences sources sans test qui les couvre. */
+  uncovered: string[]
+  linked: LinkedCampaign[]
+  /** Tests à exécuter absents de toute campagne liée ouverte (`planned` / `in_progress`). */
+  toAdd: string[]
+}
+
 /** GH200 — moment où un élément devient modifiable. */
 export type ModificationKind = 'create' | 'reopen' | 'terminal'
 

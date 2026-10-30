@@ -307,6 +307,7 @@ export function createIpcClient(
       approvalCheck: (p, element, toStatus) => invoke('changesets:approval-check', p, element, toStatus),
       modificationCheck: (p, element, kind, workspaceDir) => invoke('changesets:modification-check', p, element, kind, workspaceDir ?? null),
       trace: (p, id) => invoke('changesets:trace', p, id),
+      testsToRun: (p, id) => invoke('changesets:tests-to-run', p, id),
     },
     // GH197 — historique des exécutions
     executions: {

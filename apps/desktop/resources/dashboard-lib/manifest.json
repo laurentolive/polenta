@@ -167,6 +167,14 @@
             "fr": "GH200 : GraphChangeset.toModify[] gagne base et approved (trace départ / approbation)",
             "en": "GH200: GraphChangeset.toModify[] gains base and approved (start / approval trace)"
           }
+        },
+        {
+          "version": 9,
+          "hash": "7c5aec42de2a8828b39e74397ffa9a82336a6856baa36087ea09c45d891b17a7",
+          "summary": {
+            "fr": "GH207 : GraphCampaign.changeset (changeset qui a créé la campagne)",
+            "en": "GH207: GraphCampaign.changeset (changeset that created the campaign)"
+          }
         }
       ]
     },

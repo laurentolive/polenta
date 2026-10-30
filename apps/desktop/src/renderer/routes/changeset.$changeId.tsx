@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Trash2 } from 'lucide-react'
 import { fieldValueToText, flattenSystemNodes, isFieldRequiredNow, objectFieldReader, type ChangeImpactRow, type ChangeImpactStatus, type UpdateChangeDto } from '@polenta/types'
+import { ChangeCampaignsSection } from '../components/changes/ChangeCampaignsSection'
 import { api } from '../api'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { DynamicField } from '../components/DynamicField'
@@ -222,10 +223,9 @@ function ChangePage() {
               <dd className="text-ink-2">{[...change.origin.runs, ...change.origin.decisions.map(d => `${d.conformityId} / ${d.objectId}`)].join(', ') || '—'}</dd>
               <dt className="text-ink-3">{t('changes.integratedIn')}</dt>
               <dd className="text-ink-2">{change.integratedIn || '—'}</dd>
-              <dt className="text-ink-3">{t('changes.campaigns')}</dt>
-              <dd className="text-ink-2">{change.campaigns.join(', ') || '—'}</dd>
             </dl>
 
+            <ChangeCampaignsSection repoPath={repoPath} projectId={projectId} change={change} />
             <ToModifyList
               items={change.toModify}
               traces={new Map(traces.map(tr => [tr.id, tr]))}

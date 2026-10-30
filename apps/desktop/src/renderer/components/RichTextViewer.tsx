@@ -6,6 +6,7 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { Markdown } from 'tiptap-markdown'
+import type { MarkdownStorage } from 'tiptap-markdown'
 import { DrawioEmbed } from '../tiptap/DrawioEmbedExtension'
 import { ResizableImage } from '../tiptap/ResizableImageExtension'
 import { useEffect, useRef, useState } from 'react'
@@ -56,6 +57,16 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
       },
     },
   })
+
+  // GH227 — `content` de useEditor n'est lu qu'au montage : sans ce resync, le viewer garde
+  // l'ancienne valeur quand la page est réutilisée (autre campagne, autre test) ou quand il est
+  // remonté sur la donnée en cache juste avant le refetch qui suit un enregistrement.
+  const syncedValueRef = useRef(value)
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || value === syncedValueRef.current) return
+    syncedValueRef.current = value
+    if ((editor.storage.markdown as MarkdownStorage).getMarkdown() !== value) editor.commands.setContent(value, false)
+  }, [editor, value])
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return

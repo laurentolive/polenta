@@ -36,6 +36,14 @@ interface RepoIndex {
 
 export class RequirementsIndexService {
   private readonly index = new Map<string, RepoIndex>()
+  /** Construction en cours par repo : un seul passage, partagé par les lecteurs concurrents. */
+  private readonly builds = new Map<string, Promise<void>>()
+  /**
+   * Écritures reçues pendant une construction : la construction a pu lister le dossier avant
+   * l'écriture, elles sont donc appliquées à l'index qu'elle publie (sinon un objet tout juste
+   * créé disparaît de l'index jusqu'à la prochaine invalidation).
+   */
+  private readonly pendingUpserts = new Map<string, Map<string, Requirement>>()
 
   constructor(private readonly git: GitService) {}
 
@@ -182,7 +190,12 @@ export class RequirementsIndexService {
 
   upsert(repoPath: string, req: Requirement): void {
     const idx = this.index.get(repoPath)
-    if (!idx) return // Will be built on next access
+    if (!idx) {
+      // Pas d'index : construit au prochain accès (et lira ce fichier) ; construction en cours :
+      // l'écriture lui est transmise.
+      this.pendingUpserts.get(repoPath)?.set(req.id, req)
+      return
+    }
 
     idx.requirements.set(req.id, req)
 
@@ -233,7 +246,12 @@ export class RequirementsIndexService {
 
   private async getOrBuild(repoPath: string): Promise<RepoIndex> {
     if (!this.index.has(repoPath)) {
-      await this.build(repoPath)
+      let pending = this.builds.get(repoPath)
+      if (!pending) {
+        pending = this.build(repoPath).finally(() => this.builds.delete(repoPath))
+        this.builds.set(repoPath, pending)
+      }
+      await pending
     }
     return this.index.get(repoPath)!
   }
@@ -244,6 +262,8 @@ export class RequirementsIndexService {
 
     const requirements = new Map<string, Requirement>()
     const versions = new Map<string, RequirementVersion[]>()
+    const written = new Map<string, Requirement>()
+    this.pendingUpserts.set(repoPath, written)
 
     const reqFiles = await this.git.listFiles(repoPath, 'requirements')
     const versionFiles = await this.git.listFiles(repoPath, 'versions')
@@ -309,6 +329,9 @@ export class RequirementsIndexService {
         return String((r as unknown as Record<string, unknown>)[field] ?? '')
       },
     })
+    // Écritures arrivées pendant la construction : la version écrite fait foi.
+    if (this.pendingUpserts.get(repoPath) === written) this.pendingUpserts.delete(repoPath)
+    for (const req of written.values()) requirements.set(req.id, req)
     search.addAll(Array.from(requirements.values()))
 
     this.index.set(repoPath, {

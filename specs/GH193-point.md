@@ -119,16 +119,18 @@ pour boucler tôt le cycle changeset → campagne → preuve, avant la configura
 - Issues : #200 (périmètre), #206 (`assignedToChange` non par défaut), #208 (« Étendre » à la
   réouverture), #204 (E6/E8), #201 (contenu livré par élément).
 
-## 7. Questions
+## 7. Questions tranchées (2026-10-30)
 
-| # | Question | Proposition |
+Toutes les propositions retenues ; P4 précisée.
+
+| # | Question | Décision |
 |---|---|---|
 | P1 | La règle §3 est-elle **désactivable** par projet ? | oui, préférence `changeTracking: on | off` (défaut `on` dès qu'un type changeset existe dans le repo ; sans type, rien n'est exigé) |
 | P2 | Création **en masse** (import, MCP `bulk-import`, duplication) | même règle : un changeset choisi pour tout le lot ; le MCP exige un `changesetId` à la création / réouverture, ou range l'élément dans le backlog |
 | P3 | Élément réouvert puis réapprouvé **plusieurs fois** dans le même changeset | une seule ligne : départ = premier état approuvé, approbation = dernière ; les cycles intermédiaires restent dans l'historique GH77 |
-| P4 | Élément rouvert alors qu'il est déjà dans `toModify` d'un changeset ouvert | reste dans ce changeset, sans question |
+| P4 | Élément rouvert alors qu'il est déjà dans `toModify` d'un changeset | reste dans ce changeset, sans question, **tant que ce changeset n'est pas clos** (statut non terminal) ; sinon, nouvelle assignation (§3.2) |
 | P5 | Statut `isTerminal` (obsolète) depuis l'approuvé | c'est une modification : passe par un changeset (trace départ / « rendu obsolète ») |
-| P6 | Ordre : avancer #207 juste après #200 ? | oui (boucle complète plus tôt) — à confirmer |
+| P6 | Ordre : avancer #207 juste après #200 ? | **oui** : #207 devient le lot suivant #200 |
 
 ## Refs
 

@@ -6,6 +6,8 @@ import { SystemViewProvider } from '../../contexts/SystemViewContext'
 import { SearchProvider } from '../../contexts/SearchContext'
 import { VersioningProvider } from '../../contexts/VersioningContext'
 import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
+import { TerminalProvider } from '../../contexts/TerminalContext'
+import { TerminalPanel } from '../terminal/TerminalPanel'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
 import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
@@ -280,6 +282,8 @@ export function AppLayout() {
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
+        {/* GH238 — terminal des vues Version (rien hors projet ouvert : pas de TerminalProvider). */}
+        <TerminalPanel />
       </div>
     </div>
   )
@@ -303,15 +307,17 @@ export function AppLayout() {
   return (
     <VersioningProvider currentProjectId={currentProjectId}>
       <SelectedRepoProvider key={currentProjectId}>
-        <CompareRefsProvider>
-          <ImpactAnalysisProvider>
-            <SystemViewProvider currentProjectId={currentProjectId}>
-              <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
-                {inner}
-              </SearchProvider>
-            </SystemViewProvider>
-          </ImpactAnalysisProvider>
-        </CompareRefsProvider>
+        <TerminalProvider>
+          <CompareRefsProvider>
+            <ImpactAnalysisProvider>
+              <SystemViewProvider currentProjectId={currentProjectId}>
+                <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
+                  {inner}
+                </SearchProvider>
+              </SystemViewProvider>
+            </ImpactAnalysisProvider>
+          </CompareRefsProvider>
+        </TerminalProvider>
       </SelectedRepoProvider>
     </VersioningProvider>
   )

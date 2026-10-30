@@ -1,13 +1,14 @@
-import { app, ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import type { ExportKind, ExportFormat, ExportResult, ExecutionSheetLocale, ExecutionImportPreview } from '@polenta/types'
+import type { ExportKind, ExportFormat, ExportResult, ExecutionSheetLocale, ExecutionImportPreview, TerminalKind } from '@polenta/types'
 import type { Container } from './index'
 import type { HandlerRegistry, Handler } from './registry'
 import type { DESKTOP_ONLY_CHANNELS } from './channels'
 import type { PlatformHost } from '../host/platform-host'
 import type { UpdateService } from '../services/update.service'
+import type { TerminalService } from '../services/terminal.service'
 import { IMAGE_MIME_BY_EXT, importFileIntoRepo, saveExport, saveExecutionSheet } from './file-ops'
 import { BRAND } from '../../shared/brand'
 import { appVersion } from '../app-version'
@@ -45,7 +46,7 @@ const EXPORT_DIALOG_FILTERS: Record<ExportFormat, { name: string; extensions: st
   pdf: { name: 'PDF', extensions: ['pdf'] },
 }
 
-export function registerDesktopOnlyHandlers(c: Container, update: UpdateService): void {
+export function registerDesktopOnlyHandlers(c: Container, update: UpdateService, terminal: TerminalService): void {
   // Typé sur `DESKTOP_ONLY_CHANNELS` : un channel ajouté ici sans y figurer ne compile pas, et le
   // serveur web s'appuie sur cette liste (channels.ts).
   const handle = (channel: typeof DESKTOP_ONLY_CHANNELS[number], fn: Handler) => ipcMain.handle(channel, fn)
@@ -190,4 +191,34 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService)
     shell.showItemInFolder(filePath)
   })
   handle('export:open-file', (_e, filePath: string) => shell.openPath(filePath))
+
+  // ── Terminal de la vue Version (GH238) ───────────────────────────────────────
+  // Sortie et fin poussées par 'terminal:data' / 'terminal:exit'.
+  handle('terminal:detect', () => terminal.detect())
+  // Sessions tuées au rechargement / à la fermeture de la fenêtre (le renderer ne peut plus le
+  // faire) ; écoute posée une fois par webContents.
+  const watchedOwners = new Set<number>()
+  handle('terminal:start', (e, kind: TerminalKind, cwd: string, cols: number, rows: number) => {
+    const sender = (e as IpcMainInvokeEvent).sender
+    const owner = sender.id
+    if (!watchedOwners.has(owner)) {
+      watchedOwners.add(owner)
+      // Nouvelle page principale (rechargement, même en échec) — ni une iframe (visionneuse draw.io
+      // des vues Exigences…), ni une navigation interne du router (même document).
+      sender.on('did-start-navigation', details => {
+        if (details.isMainFrame && !details.isSameDocument) terminal.killOwnedBy(owner)
+      })
+      sender.once('destroyed', () => {
+        terminal.killOwnedBy(owner)
+        watchedOwners.delete(owner)
+      })
+    }
+    return terminal.start(kind, cwd, cols, rows, owner)
+  })
+  handle('terminal:write', (_e, id: string, data: string) => terminal.write(id, data))
+  handle('terminal:cd', (_e, id: string, repoPath: string) => terminal.cd(id, repoPath))
+  handle('terminal:resize', (_e, id: string, cols: number, rows: number) => terminal.resize(id, cols, rows))
+  handle('terminal:kill', (_e, id: string) => terminal.kill(id))
+  // URL fixe : pas un ouvreur d'URL générique exposé au renderer.
+  handle('terminal:open-git-download', () => shell.openExternal('https://git-scm.com/downloads'))
 }

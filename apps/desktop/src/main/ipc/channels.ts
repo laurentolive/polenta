@@ -24,4 +24,11 @@ export const DESKTOP_ONLY_CHANNELS = [
   'export:save',
   'export:show-in-folder',
   'export:open-file',
+  'terminal:detect',
+  'terminal:start',
+  'terminal:write',
+  'terminal:cd',
+  'terminal:resize',
+  'terminal:kill',
+  'terminal:open-git-download',
 ] as const

@@ -57,6 +57,15 @@ export function createIpcClient(
       getState: () => invoke('update:get-state'),
       install: () => invoke('update:install'),
     },
+    terminal: {
+      detect: () => invoke('terminal:detect'),
+      start: (kind, cwd, cols, rows) => invoke('terminal:start', kind, cwd, cols, rows),
+      write: (id, data) => invoke('terminal:write', id, data),
+      cd: (id, repoPath) => invoke('terminal:cd', id, repoPath),
+      resize: (id, cols, rows) => invoke('terminal:resize', id, cols, rows),
+      kill: (id) => invoke('terminal:kill', id),
+      openGitDownload: () => invoke('terminal:open-git-download'),
+    },
     schema: {
       get: (p) => invoke('schema:get', p),
       getAt: (p, ref) => invoke('schema:get-at', p, ref),

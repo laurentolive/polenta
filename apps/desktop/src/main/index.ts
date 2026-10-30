@@ -6,6 +6,7 @@ import { ipcMainRegistry, electronPlatformHost, registerDesktopOnlyHandlers } fr
 import { createElectronHostContext } from './host/electron-host'
 import { electronPrintRenderer } from './host/electron-print'
 import { UpdateService } from './services/update.service'
+import { TerminalService } from './services/terminal.service'
 import { INVITE_SCHEME, inviteFromArgv, parseInviteLink, setPendingInvite, type InviteLink } from './host/invite-link'
 import { BRAND } from '../shared/brand'
 import { attachContextMenu } from './host/context-menu'
@@ -105,7 +106,10 @@ app.whenReady().then(() => {
   registerHandlers(ipcMainRegistry, container, electronPlatformHost)
   // GH26 — mise à jour automatique : propre au desktop, hors du noyau de services partagé.
   const update = new UpdateService(container.appSettings)
-  registerDesktopOnlyHandlers(container, update)
+  // GH238 — terminal de la vue Version ; ses shells ne survivent pas à l'application.
+  const terminal = new TerminalService(electronPlatformHost.broadcast)
+  app.on('will-quit', () => terminal.killAll())
+  registerDesktopOnlyHandlers(container, update, terminal)
   mainWindow = createAppWindow()
   mainWindow.on('closed', () => { mainWindow = null })
   update.scheduleStartupCheck()

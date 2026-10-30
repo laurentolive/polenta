@@ -80,6 +80,8 @@ import type {
   ExecutionImportResult,
   AppSettings,
   UpdateState,
+  TerminalDetectResult,
+  TerminalKind,
 } from '@polenta/types'
 import type {
   CreateRequirementDto,
@@ -430,6 +432,19 @@ export interface ApiClient {
   update: {
     getState(): Promise<UpdateState>
     install(): Promise<void>
+  }
+  /** GH238 — pseudo-terminal de la vue Version (desktop seulement) ; sortie et fin poussées par
+   *  'terminal:data' (id, chunk) et 'terminal:exit' (id, exitCode) (window.polenta.on). */
+  terminal: {
+    detect(): Promise<TerminalDetectResult>
+    start(kind: TerminalKind, cwd: string, cols: number, rows: number): Promise<{ id: string; name: string }>
+    write(id: string, data: string): Promise<void>
+    /** Tape `cd '<repoPath>'` + Entrée (chemin au format du shell). */
+    cd(id: string, repoPath: string): Promise<void>
+    resize(id: string, cols: number, rows: number): Promise<void>
+    kill(id: string): Promise<void>
+    /** Ouvre https://git-scm.com/downloads dans le navigateur. */
+    openGitDownload(): Promise<void>
   }
   schema: {
     get(repoPath: string): Promise<ProjectSchema>

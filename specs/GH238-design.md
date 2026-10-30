@@ -182,3 +182,22 @@ attaché, buffer et état conservés.
 - **Sprint 2** — renderer : xterm, `terminalShortcut.ts` (+ tests), `TerminalContext`,
   `TerminalPanel`, bouton, i18n, e2e desktop `e2e-desktop/gh238-terminal.spec.ts`, mises à jour
   SPEC.
+
+## 6. Écarts constatés en cours de développement
+
+- **Un seul sprint** : main et renderer livrés ensemble (le service seul n'était pas testable de
+  bout en bout).
+- **ConPTY de Windows** (`useConptyDll: false`), pas celui livré par node-pty : avec ce dernier, une
+  frappe rapide arrivait parfois au shell dans le désordre (`techo` pour `echo`), reproduit en
+  e2e et absent avec le ConPTY de Windows (8/8). Regrouper les écritures (comme VS Code) ne
+  corrigeait pas.
+- **Canal `terminal:cd`** ajouté : la mise en forme du chemin (MSYS) reste dans
+  `terminal-shell.util.ts` (main, testée) au lieu d'être dupliquée dans le renderer.
+- **Sessions liées à leur webContents** : tuées à une nouvelle page principale (`did-start-navigation`,
+  cadre principal, autre document — pas `did-start-loading`, émis aussi par les iframes de la
+  visionneuse draw.io) et à sa destruction, le nettoyage React n'ayant pas lieu au rechargement.
+- **`taskkill /T`** seulement si le shell vit encore une seconde après `pty.kill()` (PID
+  réattribuable sinon).
+- **`QuietRefresh`** : reste armé après un rafraîchissement jusqu'à la frappe suivante (une commande
+  qui marque une pause est rafraîchie aussi à sa vraie fin) ; `onInput(data)` remplace `arm()`.
+- « Aller au repo sélectionné » met à jour le repo affiché dans l'en-tête (repo du shell supposé).

@@ -149,6 +149,9 @@ pas champ par champ.
   "dependencies": {
     "isomorphic-git": "^1.25.0",
     "keytar": "^7.9.0",
+    "node-pty": "1.1.0",
+    "@xterm/xterm": "6.0.0",
+    "@xterm/addon-fit": "0.11.0",
     "chokidar": "^3.6.0",
     "js-yaml": "^4.1.0",
     "zod": "^3.25.76",
@@ -1666,6 +1669,49 @@ Si on est sur la branche d'intégration (main) :
 |---------|-----------|--------|
 | `sync:checkout-commit` | `repoPath: string, sha: string` | `void` |
 
+#### Terminal Git Bash des vues Version (GH238)
+
+Panneau bas de la zone principale (`components/terminal/TerminalPanel.tsx`), rendu sous `<main>`
+dans `AppLayout`, **seulement sur `/graph`, `/diff`, `/version-diff`, `/baseline`**. Desktop
+seulement (client web abandonné).
+
+- **Ouverture** : `Ctrl+ù` / `` Ctrl+` `` (bascule, écouté en capture sur `window` par
+  `TerminalProvider`, actif même focus dans le terminal, sans effet hors des vues Version), bouton
+  `SquareTerminal` du header du panneau Version, × de l'en-tête. Hauteur réglable (poignée haute,
+  80 px – 70 % de la colonne), gardée pour la session de l'application.
+- **Masquer ne tue rien** : panneau masqué par CSS, xterm reste attaché (contenu, processus). La
+  session est créée à la première ouverture, dans le repo sélectionné (`SelectedRepoContext`) ;
+  `TerminalProvider` est monté sous `SelectedRepoProvider key={currentProjectId}` : changer de
+  projet tue la session. Fin du shell → « [processus terminé — code n] Appuyez sur Entrée pour
+  relancer » (Entrée relance dans le repo sélectionné à ce moment).
+- **En-tête** : nom du shell, repo du shell ; « Aller à <repo> » quand le repo sélectionné diffère
+  (tape `cd '<chemin MSYS>'` + Entrée, `terminal:cd`) ; Effacer, Tuer (pendant une exécution), ×.
+- **Clavier** : tout va au shell, sauf `Ctrl+ù`, `Ctrl+C` avec sélection / `Ctrl+Maj+C` (copie) et
+  `Ctrl+V` / `Ctrl+Maj+V` (collage natif). `keydown` arrêté au conteneur : les raccourcis des vues
+  (`F7`, `Ctrl+S`, `Ctrl+B`…) ne voient pas les touches du terminal. Clic droit : Copier / Coller /
+  Effacer.
+- **Rafraîchissement** (`QuietRefresh`, `terminalShortcut.ts`) : après une Entrée, chaque accalmie
+  de 500 ms de la sortie invalide les requêtes `sync:*` / `git*` du repo du shell et du repo
+  sélectionné (statut, graphe, branches, tags, état d'intégration) ; la frappe suivante désarme.
+  Couvre l'index git et les états de merge/rebase, invisibles au watcher (qui ignore `.git` hormis
+  HEAD/refs).
+- **Git Bash introuvable** : « Git Bash introuvable sur ce poste », Installer Git (`winget install
+  --id Git.Git …` dans le pseudo-terminal si winget répond, sinon page git-scm.com) et Revérifier ;
+  Git installé utilisable sans redémarrer (emplacements standards toujours consultés).
+- **Main** : `TerminalService` (`services/terminal.service.ts`, hors `Container` partagé, créé dans
+  `main/index.ts`), `node-pty` chargé à la demande depuis `app.asar.unpacked`, **ConPTY de
+  Windows** (`useConptyDll: false` : celui livré par node-pty mélangeait une frappe rapide).
+  Shell : `bin\bash.exe --login -i` de Git for Windows, `CHERE_INVOKING=1`, environnement sans
+  `ELECTRON_*` / `POLENTA_*` (`terminal-shell.util.ts`). Kill : `pty.kill()` puis `taskkill /T`
+  une seconde après si le shell vit encore. Sessions tuées à la sortie de l'application et à une
+  nouvelle page principale du webContents propriétaire (rechargement).
+- **Channels** (`DESKTOP_ONLY_CHANNELS`) : `terminal:detect`, `terminal:start`, `terminal:write`,
+  `terminal:cd`, `terminal:resize`, `terminal:kill`, `terminal:open-git-download` (URL fixe) ;
+  événements `terminal:data` (id, chunk) et `terminal:exit` (id, code).
+- Le terminal agit hors de Polenta : un `rm` du fichier d'un objet ne pose pas de pierre tombale,
+  une édition à la main contourne l'historique — écarts d'une édition hors application, sans
+  garde-fou. Identifiants distants : ceux du git du poste.
+
 ### 19.9 Panneau — Produit
 
 Tabs `[Exigences | Tests | Campagnes]` directement sous le header. Contenu piloté par le schema produit (niveaux et types définis dans `.polenta/schema.yaml`).
@@ -1831,7 +1877,7 @@ Le layout racine (`__root.tsx`) adopte la structure sidebar + main. La route `/l
     ├── /project/$id    → panneau Projet actif, currentProjectId lu depuis params
     ├── (pas de /branch/new — création de branche inline dans BranchCombobox, voir §19.11)
     ├── /schema         → panneau Projet actif, projectId depuis search param
-    ├── /graph          → panneau Version actif, projectId depuis search param
+    ├── /graph          → panneau Version actif, projectId depuis search param (+ terminal Git Bash, GH238, §19.8b)
     ├── /baseline       → panneau Version actif (liste des baselines), vue = formulaire de création (GH40)
     ├── /diff           → panneau Version actif, projectId + filepath depuis search param
     ├── /product        → panneau Produit actif, projectId + tab depuis search param

@@ -22,3 +22,11 @@ export interface UpdateState {
   /** Page de la release GitHub de availableVersion. */
   releaseUrl?: string
 }
+
+// GH238 — terminal de la vue Version (desktop) : shell détecté, ou Git Bash introuvable.
+export type TerminalDetectResult =
+  | { status: 'found'; shell: { name: string; file: string } }
+  | { status: 'not-found'; winget: boolean }
+
+/** `install-git` : `winget install Git.Git` dans le pseudo-terminal (Git absent, Windows). */
+export type TerminalKind = 'shell' | 'install-git'

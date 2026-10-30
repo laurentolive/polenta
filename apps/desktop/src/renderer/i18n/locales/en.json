@@ -482,7 +482,8 @@
       "baselinesTitle": "Baselines",
       "refreshConflict_one": "Conflict with the remote branch ({{count}} file): nothing was changed.",
       "refreshConflict_other": "Conflict with the remote branch ({{count}} files): nothing was changed.",
-      "integrationTag": "integration"
+      "integrationTag": "integration",
+      "terminal": "Terminal (Ctrl+`)"
     },
     "reorderable": {
       "deleteTitle": "Delete?",
@@ -2175,5 +2176,19 @@
     "expand": "Expand",
     "empty": "—",
     "unplaced": "Outside the structure"
+  },
+  "terminal": {
+    "title": "Terminal",
+    "exited": "[process exited — code {{code}}] Press Enter to restart",
+    "cdToSelected": "Go to {{repo}}",
+    "clear": "Clear",
+    "kill": "Kill process",
+    "close": "Close (Ctrl+`)",
+    "notFound": "Git Bash not found on this computer",
+    "installGit": "Install Git",
+    "recheck": "Check again",
+    "installHint": "The button opens the Git download page; check again once Git is installed.",
+    "copy": "Copy",
+    "paste": "Paste"
   }
 }

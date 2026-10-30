@@ -198,7 +198,9 @@ dossier, et par le **dépôt** d'un drag & drop (recale la vue sur le 1er nœud 
 par une sélection multiple, ni par la navigation clavier, ni en Vue Édition. Le contour
 « élément courant » est retiré au prochain goto, au clic dans le vide de l'arbre, au
 changement de composant/type et à l'entrée en Vue Édition. Si l'élément visé n'est pas rendu
-dans la vue (dossier replié dans la vue document) : no-op silencieux. Depuis T166, l'arbre et la
+dans la vue (dossier replié dans la vue document) : défilement jusqu'au nœud rendu le plus proche
+— ancêtre (dossier replié), descendant (titres de dossiers masqués), sinon voisin — sans contour
+(GH230, `scrollCandidates` ; avant : no-op silencieux). Depuis T166, l'arbre et la
 vue document appliquent le même filtre (mode + périmètre) — un résultat visible dans l'arbre
 l'est aussi dans la vue, il n'y a plus de divergence de filtre en mode regex.
 
@@ -503,7 +505,7 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 
 | État | Mécanisme | Clé |
 |------|-----------|-----|
-| Mode de vue affiché (Excel / Word / Édition) et élément édité ou ciblé par un goto (GH228) | URL (TanStack Router search params) | `view` (`excel`/`word`/`edit`), `item` (objectId) — `/product` et `/components` |
+| Mode de vue affiché (Excel / Word / Édition) et élément édité ou ciblé par un goto (GH228), ancrage en haut de la vue (GH230) | URL (TanStack Router search params) | `view` (`excel`/`word`/`edit`), `item` (objectId), `top` (objectId) — `/product` et `/components` |
 | Dernier mode Tableau / Document (mode par défaut sans `view`) | `localStorage` | `polenta:viewMode:${repoPath}` |
 | Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 21] ignorée — 21 = toutes les lignes (T170) | `localStorage` | `polenta:excelRowMaxLines` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
@@ -534,6 +536,19 @@ encore en résolution garde la vue Édition ; introuvable une fois l'arbre charg
 le dernier mode Tableau / Document. En Tableau / Document, `item` est la cible goto (contour et
 défilement au retour sur la page). Nœud sans objet (création en cours) : Édition sans `item`,
 complété en REPLACE dès l'objet créé.
+
+**GH230 — bascule Tableau ↔ Document sur le même élément** : les boutons de mode (`switchView`)
+lisent dans le DOM de la vue courante l'élément de référence — ligne sélectionnée du Tableau
+(`data-selected`), sinon cible goto, sinon (depuis l'Édition) l'élément édité ; la nouvelle page
+porte son `item` (goto, contour) — dossier : cible goto locale. Sans sélection, le premier élément
+portant un objet affiché en haut de la zone de défilement (`data-view-scroll`, milieu sous le haut
+décalé du `scroll-margin-top`) devient l'ancrage **`top`** (objectId) : aligné en haut de la
+nouvelle vue, instantanément, sans contour. La page quittée sans `item` reçoit d'abord son propre
+`top` en REPLACE, la nouvelle page étant poussée une fois cette URL rendue (deux navigations dans
+la même tâche ne feraient qu'une entrée d'historique) : Précédent / Suivant ramènent à la position.
+`top` suit les règles d'`item` (gardé par une résolution automatique, abandonné par une nouvelle
+page, un goto ou un clic dans le vide) ; ignoré en présence d'`item`. Bouton du mode déjà dans
+l'URL : sans effet. Le Tableau rend toutes ses lignes avant de défiler vers une cible.
 
 **T52 — restauration au retour sur la vue** : quand l'URL arrive sans aucun `repo` (retour depuis
 un autre panneau, redémarrage de l'app, ancien lien pré-T72), la dernière sélection valide

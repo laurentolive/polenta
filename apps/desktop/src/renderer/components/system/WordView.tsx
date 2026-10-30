@@ -77,6 +77,8 @@ interface Props {
    *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
   gotoNodeId?: string | null
   gotoSeq?: number
+  /** GH230 — nœud aligné en haut de la vue, sans contour (ancrage `top` de l'URL). */
+  anchorNodeId?: string | null
   /** GH24 — dossiers repliés : détenus par SystemView (pref du type) pour survivre au
    *  démontage de la vue (changement de vue / de type). */
   collapsedFolders: string[]
@@ -788,6 +790,7 @@ export const WordView = memo(function WordView({
   onStepsChange,
   gotoNodeId,
   gotoSeq,
+  anchorNodeId,
   collapsedFolders: collapsedFolderIds,
   onCollapsedFoldersChange,
   computedColumns,
@@ -805,7 +808,9 @@ export const WordView = memo(function WordView({
 
   // T164 — "goto" : défiler jusqu'à la carte / l'en-tête portant data-node-id.
   const containerRef = useRef<HTMLDivElement>(null)
-  useScrollToNode(containerRef, gotoNodeId, gotoSeq)
+  useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root })
+  // GH230 — ancrage `top` : nœud aligné en haut, sans contour ni animation.
+  useScrollToNode(containerRef, anchorNodeId, undefined, { root, block: 'start', behavior: 'instant' })
 
   // Ref plutôt que dépendances : garde `toggleFolder` stable (passé aux lignes mémoïsées).
   const collapsedFoldersRef = useRef({ set: collapsedFolders, onChange: onCollapsedFoldersChange })
@@ -989,7 +994,7 @@ export const WordView = memo(function WordView({
   const activeLt = linkTypes.find(l => l.name === activeLinkTypeName)
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-auto">
+    <div ref={containerRef} className="flex-1 overflow-auto" data-view-scroll>
       <div className="px-6 py-2">
         {root.length === 0 ? (
           <p className="text-ink-3 text-sm italic">{t('common.noElements')}</p>

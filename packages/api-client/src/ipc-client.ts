@@ -175,6 +175,10 @@ export function createIpcClient(
       diffFileBetween: (p, sha1, sha2, filepath) => invoke('sync:diff-file-between', p, sha1, sha2, filepath),
       resolveRefs: (p) => invoke('sync:resolve-refs', p),
     },
+    diffEdit: {
+      saveWorkingFile: (p, filepath, text, baseline, workspaceDir) =>
+        invoke('diff:save-working-file', p, filepath, text, baseline, workspaceDir),
+    },
     mergeResolution: {
       open: (p, leftRef, rightRef, origin) => invoke('merge-resolution:open', p, leftRef, rightRef, origin),
       list: (repoPaths) => invoke('merge-resolution:list', repoPaths),

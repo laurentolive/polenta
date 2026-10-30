@@ -25,8 +25,6 @@
     --chart-series-6: 227 73 72;
     --chart-series-7: 232 123 164;
     --chart-series-8: 235 104 52;
-    /* GH71 — étapes d'avancement de campagne : préparation (gris, du plus foncé au plus clair),
-       prêt (bleu), puis résultats (jaune, orange, rouge, vert). */
     --chart-progress-prep-1: 71 85 105;
     --chart-progress-prep-2: 100 116 139;
     --chart-progress-prep-3: 148 163 184;
@@ -67,6 +65,22 @@
     --activity-fg-hover: 15 23 42;
     --activity-bg-active: 226 232 240;
     --activity-fg-disabled: 148 163 184;
+    --diff-line-del: 254 215 215;
+    --diff-char-del: 252 165 165;
+    --diff-line-ins: 170 235 190;
+    --diff-char-ins: 110 225 150;
+    --diff-gutter-del: 220 38 38;
+    --diff-gutter-ins: 22 163 74;
+    --diff-left-line: 219 234 254;
+    --diff-left-char: 147 197 253;
+    --diff-right-line: 170 235 190;
+    --diff-right-char: 110 225 150;
+    --diff-conflict: 217 119 6;
+    --diff-conflict-bg: 254 243 199;
+    --diff-resolved: 100 116 139;
+    --diff-auto-left: 37 99 235;
+    --diff-auto-right: 22 163 74;
+    --diff-hatch: 203 213 225;
     --print-bg: 255 255 255;
     --print-ink: 15 23 42;
     --print-ink-2: 100 116 139;
@@ -123,6 +137,22 @@
     --activity-fg-hover: 255 255 255;
     --activity-bg-active: 51 65 85;
     --activity-fg-disabled: 71 85 105;
+    --diff-line-del: 74 30 38;
+    --diff-char-del: 135 38 48;
+    --diff-line-ins: 20 85 55;
+    --diff-char-ins: 28 120 74;
+    --diff-gutter-del: 248 113 113;
+    --diff-gutter-ins: 74 222 128;
+    --diff-left-line: 30 52 100;
+    --diff-left-char: 37 78 160;
+    --diff-right-line: 20 85 55;
+    --diff-right-char: 28 120 74;
+    --diff-conflict: 245 158 11;
+    --diff-conflict-bg: 72 48 14;
+    --diff-resolved: 148 163 184;
+    --diff-auto-left: 96 165 250;
+    --diff-auto-right: 74 222 128;
+    --diff-hatch: 71 85 105;
   }
 /* THEME:GENERATED:END */
 
@@ -148,20 +178,31 @@
   /* GH178 — vues de diff, mode Rendu : mots retirés (Avant) / ajoutés (Après), blocs média modifiés. */
   .diff-del {
     @apply rounded-sm line-through;
-    background-color: rgb(var(--status-danger-solid) / 0.25);
-    text-decoration-color: rgb(var(--status-danger));
+    background-color: rgb(var(--diff-char-del));
+    text-decoration-color: rgb(var(--diff-gutter-del));
   }
   .diff-ins {
     @apply rounded-sm no-underline;
-    background-color: rgb(var(--status-success-solid) / 0.3);
+    background-color: rgb(var(--diff-char-ins));
   }
   .diff-media-del {
-    outline: 2px solid rgb(var(--status-danger-solid));
+    outline: 2px solid rgb(var(--diff-gutter-del));
     outline-offset: 2px;
   }
   .diff-media-ins {
-    outline: 2px solid rgb(var(--status-success-solid));
+    outline: 2px solid rgb(var(--diff-gutter-ins));
     outline-offset: 2px;
+  }
+  /* GH222 §12 — « ← Rétablir » d'un bloc, entre les colonnes du diff Raw (hors des éditeurs). */
+  .cm-diff-restore {
+    @apply px-1 rounded border border-edge bg-surface text-[10px] text-ink-2 whitespace-nowrap;
+  }
+  .cm-diff-restore:hover {
+    @apply bg-hover text-ink;
+  }
+  /* GH222 — absence alignée en face d'un ajout / d'un retrait (Raw et Rendu). */
+  .diff-hatch {
+    background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(var(--diff-hatch) / 0.55) 4px 6px);
   }
   /* T171 — référence de paramètre ({nom}) : même style partout (lecture markdown-it, éditeur
      Tiptap, texte brut). Variante non résolue : référence littérale en couleur d'alerte. */

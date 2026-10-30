@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { MergeFileDetail, MergeFileDraft, MergeSessionInfo, MergeValidation } from '@polenta/types'
 import { api } from '../../api'
 
@@ -22,6 +22,16 @@ export function useMergeSession(id: string) {
   }
 
   return { session, setSession, saveFile }
+}
+
+/**
+ * GH234 — a session just (re)opened replaces whatever is cached under its id: the id is derived
+ * from the repo and the two commits, so a resolution of the same merge abandoned earlier may have
+ * left `null` (« n'existe plus ») and file details with its old drafts.
+ */
+export function primeMergeSession(qc: QueryClient, session: MergeSessionInfo) {
+  qc.removeQueries({ queryKey: ['merge-resolution', session.id] })
+  qc.setQueryData(['merge-resolution', session.id], session)
 }
 
 export function useMergeFile(id: string, path: string | null) {

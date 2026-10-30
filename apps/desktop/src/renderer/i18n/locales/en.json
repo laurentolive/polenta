@@ -1561,6 +1561,22 @@
       "preconditions": "Preconditions",
       "steps": "Steps",
       "postconditions": "Postconditions"
+    },
+    "sideBySide": "Side by side",
+    "inline": "Inline",
+    "restore": "Restore",
+    "editable": "Editable — working tree",
+    "save": "Save",
+    "saved": "Saved",
+    "reload": "Reload",
+    "add": "Add",
+    "newKey": "New key",
+    "unsaved": "Unsaved changes",
+    "saveError": {
+      "changed": "The file changed on disk since it was opened: reload it before saving.",
+      "invalid": "Invalid content: {{message}}",
+      "unsupported": "These keys are not saved from the diff ({{keys}}): use the object editor.",
+      "outside": "Path outside the repository."
     }
   },
   "versionDiffPage": {
@@ -1734,7 +1750,8 @@
       "requiredEmpty": "Required field is empty: {{field}}",
       "ears": "\"{{field}}\" does not follow the EARS syntax (WHEN/WHILE/WHERE/IF…THEN … THE … SHALL …)",
       "invalidLinks": "Invalid links.yaml (each link needs a unique id, a type, a source and a target) {{id}}",
-      "invalidParameters": "Invalid parameters.yaml (a \"parameters\" mapping is expected)"
+      "invalidParameters": "Invalid parameters.yaml (a \"parameters\" mapping is expected)",
+      "invalidDrawio": "Invalid .drawio file (an <mxfile> element with its pages is expected)"
     },
     "failure": {
       "stale": "One of the two branches moved since opening: nothing was written. Run the original operation again.",
@@ -1779,7 +1796,22 @@
       "button": "Keep both…",
       "preview": "{{oldId}} (my changes) will become {{newId}}; files rewritten on my side:",
       "confirm": "Renumber to {{newId}}"
-    }
+    },
+    "takeBoth": "Take both",
+    "reset": "Reset",
+    "resolvedLeft": "✓ Resolved: left",
+    "resolvedRight": "✓ Resolved: right",
+    "resolvedBoth": "✓ Resolved: both",
+    "conflictCount_one": "{{count}} conflict",
+    "conflictCount_other": "{{count}} conflicts",
+    "autoCount_one": "{{count}} taken",
+    "autoCount_other": "{{count}} taken",
+    "drawioPage": "Page “{{page}}” changed on both sides",
+    "drawioHunk": "Text block {{key}} (details in Raw)",
+    "takeBase": "Take ancestor",
+    "resolvedBase": "✓ Resolved: ancestor",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Y)"
   },
   "forgeAccess": {
     "revoked": "Your access to {{host}} was revoked or has expired, or your account was disabled. Your local changes are kept.",
@@ -2289,5 +2321,34 @@
       "create": "Create",
       "approveWithout": "Approve without a changeset"
     }
+  },
+  "diffkit": {
+    "change": {
+      "none": "No change",
+      "counter": "Change {{current}} / {{total}}",
+      "prev": "Previous change (Shift+F7)",
+      "next": "Next change (F7)",
+      "ruler": "Changes"
+    },
+    "conflict": {
+      "none": "No conflict left",
+      "counter": "Conflict {{current}} / {{total}}",
+      "prev": "Previous conflict (Shift+F7)",
+      "next": "Next conflict (F7)",
+      "ruler": "Conflicts"
+    }
+  },
+  "treediff": {
+    "structure": "Structure",
+    "fields": "Fields",
+    "stepNotes": "Notes",
+    "summary_one": "{{count}} item, {{changed}} changed",
+    "summary_other": "{{count}} items, {{changed}} changed",
+    "movedTo": "moved to its new place",
+    "movedFrom": "moved from its former place",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "empty": "—",
+    "unplaced": "Outside the structure"
   }
 }

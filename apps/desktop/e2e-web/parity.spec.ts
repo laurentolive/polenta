@@ -96,12 +96,12 @@ test('P-4 — conflit à la publication, résolu dans le navigateur (GH37)', asy
   await expect(s.page.getByRole('listitem').filter({ hasText: rel })).toBeVisible()
   await s.page.getByRole('button', { name: 'Résoudre les conflits' }).click()
 
-  await expect(s.page.getByText('0 / 1 fichiers mergés')).toBeVisible()
+  await expect(s.page.getByText('0 / 1 fichiers mergés').first()).toBeVisible()
   await s.shot('p-4-conflit')
   // « Mes modifications » à gauche : on garde la valeur du web.
   await s.page.getByRole('button', { name: 'Tout prendre à gauche' }).click()
   await s.page.getByRole('button', { name: 'Merger' }).click()
-  await expect(s.page.getByText('1 / 1 fichiers mergés')).toBeVisible()
+  await expect(s.page.getByText('1 / 1 fichiers mergés').first()).toBeVisible()
   await s.page.getByRole('button', { name: 'Finaliser le merge' }).click()
   await expect(s.page.getByRole('heading', { name: 'Merge finalisé' })).toBeVisible({ timeout: 60_000 })
   await s.shot('p-4-merge-finalise')

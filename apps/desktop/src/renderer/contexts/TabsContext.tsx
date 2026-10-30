@@ -104,6 +104,8 @@ function pushRecentlyClosed(prev: Tab[], closed: Tab): Tab[] {
 // strings — `t()` isn't available at module scope, only inside TabsProvider.
 const PANEL_LABEL_KEYS: Record<Panel, string> = {
   account: 'layout.activityBar.account',
+  // GH233 — panneau de la résolution de conflits (pas d'icône dans la barre d'activité).
+  merge: 'mergeResolve.files',
   project: 'layout.activityBar.project',
   search: 'layout.activityBar.search',
   version: 'layout.activityBar.version',

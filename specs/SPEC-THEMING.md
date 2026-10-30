@@ -53,12 +53,22 @@ les deux thèmes n'est déclarée qu'une fois dans `:root` (familles figées).
 `edge`, `edge-subtle`, `ink`/`ink-2`/`ink-3`, `prim`/`prim-fg` — fond, texte, bordures
 et accent principal de l'application. Repris tels quels de l'architecture pré-T116.
 
+### 3.1b Diff / merge (GH222) — `diff-*`
+
+Couleurs de mise en évidence des vues de diff et de la résolution de conflits, classes Tailwind
+`*-diff-<nom>` : `line-del` / `line-ins` (fond de ligne ou de bloc), `char-del` / `char-ins`
+(caractères changés), `gutter-del` / `gutter-ins` (barres), `left-line` / `left-char` /
+`right-line` / `right-char` (ce que chaque côté d'un merge a changé), `conflict` / `conflict-bg`,
+`resolved`, `auto-left` / `auto-right`, `hatch` (absence alignée). Fonds **opaques** en sombre
+(pas d'opacité sur le fond) ; `lib/diffTokens.test.ts` vérifie un texte ≥ 4,5:1 sur chaque fond et
+des fonds bien distincts du fond des panneaux. Les indicateurs de diff n'utilisent plus `status-*`.
+
 ### 3.2 Sentiments (T116) — `status-*`
 
 5 sentiments (`neutral`, `info`, `success`, `warning`, `danger`) × 5 variantes chacun,
 seul jeu de tokens couvrant à la fois les 4 systèmes de statuts métier (exigence, test,
 campagne, exécution de test), les messages (erreur/succès/avertissement) et les
-indicateurs d'interaction/diff — un token par sentiment plutôt qu'un token par statut
+indicateurs d'interaction (diff : `diff-*` depuis GH222, §3.1b) — un token par sentiment plutôt qu'un token par statut
 métier, pour éliminer la duplication constatée à l'audit (4 systèmes de statuts
 quasi identiques réimplémentés indépendamment).
 

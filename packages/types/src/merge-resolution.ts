@@ -6,6 +6,25 @@
 
 export type MergeSide = 'left' | 'right'
 
+/** GH222 — résultat de l'enregistrement d'un fichier du working tree depuis la vue de diff :
+ *  `outside` (chemin hors du repo), `changed` (modifié sur le disque depuis son chargement),
+ *  `invalid` (YAML ou objet invalide, `message`), `unsupported` (clés que l'éditeur de l'objet
+ *  n'écrit pas, `keys`). */
+/**
+ * GH222 — fichiers que la vue de diff ne modifie pas : ceux que l'app maintient elle-même
+ * (`.git/`, schéma — `.gitmodules` en est dérivé —, arbres d'affichage, pierres tombales,
+ * `.gitmodules`), à modifier par leurs écrans.
+ */
+export function isAppMaintainedFile(filepath: string): boolean {
+  const p = filepath.replace(/\\/g, '/').replace(/^\.\//, '')
+  return /^\.git(\/|$)/.test(p) || p === '.gitmodules' || p === '.polenta/schema.yaml'
+    || p.startsWith('.polenta/trees/') || p.startsWith('.polenta/tombstones/')
+}
+
+export type DiffSaveResult =
+  | { ok: true }
+  | { ok: false; reason: 'outside' | 'changed' | 'invalid' | 'unsupported'; message?: string; keys?: string[] }
+
 /** Opération qui a produit le conflit — détermine les libellés, la branche avancée par la
  *  finalisation et la suite après finalisation. */
 export type MergeOrigin =
@@ -20,8 +39,10 @@ export type MergeOrigin =
 export type MergeConflictKind = 'both-modified' | 'both-added' | 'deleted-left' | 'deleted-right' | 'renumbered'
 
 /** `object` = exigence/test/campagne… (fusion par champ), `links`/`parameters` = par lien / par
- *  paramètre, `text` = hunks de lignes, `binary` = choix d'un côté. */
-export type MergeFileKind = 'object' | 'links' | 'parameters' | 'text' | 'binary'
+ *  paramètre, `yaml` = autre YAML écrit par l'app (fusion structurelle générique, GH222), `trees` =
+ *  arbres d'affichage (par position), `drawio` = par page, `text` = hunks de lignes, `binary` =
+ *  choix d'un côté. */
+export type MergeFileKind = 'object' | 'links' | 'parameters' | 'yaml' | 'trees' | 'drawio' | 'text' | 'binary'
 
 export interface MergeFileEntry {
   path: string
@@ -30,6 +51,8 @@ export interface MergeFileEntry {
   objectId?: string
   title?: string
   state: 'todo' | 'merged'
+  /** GH222 — blocs en conflit et blocs repris automatiquement du merge initial (liste des fichiers). */
+  counts?: { conflicts: number; auto: number }
 }
 
 export interface MergeRenumber {
@@ -76,7 +99,7 @@ export interface MergeFileDetail extends MergeFileEntry {
   images?: { base?: string; left?: string; right?: string }
   /** Sortie initiale calculée (régions de marqueurs comprises) — `null` pour un choix de côté. */
   initialOutput: string | null
-  blocks: { key: string; left?: string; right?: string }[]
+  blocks: { key: string; left?: string; right?: string; base?: string }[]
   auto: { key: string; from: MergeSide | 'both' }[]
   draft?: MergeFileDraft
 }
@@ -95,6 +118,7 @@ export interface MergeValidationIssue {
     | 'ears'
     | 'invalidLinks'
     | 'invalidParameters'
+    | 'invalidDrawio'
   params?: Record<string, string | number>
 }
 

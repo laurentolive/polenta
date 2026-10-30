@@ -103,6 +103,10 @@ ici en un seul, chaque entrée étant une paire (`SystemNode`, type).
   discrète dans son en-tête. Cliquer dessus ouvre un popover ancré sous l'en-tête,
   avec un champ texte et les mêmes 3 options que la barre de filtre globale
   (sensibilité à la casse, mot entier, expression régulière).
+- La colonne `Couverture` (`coverageStatus`) est filtrée sur le libellé affiché par son badge
+  (Non couvert / Couvert / Validé / En échec / À revalider, langue de l'interface), comme
+  `Statut` sur son libellé (GH136) ; une ligne sans badge a un texte vide. En recherche
+  « contient », `couvert` garde aussi « Non couvert » : la regex `^couvert` l'isole (GH224).
 - Le filtre se réévalue en direct à la frappe ou au changement d'option (recherche
   "contient" par défaut). Une expression régulière invalide n'exclut aucune ligne
   (pas d'erreur affichée).

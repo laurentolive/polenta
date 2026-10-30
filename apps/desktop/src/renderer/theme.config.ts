@@ -45,6 +45,19 @@ export const themeTokens: Record<string, ThemeTokenValue> = {
   'chart-series-7': { light: '232 123 164', dark: '213 81 129' },
   'chart-series-8': { light: '235 104 52', dark: '217 89 38' },
 
+  // --- GH71 — étapes d'avancement de campagne : préparation (gris, du plus foncé au plus clair),
+  // prêt (bleu), puis résultats (jaune, orange, rouge, vert). Ajoutées à la main dans index.css par
+  // GH71, déclarées ici depuis GH222 pour que `theme:generate` ne les efface plus ---
+  'chart-progress-prep-1': { light: '71 85 105', dark: '203 213 225' },
+  'chart-progress-prep-2': { light: '100 116 139', dark: '148 163 184' },
+  'chart-progress-prep-3': { light: '148 163 184', dark: '100 116 139' },
+  'chart-progress-prep-4': { light: '203 213 225', dark: '71 85 105' },
+  'chart-progress-ready': { light: '37 99 235', dark: '96 165 250' },
+  'chart-progress-incomplete': { light: '234 179 8', dark: '250 204 21' },
+  'chart-progress-blocked': { light: '234 88 12', dark: '251 146 60' },
+  'chart-progress-fail': { light: '220 38 38', dark: '248 113 113' },
+  'chart-progress-pass': { light: '22 163 74', dark: '74 222 128' },
+
   // --- Sentiments (T116) — 5 sentiments x 5 variantes, réutilisés par les statuts
   // métier (exigence/test/campagne/exécution), les messages (erreur/succès/
   // avertissement) et les indicateurs d'interaction/diff. Voir specs/T116-design.md §2.1
@@ -90,6 +103,27 @@ export const themeTokens: Record<string, ThemeTokenValue> = {
   'activity-fg-hover': { light: '15 23 42', dark: '255 255 255' },
   'activity-bg-active': { light: '226 232 240', dark: '51 65 85' },
   'activity-fg-disabled': { light: '148 163 184', dark: '71 85 105' },
+
+  // --- Diff / merge (GH222) — fonds opaques (pas d'opacité sur le fond, encore lisibles en
+  // sombre) ; texte ≥ 4,5:1 sur chaque fond ; fond de ligne et caractères changés bien distincts
+  // du fond de page et entre eux (vérifié par lib/diffTokens.test.ts) ---
+  'diff-line-del': { light: '254 215 215', dark: '74 30 38' },
+  'diff-char-del': { light: '252 165 165', dark: '135 38 48' },
+  'diff-line-ins': { light: '170 235 190', dark: '20 85 55' },
+  'diff-char-ins': { light: '110 225 150', dark: '28 120 74' },
+  'diff-gutter-del': { light: '220 38 38', dark: '248 113 113' },
+  'diff-gutter-ins': { light: '22 163 74', dark: '74 222 128' },
+  // Merge : ce que chaque côté a changé depuis l'ancêtre (gauche = info, droite = succès).
+  'diff-left-line': { light: '219 234 254', dark: '30 52 100' },
+  'diff-left-char': { light: '147 197 253', dark: '37 78 160' },
+  'diff-right-line': { light: '170 235 190', dark: '20 85 55' },
+  'diff-right-char': { light: '110 225 150', dark: '28 120 74' },
+  'diff-conflict': { light: '217 119 6', dark: '245 158 11' },
+  'diff-conflict-bg': { light: '254 243 199', dark: '72 48 14' },
+  'diff-resolved': { light: '100 116 139', dark: '148 163 184' },
+  'diff-auto-left': { light: '37 99 235', dark: '96 165 250' },
+  'diff-auto-right': { light: '22 163 74', dark: '74 222 128' },
+  'diff-hatch': { light: '203 213 225', dark: '71 85 105' },
 
   // --- Impression / export (T116) — figée : rendu papier toujours clair ---
   'print-bg': { light: '255 255 255', dark: '255 255 255' },

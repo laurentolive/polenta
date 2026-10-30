@@ -207,9 +207,8 @@ const DEFAULT_FILTER_OPTIONS: FilterOptions = { caseSensitive: false, wholeWord:
 
 /** Colonnes sans valeur texte pertinente à filtrer. */
 function isFilterableColumn(col: string): boolean {
-  // coverageStatus (T138) n'a pas de valeur texte brute sur l'objet — rendu par icône uniquement,
-  // pas de filtre de colonne pertinent (même raison que 'steps').
-  return col !== 'steps' && col !== 'coverageStatus'
+  // GH224 — coverageStatus est filtré sur le libellé du badge (cf. getCellDisplayText).
+  return col !== 'steps'
 }
 
 // ── Gestes de cellule (T176) ─────────────────────────────────────────────────
@@ -1602,6 +1601,11 @@ function ExcelViewInner({
   // GH136 — texte tel qu'affiché : libellé du statut à la place de son nom technique. Sert à la
   // largeur auto et au filtre de colonne ; `getCellText` reste la valeur éditée.
   function getCellDisplayText(node: TypeTreeNode, obj: AnyObject | null | undefined, col: string): string {
+    // GH224 — couverture : libellé affiché par le badge (vide si l'objet n'a pas d'entrée).
+    if (col === 'coverageStatus') {
+      const coverage = node.objectId ? coverageByReqId?.get(node.objectId) : undefined
+      return coverage ? t(`system.coverage.status.${coverage.coverageStatus}`) : ''
+    }
     const text = getCellText(node, obj, col)
     return col === 'status' ? statusFieldDef?.valueLabels?.[text] ?? text : text
   }

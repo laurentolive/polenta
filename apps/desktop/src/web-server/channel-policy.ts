@@ -22,6 +22,7 @@ export const WEB_EXPOSED: ReadonlySet<string> = new Set([
   'dashboards:get', 'dashboards:list', 'dashboards:order-get', 'dashboards:order-set',
   'dashboards:param-values-get', 'dashboards:param-values-set', 'dashboards:set-scope', 'dashboards:set-widget-order', 'dashboards:update',
   'dashboards:update-widget',
+  'diff:save-working-file',
   'drawio:read',
   'export-templates:install-examples', 'export-templates:list',
   'forge:accounts', 'forge:creatable-orgs', 'forge:list-repos', 'forge:org-members', 'forge:repo-access',
@@ -110,7 +111,7 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'dashboards:get': [0], 'dashboards:list': [0], 'dashboards:order-get': [0],
   'dashboards:order-set': [0], 'dashboards:param-values-get': [0], 'dashboards:param-values-set': [0],
   'dashboards:set-scope': [0], 'dashboards:set-widget-order': [0],
-  'dashboards:update': [0], 'dashboards:update-widget': [0], 'drawio:read': [0],
+  'dashboards:update': [0], 'dashboards:update-widget': [0], 'drawio:read': [0], 'diff:save-working-file': [0, 4],
   'git:head-sha': [0], 'history:backfill': [0], 'history:get': [0], 'image:read': [0], 'image:write-paste': [0],
   'impact-analysis:local': [0, 1],
   'interface:compliance-matrix': [0], 'interface:coverage': [0, 1],
@@ -171,6 +172,7 @@ export const ROOT_PARAM_NAME = /^(?!rel)[a-zA-Z]*(RepoPath|repoPath|repoPaths|Di
 export const CONTENT_ARGS: Record<string, number[]> = {
   'sync:commit': [1], // message
   'merge-resolution:validate': [2], // contenu du fichier
+  'diff:save-working-file': [2, 3], // GH222 — texte édité et texte de départ
   // GH163 — commentaire de modification (index 4) ; l'index 2 est le statut visé.
   'requirements:open-draft': [2, 4],
   'tests:open-draft': [4],

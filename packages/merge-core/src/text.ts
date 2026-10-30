@@ -24,7 +24,7 @@ export function mergeText(base: string | null, left: string, right: string, labe
       continue
     }
     const key = `hunk:${blocks.length}`
-    const block: MergeBlock = { key, left: chunk.conflict.a.join(''), right: chunk.conflict.b.join('') }
+    const block: MergeBlock = { key, left: chunk.conflict.a.join(''), right: chunk.conflict.b.join(''), base: chunk.conflict.o.join('') }
     blocks.push(block)
     // A region always starts on its own line: if the previous chunk ended without a line break
     // (cannot normally happen, a chunk boundary is a line boundary), add one.

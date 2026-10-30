@@ -91,6 +91,7 @@ function buildTailwindColors(): ColorTree {
     status: {},
     activity: {},
     print: {},
+    diff: {},
   }
 
   for (const name of Object.keys(themeTokens)) {
@@ -110,6 +111,10 @@ function buildTailwindColors(): ColorTree {
     } else if (name.startsWith('print-')) {
       const key = name.slice('print-'.length)
       ;(colors.print as ColorTree)[key] = colorValue(name)
+    } else if (name.startsWith('diff-')) {
+      // GH222 — `bg-diff-line-del`, `border-diff-conflict`…
+      const key = name.slice('diff-'.length)
+      ;(colors.diff as ColorTree)[key] = colorValue(name)
     }
   }
 

@@ -10,7 +10,7 @@ import type {
   MergeFinalizeResult,
   MergeKeepBothResult,
   MergeOrigin,
-  MergeSessionInfo,
+  MergeSessionInfo, DiffSaveResult,
   MergeValidation,
   ClearRevalidationResult,
   FlaggedElement,
@@ -641,6 +641,10 @@ export interface ApiClient {
     resolveRefs(repoPath: string): Promise<GitRef[]>
   }
   /** Opérations git bas niveau ne relevant pas du domaine `sync` (T43). */
+  /** GH222 — enregistrement depuis la vue de diff d'un fichier du working tree (spec §12). */
+  diffEdit: {
+    saveWorkingFile(repoPath: string, filepath: string, text: string, baseline: string, workspaceDir?: string): Promise<DiffSaveResult>
+  }
   /** GH37 — résolution des conflits de merge dans l'outil (brouillon hors repo, cf. MergeSessionInfo). */
   mergeResolution: {
     open(repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin): Promise<MergeSessionInfo>

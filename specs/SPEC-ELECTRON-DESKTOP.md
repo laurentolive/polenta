@@ -157,7 +157,7 @@ pas champ par champ.
     "@polenta/api-client": "workspace:*"
   },
   "devDependencies": {
-    "electron": "^31.0.0",
+    "electron": "^45.1.0",
     "electron-builder": "^24.0.0",
     "electron-vite": "^2.3.0",
     "vite": "^5.0.0",
@@ -1391,7 +1391,7 @@ par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, 
 | `/` | Workspace (création, clone, récents) | Projet |
 | `/schema?repoPath&projectId` | **Modèle de données** (onglet Structure par défaut) — page d'atterrissage du projet depuis T86, remplace `/project/$id` (retiré) | Projet |
 | `/graph?projectId` | **Arbre de versions** (commits, refs de branches, checkout) | Version |
-| `/diff?projectId&repoPath&filepath&commitSha?` | Vue diff d'un fichier : working tree vs `HEAD`, ou commit vs son parent (`commitSha`) — bascule Raw / Rendu (GH178, cf. §19.8b) | Version |
+| `/diff?projectId&repoPath&filepath&commitSha?` | Vue diff d'un fichier : working tree vs `HEAD`, ou commit vs son parent (`commitSha`) — bascule Raw / Rendu (GH178, cf. §19.8b) ; Raw côte à côte / en ligne, Rendu = vue générique (GH222) | Version |
 | `/version-diff?projectId` | Comparaison d'un fichier entre deux refs choisies dans le panneau Version — même vue de diff Raw / Rendu (GH178) | Version |
 | `/merge-resolve?id&projectId` | **Résolution des conflits** d'un merge (GH37) — session `id` (`merge-resolution:*`), ouverte dans son propre onglet « Conflits — <repo> » depuis Publier, la vue graphe ou Rafraîchir ; en-tête propre (pas de `ViewHeader`, donc pas de bouton Publier pendant la résolution) | — |
 | `/branch/new` | Formulaire nouvelle branche | Version |
@@ -1538,15 +1538,26 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >   composants, suppression avec confirmation) ; sinon → arbre des repos. La vue `/baseline` est
 >   le formulaire de création (ex-popup, voir SPEC-FORKS-BRANCHES-BASELINES §5.2). Liste et
 >   formulaire partagent `useBaselines` (même clé `baseline:list`).
-> - **Vues de diff (GH178)** : `/version-diff`, `/diff` (fichier stagé / modifié) et `/diff?commitSha`
->   (fichier d'un commit de la vue graphe) affichent `FileDiffView`. Sous-en-tête : chemin,
->   « Masquer les inchangés » (Rendu), bascule **Raw / Rendu**, `+n / −n`. Raw = diff texte ligne à
->   ligne. Rendu (exigence ou test dont le type se résout, fichier `.drawio`) = deux colonnes
->   `Avant · <sha>` / `Après · <sha | working tree>` alignées, unités modifiées sur fond rouge /
->   vert, mots changés barrés / surlignés, diagrammes et images lus à la version de leur colonne.
->   Les autres fichiers restent en Raw, sans bascule. Mode et case mémorisés par poste
->   (`polenta:diffViewMode`, `polenta:diffHideUnchanged`). Détails : `specs/GH178.md`,
->   `SPEC-TECH-stack.md` §6.5.
+> - **Vues de diff (GH178, GH222)** : `/version-diff`, `/diff` (fichier stagé / modifié) et
+>   `/diff?commitSha` (fichier d'un commit de la vue graphe) affichent `FileDiffView`.
+>   Sous-en-tête : chemin, navigation « Changement n / N » (`F7` / `Maj+F7`), « Masquer les
+>   inchangés » (Rendu), Côte à côte / En ligne (Raw), bascule **Raw / Rendu**, `+n / −m`.
+>   - Raw (`RawDiffView`, `@codemirror/merge`) : lignes changées sur fond plein, caractères changés
+>     surlignés, barre de gouttière, alignement hachuré, régions inchangées repliées, règle de vue
+>     d'ensemble ; plus de plafond de 2 000 lignes.
+>   - Rendu pour **tout fichier YAML** et les `.drawio` : vue générique (`TreeDiffView`) — colonne
+>     Structure à gauche (seule porteuse de la profondeur, largeur réglable), une rangée par nœud,
+>     valeurs à la même position X, `Avant · <sha>` / `Après · <sha | working tree>` ; une exigence
+>     ou un test y a les libellés de son schéma, ses richtexts (mot à mot, médias à la version de
+>     leur colonne) et une rangée par étape. `.drawio` : pages alignées (GH178).
+>   - **Modification locale** (`/diff` sans `commitSha`, GH222 §12) : barre « Modifiable — working
+    tree » ; côté Après éditable en Raw (« ← Rétablir » par bloc) et en Rendu (valeurs,
+    « ← Rétablir », « + Ajouter ») ; « Enregistrer » / `Ctrl+S`, onglet marqué modifié, « Recharger »
+    si le fichier a changé sur le disque. Exigence / test enregistrés par leur service ; fichiers
+    maintenus par l'app non modifiables.
+  - Mémorisés par poste : `polenta:diffViewMode`, `polenta:diffHideUnchanged`,
+>     `polenta:diffLayout`, `polenta:diffTreeWidth`. Détails : `specs/GH178.md`, `specs/GH222.md`,
+>     `SPEC-TECH-stack.md` §6.5–6.6.
 
 ```
 ┌─────────────────────────────┐

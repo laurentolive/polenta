@@ -10,6 +10,7 @@ import type { AuthService } from '../services/auth.service'
 import type { GitService } from '../services/git.service'
 import type { SyncService } from '../services/sync.service'
 import type { MergeResolutionService } from '../services/merge-resolution.service'
+import type { DiffEditService } from '../services/diff-edit.service'
 import type { WorkspaceService } from '../services/workspace.service'
 import type { RequirementsIndexService } from '../services/requirements-index.service'
 import type { TestsIndexService } from '../services/tests-index.service'
@@ -91,6 +92,7 @@ export interface Container {
   git: GitService
   sync: SyncService
   mergeResolution: MergeResolutionService
+  diffEdit: DiffEditService
   workspace: WorkspaceService
   reqIndex: RequirementsIndexService
   testsIndex: TestsIndexService
@@ -192,6 +194,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'sync:discard', 'sync:discard-all', 'sync:merge', 'sync:merge-into', 'sync:rebase', 'sync:resync-integration', 'sync:auto-sync',
   'sync:settle-auto-branch',
   'integration:designate', 'integration:create',
+  'diff:save-working-file',
 ])
 
 export function withGraphInvalidation(r: HandlerRegistry, graph: Container['graph']): HandlerRegistry {
@@ -347,6 +350,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.sync.merge(repoPath, fromBranch))
   r.handle('sync:merge-into', (_e, repoPath: string, fromBranch: string, intoBranch: string) =>
     c.sync.mergeInto(repoPath, fromBranch, intoBranch))
+  // GH222 — enregistrement d'un fichier du working tree modifié depuis la vue de diff.
+  r.handle('diff:save-working-file', (_e, repoPath: string, filepath: string, text: string, baseline: string, workspaceDir?: string) =>
+    c.diffEdit.saveWorkingFile(repoPath, filepath, text, baseline, workspaceDir))
   // GH37 — résolution des conflits de merge dans l'outil.
   r.handle('merge-resolution:open', (_e, repoPath: string, leftRef: string, rightRef: string, origin: MergeOrigin) =>
     c.mergeResolution.open(repoPath, leftRef, rightRef, origin))

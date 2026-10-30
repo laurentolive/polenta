@@ -697,8 +697,10 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   qu'un utilisable) ; modifiable au statut initial seulement, dans le même repo.
 - **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du changeset, le même que celui
   des tests d'une campagne (grille Excel par type, filtres de colonne, colonnes ⚙️ `picker`).
-- **Vue Changesets** : entrée de la barre d'activité ; panneau (changesets du workspace par repo,
-  ID décroissant ; filtres type, statut, repo, « mes changesets » = auteur du premier statut,
+- **Vue Changesets** : entrée de la barre d'activité ; panneau avec, comme les vues Exigences / Tests /
+  Campagnes, une **liste déroulante du composant** affiché (composants locaux de tous les repos,
+  choix mémorisé par projet, suit le changeset ouvert) : son backlog et ses seuls changesets, ID
+  décroissant ; filtres type, statut, « mes changesets » = auteur du premier statut,
   « masquer les terminés ») ; pages `/changesets`, `/changeset/new` (`?element=` : élément pré-rempli dans
   « à modifier », depuis « Créer un changeset » de la vue Édition et des pages exigence / test) et
   `/changeset/<ID>` (statut, titre, composant, champs, listes, historique).
@@ -711,7 +713,9 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   saisie sont écrites dans `impacted`.
 - **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
   entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
-- **Page d'un changeset** (GH199) : origine, version intégrée et campagnes au-dessus des listes ;
+- **Page d'un changeset** (GH199) : titre et composant sur une ligne (libellé, valeur) ; champs
+  éditables d'un clic, Annuler / Enregistrer sous les champs ; origine, version intégrée et
+  campagnes au-dessus des listes ; historique encadré comme les autres sections ;
   listes et analyse d'impact repliables avec leur nombre d'éléments ; `toModify` est affiché « Éléments changés ».
 - **Backlog et assignation** (GH199 §8bis) : un élément **à traiter** (statut ni `isApproval` ni
   `isTerminal`) est **assigné** quand il figure dans `toModify` d'un changeset ouvert de son repo

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueries, useQuery } from '@tanstack/react-query'
@@ -10,6 +10,8 @@ import { getChangeTypeDef } from '../../hooks/useProjectSchema'
 import { useLocalImpactAnalysis } from '../../hooks/useLocalImpactAnalysis'
 import { useFlaggedElements } from '../../hooks/useFlaggedElements'
 import { useBacklog } from '../../hooks/useBacklog'
+import { ComponentTypeCombobox } from '../system/ComponentTypeCombobox'
+import type { ComponentTypeOption } from '../../contexts/SystemViewContext'
 
 interface Props {
   projectId: string
@@ -20,11 +22,27 @@ export function repoName(repoPath: string): string {
   return repoPath.split(/[\\/]/).filter(Boolean).pop() ?? repoPath
 }
 
+/** GH199 — composant affiché, mémorisé par projet (comme la sélection des vues Exigences / Tests). */
+interface SelectedComponent { repoPath: string; component: string }
+const selectionKey = (projectId: string) => `polenta:changesetsComponent:${projectId}`
+function readSelection(projectId: string): SelectedComponent | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(selectionKey(projectId)) ?? 'null')
+    return typeof v?.repoPath === 'string' && typeof v?.component === 'string' ? v : null
+  } catch {
+    return null
+  }
+}
+function writeSelection(projectId: string, sel: SelectedComponent): void {
+  try { localStorage.setItem(selectionKey(projectId), JSON.stringify(sel)) } catch { /* best effort */ }
+}
+
 /**
- * GH198 — panneau de la vue Changements (specs/GH198.md §5) : changes du workspace regroupés par
- * repo, triés par ID décroissant ; filtres type / statut / repo / mes changes / masquer les terminés.
- * GH199 — reprend les entrées de l'ancienne vue Analyse d'impact : « Impact à vérifier »,
- * « Modifications locales » et la Constellation.
+ * GH198 — panneau de la vue Changesets (specs/GH198.md §5), changesets triés par ID décroissant ;
+ * filtres type / statut / mes changesets / masquer les terminés.
+ * GH199 — comme les vues Exigences / Tests / Campagnes, une liste déroulante choisit le composant
+ * affiché : son backlog et ses seuls changesets. Reprend aussi les entrées de l'ancienne vue Analyse
+ * d'impact : « Impact à vérifier », « Modifications locales » et la Constellation.
  */
 export function ChangesPanel({ projectId }: Props) {
   const { t } = useTranslation()
@@ -41,7 +59,6 @@ export function ChangesPanel({ projectId }: Props) {
 
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [repoFilter, setRepoFilter] = useState('')
   const [mine, setMine] = useState(false)
   const [hideTerminal, setHideTerminal] = useState(true)
 
@@ -56,6 +73,18 @@ export function ChangesPanel({ projectId }: Props) {
     queryFn: () => api.changesets.list(repoPath, workspaceDir || undefined),
     enabled: !!repoPath,
   })
+  const allBacklogs = useBacklog(projectId).data ?? []
+  const multiRepo = new Set(allBacklogs.map(b => b.repoPath)).size > 1
+  const options: ComponentTypeOption[] = allBacklogs.map(b => ({
+    repoName: b.repoPath, nodeId: b.component, typeId: '', label: b.label,
+    ...(multiRepo && { groupLabel: repoName(b.repoPath) }),
+  }))
+  const [chosen, setChosen] = useState<SelectedComponent | null>(() => readSelection(projectId))
+  const indexOf = (sel: SelectedComponent | null) => sel ? allBacklogs.findIndex(b => b.repoPath === sel.repoPath && b.component === sel.component) : -1
+  const selectedIndex = indexOf(chosen) >= 0 ? indexOf(chosen) : Math.max(0, allBacklogs.findIndex(b => b.repoPath === repoPath))
+  const selectedBacklog = allBacklogs[selectedIndex]
+  const selected: SelectedComponent | null = selectedBacklog ? { repoPath: selectedBacklog.repoPath, component: selectedBacklog.component } : null
+  const select = (sel: SelectedComponent) => { setChosen(sel); writeSelection(projectId, sel) }
   const { data: me } = useQuery({
     queryKey: ['project-username', repoPath],
     queryFn: () => api.auth.projectUsername(repoPath),
@@ -78,10 +107,17 @@ export function ChangesPanel({ projectId }: Props) {
   const visible = changes.filter(c =>
     (!typeFilter || c.objectTypeRef === typeFilter)
     && (!statusFilter || c.status === statusFilter)
-    && (!repoFilter || c.repoPath === repoFilter)
+    && (!selected || (c.repoPath === selected.repoPath && c.component === selected.component))
     && (!mine || (!!me && c.createdBy === me))
     && (!hideTerminal || !isTerminal(c)))
-  const groups = repos.filter(rp => visible.some(c => c.repoPath === rp))
+
+  useEffect(() => {
+    const current = changes.find(c => c.id === activeId && c.repoPath === activeRepo)
+    if (current && (current.repoPath !== selected?.repoPath || current.component !== selected?.component)) {
+      select({ repoPath: current.repoPath, component: current.component })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, activeRepo, changes])
 
   const open = (c: ChangeSummary) =>
     navigate({ to: '/changeset/$changeId', params: { changeId: c.id }, search: { projectId, repoPath: c.repoPath } })
@@ -90,8 +126,6 @@ export function ChangesPanel({ projectId }: Props) {
   // GH199 — entrées live, affichées seulement quand elles ont du contenu (compteur).
   const flaggedCount = useFlaggedElements(projectId).data?.length ?? 0
   const localCount = useLocalImpactAnalysis(projectId).data?.changedRequirements.length ?? 0
-  // GH199 §8bis — un backlog par composant non vide ; libellé du composant s'il y en a plusieurs.
-  const backlogs = (useBacklog(projectId).data ?? []).filter(b => b.items.length > 0)
   const backlogSearch = new URLSearchParams(searchStr)
   const entryClass = (active: boolean) =>
     `w-full flex items-center gap-2 px-4 py-1.5 text-xs text-left border-b border-edge-subtle ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2 hover:bg-hover'}`
@@ -112,13 +146,20 @@ export function ChangesPanel({ projectId }: Props) {
         </button>
         <button
           type="button"
-          onClick={() => navigate({ to: '/changeset/new', search: { projectId, repoPath: undefined, element: undefined, component: undefined } })}
+          onClick={() => navigate({ to: '/changeset/new', search: { projectId, repoPath: selected?.repoPath, element: undefined, component: selected?.component } })}
           className="text-ink-3 hover:text-ink"
           title={t('changes.new')}
           data-testid="changes-new"
         >
           <Plus size={14} />
         </button>
+      </div>
+      <div className="px-3 py-2 border-b border-edge shrink-0" data-testid="changes-component">
+        <ComponentTypeCombobox
+          options={options}
+          selectedIndex={selectedBacklog ? selectedIndex : -1}
+          onSelect={opt => select({ repoPath: opt.repoName, component: opt.nodeId })}
+        />
       </div>
       {flaggedCount > 0 && (
         <button type="button" onClick={() => navigate({ to: '/changesets/revalidation', search: { projectId } })}
@@ -136,18 +177,19 @@ export function ChangesPanel({ projectId }: Props) {
           <span className="text-ink-3">{localCount}</span>
         </button>
       )}
-      {backlogs.map(b => {
+      {selectedBacklog && (() => {
+        const b = selectedBacklog
         const active = pathname === '/changesets/backlog' && backlogSearch.get('repoPath') === b.repoPath && backlogSearch.get('component') === b.component
         return (
-          <button key={`${b.repoPath}|${b.component}`} type="button"
+          <button type="button"
             onClick={() => navigate({ to: '/changesets/backlog', search: { projectId, repoPath: b.repoPath, component: b.component } })}
             className={entryClass(active)} data-testid={`changes-backlog-entry-${repoName(b.repoPath)}-${b.component}`}>
             <Inbox size={13} className="shrink-0" />
-            <span className="flex-1 truncate">{backlogs.length > 1 ? `${t('changes.backlog.title')} — ${b.label}` : t('changes.backlog.title')}</span>
+            <span className="flex-1 truncate">{t('changes.backlog.title')}</span>
             <span className="text-ink-3">{b.items.length}</span>
           </button>
         )
-      })}
+      })()}
       <div className="px-4 py-2 border-b border-edge shrink-0 space-y-1.5">
         <select className={selectClass} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} aria-label={t('changes.type')}>
           <option value="">{t('changes.allTypes')}</option>
@@ -157,12 +199,6 @@ export function ChangesPanel({ projectId }: Props) {
           <option value="">{t('changes.allStatuses')}</option>
           {statusOptions.map(([name, label]) => <option key={name} value={name}>{label}</option>)}
         </select>
-        {repos.length > 1 && (
-          <select className={selectClass} value={repoFilter} onChange={e => setRepoFilter(e.target.value)} aria-label="repo">
-            <option value="">{t('changes.allRepos')}</option>
-            {repos.map(rp => <option key={rp} value={rp}>{repoName(rp)}</option>)}
-          </select>
-        )}
         <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
           <input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} />
           {t('changes.mine')}
@@ -176,10 +212,9 @@ export function ChangesPanel({ projectId }: Props) {
         {visible.length === 0 && (
           <p className="px-4 py-2 text-xs text-ink-3">{changes.length === 0 ? t('changes.empty') : t('changes.emptyFiltered')}</p>
         )}
-        {groups.map(rp => (
-          <div key={rp}>
-            {repos.length > 1 && <p className="px-4 pt-2 pb-1 text-[11px] font-semibold text-ink-3 uppercase tracking-wide">{repoName(rp)}</p>}
-            {visible.filter(c => c.repoPath === rp).map(c => {
+        {(
+          <div>
+            {visible.map(c => {
               const active = c.id === activeId && c.repoPath === activeRepo
               const type = typeOf(c)
               return (
@@ -198,7 +233,7 @@ export function ChangesPanel({ projectId }: Props) {
               )
             })}
           </div>
-        ))}
+        )}
       </div>
     </div>
   )

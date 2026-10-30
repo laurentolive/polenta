@@ -48,6 +48,14 @@ routes, vue, libellés fr / en, messages d'erreur, `AGENTS.md`. Identifiants int
 Aussi : historique encadré comme les autres sections ; champs du changeset éditables d'un clic ;
 listes vides = pas d'analyse (repli sur toutes les exigences du composant retiré).
 
+## Retours de validation suivants (2026-10-30)
+
+- Page d'un changeset : titre et composant sur une ligne ; Annuler / Enregistrer sous les champs
+  (plus en surimpression du premier libellé).
+- Panneau Changesets : liste déroulante du composant (même `ComponentTypeCombobox` que les vues
+  Exigences / Tests / Campagnes) ; backlog et changesets du seul composant choisi ; filtre repo et
+  regroupement par repo retirés ; « + » pré-remplit le composant choisi. e2e GH199-C1.
+
 ## Mises à jour SPEC
 
 | Section | Modification |

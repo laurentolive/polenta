@@ -146,8 +146,8 @@ function ChangePage() {
 
             <TitleEditor value={change.title} onCommit={title => update.mutate({ title })} disabled={update.isPending} />
 
-            <div className="mb-4">
-              <p className="text-sm font-medium text-ink mb-1">{t('changes.component')}</p>
+            <div className="mb-4 flex items-center gap-3">
+              <p className="text-sm font-medium text-ink w-40 shrink-0">{t('changes.component')}</p>
               {atInitial && nodes.length > 1 ? (
                 <select
                   className="text-sm bg-surface border border-edge rounded px-2 py-1 text-ink"
@@ -166,18 +166,13 @@ function ChangePage() {
             {typeDef && typeDef.fields.length > 0 && (
               <div className="relative border rounded p-3 mb-4">
                 {/* Boutons d'édition dans le coin, au niveau du libellé du premier champ (pas de titre de section). */}
-                <div className="absolute top-2 right-3">
-                  {editingFields === null ? (
+                {editingFields === null && (
+                  <div className="absolute top-2 right-3">
                     <button type="button" onClick={startEditingFields} className="text-ink-3 hover:text-ink p-1 rounded hover:bg-hover" data-testid="change-edit-fields">
                       <Pencil size={13} />
                     </button>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setEditingFields(null)} className="text-xs text-ink-3 hover:text-ink">{t('common.cancel')}</button>
-                      <button type="button" onClick={saveFields} disabled={update.isPending} className="btn-primary-sm" data-testid="change-save-fields">{t('common.save')}</button>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
                 <div className="space-y-3">
                   {typeDef.fields.map(f => (
                     editingFields !== null ? (
@@ -205,6 +200,12 @@ function ChangePage() {
                     )
                   ))}
                 </div>
+                {editingFields !== null && (
+                  <div className="flex justify-end items-center gap-3 mt-3">
+                    <button type="button" onClick={() => setEditingFields(null)} className="text-xs text-ink-3 hover:text-ink">{t('common.cancel')}</button>
+                    <button type="button" onClick={saveFields} disabled={update.isPending} className="btn-primary-sm" data-testid="change-save-fields">{t('common.save')}</button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -283,10 +284,10 @@ function TitleEditor({ value, onCommit, disabled }: { value: string; onCommit: (
   const [prev, setPrev] = useState(value)
   if (value !== prev) { setPrev(value); setDraft(value) }
   return (
-    <div className="mb-4">
-      <label className="block text-sm font-medium text-ink mb-1">{t('changes.titleLabel')}</label>
+    <div className="mb-4 flex items-center gap-3">
+      <label className="text-sm font-medium text-ink w-40 shrink-0">{t('changes.titleLabel')}</label>
       <input
-        className="w-full text-sm bg-surface border border-edge rounded px-2 py-1.5 text-ink"
+        className="flex-1 min-w-0 text-sm bg-surface border border-edge rounded px-2 py-1.5 text-ink"
         value={draft}
         disabled={disabled}
         onChange={e => setDraft(e.target.value)}

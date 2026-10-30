@@ -12,7 +12,7 @@ test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
 interface TypeLike { name: string; label?: string; prefix?: string; category: string; fields: unknown[]; statuses?: unknown[] }
 interface SchemaLike { nodes: Array<{ name: string; objectTypes?: TypeLike[] }>; linkTypes?: Array<{ name: string }> }
 interface ChangeLike { id: string; toModify: Array<{ id: string; state: string }> }
-interface BacklogLike { component: string; repoPath: string; items: Array<{ id: string }> }
+interface BacklogLike { component: string; repoPath: string; label: string; items: Array<{ id: string }> }
 
 let reqA = ''
 let reqB = ''
@@ -20,6 +20,9 @@ let testId = ''
 let changeA = ''
 let changeB = ''
 let entry = ''
+let ownLabel = ''
+let otherLabel = ''
+let otherEntry = ''
 
 async function navigate(p: Page, url: string) {
   await p.evaluate(u => {
@@ -53,6 +56,30 @@ test.beforeAll(async () => {
   const backlogs = await s.invoke<BacklogLike[]>('changesets:backlog', localPath, workspaceDir)
   const own = backlogs.find(b => b.items.some(i => i.id === reqA))!
   entry = `changes-backlog-entry-${own.repoPath.split(/[\\/]/).filter(Boolean).pop()}-${own.component}`
+  const other = backlogs.find(b => b.repoPath !== own.repoPath || b.component !== own.component)!
+  ownLabel = own.label
+  otherLabel = other.label
+  otherEntry = `changes-backlog-entry-${other.repoPath.split(/[\\/]/).filter(Boolean).pop()}-${other.component}`
+})
+
+async function pickComponent(label: string) {
+  const input = s.page.getByTestId('changes-component').locator('input')
+  await input.click()
+  await input.fill(label)
+  await input.press('Enter')
+}
+
+test('GH199-C1 — liste déroulante du panneau : backlog et changesets du seul composant choisi', async () => {
+  const p = s.page
+  await s.openView('Changesets')
+  await expect(p.getByTestId(entry)).toBeVisible()
+  await expect(p.getByTestId(`change-row-${changeA}`)).toBeVisible()
+  await pickComponent(otherLabel)
+  await expect(p.getByTestId(otherEntry)).toBeVisible()
+  await expect(p.getByTestId(entry)).toHaveCount(0)
+  await expect(p.getByTestId(`change-row-${changeA}`)).toHaveCount(0)
+  await pickComponent(ownLabel)
+  await expect(p.getByTestId(`change-row-${changeA}`)).toBeVisible()
 })
 
 test('GH199-B1/B2 — backlog du composant, « Assigner à… » un change ouvert', async () => {

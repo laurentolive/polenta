@@ -147,8 +147,12 @@ test('R8 — finaliser après une résolution en Rendu', async () => {
   for (const name of ['links.yaml', 'config.yaml', reqId, 'schema.drawio']) {
     if (!name) continue
     await openFile(name)
-    const all = s.page.getByRole('button', { name: 'Tout prendre à droite' })
-    if (await all.isEnabled()) await all.click()
+    // Only the blocks still open: « Tout prendre » also switches the blocks already resolved.
+    await expect(s.page.locator('p.font-mono').filter({ hasText: name })).toBeVisible()
+    await expect(counter()).toBeVisible()
+    if ((await counter().textContent()) !== 'Aucun conflit restant') {
+      await s.page.getByRole('button', { name: 'Tout prendre à droite' }).click()
+    }
     await s.page.getByRole('button', { name: 'Merger', exact: true }).click()
   }
   await s.page.getByRole('button', { name: 'Finaliser le merge' }).click()

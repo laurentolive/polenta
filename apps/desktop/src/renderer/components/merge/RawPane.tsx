@@ -217,7 +217,7 @@ function buildDecorations(state: EditorState, p: Props, marked: Marked[], run: (
     const resolved = p.blocks && p.markerLabels ? resolvedBlocks(text, p.blocks, p.markerLabels, p.hints) : []
     resolvedOut.push(...resolved)
     for (const b of resolved) {
-      if (b.to >= doc.lines) continue
+      if (b.to >= doc.lines || b.from > doc.lines) continue
       const block = p.blocks!.find(x => x.key === b.key)!
       const buttons: ButtonSpec[] = []
       if (p.onSwitch) {
@@ -229,7 +229,7 @@ function buildDecorations(state: EditorState, p: Props, marked: Marked[], run: (
       if (p.onReset) buttons.push({ label: p.labels.reset, act: { type: 'reset', key: b.key } })
       ranges.push(Decoration.widget({ widget: new ActionsWidget(`s:${b.key}`, p.labels.resolved[b.taken], buttons, true, run), block: true, side: -1 }).range(lineFrom(b.from)))
       for (let i = b.from; i <= b.to; i++) ranges.push(lineClass('cm-block-resolved').range(lineFrom(i)))
-      marked.push({ from: b.from, to: b.to, tone: 'resolved' })
+      if (b.to >= b.from) marked.push({ from: b.from, to: b.to, tone: 'resolved' })
     }
   }
 

@@ -7,9 +7,14 @@ export interface AppSettings {
   exportTemplatesDir?: string
   /** GH15 — délai de connexion réseau (s), 10–120. Absent du fichier = 10 (défaut) ; toujours renseigné par `get()`. */
   networkTimeoutSeconds?: number
+  /** GH237 — zoom de l'interface, palier de `ZOOM_STEPS` (shared/zoom.ts). Absent = 1 (100 %). */
+  zoomFactor?: number
   /** GH45 — lecture seule : la configuration machine impose `autoCheckUpdates: false` (jamais écrit). */
   autoCheckUpdatesLocked?: boolean
 }
+
+/** GH237 — commande de zoom de l'interface (palier suivant / précédent, retour à 100 %). */
+export type ZoomAction = 'in' | 'out' | 'reset'
 
 // GH26 — état de la mise à jour automatique (electron-updater), poussé par le main au renderer.
 export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error'

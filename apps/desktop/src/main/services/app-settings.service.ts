@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import type { AppSettings, MachineConfig } from '@polenta/types'
 import { NETWORK_TIMEOUT_DEFAULT, normalizeNetworkTimeout } from '../../shared/network-timeout'
+import { ZOOM_DEFAULT, normalizeZoomFactor } from '../../shared/zoom'
 
 const DEFAULTS: AppSettings = { autoCheckUpdates: true }
 
@@ -54,6 +55,10 @@ export class AppSettingsService {
         ...(normalizeNetworkTimeout(raw.networkTimeoutSeconds) !== NETWORK_TIMEOUT_DEFAULT
           ? { networkTimeoutSeconds: normalizeNetworkTimeout(raw.networkTimeoutSeconds) }
           : {}),
+        // GH237 — présent seulement s'il diffère de 100 % (valeur ramenée au palier le plus proche).
+        ...(normalizeZoomFactor(raw.zoomFactor) !== ZOOM_DEFAULT
+          ? { zoomFactor: normalizeZoomFactor(raw.zoomFactor) }
+          : {}),
       }
     } catch {
       return { ...DEFAULTS }
@@ -67,6 +72,8 @@ export class AppSettingsService {
     if (!next.exportTemplatesDir) delete next.exportTemplatesDir
     next.networkTimeoutSeconds = normalizeNetworkTimeout(next.networkTimeoutSeconds)
     if (next.networkTimeoutSeconds === NETWORK_TIMEOUT_DEFAULT) delete next.networkTimeoutSeconds
+    next.zoomFactor = normalizeZoomFactor(next.zoomFactor)
+    if (next.zoomFactor === ZOOM_DEFAULT) delete next.zoomFactor
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
     fs.writeFileSync(this.filePath, JSON.stringify(next, null, 2), 'utf-8')
     this.onNetworkTimeout?.(this.networkTimeout(next))

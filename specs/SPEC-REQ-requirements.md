@@ -713,6 +713,8 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   saisie sont écrites dans `impacted`.
 - **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
   entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
+- **Retour dans la vue** (GH207, 2026-10-31) : la barre d'activité rouvre la dernière page de la vue
+  Changesets du projet ouvert ; sections et filtre « ouverts seulement » d'un changeset mémorisés par poste.
 - **Liste « Éléments impactés »** (GH207, 2026-10-31) : éléments déclarés seulement ; les calculés
   sont dans l'analyse d'impact, dont chaque nœud porte le libellé du lien dans sa direction (vu du
   parent).

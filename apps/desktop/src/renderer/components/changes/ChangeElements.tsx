@@ -8,6 +8,7 @@ import { api } from '../../api'
 import { getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
 import { ChangeElementPicker } from './ChangeElementPicker'
 import { AssignToChangeDialog } from './AssignToChangeDialog'
+import { useChangesetViewFlag } from '../../lib/changesetPrefs'
 import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 
 // GH198 — listes « à modifier » / « impactés » d'un change et sélecteur d'éléments (specs/GH198.md §4).
@@ -117,7 +118,7 @@ export function ToModifyList({ items, traces, onChange, changeId, component, als
   const [picking, setPicking] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [moving, setMoving] = useState(false)
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useChangesetViewFlag('toModify', true)
   const chosen = items.filter(i => selected.has(i.id)).map(i => i.id)
   const toggle = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -201,8 +202,8 @@ export function ImpactedList({ rows, onSetImpact, onAddDeclared, onRemoveDeclare
 }) {
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
-  const [openOnly, setOpenOnly] = useState(false)
-  const [open, setOpen] = useState(true)
+  const [openOnly, setOpenOnly] = useChangesetViewFlag('impactedOpenOnly', false)
+  const [open, setOpen] = useChangesetViewFlag('impacted', true)
   const shown = openOnly ? rows.filter(r => !CLOSED_IMPACT_STATUSES.includes(r.status)) : rows
   return (
     <section className="border rounded p-3 mb-4" data-testid="change-impacted">

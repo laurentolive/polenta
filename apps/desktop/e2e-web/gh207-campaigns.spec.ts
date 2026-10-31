@@ -93,3 +93,19 @@ test('GH207-C5 — campagne liée close : seul « Créer une campagne »', async
   await expect(p.getByTestId('change-tests-to-add')).toHaveCount(0)
   await expect(p.getByTestId('change-campaign-create')).toBeEnabled()
 })
+
+test('GH207-C7 — retour dans la vue Changesets : même page, sections comme laissées', async () => {
+  const p = s.page
+  const { localPath } = s.project
+  await navigate(p, s.projectUrl(`/changeset/${changeId}`, { repoPath: localPath }))
+  await expect(p.getByTestId(`change-to-modify-${reqId}`)).toBeVisible()
+  await p.getByTestId('change-to-modify-toggle').click()
+  await expect(p.getByTestId(`change-to-modify-${reqId}`)).toHaveCount(0)
+  await s.openView('Exigences')
+  await expect(p).not.toHaveURL(new RegExp(`/changeset/${changeId}`))
+  await s.openView('Changesets')
+  await expect(p).toHaveURL(new RegExp(`/changeset/${changeId}`))
+  await expect(p.getByTestId('change-to-modify-toggle')).toHaveAttribute('aria-expanded', 'false')
+  await p.getByTestId('change-to-modify-toggle').click()
+  await expect(p.getByTestId(`change-to-modify-${reqId}`)).toBeVisible()
+})

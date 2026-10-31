@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import { CLOSED_IMPACT_STATUSES, type Change, type ChangeAnalysis, type ChangeAnalysisRoot, type ChangeImpactStatus, type ImpactNode } from '@polenta/types'
+import { useChangesetViewFlag } from '../../lib/changesetPrefs'
 import { ImpactTreeView, RevalidationTreeContext, useRequirementStatementTooltip } from '../impact/ImpactTrees'
 import { ClearFailuresBanner, ClearSelectionButton, useRevalidationTree } from '../impact/RevalidationControls'
 import { RequirementEditModal } from '../impact/RequirementEditModal'
@@ -31,7 +32,7 @@ export function ChangeAnalysisSection({ change, analysis, isFetching, onRefresh,
   const { t, i18n } = useTranslation()
   const revalidation = useRevalidationTree(projectId, change.id)
   const [quickEdit, setQuickEdit] = useState<{ type: 'requirement' | 'test_case'; id: string; repoPath: string } | null>(null)
-  const [sectionOpen, setSectionOpen] = useState(true)
+  const [sectionOpen, setSectionOpen] = useChangesetViewFlag('analysis', true)
   const readOnly = disabled || !!analysis?.frozen
   const open = (type: 'requirement' | 'test_case', id: string, rp?: string) => setQuickEdit({ type, id, repoPath: rp ?? repoPath })
   const onUpdateStatus = (node: ImpactNode, status: ChangeImpactStatus, comment: string | null) => onSetImpact(node.elementId, status, comment ?? undefined)

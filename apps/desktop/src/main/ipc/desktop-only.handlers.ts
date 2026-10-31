@@ -1,8 +1,9 @@
 import { app, ipcMain, dialog, shell, BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { takePendingInvite } from '../host/invite-link'
+import { applyZoom } from '../host/app-zoom'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import type { ExportKind, ExportFormat, ExportResult, ExecutionSheetLocale, ExecutionImportPreview, TerminalKind } from '@polenta/types'
+import type { ExportKind, ExportFormat, ExportResult, ExecutionSheetLocale, ExecutionImportPreview, TerminalKind, ZoomAction } from '@polenta/types'
 import type { Container } from './index'
 import type { HandlerRegistry, Handler } from './registry'
 import type { DESKTOP_ONLY_CHANNELS } from './channels'
@@ -75,6 +76,8 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
     const base = BRAND.releasesUrl?.replace(/\/+$/, '')
     if (base && (url === base || url.startsWith(`${base}/`))) return shell.openExternal(url)
   })
+  // GH237 — raccourcis clavier de zoom (Ctrl+molette arrive par `zoom-changed`, host/app-zoom.ts).
+  handle('app:zoom', (_e, action: ZoomAction) => applyZoom(action))
 
   // ── Update (GH26) ─────────────────────────────────────────────────────────────
   // État poussé aux fenêtres par 'update:state-changed' ; get-state couvre une fenêtre

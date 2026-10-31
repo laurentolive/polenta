@@ -80,6 +80,7 @@ import type {
   ExecutionImportResult,
   AppSettings,
   UpdateState,
+  ZoomAction,
   TerminalDetectResult,
   TerminalKind,
 } from '@polenta/types'
@@ -428,6 +429,9 @@ export interface ApiClient {
     teamProjects(): Promise<TeamProjectEntry[]>
     /** GH45 S2b — desktop : lien d'invitation reçu avant que l'interface ne soit prête. */
     takePendingInvite(): Promise<{ server: string; login?: string } | null>
+    /** GH237 — desktop : zoom de l'interface, retourne le nouveau facteur ; tout changement (molette
+     *  comprise) est aussi diffusé par 'app:zoom-changed' (window.polenta.on). */
+    zoom(action: ZoomAction): Promise<number>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */

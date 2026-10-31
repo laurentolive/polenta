@@ -10,6 +10,7 @@ import { TerminalService } from './services/terminal.service'
 import { INVITE_SCHEME, inviteFromArgv, parseInviteLink, setPendingInvite, type InviteLink } from './host/invite-link'
 import { BRAND } from '../shared/brand'
 import { attachContextMenu } from './host/context-menu'
+import { attachAppZoom, initAppZoom, currentZoomFactor } from './host/app-zoom'
 
 // Aligne le dossier userData (auth.json, workspace.json…) entre `pnpm dev` et le build
 // packagé — sans ça, Electron retombe sur le "name" du package.json en dev (`@polenta/desktop`)
@@ -66,11 +67,13 @@ export function createAppWindow(): BrowserWindow {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      zoomFactor: currentZoomFactor(), // GH237 — niveau mémorisé dès le premier paint
     },
   })
 
   win.once('ready-to-show', () => win.show())
   attachContextMenu(win)
+  attachAppZoom(win)
 
   Menu.setApplicationMenu(null)
 
@@ -110,6 +113,7 @@ app.whenReady().then(() => {
   const terminal = new TerminalService(electronPlatformHost.broadcast)
   app.on('will-quit', () => terminal.killAll())
   registerDesktopOnlyHandlers(container, update, terminal)
+  initAppZoom(container.appSettings)
   mainWindow = createAppWindow()
   mainWindow.on('closed', () => { mainWindow = null })
   update.scheduleStartupCheck()

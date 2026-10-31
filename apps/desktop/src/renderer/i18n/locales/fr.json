@@ -2323,6 +2323,9 @@
       "flagged": "Impact à vérifier"
     },
     "campaignSection": {
+      "selectAll": "Tout cocher",
+      "via": "Amené par",
+      "inCampaigns": "Déjà dans",
       "create": "Créer une campagne",
       "toRun_one": "{{count}} test à exécuter",
       "toRun_other": "{{count}} tests à exécuter",

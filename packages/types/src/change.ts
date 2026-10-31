@@ -75,6 +75,8 @@ export interface LinkedCampaign {
   total: number
   /** Entrées de la campagne portant un test à exécuter du changeset. */
   changesetTests: number
+  /** Tests présents dans les entrées actives de la campagne. */
+  testIds: string[]
   /** ID listé dans `campaigns` mais campagne introuvable. */
   missing: boolean
 }

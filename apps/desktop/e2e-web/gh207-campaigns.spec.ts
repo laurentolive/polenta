@@ -73,7 +73,12 @@ test('GH207-C4 — nouveau test « à tester » : « 1 test à ajouter », séle
   await navigate(p, s.projectUrl(`/changeset/${changeId}`, { repoPath: localPath }))
   await expect(p.getByTestId('change-tests-to-add')).toContainText('1 test à ajouter')
   await expect(p.getByTestId(`change-campaign-${campaignId}`)).toBeVisible()
+  // Liste cochable : coché par défaut ce qui n'est dans aucune campagne liée ouverte.
+  await expect(p.getByTestId(`change-test-${testA}`).getByRole('checkbox')).not.toBeChecked()
+  await expect(p.getByTestId(`change-test-${testA}`)).toContainText(campaignId)
+  await expect(p.getByTestId(`change-test-${testB}`).getByRole('checkbox')).toBeChecked()
   await p.getByTestId('change-tests-add').click()
+  await expect(p).toHaveURL(new RegExp(`addTests=${testB}(&|$)`))
   await p.waitForURL(new RegExp(`/campaign/${campaignId}`))
   await expect(p.getByRole('button', { name: /Valider la sélection \(1\)|Ajouter/ }).first()).toBeVisible()
   expect((await s.invoke<{ testCaseIds: string[] }>('campaigns:get', localPath, campaignId)).testCaseIds).toEqual([testA])

@@ -59,13 +59,14 @@ export function linkedCampaigns(change: Change, tests: ChangeTestToRun[], campai
   const covered = new Set<string>()
   const linked = change.campaigns.map((id): LinkedCampaign => {
     const c = byId.get(id)
-    if (!c) return { id, title: '', status: '', passed: 0, total: 0, changesetTests: 0, missing: true }
+    if (!c) return { id, title: '', status: '', passed: 0, total: 0, changesetTests: 0, testIds: [], missing: true }
     if (OPEN_CAMPAIGN.has(c.status)) for (const r of c.runs) covered.add(r.testCaseId)
     return {
       id, title: c.title, status: c.status,
       passed: c.runs.filter(r => r.status === 'PASS').length,
       total: c.runs.length,
       changesetTests: c.runs.filter(r => toRun.has(r.testCaseId)).length,
+      testIds: [...new Set(c.runs.map(r => r.testCaseId))],
       missing: false,
     }
   })

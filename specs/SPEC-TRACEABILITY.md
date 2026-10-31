@@ -168,78 +168,29 @@ SW-0044  Exigence SW — Mode Normal  [couvert]  [jamais exécuté]
 
 ## 4. Analyse d'impact
 
-### 4.1 Principe (GH199)
+### 4.1 Principe (GH199, GH243)
 
-L'analyse d'impact vit **dans le changeset** (SPEC-REQ §10) : elle calcule, à partir des éléments que
-le changeset modifie, tout ce qui doit être **revu ou revalidé**. Deux flux sont retirés par GH199 :
+L'analyse d'un ensemble de changements vivait **dans le changeset** (GH199) ; le changeset est retiré
+par GH243 et cette analyse reviendra **dans la version** du composant (`specs/MILESTONE-D.md` §3.3,
+#245 ; code de référence : commit `4e06052`, `change-analysis.util`, `change-tests.util`). Restent :
 
-- l'**analyse élément unique** (ex-§4.1–4.5 : `getImpactReport` à l'ouverture d'un brouillon,
-  profondeur configurable, acquittements `ImpactAcknowledgement`) — les fichiers
-  `impact-acks/<id>/*.yaml` existants restent lisibles dans l'historique de l'élément
-  (« Acquittements d'impact (anciens) », IPC `traceability:legacy-acks`) ;
-- l'**analyse entre deux baselines** (ex-§4.6, T46, `impact-analyses/<id>.yaml`) — remplacée par le
-  changeset « sur l'existant » ; les fichiers existants sont ignorés.
+- le **moteur d'arbres** (`buildImpactTreesFromSnapshot`, `ImpactTrees`, statuts d'impact
+  `ImpactAnalysisStatus`) : pour chaque racine exigence, arbre **descendant** (exigences dont elle est
+  la cible, récursivement, et tests qui couvrent chaque nœud) et **montant** (exigences qu'elle cible,
+  récursivement) ; pour une racine test, arbre montant depuis les exigences qu'il couvre. Profondeur
+  illimitée ; un élément n'apparaît qu'une fois par racine ; couverture test ↔ exigence suivie dans
+  les deux sens (`matchCoverageLink`) ; liens exigence ↔ exigence orientés (source = enfant, cible =
+  parent) ;
+- l'**analyse des modifications locales** (§4.7) et la liste **« Impact à vérifier »** (§4.8), entrées
+  du panneau **Version** (affichées quand elles ont un contenu, avec leur nombre ; routes
+  `/local-impact`, `/revalidation`) ; la **Constellation** (§8) s'ouvre depuis le panneau
+  **Exigences**.
 
-La vue Analyse d'impact (barre d'activité) est retirée : « Modifications locales » (§4.7),
-« Impact à vérifier » (§4.8) et la Constellation (§8) sont des entrées du panneau Changesets.
-Sur une exigence ou un test, **« Analyser l'impact »** ouvre un changeset non terminal du repo qui
-liste l'élément (menu), ou crée un changeset avec l'élément dans « à modifier ».
-
-### 4.2 Racines et arbres
-
-- **Racines** : éléments changés (`toModify`) + éléments impactés **déclarés** du changeset ; listes
-  vides : aucune racine, rien n'est impacté (rien par défaut).
-- **Arbres** (`buildImpactTreesFromSnapshot`) : pour chaque racine exigence, arbre **descendant**
-  (exigences dont elle est la cible, récursivement, et tests qui couvrent chaque nœud) et
-  **montant** (exigences qu'elle cible, récursivement) ; pour une racine test, arbre montant
-  depuis les exigences qu'il couvre. Profondeur illimitée ; un élément n'apparaît qu'une fois par
-  racine (garde anti-cycle partagée par les deux arbres) ; **couverture test ↔ exigence suivie
-  dans les deux sens** (T175, `matchCoverageLink`) ; liens exigence ↔ exigence orientés (source =
-  enfant, cible = parent).
-- **Snapshot** : changeset **demande** → état courant **sur disque** du repo du changeset
-  (`loadWorkingTreeSnapshot`) ; changeset **sur l'existant** → état à la borne `to`
-  (`loadSnapshotAtRef`).
-
-### 4.3 Lignes des éléments impactés
-
-- Chaque élément atteint (hors racines) est un impacté **calculé** ; un élément atteint depuis
-  plusieurs racines n'a **qu'une ligne** et **un statut**, affiché sur chacun de ses nœuds.
-- **Statut** — enum plat à 8 valeurs, librement modifiable : `impact_non_verifie` (défaut),
-  `pas_d_impact_reel`, `impact_a_tester`, `impact_teste`, `modification_a_faire`,
-  `modification_faite`, `modification_a_tester`, `modification_verifiee`, avec un commentaire.
-- **Persistance** (`Changeset.impacted`) : lignes déclarées, et lignes calculées portant une saisie
-  (statut ≠ défaut ou commentaire) — `pruneImpacted`. Les autres sont recalculées.
-- Une ligne calculée persistée qui n'est plus atteinte reste, marquée « n'est plus atteint ».
-- **Complétude** : `pas_d_impact_reel`, `impact_teste`, `modification_verifiee` = clos ; « N ouverts
-  / M » ou « Analyse complète ». Informatif.
-- **Campagnes en cours** (non closes) contenant un test racine ou atteint : listées.
-- **Élément à traiter** (ni `isApproval` ni `isTerminal`, GH199 §8bis) atteint par l'analyse : pas
-  exclu (sa vérification reste tracée), badge « à traiter » et action « Passer en changé »
-  (ligne retirée de `impacted`, élément ajouté à `toModify`).
-
-### 4.4 Live, figée
-
-- **Live** tant que le changeset n'est pas dans un statut terminal : recalcul à l'ouverture de la page,
-  sur changement de fichier (`requirements/`, `tests/`, `links/`, `changesets/`) et par
-  « Rafraîchir » (IPC `changesets:analysis`).
-- **Figée** au passage dans un statut `isTerminal` : `ChangeAnalysis` (racines, arbres, lignes,
-  campagnes) écrite dans `Changeset.analysis` (`frozen: true`), relue telle quelle ; statuts non
-  modifiables. Retour dans un statut non terminal : instantané retiré, retour au live, statuts
-  conservés.
-
-### 4.5 Changeset « sur l'existant »
-
-Bornes `from` / `to` : tag de baseline ou SHA (complet ou abrégé) d'un commit du repo du changeset
-(`SyncService.resolveCommitish`). À la création, les exigences **et tests** changés entre les
-bornes (`diffElementsBetweenRefs`, mêmes règles de comparaison qu'en §4.7) sont ajoutés à « à
-modifier » (`state: modified`) ; `Changeset.range` garde les bornes et leurs SHA. Multi-repo : #208.
-
-### 4.6 Export
-
-Export de l'analyse d'un changeset (`kind: 'impact-analysis'`) : xlsx (racines puis arbres aplatis,
-colonne Profondeur ; feuille « Éléments impactés »), modèle xlsx (mêmes clés que l'ancien export
-§4.6 + `impacted`), PDF (route `/print/impact-analysis?repoPath&changeId`). Génération de campagne
-depuis le changeset : #207.
+Flux retirés par GH199 : l'analyse élément unique (`getImpactReport`, acquittements — fichiers
+`impact-acks/` lisibles dans l'historique, IPC `traceability:legacy-acks`) et l'analyse entre deux
+baselines (`impact-analyses/` ignorés). Retiré par GH243 : l'export d'une analyse de changeset
+(`kind: 'impact-analysis'`, gabarit « Analyse des impacts », route `/print/impact-analysis`) et
+« Analyser l'impact » sur une exigence ou un test.
 
 ### 4.7 Analyse d'impact des modifications locales (T175)
 

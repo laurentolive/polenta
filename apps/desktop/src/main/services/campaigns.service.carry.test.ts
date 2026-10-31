@@ -178,12 +178,16 @@ describe('CampaignsService — report (GH64)', () => {
     expect(c.runs).toEqual([])
   })
 
-  it('S8 — paramètres de base relus à la baseline de la cible, jamais recopiés de la source', async () => {
-    await writeCampaign({ id: 'CAMP-0003', baselineRef: 'v2' })
+  it("S8 — paramètres de base relus à l'état courant, jamais recopiés de la source ; GH243 : `baselineRef` d'un ancien fichier ignoré et retiré", async () => {
+    await writeCampaign({ id: 'CAMP-0003', baselineRef: 'v2', changeset: 'NC-0001' } as Partial<TestCampaign> & { id: string })
     const c = await service.addTests(dir, 'CAMP-0003', [], undefined, undefined, undefined, [
       { campaignId: 'CAMP-0001', entryId: 'TEST-0005-1' },
     ])
-    expect(c.runs[0]).toMatchObject({ resolvedParams: { gain: 'gain@v2' }, paramSourceRef: 'v2' })
+    expect(c.runs[0]).toMatchObject({ resolvedParams: { gain: 'gain@HEAD' } })
+    expect(c.runs[0].paramSourceRef).toBeUndefined()
+    const written = await git.readYaml<Record<string, unknown>>(dir, 'campaigns/CAMP-0003.yaml')
+    expect(written).not.toHaveProperty('baselineRef')
+    expect(written).not.toHaveProperty('changeset')
   })
 
   it("S9 — create() : onglet Tests puis reportées, dans cet ordre", async () => {

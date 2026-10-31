@@ -3,7 +3,6 @@ import type {
   CampaignExportPayload,
   DashboardExportPayload,
   ExportKind,
-  ImpactAnalysisExportPayload,
   QueryResultExportPayload,
   RequirementsExportPayload,
   TemplateExportFormat,
@@ -55,7 +54,6 @@ const DATA_BUILDERS: Partial<Record<`${ExportKind}:${TemplateExportFormat}`, Kin
   'tests:xlsx': async p => (await import('./template-data-xlsx')).buildItemsXlsxData(p as TestsExportPayload),
   'campaign-plan:xlsx': async p => (await import('./template-data-xlsx')).buildCampaignXlsxData(p as CampaignExportPayload),
   'query-result:xlsx': async p => (await import('./template-data-xlsx')).buildQueryResultXlsxData(p as QueryResultExportPayload),
-  'impact-analysis:xlsx': async p => (await import('./template-data-xlsx')).buildImpactXlsxData(p as ImpactAnalysisExportPayload),
 }
 
 /**

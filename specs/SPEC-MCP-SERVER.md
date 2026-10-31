@@ -488,27 +488,14 @@ clés triées, marquage des éléments approuvés si `value` / `unit` changent) 
 liste les éléments approuvés qui seraient marqués. `delete_parameter` est refusé tant qu'un élément
 non terminal référence le paramètre (`deleted: false` + `usages`).
 
-### 4.7 Changesets (GH198)
+### 4.7 Changesets (GH198 → retirés par GH243)
 
-`tools/changes.tools.ts`, branché sur `ChangesService` (mêmes contrôles que l'application).
-
-- `list_changesets` — changesets de tous les repos du workspace (`ChangeSummary` : id, `repoPath` de
-  stockage, type, titre, statut, composant, nombres d'éléments à modifier / impactés) ; filtres
-  `status`, `objectTypeRef`.
-- `get_changeset` — un changeset complet (`repoPath` de stockage, défaut repo ouvert) et son analyse
-  d'impact (`analysis`, GH199 : calculée, ou figée si le changeset est terminal) ; `trace` (GH200) :
-  départ et commit d'approbation de chaque élément à modifier ; `testsToRun` (GH207) : tests à
-  exécuter et exigences sources, exigences non couvertes, campagnes liées, tests à ajouter.
-- GH207 — `bulk_import_campaigns` : `changeset` facultatif par entrée (lien écrit des deux côtés).
-- GH200 — `bulk_import_requirements` / `bulk_import_tests` : `changesetId` facultatif par entrée ;
-  réponse `unassigned` (éléments créés sans changeset alors que la règle est active).
-  `update_requirements` / `update_tests` : `changesetId` ; une entrée qui fait quitter l'approbation
-  écrit d'abord le statut (réouverture) puis le contenu ; le contenu d'un élément approuvé est refusé ;
-  `unassigned` pour les réouvertures non assignées.
-- `create_changeset` — demande de changement (`mode: request`) : type de catégorie `changeset`,
-  `component` obligatoire si le repo porte plusieurs composants locaux, `toModify` (`planned`) et
-  `impacted` (`impact_non_verifie`, `declared`). Mise à jour des listes : lot L3 (#199).
-- `get_object_history` accepte `kind: change` (repo ouvert).
+Outils `list_changesets`, `get_changeset`, `create_changeset`, paramètre `changesetId` et réponse
+`unassigned` des écritures, `changeset` de `bulk_import_campaigns` (et son `baselineRef`) : **retirés**
+avec l'objet changeset (`specs/MILESTONE-D.md`). Reste : le contenu d'un élément approuvé est refusé
+(`update_requirements` / `update_tests`) ; une entrée qui fait aussi quitter l'approbation écrit
+d'abord le statut (réouverture, `version + 1`), puis le contenu. `get_history` : `kind` parmi
+`requirement`, `test`, `campaign`.
 
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 
@@ -642,7 +629,6 @@ Deux catégories (cf. §4) :
 | `apps/desktop/src/mcp-server/electron-shim.ts` | Substitut d'`electron` pour le bundle packagé (esbuild `--alias`) |
 | `apps/desktop/src/mcp-server/tools/schema.tools.ts` | `get_schema` |
 | `apps/desktop/src/mcp-server/tools/read.tools.ts` | `list_requirements`, `list_tests`, `list_campaigns` |
-| `apps/desktop/src/mcp-server/tools/changes.tools.ts` | `list_changesets`, `get_changeset`, `create_changeset` (GH198) |
 | `apps/desktop/src/mcp-server/tools/bulk-import.tools.ts` | `bulk_import_requirements`, `bulk_import_tests`, `bulk_import_campaigns` |
 | `apps/desktop/src/mcp-server/tools/schema-mutation.tools.ts` | `add_component`, `add_object_type`, `add_field`, `add_status`, `add_link_type` |
 | `apps/desktop/src/mcp-server/tools/links.tools.ts` | `list_links`, `create_links`, `delete_links` (GH16) |

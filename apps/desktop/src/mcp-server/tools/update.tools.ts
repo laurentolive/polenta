@@ -18,13 +18,12 @@ import { findObjectTypeDef } from '../../main/services/schema-lookup.util'
  * 1 de specs/GH150.md. GH163 — `modificationComment` est posé sur les entrées d'historique créées ;
  * sans changement de champ suivi, il n'est conservé nulle part : avertissement sur l'entrée.
  * GH200 — le contenu d'un élément approuvé est verrouillé : une entrée qui le fait aussi quitter
- * l'approbation écrit d'abord le statut (réouverture, assignée à `changesetId` ou au seul changeset
- * ouvert), puis le contenu. Une réouverture non assignée est listée dans `unassigned`.
+ * l'approbation écrit d'abord le statut (réouverture, version + 1), puis le contenu.
  */
 
 // `fields` : `z.unknown()` accepte `null`, qui retire le champ (fusion `mergeFields`).
 const requirementEntrySchema = UpdateRequirementSchema
-  .extend({ id: z.string().min(1), status: z.string().min(1).optional(), changesetId: z.string().min(1).optional() })
+  .extend({ id: z.string().min(1), status: z.string().min(1).optional() })
   .strict()
 
 const testEntrySchema = UpdateTestCaseSchema
@@ -42,8 +41,6 @@ interface UpdateToolResult {
   /** `dryRun: true` uniquement — modifications prévues, par champ. */
   preview: Array<{ index: number; id: string; changes: Record<string, FieldChange> }>
   errors: Array<{ index: number; id: string; reason: string; field?: string; partial?: boolean }>
-  /** GH200 — éléments rouverts sans changeset (règle active) : dans le backlog. */
-  unassigned: string[]
 }
 
 type Written = { version?: number; history?: ObjectHistory }
@@ -54,7 +51,7 @@ interface UpdateTarget<TEntry> {
   find: (id: string) => Promise<UpdatableObject & Written>
   /** Écrit le contenu (tout sauf `status`) ; renvoie l'objet écrit. */
   writeContent: (entry: TEntry) => Promise<Written>
-  writeStatus: (id: string, status: string, comment?: string, changesetId?: string) => Promise<Written>
+  writeStatus: (id: string, status: string, comment?: string) => Promise<Written>
 }
 
 /** Nombre total d'entrées d'historique (tous champs suivis). */
@@ -63,7 +60,7 @@ const historySize = (o: Written | undefined) => Object.values(o?.history ?? {}).
 const NO_TRACKED_CHANGE = "modificationComment non conservé : aucun champ suivi (statut, champ trackHistory) n'a changé"
 
 
-async function runUpdate<TEntry extends { id: string; status?: string; modificationComment?: string; changesetId?: string }>(
+async function runUpdate<TEntry extends { id: string; status?: string; modificationComment?: string }>(
   container: McpContainer,
   entries: TEntry[],
   dryRun: boolean,
@@ -71,7 +68,7 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
 ): Promise<UpdateToolResult> {
   const schema = await container.schema.get(container.repoPath)
   const result: UpdateToolResult = {
-    dryRun, summary: { total: entries.length, ok: 0, failed: 0 }, updated: [], preview: [], errors: [], unassigned: [],
+    dryRun, summary: { total: entries.length, ok: 0, failed: 0 }, updated: [], preview: [], errors: [],
   }
 
   // Série, jamais Promise.all : deux entrées sur le même ID s'appliquent dans l'ordre.
@@ -103,13 +100,9 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
       const hasContent = changedKeys.some(k => k !== 'status')
       const reopening = !!plan.changes.status && leavesApproval(schema, target.category, existing, entry.status!)
       // GH200 — réouverture d'abord : le contenu d'un élément approuvé est verrouillé.
-      if (reopening) written = await target.writeStatus(entry.id, entry.status!, entry.modificationComment, entry.changesetId)
+      if (reopening) written = await target.writeStatus(entry.id, entry.status!, entry.modificationComment)
       if (hasContent) written = await target.writeContent(entry)
-      if (plan.changes.status && !reopening) written = await target.writeStatus(entry.id, entry.status!, entry.modificationComment, entry.changesetId)
-      if (reopening) {
-        const check = await container.changeTracking.check(container.repoPath, { id: entry.id, objectTypeRef: existing.objectTypeRef }, 'reopen', container.workspaceDir)
-        if (check.tracking && !check.assignedTo) result.unassigned.push(entry.id)
-      }
+      if (plan.changes.status && !reopening) written = await target.writeStatus(entry.id, entry.status!, entry.modificationComment)
       const commentLost = !!entry.modificationComment?.trim() && historySize(written) <= historySize(existing)
       result.updated.push({
         index, id: entry.id, version: written?.version, changed: true, ...(commentLost && { warning: NO_TRACKED_CHANGE }),
@@ -161,8 +154,8 @@ export function registerUpdateTools(server: McpServer, container: McpContainer):
       find: id => container.requirements.findOne(repoPath, id),
       writeContent: ({ id, title, fields, modificationComment }) =>
         container.requirements.update(repoPath, id, { title, fields, modificationComment }, workspaceDir, { removeNullFields: true }),
-      writeStatus: (id, status, comment, changesetId) =>
-        container.requirements.transition(repoPath, id, { toStatus: status, comment, changesetId }, workspaceDir),
+      writeStatus: (id, status, comment) =>
+        container.requirements.transition(repoPath, id, { toStatus: status, comment }, workspaceDir),
     })),
   )
 
@@ -184,8 +177,8 @@ export function registerUpdateTools(server: McpServer, container: McpContainer):
           repoPath, id, { title, fields, preconditions, postconditions, steps, equipment, modificationComment }, workspaceDir,
           { removeNullFields: true },
         ),
-      writeStatus: (id, status, comment, changesetId) =>
-        container.tests.update(repoPath, id, { status, modificationComment: comment, changesetId }, workspaceDir),
+      writeStatus: (id, status, comment) =>
+        container.tests.update(repoPath, id, { status, modificationComment: comment }, workspaceDir),
     })),
   )
 }

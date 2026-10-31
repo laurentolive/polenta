@@ -13,7 +13,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
+import { Sparkles, Trash2 } from 'lucide-react'
 import { useSystemView } from '../../contexts/SystemViewContext'
 import { ElementTree } from '../system/ElementTree'
 import { ComponentTypeCombobox } from '../system/ComponentTypeCombobox'
@@ -270,6 +270,8 @@ const CATEGORY_TITLE_KEY: Record<string, string> = {
 
 export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: Props) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const pathname = useRouterState({ select: s => s.location.pathname })
   const {
     nodes,
     schemaLoading,
@@ -379,8 +381,20 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Header (T92 — cohérent avec les autres panneaux latéraux) ── */}
-      <div className="px-4 py-3 border-b border-edge shrink-0">
+      <div className="px-4 py-3 border-b border-edge shrink-0 flex items-center justify-between gap-2">
         <p className="section-label">{t(CATEGORY_TITLE_KEY[category] ?? 'sidebar.system.title')}</p>
+        {/* GH243 — Constellation (GH183), ex-panneau Changesets. */}
+        {category === 'requirement' && (
+          <button
+            type="button"
+            onClick={() => navigate({ to: '/constellation', search: { projectId } })}
+            className={pathname === '/constellation' ? 'text-ink' : 'text-ink-3 hover:text-ink'}
+            title={t('constellation.openFromPanel')}
+            data-testid="requirements-constellation"
+          >
+            <Sparkles size={14} />
+          </button>
+        )}
       </div>
 
       {/* ── Combobox Composant / Élément (T129 — fusion filtrable des deux comboboxes T120/T113,

@@ -16,7 +16,7 @@ import * as path from 'path'
 import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun } from 'docx'
 import PizZip from 'pizzip'
 import type {
-  CampaignExportPayload, DashboardExportPayload, ImpactAnalysisExportPayload, QueryResultExportPayload,
+  CampaignExportPayload, DashboardExportPayload, QueryResultExportPayload,
   RequirementsExportPayload, TestCase, TestRun, TestsExportPayload,
 } from '@polenta/types'
 import { EXAMPLES_FOLDER, ExportTemplateLibrary } from '../src/main/services/export-template-library'
@@ -534,7 +534,7 @@ const RUNS: TestRun[] = [{
 
 const campaignPayload: CampaignExportPayload = {
   campaign: {
-    id: 'CAMP-0001', title: 'Validation démarrage', fields: {}, baselineRef: 'v1.2.0', component: 'Moteur',
+    id: 'CAMP-0001', title: 'Validation démarrage', fields: {}, component: 'Moteur',
     status: 'in_progress', testCaseIds: [], runs: [], createdAt: '2026-09-01T00:00:00Z',
   },
   entries: [
@@ -790,7 +790,7 @@ async function sprint4(service: TemplateExportService, lib: string, repo: string
   const cName = [...xc.sheets.keys()][0]
   check('S4.2 plan de campagne : entrées et résultat', xc.cell(cName, 'A9') === 'TEST-0001' && xc.cell(cName, 'F10') === 'En attente' && xc.cell(cName, 'C9') === 'SYS-0001')
 
-  // ── S4.4 — résultat de requête (colonnes dynamiques) et analyse d'impact ─
+  // ── S4.4 — résultat de requête (colonnes dynamiques) ─
   const query: QueryResultExportPayload = {
     queryName: 'Statuts',
     result: { columns: [{ name: 'Statut', type: 'string' }, { name: 'Nombre', type: 'number' }, { name: 'Part', type: 'number' }], rows: [{ Statut: 'approved', Nombre: 12, Part: 0.8 }, { Statut: 'draft', Nombre: 3, Part: 0.2 }] },
@@ -800,22 +800,6 @@ async function sprint4(service: TemplateExportService, lib: string, repo: string
   check('S4.4 requête : aucune cellule en double', !/<c r="(A10)"[^>]*>[\s\S]*?<c r="\1"/.test(xq.sheets.get(qName)!.match(/<row r="10"[\s\S]*?<\/row>/)?.[0] ?? ''))
   check('S4.4 requête : en-têtes et cellules en largeur', ['A8', 'B8', 'C8', 'A9', 'B9', 'A10', 'C10'].map(r => xq.cell(qName, r)).join('|') === 'Statut|Nombre|Part|approved|12|draft|0.2', ['A8', 'B8', 'C8', 'A9', 'B9', 'A10', 'C10'].map(r => xq.cell(qName, r)).join('|'))
 
-  const impact: ImpactAnalysisExportPayload = {
-    analysis: {
-      id: 'IA-1', label: 'v1.0 → v1.1', repoPath: repo, fromBaseline: { tag: 'v1.0', sha: 'a' }, toBaseline: { tag: 'v1.1', sha: 'b' },
-      createdAt: '2026-09-01', createdBy: 'lolive',
-      changedRequirements: [{
-        reqId: 'SYS-0001', title: 'Surcharge', changeType: 'modified' as never, changedFields: [],
-        descendantTree: [{ elementId: 'SW-0001', elementType: 'requirement', title: 'Coupure FET', linkType: 'implementation', status: 'to_review' as never, comment: null, updatedAt: null, updatedBy: null,
-          children: [{ elementId: 'TEST-0001', elementType: 'test_case', title: 'Test coupure', linkType: 'verification', status: 'ok' as never, comment: 'RAS', updatedAt: null, updatedBy: null, children: [] }] }],
-        ascendantTree: [],
-      }],
-    },
-  }
-  const xi = await exportXlsx('impact-analysis', ex + 'Analyse des impacts.xlsx', impact, 's4-impact.xlsx')
-  const iName = [...xi.sheets.keys()][0]
-  check('S4.4 analyse d’impact : arbre aplati avec profondeur', ['D9', 'D10', 'D11', 'C11', 'H11'].map(r => xi.cell(iName, r)).join('|') === 'SYS-0001|SW-0001|TEST-0001|2|RAS', ['D9', 'D10', 'D11', 'C11', 'H11'].map(r => xi.cell(iName, r)).join('|'))
-  check('S4.4 analyse d’impact : synthèse étendue', xi.formulas(iName).includes('COUNTIF(B9:B11,"<>Modification")'), JSON.stringify(xi.formulas(iName)))
 
   // ── Recopie d'Excel dans les lignes générées, lignes/cellules vides, balise partielle ──
   {

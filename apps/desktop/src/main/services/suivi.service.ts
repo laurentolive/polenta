@@ -28,7 +28,7 @@ const SYSTEM_FIELDS: Record<SuiviObjectTypeOption['category'], string[]> = {
   requirement: ['id', 'title', 'status', 'component', 'version', 'needsRevalidation', 'coverageStatus', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'],
   test: ['id', 'title', 'status', 'component', 'version', 'needsRevalidation', 'latestRunResult', 'latestRunDate', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'],
   campaign: [
-    'campaignId', 'campaignTitle', 'campaignStatus', 'campaignCreatedAt', 'baselineRef', 'level', 'campaignComponent', 'component',
+    'campaignId', 'campaignTitle', 'campaignStatus', 'campaignCreatedAt', 'level', 'campaignComponent', 'component',
     'entryId', 'testCaseId', 'requirementId', 'testTitle', 'status', 'executed', 'addedAt', 'executedAt', 'executedDay', 'executedBy', 'runId',
   ],
 }

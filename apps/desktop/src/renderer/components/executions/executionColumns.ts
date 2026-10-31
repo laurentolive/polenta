@@ -26,7 +26,6 @@ const FIXED: ExecutionColumn[] = [
   { key: 'equipment', group: 'execution', label: 'equipment' },
   { key: 'campaign', group: 'campaign', label: 'campaign' },
   { key: 'campaignStatus', group: 'campaign', label: 'campaignStatus' },
-  { key: 'baseline', group: 'campaign', label: 'baseline' },
   { key: 'entry', group: 'entry', label: 'entry' },
   { key: 'entryRequirement', group: 'entry', label: 'entryRequirement' },
   { key: 'params', group: 'entry', label: 'params' },
@@ -79,7 +78,6 @@ export function sortValue(row: ExecutionHistoryRow, key: string): string {
     case 'origin': return row.run?.origin ?? ''
     case 'campaign': return row.campaign?.id ?? ''
     case 'campaignStatus': return row.campaign?.status ?? ''
-    case 'baseline': return row.campaign?.baselineRef ?? ''
     case 'entry': return row.entry?.entryId ?? ''
     case 'entryRequirement': return row.entry?.requirementId ?? ''
     case 'testVersion': return String(row.entry?.testVersion ?? '')

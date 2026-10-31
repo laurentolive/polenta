@@ -32,8 +32,7 @@
       "menu": {
         "hide": "Hide \"{{label}}\"",
         "reset": "Reset layout"
-      },
-      "changes": "Changesets"
+      }
     },
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
@@ -269,8 +268,6 @@
     "saved": "Saved",
     "error": "Error",
     "saving": "Saving…",
-    "changeTrackingLabel": "Every modification goes through a changeset",
-    "changeTrackingHelp": "Creating, reopening or obsoleting a requirement or test assigns it to an open changeset of the repo (automatic when there is only one). Active as soon as a changeset type exists in the data model.",
     "autoPropagateLabel": "Automatically propagate the sub-repo pin to the parent repo when a commit is received on the sub-repo",
     "autoPropagateHelp": "If unchecked, the pin update waits for manual approval from the integrator.",
     "autoPullIntervalLabel": "Automatic retrieval interval (minutes)",
@@ -284,8 +281,7 @@
       "campaign-plan": "Campaign plan",
       "campaign-report": "Campaign report",
       "dashboard": "Dashboard",
-      "query-result": "Query result",
-      "impact-analysis": "Impact analysis"
+      "query-result": "Query result"
     }
   },
   "workspace": {
@@ -539,8 +535,7 @@
       "runFields": "Run fields",
       "runFieldsHelp": "Entered at each run (report number, temperature, report link…). Information common to the whole campaign is a campaign field. “Req. if”: result = PASS, FAIL, BLOCKED or INCOMPLETE (overall verdict). A name designates a single field across the project.",
       "stepFields": "Step fields",
-      "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict).",
-      "changeset": "Changeset"
+      "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict)."
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -693,9 +688,7 @@
         "test_one": "{{count}} test deleted (and its runs):",
         "test_other": "{{count}} tests deleted (and their runs):",
         "campaign_one": "{{count}} campaign deleted:",
-        "campaign_other": "{{count}} campaigns deleted:",
-        "changeset_one": "{{count}} changeset deleted:",
-        "changeset_other": "{{count}} changesets deleted:"
+        "campaign_other": "{{count}} campaigns deleted:"
       },
       "more": "… and {{count}} more",
       "links_one": "{{count}} link deleted:",
@@ -785,7 +778,6 @@
       "colStatus": "Status",
       "colVersion": "Version",
       "changeStatus": "Change status",
-      "reopenDraft": "Back to draft (new version)",
       "stepsHeading": "Steps",
       "clickToEditLinks": "Click to edit links"
     },
@@ -935,8 +927,6 @@
     "paramsIncomplete": "Fill in the value of every parameter for the selected tests.",
     "newTitle": "New Test Campaign",
     "titlePlaceholder": "Ex: Sprint 11 validation campaign",
-    "baselineLabel": "Baseline (git tag or SHA)",
-    "baselinePlaceholder": "v1.2.0 or abc1234",
     "testCasesSelected_one": "Test cases ({{count}} selected)",
     "testCasesSelected_other": "Test cases ({{count}} selected)",
     "noTestCaseAvailable": "No test case available",
@@ -951,7 +941,6 @@
     "notFound": "Campaign not found: {{campaignId}}",
     "editFields": "Edit fields",
     "saving": "Saving…",
-    "baselineLabelPrefix": "Baseline:",
     "addTests": "Add tests",
     "adding": "Adding…",
     "addCount": "Add ({{count}})",
@@ -1222,7 +1211,6 @@
         "campaignId": "Campaign (ID)",
         "campaignTitle": "Campaign (title)",
         "campaignStatus": "Campaign (status)",
-        "baselineRef": "Baseline",
         "campaignCreatedAt": "Campaign (created at)",
         "level": "Level",
         "campaignComponent": "Target component",
@@ -1460,7 +1448,8 @@
         "not_found": "not found",
         "readonly": "read-only",
         "error": "write error"
-      }
+      },
+      "noFlagged": "No element to re-check."
     },
     "changeType": {
       "added": "Added",
@@ -2214,7 +2203,6 @@
       "equipment": "Equipment",
       "campaign": "Campaign",
       "campaignStatus": "Campaign status",
-      "baseline": "Baseline",
       "entry": "Entry",
       "entryRequirement": "Instance requirement",
       "params": "Parameters",
@@ -2230,139 +2218,6 @@
     },
     "superseded": "superseded",
     "supersededTitle": "Run replaced by a new attempt on the same entry"
-  },
-  "changes": {
-    "title": "Changesets",
-    "new": "New changeset",
-    "empty": "No changeset.",
-    "emptyFiltered": "No changeset matches the filters.",
-    "allTypes": "All types",
-    "allStatuses": "All statuses",
-    "allRepos": "All repos",
-    "mine": "My changesets",
-    "hideTerminal": "Hide closed",
-    "home": "Select a changeset in the panel, or create one.",
-    "type": "Type",
-    "titleLabel": "Title",
-    "component": "Component",
-    "componentPick": "— pick a component —",
-    "componentFrozen": "Frozen after the initial status (it designates the storage repo).",
-    "status": "Status",
-    "create": "Create",
-    "creating": "Creating…",
-    "createFromElement": "Create a changeset",
-    "delete": "Delete",
-    "deleteConfirm": "Delete {{id}}? The file was never committed; the ID will not be reused.",
-    "toModify": "Changed elements",
-    "impacted": "Impacted elements",
-    "add": "Add",
-    "addSelected": "Add selection",
-    "pickNone": "No element available.",
-    "remove": "Remove",
-    "removed": "deleted",
-    "none": "None.",
-    "planned": "planned",
-    "modified": "modified",
-    "impactStatus": "Impact status",
-    "comment": "Comment",
-    "computed": "computed",
-    "origin": "Origin",
-    "integratedIn": "Integrated in",
-    "campaigns": "Campaigns",
-    "requirement": "Requirement",
-    "test": "Test",
-    "notFound": "Changeset not found.",
-    "noTypeInRepo": "no changeset type in this repo",
-    "componentHelp": "The changeset is stored in the component repo, with its types: it follows the component when reused in another product.",
-    "pickToModify": "Add changed elements",
-    "pickImpacted": "Add impacted elements",
-    "noFlagged": "No element to re-check.",
-    "mode": {
-      "label": "Kind",
-      "request": "Change request",
-      "range": "On existing work",
-      "from": "From (baseline or commit)",
-      "to": "To (baseline or commit)",
-      "rangeHelp": "Requirements and tests changed between the two bounds are added to the changed elements; the analysis uses the state at the second bound."
-    },
-    "openOnly": "Open only",
-    "unreached": "no longer reached",
-    "analysis": {
-      "title": "Impact analysis",
-      "request": "Request — current state",
-      "range": "On existing work: {{from}} → {{to}}",
-      "computed": "computed {{when}}",
-      "frozen": "frozen {{when}}",
-      "noRoot": "No starting element: add changed or impacted elements.",
-      "noImpact": "no impact",
-      "campaigns": "Ongoing campaigns concerned"
-    },
-    "analyzeImpact": "Analyze impact",
-    "openChange": "Open",
-    "moveTo_one": "Move to…",
-    "moveTo_other": "Move ({{count}}) to…",
-    "alsoIn": "also in {{ids}}",
-    "toProcess": "to process",
-    "promote": "Move to changed",
-    "clickToEdit": "Click to edit",
-    "backlog": {
-      "outside": "modified outside the app",
-      "reopen": "Reopen and assign…",
-      "title": "Backlog",
-      "subtitle_one": "{{count}} element to process, assigned to no open changeset",
-      "subtitle_other": "{{count}} elements to process, assigned to no open changeset",
-      "assign_one": "Assign to…",
-      "assign_other": "Assign ({{count}}) to…",
-      "filter": "Filter (ID, title)",
-      "help": "Elements neither approved nor terminal, absent from open changesets.",
-      "empty": "Nothing to process.",
-      "selectAll": "Select all",
-      "select": "Select {{id}}",
-      "titleCol": "Title",
-      "statusCol": "Status",
-      "flagged": "Impact to check"
-    },
-    "campaignSection": {
-      "selectAll": "Select all",
-      "via": "Brought by",
-      "inCampaigns": "Already in",
-      "create": "Create a campaign",
-      "toRun_one": "{{count}} test to run",
-      "toRun_other": "{{count}} tests to run",
-      "uncovered": "not covered: {{ids}}",
-      "toAdd_one": "{{count}} test to add",
-      "toAdd_other": "{{count}} tests to add",
-      "addTo": "Add to {{id}}",
-      "addToMany": "Add to…",
-      "progress": "{{passed}} / {{total}} PASS",
-      "changesetTests_one": "{{count}} changeset entry",
-      "changesetTests_other": "{{count}} changeset entries",
-      "link": "Changeset"
-    },
-    "trace": {
-      "creation": "creation",
-      "pending": "not approved",
-      "unpublished": "unpublished",
-      "diff": "Show changes"
-    },
-    "modify": {
-      "title": "Which changeset?",
-      "createHelp": "Every creation goes through a changeset. Pick the one that carries it, or create one.",
-      "reopenHelp": "{{id}} becomes editable again: pick the changeset that carries its modification, or create one.",
-      "auto": "Added to {{id}}"
-    },
-    "assign": {
-      "approveTitle": "Assign to a changeset",
-      "assignTitle": "Assign to a changeset",
-      "moveTitle": "Move to a changeset",
-      "approveHelp": "{{id}} is assigned to no open changeset. Pick the changeset that carries its approval.",
-      "elements": "Elements: {{ids}}",
-      "openChanges": "Open changesets",
-      "noOpen": "No open changeset in this repo.",
-      "newTitle": "New changeset title",
-      "create": "Create",
-      "approveWithout": "Approve without a changeset"
-    }
   },
   "diffkit": {
     "change": {

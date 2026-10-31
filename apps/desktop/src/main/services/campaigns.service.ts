@@ -10,12 +10,6 @@ import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-co
 import { findObjectTypeDef } from './schema-lookup.util'
 import { applyFieldsWrite } from './field-write.util'
 
-/** GH207 — crochet vers les changesets (pas de dépendance circulaire avec `ChangesService`). */
-export interface ChangesetLinker {
-  assertOpen(repoPath: string, changesetId: string): Promise<void>
-  link(repoPath: string, changesetId: string, campaignId: string): Promise<unknown>
-}
-
 export class CampaignsService {
   constructor(
     private readonly gitService: GitService,
@@ -77,23 +71,11 @@ export class CampaignsService {
     return this.ensureEntryIds(campaign)
   }
 
-  /** GH207 — lien avec le changeset qui crée la campagne ; posé après construction (dépend des changesets). */
-  private changesetLinker?: ChangesetLinker
-
-  setChangesetLinker(linker: ChangesetLinker): void {
-    this.changesetLinker = linker
-  }
-
   async create(repoPath: string, dto: CreateCampaignDto, workspaceDir?: string): Promise<TestCampaign> {
-    // GH207 — changeset contrôlé avant d'émettre l'ID.
-    if (dto.changeset) {
-      if (!this.changesetLinker) throw new Error('Lien avec un changeset indisponible')
-      await this.changesetLinker.assertOpen(repoPath, dto.changeset)
-    }
     const id = await this.nextCampaignId(repoPath)
     const testCaseIds = dto.testCaseIds ?? []
     const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
-    const previews = await this.previewsFor(repoPath, snapshots, dto.baselineRef, workspaceDir)
+    const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
     // GH73 — les entrées initiales sont ajoutées à la création : `addedAt` = `createdAt`.
     const now = new Date().toISOString()
     const alloc = entryAllocator([], undefined, now)
@@ -105,23 +87,19 @@ export class CampaignsService {
       fields: dto.fields ?? {},
       level: dto.level,
       component: dto.component,
-      baselineRef: dto.baselineRef,
       status: 'planned',
       testCaseIds: [],
       runs: this.buildNewRuns([], alloc, testCaseIds, dto.paramValuesByTest, snapshots, previews, dto.reqInstances),
       createdAt: now,
       completedAt: null,
-      ...(dto.changeset && { changeset: dto.changeset }),
     }
     // GH64 — entrées reportées depuis d'autres campagnes, après celles de l'onglet Tests.
-    campaign.runs.push(...await this.buildCarriedRuns(repoPath, undefined, campaign.runs, alloc, dto.carried, dto.baselineRef, workspaceDir))
+    campaign.runs.push(...await this.buildCarriedRuns(repoPath, undefined, campaign.runs, alloc, dto.carried, workspaceDir))
 
     // T179 — une occurrence par instance créée (un test itérant en a une par exigence retenue).
     campaign.testCaseIds = campaign.runs.map(r => r.testCaseId)
     await assertNewObjectFile(this.gitService, repoPath, `campaigns/${id}.yaml`, id)
-    const created = await this.persist(repoPath, id, null, campaign)
-    if (dto.changeset) await this.changesetLinker!.link(repoPath, dto.changeset, id)
-    return created
+    return this.persist(repoPath, id, null, campaign)
   }
 
   async update(repoPath: string, id: string, dto: UpdateCampaignDto): Promise<TestCampaign> {
@@ -277,7 +255,7 @@ export class CampaignsService {
       ])
       const candidates = [...new Set(testCaseIds)]
       const snapshots = await this.snapshotsFor(repoPath, candidates)
-      const previews = await this.previewsFor(repoPath, snapshots, campaign.baselineRef, workspaceDir)
+      const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
       // T179 — un test itérant (`{req.…}` avec exigences liées) déjà présent reste ajoutable pour
       // ses exigences sans instance : la déduplication porte sur le couple (test, exigence).
       const newIds = candidates.filter(id => !existingIds.has(id) || !!previews.get(id)?.requirements?.length)
@@ -287,7 +265,7 @@ export class CampaignsService {
       const alloc = entryAllocator(campaign.runs, campaign.removedRuns, new Date().toISOString())
       campaign.runs = this.buildNewRuns(campaign.runs, alloc, newIds, paramValuesByTest, snapshots, previews, reqInstances)
       // GH64 — entrées reportées, dédoublonnées contre l'existant et l'onglet Tests.
-      campaign.runs.push(...await this.buildCarriedRuns(repoPath, campaignId, campaign.runs, alloc, carried, campaign.baselineRef, workspaceDir))
+      campaign.runs.push(...await this.buildCarriedRuns(repoPath, campaignId, campaign.runs, alloc, carried, workspaceDir))
       if (campaign.runs.length === before) return campaign
       campaign.testCaseIds = [...campaign.testCaseIds, ...campaign.runs.slice(before).map(r => r.testCaseId)]
 
@@ -317,7 +295,7 @@ export class CampaignsService {
       }
 
       const snapshots = await this.snapshotsFor(repoPath, [testCaseId])
-      const previews = await this.previewsFor(repoPath, snapshots, campaign.baselineRef, workspaceDir)
+      const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
       const linked = previews.get(testCaseId)?.requirements
       if (requirementId && linked && !linked.some(r => r.requirementId === requirementId)) {
         // Lien retiré ou exigence devenue terminale depuis l'ajout : rien à dupliquer.
@@ -341,19 +319,17 @@ export class CampaignsService {
   /**
    * T171 — prévisualisation de la résolution des paramètres pour des tests à ajouter (ou pour une
    * nouvelle campagne), sans écriture : alimente le panneau d'ajout, le formulaire de création
-   * et la notification « avant validation ». Source : `baselineRef` fourni, sinon celui de la
-   * campagne `campaignId`, sinon l'état courant.
+   * et la notification « avant validation ». Source : l'état courant (GH243 — plus de baseline de
+   * campagne).
    */
   async previewParams(
     repoPath: string,
-    source: { campaignId?: string; baselineRef?: string },
+    _source: { campaignId?: string },
     testCaseIds: string[],
     workspaceDir?: string,
   ): Promise<ParamResolutionPreview[]> {
-    const baselineRef = source.baselineRef
-      ?? (source.campaignId ? (await this.get(repoPath, source.campaignId)).baselineRef : undefined)
     const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
-    const previews = await this.previewsFor(repoPath, snapshots, baselineRef, workspaceDir)
+    const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
     return [...previews.values()]
   }
 
@@ -577,7 +553,7 @@ export class CampaignsService {
    * source. Une sélection invalide (source ou entrée introuvable, campagne cible elle-même, test
    * supprimé, exigence plus liée, doublon de l'existant) est ignorée sans faire échouer le reste —
    * comme un test supprimé entre l'affichage du panneau et l'appel (`snapshotsFor`). Paramètres de
-   * la base relus selon `baselineRef` de la cible, jamais recopiés de la source. Renvoie les seules
+   * la base relus à l'état courant, jamais recopiés de la source. Renvoie les seules
    * nouvelles instances ; la campagne source n'est jamais modifiée.
    */
   private async buildCarriedRuns(
@@ -586,7 +562,6 @@ export class CampaignsService {
     existingRuns: CampaignTestRun[],
     alloc: EntryAllocator,
     carried: CarriedEntrySelection[] | undefined,
-    baselineRef: string | undefined,
     workspaceDir: string | undefined,
   ): Promise<CampaignTestRun[]> {
     if (!carried?.length) return []
@@ -609,7 +584,7 @@ export class CampaignsService {
     if (picked.length === 0) return []
 
     const snapshots = await this.snapshotsFor(repoPath, picked.map(p => p.source.testCaseId))
-    const previews = await this.previewsFor(repoPath, snapshots, baselineRef, workspaceDir)
+    const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
 
     const keys = new Set(existingRuns.map(r => carryKey(r.testCaseId, r.requirementId, r.paramValues)))
     const newRuns: CampaignTestRun[] = []
@@ -718,11 +693,10 @@ export class CampaignsService {
   private async previewsFor(
     repoPath: string,
     snapshots: Map<string, TestCase>,
-    baselineRef: string | undefined,
     workspaceDir: string | undefined,
   ): Promise<Map<string, ParamResolutionPreview>> {
     if (!this.parameters || snapshots.size === 0) return new Map()
-    const previews = await this.parameters.previewForTests(repoPath, [...snapshots.values()], { baselineRef, workspaceDir })
+    const previews = await this.parameters.previewForTests(repoPath, [...snapshots.values()], { workspaceDir })
     return new Map(previews.map(p => [p.testCaseId, p]))
   }
 
@@ -749,6 +723,10 @@ export class CampaignsService {
    * ne change pas (il ne change jamais : les entrées ne sont qu'ajoutées, jamais réordonnées).
    */
   private ensureEntryIds(campaign: TestCampaign): TestCampaign {
+    // GH243 — `baselineRef` et `changeset` (retirés) ignorés à la lecture : absents de la prochaine écriture.
+    const legacy = campaign as TestCampaign & { baselineRef?: unknown; changeset?: unknown }
+    delete legacy.baselineRef
+    delete legacy.changeset
     if (campaign.runs.every(r => r.entryId)) return campaign
 
     const counts = new Map<string, number>()

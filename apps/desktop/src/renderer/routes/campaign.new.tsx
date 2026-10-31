@@ -33,8 +33,7 @@ export const Route = createFileRoute('/campaign/new')({
     // testCaseIds est une liste d'IDs séparés par des virgules, title un titre suggéré.
     title: search['title'] as string | undefined,
     testCaseIds: search['testCaseIds'] as string | undefined,
-    /** GH207 — changeset qui crée la campagne, et instances retenues (`TEST-1:SW-1|SW-2,…`). */
-    ...(search['changeset'] ? { changeset: search['changeset'] as string } : {}),
+    /** GH207 — instances retenues (`TEST-1:SW-1|SW-2,…`). */
     ...(search['instances'] ? { instances: search['instances'] as string } : {}),
   }),
 })
@@ -52,10 +51,9 @@ function NewCampaignPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { repoPath, projectId, component, level, title: prefillTitle, testCaseIds: prefillTestCaseIds, changeset, instances } = Route.useSearch()
+  const { repoPath, projectId, component, level, title: prefillTitle, testCaseIds: prefillTestCaseIds, instances } = Route.useSearch()
 
   const [title, setTitle] = useState(prefillTitle ?? '')
-  const [baselineRef, setBaselineRef] = useState('')
   const [selectedTests, setSelectedTests] = useState<Set<string>>(
     () => new Set(prefillTestCaseIds ? prefillTestCaseIds.split(',').filter(Boolean) : []),
   )
@@ -141,14 +139,13 @@ function NewCampaignPage() {
   // GH64 — périmètre des tests reportables à la création (même filtre que l'onglet Tests).
   const testIdsInScope = useMemo(() => new Set(tests.map(tc => tc.id)), [tests])
 
-  // T171 — résolution prévisionnelle des paramètres des tests sélectionnés, lue au `baselineRef`
-  // saisi (sans repli sur l'état courant) ou sur l'état courant : références résolues affichées en
-  // lecture seule, non résolues signalées avant validation, seules les autres sont à saisir.
+  // T171 — résolution prévisionnelle des paramètres des tests sélectionnés, lue à l'état courant
+  // (GH243 — plus de baseline de campagne) : références résolues affichées en lecture seule, non résolues signalées avant validation, seules les autres sont à saisir.
   // Porte sur toute la sélection — préremplissage T46 inclus, qui peut référencer des tests hors
   // du filtre composant/niveau courant (cf. specs/T97.md, correctif revue de code).
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
   const { previews: paramPreviews, isLoading: previewLoading } = useParamPreview(
-    repoPath, { baselineRef: baselineRef.trim() || undefined }, [...selectedTests, ...carried.map(c => c.testCaseId)], workspaceDir,
+    repoPath, {}, [...selectedTests, ...carried.map(c => c.testCaseId)], workspaceDir,
   )
   // Nouvelle campagne : aucune exigence n'a encore d'instance.
   const noneYet = () => new Set<string>()
@@ -156,7 +153,6 @@ function NewCampaignPage() {
   // GH64 — priorité au report : tests et exigences couverts par une entrée reportée ne sont pas
   // ajoutés une seconde fois depuis l'onglet Tests (la sélection de l'onglet reste intacte).
   const precedence = withCarryPrecedence([...selectedTests], noneYet, carryCoverage(carried, paramPreviews))
-  // Une baseline modifiée après la sélection peut demander de nouvelles saisies aux reportées.
   const paramsComplete = isAddComplete(precedence.testIds, paramPreviews, paramValues, reqSel, precedence.presentOf, false)
     && isCarryComplete(carried, paramPreviews)
   const selectionCount = precedence.testIds.length + carried.length
@@ -165,26 +161,18 @@ function NewCampaignPage() {
     [testIdsInScope],
   )
 
-  const { data: tags = [] } = useQuery({
-    queryKey: ['git-tags', repoPath],
-    queryFn: () => api.sync.tags(repoPath),
-    enabled: !!repoPath,
-  })
-
   const createMutation = useMutation({
     mutationFn: () =>
       api.campaigns.create(repoPath, {
         title,
         objectTypeRef: type || undefined,
         fields,
-        baselineRef: baselineRef.trim() || undefined,
         testCaseIds: precedence.testIds,
         paramValuesByTest: paramValues,
         reqInstances: buildReqInstances(precedence.testIds, paramPreviews, reqSel, precedence.presentOf),
         carried: toCarriedSelection(carried),
         component: component || typeNode || undefined,
         level: level || typeName || undefined,
-        ...(changeset && { changeset }),
       }, workspaceDir || undefined),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
@@ -267,25 +255,6 @@ function NewCampaignPage() {
             </>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">{t('campaignPage.baselineLabel')}</label>
-            <input
-              type="text"
-              list="baseline-tags"
-              value={baselineRef}
-              onChange={e => setBaselineRef(e.target.value)}
-              placeholder={t('campaignPage.baselinePlaceholder')}
-              className="input-field w-full"
-            />
-            {tags.length > 0 && (
-              <datalist id="baseline-tags">
-                {tags.map(tag => (
-                  <option key={tag} value={tag} />
-                ))}
-              </datalist>
-            )}
-          </div>
-
           {/* Test case selection — GH33 : sélecteur en modale (Vue Excel filtrable, 2 étapes) */}
           <div>
             <p className="text-sm font-medium text-ink mb-2">
@@ -358,7 +327,7 @@ function NewCampaignPage() {
               candidates={tests}
               allTests={allTests}
               defaultTypeRef={component && level ? `${component}::${level}` : undefined}
-              previewSource={{ baselineRef: baselineRef.trim() || undefined }}
+              previewSource={{}}
               initial={pickerInitial}
               presentOf={noneYet}
               isEligible={isCarryEligible}

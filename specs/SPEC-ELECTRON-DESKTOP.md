@@ -1781,10 +1781,9 @@ Search params : `{ repoPath, projectId, component?, level? }`
 |-------|----------|-----------|
 | Titre * | `input[text]` | `title` |
 | Description | `textarea` | `description` |
-| Baseline | `input[text]` — tag git ou SHA | `baselineRef` |
 | Cas de test | liste multi-sélection depuis les tests du contexte | `testCaseIds` |
 
-Appel : `api.campaigns.create(repoPath, { title, description, baselineRef, testCaseIds, level, component })`
+Appel : `api.campaigns.create(repoPath, { title, description, testCaseIds, level, component })` (GH243 : plus de baseline)
 
 ### 19.10.4 Route `/campaign/$campaignId` — Suivi d'une campagne
 
@@ -1901,7 +1900,7 @@ Déduction du panel actif depuis `pathname` + search params :
 | `campaigns:list` | `repoPath: string, component?: string, level?: string` | `TestCampaign[]` |
 | `campaigns:get` | `repoPath: string, id: string` | `TestCampaign` |
 | `campaigns:create` | `repoPath: string, dto: CreateCampaignDto, workspaceDir?: string` | `TestCampaign` (T171 : résout et fige les paramètres) |
-| `campaigns:preview-params` | `repoPath, { campaignId? \| baselineRef? }, testCaseIds: string[], workspaceDir?` | `ParamResolutionPreview[]` (T171, sans écriture) |
+| `campaigns:preview-params` | `repoPath, { campaignId? }, testCaseIds: string[], workspaceDir?` | `ParamResolutionPreview[]` (T171, sans écriture) |
 | `parameters:list` / `parameters:usages` / `parameters:create` / `parameters:update` / `parameters:delete` | `repoPath` (repo de la base), …, `workspaceDir?` | T171 — base de paramètres (voir SPEC-REQ §3.2f) |
 | `campaigns:update-run` | `repoPath: string, campaignId: string, testCaseId: string, status: TestRunStatus` | `TestCampaign` |
 | `campaigns:close` | `repoPath: string, id: string, status: 'completed' \| 'abandoned'` | `TestCampaign` |
@@ -1980,7 +1979,7 @@ inchangé. Spec/design : `specs/GH34.md`, `specs/GH34-design.md` ; référence u
   (`templateRelPath`) ; le renderer joint alors à son payload l'arbre complet (`outline` : dossiers,
   niveau, étapes détaillées, `statusLabel`, cf. `buildExportOutline`). Kinds pris en charge — docx :
   `requirements`, `tests`, `campaign-plan`, `campaign-report`, `dashboard` ; xlsx : `requirements`,
-  `tests`, `campaign-plan`, `query-result`, `impact-analysis` (`renderer/lib/exportTemplates.ts`,
+  `tests`, `campaign-plan`, `query-result` (`impact-analysis` retiré par GH243 ; `renderer/lib/exportTemplates.ts`,
   miroir de `DATA_BUILDERS` côté main). Une liste par format accepté (« Gabarit Word », « Gabarit Excel »).
 - **Moteur** (`main/services/export/template/`) : `TemplateExportService` construit les données
   (communes `project`/`export`/`git` + par kind : `template-data.ts`, `template-data-campaign.ts` —

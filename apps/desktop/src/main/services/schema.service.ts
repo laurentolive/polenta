@@ -86,7 +86,7 @@ export class SchemaService {
     if (bytes) {
       try {
         const parsed = yaml.load(new TextDecoder().decode(bytes)) as ProjectSchema
-        if (parsed && parsed.nodes) schema = this.migrateRootRolesImplements(parsed)
+        if (parsed && parsed.nodes) schema = this.migrateRootRolesImplements(dropRemovedChangesets(parsed))
       } catch {
         schema = null
       }
@@ -564,7 +564,7 @@ export class SchemaService {
       const raw = await fsP.readFile(filePath, 'utf-8')
       const parsed = yaml.load(raw) as ProjectSchema
       if (!parsed || !parsed.nodes) return DEFAULT_SCHEMA
-      return this.migrateRootRolesImplements(parsed)
+      return this.migrateRootRolesImplements(dropRemovedChangesets(parsed))
     } catch {
       return DEFAULT_SCHEMA
     }
@@ -599,4 +599,19 @@ export class SchemaService {
       })),
     }
   }
+}
+
+/**
+ * GH243 — le changeset est retiré : un type de l'ancienne catégorie `changeset` et la préférence
+ * `changeTracking` sont ignorés à la lecture, donc absents de la prochaine sauvegarde du schéma.
+ */
+function dropRemovedChangesets(schema: ProjectSchema): ProjectSchema {
+  const dropTypes = (nodes: SystemNode[]): SystemNode[] => nodes.map(n => ({
+    ...n,
+    ...(n.objectTypes && { objectTypes: n.objectTypes.filter(t => (t.category as string) !== 'changeset') }),
+    ...(n.children && { children: dropTypes(n.children) }),
+  }))
+  const prefs = schema.preferences as (ProjectSchema['preferences'] & { changeTracking?: unknown }) | undefined
+  const { changeTracking: _removed, ...preferences } = prefs ?? {}
+  return { ...schema, nodes: dropTypes(schema.nodes), ...(prefs && { preferences }) }
 }

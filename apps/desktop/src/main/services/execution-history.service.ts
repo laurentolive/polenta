@@ -100,7 +100,7 @@ function runRow(run: TestRun, base: Pick<ExecutionHistoryRow, 'testCaseId' | 'te
 }
 
 function campaignInfo(c: TestCampaign): NonNullable<ExecutionHistoryRow['campaign']> {
-  return { id: c.id, title: c.title, status: c.status, ...(c.baselineRef && { baselineRef: c.baselineRef }), fields: c.fields ?? {} }
+  return { id: c.id, title: c.title, status: c.status, fields: c.fields ?? {} }
 }
 
 function entryInfo(e: CampaignTestRun): NonNullable<ExecutionHistoryRow['entry']> {

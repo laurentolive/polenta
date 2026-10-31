@@ -71,8 +71,8 @@ export function TestPickerModal({
   /** Pour retrouver le titre d'un test présélectionné hors `candidates` (préremplissage T46). */
   allTests?: TestCase[]
   defaultTypeRef?: string
-  /** Source de la résolution des paramètres (T171) : campagne existante ou `baselineRef` saisi. */
-  previewSource: { campaignId?: string; baselineRef?: string }
+  /** Source de la résolution des paramètres (T171) : campagne existante, ou `{}` (création). */
+  previewSource: { campaignId?: string }
   initial: PickerResult
   /** T179 — exigences ayant déjà une instance dans la campagne, par test. */
   presentOf: (testId: string) => Set<string>

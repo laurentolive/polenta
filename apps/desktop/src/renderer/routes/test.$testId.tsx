@@ -1,5 +1,4 @@
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
-import { CreateChangeButton } from '../components/changes/CreateChangeButton'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
@@ -18,7 +17,6 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { TestCase } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
-import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/test/$testId')({
@@ -101,21 +99,9 @@ function TestCaseDetailPage() {
   useRegisterTabDirty(hasChanges)
   useSetTabTitle(tc?.title)
 
-  const gates = useModificationGate()
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      // GH199 §8bis — approbation d'un élément non assigné : proposer un change ; annuler = rien n'est écrit.
-      // Les autres modifications de la page sont conservées, seul le statut revient.
-      // GH200 — réouverture : changeset de la modification.
-      const gate = tc && status !== (tc.status ?? '')
-        ? await gates.status(repoPath, { id: testId, objectTypeRef: type || tc.objectTypeRef, category: 'test' }, status)
-        : { ok: true }
-      if (!gate.ok) {
-        setStatus(tc?.status ?? '')
-        return 'cancelled' as const
-      }
-      return api.tests.update(repoPath, testId, {
-        changesetId: gate.changesetId,
+    mutationFn: () =>
+      api.tests.update(repoPath, testId, {
         title,
         objectTypeRef: type,
         status,
@@ -123,10 +109,8 @@ function TestCaseDetailPage() {
         steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
         postconditions: postconditions.trim() || undefined,
         fields,
-      })
-    },
-    onSuccess: result => {
-      if (result === 'cancelled') return
+      }),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tests', repoPath] })
       qc.invalidateQueries({ queryKey: ['test', repoPath, testId] })
       setInitialized(false)
@@ -186,7 +170,6 @@ function TestCaseDetailPage() {
           }
           actions={
             <>
-              <CreateChangeButton repoPath={repoPath} projectId={projectId} elementId={tc.id} objectTypeRef={tc.objectTypeRef} />
               <RichTextToolbar repoPath={repoPath} />
             </>
           }

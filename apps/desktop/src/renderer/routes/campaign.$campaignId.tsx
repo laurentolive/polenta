@@ -45,7 +45,7 @@ export const Route = createFileRoute('/campaign/$campaignId')({
       component: search['component'] as string | undefined,
       level: search['level'] as string | undefined,
       ...(status ? { status } : {}),
-      // GH207 — « Ajouter à … » depuis un changeset : sélecteur ouvert, tests et instances pré-cochés.
+      // GH207 — « Ajouter à … » par lien : sélecteur ouvert, tests et instances pré-cochés.
       ...(search['addTests'] ? { addTests: search['addTests'] as string } : {}),
       ...(search['instances'] ? { instances: search['instances'] as string } : {}),
     }
@@ -410,21 +410,6 @@ function CampaignDetailPage() {
             ))}
           </div>
         </div>
-      )}
-
-      {campaign.baselineRef && (
-        <p className="text-xs text-ink-2 mb-4">
-          {t('campaignPage.baselineLabelPrefix')} <code className="font-mono">{campaign.baselineRef}</code>
-        </p>
-      )}
-      {/* GH207 — changeset qui a créé la campagne. */}
-      {campaign.changeset && (
-        <p className="text-xs text-ink-2 mb-4" data-testid="campaign-changeset">
-          {t('changes.campaignSection.link')} :{' '}
-          <Link to="/changeset/$changeId" params={{ changeId: campaign.changeset }} search={{ repoPath, projectId }} className="font-mono text-prim hover:underline">
-            {campaign.changeset}
-          </Link>
-        </p>
       )}
 
       {/* Progress summary */}

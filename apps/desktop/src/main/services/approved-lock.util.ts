@@ -1,4 +1,4 @@
-import type { ModificationKind, ObjectTypeDefinition } from '@polenta/types'
+import type { ObjectTypeDefinition } from '@polenta/types'
 
 /** GH200 — écriture du contenu d'un élément approuvé sans réouverture. */
 export class ApprovedLockedError extends Error {
@@ -26,10 +26,14 @@ export function assertContentEditable<T extends { id: string; status: string }>(
 }
 
 /**
- * GH200 §3.1 — moment où l'élément devient modifiable lors d'un changement de statut : quitter un
- * statut `isApproval` (réouverture, ou passage terminal). `null` : rien à assigner.
+ * GH243 §1 — règle de version unique : `version + 1` quand le statut **quitte** un statut
+ * `isApproval` (réouverture, passage terminal…), inchangée sinon — quel que soit le chemin
+ * (`openDraft`, transition, colonne Statut, MCP). Renvoie le champ à fusionner dans l'objet écrit :
+ * vide quand la version ne change pas (aucune clé `version` ajoutée à un fichier qui n'en a pas).
  */
-export function statusModificationKind(typeDef: ObjectTypeDefinition | null, before: string, after: string): ModificationKind | null {
-  if (before === after || !isApproval(typeDef, before) || isApproval(typeDef, after)) return null
-  return typeDef?.statuses?.find(s => s.name === after)?.isTerminal ? 'terminal' : 'reopen'
+export function versionBump(
+  typeDef: ObjectTypeDefinition | null, existing: { status: string; version?: number }, toStatus: string,
+): { version?: number } {
+  // Entre deux statuts `isApproval` (ex. approuvé → livré), l'élément ne quitte pas l'approbation.
+  return isApproval(typeDef, existing.status) && !isApproval(typeDef, toStatus) ? { version: (existing.version ?? 0) + 1 } : {}
 }

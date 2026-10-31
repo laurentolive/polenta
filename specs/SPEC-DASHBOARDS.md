@@ -73,6 +73,11 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 > **GH207 (contrat v1, ajout)** — `GraphCampaign.changeset` (changeset qui a créé la campagne, sinon
 > null) ; `GraphChangeset.campaigns` alimenté. `polenta.d.ts` régénéré (manifeste v9).
 
+> **GH243 (contrat v1, retrait)** — collection `changesets` et `GraphChangeset` retirées avec l'objet
+> changeset ; `GraphCampaign.changeset` et `GraphCampaign.baselineRef` retirés ; catégorie `changeset`
+> retirée de `GraphObjectCategory`. Les ajouts GH198 / GH199 / GH200 / GH207 ci-dessus sont caducs.
+> `polenta.d.ts` régénéré (manifeste v10).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

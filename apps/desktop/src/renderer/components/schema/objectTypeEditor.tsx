@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES, historyModeFor, renameValues,
-  requiredWhenIssues, DEFAULT_CHANGE_STATUSES,
+  requiredWhenIssues,
 } from '@polenta/types'
 import type {
   FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
@@ -119,8 +119,6 @@ export function typeRename(
   updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined, nodeName: string,
 ): TypeRenameDto | null {
   if (!original || !updated.name) return null
-  // GH198 — renommage d'un type de change : migration de ses objets non prise en charge (lot suivant).
-  if (original.category === 'changeset') return null
   const oldPrefix = original.prefix ?? ''
   if (updated.name === original.name && updated.prefix === oldPrefix) return null
   return {
@@ -303,7 +301,6 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   requirement: 'schema.editor.requirement',
   test: 'schema.editor.test',
   campaign: 'schema.editor.campaign',
-  changeset: 'schema.editor.changeset',
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -323,7 +320,6 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   requirement: 'REQ',
   test: 'TEST',
   campaign: 'CAMP',
-  changeset: 'CHG',
 }
 
 function slugifyComponentName(componentName: string): string {
@@ -350,8 +346,6 @@ export function emptyObjType(
     trackStatusHistory: true,
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
-      // GH198 — cycle de vie par défaut d'un type de change (modifiable).
-      : category === 'changeset' ? DEFAULT_CHANGE_STATUSES.map(statusToEditable)
       : [],
   }
 }

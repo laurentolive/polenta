@@ -12,7 +12,7 @@ export const Route = createFileRoute('/diff')({
     repoPath: (s['repoPath'] as string) || undefined,
     filepath: (s['filepath'] as string) ?? '',
     commitSha: (s['commitSha'] as string) || undefined,
-    /** GH200 — diff d'un élément de changeset : `baseSha` absent = création, `toSha` absent = disque.
+    /** GH200 — diff d'un élément entre deux états : `baseSha` absent = création, `toSha` absent = disque.
      *  Clés facultatives : les autres liens vers `/diff` ne les portent pas. */
     ...(s['element'] ? { element: '1' } : {}),
     ...(s['baseSha'] ? { baseSha: s['baseSha'] as string } : {}),
@@ -34,7 +34,7 @@ function DiffPage() {
   })
   const repoPath = searchRepoPath ?? project?.localPath ?? ''
 
-  // GH200 — élément d'un changeset : version de départ → approbation (ou disque).
+  // GH200 — élément entre deux états : version de départ → commit (ou disque).
   const { data: elementDiffData, isLoading: isLoadingElement } = useQuery({
     queryKey: ['sync:diff-element', repoPath, filepath, baseSha, toSha],
     queryFn: () => api.sync.diffElement(repoPath, filepath, baseSha ?? null, toSha ?? null),

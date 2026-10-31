@@ -31,8 +31,6 @@ schema:
     autoPropagatePin: false       # T94 — propagation auto du pin sous-repo → parent au commit, sinon approbation manuelle
     autoPullIntervalMinutes: 5    # GH65 — intervalle du pull automatique (entier 1–60, défaut 5 ; clé omise à la valeur par
                                   #   défaut), lu dans le schéma du repo racine, réglé dans la page Préférences
-    changeTracking: off           # GH200 — toute modification d'exigence / de test passe par un changeset ; absent =
-                                  #   actif dès que le repo déclare un type changeset ; écrit seulement pour désactiver
     exportTemplates:              # GH34 — gabarit Word/Excel par défaut par `<kind>:<format>`, chemin relatif à la
       requirements:docx: ACME/Cahier des exigences.docx   #   bibliothèque de gabarits de chaque utilisateur (préférence
                                   #   application `exportTemplatesDir`) ; clé absente = rendu Standard.

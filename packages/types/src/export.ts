@@ -1,4 +1,3 @@
-import type { ChangeAnalysis, ChangeRange } from './change'
 import type { SchemaFieldType } from './schema'
 import type { TestCase } from './test'
 import type { TestCampaign, CampaignTestRun } from './campaign'
@@ -14,7 +13,6 @@ export type ExportKind =
   | 'tests'
   | 'campaign-plan'
   | 'campaign-report'
-  | 'impact-analysis'
   | 'query-result'
   | 'dashboard'
 
@@ -113,13 +111,6 @@ export interface CampaignExportPayload {
 export interface QueryResultExportPayload {
   queryName: string
   result: QueryResult
-}
-
-// `impact-analysis` : analyse d'impact d'un change (GH199, ex-analyse entre baselines T43). Le pdf
-// recharge via la route imprimable (`repoPath`, `changeId`) ; seul xlsx transite par ce payload.
-export interface ImpactAnalysisExportPayload {
-  change: { id: string; title: string; mode: 'request' | 'range'; range?: ChangeRange }
-  analysis: ChangeAnalysis
 }
 
 // `dashboard` (T43 sprint 3, docx uniquement — pas de xlsx, cf. specs/T43.md §2) : les résultats de

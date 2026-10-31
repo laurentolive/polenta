@@ -10,9 +10,9 @@ import { TestCaseEditModal } from '../components/impact/TestCaseEditModal'
 import { useSelectedRepo } from '../contexts/SelectedRepoContext'
 import { useSetTabTitle } from '../contexts/TabsContext'
 
-/** GH199 — liste « Impact à vérifier » (éléments marqués needsRevalidation, SPEC-TRACEABILITY §4.8),
- *  dans la vue Changements (ex-entrée de la vue Analyse d'impact). URL : /changes/revalidation?projectId=… */
-export const Route = createFileRoute('/changesets_/revalidation')({
+/** GH199 — liste « Impact à vérifier » (éléments marqués needsRevalidation, SPEC-TRACEABILITY §4.8) ;
+ *  GH243 : ouverte depuis le panneau Version. URL : /revalidation?projectId=… */
+export const Route = createFileRoute('/revalidation')({
   component: RevalidationPage,
   validateSearch: (s: Record<string, unknown>) => ({ projectId: (s['projectId'] as string) ?? '' }),
 })
@@ -52,7 +52,7 @@ function RevalidationPage() {
         ) : !flagged ? (
           <p className="text-sm text-ink-3 italic px-4 py-3">{t('common.loading')}</p>
         ) : flagged.length === 0 ? (
-          <p className="text-sm text-ink-3 italic px-4 py-3">{t('changes.noFlagged')}</p>
+          <p className="text-sm text-ink-3 italic px-4 py-3">{t('impactAnalysisPage.revalidation.noFlagged')}</p>
         ) : (
           <RevalidationList
             elements={flagged}

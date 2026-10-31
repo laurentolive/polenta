@@ -725,8 +725,8 @@ components:
 > absent de `components`).
 
 **Paramètres (T171)** : `parameters/parameters.yaml` est versionné comme les exigences et les
-tests ; une campagne avec `baselineRef` lit la base de chaque repo au tag du même nom (produit et
-composants), sans repli sur l'état courant si le tag manque dans un repo (SPEC-TESTS §4.2).
+tests ; une campagne lit la base à l'état courant (GH243 — plus de `baselineRef` de campagne,
+SPEC-TESTS §4.2).
 
 ### 5.4 Ce qu'une baseline gèle
 

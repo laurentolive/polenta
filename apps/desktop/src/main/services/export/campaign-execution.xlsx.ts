@@ -59,7 +59,6 @@ export interface ExecutionSheetModel {
   locale: ExecutionSheetLocale
   campaignId: string
   title: string
-  baselineRef?: string
   exportedAt: string
   rows: ExecutionSheetRow[]
   /** GH196 — colonnes des champs d'exécution puis d'étape, union des types de la campagne (un nom =
@@ -179,7 +178,6 @@ export function buildExecutionSheetModel(input: {
     locale: input.locale,
     campaignId: input.campaign.id,
     title: input.campaign.title,
-    baselineRef: input.campaign.baselineRef || undefined,
     exportedAt: input.exportedAt,
     rows,
     fieldColumns,
@@ -295,10 +293,8 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   title.value = `${model.campaignId} — ${model.title}`
   title.font = { bold: true, size: 14 }
   const exported = new Date(model.exportedAt)
-  sheet.getCell(2, colIndex('instance')).value = [
-    `${labels.exportedAt} ${exported.toLocaleString(model.locale === 'fr' ? 'fr-FR' : 'en-GB')}`,
-    model.baselineRef ? `${labels.baseline} : ${model.baselineRef}` : '',
-  ].filter(Boolean).join(' · ')
+  sheet.getCell(2, colIndex('instance')).value =
+    `${labels.exportedAt} ${exported.toLocaleString(model.locale === 'fr' ? 'fr-FR' : 'en-GB')}`
   const banner = sheet.getCell(3, colIndex('instance'))
   banner.value = labels.banner
   banner.font = { italic: true, color: { argb: 'FFC00000' } }

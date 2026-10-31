@@ -3,7 +3,6 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { api } from '../api'
 import { useProjectSchema, getAllObjectTypes } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -73,22 +72,15 @@ function NewTestCasePage() {
   const typeDef = testTypes.find(t => t.name === type)
 
 
-  const gates = useModificationGate()
   const createMutation = useMutation({
-    // GH200 — toute création passe par un changeset (annuler = rien n'est créé).
-    mutationFn: async () => {
-      const gate = await gates.create(repoPath, { objectTypeRef: type })
-      if (!gate.ok) return null
-      return api.tests.create(repoPath, {
-      changesetId: gate.changesetId,
+    mutationFn: () => api.tests.create(repoPath, {
       title,
       objectTypeRef: type,
       preconditions: preconditions.trim() || undefined,
       steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
       postconditions: postconditions.trim() || undefined,
       fields,
-    })
-    },
+    }),
     onSuccess: (result) => {
       if (!result) return
       qc.invalidateQueries({ queryKey: ['tests', repoPath] })

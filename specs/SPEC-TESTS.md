@@ -474,7 +474,6 @@ exécution (statut par test).
 | `title` | Ex. "Validation release v2.0" |
 | `objectTypeRef` | Référence au type de campagne défini dans `schema.yaml` (format `component::typeName`), optionnel |
 | `fields` | Champs personnalisés du type (même mécanisme que `requirement`/`test`, voir [SPEC-REQ §3](SPEC-REQ-requirements.md#3-définition-des-champs-fielddefinition)) — un projet qui veut une description de campagne l'ajoute ici comme champ `richtext` |
-| `baselineRef` | Baseline sur laquelle la campagne a été constituée, optionnel |
 | `component` / `level` | Filtres d'appartenance (composant, niveau), optionnels |
 | `testCaseIds` | Liste des `TestCase.id` inclus dans la campagne — un même id peut apparaître plusieurs fois si le test a des paramètres (voir §4.2, T97 sprint 2) |
 | `runs` | `CampaignTestRun[]` — une entrée par *inclusion* du test dans la campagne, chacune avec sa propre copie figée du test (`testSnapshot`, voir §4.2, T49) |
@@ -494,11 +493,11 @@ validation externe).
 À partir d'une sélection d'exigences (ex. "tous les tests couvrant les exigences BAT"), Polenta génère une campagne pré-remplie. Voir [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §génération de plan de test.
 
 
-> **GH207 — campagne issue d'un changeset.** Champ système `changeset` (ID du changeset qui l'a
-> créée, lecture seule, lien dans l'en-tête) ; `CreateCampaignDto.changeset` contrôle avant l'ID que le
-> changeset est ouvert dans le repo, puis ajoute la campagne à `campaigns` du changeset. `/campaign/new`
-> accepte `changeset` et `instances` (`TEST-1:SW-1|SW-2,…`, instances pré-cochées) ; la page d'une
-> campagne accepte `addTests` et `instances` (sélecteur « Ajouter » ouvert, pré-coché).
+> **GH243** — une campagne ne porte plus de baseline (`baselineRef`) ni de changeset (`changeset`) :
+> champs retirés du formulaire, du type et du graphe ; présents dans un ancien fichier, ignorés à la
+> lecture et absents de la prochaine écriture. Ce sont les exécutions qui testent une version produit
+> (`specs/MILESTONE-D.md` §6, #202). `/campaign/new?instances` et la page d'une campagne
+> `?addTests&instances` (sélecteur pré-coché) restent disponibles par lien.
 
 ### 4.2 CampaignTestRun — une entrée par inclusion du test dans la campagne
 
@@ -517,7 +516,7 @@ nécessairement unique par `testCaseId` (T97 sprint 2) :
 | `executedBy` | Testeur ayant saisi le résultat, optionnel |
 | `paramValues` | *(T97)* `Record<label, valeur>` — valeurs **saisies à la main** des références à saisir (§2.4a cas 2), modifiables après l'ajout. Depuis T171, toute référence à saisir y figure (vide si aucune valeur n'a été fournie) ; une référence n'est jamais à la fois ici et dans `resolvedParams`. |
 | `resolvedParams` | *(T171)* `Record<référence, valeur>` — valeurs lues dans la base de paramètres et **figées** à l'ajout (clé telle qu'écrite : `nom` ou `<nœud>::nom` ; valeur déjà formatée `value unit`). Aucune API ne les modifie. |
-| `paramSourceRef` | *(T171)* Tag git auquel les paramètres ont été lus (= `baselineRef` de la campagne) ; absent = état courant au moment de l'ajout. |
+| `paramSourceRef` | *(T171)* Tag git auquel les paramètres ont été lus (ancien `baselineRef` de la campagne, plus écrit depuis GH243) ; absent = état courant au moment de l'ajout. |
 | `unresolvedParams` | *(T171)* `{ ref, reason: 'tag_not_found' \| 'missing' \| 'empty' \| 'unknown_node' \| 'no_linked_requirement' }[]` — références restées non résolues à l'ajout (`no_linked_requirement` : T179, `{req.…}` d'un test sans exigence liée). |
 | `requirementId` | *(T179)* Exigence pour laquelle l'instance a été générée (test itérant, §2.4a). Absent pour un test sans `{req.…}` ou sans exigence liée. Les valeurs `{req.<champ>}` sont figées dans `resolvedParams` sous la clé `req.<champ>`. |
 | `carriedFrom` | *(GH64)* `{ campaignId, entryId }` — entrée d'une autre campagne dont l'instance a été reportée (voir « Report depuis une autre campagne » ci-dessous). Absent pour un ajout normal. |
@@ -593,10 +592,8 @@ Les sélections des deux onglets se cumulent.
 **Résolution des paramètres à l'ajout (T171)** : `create()`, `addTests()` et `duplicateTest()`
 résolvent côté main (`ParametersService.previewForTests`) les références de chaque test ajouté,
 dans la base du repo du test (déduit de son `objectTypeRef`) et des composants visibles depuis ce
-repo (dépendances `polenta-repo.yaml`). Source : le tag `baselineRef` de la campagne s'il existe
-(lu dans chaque repo au tag du même nom — `GitService.readYamlAtTag`, tag léger ou annoté),
-**sans repli** sur l'état courant ; sinon l'état courant. Tag introuvable : ajout autorisé,
-références du repo concerné non remplacées (`tag_not_found`), non proposées à la saisie. Le canal
+repo (dépendances `polenta-repo.yaml`). Source : l'état courant (GH243 — la lecture au tag `baselineRef` de
+la campagne est retirée ; `ParametersService.previewForTests` garde l'option de tag, sans appelant). Le canal
 `campaigns:preview-params` expose la même résolution sans écriture : le panneau d'ajout et le
 formulaire de création affichent les références résolues en lecture seule, les non résolues avec
 leur raison (avant validation), et ne demandent que les références à saisir. Après l'ajout, un
@@ -614,9 +611,7 @@ valeurs en lecture seule ; `reqInstances` (par test : exigences retenues et sais
 est transmis au main, absent = toutes les exigences liées. La **déduplication** porte sur le couple
 (test, exigence) : un test déjà présent reste proposé tant qu'une de ses exigences liées n'a pas
 d'instance (les exigences déjà instanciées sont grisées « déjà présente »). Test itérant sans
-exigence liée : une seule instance, `{req.…}` non résolues (`no_linked_requirement`). Avec
-`baselineRef`, exigences, liens et champs dérivés sont lus **au tag** (un lien créé après le tag ne
-génère pas d'instance), sans repli sur l'état courant. « Dupliquer » une instance générée crée une
+exigence liée : une seule instance, `{req.…}` non résolues (`no_linked_requirement`). « Dupliquer » une instance générée crée une
 instance pour **la même exigence** (valeurs relues à la source ; erreur si l'exigence n'est plus
 liée) ; « Dupliquer » une instance sans exigence crée une seule instance. La liste des tests de la
 campagne affiche l'ID de l'exigence de chaque instance (lien vers sa fiche, cherchée dans les repos

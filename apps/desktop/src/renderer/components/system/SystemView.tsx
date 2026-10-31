@@ -14,13 +14,13 @@ import { useTranslation } from 'react-i18next'
 import { StepsTable } from '../StepsTable'
 import { LinkedReqValues } from '../parameters/LinkedReqValues'
 import type { StepDraft } from '../StepsTable'
-import { Grid3x3, FileText, Settings } from 'lucide-react'
+import { Grid3x3, FileText, Eye } from 'lucide-react'
 import { CampaignListView } from './CampaignListView'
 import { NoTypeForCategory } from './NoTypeForCategory'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useSystemView } from '../../contexts/SystemViewContext'
 import { useSetTabTitle, useTabs } from '../../contexts/TabsContext'
-import { treeFindNode, computeSectionNumbers } from '../../hooks/useTreeState'
+import { treeFindNode, treeFlatten, computeSectionNumbers } from '../../hooks/useTreeState'
 import { useSystemObjects } from '../../hooks/useSystemObjects'
 import { useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorkspaceLinks'
 import { ExcelView } from './ExcelView'
@@ -47,6 +47,7 @@ import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schem
 import { FieldConfigModal } from './FieldConfigModal'
 import { useModificationGate } from '../../contexts/ApprovalGateContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
+import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status'])
 
@@ -126,10 +127,12 @@ export function SystemView() {
     viewMode,
     storedViewMode,
     showView,
+    switchView,
     showObject,
     createItemObject,
     gotoNodeId,
     gotoSeq,
+    anchorNodeId,
     clearGoto,
   } = useSystemView()
 
@@ -556,6 +559,20 @@ export function SystemView() {
     if (backInHistory) attemptHistoryNav(activeTab.historyIndex - 1)
     else showView(storedViewMode, editingObjectId)
   }, [backInHistory, attemptHistoryNav, activeTab.historyIndex, showView, storedViewMode, editingObjectId])
+
+  // GH230 — bascule Tableau ↔ Document : l'élément de référence est lu dans le DOM de la vue
+  // courante (ligne sélectionnée du Tableau, premier élément portant un objet en haut de la vue).
+  const viewAreaRef = useRef<HTMLDivElement>(null)
+  const handleSwitchView = useCallback((mode: 'excel' | 'word') => {
+    const scope = viewAreaRef.current
+    const scroller = viewScroller(scope)
+    const objectIds = new Map(treeFlatten(root).filter(n => n.objectId).map(n => [n.id, n.objectId!]))
+    const firstVisible = scroller ? firstVisibleNode(scroller, id => objectIds.has(id)) : null
+    switchView(mode, {
+      selectedNodeId: selectedRowNode(scope),
+      firstVisibleObjectId: firstVisible ? objectIds.get(firstVisible)! : null,
+    })
+  }, [switchView, root])
 
   // GH228 — titre de l'onglet et de l'entrée d'historique (menu Précédent / Suivant) : l'élément
   // édité, sinon le composant / type affiché.
@@ -1119,7 +1136,7 @@ export function SystemView() {
                 title={t('system.fieldConfig.configureColumns')}
                 className="text-ink-3 hover:text-ink p-1 rounded hover:bg-hover"
               >
-                <Settings size={14} />
+                <Eye size={14} />
               </button>
             )}
 
@@ -1140,7 +1157,7 @@ export function SystemView() {
                   <button
                     key={mode}
                     type="button"
-                    onClick={() => showView(mode)}
+                    onClick={() => handleSwitchView(mode)}
                     title={title}
                     className={[
                       'flex items-center justify-center w-7 h-6 transition-colors',
@@ -1185,7 +1202,7 @@ export function SystemView() {
       )}
 
       {/* ── Document view ── */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div ref={viewAreaRef} className="flex-1 overflow-hidden flex flex-col">
         {effectiveType?.category === 'campaign' && (
           <CampaignListView
             repoPath={repoPath}
@@ -1227,6 +1244,7 @@ export function SystemView() {
             onItemNodeAdded={readOnly ? undefined : stableCreateItemObject}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
+            anchorNodeId={anchorNodeId}
             rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}
             collapsedFolders={collapsedFoldersExcel}
             onCollapsedFoldersChange={stableCollapsedFoldersExcelChange}
@@ -1264,6 +1282,7 @@ export function SystemView() {
             filterOptions={filterOptions}
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
+            anchorNodeId={anchorNodeId}
             collapsedFolders={collapsedFoldersWord}
             onCollapsedFoldersChange={stableCollapsedFoldersWordChange}
           />

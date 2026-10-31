@@ -16,6 +16,8 @@ export const Route = createFileRoute('/product')({
     // Clés optionnelles : les liens existants vers cette route n'ont pas à les fournir.
     ...(search['view'] ? { view: search['view'] as 'excel' | 'word' | 'edit' } : {}),
     ...(search['item'] ? { item: search['item'] as string } : {}),
+    // GH230 — ancrage : objet aligné en haut de la vue Tableau / Document.
+    ...(search['top'] ? { top: search['top'] as string } : {}),
   }),
 })
 

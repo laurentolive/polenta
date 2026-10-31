@@ -79,6 +79,8 @@ interface Props {
    *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
   gotoNodeId?: string | null
   gotoSeq?: number
+  /** GH230 — nœud aligné en haut de la vue, sans contour (ancrage `top` de l'URL). */
+  anchorNodeId?: string | null
   /** Hauteur max d'une ligne, en nombre de lignes de texte (1 = une seule ligne tronquée,
    *  `Infinity` = toutes les lignes). */
   rowMaxLines?: number
@@ -1116,6 +1118,7 @@ function GroupRow({
   return (
     <tr
       data-node-id={node.id}
+      data-selected={isSelected ? '' : undefined}
       className={[
         'cursor-pointer select-none scroll-mt-8',
         isSelected ? 'bg-status-info-bg' : 'bg-folder-row',
@@ -1306,6 +1309,7 @@ function ExcelViewInner({
   onItemNodeAdded,
   gotoNodeId,
   gotoSeq,
+  anchorNodeId,
   rowMaxLines = 1,
   collapsedFolders: collapsedFolderIds,
   onCollapsedFoldersChange,
@@ -1446,13 +1450,15 @@ function ExcelViewInner({
 
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Rendu progressif (cf. INITIAL_RENDERED_ROWS) — d'emblée complet si une cible « goto » ou un
+  // ancrage est posé à l'ouverture, pour que sa ligne existe quand `useScrollToNode` la cherche.
+  const [renderAllRows, setRenderAllRows] = useState(() => !!gotoNodeId || !!anchorNodeId)
+
   // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
   // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
-  useScrollToNode(containerRef, gotoNodeId, gotoSeq)
-
-  // Rendu progressif (cf. INITIAL_RENDERED_ROWS) — d'emblée complet si une cible « goto » est
-  // posée à l'ouverture, pour que sa ligne existe quand `useScrollToNode` la cherche.
-  const [renderAllRows, setRenderAllRows] = useState(() => !!gotoNodeId)
+  // GH230 — après le rendu complet des lignes (sinon le repli viserait une des premières).
+  useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root, ready: renderAllRows })
+  useScrollToNode(containerRef, anchorNodeId, undefined, { root, ready: renderAllRows })
   useEffect(() => {
     if (renderAllRows) return
     // Après la première peinture (rAF + tâche), pas dans la même frame.
@@ -2222,6 +2228,7 @@ function ExcelViewInner({
       ref={containerRef}
       className="flex-1 overflow-auto outline-none"
       data-excel-grid
+      data-view-scroll
       tabIndex={0}
       onClick={() => { effectiveOnSelect([]); cellStore.select(null) }}
       onKeyDown={handleKeyDown}
@@ -2455,6 +2462,7 @@ function ExcelViewInner({
               <React.Fragment key={node.id}>
               <tr
                 data-node-id={node.id}
+                data-selected={isSelected ? '' : undefined}
                 className={[
                   'group cursor-pointer scroll-mt-8',
                   rowRichtextEditing ? '' : 'select-none',

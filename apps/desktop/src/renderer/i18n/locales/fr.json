@@ -483,7 +483,8 @@
       "baselinesTitle": "Baselines",
       "refreshConflict_one": "Conflit avec la branche distante ({{count}} fichier) : rien n'a été modifié.",
       "refreshConflict_other": "Conflit avec la branche distante ({{count}} fichiers) : rien n'a été modifié.",
-      "integrationTag": "intégration"
+      "integrationTag": "intégration",
+      "terminal": "Terminal (Ctrl+ù)"
     },
     "reorderable": {
       "deleteTitle": "Supprimer ?",
@@ -1694,6 +1695,10 @@
       "requirementOfInstance": "Exigence de cette instance :"
     }
   },
+  "zoom": {
+    "label": "Niveau de zoom",
+    "reset": "Réinitialiser"
+  },
   "update": {
     "badge": {
       "title": "{{appName}} v{{version}} est disponible"
@@ -2392,5 +2397,19 @@
     "expand": "Déplier",
     "empty": "—",
     "unplaced": "Hors structure"
+  },
+  "terminal": {
+    "title": "Terminal",
+    "exited": "[processus terminé — code {{code}}] Appuyez sur Entrée pour relancer",
+    "cdToSelected": "Aller à {{repo}}",
+    "clear": "Effacer",
+    "kill": "Tuer le processus",
+    "close": "Fermer (Ctrl+ù)",
+    "notFound": "Git Bash introuvable sur ce poste",
+    "installGit": "Installer Git",
+    "recheck": "Revérifier",
+    "installHint": "Le bouton ouvre la page de téléchargement de Git ; revérifiez une fois Git installé.",
+    "copy": "Copier",
+    "paste": "Coller"
   }
 }

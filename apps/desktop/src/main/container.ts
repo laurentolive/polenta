@@ -15,8 +15,6 @@ import { RepoWatcherService } from './services/repo-watcher.service'
 import { SchemaService } from './services/schema.service'
 import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
-import { ChangesService } from './services/changes.service'
-import { ChangeTrackingService } from './services/change-tracking.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TreeService, indexObjectLister } from './services/tree.service'
@@ -53,7 +51,7 @@ import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
 
 /** GH74 — dossiers dont un changement invalide le graphe de données. */
-const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', 'changesets/', '.polenta/', 'polenta-repo.yaml']
+const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', '.polenta/', 'polenta-repo.yaml']
 
 /**
  * Instancie le noyau de services (GH44 : sans dépendance à Electron). L'hôte fournit ce qui
@@ -105,15 +103,6 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   // GH197 — historique des exécutions d'un test ou d'une exigence.
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
-  // GH198 — objet change.
-  const changes = new ChangesService(git, schema, workspaceTree, history, { traceability, sync, campaigns })
-  // GH200 — rattachement par élément : création / réouverture assignées à un changeset.
-  const changeTracking = new ChangeTrackingService(git, schema, changes)
-  requirements.setModificationTracker(changeTracking)
-  tests.setModificationTracker(changeTracking)
-  changes.setTracker(changeTracking)
-  // GH207 — campagne créée depuis un changeset : lien des deux côtés.
-  campaigns.setChangesetLinker({ assertOpen: (r, id) => changes.assertOpen(r, id), link: (r, id, c) => changes.linkCampaign(r, id, c) })
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)
@@ -124,7 +113,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   )
   // GH104 — suppression en cascade d'un composant local ou d'un type (objets, liens, arbres, refs).
   const schemaDelete = new SchemaDeleteService(
-    git, { requirements, tests, campaigns, changes }, reqIndex, tree, schema, [reqIndex, testsIndex],
+    git, { requirements, tests, campaigns }, reqIndex, tree, schema, [reqIndex, testsIndex],
     (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
     async workspaceDir => {
       const cache = workspaceDir ? await workspaceTree.readCache(workspaceDir) : null
@@ -190,8 +179,6 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     campaigns,
     campaignExecution,
     executionHistory,
-    changes,
-    changeTracking,
     tree,
     baseline,
     polentaRepo,

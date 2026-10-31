@@ -20,7 +20,6 @@
  * (CLI prioritaire si les deux mécanismes sont fournis.)
  */
 
-import { registerChangeTools } from './tools/changes.tools'
 import './stdout-guard'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -114,7 +113,6 @@ async function main(): Promise<void> {
   registerQueryTools(server, container)
   registerDashboardTools(server, container)
   registerSuiviScriptTools(server, container)
-  registerChangeTools(server, container)
 
   const transport = new StdioServerTransport()
   await server.connect(transport)

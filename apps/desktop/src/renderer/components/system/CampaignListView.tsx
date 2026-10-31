@@ -128,11 +128,6 @@ export function CampaignListView({ repoPath, component, level }: Props) {
                     <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0 ${STATUS_CLASS[camp.status] ?? STATUS_CLASS['planned']}`}>
                       {camp.status}
                     </span>
-                    {camp.baselineRef && (
-                      <span className="text-[10px] font-mono text-ink-3 truncate">
-                        {camp.baselineRef}
-                      </span>
-                    )}
                   </div>
                   <p className="text-sm text-ink truncate">{camp.title}</p>
                   {camp.testCaseIds.length > 0 && (

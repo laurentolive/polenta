@@ -86,7 +86,7 @@ export function statusValueLabels(statuses: SchemaStatus[]): Record<string, stri
 //   test        — id, title, status (from statuses[]), steps[], fields{}
 //   campaign    — id, title, status fixe (planned/in_progress/completed/abandoned),
 //                 testCaseIds[], runs[] — le champ statuses[] est ignoré pour cette catégorie
-export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'changeset'
+export type ObjectCategory = 'requirement' | 'test' | 'campaign'
 
 // Définition d'un type d'objet dans un composant.
 // Chaque définition est indépendante même si créée depuis le même template.
@@ -234,11 +234,6 @@ export interface ProjectPreferences {
    * [1, 60] ; absent ou invalide = 5.
    */
   autoPullIntervalMinutes?: number
-  /**
-   * GH200 — toute modification d'une exigence ou d'un test passe par un changeset. Absent : `on`
-   * si le schéma du repo déclare un type de catégorie changeset, sinon `off`.
-   */
-  changeTracking?: 'on' | 'off'
 }
 
 export interface ProjectSchema {
@@ -317,7 +312,7 @@ export interface SchemaDeletePlan {
   /** Refs `<nœud>::<type>` supprimées. */
   types: string[]
   /** IDs des objets supprimés (dans le repo du schéma), par catégorie. */
-  objects: { requirement: string[]; test: string[]; campaign: string[]; changeset: string[] }
+  objects: { requirement: string[]; test: string[]; campaign: string[] }
   /** Liens supprimés, par repo du workspace (repos sans lien touché absents). */
   links: Array<{ repoPath: string; count: number }>
   /** Types de lien dont des refs sont retirées ; `emptied` : `sourceRefs` ou `targetRefs` devient vide. */

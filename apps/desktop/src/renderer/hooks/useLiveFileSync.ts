@@ -48,7 +48,7 @@ export function useLiveFileSync(): void {
       // graphe agrège tout le workspace. Un changement de données (exécutions comprises), de ref
       // (avance rapide du pull automatique), de la bibliothèque projet ou d'un script de requête
       // (écrit hors de l'app, MCP) dans n'importe quel repo les rend périmés.
-      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|changesets|queries|dashboards\/lib)\//.test(relPath)) {
+      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|queries|dashboards\/lib)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
@@ -102,15 +102,6 @@ export function useLiveFileSync(): void {
         })
         return
       }
-
-      // GH198 — changesets : liste du panneau (workspace) et page du changeset.
-      const changeMatch = /^changesets\/([^/]+)\.yaml$/.exec(relPath)
-      if (relPath === '*' || changeMatch) qc.invalidateQueries({ queryKey: ['changesets'] })
-      // GH199 — analyse d'impact d'un change : recalculée sur un changement d'élément, de lien ou de change.
-      if (relPath === '*' || /^(requirements|tests|links|changesets)\//.test(relPath)) qc.invalidateQueries({ queryKey: ['change-analysis'] })
-      // GH199 §8bis — backlog : statut d'un élément ou assignation dans un change.
-      if (relPath === '*' || /^(requirements|tests|changesets)\//.test(relPath)) qc.invalidateQueries({ queryKey: ['changes-backlog'] })
-      if (changeMatch) qc.invalidateQueries({ queryKey: ['changeset', repoPath, changeMatch[1]] })
 
       const objectMatch = /^(requirements|tests|campaigns)\/([^/]+)\.yaml$/.exec(relPath)
       if (objectMatch) {

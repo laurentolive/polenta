@@ -7,7 +7,6 @@ import { SearchProvider } from '../../contexts/SearchContext'
 import { VersioningProvider } from '../../contexts/VersioningContext'
 import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
-import { ApprovalGateProvider } from '../../contexts/ApprovalGateContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
 import { RepoAccessBanner } from './RepoAccessBanner'
@@ -15,7 +14,7 @@ import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'changesets' | 'dashboard' | 'parameters' | 'merge'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters' | 'merge'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -43,9 +42,9 @@ export function deducePanel(pathname: string, category?: string): Panel {
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
   if (pathname === '/parameters') return 'parameters'
-  // GH199 — la vue Analyse d'impact est intégrée à la vue Changements (modifications locales,
-  // « Impact à vérifier », Constellation).
-  if (pathname === '/changesets' || pathname.startsWith('/changesets/') || pathname.startsWith('/changeset/') || pathname === '/constellation') return 'changesets'
+  // GH243 — Constellation : panneau Exigences ; modifications locales et « Impact à vérifier » :
+  // panneau Version (ex-vue Changesets, retirée).
+  if (pathname === '/constellation') return 'requirements'
 
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
@@ -58,6 +57,8 @@ export function deducePanel(pathname: string, category?: string): Panel {
     pathname === '/diff' ||
     pathname === '/version-diff' ||
     pathname === '/versioning' ||
+    pathname === '/local-impact' ||
+    pathname === '/revalidation' ||
     pathname === '/baseline'
   ) {
     return 'version'
@@ -111,15 +112,6 @@ export function AppLayout() {
     }
   }, [routePanel, pathname, search])
 
-  // GH207 (retour de validation du 2026-10-31) : même mécanisme pour la vue Changesets — revenir à
-  // la page quittée (un changeset, le backlog, les modifications locales…) plutôt qu'à l'accueil.
-  const [lastChangesetsRoute, setLastChangesetsRoute] = useState<{ pathname: string; search: string } | null>(null)
-
-  useEffect(() => {
-    if (routePanel === 'changesets') {
-      setLastChangesetsRoute({ pathname, search: search ?? '' })
-    }
-  }, [routePanel, pathname, search])
   const router = useRouter()
 
   useEffect(() => {
@@ -212,6 +204,10 @@ export function AppLayout() {
             case '/baseline':
               navigate({ to: '/baseline', search: { projectId: currentProjectId } })
               break
+            case '/local-impact':
+            case '/revalidation':
+              navigate({ to: lastVersionRoute.pathname, search: { projectId: currentProjectId } })
+              break
             case '/version-diff':
               navigate({
                 to: '/version-diff',
@@ -248,18 +244,6 @@ export function AppLayout() {
       }
       case 'parameters':
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
-        break
-      case 'changesets':
-        // GH198 — vue Changements : page d'accueil (le panneau liste les changes du workspace) ;
-        // GH207 — sinon la dernière page quittée de la vue, si elle appartient au projet ouvert.
-        if (currentProjectId) {
-          const last = lastChangesetsRoute
-          if (last && new URLSearchParams(last.search).get('projectId') === currentProjectId) {
-            router.history.push(`${last.pathname}${last.search}`)
-          } else {
-            navigate({ to: '/changesets', search: { projectId: currentProjectId } })
-          }
-        }
         break
       case 'dashboard':
         if (currentProjectId) {
@@ -324,13 +308,11 @@ export function AppLayout() {
     <VersioningProvider currentProjectId={currentProjectId}>
       <SelectedRepoProvider key={currentProjectId}>
         <CompareRefsProvider>
-          <ApprovalGateProvider>
-            <SystemViewProvider currentProjectId={currentProjectId}>
-              <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
-                {inner}
-              </SearchProvider>
-            </SystemViewProvider>
-          </ApprovalGateProvider>
+          <SystemViewProvider currentProjectId={currentProjectId}>
+            <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
+              {inner}
+            </SearchProvider>
+          </SystemViewProvider>
         </CompareRefsProvider>
       </SelectedRepoProvider>
     </VersioningProvider>

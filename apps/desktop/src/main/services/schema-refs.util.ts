@@ -11,14 +11,12 @@ import type { TestsService } from './tests.service'
  * (GH100, `type-rename.service.ts`) et la suppression en cascade (GH104, `schema-delete.service.ts`).
  */
 
-export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'changeset'
+export type ObjectCategory = 'requirement' | 'test' | 'campaign'
 
 export interface ObjectServices {
   requirements: Pick<RequirementsService, 'findAll'>
   tests: Pick<TestsService, 'findAll'>
   campaigns: Pick<CampaignsService, 'list'>
-  /** GH198 — changes stockés dans un repo (absent : aucun change listé). */
-  changes?: { listRepo(repoPath: string): Promise<Array<{ id: string; objectTypeRef: string }>> }
 }
 
 /** Le schéma déclare-t-il le type `ref` (`<nœud>::<type>`, nœud à n'importe quelle profondeur) ? */
@@ -47,7 +45,6 @@ export function mapLinkRefs(schema: ProjectSchema, fn: (ref: string) => string |
 export async function objectIdsOfType(services: ObjectServices, repoPath: string, category: ObjectCategory, ref: string): Promise<string[]> {
   if (category === 'requirement') return (await services.requirements.findAll(repoPath, { type: ref })).map(o => o.id)
   if (category === 'test') return (await services.tests.findAll(repoPath)).filter(o => o.objectTypeRef === ref).map(o => o.id)
-  if (category === 'changeset') return ((await services.changes?.listRepo(repoPath)) ?? []).filter(o => o.objectTypeRef === ref).map(o => o.id)
   return (await services.campaigns.list(repoPath)).filter(o => o.objectTypeRef === ref).map(o => o.id)
 }
 

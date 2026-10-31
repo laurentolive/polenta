@@ -1,5 +1,4 @@
 import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
-import { CreateChangeButton } from '../components/changes/CreateChangeButton'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
@@ -13,7 +12,6 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { Requirement } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
-import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/req/$reqId')({
@@ -99,17 +97,9 @@ function RequirementDetailPage() {
   // Ctrl/Cmd+Entrée depuis un champ richtext → « Enregistrer » (no-op sans modification).
   const submitEdit = () => { if (hasChanges && !saveMutation.isPending) saveMutation.mutate() }
 
-  const gates = useModificationGate()
   const transitionMutation = useMutation({
-    // GH199 §8bis — approbation d'un élément non assigné : proposer un change (annuler = rien n'est écrit).
-    mutationFn: async (toStatus: string) => {
-      // GH200 — réouverture : changeset de la modification.
-      const gate = req ? await gates.status(repoPath, { id: reqId, objectTypeRef: req.objectTypeRef, category: 'requirement' }, toStatus) : { ok: true }
-      if (!gate.ok) return 'cancelled' as const
-      return api.requirements.transition(repoPath, reqId, { toStatus, changesetId: gate.changesetId })
-    },
-    onSuccess: result => {
-      if (result === 'cancelled') return
+    mutationFn: (toStatus: string) => api.requirements.transition(repoPath, reqId, { toStatus }),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       qc.invalidateQueries({ queryKey: ['requirement', repoPath, reqId] })
       setConfirmObsolete(false)
@@ -153,7 +143,6 @@ function RequirementDetailPage() {
         subtitle={<span className="font-mono">{req.id}</span>}
         actions={
           <>
-            <CreateChangeButton repoPath={repoPath} projectId={projectId} elementId={req.id} objectTypeRef={req.objectTypeRef} />
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusClass}`}>
               {req.status}
             </span>

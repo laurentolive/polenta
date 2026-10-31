@@ -25,8 +25,6 @@ export const CreateTestCaseSchema = z.object({
   steps: z.array(TestStepSchema),
   postconditions: z.string().optional(),
   fields: z.record(z.unknown()).optional(),
-  /** GH200 — changeset ouvert qui reçoit l'élément créé / rouvert (sinon : seul ouvert, ou backlog). */
-  changesetId: z.string().min(1).optional(),
 })
 
 export const UpdateTestCaseSchema = z.object({
@@ -40,8 +38,6 @@ export const UpdateTestCaseSchema = z.object({
   fields: z.record(z.unknown()).optional(),
   /** GH163 — conservé sur les entrées d'historique créées par la modification. */
   modificationComment: z.string().optional(),
-  /** GH200 — changeset ouvert qui reçoit l'élément créé / rouvert (sinon : seul ouvert, ou backlog). */
-  changesetId: z.string().min(1).optional(),
 })
 
 export const StepResultSchema = z.object({

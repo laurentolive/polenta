@@ -1,4 +1,4 @@
-import type { ExportFormat, ExportKind, RequirementsExportPayload, TestsExportPayload, CampaignExportPayload, QueryResultExportPayload, ImpactAnalysisExportPayload, DashboardExportPayload } from '@polenta/types'
+import type { ExportFormat, ExportKind, RequirementsExportPayload, TestsExportPayload, CampaignExportPayload, QueryResultExportPayload, DashboardExportPayload } from '@polenta/types'
 import type { PrintRenderer } from '../host/print-renderer'
 import type { TemplateExportService } from './export/template/template-export.service'
 
@@ -29,8 +29,6 @@ const GENERATORS: Partial<Record<`${ExportKind}:${'xlsx' | 'docx'}`, Generator>>
     (await import('./export/campaign.docx')).exportCampaignReportDocx(p as CampaignExportPayload, d),
   'query-result:xlsx': async (p, d) =>
     (await import('./export/query-result.xlsx')).exportQueryResultXlsx(p as QueryResultExportPayload, d),
-  'impact-analysis:xlsx': async (p, d) =>
-    (await import('./export/impact-analysis.xlsx')).exportImpactAnalysisXlsx(p as ImpactAnalysisExportPayload, d),
   'dashboard:docx': async (p, d) =>
     (await import('./export/dashboard.docx')).exportDashboardDocx(p as DashboardExportPayload, d),
 }

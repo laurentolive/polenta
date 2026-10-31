@@ -175,6 +175,14 @@
             "fr": "GH207 : GraphCampaign.changeset (changeset qui a créé la campagne)",
             "en": "GH207: GraphCampaign.changeset (changeset that created the campaign)"
           }
+        },
+        {
+          "version": 10,
+          "hash": "052b09961790784e882d6f4819aba282fd1b5b0c5e98fbb352cbc41cdb206e60",
+          "summary": {
+            "fr": "Changeset retiré (GH243) : plus de collection changesets, GraphCampaign sans changeset ni baselineRef",
+            "en": "Changeset removed (GH243): no changesets collection, GraphCampaign without changeset or baselineRef"
+          }
         }
       ]
     },

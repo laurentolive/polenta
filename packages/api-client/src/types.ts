@@ -2,8 +2,6 @@ import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
-  ApprovalCheck, Change, ChangeAnalysis, ChangeSummary, ComponentBacklog, CreateChangeDto, UpdateChangeDto,
-  ModificationCheck, ModificationKind, ChangeToModifyTrace, ChangeTestsToRun,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -533,28 +531,6 @@ export interface ApiClient {
     pickFolder(title?: string): Promise<string | null>
     pickImageFile(): Promise<{ mimeType: string; base64: string } | null>
   }
-  /** GH198 — changesets ; `repoPath` de get / update / delete = repo de stockage (`ChangeSummary.repoPath`). */
-  changesets: {
-    list(repoPath: string, workspaceDir?: string): Promise<ChangeSummary[]>
-    get(repoPath: string, id: string): Promise<Change>
-    create(repoPath: string, dto: CreateChangeDto, workspaceDir?: string): Promise<Change & { repoPath: string }>
-    update(repoPath: string, id: string, dto: UpdateChangeDto): Promise<Change>
-    delete(repoPath: string, id: string): Promise<void>
-    /** GH199 — analyse d'impact : instantané si figée, sinon calculée. */
-    analysis(repoPath: string, id: string): Promise<ChangeAnalysis>
-    /** GH199 §8bis — backlog calculé de chaque composant local du workspace. */
-    backlog(repoPath: string, workspaceDir?: string): Promise<ComponentBacklog[]>
-    assign(repoPath: string, id: string, elementIds: string[]): Promise<Change>
-    move(repoPath: string, fromId: string, toId: string, elementIds: string[]): Promise<void>
-    /** GH199 §8bis — l'approbation de l'élément exige-t-elle de l'assigner à un change ? */
-    approvalCheck(repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string): Promise<ApprovalCheck>
-    /** GH200 — création / réouverture d'un élément : changesets éligibles, assignation existante. */
-    modificationCheck(repoPath: string, element: { id?: string; objectTypeRef: string; category?: 'requirement' | 'test'; toStatus?: string }, kind: ModificationKind, workspaceDir?: string): Promise<ModificationCheck>
-    /** GH200 — trace départ / approbation des éléments à modifier. */
-    trace(repoPath: string, id: string): Promise<ChangeToModifyTrace[]>
-    /** GH207 — tests à exécuter, campagnes liées, tests à ajouter. */
-    testsToRun(repoPath: string, id: string): Promise<ChangeTestsToRun>
-  }
   /** GH197 — historique des exécutions d'un test ou d'une exigence. */
   executions: {
     history(repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string): Promise<ExecutionHistory>
@@ -700,7 +676,7 @@ export interface ApiClient {
     update(repoPath: string, id: string, dto: UpdateRequirementDto, workspaceDir?: string): Promise<Requirement>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     /** GH163 — `comment` : commentaire de modification (historique du statut). */
-    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string): Promise<Requirement>
+    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<Requirement>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     transition(repoPath: string, id: string, dto: TransitionRequirementDto, workspaceDir?: string): Promise<Requirement>
     // TODO: remove versioning API
@@ -734,7 +710,7 @@ export interface ApiClient {
     /** GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris ; null si introuvable. */
     typeDef(repoPath: string, objectTypeRef: string, workspaceDir?: string): Promise<ObjectTypeDefinition | null>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
-    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string): Promise<TestCase>
+    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<TestCase>
   }
   traceability: {
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
@@ -753,7 +729,7 @@ export interface ApiClient {
   }
   history: {
     /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
-    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign' | 'changeset', id: string): Promise<ObjectHistory>
+    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign', id: string): Promise<ObjectHistory>
     /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
     backfill(repoPath: string): Promise<HistoryBackfillResult>
   }
@@ -789,7 +765,7 @@ export interface ApiClient {
     /** T179 — `requirementId` : duplicata d'une instance générée pour cette exigence. */
     duplicateTest(repoPath: string, campaignId: string, testCaseId: string, paramValues: Record<string, string>, workspaceDir?: string, requirementId?: string): Promise<TestCampaign>
     /** T171 — résolution prévisionnelle des paramètres de tests à ajouter (sans écriture). */
-    previewParams(repoPath: string, source: { campaignId?: string; baselineRef?: string }, testCaseIds: string[], workspaceDir?: string): Promise<ParamResolutionPreview[]>
+    previewParams(repoPath: string, source: { campaignId?: string }, testCaseIds: string[], workspaceDir?: string): Promise<ParamResolutionPreview[]>
     updateRunParams(repoPath: string, campaignId: string, entryId: string, paramValues: Record<string, string>): Promise<TestCampaign>
     delete(repoPath: string, id: string): Promise<void>
     /** GH36 — exécution hors outil via un classeur Excel. */

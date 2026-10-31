@@ -168,7 +168,7 @@ const ENTRY_ROWS = `function entryRows(data, campaigns, polenta) {
       const live = tests.get(e.testCaseId)
       rows.push(Object.assign({}, custom, {
         campaignId: c.id, campaignTitle: c.title, campaignStatus: c.status, campaignCreatedAt: c.createdAt,
-        objectTypeRef: c.objectTypeRef, baselineRef: c.baselineRef, level: c.level, campaignComponent: c.targetComponent,
+        objectTypeRef: c.objectTypeRef, level: c.level, campaignComponent: c.targetComponent,
         component: c.component, entryId: e.entryId, testCaseId: e.testCaseId, requirementId: e.requirementId,
         testTitle: e.snapshot ? e.snapshot.title : (live ? live.title : null),
         status: e.status, executed: e.status !== 'pending', addedAt: e.addedAt, executedAt: e.executedAt,

@@ -572,8 +572,8 @@ Le flag `needsRevalidation` est porté par les **éléments** (exigences, cas de
 les liens : les liens servent à trouver les éléments impactés et ne sont jamais modifiés.
 
 **Déclencheur** — un élément X **quitte un statut d'approbation** (`isApproval`) vers un statut
-qui ne l'est pas : « Rouvrir en brouillon » ou changement de statut direct (colonne Statut de
-la vue Excel). Un élément approuvé étant verrouillé, c'est le seul chemin par lequel son contenu
+qui ne l'est pas : changement de statut (colonne / champ Statut de toutes les vues, MCP — GH243 :
+plus de bouton « Rouvrir en brouillon »). Un élément approuvé étant verrouillé, c'est le seul chemin par lequel son contenu
 peut changer. L'édition d'un élément non approuvé, la réapprobation et les transitions entre
 statuts non approuvés ne déclenchent rien. T171 réutilise le même point d'entrée
 (`RevalidationService.markImpactedBy`) pour la modification d'un paramètre.
@@ -673,103 +673,27 @@ Un lien Jira peut être ajouté à n'importe quel moment — il est optionnel.
 
 ---
 
-## 10. Changesets (GH198)
+## 10. Changesets (GH198 → retirés par GH243)
 
-Un **changeset** porte une modification pilotée d'un composant : cause et description (champs du
-type), éléments à modifier, éléments impactés, cycle de vie. Détail : `specs/GH198.md` ; épique
-`specs/GH193.md`.
+L'objet **changeset** (GH198, GH199, GH200, GH207) est **retiré** par GH243 : son contenu (éléments
+changés, analyse d'impact, tests à exécuter, campagnes) sera porté par la **version** du composant,
+les modifications non tracées dans les exigences par l'**issue** (`specs/MILESTONE-D.md`, #201, #244,
+#245). Code de référence pour la réintroduction : commit `4e06052`.
 
-- **Catégorie `change`** : types déclarés dans le modèle de données (préfixe, `fields`,
-  `statuses`) ; Polenta ne prête aucune sémantique aux types. Cycle de vie proposé à la création
-  d'un type (`DEFAULT_CHANGE_STATUSES`, modifiable) : `ouvert → analyse → implemente → verifie →
-  clos`, `rejete` ; `clos` et `rejete` terminaux ; aucune contrainte de transition (L1, #206).
-  Pas de couverture ni de maturité.
-- **Stockage** : `changesets/<ID>.yaml` dans le repo du composant concerné (`component`, composant
-  local de n'importe quel repo du workspace), avec les types de ce repo — un changeset de
-  sous-composant voyage avec lui (#193 §4) ; ID
-  préfixé du type, pierres tombales (GH20). Champs système : `id`, `objectTypeRef`, `title`,
-  `status`, `version`, `component`, `mode` (`request`), `toModify` (`{ id, state: planned |
-  modified }`), `impacted` (`{ id, status, comment?, source: declared | computed }`, statut parmi
-  les 8 statuts d'impact de SPEC-TRACEABILITY §4.6, défaut `impact_non_verifie`), `origin`,
-  `integratedIn`, `campaigns`, `history` (GH77). Écritures par `ChangesService.persist`
-  (`applyFieldsWrite` #195, historique GH77).
-- **Composant** : choisi parmi les composants locaux des repos du workspace (déduit s'il n'y en a
-  qu'un utilisable) ; modifiable au statut initial seulement, dans le même repo.
-- **Listes** (manuelles) : ajout par un sélecteur d'éléments du repo du changeset, le même que celui
-  des tests d'une campagne (grille Excel par type, filtres de colonne, colonnes ⚙️ `picker`).
-- **Vue Changesets** : entrée de la barre d'activité ; panneau avec, comme les vues Exigences / Tests /
-  Campagnes, une **liste déroulante du composant** affiché (composants locaux de tous les repos,
-  choix mémorisé par projet, suit le changeset ouvert) : son backlog et ses seuls changesets, ID
-  décroissant ; filtres type, statut, « mes changesets » = auteur du premier statut,
-  « masquer les terminés ») ; pages `/changesets`, `/changeset/new` (`?element=` : élément pré-rempli dans
-  « à modifier », depuis « Créer un changeset » de la vue Édition et des pages exigence / test) et
-  `/changeset/<ID>` (statut, titre, composant, champs, listes, historique).
-- **Suppression** : tant que le fichier n'a jamais été commité ; ensuite, statut terminal. Le
-  renommage d'un préfixe réécrit aussi les IDs cités dans `changesets/` ; la suppression d'un type de
-  changeset supprime ses changesets (GH104).
-- **Analyse d'impact** (GH199, SPEC-TRACEABILITY §4) : racines = listes (vides : pas
-  d'analyse), arbres, une ligne par élément impacté (déclaré ou calculé), complétude, campagnes en
-  cours concernées ; live, figée dans `analysis` au statut terminal. Seules les lignes portant une
-  saisie sont écrites dans `impacted`.
-- **Sur l'existant** (`mode: range`, GH199) : bornes baseline ou commit (`range`), éléments changés
-  entre elles ajoutés à « à modifier » (`modified`), analyse à la borne `to`.
-- **Retour dans la vue** (GH207, 2026-10-31) : la barre d'activité rouvre la dernière page de la vue
-  Changesets du projet ouvert ; sections et filtre « ouverts seulement » d'un changeset mémorisés par poste.
-- **Liste « Éléments impactés »** (GH207, 2026-10-31) : éléments déclarés seulement ; les calculés
-  sont dans l'analyse d'impact, dont chaque nœud porte le libellé du lien dans sa direction (vu du
-  parent).
-- **Page d'un changeset** (GH199) : titre et composant sur une ligne (libellé, valeur) ; champs
-  éditables d'un clic, Annuler / Enregistrer sous les champs ; origine, version intégrée et
-  campagnes au-dessus des listes ; historique encadré comme les autres sections ;
-  listes et analyse d'impact repliables avec leur nombre d'éléments ; `toModify` est affiché « Éléments changés ».
-- **Backlog et assignation** (GH199 §8bis) : un élément **à traiter** (statut ni `isApproval` ni
-  `isTerminal`) est **assigné** quand il figure dans `toModify` d'un changeset ouvert de son repo
-  (plusieurs possibles, signalé « aussi dans … »). Entrée **« Backlog (N) »** du panneau
-  Changesets, une par composant local non vide : éléments à traiter non assignés, **calculés**
-  (`changesets:backlog`, rien n'est stocké) ; page `/changesets/backlog` (`repoPath`, `component`) avec
-  « Assigner à… » (`changesets:assign`). Dans un changeset, « Déplacer vers… » (`changesets:move`, état
-  conservé, « modifié » l'emporte ; changesets clos refusés).
-- **Approbation d'un élément non assigné** (GH199 §8bis) : depuis l'interface (vue Édition, tableau,
-  document, recherche, pages exigence / test), passer un élément vers un statut `isApproval` alors
-  qu'aucun changeset ouvert ne le liste (`changesets:approval-check`) ouvre « Assigner à un changeset » :
-  changeset ouvert, nouveau changeset, ou « Approuver sans changeset » ; Annuler n'écrit pas le statut. MCP
-  et écritures hors interface non contrôlés ; condition `assignedToChange` avec #206. Depuis GH200, ce
-  dialogue ne sert plus que de filet (éléments jamais assignés).
-- **Rattachement par élément** (GH200, `specs/GH200.md`) : toute modification d'une exigence ou d'un
-  test passe par un changeset. Préférence `changeTracking: on | off` du schéma de chaque repo
-  (absente : `on` si le repo déclare un type changeset).
-  - **Verrou de l'approuvé** : le contenu (titre, champs, étapes, pré/postconditions, matériel) d'un
-    élément au statut `isApproval` ne se modifie pas — refus dans les services (`ApprovedLockedError`,
-    MCP compris) si le contenu change de valeur alors que le statut reste approuvé ; lecture seule dans
-    les vues Excel, Édition, Word et les pages de détail (bandeau). Le statut reste éditable : en sortir
-    est la réouverture (une écriture qui rouvre et modifie à la fois est acceptée). Indépendant de
-    `changeTracking`.
-  - **Assignation** à la création, à la réouverture (quitte `isApproval`) et au passage terminal depuis
-    l'approuvé : ajout à `toModify` d'un changeset ouvert du repo — celui demandé (`changesetId` des
-    DTO), sinon le seul ouvert (notice « Ajouté à … »), sinon dialogue « Dans quel changeset ? » (choix,
-    création ; Annuler n'écrit rien). Un élément déjà dans un changeset non clos y reste. Créations en
-    lot (même repo, < 3 s) : un seul choix. Sans choix possible (MCP sans `changesetId`, plusieurs
-    ouverts) : non assigné, dans le backlog. `ChangeTrackingService`, porte `useModificationGate`.
-  - **Trace** : `toModify[].base` (`{ sha, version }`, état approuvé avant réouverture, enregistré à
-    l'assignation ; absent = création) et `toModify[].approved` (commit où l'élément est entré pour la
-    dernière fois dans un statut `isApproval` après `base`, calculé — `changesets:trace` — et **figé**
-    au statut terminal du changeset, retiré à sa réouverture) ; `state: modified` dès qu'un commit
-    postérieur à `base` ou le disque modifie l'élément. Page d'un changeset : « Voir les
-    modifications » (`/diff?element=1&baseSha&toSha`, `sync:diff-element`) — ni état ni versions
-    affichés (retour GH207 du 2026-10-31).
-  - **Hors interface** : un élément approuvé dont le contenu diffère de son état d'approbation (commit
-    direct, éditeur de texte) apparaît dans le backlog « modifié hors interface », avec le diff et
-    « Rouvrir et assigner… » ; rien n'est écrit. Limite : un renommage de champ / valeur du schéma
-    (GH77, GH82) réécrit les éléments approuvés et les fait signaler jusqu'à leur réouverture.
-- **Campagnes d'un changeset** (GH207, `specs/GH207.md`) : **tests à exécuter** calculés
-  (`changesets:tests-to-run`) — tests des éléments à modifier et de tous les impactés (déclarés et
-  calculés), sauf ceux marqués `pas_d_impact_reel` (exigence → tests couvrants, instance T179 ;
-  exigence sans test « non couverte »). Section **Campagnes** de la page, sous l'analyse d'impact : campagnes liées (statut, PASS / total, entrées du
-  changeset), liste cochable des tests à exécuter (élément qui l'amène, « Déjà dans » les campagnes
-  liées ouvertes ; coché par défaut ce qui n'y est pas), « Créer une campagne » (`/campaign/new?changeset&instances`, lien écrit des deux côtés :
-  `campaigns` du changeset, `changeset` de la campagne) et « N tests à ajouter » (tests absents des
-  campagnes liées ouvertes) → sélecteur de la campagne pré-coché (`?addTests&instances`), jamais
-  d'ajout automatique. Conditions de clôture (`linkedCampaignsPassed`…) : #206.
-- Graphe de données : collection `changesets` (SPEC-DASHBOARDS §2) ; MCP : `list_changesets`,
-  `get_changeset` (avec l'analyse, la trace GH200 et `testsToRun` GH207), `create_changeset`
-  (SPEC-MCP-SERVER §4.7).
+- **Retirés** : catégorie `changeset`, stockage `changesets/`, vue et panneau Changesets, backlog,
+  assignation à la création / réouverture, dialogue à l'approbation, préférence `changeTracking`,
+  canaux `changesets:*`, outils MCP `list_changesets` / `get_changeset` / `create_changeset`,
+  `changesetId` / `unassigned`, champ `changeset` d'une campagne, collection `changesets` du graphe.
+- **Données existantes** : fichiers `changesets/` ignorés (ni lus ni supprimés ; leurs IDs restent pris
+  si un nouveau type reprend leur préfixe) ; un type de catégorie `changeset` et `changeTracking` sont
+  ignorés à la lecture du schéma et disparaissent à sa prochaine sauvegarde. Pas de migration.
+- **Conservé — verrou de l'approuvé** (GH200 §2) : le contenu (titre, champs, étapes, pré/postconditions,
+  matériel) d'un élément au statut `isApproval` ne se modifie pas — refus dans les services
+  (`ApprovedLockedError`, MCP compris) si le contenu change de valeur alors que le statut reste
+  approuvé ; lecture seule dans les vues Excel, Édition, Word et les pages de détail (bandeau). Le
+  statut reste éditable partout : en sortir est la réouverture (une écriture qui rouvre et modifie à la
+  fois est acceptée ; MCP : statut puis contenu).
+- **Règle de version unique** (GH243 §1, `versionBump`) : `version + 1` quand le statut **quitte**
+  `isApproval` vers un statut qui ne l'est pas (brouillon, review, terminal…), quel que soit le chemin
+  (`transition`, `update({ status })`, `openDraft` — alias interne de la transition, MCP) ; inchangée
+  sinon (dont un passage entre deux statuts `isApproval`).

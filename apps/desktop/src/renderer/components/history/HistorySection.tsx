@@ -8,15 +8,13 @@ import { historySections, type HistoryBadge } from './historySections'
 
 interface Props {
   repoPath: string
-  kind: 'requirement' | 'test' | 'campaign' | 'changeset'
+  kind: 'requirement' | 'test' | 'campaign'
   id: string
   typeDef?: Pick<ObjectTypeDefinition, 'fields' | 'statuses'> | null
   /** Libellé d'un statut quand il ne vient pas du schéma (campagnes : statuts fixes). */
   statusLabel?: (name: string) => string
   /** Change à chaque écriture de l'objet (ex. son `history` sérialisé) : relit l'historique effectif. */
   refreshKey?: string
-  /** GH199 — cadre des autres sections repliables (page d'un changeset). */
-  framed?: boolean
 }
 
 const BADGE_CLASS: Record<HistoryBadge, string> = {
@@ -31,7 +29,7 @@ const BADGE_CLASS: Record<HistoryBadge, string> = {
  * aucune durée ni synthèse (les indicateurs vivent côté projet, #74/#79). Repliée par défaut,
  * chargée à l'ouverture (`history:get`, entrées déduites comprises).
  */
-export function HistorySection({ repoPath, kind, id, typeDef, statusLabel, refreshKey, framed }: Props) {
+export function HistorySection({ repoPath, kind, id, typeDef, statusLabel, refreshKey }: Props) {
   const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const { data: history, isLoading, error } = useQuery<ObjectHistory>({
@@ -52,7 +50,7 @@ export function HistorySection({ repoPath, kind, id, typeDef, statusLabel, refre
   }
 
   return (
-    <section className={framed ? 'border rounded p-3 mb-4' : 'border-t border-edge pt-3 mt-2'} data-testid="history-section">
+    <section className="border-t border-edge pt-3 mt-2" data-testid="history-section">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}

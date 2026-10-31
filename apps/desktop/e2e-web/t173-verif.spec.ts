@@ -47,8 +47,8 @@ const flagIcon = (row: Locator) => row.getByRole('img', { name: /Impact à véri
 const clearBtn = (row: Locator) => row.getByRole('button', { name: /^(Lever le flag|Clear flag)$/ })
 const selectionBtn = () => s.page.getByRole('button', { name: /^Lever le flag de la sélection/ })
 const modal = () => s.page.locator('div.fixed.inset-0')
-const revalidationEntry = () => s.page.getByTestId('changes-revalidation-entry')
-const localEntry = () => s.page.getByTestId('changes-local-entry')
+const revalidationEntry = () => s.page.getByTestId('version-revalidation-entry')
+const localEntry = () => s.page.getByTestId('version-local-entry')
 
 async function activate(entry: Locator) {
   const active = await entry.locator('xpath=..').evaluate((el) => el.className.includes('ring-1'))
@@ -56,7 +56,7 @@ async function activate(entry: Locator) {
 }
 
 async function openImpactView() {
-  await s.openView('Changesets')
+  await s.openView('Version')
 }
 
 let localFlagged: string[] = [] // éléments marqués présents dans les arbres de l'analyse locale
@@ -299,7 +299,7 @@ test('L14 — libellés T173 en anglais', async () => {
   await s.page.reload()
   await s.page.waitForLoadState('networkidle')
   try {
-    await s.openView('Changesets')
+    await s.openView('Version')
     const entry = revalidationEntry()
     await expect(entry).toBeVisible()
     await expect(entry).toContainText(/Impact to check\s*\d+/)

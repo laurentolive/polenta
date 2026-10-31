@@ -212,7 +212,7 @@ export function createIpcClient(
       get: (p, id) => invoke('requirements:get', p, id),
       create: (p, dto, workspaceDir) => invoke('requirements:create', p, dto, workspaceDir),
       update: (p, id, dto, workspaceDir) => invoke('requirements:update', p, id, dto, workspaceDir),
-      openDraft: (p, id, targetStatus, workspaceDir, comment, changesetId) => invoke('requirements:open-draft', p, id, targetStatus, workspaceDir, comment, changesetId),
+      openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('requirements:open-draft', p, id, targetStatus, workspaceDir, comment),
       transition: (p, id, dto, workspaceDir) => invoke('requirements:transition', p, id, dto, workspaceDir),
       // TODO: remove versioning API
       links: (p, id) => invoke('requirements:links', p, id),
@@ -233,7 +233,7 @@ export function createIpcClient(
       execute: (p, id, dto, workspaceDir) => invoke('tests:execute', p, id, dto, workspaceDir),
       runs: (p, id) => invoke('tests:runs', p, id),
       typeDef: (p, ref, workspaceDir) => invoke('tests:type-def', p, ref, workspaceDir ?? null),
-      openDraft: (p, id, targetStatus, workspaceDir, comment, changesetId) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment, changesetId),
+      openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment),
     },
     traceability: {
       matrix: (p, f, workspaceDir) => invoke('traceability:matrix', p, f, workspaceDir),
@@ -292,22 +292,6 @@ export function createIpcClient(
     dialog: {
       pickFolder: (title) => invoke('dialog:pick-folder', title),
       pickImageFile: () => invoke('dialog:pick-image-file'),
-    },
-    // GH198 — changesets
-    changesets: {
-      list: (p, workspaceDir) => invoke('changesets:list', p, workspaceDir ?? null),
-      get: (p, id) => invoke('changesets:get', p, id),
-      create: (p, dto, workspaceDir) => invoke('changesets:create', p, dto, workspaceDir ?? null),
-      update: (p, id, dto) => invoke('changesets:update', p, id, dto),
-      delete: (p, id) => invoke('changesets:delete', p, id),
-      analysis: (p, id) => invoke('changesets:analysis', p, id),
-      backlog: (p, workspaceDir) => invoke('changesets:backlog', p, workspaceDir ?? null),
-      assign: (p, id, elementIds) => invoke('changesets:assign', p, id, elementIds),
-      move: (p, fromId, toId, elementIds) => invoke('changesets:move', p, fromId, toId, elementIds),
-      approvalCheck: (p, element, toStatus) => invoke('changesets:approval-check', p, element, toStatus),
-      modificationCheck: (p, element, kind, workspaceDir) => invoke('changesets:modification-check', p, element, kind, workspaceDir ?? null),
-      trace: (p, id) => invoke('changesets:trace', p, id),
-      testsToRun: (p, id) => invoke('changesets:tests-to-run', p, id),
     },
     // GH197 — historique des exécutions
     executions: {

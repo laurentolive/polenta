@@ -104,7 +104,7 @@ export function CampaignCarryPanel({
                 </span>
                 <span className="block text-ink truncate">{c.title}</span>
                 <span className="block text-[10px] text-ink-3">
-                  {[c.createdAt.slice(0, 10), c.baselineRef, c.component, c.level].filter(Boolean).join(' · ')}
+                  {[c.createdAt.slice(0, 10), c.component, c.level].filter(Boolean).join(' · ')}
                 </span>
                 {c.runs.length > 0 && (
                   <span className="flex gap-1 mt-0.5 text-[10px]">

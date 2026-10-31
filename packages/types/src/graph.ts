@@ -67,39 +67,6 @@ export interface PolentaGraph {
   campaigns: GraphCampaign[]
   /** Toutes les exécutions de test enregistrées (fichiers `test-runs/`), campagne ou non. */
   runs: GraphTestRun[]
-  /** GH198 — changesets de tous les repos (`changesets/`). */
-  changesets: GraphChangeset[]
-}
-
-/** GH198 — change : modification pilotée d'un composant, ses éléments à modifier et impactés. */
-export interface GraphChangeset extends GraphObjectBase {
-  /** Composant concerné (nœud du schéma). */
-  component: string
-  mode: 'request' | 'range'
-  /**
-   * GH200 — `base` : version de départ (absente : création) ; `approved` : commit d'approbation,
-   * figé au statut terminal (null tant que le changeset est ouvert : lire le statut de l'élément).
-   */
-  toModify: {
-    id: string
-    state: 'planned' | 'modified'
-    base: { sha: string | null; version: number } | null
-    approved: { sha: string | null; version: number } | null
-  }[]
-  /** Statut d'impact : les 8 valeurs de l'analyse d'impact entre baselines. */
-  impacted: { id: string; status: string; comment: string | null; source: 'declared' | 'computed' }[]
-  origin: { runs: string[]; decisions: { conformityId: string; objectId: string }[] }
-  integratedIn: string | null
-  campaigns: string[]
-  /** GH199 — bornes d'un change « sur l'existant » (`mode: range`), sinon null. */
-  range: { from: { ref: string; sha: string }; to: { ref: string; sha: string } } | null
-  /** GH199 — analyse figée au statut terminal (lignes, racines), sinon null. Non recalculée par le graphe. */
-  analysis: {
-    computedAt: string
-    rows: { id: string; elementType: 'requirement' | 'test_case' | null; status: string; comment: string | null; source: 'declared' | 'computed'; reached: boolean }[]
-    rootIds: string[]
-    campaigns: { id: string; testIds: string[] }[]
-  } | null
 }
 
 export interface GraphRepo {
@@ -129,7 +96,7 @@ export interface GraphSchema {
   campaignStatuses: GraphFixedStatus[]
 }
 
-export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'changeset'
+export type GraphObjectCategory = 'requirement' | 'test' | 'campaign'
 
 export interface GraphObjectType {
   /** Repo dont le schéma déclare le type. */
@@ -274,12 +241,8 @@ export interface GraphCampaign {
   fields: Record<string, unknown>
   /** Historique du statut et des champs suivis. */
   history: ObjectHistory
-  /** Tag git de la baseline visée, si renseigné. */
-  baselineRef: string | null
   /** Composant ciblé par la campagne, si renseigné. */
   targetComponent: string | null
-  /** GH207 — changeset qui a créé la campagne, sinon null. */
-  changeset: string | null
   level: string | null
   createdAt: string
   /** Instant de clôture (`completed` ou `abandoned`), `null` tant qu'elle est ouverte. */

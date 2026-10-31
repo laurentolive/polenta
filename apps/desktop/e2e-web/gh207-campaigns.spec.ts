@@ -49,7 +49,7 @@ test.beforeAll(async () => {
   })).id
 })
 
-test('GH207-C1/C2 — tests à exécuter, « Créer la campagne » : formulaire pré-rempli, lien des deux côtés', async () => {
+test('GH207-C1/C2 — tests à exécuter, « Créer une campagne » : formulaire pré-rempli, lien des deux côtés', async () => {
   const p = s.page
   const { localPath } = s.project
   await navigate(p, s.projectUrl(`/changeset/${changeId}`, { repoPath: localPath }))
@@ -79,7 +79,7 @@ test('GH207-C4 — nouveau test « à tester » : « 1 test à ajouter », séle
   expect((await s.invoke<{ testCaseIds: string[] }>('campaigns:get', localPath, campaignId)).testCaseIds).toEqual([testA])
 })
 
-test('GH207-C5 — campagne liée close : seul « Créer la campagne »', async () => {
+test('GH207-C5 — campagne liée close : seul « Créer une campagne »', async () => {
   const p = s.page
   const { localPath } = s.project
   await s.invoke('campaigns:close', localPath, campaignId, 'completed')

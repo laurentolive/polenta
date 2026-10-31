@@ -2323,7 +2323,7 @@
       "flagged": "Impact à vérifier"
     },
     "campaignSection": {
-      "create": "Créer la campagne",
+      "create": "Créer une campagne",
       "toRun_one": "{{count}} test à exécuter",
       "toRun_other": "{{count}} tests à exécuter",
       "uncovered": "non couvertes : {{ids}}",

@@ -2323,7 +2323,7 @@
       "flagged": "Impact to check"
     },
     "campaignSection": {
-      "create": "Create the campaign",
+      "create": "Create a campaign",
       "toRun_one": "{{count}} test to run",
       "toRun_other": "{{count}} tests to run",
       "uncovered": "not covered: {{ids}}",

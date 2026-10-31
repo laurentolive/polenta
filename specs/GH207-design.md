@@ -52,7 +52,7 @@ export function computeTestsToRun(input: {
   - tableau des campagnes liées (ID lien, titre, statut, PASS / total, tests du changeset) ;
   - « Tests à exécuter : N » (+ « non couvertes : … ») ;
   - bandeau « N tests à ajouter » + « Ajouter à CAMP-… » (menu si plusieurs liées ouvertes) ;
-  - « Créer la campagne ».
+  - « Créer une campagne ».
 - `/campaign/new` : nouveaux paramètres `changeset` (écrit dans le DTO, affiché « Changeset : ID »)
   et `instances` (`TEST-1:SW-1|SW-2,TEST-2`) → état initial `reqSel` (seules les instances listées
   cochées). Le titre et `testCaseIds` existent déjà.

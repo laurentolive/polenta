@@ -41,11 +41,11 @@ Conforme à `specs/GH207.md`. Les conditions de clôture sont reportées dans #2
 ## Comment tester manuellement
 
 1. Changeset avec une exigence à modifier couverte par un test ; section Campagnes : « 1 test à
-   exécuter » → « Créer la campagne » → formulaire pré-rempli → campagne liée des deux côtés.
+   exécuter » → « Créer une campagne » → formulaire pré-rempli → campagne liée des deux côtés.
 2. Passer un test impacté à « impact à tester » : « 1 test à ajouter » → « Ajouter à CAMP-… » ouvre
    le sélecteur pré-coché ; valider.
 3. Test itérant couvrant deux exigences dont une seule dans le changeset : seule son instance cochée.
-4. Clore la campagne : seul « Créer la campagne » reste.
+4. Clore la campagne : seul « Créer une campagne » reste.
 
 ## Retour de validation du 2026-10-31 (corrections)
 

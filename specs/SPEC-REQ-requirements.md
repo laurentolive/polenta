@@ -763,7 +763,7 @@ type), éléments à modifier, éléments impactés, cycle de vie. Détail : `sp
   (`changesets:tests-to-run`) — tests des éléments à modifier et de tous les impactés (déclarés et
   calculés), sauf ceux marqués `pas_d_impact_reel` (exigence → tests couvrants, instance T179 ;
   exigence sans test « non couverte »). Section **Campagnes** de la page, sous l'analyse d'impact : campagnes liées (statut, PASS / total, entrées du
-  changeset), « Créer la campagne » (`/campaign/new?changeset&instances`, lien écrit des deux côtés :
+  changeset), « Créer une campagne » (`/campaign/new?changeset&instances`, lien écrit des deux côtés :
   `campaigns` du changeset, `changeset` de la campagne) et « N tests à ajouter » (tests absents des
   campagnes liées ouvertes) → sélecteur de la campagne pré-coché (`?addTests&instances`), jamais
   d'ajout automatique. Conditions de clôture (`linkedCampaignsPassed`…) : #206.

@@ -15,9 +15,9 @@
 
 | # | Scénario |
 |---|---|
-| C1/C2 | changeset avec une exigence à modifier couverte → « Créer la campagne » → formulaire pré-rempli → campagne créée liée des deux côtés, listée dans la section |
+| C1/C2 | changeset avec une exigence à modifier couverte → « Créer une campagne » → formulaire pré-rempli → campagne créée liée des deux côtés, listée dans la section |
 | C4 | nouvel impacté test « à tester » → « 1 test à ajouter » → « Ajouter à … » ouvre le sélecteur pré-coché |
-| C5 | campagne liée close → seul « Créer la campagne » |
+| C5 | campagne liée close → seul « Créer une campagne » |
 
 ## Manuel
 

@@ -204,6 +204,10 @@
   .diff-hatch {
     background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(var(--diff-hatch) / 0.55) 4px 6px);
   }
+  /* GH229 — ID d'élément reconnu dans le texte (markdown-it, décoration Tiptap, texte brut). */
+  .element-ref {
+    @apply cursor-pointer underline decoration-dotted underline-offset-2 hover:decoration-solid;
+  }
   /* T171 — référence de paramètre ({nom}) : même style partout (lecture markdown-it, éditeur
      Tiptap, texte brut). Variante non résolue : référence littérale en couleur d'alerte. */
   .param-ref {

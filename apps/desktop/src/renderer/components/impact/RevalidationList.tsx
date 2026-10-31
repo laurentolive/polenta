@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
+import { useElementNav } from '../../contexts/ElementNavContext'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { RevalidationFlag } from '../system/RevalidationFlag'
 import { RepoBadge } from './RepoBadge'
@@ -23,16 +25,17 @@ const typeBadge = (type: 'requirement' | 'test_case') => (type === 'requirement'
 
 function LinkedRow({ linked, rootRepoPath, onOpen }: { linked: FlaggedLinkedElement; rootRepoPath: string; onOpen: OpenElement }) {
   const { t } = useTranslation()
+  const nav = useElementNav()
   return (
     <div className="flex items-center gap-2 py-1 pr-4 text-xs" style={{ paddingLeft: '62px' }}>
       <span className="font-mono text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0">{typeBadge(linked.elementType)}</span>
-      <button
-        type="button"
-        onClick={() => onOpen(linked.elementType, linked.elementId, linked.repo?.path ?? rootRepoPath)}
-        className="font-mono text-ink truncate hover:underline text-left shrink-0"
-      >
-        {linked.elementId}
-      </button>
+      {/* GH229 — lien d'élément : clic = fiche de l'analyse d'impact (inchangé), Ctrl+clic = nouvel
+          onglet sur la vue système, survol = aperçu. */}
+      <ElementLink
+        id={linked.elementId}
+        className="font-mono text-ink truncate text-left shrink-0"
+        onFollow={(id, { newTab }) => newTab ? nav?.follow(id, { newTab }) : onOpen(linked.elementType, id, linked.repo?.path ?? rootRepoPath)}
+      />
       <span className="text-ink-2 truncate min-w-0 flex-1" title={linked.title}>{linked.title}</span>
       <RepoBadge repo={linked.repo} />
       <span className="text-ink-3 shrink-0">{linked.linkType}</span>

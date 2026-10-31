@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
 import { Eye } from 'lucide-react'
 import type { CampaignTestRun, ParamResolutionPreview, TestCase, TestRunStatus } from '@polenta/types'
 import { api } from '../../api'
@@ -436,7 +437,7 @@ export function TestPickerModal({
               return (
                 <div key={id} className="border border-edge rounded">
                   <p className="flex items-center gap-2 px-3 py-2 text-xs">
-                    <span className="font-mono text-ink-3 shrink-0">{id}</span>
+                    <ElementLink id={id} className="font-mono text-ink-3 shrink-0" />
                     <span className="text-ink truncate">{tc?.title ?? ''}</span>
                   </p>
                   {isIteratingPreview(p) ? (() => {
@@ -471,12 +472,12 @@ export function TestPickerModal({
               return (
                 <div key={row.key} className="border border-edge rounded" data-carry-entry={`${row.campaignId}/${row.entryId}`}>
                   <p className="flex items-center gap-2 px-3 py-2 text-xs">
-                    <span className="font-mono text-ink-3 shrink-0">{row.testCaseId}</span>
+                    <ElementLink id={row.testCaseId} className="font-mono text-ink-3 shrink-0" />
                     <span className="text-ink truncate">{tc?.title ?? ''}</span>
                     <span className="shrink-0 font-mono text-[10px] text-ink-3" title={t('campaignPage.carriedFrom', { campaignId: row.campaignId, entryId: row.entryId })}>
-                      ↩ {row.campaignId}
+                      ↩ <ElementLink id={row.campaignId} />
                     </span>
-                    {row.requirementId && <span className="shrink-0 font-mono text-[10px] text-ink-3">· {row.requirementId}</span>}
+                    {row.requirementId && <span className="shrink-0 font-mono text-[10px] text-ink-3">· <ElementLink id={row.requirementId} /></span>}
                   </p>
                   {picksRequirements(row, p) ? (() => {
                     const present = presentForCarry(row.testCaseId)
@@ -515,7 +516,7 @@ export function TestPickerModal({
                 </summary>
                 <ul className="mt-1 pl-4 space-y-0.5">
                   {testsSelected.filter(id => !needsInput(id)).map(id => (
-                    <li key={id}><span className="font-mono">{id}</span> {testsById.get(id)?.title ?? ''}</li>
+                    <li key={id}><ElementLink id={id} className="font-mono" /> {testsById.get(id)?.title ?? ''}</li>
                   ))}
                 </ul>
               </details>

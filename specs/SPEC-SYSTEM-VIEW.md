@@ -252,7 +252,7 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 | Élément | Rôle |
 |---------|------|
 | **Composant X / Élément Y** | Titre contextuel — nom du composant sélectionné et nom du type d'élément sélectionné |
-| **Retour (lien interne)** | GH228 : plus de bouton propre ni de pile `backHistory`. Un lien interne est une nouvelle page de l'historique de l'onglet (`showObject` : `repo`/`node`/`type`/`view`/`item` dans l'URL), et le bouton Précédent `<` de la barre d'onglets y revient, y compris vers un autre repo du workspace (GH105). La vue Édition n'a plus de bouton « Retour » : `Échap` revient à la page précédente de l'onglet si c'est encore la vue système, sinon au dernier mode Tableau / Document positionné sur l'élément. |
+| **Retour (lien interne)** | GH228 : plus de bouton propre ni de pile `backHistory`. Un lien interne est une nouvelle page de l'historique de l'onglet (`showObject` : `repo`/`node`/`type`/`view`/`item` dans l'URL), et le bouton Précédent `<` de la barre d'onglets y revient, y compris vers un autre repo du workspace (GH105). La vue Édition n'a plus de bouton « Retour » : `Échap` revient à la page précédente de l'onglet si c'est encore la vue système, sinon au dernier mode Tableau / Document positionné sur l'élément. GH229 : tout lien interne est un lien d'élément (§Liens d'élément). |
 | **↩ ↪** | Undo / Redo |
 | **🔍** | Activer / désactiver le filtre dans le panel gauche |
 | **👁** | Configuration des champs visibles (icône œil depuis GH235, anciennement ⚙️) |
@@ -272,6 +272,40 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 - **Profondeur** : 20 actions.
 
 ---
+
+## Liens d'élément (GH229)
+
+Partout où l'interface affiche l'ID d'**un autre** élément (colonnes et sections de liens, puces
+de la fiche Édition, campagnes, sélecteur de tests, report, paramètres « Utilisé par », analyse
+d'impact, constellation, drill-down et résultats de requêtes, ID écrits dans le texte —
+`SPEC-REQ-requirements.md` §3.2g), l'ID est un **lien d'élément** (`components/element/ElementLink`,
+navigation et index dans `contexts/ElementNavContext`, monté dans `AppLayout`). Ne sont pas des
+liens : l'ID d'un élément dans sa propre ligne / son en-tête, les impressions et exports, un ID
+introuvable (texte simple, marqueur « introuvable » dans les puces).
+
+- **Texte** : l'ID affiché du type (`SPEC-REQ-requirements.md` §6.2), infobulle = ID Polenta s'il
+  diffère.
+- **Clic** : nouvelle page de l'historique de l'onglet. Exigence / test → vue système, repo /
+  composant / type de l'élément (bascule de repo GH105, catégorie suivie), **type de vue** = mode
+  courant de l'onglet s'il est sur la vue système (Tableau, Document ou Édition), sinon dernier
+  mode Tableau / Document mémorisé du repo de la cible (`objectPage`, `viewModeForLink` de
+  `SystemViewContext`). L'élément est ciblé (goto, contour), sélectionné dans le Tableau et dans
+  l'arbre de la barre latérale (dossiers parents dépliés, ligne défilée). Campagne → sa fiche.
+  Lien vers la page affichée : re-goto sans nouvelle entrée. Cible masquée par un filtre actif du
+  Tableau : le filtre est conservé, message « <ID> est masqué par le filtre ».
+- **Ctrl / Cmd+clic, clic du milieu** : la même page dans un nouvel onglet ; l'onglet source ne
+  change pas (#236). Les fiches `/req` et `/test` ne sont plus la cible des liens.
+- **Geste du conteneur** : le `mousedown` / clic sur le lien ne sélectionne ni la ligne ni la
+  cellule et n'entre pas en édition ; le double-clic ne déclenche pas l'édition des liens.
+- **Popup d'aperçu** : après 500 ms d'immobilité sur le lien ; reste ouverte tant que le pointeur
+  est sur le lien ou la popup (grâce de 200 ms), fermée par Échap, un clic, le défilement de la
+  page ; une seule à la fois ; ni au toucher ni pendant un glisser. En-tête (ID, ID affiché, type,
+  statut, repo s'il diffère, ⚠ revalidation), titre, puis les champs de l'onglet « Popup » du
+  ⚙️ du type de l'élément (lecture seule, affichage dense ; liens cliquables sans popup imbriquée).
+  Campagne : en-tête et nombre de tests.
+- Exception de geste : listes internes à un écran (constellation : recentrer le graphe ; analyse
+  d'impact : fiche de l'élément) — le clic simple garde le geste de l'écran, Ctrl+clic et
+  l'aperçu suivent la règle commune.
 
 ## Vue document (zone principale)
 
@@ -475,6 +509,11 @@ liste pas les exécutions (portée du repo ouvert).
   la plus proche colonne affichée qui la précède dans l'ordre du panneau (en tête sinon)
   (`toggleVisibleField`, `components/system/fieldToggle.ts`).
 - **Réglages indépendants par vue** : Excel, Word et Édition ont chacun leur propre sélection de champs.
+- **Onglet « Popup » (GH229)** : champs de la popup d'aperçu d'un lien vers un élément du type
+  (§Liens d'élément), clé de préférence `popup`. Sans case « titres des dossiers », sans les champs
+  déjà dans l'en-tête de la popup (section, nom, ID, statut) ni colonnes calculées ; ordre = ordre
+  du panneau. Défaut et « Réinitialiser » : aucun champ (en-tête et titre seuls). Pas d'onglet
+  Popup pour un type campagne.
 - **Titres de dossiers (T162)** : case « Afficher les titres des dossiers » en haut du panneau,
   propre à l'onglet courant (Tableau / Document), cochée par défaut. Décochée ⇒ liste plate
   sans lignes de groupe / sans sections `Hn` (cf. §Vue Excel / §Vue Word). Persistée dans le

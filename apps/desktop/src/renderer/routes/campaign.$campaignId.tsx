@@ -25,6 +25,7 @@ import { decodeProjectId } from '../lib/projectId'
 import { UnresolvedParamsBanner } from '../components/UnresolvedParamsBanner'
 import { ExportButton } from '../components/export/ExportButton'
 import { ExecutionSheetMenu } from '../components/campaign/ExecutionSheetMenu'
+import { ElementLink } from '../components/element/ElementLink'
 import { campaignExportBaseName } from '../components/export/exportFilenames'
 import { resolveCampaignRuns, resolveRunTest } from '../lib/campaignTests'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
@@ -238,20 +239,6 @@ function CampaignDetailPage() {
   function startEditingParams(entryId: string) {
     setEditingParamsFor(entryId)
     setEditParamValues(getRunParamValues(entryId))
-  }
-
-  /** T179 — l'exigence d'une instance peut vivre dans n'importe quel repo du workspace (liens de
-   *  couverture multi-repo) : ouvre sa fiche dans le premier repo qui la contient. */
-  async function openRequirement(reqId: string) {
-    const tree = workspaceDir ? await api.workspace.getTree(workspaceDir).catch(() => null) : null
-    const repos = [repoPath, ...(tree?.nodes ?? []).map(n => n.repoPath).filter(p => p && p !== repoPath)]
-    for (const repo of repos) {
-      const found = await api.requirements.get(repo, reqId).then(() => true, () => false)
-      if (found) {
-        navigate({ to: '/req/$reqId', params: { reqId }, search: { repoPath: repo, projectId, component: undefined, level: undefined } })
-        return
-      }
-    }
   }
 
   function navigateToView(entryId: string) {
@@ -537,44 +524,26 @@ function CampaignDetailPage() {
                   onClick={!isActive ? () => navigateToView(entryId) : undefined}
                 >
                   <div className="flex-1 min-w-0">
-                    <span className="font-mono text-xs text-ink-3 whitespace-nowrap">{tcId}</span>
+                    {/* GH229 — ID du test, de l'exigence et de la campagne d'origine : liens d'élément
+                        (le clic ailleurs sur la ligne ouvre l'entrée). */}
+                    <ElementLink id={tcId} className="font-mono text-xs text-ink-3 whitespace-nowrap" />
                     {tc && (
                       <span className="text-xs text-ink ml-2 truncate">{tc.title}</span>
                     )}
                     {run.requirementId && (
                       <>
                         <span className="text-xs text-ink-3 mx-1">·</span>
-                        <button
-                          type="button"
-                          title={t('campaignParams.reqInstances.openRequirement')}
-                          onClick={e => {
-                            e.stopPropagation()
-                            void openRequirement(run.requirementId!)
-                          }}
-                          className="font-mono text-xs text-status-info hover:underline"
-                        >
-                          {run.requirementId}
-                        </button>
+                        <ElementLink id={run.requirementId} className="font-mono text-xs text-status-info" />
                       </>
                     )}
                     {/* GH64 — instance reportée depuis une autre campagne. */}
                     {run.carriedFrom && (
-                      <button
-                        type="button"
+                      <span
                         title={t('campaignPage.carriedFrom', { campaignId: run.carriedFrom.campaignId, entryId: run.carriedFrom.entryId })}
-                        onClick={e => {
-                          e.stopPropagation()
-                          navigate({
-                            to: '/campaign/$campaignId',
-                            params: { campaignId: run.carriedFrom!.campaignId },
-                            // Composant/niveau de la source inconnus ici : pas ceux de la cible.
-                            search: { repoPath, projectId, component: undefined, level: undefined },
-                          })
-                        }}
-                        className="ml-2 font-mono text-[10px] text-ink-3 hover:text-status-info hover:underline"
+                        className="ml-2 font-mono text-[10px] text-ink-3"
                       >
-                        ↩ {run.carriedFrom.campaignId}
-                      </button>
+                        ↩ <ElementLink id={run.carriedFrom.campaignId} className="hover:text-status-info" />
+                      </span>
                     )}
                     {unapprovedTest && <NotApprovedBadge test={unapprovedTest} schema={schema} />}
                     {(run.unresolvedParams?.length ?? 0) > 0 && (

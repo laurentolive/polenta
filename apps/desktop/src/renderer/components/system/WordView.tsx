@@ -1,6 +1,8 @@
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
+import { ElementRefText } from '../element/elementRefDelegation'
 import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
 import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor, linkTypeVisibility } from './LinkTypeEditor'
@@ -337,7 +339,7 @@ function InlineField({
         </span>
       ) : isSystem || !onEdit ? (
         <span className={`text-xs ${isSystem ? 'text-ink-2' : 'text-ink'}`}>
-          {value ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : value) : '—'}
+          {value ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : isSystem ? value : <ElementRefText text={value} />) : '—'}
         </span>
       ) : editing ? (
         fieldDef?.type === 'enum' ? (
@@ -384,7 +386,7 @@ function InlineField({
           title={t('system.shared.clickToEdit')}
         >
           {value
-            ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : value)
+            ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : <ElementRefText text={value} />)
             : <span className="text-ink-3 italic">—</span>}
         </span>
       )}
@@ -735,11 +737,8 @@ function ItemCard({
                         ? outgoing.map((id, i) => (
                             <span key={id}>
                               {i > 0 && ', '}
-                              <span
-                                className="cursor-pointer hover:underline"
-                                title={t('system.shared.clickToNavigate')}
-                                onClick={e => { e.stopPropagation(); onNavigateToObject?.(id, { newTab: e.ctrlKey || e.metaKey }) }}
-                              >{id}</span>
+                              {/* GH229 — lien d'élément : navigation, nouvel onglet, popup d'aperçu. */}
+                              <ElementLink id={id} onFollow={onNavigateToObject} />
                             </span>
                           ))
                         : <span className="text-ink-3 italic">—</span>}
@@ -766,11 +765,8 @@ function ItemCard({
                         ? incoming.map((id, i) => (
                             <span key={id}>
                               {i > 0 && ', '}
-                              <span
-                                className="cursor-pointer hover:underline"
-                                title={t('system.shared.clickToNavigate')}
-                                onClick={e => { e.stopPropagation(); onNavigateToObject?.(id, { newTab: e.ctrlKey || e.metaKey }) }}
-                              >{id}</span>
+                              {/* GH229 — lien d'élément : navigation, nouvel onglet, popup d'aperçu. */}
+                              <ElementLink id={id} onFollow={onNavigateToObject} />
                             </span>
                           ))
                         : <span className="text-ink-3 italic">—</span>}

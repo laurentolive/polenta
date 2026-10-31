@@ -541,7 +541,10 @@
       "runFieldsHelp": "Entered at each run (report number, temperature, report link…). Information common to the whole campaign is a campaign field. “Req. if”: result = PASS, FAIL, BLOCKED or INCOMPLETE (overall verdict). A name designates a single field across the project.",
       "stepFields": "Step fields",
       "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict).",
-      "changeset": "Changeset"
+      "changeset": "Changeset",
+      "displayIdField": "ID shown in links",
+      "displayIdPolenta": "Polenta ID",
+      "displayIdTitle": "Title"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -743,6 +746,13 @@
     }
   },
   "system": {
+    "view": {
+      "itemHiddenByFilter": "{{id}} is hidden by the filter"
+    },
+    "preview": {
+      "notFound": "Element not found",
+      "campaignTests": "{{count}} test(s)"
+    },
     "revalidation": {
       "tooltip": "Impact to check"
     },
@@ -807,6 +817,8 @@
       "colCoverage": "Coverage",
       "tabExcel": "Table",
       "tabWord": "Document",
+      "tabPopup": "Popup",
+      "popupHint": "Fields shown in the popup when hovering a link to an element of this type (besides the header and title).",
       "testCase": "Test case",
       "links": "Links",
       "noLinkTypeForType": "No link type for this type",

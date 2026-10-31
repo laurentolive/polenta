@@ -11,7 +11,7 @@ import type {
   SchemaStatus,
   SystemNode,
 } from '@polenta/types'
-import { findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
+import { displayIdFieldError, findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
@@ -39,6 +39,7 @@ export type SchemaValidationErrorCode =
   | 'REQUIRED_WHEN_INVALID'
   | 'RUN_FIELD_INVALID'
   | 'LINK_TYPE_NAME_TAKEN'
+  | 'DISPLAY_ID_FIELD_INVALID'
 
 /**
  * Levée par les méthodes `addNode`/`addObjectType`/`addField`/`addStatus`/
@@ -101,6 +102,7 @@ export class SchemaService {
     this.assertUniquePrefixes(schema)
     this.assertRequiredWhen(schema)
     this.assertRunFields(schema)
+    this.assertValidDisplayIdFields(schema, await this.get(repoPath).catch(() => null))
     const toWrite = this.mirrorRootRolesImplements(schema)
     const dir = path.join(repoPath, '.polenta')
     await fsP.mkdir(dir, { recursive: true })
@@ -143,6 +145,27 @@ export class SchemaService {
    * prochain numéro par prefix seul, cf. `id-counter.util.ts`). Même limitation
    * documentée sur `findNodeUsingPrefix` : ne porte que sur `schema.nodes` du repo courant.
    */
+  /**
+   * GH229 — `displayIdField` d'un type : `title` ou un champ text / number / enum du type. Seule
+   * une erreur **nouvelle** est refusée : un `displayIdField` déjà invalide sur le disque (YAML
+   * édité à la main) n'empêche pas les autres écritures du schéma (ajout de champ, renommage en
+   * cascade…) ; il reste ignoré à l'affichage (repli sur l'ID).
+   */
+  private assertValidDisplayIdFields(schema: ProjectSchema, previous: ProjectSchema | null): void {
+    const before = new Map<string, string | null>()
+    for (const { node } of flattenSystemNodes(previous?.nodes ?? [])) {
+      for (const type of node.objectTypes ?? []) before.set(`${node.name}::${type.name}`, displayIdFieldError(type))
+    }
+    for (const { node } of flattenSystemNodes(schema.nodes)) {
+      for (const type of node.objectTypes ?? []) {
+        const error = displayIdFieldError(type)
+        if (error && error !== before.get(`${node.name}::${type.name}`)) {
+          throw new SchemaValidationError('DISPLAY_ID_FIELD_INVALID', error)
+        }
+      }
+    }
+  }
+
   private assertUniquePrefixes(schema: ProjectSchema): void {
     const ownerByPrefix = new Map<string, string>()
     for (const { node } of flattenSystemNodes(schema.nodes)) {

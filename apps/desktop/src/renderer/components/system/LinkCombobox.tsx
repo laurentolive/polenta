@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
 import { parseLinkError } from './linkUtils'
 
 export type Candidate = {
@@ -112,13 +113,12 @@ export function LinkCombobox({
             data-link-chip={peerId}
             className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-hover rounded border border-edge text-ink max-w-full"
           >
-            <span
-              title={missing ? t('system.linkCombobox.notFoundHint') : t('system.shared.clickToNavigate')}
-              onClick={e => { if (!missing) onNavigateToObject?.(peerId, { newTab: e.ctrlKey || e.metaKey }) }}
-              className={['font-mono', onNavigateToObject && !missing ? 'cursor-pointer hover:underline' : ''].join(' ')}
-            >
-              {peerId}
-            </span>
+            {missing || !onNavigateToObject ? (
+              <span title={missing ? t('system.linkCombobox.notFoundHint') : undefined} className="font-mono">{peerId}</span>
+            ) : (
+              // GH229 — lien d'élément : navigation, nouvel onglet, popup d'aperçu.
+              <ElementLink id={peerId} className="font-mono" onFollow={onNavigateToObject} />
+            )}
             {peerTitle && <span className="text-ink-3 truncate max-w-[16rem]">{peerTitle}</span>}
             {peerRepoLabel && <span className="text-[10px] text-ink-3 border border-edge rounded px-1">{peerRepoLabel}</span>}
             {missing && <span className="text-[10px] text-status-danger border border-status-danger rounded px-1">{t('system.linkCombobox.notFound')}</span>}

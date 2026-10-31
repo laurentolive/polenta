@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { useElementNav } from '../../contexts/ElementNavContext'
+import { ElementLink } from '../element/ElementLink'
 import type { Parameter, ParameterUsage } from '@polenta/types'
 import { PARAM_NAME_RE } from '@polenta/types'
 import { api } from '../../api'
@@ -219,7 +220,7 @@ function ConfirmImpact({ users, onCancel, onConfirm, busy }: {
       <p className="text-xs text-ink-2 mb-2">{t('parameters.dialog.confirmImpact', { count: users.length })}</p>
       <ul className="text-xs text-ink mb-4 max-h-48 overflow-y-auto border border-edge rounded divide-y divide-edge">
         {users.map(u => (
-          <li key={u.elementId} className="px-2 py-1"><span className="font-mono text-ink-3 mr-2">{u.elementId}</span>{u.title}</li>
+          <li key={u.elementId} className="px-2 py-1"><ElementLink id={u.elementId} className="font-mono text-ink-3 mr-2" />{u.title}</li>
         ))}
       </ul>
       <div className="flex justify-end gap-2">
@@ -230,11 +231,17 @@ function ConfirmImpact({ users, onCancel, onConfirm, busy }: {
   )
 }
 
-/** « Utilisé par » : chaque entrée ouvre l'élément ; les éléments terminaux sont grisés. */
-export function UsageList({ title, usages, projectId, danger = false, onNavigate }: {
+/** « Utilisé par » : chaque entrée ouvre l'élément ; les éléments terminaux sont grisés. GH229 :
+ *  liens d'élément (page de la vue système, nouvel onglet, aperçu). */
+export function UsageList({ title, usages, danger = false, onNavigate }: {
   title: string; usages: ParameterUsage[]; projectId: string; danger?: boolean; onNavigate?: () => void
 }) {
   const { t } = useTranslation()
+  const nav = useElementNav()
+  const follow = (id: string, opts: { newTab: boolean }) => {
+    if (!opts.newTab) onNavigate?.()
+    nav?.follow(id, opts)
+  }
   return (
     <div className="mt-4">
       <h3 className={`text-xs font-medium mb-1 ${danger ? 'text-status-danger' : 'text-ink-2'}`}>{title}</h3>
@@ -243,21 +250,11 @@ export function UsageList({ title, usages, projectId, danger = false, onNavigate
       ) : (
         <ul className="text-xs max-h-48 overflow-y-auto border border-edge rounded divide-y divide-edge">
           {usages.map(u => {
-            const search = { repoPath: u.repoPath, projectId, component: undefined, level: undefined }
-            const content = (
-              <>
-                <span className="font-mono text-ink-3 mr-2">{u.elementId}</span>
-                <span className={u.isTerminal ? 'text-ink-3 line-through' : 'text-ink'}>{u.title}</span>
-                <span className="ml-2 text-ink-3">({u.status}{u.ref.includes('::') ? ` · {${u.ref}}` : ''})</span>
-              </>
-            )
             return (
               <li key={`${u.repoPath}::${u.elementId}`} className={`px-2 py-1 ${u.isTerminal ? 'opacity-60' : ''}`}>
-                {u.category === 'requirement' ? (
-                  <Link to="/req/$reqId" params={{ reqId: u.elementId }} search={search} onClick={onNavigate} className="hover:underline">{content}</Link>
-                ) : (
-                  <Link to="/test/$testId" params={{ testId: u.elementId }} search={search} onClick={onNavigate} className="hover:underline">{content}</Link>
-                )}
+                <ElementLink id={u.elementId} onFollow={follow} className="font-mono text-ink-3 mr-2" />
+                <ElementLink id={u.elementId} onFollow={follow} className={u.isTerminal ? 'text-ink-3 line-through' : 'text-ink'}>{u.title}</ElementLink>
+                <span className="ml-2 text-ink-3">({u.status}{u.ref.includes('::') ? ` · {${u.ref}}` : ''})</span>
               </li>
             )
           })}

@@ -3,14 +3,14 @@ import { setupSession } from './support/session'
 
 /**
  * GH169 — vue tableau (Excel) : les IDs d'une colonne de lien sont cliquables directement, comme
- * dans la vue document (Word). Un clic ouvre l'objet lié sans passer par l'édition de la cellule.
+ * dans la vue document (Word). Un clic ouvre l'objet lié (GH229 : en Tableau) sans passer par
+ * l'édition de la cellule.
  * Le popover d'édition des liens se referme par Échap et par un clic hors de sa cellule.
  */
 const s = setupSession()
 // Images de la démo absentes (maquettes) : 404 sans rapport.
 test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
 
-const NAVIGATE_TITLE = 'Cliquer pour naviguer vers cet élément (Ctrl+clic pour un nouvel onglet)'
 const popover = () => s.page.locator('div[data-link-popover]')
 const linkCells = () => s.page.locator('td[data-link-cell]')
 
@@ -37,17 +37,17 @@ async function openLinkPopover(index: number) {
 test('GH169-1 — clic sur un ID d\'une cellule de lien : navigation vers l\'objet lié, sans popover d\'édition', async () => {
   await openExcelWithLinks()
 
-  const linkId = linkCells().getByTitle(NAVIGATE_TITLE).first()
+  const linkId = linkCells().locator('[data-element-link]').first()
   await expect(linkId).toBeVisible()
   const peerId = (await linkId.textContent())!.trim()
   expect(peerId).toMatch(/^[A-Z]+-\d+$/)
 
   await linkId.click()
 
-  // L'objet lié est ouvert (même navigation que la vue document : éditeur de l'élément ; retour
-  // par Précédent, GH228).
-  const main = s.page.getByRole('main')
-  await expect(main).toContainText(new RegExp(`ID\\s*\\(sys\\)\\s*${peerId}`))
+  // L'objet lié est ouvert — GH229 : dans le même type de vue (Tableau), positionné sur lui ;
+  // retour par Précédent (GH228).
+  await expect.poll(() => new URL(s.page.url()).searchParams.get('item')).toBe(peerId)
+  expect(new URL(s.page.url()).searchParams.get('view')).toBe('excel')
   // Le clic sur l'ID n'ouvre pas l'éditeur de liens de la cellule.
   await expect(popover()).toHaveCount(0)
   await s.shot('gh169-navigated')

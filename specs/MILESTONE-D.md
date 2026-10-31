@@ -105,7 +105,7 @@ history: …                           # GH77
 
 ### 3.4 Backlog des changements
 
-- Repris du backlog de #199 / #200, par composant : tous les éléments (exigences, tests, issues) dont
+- Repris du backlog de #199 / #200 (code au commit `4e06052`, retiré par #243), par composant : tous les éléments (exigences, tests, issues) dont
   un changement **n'a jamais été inclus dans une version** — créés depuis, ou modifiés depuis l'état
   de la dernière version qui les incluait. Les modifications hors interface d'un élément approuvé
   (#200 §5) y restent signalées.
@@ -219,8 +219,9 @@ depuis la décision » ; commit et baseline documentaire posés sur le commit de
 | | Éléments |
 |---|---|
 | **Retiré** | objet changeset (`changesets/`, `packages/types/src/change.ts`, `ChangesService`, IPC `changesets:*`), vue et routes `changeset*`, assignation à la création / réouverture (`ApprovalGateContext` côté changeset, `AssignToChangeDialog`, `CreateChangeButton`), dialogue d'assignation à l'approbation, préférence `changeTracking`, MCP `changes.tools`, `changesetId` / `unassigned`, champ `changeset` et `baselineRef` de la campagne, `GraphChangeset` (manifeste du graphe +1). Pas de migration : les fichiers `changesets/` existants sont ignorés (données de test) |
-| **Conservé** | verrou de l'approuvé (services, MCP, vues) ; réouverture par changement de statut, **uniforme** dans toutes les vues (version + 1) ; **backlog** (`useBacklog`, détection hors interface) et sélecteur d'éléments (`ChangeElementPicker`) ; trace `base` (`change-tracking.service`) ; moteur d'analyse (`change-analysis.util`), statuts d'impact ; calcul des tests à exécuter (`change-tests.util`) ; diff par élément (`sync:diff-element`) ; section campagnes (`ChangeCampaignsSection`) — rattachés à la version |
-| **Déplacé** | backlog (`changesets_.backlog`), analyse des modifications locales (`changesets_.local`, T175) et liste « Impact à vérifier » (`changesets_.revalidation`) → panneau Version ; Constellation → panneau Exigences |
+| **Conservé dans le code** | verrou de l'approuvé (services, MCP, vues) ; réouverture par changement de statut, **uniforme** dans toutes les vues ; règle de version `versionBump` (version + 1 en quittant `isApproval`) ; diff par élément (`sync:diff-element`, route `/diff?element&baseSha&toSha`) ; moteur d'arbres d'impact (`buildImpactTreesFromSnapshot`, `ImpactTrees`, statuts d'impact) |
+| **Conservé dans l'historique git** (commit `4e06052`, retiré par #243) | backlog et détection hors interface (`useBacklog`, `change-tracking.service` : `outsideModifications`, `fileCommits`, calcul de `base`), sélecteur d'éléments (`ChangeElementPicker`), analyse d'un ensemble de changements (`change-analysis.util`, `ChangeAnalysisSection`), tests à exécuter (`change-tests.util`), section campagnes (`ChangeCampaignsSection`) — à réintroduire adaptés à la version par #201 (backlog, sélecteur, `base`) et #245 (analyse, tests, campagnes) |
+| **Déplacé** | analyse des modifications locales (`changesets_.local`, T175) et liste « Impact à vérifier » (`changesets_.revalidation`) → entrées du panneau Version (`/local-impact`, `/revalidation`) ; Constellation → panneau Exigences ; le backlog n'a plus d'écran jusqu'à #201 |
 
 ## 8. Graphe et MCP
 

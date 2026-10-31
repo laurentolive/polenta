@@ -8,7 +8,7 @@ import { toggleVisibleField } from './fieldToggle'
 
 // ── FieldConfig modal (⚙) — onglets Tableau / Document indépendants ─────────
 
-export type ConfigTab = 'excel' | 'word'
+export type ConfigTab = 'excel' | 'word' | 'popup'
 
 /** Panneau ⚙️ « Champs visibles » de la Vue Système, réutilisé par le sélecteur de tests d'une
  *  campagne (GH176 : un seul onglet, Statut verrouillé, Réinitialiser propre, au-dessus de la modale). */
@@ -26,6 +26,8 @@ export function FieldConfigModal({
   showFoldersWord,
   onChangeShowFoldersExcel,
   onChangeShowFoldersWord,
+  visibleFieldsPopup,
+  onChangePopup,
   onClose,
   computedColumns,
   computedPanel,
@@ -46,6 +48,9 @@ export function FieldConfigModal({
   showFoldersWord?: boolean
   onChangeShowFoldersExcel: (v: boolean) => void
   onChangeShowFoldersWord?: (v: boolean) => void
+  /** GH229 — onglet « Popup » : champs de la popup d'aperçu (onglet proposé si `tabs` le contient). */
+  visibleFieldsPopup?: string[]
+  onChangePopup?: (fields: string[]) => void
   onClose: () => void
   /** GH70 — colonnes calculées applicables au type (requêtes partagées du projet), à plat. */
   computedColumns: ComputedColumn[]
@@ -78,13 +83,16 @@ export function FieldConfigModal({
   const fieldsAlwaysInWordHeader = new Set(['section', 'name', 'id', 'status', 'version'])
   // coverageStatus (T138) n'a de sens que pour les exigences — un TestCase n'a pas de statut de
   // couverture, ne pas le proposer à cocher pour ce type d'objet.
+  // GH229 — popup : l'en-tête porte déjà section / nom / ID / statut (version reste proposée).
+  const fieldsAlwaysInPopupHeader = new Set(['section', 'name', 'id', 'status'])
   const allFields = [...new Set([...systemFields, ...customFields])]
     .filter(f => tab !== 'word' || !fieldsAlwaysInWordHeader.has(f))
+    .filter(f => tab !== 'popup' || !fieldsAlwaysInPopupHeader.has(f))
     .filter(f => f !== 'coverageStatus' || category === 'requirement')
   const hasSteps = category === 'test'
 
-  const currentFields = tab === 'excel' ? visibleFieldsExcel : (visibleFieldsWord ?? [])
-  const onChangeCurrent = tab === 'excel' ? onChangeExcel : (onChangeWord ?? (() => {}))
+  const currentFields = tab === 'excel' ? visibleFieldsExcel : tab === 'popup' ? (visibleFieldsPopup ?? []) : (visibleFieldsWord ?? [])
+  const onChangeCurrent = tab === 'excel' ? onChangeExcel : tab === 'popup' ? (onChangePopup ?? (() => {})) : (onChangeWord ?? (() => {}))
   const showFolders = tab === 'excel' ? showFoldersExcel : (showFoldersWord ?? true)
   const onChangeShowFolders = tab === 'excel' ? onChangeShowFoldersExcel : (onChangeShowFoldersWord ?? (() => {}))
   const isChecked = (f: string) => f in lockedFields || currentFields.includes(f)
@@ -95,11 +103,13 @@ export function FieldConfigModal({
   // GH137 — onglet Tableau : un type de lien dont ce type est source et cible a deux colonnes
   // (sortants, entrants) ; onglet Document : une case par type de lien, inchangé (Q3).
   const linkKeysOf = (lt: LinkTypeDefinition) =>
-    tab === 'excel' ? linkColumnKeys(lt, objectTypeRef, category) : [`link::${lt.name}`]
+    tab === 'word' ? [`link::${lt.name}`] : linkColumnKeys(lt, objectTypeRef, category)
 
+  // GH229 — colonnes calculées : calcul de vue, pas d'objet isolé dans la popup.
+  const shownComputedPanel = tab === 'popup' ? [] : computedPanel
   const canonicalOrder = [
     ...allFields,
-    ...computedColumns.map(c => c.key),
+    ...(tab === 'popup' ? [] : computedColumns.map(c => c.key)),
     ...(hasSteps ? ['steps'] : []),
     ...relevantLinkTypes.flatMap(linkKeysOf),
   ]
@@ -114,6 +124,7 @@ export function FieldConfigModal({
   const tabLabels: Record<ConfigTab, string> = {
     excel: t('system.fieldConfig.tabExcel'),
     word: t('system.fieldConfig.tabWord'),
+    popup: t('system.fieldConfig.tabPopup'),
   }
 
   // GH176 — au-dessus d'une modale, `Échap` ferme le panneau sans atteindre la modale (dont les
@@ -170,8 +181,11 @@ export function FieldConfigModal({
           ))}
         </div>}
 
+        {tab === 'popup' && (
+          <p className="text-xs text-ink-3 mb-2 pb-2 border-b border-edge" data-testid="field-config-popup-hint">{t('system.fieldConfig.popupHint')}</p>
+        )}
         {/* T162 — afficher / masquer les titres de dossiers (par vue) */}
-        <label className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded mb-2 pb-2 border-b border-edge">
+        {tab !== 'popup' && <label className="flex items-center gap-2 text-xs text-ink cursor-pointer hover:bg-hover px-1 py-0.5 rounded mb-2 pb-2 border-b border-edge">
           <input
             type="checkbox"
             checked={showFolders}
@@ -180,7 +194,7 @@ export function FieldConfigModal({
             className="h-3 w-3 accent-ink"
           />
           <span>{t('system.fieldConfig.showFolders')}</span>
-        </label>
+        </label>}
 
         {/* Scrollable field list */}
         <div className="overflow-y-auto max-h-80 space-y-1.5">
@@ -206,11 +220,11 @@ export function FieldConfigModal({
           ))}
 
           {/* GH70 — colonnes calculées définies par le projet (requêtes partagées) */}
-          {computedPanel.length > 0 && (
+          {shownComputedPanel.length > 0 && (
             <div className="pt-2 mt-1 border-t border-edge" data-testid="field-config-computed">
               <p className="text-xs text-ink-3 font-medium mb-1">{t('system.fieldConfig.computedColumns')}</p>
               <div className="space-y-1.5">
-                {computedPanel.map(entry => entry.kind === 'column' ? (
+                {shownComputedPanel.map(entry => entry.kind === 'column' ? (
                   <label
                     key={entry.column.key}
                     title={entry.column.headerTitle}
@@ -318,7 +332,11 @@ export function FieldConfigModal({
         {/* Reset */}
         <button
           type="button"
-          onClick={onReset ?? (() => { onChangeCurrent(defaultFields); onChangeShowFolders(true) })}
+          onClick={onReset ?? (() => {
+            if (tab === 'popup') { onChangeCurrent([]); return }
+            onChangeCurrent(defaultFields)
+            onChangeShowFolders(true)
+          })}
           data-testid="field-config-reset"
           className="mt-3 text-xs text-ink-3 hover:text-ink underline"
         >

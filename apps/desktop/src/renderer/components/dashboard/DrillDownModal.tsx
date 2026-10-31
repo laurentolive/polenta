@@ -14,6 +14,7 @@ import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import { runOptions, scriptErrorText } from '../../hooks/useScriptRun'
 import { toLabel } from './widgets/numeric'
+import { ElementLink } from '../element/ElementLink'
 
 interface Props {
   widgetTitle: string
@@ -113,7 +114,7 @@ export function DrillDownModal({ widgetTitle, row, request, repoPath, workspaceD
                     onClick={o.kind === 'unknown' || o.kind === 'run' ? undefined : () => void open(o.id)}
                     data-navigable={o.kind === 'unknown' || o.kind === 'run' ? undefined : 'true'}
                   >
-                    <td className="px-3 py-1.5 font-mono text-ink whitespace-nowrap">{o.id}</td>
+                    <td className="px-3 py-1.5 font-mono text-ink whitespace-nowrap"><ElementLink id={o.id} /></td>
                     <td className="px-3 py-1.5 text-ink-2">{o.kind === 'unknown' ? t('dashboardPage.drillDown.notFound') : (o.typeLabel ?? t(`dashboardPage.drillDown.kinds.${o.kind}`))}</td>
                     <td className="px-3 py-1.5 text-ink">{o.title ?? '—'}</td>
                     <td className="px-3 py-1.5 text-ink-2">{o.status ?? '—'}</td>

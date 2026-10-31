@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../components/element/ElementLink'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
@@ -303,7 +304,7 @@ function NewCampaignPage() {
                   const values = Object.entries(paramValues[id] ?? {}).filter(([, v]) => v.trim())
                   return (
                     <li key={id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                      <span className="font-mono text-ink-3 shrink-0">{id}</span>
+                      <ElementLink id={id} className="font-mono text-ink-3 shrink-0" />
                       <span className="text-ink truncate">{allTestsById.get(id)?.title ?? ''}</span>
                       {iterating && (
                         <span className="shrink-0 text-[10px] text-ink-3">{t('campaignPage.picker.instances', { count: instances })}</span>
@@ -322,15 +323,15 @@ function NewCampaignPage() {
                     : Object.entries(c.paramValues ?? {}).filter(([, v]) => v.trim()).map(([k, v]) => `${k}=${v}`)
                   return (
                     <li key={`${c.campaignId}/${c.entryId}`} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                      <span className="font-mono text-ink-3 shrink-0">{c.testCaseId}</span>
+                      <ElementLink id={c.testCaseId} className="font-mono text-ink-3 shrink-0" />
                       <span className="text-ink truncate">{allTestsById.get(c.testCaseId)?.title ?? ''}</span>
                       <span
                         className="shrink-0 font-mono text-[10px] text-ink-3"
                         title={t('campaignPage.carriedFrom', { campaignId: c.campaignId, entryId: c.entryId })}
                       >
-                        ↩ {c.campaignId}
+                        ↩ <ElementLink id={c.campaignId} />
                       </span>
-                      {c.requirementId && <span className="shrink-0 font-mono text-[10px] text-ink-3">· {c.requirementId}</span>}
+                      {c.requirementId && <span className="shrink-0 font-mono text-[10px] text-ink-3">· <ElementLink id={c.requirementId} /></span>}
                       {values.length > 0 && (
                         <span className="ml-auto shrink min-w-0 truncate text-[10px] text-ink-3 font-mono">{values.join(', ')}</span>
                       )}

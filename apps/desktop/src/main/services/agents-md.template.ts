@@ -260,6 +260,9 @@ passez par \`update_*\` et \`set_parameters\`.
   Modifier la valeur d'un champ suivi hors de l'application crée un écart, comblé à la prochaine
   écriture par l'application (entrée datée du dernier commit).
 - Le \`prefix\` de chaque type d'objet est unique sur l'ensemble du projet.
+- \`displayIdField\` (optionnel) d'un type d'objet : \`title\` ou nom d'un champ \`text\` /
+  \`number\` / \`enum\` du type, affiché à la place de l'ID dans les liens de l'interface. Les
+  liens (\`links.yaml\`) et les fichiers utilisent toujours l'ID.
 
 ## System engineering assisté par IA — les 4 usages visés
 

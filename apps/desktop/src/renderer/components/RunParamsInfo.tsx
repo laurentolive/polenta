@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from './element/ElementLink'
 import type { CampaignTestRun } from '@polenta/types'
 import { UnresolvedParamsBanner } from './UnresolvedParamsBanner'
 
@@ -16,7 +17,7 @@ export function RunParamsInfo({ run }: { run: CampaignTestRun | undefined }) {
       {run.requirementId && (
         <p className="mb-2 rounded border border-edge bg-hover/30 px-3 py-2 text-xs text-ink">
           <span className="text-ink-3">{t('campaignParams.reqInstances.requirementOfInstance')}</span>{' '}
-          <span className="font-mono">{run.requirementId}</span>
+          <ElementLink id={run.requirementId} className="font-mono" />
           {reqTitle && <span> — {reqTitle}</span>}
         </p>
       )}

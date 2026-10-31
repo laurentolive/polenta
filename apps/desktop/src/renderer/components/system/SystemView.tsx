@@ -39,12 +39,13 @@ import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
 import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
-import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
+import type { ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
 import { flattenSystemNodes, isComputedColumnKey } from '@polenta/types'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { FieldConfigModal } from './FieldConfigModal'
+import { useElementNav } from '../../contexts/ElementNavContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
 
@@ -92,7 +93,7 @@ function ViewLoading() {
 export function SystemView() {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const { openTab, activeTab, attemptHistoryNav } = useTabs()
+  const { activeTab, attemptHistoryNav } = useTabs()
   const {
     currentProjectId,
     category,
@@ -127,7 +128,6 @@ export function SystemView() {
     storedViewMode,
     showView,
     switchView,
-    showObject,
     createItemObject,
     gotoNodeId,
     gotoSeq,
@@ -397,6 +397,8 @@ export function SystemView() {
   const [visibleFieldsExcel, setVisibleFieldsExcel] = useState<string[]>(['section', 'name', 'id', 'status'])
   const [visibleFieldsWord, setVisibleFieldsWord] = useState<string[]>(['section', 'name', 'id', 'status'])
   const [visibleFieldsEdit, setVisibleFieldsEdit] = useState<string[]>(['section', 'name', 'id', 'status'])
+  // GH229 — champs de la popup d'aperçu (onglet « Popup » du panneau ⚙️) ; défaut : aucun.
+  const [visibleFieldsPopup, setVisibleFieldsPopup] = useState<string[]>([])
   // T162 — titres de dossiers affichés dans les vues Tableau / Document (par type, persisté avec les colonnes)
   const [showFoldersExcel, setShowFoldersExcel] = useState(true)
   const [showFoldersWord, setShowFoldersWord] = useState(true)
@@ -521,31 +523,13 @@ export function SystemView() {
 
   // ── Link navigation callbacks (T37) — after candidateObjects + editingObjectId ──
 
-  // GH105 — l'objet lié peut vivre dans un autre repo du workspace : la Vue Système bascule alors
-  // sur son repo (sélection T72), Précédent (GH228) revient au repo de départ.
+  // GH229 — un lien suivi depuis la vue (colonnes et sections de liens, fiche Édition) passe par
+  // la navigation commune des ID d'élément : page de la cible dans le mode courant (Tableau,
+  // Document ou Édition), nouvel onglet sur la même page (plus la fiche /req ou /test — #236).
+  const elementNav = useElementNav()
   const navigateToObject = useCallback((peerId: string, opts?: { newTab?: boolean }) => {
-    const wsTarget = ws.objectsById.get(peerId)
-    const target = wsTarget ?? candidateObjects.find(c => c.id === peerId)
-    if (!target) return
-    const targetRepoPath = wsTarget?.repoPath ?? repoPath
-
-    // T134 — a new tab is a fresh route mount with no access to this component's local state
-    // (viewMode/pendingNavObjectId), so it can't reuse the in-place tree navigation below. The
-    // standalone /req or /test detail page resolves an object from the URL alone, same as
-    // SearchPanel's "open result" navigation.
-    if (opts?.newTab) {
-      const pathname = target.category === 'test' ? `/test/${peerId}` : `/req/${peerId}`
-      openTab(pathname, { repoPath: targetRepoPath, projectId: currentProjectId })
-      return
-    }
-
-    const parts = target.objectTypeRef.split('::')
-    if (parts.length !== 2) return
-    const [targetNodeId, targetTypeId] = parts
-
-    // GH228 — une nouvelle page de l'historique de l'onglet : Précédent revient à l'objet de départ.
-    showObject(targetRepoPath, targetNodeId, targetTypeId, viewMode === 'word' ? 'word' : 'edit', peerId, target.category as ObjectCategory | undefined)
-  }, [ws.objectsById, candidateObjects, viewMode, showObject, openTab, repoPath, currentProjectId])
+    elementNav?.follow(peerId, opts)
+  }, [elementNav])
 
   // Leaving the Edit view (Escape). GH228 — no "Retour" button any more (the tab's Précédent does
   // the same); Escape goes to the previous page of the tab when it is
@@ -615,6 +599,7 @@ export function SystemView() {
     setVisibleFieldsExcel(excel)
     setVisibleFieldsWord(word)
     setVisibleFieldsEdit(edit)
+    setVisibleFieldsPopup(savedPrefs?.popup ?? [])
     setShowFoldersExcel(showFoldersExcelNext)
     setShowFoldersWord(showFoldersWordNext)
     const collapsedFoldersExcelNext = savedPrefs?.collapsedFoldersExcel ?? []
@@ -909,6 +894,11 @@ export function SystemView() {
     persistPrefs({ edit: fields })
   }, [persistPrefs])
 
+  const handleChangePopup = useCallback((fields: string[]) => {
+    setVisibleFieldsPopup(fields)
+    persistPrefs({ popup: fields })
+  }, [persistPrefs])
+
   const handleChangeShowFoldersExcel = useCallback((show: boolean) => {
     setShowFoldersExcel(show)
     persistPrefs({ showFoldersExcel: show })
@@ -1155,6 +1145,9 @@ export function SystemView() {
           showFoldersWord={showFoldersWord}
           onChangeShowFoldersExcel={handleChangeShowFoldersExcel}
           onChangeShowFoldersWord={handleChangeShowFoldersWord}
+          tabs={effectiveType.category === 'campaign' ? ['excel', 'word'] : ['excel', 'word', 'popup']}
+          visibleFieldsPopup={visibleFieldsPopup}
+          onChangePopup={handleChangePopup}
           onClose={() => setShowFieldConfig(false)}
           computedColumns={computed.available}
           computedPanel={computed.panel}
@@ -1255,7 +1248,9 @@ export function SystemView() {
             // `isLoading` (pas juste `!objectData`) : sur erreur de la query (objet
             // introuvable / entrée d'arbre orpheline) il repasse à false → EditView
             // affiche le formulaire vide au lieu de rester bloqué sur « Chargement… ».
-            objectLoading={!!editingObjectId && !objectData && loadedObjectLoading}
+            // #236 / GH229 — Édition sans nœud édité : l'élément de l'URL attend l'arbre de son type
+            // (lien suivi vers un autre type) — chargement, pas un formulaire vide.
+            objectLoading={editingNodeId === null || (!!editingObjectId && !objectData && loadedObjectLoading)}
             typeDef={effectiveType}
             visibleFields={[
               'section', 'name', 'id', 'status',

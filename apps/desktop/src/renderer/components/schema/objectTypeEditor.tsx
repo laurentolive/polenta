@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, historyModeFor, renameValues } from '@polenta/types'
+import { DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, displayIdFieldCandidates, historyModeFor, renameValues } from '@polenta/types'
 import type {
   FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
   TypeRenameDto, TypeRenamePlan, TypeRenameResult, ValueRename,
@@ -36,6 +36,8 @@ export interface EditableObjectType {
   fields: EditableField[]; statuses: EditableStatus[]
   /** GH77 — historiser le statut (défaut true). */
   trackStatusHistory: boolean
+  /** GH229 — champ affiché à la place de l'ID dans les liens ('' = ID Polenta). */
+  displayIdField: string
   /** GH86 — clés du type que l'éditeur n'affiche pas, réécrites telles quelles. */
   extra?: Record<string, unknown>
 }
@@ -52,7 +54,7 @@ function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, u
 
 const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory'] as const
 const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
-const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory'] as const
+const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'displayIdField'] as const
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
@@ -218,6 +220,7 @@ export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
     fields: t.fields.map(fieldToEditable),
     statuses: (t.statuses ?? []).map(statusToEditable),
     trackStatusHistory: t.trackStatusHistory !== false,
+    displayIdField: t.displayIdField ?? '',
     ...withExtra(extraKeys(t, TYPE_EDITOR_KEYS)),
   }
 }
@@ -229,6 +232,11 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
   if (t.prefix) result.prefix = t.prefix
   if (t.statuses.length > 0) result.statuses = t.statuses.map(editableToStatus)
   if (!t.trackStatusHistory) result.trackStatusHistory = false
+  // GH229 — un ID affiché devenu invalide (champ supprimé, renommé ou retypé) est retiré : le
+  // main refuserait l'enregistrement.
+  // Un champ renommé dans l'éditeur est suivi (`originalName`).
+  const shown = t.fields.find(f => f.originalName && f.originalName !== f.name && f.originalName === t.displayIdField)?.name ?? t.displayIdField
+  if (shown && displayIdFieldCandidates(result).includes(shown)) result.displayIdField = shown
   return { ...result, ...t.extra }
 }
 
@@ -300,6 +308,7 @@ export function emptyObjType(
     name: suggested, label: categoryLabel, color: '', prefix: suggested, category,
     fields: [{ name: 'description', label: descriptionLabel, type: 'richtext', values: '', required: false, default: '', placeholder: '', trackHistory: false }],
     trackStatusHistory: true,
+    displayIdField: '',
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
       : [],

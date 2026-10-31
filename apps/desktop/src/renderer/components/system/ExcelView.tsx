@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, startTransition, memo, createContext, useContext, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
+import { ElementRefText } from '../element/elementRefDelegation'
 import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor } from './LinkTypeEditor'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
@@ -256,7 +258,6 @@ interface ExcelCellLabels {
   hideSteps: string
   noSteps: string
   stepsCount: (count: number) => string
-  clickToNavigate: string
 }
 
 const ExcelCellLabelsContext = createContext<ExcelCellLabels | null>(null)
@@ -439,8 +440,11 @@ const InlineCell = memo(function InlineCell({
     : content
   // GH136 — enum à libellés (statut) : le libellé est affiché, la valeur stockée reste en info-bulle.
   const valueLabel = fieldDef?.type === 'enum' && value ? fieldDef.valueLabels?.[value] : undefined
-  const display = paramRefs && !isSystem && value && (fieldDef?.type === 'text' || fieldDef?.type === 'textarea')
+  const isTextField = fieldDef?.type === 'text' || fieldDef?.type === 'textarea'
+  const display = paramRefs && !isSystem && value && isTextField
     ? <ParamRefText text={value} />
+    // GH229 — ID d'élément écrits dans un champ texte : liens.
+    : !isSystem && value && isTextField ? <ElementRefText text={value} />
     : valueLabel ?? value
 
   if (!editable) {
@@ -594,12 +598,8 @@ const LinkCell = memo(function LinkCell({
                 {group.split(', ').map((id, i) => (
                   <span key={id}>
                     {i > 0 && ', '}
-                    <span
-                      data-cell-dblclick-ignore
-                      className="cursor-pointer hover:underline"
-                      title={labels.clickToNavigate}
-                      onClick={e => { e.stopPropagation(); actions.navigateToObject(id, { newTab: e.ctrlKey || e.metaKey }) }}
-                    >{id}</span>
+                    {/* GH229 — lien d'élément (le mousedown ne sélectionne pas la cellule, #236). */}
+                    <ElementLink id={id} onFollow={actions.navigateToObject} />
                   </span>
                 ))}
               </span>
@@ -1433,11 +1433,11 @@ function ExcelViewInner({
   // ancrage est posé à l'ouverture, pour que sa ligne existe quand `useScrollToNode` la cherche.
   const [renderAllRows, setRenderAllRows] = useState(() => !!gotoNodeId || !!anchorNodeId)
 
-  // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
-  // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
-  // GH230 — après le rendu complet des lignes (sinon le repli viserait une des premières).
-  useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root, ready: renderAllRows })
-  useScrollToNode(containerRef, anchorNodeId, undefined, { root, ready: renderAllRows })
+  // GH229 — la ligne ciblée (lien suivi, goto depuis l'arbre) devient la ligne sélectionnée.
+  useEffect(() => {
+    if (gotoNodeId && !effectiveSelectedIds.includes(gotoNodeId)) effectiveOnSelect([gotoNodeId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gotoNodeId, gotoSeq])
   useEffect(() => {
     if (renderAllRows) return
     // Après la première peinture (rAF + tâche), pas dans la même frame.
@@ -2042,6 +2042,27 @@ function ExcelViewInner({
 
   const visibleRowIds = filteredRows.map(r => r.node.id)
 
+  // GH229 — ligne ciblée (goto : lien suivi, clic dans l'arbre) ou ancrée : les lignes jusqu'à elle
+  // sont rendues tout de suite, sans attendre le rendu complet. Celui-ci passe par une transition,
+  // abandonnée et relancée à chaque re-rendu urgent de la vue : sur un gros projet il pouvait ne
+  // jamais aboutir, la ligne cible n'existait pas et la vue restait en haut.
+  const gotoIndex = gotoNodeId ? visibleRowIds.indexOf(gotoNodeId) : -1
+  const anchorIndex = anchorNodeId ? visibleRowIds.indexOf(anchorNodeId) : -1
+  const renderedRowCount = renderAllRows
+    ? filteredRows.length
+    : Math.max(INITIAL_RENDERED_ROWS, gotoIndex + INITIAL_RENDERED_ROWS, anchorIndex + INITIAL_RENDERED_ROWS)
+  // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
+  // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
+  // GH230 — après le rendu des lignes (sinon le repli viserait une des premières).
+  useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root, ready: renderAllRows || gotoIndex >= 0 })
+  useScrollToNode(containerRef, anchorNodeId, undefined, { root, ready: renderAllRows || anchorIndex >= 0 })
+
+  // GH229 §3.4 — élément ciblé (lien suivi) masqué par un filtre actif : le filtre est conservé,
+  // un message l'indique.
+  const gotoNode = gotoNodeId ? treeFindNode(root, gotoNodeId) : null
+  const gotoHiddenByFilter = hasActiveFilter && gotoNode?.kind === 'item' && !!gotoNode.objectId
+    && !itemMatchesFilters(gotoNode, objectMap.get(gotoNode.objectId))
+
   // ── GH33 — mode sélection ────────────────────────────────────────────────────
   // Deux notions de « visible » : `displayedObjectIds` (filtres + repli) pour les plages et le
   // clic simple ; `matchedObjectIds` / `matchedByFolder` (filtres seuls, repli ignoré) pour les
@@ -2179,7 +2200,6 @@ function ExcelViewInner({
     hideSteps: t('system.excelView.hideSteps'),
     noSteps: t('system.excelView.noSteps'),
     stepsCount: count => t('system.excelView.stepsCount', { count }),
-    clickToNavigate: t('system.shared.clickToNavigate'),
   }), [t])
   const cellActionsRef = useRef(cellActionsImpl)
   cellActionsRef.current = cellActionsImpl
@@ -2211,6 +2231,11 @@ function ExcelViewInner({
       <ExcelCellStoreContext.Provider value={cellStore}>
       <ExcelCellActionsContext.Provider value={cellActions}>
       <ExcelCellLabelsContext.Provider value={cellLabels}>
+      {gotoHiddenByFilter && (
+        <p className="sticky left-0 top-0 z-20 px-3 py-1 text-xs bg-status-warning-bg text-status-warning" data-testid="item-hidden-by-filter">
+          {t('system.view.itemHiddenByFilter', { id: gotoNode?.objectId })}
+        </p>
+      )}
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={() => setDeleteConfirm(null)}>
@@ -2366,7 +2391,7 @@ function ExcelViewInner({
               </td>
             </tr>
           )}
-          {(renderAllRows ? filteredRows : filteredRows.slice(0, INITIAL_RENDERED_ROWS)).map(({ kind, node, depth }) => {
+          {filteredRows.slice(0, renderedRowCount).map(({ kind, node, depth }) => {
             const rowDrop = rowDropIndicator?.targetNodeId === node.id ? rowDropIndicator : null
             const isDraggingRow = draggingNodeId === node.id
             const dropStyle: React.CSSProperties = {}

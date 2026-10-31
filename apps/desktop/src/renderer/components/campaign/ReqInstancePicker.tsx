@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
 import type { ParamResolutionPreview } from '@polenta/types'
 import { TestParamFields } from '../TestParamFields'
 
@@ -35,7 +36,8 @@ export function ReqInstancePicker({ preview, present, selection, onToggle, onCha
                 disabled={isPresent}
                 onChange={() => onToggle(req.requirementId)}
               />
-              <span className="font-mono shrink-0">{req.requirementId}</span>
+              {/* GH229 — le clic sur l'ID navigue ; ailleurs sur le libellé, il coche. */}
+              <ElementLink id={req.requirementId} className="font-mono shrink-0" />
               <span className="truncate">{req.title}</span>
               {isPresent && (
                 <span className="shrink-0 text-[10px] italic ml-auto">{t('campaignParams.reqInstances.alreadyPresent')}</span>

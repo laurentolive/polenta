@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DISPLAY_ID_FIELD_TYPES } from '@polenta/types'
 import {
   type EditableObjectType,
   CATEGORY_LABEL_KEY,
@@ -129,6 +130,23 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
             />
             {t('schema.editor.trackStatusHistory')}
           </label>
+          {draft.category !== 'campaign' && (
+            <label className="mt-3 flex items-center gap-2 text-xs text-ink-2">
+              {t('schema.editor.displayIdField')}
+              <select
+                value={draft.displayIdField}
+                onChange={e => set({ displayIdField: e.target.value })}
+                data-testid="schema-display-id-field"
+                className="input-field text-xs py-0.5"
+              >
+                <option value="">{t('schema.editor.displayIdPolenta')}</option>
+                <option value="title">{t('schema.editor.displayIdTitle')}</option>
+                {draft.fields.filter(f => f.name && DISPLAY_ID_FIELD_TYPES.includes(f.type)).map(f => (
+                  <option key={f.name} value={f.name}>{f.label || f.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
         {/* Footer */}

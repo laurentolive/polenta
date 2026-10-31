@@ -93,6 +93,40 @@ export interface ObjectTypeDefinition {
   statuses?: SchemaStatus[]
   /** GH77 — historiser le statut (`history.status`). Absent = true ; écrit seulement si false. */
   trackStatusHistory?: boolean
+  /** GH229 — champ affiché à la place de l'ID Polenta dans les liens vers un objet du type :
+   *  `title` ou nom d'un champ `text` / `number` / `enum` du type. Absent = ID Polenta. */
+  displayIdField?: string
+}
+
+/** GH229 — types de champ admis comme « ID affiché ». */
+export const DISPLAY_ID_FIELD_TYPES: readonly SchemaFieldType[] = ['text', 'number', 'enum']
+
+/** GH229 — `displayIdField` admis pour ce type : `title` ou un champ text / number / enum. */
+export function displayIdFieldCandidates(typeDef: Pick<ObjectTypeDefinition, 'fields'>): string[] {
+  return ['title', ...typeDef.fields.filter(f => DISPLAY_ID_FIELD_TYPES.includes(f.type)).map(f => f.name)]
+}
+
+/** GH229 — raison du refus de `displayIdField`, `null` si absent ou valide. */
+export function displayIdFieldError(typeDef: Pick<ObjectTypeDefinition, 'name' | 'fields' | 'displayIdField'>): string | null {
+  const name = typeDef.displayIdField
+  if (name === undefined) return null
+  if (displayIdFieldCandidates(typeDef).includes(name)) return null
+  const field = typeDef.fields.find(f => f.name === name)
+  return field
+    ? `L'ID affiché du type "${typeDef.name}" ne peut pas être le champ "${name}" de type ${field.type} (title, text, number ou enum attendu).`
+    : `L'ID affiché du type "${typeDef.name}" désigne un champ inconnu : "${name}".`
+}
+
+/** GH229 — texte d'un lien vers `obj` : valeur de `displayIdField` si valide et non vide, sinon
+ *  l'ID Polenta. */
+export function displayIdOf(
+  obj: { id: string; title?: string; fields?: Record<string, unknown> },
+  typeDef: Pick<ObjectTypeDefinition, 'name' | 'fields' | 'displayIdField'> | null | undefined,
+): string {
+  if (!typeDef?.displayIdField || displayIdFieldError(typeDef)) return obj.id
+  const raw = typeDef.displayIdField === 'title' ? obj.title : obj.fields?.[typeDef.displayIdField]
+  const text = typeof raw === 'number' ? String(raw) : typeof raw === 'string' ? raw.trim() : ''
+  return text || obj.id
 }
 
 /** GH68 — `status` est-il le statut d'approbation du type (`statuses[].isApproval`) ? Repli sur

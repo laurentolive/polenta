@@ -1370,6 +1370,25 @@ Cliquer une icône déclenche `handlePanelSelect(panel)` qui navigue vers la **r
 - Préférence **par poste** : `localStorage` `polenta.sidebarCollapsed` = `"1"` si replié, clé absente
   sinon (toute autre valeur → déplié). La largeur `polenta.sidebarWidth` n'est pas touchée par le repli.
 
+**Zoom de l'interface (GH237)** — zoom global de la fenêtre (comme VS Code), desktop seulement
+(`capabilities.appZoom`). Paliers fixes `ZOOM_STEPS` (`shared/zoom.ts`) : 50, 67, 75, 80, 90, 100, 110,
+125, 150, 175, 200, 250, 300 % ; sans effet aux bornes.
+- **Molette** : Ctrl+molette / pincement → `webContents` `zoom-changed` (main, `host/app-zoom.ts`), émis
+  seulement si la page n'a pas consommé l'événement : l'éditeur et la visionneuse draw.io gardent leur zoom.
+- **Clavier** (`layout/zoomShortcut.ts`, écouté sur `window` en capture par `ZoomIndicator`) : Ctrl (Cmd
+  sur macOS) + `=`/`+`/pavé `+` → zoomer, `-`/pavé `-` → dézoomer, `0`/pavé `0`/touche physique `Digit0`
+  (AZERTY) → 100 % ; Alt exclu (AltGr). Les frappes dans l'iframe de l'éditeur draw.io n'y arrivent pas.
+  IPC desktop-only `app:zoom` (`'in' | 'out' | 'reset'`) → nouveau facteur.
+- **Main seul maître du niveau** : facteur courant en mémoire, appliqué à toutes les fenêtres de
+  l'application, diffusé par `app:zoom-changed`, persisté dans la préférence app-level `zoomFactor`
+  (SPEC-TECH-stack §9 ; échec d'écriture journalisé, zoom appliqué quand même). Nouvelle fenêtre :
+  `webPreferences.zoomFactor` (pas de flash à 100 %), réappliqué à chaque `did-finish-load`.
+- **Bulle** `ZoomIndicator` (monté à la racine, aussi sur `/login`, jamais sur `/print/*`) : « NN % » +
+  « Réinitialiser » (absent à 100 %), haut-centre, masquée 1,5 s après le dernier changement, maintenue au survol.
+- **Fenêtres hors écran** (export PDF, instantanés draw.io) non concernées : sous `file://` la clé de zoom
+  Chromium est l'URL complète et ces fenêtres chargent `index.html?…` (vérifié en e2e). Limite connue :
+  sous `pnpm dev` (origine http://localhost partagée) le zoom peut s'y propager.
+
 **Personnalisation (GH56)** — ordre et visibilité des boutons, préférence d'interface **par poste**,
 commune à tous les projets (`localStorage`, clé `polenta.activityBarLayout` = `{order, hidden}` ;
 par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, menu dans

@@ -52,6 +52,7 @@ export function createIpcClient(
       refreshTeamConfig: () => invoke('app:refresh-team-config'),
       teamProjects: () => invoke('app:team-projects'),
       takePendingInvite: () => invoke('app:take-pending-invite'),
+      zoom: (action) => invoke('app:zoom', action),
     },
     update: {
       getState: () => invoke('update:get-state'),

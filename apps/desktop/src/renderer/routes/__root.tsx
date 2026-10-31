@@ -1,6 +1,8 @@
 import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { AppLayout } from '../components/layout/AppLayout'
 import { TabBar } from '../components/layout/TabBar'
+import { ZoomIndicator } from '../components/layout/ZoomIndicator'
+import { capabilities } from '../platform'
 import { useMenuEvents } from '../hooks/useMenuEvents'
 import { useLiveFileSync } from '../hooks/useLiveFileSync'
 import { useTabShortcuts } from '../hooks/useTabShortcuts'
@@ -40,6 +42,8 @@ function RootLayout() {
   return (
     <ThemeProvider>
       {!isPrint && <AppEffects enabled={pathname !== '/login'} />}
+      {/* GH237 — zoom de l'interface, aussi sur /login ; jamais dans une fenêtre d'export. */}
+      {!isPrint && capabilities.appZoom && <ZoomIndicator />}
       {isBareRoute ? <Outlet /> : <TabsProvider><AppChrome /></TabsProvider>}
     </ThemeProvider>
   )

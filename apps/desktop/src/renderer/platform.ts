@@ -24,4 +24,6 @@ export const capabilities = {
   serverAdmin: isWeb,
   /** GH15 — délai de connexion réseau : réglage du process desktop (le serveur web garde les défauts). */
   networkTimeout: !isWeb,
+  /** GH237 — zoom de l'interface (le navigateur a le sien). */
+  appZoom: !isWeb,
 } as const

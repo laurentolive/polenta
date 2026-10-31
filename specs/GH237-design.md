@@ -26,8 +26,8 @@ l'application et diffuse le nouveau niveau. Le renderer ne fait que remonter des
 | `packages/types/src/app.ts` | `AppSettings.zoomFactor?: number` ; type `ZoomAction = 'in' \| 'out' \| 'reset'`. |
 | `apps/desktop/src/main/services/app-settings.service.ts` | `read()` : `zoomFactor` normalisé, présent seulement s'il ≠ 1 ; `set()` : idem (clé supprimée à 1). Même convention que `networkTimeoutSeconds`. |
 | `apps/desktop/src/main/services/app-settings.service.gh237.test.ts` (nouveau) | Persistance, absence à 1, valeurs invalides. |
-| `apps/desktop/src/main/host/app-zoom.ts` (nouveau) | `initAppZoom(settings)`, `initialZoomFactor()`, `attachAppZoom(win)` (abonnement `zoom-changed`, fenêtre ajoutée à l'ensemble des fenêtres de l'application), `applyZoom(action)` : calcule le palier, écrit la préférence, `setZoomFactor` sur chaque fenêtre de l'application, diffuse `app:zoom-changed` (facteur) à ces fenêtres, retourne le facteur. |
-| `apps/desktop/src/main/index.ts` | `webPreferences.zoomFactor: initialZoomFactor()` (niveau appliqué avant le premier paint), `attachAppZoom(win)` ; `initAppZoom(container.appSettings)` avant la première fenêtre. |
+| `apps/desktop/src/main/host/app-zoom.ts` (nouveau) | `initAppZoom(settings)`, `currentZoomFactor()` (facteur courant gardé en mémoire), `attachAppZoom(win)` (abonnement `zoom-changed`, fenêtre ajoutée à l'ensemble des fenêtres de l'application), `applyZoom(action)` : calcule le palier, écrit la préférence, `setZoomFactor` sur chaque fenêtre de l'application, diffuse `app:zoom-changed` (facteur) à ces fenêtres, retourne le facteur. |
+| `apps/desktop/src/main/index.ts` | `webPreferences.zoomFactor: currentZoomFactor()` (niveau appliqué avant le premier paint), `attachAppZoom(win)` ; `initAppZoom(container.appSettings)` avant la première fenêtre. |
 | `apps/desktop/src/main/ipc/channels.ts`, `desktop-only.handlers.ts` | Channel desktop-only `app:zoom` (action) → facteur. |
 | `packages/api-client/src/types.ts`, `ipc-client.ts` | `app.zoom(action): Promise<number>`. |
 | `apps/desktop/src/renderer/platform.ts` | `capabilities.appZoom = !isWeb`. |
@@ -38,10 +38,10 @@ l'application et diffuse le nouveau niveau. Le renderer ne fait que remonter des
 | `apps/desktop/e2e-desktop/gh237-zoom.spec.ts` (nouveau) | Scénarios E1–E4 de `GH237-tests.md`. |
 
 Fenêtres hors écran (`electron-pdf.ts`, `electron-drawio-snapshot.ts`) : jamais passées à
-`attachAppZoom`, ni `webPreferences.zoomFactor` → rendu à 100 %. Le zoom Chromium est par
-origine : ces fenêtres chargent la même origine (`file://` / serveur de dev) → `applyZoom`
-réapplique explicitement aux fenêtres de l'application, et les fenêtres hors écran forcent
-`setZoomFactor(1)` au chargement si nécessaire (vérifié en sprint).
+`attachAppZoom`. Le zoom Chromium est mémorisé par origine, mais sous `file://` la clé est l'URL
+complète et ces fenêtres chargent `index.html?…` : elles restent à 100 % sans modification
+(vérifié en e2e). Limite connue, développement seulement : sous `pnpm dev` (http://localhost) le
+zoom peut s'y propager.
 
 ## Décisions
 

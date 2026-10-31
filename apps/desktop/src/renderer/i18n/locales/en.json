@@ -1675,6 +1675,10 @@
       "requirementOfInstance": "Requirement of this instance:"
     }
   },
+  "zoom": {
+    "label": "Zoom level",
+    "reset": "Reset"
+  },
   "update": {
     "badge": {
       "title": "{{appName}} v{{version}} is available"

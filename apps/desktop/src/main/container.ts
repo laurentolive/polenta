@@ -16,6 +16,7 @@ import { SchemaService } from './services/schema.service'
 import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
 import { ChangesService } from './services/changes.service'
+import { ChangeTrackingService } from './services/change-tracking.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TreeService, indexObjectLister } from './services/tree.service'
@@ -106,6 +107,13 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
   // GH198 — objet change.
   const changes = new ChangesService(git, schema, workspaceTree, history, { traceability, sync, campaigns })
+  // GH200 — rattachement par élément : création / réouverture assignées à un changeset.
+  const changeTracking = new ChangeTrackingService(git, schema, changes)
+  requirements.setModificationTracker(changeTracking)
+  tests.setModificationTracker(changeTracking)
+  changes.setTracker(changeTracking)
+  // GH207 — campagne créée depuis un changeset : lien des deux côtés.
+  campaigns.setChangesetLinker({ assertOpen: (r, id) => changes.assertOpen(r, id), link: (r, id, c) => changes.linkCampaign(r, id, c) })
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)
@@ -183,6 +191,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     campaignExecution,
     executionHistory,
     changes,
+    changeTracking,
     tree,
     baseline,
     polentaRepo,

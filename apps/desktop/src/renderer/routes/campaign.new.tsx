@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { decodeInstances } from '../lib/reqInstances'
 import { api } from '../api'
 import { useProjectSchema, getObjectTypeRefs, getTestTypeRefs } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -32,6 +33,9 @@ export const Route = createFileRoute('/campaign/new')({
     // testCaseIds est une liste d'IDs séparés par des virgules, title un titre suggéré.
     title: search['title'] as string | undefined,
     testCaseIds: search['testCaseIds'] as string | undefined,
+    /** GH207 — changeset qui crée la campagne, et instances retenues (`TEST-1:SW-1|SW-2,…`). */
+    ...(search['changeset'] ? { changeset: search['changeset'] as string } : {}),
+    ...(search['instances'] ? { instances: search['instances'] as string } : {}),
   }),
 })
 
@@ -48,7 +52,7 @@ function NewCampaignPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { repoPath, projectId, component, level, title: prefillTitle, testCaseIds: prefillTestCaseIds } = Route.useSearch()
+  const { repoPath, projectId, component, level, title: prefillTitle, testCaseIds: prefillTestCaseIds, changeset, instances } = Route.useSearch()
 
   const [title, setTitle] = useState(prefillTitle ?? '')
   const [baselineRef, setBaselineRef] = useState('')
@@ -73,11 +77,11 @@ function NewCampaignPage() {
     setTitle(prefillTitle ?? '')
     setSelectedTests(new Set(prefillTestCaseIds ? prefillTestCaseIds.split(',').filter(Boolean) : []))
     setParamValues({})
-    setReqSel({})
+    setReqSel(decodeInstances(instances))
     setCarried([])
     setCarryState(EMPTY_CARRY_STATE)
     setPickerInitial(null)
-  }, [prefillTitle, prefillTestCaseIds])
+  }, [prefillTitle, prefillTestCaseIds, instances])
 
   const { data: schema } = useProjectSchema(repoPath)
   // GH146 — `type` est la ref complète `<nœud>::<type>` (comme `objectTypeRef`), pas le seul nom.
@@ -180,6 +184,7 @@ function NewCampaignPage() {
         carried: toCarriedSelection(carried),
         component: component || typeNode || undefined,
         level: level || typeName || undefined,
+        ...(changeset && { changeset }),
       }, workspaceDir || undefined),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })

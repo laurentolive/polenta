@@ -2,6 +2,10 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useMemo, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import type { BacklogItem } from '@polenta/types'
+import { api } from '../api'
+import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { AssignToChangeDialog } from '../components/changes/AssignToChangeDialog'
 import { useBacklog } from '../hooks/useBacklog'
@@ -11,6 +15,7 @@ import { useSetTabTitle } from '../contexts/TabsContext'
 /**
  * GH199 §8bis — backlog d'un composant : éléments à traiter (ni approuvés ni terminaux) assignés à
  * aucun change ouvert ; « Assigner à… » un change. URL : /changes/backlog?projectId&repoPath&component
+ * GH200 §5 — éléments approuvés modifiés hors interface : signalés, diff, « Rouvrir et assigner… ».
  */
 export const Route = createFileRoute('/changesets_/backlog')({
   component: BacklogPage,
@@ -46,8 +51,27 @@ function BacklogPage() {
     else next.add(id)
     return next
   })
-  const chosen = items.filter(i => selected.has(i.id)).map(i => i.id)
-  const allChosen = items.length > 0 && chosen.length === items.length
+  // GH200 §5 — réouverture d'un élément modifié hors interface, assignée par la porte de modification.
+  const qc = useQueryClient()
+  const gates = useModificationGate()
+  const [reopenError, setReopenError] = useState<string | null>(null)
+  const reopen = async (i: BacklogItem) => {
+    setReopenError(null)
+    const statuses = (i.category === 'requirement' ? getReqTypeDef(schema, i.objectTypeRef) : getTestTypeDef(schema, i.objectTypeRef))?.statuses
+    const draft = statuses?.find(s => !s.isApproval && !s.isTerminal)?.name ?? 'draft'
+    try {
+      const gate = await gates.status(repoPath, { id: i.id, objectTypeRef: i.objectTypeRef, category: i.category }, draft)
+      if (!gate.ok) return
+      if (i.category === 'requirement') await api.requirements.openDraft(repoPath, i.id, draft, undefined, undefined, gate.changesetId)
+      else await api.tests.openDraft(repoPath, i.id, draft, undefined, undefined, gate.changesetId)
+      await Promise.all([qc.invalidateQueries({ queryKey: ['changes-backlog'] }), qc.invalidateQueries({ queryKey: ['changesets'] })])
+    } catch (err) {
+      setReopenError(err instanceof Error ? err.message : String(err))
+    }
+  }
+  const chosen = items.filter(i => selected.has(i.id) && !i.outside).map(i => i.id)
+  const assignable = items.filter(i => !i.outside)
+  const allChosen = assignable.length > 0 && chosen.length === assignable.length
 
   return (
     <div className="flex flex-col h-full overflow-hidden" data-testid="backlog-page">
@@ -64,6 +88,7 @@ function BacklogPage() {
       <div className="px-4 py-2 border-b border-edge flex items-center gap-3">
         <input className="input-field text-xs w-64" value={filter} onChange={e => setFilter(e.target.value)} placeholder={t('changes.backlog.filter')} />
         <p className="text-xs text-ink-3">{t('changes.backlog.help')}</p>
+        {reopenError && <p className="text-xs text-status-danger">{reopenError}</p>}
       </div>
       <div className="flex-1 overflow-y-auto">
         {backlogQuery.isError ? (
@@ -78,18 +103,21 @@ function BacklogPage() {
               <tr>
                 <th className="px-4 py-1.5 w-8">
                   <input type="checkbox" checked={allChosen} aria-label={t('changes.backlog.selectAll')}
-                    onChange={() => setSelected(allChosen ? new Set() : new Set(items.map(i => i.id)))} />
+                    onChange={() => setSelected(allChosen ? new Set() : new Set(assignable.map(i => i.id)))} />
                 </th>
                 <th className="py-1.5 pr-3">ID</th>
                 <th className="py-1.5 pr-3">{t('changes.backlog.titleCol')}</th>
                 <th className="py-1.5 pr-3">{t('changes.backlog.statusCol')}</th>
+                <th className="py-1.5 pr-3" />
               </tr>
             </thead>
             <tbody>
               {items.map(i => (
                 <tr key={i.id} className="border-b border-edge-subtle hover:bg-hover" data-testid={`backlog-row-${i.id}`}>
                   <td className="px-4 py-1">
-                    <input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(i.id)} aria-label={t('changes.backlog.select', { id: i.id })} />
+                    {!i.outside && (
+                      <input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(i.id)} aria-label={t('changes.backlog.select', { id: i.id })} />
+                    )}
                   </td>
                   <td className="py-1 pr-3 whitespace-nowrap">
                     {i.category === 'requirement'
@@ -99,6 +127,26 @@ function BacklogPage() {
                   </td>
                   <td className="py-1 pr-3 text-ink">{i.title}</td>
                   <td className="py-1 pr-3 text-ink-3 whitespace-nowrap">{statusLabel(i.category, i.objectTypeRef, i.status)}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap text-xs">
+                    {i.outside && (
+                      <span className="flex items-center gap-3" data-testid={`backlog-outside-${i.id}`}>
+                        <span className="text-status-warning">{t('changes.backlog.outside')}</span>
+                        <Link
+                          to="/diff"
+                          search={{
+                            projectId, repoPath, filepath: i.outside.filePath, commitSha: undefined, element: '1',
+                            ...(i.outside.approvedSha && { baseSha: i.outside.approvedSha }),
+                          }}
+                          className="text-prim hover:underline"
+                        >
+                          {t('changes.trace.diff')}
+                        </Link>
+                        <button type="button" className="text-prim hover:underline" onClick={() => void reopen(i)} data-testid={`backlog-reopen-${i.id}`}>
+                          {t('changes.backlog.reopen')}
+                        </button>
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Trash2 } from 'lucide-react'
 import { fieldValueToText, flattenSystemNodes, isFieldRequiredNow, objectFieldReader, type ChangeImpactRow, type ChangeImpactStatus, type UpdateChangeDto } from '@polenta/types'
+import { ChangeCampaignsSection } from '../components/changes/ChangeCampaignsSection'
 import { api } from '../api'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { DynamicField } from '../components/DynamicField'
@@ -53,6 +54,7 @@ function ChangePage() {
       qc.setQueryData(['changeset', repoPath, changeId], (prev: typeof change) => ({ ...prev, ...saved }))
       qc.invalidateQueries({ queryKey: ['changesets'] })
       qc.invalidateQueries({ queryKey: ['change-analysis', repoPath, changeId] })
+      qc.invalidateQueries({ queryKey: ['change-trace', repoPath, changeId] })
       qc.invalidateQueries({ queryKey: ['changes-backlog'] })
       setEditingFields(null)
     },
@@ -68,6 +70,12 @@ function ChangePage() {
     if (c.id === changeId || c.repoPath !== repoPath || !c.open) continue
     for (const id of c.toModifyIds) alsoIn.set(id, [...(alsoIn.get(id) ?? []), c.id])
   }
+  // GH200 — trace départ / approbation des éléments à modifier.
+  const { data: traces = [] } = useQuery({
+    queryKey: ['change-trace', repoPath, changeId, change?.toModify.length, change?.status],
+    queryFn: () => api.changesets.trace(repoPath, changeId),
+    enabled: !!repoPath && !!change,
+  })
   // GH199 — analyse d'impact (live ; instantané figé au statut terminal).
   const analysisQuery = useQuery({
     queryKey: ['change-analysis', repoPath, changeId],
@@ -215,12 +223,11 @@ function ChangePage() {
               <dd className="text-ink-2">{[...change.origin.runs, ...change.origin.decisions.map(d => `${d.conformityId} / ${d.objectId}`)].join(', ') || '—'}</dd>
               <dt className="text-ink-3">{t('changes.integratedIn')}</dt>
               <dd className="text-ink-2">{change.integratedIn || '—'}</dd>
-              <dt className="text-ink-3">{t('changes.campaigns')}</dt>
-              <dd className="text-ink-2">{change.campaigns.join(', ') || '—'}</dd>
             </dl>
 
             <ToModifyList
               items={change.toModify}
+              traces={new Map(traces.map(tr => [tr.id, tr]))}
               onChange={toModify => update.mutate({ toModify })}
               changeId={change.id}
               component={change.component}
@@ -231,8 +238,10 @@ function ChangePage() {
               elements={elements}
               disabled={update.isPending}
             />
+            {/* Retour de validation du 2026-10-31 : la liste sert aux éléments que l'utilisateur
+                identifie lui-même ; les calculés sont dans l'analyse d'impact. */}
             <ImpactedList
-              rows={impactRows}
+              rows={impactRows.filter(r => r.source === 'declared')}
               onSetImpact={setImpact}
               onAddDeclared={ids => update.mutate({ impacted: [...change.impacted, ...ids.map(id => ({ id, status: 'impact_non_verifie' as const, source: 'declared' as const }))] })}
               onRemoveDeclared={id => update.mutate({ impacted: change.impacted.filter(i => i.id !== id) })}
@@ -257,6 +266,8 @@ function ChangePage() {
               projectId={projectId}
               disabled={update.isPending}
             />
+
+            <ChangeCampaignsSection repoPath={repoPath} projectId={projectId} change={change} />
 
             <HistorySection
               repoPath={repoPath}

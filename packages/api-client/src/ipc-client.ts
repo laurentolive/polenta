@@ -173,6 +173,7 @@ export function createIpcClient(
       rebase: (p, onto) => invoke('sync:rebase', p, onto),
       diffBetween: (p, sha1, sha2) => invoke('sync:diff-between', p, sha1, sha2),
       diffFileBetween: (p, sha1, sha2, filepath) => invoke('sync:diff-file-between', p, sha1, sha2, filepath),
+      diffElement: (p, filepath, baseSha, newSha) => invoke('sync:diff-element', p, filepath, baseSha, newSha),
       resolveRefs: (p) => invoke('sync:resolve-refs', p),
     },
     diffEdit: {
@@ -211,7 +212,7 @@ export function createIpcClient(
       get: (p, id) => invoke('requirements:get', p, id),
       create: (p, dto, workspaceDir) => invoke('requirements:create', p, dto, workspaceDir),
       update: (p, id, dto, workspaceDir) => invoke('requirements:update', p, id, dto, workspaceDir),
-      openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('requirements:open-draft', p, id, targetStatus, workspaceDir, comment),
+      openDraft: (p, id, targetStatus, workspaceDir, comment, changesetId) => invoke('requirements:open-draft', p, id, targetStatus, workspaceDir, comment, changesetId),
       transition: (p, id, dto, workspaceDir) => invoke('requirements:transition', p, id, dto, workspaceDir),
       // TODO: remove versioning API
       links: (p, id) => invoke('requirements:links', p, id),
@@ -232,7 +233,7 @@ export function createIpcClient(
       execute: (p, id, dto, workspaceDir) => invoke('tests:execute', p, id, dto, workspaceDir),
       runs: (p, id) => invoke('tests:runs', p, id),
       typeDef: (p, ref, workspaceDir) => invoke('tests:type-def', p, ref, workspaceDir ?? null),
-      openDraft: (p, id, targetStatus, workspaceDir, comment) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment),
+      openDraft: (p, id, targetStatus, workspaceDir, comment, changesetId) => invoke('tests:open-draft', p, id, targetStatus, workspaceDir, comment, changesetId),
     },
     traceability: {
       matrix: (p, f, workspaceDir) => invoke('traceability:matrix', p, f, workspaceDir),
@@ -304,6 +305,9 @@ export function createIpcClient(
       assign: (p, id, elementIds) => invoke('changesets:assign', p, id, elementIds),
       move: (p, fromId, toId, elementIds) => invoke('changesets:move', p, fromId, toId, elementIds),
       approvalCheck: (p, element, toStatus) => invoke('changesets:approval-check', p, element, toStatus),
+      modificationCheck: (p, element, kind, workspaceDir) => invoke('changesets:modification-check', p, element, kind, workspaceDir ?? null),
+      trace: (p, id) => invoke('changesets:trace', p, id),
+      testsToRun: (p, id) => invoke('changesets:tests-to-run', p, id),
     },
     // GH197 — historique des exécutions
     executions: {

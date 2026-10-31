@@ -1,4 +1,4 @@
-import { Outlet, useRouterState, useNavigate } from '@tanstack/react-router'
+import { Outlet, useRouterState, useNavigate, useRouter } from '@tanstack/react-router'
 import { useState, useRef, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from 'react'
 import { ActivityBar } from './ActivityBar'
 import { Sidebar } from './Sidebar'
@@ -110,6 +110,17 @@ export function AppLayout() {
       setLastDashboardRoute({ pathname, search: search ?? '' })
     }
   }, [routePanel, pathname, search])
+
+  // GH207 (retour de validation du 2026-10-31) : même mécanisme pour la vue Changesets — revenir à
+  // la page quittée (un changeset, le backlog, les modifications locales…) plutôt qu'à l'accueil.
+  const [lastChangesetsRoute, setLastChangesetsRoute] = useState<{ pathname: string; search: string } | null>(null)
+
+  useEffect(() => {
+    if (routePanel === 'changesets') {
+      setLastChangesetsRoute({ pathname, search: search ?? '' })
+    }
+  }, [routePanel, pathname, search])
+  const router = useRouter()
 
   useEffect(() => {
     setLastVersionRoute(null)
@@ -239,8 +250,16 @@ export function AppLayout() {
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
         break
       case 'changesets':
-        // GH198 — vue Changements : page d'accueil (le panneau liste les changes du workspace).
-        if (currentProjectId) navigate({ to: '/changesets', search: { projectId: currentProjectId } })
+        // GH198 — vue Changements : page d'accueil (le panneau liste les changes du workspace) ;
+        // GH207 — sinon la dernière page quittée de la vue, si elle appartient au projet ouvert.
+        if (currentProjectId) {
+          const last = lastChangesetsRoute
+          if (last && new URLSearchParams(last.search).get('projectId') === currentProjectId) {
+            router.history.push(`${last.pathname}${last.search}`)
+          } else {
+            navigate({ to: '/changesets', search: { projectId: currentProjectId } })
+          }
+        }
         break
       case 'dashboard':
         if (currentProjectId) {
@@ -305,13 +324,13 @@ export function AppLayout() {
     <VersioningProvider currentProjectId={currentProjectId}>
       <SelectedRepoProvider key={currentProjectId}>
         <CompareRefsProvider>
+          <ApprovalGateProvider>
             <SystemViewProvider currentProjectId={currentProjectId}>
               <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
-                <ApprovalGateProvider>
-                  {inner}
-                </ApprovalGateProvider>
+                {inner}
               </SearchProvider>
             </SystemViewProvider>
+          </ApprovalGateProvider>
         </CompareRefsProvider>
       </SelectedRepoProvider>
     </VersioningProvider>

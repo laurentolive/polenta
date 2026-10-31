@@ -12,6 +12,12 @@ import { withKeyLock } from './serialize-writes.util'
 import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
 import { applyFieldsWrite, FieldWriteError, readOwnedTypeDef } from './field-write.util'
+import { assertContentEditable, statusModificationKind } from './approved-lock.util'
+import type { ModificationTracker } from './change-tracking.service'
+import type { ModificationKind } from '@polenta/types'
+
+/** GH200 — champs de contenu d'un test, verrouillés quand il est approuvé (`objectTypeRef` : cascade système). */
+const TEST_CONTENT_KEYS = ['title', 'fields', 'preconditions', 'equipment', 'steps', 'postconditions'] as const
 
 export class TestsService {
   constructor(
@@ -21,6 +27,13 @@ export class TestsService {
     private readonly revalidation?: RevalidationService,
     private readonly history?: HistoryService,
   ) {}
+
+  /** GH200 — cf. `RequirementsService.setModificationTracker`. */
+  private tracker?: ModificationTracker
+
+  setModificationTracker(tracker: ModificationTracker): void {
+    this.tracker = tracker
+  }
 
   findAll(repoPath: string): Promise<TestCase[]> {
     return this.testsIndex.findAll(repoPath)
@@ -43,6 +56,8 @@ export class TestsService {
       throw new Error(`Statut inconnu pour le type ${dto.objectTypeRef} : "${dto.status}"`)
     }
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
+    // GH200 — changeset demandé contrôlé avant d'émettre l'ID.
+    if (dto.changesetId) await this.tracker?.assertChangeset(targetRepo, dto.changesetId)
     const testId = await this.nextTestId(repoPath, targetRepo, dto.objectTypeRef)
 
     // See RequirementsService.create — same reconciled-but-not-guaranteed-unique
@@ -72,6 +87,7 @@ export class TestsService {
     }
 
     const created = await this.persist(repoPath, targetRepo, null, test)
+    await this.track(targetRepo, created.id, 'create', undefined, dto.changesetId)
     return created
   }
 
@@ -82,7 +98,7 @@ export class TestsService {
     /** GH150 — `update_tests` (MCP) : une clé de `fields` à `null` retire le champ. */
     opts: { removeNullFields?: boolean } = {},
   ): Promise<TestCase> {
-    const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
+    const { updated, leftApproval, tracked } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
 
@@ -91,11 +107,12 @@ export class TestsService {
       // dernier commit par l'index) — cette édition n'étant pas commitée, ils ne changent
       // pas ici (T112).
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
+      if (dto.changesetId) await this.tracker?.assertChangeset(targetRepo, dto.changesetId)
       // GH164 — un test approuvé qui quitte ce statut voit sa version incrémentée, comme une
       // exigence (`RequirementsService.transition`, T150) : même règle quel que soit le chemin.
       const wasApproved = !!typeDef?.statuses?.find(s => s.name === existing.status)?.isApproval
       const statusChanged = !!dto.status && dto.status !== existing.status
-      const updated = await this.persist(repoPath, targetRepo, existing, {
+      const next: TestCase = {
         ...existing,
         ...(dto.title && { title: dto.title }),
         ...(dto.objectTypeRef && { objectTypeRef: dto.objectTypeRef }),
@@ -108,34 +125,53 @@ export class TestsService {
         fields: opts.removeNullFields
           ? mergeFields(existing.fields as Record<string, unknown>, dto.fields)
           : { ...(existing.fields as object), ...(dto.fields ?? {}) },
-      }, { comment: dto.modificationComment })
+      }
+      // GH200 — contenu d'un test approuvé : réouverture d'abord (dans la même écriture, acceptée).
+      assertContentEditable(typeDef, existing, next, TEST_CONTENT_KEYS)
+      const updated = await this.persist(repoPath, targetRepo, existing, next, { comment: dto.modificationComment })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(typeDef, existing.status, dto.status)
-      return { updated, leftApproval }
+      const kind = dto.status ? statusModificationKind(typeDef, existing.status, dto.status) : null
+      return { updated, leftApproval, tracked: kind && { repo: targetRepo, kind, versionBefore: existing.version ?? 1 } }
     })
     // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).
     if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
+    if (tracked) await this.track(tracked.repo, id, tracked.kind, tracked.versionBefore, dto.changesetId)
     return updated
   }
 
+  /** GH200 — cf. `RequirementsService.track`. */
+  private async track(repo: string, id: string, kind: ModificationKind, versionBefore?: number, changesetId?: string): Promise<void> {
+    try {
+      await this.tracker?.onModified(repo, { id, filePath: `tests/${id}.yaml`, versionBefore }, kind, changesetId)
+    } catch (err) {
+      console.warn(`[GH200] ${id} non assigné :`, err)
+    }
+  }
+
   /** GH163 — `comment` : commentaire de modification, conservé sur l'entrée d'historique du statut. */
-  async openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<TestCase> {
-    const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
+  async openDraft(
+    repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string,
+  ): Promise<TestCase> {
+    const { updated, leftApproval, tracked } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+      if (changesetId) await this.tracker?.assertChangeset(targetRepo, changesetId)
       const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         status: targetStatus,
         version: (existing.version ?? 0) + 1,
       }, { comment })
-      const leftApproval = RevalidationService.leavesApproval(
-        await this.readTypeDef(repoPath, existing.objectTypeRef), existing.status, targetStatus)
-      return { updated, leftApproval }
+      const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
+      const leftApproval = RevalidationService.leavesApproval(typeDef, existing.status, targetStatus)
+      const kind = statusModificationKind(typeDef, existing.status, targetStatus)
+      return { updated, leftApproval, tracked: kind && { repo: targetRepo, kind, versionBefore: existing.version ?? 1 } }
     })
     // T172 — hors du verrou de ce test (pas de verrous imbriqués avec ceux des pairs).
     if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
+    if (tracked) await this.track(tracked.repo, id, tracked.kind, tracked.versionBefore, changesetId)
     return updated
   }
 

@@ -1,5 +1,6 @@
 import type {
-  ApprovalCheck, BacklogItem, Change, ChangeAnalysis, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify,
+  ApprovalCheck, BacklogItem, Change, ChangeAnalysis, ChangeElementRef, ChangeImpacted, ChangeRange, ChangeSummary, ChangeToModify,
+  ChangeToModifyTrace, ChangeTestsToRun,
   ComponentBacklog, CreateChangeDto, ObjectTypeDefinition, ProjectSchema, TestCampaign, UpdateChangeDto,
 } from '@polenta/types'
 import { CHANGE_IMPACT_STATUSES, flattenSystemNodes, initialStatus, isToProcess, isUnknownStatus, pruneImpacted, uniqueById } from '@polenta/types'
@@ -7,9 +8,11 @@ import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { TraceabilityService } from './traceability.service'
 import { computeChangeAnalysis } from './change-analysis.util'
+import { computeTestsToRun, linkedCampaigns } from './change-tests.util'
 import type { HistoryService } from './history.service'
 import type { SchemaService } from './schema.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
+import type { ChangeTrackingService } from './change-tracking.service'
 import { applyFieldsWrite } from './field-write.util'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
@@ -136,10 +139,90 @@ export class ChangesService {
     }
     collect(reqs, 'requirement')
     collect(tests, 'test')
+    // GH200 §5 — approuvés modifiés hors interface : dans le backlog de leur composant (filet).
+    for (const o of await this.tracker?.outsideModifications(repo).catch(() => []) ?? []) {
+      const el = (o.category === 'requirement' ? reqs : tests).find(e => e.id === o.id)
+      const component = componentOfRef(local, el?.objectTypeRef)
+      if (!el || !component) continue
+      groups.get(component)!.push({
+        id: el.id, title: el.title ?? '', category: o.category, status: el.status, objectTypeRef: el.objectTypeRef,
+        needsRevalidation: el.needsRevalidation === true,
+        outside: { approvedSha: o.approvedSha, dirty: o.dirty, filePath: o.filePath },
+      })
+    }
     return local.map(n => ({
       repoPath: repo, component: n.name, label: n.label || n.name,
       items: groups.get(n.name)!.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
     }))
+  }
+
+  /** GH207 §1–§4 — tests à exécuter (analyse courante ou figée), campagnes liées, tests à ajouter. */
+  async testsToRun(repoPath: string, id: string): Promise<ChangeTestsToRun> {
+    if (!this.impact) throw new Error('Analyse d\'impact indisponible')
+    const change = await this.get(repoPath, id)
+    const range = change.mode === 'range' ? change.range : undefined
+    const [analysis, snapshot, campaigns] = await Promise.all([
+      this.analysis(repoPath, id),
+      range ? this.impact.traceability.loadSnapshotAtRef(repoPath, range.to.sha) : this.impact.traceability.loadWorkingTreeSnapshot(repoPath, [repoPath]),
+      this.impact.campaigns.list(repoPath).catch(() => [] as TestCampaign[]),
+    ])
+    const { tests, uncovered } = computeTestsToRun(change, analysis.rows, snapshot)
+    return { tests, uncovered, ...linkedCampaigns(change, tests, campaigns) }
+  }
+
+  /** GH207 — le changeset existe et est ouvert (création d'une campagne liée, avant son ID). */
+  async assertOpen(repoPath: string, id: string): Promise<void> {
+    const summary = (await this.summaries(repoPath)).find(s => s.id === id)
+    if (!summary) throw new Error(`Changeset introuvable : ${id}`)
+    if (!summary.open) throw new Error(`${id} est clos : il ne reçoit plus de campagne`)
+  }
+
+  /** GH207 — ajoute une campagne à `campaigns` (sans doublon). */
+  async linkCampaign(repoPath: string, id: string, campaignId: string): Promise<Change> {
+    return withKeyLock(`${repoPath}::${DIR}/${id}`, async () => {
+      const existing = await this.get(repoPath, id)
+      if (existing.campaigns.includes(campaignId)) return existing
+      return this.persist(repoPath, existing, { ...existing, campaigns: [...existing.campaigns, campaignId] })
+    })
+  }
+
+  /** GH200 — trace par élément (§4) et modifications hors interface (§5) ; posé après construction. */
+  private tracker?: Pick<ChangeTrackingService, 'trace' | 'outsideModifications'>
+
+  setTracker(tracker: Pick<ChangeTrackingService, 'trace' | 'outsideModifications'>): void {
+    this.tracker = tracker
+  }
+
+  /** GH200 §4 — trace des éléments à modifier d'un changeset. */
+  async trace(repoPath: string, id: string): Promise<ChangeToModifyTrace[]> {
+    const change = await this.get(repoPath, id)
+    return this.tracker ? this.tracker.trace(repoPath, change) : []
+  }
+
+  /** GH200 — changesets d'un seul repo (repo de stockage d'un élément). */
+  repoSummaries(repo: string): Promise<ChangeSummary[]> {
+    return this.summaries(repo)
+  }
+
+  /** GH200 — composant local d'un élément de `repo` (création d'un changeset depuis le dialogue). */
+  async componentOf(repo: string, objectTypeRef: string): Promise<string | null> {
+    return componentOfRef(localNodes(await this.schema.get(repo).catch(() => null)), objectTypeRef)
+  }
+
+  /**
+   * GH200 — ajoute des éléments à `toModify` d'un changeset ouvert ; un élément déjà présent garde
+   * son état et reçoit `base` s'il n'en avait pas.
+   */
+  async attach(repoPath: string, changeId: string, entries: { id: string; base?: ChangeElementRef }[]): Promise<Change> {
+    return this.editToModify(repoPath, changeId, items => {
+      const byId = new Map(items.map(i => [i.id, i]))
+      for (const e of entries) {
+        const prev = byId.get(e.id)
+        if (prev) byId.set(e.id, { ...prev, ...(!prev.base && e.base && { base: e.base }) })
+        else byId.set(e.id, { id: e.id, state: 'planned', ...(e.base && { base: e.base }) })
+      }
+      return [...byId.values()]
+    })
   }
 
   /** GH199 §8bis — assigne des éléments à un change ouvert (`planned`, sans doublon). */
@@ -165,7 +248,8 @@ export class ChangesService {
       const byId = new Map(items.map(i => [i.id, i]))
       for (const m of moved) {
         const prev = byId.get(m.id)
-        byId.set(m.id, { id: m.id, state: prev?.state === 'modified' || m.state === 'modified' ? 'modified' : 'planned' })
+        const base = prev?.base ?? m.base
+        byId.set(m.id, { id: m.id, state: prev?.state === 'modified' || m.state === 'modified' ? 'modified' : 'planned', ...(base && { base }) })
       }
       return [...byId.values()]
     })
@@ -271,7 +355,7 @@ export class ChangesService {
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.fields !== undefined && { fields: { ...existing.fields, ...dto.fields } }),
         component,
-        ...(dto.toModify !== undefined && { toModify: cleanToModify(dto.toModify) }),
+        ...(dto.toModify !== undefined && { toModify: cleanToModify(keepTrace(dto.toModify, existing.toModify)) }),
         ...(dto.impacted !== undefined && { impacted: pruneImpacted(cleanImpacted(dto.impacted)) }),
       }
       // Analyse figée à l'entrée dans un statut terminal, rendue au live à la sortie (§2, Q12).
@@ -281,6 +365,18 @@ export class ChangesService {
         ? (existing.analysis?.frozen && terminal(existing.status) ? next
           : this.impact ? { ...next, analysis: { ...(await this.computeAnalysis(repoPath, next)), frozen: true } } : next)
         : withoutAnalysis
+      // GH200 §4 — approbation et état de chaque élément figés à l'entrée dans un statut terminal,
+      // retirés à la sortie (calculés de nouveau).
+      if (terminal(next.status) && !terminal(existing.status) && this.tracker) {
+        // Trace calculée sur le changeset encore ouvert (au statut terminal, elle ne lit que le fichier).
+        const traces = new Map((await this.tracker.trace(repoPath, { ...written, status: existing.status })).map(tr => [tr.id, tr]))
+        written.toModify = written.toModify.map(t => {
+          const tr = traces.get(t.id)
+          return { ...t, state: tr?.state ?? t.state, ...(tr?.approved && { approved: tr.approved }) }
+        })
+      } else if (!terminal(next.status)) {
+        written.toModify = written.toModify.map(({ approved: _approved, ...t }) => t)
+      }
       return this.persist(repoPath, existing, written)
     })
   }
@@ -370,7 +466,34 @@ function normalize(c: Change): Change {
 }
 
 function cleanToModify(items: ChangeToModify[]): ChangeToModify[] {
-  return uniqueById(items.filter(i => i?.id).map(i => ({ id: i.id, state: i.state === 'modified' ? 'modified' : 'planned' })))
+  return uniqueById(items.filter(i => i?.id).map(i => ({
+    id: i.id,
+    state: i.state === 'modified' ? 'modified' : 'planned',
+    ...(cleanRef(i.base) && { base: cleanRef(i.base)! }),
+    ...(cleanRef(i.approved) && { approved: cleanRef(i.approved)! }),
+  })))
+}
+
+/** GH200 — `base` / `approved` d'une ligne : `{ sha, version }`, sinon ignoré. */
+function cleanRef(ref: ChangeElementRef | undefined): ChangeElementRef | null {
+  if (!ref || typeof ref !== 'object' || typeof ref.version !== 'number') return null
+  return { sha: typeof ref.sha === 'string' && ref.sha ? ref.sha : null, version: ref.version }
+}
+
+/**
+ * GH200 — une liste `toModify` envoyée par un client (page du changeset) ne porte pas forcément
+ * `base` / `approved` : on garde ceux de la ligne existante du même élément.
+ */
+function keepTrace(next: ChangeToModify[], existing: ChangeToModify[]): ChangeToModify[] {
+  const byId = new Map(existing.map(e => [e.id, e]))
+  return next.map(n => {
+    const prev = byId.get(n.id)
+    return {
+      ...n,
+      ...(!n.base && prev?.base && { base: prev.base }),
+      ...(!n.approved && prev?.approved && { approved: prev.approved }),
+    }
+  })
 }
 
 function cleanImpacted(items: ChangeImpacted[]): ChangeImpacted[] {

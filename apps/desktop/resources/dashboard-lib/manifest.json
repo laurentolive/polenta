@@ -159,6 +159,22 @@
             "fr": "Changesets (ex-changes) : collection `changesets`, bornes et analyse figée (GH199)",
             "en": "Changesets (formerly changes): `changesets` collection, range and frozen analysis (GH199)"
           }
+        },
+        {
+          "version": 8,
+          "hash": "06714751c3b16952df0cd6e9400093e600cec896a7f75953023ea141bbb01d1b",
+          "summary": {
+            "fr": "GH200 : GraphChangeset.toModify[] gagne base et approved (trace départ / approbation)",
+            "en": "GH200: GraphChangeset.toModify[] gains base and approved (start / approval trace)"
+          }
+        },
+        {
+          "version": 9,
+          "hash": "7c5aec42de2a8828b39e74397ffa9a82336a6856baa36087ea09c45d891b17a7",
+          "summary": {
+            "fr": "GH207 : GraphCampaign.changeset (changeset qui a créé la campagne)",
+            "en": "GH207: GraphCampaign.changeset (changeset that created the campaign)"
+          }
         }
       ]
     },

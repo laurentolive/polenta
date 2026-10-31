@@ -269,6 +269,8 @@
     "saved": "Enregistré",
     "error": "Erreur",
     "saving": "Enregistrement…",
+    "changeTrackingLabel": "Toute modification passe par un changeset",
+    "changeTrackingHelp": "Créer, rouvrir ou rendre obsolète une exigence ou un test l'assigne à un changeset ouvert du repo (automatique s'il n'y en a qu'un). Actif dès qu'un type de changeset existe dans le modèle de données.",
     "autoPropagateLabel": "Propager automatiquement le pin des sous-repos vers le repo parent lors d'un commit reçu sur le sous-repo",
     "autoPropagateHelp": "Si décoché, la mise à jour du pin attend une approbation manuelle de l'intégrateur.",
     "autoPullIntervalLabel": "Intervalle de récupération automatique (minutes)",
@@ -832,6 +834,7 @@
       "documentView": "Vue document"
     },
     "editView": {
+      "approvedLocked": "Approuvé : le contenu est verrouillé. Changez le statut (réouverture) pour le modifier.",
       "colType": "Type",
       "noConfiguredValue": "Aucune valeur configurée",
       "statusCommentPlaceholder": "Commentaire du changement de statut (facultatif)",
@@ -2303,6 +2306,8 @@
     "promote": "Passer en changé",
     "clickToEdit": "Cliquer pour modifier",
     "backlog": {
+      "outside": "modifié hors interface",
+      "reopen": "Rouvrir et assigner…",
       "title": "Backlog",
       "subtitle_one": "{{count}} élément à traiter, assigné à aucun changeset ouvert",
       "subtitle_other": "{{count}} éléments à traiter, assignés à aucun changeset ouvert",
@@ -2316,6 +2321,35 @@
       "titleCol": "Titre",
       "statusCol": "Statut",
       "flagged": "Impact à vérifier"
+    },
+    "campaignSection": {
+      "selectAll": "Tout cocher",
+      "via": "Amené par",
+      "inCampaigns": "Déjà dans",
+      "create": "Créer une campagne",
+      "toRun_one": "{{count}} test à exécuter",
+      "toRun_other": "{{count}} tests à exécuter",
+      "uncovered": "non couvertes : {{ids}}",
+      "toAdd_one": "{{count}} test à ajouter",
+      "toAdd_other": "{{count}} tests à ajouter",
+      "addTo": "Ajouter à {{id}}",
+      "addToMany": "Ajouter à…",
+      "progress": "{{passed}} / {{total}} PASS",
+      "changesetTests_one": "{{count}} entrée du changeset",
+      "changesetTests_other": "{{count}} entrées du changeset",
+      "link": "Changeset"
+    },
+    "trace": {
+      "creation": "création",
+      "pending": "non approuvé",
+      "unpublished": "non publié",
+      "diff": "Voir les modifications"
+    },
+    "modify": {
+      "title": "Dans quel changeset ?",
+      "createHelp": "Toute création passe par un changeset. Choisissez celui qui la porte, ou créez-en un.",
+      "reopenHelp": "{{id}} redevient modifiable : choisissez le changeset qui porte sa modification, ou créez-en un.",
+      "auto": "Ajouté à {{id}}"
     },
     "assign": {
       "approveTitle": "Assigner à un changeset",

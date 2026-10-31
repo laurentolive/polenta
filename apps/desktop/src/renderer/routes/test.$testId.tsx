@@ -18,7 +18,7 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { TestCase } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
-import { useApprovalGate } from '../contexts/ApprovalGateContext'
+import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/test/$testId')({
@@ -101,16 +101,21 @@ function TestCaseDetailPage() {
   useRegisterTabDirty(hasChanges)
   useSetTabTitle(tc?.title)
 
-  const approvalGate = useApprovalGate()
+  const gates = useModificationGate()
   const saveMutation = useMutation({
     mutationFn: async () => {
       // GH199 §8bis — approbation d'un élément non assigné : proposer un change ; annuler = rien n'est écrit.
       // Les autres modifications de la page sont conservées, seul le statut revient.
-      if (tc && status !== (tc.status ?? '') && !(await approvalGate(repoPath, { id: testId, objectTypeRef: type || tc.objectTypeRef, category: 'test' }, status))) {
-        setStatus(tc.status ?? '')
+      // GH200 — réouverture : changeset de la modification.
+      const gate = tc && status !== (tc.status ?? '')
+        ? await gates.status(repoPath, { id: testId, objectTypeRef: type || tc.objectTypeRef, category: 'test' }, status)
+        : { ok: true }
+      if (!gate.ok) {
+        setStatus(tc?.status ?? '')
         return 'cancelled' as const
       }
       return api.tests.update(repoPath, testId, {
+        changesetId: gate.changesetId,
         title,
         objectTypeRef: type,
         status,
@@ -144,6 +149,10 @@ function TestCaseDetailPage() {
   if (!repoPath) return <p className="text-sm text-ink-2 p-4"><Trans i18nKey="testsPage.missingRepoPath" components={{ code: <code /> }} /></p>
   if (isLoading) return <p className="text-sm text-ink-3 p-4">{t('common.loading')}</p>
   if (!tc) return <p className="text-sm text-ink-2 p-4">{t('testsPage.notFound', { testId })}</p>
+
+  // GH200 — test approuvé (statut du formulaire) : contenu en lecture seule ; choisir un autre
+  // statut le rouvre et rend le contenu modifiable dans le même enregistrement.
+  const locked = !!typeDef?.statuses?.find(s => s.name === status)?.isApproval
 
   return (
     <ParamRefProvider repoPath={repoPath} workspaceDir={projectId ? decodeProjectId(projectId) : ''} projectId={projectId}>
@@ -185,17 +194,22 @@ function TestCaseDetailPage() {
 
         <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl p-6 space-y-4">
+          {locked && (
+          <p className="text-xs text-ink-3 bg-surface-2 border border-edge rounded px-2 py-1" data-testid="approved-lock-banner">
+            {t('system.editView.approvedLocked')}
+          </p>
+        )}
           <div>
             <label className="block text-sm font-medium text-ink mb-1">
               {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
             </label>
-            <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+            <input type="text" value={title} onChange={e => setTitle(e.target.value)} readOnly={locked}
               className="input-field w-full" />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">{t('system.editView.colType')}</label>
-            <select value={type} onChange={e => setType(e.target.value)} className="input-field w-full">
+            <select value={type} onChange={e => setType(e.target.value)} disabled={locked} className="input-field w-full">
               {testTypes.map(t => (
                 <option key={t.name} value={t.name}>{t.label ?? t.name}</option>
               ))}
@@ -207,6 +221,7 @@ function TestCaseDetailPage() {
               value={fields[f.name] ?? String(f.default ?? '')}
               requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: tc.status, fields: fields }))}
               onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
+              disabled={locked}
               repoPath={repoPath}
               interfaceRoles={schema?.roles?.map(r => r.name)}
               onSubmit={submitEdit}
@@ -218,7 +233,7 @@ function TestCaseDetailPage() {
               <div key={key}>
                 <label className="block text-sm font-medium text-ink mb-1">{key}</label>
                 <input type="text" value={fields[key] ?? String(val ?? '')}
-                  onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))}
+                  onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))} readOnly={locked}
                   className="input-field w-full" />
               </div>
             ))
@@ -226,20 +241,20 @@ function TestCaseDetailPage() {
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">{t('testsPage.preconditions')}</label>
-            <textarea value={preconditions} onChange={e => setPreconditions(e.target.value)}
+            <textarea value={preconditions} onChange={e => setPreconditions(e.target.value)} readOnly={locked}
               rows={2} className="input-field w-full resize-none" />
           </div>
 
           <div>
             <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('system.wordView.stepsHeading')}</p>
             <LinkedReqValues repoPath={repoPath} testId={testId} workspaceDir={projectId ? decodeProjectId(projectId) : ''}>
-              <StepsTable steps={steps} onChange={setSteps} repoPath={repoPath} onSubmit={submitEdit} />
+              <StepsTable steps={steps} onChange={setSteps} disabled={locked} repoPath={repoPath} onSubmit={submitEdit} />
             </LinkedReqValues>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">{t('testsPage.postconditions')}</label>
-            <textarea value={postconditions} onChange={e => setPostconditions(e.target.value)}
+            <textarea value={postconditions} onChange={e => setPostconditions(e.target.value)} readOnly={locked}
               rows={2} className="input-field w-full resize-none" />
           </div>
 

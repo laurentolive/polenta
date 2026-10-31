@@ -15,10 +15,97 @@ export const CHANGE_IMPACT_STATUSES: readonly ChangeImpactStatus[] = [
   'modification_a_faire', 'modification_faite', 'modification_a_tester', 'modification_verifiee',
 ]
 
-/** Élément à modifier : prévu (saisi), ou réellement modifié et rattaché (L4). */
+/** GH200 — version d'un élément : commit (null : jamais commité) et `version` de l'élément. */
+export interface ChangeElementRef {
+  sha: string | null
+  version: number
+}
+
+/** Élément à modifier : prévu (saisi), ou réellement modifié (GH200). */
 export interface ChangeToModify {
   id: string
   state: 'planned' | 'modified'
+  /** GH200 — état approuvé avant réouverture ; absent : création (ou planifié sans réouverture). */
+  base?: ChangeElementRef
+  /** GH200 — commit d'approbation, écrit au gel du changeset (statut terminal) seulement. */
+  approved?: ChangeElementRef
+}
+
+/** GH200 — trace calculée d'une ligne de `toModify` (page, graphe, MCP). */
+export interface ChangeToModifyTrace {
+  id: string
+  state: 'planned' | 'modified'
+  base: ChangeElementRef | null
+  /** Élément créé dans ce changeset (aucune version approuvée avant lui). */
+  created: boolean
+  approved: ChangeElementRef | null
+  /** Pas (encore) approuvé, ou approbation pas encore publiée. */
+  approvalPending: boolean
+  /** Chemin du fichier de l'élément dans le repo (diff) ; null : introuvable. */
+  filePath: string | null
+}
+
+/** GH200 — élément approuvé dont le contenu a changé sans réouverture (git direct, autre outil). */
+export interface OutsideModification {
+  id: string
+  category: 'requirement' | 'test'
+  /** Commit où l'élément est entré dans son statut approuvé (null : jamais commité). */
+  approvedSha: string | null
+  /** Différence pas encore commitée. */
+  dirty: boolean
+  filePath: string
+}
+
+/** GH207 — test à exécuter pour un changeset, et ce qui l'y amène. */
+export interface ChangeTestToRun {
+  testId: string
+  /** Exigences sources (instances T179) ; vide : le test vient lui-même (toutes ses instances). */
+  requirementIds: string[]
+  /** Éléments du changeset (à modifier, impactés « à tester ») qui amènent ce test. */
+  sources: string[]
+}
+
+/** GH207 — campagne liée à un changeset (section Campagnes). */
+export interface LinkedCampaign {
+  id: string
+  title: string
+  status: string
+  /** Entrées PASS / total (avancement affiché). */
+  passed: number
+  total: number
+  /** Entrées de la campagne portant un test à exécuter du changeset. */
+  changesetTests: number
+  /** Tests présents dans les entrées actives de la campagne. */
+  testIds: string[]
+  /** ID listé dans `campaigns` mais campagne introuvable. */
+  missing: boolean
+}
+
+/** GH207 — tests à exécuter d'un changeset et campagnes liées. */
+export interface ChangeTestsToRun {
+  tests: ChangeTestToRun[]
+  /** Exigences sources sans test qui les couvre. */
+  uncovered: string[]
+  linked: LinkedCampaign[]
+  /** Tests à exécuter absents de toute campagne liée ouverte (`planned` / `in_progress`). */
+  toAdd: string[]
+}
+
+/** GH200 — moment où un élément devient modifiable. */
+export type ModificationKind = 'create' | 'reopen' | 'terminal'
+
+/** GH200 — réponse au contrôle d'une création / réouverture. */
+export interface ModificationCheck {
+  /** Règle « tout passe par un changeset » active pour le repo de l'élément. */
+  tracking: boolean
+  /** Déjà dans `toModify` d'un changeset non clos (P4) : rien à demander. */
+  assignedTo: string | null
+  /** Changesets ouverts du repo de l'élément. */
+  eligible: ChangeSummary[]
+  /** Composant de l'élément (création d'un changeset depuis le dialogue). */
+  component: string | null
+  /** Repo de stockage de l'élément (et de ses changesets). */
+  repoPath: string
 }
 
 /** Élément impacté : déclaré par l'utilisateur, ou calculé par l'analyse (L3). */
@@ -133,6 +220,8 @@ export interface BacklogItem {
   status: string
   objectTypeRef: string
   needsRevalidation: boolean
+  /** GH200 — approuvé mais modifié hors interface (voir `OutsideModification`). */
+  outside?: { approvedSha: string | null; dirty: boolean; filePath: string }
 }
 
 /** GH199 §8bis — backlog d'un composant local (calculé, non stocké). */

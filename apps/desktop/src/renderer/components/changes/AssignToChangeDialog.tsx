@@ -11,9 +11,11 @@ import { useModalHotkeys } from '../../hooks/useModalHotkeys'
  * GH199 §8bis — choisir le change ouvert qui reçoit des éléments (`toModify`), ou en créer un.
  * Trois usages : approbation d'un élément non assigné (`approve` : « Approuver sans change »),
  * « Assigner à… » depuis le backlog (`assign`), « Déplacer vers… » depuis un change (`move`).
+ * GH200 — `create` / `reopen` : choisir le changeset d'un élément créé ou rouvert. Rien n'est
+ * assigné ici : l'écriture de l'élément reçoit le changeset choisi (`changesetId`).
  */
 export function AssignToChangeDialog({ mode, repoPath, elementIds, component, sourceChangeId, openChanges, onDone, onCancel }: {
-  mode: 'approve' | 'assign' | 'move'
+  mode: 'approve' | 'assign' | 'move' | 'create' | 'reopen'
   repoPath: string
   elementIds: string[]
   /** Composant du change créé depuis le dialogue. */
@@ -61,7 +63,9 @@ export function AssignToChangeDialog({ mode, repoPath, elementIds, component, so
       setBusy(false)
     }
   }
+  const choiceOnly = mode === 'create' || mode === 'reopen'
   const toExisting = (changeId: string) => run(async () => {
+    if (choiceOnly) return changeId
     if (mode === 'move' && sourceChangeId) await api.changesets.move(repoPath, sourceChangeId, changeId, elementIds)
     else await api.changesets.assign(repoPath, changeId, elementIds)
     return changeId
@@ -77,15 +81,20 @@ export function AssignToChangeDialog({ mode, repoPath, elementIds, component, so
     return created.id
   })
 
-  const heading = mode === 'approve' ? t('changes.assign.approveTitle') : mode === 'move' ? t('changes.assign.moveTitle') : t('changes.assign.assignTitle')
+  const heading = mode === 'approve' ? t('changes.assign.approveTitle')
+    : mode === 'move' ? t('changes.assign.moveTitle')
+      : choiceOnly ? t('changes.modify.title')
+        : t('changes.assign.assignTitle')
+  const help = mode === 'approve' ? t('changes.assign.approveHelp', { id: elementIds[0] })
+    : mode === 'create' ? t('changes.modify.createHelp')
+      : mode === 'reopen' ? t('changes.modify.reopenHelp', { id: elementIds[0] })
+        : t('changes.assign.elements', { ids: elementIds.join(', ') })
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={cancel}>
       <div role="dialog" aria-label={heading} className="bg-surface border border-edge rounded-lg shadow-xl w-[32rem] max-w-[95vw] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} data-testid="assign-change-dialog">
         <div className="px-4 py-3 border-b border-edge">
           <h2 className="text-sm font-semibold text-ink">{heading}</h2>
-          <p className="text-xs text-ink-3 mt-1">
-            {mode === 'approve' ? t('changes.assign.approveHelp', { id: elementIds[0] }) : t('changes.assign.elements', { ids: elementIds.join(', ') })}
-          </p>
+          <p className="text-xs text-ink-3 mt-1">{help}</p>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           <div>

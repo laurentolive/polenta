@@ -234,6 +234,11 @@ export interface ProjectPreferences {
    * [1, 60] ; absent ou invalide = 5.
    */
   autoPullIntervalMinutes?: number
+  /**
+   * GH200 — toute modification d'une exigence ou d'un test passe par un changeset. Absent : `on`
+   * si le schéma du repo déclare un type de catégorie changeset, sinon `off`.
+   */
+  changeTracking?: 'on' | 'off'
 }
 
 export interface ProjectSchema {

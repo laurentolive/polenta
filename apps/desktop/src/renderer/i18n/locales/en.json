@@ -269,6 +269,8 @@
     "saved": "Saved",
     "error": "Error",
     "saving": "Saving…",
+    "changeTrackingLabel": "Every modification goes through a changeset",
+    "changeTrackingHelp": "Creating, reopening or obsoleting a requirement or test assigns it to an open changeset of the repo (automatic when there is only one). Active as soon as a changeset type exists in the data model.",
     "autoPropagateLabel": "Automatically propagate the sub-repo pin to the parent repo when a commit is received on the sub-repo",
     "autoPropagateHelp": "If unchecked, the pin update waits for manual approval from the integrator.",
     "autoPullIntervalLabel": "Automatic retrieval interval (minutes)",
@@ -832,6 +834,7 @@
       "documentView": "Document view"
     },
     "editView": {
+      "approvedLocked": "Approved: content is locked. Change the status (reopen) to edit it.",
       "colType": "Type",
       "noConfiguredValue": "No configured value",
       "statusCommentPlaceholder": "Status change comment (optional)",
@@ -2303,6 +2306,8 @@
     "promote": "Move to changed",
     "clickToEdit": "Click to edit",
     "backlog": {
+      "outside": "modified outside the app",
+      "reopen": "Reopen and assign…",
       "title": "Backlog",
       "subtitle_one": "{{count}} element to process, assigned to no open changeset",
       "subtitle_other": "{{count}} elements to process, assigned to no open changeset",
@@ -2316,6 +2321,35 @@
       "titleCol": "Title",
       "statusCol": "Status",
       "flagged": "Impact to check"
+    },
+    "campaignSection": {
+      "selectAll": "Select all",
+      "via": "Brought by",
+      "inCampaigns": "Already in",
+      "create": "Create a campaign",
+      "toRun_one": "{{count}} test to run",
+      "toRun_other": "{{count}} tests to run",
+      "uncovered": "not covered: {{ids}}",
+      "toAdd_one": "{{count}} test to add",
+      "toAdd_other": "{{count}} tests to add",
+      "addTo": "Add to {{id}}",
+      "addToMany": "Add to…",
+      "progress": "{{passed}} / {{total}} PASS",
+      "changesetTests_one": "{{count}} changeset entry",
+      "changesetTests_other": "{{count}} changeset entries",
+      "link": "Changeset"
+    },
+    "trace": {
+      "creation": "creation",
+      "pending": "not approved",
+      "unpublished": "unpublished",
+      "diff": "Show changes"
+    },
+    "modify": {
+      "title": "Which changeset?",
+      "createHelp": "Every creation goes through a changeset. Pick the one that carries it, or create one.",
+      "reopenHelp": "{{id}} becomes editable again: pick the changeset that carries its modification, or create one.",
+      "auto": "Added to {{id}}"
     },
     "assign": {
       "approveTitle": "Assign to a changeset",

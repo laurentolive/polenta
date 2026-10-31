@@ -39,6 +39,9 @@ export interface ImpactNode {
   elementType: 'requirement' | 'test_case'
   title: string
   linkType: string              // type du ObjectLink qui relie ce nœud à son parent dans l'arbre
+  /** Le parent est la cible du lien (libellé `labelTargetToSource`), sinon sa source. Absent :
+   *  analyse figée avant le 2026-10-31 (pas de libellé). */
+  parentIsTarget?: boolean
   status: ImpactAnalysisStatus
   comment: string | null
   updatedAt: string | null

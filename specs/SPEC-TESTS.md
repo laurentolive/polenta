@@ -493,6 +493,13 @@ validation externe).
 **Génération automatique de campagne :**
 À partir d'une sélection d'exigences (ex. "tous les tests couvrant les exigences BAT"), Polenta génère une campagne pré-remplie. Voir [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §génération de plan de test.
 
+
+> **GH207 — campagne issue d'un changeset.** Champ système `changeset` (ID du changeset qui l'a
+> créée, lecture seule, lien dans l'en-tête) ; `CreateCampaignDto.changeset` contrôle avant l'ID que le
+> changeset est ouvert dans le repo, puis ajoute la campagne à `campaigns` du changeset. `/campaign/new`
+> accepte `changeset` et `instances` (`TEST-1:SW-1|SW-2,…`, instances pré-cochées) ; la page d'une
+> campagne accepte `addTests` et `instances` (sélecteur « Ajouter » ouvert, pré-coché).
+
 ### 4.2 CampaignTestRun — une entrée par inclusion du test dans la campagne
 
 Chaque entrée de `runs` représente une **inclusion** d'un test dans la campagne — pas

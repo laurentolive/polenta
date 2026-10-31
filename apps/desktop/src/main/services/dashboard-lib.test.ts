@@ -143,7 +143,7 @@ describe('GH74 — campaignsTimeline', () => {
     const mini: Partial<PolentaGraph> = {
       schema: { objectTypes: [], linkTypes: [], campaignStatuses: [], entryStatuses: ['pending', 'INCOMPLETE', 'BLOCKED', 'FAIL', 'PASS'].map((name, order) => ({ name, label: name, order })) },
       campaigns: [{
-        id: 'C', repo: 'r', component: 'r', objectTypeRef: null, title: 'C', status: 'in_progress', fields: {}, history: {}, baselineRef: null, targetComponent: null, level: null,
+        id: 'C', repo: 'r', component: 'r', objectTypeRef: null, title: 'C', status: 'in_progress', fields: {}, history: {}, baselineRef: null, targetComponent: null, changeset: null, level: null,
         createdAt: '2026-10-01T08:00:00Z', completedAt: null, removedEntries: [],
         entries: [{ entryId: 'E', testCaseId: 'T', requirementId: null, status: 'PASS', addedAt: '2026-10-01T08:00:00Z', runId: 'R', executedAt: '2026-10-02T23:30:00Z', executedBy: null, carriedFrom: null, snapshot: null, resyncable: false }],
       }],
@@ -178,7 +178,7 @@ describe('GH112 — campaignsTimeline par étape d\'avancement (withStep)', () =
       test('T2', 'draft', []),
     ],
     campaigns: [{
-      id: 'C', repo: 'r', component: 'n', objectTypeRef: null, title: 'C', status: 'in_progress', fields: {}, history: {}, baselineRef: null, targetComponent: null, level: null,
+      id: 'C', repo: 'r', component: 'n', objectTypeRef: null, title: 'C', status: 'in_progress', fields: {}, history: {}, baselineRef: null, targetComponent: null, changeset: null, level: null,
       createdAt: '2026-10-01T08:00:00Z', completedAt: null, removedEntries: [], entries: [entry('E1', 'T1', true), entry('E2', 'T2', false)],
     }],
     runs: [{ id: 'R', repo: 'r', testCaseId: 'T1', campaignEntry: { campaignId: 'C', entryId: 'E1' }, requirementId: null, result: 'PASS', executedAt: '2026-10-06T10:00:00Z', executedBy: 'x', duration: 0, origin: null, fields: {}, notes: '', stepResults: [] }],

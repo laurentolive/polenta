@@ -9,7 +9,7 @@ import { setupSession } from './support/session'
 const s = setupSession()
 test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
 
-interface Req { id: string; fields: Record<string, unknown> }
+interface Req { id: string; status: string; fields: Record<string, unknown> }
 
 test('GH145-1 — énoncé modifié : avant barré, après surligné', async () => {
   const { localPath } = s.project
@@ -18,6 +18,8 @@ test('GH145-1 — énoncé modifié : avant barré, après surligné', async () 
   const before = target.fields['statement'] as string
   const after = before.replace(/SHALL/, 'SHALL immediately')
   expect(after).not.toBe(before)
+  // GH200 — contenu d'une exigence approuvée verrouillé : la rouvrir d'abord.
+  if (target.status === 'approved') await s.invoke('requirements:transition', localPath, target.id, { toStatus: 'draft' })
   await s.invoke('requirements:update', localPath, target.id, { fields: { ...target.fields, statement: after } })
 
   await s.page.reload()

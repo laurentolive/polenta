@@ -420,6 +420,8 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
     enabled: !!repoPath,
   })
   const interfaceRoles = currentSchema?.roles?.map(r => r.name)
+  // GH200 — statut enregistré `isApproval` : contenu verrouillé jusqu'à la réouverture.
+  const approvedLock = !!objectData && !!typeDef?.statuses?.find(s => s.name === objectData['status'])?.isApproval
 
   // Local mirror of all field values — updated on every keystroke
   const localValuesRef = useRef<Record<string, string>>({})
@@ -655,6 +657,12 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               />
             </div>
           )}
+          {/* GH200 — élément approuvé : contenu en lecture seule, le statut (réouverture) reste modifiable. */}
+          {approvedLock && !readOnly && (
+            <p className="text-xs text-ink-3 bg-surface-2 border border-edge rounded px-2 py-1" data-testid="approved-lock-banner">
+              {t('system.editView.approvedLocked')}
+            </p>
+          )}
           {orderedFields.length === 0 && (
             <p className="text-sm text-ink-3 italic">
               Aucun champ configuré pour cette vue.
@@ -680,15 +688,17 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
               const compact = isCompactField(field.type ?? 'text')
               const next = orderedFields[i + 1]
               const nextCompact = next && isCompactField(next.field.type ?? 'text')
-              const makeRow = (f: SchemaField, sys: boolean) => (
+              const makeRow = (f: SchemaField, sys: boolean) => {
+                const locked = readOnly || (approvedLock && f.name !== 'status')
+                return (
                 <FieldRow
                   key={f.name}
                   field={f}
                   label={f.label ?? f.name}
                   value={getValue(f.name)}
-                  system={sys || readOnly}
+                  system={sys || locked}
                   onBlur={v => {
-                    if (sys || readOnly) return
+                    if (sys || locked) return
                     // T159 — un save immédiat de ce champ (onBlurField) et l'autosave
                     // debouncé du richtext écriraient le même fichier en concurrence ;
                     // annuler le timer (le richtext reste `dirty`, il sera flushé au
@@ -703,15 +713,16 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                     }
                     onBlurField(f.name, v)
                   }}
-                  onChange={v => { if (!sys && !readOnly) { localValuesRef.current[f.name] = v; dirtyRef.current = true } }}
-                  onEdit={() => { if (!sys && !readOnly) scheduleAutosave() }}
+                  onChange={v => { if (!sys && !locked) { localValuesRef.current[f.name] = v; dirtyRef.current = true } }}
+                  onEdit={() => { if (!sys && !locked) scheduleAutosave() }}
                   repoPath={repoPath}
                   interfaceRoles={f.name === 'roles' ? interfaceRoles : undefined}
                   labelAdornment={f.name === 'status'
                     ? <RevalidationFlag show={objectData?.needsRevalidation === 'true'} /> : undefined}
                   requiredNow={readCurrent ? isFieldRequiredNow(f, readCurrent) : undefined}
                 />
-              )
+                )
+              }
               // GH163 — commentaire facultatif, enregistré dans l'historique avec le prochain changement de statut.
               const makeStatusRow = (f: SchemaField, sys: boolean) => (
                 <div key={f.name} className="flex flex-col gap-1">

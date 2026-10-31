@@ -119,7 +119,7 @@ le repo d'un composant.
 | Change | intégré dans | Version de composant | `integratedIn` | #193 |
 | Change | crée et alimente | Campagne | `campaigns` | #193 |
 | Change | coordonné avec | Change d'un autre repo | `links/links.yaml` (`change-coordination`) | #193 |
-| Commit | rattaché à | Change | ligne finale `Change: <ID>` | #193 |
+| Change | version de départ / d'approbation de | Exigence, Test | `toModify[].base` / `toModify[].approved` (commits) | #193 (amendé 2026-10-30, #200) |
 | Configuration produit | nomenclature de | Version de composant | `versions: { composant: version }` | #193 |
 | Version de composant | version de | Composant | `component` | #193 |
 | Version de composant | implémente | Baseline documentaire du composant | `implements` (tag du repo du composant) | #193 |
@@ -136,3 +136,6 @@ le repo d'un composant.
   et Tests ne la montrent qu'en lecture.
 - **Le change relie tout** : d'une non-conformité (exécution ou décision) jusqu'à la version qui la
   corrige et à la campagne qui la vérifie.
+- **Toute modification passe par un change** (changeset, GH199 §8ter ; amendement du 2026-10-30) :
+  une exigence ou un test est assigné à un change dès qu'il devient modifiable (création,
+  réouverture), et le change garde pour chacun la version de départ et le commit d'approbation.

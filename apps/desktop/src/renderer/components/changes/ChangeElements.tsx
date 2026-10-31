@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight, X } from 'lucide-react'
-import { CHANGE_IMPACT_STATUSES, CLOSED_IMPACT_STATUSES, isToProcess, type ChangeImpactRow, type ChangeImpactStatus, type ChangeToModify, type ProjectSchema } from '@polenta/types'
+import { CHANGE_IMPACT_STATUSES, CLOSED_IMPACT_STATUSES, isToProcess, type ChangeImpactRow, type ChangeImpactStatus, type ChangeToModify, type ChangeToModifyTrace, type ProjectSchema } from '@polenta/types'
 import { api } from '../../api'
 import { getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
 import { ChangeElementPicker } from './ChangeElementPicker'
 import { AssignToChangeDialog } from './AssignToChangeDialog'
+import { useChangesetViewFlag } from '../../lib/changesetPrefs'
 import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 
 // GH198 — listes « à modifier » / « impactés » d'un change et sélecteur d'éléments (specs/GH198.md §4).
@@ -83,7 +84,28 @@ interface ListProps {
   disabled?: boolean
 }
 
-export function ToModifyList({ items, onChange, changeId, component, alsoIn, ...p }: ListProps & {
+/** GH200 — lien vers les modifications de l'élément (version de départ → approbation, ou disque). */
+function TraceDiffLink({ trace, repoPath, projectId }: { trace?: ChangeToModifyTrace; repoPath: string; projectId: string }) {
+  const { t } = useTranslation()
+  if (!trace?.filePath) return null
+  return (
+    <Link
+      to="/diff"
+      search={{
+        projectId, repoPath, filepath: trace.filePath, commitSha: undefined, element: '1',
+        ...(trace.base?.sha && { baseSha: trace.base.sha }), ...(trace.approved?.sha && { toSha: trace.approved.sha }),
+      }}
+      className="text-xs text-prim hover:underline shrink-0"
+      data-testid={`change-trace-diff-${trace.id}`}
+    >
+      {t('changes.trace.diff')}
+    </Link>
+  )
+}
+
+export function ToModifyList({ items, traces, onChange, changeId, component, alsoIn, ...p }: ListProps & {
+  /** GH200 — trace par élément (départ, approbation). */
+  traces?: Map<string, ChangeToModifyTrace>
   items: ChangeToModify[]
   onChange: (items: ChangeToModify[]) => void
   /** GH199 §8bis — « Déplacer vers… » : change courant et son composant. */
@@ -96,7 +118,7 @@ export function ToModifyList({ items, onChange, changeId, component, alsoIn, ...
   const [picking, setPicking] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [moving, setMoving] = useState(false)
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useChangesetViewFlag('toModify', true)
   const chosen = items.filter(i => selected.has(i.id)).map(i => i.id)
   const toggle = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -131,7 +153,7 @@ export function ToModifyList({ items, onChange, changeId, component, alsoIn, ...
               {!!alsoIn.get(it.id)?.length && (
                 <span className="text-xs text-ink-3 shrink-0" data-testid={`change-to-modify-also-${it.id}`}>{t('changes.alsoIn', { ids: alsoIn.get(it.id)!.join(', ') })}</span>
               )}
-              <span className="text-xs text-ink-3 shrink-0">{t(it.state === 'modified' ? 'changes.modified' : 'changes.planned')}</span>
+              <TraceDiffLink trace={traces?.get(it.id)} repoPath={p.repoPath} projectId={p.projectId} />
               {!p.disabled && (
                 <button type="button" className="text-ink-3 hover:text-status-danger" title={t('changes.remove')} onClick={() => onChange(items.filter(i => i.id !== it.id))}>
                   <X size={13} />
@@ -180,8 +202,8 @@ export function ImpactedList({ rows, onSetImpact, onAddDeclared, onRemoveDeclare
 }) {
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
-  const [openOnly, setOpenOnly] = useState(false)
-  const [open, setOpen] = useState(true)
+  const [openOnly, setOpenOnly] = useChangesetViewFlag('impactedOpenOnly', false)
+  const [open, setOpen] = useChangesetViewFlag('impacted', true)
   const shown = openOnly ? rows.filter(r => !CLOSED_IMPACT_STATUSES.includes(r.status)) : rows
   return (
     <section className="border rounded p-3 mb-4" data-testid="change-impacted">

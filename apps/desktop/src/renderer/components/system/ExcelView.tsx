@@ -2433,6 +2433,8 @@ function ExcelViewInner({
             }
 
             const obj = node.objectId ? objectMap.get(node.objectId) : null
+            // GH200 — élément approuvé : contenu en lecture seule, seul le statut (réouverture) s'édite.
+            const locked = !!obj && !!typeDef?.statuses?.find(st => st.name === (obj as { status?: string }).status)?.isApproval
             const isSelected = selection
               ? !!node.objectId && selection.selected.has(node.objectId)
               : effectiveSelectedIds.includes(node.id)
@@ -2541,7 +2543,7 @@ function ExcelViewInner({
                         key={col}
                         value={node.name}
                         nodeId={node.id}
-                        canRename={!!onRenameNode}
+                        canRename={!!onRenameNode && !locked}
                         freezeStyle={freezeStyle}
                         stickyBg={stickyBg}
                       />
@@ -2602,7 +2604,7 @@ function ExcelViewInner({
                       objectId={node.objectId ?? ''}
                       isSystem={isSystemField(col)}
                       fieldDef={fieldDef}
-                      canEdit={!!onInlineEdit}
+                      canEdit={!!onInlineEdit && (col === 'status' || !locked)}
                       repoPath={repoPath}
                       richtextEditing={activeRichtextEdit?.nodeId === node.id && activeRichtextEdit.field === col}
                       freezeStyle={freezeStyle}
@@ -2620,7 +2622,7 @@ function ExcelViewInner({
                       <StepsPanel
                         objectId={node.objectId}
                         steps={nodeSteps}
-                        onStepsChange={onStepsChange}
+                        onStepsChange={locked ? undefined : onStepsChange}
                         repoPath={repoPath}
                       />
                     </div>

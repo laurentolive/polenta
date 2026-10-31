@@ -65,6 +65,14 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 
 > **GH199 (contrat v1, ajout)** — `GraphChangeset.range` (bornes d'un change sur l'existant) et `GraphChangeset.analysis` (instantané figé au statut terminal : lignes, racines, campagnes ; jamais recalculé par le graphe). `polenta.d.ts` régénéré (manifeste v7).
 
+> **GH200 (contrat v1, ajout)** — `GraphChangeset.toModify[]` gagne `base` (version de départ, null :
+> création) et `approved` (commit d'approbation, renseigné une fois le changeset figé au statut
+> terminal ; null tant qu'il est ouvert : le statut courant de l'élément est dans sa collection).
+> `polenta.d.ts` régénéré (manifeste v8).
+>
+> **GH207 (contrat v1, ajout)** — `GraphCampaign.changeset` (changeset qui a créé la campagne, sinon
+> null) ; `GraphChangeset.campaigns` alimenté. `polenta.d.ts` régénéré (manifeste v9).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

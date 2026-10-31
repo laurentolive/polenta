@@ -1,5 +1,10 @@
 # Modèle objets Polenta — vue d'ensemble
 
+> **Refonte du 2026-10-31 — voir `specs/MILESTONE-D.md`, qui fait foi.** Change / changeset,
+> configuration produit et revue de conformité sont remplacés par **version** (récursive : version
+> produit = version du nœud racine), **issue** (liens `issue-impact`) et **validation**. Ce document
+> sera redessiné au lot « Version ».
+
 > Document de référence partagé par les épiques **#191** (conformité aux jalons) et **#193**
 > (gestion du changement). Il montre l'existant et ce que ces deux épiques ajoutent. Les specs
 > détaillées restent `specs/GH191.md` et `specs/GH193.md`, qui font foi en cas d'écart. Ce document

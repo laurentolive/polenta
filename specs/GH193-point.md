@@ -1,5 +1,8 @@
 # Milestone D — point global de spec après les lots 1 à 5 (2026-10-30)
 
+> **Remplacé le 2026-10-31 par `specs/MILESTONE-D.md`** (changeset supprimé, version, issue,
+> validation). Conservé comme trace.
+
 > Relecture des épiques #191 (conformité) et #193 (changement) au regard de ce qui est livré
 > (lots 1 à 5, PR #215) et des décisions prises en cours de route (avenants GH199 §8bis, §8ter,
 > échanges du 2026-10-30 sur #200). Objet : vérifier que les lots restants (6 à 16, PR #240)

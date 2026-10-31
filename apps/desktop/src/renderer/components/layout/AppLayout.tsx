@@ -16,6 +16,8 @@ import { RepoAccessBanner } from './RepoAccessBanner'
 import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
+import { ElementNavProvider } from '../../contexts/ElementNavContext'
+import { ElementPreviewPopup } from '../element/ElementPreviewPopup'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters' | 'merge'
 
@@ -311,9 +313,13 @@ export function AppLayout() {
           <CompareRefsProvider>
             <ImpactAnalysisProvider>
               <SystemViewProvider currentProjectId={currentProjectId}>
-                <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
-                  {inner}
-                </SearchProvider>
+                {/* GH229 — liens sur les ID d'élément et popup d'aperçu, pour tous les écrans. */}
+                <ElementNavProvider currentProjectId={currentProjectId}>
+                  <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
+                    {inner}
+                  </SearchProvider>
+                  <ElementPreviewPopup />
+                </ElementNavProvider>
               </SystemViewProvider>
             </ImpactAnalysisProvider>
           </CompareRefsProvider>

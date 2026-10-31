@@ -529,7 +529,10 @@
       "historyValue": "Historiser : valeur, date et auteur à chaque changement",
       "historyEvent": "Historiser : date et auteur à chaque changement (le contenu est déjà dans git)",
       "historyNotTrackable": "Ce champ ne peut pas être historisé",
-      "trackStatusHistory": "Historiser le statut (valeur, date et auteur à chaque changement)"
+      "trackStatusHistory": "Historiser le statut (valeur, date et auteur à chaque changement)",
+      "displayIdField": "ID affiché dans les liens",
+      "displayIdPolenta": "ID Polenta",
+      "displayIdTitle": "Titre"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -728,6 +731,13 @@
     }
   },
   "system": {
+    "view": {
+      "itemHiddenByFilter": "{{id}} est masqué par le filtre"
+    },
+    "preview": {
+      "notFound": "Élément introuvable",
+      "campaignTests": "{{count}} test(s)"
+    },
     "revalidation": {
       "tooltip": "Impact à vérifier"
     },
@@ -792,6 +802,8 @@
       "colCoverage": "Couverture",
       "tabExcel": "Tableau",
       "tabWord": "Document",
+      "tabPopup": "Popup",
+      "popupHint": "Champs affichés dans la popup au survol d'un lien vers un élément de ce type (en plus de l'en-tête et du titre).",
       "testCase": "Cas de test",
       "links": "Liens",
       "noLinkTypeForType": "Aucun type de lien pour ce type",

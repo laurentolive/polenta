@@ -13,6 +13,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParamRefs } from '../contexts/ParamRefContext'
 import { ParamRefDecoration, paramRefPluginKey } from '../tiptap/ParamRefDecoration'
+import { ElementRefDecoration, elementRefPluginKey } from '../tiptap/ElementRefDecoration'
+import { useElementRefDelegation, useElementRefExists } from './element/elementRefDelegation'
 
 interface Props {
   value: string
@@ -34,6 +36,12 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
     getUnresolvedLabel: () => labelRef.current,
     getReadOnly: () => true,
   }))
+  // GH229 — ID d'élément du texte : décorations, gestes délégués au conteneur.
+  const elementRefs = useElementRefExists()
+  const elementRefsRef = useRef(elementRefs)
+  useEffect(() => { elementRefsRef.current = elementRefs })
+  const [elementRefExtension] = useState(() => ElementRefDecoration.configure({ getExists: () => elementRefsRef.current?.exists ?? null }))
+  const elementRefHandlers = useElementRefDelegation()
 
   const editor = useEditor({
     extensions: [
@@ -47,6 +55,7 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
       Markdown.configure({ html: false }),
       DrawioEmbed.configure({ repoPath }),
       paramRefExtension,
+      elementRefExtension,
     ],
     content: value,
     editable: false,
@@ -73,5 +82,10 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
     editor.view.dispatch(editor.state.tr.setMeta(paramRefPluginKey, true))
   }, [editor, paramRefs])
 
-  return <EditorContent editor={editor} className={className} />
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr.setMeta(elementRefPluginKey, true))
+  }, [editor, elementRefs?.version])
+
+  return <EditorContent editor={editor} className={className} {...elementRefHandlers} />
 }

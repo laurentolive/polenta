@@ -380,6 +380,8 @@ export interface FieldVisibilityPref {
   picker?: string[]
   /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
   showFoldersPicker?: boolean
+  /** GH229 — champs de la popup d'aperçu (survol d'un lien vers un objet du type). Absent ⇒ aucun. */
+  popup?: string[]
 }
 
 /** GH176 — écriture partielle de `FieldVisibilityPref` : une clé absente est conservée telle quelle,

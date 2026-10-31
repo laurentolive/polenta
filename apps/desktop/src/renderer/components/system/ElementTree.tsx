@@ -60,6 +60,10 @@ interface Props {
    *  dépôt d'un drag & drop) → la vue document doit s'y positionner. `null` = clic dans le
    *  vide de l'arbre (efface la cible). */
   onGoto?: (nodeId: string | null) => void
+  /** GH229 — nœud à montrer (élément ciblé par un lien, goto) : dossiers parents dépliés, ligne
+   *  défilée dans la vue ; `revealSeq` rejoue la même cible. */
+  revealNodeId?: string | null
+  revealSeq?: number
 }
 
 // ── BgContextMenu ─────────────────────────────────────────────────────────────
@@ -246,6 +250,7 @@ const TreeRow = memo(function TreeRow({
           dropIndicatorInside ? 'ring-1 ring-status-info ring-inset' : '',
         ].join(' ')}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        data-tree-node={node.id}
         onClick={e => onSelect(node.id, e)}
         onDoubleClick={() => { if (node.kind === 'folder') onExpand(node.id); else onDoubleClick(node.id) }}
         onContextMenu={e => onContextMenu(e, node.id)}
@@ -324,6 +329,8 @@ export function ElementTree({
   onItemNodeAdded,
   onItemRenamed,
   onGoto,
+  revealNodeId,
+  revealSeq,
 }: Props) {
   const { t } = useTranslation()
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -358,6 +365,24 @@ export function ElementTree({
     walk(root, null)
     return map
   }, [root])
+
+  // GH229 — élément ciblé : dossiers parents dépliés, puis ligne défilée dans la vue.
+  const [pendingReveal, setPendingReveal] = useState<string | null>(null)
+  useEffect(() => {
+    if (!revealNodeId || !parentIdMap.has(revealNodeId)) return
+    const ancestors: string[] = []
+    for (let p = parentIdMap.get(revealNodeId) ?? null; p; p = parentIdMap.get(p) ?? null) ancestors.push(p)
+    if (ancestors.some(a => !expandedIds.has(a))) setExpandedIds(prev => new Set([...prev, ...ancestors]))
+    setPendingReveal(revealNodeId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealNodeId, revealSeq, parentIdMap])
+  useEffect(() => {
+    if (!pendingReveal) return
+    const row = containerRef.current?.querySelector(`[data-tree-node="${CSS.escape(pendingReveal)}"]`)
+    if (!row) return
+    row.scrollIntoView({ block: 'nearest' })
+    setPendingReveal(null)
+  }, [pendingReveal, visibleNodes])
 
   const depthMap = useMemo(() => {
     const map = new Map<string, number>()

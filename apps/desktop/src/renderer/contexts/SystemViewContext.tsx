@@ -39,6 +39,12 @@ import type { FilterOptions } from '../lib/textFilter'
 /** GH228 — mode d'affichage de la vue système, porté par l'URL (`view`). */
 export type SystemViewMode = 'excel' | 'word' | 'edit'
 
+/** GH229 — une page de la vue système (route et paramètres), ouvrable dans un onglet. */
+export interface SystemPage {
+  pathname: '/product' | '/components'
+  search: Record<string, string>
+}
+
 function readStoredViewMode(repoPath: string): 'excel' | 'word' | null {
   if (!repoPath) return null
   const stored = localStorage.getItem(`polenta:viewMode:${repoPath}`)
@@ -199,6 +205,11 @@ export interface SystemViewState {
   /** Nouvelle page : objet `item` du type `nodeId::typeId` du repo `repoPath` (lien T37, GH105 :
    *  objet d'un autre repo du workspace ; repo inconnu de l'arbre = repo courant). */
   showObject: (repoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory) => void
+  /** GH229 — URL de la page de `showObject`, pour l'ouvrir dans un nouvel onglet (même page). */
+  objectPage: (repoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory) => SystemPage
+  /** GH229 — mode d'affichage d'un lien suivi : mode courant sur la vue système, sinon dernier
+   *  mode Tableau / Document du repo de la cible. */
+  viewModeForLink: (targetRepoPath: string) => SystemViewMode
   /** GH105 — nom de montage du repo `repoPath` (`undefined` s'il n'est pas dans l'arbre). */
   repoNameOf: (repoPath: string) => string | undefined
 
@@ -660,9 +671,27 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
 
   // `category` : un lien peut viser un objet d'une autre catégorie (test lié depuis Exigences) —
   // l'onglet Exigences / Tests suit l'objet, sinon son type n'y serait pas affichable.
+  const objectPage = useCallback((targetRepoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory): SystemPage => {
+    const search: Record<string, string> = {
+      projectId: projectId ?? '', repo: repoNameOf(targetRepoPath) ?? selectedRepoName, type: typeId,
+      category: category ?? urlCategory, view, item,
+    }
+    // Hors vue système (lien suivi depuis une campagne, la recherche…) : `/product`.
+    return pathname === '/components'
+      ? { pathname: '/components', search: { ...search, component: nodeId } }
+      : { pathname: '/product', search: { ...search, node: nodeId } }
+  }, [projectId, repoNameOf, selectedRepoName, urlCategory, pathname])
+
   const showObject = useCallback((targetRepoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory) => {
-    navigateWith(repoNameOf(targetRepoPath) ?? selectedRepoName, nodeId, typeId, false, { view, item, category })
-  }, [navigateWith, repoNameOf, selectedRepoName])
+    const page = objectPage(targetRepoPath, nodeId, typeId, view, item, category)
+    navigate({ to: page.pathname, search: page.search as never })
+  }, [objectPage, navigate])
+
+  const onSystemRoute = pathname === '/product' || pathname === '/components'
+  const viewModeForLink = useCallback(
+    (targetRepoPath: string): SystemViewMode => (onSystemRoute ? viewMode : readStoredViewMode(targetRepoPath) ?? 'excel'),
+    [onSystemRoute, viewMode],
+  )
 
   const setEditingNodeId = useCallback((nodeId: string | null) => {
     if (nodeId === null) {
@@ -911,6 +940,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     storedViewMode,
     showView,
     showObject,
+    objectPage,
+    viewModeForLink,
     repoNameOf,
     root,
     setRoot,

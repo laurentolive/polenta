@@ -66,6 +66,8 @@ const objectTypeDefinitionSchema = z.object({
   statuses: z.array(schemaStatusSchema).optional(),
   /** GH77 — historiser le statut (défaut true ; écrire false pour le désactiver). */
   trackStatusHistory: z.boolean().optional(),
+  /** GH229 — champ affiché à la place de l'ID dans les liens (`title`, ou champ text / number / enum). */
+  displayIdField: z.string().optional(),
 })
 
 const linkTypeDefinitionSchema = z.object({

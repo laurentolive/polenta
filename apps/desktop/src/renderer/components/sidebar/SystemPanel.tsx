@@ -9,7 +9,7 @@
  * State is shared with SystemView (main area) via SystemViewContext.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trans, useTranslation } from 'react-i18next'
@@ -294,12 +294,22 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
     repoPath,
     requestGoto,
     clearGoto,
+    gotoNodeId,
+    gotoSeq,
   } = useSystemView()
 
   const qc = useQueryClient()
 
   // Local selection state for the tree (doesn't affect the doc view per spec)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+
+  // GH229 — élément ciblé (lien suivi, goto) ou édité : sélectionné dans l'arbre, comme si on
+  // l'avait choisi ici.
+  const revealNodeId = editingNodeId ?? gotoNodeId
+  useEffect(() => {
+    // Déjà sélectionné (ex. dépôt d'une sélection multiple, goto sur le premier) : sélection gardée.
+    if (revealNodeId) setSelectedIds(prev => (prev.includes(revealNodeId) ? prev : [revealNodeId]))
+  }, [revealNodeId, gotoSeq])
 
   // T166 — périmètre de recherche de l'arbre aligné sur les Vues Word/Excel : le filtre global
   // doit aussi fouiller le titre et toutes les valeurs de champs, pas seulement le nom de nœud
@@ -438,6 +448,8 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
             onItemNodeAdded={createItemObject}
             onItemRenamed={handleItemRenamed}
             onGoto={handleGoto}
+            revealNodeId={revealNodeId}
+            revealSeq={gotoSeq}
           />
         )}
       </div>

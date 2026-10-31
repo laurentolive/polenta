@@ -65,3 +65,12 @@
 5. Filtre texte actif excluant la cible, puis clic sur son ID depuis un autre type : message
    « masqué par le filtre ».
 6. Fiche campagne : ID du test, de l'exigence d'instance, campagne d'origine → liens.
+
+## Correctif après test sur PH2 (validation)
+
+Sur un gros projet, un lien (ou un clic dans l'arbre) sélectionnait bien l'élément dans l'arbre
+mais la vue Tableau restait en haut : le rendu complet des lignes (transition) n'aboutissait
+jamais, la ligne cible n'existait pas. Les lignes jusqu'à la cible du goto / de l'ancrage sont
+désormais rendues tout de suite (`renderedRowCount`, `ExcelView`). La cause du rendu complet
+jamais atteint, présente aussi sans GH229, est suivie dans #246. Vérifié sur une copie de PH2
+(Tableau et Document, lien et arbre).

@@ -68,6 +68,39 @@ export interface PolentaGraph {
   campaigns: GraphCampaign[]
   /** Toutes les exécutions de test enregistrées (fichiers `test-runs/`), campagne ou non. */
   runs: GraphTestRun[]
+  /** GH198 — changesets de tous les repos (`changesets/`). */
+  changesets: GraphChangeset[]
+}
+
+/** GH198 — change : modification pilotée d'un composant, ses éléments à modifier et impactés. */
+export interface GraphChangeset extends GraphObjectBase {
+  /** Composant concerné (nœud du schéma). */
+  component: string
+  mode: 'request' | 'range'
+  /**
+   * GH200 — `base` : version de départ (absente : création) ; `approved` : commit d'approbation,
+   * figé au statut terminal (null tant que le changeset est ouvert : lire le statut de l'élément).
+   */
+  toModify: {
+    id: string
+    state: 'planned' | 'modified'
+    base: { sha: string | null; version: number } | null
+    approved: { sha: string | null; version: number } | null
+  }[]
+  /** Statut d'impact : les 8 valeurs de l'analyse d'impact entre baselines. */
+  impacted: { id: string; status: string; comment: string | null; source: 'declared' | 'computed' }[]
+  origin: { runs: string[]; decisions: { conformityId: string; objectId: string }[] }
+  integratedIn: string | null
+  campaigns: string[]
+  /** GH199 — bornes d'un change « sur l'existant » (`mode: range`), sinon null. */
+  range: { from: { ref: string; sha: string }; to: { ref: string; sha: string } } | null
+  /** GH199 — analyse figée au statut terminal (lignes, racines), sinon null. Non recalculée par le graphe. */
+  analysis: {
+    computedAt: string
+    rows: { id: string; elementType: 'requirement' | 'test_case' | null; status: string; comment: string | null; source: 'declared' | 'computed'; reached: boolean }[]
+    rootIds: string[]
+    campaigns: { id: string; testIds: string[] }[]
+  } | null
 }
 
 export interface GraphRepo {
@@ -97,7 +130,7 @@ export interface GraphSchema {
   campaignStatuses: GraphFixedStatus[]
 }
 
-export type GraphObjectCategory = 'requirement' | 'test' | 'campaign'
+export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'changeset'
 
 export interface GraphObjectType {
   /** Repo dont le schéma déclare le type. */
@@ -112,6 +145,10 @@ export interface GraphObjectType {
   fields: GraphFieldDef[]
   /** Statuts dans l'ordre de déclaration ; vide pour une campagne (cf. `campaignStatuses`). */
   statuses: GraphStatusDef[]
+  /** GH196 — types de test : champs saisis à chaque exécution (`GraphTestRun.fields`) ; vide sinon. */
+  runFields: GraphFieldDef[]
+  /** GH196 — types de test : champs saisis à chaque étape exécutée (`GraphStepResult.fields`) ; vide sinon. */
+  stepFields: GraphFieldDef[]
 }
 
 export interface GraphStatusDef {
@@ -137,7 +174,17 @@ export interface GraphFixedStatus {
 
 export type GraphFieldType =
   | 'text' | 'textarea' | 'number' | 'enum' | 'multi_enum' | 'boolean' | 'date' | 'datetime'
-  | 'richtext' | 'user' | 'drawio'
+  | 'richtext' | 'user' | 'drawio' | 'link'
+
+/**
+ * GH195 — valeur d'un champ `link` dans `fields` : un lien, ou une liste si le champ est
+ * `multiple`. `label` est absent quand il est vide (afficher alors l'URL). Un fichier édité à la
+ * main peut encore porter une chaîne `libellé | URL` : la lire avec prudence.
+ */
+export interface GraphLinkValue {
+  label?: string
+  url: string
+}
 
 export interface GraphFieldDef {
   name: string
@@ -150,6 +197,10 @@ export interface GraphFieldDef {
   validator?: string
   /** Vrai si l'historique du champ est conservé dans `history[<name>]`. */
   trackHistory: boolean
+  /** GH195 — champ `link` : valeur liste ({@link GraphLinkValue}[]) au lieu d'un seul lien. */
+  multiple?: boolean
+  /** GH195 — obligation conditionnelle, telle que déclarée dans le schéma. */
+  requiredWhen?: Record<string, unknown[]>
 }
 
 export interface GraphLinkType {
@@ -228,6 +279,8 @@ export interface GraphCampaign {
   baselineRef: string | null
   /** Composant ciblé par la campagne, si renseigné. */
   targetComponent: string | null
+  /** GH207 — changeset qui a créé la campagne, sinon null. */
+  changeset: string | null
   level: string | null
   createdAt: string
   /** Instant de clôture (`completed` ou `abandoned`), `null` tant qu'elle est ouverte. */
@@ -283,7 +336,25 @@ export interface GraphTestRun {
   duration: number
   /** `excel-import` : résultat importé du classeur d'exécution ; `null` : saisi dans l'outil. */
   origin: string | null
+  /** GH196 — valeurs des champs d'exécution du type de test (`{}` si aucun) ; un champ retiré du
+   *  schéma garde sa valeur (pas de réécriture d'un run). */
+  fields: Record<string, unknown>
+  /** GH196 — notes globales du testeur (Markdown), `''` si vides. */
+  notes: string
+  /** GH196 — verdicts d'étape, commentaires et champs d'étape, par ordre d'étape. */
+  stepResults: GraphStepResult[]
 }
+
+/** GH196 — résultat d'une étape d'un run. */
+export interface GraphStepResult {
+  order: number
+  result: GraphStepResultValue
+  /** Commentaire du testeur (Markdown), `''` si vide. */
+  comment: string
+  fields: Record<string, unknown>
+}
+
+export type GraphStepResultValue = 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIP' | 'NOT_EXECUTED'
 
 // ─── Hôte et sortie ──────────────────────────────────────────────────────────
 

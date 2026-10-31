@@ -481,6 +481,22 @@ Système › Arbre › Sélection).
 
 ---
 
+**Historique des exécutions (GH197)** — section repliable « Exécutions (N) » de la vue Édition d'un
+test ou d'une exigence (aussi sur les pages de détail `test.$testId` / `req.$reqId`), entre « Liens » et
+« Historique », chargée à l'ouverture. Grille `ExecutionHistoryGrid` (composant réutilisable) : une
+ligne par run du test, ou des tests reliés à l'exigence (tout lien test ↔ exigence, règle T179), plus
+les entrées en attente des campagnes ouvertes ; entrée retirée (GH73), run remplacé par un nouvel
+essai, campagne introuvable marqués. Colonnes (bouton ⚙️ de la grille) par groupe : Exécution (verdict,
+date, testeur, durée, origine, notes, équipement, champs d'exécution), Campagne (ID / titre, statut,
+baseline, champs), Entrée (`entryId`, exigence de l'instance, paramètres, version du test, report),
+Test (grille d'exigence) ; préférence `fieldVisibility[<type>].executions`, défaut verdict / date /
+testeur / campagne / entrée + champs d'exécution `defaultVisible`, Réinitialiser. Tri par en-tête
+(nombres comparés numériquement), étapes dépliables (verdict, commentaire, champs d'étape). L'ID
+d'entrée ouvre la page d'exécution si la campagne est ouverte, la consultation du run sinon. Données :
+canal `executions:history` (lecture seule), rafraîchi sur tout changement de `tests/`, `test-runs/`,
+`links/`, `campaigns/`. Limite : une exigence couverte par un test d'un autre repo du workspace n'en
+liste pas les exécutions (portée du repo ouvert).
+
 ## Configuration des champs — ⚙️
 
 > GH235 : le bouton d'ouverture du panneau (barre d'outils, sélecteur de tests) porte une icône
@@ -505,8 +521,18 @@ Système › Arbre › Sélection).
   écrite avant T162, sans ces clés, vaut « affichés ».
 - Sauvegardé **par vue** (Excel / Word / Édition), **par type d'élément**, **par utilisateur**.
 - Stockage : fichier local `.{githubaccount}.pref` (clé `fieldVisibility["<nœud>::<type>"]`).
-- Option **Réinitialiser par défaut** disponible par vue — remet aussi « Afficher les titres
-  des dossiers » à coché.
+- Option **Réinitialiser par défaut** disponible par vue — **retire** le choix personnel de la vue
+  (clés `excel` / `word` et `showFolders*` du `.pref`, GH139) : la vue retombe sur le défaut du
+  schéma et le suivra s'il évolue ; « Afficher les titres des dossiers » redevient coché.
+- **Défaut de l'équipe (GH139)** : porté par le schéma, `defaultVisible: true` sur un champ
+  (`SchemaField`) ou un type de lien (`LinkTypeDefinition`). Colonnes par défaut d'une vue sans
+  choix personnel (`defaultVisibleFields`) : section, nom, ID, statut, `version` (exigence) ou
+  `steps` (test), puis les champs `defaultVisible` dans l'ordre du schéma (aucun marqué : les 3
+  premiers), puis les colonnes des types de lien `defaultVisible` qui concernent le type
+  (`link-out::` / `link-in::` en vue Tableau pour un type à la fois source et cible, `link::` sinon).
+  Case « Vis. » dans le tableau des champs de l'éditeur de schéma, case « Colonne affichée par
+  défaut » sur chaque type de lien. La clé `fieldVisibility` de `polenta-config` (GH45) n'est plus
+  lue (avertissement dans le panneau Compte).
 - **Sélecteur de tests d'une campagne (GH176)** : le même panneau (`FieldConfigModal`,
   `components/system/FieldConfigModal.tsx`) est ouvert par le ⚙️ du sélecteur, avec un seul onglet
   (pas de barre Tableau / Document), la case Statut cochée et désactivée (infobulle : toujours

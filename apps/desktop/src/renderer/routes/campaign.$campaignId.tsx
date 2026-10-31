@@ -1,8 +1,10 @@
-﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
+﻿import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
 import { useTranslation, Trans } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { Trash2, Play, Eye, Pencil, Copy, AlertTriangle } from 'lucide-react'
+import { decodeInstances } from '../lib/reqInstances'
 import { api } from '../api'
 import { useProjectSchema, getCampaignTypeDef, isTestApproved } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -44,6 +46,9 @@ export const Route = createFileRoute('/campaign/$campaignId')({
       component: search['component'] as string | undefined,
       level: search['level'] as string | undefined,
       ...(status ? { status } : {}),
+      // GH207 — « Ajouter à … » depuis un changeset : sélecteur ouvert, tests et instances pré-cochés.
+      ...(search['addTests'] ? { addTests: search['addTests'] as string } : {}),
+      ...(search['instances'] ? { instances: search['instances'] as string } : {}),
     }
   },
 })
@@ -63,14 +68,14 @@ function CampaignDetailPage() {
   const { campaignId } = Route.useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { repoPath, projectId, component, level, status: statusFilter } = Route.useSearch()
+  const { repoPath, projectId, component, level, status: statusFilter, addTests: prefillAdd, instances: prefillInstances } = Route.useSearch()
   const setStatusFilter = (status: TestRunStatus | undefined) =>
     navigate({ to: '/campaign/$campaignId', params: { campaignId }, search: { repoPath, projectId, component, level, ...(status ? { status } : {}) }, replace: true })
   // T171 — résolution des paramètres de la base (repos composants) à l'ajout.
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
 
   // GH33 — sélecteur de tests (modale) ouvert.
-  const [addingTests, setAddingTests] = useState(false)
+  const [addingTests, setAddingTests] = useState(!!prefillAdd)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingFields, setEditingFields] = useState<Record<string, string> | null>(null)
   const [editingParamsFor, setEditingParamsFor] = useState<string | null>(null)
@@ -192,7 +197,7 @@ function CampaignDetailPage() {
 
   function getStringField(key: string): string {
     const v = campaign!.fields?.[key]
-    return typeof v === 'string' ? v : (v !== undefined && v !== null ? String(v) : '')
+    return fieldValueToText(v)
   }
 
   function startEditingFields() {
@@ -373,6 +378,7 @@ function CampaignDetailPage() {
                   key={f.name}
                   field={f}
                   value={editingFields[f.name] ?? ''}
+                  requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: campaign.status, fields: editingFields }))}
                   onChange={v => setEditingFields(prev => ({ ...(prev ?? {}), [f.name]: v }))}
                   repoPath={repoPath}
                   interfaceRoles={schema?.roles?.map(r => r.name)}
@@ -396,6 +402,15 @@ function CampaignDetailPage() {
       {campaign.baselineRef && (
         <p className="text-xs text-ink-2 mb-4">
           {t('campaignPage.baselineLabelPrefix')} <code className="font-mono">{campaign.baselineRef}</code>
+        </p>
+      )}
+      {/* GH207 — changeset qui a créé la campagne. */}
+      {campaign.changeset && (
+        <p className="text-xs text-ink-2 mb-4" data-testid="campaign-changeset">
+          {t('changes.campaignSection.link')} :{' '}
+          <Link to="/changeset/$changeId" params={{ changeId: campaign.changeset }} search={{ repoPath, projectId }} className="font-mono text-prim hover:underline">
+            {campaign.changeset}
+          </Link>
         </p>
       )}
 
@@ -455,7 +470,9 @@ function CampaignDetailPage() {
           candidates={availableTests}
           defaultTypeRef={component && level ? `${component}::${level}` : undefined}
           previewSource={{ campaignId }}
-          initial={EMPTY_PICKER_RESULT}
+          initial={prefillAdd
+            ? { ...EMPTY_PICKER_RESULT, testIds: prefillAdd.split(',').filter(Boolean), reqSel: decodeInstances(prefillInstances) }
+            : EMPTY_PICKER_RESULT}
           presentOf={presentOf}
           includedCount={id => campaign!.testCaseIds.filter(x => x === id).length}
           allTests={tests}
@@ -509,7 +526,7 @@ function CampaignDetailPage() {
                   <div className="flex-1 min-w-0">
                     {/* GH229 — ID du test, de l'exigence et de la campagne d'origine : liens d'élément
                         (le clic ailleurs sur la ligne ouvre l'entrée). */}
-                    <ElementLink id={tcId} className="font-mono text-xs text-ink-3" />
+                    <ElementLink id={tcId} className="font-mono text-xs text-ink-3 whitespace-nowrap" />
                     {tc && (
                       <span className="text-xs text-ink ml-2 truncate">{tc.title}</span>
                     )}

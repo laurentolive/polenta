@@ -1,6 +1,7 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 import * as fsP from 'fs/promises'
 import type { TestsExportPayload } from '@polenta/types'
+import { linkParagraphsDocx } from './link-cell.util'
 
 /** Cahier de test — export docx, miroir de `requirements.docx.ts` : un titre par test (ID + Label),
  *  puis chaque autre colonne visible (`visibleFieldsWord`) en paragraphe labellisé. La colonne
@@ -42,6 +43,10 @@ export async function exportTestsDocx(
       const value = row[col.key]
       if (!value?.trim()) continue
       children.push(new Paragraph({ children: [new TextRun({ text: col.label, bold: true })] }))
+      if (col.type === 'link') {
+        for (const p of linkParagraphsDocx(value)) children.push(p)
+        continue
+      }
       for (const line of value.split('\n')) children.push(new Paragraph({ text: line }))
     }
   }

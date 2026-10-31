@@ -1,9 +1,9 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
-  CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
+  CampaignTestRun, Change, DescribedObject, GraphCampaign, GraphChangeset, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
   GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun,
-  HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema,
+  HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
 import {
@@ -63,6 +63,8 @@ interface RawRepo {
   links: ObjectLink[]
   schema: ProjectSchema | null
   campaigns: TestCampaign[]
+  /** GH198 — fichiers `changesets/` du repo. */
+  changes: Change[]
 }
 
 /**
@@ -190,7 +192,7 @@ export class GraphService {
 
   private async fetchRepo(repo: { repoPath: string; name: string; label: string }): Promise<RawRepo> {
     const rp = repo.repoPath
-    const [requirements, testCases, latestRunMap, runsMap, links, schema, campaigns] = await Promise.all([
+    const [requirements, testCases, latestRunMap, runsMap, links, schema, campaigns, changes] = await Promise.all([
       this.reqIndex.findAll(rp, {}),
       this.testsIndex.findAll(rp),
       this.testsIndex.getLatestRunMap(rp),
@@ -198,8 +200,24 @@ export class GraphService {
       this.reqIndex.findAllLinks(rp),
       this.schema.get(rp).catch(() => null),
       this.listCampaigns(rp),
+      this.listChanges(rp),
     ])
-    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns }
+    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, changes }
+  }
+
+  /** GH198 — changes du repo, lus directement (un fichier illisible est ignoré). */
+  private async listChanges(rp: string): Promise<Change[]> {
+    const out: Change[] = []
+    try {
+      const files = (await this.git.listFiles(rp, 'changesets')).filter((f) => f.endsWith('.yaml'))
+      for (const f of files) {
+        const c = await this.git.readYaml<Change>(rp, f).catch(() => null)
+        if (c?.id) out.push(c)
+      }
+    } catch (err) {
+      console.warn(`[graph] changes ignorés pour ${rp} :`, err instanceof Error ? err.message : String(err))
+    }
+    return out
   }
 
   /** Un fichier campagne illisible ne casse pas tout le graphe : campagnes du repo ignorées. */
@@ -257,6 +275,7 @@ export class GraphService {
     const links: GraphLink[] = []
     const campaigns: GraphCampaign[] = []
     const runs: GraphTestRun[] = []
+    const changes: GraphChangeset[] = []
     for (const r of perRepo) {
       const types = typeResolver(r.schema)
       for (const q of r.requirements) {
@@ -275,6 +294,7 @@ export class GraphService {
         return isApprovalStatus(typeDef && typeDef !== 'unresolvable' ? typeDef : null, test.status)
       }
       campaigns.push(...await Promise.all(r.campaigns.map((c) => this.toGraphCampaign(c, r, types, isApproved, now))))
+      for (const c of r.changes) changes.push(toGraphChangeset(c, r.name, types, now))
     }
 
     const graph: PolentaGraph = {
@@ -295,6 +315,7 @@ export class GraphService {
       links,
       campaigns,
       runs,
+      changesets: changes,
     }
     return {
       graph,
@@ -342,6 +363,7 @@ export class GraphService {
       history: effectiveHistory(carrier, typeDef, fallback, now),
       baselineRef: c.baselineRef ?? null,
       targetComponent: c.component ?? null,
+      changeset: c.changeset ?? null,
       level: c.level ?? null,
       createdAt: c.createdAt,
       completedAt: c.completedAt ?? null,
@@ -370,6 +392,20 @@ function typeResolver(schema: ProjectSchema | null): TypeResolver {
   }
 }
 
+function toGraphFieldDef(f: SchemaField): GraphFieldDef {
+  return {
+    name: f.name,
+    label: f.label ?? f.name,
+    type: f.type,
+    ...(f.values ? { values: [...f.values] } : {}),
+    required: !!f.required,
+    ...(f.validator ? { validator: f.validator } : {}),
+    trackHistory: !!f.trackHistory,
+    ...(f.multiple ? { multiple: true } : {}),
+    ...(f.requiredWhen ? { requiredWhen: f.requiredWhen } : {}),
+  }
+}
+
 function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, component: string): GraphObjectType {
   return {
     repo,
@@ -378,18 +414,33 @@ function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, co
     label: t.label ?? t.name,
     prefix: t.prefix ?? null,
     category: t.category,
-    fields: (t.fields ?? []).map((f): GraphFieldDef => ({
-      name: f.name,
-      label: f.label ?? f.name,
-      type: f.type,
-      ...(f.values ? { values: [...f.values] } : {}),
-      required: !!f.required,
-      ...(f.validator ? { validator: f.validator } : {}),
-      trackHistory: !!f.trackHistory,
-    })),
+    fields: (t.fields ?? []).map(toGraphFieldDef),
     statuses: t.category === 'campaign' ? [] : (t.statuses ?? []).map((s) => ({
       name: s.name, label: s.label ?? s.name, isApproval: !!s.isApproval, isTerminal: !!s.isTerminal,
     })),
+    runFields: t.category === 'test' ? (t.runFields ?? []).map(toGraphFieldDef) : [],
+    stepFields: t.category === 'test' ? (t.stepFields ?? []).map(toGraphFieldDef) : [],
+  }
+}
+
+/** GH198 — change du graphe : base commune (statut, champs, historique) + listes et liens système. */
+function toGraphChangeset(c: Change, repo: string, types: TypeResolver, now: Date): GraphChangeset {
+  return {
+    ...objectBase(c as unknown as Requirement, repo, types, now),
+    component: c.component ?? '',
+    mode: c.mode ?? 'request',
+    toModify: (c.toModify ?? []).map((t) => ({ id: t.id, state: t.state, base: t.base ?? null, approved: t.approved ?? null })),
+    impacted: (c.impacted ?? []).map((i) => ({ id: i.id, status: i.status, comment: i.comment ?? null, source: i.source })),
+    origin: { runs: c.origin?.runs ?? [], decisions: c.origin?.decisions ?? [] },
+    integratedIn: c.integratedIn ?? null,
+    campaigns: c.campaigns ?? [],
+    range: c.range ?? null,
+    analysis: c.analysis?.frozen ? {
+      computedAt: c.analysis.computedAt,
+      rows: c.analysis.rows.map((r) => ({ id: r.id, elementType: r.elementType, status: r.status, comment: r.comment ?? null, source: r.source, reached: r.reached })),
+      rootIds: c.analysis.roots.map((r) => r.elementId),
+      campaigns: c.analysis.campaigns.map((x) => ({ id: x.id, testIds: x.testIds })),
+    } : null,
   }
 }
 
@@ -432,6 +483,14 @@ function toGraphRun(run: TestRun, repo: string): GraphTestRun {
     executedBy: run.executedBy,
     duration: typeof run.duration === 'number' ? run.duration : 0,
     origin: run.origin ?? null,
+    fields: { ...(run.fields ?? {}) },
+    notes: typeof run.notes === 'string' ? run.notes : '',
+    stepResults: (run.stepResults ?? []).map((sr) => ({
+      order: sr.order,
+      result: sr.result,
+      comment: typeof sr.comment === 'string' ? sr.comment : '',
+      fields: { ...(sr.fields ?? {}) },
+    })),
   }
 }
 

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, LinkTypeDefinition } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnPanelEntry } from '../../hooks/useComputedColumns'
 import { getRelevantLinkTypes, isLinkTypeValid, linkColumnKeys, linkColumnLabel, parseLinkColumn } from './linkUtils'
+import { defaultVisibleFields } from '../../lib/exportColumns'
 import { toggleVisibleField } from './fieldToggle'
 
 // ── FieldConfig modal (⚙) — onglets Tableau / Document indépendants ─────────
@@ -61,7 +62,8 @@ export function FieldConfigModal({
   /** GH176 — champs toujours affichés : case cochée et désactivée, avec cette infobulle. */
   lockedFields?: Record<string, string>
   /** GH176 — remplace l'action par défaut de « Réinitialiser ». */
-  onReset?: () => void
+  /** GH139 — retire le choix personnel de l'onglet affiché (la vue retombe sur le défaut du schéma). */
+  onReset?: (tab: ConfigTab) => void
   /** GH176 — `modal` : rendu au-dessus d'une modale (portail), `Échap` ferme le panneau seul. */
   layer?: 'page' | 'modal'
 }) {
@@ -119,7 +121,8 @@ export function FieldConfigModal({
     onChangeCurrent(toggleVisibleField(currentFields, f, canonicalOrder))
   }
 
-  const defaultFields = ['section', 'name', 'id', 'status', ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? [])]
+  // GH229 — onglet Popup : défaut = aucun champ (pas de défaut d'équipe), cf. Réinitialiser.
+  const defaultFields = tab === 'popup' ? [] : defaultVisibleFields(typeDef, { linkTypes, objectTypeRef, view: tab })
 
   const tabLabels: Record<ConfigTab, string> = {
     excel: t('system.fieldConfig.tabExcel'),
@@ -332,11 +335,11 @@ export function FieldConfigModal({
         {/* Reset */}
         <button
           type="button"
-          onClick={onReset ?? (() => {
+          onClick={onReset ? () => onReset(tab) : () => {
             if (tab === 'popup') { onChangeCurrent([]); return }
             onChangeCurrent(defaultFields)
             onChangeShowFolders(true)
-          })}
+          }}
           data-testid="field-config-reset"
           className="mt-3 text-xs text-ink-3 hover:text-ink underline"
         >

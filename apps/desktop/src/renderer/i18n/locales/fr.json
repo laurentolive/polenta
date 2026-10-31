@@ -29,11 +29,11 @@
       "parameters": "Paramètres",
       "search": "Recherche",
       "version": "Version",
-      "impact": "Analyse d'impact",
       "menu": {
         "hide": "Masquer « {{label}} »",
         "reset": "Réinitialiser la disposition"
-      }
+      },
+      "changes": "Changesets"
     },
     "tabBar": {
       "newTab": "Nouvel onglet (Ctrl+T)",
@@ -113,7 +113,6 @@
       "graph": "Arbre de versions",
       "diff": "Diff",
       "baseline": "Baselines",
-      "impactAnalysis": "Analyse d'impact",
       "versionDiff": "Comparer versions",
       "product": "Produit",
       "components": "Composants",
@@ -270,6 +269,8 @@
     "saved": "Enregistré",
     "error": "Erreur",
     "saving": "Enregistrement…",
+    "changeTrackingLabel": "Toute modification passe par un changeset",
+    "changeTrackingHelp": "Créer, rouvrir ou rendre obsolète une exigence ou un test l'assigne à un changeset ouvert du repo (automatique s'il n'y en a qu'un). Actif dès qu'un type de changeset existe dans le modèle de données.",
     "autoPropagateLabel": "Propager automatiquement le pin des sous-repos vers le repo parent lors d'un commit reçu sur le sous-repo",
     "autoPropagateHelp": "Si décoché, la mise à jour du pin attend une approbation manuelle de l'intégrateur.",
     "autoPullIntervalLabel": "Intervalle de récupération automatique (minutes)",
@@ -530,6 +531,17 @@
       "historyEvent": "Historiser : date et auteur à chaque changement (le contenu est déjà dans git)",
       "historyNotTrackable": "Ce champ ne peut pas être historisé",
       "trackStatusHistory": "Historiser le statut (valeur, date et auteur à chaque changement)",
+      "colRequiredWhen": "Oblig. si",
+      "colRequiredWhenTitle": "Obligatoire quand un champ a une des valeurs : « status = approved » ou « champ = v1, v2 ; autre = v3 » (statut, enum, multi_enum, boolean du type)",
+      "linkMultiple": "Multiple",
+      "linkMultipleTitle": "Plusieurs liens dans ce champ",
+      "colDefaultVisible": "Vis.",
+      "colDefaultVisibleTitle": "Colonne affichée par défaut (vues Tableau et Document) tant que l’utilisateur n’a pas fait son propre choix — défaut de l’équipe",
+      "runFields": "Champs d'exécution",
+      "runFieldsHelp": "Saisis à chaque exécution (n° de rapport, température, lien vers le rapport…). Une information commune à toute la campagne est un champ de campagne. « Oblig. si » : result = PASS, FAIL, BLOCKED ou INCOMPLETE (verdict global). Un nom désigne un seul champ dans tout le projet.",
+      "stepFields": "Champs d'étape",
+      "stepFieldsHelp": "Saisis sur chaque étape exécutée (valeur mesurée, capture…). « Oblig. si » : result = PASS, FAIL, BLOCKED, SKIP (verdict de l'étape).",
+      "changeset": "Changeset",
       "displayIdField": "ID affiché dans les liens",
       "displayIdPolenta": "ID Polenta",
       "displayIdTitle": "Titre"
@@ -673,7 +685,8 @@
       "implementedVersion": "Version implémentée",
       "unresolved": "non résolu",
       "noImplements": "Aucune implémentation d'interface déclarée.",
-      "addImplements": "+ Déclarer une implémentation"
+      "addImplements": "+ Déclarer une implémentation",
+      "linkDefaultVisible": "Colonne affichée par défaut"
     },
     "deleteCascade": {
       "titleNode": "Supprimer le composant « {{name}} » ?",
@@ -684,7 +697,9 @@
         "test_one": "{{count}} test supprimé (et ses exécutions) :",
         "test_other": "{{count}} tests supprimés (et leurs exécutions) :",
         "campaign_one": "{{count}} campagne supprimée :",
-        "campaign_other": "{{count}} campagnes supprimées :"
+        "campaign_other": "{{count}} campagnes supprimées :",
+        "changeset_one": "{{count}} changeset supprimé :",
+        "changeset_other": "{{count}} changesets supprimés :"
       },
       "more": "… et {{count}} autre(s)",
       "links_one": "{{count}} lien supprimé :",
@@ -832,6 +847,7 @@
       "documentView": "Vue document"
     },
     "editView": {
+      "approvedLocked": "Approuvé : le contenu est verrouillé. Changez le statut (réouverture) pour le modifier.",
       "colType": "Type",
       "noConfiguredValue": "Aucune valeur configurée",
       "statusCommentPlaceholder": "Commentaire du changement de statut (facultatif)",
@@ -1024,8 +1040,11 @@
         "stepsMismatch": "étapes modifiées dans le classeur (attendues : {{expected}} ; trouvées : {{found}})",
         "invalidVerdict": "verdict non reconnu « {{value}} » (ligne {{row}})",
         "invalidDate": "date illisible « {{value}} » (ligne {{row}})",
-        "testChangedSinceExport": "le test {{testCaseId}} a changé depuis l'export du classeur — réexportez le classeur pour cette instance"
-      }
+        "testChangedSinceExport": "le test {{testCaseId}} a changé depuis l'export du classeur — réexportez le classeur pour cette instance",
+        "fieldError": "{{message}} (ligne {{row}})"
+      },
+      "unchanged_one": "{{count}} instance déjà exécutée, non modifiée : ignorée",
+      "unchanged_other": "{{count}} instances déjà exécutées, non modifiées : ignorées"
     },
     "stepResult": {
       "notExecuted": "Non exécuté",
@@ -1104,7 +1123,9 @@
       "toggle": "Filtrer sur {{status}} (re-cliquer pour retirer)",
       "clear": "Filtre : {{status}} ✕",
       "empty": "Aucune entrée {{status}}."
-    }
+    },
+    "runFields": "Champs d'exécution",
+    "outOfSchema": "hors schéma"
   },
   "campaignProgress": {
     "ready": "Prêt à exécuter"
@@ -1602,12 +1623,11 @@
     "title": "Dashboard — {{title}}"
   },
   "printImpactAnalysisPage": {
-    "title": "Analyse d'impact — {{from}} → {{to}}",
-    "changedRequirementsCount_one": "{{count}} exigence modifiée",
-    "changedRequirementsCount_other": "{{count}} exigences modifiées",
-    "changeType": "Type de changement : {{type}}",
+    "title": "Analyse d'impact — {{id}} {{title}}",
     "descendantTree": "Arbre descendant",
-    "ascendantTree": "Arbre ascendant"
+    "ascendantTree": "Arbre ascendant",
+    "rootsCount_one": "{{count}} élément de départ",
+    "rootsCount_other": "{{count}} éléments de départ"
   },
   "printQueryResultPage": {
     "title": "Résultats de requête — {{queryName}}"
@@ -1850,7 +1870,9 @@
     "backfillRunning": "Reconstruction…",
     "backfillConfirm": "Reconstruire l'historique de {{repo}} depuis git ? Les fichiers modifiés seront à publier.",
     "backfillResult": "{{objects}} objet(s) complété(s), {{entries}} entrée(s) ajoutée(s).",
-    "backfillFailed": "{{count}} fichier(s) ignoré(s) : {{files}}"
+    "backfillFailed": "{{count}} fichier(s) ignoré(s) : {{files}}",
+    "legacyAcks_one": "Acquittement d'impact (ancien) : {{count}}",
+    "legacyAcks_other": "Acquittements d'impact (anciens) : {{count}}"
   },
   "suiviParams": {
     "reset": "Réinitialiser",
@@ -2162,6 +2184,201 @@
       "user": "Utilisateur",
       "repo": "Dépôt",
       "permission": "Droit"
+    }
+  },
+  "linkField": {
+    "label": "Libellé",
+    "labelPlaceholder": "Libellé (facultatif)",
+    "url": "URL",
+    "urlPlaceholder": "https://…, file://… ou \\\\serveur\\partage\\…",
+    "invalidUrl": "URL non prise en charge : http(s)://, file:// ou chemin réseau \\\\serveur\\partage.",
+    "invalidLabel": "Le libellé ne peut contenir ni « | » ni retour à la ligne.",
+    "add": "+ Ajouter un lien",
+    "remove": "Retirer ce lien",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "ok": "OK",
+    "copy": "Copier",
+    "copied": "Copié",
+    "pasteRejected_one": "{{count}} lien ignoré (schéma d’URL non pris en charge).",
+    "pasteRejected_other": "{{count}} liens ignorés (schéma d’URL non pris en charge).",
+    "pasteSingleOnly": "Ce champ ne garde qu’un lien : seul le premier a été collé."
+  },
+  "executionHistory": {
+    "title": "Exécutions",
+    "empty": "Aucune exécution.",
+    "columns": "Colonnes",
+    "configure": "Choisir les colonnes",
+    "toggleSteps": "Afficher les étapes",
+    "removed": "entrée retirée",
+    "isolated": "exécution isolée",
+    "campaignMissing": "campagne introuvable",
+    "originApp": "saisie",
+    "originExcel": "import Excel",
+    "group": {
+      "execution": "Exécution",
+      "campaign": "Campagne",
+      "entry": "Entrée",
+      "test": "Test"
+    },
+    "col": {
+      "verdict": "Verdict",
+      "date": "Date",
+      "tester": "Testeur",
+      "duration": "Durée",
+      "origin": "Origine",
+      "notes": "Notes",
+      "equipment": "Équipement",
+      "campaign": "Campagne",
+      "campaignStatus": "Statut de la campagne",
+      "baseline": "Baseline",
+      "entry": "Entrée",
+      "entryRequirement": "Exigence de l'instance",
+      "params": "Paramètres",
+      "testVersion": "Version du test",
+      "carriedFrom": "Reportée de",
+      "test": "Test"
+    },
+    "campaignStatus": {
+      "planned": "Planifiée",
+      "in_progress": "En cours",
+      "completed": "Terminée",
+      "abandoned": "Abandonnée"
+    },
+    "superseded": "essai remplacé",
+    "supersededTitle": "Run remplacé par un nouvel essai sur la même entrée"
+  },
+  "changes": {
+    "title": "Changesets",
+    "new": "Nouveau changeset",
+    "empty": "Aucun changeset.",
+    "emptyFiltered": "Aucun changeset ne correspond aux filtres.",
+    "allTypes": "Tous les types",
+    "allStatuses": "Tous les statuts",
+    "allRepos": "Tous les repos",
+    "mine": "Mes changesets",
+    "hideTerminal": "Masquer les terminés",
+    "home": "Sélectionnez un changeset dans le panneau, ou créez-en un.",
+    "type": "Type",
+    "titleLabel": "Titre",
+    "component": "Composant concerné",
+    "componentPick": "— choisir un composant —",
+    "componentFrozen": "Figé après le statut initial (désigne le repo de stockage).",
+    "status": "Statut",
+    "create": "Créer",
+    "creating": "Création…",
+    "createFromElement": "Créer un changeset",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer {{id}} ? Le fichier n’a jamais été commité ; l’ID ne sera pas réutilisé.",
+    "toModify": "Éléments changés",
+    "impacted": "Éléments impactés",
+    "add": "Ajouter",
+    "addSelected": "Ajouter la sélection",
+    "pickNone": "Aucun élément disponible.",
+    "remove": "Retirer",
+    "removed": "supprimé",
+    "none": "Aucun.",
+    "planned": "prévu",
+    "modified": "modifié",
+    "impactStatus": "Statut d'impact",
+    "comment": "Commentaire",
+    "computed": "calculé",
+    "origin": "Origine",
+    "integratedIn": "Version intégrée",
+    "campaigns": "Campagnes",
+    "requirement": "Exigence",
+    "test": "Test",
+    "notFound": "Changeset introuvable.",
+    "noTypeInRepo": "aucun type de changeset dans ce repo",
+    "componentHelp": "Le changeset est stocké dans le repo du composant, avec ses types : il le suit s'il est réutilisé dans un autre produit.",
+    "pickToModify": "Ajouter des éléments changés",
+    "pickImpacted": "Ajouter des éléments impactés",
+    "noFlagged": "Aucun élément à revérifier.",
+    "mode": {
+      "label": "Nature",
+      "request": "Demande de changement",
+      "range": "Sur l'existant",
+      "from": "Depuis (baseline ou commit)",
+      "to": "Jusqu'à (baseline ou commit)",
+      "rangeHelp": "Les exigences et tests modifiés entre les deux bornes sont ajoutés aux éléments changés ; l'analyse porte sur l'état à la seconde borne."
+    },
+    "openOnly": "Ouverts seulement",
+    "unreached": "n'est plus atteint",
+    "analysis": {
+      "title": "Analyse d'impact",
+      "request": "Demande — état courant",
+      "range": "Sur l'existant : {{from}} → {{to}}",
+      "computed": "calculée le {{when}}",
+      "frozen": "figée le {{when}}",
+      "noRoot": "Aucun élément de départ : ajoutez des éléments changés ou impactés.",
+      "noImpact": "aucun impact",
+      "campaigns": "Campagnes en cours concernées"
+    },
+    "analyzeImpact": "Analyser l'impact",
+    "openChange": "Ouvrir",
+    "moveTo_one": "Déplacer vers…",
+    "moveTo_other": "Déplacer ({{count}}) vers…",
+    "alsoIn": "aussi dans {{ids}}",
+    "toProcess": "à traiter",
+    "promote": "Passer en changé",
+    "clickToEdit": "Cliquer pour modifier",
+    "backlog": {
+      "outside": "modifié hors interface",
+      "reopen": "Rouvrir et assigner…",
+      "title": "Backlog",
+      "subtitle_one": "{{count}} élément à traiter, assigné à aucun changeset ouvert",
+      "subtitle_other": "{{count}} éléments à traiter, assignés à aucun changeset ouvert",
+      "assign_one": "Assigner à…",
+      "assign_other": "Assigner ({{count}}) à…",
+      "filter": "Filtrer (ID, titre)",
+      "help": "Éléments ni approuvés ni terminaux, absents des changesets ouverts.",
+      "empty": "Rien à traiter.",
+      "selectAll": "Tout sélectionner",
+      "select": "Sélectionner {{id}}",
+      "titleCol": "Titre",
+      "statusCol": "Statut",
+      "flagged": "Impact à vérifier"
+    },
+    "campaignSection": {
+      "selectAll": "Tout cocher",
+      "via": "Amené par",
+      "inCampaigns": "Déjà dans",
+      "create": "Créer une campagne",
+      "toRun_one": "{{count}} test à exécuter",
+      "toRun_other": "{{count}} tests à exécuter",
+      "uncovered": "non couvertes : {{ids}}",
+      "toAdd_one": "{{count}} test à ajouter",
+      "toAdd_other": "{{count}} tests à ajouter",
+      "addTo": "Ajouter à {{id}}",
+      "addToMany": "Ajouter à…",
+      "progress": "{{passed}} / {{total}} PASS",
+      "changesetTests_one": "{{count}} entrée du changeset",
+      "changesetTests_other": "{{count}} entrées du changeset",
+      "link": "Changeset"
+    },
+    "trace": {
+      "creation": "création",
+      "pending": "non approuvé",
+      "unpublished": "non publié",
+      "diff": "Voir les modifications"
+    },
+    "modify": {
+      "title": "Dans quel changeset ?",
+      "createHelp": "Toute création passe par un changeset. Choisissez celui qui la porte, ou créez-en un.",
+      "reopenHelp": "{{id}} redevient modifiable : choisissez le changeset qui porte sa modification, ou créez-en un.",
+      "auto": "Ajouté à {{id}}"
+    },
+    "assign": {
+      "approveTitle": "Assigner à un changeset",
+      "assignTitle": "Assigner à un changeset",
+      "moveTitle": "Déplacer vers un changeset",
+      "approveHelp": "{{id}} n'est assigné à aucun changeset ouvert. Choisissez le changeset qui porte son approbation.",
+      "elements": "Éléments : {{ids}}",
+      "openChanges": "Changesets ouverts",
+      "noOpen": "Aucun changeset ouvert dans ce repo.",
+      "newTitle": "Titre du nouveau changeset",
+      "create": "Créer",
+      "approveWithout": "Approuver sans changeset"
     }
   },
   "diffkit": {

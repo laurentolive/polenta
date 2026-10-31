@@ -1,6 +1,9 @@
 import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
+  ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
+  ApprovalCheck, Change, ChangeAnalysis, ChangeSummary, ComponentBacklog, CreateChangeDto, UpdateChangeDto,
+  ModificationCheck, ModificationKind, ChangeToModifyTrace, ChangeTestsToRun,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -30,8 +33,7 @@ import type {
   TestCase,
   TestRun,
   TraceabilityMatrix,
-  ImpactReport,
-  ImpactAcknowledgement,
+  LegacyImpactAck,
   TestPlanDraft,
   MatrixExportRow,
   RevalidationItem,
@@ -64,12 +66,8 @@ import type {
   QueryTemplate,
   WidgetTemplate,
   WidgetCode,
-  ImpactAnalysis,
-  ImpactAnalysisSummary,
   LocalImpactAnalysis,
   RequirementDiffEntry,
-  CreateImpactAnalysisDto,
-  UpdateImpactItemStatusDto,
   ExportKind,
   ExportFormat,
   ExportTemplateListResult,
@@ -92,7 +90,6 @@ import type {
   UpdateTestCaseDto,
   ExecuteTestCaseDto,
   MatrixFiltersDto,
-  AcknowledgeImpactDto,
   GenerateTestPlanDto,
 } from '@polenta/zod-schemas'
 
@@ -379,6 +376,8 @@ export interface FieldVisibilityPref {
   freezeColCountExcel?: number
   /** GH176 — colonnes du sélecteur de tests d'une campagne. Absent ⇒ celles de la vue Tableau. */
   picker?: string[]
+  /** GH197 — colonnes de la grille d'historique des exécutions. Absent ⇒ défaut (verdict, date…). */
+  executions?: string[]
   /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
   showFoldersPicker?: boolean
   /** GH229 — champs de la popup d'aperçu (survol d'un lien vers un objet du type). Absent ⇒ aucun. */
@@ -419,6 +418,9 @@ export interface ApiClient {
     setSettings(patch: Partial<AppSettings>): Promise<AppSettings>
     /** GH26 — ouvre une page de release GitHub dans le navigateur système. */
     openReleasePage(url: string): Promise<void>
+    /** GH195 — ouvre la valeur d'un champ `link` (desktop seulement) : schéma revalidé, confirmation
+     *  hors http(s). `false` si refusé, annulé ou en échec. */
+    openLink(url: string): Promise<boolean>
     /** GH45 — configuration machine (DSI sur le desktop, exploitant sur le web). */
     getMachineConfig(): Promise<MachineConfig>
     /** GH45 S2b — configuration par équipe (cache, sans réseau). */
@@ -552,6 +554,32 @@ export interface ApiClient {
     pickFolder(title?: string): Promise<string | null>
     pickImageFile(): Promise<{ mimeType: string; base64: string } | null>
   }
+  /** GH198 — changesets ; `repoPath` de get / update / delete = repo de stockage (`ChangeSummary.repoPath`). */
+  changesets: {
+    list(repoPath: string, workspaceDir?: string): Promise<ChangeSummary[]>
+    get(repoPath: string, id: string): Promise<Change>
+    create(repoPath: string, dto: CreateChangeDto, workspaceDir?: string): Promise<Change & { repoPath: string }>
+    update(repoPath: string, id: string, dto: UpdateChangeDto): Promise<Change>
+    delete(repoPath: string, id: string): Promise<void>
+    /** GH199 — analyse d'impact : instantané si figée, sinon calculée. */
+    analysis(repoPath: string, id: string): Promise<ChangeAnalysis>
+    /** GH199 §8bis — backlog calculé de chaque composant local du workspace. */
+    backlog(repoPath: string, workspaceDir?: string): Promise<ComponentBacklog[]>
+    assign(repoPath: string, id: string, elementIds: string[]): Promise<Change>
+    move(repoPath: string, fromId: string, toId: string, elementIds: string[]): Promise<void>
+    /** GH199 §8bis — l'approbation de l'élément exige-t-elle de l'assigner à un change ? */
+    approvalCheck(repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string): Promise<ApprovalCheck>
+    /** GH200 — création / réouverture d'un élément : changesets éligibles, assignation existante. */
+    modificationCheck(repoPath: string, element: { id?: string; objectTypeRef: string; category?: 'requirement' | 'test'; toStatus?: string }, kind: ModificationKind, workspaceDir?: string): Promise<ModificationCheck>
+    /** GH200 — trace départ / approbation des éléments à modifier. */
+    trace(repoPath: string, id: string): Promise<ChangeToModifyTrace[]>
+    /** GH207 — tests à exécuter, campagnes liées, tests à ajouter. */
+    testsToRun(repoPath: string, id: string): Promise<ChangeTestsToRun>
+  }
+  /** GH197 — historique des exécutions d'un test ou d'une exigence. */
+  executions: {
+    history(repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string): Promise<ExecutionHistory>
+  }
   drawio: {
     /**
      * Sélection d'un fichier .drawio via dialogue natif. `status: 'ok'` donne un
@@ -638,6 +666,8 @@ export interface ApiClient {
     rebase(repoPath: string, onto: string): Promise<void>
     diffBetween(repoPath: string, sha1: string, sha2: string): Promise<SyncFileStatus[]>
     diffFileBetween(repoPath: string, sha1: string, sha2: string, filepath: string): Promise<FileDiffContents>
+    /** GH200 — élément entre sa version de départ (`null` : création) et un commit (`null` : disque). */
+    diffElement(repoPath: string, filepath: string, baseSha: string | null, newSha: string | null): Promise<FileDiffContents>
     resolveRefs(repoPath: string): Promise<GitRef[]>
   }
   /** Opérations git bas niveau ne relevant pas du domaine `sync` (T43). */
@@ -691,7 +721,7 @@ export interface ApiClient {
     update(repoPath: string, id: string, dto: UpdateRequirementDto, workspaceDir?: string): Promise<Requirement>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     /** GH163 — `comment` : commentaire de modification (historique du statut). */
-    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<Requirement>
+    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string): Promise<Requirement>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     transition(repoPath: string, id: string, dto: TransitionRequirementDto, workspaceDir?: string): Promise<Requirement>
     // TODO: remove versioning API
@@ -722,8 +752,10 @@ export interface ApiClient {
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
     execute(repoPath: string, tcId: string, dto: ExecuteTestCaseDto, workspaceDir?: string): Promise<TestRun>
     runs(repoPath: string, tcId: string): Promise<TestRun[]>
+    /** GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris ; null si introuvable. */
+    typeDef(repoPath: string, objectTypeRef: string, workspaceDir?: string): Promise<ObjectTypeDefinition | null>
     /** workspaceDir: optional flat-workspace directory for cross-repo component resolution (T69 Sprint 3) */
-    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<TestCase>
+    openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string): Promise<TestCase>
   }
   traceability: {
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
@@ -731,8 +763,8 @@ export interface ApiClient {
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
     missingLinks(repoPath: string, workspaceDir?: string): Promise<MissingLinksResult>
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
-    impact(repoPath: string, reqId: string, depth?: number, workspaceDir?: string): Promise<ImpactReport>
-    acknowledge(repoPath: string, reqId: string, dto: AcknowledgeImpactDto): Promise<ImpactAcknowledgement>
+    /** GH199 — acquittements de l'ancien flux élément unique (`impact-acks/<id>/`), lecture seule. */
+    legacyAcks(repoPath: string, elementId: string): Promise<LegacyImpactAck[]>
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
     testPlan(repoPath: string, dto: GenerateTestPlanDto, workspaceDir?: string): Promise<TestPlanDraft>
     /** workspaceDir: optional flat-workspace directory for multi-repo traversal (T69 Sprint 3) */
@@ -742,7 +774,7 @@ export interface ApiClient {
   }
   history: {
     /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
-    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign', id: string): Promise<ObjectHistory>
+    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign' | 'changeset', id: string): Promise<ObjectHistory>
     /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
     backfill(repoPath: string): Promise<HistoryBackfillResult>
   }
@@ -753,14 +785,8 @@ export interface ApiClient {
     clear(repoPath: string, ids: string[], workspaceDir?: string): Promise<ClearRevalidationResult>
   }
   impactAnalysis: {
-    /** Crée et persiste une analyse d'impact entre deux baselines (T46) — figée à la création. */
-    create(repoPath: string, dto: CreateImpactAnalysisDto): Promise<ImpactAnalysis>
-    list(repoPath: string): Promise<ImpactAnalysisSummary[]>
     /** T175 — analyse live des modifications locales vs HEAD (racine + composants), jamais persistée. */
     local(repoPath: string, workspaceDir?: string): Promise<LocalImpactAnalysis>
-    get(repoPath: string, id: string): Promise<ImpactAnalysis>
-    updateStatus(repoPath: string, id: string, dto: UpdateImpactItemStatusDto): Promise<ImpactAnalysis>
-    delete(repoPath: string, id: string): Promise<void>
   }
   reviews: {
     list(repoPath: string, status?: ReviewStatus): Promise<Review[]>

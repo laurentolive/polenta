@@ -342,6 +342,7 @@ export function Value({ node, value, other, side, presentation, typeDef, media, 
   const otherText = typeof other === 'string' ? other : undefined
   const kind = presentation.render(node)
   const field = presentation.field(node)
+  if (field?.type === 'link') return <span className="text-sm text-ink whitespace-pre-wrap">{scalarLabel(field, value)}</span>
   if (field?.type === 'enum' || field?.type === 'multi_enum') return <span className="text-sm text-ink">{scalarLabel(field, value)}</span>
   // A container shown as one value: its type differs on the other side (scalar → list…), or it
   // is an empty list / mapping — its content as YAML.

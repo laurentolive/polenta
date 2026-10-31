@@ -24,11 +24,11 @@ export function inflatedGraphJson(): string {
       for (let k = 0; k < n; k++) {
         last = day(start + 1 + Math.floor(rnd() * 40))
         status = results[Math.floor(rnd() * 4)]
-        runs.push({ id: `R-${c}-${i}-${k}`, repo: 'r', testCaseId: `T-${i}`, campaignEntry: { campaignId: id, entryId }, requirementId: null, result: status, executedAt: last, executedBy: 'x', duration: 0, origin: null })
+        runs.push({ id: `R-${c}-${i}-${k}`, repo: 'r', testCaseId: `T-${i}`, campaignEntry: { campaignId: id, entryId }, requirementId: null, result: status, executedAt: last, executedBy: 'x', duration: 0, origin: null, fields: {}, notes: '', stepResults: [] })
       }
       return { entryId, testCaseId: `T-${i}`, requirementId: null, status, addedAt: day(start), runId: null, executedAt: last, executedBy: null, carriedFrom: null, snapshot: null, resyncable: false }
     })
-    campaigns.push({ id, repo: 'r', component: 'r', objectTypeRef: null, title: id, status: 'in_progress', fields: {}, history: {}, baselineRef: null, targetComponent: null, level: null, createdAt: day(start, 8), completedAt: null, entries, removedEntries: [] })
+    campaigns.push({ id, repo: 'r', component: 'r', objectTypeRef: null, title: id, status: 'in_progress', fields: {}, history: {}, baselineRef: null, targetComponent: null, changeset: null, level: null, createdAt: day(start, 8), completedAt: null, entries, removedEntries: [] })
   }
   return JSON.stringify({
     schema: { objectTypes: [], linkTypes: [], campaignStatuses: [], entryStatuses: ['pending', 'INCOMPLETE', 'BLOCKED', 'FAIL', 'PASS'].map((name, order) => ({ name, label: name, order })) },

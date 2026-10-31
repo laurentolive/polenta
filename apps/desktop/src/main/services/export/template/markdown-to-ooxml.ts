@@ -1,3 +1,4 @@
+import { linkDisplayText, type LinkValue } from '@polenta/types'
 import { parseMarkdown, stripInternalLinks, type MdToken } from './markdown'
 import type { DocxPackage, ListKind } from './docx-package'
 import { loadImage, type LoadedImage } from './image-source'
@@ -391,6 +392,16 @@ export function textTableXml(pkg: DocxPackage, header: string[], rows: string[][
     { header: true, cells: header.map(h => cell(h, true)) },
     ...rows.map(r => ({ header: false, cells: header.map((_, i) => cell(r[i] ?? '', false)) })),
   ])
+}
+
+/**
+ * GH195 — valeur d'un champ `link` : un paragraphe par lien, hyperlien natif (texte = libellé, ou
+ * l'URL ; couleur et soulignement explicites, le style « Lien hypertexte » n'existe pas forcément
+ * dans le gabarit).
+ */
+export function linkParagraphs(links: LinkValue[], pkg: DocxPackage): string {
+  return links.map(l => paragraph([], `<w:hyperlink r:id="${pkg.addHyperlink(l.url)}" w:history="1"><w:r><w:rPr>`
+    + `<w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${escapeXml(linkDisplayText(l))}</w:t></w:r></w:hyperlink>`)).join('')
 }
 
 /** Texte simple → un paragraphe Word par ligne (vide → rien). */

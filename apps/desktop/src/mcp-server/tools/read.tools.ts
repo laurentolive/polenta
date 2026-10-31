@@ -105,12 +105,12 @@ export function registerReadTools(server: McpServer, container: McpContainer): v
     {
       title: 'Get object history',
       description:
-        "Historique des champs suivis d'une exigence, d'un test ou d'une campagne : une liste par " +
+        "Historique des champs suivis d'une exigence, d'un test, d'une campagne ou d'un change (repo ouvert) : une liste par " +
         'champ (`status` pour le statut), entrées `{ value?, at, by?, source?, comment?, implicit? }` triées ' +
         "par date. `implicit: true` = valeur constatée dont la date de changement est inconnue " +
         '(datée du dernier commit du fichier). Données brutes : aucune interprétation.',
       inputSchema: {
-        kind: z.enum(['requirement', 'test', 'campaign']),
+        kind: z.enum(['requirement', 'test', 'campaign', 'changeset']),
         id: z.string().describe('ID de l’objet (ex. SYS-0001, CAMP-0003)'),
       },
     },

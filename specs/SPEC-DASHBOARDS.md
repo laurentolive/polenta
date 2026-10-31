@@ -57,6 +57,22 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 
 ---
 
+> **GH195 (contrat v1, ajout)** — type de champ `link` : valeur `GraphLinkValue` `{ label?, url }` ou liste (`GraphFieldDef.multiple`) ; `GraphFieldDef.requiredWhen` exposé tel que déclaré. `polenta.d.ts` régénéré (manifeste v4).
+
+> **GH196 (contrat v1, ajout)** — `GraphTestRun.fields`, `notes` (Markdown), `stepResults` (`GraphStepResult` : `order`, `result`, `comment`, `fields`) ; `GraphObjectType.runFields` / `stepFields`. `polenta.d.ts` régénéré (manifeste v5).
+
+> **GH198 (contrat v1, ajout)** — collection `changesets` (`GraphChangeset` : base commune statut / champs / historique, `component`, `mode`, `toModify`, `impacted` avec statut d'impact et `source`, `origin`, `integratedIn`, `campaigns`) ; catégorie `changeset` dans `GraphObjectCategory` et les types. Fichiers `changesets/` dans le périmètre du cache (watcher, canaux `changes:*`). `polenta.d.ts` régénéré (manifeste v6).
+
+> **GH199 (contrat v1, ajout)** — `GraphChangeset.range` (bornes d'un change sur l'existant) et `GraphChangeset.analysis` (instantané figé au statut terminal : lignes, racines, campagnes ; jamais recalculé par le graphe). `polenta.d.ts` régénéré (manifeste v7).
+
+> **GH200 (contrat v1, ajout)** — `GraphChangeset.toModify[]` gagne `base` (version de départ, null :
+> création) et `approved` (commit d'approbation, renseigné une fois le changeset figé au statut
+> terminal ; null tant qu'il est ouvert : le statut courant de l'élément est dans sa collection).
+> `polenta.d.ts` régénéré (manifeste v8).
+>
+> **GH207 (contrat v1, ajout)** — `GraphCampaign.changeset` (changeset qui a créé la campagne, sinon
+> null) ; `GraphChangeset.campaigns` alimenté. `polenta.d.ts` régénéré (manifeste v9).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

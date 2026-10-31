@@ -48,10 +48,15 @@ test('N9 / L4 — ID écrit dans un richtext : lien avec aperçu, ID inexistant 
   await s.page.getByTitle('Vue document').click()
   await s.page.waitForLoadState('networkidle')
   await expect(s.page.locator('[data-node-id]').first()).toBeVisible()
+  // Exigence du type affichée en premier ; approuvée, elle est d'abord rouverte (milestone D :
+  // une exigence approuvée n'est modifiable qu'après réouverture).
   const shownType = `${param('node')}::${param('type')}`
-  const req = reqs.find(r => r.objectTypeRef === shownType)!
-  const field = typeOf(schema, req.objectTypeRef).fields.find(f => f.type === 'richtext')!.name
-  await s.invoke('requirements:update', repo, req.id, { fields: { ...req.fields, [field]: `Voir ${target} et ZZZ-9999.` } })
+  const field = typeOf(schema, shownType).fields.find(f => f.type === 'richtext')!.name
+  const shownText = await s.page.locator('[data-node-id]').allInnerTexts()
+  const req = reqs.filter(r => r.objectTypeRef === shownType).find(r => shownText.some(t => t.includes(r.id)))!
+  await s.invoke('requirements:open-draft', repo, req.id, 'draft').catch(() => undefined)
+  const fresh = await s.invoke<{ fields: Record<string, unknown> }>('requirements:get', repo, req.id)
+  await s.invoke('requirements:update', repo, req.id, { fields: { ...fresh.fields, [field]: `Voir ${target} et ZZZ-9999.` } })
 
   const ref = s.page.locator(`[data-node-id] [data-element-ref="${target}"]`).first()
   await ref.scrollIntoViewIfNeeded()

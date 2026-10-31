@@ -1,7 +1,9 @@
+import { isFieldRequiredNow, objectFieldReader, initialStatus } from '@polenta/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { api } from '../api'
 import { useProjectSchema, getAllObjectTypes } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -62,9 +64,16 @@ function NewRequirementPage() {
 
   const typeDef = reqTypes.find(t => t.name === type)
 
+  const gates = useModificationGate()
   const createMutation = useMutation({
-    mutationFn: () => api.requirements.create(repoPath, { objectTypeRef: type, title, fields }),
+    // GH200 — toute création passe par un changeset (annuler = rien n'est créé).
+    mutationFn: async () => {
+      const gate = await gates.create(repoPath, { objectTypeRef: type })
+      if (!gate.ok) return null
+      return api.requirements.create(repoPath, { objectTypeRef: type, title, fields, changesetId: gate.changesetId })
+    },
     onSuccess: (result) => {
+      if (!result) return
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       navigate({ to: '/req/$reqId', params: { reqId: result.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
     },
@@ -142,6 +151,7 @@ function NewRequirementPage() {
             key={f.name}
             field={f}
             value={fields[f.name] ?? String(f.default ?? '')}
+            requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: initialStatus(typeDef), fields: fields }))}
             onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
             disabled={isDisabled}
             repoPath={repoPath}

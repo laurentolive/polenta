@@ -26,7 +26,8 @@ import { decodeProjectId } from '../lib/projectId'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { normRepoPath } from '../components/system/linkUtils'
-import { useTreeState, treeUpdateObjectId, treeFindNode, treeFindByObjectId } from '../hooks/useTreeState'
+import { useTreeState, treeUpdateObjectId, treeFindNode, treeFindByObjectId, treeRemove } from '../hooks/useTreeState'
+import { useModificationGate } from './ApprovalGateContext'
 import { useVersioning } from './VersioningContext'
 import { isEditableTarget } from '../lib/editableTarget'
 import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
@@ -819,6 +820,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // When sourceObjectId is provided (paste), the new object is created as a copy
   // of the source object's content (title + fields + steps for tests).
   // When absent (normal insertion), a blank object is created.
+  const gates = useModificationGate()
   const createItemObject = useCallback(async (nodeId: string, sourceObjectId?: string) => {
     const cat = effectiveType?.category
     if (!cat || !repoPath || !effectiveNodeId || !effectiveTypeId) return
@@ -829,6 +831,13 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     // renommage ne se propage alors PAS au titre de l'objet. On rattrape après coup.
     const nodeNameAtStart = treeFindNode(rootRef.current, nodeId)?.name
     try {
+      // GH200 — toute création passe par un changeset ; annuler retire le nœud inséré.
+      const gate = await gates.create(repoPath, { objectTypeRef })
+      if (!gate.ok) {
+        setRoot(treeRemove(rootRef.current, nodeId))
+        return
+      }
+      const { changesetId } = gate
       let objectId: string
       if (cat === 'requirement') {
         let title = 'Sans titre'
@@ -842,7 +851,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
             // source not found — fall back to blank
           }
         }
-        const req = await api.requirements.create(repoPath, { objectTypeRef, title, fields })
+        const req = await api.requirements.create(repoPath, { objectTypeRef, title, fields, changesetId })
         objectId = req.id
       } else if (cat === 'test') {
         let title = 'Sans titre'
@@ -858,7 +867,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
             // source not found — fall back to blank
           }
         }
-        const tc = await api.tests.create(repoPath, { objectTypeRef, title, steps, fields })
+        const tc = await api.tests.create(repoPath, { objectTypeRef, title, steps, fields, changesetId })
         objectId = tc.id
       } else return
       const updatedRoot = treeUpdateObjectId(rootRef.current, nodeId, objectId)
@@ -887,7 +896,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     } catch (err) {
       console.error('[SystemView] Erreur création objet immédiate:', err)
     }
-  }, [effectiveType, repoPath, effectiveNodeId, effectiveTypeId, setRoot, qc])
+  }, [effectiveType, repoPath, effectiveNodeId, effectiveTypeId, setRoot, qc, gates])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {

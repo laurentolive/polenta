@@ -20,6 +20,8 @@ import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { useScrollToNode } from '../../hooks/useScrollToNode'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
+import { LinkEditor } from '../links/LinkEditor'
+import { LinkList } from '../links/LinkList'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -303,6 +305,11 @@ function InlineField({
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
+  const isLink = fieldDef?.type === 'link'
+  const commitLink = () => {
+    if (onEdit && draft !== value) onEdit(objectId, field, draft)
+    setEditing(false)
+  }
 
   return (
     <div className="flex items-start gap-2 py-0.5">
@@ -311,7 +318,26 @@ function InlineField({
         {isSystem && ' '}
         {isSystem && <span className="text-ink-3/50">(sys)</span>}
       </span>
-      {isSystem || !onEdit ? (
+      {/* GH195 — champ `link` : liens cliquables ; édition en place, enregistrée à la sortie du champ. */}
+      {isLink && (isSystem || !onEdit) ? (
+        value ? <LinkList value={value} className="text-xs" /> : <span className="text-xs text-ink">—</span>
+      ) : isLink && editing ? (
+        <div
+          className="flex-1"
+          onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commitLink() }}
+          onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setDraft(value); setEditing(false) } }}
+        >
+          <LinkEditor value={draft} onChange={setDraft} multiple={fieldDef?.multiple} autoFocus onSubmit={commitLink} />
+        </div>
+      ) : isLink ? (
+        <span
+          className="text-xs text-ink cursor-text hover:bg-hover px-1 rounded flex-1"
+          onClick={() => { setDraft(value); setEditing(true) }}
+          title={t('system.shared.clickToEdit')}
+        >
+          {value ? <LinkList value={value} /> : <span className="text-ink-3 italic">—</span>}
+        </span>
+      ) : isSystem || !onEdit ? (
         <span className={`text-xs ${isSystem ? 'text-ink-2' : 'text-ink'}`}>
           {value ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : isSystem ? value : <ElementRefText text={value} />) : '—'}
         </span>

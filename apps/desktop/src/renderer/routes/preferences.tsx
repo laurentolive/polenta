@@ -31,6 +31,8 @@ interface EditorState {
   exportTemplates: Partial<Record<ExportTemplateKey, string>>
   /** GH65 — intervalle du pull automatique (minutes), valeur effective. */
   autoPullIntervalMinutes: number
+  /** GH200 — toute modification d'une exigence ou d'un test passe par un changeset. */
+  changeTracking: boolean
 }
 
 function schemaToEditable(schema: ProjectSchema): EditorState {
@@ -38,11 +40,12 @@ function schemaToEditable(schema: ProjectSchema): EditorState {
     autoPropagatePin: schema.preferences?.autoPropagatePin ?? false,
     exportTemplates: { ...schema.preferences?.exportTemplates },
     autoPullIntervalMinutes: effectivePullIntervalMinutes(schema.preferences?.autoPullIntervalMinutes),
+    changeTracking: schema.preferences?.changeTracking !== 'off',
   }
 }
 
 function editableToSchema(state: EditorState, schema: ProjectSchema): ProjectSchema {
-  const { exportTemplates: _previous, autoPullIntervalMinutes: _previousInterval, ...otherPreferences } = schema.preferences ?? {}
+  const { exportTemplates: _previous, autoPullIntervalMinutes: _previousInterval, changeTracking: _previousTracking, ...otherPreferences } = schema.preferences ?? {}
   // Entrées « Standard » retirées plutôt qu'écrites vides ; clé entière omise si rien n'est défini.
   const exportTemplates = Object.fromEntries(Object.entries(state.exportTemplates).filter(([, v]) => !!v))
   return {
@@ -53,6 +56,8 @@ function editableToSchema(state: EditorState, schema: ProjectSchema): ProjectSch
       ...(Object.keys(exportTemplates).length > 0 ? { exportTemplates } : {}),
       // Clé omise à la valeur par défaut : pas de diff schema.yaml pour qui ne touche pas au réglage.
       ...(state.autoPullIntervalMinutes !== DEFAULT_AUTO_PULL_MINUTES ? { autoPullIntervalMinutes: state.autoPullIntervalMinutes } : {}),
+      // GH200 — écrit seulement pour désactiver (actif par défaut dès qu'un type changeset existe).
+      ...(!state.changeTracking ? { changeTracking: 'off' as const } : {}),
     },
   }
 }
@@ -184,6 +189,23 @@ function PreferencesPage() {
               {t('preferences.autoPropagateLabel')}
               <span className="block text-xs text-ink-3 mt-0.5">
                 {t('preferences.autoPropagateHelp')}
+              </span>
+            </span>
+          </label>
+
+          {/* GH200 — toute modification passe par un changeset, partagé par l'équipe via schema.yaml. */}
+          <label className="flex items-start gap-2 cursor-pointer mt-6">
+            <input
+              type="checkbox"
+              checked={state.changeTracking}
+              onChange={e => setState(s => s ? { ...s, changeTracking: e.target.checked } : s)}
+              className="mt-0.5"
+              data-testid="change-tracking"
+            />
+            <span className="text-sm text-ink">
+              {t('preferences.changeTrackingLabel')}
+              <span className="block text-xs text-ink-3 mt-0.5">
+                {t('preferences.changeTrackingHelp')}
               </span>
             </span>
           </label>

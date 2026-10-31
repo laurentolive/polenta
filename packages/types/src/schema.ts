@@ -12,6 +12,7 @@ export type SchemaFieldType =
   | 'richtext'
   | 'user'
   | 'drawio'
+  | 'link'
 
 export interface SchemaField {
   name: string
@@ -27,6 +28,14 @@ export interface SchemaField {
   validator?: string         // e.g. "EARS" | "regex:<pattern>"
   /** GH77 — historiser les changements de ce champ (`history.<name>`). Écrit seulement si vrai. */
   trackHistory?: boolean
+  /** GH195 — champ `link` : liste de liens au lieu d'un seul. Écrit seulement si vrai. */
+  multiple?: boolean
+  /** GH195 — obligatoire quand un des champs nommés a une des valeurs listées (OU entre les clés).
+   *  Références : `status` ou un champ enum / multi_enum / boolean du même type (cf. required-when.ts). */
+  requiredWhen?: Record<string, unknown[]>
+  /** GH139 — colonne affichée par défaut (vues Tableau / Document) tant que l'utilisateur n'a pas
+   *  fait son propre choix ; défaut de l'équipe, porté par le schéma. Écrit seulement si vrai. */
+  defaultVisible?: boolean
 }
 
 // Format de stockage d'un champ `multi_enum` : chaîne CSV (ex. "a, b, c"), pas une liste
@@ -77,7 +86,7 @@ export function statusValueLabels(statuses: SchemaStatus[]): Record<string, stri
 //   test        — id, title, status (from statuses[]), steps[], fields{}
 //   campaign    — id, title, status fixe (planned/in_progress/completed/abandoned),
 //                 testCaseIds[], runs[] — le champ statuses[] est ignoré pour cette catégorie
-export type ObjectCategory = 'requirement' | 'test' | 'campaign'
+export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'changeset'
 
 // Définition d'un type d'objet dans un composant.
 // Chaque définition est indépendante même si créée depuis le même template.
@@ -93,6 +102,10 @@ export interface ObjectTypeDefinition {
   statuses?: SchemaStatus[]
   /** GH77 — historiser le statut (`history.status`). Absent = true ; écrit seulement si false. */
   trackStatusHistory?: boolean
+  /** GH196 — catégorie `test` : champs saisis à chaque exécution (bloc `fields` du run). */
+  runFields?: SchemaField[]
+  /** GH196 — catégorie `test` : champs saisis à chaque étape exécutée (bloc `fields` d'un `StepResult`). */
+  stepFields?: SchemaField[]
   /** GH229 — champ affiché à la place de l'ID Polenta dans les liens vers un objet du type :
    *  `title` ou nom d'un champ `text` / `number` / `enum` du type. Absent = ID Polenta. */
   displayIdField?: string
@@ -216,6 +229,8 @@ export interface LinkTypeDefinition {
   labelTargetToSource: string
   sourceRefs?: string[]
   targetRefs?: string[]
+  /** GH139 — colonne(s) de ce type de lien affichée(s) par défaut (cf. `SchemaField.defaultVisible`). */
+  defaultVisible?: boolean
 }
 
 /** GH105 — type de lien de l'union du workspace (par nom, repo racine d'abord). */
@@ -253,6 +268,11 @@ export interface ProjectPreferences {
    * [1, 60] ; absent ou invalide = 5.
    */
   autoPullIntervalMinutes?: number
+  /**
+   * GH200 — toute modification d'une exigence ou d'un test passe par un changeset. Absent : `on`
+   * si le schéma du repo déclare un type de catégorie changeset, sinon `off`.
+   */
+  changeTracking?: 'on' | 'off'
 }
 
 export interface ProjectSchema {
@@ -331,7 +351,7 @@ export interface SchemaDeletePlan {
   /** Refs `<nœud>::<type>` supprimées. */
   types: string[]
   /** IDs des objets supprimés (dans le repo du schéma), par catégorie. */
-  objects: { requirement: string[]; test: string[]; campaign: string[] }
+  objects: { requirement: string[]; test: string[]; campaign: string[]; changeset: string[] }
   /** Liens supprimés, par repo du workspace (repos sans lien touché absents). */
   links: Array<{ repoPath: string; count: number }>
   /** Types de lien dont des refs sont retirées ; `emptied` : `sourceRefs` ou `targetRefs` devient vide. */

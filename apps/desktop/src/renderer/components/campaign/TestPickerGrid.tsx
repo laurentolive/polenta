@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import type { ObjectLink, ObjectTypeDefinition, TestCase } from '@polenta/types'
+import type { ObjectLink, ObjectTypeDefinition, Requirement, TestCase } from '@polenta/types'
 import type { FieldVisibilityPatch, FieldVisibilityPref } from '@polenta/api-client'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { api } from '../../api'
@@ -23,12 +23,15 @@ import type { FilterOptions } from '../../lib/textFilter'
  *
  * GH176 — colonnes et titres de dossiers configurables (panneau ⚙️) : préférence propre au
  * sélecteur (`picker` / `showFoldersPicker`), qui suit la Vue Excel tant qu'elle est absente.
+ *
+ * GH198 — aussi pour les exigences (`category`), dans le sélecteur d'éléments d'un change.
  */
 export function TestPickerGrid({
   repoPath,
   typeRef,
   typeDef,
   tests,
+  category = 'test',
   username,
   workspaceDir,
   filter,
@@ -41,8 +44,10 @@ export function TestPickerGrid({
   /** `<nœud>::<type>` */
   typeRef: string
   typeDef: ObjectTypeDefinition
-  /** Tests proposés de ce type (règles d'éligibilité appliquées par l'appelant). */
-  tests: TestCase[]
+  /** Objets proposés de ce type (règles d'éligibilité appliquées par l'appelant). */
+  tests: Array<TestCase | Requirement>
+  /** Catégorie du type (`test` par défaut) : étapes et colonnes calculées. */
+  category?: 'test' | 'requirement'
   username: string
   /** GH70 — projet ouvert (colonnes calculées : requêtes partagées du projet). */
   workspaceDir: string
@@ -128,7 +133,7 @@ export function TestPickerGrid({
   const prefFields = useMemo(() => withStatusColumn(pickerFields), [pickerFields])
   // GH70 — colonnes calculées visibles : affichées, sans ouverture. GH126 — panneau ⚙️ ouvert :
   // colonnes éclatées exécutées pour lister leurs sous-colonnes.
-  const computed = useComputedColumns({ workspaceDir, category: 'test', objectTypeRef: typeRef, visibleKeys: prefFields, discover: columnsOpen })
+  const computed = useComputedColumns({ workspaceDir, category, objectTypeRef: typeRef, visibleKeys: prefFields, discover: columnsOpen })
   const computedColumns = computed.columnsMap
   const filterComputed = computed.filterFields
   const visibleFields = useMemo(() => filterComputed(prefFields), [prefFields, filterComputed])
@@ -137,6 +142,7 @@ export function TestPickerGrid({
   const stepsByObjectId = useMemo(() => {
     const map = new Map<string, { action: string; expectedResult: string }[]>()
     for (const tc of tests) {
+      if (!('steps' in tc)) continue
       map.set(tc.id, (tc.steps ?? []).slice().sort((a, b) => a.order - b.order).map(s => ({ action: s.action, expectedResult: s.expectedResult })))
     }
     return map

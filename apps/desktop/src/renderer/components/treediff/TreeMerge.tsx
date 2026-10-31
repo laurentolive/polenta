@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import yaml from 'js-yaml'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { DiffNode, OutputPath, Side } from '@polenta/merge-core'
-import { parseMultiEnumValue, type ObjectTypeDefinition, type SchemaField } from '@polenta/types'
+import { fieldValueToText, parseMultiEnumValue, readLinkValues, type ObjectTypeDefinition, type SchemaField } from '@polenta/types'
 import { DynamicField } from '../DynamicField'
 import { diffPrefs } from '../../lib/diffPrefs'
 import type { ResolvedBlock, Taken } from '../merge/blockLocator'
@@ -242,6 +242,10 @@ function coerce(previous: unknown, s: string, field?: SchemaField): unknown {
     if (field.type === 'number') return NUMBER.test(s) ? Number(s) : s
     if (field.type === 'boolean') return s === 'true'
     if (field.type === 'multi_enum' && Array.isArray(previous)) return parseMultiEnumValue(s)
+    if (field.type === 'link') {
+      const links = readLinkValues(s)
+      return links.length === 0 ? undefined : field.multiple ? links : links[0]
+    }
     return s
   }
   if (typeof previous === 'number' && NUMBER.test(s)) return Number(s)
@@ -264,6 +268,7 @@ export function OutputValue({ node, value, presentation, typeDef, repoPath, onCh
   }
   // A YAML date is loaded as a `Date`: a date field's input takes `YYYY-MM-DD`.
   const asString = value === undefined || value === null ? ''
+    : field?.type === 'link' ? fieldValueToText(value)
     : value instanceof Date ? (field?.type === 'date' ? value.toISOString().slice(0, 10) : value.toISOString())
       : String(value)
   if (kind === 'status' && typeDef?.statuses?.length) {

@@ -12,6 +12,7 @@
  * arrière multi-niveaux (`backHistory`). La navigation vers un objet lié ouvre
  * un nouvel onglet.
  */
+import { useModificationGate } from '../../contexts/ApprovalGateContext'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -25,7 +26,7 @@ import { useVersioning } from '../../contexts/VersioningContext'
 import { useTabs } from '../../contexts/TabsContext'
 import { useProjectSchema, getReqTypeDef, getTestTypeDef } from '../../hooks/useProjectSchema'
 import { useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorkspaceLinks'
-import { flattenSystemNodes } from '@polenta/types'
+import { flattenSystemNodes, fieldValueToText } from '@polenta/types'
 import type { ObjectLink, Requirement, TestCase, CoverageStatus, MatrixCell } from '@polenta/types'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
 
@@ -72,7 +73,7 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
       author: o.createdBy ?? '',
       objectTypeRef: o.objectTypeRef ?? '',
       ...Object.fromEntries(
-        Object.entries(o.fields ?? {}).map(([k, v]) => [k, v == null ? '' : String(v)]),
+        Object.entries(o.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)]),
       ),
     }
   }, [loadedObject])
@@ -204,11 +205,21 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
     }
   }, [qc, repoPath, category])
 
+  const gates = useModificationGate()
   const saveField = useCallback(async (objectId: string, field: string, value: string) => {
     if (!repoPath || !objectId) return
     if (field === 'status') {
-      if (category === 'requirement') await api.requirements.transition(repoPath, objectId, { toStatus: value })
-      else await api.tests.update(repoPath, objectId, { status: value } as UpdateTestCaseDto)
+      // GH199 §8bis — approbation d'un élément non assigné : proposer un change.
+      // GH200 — réouverture : changeset de la modification.
+      const gateCategory = category === 'requirement' ? 'requirement' : 'test'
+      const gate = await gates.status(repoPath, { id: objectId, objectTypeRef, category: gateCategory }, value)
+      if (!gate.ok) {
+        invalidateAfterSave(objectId, false)
+        return
+      }
+      const { changesetId } = gate
+      if (category === 'requirement') await api.requirements.transition(repoPath, objectId, { toStatus: value, changesetId })
+      else await api.tests.update(repoPath, objectId, { status: value, changesetId } as UpdateTestCaseDto)
       invalidateAfterSave(objectId, false)
       return
     }
@@ -217,7 +228,7 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
     if (category === 'requirement') await api.requirements.update(repoPath, objectId, dto)
     else await api.tests.update(repoPath, objectId, dto as UpdateTestCaseDto)
     invalidateAfterSave(objectId, field === 'title')
-  }, [repoPath, category, invalidateAfterSave])
+  }, [repoPath, category, invalidateAfterSave, gates, objectTypeRef])
 
   // Blur d'un champ = sauvegarde immédiate (comme `SystemView.handleEditBlurField`).
   // La coalescence des frappes richtext est gérée en interne par `EditView`

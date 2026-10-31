@@ -1,4 +1,4 @@
-import type { ExecutionImportPreview, ExecutionImportResult, ExecutionSheetLocale } from '@polenta/types'
+import type { ExecutionImportPreview, ExecutionImportResult, ExecutionSheetLocale, ObjectTypeDefinition, TestCampaign, TestCase, TestRun } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { CampaignsService } from './campaigns.service'
 import type { TestsService } from './tests.service'
@@ -27,10 +27,19 @@ export class CampaignExecutionService {
     // instance resynchronisable (GH68), copie figée sinon, état live pour une entrée pré-T49 ; test
     // introuvable → instance sans étape. Son empreinte est contrôlée à l'import, qui la fige.
     const effective = await this.campaigns.effectiveTests(repoPath, campaign)
-    const entries: ExecutionSheetEntry[] = campaign.runs.map(run => {
+    // GH196 — colonnes des champs d'exécution / d'étape : type de chaque test.
+    const typeDefs = await this.typeDefsOf(repoPath, campaign, effective)
+    // GH196 — instance déjà exécutée : son résultat (run de l'entrée) est recopié dans le classeur.
+    const runsByTest = new Map<string, Promise<TestRun[]>>()
+    const runOf = async (testCaseId: string, runId: string) => {
+      if (!runsByTest.has(testCaseId)) runsByTest.set(testCaseId, this.tests.findRuns(repoPath, testCaseId).catch(() => []))
+      return (await runsByTest.get(testCaseId)!).find(r => r.id === runId)
+    }
+    const entries: ExecutionSheetEntry[] = await Promise.all(campaign.runs.map(async run => {
       const test = effective.get(run.entryId)?.test
-      return { run, test, ...(test && { fingerprint: testFingerprint(test) }) }
-    })
+      const prefill = run.status !== 'pending' && run.runId ? await runOf(run.testCaseId, run.runId) : undefined
+      return { run, test, typeDef: typeDefs.get(run.entryId), ...(prefill && { prefill }), ...(test && { fingerprint: testFingerprint(test) }) }
+    }))
 
     const model = buildExecutionSheetModel({ campaign, entries, locale, exportedAt: new Date().toISOString() })
     await writeExecutionWorkbook(model, destPath)
@@ -49,7 +58,9 @@ export class CampaignExecutionService {
       this.campaigns.approvalPredicate(repoPath),
     ])
     const effectiveTests = await this.campaigns.effectiveTests(repoPath, campaign, isApproved)
+    const typeDefs = await this.typeDefsOf(repoPath, campaign, effectiveTests)
     const preview = validateExecutionImport(raw, {
+      typeDefs,
       campaign,
       fallbackUser: author?.name || 'unknown',
       now: new Date().toISOString(),
@@ -79,6 +90,7 @@ export class CampaignExecutionService {
       try {
         const run = await this.tests.execute(repoPath, inst.testCaseId, {
           stepResults: inst.stepResults,
+          ...(inst.fields && { fields: inst.fields }),
           notes: inst.notes,
           result: inst.result,
           ...(inst.requirementId && { requirementId: inst.requirementId }),
@@ -100,5 +112,20 @@ export class CampaignExecutionService {
       }
     }
     return { imported, preview }
+  }
+
+  /** GH196 — type du test de chaque entrée (un appel par type distinct). */
+  private async typeDefsOf(
+    repoPath: string, campaign: TestCampaign, effective: Map<string, { test: TestCase }>,
+  ): Promise<Map<string, ObjectTypeDefinition | null>> {
+    const byRef = new Map<string, Promise<ObjectTypeDefinition | null>>()
+    const out = new Map<string, ObjectTypeDefinition | null>()
+    for (const run of campaign.runs) {
+      const ref = effective.get(run.entryId)?.test.objectTypeRef
+      if (!ref) continue
+      if (!byRef.has(ref)) byRef.set(ref, this.tests.typeDefFor(repoPath, ref).catch(() => null))
+      out.set(run.entryId, await byRef.get(ref)!)
+    }
+    return out
   }
 }

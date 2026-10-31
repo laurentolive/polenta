@@ -979,6 +979,19 @@ export class SyncService {
     }
   }
 
+  /** GH199 — borne d'un change « sur l'existant » : tag, puis SHA (complet ou abrégé) d'un commit. */
+  async resolveCommitish(repoPath: string, ref: string): Promise<string | null> {
+    const tag = await this.resolveTag(repoPath, ref)
+    if (tag) return tag
+    try {
+      const oid = await git.expandOid({ fs, dir: repoPath, oid: ref.trim() })
+      await git.readCommit({ fs, dir: repoPath, oid })
+      return oid
+    } catch {
+      return null
+    }
+  }
+
   async tagsForCommit(repoPath: string, commitSha: string): Promise<string[]> {
     try {
       const allTags = await git.listTags({ fs, dir: repoPath })
@@ -1255,6 +1268,14 @@ export class SyncService {
       const msg = stderr?.trim() || (err instanceof Error ? err.message : String(err))
       throw new Error(`Rebase failed: ${msg}`)
     }
+  }
+
+  /**
+   * GH200 — diff d'un élément entre sa version de départ et un état ultérieur : `baseSha` null =
+   * création (côté gauche vide), `newSha` null = fichier sur disque.
+   */
+  async diffElement(repoPath: string, filepath: string, baseSha: string | null, newSha: string | null): Promise<FileDiffContents> {
+    return fileDiffContents(repoPath, filepath, baseSha, newSha, baseSha === null)
   }
 
   async diffFileBetween(

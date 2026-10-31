@@ -12,6 +12,7 @@ export const DESKTOP_ONLY_CHANNELS = [
   'app:set-title',
   'app:get-version',
   'app:open-release-page',
+  'app:open-link',
   'app:zoom',
   'update:get-state',
   'update:install',

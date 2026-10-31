@@ -29,11 +29,11 @@
       "parameters": "Parameters",
       "search": "Search",
       "version": "Version",
-      "impact": "Impact analysis",
       "menu": {
         "hide": "Hide \"{{label}}\"",
         "reset": "Reset layout"
-      }
+      },
+      "changes": "Changesets"
     },
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
@@ -113,7 +113,6 @@
       "graph": "Version tree",
       "diff": "Diff",
       "baseline": "Baselines",
-      "impactAnalysis": "Impact analysis",
       "versionDiff": "Compare versions",
       "product": "Product",
       "components": "Components",
@@ -270,6 +269,8 @@
     "saved": "Saved",
     "error": "Error",
     "saving": "Saving…",
+    "changeTrackingLabel": "Every modification goes through a changeset",
+    "changeTrackingHelp": "Creating, reopening or obsoleting a requirement or test assigns it to an open changeset of the repo (automatic when there is only one). Active as soon as a changeset type exists in the data model.",
     "autoPropagateLabel": "Automatically propagate the sub-repo pin to the parent repo when a commit is received on the sub-repo",
     "autoPropagateHelp": "If unchecked, the pin update waits for manual approval from the integrator.",
     "autoPullIntervalLabel": "Automatic retrieval interval (minutes)",
@@ -530,6 +531,17 @@
       "historyEvent": "Track: date and author on every change (the content is already in git)",
       "historyNotTrackable": "This field cannot be tracked",
       "trackStatusHistory": "Track status history (value, date and author on every change)",
+      "colRequiredWhen": "Req. if",
+      "colRequiredWhenTitle": "Required when a field has one of the values: “status = approved” or “field = v1, v2; other = v3” (status, enum, multi_enum, boolean of the type)",
+      "linkMultiple": "Multiple",
+      "linkMultipleTitle": "Several links in this field",
+      "colDefaultVisible": "Vis.",
+      "colDefaultVisibleTitle": "Column shown by default (Table and Document views) until the user makes their own choice — team default",
+      "runFields": "Run fields",
+      "runFieldsHelp": "Entered at each run (report number, temperature, report link…). Information common to the whole campaign is a campaign field. “Req. if”: result = PASS, FAIL, BLOCKED or INCOMPLETE (overall verdict). A name designates a single field across the project.",
+      "stepFields": "Step fields",
+      "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict).",
+      "changeset": "Changeset",
       "displayIdField": "ID shown in links",
       "displayIdPolenta": "Polenta ID",
       "displayIdTitle": "Title"
@@ -673,7 +685,8 @@
       "implementedVersion": "Implemented version",
       "unresolved": "unresolved",
       "noImplements": "No interface implementation declared.",
-      "addImplements": "+ Declare an implementation"
+      "addImplements": "+ Declare an implementation",
+      "linkDefaultVisible": "Column shown by default"
     },
     "deleteCascade": {
       "titleNode": "Delete component \"{{name}}\"?",
@@ -684,7 +697,9 @@
         "test_one": "{{count}} test deleted (and its runs):",
         "test_other": "{{count}} tests deleted (and their runs):",
         "campaign_one": "{{count}} campaign deleted:",
-        "campaign_other": "{{count}} campaigns deleted:"
+        "campaign_other": "{{count}} campaigns deleted:",
+        "changeset_one": "{{count}} changeset deleted:",
+        "changeset_other": "{{count}} changesets deleted:"
       },
       "more": "… and {{count}} more",
       "links_one": "{{count}} link deleted:",
@@ -832,6 +847,7 @@
       "documentView": "Document view"
     },
     "editView": {
+      "approvedLocked": "Approved: content is locked. Change the status (reopen) to edit it.",
       "colType": "Type",
       "noConfiguredValue": "No configured value",
       "statusCommentPlaceholder": "Status change comment (optional)",
@@ -1024,8 +1040,11 @@
         "stepsMismatch": "steps changed in the workbook (expected: {{expected}}; found: {{found}})",
         "invalidVerdict": "unrecognised verdict \"{{value}}\" (row {{row}})",
         "invalidDate": "unreadable date \"{{value}}\" (row {{row}})",
-        "testChangedSinceExport": "test {{testCaseId}} has changed since the workbook was exported — re-export the workbook for this instance"
-      }
+        "testChangedSinceExport": "test {{testCaseId}} has changed since the workbook was exported — re-export the workbook for this instance",
+        "fieldError": "{{message}} (row {{row}})"
+      },
+      "unchanged_one": "{{count}} already executed instance, unchanged: skipped",
+      "unchanged_other": "{{count}} already executed instances, unchanged: skipped"
     },
     "stepResult": {
       "notExecuted": "Not executed",
@@ -1104,7 +1123,9 @@
       "toggle": "Filter on {{status}} (click again to remove)",
       "clear": "Filter: {{status}} ✕",
       "empty": "No {{status}} entry."
-    }
+    },
+    "runFields": "Run fields",
+    "outOfSchema": "not in schema"
   },
   "campaignProgress": {
     "ready": "Ready to run"
@@ -1602,12 +1623,11 @@
     "title": "Dashboard — {{title}}"
   },
   "printImpactAnalysisPage": {
-    "title": "Impact analysis — {{from}} → {{to}}",
-    "changedRequirementsCount_one": "{{count}} changed requirement",
-    "changedRequirementsCount_other": "{{count}} changed requirements",
-    "changeType": "Change type: {{type}}",
+    "title": "Impact analysis — {{id}} {{title}}",
     "descendantTree": "Descendant tree",
-    "ascendantTree": "Ascendant tree"
+    "ascendantTree": "Ascendant tree",
+    "rootsCount_one": "{{count}} starting element",
+    "rootsCount_other": "{{count}} starting elements"
   },
   "printQueryResultPage": {
     "title": "Query results — {{queryName}}"
@@ -1850,7 +1870,9 @@
     "backfillRunning": "Rebuilding…",
     "backfillConfirm": "Rebuild the history of {{repo}} from git? Changed files will need to be published.",
     "backfillResult": "{{objects}} object(s) updated, {{entries}} entry(ies) added.",
-    "backfillFailed": "{{count}} file(s) skipped: {{files}}"
+    "backfillFailed": "{{count}} file(s) skipped: {{files}}",
+    "legacyAcks_one": "Impact acknowledgement (legacy): {{count}}",
+    "legacyAcks_other": "Impact acknowledgements (legacy): {{count}}"
   },
   "suiviParams": {
     "reset": "Reset",
@@ -2162,6 +2184,201 @@
       "user": "User",
       "repo": "Repository",
       "permission": "Permission"
+    }
+  },
+  "linkField": {
+    "label": "Label",
+    "labelPlaceholder": "Label (optional)",
+    "url": "URL",
+    "urlPlaceholder": "https://…, file://… or \\\\server\\share\\…",
+    "invalidUrl": "Unsupported URL: http(s)://, file:// or network path \\\\server\\share.",
+    "invalidLabel": "The label cannot contain “|” or a line break.",
+    "add": "+ Add a link",
+    "remove": "Remove this link",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "ok": "OK",
+    "copy": "Copy",
+    "copied": "Copied",
+    "pasteRejected_one": "{{count}} link ignored (unsupported URL scheme).",
+    "pasteRejected_other": "{{count}} links ignored (unsupported URL scheme).",
+    "pasteSingleOnly": "This field keeps a single link: only the first one was pasted."
+  },
+  "executionHistory": {
+    "title": "Executions",
+    "empty": "No execution.",
+    "columns": "Columns",
+    "configure": "Choose columns",
+    "toggleSteps": "Show steps",
+    "removed": "entry removed",
+    "isolated": "standalone run",
+    "campaignMissing": "campaign not found",
+    "originApp": "entered",
+    "originExcel": "Excel import",
+    "group": {
+      "execution": "Execution",
+      "campaign": "Campaign",
+      "entry": "Entry",
+      "test": "Test"
+    },
+    "col": {
+      "verdict": "Verdict",
+      "date": "Date",
+      "tester": "Tester",
+      "duration": "Duration",
+      "origin": "Origin",
+      "notes": "Notes",
+      "equipment": "Equipment",
+      "campaign": "Campaign",
+      "campaignStatus": "Campaign status",
+      "baseline": "Baseline",
+      "entry": "Entry",
+      "entryRequirement": "Instance requirement",
+      "params": "Parameters",
+      "testVersion": "Test version",
+      "carriedFrom": "Carried from",
+      "test": "Test"
+    },
+    "campaignStatus": {
+      "planned": "Planned",
+      "in_progress": "In progress",
+      "completed": "Completed",
+      "abandoned": "Abandoned"
+    },
+    "superseded": "superseded",
+    "supersededTitle": "Run replaced by a new attempt on the same entry"
+  },
+  "changes": {
+    "title": "Changesets",
+    "new": "New changeset",
+    "empty": "No changeset.",
+    "emptyFiltered": "No changeset matches the filters.",
+    "allTypes": "All types",
+    "allStatuses": "All statuses",
+    "allRepos": "All repos",
+    "mine": "My changesets",
+    "hideTerminal": "Hide closed",
+    "home": "Select a changeset in the panel, or create one.",
+    "type": "Type",
+    "titleLabel": "Title",
+    "component": "Component",
+    "componentPick": "— pick a component —",
+    "componentFrozen": "Frozen after the initial status (it designates the storage repo).",
+    "status": "Status",
+    "create": "Create",
+    "creating": "Creating…",
+    "createFromElement": "Create a changeset",
+    "delete": "Delete",
+    "deleteConfirm": "Delete {{id}}? The file was never committed; the ID will not be reused.",
+    "toModify": "Changed elements",
+    "impacted": "Impacted elements",
+    "add": "Add",
+    "addSelected": "Add selection",
+    "pickNone": "No element available.",
+    "remove": "Remove",
+    "removed": "deleted",
+    "none": "None.",
+    "planned": "planned",
+    "modified": "modified",
+    "impactStatus": "Impact status",
+    "comment": "Comment",
+    "computed": "computed",
+    "origin": "Origin",
+    "integratedIn": "Integrated in",
+    "campaigns": "Campaigns",
+    "requirement": "Requirement",
+    "test": "Test",
+    "notFound": "Changeset not found.",
+    "noTypeInRepo": "no changeset type in this repo",
+    "componentHelp": "The changeset is stored in the component repo, with its types: it follows the component when reused in another product.",
+    "pickToModify": "Add changed elements",
+    "pickImpacted": "Add impacted elements",
+    "noFlagged": "No element to re-check.",
+    "mode": {
+      "label": "Kind",
+      "request": "Change request",
+      "range": "On existing work",
+      "from": "From (baseline or commit)",
+      "to": "To (baseline or commit)",
+      "rangeHelp": "Requirements and tests changed between the two bounds are added to the changed elements; the analysis uses the state at the second bound."
+    },
+    "openOnly": "Open only",
+    "unreached": "no longer reached",
+    "analysis": {
+      "title": "Impact analysis",
+      "request": "Request — current state",
+      "range": "On existing work: {{from}} → {{to}}",
+      "computed": "computed {{when}}",
+      "frozen": "frozen {{when}}",
+      "noRoot": "No starting element: add changed or impacted elements.",
+      "noImpact": "no impact",
+      "campaigns": "Ongoing campaigns concerned"
+    },
+    "analyzeImpact": "Analyze impact",
+    "openChange": "Open",
+    "moveTo_one": "Move to…",
+    "moveTo_other": "Move ({{count}}) to…",
+    "alsoIn": "also in {{ids}}",
+    "toProcess": "to process",
+    "promote": "Move to changed",
+    "clickToEdit": "Click to edit",
+    "backlog": {
+      "outside": "modified outside the app",
+      "reopen": "Reopen and assign…",
+      "title": "Backlog",
+      "subtitle_one": "{{count}} element to process, assigned to no open changeset",
+      "subtitle_other": "{{count}} elements to process, assigned to no open changeset",
+      "assign_one": "Assign to…",
+      "assign_other": "Assign ({{count}}) to…",
+      "filter": "Filter (ID, title)",
+      "help": "Elements neither approved nor terminal, absent from open changesets.",
+      "empty": "Nothing to process.",
+      "selectAll": "Select all",
+      "select": "Select {{id}}",
+      "titleCol": "Title",
+      "statusCol": "Status",
+      "flagged": "Impact to check"
+    },
+    "campaignSection": {
+      "selectAll": "Select all",
+      "via": "Brought by",
+      "inCampaigns": "Already in",
+      "create": "Create a campaign",
+      "toRun_one": "{{count}} test to run",
+      "toRun_other": "{{count}} tests to run",
+      "uncovered": "not covered: {{ids}}",
+      "toAdd_one": "{{count}} test to add",
+      "toAdd_other": "{{count}} tests to add",
+      "addTo": "Add to {{id}}",
+      "addToMany": "Add to…",
+      "progress": "{{passed}} / {{total}} PASS",
+      "changesetTests_one": "{{count}} changeset entry",
+      "changesetTests_other": "{{count}} changeset entries",
+      "link": "Changeset"
+    },
+    "trace": {
+      "creation": "creation",
+      "pending": "not approved",
+      "unpublished": "unpublished",
+      "diff": "Show changes"
+    },
+    "modify": {
+      "title": "Which changeset?",
+      "createHelp": "Every creation goes through a changeset. Pick the one that carries it, or create one.",
+      "reopenHelp": "{{id}} becomes editable again: pick the changeset that carries its modification, or create one.",
+      "auto": "Added to {{id}}"
+    },
+    "assign": {
+      "approveTitle": "Assign to a changeset",
+      "assignTitle": "Assign to a changeset",
+      "moveTitle": "Move to a changeset",
+      "approveHelp": "{{id}} is assigned to no open changeset. Pick the changeset that carries its approval.",
+      "elements": "Elements: {{ids}}",
+      "openChanges": "Open changesets",
+      "noOpen": "No open changeset in this repo.",
+      "newTitle": "New changeset title",
+      "create": "Create",
+      "approveWithout": "Approve without a changeset"
     }
   },
   "diffkit": {

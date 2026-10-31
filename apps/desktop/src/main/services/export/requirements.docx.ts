@@ -1,6 +1,7 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 import * as fsP from 'fs/promises'
 import type { RequirementsExportPayload } from '@polenta/types'
+import { linkParagraphsDocx } from './link-cell.util'
 
 /** Cahier d'exigences — export docx. Un titre par exigence (ID + Label, colonnes `id`/`name` si
  *  présentes dans la configuration `visibleFieldsWord`), puis chaque autre colonne visible en
@@ -39,6 +40,10 @@ export async function exportRequirementsDocx(
       const value = row[col.key]
       if (!value?.trim()) continue
       children.push(new Paragraph({ children: [new TextRun({ text: col.label, bold: true })] }))
+      if (col.type === 'link') {
+        for (const p of linkParagraphsDocx(value)) children.push(p)
+        continue
+      }
       for (const line of value.split('\n')) children.push(new Paragraph({ text: line }))
     }
   }

@@ -1,4 +1,4 @@
-import { Outlet, useRouterState, useNavigate } from '@tanstack/react-router'
+import { Outlet, useRouterState, useNavigate, useRouter } from '@tanstack/react-router'
 import { useState, useRef, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from 'react'
 import { ActivityBar } from './ActivityBar'
 import { Sidebar } from './Sidebar'
@@ -9,7 +9,7 @@ import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
 import { TerminalProvider } from '../../contexts/TerminalContext'
 import { TerminalPanel } from '../terminal/TerminalPanel'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
-import { ImpactAnalysisProvider } from '../../contexts/ImpactAnalysisContext'
+import { ApprovalGateProvider } from '../../contexts/ApprovalGateContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
 import { RepoAccessBanner } from './RepoAccessBanner'
@@ -19,7 +19,7 @@ import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } f
 import { ElementNavProvider } from '../../contexts/ElementNavContext'
 import { ElementPreviewPopup } from '../element/ElementPreviewPopup'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'impact' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters' | 'merge'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'changesets' | 'dashboard' | 'parameters' | 'merge'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -47,7 +47,9 @@ export function deducePanel(pathname: string, category?: string): Panel {
 
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
   if (pathname === '/parameters') return 'parameters'
-  if (pathname === '/impact-analysis' || pathname === '/constellation') return 'impact'
+  // GH199 — la vue Analyse d'impact est intégrée à la vue Changements (modifications locales,
+  // « Impact à vérifier », Constellation).
+  if (pathname === '/changesets' || pathname.startsWith('/changesets/') || pathname.startsWith('/changeset/') || pathname === '/constellation') return 'changesets'
 
   if (pathname.startsWith('/req/')) return 'requirements'
   if (pathname.startsWith('/test/')) return 'tests'
@@ -112,6 +114,17 @@ export function AppLayout() {
       setLastDashboardRoute({ pathname, search: search ?? '' })
     }
   }, [routePanel, pathname, search])
+
+  // GH207 (retour de validation du 2026-10-31) : même mécanisme pour la vue Changesets — revenir à
+  // la page quittée (un changeset, le backlog, les modifications locales…) plutôt qu'à l'accueil.
+  const [lastChangesetsRoute, setLastChangesetsRoute] = useState<{ pathname: string; search: string } | null>(null)
+
+  useEffect(() => {
+    if (routePanel === 'changesets') {
+      setLastChangesetsRoute({ pathname, search: search ?? '' })
+    }
+  }, [routePanel, pathname, search])
+  const router = useRouter()
 
   useEffect(() => {
     setLastVersionRoute(null)
@@ -237,13 +250,20 @@ export function AppLayout() {
         navigate({ to: '/product', search: { projectId: currentProjectId ?? '', tab: undefined, repo: searchParams.get('repo') ?? undefined, node: undefined, type: undefined, category } })
         break
       }
-      case 'impact':
-        // T174: own activity-bar entry (was a sub-view of Version). The open analysis is
-        // kept by ImpactAnalysisContext, so a bare /impact-analysis restores it.
-        if (currentProjectId) navigate({ to: '/impact-analysis', search: { projectId: currentProjectId } })
-        break
       case 'parameters':
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
+        break
+      case 'changesets':
+        // GH198 — vue Changements : page d'accueil (le panneau liste les changes du workspace) ;
+        // GH207 — sinon la dernière page quittée de la vue, si elle appartient au projet ouvert.
+        if (currentProjectId) {
+          const last = lastChangesetsRoute
+          if (last && new URLSearchParams(last.search).get('projectId') === currentProjectId) {
+            router.history.push(`${last.pathname}${last.search}`)
+          } else {
+            navigate({ to: '/changesets', search: { projectId: currentProjectId } })
+          }
+        }
         break
       case 'dashboard':
         if (currentProjectId) {
@@ -302,7 +322,7 @@ export function AppLayout() {
   // on that panel used to make `inner` change JSX type at that slot every time the user
   // entered/left Système, forcing React to unmount and remount the entire app shell
   // (ActivityBar, Sidebar, main/Outlet) — wiping any in-memory state living below AppLayout,
-  // including which impact analysis was open and the Version panel's remembered sub-view.
+  // including the Version panel's remembered sub-view.
   // SystemViewProvider's own effects already no-op outside /product and /components.
   if (!currentProjectId) return inner
 
@@ -311,7 +331,7 @@ export function AppLayout() {
       <SelectedRepoProvider key={currentProjectId}>
         <TerminalProvider>
           <CompareRefsProvider>
-            <ImpactAnalysisProvider>
+            <ApprovalGateProvider>
               <SystemViewProvider currentProjectId={currentProjectId}>
                 {/* GH229 — liens sur les ID d'élément et popup d'aperçu, pour tous les écrans. */}
                 <ElementNavProvider currentProjectId={currentProjectId}>
@@ -321,7 +341,7 @@ export function AppLayout() {
                   <ElementPreviewPopup />
                 </ElementNavProvider>
               </SystemViewProvider>
-            </ImpactAnalysisProvider>
+            </ApprovalGateProvider>
           </CompareRefsProvider>
         </TerminalProvider>
       </SelectedRepoProvider>

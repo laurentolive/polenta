@@ -3,10 +3,10 @@ import { AccountPanel } from '../sidebar/AccountPanel'
 import { ProjectPanel } from '../sidebar/ProjectPanel'
 import { SearchPanel } from '../sidebar/SearchPanel'
 import { VersionPanel } from '../sidebar/VersionPanel'
-import { ImpactPanel } from '../sidebar/ImpactPanel'
 import { SystemPanel } from '../sidebar/SystemPanel'
 import { DashboardPanel } from '../sidebar/DashboardPanel'
 import { ParametersPanel } from '../sidebar/ParametersPanel'
+import { ChangesPanel } from '../sidebar/ChangesPanel'
 import { MergeFilesPanel } from '../sidebar/MergeFilesPanel'
 
 interface Props {
@@ -33,7 +33,6 @@ export function Sidebar({ activePanel, currentProjectId, width, collapsed }: Pro
       {activePanel === 'version' && currentProjectId && (
         <VersionPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
-      {activePanel === 'impact' && currentProjectId && <ImpactPanel projectId={currentProjectId} />}
       {(activePanel === 'requirements' || activePanel === 'tests' || activePanel === 'campaigns') && currentProjectId && (
         <SystemPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
@@ -41,6 +40,7 @@ export function Sidebar({ activePanel, currentProjectId, width, collapsed }: Pro
         <DashboardPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
       {activePanel === 'parameters' && currentProjectId && <ParametersPanel projectId={currentProjectId} />}
+      {activePanel === 'changesets' && currentProjectId && <ChangesPanel projectId={currentProjectId} />}
       {activePanel === 'merge' && <MergeFilesPanel />}
     </div>
   )

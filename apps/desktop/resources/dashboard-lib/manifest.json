@@ -127,6 +127,54 @@
             "fr": "Historique : commentaire de modification (comment) sur les entrées (GH163)",
             "en": "History: modification comment (comment) on entries (GH163)"
           }
+        },
+        {
+          "version": 4,
+          "hash": "fc1619e5a158f93fc94519b73a6c14f8293bbeaaa63735189dba76a8623819dd",
+          "summary": {
+            "fr": "Champs de type lien (GH195) : GraphLinkValue, multiple, requiredWhen",
+            "en": "Link fields (GH195): GraphLinkValue, multiple, requiredWhen"
+          }
+        },
+        {
+          "version": 5,
+          "hash": "c850be161ca5f7b33c0a955ae747389c2fbed50e93a5c96b0ee3fdad8c1d48df",
+          "summary": {
+            "fr": "Champs d'exécution (GH196) : GraphTestRun.fields / notes / stepResults, runFields / stepFields des types",
+            "en": "Run fields (GH196): GraphTestRun.fields / notes / stepResults, runFields / stepFields on types"
+          }
+        },
+        {
+          "version": 6,
+          "hash": "166972abf8bef9532f8d4de6f5cf7e7b58a528d0552e5d37ac9f6dd0e6b06560",
+          "summary": {
+            "fr": "Changes (GH198)",
+            "en": "Changes (GH198)"
+          }
+        },
+        {
+          "version": 7,
+          "hash": "0d22975c09ec64ab326ed4a6a8bc433358a3265f0a5e3e227e739d83cd8237eb",
+          "summary": {
+            "fr": "Changesets (ex-changes) : collection `changesets`, bornes et analyse figée (GH199)",
+            "en": "Changesets (formerly changes): `changesets` collection, range and frozen analysis (GH199)"
+          }
+        },
+        {
+          "version": 8,
+          "hash": "06714751c3b16952df0cd6e9400093e600cec896a7f75953023ea141bbb01d1b",
+          "summary": {
+            "fr": "GH200 : GraphChangeset.toModify[] gagne base et approved (trace départ / approbation)",
+            "en": "GH200: GraphChangeset.toModify[] gains base and approved (start / approval trace)"
+          }
+        },
+        {
+          "version": 9,
+          "hash": "7c5aec42de2a8828b39e74397ffa9a82336a6856baa36087ea09c45d891b17a7",
+          "summary": {
+            "fr": "GH207 : GraphCampaign.changeset (changeset qui a créé la campagne)",
+            "en": "GH207: GraphCampaign.changeset (changeset that created the campaign)"
+          }
         }
       ]
     },

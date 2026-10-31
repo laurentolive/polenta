@@ -1,4 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { fieldValueToText, isFieldRequiredNow, objectFieldReader } from '@polenta/types'
+import { CreateChangeButton } from '../components/changes/CreateChangeButton'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -6,10 +8,12 @@ import { api } from '../api'
 import { useProjectSchema, getReqTypeDef } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
 import { HistorySection } from '../components/history/HistorySection'
+import { ExecutionsSection } from '../components/executions/ExecutionsSection'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { Requirement } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
+import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { decodeProjectId } from '../lib/projectId'
 
 export const Route = createFileRoute('/req/$reqId')({
@@ -31,7 +35,7 @@ const STATUS_CLASSES: Record<string, string> = {
 
 function getStringField(fields: Record<string, unknown>, key: string): string {
   const v = fields[key]
-  return typeof v === 'string' ? v : (v !== undefined && v !== null ? String(v) : '')
+  return fieldValueToText(v)
 }
 
 function RequirementDetailPage() {
@@ -62,7 +66,7 @@ function RequirementDetailPage() {
       const stringFields: Record<string, string> = {}
       if (req.fields && typeof req.fields === 'object') {
         for (const [k, v] of Object.entries(req.fields as Record<string, unknown>)) {
-          stringFields[k] = v !== undefined && v !== null ? String(v) : ''
+          stringFields[k] = fieldValueToText(v)
         }
       }
       setFields(stringFields)
@@ -95,9 +99,17 @@ function RequirementDetailPage() {
   // Ctrl/Cmd+Entrée depuis un champ richtext → « Enregistrer » (no-op sans modification).
   const submitEdit = () => { if (hasChanges && !saveMutation.isPending) saveMutation.mutate() }
 
+  const gates = useModificationGate()
   const transitionMutation = useMutation({
-    mutationFn: (toStatus: string) => api.requirements.transition(repoPath, reqId, { toStatus }),
-    onSuccess: () => {
+    // GH199 §8bis — approbation d'un élément non assigné : proposer un change (annuler = rien n'est écrit).
+    mutationFn: async (toStatus: string) => {
+      // GH200 — réouverture : changeset de la modification.
+      const gate = req ? await gates.status(repoPath, { id: reqId, objectTypeRef: req.objectTypeRef, category: 'requirement' }, toStatus) : { ok: true }
+      if (!gate.ok) return 'cancelled' as const
+      return api.requirements.transition(repoPath, reqId, { toStatus, changesetId: gate.changesetId })
+    },
+    onSuccess: result => {
+      if (result === 'cancelled') return
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       qc.invalidateQueries({ queryKey: ['requirement', repoPath, reqId] })
       setConfirmObsolete(false)
@@ -129,6 +141,8 @@ function RequirementDetailPage() {
     : null
   const obsoleteStatus = statuses.find(s => s.name === 'obsolete')
   const canMarkObsolete = req.status !== 'obsolete' && obsoleteStatus !== undefined && (!nextStatus || nextStatus.name !== 'obsolete')
+  // GH200 — exigence approuvée : contenu en lecture seule, les transitions restent (réouverture).
+  const locked = !!statuses.find(s => s.name === req.status)?.isApproval
 
   return (
     <ParamRefProvider repoPath={repoPath} workspaceDir={projectId ? decodeProjectId(projectId) : ''} projectId={projectId}>
@@ -138,14 +152,22 @@ function RequirementDetailPage() {
         title={req.title}
         subtitle={<span className="font-mono">{req.id}</span>}
         actions={
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusClass}`}>
-            {req.status}
-          </span>
+          <>
+            <CreateChangeButton repoPath={repoPath} projectId={projectId} elementId={req.id} objectTypeRef={req.objectTypeRef} />
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusClass}`}>
+              {req.status}
+            </span>
+          </>
         }
       />
 
       <div className="flex-1 overflow-y-auto">
       <div className="max-w-2xl p-6 space-y-4">
+        {locked && (
+          <p className="text-xs text-ink-3 bg-surface-2 border border-edge rounded px-2 py-1" data-testid="approved-lock-banner">
+            {t('system.editView.approvedLocked')}
+          </p>
+        )}
         <div>
           <label className="block text-sm font-medium text-ink mb-1">
             {t('requirementsPage.titleLabel')} <span className="text-status-danger">*</span>
@@ -154,6 +176,7 @@ function RequirementDetailPage() {
             type="text"
             value={title}
             onChange={e => setTitle(e.target.value)}
+            readOnly={locked}
             className="input-field w-full"
           />
         </div>
@@ -163,7 +186,9 @@ function RequirementDetailPage() {
             key={f.name}
             field={f}
             value={fields[f.name] ?? String(f.default ?? '')}
+            requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: req.status, fields: fields }))}
             onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
+            disabled={locked}
             repoPath={repoPath}
             interfaceRoles={schema?.roles?.map(r => r.name)}
             onSubmit={submitEdit}
@@ -178,6 +203,7 @@ function RequirementDetailPage() {
                 type="text"
                 value={fields[key] ?? String(val ?? '')}
                 onChange={e => setFields(prev => ({ ...prev, [key]: e.target.value }))}
+                readOnly={locked}
                 className="input-field w-full"
               />
             </div>
@@ -258,6 +284,9 @@ function RequirementDetailPage() {
             </div>
           </div>
         )}
+
+        {/* GH197 — historique des exécutions des tests qui couvrent l'exigence. */}
+        <ExecutionsSection repoPath={repoPath} projectId={projectId} workspaceDir={projectId ? decodeProjectId(projectId) : undefined} target={{ requirementId: reqId }} typeKey={req.objectTypeRef} />
 
         {/* GH77 — historique des champs suivis (lecture seule). */}
         <HistorySection repoPath={repoPath} kind="requirement" id={reqId} typeDef={typeDef}

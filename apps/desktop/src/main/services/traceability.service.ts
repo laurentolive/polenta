@@ -1,8 +1,6 @@
 import type {
   CellStatus,
   CoverageStatus,
-  ImpactAcknowledgement,
-  ImpactReport,
   MatrixCell,
   MatrixExportRow,
   MatrixRow,
@@ -13,19 +11,15 @@ import type {
   TestRun,
   Requirement,
   ObjectLink,
-  ImpactAnalysis,
-  ImpactAnalysisSummary,
   ChangedRequirement,
   ImpactNode,
   ElementRepoRef,
   LocalImpactAnalysis,
   RequirementDiffEntry,
   ChangedField,
-  CreateImpactAnalysisDto,
-  UpdateImpactItemStatusDto,
+  LegacyImpactAck,
 } from '@polenta/types'
 import type {
-  AcknowledgeImpactDto,
   GenerateTestPlanDto,
   MatrixFiltersDto,
 } from '@polenta/zod-schemas'
@@ -38,13 +32,14 @@ import type { SyncService } from './sync.service'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 
 /** Minimal read-only snapshot of requirements/tests/links — either as they existed at a given
- * git ref (T46, one repo, built once per `createImpactAnalysis` at the target baseline's sha) or as
+ * git ref (one repo — GH199: bound `to` of a range change) or as
  * they are on disk across all workspace repos (T175). Shared by every
  * `buildImpactTreesFromSnapshot()` call of one analysis, to avoid re-reading the same blobs once
  * per changed element. `repoPath` = repo the element lives in; `rootRepoPath` = analysis root. */
-interface ImpactSnapshot {
+export interface ImpactSnapshot {
   rootRepoPath: string
-  requirements: Map<string, { title: string; repoPath: string }>
+  /** `objectTypeRef` : GH199, exigences du composant d'un change (racines par défaut). */
+  requirements: Map<string, { title: string; repoPath: string; objectTypeRef?: string }>
   tests: Map<string, { title: string; repoPath: string }>
   links: ObjectLink[]
   repoNames: Map<string, string>
@@ -93,15 +88,6 @@ export function matchCoverageLink(
 function elementRepoRef(snapshot: ImpactSnapshot, repoPath: string | undefined): ElementRepoRef | undefined {
   if (!repoPath || repoPath === snapshot.rootRepoPath) return undefined
   return { path: repoPath, name: snapshot.repoNames.get(repoPath) ?? path.basename(repoPath) }
-}
-
-function findImpactNodeById(nodes: ImpactNode[], elementId: string): ImpactNode | null {
-  for (const node of nodes) {
-    if (node.elementId === elementId) return node
-    const found = findImpactNodeById(node.children, elementId)
-    if (found) return found
-  }
-  return null
 }
 
 /** Sections d'un cas de test stockées à la racine du YAML (pas dans `fields`). */
@@ -160,21 +146,6 @@ export class TraceabilityService {
    */
   private resolveRepoPaths(repoPath: string, workspaceDir?: string): Promise<string[]> {
     return resolveWorkspaceRepoPaths(this.workspaceTree, repoPath, workspaceDir)
-  }
-
-  /**
-   * Find a requirement by ID across multiple repos.
-   * Returns the first match, or null if not found.
-   */
-  private async findRequirementById(
-    id: string,
-    repoPaths: string[],
-  ): Promise<import('@polenta/types').Requirement | null> {
-    for (const p of repoPaths) {
-      const req = await this.reqIndex.findById(p, id)
-      if (req) return req
-    }
-    return null
   }
 
   async getMatrix(repoPath: string, filters: MatrixFiltersDto, workspaceDir?: string): Promise<TraceabilityMatrix> {
@@ -371,16 +342,38 @@ export class TraceabilityService {
     return entries.sort((a, b) => a.reqId.localeCompare(b.reqId))
   }
 
+  /** GH199 — diff exigences **et** tests entre deux refs (change « sur l'existant »), par id. */
+  async diffElementsBetweenRefs(repoPath: string, fromSha: string, toSha: string): Promise<Array<RequirementDiffEntry & { elementType: 'requirement' | 'test_case' }>> {
+    const files = (await this.sync.diffBetween(repoPath, fromSha, toSha))
+      .filter((f) => (f.path.startsWith('requirements/') || f.path.startsWith('tests/')) && f.path.endsWith('.yaml'))
+    const entries = await Promise.all(files.map(async (f) => {
+      const elementType = f.path.startsWith('tests/') ? 'test_case' as const : 'requirement' as const
+      const [a, b] = await Promise.all([
+        this.git.readYamlRef<Requirement | TestCase>(repoPath, fromSha, f.path),
+        this.git.readYamlRef<Requirement | TestCase>(repoPath, toSha, f.path),
+      ])
+      const id = b?.id ?? a?.id
+      if (!id) return null
+      if (!a && b) return { reqId: id, changeType: 'added' as const, changedFields: [], titleFrom: null, titleTo: b.title, elementType }
+      if (a && !b) return { reqId: id, changeType: 'removed' as const, changedFields: [], titleFrom: a.title, titleTo: null, elementType }
+      const changedFields = diffElementFields(a!, b!, elementType)
+      return changedFields.length > 0
+        ? { reqId: id, changeType: 'modified' as const, changedFields, titleFrom: a!.title, titleTo: b!.title, elementType }
+        : null
+    }))
+    return entries.filter((e): e is NonNullable<typeof e> => e !== null).sort((x, y) => x.reqId.localeCompare(y.reqId, undefined, { numeric: true }))
+  }
+
   /** Charge l'état des exigences/tests/liens tel qu'il existait à `sha` — cf. `ImpactSnapshot`. */
-  private async loadSnapshotAtRef(repoPath: string, sha: string): Promise<ImpactSnapshot> {
+  async loadSnapshotAtRef(repoPath: string, sha: string): Promise<ImpactSnapshot> {
     const [reqRecords, testRecords, linksData] = await Promise.all([
       this.git.readYamlDirAtRef<Requirement>(repoPath, sha, 'requirements'),
       this.git.readYamlDirAtRef<TestCase>(repoPath, sha, 'tests'),
       this.git.readYamlRef<{ links: ObjectLink[] }>(repoPath, sha, 'links/links.yaml'),
     ])
 
-    const requirements = new Map<string, { title: string; repoPath: string }>()
-    for (const r of reqRecords) if (r.id) requirements.set(r.id, { title: r.title, repoPath })
+    const requirements = new Map<string, { title: string; repoPath: string; objectTypeRef?: string }>()
+    for (const r of reqRecords) if (r.id) requirements.set(r.id, { title: r.title, repoPath, objectTypeRef: r.objectTypeRef })
 
     const tests = new Map<string, { title: string; repoPath: string }>()
     for (const t of testRecords) if (t.id) tests.set(t.id, { title: t.title, repoPath })
@@ -398,8 +391,8 @@ export class TraceabilityService {
    * de l'app) de tous les repos : exigences, tests et `links/links.yaml` concaténés. Les ids sont
    * uniques sur le workspace (préfixes uniques) ; en cas de doublon, le repo racine gagne.
    */
-  private async loadWorkingTreeSnapshot(rootRepoPath: string, repoPaths: string[], repoNames: Map<string, string>): Promise<ImpactSnapshot> {
-    const requirements = new Map<string, { title: string; repoPath: string }>()
+  async loadWorkingTreeSnapshot(rootRepoPath: string, repoPaths: string[], repoNames: Map<string, string> = new Map()): Promise<ImpactSnapshot> {
+    const requirements = new Map<string, { title: string; repoPath: string; objectTypeRef?: string }>()
     const tests = new Map<string, { title: string; repoPath: string }>()
     const links: ObjectLink[] = []
     // Racine en dernier : ses entrées écrasent un éventuel doublon d'un composant.
@@ -420,7 +413,7 @@ export class TraceabilityService {
       return { repoPath, reqRecords, testRecords, repoLinks: linksData?.links ?? [] }
     }))
     for (const { repoPath, reqRecords, testRecords, repoLinks } of perRepo) {
-      for (const r of reqRecords) if (r?.id) requirements.set(r.id, { title: r.title, repoPath })
+      for (const r of reqRecords) if (r?.id) requirements.set(r.id, { title: r.title, repoPath, objectTypeRef: r.objectTypeRef })
       for (const t of testRecords) if (t?.id) tests.set(t.id, { title: t.title, repoPath })
       links.push(...repoLinks)
     }
@@ -441,7 +434,7 @@ export class TraceabilityService {
    * exigence gardent leur sens (source = enfant, cible = parent) ; un id qui n'est pas une
    * exigence du snapshot n'est jamais suivi comme exigence.
    */
-  private buildImpactTreesFromSnapshot(
+  buildImpactTreesFromSnapshot(
     snapshot: ImpactSnapshot,
     reqId: string,
     rootType: 'requirement' | 'test_case' = 'requirement',
@@ -486,7 +479,7 @@ export class TraceabilityService {
         if (!snapshot.tests.has(otherId)) continue
         if (visited.has(otherId)) continue
         visited.add(otherId)
-        leaves.push(makeNode(otherId, 'test_case', snapshot.tests.get(otherId)!.title, link.type))
+        leaves.push({ ...makeNode(otherId, 'test_case', snapshot.tests.get(otherId)!.title, link.type), parentIsTarget: link.targetId === parentReqId })
       }
       return leaves
     }
@@ -500,7 +493,8 @@ export class TraceabilityService {
         visited.add(nextId)
         children.push(buildReqNode(nextId, link.type, direction))
       }
-      return makeNode(id, 'requirement', snapshot.requirements.get(id)!.title, linkType, children)
+      // Descendant : le parent est la cible du lien ; montant : sa source.
+      return { ...makeNode(id, 'requirement', snapshot.requirements.get(id)!.title, linkType, children), parentIsTarget: direction === 'descendant' }
     }
 
     const collectDirect = (direction: 'descendant' | 'ascendant'): ImpactNode[] => {
@@ -520,7 +514,7 @@ export class TraceabilityService {
       for (const { otherId, link } of coverageLinksOf(reqId)) {
         if (visited.has(otherId) || !snapshot.requirements.has(otherId)) continue
         visited.add(otherId)
-        ascendantTree.push(buildReqNode(otherId, link.type, 'ascendant'))
+        ascendantTree.push({ ...buildReqNode(otherId, link.type, 'ascendant'), parentIsTarget: link.targetId === reqId })
       }
       return { descendantTree: [], ascendantTree }
     }
@@ -607,226 +601,11 @@ export class TraceabilityService {
     return result
   }
 
-  /** Crée et persiste une analyse d'impact entre deux baselines — calcul figé, une seule fois. */
-  async createImpactAnalysis(repoPath: string, dto: CreateImpactAnalysisDto): Promise<ImpactAnalysis> {
-    const [fromSha, toSha] = await Promise.all([
-      this.sync.resolveTag(repoPath, dto.fromBaselineTag),
-      this.sync.resolveTag(repoPath, dto.toBaselineTag),
-    ])
-    if (!fromSha) throw new Error(`Baseline "${dto.fromBaselineTag}" introuvable`)
-    if (!toSha) throw new Error(`Baseline "${dto.toBaselineTag}" introuvable`)
-
-    const [diffEntries, snapshot] = await Promise.all([
-      this.diffRequirementsBetweenRefs(repoPath, fromSha, toSha),
-      this.loadSnapshotAtRef(repoPath, toSha),
-    ])
-
-    const changedRequirements: ChangedRequirement[] = diffEntries.map((entry) => {
-      if (entry.changeType === 'removed') {
-        return {
-          reqId: entry.reqId,
-          title: entry.titleFrom ?? entry.reqId,
-          changeType: entry.changeType,
-          changedFields: entry.changedFields,
-          descendantTree: [],
-          ascendantTree: [],
-        }
-      }
-      const { descendantTree, ascendantTree } = this.buildImpactTreesFromSnapshot(snapshot, entry.reqId)
-      return {
-        reqId: entry.reqId,
-        title: entry.titleTo ?? entry.reqId,
-        changeType: entry.changeType,
-        changedFields: entry.changedFields,
-        descendantTree,
-        ascendantTree,
-      }
-    })
-
-    const id = `impact-${Date.now()}`
-    const analysis: ImpactAnalysis = {
-      id,
-      label: dto.label?.trim() || `${dto.fromBaselineTag} → ${dto.toBaselineTag}`,
-      repoPath,
-      fromBaseline: { tag: dto.fromBaselineTag, sha: fromSha },
-      toBaseline: { tag: dto.toBaselineTag, sha: toSha },
-      createdAt: new Date().toISOString(),
-      createdBy: 'TODO:current-user',
-      changedRequirements,
-    }
-
-    await this.git.writeYaml(repoPath, `impact-analyses/${id}.yaml`, analysis)
-    return analysis
-  }
-
-  async listImpactAnalyses(repoPath: string): Promise<ImpactAnalysisSummary[]> {
-    const files = await this.git.listFiles(repoPath, 'impact-analyses')
-    const analyses = await Promise.all(
-      files.filter((f) => f.endsWith('.yaml')).map((f) => this.git.readYaml<ImpactAnalysis>(repoPath, f)),
-    )
-    return analyses
-      .filter((a): a is ImpactAnalysis => a != null)
-      .map(({ changedRequirements: _changedRequirements, ...summary }) => summary)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }
-
-  async getImpactAnalysis(repoPath: string, id: string): Promise<ImpactAnalysis> {
-    const analysis = await this.git.readYaml<ImpactAnalysis>(repoPath, `impact-analyses/${id}.yaml`)
-    if (!analysis) throw new Error(`Analyse d'impact ${id} introuvable`)
-    return analysis
-  }
-
-  async updateImpactItemStatus(repoPath: string, id: string, dto: UpdateImpactItemStatusDto): Promise<ImpactAnalysis> {
-    const analysis = await this.getImpactAnalysis(repoPath, id)
-    const changedReq = analysis.changedRequirements.find((cr) => cr.reqId === dto.reqId)
-    if (!changedReq) throw new Error(`Exigence ${dto.reqId} absente de l'analyse ${id}`)
-
-    const tree = dto.direction === 'descendant' ? changedReq.descendantTree : changedReq.ascendantTree
-    const node = findImpactNodeById(tree, dto.elementId)
-    if (!node) throw new Error(`Élément ${dto.elementId} absent de l'arbre ${dto.direction} de ${dto.reqId}`)
-
-    node.status = dto.status
-    node.comment = dto.comment ?? null
-    node.updatedAt = new Date().toISOString()
-    node.updatedBy = 'TODO:current-user'
-
-    await this.git.writeYaml(repoPath, `impact-analyses/${id}.yaml`, analysis)
-    return analysis
-  }
-
-  async deleteImpactAnalysis(repoPath: string, id: string): Promise<void> {
-    await this.git.deleteFile(repoPath, `impact-analyses/${id}.yaml`)
-  }
-
-  async getImpactReport(repoPath: string, reqId: string, depth: number = 1, workspaceDir?: string): Promise<ImpactReport> {
-    const repoPaths = await this.resolveRepoPaths(repoPath, workspaceDir)
-
-    const req = await this.findRequirementById(reqId, repoPaths)
-    if (!req) throw new Error(`Requirement ${reqId} not found`)
-
-    // T179 — tests atteints depuis `reqId` : dernier run de la paire (reqId, test), sans les runs
-    // d'instances générées pour une autre exigence (même règle que la matrice).
-    const runsMap = mergeRunsMaps(await Promise.all(repoPaths.map(p => this.testsIndex.getRunsMap(p))))
-
-    const ackFiles = await this.git.listFiles(repoPath, `impact-acks/${reqId}`)
-    const acks = new Map<string, ImpactAcknowledgement>()
-    for (const file of ackFiles.filter((f) => f.endsWith('.yaml'))) {
-      const ack = await this.git.readYaml<ImpactAcknowledgement>(repoPath, file)
-      if (ack) acks.set(ack.elementId, ack)
-    }
-
-    const items: import('@polenta/types').ImpactItem[] = []
-    const visited = new Set<string>([reqId])
-
-    interface QueueEntry {
-      id: string
-      depth: number
-      linkType: string
-      elementType: 'requirement' | 'test_case'
-    }
-
-    const queue: QueueEntry[] = []
-
-    const allTestsArrays = await Promise.all(repoPaths.map(p => this.testsIndex.findAll(p)))
-    const allTests = allTestsArrays.flat()
-    const tcIds = new Set(allTests.map((t) => t.id))
-
-    // Collect links from all repos — GH13 : une source de lien qui est un test n'est pas une
-    // exigence dépendante ; elle est mise en file comme `test_case` ci-dessous (sinon, marquée
-    // visitée sous le mauvais type, elle disparaissait du rapport).
-    const allLinksForReq = (await Promise.all(repoPaths.map(p => this.reqIndex.findLinks(p, reqId)))).flat()
-    const links = allLinksForReq
-    for (const link of links.filter((l) => l.targetId === reqId && !tcIds.has(l.sourceId))) {
-      if (!visited.has(link.sourceId)) {
-        queue.push({ id: link.sourceId, depth: 1, linkType: link.type, elementType: 'requirement' })
-      }
-    }
-
-    const allLinksArrays = await Promise.all(repoPaths.map(p => this.reqIndex.findAllLinks(p)))
-    const allLinks = allLinksArrays.flat()
-    for (const link of allLinks) {
-      if (tcIds.has(link.sourceId) && link.targetId === reqId) {
-        queue.push({ id: link.sourceId, depth: 1, linkType: link.type, elementType: 'test_case' })
-      } else if (tcIds.has(link.targetId) && link.sourceId === reqId) {
-        queue.push({ id: link.targetId, depth: 1, linkType: link.type, elementType: 'test_case' })
-      }
-    }
-
-    while (queue.length > 0) {
-      const entry = queue.shift()!
-      if (visited.has(entry.id)) continue
-      visited.add(entry.id)
-      if (entry.depth > depth) continue
-
-      if (entry.elementType === 'requirement') {
-        const depReq = await this.findRequirementById(entry.id, repoPaths)
-        if (!depReq) continue
-        items.push({
-          elementId: entry.id,
-          elementType: 'requirement',
-          title: depReq.title,
-          linkType: entry.linkType,
-          depth: entry.depth,
-          acknowledged: acks.has(entry.id),
-        })
-        if (entry.depth < depth) {
-          const depLinksArrays = await Promise.all(repoPaths.map(p => this.reqIndex.findLinks(p, entry.id)))
-          const depLinks = depLinksArrays.flat()
-          for (const link of depLinks.filter((l) => l.targetId === entry.id && !tcIds.has(l.sourceId))) {
-            if (!visited.has(link.sourceId)) {
-              queue.push({ id: link.sourceId, depth: entry.depth + 1, linkType: link.type, elementType: 'requirement' })
-            }
-          }
-        }
-      } else {
-        const tc = await this.testsIndex.findById(repoPath, entry.id) ??
-          (await Promise.all(repoPaths.map(p => this.testsIndex.findById(p, entry.id)))).find(t => t != null)
-        if (!tc) continue
-        const latestRun = latestRunForRequirement(runsMap.get(tc.id), reqId)
-        items.push({
-          elementId: entry.id,
-          elementType: 'test_case',
-          title: tc.title,
-          linkType: entry.linkType,
-          depth: entry.depth,
-          lastRunResult: latestRun?.result,
-          lastRunDate: latestRun?.executedAt,
-          acknowledged: acks.has(entry.id),
-        })
-      }
-    }
-
-    return {
-      triggerId: reqId,
-      triggerType: 'requirement',
-      depth,
-      items,
-      activeCampaignRuns: [],
-      generatedAt: new Date().toISOString(),
-    }
-  }
-
-  async acknowledgeImpact(
-    repoPath: string,
-    reqId: string,
-    dto: AcknowledgeImpactDto,
-  ): Promise<ImpactAcknowledgement> {
-    const req = await this.reqIndex.findById(repoPath, reqId)
-    if (!req) throw new Error(`Requirement ${reqId} not found`)
-
-    const ackId = `ack-${Date.now()}`
-    const ack: ImpactAcknowledgement = {
-      id: ackId,
-      elementId: dto.elementId,
-      elementType: dto.elementType,
-      triggerReqId: reqId,
-      acknowledgedAt: new Date().toISOString(),
-      acknowledgedBy: 'TODO:current-user',
-      comment: dto.comment,
-    }
-
-    await this.git.writeYaml(repoPath, `impact-acks/${reqId}/${ackId}.yaml`, ack)
-    return ack
+  /** GH199 — acquittements de l'ancien flux élément unique (`impact-acks/<id>/`), lecture seule. */
+  async listLegacyAcks(repoPath: string, elementId: string): Promise<LegacyImpactAck[]> {
+    const files = (await this.git.listFiles(repoPath, `impact-acks/${elementId}`).catch(() => [])).filter((f) => f.endsWith('.yaml'))
+    const acks = await Promise.all(files.map((f) => this.readYamlLenient<LegacyImpactAck>(repoPath, f)))
+    return acks.filter((a): a is LegacyImpactAck => !!a).sort((a, b) => (b.acknowledgedAt ?? '').localeCompare(a.acknowledgedAt ?? ''))
   }
 
   async generateTestPlan(repoPath: string, dto: GenerateTestPlanDto, workspaceDir?: string): Promise<TestPlanDraft> {

@@ -47,6 +47,8 @@ const bulkImportTestsInput = {
 // MCP uniquement (surface externe, contrairement à l'IPC interne à l'app).
 const createCampaignEntrySchema = z.object({
   title: z.string().min(1),
+  /** GH207 — changeset ouvert du repo qui crée la campagne (lien écrit des deux côtés). */
+  changeset: z.string().min(1).optional(),
   objectTypeRef: z.string().optional(),
   fields: z.record(z.unknown()).optional(),
   baselineRef: z.string().optional(),
@@ -133,6 +135,23 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
 }
 
 /**
+ * GH200 — éléments créés restés sans changeset alors que la règle est active (plusieurs changesets
+ * ouverts sans `changesetId`, ou aucun) : ils rejoignent le backlog, la réponse les liste.
+ */
+async function withUnassigned(
+  container: McpContainer, result: BulkImportToolResult, entries: Array<{ objectTypeRef?: string }>,
+): Promise<BulkImportToolResult & { unassigned?: string[] }> {
+  if (result.dryRun || result.created.length === 0) return result
+  const unassigned: string[] = []
+  for (const { index, id } of result.created) {
+    const objectTypeRef = entries[index]?.objectTypeRef ?? ''
+    const check = await container.changeTracking.check(container.repoPath, { id, objectTypeRef }, 'create', container.workspaceDir)
+    if (check.tracking && !check.assignedTo) unassigned.push(id)
+  }
+  return { ...result, unassigned }
+}
+
+/**
  * Construit le callback `nextIdPreview` pour les catégories dont le préfixe d'ID
  * dépend du type résolu (requirements/tests) — lit la base de compteur une seule
  * fois par préfixe DISTINCT présent dans le batch (pas un appel disque par entrée),
@@ -215,7 +234,7 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
       const result = await runBulkImport(schema, entries, dryRun, preview, (dto) =>
         container.requirements.create(container.repoPath, dto, container.workspaceDir),
       )
-      return jsonToolResult(result)
+      return jsonToolResult(await withUnassigned(container, result, entries))
     },
   )
 
@@ -237,7 +256,7 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
       const result = await runBulkImport(schema, entries, dryRun, preview, (dto) =>
         container.tests.create(container.repoPath, dto, container.workspaceDir),
       )
-      return jsonToolResult(result)
+      return jsonToolResult(await withUnassigned(container, result, entries))
     },
   )
 

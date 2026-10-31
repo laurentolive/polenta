@@ -1,7 +1,9 @@
+import { isFieldRequiredNow, objectFieldReader, initialStatus } from '@polenta/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useModificationGate } from '../contexts/ApprovalGateContext'
 import { api } from '../api'
 import { useProjectSchema, getAllObjectTypes } from '../hooks/useProjectSchema'
 import { DynamicField } from '../components/DynamicField'
@@ -71,16 +73,24 @@ function NewTestCasePage() {
   const typeDef = testTypes.find(t => t.name === type)
 
 
+  const gates = useModificationGate()
   const createMutation = useMutation({
-    mutationFn: () => api.tests.create(repoPath, {
+    // GH200 — toute création passe par un changeset (annuler = rien n'est créé).
+    mutationFn: async () => {
+      const gate = await gates.create(repoPath, { objectTypeRef: type })
+      if (!gate.ok) return null
+      return api.tests.create(repoPath, {
+      changesetId: gate.changesetId,
       title,
       objectTypeRef: type,
       preconditions: preconditions.trim() || undefined,
       steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
       postconditions: postconditions.trim() || undefined,
       fields,
-    }),
+    })
+    },
     onSuccess: (result) => {
+      if (!result) return
       qc.invalidateQueries({ queryKey: ['tests', repoPath] })
       navigate({ to: '/test/$testId', params: { testId: result.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
     },
@@ -155,6 +165,7 @@ function NewTestCasePage() {
           {typeDef?.fields.map(f => (
             <DynamicField key={f.name} field={f}
               value={fields[f.name] ?? String(f.default ?? '')}
+              requiredNow={isFieldRequiredNow(f, objectFieldReader(typeDef, { status: initialStatus(typeDef), fields: fields }))}
               onChange={v => setFields(prev => ({ ...prev, [f.name]: v }))}
               disabled={isDisabled}
               repoPath={repoPath}

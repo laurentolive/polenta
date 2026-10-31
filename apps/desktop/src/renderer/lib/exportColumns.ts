@@ -1,4 +1,5 @@
-import type { ExportColumn, ObjectTypeDefinition, SchemaFieldType, TemplateOutlineEntry, TypeTreeNode } from '@polenta/types'
+import type { ExportColumn, LinkTypeDefinition, ObjectTypeDefinition, SchemaFieldType, TemplateOutlineEntry, TypeTreeNode } from '@polenta/types'
+import { getRelevantLinkTypes, linkColumnKeys } from '../components/system/linkUtils'
 import { treeFlatten } from '../hooks/useTreeState'
 
 // Miroir de `ExcelView.getColumnLabel` (components/system/ExcelView.tsx) pour les colonnes
@@ -19,10 +20,23 @@ const SYSTEM_COLUMN_LABELS: Record<string, string> = {
   coverageStatus: 'Couverture',
 }
 
-/** Colonnes affichées par défaut (aucune préférence enregistrée pour le type) — même ordre pour la
- *  vue système, les exports pdf et le sélecteur de tests GH33 : section/name/id/status, `version`
- *  (exigence) ou `steps` (test), puis les 3 premiers champs personnalisés. */
-export function defaultVisibleFields(typeDef: ObjectTypeDefinition | undefined): string[] {
+/** Colonnes affichées par défaut (aucun choix personnel pour le type ou la vue) — même ordre pour
+ *  la vue système, les exports pdf et le sélecteur de tests GH33 : section/name/id/status, `version`
+ *  (exigence) ou `steps` (test), puis les champs du schéma. GH139 — le défaut de l'équipe est porté
+ *  par le schéma : champs `defaultVisible` (à défaut d'aucun, les 3 premiers), puis colonnes des types
+ *  de lien `defaultVisible` qui concernent le type (`link-out::` / `link-in::` en vue Tableau pour un
+ *  type à la fois source et cible, `link::` sinon). */
+export function defaultVisibleFields(
+  typeDef: ObjectTypeDefinition | undefined,
+  links?: { linkTypes: LinkTypeDefinition[]; objectTypeRef?: string; view?: 'excel' | 'word' },
+): string[] {
+  const fields = typeDef?.fields ?? []
+  const marked = fields.filter(f => f.defaultVisible)
+  const linkKeys = links
+    ? getRelevantLinkTypes(links.linkTypes, links.objectTypeRef, typeDef?.category)
+      .filter(({ lt }) => lt.defaultVisible)
+      .flatMap(({ lt }) => links.view === 'excel' ? linkColumnKeys(lt, links.objectTypeRef, typeDef?.category) : [`link::${lt.name}`])
+    : []
   return [
     'section',
     'name',
@@ -30,7 +44,8 @@ export function defaultVisibleFields(typeDef: ObjectTypeDefinition | undefined):
     'status',
     ...(typeDef?.category === 'requirement' ? ['version'] : []),
     ...(typeDef?.category === 'test' ? ['steps'] : []),
-    ...(typeDef?.fields.slice(0, 3).map(f => f.name) ?? []),
+    ...(marked.length > 0 ? marked : fields.slice(0, 3)).map(f => f.name),
+    ...linkKeys,
   ]
 }
 

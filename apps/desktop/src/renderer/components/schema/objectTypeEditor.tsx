@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, STATUS_HISTORY_KEY, displayIdFieldCandidates, historyModeFor, renameValues } from '@polenta/types'
+import {
+  DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES,
+  displayIdFieldCandidates, historyModeFor, renameValues, requiredWhenIssues, DEFAULT_CHANGE_STATUSES,
+} from '@polenta/types'
 import type {
   FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
   TypeRenameDto, TypeRenamePlan, TypeRenameResult, ValueRename,
@@ -16,6 +19,12 @@ export interface EditableField {
   values: string; required: boolean; default: string; placeholder: string
   /** GH77 — historiser ce champ. */
   trackHistory: boolean
+  /** GH195 — champ `link` : liste de liens. */
+  multiple: boolean
+  /** GH139 — colonne affichée par défaut (défaut de l'équipe, porté par le schéma). */
+  defaultVisible: boolean
+  /** GH195 — `requiredWhen` en texte : `champ = v1, v2; autre = v3` (cf. `parseRequiredWhen`). */
+  requiredWhen: string
   /** GH77 — nom du champ tel que chargé du schéma (non persisté) : absent pour un champ ajouté dans
    *  la session. Un nom différent à l'enregistrement est un renommage (cf. `fieldRenames`). */
   originalName?: string
@@ -34,6 +43,8 @@ export interface EditableStatus {
 export interface EditableObjectType {
   name: string; label: string; color: string; prefix: string; category: ObjectCategory
   fields: EditableField[]; statuses: EditableStatus[]
+  /** GH196 — types de test : champs saisis à chaque exécution / à chaque étape exécutée. */
+  runFields: EditableField[]; stepFields: EditableField[]
   /** GH77 — historiser le statut (défaut true). */
   trackStatusHistory: boolean
   /** GH229 — champ affiché à la place de l'ID dans les liens ('' = ID Polenta). */
@@ -52,9 +63,9 @@ function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, u
   return Object.keys(rest).length > 0 ? rest : undefined
 }
 
-const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory'] as const
+const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory', 'multiple', 'requiredWhen', 'defaultVisible'] as const
 const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
-const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'displayIdField'] as const
+const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'runFields', 'stepFields', 'displayIdField'] as const
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
@@ -64,8 +75,28 @@ export function fieldToEditable(f: SchemaField): EditableField {
     values: (f.values ?? []).join(', '), required: f.required ?? false,
     default: f.default !== undefined ? String(f.default) : '', placeholder: f.placeholder ?? '',
     trackHistory: f.trackHistory ?? false, originalName: f.name,
+    multiple: f.multiple ?? false, requiredWhen: formatRequiredWhen(f.requiredWhen), defaultVisible: f.defaultVisible ?? false,
     ...withExtra(extraKeys(f, FIELD_EDITOR_KEYS)),
   }
+}
+
+/** GH195 — `{ status: [approved], safety: [true] }` → `status = approved; safety = true`. */
+export function formatRequiredWhen(rw: SchemaField['requiredWhen']): string {
+  return Object.entries(rw ?? {}).map(([k, v]) => `${k} = ${(Array.isArray(v) ? v : []).map(String).join(', ')}`).join('; ')
+}
+
+/** GH195 — inverse de `formatRequiredWhen` ; texte vide → absent. Une condition sans valeur garde
+ *  une liste vide (signalée par `requiredWhenIssues`, refusée à l'enregistrement). */
+export function parseRequiredWhen(text: string): SchemaField['requiredWhen'] {
+  const out: Record<string, unknown[]> = {}
+  for (const part of text.split(';')) {
+    if (!part.trim()) continue
+    const eq = part.indexOf('=')
+    const key = (eq < 0 ? part : part.slice(0, eq)).trim()
+    if (!key) continue
+    out[key] = eq < 0 ? [] : part.slice(eq + 1).split(',').map(v => v.trim()).filter(Boolean)
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function withExtra(extra: Record<string, unknown> | undefined): { extra?: Record<string, unknown> } {
@@ -90,6 +121,8 @@ export function typeRename(
   updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined, nodeName: string,
 ): TypeRenameDto | null {
   if (!original || !updated.name) return null
+  // GH198 — renommage d'un type de change : migration de ses objets non prise en charge (lot suivant).
+  if (original.category === 'changeset') return null
   const oldPrefix = original.prefix ?? ''
   if (updated.name === original.name && updated.prefix === oldPrefix) return null
   return {
@@ -193,6 +226,10 @@ export function editableToField(f: EditableField): SchemaField {
   if (f.default) result.default = f.default
   if (f.placeholder) result.placeholder = f.placeholder
   if (f.trackHistory && canTrackHistory(f)) result.trackHistory = true
+  if (f.type === 'link' && f.multiple) result.multiple = true
+  if (f.defaultVisible) result.defaultVisible = true
+  const requiredWhen = parseRequiredWhen(f.requiredWhen)
+  if (requiredWhen) result.requiredWhen = requiredWhen
   return { ...result, ...f.extra }
 }
 
@@ -219,6 +256,8 @@ export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
     category: t.category,
     fields: t.fields.map(fieldToEditable),
     statuses: (t.statuses ?? []).map(statusToEditable),
+    runFields: (t.runFields ?? []).map(fieldToEditable),
+    stepFields: (t.stepFields ?? []).map(fieldToEditable),
     trackStatusHistory: t.trackStatusHistory !== false,
     displayIdField: t.displayIdField ?? '',
     ...withExtra(extraKeys(t, TYPE_EDITOR_KEYS)),
@@ -232,6 +271,12 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
   if (t.prefix) result.prefix = t.prefix
   if (t.statuses.length > 0) result.statuses = t.statuses.map(editableToStatus)
   if (!t.trackStatusHistory) result.trackStatusHistory = false
+  // GH196 — listes d'exécution : types de test seulement, sans historique ni visibilité par défaut.
+  if (t.category === 'test') {
+    const runField = (f: EditableField) => editableToField({ ...f, trackHistory: false, defaultVisible: false })
+    if (t.runFields.length > 0) result.runFields = t.runFields.map(runField)
+    if (t.stepFields.length > 0) result.stepFields = t.stepFields.map(runField)
+  }
   // GH229 — un ID affiché devenu invalide (champ supprimé, renommé ou retypé) est retiré : le
   // main refuserait l'enregistrement.
   // Un champ renommé dans l'éditeur est suivi (`originalName`).
@@ -242,7 +287,7 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const FIELD_TYPES: SchemaFieldType[] = ['text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user']
+export const FIELD_TYPES: SchemaFieldType[] = ['text', 'textarea', 'number', 'enum', 'multi_enum', 'boolean', 'date', 'datetime', 'richtext', 'user', 'link']
 
 // Couleurs alignées sur les classes status-* (success/warning/danger/neutral) déjà
 // utilisées pour le rendu des badges de statut (cf. getStatusClass dans WordView.tsx),
@@ -266,12 +311,13 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   requirement: 'schema.editor.requirement',
   test: 'schema.editor.test',
   campaign: 'schema.editor.campaign',
+  changeset: 'schema.editor.changeset',
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
 
 export function emptyField(): EditableField {
-  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '', trackHistory: false }
+  return { name: '', label: '', type: 'text', values: '', required: false, default: '', placeholder: '', trackHistory: false, multiple: false, requiredWhen: '', defaultVisible: false }
 }
 
 export function emptyStatus(): EditableStatus {
@@ -285,6 +331,7 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   requirement: 'REQ',
   test: 'TEST',
   campaign: 'CAMP',
+  changeset: 'CHG',
 }
 
 function slugifyComponentName(componentName: string): string {
@@ -306,11 +353,14 @@ export function emptyObjType(
   for (let n = 2; base && taken.has(suggested); n++) suggested = `${base}_${n}`
   return {
     name: suggested, label: categoryLabel, color: '', prefix: suggested, category,
-    fields: [{ name: 'description', label: descriptionLabel, type: 'richtext', values: '', required: false, default: '', placeholder: '', trackHistory: false }],
+    fields: [{ ...emptyField(), name: 'description', label: descriptionLabel, type: 'richtext' }],
+    runFields: [], stepFields: [],
     trackStatusHistory: true,
     displayIdField: '',
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
+      // GH198 — cycle de vie par défaut d'un type de change (modifiable).
+      : category === 'changeset' ? DEFAULT_CHANGE_STATUSES.map(statusToEditable)
       : [],
   }
 }
@@ -399,14 +449,32 @@ export function CancelConfirmModal({ onConfirm, onClose }: { onConfirm: () => vo
 
 // ── FieldsTable ───────────────────────────────────────────────────────────────
 
-export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onChange: (f: EditableField[]) => void }) {
+export function FieldsTable({ fields, onChange, statuses, category, variant = 'object', title, help }: {
+  fields: EditableField[]
+  onChange: (f: EditableField[]) => void
+  /** GH195 — statuts et catégorie du type, pour contrôler les `requiredWhen` qui les référencent. */
+  statuses?: EditableStatus[]
+  category?: ObjectCategory
+  /** GH196 — `run` / `step` : liste d'exécution (pas d'historique ni de visibilité par défaut ;
+   *  pseudo-champ `result` pour `requiredWhen`). */
+  variant?: 'object' | 'run' | 'step'
+  title?: string
+  help?: string
+}) {
+  const isRunList = variant !== 'object'
   const { t } = useTranslation()
   const set = (i: number, patch: Partial<EditableField>) => {
     const next = [...fields]; next[i] = { ...next[i], ...patch }; onChange(next)
   }
+  const issues = requiredWhenIssues(
+    { category: category ?? 'requirement', statuses: statuses?.map(s => ({ name: s.name })), fields: fields.map(editableToField) },
+    isRunList ? { key: RUN_RESULT_KEY, values: [...(variant === 'run' ? RUN_RESULT_VALUES : STEP_RESULT_VALUES)] } : undefined,
+  )
   return (
-    <div className="mt-3">
-      <p className="section-label mb-1">{t('schema.editor.fields')}</p>
+    <div className={title === '' ? 'mt-1' : 'mt-3'}>
+      {/* `title=""` : titre porté par le conteneur (section repliable des listes d'exécution). */}
+      {title !== '' && <p className="section-label mb-1">{title ?? t('schema.editor.fields')}</p>}
+      {help && <p className="text-xs text-ink-3 mb-1">{help}</p>}
       {fields.length > 0 && (
         <table className="w-full text-xs border-collapse mb-1">
           <thead>
@@ -416,7 +484,9 @@ export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onC
               <th className={thClass}>{t('schema.editor.colType')}</th>
               <th className={thClass}>{t('schema.editor.colEnumValues')}</th>
               <th className={`${thClass} text-center`}>{t('schema.editor.colRequired')}</th>
-              <th className={`${thClass} text-center`} title={t('schema.editor.colHistoryTitle')}>{t('schema.editor.colHistory')}</th>
+              <th className={thClass} title={t('schema.editor.colRequiredWhenTitle')}>{t('schema.editor.colRequiredWhen')}</th>
+              {!isRunList && <th className={`${thClass} text-center`} title={t('schema.editor.colHistoryTitle')}>{t('schema.editor.colHistory')}</th>}
+              {!isRunList && <th className={`${thClass} text-center`} title={t('schema.editor.colDefaultVisibleTitle')}>{t('schema.editor.colDefaultVisible')}</th>}
               <th className={thClass}>{t('schema.editor.colDefault')}</th>
               <th className={thClass}></th>
             </tr>
@@ -431,9 +501,26 @@ export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onC
                     {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </td>
-                <td className={tdClass}><input value={f.values} onChange={e => set(i, { values: e.target.value })} disabled={f.type !== 'enum' && f.type !== 'multi_enum'} className={`${cellInput} disabled:opacity-30`} placeholder="a, b, c" /></td>
+                <td className={tdClass}>
+                  {f.type === 'link' ? (
+                    <label className="flex items-center gap-1 text-ink-2 px-1" title={t('schema.editor.linkMultipleTitle')}>
+                      <input type="checkbox" checked={f.multiple} onChange={e => set(i, { multiple: e.target.checked })} className="h-3 w-3 accent-ink" />
+                      {t('schema.editor.linkMultiple')}
+                    </label>
+                  ) : (
+                    <input value={f.values} onChange={e => set(i, { values: e.target.value })} disabled={f.type !== 'enum' && f.type !== 'multi_enum'} className={`${cellInput} disabled:opacity-30`} placeholder="a, b, c" />
+                  )}
+                </td>
                 <td className={`${tdClass} text-center`}><input type="checkbox" checked={f.required} onChange={e => set(i, { required: e.target.checked })} className="h-3 w-3 accent-ink" /></td>
-                <td className={`${tdClass} text-center`}>
+                <td className={tdClass}>
+                  <RequiredWhenInput
+                    placeholder={isRunList ? 'result = FAIL' : category === 'campaign' ? 'status = completed' : 'status = approved'}
+                    value={f.requiredWhen}
+                    onChange={v => set(i, { requiredWhen: v })}
+                    issues={f.requiredWhen.trim() ? issues.filter(x => x.field === f.name) : []}
+                  />
+                </td>
+                {!isRunList && <td className={`${tdClass} text-center`}>
                   <input
                     type="checkbox"
                     aria-label={t('schema.editor.colHistoryTitle')}
@@ -445,7 +532,17 @@ export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onC
                       : t(historyModeFor(f.type) === 'event' ? 'schema.editor.historyEvent' : 'schema.editor.historyValue')}
                     className="h-3 w-3 accent-ink disabled:opacity-30"
                   />
-                </td>
+                </td>}
+                {!isRunList && <td className={`${tdClass} text-center`}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('schema.editor.colDefaultVisibleTitle')}
+                    checked={f.defaultVisible}
+                    onChange={e => set(i, { defaultVisible: e.target.checked })}
+                    className="h-3 w-3 accent-ink"
+                    data-testid="default-visible-checkbox"
+                  />
+                </td>}
                 <td className={tdClass}><input value={f.default} onChange={e => set(i, { default: e.target.value })} className={cellInput} placeholder="—" /></td>
                 <td className={tdClass}>
                   <div className="flex gap-0.5 justify-end">
@@ -460,6 +557,32 @@ export function FieldsTable({ fields, onChange }: { fields: EditableField[]; onC
         </table>
       )}
       <button type="button" onClick={() => onChange([...fields, emptyField()])} className="text-xs text-status-info hover:underline">{t('schema.editor.addField')}</button>
+    </div>
+  )
+}
+
+/** GH195 — saisie de `requiredWhen` (`champ = v1, v2; autre = v3`), ⚠ si incohérent : rouge = refusé à
+ *  l'enregistrement, orange = condition inerte (champ ou valeur inconnus). */
+function RequiredWhenInput({ value, onChange, issues, placeholder }: {
+  placeholder: string
+  value: string
+  onChange: (v: string) => void
+  issues: { level: 'error' | 'warning'; message: string }[]
+}) {
+  const { t } = useTranslation()
+  const level = issues.some(x => x.level === 'error') ? 'error' : issues.length ? 'warning' : null
+  const messages = issues.map(x => x.message).join('\n')
+  return (
+    <div className="flex items-center gap-0.5">
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className={`${cellInput} font-mono ${level === 'error' ? 'text-status-danger' : ''}`}
+        placeholder={placeholder}
+        title={messages || t('schema.editor.colRequiredWhenTitle')}
+        data-testid="required-when-input"
+      />
+      {level && <span className={level === 'error' ? 'text-status-danger' : 'text-status-warning'} title={messages}>⚠</span>}
     </div>
   )
 }

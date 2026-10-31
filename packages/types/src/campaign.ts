@@ -34,6 +34,8 @@ export interface TestCampaign {
   removedRuns?: RemovedCampaignTestRun[]
   createdAt: string
   completedAt?: string | null
+  /** GH207 — changeset qui a créé la campagne (lien aussi dans `campaigns` du changeset). */
+  changeset?: string
   /** GH77 — historique du statut et des champs personnalisés suivis. */
   history?: ObjectHistory
 }
@@ -161,6 +163,8 @@ export interface CreateCampaignDto {
   reqInstances?: ReqInstanceSelection
   /** GH64 — entrées reportées depuis d'autres campagnes. */
   carried?: CarriedEntrySelection[]
+  /** GH207 — changeset ouvert du repo qui crée la campagne (lien écrit des deux côtés). */
+  changeset?: string
 }
 
 export interface UpdateCampaignDto {

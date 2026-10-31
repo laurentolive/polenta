@@ -39,6 +39,9 @@ export interface ImpactNode {
   elementType: 'requirement' | 'test_case'
   title: string
   linkType: string              // type du ObjectLink qui relie ce nœud à son parent dans l'arbre
+  /** Le parent est la cible du lien (libellé `labelTargetToSource`), sinon sa source. Absent :
+   *  analyse figée avant le 2026-10-31 (pas de libellé). */
+  parentIsTarget?: boolean
   status: ImpactAnalysisStatus
   comment: string | null
   updatedAt: string | null
@@ -58,22 +61,6 @@ export interface ChangedRequirement {
   repo?: ElementRepoRef                        // T175 — absent = repo racine
 }
 
-export interface BaselineRefPointer {
-  tag: string    // nom du tag de la baseline (BaselineRecord.tag)
-  sha: string    // résolu à la création de l'analyse
-}
-
-export interface ImpactAnalysis {
-  id: string
-  label: string                  // ex. "v1.0 → v1.1", généré depuis les deux tags, éditable
-  repoPath: string
-  fromBaseline: BaselineRefPointer
-  toBaseline: BaselineRefPointer
-  createdAt: string
-  createdBy: string
-  changedRequirements: ChangedRequirement[]
-}
-
 /** Analyse live des modifications locales vs HEAD (T175) — jamais persistée, pas de statuts.
  *  `changedRequirements` contient exigences ET tests (cf. `elementType`), pour réutiliser le rendu T46. */
 export interface LocalImpactAnalysis {
@@ -81,21 +68,4 @@ export interface LocalImpactAnalysis {
   computedAt: string                          // ISO
   heads: { repoPath: string; sha: string }[]  // HEAD de chaque repo au moment du calcul
   changedRequirements: ChangedRequirement[]
-}
-
-/** Métadonnées seules, sans `changedRequirements` — utilisé par `listImpactAnalyses`. */
-export type ImpactAnalysisSummary = Omit<ImpactAnalysis, 'changedRequirements'>
-
-export interface CreateImpactAnalysisDto {
-  fromBaselineTag: string
-  toBaselineTag: string
-  label?: string
-}
-
-export interface UpdateImpactItemStatusDto {
-  reqId: string           // exigence changée sous laquelle se trouve le nœud
-  direction: 'ascendant' | 'descendant'
-  elementId: string
-  status: ImpactAnalysisStatus
-  comment?: string | null
 }

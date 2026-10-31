@@ -325,6 +325,49 @@ export class GitService {
     }
   }
 
+  /**
+   * GH200 — commits de la chaîne des premiers parents de `ref` qui modifient `filePath` (oid du blob
+   * différent de celui du premier parent), du plus récent au plus ancien. `stopAt` : le parcours
+   * s'arrête à ce commit (exclu). Même lecture que `commitChanges` (histoire de la branche
+   * d'intégration), limitée à un fichier.
+   */
+  async fileCommits(
+    repoPath: string, filePath: string, opts: { ref?: string; stopAt?: string | null } = {},
+  ): Promise<Array<{ oid: string; at: string; by: string }>> {
+    let oid: string | undefined
+    try {
+      oid = await git.resolveRef({ fs, dir: repoPath, ref: opts.ref ?? 'HEAD' })
+    } catch {
+      return [] // repo sans commit
+    }
+    const out: Array<{ oid: string; at: string; by: string }> = []
+    let blob = await this.blobOidAt(repoPath, oid, filePath)
+    while (oid && oid !== opts.stopAt) {
+      const { commit } = await git.readCommit({ fs, dir: repoPath, oid })
+      const parent: string | undefined = commit.parent[0]
+      const parentBlob = parent ? await this.blobOidAt(repoPath, parent, filePath) : null
+      if (blob !== parentBlob) {
+        out.push({ oid, at: new Date(commit.committer.timestamp * 1000).toISOString(), by: commit.author.name })
+      }
+      oid = parent
+      blob = parentBlob
+    }
+    return out
+  }
+
+  /** oid du blob `filePath` dans `commitOid`, `null` s'il n'y existe pas. */
+  private async blobOidAt(repoPath: string, commitOid: string, filePath: string): Promise<string | null> {
+    const slash = filePath.lastIndexOf('/')
+    const dir = slash < 0 ? '' : filePath.slice(0, slash)
+    const name = filePath.slice(slash + 1)
+    try {
+      const { tree } = await git.readTree({ fs, dir: repoPath, oid: commitOid, ...(dir && { filepath: dir }) })
+      return tree.find(e => e.path === name && e.type === 'blob')?.oid ?? null
+    } catch {
+      return null
+    }
+  }
+
   /** oid of the tree at `path` inside `commitOid`, or `null` if `path` doesn't exist there. */
   private async readSubtreeOid(repoPath: string, commitOid: string, path: string): Promise<string | null> {
     try {

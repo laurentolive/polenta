@@ -78,7 +78,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={requestClose}>
       <div
-        className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto"
+        className="bg-surface border border-edge rounded-lg shadow-xl w-full max-w-5xl mx-4 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -117,7 +117,30 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           </div>
           {prefixError && <p className="text-xs text-status-danger mb-3">{prefixError}</p>}
           {saveError && <p className="text-xs text-status-danger mb-3">{saveError}</p>}
-          <FieldsTable fields={draft.fields} onChange={fields => set({ fields })} />
+          <FieldsTable fields={draft.fields} onChange={fields => set({ fields })} statuses={draft.statuses} category={draft.category} />
+          {draft.category === 'test' && (
+            <>
+              {/* GH196 — sections repliables ; le contenu déplié est indenté sous son titre. */}
+              <details className="mt-3" open={draft.runFields.length > 0} data-testid="run-fields-section">
+                <summary className="section-label cursor-pointer select-none">
+                  {t('schema.editor.runFields')} ({draft.runFields.length})
+                </summary>
+                <div className="ml-2 pl-4 border-l border-edge">
+                  <FieldsTable fields={draft.runFields} onChange={runFields => set({ runFields })} category="test" variant="run"
+                    title="" help={t('schema.editor.runFieldsHelp')} />
+                </div>
+              </details>
+              <details className="mt-3" open={draft.stepFields.length > 0} data-testid="step-fields-section">
+                <summary className="section-label cursor-pointer select-none">
+                  {t('schema.editor.stepFields')} ({draft.stepFields.length})
+                </summary>
+                <div className="ml-2 pl-4 border-l border-edge">
+                  <FieldsTable fields={draft.stepFields} onChange={stepFields => set({ stepFields })} category="test" variant="step"
+                    title="" help={t('schema.editor.stepFieldsHelp')} />
+                </div>
+              </details>
+            </>
+          )}
           {draft.category !== 'campaign' && (
             <StatusesTable statuses={draft.statuses} onChange={statuses => set({ statuses })} />
           )}

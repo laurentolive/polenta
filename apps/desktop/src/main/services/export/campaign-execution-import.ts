@@ -2,12 +2,13 @@ import * as path from 'path'
 import ExcelJS from 'exceljs'
 import {
   EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_HEADER_ROW, EXECUTION_SHEET_META_NAME, EXECUTION_SHEET_SUPPORTED_VERSIONS,
-  parseGlobalVerdict, parseStepVerdict,
+  convertFieldValue, executionFieldColumnId, parseGlobalVerdict, parseStepVerdict, prepareRunFields,
 } from '@polenta/types'
 import type {
   ExecutionImportFatal, ExecutionImportInstanceError, ExecutionImportPreview, ExecutionSheetColumn,
-  ImportedInstance, StepResultValue, TestCampaign, TestCase, TestRunResult,
+  ImportedInstance, ObjectTypeDefinition, SchemaField, StepResultValue, TestCampaign, TestCase, TestRunResult,
 } from '@polenta/types'
+import { readLinkCell } from './link-cell.util'
 
 /**
  * GH36 sprint 2 — relecture d'un classeur d'exécution rempli (specs/GH36-design.md §3.4).
@@ -24,19 +25,32 @@ export interface RawExecutionRow {
   tester: string
   date: Date | string | number | null
   comment: string
+  /** GH196 — cellules des colonnes de champ (v3), par id de colonne (`run:<nom>` / `step:<nom>`). */
+  fields: Record<string, { value: ExcelJS.CellValue; address: string }>
 }
 
 export interface RawExecutionSheet {
   formatVersion: string
   campaignId: string
-  /** Instances exportées, dans l'ordre de la campagne au moment de l'export ; `fingerprint` : v2 (GH81). */
-  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string }[]
+  /** Instances exportées, dans l'ordre de la campagne au moment de l'export ; `fingerprint` : v2 (GH81) ;
+   *  `prefill` (GH196) : signature des valeurs pré-remplies d'une instance déjà exécutée. */
+  instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string; prefill?: string }[]
   rows: RawExecutionRow[]
   /** Lignes sans clé technique mais avec une saisie (ajoutées par le testeur). */
   rowsWithoutKey: number[]
 }
 
-const col = (c: ExecutionSheetColumn) => EXECUTION_SHEET_COLUMNS.indexOf(c) + 1
+/** Lettre de colonne Excel (1 → A, 27 → AA), pour nommer une cellule dans un message. */
+function columnLetter(index: number): string {
+  let n = index
+  let out = ''
+  while (n > 0) {
+    const m = (n - 1) % 26
+    out = String.fromCharCode(65 + m) + out
+    n = Math.floor((n - 1) / 26)
+  }
+  return out
+}
 
 /** Texte d'une cellule exceljs, quel que soit son type (texte riche, formule, lien…). */
 function cellText(value: ExcelJS.CellValue): string {
@@ -77,6 +91,8 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
 
   const props = new Map<string, string>()
   const instances: RawExecutionSheet['instances'] = []
+  // GH196 — v3 : carte des colonnes de la feuille de saisie ; v1 / v2 : ordre fixe.
+  let columnIds: string[] = [...EXECUTION_SHEET_COLUMNS]
   let inInstances = false
   meta.eachRow(r => {
     const first = cellText(r.getCell(1).value).trim()
@@ -85,27 +101,53 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
       inInstances = true
       return
     }
+    if (!inInstances && first === 'columns') {
+      const ids: string[] = []
+      for (let c = 2; c <= r.cellCount; c++) ids.push(cellText(r.getCell(c).value).trim())
+      if (ids.length > 0) columnIds = ids
+      return
+    }
     if (!inInstances) {
       props.set(first, cellText(r.getCell(2).value).trim())
       return
     }
     const orders = cellText(r.getCell(3).value).split(',').map(s => s.trim()).filter(Boolean).map(Number)
     const fingerprint = cellText(r.getCell(5).value).trim()
+    const prefill = cellText(r.getCell(6).value).trim()
     instances.push({
       entryId: first,
       testCaseId: cellText(r.getCell(2).value).trim(),
       orders,
       testFound: cellText(r.getCell(4).value).trim() !== '0',
       ...(fingerprint && { fingerprint }),
+      ...(prefill && { prefill }),
     })
   })
   const campaignId = props.get('campaignId')
   if (!campaignId) return { fatal: { code: 'not_an_execution_sheet' } }
 
+  // La carte ne vaut que pour un classeur v3 ; v1 / v2 : ordre fixe des colonnes.
+  if (Number(props.get('formatVersion')) < 3) columnIds = [...EXECUTION_SHEET_COLUMNS]
+  const { rows, rowsWithoutKey } = readSheetRows(sheet, columnIds)
+  return { formatVersion: props.get('formatVersion') ?? '', campaignId, instances, rows, rowsWithoutKey }
+}
+
+/**
+ * Lignes de la feuille de saisie, lues par la carte des colonnes (`columnIds`, ordre de la feuille).
+ * Partagée avec l'export (signature des valeurs pré-remplies, GH196) : même lecture des deux côtés.
+ */
+export function readSheetRows(sheet: ExcelJS.Worksheet, columnIds: string[]): { rows: RawExecutionRow[]; rowsWithoutKey: number[] } {
+  const col = (c: ExecutionSheetColumn) => columnIds.indexOf(c) + 1
+  const fieldColumns = columnIds.map((id, i) => ({ id, index: i + 1 })).filter(c => c.id.startsWith('run:') || c.id.startsWith('step:'))
   const rows: RawExecutionRow[] = []
   const rowsWithoutKey: number[] = []
   for (let r = EXECUTION_SHEET_HEADER_ROW + 1; r <= sheet.rowCount; r++) {
     const row = sheet.getRow(r)
+    const fields: RawExecutionRow['fields'] = {}
+    for (const fc of fieldColumns) {
+      const value = row.getCell(fc.index).value
+      if (value !== null && value !== undefined && cellText(value).trim() !== '') fields[fc.id] = { value, address: `${columnLetter(fc.index)}${r}` }
+    }
     const get = (c: ExecutionSheetColumn) => cellText(row.getCell(col(c)).value).trim()
     const key = get('key')
     const raw: RawExecutionRow = {
@@ -117,12 +159,36 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
       date: dateCell(row.getCell(col('date')).value),
       // Pas de trim des lignes intérieures : le commentaire garde sa mise en page.
       comment: cellText(row.getCell(col('comment')).value).replace(/\r\n?/g, '\n').trim(),
+      fields,
     }
     if (key) rows.push(raw)
     else if (raw.verdict || raw.tester || raw.date !== null || raw.comment) rowsWithoutKey.push(r)
   }
+  return { rows, rowsWithoutKey }
+}
 
-  return { formatVersion: props.get('formatVersion') ?? '', campaignId, instances, rows, rowsWithoutKey }
+/** Valeur de cellule normalisée pour la signature (lien : texte et cible ; date : à la minute). */
+function signatureValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : new Date(Math.round(value.getTime() / 60000) * 60000).toISOString()
+  if (typeof value === 'object' && 'hyperlink' in (value as object)) {
+    const v = value as { text?: unknown; hyperlink?: unknown }
+    return `${cellText((v.text ?? '') as ExcelJS.CellValue)}|${String(v.hyperlink ?? '')}`
+  }
+  return cellText(value as ExcelJS.CellValue).replace(/\r\n?/g, '\n').trim()
+}
+
+/**
+ * GH196 — signature des valeurs saisissables d'une instance (ligne d'instance puis lignes d'étape) :
+ * calculée à l'export sur les valeurs pré-remplies, recalculée à l'import ; égale = instance non
+ * modifiée, ignorée (pas de nouveau run).
+ */
+export function instanceSignature(rows: RawExecutionRow[]): string {
+  const sorted = [...rows].sort((a, b) => a.key.localeCompare(b.key))
+  return JSON.stringify(sorted.map(r => [
+    r.key, r.verdict, r.tester, signatureValue(r.date), r.comment,
+    Object.keys(r.fields).sort().map(id => [id, signatureValue(r.fields[id].value)]),
+  ]))
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -143,6 +209,8 @@ export interface ExecutionImportContext {
   effectiveTests?: Map<string, { test: TestCase; resyncable: boolean }>
   /** GH81 — empreinte d'une version de test ; absent : pas de contrôle « test modifié ». */
   fingerprint?: (test: TestCase) => string
+  /** GH196 — type du test de chaque entrée (champs d'exécution / d'étape) ; absent : champs ignorés. */
+  typeDefs?: Map<string, Pick<ObjectTypeDefinition, 'runFields' | 'stepFields'> | null>
 }
 
 export function validateExecutionImport(
@@ -181,6 +249,12 @@ export function validateExecutionImport(
   for (const entryId of entryIds) {
     const group = byEntry.get(entryId)
     if (!group) continue
+    // GH196 — résultat pré-rempli à l'export et non modifié : ignoré (pas de doublon de run).
+    const prefill = metaById.get(entryId)?.prefill
+    if (prefill && instanceSignature([...(group.instance ? [group.instance] : []), ...group.steps.map(s => s.row)]) === prefill) {
+      preview.unchangedCount = (preview.unchangedCount ?? 0) + 1
+      continue
+    }
     const filled = !!group.instance?.verdict || group.steps.some(s => s.row.verdict)
     if (!filled) {
       preview.unfilledCount++
@@ -245,6 +319,7 @@ function validateInstance(
     }
     stepResults.push({ order, result, comment: plainTextToMarkdown(row.comment) })
   }
+  const stepRows = [...group.steps].sort((a, b) => a.order - b.order).map(s => s.row)
 
   const head = group.instance
   let result: TestRunResult
@@ -265,6 +340,56 @@ function validateInstance(
     executedAt = parsed
   }
 
+  // GH196 — champs d'exécution (ligne d'instance) et d'étape (lignes d'étape exécutées).
+  const typeDef = ctx.typeDefs?.get(entryId)
+  let runFields: Record<string, unknown> | undefined
+  // Champs saisis mais type du test introuvable : refus plutôt que perte silencieuse (run immuable).
+  const filledRow = [head, ...stepRows].find(r => Object.keys(r.fields).length > 0)
+  if (ctx.typeDefs && !typeDef && filledRow) {
+    return { error: { code: 'invalid_field_value', row: filledRow.row, field: Object.keys(filledRow.fields)[0], message: `type du test ${run.testCaseId} introuvable : champs d'exécution non lisibles` } }
+  }
+  if (typeDef) {
+    const read = (
+      defs: SchemaField[], list: 'runFields' | 'stepFields', row: RawExecutionRow,
+    ): { error: ExecutionImportInstanceError } | { values: Record<string, unknown> } => {
+      const out: Record<string, unknown> = {}
+      for (const def of defs) {
+        const cell = row.fields[executionFieldColumnId(list, def.name)]
+        if (!cell) continue
+        let raw: unknown = plainCellValue(cell.value)
+        if (def.type === 'link') {
+          const links = readLinkCell({ value: cell.value, address: cell.address })
+          if (!links.ok) return { error: { code: 'invalid_field_value' as const, row: row.row, field: def.name, message: links.reason } }
+          raw = links.links
+        }
+        const c = convertFieldValue(def, raw)
+        if (!c.ok) return { error: { code: 'invalid_field_value' as const, row: row.row, field: def.name, message: c.reason } }
+        if (c.value !== undefined) out[def.name] = c.value
+      }
+      return { values: out }
+    }
+    const runRead = read(typeDef.runFields ?? [], 'runFields', head)
+    if ('error' in runRead) return { error: runRead.error }
+    const stepValues: Record<string, unknown>[] = []
+    for (const [i, row] of stepRows.entries()) {
+      // Q3 — étape non exécutée : ses cellules ne sont ni lues ni contrôlées.
+      if (stepResults[i].result === 'NOT_EXECUTED') { stepValues.push({}); continue }
+      const sr = read(typeDef.stepFields ?? [], 'stepFields', row)
+      if ('error' in sr) return { error: sr.error }
+      stepValues.push(sr.values)
+    }
+    const prepared = prepareRunFields(typeDef, {
+      result, fields: runRead.values,
+      stepResults: stepResults.map((s, i) => ({ order: s.order, result: s.result, fields: stepValues[i] })),
+    })
+    if (!prepared.ok) {
+      const row = prepared.step !== undefined ? stepRows[stepResults.findIndex(s => s.order === prepared.step)]?.row ?? head.row : head.row
+      return { error: { code: 'required_field_missing', row, field: prepared.field, message: prepared.reason } }
+    }
+    runFields = prepared.fields
+    prepared.stepFields.forEach((fields, i) => { if (fields) stepResults[i].fields = fields })
+  }
+
   const title = run.testSnapshot?.title ?? head.text.split(' — ').slice(1).join(' — ')
   return {
     instance: {
@@ -279,8 +404,16 @@ function validateInstance(
       executedAt,
       notes: plainTextToMarkdown(head.comment),
       stepResults,
+      ...(runFields && { fields: runFields }),
     },
   }
+}
+
+/** Valeur d'une cellule de champ, hors lien : nombre, booléen ou date gardés, texte sinon. */
+function plainCellValue(value: ExcelJS.CellValue): unknown {
+  if (typeof value === 'number' || typeof value === 'boolean' || value instanceof Date) return value
+  if (value && typeof value === 'object' && 'result' in value) return plainCellValue((value as { result?: ExcelJS.CellValue }).result ?? null)
+  return cellText(value).replace(/\r\n?/g, '\n').trim()
 }
 
 /** Règle SPEC-TESTS §3.3 (identique à l'écran d'exécution). */

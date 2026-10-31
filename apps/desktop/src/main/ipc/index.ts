@@ -22,6 +22,9 @@ import type { RepoWatcherService } from '../services/repo-watcher.service'
 import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
+import type { ChangesService } from '../services/changes.service'
+import type { ChangeTrackingService } from '../services/change-tracking.service'
+import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
@@ -49,7 +52,7 @@ import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } fro
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
 import type { SchemaDeleteService } from '../services/schema-delete.service'
-import type { ValueRename } from '@polenta/types'
+import type { CreateChangeDto, ExecutionHistoryTarget, ModificationKind, UpdateChangeDto, ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
   CreateRequirementDto,
@@ -59,7 +62,6 @@ import type {
   UpdateTestCaseDto,
   ExecuteTestCaseDto,
   MatrixFiltersDto,
-  AcknowledgeImpactDto,
   GenerateTestPlanDto,
 } from '@polenta/zod-schemas'
 import type {
@@ -67,8 +69,6 @@ import type {
   QueryScope,
   ScriptClientInfo,
   ScriptRunRequest,
-  CreateImpactAnalysisDto,
-  UpdateImpactItemStatusDto,
   TemplateExportFormat,
   Parameter,
   AppSettings,
@@ -106,6 +106,9 @@ export interface Container {
   elementMove: ElementMoveService
   campaigns: CampaignsService
   campaignExecution: CampaignExecutionService
+  executionHistory: ExecutionHistoryService
+  changes: ChangesService
+  changeTracking: ChangeTrackingService
   tree: TreeService
   baseline: BaselineService
   polentaRepo: PolentaRepoService
@@ -186,6 +189,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
+  'changesets:create', 'changesets:update', 'changesets:delete', 'changesets:assign', 'changesets:move',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
@@ -404,8 +408,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('requirements:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.update(repoPath, id, dto as UpdateRequirementDto, workspaceDir))
 
-  r.handle('requirements:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string) =>
-    c.requirements.openDraft(repoPath, id, targetStatus, workspaceDir, comment))
+  r.handle('requirements:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string) =>
+    c.requirements.openDraft(repoPath, id, targetStatus, workspaceDir, comment, changesetId))
 
   r.handle('requirements:transition', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.transition(repoPath, id, dto as TransitionRequirementDto, workspaceDir))
@@ -458,22 +462,53 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.tests.create(repoPath, dto as CreateTestCaseDto, workspaceDir))
   r.handle('tests:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.tests.update(repoPath, id, dto as UpdateTestCaseDto, workspaceDir))
-  r.handle('tests:execute', (_e, repoPath: string, tcId: string, dto: unknown, workspaceDir?: string) =>
-    c.tests.execute(repoPath, tcId, dto as ExecuteTestCaseDto, workspaceDir))
+  r.handle('tests:execute', async (_e, repoPath: string, tcId: string, dto: unknown, workspaceDir?: string) => {
+    const exec = dto as ExecuteTestCaseDto
+    // GH196 — exécution saisie dans l'application : testeur = identité git de l'utilisateur (le classeur
+    // importé fournit le sien, libre : un technicien n'a pas forcément de compte).
+    const executedBy = exec.executedBy || (await c.auth.getAuthor(repoPath).catch(() => null))?.name || undefined
+    return c.tests.execute(repoPath, tcId, { ...exec, ...(executedBy && { executedBy }) }, workspaceDir)
+  })
   r.handle('tests:runs', (_e, repoPath: string, tcId: string) =>
     c.tests.findRuns(repoPath, tcId))
-  r.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string) =>
-    c.tests.openDraft(repoPath, id, targetStatus, workspaceDir, comment))
+  // GH198 — changes (repoPath = repo de stockage pour get / update / delete / candidats).
+  r.handle('changesets:list', (_e, repoPath: string, workspaceDir?: string) => c.changes.list(repoPath, workspaceDir))
+  r.handle('changesets:get', (_e, repoPath: string, id: string) => c.changes.get(repoPath, id))
+  r.handle('changesets:create', (_e, repoPath: string, dto: CreateChangeDto, workspaceDir?: string) => c.changes.create(repoPath, dto, workspaceDir))
+  r.handle('changesets:update', (_e, repoPath: string, id: string, dto: UpdateChangeDto) => c.changes.update(repoPath, id, dto))
+  r.handle('changesets:delete', (_e, repoPath: string, id: string) => c.changes.delete(repoPath, id))
+  r.handle('changesets:analysis', (_e, repoPath: string, id: string) => c.changes.analysis(repoPath, id))
+  r.handle('changesets:backlog', (_e, repoPath: string, workspaceDir?: string) => c.changes.backlog(repoPath, workspaceDir))
+  r.handle('changesets:assign', (_e, repoPath: string, id: string, elementIds: string[]) => c.changes.assign(repoPath, id, elementIds))
+  r.handle('changesets:move', (_e, repoPath: string, fromId: string, toId: string, elementIds: string[]) => c.changes.move(repoPath, fromId, toId, elementIds))
+  r.handle('changesets:approval-check', (_e, repoPath: string, element: { id: string; objectTypeRef: string; category: 'requirement' | 'test' }, toStatus: string) =>
+    c.changes.approvalCheck(repoPath, element, toStatus))
+  // GH200 — trace départ / approbation des éléments à modifier ; diff d'un élément entre deux états.
+  r.handle('changesets:trace', (_e, repoPath: string, id: string) => c.changes.trace(repoPath, id))
+  // GH207 — tests à exécuter, campagnes liées, tests à ajouter.
+  r.handle('changesets:tests-to-run', (_e, repoPath: string, id: string) => c.changes.testsToRun(repoPath, id))
+  r.handle('sync:diff-element', (_e, repoPath: string, filepath: string, baseSha: string | null, newSha: string | null) =>
+    c.sync.diffElement(repoPath, filepath, baseSha, newSha))
+  // GH200 — création / réouverture d'un élément : changeset à demander ?
+  r.handle('changesets:modification-check', (_e, repoPath: string, element: { id?: string; objectTypeRef: string; category?: 'requirement' | 'test'; toStatus?: string }, kind: ModificationKind, workspaceDir?: string) =>
+    c.changeTracking.check(repoPath, element, kind, workspaceDir ?? undefined))
+  // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
+  r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
+    c.executionHistory.history(repoPath, target, workspaceDir))
+  // GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris.
+  r.handle('tests:type-def', (_e, repoPath: string, objectTypeRef: string, workspaceDir?: string) =>
+    c.tests.typeDefFor(repoPath, objectTypeRef, workspaceDir))
+  r.handle('tests:open-draft', (_e, repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string) =>
+    c.tests.openDraft(repoPath, id, targetStatus, workspaceDir, comment, changesetId))
 
   // ── Traceability ─────────────────────────────────────────────────────────────
   r.handle('traceability:matrix', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>
     c.traceability.getMatrix(repoPath, (filters as MatrixFiltersDto | undefined) ?? {}, workspaceDir))
   r.handle('traceability:missing-links', (_e, repoPath: string, workspaceDir?: string) =>
     c.traceability.getMissingLinks(repoPath, workspaceDir))
-  r.handle('traceability:impact', (_e, repoPath: string, reqId: string, depth?: number, workspaceDir?: string) =>
-    c.traceability.getImpactReport(repoPath, reqId, depth ?? 1, workspaceDir))
-  r.handle('traceability:acknowledge', (_e, repoPath: string, reqId: string, dto: unknown) =>
-    c.traceability.acknowledgeImpact(repoPath, reqId, dto as AcknowledgeImpactDto))
+  // GH199 — acquittements de l'ancien flux élément unique, lecture seule.
+  r.handle('traceability:legacy-acks', (_e, repoPath: string, elementId: string) =>
+    c.traceability.listLegacyAcks(repoPath, elementId))
   r.handle('traceability:test-plan', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.traceability.generateTestPlan(repoPath, dto as GenerateTestPlanDto, workspaceDir))
   r.handle('traceability:export-csv', (_e, repoPath: string, filters?: unknown, workspaceDir?: string) =>
@@ -481,19 +516,10 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('traceability:diff-requirements', (_e, repoPath: string, fromSha: string, toSha: string) =>
     c.traceability.diffRequirementsBetweenRefs(repoPath, fromSha, toSha))
 
-  // ── Analyse d'impact (T46) ──────────────────────────────────────────────────────
-  r.handle('impact-analysis:create', (_e, repoPath: string, dto: unknown) =>
-    c.traceability.createImpactAnalysis(repoPath, dto as CreateImpactAnalysisDto))
+  // ── Analyse d'impact des modifications locales (T175) — les analyses entre baselines (T46) sont
+  //    remplacées par l'analyse d'un change (GH199, `changes:analysis`).
   r.handle('impact-analysis:local', (_e, repoPath: string, workspaceDir?: string) =>
     c.traceability.computeLocalImpactAnalysis(repoPath, workspaceDir))
-  r.handle('impact-analysis:list', (_e, repoPath: string) =>
-    c.traceability.listImpactAnalyses(repoPath))
-  r.handle('impact-analysis:get', (_e, repoPath: string, id: string) =>
-    c.traceability.getImpactAnalysis(repoPath, id))
-  r.handle('impact-analysis:update-status', (_e, repoPath: string, id: string, dto: unknown) =>
-    c.traceability.updateImpactItemStatus(repoPath, id, dto as UpdateImpactItemStatusDto))
-  r.handle('impact-analysis:delete', (_e, repoPath: string, id: string) =>
-    c.traceability.deleteImpactAnalysis(repoPath, id))
 
   // ── Revalidation (T173) — levée du flag needsRevalidation ──────────────────────
   r.handle('revalidation:list', (_e, repoPath: string, workspaceDir?: string) =>
@@ -846,5 +872,5 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('export-templates:install-examples', () =>
     c.exportTemplateLibrary.installExamples(platform.exportTemplateExamplesDir()))
 
-  registerPrefHandlers(r, c.forgeConfig)
+  registerPrefHandlers(r)
 }

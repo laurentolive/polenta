@@ -8,6 +8,13 @@ import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus, renameF
 import type { FieldRename, FieldRenameResult, HistoryCarrier, ObjectHistory } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
+import { applyFieldsWrite } from './field-write.util'
+
+/** GH207 — crochet vers les changesets (pas de dépendance circulaire avec `ChangesService`). */
+export interface ChangesetLinker {
+  assertOpen(repoPath: string, changesetId: string): Promise<void>
+  link(repoPath: string, changesetId: string, campaignId: string): Promise<unknown>
+}
 
 export class CampaignsService {
   constructor(
@@ -70,7 +77,19 @@ export class CampaignsService {
     return this.ensureEntryIds(campaign)
   }
 
+  /** GH207 — lien avec le changeset qui crée la campagne ; posé après construction (dépend des changesets). */
+  private changesetLinker?: ChangesetLinker
+
+  setChangesetLinker(linker: ChangesetLinker): void {
+    this.changesetLinker = linker
+  }
+
   async create(repoPath: string, dto: CreateCampaignDto, workspaceDir?: string): Promise<TestCampaign> {
+    // GH207 — changeset contrôlé avant d'émettre l'ID.
+    if (dto.changeset) {
+      if (!this.changesetLinker) throw new Error('Lien avec un changeset indisponible')
+      await this.changesetLinker.assertOpen(repoPath, dto.changeset)
+    }
     const id = await this.nextCampaignId(repoPath)
     const testCaseIds = dto.testCaseIds ?? []
     const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
@@ -92,6 +111,7 @@ export class CampaignsService {
       runs: this.buildNewRuns([], alloc, testCaseIds, dto.paramValuesByTest, snapshots, previews, dto.reqInstances),
       createdAt: now,
       completedAt: null,
+      ...(dto.changeset && { changeset: dto.changeset }),
     }
     // GH64 — entrées reportées depuis d'autres campagnes, après celles de l'onglet Tests.
     campaign.runs.push(...await this.buildCarriedRuns(repoPath, undefined, campaign.runs, alloc, dto.carried, dto.baselineRef, workspaceDir))
@@ -99,7 +119,9 @@ export class CampaignsService {
     // T179 — une occurrence par instance créée (un test itérant en a une par exigence retenue).
     campaign.testCaseIds = campaign.runs.map(r => r.testCaseId)
     await assertNewObjectFile(this.gitService, repoPath, `campaigns/${id}.yaml`, id)
-    return this.persist(repoPath, id, null, campaign)
+    const created = await this.persist(repoPath, id, null, campaign)
+    if (dto.changeset) await this.changesetLinker!.link(repoPath, dto.changeset, id)
+    return created
   }
 
   async update(repoPath: string, id: string, dto: UpdateCampaignDto): Promise<TestCampaign> {
@@ -480,6 +502,12 @@ export class CampaignsService {
     /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
     opts: { raw?: boolean } = {},
   ): Promise<TestCampaign> {
+    // GH195 — liens normalisés, `requiredWhen` contrôlé (lève FieldWriteError).
+    // Le passage implicite planned → in_progress (premier résultat enregistré) n'est pas un
+    // changement de statut demandé : il ne déclenche pas les `requiredWhen` sur le statut.
+    const implicitStart = before?.status === 'planned' && after.status === 'in_progress'
+    const checkedBefore = implicitStart ? { ...before, status: after.status } : before
+    if (!opts.raw) after = await applyFieldsWrite(this.gitService, repoPath, checkedBefore, after)
     const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath: `campaigns/${id}.yaml` })
       : after

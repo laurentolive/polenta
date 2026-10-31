@@ -1,5 +1,7 @@
 import ExcelJS from 'exceljs'
+import { parseLinksText } from '@polenta/types'
 import type { RequirementsExportPayload } from '@polenta/types'
+import { writeLinkCell } from './link-cell.util'
 
 /** Cahier d'exigences — export xlsx. Colonnes génériques résolues côté renderer
  *  (`payload.columns`/`payload.rows`) — reflètent exactement la configuration `visibleFieldsExcel`
@@ -19,7 +21,12 @@ export async function exportRequirementsXlsx(
   }))
   sheet.getRow(1).font = { bold: true }
 
-  for (const row of payload.rows) sheet.addRow(row)
+  // GH195 — champs `link` (forme texte `libellé | URL` dans `rows`) : hyperliens natifs.
+  const linkKeys = payload.columns.filter(c => c.type === 'link').map(c => c.key)
+  for (const row of payload.rows) {
+    const added = sheet.addRow(row)
+    for (const key of linkKeys) writeLinkCell(added.getCell(key), parseLinksText(row[key] ?? ''))
+  }
 
   await workbook.xlsx.writeFile(destPath)
 }

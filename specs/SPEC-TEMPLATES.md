@@ -241,7 +241,7 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `label` | string | Nom affiché dans l'UI |
 | `prefix` | string | Préfixe des identifiants (ex. `"SYS"`) — **unique sur tout le projet** |
 | `color` | string | Couleur d'affichage (hex) |
-| `category` | enum | `requirement` \| `test` \| `campaign` |
+| `category` | enum | `requirement` \| `test` \| `campaign` \| `version` (GH201 : un seul type par repo, sur `root`, statuts par défaut `en_cours` / `released` `isApproval` / `abandonnee` `isTerminal` — [SPEC-REQ §11](SPEC-REQ-requirements.md#11-versions-de-composant--produit-gh201)) |
 | `fields` | list | Champs personnalisés (voir §3.2) |
 | `statuses` | list | Statuts configurables (voir §3.3) |
 | `trackStatusHistory` | bool? | **GH77** — historiser le statut ; absent = `true`, écrit seulement quand `false` — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77) |

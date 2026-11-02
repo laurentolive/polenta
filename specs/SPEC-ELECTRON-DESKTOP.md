@@ -1394,6 +1394,9 @@ par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, 
 | `/graph?projectId` | **Arbre de versions** (commits, refs de branches, checkout) | Version |
 | `/diff?projectId&repoPath&filepath&commitSha?` | Vue diff d'un fichier : working tree vs `HEAD`, ou commit vs son parent (`commitSha`) — bascule Raw / Rendu (GH178, cf. §19.8b) ; Raw côte à côte / en ligne, Rendu = vue générique (GH222) | Version |
 | `/version-diff?projectId` | Comparaison d'un fichier entre deux refs choisies dans le panneau Version — même vue de diff Raw / Rendu (GH178) | Version |
+| `/versions?projectId` | **Produit** (GH201) — accueil du sous-panneau Produit du panneau Version | Version |
+| `/version/$versionId?projectId&repoPath` | **Page d'une version** (GH201, SPEC-REQ §11) : label, statut, version précédente, champs, composants, changements (diff, Retirer, Ajouter), passage released | Version |
+| `/versions/backlog?projectId&repoPath` | **Backlog** d'un composant (GH201) : changements jamais inclus dans une version, inclusion dans la version en cours | Version |
 | `/merge-resolve?id&projectId` | **Résolution des conflits** d'un merge (GH37) — session `id` (`merge-resolution:*`), ouverte dans son propre onglet « Conflits — <repo> » depuis Publier, la vue graphe ou Rafraîchir ; en-tête propre (pas de `ViewHeader`, donc pas de bouton Publier pendant la résolution) | — |
 | `/branch/new` | Formulaire nouvelle branche | Version |
 | `/product?projectId&tab&repo&node&type&category&view&item` | **Panel Produit** — liste exigences / tests / campagnes selon tab ; `view` (`excel`/`word`/`edit`) et `item` (objectId édité ou ciblé) : page de la vue système dans l'URL (GH228, cf. `SPEC-SYSTEM-VIEW` §Persistance) | Produit |
@@ -1534,6 +1537,12 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >   section Stagés, pour survivre au commit qui la vide.
 > - **Densité** : header `py-1.5`, ligne de repo `py-0.5` (≈ 26 px, bornée par la combobox),
 >   sections `px-2 py-1`, ligne de fichier `h-5` (20 px).
+> - **GH201 — sous-panneau « Produit »** (icône paquet du header) : sur `/versions`,
+>   `/versions/backlog` et `/version/<ID>` (`isProductVersionsPath`), le corps du panneau est
+>   `ProductVersionsPanel` : arbre des repos (logique du workspace), versions de chacun (pastille
+>   d'état, abandonnées masquées par défaut), « Backlog (n) », « + » Nouvelle version (désactivé si
+>   une version est en cours ; absent en lecture seule ou sans type version). Ces routes ouvrent le
+>   panneau Version (`deducePanel`). SPEC-REQ §11.
 > - **Contenu piloté par la route** : `/version-diff` → sélecteur de comparaison ; `/baseline` →
 >   liste des baselines (`BaselineListPanel` : filtre tag/message, dépliage sur place des tags
 >   composants, suppression avec confirmation) ; sinon → arbre des repos. La vue `/baseline` est
@@ -2277,7 +2286,10 @@ listés dans `SPEC-AUDIT.md`).
   miroir `roles`/`implements` niveau racine ↔ `nodes[root]` (compat T123, voir code).
 - Mutations ciblées avec validation avant écriture (`SchemaValidationError`, jamais d'écriture si un
   invariant est violé) : `addNode` (avec `parentName` pour imbriquer, T123), `addObjectType`,
-  `moveObjectType` (T135, drag & drop cross-nœud), `addField`, `addStatus`, `addLinkType`. Une file
+  `moveObjectType` (T135, drag & drop cross-nœud), `addField`, `addStatus`, `addLinkType`. GH201 :
+  `save()` refuse (`VERSION_TYPE_INVALID`) un second type `version` ou un type `version` hors du nœud
+  `root`, et — tant que `versions/` contient des versions — le renommage, le changement de préfixe,
+  la modification des statuts marqués ou le retrait du type version (SPEC-REQ §11.1). Une file
   de promesses par `repoPath` sérialise les mutations concurrentes (agent MCP qui enchaîne
   plusieurs `add_*` sans attendre chaque réponse).
 - `resolveComponentRepoPath(repoPath, objectTypeRef, workspaceDir?)` résout le repo réel d'un

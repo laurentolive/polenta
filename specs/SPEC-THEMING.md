@@ -107,6 +107,7 @@ gravité) plutôt que d'introduire de nouveaux tokens dédiés :
 | Type "exigence" (icône/badge catégoriel dans l'arbre, recherche) | `chart-1` |
 | Type "test" (idem) | `chart-2` |
 | Type "campagne" (idem — distinct de `chart-5` pour ne pas se confondre avec le marqueur sous-composant/interface dans le même arbre) | `chart-7` |
+| Type "version" (idem, GH201 ; icône des repos du sous-panneau Produit) | `chart-4` |
 
 Classe Tailwind : `text-chart-N` / `bg-chart-N` (variable CSS sous-jacente :
 `--chart-series-N`, nom historique conservé depuis T77).

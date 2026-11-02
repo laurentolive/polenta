@@ -497,6 +497,15 @@ avec l'objet changeset (`specs/MILESTONE-D.md`). Reste : le contenu d'un éléme
 d'abord le statut (réouverture, `version + 1`), puis le contenu. `get_history` : `kind` parmi
 `requirement`, `test`, `campaign`.
 
+### 4.8 Versions (GH201, `tools/versions.tools.ts`)
+
+Lecture seule (SPEC-REQ §11) : `list_versions` (par composant : versions du plus récent au plus
+ancien, état, `basedOn`, `freeze`, nombre d'éléments au backlog ; filtre `component`),
+`get_version` (`id`, `component` : champs, composants retenus, changements avec `base` et `toSha`),
+`get_version_backlog` (`component`). `component` = nom du repo dans le workspace, absent = repo
+ouvert. Le MCP ne crée pas de version, n'inclut pas de changement et ne passe pas une version
+released. Listés dans `AGENTS.md`.
+
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 
 ### 5.1 À la création d'un nouveau projet

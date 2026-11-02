@@ -179,6 +179,9 @@ Tools disponibles :
 - \`get_schema\` — lit le \`.polenta/schema.yaml\` résolu (nœuds, types, champs, statuts, liens).
 - \`list_requirements\` / \`list_tests\` / \`list_campaigns\` — explore l'existant (filtres
   par type/statut/texte) pour éviter les doublons avant un import.
+- \`list_versions\` / \`get_version\` / \`get_version_backlog\` — versions des composants et du
+  produit (lecture seule) : changements inclus, composants, backlog des changements jamais livrés.
+  Une version se crée, s'enrichit et passe released dans l'application, pas par le MCP.
 - \`get_history\` — historique des champs suivis d'un objet (statut par défaut), avec les
   entrées déduites (\`implicit: true\`) quand la valeur courante diffère de la dernière entrée.
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import

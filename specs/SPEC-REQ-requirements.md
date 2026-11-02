@@ -40,7 +40,7 @@ Un type est défini par :
 | `label` | string | Nom affiché dans l'UI |
 | `prefix` | string | Préfixe des IDs (ex. `"SYS"`) — **unique sur tout le projet** |
 | `color` | string | Couleur d'affichage (hex) |
-| `category` | enum | Toujours `requirement` pour ce module |
+| `category` | enum | `requirement` pour ce module (autres catégories : `test`, `campaign`, `version` — §11, GH201) |
 | `fields` | list | Champs personnalisés — voir §3 |
 | `statuses` | list | Statuts — voir §4 |
 | `trackStatusHistory` | bool? | **GH77** — historiser le statut (`history.status`, §4.4). Absent = `true` ; écrit seulement quand `false`. Vaut aussi pour les campagnes |
@@ -697,3 +697,54 @@ les modifications non tracées dans les exigences par l'**issue** (`specs/MILEST
   `isApproval` vers un statut qui ne l'est pas (brouillon, review, terminal…), quel que soit le chemin
   (`transition`, `update({ status })`, `openDraft` — alias interne de la transition, MCP) ; inchangée
   sinon (dont un passage entre deux statuts `isApproval`).
+
+---
+
+## 11. Versions de composant / produit (GH201)
+
+Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version** fige l'état d'un
+**repo** (composant, ou produit pour le repo racine) et liste les changements qu'elle livre.
+
+### 11.1 Type et fichier
+
+- Catégorie de type **`version`** : **un seul type par repo**, déclaré sur le nœud `root` (refus
+  `VERSION_TYPE_INVALID` sinon). Statuts du projet ; Polenta ne lit que les marques : `isApproval` =
+  released, `isTerminal` = abandonnée, tout autre statut = en cours. Statuts par défaut à la création
+  dans l'onglet Structure : `en_cours`, `released`, `abandonnee` ; champ `description`.
+- Tant que le repo a des versions, le type garde son nom, son préfixe et ses statuts marqués (le
+  renommage de type GH100 ne migre pas les versions) et ne se supprime pas (`HAS_VERSIONS`).
+- Fichier `versions/<ID>.yaml` (IDs GH20, `history` GH77) ; champs système `basedOn` (version
+  précédente du repo), `components` (versions des dépendances `polenta-repo.yaml`, par nom de
+  montage), `changes` (`{ id, base?: { sha, version } }`), `freeze` (`{ tag, sha }`, au passage
+  released). Le label est le `title`, unique parmi les versions non abandonnées du repo. Les composants
+  locaux (nœuds enfants) n'ont pas de versions propres. Le dossier historique `versions/<REQ>/vN.yaml`
+  (instantanés d'exigence) est distinct.
+
+### 11.2 Cycle de vie
+
+- **Une seule version en cours par repo** ; création : `basedOn` = dernière released (absent),
+  `components` pré-remplis avec la dernière released de chaque dépendance (interface).
+- **Abandon définitif** : une version abandonnée ne revient pas en cours (l'ordre des ID est l'ordre
+  des livraisons).
+- **Passage released** (action dédiée, jamais par un simple changement de statut) : refus si le tag
+  est invalide ou existe, si une version de `components` n'est pas released, si un élément inclus a
+  des modifications non commitées, ou si le repo est en lecture seule. Sinon `freeze.sha` = HEAD,
+  commit du **seul** fichier de version (`[version] <ID> <label> released`), **tag annoté** posé sur ce
+  commit avant que la branche n'avance (tag proposé `<repo>-<label>`, modifiable), tag mis en attente
+  et poussé au prochain push du repo (`<gitdir>/polenta-pending-tags`).
+- Une version released est verrouillée (champs, `changes`, `components`) ; seul l'abandon reste.
+- Composant en lecture seule (épinglé, ou sous un nœud `readonly`) : aucune écriture (`READONLY_REPO`).
+
+### 11.3 Backlog et changements
+
+- **Backlog** (calculé) d'un repo : exigences et tests hors version en cours, **jamais inclus** dans une
+  version released (hors statut terminal) ou **modifiés** depuis l'état figé (`freeze.sha`) de la
+  dernière version released qui les incluait — comparaison du YAML hors `history`,
+  `needsRevalidation`. Approuvés modifiés hors interface (GH200 §5) signalés.
+- Inclusion depuis le backlog ou « Ajouter » (tout élément du repo, même inchangé) ; `base` = état
+  dans la dernière version released qui l'incluait. Retrait possible tant que la version est en cours.
+- **Page** : changements de la version, puis ceux des versions de chaque dépendance entre celle de
+  `basedOn` (exclue, si elle est un ancêtre) et celle retenue ; « Voir les modifications » = diff
+  générique `base` → `freeze.sha` (ou disque si en cours).
+- **Statut de design** d'une exigence (MILESTONE-D §2) : première version released (ID croissant)
+  dont l'état figé contient l'exigence dans sa `version` courante — graphe `designVersion`.

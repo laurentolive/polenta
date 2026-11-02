@@ -78,6 +78,12 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 > retirée de `GraphObjectCategory`. Les ajouts GH198 / GH199 / GH200 / GH207 ci-dessus sont caducs.
 > `polenta.d.ts` régénéré (manifeste v10).
 
+> **GH201 (contrat v1, ajout)** — collection `versions` (`GraphVersion` : `component` = repo, `state`
+> `in_progress` / `released` / `abandoned`, `basedOn`, `components`, `changes` avec `base`, `freeze`,
+> `fields`, `history`) ; `GraphRequirement.designVersion` (statut de design, SPEC-REQ §11.3) ;
+> catégorie `version` dans `GraphObjectCategory`. Fichiers `versions/` dans le périmètre du cache.
+> `polenta.d.ts` régénéré (manifeste v11).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

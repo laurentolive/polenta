@@ -29,6 +29,11 @@ Les quatre servent des fonctions de Polenta (vue Validation, reflets) : calculé
 
 ## 3. La version (composant ou produit)
 
+> **Livré par #201** (`specs/GH201.md`, SPEC-REQ §11), hors analyse / tests à exécuter / campagnes
+> (#245) et issues (#244). Écarts tranchés : une version **par repo** (pas de version propre pour un
+> composant local), tag `<repo>-<label>` poussé au prochain push, une seule version en cours par repo,
+> abandon définitif.
+
 ### 3.1 Objet
 
 Nouvelle catégorie d'objet **`version`**, déclarée dans le schéma de chaque nœud comme les autres

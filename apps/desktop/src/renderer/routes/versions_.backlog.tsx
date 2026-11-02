@@ -8,7 +8,7 @@ import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useSetTabTitle } from '../contexts/TabsContext'
-import { useInvalidateVersions, useVersionBacklog, versionErrorText } from '../components/versions/useVersions'
+import { useInvalidateVersions, useRangeSelection, useVersionBacklog, versionErrorText } from '../components/versions/useVersions'
 
 /**
  * GH201 §4 — backlog d'un composant : changements jamais inclus dans une version (jamais livrés,
@@ -39,9 +39,10 @@ function BacklogPage() {
   const inProgress = useMemo(() => versions.filter(v => v.state === 'in_progress').reverse(), [versions])
   const [chosenTarget, setChosenTarget] = useState<string | null>(null)
   const target = inProgress.find(v => v.id === chosenTarget) ?? inProgress[0]
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const itemIds = useMemo(() => items.map(i => i.id), [items])
+  const { selected, setSelected, toggle, allSelected, toggleAll } = useRangeSelection(itemIds)
   const [error, setError] = useState<string | null>(null)
-  const visibleSelected = useMemo(() => items.filter(i => selected.has(i.id)).map(i => i.id), [items, selected])
+  const visibleSelected = useMemo(() => itemIds.filter(id => selected.has(id)), [itemIds, selected])
 
   const include = async (ids: string[]) => {
     if (!target || ids.length === 0) return
@@ -54,7 +55,6 @@ function BacklogPage() {
       setError(versionErrorText(t, err))
     }
   }
-  const toggle = (id: string) => setSelected(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const openDiff = (i: VersionBacklogItem) => void navigate({
     to: '/diff',
     search: { projectId, repoPath, filepath: i.filePath, commitSha: undefined, element: '1', ...(i.base && { baseSha: i.base.sha }) },
@@ -97,9 +97,10 @@ function BacklogPage() {
                 <th className="py-1 pr-2 w-6">
                   <input
                     type="checkbox"
-                    checked={visibleSelected.length === items.length}
-                    onChange={e => setSelected(e.target.checked ? new Set(items.map(i => i.id)) : new Set())}
+                    checked={allSelected}
+                    onChange={toggleAll}
                     disabled={!target}
+                    data-testid="backlog-select-all"
                   />
                 </th>
                 <th className="py-1 pr-3 font-medium">{t('versions.columns.id')}</th>
@@ -113,7 +114,7 @@ function BacklogPage() {
             <tbody>
               {items.map(i => (
                 <tr key={i.id} className="border-b border-edge-subtle" data-testid={`backlog-row-${i.id}`}>
-                  <td className="py-1 pr-2"><input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(i.id)} disabled={!target} /></td>
+                  <td className="py-1 pr-2"><input type="checkbox" checked={selected.has(i.id)} onChange={() => undefined} onClick={e => toggle(i.id, e.shiftKey)} disabled={!target} data-testid={`backlog-select-${i.id}`} /></td>
                   <td className="py-1 pr-3"><button type="button" onClick={() => openElement(i)} className="text-prim hover:underline font-mono">{i.id}</button></td>
                   <td className="py-1 pr-3 text-ink">{i.title}</td>
                   <td className="py-1 pr-3 text-ink-2">{t(`versions.category.${i.category}`)}</td>

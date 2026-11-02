@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { FileDiff, X } from 'lucide-react'
 import type { VersionChangeRow } from '@polenta/types'
+import { useRangeSelection } from './useVersions'
 
 /** GH201 §5 — changements d'une version (les siens, puis ceux des versions des composants). */
 export function VersionChangesTable({ rows, projectId, onRemove }: {
@@ -14,30 +15,7 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const ownIds = useMemo(() => rows.filter(r => r.own).map(r => r.id), [rows])
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  // Une ligne retirée (ou plus modifiable) sort de la sélection.
-  useEffect(() => {
-    setSelected(prev => {
-      const own = new Set(ownIds)
-      const next = new Set([...prev].filter(id => own.has(id)))
-      return next.size === prev.size ? prev : next
-    })
-  }, [ownIds])
-  // Dernière ligne cliquée : MAJ + clic étend la sélection jusqu'à elle (état de la ligne cliquée).
-  const anchor = useRef<string | null>(null)
-  const toggle = (id: string, shift: boolean) => {
-    const from = shift && anchor.current ? ownIds.indexOf(anchor.current) : -1
-    const to = ownIds.indexOf(id)
-    setSelected(prev => {
-      const next = new Set(prev)
-      const on = !prev.has(id)
-      const range = from >= 0 ? ownIds.slice(Math.min(from, to), Math.max(from, to) + 1) : [id]
-      for (const r of range) { if (on) next.add(r); else next.delete(r) }
-      return next
-    })
-    anchor.current = id
-  }
-  const allSelected = ownIds.length > 0 && selected.size === ownIds.length
+  const { selected, toggle, allSelected, toggleAll } = useRangeSelection(ownIds)
   if (rows.length === 0) return <p className="text-xs text-ink-3 italic">{t('versions.page.noChanges')}</p>
 
   const openElement = (r: VersionChangeRow) => {
@@ -71,7 +49,7 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
         <tr className="text-left text-ink-3 border-b border-edge">
           {selectable && (
             <th className="py-1 pr-2 w-5">
-              <input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(ownIds))} aria-label={t('versions.page.selectAll')} data-testid="version-select-all" />
+              <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label={t('versions.page.selectAll')} data-testid="version-select-all" />
             </th>
           )}
           <th className="py-1 pr-3 font-medium">{t('versions.columns.component')}</th>

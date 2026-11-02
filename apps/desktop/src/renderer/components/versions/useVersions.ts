@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import type { ObjectTypeDefinition, VersionErrorCode, VersionState } from '@polenta/types'
@@ -98,4 +98,36 @@ export const STATE_BADGE: Record<VersionState, string> = {
   in_progress: 'bg-status-info-bg text-status-info',
   released: 'bg-status-success-bg text-status-success',
   abandoned: 'bg-hover text-ink-3',
+}
+
+/**
+ * Sélection multiple de lignes (`ids` dans l'ordre affiché) : clic = une ligne, MAJ + clic = la plage
+ * depuis la dernière ligne cliquée, qui prend l'état de la ligne cliquée. Les IDs disparus sortent
+ * de la sélection.
+ */
+export function useRangeSelection(ids: string[]) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const anchor = useRef<string | null>(null)
+  useEffect(() => {
+    setSelected(prev => {
+      const known = new Set(ids)
+      const next = new Set([...prev].filter(id => known.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [ids])
+  const toggle = (id: string, shift: boolean) => {
+    const from = shift && anchor.current ? ids.indexOf(anchor.current) : -1
+    const to = ids.indexOf(id)
+    setSelected(prev => {
+      const next = new Set(prev)
+      const on = !prev.has(id)
+      const range = from >= 0 ? ids.slice(Math.min(from, to), Math.max(from, to) + 1) : [id]
+      for (const r of range) { if (on) next.add(r); else next.delete(r) }
+      return next
+    })
+    anchor.current = id
+  }
+  const allSelected = ids.length > 0 && selected.size === ids.length
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(ids))
+  return { selected, setSelected, toggle, allSelected, toggleAll }
 }

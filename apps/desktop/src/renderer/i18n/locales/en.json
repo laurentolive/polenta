@@ -2291,7 +2291,8 @@
         "modified": "modified"
       },
       "outside": "modified outside the app",
-      "outsideHint": "Approved element whose content changed without being reopened (direct git, another tool)."
+      "outsideHint": "Approved element whose content changed without being reopened (direct git, another tool).",
+      "changeBacklog": "Change backlog"
     },
     "columns": {
       "component": "Component",
@@ -2336,6 +2337,10 @@
       "READONLY_REPO": "Read-only component: {{detail}}",
       "VERSION_NOT_FOUND": "Version not found: {{detail}}",
       "STATUS_UNKNOWN": "Unknown status: {{detail}}"
-    }
+    },
+    "versionsTitle": "Versions",
+    "noVersion": "No version.",
+    "expand": "Show components",
+    "collapse": "Hide components"
   }
 }

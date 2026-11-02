@@ -99,6 +99,7 @@ export class VersionsService {
     return {
       id: v.id, title: v.title, status: v.status, state: versionState(typeDef, v.status),
       ...(v.basedOn && { basedOn: v.basedOn }), ...(v.freeze && { freeze: v.freeze }),
+      ...(v.components && { components: v.components }),
     }
   }
 

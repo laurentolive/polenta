@@ -51,6 +51,8 @@ export interface VersionSummary {
   state: VersionState
   basedOn?: string
   freeze?: VersionFreeze
+  /** Versions des dépendances retenues (nom de montage → ID). */
+  components?: Record<string, string>
 }
 
 /** Nœud du sous-panneau « Produit » : un repo du workspace. */

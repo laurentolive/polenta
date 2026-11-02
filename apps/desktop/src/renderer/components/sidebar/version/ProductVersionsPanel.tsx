@@ -1,122 +1,196 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Inbox, Lock, Package, Plus } from 'lucide-react'
-import type { VersionComponentNode } from '@polenta/types'
+import { ChevronDown, ChevronRight, Inbox, Lock, Plus } from 'lucide-react'
+import type { VersionComponentNode, VersionSummary } from '@polenta/types'
 import { decodeProjectId } from '../../../lib/projectId'
+import { ComponentTypeCombobox } from '../../system/ComponentTypeCombobox'
+import type { ComponentTypeOption } from '../../../contexts/SystemViewContext'
 import { NewVersionDialog } from '../../versions/NewVersionDialog'
-import { STATE_BADGE, useVersionTree } from '../../versions/useVersions'
+import { STATE_BADGE, isProductVersionsPath, useVersionTree } from '../../versions/useVersions'
+
+interface FlatNode { node: VersionComponentNode; label: string }
+
+const LAST_COMPONENT_KEY = 'polenta:versionsComponent:'
+
+function readLastComponent(projectId: string): string | null {
+  try { return localStorage.getItem(LAST_COMPONENT_KEY + projectId) } catch { return null }
+}
+function writeLastComponent(projectId: string, repoPath: string): void {
+  try { localStorage.setItem(LAST_COMPONENT_KEY + projectId, repoPath) } catch { /* stockage indisponible */ }
+}
+
+/** Arbre des repos à plat, libellé = chemin (« Produit › Moteur »), ordre de l'arbre. */
+function flatten(nodes: VersionComponentNode[], prefix = ''): FlatNode[] {
+  return nodes.flatMap(n => {
+    const label = prefix ? `${prefix} › ${n.label}` : n.label
+    return [{ node: n, label }, ...flatten(n.children, label)]
+  })
+}
 
 /**
- * GH201 §6 — sous-panneau « Produit » du panneau Version : arbre des composants (repos), versions
- * de chacun, backlog, « Nouvelle version ».
+ * GH201 §6 — sous-panneau « Produit » du panneau Version : un composant (repo) choisi dans une liste
+ * déroulante, comme dans les vues Exigences / Tests / Campagnes ; pour lui, le backlog des
+ * changements (indépendant des versions), puis ses versions, du plus récent au plus ancien, chacune
+ * dépliable sur les versions des composants qu'elle contient.
  */
 export function ProductVersionsPanel({ projectId }: { projectId: string }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const pathname = useRouterState({ select: s => s.location.pathname })
+  const search = useRouterState({ select: s => s.location.search as Record<string, unknown> })
   const { data: tree, isLoading, error } = useVersionTree(projectId)
+  const flat = useMemo(() => flatten(tree ?? []), [tree])
+
+  // Composant affiché : celui de la page ouverte (version, backlog), sinon le dernier choisi.
+  const urlRepo = isProductVersionsPath(pathname) && typeof search['repoPath'] === 'string' ? search['repoPath'] as string : ''
+  const [chosen, setChosen] = useState<string | null>(() => readLastComponent(projectId))
+  useEffect(() => { if (urlRepo) setChosen(urlRepo) }, [urlRepo])
+  const selectedIndex = Math.max(0, flat.findIndex(f => f.node.repoPath === (urlRepo || chosen)))
+  const current = flat[selectedIndex]?.node
+
   const [showAbandoned, setShowAbandoned] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [creating, setCreating] = useState(false)
+
+  const options: ComponentTypeOption[] = flat.map(f => ({ repoName: f.node.repoPath, nodeId: '', typeId: '', label: f.label }))
+  const openBacklog = (repoPath: string) => void navigate({ to: '/versions/backlog', search: { projectId, repoPath } })
+  const openVersion = (repoPath: string, versionId: string) =>
+    void navigate({ to: '/version/$versionId', params: { versionId }, search: { projectId, repoPath } })
+  const select = (repoPath: string) => {
+    setChosen(repoPath)
+    writeLastComponent(projectId, repoPath)
+    openBacklog(repoPath)
+  }
+  const toggle = (id: string) => setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+
+  const inProgress = current?.versions.find(v => v.state === 'in_progress')
+  const versions = (current?.versions ?? []).filter(v => showAbandoned || v.state !== 'abandoned')
+  const deps = (current?.children ?? []).filter(c => c.versionType)
+  const rowClass = (active: boolean) =>
+    `w-full flex items-center gap-2 pr-3 py-1 text-xs text-left ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2 hover:bg-hover'}`
+  const onCurrentRepo = urlRepo === current?.repoPath
 
   return (
     <div className="flex flex-col h-full overflow-hidden" data-testid="product-versions-panel">
-      <label className="flex items-center gap-2 px-4 py-1.5 text-xs text-ink-3 border-b border-edge-subtle shrink-0">
-        <input type="checkbox" checked={showAbandoned} onChange={e => setShowAbandoned(e.target.checked)} />
-        {t('versions.showAbandoned')}
-      </label>
-      <div className="flex-1 overflow-y-auto py-0.5">
-        {isLoading && <p className="px-4 py-2 text-xs text-ink-3 italic">{t('common.loading')}</p>}
-        {error && <p className="px-4 py-2 text-xs text-status-danger">{String(error)}</p>}
-        {tree?.map(node => <ComponentRow key={node.repoPath} node={node} depth={0} projectId={projectId} showAbandoned={showAbandoned} />)}
-      </div>
-    </div>
-  )
-}
-
-function ComponentRow({ node, depth, projectId, showAbandoned }: {
-  node: VersionComponentNode
-  depth: number
-  projectId: string
-  showAbandoned: boolean
-}) {
-  const { t } = useTranslation()
-  const navigate = useNavigate()
-  const search = useRouterState({ select: s => s.location.search as Record<string, unknown> })
-  const pathname = useRouterState({ select: s => s.location.pathname })
-  const [open, setOpen] = useState(true)
-  const [creating, setCreating] = useState(false)
-  const pad = { paddingLeft: `${12 + depth * 12}px` }
-  const versions = node.versions.filter(v => showAbandoned || v.state !== 'abandoned')
-  const inProgress = node.versions.find(v => v.state === 'in_progress')
-  const rowClass = (active: boolean) =>
-    `w-full flex items-center gap-2 pr-3 py-1 text-xs text-left ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2 hover:bg-hover'}`
-  const sameRepo = search['repoPath'] === node.repoPath
-
-  return (
-    <div>
-      <div className="flex items-center gap-1 pr-2 py-1 group" style={pad}>
-        <button type="button" onClick={() => setOpen(o => !o)} className="flex items-center gap-1.5 flex-1 min-w-0 text-xs font-medium text-ink">
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <Package size={12} className="shrink-0 text-chart-4" />
-          <span className="truncate">{node.label}</span>
-          {node.readonly && <Lock size={10} className="text-status-warning shrink-0" />}
-        </button>
-        {node.versionType && !node.readonly && (
+      <div className="px-3 py-2 border-b border-edge shrink-0 flex items-center gap-2">
+        <ComponentTypeCombobox options={options} selectedIndex={flat.length ? selectedIndex : -1} onSelect={opt => select(opt.repoName)} />
+        {current?.versionType && !current.readonly && (
           <button
             type="button"
             onClick={() => setCreating(true)}
             disabled={!!inProgress}
             title={inProgress ? t('versions.new.inProgressExists', { id: inProgress.id }) : t('versions.new.title')}
-            className="btn-icon text-prim disabled:opacity-40"
-            data-testid={`new-version-${node.name}`}
+            className="btn-icon text-prim disabled:opacity-40 shrink-0"
+            data-testid="new-version"
           >
-            <Plus size={13} />
+            <Plus size={14} />
           </button>
         )}
+        {current?.readonly && <span title={t('versions.readonly')}><Lock size={12} className="text-status-warning shrink-0" /></span>}
       </div>
-      {open && (
-        <div>
-          {!node.versionType ? (
-            <p className="text-xs text-ink-3 italic py-1" style={{ paddingLeft: `${30 + depth * 12}px` }}>{t('versions.noType')}</p>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => navigate({ to: '/versions/backlog', search: { projectId, repoPath: node.repoPath } })}
-                className={rowClass(pathname === '/versions/backlog' && sameRepo)}
-                style={{ paddingLeft: `${30 + depth * 12}px` }}
-                data-testid={`version-backlog-${node.name}`}
-              >
-                <Inbox size={12} className="shrink-0" />
-                <span className="flex-1 truncate">{t('versions.backlog.title')}</span>
-                <span className="text-ink-3">{node.backlogCount}</span>
-              </button>
-              {versions.map(v => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => navigate({ to: '/version/$versionId', params: { versionId: v.id }, search: { projectId, repoPath: node.repoPath } })}
-                  className={rowClass(pathname === `/version/${v.id}` && sameRepo)}
-                  style={{ paddingLeft: `${30 + depth * 12}px` }}
-                  data-testid={`version-row-${v.id}`}
-                >
-                  <span className="flex-1 truncate">{v.title}</span>
-                  <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[v.state]}`}>{t(`versions.state.${v.state}`)}</span>
-                </button>
-              ))}
-            </>
-          )}
-          {node.children.map(c => <ComponentRow key={c.repoPath} node={c} depth={depth + 1} projectId={projectId} showAbandoned={showAbandoned} />)}
-        </div>
-      )}
-      {creating && (
+
+      <div className="flex-1 overflow-y-auto py-0.5">
+        {isLoading && <p className="px-4 py-2 text-xs text-ink-3 italic">{t('common.loading')}</p>}
+        {error && <p className="px-4 py-2 text-xs text-status-danger">{String(error)}</p>}
+        {current && !current.versionType && <p className="px-4 py-2 text-xs text-ink-3 italic">{t('versions.noType')}</p>}
+        {current?.versionType && (
+          <>
+            <button
+              type="button"
+              onClick={() => openBacklog(current.repoPath)}
+              className={`${rowClass(pathname === '/versions/backlog' && onCurrentRepo)} pl-4 border-b border-edge-subtle`}
+              data-testid="version-backlog"
+            >
+              <Inbox size={13} className="shrink-0" />
+              <span className="flex-1 truncate">{t('versions.backlog.changeBacklog')}</span>
+              <span className="text-ink-3">{current.backlogCount}</span>
+            </button>
+
+            <p className="section-label px-4 pt-3 pb-1">{t('versions.versionsTitle')}</p>
+            {versions.length === 0 && <p className="px-4 py-1 text-xs text-ink-3 italic">{t('versions.noVersion')}</p>}
+            {versions.map(v => (
+              <VersionRow
+                key={v.id}
+                version={v}
+                deps={deps}
+                open={expanded.has(v.id)}
+                active={pathname === `/version/${v.id}` && onCurrentRepo}
+                rowClass={rowClass}
+                onToggle={() => toggle(v.id)}
+                onOpen={() => openVersion(current.repoPath, v.id)}
+                onOpenComponent={(dep, id) => { setChosen(dep.repoPath); writeLastComponent(projectId, dep.repoPath); openVersion(dep.repoPath, id) }}
+              />
+            ))}
+            <label className="flex items-center gap-2 px-4 pt-3 pb-2 text-xs text-ink-3">
+              <input type="checkbox" checked={showAbandoned} onChange={e => setShowAbandoned(e.target.checked)} />
+              {t('versions.showAbandoned')}
+            </label>
+          </>
+        )}
+      </div>
+
+      {creating && current && (
         <NewVersionDialog
-          node={node}
+          node={current}
           workspaceDir={decodeProjectId(projectId)}
           onClose={() => setCreating(false)}
-          onCreated={v => {
-            setCreating(false)
-            void navigate({ to: '/version/$versionId', params: { versionId: v.id }, search: { projectId, repoPath: node.repoPath } })
-          }}
+          onCreated={v => { setCreating(false); openVersion(current.repoPath, v.id) }}
         />
+      )}
+    </div>
+  )
+}
+
+/** Une version du composant ; dépliée : la version retenue de chaque composant qu'elle contient. */
+function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, onOpenComponent }: {
+  version: VersionSummary
+  deps: VersionComponentNode[]
+  open: boolean
+  active: boolean
+  rowClass: (active: boolean) => string
+  onToggle: () => void
+  onOpen: () => void
+  onOpenComponent: (dep: VersionComponentNode, versionId: string) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div>
+      <div className={rowClass(active)}>
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={deps.length === 0}
+          aria-label={open ? t('versions.collapse') : t('versions.expand')}
+          className="pl-2 text-ink-3 hover:text-ink disabled:invisible"
+          data-testid={`version-toggle-${version.id}`}
+        >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+        <button type="button" onClick={onOpen} className="flex-1 flex items-center gap-2 min-w-0 text-left" data-testid={`version-row-${version.id}`}>
+          <span className="flex-1 truncate">{version.title}</span>
+          <span className="text-ink-3 text-[10px] font-mono">{version.id}</span>
+          <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[version.state]}`}>{t(`versions.state.${version.state}`)}</span>
+        </button>
+      </div>
+      {open && (
+        <ul className="pb-1" data-testid={`version-components-${version.id}`}>
+          {deps.map(dep => {
+            const id = version.components?.[dep.name]
+            const sel = id ? dep.versions.find(v => v.id === id) : undefined
+            return (
+              <li key={dep.repoPath} className="flex items-center gap-2 pl-10 pr-3 py-0.5 text-xs">
+                <span className="w-28 truncate text-ink-3" title={dep.label}>{dep.label}</span>
+                {sel ? (
+                  <button type="button" onClick={() => onOpenComponent(dep, sel.id)} className="flex-1 flex items-center gap-2 min-w-0 text-left text-prim hover:underline">
+                    <span className="truncate">{sel.title}</span>
+                    <span className={`px-1.5 rounded text-[10px] no-underline ${STATE_BADGE[sel.state]}`}>{t(`versions.state.${sel.state}`)}</span>
+                  </button>
+                ) : <span className="flex-1 text-ink-3">{id ?? t('versions.none')}</span>}
+              </li>
+            )
+          })}
+        </ul>
       )}
     </div>
   )

@@ -2291,7 +2291,8 @@
         "modified": "modifié"
       },
       "outside": "modifié hors interface",
-      "outsideHint": "Élément approuvé dont le contenu a changé sans réouverture (git direct, autre outil)."
+      "outsideHint": "Élément approuvé dont le contenu a changé sans réouverture (git direct, autre outil).",
+      "changeBacklog": "Backlog des changements"
     },
     "columns": {
       "component": "Composant",
@@ -2336,6 +2337,10 @@
       "READONLY_REPO": "Composant en lecture seule : {{detail}}",
       "VERSION_NOT_FOUND": "Version introuvable : {{detail}}",
       "STATUS_UNKNOWN": "Statut inconnu : {{detail}}"
-    }
+    },
+    "versionsTitle": "Versions",
+    "noVersion": "Aucune version.",
+    "expand": "Afficher les composants",
+    "collapse": "Masquer les composants"
   }
 }

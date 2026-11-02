@@ -544,8 +544,13 @@ export class VersionsService {
       snapshot,
       trees: (id, type) => src.traceability.buildImpactTreesFromSnapshot(snapshot, id, type),
       repoPath,
+      ownIds: await this.ownIds(repoPath),
       impacted: version.impacted ?? [],
     }) }
+  }
+
+  private async ownIds(repoPath: string): Promise<Set<string>> {
+    return new Set((await this.elements(repoPath)).map(e => e.state.id))
   }
 
   /** Statut d'impact et commentaire d'un élément (version en cours) ; statut par défaut sans commentaire : retiré. */
@@ -584,7 +589,7 @@ export class VersionsService {
       this.liveAnalysis(repoPath, version, workspaceDir),
       src.campaigns.list(repoPath).catch(() => []),
     ])
-    return { analysis, tests: computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath) }
+    return { analysis, tests: computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath, await this.ownIds(repoPath)) }
   }
 
   /** Tests à exécuter (GH245 §2) ; campagnes ouvertes du repo en information. Pas pour une version abandonnée. */
@@ -597,14 +602,14 @@ export class VersionsService {
     const campaigns = await src.campaigns.list(repoPath).catch(() => [])
     if (state === 'in_progress') {
       const { analysis, snapshot } = await this.liveAnalysis(repoPath, version, workspaceDir)
-      return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath)
+      return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath, await this.ownIds(repoPath))
     }
     // Released : analyse figée ; couverture et campagnes lues sur l'état courant (on teste aujourd'hui).
     const analysis = await this.analysis(repoPath, id, workspaceDir)
     const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
     const rootRepo = ws?.logicalTree.repoPath ?? repoPath
     const snapshot = await src.traceability.loadWorkingTreeSnapshot(rootRepo, await resolveWorkspaceRepoPaths(this.workspaceTree, rootRepo, workspaceDir))
-    return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath)
+    return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath, await this.ownIds(repoPath))
   }
 
   private requireImpactSources(): NonNullable<VersionsService['impactSources']> {

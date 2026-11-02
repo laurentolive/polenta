@@ -25,6 +25,8 @@ export interface VersionAnalysisInput {
   trees: TreeBuilder
   /** Repo de la version : seules ses lignes sont retenues. */
   repoPath: string
+  /** Éléments du composant (type déclaré par le schéma du repo) : un fichier d'un autre composant n'a pas de ligne. */
+  ownIds: Set<string>
   impacted: VersionImpacted[]
   now?: Date
 }
@@ -47,7 +49,7 @@ function walk(nodes: ImpactNode[], trail: VersionImpactStep[], visit: (n: Impact
 }
 
 export function computeVersionAnalysis(input: VersionAnalysisInput): VersionAnalysis {
-  const { snapshot, trees, repoPath } = input
+  const { snapshot, trees, repoPath, ownIds } = input
   const rootIds = new Set(input.roots.map(r => r.id))
   const roots: VersionImpactRoot[] = []
   for (const r of input.roots) {
@@ -66,7 +68,7 @@ export function computeVersionAnalysis(input: VersionAnalysisInput): VersionAnal
         inTrees.add(n.elementId)
         if (rootIds.has(n.elementId)) return
         const el = elementOf(snapshot, n.elementId)
-        if (!el || repoKey(el.repoPath) !== repoKey(repoPath)) return
+        if (!el || repoKey(el.repoPath) !== repoKey(repoPath) || !ownIds.has(n.elementId)) return
         const entry = reached.get(n.elementId) ?? { type: n.elementType, title: n.title, sources: [] }
         if (!entry.sources.some(s => s.rootId === r.elementId)) entry.sources.push({ rootId: r.elementId, path: trail })
         reached.set(n.elementId, entry)
@@ -108,15 +110,15 @@ export function computeVersionAnalysis(input: VersionAnalysisInput): VersionAnal
  * de cette exigence). `alreadyIn` : campagnes ouvertes du repo qui le contiennent (information).
  */
 export function computeVersionTests(
-  rootIds: string[], rows: VersionImpactRow[], snapshot: ImpactSnapshot, campaigns: TestCampaign[], repoPath: string,
+  rootIds: string[], rows: VersionImpactRow[], snapshot: ImpactSnapshot, campaigns: TestCampaign[], repoPath: string, ownIds: Set<string>,
 ): VersionTestsToRun {
   const rootSet = new Set(rootIds)
   // Un élément changé (racine) reste proposé même si un statut « pas d'impact » lui reste attaché.
   const excluded = new Set(rows.filter(r => r.status === NO_IMPACT && !rootSet.has(r.id)).map(r => r.id))
   const sources = [...new Set([...rootIds, ...rows.filter(r => r.reached && r.status !== NO_IMPACT).map(r => r.id)])]
-  // Tests du repo de la version : une campagne (raccourcis) ne reçoit que les tests de son repo ; un
-  // composant propose les siens dans sa propre version.
-  const testIds = new Set([...snapshot.tests].filter(([, t]) => repoKey(t.repoPath) === repoKey(repoPath)).map(([id]) => id))
+  // Tests du composant : une campagne (raccourcis) ne reçoit que les tests de son repo ; un composant
+  // propose les siens dans sa propre version.
+  const testIds = new Set([...snapshot.tests].filter(([id, t]) => repoKey(t.repoPath) === repoKey(repoPath) && ownIds.has(id)).map(([id]) => id))
   const reqIds = new Set(snapshot.requirements.keys())
   const byTest = new Map<string, { requirementIds: Set<string>; sources: Set<string>; whole: boolean }>()
   const entry = (id: string) => {

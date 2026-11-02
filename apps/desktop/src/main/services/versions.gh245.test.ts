@@ -117,6 +117,18 @@ describe('analyse d\'impact', () => {
     expect(both.tests).toEqual({ tests: [], uncovered: ['PR-0001', 'PR-0002', 'PR-0003', 'PR-0004'] })
   })
 
+  it('élément d\'un autre composant dans le repo (type non déclaré) : ni ligne, ni test proposé', async () => {
+    await req(root, 'PR-0001')
+    await gitSvc.writeYaml(root, 'requirements/SW-0001.yaml', { id: 'SW-0001', objectTypeRef: 'firmware::exigence', title: 'Autre', status: 'draft', version: 1, fields: {} })
+    await gitSvc.writeYaml(root, 'tests/SWT-0001.yaml', { id: 'SWT-0001', objectTypeRef: 'firmware::test', title: 'Autre', status: 'draft', version: 1, fields: {}, steps: [] })
+    await links(root, [['SW-0001', 'PR-0001'], ['SWT-0001', 'PR-0001', 'verification']])
+    const v = await versions.create(root, { title: '1.0' }, ws)
+    await versions.include(root, v.id, ['PR-0001'], ws)
+    const { analysis, tests } = await versions.impact(root, v.id, ws)
+    expect(analysis.rows).toEqual([])
+    expect(tests?.tests).toEqual([])
+  })
+
   it('A3 — changement d\'une version de composant postérieure à basedOn : racine, impacts dans le produit', async () => {
     await req(root, 'PR-0001')
     await req(comp, 'MR-0001')

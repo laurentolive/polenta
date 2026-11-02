@@ -745,10 +745,13 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 - **Backlog** (calculé) d'un repo : exigences et tests hors versions en cours, **jamais inclus** dans une
   version released (hors statut terminal) ou **modifiés** depuis l'état figé (`freeze.sha`) de la
   dernière version released qui les incluait — comparaison du YAML hors `history`,
-  `needsRevalidation`. Approuvés modifiés hors interface (GH200 §5) signalés.
+  `needsRevalidation`. Approuvés modifiés hors interface (GH200 §5) signalés. Seuls les éléments **du
+  composant** comptent : un fichier dont l'`objectTypeRef` n'est pas déclaré par le schéma du repo
+  (élément d'un autre composant copié là) n'est ni au backlog ni incluable (`NOT_OWN_ELEMENT`).
 - Inclusion depuis le backlog (version cible choisie parmi celles en cours) ou « Ajouter » (tout
-  élément du repo, même inchangé) ; `base` = état
-  dans la dernière version released qui l'incluait. Retrait possible tant que la version est en cours.
+  élément du composant, même inchangé) ; `base` = état
+  dans la dernière version released qui l'incluait. Retrait possible tant que la version est en cours,
+  ligne par ligne ou par sélection multiple (un seul enregistrement).
 - **Page** : changements de la version, puis ceux des versions de chaque dépendance entre celle de
   `basedOn` (exclue, si elle est un ancêtre) et celle retenue ; « Voir les modifications » = diff
   générique `base` → `freeze.sha` (ou disque si en cours).

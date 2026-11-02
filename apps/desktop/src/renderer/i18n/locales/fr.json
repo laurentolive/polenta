@@ -2307,6 +2307,9 @@
       "add": "Ajouter",
       "remove": "Retirer (retour au backlog)",
       "noChanges": "Aucun changement.",
+      "removeSelected": "Retirer la sélection",
+      "selected": "{{count}} sélectionné(s)",
+      "selectAll": "Tout sélectionner",
       "deleted": "supprimé"
     },
     "picker": {
@@ -2336,7 +2339,8 @@
       "READONLY_REPO": "Composant en lecture seule : {{detail}}",
       "VERSION_NOT_FOUND": "Version introuvable : {{detail}}",
       "STATUS_UNKNOWN": "Statut inconnu : {{detail}}",
-      "VERSION_ABANDONED": "Version abandonnée : {{detail}}"
+      "VERSION_ABANDONED": "Version abandonnée : {{detail}}",
+      "NOT_OWN_ELEMENT": "Élément d'un autre composant : {{detail}}"
     },
     "noVersion": "Aucune version.",
     "expand": "Afficher les composants",

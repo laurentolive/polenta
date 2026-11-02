@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { FileDiff, X } from 'lucide-react'
@@ -7,11 +8,27 @@ import type { VersionChangeRow } from '@polenta/types'
 export function VersionChangesTable({ rows, projectId, onRemove }: {
   rows: VersionChangeRow[]
   projectId: string
-  /** Version en cours, modifiable : « Retirer » sur ses propres lignes. */
-  onRemove?: (id: string) => void
+  /** Version en cours, modifiable : « Retirer » sur ses propres lignes, une à une ou la sélection. */
+  onRemove?: (ids: string[]) => void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const ownIds = useMemo(() => rows.filter(r => r.own).map(r => r.id), [rows])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Une ligne retirée (ou plus modifiable) sort de la sélection.
+  useEffect(() => {
+    setSelected(prev => {
+      const own = new Set(ownIds)
+      const next = new Set([...prev].filter(id => own.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [ownIds])
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (!next.delete(id)) next.add(id)
+    return next
+  })
+  const allSelected = ownIds.length > 0 && selected.size === ownIds.length
   if (rows.length === 0) return <p className="text-xs text-ink-3 italic">{t('versions.page.noChanges')}</p>
 
   const openElement = (r: VersionChangeRow) => {
@@ -29,10 +46,25 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
     })
   }
 
+  const selectable = !!onRemove && ownIds.length > 0
   return (
+    <div className="flex flex-col gap-1">
+    {onRemove && selected.size > 0 && (
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-ink-2">{t('versions.page.selected', { count: selected.size })}</span>
+        <button type="button" onClick={() => onRemove([...selected])} className="btn-secondary-sm flex items-center gap-1 hover:text-status-danger" data-testid="version-remove-selected">
+          <X size={12} />{t('versions.page.removeSelected')}
+        </button>
+      </div>
+    )}
     <table className="w-full text-xs border-collapse" data-testid="version-changes">
       <thead>
         <tr className="text-left text-ink-3 border-b border-edge">
+          {selectable && (
+            <th className="py-1 pr-2 w-5">
+              <input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(ownIds))} aria-label={t('versions.page.selectAll')} data-testid="version-select-all" />
+            </th>
+          )}
           <th className="py-1 pr-3 font-medium">{t('versions.columns.component')}</th>
           <th className="py-1 pr-3 font-medium">{t('versions.columns.version')}</th>
           <th className="py-1 pr-3 font-medium">{t('versions.columns.type')}</th>
@@ -45,6 +77,11 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
       <tbody>
         {rows.map(r => (
           <tr key={`${r.repoPath}\u0000${r.versionId}\u0000${r.id}`} className="border-b border-edge-subtle" data-testid={`version-change-${r.id}`}>
+            {selectable && (
+              <td className="py-1 pr-2">
+                {r.own && <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} data-testid={`version-select-${r.id}`} />}
+              </td>
+            )}
             <td className="py-1 pr-3 text-ink-2">{r.componentLabel}</td>
             <td className="py-1 pr-3 text-ink-2">{r.versionTitle} <span className="text-ink-3">({r.versionId})</span></td>
             <td className="py-1 pr-3 text-ink-2">{r.category ? t(`versions.category.${r.category}`) : <span className="italic text-ink-3">{t('versions.page.deleted')}</span>}</td>
@@ -62,7 +99,7 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
             {onRemove && (
               <td className="py-1 text-right">
                 {r.own && (
-                  <button type="button" onClick={() => onRemove(r.id)} className="btn-icon text-ink-3 hover:text-status-danger" title={t('versions.page.remove')} data-testid={`version-remove-${r.id}`}>
+                  <button type="button" onClick={() => onRemove([r.id])} className="btn-icon text-ink-3 hover:text-status-danger" title={t('versions.page.remove')} data-testid={`version-remove-${r.id}`}>
                     <X size={12} />
                   </button>
                 )}
@@ -72,5 +109,6 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
         ))}
       </tbody>
     </table>
+    </div>
   )
 }

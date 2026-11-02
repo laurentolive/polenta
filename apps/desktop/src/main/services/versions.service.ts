@@ -15,7 +15,7 @@ import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { ElementState, VersionTrackingService } from './version-tracking.service'
 import { ELEMENT_DIRS } from './version-tracking.service'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
-import { repoKey } from './schema-refs.util'
+import { declaresRef, repoKey } from './schema-refs.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { applyFieldsWrite } from './field-write.util'
 import type { ImpactSnapshot, TraceabilityService } from './traceability.service'
@@ -220,15 +220,20 @@ export class VersionsService {
     return at ? { sha: v.freeze.sha, version: at.version } : undefined
   }
 
-  /** Exigences et tests du repo (ou une seule catégorie), lus sur disque. */
+  /**
+   * Exigences et tests du composant (ou une seule catégorie), lus sur disque : un fichier dont le type
+   * n'est pas déclaré par le schéma du repo appartient à un autre composant (copie, reliquat) et n'en
+   * fait pas partie.
+   */
   private async elements(repoPath: string, only?: ElementRow['category']): Promise<ElementRow[]> {
+    const own = await this.ownership(repoPath)
     const out: ElementRow[] = []
     for (const [dir, category] of ELEMENT_DIRS) {
       if (only && category !== only) continue
       const files = (await this.git.listFiles(repoPath, dir).catch(() => [])).filter(f => f.endsWith('.yaml') && f.split('/').length === 2)
       for (const filePath of files) {
         const state = await this.tracking.readDisk(repoPath, filePath)
-        if (state) out.push({ state, category, filePath })
+        if (state && own(state)) out.push({ state, category, filePath })
       }
     }
     return out
@@ -241,6 +246,12 @@ export class VersionsService {
       if (state) return { filePath, category, state }
     }
     return null
+  }
+
+  /** L'élément est-il du composant (type déclaré par le schéma du repo) ? Schéma illisible : oui. */
+  private async ownership(repoPath: string): Promise<(el: ElementState) => boolean> {
+    const schema = await this.schema.get(repoPath).catch(() => null)
+    return el => !schema || declaresRef(schema, el.objectTypeRef)
   }
 
   // ── Écriture ───────────────────────────────────────────────────────────────
@@ -364,12 +375,14 @@ export class VersionsService {
     return this.mutateChanges(repoPath, id, workspaceDir, async (v, typeDef) => {
       const versions = await this.list(repoPath)
       const lastIncl = this.lastInclusions(typeDef, versions)
+      const own = await this.ownership(repoPath)
       const changes = [...(v.changes ?? [])]
       const present = new Set(changes.map(c => c.id))
       for (const elementId of elementIds) {
         if (present.has(elementId)) continue
         const el = await this.elementFile(repoPath, elementId)
         if (!el) continue
+        if (!own(el.state)) throw new VersionError('NOT_OWN_ELEMENT', elementId)
         const base = await this.baseFrom(repoPath, lastIncl.get(elementId), el.filePath)
         changes.push({ id: elementId, ...(base && { base }) })
         present.add(elementId)

@@ -147,12 +147,23 @@ describe('backlog', () => {
     expect(await backlogIds(root)).toEqual([])
   })
 
-  it('N9 — Retirer remet au backlog', async () => {
+  it('élément d\'un autre composant (type non déclaré par le schéma) : hors backlog, inclusion refusée', async () => {
+    await writeReq(root, 'PR-0001')
+    await writeReq(root, 'SW-0001', { objectTypeRef: 'firmware::exigence-sw' })
+    expect(await backlogIds(root)).toEqual(['PR-0001:new'])
+    const v = await versions.create(root, { title: '1.0' })
+    expect(await code(versions.include(root, v.id, ['SW-0001']))).toBe('NOT_OWN_ELEMENT')
+    expect((await versions.get(root, v.id)).changes ?? []).toEqual([])
+  })
+
+  it('N9 — Retirer remet au backlog ; retrait de plusieurs changements en une fois', async () => {
     await writeReq(root, 'PR-0001')
     const v = await versions.create(root, { title: '1.0' })
-    await versions.include(root, v.id, ['PR-0001'])
-    await versions.removeChanges(root, v.id, ['PR-0001'])
-    expect(await backlogIds(root)).toEqual(['PR-0001:new'])
+    await writeReq(root, 'PR-0002')
+    await writeTest(root, 'PT-0001')
+    await versions.include(root, v.id, ['PR-0001', 'PR-0002', 'PT-0001'])
+    await versions.removeChanges(root, v.id, ['PR-0001', 'PT-0001'])
+    expect(await backlogIds(root)).toEqual(['PR-0001:new', 'PT-0001:new'])
   })
 
   it('N6/N7/L13 — modifié après released : au backlog avec base ; inchangé ou history seul : absent', async () => {

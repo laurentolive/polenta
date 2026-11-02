@@ -212,7 +212,7 @@ function VersionPage() {
             <VersionChangesTable
               rows={page.rows}
               projectId={projectId}
-              onRemove={editable ? id => void run(() => api.versions.removeChanges(repoPath, versionId, [id], workspaceDir || undefined)) : undefined}
+              onRemove={editable ? ids => void run(() => api.versions.removeChanges(repoPath, versionId, ids, workspaceDir || undefined)) : undefined}
             />
           )}
         </section>

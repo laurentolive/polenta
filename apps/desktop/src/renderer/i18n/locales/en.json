@@ -2307,6 +2307,9 @@
       "add": "Add",
       "remove": "Remove (back to the backlog)",
       "noChanges": "No change.",
+      "removeSelected": "Remove selection",
+      "selected": "{{count}} selected",
+      "selectAll": "Select all",
       "deleted": "deleted"
     },
     "picker": {
@@ -2336,7 +2339,8 @@
       "READONLY_REPO": "Read-only component: {{detail}}",
       "VERSION_NOT_FOUND": "Version not found: {{detail}}",
       "STATUS_UNKNOWN": "Unknown status: {{detail}}",
-      "VERSION_ABANDONED": "Abandoned version: {{detail}}"
+      "VERSION_ABANDONED": "Abandoned version: {{detail}}",
+      "NOT_OWN_ELEMENT": "Element of another component: {{detail}}"
     },
     "noVersion": "No version.",
     "expand": "Show components",

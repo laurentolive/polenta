@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, FileDiff, GitCompare, History, Lock, Tag } from 'lucide-react'
+import { AlertTriangle, FileDiff, GitCompare, History, Lock, Package, Tag } from 'lucide-react'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { useVersioning } from '../../contexts/VersioningContext'
@@ -12,6 +12,8 @@ import { useLocalImpactAnalysis } from '../../hooks/useLocalImpactAnalysis'
 import { VersionRepoFolder } from './version/VersionRepoFolder'
 import { VersionCompareSelector } from './version/VersionCompareSelector'
 import { BaselineListPanel } from './version/BaselineListPanel'
+import { ProductVersionsPanel } from './version/ProductVersionsPanel'
+import { isProductVersionsPath } from '../versions/useVersions'
 
 interface Props {
   currentProjectId: string
@@ -34,6 +36,8 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
   const isCompareView = pathname === '/version-diff'
   // GH40: while /baseline is open the panel lists the baselines (the view holds the creation form).
   const isBaselineView = pathname === '/baseline'
+  // GH201: sous-panneau « Produit » tant qu'une page de version (ou le backlog) est ouverte.
+  const isProductView = isProductVersionsPath(pathname)
   const workspaceDir = decodeProjectId(projectId)
 
   const { data: project } = useQuery({
@@ -53,7 +57,7 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
       {/* Header */}
       <div className="px-3 py-1.5 border-b border-edge shrink-0 flex items-center justify-between">
         <p className="section-label">
-          {isCompareView ? t('sidebar.version.compareTitle') : isBaselineView ? t('sidebar.version.baselinesTitle') : t('sidebar.version.title')}
+          {isCompareView ? t('sidebar.version.compareTitle') : isBaselineView ? t('sidebar.version.baselinesTitle') : isProductView ? t('versions.title') : t('sidebar.version.title')}
         </p>
         <div className="flex items-center gap-2">
           {isReadonly && (
@@ -61,6 +65,15 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
               <Lock size={11} className="text-status-warning" />
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => navigate({ to: '/versions', search: { projectId } })}
+            className="btn-icon text-prim"
+            title={t('versions.title')}
+            data-testid="version-product-button"
+          >
+            <Package size={14} />
+          </button>
           <button
             type="button"
             onClick={() => navigate({ to: '/baseline', search: { projectId } })}
@@ -114,6 +127,10 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
       ) : isBaselineView ? (
         <div className="flex-1 overflow-hidden">
           <BaselineListPanel projectId={projectId} />
+        </div>
+      ) : isProductView ? (
+        <div className="flex-1 overflow-hidden">
+          <ProductVersionsPanel projectId={projectId} />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto py-0.5">

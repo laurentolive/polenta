@@ -591,8 +591,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.versions.include(repoPath, id, elementIds, workspaceDir ?? undefined))
   r.handle('versions:remove-changes', (_e, repoPath: string, id: string, elementIds: string[], workspaceDir?: string) =>
     c.versions.removeChanges(repoPath, id, elementIds, workspaceDir ?? undefined))
-  r.handle('versions:release-preview', (_e, repoPath: string, id: string, workspaceDir?: string) =>
-    c.versions.releasePreview(repoPath, id, workspaceDir ?? undefined))
+  r.handle('versions:release-preview', (_e, repoPath: string, id: string, workspaceDir?: string, tag?: string) =>
+    c.versions.releasePreview(repoPath, id, workspaceDir ?? undefined, tag ?? undefined))
   r.handle('versions:release', (_e, repoPath: string, id: string, tag: string, workspaceDir?: string) =>
     c.versions.release(repoPath, id, tag, workspaceDir ?? undefined))
 

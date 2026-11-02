@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
+import { Route as VersionsRouteImport } from './routes/versions'
 import { Route as VersioningRouteImport } from './routes/versioning'
 import { Route as VersionDiffRouteImport } from './routes/version-diff'
 import { Route as TestsRouteImport } from './routes/tests'
@@ -34,6 +35,8 @@ import { Route as BaselineRouteImport } from './routes/baseline'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as VersionsBacklogRouteImport } from './routes/versions_.backlog'
+import { Route as VersionVersionIdRouteImport } from './routes/version.$versionId'
 import { Route as TestNewRouteImport } from './routes/test.new'
 import { Route as TestTestIdRouteImport } from './routes/test.$testId'
 import { Route as ReqNewRouteImport } from './routes/req.new'
@@ -53,6 +56,11 @@ import { Route as CampaignCampaignIdExecuteTestIdRouteImport } from './routes/ca
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
   path: '/workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VersionsRoute = VersionsRouteImport.update({
+  id: '/versions',
+  path: '/versions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VersioningRoute = VersioningRouteImport.update({
@@ -175,6 +183,16 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VersionsBacklogRoute = VersionsBacklogRouteImport.update({
+  id: '/versions_/backlog',
+  path: '/versions/backlog',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VersionVersionIdRoute = VersionVersionIdRouteImport.update({
+  id: '/version/$versionId',
+  path: '/version/$versionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TestNewRoute = TestNewRouteImport.update({
   id: '/test/new',
   path: '/test/new',
@@ -278,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/tests': typeof TestsRoute
   '/version-diff': typeof VersionDiffRoute
   '/versioning': typeof VersioningRoute
+  '/versions': typeof VersionsRoute
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
@@ -292,6 +311,8 @@ export interface FileRoutesByFullPath {
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
   '/test/new': typeof TestNewRoute
+  '/version/$versionId': typeof VersionVersionIdRoute
+  '/versions/backlog': typeof VersionsBacklogRoute
   '/campaign/$campaignId/execute/$testId': typeof CampaignCampaignIdExecuteTestIdRoute
   '/campaign/$campaignId/run/$testId': typeof CampaignCampaignIdRunTestIdRoute
 }
@@ -320,6 +341,7 @@ export interface FileRoutesByTo {
   '/tests': typeof TestsRoute
   '/version-diff': typeof VersionDiffRoute
   '/versioning': typeof VersioningRoute
+  '/versions': typeof VersionsRoute
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
@@ -334,6 +356,8 @@ export interface FileRoutesByTo {
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
   '/test/new': typeof TestNewRoute
+  '/version/$versionId': typeof VersionVersionIdRoute
+  '/versions/backlog': typeof VersionsBacklogRoute
   '/campaign/$campaignId/execute/$testId': typeof CampaignCampaignIdExecuteTestIdRoute
   '/campaign/$campaignId/run/$testId': typeof CampaignCampaignIdRunTestIdRoute
 }
@@ -363,6 +387,7 @@ export interface FileRoutesById {
   '/tests': typeof TestsRoute
   '/version-diff': typeof VersionDiffRoute
   '/versioning': typeof VersioningRoute
+  '/versions': typeof VersionsRoute
   '/workspace': typeof WorkspaceRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/campaign/new': typeof CampaignNewRoute
@@ -377,6 +402,8 @@ export interface FileRoutesById {
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
   '/test/new': typeof TestNewRoute
+  '/version/$versionId': typeof VersionVersionIdRoute
+  '/versions_/backlog': typeof VersionsBacklogRoute
   '/campaign/$campaignId_/execute/$testId': typeof CampaignCampaignIdExecuteTestIdRoute
   '/campaign/$campaignId_/run/$testId': typeof CampaignCampaignIdRunTestIdRoute
 }
@@ -407,6 +434,7 @@ export interface FileRouteTypes {
     | '/tests'
     | '/version-diff'
     | '/versioning'
+    | '/versions'
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
@@ -421,6 +449,8 @@ export interface FileRouteTypes {
     | '/req/new'
     | '/test/$testId'
     | '/test/new'
+    | '/version/$versionId'
+    | '/versions/backlog'
     | '/campaign/$campaignId/execute/$testId'
     | '/campaign/$campaignId/run/$testId'
   fileRoutesByTo: FileRoutesByTo
@@ -449,6 +479,7 @@ export interface FileRouteTypes {
     | '/tests'
     | '/version-diff'
     | '/versioning'
+    | '/versions'
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
@@ -463,6 +494,8 @@ export interface FileRouteTypes {
     | '/req/new'
     | '/test/$testId'
     | '/test/new'
+    | '/version/$versionId'
+    | '/versions/backlog'
     | '/campaign/$campaignId/execute/$testId'
     | '/campaign/$campaignId/run/$testId'
   id:
@@ -491,6 +524,7 @@ export interface FileRouteTypes {
     | '/tests'
     | '/version-diff'
     | '/versioning'
+    | '/versions'
     | '/workspace'
     | '/campaign/$campaignId'
     | '/campaign/new'
@@ -505,6 +539,8 @@ export interface FileRouteTypes {
     | '/req/new'
     | '/test/$testId'
     | '/test/new'
+    | '/version/$versionId'
+    | '/versions_/backlog'
     | '/campaign/$campaignId_/execute/$testId'
     | '/campaign/$campaignId_/run/$testId'
   fileRoutesById: FileRoutesById
@@ -534,6 +570,7 @@ export interface RootRouteChildren {
   TestsRoute: typeof TestsRoute
   VersionDiffRoute: typeof VersionDiffRoute
   VersioningRoute: typeof VersioningRoute
+  VersionsRoute: typeof VersionsRoute
   WorkspaceRoute: typeof WorkspaceRoute
   CampaignCampaignIdRoute: typeof CampaignCampaignIdRoute
   CampaignNewRoute: typeof CampaignNewRoute
@@ -548,6 +585,8 @@ export interface RootRouteChildren {
   ReqNewRoute: typeof ReqNewRoute
   TestTestIdRoute: typeof TestTestIdRoute
   TestNewRoute: typeof TestNewRoute
+  VersionVersionIdRoute: typeof VersionVersionIdRoute
+  VersionsBacklogRoute: typeof VersionsBacklogRoute
   CampaignCampaignIdExecuteTestIdRoute: typeof CampaignCampaignIdExecuteTestIdRoute
   CampaignCampaignIdRunTestIdRoute: typeof CampaignCampaignIdRunTestIdRoute
 }
@@ -559,6 +598,13 @@ declare module '@tanstack/react-router' {
       path: '/workspace'
       fullPath: '/workspace'
       preLoaderRoute: typeof WorkspaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/versions': {
+      id: '/versions'
+      path: '/versions'
+      fullPath: '/versions'
+      preLoaderRoute: typeof VersionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/versioning': {
@@ -729,6 +775,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/versions_/backlog': {
+      id: '/versions_/backlog'
+      path: '/versions/backlog'
+      fullPath: '/versions/backlog'
+      preLoaderRoute: typeof VersionsBacklogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/version/$versionId': {
+      id: '/version/$versionId'
+      path: '/version/$versionId'
+      fullPath: '/version/$versionId'
+      preLoaderRoute: typeof VersionVersionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/test/new': {
       id: '/test/new'
       path: '/test/new'
@@ -862,6 +922,7 @@ const rootRouteChildren: RootRouteChildren = {
   TestsRoute: TestsRoute,
   VersionDiffRoute: VersionDiffRoute,
   VersioningRoute: VersioningRoute,
+  VersionsRoute: VersionsRoute,
   WorkspaceRoute: WorkspaceRoute,
   CampaignCampaignIdRoute: CampaignCampaignIdRoute,
   CampaignNewRoute: CampaignNewRoute,
@@ -876,6 +937,8 @@ const rootRouteChildren: RootRouteChildren = {
   ReqNewRoute: ReqNewRoute,
   TestTestIdRoute: TestTestIdRoute,
   TestNewRoute: TestNewRoute,
+  VersionVersionIdRoute: VersionVersionIdRoute,
+  VersionsBacklogRoute: VersionsBacklogRoute,
   CampaignCampaignIdExecuteTestIdRoute: CampaignCampaignIdExecuteTestIdRoute,
   CampaignCampaignIdRunTestIdRoute: CampaignCampaignIdRunTestIdRoute,
 }

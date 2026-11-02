@@ -120,7 +120,7 @@ describe('création et cycle de vie', () => {
     const v = await versions.create(root, { title: '1.0' })
     await versions.update(root, v.id, { status: 'abandonnee' })
     expect((await versions.create(root, { title: '1.0' })).id).toBe('PV-0002')
-    expect(await code(versions.update(root, v.id, { status: 'en_cours' }))).toBe('IN_PROGRESS_EXISTS')
+    expect(await code(versions.update(root, v.id, { status: 'en_cours' }))).toBe('VERSION_LOCKED')   // abandonnée : définitive
   })
 
   it('L8 — passage released par update refusé', async () => {
@@ -212,6 +212,8 @@ describe('passage released', () => {
     await versions.include(root, v.id, ['PR-0001'])
     expect(await code(versions.release(root, v.id, 'pris'))).toBe('TAG_EXISTS')
     expect(await code(versions.release(root, v.id, 'mauvais tag'))).toBe('TAG_INVALID')
+    // L'aperçu contrôle le tag saisi (le dialogue ne propose pas de confirmer un tag existant).
+    expect((await versions.releasePreview(root, v.id, undefined, 'pris')).problems.map(p => p.code)).toEqual(['TAG_EXISTS'])
     await writeReq(root, 'PR-0001', { title: 'non commité' })
     expect(await code(versions.release(root, v.id, 'produit-1.0'))).toBe('DIRTY_CHANGES')
     expect((await versions.get(root, v.id)).status).toBe('en_cours')
@@ -347,6 +349,12 @@ describe('schéma', () => {
     const removed = schemaOf('P')
     removed.nodes[0].objectTypes = removed.nodes[0].objectTypes!.filter(t => t.category !== 'version')
     await expect(svc.save(root, removed)).rejects.toMatchObject({ code: 'VERSION_TYPE_INVALID' })
+    const unmarked = schemaOf('P')
+    unmarked.nodes[0].objectTypes!.find(t => t.category === 'version')!.statuses = VERSION_STATUSES.map(s => ({ ...s, isApproval: false }))
+    await expect(svc.save(root, unmarked)).rejects.toMatchObject({ code: 'VERSION_TYPE_INVALID' })
+    const extra = schemaOf('P')
+    extra.nodes[0].objectTypes!.find(t => t.category === 'version')!.statuses = [...VERSION_STATUSES, { name: 'recette', label: 'Recette' }]
+    await expect(svc.save(root, extra)).resolves.toBeUndefined()   // un statut non marqué s'ajoute
   })
 })
 

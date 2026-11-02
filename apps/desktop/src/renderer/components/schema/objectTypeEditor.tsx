@@ -290,6 +290,13 @@ export const DEFAULT_REQ_STATUSES: EditableStatus[] = [
   { name: 'obsolete', label: 'Obsolète', color: '#dc2626', isApproval: false, isTerminal: true },
 ]
 
+/** GH201 — cycle de vie par défaut d'une version : released (`isApproval`) pose le tag et fige. */
+export const DEFAULT_VERSION_STATUSES: EditableStatus[] = [
+  { name: 'en_cours', label: 'En cours', color: '#2563eb', isApproval: false, isTerminal: false },
+  { name: 'released', label: 'Released', color: '#16a34a', isApproval: true, isTerminal: false },
+  { name: 'abandonnee', label: 'Abandonnée', color: '#6b7280', isApproval: false, isTerminal: true },
+]
+
 export const DEFAULT_TEST_STATUSES: EditableStatus[] = [
   { name: 'draft', label: 'Brouillon', color: '#475569', isApproval: false, isTerminal: false },
   { name: 'review', label: 'En review', color: '#b45309', isApproval: false, isTerminal: false },
@@ -349,6 +356,7 @@ export function emptyObjType(
     trackStatusHistory: true,
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
+      : category === 'version' ? [...DEFAULT_VERSION_STATUSES]
       : [],
   }
 }

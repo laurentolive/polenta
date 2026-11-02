@@ -763,7 +763,8 @@ export interface ApiClient {
     update(repoPath: string, id: string, dto: UpdateVersionDto, workspaceDir?: string): Promise<ProductVersion>
     include(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>
     removeChanges(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>
-    releasePreview(repoPath: string, id: string, workspaceDir?: string): Promise<VersionReleasePreview>
+    /** `tag` : tag saisi, contrôlé avec le reste (absent : le tag proposé). */
+    releasePreview(repoPath: string, id: string, workspaceDir?: string, tag?: string): Promise<VersionReleasePreview>
     release(repoPath: string, id: string, tag: string, workspaceDir?: string): Promise<ProductVersion>
   }
   campaigns: {

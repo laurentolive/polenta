@@ -2248,5 +2248,94 @@
     "expand": "Expand",
     "empty": "—",
     "unplaced": "Outside the structure"
+  },
+  "versions": {
+    "title": "Product",
+    "home": "Pick a component, a version or a backlog in the side panel.",
+    "label": "Label",
+    "status": "Status",
+    "basedOn": "Previous version",
+    "none": "— none —",
+    "components": "Components",
+    "noType": "No version type",
+    "readonly": "Read-only component",
+    "showAbandoned": "Show abandoned versions",
+    "seeChanges": "See changes",
+    "typeIdLocked": "The name and prefix of a version type cannot change (its versions would not be migrated).",
+    "state": {
+      "in_progress": "In progress",
+      "released": "Released",
+      "abandoned": "Abandoned"
+    },
+    "category": {
+      "requirement": "Requirement",
+      "test": "Test",
+      "issue": "Issue"
+    },
+    "new": {
+      "title": "New version",
+      "confirm": "Create",
+      "inProgressExists": "A version is already in progress ({{id}})"
+    },
+    "backlog": {
+      "title": "Backlog",
+      "subtitle_one": "{{count}} change never included in a version",
+      "subtitle_other": "{{count}} changes never included in a version",
+      "include": "Include in {{version}} ({{count}})",
+      "includeAll": "Include all",
+      "noInProgress": "No version in progress: create one to include changes.",
+      "empty": "No change to include.",
+      "nature": "Nature",
+      "kind": {
+        "new": "new",
+        "modified": "modified"
+      },
+      "outside": "modified outside the app",
+      "outsideHint": "Approved element whose content changed without being reopened (direct git, another tool)."
+    },
+    "columns": {
+      "component": "Component",
+      "version": "Version",
+      "type": "Type",
+      "id": "ID",
+      "label": "Label",
+      "diff": "Diff"
+    },
+    "page": {
+      "changes": "Changes",
+      "add": "Add",
+      "remove": "Remove (back to the backlog)",
+      "noChanges": "No change.",
+      "deleted": "deleted"
+    },
+    "picker": {
+      "none": "No element to add.",
+      "addSelected": "Add selection",
+      "selected_one": "{{count}} element selected",
+      "selected_other": "{{count}} elements selected"
+    },
+    "release": {
+      "button": "Release",
+      "title": "Release the version",
+      "explain": "Polenta commits the version, tags that commit and freezes the list of changes. The tag is pushed with the next push of the repo. A released version never goes back to in progress.",
+      "tag": "Tag",
+      "confirm": "Release"
+    },
+    "errors": {
+      "NO_VERSION_TYPE": "No usable version type ({{detail}})",
+      "IN_PROGRESS_EXISTS": "A version is already in progress: {{detail}}",
+      "LABEL_TAKEN": "Label already used: {{detail}}",
+      "LABEL_EMPTY": "The label is required",
+      "VERSION_LOCKED": "Released version: locked ({{detail}})",
+      "NOT_IN_PROGRESS": "The version is not in progress ({{detail}})",
+      "RELEASE_REQUIRED": "Use \"Release\" to release a version ({{detail}})",
+      "TAG_INVALID": "Invalid tag name: {{detail}}",
+      "TAG_EXISTS": "The tag already exists: {{detail}}",
+      "COMPONENT_NOT_RELEASED": "Component version not released: {{detail}}",
+      "DIRTY_CHANGES": "Included elements modified and not committed: {{detail}}",
+      "READONLY_REPO": "Read-only component: {{detail}}",
+      "VERSION_NOT_FOUND": "Version not found: {{detail}}",
+      "STATUS_UNKNOWN": "Unknown status: {{detail}}"
+    }
   }
 }

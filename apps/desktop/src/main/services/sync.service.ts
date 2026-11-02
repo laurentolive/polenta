@@ -417,6 +417,8 @@ export class SyncService {
     })
     if (beforeRefUpdate) {
       await beforeRefUpdate(sha)
+      // La branche a pu avancer pendant le rappel : ne pas écraser un commit écrit entre-temps.
+      if (await git.resolveRef({ fs, dir: repoPath, ref }) !== head) throw new Error(`${branch} a avancé pendant le commit — réessayer`)
       await git.writeRef({ fs, dir: repoPath, ref, value: sha, force: true })
     }
     await git.updateIndex({ fs, dir: repoPath, filepath, oid: blob, add: true })

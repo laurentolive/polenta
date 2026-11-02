@@ -162,11 +162,14 @@ export class SchemaService {
     const before = versionTypeOf(await this.get(repoPath).catch(() => null))
     if (!before) return
     const after = versionTypeOf(schema)
-    if (after && after.name === before.name && (after.prefix ?? '') === (before.prefix ?? '')) return
+    // Les statuts marqués (`isApproval` = released, `isTerminal` = abandonnée) donnent l'état des versions existantes.
+    const marked = (t: typeof before) => JSON.stringify((t?.statuses ?? []).filter(s => s.isApproval || s.isTerminal)
+      .map(s => [s.name, !!s.isApproval, !!s.isTerminal]).sort())
+    if (after && after.name === before.name && (after.prefix ?? '') === (before.prefix ?? '') && marked(after) === marked(before)) return
     const entries = await fsP.readdir(path.join(repoPath, 'versions'), { withFileTypes: true }).catch(() => [])
     const count = entries.filter(e => e.isFile() && e.name.endsWith('.yaml')).length
     if (count > 0) {
-      throw new SchemaValidationError('VERSION_TYPE_INVALID', `Le type version "${before.name}" a ${count} version(s) : son nom et son préfixe ne se modifient pas et il ne se retire pas.`)
+      throw new SchemaValidationError('VERSION_TYPE_INVALID', `Le type version "${before.name}" a ${count} version(s) : son nom, son préfixe et ses statuts released / abandonnée ne se modifient pas, et il ne se retire pas.`)
     }
   }
 

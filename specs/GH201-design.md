@@ -27,6 +27,24 @@
 - `RequirementsIndexService` ne se reconstruit plus sur `versions/<ID>.yaml` (seulement sur les
   instantanés `versions/<REQ>/vN.yaml`).
 
+### Ajustements du sprint 2 (revue de code)
+
+- Une version **abandonnée est définitive** (ne revient pas en cours) : avec une seule version en
+  cours à la fois, l'ordre des ID est l'ordre des livraisons (backlog, `basedOn` par défaut, statut
+  de design).
+- Schéma : tant que le repo a des versions, les statuts marqués du type version (`isApproval`,
+  `isTerminal`) gardent nom et marque (un statut non marqué peut s'ajouter).
+- Champs d'une version écrits par `applyFieldsWrite` (comme les autres objets) ; affichés par
+  `fieldValueToText`.
+- `versions:release-preview` reçoit le tag saisi : `TAG_EXISTS` / `TAG_INVALID` dans les problèmes,
+  le dialogue ne propose pas de confirmer un tag voué à l'échec.
+- Passage released : la branche n'avance que si elle n'a pas bougé pendant la pose du tag.
+- Page : changements d'une dépendance attribués seulement si la version de `basedOn` est un ancêtre
+  de la version retenue (retour arrière / autre lignée : aucune ligne).
+- Routes `/versions`, `/versions/backlog`, `/version/$versionId` rattachées au panneau Version
+  (`isProductVersionsPath`) ; cache des widgets Suivi invalidé sur `versions/`.
+- Non traité (assumé) : `versions:tree` calcule le backlog complet de chaque repo pour le compteur.
+
 ## 2. Types (`packages/types/src/product-version.ts`, exporté par `index.ts`)
 
 ```ts

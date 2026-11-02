@@ -13,6 +13,7 @@ import { RepoAccessBanner } from './RepoAccessBanner'
 import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
+import { isProductVersionsPath } from '../versions/useVersions'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters' | 'merge'
 
@@ -59,7 +60,9 @@ export function deducePanel(pathname: string, category?: string): Panel {
     pathname === '/versioning' ||
     pathname === '/local-impact' ||
     pathname === '/revalidation' ||
-    pathname === '/baseline'
+    pathname === '/baseline' ||
+    // GH201 — sous-panneau « Produit » : accueil, backlog, page d'une version.
+    isProductVersionsPath(pathname)
   ) {
     return 'version'
   }
@@ -208,6 +211,9 @@ export function AppLayout() {
             case '/revalidation':
               navigate({ to: lastVersionRoute.pathname, search: { projectId: currentProjectId } })
               break
+            case '/versions':
+              navigate({ to: '/versions', search: { projectId: currentProjectId } })
+              break
             case '/version-diff':
               navigate({
                 to: '/version-diff',
@@ -223,6 +229,11 @@ export function AppLayout() {
               break
             case '/graph':
             default:
+              // GH201 — page d'une version ou backlog : retour à la même page.
+              if (lastVersionRoute && isProductVersionsPath(lastVersionRoute.pathname)) {
+                router.history.push(`${lastVersionRoute.pathname}${lastVersionRoute.search}`)
+                break
+              }
               navigate({ to: '/graph', search: { projectId: currentProjectId, sha: params.get('sha') ?? undefined } })
           }
         }

@@ -16,6 +16,7 @@ import { ELEMENT_DIRS } from './version-tracking.service'
 import { assertNewObjectFile, nextCounterId } from './id-counter.util'
 import { repoKey } from './schema-refs.util'
 import { findObjectTypeDef } from './schema-lookup.util'
+import { applyFieldsWrite } from './field-write.util'
 
 /** Erreur métier des versions : le message commence par le code (`TAG_EXISTS: …`), traduit par le renderer. */
 export class VersionError extends Error {
@@ -251,7 +252,7 @@ export class VersionsService {
         ...(basedOn && { basedOn }), ...(components && { components }), changes: [],
         fields: dto.fields ?? {},
       }
-      const stamped = await this.stamp(repoPath, null, created, filePath)
+      const stamped = await this.stamp(repoPath, null, await applyFieldsWrite(this.git, repoPath, null, created), filePath)
       await this.git.writeYaml(repoPath, filePath, stamped)
       return stamped
     })
@@ -269,22 +270,18 @@ export class VersionsService {
       if (dto.status !== undefined && dto.status !== existing.status && to === 'released') {
         throw new VersionError('RELEASE_REQUIRED', id)
       }
-      // Figée (released, ou abandonnée après l'avoir été : `freeze` posé) — verrouillée comme un
-      // élément approuvé : seul l'abandon reste possible, sans autre changement.
-      if (from === 'released' || existing.freeze) {
+      // Released ou abandonnée : verrouillée comme un élément approuvé. Une released peut seulement
+      // être abandonnée ; une abandonnée ne revient pas en cours (l'ordre des ID reste l'ordre des
+      // livraisons : une seule version en cours à la fois, jamais rouverte).
+      if (from !== 'in_progress') {
         const statusChange = dto.status !== undefined && dto.status !== existing.status
-        if ((statusChange && to !== 'abandoned') || !sameContent(existing, dto)) throw new VersionError('VERSION_LOCKED', id)
+        if ((statusChange && !(from === 'released' && to === 'abandoned')) || !sameContent(existing, dto)) {
+          throw new VersionError('VERSION_LOCKED', id)
+        }
       }
       const versions = (await this.list(repoPath)).filter(v => v.id !== id)
-      if (to === 'in_progress' && from !== 'in_progress') {
-        const open = versions.find(v => versionState(typeDef, v.status) === 'in_progress')
-        if (open) throw new VersionError('IN_PROGRESS_EXISTS', open.id)
-      }
       const updated: ProductVersion = { ...existing }
-      // Une version abandonnée libère son label : il est revérifié si elle revient en cours.
-      if (to !== 'abandoned' && from !== 'released' && (dto.title !== undefined || from === 'abandoned')) {
-        updated.title = this.assertLabel(typeDef, versions, dto.title ?? existing.title)
-      }
+      if (from === 'in_progress' && dto.title !== undefined) updated.title = this.assertLabel(typeDef, versions, dto.title)
       if (dto.basedOn !== undefined) {
         const basedOn = this.assertBasedOn(typeDef, versions, dto.basedOn, id)
         if (basedOn) updated.basedOn = basedOn
@@ -298,7 +295,7 @@ export class VersionsService {
       if (dto.fields !== undefined) updated.fields = { ...existing.fields, ...dto.fields }
       if (dto.status !== undefined) updated.status = dto.status
       const filePath = `${VERSIONS_DIR}/${id}.yaml`
-      const stamped = await this.stamp(repoPath, existing, updated, filePath)
+      const stamped = await this.stamp(repoPath, existing, await applyFieldsWrite(this.git, repoPath, existing, updated), filePath)
       await this.git.writeYaml(repoPath, filePath, stamped)
       return stamped
     })
@@ -408,12 +405,22 @@ export class VersionsService {
       if (!cur || cur === stop) continue
       const depVersions = new Map((await this.list(dep.repoPath)).map(d => [d.id, d]))
       const depInfo = { name: dep.name, label: dep.label, repoPath: dep.repoPath }
-      while (cur && cur !== stop && !visited.has(`${repoKey(dep.repoPath)}\u0000${cur}`)) {
+      // Versions de la dépendance entre `stop` (exclue) et `cur` ; `stop` hors de la chaîne de `cur`
+      // (retour arrière, autre lignée) : rien n'est attribué à cette version.
+      const chain: ProductVersion[] = []
+      const seen = new Set<string>()
+      while (cur && cur !== stop && !seen.has(cur)) {
+        seen.add(cur)
         const w = depVersions.get(cur)
         if (!w) break
+        chain.push(w)
+        cur = w.basedOn
+      }
+      if (stop && cur !== stop) continue
+      for (const w of chain) {
+        if (visited.has(`${repoKey(dep.repoPath)}\u0000${w.id}`)) continue
         const prev = w.basedOn ? depVersions.get(w.basedOn) : undefined
         rows.push(...await this.rowsOf(depInfo, w, prev, nodes, logicalTree, visited, false))
-        cur = w.basedOn
       }
     }
     return rows
@@ -435,11 +442,21 @@ export class VersionsService {
 
   // ── Passage released ───────────────────────────────────────────────────────
 
-  async releasePreview(repoPath: string, id: string, workspaceDir?: string): Promise<VersionReleasePreview> {
+  /** Tag proposé et contrôles du passage released ; `tag` : contrôlé aussi (sinon le tag proposé). */
+  async releasePreview(repoPath: string, id: string, workspaceDir?: string, tag?: string): Promise<VersionReleasePreview> {
     const version = await this.get(repoPath, id)
     const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
     const info = this.repoInfo(repoPath, ws?.nodes ?? [])
-    return { suggestedTag: suggestVersionTag(info.name, version.title), problems: await this.releaseProblems(repoPath, version, workspaceDir) }
+    const suggestedTag = suggestVersionTag(info.name, version.title)
+    const problems = await this.releaseProblems(repoPath, version, workspaceDir)
+    return { suggestedTag, problems: [...await this.tagProblems(repoPath, tag ?? suggestedTag), ...problems] }
+  }
+
+  private async tagProblems(repoPath: string, tag: string): Promise<VersionProblem[]> {
+    const trimmed = tag.trim()
+    if (!isValidTagName(trimmed)) return [{ code: 'TAG_INVALID', detail: trimmed }]
+    if (await this.git.resolveTagOid(repoPath, trimmed)) return [{ code: 'TAG_EXISTS', detail: trimmed }]
+    return []
   }
 
   private async releaseProblems(repoPath: string, version: ProductVersion, workspaceDir?: string): Promise<VersionProblem[]> {
@@ -478,10 +495,8 @@ export class VersionsService {
   async release(repoPath: string, id: string, tag: string, workspaceDir?: string): Promise<ProductVersion> {
     return this.enqueue(repoPath, async () => {
       const version = await this.get(repoPath, id)
-      const problems = await this.releaseProblems(repoPath, version, workspaceDir)
       const trimmed = tag.trim()
-      if (!isValidTagName(trimmed)) problems.unshift({ code: 'TAG_INVALID', detail: trimmed })
-      else if (await this.git.resolveTagOid(repoPath, trimmed)) problems.unshift({ code: 'TAG_EXISTS', detail: trimmed })
+      const problems = [...await this.tagProblems(repoPath, trimmed), ...await this.releaseProblems(repoPath, version, workspaceDir)]
       if (problems.length > 0) throw new VersionError(problems[0].code, problems.map(p => `${p.code} ${p.detail}`).join(' ; '))
       const vt = (await this.versionType(repoPath))!
       const approval = vt.typeDef.statuses!.find(s => s.isApproval)!.name

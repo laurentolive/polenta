@@ -273,7 +273,7 @@ export function createIpcClient(
       update: (p, id, dto, workspaceDir) => invoke('versions:update', p, id, dto, workspaceDir ?? null),
       include: (p, id, elementIds, workspaceDir) => invoke('versions:include', p, id, elementIds, workspaceDir ?? null),
       removeChanges: (p, id, elementIds, workspaceDir) => invoke('versions:remove-changes', p, id, elementIds, workspaceDir ?? null),
-      releasePreview: (p, id, workspaceDir) => invoke('versions:release-preview', p, id, workspaceDir ?? null),
+      releasePreview: (p, id, workspaceDir, tag) => invoke('versions:release-preview', p, id, workspaceDir ?? null, tag ?? null),
       release: (p, id, tag, workspaceDir) => invoke('versions:release', p, id, tag, workspaceDir ?? null),
     },
     campaigns: {

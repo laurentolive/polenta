@@ -178,7 +178,7 @@ export class SchemaDeleteService {
       const ids = await objectIdsOfType(this.objects, repoPath, t.category, t.ref)
       // GH201 — une version porte un tag et l'historique livré : son type ne se supprime pas avec elles.
       if (t.category === 'version') {
-        if (ids.length > 0) plan.errors.push({ code: 'HAS_VERSIONS', detail: `${t.ref} : ${ids.join(', ')}` })
+        if (ids.length > 0) plan.errors.push({ code: 'HAS_VERSIONS', detail: `Le type version ${t.ref} a des versions (${ids.join(', ')}) : il ne se supprime pas.` })
         continue
       }
       plan.objects[t.category as DeletedObjectCategory].push(...ids)

@@ -383,9 +383,10 @@ function useDropdown() {
   return { open, setOpen, containerRef }
 }
 
-function AddMenu({ node, hasRoot, onAddComponent, onAddInterface, onAddElement }: {
+function AddMenu({ node, hasRoot, canAddVersion, onAddComponent, onAddInterface, onAddElement }: {
   node: WorkspaceTreeNode
   hasRoot: boolean
+  canAddVersion: boolean
   onAddComponent: () => void
   onAddInterface: () => void
   onAddElement: (category: ObjectCategory) => void
@@ -414,6 +415,12 @@ function AddMenu({ node, hasRoot, onAddComponent, onAddInterface, onAddElement }
                   + {t(CATEGORY_LABEL_KEY[cat])}
                 </button>
               ))}
+              {/* GH201 — un type version par repo, sur root : proposé seulement sur la ligne d'un repo qui n'en a pas. */}
+              {canAddVersion && (
+                <button type="button" onClick={() => { onAddElement('version'); setOpen(false) }} className={menuItemClass} data-testid="add-version-type">
+                  + {t(CATEGORY_LABEL_KEY.version)}
+                </button>
+              )}
             </>
           )}
         </div>
@@ -759,6 +766,7 @@ function RepoRow({
         <AddMenu
           node={node}
           hasRoot={!!rootNode}
+          canAddVersion={!!rootNode && !rootNode.objectTypes?.some(ot => ot.category === 'version')}
           onAddComponent={() => handlers.onAddComponent(node.repoPath, node.name)}
           onAddInterface={() => handlers.onAddInterface(node.repoPath, node.name)}
           onAddElement={category => handlers.onAddElement(node.repoPath, node.name, 'root', category)}

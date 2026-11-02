@@ -89,6 +89,7 @@ specs/
 │   ├── SW/
 │   ├── HW/
 │   └── integration/
+├── versions/                        ← versions du composant (GH201), une par fichier : versions/<ID>.yaml
 ├── links/
 │   └── links.yaml                   ← tous les ObjectLink du projet
 ├── parameters/
@@ -121,7 +122,7 @@ nodes:
       - name: exigence-systeme
         label: Exigence Système
         prefix: SYS           # doit être unique sur tout le projet
-        category: requirement # requirement | test | campaign
+        category: requirement # requirement | test | campaign | version
         fields:
           - name: priority
             label: Priorité

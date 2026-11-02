@@ -787,11 +787,12 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 ### 11.4 Analyse d'impact et tests à exécuter (GH245)
 
 - **Racines** : les changements que liste la page (version et versions de ses composants postérieures à
-  `basedOn`). **Lignes** : éléments atteints par les arbres d'impact (SPEC-TRACEABILITY §4.6), **du repo
-  de la version seulement**, avec leur **source** (racine et chemin de liens ; plusieurs racines possibles).
-- **Statut d'impact** (8 valeurs) et commentaire par ligne ou sur le nœud de l'arbre, enregistrés dans le
+  `basedOn`). **Lignes** : éléments atteints par les arbres d'impact (SPEC-TRACEABILITY §4.6), **du
+  composant seulement** (repo de la version, type déclaré par son schéma, §11.3), avec leur **source** (racine et chemin de liens ; plusieurs racines possibles).
+- **Statut d'impact** (8 valeurs) et commentaire saisis sur le nœud de l'arbre, enregistrés dans le
   champ système **`impacted`** (`[{ id, status, comment? }]`, version en cours seulement ; statut par défaut
-  sans commentaire : entrée retirée). Ligne enregistrée plus atteinte : « n'est plus atteint ».
+  sans commentaire : entrée retirée). Ligne enregistrée plus atteinte : listée sous l'arbre, « n'est plus
+  atteint ». Une analyse figée n'a plus d'arbres : ses lignes s'affichent en tableau.
 - **Live** tant que la version est en cours ; **figée au passage released** dans le champ système
   **`analysis`** (`{ computedAt, frozen, roots, rows }`, racines sans les arbres), dans le commit du passage.
   Version released sans `analysis` : analyse vide, jamais recalculée.

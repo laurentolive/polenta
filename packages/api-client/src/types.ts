@@ -2,6 +2,8 @@ import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
+  CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
+  VersionReleasePreview, VersionSummary,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -750,6 +752,19 @@ export interface ApiClient {
     approveObject(repoPath: string, reviewId: string, objectId: string, reviewerId: string): Promise<Review>
     revokeApproval(repoPath: string, reviewId: string, objectId: string, reviewerId: string): Promise<Review>
     close(repoPath: string, reviewId: string, status: 'approved' | 'closed'): Promise<Review>
+  }
+  /** GH201 — versions de composant / produit. */
+  versions: {
+    tree(rootRepoPath: string, workspaceDir?: string): Promise<VersionComponentNode[]>
+    list(repoPath: string): Promise<VersionSummary[]>
+    get(repoPath: string, id: string, workspaceDir?: string): Promise<VersionPage>
+    backlog(repoPath: string): Promise<VersionBacklogItem[]>
+    create(repoPath: string, dto: CreateVersionDto, workspaceDir?: string): Promise<ProductVersion>
+    update(repoPath: string, id: string, dto: UpdateVersionDto, workspaceDir?: string): Promise<ProductVersion>
+    include(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>
+    removeChanges(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>
+    releasePreview(repoPath: string, id: string, workspaceDir?: string): Promise<VersionReleasePreview>
+    release(repoPath: string, id: string, tag: string, workspaceDir?: string): Promise<ProductVersion>
   }
   campaigns: {
     list(repoPath: string, component?: string, level?: string): Promise<TestCampaign[]>

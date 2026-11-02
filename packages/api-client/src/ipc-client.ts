@@ -264,6 +264,18 @@ export function createIpcClient(
         invoke('reviews:revoke-approval', p, reviewId, objectId, reviewerId),
       close: (p, reviewId, status) => invoke('reviews:close', p, reviewId, status),
     },
+    versions: {
+      tree: (p, workspaceDir) => invoke('versions:tree', p, workspaceDir ?? null),
+      list: (p) => invoke('versions:list', p),
+      get: (p, id, workspaceDir) => invoke('versions:get', p, id, workspaceDir ?? null),
+      backlog: (p) => invoke('versions:backlog', p),
+      create: (p, dto, workspaceDir) => invoke('versions:create', p, dto, workspaceDir ?? null),
+      update: (p, id, dto, workspaceDir) => invoke('versions:update', p, id, dto, workspaceDir ?? null),
+      include: (p, id, elementIds, workspaceDir) => invoke('versions:include', p, id, elementIds, workspaceDir ?? null),
+      removeChanges: (p, id, elementIds, workspaceDir) => invoke('versions:remove-changes', p, id, elementIds, workspaceDir ?? null),
+      releasePreview: (p, id, workspaceDir) => invoke('versions:release-preview', p, id, workspaceDir ?? null),
+      release: (p, id, tag, workspaceDir) => invoke('versions:release', p, id, tag, workspaceDir ?? null),
+    },
     campaigns: {
       list: (p, component, level) => invoke('campaigns:list', p, component, level),
       get: (p, id) => invoke('campaigns:get', p, id),

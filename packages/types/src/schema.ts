@@ -86,7 +86,9 @@ export function statusValueLabels(statuses: SchemaStatus[]): Record<string, stri
 //   test        — id, title, status (from statuses[]), steps[], fields{}
 //   campaign    — id, title, status fixe (planned/in_progress/completed/abandoned),
 //                 testCaseIds[], runs[] — le champ statuses[] est ignoré pour cette catégorie
-export type ObjectCategory = 'requirement' | 'test' | 'campaign'
+//   version     — GH201 : id, title (label), status (isApproval = released, isTerminal = abandonnée),
+//                 basedOn, components, changes, freeze, fields{} ; un seul type, sur le nœud root
+export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'version'
 
 // Définition d'un type d'objet dans un composant.
 // Chaque définition est indépendante même si créée depuis le même template.
@@ -317,7 +319,8 @@ export interface SchemaDeletePlan {
   links: Array<{ repoPath: string; count: number }>
   /** Types de lien dont des refs sont retirées ; `emptied` : `sourceRefs` ou `targetRefs` devient vide. */
   linkTypes: Array<{ repoPath: string; name: string; emptied: boolean }>
-  errors: Array<{ code: 'NOT_FOUND' | 'READONLY' | 'REPO_MISSING'; detail: string }>
+  /** `HAS_VERSIONS` (GH201) : type version dont des versions existent (historique taggé, non supprimé). */
+  errors: Array<{ code: 'NOT_FOUND' | 'READONLY' | 'REPO_MISSING' | 'HAS_VERSIONS'; detail: string }>
 }
 
 export interface SchemaDeleteResult {

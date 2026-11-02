@@ -22,6 +22,7 @@ import type { RepoWatcherService } from '../services/repo-watcher.service'
 import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
+import type { VersionsService } from '../services/versions.service'
 import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
@@ -103,6 +104,7 @@ export interface Container {
   schema: SchemaService
   elementMove: ElementMoveService
   campaigns: CampaignsService
+  versions: VersionsService
   campaignExecution: CampaignExecutionService
   executionHistory: ExecutionHistoryService
   tree: TreeService
@@ -185,6 +187,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
+  'versions:create', 'versions:update', 'versions:include', 'versions:remove-changes', 'versions:release',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
@@ -572,6 +575,26 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('schema:move-element',
     (_e, repoPath: string, dto: { fromNodeName: string; toNodeName: string; typeName: string }) =>
       c.elementMove.moveElementToNode(repoPath, dto))
+
+  // ── Versions (GH201) ─────────────────────────────────────────────────────────
+  r.handle('versions:tree', (_e, rootRepoPath: string, workspaceDir?: string) =>
+    c.versions.tree(rootRepoPath, workspaceDir ?? undefined))
+  r.handle('versions:list', (_e, repoPath: string) => c.versions.summaries(repoPath))
+  r.handle('versions:get', (_e, repoPath: string, id: string, workspaceDir?: string) =>
+    c.versions.page(repoPath, id, workspaceDir ?? undefined))
+  r.handle('versions:backlog', (_e, repoPath: string) => c.versions.backlog(repoPath))
+  r.handle('versions:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
+    c.versions.create(repoPath, dto as import('@polenta/types').CreateVersionDto, workspaceDir ?? undefined))
+  r.handle('versions:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
+    c.versions.update(repoPath, id, dto as import('@polenta/types').UpdateVersionDto, workspaceDir ?? undefined))
+  r.handle('versions:include', (_e, repoPath: string, id: string, elementIds: string[], workspaceDir?: string) =>
+    c.versions.include(repoPath, id, elementIds, workspaceDir ?? undefined))
+  r.handle('versions:remove-changes', (_e, repoPath: string, id: string, elementIds: string[], workspaceDir?: string) =>
+    c.versions.removeChanges(repoPath, id, elementIds, workspaceDir ?? undefined))
+  r.handle('versions:release-preview', (_e, repoPath: string, id: string, workspaceDir?: string) =>
+    c.versions.releasePreview(repoPath, id, workspaceDir ?? undefined))
+  r.handle('versions:release', (_e, repoPath: string, id: string, tag: string, workspaceDir?: string) =>
+    c.versions.release(repoPath, id, tag, workspaceDir ?? undefined))
 
   // ── Campaigns ────────────────────────────────────────────────────────────────
   r.handle('campaigns:list', (_e, repoPath: string, component?: string, level?: string) =>

@@ -87,6 +87,16 @@ export const WEB_HIDDEN: Record<string, string> = {
   'auth:save-token': 'compte = session',
   'auth:get-token': 'renverrait le jeton forge au navigateur',
   'auth:delete-token': 'compte = session',
+  'versions:tree': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:list': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:get': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:backlog': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:create': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:update': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:include': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:remove-changes': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:release-preview': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:release': 'GH201 — client web abandonné (2026-10-30)',
 }
 
 /**
@@ -148,6 +158,9 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'traceability:legacy-acks': [0], 'traceability:matrix': [0, 2],
   'traceability:missing-links': [0, 1], 'traceability:test-plan': [0, 2], 'tree:get': [0],
   'tree:save': [0], 'web:delete-workspace': [0], 'web:drawio-import': [0],
+  'versions:tree': [0, 1], 'versions:list': [0], 'versions:get': [0, 2], 'versions:backlog': [0],
+  'versions:create': [0, 2], 'versions:update': [0, 3], 'versions:include': [0, 3],
+  'versions:remove-changes': [0, 3], 'versions:release-preview': [0, 2], 'versions:release': [0, 3],
   'web:execution-sheet-export': [0], 'web:execution-sheet-preview': [0], 'web:export': [0],
   'web:image-import': [0], 'workspace:create-from-clone': [0], 'workspace:create-new': [0],
   'workspace:create-on-server': [0], 'forge:repo-access': [0], 'forge:org-members': [0],

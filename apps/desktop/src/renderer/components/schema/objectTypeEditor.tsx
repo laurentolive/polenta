@@ -118,7 +118,8 @@ export function fieldRenames(t: EditableObjectType): FieldRename[] {
 export function typeRename(
   updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined, nodeName: string,
 ): TypeRenameDto | null {
-  if (!original || !updated.name) return null
+  // GH201 — le renommage d'un type version ne migre pas ses versions : nom et préfixe verrouillés.
+  if (!original || !updated.name || original.category === 'version') return null
   const oldPrefix = original.prefix ?? ''
   if (updated.name === original.name && updated.prefix === oldPrefix) return null
   return {
@@ -301,6 +302,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   requirement: 'schema.editor.requirement',
   test: 'schema.editor.test',
   campaign: 'schema.editor.campaign',
+  version: 'schema.editor.version',
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -320,6 +322,7 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   requirement: 'REQ',
   test: 'TEST',
   campaign: 'CAMP',
+  version: 'VER',
 }
 
 function slugifyComponentName(componentName: string): string {

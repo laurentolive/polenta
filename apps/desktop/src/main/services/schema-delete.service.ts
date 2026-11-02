@@ -13,6 +13,7 @@ import { withKeyLock } from './serialize-writes.util'
 import type { TreeService } from './tree.service'
 
 interface DeletedType { ref: string; node: string; type: string; category: ObjectCategory }
+type DeletedObjectCategory = Exclude<ObjectCategory, 'version'>
 
 interface Computed {
   plan: SchemaDeletePlan
@@ -173,7 +174,15 @@ export class SchemaDeleteService {
     if (plan.errors.length > 0) return computed
 
     // Objets du repo du schéma (IDs uniques sur le projet : préfixe unique, règle 10).
-    for (const t of types) plan.objects[t.category].push(...await objectIdsOfType(this.objects, repoPath, t.category, t.ref))
+    for (const t of types) {
+      const ids = await objectIdsOfType(this.objects, repoPath, t.category, t.ref)
+      // GH201 — une version porte un tag et l'historique livré : son type ne se supprime pas avec elles.
+      if (t.category === 'version') {
+        if (ids.length > 0) plan.errors.push({ code: 'HAS_VERSIONS', detail: `${t.ref} : ${ids.join(', ')}` })
+        continue
+      }
+      plan.objects[t.category as DeletedObjectCategory].push(...ids)
+    }
     const deleted = new Set([...plan.objects.requirement, ...plan.objects.test, ...plan.objects.campaign])
 
     // Liens de tous les repos dont une extrémité est supprimée (état disque, pas le cache).

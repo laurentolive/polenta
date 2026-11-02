@@ -39,6 +39,7 @@ export type SchemaValidationErrorCode =
   | 'REQUIRED_WHEN_INVALID'
   | 'RUN_FIELD_INVALID'
   | 'LINK_TYPE_NAME_TAKEN'
+  | 'VERSION_TYPE_INVALID'
 
 /**
  * Levée par les méthodes `addNode`/`addObjectType`/`addField`/`addStatus`/
@@ -101,6 +102,8 @@ export class SchemaService {
     this.assertUniquePrefixes(schema)
     this.assertRequiredWhen(schema)
     this.assertRunFields(schema)
+    this.assertVersionTypes(schema)
+    await this.assertVersionTypeStable(repoPath, schema)
     const toWrite = this.mirrorRootRolesImplements(schema)
     const dir = path.join(repoPath, '.polenta')
     await fsP.mkdir(dir, { recursive: true })
@@ -132,6 +135,39 @@ export class SchemaService {
     const types = flattenSystemNodes(schema.nodes).flatMap(({ node }) => node.objectTypes ?? [])
     const issue = runFieldIssues(types).find((i) => i.level === 'error')
     if (issue) throw new SchemaValidationError('RUN_FIELD_INVALID', issue.message)
+  }
+
+  /**
+   * GH201 — une version porte sur un repo entier : au plus un type de catégorie `version`, déclaré
+   * sur le nœud `root` (pas sur un composant local).
+   */
+  private assertVersionTypes(schema: ProjectSchema): void {
+    const versionTypes = flattenSystemNodes(schema.nodes ?? [])
+      .flatMap(({ node }) => (node.objectTypes ?? []).filter(t => t.category === 'version').map(t => ({ node: node.name, type: t.name })))
+    const misplaced = versionTypes.find(v => v.node !== 'root')
+    if (misplaced) {
+      throw new SchemaValidationError('VERSION_TYPE_INVALID', `Le type version "${misplaced.type}" doit être déclaré sur le nœud racine du repo, pas sur "${misplaced.node}".`)
+    }
+    if (versionTypes.length > 1) {
+      throw new SchemaValidationError('VERSION_TYPE_INVALID', `Un repo n'a qu'un type version (${versionTypes.map(v => v.type).join(', ')}).`)
+    }
+  }
+
+  /**
+   * GH201 — le renommage d'un type (GH100) ne migre pas les versions : tant que `versions/` en
+   * contient, le type version garde son nom et son préfixe, et n'est pas retiré du schéma.
+   */
+  private async assertVersionTypeStable(repoPath: string, schema: ProjectSchema): Promise<void> {
+    const versionTypeOf = (s: ProjectSchema | null) => s?.nodes?.find(n => n.name === 'root')?.objectTypes?.find(t => t.category === 'version')
+    const before = versionTypeOf(await this.get(repoPath).catch(() => null))
+    if (!before) return
+    const after = versionTypeOf(schema)
+    if (after && after.name === before.name && (after.prefix ?? '') === (before.prefix ?? '')) return
+    const entries = await fsP.readdir(path.join(repoPath, 'versions'), { withFileTypes: true }).catch(() => [])
+    const count = entries.filter(e => e.isFile() && e.name.endsWith('.yaml')).length
+    if (count > 0) {
+      throw new SchemaValidationError('VERSION_TYPE_INVALID', `Le type version "${before.name}" a ${count} version(s) : son nom et son préfixe ne se modifient pas et il ne se retire pas.`)
+    }
   }
 
   /**

@@ -393,8 +393,13 @@ export class SyncService {
    * HEAD's tree with that single entry replaced (`git.commit({ tree })` never reads the index), so
    * pending changes — staged or not — stay out of the commit and stay pending. The index entry of
    * `filepath` is moved to the committed blob; the working directory is left to the caller.
+   * GH201 — `beforeRefUpdate` runs on the new commit before the branch moves to it (e.g. tagging
+   * it): if it throws, the branch, the index and the working directory are left untouched.
    */
-  async commitSingleFile(repoPath: string, filepath: string, content: string, message: string): Promise<string> {
+  async commitSingleFile(
+    repoPath: string, filepath: string, content: string, message: string,
+    beforeRefUpdate?: (sha: string) => Promise<void>,
+  ): Promise<string> {
     const branch = await git.currentBranch({ fs, dir: repoPath })
     if (!branch) throw new Error('Detached HEAD — cannot commit')
     const head = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
@@ -404,10 +409,16 @@ export class SyncService {
     const author = await this.auth.getAuthor(repoPath)
     // `ref` must be fully expanded: a bare `int-x` would be written as `.git/int-x`, leaving the
     // branch itself — and HEAD — on the previous commit.
+    const ref = `refs/heads/${branch}`
     const sha = await git.commit({
-      fs, dir: repoPath, message, tree, parent: [head], ref: `refs/heads/${branch}`,
+      fs, dir: repoPath, message, tree, parent: [head], ref,
       author: { name: author.name, email: author.email },
+      noUpdateBranch: !!beforeRefUpdate,
     })
+    if (beforeRefUpdate) {
+      await beforeRefUpdate(sha)
+      await git.writeRef({ fs, dir: repoPath, ref, value: sha, force: true })
+    }
     await git.updateIndex({ fs, dir: repoPath, filepath, oid: blob, add: true })
     return sha
   }
@@ -505,6 +516,7 @@ export class SyncService {
     const remoteUrl = await getRemoteUrl(repoPath, remote)
     if (remoteUrl && !isHttpRemote(remoteUrl)) {
       await execFileAsync('git', ['push', remote], { cwd: repoPath })
+      await this.pushPendingTags(repoPath, remote)
       return
     }
     const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
@@ -516,6 +528,7 @@ export class SyncService {
       remote,
       onAuth: () => credentials ?? undefined,
     }))
+    await this.pushPendingTags(repoPath, remote)
   }
 
   /**
@@ -1234,6 +1247,7 @@ export class SyncService {
     const remoteUrl = await getRemoteUrl(repoPath, remote)
     if (remoteUrl && !isHttpRemote(remoteUrl)) {
       await execFileAsync('git', ['push', remote, branchName], { cwd: repoPath })
+      await this.pushPendingTags(repoPath, remote)
       return
     }
     const credentials = remoteUrl ? await this.auth.getHttpsCredentials(remoteUrl) : null
@@ -1246,6 +1260,59 @@ export class SyncService {
       ref: branchName,
       onAuth: () => credentials ?? undefined,
     }))
+    await this.pushPendingTags(repoPath, remote)
+  }
+
+  /** GH201 — tag d'une version released, poussé au prochain push du repo (`pushPendingTags`). */
+  async queueTagPush(repoPath: string, tag: string): Promise<void> {
+    const file = await pendingTagsFile(repoPath)
+    await this.updatePendingTags(file, tags => tags.includes(tag) ? tags : [...tags, tag])
+  }
+
+  private readonly pendingTagsQueues = new Map<string, Promise<unknown>>()
+
+  /** Lecture-modification-écriture de la liste des tags en attente, sérialisée par fichier. */
+  private updatePendingTags(file: string, fn: (tags: string[]) => string[]): Promise<void> {
+    const prev = this.pendingTagsQueues.get(file) ?? Promise.resolve()
+    const task = async () => {
+      const next = fn(await readPendingTags(file))
+      await fsP.writeFile(file, next.length > 0 ? next.join('\n') + '\n' : '', 'utf-8')
+    }
+    const run = prev.then(task, task)
+    this.pendingTagsQueues.set(file, run.then(() => undefined, () => undefined))
+    return run
+  }
+
+  /**
+   * GH201 — pousse les tags en attente après un push réussi de la branche ; un tag poussé sort de la
+   * liste, un échec le laisse en attente sans faire échouer le push qui vient de réussir.
+   */
+  async pushPendingTags(repoPath: string, remote = 'origin'): Promise<string[]> {
+    const file = await pendingTagsFile(repoPath).catch(() => null)
+    const tags = file ? await readPendingTags(file) : []
+    if (!file || tags.length === 0) return []
+    const remoteUrl = await getRemoteUrl(repoPath, remote)
+    if (!remoteUrl) return []
+    const credentials = isHttpRemote(remoteUrl) ? await this.auth.getHttpsCredentials(remoteUrl) : null
+    const pushed: string[] = []
+    for (const tag of tags) {
+      try {
+        if (!isHttpRemote(remoteUrl)) {
+          await execFileAsync('git', ['push', remote, `refs/tags/${tag}`], { cwd: repoPath })
+        } else {
+          await this.guarded(remoteUrl, true, () => git.push({
+            fs, http, dir: repoPath, remote, ref: `refs/tags/${tag}`, remoteRef: `refs/tags/${tag}`,
+            onAuth: () => credentials ?? undefined,
+          }))
+        }
+        pushed.push(tag)
+      } catch (err) {
+        console.warn(`[sync] Tag ${tag} non poussé (reste en attente) :`, err)
+      }
+    }
+    // Relue : un tag mis en attente pendant le push y reste.
+    if (pushed.length > 0) await this.updatePendingTags(file, current => current.filter(t => !pushed.includes(t)))
+    return pushed
   }
 
   async rebase(repoPath: string, onto: string): Promise<void> {
@@ -1394,6 +1461,21 @@ function repoLabel(remoteUrl: string): string {
   } catch {
     return remoteUrl
   }
+}
+
+/** GH201 — liste locale (non versionnée) des tags à pousser : `<gitdir>/polenta-pending-tags`. */
+async function pendingTagsFile(repoPath: string): Promise<string> {
+  const dotGit = path.join(repoPath, '.git')
+  const stat = await fsP.stat(dotGit)
+  if (stat.isDirectory()) return path.join(dotGit, 'polenta-pending-tags')
+  // Worktree / sous-module : `.git` est un fichier `gitdir: <chemin>`.
+  const gitdir = (await fsP.readFile(dotGit, 'utf-8')).replace(/^gitdir:\s*/, '').trim()
+  return path.join(path.resolve(repoPath, gitdir), 'polenta-pending-tags')
+}
+
+async function readPendingTags(file: string): Promise<string[]> {
+  const text = await fsP.readFile(file, 'utf-8').catch(() => '')
+  return text.split(/\r?\n/).map(t => t.trim()).filter(Boolean)
 }
 
 async function getRemoteUrl(repoPath: string, remote: string): Promise<string | null> {

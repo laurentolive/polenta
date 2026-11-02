@@ -8,9 +8,24 @@
 
 | Sprint | Périmètre |
 |---|---|
-| 1 | Types, schéma (catégorie `version`, règles), `VersionsService` (CRUD, backlog, `base`, page, passage released), `VersionTrackingService` (contenu à un commit, hors interface), push des tags en attente, IPC / api-client / channel-policy, tests unitaires |
+| 1 | Types, schéma (catégorie `version`, règles), `VersionsService` (CRUD, backlog, `base`, page, passage released), `VersionTrackingService` (contenu à un commit, hors interface), push des tags en attente, IPC / api-client / channel-policy, **graphe** (`versions`, `designVersion`, `polenta.d.ts`, manifeste — avancé du sprint 3 : le changement de `GraphObjectCategory` régénère déjà `polenta.d.ts`, un seul cran de manifeste), tests unitaires |
 | 2 | Renderer : « + Version » dans l'onglet Structure, types version masqués du panneau Système, sous-panneau « Produit » du panneau Version, page d'une version, page backlog, sélecteur d'éléments, dialogue de passage released, i18n |
-| 3 | Graphe (`versions`, `designVersion` des exigences, manifeste), `polenta.d.ts`, outils MCP de lecture, mises à jour SPEC |
+| 3 | Outils MCP de lecture, mises à jour SPEC |
+
+### Ajustements du sprint 1 (revue de code)
+
+- `create` sans `basedOn` : dernière version released du repo (pré-remplissage côté service) ; `null` = aucune.
+- Une version figée (`freeze` posé : released, ou abandonnée après l'avoir été) ne revient jamais en
+  cours ; statut inconnu du type refusé (`STATUS_UNKNOWN`).
+- Passage released : le tag est posé sur le commit **avant** que la branche n'avance
+  (`commitSingleFile(…, beforeRefUpdate)`, `noUpdateBranch`) — un échec du tag ne laisse pas de
+  version released sans tag.
+- Liste des tags en attente : lecture-modification-écriture sérialisée, relue après le push.
+- Contrôle `COMPONENT_NOT_RELEASED` sur les dépendances du repo (même résolution que la page).
+- Schéma : le type version d'un repo qui a des versions garde nom et préfixe et ne se retire pas
+  (`VERSION_TYPE_INVALID`) ; suppression en cascade : `HAS_VERSIONS`.
+- `RequirementsIndexService` ne se reconstruit plus sur `versions/<ID>.yaml` (seulement sur les
+  instantanés `versions/<REQ>/vN.yaml`).
 
 ## 2. Types (`packages/types/src/product-version.ts`, exporté par `index.ts`)
 

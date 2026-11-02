@@ -183,6 +183,14 @@
             "fr": "Changeset retiré (GH243) : plus de collection changesets, GraphCampaign sans changeset ni baselineRef",
             "en": "Changeset removed (GH243): no changesets collection, GraphCampaign without changeset or baselineRef"
           }
+        },
+        {
+          "version": 11,
+          "hash": "0262b93ab57fa756b3397c087bc11d75e3b8ce11ceb99a9c3636084b1826e9ac",
+          "summary": {
+            "fr": "GH201 : collection versions (GraphVersion), GraphRequirement.designVersion, catégorie de type version",
+            "en": "GH201: versions collection (GraphVersion), GraphRequirement.designVersion, version type category"
+          }
         }
       ]
     },

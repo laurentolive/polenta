@@ -11,6 +11,8 @@ import { RequirementsService } from '../main/services/requirements.service'
 import { TestsService } from '../main/services/tests.service'
 import { RevalidationService } from '../main/services/revalidation.service'
 import { CampaignsService } from '../main/services/campaigns.service'
+import { VersionTrackingService } from '../main/services/version-tracking.service'
+import { VersionsService } from '../main/services/versions.service'
 import { TraceabilityService } from '../main/services/traceability.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
@@ -34,6 +36,8 @@ export interface McpContainer {
   requirements: RequirementsService
   tests: TestsService
   campaigns: CampaignsService
+  /** GH201 — versions, en lecture seule côté MCP. */
+  versions: VersionsService
   workspaceTree: WorkspaceTreeService
   /** GH16 — exposés pour invalider le cache quand un ID est introuvable (objet créé par
    *  l'app après construction de l'index : ce process n'a pas de RepoWatcherService). */
@@ -120,7 +124,13 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const dashboards = new DashboardsService(git)
   const savedQueries = new SavedQueriesService(git, dashboards)
+  // GH201 — versions : le MCP les lit (aucun outil d'écriture).
+  const versions = new VersionsService(
+    git, sync, schema, new VersionTrackingService(git, schema), history, workspaceTree,
+    (rootRepoPath, wsDir) => revalidation.readonlyRepoPaths(rootRepoPath, wsDir),
+  )
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns, { cache: false })
+  graph.setVersions(versions)
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
   const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
@@ -130,7 +140,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
   return {
-    repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
+    repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, workspaceTree, reqIndex, testsIndex,
     user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters,
   }
 }

@@ -68,6 +68,8 @@ export interface PolentaGraph {
   campaigns: GraphCampaign[]
   /** Toutes les exécutions de test enregistrées (fichiers `test-runs/`), campagne ou non. */
   runs: GraphTestRun[]
+  /** Versions des composants et du produit (fichiers `versions/`, GH201). */
+  versions: GraphVersion[]
 }
 
 export interface GraphRepo {
@@ -97,7 +99,7 @@ export interface GraphSchema {
   campaignStatuses: GraphFixedStatus[]
 }
 
-export type GraphObjectCategory = 'requirement' | 'test' | 'campaign'
+export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'version'
 
 export interface GraphObjectType {
   /** Repo dont le schéma déclare le type. */
@@ -209,6 +211,9 @@ export type GraphCoverageStatus = 'not_covered' | 'covered' | 'validated' | 'fai
 export interface GraphRequirement extends GraphObjectBase {
   /** Indicateur Polenta (matrice de traçabilité). */
   coverageStatus: GraphCoverageStatus
+  /** Statut de design (GH201) : première version released du repo dont l'état figé contient
+   *  l'exigence dans sa `version` courante ; `null` si aucune. */
+  designVersion: string | null
 }
 
 /** Test : pas de pas de test (`steps`) ni de pré / postconditions dans le contrat v1. */
@@ -224,6 +229,34 @@ export interface GraphLink {
   repo: string
   createdAt: string | null
   createdBy: string | null
+}
+
+// ─── Versions ────────────────────────────────────────────────────────────────
+
+/** État d'une version, lu des marques de son type (`isApproval` → released, `isTerminal` → abandoned). */
+export type GraphVersionState = 'in_progress' | 'released' | 'abandoned'
+
+/** Version d'un composant (repo) ou du produit (repo racine), GH201. */
+export interface GraphVersion {
+  id: string
+  repo: string
+  /** Composant de la version : le repo. */
+  component: string
+  objectTypeRef: string
+  /** Label (ex. `1.2.4`). */
+  title: string
+  status: string
+  state: GraphVersionState
+  /** Version précédente du même repo. */
+  basedOn: string | null
+  /** Versions des composants (dépendances du repo), par nom de composant. */
+  components: Record<string, string>
+  /** Éléments inclus ; `base` : état dans la dernière version released qui les incluait. */
+  changes: Array<{ id: string; base: { sha: string; version: number } | null }>
+  /** Tag et commit figés au passage released ; `null` avant. */
+  freeze: { tag: string; sha: string } | null
+  fields: Record<string, unknown>
+  history: ObjectHistory
 }
 
 // ─── Campagnes ───────────────────────────────────────────────────────────────

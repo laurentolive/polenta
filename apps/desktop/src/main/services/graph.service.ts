@@ -2,13 +2,13 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
   CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
-  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun,
+  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphVersion,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
 import {
   RUN_STATUS_ORDER, RUN_STATUS_SEVERITY, effectiveHistory, flattenSystemNodes, hasHistoryGap, historyTimestamp,
-  isApprovalStatus,
+  isApprovalStatus, versionState,
 } from '@polenta/types'
 import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -17,6 +17,7 @@ import type { TraceabilityService } from './traceability.service'
 import { mergeRunsMaps } from './traceability.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { CampaignsService } from './campaigns.service'
+import type { VersionsService } from './versions.service'
 import { isResyncable } from './campaigns.service'
 import type { GitService } from './git.service'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
@@ -63,6 +64,9 @@ interface RawRepo {
   links: ObjectLink[]
   schema: ProjectSchema | null
   campaigns: TestCampaign[]
+  versions: GraphVersion[]
+  /** GH201 — statut de design des exigences du repo. */
+  designVersions: Map<string, string>
 }
 
 /**
@@ -87,6 +91,7 @@ export class GraphService {
   private readonly now: () => Date
   private readonly entries = new Map<string, CacheEntry>()
   private version = 0
+  private versions?: Pick<VersionsService, 'list' | 'versionType' | 'designVersions'>
 
   constructor(
     private readonly reqIndex: RequirementsIndexService,
@@ -100,6 +105,11 @@ export class GraphService {
   ) {
     this.cacheEnabled = options.cache !== false
     this.now = options.now ?? (() => new Date())
+  }
+
+  /** GH201 — versions et statut de design (injectées après construction, comme les autres dépendances tardives). */
+  setVersions(versions: Pick<VersionsService, 'list' | 'versionType' | 'designVersions'>): void {
+    this.versions = versions
   }
 
   /**
@@ -199,7 +209,28 @@ export class GraphService {
       this.schema.get(rp).catch(() => null),
       this.listCampaigns(rp),
     ])
-    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns }
+    const { versions, designVersions } = await this.listVersions(repo)
+    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, versions, designVersions }
+  }
+
+  /** GH201 — versions du repo ; un fichier illisible ne casse pas le graphe (versions ignorées). */
+  private async listVersions(repo: { repoPath: string; name: string }): Promise<{ versions: GraphVersion[]; designVersions: Map<string, string> }> {
+    if (!this.versions) return { versions: [], designVersions: new Map() }
+    try {
+      const [list, vt, designVersions] = await Promise.all([
+        this.versions.list(repo.repoPath), this.versions.versionType(repo.repoPath), this.versions.designVersions(repo.repoPath),
+      ])
+      const versions = list.map((v): GraphVersion => ({
+        id: v.id, repo: repo.name, component: repo.name, objectTypeRef: v.objectTypeRef, title: v.title, status: v.status,
+        state: versionState(vt?.typeDef ?? null, v.status), basedOn: v.basedOn ?? null, components: v.components ?? {},
+        changes: (v.changes ?? []).map((c) => ({ id: c.id, base: c.base ?? null })), freeze: v.freeze ?? null,
+        fields: v.fields ?? {}, history: v.history ?? {},
+      }))
+      return { versions, designVersions }
+    } catch (err) {
+      console.warn(`[graph] versions ignorées pour ${repo.repoPath} :`, err instanceof Error ? err.message : String(err))
+      return { versions: [], designVersions: new Map() }
+    }
   }
 
   /** Un fichier campagne illisible ne casse pas tout le graphe : campagnes du repo ignorées. */
@@ -263,6 +294,7 @@ export class GraphService {
         requirements.push({
           ...objectBase(q, r.name, types, now),
           coverageStatus: coverage.get(q.id)?.coverageStatus ?? 'not_covered',
+          designVersion: r.designVersions.get(q.id) ?? null,
         })
       }
       for (const tc of r.testCases) tests.push(objectBase(tc, r.name, types, now))
@@ -295,6 +327,7 @@ export class GraphService {
       links,
       campaigns,
       runs,
+      versions: perRepo.flatMap((r) => r.versions),
     }
     return {
       graph,

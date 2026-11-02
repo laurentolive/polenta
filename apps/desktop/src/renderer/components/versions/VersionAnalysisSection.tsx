@@ -14,9 +14,9 @@ import { useSectionOpen } from './useVersions'
 const EXPANDED_ROOTS_MAX = 5
 
 /**
- * GH245 §1 — analyse d'impact d'une version : lignes (éléments impactés du composant, statut,
- * commentaire, source), puis les racines et leurs arbres (statut éditable sur les nœuds). Figée et en
- * lecture seule pour une version released.
+ * GH245 §1 — analyse d'impact d'une version : racines et leurs arbres (statut éditable sur les nœuds),
+ * puis les statuts saisis sur des éléments qui ne sont plus atteints. Une analyse figée (version
+ * released) n'a plus d'arbres : ses lignes s'affichent en tableau, en lecture seule.
  */
 export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetImpact, repoPath, repoOfComponent, editable }: {
   analysis: VersionAnalysis | undefined
@@ -42,6 +42,8 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
     ...rows.map(r => [r.id, r.title ?? ''] as [string, string]),
   ])
   const readOnly = !editable || !!analysis?.frozen
+  // Statut saisi sur un élément que les arbres n'atteignent plus : seule trace hors arbres.
+  const unreached = rows.filter(r => !r.reached)
 
   return (
     <section className="flex flex-col gap-2" data-testid="version-analysis">
@@ -73,7 +75,7 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
           : analysis.roots.length === 0 ? <p className="text-xs text-ink-3 italic">{t('versions.analysis.noRoot')}</p>
             : (
               <>
-                {rows.length === 0
+                {analysis.frozen && (rows.length === 0
                   ? <p className="text-xs text-ink-3 italic">{t('versions.analysis.noImpact')}</p>
                   : (
                     <table className="w-full text-xs border-collapse" data-testid="version-impact-rows">
@@ -92,9 +94,9 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
                         ))}
                       </tbody>
                     </table>
-                  )}
+                  ))}
                 {!analysis.frozen && (
-                  <div className="border border-edge-subtle rounded" data-testid="version-impact-roots">
+                  <div className="border border-edge-subtle rounded py-0.5" data-testid="version-impact-roots">
                     {analysis.roots.map(root => (
                       <RootRow
                         key={root.elementId}
@@ -108,6 +110,15 @@ export function VersionAnalysisSection({ analysis, isFetching, onRefresh, onSetI
                       />
                     ))}
                   </div>
+                )}
+                {!analysis.frozen && unreached.length > 0 && (
+                  <table className="w-full text-xs border-collapse" data-testid="version-impact-rows">
+                    <tbody>
+                      {unreached.map(r => (
+                        <ImpactRow key={r.id} row={r} readOnly={readOnly} titleOf={titleOf} onOpen={openElement} onSetImpact={onSetImpact} />
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </>
             )
@@ -188,12 +199,12 @@ function RootRow({ root, repoPath, rootRepo, defaultExpanded, readOnly, onOpen, 
   const openNode = (n: ImpactNode) => onOpen(n.elementType, n.elementId, n.repo?.path ?? repoPath)
   return (
     <div className="border-b border-edge-subtle last:border-b-0" data-testid={`version-impact-root-${root.elementId}`}>
-      <div className="flex items-center gap-2 px-3 py-1.5 text-sm">
+      <div className="flex items-center gap-1.5 py-0.5 text-sm">
         {hasTrees ? (
           <button type="button" onClick={() => setExpanded(e => !e)} className="text-ink-3 shrink-0" aria-label={expanded ? t('versions.collapse') : t('versions.expand')}>
-            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
           </button>
-        ) : <span className="w-[13px] shrink-0" />}
+        ) : <span className="w-[10px] shrink-0" />}
         <span className="font-mono text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0">{root.elementType === 'requirement' ? 'EX' : 'TC'}</span>
         <button type="button" onClick={() => onOpen(root.elementType, root.elementId, rootRepo)} className="font-mono text-ink font-medium hover:underline">{root.elementId}</button>
         <span className="text-ink-2 truncate flex-1">{root.title}</span>
@@ -201,10 +212,10 @@ function RootRow({ root, repoPath, rootRepo, defaultExpanded, readOnly, onOpen, 
         {!hasTrees && <span className="text-xs text-ink-3">{t('versions.analysis.noImpact')}</span>}
       </div>
       {expanded && hasTrees && (
-        <div className="pb-1">
-          <ImpactTreeView nodes={root.descendantTree} repoPath={repoPath} onOpen={openNode} onUpdateStatus={onUpdateStatus} depth={1} readOnly={readOnly} />
+        <div>
+          <ImpactTreeView nodes={root.descendantTree} repoPath={repoPath} onOpen={openNode} onUpdateStatus={onUpdateStatus} depth={1} readOnly={readOnly} dense />
           {root.ascendantTree.length > 0 && (
-            <ImpactTreeView nodes={root.ascendantTree} repoPath={repoPath} onOpen={openNode} onUpdateStatus={onUpdateStatus} depth={1} readOnly={readOnly} />
+            <ImpactTreeView nodes={root.ascendantTree} repoPath={repoPath} onOpen={openNode} onUpdateStatus={onUpdateStatus} depth={1} readOnly={readOnly} dense />
           )}
         </div>
       )}

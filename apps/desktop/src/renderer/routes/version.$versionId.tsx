@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { Lock, Plus, Tag } from 'lucide-react'
+import { ChevronDown, ChevronRight, Lock, Plus, Tag } from 'lucide-react'
 import type { UpdateVersionDto } from '@polenta/types'
 import { fieldValueToText } from '@polenta/types'
 import { api } from '../api'
@@ -12,7 +12,7 @@ import { useSetTabTitle } from '../contexts/TabsContext'
 import { VersionChangesTable } from '../components/versions/VersionChangesTable'
 import { VersionElementPicker } from '../components/versions/VersionElementPicker'
 import { ReleaseVersionDialog } from '../components/versions/ReleaseVersionDialog'
-import { STATE_BADGE, statusLabel, useInvalidateVersions, useVersionImpact, useVersionPage, useVersionTree, versionErrorText } from '../components/versions/useVersions'
+import { STATE_BADGE, statusLabel, useInvalidateVersions, useSectionOpen, useVersionImpact, useVersionPage, useVersionTree, versionErrorText } from '../components/versions/useVersions'
 import { VersionAnalysisSection } from '../components/versions/VersionAnalysisSection'
 import { VersionTestsSection } from '../components/versions/VersionTestsSection'
 
@@ -35,6 +35,9 @@ function VersionPage() {
   const invalidate = useInvalidateVersions()
   // GH245 — analyse d'impact et tests à exécuter (pas pour une version abandonnée).
   const impactQuery = useVersionImpact(repoPath, versionId, projectId, !!page && page.state !== 'abandoned')
+  // Sections repliables, état mémorisé par poste (comme l'analyse et les tests).
+  const [componentsOpen, setComponentsOpen] = useSectionOpen('components')
+  const [changesOpen, setChangesOpen] = useSectionOpen('changes')
   // Repo de chaque composant (racines de l'analyse portées par un composant).
   const { data: tree } = useVersionTree(projectId)
   const repoOfComponent = useMemo(() => {
@@ -163,8 +166,8 @@ function VersionPage() {
 
         {page.components.length > 0 && (
           <section className="flex flex-col gap-2">
-            <h3 className="section-label">{t('versions.components')}</h3>
-            <table className="text-xs border-collapse max-w-3xl" data-testid="version-components">
+            <SectionToggle open={componentsOpen} onToggle={() => setComponentsOpen(o => !o)} label={t('versions.components')} count={page.components.length} testId="version-components-toggle" />
+            {componentsOpen && <table className="text-xs border-collapse max-w-3xl" data-testid="version-components">
               <tbody>
                 {page.components.map(c => (
                   <tr key={c.name} className="border-b border-edge-subtle">
@@ -192,24 +195,26 @@ function VersionPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table>}
           </section>
         )}
 
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
-            <h3 className="section-label">{t('versions.page.changes')}</h3>
-            {editable && (
+            <SectionToggle open={changesOpen} onToggle={() => setChangesOpen(o => !o)} label={t('versions.page.changes')} count={page.rows.length} testId="version-changes-toggle" />
+            {editable && changesOpen && (
               <button type="button" onClick={() => setPicking(true)} className="btn-secondary-sm flex items-center gap-1" data-testid="version-add">
                 <Plus size={12} />{t('versions.page.add')}
               </button>
             )}
           </div>
-          <VersionChangesTable
-            rows={page.rows}
-            projectId={projectId}
-            onRemove={editable ? id => void run(() => api.versions.removeChanges(repoPath, versionId, [id], workspaceDir || undefined)) : undefined}
-          />
+          {changesOpen && (
+            <VersionChangesTable
+              rows={page.rows}
+              projectId={projectId}
+              onRemove={editable ? id => void run(() => api.versions.removeChanges(repoPath, versionId, [id], workspaceDir || undefined)) : undefined}
+            />
+          )}
         </section>
 
         {state !== 'abandoned' && (
@@ -239,5 +244,16 @@ function VersionPage() {
       )}
       {releasing && <ReleaseVersionDialog repoPath={repoPath} version={version} workspaceDir={workspaceDir} onClose={() => setReleasing(false)} />}
     </div>
+  )
+}
+
+/** En-tête repliable d'une section de la page (même présentation que l'analyse et les tests). */
+function SectionToggle({ open, onToggle, label, count, testId }: { open: boolean; onToggle: () => void; label: string; count: number; testId: string }) {
+  return (
+    <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-1 section-label hover:text-ink self-start" data-testid={testId}>
+      {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+      {label}
+      <span className="font-normal text-ink-3 normal-case">({count})</span>
+    </button>
   )
 }

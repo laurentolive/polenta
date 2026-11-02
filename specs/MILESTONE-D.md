@@ -31,8 +31,8 @@ Les quatre servent des fonctions de Polenta (vue Validation, reflets) : calculé
 
 > **Livré par #201** (`specs/GH201.md`, SPEC-REQ §11), hors analyse / tests à exécuter / campagnes
 > (#245) et issues (#244). Écarts tranchés : une version **par repo** (pas de version propre pour un
-> composant local), tag `<repo>-<label>` poussé au prochain push, une seule version en cours par repo,
-> abandon définitif.
+> composant local), tag `<repo>-<label>` poussé au prochain push, plusieurs versions en cours par repo
+> (ordre des livraisons : `freeze.at`), abandon définitif, copie et suppression des versions non figées.
 
 ### 3.1 Objet
 

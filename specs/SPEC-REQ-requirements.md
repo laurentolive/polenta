@@ -715,17 +715,21 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   renommage de type GH100 ne migre pas les versions) et ne se supprime pas (`HAS_VERSIONS`).
 - Fichier `versions/<ID>.yaml` (IDs GH20, `history` GH77) ; champs système `basedOn` (version
   précédente du repo), `components` (versions des dépendances `polenta-repo.yaml`, par nom de
-  montage), `changes` (`{ id, base?: { sha, version } }`), `freeze` (`{ tag, sha }`, au passage
+  montage), `changes` (`{ id, base?: { sha, version } }`), `freeze` (`{ tag, sha, at }`, au passage
   released). Le label est le `title`, unique parmi les versions non abandonnées du repo. Les composants
   locaux (nœuds enfants) n'ont pas de versions propres. Le dossier historique `versions/<REQ>/vN.yaml`
   (instantanés d'exigence) est distinct.
 
 ### 11.2 Cycle de vie
 
-- **Une seule version en cours par repo** ; création : `basedOn` = dernière released (absent),
-  `components` pré-remplis avec la dernière released de chaque dépendance (interface).
-- **Abandon définitif** : une version abandonnée ne revient pas en cours (l'ordre des ID est l'ordre
-  des livraisons).
+- **Plusieurs versions en cours** par repo ; création : `basedOn` = dernière released (absent),
+  `components` pré-remplis avec la dernière released de chaque dépendance (interface). L'ordre des
+  livraisons est la date de gel (`freeze.at`, puis l'ID pour un fichier sans date).
+- **Abandon définitif** : une version abandonnée ne revient pas en cours.
+- **Copie** : nouvelle version en cours dans le même repo, mêmes `basedOn`, `components`, `fields` et
+  éléments inclus (`base` recalculée), sans `freeze` ; label suffixé « (copie) ».
+- **Suppression** : version jamais figée (en cours, ou abandonnée sans avoir été released), pierre
+  tombale GH20 ; refusée sinon (`VERSION_LOCKED`) : une version figée porte un tag, on l'abandonne.
 - **Passage released** (action dédiée, jamais par un simple changement de statut) : refus si le tag
   est invalide ou existe, si une version de `components` n'est pas released, si un élément inclus a
   des modifications non commitées, ou si le repo est en lecture seule. Sinon `freeze.sha` = HEAD,
@@ -737,14 +741,15 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 
 ### 11.3 Backlog et changements
 
-- **Backlog** (calculé) d'un repo : exigences et tests hors version en cours, **jamais inclus** dans une
+- **Backlog** (calculé) d'un repo : exigences et tests hors versions en cours, **jamais inclus** dans une
   version released (hors statut terminal) ou **modifiés** depuis l'état figé (`freeze.sha`) de la
   dernière version released qui les incluait — comparaison du YAML hors `history`,
   `needsRevalidation`. Approuvés modifiés hors interface (GH200 §5) signalés.
-- Inclusion depuis le backlog ou « Ajouter » (tout élément du repo, même inchangé) ; `base` = état
+- Inclusion depuis le backlog (version cible choisie parmi celles en cours) ou « Ajouter » (tout
+  élément du repo, même inchangé) ; `base` = état
   dans la dernière version released qui l'incluait. Retrait possible tant que la version est en cours.
 - **Page** : changements de la version, puis ceux des versions de chaque dépendance entre celle de
   `basedOn` (exclue, si elle est un ancêtre) et celle retenue ; « Voir les modifications » = diff
   générique `base` → `freeze.sha` (ou disque si en cours).
-- **Statut de design** d'une exigence (MILESTONE-D §2) : première version released (ID croissant)
+- **Statut de design** d'une exigence (MILESTONE-D §2) : première version released (ordre des livraisons)
   dont l'état figé contient l'exigence dans sa `version` courante — graphe `designVersion`.

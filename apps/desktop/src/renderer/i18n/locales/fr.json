@@ -2274,14 +2274,12 @@
     },
     "new": {
       "title": "Nouvelle version",
-      "confirm": "Créer",
-      "inProgressExists": "Une version est déjà en cours ({{id}})"
+      "confirm": "Créer"
     },
     "backlog": {
       "title": "Backlog",
       "subtitle_one": "{{count}} changement jamais inclus dans une version",
       "subtitle_other": "{{count}} changements jamais inclus dans une version",
-      "include": "Inclure dans {{version}} ({{count}})",
       "includeAll": "Tout inclure",
       "noInProgress": "Aucune version en cours : créez-en une pour inclure des changements.",
       "empty": "Aucun changement à inclure.",
@@ -2292,7 +2290,9 @@
       },
       "outside": "modifié hors interface",
       "outsideHint": "Élément approuvé dont le contenu a changé sans réouverture (git direct, autre outil).",
-      "changeBacklog": "Backlog des changements"
+      "changeBacklog": "Backlog des changements",
+      "target": "Version cible",
+      "includeSelected": "Inclure la sélection ({{count}})"
     },
     "columns": {
       "component": "Composant",
@@ -2324,7 +2324,6 @@
     },
     "errors": {
       "NO_VERSION_TYPE": "Pas de type version utilisable ({{detail}})",
-      "IN_PROGRESS_EXISTS": "Une version est déjà en cours : {{detail}}",
       "LABEL_TAKEN": "Label déjà utilisé : {{detail}}",
       "LABEL_EMPTY": "Le label est obligatoire",
       "VERSION_LOCKED": "Version released : verrouillée ({{detail}})",
@@ -2338,9 +2337,23 @@
       "VERSION_NOT_FOUND": "Version introuvable : {{detail}}",
       "STATUS_UNKNOWN": "Statut inconnu : {{detail}}"
     },
-    "versionsTitle": "Versions",
     "noVersion": "Aucune version.",
     "expand": "Afficher les composants",
-    "collapse": "Masquer les composants"
+    "collapse": "Masquer les composants",
+    "noTypeHelp": "Ce composant n'a pas encore de type version. Pour y créer des versions, ouvrez le modèle de données et, sur la ligne de ce composant, choisissez « + » puis « + Version ».",
+    "noTypeReadonly": "Ce composant est en lecture seule (épinglé sur un commit ou un tag) : son modèle de données se modifie sur une branche de son repo.",
+    "openSchema": "Ouvrir le modèle de données",
+    "menu": {
+      "copy": "Copier",
+      "paste": "Coller",
+      "pasteHint": "Coller {{version}}",
+      "delete": "Supprimer",
+      "deleteReleased": "Supprimer (impossible : version released)"
+    },
+    "delete": {
+      "title": "Supprimer la version",
+      "confirm": "Supprimer",
+      "body": "Supprimer définitivement la version {{version}} ? Son ID ne sera jamais réutilisé. Les éléments qu'elle incluait retournent au backlog."
+    }
   }
 }

@@ -109,11 +109,12 @@ async function releaseAll(dir: string, title: string, tag: string, components?: 
 }
 
 describe('création et cycle de vie', () => {
-  it('N2 — Nouvelle version : fichier, ID, statut initial ; L2 — une seule en cours', async () => {
+  it('N2 — Nouvelle version : fichier, ID, statut initial ; plusieurs en cours à la fois', async () => {
     const v = await versions.create(root, { title: '1.0' })
     expect(v).toMatchObject({ id: 'PV-0001', objectTypeRef: 'root::version', title: '1.0', status: 'en_cours', changes: [] })
     expect(await gitSvc.fileExists(root, 'versions/PV-0001.yaml')).toBe(true)
-    expect(await code(versions.create(root, { title: '1.1' }))).toBe('IN_PROGRESS_EXISTS')
+    expect((await versions.create(root, { title: '1.1' })).status).toBe('en_cours')
+    expect(await code(versions.create(root, { title: '1.1' }))).toBe('LABEL_TAKEN')
   })
 
   it('L3 — label pris, repris après abandon', async () => {
@@ -310,6 +311,66 @@ describe('page', () => {
     expect(m2.freeze).toBeDefined()
     expect(page.components).toEqual([expect.objectContaining({ name: 'moteur', selected: expect.objectContaining({ id: m3.id }) })])
     expect(page.basedOn?.id).toBe(p1.id)
+  })
+})
+
+describe('plusieurs versions en cours', () => {
+  it('un élément inclus dans n\'importe quelle version en cours sort du backlog', async () => {
+    await writeReq(root, 'PR-0001')
+    await writeReq(root, 'PR-0002')
+    await versions.create(root, { title: '1.0' })
+    const b = await versions.create(root, { title: '2.0' })
+    await versions.include(root, b.id, ['PR-0002'])
+    expect(await backlogIds(root)).toEqual(['PR-0001:new'])
+  })
+
+  it('les livraisons se suivent par date de gel, pas par ID', async () => {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const first = await versions.create(root, { title: 'A' })
+    const second = await versions.create(root, { title: 'B' })
+    await versions.include(root, second.id, ['PR-0001'])
+    await versions.release(root, second.id, 'tag-b')
+    await writeReq(root, 'PR-0001', { title: 'modifiée' })
+    await commitAll(root, 'modification')
+    expect(await backlogIds(root)).toEqual(['PR-0001:modified'])
+    await versions.include(root, first.id, ['PR-0001'])
+    await new Promise(r => setTimeout(r, 5))
+    const released = await versions.release(root, first.id, 'tag-a')
+    expect(released.freeze?.at).toBeTruthy()
+    // La plus ancienne par ID est la dernière livrée : elle fait référence.
+    expect(await backlogIds(root)).toEqual([])
+    expect((await versions.create(root, { title: 'C' })).basedOn).toBe(first.id)
+  })
+})
+
+describe('suppression et copie', () => {
+  it('supprime une version en cours (ID jamais réutilisé) ; pas une version figée', async () => {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001'])
+    await versions.delete(root, v.id)
+    expect(await gitSvc.fileExists(root, `versions/${v.id}.yaml`)).toBe(false)
+    expect(await backlogIds(root)).toEqual(['PR-0001:new'])
+    expect((await versions.create(root, { title: '1.1' })).id).toBe('PV-0002')
+    await versions.update(root, 'PV-0002', { status: 'abandonnee' })
+    await versions.delete(root, 'PV-0002')   // abandonnée sans avoir été livrée : supprimable
+    const r = await releaseAll(root, '1.2', 'produit-1.2')
+    expect(await code(versions.delete(root, r.id))).toBe('VERSION_LOCKED')
+    await versions.update(root, r.id, { status: 'abandonnee' })
+    expect(await code(versions.delete(root, r.id))).toBe('VERSION_LOCKED')   // porte un tag
+  })
+
+  it('copie : nouvelle version en cours, mêmes changements, sans gel ; label unique', async () => {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const r = await releaseAll(root, '1.0', 'produit-1.0')
+    const c1 = await versions.copy(root, r.id)
+    expect(c1).toMatchObject({ title: '1.0 (copie)', status: 'en_cours', changes: [{ id: 'PR-0001', base: { sha: r.freeze!.sha, version: 1 } }] })
+    expect(c1.freeze).toBeUndefined()
+    expect(c1.id).not.toBe(r.id)
+    expect((await versions.copy(root, r.id)).title).toBe('1.0 (copie 2)')
   })
 })
 

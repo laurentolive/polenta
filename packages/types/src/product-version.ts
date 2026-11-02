@@ -20,6 +20,8 @@ export interface VersionChange {
 export interface VersionFreeze {
   tag: string
   sha: string
+  /** Instant du passage released : ordre des livraisons (plusieurs versions peuvent être en cours). */
+  at?: string
 }
 
 export interface ProductVersion {
@@ -138,7 +140,7 @@ export interface UpdateVersionDto {
 }
 
 export type VersionErrorCode =
-  | 'NO_VERSION_TYPE' | 'IN_PROGRESS_EXISTS' | 'LABEL_TAKEN' | 'LABEL_EMPTY' | 'VERSION_LOCKED'
+  | 'NO_VERSION_TYPE' | 'LABEL_TAKEN' | 'LABEL_EMPTY' | 'VERSION_LOCKED'
   | 'NOT_IN_PROGRESS' | 'RELEASE_REQUIRED' | 'TAG_INVALID' | 'TAG_EXISTS' | 'COMPONENT_NOT_RELEASED'
   | 'DIRTY_CHANGES' | 'READONLY_REPO' | 'VERSION_NOT_FOUND' | 'STATUS_UNKNOWN'
 
@@ -153,7 +155,7 @@ export interface VersionReleasePreview {
 }
 
 export const VERSION_ERROR_CODES: readonly VersionErrorCode[] = [
-  'NO_VERSION_TYPE', 'IN_PROGRESS_EXISTS', 'LABEL_TAKEN', 'LABEL_EMPTY', 'VERSION_LOCKED',
+  'NO_VERSION_TYPE', 'LABEL_TAKEN', 'LABEL_EMPTY', 'VERSION_LOCKED',
   'NOT_IN_PROGRESS', 'RELEASE_REQUIRED', 'TAG_INVALID', 'TAG_EXISTS', 'COMPONENT_NOT_RELEASED',
   'DIRTY_CHANGES', 'READONLY_REPO', 'VERSION_NOT_FOUND', 'STATUS_UNKNOWN',
 ]

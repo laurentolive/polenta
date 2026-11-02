@@ -35,16 +35,19 @@ function BacklogPage() {
     enabled: !!repoPath,
   })
   const invalidate = useInvalidateVersions()
-  const inProgress = versions.find(v => v.state === 'in_progress')
+  // Versions pouvant recevoir des changements, la plus récente d'abord ; aucune n'est imposée.
+  const inProgress = useMemo(() => versions.filter(v => v.state === 'in_progress').reverse(), [versions])
+  const [chosenTarget, setChosenTarget] = useState<string | null>(null)
+  const target = inProgress.find(v => v.id === chosenTarget) ?? inProgress[0]
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const visibleSelected = useMemo(() => items.filter(i => selected.has(i.id)).map(i => i.id), [items, selected])
 
   const include = async (ids: string[]) => {
-    if (!inProgress || ids.length === 0) return
+    if (!target || ids.length === 0) return
     setError(null)
     try {
-      await api.versions.include(repoPath, inProgress.id, ids, workspaceDir || undefined)
+      await api.versions.include(repoPath, target.id, ids, workspaceDir || undefined)
       setSelected(new Set())
       await invalidate()
     } catch (err) {
@@ -66,10 +69,16 @@ function BacklogPage() {
         currentProjectId={projectId}
         title={t('versions.backlog.title')}
         subtitle={t('versions.backlog.subtitle', { count: items.length })}
-        actions={inProgress ? (
+        actions={target ? (
           <>
+            <label className="flex items-center gap-2 text-xs text-ink-2">
+              {t('versions.backlog.target')}
+              <select value={target.id} onChange={e => setChosenTarget(e.target.value)} className="input-field text-xs py-1" data-testid="backlog-target">
+                {inProgress.map(v => <option key={v.id} value={v.id}>{v.title} ({v.id})</option>)}
+              </select>
+            </label>
             <button type="button" onClick={() => void include(visibleSelected)} disabled={visibleSelected.length === 0} className="btn-secondary-sm" data-testid="backlog-include">
-              {t('versions.backlog.include', { version: `${inProgress.title} (${inProgress.id})`, count: visibleSelected.length })}
+              {t('versions.backlog.includeSelected', { count: visibleSelected.length })}
             </button>
             <button type="button" onClick={() => void include(items.map(i => i.id))} disabled={items.length === 0} className="btn-primary-sm" data-testid="backlog-include-all">
               {t('versions.backlog.includeAll')}
@@ -90,7 +99,7 @@ function BacklogPage() {
                     type="checkbox"
                     checked={visibleSelected.length === items.length}
                     onChange={e => setSelected(e.target.checked ? new Set(items.map(i => i.id)) : new Set())}
-                    disabled={!inProgress}
+                    disabled={!target}
                   />
                 </th>
                 <th className="py-1 pr-3 font-medium">{t('versions.columns.id')}</th>
@@ -104,7 +113,7 @@ function BacklogPage() {
             <tbody>
               {items.map(i => (
                 <tr key={i.id} className="border-b border-edge-subtle" data-testid={`backlog-row-${i.id}`}>
-                  <td className="py-1 pr-2"><input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(i.id)} disabled={!inProgress} /></td>
+                  <td className="py-1 pr-2"><input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(i.id)} disabled={!target} /></td>
                   <td className="py-1 pr-3"><button type="button" onClick={() => openElement(i)} className="text-prim hover:underline font-mono">{i.id}</button></td>
                   <td className="py-1 pr-3 text-ink">{i.title}</td>
                   <td className="py-1 pr-3 text-ink-2">{t(`versions.category.${i.category}`)}</td>

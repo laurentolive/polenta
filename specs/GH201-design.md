@@ -45,6 +45,13 @@
   (`isProductVersionsPath`) ; cache des widgets Suivi invalidé sur `versions/`.
 - Non traité (assumé) : `versions:tree` calcule le backlog complet de chaque repo pour le compteur.
 
+### Ajustements après validation (PH2)
+
+- Contrainte « une version en cours » retirée (`IN_PROGRESS_EXISTS` supprimé) ; `releasedInOrder` trie
+  par `freeze.at` puis ID, utilisé par le backlog, `basedOn` par défaut et le statut de design.
+- Nouveaux canaux `versions:copy`, `versions:delete` ; menu contextuel `NodeContextMenu` réutilisé.
+- `freeze.at` reste hors du contrat du graphe (`{ tag, sha }`), manifeste inchangé.
+
 ## 2. Types (`packages/types/src/product-version.ts`, exporté par `index.ts`)
 
 ```ts

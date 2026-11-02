@@ -1396,7 +1396,7 @@ par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, 
 | `/version-diff?projectId` | Comparaison d'un fichier entre deux refs choisies dans le panneau Version — même vue de diff Raw / Rendu (GH178) | Version |
 | `/versions?projectId` | **Produit** (GH201) — accueil du sous-panneau Produit du panneau Version | Version |
 | `/version/$versionId?projectId&repoPath` | **Page d'une version** (GH201, SPEC-REQ §11) : label, statut, version précédente, champs, composants, changements (diff, Retirer, Ajouter), passage released | Version |
-| `/versions/backlog?projectId&repoPath` | **Backlog** d'un composant (GH201) : changements jamais inclus dans une version, inclusion dans la version en cours | Version |
+| `/versions/backlog?projectId&repoPath` | **Backlog** d'un composant (GH201) : changements jamais inclus dans une version, inclusion dans une version en cours choisie | Version |
 | `/merge-resolve?id&projectId` | **Résolution des conflits** d'un merge (GH37) — session `id` (`merge-resolution:*`), ouverte dans son propre onglet « Conflits — <repo> » depuis Publier, la vue graphe ou Rafraîchir ; en-tête propre (pas de `ViewHeader`, donc pas de bouton Publier pendant la résolution) | — |
 | `/branch/new` | Formulaire nouvelle branche | Version |
 | `/product?projectId&tab&repo&node&type&category&view&item` | **Panel Produit** — liste exigences / tests / campagnes selon tab ; `view` (`excel`/`word`/`edit`) et `item` (objectId édité ou ciblé) : page de la vue système dans l'URL (GH228, cf. `SPEC-SYSTEM-VIEW` §Persistance) | Produit |
@@ -1539,10 +1539,13 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >   sections `px-2 py-1`, ligne de fichier `h-5` (20 px).
 > - **GH201 — sous-panneau « Produit »** (icône paquet du header) : sur `/versions`,
 >   `/versions/backlog` et `/version/<ID>` (`isProductVersionsPath`), le corps du panneau est
->   `ProductVersionsPanel` : arbre des repos (logique du workspace), versions de chacun (pastille
->   d'état, abandonnées masquées par défaut), « Backlog (n) », « + » Nouvelle version (désactivé si
->   une version est en cours ; absent en lecture seule ou sans type version). Ces routes ouvrent le
->   panneau Version (`deducePanel`). SPEC-REQ §11.
+>   `ProductVersionsPanel` : composant (repo) choisi en liste déroulante (`ComponentTypeCombobox`,
+>   dernier choix mémorisé par poste) avec « + » Nouvelle version (absent en lecture seule ou sans type
+>   version), case « abandonnées » dessous, « Backlog des changements (n) », puis les versions du
+>   composant, chacune dépliable sur la structure de ses composants (cube, label, version à droite ;
+>   clic : ouvre ce composant à cette version ; « Pas de type version » le cas échéant). Clic droit sur
+>   une version : Copier, Coller, Supprimer. Composant sans type version : message renvoyant au modèle
+>   de données. Ces routes ouvrent le panneau Version (`deducePanel`). SPEC-REQ §11.
 > - **Contenu piloté par la route** : `/version-diff` → sélecteur de comparaison ; `/baseline` →
 >   liste des baselines (`BaselineListPanel` : filtre tag/message, dépliage sur place des tags
 >   composants, suppression avec confirmation) ; sinon → arbre des repos. La vue `/baseline` est

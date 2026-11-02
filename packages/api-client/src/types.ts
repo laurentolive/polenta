@@ -761,6 +761,8 @@ export interface ApiClient {
     backlog(repoPath: string): Promise<VersionBacklogItem[]>
     create(repoPath: string, dto: CreateVersionDto, workspaceDir?: string): Promise<ProductVersion>
     update(repoPath: string, id: string, dto: UpdateVersionDto, workspaceDir?: string): Promise<ProductVersion>
+    copy(repoPath: string, id: string, workspaceDir?: string): Promise<ProductVersion>
+    delete(repoPath: string, id: string, workspaceDir?: string): Promise<void>
     include(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>
     removeChanges(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>
     /** `tag` : tag saisi, contrôlé avec le reste (absent : le tag proposé). */

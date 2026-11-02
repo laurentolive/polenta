@@ -97,6 +97,8 @@ export const WEB_HIDDEN: Record<string, string> = {
   'versions:remove-changes': 'GH201 — client web abandonné (2026-10-30)',
   'versions:release-preview': 'GH201 — client web abandonné (2026-10-30)',
   'versions:release': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:copy': 'GH201 — client web abandonné (2026-10-30)',
+  'versions:delete': 'GH201 — client web abandonné (2026-10-30)',
 }
 
 /**
@@ -161,6 +163,7 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'versions:tree': [0, 1], 'versions:list': [0], 'versions:get': [0, 2], 'versions:backlog': [0],
   'versions:create': [0, 2], 'versions:update': [0, 3], 'versions:include': [0, 3],
   'versions:remove-changes': [0, 3], 'versions:release-preview': [0, 2], 'versions:release': [0, 3],
+  'versions:copy': [0, 2], 'versions:delete': [0, 2],
   'web:execution-sheet-export': [0], 'web:execution-sheet-preview': [0], 'web:export': [0],
   'web:image-import': [0], 'workspace:create-from-clone': [0], 'workspace:create-new': [0],
   'workspace:create-on-server': [0], 'forge:repo-access': [0], 'forge:org-members': [0],

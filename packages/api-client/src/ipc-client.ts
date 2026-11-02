@@ -271,6 +271,8 @@ export function createIpcClient(
       backlog: (p) => invoke('versions:backlog', p),
       create: (p, dto, workspaceDir) => invoke('versions:create', p, dto, workspaceDir ?? null),
       update: (p, id, dto, workspaceDir) => invoke('versions:update', p, id, dto, workspaceDir ?? null),
+      copy: (p, id, workspaceDir) => invoke('versions:copy', p, id, workspaceDir ?? null),
+      delete: (p, id, workspaceDir) => invoke('versions:delete', p, id, workspaceDir ?? null),
       include: (p, id, elementIds, workspaceDir) => invoke('versions:include', p, id, elementIds, workspaceDir ?? null),
       removeChanges: (p, id, elementIds, workspaceDir) => invoke('versions:remove-changes', p, id, elementIds, workspaceDir ?? null),
       releasePreview: (p, id, workspaceDir, tag) => invoke('versions:release-preview', p, id, workspaceDir ?? null, tag ?? null),

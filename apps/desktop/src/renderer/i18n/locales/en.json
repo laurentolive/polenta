@@ -2274,14 +2274,12 @@
     },
     "new": {
       "title": "New version",
-      "confirm": "Create",
-      "inProgressExists": "A version is already in progress ({{id}})"
+      "confirm": "Create"
     },
     "backlog": {
       "title": "Backlog",
       "subtitle_one": "{{count}} change never included in a version",
       "subtitle_other": "{{count}} changes never included in a version",
-      "include": "Include in {{version}} ({{count}})",
       "includeAll": "Include all",
       "noInProgress": "No version in progress: create one to include changes.",
       "empty": "No change to include.",
@@ -2292,7 +2290,9 @@
       },
       "outside": "modified outside the app",
       "outsideHint": "Approved element whose content changed without being reopened (direct git, another tool).",
-      "changeBacklog": "Change backlog"
+      "changeBacklog": "Change backlog",
+      "target": "Target version",
+      "includeSelected": "Include selection ({{count}})"
     },
     "columns": {
       "component": "Component",
@@ -2324,7 +2324,6 @@
     },
     "errors": {
       "NO_VERSION_TYPE": "No usable version type ({{detail}})",
-      "IN_PROGRESS_EXISTS": "A version is already in progress: {{detail}}",
       "LABEL_TAKEN": "Label already used: {{detail}}",
       "LABEL_EMPTY": "The label is required",
       "VERSION_LOCKED": "Released version: locked ({{detail}})",
@@ -2338,9 +2337,23 @@
       "VERSION_NOT_FOUND": "Version not found: {{detail}}",
       "STATUS_UNKNOWN": "Unknown status: {{detail}}"
     },
-    "versionsTitle": "Versions",
     "noVersion": "No version.",
     "expand": "Show components",
-    "collapse": "Hide components"
+    "collapse": "Hide components",
+    "noTypeHelp": "This component has no version type yet. To create versions, open the data model and, on this component's row, choose \"+\" then \"+ Version\".",
+    "noTypeReadonly": "This component is read-only (pinned to a commit or a tag): its data model is changed on a branch of its repo.",
+    "openSchema": "Open the data model",
+    "menu": {
+      "copy": "Copy",
+      "paste": "Paste",
+      "pasteHint": "Paste {{version}}",
+      "delete": "Delete",
+      "deleteReleased": "Delete (not possible: released version)"
+    },
+    "delete": {
+      "title": "Delete the version",
+      "confirm": "Delete",
+      "body": "Permanently delete version {{version}}? Its ID will never be reused. The elements it included go back to the backlog."
+    }
   }
 }

@@ -187,7 +187,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
-  'versions:create', 'versions:update', 'versions:include', 'versions:remove-changes', 'versions:release',
+  'versions:create', 'versions:update', 'versions:copy', 'versions:delete', 'versions:include', 'versions:remove-changes', 'versions:release',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
   'sync:pull', 'sync:pull-fast-forward-only', 'sync:fast-forward-branch', 'sync:checkout-commit', 'sync:checkout-branch',
@@ -587,6 +587,10 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.versions.create(repoPath, dto as import('@polenta/types').CreateVersionDto, workspaceDir ?? undefined))
   r.handle('versions:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.versions.update(repoPath, id, dto as import('@polenta/types').UpdateVersionDto, workspaceDir ?? undefined))
+  r.handle('versions:copy', (_e, repoPath: string, id: string, workspaceDir?: string) =>
+    c.versions.copy(repoPath, id, workspaceDir ?? undefined))
+  r.handle('versions:delete', (_e, repoPath: string, id: string, workspaceDir?: string) =>
+    c.versions.delete(repoPath, id, workspaceDir ?? undefined))
   r.handle('versions:include', (_e, repoPath: string, id: string, elementIds: string[], workspaceDir?: string) =>
     c.versions.include(repoPath, id, elementIds, workspaceDir ?? undefined))
   r.handle('versions:remove-changes', (_e, repoPath: string, id: string, elementIds: string[], workspaceDir?: string) =>

@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Inbox, Lock, Package, Plus } from 'lucide-react'
 import type { VersionComponentNode, VersionSummary } from '@polenta/types'
+import { api } from '../../../api'
 import { decodeProjectId } from '../../../lib/projectId'
+import { NodeContextMenu, type NodeContextMenuEntry } from '../../../tiptap/NodeContextMenu'
+import { useModalHotkeys } from '../../../hooks/useModalHotkeys'
 import { ComponentTypeCombobox } from '../../system/ComponentTypeCombobox'
 import type { ComponentTypeOption } from '../../../contexts/SystemViewContext'
 import { NewVersionDialog } from '../../versions/NewVersionDialog'
-import { STATE_BADGE, isProductVersionsPath, useVersionTree } from '../../versions/useVersions'
+import { STATE_BADGE, isProductVersionsPath, useInvalidateVersions, useVersionTree, versionErrorText } from '../../versions/useVersions'
 
 interface FlatNode { node: VersionComponentNode; label: string }
 
@@ -52,6 +56,13 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
   const [showAbandoned, setShowAbandoned] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
+  const invalidate = useInvalidateVersions()
+  const workspaceDir = decodeProjectId(projectId) || undefined
+  // Version copiée : se colle dans son propre composant (ses changements sont des éléments de ce repo).
+  const [copied, setCopied] = useState<{ repoPath: string; id: string; title: string } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; version: VersionSummary | null } | null>(null)
+  const [deleting, setDeleting] = useState<VersionSummary | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const options: ComponentTypeOption[] = flat.map(f => ({ repoName: f.node.repoPath, nodeId: '', typeId: '', label: f.label }))
   const openBacklog = (repoPath: string) => void navigate({ to: '/versions/backlog', search: { projectId, repoPath } })
@@ -60,13 +71,57 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
   const select = (repoPath: string) => {
     setChosen(repoPath)
     writeLastComponent(projectId, repoPath)
-    openBacklog(repoPath)
+    // Sans type version, pas de backlog à montrer : le panneau porte le message explicatif.
+    if (flat.find(f => f.node.repoPath === repoPath)?.node.versionType) openBacklog(repoPath)
+    else void navigate({ to: '/versions', search: { projectId } })
   }
   const toggle = (id: string) => setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
-  const inProgress = current?.versions.find(v => v.state === 'in_progress')
   const versions = (current?.versions ?? []).filter(v => showAbandoned || v.state !== 'abandoned')
-  const deps = (current?.children ?? []).filter(c => c.versionType)
+  const deps = current?.children ?? []
+  const paste = async () => {
+    if (!copied || !current) return
+    setActionError(null)
+    try {
+      const created = await api.versions.copy(current.repoPath, copied.id, workspaceDir)
+      await invalidate()
+      openVersion(current.repoPath, created.id)
+    } catch (err) {
+      setActionError(versionErrorText(t, err))
+    }
+  }
+  const confirmDelete = async () => {
+    if (!deleting || !current) return
+    const { id } = deleting
+    setDeleting(null)
+    setActionError(null)
+    try {
+      await api.versions.delete(current.repoPath, id, workspaceDir)
+      if (copied?.id === id && copied.repoPath === current.repoPath) setCopied(null)
+      await invalidate()
+      if (pathname === `/version/${id}`) openBacklog(current.repoPath)
+    } catch (err) {
+      setActionError(versionErrorText(t, err))
+    }
+  }
+  const canPaste = !!copied && copied.repoPath === current?.repoPath && !current?.readonly
+  const pasteItem: NodeContextMenuEntry = {
+    id: 'paste', label: copied ? t('versions.menu.pasteHint', { version: copied.title }) : t('versions.menu.paste'),
+    disabled: !canPaste, onSelect: () => void paste(),
+  }
+  const menuItems = (v: VersionSummary | null): NodeContextMenuEntry[] => {
+    if (!v || !current) return [pasteItem]
+    const frozen = !!v.freeze || v.state === 'released'
+    return [
+      { id: 'copy', label: t('versions.menu.copy'), onSelect: () => setCopied({ repoPath: current.repoPath, id: v.id, title: v.title }) },
+      pasteItem,
+      'separator',
+      {
+        id: 'delete', label: frozen ? t('versions.menu.deleteReleased') : t('versions.menu.delete'), danger: true,
+        disabled: frozen || current.readonly, onSelect: () => setDeleting(v),
+      },
+    ]
+  }
   const rowClass = (active: boolean) =>
     `w-full flex items-center gap-2 pr-3 py-1 text-xs text-left ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2 hover:bg-hover'}`
   const onCurrentRepo = urlRepo === current?.repoPath
@@ -79,9 +134,8 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
           <button
             type="button"
             onClick={() => setCreating(true)}
-            disabled={!!inProgress}
-            title={inProgress ? t('versions.new.inProgressExists', { id: inProgress.id }) : t('versions.new.title')}
-            className="btn-icon text-prim disabled:opacity-40 shrink-0"
+            title={t('versions.new.title')}
+            className="btn-icon text-prim shrink-0"
             data-testid="new-version"
           >
             <Plus size={14} />
@@ -94,10 +148,22 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
         {t('versions.showAbandoned')}
       </label>
 
-      <div className="flex-1 overflow-y-auto py-0.5">
+      <div
+        className="flex-1 overflow-y-auto py-0.5"
+        onContextMenu={e => { if (current?.versionType) { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, version: null }) } }}
+      >
+        {actionError && <p className="px-4 py-2 text-xs text-status-danger" role="alert">{actionError}</p>}
         {isLoading && <p className="px-4 py-2 text-xs text-ink-3 italic">{t('common.loading')}</p>}
         {error && <p className="px-4 py-2 text-xs text-status-danger">{String(error)}</p>}
-        {current && !current.versionType && <p className="px-4 py-2 text-xs text-ink-3 italic">{t('versions.noType')}</p>}
+        {current && !current.versionType && (
+          <div className="px-4 py-3 flex flex-col gap-2 text-xs text-ink-2" data-testid="version-no-type">
+            <p>{t('versions.noTypeHelp')}</p>
+            {current.readonly && <p className="text-status-warning">{t('versions.noTypeReadonly')}</p>}
+            <button type="button" onClick={() => void navigate({ to: '/schema', search: { repoPath: '', projectId } })} className="btn-secondary-sm self-start">
+              {t('versions.openSchema')}
+            </button>
+          </div>
+        )}
         {current?.versionType && (
           <>
             <button
@@ -122,6 +188,7 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
                 rowClass={rowClass}
                 onToggle={() => toggle(v.id)}
                 onOpen={() => openVersion(current.repoPath, v.id)}
+                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, version: v }) }}
                 onOpenComponent={(dep, id) => { setChosen(dep.repoPath); writeLastComponent(projectId, dep.repoPath); openVersion(dep.repoPath, id) }}
               />
             ))}
@@ -129,6 +196,8 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
         )}
       </div>
 
+      {menu && <NodeContextMenu x={menu.x} y={menu.y} items={menuItems(menu.version)} onClose={() => setMenu(null)} />}
+      {deleting && <DeleteVersionDialog version={deleting} onConfirm={() => void confirmDelete()} onClose={() => setDeleting(null)} />}
       {creating && current && (
         <NewVersionDialog
           node={current}
@@ -142,7 +211,7 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
 }
 
 /** Une version du composant ; dépliée : la version retenue de chaque composant qu'elle contient. */
-function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, onOpenComponent }: {
+function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, onContextMenu, onOpenComponent }: {
   version: VersionSummary
   deps: VersionComponentNode[]
   open: boolean
@@ -150,12 +219,13 @@ function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, o
   rowClass: (active: boolean) => string
   onToggle: () => void
   onOpen: () => void
+  onContextMenu: (e: React.MouseEvent) => void
   onOpenComponent: (dep: VersionComponentNode, versionId: string) => void
 }) {
   const { t } = useTranslation()
   return (
     <div>
-      <div className={rowClass(active)}>
+      <div className={rowClass(active)} onContextMenu={onContextMenu}>
         <button
           type="button"
           onClick={onToggle}
@@ -195,7 +265,6 @@ function ComponentVersionNode({ dep, versionId, depth, onOpen }: {
 }) {
   const { t } = useTranslation()
   const sel = versionId ? dep.versions.find(v => v.id === versionId) : undefined
-  const children = dep.children.filter(c => c.versionType)
   return (
     <li>
       <div className="flex items-center gap-1.5 pr-3 py-0.5 text-xs" style={{ paddingLeft: `${36 + depth * 14}px` }}>
@@ -206,15 +275,35 @@ function ComponentVersionNode({ dep, versionId, depth, onOpen }: {
             <span>{sel.title}</span>
             <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[sel.state]}`}>{t(`versions.state.${sel.state}`)}</span>
           </button>
-        ) : <span className="shrink-0 text-ink-3">{versionId ?? t('versions.none')}</span>}
+        ) : <span className="shrink-0 text-ink-3 italic">{dep.versionType ? (versionId ?? t('versions.none')) : t('versions.noType')}</span>}
       </div>
-      {sel && children.length > 0 && (
+      {dep.children.length > 0 && (
         <ul>
-          {children.map(c => (
-            <ComponentVersionNode key={c.repoPath} dep={c} versionId={sel.components?.[c.name]} depth={depth + 1} onOpen={onOpen} />
+          {dep.children.map(c => (
+            <ComponentVersionNode key={c.repoPath} dep={c} versionId={sel?.components?.[c.name]} depth={depth + 1} onOpen={onOpen} />
           ))}
         </ul>
       )}
     </li>
+  )
+}
+
+function DeleteVersionDialog({ version, onConfirm, onClose }: { version: VersionSummary; onConfirm: () => void; onClose: () => void }) {
+  const { t } = useTranslation()
+  useModalHotkeys(onClose, onConfirm)
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/40" onClick={onClose}>
+      <div role="dialog" aria-label={t('versions.delete.title')} className="bg-surface border border-edge rounded-lg shadow-xl w-[26rem] max-w-[95vw]" onClick={e => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b border-edge">
+          <h2 className="text-sm font-semibold text-ink">{t('versions.delete.title')}</h2>
+        </div>
+        <p className="p-4 text-xs text-ink-2">{t('versions.delete.body', { version: `${version.title} (${version.id})` })}</p>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-edge">
+          <button type="button" onClick={onClose} className="btn-secondary">{t('common.cancel')}</button>
+          <button type="button" onClick={onConfirm} className="btn-primary-sm" data-testid="version-delete-confirm">{t('versions.delete.confirm')}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }

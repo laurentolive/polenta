@@ -13,7 +13,7 @@ import type { HistoryService } from './history.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { ElementState, VersionTrackingService } from './version-tracking.service'
 import { ELEMENT_DIRS } from './version-tracking.service'
-import { assertNewObjectFile, nextCounterId } from './id-counter.util'
+import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { repoKey } from './schema-refs.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { applyFieldsWrite } from './field-write.util'
@@ -36,7 +36,7 @@ const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id, 
 /**
  * GH201 — versions d'un composant (un repo) ou du produit (repo racine) : objet `versions/<ID>.yaml`,
  * backlog des changements, page (composants, changements), passage released (commit + tag).
- * Une seule version en cours par repo ; une version released est verrouillée.
+ * Plusieurs versions peuvent être en cours dans un repo ; une version released est verrouillée.
  */
 export class VersionsService {
   constructor(
@@ -126,14 +126,14 @@ export class VersionsService {
   }
 
   /**
-   * GH201 §7 — statut de design : pour chaque exigence du repo, première version released (ID
-   * croissant) dont l'état figé contient l'exigence dans sa `version` courante.
+   * GH201 §7 — statut de design : pour chaque exigence du repo, première version released (ordre
+   * des livraisons) dont l'état figé contient l'exigence dans sa `version` courante.
    */
   async designVersions(repoPath: string): Promise<Map<string, string>> {
     const out = new Map<string, string>()
     const vt = await this.versionType(repoPath)
     if (!vt) return out
-    const released = (await this.list(repoPath)).filter(v => v.freeze && versionState(vt.typeDef, v.status) === 'released')
+    const released = releasedInOrder(vt.typeDef, await this.list(repoPath))
     if (released.length === 0) return out
     for (const el of await this.elements(repoPath, 'requirement')) {
       for (const v of released) {
@@ -156,8 +156,9 @@ export class VersionsService {
       this.list(repoPath), this.versionType(repoPath), this.schema.get(repoPath).catch(() => null), this.elements(repoPath),
     ])
     const typeDef = vt?.typeDef ?? null
-    const inProgress = versions.find(v => versionState(typeDef, v.status) === 'in_progress')
-    const included = new Set((inProgress?.changes ?? []).map(c => c.id))
+    const included = new Set(versions
+      .filter(v => versionState(typeDef, v.status) === 'in_progress')
+      .flatMap(v => (v.changes ?? []).map(c => c.id)))
     const lastIncl = this.lastInclusions(typeDef, versions)
     const items = new Map<string, VersionBacklogItem>()
     for (const el of elements) {
@@ -190,11 +191,10 @@ export class VersionsService {
     return [...items.values()].sort(byId)
   }
 
-  /** Dernière version released (ID croissant) qui inclut chaque élément. */
+  /** Dernière version released (ordre des livraisons) qui inclut chaque élément. */
   private lastInclusions(typeDef: ObjectTypeDefinition | null, versions: ProductVersion[]): Map<string, ProductVersion> {
     const last = new Map<string, ProductVersion>()
-    for (const v of versions) {
-      if (versionState(typeDef, v.status) !== 'released' || !v.freeze) continue
+    for (const v of releasedInOrder(typeDef, versions)) {
       for (const c of v.changes ?? []) last.set(c.id, v)
     }
     return last
@@ -238,11 +238,9 @@ export class VersionsService {
       if (!vt) throw new VersionError('NO_VERSION_TYPE', path.basename(repoPath))
       if (!vt.typeDef.prefix) throw new VersionError('NO_VERSION_TYPE', `${vt.ref} : préfixe manquant`)
       const versions = await this.list(repoPath)
-      const open = versions.find(v => versionState(vt.typeDef, v.status) === 'in_progress')
-      if (open) throw new VersionError('IN_PROGRESS_EXISTS', open.id)
       const title = this.assertLabel(vt.typeDef, versions, dto.title)
       // Absent : dernière version released du repo (pré-remplissage §2) ; `null` : aucune.
-      const lastReleased = versions.filter(v => versionState(vt.typeDef, v.status) === 'released').at(-1)?.id ?? null
+      const lastReleased = releasedInOrder(vt.typeDef, versions).at(-1)?.id ?? null
       const basedOn = this.assertBasedOn(vt.typeDef, versions, dto.basedOn === undefined ? lastReleased : dto.basedOn, null)
       const id = await nextCounterId(this.git, repoPath, vt.typeDef.prefix, VERSIONS_DIR)
       const filePath = `${VERSIONS_DIR}/${id}.yaml`
@@ -259,6 +257,52 @@ export class VersionsService {
     })
   }
 
+  /**
+   * Copie d'une version dans son repo : nouvelle version en cours, mêmes `basedOn`, `components`,
+   * `fields` et éléments inclus (`base` recalculée) ; ni `freeze`, ni historique.
+   */
+  async copy(repoPath: string, id: string, workspaceDir?: string): Promise<ProductVersion> {
+    return this.enqueue(repoPath, async () => {
+      await this.assertWritable(repoPath, workspaceDir)
+      const vt = await this.versionType(repoPath)
+      if (!vt?.typeDef.prefix) throw new VersionError('NO_VERSION_TYPE', path.basename(repoPath))
+      const source = await this.get(repoPath, id)
+      const versions = await this.list(repoPath)
+      const taken = new Set(versions.filter(v => versionState(vt.typeDef, v.status) !== 'abandoned').map(v => v.title))
+      let title = `${source.title} (copie)`
+      for (let n = 2; taken.has(title); n++) title = `${source.title} (copie ${n})`
+      const lastIncl = this.lastInclusions(vt.typeDef, versions)
+      const changes: VersionChange[] = []
+      for (const c of source.changes ?? []) {
+        const el = await this.elementFile(repoPath, c.id)
+        const base = el ? await this.baseFrom(repoPath, lastIncl.get(c.id), el.filePath) : undefined
+        changes.push({ id: c.id, ...(base && { base }) })
+      }
+      const newId = await nextCounterId(this.git, repoPath, vt.typeDef.prefix, VERSIONS_DIR)
+      const filePath = `${VERSIONS_DIR}/${newId}.yaml`
+      await assertNewObjectFile(this.git, repoPath, filePath, newId)
+      const copied: ProductVersion = {
+        id: newId, objectTypeRef: vt.ref, title, status: initialStatus(vt.typeDef), version: 1,
+        ...(source.basedOn && { basedOn: source.basedOn }), ...(source.components && { components: source.components }),
+        changes, fields: source.fields ?? {},
+      }
+      const stamped = await this.stamp(repoPath, null, copied, filePath)
+      await this.git.writeYaml(repoPath, filePath, stamped)
+      return stamped
+    })
+  }
+
+  /** Supprime une version jamais livrée (pierre tombale GH20) ; une version figée porte un tag : on l'abandonne. */
+  async delete(repoPath: string, id: string, workspaceDir?: string): Promise<void> {
+    return this.enqueue(repoPath, async () => {
+      await this.assertWritable(repoPath, workspaceDir)
+      const typeDef = (await this.versionType(repoPath))?.typeDef ?? null
+      const existing = await this.get(repoPath, id)
+      if (existing.freeze || versionState(typeDef, existing.status) === 'released') throw new VersionError('VERSION_LOCKED', id)
+      await deleteWithTombstone(this.git, repoPath, `${VERSIONS_DIR}/${id}.yaml`, id)
+    })
+  }
+
   async update(repoPath: string, id: string, dto: UpdateVersionDto, workspaceDir?: string): Promise<ProductVersion> {
     return this.enqueue(repoPath, async () => {
       await this.assertWritable(repoPath, workspaceDir)
@@ -272,8 +316,7 @@ export class VersionsService {
         throw new VersionError('RELEASE_REQUIRED', id)
       }
       // Released ou abandonnée : verrouillée comme un élément approuvé. Une released peut seulement
-      // être abandonnée ; une abandonnée ne revient pas en cours (l'ordre des ID reste l'ordre des
-      // livraisons : une seule version en cours à la fois, jamais rouverte).
+      // être abandonnée ; une abandonnée ne revient pas en cours.
       if (from !== 'in_progress') {
         const statusChange = dto.status !== undefined && dto.status !== existing.status
         if ((statusChange && !(from === 'released' && to === 'abandoned')) || !sameContent(existing, dto)) {
@@ -504,7 +547,7 @@ export class VersionsService {
       const head = await this.sync.resolveHead(repoPath)
       if (!head) throw new VersionError('DIRTY_CHANGES', 'aucun commit dans le repo')
       const filePath = `${VERSIONS_DIR}/${id}.yaml`
-      const released = await this.stamp(repoPath, version, { ...version, status: approval, freeze: { tag: trimmed, sha: head } }, filePath)
+      const released = await this.stamp(repoPath, version, { ...version, status: approval, freeze: { tag: trimmed, sha: head, at: new Date().toISOString() } }, filePath)
       const content = yaml.dump(released, { lineWidth: 120 })
       // Tag posé sur le commit avant que la branche n'avance : un échec du tag laisse la version en cours.
       await this.sync.commitSingleFile(repoPath, filePath, content, `[version] ${id} ${version.title} released`,
@@ -560,6 +603,13 @@ export class VersionsService {
   private async stamp(repoPath: string, before: ProductVersion | null, after: ProductVersion, filePath: string): Promise<ProductVersion> {
     return this.history ? this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath }) : after
   }
+}
+
+/** Versions released par ordre de livraison (`freeze.at`, puis ID pour les fichiers sans date). */
+function releasedInOrder(typeDef: ObjectTypeDefinition | null, versions: ProductVersion[]): ProductVersion[] {
+  return versions
+    .filter(v => v.freeze && versionState(typeDef, v.status) === 'released')
+    .sort((a, b) => (a.freeze!.at ?? '').localeCompare(b.freeze!.at ?? '') || byId(a, b))
 }
 
 function cleanComponents(components: Record<string, string> | undefined): Record<string, string> | undefined {

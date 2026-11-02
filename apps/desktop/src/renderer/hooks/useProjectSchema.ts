@@ -65,10 +65,6 @@ export function getCampaignTypeDef(schema: ProjectSchema | undefined, objectType
   return findTypeDef(schema, objectTypeRef, 'campaign')
 }
 
-/** GH198 — type d'un change (`objectTypeRef` <nœud>::<type>). */
-export function getChangeTypeDef(schema: ProjectSchema | undefined, objectTypeRef: string | undefined): ObjectTypeDefinition | undefined {
-  return findTypeDef(schema, objectTypeRef, 'changeset')
-}
 
 // Collect all objectTypes of a given category from all local nodes (any depth)
 export function getAllObjectTypes(schema: ProjectSchema | undefined, category: ObjectCategory): ObjectTypeDefinition[] {

@@ -9,7 +9,6 @@ export const PRINT_ROUTE_BY_KIND: Partial<Record<ExportKind, string>> = {
   'campaign-plan': '/print/campaign-plan',
   'campaign-report': '/print/campaign-report',
   'query-result': '/print/query-result',
-  'impact-analysis': '/print/impact-analysis',
   dashboard: '/print/dashboard',
 }
 

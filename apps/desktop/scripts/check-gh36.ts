@@ -70,7 +70,7 @@ const runs: CampaignTestRun[] = [
   { entryId: 'TEST-9-1', testCaseId: 'TEST-9', status: 'pending' },          // test introuvable
 ]
 const campaign: TestCampaign = {
-  id: 'CAMP-T', title: 'Validation v2', fields: {}, status: 'in_progress', baselineRef: 'v2.0',
+  id: 'CAMP-T', title: 'Validation v2', fields: {}, status: 'in_progress',
   testCaseIds: runs.map(r => r.testCaseId), runs, createdAt: '2026-10-01T00:00:00Z',
 }
 
@@ -159,7 +159,6 @@ async function main(): Promise<void> {
   check('E1 en-têtes ligne 5', eq(EXECUTION_SHEET_COLUMNS.map(c => str(sheet.getRow(EXECUTION_SHEET_HEADER_ROW).getCell(col(c)).value)),
     EXECUTION_SHEET_COLUMNS.map(c => L.headers[c])))
   check('E1 titre de campagne', str(sheet.getCell(1, col('instance')).value) === 'CAMP-T — Validation v2')
-  check('E1 baseline mentionnée', str(sheet.getCell(2, col('instance')).value).includes('v2.0'))
   check('E1 instance : ID — titre', byKey.get('TEST-1-1')?.get('text') === 'TEST-1 — Démarrage')
   check('E1 étape : n° et action en texte brut', byKey.get('TEST-1-1#1')?.get('step') === '1'
     && byKey.get('TEST-1-1#1')?.get('text') === 'Appuyer sur Marche', byKey.get('TEST-1-1#1')?.get('text'))

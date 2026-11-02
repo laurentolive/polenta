@@ -172,7 +172,8 @@ polenta/
 │   └── TEST-0001/
 │       └── TEST-0001-run-0001.yaml
 ├── versions/
-│   └── SW-0042/
+│   ├── VER-0004.yaml                ← GH201 : version du composant / produit (SPEC-REQ §11)
+│   └── SW-0042/                     ← instantanés historiques d'exigence (motif distinct)
 │       ├── v1.yaml
 │       └── v2.yaml
 ├── links/

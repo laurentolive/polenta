@@ -81,7 +81,7 @@ export class HistoryService {
   }
 }
 
-export type HistoryObjectKind = 'requirement' | 'test' | 'campaign' | 'changeset'
+export type HistoryObjectKind = 'requirement' | 'test' | 'campaign'
 
 /** Services de lecture des objets, pour `readEffectiveHistory` (évite une dépendance circulaire). */
 export interface HistoryObjectReaders {
@@ -89,8 +89,6 @@ export interface HistoryObjectReaders {
   requirements: { findOne(repoPath: string, id: string): Promise<HistoryCarrier & { objectTypeRef: string } & AuditDates> }
   tests: { findOne(repoPath: string, id: string): Promise<HistoryCarrier & { objectTypeRef: string } & AuditDates> }
   campaigns: { get(repoPath: string, id: string): Promise<HistoryCarrier & { objectTypeRef?: string }> }
-  /** GH198 — changes (`repoPath` = repo de stockage du change). */
-  changes?: { get(repoPath: string, id: string): Promise<HistoryCarrier & { objectTypeRef: string }> }
 }
 
 /** GH77 — historique effectif d'un objet (IPC `history:get`, tools de lecture MCP). */
@@ -108,10 +106,6 @@ export async function readEffectiveHistory(
   if (kind === 'campaign') {
     const campaign = await c.campaigns.get(repoPath, id)
     return c.history.effective(repoPath, campaign, { filePath: `campaigns/${id}.yaml` })
-  }
-  if (kind === 'changeset' && c.changes) {
-    const change = await c.changes.get(repoPath, id)
-    return c.history.effective(repoPath, change, { filePath: `changesets/${id}.yaml` })
   }
   throw new Error(`history:get — unknown object kind: ${String(kind)}`)
 }

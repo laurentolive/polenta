@@ -106,7 +106,6 @@ export async function buildCampaignData(
       title: campaign.title,
       status: campaign.status,
       statusLabel: CAMPAIGN_STATUS_LABELS[campaign.status] ?? campaign.status,
-      baselineRef: campaign.baselineRef ?? '',
       component: campaign.component ?? '',
       level: campaign.level ?? '',
       createdAt: campaign.createdAt ?? '',

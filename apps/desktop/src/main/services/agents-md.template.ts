@@ -27,8 +27,10 @@ import type { BrandInfo } from '../../shared/brand-types'
  *
  * GH198 (v7) : objet changeset (`changesets/<ID>.yaml`), outils `list_changesets` / `get_changeset` /
  * `create_changeset`.
+ *
+ * GH243 (v8) : changeset retiré (fichier et outils).
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 7
+export const AGENTS_MD_TEMPLATE_VERSION = 8
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -78,7 +80,6 @@ type \`richtext\` (contenu en Markdown).
 | Exigence | \`requirements/<ID>.yaml\` |
 | Cas de test | \`tests/<ID>.yaml\` |
 | Campagne de test | \`campaigns/<ID>.yaml\` |
-| Changeset (modification pilotée d'un composant) | \`changesets/<ID>.yaml\` (repo du composant concerné) |
 | Exécution d'un test | \`test-runs/<ID du test>/<ID du run>.yaml\` |
 | Liens entre objets | \`links/links.yaml\` (un fichier par repo : le lien est stocké dans le repo de sa source) |
 
@@ -178,6 +179,9 @@ Tools disponibles :
 - \`get_schema\` — lit le \`.polenta/schema.yaml\` résolu (nœuds, types, champs, statuts, liens).
 - \`list_requirements\` / \`list_tests\` / \`list_campaigns\` — explore l'existant (filtres
   par type/statut/texte) pour éviter les doublons avant un import.
+- \`list_versions\` / \`get_version\` / \`get_version_backlog\` — versions des composants et du
+  produit (lecture seule) : changements inclus, composants, backlog des changements jamais livrés.
+  Une version se crée, s'enrichit et passe released dans l'application, pas par le MCP.
 - \`get_history\` — historique des champs suivis d'un objet (statut par défaut), avec les
   entrées déduites (\`implicit: true\`) quand la valeur courante diffère de la dernière entrée.
 - \`bulk_import_requirements\` / \`bulk_import_tests\` / \`bulk_import_campaigns\` — import
@@ -187,9 +191,6 @@ Tools disponibles :
   statut, \`fields\` en fusion partielle, une clé à \`null\` retire le champ ; pour un test,
   \`preconditions\`, \`postconditions\`, \`steps\`, \`equipment\`). \`dryRun\` par défaut (avant/après
   par champ) ; l'écriture alimente l'historique, la version et la revalidation des éléments liés.
-- \`list_changesets\` / \`get_changeset\` / \`create_changeset\` — changesets (modification pilotée d'un
-  composant : éléments à modifier, éléments impactés et leur statut d'impact, cycle de vie du type).
-  \`create_changeset\` crée une demande ; les listes se modifient dans l'application.
 - \`list_parameters\` / \`set_parameters\` / \`delete_parameter\` — base de paramètres
   (\`parameters/parameters.yaml\`, références \`{nom}\`). \`set_parameters\` crée ou modifie, avec
   \`dryRun\` par défaut ; \`delete_parameter\` est refusé tant qu'un élément non terminal l'utilise.

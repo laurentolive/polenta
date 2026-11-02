@@ -6,7 +6,7 @@ import { api } from '../api'
 /**
  * T171 — résolution prévisionnelle des paramètres de tests à l'ajout en campagne (IPC
  * `campaigns:preview-params`, sans écriture) : références lues dans la base, à saisir, non
- * résolues. `source` : campagne existante (son `baselineRef`) ou `baselineRef` d'une campagne en
+ * résolues, à l'état courant (GH243). `source` : campagne existante, ou `{}` pour une campagne en
  * cours de création. Renvoie une map par `testCaseId` (vide tant que la requête n'a pas répondu ;
  * stable tant que la réponse ne change pas).
  * `keepPrevious` (GH64) : pendant le rechargement dû à un changement de la liste de tests, garder
@@ -14,7 +14,7 @@ import { api } from '../api'
  */
 export function useParamPreview(
   repoPath: string,
-  source: { campaignId?: string; baselineRef?: string },
+  source: { campaignId?: string },
   testCaseIds: string[],
   workspaceDir: string,
   enabled = true,
@@ -22,7 +22,7 @@ export function useParamPreview(
 ): { previews: Map<string, ParamResolutionPreview>; isLoading: boolean } {
   const ids = [...new Set(testCaseIds)].sort()
   const { data, isFetching } = useQuery({
-    queryKey: ['campaign-param-preview', repoPath, source.campaignId ?? null, source.baselineRef ?? null, ids.join(','), workspaceDir],
+    queryKey: ['campaign-param-preview', repoPath, source.campaignId ?? null, ids.join(','), workspaceDir],
     queryFn: () => api.campaigns.previewParams(repoPath, source, ids, workspaceDir || undefined),
     enabled: enabled && !!repoPath && ids.length > 0,
     // Base et tests peuvent changer ailleurs (autre onglet, vue Paramètres) : toujours relire à

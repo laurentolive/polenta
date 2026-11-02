@@ -20,7 +20,6 @@
  * (CLI prioritaire si les deux mécanismes sont fournis.)
  */
 
-import { registerChangeTools } from './tools/changes.tools'
 import './stdout-guard'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -29,6 +28,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createMcpContainer } from './container'
 import { registerSchemaTools } from './tools/schema.tools'
 import { registerReadTools } from './tools/read.tools'
+import { registerVersionTools } from './tools/versions.tools'
 import { registerBulkImportTools } from './tools/bulk-import.tools'
 import { registerSchemaMutationTools } from './tools/schema-mutation.tools'
 import { registerLinkTools } from './tools/links.tools'
@@ -106,6 +106,7 @@ async function main(): Promise<void> {
   const server = new McpServer({ name: 'polenta-mcp-server', version: '0.1.0' })
   registerSchemaTools(server, container)
   registerReadTools(server, container)
+  registerVersionTools(server, container)
   registerBulkImportTools(server, container)
   registerSchemaMutationTools(server, container)
   registerLinkTools(server, container)
@@ -114,7 +115,6 @@ async function main(): Promise<void> {
   registerQueryTools(server, container)
   registerDashboardTools(server, container)
   registerSuiviScriptTools(server, container)
-  registerChangeTools(server, container)
 
   const transport = new StdioServerTransport()
   await server.connect(transport)

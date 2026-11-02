@@ -67,39 +67,8 @@ export interface PolentaGraph {
   campaigns: GraphCampaign[]
   /** Toutes les exécutions de test enregistrées (fichiers `test-runs/`), campagne ou non. */
   runs: GraphTestRun[]
-  /** GH198 — changesets de tous les repos (`changesets/`). */
-  changesets: GraphChangeset[]
-}
-
-/** GH198 — change : modification pilotée d'un composant, ses éléments à modifier et impactés. */
-export interface GraphChangeset extends GraphObjectBase {
-  /** Composant concerné (nœud du schéma). */
-  component: string
-  mode: 'request' | 'range'
-  /**
-   * GH200 — `base` : version de départ (absente : création) ; `approved` : commit d'approbation,
-   * figé au statut terminal (null tant que le changeset est ouvert : lire le statut de l'élément).
-   */
-  toModify: {
-    id: string
-    state: 'planned' | 'modified'
-    base: { sha: string | null; version: number } | null
-    approved: { sha: string | null; version: number } | null
-  }[]
-  /** Statut d'impact : les 8 valeurs de l'analyse d'impact entre baselines. */
-  impacted: { id: string; status: string; comment: string | null; source: 'declared' | 'computed' }[]
-  origin: { runs: string[]; decisions: { conformityId: string; objectId: string }[] }
-  integratedIn: string | null
-  campaigns: string[]
-  /** GH199 — bornes d'un change « sur l'existant » (`mode: range`), sinon null. */
-  range: { from: { ref: string; sha: string }; to: { ref: string; sha: string } } | null
-  /** GH199 — analyse figée au statut terminal (lignes, racines), sinon null. Non recalculée par le graphe. */
-  analysis: {
-    computedAt: string
-    rows: { id: string; elementType: 'requirement' | 'test_case' | null; status: string; comment: string | null; source: 'declared' | 'computed'; reached: boolean }[]
-    rootIds: string[]
-    campaigns: { id: string; testIds: string[] }[]
-  } | null
+  /** Versions des composants et du produit (fichiers `versions/`, GH201). */
+  versions: GraphVersion[]
 }
 
 export interface GraphRepo {
@@ -129,7 +98,7 @@ export interface GraphSchema {
   campaignStatuses: GraphFixedStatus[]
 }
 
-export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'changeset'
+export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'version'
 
 export interface GraphObjectType {
   /** Repo dont le schéma déclare le type. */
@@ -241,6 +210,9 @@ export type GraphCoverageStatus = 'not_covered' | 'covered' | 'validated' | 'fai
 export interface GraphRequirement extends GraphObjectBase {
   /** Indicateur Polenta (matrice de traçabilité). */
   coverageStatus: GraphCoverageStatus
+  /** Statut de design (GH201) : première version released du repo dont l'état figé contient
+   *  l'exigence dans sa `version` courante ; `null` si aucune. */
+  designVersion: string | null
 }
 
 /** Test : pas de pas de test (`steps`) ni de pré / postconditions dans le contrat v1. */
@@ -256,6 +228,42 @@ export interface GraphLink {
   repo: string
   createdAt: string | null
   createdBy: string | null
+}
+
+// ─── Versions ────────────────────────────────────────────────────────────────
+
+/** État d'une version, lu des marques de son type (`isApproval` → released, `isTerminal` → abandoned). */
+export type GraphVersionState = 'in_progress' | 'released' | 'abandoned'
+
+/** Version d'un composant (repo) ou du produit (repo racine), GH201. */
+export interface GraphVersion {
+  id: string
+  repo: string
+  /** Composant de la version : le repo. */
+  component: string
+  objectTypeRef: string
+  /** Label (ex. `1.2.4`). */
+  title: string
+  status: string
+  state: GraphVersionState
+  /** Version précédente du même repo. */
+  basedOn: string | null
+  /** Versions des composants (dépendances du repo), par nom de composant. */
+  components: Record<string, string>
+  /** Éléments inclus ; `base` : état dans la dernière version released qui les incluait. */
+  changes: Array<{ id: string; base: { sha: string; version: number } | null }>
+  /** Tag et commit figés au passage released ; `null` avant. */
+  freeze: { tag: string; sha: string } | null
+  /** Statuts d'impact saisis (GH245), tels que stockés. */
+  impacted: Array<{ id: string; status: string; comment: string | null }>
+  /** Analyse d'impact figée au passage released (GH245) ; `null` tant que la version est en cours.
+   *  Une ligne par élément impacté du composant ; `sources` : racine et chemin (IDs). */
+  analysis: {
+    computedAt: string
+    rows: Array<{ id: string; status: string; comment: string | null; reached: boolean; sources: Array<{ rootId: string; path: string[] }> }>
+  } | null
+  fields: Record<string, unknown>
+  history: ObjectHistory
 }
 
 // ─── Campagnes ───────────────────────────────────────────────────────────────
@@ -274,12 +282,8 @@ export interface GraphCampaign {
   fields: Record<string, unknown>
   /** Historique du statut et des champs suivis. */
   history: ObjectHistory
-  /** Tag git de la baseline visée, si renseigné. */
-  baselineRef: string | null
   /** Composant ciblé par la campagne, si renseigné. */
   targetComponent: string | null
-  /** GH207 — changeset qui a créé la campagne, sinon null. */
-  changeset: string | null
   level: string | null
   createdAt: string
   /** Instant de clôture (`completed` ou `abandoned`), `null` tant qu'elle est ouverte. */

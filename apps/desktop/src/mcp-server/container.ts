@@ -1,5 +1,3 @@
-import { ChangesService } from '../main/services/changes.service'
-import { ChangeTrackingService } from '../main/services/change-tracking.service'
 import type { HostContext } from '../main/host/host-context'
 import { AuthService } from '../main/services/auth.service'
 import { GitService } from '../main/services/git.service'
@@ -13,6 +11,8 @@ import { RequirementsService } from '../main/services/requirements.service'
 import { TestsService } from '../main/services/tests.service'
 import { RevalidationService } from '../main/services/revalidation.service'
 import { CampaignsService } from '../main/services/campaigns.service'
+import { VersionTrackingService } from '../main/services/version-tracking.service'
+import { VersionsService } from '../main/services/versions.service'
 import { TraceabilityService } from '../main/services/traceability.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
@@ -36,6 +36,8 @@ export interface McpContainer {
   requirements: RequirementsService
   tests: TestsService
   campaigns: CampaignsService
+  /** GH201 — versions, en lecture seule côté MCP. */
+  versions: VersionsService
   workspaceTree: WorkspaceTreeService
   /** GH16 — exposés pour invalider le cache quand un ID est introuvable (objet créé par
    *  l'app après construction de l'index : ce process n'a pas de RepoWatcherService). */
@@ -57,10 +59,6 @@ export interface McpContainer {
   workspaceLinks: WorkspaceLinksService
   /** GH150 — base de paramètres (`list_parameters` / `set_parameters` / `delete_parameter`). */
   parameters: ParametersService
-  /** GH198 — changes (`list_changesets` / `get_changeset` / `create_changeset`). */
-  changes: ChangesService
-  /** GH200 — rattachement par élément (`unassigned` des outils d'écriture). */
-  changeTracking: ChangeTrackingService
 }
 
 /**
@@ -126,7 +124,14 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const traceability = new TraceabilityService(reqIndex, testsIndex, git, sync, workspaceTree)
   const dashboards = new DashboardsService(git)
   const savedQueries = new SavedQueriesService(git, dashboards)
+  // GH201 — versions : le MCP les lit (aucun outil d'écriture).
+  const versions = new VersionsService(
+    git, sync, schema, new VersionTrackingService(git, schema), history, workspaceTree,
+    (rootRepoPath, wsDir) => revalidation.readonlyRepoPaths(rootRepoPath, wsDir),
+  )
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns, { cache: false })
+  graph.setVersions(versions)
+  versions.setImpactSources({ traceability, campaigns })
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
   const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
@@ -135,19 +140,8 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   // sans effet sur les écritures de paramètres).
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
-  const changes = new ChangesService(git, schema, workspaceTree, history, { traceability, sync, campaigns })
-  // GH200 — rattachement par élément : création / réouverture assignées à un changeset.
-  const changeTracking = new ChangeTrackingService(git, schema, changes)
-  requirements.setModificationTracker(changeTracking)
-  tests.setModificationTracker(changeTracking)
-  changes.setTracker(changeTracking)
-  // GH207 — campagne créée depuis un changeset : lien des deux côtés.
-  campaigns.setChangesetLinker({ assertOpen: (r, id) => changes.assertOpen(r, id), link: (r, id, c) => changes.linkCampaign(r, id, c) })
-
   return {
-    repoPath, workspaceDir, git, schema, requirements, tests, campaigns, workspaceTree, reqIndex, testsIndex,
+    repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, workspaceTree, reqIndex, testsIndex,
     user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters,
-    changes,
-    changeTracking,
   }
 }

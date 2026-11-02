@@ -1416,6 +1416,9 @@ par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, 
 | `/graph?projectId` | **Arbre de versions** (commits, refs de branches, checkout) | Version |
 | `/diff?projectId&repoPath&filepath&commitSha?` | Vue diff d'un fichier : working tree vs `HEAD`, ou commit vs son parent (`commitSha`) — bascule Raw / Rendu (GH178, cf. §19.8b) ; Raw côte à côte / en ligne, Rendu = vue générique (GH222) | Version |
 | `/version-diff?projectId` | Comparaison d'un fichier entre deux refs choisies dans le panneau Version — même vue de diff Raw / Rendu (GH178) | Version |
+| `/versions?projectId` | **Produit** (GH201) — accueil du sous-panneau Produit du panneau Version | Version |
+| `/version/$versionId?projectId&repoPath` | **Page d'une version** (GH201, SPEC-REQ §11) : label, statut, version précédente, champs, composants, changements (diff, Retirer, Ajouter), passage released | Version |
+| `/versions/backlog?projectId&repoPath` | **Backlog** d'un composant (GH201) : changements jamais inclus dans une version, inclusion dans une version en cours choisie | Version |
 | `/merge-resolve?id&projectId` | **Résolution des conflits** d'un merge (GH37) — session `id` (`merge-resolution:*`), ouverte dans son propre onglet « Conflits — <repo> » depuis Publier, la vue graphe ou Rafraîchir ; en-tête propre (pas de `ViewHeader`, donc pas de bouton Publier pendant la résolution) | — |
 | `/branch/new` | Formulaire nouvelle branche | Version |
 | `/product?projectId&tab&repo&node&type&category&view&item` | **Panel Produit** — liste exigences / tests / campagnes selon tab ; `view` (`excel`/`word`/`edit`) et `item` (objectId édité ou ciblé) : page de la vue système dans l'URL (GH228, cf. `SPEC-SYSTEM-VIEW` §Persistance) | Produit |
@@ -1556,6 +1559,23 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >   section Stagés, pour survivre au commit qui la vide.
 > - **Densité** : header `py-1.5`, ligne de repo `py-0.5` (≈ 26 px, bornée par la combobox),
 >   sections `px-2 py-1`, ligne de fichier `h-5` (20 px).
+> - **GH201 — sous-panneau « Produit »** (icône paquet du header) : sur `/versions`,
+>   `/versions/backlog` et `/version/<ID>` (`isProductVersionsPath`), le corps du panneau est
+>   `ProductVersionsPanel` : composant (repo) choisi en liste déroulante (`ComponentTypeCombobox`,
+>   dernier choix mémorisé par poste) avec « + » Nouvelle version (absent en lecture seule ou sans type
+>   version), case « abandonnées » dessous, « Backlog des changements (n) », puis les versions du
+>   composant, chacune dépliable sur la structure de ses composants (cube, label, version à droite ;
+>   clic : ouvre ce composant à cette version ; « Pas de type version » le cas échéant). Clic droit sur
+>   une version : Copier, Coller, Supprimer. Composant sans type version : message renvoyant au modèle
+>   de données. Ces routes ouvrent le panneau Version (`deducePanel`). SPEC-REQ §11.
+> - **GH245 — page d'une version** : sous « Changements », sections repliables « Analyse d'impact »
+>   (`VersionAnalysisSection` : racines et `ImpactTreeView` en affichage serré `dense` — niveau 0 sans
+>   retrait, retrait minimal, petite flèche — statut et commentaire saisis sur les nœuds ; statuts
+>   d'éléments plus atteints listés dessous ; analyse figée sans arbres : tableau des lignes) et
+>   « Tests à exécuter » (`VersionTestsSection` : liste cochable, « Créer une campagne » /
+>   « Ajouter à … » en raccourcis) ; « Composants » et « Changements » repliables aussi, état mémorisé
+>   par poste (`polenta:versionSections`). Changements et backlog : sélection multiple, MAJ + clic
+>   pour une plage (`useRangeSelection`), « Retirer la sélection » / « Inclure la sélection ».
 > - **Contenu piloté par la route** : `/version-diff` → sélecteur de comparaison ; `/baseline` →
 >   liste des baselines (`BaselineListPanel` : filtre tag/message, dépliage sur place des tags
 >   composants, suppression avec confirmation) ; sinon → arbre des repos. La vue `/baseline` est
@@ -1846,10 +1866,9 @@ Search params : `{ repoPath, projectId, component?, level? }`
 |-------|----------|-----------|
 | Titre * | `input[text]` | `title` |
 | Description | `textarea` | `description` |
-| Baseline | `input[text]` — tag git ou SHA | `baselineRef` |
 | Cas de test | liste multi-sélection depuis les tests du contexte | `testCaseIds` |
 
-Appel : `api.campaigns.create(repoPath, { title, description, baselineRef, testCaseIds, level, component })`
+Appel : `api.campaigns.create(repoPath, { title, description, testCaseIds, level, component })` (GH243 : plus de baseline)
 
 ### 19.10.4 Route `/campaign/$campaignId` — Suivi d'une campagne
 
@@ -1966,7 +1985,7 @@ Déduction du panel actif depuis `pathname` + search params :
 | `campaigns:list` | `repoPath: string, component?: string, level?: string` | `TestCampaign[]` |
 | `campaigns:get` | `repoPath: string, id: string` | `TestCampaign` |
 | `campaigns:create` | `repoPath: string, dto: CreateCampaignDto, workspaceDir?: string` | `TestCampaign` (T171 : résout et fige les paramètres) |
-| `campaigns:preview-params` | `repoPath, { campaignId? \| baselineRef? }, testCaseIds: string[], workspaceDir?` | `ParamResolutionPreview[]` (T171, sans écriture) |
+| `campaigns:preview-params` | `repoPath, { campaignId? }, testCaseIds: string[], workspaceDir?` | `ParamResolutionPreview[]` (T171, sans écriture) |
 | `parameters:list` / `parameters:usages` / `parameters:create` / `parameters:update` / `parameters:delete` | `repoPath` (repo de la base), …, `workspaceDir?` | T171 — base de paramètres (voir SPEC-REQ §3.2f) |
 | `campaigns:update-run` | `repoPath: string, campaignId: string, testCaseId: string, status: TestRunStatus` | `TestCampaign` |
 | `campaigns:close` | `repoPath: string, id: string, status: 'completed' \| 'abandoned'` | `TestCampaign` |
@@ -2045,7 +2064,7 @@ inchangé. Spec/design : `specs/GH34.md`, `specs/GH34-design.md` ; référence u
   (`templateRelPath`) ; le renderer joint alors à son payload l'arbre complet (`outline` : dossiers,
   niveau, étapes détaillées, `statusLabel`, cf. `buildExportOutline`). Kinds pris en charge — docx :
   `requirements`, `tests`, `campaign-plan`, `campaign-report`, `dashboard` ; xlsx : `requirements`,
-  `tests`, `campaign-plan`, `query-result`, `impact-analysis` (`renderer/lib/exportTemplates.ts`,
+  `tests`, `campaign-plan`, `query-result` (`impact-analysis` retiré par GH243 ; `renderer/lib/exportTemplates.ts`,
   miroir de `DATA_BUILDERS` côté main). Une liste par format accepté (« Gabarit Word », « Gabarit Excel »).
 - **Moteur** (`main/services/export/template/`) : `TemplateExportService` construit les données
   (communes `project`/`export`/`git` + par kind : `template-data.ts`, `template-data-campaign.ts` —
@@ -2343,7 +2362,10 @@ listés dans `SPEC-AUDIT.md`).
   miroir `roles`/`implements` niveau racine ↔ `nodes[root]` (compat T123, voir code).
 - Mutations ciblées avec validation avant écriture (`SchemaValidationError`, jamais d'écriture si un
   invariant est violé) : `addNode` (avec `parentName` pour imbriquer, T123), `addObjectType`,
-  `moveObjectType` (T135, drag & drop cross-nœud), `addField`, `addStatus`, `addLinkType`. Une file
+  `moveObjectType` (T135, drag & drop cross-nœud), `addField`, `addStatus`, `addLinkType`. GH201 :
+  `save()` refuse (`VERSION_TYPE_INVALID`) un second type `version` ou un type `version` hors du nœud
+  `root`, et — tant que `versions/` contient des versions — le renommage, le changement de préfixe,
+  la modification des statuts marqués ou le retrait du type version (SPEC-REQ §11.1). Une file
   de promesses par `repoPath` sérialise les mutations concurrentes (agent MCP qui enchaîne
   plusieurs `add_*` sans attendre chaque réponse).
 - `resolveComponentRepoPath(repoPath, objectTypeRef, workspaceDir?)` résout le repo réel d'un

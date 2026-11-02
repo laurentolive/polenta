@@ -1,14 +1,14 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
-  CampaignTestRun, Change, DescribedObject, GraphCampaign, GraphChangeset, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
-  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun,
+  CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
+  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphVersion,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
 import {
   RUN_STATUS_ORDER, RUN_STATUS_SEVERITY, effectiveHistory, flattenSystemNodes, hasHistoryGap, historyTimestamp,
-  isApprovalStatus,
+  isApprovalStatus, versionState,
 } from '@polenta/types'
 import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -17,6 +17,7 @@ import type { TraceabilityService } from './traceability.service'
 import { mergeRunsMaps } from './traceability.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { CampaignsService } from './campaigns.service'
+import type { VersionsService } from './versions.service'
 import { isResyncable } from './campaigns.service'
 import type { GitService } from './git.service'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
@@ -63,8 +64,9 @@ interface RawRepo {
   links: ObjectLink[]
   schema: ProjectSchema | null
   campaigns: TestCampaign[]
-  /** GH198 — fichiers `changesets/` du repo. */
-  changes: Change[]
+  versions: GraphVersion[]
+  /** GH201 — statut de design des exigences du repo. */
+  designVersions: Map<string, string>
 }
 
 /**
@@ -89,6 +91,7 @@ export class GraphService {
   private readonly now: () => Date
   private readonly entries = new Map<string, CacheEntry>()
   private version = 0
+  private versions?: Pick<VersionsService, 'list' | 'versionType' | 'designVersions'>
 
   constructor(
     private readonly reqIndex: RequirementsIndexService,
@@ -102,6 +105,11 @@ export class GraphService {
   ) {
     this.cacheEnabled = options.cache !== false
     this.now = options.now ?? (() => new Date())
+  }
+
+  /** GH201 — versions et statut de design (injectées après construction, comme les autres dépendances tardives). */
+  setVersions(versions: Pick<VersionsService, 'list' | 'versionType' | 'designVersions'>): void {
+    this.versions = versions
   }
 
   /**
@@ -192,7 +200,7 @@ export class GraphService {
 
   private async fetchRepo(repo: { repoPath: string; name: string; label: string }): Promise<RawRepo> {
     const rp = repo.repoPath
-    const [requirements, testCases, latestRunMap, runsMap, links, schema, campaigns, changes] = await Promise.all([
+    const [requirements, testCases, latestRunMap, runsMap, links, schema, campaigns] = await Promise.all([
       this.reqIndex.findAll(rp, {}),
       this.testsIndex.findAll(rp),
       this.testsIndex.getLatestRunMap(rp),
@@ -200,24 +208,38 @@ export class GraphService {
       this.reqIndex.findAllLinks(rp),
       this.schema.get(rp).catch(() => null),
       this.listCampaigns(rp),
-      this.listChanges(rp),
     ])
-    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, changes }
+    const { versions, designVersions } = await this.listVersions(repo)
+    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, versions, designVersions }
   }
 
-  /** GH198 — changes du repo, lus directement (un fichier illisible est ignoré). */
-  private async listChanges(rp: string): Promise<Change[]> {
-    const out: Change[] = []
+  /** GH201 — versions du repo ; un fichier illisible ne casse pas le graphe (versions ignorées). */
+  private async listVersions(repo: { repoPath: string; name: string }): Promise<{ versions: GraphVersion[]; designVersions: Map<string, string> }> {
+    if (!this.versions) return { versions: [], designVersions: new Map() }
     try {
-      const files = (await this.git.listFiles(rp, 'changesets')).filter((f) => f.endsWith('.yaml'))
-      for (const f of files) {
-        const c = await this.git.readYaml<Change>(rp, f).catch(() => null)
-        if (c?.id) out.push(c)
-      }
+      const [list, vt, designVersions] = await Promise.all([
+        this.versions.list(repo.repoPath), this.versions.versionType(repo.repoPath), this.versions.designVersions(repo.repoPath),
+      ])
+      const versions = list.map((v): GraphVersion => ({
+        id: v.id, repo: repo.name, component: repo.name, objectTypeRef: v.objectTypeRef, title: v.title, status: v.status,
+        state: versionState(vt?.typeDef ?? null, v.status), basedOn: v.basedOn ?? null, components: v.components ?? {},
+        changes: (v.changes ?? []).map((c) => ({ id: c.id, base: c.base ?? null })), freeze: v.freeze ? { tag: v.freeze.tag, sha: v.freeze.sha } : null,
+        impacted: (v.impacted ?? []).map((i) => ({ id: i.id, status: i.status, comment: i.comment ?? null })),
+        analysis: v.analysis ? {
+          computedAt: v.analysis.computedAt,
+          // Fichier édité à la main : un bloc incomplet ne casse pas le graphe.
+          rows: (v.analysis.rows ?? []).map((r) => ({
+            id: r.id, status: r.status, comment: r.comment ?? null, reached: !!r.reached,
+            sources: (r.sources ?? []).map((s) => ({ rootId: s.rootId, path: (s.path ?? []).map((p) => p.id) })),
+          })),
+        } : null,
+        fields: v.fields ?? {}, history: v.history ?? {},
+      }))
+      return { versions, designVersions }
     } catch (err) {
-      console.warn(`[graph] changes ignorés pour ${rp} :`, err instanceof Error ? err.message : String(err))
+      console.warn(`[graph] versions ignorées pour ${repo.repoPath} :`, err instanceof Error ? err.message : String(err))
+      return { versions: [], designVersions: new Map() }
     }
-    return out
   }
 
   /** Un fichier campagne illisible ne casse pas tout le graphe : campagnes du repo ignorées. */
@@ -275,13 +297,13 @@ export class GraphService {
     const links: GraphLink[] = []
     const campaigns: GraphCampaign[] = []
     const runs: GraphTestRun[] = []
-    const changes: GraphChangeset[] = []
     for (const r of perRepo) {
       const types = typeResolver(r.schema)
       for (const q of r.requirements) {
         requirements.push({
           ...objectBase(q, r.name, types, now),
           coverageStatus: coverage.get(q.id)?.coverageStatus ?? 'not_covered',
+          designVersion: r.designVersions.get(q.id) ?? null,
         })
       }
       for (const tc of r.testCases) tests.push(objectBase(tc, r.name, types, now))
@@ -294,7 +316,6 @@ export class GraphService {
         return isApprovalStatus(typeDef && typeDef !== 'unresolvable' ? typeDef : null, test.status)
       }
       campaigns.push(...await Promise.all(r.campaigns.map((c) => this.toGraphCampaign(c, r, types, isApproved, now))))
-      for (const c of r.changes) changes.push(toGraphChangeset(c, r.name, types, now))
     }
 
     const graph: PolentaGraph = {
@@ -315,7 +336,7 @@ export class GraphService {
       links,
       campaigns,
       runs,
-      changesets: changes,
+      versions: perRepo.flatMap((r) => r.versions),
     }
     return {
       graph,
@@ -361,9 +382,7 @@ export class GraphService {
       status: c.status,
       fields: c.fields ?? {},
       history: effectiveHistory(carrier, typeDef, fallback, now),
-      baselineRef: c.baselineRef ?? null,
       targetComponent: c.component ?? null,
-      changeset: c.changeset ?? null,
       level: c.level ?? null,
       createdAt: c.createdAt,
       completedAt: c.completedAt ?? null,
@@ -420,27 +439,6 @@ function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, co
     })),
     runFields: t.category === 'test' ? (t.runFields ?? []).map(toGraphFieldDef) : [],
     stepFields: t.category === 'test' ? (t.stepFields ?? []).map(toGraphFieldDef) : [],
-  }
-}
-
-/** GH198 — change du graphe : base commune (statut, champs, historique) + listes et liens système. */
-function toGraphChangeset(c: Change, repo: string, types: TypeResolver, now: Date): GraphChangeset {
-  return {
-    ...objectBase(c as unknown as Requirement, repo, types, now),
-    component: c.component ?? '',
-    mode: c.mode ?? 'request',
-    toModify: (c.toModify ?? []).map((t) => ({ id: t.id, state: t.state, base: t.base ?? null, approved: t.approved ?? null })),
-    impacted: (c.impacted ?? []).map((i) => ({ id: i.id, status: i.status, comment: i.comment ?? null, source: i.source })),
-    origin: { runs: c.origin?.runs ?? [], decisions: c.origin?.decisions ?? [] },
-    integratedIn: c.integratedIn ?? null,
-    campaigns: c.campaigns ?? [],
-    range: c.range ?? null,
-    analysis: c.analysis?.frozen ? {
-      computedAt: c.analysis.computedAt,
-      rows: c.analysis.rows.map((r) => ({ id: r.id, elementType: r.elementType, status: r.status, comment: r.comment ?? null, source: r.source, reached: r.reached })),
-      rootIds: c.analysis.roots.map((r) => r.elementId),
-      campaigns: c.analysis.campaigns.map((x) => ({ id: x.id, testIds: x.testIds })),
-    } : null,
   }
 }
 

@@ -206,7 +206,7 @@ const templates: Record<string, Document> = {
   ]),
 
   'Cahier de campagne.docx': document('Cahier de campagne', [
-    ...cover('Cahier de campagne', '{{campaign.title}}', [['Campagne', '{{campaign.id}} — {{campaign.title}}'], ['Composant', '{{campaign.component}}'], ['Référence', '{{campaign.baselineRef}}'], ['Tests', '{{count}}']]),
+    ...cover('Cahier de campagne', '{{campaign.title}}', [['Campagne', '{{campaign.id}} — {{campaign.title}}'], ['Composant', '{{campaign.component}}'], ['Tests', '{{count}}']]),
     h(1, 'Tests inclus'),
     table(['Test', 'Titre', 'Exigence'], [['{{#entries}}{{id}}', '{{title}}', '{{requirementId}}{{/entries}}']], [20, 55, 25]),
     h(1, 'Procédures'),
@@ -223,7 +223,7 @@ const templates: Record<string, Document> = {
   ]),
 
   'Rapport de campagne.docx': document('Rapport de campagne', [
-    ...cover('Rapport de campagne', '{{campaign.title}}', [['Campagne', '{{campaign.id}} — {{campaign.title}}'], ['Composant', '{{campaign.component}}'], ['Statut', '{{campaign.statusLabel}}'], ['Référence', '{{campaign.baselineRef}}']]),
+    ...cover('Rapport de campagne', '{{campaign.title}}', [['Campagne', '{{campaign.id}} — {{campaign.title}}'], ['Composant', '{{campaign.component}}'], ['Statut', '{{campaign.statusLabel}}']]),
     h(1, 'Synthèse'),
     table(['Total', 'Passés', 'Échoués', 'Bloqués', 'Incomplets', 'En attente'],
       [['{{summary.total}}', '{{summary.pass}}', '{{summary.fail}}', '{{summary.blocked}}', '{{summary.incomplete}}', '{{summary.pending}}']],
@@ -355,7 +355,7 @@ const xlsxTemplates: Record<string, SheetSpec> = {
   },
   'Plan de campagne.xlsx': {
     title: 'Plan de campagne',
-    extra: [['Campagne', '${campaign.id} — ${campaign.title}'], ['Composant', '${campaign.component}'], ['Référence', '${campaign.baselineRef}']],
+    extra: [['Campagne', '${campaign.id} — ${campaign.title}'], ['Composant', '${campaign.component}']],
     columns: [
       { header: 'Test', tag: '${table:entries.id}', width: 14 },
       { header: 'Titre', tag: '${table:entries.title}', width: 36, wrap: true },
@@ -371,21 +371,6 @@ const xlsxTemplates: Record<string, SheetSpec> = {
     extra: [['Requête', '${query.name}'], ['Lignes', '${count}']],
     // En-têtes et cellules en largeur : colonnes de la requête, inconnues à l'avance.
     columns: [{ header: '${columnNames}', tag: '${table:rows.cells}', width: 22 }],
-  },
-  'Analyse des impacts.xlsx': {
-    title: 'Analyse d’impact',
-    extra: [['Analyse', '${analysis.label}'], ['Baselines', '${analysis.from} → ${analysis.to}'], ['Exigences modifiées', '${changes}']],
-    columns: [
-      { header: 'Exigence modifiée', tag: '${table:rows.reqId}', width: 16 },
-      { header: 'Direction', tag: '${table:rows.direction}', width: 14 },
-      { header: 'Profondeur', tag: '${table:rows.depth}', width: 10 },
-      { header: 'Élément', tag: '${table:rows.id}', width: 14 },
-      { header: 'Titre', tag: '${table:rows.title}', width: 40, wrap: true },
-      { header: 'Type / lien', tag: '${table:rows.type}', width: 16 },
-      { header: 'Statut', tag: '${table:rows.status}', width: 14 },
-      { header: 'Commentaire', tag: '${table:rows.comment}', width: 36, wrap: true },
-    ],
-    totals: [['Impactés', 'COUNTIF(B{row}:B{row},"<>Modification")']],
   },
 }
 

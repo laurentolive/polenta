@@ -13,6 +13,7 @@ import { withKeyLock } from './serialize-writes.util'
 import type { TreeService } from './tree.service'
 
 interface DeletedType { ref: string; node: string; type: string; category: ObjectCategory }
+type DeletedObjectCategory = Exclude<ObjectCategory, 'version'>
 
 interface Computed {
   plan: SchemaDeletePlan
@@ -69,7 +70,7 @@ export class SchemaDeleteService {
     const invalidate = () => { for (const repo of repos) for (const index of this.indexes) index.invalidate(repo) }
 
     // 1. Objets, pierre tombale d'abord (GH20) ; 2. leurs exécutions / acquittements d'impact.
-    const deleteObject = (dir: 'requirements' | 'tests' | 'changesets', id: string) => step(id, async () => {
+    const deleteObject = (dir: 'requirements' | 'tests', id: string) => step(id, async () => {
       await withKeyLock(`${repoPath}::${dir}/${id}`, () => deleteWithTombstone(this.git, repoPath, `${dir}/${id}.yaml`, id)
         .catch(err => { if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err })) // déjà absent : supprimé
       result.deleted.push(id)
@@ -80,8 +81,6 @@ export class SchemaDeleteService {
     for (const id of plan.objects.test) {
       if (await deleteObject('tests', id)) await step(`${repoPath}:test-runs/${id}`, () => removeDir(repoPath, `test-runs/${id}`))
     }
-    // GH198 — changes d'un type supprimé : suppression en cascade (pierre tombale), comme les autres objets.
-    for (const id of plan.objects.changeset) await deleteObject('changesets', id)
     for (const id of plan.objects.campaign) {
       await step(id, async () => {
         await this.objects.campaigns.delete(repoPath, id)
@@ -135,7 +134,7 @@ export class SchemaDeleteService {
   private async compute(repoPath: string, workspaceDir: string | undefined, target: SchemaDeleteTarget): Promise<Computed> {
     const repos = dedupeRepos(repoPath, await this.resolveRepos(repoPath, workspaceDir))
     const plan: SchemaDeletePlan = {
-      nodes: [], types: [], objects: { requirement: [], test: [], campaign: [], changeset: [] }, links: [], linkTypes: [], errors: [],
+      nodes: [], types: [], objects: { requirement: [], test: [], campaign: [] }, links: [], linkTypes: [], errors: [],
     }
     const computed: Computed = { plan, repos, schema: null, types: [], links: new Map(), refsByRepo: new Map() }
 
@@ -175,8 +174,16 @@ export class SchemaDeleteService {
     if (plan.errors.length > 0) return computed
 
     // Objets du repo du schéma (IDs uniques sur le projet : préfixe unique, règle 10).
-    for (const t of types) plan.objects[t.category].push(...await objectIdsOfType(this.objects, repoPath, t.category, t.ref))
-    const deleted = new Set([...plan.objects.requirement, ...plan.objects.test, ...plan.objects.campaign, ...plan.objects.changeset])
+    for (const t of types) {
+      const ids = await objectIdsOfType(this.objects, repoPath, t.category, t.ref)
+      // GH201 — une version porte un tag et l'historique livré : son type ne se supprime pas avec elles.
+      if (t.category === 'version') {
+        if (ids.length > 0) plan.errors.push({ code: 'HAS_VERSIONS', detail: `Le type version ${t.ref} a des versions (${ids.join(', ')}) : il ne se supprime pas.` })
+        continue
+      }
+      plan.objects[t.category as DeletedObjectCategory].push(...ids)
+    }
+    const deleted = new Set([...plan.objects.requirement, ...plan.objects.test, ...plan.objects.campaign])
 
     // Liens de tous les repos dont une extrémité est supprimée (état disque, pas le cache).
     if (deleted.size > 0) {

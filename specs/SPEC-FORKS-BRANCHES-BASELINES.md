@@ -623,6 +623,10 @@ Une **baseline** est un snapshot immuable de l'ensemble du projet à un instant 
 
 En git : un tag `baseline/<nom>` posé sur `main` (ou la branche à baseline).
 
+> **GH201** — la **version** d'un composant / du produit (SPEC-REQ §11) pose aussi un tag annoté
+> (`<repo>-<label>` par défaut) sur le commit de son passage released, mis en attente et poussé au
+> prochain push du repo — contrairement aux tags de baseline, qui restent locaux.
+
 ### 5.2 Conditions de création
 
 Avant de créer une baseline, Polenta vérifie et affiche :
@@ -725,8 +729,8 @@ components:
 > absent de `components`).
 
 **Paramètres (T171)** : `parameters/parameters.yaml` est versionné comme les exigences et les
-tests ; une campagne avec `baselineRef` lit la base de chaque repo au tag du même nom (produit et
-composants), sans repli sur l'état courant si le tag manque dans un repo (SPEC-TESTS §4.2).
+tests ; une campagne lit la base à l'état courant (GH243 — plus de `baselineRef` de campagne,
+SPEC-TESTS §4.2).
 
 ### 5.4 Ce qu'une baseline gèle
 

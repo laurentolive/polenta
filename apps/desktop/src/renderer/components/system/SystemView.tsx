@@ -46,7 +46,6 @@ import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { FieldConfigModal, type ConfigTab } from './FieldConfigModal'
 import { useElementNav } from '../../contexts/ElementNavContext'
-import { useModificationGate } from '../../contexts/ApprovalGateContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
 
@@ -614,23 +613,15 @@ export function SystemView() {
     setFreezeColCountExcel(freezeColCountExcelNext)
   }
 
-  const gates = useModificationGate()
   const autoSaveMutation = useMutation({
     // GH163 — `comment` : commentaire de modification d'un changement de statut (formulaire).
     mutationFn: async ({ objectId, field, value, comment }: { objectId: string; field: string; value: string; comment?: string }) => {
       const cat = effectiveType?.category
       if (!cat || !repoPath || !objectId) return
       if (field === 'status') {
-        // GH199 §8bis — approbation d'un élément non assigné : proposer un change (annuler = rien n'est écrit).
-        // GH200 — réouverture : changeset de la modification.
-        let changesetId: string | undefined
-        if ((cat === 'requirement' || cat === 'test') && effectiveNodeId && effectiveTypeId) {
-          const gate = await gates.status(repoPath, { id: objectId, objectTypeRef: `${effectiveNodeId}::${effectiveTypeId}`, category: cat }, value)
-          if (!gate.ok) return
-          changesetId = gate.changesetId
-        }
-        if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value, comment, changesetId })
-        if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value, modificationComment: comment, changesetId } as UpdateTestCaseDto)
+        // GH243 — changer le statut rouvre un élément approuvé (version + 1 côté main), partout.
+        if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value, comment })
+        if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto)
         return
       }
       if (SYSTEM_FIELDS_SET.has(field)) return
@@ -682,31 +673,6 @@ export function SystemView() {
     inlineEditTimers.current.set(key, timer)
   }, [handleInlineEdit, autoSaveMutation])
 
-  const reopenDraftMutation = useMutation({
-    mutationFn: async ({ objectId, targetStatus }: { objectId: string; targetStatus: string }) => {
-      const cat = effectiveType?.category
-      if (!repoPath || (cat !== 'requirement' && cat !== 'test')) return
-      // GH200 — réouverture : changeset de la modification (annuler = reste approuvé).
-      const gate = await gates.status(repoPath, { id: objectId, objectTypeRef: `${effectiveNodeId}::${effectiveTypeId}`, category: cat }, targetStatus)
-      if (!gate.ok) return
-      if (cat === 'requirement') return api.requirements.openDraft(repoPath, objectId, targetStatus, undefined, undefined, gate.changesetId)
-      return api.tests.openDraft(repoPath, objectId, targetStatus, undefined, undefined, gate.changesetId)
-    },
-    onSuccess: (_, { objectId }) => {
-      qc.invalidateQueries({ queryKey: ['objects', repoPath, effectiveType?.category, effectiveNodeId, effectiveTypeId] })
-      qc.invalidateQueries({ queryKey: ['object', repoPath, effectiveType?.category, objectId] })
-      invalidateImpactedObjects()
-      clearPendingEditsFor(objectId, 'status')
-    },
-    onError: (err) => {
-      console.error('[ReopenDraft] Erreur:', err)
-    },
-  })
-
-  const handleReopenDraft = useCallback((objectId: string, targetStatus: string) => {
-    reopenDraftMutation.mutate({ objectId, targetStatus })
-  }, [reopenDraftMutation])
-
   const handleRenameNode = useCallback((nodeId: string, name: string) => {
     if (!repoPath || !effectiveNodeId || !effectiveTypeId) return
     const newRoot = renameNodeInTree(root, nodeId, name)
@@ -753,16 +719,12 @@ export function SystemView() {
       const objectTypeRef = `${effectiveNodeId}::${effectiveTypeId}`
       setIsCreating(true)
       try {
-        // GH200 — toute création passe par un changeset (annuler = rien n'est créé).
-        const gate = await gates.create(repoPath, { objectTypeRef })
-        if (!gate.ok) return
-        const { changesetId } = gate
         let createdId: string
         if (effectiveType.category === 'requirement') {
-          const req = await api.requirements.create(repoPath, { objectTypeRef, title: value.trim(), fields: {}, changesetId })
+          const req = await api.requirements.create(repoPath, { objectTypeRef, title: value.trim(), fields: {} })
           createdId = req.id
         } else if (effectiveType.category === 'test') {
-          const tc = await api.tests.create(repoPath, { objectTypeRef, title: value.trim(), steps: [], fields: {}, changesetId })
+          const tc = await api.tests.create(repoPath, { objectTypeRef, title: value.trim(), steps: [], fields: {} })
           createdId = tc.id
         } else {
           return
@@ -861,23 +823,18 @@ export function SystemView() {
           })
           .catch(err => console.error('[FlushEdit] Erreur save tree après création:', err))
       }
-      // GH200 — toute création passe par un changeset (annuler = rien n'est créé).
       if (cat === 'requirement') {
-        gates.create(repoPath, { objectTypeRef })
-          .then(gate => gate.ok
-            ? api.requirements.create(repoPath, { objectTypeRef, title, fields: customFields, changesetId: gate.changesetId }).then(req => afterCreate(req.id))
-            : undefined)
+        api.requirements.create(repoPath, { objectTypeRef, title, fields: customFields })
+          .then(req => afterCreate(req.id))
           .catch(err => console.error('[FlushEdit] Erreur création requirement:', err))
       } else if (cat === 'test') {
-        gates.create(repoPath, { objectTypeRef })
-          .then(gate => gate.ok
-            ? api.tests.create(repoPath, { objectTypeRef, title, steps: [], fields: customFields, changesetId: gate.changesetId }).then(tc => afterCreate(tc.id))
-            : undefined)
+        api.tests.create(repoPath, { objectTypeRef, title, steps: [], fields: customFields })
+          .then(tc => afterCreate(tc.id))
           .catch(err => console.error('[FlushEdit] Erreur création test:', err))
       }
     }
     return true
-  }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects, gates])
+  }, [editingObjectId, editingNodeId, editingTreeNode, effectiveType, repoPath, objectData, effectiveNodeId, effectiveTypeId, qc, root, setRoot, invalidateCandidateObjects])
 
   const savePrefsMutation = useMutation({
     mutationFn: async (patch: FieldVisibilityPatch) => {
@@ -986,7 +943,6 @@ export function SystemView() {
   const stableInlineEdit = useStableCallback(handleAutoInlineEdit)
   const stableRenameNode = useStableCallback(handleRenameNode)
   const stableRootChangeDnd = useStableCallback(handleRootChangeDnd)
-  const stableReopenDraft = useStableCallback(handleReopenDraft)
   const stableChangeExcel = useStableCallback(handleChangeExcel)
   const stableStepsChange = useStableCallback(handleWordViewStepsChange)
   const stableEditOpen = useStableCallback((nodeId: string) => {
@@ -1270,7 +1226,6 @@ export function SystemView() {
             onLinkChange={stableLinkChange}
             onInlineEdit={readOnly ? undefined : stableInlineEdit}
             onRenameNode={readOnly ? undefined : stableRenameNode}
-            onReopenDraft={readOnly ? undefined : stableReopenDraft}
             stepsByObjectId={stepsByObjectId}
             onStepsChange={readOnly ? undefined : stableStepsChange}
             onEditOpen={stableEditOpen}

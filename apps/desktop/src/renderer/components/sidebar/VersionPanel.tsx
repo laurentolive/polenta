@@ -1,16 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { GitCompare, History, Lock, SquareTerminal, Tag } from 'lucide-react'
+import { AlertTriangle, FileDiff, GitCompare, History, Lock, Package, SquareTerminal, Tag } from 'lucide-react'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { useVersioning } from '../../contexts/VersioningContext'
 import { useSelectedRepo } from '../../contexts/SelectedRepoContext'
 import { useTerminal } from '../../contexts/TerminalContext'
 import { useWorkspaceStructure } from '../../hooks/useWorkspaceStructure'
+import { useFlaggedElements } from '../../hooks/useFlaggedElements'
+import { useLocalImpactAnalysis } from '../../hooks/useLocalImpactAnalysis'
 import { VersionRepoFolder } from './version/VersionRepoFolder'
 import { VersionCompareSelector } from './version/VersionCompareSelector'
 import { BaselineListPanel } from './version/BaselineListPanel'
+import { ProductVersionsPanel } from './version/ProductVersionsPanel'
+import { isProductVersionsPath } from '../versions/useVersions'
 
 interface Props {
   currentProjectId: string
@@ -34,6 +38,8 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
   const isCompareView = pathname === '/version-diff'
   // GH40: while /baseline is open the panel lists the baselines (the view holds the creation form).
   const isBaselineView = pathname === '/baseline'
+  // GH201: sous-panneau « Produit » tant qu'une page de version (ou le backlog) est ouverte.
+  const isProductView = isProductVersionsPath(pathname)
   const workspaceDir = decodeProjectId(projectId)
 
   const { data: project } = useQuery({
@@ -43,13 +49,17 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
   const repoPath = project?.localPath ?? ''
 
   const { isLoading, error, conflicts, tree, flatNodes } = useWorkspaceStructure(workspaceDir, repoPath)
+  const flaggedCount = useFlaggedElements(projectId).data?.length ?? 0
+  const localCount = useLocalImpactAnalysis(projectId).data?.changedRequirements.length ?? 0
+  const entryClass = (active: boolean) =>
+    `w-full flex items-center gap-2 px-4 py-1.5 text-xs text-left border-b border-edge-subtle shrink-0 ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2 hover:bg-hover'}`
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="px-3 py-1.5 border-b border-edge shrink-0 flex items-center justify-between">
         <p className="section-label">
-          {isCompareView ? t('sidebar.version.compareTitle') : isBaselineView ? t('sidebar.version.baselinesTitle') : t('sidebar.version.title')}
+          {isCompareView ? t('sidebar.version.compareTitle') : isBaselineView ? t('sidebar.version.baselinesTitle') : isProductView ? t('versions.title') : t('sidebar.version.title')}
         </p>
         <div className="flex items-center gap-2">
           {isReadonly && (
@@ -57,6 +67,15 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
               <Lock size={11} className="text-status-warning" />
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => navigate({ to: '/versions', search: { projectId } })}
+            className="btn-icon text-prim"
+            title={t('versions.title')}
+            data-testid="version-product-button"
+          >
+            <Package size={14} />
+          </button>
           <button
             type="button"
             onClick={() => navigate({ to: '/baseline', search: { projectId } })}
@@ -95,6 +114,25 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
         </div>
       </div>
 
+      {/* GH243 — « Impact à vérifier » (§4.8) et modifications locales (T175), ex-panneau Changesets :
+          une entrée chacun, affichée s'il y a quelque chose. */}
+      {flaggedCount > 0 && (
+        <button type="button" onClick={() => navigate({ to: '/revalidation', search: { projectId } })}
+          className={entryClass(pathname === '/revalidation')} data-testid="version-revalidation-entry">
+          <AlertTriangle size={13} className="shrink-0 text-status-warning" />
+          <span className="flex-1 truncate">{t('impactAnalysisPage.revalidation.listTitle')}</span>
+          <span className="text-ink-3">{flaggedCount}</span>
+        </button>
+      )}
+      {localCount > 0 && (
+        <button type="button" onClick={() => navigate({ to: '/local-impact', search: { projectId } })}
+          className={entryClass(pathname === '/local-impact')} data-testid="version-local-entry">
+          <FileDiff size={13} className="shrink-0" />
+          <span className="flex-1 truncate">{t('impactAnalysisPage.localTitle')}</span>
+          <span className="text-ink-3">{localCount}</span>
+        </button>
+      )}
+
       {isCompareView ? (
         <div className="flex-1 overflow-hidden">
           <VersionCompareSelector projectId={projectId} />
@@ -102,6 +140,10 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
       ) : isBaselineView ? (
         <div className="flex-1 overflow-hidden">
           <BaselineListPanel projectId={projectId} />
+        </div>
+      ) : isProductView ? (
+        <div className="flex-1 overflow-hidden">
+          <ProductVersionsPanel projectId={projectId} />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto py-0.5">

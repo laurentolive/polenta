@@ -39,6 +39,7 @@ export type SchemaValidationErrorCode =
   | 'REQUIRED_WHEN_INVALID'
   | 'RUN_FIELD_INVALID'
   | 'LINK_TYPE_NAME_TAKEN'
+  | 'VERSION_TYPE_INVALID'
   | 'DISPLAY_ID_FIELD_INVALID'
 
 /**
@@ -87,7 +88,7 @@ export class SchemaService {
     if (bytes) {
       try {
         const parsed = yaml.load(new TextDecoder().decode(bytes)) as ProjectSchema
-        if (parsed && parsed.nodes) schema = this.migrateRootRolesImplements(parsed)
+        if (parsed && parsed.nodes) schema = this.migrateRootRolesImplements(dropRemovedChangesets(parsed))
       } catch {
         schema = null
       }
@@ -102,6 +103,8 @@ export class SchemaService {
     this.assertUniquePrefixes(schema)
     this.assertRequiredWhen(schema)
     this.assertRunFields(schema)
+    this.assertVersionTypes(schema)
+    await this.assertVersionTypeStable(repoPath, schema)
     this.assertValidDisplayIdFields(schema, await this.get(repoPath).catch(() => null))
     const toWrite = this.mirrorRootRolesImplements(schema)
     const dir = path.join(repoPath, '.polenta')
@@ -134,6 +137,42 @@ export class SchemaService {
     const types = flattenSystemNodes(schema.nodes).flatMap(({ node }) => node.objectTypes ?? [])
     const issue = runFieldIssues(types).find((i) => i.level === 'error')
     if (issue) throw new SchemaValidationError('RUN_FIELD_INVALID', issue.message)
+  }
+
+  /**
+   * GH201 — une version porte sur un repo entier : au plus un type de catégorie `version`, déclaré
+   * sur le nœud `root` (pas sur un composant local).
+   */
+  private assertVersionTypes(schema: ProjectSchema): void {
+    const versionTypes = flattenSystemNodes(schema.nodes ?? [])
+      .flatMap(({ node }) => (node.objectTypes ?? []).filter(t => t.category === 'version').map(t => ({ node: node.name, type: t.name })))
+    const misplaced = versionTypes.find(v => v.node !== 'root')
+    if (misplaced) {
+      throw new SchemaValidationError('VERSION_TYPE_INVALID', `Le type version "${misplaced.type}" doit être déclaré sur le nœud racine du repo, pas sur "${misplaced.node}".`)
+    }
+    if (versionTypes.length > 1) {
+      throw new SchemaValidationError('VERSION_TYPE_INVALID', `Un repo n'a qu'un type version (${versionTypes.map(v => v.type).join(', ')}).`)
+    }
+  }
+
+  /**
+   * GH201 — le renommage d'un type (GH100) ne migre pas les versions : tant que `versions/` en
+   * contient, le type version garde son nom et son préfixe, et n'est pas retiré du schéma.
+   */
+  private async assertVersionTypeStable(repoPath: string, schema: ProjectSchema): Promise<void> {
+    const versionTypeOf = (s: ProjectSchema | null) => s?.nodes?.find(n => n.name === 'root')?.objectTypes?.find(t => t.category === 'version')
+    const before = versionTypeOf(await this.get(repoPath).catch(() => null))
+    if (!before) return
+    const after = versionTypeOf(schema)
+    // Les statuts marqués (`isApproval` = released, `isTerminal` = abandonnée) donnent l'état des versions existantes.
+    const marked = (t: typeof before) => JSON.stringify((t?.statuses ?? []).filter(s => s.isApproval || s.isTerminal)
+      .map(s => [s.name, !!s.isApproval, !!s.isTerminal]).sort())
+    if (after && after.name === before.name && (after.prefix ?? '') === (before.prefix ?? '') && marked(after) === marked(before)) return
+    const entries = await fsP.readdir(path.join(repoPath, 'versions'), { withFileTypes: true }).catch(() => [])
+    const count = entries.filter(e => e.isFile() && e.name.endsWith('.yaml')).length
+    if (count > 0) {
+      throw new SchemaValidationError('VERSION_TYPE_INVALID', `Le type version "${before.name}" a ${count} version(s) : son nom, son préfixe et ses statuts released / abandonnée ne se modifient pas, et il ne se retire pas.`)
+    }
   }
 
   /**
@@ -587,7 +626,7 @@ export class SchemaService {
       const raw = await fsP.readFile(filePath, 'utf-8')
       const parsed = yaml.load(raw) as ProjectSchema
       if (!parsed || !parsed.nodes) return DEFAULT_SCHEMA
-      return this.migrateRootRolesImplements(parsed)
+      return this.migrateRootRolesImplements(dropRemovedChangesets(parsed))
     } catch {
       return DEFAULT_SCHEMA
     }
@@ -622,4 +661,19 @@ export class SchemaService {
       })),
     }
   }
+}
+
+/**
+ * GH243 — le changeset est retiré : un type de l'ancienne catégorie `changeset` et la préférence
+ * `changeTracking` sont ignorés à la lecture, donc absents de la prochaine sauvegarde du schéma.
+ */
+function dropRemovedChangesets(schema: ProjectSchema): ProjectSchema {
+  const dropTypes = (nodes: SystemNode[]): SystemNode[] => nodes.map(n => ({
+    ...n,
+    ...(n.objectTypes && { objectTypes: n.objectTypes.filter(t => (t.category as string) !== 'changeset') }),
+    ...(n.children && { children: dropTypes(n.children) }),
+  }))
+  const prefs = schema.preferences as (ProjectSchema['preferences'] & { changeTracking?: unknown }) | undefined
+  const { changeTracking: _removed, ...preferences } = prefs ?? {}
+  return { ...schema, nodes: dropTypes(schema.nodes), ...(prefs && { preferences }) }
 }

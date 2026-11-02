@@ -28,7 +28,7 @@ export function inflatedGraphJson(): string {
       }
       return { entryId, testCaseId: `T-${i}`, requirementId: null, status, addedAt: day(start), runId: null, executedAt: last, executedBy: null, carriedFrom: null, snapshot: null, resyncable: false }
     })
-    campaigns.push({ id, repo: 'r', component: 'r', objectTypeRef: null, title: id, status: 'in_progress', fields: {}, history: {}, baselineRef: null, targetComponent: null, changeset: null, level: null, createdAt: day(start, 8), completedAt: null, entries, removedEntries: [] })
+    campaigns.push({ id, repo: 'r', component: 'r', objectTypeRef: null, title: id, status: 'in_progress', fields: {}, history: {}, targetComponent: null, level: null, createdAt: day(start, 8), completedAt: null, entries, removedEntries: [] })
   }
   return JSON.stringify({
     schema: { objectTypes: [], linkTypes: [], campaignStatuses: [], entryStatuses: ['pending', 'INCOMPLETE', 'BLOCKED', 'FAIL', 'PASS'].map((name, order) => ({ name, label: name, order })) },

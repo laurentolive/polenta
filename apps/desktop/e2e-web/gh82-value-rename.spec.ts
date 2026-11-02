@@ -94,7 +94,8 @@ test('E2/E4 — deux valeurs renommées, une décochée ; collision signalée', 
   await confirmDialog().getByRole('button', { name: 'Enregistrer et migrer' }).click()
   await expect(s.page.getByRole('status').filter({ hasText: 'migré' })).toBeVisible()
 
-  expect((await getReq(reqB)).fields.niveau).toBe('eleve')
+  // Le message « migré » du test précédent peut encore être affiché : attendre la valeur migrée.
+  await expect.poll(async () => (await getReq(reqB)).fields.niveau, { timeout: 20000 }).toBe('eleve')
   expect((await getReq(reqA)).fields.niveau).toBe('bas')
   expect((await getReq(reqC)).fields.niveau).toBe('ancien')
   expect((await ourType()).fields[0].values).toEqual(['bas', 'ancien', 'eleve'])

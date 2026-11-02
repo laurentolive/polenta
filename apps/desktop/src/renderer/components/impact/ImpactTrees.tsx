@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ChangedRequirement, ImpactAnalysisStatus, ImpactNode, Requirement, RequirementChangeType } from '@polenta/types'
 import { api } from '../../api'
+import { IMPACT_ANALYSIS_STATUSES } from '@polenta/types'
 import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 import { wordDiff, diffValueText } from '../../lib/wordDiff'
 import { RevalidationFlag } from '../system/RevalidationFlag'
@@ -30,16 +31,8 @@ export const CHANGE_TYPE_COLOR: Record<RequirementChangeType, string> = {
   modified: 'text-status-warning',
 }
 
-export const STATUS_ORDER: ImpactAnalysisStatus[] = [
-  'impact_non_verifie',
-  'pas_d_impact_reel',
-  'impact_a_tester',
-  'impact_teste',
-  'modification_a_faire',
-  'modification_faite',
-  'modification_a_tester',
-  'modification_verifiee',
-]
+/** Ordre des statuts d'impact : liste partagée (GH245). */
+export const STATUS_ORDER: readonly ImpactAnalysisStatus[] = IMPACT_ANALYSIS_STATUSES
 
 // Statuts "clos" pour l'indicateur de complétude (point 6 de la spec) — ne contraint pas les
 // transitions, sert uniquement à compter ouverts/clos.
@@ -106,6 +99,8 @@ interface ImpactTreeViewProps {
   depth?: number
   /** T175 — analyse locale : pas de statut ni de commentaire. */
   readOnly?: boolean
+  /** Affichage serré (page d'une version) : niveau 0 sans retrait, retrait minimal, petite flèche. */
+  dense?: boolean
 }
 
 // L'énoncé EARS courant d'une exigence n'est pas assez court pour tenir dans la liste — la
@@ -122,7 +117,7 @@ export function useRequirementStatementTooltip(repoPath: string, reqId: string, 
   return (typeof rawStatement === 'string' && rawStatement.trim() ? rawStatement : fallback).replace(/\s+/g, ' ').trim()
 }
 
-function ImpactNodeStatusEditor({ node, onUpdateStatus }: { node: ImpactNode; onUpdateStatus: UpdateNodeStatus }) {
+function ImpactNodeStatusEditor({ node, onUpdateStatus, dense }: { node: ImpactNode; onUpdateStatus: UpdateNodeStatus; dense?: boolean }) {
   const { t } = useTranslation()
   // Brouillon combiné statut+commentaire, pas deux states indépendants — resynchronisé sur
   // `node` (la ligne peut être réutilisée par React sans remonter, ex. rouvrir une autre
@@ -166,7 +161,7 @@ function ImpactNodeStatusEditor({ node, onUpdateStatus }: { node: ImpactNode; on
         onClick={(e) => e.stopPropagation()}
         placeholder={t('impactAnalysisPage.commentPlaceholder')}
         rows={1}
-        className="w-1/4 shrink-0 resize-none text-xs bg-surface border border-edge-subtle rounded px-1.5 py-1 text-ink leading-4"
+        className={`w-1/4 shrink-0 resize-none text-xs bg-surface border border-edge-subtle rounded px-1.5 ${dense ? 'py-0' : 'py-1'} text-ink leading-4`}
       />
       <span
         className={`w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -177,7 +172,7 @@ function ImpactNodeStatusEditor({ node, onUpdateStatus }: { node: ImpactNode; on
       <select
         value={draft.status}
         onChange={(e) => commitStatus(e.target.value as ImpactAnalysisStatus)}
-        className={`shrink-0 text-xs bg-surface border rounded px-1.5 py-1 text-ink max-w-[9rem] ${
+        className={`shrink-0 text-xs bg-surface border rounded px-1.5 ${dense ? 'py-0 leading-4' : 'py-1'} text-ink max-w-[9rem] ${
           CLOSED_STATUSES.has(draft.status) ? 'border-status-success' : 'border-edge-subtle'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -190,7 +185,7 @@ function ImpactNodeStatusEditor({ node, onUpdateStatus }: { node: ImpactNode; on
   )
 }
 
-function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateStatus, depth, readOnly }: { node: ImpactNode; repoPath: string; onOpen: (node: ImpactNode) => void; onUpdateStatus: UpdateNodeStatus; depth: number; readOnly?: boolean }) {
+function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateStatus, depth, readOnly, dense }: { node: ImpactNode; repoPath: string; onOpen: (node: ImpactNode) => void; onUpdateStatus: UpdateNodeStatus; depth: number; readOnly?: boolean; dense?: boolean }) {
   const repoPath = node.repo?.path ?? analysisRepoPath
   const [expanded, setExpanded] = useState(true)
   const hasChildren = node.children.length > 0
@@ -212,16 +207,16 @@ function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateS
   return (
     <div>
       <div
-        className="flex items-center gap-2 py-1.5 text-sm hover:bg-hover rounded transition-colors group"
-        style={{ paddingLeft: `${depth * 18 + 8}px` }}
+        className={`flex items-center ${dense ? 'gap-1.5 py-0.5' : 'gap-2 py-1.5'} text-sm hover:bg-hover rounded transition-colors group`}
+        style={{ paddingLeft: dense ? `${depth * 8}px` : `${depth * 18 + 8}px` }}
         data-testid={`impact-node-${node.elementId}`}
       >
         {hasChildren ? (
           <button type="button" onClick={() => setExpanded((e) => !e)} className="text-ink-3 shrink-0">
-            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            {expanded ? <ChevronDown size={dense ? 10 : 13} /> : <ChevronRight size={dense ? 10 : 13} />}
           </button>
         ) : (
-          <span className="w-[13px] shrink-0" />
+          <span className={`${dense ? 'w-[10px]' : 'w-[13px]'} shrink-0`} />
         )}
         {flagged && (
           <input
@@ -257,21 +252,21 @@ function ImpactTreeNodeRow({ node, repoPath: analysisRepoPath, onOpen, onUpdateS
             {t('impactAnalysisPage.revalidation.clear')}
           </button>
         )}
-        {!readOnly && <ImpactNodeStatusEditor node={node} onUpdateStatus={onUpdateStatus} />}
+        {!readOnly && <ImpactNodeStatusEditor node={node} onUpdateStatus={onUpdateStatus} dense={dense} />}
       </div>
       {hasChildren && expanded && (
-        <ImpactTreeView nodes={node.children} repoPath={analysisRepoPath} onOpen={onOpen} onUpdateStatus={onUpdateStatus} depth={depth + 1} readOnly={readOnly} />
+        <ImpactTreeView nodes={node.children} repoPath={analysisRepoPath} onOpen={onOpen} onUpdateStatus={onUpdateStatus} depth={depth + 1} readOnly={readOnly} dense={dense} />
       )}
     </div>
   )
 }
 
-export function ImpactTreeView({ nodes, repoPath, onOpen, onUpdateStatus, depth = 0, readOnly }: ImpactTreeViewProps) {
+export function ImpactTreeView({ nodes, repoPath, onOpen, onUpdateStatus, depth = 0, readOnly, dense }: ImpactTreeViewProps) {
   if (nodes.length === 0) return null
   return (
     <div>
       {nodes.map((node) => (
-        <ImpactTreeNodeRow key={`${node.elementType}-${node.elementId}`} node={node} repoPath={repoPath} onOpen={onOpen} onUpdateStatus={onUpdateStatus} depth={depth} readOnly={readOnly} />
+        <ImpactTreeNodeRow key={`${node.elementType}-${node.elementId}`} node={node} repoPath={repoPath} onOpen={onOpen} onUpdateStatus={onUpdateStatus} depth={depth} readOnly={readOnly} dense={dense} />
       ))}
     </div>
   )

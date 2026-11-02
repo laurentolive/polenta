@@ -16,7 +16,7 @@ export interface ExecutionHistoryRow {
   testTitle: string
   objectTypeRef: string
   run?: TestRun
-  campaign?: { id: string; title: string; status: CampaignStatus; baselineRef?: string; fields: Record<string, unknown> }
+  campaign?: { id: string; title: string; status: CampaignStatus; fields: Record<string, unknown> }
   entry?: {
     entryId: string
     requirementId?: string

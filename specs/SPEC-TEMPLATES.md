@@ -31,8 +31,6 @@ schema:
     autoPropagatePin: false       # T94 — propagation auto du pin sous-repo → parent au commit, sinon approbation manuelle
     autoPullIntervalMinutes: 5    # GH65 — intervalle du pull automatique (entier 1–60, défaut 5 ; clé omise à la valeur par
                                   #   défaut), lu dans le schéma du repo racine, réglé dans la page Préférences
-    changeTracking: off           # GH200 — toute modification d'exigence / de test passe par un changeset ; absent =
-                                  #   actif dès que le repo déclare un type changeset ; écrit seulement pour désactiver
     exportTemplates:              # GH34 — gabarit Word/Excel par défaut par `<kind>:<format>`, chemin relatif à la
       requirements:docx: ACME/Cahier des exigences.docx   #   bibliothèque de gabarits de chaque utilisateur (préférence
                                   #   application `exportTemplatesDir`) ; clé absente = rendu Standard.
@@ -243,7 +241,7 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `label` | string | Nom affiché dans l'UI |
 | `prefix` | string | Préfixe des identifiants (ex. `"SYS"`) — **unique sur tout le projet** |
 | `color` | string | Couleur d'affichage (hex) |
-| `category` | enum | `requirement` \| `test` \| `campaign` |
+| `category` | enum | `requirement` \| `test` \| `campaign` \| `version` (GH201 : un seul type par repo, sur `root`, statuts par défaut `en_cours` / `released` `isApproval` / `abandonnee` `isTerminal` — [SPEC-REQ §11](SPEC-REQ-requirements.md#11-versions-de-composant--produit-gh201)) |
 | `fields` | list | Champs personnalisés (voir §3.2) |
 | `statuses` | list | Statuts configurables (voir §3.3) |
 | `trackStatusHistory` | bool? | **GH77** — historiser le statut ; absent = `true`, écrit seulement quand `false` — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77) |

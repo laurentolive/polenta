@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react'
-import { CreateChangeButton } from '../changes/CreateChangeButton'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ObjectTypeDefinition, SchemaField, SchemaFieldType, LinkTypeDefinition, ObjectLink, CoverageStatus, MatrixCell, TestCase } from '@polenta/types'
@@ -640,12 +639,6 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
       {/* ── Form ── */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-8 py-6 space-y-5">
-          {/* GH198 — « Créer un change » avec l'élément dans « à modifier ». */}
-          {repoPath && projectId && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test') && (
-            <div className="flex justify-end -mb-3">
-              <CreateChangeButton repoPath={repoPath} projectId={projectId} elementId={objectData['id']} objectTypeRef={objectData['objectTypeRef']} />
-            </div>
-          )}
           {/* T138 — badge de couverture, toujours affiché pour une exigence (pas d'onglet "Édition"
               dans FieldConfigModal pour le rendre désactivable, cf. specs/T138-design.md §3.4) ;
               hors du pipeline orderedFields/FieldRow — champ non éditable, pas un SchemaField. */}

@@ -12,7 +12,6 @@ export const TEMPLATE_FORMATS_BY_KIND: Partial<Record<ExportKind, TemplateExport
   'campaign-report': ['docx'],
   dashboard: ['docx'],
   'query-result': ['xlsx'],
-  'impact-analysis': ['xlsx'],
 }
 
 export function templateKey(kind: ExportKind, format: TemplateExportFormat): ExportTemplateKey {

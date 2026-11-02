@@ -12,9 +12,7 @@ import { withKeyLock } from './serialize-writes.util'
 import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
 import { applyFieldsWrite } from './field-write.util'
-import { assertContentEditable, statusModificationKind } from './approved-lock.util'
-import type { ModificationTracker } from './change-tracking.service'
-import type { ModificationKind } from '@polenta/types'
+import { assertContentEditable, versionBump } from './approved-lock.util'
 
 export class RequirementsService {
   constructor(
@@ -24,13 +22,6 @@ export class RequirementsService {
     private readonly revalidation?: RevalidationService,
     private readonly history?: HistoryService,
   ) {}
-
-  /** GH200 — rattachement par élément ; posé après construction (le tracker dépend des changesets). */
-  private tracker?: ModificationTracker
-
-  setModificationTracker(tracker: ModificationTracker): void {
-    this.tracker = tracker
-  }
 
   findAll(repoPath: string, filters: RequirementFilters): Promise<Requirement[]> {
     return this.index.findAll(repoPath, filters)
@@ -81,8 +72,6 @@ export class RequirementsService {
       throw new Error(`Statut inconnu pour le type ${dto.objectTypeRef} : "${dto.status}"`)
     }
     const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, dto.objectTypeRef, workspaceDir)) ?? repoPath
-    // GH200 — changeset demandé contrôlé avant d'émettre l'ID.
-    if (dto.changesetId) await this.tracker?.assertChangeset(targetRepo, dto.changesetId)
     const reqId = await this.nextId(repoPath, targetRepo, dto.objectTypeRef)
 
     // Belt-and-suspenders: nextId() already reconciles the counter against files on
@@ -111,9 +100,7 @@ export class RequirementsService {
       updatedBy: null,
     }
 
-    const created = await this.persist(repoPath, targetRepo, null, req)
-    await this.track(targetRepo, created.id, 'create', undefined, dto.changesetId)
-    return created
+    return this.persist(repoPath, targetRepo, null, req)
   }
 
   // T159 — `withKeyLock` sérialise les read-modify-write concurrents sur le même fichier
@@ -145,76 +132,32 @@ export class RequirementsService {
     })
   }
 
-  /** GH163 — `comment` : commentaire de modification, conservé sur l'entrée d'historique du statut. */
-  async openDraft(
-    repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string, changesetId?: string,
-  ): Promise<Requirement> {
-    const { updated, leftApproval, tracked } = await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
-      const existing = await this.index.findById(repoPath, id)
-      if (!existing) throw new Error(`Requirement ${id} not found`)
-
-      const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-      if (changesetId) await this.tracker?.assertChangeset(targetRepo, changesetId)
-      const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
-      const updated = await this.persist(repoPath, targetRepo, existing, {
-        ...existing,
-        status: targetStatus,
-        version: (existing.version ?? 0) + 1,
-      }, { comment })
-      const kind = statusModificationKind(typeDef, existing.status, targetStatus)
-      return {
-        updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, targetStatus),
-        tracked: kind && { repo: targetRepo, kind, versionBefore: existing.version ?? 1 },
-      }
-    })
-    // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
-    if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
-    if (tracked) await this.track(tracked.repo, id, tracked.kind, tracked.versionBefore, changesetId)
-    return updated
+  /**
+   * GH163 — `comment` : commentaire de modification, conservé sur l'entrée d'historique du statut.
+   * GH243 — même règle de version que `transition` (alias de la réouverture de la vue).
+   */
+  openDraft(repoPath: string, id: string, targetStatus: string, workspaceDir?: string, comment?: string): Promise<Requirement> {
+    return this.transition(repoPath, id, { toStatus: targetStatus, comment }, workspaceDir)
   }
 
   async transition(repoPath: string, id: string, dto: TransitionRequirementDto, workspaceDir?: string): Promise<Requirement> {
-    const { updated, leftApproval, tracked } = await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
+    const { updated, leftApproval } = await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
       const existing = await this.index.findById(repoPath, id)
       if (!existing) throw new Error(`Requirement ${id} not found`)
 
       const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
-      if (dto.changesetId) await this.tracker?.assertChangeset(targetRepo, dto.changesetId)
-
-      // Une exigence approuvée qui quitte ce statut (ex: retour en draft depuis la
-      // colonne Statut de la vue Excel, qui appelle transition() plutôt que openDraft())
-      // doit voir sa version incrémentée au même titre que le bouton dédié "Reopen draft"
-      // (T150) — sinon la traçabilité de version diverge selon le chemin UI emprunté.
+      // GH243 — version + 1 quand le statut quitte l'approbation, quel que soit le chemin (T150).
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
-      const wasApproved = !!typeDef?.statuses?.find(s => s.name === existing.status)?.isApproval
-
       const updated = await this.persist(repoPath, targetRepo, existing, {
         ...existing,
         status: dto.toStatus,
-        ...(wasApproved && dto.toStatus !== existing.status ? { version: (existing.version ?? 0) + 1 } : {}),
+        ...versionBump(typeDef, existing, dto.toStatus),
       }, { comment: dto.comment })
-      const kind = statusModificationKind(typeDef, existing.status, dto.toStatus)
-      return {
-        updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, dto.toStatus),
-        tracked: kind && { repo: targetRepo, kind, versionBefore: existing.version ?? 1 },
-      }
+      return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, dto.toStatus) }
     })
     // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
     if (leftApproval) await this.revalidation?.markImpactedBy(repoPath, id, workspaceDir)
-    if (tracked) await this.track(tracked.repo, id, tracked.kind, tracked.versionBefore, dto.changesetId)
     return updated
-  }
-
-  /**
-   * GH200 — assignation à un changeset de l'exigence devenue modifiable, après son écriture. Un échec
-   * n'annule pas l'écriture : l'exigence reste non assignée (backlog).
-   */
-  private async track(repo: string, id: string, kind: ModificationKind, versionBefore?: number, changesetId?: string): Promise<void> {
-    try {
-      await this.tracker?.onModified(repo, { id, filePath: `requirements/${id}.yaml`, versionBefore }, kind, changesetId)
-    } catch (err) {
-      console.warn(`[GH200] ${id} non assignée :`, err)
-    }
   }
 
   /**

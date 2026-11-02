@@ -1,8 +1,6 @@
 import {
   TEST_RUN_STATUS_LABELS,
   type CampaignExportPayload,
-  type ImpactAnalysisExportPayload,
-  type ImpactNode,
   type QueryResultExportPayload,
   type RequirementsExportPayload,
   type TemplateOutlineEntry,
@@ -74,7 +72,7 @@ export function buildCampaignXlsxData(payload: CampaignExportPayload): object {
   })
   return {
     campaign: {
-      id: campaign.id, title: campaign.title, status: campaign.status, baselineRef: campaign.baselineRef ?? '',
+      id: campaign.id, title: campaign.title, status: campaign.status,
       component: campaign.component ?? '', level: campaign.level ?? '', createdAt: campaign.createdAt ?? '',
     },
     entries,
@@ -94,35 +92,6 @@ export function buildQueryResultXlsxData(payload: QueryResultExportPayload): obj
     return { ...Object.fromEntries(columns.map((c, i) => [c.name, cells[i]])), cells }
   })
   return { query: { name: payload.queryName }, columnNames: columns.map(c => c.name), rows, count: rows.length }
-}
-
-/** Analyse d'impact : une ligne par exigence modifiée puis par nœud de ses arbres d'impact. */
-export function buildImpactXlsxData(payload: ImpactAnalysisExportPayload): object {
-  // GH199 — analyse d'un change : mêmes clés de modèle qu'avant (racines au lieu des exigences changées).
-  const { change, analysis } = payload
-  const rows: Record<string, unknown>[] = []
-  const addNode = (reqId: string, node: ImpactNode, direction: string, depth: number) => {
-    rows.push({
-      reqId, direction, depth, id: node.elementId, title: node.title, type: node.linkType,
-      status: node.status, comment: node.comment ?? '', updatedBy: node.updatedBy ?? '',
-    })
-    for (const child of node.children) addNode(reqId, child, direction, depth + 1)
-  }
-  for (const r of analysis.roots) {
-    rows.push({ reqId: r.elementId, direction: 'Racine', depth: 0, id: r.elementId, title: r.title, type: r.elementType, status: '', comment: '', updatedBy: '' })
-    for (const node of r.descendantTree) addNode(r.elementId, node, 'Descendant', 1)
-    for (const node of r.ascendantTree) addNode(r.elementId, node, 'Ascendant', 1)
-  }
-  return {
-    analysis: {
-      id: change.id, label: change.title, from: change.range?.from.ref ?? '', to: change.range?.to.ref ?? '',
-      createdAt: analysis.computedAt, createdBy: '',
-    },
-    rows,
-    impacted: analysis.rows,
-    changes: analysis.roots.length,
-    count: rows.length,
-  }
 }
 
 function cellValue(value: unknown): string | number | boolean {

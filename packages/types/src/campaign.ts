@@ -23,7 +23,6 @@ export interface TestCampaign {
   title: string
   objectTypeRef?: string
   fields: Record<string, unknown>
-  baselineRef?: string
   component?: string
   level?: string
   status: CampaignStatus
@@ -34,8 +33,6 @@ export interface TestCampaign {
   removedRuns?: RemovedCampaignTestRun[]
   createdAt: string
   completedAt?: string | null
-  /** GH207 — changeset qui a créé la campagne (lien aussi dans `campaigns` du changeset). */
-  changeset?: string
   /** GH77 — historique du statut et des champs personnalisés suivis. */
   history?: ObjectHistory
 }
@@ -67,8 +64,8 @@ export interface CampaignTestRun {
   /** T171 — valeurs lues dans la base de paramètres et figées à l'ajout (clé = référence telle
    *  qu'écrite : `nom` ou `<nœud>::nom`, valeur déjà formatée `value unit`). Jamais modifiées. */
   resolvedParams?: Record<string, string>
-  /** T171 — tag git auquel les paramètres ont été lus (= `baselineRef` de la campagne) ; absent :
-   *  état courant. */
+  /** T171 — tag git auquel les paramètres ont été lus (ancien `baselineRef` de la campagne, retiré
+   *  par GH243 : plus écrit) ; absent : état courant. */
   paramSourceRef?: string
   /** T171 — références de base restées non résolues à l'ajout, avec leur raison. */
   unresolvedParams?: UnresolvedParam[]
@@ -129,7 +126,7 @@ export interface ParamResolutionPreview {
   /** Références locales absentes de la base : à saisir à la main (ordre T97). */
   manual: string[]
   unresolved: UnresolvedParam[]
-  /** Tag de lecture (baselineRef) ou absent pour l'état courant. */
+  /** Tag de lecture, ou absent pour l'état courant (les campagnes lisent l'état courant, GH243). */
   sourceRef?: string
   /** T179 — présent si le test contient au moins une `{req.<champ>}` : une entrée par exigence liée
    *  (lien de couverture, non terminale, tri naturel des IDs) ; vide si aucune (les clés `req.*` sont
@@ -154,7 +151,6 @@ export interface CreateCampaignDto {
   title: string
   objectTypeRef?: string
   fields?: Record<string, unknown>
-  baselineRef?: string
   component?: string
   level?: string
   testCaseIds: string[]
@@ -163,8 +159,6 @@ export interface CreateCampaignDto {
   reqInstances?: ReqInstanceSelection
   /** GH64 — entrées reportées depuis d'autres campagnes. */
   carried?: CarriedEntrySelection[]
-  /** GH207 — changeset ouvert du repo qui crée la campagne (lien écrit des deux côtés). */
-  changeset?: string
 }
 
 export interface UpdateCampaignDto {

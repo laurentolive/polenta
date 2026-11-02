@@ -15,8 +15,8 @@ import { RepoWatcherService } from './services/repo-watcher.service'
 import { SchemaService } from './services/schema.service'
 import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
-import { ChangesService } from './services/changes.service'
-import { ChangeTrackingService } from './services/change-tracking.service'
+import { VersionTrackingService } from './services/version-tracking.service'
+import { VersionsService } from './services/versions.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TreeService, indexObjectLister } from './services/tree.service'
@@ -53,7 +53,7 @@ import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
 
 /** GH74 — dossiers dont un changement invalide le graphe de données. */
-const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', 'changesets/', '.polenta/', 'polenta-repo.yaml']
+const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', 'versions/', '.polenta/', 'polenta-repo.yaml']
 
 /**
  * Instancie le noyau de services (GH44 : sans dépendance à Electron). L'hôte fournit ce qui
@@ -99,21 +99,17 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const reqRefs = new ReqRefsService(git, reqIndex, schema)
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree, reqRefs)
   const campaigns = new CampaignsService(git, tests, parameters, schema, history)
+  // GH201 — versions de composant / produit : backlog, page, passage released (commit + tag).
+  const versions = new VersionsService(
+    git, sync, schema, new VersionTrackingService(git, schema), history, workspaceTree,
+    (rootRepoPath, workspaceDir) => revalidation.readonlyRepoPaths(rootRepoPath, workspaceDir),
+  )
   // GH105 — liens inter-repos : agrégation sur le workspace, écriture côté source.
   const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns)
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   // GH197 — historique des exécutions d'un test ou d'une exigence.
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
-  // GH198 — objet change.
-  const changes = new ChangesService(git, schema, workspaceTree, history, { traceability, sync, campaigns })
-  // GH200 — rattachement par élément : création / réouverture assignées à un changeset.
-  const changeTracking = new ChangeTrackingService(git, schema, changes)
-  requirements.setModificationTracker(changeTracking)
-  tests.setModificationTracker(changeTracking)
-  changes.setTracker(changeTracking)
-  // GH207 — campagne créée depuis un changeset : lien des deux côtés.
-  campaigns.setChangesetLinker({ assertOpen: (r, id) => changes.assertOpen(r, id), link: (r, id, c) => changes.linkCampaign(r, id, c) })
   const elementMove = new ElementMoveService(schema, requirements, tests, tree)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns)
@@ -124,7 +120,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   )
   // GH104 — suppression en cascade d'un composant local ou d'un type (objets, liens, arbres, refs).
   const schemaDelete = new SchemaDeleteService(
-    git, { requirements, tests, campaigns, changes }, reqIndex, tree, schema, [reqIndex, testsIndex],
+    git, { requirements, tests, campaigns, versions }, reqIndex, tree, schema, [reqIndex, testsIndex],
     (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
     async workspaceDir => {
       const cache = workspaceDir ? await workspaceTree.readCache(workspaceDir) : null
@@ -138,6 +134,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // bibliothèque projet sont oubliés dès qu'un fichier de leur périmètre change (y compris dans un
   // repo composant), avant que le renderer ne soit notifié (abonnés appelés dans l'ordre).
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns)
+  graph.setVersions(versions)
+  versions.setImpactSources({ traceability, campaigns })
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
   watcher.onFileChange((repoPath, relPath) => {
@@ -188,10 +186,9 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     schema,
     elementMove,
     campaigns,
+    versions,
     campaignExecution,
     executionHistory,
-    changes,
-    changeTracking,
     tree,
     baseline,
     polentaRepo,

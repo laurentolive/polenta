@@ -235,7 +235,8 @@ export class RequirementsIndexService {
   invalidateFile(repoPath: string, filePath: string): void {
     if (
       filePath.startsWith('requirements/') ||
-      filePath.startsWith('versions/') ||
+      // Instantanés `versions/<REQ>/vN.yaml` seulement : `versions/<ID>.yaml` est un objet version (GH201).
+      /^versions\/[^/]+\/v\d+\.yaml$/.test(filePath) ||
       filePath.startsWith('links/')
     ) {
       this.invalidate(repoPath)

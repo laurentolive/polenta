@@ -73,6 +73,22 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 > **GH207 (contrat v1, ajout)** — `GraphCampaign.changeset` (changeset qui a créé la campagne, sinon
 > null) ; `GraphChangeset.campaigns` alimenté. `polenta.d.ts` régénéré (manifeste v9).
 
+> **GH243 (contrat v1, retrait)** — collection `changesets` et `GraphChangeset` retirées avec l'objet
+> changeset ; `GraphCampaign.changeset` et `GraphCampaign.baselineRef` retirés ; catégorie `changeset`
+> retirée de `GraphObjectCategory`. Les ajouts GH198 / GH199 / GH200 / GH207 ci-dessus sont caducs.
+> `polenta.d.ts` régénéré (manifeste v10).
+
+> **GH201 (contrat v1, ajout)** — collection `versions` (`GraphVersion` : `component` = repo, `state`
+> `in_progress` / `released` / `abandoned`, `basedOn`, `components`, `changes` avec `base`, `freeze`,
+> `fields`, `history`) ; `GraphRequirement.designVersion` (statut de design, SPEC-REQ §11.3) ;
+> catégorie `version` dans `GraphObjectCategory`. Fichiers `versions/` dans le périmètre du cache.
+> `polenta.d.ts` régénéré (manifeste v11).
+
+> **GH245 (contrat v1, ajout)** — `GraphVersion.impacted` (statuts d'impact saisis) et
+> `GraphVersion.analysis` (analyse figée au passage released : lignes avec statut, `reached`, `sources`
+> en IDs ; `null` tant que la version est en cours — l'analyse live n'est pas dans le graphe).
+> `polenta.d.ts` régénéré (manifeste v12).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

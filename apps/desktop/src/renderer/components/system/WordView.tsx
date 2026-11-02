@@ -69,7 +69,6 @@ interface Props {
   onInlineEdit?: (objectId: string, field: string, value: string) => void
   onRenameNode?: (nodeId: string, name: string) => void
   onEditOpen?: (nodeId: string) => void
-  onReopenDraft?: (objectId: string, targetStatus: string) => void
   onNavigateToObject?: (peerId: string, opts?: { newTab?: boolean }) => void
   filter?: string
   /** T166 — mode du filtre global (casse / mot entier / regex). Sans lui, le filtre document
@@ -467,7 +466,6 @@ function ItemCard({
   onInlineEdit,
   onRenameNode,
   onEditOpen,
-  onReopenDraft,
   onLinkClick,
   activeLinkKey,
   steps,
@@ -494,7 +492,6 @@ function ItemCard({
   onEditOpen?: (nodeId: string) => void
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
   testsById?: Map<string, TestCase>
-  onReopenDraft?: (objectId: string, targetStatus: string) => void
   onLinkClick?: (nodeId: string, objectId: string, typeName: string, rect: DOMRect) => void
   activeLinkKey?: string | null
   steps?: StepDraft[]
@@ -569,14 +566,15 @@ function ItemCard({
             const version = getFieldValue(obj, 'version')
             const statusDef = typeDef?.statuses?.find(s => s.name === status)
             const badgeClass = `text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${getStatusClass(status)}`
-            const canEditStatus = !!editInline && !!typeDef?.statuses?.length && !!node.objectId
+            // GH243 — le statut reste éditable sur un élément verrouillé : c'est ainsi qu'on le rouvre.
+            const canEditStatus = !!onInlineEdit && !!typeDef?.statuses?.length && !!node.objectId
             return (
               <>
                 {status && (
                   canEditStatus ? (
                     <select
                       value={status}
-                      onChange={e => editInline!(node.objectId!, 'status', e.target.value)}
+                      onChange={e => onInlineEdit!(node.objectId!, 'status', e.target.value)}
                       className={`${badgeClass} appearance-none cursor-pointer hover:ring-1 hover:ring-current/40 outline-none`}
                       title={t('system.wordView.changeStatus')}
                     >
@@ -603,19 +601,6 @@ function ItemCard({
           })()}
         </div>
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          {isLocked && onReopenDraft && node.objectId && (() => {
-            const draftStatus = typeDef?.statuses?.find(s => !s.isApproval && !s.isTerminal)?.name ?? 'draft'
-            return (
-              <button
-                type="button"
-                onClick={() => onReopenDraft(node.objectId!, draftStatus)}
-                className="text-ink-3 hover:text-status-warning p-1"
-                title={t('system.wordView.reopenDraft')}
-              >
-                <RotateCcw size={14} />
-              </button>
-            )
-          })()}
           {editOpen && (
             <button
               type="button"
@@ -804,7 +789,6 @@ export const WordView = memo(function WordView({
   onInlineEdit,
   onRenameNode,
   onEditOpen,
-  onReopenDraft,
   onNavigateToObject,
   filter,
   filterOptions,
@@ -991,7 +975,6 @@ export const WordView = memo(function WordView({
             onInlineEdit={onInlineEdit}
             onRenameNode={onRenameNode}
             onEditOpen={onEditOpen}
-            onReopenDraft={onReopenDraft}
             onLinkClick={repoPath ? handleLinkClick : undefined}
             activeLinkKey={activeLinkKey}
             steps={stepsByObjectId !== undefined && node.objectId ? (stepsByObjectId.get(node.objectId) ?? []) : undefined}

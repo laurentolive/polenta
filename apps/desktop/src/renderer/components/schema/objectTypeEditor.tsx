@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES,
-  displayIdFieldCandidates, historyModeFor, renameValues, requiredWhenIssues, DEFAULT_CHANGE_STATUSES,
+  displayIdFieldCandidates, historyModeFor, renameValues, requiredWhenIssues,
 } from '@polenta/types'
 import type {
   FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
@@ -120,9 +120,8 @@ export function fieldRenames(t: EditableObjectType): FieldRename[] {
 export function typeRename(
   updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined, nodeName: string,
 ): TypeRenameDto | null {
-  if (!original || !updated.name) return null
-  // GH198 — renommage d'un type de change : migration de ses objets non prise en charge (lot suivant).
-  if (original.category === 'changeset') return null
+  // GH201 — le renommage d'un type version ne migre pas ses versions : nom et préfixe verrouillés.
+  if (!original || !updated.name || original.category === 'version') return null
   const oldPrefix = original.prefix ?? ''
   if (updated.name === original.name && updated.prefix === oldPrefix) return null
   return {
@@ -299,6 +298,13 @@ export const DEFAULT_REQ_STATUSES: EditableStatus[] = [
   { name: 'obsolete', label: 'Obsolète', color: '#dc2626', isApproval: false, isTerminal: true },
 ]
 
+/** GH201 — cycle de vie par défaut d'une version : released (`isApproval`) pose le tag et fige. */
+export const DEFAULT_VERSION_STATUSES: EditableStatus[] = [
+  { name: 'en_cours', label: 'En cours', color: '#2563eb', isApproval: false, isTerminal: false },
+  { name: 'released', label: 'Released', color: '#16a34a', isApproval: true, isTerminal: false },
+  { name: 'abandonnee', label: 'Abandonnée', color: '#6b7280', isApproval: false, isTerminal: true },
+]
+
 export const DEFAULT_TEST_STATUSES: EditableStatus[] = [
   { name: 'draft', label: 'Brouillon', color: '#475569', isApproval: false, isTerminal: false },
   { name: 'review', label: 'En review', color: '#b45309', isApproval: false, isTerminal: false },
@@ -311,7 +317,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   requirement: 'schema.editor.requirement',
   test: 'schema.editor.test',
   campaign: 'schema.editor.campaign',
-  changeset: 'schema.editor.changeset',
+  version: 'schema.editor.version',
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -331,7 +337,7 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   requirement: 'REQ',
   test: 'TEST',
   campaign: 'CAMP',
-  changeset: 'CHG',
+  version: 'VER',
 }
 
 function slugifyComponentName(componentName: string): string {
@@ -359,8 +365,7 @@ export function emptyObjType(
     displayIdField: '',
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
-      // GH198 — cycle de vie par défaut d'un type de change (modifiable).
-      : category === 'changeset' ? DEFAULT_CHANGE_STATUSES.map(statusToEditable)
+      : category === 'version' ? [...DEFAULT_VERSION_STATUSES]
       : [],
   }
 }

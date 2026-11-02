@@ -118,7 +118,6 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
         return <span title={row.campaign.title}>{row.campaign.id} — {row.campaign.title}</span>
       }
       case 'campaignStatus': return row.campaign ? t(`executionHistory.campaignStatus.${row.campaign.status}`) : ''
-      case 'baseline': return row.campaign?.baselineRef ?? ''
       case 'entry': {
         if (!row.entry) return ''
         const clickable = !!row.campaign && !row.removed && !row.superseded

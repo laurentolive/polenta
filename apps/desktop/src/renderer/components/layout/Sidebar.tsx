@@ -6,7 +6,6 @@ import { VersionPanel } from '../sidebar/VersionPanel'
 import { SystemPanel } from '../sidebar/SystemPanel'
 import { DashboardPanel } from '../sidebar/DashboardPanel'
 import { ParametersPanel } from '../sidebar/ParametersPanel'
-import { ChangesPanel } from '../sidebar/ChangesPanel'
 import { MergeFilesPanel } from '../sidebar/MergeFilesPanel'
 
 interface Props {
@@ -40,7 +39,6 @@ export function Sidebar({ activePanel, currentProjectId, width, collapsed }: Pro
         <DashboardPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
       {activePanel === 'parameters' && currentProjectId && <ParametersPanel projectId={currentProjectId} />}
-      {activePanel === 'changesets' && currentProjectId && <ChangesPanel projectId={currentProjectId} />}
       {activePanel === 'merge' && <MergeFilesPanel />}
     </div>
   )

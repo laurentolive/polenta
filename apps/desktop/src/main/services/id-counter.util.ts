@@ -165,14 +165,19 @@ async function computeNextNumber(
   ) + 1
 }
 
-/** Highest number `repoPath` remembers for `prefix` beyond its live files: tombstones, plus a
- *  not-yet-migrated `counters.yaml` entry. */
+const LEGACY_CHANGESETS_DIR = 'changesets'
+
+/** Highest number `repoPath` remembers for `prefix` beyond its live files: tombstones, files of the
+ *  removed changeset object (GH243), plus a not-yet-migrated `counters.yaml` entry. */
 async function historyMax(git: GitService, repoPath: string, prefix: string): Promise<number> {
-  const [tombstones, legacy] = await Promise.all([
+  const [tombstones, legacy, changesets] = await Promise.all([
     git.listFiles(repoPath, TOMBSTONES_DIR),
     readLegacyCounters(git, repoPath),
+    // GH243 — fichiers d'anciens changesets (objet retiré, fichiers laissés en place) : leurs IDs
+    // restent pris si un nouveau type reprend leur préfixe.
+    git.listFiles(repoPath, LEGACY_CHANGESETS_DIR),
   ])
-  return Math.max(maxNumber(tombstones, prefix, ''), legacy?.[prefix] ?? 0)
+  return Math.max(maxNumber(tombstones, prefix, ''), maxNumber(changesets, prefix, '.yaml'), legacy?.[prefix] ?? 0)
 }
 
 /**

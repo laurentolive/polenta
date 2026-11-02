@@ -32,6 +32,8 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
   const [draft, setDraft] = useState<EditableObjectType>(objectType)
   const [prefixError, setPrefixError] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  // GH201 — le renommage d'un type ne migre pas les versions : nom et préfixe figés une fois créé.
+  const idLocked = !isNew && objectType.category === 'version'
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(objectType)
 
@@ -100,7 +102,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           <div className="grid grid-cols-4 gap-3 mb-3">
             <div>
               <label className="block text-xs text-ink-2 mb-0.5">{t('schema.elementConfig.nameId')}</label>
-              <input value={draft.name} onChange={e => set({ name: e.target.value })} className="input-field w-full font-mono text-xs py-1" placeholder={t('schema.elementConfig.namePlaceholder')} />
+              <input value={draft.name} onChange={e => set({ name: e.target.value })} disabled={idLocked} title={idLocked ? t('versions.typeIdLocked') : undefined} className="input-field w-full font-mono text-xs py-1" placeholder={t('schema.elementConfig.namePlaceholder')} />
             </div>
             <div>
               <label className="block text-xs text-ink-2 mb-0.5">{t('schema.addDependency.displayLabel')}</label>
@@ -108,7 +110,7 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
             </div>
             <div>
               <label className="block text-xs text-ink-2 mb-0.5">{t('schema.elementConfig.prefixId')}</label>
-              <input value={draft.prefix} onChange={e => set({ prefix: e.target.value })} className="input-field w-full font-mono text-xs py-1" placeholder="REQ" />
+              <input value={draft.prefix} onChange={e => set({ prefix: e.target.value })} disabled={idLocked} title={idLocked ? t('versions.typeIdLocked') : undefined} className="input-field w-full font-mono text-xs py-1" placeholder="REQ" />
             </div>
             <div>
               <label className="block text-xs text-ink-2 mb-0.5">{t('schema.elementConfig.color')}</label>

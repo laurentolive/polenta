@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { FileDiff, X } from 'lucide-react'
@@ -23,11 +23,20 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
       return next.size === prev.size ? prev : next
     })
   }, [ownIds])
-  const toggle = (id: string) => setSelected(prev => {
-    const next = new Set(prev)
-    if (!next.delete(id)) next.add(id)
-    return next
-  })
+  // Dernière ligne cliquée : MAJ + clic étend la sélection jusqu'à elle (état de la ligne cliquée).
+  const anchor = useRef<string | null>(null)
+  const toggle = (id: string, shift: boolean) => {
+    const from = shift && anchor.current ? ownIds.indexOf(anchor.current) : -1
+    const to = ownIds.indexOf(id)
+    setSelected(prev => {
+      const next = new Set(prev)
+      const on = !prev.has(id)
+      const range = from >= 0 ? ownIds.slice(Math.min(from, to), Math.max(from, to) + 1) : [id]
+      for (const r of range) { if (on) next.add(r); else next.delete(r) }
+      return next
+    })
+    anchor.current = id
+  }
   const allSelected = ownIds.length > 0 && selected.size === ownIds.length
   if (rows.length === 0) return <p className="text-xs text-ink-3 italic">{t('versions.page.noChanges')}</p>
 
@@ -79,7 +88,7 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
           <tr key={`${r.repoPath}\u0000${r.versionId}\u0000${r.id}`} className="border-b border-edge-subtle" data-testid={`version-change-${r.id}`}>
             {selectable && (
               <td className="py-1 pr-2">
-                {r.own && <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} data-testid={`version-select-${r.id}`} />}
+                {r.own && <input type="checkbox" checked={selected.has(r.id)} onChange={() => undefined} onClick={e => toggle(r.id, e.shiftKey)} data-testid={`version-select-${r.id}`} />}
               </td>
             )}
             <td className="py-1 pr-3 text-ink-2">{r.componentLabel}</td>

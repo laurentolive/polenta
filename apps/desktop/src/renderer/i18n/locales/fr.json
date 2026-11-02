@@ -2335,7 +2335,8 @@
       "DIRTY_CHANGES": "Éléments inclus modifiés et non commités : {{detail}}",
       "READONLY_REPO": "Composant en lecture seule : {{detail}}",
       "VERSION_NOT_FOUND": "Version introuvable : {{detail}}",
-      "STATUS_UNKNOWN": "Statut inconnu : {{detail}}"
+      "STATUS_UNKNOWN": "Statut inconnu : {{detail}}",
+      "VERSION_ABANDONED": "Version abandonnée : {{detail}}"
     },
     "noVersion": "Aucune version.",
     "expand": "Afficher les composants",
@@ -2355,6 +2356,28 @@
       "confirm": "Supprimer",
       "body": "Supprimer définitivement la version {{version}} ? Son ID ne sera jamais réutilisé. Les éléments qu'elle incluait retournent au backlog."
     },
-    "componentVersion": "Version de {{component}}"
+    "componentVersion": "Version de {{component}}",
+    "analysis": {
+      "title": "Analyse d'impact",
+      "computed": "calculée le {{when}}",
+      "frozen": "figée au passage released le {{when}}",
+      "noRoot": "Aucun changement : l'analyse part des éléments inclus dans la version et ses composants.",
+      "noImpact": "Aucun impact dans ce composant.",
+      "status": "Statut d'impact",
+      "comment": "Commentaire",
+      "source": "Source",
+      "notReached": "n'est plus atteint"
+    },
+    "tests": {
+      "title": "Tests à exécuter",
+      "create": "Créer une campagne",
+      "addTo": "Ajouter à …",
+      "uncovered": "Exigences sans test : {{ids}}",
+      "none": "Aucun test à exécuter.",
+      "selectAll": "Tout cocher",
+      "select": "Cocher {{id}}",
+      "via": "Amené par",
+      "alreadyIn": "Déjà dans"
+    }
   }
 }

@@ -33,6 +33,11 @@ Les quatre servent des fonctions de Polenta (vue Validation, reflets) : calculé
 > (#245) et issues (#244). Écarts tranchés : une version **par repo** (pas de version propre pour un
 > composant local), tag `<repo>-<label>` poussé au prochain push, plusieurs versions en cours par repo
 > (ordre des livraisons : `freeze.at`), abandon définitif, copie et suppression des versions non figées.
+>
+> **Livré par #245** (`specs/GH245.md`, SPEC-REQ §11.4) : analyse d'impact et tests à exécuter.
+> **Aucun lien version ↔ campagne** dans le modèle (décision du 2026-11-02) : `campaigns` de la version
+> (§3.1, §3.3) et `version` de la campagne (§6) sont abandonnés ; « Créer une campagne » est un raccourci,
+> et c'est l'exécution qui référence la version (#202).
 
 ### 3.1 Objet
 

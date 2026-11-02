@@ -84,6 +84,11 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 > catégorie `version` dans `GraphObjectCategory`. Fichiers `versions/` dans le périmètre du cache.
 > `polenta.d.ts` régénéré (manifeste v11).
 
+> **GH245 (contrat v1, ajout)** — `GraphVersion.impacted` (statuts d'impact saisis) et
+> `GraphVersion.analysis` (analyse figée au passage released : lignes avec statut, `reached`, `sources`
+> en IDs ; `null` tant que la version est en cours — l'analyse live n'est pas dans le graphe).
+> `polenta.d.ts` régénéré (manifeste v12).
+
 ## 3. Exécution (bac à sable)
 
 - **Script de données** : module ES, `export default function (data, polenta) { return rows }`,

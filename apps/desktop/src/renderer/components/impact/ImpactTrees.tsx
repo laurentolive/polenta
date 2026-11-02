@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ChangedRequirement, ImpactAnalysisStatus, ImpactNode, Requirement, RequirementChangeType } from '@polenta/types'
 import { api } from '../../api'
+import { IMPACT_ANALYSIS_STATUSES } from '@polenta/types'
 import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 import { wordDiff, diffValueText } from '../../lib/wordDiff'
 import { RevalidationFlag } from '../system/RevalidationFlag'
@@ -30,16 +31,8 @@ export const CHANGE_TYPE_COLOR: Record<RequirementChangeType, string> = {
   modified: 'text-status-warning',
 }
 
-export const STATUS_ORDER: ImpactAnalysisStatus[] = [
-  'impact_non_verifie',
-  'pas_d_impact_reel',
-  'impact_a_tester',
-  'impact_teste',
-  'modification_a_faire',
-  'modification_faite',
-  'modification_a_tester',
-  'modification_verifiee',
-]
+/** Ordre des statuts d'impact : liste partagée (GH245). */
+export const STATUS_ORDER: readonly ImpactAnalysisStatus[] = IMPACT_ANALYSIS_STATUSES
 
 // Statuts "clos" pour l'indicateur de complétude (point 6 de la spec) — ne contraint pas les
 // transitions, sert uniquement à compter ouverts/clos.

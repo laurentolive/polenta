@@ -275,6 +275,7 @@ export function createIpcClient(
       analysis: (p, id, workspaceDir) => invoke('versions:analysis', p, id, workspaceDir ?? null),
       setImpact: (p, id, elementId, status, comment, workspaceDir) => invoke('versions:set-impact', p, id, elementId, status, comment ?? null, workspaceDir ?? null),
       tests: (p, id, workspaceDir) => invoke('versions:tests', p, id, workspaceDir ?? null),
+      impact: (p, id, workspaceDir) => invoke('versions:impact', p, id, workspaceDir ?? null),
       delete: (p, id, workspaceDir) => invoke('versions:delete', p, id, workspaceDir ?? null),
       include: (p, id, elementIds, workspaceDir) => invoke('versions:include', p, id, elementIds, workspaceDir ?? null),
       removeChanges: (p, id, elementIds, workspaceDir) => invoke('versions:remove-changes', p, id, elementIds, workspaceDir ?? null),

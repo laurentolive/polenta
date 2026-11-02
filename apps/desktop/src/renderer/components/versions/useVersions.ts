@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import type { ObjectTypeDefinition, VersionErrorCode, VersionState } from '@polenta/types'
@@ -38,6 +39,34 @@ export function useVersionBacklog(repoPath: string) {
     queryKey: ['versions', 'backlog', repoPath],
     queryFn: () => api.versions.backlog(repoPath),
     enabled: !!repoPath,
+  })
+}
+
+const SECTIONS_KEY = 'polenta:versionSections'
+
+/** GH245 — section repliable de la page d'une version, état mémorisé par poste (ouverte par défaut). */
+export function useSectionOpen(section: string): [boolean, (fn: (open: boolean) => boolean) => void] {
+  const read = (): Record<string, boolean> => {
+    try { return JSON.parse(localStorage.getItem(SECTIONS_KEY) ?? '{}') as Record<string, boolean> } catch { return {} }
+  }
+  const [open, setOpenState] = useState<boolean>(() => read()[section] ?? true)
+  const setOpen = (fn: (open: boolean) => boolean) => setOpenState(prev => {
+    const next = fn(prev)
+    try { localStorage.setItem(SECTIONS_KEY, JSON.stringify({ ...read(), [section]: next })) } catch { /* stockage indisponible */ }
+    return next
+  })
+  return [open, setOpen]
+}
+
+/** GH245 — analyse d'impact et tests à exécuter d'une version (un seul calcul ; pas pour une abandonnée). */
+export function useVersionImpact(repoPath: string, id: string, projectId: string, enabled: boolean) {
+  const workspaceDir = projectId ? decodeProjectId(projectId) : ''
+  return useQuery({
+    queryKey: ['versions', 'impact', repoPath, id, workspaceDir],
+    queryFn: () => api.versions.impact(repoPath, id, workspaceDir || undefined),
+    enabled: !!repoPath && !!id && enabled,
+    // Les campagnes évoluent ailleurs (création, ajout) : relu à chaque affichage.
+    staleTime: 0,
   })
 }
 

@@ -106,6 +106,15 @@ describe('analyse d\'impact', () => {
     expect(pr3.sources.map(s => `${s.rootId}:${s.path.map(p => p.id).join('>')}`)).toEqual(['PR-0001:PR-0002>PR-0003', 'PR-0004:PR-0003'])
     expect(pr3.sources[0].path[0].linkType).toBe('refines')
     expect(pr3.status).toBe('impact_non_verifie')
+    // Statut saisi sur un nœud d'un autre repo (arbre) : pas de ligne « plus atteint », statut sur le nœud.
+    await versions.setImpact(root, v.id, 'MR-0001', 'impact_teste', null, ws)
+    const again = await versions.analysis(root, v.id, ws)
+    expect(again.rows.map(r => r.id)).toEqual(['PR-0002', 'PR-0003'])
+    expect(again.roots[0].descendantTree.find(n => n.elementId === 'MR-0001')?.status).toBe('impact_teste')
+    // Un seul calcul pour la page : analyse et tests.
+    const both = await versions.impact(root, v.id, ws)
+    expect(both.analysis.rows.map(r => r.id)).toEqual(['PR-0002', 'PR-0003'])
+    expect(both.tests).toEqual({ tests: [], uncovered: ['PR-0001', 'PR-0002', 'PR-0003', 'PR-0004'] })
   })
 
   it('A3 — changement d\'une version de composant postérieure à basedOn : racine, impacts dans le produit', async () => {

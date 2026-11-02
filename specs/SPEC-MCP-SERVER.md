@@ -506,6 +506,10 @@ ancien, état, `basedOn`, `freeze`, nombre d'éléments au backlog ; filtre `com
 ouvert. Le MCP ne crée pas de version, n'inclut pas de changement et ne passe pas une version
 released. Listés dans `AGENTS.md`.
 
+GH245 : `get_version_impact { id, component? }` (analyse figée ou live : racines, lignes avec statut,
+`reached`, `sources` ; arbres omis) et `get_version_tests { id, component? }` (tests à exécuter,
+instances, sources, `alreadyIn`, `uncovered`). Pas d'écriture des statuts d'impact par le MCP.
+
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 
 ### 5.1 À la création d'un nouveau projet

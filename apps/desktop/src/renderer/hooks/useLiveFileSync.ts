@@ -53,9 +53,10 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
       // GH201 — versions : arbre, pages et backlogs (clés `versions`, tous repos) — une version, un
-      // élément, le schéma ou les dépendances changent la page, le backlog et le statut de design.
+      // élément, le schéma ou les dépendances changent la page, le backlog et le statut de design ;
+      // GH245 : les liens changent l'analyse d'impact, les campagnes les tests à exécuter.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
-        || /^(requirements|tests|versions)\//.test(relPath)) {
+        || /^(requirements|tests|versions|links|campaigns)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['versions'] })
       }
       // GH197 — historique des exécutions : runs, campagnes, tests et liens (couverture d'une exigence).

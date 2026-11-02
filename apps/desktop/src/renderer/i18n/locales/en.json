@@ -2335,7 +2335,8 @@
       "DIRTY_CHANGES": "Included elements modified and not committed: {{detail}}",
       "READONLY_REPO": "Read-only component: {{detail}}",
       "VERSION_NOT_FOUND": "Version not found: {{detail}}",
-      "STATUS_UNKNOWN": "Unknown status: {{detail}}"
+      "STATUS_UNKNOWN": "Unknown status: {{detail}}",
+      "VERSION_ABANDONED": "Abandoned version: {{detail}}"
     },
     "noVersion": "No version.",
     "expand": "Show components",
@@ -2355,6 +2356,28 @@
       "confirm": "Delete",
       "body": "Permanently delete version {{version}}? Its ID will never be reused. The elements it included go back to the backlog."
     },
-    "componentVersion": "Version of {{component}}"
+    "componentVersion": "Version of {{component}}",
+    "analysis": {
+      "title": "Impact analysis",
+      "computed": "computed on {{when}}",
+      "frozen": "frozen at release on {{when}}",
+      "noRoot": "No change: the analysis starts from the elements included in the version and its components.",
+      "noImpact": "No impact in this component.",
+      "status": "Impact status",
+      "comment": "Comment",
+      "source": "Source",
+      "notReached": "no longer reached"
+    },
+    "tests": {
+      "title": "Tests to run",
+      "create": "Create a campaign",
+      "addTo": "Add to …",
+      "uncovered": "Requirements without a test: {{ids}}",
+      "none": "No test to run.",
+      "selectAll": "Select all",
+      "select": "Select {{id}}",
+      "via": "Brought by",
+      "alreadyIn": "Already in"
+    }
   }
 }

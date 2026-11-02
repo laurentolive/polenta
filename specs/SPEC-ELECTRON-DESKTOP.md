@@ -1546,6 +1546,10 @@ Nouveau panneau dédié à la gestion de configuration, inspiré du panneau Sour
 >   clic : ouvre ce composant à cette version ; « Pas de type version » le cas échéant). Clic droit sur
 >   une version : Copier, Coller, Supprimer. Composant sans type version : message renvoyant au modèle
 >   de données. Ces routes ouvrent le panneau Version (`deducePanel`). SPEC-REQ §11.
+> - **GH245 — page d'une version** : sous « Changements », sections repliables « Analyse d'impact »
+>   (`VersionAnalysisSection` : lignes avec statut, commentaire, source ; racines et `ImpactTreeView`)
+>   et « Tests à exécuter » (`VersionTestsSection` : liste cochable, « Créer une campagne » /
+>   « Ajouter à … » en raccourcis) ; état replié mémorisé par poste (`polenta:versionSections`).
 > - **Contenu piloté par la route** : `/version-diff` → sélecteur de comparaison ; `/baseline` →
 >   liste des baselines (`BaselineListPanel` : filtre tag/message, dépliage sur place des tags
 >   composants, suppression avec confirmation) ; sinon → arbre des repos. La vue `/baseline` est

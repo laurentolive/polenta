@@ -56,11 +56,14 @@ export function computeVersionAnalysis(input: VersionAnalysisInput): VersionAnal
     roots.push({ elementId: r.id, elementType: el.type, title: el.title, component: r.component, ...trees(r.id, el.type) })
   }
 
-  // Éléments atteints (hors racines) du repo de la version, avec toutes leurs sources.
+  // Éléments atteints (hors racines) du repo de la version, avec toutes leurs sources ; `inTrees` :
+  // tout nœud des arbres, quel que soit son repo (un statut saisi sur lui n'est pas « plus atteint »).
   const reached = new Map<string, { type: ElementType; title: string; sources: VersionImpactSource[] }>()
+  const inTrees = new Set<string>(rootIds)
   for (const r of roots) {
     for (const tree of [r.descendantTree, r.ascendantTree]) {
       walk(tree, [], (n, trail) => {
+        inTrees.add(n.elementId)
         if (rootIds.has(n.elementId)) return
         const el = elementOf(snapshot, n.elementId)
         if (!el || repoKey(el.repoPath) !== repoKey(repoPath)) return
@@ -78,18 +81,19 @@ export function computeVersionAnalysis(input: VersionAnalysisInput): VersionAnal
     rows.push({ id, elementType: el.type, title: el.title, status: s?.status ?? 'impact_non_verifie', ...(s?.comment && { comment: s.comment }), reached: true, sources: el.sources })
   }
   for (const [id, s] of saved) {
-    if (reached.has(id)) continue
+    if (reached.has(id) || inTrees.has(id)) continue
     const el = elementOf(snapshot, id)
     rows.push({ id, elementType: el?.type ?? null, title: el?.title ?? null, status: s.status, ...(s.comment && { comment: s.comment }), reached: false, sources: [] })
   }
   rows.sort(byId)
 
-  // Statut d'un élément reporté sur chacun de ses nœuds (GH199 Q1).
+  // Statut d'un élément reporté sur chacun de ses nœuds (GH199 Q1), y compris un nœud d'un autre repo
+  // (statut saisi sur l'arbre, sans ligne).
   const rowById = new Map(rows.map(r => [r.id, r]))
   for (const r of roots) {
     for (const tree of [r.descendantTree, r.ascendantTree]) {
       walk(tree, [], n => {
-        const row = rowById.get(n.elementId)
+        const row = rowById.get(n.elementId) ?? saved.get(n.elementId)
         if (row) { n.status = row.status; n.comment = row.comment ?? null }
       })
     }
@@ -104,13 +108,15 @@ export function computeVersionAnalysis(input: VersionAnalysisInput): VersionAnal
  * de cette exigence). `alreadyIn` : campagnes ouvertes du repo qui le contiennent (information).
  */
 export function computeVersionTests(
-  rootIds: string[], rows: VersionImpactRow[], snapshot: ImpactSnapshot, campaigns: TestCampaign[],
+  rootIds: string[], rows: VersionImpactRow[], snapshot: ImpactSnapshot, campaigns: TestCampaign[], repoPath: string,
 ): VersionTestsToRun {
   const rootSet = new Set(rootIds)
   // Un élément changé (racine) reste proposé même si un statut « pas d'impact » lui reste attaché.
   const excluded = new Set(rows.filter(r => r.status === NO_IMPACT && !rootSet.has(r.id)).map(r => r.id))
   const sources = [...new Set([...rootIds, ...rows.filter(r => r.reached && r.status !== NO_IMPACT).map(r => r.id)])]
-  const testIds = new Set(snapshot.tests.keys())
+  // Tests du repo de la version : une campagne (raccourcis) ne reçoit que les tests de son repo ; un
+  // composant propose les siens dans sa propre version.
+  const testIds = new Set([...snapshot.tests].filter(([, t]) => repoKey(t.repoPath) === repoKey(repoPath)).map(([id]) => id))
   const reqIds = new Set(snapshot.requirements.keys())
   const byTest = new Map<string, { requirementIds: Set<string>; sources: Set<string>; whole: boolean }>()
   const entry = (id: string) => {

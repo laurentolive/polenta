@@ -754,3 +754,22 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   générique `base` → `freeze.sha` (ou disque si en cours).
 - **Statut de design** d'une exigence (MILESTONE-D §2) : première version released (ordre des livraisons)
   dont l'état figé contient l'exigence dans sa `version` courante — graphe `designVersion`.
+
+### 11.4 Analyse d'impact et tests à exécuter (GH245)
+
+- **Racines** : les changements que liste la page (version et versions de ses composants postérieures à
+  `basedOn`). **Lignes** : éléments atteints par les arbres d'impact (SPEC-TRACEABILITY §4.6), **du repo
+  de la version seulement**, avec leur **source** (racine et chemin de liens ; plusieurs racines possibles).
+- **Statut d'impact** (8 valeurs) et commentaire par ligne ou sur le nœud de l'arbre, enregistrés dans le
+  champ système **`impacted`** (`[{ id, status, comment? }]`, version en cours seulement ; statut par défaut
+  sans commentaire : entrée retirée). Ligne enregistrée plus atteinte : « n'est plus atteint ».
+- **Live** tant que la version est en cours ; **figée au passage released** dans le champ système
+  **`analysis`** (`{ computedAt, frozen, roots, rows }`, racines sans les arbres), dans le commit du passage.
+  Version released sans `analysis` : analyse vide, jamais recalculée.
+- **Tests à exécuter** : racines et lignes atteintes, sauf `pas_d_impact_reel` (un test ainsi marqué n'est
+  jamais proposé, sauf s'il est lui-même un changement) ; un test se propose lui-même, une exigence amène les
+  tests qui la couvrent (instance de cette exigence, T179) ; exigences sans test signalées ; « Déjà dans » =
+  campagnes ouvertes du repo dont une entrée vise le test (et l'instance), à titre d'information.
+- **Aucun lien version ↔ campagne** dans le modèle : « Créer une campagne » et « Ajouter à … » sont des
+  raccourcis (création / sélecteur pré-remplis avec les tests cochés). C'est une exécution qui fera
+  référence à une version (#202).

@@ -12,7 +12,9 @@ import { useSetTabTitle } from '../contexts/TabsContext'
 import { VersionChangesTable } from '../components/versions/VersionChangesTable'
 import { VersionElementPicker } from '../components/versions/VersionElementPicker'
 import { ReleaseVersionDialog } from '../components/versions/ReleaseVersionDialog'
-import { STATE_BADGE, statusLabel, useInvalidateVersions, useVersionPage, versionErrorText } from '../components/versions/useVersions'
+import { STATE_BADGE, statusLabel, useInvalidateVersions, useVersionImpact, useVersionPage, useVersionTree, versionErrorText } from '../components/versions/useVersions'
+import { VersionAnalysisSection } from '../components/versions/VersionAnalysisSection'
+import { VersionTestsSection } from '../components/versions/VersionTestsSection'
 
 /** GH201 §5 — page d'une version. URL : /version/<ID>?projectId=…&repoPath=… */
 export const Route = createFileRoute('/version/$versionId')({
@@ -31,6 +33,16 @@ function VersionPage() {
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
   const { data: page, error: loadError, isLoading } = useVersionPage(repoPath, versionId, projectId)
   const invalidate = useInvalidateVersions()
+  // GH245 — analyse d'impact et tests à exécuter (pas pour une version abandonnée).
+  const impactQuery = useVersionImpact(repoPath, versionId, projectId, !!page && page.state !== 'abandoned')
+  // Repo de chaque composant (racines de l'analyse portées par un composant).
+  const { data: tree } = useVersionTree(projectId)
+  const repoOfComponent = useMemo(() => {
+    const m = new Map<string, string>()
+    const walk = (nodes: NonNullable<typeof tree>) => nodes.forEach(n => { m.set(n.name, n.repoPath); walk(n.children) })
+    walk(tree ?? [])
+    return m
+  }, [tree])
   useSetTabTitle(page ? `${page.version.title} (${page.version.id})` : versionId)
 
   const [title, setTitle] = useState('')
@@ -199,6 +211,21 @@ function VersionPage() {
             onRemove={editable ? id => void run(() => api.versions.removeChanges(repoPath, versionId, [id], workspaceDir || undefined)) : undefined}
           />
         </section>
+
+        {state !== 'abandoned' && (
+          <>
+            <VersionAnalysisSection
+              analysis={impactQuery.data?.analysis}
+              isFetching={impactQuery.isFetching}
+              onRefresh={() => void impactQuery.refetch()}
+              onSetImpact={(elementId, status, comment) => void run(() => api.versions.setImpact(repoPath, versionId, elementId, status, comment, workspaceDir || undefined))}
+              repoPath={repoPath}
+              repoOfComponent={repoOfComponent}
+              editable={editable}
+            />
+            <VersionTestsSection data={impactQuery.data?.tests ?? undefined} repoPath={repoPath} projectId={projectId} versionLabel={`${version.id} — ${version.title}`} />
+          </>
+        )}
       </div>
 
       {picking && (

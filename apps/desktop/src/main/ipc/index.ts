@@ -591,6 +591,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.versions.analysis(repoPath, id, workspaceDir ?? undefined))
   r.handle('versions:set-impact', (_e, repoPath: string, id: string, elementId: string, status: string, comment?: string | null, workspaceDir?: string) =>
     c.versions.setImpact(repoPath, id, elementId, status as import('@polenta/types').ImpactAnalysisStatus, comment, workspaceDir ?? undefined))
+  r.handle('versions:impact', (_e, repoPath: string, id: string, workspaceDir?: string) =>
+    c.versions.impact(repoPath, id, workspaceDir ?? undefined))
   r.handle('versions:tests', (_e, repoPath: string, id: string, workspaceDir?: string) =>
     c.versions.testsToRun(repoPath, id, workspaceDir ?? undefined))
   r.handle('versions:copy', (_e, repoPath: string, id: string, workspaceDir?: string) =>

@@ -766,6 +766,8 @@ export interface ApiClient {
     analysis(repoPath: string, id: string, workspaceDir?: string): Promise<VersionAnalysis>
     setImpact(repoPath: string, id: string, elementId: string, status: ImpactAnalysisStatus, comment?: string | null, workspaceDir?: string): Promise<ProductVersion>
     tests(repoPath: string, id: string, workspaceDir?: string): Promise<VersionTestsToRun>
+    /** Analyse et tests à exécuter en un seul calcul (page d'une version). */
+    impact(repoPath: string, id: string, workspaceDir?: string): Promise<{ analysis: VersionAnalysis; tests: VersionTestsToRun | null }>
     delete(repoPath: string, id: string, workspaceDir?: string): Promise<void>
     include(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>
     removeChanges(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>

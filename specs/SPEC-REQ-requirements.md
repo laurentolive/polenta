@@ -723,8 +723,9 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 ### 11.2 Cycle de vie
 
 - **Plusieurs versions en cours** par repo ; création : `basedOn` = dernière released (absent),
-  `components` pré-remplis avec la dernière released de chaque dépendance (interface). L'ordre des
-  livraisons est la date de gel (`freeze.at`, puis l'ID pour un fichier sans date).
+  `components` pré-remplis avec la dernière released de chaque dépendance (interface) ; ils se
+  choisissent aussi depuis le panneau Produit, dans la structure dépliée d'une version en cours. L'ordre des
+  livraisons est la date de gel (`freeze.at`, obligatoire ; pas de reprise des versions qui n'en ont pas).
 - **Abandon définitif** : une version abandonnée ne revient pas en cours.
 - **Copie** : nouvelle version en cours dans le même repo, mêmes `basedOn`, `components`, `fields` et
   éléments inclus (`base` recalculée), sans `freeze` ; label suffixé « (copie) ».

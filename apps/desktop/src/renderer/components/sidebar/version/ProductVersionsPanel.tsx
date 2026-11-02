@@ -104,6 +104,16 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
       setActionError(versionErrorText(t, err))
     }
   }
+  // Compose une version : la version retenue d'un composant s'écrit dans `components` de la version parente.
+  const setComponent = async (parentRepo: string, parent: VersionSummary, depName: string, versionId: string) => {
+    setActionError(null)
+    try {
+      await api.versions.update(parentRepo, parent.id, { components: { ...parent.components, [depName]: versionId } }, workspaceDir)
+      await invalidate()
+    } catch (err) {
+      setActionError(versionErrorText(t, err))
+    }
+  }
   const canPaste = !!copied && copied.repoPath === current?.repoPath && !current?.readonly
   const pasteItem: NodeContextMenuEntry = {
     id: 'paste', label: copied ? t('versions.menu.pasteHint', { version: copied.title }) : t('versions.menu.paste'),
@@ -190,6 +200,9 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
                 onOpen={() => openVersion(current.repoPath, v.id)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, version: v }) }}
                 onOpenComponent={(dep, id) => { setChosen(dep.repoPath); writeLastComponent(projectId, dep.repoPath); openVersion(dep.repoPath, id) }}
+                parentRepo={current.repoPath}
+                parentReadonly={current.readonly}
+                onSetComponent={setComponent}
               />
             ))}
           </>
@@ -211,7 +224,9 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
 }
 
 /** Une version du composant ; dépliée : la version retenue de chaque composant qu'elle contient. */
-function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, onContextMenu, onOpenComponent }: {
+type SetComponent = (parentRepo: string, parent: VersionSummary, depName: string, versionId: string) => void
+
+function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, onContextMenu, onOpenComponent, parentRepo, parentReadonly, onSetComponent }: {
   version: VersionSummary
   deps: VersionComponentNode[]
   open: boolean
@@ -221,6 +236,9 @@ function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, o
   onOpen: () => void
   onContextMenu: (e: React.MouseEvent) => void
   onOpenComponent: (dep: VersionComponentNode, versionId: string) => void
+  parentRepo: string
+  parentReadonly: boolean
+  onSetComponent: SetComponent
 }) {
   const { t } = useTranslation()
   return (
@@ -245,7 +263,10 @@ function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, o
       {open && (
         <ul className="pb-1" data-testid={`version-components-${version.id}`}>
           {deps.map(dep => (
-            <ComponentVersionNode key={dep.repoPath} dep={dep} versionId={version.components?.[dep.name]} depth={0} onOpen={onOpenComponent} />
+            <ComponentVersionNode
+              key={dep.repoPath} dep={dep} depth={0} onOpen={onOpenComponent} onSet={onSetComponent}
+              parent={{ repoPath: parentRepo, version, readonly: parentReadonly }}
+            />
           ))}
         </ul>
       )}
@@ -255,22 +276,50 @@ function VersionRow({ version, deps, open, active, rowClass, onToggle, onOpen, o
 
 /**
  * Structure des composants d'une version : cube, label du composant, sa version à droite ; sous lui,
- * les composants que contient cette version (récursif, comme l'arbre du workspace).
+ * les composants que contient cette version (récursif, comme l'arbre du workspace). Tant que la
+ * version parente est en cours, la version du composant se choisit dans une liste déroulante.
  */
-function ComponentVersionNode({ dep, versionId, depth, onOpen }: {
+function ComponentVersionNode({ dep, parent, depth, onOpen, onSet }: {
   dep: VersionComponentNode
-  versionId: string | undefined
+  /** Version qui contient ce composant (repo, version, lecture seule du repo). */
+  parent: { repoPath: string; version: VersionSummary; readonly: boolean }
   depth: number
   onOpen: (dep: VersionComponentNode, versionId: string) => void
+  onSet: SetComponent
 }) {
   const { t } = useTranslation()
+  const versionId = parent.version.components?.[dep.name]
   const sel = versionId ? dep.versions.find(v => v.id === versionId) : undefined
+  const editable = parent.version.state === 'in_progress' && !parent.readonly && !!dep.versionType
+  const options = dep.versions.filter(v => v.state !== 'abandoned' || v.id === versionId)
   return (
     <li>
       <div className="flex items-center gap-1.5 pr-3 py-0.5 text-xs" style={{ paddingLeft: `${36 + depth * 14}px` }}>
         <Package size={12} className="shrink-0 text-chart-4" />
-        <span className="flex-1 truncate text-ink-2" title={dep.label}>{dep.label}</span>
         {sel ? (
+          <button type="button" onClick={() => onOpen(dep, sel.id)} className="flex-1 truncate text-left text-ink-2 hover:text-prim hover:underline" title={dep.label}>
+            {dep.label}
+          </button>
+        ) : <span className="flex-1 truncate text-ink-2" title={dep.label}>{dep.label}</span>}
+        {editable ? (
+          <>
+            <select
+              value={versionId ?? ''}
+              onChange={e => onSet(parent.repoPath, parent.version, dep.name, e.target.value)}
+              onClick={e => e.stopPropagation()}
+              className={`input-field text-xs py-0 px-1 w-24 shrink-0 ${sel && sel.state !== 'released' ? 'text-status-info' : ''}`}
+              aria-label={t('versions.componentVersion', { component: dep.label })}
+              title={sel ? `${sel.title} (${sel.id}) — ${t(`versions.state.${sel.state}`)}` : undefined}
+              data-testid={`component-version-${parent.version.id}-${dep.name}`}
+            >
+              <option value="">{t('versions.none')}</option>
+              {/* L'état n'est précisé que pour une version non released (place limitée dans le panneau). */}
+              {options.map(v => (
+                <option key={v.id} value={v.id}>{v.state === 'released' ? v.title : `${v.title} · ${t(`versions.state.${v.state}`)}`}</option>
+              ))}
+            </select>
+          </>
+        ) : sel ? (
           <button type="button" onClick={() => onOpen(dep, sel.id)} className="flex items-center gap-1.5 shrink-0 text-prim hover:underline" title={sel.id}>
             <span>{sel.title}</span>
             <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[sel.state]}`}>{t(`versions.state.${sel.state}`)}</span>
@@ -280,7 +329,10 @@ function ComponentVersionNode({ dep, versionId, depth, onOpen }: {
       {dep.children.length > 0 && (
         <ul>
           {dep.children.map(c => (
-            <ComponentVersionNode key={c.repoPath} dep={c} versionId={sel?.components?.[c.name]} depth={depth + 1} onOpen={onOpen} />
+            <ComponentVersionNode
+              key={c.repoPath} dep={c} depth={depth + 1} onOpen={onOpen} onSet={onSet}
+              parent={sel ? { repoPath: dep.repoPath, version: sel, readonly: dep.readonly } : { repoPath: dep.repoPath, version: { id: '', title: '', status: '', state: 'abandoned' }, readonly: true }}
+            />
           ))}
         </ul>
       )}

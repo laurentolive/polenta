@@ -605,11 +605,11 @@ export class VersionsService {
   }
 }
 
-/** Versions released par ordre de livraison (`freeze.at`, puis ID pour les fichiers sans date). */
+/** Versions released par ordre de livraison (`freeze.at`). */
 function releasedInOrder(typeDef: ObjectTypeDefinition | null, versions: ProductVersion[]): ProductVersion[] {
   return versions
     .filter(v => v.freeze && versionState(typeDef, v.status) === 'released')
-    .sort((a, b) => (a.freeze!.at ?? '').localeCompare(b.freeze!.at ?? '') || byId(a, b))
+    .sort((a, b) => a.freeze!.at.localeCompare(b.freeze!.at))
 }
 
 function cleanComponents(components: Record<string, string> | undefined): Record<string, string> | undefined {

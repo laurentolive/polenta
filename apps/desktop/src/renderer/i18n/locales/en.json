@@ -2354,6 +2354,7 @@
       "title": "Delete the version",
       "confirm": "Delete",
       "body": "Permanently delete version {{version}}? Its ID will never be reused. The elements it included go back to the backlog."
-    }
+    },
+    "componentVersion": "Version of {{component}}"
   }
 }

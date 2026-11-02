@@ -2354,6 +2354,7 @@
       "title": "Supprimer la version",
       "confirm": "Supprimer",
       "body": "Supprimer définitivement la version {{version}} ? Son ID ne sera jamais réutilisé. Les éléments qu'elle incluait retournent au backlog."
-    }
+    },
+    "componentVersion": "Version de {{component}}"
   }
 }

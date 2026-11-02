@@ -21,7 +21,7 @@ export interface VersionFreeze {
   tag: string
   sha: string
   /** Instant du passage released : ordre des livraisons (plusieurs versions peuvent être en cours). */
-  at?: string
+  at: string
 }
 
 export interface ProductVersion {

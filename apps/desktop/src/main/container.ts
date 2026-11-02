@@ -135,6 +135,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // repo composant), avant que le renderer ne soit notifié (abonnés appelés dans l'ordre).
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns)
   graph.setVersions(versions)
+  versions.setImpactSources({ traceability, campaigns })
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
   watcher.onFileChange((repoPath, relPath) => {

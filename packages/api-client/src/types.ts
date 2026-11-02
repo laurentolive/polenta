@@ -3,7 +3,7 @@ import type {
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
-  VersionReleasePreview, VersionSummary,
+  VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
 } from '@polenta/types'
 import type {
   MergeFileDetail,
@@ -762,6 +762,10 @@ export interface ApiClient {
     create(repoPath: string, dto: CreateVersionDto, workspaceDir?: string): Promise<ProductVersion>
     update(repoPath: string, id: string, dto: UpdateVersionDto, workspaceDir?: string): Promise<ProductVersion>
     copy(repoPath: string, id: string, workspaceDir?: string): Promise<ProductVersion>
+    /** GH245 — analyse d'impact (figée si released). */
+    analysis(repoPath: string, id: string, workspaceDir?: string): Promise<VersionAnalysis>
+    setImpact(repoPath: string, id: string, elementId: string, status: ImpactAnalysisStatus, comment?: string | null, workspaceDir?: string): Promise<ProductVersion>
+    tests(repoPath: string, id: string, workspaceDir?: string): Promise<VersionTestsToRun>
     delete(repoPath: string, id: string, workspaceDir?: string): Promise<void>
     include(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>
     removeChanges(repoPath: string, id: string, elementIds: string[], workspaceDir?: string): Promise<ProductVersion>

@@ -191,6 +191,14 @@
             "fr": "GH201 : collection versions (GraphVersion), GraphRequirement.designVersion, catégorie de type version",
             "en": "GH201: versions collection (GraphVersion), GraphRequirement.designVersion, version type category"
           }
+        },
+        {
+          "version": 12,
+          "hash": "677c8e7a79325a176f93331684f31f6a5068ea4d4853c37d1560cac3576dedea",
+          "summary": {
+            "fr": "GH245 : GraphVersion.impacted (statuts d'impact saisis) et GraphVersion.analysis (analyse figée au passage released)",
+            "en": "GH245: GraphVersion.impacted (entered impact statuses) and GraphVersion.analysis (analysis frozen at release)"
+          }
         }
       ]
     },

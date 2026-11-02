@@ -75,4 +75,43 @@ export function registerVersionTools(server: McpServer, container: McpContainer)
     },
     async ({ component }) => jsonToolResult(await container.versions.backlog(await repoOf(component))),
   )
+
+  // GH245 — analyse d'impact et tests à exécuter d'une version (lecture).
+  const idInput = {
+    id: z.string().describe('ID de la version (ex. VER-0004)'),
+    component: componentSchema,
+  }
+
+  server.registerTool(
+    'get_version_impact',
+    {
+      title: 'Get version impact analysis',
+      description:
+        'Analyse d’impact d’une version (figée si released, sinon calculée sur l’état courant) : racines (éléments ' +
+        'changés de la version et des versions de ses composants), lignes = éléments impactés du composant avec ' +
+        'statut d’impact, commentaire, `reached` et `sources` (racine et chemin de liens). Arbres omis.',
+      inputSchema: idInput,
+    },
+    async ({ id, component }) => {
+      const a = await container.versions.analysis(await repoOf(component), id, container.workspaceDir)
+      return jsonToolResult({
+        computedAt: a.computedAt, frozen: a.frozen,
+        roots: a.roots.map(r => ({ id: r.elementId, type: r.elementType, title: r.title, component: r.component })),
+        rows: a.rows,
+      })
+    },
+  )
+
+  server.registerTool(
+    'get_version_tests',
+    {
+      title: 'Get version tests to run',
+      description:
+        'Tests à exécuter pour une version : amenés par les changements et les impacts (sauf `pas_d_impact_reel`), ' +
+        'instances par exigence (`requirementIds`), éléments sources, campagnes ouvertes du repo qui les ' +
+        'contiennent déjà (`alreadyIn`, information) ; `uncovered` = exigences sans test.',
+      inputSchema: idInput,
+    },
+    async ({ id, component }) => jsonToolResult(await container.versions.testsToRun(await repoOf(component), id, container.workspaceDir)),
+  )
 }

@@ -4,8 +4,9 @@ import type {
   CreateVersionDto, ObjectTypeDefinition, ProductVersion, ProjectSchema, UpdateVersionDto, VersionBacklogItem,
   VersionChange, VersionChangeRow, VersionComponentNode, VersionElementRef, VersionErrorCode, VersionPage,
   VersionProblem, VersionReleasePreview, VersionSummary, WorkspaceTreeNode,
+  ImpactAnalysisStatus, VersionAnalysis, VersionImpacted, VersionTestsToRun,
 } from '@polenta/types'
-import { initialStatus, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
+import { IMPACT_ANALYSIS_STATUSES, initialStatus, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { SchemaService } from './schema.service'
@@ -17,6 +18,10 @@ import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-co
 import { repoKey } from './schema-refs.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { applyFieldsWrite } from './field-write.util'
+import type { ImpactSnapshot, TraceabilityService } from './traceability.service'
+import type { CampaignsService } from './campaigns.service'
+import { computeVersionAnalysis, computeVersionTests } from './version-analysis.util'
+import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 
 /** Erreur métier des versions : le message commence par le code (`TAG_EXISTS: …`), traduit par le renderer. */
 export class VersionError extends Error {
@@ -51,6 +56,15 @@ export class VersionsService {
   ) {}
 
   private writeQueues = new Map<string, Promise<unknown>>()
+  private impactSources?: {
+    traceability: Pick<TraceabilityService, 'loadWorkingTreeSnapshot' | 'buildImpactTreesFromSnapshot'>
+    campaigns: Pick<CampaignsService, 'list'>
+  }
+
+  /** GH245 — moteur d'impact et campagnes (injectés après construction, comme `GraphService.setVersions`). */
+  setImpactSources(sources: NonNullable<VersionsService['impactSources']>): void {
+    this.impactSources = sources
+  }
 
   /** Sérialise les écritures d'un même repo (une seule version en cours : contrôle puis écriture). */
   private enqueue<T>(repoPath: string, task: () => Promise<T>): Promise<T> {
@@ -484,6 +498,92 @@ export class VersionsService {
     return { name, label: node?.label || name, repoPath }
   }
 
+  // ── Analyse d'impact et tests à exécuter (GH245) ──────────────────────────
+
+  /** Analyse d'une version : figée si released, calculée sur l'état courant du workspace sinon. */
+  async analysis(repoPath: string, id: string, workspaceDir?: string): Promise<VersionAnalysis> {
+    const version = await this.get(repoPath, id)
+    const typeDef = (await this.versionType(repoPath))?.typeDef ?? null
+    if (versionState(typeDef, version.status) === 'released') {
+      // Pas de reprise des versions released sans analyse figée : analyse vide, jamais recalculée.
+      return version.analysis
+        ? { ...version.analysis, frozen: true }
+        : { computedAt: version.freeze?.at ?? '', frozen: true, roots: [], rows: [] }
+    }
+    return (await this.liveAnalysis(repoPath, version, workspaceDir)).analysis
+  }
+
+  /** Analyse calculée sur l'état courant du workspace, avec le snapshot lu (réutilisé par les tests). */
+  private async liveAnalysis(
+    repoPath: string, version: ProductVersion, workspaceDir?: string,
+  ): Promise<{ analysis: VersionAnalysis; snapshot: ImpactSnapshot }> {
+    const src = this.requireImpactSources()
+    const page = await this.page(repoPath, version.id, workspaceDir)
+    // Racines : les changements que liste la page (cette version et ses composants), une fois chacun.
+    const roots = new Map<string, string>()
+    for (const row of page.rows) if (row.category && !roots.has(row.id)) roots.set(row.id, row.component)
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    const rootRepo = ws?.logicalTree.repoPath ?? repoPath
+    const repoPaths = await resolveWorkspaceRepoPaths(this.workspaceTree, rootRepo, workspaceDir)
+    const snapshot = await src.traceability.loadWorkingTreeSnapshot(rootRepo, repoPaths)
+    return { snapshot, analysis: computeVersionAnalysis({
+      roots: [...roots].map(([id, component]) => ({ id, component })),
+      snapshot,
+      trees: (id, type) => src.traceability.buildImpactTreesFromSnapshot(snapshot, id, type),
+      repoPath,
+      impacted: version.impacted ?? [],
+    }) }
+  }
+
+  /** Statut d'impact et commentaire d'un élément (version en cours) ; statut par défaut sans commentaire : retiré. */
+  async setImpact(
+    repoPath: string, id: string, elementId: string, status: ImpactAnalysisStatus, comment?: string | null, workspaceDir?: string,
+  ): Promise<ProductVersion> {
+    return this.enqueue(repoPath, async () => {
+      await this.assertWritable(repoPath, workspaceDir)
+      if (!IMPACT_ANALYSIS_STATUSES.includes(status)) throw new VersionError('STATUS_UNKNOWN', String(status))
+      const typeDef = (await this.versionType(repoPath))?.typeDef ?? null
+      const existing = await this.get(repoPath, id)
+      if (versionState(typeDef, existing.status) !== 'in_progress') throw new VersionError('NOT_IN_PROGRESS', id)
+      const text = comment?.trim()
+      const others = (existing.impacted ?? []).filter(i => i.id !== elementId)
+      const entry: VersionImpacted | null = status === 'impact_non_verifie' && !text ? null : { id: elementId, status, ...(text && { comment: text }) }
+      const impacted = [...others, ...(entry ? [entry] : [])].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
+      const updated: ProductVersion = { ...existing }
+      if (impacted.length > 0) updated.impacted = impacted
+      else delete updated.impacted
+      const filePath = `${VERSIONS_DIR}/${id}.yaml`
+      const stamped = await this.stamp(repoPath, existing, updated, filePath)
+      await this.git.writeYaml(repoPath, filePath, stamped)
+      return stamped
+    })
+  }
+
+  /** Tests à exécuter (GH245 §2) ; campagnes ouvertes du repo en information. Pas pour une version abandonnée. */
+  async testsToRun(repoPath: string, id: string, workspaceDir?: string): Promise<VersionTestsToRun> {
+    const src = this.requireImpactSources()
+    const version = await this.get(repoPath, id)
+    const typeDef = (await this.versionType(repoPath))?.typeDef ?? null
+    const state = versionState(typeDef, version.status)
+    if (state === 'abandoned') throw new VersionError('VERSION_ABANDONED', id)
+    const campaigns = await src.campaigns.list(repoPath).catch(() => [])
+    if (state === 'in_progress') {
+      const { analysis, snapshot } = await this.liveAnalysis(repoPath, version, workspaceDir)
+      return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns)
+    }
+    // Released : analyse figée ; couverture et campagnes lues sur l'état courant (on teste aujourd'hui).
+    const analysis = await this.analysis(repoPath, id, workspaceDir)
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    const rootRepo = ws?.logicalTree.repoPath ?? repoPath
+    const snapshot = await src.traceability.loadWorkingTreeSnapshot(rootRepo, await resolveWorkspaceRepoPaths(this.workspaceTree, rootRepo, workspaceDir))
+    return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns)
+  }
+
+  private requireImpactSources(): NonNullable<VersionsService['impactSources']> {
+    if (!this.impactSources) throw new Error('Analyse d\'impact indisponible')
+    return this.impactSources
+  }
+
   // ── Passage released ───────────────────────────────────────────────────────
 
   /** Tag proposé et contrôles du passage released ; `tag` : contrôlé aussi (sinon le tag proposé). */
@@ -547,7 +647,12 @@ export class VersionsService {
       const head = await this.sync.resolveHead(repoPath)
       if (!head) throw new VersionError('DIRTY_CHANGES', 'aucun commit dans le repo')
       const filePath = `${VERSIONS_DIR}/${id}.yaml`
-      const released = await this.stamp(repoPath, version, { ...version, status: approval, freeze: { tag: trimmed, sha: head, at: new Date().toISOString() } }, filePath)
+      // GH245 — analyse figée dans le même commit : lignes et racines, sans les arbres (volumineux et
+      // porteurs de chemins locaux), calculée sur l'état du workspace au moment du passage.
+      const analysis = this.impactSources ? freezeAnalysis((await this.liveAnalysis(repoPath, version, workspaceDir)).analysis) : undefined
+      const released = await this.stamp(repoPath, version, {
+        ...version, status: approval, freeze: { tag: trimmed, sha: head, at: new Date().toISOString() }, ...(analysis && { analysis }),
+      }, filePath)
       const content = yaml.dump(released, { lineWidth: 120 })
       // Tag posé sur le commit avant que la branche n'avance : un échec du tag laisse la version en cours.
       await this.sync.commitSingleFile(repoPath, filePath, content, `[version] ${id} ${version.title} released`,
@@ -603,6 +708,14 @@ export class VersionsService {
   private async stamp(repoPath: string, before: ProductVersion | null, after: ProductVersion, filePath: string): Promise<ProductVersion> {
     return this.history ? this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath }) : after
   }
+}
+
+/** Analyse à écrire dans le fichier : sans arbres, sans clé `undefined` (YAML). */
+function freezeAnalysis(a: VersionAnalysis): VersionAnalysis {
+  return JSON.parse(JSON.stringify({
+    ...a, frozen: true,
+    roots: a.roots.map(r => ({ ...r, descendantTree: [], ascendantTree: [] })),
+  })) as VersionAnalysis
 }
 
 /** Versions released par ordre de livraison (`freeze.at`). */

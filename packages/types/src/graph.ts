@@ -254,6 +254,14 @@ export interface GraphVersion {
   changes: Array<{ id: string; base: { sha: string; version: number } | null }>
   /** Tag et commit figés au passage released ; `null` avant. */
   freeze: { tag: string; sha: string } | null
+  /** Statuts d'impact saisis (GH245), tels que stockés. */
+  impacted: Array<{ id: string; status: string; comment: string | null }>
+  /** Analyse d'impact figée au passage released (GH245) ; `null` tant que la version est en cours.
+   *  Une ligne par élément impacté du composant ; `sources` : racine et chemin (IDs). */
+  analysis: {
+    computedAt: string
+    rows: Array<{ id: string; status: string; comment: string | null; reached: boolean; sources: Array<{ rootId: string; path: string[] }> }>
+  } | null
   fields: Record<string, unknown>
   history: ObjectHistory
 }

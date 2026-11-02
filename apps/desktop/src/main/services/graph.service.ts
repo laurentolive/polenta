@@ -224,6 +224,15 @@ export class GraphService {
         id: v.id, repo: repo.name, component: repo.name, objectTypeRef: v.objectTypeRef, title: v.title, status: v.status,
         state: versionState(vt?.typeDef ?? null, v.status), basedOn: v.basedOn ?? null, components: v.components ?? {},
         changes: (v.changes ?? []).map((c) => ({ id: c.id, base: c.base ?? null })), freeze: v.freeze ? { tag: v.freeze.tag, sha: v.freeze.sha } : null,
+        impacted: (v.impacted ?? []).map((i) => ({ id: i.id, status: i.status, comment: i.comment ?? null })),
+        analysis: v.analysis ? {
+          computedAt: v.analysis.computedAt,
+          // Fichier édité à la main : un bloc incomplet ne casse pas le graphe.
+          rows: (v.analysis.rows ?? []).map((r) => ({
+            id: r.id, status: r.status, comment: r.comment ?? null, reached: !!r.reached,
+            sources: (r.sources ?? []).map((s) => ({ rootId: s.rootId, path: (s.path ?? []).map((p) => p.id) })),
+          })),
+        } : null,
         fields: v.fields ?? {}, history: v.history ?? {},
       }))
       return { versions, designVersions }

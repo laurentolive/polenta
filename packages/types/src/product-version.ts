@@ -1,4 +1,5 @@
 import type { ObjectHistory } from './history'
+import type { ImpactAnalysisStatus, ImpactNode } from './impact-analysis'
 import type { ObjectTypeDefinition } from './schema'
 
 // GH201 — objet version d'un composant (un repo) ou du produit (repo racine), specs/GH201.md.
@@ -39,8 +40,76 @@ export interface ProductVersion {
   components?: Record<string, string>
   changes?: VersionChange[]
   freeze?: VersionFreeze
+  /** GH245 — statuts d'impact saisis (version en cours). */
+  impacted?: VersionImpacted[]
+  /** GH245 — analyse d'impact figée au passage released. */
+  analysis?: VersionAnalysis
   fields: Record<string, unknown>
   history?: ObjectHistory
+}
+
+// ── GH245 — analyse d'impact et tests à exécuter d'une version ────────────────
+
+export interface VersionImpacted {
+  id: string
+  status: ImpactAnalysisStatus
+  comment?: string
+}
+
+export interface VersionImpactStep {
+  id: string
+  linkType: string
+  parentIsTarget?: boolean
+}
+
+/** Chemin racine → élément ; la racine n'est pas répétée dans `path`. */
+export interface VersionImpactSource {
+  rootId: string
+  path: VersionImpactStep[]
+}
+
+export interface VersionImpactRow {
+  id: string
+  elementType: 'requirement' | 'test_case' | null
+  title: string | null
+  status: ImpactAnalysisStatus
+  comment?: string
+  /** false : statut enregistré, élément plus atteint par l'analyse. */
+  reached: boolean
+  sources: VersionImpactSource[]
+}
+
+export interface VersionImpactRoot {
+  elementId: string
+  elementType: 'requirement' | 'test_case'
+  title: string
+  /** Composant (nom de montage) qui porte le changement. */
+  component: string
+  descendantTree: ImpactNode[]
+  ascendantTree: ImpactNode[]
+}
+
+export interface VersionAnalysis {
+  computedAt: string
+  frozen: boolean
+  roots: VersionImpactRoot[]
+  rows: VersionImpactRow[]
+}
+
+export interface VersionTestToRun {
+  testId: string
+  title: string
+  /** Instances (exigences) retenues ; vide : le test lui-même. */
+  requirementIds: string[]
+  /** Éléments qui amènent le test. */
+  sources: string[]
+  /** Campagnes ouvertes du repo dont une entrée active vise déjà le test (information, aucun lien). */
+  alreadyIn: Array<{ id: string; title: string }>
+}
+
+export interface VersionTestsToRun {
+  tests: VersionTestToRun[]
+  uncovered: string[]
 }
 
 /** Lu des marques du type : `isApproval` → released, `isTerminal` → abandoned, sinon en cours. */
@@ -142,7 +211,7 @@ export interface UpdateVersionDto {
 export type VersionErrorCode =
   | 'NO_VERSION_TYPE' | 'LABEL_TAKEN' | 'LABEL_EMPTY' | 'VERSION_LOCKED'
   | 'NOT_IN_PROGRESS' | 'RELEASE_REQUIRED' | 'TAG_INVALID' | 'TAG_EXISTS' | 'COMPONENT_NOT_RELEASED'
-  | 'DIRTY_CHANGES' | 'READONLY_REPO' | 'VERSION_NOT_FOUND' | 'STATUS_UNKNOWN'
+  | 'DIRTY_CHANGES' | 'READONLY_REPO' | 'VERSION_NOT_FOUND' | 'STATUS_UNKNOWN' | 'VERSION_ABANDONED'
 
 export interface VersionProblem {
   code: VersionErrorCode
@@ -157,7 +226,7 @@ export interface VersionReleasePreview {
 export const VERSION_ERROR_CODES: readonly VersionErrorCode[] = [
   'NO_VERSION_TYPE', 'LABEL_TAKEN', 'LABEL_EMPTY', 'VERSION_LOCKED',
   'NOT_IN_PROGRESS', 'RELEASE_REQUIRED', 'TAG_INVALID', 'TAG_EXISTS', 'COMPONENT_NOT_RELEASED',
-  'DIRTY_CHANGES', 'READONLY_REPO', 'VERSION_NOT_FOUND', 'STATUS_UNKNOWN',
+  'DIRTY_CHANGES', 'READONLY_REPO', 'VERSION_NOT_FOUND', 'STATUS_UNKNOWN', 'VERSION_ABANDONED',
 ]
 
 /** État d'une version selon les marques de son type. */

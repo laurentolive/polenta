@@ -64,7 +64,12 @@ released seulement).
 - `testsToRun(repo, id, ws)` : analyse (figée ou live) + snapshot courant + campagnes du repo ; refusé
   pour une version abandonnée (`NOT_IN_PROGRESS`… → code `VERSION_ABANDONED`).
 - `release` : calcule l'analyse live juste avant le gel et l'écrit (`analysis`, `frozen: true`) dans le
-  même commit.
+  même commit — lignes et racines **sans les arbres** (volumineux, chemins locaux) ; calculée sur l'état
+  du workspace au moment du passage (des modifications non commitées hors `changes` y comptent).
+- Version released sans `analysis` (antérieure à GH245) : analyse vide, jamais recalculée (pas de reprise).
+- Revue : `setImpact` refuse un statut inconnu ; un élément changé n'est jamais écarté des tests par un
+  statut « pas d'impact » resté attaché ; « Déjà dans » tient compte de l'instance (exigence) ; couverture
+  en une passe sur les liens.
 
 ## 5. IPC, graphe, MCP
 

@@ -8,6 +8,12 @@ export type ImpactAnalysisStatus =
   | 'modification_a_tester'
   | 'modification_verifiee'
 
+/** Les 8 statuts d'impact, dans l'ordre d'affichage (GH245 : contrôle des écritures). */
+export const IMPACT_ANALYSIS_STATUSES: readonly ImpactAnalysisStatus[] = [
+  'impact_non_verifie', 'pas_d_impact_reel', 'impact_a_tester', 'impact_teste',
+  'modification_a_faire', 'modification_faite', 'modification_a_tester', 'modification_verifiee',
+]
+
 export type RequirementChangeType = 'added' | 'removed' | 'modified'
 
 export interface ChangedField {

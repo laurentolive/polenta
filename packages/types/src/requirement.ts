@@ -49,6 +49,9 @@ export interface WorkspaceObject {
   /** Repo en lecture seule (épinglé, monté sous un nœud `readonly`) : l'objet ne peut pas être la
    *  source d'un nouveau lien (le lien serait écrit dans ce repo). */
   readonly: boolean
+  /** GH229 — texte des liens vers l'objet (`displayIdField` du type), seulement s'il diffère de
+   *  `id`. */
+  displayId?: string
 }
 
 /** Lien lu dans le `links.yaml` d'un repo du workspace. */

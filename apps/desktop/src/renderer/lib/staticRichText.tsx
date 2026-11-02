@@ -5,6 +5,8 @@ import { escapeXml } from './drawioRender'
 import { parseDrawioFencePayload } from '../tiptap/mediaAttrs'
 import { renderStaticDrawio } from './staticDrawio'
 import { markdownParamRefs, type ParamRefsEnv } from './markdownParamRefs'
+import { markdownElementRefs, type ElementRefsEnv } from './elementRefs'
+import { useElementRefDelegation, useElementRefExists } from '../components/element/elementRefDelegation'
 import { useParamRefs } from '../contexts/ParamRefContext'
 import { useTranslation } from 'react-i18next'
 import { applyWordDiff, clearWordDiff } from './wordDiff'
@@ -94,6 +96,7 @@ function getMarkdownIt(): MarkdownIt {
     return defaultFence ? defaultFence(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options)
   }
   markdownParamRefs(md)
+  markdownElementRefs(md)
   sharedMd = md
   return md
 }
@@ -211,13 +214,17 @@ export function StaticRichTextViewer({
   const paramRefs = useParamRefs()
   const { t } = useTranslation()
   const unresolvedLabel = t('parameters.unresolved')
+  // GH229 — ID d'élément du texte : liens (gestes délégués au conteneur).
+  const elementRefs = useElementRefExists()
+  const elementRefHandlers = useElementRefDelegation()
   const html = useMemo(() => {
     if (!value) return ''
-    const env: ParamRefsEnv = { paramRefs, unresolvedLabel }
+    const env: ParamRefsEnv & ElementRefsEnv = { paramRefs, unresolvedLabel, elementRefs }
     return getMarkdownIt().render(value, env)
-    // `paramRefs.version` : les bases ont changé → re-rendu des valeurs.
+    // `paramRefs.version` : les bases ont changé → re-rendu des valeurs ; `elementRefs.version` :
+    // l'index des éléments a changé.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, paramRefs?.version, unresolvedLabel])
+  }, [value, paramRefs?.version, unresolvedLabel, elementRefs?.version])
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Repo-relative image paths (T76) can't be resolved by the browser directly (not a web URL) —
@@ -293,7 +300,7 @@ export function StaticRichTextViewer({
     clearWordDiff(container)
     if (diffOther === undefined || !diffSide || diffOther === value) return
     const other = document.createElement('template')
-    other.innerHTML = getMarkdownIt().render(diffOther, { paramRefs, unresolvedLabel } satisfies ParamRefsEnv)
+    other.innerHTML = getMarkdownIt().render(diffOther, { paramRefs, unresolvedLabel, elementRefs } satisfies ParamRefsEnv & ElementRefsEnv)
     applyWordDiff(container, other.content, diffSide)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html, diffOther, diffSide])
@@ -313,19 +320,23 @@ export function StaticRichTextViewer({
       ref={containerRef}
       className={variant === 'compact' ? VIEWER_CLASS_COMPACT : VIEWER_CLASS}
       dangerouslySetInnerHTML={{ __html: html }}
+      {...elementRefHandlers}
       // Comme un lien : un clic simple sur une référence ne remonte pas (la cellule / le champ
       // passerait en édition avant que le double-clic n'arrive).
-      onClick={paramRefs ? e => {
-        if ((e.target as HTMLElement).closest('[data-param-ref]')) e.stopPropagation()
-      } : undefined}
-      onDoubleClick={paramRefs ? e => {
+      onClick={e => {
+        elementRefHandlers.onClick?.(e)
+        if (paramRefs && (e.target as HTMLElement).closest('[data-param-ref]')) e.stopPropagation()
+      }}
+      onDoubleClick={e => {
+        elementRefHandlers.onDoubleClick?.(e)
+        if (!paramRefs) return
         // T171 — double-clic sur une référence : édition (ou création) du paramètre.
         const el = (e.target as HTMLElement).closest<HTMLElement>('[data-param-ref]')
         if (!el?.dataset.paramRef) return
         e.preventDefault()
         e.stopPropagation()
         paramRefs.openParameter(el.dataset.paramRef)
-      } : undefined}
+      }}
     />
   )
 }

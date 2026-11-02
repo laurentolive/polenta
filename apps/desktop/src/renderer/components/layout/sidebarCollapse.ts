@@ -28,6 +28,11 @@ export function saveSidebarCollapsed(collapsed: boolean): void {
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
+/** GH237 — modificateur de commande : Cmd sur macOS, Ctrl ailleurs, l'autre exclu. */
+export function hasCommandModifier(e: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey'>, isMac = IS_MAC): boolean {
+  return isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+}
+
 /** Ctrl+B, ou Cmd+B sur macOS (où Ctrl+B est « curseur en arrière »). Touche physique B
  *  (`code`) acceptée pour les dispositions non latines ; auto-répétition ignorée. */
 export function isSidebarToggleShortcut(
@@ -35,7 +40,7 @@ export function isSidebarToggleShortcut(
   isMac = IS_MAC,
 ): boolean {
   if (e.defaultPrevented || e.repeat || e.shiftKey || e.altKey) return false
-  if (isMac ? !e.metaKey || e.ctrlKey : !e.ctrlKey || e.metaKey) return false
+  if (!hasCommandModifier(e, isMac)) return false
   if (e.key.toLowerCase() !== 'b' && e.code !== 'KeyB') return false
   return !isEditableTarget(e.target)
 }

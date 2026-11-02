@@ -44,6 +44,7 @@ Un type est défini par :
 | `fields` | list | Champs personnalisés — voir §3 |
 | `statuses` | list | Statuts — voir §4 |
 | `trackStatusHistory` | bool? | **GH77** — historiser le statut (`history.status`, §4.4). Absent = `true` ; écrit seulement quand `false`. Vaut aussi pour les campagnes |
+| `displayIdField` | string? | **GH229** — texte des liens vers un objet du type (§6.2) : `title` ou nom d'un champ `text` / `number` / `enum` du type. Absent = ID Polenta. Refusé à l'enregistrement sinon (`DISPLAY_ID_FIELD_INVALID`) ; retiré par l'éditeur si le champ choisi est supprimé ou retypé |
 
 **Référence croisée :** un objet exigence se référence par son `objectTypeRef` au format `"nœud::nom-type"` (ex. `"root::exigence-systeme"`).
 
@@ -329,6 +330,19 @@ indépendamment des liens.
 - *(T179)* `{req.<champ>}` (champ de l'exigence liée, résolu par instance en campagne — SPEC-TESTS
   §2.4a) n'a de sens que dans un test : dans une exigence, c'est du texte brut (ni style, ni
   « Utilisé par », ni résolution).
+
+### 3.2g ID d'élément dans le texte (GH229)
+
+En **lecture** (Document, cellules du Tableau hors édition, fiche hors saisie, campagne, popup
+d'aperçu, résultats de requêtes), un ID Polenta **exact d'un élément existant** du workspace écrit
+dans un champ `richtext`, `text` ou `textarea` devient un lien d'élément (`SPEC-SYSTEM-VIEW.md`
+§Liens d'élément) : séquence `<préfixe>-<chiffres>` délimitée (ni lettre, chiffre, `_` ou `-` collés
+devant ; ni lettre, chiffre ou `_` derrière), prise en entier (`REQ-MC-SW-001`), jamais en partie.
+Le texte n'est jamais modifié et le lien affiche ce qui est écrit (pas l'ID affiché §6.2). Pas de
+reconnaissance dans du code Markdown, le texte d'un lien Markdown, un bloc `drawio`, ni pendant la
+saisie ; les valeurs d'ID affiché personnalisé ne sont pas reconnues. Rendu : règle markdown-it
+`element_refs` (`lib/elementRefs.ts`), décoration Tiptap `ElementRefDecoration` (viewer en lecture
+seule), `ElementRefText` (texte brut) ; gestes délégués au conteneur.
 
 ### 3.3 Validation (`validator`)
 
@@ -621,6 +635,18 @@ les IDs qui seraient attribués sans les consommer (`peekNextCounterId`, lecture
 du disque — cf. `SPEC-TECH-stack.md` §4.4) ; `dryRun: false` attribue
 les IDs réels en série via le même mécanisme sérialisé que l'UI (T118), garantissant
 l'absence de collision même pour des créations rapprochées au sein d'un même batch.
+
+### 6.2 ID affiché dans les liens (GH229)
+
+`displayIdField` (§2.1) remplace l'ID Polenta **dans le texte des liens** vers un objet du type
+(colonnes et sections de liens, campagnes, recherche, requêtes…) : valeur du champ, ou `title` ;
+un champ vide (ou un `displayIdField` invalide écrit à la main) retombe sur l'ID Polenta. Calculé
+par le main (`WorkspaceObject.displayId`, présent seulement s'il diffère de `id`, avec le schéma
+du repo de l'objet). L'infobulle du lien donne alors l'ID Polenta. L'ID Polenta reste affiché
+dans la colonne ID, les en-têtes Document et Édition, la popup d'aperçu, les fichiers, exports et
+impressions ; l'unicité n'est pas exigée : navigation et `links.yaml` utilisent toujours l'ID.
+Éditeur de type : liste « ID affiché dans les liens ». MCP : attribut accepté par les tools de
+mutation du schéma, documenté dans `AGENTS.md`.
 
 ---
 

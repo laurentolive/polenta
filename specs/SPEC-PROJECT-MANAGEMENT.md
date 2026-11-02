@@ -23,6 +23,10 @@ passent par l'UI in-app (panneau Projet, `SPEC-ELECTRON-DESKTOP.md` §19.8), pas
 description qui suit reste le comportement *prévu à l'origine* si le menu natif est un jour
 réactivé — à ne pas prendre comme l'état actuel de l'application.
 
+Conséquence : les raccourcis de zoom du menu par défaut d'Electron n'existent pas ; le zoom de
+l'interface (Ctrl+molette, Ctrl+= / Ctrl+- / Ctrl+0) est implémenté à part (GH237,
+`SPEC-ELECTRON-DESKTOP.md` §19.2).
+
 Le menu est enregistré dans le **main process** via `Menu.buildFromTemplate`. Les actions de navigation émettent des événements vers le renderer via `win.webContents.send(channel)`.
 
 ```

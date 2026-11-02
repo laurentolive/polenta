@@ -78,6 +78,9 @@ import type {
   ExecutionImportResult,
   AppSettings,
   UpdateState,
+  ZoomAction,
+  TerminalDetectResult,
+  TerminalKind,
 } from '@polenta/types'
 import type {
   CreateRequirementDto,
@@ -377,6 +380,8 @@ export interface FieldVisibilityPref {
   executions?: string[]
   /** GH176 — titres de dossiers affichés dans le sélecteur de tests. Absent ⇒ ceux de la vue Tableau. */
   showFoldersPicker?: boolean
+  /** GH229 — champs de la popup d'aperçu (survol d'un lien vers un objet du type). Absent ⇒ aucun. */
+  popup?: string[]
 }
 
 /** GH176 — écriture partielle de `FieldVisibilityPref` : une clé absente est conservée telle quelle,
@@ -426,12 +431,28 @@ export interface ApiClient {
     teamProjects(): Promise<TeamProjectEntry[]>
     /** GH45 S2b — desktop : lien d'invitation reçu avant que l'interface ne soit prête. */
     takePendingInvite(): Promise<{ server: string; login?: string } | null>
+    /** GH237 — desktop : zoom de l'interface, retourne le nouveau facteur ; tout changement (molette
+     *  comprise) est aussi diffusé par 'app:zoom-changed' (window.polenta.on). */
+    zoom(action: ZoomAction): Promise<number>
   }
   /** GH26 — mise à jour automatique ; les changements d'état arrivent par l'événement
    *  'update:state-changed' (window.polenta.on). */
   update: {
     getState(): Promise<UpdateState>
     install(): Promise<void>
+  }
+  /** GH238 — pseudo-terminal de la vue Version (desktop seulement) ; sortie et fin poussées par
+   *  'terminal:data' (id, chunk) et 'terminal:exit' (id, exitCode) (window.polenta.on). */
+  terminal: {
+    detect(): Promise<TerminalDetectResult>
+    start(kind: TerminalKind, cwd: string, cols: number, rows: number): Promise<{ id: string; name: string }>
+    write(id: string, data: string): Promise<void>
+    /** Tape `cd '<repoPath>'` + Entrée (chemin au format du shell). */
+    cd(id: string, repoPath: string): Promise<void>
+    resize(id: string, cols: number, rows: number): Promise<void>
+    kill(id: string): Promise<void>
+    /** Ouvre https://git-scm.com/downloads dans le navigateur. */
+    openGitDownload(): Promise<void>
   }
   schema: {
     get(repoPath: string): Promise<ProjectSchema>

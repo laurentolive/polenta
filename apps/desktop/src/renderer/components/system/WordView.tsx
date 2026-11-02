@@ -1,7 +1,9 @@
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Pencil, ChevronDown, ChevronRight } from 'lucide-react'
+import { ElementLink } from '../element/ElementLink'
+import { ElementRefText } from '../element/elementRefDelegation'
+import { Pencil, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
 import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor, linkTypeVisibility } from './LinkTypeEditor'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
@@ -78,6 +80,8 @@ interface Props {
    *  `gotoSeq` s'incrémente à chaque requête pour re-scroller sur une cible identique. */
   gotoNodeId?: string | null
   gotoSeq?: number
+  /** GH230 — nœud aligné en haut de la vue, sans contour (ancrage `top` de l'URL). */
+  anchorNodeId?: string | null
   /** GH24 — dossiers repliés : détenus par SystemView (pref du type) pour survivre au
    *  démontage de la vue (changement de vue / de type). */
   collapsedFolders: string[]
@@ -334,7 +338,7 @@ function InlineField({
         </span>
       ) : isSystem || !onEdit ? (
         <span className={`text-xs ${isSystem ? 'text-ink-2' : 'text-ink'}`}>
-          {value ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : value) : '—'}
+          {value ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : isSystem ? value : <ElementRefText text={value} />) : '—'}
         </span>
       ) : editing ? (
         fieldDef?.type === 'enum' ? (
@@ -381,7 +385,7 @@ function InlineField({
           title={t('system.shared.clickToEdit')}
         >
           {value
-            ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : value)
+            ? (paramRefs && isParamField(fieldDef, isSystem) ? <ParamRefText text={value} /> : <ElementRefText text={value} />)
             : <span className="text-ink-3 italic">—</span>}
         </span>
       )}
@@ -718,11 +722,8 @@ function ItemCard({
                         ? outgoing.map((id, i) => (
                             <span key={id}>
                               {i > 0 && ', '}
-                              <span
-                                className="cursor-pointer hover:underline"
-                                title={t('system.shared.clickToNavigate')}
-                                onClick={e => { e.stopPropagation(); onNavigateToObject?.(id, { newTab: e.ctrlKey || e.metaKey }) }}
-                              >{id}</span>
+                              {/* GH229 — lien d'élément : navigation, nouvel onglet, popup d'aperçu. */}
+                              <ElementLink id={id} onFollow={onNavigateToObject} />
                             </span>
                           ))
                         : <span className="text-ink-3 italic">—</span>}
@@ -749,11 +750,8 @@ function ItemCard({
                         ? incoming.map((id, i) => (
                             <span key={id}>
                               {i > 0 && ', '}
-                              <span
-                                className="cursor-pointer hover:underline"
-                                title={t('system.shared.clickToNavigate')}
-                                onClick={e => { e.stopPropagation(); onNavigateToObject?.(id, { newTab: e.ctrlKey || e.metaKey }) }}
-                              >{id}</span>
+                              {/* GH229 — lien d'élément : navigation, nouvel onglet, popup d'aperçu. */}
+                              <ElementLink id={id} onFollow={onNavigateToObject} />
                             </span>
                           ))
                         : <span className="text-ink-3 italic">—</span>}
@@ -798,6 +796,7 @@ export const WordView = memo(function WordView({
   onStepsChange,
   gotoNodeId,
   gotoSeq,
+  anchorNodeId,
   collapsedFolders: collapsedFolderIds,
   onCollapsedFoldersChange,
   computedColumns,
@@ -815,7 +814,9 @@ export const WordView = memo(function WordView({
 
   // T164 — "goto" : défiler jusqu'à la carte / l'en-tête portant data-node-id.
   const containerRef = useRef<HTMLDivElement>(null)
-  useScrollToNode(containerRef, gotoNodeId, gotoSeq)
+  useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root })
+  // GH230 — ancrage `top` : nœud aligné en haut, sans contour.
+  useScrollToNode(containerRef, anchorNodeId, undefined, { root })
 
   // Ref plutôt que dépendances : garde `toggleFolder` stable (passé aux lignes mémoïsées).
   const collapsedFoldersRef = useRef({ set: collapsedFolders, onChange: onCollapsedFoldersChange })
@@ -998,7 +999,7 @@ export const WordView = memo(function WordView({
   const activeLt = linkTypes.find(l => l.name === activeLinkTypeName)
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-auto">
+    <div ref={containerRef} className="flex-1 overflow-auto" data-view-scroll>
       <div className="px-6 py-2">
         {root.length === 0 ? (
           <p className="text-ink-3 text-sm italic">{t('common.noElements')}</p>

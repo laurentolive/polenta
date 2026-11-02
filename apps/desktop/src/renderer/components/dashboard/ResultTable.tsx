@@ -6,12 +6,24 @@
 
 import { useTranslation } from 'react-i18next'
 import type { QueryResult } from '@polenta/types'
+import { useElementNav } from '../../contexts/ElementNavContext'
+import { ElementLink } from '../element/ElementLink'
+import { ElementRefText } from '../element/elementRefDelegation'
 
 function formatCell(v: unknown, booleanLabels: { true: string; false: string }): string {
   if (v === null || v === undefined) return '—'
   if (typeof v === 'boolean') return v ? booleanLabels.true : booleanLabels.false
   if (typeof v === 'object') return JSON.stringify(v)
   return String(v)
+}
+
+/** GH229 — cellule : un ID d'élément existant est un lien, les ID écrits dans un texte aussi. */
+function ResultCell({ value, booleanLabels }: { value: unknown; booleanLabels: { true: string; false: string } }) {
+  const nav = useElementNav()
+  const text = formatCell(value, booleanLabels)
+  if (typeof value !== 'string') return <>{text}</>
+  if (nav?.resolve(value)) return <ElementLink id={value} />
+  return <ElementRefText text={text} />
 }
 
 /** Ligne qui désigne des objets (drill-down) : `_ids` non vide. */
@@ -60,7 +72,7 @@ export function ResultTable({ result, onRowClick, compact = false }: {
               >
                 {columns.map((col) => (
                   <td key={col.name} className="px-3 py-1.5 text-ink whitespace-nowrap">
-                    {formatCell(row[col.name], booleanLabels)}
+                    <ResultCell value={row[col.name]} booleanLabels={booleanLabels} />
                   </td>
                 ))}
               </tr>

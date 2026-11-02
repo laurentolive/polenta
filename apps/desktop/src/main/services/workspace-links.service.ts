@@ -1,7 +1,9 @@
 import path from 'node:path'
 import {
+  displayIdOf,
   flattenSystemNodes,
   type LinkWriteErrorCode,
+  type ObjectTypeDefinition,
   type ProjectSchema,
   type WorkspaceLink,
   type WorkspaceLinkType,
@@ -56,6 +58,17 @@ interface ObjectEntry extends ResolvedLinkObject {
   title: string
   status: string
   repoPath: string
+  displayId?: string
+}
+
+/** GH229 — types d'objet d'un schéma par ref `<nœud>::<type>` (schéma absent : `null`). */
+function objectTypesOf(schema: ProjectSchema | undefined): Map<string, ObjectTypeDefinition> | null {
+  if (!schema) return null
+  const map = new Map<string, ObjectTypeDefinition>()
+  for (const { node } of flattenSystemNodes(schema.nodes)) {
+    for (const t of node.objectTypes ?? []) map.set(`${node.name}::${t.name}`, t)
+  }
+  return map
 }
 
 /** État du workspace lu une fois par opération. */
@@ -94,12 +107,13 @@ export class WorkspaceLinksService {
   /** Exigences et tests de tous les repos du workspace (working tree : non commités compris). */
   async listObjects(rootRepoPath: string, workspaceDir?: string): Promise<WorkspaceObject[]> {
     const ctx = await this.context(rootRepoPath, workspaceDir)
-    const table = await this.collectObjects(ctx.repoPaths, false)
+    const table = await this.collectObjects(ctx.repoPaths, false, this.loadSchemas(ctx.repoPaths))
     return [...table.values()].map((o) => ({
       id: o.id, title: o.title, status: o.status, objectTypeRef: o.objectTypeRef ?? '',
       category: o.category as WorkspaceObject['category'],
       repoPath: o.repoPath, repoLabel: this.labelOf(ctx, o.repoPath),
       readonly: ctx.readonlyRepos.has(repoKey(o.repoPath)),
+      ...(o.displayId ? { displayId: o.displayId } : {}),
     }))
   }
 
@@ -287,16 +301,28 @@ export class WorkspaceLinksService {
    * Objets des repos donnés, lus en parallèle puis fusionnés racine d'abord : un id présent dans
    * deux repos garde le premier (unicité des préfixes, règle 10 — signalé).
    */
-  private async collectObjects(repoPaths: string[], withCampaigns: boolean): Promise<Map<string, ObjectEntry>> {
+  private async collectObjects(
+    repoPaths: string[],
+    withCampaigns: boolean,
+    schemas?: Promise<Map<string, ProjectSchema>>,
+  ): Promise<Map<string, ObjectEntry>> {
     const perRepo = await Promise.all(repoPaths.map(async (p): Promise<ObjectEntry[]> => {
-      const [reqs, tests, campaigns] = await Promise.all([
+      const [reqs, tests, campaigns, schemaMap] = await Promise.all([
         this.reqIndex.findAll(p, {}),
         this.testsIndex.findAll(p),
         withCampaigns && this.campaigns ? this.campaigns.list(p) : Promise.resolve([]),
+        schemas,
       ])
+      // GH229 — texte des liens, avec le schéma du repo de l'objet (absent : pas calculé).
+      const types = objectTypesOf(schemaMap?.get(repoKey(p)))
+      const displayId = (o: { id: string; title: string; objectTypeRef?: string; fields?: Record<string, unknown> }) => {
+        if (!types) return {}
+        const shown = displayIdOf(o, types.get(o.objectTypeRef ?? ''))
+        return shown !== o.id ? { displayId: shown } : {}
+      }
       return [
-        ...reqs.map((r) => ({ id: r.id, title: r.title, status: r.status, objectTypeRef: r.objectTypeRef, category: 'requirement' as const, repoPath: p })),
-        ...tests.map((t) => ({ id: t.id, title: t.title, status: t.status, objectTypeRef: t.objectTypeRef, category: 'test' as const, repoPath: p })),
+        ...reqs.map((r) => ({ id: r.id, title: r.title, status: r.status, objectTypeRef: r.objectTypeRef, category: 'requirement' as const, repoPath: p, ...displayId(r) })),
+        ...tests.map((t) => ({ id: t.id, title: t.title, status: t.status, objectTypeRef: t.objectTypeRef, category: 'test' as const, repoPath: p, ...displayId(t) })),
         ...campaigns.map((c) => ({ id: c.id, title: c.title ?? c.id, status: c.status, objectTypeRef: c.objectTypeRef, category: 'campaign' as const, repoPath: p })),
       ]
     }))

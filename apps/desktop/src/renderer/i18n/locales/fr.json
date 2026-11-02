@@ -479,7 +479,8 @@
       "baselinesTitle": "Baselines",
       "refreshConflict_one": "Conflit avec la branche distante ({{count}} fichier) : rien n'a été modifié.",
       "refreshConflict_other": "Conflit avec la branche distante ({{count}} fichiers) : rien n'a été modifié.",
-      "integrationTag": "intégration"
+      "integrationTag": "intégration",
+      "terminal": "Terminal (Ctrl+ù)"
     },
     "reorderable": {
       "deleteTitle": "Supprimer ?",
@@ -536,7 +537,10 @@
       "runFieldsHelp": "Saisis à chaque exécution (n° de rapport, température, lien vers le rapport…). Une information commune à toute la campagne est un champ de campagne. « Oblig. si » : result = PASS, FAIL, BLOCKED ou INCOMPLETE (verdict global). Un nom désigne un seul champ dans tout le projet.",
       "stepFields": "Champs d'étape",
       "stepFieldsHelp": "Saisis sur chaque étape exécutée (valeur mesurée, capture…). « Oblig. si » : result = PASS, FAIL, BLOCKED, SKIP (verdict de l'étape).",
-      "version": "Version"
+      "version": "Version",
+      "displayIdField": "ID affiché dans les liens",
+      "displayIdPolenta": "ID Polenta",
+      "displayIdTitle": "Titre"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -736,6 +740,13 @@
     }
   },
   "system": {
+    "view": {
+      "itemHiddenByFilter": "{{id}} est masqué par le filtre"
+    },
+    "preview": {
+      "notFound": "Élément introuvable",
+      "campaignTests": "{{count}} test(s)"
+    },
     "revalidation": {
       "tooltip": "Impact à vérifier"
     },
@@ -799,6 +810,8 @@
       "colCoverage": "Couverture",
       "tabExcel": "Tableau",
       "tabWord": "Document",
+      "tabPopup": "Popup",
+      "popupHint": "Champs affichés dans la popup au survol d'un lien vers un élément de ce type (en plus de l'en-tête et du titre).",
       "testCase": "Cas de test",
       "links": "Liens",
       "noLinkTypeForType": "Aucun type de lien pour ce type",
@@ -1684,6 +1697,10 @@
       "requirementOfInstance": "Exigence de cette instance :"
     }
   },
+  "zoom": {
+    "label": "Niveau de zoom",
+    "reset": "Réinitialiser"
+  },
   "update": {
     "badge": {
       "title": "{{appName}} v{{version}} est disponible"
@@ -2383,5 +2400,19 @@
       "via": "Amené par",
       "alreadyIn": "Déjà dans"
     }
+  },
+  "terminal": {
+    "title": "Terminal",
+    "exited": "[processus terminé — code {{code}}] Appuyez sur Entrée pour relancer",
+    "cdToSelected": "Aller à {{repo}}",
+    "clear": "Effacer",
+    "kill": "Tuer le processus",
+    "close": "Fermer (Ctrl+ù)",
+    "notFound": "Git Bash introuvable sur ce poste",
+    "installGit": "Installer Git",
+    "recheck": "Revérifier",
+    "installHint": "Le bouton ouvre la page de téléchargement de Git ; revérifiez une fois Git installé.",
+    "copy": "Copier",
+    "paste": "Coller"
   }
 }

@@ -53,7 +53,9 @@ export function builderConfig(brand: LoadedBrand): Configuration {
     // pnpm : sans cette ligne, keytar.node finit packagé DANS l'asar et le require échoue au lancement
     // ("Cannot find module '../build/Release/keytar.node'").
     // GH74 — worker du moteur de scripts et .wasm de QuickJS : chargés hors asar (`new Worker(path)`).
-    asarUnpack: ['**/keytar/build/Release/keytar.node', 'out/main/script-worker.js', 'out/main/emscripten-module.wasm'],
+    // GH238 — node-pty en entier : binaires (.node, conpty.dll, OpenConsole.exe) et worker de sortie
+    // ConPTY (`new Worker(__dirname/…)`), chargé depuis app.asar.unpacked (terminal.service.ts).
+    asarUnpack: ['**/keytar/build/Release/keytar.node', 'out/main/script-worker.js', 'out/main/emscripten-module.wasm', '**/node_modules/node-pty/**'],
     directories: {
       output: 'dist',
       // GH49 — les ressources de build (icônes) vivent dans le dossier de la marque.

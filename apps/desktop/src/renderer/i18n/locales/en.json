@@ -479,7 +479,8 @@
       "baselinesTitle": "Baselines",
       "refreshConflict_one": "Conflict with the remote branch ({{count}} file): nothing was changed.",
       "refreshConflict_other": "Conflict with the remote branch ({{count}} files): nothing was changed.",
-      "integrationTag": "integration"
+      "integrationTag": "integration",
+      "terminal": "Terminal (Ctrl+`)"
     },
     "reorderable": {
       "deleteTitle": "Delete?",
@@ -536,7 +537,10 @@
       "runFieldsHelp": "Entered at each run (report number, temperature, report link…). Information common to the whole campaign is a campaign field. “Req. if”: result = PASS, FAIL, BLOCKED or INCOMPLETE (overall verdict). A name designates a single field across the project.",
       "stepFields": "Step fields",
       "stepFieldsHelp": "Entered on each executed step (measured value, capture…). “Req. if”: result = PASS, FAIL, BLOCKED, SKIP (step verdict).",
-      "version": "Version"
+      "version": "Version",
+      "displayIdField": "ID shown in links",
+      "displayIdPolenta": "Polenta ID",
+      "displayIdTitle": "Title"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -736,6 +740,13 @@
     }
   },
   "system": {
+    "view": {
+      "itemHiddenByFilter": "{{id}} is hidden by the filter"
+    },
+    "preview": {
+      "notFound": "Element not found",
+      "campaignTests": "{{count}} test(s)"
+    },
     "revalidation": {
       "tooltip": "Impact to check"
     },
@@ -799,6 +810,8 @@
       "colCoverage": "Coverage",
       "tabExcel": "Table",
       "tabWord": "Document",
+      "tabPopup": "Popup",
+      "popupHint": "Fields shown in the popup when hovering a link to an element of this type (besides the header and title).",
       "testCase": "Test case",
       "links": "Links",
       "noLinkTypeForType": "No link type for this type",
@@ -1684,6 +1697,10 @@
       "requirementOfInstance": "Requirement of this instance:"
     }
   },
+  "zoom": {
+    "label": "Zoom level",
+    "reset": "Reset"
+  },
   "update": {
     "badge": {
       "title": "{{appName}} v{{version}} is available"
@@ -2383,5 +2400,19 @@
       "via": "Brought by",
       "alreadyIn": "Already in"
     }
+  },
+  "terminal": {
+    "title": "Terminal",
+    "exited": "[process exited — code {{code}}] Press Enter to restart",
+    "cdToSelected": "Go to {{repo}}",
+    "clear": "Clear",
+    "kill": "Kill process",
+    "close": "Close (Ctrl+`)",
+    "notFound": "Git Bash not found on this computer",
+    "installGit": "Install Git",
+    "recheck": "Check again",
+    "installHint": "The button opens the Git download page; check again once Git is installed.",
+    "copy": "Copy",
+    "paste": "Paste"
   }
 }

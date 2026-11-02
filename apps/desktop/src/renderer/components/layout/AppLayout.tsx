@@ -6,6 +6,8 @@ import { SystemViewProvider } from '../../contexts/SystemViewContext'
 import { SearchProvider } from '../../contexts/SearchContext'
 import { VersioningProvider } from '../../contexts/VersioningContext'
 import { SelectedRepoProvider } from '../../contexts/SelectedRepoContext'
+import { TerminalProvider } from '../../contexts/TerminalContext'
+import { TerminalPanel } from '../terminal/TerminalPanel'
 import { CompareRefsProvider } from '../../contexts/CompareRefsContext'
 import { useAutoPull } from '../../hooks/useAutoPull'
 import { ForgeAccessBanner } from './ForgeAccessBanner'
@@ -14,6 +16,8 @@ import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 import { isProductVersionsPath } from '../versions/useVersions'
+import { ElementNavProvider } from '../../contexts/ElementNavContext'
+import { ElementPreviewPopup } from '../element/ElementPreviewPopup'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters' | 'merge'
 
@@ -295,6 +299,8 @@ export function AppLayout() {
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
+        {/* GH238 — terminal des vues Version (rien hors projet ouvert : pas de TerminalProvider). */}
+        <TerminalPanel />
       </div>
     </div>
   )
@@ -318,13 +324,19 @@ export function AppLayout() {
   return (
     <VersioningProvider currentProjectId={currentProjectId}>
       <SelectedRepoProvider key={currentProjectId}>
-        <CompareRefsProvider>
-          <SystemViewProvider currentProjectId={currentProjectId}>
-            <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
-              {inner}
-            </SearchProvider>
-          </SystemViewProvider>
-        </CompareRefsProvider>
+        <TerminalProvider>
+          <CompareRefsProvider>
+            <SystemViewProvider currentProjectId={currentProjectId}>
+              {/* GH229 — liens sur les ID d'élément et popup d'aperçu, pour tous les écrans. */}
+              <ElementNavProvider currentProjectId={currentProjectId}>
+                <SearchProvider key={currentProjectId} currentProjectId={currentProjectId}>
+                  {inner}
+                </SearchProvider>
+                <ElementPreviewPopup />
+              </ElementNavProvider>
+            </SystemViewProvider>
+          </CompareRefsProvider>
+        </TerminalProvider>
       </SelectedRepoProvider>
     </VersioningProvider>
   )

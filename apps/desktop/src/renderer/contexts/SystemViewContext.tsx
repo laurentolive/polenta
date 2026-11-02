@@ -39,6 +39,12 @@ import type { FilterOptions } from '../lib/textFilter'
 /** GH228 — mode d'affichage de la vue système, porté par l'URL (`view`). */
 export type SystemViewMode = 'excel' | 'word' | 'edit'
 
+/** GH229 — une page de la vue système (route et paramètres), ouvrable dans un onglet. */
+export interface SystemPage {
+  pathname: '/product' | '/components'
+  search: Record<string, string>
+}
+
 function readStoredViewMode(repoPath: string): 'excel' | 'word' | null {
   if (!repoPath) return null
   const stored = localStorage.getItem(`polenta:viewMode:${repoPath}`)
@@ -189,9 +195,21 @@ export interface SystemViewState {
   storedViewMode: 'excel' | 'word'
   /** Nouvelle page : mode Tableau / Document, positionné (goto) sur l'objet `item` s'il est donné. */
   showView: (mode: 'excel' | 'word', item?: string | null) => void
+  /** GH230 — bascule Tableau ↔ Document depuis les boutons de mode : la nouvelle vue montre le
+   *  même élément. `selectedNodeId` (ligne sélectionnée du Tableau) prime sur la cible goto, puis
+   *  l'élément édité ; à défaut, `firstVisibleObjectId` (premier élément affiché) est aligné en
+   *  haut (ancrage `top`). La page quittée garde son premier élément affiché pour Précédent. */
+  switchView: (mode: 'excel' | 'word', current: { selectedNodeId: string | null; firstVisibleObjectId: string | null }) => void
+  /** GH230 — nœud de l'ancrage `top` de l'URL (sans `item`), aligné en haut de la vue. */
+  anchorNodeId: string | null
   /** Nouvelle page : objet `item` du type `nodeId::typeId` du repo `repoPath` (lien T37, GH105 :
    *  objet d'un autre repo du workspace ; repo inconnu de l'arbre = repo courant). */
   showObject: (repoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory) => void
+  /** GH229 — URL de la page de `showObject`, pour l'ouvrir dans un nouvel onglet (même page). */
+  objectPage: (repoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory) => SystemPage
+  /** GH229 — mode d'affichage d'un lien suivi : mode courant sur la vue système, sinon dernier
+   *  mode Tableau / Document du repo de la cible. */
+  viewModeForLink: (targetRepoPath: string) => SystemViewMode
   /** GH105 — nom de montage du repo `repoPath` (`undefined` s'il n'est pas dans l'arbre). */
   repoNameOf: (repoPath: string) => string | undefined
 
@@ -294,6 +312,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const urlView: SystemViewMode | null =
     urlViewParam === 'excel' || urlViewParam === 'word' || urlViewParam === 'edit' ? urlViewParam : null
   const urlItem = sp.get('item') || null
+  // GH230 — ancrage : objet aligné en haut de la vue Tableau / Document (sans `item`).
+  const urlTop = sp.get('top') || null
   // Which of the three activity-bar tabs (Exigences/Tests/Campagnes) is active — defaults to
   // 'requirement' for old links/tabs saved before that param existed rather than leaving it
   // unset, so every selection/filtering step below can assume a valid category.
@@ -407,27 +427,28 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   // GH228 — `replace` (résolution automatique) précise la page courante et en garde le mode et
   // l'élément ; une nouvelle page (`replace: false`) part de `page` (rien = mode par défaut).
   const navigateWith = useCallback(
-    (repoName: string, nodeId: string, typeId: string | undefined, replace = true, page?: { view?: SystemViewMode; item?: string; category?: ObjectCategory }) => {
+    (repoName: string, nodeId: string, typeId: string | undefined, replace = true, page?: { view?: SystemViewMode; item?: string; top?: string; category?: ObjectCategory }) => {
       const keep = replace && !page
       const view = keep ? (urlView ?? undefined) : page?.view
       const item = keep ? (urlItem ?? undefined) : page?.item
+      const top = keep ? (urlTop ?? undefined) : page?.top
       const category = page?.category ?? urlCategory
       if (pathname === '/components') {
         navigate({
           to: '/components',
-          search: { projectId, repo: repoName, component: nodeId, type: typeId, level: undefined, tab: undefined, category, view, item },
+          search: { projectId, repo: repoName, component: nodeId, type: typeId, level: undefined, tab: undefined, category, view, item, top },
           replace,
         })
       } else {
         // default to /product
         navigate({
           to: '/product',
-          search: { projectId, repo: repoName, node: nodeId, type: typeId, tab: undefined, category, view, item },
+          search: { projectId, repo: repoName, node: nodeId, type: typeId, tab: undefined, category, view, item, top },
           replace,
         })
       }
     },
-    [navigate, pathname, projectId, urlCategory, urlView, urlItem],
+    [navigate, pathname, projectId, urlCategory, urlView, urlItem, urlTop],
   )
 
   // Set URL defaults when schema loads (first visit with no URL params, or an
@@ -650,9 +671,27 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
 
   // `category` : un lien peut viser un objet d'une autre catégorie (test lié depuis Exigences) —
   // l'onglet Exigences / Tests suit l'objet, sinon son type n'y serait pas affichable.
+  const objectPage = useCallback((targetRepoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory): SystemPage => {
+    const search: Record<string, string> = {
+      projectId: projectId ?? '', repo: repoNameOf(targetRepoPath) ?? selectedRepoName, type: typeId,
+      category: category ?? urlCategory, view, item,
+    }
+    // Hors vue système (lien suivi depuis une campagne, la recherche…) : `/product`.
+    return pathname === '/components'
+      ? { pathname: '/components', search: { ...search, component: nodeId } }
+      : { pathname: '/product', search: { ...search, node: nodeId } }
+  }, [projectId, repoNameOf, selectedRepoName, urlCategory, pathname])
+
   const showObject = useCallback((targetRepoPath: string, nodeId: string, typeId: string, view: SystemViewMode, item: string, category?: ObjectCategory) => {
-    navigateWith(repoNameOf(targetRepoPath) ?? selectedRepoName, nodeId, typeId, false, { view, item, category })
-  }, [navigateWith, repoNameOf, selectedRepoName])
+    const page = objectPage(targetRepoPath, nodeId, typeId, view, item, category)
+    navigate({ to: page.pathname, search: page.search as never })
+  }, [objectPage, navigate])
+
+  const onSystemRoute = pathname === '/product' || pathname === '/components'
+  const viewModeForLink = useCallback(
+    (targetRepoPath: string): SystemViewMode => (onSystemRoute ? viewMode : readStoredViewMode(targetRepoPath) ?? 'excel'),
+    [onSystemRoute, viewMode],
+  )
 
   const setEditingNodeId = useCallback((nodeId: string | null) => {
     if (nodeId === null) {
@@ -678,10 +717,16 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
   const requestGoto = useCallback((nodeId: string) => {
     setGotoTarget(g => ({ nodeId, seq: g.seq + 1 }))
     const objectId = treeFindNode(rootRef.current, nodeId)?.objectId
-    if (!objectId || objectId === urlItem) return
+    // GH230 — un goto remplace l'ancrage `top` (sinon la vue s'y recalerait, ex. au rendu complet
+    // des lignes du Tableau juste après l'affichage) ; un dossier n'a pas d'objectId pour `item`.
+    if (!objectId) {
+      if (urlTop) navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, true, { view: urlView ?? undefined })
+      return
+    }
+    if (objectId === urlItem) return
     appliedGotoRef.current = `${rootKey}|${objectId}`
     navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, true, { view: urlView ?? undefined, item: objectId })
-  }, [urlItem, urlView, rootKey, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
+  }, [urlItem, urlView, urlTop, rootKey, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
   const clearGoto = useCallback((opts?: { dropItem?: boolean }) => {
     setGotoTarget(g => (g.nodeId === null ? g : { nodeId: null, seq: g.seq + 1 }))
     if (opts?.dropItem && urlItem && urlView !== 'edit') {
@@ -701,6 +746,43 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     const node = treeFindByObjectId(root, urlItem)
     if (node) setGotoTarget(g => (g.nodeId === node.id ? g : { nodeId: node.id, seq: g.seq + 1 }))
   }, [urlView, urlItem, rootKey, root, treeReady])
+
+  // ── GH230 — bascule Tableau ↔ Document sur le même élément ─────────────────
+  // La page quittée est d'abord précisée (REPLACE, `top`), la nouvelle poussée une fois cette URL
+  // rendue : dans la même tâche, TabsProvider fondrait les deux en une seule entrée d'historique.
+  // Toute autre URL rendue entre-temps (navigation plus rapide) abandonne la bascule.
+  const [pendingPage, setPendingPage] = useState<{ fromSearch: string; leaveTop: string; page: { view: 'excel' | 'word'; item?: string; top?: string } } | null>(null)
+  useEffect(() => {
+    if (!pendingPage || searchStr === pendingPage.fromSearch) return
+    setPendingPage(null)
+    if (urlTop === pendingPage.leaveTop) navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, false, pendingPage.page)
+  }, [pendingPage, searchStr, urlTop, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
+  // Pas d'ancrage pendant la bascule : la vue quittée ne doit pas se recaler sur son `top`.
+  const anchorNodeId = useMemo(
+    () => (!pendingPage && urlView !== 'edit' && !urlItem && urlTop && treeReady ? treeFindByObjectId(root, urlTop)?.id ?? null : null),
+    [root, urlView, urlItem, urlTop, treeReady, pendingPage],
+  )
+
+  const switchView = useCallback((mode: 'excel' | 'word', current: { selectedNodeId: string | null; firstVisibleObjectId: string | null }) => {
+    // Mode déjà affiché et déjà dans l'URL : rien à faire (mode par défaut sans `view` : la page
+    // le précise, comme avant GH230).
+    if (mode === urlView) return
+    const selected = viewMode === 'edit' ? editingNodeId : current.selectedNodeId ?? gotoTarget.nodeId
+    let page: { view: 'excel' | 'word'; item?: string; top?: string } = { view: mode, top: current.firstVisibleObjectId ?? undefined }
+    if (selected) {
+      const objectId = treeFindNode(rootRef.current, selected)?.objectId
+      // Dossier : pas d'objectId pour l'URL, cible goto locale (elle survit à la bascule).
+      if (!objectId) setGotoTarget(g => (g.nodeId === selected ? g : { nodeId: selected, seq: g.seq + 1 }))
+      page = { view: mode, item: objectId }
+    }
+    const leaveTop = viewMode !== 'edit' && !urlItem ? current.firstVisibleObjectId : null
+    if (leaveTop && leaveTop !== urlTop) {
+      navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, true, { view: urlView ?? undefined, top: leaveTop })
+      setPendingPage({ fromSearch: searchStr ?? '', leaveTop, page })
+    } else {
+      navigateWith(selectedRepoName, effectiveNodeId, effectiveTypeId, false, page)
+    }
+  }, [viewMode, editingNodeId, gotoTarget.nodeId, urlItem, urlTop, urlView, searchStr, navigateWith, selectedRepoName, effectiveNodeId, effectiveTypeId])
 
   const handleInlineEdit = useCallback((objectId: string, field: string, value: string) => {
     setPendingEdits(prev => ({
@@ -858,6 +940,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     storedViewMode,
     showView,
     showObject,
+    objectPage,
+    viewModeForLink,
     repoNameOf,
     root,
     setRoot,
@@ -887,6 +971,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     setEditingNodeId,
     gotoNodeId: gotoTarget.nodeId,
     gotoSeq: gotoTarget.seq,
+    switchView,
+    anchorNodeId,
     requestGoto,
     clearGoto,
     createItemObject,

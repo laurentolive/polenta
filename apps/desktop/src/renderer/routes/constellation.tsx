@@ -23,6 +23,8 @@ import { ViewHeader } from '../components/layout/ViewHeader'
 import { useTabs } from '../contexts/TabsContext'
 import { useWorkspaceLinks } from '../hooks/useWorkspaceLinks'
 import { useProjectSchema } from '../hooks/useProjectSchema'
+import { useElementNav } from '../contexts/ElementNavContext'
+import { ElementLink } from '../components/element/ElementLink'
 import {
   arcPath, buildConstellation, detectChildSide, endpoints, lineage, linkPath, type ChildSide, type ConstellationNode,
 } from '../lib/constellationLayout'
@@ -520,7 +522,7 @@ function LinkButtons({ ids, layout, empty, onGo }: {
           onClick={() => onGo(id)}
           className="flex items-baseline gap-2 text-left border border-edge rounded-md px-2 py-1.5 text-sm text-ink hover:bg-surface-hover"
         >
-          <code className="font-mono text-[11px] text-ink-2 shrink-0">{id}</code>
+          <code className="font-mono text-[11px] text-ink-2 shrink-0"><GraphIdLink id={id} onGo={onGo} /></code>
           <span className="truncate">{layout.nodes.get(id)?.title}</span>
         </button>
       ))}
@@ -641,11 +643,18 @@ function Overview({ nodes, linkCount, notRefined, uncoveredLeaves, testCount, ro
             onClick={() => onGo(r.id)}
             className="flex items-baseline gap-2 text-left border border-edge rounded-md px-2 py-1.5 text-sm text-ink hover:bg-surface-hover"
           >
-            <code className="font-mono text-[11px] text-ink-2 shrink-0">{r.id}</code>
+            <code className="font-mono text-[11px] text-ink-2 shrink-0"><GraphIdLink id={r.id} onGo={onGo} /></code>
             <span className="truncate">{r.title}</span>
           </button>
         ))}
       </div>
     </>
   )
+}
+
+/** GH229 — ID d'une liste de la constellation : clic = recentrer le graphe (geste de la vue),
+ *  Ctrl / Cmd / clic du milieu = vue système dans un nouvel onglet, survol = aperçu. */
+function GraphIdLink({ id, onGo }: { id: string; onGo: (id: string) => void }) {
+  const nav = useElementNav()
+  return <ElementLink id={id} onFollow={(target, opts) => (opts.newTab ? nav?.follow(target, opts) : onGo(target))} />
 }

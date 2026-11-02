@@ -6,12 +6,15 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { Markdown } from 'tiptap-markdown'
+import type { MarkdownStorage } from 'tiptap-markdown'
 import { DrawioEmbed } from '../tiptap/DrawioEmbedExtension'
 import { ResizableImage } from '../tiptap/ResizableImageExtension'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParamRefs } from '../contexts/ParamRefContext'
 import { ParamRefDecoration, paramRefPluginKey } from '../tiptap/ParamRefDecoration'
+import { ElementRefDecoration, elementRefPluginKey } from '../tiptap/ElementRefDecoration'
+import { useElementRefDelegation, useElementRefExists } from './element/elementRefDelegation'
 
 interface Props {
   value: string
@@ -33,6 +36,12 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
     getUnresolvedLabel: () => labelRef.current,
     getReadOnly: () => true,
   }))
+  // GH229 — ID d'élément du texte : décorations, gestes délégués au conteneur.
+  const elementRefs = useElementRefExists()
+  const elementRefsRef = useRef(elementRefs)
+  useEffect(() => { elementRefsRef.current = elementRefs })
+  const [elementRefExtension] = useState(() => ElementRefDecoration.configure({ getExists: () => elementRefsRef.current?.exists ?? null }))
+  const elementRefHandlers = useElementRefDelegation()
 
   const editor = useEditor({
     extensions: [
@@ -46,6 +55,7 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
       Markdown.configure({ html: false }),
       DrawioEmbed.configure({ repoPath }),
       paramRefExtension,
+      elementRefExtension,
     ],
     content: value,
     editable: false,
@@ -57,10 +67,25 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
     },
   })
 
+  // GH227 — `content` de useEditor n'est lu qu'au montage : sans ce resync, le viewer garde
+  // l'ancienne valeur quand la page est réutilisée (autre campagne, autre test) ou quand il est
+  // remonté sur la donnée en cache juste avant le refetch qui suit un enregistrement.
+  const syncedValueRef = useRef(value)
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || value === syncedValueRef.current) return
+    syncedValueRef.current = value
+    if ((editor.storage.markdown as MarkdownStorage).getMarkdown() !== value) editor.commands.setContent(value, false)
+  }, [editor, value])
+
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     editor.view.dispatch(editor.state.tr.setMeta(paramRefPluginKey, true))
   }, [editor, paramRefs])
 
-  return <EditorContent editor={editor} className={className} />
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.view.dispatch(editor.state.tr.setMeta(elementRefPluginKey, true))
+  }, [editor, elementRefs?.version])
+
+  return <EditorContent editor={editor} className={className} {...elementRefHandlers} />
 }

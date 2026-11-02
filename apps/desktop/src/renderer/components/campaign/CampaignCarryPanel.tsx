@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ElementLink } from '../element/ElementLink'
 import type { ProjectSchema, TestCampaign, TestCase, TestRunStatus } from '@polenta/types'
 import { CARRY_STATUSES, versionChanged, type CarryRow } from '../../lib/carryOver'
 import { RUN_CLASS, STATUS_CLASS as CAMPAIGN_STATUS_CLASS } from '../system/CampaignListView'
@@ -190,7 +191,7 @@ export function CampaignCarryPanel({
                       <td className="px-2 py-1.5 text-[10px] text-ink-3 whitespace-nowrap">
                         {[r.executedAt?.slice(0, 10), r.executedBy].filter(Boolean).join(' · ')}
                       </td>
-                      <td className="px-2 py-1.5 font-mono text-ink-3">{r.campaignId}</td>
+                      <td className="px-2 py-1.5 font-mono text-ink-3"><ElementLink id={r.campaignId} /></td>
                       <td className={`px-2 py-1.5 text-[10px] ${r.unavailable ? 'text-ink-3' : 'text-status-warning'}`}>{remark(r)}</td>
                     </tr>
                   )

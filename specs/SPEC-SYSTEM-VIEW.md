@@ -198,7 +198,12 @@ dossier, et par le **dépôt** d'un drag & drop (recale la vue sur le 1er nœud 
 par une sélection multiple, ni par la navigation clavier, ni en Vue Édition. Le contour
 « élément courant » est retiré au prochain goto, au clic dans le vide de l'arbre, au
 changement de composant/type et à l'entrée en Vue Édition. Si l'élément visé n'est pas rendu
-dans la vue (dossier replié dans la vue document) : no-op silencieux. Depuis T166, l'arbre et la
+dans la vue (dossier replié dans la vue document) : défilement jusqu'au nœud rendu le plus proche
+— ancêtre (dossier replié), descendant (titres de dossiers masqués), sinon voisin — sans contour
+(GH230, `scrollCandidates` ; avant : no-op silencieux). Depuis GH230, le goto place l'élément **en haut** de la zone
+de défilement (sous l'en-tête figé du Tableau), **sans animation**, en ne faisant défiler que la
+zone de la vue (pas de `scrollIntoView`, qui décalait aussi le cadre de l'application). Un goto
+retire l'ancrage `top` de l'URL (sinon la vue s'y recalait au rendu complet des lignes). Depuis T166, l'arbre et la
 vue document appliquent le même filtre (mode + périmètre) — un résultat visible dans l'arbre
 l'est aussi dans la vue, il n'y a plus de divergence de filtre en mode regex.
 
@@ -247,10 +252,10 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 | Élément | Rôle |
 |---------|------|
 | **Composant X / Élément Y** | Titre contextuel — nom du composant sélectionné et nom du type d'élément sélectionné |
-| **Retour (lien interne)** | GH228 : plus de bouton propre ni de pile `backHistory`. Un lien interne est une nouvelle page de l'historique de l'onglet (`showObject` : `repo`/`node`/`type`/`view`/`item` dans l'URL), et le bouton Précédent `<` de la barre d'onglets y revient, y compris vers un autre repo du workspace (GH105). La vue Édition n'a plus de bouton « Retour » : `Échap` revient à la page précédente de l'onglet si c'est encore la vue système, sinon au dernier mode Tableau / Document positionné sur l'élément. |
+| **Retour (lien interne)** | GH228 : plus de bouton propre ni de pile `backHistory`. Un lien interne est une nouvelle page de l'historique de l'onglet (`showObject` : `repo`/`node`/`type`/`view`/`item` dans l'URL), et le bouton Précédent `<` de la barre d'onglets y revient, y compris vers un autre repo du workspace (GH105). La vue Édition n'a plus de bouton « Retour » : `Échap` revient à la page précédente de l'onglet si c'est encore la vue système, sinon au dernier mode Tableau / Document positionné sur l'élément. GH229 : tout lien interne est un lien d'élément (§Liens d'élément). |
 | **↩ ↪** | Undo / Redo |
 | **🔍** | Activer / désactiver le filtre dans le panel gauche |
-| **⚙️** | Configuration des champs visibles |
+| **👁** | Configuration des champs visibles (icône œil depuis GH235, anciennement ⚙️) |
 | **↕▯** | Hauteur max des lignes — Vue Excel uniquement, masqué pour les campagnes (T168, cf. §Vue Excel) |
 | **[vue]** | Sélecteur de vue : Excel / Word (le mode Édition s'active par double-clic ou icône inline, pas par ce sélecteur) |
 | **Enregistrer** | Apparaît uniquement si des modifications sont en attente |
@@ -267,6 +272,40 @@ Ligne unique en haut de la zone principale, maximisant la densité de la vue doc
 - **Profondeur** : 20 actions.
 
 ---
+
+## Liens d'élément (GH229)
+
+Partout où l'interface affiche l'ID d'**un autre** élément (colonnes et sections de liens, puces
+de la fiche Édition, campagnes, sélecteur de tests, report, paramètres « Utilisé par », analyse
+d'impact, constellation, drill-down et résultats de requêtes, ID écrits dans le texte —
+`SPEC-REQ-requirements.md` §3.2g), l'ID est un **lien d'élément** (`components/element/ElementLink`,
+navigation et index dans `contexts/ElementNavContext`, monté dans `AppLayout`). Ne sont pas des
+liens : l'ID d'un élément dans sa propre ligne / son en-tête, les impressions et exports, un ID
+introuvable (texte simple, marqueur « introuvable » dans les puces).
+
+- **Texte** : l'ID affiché du type (`SPEC-REQ-requirements.md` §6.2), infobulle = ID Polenta s'il
+  diffère.
+- **Clic** : nouvelle page de l'historique de l'onglet. Exigence / test → vue système, repo /
+  composant / type de l'élément (bascule de repo GH105, catégorie suivie), **type de vue** = mode
+  courant de l'onglet s'il est sur la vue système (Tableau, Document ou Édition), sinon dernier
+  mode Tableau / Document mémorisé du repo de la cible (`objectPage`, `viewModeForLink` de
+  `SystemViewContext`). L'élément est ciblé (goto, contour), sélectionné dans le Tableau et dans
+  l'arbre de la barre latérale (dossiers parents dépliés, ligne défilée). Campagne → sa fiche.
+  Lien vers la page affichée : re-goto sans nouvelle entrée. Cible masquée par un filtre actif du
+  Tableau : le filtre est conservé, message « <ID> est masqué par le filtre ».
+- **Ctrl / Cmd+clic, clic du milieu** : la même page dans un nouvel onglet ; l'onglet source ne
+  change pas (#236). Les fiches `/req` et `/test` ne sont plus la cible des liens.
+- **Geste du conteneur** : le `mousedown` / clic sur le lien ne sélectionne ni la ligne ni la
+  cellule et n'entre pas en édition ; le double-clic ne déclenche pas l'édition des liens.
+- **Popup d'aperçu** : après 500 ms d'immobilité sur le lien ; reste ouverte tant que le pointeur
+  est sur le lien ou la popup (grâce de 200 ms), fermée par Échap, un clic, le défilement de la
+  page ; une seule à la fois ; ni au toucher ni pendant un glisser. En-tête (ID, ID affiché, type,
+  statut, repo s'il diffère, ⚠ revalidation), titre, puis les champs de l'onglet « Popup » du
+  ⚙️ du type de l'élément (lecture seule, affichage dense ; liens cliquables sans popup imbriquée).
+  Campagne : en-tête et nombre de tests.
+- Exception de geste : listes internes à un écran (constellation : recentrer le graphe ; analyse
+  d'impact : fiche de l'élément) — le clic simple garde le geste de l'écran, Ctrl+clic et
+  l'aperçu suivent la règle commune.
 
 ## Vue document (zone principale)
 
@@ -460,8 +499,21 @@ liste pas les exécutions (portée du repo ouvert).
 
 ## Configuration des champs — ⚙️
 
+> GH235 : le bouton d'ouverture du panneau (barre d'outils, sélecteur de tests) porte une icône
+> **œil** (`Eye`, infobulle « Configurer les colonnes ») et non plus une roue crantée ; « ⚙️ » désigne
+> ce panneau dans le reste des specs.
+
 - Choisir les champs à afficher parmi les champs du type d'élément + les champs système.
+- **Ordre des colonnes (GH235)** : cocher / décocher une case ne déplace que cette colonne —
+  l'ordre réorganisé par glisser-déposer est conservé. Une colonne recochée s'insère juste après
+  la plus proche colonne affichée qui la précède dans l'ordre du panneau (en tête sinon)
+  (`toggleVisibleField`, `components/system/fieldToggle.ts`).
 - **Réglages indépendants par vue** : Excel, Word et Édition ont chacun leur propre sélection de champs.
+- **Onglet « Popup » (GH229)** : champs de la popup d'aperçu d'un lien vers un élément du type
+  (§Liens d'élément), clé de préférence `popup`. Sans case « titres des dossiers », sans les champs
+  déjà dans l'en-tête de la popup (section, nom, ID, statut) ni colonnes calculées ; ordre = ordre
+  du panneau. Défaut et « Réinitialiser » : aucun champ (en-tête et titre seuls). Pas d'onglet
+  Popup pour un type campagne.
 - **Titres de dossiers (T162)** : case « Afficher les titres des dossiers » en haut du panneau,
   propre à l'onglet courant (Tableau / Document), cochée par défaut. Décochée ⇒ liste plate
   sans lignes de groupe / sans sections `Hn` (cf. §Vue Excel / §Vue Word). Persistée dans le
@@ -521,7 +573,7 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 
 | État | Mécanisme | Clé |
 |------|-----------|-----|
-| Mode de vue affiché (Excel / Word / Édition) et élément édité ou ciblé par un goto (GH228) | URL (TanStack Router search params) | `view` (`excel`/`word`/`edit`), `item` (objectId) — `/product` et `/components` |
+| Mode de vue affiché (Excel / Word / Édition) et élément édité ou ciblé par un goto (GH228), ancrage en haut de la vue (GH230) | URL (TanStack Router search params) | `view` (`excel`/`word`/`edit`), `item` (objectId), `top` (objectId) — `/product` et `/components` |
 | Dernier mode Tableau / Document (mode par défaut sans `view`) | `localStorage` | `polenta:viewMode:${repoPath}` |
 | Hauteur max des lignes Vue Excel (T168) — commune à tous les projets, défaut 10, valeur hors [1, 21] ignorée — 21 = toutes les lignes (T170) | `localStorage` | `polenta:excelRowMaxLines` |
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
@@ -552,6 +604,19 @@ encore en résolution garde la vue Édition ; introuvable une fois l'arbre charg
 le dernier mode Tableau / Document. En Tableau / Document, `item` est la cible goto (contour et
 défilement au retour sur la page). Nœud sans objet (création en cours) : Édition sans `item`,
 complété en REPLACE dès l'objet créé.
+
+**GH230 — bascule Tableau ↔ Document sur le même élément** : les boutons de mode (`switchView`)
+lisent dans le DOM de la vue courante l'élément de référence — ligne sélectionnée du Tableau
+(`data-selected`), sinon cible goto, sinon (depuis l'Édition) l'élément édité ; la nouvelle page
+porte son `item` (goto, contour) — dossier : cible goto locale. Sans sélection, le premier élément
+portant un objet affiché en haut de la zone de défilement (`data-view-scroll`, milieu sous le haut
+décalé du `scroll-margin-top`) devient l'ancrage **`top`** (objectId) : aligné en haut de la
+nouvelle vue, instantanément, sans contour. La page quittée sans `item` reçoit d'abord son propre
+`top` en REPLACE, la nouvelle page étant poussée une fois cette URL rendue (deux navigations dans
+la même tâche ne feraient qu'une entrée d'historique) : Précédent / Suivant ramènent à la position.
+`top` suit les règles d'`item` (gardé par une résolution automatique, abandonné par une nouvelle
+page, un goto ou un clic dans le vide) ; ignoré en présence d'`item`. Bouton du mode déjà dans
+l'URL : sans effet. Le Tableau rend toutes ses lignes avant de défiler vers une cible.
 
 **T52 — restauration au retour sur la vue** : quand l'URL arrive sans aucun `repo` (retour depuis
 un autre panneau, redémarrage de l'app, ancien lien pré-T72), la dernière sélection valide

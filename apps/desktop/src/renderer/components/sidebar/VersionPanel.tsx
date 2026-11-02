@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, FileDiff, GitCompare, History, Lock, Package, Tag } from 'lucide-react'
+import { AlertTriangle, FileDiff, GitCompare, History, Lock, Package, SquareTerminal, Tag } from 'lucide-react'
 import { api } from '../../api'
 import { decodeProjectId } from '../../lib/projectId'
 import { useVersioning } from '../../contexts/VersioningContext'
 import { useSelectedRepo } from '../../contexts/SelectedRepoContext'
+import { useTerminal } from '../../contexts/TerminalContext'
 import { useWorkspaceStructure } from '../../hooks/useWorkspaceStructure'
 import { useFlaggedElements } from '../../hooks/useFlaggedElements'
 import { useLocalImpactAnalysis } from '../../hooks/useLocalImpactAnalysis'
@@ -32,6 +33,7 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
   const navigate = useNavigate()
   const { isReadonly } = useVersioning()
   const { selectedRepoPath } = useSelectedRepo()
+  const terminal = useTerminal()
   const pathname = useRouterState({ select: s => s.location.pathname })
   const isCompareView = pathname === '/version-diff'
   // GH40: while /baseline is open the panel lists the baselines (the view holds the creation form).
@@ -98,6 +100,17 @@ export function VersionPanel({ currentProjectId, projectId }: Props) {
           >
             <GitCompare size={14} />
           </button>
+          {terminal && (
+            <button
+              type="button"
+              onClick={terminal.toggle}
+              className={`btn-icon ${terminal.visible ? 'text-status-info' : 'text-prim'}`}
+              title={t('sidebar.version.terminal')}
+              data-testid="version-terminal-toggle"
+            >
+              <SquareTerminal size={14} />
+            </button>
+          )}
         </div>
       </div>
 

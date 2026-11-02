@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { parseParamRefs } from '@polenta/types'
 import { useParamRefs } from '../../contexts/ParamRefContext'
 import { paramRefTitle } from '../../lib/markdownParamRefs'
+import { ElementRefText } from '../element/elementRefDelegation'
 
 /**
  * T171 — texte brut (champs `text` / `textarea`) avec ses références de paramètres rendues :
@@ -14,12 +15,13 @@ export function ParamRefText({ text, fallback }: { text: string; fallback?: Reac
   const { t } = useTranslation()
   const api = useParamRefs()
   const refs = api ? parseParamRefs(text) : []
-  if (!api || refs.length === 0) return <>{fallback ?? text}</>
+  // GH229 — ID d'élément du texte hors références : liens.
+  if (!api || refs.length === 0) return <>{fallback ?? <ElementRefText text={text} />}</>
 
   const parts: ReactNode[] = []
   let last = 0
   for (const ref of refs) {
-    if (ref.index > last) parts.push(text.slice(last, ref.index))
+    if (ref.index > last) parts.push(<ElementRefText key={`t${last}`} text={text.slice(last, ref.index)} />)
     const r = api.resolve(ref.key)
     // T179 — `{req.<champ>}` hors champ de test : texte brut.
     if (r.status === 'literal') {
@@ -45,6 +47,6 @@ export function ParamRefText({ text, fallback }: { text: string; fallback?: Reac
     )
     last = ref.index + ref.raw.length
   }
-  if (last < text.length) parts.push(text.slice(last))
+  if (last < text.length) parts.push(<ElementRefText key={`t${last}`} text={text.slice(last)} />)
   return <>{parts}</>
 }

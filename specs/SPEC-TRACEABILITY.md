@@ -170,9 +170,8 @@ SW-0044  Exigence SW — Mode Normal  [couvert]  [jamais exécuté]
 
 ### 4.1 Principe (GH199, GH243)
 
-L'analyse d'un ensemble de changements vivait **dans le changeset** (GH199) ; le changeset est retiré
-par GH243 et cette analyse reviendra **dans la version** du composant (`specs/MILESTONE-D.md` §3.3,
-#245 ; code de référence : commit `4e06052`, `change-analysis.util`, `change-tests.util`). Restent :
+L'analyse d'un ensemble de changements est portée par la **version** du composant (GH245, SPEC-REQ
+§11.4), après avoir vécu dans le changeset (GH199, retiré par GH243). Socle commun :
 
 - le **moteur d'arbres** (`buildImpactTreesFromSnapshot`, `ImpactTrees`, statuts d'impact
   `ImpactAnalysisStatus`) : pour chaque racine exigence, arbre **descendant** (exigences dont elle est
@@ -198,8 +197,8 @@ Troisième flux, **live** : l'impact des modifications non commitées (working t
 commit (`HEAD`) — le cas « je viens de modifier des exigences/tests, qu'est-ce que ça touche ? » sans
 passer par une baseline.
 
-**Présentation** (GH199) : entrée « Modifications locales (vs HEAD) » du panneau Changesets, affichée
-tant qu'au moins un élément diffère de `HEAD` (compteur) ; route `/changesets/local`. Plus de sélection
+**Présentation** (GH199) : entrée « Modifications locales (vs HEAD) » du panneau Version, affichée
+tant qu'au moins un élément diffère de `HEAD` (compteur) ; route `/local-impact`. Plus de sélection
 automatique.
 
 **Périmètre** : repo racine **et** composants (`resolveWorkspaceRepoPaths`), chacun comparé à **son** `HEAD`,
@@ -213,7 +212,7 @@ identique champ à champ à `HEAD` (reformatage) ne compte pas. Champs comparés
 (id = nom de fichier si besoin) sans détail de champs, jamais pris pour une suppression.
 
 **Calcul** (`TraceabilityService.computeLocalImpactAnalysis`, IPC `impact-analysis:local`) : mêmes arbres
-qu'en §4.2 (`buildImpactTreesFromSnapshot`) mais sur un **snapshot du working tree multi-repo** (lecture
+qu'en §4.1 (`buildImpactTreesFromSnapshot`) mais sur un **snapshot du working tree multi-repo** (lecture
 disque, pas l'index vivant ; exigences, tests et liens de tous les repos agrégés, doublon d'id → le repo
 racine gagne). Pour un **test** changé : arbre descendant vide, arbre montant = exigences qu'il couvre puis
 leurs ascendants. Un élément hors du repo racine porte `repo: { path, name }` (badge dans l'UI, popup ouvert
@@ -224,12 +223,12 @@ dans son repo). Sans aucun changement, le snapshot n'est pas chargé. Type `Loca
 génération de campagne — lecture seule, bouton Rafraîchir. Recalcul quand `useLiveFileSync` reçoit un
 `repo:file-changed` sur `requirements/`, `tests/`, `links/` ou un changement de ref (`'*'`) de n'importe
 quel repo, au retour du focus, ou au clic sur Rafraîchir — pas de polling. Pour un suivi (statuts,
-campagne), créer un changeset (§4.1).
+campagne), inclure l'élément dans une version (SPEC-REQ §11.4).
 
 ### 4.8 Levée du flag `needsRevalidation` (T173)
 
 L'utilisateur constate qu'il a traité l'impact sur un élément marqué (§3.3, SPEC-REQ §5.3) et lève
-le flag depuis la vue Changesets (arbres d'un changeset, analyse locale, « Impact à vérifier »).
+le flag depuis les arbres d'impact et la liste « Impact à vérifier ».
 
 **Règle d'écriture** (`RevalidationService.clear`, IPC `revalidation:clear`) : la clé
 `needsRevalidation` est **retirée** du YAML (jamais `false`) ; statut, `version`, autres champs et
@@ -240,19 +239,19 @@ résultat `{ cleared, unchanged, failed: [{ id, reason: not_found | readonly | e
 partiel s'affiche dans un bandeau fermable en tête de la vue, sans annuler les levées réussies.
 **Pas de commit ni de trace** hors git : l'écriture part avec « Publier » (qui/quand = `git log`).
 
-**Dans les arbres** d'un changeset (§4.2) et §4.7 (local) : un nœud dont l'élément est **actuellement**
+**Dans les arbres** d'impact (§4.1) et §4.7 (local) : un nœud dont l'élément est **actuellement**
 marqué affiche ⚠, une case à cocher et « Lever le flag » (sans confirmation). L'état du flag est lu
 en direct (`RevalidationService.listFlagged`, IPC `revalidation:list`, tous repos du workspace),
 pas depuis le snapshot : une analyse baseline figée reflète le flag courant. Lever une occurrence
 lève l'élément partout. Sélection multiple dédupliquée par id, vidée au changement d'analyse ;
 bouton d'en-tête « Lever le flag de la sélection (N) » avec confirmation. La ligne « élément changé »
-n'affiche que ⚠ (levée depuis la liste de repli). La levée et le statut d'impact d'un nœud de changeset sont
+n'affiche que ⚠ (levée depuis la liste de repli). La levée et le statut d'impact d'un nœud de version sont
 indépendants. En analyse locale, lever un flag ne fait pas de l'élément un « élément changé ».
 
 **Liste de repli « Impact à vérifier »** : pour les flags qu'aucune analyse n'atteint (paramètre
-modifié T171, réouverture déjà publiée…). Entrée en tête du panneau Changesets (GH199), au-dessus
+modifié T171, réouverture déjà publiée…). Entrée en tête du panneau Version (GH243), au-dessus
 de « Modifications locales », affichée ssi au moins un élément du workspace est marqué (compteur) ;
-route `/changesets/revalidation`. Contenu (`RevalidationList`) : tous les éléments marqués
+route `/revalidation`. Contenu (`RevalidationList`) : tous les éléments marqués
 (exigences puis tests, par id) avec badge, id cliquable (popup dans le repo de l'élément), titre,
 badge de repo, statut, case et « Lever le flag » ; « Tout sélectionner » (indéterminé si sélection
 partielle). Chaque ligne se déplie sur ses éléments liés (tous liens, sens indifférent, un niveau) :
@@ -373,7 +372,7 @@ matrix:
 ## 8. Vue Constellation (GH183)
 
 Vue de lecture seule de l'arbre de raffinement et de sa couverture, route `/constellation`,
-ouverte depuis le panneau Changesets (GH199).
+ouverte depuis le panneau Exigences (GH243).
 
 - **Nœuds** : exigences du workspace (`links:objects`, catégorie `requirement`).
 - **Arêtes** : liens dont les deux extrémités sont des exigences ; par défaut la source raffine

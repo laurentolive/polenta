@@ -789,7 +789,7 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 
 - **Racines** : les changements que liste la page (version et versions de ses composants postérieures à
   `basedOn`) ; une issue n'en est pas une, ses exigences `issue-impact` le sont (`viaIssues`, §12).
-  **Lignes** : éléments atteints par les arbres d'impact (SPEC-TRACEABILITY §4.6), **du
+  **Lignes** : éléments atteints par les arbres d'impact (SPEC-TRACEABILITY §4.1), **du
   composant seulement** (repo de la version, type déclaré par son schéma, §11.3), avec leur **source** (racine et chemin de liens ; plusieurs racines possibles).
 - **Statut d'impact** (8 valeurs) et commentaire saisis sur le nœud de l'arbre, enregistrés dans le
   champ système **`impacted`** (`[{ id, status, comment? }]`, version en cours seulement ; statut par défaut
@@ -822,5 +822,5 @@ Modification du produit non tracée dans les exigences (bug, non-conformité, é
 - **Dans une version** : changement comme les autres (§11.3). Ses exigences impactées sont racines de
   l'analyse, et amènent leurs tests. Sans exigence impactée : simple ligne, le passage released reste possible.
 - **Vues** : panneau « Issues », vues Tableau et Document, fiche (SPEC-ELECTRON-DESKTOP §19.2).
-- **Proposition de création** (SPEC-TESTS §4.3) : `FAIL` ou `BLOCKED` enregistré à l'écran d'exécution, si le
+- **Proposition de création** (SPEC-TESTS §4.1) : `FAIL` ou `BLOCKED` enregistré à l'écran d'exécution, si le
   composant a un type issue ; bilan d'import Excel : une proposition par échec.

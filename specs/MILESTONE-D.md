@@ -22,7 +22,7 @@ celle-ci. Le « pourquoi » d'une modification non tracée dans les exigences es
 |---|---|---|---|
 | **Rédaction** | statut actuel (brouillon, review, approuvé…) | `status` | saisi |
 | **Design** | première version **released** du composant de l'exigence dont l'état figé contient l'exigence **dans sa version courante** (`version`) | versions (§3) | calculé ; « — » si aucune |
-| **Vérification** | statut de couverture actuel (`not_covered`, `covered`, `validated`, `failing`, `needs_revalidation`, SPEC-TRACEABILITY §2.2) ; le détail des exécutions donne la version testée | liens, exécutions | calculé (inchangé) |
+| **Vérification** | statut de couverture actuel (`not_covered`, `covered`, `validated` affiché « Vérifié », `failing`, `needs_revalidation`, SPEC-TRACEABILITY §2.2) ; le détail des exécutions donne la version testée | liens, exécutions | calculé (inchangé) |
 | **Validation** | décision qualité pour une version donnée, avec commentaire | validation (§5) | saisi |
 
 Les quatre servent des fonctions de Polenta (vue Validation, reflets) : calculés dans Polenta (GH79).
@@ -47,14 +47,14 @@ Les quatre servent des fonctions de Polenta (vue Validation, reflets) : calculé
 
 ### 3.1 Objet
 
-Nouvelle catégorie d'objet **`version`**, déclarée dans le schéma de chaque nœud comme les autres
-types : `prefix` (unique sur le projet), `fields` du projet, `statuses`. IDs système séquentiels
+Nouvelle catégorie d'objet **`version`**, un seul type par repo, déclaré sur le nœud `root` de son
+schéma : `prefix` (unique sur le projet), `fields` du projet, `statuses`. IDs système séquentiels
 (GH20, pierres tombales) ; le **label** (ex. `1.2.4`) est le `title`.
 
 ```yaml
 # versions/MCV-0004.yaml   (repo du composant motor-control)
 id: MCV-0004
-objectTypeRef: motor-control::version
+objectTypeRef: root::version
 title: "1.2.4"                       # label
 status: released                     # statuts du type ; isApproval = released
 basedOn: MCV-0003                    # version précédente (sert à établir les changements)
@@ -150,17 +150,17 @@ composant** (celui du nœud de son type) et stockée dans son repo.
 ```yaml
 # issues/ISS-0007.yaml   (repo du composant bms)
 id: ISS-0007
-objectTypeRef: bms::issue
+objectTypeRef: root::issue
 title: Coupure intempestive à -10 °C
 status: corrigee
-origin: { runs: [RUN-20261030-004], decisions: [] }   # ex-Changeset.origin
+origin: { runs: [TST-0012-run-0004], decisions: [] }   # ex-Changeset.origin
 fields: { … }
 history: …
 ```
 
 - **Exigences impactées** : liens `links.yaml` d'un type **`issue-impact`** déclaré par défaut
   (issue → exigence). Une issue ne peut impacter que des exigences **de son composant** (contrôle
-  à la création du lien, `sourceRefs` / `targetRefs` limités au nœud).
+  à la création du lien : même repo, type déclaré par son schéma, `NOT_OWN_ELEMENT` sinon).
 - Une issue entre dans une version comme les exigences et tests : par le **backlog** ou « Ajouter »
   (§3.3, §3.4). Ses exigences impactées sont des racines de l'analyse d'impact de la version.
 - Pas de verrou d'approbation sur une issue (ce n'est pas de la spec).
@@ -288,7 +288,7 @@ depuis la décision » ; commit et baseline documentaire posés sur le commit de
 | 8 | Contraintes de transition (#206) | §9 | 7 (`allDecided`) |
 | 9 | Reflets (#210) | quatre statuts dans les vues exigence | 7 |
 
-Lots 1 à 3 livrés sur `main` le 2026-11-02. Numéros dans les titres d'issues : #203 = 6/9,
+Lots 1 à 3 livrés sur `main` le 2026-11-02 ; lot 4 validé sur `milestone-D` (PR #249). Numéros dans les titres d'issues : #203 = 6/9,
 #204 + #205 = 7/9, #206 = 8/9.
 
 ## 10. Reports après validation
@@ -321,6 +321,18 @@ Lots 1 à 3 livrés sur `main` le 2026-11-02. Numéros dans les titres d'issues 
 | Q10 | Exécution sur une version en cours | **oui** ; sa composition pouvant évoluer ensuite, le run garde une **copie de la structure testée** pour tracer l'évolution |
 | Q11 | « Pas d'impact réel » en validation | **ne compte pas comme impacté** (signal, reprise) |
 | Q12 | Nom technique de l'objet | **`validation`** partout, au sens courant de « valider une version » |
+
+### Revue du 2026-11-03, après le lot 4 : points à trancher
+
+| # | Point | Lot | Proposition |
+|---|---|---|---|
+| P1 | **Statut de design** : le code retient toute version dont le commit figé contient le fichier dans la même `version`. Une exigence jamais incluse (au backlog « nouveau ») a donc déjà un statut de design, et un brouillon modifié après le gel garde le sien (`version` ne monte qu'en quittant l'approbation), alors que le backlog le dit « modifié » | #204, #210 | exiger que la version inclue l'exigence, et comparer le contenu comme le backlog |
+| P2 | **Périmètre de la validation** : §5.2 prend toutes les exigences du composant ; #204 et #205 gardent un sélecteur de périmètre, « ajouter / retirer », et des décisions sur les tests | #204, #205 | exigences seulement, sans sélecteur : `hors_scope` joue ce rôle ; exigences terminales exclues |
+| P3 | **Signature** : §5.5 pose une baseline, l'issue #204 le laisse à trancher, comme la signature d'une version en cours. L'analyse d'une version en cours reste vivante : le signal d'impact (§5.3) et la reprise (§5.4) peuvent changer après la création de la validation | #204 | signature réservée aux versions released, sans baseline (le tag de version fige déjà l'état) |
+| P4 | **Quatrième statut dans les vues exigence** : « décision de la dernière validation » n'est pas définie (dernière signée ? de quelle version ?) | #210 | décision de la dernière validation signée du composant, avec le label de sa version |
+| P5 | **`allDecided`** (#206) double le refus de signature de §5.5 | #206 | retirer `allDecided` ; #206 ne dépend alors plus de la validation |
+| P6 | **#214** (`requiredWhen` et renommages) est au milestone sans lot ni place dans la PR #249 | — | le traiter à part, avant #206 |
+| P7 | **`MODELE-OBJETS.md`** n'a pas été redessiné au lot Version comme annoncé | — | le redessiner à la fin du milestone, une fois la validation livrée |
 
 ## Refs
 

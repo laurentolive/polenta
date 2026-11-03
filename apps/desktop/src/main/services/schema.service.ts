@@ -692,7 +692,7 @@ function withIssueImpactLink(schema: ProjectSchema, previous: ProjectSchema | nu
     ...schema,
     linkTypes: [...(schema.linkTypes ?? []), {
       name: ISSUE_IMPACT_LINK, labelSourceToTarget: 'impacte', labelTargetToSource: 'est impactée par',
-      sourceRefs: ['issue'], targetRefs: ['requirement'],
+      sourceRefs: ['issue'], targetRefs: ['requirement'], defaultVisible: true,
     }],
   }
 }

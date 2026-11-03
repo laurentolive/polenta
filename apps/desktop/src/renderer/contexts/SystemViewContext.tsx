@@ -25,6 +25,7 @@ import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { useProjectSchema } from '../hooks/useProjectSchema'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
+import { WORKSPACE_LINK_QUERY_KEYS } from '../hooks/useWorkspaceLinks'
 import { normRepoPath } from '../components/system/linkUtils'
 import { useTreeState, treeUpdateObjectId, treeFindNode, treeFindByObjectId, treeRemove } from '../hooks/useTreeState'
 import { useVersioning } from './VersioningContext'
@@ -860,6 +861,19 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
         }
         const tc = await api.tests.create(repoPath, { objectTypeRef, title, steps, fields })
         objectId = tc.id
+      } else if (cat === 'issue') {
+        let title = 'Sans titre'
+        let fields: Record<string, unknown> = {}
+        if (sourceObjectId) {
+          try {
+            const src = await api.issues.get(repoPath, sourceObjectId)
+            title = src.title
+            fields = src.fields ?? {}
+          } catch {
+            // source not found — fall back to blank
+          }
+        }
+        objectId = (await api.issues.create(repoPath, { objectTypeRef, title, fields })).id
       } else return
       const updatedRoot = treeUpdateObjectId(rootRef.current, nodeId, objectId)
       setRoot(updatedRoot)
@@ -872,6 +886,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
         try {
           if (cat === 'requirement') await api.requirements.update(repoPath, objectId, { title: nodeNameNow })
           else if (cat === 'test') await api.tests.update(repoPath, objectId, { title: nodeNameNow } as UpdateTestCaseDto)
+          else if (cat === 'issue') await api.issues.update(repoPath, objectId, { title: nodeNameNow })
         } catch (err) {
           console.error('[SystemView] T161 — sync titre après création:', err)
         }
@@ -884,6 +899,8 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
       // pas d'elles-mêmes (remount, refocus fenêtre) — voir SystemView.tsx invalidateCandidateObjects.
       qc.invalidateQueries({ queryKey: ['requirements-all', repoPath] })
       qc.invalidateQueries({ queryKey: ['tests-all', repoPath] })
+      qc.invalidateQueries({ queryKey: ['issues', repoPath] })
+      for (const key of WORKSPACE_LINK_QUERY_KEYS) qc.invalidateQueries({ queryKey: [key] })
     } catch (err) {
       console.error('[SystemView] Erreur création objet immédiate:', err)
     }

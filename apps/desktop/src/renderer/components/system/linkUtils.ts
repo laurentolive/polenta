@@ -15,6 +15,8 @@ export interface CandidateRefScope {
   declaredBy: Record<string, string[]>
 }
 
+type IssuePairEnd = Pick<Candidate, 'category' | 'objectTypeRef' | 'repoPath'>
+
 // Règle dupliquée côté main dans `main/services/link-validation.util.ts` (GH16, serveur MCP) — garder les deux alignées.
 export function matchesRefs(objectTypeRef: string, refs: string[] | undefined, category: string | undefined): boolean {
   if (!refs || refs.length === 0) return true
@@ -38,6 +40,20 @@ export function filterCandidatesByRefs(candidates: Candidate[], refs: string[] |
     if (declaring.includes(normRepoPath(scope.definingRepo))) return repo === normRepoPath(scope.definingRepo)
     return declaring.length === 0 || declaring.includes(repo)
   }))
+}
+
+/**
+ * GH244 — une issue n'impacte que les exigences de son composant : exigence d'un autre repo, ou d'un
+ * type que le repo ne déclare pas (`declaredBy`, absent hors workspace). Autres paires : jamais.
+ * Règle dupliquée côté main (`foreignIssueTarget`, `workspace-links.service.ts`) — garder les deux alignées.
+ */
+export function isForeignIssuePair(a: IssuePairEnd, b: IssuePairEnd, declaredBy?: Record<string, string[]>): boolean {
+  const issue = a.category === 'issue' ? a : b.category === 'issue' ? b : null
+  const req = a.category === 'requirement' ? a : b.category === 'requirement' ? b : null
+  if (!issue || !req) return false
+  const repo = normRepoPath(req.repoPath ?? '')
+  if (normRepoPath(issue.repoPath ?? '') !== repo) return true
+  return !!declaredBy && !!req.objectTypeRef && !(declaredBy[req.objectTypeRef] ?? []).map(normRepoPath).includes(repo)
 }
 
 export function getLinkTypeLabel(
@@ -130,7 +146,7 @@ export function isLinkTypeValid(lt: LinkTypeDefinition): boolean {
 
 const LINK_ERROR_CODES: LinkWriteErrorCode[] = [
   'LINK_TYPE_NOT_FOUND', 'SELF_LINK', 'OBJECT_NOT_FOUND', 'LINK_TYPE_INCOMPATIBLE',
-  'DUPLICATE_LINK', 'LINK_NOT_FOUND', 'READONLY_REPO',
+  'DUPLICATE_LINK', 'LINK_NOT_FOUND', 'READONLY_REPO', 'NOT_OWN_ELEMENT',
 ]
 
 /**

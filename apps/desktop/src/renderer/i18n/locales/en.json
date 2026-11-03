@@ -863,7 +863,8 @@
         "LINK_TYPE_NOT_FOUND": "Unknown link type.",
         "OBJECT_NOT_FOUND": "Element not found in the workspace.",
         "LINK_NOT_FOUND": "Link not found (deleted meanwhile?).",
-        "SELF_LINK": "An element cannot be linked to itself."
+        "SELF_LINK": "An element cannot be linked to itself.",
+        "NOT_OWN_ELEMENT": "Element of another component: {{reason}}"
       }
     },
     "campaignListView": {

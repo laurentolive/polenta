@@ -1,6 +1,6 @@
 import type { LinkTypeDefinition, ObjectLink } from '@polenta/types'
 import { LinkCombobox, type Candidate, type ExistingLinkChip } from './LinkCombobox'
-import { filterCandidatesByRefs, getPeerId, matchesRefs } from './linkUtils'
+import { filterCandidatesByRefs, getPeerId, isForeignIssuePair, matchesRefs } from './linkUtils'
 import { isSameRepo, useWorkspaceLinksContext, type WorkspaceLinks } from '../../hooks/useWorkspaceLinks'
 import { api } from '../../api'
 
@@ -68,8 +68,11 @@ export function LinkTypeEditor({
   // Objet édité dans un repo en lecture seule : il ne peut pas être la source d'un nouveau lien.
   const selfReadonly = ws?.objectsById.get(objectId)?.readonly ?? false
   // L'objet édité est la cible : le candidat serait la source, le lien serait écrit dans son repo.
-  const sourceCandidates = filterCandidatesByRefs(pool, lt.sourceRefs, scope).filter(c => !c.readonly)
-  const targetCandidates = selfReadonly ? [] : filterCandidatesByRefs(pool, lt.targetRefs, scope)
+  // GH244 — les liens issue ↔ exigence hors du composant seraient refusés : pas proposés.
+  const self = ws?.objectsById.get(objectId)
+  const linkable = (c: Candidate) => !self || !isForeignIssuePair(self, c, scope?.declaredBy)
+  const sourceCandidates = filterCandidatesByRefs(pool, lt.sourceRefs, scope).filter(c => !c.readonly && linkable(c))
+  const targetCandidates = selfReadonly ? [] : filterCandidatesByRefs(pool, lt.targetRefs, scope).filter(linkable)
 
   const chip = (l: ObjectLink): ExistingLinkChip => describeLink(l, objectId, repoPath, ws)
 

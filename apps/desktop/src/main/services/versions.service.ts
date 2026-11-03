@@ -144,18 +144,50 @@ export class VersionsService {
    * des livraisons) dont l'état figé contient l'exigence dans sa `version` courante.
    */
   async designVersions(repoPath: string): Promise<Map<string, string>> {
-    const out = new Map<string, string>()
+    const states = (await this.elements(repoPath, 'requirement')).map(el => el.state)
+    const design = await this.designVersionsFor(repoPath, states)
+    return new Map([...design].map(([id, v]) => [id, v.id]))
+  }
+
+  /**
+   * GH204 P1 — pour chaque état d'exigence, première version released qui l'inclut (`changes`) et dont
+   * l'état figé est identique, selon la clé du backlog.
+   */
+  async designVersionsFor(repoPath: string, states: ElementState[]): Promise<Map<string, { id: string; title: string }>> {
+    const out = new Map<string, { id: string; title: string }>()
     const vt = await this.versionType(repoPath)
     if (!vt) return out
     const released = releasedInOrder(vt.typeDef, await this.list(repoPath))
-    if (released.length === 0) return out
-    for (const el of await this.elements(repoPath, 'requirement')) {
+    for (const state of states) {
       for (const v of released) {
-        const at = await this.tracking.readAt(repoPath, v.freeze!.sha, el.filePath)
-        if (at?.version === el.state.version) { out.set(el.state.id, v.id); break }
+        if (!v.changes?.some(c => c.id === state.id)) continue
+        const at = await this.tracking.readAt(repoPath, v.freeze!.sha, `requirements/${state.id}.yaml`)
+        if (at?.key === state.key) { out.set(state.id, { id: v.id, title: v.title }); break }
       }
     }
     return out
+  }
+
+  /** GH204 — exigences du composant dans l'état de la version : figé si elle a un gel, disque sinon. */
+  async requirementsOf(repoPath: string, version: Pick<ProductVersion, 'freeze'>): Promise<Array<{ state: ElementState; fields: Record<string, unknown> }>> {
+    const own = await this.ownership(repoPath)
+    const sha = version.freeze?.sha
+    const files = sha
+      ? await this.git.listFilesAtRef(repoPath, sha, 'requirements').catch(() => [])
+      : await this.git.listFiles(repoPath, 'requirements').catch(() => [])
+    const out: Array<{ state: ElementState; fields: Record<string, unknown> }> = []
+    for (const filePath of files) {
+      if (!filePath.endsWith('.yaml') || filePath.split('/').length !== 2) continue
+      const read = await this.tracking.readWithFields(repoPath, filePath, sha)
+      if (read && own(read.state)) out.push(read)
+    }
+    return out
+  }
+
+  /** GH204 — sous-composants d'une version : ceux de la structure, avec la version retenue. */
+  async componentVersions(repoPath: string, version: Pick<ProductVersion, 'components'>, workspaceDir?: string): Promise<Array<RepoInfo & { versionId: string | null }>> {
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    return this.dependencies(repoPath, ws?.logicalTree ?? null).map(dep => ({ ...dep, versionId: version.components?.[dep.name] ?? null }))
   }
 
   // ── Backlog ────────────────────────────────────────────────────────────────
@@ -324,6 +356,11 @@ export class VersionsService {
       const typeDef = (await this.versionType(repoPath))?.typeDef ?? null
       const existing = await this.get(repoPath, id)
       if (existing.freeze || versionState(typeDef, existing.status) === 'released') throw new VersionError('VERSION_LOCKED', id)
+      const validations = await this.git.listFiles(repoPath, 'validations').catch(() => [])
+      for (const file of validations.filter(f => f.endsWith('.yaml'))) {
+        const v = await this.git.readYaml<{ id?: string; versionId?: string }>(repoPath, file).catch(() => null)
+        if (v?.versionId === id) throw new VersionError('VERSION_HAS_VALIDATION', `${id} : ${v.id}`)
+      }
       await deleteWithTombstone(this.git, repoPath, `${VERSIONS_DIR}/${id}.yaml`, id)
     })
   }

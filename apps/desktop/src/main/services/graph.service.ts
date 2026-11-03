@@ -2,13 +2,13 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
   CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
-  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphIssue, GraphVersion,
+  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphIssue, GraphValidation, GraphVersion,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Issue, Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
 import {
   RUN_STATUS_ORDER, RUN_STATUS_SEVERITY, effectiveHistory, flattenSystemNodes, hasHistoryGap, historyTimestamp,
-  isApprovalStatus, versionState,
+  isApprovalStatus, validationState, versionState,
 } from '@polenta/types'
 import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -19,6 +19,7 @@ import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { CampaignsService } from './campaigns.service'
 import type { VersionsService } from './versions.service'
 import type { IssuesService } from './issues.service'
+import type { ValidationsService } from './validations.service'
 import { isResyncable } from './campaigns.service'
 import type { GitService } from './git.service'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
@@ -69,6 +70,7 @@ interface RawRepo {
   /** GH201 — statut de design des exigences du repo. */
   designVersions: Map<string, string>
   issues: Issue[]
+  validations: GraphValidation[]
 }
 
 /**
@@ -95,6 +97,7 @@ export class GraphService {
   private version = 0
   private versions?: Pick<VersionsService, 'list' | 'versionType' | 'designVersions'>
   private issues?: Pick<IssuesService, 'findAll'>
+  private validations?: Pick<ValidationsService, 'list' | 'validationType'>
 
   constructor(
     private readonly reqIndex: RequirementsIndexService,
@@ -111,6 +114,10 @@ export class GraphService {
   }
 
   /** GH201 — versions et statut de design (injectées après construction, comme les autres dépendances tardives). */
+  setValidations(validations: Pick<ValidationsService, 'list' | 'validationType'>): void {
+    this.validations = validations
+  }
+
   setIssues(issues: Pick<IssuesService, 'findAll'>): void {
     this.issues = issues
   }
@@ -221,7 +228,28 @@ export class GraphService {
     ])
     const { versions, designVersions } = await this.listVersions(repo)
     const issues = await this.listIssues(rp)
-    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, issues, versions, designVersions }
+    const validations = await this.listValidations(repo)
+    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, issues, versions, designVersions, validations }
+  }
+
+  /** GH204 — validations du repo ; une erreur de lecture ne casse pas le graphe. */
+  private async listValidations(repo: { repoPath: string; name: string }): Promise<GraphValidation[]> {
+    if (!this.validations) return []
+    try {
+      const [list, vt] = await Promise.all([this.validations.list(repo.repoPath), this.validations.validationType(repo.repoPath)])
+      return list.map((v): GraphValidation => ({
+        id: v.id, repo: repo.name, component: repo.name, objectTypeRef: v.objectTypeRef, title: v.title, status: v.status,
+        state: validationState(vt?.typeDef ?? null, v.status), versionId: v.versionId,
+        entries: v.entries.map(e => ({
+          requirementId: e.requirementId, decision: e.decision, comment: e.comment ?? null, fields: e.fields ?? {},
+          decidedBy: e.decidedBy ?? null, decidedAt: e.decidedAt ?? null, carriedFrom: e.carriedFrom ?? null, proposed: !!e.proposed,
+        })),
+        fields: v.fields, history: v.history ?? {},
+      }))
+    } catch (err) {
+      console.warn(`[graph] validations ignorées pour ${repo.repoPath} :`, err instanceof Error ? err.message : String(err))
+      return []
+    }
   }
 
   private async listIssues(repoPath: string): Promise<Issue[]> {
@@ -357,6 +385,7 @@ export class GraphService {
       runs,
       versions: perRepo.flatMap((r) => r.versions),
       issues,
+      validations: perRepo.flatMap((r) => r.validations),
     }
     return {
       graph,

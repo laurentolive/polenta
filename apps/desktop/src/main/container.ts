@@ -18,6 +18,7 @@ import { CampaignsService } from './services/campaigns.service'
 import { VersionTrackingService } from './services/version-tracking.service'
 import { VersionsService } from './services/versions.service'
 import { IssuesService } from './services/issues.service'
+import { ValidationsService } from './services/validations.service'
 import { SavedViewsService } from './services/saved-views.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
@@ -56,7 +57,7 @@ import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
 
 /** GH74 — dossiers dont un changement invalide le graphe de données. */
-const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', 'versions/', 'issues/', '.polenta/', 'polenta-repo.yaml']
+const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', 'versions/', 'issues/', 'validations/', '.polenta/', 'polenta-repo.yaml']
 
 /**
  * Instancie le noyau de services (GH44 : sans dépendance à Electron). L'hôte fournit ce qui
@@ -109,6 +110,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   )
   // GH244 — issues ; index oublié dès qu'un fichier `issues/` change.
   const issues = new IssuesService(git, schema, history, (repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
+  // GH204 — validations d'une version : décisions, reprise, signature.
+  const validations = new ValidationsService(git, sync, schema, versions, traceability, history)
   // GH203 — vues enregistrées du ⚙️.
   const savedViews = new SavedViewsService((repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
   watcher.onFileChange((repoPath, relPath) => {
@@ -135,7 +138,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   )
   // GH104 — suppression en cascade d'un composant local ou d'un type (objets, liens, arbres, refs).
   const schemaDelete = new SchemaDeleteService(
-    git, { requirements, tests, campaigns, versions, issues }, reqIndex, tree, schema, [reqIndex, testsIndex, issues],
+    git, { requirements, tests, campaigns, versions, issues, validations }, reqIndex, tree, schema, [reqIndex, testsIndex, issues],
     (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
     async workspaceDir => {
       const cache = workspaceDir ? await workspaceTree.readCache(workspaceDir) : null
@@ -151,6 +154,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns)
   graph.setVersions(versions)
   graph.setIssues(issues)
+  graph.setValidations(validations)
   versions.setImpactSources({ traceability, campaigns })
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
@@ -195,6 +199,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     reqIndex,
     testsIndex,
     issues,
+    validations,
     requirements,
     tests,
     traceability,

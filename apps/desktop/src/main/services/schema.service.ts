@@ -3,6 +3,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
+import { validationTypeError } from '@polenta/types'
 import type {
   LinkTypeDefinition,
   ObjectTypeDefinition,
@@ -28,6 +29,8 @@ const DEFAULT_SCHEMA: ProjectSchema = {
  * (tool MCP) distingue programmatiquement le cas plutôt que de parser un message.
  */
 export type SchemaValidationErrorCode =
+  | 'VALIDATION_TYPE_INVALID'
+  | 'DECISION_IN_USE'
   | 'NODE_NAME_TAKEN'
   | 'NODE_NOT_FOUND'
   | 'NODE_READONLY'
@@ -104,7 +107,9 @@ export class SchemaService {
     this.assertRequiredWhen(schema)
     this.assertRunFields(schema)
     this.assertVersionTypes(schema)
+    this.assertValidationTypes(schema)
     await this.assertVersionTypeStable(repoPath, schema)
+    await this.assertValidationTypeStable(repoPath, schema)
     const previous = await this.get(repoPath).catch(() => null)
     this.assertValidDisplayIdFields(schema, previous)
     const toWrite = this.mirrorRootRolesImplements(withIssueImpactLink(schema, previous))
@@ -153,6 +158,44 @@ export class SchemaService {
     }
     if (versionTypes.length > 1) {
       throw new SchemaValidationError('VERSION_TYPE_INVALID', `Un repo n'a qu'un type version (${versionTypes.map(v => v.type).join(', ')}).`)
+    }
+  }
+
+  /** GH204 — au plus un type validation, sur `root`, avec ses marques (décision en attente, statuts). */
+  private assertValidationTypes(schema: ProjectSchema): void {
+    const types = flattenSystemNodes(schema.nodes ?? [])
+      .flatMap(({ node }) => (node.objectTypes ?? []).filter(t => t.category === 'validation').map(t => ({ node: node.name, type: t })))
+    const misplaced = types.find(v => v.node !== 'root')
+    if (misplaced) throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Le type validation "${misplaced.type.name}" doit être déclaré sur le nœud racine du repo, pas sur "${misplaced.node}".`)
+    if (types.length > 1) throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Un repo n'a qu'un type validation (${types.map(v => v.type.name).join(', ')}).`)
+    const error = types[0] ? validationTypeError(types[0].type) : null
+    if (error) throw new SchemaValidationError('VALIDATION_TYPE_INVALID', error)
+  }
+
+  /**
+   * GH204 — tant que `validations/` contient des fichiers : nom, préfixe et statuts marqués figés, type
+   * non retirable (comme le type version), et une décision utilisée par une entrée reste déclarée.
+   */
+  private async assertValidationTypeStable(repoPath: string, schema: ProjectSchema): Promise<void> {
+    const typeOf = (s: ProjectSchema | null) => s?.nodes?.find(n => n.name === 'root')?.objectTypes?.find(t => t.category === 'validation')
+    const before = typeOf(await this.get(repoPath).catch(() => null))
+    if (!before) return
+    const dir = path.join(repoPath, 'validations')
+    const entries = await fsP.readdir(dir, { withFileTypes: true }).catch(() => [])
+    const files = entries.filter(e => e.isFile() && e.name.endsWith('.yaml')).map(e => e.name)
+    if (files.length === 0) return
+    const after = typeOf(schema)
+    const marked = (t: typeof before) => JSON.stringify((t?.statuses ?? []).filter(s => s.isApproval || s.isTerminal)
+      .map(s => [s.name, !!s.isApproval, !!s.isTerminal]).sort())
+    if (!after || after.name !== before.name || (after.prefix ?? '') !== (before.prefix ?? '') || marked(after) !== marked(before)) {
+      throw new SchemaValidationError('VALIDATION_TYPE_INVALID', `Le type validation "${before.name}" a ${files.length} validation(s) : son nom, son préfixe et ses statuts signée / annulée ne se modifient pas, et il ne se retire pas.`)
+    }
+    const declared = new Set((after.decisions ?? []).map(d => d.name))
+    for (const file of files) {
+      const text = await fsP.readFile(path.join(dir, file), 'utf8').catch(() => '')
+      const data = (() => { try { return yaml.load(text) as { entries?: Array<{ decision?: string }> } | null } catch { return null } })()
+      const used = data?.entries?.find(e => e.decision && !declared.has(e.decision))
+      if (used) throw new SchemaValidationError('DECISION_IN_USE', `La décision "${used.decision}" est utilisée par ${file.replace(/\.yaml$/, '')} : elle ne se retire pas et ne se renomme pas.`)
     }
   }
 

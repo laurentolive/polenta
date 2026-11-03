@@ -215,6 +215,14 @@
             "fr": "GH202 : GraphTestRun.testedConfig (copie figée de la structure testée)",
             "en": "GH202: GraphTestRun.testedConfig (frozen copy of the tested structure)"
           }
+        },
+        {
+          "version": 15,
+          "hash": "6a60d82ef6185dbe976d5ec7e0f1389e20dcf1e2757a2c1e5efa0df4df16a49b",
+          "summary": {
+            "fr": "GH204 : collection validations (GraphValidation), catégorie validation",
+            "en": "GH204: validations collection (GraphValidation), validation category"
+          }
         }
       ]
     },

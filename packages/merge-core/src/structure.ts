@@ -72,7 +72,7 @@ export function commonYamlStyle(texts: string[], values?: unknown[]): yaml.DumpO
 // ─── Objets typés (exigence, test, campagne) ──────────────────────────────────────
 
 /** Root keys merged inside (the others are one block each, as in GH37). */
-const OBJECT_OPEN_ROOTS = new Set(['fields', 'steps', 'runs', 'removedRuns', 'testCaseIds'])
+const OBJECT_OPEN_ROOTS = new Set(['fields', 'steps', 'runs', 'removedRuns', 'testCaseIds', 'entries'])
 
 export const OBJECT_DESC: StructureDesc = {
   dump: YAML_DUMP_OPTIONS,
@@ -81,6 +81,7 @@ export const OBJECT_DESC: StructureDesc = {
     if (matches('steps', p)) return { lcs: true, ignore: ['order'], renumber: 'order' }
     if (matches('runs', p) || matches('removedRuns', p)) return { by: 'entryId' }
     if (matches('testCaseIds', p)) return { byValue: true }
+    if (matches('entries', p)) return { by: 'requirementId' }
     return undefined
   },
   reconcile(p, _b, l, r) {
@@ -134,7 +135,7 @@ export function genericDesc(dump: yaml.DumpOptions = YAML_DUMP_OPTIONS): Structu
 }
 
 /** Candidate identity keys of a list of mappings, in order of preference. */
-const IDENTITY_KEYS = ['id', 'entryId', 'name', 'key']
+const IDENTITY_KEYS = ['id', 'entryId', 'requirementId', 'name', 'key']
 
 /** Canonical text of a value (mapping keys sorted), optionally without some keys. */
 export function canonical(v: unknown, ignore?: string[]): string {

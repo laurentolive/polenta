@@ -1,5 +1,6 @@
 export * from './requirement.schema'
 export * from './issue.schema'
+export * from './validation.schema'
 export * from './project.schema'
 export * from './test.schema'
 export * from './traceability.schema'

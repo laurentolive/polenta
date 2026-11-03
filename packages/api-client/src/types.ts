@@ -6,7 +6,7 @@ import type {
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
   VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
 } from '@polenta/types'
-import type { Issue,
+import type { Issue, Validation, ValidationPage, ValidationVersionItem,
   MergeFileDetail,
   MergeFileDraft,
   MergeFinalizeResult,
@@ -87,7 +87,7 @@ import type { Issue,
   TerminalKind,
 } from '@polenta/types'
 import type {
-  CreateRequirementDto, CreateIssueDto, UpdateIssueDto,
+  CreateRequirementDto, CreateIssueDto, UpdateIssueDto, CreateValidationDto, UpdateValidationDto, ValidationDecisionDto,
   UpdateRequirementDto,
   TransitionRequirementDto,
   CreateTestCaseDto,
@@ -789,6 +789,21 @@ export interface ApiClient {
     create(repoPath: string, dto: CreateIssueDto, workspaceDir?: string): Promise<Issue>
     update(repoPath: string, id: string, dto: UpdateIssueDto, workspaceDir?: string): Promise<Issue>
     addRun(repoPath: string, id: string, runId: string, workspaceDir?: string): Promise<Issue>
+    /** GH204 — décision de validation à l'origine de l'issue. */
+    addDecision(repoPath: string, id: string, decisionRef: string, workspaceDir?: string): Promise<Issue>
+  }
+  /** GH204 — validations d'une version. */
+  validations: {
+    versions(repoPath: string): Promise<ValidationVersionItem[]>
+    page(repoPath: string, id: string, workspaceDir?: string): Promise<ValidationPage>
+    create(repoPath: string, dto: CreateValidationDto, workspaceDir?: string): Promise<Validation>
+    update(repoPath: string, id: string, dto: UpdateValidationDto, workspaceDir?: string): Promise<Validation>
+    decide(repoPath: string, id: string, dto: ValidationDecisionDto, workspaceDir?: string): Promise<Validation>
+    confirm(repoPath: string, id: string, requirementId: string, workspaceDir?: string): Promise<Validation>
+    reject(repoPath: string, id: string, requirementId: string, workspaceDir?: string): Promise<Validation>
+    sign(repoPath: string, id: string, workspaceDir?: string): Promise<Validation>
+    cancel(repoPath: string, id: string, workspaceDir?: string): Promise<Validation>
+    delete(repoPath: string, id: string, workspaceDir?: string): Promise<void>
   }
 
   /** GH201 — versions de composant / produit. */

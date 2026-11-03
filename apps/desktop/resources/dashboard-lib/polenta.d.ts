@@ -72,6 +72,8 @@ export interface PolentaGraph {
   versions: GraphVersion[]
   /** Issues (fichiers `issues/`, GH244). Leurs exigences impactées sont des liens `issue-impact`. */
   issues: GraphIssue[]
+  /** Validations d'une version (fichiers `validations/`, GH204). */
+  validations: GraphValidation[]
 }
 
 export interface GraphRepo {
@@ -101,7 +103,7 @@ export interface GraphSchema {
   campaignStatuses: GraphFixedStatus[]
 }
 
-export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'version' | 'issue'
+export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'version' | 'issue' | 'validation'
 
 export interface GraphObjectType {
   /** Repo dont le schéma déclare le type. */
@@ -242,6 +244,34 @@ export type GraphVersionState = 'in_progress' | 'released' | 'abandoned'
 export interface GraphIssue extends GraphObjectBase {
   /** Exécutions et décisions à l'origine de l'issue. */
   origin: { runs: string[]; decisions: string[] }
+}
+
+/** Décision d'une validation ; une exigence sans entrée est en attente. */
+export interface GraphValidationEntry {
+  requirementId: string
+  decision: string
+  comment: string | null
+  fields: Record<string, unknown>
+  decidedBy: string | null
+  decidedAt: string | null
+  carriedFrom: string | null
+  proposed: boolean
+}
+
+/** Validation d'une version, GH204. `state` : `signed` = feu vert. */
+export interface GraphValidation {
+  id: string
+  repo: string
+  /** Composant de la validation : le repo. */
+  component: string
+  objectTypeRef: string
+  title: string
+  status: string
+  state: 'open' | 'signed' | 'cancelled'
+  versionId: string
+  entries: GraphValidationEntry[]
+  fields: Record<string, unknown>
+  history: Record<string, unknown>
 }
 
 export interface GraphVersion {

@@ -27,6 +27,11 @@ export class HistoryService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  /** GH204 — identité courante (décisions d'une validation), comme l'historique. */
+  currentActor(repoPath: string): Promise<HistoryActor> {
+    return this.actor(repoPath).catch((): HistoryActor => ({ by: 'local' }))
+  }
+
   /**
    * `after` complété de ses entrées d'historique. `before` null = création. `audit` : dates du
    * dernier commit si l'appelant les a ; sinon (campagnes) `filePath` permet de les lire dans git,

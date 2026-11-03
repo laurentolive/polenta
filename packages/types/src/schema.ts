@@ -1,3 +1,4 @@
+import type { ValidationDecisionDef } from './validation'
 ﻿import type { ExportTemplateKey } from './export'
 
 export type SchemaFieldType =
@@ -89,7 +90,9 @@ export function statusValueLabels(statuses: SchemaStatus[]): Record<string, stri
 //   version     — GH201 : id, title (label), status (isApproval = released, isTerminal = abandonnée),
 //                 basedOn, components, changes, freeze, fields{} ; un seul type, sur le nœud root
 //   issue       — GH244 : id, title, status (from statuses[], sans verrou d'approbation), origin, fields{}
-export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'version' | 'issue'
+//   validation  — GH204 : id, title, status (isApproval = signée, isTerminal = annulée), versionId, entries[], fields{} ;
+//                 un seul type, sur le nœud root
+export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'version' | 'issue' | 'validation'
 
 // Définition d'un type d'objet dans un composant.
 // Chaque définition est indépendante même si créée depuis le même template.
@@ -112,6 +115,10 @@ export interface ObjectTypeDefinition {
   /** GH229 — champ affiché à la place de l'ID Polenta dans les liens vers un objet du type :
    *  `title` ou nom d'un champ `text` / `number` / `enum` du type. Absent = ID Polenta. */
   displayIdField?: string
+  /** GH204 — catégorie `validation` : valeurs de décision. */
+  decisions?: ValidationDecisionDef[]
+  /** GH204 — catégorie `validation` : champs saisis avec chaque décision. */
+  entryFields?: SchemaField[]
 }
 
 /** GH229 — types de champ admis comme « ID affiché ». */
@@ -355,7 +362,7 @@ export interface SchemaDeletePlan {
   /** Types de lien dont des refs sont retirées ; `emptied` : `sourceRefs` ou `targetRefs` devient vide. */
   linkTypes: Array<{ repoPath: string; name: string; emptied: boolean }>
   /** `HAS_VERSIONS` (GH201) : type version dont des versions existent (historique taggé, non supprimé). */
-  errors: Array<{ code: 'NOT_FOUND' | 'READONLY' | 'REPO_MISSING' | 'HAS_VERSIONS'; detail: string }>
+  errors: Array<{ code: 'NOT_FOUND' | 'READONLY' | 'REPO_MISSING' | 'HAS_VERSIONS' | 'HAS_VALIDATIONS'; detail: string }>
 }
 
 export interface SchemaDeleteResult {

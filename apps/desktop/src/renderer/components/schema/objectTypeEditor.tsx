@@ -1,3 +1,4 @@
+import type { ValidationDecisionDef } from '@polenta/types'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -45,6 +46,8 @@ export interface EditableObjectType {
   fields: EditableField[]; statuses: EditableStatus[]
   /** GH196 — types de test : champs saisis à chaque exécution / à chaque étape exécutée. */
   runFields: EditableField[]; stepFields: EditableField[]
+  /** GH204 — types validation : valeurs de décision et champs saisis avec chaque décision. */
+  decisions: ValidationDecisionDef[]; entryFields: EditableField[]
   /** GH77 — historiser le statut (défaut true). */
   trackStatusHistory: boolean
   /** GH229 — champ affiché à la place de l'ID dans les liens ('' = ID Polenta). */
@@ -65,7 +68,7 @@ function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, u
 
 const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory', 'multiple', 'requiredWhen', 'defaultVisible'] as const
 const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
-const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'runFields', 'stepFields', 'displayIdField'] as const
+const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'runFields', 'stepFields', 'decisions', 'entryFields', 'displayIdField'] as const
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
@@ -121,7 +124,7 @@ export function typeRename(
   updated: EditableObjectType, original: ObjectTypeDefinition | null | undefined, nodeName: string,
 ): TypeRenameDto | null {
   // GH201 — le renommage d'un type version ne migre pas ses versions : nom et préfixe verrouillés.
-  if (!original || !updated.name || original.category === 'version') return null
+  if (!original || !updated.name || original.category === 'version' || original.category === 'validation') return null
   const oldPrefix = original.prefix ?? ''
   if (updated.name === original.name && updated.prefix === oldPrefix) return null
   return {
@@ -257,6 +260,8 @@ export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
     statuses: (t.statuses ?? []).map(statusToEditable),
     runFields: (t.runFields ?? []).map(fieldToEditable),
     stepFields: (t.stepFields ?? []).map(fieldToEditable),
+    decisions: t.decisions ?? [],
+    entryFields: (t.entryFields ?? []).map(fieldToEditable),
     trackStatusHistory: t.trackStatusHistory !== false,
     displayIdField: t.displayIdField ?? '',
     ...withExtra(extraKeys(t, TYPE_EDITOR_KEYS)),
@@ -275,6 +280,10 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
     const runField = (f: EditableField) => editableToField({ ...f, trackHistory: false, defaultVisible: false })
     if (t.runFields.length > 0) result.runFields = t.runFields.map(runField)
     if (t.stepFields.length > 0) result.stepFields = t.stepFields.map(runField)
+  }
+  if (t.category === 'validation') {
+    result.decisions = t.decisions
+    if (t.entryFields.length > 0) result.entryFields = t.entryFields.map(f => editableToField({ ...f, trackHistory: false, defaultVisible: false }))
   }
   // GH229 — un ID affiché devenu invalide (champ supprimé, renommé ou retypé) est retiré : le
   // main refuserait l'enregistrement.
@@ -313,6 +322,22 @@ export const DEFAULT_ISSUE_STATUSES: EditableStatus[] = [
   { name: 'rejetee', label: 'Rejetée', color: '#6b7280', isApproval: false, isTerminal: true },
 ]
 
+/** GH204 — cycle de vie d'une validation : `signee` (`isApproval`) est le feu vert, `annulee` en sort. */
+export const DEFAULT_VALIDATION_STATUSES: EditableStatus[] = [
+  { name: 'en_cours', label: 'En cours', color: '#2563eb', isApproval: false, isTerminal: false },
+  { name: 'signee', label: 'Signée', color: '#16a34a', isApproval: true, isTerminal: false },
+  { name: 'annulee', label: 'Annulée', color: '#6b7280', isApproval: false, isTerminal: true },
+]
+
+/** GH204 — jeu de décisions par défaut (MILESTONE-D §5.1). */
+export const DEFAULT_VALIDATION_DECISIONS: ValidationDecisionDef[] = [
+  { name: 'en_attente', label: 'En attente', isPending: true },
+  { name: 'conforme', label: 'Conforme' },
+  { name: 'non_conforme', label: 'Non conforme', proposesIssue: true },
+  { name: 'hors_scope', label: 'Hors scope' },
+  { name: 'derogation', label: 'Dérogation', proposesIssue: true },
+]
+
 export const DEFAULT_TEST_STATUSES: EditableStatus[] = [
   { name: 'draft', label: 'Brouillon', color: '#475569', isApproval: false, isTerminal: false },
   { name: 'review', label: 'En review', color: '#b45309', isApproval: false, isTerminal: false },
@@ -327,6 +352,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   campaign: 'schema.editor.campaign',
   version: 'schema.editor.version',
   issue: 'schema.editor.issue',
+  validation: 'schema.editor.validation',
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -348,6 +374,7 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   campaign: 'CAMP',
   version: 'VER',
   issue: 'ISS',
+  validation: 'VAL',
 }
 
 function slugifyComponentName(componentName: string): string {
@@ -371,12 +398,15 @@ export function emptyObjType(
     name: suggested, label: categoryLabel, color: '', prefix: suggested, category,
     fields: [{ ...emptyField(), name: 'description', label: descriptionLabel, type: 'richtext' }],
     runFields: [], stepFields: [],
+    decisions: category === 'validation' ? DEFAULT_VALIDATION_DECISIONS.map(d => ({ ...d })) : [],
+    entryFields: [],
     trackStatusHistory: true,
     displayIdField: '',
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
       : category === 'version' ? [...DEFAULT_VERSION_STATUSES]
       : category === 'issue' ? [...DEFAULT_ISSUE_STATUSES]
+      : category === 'validation' ? [...DEFAULT_VALIDATION_STATUSES]
       : [],
   }
 }
@@ -465,7 +495,7 @@ export function CancelConfirmModal({ onConfirm, onClose }: { onConfirm: () => vo
 
 // ── FieldsTable ───────────────────────────────────────────────────────────────
 
-export function FieldsTable({ fields, onChange, statuses, category, variant = 'object', title, help }: {
+export function FieldsTable({ fields, onChange, statuses, category, variant = 'object', title, help, decisionValues }: {
   fields: EditableField[]
   onChange: (f: EditableField[]) => void
   /** GH195 — statuts et catégorie du type, pour contrôler les `requiredWhen` qui les référencent. */
@@ -473,9 +503,11 @@ export function FieldsTable({ fields, onChange, statuses, category, variant = 'o
   category?: ObjectCategory
   /** GH196 — `run` / `step` : liste d'exécution (pas d'historique ni de visibilité par défaut ;
    *  pseudo-champ `result` pour `requiredWhen`). */
-  variant?: 'object' | 'run' | 'step'
+  variant?: 'object' | 'run' | 'step' | 'entry'
   title?: string
   help?: string
+  /** GH204 — `entry` : valeurs de décision, pour `requiredWhen`. */
+  decisionValues?: string[]
 }) {
   const isRunList = variant !== 'object'
   const { t } = useTranslation()
@@ -484,7 +516,8 @@ export function FieldsTable({ fields, onChange, statuses, category, variant = 'o
   }
   const issues = requiredWhenIssues(
     { category: category ?? 'requirement', statuses: statuses?.map(s => ({ name: s.name })), fields: fields.map(editableToField) },
-    isRunList ? { key: RUN_RESULT_KEY, values: [...(variant === 'run' ? RUN_RESULT_VALUES : STEP_RESULT_VALUES)] } : undefined,
+    variant === 'entry' ? { key: 'decision', values: decisionValues ?? [] }
+      : isRunList ? { key: RUN_RESULT_KEY, values: [...(variant === 'run' ? RUN_RESULT_VALUES : STEP_RESULT_VALUES)] } : undefined,
   )
   return (
     <div className={title === '' ? 'mt-1' : 'mt-3'}>

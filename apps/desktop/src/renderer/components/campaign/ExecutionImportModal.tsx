@@ -249,9 +249,7 @@ function ResultSummary({ result, previewCount, repoPath, campaignId, workspaceDi
         <IssueProposalDialog
           repoPath={repoPath}
           workspaceDir={workspaceDir}
-          runId={runIdOf(proposing.entryId)!}
-          testId={proposing.testCaseId}
-          requirementId={proposing.requirementId}
+          origin={{ kind: 'run', runId: runIdOf(proposing.entryId)!, testId: proposing.testCaseId, requirementId: proposing.requirementId }}
           onClose={() => {
             setHandled(prev => new Set(prev).add(proposing.entryId))
             setProposing(null)

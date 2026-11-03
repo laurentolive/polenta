@@ -3,6 +3,7 @@ import { AccountPanel } from '../sidebar/AccountPanel'
 import { ProjectPanel } from '../sidebar/ProjectPanel'
 import { SearchPanel } from '../sidebar/SearchPanel'
 import { VersionPanel } from '../sidebar/VersionPanel'
+import { ValidationPanel } from '../sidebar/ValidationPanel'
 import { SystemPanel } from '../sidebar/SystemPanel'
 import { DashboardPanel } from '../sidebar/DashboardPanel'
 import { ParametersPanel } from '../sidebar/ParametersPanel'
@@ -35,6 +36,7 @@ export function Sidebar({ activePanel, currentProjectId, width, collapsed }: Pro
       {(activePanel === 'requirements' || activePanel === 'tests' || activePanel === 'campaigns' || activePanel === 'issues') && currentProjectId && (
         <SystemPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
+      {activePanel === 'validation' && currentProjectId && <ValidationPanel projectId={currentProjectId} />}
       {activePanel === 'dashboard' && currentProjectId && (
         <DashboardPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}

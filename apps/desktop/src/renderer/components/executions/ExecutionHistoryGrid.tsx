@@ -16,7 +16,7 @@ import {
 // attente), colonnes au choix (préférence `executions` du type), tri par en-tête, étapes dépliables.
 // Réutilisée par la vue Conformité (L6).
 
-const VERDICT_KEY: Record<string, string> = {
+export const VERDICT_KEY: Record<string, string> = {
   pending: 'campaignPage.runStatus.pending', PASS: 'campaignPage.runStatus.pass', FAIL: 'campaignPage.runStatus.fail',
   BLOCKED: 'campaignPage.runStatus.blocked', INCOMPLETE: 'campaignPage.runStatus.incomplete',
 }
@@ -24,7 +24,7 @@ const STEP_KEY: Record<StepResultValue, string> = {
   PASS: 'campaignPage.runStatus.pass', FAIL: 'campaignPage.runStatus.fail', BLOCKED: 'campaignPage.runStatus.blocked',
   SKIP: 'campaignPage.stepResult.skip', NOT_EXECUTED: 'campaignPage.stepResult.notExecuted',
 }
-const VERDICT_CLASS: Record<string, string> = {
+export const VERDICT_CLASS: Record<string, string> = {
   pending: 'bg-status-neutral-bg text-status-neutral', PASS: 'bg-status-success-bg text-status-success',
   FAIL: 'bg-status-danger-bg text-status-danger', BLOCKED: 'bg-status-warning-bg text-status-warning',
   INCOMPLETE: 'bg-status-warning-bg text-status-warning', SKIP: 'bg-status-warning-bg text-status-warning',

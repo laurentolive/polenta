@@ -4,7 +4,7 @@ import type {
   CoverageStatus, ObjectTypeDefinition, ProductVersion, ProjectSchema, Validation, ValidationComponentStatus,
   ValidationEntry, ValidationErrorCode, ValidationPage, ValidationRow, ValidationVersionItem,
 } from '@polenta/types'
-import { initialStatus, pendingDecision, validationState, versionState } from '@polenta/types'
+import { flattenSystemNodes, initialStatus, pendingDecision, validationState, versionState } from '@polenta/types'
 import type { CreateValidationDto, UpdateValidationDto, ValidationDecisionDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { HistoryService } from './history.service'
@@ -119,7 +119,17 @@ export class ValidationsService {
       readonly: await this.versions.isReadonly(repoPath, workspaceDir),
       signed: state === 'signed' && signedEntry ? { at: signedEntry.at, by: signedEntry.by ?? null } : null,
       components: await this.componentStatuses(repoPath, version, workspaceDir),
+      ...(await this.requirementDisplay(repoPath)),
     }
+  }
+
+  /** Champs et libellés de statut des types d'exigence du repo (colonnes de la grille). */
+  private async requirementDisplay(repoPath: string): Promise<Pick<ValidationPage, 'requirementFields' | 'requirementStatusLabels'>> {
+    const schema = await this.schema.get(repoPath).catch(() => null)
+    const types = flattenSystemNodes(schema?.nodes ?? []).flatMap(({ node }) => node.objectTypes ?? []).filter(t => t.category === 'requirement')
+    const fields = new Map(types.flatMap(t => t.fields).map(f => [f.name, f]))
+    const requirementStatusLabels = Object.fromEntries(types.flatMap(t => t.statuses ?? []).map(s => [s.name, s.label || s.name]))
+    return { requirementFields: [...fields.values()], requirementStatusLabels }
   }
 
   private async rows(repoPath: string, typeDef: ObjectTypeDefinition, validation: Validation, version: ProductVersion, workspaceDir?: string): Promise<ValidationRow[]> {
@@ -201,11 +211,21 @@ export class ValidationsService {
       assertDecision(typeDef, dto.decision)
       const state = (await requirement(dto.requirementId)).state
       if (dto.decision === pendingDecision(typeDef)?.name) return withoutEntry(validation, dto.requirementId)
-      const actor = await this.history.currentActor(repoPath)
-      return withEntry(validation, {
-        requirementId: dto.requirementId, decision: dto.decision,
+      const details = {
         ...(dto.comment?.trim() && { comment: dto.comment.trim() }),
         ...(dto.fields && Object.keys(dto.fields).length > 0 && { fields: dto.fields }),
+      }
+      // Même décision, commentaire ou champs complétés : ce n'est pas une nouvelle décision, et un
+      // signal « à revoir » reste levé jusqu'à la confirmation.
+      const existing = validation.entries.find(e => e.requirementId === dto.requirementId)
+      if (existing && !existing.proposed && existing.decision === dto.decision) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { comment, fields, ...kept } = existing
+        return withEntry(validation, { ...kept, ...details })
+      }
+      const actor = await this.history.currentActor(repoPath)
+      return withEntry(validation, {
+        requirementId: dto.requirementId, decision: dto.decision, ...details,
         contentHash: contentHash(state), decidedBy: actor.by, decidedAt: new Date().toISOString(),
       })
     })

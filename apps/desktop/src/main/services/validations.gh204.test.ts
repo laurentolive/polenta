@@ -267,6 +267,23 @@ describe('décisions (U6, U8)', () => {
   })
 })
 
+describe('modification sans nouvelle décision', () => {
+  it('commentaire et champs complétés : auteur et empreinte conservés, « à revoir » maintenu', async () => {
+    await writeReq('REQ-0001', { title: 'A' })
+    const v = await versions.create(dir, { title: '1.0' })
+    const val = await validations.create(dir, { versionId: v.id, title: 'V' })
+    const first = await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'non_conforme', comment: 'c1', fields: { motif: 'm' } })
+    await writeReq('REQ-0001', { title: 'B' })
+    const second = await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'non_conforme', comment: 'c2' })
+    expect(second.entries[0]).toMatchObject({ comment: 'c2', contentHash: first.entries[0].contentHash, decidedAt: first.entries[0].decidedAt })
+    expect(second.entries[0].fields).toBeUndefined()
+    expect((await rowOf(val.id, 'REQ-0001'))?.review).toBe('content')
+    const changed = await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
+    expect(changed.entries[0].contentHash).not.toBe(first.entries[0].contentHash)
+    expect((await rowOf(val.id, 'REQ-0001'))?.review).toBeNull()
+  })
+})
+
 describe('reprise (U7)', () => {
   async function signedFirst() {
     await writeReq('REQ-0001')

@@ -33,7 +33,8 @@
       "menu": {
         "hide": "Masquer « {{label}} »",
         "reset": "Réinitialiser la disposition"
-      }
+      },
+      "validation": "Validation"
     },
     "tabBar": {
       "newTab": "Nouvel onglet (Ctrl+T)",
@@ -542,7 +543,15 @@
       "displayIdField": "ID affiché dans les liens",
       "displayIdPolenta": "ID Polenta",
       "displayIdTitle": "Titre",
-      "issue": "Issue"
+      "issue": "Issue",
+      "validation": "Validation",
+      "decisions": "Décisions",
+      "decisionsHelp": "Valeurs proposées pour chaque exigence. « En attente » est la valeur de départ et bloque la signature ; « Propose une issue » ouvre la proposition d'issue.",
+      "decisionPending": "En attente",
+      "decisionProposesIssue": "Propose une issue",
+      "addDecision": "Ajouter une décision",
+      "entryFields": "Champs de décision",
+      "entryFieldsHelp": "Saisis avec chaque décision, en plus du commentaire. « Oblig. si » : decision = valeur de décision."
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -2344,7 +2353,10 @@
       "impacted": "Exigences impactées",
       "noRequirement": "Aucune exigence de ce composant n'est liée à ce test.",
       "importTitle_one": "{{count}} exécution en échec :",
-      "importTitle_other": "{{count}} exécutions en échec :"
+      "importTitle_other": "{{count}} exécutions en échec :",
+      "decisionTitle": "Décision à tracer",
+      "decisionHint": "{{id}} : « {{decision}} ». Voulez-vous tracer ce constat dans une issue ?",
+      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}"
     }
   },
   "versions": {
@@ -2438,7 +2450,8 @@
       "VERSION_NOT_FOUND": "Version introuvable : {{detail}}",
       "STATUS_UNKNOWN": "Statut inconnu : {{detail}}",
       "VERSION_ABANDONED": "Version abandonnée : {{detail}}",
-      "NOT_OWN_ELEMENT": "Élément d'un autre composant : {{detail}}"
+      "NOT_OWN_ELEMENT": "Élément d'un autre composant : {{detail}}",
+      "VERSION_HAS_VALIDATION": "Cette version a une validation : {{detail}}"
     },
     "noVersion": "Aucune version.",
     "expand": "Afficher les composants",
@@ -2496,5 +2509,112 @@
     "installHint": "Le bouton ouvre la page de téléchargement de Git ; revérifiez une fois Git installé.",
     "copy": "Copier",
     "paste": "Coller"
+  },
+  "validation": {
+    "title": "Validation",
+    "home": "Choisissez un composant et une version dans le panneau latéral.",
+    "noType": "Ce composant n'a pas de type validation. Ajoutez-le dans le modèle de données, sur le nœud racine du repo.",
+    "noVersionType": "Ce composant n'a pas de type version : une validation porte toujours sur une version.",
+    "create": "Créer la validation",
+    "newTitle": "Nouvelle validation",
+    "newHint": "Valide la version {{version}}. Les décisions de la version précédente sont reprises pour les exigences ni changées ni impactées.",
+    "defaultTitle": "Validation {{version}}",
+    "titleLabel": "Titre",
+    "status": "Statut",
+    "version": "Version",
+    "remaining": "Reste à décider",
+    "components": "Validations des composants",
+    "noValidation": "Aucune validation",
+    "noRequirement": "Ce composant n'a aucune exigence à valider.",
+    "noRun": "Aucune exécution pour cette exigence dans ce composant.",
+    "sign": "Signer",
+    "cancel": "Annuler la validation",
+    "confirm": "Confirmer",
+    "reject": "Rejeter",
+    "columns": "Colonnes",
+    "proposed": "Proposée par {{by}}",
+    "readonly": "Composant en lecture seule",
+    "readonlyHelp": "Composant en lecture seule : les validations se consultent ici et se modifient dans le repo du composant.",
+    "versionAbandoned": "Cette version est abandonnée : la validation ne peut plus être signée, et une signature déjà posée ne vaut plus feu vert.",
+    "signedBy": "par {{by}}, le {{at}}",
+    "state": {
+      "open": "en cours",
+      "signed": "signée",
+      "cancelled": "annulée"
+    },
+    "column": {
+      "id": "ID",
+      "title": "Titre",
+      "decision": "Décision",
+      "comment": "Commentaire",
+      "status": "Rédaction",
+      "design": "Design",
+      "coverage": "Vérification",
+      "impact": "Impact"
+    },
+    "impact": {
+      "changed": "changée",
+      "impacted": "impactée"
+    },
+    "review": {
+      "content": "à revoir : contenu modifié",
+      "impact": "à revoir : devenue impactée"
+    },
+    "filter": {
+      "label": "Filtre",
+      "all": "Toutes les exigences",
+      "pending": "À décider",
+      "proposed": "Proposées",
+      "review": "À revoir",
+      "impacted": "Changées ou impactées"
+    },
+    "mention": {
+      "other_version": "autre version",
+      "no_version": "version non renseignée",
+      "evolved": "a évolué",
+      "after_signature": "après la signature"
+    },
+    "problems": {
+      "intro": "Signature impossible pour le moment :",
+      "VERSION_NOT_RELEASED": "La version n'est pas released",
+      "DECISION_PENDING": "Décisions en attente",
+      "DECISION_PROPOSED": "Décisions proposées, à confirmer ou rejeter",
+      "DECISION_TO_REVIEW": "Décisions à revoir",
+      "FIELD_MISSING": "Champs obligatoires manquants"
+    },
+    "confirmDialog": {
+      "sign": {
+        "title": "Signer la validation",
+        "text": "Signer vaut feu vert pour la version {{version}}. La validation sera commitée et ne sera plus modifiable.",
+        "button": "Signer"
+      },
+      "cancel": {
+        "title": "Annuler la validation",
+        "text": "La validation de la version {{version}} sera annulée. Une nouvelle pourra être créée.",
+        "textSigned": "Cette validation est signée : l'annuler retire le feu vert de la version {{version}}. L'historique en garde la trace, et une nouvelle validation pourra être créée.",
+        "button": "Annuler la validation"
+      },
+      "delete": {
+        "title": "Supprimer la validation",
+        "text": "La validation de la version {{version}} et ses décisions seront supprimées. Cette action est définitive.",
+        "button": "Supprimer"
+      }
+    },
+    "errors": {
+      "NO_VALIDATION_TYPE": "Aucun type validation dans ce composant : {{detail}}",
+      "VALIDATION_NOT_FOUND": "Validation introuvable : {{detail}}",
+      "VALIDATION_EXISTS": "Cette version a déjà une validation : {{detail}}",
+      "VALIDATION_LOCKED": "Cette validation est verrouillée : {{detail}}",
+      "VERSION_NOT_FOUND": "Version introuvable : {{detail}}",
+      "VERSION_ABANDONED": "Version abandonnée : {{detail}}",
+      "READONLY_REPO": "Composant en lecture seule : {{detail}}",
+      "DECISION_UNKNOWN": "Décision inconnue : {{detail}}",
+      "NOT_IN_PERIMETER": "Cette exigence n'est plus dans le périmètre : {{detail}}",
+      "SIGNATURE_REFUSED": "Signature refusée : {{detail}}",
+      "NOT_PROPOSED": "Cette décision n'est pas une proposition : {{detail}}",
+      "DECISION_CONFIRMED": "Cette décision est déjà confirmée : {{detail}}",
+      "NO_DECISION": "Aucune décision sur cette exigence : {{detail}}",
+      "TITLE_EMPTY": "Le titre est obligatoire."
+    }
   }
 }

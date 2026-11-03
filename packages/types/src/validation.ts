@@ -144,6 +144,10 @@ export interface ValidationPage {
   readonly: boolean
   signed: { at: string; by: string | null } | null
   components: ValidationComponentStatus[]
+  /** Champs des types d'exigence du repo (colonnes proposées). */
+  requirementFields: SchemaField[]
+  /** Libellé de chaque statut de ces types. */
+  requirementStatusLabels: Record<string, string>
 }
 
 /** Ligne du panneau latéral : une version du composant et sa validation non annulée. */

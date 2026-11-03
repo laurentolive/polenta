@@ -827,7 +827,7 @@
       "status": {
         "not_covered": "Not covered",
         "covered": "Covered",
-        "validated": "Validated",
+        "validated": "Verified",
         "failing": "Failing",
         "needs_revalidation": "Needs revalidation"
       }
@@ -1377,11 +1377,11 @@
     "insertTable": "Insert a table"
   },
   "complianceMatrix": {
-    "validated": "validated",
+    "validated": "verified",
     "covered": "covered",
     "missing": "missing",
-    "legendValidated": "Validated (link verified)",
-    "legendCovered": "Covered (link present, not validated)",
+    "legendValidated": "Verified (test passed)",
+    "legendCovered": "Covered (link present, not verified)",
     "legendMissing": "Missing",
     "legendNotApplicable": "Not applicable (different role)",
     "noApprovedRequirement": "No approved requirement in this interface.",

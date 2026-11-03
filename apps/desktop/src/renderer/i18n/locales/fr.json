@@ -827,7 +827,7 @@
       "status": {
         "not_covered": "Non couvert",
         "covered": "Couvert",
-        "validated": "Validé",
+        "validated": "Vérifié",
         "failing": "En échec",
         "needs_revalidation": "À revalider"
       }
@@ -1377,11 +1377,11 @@
     "insertTable": "Insérer un tableau"
   },
   "complianceMatrix": {
-    "validated": "validé",
+    "validated": "vérifié",
     "covered": "couvert",
     "missing": "manquant",
-    "legendValidated": "Validé (lien vérifié)",
-    "legendCovered": "Couvert (lien présent, non validé)",
+    "legendValidated": "Vérifié (test réussi)",
+    "legendCovered": "Couvert (lien présent, non vérifié)",
     "legendMissing": "Manquant",
     "legendNotApplicable": "Non applicable (rôle différent)",
     "noApprovedRequirement": "Aucune exigence approuvée dans cette interface.",

@@ -11,6 +11,58 @@
   jamais besoin de rouvrir le worktree du ticket
 - Le chat sert uniquement aux questions et validations — jamais aux livrables
 
+## Méthode de travail
+
+S'applique à toutes les phases et n'ajoute aucun stop.
+
+- **Planifier d'abord.** Tâche non triviale (3 étapes ou plus, ou décision d'architecture) : pour un
+  ticket, le plan est `specs/GH{N}.md` puis `specs/GH{N}-design.md`, et la validation de la spec tient
+  lieu de point de contrôle avant l'implémentation ; hors ticket, utiliser le mode plan de la session.
+  Le plan prévoit aussi comment le résultat sera vérifié.
+- **Re-planifier dès que ça dérape.** Approche qui ne tient pas, correctifs qui s'empilent : arrêter de
+  pousser, reprendre l'analyse, corriger le design. Stop humain seulement si l'écart touche la spec.
+- **Subagents.** Recherche, exploration, analyses parallèles et exécutions de tests partent en
+  subagent pour garder le contexte principal léger — une tâche par subagent, modèle choisi selon
+  `CLAUDE.md` § Délégation.
+- **Prouver avant de conclure.** Rien n'est terminé sans preuve : tests, logs, comportement observé,
+  comparaison avec `main` si besoin. Dire aussi ce qui n'a pas été lancé. Dernière question avant de
+  présenter : un staff engineer approuverait-il ce travail ?
+- **Élégance mesurée.** Changement non trivial : chercher s'il existe une solution plus élégante. Un
+  correctif qui sent le bricolage est repris avec ce qu'on sait maintenant. Sans objet pour un
+  correctif simple et évident : pas de sur-conception.
+- **Simplicité, cause racine, impact minimal.** Le changement le plus simple possible, qui ne touche
+  que le nécessaire. Pas de correctif temporaire.
+- **Autonomie sur les bugs.** Un rapport de bug ou un test rouge se traite sans demander à être guidé :
+  logs, erreurs et tests suffisent. Les garde-fous restent : worktree, validation finale, pas de push
+  sans accord humain.
+- **Leçons.** Après toute correction de l'humain, consigner le pattern et la règle qui l'évite dans
+  `tasks/lessons.md`, dans le même commit que le travail en cours ou juste après. Un simple changement
+  d'avis sur le produit n'en est pas une. Ce fichier vaut pour tout agent sur ce repo ; ce qui ne
+  concerne que ce poste (ports, chemins, shell) reste dans la mémoire de l'agent.
+
+## Niveaux de vérification
+
+La suite e2e complète est la vérification la plus coûteuse (≈ 14 min, 259 tests en série, build en
+sus) ; les tests unitaires complets prennent moins d'une minute. **Chaque niveau se lance au moment
+indiqué, pas plus souvent.**
+
+| Niveau | Quand | Quoi |
+|--------|-------|------|
+| **1 — Ciblé** | Pendant le développement | `pnpm typecheck`, `pnpm lint`, et les tests touchés : `npx vitest run <fichier>` ou `npx vitest run --changed <branche de base>` |
+| **2 — Ticket** | Fin de sprint ; fin du correctif d'un bug | `pnpm test` complet et specs e2e du ticket : `pnpm build:web` puis `npx playwright test gh{N}` (ou les specs voisines si le ticket n'en a pas) |
+| **3 — Complet** | **Une seule fois par ticket**, à la validation finale, après `git merge main` | Suite e2e complète (`pnpm --filter @polenta/desktop test:e2e:web`), en arrière-plan |
+
+- **Niveau 3 requis** si le ticket modifie le renderer, les services du main ou le serveur web. Pour
+  un bug : seulement si le correctif touche du code transverse (IPC, schéma, stockage, composants
+  communs). Une branche de milestone le repasse une fois avant son merge dans `main`.
+- **Après un échec** : corriger, puis `npx playwright test --last-failed` — jamais la suite entière.
+- **Correction demandée à la validation finale** : niveau 2 ; niveau 3 seulement si elle touche du
+  code transverse.
+- **Échec sans rapport avec le ticket** : vérifier sur `main` avant de le déclarer préexistant, puis
+  ouvrir une issue s'il n'y en a pas déjà une.
+- **Documentation seule** (`specs/`, `*.md`) : aucun test.
+- La suite `test:e2e:desktop` n'est lancée que ciblée, pour les specs du ticket.
+
 ---
 
 ## Structure des répertoires
@@ -234,14 +286,13 @@ Chaque sprint n'exécute que son propre périmètre.
 
 1. Pose le label `status:coding` sur l'issue et commente « Sprint {K} démarré »
 2. Implémente le périmètre du sprint
-3. Vérifie TypeScript / lint — zéro erreur nouvelle
+3. Vérifie TypeScript / lint et les tests touchés (niveau 1) — zéro erreur nouvelle
 4. Lance `/code-review` sur le diff
 5. Corrige les problèmes identifiés
-6. Exécute les tests automatiques disponibles : `pnpm test` (unitaires) et, si le ticket touche le
-   renderer, les services du main ou le serveur web, les tests de bout en bout du client web
-   (`pnpm --filter @polenta/desktop test:e2e:web`, cf. `apps/desktop/e2e-web/README.md`). Les
-   scénarios du ticket qui peuvent l'être sont ajoutés en e2e (`e2e-web/gh{N}-*.spec.ts`) plutôt que
-   laissés en test manuel.
+6. Exécute la vérification de **niveau 2** (§ Niveaux de vérification ; détail e2e :
+   `apps/desktop/e2e-web/README.md`). La suite e2e complète n'est pas lancée ici : elle attend la
+   validation finale. Les scénarios du ticket qui peuvent l'être sont ajoutés en e2e
+   (`e2e-web/gh{N}-*.spec.ts`) plutôt que laissés en test manuel.
 7. Corrige jusqu'à zéro bug
 
 **Si dernier sprint :**
@@ -291,19 +342,22 @@ l'humain teste là où il travaille d'habitude, puis autorise le push.
    git -C <dossier principal> pull --ff-only
    git merge main                 # dans ../mon-projet-GH{N}/
    ```
-   S'il y a eu des changements : relance typecheck / lint / tests, commit, `git push`.
-2. Passe la PR en prêt : `gh pr ready GH{N}`
-3. Merge local dans le dossier principal, sans push :
+   S'il y a eu des changements : relance typecheck / lint / `pnpm test`, commit, `git push`.
+2. Lance la suite complète si le ticket le requiert (**niveau 3**, § Niveaux de vérification) et
+   corrige jusqu'à zéro échec lié au ticket.
+3. Passe la PR en prêt : `gh pr ready GH{N}`
+4. Merge local dans le dossier principal, sans push :
    ```
    git -C <dossier principal> merge --no-ff GH{N} -m "Merge GH{N} — <titre de l'issue>" -m "Closes #{N}"
    ```
-4. Si `pnpm-lock.yaml` a changé : `pnpm install` dans le dossier principal. Build / typecheck pour
+5. Si `pnpm-lock.yaml` a changé : `pnpm install` dans le dossier principal. Build / typecheck pour
    que l'humain puisse lancer l'appli directement.
-5. Pose `status:validation`, commente l'issue (PR, hash du merge local, lien vers le dernier
+6. Pose `status:validation`, commente l'issue (PR, hash du merge local, lien vers le dernier
    `GH{N}-sprint{K}.md` ou `specs/GH{N}.md` pour un bug)
 
 **`[STOP HUMAIN]`** — présente :
 - le résumé de ce qui a été fait (et pour un bug : root cause en une phrase)
+- les vérifications lancées avec leur résultat, et celles qui ne l'ont pas été
 - la liste des scénarios de `GH{N}-tests.md` (ou « comment vérifier » du bug) **qui ne sont pas
   couverts par les tests automatiques** — c'est ce que l'humain doit tester à la main
 - comment lancer l'appli depuis le dossier principal
@@ -316,10 +370,12 @@ Réponses possibles :
   git branch -d GH{N}
   git push origin --delete GH{N}
   ```
-  Puis commentaire de clôture sur l'issue (`gh issue comment {N}`).
-- **Non conforme** → l'agent corrige **dans le worktree**, commit, push de la branche, puis
-  re-merge dans le dossier principal (nouveau `merge --no-ff`, même message) et re-présente. Pas
-  de reset de `main` : le premier merge local reste, le correctif s'ajoute par-dessus.
+  Puis commentaire de clôture sur l'issue (`gh issue comment {N}`) : résumé, PR, hash du merge,
+  résultats (typecheck, lint, unitaires, e2e complets ou ciblés, tests ignorés).
+- **Non conforme** → l'agent corrige **dans le worktree**, vérifie (§ Niveaux de vérification),
+  commit, push de la branche, puis re-merge dans le dossier principal (nouveau `merge --no-ff`, même
+  message) et re-présente. Pas de reset de `main` : le premier merge local reste, le correctif
+  s'ajoute par-dessus.
 - **Divergence d'attente** (la spec n'était pas la bonne) → mettre à jour `specs/GH{N}.md` avec
   l'humain, puis reprendre au design ou au sprint concerné.
 - **Abandon** → uniquement sur demande explicite : `git -C <dossier principal> reset --hard origin/main`
@@ -338,15 +394,16 @@ Réponses possibles :
 
 1. Pose le label `status:debugging` sur l'issue
 2. Analyse description, reproduction, comportement attendu
-3. Pose ses questions à l'humain si reproduction floue
+3. Cherche à reproduire seul (logs, tests, code) ; ne pose une question que si la reproduction reste
+   impossible ou si le comportement attendu est ambigu
 4. Crée le worktree et la branche :
    ```
    git worktree add ../mon-projet-GH{N} -b GH{N}
    ```
 5. Identifie la root cause dans le code
 6. Applique le correctif minimal — pas de refactoring annexe
-7. Lance TypeScript / lint / tests unitaires ; ajoute un test (unitaire ou e2e) qui reproduit le bug
-   quand c'est possible
+7. Ajoute un test (unitaire ou e2e) qui reproduit le bug quand c'est possible, puis lance la
+   vérification de **niveau 2** (§ Niveaux de vérification)
 8. Rédige `specs/GH{N}.md` avec : root cause, correctif appliqué, comment vérifier
 9. Commit : `[GH{N}] fix(scope): GH{N} — description` + ligne `Refs #{N}` dans le corps, push et
    PR en brouillon (§ Branches et pull requests)
@@ -364,7 +421,7 @@ correctif + comment vérifier.
 - **Stops** : seulement la spec et la validation finale. En dehors, l'agent ne s'arrête que pour
   une question qui change le résultat (ambiguïté de périmètre, spec contradictoire, choix
   structurant non tranché) — pas pour faire valider un livrable intermédiaire
-- Ne modifier que les fichiers liés au ticket en cours
+- Ne modifier que les fichiers liés au ticket en cours (seule exception : `tasks/lessons.md`)
 - Un nouveau besoin découvert en cours de route → nouvelle issue (`gh issue create`), pas d'extension silencieuse du périmètre
 - Tout livrable s'écrit dans un fichier — jamais seulement dans le chat
 - Commit atomique avec préfixe `[GH{N}]` et `Refs #{N}` dans le corps — jamais `Closes/Fixes #{N}` dans un commit de la branche (seuls la PR et le commit de merge local portent `Closes #{N}`, qui ne ferme l'issue qu'au push validé de `main`)

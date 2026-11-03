@@ -70,7 +70,7 @@ export class SchemaDeleteService {
     const invalidate = () => { for (const repo of repos) for (const index of this.indexes) index.invalidate(repo) }
 
     // 1. Objets, pierre tombale d'abord (GH20) ; 2. leurs exécutions / acquittements d'impact.
-    const deleteObject = (dir: 'requirements' | 'tests', id: string) => step(id, async () => {
+    const deleteObject = (dir: 'requirements' | 'tests' | 'issues', id: string) => step(id, async () => {
       await withKeyLock(`${repoPath}::${dir}/${id}`, () => deleteWithTombstone(this.git, repoPath, `${dir}/${id}.yaml`, id)
         .catch(err => { if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err })) // déjà absent : supprimé
       result.deleted.push(id)
@@ -81,6 +81,7 @@ export class SchemaDeleteService {
     for (const id of plan.objects.test) {
       if (await deleteObject('tests', id)) await step(`${repoPath}:test-runs/${id}`, () => removeDir(repoPath, `test-runs/${id}`))
     }
+    for (const id of plan.objects.issue) await deleteObject('issues', id)
     for (const id of plan.objects.campaign) {
       await step(id, async () => {
         await this.objects.campaigns.delete(repoPath, id)
@@ -108,9 +109,16 @@ export class SchemaDeleteService {
 
     // 4. Arbres d'affichage.
     if (target.kind === 'node') {
-      for (const node of plan.nodes) await step(`${repoPath}:.polenta/trees/${node}`, () => removeDir(repoPath, `.polenta/trees/${node}`))
+      for (const node of plan.nodes) {
+        await step(`${repoPath}:.polenta/trees/${node}`, () => removeDir(repoPath, `.polenta/trees/${node}`))
+        await step(`${repoPath}:.polenta/views/${node}`, () => removeDir(repoPath, `.polenta/views/${node}`)) // GH203
+      }
     } else {
-      for (const t of types) await this.tree.deleteTypeTree(repoPath, t.node, t.type)
+      for (const t of types) {
+        await this.tree.deleteTypeTree(repoPath, t.node, t.type)
+        const views = `.polenta/views/${t.node}/${t.type}.yaml` // GH203
+        await step(`${repoPath}:${views}`, () => removeDir(repoPath, views))
+      }
     }
 
     // 5. Schéma du repo : nœud / type et refs de liens. 6. Refs de liens des autres repos — seulement
@@ -134,7 +142,7 @@ export class SchemaDeleteService {
   private async compute(repoPath: string, workspaceDir: string | undefined, target: SchemaDeleteTarget): Promise<Computed> {
     const repos = dedupeRepos(repoPath, await this.resolveRepos(repoPath, workspaceDir))
     const plan: SchemaDeletePlan = {
-      nodes: [], types: [], objects: { requirement: [], test: [], campaign: [] }, links: [], linkTypes: [], errors: [],
+      nodes: [], types: [], objects: { requirement: [], test: [], campaign: [], issue: [] }, links: [], linkTypes: [], errors: [],
     }
     const computed: Computed = { plan, repos, schema: null, types: [], links: new Map(), refsByRepo: new Map() }
 
@@ -183,7 +191,7 @@ export class SchemaDeleteService {
       }
       plan.objects[t.category as DeletedObjectCategory].push(...ids)
     }
-    const deleted = new Set([...plan.objects.requirement, ...plan.objects.test, ...plan.objects.campaign])
+    const deleted = new Set([...plan.objects.requirement, ...plan.objects.test, ...plan.objects.campaign, ...plan.objects.issue])
 
     // Liens de tous les repos dont une extrémité est supprimée (état disque, pas le cache).
     if (deleted.size > 0) {

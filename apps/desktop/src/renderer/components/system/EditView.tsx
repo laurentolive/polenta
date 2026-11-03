@@ -642,6 +642,12 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
           {/* T138 — badge de couverture, toujours affiché pour une exigence (pas d'onglet "Édition"
               dans FieldConfigModal pour le rendre désactivable, cf. specs/T138-design.md §3.4) ;
               hors du pipeline orderedFields/FieldRow — champ non éditable, pas un SchemaField. */}
+          {/* GH244 — exécutions à l'origine de l'issue (lecture seule). */}
+          {typeDef?.category === 'issue' && objectData?.['originRuns'] && (
+            <p className="text-xs text-ink-3" data-testid="issue-origin">
+              {t('issues.originRuns', { ids: objectData['originRuns'] })}
+            </p>
+          )}
           {typeDef?.category === 'requirement' && objectData && (
             <div className="flex items-center gap-1.5">
               <CoverageBadge
@@ -778,7 +784,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
           )}
 
           {/* GH77 — historique des champs suivis (lecture seule). */}
-          {repoPath && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test') && (
+          {repoPath && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test' || typeDef?.category === 'issue') && (
             <HistorySection
               repoPath={repoPath}
               kind={typeDef.category}

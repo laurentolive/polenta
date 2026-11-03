@@ -24,6 +24,7 @@ export function ExecutionsSection({ repoPath, projectId, workspaceDir, target, t
     queryKey: ['execution-history', repoPath, target, workspaceDir ?? null],
     queryFn: () => api.executions.history(repoPath, target, workspaceDir),
     enabled: open && !!repoPath,
+    staleTime: 0,   // GH202 — « a évolué » suit les versions, modifiées ailleurs.
   })
   return (
     <details className="mt-2" onToggle={e => setOpen((e.currentTarget as HTMLDetailsElement).open)} data-testid="executions-section">

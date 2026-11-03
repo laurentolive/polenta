@@ -1,12 +1,15 @@
+import { emptyFieldRenameResult } from '@polenta/types'
+import type { IssuesService } from './issues.service'
 import type { ProjectSchema } from '@polenta/types'
 import type { SchemaService } from './schema.service'
 import type { RequirementsService } from './requirements.service'
 import type { TestsService } from './tests.service'
 import type { TreeService } from './tree.service'
+import { moveTeamViewsFile } from './saved-views.service'
 
 export interface MoveElementResult {
   schema: ProjectSchema
-  failed: { kind: 'requirement' | 'test'; id: string; error: string }[]
+  failed: { kind: 'requirement' | 'test' | 'issue' | 'views'; id: string; error: string }[]
 }
 
 /**
@@ -38,6 +41,8 @@ export class ElementMoveService {
     private readonly requirements: RequirementsService,
     private readonly tests: TestsService,
     private readonly tree: TreeService,
+    /** GH244 — issues du type déplacé ; absent : aucune. */
+    private readonly issues?: IssuesService,
   ) {}
 
   async moveElementToNode(
@@ -75,7 +80,17 @@ export class ElementMoveService {
       failed.push({ kind: 'test', id: oldRef, error: err instanceof Error ? err.message : String(err) })
     }
 
+    if (this.issues) {
+      const outcome = emptyFieldRenameResult()
+      await this.issues.rewriteObjects(repoPath, oldRef, (i) => ({ ...i, objectTypeRef: newRef }), outcome)
+        .catch((err) => { outcome.failed.push({ id: oldRef, error: err instanceof Error ? err.message : String(err) }) })
+      for (const f of outcome.failed) failed.push({ kind: 'issue', id: f.id, error: f.error })
+    }
+
     await this.tree.moveTypeTree(repoPath, dto.fromNodeName, dto.toNodeName, dto.typeName)
+    // GH203 — vues d'équipe du type.
+    await moveTeamViewsFile(repoPath, { node: dto.fromNodeName, type: dto.typeName }, { node: dto.toNodeName, type: dto.typeName })
+      .catch(err => { failed.push({ kind: 'views', id: oldRef, error: err instanceof Error ? err.message : String(err) }) })
 
     return { schema: updatedSchema, failed }
   }

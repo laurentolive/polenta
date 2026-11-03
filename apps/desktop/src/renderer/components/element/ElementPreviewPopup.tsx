@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import type { FieldVisibilityPref } from '@polenta/api-client'
-import { findSystemNode, type MatrixCell, type ObjectTypeDefinition, type Requirement, type SchemaField, type TestCampaign, type TestCase } from '@polenta/types'
+import { findSystemNode, type Issue, type MatrixCell, type ObjectTypeDefinition, type Requirement, type SchemaField, type TestCampaign, type TestCase } from '@polenta/types'
 import { api } from '../../api'
 import { InPreviewContext, useElementNav, useElementPreviewTarget, type ElementRef } from '../../contexts/ElementNavContext'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
@@ -24,7 +24,7 @@ import { ElementLink } from './ElementLink'
 const WIDTH = 384 // 24rem
 const MARGIN = 8
 
-type AnyObject = (Requirement | TestCase | TestCampaign) & { fields?: Record<string, unknown> }
+type AnyObject = (Requirement | TestCase | TestCampaign | Issue) & { fields?: Record<string, unknown> }
 
 export function ElementPreviewPopup() {
   const nav = useElementNav()
@@ -87,6 +87,7 @@ function PreviewBody({ target }: { target: ElementRef }) {
     queryFn: (): Promise<AnyObject> =>
       category === 'campaign' ? api.campaigns.get(repoPath, id)
         : category === 'test' ? api.tests.get(repoPath, id)
+        : category === 'issue' ? api.issues.get(repoPath, id)
         : api.requirements.get(repoPath, id),
     staleTime: 5_000,
   })

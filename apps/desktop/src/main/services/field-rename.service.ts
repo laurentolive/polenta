@@ -3,6 +3,8 @@ import type { FieldRename, FieldRenameResult, HistoryCarrier, ValueRename, Value
 import type { CampaignsService } from './campaigns.service'
 import type { RequirementsService } from './requirements.service'
 import type { TestsService } from './tests.service'
+import type { IssuesService } from './issues.service'
+import { renameFieldsInTeamViews } from './saved-views.service'
 
 /**
  * GH77 — renommage de champs d'un type dans l'éditeur de schéma (spec §6.3, design §3.3) : appelé
@@ -15,13 +17,15 @@ export class FieldRenameService {
     private readonly requirements: RequirementsService,
     private readonly tests: TestsService,
     private readonly campaigns: CampaignsService,
+    /** GH244 — issues du type ; absent : aucune. */
+    private readonly issues?: IssuesService,
   ) {}
 
   async renameFields(repoPath: string, objectTypeRef: string, renames: FieldRename[]): Promise<FieldRenameResult> {
     const result = emptyFieldRenameResult()
     const valid = renames.filter(r => r.from && r.to && r.from !== r.to)
     if (valid.length === 0) return result
-    for (const service of [this.requirements, this.tests, this.campaigns]) {
+    for (const service of [this.requirements, this.tests, this.campaigns, ...(this.issues ? [this.issues] : [])]) {
       try {
         await service.renameFieldKeys(repoPath, objectTypeRef, valid, result)
       } catch (err) {
@@ -29,6 +33,10 @@ export class FieldRenameService {
         result.failed.push({ id: objectTypeRef, error: err instanceof Error ? err.message : String(err) })
       }
     }
+    // GH203 — colonnes des vues d'équipe du type (données versionnées, contrairement au `.pref`).
+    await renameFieldsInTeamViews(repoPath, objectTypeRef, valid).catch(err => {
+      result.failed.push({ id: objectTypeRef, error: err instanceof Error ? err.message : String(err) })
+    })
     return result
   }
 
@@ -45,6 +53,7 @@ export class FieldRenameService {
       () => this.requirements.rewriteObjects(repoPath, objectTypeRef, o => renameValues(o, valid), result),
       () => this.tests.rewriteObjects(repoPath, objectTypeRef, o => renameValues(o, valid), result),
       () => this.campaigns.rewriteObjects(repoPath, objectTypeRef, o => renameValues(o, valid), result),
+      () => this.issues?.rewriteObjects(repoPath, objectTypeRef, o => renameValues(o, valid), result) ?? Promise.resolve(),
       // Sans effet si le type n'est pas un type de test (aucune copie de ce type).
       () => this.campaigns.rewriteSnapshots(repoPath, objectTypeRef, t => renameValues(t, valid), result),
     ]
@@ -64,6 +73,7 @@ export class FieldRenameService {
       ...await this.requirements.findAll(repoPath, { type: objectTypeRef }),
       ...(await this.tests.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef),
       ...(await this.campaigns.list(repoPath)).filter(c => c.objectTypeRef === objectTypeRef),
+      ...(await this.issues?.findAll(repoPath) ?? []).filter(i => i.objectTypeRef === objectTypeRef),
     ]
     const valueOf = (o: HistoryCarrier, r: ValueRename) => (r.target.kind === 'status' ? o.status : o.fields?.[r.target.field])
     const multi = (r: ValueRename) => r.target.kind === 'field' && r.target.multi

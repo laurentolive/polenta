@@ -14,6 +14,10 @@ export function rowTargetRoute(target: RowTarget, projectId: string): { pathname
       return { pathname: `/test/${encodeURIComponent(target.id)}`, search: base }
     case 'campaign':
       return { pathname: `/campaign/${encodeURIComponent(target.id)}`, search: base }
+    case 'issue': {
+      const [node, type] = target.objectTypeRef.split('::')
+      return { pathname: '/product', search: { projectId, repo: target.repoName, node, type, category: 'issue', view: 'edit', item: target.id } }
+    }
     case 'campaign-entry':
       return target.executed
         ? { pathname: `/campaign/${encodeURIComponent(target.campaignId)}/run/${encodeURIComponent(target.entryId)}`, search: base }

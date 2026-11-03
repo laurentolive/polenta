@@ -1406,6 +1406,9 @@ par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, 
 - Le badge de mise à jour (GH26) reste ancré en bas, hors drag & drop et hors menu.
 - Pas de synchronisation en direct entre fenêtres : une autre fenêtre voit la modification au rechargement.
 
+**Panneau Issues (GH244)** : entrée de l'ActivityBar (`/product?category=issue`), même panneau (`SystemPanel`)
+et mêmes vues (`SystemView` : Tableau, Document, fiche) qu'Exigences et Tests ; origine en lecture seule sur la fiche.
+
 ### 19.3 Main frame — table des routes
 
 | Route | Contenu main frame | Panel déduit |

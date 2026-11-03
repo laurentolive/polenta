@@ -121,6 +121,7 @@ describe('GH74 — tools MCP du moteur de scripts', () => {
       workspaceTree: tree(),
       reqIndex: { invalidate: () => {} },
       testsIndex: { invalidate: () => {} },
+      issues: { invalidate: () => {} },
       dashboardLibrary: new DashboardLibraryService(git, tree()),
       scriptEngine: { run },
     } as unknown as McpContainer

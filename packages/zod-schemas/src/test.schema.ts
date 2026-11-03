@@ -72,6 +72,8 @@ export const ExecuteTestCaseSchema = z.object({
   campaignEntry: z.object({ campaignId: z.string().min(1), entryId: z.string().min(1) }).optional(),
   /** GH196 — valeurs des `runFields` (chaînes ou valeurs typées, converties par le main). */
   fields: z.record(z.string(), z.unknown()).optional(),
+  /** GH202 — version testée saisie (ID, label ou texte libre) et écarts par chemin de composant. */
+  testedVersion: z.object({ version: z.string(), components: z.record(z.string(), z.string()).optional() }).optional(),
 })
 
 export type CreateTestCaseDto = z.infer<typeof CreateTestCaseSchema>

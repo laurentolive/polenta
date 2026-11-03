@@ -88,7 +88,8 @@ export function statusValueLabels(statuses: SchemaStatus[]): Record<string, stri
 //                 testCaseIds[], runs[] — le champ statuses[] est ignoré pour cette catégorie
 //   version     — GH201 : id, title (label), status (isApproval = released, isTerminal = abandonnée),
 //                 basedOn, components, changes, freeze, fields{} ; un seul type, sur le nœud root
-export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'version'
+//   issue       — GH244 : id, title, status (from statuses[], sans verrou d'approbation), origin, fields{}
+export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'version' | 'issue'
 
 // Définition d'un type d'objet dans un composant.
 // Chaque définition est indépendante même si créée depuis le même template.
@@ -318,7 +319,7 @@ export interface TypeTree {
 /** GH100 — renommage d'un type d'objet (nom et/ou préfixe) avec migration de ses objets. */
 export interface TypeRenameDto {
   nodeName: string
-  category: 'requirement' | 'test' | 'campaign'
+  category: 'requirement' | 'test' | 'campaign' | 'issue'
   oldName: string
   newName: string
   oldPrefix: string
@@ -348,7 +349,7 @@ export interface SchemaDeletePlan {
   /** Refs `<nœud>::<type>` supprimées. */
   types: string[]
   /** IDs des objets supprimés (dans le repo du schéma), par catégorie. */
-  objects: { requirement: string[]; test: string[]; campaign: string[] }
+  objects: { requirement: string[]; test: string[]; campaign: string[]; issue: string[] }
   /** Liens supprimés, par repo du workspace (repos sans lien touché absents). */
   links: Array<{ repoPath: string; count: number }>
   /** Types de lien dont des refs sont retirées ; `emptied` : `sourceRefs` ou `targetRefs` devient vide. */

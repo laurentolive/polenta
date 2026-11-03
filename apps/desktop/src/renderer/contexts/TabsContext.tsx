@@ -118,6 +118,7 @@ const PANEL_LABEL_KEYS: Record<Panel, string> = {
   requirements: 'layout.activityBar.requirements',
   tests: 'layout.activityBar.tests',
   campaigns: 'layout.activityBar.campaigns',
+  issues: 'layout.activityBar.issues',
   dashboard: 'layout.activityBar.dashboard',
   parameters: 'layout.activityBar.parameters',
 }

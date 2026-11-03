@@ -50,6 +50,7 @@ product-aspirateur-v1/               ← repo produit principal
     ├── workspace.yaml                ← marque le dossier comme projet Polenta ouvrable
     ├── schema.yaml                   ← modèle de données du projet (nodes + objectTypes + linkTypes)
     ├── tombstones/                   ← un fichier vide par ID supprimé physiquement (GH20), jamais supprimé
+    ├── views/<nœud>/<type>.yaml      ← vues enregistrées d'équipe du ⚙️ (GH203), maintenu par l'app — ne pas éditer à la main
     └── trees/
         └── root/
             ├── exigence-systeme.yaml ← rangement curaté des SYS (un fichier par type d'objet ; objets absents = non classés)
@@ -94,6 +95,8 @@ specs/
 │   ├── SW/
 │   ├── HW/
 │   └── integration/
+├── versions/                        ← versions du composant (GH201), une par fichier : versions/<ID>.yaml
+├── issues/                          ← issues du composant (GH244), une par fichier : issues/<ID>.yaml
 ├── links/
 │   └── links.yaml                   ← tous les ObjectLink du projet
 ├── parameters/
@@ -126,7 +129,7 @@ nodes:
       - name: exigence-systeme
         label: Exigence Système
         prefix: SYS           # doit être unique sur tout le projet
-        category: requirement # requirement | test | campaign
+        category: requirement # requirement | test | campaign | version | issue
         fields:
           - name: priority
             label: Priorité
@@ -364,6 +367,7 @@ Ne pas définir la variable d'environnement `CLAUDE_CODE_SUBAGENT_MODEL` : elle 
 - Ne pas écrire ni corriger le champ `history` d'un objet à la main (GH77) — l'application l'alimente à chaque écriture
 - Ne pas supprimer une pierre tombale `.polenta/tombstones/<ID>`, ni supprimer à la main le fichier d'un objet (passer par l'application, qui pose la pierre tombale)
 - Ne pas éditer `.polenta/trees/<nœud>/<type>.yaml` manuellement dans un vrai projet — c'est l'application qui le maintient au fil des actions dans l'UI, pas un script
+- Ne pas éditer `.polenta/views/<nœud>/<type>.yaml` à la main (GH203) : même règle ; un fichier invalide bloque toutes les vues d'équipe du type
 - **Ne pas éditer `.gitmodules` manuellement** — il est généré par Polenta depuis `schema.nodes` (nœuds avec `url`) via `schema:save`
 - **Ne pas ajouter de `url` dans `schema.yaml` d'un repo composant** — un composant ne se référence pas lui-même comme submodule
 - **Ne pas utiliser de `objectTypeRef` cross-composant dans un repo composant** — uniquement dans le repo produit

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import type { ObjectLink, ObjectTypeDefinition, Requirement, TestCase } from '@polenta/types'
+import type { Issue, ObjectLink, ObjectTypeDefinition, Requirement, TestCase } from '@polenta/types'
 import type { FieldVisibilityPatch, FieldVisibilityPref } from '@polenta/api-client'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { api } from '../../api'
@@ -45,9 +45,9 @@ export function TestPickerGrid({
   typeRef: string
   typeDef: ObjectTypeDefinition
   /** Objets proposés de ce type (règles d'éligibilité appliquées par l'appelant). */
-  tests: Array<TestCase | Requirement>
+  tests: Array<TestCase | Requirement | Issue>
   /** Catégorie du type (`test` par défaut) : étapes et colonnes calculées. */
-  category?: 'test' | 'requirement'
+  category?: 'test' | 'requirement' | 'issue'
   username: string
   /** GH70 — projet ouvert (colonnes calculées : requêtes partagées du projet). */
   workspaceDir: string

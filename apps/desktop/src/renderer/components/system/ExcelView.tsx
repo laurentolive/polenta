@@ -2183,6 +2183,7 @@ function ExcelViewInner({
     },
     openLinkPopover: (nodeId, col, rect) => {
       if (selection) return // GH33 — lecture seule : liens affichés, pas éditables
+      if (!rows.find(r => r.node.id === nodeId)?.node.objectId) return // GH244 — ligne sans objet : rien à lier
       setActiveLinkPopover({ nodeId, col, top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 320) })
     },
     closeLinkPopover: () => setActiveLinkPopover(null),

@@ -38,7 +38,7 @@ export function useLiveFileSync(): void {
       // racine) : tout changement d'élément, de lien, de schéma ou de la liste des composants,
       // dans n'importe quel repo, les rend périmés.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
-        || /^(requirements|tests|links)\//.test(relPath)) {
+        || /^(requirements|tests|issues|links)\//.test(relPath)) {
         for (const key of WORKSPACE_LINK_QUERY_KEYS) qc.invalidateQueries({ queryKey: [key] })
         // Couverture calculée sur tout le workspace (clé indexée sur le repo affiché).
         qc.invalidateQueries({ queryKey: ['traceability-matrix'] })
@@ -48,7 +48,7 @@ export function useLiveFileSync(): void {
       // graphe agrège tout le workspace. Un changement de données (exécutions comprises), de ref
       // (avance rapide du pull automatique), de la bibliothèque projet ou d'un script de requête
       // (écrit hors de l'app, MCP) dans n'importe quel repo les rend périmés.
-      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|queries|dashboards\/lib)\//.test(relPath)) {
+      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|issues|queries|dashboards\/lib)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
@@ -56,7 +56,7 @@ export function useLiveFileSync(): void {
       // élément, le schéma ou les dépendances changent la page, le backlog et le statut de design ;
       // GH245 : les liens changent l'analyse d'impact, les campagnes les tests à exécuter.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
-        || /^(requirements|tests|versions|links|campaigns)\//.test(relPath)) {
+        || /^(requirements|tests|versions|issues|links|campaigns)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['versions'] })
       }
       // GH197 — historique des exécutions : runs, campagnes, tests et liens (couverture d'une exigence).
@@ -68,6 +68,8 @@ export function useLiveFileSync(): void {
       if (relPath === '*' || relPath.startsWith('test-runs/')) qc.invalidateQueries({ queryKey: ['test-runs'] })
       // GH74 — bandeau des mises à jour : requêtes des seeds (versions de modèle).
       if (relPath.startsWith('queries/')) qc.invalidateQueries({ queryKey: ['suivi-updates'] })
+      // GH203 — vues d'équipe : pull, autre onglet, résolution de conflit.
+      if (relPath === '*' || relPath.startsWith('.polenta/views/')) qc.invalidateQueries({ queryKey: ['saved-views'] })
 
       if (relPath === '*') {
         qc.invalidateQueries({ predicate: (q) => q.queryKey[1] === repoPath })
@@ -107,6 +109,18 @@ export function useLiveFileSync(): void {
             q.queryKey[0] === 'objects' && q.queryKey[1] === repoPath &&
             q.queryKey[3] === nodeId && q.queryKey[4] === typeId,
         })
+        return
+      }
+
+      // GH244 — issues : liste, fiche et vues.
+      const issueMatch = /^issues\/([^/]+)\.yaml$/.exec(relPath)
+      if (issueMatch) {
+        qc.invalidateQueries({ queryKey: ['issues', repoPath] })
+        qc.invalidateQueries({ queryKey: ['object', repoPath, 'issue', issueMatch[1]] })
+        qc.invalidateQueries({
+          predicate: (q) => q.queryKey[0] === 'objects' && q.queryKey[1] === repoPath && q.queryKey[2] === 'issue',
+        })
+        qc.invalidateQueries({ queryKey: ['tree', repoPath] })
         return
       }
 

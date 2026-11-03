@@ -17,8 +17,11 @@ import { ElementMoveService } from './services/element-move.service'
 import { CampaignsService } from './services/campaigns.service'
 import { VersionTrackingService } from './services/version-tracking.service'
 import { VersionsService } from './services/versions.service'
+import { IssuesService } from './services/issues.service'
+import { SavedViewsService } from './services/saved-views.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
+import { TestedConfigService } from './services/tested-config.service'
 import { TreeService, indexObjectLister } from './services/tree.service'
 import { BaselineService } from './services/baseline.service'
 import { PolentaRepoService } from './services/polenta-repo.service'
@@ -53,7 +56,7 @@ import type { HostContext } from './host/host-context'
 import type { PrintRenderer } from './host/print-renderer'
 
 /** GH74 — dossiers dont un changement invalide le graphe de données. */
-const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', 'versions/', '.polenta/', 'polenta-repo.yaml']
+const GRAPH_PATHS = ['requirements/', 'tests/', 'test-runs/', 'links/', 'campaigns/', 'versions/', 'issues/', '.polenta/', 'polenta-repo.yaml']
 
 /**
  * Instancie le noyau de services (GH44 : sans dépendance à Electron). L'hôte fournit ce qui
@@ -84,7 +87,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     if (relPath === '.polenta/schema.yaml' || relPath === '*') schema.invalidate(repoPath)
   })
   const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)
-  const tree = new TreeService(indexObjectLister(reqIndex, testsIndex))
+  const tree = new TreeService(indexObjectLister(reqIndex, testsIndex, p => issues.findAll(p)))
   // GH77 — historique des champs suivis ; `by` = compte du projet (login forge, sinon `local`).
   const history = new HistoryService(git, async repoPath => ({ by: await auth.projectUsername(repoPath) }))
   // T172 — marquage needsRevalidation des éléments liés quand un élément quitte l'approbation.
@@ -104,23 +107,35 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     git, sync, schema, new VersionTrackingService(git, schema), history, workspaceTree,
     (rootRepoPath, workspaceDir) => revalidation.readonlyRepoPaths(rootRepoPath, workspaceDir),
   )
+  // GH244 — issues ; index oublié dès qu'un fichier `issues/` change.
+  const issues = new IssuesService(git, schema, history, (repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
+  // GH203 — vues enregistrées du ⚙️.
+  const savedViews = new SavedViewsService((repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
+  watcher.onFileChange((repoPath, relPath) => {
+    if (relPath === '*') issues.invalidate(repoPath)
+    else issues.invalidateFile(repoPath, relPath)
+  })
   // GH105 — liens inter-repos : agrégation sur le workspace, écriture côté source.
-  const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns)
+  const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns, issues)
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
-  const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
+  // GH202 — version testée d'une exécution : versions proposées, copie dans le run, évolution.
+  const testedConfig = new TestedConfigService(versions, sync, tests, campaigns)
+  tests.setTestedConfig(testedConfig)
+  const campaignExecution = new CampaignExecutionService(campaigns, tests, auth, testedConfig)
   // GH197 — historique des exécutions d'un test ou d'une exigence.
-  const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
-  const elementMove = new ElementMoveService(schema, requirements, tests, tree)
+  const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements, testedConfig)
+  const elementMove = new ElementMoveService(schema, requirements, tests, tree, issues)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
-  const fieldRename = new FieldRenameService(requirements, tests, campaigns)
+  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues)
   // GH100 — renommage d'un type (nom / préfixe) : migration de ses objets dans tout le workspace.
   const typeRename = new TypeRenameService(
-    requirements, tests, campaigns, tree, schema, [reqIndex, testsIndex],
+    requirements, tests, campaigns, tree, schema, [reqIndex, testsIndex, issues],
     (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
+    issues,
   )
   // GH104 — suppression en cascade d'un composant local ou d'un type (objets, liens, arbres, refs).
   const schemaDelete = new SchemaDeleteService(
-    git, { requirements, tests, campaigns, versions }, reqIndex, tree, schema, [reqIndex, testsIndex],
+    git, { requirements, tests, campaigns, versions, issues }, reqIndex, tree, schema, [reqIndex, testsIndex, issues],
     (repoPath, workspaceDir) => resolveWorkspaceRepoPaths(workspaceTree, repoPath, workspaceDir),
     async workspaceDir => {
       const cache = workspaceDir ? await workspaceTree.readCache(workspaceDir) : null
@@ -135,6 +150,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // repo composant), avant que le renderer ne soit notifié (abonnés appelés dans l'ordre).
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns)
   graph.setVersions(versions)
+  graph.setIssues(issues)
   versions.setImpactSources({ traceability, campaigns })
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
@@ -161,7 +177,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged(), host.applyNetworkTimeout)
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH222 — enregistrement depuis la vue de diff (service de l'objet pour une exigence / un test).
-  const diffEdit = new DiffEditService(requirements, tests, schema)
+  const diffEdit = new DiffEditService(requirements, tests, schema, issues)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
   const exportSvc = new ExportService(
@@ -178,6 +194,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     workspace,
     reqIndex,
     testsIndex,
+    issues,
     requirements,
     tests,
     traceability,
@@ -189,6 +206,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     versions,
     campaignExecution,
     executionHistory,
+    testedConfig,
     tree,
     baseline,
     polentaRepo,
@@ -200,6 +218,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     suivi,
     suiviUpdates,
     savedQueries,
+    savedViews,
     dashboards,
     dashboardSeed,
     export: exportSvc,

@@ -13,6 +13,7 @@ import { RevalidationService } from '../main/services/revalidation.service'
 import { CampaignsService } from '../main/services/campaigns.service'
 import { VersionTrackingService } from '../main/services/version-tracking.service'
 import { VersionsService } from '../main/services/versions.service'
+import { IssuesService } from '../main/services/issues.service'
 import { TraceabilityService } from '../main/services/traceability.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
@@ -38,6 +39,8 @@ export interface McpContainer {
   campaigns: CampaignsService
   /** GH201 — versions, en lecture seule côté MCP. */
   versions: VersionsService
+  /** GH244 — issues : lecture et écriture. */
+  issues: IssuesService
   workspaceTree: WorkspaceTreeService
   /** GH16 — exposés pour invalider le cache quand un ID est introuvable (objet créé par
    *  l'app après construction de l'index : ce process n'a pas de RepoWatcherService). */
@@ -131,17 +134,19 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   )
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns, { cache: false })
   graph.setVersions(versions)
+  const issues = new IssuesService(git, schema, history, (r, wsDir) => versions.isReadonly(r, wsDir))
+  graph.setIssues(issues)
   versions.setImpactSources({ traceability, campaigns })
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)
   const scriptEngine = new ScriptEngineService(graph, dashboardLibrary)
   const suivi = new SuiviService(scriptEngine, graph, savedQueries, dashboards, schema, workspaceTree)
-  const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns)
+  const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns, issues)
   // GH150 — sans ReqRefsService : les références `{req.<champ>}` restent littérales (lecture seule,
   // sans effet sur les écritures de paramètres).
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
   return {
-    repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, workspaceTree, reqIndex, testsIndex,
+    repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, issues, workspaceTree, reqIndex, testsIndex,
     user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters,
   }
 }

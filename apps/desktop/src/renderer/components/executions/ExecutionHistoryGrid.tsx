@@ -2,11 +2,12 @@ import { Fragment, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { fieldValueToText, isOpenCampaignStatus, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue } from '@polenta/types'
+import { fieldValueToText, isOpenCampaignStatus, testedDeviations, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue, type TestedConfigNode } from '@polenta/types'
 import type { FieldVisibilityPref } from '@polenta/api-client'
 import { api } from '../../api'
 import { RichTextViewer } from '../RichTextViewer'
 import { RunFieldValue } from '../runs/RunFieldValues'
+import { driftText, testedValueText } from './TestedConfigView'
 import {
   availableColumns, defaultExecutionColumns, isSortable, sortValue, unionRunFields, type ExecutionColumn, type ExecutionColumnGroup,
 } from './executionColumns'
@@ -30,6 +31,14 @@ const VERDICT_CLASS: Record<string, string> = {
   NOT_EXECUTED: 'bg-status-neutral-bg text-status-neutral',
 }
 const GROUPS: ExecutionColumnGroup[] = ['execution', 'campaign', 'entry', 'test']
+
+/** GH202 — composants de la copie, à plat : `chemin = valeur`. */
+function structureLines(node: TestedConfigNode, prefix = ''): string[] {
+  return Object.entries(node.components ?? {}).flatMap(([name, child]) => {
+    const path = prefix ? `${prefix}/${name}` : name
+    return [`${path} = ${testedValueText(child)}`, ...structureLines(child, path)]
+  })
+}
 
 interface Props {
   repoPath: string
@@ -138,6 +147,37 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
       }
       case 'testVersion': return row.entry?.testVersion !== undefined ? `v${row.entry.testVersion}` : ''
       case 'carriedFrom': return row.entry?.carriedFrom ? `${row.entry.carriedFrom.campaignId} / ${row.entry.carriedFrom.entryId}` : ''
+      case 'testedVersion': {
+        const config = run?.testedConfig
+        if (!run) return ''
+        if (!config) return <span className="text-ink-3">—</span>
+        return (
+          <span className="inline-flex items-center gap-1 flex-wrap">
+            {config.ref
+              ? <button type="button" className="text-status-info hover:underline" onClick={() => void navigate({ to: '/version/$versionId', params: { versionId: config.ref! }, search: { projectId: projectId ?? '', repoPath: row.testedRepoPath ?? repoPath } } as never)}>{testedValueText(config)}</button>
+              : <span className="px-1 rounded bg-status-danger-bg text-status-danger">{config.undocumented}</span>}
+            {row.testedDrift && (
+              <span className="text-[10px] px-1 rounded bg-status-warning-bg text-status-warning" data-testid="execution-tested-evolved"
+                title={row.testedDrift.map(d => driftText(t, d)).join('\n')}>{t('testedConfig.evolved')}</span>
+            )}
+          </span>
+        )
+      }
+      case 'testedStructure': return run?.testedConfig ? structureLines(run.testedConfig).join('\n') : ''
+      case 'testedCommit': return run?.testedConfig?.commit ? <span className="font-mono" title={run.testedConfig.commit}>{run.testedConfig.commit.slice(0, 7)}</span> : ''
+      case 'testedDeviations': {
+        if (!run?.testedConfig) return ''
+        return (
+          <span className="flex flex-col gap-0.5">
+            {testedDeviations(run.testedConfig).map(({ path, node }) => (
+              <span key={path} className={`px-1 rounded ${node.undocumented ? 'bg-status-danger-bg text-status-danger' : 'bg-status-warning-bg text-status-warning'}`}>
+                {path ? `${path} : ` : ''}{testedValueText(node)}
+                {node.expected !== undefined && ` (${t('testedConfig.expected', { ref: node.expected ?? t('testedConfig.none') })})`}
+              </span>
+            ))}
+          </span>
+        )
+      }
       case 'test': return <span title={row.testTitle}><span className="font-mono">{row.testCaseId}</span> — {row.testTitle}</span>
       default: {
         if (c.key.startsWith('run:')) {

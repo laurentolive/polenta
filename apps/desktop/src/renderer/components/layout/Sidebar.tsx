@@ -32,7 +32,7 @@ export function Sidebar({ activePanel, currentProjectId, width, collapsed }: Pro
       {activePanel === 'version' && currentProjectId && (
         <VersionPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
-      {(activePanel === 'requirements' || activePanel === 'tests' || activePanel === 'campaigns') && currentProjectId && (
+      {(activePanel === 'requirements' || activePanel === 'tests' || activePanel === 'campaigns' || activePanel === 'issues') && currentProjectId && (
         <SystemPanel currentProjectId={currentProjectId} projectId={currentProjectId} />
       )}
       {activePanel === 'dashboard' && currentProjectId && (

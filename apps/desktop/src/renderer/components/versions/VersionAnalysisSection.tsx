@@ -208,6 +208,7 @@ function RootRow({ root, repoPath, rootRepo, defaultExpanded, readOnly, onOpen, 
         <span className="font-mono text-[10px] text-ink-3 border border-edge-subtle rounded px-1 shrink-0">{root.elementType === 'requirement' ? 'EX' : 'TC'}</span>
         <button type="button" onClick={() => onOpen(root.elementType, root.elementId, rootRepo)} className="font-mono text-ink font-medium hover:underline">{root.elementId}</button>
         <span className="text-ink-2 truncate flex-1">{root.title}</span>
+        {root.viaIssues && <span className="text-xs text-ink-3 shrink-0" data-testid={`version-impact-via-${root.elementId}`}>{t('versions.analysis.viaIssues', { ids: root.viaIssues.join(', ') })}</span>}
         <span className="text-xs text-ink-3">{root.component}</span>
         {!hasTrees && <span className="text-xs text-ink-3">{t('versions.analysis.noImpact')}</span>}
       </div>

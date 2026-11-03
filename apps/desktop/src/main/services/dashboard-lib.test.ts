@@ -147,7 +147,7 @@ describe('GH74 — campaignsTimeline', () => {
         createdAt: '2026-10-01T08:00:00Z', completedAt: null, removedEntries: [],
         entries: [{ entryId: 'E', testCaseId: 'T', requirementId: null, status: 'PASS', addedAt: '2026-10-01T08:00:00Z', runId: 'R', executedAt: '2026-10-02T23:30:00Z', executedBy: null, carriedFrom: null, snapshot: null, resyncable: false }],
       }],
-      runs: [{ id: 'R', repo: 'r', testCaseId: 'T', campaignEntry: { campaignId: 'C', entryId: 'E' }, requirementId: null, result: 'PASS', executedAt: '2026-10-02T23:30:00Z', executedBy: 'x', duration: 0, origin: null, fields: {}, notes: '', stepResults: [] }],
+      runs: [{ id: 'R', repo: 'r', testCaseId: 'T', campaignEntry: { campaignId: 'C', entryId: 'E' }, requirementId: null, result: 'PASS', executedAt: '2026-10-02T23:30:00Z', executedBy: 'x', duration: 0, origin: null, fields: {}, notes: '', stepResults: [], testedConfig: null }],
     }
     const script = timeline('C', '2026-10-02', '2026-10-03')
     expect(counts(run(script, 'UTC', null, JSON.stringify(mini)))).toEqual({ '2026-10-02': { PASS: 1 }, '2026-10-03': { PASS: 1 } })

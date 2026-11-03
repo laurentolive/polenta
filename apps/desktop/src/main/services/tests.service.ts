@@ -13,6 +13,7 @@ import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
 import { applyFieldsWrite, FieldWriteError, readOwnedTypeDef } from './field-write.util'
 import { assertContentEditable, versionBump } from './approved-lock.util'
+import type { TestedConfigService } from './tested-config.service'
 
 /** GH200 — champs de contenu d'un test, verrouillés quand il est approuvé (`objectTypeRef` : cascade système). */
 const TEST_CONTENT_KEYS = ['title', 'fields', 'preconditions', 'equipment', 'steps', 'postconditions'] as const
@@ -25,6 +26,13 @@ export class TestsService {
     private readonly revalidation?: RevalidationService,
     private readonly history?: HistoryService,
   ) {}
+
+  private testedConfig?: Pick<TestedConfigService, 'resolve'>
+
+  /** GH202 — copie de la version testée (injectée après construction : le service lit les runs d'ici). */
+  setTestedConfig(service: Pick<TestedConfigService, 'resolve'>): void {
+    this.testedConfig = service
+  }
 
   findAll(repoPath: string): Promise<TestCase[]> {
     return this.testsIndex.findAll(repoPath)
@@ -231,6 +239,12 @@ export class TestsService {
     const prepared = prepareRunFields(typeDef, { result, fields: dto.fields, stepResults })
     if (!prepared.ok) throw new FieldWriteError(prepared.field, prepared.reason)
 
+    // GH202 — version du repo de la campagne (`repoPath`), même pour un test de composant. L'import du
+    // classeur a son propre contrôle : un classeur sans ces colonnes reste accepté.
+    const testedConfig = entry && this.testedConfig
+      ? await this.testedConfig.resolve(repoPath, dto.testedVersion, workspaceDir, { required: dto.origin !== 'excel-import' })
+      : undefined
+
     const run: TestRun = {
       id: runId,
       testCaseId,
@@ -252,6 +266,7 @@ export class TestsService {
       notes: dto.notes ?? '',
       ...(dto.origin && { origin: dto.origin }),
       ...(prepared.fields && { fields: prepared.fields }),
+      ...(testedConfig && { testedConfig }),
     }
 
     await this.git.writeYaml(targetRepo, `test-runs/${testCaseId}/${runId}.yaml`, run)

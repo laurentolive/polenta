@@ -13,6 +13,7 @@ import { toIntlLocale } from '../i18n/useLocale'
 import { useTestTypeDef } from '../hooks/useTestTypeDef'
 import { decodeProjectId } from '../lib/projectId'
 import { RunFieldValues } from '../components/runs/RunFieldValues'
+import { TestedConfigView } from '../components/executions/TestedConfigView'
 import type { StepResultValue, TestRunResult } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId_/run/$testId')({
@@ -218,6 +219,11 @@ function TestRunViewPage() {
               <RichTextViewer value={runText(tc.postconditions)} repoPath={repoPath} />
             </div>
           </div>
+        )}
+
+        {/* GH202 — version testée, copie figée dans le run */}
+        {run?.testedConfig && (
+          <TestedConfigView repoPath={repoPath} config={run.testedConfig} workspaceDir={projectId ? decodeProjectId(projectId) : undefined} />
         )}
 
         {/* GH196 — champs d'exécution (listés même vides : le type en déclare) */}

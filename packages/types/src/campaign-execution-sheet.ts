@@ -1,6 +1,7 @@
 import type { CampaignStatus, TestRunStatus } from './campaign'
 import type { StepResultValue, TestRunResult } from './test'
 import type { SchemaField } from './schema'
+import type { TestedConfigChoice } from './tested-config'
 
 // GH36 — classeur Excel d'exécution hors outil (export d'une campagne, saisie par les testeurs,
 // réimport des résultats). Format natif fixe : la lecture se fait par position de colonne et par
@@ -9,11 +10,12 @@ import type { SchemaField } from './schema'
 
 /** GH81 — v2 : empreinte de la version exportée par instance (feuille `_polenta`). GH196 — v3 :
  *  colonnes des champs d'exécution / d'étape après « Commentaire », carte des colonnes (`columns`)
- *  dans `_polenta` ; la lecture d'un v3 se fait par cette carte. */
-export const EXECUTION_SHEET_FORMAT_VERSION = 3
+ *  dans `_polenta` ; la lecture d'un v3 se fait par cette carte. GH202 — v4 : colonnes de la version
+ *  testée (`tested:`, `tested:<chemin>`). */
+export const EXECUTION_SHEET_FORMAT_VERSION = 4
 /** GH81 — versions relues à l'import ; v1 : pas d'empreinte, pas de contrôle « test modifié » ;
  *  v1 / v2 : colonnes fixes, sans champs d'exécution. */
-export const EXECUTION_SHEET_SUPPORTED_VERSIONS: readonly number[] = [1, 2, 3]
+export const EXECUTION_SHEET_SUPPORTED_VERSIONS: readonly number[] = [1, 2, 3, 4]
 
 /** GH196 — colonne d'un champ d'exécution (`run:<nom>`) ou d'étape (`step:<nom>`) du classeur v3. */
 export interface ExecutionSheetFieldColumn {
@@ -24,6 +26,20 @@ export interface ExecutionSheetFieldColumn {
 
 export function executionFieldColumnId(list: 'runFields' | 'stepFields', name: string): string {
   return `${list === 'runFields' ? 'run' : 'step'}:${name}`
+}
+
+/** GH202 — colonne de la version testée : `tested:` pour la version, `tested:<chemin>` pour un composant. */
+export const TESTED_COLUMN_PREFIX = 'tested:'
+
+export function testedColumnId(path: string): string {
+  return `${TESTED_COLUMN_PREFIX}${path}`
+}
+
+export interface ExecutionSheetTestedColumn {
+  id: string
+  label: string
+  /** Labels proposés dans la liste déroulante ; une autre valeur reste permise (écart non documenté). */
+  list: string[]
 }
 
 export type ExecutionSheetLocale = 'fr' | 'en'
@@ -54,6 +70,9 @@ export interface ExecutionSheetLabels {
   banner: string
   exportedAt: string
   baseline: string
+  testedVersion: string
+  testedVersionNote: string
+  testedComponentNote: string
   preconditions: string
   postconditions: string
   testNotFound: string
@@ -86,6 +105,9 @@ export const EXECUTION_SHEET_LABELS: Record<ExecutionSheetLocale, ExecutionSheet
     banner: 'Remplir uniquement les cases en jaune (Verdict, Testeur, Date, Commentaire, champs d’exécution). Ne pas modifier les autres colonnes ni supprimer de lignes : le fichier sera réimporté dans Polenta.',
     exportedAt: 'Exporté le',
     baseline: 'Baseline',
+    testedVersion: 'Version testée',
+    testedVersionNote: 'Label ou ID de la version. Une autre valeur est retenue comme écart non documenté.',
+    testedComponentNote: 'Vide : la composition de la version testée. Une valeur saisie est un écart.',
     preconditions: 'Préconditions',
     postconditions: 'Postconditions',
     testNotFound: '(test introuvable)',
@@ -114,6 +136,9 @@ export const EXECUTION_SHEET_LABELS: Record<ExecutionSheetLocale, ExecutionSheet
     banner: 'Fill in only the yellow cells (Verdict, Tester, Date, Comment, run fields). Do not change other columns or delete rows: the file will be re-imported into Polenta.',
     exportedAt: 'Exported on',
     baseline: 'Baseline',
+    testedVersion: 'Tested version',
+    testedVersionNote: 'Version label or ID. Any other value is kept as an undocumented deviation.',
+    testedComponentNote: 'Empty: the composition of the tested version. A value entered is a deviation.',
     preconditions: 'Preconditions',
     postconditions: 'Postconditions',
     testNotFound: '(test not found)',
@@ -166,6 +191,8 @@ export type ExecutionImportInstanceError =
   | { code: 'invalid_field_value'; row: number; field: string; message: string }
   /** GH196 — champ d'exécution / d'étape obligatoire vide (`message` : champ et condition). */
   | { code: 'required_field_missing'; row: number; field: string; message: string }
+  /** GH202 — version testée obligatoire, vide sur la ligne de l'instance. */
+  | { code: 'tested_version_missing'; row: number }
 
 export interface ImportedInstance {
   entryId: string
@@ -185,12 +212,16 @@ export interface ImportedInstance {
   stepResults: { order: number; result: StepResultValue; comment: string; fields?: Record<string, unknown> }[]
   /** GH196 — champs d'exécution convertis (absent si aucun). */
   fields?: Record<string, unknown>
+  /** GH202 — version testée saisie ; absent : classeur sans ces colonnes. */
+  testedVersion?: TestedConfigChoice
 }
 
 export type ExecutionImportWarning =
   | { code: 'row_without_key'; row: number }
   /** GH68 — instance importable dont la copie du test n'est pas dans un statut d'approbation. */
   | { code: 'test_not_approved'; entryId: string; status: string }
+  /** GH202 — valeur qui ne correspond à aucune version : écart non documenté (faute de frappe ?). */
+  | { code: 'tested_version_undocumented'; entryId: string; path: string; value: string }
 
 export interface ExecutionImportPreview {
   filePath: string

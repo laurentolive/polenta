@@ -125,6 +125,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
     repoPath: string,
     campaignId: string,
     locale: ExecutionSheetLocale,
+    workspaceDir?: string,
   ): Promise<ExportResult> => {
     const today = new Date().toISOString().slice(0, 10)
     const saveResult = await dialog.showSaveDialog({
@@ -133,7 +134,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
       filters: [EXPORT_DIALOG_FILTERS.xlsx],
     })
     if (saveResult.canceled || !saveResult.filePath) return { status: 'canceled' }
-    return saveExecutionSheet(c, saveResult.filePath, repoPath, campaignId, locale)
+    return saveExecutionSheet(c, saveResult.filePath, repoPath, campaignId, locale, workspaceDir)
   })
   // GH36 sprint 2 — import : choix du fichier puis aperçu (aucune écriture) ; l'application relit
   // le fichier et revalide contre l'état courant de la campagne.
@@ -141,6 +142,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
     _e,
     repoPath: string,
     campaignId: string,
+    workspaceDir?: string,
   ): Promise<ExecutionImportPreview | { canceled: true }> => {
     const result = await dialog.showOpenDialog({
       title: 'Importer des résultats d’exécution',
@@ -148,7 +150,7 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
       properties: ['openFile'],
     })
     if (result.canceled || result.filePaths.length === 0) return { canceled: true }
-    return c.campaignExecution.preview(repoPath, campaignId, result.filePaths[0])
+    return c.campaignExecution.preview(repoPath, campaignId, result.filePaths[0], workspaceDir)
   })
 
   // ── Dialog ───────────────────────────────────────────────────────────────────

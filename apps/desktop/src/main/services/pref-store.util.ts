@@ -27,6 +27,20 @@ export function writePref(repoPath: string, username: string, data: Record<strin
   fs.writeFileSync(prefPath(repoPath, username), JSON.stringify(data, null, 2), 'utf-8')
 }
 
+/** Remplace l'entrée `fieldVisibility[typeKey]` par le résultat de `change` ; une entrée vidée est retirée. */
+export function updateFieldVisibilityEntry(
+  repoPath: string, username: string, typeKey: string,
+  change: (entry: Record<string, unknown>) => Record<string, unknown>,
+): void {
+  const pref = readPref(repoPath, username)
+  const visibility = (pref['fieldVisibility'] as Record<string, Record<string, unknown>> | undefined) ?? {}
+  const next = change({ ...visibility[typeKey] })
+  if (Object.keys(next).length > 0) visibility[typeKey] = next
+  else delete visibility[typeKey]
+  pref['fieldVisibility'] = visibility
+  writePref(repoPath, username, pref)
+}
+
 /**
  * GH167 — `*.pref` is only written to `.gitignore` when Polenta creates the project or a node
  * (`workspace.service.ts`, `schema.service.ts`): a cloned/adopted/older repo lacks it, and the

@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { FileDiff, X } from 'lucide-react'
 import type { VersionChangeRow } from '@polenta/types'
+import { useSystemView } from '../../contexts/SystemViewContext'
 import { useRangeSelection } from './useVersions'
 
 /** GH201 §5 — changements d'une version (les siens, puis ceux des versions des composants). */
@@ -14,6 +15,7 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { objectPage } = useSystemView()
   const ownIds = useMemo(() => rows.filter(r => r.own).map(r => r.id), [rows])
   const { selected, toggle, allSelected, toggleAll } = useRangeSelection(ownIds)
   if (rows.length === 0) return <p className="text-xs text-ink-3 italic">{t('versions.page.noChanges')}</p>
@@ -21,6 +23,11 @@ export function VersionChangesTable({ rows, projectId, onRemove }: {
   const openElement = (r: VersionChangeRow) => {
     if (r.category === 'requirement') void navigate({ to: '/req/$reqId', params: { reqId: r.id }, search: { repoPath: r.repoPath, projectId, component: undefined, level: undefined } })
     else if (r.category === 'test') void navigate({ to: '/test/$testId', params: { testId: r.id }, search: { repoPath: r.repoPath, projectId, component: undefined, level: undefined } })
+    else if (r.category === 'issue' && r.objectTypeRef) {
+      const [nodeId, typeId] = r.objectTypeRef.split('::')
+      const page = objectPage(r.repoPath, nodeId, typeId, 'edit', r.id, 'issue')
+      void navigate({ to: page.pathname as never, search: page.search as never })
+    }
   }
   const openDiff = (r: VersionChangeRow) => {
     if (!r.filePath) return

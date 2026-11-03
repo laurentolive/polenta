@@ -1,12 +1,13 @@
 import * as path from 'path'
 import ExcelJS from 'exceljs'
 import {
-  EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_HEADER_ROW, EXECUTION_SHEET_META_NAME, EXECUTION_SHEET_SUPPORTED_VERSIONS,
-  convertFieldValue, executionFieldColumnId, parseGlobalVerdict, parseStepVerdict, prepareRunFields,
+  EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_HEADER_ROW, EXECUTION_SHEET_META_NAME, EXECUTION_SHEET_SUPPORTED_VERSIONS, TESTED_COLUMN_PREFIX,
+  convertFieldValue, executionFieldColumnId, parseGlobalVerdict, parseStepVerdict, prepareRunFields, selectableVersions, testedColumnId,
+  testedUndocumented,
 } from '@polenta/types'
 import type {
   ExecutionImportFatal, ExecutionImportInstanceError, ExecutionImportPreview, ExecutionSheetColumn,
-  ImportedInstance, ObjectTypeDefinition, SchemaField, StepResultValue, TestCampaign, TestCase, TestRunResult,
+  ImportedInstance, ObjectTypeDefinition, SchemaField, StepResultValue, TestCampaign, TestCase, TestRunResult, TestedRepoOptions,
 } from '@polenta/types'
 import { readLinkCell } from './link-cell.util'
 
@@ -27,6 +28,8 @@ export interface RawExecutionRow {
   comment: string
   /** GH196 — cellules des colonnes de champ (v3), par id de colonne (`run:<nom>` / `step:<nom>`). */
   fields: Record<string, { value: ExcelJS.CellValue; address: string }>
+  /** GH202 — cellules non vides de la version testée (v4), par id de colonne (`tested:…`). */
+  tested?: Record<string, string>
 }
 
 export interface RawExecutionSheet {
@@ -38,6 +41,8 @@ export interface RawExecutionSheet {
   rows: RawExecutionRow[]
   /** Lignes sans clé technique mais avec une saisie (ajoutées par le testeur). */
   rowsWithoutKey: number[]
+  /** GH202 — le classeur porte les colonnes de la version testée (v4). */
+  hasTestedColumns?: boolean
 }
 
 /** Lettre de colonne Excel (1 → A, 27 → AA), pour nommer une cellule dans un message. */
@@ -129,7 +134,10 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
   // La carte ne vaut que pour un classeur v3 ; v1 / v2 : ordre fixe des colonnes.
   if (Number(props.get('formatVersion')) < 3) columnIds = [...EXECUTION_SHEET_COLUMNS]
   const { rows, rowsWithoutKey } = readSheetRows(sheet, columnIds)
-  return { formatVersion: props.get('formatVersion') ?? '', campaignId, instances, rows, rowsWithoutKey }
+  return {
+    formatVersion: props.get('formatVersion') ?? '', campaignId, instances, rows, rowsWithoutKey,
+    hasTestedColumns: columnIds.includes(testedColumnId('')),
+  }
 }
 
 /**
@@ -139,6 +147,7 @@ export async function readExecutionWorkbook(filePath: string): Promise<RawExecut
 export function readSheetRows(sheet: ExcelJS.Worksheet, columnIds: string[]): { rows: RawExecutionRow[]; rowsWithoutKey: number[] } {
   const col = (c: ExecutionSheetColumn) => columnIds.indexOf(c) + 1
   const fieldColumns = columnIds.map((id, i) => ({ id, index: i + 1 })).filter(c => c.id.startsWith('run:') || c.id.startsWith('step:'))
+  const testedColumns = columnIds.map((id, i) => ({ id, index: i + 1 })).filter(c => c.id.startsWith(TESTED_COLUMN_PREFIX))
   const rows: RawExecutionRow[] = []
   const rowsWithoutKey: number[] = []
   for (let r = EXECUTION_SHEET_HEADER_ROW + 1; r <= sheet.rowCount; r++) {
@@ -147,6 +156,11 @@ export function readSheetRows(sheet: ExcelJS.Worksheet, columnIds: string[]): { 
     for (const fc of fieldColumns) {
       const value = row.getCell(fc.index).value
       if (value !== null && value !== undefined && cellText(value).trim() !== '') fields[fc.id] = { value, address: `${columnLetter(fc.index)}${r}` }
+    }
+    const tested: Record<string, string> = {}
+    for (const tc of testedColumns) {
+      const text = cellText(row.getCell(tc.index).value).trim()
+      if (text) tested[tc.id] = text
     }
     const get = (c: ExecutionSheetColumn) => cellText(row.getCell(col(c)).value).trim()
     const key = get('key')
@@ -160,6 +174,7 @@ export function readSheetRows(sheet: ExcelJS.Worksheet, columnIds: string[]): { 
       // Pas de trim des lignes intérieures : le commentaire garde sa mise en page.
       comment: cellText(row.getCell(col('comment')).value).replace(/\r\n?/g, '\n').trim(),
       fields,
+      ...(Object.keys(tested).length > 0 && { tested }),
     }
     if (key) rows.push(raw)
     else if (raw.verdict || raw.tester || raw.date !== null || raw.comment) rowsWithoutKey.push(r)
@@ -188,6 +203,8 @@ export function instanceSignature(rows: RawExecutionRow[]): string {
   return JSON.stringify(sorted.map(r => [
     r.key, r.verdict, r.tester, signatureValue(r.date), r.comment,
     Object.keys(r.fields).sort().map(id => [id, signatureValue(r.fields[id].value)]),
+    // GH202 — seulement si présentes : la signature d'un classeur v3 reste inchangée.
+    ...(r.tested ? [Object.keys(r.tested).sort().map(id => [id, r.tested![id]])] : []),
   ]))
 }
 
@@ -211,6 +228,8 @@ export interface ExecutionImportContext {
   fingerprint?: (test: TestCase) => string
   /** GH196 — type du test de chaque entrée (champs d'exécution / d'étape) ; absent : champs ignorés. */
   typeDefs?: Map<string, Pick<ObjectTypeDefinition, 'runFields' | 'stepFields'> | null>
+  /** GH202 — versions proposées : version obligatoire si l'une est sélectionnable, écarts signalés. */
+  testedOptions?: TestedRepoOptions
 }
 
 export function validateExecutionImport(
@@ -260,10 +279,16 @@ export function validateExecutionImport(
       preview.unfilledCount++
       continue
     }
-    const result = validateInstance(entryId, group, metaById.get(entryId), ctx)
+    const result = validateInstance(entryId, group, metaById.get(entryId), ctx, !!sheet.hasTestedColumns)
     if ('error' in result) preview.errors.push({ entryId, error: result.error })
     else {
       preview.importable.push(result.instance)
+      // GH202 — valeur sans version correspondante : écart non documenté, à relire (faute de frappe ?).
+      if (ctx.testedOptions && result.instance.testedVersion) {
+        for (const { path, value } of testedUndocumented(ctx.testedOptions, result.instance.testedVersion)) {
+          preview.warnings.push({ code: 'tested_version_undocumented', entryId, path, value })
+        }
+      }
       // GH68 — exécution d'un test non approuvé : signalée, pas refusée ; jugée sur la version
       // effective (GH81 : live pour une instance resynchronisable, copie sinon, live pré-T49).
       const test = ctx.effectiveTests?.get(entryId)?.test
@@ -291,6 +316,7 @@ function validateInstance(
   group: { instance?: RawExecutionRow; steps: { order: number; row: RawExecutionRow }[] },
   meta: RawExecutionSheet['instances'][number] | undefined,
   ctx: ExecutionImportContext,
+  hasTestedColumns: boolean,
 ): { instance: ImportedInstance } | { error: ExecutionImportInstanceError } {
   const run = ctx.campaign.runs.find(r => r.entryId === entryId)
   if (!run || !meta) return { error: { code: 'entry_not_found' } }
@@ -390,6 +416,16 @@ function validateInstance(
     prepared.stepFields.forEach((fields, i) => { if (fields) stepResults[i].fields = fields })
   }
 
+  // GH202 — version testée : obligatoire dans un classeur qui porte ces colonnes, si une version reste sélectionnable.
+  const testedCells = head.tested ?? {}
+  const testedValue = testedCells[testedColumnId('')] ?? ''
+  if (hasTestedColumns && !testedValue && (!ctx.testedOptions || selectableVersions(ctx.testedOptions).length > 0)) {
+    return { error: { code: 'tested_version_missing', row: head.row } }
+  }
+  const testedComponents = Object.fromEntries(Object.entries(testedCells)
+    .filter(([id]) => id !== testedColumnId(''))
+    .map(([id, value]) => [id.slice(TESTED_COLUMN_PREFIX.length), value]))
+
   const title = run.testSnapshot?.title ?? head.text.split(' — ').slice(1).join(' — ')
   return {
     instance: {
@@ -405,6 +441,9 @@ function validateInstance(
       notes: plainTextToMarkdown(head.comment),
       stepResults,
       ...(runFields && { fields: runFields }),
+      ...(testedValue && {
+        testedVersion: { version: testedValue, ...(Object.keys(testedComponents).length > 0 && { components: testedComponents }) },
+      }),
     },
   }
 }

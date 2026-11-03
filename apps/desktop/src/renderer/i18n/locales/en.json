@@ -26,6 +26,7 @@
       "requirements": "Requirements",
       "tests": "Tests",
       "campaigns": "Campaigns",
+      "issues": "Issues",
       "parameters": "Parameters",
       "search": "Search",
       "version": "Version",
@@ -540,7 +541,8 @@
       "version": "Version",
       "displayIdField": "ID shown in links",
       "displayIdPolenta": "Polenta ID",
-      "displayIdTitle": "Title"
+      "displayIdTitle": "Title",
+      "issue": "Issue"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -693,7 +695,9 @@
         "test_one": "{{count}} test deleted (and its runs):",
         "test_other": "{{count}} tests deleted (and their runs):",
         "campaign_one": "{{count}} campaign deleted:",
-        "campaign_other": "{{count}} campaigns deleted:"
+        "campaign_other": "{{count}} campaigns deleted:",
+        "issue_one": "{{count}} issue deleted:",
+        "issue_other": "{{count}} issues deleted:"
       },
       "more": "… and {{count}} more",
       "links_one": "{{count}} link deleted:",
@@ -795,6 +799,35 @@
       "createItemHere": "Create an element here",
       "createFirstElement": "Create the first element"
     },
+    "savedViews": {
+      "menu": "Views",
+      "menuTitle": "Saved views",
+      "modified": "modified",
+      "groupPersonal": "My views",
+      "groupTeam": "Team",
+      "empty": "No saved view",
+      "teamUnreadable": "Team views file is unreadable: fix it before any write.",
+      "teamNewerFormat": "Team views were written by a newer version of the application.",
+      "teamReadonly": "Read-only component",
+      "save": "Save",
+      "saveAs": "Save as…",
+      "rename": "Rename",
+      "delete": "Delete",
+      "defaults": "Default columns",
+      "nameLabel": "View name",
+      "scopeLabel": "Scope",
+      "scopePersonal": "Personal",
+      "scopeTeam": "Team",
+      "teamHint": "Written to the repo: publish it to share it.",
+      "deleteTitle": "Delete view",
+      "deleteMessage": "Delete view “{{name}}”?",
+      "errorTaken": "A view with this name already exists in this scope.",
+      "errorInvalid": "The name must be 1 to 80 characters long.",
+      "errorNotFound": "This view no longer exists.",
+      "errorUnreadable": "Team views file is unreadable.",
+      "errorReadonly": "Read-only component.",
+      "errorList": "Could not read the saved views."
+    },
     "fieldConfig": {
       "visibleFields": "Visible fields",
       "reset": "Reset",
@@ -822,7 +855,7 @@
       "status": {
         "not_covered": "Not covered",
         "covered": "Covered",
-        "validated": "Validated",
+        "validated": "Verified",
         "failing": "Failing",
         "needs_revalidation": "Needs revalidation"
       }
@@ -854,7 +887,8 @@
         "LINK_TYPE_NOT_FOUND": "Unknown link type.",
         "OBJECT_NOT_FOUND": "Element not found in the workspace.",
         "LINK_NOT_FOUND": "Link not found (deleted meanwhile?).",
-        "SELF_LINK": "An element cannot be linked to itself."
+        "SELF_LINK": "An element cannot be linked to itself.",
+        "NOT_OWN_ELEMENT": "Element of another component: {{reason}}"
       }
     },
     "campaignListView": {
@@ -1002,6 +1036,7 @@
       "warnings": "Warnings",
       "rowWithoutKey": "Row {{row}} added in the workbook (no key): ignored",
       "testNotApproved": "{{entryId}}: test not approved ({{status}})",
+      "testedUndocumented": "{{entryId}}: “{{value}}” matches no version ({{path}}): kept as an undocumented deviation",
       "unfilled_one": "{{count}} instance not filled in: left unchanged",
       "unfilled_other": "{{count}} instances not filled in: left unchanged",
       "importN_one": "Import {{count}} result",
@@ -1022,6 +1057,7 @@
       "error": {
         "entryNotFound": "instance no longer in the campaign (removed since export)",
         "testNotFound": "test {{testCaseId}} not found",
+        "testedVersionMissing": "tested version required (row {{row}})",
         "stepsMismatch": "steps changed in the workbook (expected: {{expected}}; found: {{found}})",
         "invalidVerdict": "unrecognised verdict \"{{value}}\" (row {{row}})",
         "invalidDate": "unreadable date \"{{value}}\" (row {{row}})",
@@ -1372,11 +1408,11 @@
     "insertTable": "Insert a table"
   },
   "complianceMatrix": {
-    "validated": "validated",
+    "validated": "verified",
     "covered": "covered",
     "missing": "missing",
-    "legendValidated": "Validated (link verified)",
-    "legendCovered": "Covered (link present, not validated)",
+    "legendValidated": "Verified (test passed)",
+    "legendCovered": "Covered (link present, not verified)",
     "legendMissing": "Missing",
     "legendNotApplicable": "Not applicable (different role)",
     "noApprovedRequirement": "No approved requirement in this interface.",
@@ -2189,6 +2225,33 @@
     "pasteRejected_other": "{{count}} links ignored (unsupported URL scheme).",
     "pasteSingleOnly": "This field keeps a single link: only the first one was pasted."
   },
+  "testedConfig": {
+    "title": "Tested version",
+    "choose": "Choose a version",
+    "other": "Other (free text)…",
+    "otherPlaceholder": "Value without a declared version",
+    "none": "none",
+    "structure": "Tested structure",
+    "deviation": "deviation",
+    "deviationCount_one": "{{count}} deviation",
+    "deviationCount_other": "{{count}} deviations",
+    "required": "The tested version is required.",
+    "undocumented": "undocumented deviation",
+    "expected": "planned: {{ref}}",
+    "evolved": "has evolved",
+    "state": {
+      "in_progress": "in progress",
+      "released": "released",
+      "abandoned": "abandoned"
+    },
+    "drift": {
+      "missing": "version {{ref}} deleted",
+      "abandoned": "version {{ref}} abandoned",
+      "component": "{{from}} → {{to}}",
+      "added": "{{id}} added to {{ref}}",
+      "removed": "{{id}} removed from {{ref}}"
+    }
+  },
   "executionHistory": {
     "title": "Executions",
     "empty": "No execution.",
@@ -2220,6 +2283,10 @@
       "entryRequirement": "Instance requirement",
       "params": "Parameters",
       "testVersion": "Test version",
+      "testedVersion": "Tested version",
+      "testedStructure": "Tested structure",
+      "testedCommit": "Commit",
+      "testedDeviations": "Deviations",
       "carriedFrom": "Carried from",
       "test": "Test"
     },
@@ -2260,6 +2327,25 @@
     "expand": "Expand",
     "empty": "—",
     "unplaced": "Outside the structure"
+  },
+  "issues": {
+    "origin": "Origin",
+    "originRuns": "Executions: {{ids}}",
+    "proposal": {
+      "title": "Failed execution",
+      "hint": "{{id}} did not pass: do you want to track this problem in an issue?",
+      "defaultTitle": "Failure of {{id}} — {{title}}",
+      "create": "Create an issue",
+      "link": "Link to an existing issue",
+      "ignore": "Ignore",
+      "type": "Type",
+      "issueTitle": "Title",
+      "existing": "Issue",
+      "impacted": "Impacted requirements",
+      "noRequirement": "No requirement of this component is linked to this test.",
+      "importTitle_one": "{{count}} failed execution:",
+      "importTitle_other": "{{count}} failed executions:"
+    }
   },
   "versions": {
     "title": "Product",
@@ -2382,7 +2468,8 @@
       "status": "Impact status",
       "comment": "Comment",
       "source": "Source",
-      "notReached": "no longer reached"
+      "notReached": "no longer reached",
+      "viaIssues": "via {{ids}}"
     },
     "tests": {
       "title": "Tests to run",

@@ -2,10 +2,11 @@ import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
+  SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
   VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
 } from '@polenta/types'
-import type {
+import type { Issue,
   MergeFileDetail,
   MergeFileDraft,
   MergeFinalizeResult,
@@ -74,6 +75,9 @@ import type {
   TemplateExportFormat,
   ExportResult,
   ExecutionSheetLocale,
+  TestedConfig,
+  TestedConfigContext,
+  TestedDriftItem,
   ExecutionImportPreview,
   ExecutionImportResult,
   AppSettings,
@@ -83,7 +87,7 @@ import type {
   TerminalKind,
 } from '@polenta/types'
 import type {
-  CreateRequirementDto,
+  CreateRequirementDto, CreateIssueDto, UpdateIssueDto,
   UpdateRequirementDto,
   TransitionRequirementDto,
   CreateTestCaseDto,
@@ -104,7 +108,7 @@ export interface MoveElementResult {
   schema: ProjectSchema
   /** Requirements/tests whose `objectTypeRef` cascade rewrite failed (best-effort, cf.
    *  `ElementMoveService`) — empty when every matching requirement/test was updated. */
-  failed: { kind: 'requirement' | 'test'; id: string; error: string }[]
+  failed: { kind: 'requirement' | 'test' | 'issue' | 'views'; id: string; error: string }[]
 }
 
 export interface CreateReviewDto {
@@ -382,6 +386,10 @@ export interface FieldVisibilityPref {
   showFoldersPicker?: boolean
   /** GH229 — champs de la popup d'aperçu (survol d'un lien vers un objet du type). Absent ⇒ aucun. */
   popup?: string[]
+  /** GH203 — vue enregistrée active ; ses réglages ont été copiés dans les clés ci-dessus. */
+  activeView?: SavedViewRef
+  /** GH203 — vues personnelles du type, écrites par `api.views` seulement. */
+  savedViews?: SavedView[]
 }
 
 /** GH176 — écriture partielle de `FieldVisibilityPref` : une clé absente est conservée telle quelle,
@@ -752,7 +760,7 @@ export interface ApiClient {
   }
   history: {
     /** GH77 — historique des champs suivis, avec les entrées implicites (`implicit: true`) à la lecture. */
-    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign', id: string): Promise<ObjectHistory>
+    get(repoPath: string, kind: 'requirement' | 'test' | 'campaign' | 'issue', id: string): Promise<ObjectHistory>
     /** GH77 — reprise de l'historique depuis `git log` pour un repo (fichiers réécrits, pas de commit). */
     backfill(repoPath: string): Promise<HistoryBackfillResult>
   }
@@ -774,7 +782,22 @@ export interface ApiClient {
     revokeApproval(repoPath: string, reviewId: string, objectId: string, reviewerId: string): Promise<Review>
     close(repoPath: string, reviewId: string, status: 'approved' | 'closed'): Promise<Review>
   }
+  /** GH244 — issues. */
+  issues: {
+    list(repoPath: string): Promise<Issue[]>
+    get(repoPath: string, id: string): Promise<Issue>
+    create(repoPath: string, dto: CreateIssueDto, workspaceDir?: string): Promise<Issue>
+    update(repoPath: string, id: string, dto: UpdateIssueDto, workspaceDir?: string): Promise<Issue>
+    addRun(repoPath: string, id: string, runId: string, workspaceDir?: string): Promise<Issue>
+  }
+
   /** GH201 — versions de composant / produit. */
+  testedConfig: {
+    /** GH202 — versions proposées et saisie de la dernière exécution de la campagne. */
+    context(repoPath: string, campaignId: string, workspaceDir?: string): Promise<TestedConfigContext>
+    /** GH202 — différences entre la copie d'un run et l'état courant. */
+    drift(repoPath: string, config: TestedConfig, workspaceDir?: string): Promise<{ repoPath: string; items: TestedDriftItem[] }>
+  }
   versions: {
     tree(rootRepoPath: string, workspaceDir?: string): Promise<VersionComponentNode[]>
     list(repoPath: string): Promise<VersionSummary[]>
@@ -816,12 +839,20 @@ export interface ApiClient {
     /** GH36 — exécution hors outil via un classeur Excel. */
     executionSheet: {
       /** Ouvre le dialogue d'enregistrement puis écrit le classeur (`locale` : libellés du classeur). */
-      export(repoPath: string, campaignId: string, locale: ExecutionSheetLocale): Promise<ExportResult>
+      export(repoPath: string, campaignId: string, locale: ExecutionSheetLocale, workspaceDir?: string): Promise<ExportResult>
       /** Ouvre le sélecteur de fichier puis renvoie l'aperçu de l'import (aucune écriture). */
-      preview(repoPath: string, campaignId: string): Promise<ExecutionImportPreview | { canceled: true }>
+      preview(repoPath: string, campaignId: string, workspaceDir?: string): Promise<ExecutionImportPreview | { canceled: true }>
       /** Relit et revalide `filePath`, puis écrit les résultats des instances remplies. */
       apply(repoPath: string, campaignId: string, filePath: string, workspaceDir?: string): Promise<ExecutionImportResult>
     }
+  }
+  /** GH203 — vues enregistrées du ⚙️, par (repo, utilisateur, type). */
+  views: {
+    list(repoPath: string, username: string, typeKey: string, workspaceDir?: string): Promise<SavedViewsList>
+    create(repoPath: string, username: string, typeKey: string, scope: SavedViewScope, name: string, settings: Record<string, unknown>, workspaceDir?: string): Promise<SavedViewRef>
+    update(repoPath: string, username: string, typeKey: string, ref: SavedViewRef, settings: Record<string, unknown>, workspaceDir?: string): Promise<SavedViewRef>
+    rename(repoPath: string, username: string, typeKey: string, ref: SavedViewRef, name: string, workspaceDir?: string): Promise<SavedViewRef>
+    delete(repoPath: string, username: string, typeKey: string, ref: SavedViewRef, workspaceDir?: string): Promise<void>
   }
   pref: {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>

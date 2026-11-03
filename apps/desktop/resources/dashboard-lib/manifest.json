@@ -199,6 +199,22 @@
             "fr": "GH245 : GraphVersion.impacted (statuts d'impact saisis) et GraphVersion.analysis (analyse figée au passage released)",
             "en": "GH245: GraphVersion.impacted (entered impact statuses) and GraphVersion.analysis (analysis frozen at release)"
           }
+        },
+        {
+          "version": 13,
+          "hash": "c7fe47aa28a38a1650ec66822cb68357e1411bdb23257723b029f572f3d7a609",
+          "summary": {
+            "fr": "GH244 : collection issues (GraphIssue), catégorie issue",
+            "en": "GH244: issues collection (GraphIssue), issue category"
+          }
+        },
+        {
+          "version": 14,
+          "hash": "fd8f98afe00f79785dc3a0b44294ce8320165dc7c874315a82cf7beace7dc1ba",
+          "summary": {
+            "fr": "GH202 : GraphTestRun.testedConfig (copie figée de la structure testée)",
+            "en": "GH202: GraphTestRun.testedConfig (frozen copy of the tested structure)"
+          }
         }
       ]
     },

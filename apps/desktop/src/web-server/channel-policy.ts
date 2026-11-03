@@ -40,6 +40,7 @@ export const WEB_EXPOSED: ReadonlySet<string> = new Set([
   'parameters:usages',
   'polenta-repo:get', 'polenta-repo:save',
   'pref:get-field-visibility', 'pref:get-publish-merge', 'pref:set-field-visibility', 'pref:set-publish-merge',
+  'views:create', 'views:delete', 'views:list', 'views:rename', 'views:update',
   'queries:create', 'queries:delete',
   'queries:history-add', 'queries:history-delete', 'queries:history-list', 'queries:list',
   'queries:order-get', 'queries:order-set', 'queries:set-scope', 'queries:update',
@@ -87,6 +88,11 @@ export const WEB_HIDDEN: Record<string, string> = {
   'auth:save-token': 'compte = session',
   'auth:get-token': 'renverrait le jeton forge au navigateur',
   'auth:delete-token': 'compte = session',
+  'issues:list': 'GH244 — pas encore exposé au client web (SPEC-WEB §11)',
+  'issues:get': 'GH244 — pas encore exposé au client web (SPEC-WEB §11)',
+  'issues:create': 'GH244 — pas encore exposé au client web (SPEC-WEB §11)',
+  'issues:update': 'GH244 — pas encore exposé au client web (SPEC-WEB §11)',
+  'issues:add-run': 'GH244 — pas encore exposé au client web (SPEC-WEB §11)',
   'versions:tree': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
   'versions:list': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
   'versions:get': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
@@ -101,6 +107,8 @@ export const WEB_HIDDEN: Record<string, string> = {
   'versions:analysis': 'GH245 — pas encore exposé au client web (SPEC-WEB §11)',
   'versions:set-impact': 'GH245 — pas encore exposé au client web (SPEC-WEB §11)',
   'versions:tests': 'GH245 — pas encore exposé au client web (SPEC-WEB §11)',
+  'tested-config:context': 'GH202 — pas encore exposé au client web (SPEC-WEB §11)',
+  'tested-config:drift': 'GH202 — pas encore exposé au client web (SPEC-WEB §11)',
   'versions:impact': 'GH245 — pas encore exposé au client web (SPEC-WEB §11)',
   'versions:delete': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
 }
@@ -133,6 +141,7 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'merge-resolution:open': [0], 'parameters:create': [0, 2], 'parameters:delete': [0, 2],
   'parameters:list': [0, 1], 'parameters:update': [0, 3], 'parameters:usages': [0, 2],
   'polenta-repo:get': [0], 'polenta-repo:save': [0], 'pref:get-field-visibility': [0],
+  'views:list': [0, 3], 'views:create': [0, 6], 'views:update': [0, 5], 'views:rename': [0, 5], 'views:delete': [0, 4],
   'pref:set-field-visibility': [0], 'pref:get-publish-merge': [0], 'pref:set-publish-merge': [0], 'queries:create': [0],
   'queries:delete': [0], 'queries:history-add': [0],
   'queries:history-delete': [0], 'queries:history-list': [0], 'queries:list': [0],
@@ -164,11 +173,12 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'traceability:legacy-acks': [0], 'traceability:matrix': [0, 2],
   'traceability:missing-links': [0, 1], 'traceability:test-plan': [0, 2], 'tree:get': [0],
   'tree:save': [0], 'web:delete-workspace': [0], 'web:drawio-import': [0],
+  'issues:list': [0], 'issues:get': [0], 'issues:create': [0, 2], 'issues:update': [0, 3], 'issues:add-run': [0, 3],
   'versions:tree': [0, 1], 'versions:list': [0], 'versions:get': [0, 2], 'versions:backlog': [0],
   'versions:create': [0, 2], 'versions:update': [0, 3], 'versions:include': [0, 3],
   'versions:remove-changes': [0, 3], 'versions:release-preview': [0, 2], 'versions:release': [0, 3],
   'versions:copy': [0, 2], 'versions:delete': [0, 2],
-  'versions:analysis': [0, 2], 'versions:set-impact': [0, 5], 'versions:tests': [0, 2], 'versions:impact': [0, 2],
+  'versions:analysis': [0, 2], 'versions:set-impact': [0, 5], 'versions:tests': [0, 2], 'tested-config:context': [0, 2], 'tested-config:drift': [0, 2], 'versions:impact': [0, 2],
   'web:execution-sheet-export': [0], 'web:execution-sheet-preview': [0], 'web:export': [0],
   'web:image-import': [0], 'workspace:create-from-clone': [0], 'workspace:create-new': [0],
   'workspace:create-on-server': [0], 'forge:repo-access': [0], 'forge:org-members': [0],
@@ -193,6 +203,8 @@ export const CONTENT_ARGS: Record<string, number[]> = {
   // GH163 — commentaire de modification (index 4) ; l'index 2 est le statut visé.
   'requirements:open-draft': [2, 4],
   'tests:open-draft': [4],
+  // GH203 — clé de type et nom de vue : validés par `SavedViewsService`, un nom peut contenir « : » ou « .. ».
+  'views:list': [2], 'views:create': [2, 4], 'views:update': [2], 'views:rename': [2, 4], 'views:delete': [2],
 }
 
 /**

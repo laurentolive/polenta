@@ -26,6 +26,7 @@
       "requirements": "Exigences",
       "tests": "Tests",
       "campaigns": "Campagnes",
+      "issues": "Issues",
       "parameters": "Paramètres",
       "search": "Recherche",
       "version": "Version",
@@ -540,7 +541,8 @@
       "version": "Version",
       "displayIdField": "ID affiché dans les liens",
       "displayIdPolenta": "ID Polenta",
-      "displayIdTitle": "Titre"
+      "displayIdTitle": "Titre",
+      "issue": "Issue"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -693,7 +695,9 @@
         "test_one": "{{count}} test supprimé (et ses exécutions) :",
         "test_other": "{{count}} tests supprimés (et leurs exécutions) :",
         "campaign_one": "{{count}} campagne supprimée :",
-        "campaign_other": "{{count}} campagnes supprimées :"
+        "campaign_other": "{{count}} campagnes supprimées :",
+        "issue_one": "{{count}} issue supprimée :",
+        "issue_other": "{{count}} issues supprimées :"
       },
       "more": "… et {{count}} autre(s)",
       "links_one": "{{count}} lien supprimé :",
@@ -795,6 +799,35 @@
       "createItemHere": "Créer un élément ici",
       "createFirstElement": "Créer le premier élément"
     },
+    "savedViews": {
+      "menu": "Vues",
+      "menuTitle": "Vues enregistrées",
+      "modified": "modifiée",
+      "groupPersonal": "Mes vues",
+      "groupTeam": "Équipe",
+      "empty": "Aucune vue enregistrée",
+      "teamUnreadable": "Fichier des vues d'équipe illisible : à corriger avant toute écriture.",
+      "teamNewerFormat": "Vues d'équipe écrites par une version plus récente de l'application.",
+      "teamReadonly": "Composant en lecture seule",
+      "save": "Enregistrer",
+      "saveAs": "Enregistrer sous…",
+      "rename": "Renommer",
+      "delete": "Supprimer",
+      "defaults": "Colonnes par défaut",
+      "nameLabel": "Nom de la vue",
+      "scopeLabel": "Portée",
+      "scopePersonal": "Personnelle",
+      "scopeTeam": "Équipe",
+      "teamHint": "Écrite dans le repo : à publier pour la partager.",
+      "deleteTitle": "Supprimer la vue",
+      "deleteMessage": "Supprimer la vue « {{name}} » ?",
+      "errorTaken": "Une vue de ce nom existe déjà dans cette portée.",
+      "errorInvalid": "Le nom doit contenir de 1 à 80 caractères.",
+      "errorNotFound": "Cette vue n'existe plus.",
+      "errorUnreadable": "Fichier des vues d'équipe illisible.",
+      "errorReadonly": "Composant en lecture seule.",
+      "errorList": "Impossible de lire les vues enregistrées."
+    },
     "fieldConfig": {
       "visibleFields": "Champs visibles",
       "reset": "Réinitialiser",
@@ -822,7 +855,7 @@
       "status": {
         "not_covered": "Non couvert",
         "covered": "Couvert",
-        "validated": "Validé",
+        "validated": "Vérifié",
         "failing": "En échec",
         "needs_revalidation": "À revalider"
       }
@@ -854,7 +887,8 @@
         "LINK_TYPE_NOT_FOUND": "Type de lien inconnu.",
         "OBJECT_NOT_FOUND": "Élément introuvable dans le workspace.",
         "LINK_NOT_FOUND": "Lien introuvable (supprimé entre-temps ?).",
-        "SELF_LINK": "Un élément ne peut pas être lié à lui-même."
+        "SELF_LINK": "Un élément ne peut pas être lié à lui-même.",
+        "NOT_OWN_ELEMENT": "Élément d'un autre composant : {{reason}}"
       }
     },
     "campaignListView": {
@@ -1002,6 +1036,7 @@
       "warnings": "Avertissements",
       "rowWithoutKey": "Ligne {{row}} ajoutée dans le classeur (sans clé) : ignorée",
       "testNotApproved": "{{entryId}} : test non approuvé ({{status}})",
+      "testedUndocumented": "{{entryId}} : « {{value}} » ne correspond à aucune version ({{path}}) : retenu comme écart non documenté",
       "unfilled_one": "{{count}} instance non remplie : laissée inchangée",
       "unfilled_other": "{{count}} instances non remplies : laissées inchangées",
       "importN_one": "Importer {{count}} résultat",
@@ -1022,6 +1057,7 @@
       "error": {
         "entryNotFound": "instance absente de la campagne (retirée depuis l'export)",
         "testNotFound": "test {{testCaseId}} introuvable",
+        "testedVersionMissing": "version testée obligatoire (ligne {{row}})",
         "stepsMismatch": "étapes modifiées dans le classeur (attendues : {{expected}} ; trouvées : {{found}})",
         "invalidVerdict": "verdict non reconnu « {{value}} » (ligne {{row}})",
         "invalidDate": "date illisible « {{value}} » (ligne {{row}})",
@@ -1372,11 +1408,11 @@
     "insertTable": "Insérer un tableau"
   },
   "complianceMatrix": {
-    "validated": "validé",
+    "validated": "vérifié",
     "covered": "couvert",
     "missing": "manquant",
-    "legendValidated": "Validé (lien vérifié)",
-    "legendCovered": "Couvert (lien présent, non validé)",
+    "legendValidated": "Vérifié (test réussi)",
+    "legendCovered": "Couvert (lien présent, non vérifié)",
     "legendMissing": "Manquant",
     "legendNotApplicable": "Non applicable (rôle différent)",
     "noApprovedRequirement": "Aucune exigence approuvée dans cette interface.",
@@ -2189,6 +2225,33 @@
     "pasteRejected_other": "{{count}} liens ignorés (schéma d’URL non pris en charge).",
     "pasteSingleOnly": "Ce champ ne garde qu’un lien : seul le premier a été collé."
   },
+  "testedConfig": {
+    "title": "Version testée",
+    "choose": "Choisir une version",
+    "other": "Autre (texte libre)…",
+    "otherPlaceholder": "Valeur sans version déclarée",
+    "none": "aucune",
+    "structure": "Structure testée",
+    "deviation": "écart",
+    "deviationCount_one": "{{count}} écart",
+    "deviationCount_other": "{{count}} écarts",
+    "required": "La version testée est obligatoire.",
+    "undocumented": "écart non documenté",
+    "expected": "prévue : {{ref}}",
+    "evolved": "a évolué",
+    "state": {
+      "in_progress": "en cours",
+      "released": "released",
+      "abandoned": "abandonnée"
+    },
+    "drift": {
+      "missing": "version {{ref}} supprimée",
+      "abandoned": "version {{ref}} abandonnée",
+      "component": "{{from}} → {{to}}",
+      "added": "{{id}} ajouté à {{ref}}",
+      "removed": "{{id}} retiré de {{ref}}"
+    }
+  },
   "executionHistory": {
     "title": "Exécutions",
     "empty": "Aucune exécution.",
@@ -2220,6 +2283,10 @@
       "entryRequirement": "Exigence de l'instance",
       "params": "Paramètres",
       "testVersion": "Version du test",
+      "testedVersion": "Version testée",
+      "testedStructure": "Structure testée",
+      "testedCommit": "Commit",
+      "testedDeviations": "Écarts",
       "carriedFrom": "Reportée de",
       "test": "Test"
     },
@@ -2260,6 +2327,25 @@
     "expand": "Déplier",
     "empty": "—",
     "unplaced": "Hors structure"
+  },
+  "issues": {
+    "origin": "Origine",
+    "originRuns": "Exécutions : {{ids}}",
+    "proposal": {
+      "title": "Exécution en échec",
+      "hint": "{{id}} n'a pas réussi : voulez-vous tracer ce problème dans une issue ?",
+      "defaultTitle": "Échec de {{id}} — {{title}}",
+      "create": "Créer une issue",
+      "link": "Lier à une issue existante",
+      "ignore": "Ignorer",
+      "type": "Type",
+      "issueTitle": "Titre",
+      "existing": "Issue",
+      "impacted": "Exigences impactées",
+      "noRequirement": "Aucune exigence de ce composant n'est liée à ce test.",
+      "importTitle_one": "{{count}} exécution en échec :",
+      "importTitle_other": "{{count}} exécutions en échec :"
+    }
   },
   "versions": {
     "title": "Produit",
@@ -2382,7 +2468,8 @@
       "status": "Statut d'impact",
       "comment": "Commentaire",
       "source": "Source",
-      "notReached": "n'est plus atteint"
+      "notReached": "n'est plus atteint",
+      "viaIssues": "via {{ids}}"
     },
     "tests": {
       "title": "Tests à exécuter",

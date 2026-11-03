@@ -1,5 +1,5 @@
 import {
-  applyHistory, effectiveHistory, hasHistoryGap, historyTimestamp,
+  applyChangesHistory, applyHistory, changesHistoryDue, effectiveHistory, hasHistoryGap, historyTimestamp,
 } from '@polenta/types'
 import type {
   HistoryActor, HistoryCarrier, HistoryFallback, ObjectHistory, ObjectTypeDefinition,
@@ -53,6 +53,16 @@ export class HistoryService {
     return applyHistory(before, after, typeDef, { ...actor, ...(comment && { comment }) }, now, fallback)
   }
 
+  /**
+   * GH202 — liste des changements d'une version : `changes` n'est pas un champ de `fields`, son suivi
+   * est toujours actif et passe par sa propre clé d'historique.
+   */
+  async stampVersionChanges<T extends Parameters<typeof changesHistoryDue>[0]>(repoPath: string, version: T): Promise<T> {
+    if (!changesHistoryDue(version)) return version
+    const actor = await this.actor(repoPath).catch((): HistoryActor => ({ by: 'local' }))
+    return applyChangesHistory(version, actor, this.now())
+  }
+
   /** Lecture effective (spec §7) : historique + entrées implicites, rien n'est écrit. */
   async effective(
     repoPath: string, obj: HistoryCarrier & { objectTypeRef?: string }, audit: AuditDates | { filePath: string },
@@ -81,7 +91,7 @@ export class HistoryService {
   }
 }
 
-export type HistoryObjectKind = 'requirement' | 'test' | 'campaign'
+export type HistoryObjectKind = 'requirement' | 'test' | 'campaign' | 'issue'
 
 /** Services de lecture des objets, pour `readEffectiveHistory` (évite une dépendance circulaire). */
 export interface HistoryObjectReaders {
@@ -89,6 +99,8 @@ export interface HistoryObjectReaders {
   requirements: { findOne(repoPath: string, id: string): Promise<HistoryCarrier & { objectTypeRef: string } & AuditDates> }
   tests: { findOne(repoPath: string, id: string): Promise<HistoryCarrier & { objectTypeRef: string } & AuditDates> }
   campaigns: { get(repoPath: string, id: string): Promise<HistoryCarrier & { objectTypeRef?: string }> }
+  /** GH244 — absent : pas d'historique d'issue (`unknown object kind`). */
+  issues?: { findOne(repoPath: string, id: string): Promise<HistoryCarrier & { objectTypeRef: string } & AuditDates> }
 }
 
 /** GH77 — historique effectif d'un objet (IPC `history:get`, tools de lecture MCP). */
@@ -106,6 +118,10 @@ export async function readEffectiveHistory(
   if (kind === 'campaign') {
     const campaign = await c.campaigns.get(repoPath, id)
     return c.history.effective(repoPath, campaign, { filePath: `campaigns/${id}.yaml` })
+  }
+  if (kind === 'issue' && c.issues) {
+    const issue = await c.issues.findOne(repoPath, id)
+    return c.history.effective(repoPath, issue, issue)
   }
   throw new Error(`history:get — unknown object kind: ${String(kind)}`)
 }

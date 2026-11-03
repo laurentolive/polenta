@@ -16,8 +16,10 @@ import type { SchemaService } from './schema.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { RevalidationService } from './revalidation.service'
 import type { CampaignsService } from './campaigns.service'
+import type { IssuesService } from './issues.service'
 import { resolveWorkspaceRepoPaths } from './workspace-repos.util'
 import { isRefInReadonlyNode } from './schema-lookup.util'
+import { declaresRef } from './schema-refs.util'
 import {
   validateLinkEntries,
   type LinkEntryDto,
@@ -102,9 +104,11 @@ export class WorkspaceLinksService {
     /** Campagnes résolues pour la validation (liens MCP vers une campagne, GH16) ; jamais
      *  proposées comme candidats (`listObjects`). */
     private readonly campaigns?: CampaignsService,
+    /** GH244 — issues, source des liens `issue-impact`. */
+    private readonly issues?: IssuesService,
   ) {}
 
-  /** Exigences et tests de tous les repos du workspace (working tree : non commités compris). */
+  /** Exigences, tests et issues de tous les repos du workspace (working tree : non commités compris). */
   async listObjects(rootRepoPath: string, workspaceDir?: string): Promise<WorkspaceObject[]> {
     const ctx = await this.context(rootRepoPath, workspaceDir)
     const table = await this.collectObjects(ctx.repoPaths, false, this.loadSchemas(ctx.repoPaths))
@@ -157,6 +161,12 @@ export class WorkspaceLinksService {
     for (const v of valid) {
       const owner = table.get(v.ownerId)!
       const repoLabel = this.labelOf(ctx, owner.repoPath)
+      // GH244 — une issue n'impacte que les exigences de son composant.
+      const foreign = foreignIssueTarget(table.get(v.dto.sourceId)!, table.get(v.dto.targetId)!, schemas)
+      if (foreign) {
+        errors.push({ index: v.index, code: 'NOT_OWN_ELEMENT', reason: `${foreign.id} n'appartient pas au composant de l'issue.` })
+        continue
+      }
       if (ctx.readonlyRepos.has(repoKey(owner.repoPath))) {
         errors.push({ index: v.index, code: 'READONLY_REPO', reason: `Le lien serait stocké dans ${repoLabel} (repo de ${owner.id}), en lecture seule.` })
         continue
@@ -307,10 +317,11 @@ export class WorkspaceLinksService {
     schemas?: Promise<Map<string, ProjectSchema>>,
   ): Promise<Map<string, ObjectEntry>> {
     const perRepo = await Promise.all(repoPaths.map(async (p): Promise<ObjectEntry[]> => {
-      const [reqs, tests, campaigns, schemaMap] = await Promise.all([
+      const [reqs, tests, campaigns, issues, schemaMap] = await Promise.all([
         this.reqIndex.findAll(p, {}),
         this.testsIndex.findAll(p),
         withCampaigns && this.campaigns ? this.campaigns.list(p) : Promise.resolve([]),
+        this.issues?.findAll(p) ?? Promise.resolve([]),
         schemas,
       ])
       // GH229 — texte des liens, avec le schéma du repo de l'objet (absent : pas calculé).
@@ -323,6 +334,7 @@ export class WorkspaceLinksService {
       return [
         ...reqs.map((r) => ({ id: r.id, title: r.title, status: r.status, objectTypeRef: r.objectTypeRef, category: 'requirement' as const, repoPath: p, ...displayId(r) })),
         ...tests.map((t) => ({ id: t.id, title: t.title, status: t.status, objectTypeRef: t.objectTypeRef, category: 'test' as const, repoPath: p, ...displayId(t) })),
+        ...issues.map((t) => ({ id: t.id, title: t.title, status: t.status, objectTypeRef: t.objectTypeRef, category: 'issue' as const, repoPath: p, ...displayId(t) })),
         ...campaigns.map((c) => ({ id: c.id, title: c.title ?? c.id, status: c.status, objectTypeRef: c.objectTypeRef, category: 'campaign' as const, repoPath: p })),
       ]
     }))
@@ -340,7 +352,7 @@ export class WorkspaceLinksService {
   }
 
   /**
-   * Table de résolution (exigences, tests, campagnes). Si un id du lot est introuvable, les index
+   * Table de résolution (exigences, tests, campagnes, issues). Si un id du lot est introuvable, les index
    * sont invalidés (objet créé par un autre process après leur construction) et la table
    * reconstruite une fois.
    */
@@ -350,6 +362,7 @@ export class WorkspaceLinksService {
       for (const p of repoPaths) {
         this.reqIndex.invalidate(p)
         this.testsIndex.invalidate(p)
+        this.issues?.invalidate(p)
       }
       table = await this.collectObjects(repoPaths, true)
     }
@@ -401,4 +414,14 @@ export class WorkspaceLinksService {
     }
     return { linkTypes, declaredBy }
   }
+}
+
+/** GH244 — exigence d'un lien issue ↔ exigence hors du composant de l'issue (autre repo, ou type non déclaré par son schéma). */
+function foreignIssueTarget(a: ObjectEntry, b: ObjectEntry, schemas: Map<string, ProjectSchema>): ObjectEntry | null {
+  const issue = a.category === 'issue' ? a : b.category === 'issue' ? b : null
+  const req = a.category === 'requirement' ? a : b.category === 'requirement' ? b : null
+  if (!issue || !req) return null
+  if (repoKey(issue.repoPath) !== repoKey(req.repoPath)) return req
+  const schema = schemas.get(repoKey(req.repoPath))
+  return schema && req.objectTypeRef && !declaresRef(schema, req.objectTypeRef) ? req : null
 }

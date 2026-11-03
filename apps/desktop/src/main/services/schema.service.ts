@@ -11,7 +11,7 @@ import type {
   SchemaStatus,
   SystemNode,
 } from '@polenta/types'
-import { displayIdFieldError, findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
+import { ISSUE_IMPACT_LINK, displayIdFieldError, findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
@@ -105,8 +105,9 @@ export class SchemaService {
     this.assertRunFields(schema)
     this.assertVersionTypes(schema)
     await this.assertVersionTypeStable(repoPath, schema)
-    this.assertValidDisplayIdFields(schema, await this.get(repoPath).catch(() => null))
-    const toWrite = this.mirrorRootRolesImplements(schema)
+    const previous = await this.get(repoPath).catch(() => null)
+    this.assertValidDisplayIdFields(schema, previous)
+    const toWrite = this.mirrorRootRolesImplements(withIssueImpactLink(schema, previous))
     const dir = path.join(repoPath, '.polenta')
     await fsP.mkdir(dir, { recursive: true })
     const filePath = path.join(dir, 'schema.yaml')
@@ -676,4 +677,22 @@ function dropRemovedChangesets(schema: ProjectSchema): ProjectSchema {
   const prefs = schema.preferences as (ProjectSchema['preferences'] & { changeTracking?: unknown }) | undefined
   const { changeTracking: _removed, ...preferences } = prefs ?? {}
   return { ...schema, nodes: dropTypes(schema.nodes), ...(prefs && { preferences }) }
+}
+
+/**
+ * GH244 — le premier type issue d'un schéma apporte le type de lien `issue-impact`, s'il manque. Seul le
+ * passage de « aucun type issue » à « au moins un » l'ajoute : un retrait ultérieur n'est pas annulé.
+ */
+function withIssueImpactLink(schema: ProjectSchema, previous: ProjectSchema | null): ProjectSchema {
+  const hasIssueType = (s: ProjectSchema | null) => flattenSystemNodes(s?.nodes ?? [])
+    .some(({ node }) => (node.objectTypes ?? []).some(t => t.category === 'issue'))
+  if (!hasIssueType(schema) || hasIssueType(previous)) return schema
+  if ((schema.linkTypes ?? []).some(l => l.name === ISSUE_IMPACT_LINK)) return schema
+  return {
+    ...schema,
+    linkTypes: [...(schema.linkTypes ?? []), {
+      name: ISSUE_IMPACT_LINK, labelSourceToTarget: 'impacte', labelTargetToSource: 'est impactée par',
+      sourceRefs: ['issue'], targetRefs: ['requirement'], defaultVisible: true,
+    }],
+  }
 }

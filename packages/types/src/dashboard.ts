@@ -104,7 +104,7 @@ export interface QueryResult {
 /** Objet désigné par un identifiant `_ids` (popup « Détail »). */
 export interface DescribedObject {
   id: string
-  kind: 'requirement' | 'test' | 'campaign' | 'campaign-entry' | 'run' | 'unknown'
+  kind: 'requirement' | 'test' | 'issue' | 'campaign' | 'campaign-entry' | 'run' | 'unknown'
   title: string | null
   status: string | null
   typeLabel: string | null
@@ -113,6 +113,8 @@ export interface DescribedObject {
 /** Objet à ouvrir pour un identifiant (repo où il vit, résolu côté main). */
 export type RowTarget =
   | { kind: 'requirement' | 'test' | 'campaign'; id: string; repoPath: string }
+  /** GH244 — ouverte dans les vues système : composant et type. */
+  | { kind: 'issue'; id: string; repoPath: string; repoName: string; objectTypeRef: string }
   | { kind: 'campaign-entry'; campaignId: string; entryId: string; executed: boolean; status: TestRunStatus; repoPath: string }
 
 // ─── Bandeau des mises à jour (GH74 §6.3) ────────────────────────────────────

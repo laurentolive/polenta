@@ -8,7 +8,9 @@ import type { RequirementsService } from './requirements.service'
 import type { SchemaService } from './schema.service'
 import { declaresRef, dedupeRepos, mapLinkRefs, objectIdsOfType, pathExists as exists } from './schema-refs.util'
 import type { TestsService } from './tests.service'
+import type { IssuesService } from './issues.service'
 import type { TreeService } from './tree.service'
+import { moveTeamViewsFile } from './saved-views.service'
 import { idRenamer, isBinary, listDataFiles, pruneEmptyDirs, renamePath } from './type-rename.util'
 
 interface PlannedWrite { repoPath: string; path: string; newPath: string; content: string }
@@ -40,6 +42,8 @@ export class TypeRenameService {
     private readonly indexes: Array<{ invalidate(repoPath: string): void }>,
     /** Repos du workspace, `repoPath` compris (`resolveWorkspaceRepoPaths`). */
     private readonly resolveRepos: (repoPath: string, workspaceDir?: string) => Promise<string[]>,
+    /** GH244 — issues du type ; absent : aucune. */
+    private readonly issues?: IssuesService,
   ) {}
 
   async plan(repoPath: string, workspaceDir: string | undefined, dto: TypeRenameDto): Promise<TypeRenamePlan> {
@@ -93,6 +97,7 @@ export class TypeRenameService {
       if (dto.category === 'requirement') await step(() => this.requirements.rewriteObjects(repoPath, oldRef, retarget, retargeted))
       if (dto.category === 'test') await step(() => this.tests.rewriteObjects(repoPath, oldRef, retarget, retargeted))
       if (dto.category === 'campaign') await step(() => this.campaigns.rewriteObjects(repoPath, oldRef, retarget, retargeted))
+      if (dto.category === 'issue' && this.issues) await step(() => this.issues!.rewriteObjects(repoPath, oldRef, retarget, retargeted))
       retargeted.migrated.forEach(migrate)
       result.skipped.push(...retargeted.skipped)
       result.failed.push(...retargeted.failed)
@@ -107,6 +112,7 @@ export class TypeRenameService {
         }
       }
       await this.tree.renameTypeTree(repoPath, dto.nodeName, dto.oldName, dto.newName)
+      await step(() => moveTeamViewsFile(repoPath, { node: dto.nodeName, type: dto.oldName }, { node: dto.nodeName, type: dto.newName })) // GH203
       for (const repo of plan.linkTypeRepos) {
         await step(async () => {
           const schema = await this.schema.get(repo)
@@ -130,7 +136,7 @@ export class TypeRenameService {
     }
     if (plan.errors.length > 0) return { plan, repos, oldRef, newRef, writes }
 
-    const ids = await objectIdsOfType({ requirements: this.requirements, tests: this.tests, campaigns: this.campaigns }, repoPath, dto.category, oldRef)
+    const ids = await objectIdsOfType({ requirements: this.requirements, tests: this.tests, campaigns: this.campaigns, issues: this.issues }, repoPath, dto.category, oldRef)
     if (oldRef !== newRef) plan.retargeted = ids.length
 
     // Préfixe : campagnes exclues (`CAMP-NNNN` quel que soit le type, campaigns.service.ts).
@@ -141,7 +147,7 @@ export class TypeRenameService {
         .map(oldId => ({ oldId, newId: `${dto.newPrefix}-${oldId.slice(head.length)}` }))
       for (const { newId } of plan.objects) {
         for (const repo of repos) {
-          for (const rel of [`requirements/${newId}.yaml`, `tests/${newId}.yaml`, `${TOMBSTONES_DIR}/${newId}`]) {
+          for (const rel of [`requirements/${newId}.yaml`, `tests/${newId}.yaml`, `issues/${newId}.yaml`, `${TOMBSTONES_DIR}/${newId}`]) {
             if (await exists(path.join(repo, rel))) {
               plan.errors.push({ code: 'ID_COLLISION', detail: `${newId} existe déjà (${path.join(repo, rel)})` })
             }
@@ -185,9 +191,9 @@ export class TypeRenameService {
   }
 }
 
-/** ID de l'objet si `w` est le fichier d'un objet (exigence / test) du repo du type. */
+/** ID de l'objet si `w` est le fichier d'un objet (exigence / test / issue) du repo du type. */
 function objectFileId(w: { repoPath: string; path: string }, repoPath: string): string | null {
   if (w.repoPath !== repoPath) return null
-  const m = /^(?:requirements|tests)\/([^/]+)\.yaml$/.exec(w.path)
+  const m = /^(?:requirements|tests|issues)\/([^/]+)\.yaml$/.exec(w.path)
   return m ? m[1] : null
 }

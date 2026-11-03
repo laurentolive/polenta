@@ -39,17 +39,19 @@ import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
 import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
-import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
+import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Issue, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell, SavedViewRef } from '@polenta/types'
 import { flattenSystemNodes, isComputedColumnKey, fieldValueToText } from '@polenta/types'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { FieldConfigModal, type ConfigTab } from './FieldConfigModal'
+import { SavedViewsMenu } from './SavedViewsMenu'
+import { layoutPatch, resolveLayout, sameLayout, type ViewLayout } from './savedViewSettings'
 import { useElementNav } from '../../contexts/ElementNavContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
 
-const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status'])
+const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status', 'originRuns'])
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -204,6 +206,9 @@ export function SystemView() {
       if (effectiveType.category === 'test') {
         return api.tests.get(repoPath, editingObjectId)
       }
+      if (effectiveType.category === 'issue') {
+        return api.issues.get(repoPath, editingObjectId)
+      }
       return null
     },
     enabled: !!editingObjectId && !!effectiveType?.category && !!repoPath,
@@ -246,6 +251,22 @@ export function SystemView() {
         objectTypeRef: tc.objectTypeRef ?? '',
         ...Object.fromEntries(
           Object.entries(tc.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)]),
+        ),
+      }
+    }
+    if (cat === 'issue') {
+      const issue = loadedObject as Issue
+      return {
+        id: issue.id,
+        title: issue.title ?? '',
+        status: issue.status ?? '',
+        createdAt: issue.createdAt ?? '',
+        updatedAt: issue.updatedAt ?? '',
+        author: issue.createdBy ?? '',
+        objectTypeRef: issue.objectTypeRef ?? '',
+        originRuns: issue.origin?.runs?.join(', ') ?? '',
+        ...Object.fromEntries(
+          Object.entries(issue.fields ?? {}).map(([k, v]) => [k, fieldValueToText(v)]),
         ),
       }
     }
@@ -360,6 +381,7 @@ export function SystemView() {
           }
           if (cat === 'requirement') return api.requirements.update(repoPath, objectId, dto)
           if (cat === 'test') return api.tests.update(repoPath, objectId, dto as UpdateTestCaseDto)
+          if (cat === 'issue') return api.issues.update(repoPath, objectId, dto)
           return Promise.resolve()
         })
       )
@@ -622,6 +644,7 @@ export function SystemView() {
         // GH243 — changer le statut rouvre un élément approuvé (version + 1 côté main), partout.
         if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value, comment })
         if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto)
+        if (cat === 'issue') return api.issues.update(repoPath, objectId, { status: value, modificationComment: comment })
         return
       }
       if (SYSTEM_FIELDS_SET.has(field)) return
@@ -630,6 +653,7 @@ export function SystemView() {
         : { fields: { [field]: value } }
       if (cat === 'requirement') return api.requirements.update(repoPath, objectId, dto)
       if (cat === 'test') return api.tests.update(repoPath, objectId, dto as UpdateTestCaseDto)
+      if (cat === 'issue') return api.issues.update(repoPath, objectId, dto)
     },
     onSuccess: async (_, variables) => {
       // Awaited (not fire-and-forget): `invalidateQueries` resolves once its refetch lands.
@@ -697,6 +721,10 @@ export function SystemView() {
       api.tests.update(repoPath, objectId, { title: name } as UpdateTestCaseDto)
         .then(() => invalidateCandidateObjects())
         .catch(err => console.error('[RenameNode] Erreur sync titre test:', err))
+    } else if (objectId && cat === 'issue') {
+      api.issues.update(repoPath, objectId, { title: name })
+        .then(() => invalidateCandidateObjects())
+        .catch(err => console.error('[RenameNode] Erreur sync titre issue:', err))
     }
   }, [repoPath, effectiveNodeId, effectiveTypeId, effectiveType?.category, root, setRoot, qc, invalidateCandidateObjects])
 
@@ -726,6 +754,8 @@ export function SystemView() {
         } else if (effectiveType.category === 'test') {
           const tc = await api.tests.create(repoPath, { objectTypeRef, title: value.trim(), steps: [], fields: {} })
           createdId = tc.id
+        } else if (effectiveType.category === 'issue') {
+          createdId = (await api.issues.create(repoPath, { objectTypeRef, title: value.trim(), fields: {} })).id
         } else {
           return
         }
@@ -789,6 +819,8 @@ export function SystemView() {
           await api.requirements.update(repoPath, objectId, dto)
         } else if (cat === 'test') {
           await api.tests.update(repoPath, objectId, dto as UpdateTestCaseDto)
+        } else if (cat === 'issue') {
+          await api.issues.update(repoPath, objectId, dto)
         } else {
           return true
         }
@@ -831,6 +863,10 @@ export function SystemView() {
         api.tests.create(repoPath, { objectTypeRef, title, steps: [], fields: customFields })
           .then(tc => afterCreate(tc.id))
           .catch(err => console.error('[FlushEdit] Erreur création test:', err))
+      } else if (cat === 'issue') {
+        api.issues.create(repoPath, { objectTypeRef, title, fields: customFields })
+          .then(i => afterCreate(i.id))
+          .catch(err => console.error('[FlushEdit] Erreur création issue:', err))
       }
     }
     return true
@@ -923,6 +959,30 @@ export function SystemView() {
     setFreezeColCountExcel(count)
     persistPrefs({ freezeColCountExcel: count })
   }, [persistPrefs])
+
+  // GH203 — vues enregistrées : la mise en page courante, copiée depuis ou vers une vue.
+  const currentLayout = useMemo<ViewLayout>(() => ({
+    excel: visibleFieldsExcel, word: visibleFieldsWord, popup: visibleFieldsPopup,
+    showFoldersExcel, showFoldersWord, freezeColCountExcel,
+  }), [visibleFieldsExcel, visibleFieldsWord, visibleFieldsPopup, showFoldersExcel, showFoldersWord, freezeColCountExcel])
+  const resolveSavedLayout = useCallback((settings: Record<string, unknown>) =>
+    resolveLayout(settings, { excel: schemaDefaultFields('excel'), word: schemaDefaultFields('word') }), [schemaDefaultFields])
+  const applySavedSettings = useCallback((settings: Record<string, unknown>, activeView: SavedViewRef | null) => {
+    const layout = resolveSavedLayout(settings)
+    setVisibleFieldsExcel(layout.excel)
+    setVisibleFieldsWord(layout.word)
+    setVisibleFieldsPopup(layout.popup)
+    setShowFoldersExcel(layout.showFoldersExcel)
+    setShowFoldersWord(layout.showFoldersWord)
+    setFreezeColCountExcel(layout.freezeColCountExcel)
+    persistPrefs({ ...layoutPatch(settings), activeView })
+  }, [resolveSavedLayout, persistPrefs])
+  const isSavedViewModified = useCallback((settings: Record<string, unknown>) =>
+    !sameLayout(currentLayout, resolveSavedLayout(settings)), [currentLayout, resolveSavedLayout])
+  const { mutateAsync: savePrefsAsync } = savePrefsMutation
+  const handleActiveViewChange = useCallback(async (activeView: SavedViewRef | null) => {
+    await savePrefsAsync({ activeView })
+  }, [savePrefsAsync])
 
   // Vues Tableau / Document affichées seulement quand tout ce qui détermine leur rendu est là :
   // colonnes visibles du type (prefs), arbre du type, objets, liens et couverture s'ils sont
@@ -1088,6 +1148,22 @@ export function SystemView() {
               >
                 <Eye size={14} />
               </button>
+            )}
+
+            {/* GH203 — vues enregistrées du ⚙️ */}
+            {effectiveType?.category !== 'campaign' && viewMode !== 'edit' && repoPath && username && typeKey && (
+              <SavedViewsMenu
+                repoPath={repoPath}
+                username={username}
+                typeKey={typeKey}
+                workspaceDir={currentProjectId ? decodeProjectId(currentProjectId) : undefined}
+                settings={currentLayout as unknown as Record<string, unknown>}
+                active={isPrefsPlaceholder ? null : savedPrefs?.activeView ?? null}
+                isModified={isSavedViewModified}
+                onApply={view => applySavedSettings(view.settings, view.ref)}
+                onActiveChange={handleActiveViewChange}
+                onDefaults={() => applySavedSettings({}, null)}
+              />
             )}
 
             {/* Hauteur max des lignes — vue tableau uniquement */}

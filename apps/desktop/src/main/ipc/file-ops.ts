@@ -90,9 +90,10 @@ export async function saveExecutionSheet(
   repoPath: string,
   campaignId: string,
   locale: ExecutionSheetLocale,
+  workspaceDir?: string,
 ): Promise<ExportResult> {
   try {
-    await c.campaignExecution.exportSheet(repoPath, campaignId, locale === 'en' ? 'en' : 'fr', destPath)
+    await c.campaignExecution.exportSheet(repoPath, campaignId, locale === 'en' ? 'en' : 'fr', destPath, workspaceDir)
     return { status: 'ok', filePath: destPath }
   } catch (err) {
     return { status: 'error', message: err instanceof Error ? err.message : 'Erreur lors de l’export' }

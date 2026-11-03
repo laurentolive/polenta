@@ -387,6 +387,7 @@ describe('GH70 — tools MCP des requêtes', () => {
       workspaceTree: { readCache: async () => null },
       reqIndex: { invalidate: () => {} },
       testsIndex: { invalidate: () => {} },
+      issues: { invalidate: () => {} },
       dashboardLibrary: { invalidate: () => {} },
       savedQueries: queries,
       suivi,

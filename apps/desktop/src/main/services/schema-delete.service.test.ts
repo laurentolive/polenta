@@ -141,7 +141,7 @@ describe('SchemaDeleteService', () => {
     expect(plan.errors).toEqual([])
     expect(plan.nodes).toEqual(['A', 'B'])
     expect(plan.types).toEqual(['A::A_REQ', 'A::A_TEST', 'A::A_CAMP', 'B::B_REQ'])
-    expect(plan.objects).toEqual({ requirement: ['A_REQ-0001', 'A_REQ-0002', 'B_REQ-0001'], test: ['A_TEST-0001'], campaign: ['CAMP-0001'] })
+    expect(plan.objects).toEqual({ requirement: ['A_REQ-0001', 'A_REQ-0002', 'B_REQ-0001'], test: ['A_TEST-0001'], campaign: ['CAMP-0001'], issue: [] })
     expect(plan.links).toEqual([{ repoPath: prod, count: 4 }, { repoPath: comp, count: 1 }])
     expect(plan.linkTypes).toEqual([
       { repoPath: prod, name: 'implements', emptied: true },
@@ -182,7 +182,7 @@ describe('SchemaDeleteService', () => {
     const target: SchemaDeleteTarget = { kind: 'type', nodeName: 'A', typeName: 'A_TEST' }
     const plan = await service.plan(prod, ws, target)
     expect(plan.nodes).toEqual([])
-    expect(plan.objects).toEqual({ requirement: [], test: ['A_TEST-0001'], campaign: [] })
+    expect(plan.objects).toEqual({ requirement: [], test: ['A_TEST-0001'], campaign: [], issue: [] })
     const result = await service.delete(prod, ws, target)
     expect(result.failed).toEqual([])
     expect(await exists(prod, 'tests/A_TEST-0001.yaml')).toBe(false)
@@ -197,6 +197,17 @@ describe('SchemaDeleteService', () => {
     expect(a.objectTypes?.map(t => t.name)).toEqual(['A_REQ', 'A_CAMP'])
     expect(a.children?.map(n => n.name)).toEqual(['B'])
     expect(s.linkTypes?.find(l => l.name === 'verifies')).toEqual({ name: 'verifies', sourceRefs: [], targetRefs: ['A::A_REQ'] })
+  })
+
+  it('D4b — GH203 : vues d\'équipe retirées avec leur type, puis avec leur composant', async () => {
+    const views = { version: 1, views: [{ name: 'V', settings: {} }] }
+    await git.writeYaml(prod, '.polenta/views/A/A_TEST.yaml', views)
+    await git.writeYaml(prod, '.polenta/views/A/A_REQ.yaml', views)
+    await service.delete(prod, ws, { kind: 'type', nodeName: 'A', typeName: 'A_TEST' })
+    expect(await exists(prod, '.polenta/views/A/A_TEST.yaml')).toBe(false)
+    expect(await exists(prod, '.polenta/views/A/A_REQ.yaml')).toBe(true)
+    await service.delete(prod, ws, NODE_A)
+    expect(await exists(prod, '.polenta/views/A')).toBe(false)
   })
 
   it('D5 — une ref déclarée aussi par un autre repo y est conservée', async () => {

@@ -24,6 +24,10 @@ const FIXED: ExecutionColumn[] = [
   { key: 'origin', group: 'execution', label: 'origin' },
   { key: 'notes', group: 'execution', label: 'notes' },
   { key: 'equipment', group: 'execution', label: 'equipment' },
+  { key: 'testedVersion', group: 'execution', label: 'testedVersion' },
+  { key: 'testedStructure', group: 'execution', label: 'testedStructure' },
+  { key: 'testedCommit', group: 'execution', label: 'testedCommit' },
+  { key: 'testedDeviations', group: 'execution', label: 'testedDeviations' },
   { key: 'campaign', group: 'campaign', label: 'campaign' },
   { key: 'campaignStatus', group: 'campaign', label: 'campaignStatus' },
   { key: 'entry', group: 'entry', label: 'entry' },
@@ -56,12 +60,12 @@ export function availableColumns(history: ExecutionHistory, withTestColumn: bool
 export function defaultExecutionColumns(history: ExecutionHistory, withTestColumn: boolean): string[] {
   return [
     ...(withTestColumn ? ['test'] : []),
-    'verdict', 'date', 'tester', 'campaign', 'entry',
+    'verdict', 'date', 'tester', 'testedVersion', 'campaign', 'entry',
     ...unionRunFields(history.runFieldDefs, 'runFields').filter(f => f.defaultVisible).map(f => `run:${f.name}`),
   ]
 }
 
-const UNSORTABLE = new Set(['notes', 'equipment', 'params', 'carriedFrom'])
+const UNSORTABLE = new Set(['notes', 'equipment', 'params', 'carriedFrom', 'testedStructure', 'testedDeviations'])
 
 /** En-tête triable (texte libre ou valeurs composées : non). */
 export function isSortable(key: string): boolean {
@@ -81,6 +85,8 @@ export function sortValue(row: ExecutionHistoryRow, key: string): string {
     case 'entry': return row.entry?.entryId ?? ''
     case 'entryRequirement': return row.entry?.requirementId ?? ''
     case 'testVersion': return String(row.entry?.testVersion ?? '')
+    case 'testedVersion': return row.run?.testedConfig?.label ?? row.run?.testedConfig?.undocumented ?? ''
+    case 'testedCommit': return row.run?.testedConfig?.commit ?? ''
     case 'test': return row.testCaseId
     default:
       if (key.startsWith('run:')) return String(row.run?.fields?.[key.slice(4)] ?? '')

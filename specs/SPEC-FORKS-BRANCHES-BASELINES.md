@@ -760,8 +760,8 @@ L'UI permet de **naviguer dans une baseline** comme si on était dans l'état du
 > **T46 — implémentation réelle** : pas d'endpoint REST `GET /baselines/diff` (l'app desktop
 > n'expose rien en HTTP, cf. `SPEC-ELECTRON-DESKTOP.md` §1) — le diff exigence-par-exigence est
 > `TraceabilityService.diffRequirementsBetweenRefs(repoPath, fromSha, toSha)`, exposé en IPC
-> (`traceability:diff-requirements`), et utilisé en interne par `createImpactAnalysis` (cf.
-> `SPEC-TRACEABILITY.md` §4.6, qui documente le flux complet — diff + arbres d'impact + statuts). Champs
+> (`traceability:diff-requirements`) ; le flux d'analyse entre deux baselines (`createImpactAnalysis`)
+> a été retiré par GH199 (`SPEC-TRACEABILITY.md` §4.1). Champs
 > réellement produits par entrée : `reqId`, `changeType` (`added`/`removed`/`modified`), `changedFields`
 > (`field`/`from`/`to`), `titleFrom`/`titleTo` — plus proche de la forme ci-dessous que de l'exemple
 > `testCoverageChange`/`componentUpdates`, qui ne sont **pas** implémentés (pas de diff de couverture ni
@@ -798,7 +798,7 @@ Une baseline peut être posée sur n'importe quelle branche, pas seulement `main
 §5.2 (le code, via T79, l'empêchait en pratique jusque-là ; c'est désormais aligné avec ce que cette
 section décrivait déjà).
 
-Si on a besoin d'une baseline sur une branche (ex: baseline de la variante US au moment de sa validation, ou d'une branche `dev-*` avant de la livrer, cf. `SPEC-TRACEABILITY.md` §4.6), on la crée explicitement dessus :
+Si on a besoin d'une baseline sur une branche (ex: baseline de la variante US au moment de sa validation, ou d'une branche `dev-*` avant de la livrer), on la crée explicitement dessus :
 
 ```
 POST /projects/:id/baselines

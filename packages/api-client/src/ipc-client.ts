@@ -274,6 +274,17 @@ export function createIpcClient(
         invoke('reviews:revoke-approval', p, reviewId, objectId, reviewerId),
       close: (p, reviewId, status) => invoke('reviews:close', p, reviewId, status),
     },
+    issues: {
+      list: (p) => invoke('issues:list', p),
+      get: (p, id) => invoke('issues:get', p, id),
+      create: (p, dto, workspaceDir) => invoke('issues:create', p, dto, workspaceDir ?? null),
+      update: (p, id, dto, workspaceDir) => invoke('issues:update', p, id, dto, workspaceDir ?? null),
+      addRun: (p, id, runId, workspaceDir) => invoke('issues:add-run', p, id, runId, workspaceDir ?? null),
+    },
+    testedConfig: {
+      context: (p, campaignId, workspaceDir) => invoke('tested-config:context', p, campaignId, workspaceDir ?? null),
+      drift: (p, config, workspaceDir) => invoke('tested-config:drift', p, config, workspaceDir ?? null),
+    },
     versions: {
       tree: (p, workspaceDir) => invoke('versions:tree', p, workspaceDir ?? null),
       list: (p) => invoke('versions:list', p),
@@ -311,8 +322,8 @@ export function createIpcClient(
         invoke('campaigns:update-run-params', p, campaignId, entryId, paramValues),
       delete: (p, id) => invoke('campaigns:delete', p, id),
       executionSheet: {
-        export: (p, campaignId, locale) => invoke('campaigns:execution-sheet-export', p, campaignId, locale),
-        preview: (p, campaignId) => invoke('campaigns:execution-sheet-preview', p, campaignId),
+        export: (p, campaignId, locale, workspaceDir) => invoke('campaigns:execution-sheet-export', p, campaignId, locale, workspaceDir ?? null),
+        preview: (p, campaignId, workspaceDir) => invoke('campaigns:execution-sheet-preview', p, campaignId, workspaceDir ?? null),
         apply: (p, campaignId, filePath, workspaceDir) =>
           invoke('campaigns:execution-sheet-apply', p, campaignId, filePath, workspaceDir),
       },
@@ -334,6 +345,17 @@ export function createIpcClient(
       pickFile: (repoPath) => invoke('image:pick-file', repoPath),
       read: (repoPath, relativePath, ref) => invoke('image:read', repoPath, relativePath, ref ?? null),
       writePaste: (repoPath, mimeType, base64) => invoke('image:write-paste', repoPath, mimeType, base64),
+    },
+    views: {
+      list: (repoPath, username, typeKey, workspaceDir) => invoke('views:list', repoPath, username, typeKey, workspaceDir ?? null),
+      create: (repoPath, username, typeKey, scope, name, settings, workspaceDir) =>
+        invoke('views:create', repoPath, username, typeKey, scope, name, settings, workspaceDir ?? null),
+      update: (repoPath, username, typeKey, ref, settings, workspaceDir) =>
+        invoke('views:update', repoPath, username, typeKey, ref, settings, workspaceDir ?? null),
+      rename: (repoPath, username, typeKey, ref, name, workspaceDir) =>
+        invoke('views:rename', repoPath, username, typeKey, ref, name, workspaceDir ?? null),
+      delete: (repoPath, username, typeKey, ref, workspaceDir) =>
+        invoke('views:delete', repoPath, username, typeKey, ref, workspaceDir ?? null),
     },
     pref: {
       getFieldVisibility: (repoPath, username, typeKey) =>

@@ -1,3 +1,5 @@
+import type { SavedViewsService } from '../services/saved-views.service'
+import type { SavedViewRef, SavedViewScope } from '@polenta/types'
 import { registerPrefHandlers } from './pref.handlers'
 import type { HandlerRegistry } from './registry'
 import type { PlatformHost } from '../host/platform-host'
@@ -23,8 +25,10 @@ import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
 import type { VersionsService } from '../services/versions.service'
+import type { IssuesService } from '../services/issues.service'
 import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
+import type { TestedConfigService } from '../services/tested-config.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
 import type { InterfaceComplianceService } from '../services/interface-compliance.service'
@@ -51,10 +55,10 @@ import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } fro
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
 import type { SchemaDeleteService } from '../services/schema-delete.service'
-import type { ExecutionHistoryTarget, ValueRename } from '@polenta/types'
+import type { ExecutionHistoryTarget, TestedConfig, ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
-  CreateRequirementDto,
+  CreateRequirementDto, CreateIssueDto, UpdateIssueDto,
   UpdateRequirementDto,
   TransitionRequirementDto,
   CreateTestCaseDto,
@@ -105,8 +109,10 @@ export interface Container {
   elementMove: ElementMoveService
   campaigns: CampaignsService
   versions: VersionsService
+  issues: IssuesService
   campaignExecution: CampaignExecutionService
   executionHistory: ExecutionHistoryService
+  testedConfig: TestedConfigService
   tree: TreeService
   baseline: BaselineService
   polentaRepo: PolentaRepoService
@@ -119,6 +125,7 @@ export interface Container {
   suivi: SuiviService
   suiviUpdates: SuiviUpdatesService
   savedQueries: SavedQueriesService
+  savedViews: SavedViewsService
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService
   export: ExportService
@@ -148,7 +155,7 @@ function checkTypeRename(channel: string, dto: unknown): import('@polenta/types'
   const d = dto as Record<string, unknown> | null
   const str = (k: string) => typeof d?.[k] === 'string'
   if (!d || !['nodeName', 'oldName', 'newName', 'oldPrefix', 'newPrefix'].every(str) || !d.nodeName || !d.oldName || !d.newName
-    || !['requirement', 'test', 'campaign'].includes(d.category as string)) {
+    || !['requirement', 'test', 'campaign', 'issue'].includes(d.category as string)) {
     throw new Error(`${channel} — dto must be { nodeName, category, oldName, newName, oldPrefix, newPrefix }`)
   }
   return d as unknown as import('@polenta/types').TypeRenameDto
@@ -187,6 +194,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
+  'issues:create', 'issues:update', 'issues:add-run',
   'versions:create', 'versions:update', 'versions:copy', 'versions:delete', 'versions:set-impact', 'versions:include', 'versions:remove-changes', 'versions:release',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
@@ -475,6 +483,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))
+  // GH202 — version testée : versions proposées et pré-remplissage ; évolution depuis l'exécution.
+  r.handle('tested-config:context', (_e, repoPath: string, campaignId: string, workspaceDir?: string) =>
+    c.testedConfig.context(repoPath, campaignId, workspaceDir))
+  r.handle('tested-config:drift', (_e, repoPath: string, config: TestedConfig, workspaceDir?: string) =>
+    c.testedConfig.drift(repoPath, config, workspaceDir))
   // GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris.
   r.handle('tests:type-def', (_e, repoPath: string, objectTypeRef: string, workspaceDir?: string) =>
     c.tests.typeDefFor(repoPath, objectTypeRef, workspaceDir))
@@ -583,6 +596,27 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('versions:get', (_e, repoPath: string, id: string, workspaceDir?: string) =>
     c.versions.page(repoPath, id, workspaceDir ?? undefined))
   r.handle('versions:backlog', (_e, repoPath: string) => c.versions.backlog(repoPath))
+  // GH203 — vues enregistrées du ⚙️ (personnelles et d'équipe).
+  r.handle('views:list', (_e, repoPath: string, username: string, typeKey: string, workspaceDir?: string) =>
+    c.savedViews.list(repoPath, username, typeKey, workspaceDir))
+  r.handle('views:create', (_e, repoPath: string, username: string, typeKey: string, scope: SavedViewScope, name: string, settings: Record<string, unknown>, workspaceDir?: string) =>
+    c.savedViews.create(repoPath, username, typeKey, scope, name, settings, workspaceDir))
+  r.handle('views:update', (_e, repoPath: string, username: string, typeKey: string, ref: SavedViewRef, settings: Record<string, unknown>, workspaceDir?: string) =>
+    c.savedViews.update(repoPath, username, typeKey, ref, settings, workspaceDir))
+  r.handle('views:rename', (_e, repoPath: string, username: string, typeKey: string, ref: SavedViewRef, name: string, workspaceDir?: string) =>
+    c.savedViews.rename(repoPath, username, typeKey, ref, name, workspaceDir))
+  r.handle('views:delete', (_e, repoPath: string, username: string, typeKey: string, ref: SavedViewRef, workspaceDir?: string) =>
+    c.savedViews.delete(repoPath, username, typeKey, ref, workspaceDir))
+  // GH244 — issues.
+  r.handle('issues:list', (_e, repoPath: string) => c.issues.findAll(repoPath))
+  r.handle('issues:get', (_e, repoPath: string, id: string) => c.issues.findOne(repoPath, id))
+  r.handle('issues:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
+    c.issues.create(repoPath, dto as CreateIssueDto, workspaceDir))
+  r.handle('issues:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
+    c.issues.update(repoPath, id, dto as UpdateIssueDto, workspaceDir))
+  r.handle('issues:add-run', (_e, repoPath: string, id: string, runId: string, workspaceDir?: string) =>
+    c.issues.addRun(repoPath, id, runId, workspaceDir))
+
   r.handle('versions:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.versions.create(repoPath, dto as import('@polenta/types').CreateVersionDto, workspaceDir ?? undefined))
   r.handle('versions:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>

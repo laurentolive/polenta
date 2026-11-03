@@ -11,7 +11,7 @@ import type { TestsService } from './tests.service'
  * (GH100, `type-rename.service.ts`) et la suppression en cascade (GH104, `schema-delete.service.ts`).
  */
 
-export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'version'
+export type ObjectCategory = 'requirement' | 'test' | 'campaign' | 'version' | 'issue'
 
 export interface ObjectServices {
   requirements: Pick<RequirementsService, 'findAll'>
@@ -19,6 +19,8 @@ export interface ObjectServices {
   campaigns: Pick<CampaignsService, 'list'>
   /** GH201 — versions (`versions/<ID>.yaml`) ; absent : aucune version comptée. */
   versions?: { list(repoPath: string): Promise<Array<{ id: string; objectTypeRef: string }>> }
+  /** GH244 — issues (`issues/<ID>.yaml`) ; absent : aucune issue comptée. */
+  issues?: { findAll(repoPath: string): Promise<Array<{ id: string; objectTypeRef: string }>> }
 }
 
 /** Le schéma déclare-t-il le type `ref` (`<nœud>::<type>`, nœud à n'importe quelle profondeur) ? */
@@ -48,6 +50,7 @@ export async function objectIdsOfType(services: ObjectServices, repoPath: string
   if (category === 'requirement') return (await services.requirements.findAll(repoPath, { type: ref })).map(o => o.id)
   if (category === 'test') return (await services.tests.findAll(repoPath)).filter(o => o.objectTypeRef === ref).map(o => o.id)
   if (category === 'version') return (await services.versions?.list(repoPath) ?? []).filter(o => o.objectTypeRef === ref).map(o => o.id)
+  if (category === 'issue') return (await services.issues?.findAll(repoPath) ?? []).filter(o => o.objectTypeRef === ref).map(o => o.id)
   return (await services.campaigns.list(repoPath)).filter(o => o.objectTypeRef === ref).map(o => o.id)
 }
 

@@ -6,7 +6,7 @@ import type {
   VersionProblem, VersionReleasePreview, VersionSummary, WorkspaceTreeNode,
   ImpactAnalysisStatus, VersionAnalysis, VersionImpacted, VersionTestsToRun,
 } from '@polenta/types'
-import { IMPACT_ANALYSIS_STATUSES, initialStatus, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
+import { ISSUE_IMPACT_LINK, IMPACT_ANALYSIS_STATUSES, initialStatus, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { SchemaService } from './schema.service'
@@ -32,8 +32,8 @@ export class VersionError extends Error {
 }
 
 interface VersionType { typeDef: ObjectTypeDefinition; ref: string }
-interface RepoInfo { name: string; label: string; repoPath: string }
-interface ElementRow { state: ElementState; category: 'requirement' | 'test'; filePath: string }
+export interface RepoInfo { name: string; label: string; repoPath: string }
+interface ElementRow { state: ElementState; category: 'requirement' | 'test' | 'issue'; filePath: string }
 
 const VERSIONS_DIR = 'versions'
 const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id, undefined, { numeric: true })
@@ -239,7 +239,7 @@ export class VersionsService {
     return out
   }
 
-  private async elementFile(repoPath: string, id: string): Promise<{ filePath: string; category: 'requirement' | 'test'; state: ElementState } | null> {
+  private async elementFile(repoPath: string, id: string): Promise<{ filePath: string; category: ElementRow['category']; state: ElementState } | null> {
     for (const [dir, category] of ELEMENT_DIRS) {
       const filePath = `${dir}/${id}.yaml`
       const state = await this.tracking.readDisk(repoPath, filePath)
@@ -463,7 +463,7 @@ export class VersionsService {
       rows.push({
         component: info.name, componentLabel: info.label, repoPath: info.repoPath,
         versionId: v.id, versionTitle: v.title,
-        category: el?.category ?? null, id: c.id, title: el?.state.title ?? '',
+        category: el?.category ?? null, ...(el && { objectTypeRef: el.state.objectTypeRef }), id: c.id, title: el?.state.title ?? '',
         ...(c.base && { base: c.base }),
         toSha: v.freeze?.sha ?? null,
         filePath: el?.filePath ?? null,
@@ -495,6 +495,27 @@ export class VersionsService {
       }
     }
     return rows
+  }
+
+  /** GH202 — dépendances directes d'un repo, lues dans l'arbre du workspace. */
+  async dependenciesOf(repoPath: string, workspaceDir?: string): Promise<RepoInfo[]> {
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    return this.dependencies(repoPath, ws?.logicalTree ?? null)
+  }
+
+  /** GH202 — nom d'un repo dans le workspace (montage, ou dossier du repo racine). */
+  async repoName(repoPath: string, workspaceDir?: string): Promise<string> {
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    return this.repoInfo(repoPath, ws?.nodes ?? []).name
+  }
+
+  /** GH202 — repo du workspace portant ce nom ; introuvable : `fallback`. */
+  async repoPathNamed(name: string, fallback: string, workspaceDir?: string): Promise<string> {
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    const nodes = ws?.nodes ?? []
+    // Le repo consulté d'abord : un nom de montage peut exister ailleurs dans le workspace.
+    const candidates = [fallback, ...(ws ? [ws.logicalTree.repoPath] : []), ...nodes.map(n => n.repoPath)]
+    return candidates.find(c => this.repoInfo(c, nodes).name === name) ?? fallback
   }
 
   /** Dépendances directes d'un repo dans l'arbre logique du workspace. */
@@ -534,18 +555,35 @@ export class VersionsService {
     const page = await this.page(repoPath, version.id, workspaceDir)
     // Racines : les changements que liste la page (cette version et ses composants), une fois chacun.
     const roots = new Map<string, string>()
-    for (const row of page.rows) if (row.category && !roots.has(row.id)) roots.set(row.id, row.component)
+    const issueRows = page.rows.filter(row => row.category === 'issue')
+    for (const row of page.rows) if (row.category && row.category !== 'issue' && !roots.has(row.id)) roots.set(row.id, row.component)
     const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
     const rootRepo = ws?.logicalTree.repoPath ?? repoPath
     const repoPaths = await resolveWorkspaceRepoPaths(this.workspaceTree, rootRepo, workspaceDir)
     const snapshot = await src.traceability.loadWorkingTreeSnapshot(rootRepo, repoPaths)
+    // GH244 — une issue n'est pas une racine : ses exigences impactées le sont.
+    const viaIssues = new Map<string, string[]>()
+    for (const row of issueRows) {
+      for (const link of snapshot.links) {
+        if (link.type !== ISSUE_IMPACT_LINK || (link.sourceId !== row.id && link.targetId !== row.id)) continue
+        const reqId = link.sourceId === row.id ? link.targetId : link.sourceId
+        if (!snapshot.requirements.has(reqId)) continue
+        if (!roots.has(reqId)) roots.set(reqId, row.component)
+        viaIssues.set(reqId, [...(viaIssues.get(reqId) ?? []), row.id])
+      }
+    }
     return { snapshot, analysis: computeVersionAnalysis({
-      roots: [...roots].map(([id, component]) => ({ id, component })),
+      roots: [...roots].map(([id, component]) => ({ id, component, ...(viaIssues.has(id) && { viaIssues: viaIssues.get(id) }) })),
       snapshot,
       trees: (id, type) => src.traceability.buildImpactTreesFromSnapshot(snapshot, id, type),
       repoPath,
+      ownIds: await this.ownIds(repoPath),
       impacted: version.impacted ?? [],
     }) }
+  }
+
+  private async ownIds(repoPath: string): Promise<Set<string>> {
+    return new Set((await this.elements(repoPath)).map(e => e.state.id))
   }
 
   /** Statut d'impact et commentaire d'un élément (version en cours) ; statut par défaut sans commentaire : retiré. */
@@ -584,7 +622,7 @@ export class VersionsService {
       this.liveAnalysis(repoPath, version, workspaceDir),
       src.campaigns.list(repoPath).catch(() => []),
     ])
-    return { analysis, tests: computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath) }
+    return { analysis, tests: computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath, await this.ownIds(repoPath)) }
   }
 
   /** Tests à exécuter (GH245 §2) ; campagnes ouvertes du repo en information. Pas pour une version abandonnée. */
@@ -597,14 +635,14 @@ export class VersionsService {
     const campaigns = await src.campaigns.list(repoPath).catch(() => [])
     if (state === 'in_progress') {
       const { analysis, snapshot } = await this.liveAnalysis(repoPath, version, workspaceDir)
-      return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath)
+      return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath, await this.ownIds(repoPath))
     }
     // Released : analyse figée ; couverture et campagnes lues sur l'état courant (on teste aujourd'hui).
     const analysis = await this.analysis(repoPath, id, workspaceDir)
     const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
     const rootRepo = ws?.logicalTree.repoPath ?? repoPath
     const snapshot = await src.traceability.loadWorkingTreeSnapshot(rootRepo, await resolveWorkspaceRepoPaths(this.workspaceTree, rootRepo, workspaceDir))
-    return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath)
+    return computeVersionTests(analysis.roots.map(r => r.elementId), analysis.rows, snapshot, campaigns, repoPath, await this.ownIds(repoPath))
   }
 
   private requireImpactSources(): NonNullable<VersionsService['impactSources']> {
@@ -734,7 +772,9 @@ export class VersionsService {
   }
 
   private async stamp(repoPath: string, before: ProductVersion | null, after: ProductVersion, filePath: string): Promise<ProductVersion> {
-    return this.history ? this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath }) : after
+    if (!this.history) return after
+    const stamped = await this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath })
+    return this.history.stampVersionChanges(repoPath, stamped)
   }
 }
 

@@ -27,6 +27,7 @@ export function VersionElementPicker({ repoPath, workspaceDir, excluded, onAdd, 
   const typeRefs = useMemo(() => [
     ...getObjectTypeRefs(schema, 'requirement').map(r => ({ ...r, category: 'requirement' as const })),
     ...getObjectTypeRefs(schema, 'test').map(r => ({ ...r, category: 'test' as const })),
+    ...getObjectTypeRefs(schema, 'issue').map(r => ({ ...r, category: 'issue' as const })),
   ], [schema])
   const { data: identityLogin, isPending: identityPending } = useQuery({
     queryKey: ['project-username', repoPath],
@@ -37,6 +38,7 @@ export function VersionElementPicker({ repoPath, workspaceDir, excluded, onAdd, 
   const username = identityLogin ?? 'local'
   const { data: reqs = [] } = useQuery({ queryKey: ['requirements', repoPath], queryFn: () => api.requirements.list(repoPath), enabled: !!repoPath })
   const { data: tests = [] } = useQuery({ queryKey: ['tests', repoPath], queryFn: () => api.tests.list(repoPath), enabled: !!repoPath })
+  const { data: issues = [] } = useQuery({ queryKey: ['issues', repoPath], queryFn: () => api.issues.list(repoPath), enabled: !!repoPath })
 
   const [chosenTypeRef, setChosenTypeRef] = useState<string | null>(null)
   const typeRef = chosenTypeRef ?? typeRefs[0]?.ref
@@ -49,9 +51,9 @@ export function VersionElementPicker({ repoPath, workspaceDir, excluded, onAdd, 
   const [displayed, setDisplayed] = useState<string[]>([])
 
   const candidates = useMemo(() => {
-    const pool = currentType?.category === 'test' ? tests : reqs
+    const pool = currentType?.category === 'test' ? tests : currentType?.category === 'issue' ? issues : reqs
     return pool.filter(o => o.objectTypeRef === typeRef && !excluded.has(o.id))
-  }, [currentType, tests, reqs, typeRef, excluded])
+  }, [currentType, tests, reqs, issues, typeRef, excluded])
   const selection = useMemo(() => ({ selected, onChange: setSelected, onDisplayedChange: setDisplayed }), [selected])
   const displayedSet = new Set(candidates.length > 0 ? displayed : [])
   const hiddenCount = [...selected].filter(id => !displayedSet.has(id)).length

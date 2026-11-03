@@ -28,7 +28,7 @@ export interface OutsideModification {
   filePath: string
 }
 
-export const ELEMENT_DIRS = [['requirements', 'requirement'], ['tests', 'test']] as const
+export const ELEMENT_DIRS = [['requirements', 'requirement'], ['tests', 'test'], ['issues', 'issue']] as const
 
 /** Nombre d'états d'éléments gardés en mémoire (par repo, commit et fichier). */
 const CONTENT_CACHE_MAX = 20_000
@@ -77,6 +77,7 @@ export class VersionTrackingService {
     if (!head) return []
     const out: OutsideModification[] = []
     for (const [dir, category] of ELEMENT_DIRS) {
+      if (category === 'issue') continue // pas de verrou d'approbation sur une issue (GH244)
       const files = (await this.git.listFiles(repo, dir).catch(() => [])).filter(f => f.endsWith('.yaml'))
       for (const filePath of files) {
         const disk = await this.readDisk(repo, filePath)

@@ -41,7 +41,7 @@ export async function assertWritableBranch(c: McpContainer): Promise<ReturnType<
 }
 
 /**
- * Invalide les index exigences/tests de tous les repos du périmètre : ce process n'a pas
+ * Invalide les index exigences/tests/issues de tous les repos du périmètre : ce process n'a pas
  * de RepoWatcherService, une requête exécutée sur l'index en cache ignorerait les objets
  * créés/modifiés par l'app depuis sa construction.
  */
@@ -50,6 +50,7 @@ export async function freshenIndexes(c: McpContainer): Promise<void> {
   for (const p of repoPaths) {
     c.reqIndex.invalidate(p)
     c.testsIndex.invalidate(p)
+    c.issues.invalidate(p)
   }
 }
 

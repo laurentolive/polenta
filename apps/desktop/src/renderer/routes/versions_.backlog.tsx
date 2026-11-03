@@ -8,6 +8,7 @@ import { api } from '../api'
 import { decodeProjectId } from '../lib/projectId'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useSetTabTitle } from '../contexts/TabsContext'
+import { useSystemView } from '../contexts/SystemViewContext'
 import { useInvalidateVersions, useRangeSelection, useVersionBacklog, versionErrorText } from '../components/versions/useVersions'
 
 /**
@@ -25,6 +26,7 @@ export const Route = createFileRoute('/versions_/backlog')({
 function BacklogPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { objectPage } = useSystemView()
   const { projectId, repoPath } = Route.useSearch()
   const workspaceDir = projectId ? decodeProjectId(projectId) : ''
   useSetTabTitle(t('versions.backlog.title'))
@@ -59,9 +61,17 @@ function BacklogPage() {
     to: '/diff',
     search: { projectId, repoPath, filepath: i.filePath, commitSha: undefined, element: '1', ...(i.base && { baseSha: i.base.sha }) },
   })
-  const openElement = (i: VersionBacklogItem) => i.category === 'requirement'
-    ? void navigate({ to: '/req/$reqId', params: { reqId: i.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
-    : void navigate({ to: '/test/$testId', params: { testId: i.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
+  const openElement = (i: VersionBacklogItem) => {
+    if (i.category === 'issue') {
+      const [nodeId, typeId] = i.objectTypeRef.split('::')
+      const page = objectPage(repoPath, nodeId, typeId, 'edit', i.id, 'issue')
+      void navigate({ to: page.pathname as never, search: page.search as never })
+    } else if (i.category === 'requirement') {
+      void navigate({ to: '/req/$reqId', params: { reqId: i.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
+    } else {
+      void navigate({ to: '/test/$testId', params: { testId: i.id }, search: { repoPath, projectId, component: undefined, level: undefined } })
+    }
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden" data-testid="version-backlog-page">

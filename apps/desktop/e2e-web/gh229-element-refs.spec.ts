@@ -120,7 +120,7 @@ test('N7 — displayIdField: title : les liens affichent le titre, l\'ID reste e
   const link = s.page.locator(`[data-element-link="${tc.id}"]`).first()
   await link.scrollIntoViewIfNeeded()
   await expect(link).toHaveText(tc.title)
-  await expect(link).toHaveAttribute('title', tc.id)
+  await expect(link).not.toHaveAttribute('title') // GH250 : l'ID Polenta est dans la popup d'aperçu
   await s.shot('gh229-n7-display-id')
 
   typeOf(schema, tc.objectTypeRef).displayIdField = undefined

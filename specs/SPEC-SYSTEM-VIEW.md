@@ -283,8 +283,8 @@ navigation et index dans `contexts/ElementNavContext`, monté dans `AppLayout`).
 liens : l'ID d'un élément dans sa propre ligne / son en-tête, les impressions et exports, un ID
 introuvable (texte simple, marqueur « introuvable » dans les puces).
 
-- **Texte** : l'ID affiché du type (`SPEC-REQ-requirements.md` §6.2), infobulle = ID Polenta s'il
-  diffère.
+- **Texte** : l'ID affiché du type (`SPEC-REQ-requirements.md` §6.2). Pas d'infobulle native :
+  elle recouvrirait la popup d'aperçu, qui donne l'ID Polenta (GH250).
 - **Clic** : nouvelle page de l'historique de l'onglet. Exigence / test → vue système, repo /
   composant / type de l'élément (bascule de repo GH105, catégorie suivie), **type de vue** = mode
   courant de l'onglet s'il est sur la vue système (Tableau, Document ou Édition), sinon dernier

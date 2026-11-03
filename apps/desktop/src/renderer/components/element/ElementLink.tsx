@@ -37,8 +37,7 @@ export function ElementLink({ id, className, missingClassName, onFollow, childre
       role="link"
       tabIndex={0}
       className={['cursor-pointer hover:underline', className ?? ''].join(' ')}
-      // La popup d'aperçu tient lieu d'infobulle ; l'ID Polenta seulement s'il n'est pas affiché.
-      title={target && target.displayId !== id && !children ? id : undefined}
+      // La popup d'aperçu tient lieu d'infobulle (GH250 : pas de `title`, il la recouvrirait).
       aria-description={t('system.shared.clickToNavigate')}
       {...handlers}
     >

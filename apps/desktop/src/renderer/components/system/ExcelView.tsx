@@ -573,7 +573,6 @@ const LinkCell = memo(function LinkCell({
   stickyBg?: string
   truncate: boolean
 }) {
-  const labels = useCellLabels()
   const actions = useCellActions()
   const tdRef = useRef<HTMLTableCellElement>(null)
   const g = useCellGestures(nodeId, col, () => {
@@ -595,7 +594,6 @@ const LinkCell = memo(function LinkCell({
         stickyBg ?? '',
         g.isSelected ? CELL_SELECTED_CLASS : '',
       ].join(' ')}
-      title={value || labels.doubleClickToEdit}
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}

@@ -65,7 +65,7 @@ export function pendingDecision(typeDef: Pick<ObjectTypeDefinition, 'decisions'>
 }
 
 /** Raison du refus d'un type validation, `null` s'il est valide. */
-export function validationTypeError(typeDef: Pick<ObjectTypeDefinition, 'name' | 'decisions' | 'statuses'>): string | null {
+export function validationTypeError(typeDef: Pick<ObjectTypeDefinition, 'name' | 'decisions' | 'statuses' | 'trackStatusHistory'>): string | null {
   const decisions = typeDef.decisions ?? []
   const pending = decisions.filter(d => d.isPending).length
   if (pending !== 1) return `Le type validation "${typeDef.name}" doit avoir exactement une décision « en attente » (${pending}).`
@@ -75,6 +75,10 @@ export function validationTypeError(typeDef: Pick<ObjectTypeDefinition, 'name' |
   const statuses = typeDef.statuses ?? []
   if (statuses.filter(s => s.isApproval).length !== 1) return `Le type validation "${typeDef.name}" doit avoir exactement un statut d'approbation (signée).`
   if (statuses.filter(s => s.isTerminal).length !== 1) return `Le type validation "${typeDef.name}" doit avoir exactement un statut terminal (annulée).`
+  // Statut de création : ni signée, ni annulée, sinon une validation naîtrait avec un feu vert.
+  if (statuses[0]?.isApproval || statuses[0]?.isTerminal) return `Le premier statut du type validation "${typeDef.name}" doit être un statut en cours.`
+  // Le signataire et la date de signature sont lus dans l'historique du statut.
+  if (typeDef.trackStatusHistory === false) return `Le type validation "${typeDef.name}" doit historiser son statut (signataire et date de signature).`
   return null
 }
 
@@ -114,6 +118,8 @@ export interface ValidationRow {
   /** Statut de design : première version qui inclut l'exigence dans cet état. */
   designVersion: { id: string; title: string } | null
   coverageStatus: CoverageStatus
+  /** Tests liés (workspace). `local` : du repo de la validation, dont les exécutions sont lisibles ici. */
+  tests: Array<{ id: string; title: string; local: boolean }>
   impact: ValidationImpact | null
   /** Décision en vigueur : celle de l'entrée, sinon la valeur `isPending`. */
   decision: string

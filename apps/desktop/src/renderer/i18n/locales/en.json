@@ -2526,7 +2526,7 @@
     "components": "Component validations",
     "noValidation": "No validation",
     "noRequirement": "This component has no requirement to validate.",
-    "noRun": "No execution for this requirement in this component.",
+    "noRun": "No execution",
     "sign": "Sign",
     "cancel": "Cancel validation",
     "confirm": "Confirm",
@@ -2615,6 +2615,8 @@
       "DECISION_CONFIRMED": "This decision is already confirmed: {{detail}}",
       "NO_DECISION": "No decision on this requirement: {{detail}}",
       "TITLE_EMPTY": "The title is required."
-    }
+    },
+    "noTest": "No test linked to this requirement.",
+    "otherComponent": "Executions in another component"
   }
 }

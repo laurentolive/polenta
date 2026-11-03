@@ -129,7 +129,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements, testedConfig)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree, issues)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
-  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues)
+  const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues, validations)
   // GH100 — renommage d'un type (nom / préfixe) : migration de ses objets dans tout le workspace.
   const typeRename = new TypeRenameService(
     requirements, tests, campaigns, tree, schema, [reqIndex, testsIndex, issues],

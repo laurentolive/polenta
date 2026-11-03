@@ -41,11 +41,16 @@ function ValidationView() {
   const [fields, setFields] = useState<Record<string, unknown>>({})
   const [error, setError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<Confirming>(null)
+  // Sur les valeurs enregistrées, pas sur la page : une relecture (autre décision, watcher) garde la saisie.
+  const savedTitle = page?.validation.title
+  const savedFields = JSON.stringify(page?.validation.fields ?? null)
   useEffect(() => {
-    if (!page) return
-    setTitle(page.validation.title)
-    setFields(page.validation.fields)
-  }, [page])
+    if (savedTitle !== undefined) setTitle(savedTitle)
+  }, [savedTitle])
+  useEffect(() => {
+    const saved = JSON.parse(savedFields) as Record<string, unknown> | null
+    if (saved) setFields(saved)
+  }, [savedFields])
 
   const run = async (op: () => Promise<unknown>) => {
     setError(null)

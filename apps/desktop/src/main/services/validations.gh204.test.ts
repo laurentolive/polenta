@@ -16,6 +16,9 @@ import type { HistoryService } from './history.service'
 import { VersionTrackingService } from './version-tracking.service'
 import { VersionsService } from './versions.service'
 import { ValidationsService } from './validations.service'
+import { signatureProblems } from './validation-rows.util'
+import { FieldRenameService } from './field-rename.service'
+import { TypeRenameService } from './type-rename.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 
 // GH204 sprint 1 — validation d'une version (specs/GH204-tests.md, U3 à U11, U14, U15).
@@ -429,6 +432,70 @@ describe('signature (U9, U10, U15)', () => {
     expect(await validations.list(dir)).toEqual([])
     const next = await validations.create(dir, { versionId: v.id, title: 'W' })
     expect(next.id).not.toBe(val.id)
+  })
+})
+
+describe('revue de code', () => {
+  it('type : premier statut non marqué, historique du statut obligatoire', () => {
+    expect(validationTypeError({ ...VALIDATION_TYPE, statuses: [...VALIDATION_TYPE.statuses!].reverse() })).toContain('premier statut')
+    expect(validationTypeError({ ...VALIDATION_TYPE, trackStatusHistory: false })).toContain('historiser')
+  })
+
+  it('requiredWhen sur le statut signé : champ manquant à la signature', () => {
+    const typeDef = { ...VALIDATION_TYPE, fields: [{ name: 'rapport', label: 'Rapport', type: 'text', requiredWhen: { status: ['signee'] } }] } as ObjectTypeDefinition
+    const problems = signatureProblems({ typeDef, validation: { status: 'en_cours', fields: {} }, versionState: 'released', rows: [] })
+    expect(problems).toEqual([{ code: 'FIELD_MISSING', ids: ['rapport'] }])
+  })
+
+  it('gel illisible : erreur plutôt qu\'un périmètre vide', async () => {
+    await writeReq('REQ-0001')
+    await commitAll('exigence')
+    const v = await release('1.0')
+    const val = await validations.create(dir, { versionId: v.id, title: 'V' })
+    await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
+    const file = path.join(dir, 'versions', `${v.id}.yaml`)
+    await fsP.writeFile(file, (await fsP.readFile(file, 'utf8')).replace(/sha: \S+/, `sha: ${'0'.repeat(40)}`))
+    await expect(validations.sign(dir, val.id)).rejects.toThrow()
+    expect((await validations.get(dir, val.id)).status).toBe('en_cours')
+  })
+
+  it('compléter une proposition ne la confirme pas', async () => {
+    await writeReq('REQ-0001')
+    const v = await versions.create(dir, { title: '1.0' })
+    const val = await validations.create(dir, { versionId: v.id, title: 'V' })
+    await validations.propose(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
+    const edited = await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme', comment: 'précision' })
+    expect(edited.entries[0]).toMatchObject({ proposed: true, comment: 'précision' })
+    expect(edited.entries[0].decidedBy).toBeUndefined()
+    const changed = await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'hors_scope' })
+    expect(changed.entries[0].proposed).toBeUndefined()
+    expect(changed.entries[0].decidedBy).toBe('alice')
+  })
+
+  it('renommages : champ et valeur migrés, validation signée comprise', async () => {
+    const v = await versions.create(dir, { title: '1.0' })
+    const val = await validations.create(dir, { versionId: v.id, title: 'V', fields: { jalon: 'DVT' } })
+    const reqs = { findAll: async () => [], renameFieldKeys: async () => undefined, rewriteObjects: async () => undefined }
+    const service = new FieldRenameService(reqs as never, { ...reqs, rewriteSnapshots: async () => undefined } as never, { ...reqs, list: async () => [], rewriteSnapshots: async () => undefined } as never, undefined, validations)
+    const fields = await service.renameFields(dir, 'root::validation', [{ from: 'jalon', to: 'milestone' }])
+    expect(fields.migrated).toEqual([val.id])
+    expect((await validations.get(dir, val.id)).fields).toEqual({ milestone: 'DVT' })
+    const values = await service.renameValues(dir, 'root::validation', [{ from: 'en_cours', to: 'ouverte', target: { kind: 'status' } } as never])
+    expect(values.migrated).toEqual([val.id])
+    expect((await validations.get(dir, val.id)).status).toBe('ouverte')
+  })
+
+  it('préfixe d\'un type d\'exigence figé dès qu\'une validation existe', async () => {
+    await writeReq('REQ-0001')
+    const reqsStub = { findAll: async () => [{ id: 'REQ-0001' }] }
+    const rename = () => new TypeRenameService(
+      reqsStub as never, { findAll: async () => [] } as never, { list: async () => [] } as never, {} as never, {} as never, [],
+      async () => [dir],
+    ).plan(dir, undefined, { nodeName: 'root', category: 'requirement', oldName: 'exigence', newName: 'exigence', oldPrefix: 'REQ', newPrefix: 'NEW' })
+    expect((await rename()).errors).toEqual([])
+    const v = await versions.create(dir, { title: '1.0' })
+    await validations.create(dir, { versionId: v.id, title: 'V' })
+    expect((await rename()).errors.map(e => e.code)).toEqual(['HAS_VALIDATIONS'])
   })
 })
 

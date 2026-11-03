@@ -242,7 +242,7 @@ export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
                               onSave={fields => void decide(row, row.decision, { fields })}
                             />
                           )}
-                          <ValidationRuns repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} requirementId={row.requirementId} versionId={validation.versionId} signedAt={signedAt} />
+                          <ValidationRuns repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} requirementId={row.requirementId} tests={row.tests} versionId={validation.versionId} signedAt={signedAt} />
                         </div>
                       </td>
                     </tr>
@@ -289,7 +289,9 @@ function EntryFieldsForm({ fields, values, disabled, repoPath, testId, onSave }:
 }) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(values)
-  useEffect(() => setDraft(values), [values])
+  // Sur le contenu : une relecture de la page (nouvel objet, même valeur) garde la saisie.
+  const saved = JSON.stringify(values)
+  useEffect(() => setDraft(JSON.parse(saved) as Record<string, unknown>), [saved])
   const dirty = JSON.stringify(draft) !== JSON.stringify(values)
   return (
     <div className="flex flex-col gap-2 max-w-3xl" data-testid={testId}>

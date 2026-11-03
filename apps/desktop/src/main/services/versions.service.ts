@@ -172,8 +172,10 @@ export class VersionsService {
   async requirementsOf(repoPath: string, version: Pick<ProductVersion, 'freeze'>): Promise<Array<{ state: ElementState; fields: Record<string, unknown> }>> {
     const own = await this.ownership(repoPath)
     const sha = version.freeze?.sha
+    // Gel illisible (clone partiel…) : l'erreur remonte, un périmètre vide ouvrirait la signature.
+    if (sha && !await this.git.hasCommit(repoPath, sha)) throw new VersionError('VERSION_NOT_FOUND', `commit figé ${sha} absent du repo`)
     const files = sha
-      ? await this.git.listFilesAtRef(repoPath, sha, 'requirements').catch(() => [])
+      ? await this.git.listFilesAtRef(repoPath, sha, 'requirements')
       : await this.git.listFiles(repoPath, 'requirements').catch(() => [])
     const out: Array<{ state: ElementState; fields: Record<string, unknown> }> = []
     for (const filePath of files) {

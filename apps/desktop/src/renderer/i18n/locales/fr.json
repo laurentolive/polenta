@@ -2526,7 +2526,7 @@
     "components": "Validations des composants",
     "noValidation": "Aucune validation",
     "noRequirement": "Ce composant n'a aucune exigence à valider.",
-    "noRun": "Aucune exécution pour cette exigence dans ce composant.",
+    "noRun": "Aucune exécution",
     "sign": "Signer",
     "cancel": "Annuler la validation",
     "confirm": "Confirmer",
@@ -2615,6 +2615,8 @@
       "DECISION_CONFIRMED": "Cette décision est déjà confirmée : {{detail}}",
       "NO_DECISION": "Aucune décision sur cette exigence : {{detail}}",
       "TITLE_EMPTY": "Le titre est obligatoire."
-    }
+    },
+    "noTest": "Aucun test lié à cette exigence.",
+    "otherComponent": "Exécutions dans un autre composant"
   }
 }

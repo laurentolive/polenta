@@ -135,6 +135,9 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
   await page.getByTestId(`validation-test-toggle-${testId}`).click()
   await expect(page.getByTestId('validation-run-RUN-1').getByTestId('validation-mention-other_version')).toHaveCount(0)
   await expect(page.getByTestId('validation-run-RUN-2').getByTestId('validation-mention-other_version')).toBeVisible()
+  await page.getByTestId(`validation-toggle-${reqB}`).click()
+  await expect(page.getByTestId('validation-no-test')).toBeVisible()
+  await page.getByTestId(`validation-toggle-${reqB}`).click()
 
   // E3 — non conforme : proposition d'issue, origine et lien d'impact.
   await page.getByTestId(`validation-decision-${reqB}`).selectOption('non_conforme')

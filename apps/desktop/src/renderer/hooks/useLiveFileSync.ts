@@ -48,7 +48,7 @@ export function useLiveFileSync(): void {
       // graphe agrège tout le workspace. Un changement de données (exécutions comprises), de ref
       // (avance rapide du pull automatique), de la bibliothèque projet ou d'un script de requête
       // (écrit hors de l'app, MCP) dans n'importe quel repo les rend périmés.
-      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|issues|queries|dashboards\/lib)\//.test(relPath)) {
+      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|issues|validations|queries|dashboards\/lib)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }

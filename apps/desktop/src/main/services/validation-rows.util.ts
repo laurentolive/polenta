@@ -52,7 +52,7 @@ export function buildRows(input: {
   validation: Pick<Validation, 'entries'>
   requirements: ValidationRequirement[]
   impact: (id: string) => ValidationImpact | null
-  coverage: Map<string, CoverageStatus>
+  coverage: Map<string, { status: CoverageStatus; tests: ValidationRow['tests'] }>
   design: Map<string, { id: string; title: string }>
 }): ValidationRow[] {
   const pending = pendingDecision(input.typeDef)?.name ?? ''
@@ -64,7 +64,8 @@ export function buildRows(input: {
       return {
         requirementId: state.id, title: state.title, objectTypeRef: state.objectTypeRef, status: state.status, fields,
         designVersion: input.design.get(state.id) ?? null,
-        coverageStatus: input.coverage.get(state.id) ?? 'not_covered',
+        coverageStatus: input.coverage.get(state.id)?.status ?? 'not_covered',
+        tests: input.coverage.get(state.id)?.tests ?? [],
         impact, decision: entry?.decision ?? pending, entry,
         review: reviewOf(entry, contentHash(state), impact),
       }
@@ -104,7 +105,9 @@ export function signatureProblems(input: {
   add('DECISION_PENDING', rows.filter(r => r.decision === pending).map(r => r.requirementId))
   add('DECISION_PROPOSED', rows.filter(r => r.entry?.proposed).map(r => r.requirementId))
   add('DECISION_TO_REVIEW', rows.filter(r => r.review && !r.entry?.proposed).map(r => r.requirementId))
-  const read = objectFieldReader(typeDef, validation)
+  // `requiredWhen` sur le statut : évalué pour le statut signé, celui qui sera écrit.
+  const approval = typeDef.statuses?.find(s => s.isApproval)?.name
+  const read = objectFieldReader(typeDef, { ...validation, ...(approval && { status: approval }) })
   const missing = typeDef.fields.filter(f => isFieldRequiredNow(f, read) && !isFieldValueFilled(validation.fields?.[f.name])).map(f => f.name)
   for (const r of rows) {
     if (!r.entry) continue

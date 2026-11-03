@@ -1,10 +1,10 @@
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import type {
-  CoverageStatus, ObjectTypeDefinition, ProductVersion, ProjectSchema, Validation, ValidationComponentStatus,
+  FieldRename, FieldRenameResult, ObjectTypeDefinition, ProductVersion, ProjectSchema, Validation, ValidationComponentStatus,
   ValidationEntry, ValidationErrorCode, ValidationPage, ValidationRow, ValidationVersionItem,
 } from '@polenta/types'
-import { flattenSystemNodes, initialStatus, pendingDecision, validationState, versionState } from '@polenta/types'
+import { flattenSystemNodes, initialStatus, pendingDecision, renameFieldKeys, validationState, versionState } from '@polenta/types'
 import type { CreateValidationDto, UpdateValidationDto, ValidationDecisionDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { HistoryService } from './history.service'
@@ -135,9 +135,15 @@ export class ValidationsService {
   private async rows(repoPath: string, typeDef: ObjectTypeDefinition, validation: Validation, version: ProductVersion, workspaceDir?: string): Promise<ValidationRow[]> {
     const schema = await this.schema.get(repoPath).catch(() => null)
     const requirements = await this.versions.requirementsOf(repoPath, version)
-    const analysis = await this.versions.analysis(repoPath, version.id, workspaceDir).catch(() => null)
+    // Sans analyse, aucune exigence ne paraîtrait impactée : l'erreur remonte plutôt que d'ouvrir la signature.
+    const analysis = await this.versions.analysis(repoPath, version.id, workspaceDir)
     const matrix = await this.traceability.getMatrix(repoPath, {}, workspaceDir).catch(() => null)
-    const coverage = new Map<string, CoverageStatus>((matrix?.requirements ?? []).map(r => [r.requirement.id, r.coverageStatus]))
+    const titles = new Map((matrix?.testCases ?? []).map(t => [t.id, t.title]))
+    const localTests = new Set((await this.git.listFiles(repoPath, 'tests').catch(() => [])).map(f => f.split('/').pop()!.replace(/\.yaml$/, '')))
+    const coverage = new Map((matrix?.requirements ?? []).map(r => [r.requirement.id, {
+      status: r.coverageStatus,
+      tests: r.cells.map(c => ({ id: c.testCaseId, title: titles.get(c.testCaseId) ?? '', local: localTests.has(c.testCaseId) })),
+    }]))
     return buildRows({
       schema, typeDef, validation, requirements, coverage,
       impact: impactOf(version, analysis),
@@ -193,7 +199,7 @@ export class ValidationsService {
     if (!signed) return []
     const schema = await this.schema.get(repoPath).catch(() => null)
     const requirements = inPerimeter(schema, await this.versions.requirementsOf(repoPath, version))
-    const analysis = await this.versions.analysis(repoPath, version.id, workspaceDir).catch(() => null)
+    const analysis = await this.versions.analysis(repoPath, version.id, workspaceDir)
     return carryOver(signed, requirements, impactOf(version, analysis))
   }
 
@@ -215,10 +221,10 @@ export class ValidationsService {
         ...(dto.comment?.trim() && { comment: dto.comment.trim() }),
         ...(dto.fields && Object.keys(dto.fields).length > 0 && { fields: dto.fields }),
       }
-      // Même décision, commentaire ou champs complétés : ce n'est pas une nouvelle décision, et un
-      // signal « à revoir » reste levé jusqu'à la confirmation.
+      // Même décision, commentaire ou champs complétés : ce n'est pas une nouvelle décision. Une
+      // proposition reste à confirmer, et un signal « à revoir » reste levé jusqu'à la confirmation.
       const existing = validation.entries.find(e => e.requirementId === dto.requirementId)
-      if (existing && !existing.proposed && existing.decision === dto.decision) {
+      if (existing && existing.decision === dto.decision) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { comment, fields, ...kept } = existing
         return withEntry(validation, { ...kept, ...details })
@@ -315,6 +321,33 @@ export class ValidationsService {
       const validation = await this.get(repoPath, id)
       if (validationState(vt.typeDef, validation.status) !== 'open') throw new ValidationError('VALIDATION_LOCKED', id)
       await deleteWithTombstone(this.git, repoPath, fileOf(id), id)
+    })
+  }
+
+  // ── Renommages du schéma ───────────────────────────────────────────────────
+
+  /** GH77 — renommage de champs du type : valeur et historique. */
+  renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
+    return this.rewriteObjects(repoPath, objectTypeRef, o => renameFieldKeys(o, renames), result)
+  }
+
+  /** Réécriture brute des validations d'un type, signées comprises (renommage, pas une décision). */
+  async rewriteObjects(
+    repoPath: string, objectTypeRef: string, transform: (obj: Validation) => Validation | 'conflict' | null, result: FieldRenameResult,
+  ): Promise<void> {
+    await this.enqueue(repoPath, async () => {
+      for (const validation of await this.list(repoPath)) {
+        if (validation.objectTypeRef !== objectTypeRef) continue
+        try {
+          const next = transform(validation)
+          if (next === 'conflict') result.skipped.push({ id: validation.id, reason: 'target_exists' })
+          if (!next || next === 'conflict') continue
+          await this.git.writeYaml(repoPath, fileOf(validation.id), next)
+          result.migrated.push(validation.id)
+        } catch (err) {
+          result.failed.push({ id: validation.id, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
     })
   }
 

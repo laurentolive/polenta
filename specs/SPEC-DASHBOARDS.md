@@ -94,6 +94,9 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 >
 > **GH244** — collection `issues` (`GraphIssue` : `origin`, champs, statut, historique), catégorie `issue`,
 > impacts dans `links` (`issue-impact`) ; manifeste v13.
+>
+> **GH204** — collection `validations` (`GraphValidation` : `state`, `versionId`, `entries`), catégorie `validation`.
+> `designVersion` n'est renseigné que si la version inclut l'exigence à l'identique ; manifeste v15.
 
 ## 3. Exécution (bac à sable)
 

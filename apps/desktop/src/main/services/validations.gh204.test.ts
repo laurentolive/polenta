@@ -454,7 +454,7 @@ describe('revue de code', () => {
     const val = await validations.create(dir, { versionId: v.id, title: 'V' })
     await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
     const file = path.join(dir, 'versions', `${v.id}.yaml`)
-    await fsP.writeFile(file, (await fsP.readFile(file, 'utf8')).replace(/sha: \S+/, `sha: ${'0'.repeat(40)}`))
+    await fsP.writeFile(file, (await fsP.readFile(file, 'utf8')).replace(/sha: \S+/, `sha: ${'d'.repeat(40)}`))
     await expect(validations.sign(dir, val.id)).rejects.toThrow()
     expect((await validations.get(dir, val.id)).status).toBe('en_cours')
   })

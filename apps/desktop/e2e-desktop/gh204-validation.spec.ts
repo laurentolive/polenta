@@ -167,6 +167,8 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
   await expect(grid.locator('th').filter({ hasText: 'Rédaction' })).toHaveCount(1)
   await expect(page.getByTestId('saved-views-modified')).toHaveCount(0)
 
+  await page.screenshot({ path: path.join(__dirname, '.results', 'gh204-grid.png') })
+
   // E4 — tout est décidé : signature, sans tag ; grille en lecture.
   const tagsBefore = git('tag', '--list')
   await page.getByTestId('validation-sign').click()

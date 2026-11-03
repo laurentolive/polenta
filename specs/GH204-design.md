@@ -9,7 +9,7 @@ Spec : `specs/GH204.md`. Deux sprints.
 - `validation.ts` (nouveau) : `Validation`, `ValidationEntry`, `ValidationDecisionDef`, `ValidationState`
   (`open` / `signed` / `cancelled`, lu des marques du type comme `versionState`), `ValidationPage`,
   `ValidationRow`, `ValidationProblem`, `VALIDATION_ERROR_CODES`, `validationState()`, `pendingDecision()`,
-  `validationTypeIssues()` (contrôle du schéma, partagé main / renderer).
+  `validationTypeError()` (contrôle du schéma, partagé main / renderer).
 - `schema.ts` : `ObjectCategory` + `validation` ; `ObjectTypeDefinition.decisions`, `entryFields`.
 - `graph.ts` : `GraphValidation`, collection `validations`, `GraphObjectCategory`.
 - `zod-schemas/validation.schema.ts` : DTO de création, mise à jour, décision.

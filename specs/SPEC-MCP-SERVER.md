@@ -497,6 +497,12 @@ avec l'objet changeset (`specs/MILESTONE-D.md`). Reste : le contenu d'un éléme
 d'abord le statut (réouverture, `version + 1`), puis le contenu. `get_history` : `kind` parmi
 `requirement`, `test`, `campaign`.
 
+### 4.10 Validations (GH204, `tools/validations.tools.ts`)
+
+`list_validations`, `get_validation` (lignes, décisions restantes, motifs de refus), `propose_validation_decision`.
+Une proposition (`proposed`, `proposedBy` = `--user`) n'écrit que sur une exigence sans décision confirmée d'une
+validation en cours, et bloque la signature. Le MCP ne confirme, ne rejette et ne signe pas (SPEC-REQ §13).
+
 ### 4.9 Issues (GH244, `tools/issues.tools.ts`)
 
 `list_issues` (filtres `component`, `status`), `get_issue`, `create_issue`, `update_issue` (SPEC-REQ §12).

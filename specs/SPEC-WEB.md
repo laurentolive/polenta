@@ -233,7 +233,7 @@ la version web »).
 - Révocation constatée au plus tard après 5 min pour un utilisateur sans opération git.
 - Non disponibles sur le web à ce jour, livrées desktop seulement : vues Versions et analyse d'impact
   (GH201, GH245 — channels `versions:*` dans `WEB_HIDDEN`), issues (GH244 —
-  tous les channels `issues:*` : le panneau s'affiche, sans lire ni écrire d'issue), version testée à l'exécution (GH202 — `tested-config:*`, #256), terminal Git Bash (GH238), zoom de
+  tous les channels `issues:*` : le panneau s'affiche, sans lire ni écrire d'issue), version testée à l'exécution (GH202 — `tested-config:*`, #256), vue Validation (GH204 — `validations:*`, `issues:add-decision` ; entrée masquée, elle dépend des versions), terminal Git Bash (GH238), zoom de
   l'interface (GH237 — `capabilities.appZoom`).
 
 ## 12. Administration du serveur (GH63)

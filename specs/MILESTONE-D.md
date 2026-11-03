@@ -237,6 +237,9 @@ depuis la décision » ; commit et baseline documentaire posés sur le commit de
 - Une exécution peut porter sur une version **en cours** comme sur une version released.
 - Pré-remplissage à la saisie : la version de la dernière exécution de la campagne, sans rien stocker sur
   la campagne.
+- **Livré par #202** (`specs/GH202.md`) : version du repo de la campagne, saisie obligatoire dès qu'une version
+  est sélectionnable ; la liste des changements n'est pas copiée : elle est historisée dans la version
+  (`history.changes`) et le run référence l'entrée en vigueur (`changesAt`).
 
 ## 7. Ce qui est retiré, conservé, déplacé
 
@@ -322,9 +325,11 @@ Lots 1 à 3 livrés sur `main` le 2026-11-02 ; lot 4 validé sur `milestone-D` (
 | Q11 | « Pas d'impact réel » en validation | **ne compte pas comme impacté** (signal, reprise) |
 | Q12 | Nom technique de l'objet | **`validation`** partout, au sens courant de « valider une version » |
 
-### Revue du 2026-11-03, après le lot 4 : points à trancher
+### Revue du 2026-11-03, après le lot 4
 
-| # | Point | Lot | Proposition |
+P1 à P6 : propositions **validées** le 2026-11-03. P7 reste à faire.
+
+| # | Point | Lot | Décision |
 |---|---|---|---|
 | P1 | **Statut de design** : le code retient toute version dont le commit figé contient le fichier dans la même `version`. Une exigence jamais incluse (au backlog « nouveau ») a donc déjà un statut de design, et un brouillon modifié après le gel garde le sien (`version` ne monte qu'en quittant l'approbation), alors que le backlog le dit « modifié » | #204, #210 | exiger que la version inclue l'exigence, et comparer le contenu comme le backlog |
 | P2 | **Périmètre de la validation** : §5.2 prend toutes les exigences du composant ; #204 et #205 gardent un sélecteur de périmètre, « ajouter / retirer », et des décisions sur les tests | #204, #205 | exigences seulement, sans sélecteur : `hors_scope` joue ce rôle ; exigences terminales exclues |

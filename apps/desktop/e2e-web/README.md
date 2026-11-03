@@ -7,9 +7,9 @@ qui touche le renderer, les services du main ou le serveur web.
 
 ```bash
 cd apps/desktop
-pnpm test:e2e:web                 # build web + toute la suite (≈ 1 min 30 hors build)
+pnpm test:e2e:web                 # build web + toute la suite (≈ 14 min hors build, cf. WORKFLOW.md § Niveaux de vérification)
 npx playwright test               # sans rebuild (le build web doit être à jour)
-npx playwright test parity        # un fichier
+npx playwright test e2e-web/parity # un fichier (chemin explicite : le filtre porte sur le chemin complet, un `gh{N}` nu sélectionne toute la suite dans le worktree `…-GH{N}`)
 npx playwright test -g "S2-9"     # un test par son titre
 npx playwright test --headed      # navigateur visible
 npx playwright test --debug       # pas à pas (inspecteur Playwright)

@@ -3,6 +3,10 @@
 > Ticket d'origine : GH44 (#44). Design détaillé et historique : `specs/GH44-design.md` (§10 =
 > état livré). Tests : `specs/GH44-tests.md`, `apps/desktop/e2e-web/README.md`.
 > Déploiement : `deploy/RUNBOOK.md` A15 (exploitant), B7 (admin du client).
+>
+> **Statut : canal maintenu.** La mention « client web abandonné » de specs de tickets datées de
+> fin octobre 2026 (GH201, GH237, GH238, GH245) est caduque depuis le 2026-11-03 ; leurs écarts avec
+> le desktop sont listés en §11.
 
 ## 1. Principe
 
@@ -227,6 +231,10 @@ la version web »).
 - Isolation par conteneur de services dans un seul process (pas un process par utilisateur) ;
   dossier courant partagé mais vide.
 - Révocation constatée au plus tard après 5 min pour un utilisateur sans opération git.
+- Non disponibles sur le web à ce jour, livrées desktop seulement : vues Versions et analyse d'impact
+  (GH201, GH245 — channels `versions:*` dans `WEB_HIDDEN`), création et modification d'une issue (GH244 —
+  `issues:create`, `issues:update`…), version testée à l'exécution (GH202 — `tested-config:*`, #256), terminal Git Bash (GH238), zoom de
+  l'interface (GH237 — `capabilities.appZoom`).
 
 ## 12. Administration du serveur (GH63)
 

@@ -255,23 +255,6 @@ function useCellActions(): ExcelCellActions {
   return actions
 }
 
-/** Libellés des cellules, traduits une fois par `ExcelView` : un `useTranslation()` par cellule
- *  (plusieurs milliers sur un gros tableau) coûtait à lui seul ~170 ms à l'ouverture de la vue. */
-interface ExcelCellLabels {
-  doubleClickToEdit: string
-  hideSteps: string
-  noSteps: string
-  stepsCount: (count: number) => string
-}
-
-const ExcelCellLabelsContext = createContext<ExcelCellLabels | null>(null)
-
-function useCellLabels(): ExcelCellLabels {
-  const labels = useContext(ExcelCellLabelsContext)
-  if (!labels) throw new Error('ExcelCellLabelsContext manquant')
-  return labels
-}
-
 const CELL_SELECTED_CLASS = 'ring-2 ring-inset ring-status-info'
 const CELL_EDITABLE_CLASS = 'hover:ring-1 hover:ring-inset hover:ring-status-info'
 
@@ -297,7 +280,6 @@ const NameCell = memo(function NameCell({
   freezeStyle?: React.CSSProperties
   stickyBg?: string
 }) {
-  const labels = useCellLabels()
   const actions = useCellActions()
   const onRename = canRename ? actions.rename : undefined
   const clamp = useCellClamp()
@@ -339,7 +321,6 @@ const NameCell = memo(function NameCell({
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={onRename ? labels.doubleClickToEdit : undefined}
     >
       {clamp.wrap(value || <span className="text-ink-3 italic">—</span>)}
     </td>
@@ -389,7 +370,6 @@ const InlineCell = memo(function InlineCell({
   openTarget?: string
   pending?: boolean
 }) {
-  const labels = useCellLabels()
   const actions = useCellActions()
   const onEdit = canEdit ? actions.inlineEdit : undefined
   const onMultiEnumEdit = canEdit ? actions.toggleMultiEnum : undefined
@@ -543,7 +523,6 @@ const InlineCell = memo(function InlineCell({
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={valueLabel ? `${valueLabel} (${value}) — ${labels.doubleClickToEdit}` : labels.doubleClickToEdit}
     >
       {isMultiEnum
         ? clamp.wrap(value || <span className="text-ink-3 italic">—</span>)
@@ -573,7 +552,6 @@ const LinkCell = memo(function LinkCell({
   stickyBg?: string
   truncate: boolean
 }) {
-  const labels = useCellLabels()
   const actions = useCellActions()
   const tdRef = useRef<HTMLTableCellElement>(null)
   const g = useCellGestures(nodeId, col, () => {
@@ -595,7 +573,6 @@ const LinkCell = memo(function LinkCell({
         stickyBg ?? '',
         g.isSelected ? CELL_SELECTED_CLASS : '',
       ].join(' ')}
-      title={value || labels.doubleClickToEdit}
       onClick={g.onClick}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
@@ -637,7 +614,6 @@ const StepsCell = memo(function StepsCell({
   freezeStyle?: React.CSSProperties
   stickyBg?: string
 }) {
-  const labels = useCellLabels()
   const actions = useCellActions()
   const g = useCellGestures(nodeId, col, () => actions.toggleSteps(nodeId))
   return (
@@ -651,7 +627,6 @@ const StepsCell = memo(function StepsCell({
       onClick={e => { e.stopPropagation(); g.onClick() }}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={expanded ? labels.hideSteps : stepsCount > 0 ? labels.stepsCount(stepsCount) : labels.noSteps}
     >
       <span className="flex items-center gap-1 text-ink-2">
         {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
@@ -747,7 +722,6 @@ function RichtextCell({
   onEditCancel,
   onEditorMouseDown,
 }: RichtextCellProps) {
-  const labels = useCellLabels()
   const clamp = useCellClamp()
   const tdRef = useRef<HTMLTableCellElement>(null)
   // Rendu mis en forme seulement si la cellule est visible et le défilement au repos — à
@@ -855,7 +829,6 @@ function RichtextCell({
       }}
       onMouseDown={g.onMouseDown}
       onDoubleClick={g.onDoubleClick}
-      title={onStartEdit ? labels.doubleClickToEdit : undefined}
     >
       {content}
     </td>
@@ -1072,7 +1045,6 @@ function GroupRow({
   nameStickyLeft?: number
   isGotoTarget?: boolean
 }) {
-  const labels = useCellLabels()
   // T176 — nom du dossier : clic = sélection de la cellule (sans sélectionner la ligne, comme
   // avant) ; double-clic / F2 = renommage (le double-clic ne replie donc plus la ligne depuis le
   // nom : chevron, cellule d'action ou de section).
@@ -1088,7 +1060,6 @@ function GroupRow({
     onClick: (e: React.MouseEvent) => { e.stopPropagation(); g.onClick() },
     onMouseDown: g.onMouseDown,
     onDoubleClick: g.onDoubleClick,
-    title: labels.doubleClickToEdit,
   } : {}
   const folderNameText = (
     <FolderNameText node={node} onRename={onRename} edit={folderEdit} onEditEnd={() => setFolderEdit(null)} textRef={nameTextRef} />
@@ -2220,12 +2191,6 @@ function ExcelViewInner({
     toggleSteps: toggleStepExpand,
     openComputedTarget: target => onOpenComputedTarget?.(target),
   }
-  const cellLabels = useMemo<ExcelCellLabels>(() => ({
-    doubleClickToEdit: t('system.excelView.doubleClickToEdit'),
-    hideSteps: t('system.excelView.hideSteps'),
-    noSteps: t('system.excelView.noSteps'),
-    stepsCount: count => t('system.excelView.stepsCount', { count }),
-  }), [t])
   const cellActionsRef = useRef(cellActionsImpl)
   cellActionsRef.current = cellActionsImpl
   const cellActions = useMemo<ExcelCellActions>(() => ({
@@ -2256,7 +2221,6 @@ function ExcelViewInner({
     >
       <ExcelCellStoreContext.Provider value={cellStore}>
       <ExcelCellActionsContext.Provider value={cellActions}>
-      <ExcelCellLabelsContext.Provider value={cellLabels}>
       {gotoHiddenByFilter && (
         <p className="sticky left-0 top-0 z-20 px-3 py-1 text-xs bg-status-warning-bg text-status-warning" data-testid="item-hidden-by-filter">
           {t('system.view.itemHiddenByFilter', { id: gotoNode?.objectId })}
@@ -2797,7 +2761,6 @@ function ExcelViewInner({
           </div>
         )
       })()}
-      </ExcelCellLabelsContext.Provider>
       </ExcelCellActionsContext.Provider>
       </ExcelCellStoreContext.Provider>
     </div>

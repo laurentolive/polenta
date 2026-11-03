@@ -772,12 +772,7 @@
       "codeBlock": "Code block"
     },
     "excelView": {
-      "doubleClickToEdit": "Double-click or F2 to edit",
       "filterColumn": "Filter this column",
-      "hideSteps": "Hide steps",
-      "stepsCount_one": "{{count}} step",
-      "stepsCount_other": "{{count}} steps",
-      "noSteps": "No steps",
       "freezeColumns": "Freeze columns up to here",
       "unfreezeColumns": "Unfreeze columns",
       "rowMaxHeight": "Max row height",

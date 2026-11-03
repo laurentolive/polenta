@@ -642,7 +642,7 @@ l'absence de collision même pour des créations rapprochées au sein d'un même
 (colonnes et sections de liens, campagnes, recherche, requêtes…) : valeur du champ, ou `title` ;
 un champ vide (ou un `displayIdField` invalide écrit à la main) retombe sur l'ID Polenta. Calculé
 par le main (`WorkspaceObject.displayId`, présent seulement s'il diffère de `id`, avec le schéma
-du repo de l'objet). L'infobulle du lien donne alors l'ID Polenta. L'ID Polenta reste affiché
+du repo de l'objet). L'ID Polenta reste affiché
 dans la colonne ID, les en-têtes Document et Édition, la popup d'aperçu, les fichiers, exports et
 impressions ; l'unicité n'est pas exigée : navigation et `links.yaml` utilisent toujours l'ID.
 Éditeur de type : liste « ID affiché dans les liens ». MCP : attribut accepté par les tools de

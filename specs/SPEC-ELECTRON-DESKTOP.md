@@ -1715,7 +1715,7 @@ Si on est sur la branche d'intégration (main) :
 
 Panneau bas de la zone principale (`components/terminal/TerminalPanel.tsx`), rendu sous `<main>`
 dans `AppLayout`, **seulement sur `/graph`, `/diff`, `/version-diff`, `/baseline`**. Desktop
-seulement (client web abandonné).
+seulement (écart avec le client web : `SPEC-WEB.md` §11).
 
 - **Ouverture** : `Ctrl+ù` / `` Ctrl+` `` (bascule, écouté en capture sur `window` par
   `TerminalProvider`, actif même focus dans le terminal, sans effet hors des vues Version), bouton

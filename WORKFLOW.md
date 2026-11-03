@@ -49,7 +49,7 @@ indiqué, pas plus souvent.**
 | Niveau | Quand | Quoi |
 |--------|-------|------|
 | **1 — Ciblé** | Pendant le développement | `pnpm typecheck`, `pnpm lint`, et les tests touchés : `npx vitest run <fichier>` ou `npx vitest run --changed <branche de base>` |
-| **2 — Ticket** | Fin de sprint ; fin du correctif d'un bug | `pnpm test` complet et specs e2e du ticket : `pnpm build:web` puis `npx playwright test gh{N}` (ou les specs voisines si le ticket n'en a pas) |
+| **2 — Ticket** | Fin de sprint ; fin du correctif d'un bug | `pnpm test` complet et specs e2e du ticket : `pnpm build:web` puis `npx playwright test e2e-web/gh{N}-` (ou les specs voisines si le ticket n'en a pas). Toujours le chemin : le filtre porte sur le chemin complet, un `gh{N}` nu sélectionne toute la suite dans le worktree `…-GH{N}` |
 | **3 — Complet** | **Une seule fois par ticket**, à la validation finale, après `git merge main` | Suite e2e complète (`pnpm --filter @polenta/desktop test:e2e:web`), en arrière-plan |
 
 - **Niveau 3 requis** si le ticket modifie le renderer, les services du main ou le serveur web. Pour

@@ -493,6 +493,10 @@ validation externe).
 À partir d'une sélection d'exigences (ex. "tous les tests couvrant les exigences BAT"), Polenta génère une campagne pré-remplie. Voir [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md) §génération de plan de test.
 
 
+> **GH244** — exécution `FAIL` ou `BLOCKED` enregistrée à l'écran d'exécution, composant avec un type issue :
+> `IssueProposalDialog` (créer, lier, ignorer ; rien n'est écrit avant l'action). Import Excel : le bilan liste
+> les échecs, avec une proposition par ligne. Voir SPEC-REQ §12.
+>
 > **GH243** — une campagne ne porte plus de baseline (`baselineRef`) ni de changeset (`changeset`) :
 > champs retirés du formulaire, du type et du graphe ; présents dans un ancien fichier, ignorés à la
 > lecture et absents de la prochaine écriture. Ce sont les exécutions qui testent une version produit

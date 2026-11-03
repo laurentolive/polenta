@@ -463,7 +463,7 @@ export class VersionsService {
       rows.push({
         component: info.name, componentLabel: info.label, repoPath: info.repoPath,
         versionId: v.id, versionTitle: v.title,
-        category: el?.category ?? null, id: c.id, title: el?.state.title ?? '',
+        category: el?.category ?? null, ...(el && { objectTypeRef: el.state.objectTypeRef }), id: c.id, title: el?.state.title ?? '',
         ...(c.base && { base: c.base }),
         toSha: v.freeze?.sha ?? null,
         filePath: el?.filePath ?? null,

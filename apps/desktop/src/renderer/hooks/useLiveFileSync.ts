@@ -48,7 +48,7 @@ export function useLiveFileSync(): void {
       // graphe agrège tout le workspace. Un changement de données (exécutions comprises), de ref
       // (avance rapide du pull automatique), de la bibliothèque projet ou d'un script de requête
       // (écrit hors de l'app, MCP) dans n'importe quel repo les rend périmés.
-      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|queries|dashboards\/lib)\//.test(relPath)) {
+      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|issues|queries|dashboards\/lib)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
@@ -56,7 +56,7 @@ export function useLiveFileSync(): void {
       // élément, le schéma ou les dépendances changent la page, le backlog et le statut de design ;
       // GH245 : les liens changent l'analyse d'impact, les campagnes les tests à exécuter.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
-        || /^(requirements|tests|versions|links|campaigns)\//.test(relPath)) {
+        || /^(requirements|tests|versions|issues|links|campaigns)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['versions'] })
       }
       // GH197 — historique des exécutions : runs, campagnes, tests et liens (couverture d'une exigence).

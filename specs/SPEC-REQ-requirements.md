@@ -773,7 +773,8 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   dernière version released qui les incluait — comparaison du YAML hors `history`,
   `needsRevalidation`. Approuvés modifiés hors interface (GH200 §5) signalés. Seuls les éléments **du
   composant** comptent : un fichier dont l'`objectTypeRef` n'est pas déclaré par le schéma du repo
-  (élément d'un autre composant copié là) n'est ni au backlog ni incluable (`NOT_OWN_ELEMENT`).
+  (élément d'un autre composant copié là) n'est ni au backlog ni incluable (`NOT_OWN_ELEMENT`). Les
+  issues (§12) suivent les mêmes règles, sans signalement « hors interface » (pas de verrou).
 - Inclusion depuis le backlog (version cible choisie parmi celles en cours) ou « Ajouter » (tout
   élément du composant, même inchangé) ; `base` = état
   dans la dernière version released qui l'incluait. Retrait possible tant que la version est en cours,
@@ -787,7 +788,8 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 ### 11.4 Analyse d'impact et tests à exécuter (GH245)
 
 - **Racines** : les changements que liste la page (version et versions de ses composants postérieures à
-  `basedOn`). **Lignes** : éléments atteints par les arbres d'impact (SPEC-TRACEABILITY §4.6), **du
+  `basedOn`) ; une issue n'en est pas une, ses exigences `issue-impact` le sont (`viaIssues`, §12).
+  **Lignes** : éléments atteints par les arbres d'impact (SPEC-TRACEABILITY §4.6), **du
   composant seulement** (repo de la version, type déclaré par son schéma, §11.3), avec leur **source** (racine et chemin de liens ; plusieurs racines possibles).
 - **Statut d'impact** (8 valeurs) et commentaire saisis sur le nœud de l'arbre, enregistrés dans le
   champ système **`impacted`** (`[{ id, status, comment? }]`, version en cours seulement ; statut par défaut
@@ -803,3 +805,22 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 - **Aucun lien version ↔ campagne** dans le modèle : « Créer une campagne » et « Ajouter à … » sont des
   raccourcis (création / sélecteur pré-remplis avec les tests cochés). C'est une exécution qui fera
   référence à une version (#202).
+
+## 12. Issues (GH244)
+
+Modification du produit non tracée dans les exigences (bug, non-conformité, évolution) ou constat à traiter.
+
+- **Type et fichier** : catégorie `issue`, plusieurs types par nœud local (« + Issue » du modèle de données) ;
+  `issues/<ID>.yaml` du repo du composant : `id`, `objectTypeRef`, `title`, `status`, `version`, `fields`,
+  `origin` (`runs`, `decisions`), `history`. Statuts par défaut : `ouverte`, `en_cours`, `corrigee`, `rejetee`
+  (`isTerminal`) ; `corrigee` n'est pas terminal, un terminal sortant du backlog.
+- **Pas de verrou** : ni contrôle de contenu, ni incrément de `version`, même avec un statut `isApproval`.
+- **Pas de suppression individuelle** (§9) : statut terminal ; cascade du type (GH104) et renommage (GH100) inclus.
+- **Exigences impactées** : liens `issue-impact` (issue → exigence), type de lien ajouté au schéma quand il
+  reçoit son premier type issue, non réajouté s'il est retiré ensuite. Exigence du composant seulement
+  (même repo, type déclaré par son schéma) : `NOT_OWN_ELEMENT` sinon, interface et MCP.
+- **Dans une version** : changement comme les autres (§11.3). Ses exigences impactées sont racines de
+  l'analyse, et amènent leurs tests. Sans exigence impactée : simple ligne, le passage released reste possible.
+- **Vues** : panneau « Issues », vues Tableau et Document, fiche (SPEC-ELECTRON-DESKTOP §19.2).
+- **Proposition de création** (SPEC-TESTS §4.3) : `FAIL` ou `BLOCKED` enregistré à l'écran d'exécution, si le
+  composant a un type issue ; bilan d'import Excel : une proposition par échec.

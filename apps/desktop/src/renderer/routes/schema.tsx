@@ -104,7 +104,7 @@ function editableToSchema(state: EditorState, nodes: SystemNode[], preferences: 
 // the same string its objects carry in `objectTypeRef`, which is what linkUtils.matchesRefs
 // compares against. Deduplicated (the current repo is also part of the workspace).
 function getAllRefs(nodes: SystemNode[], otherSchemas: ProjectSchema[]): string[] {
-  const refs = ['requirement', 'test', 'campaign']
+  const refs = ['requirement', 'test', 'campaign', 'issue']
   const add = (ns: SystemNode[]) => {
     for (const { node } of flattenSystemNodes(ns)) {
       for (const ot of node.objectTypes ?? []) {
@@ -276,13 +276,30 @@ function SchemaEditorPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
   useEffect(() => {
-    if (editedSchema && (!state || stateRepoPath !== editedRepoPath)) {
-      const editable = schemaToEditable(editedSchema)
+    if (!editedSchema) return
+    const editable = schemaToEditable(editedSchema)
+    if (!state || !savedState || stateRepoPath !== editedRepoPath) {
       setState(editable)
       setSavedState(editable)
       setStateRepoPath(editedRepoPath)
+      return
     }
-  }, [editedSchema, state, stateRepoPath, editedRepoPath])
+    // GH244 — le schéma a changé hors de ce brouillon (`issue-impact`, posé avec le premier type issue,
+    // onglet Structure). Sans modification en cours : brouillon réaligné. Sinon, les types de lien
+    // apparus s'y ajoutent, pour qu'« Enregistrer » ne les retire pas.
+    if (JSON.stringify(state) === JSON.stringify(savedState)) {
+      if (JSON.stringify(editable) !== JSON.stringify(state)) {
+        setState(editable)
+        setSavedState(editable)
+      }
+      return
+    }
+    const added = editable.linkTypes.filter(l => !savedState.linkTypes.some(k => k.name === l.name))
+    if (added.length > 0) {
+      setState({ ...state, linkTypes: [...state.linkTypes, ...added] })
+      setSavedState({ ...savedState, linkTypes: [...savedState.linkTypes, ...added] })
+    }
+  }, [editedSchema, state, savedState, stateRepoPath, editedRepoPath])
 
   const linksRepos: LinksRepoOption[] = flatNodes.map(n => ({
     repoPath: samePath(n.repoPath, repoPath) ? repoPath : n.repoPath,

@@ -137,6 +137,9 @@ son backlog et ses versions (statut, label ; dépliées : structure des composan
 
 ## 4. L'issue
 
+> **Livré par #244** (`specs/GH244.md`, SPEC-REQ §12). Vues Tableau et Document comme les exigences ; import
+> Excel : proposition par ligne du bilan ; origine affichée en texte sur la fiche.
+
 ### 4.1 Objet
 
 Nouvelle catégorie **`issue`** : types configurables (bug, non-conformité, demande d'évolution…),

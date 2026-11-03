@@ -163,6 +163,8 @@ export interface VersionChangeRow {
   versionTitle: string
   /** null : élément introuvable (supprimé depuis). */
   category: 'requirement' | 'test' | 'issue' | null
+  /** Type de l'élément (ouverture de la fiche d'une issue) ; absent s'il est introuvable. */
+  objectTypeRef?: string
   id: string
   title: string
   base?: VersionElementRef

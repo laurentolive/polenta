@@ -19,7 +19,7 @@ import { isProductVersionsPath } from '../versions/useVersions'
 import { ElementNavProvider } from '../../contexts/ElementNavContext'
 import { ElementPreviewPopup } from '../element/ElementPreviewPopup'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'dashboard' | 'parameters' | 'merge'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'issues' | 'dashboard' | 'parameters' | 'merge'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -42,6 +42,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
   if (pathname === '/product' || pathname === '/components') {
     if (category === 'test') return 'tests'
     if (category === 'campaign') return 'campaigns'
+    if (category === 'issue') return 'issues'
     return 'requirements'
   }
 
@@ -244,8 +245,9 @@ export function AppLayout() {
         break
       case 'requirements':
       case 'tests':
-      case 'campaigns': {
-        const category = p === 'requirements' ? 'requirement' : p === 'tests' ? 'test' : 'campaign'
+      case 'campaigns':
+      case 'issues': {
+        const category = p === 'requirements' ? 'requirement' : p === 'tests' ? 'test' : p === 'issues' ? 'issue' : 'campaign'
         // Carries the current `repo` forward instead of clearing it (as the old single "Système"
         // entry always did): with three tabs now sharing this reset, clearing repo on every click
         // sends SystemViewContext down its `!urlRepo` branch each time — which waits on every

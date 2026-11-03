@@ -26,6 +26,7 @@
       "requirements": "Requirements",
       "tests": "Tests",
       "campaigns": "Campaigns",
+      "issues": "Issues",
       "parameters": "Parameters",
       "search": "Search",
       "version": "Version",
@@ -540,7 +541,8 @@
       "version": "Version",
       "displayIdField": "ID shown in links",
       "displayIdPolenta": "Polenta ID",
-      "displayIdTitle": "Title"
+      "displayIdTitle": "Title",
+      "issue": "Issue"
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -693,7 +695,9 @@
         "test_one": "{{count}} test deleted (and its runs):",
         "test_other": "{{count}} tests deleted (and their runs):",
         "campaign_one": "{{count}} campaign deleted:",
-        "campaign_other": "{{count}} campaigns deleted:"
+        "campaign_other": "{{count}} campaigns deleted:",
+        "issue_one": "{{count}} issue deleted:",
+        "issue_other": "{{count}} issues deleted:"
       },
       "more": "… and {{count}} more",
       "links_one": "{{count}} link deleted:",
@@ -2266,6 +2270,25 @@
     "empty": "—",
     "unplaced": "Outside the structure"
   },
+  "issues": {
+    "origin": "Origin",
+    "originRuns": "Executions: {{ids}}",
+    "proposal": {
+      "title": "Failed execution",
+      "hint": "{{id}} did not pass: do you want to track this problem in an issue?",
+      "defaultTitle": "Failure of {{id}} — {{title}}",
+      "create": "Create an issue",
+      "link": "Link to an existing issue",
+      "ignore": "Ignore",
+      "type": "Type",
+      "issueTitle": "Title",
+      "existing": "Issue",
+      "impacted": "Impacted requirements",
+      "noRequirement": "No requirement of this component is linked to this test.",
+      "importTitle_one": "{{count}} failed execution:",
+      "importTitle_other": "{{count}} failed executions:"
+    }
+  },
   "versions": {
     "title": "Product",
     "home": "Pick a component, a version or a backlog in the side panel.",
@@ -2387,7 +2410,8 @@
       "status": "Impact status",
       "comment": "Comment",
       "source": "Source",
-      "notReached": "no longer reached"
+      "notReached": "no longer reached",
+      "viaIssues": "via {{ids}}"
     },
     "tests": {
       "title": "Tests to run",

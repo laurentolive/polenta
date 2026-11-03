@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import type { Requirement, TestCase } from '@polenta/types'
+import type { Issue, Requirement, TestCase } from '@polenta/types'
 import { api } from '../api'
 
-/** Liste brute des objets (exigences ou tests) d'un couple (nœud, type) du schéma.
+/** Liste brute des objets (exigences, tests ou issues) d'un couple (nœud, type) du schéma.
  *
  *  Extrait de `SystemView` (T166) pour que le panneau latéral (`SystemPanel`) puisse fouiller
  *  les valeurs de champs dans le filtre de l'arbre sans dupliquer la query : même `queryKey`
@@ -16,7 +16,7 @@ export function useSystemObjects(
 ) {
   return useQuery({
     queryKey: ['objects', repoPath, category, nodeId, typeId],
-    queryFn: async (): Promise<(Requirement | TestCase)[]> => {
+    queryFn: async (): Promise<(Requirement | TestCase | Issue)[]> => {
       if (!repoPath || !category || !nodeId || !typeId) return []
       const ref = `${nodeId}::${typeId}`
       if (category === 'requirement') {
@@ -26,6 +26,10 @@ export function useSystemObjects(
       if (category === 'test') {
         const all = await api.tests.list(repoPath)
         return all.filter(t => t.objectTypeRef === ref)
+      }
+      if (category === 'issue') {
+        const all = await api.issues.list(repoPath)
+        return all.filter(i => i.objectTypeRef === ref)
       }
       return []
     },

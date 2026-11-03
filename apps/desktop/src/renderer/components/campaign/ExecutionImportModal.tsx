@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle } from 'lucide-react'
 import type {
   ExecutionImportFatal, ExecutionImportInstanceError, ExecutionImportPreview, ExecutionImportResult,
@@ -9,6 +9,7 @@ import type {
 import { api } from '../../api'
 import { toIntlLocale } from '../../i18n/useLocale'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
+import { IssueProposalDialog, useHasIssueType } from '../issues/IssueProposalDialog'
 
 interface ExecutionImportModalProps {
   repoPath: string
@@ -71,7 +72,7 @@ export function ExecutionImportModal({ repoPath, campaignId, workspaceDir, previ
 
         <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
           {result ? (
-            <ResultSummary result={result} previewCount={count} />
+            <ResultSummary result={result} previewCount={count} repoPath={repoPath} campaignId={campaignId} workspaceDir={workspaceDir} />
           ) : preview.fatal ? (
             <p className="text-sm text-status-danger">{fatalMessage(t, preview.fatal)}</p>
           ) : (
@@ -187,9 +188,22 @@ export function ExecutionImportModal({ repoPath, campaignId, workspaceDir, previ
   )
 }
 
-function ResultSummary({ result, previewCount }: { result: ExecutionImportResult; previewCount: number }) {
+function ResultSummary({ result, previewCount, repoPath, campaignId, workspaceDir }: {
+  result: ExecutionImportResult; previewCount: number; repoPath: string; campaignId: string; workspaceDir?: string
+}) {
   const { t } = useTranslation()
   const { imported, failure, preview } = result
+  // GH244 §5 — échecs importés : une proposition par ligne, pas de popup par exécution.
+  const hasIssueType = useHasIssueType(repoPath)
+  const { data: campaign } = useQuery({
+    queryKey: ['campaign', repoPath, campaignId], queryFn: () => api.campaigns.get(repoPath, campaignId), enabled: hasIssueType,
+  })
+  const failed = hasIssueType
+    ? preview.importable.filter(i => imported.includes(i.entryId) && (i.result === 'FAIL' || i.result === 'BLOCKED'))
+    : []
+  const runIdOf = (entryId: string) => campaign?.runs.find(r => r.entryId === entryId)?.runId
+  const [proposing, setProposing] = useState<(typeof failed)[number] | null>(null)
+  const [handled, setHandled] = useState<Set<string>>(new Set())
   return (
     <div className="space-y-2 text-sm">
       {preview.fatal ? (
@@ -204,6 +218,40 @@ function ResultSummary({ result, previewCount }: { result: ExecutionImportResult
         <p className="text-xs text-status-danger">
           {t('campaignPage.executionSheet.failure', { entryId: failure.entryId, message: failure.message })}
         </p>
+      )}
+      {failed.length > 0 && (
+        <div className="space-y-1" data-testid="import-failed-runs">
+          <p className="text-xs text-ink-2">{t('issues.proposal.importTitle', { count: failed.length })}</p>
+          {failed.map(i => (
+            <div key={i.entryId} className="flex items-center gap-2 text-xs">
+              <span className="font-mono text-ink-2">{i.testCaseId}</span>
+              <span className={`px-1.5 py-0.5 rounded-full font-medium ${RESULT_CLS[i.result]}`}>{t(statusKey(i.result))}</span>
+              <div className="flex-1" />
+              <button
+                type="button"
+                className="btn-secondary-sm"
+                disabled={!runIdOf(i.entryId) || handled.has(i.entryId)}
+                onClick={() => setProposing(i)}
+                data-testid={`import-issue-${i.entryId}`}
+              >
+                {t('issues.proposal.create')}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {proposing && runIdOf(proposing.entryId) && (
+        <IssueProposalDialog
+          repoPath={repoPath}
+          workspaceDir={workspaceDir}
+          runId={runIdOf(proposing.entryId)!}
+          testId={proposing.testCaseId}
+          requirementId={proposing.requirementId}
+          onClose={() => {
+            setHandled(prev => new Set(prev).add(proposing.entryId))
+            setProposing(null)
+          }}
+        />
       )}
     </div>
   )

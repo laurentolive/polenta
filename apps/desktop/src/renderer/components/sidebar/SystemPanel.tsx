@@ -264,6 +264,7 @@ const CATEGORY_TITLE_KEY: Record<string, string> = {
   requirement: 'layout.activityBar.requirements',
   test: 'layout.activityBar.tests',
   campaign: 'layout.activityBar.campaigns',
+  issue: 'layout.activityBar.issues',
 }
 
 // ── SystemPanel ───────────────────────────────────────────────────────────────
@@ -364,6 +365,9 @@ export function SystemPanel({ currentProjectId: _currentProjectId, projectId }: 
     } else if (cat === 'test') {
       api.tests.update(repoPath, objectId, { title: name } as UpdateTestCaseDto).then(done)
         .catch(err => console.error('[SystemPanel] T161 — sync titre test:', err))
+    } else if (cat === 'issue') {
+      api.issues.update(repoPath, objectId, { title: name }).then(done)
+        .catch(err => console.error('[SystemPanel] sync titre issue:', err))
     }
   }, [repoPath, effectiveType?.category, qc])
 

@@ -497,6 +497,12 @@ avec l'objet changeset (`specs/MILESTONE-D.md`). Reste : le contenu d'un éléme
 d'abord le statut (réouverture, `version + 1`), puis le contenu. `get_history` : `kind` parmi
 `requirement`, `test`, `campaign`.
 
+### 4.9 Issues (GH244, `tools/issues.tools.ts`)
+
+`list_issues` (filtres `component`, `status`), `get_issue`, `create_issue`, `update_issue` (SPEC-REQ §12).
+Écritures avec `source: mcp`, refus `READONLY_REPO` sur un composant en lecture seule. Les exigences impactées
+passent par `create_links`, type `issue-impact` (`NOT_OWN_ELEMENT` hors du composant). Pas de popup.
+
 ### 4.8 Versions (GH201, `tools/versions.tools.ts`)
 
 Lecture seule (SPEC-REQ §11) : `list_versions` (par composant : versions du plus récent au plus

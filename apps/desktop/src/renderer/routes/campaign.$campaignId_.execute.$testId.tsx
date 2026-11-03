@@ -18,6 +18,7 @@ import { useTestTypeDef } from '../hooks/useTestTypeDef'
 import { decodeProjectId } from '../lib/projectId'
 import { DynamicField } from '../components/DynamicField'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
+import { IssueProposalDialog, useHasIssueType } from '../components/issues/IssueProposalDialog'
 import { isFieldRequiredNow, runFieldReader } from '@polenta/types'
 import type { SchemaField, TestCase, TestRunResult, StepResultValue } from '@polenta/types'
 
@@ -165,6 +166,9 @@ function ExecuteEntryPage() {
     }
   }, [stepStates, resultOverridden])
 
+  const hasIssueType = useHasIssueType(repoPath)
+  const [failedRunId, setFailedRunId] = useState<string | null>(null)
+
   const executeMutation = useMutation({
     mutationFn: async () => {
       const run = await api.tests.execute(repoPath, testCaseId!, {
@@ -184,18 +188,16 @@ function ExecuteEntryPage() {
       await api.campaigns.updateRun(repoPath, campaignId, entryId, globalResult, run.id, resyncable ? testCase : undefined)
       return run
     },
-    onSuccess: () => {
+    onSuccess: (run) => {
       qc.invalidateQueries({ queryKey: ['campaign', repoPath, campaignId] })
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
       qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
       // Consultation du run et historique des exécutions : la liste des runs du test a changé.
       qc.invalidateQueries({ queryKey: ['test-runs', repoPath, testCaseId] })
       qc.invalidateQueries({ queryKey: ['execution-history'] })
-      navigate({
-        to: '/campaign/$campaignId',
-        params: { campaignId },
-        search: { repoPath, projectId, component, level },
-      })
+      // GH244 — échec : proposition de créer une issue ; le retour à la campagne vient à sa fermeture.
+      if ((run.result === 'FAIL' || run.result === 'BLOCKED') && hasIssueType) setFailedRunId(run.id)
+      else goBack()
     },
     onError: (err: unknown) => {
       setExecError(err instanceof Error ? err.message : t('common.unknownError'))
@@ -487,6 +489,16 @@ function ExecuteEntryPage() {
             </div>
           </div>
         </div>
+      )}
+      {failedRunId && (
+        <IssueProposalDialog
+          repoPath={repoPath}
+          workspaceDir={projectId ? decodeProjectId(projectId) : undefined}
+          runId={failedRunId}
+          testId={testCaseId!}
+          requirementId={entry?.requirementId}
+          onClose={goBack}
+        />
       )}
     </RichTextProvider>
     </FrozenParamRefProvider>

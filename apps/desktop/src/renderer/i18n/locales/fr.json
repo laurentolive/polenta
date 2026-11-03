@@ -26,6 +26,7 @@
       "requirements": "Exigences",
       "tests": "Tests",
       "campaigns": "Campagnes",
+      "issues": "Issues",
       "parameters": "Paramètres",
       "search": "Recherche",
       "version": "Version",
@@ -540,7 +541,8 @@
       "version": "Version",
       "displayIdField": "ID affiché dans les liens",
       "displayIdPolenta": "ID Polenta",
-      "displayIdTitle": "Titre"
+      "displayIdTitle": "Titre",
+      "issue": "Issue"
     },
     "addDependency": {
       "editComponentTitle": "Modifier le composant",
@@ -693,7 +695,9 @@
         "test_one": "{{count}} test supprimé (et ses exécutions) :",
         "test_other": "{{count}} tests supprimés (et leurs exécutions) :",
         "campaign_one": "{{count}} campagne supprimée :",
-        "campaign_other": "{{count}} campagnes supprimées :"
+        "campaign_other": "{{count}} campagnes supprimées :",
+        "issue_one": "{{count}} issue supprimée :",
+        "issue_other": "{{count}} issues supprimées :"
       },
       "more": "… et {{count}} autre(s)",
       "links_one": "{{count}} lien supprimé :",
@@ -2266,6 +2270,25 @@
     "empty": "—",
     "unplaced": "Hors structure"
   },
+  "issues": {
+    "origin": "Origine",
+    "originRuns": "Exécutions : {{ids}}",
+    "proposal": {
+      "title": "Exécution en échec",
+      "hint": "{{id}} n'a pas réussi : voulez-vous tracer ce problème dans une issue ?",
+      "defaultTitle": "Échec de {{id}} — {{title}}",
+      "create": "Créer une issue",
+      "link": "Lier à une issue existante",
+      "ignore": "Ignorer",
+      "type": "Type",
+      "issueTitle": "Titre",
+      "existing": "Issue",
+      "impacted": "Exigences impactées",
+      "noRequirement": "Aucune exigence de ce composant n'est liée à ce test.",
+      "importTitle_one": "{{count}} exécution en échec :",
+      "importTitle_other": "{{count}} exécutions en échec :"
+    }
+  },
   "versions": {
     "title": "Produit",
     "home": "Choisissez un composant, une version ou un backlog dans le panneau latéral.",
@@ -2387,7 +2410,8 @@
       "status": "Statut d'impact",
       "comment": "Commentaire",
       "source": "Source",
-      "notReached": "n'est plus atteint"
+      "notReached": "n'est plus atteint",
+      "viaIssues": "via {{ids}}"
     },
     "tests": {
       "title": "Tests à exécuter",

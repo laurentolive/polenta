@@ -88,6 +88,9 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 > `GraphVersion.analysis` (analyse figée au passage released : lignes avec statut, `reached`, `sources`
 > en IDs ; `null` tant que la version est en cours — l'analyse live n'est pas dans le graphe).
 > `polenta.d.ts` régénéré (manifeste v12).
+>
+> **GH244** — collection `issues` (`GraphIssue` : `origin`, champs, statut, historique), catégorie `issue`,
+> impacts dans `links` (`issue-impact`) ; manifeste v13.
 
 ## 3. Exécution (bac à sable)
 

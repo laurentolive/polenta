@@ -6,7 +6,7 @@ import type {
   VersionProblem, VersionReleasePreview, VersionSummary, WorkspaceTreeNode,
   ImpactAnalysisStatus, VersionAnalysis, VersionImpacted, VersionTestsToRun,
 } from '@polenta/types'
-import { IMPACT_ANALYSIS_STATUSES, initialStatus, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
+import { ISSUE_IMPACT_LINK, IMPACT_ANALYSIS_STATUSES, initialStatus, isUnknownStatus, isValidTagName, suggestVersionTag, versionState } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
 import type { SchemaService } from './schema.service'
@@ -33,7 +33,7 @@ export class VersionError extends Error {
 
 interface VersionType { typeDef: ObjectTypeDefinition; ref: string }
 interface RepoInfo { name: string; label: string; repoPath: string }
-interface ElementRow { state: ElementState; category: 'requirement' | 'test'; filePath: string }
+interface ElementRow { state: ElementState; category: 'requirement' | 'test' | 'issue'; filePath: string }
 
 const VERSIONS_DIR = 'versions'
 const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id, undefined, { numeric: true })
@@ -239,7 +239,7 @@ export class VersionsService {
     return out
   }
 
-  private async elementFile(repoPath: string, id: string): Promise<{ filePath: string; category: 'requirement' | 'test'; state: ElementState } | null> {
+  private async elementFile(repoPath: string, id: string): Promise<{ filePath: string; category: ElementRow['category']; state: ElementState } | null> {
     for (const [dir, category] of ELEMENT_DIRS) {
       const filePath = `${dir}/${id}.yaml`
       const state = await this.tracking.readDisk(repoPath, filePath)
@@ -534,13 +534,25 @@ export class VersionsService {
     const page = await this.page(repoPath, version.id, workspaceDir)
     // Racines : les changements que liste la page (cette version et ses composants), une fois chacun.
     const roots = new Map<string, string>()
-    for (const row of page.rows) if (row.category && !roots.has(row.id)) roots.set(row.id, row.component)
+    const issueRows = page.rows.filter(row => row.category === 'issue')
+    for (const row of page.rows) if (row.category && row.category !== 'issue' && !roots.has(row.id)) roots.set(row.id, row.component)
     const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
     const rootRepo = ws?.logicalTree.repoPath ?? repoPath
     const repoPaths = await resolveWorkspaceRepoPaths(this.workspaceTree, rootRepo, workspaceDir)
     const snapshot = await src.traceability.loadWorkingTreeSnapshot(rootRepo, repoPaths)
+    // GH244 — une issue n'est pas une racine : ses exigences impactées le sont.
+    const viaIssues = new Map<string, string[]>()
+    for (const row of issueRows) {
+      for (const link of snapshot.links) {
+        if (link.type !== ISSUE_IMPACT_LINK || (link.sourceId !== row.id && link.targetId !== row.id)) continue
+        const reqId = link.sourceId === row.id ? link.targetId : link.sourceId
+        if (!snapshot.requirements.has(reqId)) continue
+        if (!roots.has(reqId)) roots.set(reqId, row.component)
+        viaIssues.set(reqId, [...(viaIssues.get(reqId) ?? []), row.id])
+      }
+    }
     return { snapshot, analysis: computeVersionAnalysis({
-      roots: [...roots].map(([id, component]) => ({ id, component })),
+      roots: [...roots].map(([id, component]) => ({ id, component, ...(viaIssues.has(id) && { viaIssues: viaIssues.get(id) }) })),
       snapshot,
       trees: (id, type) => src.traceability.buildImpactTreesFromSnapshot(snapshot, id, type),
       repoPath,

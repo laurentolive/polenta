@@ -69,6 +69,8 @@ export interface PolentaGraph {
   runs: GraphTestRun[]
   /** Versions des composants et du produit (fichiers `versions/`, GH201). */
   versions: GraphVersion[]
+  /** Issues (fichiers `issues/`, GH244). Leurs exigences impactées sont des liens `issue-impact`. */
+  issues: GraphIssue[]
 }
 
 export interface GraphRepo {
@@ -98,7 +100,7 @@ export interface GraphSchema {
   campaignStatuses: GraphFixedStatus[]
 }
 
-export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'version'
+export type GraphObjectCategory = 'requirement' | 'test' | 'campaign' | 'version' | 'issue'
 
 export interface GraphObjectType {
   /** Repo dont le schéma déclare le type. */
@@ -236,6 +238,19 @@ export interface GraphLink {
 export type GraphVersionState = 'in_progress' | 'released' | 'abandoned'
 
 /** Version d'un composant (repo) ou du produit (repo racine), GH201. */
+export interface GraphIssue {
+  id: string
+  repo: string
+  objectTypeRef: string
+  title: string
+  status: string
+  version: number
+  /** Exécutions et décisions à l'origine de l'issue. */
+  origin: { runs: string[]; decisions: string[] }
+  fields: Record<string, unknown>
+  history: ObjectHistory
+}
+
 export interface GraphVersion {
   id: string
   repo: string

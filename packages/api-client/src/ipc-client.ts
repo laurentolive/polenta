@@ -274,6 +274,13 @@ export function createIpcClient(
         invoke('reviews:revoke-approval', p, reviewId, objectId, reviewerId),
       close: (p, reviewId, status) => invoke('reviews:close', p, reviewId, status),
     },
+    issues: {
+      list: (p) => invoke('issues:list', p),
+      get: (p, id) => invoke('issues:get', p, id),
+      create: (p, dto, workspaceDir) => invoke('issues:create', p, dto, workspaceDir ?? null),
+      update: (p, id, dto, workspaceDir) => invoke('issues:update', p, id, dto, workspaceDir ?? null),
+      addRun: (p, id, runId, workspaceDir) => invoke('issues:add-run', p, id, runId, workspaceDir ?? null),
+    },
     versions: {
       tree: (p, workspaceDir) => invoke('versions:tree', p, workspaceDir ?? null),
       list: (p) => invoke('versions:list', p),

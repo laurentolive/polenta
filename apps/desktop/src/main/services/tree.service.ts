@@ -13,10 +13,15 @@ import type { TestsIndexService } from './tests-index.service'
 export type TreeObjectLister = (repoPath: string, objectTypeRef: string) => Promise<Array<{ id: string; title: string }>>
 
 /** Lister branché sur les index exigences + tests (un type est de l'une ou l'autre catégorie). */
-export function indexObjectLister(reqIndex: RequirementsIndexService, testsIndex: TestsIndexService): TreeObjectLister {
+export function indexObjectLister(
+  reqIndex: RequirementsIndexService, testsIndex: TestsIndexService,
+  /** GH244 — issues du repo. */
+  issues?: (repoPath: string) => Promise<Array<{ id: string; title: string; objectTypeRef: string }>>,
+): TreeObjectLister {
   return async (repoPath, objectTypeRef) => [
     ...(await reqIndex.findAll(repoPath, { type: objectTypeRef })),
     ...(await testsIndex.findAll(repoPath)).filter(t => t.objectTypeRef === objectTypeRef),
+    ...(await issues?.(repoPath) ?? []).filter(i => i.objectTypeRef === objectTypeRef),
   ]
 }
 

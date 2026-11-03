@@ -27,7 +27,7 @@ export interface LinkEntryError {
  *  (`requirements/`, `tests/`, `campaigns/`), pas du schéma — cf. GH16-design.md §4.1. */
 export interface ResolvedLinkObject {
   id: string
-  category: 'requirement' | 'test' | 'campaign'
+  category: 'requirement' | 'test' | 'campaign' | 'issue'
   objectTypeRef?: string
   /** GH105 — repo qui stocke l'objet ; absent = résolution sans contexte de repo (mono-repo). */
   repoPath?: string

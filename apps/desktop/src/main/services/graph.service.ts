@@ -2,7 +2,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
   CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
-  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphVersion,
+  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphIssue, GraphVersion,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
@@ -18,6 +18,7 @@ import { mergeRunsMaps } from './traceability.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import type { CampaignsService } from './campaigns.service'
 import type { VersionsService } from './versions.service'
+import type { IssuesService } from './issues.service'
 import { isResyncable } from './campaigns.service'
 import type { GitService } from './git.service'
 import { findObjectTypeDef, resolveObjectTypeLocation } from './schema-lookup.util'
@@ -67,6 +68,7 @@ interface RawRepo {
   versions: GraphVersion[]
   /** GH201 — statut de design des exigences du repo. */
   designVersions: Map<string, string>
+  issues: GraphIssue[]
 }
 
 /**
@@ -92,6 +94,7 @@ export class GraphService {
   private readonly entries = new Map<string, CacheEntry>()
   private version = 0
   private versions?: Pick<VersionsService, 'list' | 'versionType' | 'designVersions'>
+  private issues?: Pick<IssuesService, 'findAll'>
 
   constructor(
     private readonly reqIndex: RequirementsIndexService,
@@ -108,6 +111,10 @@ export class GraphService {
   }
 
   /** GH201 — versions et statut de design (injectées après construction, comme les autres dépendances tardives). */
+  setIssues(issues: Pick<IssuesService, 'findAll'>): void {
+    this.issues = issues
+  }
+
   setVersions(versions: Pick<VersionsService, 'list' | 'versionType' | 'designVersions'>): void {
     this.versions = versions
   }
@@ -210,7 +217,17 @@ export class GraphService {
       this.listCampaigns(rp),
     ])
     const { versions, designVersions } = await this.listVersions(repo)
-    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, versions, designVersions }
+    const issues = await this.listIssues(repo)
+    return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, issues, versions, designVersions }
+  }
+
+  private async listIssues(repo: { repoPath: string; name: string }): Promise<GraphIssue[]> {
+    if (!this.issues) return []
+    const list = await this.issues.findAll(repo.repoPath).catch(() => [])
+    return list.map((i): GraphIssue => ({
+      id: i.id, repo: repo.name, objectTypeRef: i.objectTypeRef, title: i.title, status: i.status, version: i.version,
+      origin: { runs: i.origin?.runs ?? [], decisions: i.origin?.decisions ?? [] }, fields: i.fields ?? {}, history: i.history ?? {},
+    }))
   }
 
   /** GH201 — versions du repo ; un fichier illisible ne casse pas le graphe (versions ignorées). */
@@ -337,6 +354,7 @@ export class GraphService {
       campaigns,
       runs,
       versions: perRepo.flatMap((r) => r.versions),
+      issues: perRepo.flatMap((r) => r.issues),
     }
     return {
       graph,

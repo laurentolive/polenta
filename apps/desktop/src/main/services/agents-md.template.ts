@@ -179,6 +179,7 @@ Tools disponibles :
 - \`get_schema\` — lit le \`.polenta/schema.yaml\` résolu (nœuds, types, champs, statuts, liens).
 - \`list_requirements\` / \`list_tests\` / \`list_campaigns\` — explore l'existant (filtres
   par type/statut/texte) pour éviter les doublons avant un import.
+- \`list_issues\` / \`get_issue\` / \`create_issue\` / \`update_issue\` — issues (bug, non-conformité…) ; exigences impactées par liens \`issue-impact\` (\`create_links\`), de son composant seulement.
 - \`list_versions\` / \`get_version\` / \`get_version_backlog\` — versions des composants et du
   produit (lecture seule) : changements inclus, composants, backlog des changements jamais livrés.
   Une version se crée, s'enrichit et passe released dans l'application, pas par le MCP.

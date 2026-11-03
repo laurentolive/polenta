@@ -199,6 +199,14 @@
             "fr": "GH245 : GraphVersion.impacted (statuts d'impact saisis) et GraphVersion.analysis (analyse figée au passage released)",
             "en": "GH245: GraphVersion.impacted (entered impact statuses) and GraphVersion.analysis (analysis frozen at release)"
           }
+        },
+        {
+          "version": 13,
+          "hash": "beaf4ad98ed5c2c32ffb4baeecf6d37f30dc281455eb5fbfd007dc48e4279359",
+          "summary": {
+            "fr": "GH244 : collection issues (GraphIssue), catégorie issue",
+            "en": "GH244: issues collection (GraphIssue), issue category"
+          }
         }
       ]
     },

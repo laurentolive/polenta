@@ -305,6 +305,14 @@ export const DEFAULT_VERSION_STATUSES: EditableStatus[] = [
   { name: 'abandonnee', label: 'Abandonnée', color: '#6b7280', isApproval: false, isTerminal: true },
 ]
 
+/** GH244 — `corrigee` n'est pas terminal : un terminal sort du backlog, une correction doit pouvoir entrer dans une version. */
+export const DEFAULT_ISSUE_STATUSES: EditableStatus[] = [
+  { name: 'ouverte', label: 'Ouverte', color: '#b45309', isApproval: false, isTerminal: false },
+  { name: 'en_cours', label: 'En cours', color: '#2563eb', isApproval: false, isTerminal: false },
+  { name: 'corrigee', label: 'Corrigée', color: '#16a34a', isApproval: false, isTerminal: false },
+  { name: 'rejetee', label: 'Rejetée', color: '#6b7280', isApproval: false, isTerminal: true },
+]
+
 export const DEFAULT_TEST_STATUSES: EditableStatus[] = [
   { name: 'draft', label: 'Brouillon', color: '#475569', isApproval: false, isTerminal: false },
   { name: 'review', label: 'En review', color: '#b45309', isApproval: false, isTerminal: false },
@@ -318,6 +326,7 @@ export const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   test: 'schema.editor.test',
   campaign: 'schema.editor.campaign',
   version: 'schema.editor.version',
+  issue: 'schema.editor.issue',
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -338,6 +347,7 @@ const CATEGORY_SUFFIX: Record<ObjectCategory, string> = {
   test: 'TEST',
   campaign: 'CAMP',
   version: 'VER',
+  issue: 'ISS',
 }
 
 function slugifyComponentName(componentName: string): string {
@@ -366,6 +376,7 @@ export function emptyObjType(
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
       : category === 'version' ? [...DEFAULT_VERSION_STATUSES]
+      : category === 'issue' ? [...DEFAULT_ISSUE_STATUSES]
       : [],
   }
 }

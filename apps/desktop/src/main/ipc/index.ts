@@ -23,6 +23,7 @@ import type { SchemaService } from '../services/schema.service'
 import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
 import type { VersionsService } from '../services/versions.service'
+import type { IssuesService } from '../services/issues.service'
 import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
@@ -54,7 +55,7 @@ import type { SchemaDeleteService } from '../services/schema-delete.service'
 import type { ExecutionHistoryTarget, ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
-  CreateRequirementDto,
+  CreateRequirementDto, CreateIssueDto, UpdateIssueDto,
   UpdateRequirementDto,
   TransitionRequirementDto,
   CreateTestCaseDto,
@@ -105,6 +106,7 @@ export interface Container {
   elementMove: ElementMoveService
   campaigns: CampaignsService
   versions: VersionsService
+  issues: IssuesService
   campaignExecution: CampaignExecutionService
   executionHistory: ExecutionHistoryService
   tree: TreeService
@@ -187,6 +189,7 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
+  'issues:create', 'issues:update', 'issues:add-run',
   'versions:create', 'versions:update', 'versions:copy', 'versions:delete', 'versions:set-impact', 'versions:include', 'versions:remove-changes', 'versions:release',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
@@ -583,6 +586,16 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('versions:get', (_e, repoPath: string, id: string, workspaceDir?: string) =>
     c.versions.page(repoPath, id, workspaceDir ?? undefined))
   r.handle('versions:backlog', (_e, repoPath: string) => c.versions.backlog(repoPath))
+  // GH244 — issues.
+  r.handle('issues:list', (_e, repoPath: string) => c.issues.findAll(repoPath))
+  r.handle('issues:get', (_e, repoPath: string, id: string) => c.issues.findOne(repoPath, id))
+  r.handle('issues:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
+    c.issues.create(repoPath, dto as CreateIssueDto, workspaceDir))
+  r.handle('issues:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
+    c.issues.update(repoPath, id, dto as UpdateIssueDto, workspaceDir))
+  r.handle('issues:add-run', (_e, repoPath: string, id: string, runId: string, workspaceDir?: string) =>
+    c.issues.addRun(repoPath, id, runId, workspaceDir))
+
   r.handle('versions:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.versions.create(repoPath, dto as import('@polenta/types').CreateVersionDto, workspaceDir ?? undefined))
   r.handle('versions:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>

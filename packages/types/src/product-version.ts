@@ -85,6 +85,8 @@ export interface VersionImpactRoot {
   title: string
   /** Composant (nom de montage) qui porte le changement. */
   component: string
+  /** GH244 — issues incluses qui impactent cette exigence (racine par ses liens `issue-impact`). */
+  viaIssues?: string[]
   descendantTree: ImpactNode[]
   ascendantTree: ImpactNode[]
 }
@@ -143,7 +145,7 @@ export interface VersionComponentNode {
 export interface VersionBacklogItem {
   id: string
   title: string
-  category: 'requirement' | 'test'
+  category: 'requirement' | 'test' | 'issue'
   status: string
   objectTypeRef: string
   kind: 'new' | 'modified'
@@ -159,7 +161,7 @@ export interface VersionChangeRow {
   repoPath: string
   versionId: string
   versionTitle: string
-  /** null : élément introuvable (supprimé depuis). `issue` : #244. */
+  /** null : élément introuvable (supprimé depuis). */
   category: 'requirement' | 'test' | 'issue' | null
   id: string
   title: string

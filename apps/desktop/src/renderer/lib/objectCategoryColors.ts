@@ -14,6 +14,7 @@ export const CATEGORY_CHART_TEXT: Record<ObjectCategory, string> = {
   test: 'text-chart-2',
   campaign: 'text-chart-7',
   version: 'text-chart-4',
+  issue: 'text-chart-5',
 }
 
 export const CATEGORY_CHART_BG: Record<ObjectCategory, string> = {
@@ -21,4 +22,5 @@ export const CATEGORY_CHART_BG: Record<ObjectCategory, string> = {
   test: 'bg-chart-2',
   campaign: 'bg-chart-7',
   version: 'bg-chart-4',
+  issue: 'bg-chart-5',
 }

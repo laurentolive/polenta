@@ -41,7 +41,7 @@ export interface WorkspaceObject {
   title: string
   status: string
   objectTypeRef: string
-  category: 'requirement' | 'test'
+  category: 'requirement' | 'test' | 'issue'
   /** Repo qui stocke l'objet. */
   repoPath: string
   /** Libellé du repo (label du nœud workspace, sinon nom de montage). */
@@ -70,6 +70,8 @@ export type LinkWriteErrorCode =
   | 'LINK_TYPE_INCOMPATIBLE'
   | 'DUPLICATE_LINK'
   | 'LINK_NOT_FOUND'
+  /** GH244 — issue ↔ exigence d'un autre composant. */
+  | 'NOT_OWN_ELEMENT'
   | 'READONLY_REPO'
 
 // objectTypeRef format : "componentName::objectTypeName"

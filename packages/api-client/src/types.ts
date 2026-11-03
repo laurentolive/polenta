@@ -5,7 +5,7 @@ import type {
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
   VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
 } from '@polenta/types'
-import type {
+import type { Issue,
   MergeFileDetail,
   MergeFileDraft,
   MergeFinalizeResult,
@@ -83,7 +83,7 @@ import type {
   TerminalKind,
 } from '@polenta/types'
 import type {
-  CreateRequirementDto,
+  CreateRequirementDto, CreateIssueDto, UpdateIssueDto,
   UpdateRequirementDto,
   TransitionRequirementDto,
   CreateTestCaseDto,
@@ -774,6 +774,15 @@ export interface ApiClient {
     revokeApproval(repoPath: string, reviewId: string, objectId: string, reviewerId: string): Promise<Review>
     close(repoPath: string, reviewId: string, status: 'approved' | 'closed'): Promise<Review>
   }
+  /** GH244 — issues. */
+  issues: {
+    list(repoPath: string): Promise<Issue[]>
+    get(repoPath: string, id: string): Promise<Issue>
+    create(repoPath: string, dto: CreateIssueDto, workspaceDir?: string): Promise<Issue>
+    update(repoPath: string, id: string, dto: UpdateIssueDto, workspaceDir?: string): Promise<Issue>
+    addRun(repoPath: string, id: string, runId: string, workspaceDir?: string): Promise<Issue>
+  }
+
   /** GH201 — versions de composant / produit. */
   versions: {
     tree(rootRepoPath: string, workspaceDir?: string): Promise<VersionComponentNode[]>

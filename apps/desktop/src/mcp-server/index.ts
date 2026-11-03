@@ -29,6 +29,7 @@ import { createMcpContainer } from './container'
 import { registerSchemaTools } from './tools/schema.tools'
 import { registerReadTools } from './tools/read.tools'
 import { registerVersionTools } from './tools/versions.tools'
+import { registerIssueTools } from './tools/issues.tools'
 import { registerBulkImportTools } from './tools/bulk-import.tools'
 import { registerSchemaMutationTools } from './tools/schema-mutation.tools'
 import { registerLinkTools } from './tools/links.tools'
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
   registerSchemaTools(server, container)
   registerReadTools(server, container)
   registerVersionTools(server, container)
+  registerIssueTools(server, container)
   registerBulkImportTools(server, container)
   registerSchemaMutationTools(server, container)
   registerLinkTools(server, container)

@@ -20,7 +20,7 @@ const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id, 
 
 export interface VersionAnalysisInput {
   /** Racines : éléments changés, avec le composant qui porte le changement. */
-  roots: Array<{ id: string; component: string }>
+  roots: Array<{ id: string; component: string; viaIssues?: string[] }>
   snapshot: ImpactSnapshot
   trees: TreeBuilder
   /** Repo de la version : seules ses lignes sont retenues. */
@@ -55,7 +55,7 @@ export function computeVersionAnalysis(input: VersionAnalysisInput): VersionAnal
   for (const r of input.roots) {
     const el = elementOf(snapshot, r.id)
     if (!el) continue
-    roots.push({ elementId: r.id, elementType: el.type, title: el.title, component: r.component, ...trees(r.id, el.type) })
+    roots.push({ elementId: r.id, elementType: el.type, title: el.title, component: r.component, ...(r.viaIssues && { viaIssues: r.viaIssues }), ...trees(r.id, el.type) })
   }
 
   // Éléments atteints (hors racines) du repo de la version, avec toutes leurs sources ; `inTrees` :

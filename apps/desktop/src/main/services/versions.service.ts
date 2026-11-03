@@ -32,7 +32,7 @@ export class VersionError extends Error {
 }
 
 interface VersionType { typeDef: ObjectTypeDefinition; ref: string }
-interface RepoInfo { name: string; label: string; repoPath: string }
+export interface RepoInfo { name: string; label: string; repoPath: string }
 interface ElementRow { state: ElementState; category: 'requirement' | 'test' | 'issue'; filePath: string }
 
 const VERSIONS_DIR = 'versions'
@@ -497,6 +497,27 @@ export class VersionsService {
     return rows
   }
 
+  /** GH202 — dépendances directes d'un repo, lues dans l'arbre du workspace. */
+  async dependenciesOf(repoPath: string, workspaceDir?: string): Promise<RepoInfo[]> {
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    return this.dependencies(repoPath, ws?.logicalTree ?? null)
+  }
+
+  /** GH202 — nom d'un repo dans le workspace (montage, ou dossier du repo racine). */
+  async repoName(repoPath: string, workspaceDir?: string): Promise<string> {
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    return this.repoInfo(repoPath, ws?.nodes ?? []).name
+  }
+
+  /** GH202 — repo du workspace portant ce nom ; introuvable : `fallback`. */
+  async repoPathNamed(name: string, fallback: string, workspaceDir?: string): Promise<string> {
+    const ws = workspaceDir ? await this.workspaceTree?.readCache(workspaceDir) : null
+    const nodes = ws?.nodes ?? []
+    // Le repo consulté d'abord : un nom de montage peut exister ailleurs dans le workspace.
+    const candidates = [fallback, ...(ws ? [ws.logicalTree.repoPath] : []), ...nodes.map(n => n.repoPath)]
+    return candidates.find(c => this.repoInfo(c, nodes).name === name) ?? fallback
+  }
+
   /** Dépendances directes d'un repo dans l'arbre logique du workspace. */
   private dependencies(repoPath: string, logicalTree: WorkspaceTreeNode | null): RepoInfo[] {
     const find = (n: WorkspaceTreeNode): WorkspaceTreeNode | null =>
@@ -751,7 +772,9 @@ export class VersionsService {
   }
 
   private async stamp(repoPath: string, before: ProductVersion | null, after: ProductVersion, filePath: string): Promise<ProductVersion> {
-    return this.history ? this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath }) : after
+    if (!this.history) return after
+    const stamped = await this.history.stamp(repoPath, after.objectTypeRef, before, after, { filePath })
+    return this.history.stampVersionChanges(repoPath, stamped)
   }
 }
 

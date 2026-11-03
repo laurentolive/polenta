@@ -19,8 +19,9 @@ import { decodeProjectId } from '../lib/projectId'
 import { DynamicField } from '../components/DynamicField'
 import { useModalHotkeys } from '../hooks/useModalHotkeys'
 import { IssueProposalDialog, useHasIssueType } from '../components/issues/IssueProposalDialog'
-import { isFieldRequiredNow, runFieldReader } from '@polenta/types'
-import type { SchemaField, TestCase, TestRunResult, StepResultValue } from '@polenta/types'
+import { TestedVersionPicker } from '../components/executions/TestedVersionPicker'
+import { isFieldRequiredNow, runFieldReader, selectableVersions } from '@polenta/types'
+import type { SchemaField, TestCase, TestRunResult, StepResultValue, TestedConfigChoice } from '@polenta/types'
 
 export const Route = createFileRoute('/campaign/$campaignId_/execute/$testId')({
   component: ExecuteTestPage,
@@ -169,6 +170,19 @@ function ExecuteEntryPage() {
   const hasIssueType = useHasIssueType(repoPath)
   const [failedRunId, setFailedRunId] = useState<string | null>(null)
 
+  // GH202 — version testée : reprise de la dernière exécution de la campagne, rien de stocké sur celle-ci.
+  const workspaceDir = projectId ? decodeProjectId(projectId) : undefined
+  const { data: testedContext } = useQuery({
+    queryKey: ['tested-config', repoPath, campaignId, workspaceDir ?? null],
+    queryFn: () => api.testedConfig.context(repoPath, campaignId, workspaceDir),
+    enabled: !!repoPath,
+    staleTime: 0,
+  })
+  const [testedEdit, setTestedEdit] = useState<TestedConfigChoice | null>(null)
+  const [testedMissing, setTestedMissing] = useState(false)
+  const testedChoice: TestedConfigChoice = testedEdit ?? testedContext?.prefill ?? { version: '' }
+  const testedRequired = !!testedContext && selectableVersions(testedContext.options).length > 0
+
   const executeMutation = useMutation({
     mutationFn: async () => {
       const run = await api.tests.execute(repoPath, testCaseId!, {
@@ -183,7 +197,8 @@ function ExecuteEntryPage() {
         ...(entry?.requirementId && { requirementId: entry.requirementId }),
         // GH73 — le run est rattaché à cette entrée (historique daté de la campagne).
         campaignEntry: { campaignId, entryId },
-      })
+        ...(testedRequired && testedChoice.version.trim() && { testedVersion: testedChoice }),
+      }, workspaceDir)
       // GH81 — instance resynchronisable : la version affichée est figée avec le résultat.
       await api.campaigns.updateRun(repoPath, campaignId, entryId, globalResult, run.id, resyncable ? testCase : undefined)
       return run
@@ -195,6 +210,7 @@ function ExecuteEntryPage() {
       // Consultation du run et historique des exécutions : la liste des runs du test a changé.
       qc.invalidateQueries({ queryKey: ['test-runs', repoPath, testCaseId] })
       qc.invalidateQueries({ queryKey: ['execution-history'] })
+      qc.invalidateQueries({ queryKey: ['tested-config', repoPath, campaignId] })
       // GH244 — échec : proposition de créer une issue ; le retour à la campagne vient à sa fermeture.
       if ((run.result === 'FAIL' || run.result === 'BLOCKED') && hasIssueType) setFailedRunId(run.id)
       else goBack()
@@ -218,6 +234,12 @@ function ExecuteEntryPage() {
   // Ctrl/Cmd+Entrée depuis un commentaire richtext → enregistrer le résultat d'exécution.
   const submitExecution = () => {
     if (executeMutation.isPending) return
+    if (testedRequired && !testedChoice.version.trim()) {
+      setTestedMissing(true)
+      setExecError(t('testedConfig.required'))
+      return
+    }
+    setExecError(null)
     if (notApproved && entry?.status === 'pending') setConfirmingUnapproved(true)
     else executeMutation.mutate()
   }
@@ -291,6 +313,14 @@ function ExecuteEntryPage() {
               </div>
             )}
             <RunParamsInfo run={entry} />
+            {testedRequired && (
+              <TestedVersionPicker
+                options={testedContext.options}
+                value={testedChoice}
+                onChange={setTestedEdit}
+                missing={testedMissing && !testedChoice.version.trim()}
+              />
+            )}
             {/* Preconditions */}
             {testCase.preconditions && (
               <div>

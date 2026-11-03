@@ -1,5 +1,6 @@
 import type { ObjectHistory } from './history'
 import type { CampaignEntryRef } from './campaign'
+import type { TestedConfig } from './tested-config'
 
 // ─── Test Case Definition ─────────────────────────────────────────────────────
 
@@ -98,6 +99,8 @@ export interface TestRun {
   origin?: 'excel-import'
   /** GH196 — valeurs des `runFields` du type de test ; absent tant que vide. Immuable comme le run. */
   fields?: Record<string, unknown>
+  /** GH202 — copie figée de la structure testée ; absent : run antérieur, ou repo sans version. */
+  testedConfig?: TestedConfig
 }
 
 // ─── Campaigns ───────────────────────────────────────────────────────────────

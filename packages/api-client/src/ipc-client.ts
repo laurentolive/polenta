@@ -281,6 +281,10 @@ export function createIpcClient(
       update: (p, id, dto, workspaceDir) => invoke('issues:update', p, id, dto, workspaceDir ?? null),
       addRun: (p, id, runId, workspaceDir) => invoke('issues:add-run', p, id, runId, workspaceDir ?? null),
     },
+    testedConfig: {
+      context: (p, campaignId, workspaceDir) => invoke('tested-config:context', p, campaignId, workspaceDir ?? null),
+      drift: (p, config, workspaceDir) => invoke('tested-config:drift', p, config, workspaceDir ?? null),
+    },
     versions: {
       tree: (p, workspaceDir) => invoke('versions:tree', p, workspaceDir ?? null),
       list: (p) => invoke('versions:list', p),
@@ -318,8 +322,8 @@ export function createIpcClient(
         invoke('campaigns:update-run-params', p, campaignId, entryId, paramValues),
       delete: (p, id) => invoke('campaigns:delete', p, id),
       executionSheet: {
-        export: (p, campaignId, locale) => invoke('campaigns:execution-sheet-export', p, campaignId, locale),
-        preview: (p, campaignId) => invoke('campaigns:execution-sheet-preview', p, campaignId),
+        export: (p, campaignId, locale, workspaceDir) => invoke('campaigns:execution-sheet-export', p, campaignId, locale, workspaceDir ?? null),
+        preview: (p, campaignId, workspaceDir) => invoke('campaigns:execution-sheet-preview', p, campaignId, workspaceDir ?? null),
         apply: (p, campaignId, filePath, workspaceDir) =>
           invoke('campaigns:execution-sheet-apply', p, campaignId, filePath, workspaceDir),
       },

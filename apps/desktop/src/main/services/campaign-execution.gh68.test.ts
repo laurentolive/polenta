@@ -136,7 +136,7 @@ describe('export du classeur', () => {
     if ('fatal' in raw) throw new Error(raw.fatal.code)
     expect(raw.rows.some(r => r.text.includes('Action TEST-A v2'))).toBe(true)
     expect(raw.rows.some(r => r.text.includes('Action TEST-A v1'))).toBe(false)
-    expect(raw.formatVersion).toBe('3')
+    expect(raw.formatVersion).toBe('4')
     expect(raw.instances[0]!.fingerprint).toMatch(/^[0-9a-f]{64}$/)
     expect(await campaignFile()).toBe(before)
   })

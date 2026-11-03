@@ -1012,6 +1012,7 @@
       "warnings": "Warnings",
       "rowWithoutKey": "Row {{row}} added in the workbook (no key): ignored",
       "testNotApproved": "{{entryId}}: test not approved ({{status}})",
+      "testedUndocumented": "{{entryId}}: “{{value}}” matches no version ({{path}}): kept as an undocumented deviation",
       "unfilled_one": "{{count}} instance not filled in: left unchanged",
       "unfilled_other": "{{count}} instances not filled in: left unchanged",
       "importN_one": "Import {{count}} result",
@@ -1032,6 +1033,7 @@
       "error": {
         "entryNotFound": "instance no longer in the campaign (removed since export)",
         "testNotFound": "test {{testCaseId}} not found",
+        "testedVersionMissing": "tested version required (row {{row}})",
         "stepsMismatch": "steps changed in the workbook (expected: {{expected}}; found: {{found}})",
         "invalidVerdict": "unrecognised verdict \"{{value}}\" (row {{row}})",
         "invalidDate": "unreadable date \"{{value}}\" (row {{row}})",
@@ -2199,6 +2201,33 @@
     "pasteRejected_other": "{{count}} links ignored (unsupported URL scheme).",
     "pasteSingleOnly": "This field keeps a single link: only the first one was pasted."
   },
+  "testedConfig": {
+    "title": "Tested version",
+    "choose": "Choose a version",
+    "other": "Other (free text)…",
+    "otherPlaceholder": "Value without a declared version",
+    "none": "none",
+    "structure": "Tested structure",
+    "deviation": "deviation",
+    "deviationCount_one": "{{count}} deviation",
+    "deviationCount_other": "{{count}} deviations",
+    "required": "The tested version is required.",
+    "undocumented": "undocumented deviation",
+    "expected": "planned: {{ref}}",
+    "evolved": "has evolved",
+    "state": {
+      "in_progress": "in progress",
+      "released": "released",
+      "abandoned": "abandoned"
+    },
+    "drift": {
+      "missing": "version {{ref}} deleted",
+      "abandoned": "version {{ref}} abandoned",
+      "component": "{{from}} → {{to}}",
+      "added": "{{id}} added to {{ref}}",
+      "removed": "{{id}} removed from {{ref}}"
+    }
+  },
   "executionHistory": {
     "title": "Executions",
     "empty": "No execution.",
@@ -2230,6 +2259,10 @@
       "entryRequirement": "Instance requirement",
       "params": "Parameters",
       "testVersion": "Test version",
+      "testedVersion": "Tested version",
+      "testedStructure": "Tested structure",
+      "testedCommit": "Commit",
+      "testedDeviations": "Deviations",
       "carriedFrom": "Carried from",
       "test": "Test"
     },

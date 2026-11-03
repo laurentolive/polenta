@@ -1012,6 +1012,7 @@
       "warnings": "Avertissements",
       "rowWithoutKey": "Ligne {{row}} ajoutée dans le classeur (sans clé) : ignorée",
       "testNotApproved": "{{entryId}} : test non approuvé ({{status}})",
+      "testedUndocumented": "{{entryId}} : « {{value}} » ne correspond à aucune version ({{path}}) : retenu comme écart non documenté",
       "unfilled_one": "{{count}} instance non remplie : laissée inchangée",
       "unfilled_other": "{{count}} instances non remplies : laissées inchangées",
       "importN_one": "Importer {{count}} résultat",
@@ -1032,6 +1033,7 @@
       "error": {
         "entryNotFound": "instance absente de la campagne (retirée depuis l'export)",
         "testNotFound": "test {{testCaseId}} introuvable",
+        "testedVersionMissing": "version testée obligatoire (ligne {{row}})",
         "stepsMismatch": "étapes modifiées dans le classeur (attendues : {{expected}} ; trouvées : {{found}})",
         "invalidVerdict": "verdict non reconnu « {{value}} » (ligne {{row}})",
         "invalidDate": "date illisible « {{value}} » (ligne {{row}})",
@@ -2199,6 +2201,33 @@
     "pasteRejected_other": "{{count}} liens ignorés (schéma d’URL non pris en charge).",
     "pasteSingleOnly": "Ce champ ne garde qu’un lien : seul le premier a été collé."
   },
+  "testedConfig": {
+    "title": "Version testée",
+    "choose": "Choisir une version",
+    "other": "Autre (texte libre)…",
+    "otherPlaceholder": "Valeur sans version déclarée",
+    "none": "aucune",
+    "structure": "Structure testée",
+    "deviation": "écart",
+    "deviationCount_one": "{{count}} écart",
+    "deviationCount_other": "{{count}} écarts",
+    "required": "La version testée est obligatoire.",
+    "undocumented": "écart non documenté",
+    "expected": "prévue : {{ref}}",
+    "evolved": "a évolué",
+    "state": {
+      "in_progress": "en cours",
+      "released": "released",
+      "abandoned": "abandonnée"
+    },
+    "drift": {
+      "missing": "version {{ref}} supprimée",
+      "abandoned": "version {{ref}} abandonnée",
+      "component": "{{from}} → {{to}}",
+      "added": "{{id}} ajouté à {{ref}}",
+      "removed": "{{id}} retiré de {{ref}}"
+    }
+  },
   "executionHistory": {
     "title": "Exécutions",
     "empty": "Aucune exécution.",
@@ -2230,6 +2259,10 @@
       "entryRequirement": "Exigence de l'instance",
       "params": "Paramètres",
       "testVersion": "Version du test",
+      "testedVersion": "Version testée",
+      "testedStructure": "Structure testée",
+      "testedCommit": "Commit",
+      "testedDeviations": "Écarts",
       "carriedFrom": "Reportée de",
       "test": "Test"
     },

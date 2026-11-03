@@ -1,12 +1,12 @@
 import ExcelJS from 'exceljs'
 import {
   EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_FORMAT_VERSION, EXECUTION_SHEET_HEADER_ROW,
-  EXECUTION_SHEET_LABELS, EXECUTION_SHEET_META_NAME, executionFieldColumnId, formatRequiredWhenText,
-  readLinkValues, substituteRunParams,
+  EXECUTION_SHEET_LABELS, EXECUTION_SHEET_META_NAME, executionFieldColumnId, flattenTestedRepos, formatRequiredWhenText,
+  readLinkValues, selectableVersions, substituteRunParams, testedChoiceFromConfig, testedColumnId,
 } from '@polenta/types'
 import type {
-  CampaignTestRun, ExecutionSheetColumn, ExecutionSheetFieldColumn, ExecutionSheetLabels, ExecutionSheetLocale,
-  ObjectTypeDefinition, TestCampaign, TestCase, TestRun,
+  CampaignTestRun, ExecutionSheetColumn, ExecutionSheetFieldColumn, ExecutionSheetLabels, ExecutionSheetLocale, ExecutionSheetTestedColumn,
+  ObjectTypeDefinition, TestCampaign, TestCase, TestRun, TestedConfigContext, TestedRepoOptions,
 } from '@polenta/types'
 import { writeLinkCell } from './link-cell.util'
 import { instanceSignature, readSheetRows } from './campaign-execution-import'
@@ -43,6 +43,8 @@ export type ExecutionSheetRow =
       /** GH196 — colonnes de champ saisissables sur cette ligne (champs d'exécution du type). */
       fieldIds: string[]
       prefill?: RowPrefill
+      /** GH202 — valeurs pré-remplies de la version testée, par colonne ; absent : test introuvable. */
+      tested?: Record<string, string>
     }
   | {
       kind: 'step'
@@ -64,6 +66,8 @@ export interface ExecutionSheetModel {
   /** GH196 — colonnes des champs d'exécution puis d'étape, union des types de la campagne (un nom =
    *  une colonne, Q6), dans l'ordre de première apparition. */
   fieldColumns: ExecutionSheetFieldColumn[]
+  /** GH202 — colonnes de la version testée ; vide : aucune version sélectionnable dans le repo. */
+  testedColumns?: ExecutionSheetTestedColumn[]
   /** Une entrée par instance, dans l'ordre de la campagne — recopiée dans `_polenta`. */
   instances: { entryId: string; testCaseId: string; orders: number[]; testFound: boolean; fingerprint?: string; prefilled?: boolean }[]
 }
@@ -112,11 +116,14 @@ export function buildExecutionSheetModel(input: {
   entries: ExecutionSheetEntry[]
   locale: ExecutionSheetLocale
   exportedAt: string
+  /** GH202 — versions proposées et pré-remplissage de la campagne. */
+  tested?: TestedConfigContext
 }): ExecutionSheetModel {
   const labels = EXECUTION_SHEET_LABELS[input.locale]
   const rows: ExecutionSheetRow[] = []
   const instances: ExecutionSheetModel['instances'] = []
   const fieldColumns = fieldColumnsOf(input.entries)
+  const testedColumns = testedColumnsOf(input.tested, labels)
 
   for (const { run, test, fingerprint, typeDef, prefill } of input.entries) {
     const plain = (md: string | null | undefined) => (md ? markdownToPlainText(md).trim() : '')
@@ -141,6 +148,7 @@ export function buildExecutionSheetModel(input: {
       params: formatParams(run),
       currentStatus: labels.runStatuses[run.status] ?? run.status,
       fieldIds: idsOf('runFields'),
+      ...(test && testedColumns.length > 0 && { tested: testedCells(input.tested!, prefill) }),
       ...(prefill && test && {
         prefill: {
           verdict: labels.globalVerdicts[prefill.result],
@@ -181,8 +189,30 @@ export function buildExecutionSheetModel(input: {
     exportedAt: input.exportedAt,
     rows,
     fieldColumns,
+    testedColumns,
     instances,
   }
+}
+
+/** GH202 — colonnes de la version testée : la version, puis un composant par colonne. */
+function testedColumnsOf(tested: TestedConfigContext | undefined, labels: ExecutionSheetLabels): ExecutionSheetTestedColumn[] {
+  if (!tested || selectableVersions(tested.options).length === 0) return []
+  const titles = (repo: Pick<TestedRepoOptions, 'versions'>) => selectableVersions(repo).map(v => v.title)
+  return [
+    { id: testedColumnId(''), label: labels.testedVersion, list: titles(tested.options) },
+    ...flattenTestedRepos(tested.options).map(({ path, repo }) => ({ id: testedColumnId(path), label: repo.label, list: titles(repo) })),
+  ]
+}
+
+/** GH202 — pré-remplissage en labels : saisie du run de l'instance, sinon de la dernière exécution ; composants vides hors écart. */
+function testedCells(tested: TestedConfigContext, run: TestRun | undefined): Record<string, string> {
+  const choice = run?.testedConfig ? testedChoiceFromConfig(run.testedConfig, tested.options) : tested.prefill
+  if (!choice) return {}
+  const title = (repo: Pick<TestedRepoOptions, 'versions'> | undefined, value: string) => repo?.versions.find(v => v.id === value)?.title ?? value
+  const repos = new Map(flattenTestedRepos(tested.options).map(r => [r.path, r.repo]))
+  const cells: Record<string, string> = { [testedColumnId('')]: title(tested.options, choice.version) }
+  for (const [path, value] of Object.entries(choice.components ?? {})) cells[testedColumnId(path)] = title(repos.get(path), value)
+  return cells
 }
 
 /** Valeurs figées de l'instance, `réf = valeur`, une par ligne, triées par référence. */
@@ -241,15 +271,16 @@ function listFormula(values: string[]): string {
 }
 
 /** GH196 — colonnes de la feuille : fixes jusqu'à « Commentaire », champs, puis colonnes d'information. */
-type SheetColumn = { kind: 'fixed'; c: ExecutionSheetColumn } | { kind: 'field'; col: ExecutionSheetFieldColumn }
+type SheetColumn = { kind: 'fixed'; c: ExecutionSheetColumn } | { kind: 'field'; col: ExecutionSheetFieldColumn } | { kind: 'tested'; col: ExecutionSheetTestedColumn }
 
-function sheetColumns(fieldColumns: ExecutionSheetFieldColumn[]): SheetColumn[] {
+function sheetColumns(fieldColumns: ExecutionSheetFieldColumn[], testedColumns: ExecutionSheetTestedColumn[]): SheetColumn[] {
   const fixed = EXECUTION_SHEET_COLUMNS.map((c): SheetColumn => ({ kind: 'fixed', c }))
   const cut = EXECUTION_SHEET_COLUMNS.indexOf('comment') + 1
-  return [...fixed.slice(0, cut), ...fieldColumns.map((col): SheetColumn => ({ kind: 'field', col })), ...fixed.slice(cut)]
+  return [...fixed.slice(0, cut), ...fieldColumns.map((col): SheetColumn => ({ kind: 'field', col })), ...testedColumns.map((col): SheetColumn => ({ kind: 'tested', col })), ...fixed.slice(cut)]
 }
 
 const columnId = (sc: SheetColumn) => (sc.kind === 'fixed' ? sc.c : sc.col.id)
+const isFixed = (sc: SheetColumn): sc is { kind: 'fixed'; c: ExecutionSheetColumn } => sc.kind === 'fixed'
 
 /** Commentaire d'en-tête d'une colonne de champ : type, valeurs, obligation en clair. */
 function fieldNote(col: ExecutionSheetFieldColumn, model: ExecutionSheetModel): string {
@@ -272,7 +303,7 @@ export async function writeExecutionWorkbook(model: ExecutionSheetModel, destPat
 /** Classeur en mémoire (séparé de l'écriture pour le script de contrôle). */
 export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promise<ExcelJS.Workbook> {
   const labels = EXECUTION_SHEET_LABELS[model.locale]
-  const columns = sheetColumns(model.fieldColumns ?? [])
+  const columns = sheetColumns(model.fieldColumns ?? [], model.testedColumns ?? [])
   const colIndex = (c: ExecutionSheetColumn) => columns.findIndex(sc => sc.kind === 'fixed' && sc.c === c) + 1
   const workbook = new ExcelJS.Workbook()
   workbook.creator = BRAND.productName
@@ -284,7 +315,7 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
 
   columns.forEach((sc, i) => {
     const column = sheet.getColumn(i + 1)
-    column.width = sc.kind === 'fixed' ? COLUMN_WIDTHS[sc.c] : (sc.col.field.type === 'link' || sc.col.field.type === 'richtext' ? 32 : 16)
+    column.width = sc.kind === 'fixed' ? COLUMN_WIDTHS[sc.c] : sc.kind === 'tested' ? 18 : (sc.col.field.type === 'link' || sc.col.field.type === 'richtext' ? 32 : 16)
     if (sc.kind === 'fixed' && sc.c === 'key') column.hidden = true
   })
 
@@ -302,9 +333,16 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
   const header = sheet.getRow(EXECUTION_SHEET_HEADER_ROW)
   columns.forEach((sc, i) => {
     const cell = header.getCell(i + 1)
-    const input = sc.kind === 'field' || INPUT_COLUMNS.has(sc.c)
-    cell.value = sc.kind === 'fixed' ? labels.headers[sc.c] : `${sc.col.field.label ?? sc.col.field.name}${sc.col.field.required ? ' *' : ''}`
-    if (sc.kind === 'field') cell.note = fieldNote(sc.col, model)
+    const input = !isFixed(sc) || INPUT_COLUMNS.has(sc.c)
+    if (sc.kind === 'fixed') cell.value = labels.headers[sc.c]
+    else if (sc.kind === 'tested') {
+      const isVersion = sc.col.id === testedColumnId('')
+      cell.value = isVersion ? `${sc.col.label} *` : sc.col.label
+      cell.note = isVersion ? labels.testedVersionNote : labels.testedComponentNote
+    } else {
+      cell.value = `${sc.col.field.label ?? sc.col.field.name}${sc.col.field.required ? ' *' : ''}`
+      cell.note = fieldNote(sc.col, model)
+    }
     cell.font = { bold: true, color: { argb: FONT_HEADER } }
     cell.fill = solid(input ? FILL_INPUT_HEADER : FILL_HEADER)
     cell.alignment = { vertical: 'middle', wrapText: true }
@@ -336,6 +374,20 @@ export async function buildExecutionWorkbook(model: ExecutionSheetModel): Promis
       const cell = row.getCell(i + 1)
       const id = columnId(sc)
       cell.border = { bottom: { style: 'hair', color: { argb: 'FFBFBFBF' } } }
+      if (sc.kind === 'tested') {
+        // GH202 — ligne d'instance d'un test trouvé ; liste indicative, une valeur libre reste permise.
+        cell.alignment = { vertical: 'top' }
+        if (r.kind !== 'instance' || !r.tested) { cell.fill = lockedFill; return }
+        cell.protection = { locked: false }
+        cell.fill = solid(FILL_INPUT)
+        // Format texte : un label « 2.0 » saisi ou choisi ne doit pas devenir le nombre 2.
+        cell.numFmt = '@'
+        const existing = r.tested[sc.col.id]
+        if (existing) cell.value = existing
+        const list = sc.col.list.length > 0 && sc.col.list.every(v => !v.includes(',')) ? listFormula(sc.col.list) : null
+        if (list && list.length <= 257) cell.dataValidation = { type: 'list', allowBlank: true, formulae: [list], showErrorMessage: false }
+        return
+      }
       if (sc.kind === 'field') {
         const f = sc.col.field
         cell.alignment = { vertical: 'top', wrapText: f.type === 'link' || f.type === 'richtext' || f.type === 'textarea' }

@@ -26,6 +26,7 @@ import type { VersionsService } from '../services/versions.service'
 import type { IssuesService } from '../services/issues.service'
 import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
+import type { TestedConfigService } from '../services/tested-config.service'
 import type { PolentaRepoService } from '../services/polenta-repo.service'
 import type { WorkspaceTreeService } from '../services/workspace-tree.service'
 import type { InterfaceComplianceService } from '../services/interface-compliance.service'
@@ -52,7 +53,7 @@ import { readEffectiveHistory, type HistoryObjectKind, type HistoryService } fro
 import type { FieldRenameService } from '../services/field-rename.service'
 import type { TypeRenameService } from '../services/type-rename.service'
 import type { SchemaDeleteService } from '../services/schema-delete.service'
-import type { ExecutionHistoryTarget, ValueRename } from '@polenta/types'
+import type { ExecutionHistoryTarget, TestedConfig, ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
   CreateRequirementDto, CreateIssueDto, UpdateIssueDto,
@@ -109,6 +110,7 @@ export interface Container {
   issues: IssuesService
   campaignExecution: CampaignExecutionService
   executionHistory: ExecutionHistoryService
+  testedConfig: TestedConfigService
   tree: TreeService
   baseline: BaselineService
   polentaRepo: PolentaRepoService
@@ -478,6 +480,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // GH197 — historique des exécutions d'un test ou d'une exigence (lecture seule).
   r.handle('executions:history', (_e, repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string) =>
     c.executionHistory.history(repoPath, target, workspaceDir))
+  // GH202 — version testée : versions proposées et pré-remplissage ; évolution depuis l'exécution.
+  r.handle('tested-config:context', (_e, repoPath: string, campaignId: string, workspaceDir?: string) =>
+    c.testedConfig.context(repoPath, campaignId, workspaceDir))
+  r.handle('tested-config:drift', (_e, repoPath: string, config: TestedConfig, workspaceDir?: string) =>
+    c.testedConfig.drift(repoPath, config, workspaceDir))
   // GH196 — type d'un test (champs d'exécution / d'étape), schéma du composant compris.
   r.handle('tests:type-def', (_e, repoPath: string, objectTypeRef: string, workspaceDir?: string) =>
     c.tests.typeDefFor(repoPath, objectTypeRef, workspaceDir))

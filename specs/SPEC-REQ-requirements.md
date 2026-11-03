@@ -742,7 +742,8 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
 - Fichier `versions/<ID>.yaml` (IDs GH20, `history` GH77) ; champs système `basedOn` (version
   précédente du repo), `components` (versions des dépendances `polenta-repo.yaml`, par nom de
   montage), `changes` (`{ id, base?: { sha, version } }`), `freeze` (`{ tag, sha, at }`, au passage
-  released). Le label est le `title`, unique parmi les versions non abandonnées du repo. Les composants
+  released). `history.changes` (GH202) : une entrée `{ value: [IDs triés], at, by }` par écriture qui change la liste, toujours
+  active, une seule par seconde ; une exécution y fait référence (`changesAt`, SPEC-TESTS §3.2). Le label est le `title`, unique parmi les versions non abandonnées du repo. Les composants
   locaux (nœuds enfants) n'ont pas de versions propres. Le dossier historique `versions/<REQ>/vN.yaml`
   (instantanés d'exigence) est distinct.
 
@@ -803,8 +804,8 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   tests qui la couvrent (instance de cette exigence, T179) ; exigences sans test signalées ; « Déjà dans » =
   campagnes ouvertes du repo dont une entrée vise le test (et l'instance), à titre d'information.
 - **Aucun lien version ↔ campagne** dans le modèle : « Créer une campagne » et « Ajouter à … » sont des
-  raccourcis (création / sélecteur pré-remplis avec les tests cochés). C'est une exécution qui fera
-  référence à une version (#202).
+  raccourcis (création / sélecteur pré-remplis avec les tests cochés). C'est une exécution qui fait
+  référence à une version (GH202, SPEC-TESTS §3.2).
 
 ## 12. Issues (GH244)
 

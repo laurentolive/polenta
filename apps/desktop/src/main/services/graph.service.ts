@@ -509,6 +509,7 @@ function toGraphRun(run: TestRun, repo: string): GraphTestRun {
       comment: typeof sr.comment === 'string' ? sr.comment : '',
       fields: { ...(sr.fields ?? {}) },
     })),
+    testedConfig: run.testedConfig ?? null,
   }
 }
 

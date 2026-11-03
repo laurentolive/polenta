@@ -1,5 +1,5 @@
 import {
-  applyHistory, effectiveHistory, hasHistoryGap, historyTimestamp,
+  applyChangesHistory, applyHistory, changesHistoryDue, effectiveHistory, hasHistoryGap, historyTimestamp,
 } from '@polenta/types'
 import type {
   HistoryActor, HistoryCarrier, HistoryFallback, ObjectHistory, ObjectTypeDefinition,
@@ -51,6 +51,16 @@ export class HistoryService {
     if (applyHistory(before, after, typeDef, { by: '' }, now, fallback) === after) return after
     const actor = await this.actor(repoPath).catch((): HistoryActor => ({ by: 'local' }))
     return applyHistory(before, after, typeDef, { ...actor, ...(comment && { comment }) }, now, fallback)
+  }
+
+  /**
+   * GH202 — liste des changements d'une version : `changes` n'est pas un champ de `fields`, son suivi
+   * est toujours actif et passe par sa propre clé d'historique.
+   */
+  async stampVersionChanges<T extends Parameters<typeof changesHistoryDue>[0]>(repoPath: string, version: T): Promise<T> {
+    if (!changesHistoryDue(version)) return version
+    const actor = await this.actor(repoPath).catch((): HistoryActor => ({ by: 'local' }))
+    return applyChangesHistory(version, actor, this.now())
   }
 
   /** Lecture effective (spec §7) : historique + entrées implicites, rien n'est écrit. */

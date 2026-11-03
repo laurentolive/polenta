@@ -31,7 +31,7 @@ export function ExecutionSheetMenu({ repoPath, campaignId, workspaceDir }: Execu
 
   const exportMutation = useMutation({
     mutationFn: (): Promise<ExportResult> =>
-      api.campaigns.executionSheet.export(repoPath, campaignId, sheetLocale(i18n.language)),
+      api.campaigns.executionSheet.export(repoPath, campaignId, sheetLocale(i18n.language), workspaceDir),
     onSuccess: result => {
       setOpen(false)
       if (result.status === 'error') setError(result.message)
@@ -44,7 +44,7 @@ export function ExecutionSheetMenu({ repoPath, campaignId, workspaceDir }: Execu
   })
 
   const previewMutation = useMutation({
-    mutationFn: () => api.campaigns.executionSheet.preview(repoPath, campaignId),
+    mutationFn: () => api.campaigns.executionSheet.preview(repoPath, campaignId, workspaceDir),
     onSuccess: result => {
       setOpen(false)
       // Sélecteur de fichier fermé sans choix : rien à afficher.

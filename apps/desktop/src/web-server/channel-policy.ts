@@ -106,6 +106,8 @@ export const WEB_HIDDEN: Record<string, string> = {
   'versions:analysis': 'GH245 — client web abandonné (2026-10-30)',
   'versions:set-impact': 'GH245 — client web abandonné (2026-10-30)',
   'versions:tests': 'GH245 — client web abandonné (2026-10-30)',
+  'tested-config:context': 'GH202 — client web abandonné (2026-10-30)',
+  'tested-config:drift': 'GH202 — client web abandonné (2026-10-30)',
   'versions:impact': 'GH245 — client web abandonné (2026-10-30)',
   'versions:delete': 'GH201 — client web abandonné (2026-10-30)',
 }
@@ -174,7 +176,7 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'versions:create': [0, 2], 'versions:update': [0, 3], 'versions:include': [0, 3],
   'versions:remove-changes': [0, 3], 'versions:release-preview': [0, 2], 'versions:release': [0, 3],
   'versions:copy': [0, 2], 'versions:delete': [0, 2],
-  'versions:analysis': [0, 2], 'versions:set-impact': [0, 5], 'versions:tests': [0, 2], 'versions:impact': [0, 2],
+  'versions:analysis': [0, 2], 'versions:set-impact': [0, 5], 'versions:tests': [0, 2], 'tested-config:context': [0, 2], 'tested-config:drift': [0, 2], 'versions:impact': [0, 2],
   'web:execution-sheet-export': [0], 'web:execution-sheet-preview': [0], 'web:export': [0],
   'web:image-import': [0], 'workspace:create-from-clone': [0], 'workspace:create-new': [0],
   'workspace:create-on-server': [0], 'forge:repo-access': [0], 'forge:org-members': [0],

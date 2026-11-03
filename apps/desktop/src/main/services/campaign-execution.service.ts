@@ -5,6 +5,7 @@ import type { TestsService } from './tests.service'
 import { buildExecutionSheetModel, writeExecutionWorkbook, type ExecutionSheetEntry } from './export/campaign-execution.xlsx'
 import { readExecutionWorkbook, validateExecutionImport } from './export/campaign-execution-import'
 import { testFingerprint } from './campaign-snapshot.util'
+import type { TestedConfigService } from './tested-config.service'
 
 /**
  * GH36 — exécution d'une campagne hors outil : export d'un classeur Excel à remplir par les
@@ -16,9 +17,11 @@ export class CampaignExecutionService {
     private readonly tests: TestsService,
     /** Testeur de repli à l'import (colonne Testeur vide) : identité git de l'utilisateur. */
     private readonly auth: Pick<AuthService, 'getAuthor'>,
+    /** GH202 — colonnes et contrôle de la version testée. */
+    private readonly testedConfig?: Pick<TestedConfigService, 'context' | 'options'>,
   ) {}
 
-  async exportSheet(repoPath: string, campaignId: string, locale: ExecutionSheetLocale, destPath: string): Promise<void> {
+  async exportSheet(repoPath: string, campaignId: string, locale: ExecutionSheetLocale, destPath: string, workspaceDir?: string): Promise<void> {
     const campaign = await this.campaigns.get(repoPath, campaignId)
     if (campaign.status === 'completed' || campaign.status === 'abandoned') {
       throw new Error(`La campagne ${campaignId} est clôturée : pas d'exécution hors outil possible.`)
@@ -41,16 +44,17 @@ export class CampaignExecutionService {
       return { run, test, typeDef: typeDefs.get(run.entryId), ...(prefill && { prefill }), ...(test && { fingerprint: testFingerprint(test) }) }
     }))
 
-    const model = buildExecutionSheetModel({ campaign, entries, locale, exportedAt: new Date().toISOString() })
+    const tested = await this.testedConfig?.context(repoPath, campaignId, workspaceDir)
+    const model = buildExecutionSheetModel({ campaign, entries, locale, exportedAt: new Date().toISOString(), ...(tested && { tested }) })
     await writeExecutionWorkbook(model, destPath)
   }
 
   /** Lit et valide un classeur rempli contre l'état courant de la campagne, sans rien écrire. */
-  async preview(repoPath: string, campaignId: string, filePath: string): Promise<ExecutionImportPreview> {
-    return (await this.validate(repoPath, campaignId, filePath)).preview
+  async preview(repoPath: string, campaignId: string, filePath: string, workspaceDir?: string): Promise<ExecutionImportPreview> {
+    return (await this.validate(repoPath, campaignId, filePath, workspaceDir)).preview
   }
 
-  private async validate(repoPath: string, campaignId: string, filePath: string) {
+  private async validate(repoPath: string, campaignId: string, filePath: string, workspaceDir?: string) {
     const [campaign, raw, author, isApproved] = await Promise.all([
       this.campaigns.get(repoPath, campaignId),
       readExecutionWorkbook(filePath),
@@ -59,6 +63,7 @@ export class CampaignExecutionService {
     ])
     const effectiveTests = await this.campaigns.effectiveTests(repoPath, campaign, isApproved)
     const typeDefs = await this.typeDefsOf(repoPath, campaign, effectiveTests)
+    const testedOptions = await this.testedConfig?.options(repoPath, workspaceDir)
     const preview = validateExecutionImport(raw, {
       typeDefs,
       campaign,
@@ -68,6 +73,7 @@ export class CampaignExecutionService {
       isApproved,
       effectiveTests,
       fingerprint: testFingerprint,
+      ...(testedOptions && { testedOptions }),
     })
     // GH81 — classeur v2 : la version exportée (= version effective, empreinte vérifiée) est figée
     // à l'import ; classeur v1 (sans empreinte) : copie actuelle conservée, comme avant.
@@ -82,7 +88,7 @@ export class CampaignExecutionService {
    * le restent (spec §4.4).
    */
   async apply(repoPath: string, campaignId: string, filePath: string, workspaceDir?: string): Promise<ExecutionImportResult> {
-    const { preview, effectiveTests, fingerprinted } = await this.validate(repoPath, campaignId, filePath)
+    const { preview, effectiveTests, fingerprinted } = await this.validate(repoPath, campaignId, filePath, workspaceDir)
     const imported: string[] = []
     if (preview.fatal) return { imported, preview }
 
@@ -91,6 +97,7 @@ export class CampaignExecutionService {
         const run = await this.tests.execute(repoPath, inst.testCaseId, {
           stepResults: inst.stepResults,
           ...(inst.fields && { fields: inst.fields }),
+          ...(inst.testedVersion && { testedVersion: inst.testedVersion }),
           notes: inst.notes,
           result: inst.result,
           ...(inst.requirementId && { requirementId: inst.requirementId }),

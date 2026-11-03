@@ -207,6 +207,14 @@
             "fr": "GH244 : collection issues (GraphIssue), catégorie issue",
             "en": "GH244: issues collection (GraphIssue), issue category"
           }
+        },
+        {
+          "version": 14,
+          "hash": "fd8f98afe00f79785dc3a0b44294ce8320165dc7c874315a82cf7beace7dc1ba",
+          "summary": {
+            "fr": "GH202 : GraphTestRun.testedConfig (copie figée de la structure testée)",
+            "en": "GH202: GraphTestRun.testedConfig (frozen copy of the tested structure)"
+          }
         }
       ]
     },

@@ -48,6 +48,7 @@ export function ExecutionImportModal({ repoPath, campaignId, workspaceDir, previ
       qc.invalidateQueries({ queryKey: ['campaigns', repoPath] })
       qc.invalidateQueries({ queryKey: ['traceability-matrix', repoPath] })
       qc.invalidateQueries({ queryKey: ['test-runs', repoPath] })
+      qc.invalidateQueries({ queryKey: ['tested-config', repoPath, campaignId] })
     },
   })
 
@@ -147,11 +148,15 @@ export function ExecutionImportModal({ repoPath, campaignId, workspaceDir, previ
                     {t('campaignPage.executionSheet.warnings')}
                   </h3>
                   <ul className="space-y-1 text-xs text-ink-2">
-                    {preview.warnings.map(w => w.code === 'row_without_key'
-                      ? <li key={`row-${w.row}`}>{t('campaignPage.executionSheet.rowWithoutKey', { row: w.row })}</li>
+                    {preview.warnings.map(w => {
+                      if (w.code === 'row_without_key') return <li key={`row-${w.row}`}>{t('campaignPage.executionSheet.rowWithoutKey', { row: w.row })}</li>
+                      // GH202 — valeur sans version correspondante : retenue comme écart, à relire.
+                      if (w.code === 'tested_version_undocumented') {
+                        return <li key={`tested-${w.entryId}-${w.path}`}>{t('campaignPage.executionSheet.testedUndocumented', { entryId: w.entryId, path: w.path || t('testedConfig.title'), value: w.value })}</li>
+                      }
                       // GH68 — exécution d'un test non approuvé : importée, mais signalée.
-                      : <li key={`entry-${w.entryId}`}>{t('campaignPage.executionSheet.testNotApproved', { entryId: w.entryId, status: w.status })}</li>,
-                    )}
+                      return <li key={`entry-${w.entryId}`}>{t('campaignPage.executionSheet.testNotApproved', { entryId: w.entryId, status: w.status })}</li>
+                    })}
                   </ul>
                 </section>
               )}
@@ -279,6 +284,7 @@ function instanceErrorMessage(t: T, err: ExecutionImportInstanceError): string {
     case 'invalid_verdict': return t('campaignPage.executionSheet.error.invalidVerdict', { row: err.row, value: err.value })
     case 'invalid_date': return t('campaignPage.executionSheet.error.invalidDate', { row: err.row, value: err.value })
     case 'test_changed_since_export': return t('campaignPage.executionSheet.error.testChangedSinceExport', { testCaseId: err.testCaseId })
+    case 'tested_version_missing': return t('campaignPage.executionSheet.error.testedVersionMissing', { row: err.row })
     case 'invalid_field_value':
     case 'required_field_missing': return t('campaignPage.executionSheet.error.fieldError', { row: err.row, message: err.message })
   }

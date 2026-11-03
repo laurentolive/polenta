@@ -20,6 +20,7 @@ import { VersionsService } from './services/versions.service'
 import { IssuesService } from './services/issues.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
+import { TestedConfigService } from './services/tested-config.service'
 import { TreeService, indexObjectLister } from './services/tree.service'
 import { BaselineService } from './services/baseline.service'
 import { PolentaRepoService } from './services/polenta-repo.service'
@@ -114,9 +115,12 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // GH105 — liens inter-repos : agrégation sur le workspace, écriture côté source.
   const workspaceLinks = new WorkspaceLinksService(reqIndex, testsIndex, schema, git, workspaceTree, revalidation, campaigns, issues)
   // GH36 — exécution hors outil : classeur Excel d'exécution (export / réimport).
-  const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
+  // GH202 — version testée d'une exécution : versions proposées, copie dans le run, évolution.
+  const testedConfig = new TestedConfigService(versions, sync, tests, campaigns)
+  tests.setTestedConfig(testedConfig)
+  const campaignExecution = new CampaignExecutionService(campaigns, tests, auth, testedConfig)
   // GH197 — historique des exécutions d'un test ou d'une exigence.
-  const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
+  const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements, testedConfig)
   const elementMove = new ElementMoveService(schema, requirements, tests, tree, issues)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues)
@@ -199,6 +203,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     versions,
     campaignExecution,
     executionHistory,
+    testedConfig,
     tree,
     baseline,
     polentaRepo,

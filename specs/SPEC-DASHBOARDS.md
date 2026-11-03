@@ -89,6 +89,9 @@ sont la documentation de référence ; `polenta.d.ts` (copié dans `dashboards/l
 > en IDs ; `null` tant que la version est en cours — l'analyse live n'est pas dans le graphe).
 > `polenta.d.ts` régénéré (manifeste v12).
 >
+> **GH202 (contrat v1, ajout)** — `GraphTestRun.testedConfig` (`GraphTestedConfig`, copie figée de la structure testée, `null`
+> si absente). `history.changes` d'une version est dans `GraphVersion.history`. `polenta.d.ts` régénéré (manifeste v14).
+>
 > **GH244** — collection `issues` (`GraphIssue` : `origin`, champs, statut, historique), catégorie `issue`,
 > impacts dans `links` (`issue-impact`) ; manifeste v13.
 

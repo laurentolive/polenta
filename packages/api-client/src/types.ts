@@ -74,6 +74,9 @@ import type { Issue,
   TemplateExportFormat,
   ExportResult,
   ExecutionSheetLocale,
+  TestedConfig,
+  TestedConfigContext,
+  TestedDriftItem,
   ExecutionImportPreview,
   ExecutionImportResult,
   AppSettings,
@@ -784,6 +787,12 @@ export interface ApiClient {
   }
 
   /** GH201 — versions de composant / produit. */
+  testedConfig: {
+    /** GH202 — versions proposées et saisie de la dernière exécution de la campagne. */
+    context(repoPath: string, campaignId: string, workspaceDir?: string): Promise<TestedConfigContext>
+    /** GH202 — différences entre la copie d'un run et l'état courant. */
+    drift(repoPath: string, config: TestedConfig, workspaceDir?: string): Promise<{ repoPath: string; items: TestedDriftItem[] }>
+  }
   versions: {
     tree(rootRepoPath: string, workspaceDir?: string): Promise<VersionComponentNode[]>
     list(repoPath: string): Promise<VersionSummary[]>
@@ -825,9 +834,9 @@ export interface ApiClient {
     /** GH36 — exécution hors outil via un classeur Excel. */
     executionSheet: {
       /** Ouvre le dialogue d'enregistrement puis écrit le classeur (`locale` : libellés du classeur). */
-      export(repoPath: string, campaignId: string, locale: ExecutionSheetLocale): Promise<ExportResult>
+      export(repoPath: string, campaignId: string, locale: ExecutionSheetLocale, workspaceDir?: string): Promise<ExportResult>
       /** Ouvre le sélecteur de fichier puis renvoie l'aperçu de l'import (aucune écriture). */
-      preview(repoPath: string, campaignId: string): Promise<ExecutionImportPreview | { canceled: true }>
+      preview(repoPath: string, campaignId: string, workspaceDir?: string): Promise<ExecutionImportPreview | { canceled: true }>
       /** Relit et revalide `filePath`, puis écrit les résultats des instances remplies. */
       apply(repoPath: string, campaignId: string, filePath: string, workspaceDir?: string): Promise<ExecutionImportResult>
     }

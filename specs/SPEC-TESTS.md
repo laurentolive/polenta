@@ -286,9 +286,8 @@ Un `TestRun` représente **une exécution concrète** d'un cas de test à un ins
 
 | Attribut | Type | Description |
 |----------|------|-------------|
-| `id` | string | Identifiant unique (ex. `RUN-20260601-001`) |
+| `id` | string | Identifiant unique : `<ID du test>-run-<numéro>` (ex. `TST-0012-run-0004`) |
 | `testCaseId` | string | Référence au cas de test |
-| `testCaseVersion` | int | Version du test exécutée |
 | `campaignEntry` | `{ campaignId, entryId }` | *(GH73)* Entrée de campagne dont le run est l'exécution — posée par la page d'exécution et l'import Excel (§4.5), jamais réécrite (run immuable). Absente : exécution isolée, ou run antérieur à GH73 (ces fichiers portent `campaignRunId: null`, ignoré — champ retiré). Sans chemin de repo : un run d'un test de composant vit dans le repo du composant et désigne une campagne du repo produit. Limite connue : « Garder les deux » (GH37) renumérote les références du repo fusionné seulement, pas celles d'un run écrit dans un autre repo |
 | `result` | ENUM | Résultat global (voir §3.3) |
 | `executedAt` | DATETIME | Date/heure de début |
@@ -299,6 +298,20 @@ Un `TestRun` représente **une exécution concrète** d'un cas de test à un ins
 | `notes` | RICHTEXT | Observations générales, contexte global de l'exécution. Liens OneDrive pour les fichiers annexes (logs, exports CSV). |
 | `origin` | `'excel-import'` | *(GH36)* Origine du résultat : absent = saisi dans l'outil ; `excel-import` = réimporté depuis le classeur d'exécution (§4.5), avec testeur et date lus dans le fichier |
 | `fields` | map? | *(GH196)* Valeurs des **champs d'exécution** (`runFields` du type de test), typées comme des champs d'objet ; absent tant que vide. Chaque `stepResults[]` porte de même `fields` (champs d'étape, `stepFields`), sur une étape exécutée seulement |
+| `testedConfig` | objet? | *(GH202)* Copie figée de la structure testée, voir ci-dessous ; absent : run antérieur, ou repo sans version sélectionnable |
+
+**Version testée (GH202, `specs/GH202.md`)** — une version du **repo de la campagne**, y compris pour un test de
+composant (dont le run reste dans le repo du composant). Saisie obligatoire dès qu'une version y est sélectionnable
+(en cours ou released) : une version, ou un texte libre (écart non documenté) ; refus `TESTED_VERSION_REQUIRED`.
+`TestsService.execute` construit la copie (`TestedConfigService.resolve`) : `component`, `ref`, `label`, `state`,
+`commit` (`HEAD` à l'enregistrement), `changesAt` (entrée en vigueur de `history.changes` de la version, SPEC-REQ §11.1),
+`components` récursifs. **Écart** : `expected` (version prévue par la composition, `null` si aucune) ou `undocumented`
+(valeur libre). Exécuter n'écrit jamais dans le fichier de version, et une campagne ne porte aucune version.
+À l'écran d'exécution, la saisie reprend version et écarts de la dernière exécution de la campagne (rien sinon, ni pour une
+version abandonnée ou supprimée). La grille d'exécutions (colonnes Version testée, Structure testée, Commit, Écarts) et la
+consultation du run affichent la copie et, par `TestedConfigService.drift`, ce qui a **évolué** depuis : composant changé,
+changement ajouté ou retiré (date, auteur), version supprimée ou abandonnée ; un composant en écart se compare à `expected`.
+Indicateur calculé dans Polenta : il sert à juger la preuve dans la vue Validation (#205).
 
 **Champs d'exécution et d'étape (GH196)** — déclarés sur un type de **test** : `runFields` (saisis à
 chaque exécution : n° de rapport, température, lien vers le rapport…) et `stepFields` (saisis sur
@@ -786,6 +799,12 @@ l'état live du test — cohérent avec le reste de la page.
   déjà tout caractère spécial présent dans une valeur substituée.
 
 ### 4.5 Exécution hors outil : classeur Excel d'exécution (GH36)
+
+> **GH202 — format v4** : colonnes « Version testée » (`tested:`) et une par composant (`tested:<chemin>`), sur la ligne
+> d'instance, absentes si le repo n'a pas de version sélectionnable. Version pré-remplie comme à l'écran ; colonne de composant
+> vide = la composition de la version, une valeur saisie est un écart. Import : ID ou label reconnu, sinon écart non documenté
+> (avertissement `tested_version_undocumented`) ; version vide : erreur `tested_version_missing`. Classeurs v1 à v3 acceptés,
+> sans `testedConfig`. `commit` : celui de l'import.
 
 Pour les équipes qui n'exécutent pas les campagnes dans Polenta : la campagne est exportée dans un
 classeur Excel que les testeurs remplissent, puis le classeur rempli est réimporté. Bouton

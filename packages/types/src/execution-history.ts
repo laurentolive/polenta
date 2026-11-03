@@ -1,6 +1,7 @@
 import type { CampaignStatus, CarriedFrom } from './campaign'
 import type { SchemaField } from './schema'
 import type { TestRun } from './test'
+import type { TestedDriftItem } from './tested-config'
 
 // GH197 — grille d'historique des exécutions (specs/GH197.md) : une ligne par run d'un test, ou des
 // tests qui couvrent une exigence (règle T179), plus les entrées en attente des campagnes ouvertes.
@@ -32,6 +33,10 @@ export interface ExecutionHistoryRow {
   campaignMissing?: boolean
   /** Run remplacé par un nouvel essai sur la même entrée : données d'entrée et ouverture non reprises. */
   superseded?: boolean
+  /** GH202 — différences entre la copie du run et l'état courant des versions. */
+  testedDrift?: TestedDriftItem[]
+  /** GH202 — repo de la version testée (lien vers sa page). */
+  testedRepoPath?: string
 }
 
 /** Campagne ouverte (planifiée ou en cours) : ses entrées en attente sont listées, une ligne ouvre

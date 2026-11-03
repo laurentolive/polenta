@@ -5,6 +5,7 @@ import { isOpenCampaignStatus, sortExecutionHistory } from '@polenta/types'
 import type { CampaignsService } from './campaigns.service'
 import type { RequirementsService } from './requirements.service'
 import type { TestsService } from './tests.service'
+import type { TestedConfigService } from './tested-config.service'
 import { matchCoverageLink } from './traceability.service'
 
 /**
@@ -17,6 +18,7 @@ export class ExecutionHistoryService {
     private readonly tests: TestsService,
     private readonly campaigns: CampaignsService,
     private readonly requirements: Pick<RequirementsService, 'findLinks'>,
+    private readonly testedConfig?: Pick<TestedConfigService, 'drift'>,
   ) {}
 
   async history(repoPath: string, target: ExecutionHistoryTarget, workspaceDir?: string): Promise<ExecutionHistory> {
@@ -57,6 +59,18 @@ export class ExecutionHistoryService {
         })
       }
     })
+
+    // GH202 — évolution de la version testée depuis chaque exécution (lecture seule).
+    if (this.testedConfig) {
+      const cache = new Map()
+      for (const row of rows) {
+        if (!row.run?.testedConfig) continue
+        const drift = await this.testedConfig.drift(repoPath, row.run.testedConfig, workspaceDir, cache).catch(() => null)
+        if (!drift) continue
+        row.testedRepoPath = drift.repoPath
+        if (drift.items.length > 0) row.testedDrift = drift.items
+      }
+    }
 
     const typeRefs = [...new Set(tests.map(t => t.objectTypeRef))]
     const defs = await Promise.all(typeRefs.map(ref => this.tests.typeDefFor(repoPath, ref, workspaceDir).catch(() => null)))

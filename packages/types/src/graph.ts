@@ -330,6 +330,27 @@ export interface GraphRemovedEntry extends GraphEntry {
   removedAt: string
 }
 
+/** GH202 — version retenue pour un repo de la structure testée. */
+export interface GraphTestedNode {
+  ref?: string
+  label?: string
+  state?: 'in_progress' | 'released' | 'abandoned'
+  commit?: string
+  /** `at` de l'entrée de `history.changes` de la version en vigueur à l'exécution. */
+  changesAt?: string
+  /** Écart : version prévue par la composition ; `null` : la composition ne prévoyait rien. */
+  expected?: string | null
+  /** Écart non documenté : valeur libre. */
+  undocumented?: string
+  components?: Record<string, GraphTestedNode>
+}
+
+/** GH202 — copie figée de la structure testée. */
+export interface GraphTestedConfig extends GraphTestedNode {
+  /** Repo de la version testée. */
+  component: string
+}
+
 export interface GraphTestRun {
   id: string
   /** Repo du test exécuté (où le fichier de run est stocké). */
@@ -353,6 +374,8 @@ export interface GraphTestRun {
   notes: string
   /** GH196 — verdicts d'étape, commentaires et champs d'étape, par ordre d'étape. */
   stepResults: GraphStepResult[]
+  /** GH202 — copie figée de la structure testée ; `null` : run antérieur, ou repo sans version. */
+  testedConfig: GraphTestedConfig | null
 }
 
 /** GH196 — résultat d'une étape d'un run. */

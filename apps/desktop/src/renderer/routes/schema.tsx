@@ -1,5 +1,5 @@
 ﻿import { createFileRoute } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
@@ -275,23 +275,28 @@ function SchemaEditorPage() {
   const [saved, setSaved] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
+  // Dernier schéma lu : un enregistrement de ce brouillon, dont la relecture est encore en cours, n'est
+  // pas un changement venu d'ailleurs.
+  const lastSchema = useRef<string | null>(null)
   useEffect(() => {
     if (!editedSchema) return
     const editable = schemaToEditable(editedSchema)
+    const serial = JSON.stringify(editable)
+    const isNew = serial !== lastSchema.current
+    lastSchema.current = serial
     if (!state || !savedState || stateRepoPath !== editedRepoPath) {
       setState(editable)
       setSavedState(editable)
       setStateRepoPath(editedRepoPath)
       return
     }
+    if (!isNew) return
     // GH244 — le schéma a changé hors de ce brouillon (`issue-impact`, posé avec le premier type issue,
     // onglet Structure). Sans modification en cours : brouillon réaligné. Sinon, les types de lien
     // apparus s'y ajoutent, pour qu'« Enregistrer » ne les retire pas.
     if (JSON.stringify(state) === JSON.stringify(savedState)) {
-      if (JSON.stringify(editable) !== JSON.stringify(state)) {
-        setState(editable)
-        setSavedState(editable)
-      }
+      setState(editable)
+      setSavedState(editable)
       return
     }
     const added = editable.linkTypes.filter(l => !savedState.linkTypes.some(k => k.name === l.name))

@@ -60,7 +60,7 @@ const schemaStatusSchema = z.object({
   isTerminal: z.boolean().optional(),
 })
 
-const objectCategorySchema = z.enum(['requirement', 'test', 'campaign'])
+const objectCategorySchema = z.enum(['requirement', 'test', 'campaign', 'issue'])
 
 const objectTypeDefinitionSchema = z.object({
   name: z.string().min(1),

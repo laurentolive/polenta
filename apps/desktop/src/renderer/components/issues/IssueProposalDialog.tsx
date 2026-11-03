@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -57,6 +57,8 @@ export function IssueProposalDialog({ repoPath, workspaceDir, runId, testId, req
   const [existing, setExisting] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Issue déjà créée quand l'écriture d'un lien a échoué : la relance reprend les liens.
+  const created = useRef<string | null>(null)
   useEffect(() => setError(null), [mode])
   useModalHotkeys(onClose)
 
@@ -67,9 +69,10 @@ export function IssueProposalDialog({ repoPath, workspaceDir, runId, testId, req
     setSaving(true)
     setError(null)
     try {
-      const issueId = mode === 'create'
-        ? (await api.issues.create(repoPath, { objectTypeRef: typeRef!, title: shownTitle.trim(), fields: {}, origin: { runs: [runId] } }, workspaceDir)).id
-        : (await api.issues.addRun(repoPath, existing, runId, workspaceDir)).id
+      const issueId = mode === 'link'
+        ? (await api.issues.addRun(repoPath, existing, runId, workspaceDir)).id
+        : created.current ?? (await api.issues.create(repoPath, { objectTypeRef: typeRef!, title: shownTitle.trim(), fields: {}, origin: { runs: [runId] } }, workspaceDir)).id
+      if (mode === 'create') created.current = issueId
       const already = new Set(links.filter(l => l.type === ISSUE_IMPACT_LINK && (l.sourceId === issueId || l.targetId === issueId))
         .flatMap(l => [l.sourceId, l.targetId]))
       for (const r of selectedReqs) {

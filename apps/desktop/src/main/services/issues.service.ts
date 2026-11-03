@@ -7,6 +7,7 @@ import type { HistoryService } from './history.service'
 import { omitAuditFields } from './audit-fields.util'
 import { applyFieldsWrite } from './field-write.util'
 import { nextCounterId } from './id-counter.util'
+import { mergeFields } from './field-merge.util'
 import { findObjectTypeDef } from './schema-lookup.util'
 import { withKeyLock } from './serialize-writes.util'
 
@@ -59,7 +60,11 @@ export class IssuesService {
     })
   }
 
-  async update(repoPath: string, id: string, dto: UpdateIssueDto, workspaceDir?: string): Promise<Issue> {
+  async update(
+    repoPath: string, id: string, dto: UpdateIssueDto, workspaceDir?: string,
+    /** Une clé de `fields` à `null` retire le champ (GH150). */
+    opts: { removeNullFields?: boolean } = {},
+  ): Promise<Issue> {
     return withKeyLock(`${repoPath}::${ISSUES_DIR}/${id}`, async () => {
       const existing = await this.findOne(repoPath, id)
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
@@ -72,7 +77,7 @@ export class IssuesService {
         ...existing,
         ...(dto.title && { title: dto.title }),
         ...(dto.status && { status: dto.status }),
-        fields: { ...existing.fields, ...(dto.fields ?? {}) },
+        fields: opts.removeNullFields ? mergeFields(existing.fields, dto.fields) : { ...existing.fields, ...(dto.fields ?? {}) },
       }, dto.modificationComment)
     })
   }

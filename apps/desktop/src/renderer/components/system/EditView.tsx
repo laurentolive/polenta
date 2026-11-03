@@ -784,7 +784,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
           )}
 
           {/* GH77 — historique des champs suivis (lecture seule). */}
-          {repoPath && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test') && (
+          {repoPath && objectData?.['id'] && (typeDef?.category === 'requirement' || typeDef?.category === 'test' || typeDef?.category === 'issue') && (
             <HistorySection
               repoPath={repoPath}
               kind={typeDef.category}

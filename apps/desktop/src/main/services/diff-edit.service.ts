@@ -5,6 +5,7 @@ import { deepEqual, isPlainObject } from '@polenta/merge-core'
 import { isAppMaintainedFile, type DiffSaveResult } from '@polenta/types'
 import type { RequirementsService } from './requirements.service'
 import type { TestsService } from './tests.service'
+import type { IssuesService } from './issues.service'
 import type { SchemaService } from './schema.service'
 import { findObjectTypeDef } from './schema-lookup.util'
 
@@ -20,6 +21,8 @@ type Obj = Record<string, unknown>
 /** Keys the app maintains itself: never written from the diff. */
 const MANAGED = new Set(['history', 'version', 'needsRevalidation', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'])
 /** Root keys the object's service writes from the diff (`projectId` / `branchId` are not). */
+/** GH244 — clés d'une issue que le diff peut modifier (`origin` : par l'application seule). */
+const ISSUE_KEYS = new Set(['title', 'status', 'fields'])
 const REQUIREMENT_KEYS = new Set(['id', 'objectTypeRef', 'title', 'status', 'fields'])
 const TEST_KEYS = new Set([...REQUIREMENT_KEYS, 'preconditions', 'equipment', 'steps', 'postconditions'])
 /** Test keys its service replaces but cannot remove. */
@@ -30,6 +33,8 @@ export class DiffEditService {
     private readonly requirements: RequirementsService,
     private readonly tests: TestsService,
     private readonly schema: SchemaService,
+    /** GH244 — une issue s'enregistre par son service ; absent : refusée ici. */
+    private readonly issues?: IssuesService,
   ) {}
 
   async saveWorkingFile(repoPath: string, filepath: string, text: string, baseline: string, workspaceDir?: string): Promise<DiffSaveResult> {
@@ -66,10 +71,10 @@ export class DiffEditService {
     const ref = isPlainObject(before) && typeof before.objectTypeRef === 'string' ? before.objectTypeRef : null
     const typeDef = ref ? findObjectTypeDef(await this.schema.get(repoPath), ref) : null
     const category = typeDef && typeDef !== 'unresolvable' ? typeDef.category : null
-    if ((category === 'requirement' || category === 'test') && isPlainObject(before)) {
-      // The object's service writes `requirements/<id>.yaml` / `tests/<id>.yaml`: only that file.
+    if ((category === 'requirement' || category === 'test' || (category === 'issue' && this.issues)) && isPlainObject(before)) {
+      // The object's service writes `requirements/<id>.yaml` / `tests/<id>.yaml` / `issues/<id>.yaml`: only that file.
       const id = path.basename(filepath).replace(/\.ya?ml$/i, '')
-      const expected = `${category === 'requirement' ? 'requirements' : 'tests'}/${id}.yaml`
+      const expected = `${category === 'requirement' ? 'requirements' : category === 'test' ? 'tests' : 'issues'}/${id}.yaml`
       if (filepath.replace(/\\/g, '/').replace(/^\.\//, '') !== expected) {
         return { ok: false, reason: 'unsupported', message: `not ${expected}` }
       }
@@ -85,7 +90,7 @@ export class DiffEditService {
   }
 
   private async saveObject(
-    repoPath: string, filepath: string, category: 'requirement' | 'test', before: Obj, value: unknown,
+    repoPath: string, filepath: string, category: 'requirement' | 'test' | 'issue', before: Obj, value: unknown,
     typeDef: { statuses?: Array<{ name: string }> }, workspaceDir?: string,
   ): Promise<DiffSaveResult> {
     if (!isPlainObject(value)) return { ok: false, reason: 'invalid', message: 'not a YAML mapping' }
@@ -102,7 +107,7 @@ export class DiffEditService {
     }
 
     // Root keys the object's service does not write: changed from the diff, they are refused.
-    const allowed = category === 'requirement' ? REQUIREMENT_KEYS : TEST_KEYS
+    const allowed = category === 'requirement' ? REQUIREMENT_KEYS : category === 'issue' ? ISSUE_KEYS : TEST_KEYS
     const keys = [...new Set([...Object.keys(before), ...Object.keys(value)])]
       .filter(k => !allowed.has(k) && !MANAGED.has(k) && !deepEqual(before[k], value[k]))
     if (category === 'test') {
@@ -127,6 +132,17 @@ export class DiffEditService {
         }, workspaceDir, { removeNullFields: true })
       }
       if (changed('status')) await this.requirements.transition(repoPath, id, { toStatus: value.status as string }, workspaceDir)
+      return { ok: true }
+    }
+
+    if (category === 'issue') {
+      if (changed('title') || changed('status') || Object.keys(fields).length > 0) {
+        await this.issues!.update(repoPath, id, {
+          ...(changed('title') ? { title: value.title as string } : {}),
+          ...(changed('status') ? { status: value.status as string } : {}),
+          ...(Object.keys(fields).length > 0 ? { fields } : {}),
+        }, workspaceDir, { removeNullFields: true })
+      }
       return { ok: true }
     }
 

@@ -4,7 +4,7 @@ import type {
   CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
   GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphIssue, GraphVersion,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
-  Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
+  Issue, Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
 import {
   RUN_STATUS_ORDER, RUN_STATUS_SEVERITY, effectiveHistory, flattenSystemNodes, hasHistoryGap, historyTimestamp,
@@ -68,7 +68,7 @@ interface RawRepo {
   versions: GraphVersion[]
   /** GH201 — statut de design des exigences du repo. */
   designVersions: Map<string, string>
-  issues: GraphIssue[]
+  issues: Issue[]
 }
 
 /**
@@ -182,6 +182,9 @@ export class GraphService {
       const rp = obj && repoOf(obj.repo)
       if (rp) return { kind, id, repoPath: rp } as RowTarget
     }
+    const issue = graph.issues.find((i) => i.id === id)
+    const issueRepo = issue && repoOf(issue.repo)
+    if (issue && issueRepo) return { kind: 'issue', id, repoPath: issueRepo, repoName: issue.repo, objectTypeRef: issue.objectTypeRef }
     return null
   }
 
@@ -217,17 +220,12 @@ export class GraphService {
       this.listCampaigns(rp),
     ])
     const { versions, designVersions } = await this.listVersions(repo)
-    const issues = await this.listIssues(repo)
+    const issues = await this.listIssues(rp)
     return { ...repo, requirements, testCases, latestRunMap, runsMap, links, schema: schema as ProjectSchema | null, campaigns, issues, versions, designVersions }
   }
 
-  private async listIssues(repo: { repoPath: string; name: string }): Promise<GraphIssue[]> {
-    if (!this.issues) return []
-    const list = await this.issues.findAll(repo.repoPath).catch(() => [])
-    return list.map((i): GraphIssue => ({
-      id: i.id, repo: repo.name, objectTypeRef: i.objectTypeRef, title: i.title, status: i.status, version: i.version,
-      origin: { runs: i.origin?.runs ?? [], decisions: i.origin?.decisions ?? [] }, fields: i.fields ?? {}, history: i.history ?? {},
-    }))
+  private async listIssues(repoPath: string): Promise<Issue[]> {
+    return (await this.issues?.findAll(repoPath).catch(() => [])) ?? []
   }
 
   /** GH201 — versions du repo ; un fichier illisible ne casse pas le graphe (versions ignorées). */
@@ -309,6 +307,10 @@ export class GraphService {
       }
     }
 
+    const issues: GraphIssue[] = perRepo.flatMap((r) => r.issues.map((i): GraphIssue => ({
+      ...objectBase(i, r.name, typeResolver(r.schema), now),
+      origin: { runs: i.origin?.runs ?? [], decisions: i.origin?.decisions ?? [] },
+    })))
     const requirements: GraphRequirement[] = []
     const tests: GraphTest[] = []
     const links: GraphLink[] = []
@@ -354,7 +356,7 @@ export class GraphService {
       campaigns,
       runs,
       versions: perRepo.flatMap((r) => r.versions),
-      issues: perRepo.flatMap((r) => r.issues),
+      issues,
     }
     return {
       graph,
@@ -460,7 +462,7 @@ function toGraphType(t: ObjectTypeDefinition, repo: string, nodeName: string, co
   }
 }
 
-function objectBase(o: Requirement | TestCase, repo: string, types: TypeResolver, now: Date): GraphObjectBase {
+function objectBase(o: Requirement | TestCase | Issue, repo: string, types: TypeResolver, now: Date): GraphObjectBase {
   const { typeDef, component } = types(o.objectTypeRef)
   const fields = o.fields ?? {}
   const audit = o as { updatedAt?: string | null; updatedBy?: string | null; createdAt?: string | null; createdBy?: string | null }
@@ -479,7 +481,7 @@ function objectBase(o: Requirement | TestCase, repo: string, types: TypeResolver
     version: typeof o.version === 'number' ? o.version : null,
     fields,
     history,
-    needsRevalidation: !!o.needsRevalidation,
+    needsRevalidation: !!(o as { needsRevalidation?: boolean }).needsRevalidation,
     createdAt: audit.createdAt ?? null,
     createdBy: audit.createdBy ?? null,
     updatedAt: audit.updatedAt ?? null,
@@ -518,7 +520,7 @@ function objectIndex(graph: PolentaGraph) {
     return { label: t?.label ?? null, status: t?.statuses.find((s) => s.name === o.status)?.label ?? o.status }
   }
   const byId = new Map<string, DescribedObject>()
-  for (const [kind, list] of [['requirement', graph.requirements], ['test', graph.tests]] as const) {
+  for (const [kind, list] of [['requirement', graph.requirements], ['test', graph.tests], ['issue', graph.issues]] as const) {
     for (const o of list) {
       const { label, status } = statusLabel(o)
       byId.set(o.id, { id: o.id, kind, title: o.title, status, typeLabel: label })

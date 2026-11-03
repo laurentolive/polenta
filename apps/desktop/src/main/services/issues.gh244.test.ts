@@ -3,13 +3,17 @@ import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import git from 'isomorphic-git'
+import * as yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { ObjectLink, ObjectTypeDefinition, ProjectSchema, SchemaStatus, WorkspaceTree } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import { CampaignsService } from './campaigns.service'
 import { GitService } from './git.service'
-import { HistoryService } from './history.service'
+import { DiffEditService } from './diff-edit.service'
+import { ElementMoveService } from './element-move.service'
+import { HistoryService, readEffectiveHistory } from './history.service'
+import { TypeRenameService } from './type-rename.service'
 import { IssuesService } from './issues.service'
 import { RequirementsIndexService } from './requirements-index.service'
 import { SchemaService } from './schema.service'
@@ -149,6 +153,65 @@ describe('objet', () => {
     expect((await readonly.findOne(root, a.id)).id).toBe(a.id)
     expect(await code(readonly.update(root, a.id, { title: 'x' }, ws))).toBe('READONLY_REPO')
     expect(await code(readonly.create(root, { objectTypeRef: 'root::bug', title: 'x', fields: {} }, ws))).toBe('READONLY_REPO')
+  })
+})
+
+describe('historique, diff, déplacement et renommage', () => {
+  const history = () => new HistoryService(gitSvc, async () => ({ by: 'alice' }))
+  const typeRename = () => new TypeRenameService(
+    {} as never, {} as never, { rewriteSnapshots: async () => undefined } as never,
+    { moveTypeTree: async () => undefined, renameTypeTree: async () => undefined } as never,
+    { get: async () => schemaOf('P', [IMPACT]), save: async () => undefined } as never,
+    [issues], async () => [root], issues,
+  )
+
+  it('historique effectif d\'une issue', async () => {
+    const a = await newIssue()
+    await issues.update(root, a.id, { status: 'corrigee' }, ws)
+    const h = await readEffectiveHistory({ history: history(), requirements: {} as never, tests: {} as never, campaigns: {} as never, issues }, root, 'issue', a.id)
+    expect(h.status?.map(e => e.value)).toEqual(['ouverte', 'corrigee'])
+  })
+
+  it('diff : passe par le service ; statut inconnu et `origin` refusés', async () => {
+    const a = await issues.create(root, { objectTypeRef: 'root::bug', title: 'x', fields: {}, origin: { runs: ['RUN-1'] } }, ws)
+    const stub = { get: async () => schemaOf('P') } as unknown as SchemaService
+    const diff = new DiffEditService({} as never, {} as never, stub, issues)
+    const file = `issues/${a.id}.yaml`
+    const save = async (patch: Record<string, unknown>) => {
+      const before = await gitSvc.readYaml<Record<string, unknown>>(root, file)
+      return diff.saveWorkingFile(root, file, yaml.dump({ ...before, ...patch }), await fsP.readFile(path.join(root, file), 'utf8'), ws)
+    }
+    expect(await save({ status: 'inconnu' })).toMatchObject({ ok: false, reason: 'invalid' })
+    expect(await save({ origin: { runs: [] } })).toMatchObject({ ok: false, reason: 'unsupported' })
+    expect(await save({ status: 'corrigee' })).toEqual({ ok: true })
+    expect(await gitSvc.readYaml(root, file)).toMatchObject({ status: 'corrigee' })
+  })
+
+  it('déplacement d\'un type : les issues suivent', async () => {
+    const a = await newIssue()
+    const move = new ElementMoveService(
+      { moveObjectType: async () => ({ schema: schemaOf('P'), oldRef: 'root::bug', newRef: 'sous::bug' }) } as never,
+      { retargetObjectTypeRef: async () => ({ succeeded: [], failed: [] }) } as never,
+      { findAll: async () => [] } as never,
+      { moveTypeTree: async () => undefined } as never,
+      issues,
+    )
+    const { failed } = await move.moveElementToNode(root, { fromNodeName: 'root', toNodeName: 'sous', typeName: 'bug' })
+    expect(failed).toEqual([])
+    expect((await issues.findOne(root, a.id)).objectTypeRef).toBe('sous::bug')
+  })
+
+  it('préfixe d\'un type issue : fichier, ID et liens renommés', async () => {
+    const a = await newIssue()
+    await req(root, 'PR-0001')
+    await links(root, [[a.id, 'PR-0001', 'issue-impact']])
+    const dto = { nodeName: 'root', category: 'issue' as const, oldName: 'bug', newName: 'bug', oldPrefix: 'PI', newPrefix: 'XI' }
+    const plan = await typeRename().plan(root, ws, dto)
+    expect(plan.objects).toEqual([{ oldId: a.id, newId: 'XI-0001' }])
+    await typeRename().rename(root, ws, dto)
+    issues.invalidate(root)
+    expect((await issues.findAll(root)).map(i => i.id)).toEqual(['XI-0001'])
+    expect((await gitSvc.readYaml<{ links: ObjectLink[] }>(root, 'links/links.yaml'))!.links[0].sourceId).toBe('XI-0001')
   })
 })
 

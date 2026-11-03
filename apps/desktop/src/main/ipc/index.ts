@@ -150,7 +150,7 @@ function checkTypeRename(channel: string, dto: unknown): import('@polenta/types'
   const d = dto as Record<string, unknown> | null
   const str = (k: string) => typeof d?.[k] === 'string'
   if (!d || !['nodeName', 'oldName', 'newName', 'oldPrefix', 'newPrefix'].every(str) || !d.nodeName || !d.oldName || !d.newName
-    || !['requirement', 'test', 'campaign'].includes(d.category as string)) {
+    || !['requirement', 'test', 'campaign', 'issue'].includes(d.category as string)) {
     throw new Error(`${channel} — dto must be { nodeName, category, oldName, newName, oldPrefix, newPrefix }`)
   }
   return d as unknown as import('@polenta/types').TypeRenameDto

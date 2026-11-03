@@ -202,7 +202,7 @@
         },
         {
           "version": 13,
-          "hash": "beaf4ad98ed5c2c32ffb4baeecf6d37f30dc281455eb5fbfd007dc48e4279359",
+          "hash": "c7fe47aa28a38a1650ec66822cb68357e1411bdb23257723b029f572f3d7a609",
           "summary": {
             "fr": "GH244 : collection issues (GraphIssue), catégorie issue",
             "en": "GH244: issues collection (GraphIssue), issue category"

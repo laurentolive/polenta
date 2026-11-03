@@ -38,7 +38,7 @@ export function useLiveFileSync(): void {
       // racine) : tout changement d'élément, de lien, de schéma ou de la liste des composants,
       // dans n'importe quel repo, les rend périmés.
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
-        || /^(requirements|tests|links)\//.test(relPath)) {
+        || /^(requirements|tests|issues|links)\//.test(relPath)) {
         for (const key of WORKSPACE_LINK_QUERY_KEYS) qc.invalidateQueries({ queryKey: [key] })
         // Couverture calculée sur tout le workspace (clé indexée sur le repo affiché).
         qc.invalidateQueries({ queryKey: ['traceability-matrix'] })
@@ -107,6 +107,18 @@ export function useLiveFileSync(): void {
             q.queryKey[0] === 'objects' && q.queryKey[1] === repoPath &&
             q.queryKey[3] === nodeId && q.queryKey[4] === typeId,
         })
+        return
+      }
+
+      // GH244 — issues : liste, fiche et vues.
+      const issueMatch = /^issues\/([^/]+)\.yaml$/.exec(relPath)
+      if (issueMatch) {
+        qc.invalidateQueries({ queryKey: ['issues', repoPath] })
+        qc.invalidateQueries({ queryKey: ['object', repoPath, 'issue', issueMatch[1]] })
+        qc.invalidateQueries({
+          predicate: (q) => q.queryKey[0] === 'objects' && q.queryKey[1] === repoPath && q.queryKey[2] === 'issue',
+        })
+        qc.invalidateQueries({ queryKey: ['tree', repoPath] })
         return
       }
 

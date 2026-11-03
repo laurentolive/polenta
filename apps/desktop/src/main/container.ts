@@ -117,7 +117,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth)
   // GH197 — historique des exécutions d'un test ou d'une exigence.
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements)
-  const elementMove = new ElementMoveService(schema, requirements, tests, tree)
+  const elementMove = new ElementMoveService(schema, requirements, tests, tree, issues)
   // GH77 — renommage de champ dans l'éditeur de schéma : migration des objets du type.
   const fieldRename = new FieldRenameService(requirements, tests, campaigns, issues)
   // GH100 — renommage d'un type (nom / préfixe) : migration de ses objets dans tout le workspace.
@@ -170,7 +170,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged(), host.applyNetworkTimeout)
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH222 — enregistrement depuis la vue de diff (service de l'objet pour une exigence / un test).
-  const diffEdit = new DiffEditService(requirements, tests, schema)
+  const diffEdit = new DiffEditService(requirements, tests, schema, issues)
   // GH34 — bibliothèque de gabarits d'export (préférence application) et export par gabarit.
   const exportTemplateLibrary = new ExportTemplateLibrary(appSettings)
   const exportSvc = new ExportService(

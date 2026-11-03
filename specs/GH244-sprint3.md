@@ -19,6 +19,13 @@
 | `specs/MILESTONE-D.md` §4 | livraison |
 | `CLAUDE.md`, `SPEC-INDEX.md` | catégorie, dossier, MAJ `GH244` |
 
+## Revue de code
+
+Corrigé après revue : renommage de type et de préfixe (garde IPC, `ID_DATA_DIRS`), déplacement d'un type
+vers un autre nœud, enregistrement depuis le diff par le service (statut contrôlé, `origin` refusé),
+historique sur la fiche et `get_history`, rafraîchissement live et index MCP, graphe (historique effectif,
+libellés, ouverture depuis la vue Suivi), brouillon de l'onglet Liens, popup sans double création.
+
 ## Comment tester manuellement
 
 Voir `GH244-tests.md`, scénarios M1 à M10.

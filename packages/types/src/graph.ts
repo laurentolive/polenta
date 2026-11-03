@@ -238,17 +238,9 @@ export interface GraphLink {
 export type GraphVersionState = 'in_progress' | 'released' | 'abandoned'
 
 /** Version d'un composant (repo) ou du produit (repo racine), GH201. */
-export interface GraphIssue {
-  id: string
-  repo: string
-  objectTypeRef: string
-  title: string
-  status: string
-  version: number
+export interface GraphIssue extends GraphObjectBase {
   /** Exécutions et décisions à l'origine de l'issue. */
   origin: { runs: string[]; decisions: string[] }
-  fields: Record<string, unknown>
-  history: ObjectHistory
 }
 
 export interface GraphVersion {

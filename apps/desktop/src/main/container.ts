@@ -18,6 +18,7 @@ import { CampaignsService } from './services/campaigns.service'
 import { VersionTrackingService } from './services/version-tracking.service'
 import { VersionsService } from './services/versions.service'
 import { IssuesService } from './services/issues.service'
+import { SavedViewsService } from './services/saved-views.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TestedConfigService } from './services/tested-config.service'
@@ -108,6 +109,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   )
   // GH244 — issues ; index oublié dès qu'un fichier `issues/` change.
   const issues = new IssuesService(git, schema, history, (repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
+  // GH203 — vues enregistrées du ⚙️.
+  const savedViews = new SavedViewsService((repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
   watcher.onFileChange((repoPath, relPath) => {
     if (relPath === '*') issues.invalidate(repoPath)
     else issues.invalidateFile(repoPath, relPath)
@@ -215,6 +218,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     suivi,
     suiviUpdates,
     savedQueries,
+    savedViews,
     dashboards,
     dashboardSeed,
     export: exportSvc,

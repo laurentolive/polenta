@@ -4,6 +4,7 @@ import type { CampaignsService } from './campaigns.service'
 import type { RequirementsService } from './requirements.service'
 import type { TestsService } from './tests.service'
 import type { IssuesService } from './issues.service'
+import { renameFieldsInTeamViews } from './saved-views.service'
 
 /**
  * GH77 — renommage de champs d'un type dans l'éditeur de schéma (spec §6.3, design §3.3) : appelé
@@ -32,6 +33,10 @@ export class FieldRenameService {
         result.failed.push({ id: objectTypeRef, error: err instanceof Error ? err.message : String(err) })
       }
     }
+    // GH203 — colonnes des vues d'équipe du type (données versionnées, contrairement au `.pref`).
+    await renameFieldsInTeamViews(repoPath, objectTypeRef, valid).catch(err => {
+      result.failed.push({ id: objectTypeRef, error: err instanceof Error ? err.message : String(err) })
+    })
     return result
   }
 

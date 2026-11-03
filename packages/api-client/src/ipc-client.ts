@@ -346,6 +346,17 @@ export function createIpcClient(
       read: (repoPath, relativePath, ref) => invoke('image:read', repoPath, relativePath, ref ?? null),
       writePaste: (repoPath, mimeType, base64) => invoke('image:write-paste', repoPath, mimeType, base64),
     },
+    views: {
+      list: (repoPath, username, typeKey, workspaceDir) => invoke('views:list', repoPath, username, typeKey, workspaceDir ?? null),
+      create: (repoPath, username, typeKey, scope, name, settings, workspaceDir) =>
+        invoke('views:create', repoPath, username, typeKey, scope, name, settings, workspaceDir ?? null),
+      update: (repoPath, username, typeKey, ref, settings, workspaceDir) =>
+        invoke('views:update', repoPath, username, typeKey, ref, settings, workspaceDir ?? null),
+      rename: (repoPath, username, typeKey, ref, name, workspaceDir) =>
+        invoke('views:rename', repoPath, username, typeKey, ref, name, workspaceDir ?? null),
+      delete: (repoPath, username, typeKey, ref, workspaceDir) =>
+        invoke('views:delete', repoPath, username, typeKey, ref, workspaceDir ?? null),
+    },
     pref: {
       getFieldVisibility: (repoPath, username, typeKey) =>
         invoke('pref:get-field-visibility', repoPath, username, typeKey),

@@ -68,6 +68,8 @@ export function useLiveFileSync(): void {
       if (relPath === '*' || relPath.startsWith('test-runs/')) qc.invalidateQueries({ queryKey: ['test-runs'] })
       // GH74 — bandeau des mises à jour : requêtes des seeds (versions de modèle).
       if (relPath.startsWith('queries/')) qc.invalidateQueries({ queryKey: ['suivi-updates'] })
+      // GH203 — vues d'équipe : pull, autre onglet, résolution de conflit.
+      if (relPath === '*' || relPath.startsWith('.polenta/views/')) qc.invalidateQueries({ queryKey: ['saved-views'] })
 
       if (relPath === '*') {
         qc.invalidateQueries({ predicate: (q) => q.queryKey[1] === repoPath })

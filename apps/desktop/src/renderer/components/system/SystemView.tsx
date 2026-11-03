@@ -39,12 +39,14 @@ import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
 import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep } from '../../lib/exportColumns'
 import { normalizeObject } from '../../lib/normalizeObject'
-import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Issue, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell } from '@polenta/types'
+import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Issue, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell, SavedViewRef } from '@polenta/types'
 import { flattenSystemNodes, isComputedColumnKey, fieldValueToText } from '@polenta/types'
 import { useComputedColumns } from '../../hooks/useComputedColumns'
 import { useOpenRowTarget } from '../../hooks/useOpenRowTarget'
 import type { UpdateRequirementDto, UpdateTestCaseDto } from '@polenta/zod-schemas'
 import { FieldConfigModal, type ConfigTab } from './FieldConfigModal'
+import { SavedViewsMenu } from './SavedViewsMenu'
+import { layoutPatch, resolveLayout, sameLayout, type ViewLayout } from './savedViewSettings'
 import { useElementNav } from '../../contexts/ElementNavContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
@@ -958,6 +960,30 @@ export function SystemView() {
     persistPrefs({ freezeColCountExcel: count })
   }, [persistPrefs])
 
+  // GH203 — vues enregistrées : la mise en page courante, copiée depuis ou vers une vue.
+  const currentLayout = useMemo<ViewLayout>(() => ({
+    excel: visibleFieldsExcel, word: visibleFieldsWord, popup: visibleFieldsPopup,
+    showFoldersExcel, showFoldersWord, freezeColCountExcel,
+  }), [visibleFieldsExcel, visibleFieldsWord, visibleFieldsPopup, showFoldersExcel, showFoldersWord, freezeColCountExcel])
+  const resolveSavedLayout = useCallback((settings: Record<string, unknown>) =>
+    resolveLayout(settings, { excel: schemaDefaultFields('excel'), word: schemaDefaultFields('word') }), [schemaDefaultFields])
+  const applySavedSettings = useCallback((settings: Record<string, unknown>, activeView: SavedViewRef | null) => {
+    const layout = resolveSavedLayout(settings)
+    setVisibleFieldsExcel(layout.excel)
+    setVisibleFieldsWord(layout.word)
+    setVisibleFieldsPopup(layout.popup)
+    setShowFoldersExcel(layout.showFoldersExcel)
+    setShowFoldersWord(layout.showFoldersWord)
+    setFreezeColCountExcel(layout.freezeColCountExcel)
+    persistPrefs({ ...layoutPatch(settings), activeView })
+  }, [resolveSavedLayout, persistPrefs])
+  const isSavedViewModified = useCallback((settings: Record<string, unknown>) =>
+    !sameLayout(currentLayout, resolveSavedLayout(settings)), [currentLayout, resolveSavedLayout])
+  const { mutateAsync: savePrefsAsync } = savePrefsMutation
+  const handleActiveViewChange = useCallback(async (activeView: SavedViewRef | null) => {
+    await savePrefsAsync({ activeView })
+  }, [savePrefsAsync])
+
   // Vues Tableau / Document affichées seulement quand tout ce qui détermine leur rendu est là :
   // colonnes visibles du type (prefs), arbre du type, objets, liens et couverture s'ils sont
   // affichés. Sans ça, la vue se peignait 3 à 4 fois à l'ouverture (colonnes par défaut et
@@ -1122,6 +1148,22 @@ export function SystemView() {
               >
                 <Eye size={14} />
               </button>
+            )}
+
+            {/* GH203 — vues enregistrées du ⚙️ */}
+            {effectiveType?.category !== 'campaign' && viewMode !== 'edit' && repoPath && username && typeKey && (
+              <SavedViewsMenu
+                repoPath={repoPath}
+                username={username}
+                typeKey={typeKey}
+                workspaceDir={currentProjectId ? decodeProjectId(currentProjectId) : undefined}
+                settings={currentLayout as unknown as Record<string, unknown>}
+                active={isPrefsPlaceholder ? null : savedPrefs?.activeView ?? null}
+                isModified={isSavedViewModified}
+                onApply={view => applySavedSettings(view.settings, view.ref)}
+                onActiveChange={handleActiveViewChange}
+                onDefaults={() => applySavedSettings({}, null)}
+              />
             )}
 
             {/* Hauteur max des lignes — vue tableau uniquement */}

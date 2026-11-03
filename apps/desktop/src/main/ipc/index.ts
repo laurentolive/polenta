@@ -1,3 +1,5 @@
+import type { SavedViewsService } from '../services/saved-views.service'
+import type { SavedViewRef, SavedViewScope } from '@polenta/types'
 import { registerPrefHandlers } from './pref.handlers'
 import type { HandlerRegistry } from './registry'
 import type { PlatformHost } from '../host/platform-host'
@@ -123,6 +125,7 @@ export interface Container {
   suivi: SuiviService
   suiviUpdates: SuiviUpdatesService
   savedQueries: SavedQueriesService
+  savedViews: SavedViewsService
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService
   export: ExportService
@@ -593,6 +596,17 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('versions:get', (_e, repoPath: string, id: string, workspaceDir?: string) =>
     c.versions.page(repoPath, id, workspaceDir ?? undefined))
   r.handle('versions:backlog', (_e, repoPath: string) => c.versions.backlog(repoPath))
+  // GH203 — vues enregistrées du ⚙️ (personnelles et d'équipe).
+  r.handle('views:list', (_e, repoPath: string, username: string, typeKey: string, workspaceDir?: string) =>
+    c.savedViews.list(repoPath, username, typeKey, workspaceDir))
+  r.handle('views:create', (_e, repoPath: string, username: string, typeKey: string, scope: SavedViewScope, name: string, settings: Record<string, unknown>, workspaceDir?: string) =>
+    c.savedViews.create(repoPath, username, typeKey, scope, name, settings, workspaceDir))
+  r.handle('views:update', (_e, repoPath: string, username: string, typeKey: string, ref: SavedViewRef, settings: Record<string, unknown>, workspaceDir?: string) =>
+    c.savedViews.update(repoPath, username, typeKey, ref, settings, workspaceDir))
+  r.handle('views:rename', (_e, repoPath: string, username: string, typeKey: string, ref: SavedViewRef, name: string, workspaceDir?: string) =>
+    c.savedViews.rename(repoPath, username, typeKey, ref, name, workspaceDir))
+  r.handle('views:delete', (_e, repoPath: string, username: string, typeKey: string, ref: SavedViewRef, workspaceDir?: string) =>
+    c.savedViews.delete(repoPath, username, typeKey, ref, workspaceDir))
   // GH244 — issues.
   r.handle('issues:list', (_e, repoPath: string) => c.issues.findAll(repoPath))
   r.handle('issues:get', (_e, repoPath: string, id: string) => c.issues.findOne(repoPath, id))

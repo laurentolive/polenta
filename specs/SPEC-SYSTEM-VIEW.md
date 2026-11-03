@@ -540,6 +540,32 @@ liste pas les exécutions (portée du repo ouvert).
   colonnes de la Vue Excel), rendu en portail au-dessus de la modale (`z-[60]`) — `Échap` y est
   intercepté en capture et ne ferme que le panneau. Voir [SPEC-TESTS.md](SPEC-TESTS.md) §4.1–4.2.
 
+**Vues enregistrées nommées (GH203)** — liste déroulante à côté du ⚙️ (`SavedViewsMenu`), vues Tableau
+et Document, masquée pour les types campagne. Une vue mémorise la mise en page du type, tous onglets
+confondus : `excel`, `word`, `popup`, `showFoldersExcel`, `showFoldersWord`, `freezeColCountExcel`. Ni
+les filtres, ni les dossiers repliés, ni la hauteur des lignes, ni `picker` / `executions`.
+
+- **Portées** : Personnelle (`savedViews` de l'entrée du `.pref`) ou Équipe
+  (`.polenta/views/<nœud>/<type>.yaml`, `version: 1`, `views: [{ name, settings }]`, écrit sans commit :
+  à publier ; retiré avec la dernière vue). Toute personne qui peut publier sur le repo peut modifier
+  une vue d'équipe. Le fichier n'est pas modifiable depuis la vue de diff (`isAppMaintainedFile`).
+- **Application** : copie des réglages dans le réglage courant, sans lien vivant ; vue active dans
+  `activeView` du `.pref`. Réglages différents de la vue (comparaison, ordre compris) : mention
+  « modifiée », rien n'est écrit avant « Enregistrer ». Une vue d'équipe changée par un pull n'est pas
+  appliquée d'office.
+- **Actions** : Enregistrer, Enregistrer sous…, Renommer, Supprimer (avec confirmation), Colonnes par
+  défaut (retire le choix personnel de tous les onglets et quitte la vue active).
+- **Règles** : nom de 1 à 80 caractères, unique par portée et par type sans tenir compte de la casse.
+  Colonne invalide ignorée, jamais réécrite. Vue active disparue : oubliée sans message, réglages
+  gardés. Composant en lecture seule : vues d'équipe lisibles et applicables, écriture refusée
+  (`READONLY_REPO`). Fichier illisible ou d'un format plus récent : avertissement, groupe Équipe vide,
+  écriture refusée (`VIEWS_UNREADABLE`), fichier jamais réécrit, vue active gardée.
+- **Schéma** : un renommage de champ ou de type, un déplacement de type et une suppression de type ou
+  de nœud sont répercutés sur le fichier d'équipe ; le `.pref` n'est pas migré, comme ses autres
+  réglages.
+- **Réutilisation** : `settings` est opaque pour le service et pour `SavedViewsMenu`, l'écran fournit
+  et applique ses réglages (#204).
+
 **Colonnes calculées (GH70)** — section « Colonnes calculées » (après les champs, avant Étapes /
 Liens), onglets Tableau et Document : une case par requête partagée du projet dont `column`
 s'applique au type affiché (libellé + `(calc)`, infobulle `QUERY-NNNN — titre`) ; décochées par
@@ -579,6 +605,7 @@ d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart 
 | Repo du workspace sélectionné (T72) | URL (TanStack Router search params) | `repo` (`/product` et `/components`) |
 | `SystemNode` (repo ou composant local, imbriqué ou non — T113/T123) et type sélectionnés | URL (TanStack Router search params) | `node`/`type` (`/product`), `component`/`type` (`/components`) |
 | Configuration des champs ⚙️ (colonnes visibles + titres de dossiers affichés Tableau/Document — T162 ; colonnes calculées `query::<ID>` — GH70 ; sous-colonnes `query::<ID>::<valeur>` — GH126) | Fichier `.{githubaccount}.pref` dans le repo | `fieldVisibility["<nœud>::<type>"]` = `{ excel, word, edit, showFoldersExcel?, showFoldersWord?, collapsedFolders*?, freezeColCountExcel?, picker?, showFoldersPicker? }`, par type + par utilisateur (`picker` / `showFoldersPicker` : sélecteur de tests, GH176) |
+| Vues enregistrées du ⚙️ (GH203) | `.{githubaccount}.pref` (personnelles, vue active) ; `.polenta/views/<nœud>/<type>.yaml`, versionné (équipe) | `fieldVisibility["<nœud>::<type>"].savedViews`, `.activeView` |
 | Dernier repo/composant/élément consulté (T52) | `localStorage`, par projet | `polenta:lastSelection:${projectId}` |
 
 **Écriture partielle (GH176)** : `pref:set-field-visibility` fusionne les clés reçues dans

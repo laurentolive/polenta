@@ -18,7 +18,7 @@ export type MergeSide = 'left' | 'right'
 export function isAppMaintainedFile(filepath: string): boolean {
   const p = filepath.replace(/\\/g, '/').replace(/^\.\//, '')
   return /^\.git(\/|$)/.test(p) || p === '.gitmodules' || p === '.polenta/schema.yaml'
-    || p.startsWith('.polenta/trees/') || p.startsWith('.polenta/tombstones/')
+    || p.startsWith('.polenta/trees/') || p.startsWith('.polenta/views/') || p.startsWith('.polenta/tombstones/')
 }
 
 export type DiffSaveResult =

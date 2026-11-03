@@ -5,10 +5,11 @@ import type { SchemaService } from './schema.service'
 import type { RequirementsService } from './requirements.service'
 import type { TestsService } from './tests.service'
 import type { TreeService } from './tree.service'
+import { moveTeamViewsFile } from './saved-views.service'
 
 export interface MoveElementResult {
   schema: ProjectSchema
-  failed: { kind: 'requirement' | 'test' | 'issue'; id: string; error: string }[]
+  failed: { kind: 'requirement' | 'test' | 'issue' | 'views'; id: string; error: string }[]
 }
 
 /**
@@ -87,6 +88,9 @@ export class ElementMoveService {
     }
 
     await this.tree.moveTypeTree(repoPath, dto.fromNodeName, dto.toNodeName, dto.typeName)
+    // GH203 — vues d'équipe du type.
+    await moveTeamViewsFile(repoPath, { node: dto.fromNodeName, type: dto.typeName }, { node: dto.toNodeName, type: dto.typeName })
+      .catch(err => { failed.push({ kind: 'views', id: oldRef, error: err instanceof Error ? err.message : String(err) }) })
 
     return { schema: updatedSchema, failed }
   }

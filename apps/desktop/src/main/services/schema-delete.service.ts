@@ -109,9 +109,16 @@ export class SchemaDeleteService {
 
     // 4. Arbres d'affichage.
     if (target.kind === 'node') {
-      for (const node of plan.nodes) await step(`${repoPath}:.polenta/trees/${node}`, () => removeDir(repoPath, `.polenta/trees/${node}`))
+      for (const node of plan.nodes) {
+        await step(`${repoPath}:.polenta/trees/${node}`, () => removeDir(repoPath, `.polenta/trees/${node}`))
+        await step(`${repoPath}:.polenta/views/${node}`, () => removeDir(repoPath, `.polenta/views/${node}`)) // GH203
+      }
     } else {
-      for (const t of types) await this.tree.deleteTypeTree(repoPath, t.node, t.type)
+      for (const t of types) {
+        await this.tree.deleteTypeTree(repoPath, t.node, t.type)
+        const views = `.polenta/views/${t.node}/${t.type}.yaml` // GH203
+        await step(`${repoPath}:${views}`, () => removeDir(repoPath, views))
+      }
     }
 
     // 5. Schéma du repo : nœud / type et refs de liens. 6. Refs de liens des autres repos — seulement

@@ -10,6 +10,7 @@ import { declaresRef, dedupeRepos, mapLinkRefs, objectIdsOfType, pathExists as e
 import type { TestsService } from './tests.service'
 import type { IssuesService } from './issues.service'
 import type { TreeService } from './tree.service'
+import { moveTeamViewsFile } from './saved-views.service'
 import { idRenamer, isBinary, listDataFiles, pruneEmptyDirs, renamePath } from './type-rename.util'
 
 interface PlannedWrite { repoPath: string; path: string; newPath: string; content: string }
@@ -111,6 +112,7 @@ export class TypeRenameService {
         }
       }
       await this.tree.renameTypeTree(repoPath, dto.nodeName, dto.oldName, dto.newName)
+      await step(() => moveTeamViewsFile(repoPath, { node: dto.nodeName, type: dto.oldName }, { node: dto.nodeName, type: dto.newName })) // GH203
       for (const repo of plan.linkTypeRepos) {
         await step(async () => {
           const schema = await this.schema.get(repo)

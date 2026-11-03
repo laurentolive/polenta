@@ -2,6 +2,7 @@ import type {
   CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
+  SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
   VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
 } from '@polenta/types'
@@ -107,7 +108,7 @@ export interface MoveElementResult {
   schema: ProjectSchema
   /** Requirements/tests whose `objectTypeRef` cascade rewrite failed (best-effort, cf.
    *  `ElementMoveService`) — empty when every matching requirement/test was updated. */
-  failed: { kind: 'requirement' | 'test'; id: string; error: string }[]
+  failed: { kind: 'requirement' | 'test' | 'issue' | 'views'; id: string; error: string }[]
 }
 
 export interface CreateReviewDto {
@@ -385,6 +386,10 @@ export interface FieldVisibilityPref {
   showFoldersPicker?: boolean
   /** GH229 — champs de la popup d'aperçu (survol d'un lien vers un objet du type). Absent ⇒ aucun. */
   popup?: string[]
+  /** GH203 — vue enregistrée active ; ses réglages ont été copiés dans les clés ci-dessus. */
+  activeView?: SavedViewRef
+  /** GH203 — vues personnelles du type, écrites par `api.views` seulement. */
+  savedViews?: SavedView[]
 }
 
 /** GH176 — écriture partielle de `FieldVisibilityPref` : une clé absente est conservée telle quelle,
@@ -840,6 +845,14 @@ export interface ApiClient {
       /** Relit et revalide `filePath`, puis écrit les résultats des instances remplies. */
       apply(repoPath: string, campaignId: string, filePath: string, workspaceDir?: string): Promise<ExecutionImportResult>
     }
+  }
+  /** GH203 — vues enregistrées du ⚙️, par (repo, utilisateur, type). */
+  views: {
+    list(repoPath: string, username: string, typeKey: string, workspaceDir?: string): Promise<SavedViewsList>
+    create(repoPath: string, username: string, typeKey: string, scope: SavedViewScope, name: string, settings: Record<string, unknown>, workspaceDir?: string): Promise<SavedViewRef>
+    update(repoPath: string, username: string, typeKey: string, ref: SavedViewRef, settings: Record<string, unknown>, workspaceDir?: string): Promise<SavedViewRef>
+    rename(repoPath: string, username: string, typeKey: string, ref: SavedViewRef, name: string, workspaceDir?: string): Promise<SavedViewRef>
+    delete(repoPath: string, username: string, typeKey: string, ref: SavedViewRef, workspaceDir?: string): Promise<void>
   }
   pref: {
     getFieldVisibility(repoPath: string, username: string, typeKey: string): Promise<FieldVisibilityPref | null>

@@ -199,6 +199,17 @@ describe('SchemaDeleteService', () => {
     expect(s.linkTypes?.find(l => l.name === 'verifies')).toEqual({ name: 'verifies', sourceRefs: [], targetRefs: ['A::A_REQ'] })
   })
 
+  it('D4b — GH203 : vues d\'équipe retirées avec leur type, puis avec leur composant', async () => {
+    const views = { version: 1, views: [{ name: 'V', settings: {} }] }
+    await git.writeYaml(prod, '.polenta/views/A/A_TEST.yaml', views)
+    await git.writeYaml(prod, '.polenta/views/A/A_REQ.yaml', views)
+    await service.delete(prod, ws, { kind: 'type', nodeName: 'A', typeName: 'A_TEST' })
+    expect(await exists(prod, '.polenta/views/A/A_TEST.yaml')).toBe(false)
+    expect(await exists(prod, '.polenta/views/A/A_REQ.yaml')).toBe(true)
+    await service.delete(prod, ws, NODE_A)
+    expect(await exists(prod, '.polenta/views/A')).toBe(false)
+  })
+
   it('D5 — une ref déclarée aussi par un autre repo y est conservée', async () => {
     const c = await read<ProjectSchema>(comp, '.polenta/schema.yaml')
     await git.writeYaml(comp, '.polenta/schema.yaml', {

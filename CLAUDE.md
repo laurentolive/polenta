@@ -4,7 +4,12 @@
 ### Workflow de developpement 
 Les demandes de correction ou d'évolution passent par une **issue GitHub** (repo `laurentolive/polenta`,
 CLI `gh`) — `TICKETS.md` n'est plus utilisé.
-Pour toute correction de bug ou évolution suivre WORKFLOW.md. 
+Pour toute correction de bug ou évolution suivre WORKFLOW.md (méthode de travail, niveaux de
+vérification — **la suite e2e complète ne se lance qu'une fois par ticket**).
+
+Leçons tirées des corrections, à appliquer dès le début de session :
+
+@tasks/lessons.md
 
 ## Contexte produit
 
@@ -307,7 +312,10 @@ calculé dans Polenta ; non → script côté projet. Détail : `specs/SPEC-TECH
 
 ---
 
-## Délégation aux subagents (maîtrise des coûts)
+## Délégation aux subagents (contexte et coûts)
+
+Utiliser largement les subagents pour garder le contexte principal léger : recherche, exploration,
+analyses parallèles, exécution de tests — une tâche par subagent. Le modèle se choisit comme suit.
 
 Pour toute tâche **simple et mécanique** — recherche/grep sur plusieurs fichiers, lecture de statut, copie de fichiers, exécution d'un build/typecheck avec rapport des erreurs, vérification ponctuelle — déléguer via l'outil Agent en passant `model: "haiku"`, plutôt que d'exécuter la tâche directement dans la session principale (modèle haute performance) ou de laisser un subagent hériter de ce modèle par défaut.
 

@@ -3,3 +3,5 @@
 apps/desktop/src/renderer/public/vendor/drawio-viewer.min.js -text -diff linguist-vendored
 # GH74 — références du corpus de la vue Suivi : comparées octet à octet (vitest toMatchFileSnapshot).
 apps/desktop/src/main/services/fixtures/suivi-corpus/*.json text eol=lf
+# Journal alimenté depuis plusieurs worktrees en parallèle : les ajouts se fusionnent sans conflit.
+tasks/lessons.md merge=union

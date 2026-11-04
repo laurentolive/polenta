@@ -16,7 +16,7 @@ import { AddDependencyModal, type AddDependencyValues } from './AddDependencyMod
 import { RemoveDependencyModal } from './RemoveDependencyModal'
 import { RepoBranchSelector } from './RepoBranchSelector'
 import { IntegrationBranchIndicator } from './IntegrationBranchIndicator'
-import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, typeRename, typeRenameDecision, migrationSteps, CATEGORY_LABEL_KEY, type EditableObjectType } from './objectTypeEditor'
+import { objTypeToEditable, editableToObjType, emptyObjType, fieldRenames, valueRenames, withOriginalFieldNames, withRenamedDefaults, withRenamedRequiredWhen, typeRename, typeRenameDecision, migrationSteps, CATEGORY_LABEL_KEY, type EditableObjectType } from './objectTypeEditor'
 import { ValueRenameConfirmModal } from './ValueRenameConfirmModal'
 import { TypeRenameConfirmModal } from './TypeRenameConfirmModal'
 import { SchemaDeleteConfirmModal } from './SchemaDeleteConfirmModal'
@@ -1156,7 +1156,7 @@ export function StructureTab({ workspaceDir, repoPath, projectId }: Props) {
     const sel = selection
     const objectTypeRef = selectedTypeRef
     const renames = fieldRenames(updated)
-    const saved = await applyToSelection(() => editableToObjType(withRenamedDefaults(updated, chosen)))
+    const saved = await applyToSelection(() => editableToObjType(withRenamedRequiredWhen(withRenamedDefaults(updated, chosen), selectedRaw, chosen)))
     if (!saved || !sel || sel.isNew || !objectTypeRef) return
     const steps = migrationSteps(api.schema, sel.repoPath, workspaceDir, objectTypeRef, renames, chosen, dto)
     if (steps.length === 0) return

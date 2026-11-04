@@ -2614,6 +2614,12 @@ Aucune limite de nombre de composants n'est imposée par le code (l'ancienne lim
 Il n'y a **pas** de `.gitmodules`, pas de `tree.yaml` unique à la racine, pas de script Python, pas
 de hook `pre-commit` — voir CLAUDE.md règle 9.
 
+> **Ancien fichier d'arbre avec des `name` (GH261) :** à la lecture, le `name` d'un élément passe avant
+> le titre par défaut de son objet (« Sans titre ») ; un vrai titre fait toujours foi. À la sauvegarde
+> de l'arbre, ce `name` est recopié dans le titre (écriture brute) avant d'être retiré du fichier. Il
+> reste dans le fichier si l'objet est introuvable ou si l'écriture échoue. Aucune écriture à
+> l'ouverture du dépôt.
+
 > **`tree.cache.yaml` ne doit jamais être versionné (T156) :** contient des chemins absolus
 > locaux à la machine et un `generatedAt` recalculé à chaque écriture (`nodes`/`logicalTree`
 > aussi, à chaque `rebuildTree()` — ajout/suppression/renommage de dépendance) — un repo qui le

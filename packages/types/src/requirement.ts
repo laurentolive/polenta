@@ -1,5 +1,11 @@
 import type { ObjectHistory } from './history'
 
+/**
+ * Titre posé à la création d'un objet tant que l'utilisateur n'en a pas saisi. Ce n'est pas un vrai
+ * libellé : un `name` d'ancien fichier d'arbre passe avant lui (GH261).
+ */
+export const DEFAULT_OBJECT_TITLE = 'Sans titre'
+
 export type JiraLinkType = 'IMPLEMENTS' | 'RELATED_TO' | 'ORIGINATED_FROM' | 'BLOCKS'
 
 export interface JiraLink {

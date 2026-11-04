@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES,
-  displayIdFieldCandidates, historyModeFor, renameValues, requiredWhenIssues,
+  displayIdFieldCandidates, historyModeFor, renameRequiredWhenRefs, renameValues, requiredWhenIssues,
 } from '@polenta/types'
 import type {
   FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
@@ -114,7 +114,11 @@ export function canTrackHistory(f: Pick<EditableField, 'name' | 'type'>): boolea
 
 /** GH77 — champs renommés depuis le chargement du type (nom d'origine connu et différent). */
 export function fieldRenames(t: EditableObjectType): FieldRename[] {
-  return t.fields
+  return listFieldRenames(t.fields)
+}
+
+function listFieldRenames(fields: EditableField[]): FieldRename[] {
+  return fields
     .filter(f => f.originalName && f.name && f.originalName !== f.name)
     .map(f => ({ from: f.originalName!, to: f.name }))
 }
@@ -180,8 +184,14 @@ export function valueRenames(updated: EditableObjectType, original: ObjectTypeDe
   for (const s of updated.statuses) {
     if (s.originalName && s.name && s.originalName !== s.name) out.push({ target: { kind: 'status' }, from: s.originalName, to: s.name })
   }
-  for (const f of updated.fields) {
-    const before = f.originalName ? original?.fields.find(o => o.name === f.originalName) : undefined
+  return [...out, ...enumValueRenames(updated.fields, original?.fields)]
+}
+
+/** GH82 — valeurs d'enum renommées d'une liste de champs (règle : cf. `valueRenames`). */
+function enumValueRenames(fields: EditableField[], originals: SchemaField[] | undefined): ValueRename[] {
+  const out: ValueRename[] = []
+  for (const f of fields) {
+    const before = f.originalName ? originals?.find(o => o.name === f.originalName) : undefined
     if (!before || !isEnum(before.type) || !isEnum(f.type) || !f.name) continue
     const oldValues = before.values ?? []
     const newValues = splitValues(f.values)
@@ -206,6 +216,31 @@ export function withRenamedDefaults(t: EditableObjectType, renames: ValueRename[
       const renamed = renameValues({ status: '', fields: { [f.name]: f.default } }, mine)
       return renamed ? { ...f, default: String(renamed.fields[f.name]) } : f
     }),
+  }
+}
+
+/**
+ * GH214 — `requiredWhen` des champs du type après les renommages de cette édition, pour que la
+ * condition reste active. Une liste de champs ne référence que ses propres champs : champs d'objet
+ * avec les statuts / valeurs retenus (`chosen` — une ligne décochée n'est pas un renommage, la
+ * condition garde l'ancienne valeur et son ⚠) ; `runFields` / `stepFields` avec les valeurs
+ * détectées, sans confirmation puisque les runs ne sont jamais migrés (GH196).
+ */
+export function withRenamedRequiredWhen(
+  t: EditableObjectType, original: ObjectTypeDefinition | null | undefined, chosen: ValueRename[],
+): EditableObjectType {
+  const rewrite = (fields: EditableField[], values: ValueRename[], pseudoKey?: string) => {
+    const renames = listFieldRenames(fields)
+    return fields.map(f => {
+      const rw = parseRequiredWhen(f.requiredWhen)
+      return rw ? { ...f, requiredWhen: formatRequiredWhen(renameRequiredWhenRefs(rw, renames, values, pseudoKey)) } : f
+    })
+  }
+  return {
+    ...t,
+    fields: rewrite(t.fields, chosen),
+    runFields: rewrite(t.runFields, enumValueRenames(t.runFields, original?.runFields), RUN_RESULT_KEY),
+    stepFields: rewrite(t.stepFields, enumValueRenames(t.stepFields, original?.stepFields), RUN_RESULT_KEY),
   }
 }
 

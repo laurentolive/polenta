@@ -10,6 +10,7 @@ import { useSelectedRepo } from '../contexts/SelectedRepoContext'
 import { useWorkspaceStructure } from '../hooks/useWorkspaceStructure'
 import { propagatePinToDependents, type PinPropagationOutcome } from '../lib/workspaceActions'
 import { branchErrorText } from '../lib/branchErrors'
+import { designateNotices, invalidateIntegration } from '../hooks/useDesignateIntegration'
 import { PinPropagationWarning } from '../components/sidebar/version/PinPropagationWarning'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useSetTabTitle } from '../contexts/TabsContext'
@@ -283,6 +284,7 @@ function GraphContextMenu({
 }: GraphContextMenuProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { target } = state
   const ref = useRef<HTMLDivElement>(null)
 
@@ -421,9 +423,32 @@ function GraphContextMenu({
     onError: handleMutationError,
   })
 
+  // GH276 — une `int-*` créée ici est désignée, comme partout ailleurs (GH106) : sans cela, elle
+  // héritait du `project.yaml` de son point de départ (cas PH2). La désignation fait un checkout :
+  // comme les checkouts de ce menu, elle n'est proposée que sans modification en attente.
   const createBranchAtMut = useMutation({
-    mutationFn: ({ name, sha }: { name: string; sha: string }) => api.sync.createBranchAt(repoPath, name, sha),
-    onSuccess: () => { onInvalidate(['graph', 'branches']); onClose() },
+    mutationFn: async ({ name, sha, tag }: { name: string; sha: string; tag?: string }) => {
+      if (!name.startsWith('int-')) {
+        await api.sync.createBranchAt(repoPath, name, sha)
+        return null
+      }
+      if (!isClean) throw new Error(t('graphPage.integrationNeedsClean'))
+      return api.integration.create(repoPath, name.slice('int-'.length), tag ? { tag } : { commit: sha })
+    },
+    onSuccess: async (designated, { name }) => {
+      if (!designated) {
+        onInvalidate(['graph', 'branches'])
+        onClose()
+        return
+      }
+      onInvalidate(['status', 'graph', 'branches'])
+      invalidateIntegration(qc, repoPath)
+      // Push en échec, branche par défaut non alignée… : dit ici, la création a réussi.
+      const notices = designateNotices(designated, t)
+      if (notices.length > 0) setMutationError(notices.join(' '))
+      else onClose()
+      if (node) onPinWarning(await propagatePinToDependents(workspaceDir, flatNodes, node, name))
+    },
     onError: handleMutationError,
   })
 
@@ -458,11 +483,12 @@ function GraphContextMenu({
     if (!inlinePrompt || !inlinePrompt.value.trim()) return
     const name = inlinePrompt.value.trim()
     if (inlinePrompt.mode === 'branch') {
-      createBranchAtMut.mutate({ name, sha })
+      createBranchAtMut.mutate({ name, sha, tag: target.type === 'tag' ? target.name : undefined })
     } else {
       createTagMut.mutate({ name, sha })
     }
-    setInlinePrompt(null)
+    // Une int-* reste dans la saisie : son refus ou ses avertissements s'y affichent.
+    if (!(inlinePrompt.mode === 'branch' && name.startsWith('int-'))) setInlinePrompt(null)
   }
 
   // ── shared item classes ──────────────────────────────────────────────────────

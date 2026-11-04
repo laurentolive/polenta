@@ -125,18 +125,18 @@ export function registerWebHandlers(r: HandlerRegistry, ctx: WebHandlerContext):
     await uploads.remove(uploadId)
     return result
   })
-  handle('web:execution-sheet-preview', async (_e, repoPath: string, campaignId: string, uploadId: string) => {
+  handle('web:execution-sheet-preview', async (_e, repoPath: string, campaignId: string, uploadId: string, workspaceDir?: string) => {
     const file = await uploaded(uploadId)
-    return c.campaignExecution.preview(repoPath, campaignId, file.filePath)
+    return c.campaignExecution.preview(repoPath, campaignId, file.filePath, workspaceDir)
   })
 
   // ── Exports (remplacent « Enregistrer sous ») ───────────────────────────────────
   handle('web:execution-sheet-export', async (
-    _e, repoPath: string, campaignId: string, locale: ExecutionSheetLocale,
+    _e, repoPath: string, campaignId: string, locale: ExecutionSheetLocale, workspaceDir?: string,
   ): Promise<WebDownloadResult> => {
     const today = new Date().toISOString().slice(0, 10)
     const target = await downloads.create(`${campaignId}_execution_${today}.xlsx`)
-    const result = await saveExecutionSheet(c, target.filePath, repoPath, campaignId, locale)
+    const result = await saveExecutionSheet(c, target.filePath, repoPath, campaignId, locale, workspaceDir)
     if (result.status !== 'ok') {
       await downloads.remove(target.id)
       return { status: 'error', message: result.status === 'error' ? result.message : 'Export annulé' }

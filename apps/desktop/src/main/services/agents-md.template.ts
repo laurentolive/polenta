@@ -32,7 +32,7 @@ import type { BrandInfo } from '../../shared/brand-types'
  *
  * GH203 (v9) : `.polenta/views/` maintenu par l'application.
  */
-export const AGENTS_MD_TEMPLATE_VERSION = 9
+export const AGENTS_MD_TEMPLATE_VERSION = 10
 
 const AGENTS_MD_VERSION_MARKER_RE = /<!--\s*polenta:agents-md-version:(\d+)\s*-->/
 
@@ -182,6 +182,8 @@ Tools disponibles :
 - \`list_requirements\` / \`list_tests\` / \`list_campaigns\` — explore l'existant (filtres
   par type/statut/texte) pour éviter les doublons avant un import.
 - \`list_issues\` / \`get_issue\` / \`create_issue\` / \`update_issue\` — issues (bug, non-conformité…) ; exigences impactées par liens \`issue-impact\` (\`create_links\`), de son composant seulement.
+- \`list_validations\` / \`get_validation\` — validations d'une version : décision par exigence, restes à décider.
+- \`propose_validation_decision\` — propose une décision, qu'un humain confirme ou rejette. Le MCP ne signe jamais.
 - \`list_versions\` / \`get_version\` / \`get_version_backlog\` — versions des composants et du
   produit (lecture seule) : changements inclus, composants, backlog des changements jamais livrés.
   Une version se crée, s'enrichit et passe released dans l'application, pas par le MCP.

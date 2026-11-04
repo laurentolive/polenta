@@ -1,3 +1,5 @@
+import type { ValidationDecisionDef } from '@polenta/types'
+import { validationTypeError } from '@polenta/types'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DISPLAY_ID_FIELD_TYPES } from '@polenta/types'
@@ -27,13 +29,62 @@ interface Props {
   hotkeysSuspended?: boolean
 }
 
+/** GH204 — valeurs de décision d'un type validation : une seule « en attente », cochage exclusif. */
+function DecisionsTable({ decisions, onChange }: { decisions: ValidationDecisionDef[]; onChange: (d: ValidationDecisionDef[]) => void }) {
+  const { t } = useTranslation()
+  const set = (i: number, patch: Partial<ValidationDecisionDef>) => onChange(decisions.map((d, j) => (j === i ? { ...d, ...patch } : d)))
+  const error = validationTypeError({ name: '', decisions, statuses: [{ name: 'a', label: 'a', isApproval: true }, { name: 'b', label: 'b', isTerminal: true }] })
+  return (
+    <div className="mt-3" data-testid="decisions-section">
+      <p className="section-label mb-1">{t('schema.editor.decisions')}</p>
+      <p className="text-xs text-ink-3 mb-1">{t('schema.editor.decisionsHelp')}</p>
+      <table className="w-full text-xs border-collapse mb-1">
+        <thead>
+          <tr className="text-left text-ink-3">
+            <th className="font-normal px-1 py-0.5">{t('schema.editor.colName')}</th>
+            <th className="font-normal px-1 py-0.5">{t('schema.editor.colLabel')}</th>
+            <th className="font-normal px-1 py-0.5 text-center">{t('schema.editor.decisionPending')}</th>
+            <th className="font-normal px-1 py-0.5 text-center">{t('schema.editor.decisionProposesIssue')}</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {decisions.map((d, i) => (
+            <tr key={i} data-testid={`decision-row-${d.name}`}>
+              <td className="px-1 py-0.5"><input value={d.name} onChange={e => set(i, { name: e.target.value })} className="input-field w-full font-mono text-xs py-0.5" /></td>
+              <td className="px-1 py-0.5"><input value={d.label ?? ''} onChange={e => set(i, { label: e.target.value })} className="input-field w-full text-xs py-0.5" /></td>
+              <td className="px-1 py-0.5 text-center">
+                <input type="radio" checked={!!d.isPending} onChange={() => onChange(decisions.map((x, j) => {
+                  const { isPending: _omit, ...rest } = x
+                  return j === i ? { ...rest, isPending: true } : rest
+                }))} />
+              </td>
+              <td className="px-1 py-0.5 text-center">
+                <input type="checkbox" checked={!!d.proposesIssue} onChange={e => {
+                  const { proposesIssue: _omit, ...rest } = d
+                  onChange(decisions.map((x, j) => (j === i ? (e.target.checked ? { ...rest, proposesIssue: true } : rest) : x)))
+                }} />
+              </td>
+              <td className="px-1 py-0.5 text-right">
+                <button type="button" className="text-ink-3 hover:text-status-danger" onClick={() => onChange(decisions.filter((_, j) => j !== i))} title={t('common.delete')}>×</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button type="button" className="text-xs text-prim hover:underline" onClick={() => onChange([...decisions, { name: '', label: '' }])} data-testid="add-decision">+ {t('schema.editor.addDecision')}</button>
+      {error && <p className="text-xs text-status-danger mt-1">{error}</p>}
+    </div>
+  )
+}
+
 export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, isNew, isSaving, saveError, onSave, onDelete, onClose, hotkeysSuspended = false }: Props) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<EditableObjectType>(objectType)
   const [prefixError, setPrefixError] = useState<string | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   // GH201 — le renommage d'un type ne migre pas les versions : nom et préfixe figés une fois créé.
-  const idLocked = !isNew && objectType.category === 'version'
+  const idLocked = !isNew && (objectType.category === 'version' || objectType.category === 'validation')
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(objectType)
 
@@ -120,6 +171,20 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           {prefixError && <p className="text-xs text-status-danger mb-3">{prefixError}</p>}
           {saveError && <p className="text-xs text-status-danger mb-3">{saveError}</p>}
           <FieldsTable fields={draft.fields} onChange={fields => set({ fields })} statuses={draft.statuses} category={draft.category} />
+          {draft.category === 'validation' && (
+            <>
+              <DecisionsTable decisions={draft.decisions} onChange={decisions => set({ decisions })} />
+              <details className="mt-3" open={draft.entryFields.length > 0} data-testid="entry-fields-section">
+                <summary className="section-label cursor-pointer select-none">
+                  {t('schema.editor.entryFields')} ({draft.entryFields.length})
+                </summary>
+                <div className="ml-2 pl-4 border-l border-edge">
+                  <FieldsTable fields={draft.entryFields} onChange={entryFields => set({ entryFields })} category="validation" variant="entry"
+                    decisionValues={draft.decisions.map(d => d.name)} title="" help={t('schema.editor.entryFieldsHelp')} />
+                </div>
+              </details>
+            </>
+          )}
           {draft.category === 'test' && (
             <>
               {/* GH196 — sections repliables ; le contenu déplié est indenté sous son titre. */}

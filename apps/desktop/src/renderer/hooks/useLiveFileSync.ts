@@ -48,7 +48,7 @@ export function useLiveFileSync(): void {
       // graphe agrège tout le workspace. Un changement de données (exécutions comprises), de ref
       // (avance rapide du pull automatique), de la bibliothèque projet ou d'un script de requête
       // (écrit hors de l'app, MCP) dans n'importe quel repo les rend périmés.
-      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|issues|queries|dashboards\/lib)\//.test(relPath)) {
+      if (relPath === '*' || /^(requirements|tests|test-runs|links|campaigns|versions|issues|validations|queries|dashboards\/lib)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['widget-query-result'] })
         qc.invalidateQueries({ queryKey: ['widget-drilldown'] }) // popup de détail ouverte (même dataset)
       }
@@ -58,6 +58,7 @@ export function useLiveFileSync(): void {
       if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
         || /^(requirements|tests|versions|issues|links|campaigns)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['versions'] })
+        qc.invalidateQueries({ queryKey: ['validations'] })
       }
       // GH197 — historique des exécutions : runs, campagnes, tests et liens (couverture d'une exigence).
       if (relPath === '*' || /^(tests|test-runs|links|campaigns)\//.test(relPath)) {
@@ -110,6 +111,12 @@ export function useLiveFileSync(): void {
             q.queryKey[3] === nodeId && q.queryKey[4] === typeId,
         })
         return
+      }
+
+      // GH204 — validations : un fichier ou une exécution modifiés changent les pages ouvertes.
+      if (/^(validations|test-runs)\//.test(relPath)) {
+        qc.invalidateQueries({ queryKey: ['validations'] })
+        if (relPath.startsWith('validations/')) return
       }
 
       // GH244 — issues : liste, fiche et vues.

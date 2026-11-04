@@ -666,3 +666,7 @@ l'URL. La sélection restaurée est propre à chaque projet (clé indexée par `
 | Recherche du combobox sans résultat | `Aucun résultat` dans la liste déroulante |
 | Arbre sans élément | `Aucun élément` |
 | Filtre (barre sous le combobox) sans résultat | `Aucun élément` dans l'arbre et dans la vue document |
+
+> **GH204** — la vue Validation réutilise `SavedViewsMenu` et le service des vues : `settings.excel` porte ses colonnes
+> (`decision`, `comment`, `status`, `design`, `coverage`, `impact`, `entry:<champ>`, `field:<champ>`), clé de type
+> `<nœud>::<type>` du type validation. Les filtres ne sont pas mémorisés (GH203 Q2).

@@ -185,6 +185,10 @@ La validation est le **feu vert donné à une version** : sa signature sur la ve
 production série. Une validation est donc **toujours associée à une version**. Le mot est pris au sens
 courant (« valider une version »), pas au sens vérification / validation de la norme.
 
+> **Livré par #204 et #205** (`specs/GH204.md`, SPEC-REQ §13). Écarts tranchés : champ `versionId` ; une seule validation
+> non annulée par version, une signée peut être annulée ; `evidence` abandonnée ; « modifié depuis la décision » par
+> empreinte du contenu ; version released lue à l'état figé ; validations des composants affichées, non bloquantes.
+
 ### 5.1 Objet
 
 Catégorie **`validation`** (nom unique dans le code, le stockage, le graphe et l'interface, à la place du

@@ -337,3 +337,27 @@ describe('renumbering (Garder les deux)', () => {
     expect(nextFreeId('SYS', ['requirements/SYS-0043.yaml'], ['SYS-0050'])).toBe('SYS-0051')
   })
 })
+
+describe('validation (GH204)', () => {
+  const entry = (requirementId: string, decision: string) => ({ requirementId, decision, contentHash: 'h' })
+  const validation = (entries: unknown[]) => ({
+    id: 'VAL-0001', objectTypeRef: 'root::validation', title: 'V', status: 'en_cours', versionId: 'VER-0001', fields: {}, entries,
+  })
+
+  it('U12 — décisions sur deux exigences différentes : fusion sans conflit', () => {
+    const b = validation([entry('REQ-1', 'conforme')])
+    const l = validation([entry('REQ-1', 'conforme'), entry('REQ-2', 'hors_scope')])
+    const r = validation([entry('REQ-1', 'conforme'), entry('REQ-3', 'derogation')])
+    const m = mergeFile(dump(b), dump(l), dump(r), labels)
+    expect(m.blocks).toEqual([])
+    const out = yaml.load(m.output) as { entries: Array<{ requirementId: string }> }
+    expect(out.entries.map(e => e.requirementId).sort()).toEqual(['REQ-1', 'REQ-2', 'REQ-3'])
+  })
+
+  it('U12 — décisions différentes sur la même exigence : conflit', () => {
+    const b = validation([entry('REQ-1', 'conforme')])
+    const l = validation([entry('REQ-1', 'hors_scope')])
+    const r = validation([entry('REQ-1', 'derogation')])
+    expect(mergeFile(dump(b), dump(l), dump(r), labels).blocks.length).toBeGreaterThan(0)
+  })
+})

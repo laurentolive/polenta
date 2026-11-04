@@ -98,6 +98,7 @@ specs/
 │   └── integration/
 ├── versions/                        ← versions du composant (GH201), une par fichier : versions/<ID>.yaml
 ├── issues/                          ← issues du composant (GH244), une par fichier : issues/<ID>.yaml
+├── validations/                     ← validations d'une version (GH204), une par fichier : validations/<ID>.yaml
 ├── links/
 │   └── links.yaml                   ← tous les ObjectLink du projet
 ├── parameters/

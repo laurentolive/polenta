@@ -26,6 +26,7 @@ import type { ElementMoveService } from '../services/element-move.service'
 import type { CampaignsService } from '../services/campaigns.service'
 import type { VersionsService } from '../services/versions.service'
 import type { IssuesService } from '../services/issues.service'
+import type { ValidationsService } from '../services/validations.service'
 import type { ExecutionHistoryService } from '../services/execution-history.service'
 import type { CampaignExecutionService } from '../services/campaign-execution.service'
 import type { TestedConfigService } from '../services/tested-config.service'
@@ -58,7 +59,7 @@ import type { SchemaDeleteService } from '../services/schema-delete.service'
 import type { ExecutionHistoryTarget, TestedConfig, ValueRename } from '@polenta/types'
 import type { HistoryBackfillService } from '../services/history-backfill.service'
 import type {
-  CreateRequirementDto, CreateIssueDto, UpdateIssueDto,
+  CreateRequirementDto, CreateIssueDto, UpdateIssueDto, CreateValidationDto, UpdateValidationDto, ValidationDecisionDto,
   UpdateRequirementDto,
   TransitionRequirementDto,
   CreateTestCaseDto,
@@ -110,6 +111,7 @@ export interface Container {
   campaigns: CampaignsService
   versions: VersionsService
   issues: IssuesService
+  validations: ValidationsService
   campaignExecution: CampaignExecutionService
   executionHistory: ExecutionHistoryService
   testedConfig: TestedConfigService
@@ -194,7 +196,9 @@ const GRAPH_WRITE_CHANNELS = new Set([
   'campaigns:create', 'campaigns:update', 'campaigns:update-run', 'campaigns:close', 'campaigns:add-tests',
   'campaigns:remove-entries', 'campaigns:duplicate-test', 'campaigns:update-run-params', 'campaigns:delete',
   'campaigns:execution-sheet-apply',
-  'issues:create', 'issues:update', 'issues:add-run',
+  'issues:create', 'issues:update', 'issues:add-run', 'issues:add-decision',
+  'validations:create', 'validations:update', 'validations:decide', 'validations:confirm', 'validations:reject',
+  'validations:sign', 'validations:cancel', 'validations:delete',
   'versions:create', 'versions:update', 'versions:copy', 'versions:delete', 'versions:set-impact', 'versions:include', 'versions:remove-changes', 'versions:release',
   'schema:save', 'schema:rename-fields', 'schema:rename-values', 'schema:rename-type', 'schema:delete', 'schema:move-element',
   'revalidation:clear', 'history:backfill', 'polenta-repo:save', 'reviews:approve-object', 'reviews:revoke-approval',
@@ -616,6 +620,25 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.issues.update(repoPath, id, dto as UpdateIssueDto, workspaceDir))
   r.handle('issues:add-run', (_e, repoPath: string, id: string, runId: string, workspaceDir?: string) =>
     c.issues.addRun(repoPath, id, runId, workspaceDir))
+  r.handle('issues:add-decision', (_e, repoPath: string, id: string, decisionRef: string, workspaceDir?: string) =>
+    c.issues.addDecision(repoPath, id, decisionRef, workspaceDir))
+
+  // GH204 — validations d'une version.
+  r.handle('validations:versions', (_e, repoPath: string) => c.validations.versionItems(repoPath))
+  r.handle('validations:page', (_e, repoPath: string, id: string, workspaceDir?: string) => c.validations.page(repoPath, id, workspaceDir))
+  r.handle('validations:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
+    c.validations.create(repoPath, dto as CreateValidationDto, workspaceDir))
+  r.handle('validations:update', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
+    c.validations.update(repoPath, id, dto as UpdateValidationDto, workspaceDir))
+  r.handle('validations:decide', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
+    c.validations.decide(repoPath, id, dto as ValidationDecisionDto, workspaceDir))
+  r.handle('validations:confirm', (_e, repoPath: string, id: string, requirementId: string, workspaceDir?: string) =>
+    c.validations.confirm(repoPath, id, requirementId, workspaceDir))
+  r.handle('validations:reject', (_e, repoPath: string, id: string, requirementId: string, workspaceDir?: string) =>
+    c.validations.reject(repoPath, id, requirementId, workspaceDir))
+  r.handle('validations:sign', (_e, repoPath: string, id: string, workspaceDir?: string) => c.validations.sign(repoPath, id, workspaceDir))
+  r.handle('validations:cancel', (_e, repoPath: string, id: string, workspaceDir?: string) => c.validations.cancel(repoPath, id, workspaceDir))
+  r.handle('validations:delete', (_e, repoPath: string, id: string, workspaceDir?: string) => c.validations.delete(repoPath, id, workspaceDir))
 
   r.handle('versions:create', (_e, repoPath: string, dto: unknown, workspaceDir?: string) =>
     c.versions.create(repoPath, dto as import('@polenta/types').CreateVersionDto, workspaceDir ?? undefined))

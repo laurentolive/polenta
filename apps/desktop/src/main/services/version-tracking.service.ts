@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import * as yaml from 'js-yaml'
 import type { ProjectSchema } from '@polenta/types'
 import type { GitService } from './git.service'
@@ -46,6 +47,7 @@ export class VersionTrackingService {
 
   private readonly historyCache = new Map<string, { head: string; commits: Map<string, string[]> }>()
   private readonly contentCache = new Map<string, ElementState | null>()
+  private readonly fieldsCache = new Map<string, Record<string, unknown>>()
 
   async readDisk(repo: string, filePath: string): Promise<ElementState | null> {
     return elementState(await this.git.readYaml<ElementRecord>(repo, filePath).catch(() => null))
@@ -62,10 +64,25 @@ export class VersionTrackingService {
         parsed = null
       }
       // Borné : vidé d'un coup au-delà du seuil (les lectures suivantes le reconstruisent).
-      if (this.contentCache.size >= CONTENT_CACHE_MAX) this.contentCache.clear()
+      if (this.contentCache.size >= CONTENT_CACHE_MAX) {
+        this.contentCache.clear()
+        this.fieldsCache.clear()
+      }
       this.contentCache.set(key, elementState(parsed))
+      this.fieldsCache.set(key, (parsed?.fields as Record<string, unknown> | undefined) ?? {})
     }
     return this.contentCache.get(key)!
+  }
+
+  /** GH204 — état et champs d'un élément : à un commit, ou sur disque sans `oid`. */
+  async readWithFields(repo: string, filePath: string, oid?: string): Promise<{ state: ElementState; fields: Record<string, unknown> } | null> {
+    if (!oid) {
+      const record = await this.git.readYaml<ElementRecord>(repo, filePath).catch(() => null)
+      const state = elementState(record)
+      return state ? { state, fields: (record?.fields as Record<string, unknown> | undefined) ?? {} } : null
+    }
+    const state = await this.readAt(repo, oid, filePath)
+    return state ? { state, fields: this.fieldsCache.get(`${repo}\u0000${oid}\u0000${filePath}`) ?? {} } : null
   }
 
   /**
@@ -145,6 +162,11 @@ export function elementState(o: ElementRecord | null): ElementState | null {
     id: o.id, objectTypeRef: o.objectTypeRef ?? '', status: o.status ?? '', version: o.version ?? 1, title: o.title ?? '',
     key: stableJson(all), contentKey: stableJson(content),
   }
+}
+
+/** GH204 — empreinte du contenu (sans statut ni `version`) : approuver une exigence ne la change pas. */
+export function contentHash(state: Pick<ElementState, 'contentKey'>): string {
+  return createHash('sha256').update(state.contentKey).digest('hex').slice(0, 16)
 }
 
 /** JSON à clés triées : deux écritures YAML du même contenu donnent la même clé. */

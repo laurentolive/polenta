@@ -825,3 +825,38 @@ Modification du produit non tracée dans les exigences (bug, non-conformité, é
 - **Vues** : panneau « Issues », vues Tableau et Document, fiche (SPEC-ELECTRON-DESKTOP §19.2).
 - **Proposition de création** (SPEC-TESTS §4.1) : `FAIL` ou `BLOCKED` enregistré à l'écran d'exécution, si le
   composant a un type issue ; bilan d'import Excel : une proposition par échec.
+
+## 13. Validation d'une version (GH204)
+
+Décision de la qualité, exigence par exigence, sur une version du composant. Signée sur une version released,
+elle vaut feu vert ; sur la version produit, go production série. Détail : `specs/GH204.md`.
+
+- **Type et fichier** : catégorie `validation`, un seul type par repo, sur `root`. `validations/<ID>.yaml` du
+  repo du composant : `id`, `objectTypeRef`, `title`, `status`, `versionId`, `fields`, `entries`, `history`.
+- **Configuration** : `decisions` (`name`, `label`, `isPending`, `proposesIssue`), `entryFields`, `statuses`.
+  Exactement une décision `isPending`, un statut `isApproval` (signée), un `isTerminal` (annulée) ; premier
+  statut non marqué ; historique du statut obligatoire.
+- **Garde-fous du schéma** : tant qu'une validation existe, type non retirable, nom, préfixe et statuts marqués
+  figés, décision utilisée non retirable (`DECISION_IN_USE`), préfixe des types d'exigence figé (`HAS_VALIDATIONS`).
+  Champs de `fields` et statuts renommés avec migration ; `entryFields` sans migration.
+- **Entrée** : `requirementId`, `decision`, `comment` (texte simple), `fields`, `contentHash`, `decidedBy`,
+  `decidedAt`, `carriedFrom`, `proposed`, `proposedBy`, `proposedAt`. Exigence sans entrée : en attente. Fusion
+  git par `requirementId`.
+- **Périmètre** : exigences du composant, hors statut terminal. Version released : liste, contenu, statut de
+  rédaction et de design lus à `freeze.sha` ; version en cours : disque. Liens, tests, exécutions et statut de
+  vérification : état courant. Commit figé absent : erreur, jamais un périmètre vide.
+- **Statut de design** (`designVersions`, corrige GH201 §7) : première version released qui inclut l'exigence dans
+  `changes` et dont l'état figé est identique (clé du backlog) ; « — » sinon.
+- **Impact** : « changée » (dans `changes`) ou « impactée » (ligne atteinte de l'analyse, hors `pas_d_impact_reel`).
+- **À revoir** : contenu différent de `contentHash`, ou décision reprise d'une exigence devenue changée ou impactée.
+  Bloque la signature. Levé par Confirmer ou par une autre décision ; compléter le commentaire ou les champs ne
+  le lève pas.
+- **Reprise** à la création : décisions de la validation signée de `basedOn`, pour les exigences ni changées, ni
+  impactées, de contenu identique.
+- **Cycle de vie** : une seule validation non annulée par version ; signature réservée aux versions released, refusée
+  avec tous ses motifs (`VERSION_NOT_RELEASED`, `DECISION_PENDING`, `DECISION_PROPOSED`, `DECISION_TO_REVIEW`,
+  `FIELD_MISSING`). Signer commite le seul fichier, sans tag ni baseline, et retire les entrées hors périmètre.
+  Signée : verrouillée, seule sortie `annulee`. Suppression : validation en cours seulement. Version référencée non
+  supprimable (`VERSION_HAS_VALIDATION`). Composant en lecture seule : `READONLY_REPO`, à faire dans son repo.
+- **Sous-composants** : leur validation s'affiche dans l'en-tête, sans bloquer la signature (Q6).
+- **Vue** : SPEC-ELECTRON-DESKTOP §19.2. **MCP** : SPEC-MCP-SERVER §4.10. **Graphe** : SPEC-DASHBOARDS.

@@ -13,7 +13,7 @@ import { withKeyLock } from './serialize-writes.util'
 import type { TreeService } from './tree.service'
 
 interface DeletedType { ref: string; node: string; type: string; category: ObjectCategory }
-type DeletedObjectCategory = Exclude<ObjectCategory, 'version'>
+type DeletedObjectCategory = Exclude<ObjectCategory, 'version' | 'validation'>
 
 interface Computed {
   plan: SchemaDeletePlan
@@ -187,6 +187,11 @@ export class SchemaDeleteService {
       // GH201 — une version porte un tag et l'historique livré : son type ne se supprime pas avec elles.
       if (t.category === 'version') {
         if (ids.length > 0) plan.errors.push({ code: 'HAS_VERSIONS', detail: `Le type version ${t.ref} a des versions (${ids.join(', ')}) : il ne se supprime pas.` })
+        continue
+      }
+      // GH204 — une validation signée est un registre : son type ne se supprime pas avec elles.
+      if (t.category === 'validation') {
+        if (ids.length > 0) plan.errors.push({ code: 'HAS_VALIDATIONS', detail: `Le type validation ${t.ref} a des validations (${ids.join(', ')}) : il ne se supprime pas.` })
         continue
       }
       plan.objects[t.category as DeletedObjectCategory].push(...ids)

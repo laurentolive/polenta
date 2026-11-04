@@ -13,6 +13,7 @@ import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as VersionsRouteImport } from './routes/versions'
 import { Route as VersioningRouteImport } from './routes/versioning'
 import { Route as VersionDiffRouteImport } from './routes/version-diff'
+import { Route as ValidationsRouteImport } from './routes/validations'
 import { Route as TestsRouteImport } from './routes/tests'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SchemaRouteImport } from './routes/schema'
@@ -37,6 +38,7 @@ import { Route as AccountRouteImport } from './routes/account'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as VersionsBacklogRouteImport } from './routes/versions_.backlog'
 import { Route as VersionVersionIdRouteImport } from './routes/version.$versionId'
+import { Route as ValidationValidationIdRouteImport } from './routes/validation.$validationId'
 import { Route as TestNewRouteImport } from './routes/test.new'
 import { Route as TestTestIdRouteImport } from './routes/test.$testId'
 import { Route as ReqNewRouteImport } from './routes/req.new'
@@ -71,6 +73,11 @@ const VersioningRoute = VersioningRouteImport.update({
 const VersionDiffRoute = VersionDiffRouteImport.update({
   id: '/version-diff',
   path: '/version-diff',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ValidationsRoute = ValidationsRouteImport.update({
+  id: '/validations',
+  path: '/validations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TestsRoute = TestsRouteImport.update({
@@ -193,6 +200,11 @@ const VersionVersionIdRoute = VersionVersionIdRouteImport.update({
   path: '/version/$versionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ValidationValidationIdRoute = ValidationValidationIdRouteImport.update({
+  id: '/validation/$validationId',
+  path: '/validation/$validationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TestNewRoute = TestNewRouteImport.update({
   id: '/test/new',
   path: '/test/new',
@@ -294,6 +306,7 @@ export interface FileRoutesByFullPath {
   '/schema': typeof SchemaRoute
   '/search': typeof SearchRoute
   '/tests': typeof TestsRoute
+  '/validations': typeof ValidationsRoute
   '/version-diff': typeof VersionDiffRoute
   '/versioning': typeof VersioningRoute
   '/versions': typeof VersionsRoute
@@ -311,6 +324,7 @@ export interface FileRoutesByFullPath {
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
   '/test/new': typeof TestNewRoute
+  '/validation/$validationId': typeof ValidationValidationIdRoute
   '/version/$versionId': typeof VersionVersionIdRoute
   '/versions/backlog': typeof VersionsBacklogRoute
   '/campaign/$campaignId/execute/$testId': typeof CampaignCampaignIdExecuteTestIdRoute
@@ -339,6 +353,7 @@ export interface FileRoutesByTo {
   '/schema': typeof SchemaRoute
   '/search': typeof SearchRoute
   '/tests': typeof TestsRoute
+  '/validations': typeof ValidationsRoute
   '/version-diff': typeof VersionDiffRoute
   '/versioning': typeof VersioningRoute
   '/versions': typeof VersionsRoute
@@ -356,6 +371,7 @@ export interface FileRoutesByTo {
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
   '/test/new': typeof TestNewRoute
+  '/validation/$validationId': typeof ValidationValidationIdRoute
   '/version/$versionId': typeof VersionVersionIdRoute
   '/versions/backlog': typeof VersionsBacklogRoute
   '/campaign/$campaignId/execute/$testId': typeof CampaignCampaignIdExecuteTestIdRoute
@@ -385,6 +401,7 @@ export interface FileRoutesById {
   '/schema': typeof SchemaRoute
   '/search': typeof SearchRoute
   '/tests': typeof TestsRoute
+  '/validations': typeof ValidationsRoute
   '/version-diff': typeof VersionDiffRoute
   '/versioning': typeof VersioningRoute
   '/versions': typeof VersionsRoute
@@ -402,6 +419,7 @@ export interface FileRoutesById {
   '/req/new': typeof ReqNewRoute
   '/test/$testId': typeof TestTestIdRoute
   '/test/new': typeof TestNewRoute
+  '/validation/$validationId': typeof ValidationValidationIdRoute
   '/version/$versionId': typeof VersionVersionIdRoute
   '/versions_/backlog': typeof VersionsBacklogRoute
   '/campaign/$campaignId_/execute/$testId': typeof CampaignCampaignIdExecuteTestIdRoute
@@ -432,6 +450,7 @@ export interface FileRouteTypes {
     | '/schema'
     | '/search'
     | '/tests'
+    | '/validations'
     | '/version-diff'
     | '/versioning'
     | '/versions'
@@ -449,6 +468,7 @@ export interface FileRouteTypes {
     | '/req/new'
     | '/test/$testId'
     | '/test/new'
+    | '/validation/$validationId'
     | '/version/$versionId'
     | '/versions/backlog'
     | '/campaign/$campaignId/execute/$testId'
@@ -477,6 +497,7 @@ export interface FileRouteTypes {
     | '/schema'
     | '/search'
     | '/tests'
+    | '/validations'
     | '/version-diff'
     | '/versioning'
     | '/versions'
@@ -494,6 +515,7 @@ export interface FileRouteTypes {
     | '/req/new'
     | '/test/$testId'
     | '/test/new'
+    | '/validation/$validationId'
     | '/version/$versionId'
     | '/versions/backlog'
     | '/campaign/$campaignId/execute/$testId'
@@ -522,6 +544,7 @@ export interface FileRouteTypes {
     | '/schema'
     | '/search'
     | '/tests'
+    | '/validations'
     | '/version-diff'
     | '/versioning'
     | '/versions'
@@ -539,6 +562,7 @@ export interface FileRouteTypes {
     | '/req/new'
     | '/test/$testId'
     | '/test/new'
+    | '/validation/$validationId'
     | '/version/$versionId'
     | '/versions_/backlog'
     | '/campaign/$campaignId_/execute/$testId'
@@ -568,6 +592,7 @@ export interface RootRouteChildren {
   SchemaRoute: typeof SchemaRoute
   SearchRoute: typeof SearchRoute
   TestsRoute: typeof TestsRoute
+  ValidationsRoute: typeof ValidationsRoute
   VersionDiffRoute: typeof VersionDiffRoute
   VersioningRoute: typeof VersioningRoute
   VersionsRoute: typeof VersionsRoute
@@ -585,6 +610,7 @@ export interface RootRouteChildren {
   ReqNewRoute: typeof ReqNewRoute
   TestTestIdRoute: typeof TestTestIdRoute
   TestNewRoute: typeof TestNewRoute
+  ValidationValidationIdRoute: typeof ValidationValidationIdRoute
   VersionVersionIdRoute: typeof VersionVersionIdRoute
   VersionsBacklogRoute: typeof VersionsBacklogRoute
   CampaignCampaignIdExecuteTestIdRoute: typeof CampaignCampaignIdExecuteTestIdRoute
@@ -619,6 +645,13 @@ declare module '@tanstack/react-router' {
       path: '/version-diff'
       fullPath: '/version-diff'
       preLoaderRoute: typeof VersionDiffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/validations': {
+      id: '/validations'
+      path: '/validations'
+      fullPath: '/validations'
+      preLoaderRoute: typeof ValidationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tests': {
@@ -789,6 +822,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VersionVersionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/validation/$validationId': {
+      id: '/validation/$validationId'
+      path: '/validation/$validationId'
+      fullPath: '/validation/$validationId'
+      preLoaderRoute: typeof ValidationValidationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/test/new': {
       id: '/test/new'
       path: '/test/new'
@@ -920,6 +960,7 @@ const rootRouteChildren: RootRouteChildren = {
   SchemaRoute: SchemaRoute,
   SearchRoute: SearchRoute,
   TestsRoute: TestsRoute,
+  ValidationsRoute: ValidationsRoute,
   VersionDiffRoute: VersionDiffRoute,
   VersioningRoute: VersioningRoute,
   VersionsRoute: VersionsRoute,
@@ -937,6 +978,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReqNewRoute: ReqNewRoute,
   TestTestIdRoute: TestTestIdRoute,
   TestNewRoute: TestNewRoute,
+  ValidationValidationIdRoute: ValidationValidationIdRoute,
   VersionVersionIdRoute: VersionVersionIdRoute,
   VersionsBacklogRoute: VersionsBacklogRoute,
   CampaignCampaignIdExecuteTestIdRoute: CampaignCampaignIdExecuteTestIdRoute,

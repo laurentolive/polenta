@@ -96,6 +96,20 @@ export class IssuesService {
     })
   }
 
+  /** GH204 — décision de validation à l'origine de l'issue (« Lier à une issue existante »). */
+  async addDecision(repoPath: string, id: string, decisionRef: string, workspaceDir?: string): Promise<Issue> {
+    return withKeyLock(`${repoPath}::${ISSUES_DIR}/${id}`, async () => {
+      const existing = await this.findOne(repoPath, id)
+      if (existing.origin?.decisions?.includes(decisionRef)) return existing
+      const targetRepo = (await this.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+      await this.assertWritable(targetRepo, workspaceDir)
+      return this.persist(repoPath, targetRepo, existing, {
+        ...existing,
+        origin: { ...existing.origin, decisions: [...(existing.origin?.decisions ?? []), decisionRef] },
+      })
+    })
+  }
+
   /** GH77 — renommage de champs dans l'éditeur de schéma : valeur et historique. */
   renameFieldKeys(repoPath: string, objectTypeRef: string, renames: FieldRename[], result: FieldRenameResult): Promise<void> {
     return this.rewriteObjects(repoPath, objectTypeRef, o => renameFieldKeys(o, renames), result)

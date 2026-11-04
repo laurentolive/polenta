@@ -524,9 +524,7 @@ function ExecuteEntryPage() {
         <IssueProposalDialog
           repoPath={repoPath}
           workspaceDir={projectId ? decodeProjectId(projectId) : undefined}
-          runId={failedRunId}
-          testId={testCaseId!}
-          requirementId={entry?.requirementId}
+          origin={{ kind: 'run', runId: failedRunId, testId: testCaseId!, requirementId: entry?.requirementId }}
           onClose={goBack}
         />
       )}

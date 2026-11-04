@@ -25,10 +25,10 @@ function writeLastComponent(projectId: string, repoPath: string): void {
 }
 
 /** Arbre des repos à plat, libellé = chemin (« Produit › Moteur »), ordre de l'arbre. */
-function flatten(nodes: VersionComponentNode[], prefix = ''): FlatNode[] {
+export function flattenVersionTree(nodes: VersionComponentNode[], prefix = ''): FlatNode[] {
   return nodes.flatMap(n => {
     const label = prefix ? `${prefix} › ${n.label}` : n.label
-    return [{ node: n, label }, ...flatten(n.children, label)]
+    return [{ node: n, label }, ...flattenVersionTree(n.children, label)]
   })
 }
 
@@ -44,7 +44,7 @@ export function ProductVersionsPanel({ projectId }: { projectId: string }) {
   const pathname = useRouterState({ select: s => s.location.pathname })
   const search = useRouterState({ select: s => s.location.search as Record<string, unknown> })
   const { data: tree, isLoading, error } = useVersionTree(projectId)
-  const flat = useMemo(() => flatten(tree ?? []), [tree])
+  const flat = useMemo(() => flattenVersionTree(tree ?? []), [tree])
 
   // Composant affiché : celui de la page ouverte (version, backlog), sinon le dernier choisi.
   const urlRepo = isProductVersionsPath(pathname) && typeof search['repoPath'] === 'string' ? search['repoPath'] as string : ''

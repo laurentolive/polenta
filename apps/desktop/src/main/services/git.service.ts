@@ -315,6 +315,17 @@ export class GitService {
    * autre erreur (objet manquant, pack corrompu) est levée : elle ne doit pas passer pour une
    * suppression.
    */
+  /** Le commit est-il présent dans le repo (`git.walk` ne signale pas un commit absent) ? */
+  async hasCommit(repoPath: string, commitOid: string): Promise<boolean> {
+    try {
+      await git.readCommit({ fs, dir: repoPath, oid: commitOid })
+      return true
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'NotFoundError') return false
+      throw err
+    }
+  }
+
   async readTextAt(repoPath: string, commitOid: string, filePath: string): Promise<string | null> {
     try {
       const { blob } = await git.readBlob({ fs, dir: repoPath, oid: commitOid, filepath: filePath })

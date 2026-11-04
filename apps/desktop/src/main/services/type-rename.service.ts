@@ -139,6 +139,16 @@ export class TypeRenameService {
     const ids = await objectIdsOfType({ requirements: this.requirements, tests: this.tests, campaigns: this.campaigns, issues: this.issues }, repoPath, dto.category, oldRef)
     if (oldRef !== newRef) plan.retargeted = ids.length
 
+    // GH204 — l'état figé d'une version garde les anciens IDs : une décision ne retrouverait plus son
+    // exigence (les versions ne sont pas réécrites non plus). Préfixe figé dès qu'une validation existe.
+    if (dto.category === 'requirement' && dto.oldPrefix !== dto.newPrefix && ids.length > 0) {
+      const validations = await fsP.readdir(path.join(repoPath, 'validations')).catch(() => [] as string[])
+      if (validations.some(f => f.endsWith('.yaml'))) {
+        plan.errors.push({ code: 'HAS_VALIDATIONS', detail: `Des validations référencent les exigences de ce type : son préfixe ${dto.oldPrefix} ne se modifie plus.` })
+        return { plan, repos, oldRef, newRef, writes }
+      }
+    }
+
     // Préfixe : campagnes exclues (`CAMP-NNNN` quel que soit le type, campaigns.service.ts).
     if (dto.oldPrefix !== dto.newPrefix && dto.category !== 'campaign' && dto.oldPrefix && dto.newPrefix) {
       const head = `${dto.oldPrefix}-`

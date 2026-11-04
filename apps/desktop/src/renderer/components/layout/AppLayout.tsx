@@ -16,10 +16,11 @@ import { JobBanner } from '../admin/JobBanner'
 import { capabilities } from '../../platform'
 import { isSidebarToggleShortcut, loadSidebarCollapsed, saveSidebarCollapsed } from './sidebarCollapse'
 import { isProductVersionsPath } from '../versions/useVersions'
+import { isValidationPath } from '../validation/useValidations'
 import { ElementNavProvider } from '../../contexts/ElementNavContext'
 import { ElementPreviewPopup } from '../element/ElementPreviewPopup'
 
-export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'issues' | 'dashboard' | 'parameters' | 'merge'
+export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'issues' | 'validation' | 'dashboard' | 'parameters' | 'merge'
 
 const SIDEBAR_ONLY_PANELS: Panel[] = ['account']
 
@@ -46,6 +47,7 @@ export function deducePanel(pathname: string, category?: string): Panel {
     return 'requirements'
   }
 
+  if (isValidationPath(pathname)) return 'validation'
   if (pathname === '/query' || pathname === '/dashboard') return 'dashboard'
   if (pathname === '/parameters') return 'parameters'
   // GH243 — Constellation : panneau Exigences ; modifications locales et « Impact à vérifier » :
@@ -259,6 +261,9 @@ export function AppLayout() {
         navigate({ to: '/product', search: { projectId: currentProjectId ?? '', tab: undefined, repo: searchParams.get('repo') ?? undefined, node: undefined, type: undefined, category } })
         break
       }
+      case 'validation':
+        if (currentProjectId) navigate({ to: '/validations', search: { projectId: currentProjectId } })
+        break
       case 'parameters':
         if (currentProjectId) navigate({ to: '/parameters', search: { projectId: currentProjectId, repo: undefined } })
         break

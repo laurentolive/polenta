@@ -33,7 +33,8 @@
       "menu": {
         "hide": "Hide \"{{label}}\"",
         "reset": "Reset layout"
-      }
+      },
+      "validation": "Validation"
     },
     "tabBar": {
       "newTab": "New tab (Ctrl+T)",
@@ -542,7 +543,15 @@
       "displayIdField": "ID shown in links",
       "displayIdPolenta": "Polenta ID",
       "displayIdTitle": "Title",
-      "issue": "Issue"
+      "issue": "Issue",
+      "validation": "Validation",
+      "decisions": "Decisions",
+      "decisionsHelp": "Values offered for each requirement. \"Pending\" is the initial value and blocks signing; \"Proposes an issue\" opens the issue proposal.",
+      "decisionPending": "Pending",
+      "decisionProposesIssue": "Proposes an issue",
+      "addDecision": "Add a decision",
+      "entryFields": "Decision fields",
+      "entryFieldsHelp": "Entered with each decision, in addition to the comment. \"Required if\": decision = a decision value."
     },
     "addDependency": {
       "editComponentTitle": "Edit component",
@@ -2344,7 +2353,10 @@
       "impacted": "Impacted requirements",
       "noRequirement": "No requirement of this component is linked to this test.",
       "importTitle_one": "{{count}} failed execution:",
-      "importTitle_other": "{{count}} failed executions:"
+      "importTitle_other": "{{count}} failed executions:",
+      "decisionTitle": "Decision to track",
+      "decisionHint": "{{id}}: \"{{decision}}\". Do you want to track this finding in an issue?",
+      "decisionDefaultTitle": "{{decision}} — {{id}} {{title}}"
     }
   },
   "versions": {
@@ -2438,7 +2450,8 @@
       "VERSION_NOT_FOUND": "Version not found: {{detail}}",
       "STATUS_UNKNOWN": "Unknown status: {{detail}}",
       "VERSION_ABANDONED": "Abandoned version: {{detail}}",
-      "NOT_OWN_ELEMENT": "Element of another component: {{detail}}"
+      "NOT_OWN_ELEMENT": "Element of another component: {{detail}}",
+      "VERSION_HAS_VALIDATION": "This version has a validation: {{detail}}"
     },
     "noVersion": "No version.",
     "expand": "Show components",
@@ -2496,5 +2509,114 @@
     "installHint": "The button opens the Git download page; check again once Git is installed.",
     "copy": "Copy",
     "paste": "Paste"
+  },
+  "validation": {
+    "title": "Validation",
+    "home": "Pick a component and a version in the side panel.",
+    "noType": "This component has no validation type. Add one in the data model, on the root node of the repository.",
+    "noVersionType": "This component has no version type: a validation always applies to a version.",
+    "create": "Create validation",
+    "newTitle": "New validation",
+    "newHint": "Validates version {{version}}. Decisions from the previous version are carried over for requirements neither changed nor impacted.",
+    "defaultTitle": "Validation {{version}}",
+    "titleLabel": "Title",
+    "status": "Status",
+    "version": "Version",
+    "remaining": "Left to decide",
+    "components": "Component validations",
+    "noValidation": "No validation",
+    "noRequirement": "This component has no requirement to validate.",
+    "noRun": "No execution",
+    "sign": "Sign",
+    "cancel": "Cancel validation",
+    "confirm": "Confirm",
+    "reject": "Reject",
+    "columns": "Columns",
+    "proposed": "Proposed by {{by}}",
+    "readonly": "Read-only component",
+    "readonlyHelp": "Read-only component: validations can be viewed here and are edited in the component repository.",
+    "versionAbandoned": "This version is abandoned: the validation can no longer be signed, and an existing signature no longer counts as a go-ahead.",
+    "signedBy": "by {{by}}, on {{at}}",
+    "state": {
+      "open": "in progress",
+      "signed": "signed",
+      "cancelled": "cancelled"
+    },
+    "column": {
+      "id": "ID",
+      "title": "Title",
+      "decision": "Decision",
+      "comment": "Comment",
+      "status": "Authoring",
+      "design": "Design",
+      "coverage": "Verification",
+      "impact": "Impact"
+    },
+    "impact": {
+      "changed": "changed",
+      "impacted": "impacted"
+    },
+    "review": {
+      "content": "to review: content changed",
+      "impact": "to review: now impacted"
+    },
+    "filter": {
+      "label": "Filter",
+      "all": "All requirements",
+      "pending": "To decide",
+      "proposed": "Proposed",
+      "review": "To review",
+      "impacted": "Changed or impacted"
+    },
+    "mention": {
+      "other_version": "other version",
+      "no_version": "version not recorded",
+      "evolved": "has changed",
+      "after_signature": "after signature"
+    },
+    "problems": {
+      "intro": "Cannot sign yet:",
+      "VERSION_NOT_RELEASED": "The version is not released",
+      "DECISION_PENDING": "Pending decisions",
+      "DECISION_PROPOSED": "Proposed decisions, to confirm or reject",
+      "DECISION_TO_REVIEW": "Decisions to review",
+      "FIELD_MISSING": "Missing required fields"
+    },
+    "confirmDialog": {
+      "sign": {
+        "title": "Sign validation",
+        "text": "Signing is the go-ahead for version {{version}}. The validation will be committed and can no longer be edited.",
+        "button": "Sign"
+      },
+      "cancel": {
+        "title": "Cancel validation",
+        "text": "The validation of version {{version}} will be cancelled. A new one can then be created.",
+        "textSigned": "This validation is signed: cancelling it withdraws the go-ahead for version {{version}}. The history keeps a record, and a new validation can be created.",
+        "button": "Cancel validation"
+      },
+      "delete": {
+        "title": "Delete validation",
+        "text": "The validation of version {{version}} and its decisions will be deleted. This cannot be undone.",
+        "button": "Delete"
+      }
+    },
+    "errors": {
+      "NO_VALIDATION_TYPE": "No validation type in this component: {{detail}}",
+      "VALIDATION_NOT_FOUND": "Validation not found: {{detail}}",
+      "VALIDATION_EXISTS": "This version already has a validation: {{detail}}",
+      "VALIDATION_LOCKED": "This validation is locked: {{detail}}",
+      "VERSION_NOT_FOUND": "Version not found: {{detail}}",
+      "VERSION_ABANDONED": "Abandoned version: {{detail}}",
+      "READONLY_REPO": "Read-only component: {{detail}}",
+      "DECISION_UNKNOWN": "Unknown decision: {{detail}}",
+      "NOT_IN_PERIMETER": "This requirement is no longer in scope: {{detail}}",
+      "SIGNATURE_REFUSED": "Signature refused: {{detail}}",
+      "NOT_PROPOSED": "This decision is not a proposal: {{detail}}",
+      "DECISION_CONFIRMED": "This decision is already confirmed: {{detail}}",
+      "NO_DECISION": "No decision on this requirement: {{detail}}",
+      "TITLE_EMPTY": "The title is required."
+    },
+    "noTest": "No test linked to this requirement.",
+    "otherComponent": "Executions in another component"
   }
 }

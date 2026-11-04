@@ -8,6 +8,7 @@ const CATEGORY_LABEL_KEY: Record<ObjectCategory, string> = {
   campaign: 'layout.activityBar.campaigns',
   version: 'schema.editor.version',
   issue: 'layout.activityBar.issues',
+  validation: 'layout.activityBar.validation',
 }
 
 // GH144 — empty state of a category tab (Exigences/Tests/Campagnes) when the selected component

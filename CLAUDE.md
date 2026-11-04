@@ -5,7 +5,8 @@
 Les demandes de correction ou d'évolution passent par une **issue GitHub** (repo `laurentolive/polenta`,
 CLI `gh`) — `TICKETS.md` n'est plus utilisé.
 Pour toute correction de bug ou évolution suivre WORKFLOW.md (méthode de travail, niveaux de
-vérification — **la suite e2e complète ne se lance qu'une fois par ticket**).
+vérification — **la suite e2e complète ne se lance qu'au merge sur `main`, après le « Validé » de
+l'humain et juste avant le push**).
 
 Leçons tirées des corrections, à appliquer dès le début de session :
 

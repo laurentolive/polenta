@@ -50,14 +50,15 @@ indiqué, pas plus souvent.**
 |--------|-------|------|
 | **1 — Ciblé** | Pendant le développement | `pnpm typecheck`, `pnpm lint`, et les tests touchés : `npx vitest run <fichier>` ou `npx vitest run --changed <branche de base>` |
 | **2 — Ticket** | Fin de sprint ; fin du correctif d'un bug | `pnpm test` complet et specs e2e du ticket : `pnpm build:web` puis `npx playwright test e2e-web/gh{N}-` (ou les specs voisines si le ticket n'en a pas). Toujours le chemin : le filtre porte sur le chemin complet, un `gh{N}` nu sélectionne toute la suite dans le worktree `…-GH{N}` |
-| **3 — Complet** | **Une seule fois par ticket**, à la validation finale, après `git merge main` | Suite e2e complète (`pnpm --filter @polenta/desktop test:e2e:web`), en arrière-plan |
+| **3 — Complet** | **Uniquement au merge sur `main`** : après le « Validé » de l'humain, juste avant le push (§ Validation finale) | Suite e2e complète (`pnpm --filter @polenta/desktop test:e2e:web`), en arrière-plan |
 
 - **Niveau 3 requis** si le ticket modifie le renderer, les services du main ou le serveur web. Pour
   un bug : seulement si le correctif touche du code transverse (IPC, schéma, stockage, composants
-  communs). Une branche de milestone le repasse une fois avant son merge dans `main`.
+  communs). Un ticket de milestone ne le lance pas : la branche de milestone le passe une fois, à la
+  validation de son merge dans `main`.
 - **Après un échec** : corriger, puis `npx playwright test --last-failed` — jamais la suite entière.
-- **Correction demandée à la validation finale** : niveau 2 ; niveau 3 seulement si elle touche du
-  code transverse.
+- **Correction demandée à la validation finale** : niveau 2, jamais le niveau 3 (il attend le
+  « Validé »).
 - **Échec sans rapport avec le ticket** : vérifier sur `main` avant de le déclarer préexistant, puis
   ouvrir une issue s'il n'y en a pas déjà une.
 - **Documentation seule** (`specs/`, `*.md`) : aucun test.
@@ -290,8 +291,8 @@ Chaque sprint n'exécute que son propre périmètre.
 4. Lance `/code-review` sur le diff
 5. Corrige les problèmes identifiés
 6. Exécute la vérification de **niveau 2** (§ Niveaux de vérification ; détail e2e :
-   `apps/desktop/e2e-web/README.md`). La suite e2e complète n'est pas lancée ici : elle attend la
-   validation finale. Les scénarios du ticket qui peuvent l'être sont ajoutés en e2e
+   `apps/desktop/e2e-web/README.md`). La suite e2e complète n'est pas lancée ici : elle attend le
+   « Validé » de l'humain. Les scénarios du ticket qui peuvent l'être sont ajoutés en e2e
    (`e2e-web/gh{N}-*.spec.ts`) plutôt que laissés en test manuel.
 7. Corrige jusqu'à zéro bug
 
@@ -343,27 +344,30 @@ l'humain teste là où il travaille d'habitude, puis autorise le push.
    git merge main                 # dans ../mon-projet-GH{N}/
    ```
    S'il y a eu des changements : relance typecheck / lint / `pnpm test`, commit, `git push`.
-2. Lance la suite complète si le ticket le requiert (**niveau 3**, § Niveaux de vérification) et
-   corrige jusqu'à zéro échec lié au ticket.
-3. Passe la PR en prêt : `gh pr ready GH{N}`
-4. Merge local dans le dossier principal, sans push :
+2. Passe la PR en prêt : `gh pr ready GH{N}`
+3. Merge local dans le dossier principal, sans push :
    ```
    git -C <dossier principal> merge --no-ff GH{N} -m "Merge GH{N} — <titre de l'issue>" -m "Closes #{N}"
    ```
-5. Si `pnpm-lock.yaml` a changé : `pnpm install` dans le dossier principal. Build / typecheck pour
+4. Si `pnpm-lock.yaml` a changé : `pnpm install` dans le dossier principal. Build / typecheck pour
    que l'humain puisse lancer l'appli directement.
-6. Pose `status:validation`, commente l'issue (PR, hash du merge local, lien vers le dernier
+5. Pose `status:validation`, commente l'issue (PR, hash du merge local, lien vers le dernier
    `GH{N}-sprint{K}.md` ou `specs/GH{N}.md` pour un bug)
 
 **`[STOP HUMAIN]`** — présente :
 - le résumé de ce qui a été fait (et pour un bug : root cause en une phrase)
-- les vérifications lancées avec leur résultat, et celles qui ne l'ont pas été
+- les vérifications lancées avec leur résultat, et celles qui ne l'ont pas été (dont la suite e2e
+  complète, si elle reste à lancer après le « Validé »)
 - la liste des scénarios de `GH{N}-tests.md` (ou « comment vérifier » du bug) **qui ne sont pas
   couverts par les tests automatiques** — c'est ce que l'humain doit tester à la main
 - comment lancer l'appli depuis le dossier principal
 
 Réponses possibles :
-- **Validé** → push et nettoyage :
+- **Validé** → suite complète si le ticket le requiert (**niveau 3**, § Niveaux de vérification),
+  lancée dans le worktree pour laisser le dossier principal libre. Tant qu'il reste un échec lié au
+  ticket, pas de push : l'agent corrige dans le worktree, repasse `--last-failed`, commit, push de
+  la branche, re-merge dans le dossier principal et re-présente le correctif à l'humain. Sinon, push
+  et nettoyage :
   ```
   git -C <dossier principal> push origin main     # PR marquée merged, issue fermée par « Closes #{N} »
   git worktree remove ../mon-projet-GH{N}

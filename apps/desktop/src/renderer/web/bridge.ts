@@ -146,10 +146,10 @@ const adapters: Record<string, (...args: unknown[]) => Promise<unknown>> = {
     if (!file) return { status: 'canceled' }
     return rpc('web:drawio-import', [repoPath, await upload(file)])
   },
-  'campaigns:execution-sheet-preview': async (repoPath, campaignId) => {
+  'campaigns:execution-sheet-preview': async (repoPath, campaignId, workspaceDir) => {
     const file = await pickFile('.xlsx')
     if (!file) return { canceled: true }
-    return rpc('web:execution-sheet-preview', [repoPath, campaignId, await upload(file)])
+    return rpc('web:execution-sheet-preview', [repoPath, campaignId, await upload(file), workspaceDir])
   },
   'export:save': (...args) => exportAndDownload('web:export', args),
   'campaigns:execution-sheet-export': (...args) => exportAndDownload('web:execution-sheet-export', args),

@@ -5,3 +5,6 @@ apps/desktop/src/renderer/public/vendor/drawio-viewer.min.js -text -diff linguis
 apps/desktop/src/main/services/fixtures/suivi-corpus/*.json text eol=lf
 # Journal alimenté depuis plusieurs worktrees en parallèle : les ajouts se fusionnent sans conflit.
 tasks/lessons.md merge=union
+
+# GH260 — sortie du générateur TanStack en LF : sinon il voit le fichier différent sous Windows (autocrlf) et le réécrit à chaque lancement.
+apps/desktop/src/renderer/routeTree.gen.ts text eol=lf

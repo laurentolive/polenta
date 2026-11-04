@@ -20,3 +20,6 @@ Thumbs.db
 # never be versioned (T69-design.md). Catches nested Polenta projects dogfooded under this repo
 # (e.g. apps/desktop/PL/) whose own .gitignore isn't guaranteed to cover the outer monorepo.
 **/.polenta/tree.cache.yaml
+
+# GH260 — fichiers temporaires du générateur de routes TanStack
+apps/desktop/.tanstack/

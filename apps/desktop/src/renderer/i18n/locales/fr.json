@@ -2368,6 +2368,12 @@
     "none": "— aucune —",
     "components": "Composants",
     "noType": "Pas de type version",
+    "tagPending": "Tag {{tag}} pas encore poussé",
+    "tagPendingHelp": "Il part au prochain push du repo. S'il reste affiché après un push, il a échoué, par exemple parce que ce tag existe déjà sur le serveur.",
+    "orphans": {
+      "title": "Composants retirés de la structure : ils bloquent le passage released.",
+      "remove": "Retirer"
+    },
     "readonly": "Composant en lecture seule",
     "showAbandoned": "Afficher les versions abandonnées",
     "seeChanges": "Voir les modifications",

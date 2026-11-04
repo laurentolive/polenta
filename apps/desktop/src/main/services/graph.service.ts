@@ -267,7 +267,7 @@ export class GraphService {
       const versions = list.map((v): GraphVersion => ({
         id: v.id, repo: repo.name, component: repo.name, objectTypeRef: v.objectTypeRef, title: v.title, status: v.status,
         state: versionState(vt?.typeDef ?? null, v.status), basedOn: v.basedOn ?? null, components: v.components ?? {},
-        changes: (v.changes ?? []).map((c) => ({ id: c.id, base: c.base ?? null })), freeze: v.freeze ? { tag: v.freeze.tag, sha: v.freeze.sha } : null,
+        changes: (v.changes ?? []).map((c) => ({ id: c.id, base: c.base ?? null })), freeze: v.freeze ? { tag: v.freeze.tag, sha: v.freeze.sha, at: String(v.freeze.at ?? '') } : null,
         impacted: (v.impacted ?? []).map((i) => ({ id: i.id, status: i.status, comment: i.comment ?? null })),
         analysis: v.analysis ? {
           computedAt: v.analysis.computedAt,

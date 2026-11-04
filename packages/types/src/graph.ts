@@ -314,7 +314,8 @@ export interface GraphVersion {
   /** Éléments inclus ; `base` : état dans la dernière version released qui les incluait. */
   changes: Array<{ id: string; base: { sha: string; version: number } | null }>
   /** Tag et commit figés au passage released ; `null` avant. */
-  freeze: { tag: string; sha: string } | null
+  /** `at` : ordre des livraisons (GH268). */
+  freeze: { tag: string; sha: string; at: string } | null
   /** Statuts d'impact saisis (GH245), tels que stockés. */
   impacted: Array<{ id: string; status: string; comment: string | null }>
   /** Analyse d'impact figée au passage released (GH245) ; `null` tant que la version est en cours.

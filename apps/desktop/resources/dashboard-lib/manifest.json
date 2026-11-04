@@ -231,6 +231,14 @@
             "fr": "GH267 : atSignature sur les entrées de validation (GraphValidationAtSignature)",
             "en": "GH267: atSignature on validation entries (GraphValidationAtSignature)"
           }
+        },
+        {
+          "version": 17,
+          "hash": "1311eda7f8881aac1d0f2cd21ecbf3bc5b8e811cc601b93b5cd909197f7933d3",
+          "summary": {
+            "fr": "GH268 : freeze.at sur GraphVersion",
+            "en": "GH268: freeze.at on GraphVersion"
+          }
         }
       ]
     },

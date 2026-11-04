@@ -46,7 +46,7 @@ const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id, 
 export class VersionsService {
   constructor(
     private readonly git: GitService,
-    private readonly sync: Pick<SyncService, 'commitSingleFile' | 'createAnnotatedTag' | 'resolveHead' | 'queueTagPush'>,
+    private readonly sync: Pick<SyncService, 'commitSingleFile' | 'createAnnotatedTag' | 'resolveHead' | 'queueTagPush' | 'deleteTag' | 'pendingTags'>,
     private readonly schema: Pick<SchemaService, 'get' | 'getAt'>,
     private readonly tracking: VersionTrackingService,
     private readonly history?: HistoryService,
@@ -237,7 +237,10 @@ export class VersionsService {
       if (existing) { existing.outside = outside; continue }
       const el = elements.find(e => e.state.id === o.id)
       if (!el) continue
-      const base = await this.baseFrom(repoPath, lastIncl.get(o.id), el.filePath)
+      // GH268 — déjà livré tel quel : ne revient pas à chaque version.
+      const delivered = lastIncl.get(o.id)
+      if (delivered?.freeze && (await this.tracking.readAt(repoPath, delivered.freeze.sha, el.filePath))?.key === el.state.key) continue
+      const base = await this.baseFrom(repoPath, delivered, el.filePath)
       items.set(o.id, {
         id: o.id, title: el.state.title, category: el.category, status: el.state.status, objectTypeRef: el.state.objectTypeRef,
         kind: 'modified', ...(base && { base }), outside, filePath: el.filePath,
@@ -378,7 +381,9 @@ export class VersionsService {
     return this.enqueue(repoPath, async () => {
       await this.assertWritable(repoPath, workspaceDir)
       const vt = await this.versionType(repoPath)
-      const typeDef = vt?.typeDef ?? null
+      // GH268 — schéma illisible : sans statuts, une version figée paraîtrait en cours et perdrait son verrou.
+      if (!vt) throw new VersionError('NO_VERSION_TYPE', path.basename(repoPath))
+      const typeDef = vt.typeDef
       const existing = await this.get(repoPath, id)
       const from = versionState(typeDef, existing.status)
       const to = dto.status !== undefined ? versionState(typeDef, dto.status) : from
@@ -494,6 +499,7 @@ export class VersionsService {
       basedOnOptions: versions.filter(v => v.id !== id && versionState(vt.typeDef, v.status) === 'released').map(summary).reverse(),
       components,
       rows,
+      tagPending: !!version.freeze?.tag && (await this.sync.pendingTags(repoPath).catch((): string[] => [])).includes(version.freeze.tag),
     }
   }
 
@@ -534,7 +540,10 @@ export class VersionsService {
         cur = w.basedOn
       }
       if (stop && cur !== stop) continue
+      const depDef = (await this.versionType(dep.repoPath))?.typeDef ?? null
       for (const w of chain) {
+        // GH268 — une version abandonnée ne livre rien : le backlog redit ses changements « nouveaux ».
+        if (versionState(depDef, w.status) === 'abandoned') continue
         if (visited.has(`${repoKey(dep.repoPath)}\u0000${w.id}`)) continue
         const prev = w.basedOn ? depVersions.get(w.basedOn) : undefined
         rows.push(...await this.rowsOf(depInfo, w, prev, nodes, logicalTree, visited, false))
@@ -762,13 +771,28 @@ export class VersionsService {
       // GH245 — analyse figée dans le même commit : lignes et racines, sans les arbres (volumineux et
       // porteurs de chemins locaux), calculée sur l'état du workspace au moment du passage.
       const analysis = this.impactSources ? freezeAnalysis((await this.liveAnalysis(repoPath, version, workspaceDir)).analysis) : undefined
+      // GH268 — `base` recalculée au gel : une autre version a pu livrer ces éléments depuis leur inclusion.
+      const lastIncl = this.lastInclusions(vt.typeDef, (await this.list(repoPath)).filter(v => v.id !== id))
+      const changes = await Promise.all((version.changes ?? []).map(async c => {
+        const el = await this.elementFile(repoPath, c.id)
+        if (!el) return c
+        const base = await this.baseFrom(repoPath, lastIncl.get(c.id), el.filePath)
+        return { id: c.id, ...(base && { base }) }
+      }))
       const released = await this.stamp(repoPath, version, {
-        ...version, status: approval, freeze: { tag: trimmed, sha: head, at: new Date().toISOString() }, ...(analysis && { analysis }),
+        ...version, ...(version.changes && { changes }), status: approval, freeze: { tag: trimmed, sha: head, at: new Date().toISOString() }, ...(analysis && { analysis }),
       }, filePath)
       const content = yaml.dump(released, { lineWidth: 120 })
       // Tag posé sur le commit avant que la branche n'avance : un échec du tag laisse la version en cours.
-      await this.sync.commitSingleFile(repoPath, filePath, content, `[version] ${id} ${version.title} released`,
-        commit => this.sync.createAnnotatedTag(repoPath, trimmed, `${version.title} (${id})`, commit))
+      let tagged = false
+      await this.sync.commitSingleFile(repoPath, filePath, content, `[version] ${id} ${version.title} released`, async commit => {
+        await this.sync.createAnnotatedTag(repoPath, trimmed, `${version.title} (${id})`, commit)
+        tagged = true
+      }).catch(async (err: unknown) => {
+        // GH268 — branche avancée pendant le commit : sans cela, le nouvel essai échouerait en TAG_EXISTS.
+        if (tagged) await this.sync.deleteTag(repoPath, trimmed).catch(() => undefined)
+        throw err
+      })
       await this.git.writeText(repoPath, filePath, content)
       await this.sync.queueTagPush(repoPath, trimmed).catch(err => console.warn(`[versions] tag ${trimmed} non mis en attente de push :`, err))
       return released
@@ -832,11 +856,16 @@ function freezeAnalysis(a: VersionAnalysis): VersionAnalysis {
   })) as VersionAnalysis
 }
 
+/** GH268 — `freeze.at` édité à la main : date YAML non quotée, ou absent (en tête). */
+function freezeTime(v: ProductVersion): number {
+  return new Date(v.freeze?.at ?? 0).getTime() || 0
+}
+
 /** Versions released par ordre de livraison (`freeze.at`). */
 function releasedInOrder(typeDef: ObjectTypeDefinition | null, versions: ProductVersion[]): ProductVersion[] {
   return versions
     .filter(v => v.freeze && versionState(typeDef, v.status) === 'released')
-    .sort((a, b) => a.freeze!.at.localeCompare(b.freeze!.at))
+    .sort((a, b) => freezeTime(a) - freezeTime(b))
 }
 
 function cleanComponents(components: Record<string, string> | undefined): Record<string, string> | undefined {

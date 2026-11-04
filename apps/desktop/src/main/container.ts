@@ -22,7 +22,7 @@ import { SavedViewsService } from './services/saved-views.service'
 import { ExecutionHistoryService } from './services/execution-history.service'
 import { CampaignExecutionService } from './services/campaign-execution.service'
 import { TestedConfigService } from './services/tested-config.service'
-import { TreeService, indexObjectLister } from './services/tree.service'
+import { TreeService, indexObjectLister, serviceTitleAdopter } from './services/tree.service'
 import { BaselineService } from './services/baseline.service'
 import { PolentaRepoService } from './services/polenta-repo.service'
 import { WorkspaceTreeService } from './services/workspace-tree.service'
@@ -87,7 +87,11 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     if (relPath === '.polenta/schema.yaml' || relPath === '*') schema.invalidate(repoPath)
   })
   const interfaceCompliance = new InterfaceComplianceService(workspaceTree, reqIndex)
-  const tree = new TreeService(indexObjectLister(reqIndex, testsIndex, p => issues.findAll(p)))
+  const tree = new TreeService(
+    indexObjectLister(reqIndex, testsIndex, p => issues.findAll(p)),
+    // GH261 — recopie du libellé d'un ancien fichier d'arbre dans le titre de l'objet.
+    (repoPath, ref, titles) => serviceTitleAdopter(requirements, tests, issues)(repoPath, ref, titles),
+  )
   // GH77 — historique des champs suivis ; `by` = compte du projet (login forge, sinon `local`).
   const history = new HistoryService(git, async repoPath => ({ by: await auth.projectUsername(repoPath) }))
   // T172 — marquage needsRevalidation des éléments liés quand un élément quitte l'approbation.

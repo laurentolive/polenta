@@ -1,6 +1,6 @@
 import type {
-  CoverageStatus, ObjectTypeDefinition, ProjectSchema, ProductVersion, Validation, ValidationEntry, ValidationImpact,
-  ValidationProblem, ValidationRow, VersionAnalysis, VersionState,
+  CoverageStatus, ExecutionHistoryRow, ObjectTypeDefinition, ProjectSchema, ProductVersion, Validation, ValidationAtSignature, ValidationEntry,
+  ValidationImpact, ValidationProblem, ValidationRow, ValidationSignedRun, VersionAnalysis, VersionState,
 } from '@polenta/types'
 import { isFieldRequiredNow, isFieldValueFilled, missingEntryFields, objectFieldReader, pendingDecision } from '@polenta/types'
 import { findObjectTypeDef } from './schema-lookup.util'
@@ -65,12 +65,22 @@ export function buildRows(input: {
   design: Map<string, { id: string; title: string }>
   /** Validations annulées qui invalident une décision reprise ; vide pour une validation signée, qui reste un registre. */
   cancelled?: ReadonlySet<string>
+  /** GH267 — colonnes lues dans la copie de chaque entrée. */
+  frozen?: boolean
 }): ValidationRow[] {
   const pending = pendingDecision(input.typeDef)?.name ?? ''
   const entries = new Map(input.validation.entries.map(e => [e.requirementId, e]))
   return inPerimeter(input.schema, input.requirements)
     .map(({ state, fields }): ValidationRow => {
       const entry = entries.get(state.id) ?? null
+      const copy = input.frozen ? entry?.atSignature : undefined
+      if (copy) {
+        return {
+          requirementId: state.id, title: state.title, objectTypeRef: state.objectTypeRef, status: copy.status, fields,
+          designVersion: copy.designVersion ?? null, coverageStatus: copy.coverageStatus, tests: copy.tests,
+          impact: copy.impact ?? null, decision: entry!.decision, entry, review: null,
+        }
+      }
       const impact = input.impact(state.id)
       return {
         requirementId: state.id, title: state.title, objectTypeRef: state.objectTypeRef, status: state.status, fields,
@@ -79,6 +89,7 @@ export function buildRows(input: {
         tests: input.coverage.get(state.id)?.tests ?? [],
         impact, decision: entry?.decision ?? pending, entry,
         review: reviewOf(entry, contentHash(state), impact, input.cancelled),
+        ...(input.frozen && { outsideSignature: true }),
       }
     })
     .sort((a, b) => a.requirementId.localeCompare(b.requirementId, undefined, { numeric: true }))
@@ -96,7 +107,9 @@ export function carryOver(
   for (const { state } of requirements) {
     const entry = previous.get(state.id)
     if (!entry || impact(state.id) || entry.contentHash !== contentHash(state)) continue
-    out.push({ ...entry, carriedFrom: signed.id })
+    // La copie décrit la signature d'origine, pas celle à venir (GH267).
+    const { atSignature: _atSignature, ...decision } = entry
+    out.push({ ...decision, carriedFrom: signed.id })
   }
   return out
 }
@@ -126,4 +139,28 @@ export function signatureProblems(input: {
   }
   add('FIELD_MISSING', missing)
   return problems
+}
+
+/**
+ * GH267 — copie d'une ligne pour le registre, à partir de la ligne contrôlée à la signature et de
+ * l'historique affiché par la grille (les exécutions les plus récentes d'abord). Copie JSON : le fichier
+ * ne dépend plus des objets lus, et une valeur `undefined` ne bloque pas l'écriture YAML.
+ */
+export function signatureCopy(row: ValidationRow, history: ExecutionHistoryRow[]): ValidationAtSignature {
+  const lastRuns = new Map<string, ExecutionHistoryRow>()
+  for (const h of history) if (h.kind === 'run' && h.run && !lastRuns.has(h.testCaseId)) lastRuns.set(h.testCaseId, h)
+  const signedRun = (h: ExecutionHistoryRow | undefined): ValidationSignedRun | undefined => h?.run && {
+    id: h.run.id, result: h.run.result, executedAt: h.run.executedAt, executedBy: h.run.executedBy, notes: h.run.notes,
+    testedConfig: h.run.testedConfig, ...(h.testedDrift?.length && { testedDrift: h.testedDrift }),
+  }
+  const linked = new Set(row.tests.map(t => t.id))
+  const tests = [
+    ...row.tests.map(t => ({ ...t, lastRun: signedRun(lastRuns.get(t.id)) })),
+    // Comme la grille : une exécution rattachée à un test absent de la matrice reste visible.
+    ...[...lastRuns.values()].filter(h => !linked.has(h.testCaseId)).map(h => ({ id: h.testCaseId, title: h.testTitle, local: true, lastRun: signedRun(h) })),
+  ]
+  return JSON.parse(JSON.stringify({
+    status: row.status, designVersion: row.designVersion ?? undefined, coverageStatus: row.coverageStatus,
+    impact: row.impact ?? undefined, tests,
+  })) as ValidationAtSignature
 }

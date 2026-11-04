@@ -11,7 +11,7 @@ function containsVersion(node: TestedConfigNode, versionId: string): boolean {
  * `other_version` : la version validée n'est ni la version testée ni dans sa structure figée ; une
  * exécution sur le produit qui contient cette version de composant la vérifie donc bien.
  */
-export function runMentions(row: Pick<ExecutionHistoryRow, 'run' | 'testedDrift'>, versionId: string, signedAt: string | null): RunMention[] {
+export function runMentions(row: { run?: Pick<NonNullable<ExecutionHistoryRow['run']>, 'testedConfig' | 'executedAt'>; testedDrift?: ExecutionHistoryRow['testedDrift'] }, versionId: string, signedAt: string | null): RunMention[] {
   const run = row.run
   if (!run) return []
   const out: RunMention[] = []

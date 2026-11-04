@@ -178,4 +178,6 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
   expect(git('log', '-1', '--format=%s')).toContain('signée')
   await expect(page.getByTestId(`validation-decision-${reqA}`).locator('option')).toHaveCount(0)
   await expect(page.getByTestId('validation-sign')).toHaveCount(0)
+  // GH267 — la grille d'une validation signée montre ce que le signataire a vu.
+  await expect(page.getByTestId('validation-frozen')).toBeVisible()
 })

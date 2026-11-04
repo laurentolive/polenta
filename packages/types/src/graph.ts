@@ -255,6 +255,30 @@ export interface GraphValidationEntry {
   decidedAt: string | null
   carriedFrom: string | null
   proposed: boolean
+  /** GH267 — ce que le signataire a vu ; `null` sans signature. */
+  atSignature: GraphValidationAtSignature | null
+}
+
+/** Copie posée à la signature : rédaction, design, vérification, impact, tests et leur dernière exécution. */
+export interface GraphValidationAtSignature {
+  status: string
+  designVersion?: { id: string; title: string }
+  coverageStatus: string
+  impact?: { kind: 'changed' | 'impacted'; sources: Array<{ rootId: string; path: Array<{ id: string }> }> }
+  tests: Array<{
+    id: string
+    title: string
+    local: boolean
+    lastRun?: {
+      id: string
+      result: string
+      executedAt: string
+      executedBy?: string
+      notes?: string
+      testedConfig?: GraphTestedConfig
+      testedDrift?: unknown[]
+    }
+  }>
 }
 
 /** Validation d'une version, GH204. `state` : `signed` = feu vert. */

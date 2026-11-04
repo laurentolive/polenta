@@ -840,20 +840,27 @@ elle vaut feu vert ; sur la version produit, go production série. Détail : `sp
   figés, décision utilisée non retirable (`DECISION_IN_USE`), préfixe des types d'exigence figé (`HAS_VALIDATIONS`).
   Champs de `fields` et statuts renommés avec migration ; `entryFields` sans migration.
 - **Entrée** : `requirementId`, `decision`, `comment` (texte simple), `fields`, `contentHash`, `decidedBy`,
-  `decidedAt`, `carriedFrom`, `proposed`, `proposedBy`, `proposedAt`. Exigence sans entrée : en attente. Fusion
-  git par `requirementId`.
+  `decidedAt`, `carriedFrom`, `proposed`, `proposedBy`, `proposedAt`, `atSignature`. Exigence sans entrée : en
+  attente. Fusion git par `requirementId`.
 - **Périmètre** : exigences du composant, hors statut terminal. Version released : liste, contenu, statut de
-  rédaction et de design lus à `freeze.sha` ; version en cours : disque. Liens, tests, exécutions et statut de
-  vérification : état courant. Commit figé absent : erreur, jamais un périmètre vide.
+  rédaction lus à `freeze.sha`, avec le schéma de ce commit (`schemaOf`, GH266) ; version en cours : disque. Liens,
+  tests, exécutions et statut de vérification : état courant jusqu'à la signature. Commit figé absent : erreur, jamais
+  un périmètre vide.
+- **Copie à la signature** (`atSignature`, GH267) : statut de rédaction, design, vérification, impact, tests et leur
+  dernière exécution. Une validation signée, ou annulée après signature, se lit dans ces copies : liens retirés, nouveaux
+  runs ou erreur de traçabilité ne la changent plus. Échec de lecture à la signature : refus. Copie jamais reprise, ni écrite
+  par le MCP. Entrée sans copie dans un fichier signé : « hors signature ». Signée sans aucune copie : lecture directe.
 - **Statut de design** (`designVersions`, corrige GH201 §7) : première version released qui inclut l'exigence dans
   `changes` et dont l'état figé est identique (clé du backlog) ; « — » sinon.
-- **Impact** : « changée » (dans `changes`) ou « impactée » (ligne atteinte de l'analyse, hors `pas_d_impact_reel`).
-- **À revoir** : contenu différent de `contentHash`, ou décision reprise d'une exigence devenue changée ou impactée.
+- **Impact** : « changée » (dans `changes`) ou « impactée » (ligne atteinte de l'analyse, ou racine sans changement
+  comme une exigence impactée par une issue ; hors `pas_d_impact_reel`).
+- **À revoir** : contenu différent de `contentHash`, décision reprise d'une exigence devenue changée ou impactée, ou
+  d'une validation annulée.
   Bloque la signature. Levé par Confirmer ou par une autre décision ; compléter le commentaire ou les champs ne
   le lève pas.
 - **Reprise** à la création : décisions de la validation signée de `basedOn`, pour les exigences ni changées, ni
   impactées, de contenu identique.
-- **Cycle de vie** : une seule validation non annulée par version ; signature réservée aux versions released, refusée
+- **Cycle de vie** : une seule validation non annulée par version, contrôlée aussi à la signature ; signature réservée aux versions released, refusée
   avec tous ses motifs (`VERSION_NOT_RELEASED`, `DECISION_PENDING`, `DECISION_PROPOSED`, `DECISION_TO_REVIEW`,
   `FIELD_MISSING`). Signer commite le seul fichier, sans tag ni baseline, et retire les entrées hors périmètre.
   Signée : verrouillée, seule sortie `annulee`. Suppression : validation en cours seulement. Version référencée non

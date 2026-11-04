@@ -2561,6 +2561,12 @@
       "impact": "à revoir : devenue impactée",
       "source": "à revoir : validation d'origine annulée"
     },
+    "frozen": {
+      "copy": "À la signature : rédaction, design, vérification, impact et tests montrent ce que le signataire a vu.",
+      "legacy": "Signée avant le figeage : ces colonnes montrent l'état actuel, pas celui de la signature.",
+      "outside": "hors signature",
+      "outsideBanner": "Des lignes ne sont pas couvertes par la signature, par exemple après une fusion git. Pour les intégrer, annulez puis refaites la validation."
+    },
     "filter": {
       "label": "Filtre",
       "all": "Toutes les exigences",

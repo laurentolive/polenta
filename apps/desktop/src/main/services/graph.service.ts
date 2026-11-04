@@ -2,7 +2,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
   CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
-  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphIssue, GraphValidation, GraphVersion,
+  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphIssue, GraphValidation, GraphValidationEntry, GraphVersion,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Issue, Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
@@ -243,6 +243,7 @@ export class GraphService {
         entries: v.entries.map(e => ({
           requirementId: e.requirementId, decision: e.decision, comment: e.comment ?? null, fields: e.fields ?? {},
           decidedBy: e.decidedBy ?? null, decidedAt: e.decidedAt ?? null, carriedFrom: e.carriedFrom ?? null, proposed: !!e.proposed,
+          atSignature: (e.atSignature ?? null) as GraphValidationEntry['atSignature'],
         })),
         fields: v.fields, history: v.history ?? {},
       }))

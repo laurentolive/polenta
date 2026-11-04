@@ -5,6 +5,8 @@ import type {
   ValidationEntry, ValidationErrorCode, ValidationPage, ValidationRow, ValidationVersionItem,
 } from '@polenta/types'
 import { flattenSystemNodes, initialStatus, pendingDecision, renameFieldKeys, validationState, versionState } from '@polenta/types'
+import { isValidationFrozen } from '@polenta/types'
+import type { ValidationAtSignature } from '@polenta/types'
 import type { CreateValidationDto, UpdateValidationDto, ValidationDecisionDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { HistoryService } from './history.service'
@@ -15,11 +17,15 @@ import type { VersionsService } from './versions.service'
 import { applyFieldsWrite } from './field-write.util'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { repoKey } from './schema-refs.util'
-import { buildRows, carryOver, impactOf, inPerimeter, signatureProblems } from './validation-rows.util'
+import { buildRows, carryOver, impactOf, inPerimeter, signatureCopy, signatureProblems } from './validation-rows.util'
+import type { ExecutionHistoryService } from './execution-history.service'
 import type { ValidationRequirement } from './validation-rows.util'
 import { contentHash } from './version-tracking.service'
 
 /** Erreur métier : le message commence par le code (`VALIDATION_LOCKED: …`), traduit par le renderer. */
+type LiveColumns = Pick<Parameters<typeof buildRows>[0], 'coverage' | 'impact' | 'design'>
+const NO_LIVE_COLUMNS: LiveColumns = { coverage: new Map(), impact: () => null, design: new Map() }
+
 export class ValidationError extends Error {
   constructor(readonly code: ValidationErrorCode, detail: string) {
     super(`${code}: ${detail}`)
@@ -46,6 +52,7 @@ export class ValidationsService {
     private readonly versions: Pick<VersionsService, 'get' | 'list' | 'versionType' | 'analysis' | 'isReadonly' | 'requirementsOf' | 'schemaOf' | 'designVersionsFor' | 'componentVersions'>,
     private readonly traceability: Pick<TraceabilityService, 'getMatrix'>,
     private readonly history: Pick<HistoryService, 'stamp' | 'currentActor'>,
+    private readonly executions: Pick<ExecutionHistoryService, 'history'>,
   ) {}
 
   private writeQueues = new Map<string, Promise<unknown>>()
@@ -118,6 +125,7 @@ export class ValidationsService {
       problems: signatureProblems({ typeDef: vt.typeDef, validation, versionState: vState, rows }),
       readonly: await this.versions.isReadonly(repoPath, workspaceDir),
       signed: state === 'signed' && signedEntry ? { at: signedEntry.at, by: signedEntry.by ?? null } : null,
+      frozen: isValidationFrozen(state, validation) ? 'copy' : state === 'signed' && validation.entries.length > 0 ? 'legacy' : null,
       components: await this.componentStatuses(repoPath, version, workspaceDir),
       ...(await this.requirementDisplay(repoPath)),
     }
@@ -135,6 +143,24 @@ export class ValidationsService {
   private async rows(repoPath: string, typeDef: ObjectTypeDefinition, validation: Validation, version: ProductVersion, workspaceDir?: string): Promise<ValidationRow[]> {
     const schema = await this.versions.schemaOf(repoPath, version)
     const requirements = await this.versions.requirementsOf(repoPath, version)
+    const state = validationState(typeDef, validation.status)
+    const frozen = isValidationFrozen(state, validation)
+    const copied = new Set(validation.entries.filter(e => e.atSignature).map(e => e.requirementId))
+    const needsLive = !frozen || inPerimeter(schema, requirements).some(r => !copied.has(r.state.id))
+    // GH267 — validation figée : le registre reste lisible, seule une ligne sans copie lit l'état courant, au mieux.
+    const live = !needsLive ? NO_LIVE_COLUMNS
+      : frozen ? await this.liveColumns(repoPath, version, requirements, workspaceDir).catch(() => NO_LIVE_COLUMNS)
+      : await this.liveColumns(repoPath, version, requirements, workspaceDir)
+    return buildRows({
+      schema, typeDef, validation, requirements, frozen, ...live,
+      cancelled: state === 'open'
+        ? new Set((await this.list(repoPath)).filter(v => validationState(typeDef, v.status) === 'cancelled').map(v => v.id))
+        : new Set(),
+    })
+  }
+
+  /** Colonnes lues dans l'état courant : couverture, impact, design. */
+  private async liveColumns(repoPath: string, version: ProductVersion, requirements: ValidationRequirement[], workspaceDir?: string): Promise<LiveColumns> {
     // Sans analyse, aucune exigence ne paraîtrait impactée : l'erreur remonte plutôt que d'ouvrir la signature.
     const analysis = await this.versions.analysis(repoPath, version.id, workspaceDir)
     // Sans matrice, toutes les exigences paraîtraient non couvertes : l'erreur remonte (GH266).
@@ -145,14 +171,11 @@ export class ValidationsService {
       status: r.coverageStatus,
       tests: r.cells.map(c => ({ id: c.testCaseId, title: titles.get(c.testCaseId) ?? '', local: localTests.has(c.testCaseId) })),
     }]))
-    return buildRows({
-      schema, typeDef, validation, requirements, coverage,
+    return {
+      coverage,
       impact: impactOf(version, analysis),
       design: await this.versions.designVersionsFor(repoPath, requirements.map(r => r.state)),
-      cancelled: validationState(typeDef, validation.status) === 'open'
-        ? new Set((await this.list(repoPath)).filter(v => validationState(typeDef, v.status) === 'cancelled').map(v => v.id))
-        : new Set(),
-    })
+    }
   }
 
   private async componentStatuses(repoPath: string, version: ProductVersion, workspaceDir?: string): Promise<ValidationComponentStatus[]> {
@@ -299,8 +322,15 @@ export class ValidationsService {
       }
       const perimeter = new Set(rows.map(r => r.requirementId))
       const approval = vt.typeDef.statuses!.find(s => s.isApproval)!.name
+      // GH267 — une erreur de lecture remonte ici, avant toute écriture : une copie partielle serait une fausse preuve.
+      const copies = new Map<string, ValidationAtSignature>()
+      for (const row of rows) {
+        const history = row.tests.some(t => t.local) ? (await this.executions.history(repoPath, { requirementId: row.requirementId }, workspaceDir)).rows : []
+        copies.set(row.requirementId, signatureCopy(row, history))
+      }
       const signed = await this.stamp(repoPath, validation, {
-        ...validation, status: approval, entries: validation.entries.filter(e => perimeter.has(e.requirementId)),
+        ...validation, status: approval,
+        entries: validation.entries.filter(e => perimeter.has(e.requirementId)).map(e => ({ ...e, atSignature: copies.get(e.requirementId) })),
       })
       const content = yaml.dump(signed, { lineWidth: 120 })
       await this.sync.commitSingleFile(repoPath, fileOf(id), content, `[validation] ${id} ${validation.title} signée`)

@@ -223,6 +223,14 @@
             "fr": "GH204 : collection validations (GraphValidation), catégorie validation",
             "en": "GH204: validations collection (GraphValidation), validation category"
           }
+        },
+        {
+          "version": 16,
+          "hash": "956706dd24fb9374a13bd6641f3512ed7c41e4007da819e8a5ce0ab749b6a5a3",
+          "summary": {
+            "fr": "GH267 : atSignature sur les entrées de validation (GraphValidationAtSignature)",
+            "en": "GH267: atSignature on validation entries (GraphValidationAtSignature)"
+          }
         }
       ]
     },

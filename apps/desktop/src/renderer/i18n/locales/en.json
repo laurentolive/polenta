@@ -2561,6 +2561,12 @@
       "impact": "to review: now impacted",
       "source": "to review: source validation cancelled"
     },
+    "frozen": {
+      "copy": "At signature: authoring, design, verification, impact and tests show what the signer saw.",
+      "legacy": "Signed before freezing: these columns show the current state, not the state at signature.",
+      "outside": "outside signature",
+      "outsideBanner": "Some rows are not covered by the signature, for example after a git merge. To include them, cancel and redo the validation."
+    },
     "filter": {
       "label": "Filter",
       "all": "All requirements",

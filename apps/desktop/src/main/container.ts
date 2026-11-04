@@ -115,7 +115,9 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // GH244 — issues ; index oublié dès qu'un fichier `issues/` change.
   const issues = new IssuesService(git, schema, history, (repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
   // GH204 — validations d'une version : décisions, reprise, signature.
-  const validations = new ValidationsService(git, sync, schema, versions, traceability, history)
+  const validations = new ValidationsService(git, sync, schema, versions, traceability, history, {
+    history: (repoPath, target, workspaceDir) => executionHistory.history(repoPath, target, workspaceDir),
+  })
   // GH203 — vues enregistrées du ⚙️.
   const savedViews = new SavedViewsService((repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
   watcher.onFileChange((repoPath, relPath) => {

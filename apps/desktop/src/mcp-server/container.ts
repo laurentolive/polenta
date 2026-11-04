@@ -15,6 +15,7 @@ import { VersionTrackingService } from '../main/services/version-tracking.servic
 import { VersionsService } from '../main/services/versions.service'
 import { IssuesService } from '../main/services/issues.service'
 import { ValidationsService } from '../main/services/validations.service'
+import { ExecutionHistoryService } from '../main/services/execution-history.service'
 import { TraceabilityService } from '../main/services/traceability.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
@@ -139,7 +140,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   graph.setVersions(versions)
   const issues = new IssuesService(git, schema, history, (r, wsDir) => versions.isReadonly(r, wsDir))
   graph.setIssues(issues)
-  const validations = new ValidationsService(git, sync, schema, versions, traceability, history)
+  const validations = new ValidationsService(git, sync, schema, versions, traceability, history, new ExecutionHistoryService(tests, campaigns, requirements))
   graph.setValidations(validations)
   versions.setImpactSources({ traceability, campaigns })
   const dashboardLibrary = new DashboardLibraryService(git, workspaceTree)

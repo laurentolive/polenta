@@ -21,6 +21,9 @@ export interface Branch {
  */
 export type IntegrationStatus = 'ok' | 'incoherent' | 'nonConvention' | 'detached'
 
+/** Point de départ d'une nouvelle `int-*` : une baseline, ou un commit (graphe, GH276). */
+export type IntegrationCreateFrom = { tag: string } | { commit: string }
+
 export interface IntegrationState {
   /** `''` en detached HEAD. */
   currentBranch: string

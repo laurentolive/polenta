@@ -2400,7 +2400,7 @@ listés dans `SPEC-AUDIT.md`).
 | `history:backfill` | **GH77** — `repoPath` : reprise de l'historique depuis git (fichiers réécrits, pas de commit) | `HistoryBackfillResult` |
 | `integration:state` | **GH106** — `repoPath` : branche courante, intégration désignée, statut (`ok` / `incoherent` / `nonConvention` / `detached`), `int-*` locales et distantes | `IntegrationState` |
 | `integration:designate` | **GH106** — `repoPath, branch` : checkout si besoin, commit du seul `config/project.yaml`, push, branche par défaut de la forge | `DesignateOutcome` |
-| `integration:create` | **GH106** — `repoPath, suffix, from?: { tag }` : crée `int-<suffix>` (position courante ou baseline) puis la désigne | `DesignateOutcome` |
+| `integration:create` | **GH106** — `repoPath, suffix, from?: { tag } \| { commit }` (GH276) : crée `int-<suffix>` (position courante, baseline ou commit) puis la désigne | `DesignateOutcome` |
 
 `schema:save` ne régénère **aucun** fichier dérivé de type `.gitmodules` — c'est le seul écart avec
 la version précédente de cette section, à ne pas réintroduire dans une future correction.

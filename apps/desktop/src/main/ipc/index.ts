@@ -1,3 +1,4 @@
+import type { IntegrationCreateFrom } from '@polenta/types'
 import type { SavedViewsService } from '../services/saved-views.service'
 import type { SavedViewRef, SavedViewScope } from '@polenta/types'
 import { registerPrefHandlers } from './pref.handlers'
@@ -719,7 +720,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // ── Branche d'intégration (GH106) ────────────────────────────────────────────
   r.handle('integration:state', (_e, repoPath: string) => c.integration.state(repoPath))
   r.handle('integration:designate', (_e, repoPath: string, branch: string) => c.integration.designate(repoPath, branch))
-  r.handle('integration:create', (_e, repoPath: string, suffix: string, from?: { tag: string }) =>
+  r.handle('integration:create', (_e, repoPath: string, suffix: string, from?: IntegrationCreateFrom) =>
     c.integration.createAndDesignate(repoPath, suffix, from))
   r.handle('baseline:delete', (_e, repoPath: string, tag: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
     c.baseline.delete(repoPath, tag, components))

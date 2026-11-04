@@ -258,6 +258,24 @@ describe('designate', () => {
       expect(outcome.committed).toBe(true)
     })
 
+    it('deux clones désignent chacune leur int-* puis échangent leurs branches : aucun conflit (T-12)', async () => {
+      await sync.pushBranch(repo, 'int-A')
+      const other = path.join(tmp, 'clone').replace(/\\/g, '/')
+      await execFileAsync('git', ['clone', '-q', '--branch', 'int-A', bare, other])
+      const svc = new IntegrationBranchService(new GitService(), sync, { alignDefaultBranch: align } as unknown as ForgeService)
+      await git.checkout({ fs, dir: repo, ref: 'int-A' })
+      expect((await service.createAndDesignate(repo, 'X')).push).toBe('ok')
+      expect((await svc.createAndDesignate(other, 'Y')).push).toBe('ok')
+      for (const dir of [repo, other]) await execFileAsync('git', ['-C', dir, 'fetch', '-q', 'origin'])
+      for (const [branch, dir] of [['int-X', other], ['int-Y', repo]] as const) {
+        const { stdout } = await execFileAsync('git', ['-C', dir, 'show', `origin/${branch}:config/project.yaml`])
+        expect(stdout).toBe(`integrationBranch: ${branch}\n`)
+      }
+      // Chaque clone garde sa propre désignation.
+      expect((await service.state(repo)).configured).toBe('int-X')
+      expect((await svc.state(other)).configured).toBe('int-Y')
+    })
+
     it('createAndDesignate refuse un nom pris sur origin (T-22)', async () => {
       await sync.pushBranch(repo, 'int-B')
       await git.checkout({ fs, dir: repo, ref: 'int-A' })
@@ -313,6 +331,31 @@ describe('createAndDesignate', () => {
     expect(await git.listBranches({ fs, dir: repo })).not.toContain('int-pin')
   })
 
+  it('GH276 — depuis un commit (graphe)', async () => {
+    await setupInherited()
+    await git.checkout({ fs, dir: repo, ref: 'int-A' })
+    const start = await git.resolveRef({ fs, dir: repo, ref: 'HEAD' })
+    await write('requirements/R3.yaml', 'title: r3\n')
+    await commitAll('après le point de départ')
+    const outcome = await service.createAndDesignate(repo, 'v3', { commit: start })
+    const { commit } = await git.readCommit({ fs, dir: repo, oid: outcome.commitSha! })
+    expect(commit.parent).toEqual([start])
+    expect(await git.currentBranch({ fs, dir: repo })).toBe('int-v3')
+    expect(fs.existsSync(path.join(repo, 'requirements/R3.yaml'))).toBe(false)
+    await expect(service.createAndDesignate(repo, 'v4', { commit: '0'.repeat(40) })).rejects.toThrow('introuvable')
+    expect(await git.listBranches({ fs, dir: repo })).not.toContain('int-v4')
+  })
+
+  it('GH276 — depuis une baseline annotée', async () => {
+    await setupInherited()
+    await git.checkout({ fs, dir: repo, ref: 'int-A' })
+    const tagged = await git.resolveRef({ fs, dir: repo, ref: 'HEAD' })
+    await git.annotatedTag({ fs, dir: repo, ref: 'RE1', message: 'baseline', tagger: AUTHOR })
+    const outcome = await service.createAndDesignate(repo, 'v5', { tag: 'RE1' })
+    const { commit } = await git.readCommit({ fs, dir: repo, oid: outcome.commitSha! })
+    expect(commit.parent).toEqual([tagged])
+  })
+
   it('depuis une baseline (T-14)', async () => {
     await setupInherited()
     await git.checkout({ fs, dir: repo, ref: 'int-A' })
@@ -366,6 +409,19 @@ describe('assertDeletable', () => {
     await git.branch({ fs, dir: repo, ref: 'int-y' })
     await git.checkout({ fs, dir: repo, ref: 'int-y' })
     await expect(service.assertDeletable(repo, 'main', 'local')).resolves.toBeUndefined()
+  })
+
+  it('GH276 — dernière int-* sur origin refusée même avec une copie locale', async () => {
+    await git.init({ fs, dir: repo, defaultBranch: 'main' })
+    await write('README.md', 'x')
+    await commitAll('init')
+    await git.branch({ fs, dir: repo, ref: 'int-x' })
+    await git.branch({ fs, dir: repo, ref: 'int-y' })
+    // origin ne porte que int-x ; int-x et int-y existent aussi en local.
+    await git.writeRef({ fs, dir: repo, ref: 'refs/remotes/origin/int-x', value: await git.resolveRef({ fs, dir: repo, ref: 'int-x' }) })
+    await expect(service.assertDeletable(repo, 'int-x', 'remote')).rejects.toMatchObject({ code: 'lastIntegration' })
+    // En local, int-y reste : suppression autorisée.
+    await expect(service.assertDeletable(repo, 'int-x', 'local')).resolves.toBeUndefined()
   })
 
   it('suppression distante de la branche désignée refusée (T-28)', async () => {

@@ -124,6 +124,16 @@ afterEach(async () => {
 })
 
 describe('TypeRenameService', () => {
+  it('GH254 — préfixe refusé tant qu\'une version cite un objet du type, dans n\'importe quel repo', async () => {
+    await git.writeYaml(prod, 'versions/PV-0001.yaml', { id: 'PV-0001', objectTypeRef: 'root::version', title: '1.0', status: 'en_cours', changes: [{ id: 'PRODUCT_REQ-0001' }], fields: {} })
+    expect((await service.plan(comp, ws, REQ_DTO)).errors).toEqual([])
+    await git.writeYaml(comp, 'versions/CV-0001.yaml', { id: 'CV-0001', objectTypeRef: 'root::version', title: '1.0', status: 'released', changes: [{ id: 'COMP_REQ-0001' }], fields: {} })
+    const plan = await service.plan(comp, ws, REQ_DTO)
+    expect(plan.errors.map(e => e.code)).toEqual(['HAS_VERSIONS'])
+    expect(plan.errors[0]?.detail).toContain('CV-0001')
+    expect((await service.plan(comp, ws, { ...REQ_DTO, newPrefix: REQ_DTO.oldPrefix })).errors).toEqual([])
+  })
+
   it('plan — aperçu sans écriture : objets, fichiers des autres repos, refs de liens', async () => {
     const before = await snapshotAll()
     const plan = await service.plan(comp, ws, REQ_DTO)

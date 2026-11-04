@@ -548,6 +548,19 @@ describe('GH268 — corrections de la revue', () => {
     expect(await code(versions.create(root, { title: '3.0' }))).toBe('ok')
   })
 
+  it('GH254 — type renommé : les éléments livrés ne reviennent pas au backlog', async () => {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001'])
+    await commitAll(root, 'version')
+    await versions.release(root, v.id, 'produit-1.0')
+    await writeReq(root, 'PR-0001', { objectTypeRef: 'root::exigence-bis' })
+    const schema = schemas.get(path.resolve(root))!
+    schemas.set(path.resolve(root), { ...schema, nodes: schema.nodes.map(n => ({ ...n, objectTypes: n.objectTypes?.map(t => t.name === 'exigence' ? { ...t, name: 'exigence-bis' } : t) })) })
+    expect(await backlogIds(root)).toEqual([])
+  })
+
   it('la page dit le tag en attente', async () => {
     const v = await released('1.0')
     expect((await versions.page(root, v.id)).tagPending).toBe(true)

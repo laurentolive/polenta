@@ -150,7 +150,8 @@ interface ElementRecord {
 }
 
 /** Champs posés par l'application, qui ne sont pas un changement de l'élément (GH201 §4). */
-const APP_KEYS = new Set(['history', 'needsRevalidation', 'projectId', 'branchId', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'])
+// `objectTypeRef` (GH254) : renommer un type ne change pas ses éléments, ils ne reviennent pas au backlog.
+const APP_KEYS = new Set(['history', 'needsRevalidation', 'projectId', 'branchId', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'objectTypeRef'])
 /** GH200 §2 — champs de contenu comparés pour le hors interface (pas statut ni `version`). */
 const CONTENT_KEYS = ['title', 'fields', 'steps', 'preconditions', 'postconditions', 'equipment']
 

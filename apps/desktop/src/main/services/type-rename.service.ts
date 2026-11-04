@@ -13,6 +13,19 @@ import type { TreeService } from './tree.service'
 import { moveTeamViewsFile } from './saved-views.service'
 import { idRenamer, isBinary, listDataFiles, pruneEmptyDirs, renamePath } from './type-rename.util'
 
+/** GH254 — versions dont le fichier changerait au renommage. */
+async function versionsCiting(repos: string[], rename: (text: string) => string): Promise<string[]> {
+  const citing: string[] = []
+  for (const repo of repos) {
+    for (const file of await fsP.readdir(path.join(repo, 'versions')).catch(() => [] as string[])) {
+      if (!file.endsWith('.yaml')) continue
+      const text = await fsP.readFile(path.join(repo, 'versions', file), 'utf-8')
+      if (rename(text) !== text) citing.push(file.replace(/\.yaml$/, ''))
+    }
+  }
+  return citing
+}
+
 interface PlannedWrite { repoPath: string; path: string; newPath: string; content: string }
 
 interface Computed {
@@ -166,6 +179,13 @@ export class TypeRenameService {
       }
       if (plan.objects.length > 0 && plan.errors.length === 0) {
         const rename = idRenamer(dto.oldPrefix, new Map(plan.objects.map(o => [o.oldId, o.newId])))
+        // GH254 — l'état figé d'une version garde les anciens IDs, et ses tags aussi : ne pas réécrire ces fichiers. Refus
+        // tant qu'une version cite un de ces objets, où que ce soit (changements, impacts, analyse, historique).
+        const citing = await versionsCiting(repos, rename)
+        if (citing.length > 0) {
+          plan.errors.push({ code: 'HAS_VERSIONS', detail: `Des versions citent des objets de ce type (${citing.join(', ')}) : son préfixe ${dto.oldPrefix} ne se modifie pas.` })
+          return { plan, repos, oldRef, newRef, writes }
+        }
         for (const repo of repos) {
           for (const rel of await listDataFiles(repo)) {
             const bytes = await fsP.readFile(path.join(repo, rel))

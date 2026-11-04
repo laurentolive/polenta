@@ -837,7 +837,7 @@ elle vaut feu vert ; sur la version produit, go production série. Détail : `sp
   Exactement une décision `isPending`, un statut `isApproval` (signée), un `isTerminal` (annulée) ; premier
   statut non marqué ; historique du statut obligatoire.
 - **Garde-fous du schéma** : tant qu'une validation existe, type non retirable, nom, préfixe et statuts marqués
-  figés, décision utilisée non retirable (`DECISION_IN_USE`), préfixe des types d'exigence figé (`HAS_VALIDATIONS`).
+  figés, décision utilisée non retirable (`DECISION_IN_USE`), préfixe des types d'exigence figé (`HAS_VALIDATIONS`). Préfixe d'un type refusé aussi tant qu'une version cite un de ses objets (`HAS_VERSIONS`, GH254).
   Champs de `fields` et statuts renommés avec migration ; `entryFields` sans migration.
 - **Entrée** : `requirementId`, `decision`, `comment` (texte simple), `fields`, `contentHash`, `decidedBy`,
   `decidedAt`, `carriedFrom`, `proposed`, `proposedBy`, `proposedAt`, `atSignature`. Exigence sans entrée : en

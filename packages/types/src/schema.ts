@@ -342,7 +342,7 @@ export interface TypeRenamePlan {
   files: Array<{ repoPath: string; path: string; newPath?: string }>
   /** Repos dont des refs `<nœud>::<type>` de `linkTypes` changent. */
   linkTypeRepos: string[]
-  errors: Array<{ code: 'ID_COLLISION' | 'REPO_MISSING' | 'HAS_VALIDATIONS'; detail: string }>
+  errors: Array<{ code: 'ID_COLLISION' | 'REPO_MISSING' | 'HAS_VALIDATIONS' | 'HAS_VERSIONS'; detail: string }>
 }
 
 /** GH104 — suppression en cascade d'un composant local (et de son sous-arbre) ou d'un type. */

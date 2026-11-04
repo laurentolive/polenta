@@ -32,7 +32,7 @@ import { useVersioning } from './VersioningContext'
 import { isEditableTarget } from '../lib/editableTarget'
 import type { TypeTreeNode, ObjectTypeDefinition, ObjectCategory, SystemNode, LinkTypeDefinition, TestCase } from '@polenta/types'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
-import { findSystemNode, flattenSystemNodes } from '@polenta/types'
+import { DEFAULT_OBJECT_TITLE, findSystemNode, flattenSystemNodes } from '@polenta/types'
 import type { FilterOptions } from '../lib/textFilter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -832,7 +832,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
     try {
       let objectId: string
       if (cat === 'requirement') {
-        let title = 'Sans titre'
+        let title = DEFAULT_OBJECT_TITLE
         let fields: Record<string, unknown> = {}
         if (sourceObjectId) {
           try {
@@ -846,7 +846,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
         const req = await api.requirements.create(repoPath, { objectTypeRef, title, fields })
         objectId = req.id
       } else if (cat === 'test') {
-        let title = 'Sans titre'
+        let title = DEFAULT_OBJECT_TITLE
         let fields: Record<string, unknown> = {}
         let steps: TestCase['steps'] = []
         if (sourceObjectId) {
@@ -862,7 +862,7 @@ export function SystemViewProvider({ children, currentProjectId }: ProviderProps
         const tc = await api.tests.create(repoPath, { objectTypeRef, title, steps, fields })
         objectId = tc.id
       } else if (cat === 'issue') {
-        let title = 'Sans titre'
+        let title = DEFAULT_OBJECT_TITLE
         let fields: Record<string, unknown> = {}
         if (sourceObjectId) {
           try {

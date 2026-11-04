@@ -2,7 +2,10 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import { randomUUID } from 'crypto'
-import type { TypeTree, TypeTreeNode } from '@polenta/types'
+import {
+  DEFAULT_OBJECT_TITLE, emptyFieldRenameResult,
+  type FieldRenameResult, type Issue, type Requirement, type TestCase, type TypeTree, type TypeTreeNode,
+} from '@polenta/types'
 import type { RequirementsIndexService } from './requirements-index.service'
 import type { TestsIndexService } from './tests-index.service'
 
@@ -25,12 +28,44 @@ export function indexObjectLister(
   ]
 }
 
+/**
+ * GH261 — donne à des objets d'un type le titre `id → titre`, seulement s'ils ont encore le titre
+ * par défaut. Renvoie les IDs effectivement réécrits.
+ */
+export type TreeTitleAdopter = (repoPath: string, objectTypeRef: string, titles: Map<string, string>) => Promise<Set<string>>
+
+/** Service d'objets réécrivable (`rewriteObjects` : écriture brute, ni historique, ni `version`). */
+interface RewritableObjects<O extends { id: string; title: string }> {
+  rewriteObjects(repoPath: string, objectTypeRef: string, transform: (obj: O) => O | null, result: FieldRenameResult): Promise<void>
+}
+
+/** Écrivain branché sur les services exigences + tests + issues (au mieux par objet). */
+export function serviceTitleAdopter(
+  requirements: RewritableObjects<Requirement>, tests: RewritableObjects<TestCase>, issues: RewritableObjects<Issue>,
+): TreeTitleAdopter {
+  return async (repoPath, objectTypeRef, titles) => {
+    const result = emptyFieldRenameResult()
+    const adopt = <O extends { id: string; title: string }>(o: O): O | null => {
+      const title = titles.get(o.id)
+      return title && o.title === DEFAULT_OBJECT_TITLE ? { ...o, title } : null
+    }
+    await requirements.rewriteObjects(repoPath, objectTypeRef, adopt, result)
+    await tests.rewriteObjects(repoPath, objectTypeRef, adopt, result)
+    await issues.rewriteObjects(repoPath, objectTypeRef, adopt, result)
+    for (const { id, error } of result.failed) console.error(`[TreeService] Could not adopt title of ${id}:`, error)
+    return new Set(result.migrated)
+  }
+}
+
 export class TreeService {
   /**
    * Sans `listObjects` (tests unitaires), le service est un simple stockage : `get`/`save` lisent
    * et écrivent le fichier tel quel, sans compléter ni dépouiller l'arbre (GH180).
    */
-  constructor(private readonly listObjects?: TreeObjectLister) {}
+  constructor(
+    private readonly listObjects?: TreeObjectLister,
+    private readonly adoptTitles?: TreeTitleAdopter,
+  ) {}
 
   // ── Read ─────────────────────────────────────────────────────────────────────
 
@@ -56,11 +91,45 @@ export class TreeService {
   /**
    * GH180 — n'écrit que le rangement curaté (`stripTree`) : ni le `name` des éléments, ni la queue
    * « non classée » que `get` reconstruit. Un arbre dont il ne reste rien n'est pas créé sur disque.
+   * GH261 — un `name` d'ancien fichier n'est retiré qu'une fois recopié dans le titre de l'objet.
    */
   async save(repoPath: string, tree: TypeTree): Promise<void> {
-    const root = this.listObjects ? stripTree(tree.root) : tree.root
+    const root = this.listObjects
+      ? stripTree(tree.root, await this.settleLegacyNames(repoPath, tree.nodeId, tree.typeId))
+      : tree.root
     if (root.length === 0 && !(await this.exists(repoPath, tree.nodeId, tree.typeId))) return
     await this.writeStored(repoPath, { nodeId: tree.nodeId, typeId: tree.typeId, root })
+  }
+
+  /**
+   * GH261 — avant GH180, le libellé d'un élément pouvait n'exister que dans le `name` du fichier
+   * d'arbre (objet resté au titre par défaut). Le recopie dans le titre de l'objet et renvoie les
+   * noms à conserver dans le fichier : ceux dont l'objet est introuvable ou n'a pas pu être écrit.
+   */
+  private async settleLegacyNames(repoPath: string, nodeId: string, typeId: string): Promise<Map<string, string>> {
+    const legacy = new Map<string, string>()
+    const stored = await this.readStored(repoPath, nodeId, typeId)
+    for (const n of flattenTree(stored.root)) {
+      if (n.objectId && isMeaningfulName(n) && !legacy.has(n.objectId)) legacy.set(n.objectId, n.name)
+    }
+    if (legacy.size === 0) return legacy
+
+    const ref = `${nodeId}::${typeId}`
+    try {
+      const objects = await this.listObjects!(repoPath, ref)
+      const toAdopt = new Map<string, string>()
+      for (const { id, title } of objects) {
+        // Vrai titre : il fait foi, le nom d'ancien fichier peut disparaître.
+        if (title !== DEFAULT_OBJECT_TITLE) legacy.delete(id)
+        else if (legacy.has(id)) toAdopt.set(id, legacy.get(id)!)
+      }
+      if (toAdopt.size > 0 && this.adoptTitles) {
+        for (const id of await this.adoptTitles(repoPath, ref, toAdopt)) legacy.delete(id)
+      }
+    } catch (err) {
+      console.error(`[TreeService] Could not settle legacy names for ${ref}:`, err)
+    }
+    return legacy
   }
 
   /**
@@ -168,18 +237,27 @@ export class TreeService {
 
 const byId = (a: string, b: string) => a.localeCompare(b)
 
+/** GH261 — le `name` stocké d'un élément porte-t-il un vrai libellé (ni vide, ni défaut, ni l'ID) ? */
+const isMeaningfulName = (n: TypeTreeNode): boolean =>
+  !!n.name?.trim() && n.name !== DEFAULT_OBJECT_TITLE && n.name !== n.objectId
+
 /**
  * Arbre stocké → arbre d'affichage. Le `name` d'un élément est le `title` de son objet (repli sur
- * le `name` encore présent dans un ancien fichier, puis sur l'ID pour un objet disparu). Les objets
+ * le `name` encore présent dans un ancien fichier, puis sur l'ID pour un objet disparu ; GH261 : ce
+ * `name` passe aussi avant le titre par défaut, qui n'est pas un vrai libellé). Les objets
  * absents de l'arbre suivent en fin de racine, triés par ID, avec un id de nœud stable
  * (`item-<ID>`) pour que deux lectures successives donnent le même arbre.
  */
 export function hydrateTree(root: TypeTreeNode[], objects: Array<{ id: string; title: string }>): TypeTreeNode[] {
   const titles = new Map(objects.map(o => [o.id, o.title]))
   const placed = new Set(flattenTree(root).map(n => n.objectId).filter((id): id is string => !!id))
+  const itemName = (n: TypeTreeNode, objectId: string): string => {
+    const title = titles.get(objectId)
+    return title === DEFAULT_OBJECT_TITLE && isMeaningfulName(n) ? n.name : title ?? n.name ?? objectId
+  }
   const named = (nodes: TypeTreeNode[]): TypeTreeNode[] => nodes.map(n => ({
     ...n,
-    name: n.kind === 'item' && n.objectId ? titles.get(n.objectId) ?? n.name ?? n.objectId : n.name ?? '',
+    name: n.kind === 'item' && n.objectId ? itemName(n, n.objectId) : n.name ?? '',
     children: named(n.children ?? []),
   }))
   const unclassified: TypeTreeNode[] = objects
@@ -194,15 +272,16 @@ export function hydrateTree(root: TypeTreeNode[], objects: Array<{ id: string; t
  * fait foi) et la queue de racine que `hydrateTree` reconstruirait à l'identique : éléments sans
  * enfant, présents une seule fois dans l'arbre, en ordre d'ID strictement croissant. Ajouter un
  * objet en fin de liste ne modifie donc pas le fichier ; seul un vrai rangement l'écrit.
+ * GH261 — `keepNames` (ID d'objet → nom) : éléments qui gardent leur nom, donc jamais coupés.
  */
-export function stripTree(root: TypeTreeNode[]): TypeTreeNode[] {
+export function stripTree(root: TypeTreeNode[], keepNames: Map<string, string> = new Map()): TypeTreeNode[] {
   const counts = new Map<string, number>()
   for (const n of flattenTree(root)) if (n.objectId) counts.set(n.objectId, (counts.get(n.objectId) ?? 0) + 1)
 
   let cut = root.length
   while (cut > 0) {
     const n = root[cut - 1]
-    if (n.kind !== 'item' || !n.objectId || n.children.length > 0 || counts.get(n.objectId) !== 1) break
+    if (n.kind !== 'item' || !n.objectId || n.children.length > 0 || counts.get(n.objectId) !== 1 || keepNames.has(n.objectId)) break
     if (cut < root.length && byId(n.objectId, root[cut].objectId!) >= 0) break
     cut--
   }
@@ -210,7 +289,7 @@ export function stripTree(root: TypeTreeNode[]): TypeTreeNode[] {
   const bare = (nodes: TypeTreeNode[]): TypeTreeNode[] => nodes.map(n => {
     const children = bare(n.children)
     return n.kind === 'item' && n.objectId
-      ? { id: n.id, kind: n.kind, objectId: n.objectId, children } as TypeTreeNode
+      ? { id: n.id, kind: n.kind, ...(keepNames.has(n.objectId) ? { name: keepNames.get(n.objectId) } : {}), objectId: n.objectId, children } as TypeTreeNode
       : { id: n.id, kind: n.kind, name: n.name, ...(n.objectId ? { objectId: n.objectId } : {}), children }
   })
   return bare(root.slice(0, cut))
@@ -318,7 +397,7 @@ export function flattenTree(root: TypeTreeNode[]): TypeTreeNode[] {
   function walk(nodes: TypeTreeNode[]) {
     for (const n of nodes) {
       result.push(n)
-      walk(n.children)
+      walk(n.children ?? []) // fichier stocké : un élément peut ne pas avoir de `children`
     }
   }
   walk(root)

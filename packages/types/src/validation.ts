@@ -124,8 +124,8 @@ export interface ValidationRow {
   /** Décision en vigueur : celle de l'entrée, sinon la valeur `isPending`. */
   decision: string
   entry: ValidationEntry | null
-  /** À revoir : contenu modifié depuis la décision, ou décision reprise d'une exigence devenue impactée. */
-  review: 'content' | 'impact' | null
+  /** À revoir : contenu modifié depuis la décision, décision reprise d'une exigence devenue impactée, ou d'une validation annulée. */
+  review: 'content' | 'impact' | 'source' | null
 }
 
 /** Sous-composant de la version validée et état de sa validation (information, non bloquant). */

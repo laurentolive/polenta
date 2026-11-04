@@ -26,23 +26,32 @@ export function inPerimeter(schema: ProjectSchema | null, requirements: Validati
   return requirements.filter(r => !isTerminal(schema, r.state))
 }
 
-/** Changée (dans `changes`), ou impactée (ligne atteinte de l'analyse, hors « pas d'impact réel »). */
-export function impactOf(version: Pick<ProductVersion, 'changes'>, analysis: VersionAnalysis | null): (id: string) => ValidationImpact | null {
+/**
+ * Changée (dans `changes`), ou impactée, hors « pas d'impact réel » : ligne atteinte de l'analyse, ou
+ * racine sans changement, typiquement une exigence impactée par une issue incluse (GH266). Une racine
+ * n'a pas de ligne : son statut d'impact se lit dans `version.impacted`.
+ */
+export function impactOf(version: Pick<ProductVersion, 'changes' | 'impacted'>, analysis: VersionAnalysis | null): (id: string) => ValidationImpact | null {
   const changed = new Set((version.changes ?? []).map(c => c.id))
   const rows = new Map((analysis?.rows ?? []).map(r => [r.id, r]))
+  const roots = new Map((analysis?.roots ?? []).map(r => [r.elementId, r]))
+  const noImpact = new Set((version.impacted ?? []).filter(i => i.status === NO_IMPACT).map(i => i.id))
   return id => {
     const row = rows.get(id)
     if (changed.has(id)) return { kind: 'changed', sources: row?.sources ?? [] }
     if (row && row.reached && row.status !== NO_IMPACT) return { kind: 'impacted', sources: row.sources }
+    const root = roots.get(id)
+    if (root && !noImpact.has(id)) return { kind: 'impacted', sources: (root.viaIssues ?? []).map(rootId => ({ rootId, path: [] })) }
     return null
   }
 }
 
-/** « À revoir » : contenu différent de celui de la décision, ou décision reprise devenue impactée. */
-export function reviewOf(entry: ValidationEntry | null, hash: string, impact: ValidationImpact | null): ValidationRow['review'] {
+/** « À revoir » : contenu différent de celui de la décision, décision reprise devenue impactée, ou reprise d'une validation annulée (GH266). */
+export function reviewOf(entry: ValidationEntry | null, hash: string, impact: ValidationImpact | null, cancelled: ReadonlySet<string> = new Set()): ValidationRow['review'] {
   if (!entry) return null
   if (entry.contentHash !== hash) return 'content'
   if (entry.carriedFrom && impact) return 'impact'
+  if (entry.carriedFrom && cancelled.has(entry.carriedFrom)) return 'source'
   return null
 }
 
@@ -54,6 +63,8 @@ export function buildRows(input: {
   impact: (id: string) => ValidationImpact | null
   coverage: Map<string, { status: CoverageStatus; tests: ValidationRow['tests'] }>
   design: Map<string, { id: string; title: string }>
+  /** Validations annulées qui invalident une décision reprise ; vide pour une validation signée, qui reste un registre. */
+  cancelled?: ReadonlySet<string>
 }): ValidationRow[] {
   const pending = pendingDecision(input.typeDef)?.name ?? ''
   const entries = new Map(input.validation.entries.map(e => [e.requirementId, e]))
@@ -67,7 +78,7 @@ export function buildRows(input: {
         coverageStatus: input.coverage.get(state.id)?.status ?? 'not_covered',
         tests: input.coverage.get(state.id)?.tests ?? [],
         impact, decision: entry?.decision ?? pending, entry,
-        review: reviewOf(entry, contentHash(state), impact),
+        review: reviewOf(entry, contentHash(state), impact, input.cancelled),
       }
     })
     .sort((a, b) => a.requirementId.localeCompare(b.requirementId, undefined, { numeric: true }))

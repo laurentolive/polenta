@@ -69,7 +69,7 @@ beforeEach(async () => {
   const subNode = node('bms', sub)
   const compNode = node('moteur', comp, [subNode])
   const tree = { logicalTree: node('produit', root, [compNode]), nodes: [compNode, subNode] } as unknown as WorkspaceTree
-  const schemaStub = { get: async (dir: string) => schemas.get(path.resolve(dir)) } as unknown as Pick<SchemaService, 'get'>
+  const schemaStub = { get: async (dir: string) => schemas.get(path.resolve(dir)), getAt: async (dir: string) => schemas.get(path.resolve(dir)) } as unknown as Pick<SchemaService, 'get' | 'getAt'>
   clock = Date.UTC(2026, 10, 1, 8, 0, 0)
   const history = new HistoryService(gitSvc, async () => ({ by: 'alice' }), () => new Date(clock))
   versions = new VersionsService(

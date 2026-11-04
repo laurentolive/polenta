@@ -2558,7 +2558,8 @@
     },
     "review": {
       "content": "à revoir : contenu modifié",
-      "impact": "à revoir : devenue impactée"
+      "impact": "à revoir : devenue impactée",
+      "source": "à revoir : validation d'origine annulée"
     },
     "filter": {
       "label": "Filtre",

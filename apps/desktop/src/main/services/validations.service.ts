@@ -43,7 +43,7 @@ export class ValidationsService {
     private readonly git: GitService,
     private readonly sync: Pick<SyncService, 'commitSingleFile'>,
     private readonly schema: Pick<SchemaService, 'get'>,
-    private readonly versions: Pick<VersionsService, 'get' | 'list' | 'versionType' | 'analysis' | 'isReadonly' | 'requirementsOf' | 'designVersionsFor' | 'componentVersions'>,
+    private readonly versions: Pick<VersionsService, 'get' | 'list' | 'versionType' | 'analysis' | 'isReadonly' | 'requirementsOf' | 'schemaOf' | 'designVersionsFor' | 'componentVersions'>,
     private readonly traceability: Pick<TraceabilityService, 'getMatrix'>,
     private readonly history: Pick<HistoryService, 'stamp' | 'currentActor'>,
   ) {}
@@ -133,14 +133,15 @@ export class ValidationsService {
   }
 
   private async rows(repoPath: string, typeDef: ObjectTypeDefinition, validation: Validation, version: ProductVersion, workspaceDir?: string): Promise<ValidationRow[]> {
-    const schema = await this.schema.get(repoPath).catch(() => null)
+    const schema = await this.versions.schemaOf(repoPath, version)
     const requirements = await this.versions.requirementsOf(repoPath, version)
     // Sans analyse, aucune exigence ne paraîtrait impactée : l'erreur remonte plutôt que d'ouvrir la signature.
     const analysis = await this.versions.analysis(repoPath, version.id, workspaceDir)
-    const matrix = await this.traceability.getMatrix(repoPath, {}, workspaceDir).catch(() => null)
-    const titles = new Map((matrix?.testCases ?? []).map(t => [t.id, t.title]))
+    // Sans matrice, toutes les exigences paraîtraient non couvertes : l'erreur remonte (GH266).
+    const matrix = await this.traceability.getMatrix(repoPath, {}, workspaceDir)
+    const titles = new Map(matrix.testCases.map(t => [t.id, t.title]))
     const localTests = new Set((await this.git.listFiles(repoPath, 'tests').catch(() => [])).map(f => f.split('/').pop()!.replace(/\.yaml$/, '')))
-    const coverage = new Map((matrix?.requirements ?? []).map(r => [r.requirement.id, {
+    const coverage = new Map(matrix.requirements.map(r => [r.requirement.id, {
       status: r.coverageStatus,
       tests: r.cells.map(c => ({ id: c.testCaseId, title: titles.get(c.testCaseId) ?? '', local: localTests.has(c.testCaseId) })),
     }]))
@@ -148,6 +149,9 @@ export class ValidationsService {
       schema, typeDef, validation, requirements, coverage,
       impact: impactOf(version, analysis),
       design: await this.versions.designVersionsFor(repoPath, requirements.map(r => r.state)),
+      cancelled: validationState(typeDef, validation.status) === 'open'
+        ? new Set((await this.list(repoPath)).filter(v => validationState(typeDef, v.status) === 'cancelled').map(v => v.id))
+        : new Set(),
     })
   }
 
@@ -197,7 +201,7 @@ export class ValidationsService {
   private async carriedEntries(repoPath: string, typeDef: ObjectTypeDefinition, all: Validation[], version: ProductVersion, workspaceDir?: string): Promise<ValidationEntry[]> {
     const signed = version.basedOn ? all.find(v => v.versionId === version.basedOn && validationState(typeDef, v.status) === 'signed') ?? null : null
     if (!signed) return []
-    const schema = await this.schema.get(repoPath).catch(() => null)
+    const schema = await this.versions.schemaOf(repoPath, version)
     const requirements = inPerimeter(schema, await this.versions.requirementsOf(repoPath, version))
     const analysis = await this.versions.analysis(repoPath, version.id, workspaceDir)
     return carryOver(signed, requirements, impactOf(version, analysis))
@@ -283,6 +287,9 @@ export class ValidationsService {
       const vt = await this.requireType(repoPath)
       const validation = await this.get(repoPath, id)
       if (validationState(vt.typeDef, validation.status) !== 'open') throw new ValidationError('VALIDATION_LOCKED', id)
+      // Deux branches fusionnées peuvent porter chacune une validation de la même version (GH266).
+      const twin = (await this.list(repoPath)).find(v => v.id !== id && v.versionId === validation.versionId && validationState(vt.typeDef, v.status) !== 'cancelled')
+      if (twin) throw new ValidationError('VALIDATION_EXISTS', twin.id)
       const version = await this.requireVersion(repoPath, validation.versionId)
       const versionDef = (await this.versions.versionType(repoPath))?.typeDef ?? null
       const rows = await this.rows(repoPath, vt.typeDef, validation, version, workspaceDir)
@@ -369,7 +376,7 @@ export class ValidationsService {
       let perimeter: Map<string, ValidationRequirement> | null = null
       const requirement = async (reqId: string): Promise<ValidationRequirement> => {
         if (!perimeter) {
-          const schema = await this.schema.get(repoPath).catch(() => null)
+          const schema = await this.versions.schemaOf(repoPath, version)
           perimeter = new Map(inPerimeter(schema, await this.versions.requirementsOf(repoPath, version)).map(r => [r.state.id, r]))
         }
         const found = perimeter.get(reqId)

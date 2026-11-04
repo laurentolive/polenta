@@ -127,6 +127,20 @@ describe('withRenamedRequiredWhen', () => {
     expect(saved.stepFields?.find(f => f.name === 'measure')?.requiredWhen).toEqual({ regime: ['m1'] })
   })
 
+  it('GH266 — entryFields : clés et valeurs suivent, `decision` reste intact', () => {
+    const type = {
+      name: 'val', category: 'validation', fields: [], statuses: [],
+      entryFields: [
+        { name: 'nature', label: 'Nature', type: 'enum', values: ['a', 'b'] },
+        { name: 'motif', label: 'Motif', type: 'text', requiredWhen: { nature: ['a'], decision: ['non_conforme'] } },
+      ],
+    } as unknown as ObjectTypeDefinition
+    const t = objTypeToEditable(type)
+    t.entryFields = t.entryFields.map(f => f.name === 'nature' ? { ...f, name: 'genre', values: 'z, b' } : f)
+    const saved = editableToObjType(withRenamedRequiredWhen(t, type, []))
+    expect(saved.entryFields?.find(f => f.name === 'motif')?.requiredWhen).toEqual({ genre: ['z'], decision: ['non_conforme'] })
+  })
+
   it('aucun renommage : le schéma enregistré est identique', () => {
     const t = objTypeToEditable(TYPE)
     expect(editableToObjType(withRenamedRequiredWhen(t, TYPE, []))).toEqual(editableToObjType(t))

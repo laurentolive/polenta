@@ -47,7 +47,7 @@ export class VersionsService {
   constructor(
     private readonly git: GitService,
     private readonly sync: Pick<SyncService, 'commitSingleFile' | 'createAnnotatedTag' | 'resolveHead' | 'queueTagPush'>,
-    private readonly schema: Pick<SchemaService, 'get'>,
+    private readonly schema: Pick<SchemaService, 'get' | 'getAt'>,
     private readonly tracking: VersionTrackingService,
     private readonly history?: HistoryService,
     private readonly workspaceTree?: WorkspaceTreeService,
@@ -168,9 +168,16 @@ export class VersionsService {
     return out
   }
 
+  /** GH266 — schéma en vigueur pour l'état de la version : celui du gel, le type a pu être renommé ou supprimé depuis. */
+  async schemaOf(repoPath: string, version: Pick<ProductVersion, 'freeze'>): Promise<ProjectSchema | null> {
+    const sha = version.freeze?.sha
+    return (sha ? this.schema.getAt(repoPath, sha) : this.schema.get(repoPath)).catch(() => null)
+  }
+
   /** GH204 — exigences du composant dans l'état de la version : figé si elle a un gel, disque sinon. */
   async requirementsOf(repoPath: string, version: Pick<ProductVersion, 'freeze'>): Promise<Array<{ state: ElementState; fields: Record<string, unknown> }>> {
-    const own = await this.ownership(repoPath)
+    const schema = await this.schemaOf(repoPath, version)
+    const own = (el: ElementState) => !schema || declaresRef(schema, el.objectTypeRef)
     const sha = version.freeze?.sha
     // Gel illisible (clone partiel…) : l'erreur remonte, un périmètre vide ouvrirait la signature.
     if (sha && !await this.git.hasCommit(repoPath, sha)) throw new VersionError('VERSION_NOT_FOUND', `commit figé ${sha} absent du repo`)
@@ -573,11 +580,11 @@ export class VersionsService {
 
   // ── Analyse d'impact et tests à exécuter (GH245) ──────────────────────────
 
-  /** Analyse d'une version : figée si released, calculée sur l'état courant du workspace sinon. */
+  /** Analyse d'une version : figée dès qu'elle a un gel (released, ou abandonnée ensuite), calculée sur l'état courant sinon. */
   async analysis(repoPath: string, id: string, workspaceDir?: string): Promise<VersionAnalysis> {
     const version = await this.get(repoPath, id)
     const typeDef = (await this.versionType(repoPath))?.typeDef ?? null
-    if (versionState(typeDef, version.status) === 'released') {
+    if (version.freeze || versionState(typeDef, version.status) === 'released') {
       // Pas de reprise des versions released sans analyse figée : analyse vide, jamais recalculée.
       return version.analysis
         ? { ...version.analysis, frozen: true }

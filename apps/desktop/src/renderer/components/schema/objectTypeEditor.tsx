@@ -241,6 +241,8 @@ export function withRenamedRequiredWhen(
     fields: rewrite(t.fields, chosen),
     runFields: rewrite(t.runFields, enumValueRenames(t.runFields, original?.runFields), RUN_RESULT_KEY),
     stepFields: rewrite(t.stepFields, enumValueRenames(t.stepFields, original?.stepFields), RUN_RESULT_KEY),
+    // GH266 — champs d'entrée d'une validation : `decision` est leur pseudo-champ.
+    entryFields: rewrite(t.entryFields, enumValueRenames(t.entryFields, original?.entryFields), 'decision'),
   }
 }
 

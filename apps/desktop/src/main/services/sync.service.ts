@@ -984,11 +984,12 @@ export class SyncService {
     return changes
   }
 
-  /** Resolves a tag name to its commit sha. Tags created by `createTag` are lightweight refs
-   * written directly to a commit sha (no annotation to peel). Returns null if the tag doesn't exist. */
+  /** Resolves a tag name to its commit sha, lightweight or annotated (a baseline: GH21, `resolveRef`
+   * alone stops at the tag object). Returns null if the tag doesn't exist. */
   async resolveTag(repoPath: string, tagName: string): Promise<string | null> {
     try {
-      return await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tagName}` })
+      const oid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tagName}` })
+      return (await git.readCommit({ fs, dir: repoPath, oid })).oid
     } catch {
       return null
     }

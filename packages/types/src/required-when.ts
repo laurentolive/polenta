@@ -2,6 +2,7 @@ import type { ObjectTypeDefinition, SchemaField } from './schema'
 import { parseMultiEnumValue } from './schema'
 import { normalizeLinkField } from './field-links'
 import { sameHistoryValue } from './history'
+import type { FieldRename, ValueRename } from './history'
 
 // GH195 — obligation conditionnelle `requiredWhen` (specs/GH195.md §2) et préparation des `fields`
 // à l'écriture (normalisation des liens). Le moteur est indépendant de la source des valeurs : un
@@ -152,6 +153,33 @@ export function requiredWhenIssues(
     }
   }
   return issues
+}
+
+/**
+ * GH214 — réécrit un `requiredWhen` après des renommages de la même sauvegarde : clés (champs
+ * renommés) et valeurs (statut, valeur d'enum). Renommages appliqués d'un seul tenant, deux champs
+ * peuvent donc échanger leur nom ; deux clés qui se rejoignent fusionnent leurs valeurs.
+ * `valueRenames` cible le nom *courant* du champ (cf. `valueRenames` de l'éditeur). `pseudoKey`
+ * (`status`, `result`) désigne toujours le pseudo-champ : un vrai champ de ce nom est ignoré, dans
+ * les deux sens du renommage.
+ */
+export function renameRequiredWhenRefs(
+  rw: Record<string, unknown[]>,
+  fieldRenames: FieldRename[],
+  valueRenames: ValueRename[],
+  pseudoKey: string = REQUIRED_WHEN_STATUS,
+): Record<string, unknown[]> {
+  const keys = new Map(fieldRenames.filter(r => r.from !== pseudoKey && r.to !== pseudoKey).map(r => [r.from, r.to]))
+  const out: Record<string, unknown[]> = {}
+  for (const [key, values] of Object.entries(rw)) {
+    const target = keys.get(key) ?? key
+    const renames = valueRenames.filter(r => (r.target.kind === 'status'
+      ? target === REQUIRED_WHEN_STATUS && pseudoKey === REQUIRED_WHEN_STATUS
+      : target === r.target.field && target !== pseudoKey))
+    const renamed = values.map(v => renames.find(r => r.from === v)?.to ?? v)
+    out[target] = [...new Set([...(out[target] ?? []), ...renamed])]
+  }
+  return out
 }
 
 function canonical(v: unknown): string {

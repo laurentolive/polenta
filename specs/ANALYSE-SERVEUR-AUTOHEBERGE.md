@@ -188,6 +188,9 @@ sécurité. Garanties réelles :
 - **Pas de console d'administration des comptes et des équipes dans Polenta** : l'interface
   d'admin de Forgejo le fait déjà, avec ses propres contrôles de sécurité. Un lien
   « Administration du serveur » dans le menu compte suffit.
+  **Amendé par #103 (2026-10-16, `GH103.md`)** : Polenta gère l'accès à un repo (collaborateurs, équipes
+  de l'organisation attribuées au repo, visibilité). Les comptes, la composition des équipes et les
+  organisations restent gérés dans la forge.
 - **Pas de Git LFS** : isomorphic-git ne le gère pas. Garder les repos en YAML et drawio, et
   fixer une taille maximale de fichier côté serveur.
 

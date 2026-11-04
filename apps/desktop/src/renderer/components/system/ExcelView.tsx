@@ -2035,9 +2035,8 @@ function ExcelViewInner({
   const visibleRowIds = filteredRows.map(r => r.node.id)
 
   // GH229 — ligne ciblée (goto : lien suivi, clic dans l'arbre) ou ancrée : les lignes jusqu'à elle
-  // sont rendues tout de suite, sans attendre le rendu complet. Celui-ci passe par une transition,
-  // abandonnée et relancée à chaque re-rendu urgent de la vue : sur un gros projet il pouvait ne
-  // jamais aboutir, la ligne cible n'existait pas et la vue restait en haut.
+  // sont rendues tout de suite, sans attendre le rendu complet, qui passe par une transition et
+  // cède donc la place à tout rendu urgent de l'application.
   const gotoIndex = gotoNodeId ? visibleRowIds.indexOf(gotoNodeId) : -1
   const anchorIndex = anchorNodeId ? visibleRowIds.indexOf(anchorNodeId) : -1
   const renderedRowCount = renderAllRows

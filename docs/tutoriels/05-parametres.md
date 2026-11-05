@@ -1,6 +1,6 @@
-# 4. Paramètres
+# 5. Paramètres
 
-[English](../tutorials/04-parameters.md) | **Français**
+[English](../tutorials/05-parameters.md) | **Français**
 
 Une valeur qui revient dans plusieurs exigences et tests (une capacité, une vitesse, une tension)
 se déclare une fois dans la **base de paramètres** du dépôt. Les textes y font référence au lieu de
@@ -45,8 +45,8 @@ Cliquer sur `capacite_kg` ouvre sa fiche :
 modification de ces trois éléments :
 
 - les éléments **approuvés** qui l'utilisent sont marqués
-  **à revalider** ([tutoriel 5](05-tracabilite.md)) ;
+  **Impact à vérifier** ([tutoriel 6](06-tracabilite.md)) ;
 - **Supprimer** est refusé tant que le paramètre est utilisé.
 
 Dans la démo, `vitesse_essorage` est passée de 1200 à 1400 tr/min entre les baselines RE1 et RE2 :
-la comparaison des deux baselines le montre ([tutoriel 7](07-versions.md)).
+la comparaison des deux baselines le montre ([tutoriel 8](08-publier-historique.md)).

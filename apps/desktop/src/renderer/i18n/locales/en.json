@@ -593,7 +593,8 @@
         "created": "Repository {{repo}} created on the server.",
         "repoName": "Repository name",
         "creating": "Creating…",
-        "confirm": "Create"
+        "confirm": "Create",
+        "fromExisting": "From an existing repository"
       }
     },
     "removeDependency": {
@@ -2669,19 +2670,46 @@
       "push": "Integration branch published",
       "defaultBranch": "Server default branch",
       "members": "Members added",
-      "open": "Opening"
+      "open": "Opening",
+      "integration": "Integration branch",
+      "description": "Description",
+      "polenta": "Polenta initialization"
     },
     "status": {
       "done": "done",
       "failed": "failed",
-      "skipped": "not done"
+      "skipped": "not done",
+      "admin": "left to an administrator"
     },
     "result": {
       "title": "Creation incomplete",
-      "created": "Repository {{repo}} was created on the server (branch {{branch}}). It is not deleted.",
+      "created": "Repository {{repo}} on the server, branch {{branch}}. Polenta does not delete it.",
       "steps": "Steps",
       "resume": "The steps not done can be resumed later by adding this repository as an existing one.",
-      "continue": "Continue"
+      "continue": "Continue",
+      "titleTodo": "Added, with points to handle"
+    },
+    "existing": {
+      "title": "Existing repository",
+      "titleEmpty": "Existing repository, empty",
+      "inspecting": "Reading the repository…",
+      "adding": "Adding…",
+      "polentaIncomplete": "This Polenta project is not complete. You can complete what is missing, or open it as is.",
+      "notPolenta": "This repository is not a Polenta project yet. Only what is missing is asked.",
+      "branchHelp": "Will be created from {{branch}}, then designated and published. It becomes the repository's default branch for the whole team.",
+      "descriptionHelp": "Copied to the server if missing there, and into a README.md if there is none.",
+      "confirmInit": "Initialize Polenta in this repository: commit its files on the integration branch and publish them.",
+      "adminNote": "You are not an administrator of this repository: the description on the server and the default branch are left to an administrator.",
+      "refused": "You have no write access to this repository, and it lacks: {{missing}}. It cannot be added.",
+      "refusedEmpty": "This repository is empty and you have no write access: it cannot be added.",
+      "missing": {
+        "integration": "an integration branch",
+        "description": "a description and a README",
+        "polenta": "the Polenta initialization"
+      },
+      "asIs": "Open as is",
+      "complete": "Complete and open",
+      "fill": "Initialize the repository"
     }
   }
 }

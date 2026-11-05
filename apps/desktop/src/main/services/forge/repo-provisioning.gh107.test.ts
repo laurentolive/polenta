@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CreateRepoRequest, ForgeRepo } from '@polenta/types'
 
 import { WorkspaceService } from '../workspace.service'
+import type { IntegrationBranchService } from '../integration-branch.service'
 import type { SyncService } from '../sync.service'
 import type { HostContext } from '../../host/host-context'
 import type { ForgeService } from './forge.service'
@@ -48,7 +49,7 @@ beforeEach(async () => {
   pushBranch = vi.fn(async (_d: string, b: string) => { calls.push(`push:${b}`) })
   const ctx = { userDataDir: dir, machineConfig: { hideGithub: false } } as unknown as HostContext
   workspace = new WorkspaceService(ctx, { pushBranch } as unknown as SyncService)
-  service = new RepoProvisioningService(forge as unknown as ForgeService, workspace, { pushBranch } as unknown as SyncService)
+  service = new RepoProvisioningService(forge as unknown as ForgeService, workspace, { pushBranch } as unknown as SyncService, {} as IntegrationBranchService)
 })
 
 afterEach(async () => { await fsP.rm(dir, { recursive: true, force: true }) })
@@ -147,7 +148,7 @@ describe('RepoProvisioningService.create', () => {
   it('branche par défaut refusée (pas admin) : signalée, la suite continue', async () => {
     forge.alignDefaultBranch.mockResolvedValueOnce('not-admin')
     const result = await service.create(request())
-    expect(result.steps.find(s => s.id === 'defaultBranch')).toEqual({ id: 'defaultBranch', status: 'failed', detail: 'Droit administrateur requis sur le repo.' })
+    expect(result.steps.find(s => s.id === 'defaultBranch')).toEqual({ id: 'defaultBranch', status: 'admin', detail: 'À faire par un administrateur du repo.' })
     expect(result.steps.find(s => s.id === 'open')!.status).toBe('done')
   })
 })

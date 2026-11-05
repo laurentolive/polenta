@@ -133,33 +133,32 @@ export class WorkspaceService {
       await git.add({ fs, dir: rootRepoPath, filepath: 'config/project.yaml' })
     }
 
-    await fsPromises.writeFile(
-      path.join(rootRepoPath, '.gitignore'),
-      '.polenta/tree.cache.yaml\n*.pref\n',
-      'utf-8',
-    )
-    await fsPromises.writeFile(path.join(rootRepoPath, 'AGENTS.md'), buildAgentsMdTemplate(BRAND), 'utf-8')
-    // T122 sprint 4 — `.mcp.json` généré au même endroit/moment qu'`AGENTS.md` (T106),
-    // pré-configuré pour lancer le serveur MCP de ce projet (cf. host/mcp-launch.ts).
-    // GH44 — pas de `.mcp.json` hors desktop (cf. `HostContext.mcpServerLaunch`) ; le desktop le
-    // régénère à la première ouverture (`ensureAgentFiles`).
-    const mcpServerLaunch = this.host.mcpServerLaunch
-    if (mcpServerLaunch) {
-      await fsPromises.writeFile(
-        path.join(rootRepoPath, '.mcp.json'),
-        buildMcpJsonContent(mcpServerLaunch()),
-        'utf-8',
-      )
+    for (const [filepath, content] of Object.entries(this.polentaInitFiles())) {
+      await fsPromises.writeFile(path.join(rootRepoPath, filepath), content, 'utf-8')
+      await git.add({ fs, dir: rootRepoPath, filepath })
     }
-    await git.add({ fs, dir: rootRepoPath, filepath: '.gitignore' })
-    await git.add({ fs, dir: rootRepoPath, filepath: 'AGENTS.md' })
-    if (mcpServerLaunch) await git.add({ fs, dir: rootRepoPath, filepath: '.mcp.json' })
     await git.commit({
       fs,
       dir: rootRepoPath,
       message: 'init: create project',
       author: { name: BRAND.productName, email: `${BRAND.id}@localhost` },
     })
+  }
+
+  /**
+   * Fichiers de l'initialisation Polenta, par chemin. T122 sprint 4 — `.mcp.json` généré au même
+   * endroit/moment qu'`AGENTS.md` (T106), pré-configuré pour lancer le serveur MCP de ce projet
+   * (cf. host/mcp-launch.ts). GH44 — pas de `.mcp.json` hors desktop (cf.
+   * `HostContext.mcpServerLaunch`) ; le desktop le régénère à la première ouverture
+   * (`ensureAgentFiles`). GH107 — partagés avec l'adoption d'un repo existant.
+   */
+  polentaInitFiles(): Record<string, string> {
+    const mcpServerLaunch = this.host.mcpServerLaunch
+    return {
+      '.gitignore': '.polenta/tree.cache.yaml\n*.pref\n',
+      'AGENTS.md': buildAgentsMdTemplate(BRAND),
+      ...(mcpServerLaunch ? { '.mcp.json': buildMcpJsonContent(mcpServerLaunch()) } : {}),
+    }
   }
 
   /**

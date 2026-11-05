@@ -125,7 +125,7 @@ export const githubProvider: ForgeProvider = {
       const { data } = await forgeRequest<ApiRepo>(repoApiUrl(baseUrl, owner, repo), { ...opts(baseUrl, token), timeoutMs: 10_000 })
       const p = data.permissions
       return {
-        description: data.description ?? '', visibility: data.private ? 'private' : 'public', defaultBranch: data.default_branch ?? '',
+        cloneUrl: data.clone_url, description: data.description ?? '', visibility: data.private ? 'private' : 'public', defaultBranch: data.default_branch ?? '',
         permissions: { pull: p?.pull ?? true, push: p?.push ?? false, admin: p?.admin ?? false },
       }
     } catch (err) {

@@ -222,21 +222,38 @@ Cf. SPEC-ELECTRON-DESKTOP §16.5.
 
 **Channel IPC :** `workspace:create-new` → `{ containerDir: string, name: string }` → `WorkspaceOpenResult`
 
-### 9.1 Forges Forgejo/Gitea : liste des repos et création sur le serveur (GH45 S4)
+### 9.1 Forges GitHub et Forgejo/Gitea : liste des repos et création sur le serveur (GH45 S4, GH107)
 
-Avec au moins un compte `forgejo` connecté (SPEC-ACCOUNTS-AUTH §5), l'accueil propose les fonctions
-de la forge. Les comptes sont relus **à l'ouverture** de chaque fenêtre (la page d'accueil est
+Avec au moins un compte `github` ou `forgejo` connecté (SPEC-ACCOUNTS-AUTH §5), l'accueil propose les
+fonctions de la forge. Les comptes sont relus **à l'ouverture** de chaque fenêtre (la page d'accueil est
 montée une première fois avant la connexion). Code : `main/services/forge/forge.service.ts`
-(`ForgeService`), provider `forge/forgejo.provider.ts`.
+(`ForgeService`), `forge/repo-provisioning.service.ts` (`RepoProvisioningService`), providers
+`forge/forgejo.provider.ts` et `forge/github.provider.ts`.
 
 **« Ouvrir un projet depuis un repo »** → `RepoPickerModal` :
-- repos accessibles au compte (`GET /api/v1/user/repos`, **toutes les pages**, 50 par page), triés,
-  recherche sur `organisation/nom` et la description ;
+- repos accessibles au compte (**toutes les pages**), triés, recherche sur `organisation/nom` et la description ;
 - badge « lecture seule » si le compte n'a pas l'écriture (`permissions.push`) ;
 - le repo de configuration `<org>/polenta-config` (SPEC-ACCOUNTS-AUTH §7) n'est pas proposé ;
 - sélecteur de compte s'il y en a plusieurs ;
-- « Saisir une URL » : popup URL d'avant GH45 ;
-- un repo déjà présent sur le poste (projet récent de même `origin`) est rouvert, sinon cloné.
+- « Saisir une URL » : sur l'hôte d'un compte connecté, même inspection que depuis la liste ; sur un
+  autre hôte, clone direct d'avant GH45, sans complétion ;
+- un repo déjà présent sur le poste (projet récent de même `origin`) est rouvert ; sinon, il est
+  **inspecté** (`forge:inspect-repo`, clones partiels, aucune écriture), et l'assistant
+  `AddExistingRepo` (GH107, spec `GH103.md` §2.3) ne demande que ce qui manque :
+
+| Repo | Écriture | Lecture seule |
+|---|---|---|
+| Vide | Formulaire complet, pré-rempli depuis la forge | Refusé |
+| Complet | Aucune question | Ouvert |
+| Projet Polenta incomplet | « Compléter » ou « Ouvrir tel quel » | Ouvert, sans question |
+| Autre repo | Questions obligatoires, initialisation confirmée | Refusé, avec la liste de ce qui manque |
+
+« Projet Polenta » : `.polenta/`, `integrationBranch` dans `config/project.yaml`, ou `AGENTS.md`
+généré. `forge:adopt-repo(req)` complète dans un clone complet : `int-x` créée et désignée, ou
+désignation de l'existante (commit seulement si `project.yaml` diffère) ; description sur la forge si
+admin, `README.md` commité ; initialisation sans écraser un fichier existant ; push ; branche par
+défaut. Écriture sans admin : description et branche par défaut signalées « à faire par un
+administrateur », sans bloquer.
 
 **« Créer un nouveau projet »** → `CreateProjectModal` (comptes GitHub et Forgejo connectés,
 `forge:repo-accounts`) : nom, puis **« Sur le serveur <hôte> »** (par défaut) ou « Sur ce poste
@@ -268,8 +285,8 @@ uniquement » (création locale ci-dessus). Le serveur ouvre l'**assistant « Aj
 ### 9.2 Composant créé sur le serveur (GH107)
 
 Dans la fenêtre d'ajout d'un composant (SPEC-TEMPLATES §3), « Créer le repo sur le serveur » ouvre le
-même assistant (`CreateComponentRepo`, nom par défaut : nom de montage). Le repo est préparé dans un
-dossier temporaire, supprimé ensuite. Au retour, l'URL remplit le champ « Repo (URL git) » et
+même assistant (`CreateComponentRepo`, nom par défaut : nom de montage), et « Depuis un repo existant »
+passe par la liste et l'inspection du §9.1. Le repo est préparé dans un dossier temporaire, supprimé ensuite. Au retour, l'URL remplit le champ « Repo (URL git) » et
 `int-<x>` le champ « Branche » (pin de `polenta-repo.yaml`) ; l'ajout et le clone suivent le flux
 habituel par URL.
 

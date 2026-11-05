@@ -212,8 +212,22 @@ Droits (§2.3 de la spec) :
 
 | Droit | Comportement |
 |---|---|
-| Sans écriture | Rien n'est écrit. Repo complet : ajouté en lecture seule. Sinon : refus avec la liste de ce qui manque |
+| Sans écriture | Rien n'est écrit. Repo complet ou déjà projet Polenta : ajouté en lecture seule. Sinon : refus avec la liste de ce qui manque |
 | Écriture sans admin | Éléments locaux complétés ; description et branche par défaut listées « à faire par un administrateur du repo » |
+
+Écarts au moment du code (sprint 3) :
+
+- **Projet Polenta jamais forcé** (décision de l'humain, 2026-11-05, `GH103.md` §2.3) : l'assistant propose
+  « Compléter » ou « Ouvrir tel quel ». Ce dernier reste le clone simple (`workspace:create-from-clone`), sans
+  passer par `adopt`.
+- **Reconnaissance** : `.polenta/`, `integrationBranch` dans `project.yaml`, ou `AGENTS.md` généré. Un
+  `AGENTS.md` étranger ne compte pas et n'est pas écrasé par l'initialisation.
+- **Statut `admin`** sur une étape : à faire par un administrateur, sans bloquer. L'assistant affiche alors les
+  étapes avec « Continuer ».
+- **Intégration présente** : `designate` est appelé quand même. Il ne commite que si `project.yaml` diffère, et
+  aligne la branche par défaut (A-04).
+- **Pas d'étape 1 « Nouveau repo ou Repo existant »** : chaque point d'entrée porte déjà ce choix (« Créer » et
+  « Depuis un repo » à l'accueil, deux liens dans l'ajout d'un composant).
 
 ### 4.3 Saisie d'une URL
 

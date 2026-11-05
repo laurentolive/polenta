@@ -81,6 +81,7 @@ import type {
   MergeOrigin,
   MachineConfig,
   CreateRepoRequest,
+  AdoptRepoRequest,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
@@ -271,6 +272,8 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('forge:name-available', (_e, accountKey: string, owner: string, name: string) => c.forge.nameAvailable(accountKey, owner, name))
   r.handle('forge:org-teams', (_e, accountKey: string, org: string) => c.forge.orgTeams(accountKey, org))
   r.handle('forge:create-repo', (_e, req: CreateRepoRequest) => c.repoProvisioning.create(req))
+  r.handle('forge:inspect-repo', (_e, accountKey: string, owner: string, name: string) => c.repoProvisioning.inspect(accountKey, owner, name))
+  r.handle('forge:adopt-repo', (_e, req: AdoptRepoRequest) => c.repoProvisioning.adopt(req))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())

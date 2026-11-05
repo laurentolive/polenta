@@ -42,7 +42,8 @@ function apiRepo(projectRoot: string, host: string, owner: string, name: string,
     description: fs.existsSync(descFile) ? fs.readFileSync(descFile, 'utf-8') : description,
     private: !fs.existsSync(path.join(dir, 'polenta-public')), empty: branches.length === 0,
     clone_url: `http://${host}/${owner}/${name}.git`, default_branch: head,
-    permissions: { admin: true, push: true, pull: true },
+    // `lecture` : le compte n'y a que la lecture.
+    permissions: owner === E2E_READONLY_ORG ? { admin: false, push: false, pull: true } : { admin: true, push: true, pull: true },
   }
 }
 
@@ -63,6 +64,12 @@ export async function handleFakeForgejoApi(req: http.IncomingMessage, res: http.
   const method = req.method ?? 'GET'
 
   if (method === 'GET' && url.pathname === '/api/v1/user') return send(res, 200, { login, full_name: 'E2E Tester', email: `${login}@polenta.test` }), true
+  if (method === 'GET' && url.pathname === '/api/v1/user/repos') {
+    if (Number(url.searchParams.get('page') ?? 1) > 1) return send(res, 200, []), true
+    const repos = fs.readdirSync(projectRoot, { withFileTypes: true }).filter(d => d.isDirectory() && !d.name.endsWith('.git')).flatMap(d =>
+      fs.readdirSync(path.join(projectRoot, d.name)).filter(f => f.endsWith('.git')).map(f => apiRepo(projectRoot, host, d.name, f.slice(0, -4))))
+    return send(res, 200, repos), true
+  }
   if (method === 'GET' && url.pathname === '/api/v1/user/orgs') {
     // Liste paginée : une seule page.
     return send(res, 200, Number(url.searchParams.get('page') ?? 1) > 1 ? [] : [{ username: E2E_ORG, full_name: 'Organisation e2e' }, { username: E2E_READONLY_ORG }]), true

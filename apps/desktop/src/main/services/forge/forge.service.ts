@@ -5,7 +5,7 @@ import * as path from 'path'
 import git from 'isomorphic-git'
 import type {
   CreateRepoInput, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeOwners, ForgeRepo,
-  ForgeRepoAccess, ForgeTeam, RepoMemberGrant,
+  ForgeRepoAccess, ForgeRepoDetails, ForgeTeam, RepoMemberGrant, RepoVisibility,
 } from '@polenta/types'
 
 import type { AuthService } from '../auth.service'
@@ -77,6 +77,18 @@ export class ForgeService {
       if (await provider.repoExists!(account.baseUrl, token, input.owner, input.name)) throw new RepoNameTakenError(`${input.owner}/${input.name}`)
       return provider.createRepo!(account.baseUrl, token, input)
     })
+  }
+
+  /** GH107 — détails d'un repo ; `null` : introuvable ou sans accès. */
+  async repoDetails(accountKey: string, owner: string, repo: string): Promise<ForgeRepoDetails | null> {
+    const { account, token, provider } = await this.require(accountKey)
+    return this.guard(account, () => provider.repoDetails!(account.baseUrl, token, owner, repo))
+  }
+
+  /** GH107 — description, puis visibilité. */
+  async updateRepo(accountKey: string, owner: string, repo: string, patch: { description?: string; visibility?: RepoVisibility }): Promise<void> {
+    const { account, token, provider } = await this.require(accountKey)
+    await this.guard(account, () => provider.updateRepo!(account.baseUrl, token, owner, repo, patch))
   }
 
   /** GH107 — accès d'un compte ou d'une équipe ; `'invited'` : invitation à accepter (GitHub). */

@@ -31,6 +31,7 @@ test.afterAll(() => {
 
 const HOME_ACTION = /Créer un nouveau projet|Create a new project/
 const OPEN_FROM_REPO = /Ouvrir un projet depuis un repo|Open a project from an existing repo/
+const AS_IS = /Ouvrir tel quel|Open as is/
 const tmpFolder = (tag: string) => fs.mkdtempSync(path.join(os.tmpdir(), `polenta-e2e-${tag}-`))
 
 async function signedIn(login: string, password: string) {
@@ -63,6 +64,8 @@ test('S4-1 / S4-3 — liste des repos : recherche, repo de configuration masqué
     await stubFolderPicker(app, folder)
     await page.getByRole('button', { name: OPEN_FROM_REPO }).click()
     await repoList(page).getByRole('option', { name: new RegExp(`${A.org}/itest`) }).click()
+    // GH107 — projet Polenta incomplet : ce qui manque est proposé, jamais imposé.
+    await page.getByRole('button', { name: AS_IS }).click({ timeout: 30_000 })
     await expect(page).toHaveURL(/projectId=/, { timeout: 60_000 })
     expect(fs.existsSync(path.join(folder, 'itest', '.polenta', 'schema.yaml'))).toBe(true)
   } finally {
@@ -135,6 +138,11 @@ test('S4-2 / S4-4 — plus de 50 repos tous listés ; deux comptes : sélecteur 
     await page.getByPlaceholder(/Rechercher un projet|Search a project/).fill(`s4-pag-${RUN}-`)
     await expect(repoList(page).getByRole('option')).toHaveCount(55, { timeout: 30_000 })
     await page.keyboard.press('Escape')
+    // GH107 — inspection d'un repo vide sur une vraie forge (aucune ref côté serveur).
+    const inspected = await page.evaluate(([key, org, name]) =>
+      (window as unknown as { polenta: { invoke: (c: string, ...a: unknown[]) => Promise<{ empty: boolean }> } })
+        .polenta.invoke('forge:inspect-repo', key, org, name), [`${new URL(A.baseUrl).hostname}:itest-auteur`, A.org, `s4-pag-${RUN}-01`])
+    expect(inspected.empty).toBe(true)
     // Second compte (Gitea), ajouté par le même canal que l'écran de connexion.
     const result = await page.evaluate(([url, login, password]) =>
       (window as unknown as { polenta: { invoke: (c: string, ...a: unknown[]) => Promise<{ status: string }> } })
@@ -157,6 +165,7 @@ async function openItest(app: Awaited<ReturnType<typeof launch>>['app'], page: P
   await stubFolderPicker(app, folder)
   await page.getByRole('button', { name: OPEN_FROM_REPO }).click()
   await repoList(page).getByRole('option', { name: new RegExp(`${A.org}/itest`) }).click()
+  await page.getByRole('button', { name: AS_IS }).click({ timeout: 30_000 })
   await expect(page).toHaveURL(/projectId=/, { timeout: 60_000 })
   return path.join(folder, 'itest')
 }

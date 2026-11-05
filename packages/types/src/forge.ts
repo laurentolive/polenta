@@ -159,6 +159,7 @@ export interface CreateRepoInput {
 }
 
 export interface ForgeRepoDetails {
+  cloneUrl: string
   description: string
   visibility: RepoVisibility
   defaultBranch: string
@@ -193,11 +194,12 @@ export interface RepoMemberGrant {
 }
 
 /** GH107 — étapes de la création d'un repo (design §3.1), dans cet ordre. */
-export type ProvisionStepId = 'remote' | 'local' | 'push' | 'defaultBranch' | 'members' | 'open'
+export type ProvisionStepId = 'remote' | 'local' | 'integration' | 'description' | 'polenta' | 'push' | 'defaultBranch' | 'members' | 'open'
 
 export interface ProvisionStep {
   id: ProvisionStepId
-  status: 'done' | 'failed' | 'skipped'
+  /** `admin` : à faire par un administrateur du repo, sans bloquer l'ajout (spec GH103 §2.3). */
+  status: 'done' | 'failed' | 'skipped' | 'admin'
   detail?: string
 }
 
@@ -219,6 +221,39 @@ export interface CreateRepoResult {
   branch: string
   /** Projet, étape `open` réussie. */
   open?: WorkspaceOpenResult
+}
+
+/** GH107 — ce qui manque à un repo existant (spec GH103 §2.3). */
+export type RepoMissing = 'integration' | 'description' | 'polenta'
+
+/** GH107 — ce que Polenta a trouvé dans un repo existant, sans rien écrire (design §4.1). */
+export interface RepoInspection {
+  /** `propriétaire/nom`. */
+  fullName: string
+  details: ForgeRepoDetails
+  /** Aucune branche sur le serveur. */
+  empty: boolean
+  integration: { branch: string; source: 'default' | 'project-yaml' } | null
+  hasReadme: boolean
+  hasDescription: boolean
+  /** `.polenta/`, `integrationBranch` dans `config/project.yaml`, ou `AGENTS.md` généré par Polenta. */
+  isPolentaProject: boolean
+  missing: RepoMissing[]
+}
+
+/** GH107 — réponses aux seules questions posées, et destination (design §4.2). */
+export interface AdoptRepoRequest {
+  accountKey: string
+  owner: string
+  name: string
+  integrationSuffix?: string
+  description?: string
+  /** Confirmation explicite : commiter l'initialisation Polenta. */
+  initPolenta?: boolean
+  /** Repo vide seulement : visibilité choisie et membres. */
+  visibility?: RepoVisibility
+  members?: RepoMemberGrant[]
+  target: CreateRepoRequest['target']
 }
 
 /** Invitation en attente (GitHub). */

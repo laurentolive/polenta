@@ -181,10 +181,10 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const forgeConfig = new ForgeConfigService(auth, host.userDataDir)
   // GH45 S4 — repos, organisations, membres, droits ; création de projet/composant sur le serveur.
   const forge = new ForgeService(auth, workspace, sync)
-  // GH107 — création d'un repo sur GitHub / Forgejo (assistant « Ajouter un repo »).
-  const repoProvisioning = new RepoProvisioningService(forge, workspace, sync)
   // GH106 — désignation de la branche d'intégration (commit de project.yaml, push, branche par défaut).
   const integration = new IntegrationBranchService(git, sync, forge)
+  // GH107 — création et adoption d'un repo sur GitHub / Forgejo (assistant « Ajouter un repo »).
+  const repoProvisioning = new RepoProvisioningService(forge, workspace, sync, integration)
   const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged(), host.applyNetworkTimeout)
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH222 — enregistrement depuis la vue de diff (service de l'objet pour une exigence / un test).

@@ -97,6 +97,8 @@ export function createIpcClient(
       nameAvailable: (accountKey, owner, name) => invoke('forge:name-available', accountKey, owner, name),
       orgTeams: (accountKey, org) => invoke('forge:org-teams', accountKey, org),
       createRepo: (req) => invoke('forge:create-repo', req),
+      inspectRepo: (accountKey, owner, name) => invoke('forge:inspect-repo', accountKey, owner, name),
+      adoptRepo: (req) => invoke('forge:adopt-repo', req),
     },
     workspace: {
       listRecents: () => invoke('workspace:list-recents'),

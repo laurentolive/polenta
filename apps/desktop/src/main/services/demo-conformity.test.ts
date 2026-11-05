@@ -3,13 +3,15 @@ import { createRequire } from 'module'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
+import { pathToFileURL } from 'url'
 import * as yaml from 'js-yaml'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import type { ProjectSchema, Validation } from '@polenta/types'
-import { transitionRuleIssues, validationState, versionState } from '@polenta/types'
+import { hasHistoryGap, transitionRuleIssues, validationState, versionState } from '@polenta/types'
 import { appServices, type AppServices } from '../../../../../scripts/demo-lave-linge/app-services'
 import { flattenSystemNodes } from '@polenta/types'
+import { findObjectTypeDef } from './schema-lookup.util'
 
 // GH278 — la démo générée, relue par les services de l'application : rien que l'application refuserait,
 // et chaque exemple annoncé par le guide et les tutoriels se trouve à l'endroit indiqué.
@@ -41,12 +43,18 @@ afterAll(() => { if (ws) fs.rmSync(ws, { recursive: true, force: true }) })
 describe('GH278 — générateur', () => {
   const generate = (...args: string[]) => spawnSync(process.execPath, [TSX_CLI, GENERATOR, ...args], { encoding: 'utf-8' })
 
-  it('G1 — refuse un --out relatif au lecteur, sans valeur, ou dans le repo Polenta', () => {
+  it('G1 — refuse un --out relatif au lecteur, sans valeur, dans le repo Polenta ou qui le contient', async () => {
+    // La garde protège `--force` (suppression récursive) : testée sans jamais lancer de suppression.
+    const { resolveOutDir } = await import(/* @vite-ignore */ pathToFileURL(path.join(ROOT, 'scripts/demo-lave-linge/lib.mjs')).href) as { resolveOutDir: (a: string[], d: string, r: string) => string }
+    const out = (value?: string) => () => resolveOutDir(value === undefined ? ['--out'] : ['--out', value], '/défaut', ROOT)
+    expect(out('C:Devdemo')).toThrow('relatif au lecteur')
+    expect(out()).toThrow('attend un dossier')
+    expect(out(path.join(ROOT, 'apps'))).toThrow('dans le repo Polenta')
+    expect(out(path.dirname(ROOT))).toThrow('contient le repo Polenta')
+    expect(out(path.parse(ROOT).root)).toThrow('contient le repo Polenta')
+    expect(out(ws)()).toBe(path.resolve(ws))
+    // Bout en bout, sans `--force` : le générateur s'arrête avant d'écrire.
     expect(generate('--out', 'C:Devdemo').stderr).toContain('relatif au lecteur')
-    expect(generate('--out').stderr).toContain('attend un dossier')
-    const inside = generate('--out', path.join(ROOT, 'apps'), '--force')
-    expect(inside.stderr).toContain('dans le repo Polenta')
-    expect(fs.existsSync(path.join(ROOT, 'apps/desktop/package.json'))).toBe(true)
   }, 60_000)
 })
 
@@ -89,6 +97,25 @@ describe('GH278 — structure', () => {
     expect(views.version).toBe(1)
     expect(views.views.map(v => v.name)).toEqual(['Revue marketing', 'Suivi de conformité'])
     expect(views.views[1].settings.excel).toEqual(expect.arrayContaining(['designStatus', 'validationStatus']))
+  })
+
+  it('C12 — `history` écrit par le générateur : lu par l\'application sans trou à combler', () => {
+    // Le générateur date l'historique dans le passé du produit (il ne peut pas passer par HistoryService).
+    let checked = 0
+    for (const name of ['ll800-produit', 'comp-moteur']) {
+      const schema = read<ProjectSchema>(`${name}/.polenta/schema.yaml`)
+      for (const dir of ['requirements', 'tests']) {
+        for (const f of list(`${name}/${dir}`)) {
+          const obj = read<{ id: string; objectTypeRef: string; history?: Record<string, unknown[]> } & Record<string, unknown>>(`${name}/${dir}/${f}`)
+          if (!obj.history) continue
+          const typeDef = findObjectTypeDef(schema, obj.objectTypeRef)
+          expect(hasHistoryGap(obj as never, typeDef === 'unresolvable' ? null : typeDef as never), obj.id).toBe(false)
+          checked++
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(40)
+    expect(read<{ history: { status: Array<{ comment?: string }> } }>('ll800-produit/requirements/SYS-0002.yaml').history.status.at(-1)?.comment).toContain('1400')
   })
 
   it('C11 — les défauts annoncés restent présents', () => {

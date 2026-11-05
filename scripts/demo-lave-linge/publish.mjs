@@ -2,7 +2,7 @@
 // GH278 — republie un workspace généré vers les 5 dépôts publics `demo-ll800-*`.
 //
 // Régénérer change tous les SHA : la publication remplace l'historique distant (force-push). Avant
-// cela, l'ancienne tête de `main` de chaque dépôt est gardée sous le tag `archive/<date>`.
+// cela, l'ancienne tête de `main` de chaque dépôt est gardée sous le tag `archive/<SHA>`.
 //
 // Usage : node scripts/demo-lave-linge/publish.mjs --from <workspace généré> [--yes]
 //   sans --yes : affiche les commandes, n'envoie rien.
@@ -18,7 +18,6 @@ if (!from || !fs.existsSync(path.join(from, '.polenta', 'workspace.yaml'))) {
   console.error('--from <workspace généré> attendu (dossier contenant .polenta/workspace.yaml).')
   process.exit(1)
 }
-const stamp = new Date().toISOString().slice(0, 10)
 const run = (dir, cmd) => {
   console.log(`[${path.basename(dir)}] git ${cmd.join(' ')}`)
   if (YES) execFileSync('git', cmd, { cwd: dir, stdio: 'inherit' })
@@ -31,9 +30,11 @@ for (const key of REPO_ORDER) {
   const url = repoUrl(key)
   if (read(dir, ['remote', 'get-url', 'origin']) !== url) throw new Error(`${dir} : remote inattendu`)
   const remoteMain = read(dir, ['ls-remote', url, 'refs/heads/main']).split(/\s/)[0]
-  if (remoteMain) {
+  // Un tag par tête archivée : republier le même jour ne le réécrit pas et ne bloque pas la boucle.
+  const archive = `archive/${remoteMain.slice(0, 12)}`
+  if (remoteMain && !read(dir, ['ls-remote', '--tags', url, `refs/tags/${archive}`])) {
     run(dir, ['fetch', '--no-tags', url, `+refs/heads/main:refs/remotes/archive/main`])
-    run(dir, ['push', url, `refs/remotes/archive/main:refs/tags/archive/${stamp}`])
+    run(dir, ['push', url, `refs/remotes/archive/main:refs/tags/${archive}`])
   }
   const branches = read(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n').filter(Boolean)
   run(dir, ['push', '--force', url, ...branches.map(b => `+refs/heads/${b}:refs/heads/${b}`)])

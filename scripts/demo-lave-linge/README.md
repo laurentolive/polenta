@@ -26,6 +26,6 @@ Les lecteurs, les e2e (`POLENTA_E2E_DEMO_SOURCE`) et `deploy/polenta-host.sh` cl
 2. `node scripts/demo-lave-linge/publish.mjs --from <dossier>` : affiche les commandes.
 3. Avec l'accord explicite du responsable du repo (force-push sur des dépôts publics) :
    `node scripts/demo-lave-linge/publish.mjs --from <dossier> --yes`. L'ancienne tête de `main` de chaque
-   dépôt est gardée sous le tag `archive/<date>`.
+   dépôt est gardée sous le tag `archive/<SHA>`.
 4. Publier en même temps que la mise à jour des tutoriels sur `main`. Un lecteur qui a déjà cloné la démo
    la supprime et la rouvre depuis l'accueil.

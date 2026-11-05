@@ -27,8 +27,13 @@ export function resolveOutDir(args, defaultDir, repoRoot) {
   if (!raw || raw.startsWith('--')) throw new Error('--out attend un dossier.')
   if (/^[A-Za-z]:[^\\/]/.test(raw)) throw new Error(`--out "${raw}" : chemin relatif au lecteur (antislashs perdus ?). Utiliser des / ou des guillemets.`)
   const out = path.resolve(raw)
-  const rel = path.relative(repoRoot, out)
-  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) throw new Error(`--out "${out}" est dans le repo Polenta : choisir un dossier en dehors.`)
+  const inside = (child, parent) => {
+    const rel = path.relative(parent, child)
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+  }
+  // `--force` supprime la cible : ni le repo, ni un dossier du repo, ni un dossier qui le contient.
+  if (inside(out, repoRoot)) throw new Error(`--out "${out}" est dans le repo Polenta : choisir un dossier en dehors.`)
+  if (inside(repoRoot, out)) throw new Error(`--out "${out}" contient le repo Polenta : choisir un dossier à part.`)
   return out
 }
 

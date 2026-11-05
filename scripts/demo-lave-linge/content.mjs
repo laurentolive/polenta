@@ -1041,10 +1041,10 @@ export default function (data) {
 const DECISIONS_BY_VALIDATION = `// @polenta contract 1
 // Décisions d'une validation, choisie par le paramètre du dashboard.
 export default function (data, polenta) {
-  const wanted = polenta.params.validation
+  const wanted = polenta.params.validation ?? 'Validation 1.0'
   const groups = new Map()
   for (const v of data.validations) {
-    if (wanted && v.title !== wanted) continue
+    if (v.title !== wanted) continue
     for (const e of v.entries) {
       let g = groups.get(e.decision)
       if (!g) groups.set(e.decision, (g = { decision: e.decision, count: 0, _ids: [] }))
@@ -1074,7 +1074,8 @@ export const QUERIES = [
   { id: 'QUERY-0011', title: 'Résultat par campagne', template: { id: 'campaign-results', params: {} } },
   { id: 'QUERY-0012', title: 'Issues par version', script: ISSUES_BY_VERSION },
   { id: 'QUERY-0013', title: 'Décisions par validation', script: DECISIONS_BY_VALIDATION,
-    parameters: [{ name: 'validation', kind: 'enum', label: 'Validation', values: [{ value: 'Validation 1.0' }, { value: 'Validation 2.0' }, { value: 'Validation 1.2.4' }] }] },
+    parameters: [{ name: 'validation', kind: 'enum', label: 'Validation', required: true, default: 'Validation 1.0',
+      values: [{ value: 'Validation 1.0' }, { value: 'Validation 2.0' }, { value: 'Validation 1.2.4' }] }] },
 ]
 
 /** GH203 — vues d'équipe (`.polenta/views/<nœud>/<type>.yaml`). */

@@ -106,11 +106,9 @@ describe('GH278 — exercices à effet', () => {
 
   it('tutoriel 9 : passer une ligne d\'analyse en « Modification à faire »', async () => {
     const { ws, product, app } = await demo()
-    await app.versions.setImpact(product, 'LLV-0002', 'TSYS-0005', 'modification_a_faire' as never, 'À rejouer', ws).catch(async () => {
-      await app.versions.setImpact(product, 'LLV-0002', 'TSYS-0005', 'impact_a_tester', 'À rejouer', ws)
-    })
+    await app.versions.setImpact(product, 'LLV-0002', 'TSYS-0005', 'modification_a_faire', 'À rejouer', ws)
     const analysis = await app.versions.analysis(product, 'LLV-0002', ws)
-    expect(analysis.rows.find(r => r.id === 'TSYS-0005')?.comment).toBe('À rejouer')
+    expect(analysis.rows.find(r => r.id === 'TSYS-0005')).toMatchObject({ status: 'modification_a_faire', comment: 'À rejouer' })
   }, 60_000)
 
   it('tutoriel 10 : créer une issue depuis un run en échec et l\'inclure', async () => {

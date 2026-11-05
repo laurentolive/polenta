@@ -12,7 +12,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import {
-  writeFile, writeYaml, removeFile, resolveOutDir, stableUuid, stableSuffix, initRepo, commitAll, annotatedTag, lightweightTag, headSha, git, Canvas, drawio,
+  writeFile, writeYaml, resolveOutDir, stableUuid, stableSuffix, initRepo, commitAll, annotatedTag, lightweightTag, headSha, git, Canvas, drawio,
 } from './lib.mjs'
 import { schemaProduit, schemaMoteur, schemaPompe, schemaWifi, schemaBus } from './schemas.mjs'
 import {
@@ -22,6 +22,8 @@ import { README_PRODUIT, README_COMPOSANTS, GUIDE } from './docs.mjs'
 import { STEPS } from './milestone-d.mjs'
 // GH278 — versions, issues, validations et version testée : écrites par les services de l'application.
 import { appServices, atInstant } from './app-services.ts'
+import { GitService } from '../../apps/desktop/src/main/services/git.service.ts'
+import { deleteWithTombstone } from '../../apps/desktop/src/main/services/id-counter.util.ts'
 // GH74 — modèles de la vue Suivi (TypeScript sans dépendance) : générateur lancé par tsx.
 import { queryCode, widgetCode } from '../../packages/types/src/suivi-templates.ts'
 
@@ -195,7 +197,7 @@ async function writeRun(r) {
   const choice = r.testedVersion ?? (r.campaignId ? CAMPAIGNS.find(c => c.id === r.campaignId).testedVersion : null)
   let testedConfig
   if (choice) {
-    await prepareTree(r.repo)
+    await prepareTree(r.repo, r.phase)
     testedConfig = await appServices(r.by.name).testedConfig.resolve(repoDir(r.repo), choice, WS, { required: true })
   }
   writeYaml(repoDir(r.repo), `test-runs/${r.testId}/${r.id}.yaml`, {
@@ -373,8 +375,13 @@ function courbePng() {
 
 // ─── Étapes jouées par les services (milestone-d.mjs) ────────────────────────
 
-/** Cache de l'arbre du workspace vu depuis `key` : composition et dépendances d'une version. */
-async function prepareTree(key) {
+/** Cache de l'arbre du workspace vu depuis `key` : composition et dépendances d'une version. Les
+ *  manifestes ne bougent qu'au commit d'une phase : `phaseKey` évite de reconstruire le même arbre. */
+let preparedTree = null
+async function prepareTree(key, phaseKey = null) {
+  const memo = phaseKey && `${key}:${phaseKey}`
+  if (memo && preparedTree === memo) return
+  preparedTree = memo
   const { workspaceTree } = appServices('démo')
   const built = await workspaceTree.buildTree(WS, repoDir(key), [])
   if (built.status !== 'ok') throw new Error(`Arbre du workspace (${key}) : ${JSON.stringify(built)}`)
@@ -387,9 +394,11 @@ async function playStep(key, phaseKey, step) {
   git(dir, ['config', 'user.name', step.by.name])
   git(dir, ['config', 'user.email', step.by.email])
   if (step.tree) await prepareTree(step.tree)
+  // Les services committent à l'heure de `atInstant` : un commit d'étape vient toujours après son parent.
+  const after = () => new Date(Math.max(Date.parse(step.at), Date.parse(git(dir, ['log', '-1', '--format=%cI'])) + 60_000)).toISOString()
   const ctx = {
     app: appServices(step.by.name), dir, ws: step.tree ? WS : undefined,
-    commit: msg => commitAll(dir, msg, step.by, step.at),
+    commit: msg => commitAll(dir, msg, step.by, after()),
     elements: () => ELEMENTS.filter(e => e.repo === key && state.has(e.id)).map(e => e.id),
     backlog: () => ELEMENTS.filter(e => e.repo === key && e.at[phaseKey] && state.has(e.id)).map(e => e.id),
     link: (type, sourceId, targetId) => {
@@ -400,7 +409,7 @@ async function playStep(key, phaseKey, step) {
       r.testId === testId && r.campaignId === campaignId && (!requirementId || r.requirementId === requirementId)).id,
   }
   await atInstant(new Date(step.at).toISOString(), () => step.run(ctx))
-  commitAll(dir, step.msg, step.by, new Date(Date.parse(step.at) + 3600_000).toISOString())
+  commitAll(dir, step.msg, step.by, after())
   git(dir, ['config', '--unset', 'user.name'])
   git(dir, ['config', '--unset', 'user.email'])
 }
@@ -425,9 +434,8 @@ for (const phase of PHASES) {
     for (const el of ELEMENTS.filter(e => e.repo === key && e.at[phase.key])) {
       const rel = `${el.cat === 'requirement' ? 'requirements' : 'tests'}/${el.id}.yaml`
       if (el.at[phase.key].deleted) {
-        // Comme l'application (`deleteWithTombstone`) : le numéro n'est jamais réutilisé.
-        removeFile(dir, rel)
-        writeFile(dir, `.polenta/tombstones/${el.id}`, '')
+        // Suppression de l'application : pierre tombale, le numéro n'est jamais réutilisé (GH20).
+        await deleteWithTombstone(new GitService(), dir, rel, el.id)
         state.delete(el.id)
         continue
       }

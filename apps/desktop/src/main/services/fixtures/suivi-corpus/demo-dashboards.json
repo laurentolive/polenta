@@ -85,8 +85,8 @@
     {"version":"comp-module-wifi 1.0","sum_count":0,"_ids":[]}
   ],
   "Versions & validation / Décisions de la validation": [
-    {"decision":"conforme","sum_count":104,"_ids":["BIHM-0001","BIHM-0002","BIHM-0003","BIHM-0004","CC-0001","CC-0002","CC-0003","CC-0004","CC-0005","EV-0001","EV-0002","EV-0003","HYD-0001","HYD-0002","HYD-0003","HYD-0004","IHM-0001","IHM-0002","IHM-0003","IHM-0004","PRD-0001","PRD-0002","PRD-0003","PRD-0004","PRD-0005","PRD-0006","PRD-0007","PRD-0008","PRD-0009","PRD-0012","PRD-0013","SW-0001","SW-0002","SW-0003","SW-0004","SW-0005","SW-0006","SYS-0001","SYS-0002","SYS-0003","SYS-0005","SYS-0006","SYS-0007","SYS-0008","SYS-0009","SYS-0010","SYS-0011","SYS-0012","SYS-0014","SYS-0013","FWM-0001","FWM-0002","FWM-0003","MOT-0001","MOT-0002","MOT-0003","MOT-0005","MOT-0006"]},
-    {"decision":"hors_scope","sum_count":3,"_ids":["PRD-0010","SYS-0013","MOT-0007"]},
-    {"decision":"derogation","sum_count":2,"_ids":["SYS-0004","MOT-0004"]}
+    {"decision":"conforme","sum_count":49,"_ids":["BIHM-0001","BIHM-0002","BIHM-0003","BIHM-0004","CC-0001","CC-0002","CC-0003","CC-0004","CC-0005","EV-0001","EV-0002","EV-0003","HYD-0001","HYD-0002","HYD-0003","HYD-0004","IHM-0001","IHM-0002","IHM-0003","IHM-0004","PRD-0001","PRD-0002","PRD-0003","PRD-0004","PRD-0005","PRD-0006","PRD-0007","PRD-0008","PRD-0009","PRD-0012","PRD-0013","SW-0001","SW-0002","SW-0003","SW-0004","SW-0005","SW-0006","SYS-0001","SYS-0002","SYS-0003","SYS-0005","SYS-0006","SYS-0007","SYS-0008","SYS-0009","SYS-0010","SYS-0011","SYS-0012","SYS-0014"]},
+    {"decision":"hors_scope","sum_count":2,"_ids":["PRD-0010","SYS-0013"]},
+    {"decision":"derogation","sum_count":1,"_ids":["SYS-0004"]}
   ]
 }

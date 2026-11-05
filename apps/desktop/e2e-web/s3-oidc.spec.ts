@@ -218,10 +218,16 @@ test('S3-16 — « Créer sur le serveur » depuis le navigateur', async () => {
   await expect(auteur.page.getByRole('radio', { name: /Sur le serveur|On the server/ })).toBeChecked({ timeout: 30_000 })
   await auteur.page.getByLabel(/Nom du projet|Project name/).fill(name)
   await auteur.page.getByRole('button', { name: /^(Continuer|Continue)$/ }).click()
+  // GH107 — assistant « Ajouter un repo » : organisation de l'instance, description obligatoire.
+  const wizard = auteur.page.getByRole('form', { name: /Ajouter un repo|Add a repository/ })
+  await wizard.getByRole('combobox', { name: /Propriétaire|Owner/ }).selectOption(A.org, { timeout: 30_000 })
+  await wizard.getByLabel(/^Description$/).fill('Projet créé depuis le navigateur')
+  await expect(wizard.getByText(/Nom disponible|Name available/)).toBeVisible({ timeout: 30_000 })
+  await wizard.getByRole('button', { name: /^(Créer|Create)$/ }).click()
   await expect(auteur.page).toHaveURL(/projectId=/, { timeout: 60_000 })
   // La forge peut exposer le repo avant sa branche (publication initiale en cours) : on attend.
   await expect.poll(() => { try { return repoInfo(name) } catch { return null } }, { timeout: 30_000 })
-    .toEqual({ exists: true, private: true, branches: ['main'] })
+    .toEqual({ exists: true, private: true, branches: [`int-${name}`] })
   // Le clone vit dans « Mes projets » de l'auteur sur le serveur.
   const projects = await invoke<Array<{ name: string }>>(auteur.page, 'web:list-workspaces')
   expect(projects.map(p => p.name)).toContain(name)

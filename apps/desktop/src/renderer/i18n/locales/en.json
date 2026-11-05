@@ -261,7 +261,8 @@
       "onServer": "On the server {{host}}",
       "onThisComputer": "On this computer only",
       "noCreatableOrg": "Your account is not allowed to create a project in any organization on {{host}}. Ask your administrator.",
-      "pushWarning": "Project created on the server, but its first publication failed ({{message}}). Publish later with the Publish button."
+      "pushWarning": "Project created on the server, but its first publication failed ({{message}}). Publish later with the Publish button.",
+      "onAServer": "On a server (GitHub, Forgejo)"
     }
   },
   "preferences": {
@@ -2619,5 +2620,68 @@
     },
     "noTest": "No test linked to this requirement.",
     "otherComponent": "Executions in another component"
+  },
+  "repoWizard": {
+    "title": "Add a repository",
+    "titleProject": "New project on a server",
+    "titleComponent": "New component repository on a server",
+    "account": "Service",
+    "owner": "Owner",
+    "ownerSelf": "{{login}} (your account)",
+    "scopeMissing": "Your sign-in to {{host}} cannot list all your organizations: sign in to {{host}} again to see them.",
+    "ownerRightUnknown": "{{owner}} does not say whether your account may create a repository there: if refused, ask an administrator of {{owner}} for this right.",
+    "name": "Repository name",
+    "nameInvalid": "Letters, digits, “-”, “_” and “.” only, not starting with “.” or “-”.",
+    "nameChecking": "Checking the name…",
+    "nameTaken": "Repository {{repo}} already exists: choose another name.",
+    "nameFree": "Name available.",
+    "visibility": "Visibility",
+    "private": "Private",
+    "public": "Public",
+    "description": "Description",
+    "descriptionHelp": "Required. Repository description on the server and content of README.md.",
+    "branch": "Integration branch",
+    "branchInvalid": "After “int-”: letters, digits, “-”, “_” and “.” only.",
+    "create": "Create",
+    "creating": "Creating…",
+    "members": {
+      "title": "Members (optional)",
+      "list": "Added members",
+      "login": "Account to add",
+      "loginPlaceholder": "account login",
+      "team": "Team to add",
+      "teamPlaceholder": "Choose a team…",
+      "teamPrefix": "Team {{name}}",
+      "add": "Add",
+      "addTeam": "Add team",
+      "remove": "Remove {{name}}",
+      "levelOf": "Level of {{name}}",
+      "level": {
+        "label": "Level",
+        "read": "Read",
+        "write": "Write",
+        "admin": "Admin"
+      }
+    },
+    "step": {
+      "remote": "Repository created on the server",
+      "local": "Local preparation",
+      "push": "Integration branch published",
+      "defaultBranch": "Server default branch",
+      "members": "Members added",
+      "open": "Opening"
+    },
+    "status": {
+      "done": "done",
+      "failed": "failed",
+      "skipped": "not done"
+    },
+    "result": {
+      "title": "Creation incomplete",
+      "created": "Repository {{repo}} was created on the server (branch {{branch}}). It is not deleted.",
+      "steps": "Steps",
+      "resume": "The steps not done can be resumed later by adding this repository as an existing one.",
+      "continue": "Continue"
+    }
   }
 }

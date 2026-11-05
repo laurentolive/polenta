@@ -261,7 +261,8 @@
       "onServer": "Sur le serveur {{host}}",
       "onThisComputer": "Sur ce poste uniquement",
       "noCreatableOrg": "Votre compte n’a le droit de créer un projet dans aucune organisation de {{host}}. Demandez-le à votre administrateur.",
-      "pushWarning": "Projet créé sur le serveur, mais sa première publication a échoué ({{message}}). Publiez plus tard depuis le bouton Publier."
+      "pushWarning": "Projet créé sur le serveur, mais sa première publication a échoué ({{message}}). Publiez plus tard depuis le bouton Publier.",
+      "onAServer": "Sur un serveur (GitHub, Forgejo)"
     }
   },
   "preferences": {
@@ -2619,5 +2620,68 @@
     },
     "noTest": "Aucun test lié à cette exigence.",
     "otherComponent": "Exécutions dans un autre composant"
+  },
+  "repoWizard": {
+    "title": "Ajouter un repo",
+    "titleProject": "Nouveau projet sur un serveur",
+    "titleComponent": "Nouveau repo de composant sur un serveur",
+    "account": "Service",
+    "owner": "Propriétaire",
+    "ownerSelf": "{{login}} (votre compte)",
+    "scopeMissing": "Votre connexion à {{host}} ne permet pas de lister toutes vos organisations : reconnectez-vous à {{host}} pour les voir.",
+    "ownerRightUnknown": "{{owner}} ne dit pas si votre compte peut y créer un repo : en cas de refus, demandez ce droit à un administrateur de {{owner}}.",
+    "name": "Nom du repo",
+    "nameInvalid": "Lettres, chiffres, « - », « _ » et « . » seulement, sans « . » ni « - » au début.",
+    "nameChecking": "Vérification du nom…",
+    "nameTaken": "Le repo {{repo}} existe déjà : choisissez un autre nom.",
+    "nameFree": "Nom disponible.",
+    "visibility": "Visibilité",
+    "private": "Privé",
+    "public": "Public",
+    "description": "Description",
+    "descriptionHelp": "Obligatoire. Description du repo sur le serveur et contenu du README.md.",
+    "branch": "Branche d'intégration",
+    "branchInvalid": "Après « int- » : lettres, chiffres, « - », « _ » et « . » seulement.",
+    "create": "Créer",
+    "creating": "Création…",
+    "members": {
+      "title": "Membres (facultatif)",
+      "list": "Membres ajoutés",
+      "login": "Compte à ajouter",
+      "loginPlaceholder": "identifiant du compte",
+      "team": "Équipe à ajouter",
+      "teamPlaceholder": "Choisir une équipe…",
+      "teamPrefix": "Équipe {{name}}",
+      "add": "Ajouter",
+      "addTeam": "Ajouter l'équipe",
+      "remove": "Retirer {{name}}",
+      "levelOf": "Niveau de {{name}}",
+      "level": {
+        "label": "Niveau",
+        "read": "Lecture",
+        "write": "Écriture",
+        "admin": "Administration"
+      }
+    },
+    "step": {
+      "remote": "Création du repo sur le serveur",
+      "local": "Préparation locale",
+      "push": "Publication de la branche d'intégration",
+      "defaultBranch": "Branche par défaut du serveur",
+      "members": "Ajout des membres",
+      "open": "Ouverture"
+    },
+    "status": {
+      "done": "fait",
+      "failed": "en échec",
+      "skipped": "non fait"
+    },
+    "result": {
+      "title": "Création incomplète",
+      "created": "Le repo {{repo}} a été créé sur le serveur (branche {{branch}}). Il n'est pas supprimé.",
+      "steps": "Étapes",
+      "resume": "Les étapes non faites peuvent être reprises plus tard en ajoutant ce repo comme repo existant.",
+      "continue": "Continuer"
+    }
   }
 }

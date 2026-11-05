@@ -185,51 +185,7 @@ describe('ForgeService', () => {
     expect(err.message).toMatch(/Reconnectez-vous/)
     expect(auth.isAccessRevoked(host)).toBe(true)
     forge.route('GET', '/api/v1/user/orgs', () => ({ status: 500, json: { message: 'boom' } }))
-    await expect(service.creatableOrgs(`${host}:bob`)).rejects.toThrow(`Le serveur ${host} a refusé l'opération (HTTP 500 : boom).`)
-  })
-
-  it('createProjectOnServer : nom pris → erreur avant toute écriture locale', async () => {
-    forge.route('GET', '/api/v1/repos/acme/pris', () => ({ status: 200, json: apiRepo('acme/pris') }))
-    await expect(service.createProjectOnServer(dir, 'pris', `${host}:bob`, 'acme')).rejects.toBeInstanceOf(RepoNameTakenError)
-    expect(fs.existsSync(path.join(dir, 'pris'))).toBe(false)
-    expect(forge.requests.some(r => r.method === 'POST')).toBe(false)
-  })
-
-  it('createProjectOnServer : repo distant, projet local, origin, publication de main', async () => {
-    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/nouveau') }))
-    const result = await service.createProjectOnServer(dir, 'nouveau', `${host}:bob`, 'acme')
-    const repoPath = path.join(dir, 'nouveau')
-    expect(result).toMatchObject({ cloneUrl: 'https://forge.test/acme/nouveau.git', pushWarning: undefined, open: { status: 'ok' } })
-    expect((await git.listRemotes({ fs, dir: repoPath }))).toEqual([{ remote: 'origin', url: 'https://forge.test/acme/nouveau.git' }])
-    expect(pushBranch).toHaveBeenCalledWith(repoPath, 'main')
-  })
-
-  it('createProjectOnServer : publication en échec → projet conservé avec origin, avertissement', async () => {
-    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/coupe') }))
-    pushBranch.mockRejectedValueOnce(new Error('réseau coupé'))
-    const result = await service.createProjectOnServer(dir, 'coupe', `${host}:bob`, 'acme')
-    expect(result.pushWarning).toBe('réseau coupé')
-    expect((await git.listRemotes({ fs, dir: path.join(dir, 'coupe') }))[0].url).toBe('https://forge.test/acme/coupe.git')
-  })
-
-  it('createProjectOnServer : nom invalide refusé sans appel réseau', async () => {
-    await expect(service.createProjectOnServer(dir, 'a b', `${host}:bob`, 'acme')).rejects.toThrow(/invalide/)
-    expect(forge.requests).toHaveLength(0)
-  })
-
-  it('createComponentOnServer : initialisé et publié depuis un dossier temporaire supprimé ensuite', async () => {
-    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/comp') }))
-    let pushedFrom = ''
-    pushBranch.mockImplementationOnce(async (repoPath: string) => { pushedFrom = repoPath })
-    expect(await service.createComponentOnServer(`${host}:bob`, 'acme', 'comp')).toEqual({ cloneUrl: 'https://forge.test/acme/comp.git' })
-    expect(pushedFrom).toMatch(/polenta-composant-/)
-    expect(fs.existsSync(pushedFrom)).toBe(false)
-  })
-
-  it('createComponentOnServer : publication en échec → erreur qui donne l\'URL', async () => {
-    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/comp') }))
-    pushBranch.mockRejectedValueOnce(new Error('réseau coupé'))
-    await expect(service.createComponentOnServer(`${host}:bob`, 'acme', 'comp')).rejects.toThrow(/https:\/\/forge\.test\/acme\/comp\.git/)
+    await expect(service.owners(`${host}:bob`)).rejects.toThrow(`Le serveur ${host} a refusé l'opération (HTTP 500 : boom).`)
   })
 
   describe('repoAccess / orgMembers (repo local avec origin)', () => {

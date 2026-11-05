@@ -263,7 +263,6 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // ── Forges (GH45 S4) : repos, organisations, droits, membres, création sur le serveur ─────────
   r.handle('forge:accounts', () => c.forge.accounts())
   r.handle('forge:list-repos', (_e, accountKey: string) => c.forge.listRepos(accountKey))
-  r.handle('forge:creatable-orgs', (_e, accountKey: string) => c.forge.creatableOrgs(accountKey))
   r.handle('forge:repo-access', (_e, repoPath: string) => c.forge.repoAccess(repoPath))
   r.handle('forge:org-members', (_e, repoPath: string) => c.forge.orgMembers(repoPath))
   // GH107 — assistant « Ajouter un repo » (design §3.4).
@@ -272,10 +271,6 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('forge:name-available', (_e, accountKey: string, owner: string, name: string) => c.forge.nameAvailable(accountKey, owner, name))
   r.handle('forge:org-teams', (_e, accountKey: string, org: string) => c.forge.orgTeams(accountKey, org))
   r.handle('forge:create-repo', (_e, req: CreateRepoRequest) => c.repoProvisioning.create(req))
-  r.handle('workspace:create-on-server', (_e, containerDir: string, name: string, accountKey: string, org: string) =>
-    c.forge.createProjectOnServer(containerDir, name, accountKey, org))
-  r.handle('workspace:create-component-on-server', (_e, accountKey: string, org: string, name: string) =>
-    c.forge.createComponentOnServer(accountKey, org, name))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())

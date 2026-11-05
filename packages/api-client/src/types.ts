@@ -1,5 +1,5 @@
 import type {
-  CreateOnServerResult, CreateRepoRequest, CreateRepoResult, ForgeOwners, ForgeTeam, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  CreateRepoRequest, CreateRepoResult, ForgeOwners, ForgeTeam, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
@@ -495,8 +495,6 @@ export interface ApiClient {
     /** Comptes Forgejo/Gitea connectés, compte par défaut en tête. */
     accounts(): Promise<ForgeAccount[]>
     listRepos(accountKey: string): Promise<ForgeRepo[]>
-    /** Organisations où le compte peut créer un repo. */
-    creatableOrgs(accountKey: string): Promise<ForgeOrg[]>
     /** Droits sur le repo `origin` ; null hors ligne, hors Forgejo ou sans compte. */
     repoAccess(repoPath: string): Promise<ForgeRepoAccess | null>
     /** Membres de l'organisation propriétaire du repo ; null dans les cas sans objet. */
@@ -523,10 +521,6 @@ export interface ApiClient {
     createFromClone(containerDir: string, remoteUrl: string): Promise<WorkspaceOpenResult>
     /** GH45 S2b — projet récent dont l'origin est `remoteUrl`, null sinon. */
     findByRemote(remoteUrl: string): Promise<ProjectRecent | null>
-    /** GH45 S4 — nouveau projet sur le serveur (repo privé dans `org`), puis local, puis publication. */
-    createOnServer(containerDir: string, name: string, accountKey: string, org: string): Promise<CreateOnServerResult>
-    /** GH45 S4 — nouveau repo de composant sur le serveur, initialisé ; renvoie son URL de clone. */
-    createComponentOnServer(accountKey: string, org: string, name: string): Promise<{ cloneUrl: string }>
     // GH27 — true if the folder is missing or has no entries
     isEmptyDir(dir: string): Promise<boolean>
     // T69: flat workspace

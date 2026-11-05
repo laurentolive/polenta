@@ -161,7 +161,7 @@ Au retour de `create`, la fenêtre d'ajout reçoit l'URL **et** la branche, et i
 | `forge:repo-accounts` | exposé |
 | `forge:owners(accountKey)` | exposé |
 | `forge:name-available(accountKey, owner, name)` | exposé |
-| `forge:create-repo(req)` | exposé. `containerDir` de la requête vérifié comme chemin du serveur, ajouté à `GRAPH_WRITE_CHANNELS` |
+| `forge:create-repo(req)` | exposé. `containerDir` de la requête vérifié comme chemin du serveur (clé `…Dir` de la garde de chemins). Pas dans `GRAPH_WRITE_CHANNELS` : son premier argument n'est pas un repo, et le repo créé n'est encore dans aucun graphe |
 | `forge:org-teams(accountKey, org)` | exposé |
 
 `channel-policy.ts` et son test sont à compléter. Point ouvert 4 de la spec : le client web passe par les mêmes
@@ -232,8 +232,10 @@ garde le flux actuel, sans complétion : Polenta n'a pas d'API à interroger.
 - **Repo existant** : affiche ce qui a été trouvé, puis ne demande que `missing`.
 - **Résultat** : liste des étapes (`ProvisionStep`), avec la reprise possible en cas d'échec.
 
-`components/repo/RepoMembersEditor.tsx` : collaborateurs et équipes, autocomplétion sur les membres de
-l'organisation. En mode création, il n'accumule que des demandes, appliquées à l'étape `members`.
+`components/repo/RepoMembersEditor.tsx` : collaborateurs et équipes. En mode création, il n'accumule que des
+demandes, appliquées à l'étape `members`. Sprint 2 : le login est saisi librement (compte inconnu signalé à
+l'étape `members`) ; l'autocomplétion sur les membres de l'organisation demande un channel par compte et
+propriétaire (`forge:org-members` part d'un repo local), reportée à #108.
 
 `CreateProjectModal` garde le choix « Local » et ouvre l'assistant pour le serveur. `AddDependencyModal` remplace
 `CreateRepoOnServer` par l'assistant. `routes/index.tsx` : « Depuis un repo » ouvre l'assistant s'il y a un compte

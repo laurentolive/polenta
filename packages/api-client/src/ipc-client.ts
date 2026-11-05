@@ -90,7 +90,6 @@ export function createIpcClient(
     forge: {
       accounts: () => invoke('forge:accounts'),
       listRepos: (accountKey) => invoke('forge:list-repos', accountKey),
-      creatableOrgs: (accountKey) => invoke('forge:creatable-orgs', accountKey),
       repoAccess: (repoPath) => invoke('forge:repo-access', repoPath),
       orgMembers: (repoPath) => invoke('forge:org-members', repoPath),
       repoAccounts: () => invoke('forge:repo-accounts'),
@@ -109,8 +108,6 @@ export function createIpcClient(
       createNew: (containerDir, name) => invoke('workspace:create-new', containerDir, name),
       createFromClone: (containerDir, remoteUrl) => invoke('workspace:create-from-clone', containerDir, remoteUrl),
       findByRemote: (remoteUrl) => invoke('workspace:find-by-remote', remoteUrl),
-      createOnServer: (containerDir, name, accountKey, org) => invoke('workspace:create-on-server', containerDir, name, accountKey, org),
-      createComponentOnServer: (accountKey, org, name) => invoke('workspace:create-component-on-server', accountKey, org, name),
       // GH27
       isEmptyDir: (dir) => invoke('workspace:is-empty-dir', dir),
       // T69: flat workspace

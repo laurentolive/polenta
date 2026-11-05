@@ -244,13 +244,6 @@ export interface ForgeRepoAccess {
   push: boolean
 }
 
-/** Projet créé sur le serveur : ouvert localement ; `pushWarning` si la publication initiale a échoué. */
-export interface CreateOnServerResult {
-  open: WorkspaceOpenResult
-  cloneUrl: string
-  pushWarning?: string
-}
-
 // ─── Erreurs d'accès ──────────────────────────────────────────────────────────
 // L'IPC Electron et le bridge web ne transmettent que `error.message` : la nature de l'erreur
 // voyage dans le message, sous un marqueur que le renderer retire avant affichage.

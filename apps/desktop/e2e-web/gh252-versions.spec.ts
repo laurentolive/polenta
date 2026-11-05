@@ -67,7 +67,7 @@ test.beforeAll(async () => {
 test('U1, U2 — panneau Version, backlog, page d\'une version', async () => {
   const p = s.page
   await s.openView('Version')
-  await p.getByRole('button', { name: 'Produit', exact: true }).click()
+  await p.getByRole('button', { name: 'Version produit', exact: true }).click()
   await expect(p.getByTestId('product-versions-panel')).toBeVisible()
   await expect(p.getByTestId('version-backlog')).toBeVisible()
   await p.getByTestId(`version-row-${versionId}`).click()

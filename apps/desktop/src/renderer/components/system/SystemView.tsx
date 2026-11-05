@@ -443,6 +443,7 @@ export function SystemView() {
   const [collapsedFoldersExcel, setCollapsedFoldersExcel] = useState<string[]>([])
   const [collapsedFoldersWord, setCollapsedFoldersWord] = useState<string[]>([])
   const [freezeColCountExcel, setFreezeColCountExcel] = useState(0)
+  const [colWidthsExcel, setColWidthsExcel] = useState<Record<string, number>>({})
   // T162 — miroir synchrone de l'objet de pref complet, pour éviter qu'un enregistrement
   // n'écrase un champ voisin avec une valeur d'état périmée (closures) quand deux réglages
   // changent coup sur coup (ex. « Réinitialiser » = colonnes + titres en deux appels).
@@ -661,6 +662,7 @@ export function SystemView() {
     setCollapsedFoldersExcel(collapsedFoldersExcelNext)
     setCollapsedFoldersWord(collapsedFoldersWordNext)
     setFreezeColCountExcel(freezeColCountExcelNext)
+    setColWidthsExcel(savedPrefs?.colWidthsExcel ?? {})
   }
 
   const autoSaveMutation = useMutation({
@@ -998,6 +1000,12 @@ export function SystemView() {
     persistPrefs({ freezeColCountExcel: count })
   }, [persistPrefs])
 
+  // GH288 — hors des vues enregistrées (GH203) : redimensionner ne marque pas la vue « modifiée ».
+  const handleColWidthsExcelChange = useCallback((widths: Record<string, number>) => {
+    setColWidthsExcel(widths)
+    persistPrefs({ colWidthsExcel: widths })
+  }, [persistPrefs])
+
   // GH203 — vues enregistrées : la mise en page courante, copiée depuis ou vers une vue.
   const currentLayout = useMemo<ViewLayout>(() => ({
     excel: visibleFieldsExcel, word: visibleFieldsWord, popup: visibleFieldsPopup,
@@ -1051,6 +1059,7 @@ export function SystemView() {
   const stableCollapsedFoldersExcelChange = useStableCallback(handleCollapsedFoldersExcelChange)
   const stableCollapsedFoldersWordChange = useStableCallback(handleCollapsedFoldersWordChange)
   const stableFreezeColCountExcelChange = useStableCallback(handleFreezeColCountExcelChange)
+  const stableColWidthsExcelChange = useStableCallback(handleColWidthsExcelChange)
 
   // ── Empty / loading states ────────────────────────────────────────────────
 
@@ -1325,6 +1334,8 @@ export function SystemView() {
             onCollapsedFoldersChange={stableCollapsedFoldersExcelChange}
             freezeColCount={freezeColCountExcel}
             onFreezeColCountChange={stableFreezeColCountExcelChange}
+            colWidths={colWidthsExcel}
+            onColWidthsChange={stableColWidthsExcelChange}
           />
         )}
         {effectiveType?.category !== 'campaign' && viewMode === 'word' && viewReady && (

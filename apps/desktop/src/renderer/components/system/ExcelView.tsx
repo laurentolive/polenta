@@ -96,6 +96,10 @@ interface Props {
   onCollapsedFoldersChange: (ids: string[]) => void
   freezeColCount: number
   onFreezeColCountChange: (count: number) => void
+  /** GH288 — largeurs choisies à la souris (clé = colonne), détenues par le parent (pref du
+   *  type) pour survivre au démontage ; `onColWidthsChange` est appelé au relâchement. */
+  colWidths: Record<string, number>
+  onColWidthsChange: (widths: Record<string, number>) => void
   /** GH33 — mode sélection (sélecteur de tests d'une campagne) : lecture seule forcée, colonne
    *  de cases à cocher, sélection par objectId (cf. `lib/gridSelection.ts`). */
   selection?: ExcelSelectionMode
@@ -1294,6 +1298,8 @@ function ExcelViewInner({
   onCollapsedFoldersChange,
   freezeColCount: storedFreezeColCount,
   onFreezeColCountChange,
+  colWidths: storedColWidths,
+  onColWidthsChange,
   selection,
   computedColumns,
   onOpenComputedTarget,
@@ -1330,7 +1336,15 @@ function ExcelViewInner({
   // scroll latéral. Index dans `columns`. GH24 — persisté dans la pref du type (SystemView),
   // borné au nombre de colonnes affichées (cf. `freezeColCount` après `columns`).
   const [columnFreezeMenu, setColumnFreezeMenu] = useState<{ colIdx: number; x: number; y: number } | null>(null)
-  const [colWidths, setColWidths] = useState<Record<string, number>>({})
+  // GH288 — largeur de la colonne en cours de redimensionnement, locale le temps du glissé :
+  // le parent n'enregistre que la valeur finale, au relâchement.
+  const [dragWidth, setDragWidth] = useState<{ col: string; width: number } | null>(null)
+  const colWidths = useMemo(
+    () => dragWidth ? { ...storedColWidths, [dragWidth.col]: dragWidth.width } : storedColWidths,
+    [storedColWidths, dragWidth],
+  )
+  const colWidthsRef = useRef({ widths: storedColWidths, onChange: onColWidthsChange })
+  colWidthsRef.current = { widths: storedColWidths, onChange: onColWidthsChange }
   const colDragState = useRef<{ startX: number; startWidth: number; col: string } | null>(null)
   const autoColWidthsRef = useRef<Record<string, number>>({})
   const frozenAutoWidthsRef = useRef<Record<string, number> | null>(null)
@@ -1461,19 +1475,26 @@ function ExcelViewInner({
     }
     const startWidth = colWidths[col] ?? autoColWidthsRef.current[col] ?? 200
     colDragState.current = { startX: e.clientX, startWidth, col }
+    let lastWidth: number | null = null
 
     const onMouseMove = (ev: MouseEvent) => {
       const state = colDragState.current
       if (!state) return
       const dx = ev.clientX - state.startX
-      const newWidth = Math.max(20, state.startWidth + dx)
-      setColWidths((prev: Record<string, number>) => ({ ...prev, [state.col]: newWidth }))
+      lastWidth = Math.max(20, Math.round(state.startWidth + dx))
+      setDragWidth({ col: state.col, width: lastWidth })
     }
 
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
       colDragState.current = null
+      setDragWidth(null)
+      // Simple clic sur la poignée (pas de déplacement) : rien à enregistrer.
+      if (lastWidth !== null && lastWidth !== startWidth) {
+        const { widths, onChange } = colWidthsRef.current
+        onChange({ ...widths, [col]: lastWidth })
+      }
     }
 
     document.addEventListener('mousemove', onMouseMove)

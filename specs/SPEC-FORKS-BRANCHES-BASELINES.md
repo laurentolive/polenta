@@ -156,7 +156,8 @@ sale. Pas de gate sur `behind`/`ahead` : contrairement au bouton Push (visible s
     autre branche, « Publier » propose « Désigner » (§2.1).
   - **Jamais sans branche d'intégration** : `sync:delete-branch` et `sync:delete-remote-branch`
     refusent la suppression de la branche **explicitement** désignée (pas du repli `main`) et de la
-    dernière `int-*` (locale ou `origin/*`). Le refus voyage dans le message de l'erreur (marqueur
+    dernière `int-*` : en local, la dernière du repo (locale ou `origin/*`, qui se récupère) ; sur
+    `origin`, la dernière d'`origin`, une copie locale ne protégeant pas la forge (GH276). Le refus voyage dans le message de l'erreur (marqueur
     `⟦integration-guard {code, branch}⟧`) et est traduit une fois pour toutes par le transport du
     renderer (`renderer/api.ts`, comme `⟦forge-access …⟧`), puis affiché par le panneau Version,
     l'onglet Structure et le graphe.
@@ -212,6 +213,10 @@ Pas de bascule sans remote, en detached HEAD, sur une `int-*` non désignée ni 
 depuis `BranchCombobox`/`VersionRepoFolder.tsx` — pas de contrainte de préfixe imposée par le
 backend, seule l'UI simplifiée (T83/T87) impose `dev-*` pour son propre flux. **GH106** : un nom
 `int-*` passe par `integration:create` (création + désignation, §2.2), plus par `sync:create-branch`.
+**GH276** : de même depuis le graphe (« Créer branche depuis commit… » ou depuis un tag), avec le
+commit ou le tag comme point de départ (`from: { commit }` ou `{ tag }`, baseline annotée comprise).
+La désignation fait un checkout : comme les checkouts du menu du graphe, elle n'y est proposée que
+sans modification en attente, sinon la saisie l'explique.
 
 **Merge ("Publier") :**
 1. `sync:stage-all` puis `sync:commit` sur la branche de travail (éphémère ou courante selon le cas

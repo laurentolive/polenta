@@ -1529,7 +1529,8 @@ Le panneau Projet, quand un projet est chargé, est un hub de configuration. Il 
 > panneau et la page d'atterrissage par défaut du projet. Le sélecteur de branche d'intégration a
 > été déplacé (et renommé `IntegrationBranchSelector`) dans l'onglet Structure du Modèle de
 > données, sous la ligne du repo root ; la capacité de push perdue avec `SyncBar` a été restaurée
-> dans le panneau Version (`VersionRepoFolder`).
+> dans le panneau Version (`VersionRepoFolder`). Ce sélecteur n'existe plus : voir GH106 au §20
+> (`RepoBranchSelector`, `IntegrationBranchIndicator`).
 
 ```
 ┌─────────────────────────────┐
@@ -2397,9 +2398,9 @@ listés dans `SPEC-AUDIT.md`).
 | `schema:delete` | **GH104** — mêmes paramètres : supprime objets (pierres tombales), exécutions, acquittements d'impact, liens de tous les repos, arbres, refs de liens, puis le nœud / type ; arrêt avant arbres et schéma si un objet n'a pas pu être supprimé (SPEC-REQ §9) | `SchemaDeleteResult` (`deleted`, `links`, `schemaSaved`, `failed`) |
 | `history:get` | **GH77** — `repoPath, kind ('requirement' \| 'test' \| 'campaign'), id` : historique effectif (entrées implicites comprises) | `ObjectHistory` |
 | `history:backfill` | **GH77** — `repoPath` : reprise de l'historique depuis git (fichiers réécrits, pas de commit) | `HistoryBackfillResult` |
-| `integration:state` | **GH106** — `repoPath` : branche courante, intégration désignée, statut (`ok` / `incoherent` / `nonConvention` / `readonly`), `int-*` locales et distantes | `IntegrationState` |
+| `integration:state` | **GH106** — `repoPath` : branche courante, intégration désignée, statut (`ok` / `incoherent` / `nonConvention` / `detached`), `int-*` locales et distantes | `IntegrationState` |
 | `integration:designate` | **GH106** — `repoPath, branch` : checkout si besoin, commit du seul `config/project.yaml`, push, branche par défaut de la forge | `DesignateOutcome` |
-| `integration:create` | **GH106** — `repoPath, suffix, from?: { tag }` : crée `int-<suffix>` (position courante ou baseline) puis la désigne | `DesignateOutcome` |
+| `integration:create` | **GH106** — `repoPath, suffix, from?: { tag } \| { commit }` (GH276) : crée `int-<suffix>` (position courante, baseline ou commit) puis la désigne | `DesignateOutcome` |
 
 `schema:save` ne régénère **aucun** fichier dérivé de type `.gitmodules` — c'est le seul écart avec
 la version précédente de cette section, à ne pas réintroduire dans une future correction.

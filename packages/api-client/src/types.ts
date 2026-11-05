@@ -695,8 +695,8 @@ export interface ApiClient {
     state(repoPath: string): Promise<IntegrationState>
     /** Checkout si besoin, commit du seul `config/project.yaml`, push, branche par défaut de la forge. */
     designate(repoPath: string, branch: string): Promise<DesignateOutcome>
-    /** Crée `int-<suffix>` (position courante, ou `from.tag`) puis la désigne. */
-    create(repoPath: string, suffix: string, from?: { tag: string }): Promise<DesignateOutcome>
+    /** Crée `int-<suffix>` (position courante, `from.tag` ou `from.commit`) puis la désigne. */
+    create(repoPath: string, suffix: string, from?: import('@polenta/types').IntegrationCreateFrom): Promise<DesignateOutcome>
   }
   requirements: {
     list(repoPath: string, filters?: RequirementFilters): Promise<Requirement[]>

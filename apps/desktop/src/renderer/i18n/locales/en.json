@@ -1582,6 +1582,7 @@
     "diffTagVsBranch": "Diff tag vs branch…",
     "checkoutCommit": "Checkout commit",
     "createBranchFromCommit": "Create branch from commit…",
+    "integrationNeedsClean": "An integration branch is designated by a checkout: publish or discard pending changes first.",
     "createTagOnCommit": "Create tag on commit…",
     "rebaseCurrentOnCommit": "Rebase current on commit",
     "diffCommitVsHead": "Diff commit vs HEAD",

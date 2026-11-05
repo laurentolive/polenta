@@ -13,6 +13,7 @@ import { AUTO_BRANCH_PREFIX, isAutoBranch } from '@polenta/types'
 
 import { extractHost, type AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
+import { addKeepingEol, eolAwareStatusMatrix } from './eol-status.util'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
 import { assertNotVersionTag } from './version-tags.util'
 
@@ -326,7 +327,7 @@ export class SyncService {
   }
 
   async status(repoPath: string): Promise<SyncStatus> {
-    const matrix = await git.statusMatrix({ fs, dir: repoPath })
+    const matrix = await eolAwareStatusMatrix(repoPath)
 
     const staged: SyncFileStatus[] = []
     const unstaged: SyncFileStatus[] = []
@@ -474,7 +475,7 @@ export class SyncService {
     try {
       await fsP.access(absPath)
       // File exists on disk → normal add
-      await git.add({ fs, dir: repoPath, filepath })
+      await addKeepingEol(repoPath, filepath)
     } catch {
       // File absent from disk → stage the deletion
       await git.remove({ fs, dir: repoPath, filepath })
@@ -482,15 +483,17 @@ export class SyncService {
   }
 
   async stageAll(repoPath: string): Promise<void> {
-    const matrix = await git.statusMatrix({ fs, dir: repoPath })
-    for (const [filepath, head, workdir] of matrix) {
-      // Deleted file: exists in HEAD but absent from workdir
-      if (head === 1 && workdir === 0) {
+    const matrix = await eolAwareStatusMatrix(repoPath)
+    for (const [filepath, head, workdir, stage] of matrix) {
+      if (head === 1 && workdir === 1 && stage === 1) continue // Unmodified
+      if (workdir !== 0) {
+        // Stage present files (new + modified)
+        await addKeepingEol(repoPath, filepath)
+      } else if (head === 1) {
+        // Deleted file: exists in HEAD but absent from workdir
         await git.remove({ fs, dir: repoPath, filepath })
       }
     }
-    // Stage all present files (new + modified)
-    await git.add({ fs, dir: repoPath, filepath: '.' })
   }
 
   async unstage(repoPath: string, filepath: string): Promise<void> {
@@ -528,7 +531,7 @@ export class SyncService {
 
   /** Discards every staged/unstaged change in one pass — same statusMatrix walk as stageAll/unstageAll. */
   async discardAll(repoPath: string): Promise<void> {
-    const matrix = await git.statusMatrix({ fs, dir: repoPath })
+    const matrix = await eolAwareStatusMatrix(repoPath)
     const changed = matrix.filter(([, head, workdir, stage]) => !(head === 1 && workdir === 1 && stage === 1))
     for (const [filepath] of changed) {
       await this.discard(repoPath, filepath)
@@ -994,7 +997,7 @@ export class SyncService {
   async workdirChangesVsHead(repoPath: string, prefixes: string[]): Promise<{ path: string; change: 'added' | 'removed' | 'modified' }[]> {
     let matrix: Awaited<ReturnType<typeof git.statusMatrix>>
     try {
-      matrix = await git.statusMatrix({ fs, dir: repoPath, filepaths: prefixes })
+      matrix = await eolAwareStatusMatrix(repoPath, prefixes)
     } catch {
       return []
     }

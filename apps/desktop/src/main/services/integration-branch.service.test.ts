@@ -82,7 +82,8 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  await fsP.rm(tmp, { recursive: true, force: true })
+  // GH283 — sous Windows, un git qui vient de se terminer garde parfois `.git` ouvert un instant (ENOTEMPTY).
+  await fsP.rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 describe('state', () => {

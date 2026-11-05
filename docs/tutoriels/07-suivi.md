@@ -1,6 +1,6 @@
-# 6. Suivi et recherche
+# 7. Suivi et recherche
 
-[English](../tutorials/06-tracking.md) | **Français**
+[English](../tutorials/07-tracking.md) | **Français**
 
 La vue **Suivi** répond aux questions de pilotage : où en sont les exigences, qu'est-ce qui n'est
 pas testé, où en sont les campagnes. Elle repose sur des **requêtes** sur l'ensemble du projet
@@ -83,8 +83,17 @@ export default (data) => {
 
 Quand Polenta livre une nouvelle version d'un fichier de la bibliothèque ou d'un widget de
 dashboard pré-configuré, un bandeau **Mises à jour disponibles** apparaît en tête du panneau : rien
-n'est modifié sans *Appliquer*. Un assistant IA connecté au projet (tutoriel 8) peut écrire et tester
-ces scripts pour vous.
+n'est modifié sans *Appliquer*. Un assistant IA connecté au projet ([tutoriel 12](12-agent-ia.md))
+peut écrire et tester ces scripts pour vous.
+
+### Des colonnes calculées dans les vues
+
+Une requête partagée peut aussi **ajouter une colonne** aux vues tableau des exigences ou des tests :
+elle déclare une colonne, et renvoie une valeur par élément. Le modèle fourni calcule le **Dernier
+résultat** de campagne de chaque test ; une variante éclate la colonne en **une colonne par
+campagne**, et une nouvelle campagne y ajoute sa colonne d'elle-même. Ces colonnes se choisissent
+dans **⚙️ › Champs visibles › Colonnes calculées**, se filtrent et s'exportent comme les autres.
+Elles sont définies par le projet, pas par Polenta : chaque équipe calcule ce dont elle a besoin.
 
 ## La recherche
 

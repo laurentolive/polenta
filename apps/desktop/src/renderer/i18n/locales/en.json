@@ -2365,7 +2365,7 @@
     }
   },
   "versions": {
-    "title": "Product",
+    "title": "Product version",
     "home": "Pick a component, a version or a backlog in the side panel.",
     "label": "Label",
     "status": "Status",

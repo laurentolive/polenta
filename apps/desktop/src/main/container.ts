@@ -39,6 +39,7 @@ import { MergeResolutionService } from './services/merge-resolution.service'
 import { DiffEditService } from './services/diff-edit.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
+import { RepoProvisioningService } from './services/forge/repo-provisioning.service'
 import { IntegrationBranchService } from './services/integration-branch.service'
 import { HistoryService } from './services/history.service'
 import { GraphService } from './services/graph.service'
@@ -180,6 +181,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const forgeConfig = new ForgeConfigService(auth, host.userDataDir)
   // GH45 S4 — repos, organisations, membres, droits ; création de projet/composant sur le serveur.
   const forge = new ForgeService(auth, workspace, sync)
+  // GH107 — création d'un repo sur GitHub / Forgejo (assistant « Ajouter un repo »).
+  const repoProvisioning = new RepoProvisioningService(forge, workspace, sync)
   // GH106 — désignation de la branche d'intégration (commit de project.yaml, push, branche par défaut).
   const integration = new IntegrationBranchService(git, sync, forge)
   const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged(), host.applyNetworkTimeout)
@@ -244,6 +247,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     machineConfig: host.machineConfig,
     forgeConfig,
     forge,
+    repoProvisioning,
     integration,
   }
 }

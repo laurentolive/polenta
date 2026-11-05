@@ -144,6 +144,34 @@ describe('ForgeService', () => {
     expect((await service.accounts()).map(a => a.key)).toEqual([`${host}:bob`])
   })
 
+  it('GH107 P-08 / P-07 — repoAccounts : GitHub et Forgejo, compte par défaut en tête ; compte generic refusé', async () => {
+    await tokens.set('git.example:carl', 'g')
+    const store = JSON.parse(await fsP.readFile(path.join(dir, 'auth.json'), 'utf-8'))
+    store.accounts.push({ remoteHost: 'git.example', username: 'carl', name: 'Carl', email: 'c@x', provider: 'generic', baseUrl: 'https://git.example' })
+    await fsP.writeFile(path.join(dir, 'auth.json'), JSON.stringify(store))
+    expect((await service.repoAccounts()).map(a => a.key)).toEqual(['github.com:octo', `${host}:bob`])
+    expect((await service.accounts()).map(a => a.key)).toEqual([`${host}:bob`])
+    await expect(service.owners('git.example:carl')).rejects.toThrow(/reconnectez-vous/)
+  })
+
+  it('GH107 — nameAvailable, createRemote (nom revérifié), grantMember (compte, équipe), orgTeams', async () => {
+    forge.route('GET', '/api/v1/repos/acme/pris', () => ({ status: 200, json: apiRepo('acme/pris') }))
+    expect(await service.nameAvailable(`${host}:bob`, 'acme', 'pris')).toBe(false)
+    expect(await service.nameAvailable(`${host}:bob`, 'acme', 'libre')).toBe(true)
+    await expect(service.nameAvailable(`${host}:bob`, 'acme', 'bad name')).rejects.toThrow(/invalide/)
+    const input = { owner: 'acme', ownerKind: 'org' as const, name: 'pris', description: 'D', visibility: 'private' as const }
+    await expect(service.createRemote(`${host}:bob`, input)).rejects.toBeInstanceOf(RepoNameTakenError)
+    expect(forge.requests.some(r => r.method === 'POST')).toBe(false)
+    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/libre') }))
+    expect((await service.createRemote(`${host}:bob`, { ...input, name: 'libre' })).fullName).toBe('acme/libre')
+    forge.route('PUT', '/api/v1/repos/acme/libre/collaborators/ann', () => ({ status: 204, text: '' }))
+    forge.route('PUT', '/api/v1/repos/acme/libre/teams/devs', () => ({ status: 204, text: '' }))
+    expect(await service.grantMember(`${host}:bob`, 'acme', 'libre', { kind: 'user', name: 'ann', level: 'write' })).toBe('added')
+    expect(await service.grantMember(`${host}:bob`, 'acme', 'libre', { kind: 'team', name: 'devs', level: 'read' })).toBe('added')
+    forge.route('GET', '/api/v1/orgs/acme/teams', () => ({ status: 200, json: [{ name: 'devs', permission: 'write' }] }))
+    expect(await service.orgTeams(`${host}:bob`, 'acme')).toEqual([{ name: 'devs', label: 'devs' }])
+  })
+
   it('listRepos : le repo de configuration n\'est pas proposé', async () => {
     forge.route('GET', '/api/v1/user/repos', () => ({ status: 200, json: [apiRepo('acme/polenta-config'), apiRepo('acme/demo')] }))
     expect((await service.listRepos(`${host}:bob`)).map(r => r.fullName)).toEqual(['acme/demo'])

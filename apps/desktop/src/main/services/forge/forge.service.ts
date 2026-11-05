@@ -4,7 +4,8 @@ import * as os from 'os'
 import * as path from 'path'
 import git from 'isomorphic-git'
 import type {
-  CreateOnServerResult, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeOrg, ForgeOwners, ForgeRepo, ForgeRepoAccess,
+  CreateOnServerResult, CreateRepoInput, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeOrg, ForgeOwners, ForgeRepo,
+  ForgeRepoAccess, ForgeTeam, RepoMemberGrant,
 } from '@polenta/types'
 
 import type { AuthService } from '../auth.service'
@@ -53,6 +54,41 @@ export class ForgeService {
   async owners(accountKey: string): Promise<ForgeOwners> {
     const { account, token, provider } = await this.require(accountKey)
     return this.guard(account, () => provider.listOwners!(account.baseUrl, token, account.login))
+  }
+
+  /** GH107 — nom libre chez ce propriétaire (vérifié pendant la saisie, et avant la création). */
+  async nameAvailable(accountKey: string, owner: string, name: string): Promise<boolean> {
+    assertRepoName(name)
+    const { account, token, provider } = await this.require(accountKey)
+    return !(await this.guard(account, () => provider.repoExists!(account.baseUrl, token, owner, name)))
+  }
+
+  /** GH107 — équipes d'une organisation (widget Membres). */
+  async orgTeams(accountKey: string, org: string): Promise<ForgeTeam[]> {
+    const { account, token, provider } = await this.require(accountKey)
+    return this.guard(account, () => provider.listOrgTeams!(account.baseUrl, token, org))
+  }
+
+  /** GH107 — repo distant vide ; nom vérifié une dernière fois juste avant. */
+  async createRemote(accountKey: string, input: CreateRepoInput): Promise<ForgeRepo> {
+    assertRepoName(input.name)
+    const { account, token, provider } = await this.require(accountKey)
+    return this.guard(account, async () => {
+      if (await provider.repoExists!(account.baseUrl, token, input.owner, input.name)) throw new RepoNameTakenError(`${input.owner}/${input.name}`)
+      return provider.createRepo!(account.baseUrl, token, input)
+    })
+  }
+
+  /** GH107 — accès d'un compte ou d'une équipe ; `'invited'` : invitation à accepter (GitHub). */
+  async grantMember(accountKey: string, owner: string, repo: string, grant: RepoMemberGrant): Promise<'added' | 'invited'> {
+    const { account, token, provider } = await this.require(accountKey)
+    return this.guard(account, async () => {
+      if (grant.kind === 'team') {
+        await provider.setRepoTeam!(account.baseUrl, token, owner, repo, grant.name, grant.level)
+        return 'added'
+      }
+      return provider.setCollaborator!(account.baseUrl, token, owner, repo, grant.name, grant.level)
+    })
   }
 
   /** Organisations où créer un repo (création sur le serveur, GH45 S4). */

@@ -93,6 +93,11 @@ export function createIpcClient(
       creatableOrgs: (accountKey) => invoke('forge:creatable-orgs', accountKey),
       repoAccess: (repoPath) => invoke('forge:repo-access', repoPath),
       orgMembers: (repoPath) => invoke('forge:org-members', repoPath),
+      repoAccounts: () => invoke('forge:repo-accounts'),
+      owners: (accountKey) => invoke('forge:owners', accountKey),
+      nameAvailable: (accountKey, owner, name) => invoke('forge:name-available', accountKey, owner, name),
+      orgTeams: (accountKey, org) => invoke('forge:org-teams', accountKey, org),
+      createRepo: (req) => invoke('forge:create-repo', req),
     },
     workspace: {
       listRecents: () => invoke('workspace:list-recents'),

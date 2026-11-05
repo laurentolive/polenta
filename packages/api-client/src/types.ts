@@ -1,5 +1,5 @@
 import type {
-  CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  CreateOnServerResult, CreateRepoRequest, CreateRepoResult, ForgeOwners, ForgeTeam, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
@@ -501,6 +501,16 @@ export interface ApiClient {
     repoAccess(repoPath: string): Promise<ForgeRepoAccess | null>
     /** Membres de l'organisation propriétaire du repo ; null dans les cas sans objet. */
     orgMembers(repoPath: string): Promise<ForgeMember[] | null>
+    /** GH107 — comptes GitHub et Forgejo connectés (assistant « Ajouter un repo »). */
+    repoAccounts(): Promise<ForgeAccount[]>
+    /** GH107 — le compte, puis les organisations où créer un repo. */
+    owners(accountKey: string): Promise<ForgeOwners>
+    /** GH107 — nom libre chez ce propriétaire. */
+    nameAvailable(accountKey: string, owner: string, name: string): Promise<boolean>
+    /** GH107 — équipes d'une organisation (widget Membres). */
+    orgTeams(accountKey: string, org: string): Promise<ForgeTeam[]>
+    /** GH107 — crée le repo : distant, local sur `int-x`, push, branche par défaut, membres, ouverture. */
+    createRepo(req: CreateRepoRequest): Promise<CreateRepoResult>
   }
   workspace: {
     listRecents(): Promise<ProjectRecent[]>

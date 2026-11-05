@@ -185,6 +185,42 @@ export interface ForgeRepoTeam extends ForgeTeam {
   removable: boolean
 }
 
+/** GH107 — accès accordé à la création (widget Membres) : un compte ou une équipe de l'organisation. */
+export interface RepoMemberGrant {
+  kind: 'user' | 'team'
+  name: string
+  level: RepoAccessLevel
+}
+
+/** GH107 — étapes de la création d'un repo (design §3.1), dans cet ordre. */
+export type ProvisionStepId = 'remote' | 'local' | 'push' | 'defaultBranch' | 'members' | 'open'
+
+export interface ProvisionStep {
+  id: ProvisionStepId
+  status: 'done' | 'failed' | 'skipped'
+  detail?: string
+}
+
+export interface CreateRepoRequest extends Omit<CreateRepoInput, 'defaultBranch'> {
+  accountKey: string
+  /** « x » de `int-x`. */
+  integrationSuffix: string
+  members: RepoMemberGrant[]
+  /** Projet : cloné dans `containerDir/<nom>` puis ouvert ; composant : préparé dans un dossier temporaire. */
+  target: { kind: 'project'; containerDir: string } | { kind: 'component' }
+}
+
+export interface CreateRepoResult {
+  steps: ProvisionStep[]
+  /** `propriétaire/nom` du repo créé. */
+  fullName: string
+  cloneUrl: string
+  /** `int-x`. */
+  branch: string
+  /** Projet, étape `open` réussie. */
+  open?: WorkspaceOpenResult
+}
+
 /** Invitation en attente (GitHub). */
 export interface ForgeInvitation {
   id: number

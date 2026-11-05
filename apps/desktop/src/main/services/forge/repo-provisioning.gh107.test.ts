@@ -145,6 +145,18 @@ describe('RepoProvisioningService.create', () => {
     expect(await git.listFiles({ fs, dir: repo, ref: 'main' })).not.toContain('README.md')
   })
 
+  it('GH108 — forge qui impose le privé : public demandé, créé privé, signalé sans bloquer', async () => {
+    forge.createRemote.mockResolvedValueOnce({ ...REMOTE, private: true })
+    const result = await service.create(request({ visibility: 'public' }))
+    expect(result.steps[0]).toMatchObject({ id: 'remote', status: 'admin' })
+    expect(result.steps[0].detail).toMatch(/impose des dépôts privés/)
+    expect(result.steps.find(s => s.id === 'open')!.status).toBe('done')
+    // Privé demandé et obtenu : rien à signaler.
+    forge.createRemote.mockResolvedValueOnce({ ...REMOTE, private: true })
+    await fsP.rm(path.join(dir, 'proj'), { recursive: true, force: true })
+    expect((await service.create(request())).steps[0]).toMatchObject({ id: 'remote', status: 'done' })
+  })
+
   it('branche par défaut refusée (pas admin) : signalée, la suite continue', async () => {
     forge.alignDefaultBranch.mockResolvedValueOnce('not-admin')
     const result = await service.create(request())

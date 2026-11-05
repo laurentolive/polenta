@@ -40,6 +40,7 @@ import { DiffEditService } from './services/diff-edit.service'
 import { ForgeConfigService } from './services/forge-config.service'
 import { ForgeService } from './services/forge/forge.service'
 import { RepoProvisioningService } from './services/forge/repo-provisioning.service'
+import { RepoSettingsService } from './services/forge/repo-settings.service'
 import { IntegrationBranchService } from './services/integration-branch.service'
 import { HistoryService } from './services/history.service'
 import { GraphService } from './services/graph.service'
@@ -185,6 +186,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const integration = new IntegrationBranchService(git, sync, forge)
   // GH107 — création et adoption d'un repo sur GitHub / Forgejo (assistant « Ajouter un repo »).
   const repoProvisioning = new RepoProvisioningService(forge, workspace, sync, integration)
+  // GH108 — le README suit la description du repo.
+  const repoSettings = new RepoSettingsService(git, sync)
   const appSettings = new AppSettingsService(host.userDataDir, host.machineConfig, () => forgeConfig.updatesManaged(), host.applyNetworkTimeout)
   const mergeResolution = new MergeResolutionService(host.userDataDir, auth, sync, schema)
   // GH222 — enregistrement depuis la vue de diff (service de l'objet pour une exigence / un test).
@@ -248,6 +251,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
     forgeConfig,
     forge,
     repoProvisioning,
+    repoSettings,
     integration,
   }
 }

@@ -125,7 +125,7 @@ export const forgejoProvider: ForgeProvider = {
 
   async listCollaborators(baseUrl, token, owner, repo) {
     // La liste ne porte pas le niveau : un appel `/permission` par collaborateur (mesuré).
-    const users = await paginate<{ login: string }>(`${repoUrl(baseUrl, owner, repo)}/collaborators`, token)
+    const users = await paginate<{ login: string; full_name?: string }>(`${repoUrl(baseUrl, owner, repo)}/collaborators`, token)
     const others = users.filter(u => u.login.toLowerCase() !== owner.toLowerCase())
     const levels = await Promise.all(others.map(async u => {
       const { data } = await forgeRequest<{ permission?: string; role_name?: string }>(
@@ -133,7 +133,7 @@ export const forgejoProvider: ForgeProvider = {
       return normalizeLevel(data.role_name || data.permission || '')
     }))
     return others
-      .map((u, i): ForgeCollaborator => ({ login: u.login, level: levels[i] }))
+      .map((u, i): ForgeCollaborator => ({ login: u.login, name: u.full_name?.trim() || undefined, level: levels[i] }))
       .sort((a, b) => a.login.localeCompare(b.login))
   },
 
@@ -258,7 +258,7 @@ function toForgeRepo(r: ApiRepo): ForgeRepo {
   const owner = r.owner?.login ?? r.owner?.username ?? r.full_name.split('/')[0]
   return {
     fullName: r.full_name, owner, name: r.name, description: r.description?.trim() ?? '',
-    cloneUrl: r.clone_url, readOnly: r.permissions ? !r.permissions.push : false,
+    cloneUrl: r.clone_url, readOnly: r.permissions ? !r.permissions.push : false, private: r.private,
   }
 }
 

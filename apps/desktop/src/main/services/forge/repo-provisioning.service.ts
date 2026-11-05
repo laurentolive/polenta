@@ -49,7 +49,11 @@ export class RepoProvisioningService {
     const remote = await this.forge.createRemote(req.accountKey, {
       owner: req.owner, ownerKind: req.ownerKind, name: req.name, description, visibility: req.visibility, defaultBranch: branch,
     })
-    return this.provisionEmpty(req, remote, branch, description, req.members, [{ id: 'remote', status: 'done', detail: remote.fullName }], ORDER)
+    // Forge du kit (`FORCE_PRIVATE`) : « public » est créé privé sans erreur (GH108, mesuré).
+    const forcedPrivate = req.visibility === 'public' && remote.private === true
+    return this.provisionEmpty(req, remote, branch, description, req.members, [forcedPrivate
+      ? { id: 'remote', status: 'admin', detail: `Le serveur impose des dépôts privés : ${remote.fullName} a été créé privé. Un administrateur du serveur peut le rendre public.` }
+      : { id: 'remote', status: 'done', detail: remote.fullName }], ORDER)
   }
 
   /** Ce qui existe dans le repo, sans rien écrire (design §4.1, tableau du §2.3 de la spec). */

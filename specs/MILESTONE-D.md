@@ -302,8 +302,9 @@ correctifs de la revue du 2026-11-04 (§12). Numéros dans les titres d'issues :
 
 ## 10. Reports après validation
 
-- `specs/GH193.md`, `specs/GH191.md`, `specs/MODELE-OBJETS.md` : en-tête « remplacé par
-  `specs/MILESTONE-D.md` » sur les sections concernées (changeset, configurations, revue).
+- `specs/GH193.md`, `specs/GH191.md` : en-tête « remplacé par `specs/MILESTONE-D.md` » sur les
+  sections concernées (changeset, configurations, revue). `specs/MODELE-OBJETS.md` : redessiné sur le
+  modèle final (#272).
 - Issues : #201, #202, #204, #205, #206, #210 amendées ; #208, #209 fermées (caduques) ; nouvelles
   issues « Retrait du changeset », « Issue », « Impact et tests de la version ».
 - `SPEC-REQ §10`, `SPEC-TRACEABILITY §4`, `SPEC-TESTS §4.1`, `SPEC-DASHBOARDS`, `SPEC-MCP-SERVER`,
@@ -366,7 +367,7 @@ Plan suivi dans la description du milestone GitHub, repris ici le 2026-11-05.
 | 5 | P2 | #270 specs alignées, avant les specs de #206 et #210 | ce document |
 | 6 | P3 | #206 contraintes de transition ; #210 reflets | à spécifier |
 | 7 | P2 / P3 | #253 suite e2e rouge ; #271 tests absents ; #252 rattrapage web | à faire |
-| 8 | P3 | #272 `MODELE-OBJETS.md` | à faire |
+| 8 | P3 | #272 `MODELE-OBJETS.md` | redessiné (modèle final) |
 | 9 | — | Suite e2e complète, validation humaine, merge dans `main` | à faire |
 
 ## Refs

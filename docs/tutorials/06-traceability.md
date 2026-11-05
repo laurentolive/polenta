@@ -14,7 +14,7 @@ from them and how it flags a link that has become doubtful.
 
 Each link type has a name, a label in each direction (*is refined by* / *refines*) and the items
 allowed as source and target: a whole category (`requirement`, `test`) or a specific type
-(`root::exigence-produit`). The demo declares five:
+(`root::exigence-produit`). The demo declares six:
 
 | Type | Meaning | Example |
 |---|---|---|
@@ -22,10 +22,12 @@ allowed as source and target: a whole category (`requirement`, `test`) or a spec
 | implementation | a component realises a requirement | CC-0001 implements SYS-0001 |
 | verification | a test verifies a requirement | TSYS-0001 verifies PRD-0001 |
 | interface implementation | a component requirement realises an interface requirement | MOT-0006 implements an internal bus requirement |
+| issue impact | an issue affects a requirement ([tutorial 10](10-issues-validation.md)) | ISS-0003 impacts PRD-0002 |
 | relation | free link, unconstrained | — |
 
 The direction of a verification link does not matter: created from the test or from the
-requirement, it counts the same.
+requirement, it counts the same. In the demo, the link between PRD-0002 and TSYS-0002 was created
+from the requirement.
 
 ## Verification (coverage)
 
@@ -56,7 +58,11 @@ In the demo, SYS-0002 (which refines PRD-0002) was moved back to review; PRD-000
 TSYS-0002 are marked. In the **Version** view, the **Impact to check** entry of the panel lists
 them: check each item, then **Clear flag** (one by one or on the selection). A version's impact
 analysis does this work in an organized way, changed item by changed item
-([tutorial 9](09-versions.md)).
+([tutorial 9](09-versions.md)): in the `2.0` version in progress (LLV-0002), SYS-0002 is marked
+*Impact to test*.
+
+Even before publishing, the **Local changes (vs HEAD)** entry of the same panel shows the items
+changed on your machine and what is linked to them.
 
 ## Interface compliance
 
@@ -76,3 +82,42 @@ implementing component:
 - *missing*: no requirement of the component realises the interface's one. Here, the control
   board (master) does not cover BIHM-0004;
 - a dash: the requirement does not apply to this component's role.
+
+## Exercises
+
+**Cover a requirement, in both directions.**
+1. Open TSYS-0010, *vérifie* section: add SYS-0008.
+2. Open SYS-0012, *est vérifiée par* section: add TSYS-0010.
+
+Result: SYS-0008 and SYS-0012 go from *Not covered* to *Covered*: TSYS-0010 has not been run yet.
+The direction of creation changes nothing.
+
+**Mark, then clear an impact.**
+1. Open SYS-0001 (approved) and move it back to `review`.
+2. Open CC-0001, which implements it.
+3. **Version** view, **Impact to check**: select CC-0001, **Clear flag**.
+
+Result: CC-0001 carries the ⚠ and the *Impact to check* banner; after clearing, it leaves the list.
+Its file is modified, to be published.
+
+**Find an interface requirement with no realisation.**
+1. *Project > Data model > Structure*, **Interface compliance**: choose the internal bus.
+
+Result: BUS-0006 (*Mode veille du bus*) is realised by no component.
+
+**Follow a link between repositories.**
+1. Open SYS-0002, *est implémentée par* section: click MOT-0001.
+
+Result: MOT-0001 opens; it is a requirement of `comp-moteur`.
+
+**Browse the constellation.**
+1. **Requirements** view, **Requirements constellation**: search for PRD-0002.
+2. Click the dot to pin it.
+
+Result: PRD-0002's lineage is shown (SYS-0002, then MOT-0001…), with its coverage by the tests.
+
+**Read the impact of a local change.**
+1. Change SYS-0005's statement, without publishing.
+2. **Version** view, **Local changes (vs HEAD)**.
+
+Result: SYS-0005 is listed with the items linked to it (PRD-0003, PRD-0009, HYD-0001, EV-0002).

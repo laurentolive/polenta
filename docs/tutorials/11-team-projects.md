@@ -78,3 +78,16 @@ Once the project is shared:
   the repository: they are shared by publishing;
 - in a company that hosts Polenta, colleagues who have not installed Polenta open the same project in
   the **web client** ([tutorial 1](01-account-login.md#the-web-client)).
+
+## Exercises
+
+These exercises require an account on a GitHub or Forgejo server: they are optional.
+
+**Publish a copy of the demo to your repositories.**
+1. On your account, create an empty project with the wizard (**On a server (GitHub, Forgejo)**),
+   then open its **Repository settings**, **Members** tab: add a colleague with *Read* access.
+2. In the demo, change a requirement, then **Publish**.
+
+Result: the project is created with its `int-…` integration branch and the colleague is invited. In
+the demo, sending fails: its repositories are public and do not belong to you. To publish the demo
+itself, you must first push its five repositories to your account and change their addresses.

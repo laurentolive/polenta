@@ -34,3 +34,5 @@
 | M8 | Import Excel avec échecs | Bilan avec « Créer une issue » par ligne |
 | M9 | Composant en lecture seule | Consultation seule |
 | M10 | Couverture | « Vérifié » dans les badges et la matrice |
+
+> GH271 (2026-11-05) — G1 : `milestone-d-coverage.gh271.test.ts`. Critères 8, 9 : `e2e-web/gh271-issue-proposal.spec.ts`, création dans `gh256-execute-version`. Critère 13 et composant sans type issue : restent manuels (`specs/GH271.md`).

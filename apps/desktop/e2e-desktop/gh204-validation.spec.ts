@@ -169,6 +169,19 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
 
   await page.screenshot({ path: path.join(__dirname, '.results', 'gh204-grid.png') })
 
+  // GH271 (5ac8a6f) — une relecture de la page, ici une décision écrite ailleurs, garde la saisie en cours.
+  const titleInput = page.getByTestId('validation-title')
+  const savedTitle = await titleInput.inputValue()
+  await titleInput.fill('Titre en cours de saisie')
+  const validationId = /\/validation\/([^/?]+)/.exec(page.url())![1]
+  const current = await invoke<{ validation: { entries: Array<{ requirementId: string; decision: string }> } }>('validations:page', repo, validationId, repo)
+  const entryA = current.validation.entries.find(e => e.requirementId === reqA)!
+  await invoke('validations:decide', repo, validationId, { requirementId: reqA, decision: entryA.decision, comment: 'Écrit ailleurs' }, repo)
+  await expect(page.getByTestId(`validation-comment-${reqA}`)).toHaveValue('Écrit ailleurs')
+  await page.waitForTimeout(500) // l'effet de relecture passe après le rendu du commentaire
+  await expect(titleInput).toHaveValue('Titre en cours de saisie')
+  await titleInput.fill(savedTitle)
+
   // E4 — tout est décidé : signature, sans tag ; grille en lecture.
   const tagsBefore = git('tag', '--list')
   await page.getByTestId('validation-sign').click()

@@ -21,3 +21,5 @@ Auto = `version-analysis.gh245.test.ts` (fonctions pures) / `versions.gh245.test
 | U2 | « Créer une campagne » | création pré-remplie avec les tests cochés ; aucun lien | Manuel |
 | U3 | « Ajouter à … » | sélecteur pré-coché de la campagne | Manuel |
 | U4 | Version released | sections en lecture seule, analyse figée | Manuel |
+
+> GH271 (2026-11-05) — G1 et outils MCP : `milestone-d-coverage.gh271.test.ts`.

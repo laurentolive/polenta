@@ -41,3 +41,5 @@ temporaire) ; Manuel = à vérifier dans l'application.
 | L14 | Échec du push du tag (remote absent) | push de la branche non affecté, tag reste en attente | Auto |
 | L15 | Graphe : `versions`, `designVersion` | présents ; `designVersion` = première released contenant la version courante | Auto (sprint 3) |
 | L16 | MCP `list_versions` / `get_version` / `get_version_backlog` | lecture seule, résultats cohérents avec l'IPC | Auto (sprint 3) |
+
+> GH271 (2026-11-05) — L9, L16 : `milestone-d-coverage.gh271.test.ts`. Branche avancée pendant la release : `versions.gh201.test.ts`. Push du tag par isomorphic-git : demande un vrai serveur, reste à vérifier à la main (`specs/GH271.md`).

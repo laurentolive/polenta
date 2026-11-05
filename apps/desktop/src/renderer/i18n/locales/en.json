@@ -261,7 +261,8 @@
       "onServer": "On the server {{host}}",
       "onThisComputer": "On this computer only",
       "noCreatableOrg": "Your account is not allowed to create a project in any organization on {{host}}. Ask your administrator.",
-      "pushWarning": "Project created on the server, but its first publication failed ({{message}}). Publish later with the Publish button."
+      "pushWarning": "Project created on the server, but its first publication failed ({{message}}). Publish later with the Publish button.",
+      "onAServer": "On a server (GitHub, Forgejo)"
     }
   },
   "preferences": {
@@ -592,7 +593,8 @@
         "created": "Repository {{repo}} created on the server.",
         "repoName": "Repository name",
         "creating": "Creating…",
-        "confirm": "Create"
+        "confirm": "Create",
+        "fromExisting": "From an existing repository"
       }
     },
     "removeDependency": {
@@ -1587,7 +1589,8 @@
     "createTagOnCommit": "Create tag on commit…",
     "rebaseCurrentOnCommit": "Rebase current on commit",
     "diffCommitVsHead": "Diff commit vs HEAD",
-    "diffCommitVsBranch": "Diff commit vs branch…"
+    "diffCommitVsBranch": "Diff commit vs branch…",
+    "integrationNeedsClean": "An integration branch is designated by a checkout: publish or discard pending changes first."
   },
   "diffPage": {
     "noDifference": "No difference"
@@ -2661,5 +2664,131 @@
       "remove": "Remove the rule",
       "add": "+ Add a rule"
     }
+  },
+  "repoWizard": {
+    "title": "Add a repository",
+    "titleProject": "New project on a server",
+    "titleComponent": "New component repository on a server",
+    "account": "Service",
+    "owner": "Owner",
+    "ownerSelf": "{{login}} (your account)",
+    "scopeMissing": "Your sign-in to {{host}} cannot list all your organizations: sign in to {{host}} again to see them.",
+    "ownerRightUnknown": "{{owner}} does not say whether your account may create a repository there: if refused, ask an administrator of {{owner}} for this right.",
+    "name": "Repository name",
+    "nameInvalid": "Letters, digits, “-”, “_” and “.” only, not starting with “.” or “-”.",
+    "nameChecking": "Checking the name…",
+    "nameTaken": "Repository {{repo}} already exists: choose another name.",
+    "nameFree": "Name available.",
+    "visibility": "Visibility",
+    "private": "Private",
+    "public": "Public",
+    "description": "Description",
+    "descriptionHelp": "Required. Repository description on the server and content of README.md.",
+    "branch": "Integration branch",
+    "branchInvalid": "After “int-”: letters, digits, “-”, “_” and “.” only.",
+    "create": "Create",
+    "creating": "Creating…",
+    "members": {
+      "title": "Members (optional)",
+      "list": "Added members",
+      "login": "Account to add",
+      "loginPlaceholder": "account login",
+      "team": "Team to add",
+      "teamPlaceholder": "Choose a team…",
+      "teamPrefix": "Team {{name}}",
+      "add": "Add",
+      "addTeam": "Add team",
+      "remove": "Remove {{name}}",
+      "levelOf": "Level of {{name}}",
+      "level": {
+        "label": "Level",
+        "read": "Read",
+        "write": "Write",
+        "admin": "Admin"
+      }
+    },
+    "step": {
+      "remote": "Repository created on the server",
+      "local": "Local preparation",
+      "push": "Integration branch published",
+      "defaultBranch": "Server default branch",
+      "members": "Members added",
+      "open": "Opening",
+      "integration": "Integration branch",
+      "description": "Description",
+      "polenta": "Polenta initialization"
+    },
+    "status": {
+      "done": "done",
+      "failed": "failed",
+      "skipped": "not done",
+      "admin": "left to an administrator"
+    },
+    "result": {
+      "title": "Creation incomplete",
+      "created": "Repository {{repo}} on the server, branch {{branch}}. Polenta does not delete it.",
+      "steps": "Steps",
+      "resume": "The steps not done can be resumed later by adding this repository as an existing one.",
+      "continue": "Continue",
+      "titleTodo": "Added, with points to handle"
+    },
+    "existing": {
+      "title": "Existing repository",
+      "titleEmpty": "Existing repository, empty",
+      "inspecting": "Reading the repository…",
+      "adding": "Adding…",
+      "polentaIncomplete": "This Polenta project is not complete. You can complete what is missing, or open it as is.",
+      "notPolenta": "This repository is not a Polenta project yet. Only what is missing is asked.",
+      "branchHelp": "Will be created from {{branch}}, then designated and published. It becomes the repository's default branch for the whole team.",
+      "descriptionHelp": "Copied to the server if missing there, and into a README.md if there is none.",
+      "confirmInit": "Initialize Polenta in this repository: commit its files on the integration branch and publish them.",
+      "adminNote": "You are not an administrator of this repository: the description on the server and the default branch are left to an administrator.",
+      "refused": "You have no write access to this repository, and it lacks: {{missing}}. It cannot be added.",
+      "refusedEmpty": "This repository is empty and you have no write access: it cannot be added.",
+      "missing": {
+        "integration": "an integration branch",
+        "description": "a description and a README",
+        "polenta": "the Polenta initialization"
+      },
+      "asIs": "Open as is",
+      "complete": "Complete and open",
+      "fill": "Initialize the repository"
+    }
+  },
+  "repoSettings": {
+    "title": "Repository settings",
+    "offline": "Unavailable offline: the server does not respond.",
+    "adminOnly": "Reserved for repository administrators: this information is read-only.",
+    "general": "General",
+    "members": "Members",
+    "description": "Description",
+    "noDescription": "No description.",
+    "visibility": "Visibility",
+    "publicConfirm": "Make this repository public? All its content, history included, becomes readable by everyone.",
+    "makePublic": "Make public",
+    "readme": {
+      "ask": "Also update README.md? A commit is created on the integration branch and published.",
+      "yes": "Update the README",
+      "no": "No",
+      "committed": "README.md updated and published.",
+      "pushFailed": "README.md updated, but publishing it failed ({{message}}). Publish later.",
+      "free": "README.md has a free form: it is not rewritten.",
+      "unchanged": "README.md already contains this description.",
+      "pending": "README.md has pending changes: it is not rewritten.",
+      "notOnIntegration": "README.md is only updated on the integration branch ({{branch}}): switch to it first."
+    },
+    "collaborators": "Collaborators",
+    "noCollaborator": "No direct collaborator.",
+    "invited": "Invitation sent to {{login}}: access starts once it is accepted.",
+    "invitations": "Pending invitations",
+    "cancelInvitation": "Cancel",
+    "teams": "Teams",
+    "noTeam": "No team has access to this repository.",
+    "manageTeams": "Manage teams on the server",
+    "teamLevelOnForge": "On this server, the level belongs to the team, for all its repositories: it is set on the server. Teams covering all the organization's repositories cannot be removed from here.",
+    "scopeMissing": "Your sign-in to {{host}} cannot read all teams: sign in to {{host}} again.",
+    "restricted": "The server does not give the member list to your account.",
+    "removeSelf": "Remove your own administrator access? You will no longer be able to change these settings.",
+    "removeSelfConfirm": "Remove my access"
   }
 }

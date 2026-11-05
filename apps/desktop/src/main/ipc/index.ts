@@ -1,3 +1,4 @@
+import type { IntegrationCreateFrom } from '@polenta/types'
 import type { SavedViewsService } from '../services/saved-views.service'
 import type { SavedViewRef, SavedViewScope } from '@polenta/types'
 import { registerPrefHandlers } from './pref.handlers'
@@ -82,6 +83,10 @@ import type {
   MergeFileDraft,
   MergeOrigin,
   MachineConfig,
+  CreateRepoRequest,
+  AdoptRepoRequest,
+  RepoAccessLevel,
+  RepoVisibility,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
@@ -90,6 +95,8 @@ import type { BaselineService } from '../services/baseline.service'
 import type { AppSettingsService } from '../services/app-settings.service'
 import type { ForgeConfigService } from '../services/forge-config.service'
 import type { ForgeService } from '../services/forge/forge.service'
+import type { RepoProvisioningService } from '../services/forge/repo-provisioning.service'
+import type { RepoSettingsService } from '../services/forge/repo-settings.service'
 import type { IntegrationBranchService } from '../services/integration-branch.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
@@ -155,6 +162,10 @@ export interface Container {
   forgeConfig: ForgeConfigService
   /** GH45 S4 — repos, organisations, droits, membres ; création sur le serveur. */
   forge: ForgeService
+  /** GH107 — création d'un repo sur GitHub / Forgejo. */
+  repoProvisioning: RepoProvisioningService
+  /** GH108 — le README suit la description du repo. */
+  repoSettings: RepoSettingsService
   /** GH106 — désignation de la branche d'intégration, gardes de suppression. */
   integration: IntegrationBranchService
 }
@@ -265,13 +276,27 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // ── Forges (GH45 S4) : repos, organisations, droits, membres, création sur le serveur ─────────
   r.handle('forge:accounts', () => c.forge.accounts())
   r.handle('forge:list-repos', (_e, accountKey: string) => c.forge.listRepos(accountKey))
-  r.handle('forge:creatable-orgs', (_e, accountKey: string) => c.forge.creatableOrgs(accountKey))
   r.handle('forge:repo-access', (_e, repoPath: string) => c.forge.repoAccess(repoPath))
   r.handle('forge:org-members', (_e, repoPath: string) => c.forge.orgMembers(repoPath))
-  r.handle('workspace:create-on-server', (_e, containerDir: string, name: string, accountKey: string, org: string) =>
-    c.forge.createProjectOnServer(containerDir, name, accountKey, org))
-  r.handle('workspace:create-component-on-server', (_e, accountKey: string, org: string, name: string) =>
-    c.forge.createComponentOnServer(accountKey, org, name))
+  // GH107 — assistant « Ajouter un repo » (design §3.4).
+  r.handle('forge:repo-accounts', () => c.forge.repoAccounts())
+  r.handle('forge:owners', (_e, accountKey: string) => c.forge.owners(accountKey))
+  r.handle('forge:name-available', (_e, accountKey: string, owner: string, name: string) => c.forge.nameAvailable(accountKey, owner, name))
+  r.handle('forge:org-teams', (_e, accountKey: string, org: string) => c.forge.orgTeams(accountKey, org))
+  r.handle('forge:create-repo', (_e, req: CreateRepoRequest) => c.repoProvisioning.create(req))
+  r.handle('forge:inspect-repo', (_e, accountKey: string, owner: string, name: string) => c.repoProvisioning.inspect(accountKey, owner, name))
+  r.handle('forge:adopt-repo', (_e, req: AdoptRepoRequest) => c.repoProvisioning.adopt(req))
+  // GH108 — fenêtre « Paramètres du repo » (design §2).
+  r.handle('forge:repo-settings-available', (_e, repoPath: string) => c.forge.repoSettingsAvailable(repoPath))
+  r.handle('forge:repo-settings', (_e, repoPath: string) => c.forge.repoSettings(repoPath))
+  r.handle('forge:update-repo-settings', (_e, repoPath: string, patch: { description?: string; visibility?: RepoVisibility }) => c.forge.updateRepoSettings(repoPath, patch))
+  r.handle('forge:set-collaborator', (_e, repoPath: string, login: string, level: RepoAccessLevel) => c.forge.setRepoCollaborator(repoPath, login, level))
+  r.handle('forge:remove-collaborator', (_e, repoPath: string, login: string) => c.forge.removeRepoCollaborator(repoPath, login))
+  r.handle('forge:set-repo-team', (_e, repoPath: string, team: string, level?: RepoAccessLevel) => c.forge.setRepoTeamAccess(repoPath, team, level))
+  r.handle('forge:remove-repo-team', (_e, repoPath: string, team: string) => c.forge.removeRepoTeamAccess(repoPath, team))
+  r.handle('forge:cancel-invitation', (_e, repoPath: string, id: number) => c.forge.cancelRepoInvitation(repoPath, id))
+  r.handle('forge:readme-state', (_e, repoPath: string) => c.repoSettings.readmeState(repoPath))
+  r.handle('forge:sync-readme', (_e, repoPath: string, description: string) => c.repoSettings.syncReadme(repoPath, description))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())
@@ -742,7 +767,7 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // ── Branche d'intégration (GH106) ────────────────────────────────────────────
   r.handle('integration:state', (_e, repoPath: string) => c.integration.state(repoPath))
   r.handle('integration:designate', (_e, repoPath: string, branch: string) => c.integration.designate(repoPath, branch))
-  r.handle('integration:create', (_e, repoPath: string, suffix: string, from?: { tag: string }) =>
+  r.handle('integration:create', (_e, repoPath: string, suffix: string, from?: IntegrationCreateFrom) =>
     c.integration.createAndDesignate(repoPath, suffix, from))
   r.handle('baseline:delete', (_e, repoPath: string, tag: string, components?: import('../services/baseline.service').BaselineComponentRef[]) =>
     c.baseline.delete(repoPath, tag, components))

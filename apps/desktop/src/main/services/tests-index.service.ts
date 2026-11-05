@@ -1,5 +1,6 @@
 import type { TestCase, TestRun } from '@polenta/types'
 import type { GitService } from './git.service'
+import { IndexBuilds } from './index-builds.util'
 
 interface TestRepoIndex {
   testCases: Map<string, TestCase>
@@ -7,8 +8,25 @@ interface TestRepoIndex {
   loadedAt: Date
 }
 
+/** Écritures reçues pendant une construction, qui a pu lister les dossiers avant elles. */
+interface PendingWrites {
+  testCases: TestCase[]
+  runs: TestRun[]
+}
+
+function mergeRun(runsByTestCase: Map<string, TestRun[]>, run: TestRun): void {
+  const runs = runsByTestCase.get(run.testCaseId) ?? []
+  const existing = runs.findIndex((r) => r.id === run.id)
+  if (existing >= 0) runs[existing] = run
+  else runs.push(run)
+  runs.sort((a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime())
+  runsByTestCase.set(run.testCaseId, runs)
+}
+
 export class TestsIndexService {
   private readonly index = new Map<string, TestRepoIndex>()
+  private readonly builds = new IndexBuilds()
+  private readonly pendingWrites = new Map<string, PendingWrites>()
 
   constructor(private readonly git: GitService) {}
 
@@ -44,22 +62,26 @@ export class TestsIndexService {
 
   upsertTestCase(repoPath: string, tc: TestCase): void {
     const idx = this.index.get(repoPath)
-    if (!idx) return
+    if (!idx) {
+      // Pas d'index : construit au prochain accès (et lira ce fichier) ; construction en cours :
+      // l'écriture lui est transmise.
+      this.pendingWrites.get(repoPath)?.testCases.push(tc)
+      return
+    }
     idx.testCases.set(tc.id, tc)
   }
 
   upsertRun(repoPath: string, run: TestRun): void {
     const idx = this.index.get(repoPath)
-    if (!idx) return
-    const runs = idx.runsByTestCase.get(run.testCaseId) ?? []
-    const existing = runs.findIndex((r) => r.id === run.id)
-    if (existing >= 0) runs[existing] = run
-    else runs.push(run)
-    runs.sort((a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime())
-    idx.runsByTestCase.set(run.testCaseId, runs)
+    if (!idx) {
+      this.pendingWrites.get(repoPath)?.runs.push(run)
+      return
+    }
+    mergeRun(idx.runsByTestCase, run)
   }
 
   invalidate(repoPath: string): void {
+    this.builds.invalidate(repoPath)
     this.index.delete(repoPath)
     console.log(`[TestsIndex] Index invalidated: ${repoPath}`)
   }
@@ -73,16 +95,17 @@ export class TestsIndexService {
   // ─── Build ───────────────────────────────────────────────────────────────────
 
   private async getOrBuild(repoPath: string): Promise<TestRepoIndex> {
-    if (!this.index.has(repoPath)) {
-      await this.build(repoPath)
-    }
+    await this.builds.ensure(repoPath, () => this.index.has(repoPath), () => this.build(repoPath))
     return this.index.get(repoPath)!
   }
 
   async build(repoPath: string): Promise<void> {
     console.log(`[TestsIndex] Building tests index for ${repoPath}`)
+    const generation = this.builds.generation(repoPath)
     const testCases = new Map<string, TestCase>()
     const runsByTestCase = new Map<string, TestRun[]>()
+    const written: PendingWrites = { testCases: [], runs: [] }
+    this.pendingWrites.set(repoPath, written)
 
     const testFiles = await this.git.listFiles(repoPath, 'tests')
     const runFiles = await this.git.listFiles(repoPath, 'test-runs')
@@ -126,6 +149,14 @@ export class TestsIndexService {
       runs.sort((a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime())
       runsByTestCase.set(tcId, runs)
     }
+
+    // Écritures arrivées pendant la construction : la version écrite fait foi.
+    if (this.pendingWrites.get(repoPath) === written) this.pendingWrites.delete(repoPath)
+    for (const tc of written.testCases) testCases.set(tc.id, tc)
+    for (const run of written.runs) mergeRun(runsByTestCase, run)
+
+    // GH87 — invalidée en cours de route : les fichiers ont pu changer après leur lecture.
+    if (this.builds.generation(repoPath) !== generation) return
 
     this.index.set(repoPath, { testCases, runsByTestCase, loadedAt: new Date() })
     console.log(`[TestsIndex] Built for ${repoPath} — ${testCases.size} tests`)

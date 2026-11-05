@@ -43,6 +43,9 @@ interface ComponentRef {
    *  son propre repo (T123 §Décisions #1), deux repos différents peuvent avoir un composant local
    *  du même nom — la colonne de la matrice doit rester non ambiguë. */
   displayName: string
+  /** Nom que `implements[].interface` cite pour ce composant : le nom de montage du repo pour
+   *  `root` (GH22), son propre nom pour un composant local. */
+  interfaceName: string
 }
 
 export class InterfaceComplianceService {
@@ -150,7 +153,8 @@ export class InterfaceComplianceService {
         const displayName = node.name === 'root'
           ? repoNode.name
           : [repoNode.name, ...localAncestors.map(a => a.label || a.name), node.label || node.name].join(' › ')
-        out.push({ repoPath: repoNode.repoPath, node, displayName })
+        const interfaceName = node.name === 'root' ? repoNode.name : node.name
+        out.push({ repoPath: repoNode.repoPath, node, displayName, interfaceName })
       }
     }
     return out
@@ -202,7 +206,7 @@ export class InterfaceComplianceService {
     for (const comp of allComponents) {
       if (!comp.node.implements) continue
       for (const impl of comp.node.implements) {
-        if (impl.interface === interfaceComp.node.name) {
+        if (impl.interface === interfaceComp.interfaceName) {
           implementors.push({ comp, impl })
         }
       }

@@ -114,6 +114,8 @@ export interface ForgeRepo {
   cloneUrl: string
   /** Le compte n'a pas le droit d'écriture (badge « lecture seule »). */
   readOnly: boolean
+  /** GH108 — une forge du kit (`FORCE_PRIVATE`) crée privé même si public a été demandé. */
+  private?: boolean
 }
 
 /** Organisation dans laquelle le compte peut créer des repos. */
@@ -121,6 +123,185 @@ export interface ForgeOrg {
   name: string
   /** Nom affiché (peut être vide). */
   label: string
+}
+
+// ─── Création et réglages d'un repo (GH107, design §2.1, mesures GH107-sprint1.md) ─
+
+export type RepoVisibility = 'private' | 'public'
+/** Niveaux que Polenta écrit ; une forge peut en rendre d'autres (`triage`, `maintain`, `owner`). */
+export type RepoAccessLevel = 'read' | 'write' | 'admin'
+
+/** Propriétaire où créer un repo : le compte lui-même ou une organisation. */
+export interface ForgeOwner {
+  name: string
+  /** Nom affiché (peut être vide). */
+  label: string
+  kind: 'user' | 'org'
+  /**
+   * `'unknown'` : la forge ne le dit pas (membre non admin d'une organisation GitHub) ; l'organisation
+   * est proposée et un refus est expliqué (critère 7 amendé de GH103 §2.4).
+   */
+  canCreate: true | 'unknown'
+}
+
+export interface ForgeOwners {
+  owners: ForgeOwner[]
+  /** GitHub : le jeton n'a pas `read:org`, des organisations peuvent manquer (reconnexion proposée). */
+  scopeMissing?: boolean
+}
+
+export interface CreateRepoInput {
+  owner: string
+  ownerKind: 'user' | 'org'
+  name: string
+  description: string
+  visibility: RepoVisibility
+  /** Forgejo : branche par défaut dès la création ; GitHub l'ignore (`main`), alignée après le push. */
+  defaultBranch?: string
+}
+
+export interface ForgeRepoDetails {
+  cloneUrl: string
+  description: string
+  visibility: RepoVisibility
+  defaultBranch: string
+  permissions: { pull: boolean; push: boolean; admin: boolean }
+}
+
+export interface ForgeCollaborator {
+  login: string
+  /** Nom affiché, quand la forge le donne dans la liste (Forgejo). */
+  name?: string
+  /** `read`/`write`/`admin`, ou tel que la forge le nomme (`triage`, `maintain`). */
+  level: RepoAccessLevel | string
+}
+
+/** Équipe d'une organisation. `name` est l'identifiant des appels (le `slug` sur GitHub). */
+export interface ForgeTeam {
+  name: string
+  label: string
+}
+
+export interface ForgeRepoTeam extends ForgeTeam {
+  level: RepoAccessLevel | string
+  /** Forgejo : le niveau est celui de l'équipe, pour tous ses repos. */
+  levelEditable: boolean
+  /** Forgejo : une équipe « tous les repos » ne se retire pas repo par repo. */
+  removable: boolean
+}
+
+/** GH107 — accès accordé à la création (widget Membres) : un compte ou une équipe de l'organisation. */
+export interface RepoMemberGrant {
+  kind: 'user' | 'team'
+  name: string
+  level: RepoAccessLevel
+}
+
+/** GH107 — étapes de la création d'un repo (design §3.1), dans cet ordre. */
+export type ProvisionStepId = 'remote' | 'local' | 'integration' | 'description' | 'polenta' | 'push' | 'defaultBranch' | 'members' | 'open'
+
+export interface ProvisionStep {
+  id: ProvisionStepId
+  /** `admin` : à faire par un administrateur du repo, sans bloquer l'ajout (spec GH103 §2.3). */
+  status: 'done' | 'failed' | 'skipped' | 'admin'
+  detail?: string
+}
+
+export interface CreateRepoRequest extends Omit<CreateRepoInput, 'defaultBranch'> {
+  accountKey: string
+  /** « x » de `int-x`. */
+  integrationSuffix: string
+  members: RepoMemberGrant[]
+  /** Projet : cloné dans `containerDir/<nom>` puis ouvert ; composant : préparé dans un dossier temporaire. */
+  target: { kind: 'project'; containerDir: string } | { kind: 'component' }
+}
+
+export interface CreateRepoResult {
+  steps: ProvisionStep[]
+  /** `propriétaire/nom` du repo créé. */
+  fullName: string
+  cloneUrl: string
+  /** `int-x`. */
+  branch: string
+  /** Projet, étape `open` réussie. */
+  open?: WorkspaceOpenResult
+}
+
+/** GH108 — fenêtre « Paramètres du repo » (spec GH103 §3, design §1). `offline` : forge injoignable. */
+export type RepoSettings =
+  | { available: false; reason: 'offline' }
+  | {
+    available: true
+    /** `propriétaire/nom`. */
+    fullName: string
+    host: string
+    /** Login du compte connecté (confirmation du retrait de son propre accès). */
+    login: string
+    details: ForgeRepoDetails
+    collaborators: ForgeCollaborator[]
+    teams: ForgeRepoTeam[]
+    invitations: ForgeInvitation[]
+    /** Équipes de l'organisation (attribution). */
+    orgTeams: ForgeTeam[]
+    /** Membres de l'organisation (autocomplétion). */
+    orgMembers: ForgeMember[]
+    isOrg: boolean
+    /** GitHub : jeton sans `read:org`, les équipes peuvent manquer (reconnexion proposée). */
+    scopeMissing: boolean
+    /** La forge refuse de lister les membres à ce compte (lecteur) : listes vides, sans erreur. */
+    membersRestricted: boolean
+    /** Page des équipes sur la forge : créer une équipe ou changer sa composition reste là-bas. */
+    teamsUrl: string
+    /** Forgejo : le niveau d'une équipe se règle sur l'équipe, pas par repo. */
+    teamLevelEditable: boolean
+  }
+
+/** GH108 — forme du `README.md` de l'intégration, avant de proposer de le mettre à jour. */
+export type ReadmeState = 'standard' | 'free' | 'none'
+
+export type ReadmeSyncOutcome =
+  | { status: 'committed'; pushError?: string }
+  | { status: 'unchanged' | 'free' | 'pending-changes' }
+  | { status: 'not-on-integration'; branch: string }
+
+/** GH107 — ce qui manque à un repo existant (spec GH103 §2.3). */
+export type RepoMissing = 'integration' | 'description' | 'polenta'
+
+/** GH107 — ce que Polenta a trouvé dans un repo existant, sans rien écrire (design §4.1). */
+export interface RepoInspection {
+  /** `propriétaire/nom`. */
+  fullName: string
+  details: ForgeRepoDetails
+  /** Aucune branche sur le serveur. */
+  empty: boolean
+  integration: { branch: string; source: 'default' | 'project-yaml' } | null
+  hasReadme: boolean
+  hasDescription: boolean
+  /** `.polenta/`, `integrationBranch` dans `config/project.yaml`, ou `AGENTS.md` généré par Polenta. */
+  isPolentaProject: boolean
+  missing: RepoMissing[]
+}
+
+/** GH107 — réponses aux seules questions posées, et destination (design §4.2). */
+export interface AdoptRepoRequest {
+  accountKey: string
+  owner: string
+  name: string
+  integrationSuffix?: string
+  description?: string
+  /** Confirmation explicite : commiter l'initialisation Polenta. */
+  initPolenta?: boolean
+  /** Repo vide seulement : visibilité choisie et membres. */
+  visibility?: RepoVisibility
+  members?: RepoMemberGrant[]
+  target: CreateRepoRequest['target']
+}
+
+/** Invitation en attente (GitHub). */
+export interface ForgeInvitation {
+  id: number
+  login: string
+  level: RepoAccessLevel | string
 }
 
 /** Membre d'une organisation (autocomplétion des champs `user`). */
@@ -137,13 +318,6 @@ export interface ForgeRepoAccess {
   repo: string
   pull: boolean
   push: boolean
-}
-
-/** Projet créé sur le serveur : ouvert localement ; `pushWarning` si la publication initiale a échoué. */
-export interface CreateOnServerResult {
-  open: WorkspaceOpenResult
-  cloneUrl: string
-  pushWarning?: string
 }
 
 // ─── Erreurs d'accès ──────────────────────────────────────────────────────────

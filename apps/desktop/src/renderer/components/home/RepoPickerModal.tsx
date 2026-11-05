@@ -6,9 +6,9 @@ import { api } from '../../api'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 
 interface Props {
-  /** Comptes Forgejo/Gitea connectés (au moins un), compte par défaut en tête. */
+  /** Comptes GitHub et Forgejo connectés (au moins un), compte par défaut en tête. */
   accounts: ForgeAccount[]
-  onPick: (repo: ForgeRepo) => void
+  onPick: (repo: ForgeRepo, accountKey: string) => void
   /** « Saisir une URL » : flux d'avant GH45 (TextPromptModal). */
   onEnterUrl: () => void
   onCancel: () => void
@@ -59,7 +59,7 @@ export function RepoPickerModal({ accounts, onPick, onEnterUrl, onCancel }: Prop
             <p className="p-3 text-sm text-ink-3">{repos.length === 0 ? t('home.server.noRepos') : t('home.server.noMatch')}</p>
           )}
           {shown.map(repo => (
-            <button key={repo.fullName} type="button" role="option" aria-selected={false} onClick={() => onPick(repo)}
+            <button key={repo.fullName} type="button" role="option" aria-selected={false} onClick={() => onPick(repo, accountKey)}
               className="w-full text-left px-3 py-2 border-b border-edge last:border-b-0 hover:bg-surface-hover">
               <span className="flex items-center gap-2">
                 <span className="text-sm text-ink font-mono truncate">{repo.fullName}</span>

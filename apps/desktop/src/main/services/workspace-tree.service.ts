@@ -691,20 +691,26 @@ export class WorkspaceTreeService {
    * compares it to HEAD — never "trusts" a branch/tag pin without checking, so a
    * previously failed checkout (T70 UC-2) is never silently treated as settled.
    */
+  private async peelToCommit(repoPath: string, oid: string): Promise<string> {
+    return (await git.readCommit({ fs, dir: repoPath, oid })).oid
+  }
+
   private async repoExistsAtPin(repoPath: string, pin: string): Promise<boolean> {
     try {
       const stat = await fsP.stat(path.join(repoPath, '.git'))
       if (!stat.isDirectory() && !stat.isFile()) return false
       if (!pin) return true // no pin declared — whatever is checked out is acceptable
 
-      const head = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+      // GH21 — `resolveRef` s'arrête à l'objet d'un tag annoté (baseline), et un checkout de ce tag
+      // laisse ce même objet dans HEAD : on compare des commits.
+      const head = await this.peelToCommit(repoPath, await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }))
 
       if (/^[0-9a-f]{7,40}$/i.test(pin)) {
         return head.startsWith(pin) || pin.startsWith(head.substring(0, pin.length))
       }
 
       try {
-        const pinnedSha = await git.resolveRef({ fs, dir: repoPath, ref: pin })
+        const pinnedSha = await this.peelToCommit(repoPath, await git.resolveRef({ fs, dir: repoPath, ref: pin }))
         if (head === pinnedSha) return true
         // GH173: pending changes of the pinned branch moved onto `dev-auto`, which the auto-pull
         // then fast-forwarded by reference — still that branch, a checkout would take the edits away.

@@ -2,6 +2,7 @@ import MiniSearch from 'minisearch'
 import type { Requirement, ObjectLink } from '@polenta/types'
 import type { GitService } from './git.service'
 import { withKeyLock } from './serialize-writes.util'
+import { IndexBuilds } from './index-builds.util'
 
 const LINKS_FILE = 'links/links.yaml'
 
@@ -36,8 +37,7 @@ interface RepoIndex {
 
 export class RequirementsIndexService {
   private readonly index = new Map<string, RepoIndex>()
-  /** Construction en cours par repo : un seul passage, partagé par les lecteurs concurrents. */
-  private readonly builds = new Map<string, Promise<void>>()
+  private readonly builds = new IndexBuilds()
   /**
    * Écritures reçues pendant une construction : la construction a pu lister le dossier avant
    * l'écriture, elles sont donc appliquées à l'index qu'elle publie (sinon un objet tout juste
@@ -228,6 +228,7 @@ export class RequirementsIndexService {
   }
 
   invalidate(repoPath: string): void {
+    this.builds.invalidate(repoPath)
     this.index.delete(repoPath)
     console.log(`[RequirementsIndex] Index invalidated: ${repoPath}`)
   }
@@ -246,20 +247,14 @@ export class RequirementsIndexService {
   // ─── Build ───────────────────────────────────────────────────────────────────
 
   private async getOrBuild(repoPath: string): Promise<RepoIndex> {
-    if (!this.index.has(repoPath)) {
-      let pending = this.builds.get(repoPath)
-      if (!pending) {
-        pending = this.build(repoPath).finally(() => this.builds.delete(repoPath))
-        this.builds.set(repoPath, pending)
-      }
-      await pending
-    }
+    await this.builds.ensure(repoPath, () => this.index.has(repoPath), () => this.build(repoPath))
     return this.index.get(repoPath)!
   }
 
   async build(repoPath: string): Promise<void> {
     console.log(`[RequirementsIndex] Building index for ${repoPath}`)
     const start = Date.now()
+    const generation = this.builds.generation(repoPath)
 
     const requirements = new Map<string, Requirement>()
     const versions = new Map<string, RequirementVersion[]>()
@@ -334,6 +329,9 @@ export class RequirementsIndexService {
     if (this.pendingUpserts.get(repoPath) === written) this.pendingUpserts.delete(repoPath)
     for (const req of written.values()) requirements.set(req.id, req)
     search.addAll(Array.from(requirements.values()))
+
+    // GH87 — invalidée en cours de route : les fichiers ont pu changer après leur lecture.
+    if (this.builds.generation(repoPath) !== generation) return
 
     this.index.set(repoPath, {
       requirements,

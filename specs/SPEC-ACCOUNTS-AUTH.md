@@ -36,7 +36,7 @@
 1. détection : autre chose que `forgejo` → `not-a-forge` ;
 2. `POST /api/v1/users/{login}/tokens` en Basic Auth, en-tête `X-Gitea-OTP` si un code est fourni (accepté par Forgejo et Gitea), corps `{ name, scopes }` :
    - nom `polenta-<poste>-<AAAAMMJJ-HHmm>-<aléa>` (deux connexions dans la même minute restent possibles) ;
-   - scopes `write:repository`, `read:user`, `write:organization` (ce dernier est nécessaire pour créer un repo d'organisation, §8) ;
+   - scopes `write:repository`, `write:user`, `write:organization` : `write:organization` pour créer un repo d'organisation (§8), `write:user` pour en créer un dans le compte personnel (GH107, mesuré : `GH107-sprint1.md` §1). Un jeton antérieur sans `write:user` reste valide ; la création personnelle refusée propose de se reconnecter ;
 3. `persistToken`, puis levée de l'état « accès révoqué » de l'hôte.
 
 Résultats d'échec (mesurés sur Forgejo 15.0.9 et Gitea 28.1.0) :
@@ -52,6 +52,8 @@ Résultats d'échec (mesurés sur Forgejo 15.0.9 et Gitea 28.1.0) :
 Sécurité : le mot de passe n'apparaît que dans l'en-tête `Authorization` construit localement (`forge-http.ts`). Il n'est ni stocké, ni journalisé, ni renvoyé dans une erreur (les erreurs ne contiennent ni en-têtes ni corps de requête).
 
 ## 4. GitHub OAuth Device Flow (T98)
+
+Scopes demandés : `repo user:email read:org` (`read:org` depuis GH107 : rôle dans les organisations et équipes ; un jeton antérieur garde ses droits, la liste des propriétaires le signale par `scopeMissing`).
 
 Second mode de connexion, visible uniquement quand le remote effectif résout vers `github.com` (comparaison par hostname normalisé, pas de comparaison de chaîne stricte — tolère `https://github.com/`, casse différente, etc.).
 
@@ -71,7 +73,7 @@ Second mode de connexion, visible uniquement quand le remote effectif résout ve
 - `auth:current-account` → `ForgeAccount | null` (sans jeton, sans réseau) : le compte par défaut s'il a un jeton, sinon le premier qui en a un. Remplace les anciennes boucles sur une liste d'hôtes codée en dur côté renderer.
 - `auth:logout` (desktop) : jetons locaux et compte supprimés, le compte suivant devient compte par défaut. Le jeton reste valide côté forge (révocable dans ses paramètres) : le panneau Compte d'un compte `forgejo` le rappelle.
 - Jetons « nus » d'anciennes versions (sans compte, sur `github.com`/`gitlab.com` seulement — `LEGACY_BARE_TOKEN_HOSTS`, seule liste d'hôtes hors provider) : pris en compte à la lecture (`hasAnyAccount`, `projectUsername`, `logout`), sans migration.
-- GH45 S4 — `forge:accounts` : comptes `forgejo` connectés (compte par défaut en tête), pour les fonctions de forge de l'accueil (SPEC-PROJECT-MANAGEMENT §9.1).
+- GH45 S4 — `forge:accounts` : comptes `forgejo` connectés (compte par défaut en tête), pour les projets de l'équipe. GH107 — `forge:repo-accounts` : comptes `github` et `forgejo` connectés, pour l'assistant « Ajouter un repo » (SPEC-PROJECT-MANAGEMENT §9.1) ; un compte `generic` n'y figure pas.
 
 ## 6. Configuration machine (option DSI, GH45)
 

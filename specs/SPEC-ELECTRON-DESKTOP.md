@@ -1199,7 +1199,7 @@ désactivés. Une erreur s'affiche sous le bouton concerné et disparaît au lan
 | Démo | sélecteur natif → | dossier contenant `.polenta/workspace.yaml` (`workspace:detect`) : `workspace:open-project` ; sinon dossier vide ou inexistant (`workspace:is-empty-dir`) : `workspace:create-from-clone` avec l'URL de démo — GH45 : `demoProjectUrl` de la configuration machine, sinon `DEMO_PROJECT_URL` (`renderer/lib/demoProject.ts`) ; bouton **masqué** si GitHub est masqué sans démo fournie ; sinon erreur « dossier non vide » |
 | Ouvrir un projet existant | sélecteur natif → | `workspace:open-project` (`not-a-workspace` → erreur) |
 | Depuis un repo existant | popup « URL du repo Git » → sélecteur natif → ; GH45 S4, avec un compte Forgejo/Gitea : **liste des repos accessibles** (`RepoPickerModal`, « Saisir une URL » pour le popup) | `workspace:create-from-clone` (repo déjà sur le poste : rouvert) |
-| Créer un nouveau projet | popup « Nom du projet » → sélecteur natif → ; GH45 S4, avec un compte Forgejo/Gitea : `CreateProjectModal` (nom, « Sur le serveur <hôte> » + organisation, ou « Sur ce poste uniquement ») | `workspace:create-new`, ou `workspace:create-on-server` (SPEC-PROJECT-MANAGEMENT §9.1) |
+| Créer un nouveau projet | popup « Nom du projet » → sélecteur natif → ; GH45 S4, avec un compte GitHub ou Forgejo (GH107) : `CreateProjectModal` (nom, « Sur le serveur <hôte> » ou « Sur ce poste uniquement ») ; le serveur ouvre l'assistant « Ajouter un repo » | `workspace:create-new`, ou `forge:create-repo` (SPEC-PROJECT-MANAGEMENT §9.1) |
 
 **Projets de votre équipe** (GH45 S2b) : au-dessus des boutons, les projets proposés par la
 configuration de l'équipe sur la forge (SPEC-ACCOUNTS-AUTH §7), accessibles à l'utilisateur ; un
@@ -1529,7 +1529,8 @@ Le panneau Projet, quand un projet est chargé, est un hub de configuration. Il 
 > panneau et la page d'atterrissage par défaut du projet. Le sélecteur de branche d'intégration a
 > été déplacé (et renommé `IntegrationBranchSelector`) dans l'onglet Structure du Modèle de
 > données, sous la ligne du repo root ; la capacité de push perdue avec `SyncBar` a été restaurée
-> dans le panneau Version (`VersionRepoFolder`).
+> dans le panneau Version (`VersionRepoFolder`). Ce sélecteur n'existe plus : voir GH106 au §20
+> (`RepoBranchSelector`, `IntegrationBranchIndicator`).
 
 ```
 ┌─────────────────────────────┐
@@ -2397,9 +2398,9 @@ listés dans `SPEC-AUDIT.md`).
 | `schema:delete` | **GH104** — mêmes paramètres : supprime objets (pierres tombales), exécutions, acquittements d'impact, liens de tous les repos, arbres, refs de liens, puis le nœud / type ; arrêt avant arbres et schéma si un objet n'a pas pu être supprimé (SPEC-REQ §9) | `SchemaDeleteResult` (`deleted`, `links`, `schemaSaved`, `failed`) |
 | `history:get` | **GH77** — `repoPath, kind ('requirement' \| 'test' \| 'campaign'), id` : historique effectif (entrées implicites comprises) | `ObjectHistory` |
 | `history:backfill` | **GH77** — `repoPath` : reprise de l'historique depuis git (fichiers réécrits, pas de commit) | `HistoryBackfillResult` |
-| `integration:state` | **GH106** — `repoPath` : branche courante, intégration désignée, statut (`ok` / `incoherent` / `nonConvention` / `readonly`), `int-*` locales et distantes | `IntegrationState` |
+| `integration:state` | **GH106** — `repoPath` : branche courante, intégration désignée, statut (`ok` / `incoherent` / `nonConvention` / `detached`), `int-*` locales et distantes | `IntegrationState` |
 | `integration:designate` | **GH106** — `repoPath, branch` : checkout si besoin, commit du seul `config/project.yaml`, push, branche par défaut de la forge | `DesignateOutcome` |
-| `integration:create` | **GH106** — `repoPath, suffix, from?: { tag }` : crée `int-<suffix>` (position courante ou baseline) puis la désigne | `DesignateOutcome` |
+| `integration:create` | **GH106** — `repoPath, suffix, from?: { tag } \| { commit }` (GH276) : crée `int-<suffix>` (position courante, baseline ou commit) puis la désigne | `DesignateOutcome` |
 
 `schema:save` ne régénère **aucun** fichier dérivé de type `.gitmodules` — c'est le seul écart avec
 la version précédente de cette section, à ne pas réintroduire dans une future correction.

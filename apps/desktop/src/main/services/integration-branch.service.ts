@@ -4,7 +4,7 @@ import * as path from 'path'
 import * as yaml from 'js-yaml'
 import git from 'isomorphic-git'
 import { encodeIntegrationGuard, isValidIntegrationSuffix } from '@polenta/types'
-import type { DesignateOutcome, IntegrationGuardCode, IntegrationState, IntegrationStatus } from '@polenta/types'
+import type { DesignateOutcome, IntegrationCreateFrom, IntegrationGuardCode, IntegrationState, IntegrationStatus } from '@polenta/types'
 
 import type { GitService } from './git.service'
 import type { SyncService } from './sync.service'
@@ -99,8 +99,8 @@ export class IntegrationBranchService {
     return outcome
   }
 
-  /** Crée `int-<suffix>` à la position courante (ou sur un tag) puis la désigne (spec §1.3). */
-  async createAndDesignate(repoPath: string, suffix: string, from?: { tag: string }): Promise<DesignateOutcome> {
+  /** Crée `int-<suffix>` à la position courante, sur un tag ou sur un commit, puis la désigne (spec §1.3). */
+  async createAndDesignate(repoPath: string, suffix: string, from?: IntegrationCreateFrom): Promise<DesignateOutcome> {
     if (!isValidIntegrationSuffix(suffix)) throw new Error(`« ${suffix} » : lettres, chiffres, « - », « _ » et « . » seulement.`)
     const branch = `${INT_PREFIX}${suffix}`
     if ((await this.candidates(repoPath)).some(c => c.name === branch)) {
@@ -110,9 +110,12 @@ export class IntegrationBranchService {
     const previous = (await git.currentBranch({ fs, dir: repoPath }).catch(() => undefined))
       || (await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' }).catch(() => undefined))
     let sha: string | null = null
-    if (from) {
+    if (from && 'tag' in from) {
       sha = await this.sync.resolveTag(repoPath, from.tag)
       if (!sha) throw new Error(`Baseline « ${from.tag} » introuvable.`)
+    } else if (from) {
+      sha = await git.readCommit({ fs, dir: repoPath, oid: from.commit }).then(c => c.oid, () => null)
+      if (!sha) throw new Error(`Commit « ${from.commit} » introuvable.`)
     }
     try {
       if (sha) {
@@ -158,11 +161,13 @@ export class IntegrationBranchService {
     if (branch === (await this.explicitIntegrationBranch(repoPath))) throw new IntegrationBranchGuardError('designated', branch)
     if (!branch.startsWith(INT_PREFIX)) return
     const [locals, remotes] = await this.branchLists(repoPath)
-    const remaining = new Set([
-      ...(scope === 'local' ? locals.filter(b => b !== branch) : locals),
-      ...(scope === 'remote' ? remotes.filter(b => b !== branch) : remotes),
-    ])
-    if (![...remaining].some(b => b.startsWith(INT_PREFIX))) throw new IntegrationBranchGuardError('lastIntegration', branch)
+    // En local, le repo garde une int-* tant qu'il en reste une, locale ou sur origin (elle se
+    // récupère). Sur origin, seules comptent celles d'origin : une copie locale ne protège pas la
+    // forge (GH276).
+    const remaining = scope === 'local'
+      ? [...locals.filter(b => b !== branch), ...remotes]
+      : remotes.filter(b => b !== branch)
+    if (!remaining.some(b => b.startsWith(INT_PREFIX))) throw new IntegrationBranchGuardError('lastIntegration', branch)
   }
 
   private async candidates(repoPath: string): Promise<IntegrationState['candidates']> {

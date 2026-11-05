@@ -226,6 +226,24 @@ export class SyncService {
     }))
   }
 
+  /** GH107 — branches du serveur, sans rien écrire ; `[]` pour un repo vide. */
+  async remoteHeads(remoteUrl: string): Promise<string[]> {
+    const credentials = await this.auth.getHttpsCredentials(remoteUrl)
+    const refs = await this.guarded(remoteUrl, false, () => git.listServerRefs({
+      http, url: remoteUrl, prefix: 'refs/heads/', onAuth: () => credentials ?? undefined,
+    }))
+    return refs.map(r => r.ref.slice('refs/heads/'.length))
+  }
+
+  /** GH107 — clone partiel d'une branche, pour lire ses fichiers (inspection d'un repo existant). */
+  async cloneBranchShallow(remoteUrl: string, localPath: string, branch: string): Promise<void> {
+    const credentials = await this.auth.getHttpsCredentials(remoteUrl)
+    await this.guarded(remoteUrl, false, () => git.clone({
+      fs, http, dir: localPath, url: remoteUrl, ref: branch, singleBranch: true, depth: 1, noTags: true,
+      onAuth: () => credentials ?? undefined,
+    }))
+  }
+
   /**
    * Fetches new refs from `remote` into an already-cloned repo, without merging or checking
    * anything out (T74). Used when a repo already exists locally but a requested pin isn't
@@ -989,11 +1007,12 @@ export class SyncService {
     return changes
   }
 
-  /** Resolves a tag name to its commit sha. Tags created by `createTag` are lightweight refs
-   * written directly to a commit sha (no annotation to peel). Returns null if the tag doesn't exist. */
+  /** Resolves a tag name to its commit sha, lightweight or annotated (a baseline: GH21, `resolveRef`
+   * alone stops at the tag object). Returns null if the tag doesn't exist. */
   async resolveTag(repoPath: string, tagName: string): Promise<string | null> {
     try {
-      return await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tagName}` })
+      const oid = await git.resolveRef({ fs, dir: repoPath, ref: `refs/tags/${tagName}` })
+      return (await git.readCommit({ fs, dir: repoPath, oid })).oid
     } catch {
       return null
     }

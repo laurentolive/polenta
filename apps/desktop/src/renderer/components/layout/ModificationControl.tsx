@@ -57,6 +57,10 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+// GH246 — référence stable : `offRepos` est une dépendance de l'effet qui remet `mergeInitialized`
+// à false, popup fermée. Un `[]` recréé à chaque rendu relançait cet effet sans fin (boucle de rendu).
+const NO_OFF_REPOS: Awaited<ReturnType<typeof offIntegrationRepos>> = []
+
 export function ModificationControl({ currentProjectId }: Props) {
   const { t } = useTranslation()
   const { openTab } = useTabs()
@@ -160,7 +164,7 @@ export function ModificationControl({ currentProjectId }: Props) {
   })
 
   // GH133: read when the popup opens (and again if the pending repos change under it).
-  const { data: offRepos = [] } = useQuery({
+  const { data: offRepos = NO_OFF_REPOS } = useQuery({
     queryKey: ['publish-off-integration', repoPath, branch, pendingSignature],
     queryFn: () => offIntegrationRepos(publishRoots, ephemeralBranch),
     enabled: showPublishPopup && !!repoPath,

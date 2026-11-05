@@ -300,8 +300,8 @@ Un `TestRun` représente **une exécution concrète** d'un cas de test à un ins
 | `fields` | map? | *(GH196)* Valeurs des **champs d'exécution** (`runFields` du type de test), typées comme des champs d'objet ; absent tant que vide. Chaque `stepResults[]` porte de même `fields` (champs d'étape, `stepFields`), sur une étape exécutée seulement |
 | `testedConfig` | objet? | *(GH202)* Copie figée de la structure testée, voir ci-dessous ; absent : run antérieur, ou repo sans version sélectionnable |
 
-**Version testée (GH202, `specs/GH202.md`)** — une version du **repo de la campagne**, y compris pour un test de
-composant (dont le run reste dans le repo du composant). Saisie obligatoire dès qu'une version y est sélectionnable
+**Version testée (GH202, `specs/GH202.md`)** — une version du **repo de la campagne**. Une campagne ne contient que les tests de son repo (GH255, `TEST_OTHER_REPO`) :
+un test de composant se teste dans une campagne du composant. Saisie obligatoire dès qu'une version y est sélectionnable
 (en cours ou released) : une version, ou un texte libre (écart non documenté) ; refus `TESTED_VERSION_REQUIRED`.
 `TestsService.execute` construit la copie (`TestedConfigService.resolve`) : `component`, `ref`, `label`, `state`,
 `commit` (`HEAD` à l'enregistrement), `changesAt` (entrée en vigueur de `history.changes` de la version, SPEC-REQ §11.1),
@@ -512,8 +512,8 @@ validation externe).
 >
 > **GH243** — une campagne ne porte plus de baseline (`baselineRef`) ni de changeset (`changeset`) :
 > champs retirés du formulaire, du type et du graphe ; présents dans un ancien fichier, ignorés à la
-> lecture et absents de la prochaine écriture. Ce sont les exécutions qui testent une version produit
-> (`specs/MILESTONE-D.md` §6, #202). `/campaign/new?instances` et la page d'une campagne
+> lecture et absents de la prochaine écriture. Ce sont les exécutions qui testent une version du repo
+> de la campagne (`specs/MILESTONE-D.md` §6, #202). `/campaign/new?instances` et la page d'une campagne
 > `?addTests&instances` (sélecteur pré-coché) restent disponibles par lien.
 
 ### 4.2 CampaignTestRun — une entrée par inclusion du test dans la campagne

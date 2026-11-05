@@ -5,7 +5,7 @@ import * as path from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import git from 'isomorphic-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ObjectTypeDefinition, ProjectSchema, WorkspaceTree } from '@polenta/types'
 import { isValidTagName, suggestVersionTag } from '@polenta/types'
@@ -13,6 +13,7 @@ import { GitService } from './git.service'
 import { SchemaService } from './schema.service'
 import { SyncService } from './sync.service'
 import type { AuthService } from './auth.service'
+import { BaselineService } from './baseline.service'
 import { VersionTrackingService } from './version-tracking.service'
 import { VersionsService } from './versions.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
@@ -259,6 +260,7 @@ describe('passage released', () => {
     const failing = new VersionsService(gitSvc, {
       commitSingleFile: sync.commitSingleFile.bind(sync), resolveHead: sync.resolveHead.bind(sync), queueTagPush: sync.queueTagPush.bind(sync),
       createAnnotatedTag: async () => { throw new Error('verrou de ref') },
+      deleteTag: sync.deleteTag.bind(sync), pendingTags: sync.pendingTags.bind(sync),
     }, { get: async () => schemaOf('P') } as unknown as SchemaService, new VersionTrackingService(gitSvc, { get: async () => schemaOf('P') }))
     const v = await failing.create(root, { title: '1.0' })
     await failing.include(root, v.id, ['PR-0001'])
@@ -294,6 +296,25 @@ describe('passage released', () => {
 })
 
 describe('page', () => {
+  it('GH268 — une version de composant abandonnée n\'attribue plus ses changements au produit', async () => {
+    setTree()
+    await writeReq(comp, 'MR-0001')
+    await commitAll(comp, 'm')
+    const m1 = await releaseAll(comp, 'm1', 'moteur-m1')
+    await writeReq(comp, 'MR-0002')
+    await commitAll(comp, 'm2')
+    const m2 = await releaseAll(comp, 'm2', 'moteur-m2')
+    await writeReq(comp, 'MR-0003')
+    await commitAll(comp, 'm3')
+    const m3 = await releaseAll(comp, 'm3', 'moteur-m3')
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'p')
+    const p1 = await releaseAll(root, '1.0', 'produit-1.0', { moteur: m1.id })
+    const p2 = await versions.create(root, { title: '2.0', basedOn: p1.id, components: { moteur: m3.id } }, ws)
+    await versions.update(comp, m2.id, { status: 'abandonnee' })
+    expect((await versions.page(root, p2.id, ws)).rows.map(r => r.versionId)).toEqual([m3.id])
+  })
+
   it('N10 — changements des versions du composant postérieures à basedOn ; L12 — élément supprimé', async () => {
     setTree()
     await writeReq(comp, 'MR-0001')
@@ -436,5 +457,114 @@ describe('tags', () => {
     expect(suggestVersionTag('mon projet', 'v 2 (beta)')).toBe('mon-projet-v-2-beta')
     expect(isValidTagName('a/b-1.0')).toBe(true)
     for (const bad of ['', 'a b', 'a..b', 'a~1', 'a:b', 'fin.lock', '/a', 'a/', '-a']) expect(isValidTagName(bad)).toBe(false)
+  })
+})
+
+describe('GH268 — corrections de la revue', () => {
+  async function released(title: string, opts: { include?: string[]; basedOn?: string } = {}) {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const v = await versions.create(root, { title, ...(opts.basedOn && { basedOn: opts.basedOn }) })
+    await versions.include(root, v.id, opts.include ?? ['PR-0001'])
+    await commitAll(root, 'version')
+    return versions.release(root, v.id, `produit-${title}`)
+  }
+
+  it('le tag d\'une version n\'est pas une baseline et ne se supprime pas', async () => {
+    const v = await released('1.0')
+    await commitAll(root, 'gel')
+    await sync.createAnnotatedTag(root, 'baseline-a', 'autre', await head(root))
+    const baselines = new BaselineService()
+    expect((await baselines.list(root)).map(b => b.tag)).toEqual(['baseline-a'])
+    await expect(baselines.delete(root, v.freeze!.tag)).rejects.toThrow(v.id)
+    await expect(sync.deleteTag(root, v.freeze!.tag)).rejects.toThrow(v.id)
+    await baselines.delete(root, 'baseline-a')
+    expect(await git.listTags({ fs, dir: root })).toEqual([v.freeze!.tag])
+  })
+
+  it('un approuvé modifié hors interface, puis livré, ne revient pas au backlog', async () => {
+    await writeReq(root, 'PR-0001', { status: 'approved' })
+    await commitAll(root, 'approbation')
+    await writeReq(root, 'PR-0001', { status: 'approved', title: 'Modifié à la main' })
+    await commitAll(root, 'à la main')
+    const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001'])
+    await commitAll(root, 'version')
+    await versions.release(root, v.id, 'produit-1.0')
+    expect(await backlogIds(root)).toEqual([])
+    await writeReq(root, 'PR-0001', { status: 'approved', title: 'Encore' })
+    expect((await versions.backlog(root))[0]).toMatchObject({ id: 'PR-0001', kind: 'modified', outside: { dirty: true } })
+  })
+
+  it('une entrée de composant orpheline se retire, et la release passe', async () => {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const v = await versions.create(root, { title: '1.0', components: { retire: 'XX-0001' } })
+    await versions.include(root, v.id, ['PR-0001'])
+    expect(await code(versions.release(root, v.id, 'produit-1.0'))).toBe('COMPONENT_NOT_RELEASED')
+    await versions.update(root, v.id, { components: {} })
+    await commitAll(root, 'version')
+    expect(await code(versions.release(root, v.id, 'produit-1.0'))).toBe('ok')
+  })
+
+  it('branche avancée pendant le release : pas de tag orphelin, le nouvel essai passe', async () => {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001'])
+    await commitAll(root, 'version')
+    const original = sync.createAnnotatedTag.bind(sync)
+    const spy = vi.spyOn(sync, 'createAnnotatedTag').mockImplementationOnce(async (...args) => {
+      const out = await original(...args)
+      await git.commit({ fs, dir: root, message: 'entre-temps', author: { name: 'B', email: 'b@x', timestamp: T0 + ++tick, timezoneOffset: 0 } })
+      return out
+    })
+    await expect(versions.release(root, v.id, 'produit-1.0')).rejects.toThrow(/avancé/)
+    expect(await git.listTags({ fs, dir: root })).toEqual([])
+    spy.mockRestore()
+    expect(await code(versions.release(root, v.id, 'produit-1.0'))).toBe('ok')
+  })
+
+  it('base recalculée au gel : V3 part de V2 livrée après son inclusion', async () => {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const v2 = await versions.create(root, { title: '2.0' })
+    const v3 = await versions.create(root, { title: '3.0' })
+    await versions.include(root, v2.id, ['PR-0001'])
+    await versions.include(root, v3.id, ['PR-0001'])
+    expect((await versions.get(root, v3.id)).changes?.[0]?.base).toBeUndefined()
+    await commitAll(root, 'versions')
+    const r2 = await versions.release(root, v2.id, 'produit-2.0')
+    const r3 = await versions.release(root, v3.id, 'produit-3.0')
+    expect(r3.changes?.[0]?.base?.sha).toBe(r2.freeze!.sha)
+  })
+
+  it('freeze.at absent ou date YAML : le backlog et la création ne tombent pas', async () => {
+    const v = await released('1.0')
+    const other = await versions.create(root, { title: '2.0' })
+    await gitSvc.writeYaml(root, `versions/${other.id}.yaml`, { ...other, status: 'released', freeze: { tag: 't', sha: v.freeze!.sha } })
+    await gitSvc.writeText(root, `versions/${v.id}.yaml`, (await fsP.readFile(path.join(root, 'versions', `${v.id}.yaml`), 'utf8')).replace(/at: .*/, 'at: 2026-11-02T10:00:00Z'))
+    await expect(versions.backlog(root)).resolves.toBeDefined()
+    expect(await code(versions.create(root, { title: '3.0' }))).toBe('ok')
+  })
+
+  it('GH254 — type renommé : les éléments livrés ne reviennent pas au backlog', async () => {
+    await writeReq(root, 'PR-0001')
+    await commitAll(root, 'éléments')
+    const v = await versions.create(root, { title: '1.0' })
+    await versions.include(root, v.id, ['PR-0001'])
+    await commitAll(root, 'version')
+    await versions.release(root, v.id, 'produit-1.0')
+    await writeReq(root, 'PR-0001', { objectTypeRef: 'root::exigence-bis' })
+    const schema = schemas.get(path.resolve(root))!
+    schemas.set(path.resolve(root), { ...schema, nodes: schema.nodes.map(n => ({ ...n, objectTypes: n.objectTypes?.map(t => t.name === 'exigence' ? { ...t, name: 'exigence-bis' } : t) })) })
+    expect(await backlogIds(root)).toEqual([])
+  })
+
+  it('la page dit le tag en attente', async () => {
+    const v = await released('1.0')
+    expect((await versions.page(root, v.id)).tagPending).toBe(true)
+    const others = await versions.create(root, { title: '2.0' })
+    expect((await versions.page(root, others.id)).tagPending).toBe(false)
   })
 })

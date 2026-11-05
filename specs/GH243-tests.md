@@ -39,3 +39,5 @@
 - `rg "changeset|changeTracking|ApprovalGate" apps packages` : plus de code (seulement commentaires
   historiques et specs).
 - `pnpm typecheck`, `pnpm test`, e2e GH243 et suites e2e existantes vertes.
+
+> GH271 (2026-11-05) — U8, U9, U12 : `milestone-d-coverage.gh271.test.ts` ; **U9 corrigé** : `changesetId` n'est pas refusé par le schéma d'import, il est ignoré et jamais écrit. U10 : `campaigns.service.carry.test.ts`, S8. E2 : `e2e-web/gh271-issue-proposal.spec.ts`. E3 écarté : voir `specs/GH271.md`.

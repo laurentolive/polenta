@@ -846,7 +846,7 @@
       "colCreatedAt": "Created on",
       "colUpdatedAt": "Modified on",
       "colAuthor": "Author",
-      "colCoverage": "Coverage",
+      "colCoverage": "Verification",
       "tabExcel": "Table",
       "tabWord": "Document",
       "tabPopup": "Popup",
@@ -859,7 +859,9 @@
       "showFolders": "Show folder headings",
       "computedColumns": "Computed columns",
       "computedGroupPending": "Computing columns…",
-      "computedGroupEmpty": "No column in the result"
+      "computedGroupEmpty": "No column in the result",
+      "colDesign": "Design",
+      "colValidation": "Validation"
     },
     "coverage": {
       "noLinkedTest": "No linked test",
@@ -1584,11 +1586,11 @@
     "diffTagVsBranch": "Diff tag vs branch…",
     "checkoutCommit": "Checkout commit",
     "createBranchFromCommit": "Create branch from commit…",
-    "integrationNeedsClean": "An integration branch is designated by a checkout: publish or discard pending changes first.",
     "createTagOnCommit": "Create tag on commit…",
     "rebaseCurrentOnCommit": "Rebase current on commit",
     "diffCommitVsHead": "Diff commit vs HEAD",
-    "diffCommitVsBranch": "Diff commit vs branch…"
+    "diffCommitVsBranch": "Diff commit vs branch…",
+    "integrationNeedsClean": "An integration branch is designated by a checkout: publish or discard pending changes first."
   },
   "diffPage": {
     "noDifference": "No difference"
@@ -2371,6 +2373,12 @@
     "none": "— none —",
     "components": "Components",
     "noType": "No version type",
+    "tagPending": "Tag {{tag}} not pushed yet",
+    "tagPendingHelp": "It goes out with the repo's next push. If it stays after a push, the push failed, for example because this tag already exists on the server.",
+    "orphans": {
+      "title": "Components removed from the structure: they block the release.",
+      "remove": "Remove"
+    },
     "readonly": "Read-only component",
     "showAbandoned": "Show abandoned versions",
     "seeChanges": "See changes",
@@ -2561,7 +2569,14 @@
     },
     "review": {
       "content": "to review: content changed",
-      "impact": "to review: now impacted"
+      "impact": "to review: now impacted",
+      "source": "to review: source validation cancelled"
+    },
+    "frozen": {
+      "copy": "At signature: authoring, design, verification, impact and tests show what the signer saw.",
+      "legacy": "Signed before freezing: these columns show the current state, not the state at signature.",
+      "outside": "outside signature",
+      "outsideBanner": "Some rows are not covered by the signature, for example after a git merge. To include them, cancel and redo the validation."
     },
     "filter": {
       "label": "Filter",
@@ -2621,6 +2636,34 @@
     },
     "noTest": "No test linked to this requirement.",
     "otherComponent": "Executions in another component"
+  },
+  "transitions": {
+    "notice": {
+      "blocked": "Status change of {{id}} refused",
+      "warning": "Status of {{id}} changed — items to check"
+    },
+    "option": {
+      "blocked": "blocked"
+    },
+    "level": {
+      "off": "No check",
+      "warn": "Notify",
+      "block": "Block"
+    },
+    "condition": {
+      "fieldsFilled": "Required fields filled",
+      "validatorsPass": "Valid formats (EARS…)",
+      "hasCoverageLink": "Covered by a test"
+    },
+    "editor": {
+      "title": "Transition constraints",
+      "help": "Optional: each condition is set to No check, Notify (the change happens, what is missing is reported) or Block. A change without a rule stays free.",
+      "from": "From",
+      "to": "To",
+      "anyStatus": "Any status",
+      "remove": "Remove the rule",
+      "add": "+ Add a rule"
+    }
   },
   "repoWizard": {
     "title": "Add a repository",

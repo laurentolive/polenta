@@ -14,6 +14,7 @@ import { AUTO_BRANCH_PREFIX, isAutoBranch } from '@polenta/types'
 import { extractHost, type AuthService } from './auth.service'
 import type { GitAuthor } from './git.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
+import { assertNotVersionTag } from './version-tags.util'
 
 const execFileAsync = promisify(execFile)
 
@@ -276,6 +277,8 @@ export class SyncService {
       dir: repoPath,
       url: remoteUrl,
       remote,
+      // GH268 — comme `git fetch` : sans cela, un tag de version poussé reste invisible en HTTPS. Un tag local déjà présent n'est pas écrasé.
+      tags: true,
       onAuth: () => credentials ?? undefined,
     }))
   }
@@ -622,6 +625,8 @@ export class SyncService {
       onAuth: () => credentials ?? undefined,
       fastForwardOnly: true,
     }))
+    // GH268 — `git.pull` ne suit pas les tags, contrairement à `git pull`.
+    await this.fetch(repoPath, remoteUrl, remote)
   }
 
   /**
@@ -1261,6 +1266,7 @@ export class SyncService {
   }
 
   async deleteTag(repoPath: string, tagName: string): Promise<void> {
+    await assertNotVersionTag(repoPath, tagName)
     await git.deleteRef({ fs, dir: repoPath, ref: `refs/tags/${tagName}` })
   }
 
@@ -1282,6 +1288,12 @@ export class SyncService {
       onAuth: () => credentials ?? undefined,
     }))
     await this.pushPendingTags(repoPath, remote)
+  }
+
+  /** GH268 — tags pas encore poussés : en attente du prochain push, ou d'un nouvel essai après un échec. */
+  async pendingTags(repoPath: string): Promise<string[]> {
+    const file = await pendingTagsFile(repoPath).catch(() => null)
+    return file ? readPendingTags(file) : []
   }
 
   /** GH201 — tag d'une version released, poussé au prochain push du repo (`pushPendingTags`). */

@@ -248,6 +248,7 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `fields` | list | Champs personnalisés (voir §3.2) |
 | `statuses` | list | Statuts configurables (voir §3.3) |
 | `trackStatusHistory` | bool? | **GH77** — historiser le statut ; absent = `true`, écrit seulement quand `false` — voir [SPEC-REQ §4.4](SPEC-REQ-requirements.md#44-historique-des-champs-suivis-gh77) |
+| `transitions` | list? | **GH206** — contraintes de transition facultatives (exigence, test, issue) : `{ to, from?, requires: { fieldsFilled \| validatorsPass \| hasCoverageLink: off \| warn \| block } }` — voir [SPEC-REQ §4.3](SPEC-REQ-requirements.md#43-définition-dun-statut-schemastatus) |
 
 ### 3.2 Définition d'un champ (`SchemaField`)
 
@@ -273,7 +274,8 @@ Cette déclaration active la vérification de couverture par rôle et l'affichag
 | `isApproval` | bool | Atteindre ce statut "valide" l'objet (utile pour la traçabilité) |
 | `isTerminal` | bool | L'objet est masqué des listes par défaut (ex: obsolète, archivé) |
 
-Toutes les transitions entre statuts sont autorisées — il n'y a pas de graphe de transitions à définir.
+Sans bloc `transitions`, toutes les transitions entre statuts sont autorisées ; les contraintes facultatives,
+à niveaux (aucun contrôle, notification, blocage), sont décrites en SPEC-REQ §4.3 (GH206).
 
 **Renommage (GH82)** : renommer un statut, ou une valeur d'un champ `enum` / `multi_enum`, dans
 l'éditeur de schéma migre les objets existants après confirmation — voir SPEC-REQ §4.4.
@@ -283,7 +285,7 @@ l'éditeur de schéma migre les objets existants après confirmation — voir SP
 | Valeur | Comportement |
 |--------|-------------|
 | `EARS` | La première ligne non vide du champ doit correspondre à un pattern EARS valide |
-| `regex:<pattern>` | Expression régulière custom |
+| `regex:<pattern>` | Expression régulière custom (contrôlée par la condition de transition `validatorsPass`, GH206) |
 | *(absent)* | Pas de validation syntaxique |
 
 **Patterns EARS reconnus :**

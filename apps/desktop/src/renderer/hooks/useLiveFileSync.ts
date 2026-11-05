@@ -42,6 +42,8 @@ export function useLiveFileSync(): void {
         for (const key of WORKSPACE_LINK_QUERY_KEYS) qc.invalidateQueries({ queryKey: [key] })
         // Couverture calculée sur tout le workspace (clé indexée sur le repo affiché).
         qc.invalidateQueries({ queryKey: ['traceability-matrix'] })
+        // GH206 — pré-contrôle des menus de statut : règles du schéma, champs et couverture.
+        qc.invalidateQueries({ queryKey: ['transitions'] })
       }
 
       // GH65 / GH74 — résultats des widgets de la vue Suivi : clé indexée sur le repo RACINE, mais le
@@ -59,6 +61,11 @@ export function useLiveFileSync(): void {
         || /^(requirements|tests|versions|issues|links|campaigns)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['versions'] })
         qc.invalidateQueries({ queryKey: ['validations'] })
+      }
+      // GH210 — reflets Design et Validation : versions, validations, exigences, schéma.
+      if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
+        || /^(requirements|versions|validations)\//.test(relPath)) {
+        qc.invalidateQueries({ queryKey: ['reflections'] })
       }
       // GH197 — historique des exécutions : runs, campagnes, tests et liens (couverture d'une exigence).
       if (relPath === '*' || /^(tests|test-runs|links|campaigns)\//.test(relPath)) {

@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import type { ExecutionHistoryRow, ValidationRow } from '@polenta/types'
+import type { ExecutionHistoryRow, ValidationRow, ValidationSignedRun } from '@polenta/types'
 import { isOpenCampaignStatus } from '@polenta/types'
 import { api } from '../../api'
 import { VERDICT_CLASS, VERDICT_KEY } from '../executions/ExecutionHistoryGrid'
@@ -25,7 +25,7 @@ const runDate = (v: unknown, length: number): string => {
 }
 
 /** GH204 §7 — tests d'une exigence et leur dernière exécution ; dépliés : leurs exécutions. */
-export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementId, tests, versionId, signedAt }: {
+export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementId, tests, versionId, signedAt, frozen }: {
   repoPath: string
   projectId: string
   workspaceDir?: string
@@ -33,6 +33,8 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
   tests: ValidationRow['tests']
   versionId: string
   signedAt: string | null
+  /** GH267 — lignes de test lues dans la copie ; les exécutions actuelles restent sous le chevron. */
+  frozen?: boolean
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -43,18 +45,20 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
   const [open, setOpen] = useState<Set<string>>(new Set())
   const byTest = useMemo(() => {
     // Tous les tests liés, même jamais exécutés : la qualité voit ce qui manque.
-    const map = new Map(tests.map(test => [test.id, { title: test.title, local: test.local, rows: [] as ExecutionHistoryRow[] }]))
+    const map = new Map(tests.map(test => [test.id, { title: test.title, local: test.local, signedRun: test.lastRun, rows: [] as ExecutionHistoryRow[] }]))
     for (const row of data?.rows ?? []) {
       if (row.kind !== 'run') continue
-      const entry = map.get(row.testCaseId) ?? { title: row.testTitle, local: true, rows: [] }
+      // GH267 — un test lié après la signature n'entre pas dans le registre.
+      if (frozen && !map.has(row.testCaseId)) continue
+      const entry = map.get(row.testCaseId) ?? { title: row.testTitle, local: true, signedRun: undefined, rows: [] }
       entry.rows.push(row)
       map.set(row.testCaseId, entry)
     }
     return [...map.entries()]
-  }, [data, tests])
+  }, [data, tests, frozen])
 
-  if (isLoading) return <p className="text-xs text-ink-3 italic">{t('common.loading')}</p>
-  if (error) return <p className="text-xs text-status-danger">{String(error)}</p>
+  if (isLoading && !frozen) return <p className="text-xs text-ink-3 italic">{t('common.loading')}</p>
+  if (error && !frozen) return <p className="text-xs text-status-danger">{String(error)}</p>
   if (byTest.length === 0) return <p className="text-xs text-ink-3 italic" data-testid="validation-no-test">{t('validation.noTest')}</p>
 
   const canOpen = (row: ExecutionHistoryRow) => !!row.campaign && !!row.entry && !row.removed && !row.superseded
@@ -64,21 +68,22 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
     params: { campaignId: row.campaign!.id, testId: row.entry!.entryId },
     search: { repoPath, projectId },
   } as never)
-  const verdict = (row: ExecutionHistoryRow) => {
+  const verdict = (row: Pick<ExecutionHistoryRow, 'run'> | { run: { result: ValidationSignedRun['result'] } }) => {
     const v = row.run?.result ?? 'pending'
     return <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${VERDICT_CLASS[v]}`}>{t(VERDICT_KEY[v])}</span>
   }
   return (
     <table className="w-full text-xs border-collapse" data-testid={`validation-runs-${requirementId}`}>
       <tbody>
-        {byTest.map(([testId, { title, local, rows }]) => {
+        {byTest.map(([testId, { title, local, signedRun, rows }]) => {
           const last = rows[0] as ExecutionHistoryRow | undefined
+          const shown = frozen ? signedRun : last?.run
           const isOpen = open.has(testId)
           return (
             <Fragment key={testId}>
               <tr className="border-b border-edge-subtle">
                 <td className="py-1 w-6">
-                  {last && (
+                  {rows.length > 0 && (
                     <button type="button" className="text-ink-3 hover:text-ink" aria-expanded={isOpen} aria-label={testId} data-testid={`validation-test-toggle-${testId}`}
                       onClick={() => setOpen(s => { const n = new Set(s); if (!n.delete(testId)) n.add(testId); return n })}>
                       {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -88,11 +93,21 @@ export function ValidationRuns({ repoPath, projectId, workspaceDir, requirementI
                 <td className="py-1 pr-3 whitespace-nowrap">
                   <button type="button" className="font-mono text-prim hover:underline" onClick={() => void navigate({ to: '/test/$testId', params: { testId }, search: { projectId, repoPath } as never })}>{testId}</button>
                 </td>
-                <td className="py-1 pr-3 text-ink-2 w-full">{title}</td>
-                {last ? (
+                <td className="py-1 pr-3 text-ink-2 w-full">
+                  {title}
+                  {frozen && signedRun && (
+                    <span className="ml-2 inline-flex flex-wrap gap-1" data-testid={`validation-frozen-run-${testId}`}>
+                      <span className="text-ink-3">{signedRun.testedConfig ? testedValueText(signedRun.testedConfig) : '—'}</span>
+                      {runMentions({ run: signedRun, testedDrift: signedRun.testedDrift }, versionId, null).map(m => (
+                        <span key={m} className={`text-[10px] px-1.5 rounded ${MENTION_CLASS[m]}`}>{t(`validation.mention.${m}`)}</span>
+                      ))}
+                    </span>
+                  )}
+                </td>
+                {shown ? (
                   <>
-                    <td className="py-1 pr-3 whitespace-nowrap">{last.run ? runDate(last.run.executedAt, 10) : ''}</td>
-                    <td className="py-1 whitespace-nowrap">{verdict(last)}</td>
+                    <td className="py-1 pr-3 whitespace-nowrap">{runDate(shown.executedAt, 10)}</td>
+                    <td className="py-1 whitespace-nowrap">{verdict({ run: shown })}</td>
                   </>
                 ) : (
                   <td colSpan={2} className="py-1 whitespace-nowrap text-ink-3 italic" data-testid={`validation-test-empty-${testId}`}>

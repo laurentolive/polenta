@@ -215,8 +215,8 @@ export type GraphCoverageStatus = 'not_covered' | 'covered' | 'validated' | 'fai
 export interface GraphRequirement extends GraphObjectBase {
   /** Indicateur Polenta (matrice de traçabilité). */
   coverageStatus: GraphCoverageStatus
-  /** Statut de design (GH201) : première version released du repo dont l'état figé contient
-   *  l'exigence dans sa `version` courante ; `null` si aucune. */
+  /** Statut de design (GH201, corrigé par GH204) : première version released du repo qui inclut
+   *  l'exigence dans ses `changes` et dont l'état figé est identique ; `null` si aucune. */
   designVersion: string | null
 }
 
@@ -256,6 +256,30 @@ export interface GraphValidationEntry {
   decidedAt: string | null
   carriedFrom: string | null
   proposed: boolean
+  /** GH267 — ce que le signataire a vu ; `null` sans signature. */
+  atSignature: GraphValidationAtSignature | null
+}
+
+/** Copie posée à la signature : rédaction, design, vérification, impact, tests et leur dernière exécution. */
+export interface GraphValidationAtSignature {
+  status: string
+  designVersion?: { id: string; title: string }
+  coverageStatus: string
+  impact?: { kind: 'changed' | 'impacted'; sources: Array<{ rootId: string; path: Array<{ id: string }> }> }
+  tests: Array<{
+    id: string
+    title: string
+    local: boolean
+    lastRun?: {
+      id: string
+      result: string
+      executedAt: string
+      executedBy?: string
+      notes?: string
+      testedConfig?: GraphTestedConfig
+      testedDrift?: unknown[]
+    }
+  }>
 }
 
 /** Validation d'une version, GH204. `state` : `signed` = feu vert. */
@@ -291,7 +315,8 @@ export interface GraphVersion {
   /** Éléments inclus ; `base` : état dans la dernière version released qui les incluait. */
   changes: Array<{ id: string; base: { sha: string; version: number } | null }>
   /** Tag et commit figés au passage released ; `null` avant. */
-  freeze: { tag: string; sha: string } | null
+  /** `at` : ordre des livraisons (GH268). */
+  freeze: { tag: string; sha: string; at: string } | null
   /** Statuts d'impact saisis (GH245), tels que stockés. */
   impacted: Array<{ id: string; status: string; comment: string | null }>
   /** Analyse d'impact figée au passage released (GH245) ; `null` tant que la version est en cours.

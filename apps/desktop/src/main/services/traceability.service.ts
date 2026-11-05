@@ -148,6 +148,22 @@ export class TraceabilityService {
     return resolveWorkspaceRepoPaths(this.workspaceTree, repoPath, workspaceDir)
   }
 
+  /**
+   * GH206 — l'exigence a-t-elle au moins un test qui la couvre ? Même règle que `not_covered` de la matrice
+   * (lien de couverture dans un sens ou l'autre, tests de tous les repos du workspace, terminaux compris),
+   * sans construire la matrice.
+   */
+  async hasCoverage(repoPath: string, reqId: string, workspaceDir?: string): Promise<boolean> {
+    const repoPaths = await this.resolveRepoPaths(repoPath, workspaceDir)
+    const [tests, links] = await Promise.all([
+      Promise.all(repoPaths.map(p => this.testsIndex.findAll(p))),
+      Promise.all(repoPaths.map(p => this.reqIndex.findAllLinks(p))),
+    ])
+    const tcIds = new Set(tests.flat().map(tc => tc.id))
+    const reqIds = new Set([reqId])
+    return links.flat().some(link => matchCoverageLink(link, tcIds, reqIds) !== null)
+  }
+
   async getMatrix(repoPath: string, filters: MatrixFiltersDto, workspaceDir?: string): Promise<TraceabilityMatrix> {
     const repoPaths = await this.resolveRepoPaths(repoPath, workspaceDir)
 

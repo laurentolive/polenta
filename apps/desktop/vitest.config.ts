@@ -20,5 +20,12 @@ export default defineConfig({
     // GH49 — les services partagés lisent la marque au chargement (src/shared/brand.ts).
     setupFiles: ['scripts/register-brand.ts'],
     testTimeout: 20_000,
+    // GH283 — des tests qui lancent git en ligne de commande (push vers un repo nu) dépassent les 10 s par
+    // défaut d'un hook sur une machine chargée.
+    hookTimeout: 20_000,
+    // GH283 — sous Windows, le pool `forks` perdait un processus de test environ une fois sur cinq (« Worker
+    // exited unexpectedly ») : son fichier disparaissait du total, sans échec. Aucun en `threads` sur
+    // 26 passages, qui est aussi plus rapide.
+    pool: 'threads',
   },
 })

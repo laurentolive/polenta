@@ -12,7 +12,7 @@ import type {
   SchemaStatus,
   SystemNode,
 } from '@polenta/types'
-import { ISSUE_IMPACT_LINK, displayIdFieldError, findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
+import { ISSUE_IMPACT_LINK, displayIdFieldError, transitionRuleIssues, findSystemNode, flattenSystemNodes, mapSystemNode, requiredWhenIssues, runFieldIssues } from '@polenta/types'
 import type { AuthService } from './auth.service'
 import type { WorkspaceTreeService } from './workspace-tree.service'
 import { readFileAt, resolveCommitSha } from './read-file-at.util'
@@ -44,6 +44,7 @@ export type SchemaValidationErrorCode =
   | 'LINK_TYPE_NAME_TAKEN'
   | 'VERSION_TYPE_INVALID'
   | 'DISPLAY_ID_FIELD_INVALID'
+  | 'TRANSITION_INVALID'
 
 /**
  * Levée par les méthodes `addNode`/`addObjectType`/`addField`/`addStatus`/
@@ -105,6 +106,7 @@ export class SchemaService {
   async save(repoPath: string, schema: ProjectSchema): Promise<void> {
     this.assertUniquePrefixes(schema)
     this.assertRequiredWhen(schema)
+    this.assertTransitions(schema)
     this.assertRunFields(schema)
     this.assertVersionTypes(schema)
     this.assertValidationTypes(schema)
@@ -130,6 +132,20 @@ export class SchemaService {
       for (const type of node.objectTypes ?? []) {
         const issue = requiredWhenIssues({ ...type, fields: type.fields ?? [] }).find((i) => i.level === 'error')
         if (issue) throw new SchemaValidationError('REQUIRED_WHEN_INVALID', `Type "${type.name}" : ${issue.message}`)
+      }
+    }
+  }
+
+  /**
+   * GH206 — contraintes de transition : erreurs de structure refusées (catégorie, statuts inconnus, y
+   * compris un statut retiré encore cité, doublons, conditions et niveaux). L'avertissement D5
+   * (blocage d'une réouverture) est affiché par l'éditeur, sans bloquer.
+   */
+  private assertTransitions(schema: ProjectSchema): void {
+    for (const { node } of flattenSystemNodes(schema.nodes)) {
+      for (const type of node.objectTypes ?? []) {
+        const issue = transitionRuleIssues(type).find((i) => i.level === 'error')
+        if (issue) throw new SchemaValidationError('TRANSITION_INVALID', issue.message)
       }
     }
   }

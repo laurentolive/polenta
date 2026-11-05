@@ -1,4 +1,5 @@
-﻿import type { TestCampaign, CampaignStatus, CampaignTestRun, RemovedCampaignTestRun, TestRunResult, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema } from '@polenta/types'
+﻿import * as path from 'path'
+import type { TestCampaign, CampaignStatus, CampaignTestRun, RemovedCampaignTestRun, TestRunResult, CreateCampaignDto, UpdateCampaignDto, TestCase, ParamResolutionPreview, ReqInstanceSelection, CarriedEntrySelection, ProjectSchema } from '@polenta/types'
 import type { GitService } from './git.service'
 import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
@@ -17,7 +18,7 @@ export class CampaignsService {
     /** T171 — résolution des paramètres de la base à l'ajout ; absent (MCP) : comportement T97. */
     private readonly parameters?: ParametersService,
     /** GH80 — schéma en cache pour la règle d'approbation ; absent (tests) : relu du disque. */
-    private readonly schema?: Pick<SchemaService, 'get'>,
+    private readonly schema?: Pick<SchemaService, 'get'> & Partial<Pick<SchemaService, 'resolveComponentRepoPath'>>,
     /** GH77 — historique des champs suivis ; absent (tests unitaires) : pas d'historique. */
     private readonly history?: HistoryService,
   ) {}
@@ -75,6 +76,7 @@ export class CampaignsService {
     const id = await this.nextCampaignId(repoPath)
     const testCaseIds = dto.testCaseIds ?? []
     const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
+    await this.assertOwnTests(repoPath, snapshots, workspaceDir)
     const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
     // GH73 — les entrées initiales sont ajoutées à la création : `addedAt` = `createdAt`.
     const now = new Date().toISOString()
@@ -255,6 +257,7 @@ export class CampaignsService {
       ])
       const candidates = [...new Set(testCaseIds)]
       const snapshots = await this.snapshotsFor(repoPath, candidates)
+      await this.assertOwnTests(repoPath, snapshots, workspaceDir)
       const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
       // T179 — un test itérant (`{req.…}` avec exigences liées) déjà présent reste ajoutable pour
       // ses exigences sans instance : la déduplication porte sur le couple (test, exigence).
@@ -698,6 +701,24 @@ export class CampaignsService {
     if (!this.parameters || snapshots.size === 0) return new Map()
     const previews = await this.parameters.previewForTests(repoPath, [...snapshots.values()], { workspaceDir })
     return new Map(previews.map(p => [p.testCaseId, p]))
+  }
+
+  /**
+   * GH255 — une campagne ne contient que les tests de son repo (décision du 2026-11-05) : un test de
+   * composant se teste dans une campagne du composant. Le repo d'un test se lit à son type, comme à
+   * sa création (`resolveComponentRepoPath`).
+   */
+  private async assertOwnTests(repoPath: string, snapshots: Map<string, TestCase>, workspaceDir?: string): Promise<void> {
+    if (!this.schema?.resolveComponentRepoPath) return
+    const foreign: string[] = []
+    for (const tc of snapshots.values()) {
+      const owner = await this.schema.resolveComponentRepoPath(repoPath, tc.objectTypeRef, workspaceDir).catch(() => null)
+      // Fichier présent dans le repo : le test est le sien, quel que soit son nœud (nœud local sans url).
+      if (owner && path.resolve(owner).toLowerCase() !== path.resolve(repoPath).toLowerCase() && !await this.gitService.fileExists(repoPath, `tests/${tc.id}.yaml`)) foreign.push(tc.id)
+    }
+    if (foreign.length > 0) {
+      throw new Error(`TEST_OTHER_REPO: ${foreign.join(', ')} — une campagne ne contient que les tests de son repo ; testez-les dans une campagne de leur composant.`)
+    }
   }
 
   private async snapshotsFor(repoPath: string, testCaseIds: string[]): Promise<Map<string, TestCase>> {

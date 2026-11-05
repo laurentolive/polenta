@@ -10,6 +10,7 @@ import {
   StatusesTable,
   CancelConfirmModal,
 } from './objectTypeEditor'
+import { TransitionRulesEditor } from './TransitionRulesEditor'
 
 interface Props {
   /** Repo this element belongs to (for display only — saving is handled by the caller). */
@@ -211,6 +212,13 @@ export function ElementConfigModal({ repoLabel, objectType, existingPrefixes, is
           {draft.category !== 'campaign' && (
             <StatusesTable statuses={draft.statuses} onChange={statuses => set({ statuses })} />
           )}
+          <TransitionRulesEditor
+            name={draft.name}
+            category={draft.category}
+            statuses={draft.statuses}
+            rules={draft.transitions}
+            onChange={transitions => set({ transitions })}
+          />
           <label className="mt-3 flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
             <input
               type="checkbox"

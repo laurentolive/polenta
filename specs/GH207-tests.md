@@ -1,5 +1,7 @@
 # GH207 — Scénarios de test
 
+> **Historique** (2026-11-05, #270) — l'objet changeset a été retiré par #243 ; sort de ce lot et ce qui en est conservé : `specs/MILESTONE-D.md` §7 et §9. Ce document décrit l'état livré à l'époque. Les tests à exécuter sont repris par la version (#245), sans lien campagne ↔ version (Q9).
+
 ## Unitaires
 
 | # | Scénario | Attendu |

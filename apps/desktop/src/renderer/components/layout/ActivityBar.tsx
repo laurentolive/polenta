@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { User, Settings, Search, GitBranch, ClipboardList, FlaskConical, Rocket, PieChart, Variable, Bug, ShieldCheck } from 'lucide-react'
 import type { Panel } from './AppLayout'
-import { capabilities } from '../../platform'
 import { UpdateBadge } from './UpdateBadge'
 import { ActivityBarMenu } from './ActivityBarMenu'
 import {
@@ -30,7 +29,7 @@ const PANELS: {
   { id: 'tests',        icon: <FlaskConical size={20} />,  labelKey: 'layout.activityBar.tests',        requiresProject: true },
   { id: 'campaigns',    icon: <Rocket size={20} />,         labelKey: 'layout.activityBar.campaigns',    requiresProject: true },
   { id: 'issues',       icon: <Bug size={20} />,            labelKey: 'layout.activityBar.issues',       requiresProject: true },
-  ...(capabilities.productValidation ? [{ id: 'validation' as const, icon: <ShieldCheck size={20} />, labelKey: 'layout.activityBar.validation', requiresProject: true }] : []),
+  { id: 'validation', icon: <ShieldCheck size={20} />, labelKey: 'layout.activityBar.validation', requiresProject: true },
   { id: 'parameters',   icon: <Variable size={20} />,       labelKey: 'layout.activityBar.parameters',   requiresProject: true },
   { id: 'search',  icon: <Search size={20} />,     labelKey: 'layout.activityBar.search', requiresProject: true },
   { id: 'version', icon: <GitBranch size={20} />,  labelKey: 'layout.activityBar.version',   requiresProject: true },

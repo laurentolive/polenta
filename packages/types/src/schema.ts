@@ -119,6 +119,8 @@ export interface ObjectTypeDefinition {
   decisions?: ValidationDecisionDef[]
   /** GH204 — catégorie `validation` : champs saisis avec chaque décision. */
   entryFields?: SchemaField[]
+  /** GH206 — contraintes de transition facultatives (exigence, test, issue). */
+  transitions?: import('./transitions').TransitionRule[]
 }
 
 /** GH229 — types de champ admis comme « ID affiché ». */
@@ -342,7 +344,7 @@ export interface TypeRenamePlan {
   files: Array<{ repoPath: string; path: string; newPath?: string }>
   /** Repos dont des refs `<nœud>::<type>` de `linkTypes` changent. */
   linkTypeRepos: string[]
-  errors: Array<{ code: 'ID_COLLISION' | 'REPO_MISSING' | 'HAS_VALIDATIONS'; detail: string }>
+  errors: Array<{ code: 'ID_COLLISION' | 'REPO_MISSING' | 'HAS_VALIDATIONS' | 'HAS_VERSIONS'; detail: string }>
 }
 
 /** GH104 — suppression en cascade d'un composant local (et de son sous-arbre) ou d'un type. */

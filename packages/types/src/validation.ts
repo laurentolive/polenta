@@ -3,6 +3,8 @@ import type { ObjectTypeDefinition, SchemaField } from './schema'
 import { isFieldRequiredNow, isFieldValueFilled } from './required-when'
 import type { VersionImpactSource, VersionState } from './product-version'
 import type { CoverageStatus } from './traceability'
+import type { TestRunResult } from './test'
+import type { TestedConfig, TestedDriftItem } from './tested-config'
 
 // GH204 — validation d'une version (specs/GH204.md) : décision de la qualité, exigence par exigence.
 // Fichier `validations/<ID>.yaml` du repo du composant. Sa signature, sur une version released, est le
@@ -15,6 +17,26 @@ export interface ValidationDecisionDef {
   color?: string
   isPending?: boolean
   proposesIssue?: boolean
+}
+
+/** GH267 — dernière exécution d'un test, telle que vue à la signature. */
+export interface ValidationSignedRun {
+  id: string
+  result: TestRunResult
+  executedAt: string
+  executedBy?: string
+  notes?: string
+  testedConfig?: TestedConfig
+  testedDrift?: TestedDriftItem[]
+}
+
+/** GH267 — ce que le signataire a vu pour une exigence : registre, posé par l'application à la signature. */
+export interface ValidationAtSignature {
+  status: string
+  designVersion?: { id: string; title: string }
+  coverageStatus: CoverageStatus
+  impact?: ValidationImpact
+  tests: Array<{ id: string; title: string; local: boolean; lastRun?: ValidationSignedRun }>
 }
 
 export interface ValidationEntry {
@@ -33,6 +55,8 @@ export interface ValidationEntry {
   proposed?: boolean
   proposedBy?: string
   proposedAt?: string
+  /** GH267 — copie posée à la signature, jamais reprise ni écrite par le MCP. */
+  atSignature?: ValidationAtSignature
 }
 
 export interface Validation {
@@ -53,11 +77,28 @@ export interface Validation {
 export type ValidationState = 'open' | 'signed' | 'cancelled'
 
 /** Lu des marques du type : `isApproval` → signée, `isTerminal` → annulée, sinon en cours. */
+/** GH210 — reflets d'une exigence dans les vues : statut de design et décision de la dernière validation signée. */
+export interface RequirementReflections {
+  design?: { versionId: string; versionLabel: string }
+  validation?: { decision: string; decisionLabel: string; validationId: string; versionId: string; versionLabel: string }
+}
+
+/** GH210 — reflets des exigences d'un type, lus dans le repo propriétaire (lien vers la page d'une version). */
+export interface RequirementReflectionsList {
+  repoPath: string
+  requirements: Record<string, RequirementReflections>
+}
+
 export function validationState(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): ValidationState {
   const def = typeDef?.statuses?.find(s => s.name === status)
   if (def?.isApproval) return 'signed'
   if (def?.isTerminal) return 'cancelled'
   return 'open'
+}
+
+/** GH267 — validation qui se lit dans ses copies : signée ou annulée après signature, avec au moins une copie. */
+export function isValidationFrozen(state: ValidationState, validation: Pick<Validation, 'entries'>): boolean {
+  return state !== 'open' && validation.entries.some(e => e.atSignature)
 }
 
 export function pendingDecision(typeDef: Pick<ObjectTypeDefinition, 'decisions'> | null | undefined): ValidationDecisionDef | undefined {
@@ -119,13 +160,15 @@ export interface ValidationRow {
   designVersion: { id: string; title: string } | null
   coverageStatus: CoverageStatus
   /** Tests liés (workspace). `local` : du repo de la validation, dont les exécutions sont lisibles ici. */
-  tests: Array<{ id: string; title: string; local: boolean }>
+  tests: Array<{ id: string; title: string; local: boolean; lastRun?: ValidationSignedRun }>
   impact: ValidationImpact | null
   /** Décision en vigueur : celle de l'entrée, sinon la valeur `isPending`. */
   decision: string
   entry: ValidationEntry | null
-  /** À revoir : contenu modifié depuis la décision, ou décision reprise d'une exigence devenue impactée. */
-  review: 'content' | 'impact' | null
+  /** À revoir : contenu modifié depuis la décision, décision reprise d'une exigence devenue impactée, ou d'une validation annulée. */
+  review: 'content' | 'impact' | 'source' | null
+  /** GH267 — fichier signé sans copie pour cette exigence (fusion git, par exemple). */
+  outsideSignature?: boolean
 }
 
 /** Sous-composant de la version validée et état de sa validation (information, non bloquant). */
@@ -149,6 +192,8 @@ export interface ValidationPage {
   problems: ValidationProblem[]
   readonly: boolean
   signed: { at: string; by: string | null } | null
+  /** GH267 — `copy` : colonnes lues dans les copies ; `legacy` : signée sans copie, lecture directe. */
+  frozen: 'copy' | 'legacy' | null
   components: ValidationComponentStatus[]
   /** Champs des types d'exigence du repo (colonnes proposées). */
   requirementFields: SchemaField[]

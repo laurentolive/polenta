@@ -143,6 +143,21 @@ describe('analyse d\'impact', () => {
     expect(a.rows.map(r => r.id)).toEqual(['PR-0001'])
   })
 
+  it('GH269 — exigence de composant couverte par un test du composant : couverte, test non proposé au produit', async () => {
+    await req(comp, 'MR-0001')
+    await test(comp, 'MT-0001')
+    await links(comp, [['MT-0001', 'MR-0001', 'verification']])
+    await commitAll(root, 'p')
+    await commitAll(comp, 'm')
+    const m = await versions.create(comp, { title: 'm1' }, ws)
+    await versions.include(comp, m.id, ['MR-0001'], ws)
+    const p = await versions.create(root, { title: '1.0', components: { moteur: m.id } }, ws)
+    const r = await versions.testsToRun(root, p.id, ws)
+    expect(r.uncovered).toEqual([])
+    expect(r.tests).toEqual([])
+    expect((await versions.testsToRun(comp, m.id, ws)).tests.map(t => t.testId)).toEqual(['MT-0001'])
+  })
+
   it('A5/A6/A7 — statut saisi, plus atteint, figée au passage released', async () => {
     await req(root, 'PR-0001')
     await req(root, 'PR-0002')

@@ -28,6 +28,8 @@ import { useWorkspaceLinks, WorkspaceLinksProvider } from '../../hooks/useWorksp
 import { flattenSystemNodes, fieldValueToText } from '@polenta/types'
 import type { ObjectLink, Requirement, TestCase, CoverageStatus, MatrixCell } from '@polenta/types'
 import type { UpdateTestCaseDto } from '@polenta/zod-schemas'
+import { TransitionScopeContext, transitionPreviewKey } from '../../hooks/useTransitionPreview'
+import { notifyTransitionError, notifyTransitionResult } from '../../lib/transitionNotices'
 
 // Mêmes champs « système » non ré-écrits que `SystemView`.
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status'])
@@ -207,9 +209,17 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
   const saveField = useCallback(async (objectId: string, field: string, value: string) => {
     if (!repoPath || !objectId) return
     if (field === 'status') {
-      if (category === 'requirement') await api.requirements.transition(repoPath, objectId, { toStatus: value })
-      else await api.tests.update(repoPath, objectId, { status: value } as UpdateTestCaseDto)
+      // GH206 — contraintes de transition : couverture lue sur le workspace, refus et notifications affichés.
+      try {
+        const result = category === 'requirement'
+          ? await api.requirements.transition(repoPath, objectId, { toStatus: value }, ws.workspaceDir)
+          : await api.tests.update(repoPath, objectId, { status: value } as UpdateTestCaseDto, ws.workspaceDir)
+        notifyTransitionResult(result, objectId)
+      } catch (err) {
+        if (!notifyTransitionError(err, objectId)) throw err
+      }
       invalidateAfterSave(objectId, false)
+      qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
       return
     }
     if (SYSTEM_FIELDS_SET.has(field)) return
@@ -217,7 +227,7 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
     if (category === 'requirement') await api.requirements.update(repoPath, objectId, dto)
     else await api.tests.update(repoPath, objectId, dto as UpdateTestCaseDto)
     invalidateAfterSave(objectId, field === 'title')
-  }, [repoPath, category, invalidateAfterSave])
+  }, [repoPath, category, invalidateAfterSave, ws.workspaceDir, qc])
 
   // Blur d'un champ = sauvegarde immédiate (comme `SystemView.handleEditBlurField`).
   // La coalescence des frappes richtext est gérée en interne par `EditView`
@@ -275,10 +285,14 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
     openTab(path, { repoPath: wsTarget?.repoPath ?? repoPath, projectId })
   }, [ws.objectsById, candidateObjects, openTab, repoPath, projectId])
 
+  // GH206 — pré-contrôle du menu de statut de la vue Édition.
+  const transitionScope = useMemo(() => ({ repoPath, category, workspaceDir: ws.workspaceDir }), [repoPath, category, ws.workspaceDir])
+
   const typeLabel = typeDef?.label ?? t('sidebar.search.title')
 
   return (
     <WorkspaceLinksProvider value={ws}>
+    <TransitionScopeContext.Provider value={transitionScope}>
     <RichTextProvider>
       <div className="flex flex-col h-full overflow-hidden">
         <ViewHeader
@@ -329,6 +343,7 @@ export function SearchEditPane({ editing, repoPath, projectId, onBack }: Props) 
         </div>
       </div>
     </RichTextProvider>
+    </TransitionScopeContext.Provider>
     </WorkspaceLinksProvider>
   )
 }

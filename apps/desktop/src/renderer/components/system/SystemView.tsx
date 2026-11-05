@@ -37,7 +37,8 @@ import { RichTextToolbar } from './RichTextToolbar'
 import { ViewHeader } from '../layout/ViewHeader'
 import { ExportButton } from '../export/ExportButton'
 import { requirementsExportBaseName, testsExportBaseName } from '../export/exportFilenames'
-import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep } from '../../lib/exportColumns'
+import { buildExportOutline, buildExportRows, substituteExportParams, defaultVisibleFields, type ExportStep, type ExtraExportColumns } from '../../lib/exportColumns'
+import type { SchemaFieldType } from '@polenta/types'
 import { normalizeObject } from '../../lib/normalizeObject'
 import type { ObjectCategory, ObjectLink, ObjectTypeDefinition, LinkTypeDefinition, Issue, Requirement, TestCase, TypeTreeNode, CoverageStatus, MatrixCell, SavedViewRef } from '@polenta/types'
 import { flattenSystemNodes, isComputedColumnKey, fieldValueToText } from '@polenta/types'
@@ -50,6 +51,9 @@ import { layoutPatch, resolveLayout, sameLayout, type ViewLayout } from './saved
 import { useElementNav } from '../../contexts/ElementNavContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
+import { TransitionScopeContext, transitionPreviewKey } from '../../hooks/useTransitionPreview'
+import { notifyTransitionError, notifyTransitionResult } from '../../lib/transitionNotices'
+import { REFLECTION_COLUMNS, reflectionText, type ReflectionsData } from './ReflectionCell'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status', 'originRuns'])
 
@@ -355,12 +359,22 @@ export function SystemView() {
     const fields = format === 'docx' ? shownFieldsWord : shownFieldsExcel
     // GH70 — une colonne calculée encore en cours de calcul s'exporterait vide.
     if (computed.pending && fields.some(isComputedColumnKey)) throw new Error(t('system.computed.exportPending'))
-    const { columns, rows } = buildExportRows(fields, root, displayObjects, sectionNumbers, stepsByObjectId, effectiveType, filter, computed.exportColumns)
+    // GH210 — reflets exportés avec le texte affiché.
+    const exportObjects = reflections
+      ? displayObjects.map(o => ({
+        ...o,
+        designStatus: reflectionText('designStatus', reflections.byId.get(o.id)),
+        validationStatus: reflectionText('validationStatus', reflections.byId.get(o.id)),
+      }))
+      : displayObjects
+    const extra: ExtraExportColumns = new Map<string, { label: string; type?: SchemaFieldType }>([...computed.exportColumns,
+      ['designStatus', { label: t('system.fieldConfig.colDesign') }], ['validationStatus', { label: t('system.fieldConfig.colValidation') }]])
+    const { columns, rows } = buildExportRows(fields, root, exportObjects, sectionNumbers, stepsByObjectId, effectiveType, filter, extra)
     // T171 §10 — mêmes valeurs de paramètres qu'à l'écran.
     const substitute = (values: Record<string, string>[]) => substituteExportParams(values, effectiveType, paramResolver.substitute)
     const payload = { componentLabel: effectiveNode?.label || effectiveNodeId || '', columns, rows: substitute(rows) }
     if (!templated) return payload
-    const outline = buildExportOutline(fields, root, displayObjects, sectionNumbers, stepsByObjectId, filter, effectiveType)
+    const outline = buildExportOutline(fields, root, exportObjects, sectionNumbers, stepsByObjectId, filter, effectiveType)
     const values = substitute(outline.map(e => e.values))
     return { ...payload, outline: outline.map((e, i) => ({ ...e, values: values[i] })) }
   }
@@ -585,6 +599,20 @@ export function SystemView() {
   useSetTabTitle(editedTitle || [effectiveNode?.label || effectiveNodeId, effectiveType?.label || effectiveTypeId].filter(Boolean).join(' / ') || null)
 
   const typeKey = effectiveNodeId && effectiveTypeId ? `${effectiveNodeId}::${effectiveTypeId}` : null
+
+  // GH210 — reflets Design et Validation : calculés seulement si une des deux colonnes est visible.
+  const reflectionsNeeded = effectiveType?.category === 'requirement' && !!typeKey
+    && (viewMode === 'edit' || REFLECTION_COLUMNS.some(c => visibleFieldsExcel.includes(c) || visibleFieldsWord.includes(c)))
+  const { data: reflectionsList } = useQuery({
+    queryKey: ['reflections', repoPath, typeKey, ws.workspaceDir],
+    queryFn: () => api.reflections.list(repoPath, typeKey!, ws.workspaceDir),
+    enabled: !!repoPath && reflectionsNeeded,
+  })
+  const reflections = useMemo((): ReflectionsData | undefined => reflectionsList && {
+    repoPath: reflectionsList.repoPath,
+    projectId: currentProjectId ?? '',
+    byId: new Map(Object.entries(reflectionsList.requirements)),
+  }, [reflectionsList, currentProjectId])
   // GH139 — colonnes par défaut d'une vue : défaut du schéma (`defaultVisible`), liens compris.
   const schemaDefaultFields = useCallback((view: 'excel' | 'word') =>
     defaultVisibleFields(effectiveType, { linkTypes, objectTypeRef: typeKey ?? undefined, view }), [effectiveType, linkTypes, typeKey])
@@ -642,10 +670,13 @@ export function SystemView() {
       if (!cat || !repoPath || !objectId) return
       if (field === 'status') {
         // GH243 — changer le statut rouvre un élément approuvé (version + 1 côté main), partout.
-        if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value, comment })
-        if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto)
-        if (cat === 'issue') return api.issues.update(repoPath, objectId, { status: value, modificationComment: comment })
-        return
+        // GH206 — `workspaceDir` : la couverture d'une contrainte de transition se lit sur tout le workspace.
+        const result = cat === 'requirement' ? await api.requirements.transition(repoPath, objectId, { toStatus: value, comment }, ws.workspaceDir)
+          : cat === 'test' ? await api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto, ws.workspaceDir)
+            : cat === 'issue' ? await api.issues.update(repoPath, objectId, { status: value, modificationComment: comment }, ws.workspaceDir)
+              : undefined
+        notifyTransitionResult(result, objectId)
+        return result
       }
       if (SYSTEM_FIELDS_SET.has(field)) return
       const dto = field === 'title'
@@ -670,8 +701,15 @@ export function SystemView() {
       if (variables.field === 'title') invalidateCandidateObjects()
       if (variables.field === 'status') invalidateImpactedObjects()
       clearPendingEditsFor(variables.objectId, variables.field, variables.value)
+      void qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
     },
-    onError: (err) => {
+    onError: (err, variables) => {
+      // GH206 — transition refusée : motifs notifiés, saisie optimiste annulée (retour au statut réel).
+      if (notifyTransitionError(err, variables.objectId)) {
+        clearPendingEditsFor(variables.objectId, variables.field, variables.value)
+        void qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
+        return
+      }
       console.error('[EditView] Erreur sauvegarde champ:', err)
     },
   })
@@ -1016,6 +1054,12 @@ export function SystemView() {
 
   // ── Empty / loading states ────────────────────────────────────────────────
 
+  // GH206 — pré-contrôle des menus de statut des vues Tableau, Document et Édition.
+  const transitionScope = useMemo(
+    () => ({ repoPath, category: effectiveType?.category, workspaceDir: ws.workspaceDir }),
+    [repoPath, effectiveType?.category, ws.workspaceDir],
+  )
+
   if (schemaLoading) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">
@@ -1057,6 +1101,7 @@ export function SystemView() {
 
   return (
     <WorkspaceLinksProvider value={ws}>
+    <TransitionScopeContext.Provider value={transitionScope}>
     <ParamRefProvider repoPath={repoPath} workspaceDir={currentProjectId ? decodeProjectId(currentProjectId) : ''} projectId={currentProjectId ?? ''}>
     <RichTextProvider>
     <div className="flex flex-col h-full overflow-hidden">
@@ -1254,6 +1299,7 @@ export function SystemView() {
             linkTypes={linkTypes}
             linksByObjectId={linksByObjectId}
             coverageByReqId={coverageByReqId}
+            reflections={reflections}
             revalidationIds={revalidationIds}
             testsById={testsById}
             repoPath={repoPath}
@@ -1295,6 +1341,7 @@ export function SystemView() {
             linkTypes={linkTypes}
             linksByObjectId={linksByObjectId}
             coverageByReqId={coverageByReqId}
+            reflections={reflections}
             revalidationIds={revalidationIds}
             testsById={testsById}
             repoPath={repoPath}
@@ -1337,6 +1384,7 @@ export function SystemView() {
             linkTypes={linkTypes}
             objectLinks={editingObjectId ? (linksByObjectId.get(editingObjectId) ?? []) : []}
             coverageByReqId={coverageByReqId}
+            reflections={reflections}
             testsById={testsById}
             repoPath={repoPath}
             candidateObjects={candidateObjects}
@@ -1369,6 +1417,7 @@ export function SystemView() {
     </div>
     </RichTextProvider>
     </ParamRefProvider>
+    </TransitionScopeContext.Provider>
     </WorkspaceLinksProvider>
   )
 }

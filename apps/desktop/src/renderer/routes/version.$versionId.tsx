@@ -90,6 +90,7 @@ function VersionPage() {
         actions={
           <>
             {page.component.readonly && <span title={t('versions.readonly')}><Lock size={13} className="text-status-warning" /></span>}
+            {page.tagPending && <span className="text-xs text-status-warning" title={t('versions.tagPendingHelp')} data-testid="version-tag-pending">{t('versions.tagPending', { tag: version.freeze?.tag })}</span>}
             {editable && (
               <button type="button" onClick={() => setReleasing(true)} className="btn-primary-sm flex items-center gap-1.5" data-testid="version-release">
                 <Tag size={12} />{t('versions.release.button')}
@@ -187,7 +188,7 @@ function VersionPage() {
                         </select>
                       ) : c.selected ? (
                         <button type="button" className="text-prim hover:underline" onClick={() => void navigate({ to: '/version/$versionId', params: { versionId: c.selected!.id }, search: { projectId, repoPath: c.repoPath } })}>
-                          {c.selected.title} ({c.selected.id})
+                          {c.selected.title} ({c.selected.id}){c.selected.state === 'abandoned' && ` — ${t('versions.state.abandoned')}`}
                         </button>
                       ) : <span className="text-ink-3">{t('versions.none')}</span>}
                       {c.selected && <span className={`ml-2 px-1.5 rounded text-[10px] ${STATE_BADGE[c.selected.state]}`}>{t(`versions.state.${c.selected.state}`)}</span>}
@@ -198,6 +199,12 @@ function VersionPage() {
             </table>}
           </section>
         )}
+
+        <OrphanComponents
+          entries={Object.entries(version.components ?? {}).filter(([name]) => !page.components.some(c => c.name === name))}
+          editable={editable}
+          onRemove={name => void update({ components: Object.fromEntries(Object.entries(version.components ?? {}).filter(([n]) => n !== name)) })}
+        />
 
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
@@ -255,5 +262,22 @@ function SectionToggle({ open, onToggle, label, count, testId }: { open: boolean
       {label}
       <span className="font-normal text-ink-3 normal-case">({count})</span>
     </button>
+  )
+}
+
+/** GH268 — composants retirés de la structure : leur entrée bloque le passage released, sans ce moyen de la retirer. */
+function OrphanComponents({ entries, editable, onRemove }: { entries: Array<[string, string]>; editable: boolean; onRemove: (name: string) => void }) {
+  const { t } = useTranslation()
+  if (entries.length === 0) return null
+  return (
+    <section className="flex flex-col gap-1 text-xs" data-testid="version-orphan-components">
+      <p className="text-status-warning">{t('versions.orphans.title')}</p>
+      {entries.map(([name, id]) => (
+        <div key={name} className="flex items-center gap-2">
+          <span className="text-ink-2">{name} : {id}</span>
+          {editable && <button type="button" className="btn-secondary-sm" onClick={() => onRemove(name)} data-testid={`version-orphan-remove-${name}`}>{t('versions.orphans.remove')}</button>}
+        </div>
+      ))}
+    </section>
   )
 }

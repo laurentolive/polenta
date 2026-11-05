@@ -2,7 +2,7 @@ import * as fsP from 'fs/promises'
 import * as path from 'path'
 import type {
   CampaignTestRun, DescribedObject, GraphCampaign, GraphComponent, GraphEntry, GraphFieldDef, GraphFixedStatus, GraphLink,
-  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphIssue, GraphValidation, GraphVersion,
+  GraphObjectBase, GraphObjectType, GraphRemovedEntry, GraphRepo, GraphRequirement, GraphTest, GraphTestRun, GraphIssue, GraphValidation, GraphValidationEntry, GraphVersion,
   HistoryCarrier, HistoryFallback, ObjectHistory, ObjectLink, ObjectTypeDefinition, PolentaGraph, ProjectSchema, SchemaField,
   Issue, Requirement, RowTarget, TestCampaign, TestCase, TestRun, TestRunStatus,
 } from '@polenta/types'
@@ -243,6 +243,7 @@ export class GraphService {
         entries: v.entries.map(e => ({
           requirementId: e.requirementId, decision: e.decision, comment: e.comment ?? null, fields: e.fields ?? {},
           decidedBy: e.decidedBy ?? null, decidedAt: e.decidedAt ?? null, carriedFrom: e.carriedFrom ?? null, proposed: !!e.proposed,
+          atSignature: (e.atSignature ?? null) as GraphValidationEntry['atSignature'],
         })),
         fields: v.fields, history: v.history ?? {},
       }))
@@ -266,7 +267,7 @@ export class GraphService {
       const versions = list.map((v): GraphVersion => ({
         id: v.id, repo: repo.name, component: repo.name, objectTypeRef: v.objectTypeRef, title: v.title, status: v.status,
         state: versionState(vt?.typeDef ?? null, v.status), basedOn: v.basedOn ?? null, components: v.components ?? {},
-        changes: (v.changes ?? []).map((c) => ({ id: c.id, base: c.base ?? null })), freeze: v.freeze ? { tag: v.freeze.tag, sha: v.freeze.sha } : null,
+        changes: (v.changes ?? []).map((c) => ({ id: c.id, base: c.base ?? null })), freeze: v.freeze ? { tag: v.freeze.tag, sha: v.freeze.sha, at: String(v.freeze.at ?? '') } : null,
         impacted: (v.impacted ?? []).map((i) => ({ id: i.id, status: i.status, comment: i.comment ?? null })),
         analysis: v.analysis ? {
           computedAt: v.analysis.computedAt,

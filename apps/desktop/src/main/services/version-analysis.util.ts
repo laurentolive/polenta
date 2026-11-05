@@ -126,10 +126,14 @@ export function computeVersionTests(
     return byTest.get(id)!
   }
   // Couverture des exigences sources en une passe sur les liens (lien de couverture, sens indifférent).
+  // GH269 — couverture jugée sur tous les tests du workspace : une exigence de composant couverte par
+  // un test de son composant n'est pas « non couverte » dans la version produit. Seuls les tests du
+  // repo sont proposés.
   const reqSources = new Set(sources.filter(s => reqIds.has(s)))
+  const allTestIds = new Set(snapshot.tests.keys())
   const coveringByReq = new Map<string, string[]>()
   for (const link of snapshot.links) {
-    const m = matchCoverageLink(link, testIds, reqSources)
+    const m = matchCoverageLink(link, allTestIds, reqSources)
     if (m) coveringByReq.set(m.reqId, [...(coveringByReq.get(m.reqId) ?? []), m.testId])
   }
   const uncovered: string[] = []
@@ -146,6 +150,7 @@ export function computeVersionTests(
     const covering = coveringByReq.get(source) ?? []
     if (covering.length === 0) uncovered.push(source)
     for (const testId of covering) {
+      if (!testIds.has(testId)) continue
       const e = entry(testId)
       e.requirementIds.add(source)
       e.sources.add(source)

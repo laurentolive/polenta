@@ -891,7 +891,7 @@ export const CAMPAIGNS = [
   {
     phase: 'P5', id: 'CAMP-0001', title: 'EVT — Essais de validation technique', status: 'completed',
     fields: { jalon: 'EVT', lieu: 'Laboratoire essais Lyon', description: 'Première campagne sur prototypes **EVT** (10 machines).' },
-    baselineRef: 'RE1', createdAt: '2026-05-04T08:00:00.000Z', completedAt: '2026-05-19T17:00:00.000Z',
+    paramSourceRef: 'RE1', createdAt: '2026-05-04T08:00:00.000Z', completedAt: '2026-05-19T17:00:00.000Z',
     entries: [
       ['TSYS-0001', { resolvedParams: { capacite_kg: '8 kg' }, run: { result: 'PASS', by: P.marc, at: '2026-05-05T09:00:00.000Z', duration: 1800, stepResults: stepsRes('PASS', 'PASS', 'PASS'), notes: 'Masse mesurée 8,03 kg.' } }],
       ['TSYS-0002', { resolvedParams: { capacite_kg: '8 kg', vitesse_essorage: '1200 tr/min', 'comp-moteur::vitesse_essorage_max': '1200 tr/min' },
@@ -912,7 +912,7 @@ export const CAMPAIGNS = [
   },
   {
     phase: 'P7', id: 'CAMP-0002', title: 'DVT — Essais de vérification design', status: 'in_progress',
-    fields: { jalon: 'DVT', lieu: 'Laboratoire essais Lyon' }, baselineRef: 'RE2', createdAt: '2026-07-01T08:00:00.000Z',
+    fields: { jalon: 'DVT', lieu: 'Laboratoire essais Lyon' }, paramSourceRef: 'RE2', createdAt: '2026-07-01T08:00:00.000Z',
     entries: [
       ['TSYS-0002', { resolvedParams: { capacite_kg: '8 kg', vitesse_essorage: '1400 tr/min', 'comp-moteur::vitesse_essorage_max': '1400 tr/min' },
         run: { result: 'PASS', by: P.marc, at: '2026-07-02T10:00:00.000Z', duration: 1200, stepResults: stepsRes('PASS', 'PASS'), notes: 'Vitesse max relevée : 1392 tr/min.' } }],

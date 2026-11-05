@@ -223,6 +223,30 @@
             "fr": "GH204 : collection validations (GraphValidation), catégorie validation",
             "en": "GH204: validations collection (GraphValidation), validation category"
           }
+        },
+        {
+          "version": 16,
+          "hash": "956706dd24fb9374a13bd6641f3512ed7c41e4007da819e8a5ce0ab749b6a5a3",
+          "summary": {
+            "fr": "GH267 : atSignature sur les entrées de validation (GraphValidationAtSignature)",
+            "en": "GH267: atSignature on validation entries (GraphValidationAtSignature)"
+          }
+        },
+        {
+          "version": 17,
+          "hash": "1311eda7f8881aac1d0f2cd21ecbf3bc5b8e811cc601b93b5cd909197f7933d3",
+          "summary": {
+            "fr": "GH268 : freeze.at sur GraphVersion",
+            "en": "GH268: freeze.at on GraphVersion"
+          }
+        },
+        {
+          "version": 18,
+          "hash": "d4f836cfe0ee2d45512b39015a623ff9f39cc18d3a613aa25315dad242de46d6",
+          "summary": {
+            "fr": "Commentaire du statut de design corrigé (inclusion dans la version, état identique)",
+            "en": "Design status comment corrected (included in the version, identical state)"
+          }
         }
       ]
     },

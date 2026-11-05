@@ -39,3 +39,5 @@ Numéros des critères : `specs/GH204.md` §9.
 - Composant avec plusieurs centaines d'exigences : temps d'ouverture d'une version released (lecture au gel).
 - Produit à composants : état des validations des composants dans l'en-tête (Q6), composant en lecture seule (Q4).
 - Passage de version en cours à released avec des décisions déjà prises, exigence modifiée entre-temps.
+
+> GH271 (2026-11-05) — U13, U15, décision puis exigence modifiée puis release : `milestone-d-coverage.gh271.test.ts`. Relecture de page : `gh204-validation`. **Non exécutés** : centaines d'exigences ; produit à composants et composant en lecture seule. Widgets du Suivi non vérifiés (`specs/GH271.md`).

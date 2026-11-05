@@ -191,6 +191,9 @@ export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
         <span className="text-xs text-ink-3 ml-auto" data-testid="validation-count">{rows.length} / {page.rows.length}</span>
       </div>
       {error && <p className="text-xs text-status-danger" role="alert">{error}</p>}
+      {page.frozen === 'copy' && <p className="text-xs text-status-info" data-testid="validation-frozen">{t('validation.frozen.copy')}</p>}
+      {page.frozen === 'legacy' && <p className="text-xs text-ink-3" data-testid="validation-frozen-legacy">{t('validation.frozen.legacy')}</p>}
+      {page.rows.some(r => r.outsideSignature) && <p className="text-xs text-status-warning" role="alert" data-testid="validation-outside-banner">{t('validation.frozen.outsideBanner')}</p>}
       {page.rows.length === 0 && <p className="text-xs text-ink-3 italic">{t('validation.noRequirement')}</p>}
       <div className="overflow-auto min-h-0">
         <table className="w-full text-xs border-collapse" data-testid="validation-grid">
@@ -221,6 +224,7 @@ export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
                     <td className="py-1 pr-3 text-ink">{row.title}</td>
                     {visible.map(c => <td key={c.key} className="py-1 pr-3">{cell(row, c.key)}</td>)}
                     <td className="py-1 whitespace-nowrap text-right">
+                      {row.outsideSignature && <span className="text-[10px] px-1.5 rounded bg-status-warning-bg text-status-warning mr-1" data-testid={`validation-outside-${row.requirementId}`}>{t('validation.frozen.outside')}</span>}
                       {row.entry?.proposed && <span className="text-[10px] px-1.5 rounded bg-status-info-bg text-status-info mr-1" data-testid={`validation-proposed-${row.requirementId}`}>{t('validation.proposed', { by: row.entry.proposedBy })}</span>}
                       {!row.entry?.proposed && row.review && <span className="text-[10px] px-1.5 rounded bg-status-warning-bg text-status-warning mr-1" data-testid={`validation-review-${row.requirementId}`}>{t(`validation.review.${row.review}`)}</span>}
                       {editable && (row.review || row.entry?.proposed) && <button type="button" className="btn-secondary-sm" data-testid={`validation-confirm-${row.requirementId}`} onClick={() => void confirm(row)}>{t('validation.confirm')}</button>}
@@ -242,7 +246,7 @@ export function ValidationGrid({ page, repoPath, projectId, workspaceDir }: {
                               onSave={fields => void decide(row, row.decision, { fields })}
                             />
                           )}
-                          <ValidationRuns repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} requirementId={row.requirementId} tests={row.tests} versionId={validation.versionId} signedAt={signedAt} />
+                          <ValidationRuns repoPath={repoPath} projectId={projectId} workspaceDir={workspaceDir} requirementId={row.requirementId} tests={row.tests} versionId={validation.versionId} signedAt={signedAt} frozen={page.frozen === 'copy' && !row.outsideSignature} />
                         </div>
                       </td>
                     </tr>

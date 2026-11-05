@@ -130,7 +130,7 @@ const ENTRY = (over: Record<string, unknown>) => ({
   executedAt: null, executedBy: null, carriedFrom: null, snapshot: null, resyncable: false, ...over,
 })
 const CAMP = (id: string, status: string, createdAt: string, entry: Record<string, unknown>) => ({
-  id, title: `Campagne ${id}`, status, createdAt, objectTypeRef: 'root::campagne', baselineRef: null, level: null,
+  id, title: `Campagne ${id}`, status, createdAt, objectTypeRef: 'root::campagne', level: null,
   targetComponent: null, component: 'produit', fields: {}, entries: [ENTRY(entry)], removedEntries: [],
 })
 const GRAPH = {

@@ -18,6 +18,8 @@ import { ExecutionsSection } from '../executions/ExecutionsSection'
 import { decodeProjectId } from '../../lib/projectId'
 import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
+import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
+import { REFLECTION_COLUMNS, ReflectionValue, type ReflectionsData } from './ReflectionCell'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -38,9 +40,11 @@ interface FieldControlProps {
   /** T110 sprint 3 — catalogue de rôles du repo courant (`schema.roles`), pour le champ
    *  `multi_enum` nommé `roles` uniquement. `undefined`/vide → fallback sur `field.values`. */
   interfaceRoles?: string[]
+  /** GH206 — objet édité : pré-contrôle des transitions du champ statut. */
+  objectId?: string
 }
 
-function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPath, interfaceRoles }: FieldControlProps) {
+function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPath, interfaceRoles, objectId }: FieldControlProps) {
   const { t } = useTranslation()
   const [localVal, setLocalVal] = useState(value)
 
@@ -123,9 +127,11 @@ function FieldControl({ field, value, onBlur, onChange, onEdit, readOnly, repoPa
         >
           {/* GH165 — sans option vide, une valeur absente s'affiche comme la 1re valeur et ne peut pas être choisie. */}
           {(!field.required || !localVal) && <option value="">—</option>}
-          {opts.map(v => (
-            <option key={v} value={v} title={field.valueLabels?.[v] ? v : undefined}>{field.valueLabels?.[v] ?? v}</option>
-          ))}
+          {field.name === 'status' && objectId
+            ? <TransitionStatusOptions objectId={objectId} current={localVal} values={opts} labels={field.valueLabels} />
+            : opts.map(v => (
+              <option key={v} value={v} title={field.valueLabels?.[v] ? v : undefined}>{field.valueLabels?.[v] ?? v}</option>
+            ))}
         </select>
       )
     }
@@ -261,7 +267,9 @@ function FieldRow({
   interfaceRoles,
   labelAdornment,
   requiredNow,
+  objectId,
 }: {
+  objectId?: string
   field: SchemaField
   label: string
   value: string
@@ -284,7 +292,7 @@ function FieldRow({
         {(requiredNow ?? field.required) && !system && <span className="text-status-danger">*</span>}
         {labelAdornment}
       </label>
-      <FieldControl field={field} value={value} onBlur={onBlur} onChange={onChange} onEdit={onEdit} readOnly={system} repoPath={repoPath} interfaceRoles={interfaceRoles} />
+      <FieldControl field={field} value={value} onBlur={onBlur} onChange={onChange} onEdit={onEdit} readOnly={system} repoPath={repoPath} interfaceRoles={interfaceRoles} objectId={objectId} />
     </div>
   )
 }
@@ -359,6 +367,8 @@ export interface EditViewProps {
   linkTypes?: LinkTypeDefinition[]
   objectLinks?: ObjectLink[]
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  /** GH210 — reflets Design et Validation (exigences), chargés si une colonne est visible. */
+  reflections?: ReflectionsData
   testsById?: Map<string, TestCase>
   repoPath?: string
   candidateObjects?: { id: string; title: string; objectTypeRef: string }[]
@@ -398,6 +408,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   linkTypes = [],
   objectLinks = [],
   coverageByReqId,
+  reflections,
   testsById,
   repoPath,
   projectId,
@@ -654,6 +665,13 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                 coverage={coverageByReqId?.get(objectData['id'] ?? '')}
                 testsById={testsById ?? new Map()}
               />
+              {/* GH210 — reflets Design et Validation, en lecture seule. */}
+              {REFLECTION_COLUMNS.map(c => (
+                <span key={c} className="text-xs text-ink-2 ml-2">
+                  {t(c === 'designStatus' ? 'system.fieldConfig.colDesign' : 'system.fieldConfig.colValidation')} :{' '}
+                  <ReflectionValue col={c} objectId={objectData['id']} data={reflections} />
+                </span>
+              ))}
             </div>
           )}
           {/* GH200 — élément approuvé : contenu en lecture seule, le statut (réouverture) reste modifiable. */}
@@ -719,6 +737,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                   labelAdornment={f.name === 'status'
                     ? <RevalidationFlag show={objectData?.needsRevalidation === 'true'} /> : undefined}
                   requiredNow={readCurrent ? isFieldRequiredNow(f, readCurrent) : undefined}
+                  objectId={objectData?.['id'] || undefined}
                 />
                 )
               }

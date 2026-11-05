@@ -8,7 +8,7 @@ import { setupSession } from './support/session'
  * campagne.
  */
 const s = setupSession()
-test.beforeEach(() => s.allowConsoleErrors(/status of 404/))
+
 
 interface TypeLike { name: string; label?: string; prefix?: string; category: string; fields: unknown[]; statuses?: unknown[] }
 interface SchemaLike { nodes: Array<{ name: string; objectTypes?: TypeLike[] }> }

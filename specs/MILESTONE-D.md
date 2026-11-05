@@ -1,9 +1,9 @@
 # Milestone D — spec globale consolidée : versions, issues, validation (2026-10-31)
 
 > Refonte des épiques #191 (conformité) et #193 (changement) après les échanges du 2026-10-31.
-> Remplace, pour la suite du milestone, `specs/GH193-point.md` §3–§4 et les parties de
-> `specs/GH191.md` / `specs/GH193.md` listées au §9. Une fois validée, ses décisions sont reportées
-> dans ces deux specs et dans les issues (§10) ; ce document reste comme trace.
+> **Fait foi** pour le milestone D : remplace `specs/GH193-point.md` §3–§4 et les parties de
+> `specs/GH191.md` / `specs/GH193.md` listées au §9. Le détail livré est dans les specs de lot (§9) et dans
+> SPEC-REQ §11–§13 ; les décisions du §11 l'emportent sur le texte. Aligné sur les décisions le 2026-11-05 (#270).
 
 ## 1. But
 
@@ -21,7 +21,7 @@ celle-ci. Le « pourquoi » d'une modification non tracée dans les exigences es
 | Statut | Sens | Origine | Saisi / calculé |
 |---|---|---|---|
 | **Rédaction** | statut actuel (brouillon, review, approuvé…) | `status` | saisi |
-| **Design** | première version **released** du composant de l'exigence dont l'état figé contient l'exigence **dans sa version courante** (`version`) | versions (§3) | calculé ; « — » si aucune |
+| **Design** | première version **released** du composant qui **inclut** l'exigence (`changes`) et dont l'état figé est **identique** à son contenu courant (P1, GH204 §3) | versions (§3) | calculé ; « — » si aucune |
 | **Vérification** | statut de couverture actuel (`not_covered`, `covered`, `validated` affiché « Vérifié », `failing`, `needs_revalidation`, SPEC-TRACEABILITY §2.2) ; le détail des exécutions donne la version testée | liens, exécutions | calculé (inchangé) |
 | **Validation** | décision qualité pour une version donnée, avec commentaire | validation (§5) | saisi |
 
@@ -29,21 +29,16 @@ Les quatre servent des fonctions de Polenta (vue Validation, reflets) : calculé
 
 ## 3. La version (composant ou produit)
 
-> **Livré par #201** (`specs/GH201.md`, SPEC-REQ §11), hors analyse / tests à exécuter / campagnes
-> (#245) et issues (#244). Écarts tranchés : une version **par repo** (pas de version propre pour un
-> composant local), tag `<repo>-<label>` poussé au prochain push, plusieurs versions en cours par repo
-> (ordre des livraisons : `freeze.at`), abandon définitif, copie et suppression des versions non figées.
->
-> **Livré par #245** (`specs/GH245.md`, SPEC-REQ §11.4) : analyse d'impact et tests à exécuter.
-> **Aucun lien version ↔ campagne** dans le modèle (décision du 2026-11-02) : `campaigns` de la version
-> (§3.1, §3.3) et `version` de la campagne (§6) sont abandonnés ; « Créer une campagne » est un raccourci,
-> et c'est l'exécution qui référence la version (#202).
->
-> **Le texte ci-dessous reste la spec d'origine pour ce qui n'est pas écarté ici.** Livré différemment :
-> l'analyse s'affiche en **arbre seul** (statut et commentaire sur les nœuds ; les lignes restent dans
-> les données, avec leur source ; tableau pour une analyse figée, sans arbres) ; le panneau Produit choisit
-> le composant par liste déroulante ; un élément appartient au composant si son **type est déclaré par
-> le schéma du repo** (backlog, inclusion, analyse, tests à exécuter ; `NOT_OWN_ELEMENT`).
+> **Livré** par #201, #245 et #268 (`specs/GH201.md`, `specs/GH245.md`, `specs/GH268.md` ; SPEC-REQ §11).
+> Écarts avec le texte ci-dessous :
+> - une version **par repo**, sans version propre pour un composant local ; un élément appartient au composant
+>   si son **type est déclaré par le schéma du repo** (`NOT_OWN_ELEMENT`) ;
+> - plusieurs versions en cours par repo, ordre des livraisons = `freeze.at` ; abandon définitif ; copie et
+>   suppression des versions non figées ; tag `<repo>-<label>`, poussé au prochain push ;
+> - **aucun lien version ↔ campagne** (Q9) : « Créer une campagne » est un raccourci, c'est l'exécution qui
+>   référence la version (§6) ;
+> - analyse en **arbre** (statut et commentaire sur les nœuds), tableau pour une analyse figée ; composant choisi
+>   par liste déroulante dans le panneau Produit.
 
 ### 3.1 Objet
 
@@ -64,7 +59,7 @@ components:                          # versions des sous-composants (nœuds enfa
 freeze: { tag: motor-control-1.2.4, sha: a91c3d2, at: 2026-11-02T10:00:00Z }   # posé au passage released
 changes:                             # changements inclus (§3.3), alimentés depuis le backlog (§3.4)
   - id: SW-0042
-    base: { sha: 4be1f09, version: 3 }   # état dans la dernière version qui l'incluait ; absent = nouveau
+    base: { sha: 4be1f09, version: 3 }   # état dans la dernière version released qui l'incluait (§3.4) ; absent = nouveau
   - id: ISS-0007
 impacted: […]                        # saisies de l'analyse d'impact (ex-Changeset.impacted)
 analysis: …                          # analyse figée au passage released (ex-ChangeAnalysis)
@@ -126,8 +121,8 @@ history: …                           # GH77
   (#200 §5) y restent signalées.
 - Depuis le backlog : « Inclure dans <version en cours> » (une ou plusieurs lignes), « Voir les
   modifications ». Calculé, pas stocké (comme aujourd'hui).
-- À l'inclusion, `base` = état de l'élément dans la dernière version released qui l'incluait
-  (commit et `version`), absent sinon.
+- `base` = état de l'élément dans la dernière version released qui l'incluait (commit et `version`),
+  absent sinon. Calculée à l'inclusion, recalculée au gel (#268).
 
 ### 3.5 Navigation
 
@@ -192,27 +187,29 @@ courant (« valider une version »), pas au sens vérification / validation de l
 ### 5.1 Objet
 
 Catégorie **`validation`** (nom unique dans le code, le stockage, le graphe et l'interface, à la place du
-`conformity` de GH191 §3.1). Une validation porte sur **une version** (`version: <ID>`, obligatoire) et a
-une description. Le reste de GH191 §3 s'applique, avec les écarts suivants :
+`conformity` de GH191 §3.1). Une validation porte sur **une version** (`versionId: <ID>`, obligatoire) et a
+une description. Détail livré : `specs/GH204.md`, SPEC-REQ §13. Points retenus :
 
 - **Décisions configurables** dans le type de validation, avec un **commentaire / justificatif**
   (`entryFields` du projet en plus). Jeu par défaut : `en_attente`, `conforme`, `non_conforme`,
   `hors_scope`, `derogation`. Polenta ne lit que deux marques posées sur les valeurs :
   `isPending` (valeur par défaut d'une entrée ; bloque la signature — `en_attente`) et
   `proposesIssue` (popup §4.3 — `non_conforme`, `derogation`).
-- Le **jalon** reste un champ du projet ; `configurationRef` est remplacé par `version`.
+- Le **jalon** reste un champ du projet ; `configurationRef` est remplacé par `versionId`.
 
 ### 5.2 Vue Validation
 
 - **Liste déroulante de composant**, puis version à valider (version produit = nœud racine).
-- Une ligne par **exigence du composant choisi** (pas celles de ses sous-composants, qui ont leur
-  propre validation) :
+- Une ligne par **exigence du composant choisi**, hors statut terminal, sans sélecteur de périmètre :
+  `hors_scope` en tient lieu (P2). Les exigences des sous-composants ont leur propre validation :
   - **en écriture** : décision, commentaire ;
   - **en lecture seule** : statut de rédaction, statut de design (version première dispo, lien),
     statut de vérification (couverture), signal d'impact (§5.3).
 - Sous chaque exigence, **ses tests** avec les infos de leur dernière exécution ; sous chaque test,
   **ses exécutions** : version testée et sa structure figée (run), résultat, commentaire. Une exécution
   sur une autre version que celle validée, ou dont la structure a évolué depuis, est signalée.
+- Une validation signée se lit dans la **copie prise à la signature** (`atSignature`, #267) : liens retirés ou
+  nouveaux runs ne la changent plus.
 
 ### 5.3 Signal d'impact
 
@@ -228,13 +225,16 @@ la valeur `isPending`.
 
 ### 5.5 Signature
 
-GH191 §3.7 inchangé : refus tant qu'une décision est `isPending`, proposée (MCP) ou « modifiée
-depuis la décision » ; commit et baseline documentaire posés sur le commit de la validation.
+Réservée aux **versions released** (P3). Refus tant qu'une décision est `isPending`, proposée (MCP) ou
+« à revoir ». Signer commite le seul fichier, **sans tag ni baseline** : le tag de la version fige déjà l'état.
+La signature copie dans chaque entrée ce qui fondait la décision (#267). Détail : GH204 §4, SPEC-REQ §13.
 
 ## 6. Exécutions : version testée (#191 §2.5 adapté)
 
 - **Une campagne ne porte ni baseline ni version** (GH243 ; décision du 2026-11-02). Ce sont les
   **exécutions** qui testent une version.
+- **Une campagne ne contient que les tests de son repo** (#255, décision du 2026-11-05 ; `TEST_OTHER_REPO`) :
+  un test de composant se teste dans une campagne du composant.
 - Run : `testedConfig` = **copie figée de la structure testée** : version testée (`ref`), versions par
   composant, commit, écarts non documentés. La composition d'une version peut évoluer après une exécution :
   la copie permet de **tracer cette évolution** en la comparant à la version courante.
@@ -251,13 +251,14 @@ depuis la décision » ; commit et baseline documentaire posés sur le commit de
 |---|---|
 | **Retiré** | objet changeset (`changesets/`, `packages/types/src/change.ts`, `ChangesService`, IPC `changesets:*`), vue et routes `changeset*`, assignation à la création / réouverture (`ApprovalGateContext` côté changeset, `AssignToChangeDialog`, `CreateChangeButton`), dialogue d'assignation à l'approbation, préférence `changeTracking`, MCP `changes.tools`, `changesetId` / `unassigned`, champ `changeset` et `baselineRef` de la campagne, `GraphChangeset` (manifeste du graphe +1). Pas de migration : les fichiers `changesets/` existants sont ignorés (données de test) |
 | **Conservé dans le code** | verrou de l'approuvé (services, MCP, vues) ; réouverture par changement de statut, **uniforme** dans toutes les vues ; règle de version `versionBump` (version + 1 en quittant `isApproval`) ; diff par élément (`sync:diff-element`, route `/diff?element&baseSha&toSha`) ; moteur d'arbres d'impact (`buildImpactTreesFromSnapshot`, `ImpactTrees`, statuts d'impact) |
-| **Conservé dans l'historique git** (commit `4e06052`, retiré par #243) | backlog et détection hors interface (`useBacklog`, `change-tracking.service` : `outsideModifications`, `fileCommits`, calcul de `base`), sélecteur d'éléments (`ChangeElementPicker`), analyse d'un ensemble de changements (`change-analysis.util`, `ChangeAnalysisSection`), tests à exécuter (`change-tests.util`), section campagnes (`ChangeCampaignsSection`) — à réintroduire adaptés à la version par #201 (backlog, sélecteur, `base`) et #245 (analyse, tests, campagnes) |
-| **Déplacé** | analyse des modifications locales (`changesets_.local`, T175) et liste « Impact à vérifier » (`changesets_.revalidation`) → entrées du panneau Version (`/local-impact`, `/revalidation`) ; Constellation → panneau Exigences ; le backlog n'a plus d'écran jusqu'à #201 |
+| **Conservé dans l'historique git** (commit `4e06052`, retiré par #243) | backlog et détection hors interface (`useBacklog`, `change-tracking.service` : `outsideModifications`, `fileCommits`, calcul de `base`), sélecteur d'éléments (`ChangeElementPicker`), analyse d'un ensemble de changements (`change-analysis.util`, `ChangeAnalysisSection`), tests à exécuter (`change-tests.util`), section campagnes (`ChangeCampaignsSection`) — réintroduits adaptés à la version par #201 (backlog, sélecteur, `base`) et #245 (analyse, tests) ; la section campagnes ne l'est pas (Q9) |
+| **Déplacé** | analyse des modifications locales (`changesets_.local`, T175) et liste « Impact à vérifier » (`changesets_.revalidation`) → entrées du panneau Version (`/local-impact`, `/revalidation`) ; Constellation → panneau Exigences ; le backlog a retrouvé un écran avec #201 |
 
 ## 8. Graphe et MCP
 
-- Graphe : collections `versions` (`basedOn`, `components`, `freeze`, `changes`, `impacted`, `analysis`),
-  `issues` (`origin` ; impacts dans `links`), `validations` (entrées, décisions) ;
+- Graphe : collections `versions` (`basedOn`, `components`, `freeze` avec `at`, `changes`, `impacted`, `analysis`),
+  `issues` (`origin` ; impacts dans `links`), `validations` (entrées, décisions, copie `atSignature` ; la
+  signature se lit dans `history.status`) ;
   `GraphTestRun.testedConfig`. `GraphChangeset` retiré.
 - MCP : lecture des versions (changements, tests à exécuter), création / mise à jour d'issues,
   décisions **proposées** de validation (GH191 Q6). Le MCP ne passe pas une version `released` et ne
@@ -270,16 +271,16 @@ depuis la décision » ; commit et baseline documentaire posés sur le commit de
 | 1–3 | #195–#197 | livrés, inchangés |
 | 4, 5 | #198, #199 | livrés ; objet changeset retiré, moteur d'analyse conservé (§7) |
 | 6 | #200 | livré ; verrou conservé, assignation retirée |
-| 13 | #207 | livré ; tests à exécuter et campagne rattachés à la version |
+| 13 | #207 | livré ; tests à exécuter repris par la version (#245), sans lien campagne ↔ version (Q9) |
 | 7 | #201 | **réécrit** : objet version (§3) |
 | 8 | #202 | **réécrit** : version testée, copie de structure dans le run (§6) |
 | 9 | #203 | inchangé (vues enregistrées ⚙️) |
 | 10, 11 | #204, #205 | **amendés** : validation (§5) |
-| 12 | #206 | **amendé** : conditions changeset retirées ; restent `fieldsFilled`, `hasCoverageLink`, `allDecided` (+ éventuellement conditions de version) |
+| 12 | #206 | **amendé** : conditions changeset et `allDecided` (P5) retirées ; restent `fieldsFilled`, `hasCoverageLink` |
 | 14 | #208 | **caduc** : la version produit couvre le multi-composant |
 | 15 | #209 | **caduc** : remplacé par l'issue et ses popups (§4.3) |
 | 16 | #210 | **amendé** : reflets = les quatre statuts (§2) dans les vues exigence |
-| — | #214 | inchangé |
+| — | #214 | traité à part, avant #206 (P6) ; livré |
 
 ### Nouveau découpage proposé
 
@@ -292,11 +293,12 @@ depuis la décision » ; commit et baseline documentaire posés sur le commit de
 | 5 | **Version testée** (#202) | §6 | 2 |
 | 6 | Vues enregistrées (#203) | inchangé ; avant la validation, dont la vue s'en sert | — |
 | 7 | **Validation** (#204 + #205) | objet, vue, quatre statuts, signal d'impact, reprise, signature, popup NC / dérogation | 3, 4, 5 |
-| 8 | Contraintes de transition (#206) | §9 | 7 (`allDecided`) |
+| 8 | Contraintes de transition (#206) | §9 | — (P5) |
 | 9 | Reflets (#210) | quatre statuts dans les vues exigence | 7 |
 
-Lots 1 à 3 livrés sur `main` le 2026-11-02 ; lot 4 validé sur `milestone-D` (PR #249). Numéros dans les titres d'issues : #203 = 6/9,
-#204 + #205 = 7/9, #206 = 8/9.
+Lots 1 à 7 livrés sur `main` (PR #248, #249, #259 ; dernier merge le 2026-11-04). Restent les lots 8 et 9, après les
+correctifs de la revue du 2026-11-04 (§12). Numéros dans les titres d'issues : #203 = 6/9, #204 + #205 = 7/9, #206 = 8/9,
+#210 = 9/9.
 
 ## 10. Reports après validation
 
@@ -318,7 +320,7 @@ Lots 1 à 3 livrés sur `main` le 2026-11-02 ; lot 4 validé sur `milestone-D` (
 | Q5 | Une version released exige des sous-versions released | **oui** |
 | Q6 | Valeurs de décision | **configurables** ; marques `isPending` / `proposesIssue` |
 | Q7 | Déplacements du §7 | **validés** |
-| Q8 | Campagne et baseline | une campagne ne teste plus une baseline : `baselineRef` retiré ; les exécutions testent une version produit (§6) |
+| Q8 | Campagne et baseline | une campagne ne teste plus une baseline : `baselineRef` retiré ; les exécutions testent une version (§6 ; précisé par #202 : une version du repo de la campagne) |
 
 ### Revue du 2026-11-02, après les lots 1 à 3
 
@@ -331,7 +333,7 @@ Lots 1 à 3 livrés sur `main` le 2026-11-02 ; lot 4 validé sur `milestone-D` (
 
 ### Revue du 2026-11-03, après le lot 4
 
-P1 à P6 : propositions **validées** le 2026-11-03. P7 reste à faire.
+P1 à P6 : propositions **validées** le 2026-11-03. P7 : #272.
 
 | # | Point | Lot | Décision |
 |---|---|---|---|
@@ -342,6 +344,30 @@ P1 à P6 : propositions **validées** le 2026-11-03. P7 reste à faire.
 | P5 | **`allDecided`** (#206) double le refus de signature de §5.5 | #206 | retirer `allDecided` ; #206 ne dépend alors plus de la validation |
 | P6 | **#214** (`requiredWhen` et renommages) est au milestone sans lot ni place dans la PR #249 | — | le traiter à part, avant #206 |
 | P7 | **`MODELE-OBJETS.md`** n'a pas été redessiné au lot Version comme annoncé | — | le redessiner à la fin du milestone, une fois la validation livrée |
+
+### Revue du 2026-11-04, après le lot 7
+
+| # | Point | Ticket | Décision |
+|---|---|---|---|
+| R1 | Une validation signée change encore quand ses liens ou ses runs changent | #267 | **figer à la signature** : copie `atSignature` par entrée (2026-11-05) |
+| R2 | Test de composant dans une campagne produit, à moitié pris en charge | #255, #269 | **l'interdire** : une campagne ne contient que les tests de son repo (2026-11-05) |
+| R3 | Branches sur lesquelles une version peut passer released | #268 | **ouverte** : la spec ne restreint pas les branches |
+
+## 12. Plan après la revue du 2026-11-04
+
+Plan suivi dans la description du milestone GitHub, repris ici le 2026-11-05.
+
+| Ordre | Priorité | Tickets | État au 2026-11-05 |
+|---|---|---|---|
+| 1 | P1 | #256 web, exécution bloquée | livré sur `main` |
+| 2 | P1 | #266 validation, bloquants | livré sur `milestone-D` |
+| 3 | P2 | #267 preuve figée à la signature | livré sur `milestone-D` |
+| 4 | P2 | #268 versions ; #254 préfixe ; #255 + #269 composant vu du produit | livrés sur `milestone-D` |
+| 5 | P2 | #270 specs alignées, avant les specs de #206 et #210 | ce document |
+| 6 | P3 | #206 contraintes de transition ; #210 reflets | à spécifier |
+| 7 | P2 / P3 | #253 suite e2e rouge ; #271 tests absents ; #252 rattrapage web | à faire |
+| 8 | P3 | #272 `MODELE-OBJETS.md` | à faire |
+| 9 | — | Suite e2e complète, validation humaine, merge dans `main` | à faire |
 
 ## Refs
 

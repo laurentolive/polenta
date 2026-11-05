@@ -1,5 +1,7 @@
 # GH199 — Design : analyse d'impact dans le change
 
+> **Historique** (2026-11-05, #270) — l'objet changeset a été retiré par #243 ; sort de ce lot et ce qui en est conservé : `specs/MILESTONE-D.md` §7 et §9. Ce document décrit l'état livré à l'époque.
+
 ## 1. Types (`packages/types/src/change.ts`)
 
 ```ts

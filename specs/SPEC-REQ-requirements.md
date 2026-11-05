@@ -403,9 +403,24 @@ approved ──[rendre obsolète]──► obsolete (isTerminal)
 | `isApproval` | bool | Ce statut marque la validation formelle de l'objet |
 | `isTerminal` | bool | L'objet est masqué des listes par défaut (soft-archive) |
 
-**Toutes les transitions sont autorisées** — il n'y a pas de graphe de transitions à définir.
-Seule exception côté interface : l'approbation d'un élément assigné à aucun change ouvert propose
-de l'assigner (§10, GH199 §8bis).
+**Contraintes de transition facultatives (GH206, `specs/GH206.md`)** — sans bloc `transitions`, tout passage
+est libre (pas de graphe de transitions imposé). Un type d'exigence, de test ou d'issue peut déclarer des
+règles `{ to, from?, requires: { <condition>: off | warn | block } }`, par condition : `fieldsFilled`
+(champs `required` et `requiredWhen` actifs au statut d'arrivée), `validatorsPass` (champs à `validator`,
+EARS ou `regex:`), `hasCoverageLink` (exigence couverte au sens de la matrice, tests de tout le workspace).
+- **Évaluation** : règles dont `to` est le statut d'arrivée et `from` absent ou égal au départ ; niveau le
+  plus fort par condition ; création = toutes les règles vers le statut de création ; statut inchangé : aucun
+  contrôle. Contrôle dans le `persist` des services (UI, MCP, import), jamais sur le YAML édité à la main ni
+  à la fusion GH37.
+- **Niveaux** : `off` (déclarée, inactive), `warn` (passage fait ; motifs rendus dans `transitionWarnings` de
+  la réponse, jamais écrits ; notification sans confirmation), `block` (refus `TRANSITION_BLOCKED`, tous les
+  motifs). Notification par défaut dans l'éditeur : le blocage est un choix du projet.
+- **Schéma** : cohérence contrôlée à l'enregistrement (`TRANSITION_INVALID`) : catégorie, statuts connus (un
+  statut retiré encore cité est refusé), `from ≠ to`, conditions et niveaux admis, pas de doublon `from` /
+  `to`. Avertissement non bloquant pour un blocage qui peut s'appliquer à la réouverture d'un élément
+  approuvé. `from` / `to` suivent le renommage d'un statut.
+- **Écrans** : section « Contraintes de transition » de l'éditeur de type ; menus de statut annotés par le
+  pré-contrôle `transitions:preview` (option bloquée désactivée avec son motif, option notifiée marquée ⚠).
 
 ### 4.4 Historique des champs suivis (GH77)
 
@@ -784,7 +799,7 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   `basedOn` (exclue, si elle est un ancêtre) et celle retenue ; « Voir les modifications » = diff
   générique `base` → `freeze.sha` (ou disque si en cours).
 - **Statut de design** d'une exigence (MILESTONE-D §2) : première version released (ordre des livraisons)
-  dont l'état figé contient l'exigence dans sa `version` courante — graphe `designVersion`.
+  qui inclut l'exigence dans `changes` et dont l'état figé est identique (§13, P1) — graphe `designVersion`.
 
 ### 11.4 Analyse d'impact et tests à exécuter (GH245)
 
@@ -837,26 +852,37 @@ elle vaut feu vert ; sur la version produit, go production série. Détail : `sp
   Exactement une décision `isPending`, un statut `isApproval` (signée), un `isTerminal` (annulée) ; premier
   statut non marqué ; historique du statut obligatoire.
 - **Garde-fous du schéma** : tant qu'une validation existe, type non retirable, nom, préfixe et statuts marqués
-  figés, décision utilisée non retirable (`DECISION_IN_USE`), préfixe des types d'exigence figé (`HAS_VALIDATIONS`).
+  figés, décision utilisée non retirable (`DECISION_IN_USE`), préfixe des types d'exigence figé (`HAS_VALIDATIONS`). Préfixe d'un type refusé aussi tant qu'une version cite un de ses objets (`HAS_VERSIONS`, GH254).
   Champs de `fields` et statuts renommés avec migration ; `entryFields` sans migration.
 - **Entrée** : `requirementId`, `decision`, `comment` (texte simple), `fields`, `contentHash`, `decidedBy`,
-  `decidedAt`, `carriedFrom`, `proposed`, `proposedBy`, `proposedAt`. Exigence sans entrée : en attente. Fusion
-  git par `requirementId`.
+  `decidedAt`, `carriedFrom`, `proposed`, `proposedBy`, `proposedAt`, `atSignature`. Exigence sans entrée : en
+  attente. Fusion git par `requirementId`.
 - **Périmètre** : exigences du composant, hors statut terminal. Version released : liste, contenu, statut de
-  rédaction et de design lus à `freeze.sha` ; version en cours : disque. Liens, tests, exécutions et statut de
-  vérification : état courant. Commit figé absent : erreur, jamais un périmètre vide.
+  rédaction lus à `freeze.sha`, avec le schéma de ce commit (`schemaOf`, GH266) ; version en cours : disque. Liens,
+  tests, exécutions et statut de vérification : état courant jusqu'à la signature. Commit figé absent : erreur, jamais
+  un périmètre vide.
+- **Copie à la signature** (`atSignature`, GH267) : statut de rédaction, design, vérification, impact, tests et leur
+  dernière exécution. Une validation signée, ou annulée après signature, se lit dans ces copies : liens retirés, nouveaux
+  runs ou erreur de traçabilité ne la changent plus. Échec de lecture à la signature : refus. Copie jamais reprise, ni écrite
+  par le MCP. Entrée sans copie dans un fichier signé : « hors signature ». Signée sans aucune copie : lecture directe.
 - **Statut de design** (`designVersions`, corrige GH201 §7) : première version released qui inclut l'exigence dans
   `changes` et dont l'état figé est identique (clé du backlog) ; « — » sinon.
-- **Impact** : « changée » (dans `changes`) ou « impactée » (ligne atteinte de l'analyse, hors `pas_d_impact_reel`).
-- **À revoir** : contenu différent de `contentHash`, ou décision reprise d'une exigence devenue changée ou impactée.
+- **Impact** : « changée » (dans `changes`) ou « impactée » (ligne atteinte de l'analyse, ou racine sans changement
+  comme une exigence impactée par une issue ; hors `pas_d_impact_reel`).
+- **À revoir** (`review`) : contenu différent de `contentHash` (`content`), décision reprise d'une exigence devenue
+  changée ou impactée (`impact`), ou d'une validation annulée (`source`, GH266).
   Bloque la signature. Levé par Confirmer ou par une autre décision ; compléter le commentaire ou les champs ne
   le lève pas.
 - **Reprise** à la création : décisions de la validation signée de `basedOn`, pour les exigences ni changées, ni
   impactées, de contenu identique.
-- **Cycle de vie** : une seule validation non annulée par version ; signature réservée aux versions released, refusée
+- **Cycle de vie** : une seule validation non annulée par version, contrôlée aussi à la signature ; signature réservée aux versions released, refusée
   avec tous ses motifs (`VERSION_NOT_RELEASED`, `DECISION_PENDING`, `DECISION_PROPOSED`, `DECISION_TO_REVIEW`,
   `FIELD_MISSING`). Signer commite le seul fichier, sans tag ni baseline, et retire les entrées hors périmètre.
   Signée : verrouillée, seule sortie `annulee`. Suppression : validation en cours seulement. Version référencée non
   supprimable (`VERSION_HAS_VALIDATION`). Composant en lecture seule : `READONLY_REPO`, à faire dans son repo.
 - **Sous-composants** : leur validation s'affiche dans l'en-tête, sans bloquer la signature (Q6).
+- **Reflets dans les vues exigence** (GH210, `specs/GH210.md`) : colonnes facultatives Design (statut de design ci-dessus)
+  et Validation (décision de la **dernière validation signée** du repo de l'exigence, dans l'ordre des livraisons de sa
+  version, avec le label de cette version ; une annulée ne compte plus ; exigence sans entrée : « — »). Lus dans le repo
+  propriétaire (sous-composant compris), rien n'est stocké (`reflections:list`). Vue : SPEC-SYSTEM-VIEW.
 - **Vue** : SPEC-ELECTRON-DESKTOP §19.2. **MCP** : SPEC-MCP-SERVER §4.10. **Graphe** : SPEC-DASHBOARDS.

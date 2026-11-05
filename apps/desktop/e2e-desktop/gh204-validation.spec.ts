@@ -6,8 +6,8 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { launch, newProfile } from './support/app'
 
 /**
- * GH204 — vue Validation (specs/GH204-tests.md, E1 à E6). Sur le desktop : les channels `versions:*` et
- * `validations:*` sont masqués sur le web (SPEC-WEB §11). Exigences, version et exécutions créées par
+ * GH204 — vue Validation (specs/GH204-tests.md, E1 à E6), sur le desktop ; le client web a son propre
+ * scénario (`e2e-web/gh252-versions.spec.ts`). Exigences, version et exécutions créées par
  * IPC ou sur disque ; le type validation et les décisions, par l'interface.
  *
  *   pnpm test:e2e:desktop -g GH204
@@ -169,6 +169,19 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
 
   await page.screenshot({ path: path.join(__dirname, '.results', 'gh204-grid.png') })
 
+  // GH271 (5ac8a6f) — une relecture de la page, ici une décision écrite ailleurs, garde la saisie en cours.
+  const titleInput = page.getByTestId('validation-title')
+  const savedTitle = await titleInput.inputValue()
+  await titleInput.fill('Titre en cours de saisie')
+  const validationId = /\/validation\/([^/?]+)/.exec(page.url())![1]
+  const current = await invoke<{ validation: { entries: Array<{ requirementId: string; decision: string }> } }>('validations:page', repo, validationId, repo)
+  const entryA = current.validation.entries.find(e => e.requirementId === reqA)!
+  await invoke('validations:decide', repo, validationId, { requirementId: reqA, decision: entryA.decision, comment: 'Écrit ailleurs' }, repo)
+  await expect(page.getByTestId(`validation-comment-${reqA}`)).toHaveValue('Écrit ailleurs')
+  await page.waitForTimeout(500) // l'effet de relecture passe après le rendu du commentaire
+  await expect(titleInput).toHaveValue('Titre en cours de saisie')
+  await titleInput.fill(savedTitle)
+
   // E4 — tout est décidé : signature, sans tag ; grille en lecture.
   const tagsBefore = git('tag', '--list')
   await page.getByTestId('validation-sign').click()
@@ -178,4 +191,6 @@ test('GH204 — type, création, décisions, issue, vues, signature', async () =
   expect(git('log', '-1', '--format=%s')).toContain('signée')
   await expect(page.getByTestId(`validation-decision-${reqA}`).locator('option')).toHaveCount(0)
   await expect(page.getByTestId('validation-sign')).toHaveCount(0)
+  // GH267 — la grille d'une validation signée montre ce que le signataire a vu.
+  await expect(page.getByTestId('validation-frozen')).toBeVisible()
 })

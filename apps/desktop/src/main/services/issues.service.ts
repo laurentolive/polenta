@@ -1,11 +1,12 @@
 import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
-import type { FieldRename, FieldRenameResult, Issue, ObjectTypeDefinition, ProjectSchema } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, Issue, ObjectTypeDefinition, ProjectSchema, WithTransitionWarnings } from '@polenta/types'
 import type { CreateIssueDto, UpdateIssueDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { SchemaService } from './schema.service'
 import type { HistoryService } from './history.service'
 import { omitAuditFields } from './audit-fields.util'
-import { applyFieldsWrite } from './field-write.util'
+import { applyFieldsWrite, readOwnedTypeDef } from './field-write.util'
+import type { TransitionGuardService } from './transition-guard.service'
 import { nextCounterId } from './id-counter.util'
 import { mergeFields } from './field-merge.util'
 import { findObjectTypeDef } from './schema-lookup.util'
@@ -28,6 +29,13 @@ export class IssuesService {
     private readonly isReadonly?: (repoPath: string, workspaceDir?: string) => Promise<boolean>,
   ) {}
 
+  private transitionGuard?: Pick<TransitionGuardService, 'assert'>
+
+  /** GH206 — contraintes de transition (injectées après construction : le garde lit la couverture). */
+  setTransitionGuard(guard: Pick<TransitionGuardService, 'assert'>): void {
+    this.transitionGuard = guard
+  }
+
   async findAll(repoPath: string): Promise<Issue[]> {
     const idx = await this.getOrBuild(repoPath)
     return [...idx.values()].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
@@ -39,7 +47,7 @@ export class IssuesService {
     return issue
   }
 
-  async create(repoPath: string, dto: CreateIssueDto, workspaceDir?: string): Promise<Issue> {
+  async create(repoPath: string, dto: CreateIssueDto, workspaceDir?: string): Promise<WithTransitionWarnings<Issue>> {
     const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
     if (!typeDef || typeDef.category !== 'issue') throw new Error(`Type d'issue inconnu : ${dto.objectTypeRef}`)
     if (dto.status && isUnknownStatus(typeDef, dto.status)) {
@@ -56,7 +64,7 @@ export class IssuesService {
         status: dto.status ?? initialStatus(typeDef), version: 1, fields: dto.fields ?? {},
         ...(dto.origin && { origin: dto.origin }),
         createdAt: null, createdBy: null, updatedAt: null, updatedBy: null,
-      })
+      }, undefined, workspaceDir)
     })
   }
 
@@ -64,7 +72,7 @@ export class IssuesService {
     repoPath: string, id: string, dto: UpdateIssueDto, workspaceDir?: string,
     /** Une clé de `fields` à `null` retire le champ (GH150). */
     opts: { removeNullFields?: boolean } = {},
-  ): Promise<Issue> {
+  ): Promise<WithTransitionWarnings<Issue>> {
     return withKeyLock(`${repoPath}::${ISSUES_DIR}/${id}`, async () => {
       const existing = await this.findOne(repoPath, id)
       const typeDef = await this.readTypeDef(repoPath, existing.objectTypeRef)
@@ -78,7 +86,7 @@ export class IssuesService {
         ...(dto.title && { title: dto.title }),
         ...(dto.status && { status: dto.status }),
         fields: opts.removeNullFields ? mergeFields(existing.fields, dto.fields) : { ...existing.fields, ...(dto.fields ?? {}) },
-      }, dto.modificationComment)
+      }, dto.modificationComment, workspaceDir)
     })
   }
 
@@ -145,14 +153,21 @@ export class IssuesService {
   }
 
   /** Seule écriture d'un fichier d'issue : historique des champs suivis, sans les champs d'audit. */
-  private async persist(repoPath: string, targetRepo: string, before: Issue | null, next: Issue, comment?: string): Promise<Issue> {
+  private async persist(
+    repoPath: string, targetRepo: string, before: Issue | null, next: Issue, comment?: string, workspaceDir?: string,
+  ): Promise<WithTransitionWarnings<Issue>> {
     const after = await applyFieldsWrite(this.git, repoPath, before, next, targetRepo)
+    // GH206 — contraintes de transition, sur l'état résultant et le type du propriétaire.
+    const transitionWarnings = this.transitionGuard
+      ? await this.transitionGuard.assert(repoPath, await readOwnedTypeDef(this.git, repoPath, after.objectTypeRef, targetRepo), before, after, workspaceDir)
+      : []
     const stamped = this.history
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, comment)
       : after
     await this.git.writeYaml(targetRepo, `${ISSUES_DIR}/${stamped.id}.yaml`, omitAuditFields(stamped))
     this.upsert(repoPath, stamped)
-    return stamped
+    // Notifications rendues à l'appelant, jamais écrites ni indexées.
+    return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped
   }
 
   private upsert(repoPath: string, issue: Issue): void {

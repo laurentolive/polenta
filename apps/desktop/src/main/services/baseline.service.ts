@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import git from 'isomorphic-git'
+import { assertNotVersionTag, frozenVersionTags } from './version-tags.util'
 
 export interface BaselineComponentRecord {
   name: string
@@ -73,7 +74,9 @@ export class BaselineService {
    * repo picked in isolation), every tag on `repoPath` is treated as a baseline.
    */
   async list(repoPath: string, components: BaselineComponentRef[] = []): Promise<BaselineRecord[]> {
-    const mainTags = await git.listTags({ fs, dir: repoPath }).catch(() => [] as string[])
+    // GH268 — le tag d'une version n'est pas une baseline, même sans composants.
+    const versionTags = await frozenVersionTags(repoPath)
+    const mainTags = (await git.listTags({ fs, dir: repoPath }).catch(() => [] as string[])).filter(tag => !versionTags.has(tag))
 
     const results = await Promise.all(
       mainTags.map(async tag => {
@@ -99,6 +102,7 @@ export class BaselineService {
 
   /** Deletes the tag on the main repo and on every component repo it was mirrored to. */
   async delete(repoPath: string, tag: string, components: BaselineComponentRef[] = []): Promise<void> {
+    await assertNotVersionTag(repoPath, tag)
     await git.deleteRef({ fs, dir: repoPath, ref: `refs/tags/${tag}` }).catch(() => {})
     for (const comp of components) {
       await git.deleteRef({ fs, dir: comp.repoPath, ref: `refs/tags/${tag}` }).catch(() => {})

@@ -231,9 +231,13 @@ la version web »).
 - Isolation par conteneur de services dans un seul process (pas un process par utilisateur) ;
   dossier courant partagé mais vide.
 - Révocation constatée au plus tard après 5 min pour un utilisateur sans opération git.
-- Non disponibles sur le web à ce jour, livrées desktop seulement : vues Versions et analyse d'impact
-  (GH201, GH245 — channels `versions:*` dans `WEB_HIDDEN`), vue Validation (GH204 — `validations:*`, `issues:add-decision` ; entrée masquée, elle dépend des versions), terminal Git Bash (GH238), zoom de
-  l'interface (GH237 — `capabilities.appZoom`).
+- Contraintes de transition (GH206) : disponibles sur le web, pré-contrôle `transitions:preview` exposé.
+- Reflets Design et Validation des vues exigence (GH210) : disponibles sur le web (`reflections:list` exposé).
+- Versions, analyse d'impact et validation (GH252) : disponibles sur le web, canaux `versions:*`, `validations:*` et
+  `issues:add-decision` exposés. Release et signature se font depuis le navigateur, avec le compte de la session. Le tag est posé
+  dans le clone de l'utilisateur et poussé à son prochain push.
+- Écarts assumés avec le desktop : terminal Git Bash (GH238, décision du 2026-11-03) ; zoom de l'interface (GH237,
+  `capabilities.appZoom`) : le zoom du navigateur en tient lieu (GH252).
 
 ## 12. Administration du serveur (GH63)
 

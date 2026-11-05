@@ -74,9 +74,10 @@ export function FieldConfigModal({
     section: t('system.fieldConfig.colSection'), name: t('schema.editor.colLabel'), id: t('system.wordView.colId'), status: t('system.wordView.colStatus'), version: t('system.wordView.colVersion'),
     createdAt: t('system.fieldConfig.colCreatedAt'), updatedAt: t('system.fieldConfig.colUpdatedAt'), author: t('system.fieldConfig.colAuthor'),
     steps: t('system.wordView.stepsHeading'), coverageStatus: t('system.fieldConfig.colCoverage'),
+    designStatus: t('system.fieldConfig.colDesign'), validationStatus: t('system.fieldConfig.colValidation'),
   }
 
-  const systemFields = ['section', 'name', 'id', 'status', 'version', 'createdAt', 'author', 'coverageStatus']
+  const systemFields = ['section', 'name', 'id', 'status', 'version', 'createdAt', 'author', 'coverageStatus', 'designStatus', 'validationStatus']
   const customFields = (typeDef?.fields ?? []).map(f => f.name)
   const category = typeDef?.category
   const relevantLinkTypes = getRelevantLinkTypes(linkTypes, objectTypeRef, category).map(r => r.lt)
@@ -90,7 +91,8 @@ export function FieldConfigModal({
   const allFields = [...new Set([...systemFields, ...customFields])]
     .filter(f => tab !== 'word' || !fieldsAlwaysInWordHeader.has(f))
     .filter(f => tab !== 'popup' || !fieldsAlwaysInPopupHeader.has(f))
-    .filter(f => f !== 'coverageStatus' || category === 'requirement')
+    // GH210 — reflets : exigences seulement, comme la vérification.
+    .filter(f => !['coverageStatus', 'designStatus', 'validationStatus'].includes(f) || category === 'requirement')
   const hasSteps = category === 'test'
 
   const currentFields = tab === 'excel' ? visibleFieldsExcel : tab === 'popup' ? (visibleFieldsPopup ?? []) : (visibleFieldsWord ?? [])

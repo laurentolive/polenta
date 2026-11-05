@@ -28,15 +28,14 @@ let params: Map<string, FakeParams>
 let service: CampaignsService
 
 const parameters = {
-  async previewForTests(_repo: string, list: TestCase[], opts: { baselineRef?: string } = {}): Promise<ParamResolutionPreview[]> {
+  async previewForTests(_repo: string, list: TestCase[]): Promise<ParamResolutionPreview[]> {
     return list.map((tc): ParamResolutionPreview => {
       const p = params.get(tc.id) ?? {}
       return {
         testCaseId: tc.id,
-        resolved: p.base ? { gain: `gain@${opts.baselineRef ?? 'HEAD'}` } : ({} as Record<string, string>),
+        resolved: p.base ? { gain: 'gain@HEAD' } : ({} as Record<string, string>),
         manual: p.manual ?? [],
         unresolved: [],
-        ...(opts.baselineRef && { sourceRef: opts.baselineRef }),
         ...(p.linked && {
           requirements: p.linked.map(r => ({ requirementId: r, title: `Titre ${r}`, resolved: { 'req.title': `Titre ${r}` }, unresolved: [] })),
         }),

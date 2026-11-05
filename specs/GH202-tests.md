@@ -26,3 +26,5 @@
 4. **Évolution** : inclure un changement dans la version, puis rouvrir la grille : « a évolué » et le détail.
 5. **Excel** : exporter, remplir (dont une version inconnue), importer : écart signalé à l'aperçu.
 6. **Sans version** : dans un repo sans type version, l'écran ne montre pas le bloc et le classeur pas les colonnes.
+
+> GH271 (2026-11-05) — scénario 10 : `milestone-d-coverage.gh271.test.ts`.

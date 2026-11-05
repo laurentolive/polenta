@@ -20,6 +20,9 @@ import type { TestsIndexService } from '../services/tests-index.service'
 import type { RequirementsService } from '../services/requirements.service'
 import type { TestsService } from '../services/tests.service'
 import type { TraceabilityService } from '../services/traceability.service'
+import type { TransitionGuardService } from '../services/transition-guard.service'
+import type { ReflectionsService } from '../services/reflections.service'
+import { readOwnedTypeDef } from '../services/field-write.util'
 import type { ReviewsService } from '../services/reviews.service'
 import type { RepoWatcherService } from '../services/repo-watcher.service'
 import type { SchemaService } from '../services/schema.service'
@@ -111,6 +114,8 @@ export interface Container {
   requirements: RequirementsService
   tests: TestsService
   traceability: TraceabilityService
+  /** GH206 — contraintes de transition (pré-contrôle des menus de statut). */
+  transitionGuard: TransitionGuardService
   reviews: ReviewsService
   watcher: RepoWatcherService
   schema: SchemaService
@@ -119,6 +124,8 @@ export interface Container {
   versions: VersionsService
   issues: IssuesService
   validations: ValidationsService
+  /** GH210 — reflets Design et Validation des vues exigence. */
+  reflections: ReflectionsService
   campaignExecution: CampaignExecutionService
   executionHistory: ExecutionHistoryService
   testedConfig: TestedConfigService
@@ -448,6 +455,22 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
 
   r.handle('requirements:transition', (_e, repoPath: string, id: string, dto: unknown, workspaceDir?: string) =>
     c.requirements.transition(repoPath, id, dto as TransitionRequirementDto, workspaceDir))
+
+  // GH210 — reflets des exigences d'un type : statut de design, décision de la dernière validation signée.
+  r.handle('reflections:list', (_e, repoPath: string, objectTypeRef: string, workspaceDir?: string) =>
+    c.reflections.list(repoPath, objectTypeRef, workspaceDir))
+
+  // GH206 — pré-contrôle des menus de statut : un résultat par statut d'arrivée possible.
+  r.handle('transitions:preview', async (_e, repoPath: string, category: string, id: string, workspaceDir?: string) => {
+    const obj = category === 'requirement' ? await c.requirements.findOne(repoPath, id)
+      : category === 'test' ? await c.tests.findOne(repoPath, id)
+        : category === 'issue' ? await c.issues.findOne(repoPath, id)
+          : null
+    if (!obj) return {}
+    const owner = (await c.schema.resolveComponentRepoPath(repoPath, obj.objectTypeRef, workspaceDir)) ?? repoPath
+    const typeDef = await readOwnedTypeDef(c.git, repoPath, obj.objectTypeRef, owner)
+    return c.transitionGuard.preview(repoPath, typeDef, obj, workspaceDir)
+  })
 
   r.handle('requirements:versions', (_e, repoPath: string, id: string) =>
     c.requirements.findVersions(repoPath, id))

@@ -26,6 +26,4 @@ export const capabilities = {
   networkTimeout: !isWeb,
   /** GH237 — zoom de l'interface (le navigateur a le sien). */
   appZoom: !isWeb,
-  /** GH204 — vue Validation : dépend des versions, masquées sur le web (SPEC-WEB §11). */
-  productValidation: !isWeb,
 } as const

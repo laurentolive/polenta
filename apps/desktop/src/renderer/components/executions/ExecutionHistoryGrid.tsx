@@ -14,7 +14,7 @@ import {
 
 // GH197 — grille d'historique des exécutions (specs/GH197.md §1–§3) : une ligne par run (ou entrée en
 // attente), colonnes au choix (préférence `executions` du type), tri par en-tête, étapes dépliables.
-// Réutilisée par la vue Conformité (L6).
+// Réutilisée par la vue Validation (GH204, `ValidationRuns`).
 
 export const VERDICT_KEY: Record<string, string> = {
   pending: 'campaignPage.runStatus.pending', PASS: 'campaignPage.runStatus.pass', FAIL: 'campaignPage.runStatus.fail',

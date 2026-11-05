@@ -22,6 +22,8 @@ import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
+import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
+import { REFLECTION_COLUMNS, ReflectionValue, type ReflectionsData } from './ReflectionCell'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -59,6 +61,8 @@ interface Props {
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  /** GH210 — reflets Design et Validation (exigences), chargés si une colonne est visible. */
+  reflections?: ReflectionsData
   /** GH83 — ids marqués `needsRevalidation` (T172) : ⚠ à côté du statut. Hors de `objects`,
    *  dont toutes les valeurs alimentent le filtre texte. */
   revalidationIds?: Set<string>
@@ -106,7 +110,7 @@ function getFieldValue(obj: AnyObject, field: string): string {
 }
 
 function isSystemField(field: string): boolean {
-  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'coverageStatus'].includes(field)
+  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'coverageStatus', 'designStatus', 'validationStatus'].includes(field)
 }
 
 // ── FolderHeadingName — inline-editable name inside a heading ─────────────────
@@ -474,6 +478,7 @@ function ItemCard({
   repoPath,
   onMultiEnumEdit,
   coverageByReqId,
+  reflections,
   testsById,
   isGotoTarget,
   needsRevalidation = false,
@@ -491,6 +496,8 @@ function ItemCard({
   onRenameNode?: (nodeId: string, name: string) => void
   onEditOpen?: (nodeId: string) => void
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  /** GH210 — reflets Design et Validation (exigences), chargés si une colonne est visible. */
+  reflections?: ReflectionsData
   testsById?: Map<string, TestCase>
   onLinkClick?: (nodeId: string, objectId: string, typeName: string, rect: DOMRect) => void
   activeLinkKey?: string | null
@@ -505,6 +512,8 @@ function ItemCard({
   onOpenComputedTarget?: (target: string) => void
 }) {
   const { t } = useTranslation()
+  // GH206 — pré-contrôle du menu de statut, chargé à sa première ouverture.
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const currentStatus = obj ? getFieldValue(obj, 'status') : ''
   const isLocked = !!typeDef?.statuses?.find(s => s.name === currentStatus)?.isApproval
 
@@ -532,7 +541,7 @@ function ItemCard({
   // steps a sa propre section dédiée ("Étapes", cf. plus bas) : sans cette exclusion, getFieldValue
   // renvoie le tableau brut (toujours vide à l'affichage) sous une ligne de champ générique libellée
   // "steps" (pas de label déclaré dans typeDef.fields), dupliquant la vraie table Étapes juste en dessous.
-  const fieldsAlreadyInHeader = new Set(['name', 'section', 'id', 'status', 'version', 'coverageStatus', 'steps'])
+  const fieldsAlreadyInHeader = new Set(['name', 'section', 'id', 'status', 'version', 'coverageStatus', 'designStatus', 'validationStatus', 'steps'])
   const fields = (visibleFields.length > 0 ? visibleFields : ['id', 'status'])
     .filter(f => !f.startsWith('link::') && !fieldsAlreadyInHeader.has(f))
 
@@ -575,12 +584,19 @@ function ItemCard({
                     <select
                       value={status}
                       onChange={e => onInlineEdit!(node.objectId!, 'status', e.target.value)}
+                      // GH206 — pré-contrôle chargé seulement quand le menu reçoit le focus (document long).
+                      onFocus={() => setStatusMenuOpen(true)}
+                      onMouseDown={() => setStatusMenuOpen(true)}
                       className={`${badgeClass} appearance-none cursor-pointer hover:ring-1 hover:ring-current/40 outline-none`}
                       title={t('system.wordView.changeStatus')}
                     >
-                      {typeDef!.statuses!.map(s => (
-                        <option key={s.name} value={s.name}>{s.label ?? s.name}</option>
-                      ))}
+                      <TransitionStatusOptions
+                        objectId={node.objectId}
+                        current={status}
+                        values={typeDef!.statuses!.map(s => s.name)}
+                        labels={Object.fromEntries(typeDef!.statuses!.filter(s => s.label).map(s => [s.name, s.label!]))}
+                        enabled={statusMenuOpen}
+                      />
                     </select>
                   ) : (
                     <span className={badgeClass}>{statusDef?.label ?? status}</span>
@@ -596,6 +612,13 @@ function ItemCard({
                     testsById={testsById ?? new Map()}
                   />
                 )}
+                {/* GH210 — reflets Design et Validation, dans l'en-tête comme la vérification. */}
+                {typeDef?.category === 'requirement' && node.objectId && REFLECTION_COLUMNS.filter(c => visibleFields.includes(c)).map(c => (
+                  <span key={c} className="text-[10px] text-ink-2 shrink-0">
+                    {t(c === 'designStatus' ? 'system.fieldConfig.colDesign' : 'system.fieldConfig.colValidation')} :{' '}
+                    <ReflectionValue col={c} objectId={node.objectId} data={reflections} />
+                  </span>
+                ))}
               </>
             )
           })()}
@@ -781,6 +804,7 @@ export const WordView = memo(function WordView({
   linkTypes = [],
   linksByObjectId,
   coverageByReqId,
+  reflections,
   revalidationIds,
   testsById,
   repoPath,
@@ -970,6 +994,7 @@ export const WordView = memo(function WordView({
             linkTypes={linkTypes}
             objectLinks={node.objectId ? (linksByObjectId?.get(node.objectId) ?? []) : []}
             coverageByReqId={coverageByReqId}
+            reflections={reflections}
             needsRevalidation={!!node.objectId && !!revalidationIds?.has(node.objectId)}
             testsById={testsById}
             onInlineEdit={onInlineEdit}

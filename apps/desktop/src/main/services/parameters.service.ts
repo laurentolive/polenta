@@ -95,8 +95,8 @@ export class ParametersService {
 
   /**
    * T171 §6-§7 — résolution des paramètres de tests à l'ajout en campagne, sans écriture.
-   * Source : le tag `baselineRef` s'il est fourni (sans repli sur l'état courant), sinon l'état
-   * courant. Pour chaque référence du test (ordre T97) :
+   * Source : l'état courant (la campagne ne porte plus de baseline, GH243). Pour chaque référence du
+   * test (ordre T97) :
    * - base lisible, paramètre présent avec une valeur → `resolved` ;
    * - référence locale absente d'une base lisible → `manual` (saisie à la main, comme T97) ;
    * - sinon → `unresolved` : `tag_not_found`, `missing` (cross-composant), `empty`,
@@ -107,15 +107,14 @@ export class ParametersService {
   async previewForTests(
     campaignRepo: string,
     tests: TestCase[],
-    opts: { baselineRef?: string; workspaceDir?: string } = {},
+    opts: { workspaceDir?: string } = {},
   ): Promise<ParamResolutionPreview[]> {
     const ctx = await this.workspaceCtx(campaignRepo, opts.workspaceDir)
-    const tag = opts.baselineRef?.trim() || undefined
     const bases = new Map<string, Promise<Map<string, Parameter> | null>>()
     const baseOf = (repo: string) => {
       let b = bases.get(repo)
       if (!b) {
-        b = (tag ? this.readAtTag(repo, tag) : this.read(repo)).then(ps => ps && new Map(ps.map(x => [x.name, x])))
+        b = this.read(repo).then(ps => ps && new Map(ps.map(x => [x.name, x])))
         bases.set(repo, b)
       }
       return b
@@ -123,7 +122,7 @@ export class ParametersService {
 
     // T179 — exigences et liens du workspace, lus une seule fois pour tout l'ajout groupé.
     let reqSource: Promise<ReqRefSource> | undefined
-    const reqSourceOf = () => (reqSource ??= this.reqRefs!.loadSource(ctx.repoPaths, tag))
+    const reqSourceOf = () => (reqSource ??= this.reqRefs!.loadSource(ctx.repoPaths))
     const visibleOf = new Map<string, Promise<Map<string, string>>>()
     const visibleFrom = (repo: string) => {
       let v = visibleOf.get(repo)
@@ -136,15 +135,13 @@ export class ParametersService {
       const ownerRepo = (await this.schema.resolveComponentRepoPath(campaignRepo, tc.objectTypeRef, opts.workspaceDir)) ?? campaignRepo
       const visible = await visibleFrom(ownerRepo)
       const preview: ParamResolutionPreview = { testCaseId: tc.id, resolved: {}, manual: [], unresolved: [] }
-      if (tag) preview.sourceRef = tag
       const reqFields = extractTestReqRefs(tc)
       if (reqFields.length > 0 && this.reqRefs) {
         const source = await reqSourceOf()
         const linked = this.reqRefs.linkedRequirements(source, tc.id)
         preview.requirements = []
         if (linked.length === 0) {
-          // Liens illisibles partout (tag introuvable dans tous les repos) ≠ aucun lien.
-          const reason = tag && source.tagMissingRepos.size === source.repoPaths.length ? 'tag_not_found' : 'no_linked_requirement'
+          const reason = 'no_linked_requirement'
           for (const f of reqFields) preview.unresolved.push({ ref: REQ_REF_PREFIX + f, reason })
         }
         for (const { req, repoPath: reqRepo } of linked) {

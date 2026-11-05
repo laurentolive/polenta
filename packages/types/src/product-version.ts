@@ -195,6 +195,8 @@ export interface VersionPage {
   basedOnOptions: VersionSummary[]
   components: VersionPageComponent[]
   rows: VersionChangeRow[]
+  /** GH268 — tag de la version pas encore poussé : prochain push, ou nouvel essai après un échec. */
+  tagPending?: boolean
 }
 
 export interface CreateVersionDto {

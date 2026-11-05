@@ -140,7 +140,7 @@ const ENTRY = (over: Record<string, unknown>) => ({
   executedAt: null, executedBy: null, carriedFrom: null, snapshot: null, resyncable: false, ...over,
 })
 const CAMP = (id: string, status: string, entries: Record<string, unknown>[], removed: Record<string, unknown>[] = []) => ({
-  id, title: `Campagne ${id}`, status, createdAt: '2026-09-01T08:00:00Z', completedAt: null, objectTypeRef: 'root::campagne', baselineRef: null,
+  id, title: `Campagne ${id}`, status, createdAt: '2026-09-01T08:00:00Z', completedAt: null, objectTypeRef: 'root::campagne',
   level: null, targetComponent: null, component: 'produit', fields: {}, history: {}, entries: entries.map(ENTRY), removedEntries: removed.map(ENTRY),
 })
 const GRAPH = {

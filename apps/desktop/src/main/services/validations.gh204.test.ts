@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import * as fsP from 'fs/promises'
 import * as os from 'os'
@@ -5,6 +6,9 @@ import * as path from 'path'
 import git from 'isomorphic-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
+import type { ExecutionHistoryRow, GraphValidation } from '@polenta/types'
+import { GraphService } from './graph.service'
+import type { ExecutionHistoryService } from './execution-history.service'
 import type { ObjectTypeDefinition, ProjectSchema, ProductVersion } from '@polenta/types'
 import { validationTypeError } from '@polenta/types'
 import { GitService } from './git.service'
@@ -66,6 +70,17 @@ let validations: ValidationsService
 let coverage: Record<string, string>
 let readonly: boolean
 let analysis: ProductVersion['analysis'] | null
+let currentSchema: ProjectSchema
+let cells: Record<string, string[]>
+let runs: Record<string, ExecutionHistoryRow[]>
+let matrixError: boolean
+let historyError: boolean
+const executions = {
+  history: async (_r: string, target: { requirementId?: string }) => {
+    if (historyError) throw new Error('historique illisible')
+    return { rows: runs[target.requirementId ?? ''] ?? [] }
+  },
+} as unknown as ExecutionHistoryService
 let tick = 0
 
 async function commitAll(message: string) {
@@ -95,9 +110,15 @@ beforeEach(async () => {
   await gitSvc.writeYaml(dir, '.polenta/schema.yaml', SCHEMA)
   await commitAll('schéma')
   coverage = {}
+  cells = {}
+  runs = {}
+  matrixError = false
+  historyError = false
   readonly = false
   analysis = null
-  const schemaStub = { get: async () => SCHEMA } as unknown as SchemaService
+  currentSchema = SCHEMA
+  // `getAt` : le schéma du gel, committé plus haut ; `get` : le schéma courant, que les tests peuvent changer.
+  const schemaStub = { get: async () => currentSchema, getAt: async () => SCHEMA } as unknown as SchemaService
   const treeStub = { readCache: async () => null } as unknown as WorkspaceTreeService
   const sync = new SyncService(auth)
   versions = new VersionsService(gitSvc, sync, schemaStub, new VersionTrackingService(gitSvc, schemaStub), undefined, treeStub)
@@ -105,13 +126,19 @@ beforeEach(async () => {
   versionsFacade.isReadonly = async () => readonly
   versionsFacade.analysis = async () => analysis ?? { computedAt: '', frozen: false, roots: [], rows: [] }
   const traceability = {
-    getMatrix: async () => ({ requirements: Object.entries(coverage).map(([id, coverageStatus]) => ({ requirement: { id }, coverageStatus, cells: [] })), testCases: [], filters: {}, generatedAt: '' }),
+    getMatrix: async () => {
+      if (matrixError) throw new Error('matrice illisible')
+      return {
+        requirements: Object.entries(coverage).map(([id, coverageStatus]) => ({ requirement: { id }, coverageStatus, cells: (cells[id] ?? []).map(testCaseId => ({ testCaseId })) })),
+        testCases: Object.values(cells).flat().map(id => ({ id, title: `Titre ${id}` })), filters: {}, generatedAt: '',
+      }
+    },
   } as unknown as TraceabilityService
   const history = {
     currentActor: async () => ({ by: 'alice' }),
     stamp: async (_r: string, _t: string, _b: unknown, after: unknown) => after,
   } as unknown as HistoryService
-  validations = new ValidationsService(gitSvc, sync, schemaStub, versionsFacade, traceability, history)
+  validations = new ValidationsService(gitSvc, sync, schemaStub, versionsFacade, traceability, history, executions)
 })
 
 afterEach(async () => {
@@ -541,5 +568,227 @@ describe('lecture seule (U14)', () => {
       validations.cancel(dir, val.id),
       validations.delete(dir, val.id),
     ]) expect(await code(p)).toBe('READONLY_REPO')
+  })
+})
+
+describe('GH266 — corrections de la revue', () => {
+  async function signedFirst(ids: string[] = ['REQ-0001', 'REQ-0002']) {
+    for (const id of ids) await writeReq(id)
+    await commitAll('exigences')
+    const v1 = await release('1.0')
+    const val = await validations.create(dir, { versionId: v1.id, title: 'V1' })
+    for (const id of ids) await validations.decide(dir, val.id, { requirementId: id, decision: 'conforme' })
+    return { v1, val: await validations.sign(dir, val.id) }
+  }
+  const viaIssue = (id: string) => ({
+    computedAt: '', frozen: false, rows: [],
+    roots: [{ elementId: id, elementType: 'requirement', title: id, component: 'root', viaIssues: ['ISS-0007'], descendantTree: [], ascendantTree: [] }],
+  }) as unknown as ProductVersion['analysis']
+
+  it('exigence impactée par une issue : signalée avec sa source, décision non reprise, signature refusée', async () => {
+    const { v1 } = await signedFirst()
+    const v2 = await release('2.0', { basedOn: v1.id, include: [] })
+    analysis = viaIssue('REQ-0002')
+    const next = await validations.create(dir, { versionId: v2.id, title: 'V2' })
+    expect(next.entries.map(e => e.requirementId)).toEqual(['REQ-0001'])
+    expect((await rowOf(next.id, 'REQ-0002'))?.impact).toEqual({ kind: 'impacted', sources: [{ rootId: 'ISS-0007', path: [] }] })
+    expect(await code(validations.sign(dir, next.id))).toBe('SIGNATURE_REFUSED')
+  })
+
+  it('racine marquée « pas d\'impact réel » : ne compte pas comme impactée', async () => {
+    const { v1 } = await signedFirst()
+    const v2 = await versions.create(dir, { title: '2.0', basedOn: v1.id })
+    await gitSvc.writeYaml(dir, `versions/${v2.id}.yaml`, { ...v2, impacted: [{ id: 'REQ-0002', status: 'pas_d_impact_reel' }] })
+    analysis = viaIssue('REQ-0002')
+    const next = await validations.create(dir, { versionId: v2.id, title: 'V2' })
+    expect(next.entries.map(e => e.requirementId)).toEqual(['REQ-0001', 'REQ-0002'])
+    expect((await rowOf(next.id, 'REQ-0002'))?.impact).toBeNull()
+  })
+
+  it('type d\'exigence renommé ou supprimé après le gel : le périmètre et les décisions restent', async () => {
+    await writeReq('REQ-0001')
+    await commitAll('exigence')
+    const v1 = await release('1.0')
+    const val = await validations.create(dir, { versionId: v1.id, title: 'V1' })
+    const root = SCHEMA.nodes[0]!
+    currentSchema = { ...SCHEMA, nodes: [{ ...root, objectTypes: (root.objectTypes ?? []).filter(t => t.category !== 'requirement') }] }
+    expect((await rowsOf(val.id)).map(r => r.requirementId)).toEqual(['REQ-0001'])
+    expect(await code(validations.sign(dir, val.id))).toBe('SIGNATURE_REFUSED')
+    await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
+    const signed = await validations.sign(dir, val.id)
+    expect(signed.entries.map(e => e.requirementId)).toEqual(['REQ-0001'])
+    expect((await rowsOf(val.id)).map(r => r.requirementId)).toEqual(['REQ-0001'])
+  })
+
+  it('décision reprise d\'une validation annulée : à revoir, signature refusée jusqu\'à confirmation', async () => {
+    const { v1, val } = await signedFirst(['REQ-0001'])
+    const v2 = await release('2.0', { basedOn: v1.id, include: [] })
+    const next = await validations.create(dir, { versionId: v2.id, title: 'V2' })
+    expect(next.entries[0]?.carriedFrom).toBe(val.id)
+    expect((await rowOf(next.id, 'REQ-0001'))?.review).toBeNull()
+
+    await validations.cancel(dir, val.id)
+    expect((await rowOf(next.id, 'REQ-0001'))?.review).toBe('source')
+    expect(await code(validations.sign(dir, next.id))).toBe('SIGNATURE_REFUSED')
+
+    await validations.confirm(dir, next.id, 'REQ-0001')
+    expect((await rowOf(next.id, 'REQ-0001'))?.review).toBeNull()
+    expect((await validations.sign(dir, next.id)).entries).toHaveLength(1)
+  })
+
+  it('validation signée : l\'annulation de sa source ne la change pas', async () => {
+    const { v1, val } = await signedFirst(['REQ-0001'])
+    const v2 = await release('2.0', { basedOn: v1.id, include: [] })
+    const signed = await validations.sign(dir, (await validations.create(dir, { versionId: v2.id, title: 'V2' })).id)
+    await validations.cancel(dir, val.id)
+    expect((await rowOf(signed.id, 'REQ-0001'))?.review).toBeNull()
+  })
+
+  it('deux validations de la même version après fusion : signature refusée', async () => {
+    await writeReq('REQ-0001')
+    await commitAll('exigence')
+    const v1 = await release('1.0')
+    const val = await validations.create(dir, { versionId: v1.id, title: 'V1' })
+    await gitSvc.writeYaml(dir, 'validations/VAL-0099.yaml', { ...val, id: 'VAL-0099' })
+    await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
+    expect(await code(validations.sign(dir, val.id))).toBe('VALIDATION_EXISTS')
+  })
+
+  it('version released puis abandonnée : l\'analyse reste celle du gel', async () => {
+    await writeReq('REQ-0001')
+    await commitAll('exigence')
+    const v1 = await release('1.0')
+    await gitSvc.writeYaml(dir, `versions/${v1.id}.yaml`, { ...v1, status: 'abandonnee', analysis: { computedAt: 'gel', frozen: true, roots: [], rows: [] } })
+    expect(await versions.analysis(dir, v1.id)).toMatchObject({ computedAt: 'gel', frozen: true })
+  })
+})
+
+describe('GH267 — figeage à la signature', () => {
+  const lastRun = (id: string, result = 'PASS') => ({
+    key: id, kind: 'run', testCaseId: 'TST-0001', testTitle: 'Titre TST-0001',
+    run: { id, result, executedAt: '2026-11-02T10:00:00.000Z', executedBy: 'Bob', testedConfig: { ref: 'VER-0001', refTitle: '1.0' } },
+  }) as unknown as ExecutionHistoryRow
+
+  async function signed() {
+    await writeReq('REQ-0001')
+    await commitAll('exigence')
+    const v1 = await release('1.0')
+    coverage = { 'REQ-0001': 'validated' }
+    cells = { 'REQ-0001': ['TST-0001'] }
+    await gitSvc.writeYaml(dir, 'tests/TST-0001.yaml', { id: 'TST-0001' })
+    // La plus récente d'abord, comme l'historique.
+    runs = { 'REQ-0001': [lastRun('RUN-2'), lastRun('RUN-1', 'FAIL')] }
+    const val = await validations.create(dir, { versionId: v1.id, title: 'V1' })
+    await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
+    return { v1, val: await validations.sign(dir, val.id) }
+  }
+
+  it('la signature écrit la copie, dans le commit, avec la seule dernière exécution', async () => {
+    const { val } = await signed()
+    const copy = val.entries[0]!.atSignature!
+    expect(copy).toMatchObject({ status: 'draft', coverageStatus: 'validated', tests: [{ id: 'TST-0001', title: 'Titre TST-0001', local: true, lastRun: { id: 'RUN-2', result: 'PASS', executedBy: 'Bob' } }] })
+    const committed = execFileSync('git', ['show', `HEAD:validations/${val.id}.yaml`], { cwd: dir, encoding: 'utf8' })
+    expect(committed).toContain('atSignature')
+    expect(committed).toContain('RUN-2')
+    expect(committed).not.toContain('RUN-1')
+    expect(val.history?.atSignature).toBeUndefined()
+  })
+
+  it('lien retiré, nouveau run, test supprimé : la grille ne change pas', async () => {
+    const { val } = await signed()
+    const before = await rowsOf(val.id)
+    coverage = { 'REQ-0001': 'failing' }
+    cells = {}
+    runs = { 'REQ-0001': [lastRun('RUN-3', 'FAIL')] }
+    await fsP.rm(path.join(dir, 'tests', 'TST-0001.yaml'))
+    expect(await rowsOf(val.id)).toEqual(before)
+    expect((await validations.page(dir, val.id)).frozen).toBe('copy')
+  })
+
+  it('la page s\'ouvre et la validation s\'annule même si la matrice échoue ; les copies restent', async () => {
+    const { val } = await signed()
+    matrixError = true
+    expect((await rowOf(val.id, 'REQ-0001'))?.coverageStatus).toBe('validated')
+    const cancelled = await validations.cancel(dir, val.id)
+    expect(cancelled.entries[0]?.atSignature).toBeTruthy()
+    expect((await rowOf(val.id, 'REQ-0001'))?.coverageStatus).toBe('validated')
+  })
+
+  it.each([['matrice', () => { matrixError = true }], ['historique', () => { historyError = true }]])('%s illisible à la signature : refus, fichier inchangé', async (_n, fail) => {
+    await writeReq('REQ-0001')
+    await commitAll('exigence')
+    const v1 = await release('1.0')
+    coverage = { 'REQ-0001': 'validated' }
+    cells = { 'REQ-0001': ['TST-0001'] }
+    await gitSvc.writeYaml(dir, 'tests/TST-0001.yaml', { id: 'TST-0001' })
+    const val = await validations.create(dir, { versionId: v1.id, title: 'V1' })
+    await validations.decide(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme' })
+    const before = await validations.get(dir, val.id)
+    fail()
+    await expect(validations.sign(dir, val.id)).rejects.toThrow(/illisible/)
+    expect(await validations.get(dir, val.id)).toEqual(before)
+  })
+
+  it('la version suivante reprend la décision sans la copie', async () => {
+    const { v1, val } = await signed()
+    const v2 = await release('2.0', { basedOn: v1.id, include: [] })
+    const next = await validations.create(dir, { versionId: v2.id, title: 'V2' })
+    expect(next.entries[0]).toMatchObject({ decision: 'conforme', carriedFrom: val.id })
+    expect(next.entries[0]?.atSignature).toBeUndefined()
+  })
+
+  it('fichier signé, entrée sans copie : hors signature, les autres restent figées', async () => {
+    await writeReq('REQ-0001')
+    await writeReq('REQ-0002')
+    await commitAll('exigences')
+    const v1 = await release('1.0')
+    const val = await validations.create(dir, { versionId: v1.id, title: 'V1' })
+    for (const id of ['REQ-0001', 'REQ-0002']) await validations.decide(dir, val.id, { requirementId: id, decision: 'conforme' })
+    const sig = await validations.sign(dir, val.id)
+    const [first, second] = sig.entries
+    const { atSignature: _copy, ...merged } = second!
+    await gitSvc.writeYaml(dir, `validations/${val.id}.yaml`, { ...sig, entries: [first, merged] })
+    matrixError = true
+    const rows = await rowsOf(val.id)
+    expect(rows.find(r => r.requirementId === 'REQ-0001')?.outsideSignature).toBeUndefined()
+    expect(rows.find(r => r.requirementId === 'REQ-0002')?.outsideSignature).toBe(true)
+  })
+
+  it('validation signée sans aucune copie : lecture directe, mention', async () => {
+    const { val } = await signed()
+    await gitSvc.writeYaml(dir, `validations/${val.id}.yaml`, { ...val, entries: val.entries.map(({ atSignature: _c, ...e }) => e) })
+    coverage = { 'REQ-0001': 'failing' }
+    const page = await validations.page(dir, val.id)
+    expect(page.frozen).toBe('legacy')
+    expect(page.rows[0]).toMatchObject({ coverageStatus: 'failing' })
+    expect(page.rows[0]?.outsideSignature).toBeUndefined()
+  })
+
+  it('validation en cours : lecture directe', async () => {
+    await writeReq('REQ-0001')
+    await commitAll('exigence')
+    const v1 = await release('1.0')
+    const val = await validations.create(dir, { versionId: v1.id, title: 'V1' })
+    coverage = { 'REQ-0001': 'covered' }
+    expect((await validations.page(dir, val.id)).frozen).toBeNull()
+    coverage = { 'REQ-0001': 'failing' }
+    expect((await rowOf(val.id, 'REQ-0001'))?.coverageStatus).toBe('failing')
+  })
+
+  it('le graphe expose la copie', async () => {
+    const { val } = await signed()
+    const graph = new GraphService(null as never, null as never, null as never, null as never, null as never)
+    graph.setValidations(validations)
+    const list = await (graph as unknown as { listValidations(r: { repoPath: string; name: string }): Promise<GraphValidation[]> }).listValidations({ repoPath: dir, name: 'repo' })
+    expect(list.find(v => v.id === val.id)?.entries[0]?.atSignature).toMatchObject({ coverageStatus: 'validated', tests: [{ id: 'TST-0001', lastRun: { id: 'RUN-2' } }] })
+  })
+
+  it('une proposition MCP n\'écrit pas de copie', async () => {
+    await writeReq('REQ-0001')
+    await commitAll('exigence')
+    const v1 = await release('1.0')
+    const val = await validations.create(dir, { versionId: v1.id, title: 'V1' })
+    const proposed = await validations.propose(dir, val.id, { requirementId: 'REQ-0001', decision: 'conforme', atSignature: { status: 'x' } } as never)
+    expect(proposed.entries[0]?.atSignature).toBeUndefined()
   })
 })

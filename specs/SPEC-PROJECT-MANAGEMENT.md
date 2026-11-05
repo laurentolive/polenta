@@ -290,6 +290,29 @@ passe par la liste et l'inspection du §9.1. Le repo est préparé dans un dossi
 `int-<x>` le champ « Branche » (pin de `polenta-repo.yaml`) ; l'ajout et le clone suivent le flux
 habituel par URL.
 
+### 9.4 Paramètres du repo (GH108)
+
+Dans l'onglet Structure, une icône sur la ligne d'un repo ouvre la fenêtre « Paramètres du repo »
+(`RepoSettingsModal`, spec `GH103.md` §3). Elle n'apparaît que si `origin` est sur une forge `github`
+ou `forgejo` d'un compte connecté (`forge:repo-settings-available`, sans appel réseau).
+
+- **Lecture** : `forge:repo-settings` ; forge injoignable → « indisponible hors ligne » ; une liste que
+  la forge refuse à ce compte reste vide, avec une mention.
+- **Écritures** (`forge:update-repo-settings`, `forge:set-collaborator`, `forge:remove-collaborator`,
+  `forge:set-repo-team`, `forge:remove-repo-team`, `forge:cancel-invitation`) : droit admin **revérifié
+  côté main** avant chaque appel ; sans ce droit, lecture seule. Retrait ou rétrogradation du dernier
+  admin direct d'un repo d'organisation refusés s'il n'y a pas d'équipe admin (`owner` compte) ; retrait
+  de son propre accès admin : confirmation.
+- **Description** : non vide ; `README.md` mis à jour après confirmation (`forge:sync-readme`), par un
+  commit sur l'intégration puis un push, en remplaçant le paragraphe qui suit le titre. Forme libre,
+  autre branche ou modification en attente : rien n'est écrit, la fenêtre le dit.
+- **Visibilité** : le passage en public demande une confirmation. Une forge du kit
+  (`FORCE_PRIVATE=true`) le refuse : le refus est affiché.
+- **Membres** : collaborateurs (autocomplétion sur les membres de l'organisation, saisie libre), invitations
+  GitHub annulables, équipes d'un repo d'organisation. GitHub : niveau par repo. Forgejo : niveau de
+  l'équipe en lecture, attribution et retrait, équipes « tous les repos » non retirables. Lien vers les
+  équipes sur la forge. `triage` et `maintain` sont affichés tels quels, pas proposés.
+
 ### 9.3 Champ `user` et diagnostic des droits (GH45 S4)
 
 - `forge:org-members(repoPath)` : membres de l'organisation propriétaire du repo `origin` (login,

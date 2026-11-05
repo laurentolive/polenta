@@ -62,6 +62,9 @@ SPEC-PROJECT-MANAGEMENT §9.1 et §9.2). Son URL remplit le champ « Repo (git U
 d'intégration le champ « Branche » (pin) ; l'ajout se poursuit comme pour un repo existant
 (clone, `polenta-repo.yaml`, types d'objets par défaut). Détail : SPEC-PROJECT-MANAGEMENT §9.2.
 
+**Paramètres du repo (GH108)** : icône sur la ligne d'un repo dont `origin` est sur une forge d'un
+compte connecté. Détail : SPEC-PROJECT-MANAGEMENT §9.4.
+
 **Plusieurs composants locaux par repo (T113)** : un repo peut définir plus d'un `SystemNode` dans
 son `schema.yaml` — `root` (toujours présent, lui-même un composant comme les autres) plus zéro ou
 plusieurs composants locaux, chacun avec ses propres `objectTypes`. Un composant local vit dans le

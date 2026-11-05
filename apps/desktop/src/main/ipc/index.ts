@@ -82,6 +82,8 @@ import type {
   MachineConfig,
   CreateRepoRequest,
   AdoptRepoRequest,
+  RepoAccessLevel,
+  RepoVisibility,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
@@ -91,6 +93,7 @@ import type { AppSettingsService } from '../services/app-settings.service'
 import type { ForgeConfigService } from '../services/forge-config.service'
 import type { ForgeService } from '../services/forge/forge.service'
 import type { RepoProvisioningService } from '../services/forge/repo-provisioning.service'
+import type { RepoSettingsService } from '../services/forge/repo-settings.service'
 import type { IntegrationBranchService } from '../services/integration-branch.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
@@ -154,6 +157,8 @@ export interface Container {
   forge: ForgeService
   /** GH107 — création d'un repo sur GitHub / Forgejo. */
   repoProvisioning: RepoProvisioningService
+  /** GH108 — le README suit la description du repo. */
+  repoSettings: RepoSettingsService
   /** GH106 — désignation de la branche d'intégration, gardes de suppression. */
   integration: IntegrationBranchService
 }
@@ -274,6 +279,17 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   r.handle('forge:create-repo', (_e, req: CreateRepoRequest) => c.repoProvisioning.create(req))
   r.handle('forge:inspect-repo', (_e, accountKey: string, owner: string, name: string) => c.repoProvisioning.inspect(accountKey, owner, name))
   r.handle('forge:adopt-repo', (_e, req: AdoptRepoRequest) => c.repoProvisioning.adopt(req))
+  // GH108 — fenêtre « Paramètres du repo » (design §2).
+  r.handle('forge:repo-settings-available', (_e, repoPath: string) => c.forge.repoSettingsAvailable(repoPath))
+  r.handle('forge:repo-settings', (_e, repoPath: string) => c.forge.repoSettings(repoPath))
+  r.handle('forge:update-repo-settings', (_e, repoPath: string, patch: { description?: string; visibility?: RepoVisibility }) => c.forge.updateRepoSettings(repoPath, patch))
+  r.handle('forge:set-collaborator', (_e, repoPath: string, login: string, level: RepoAccessLevel) => c.forge.setRepoCollaborator(repoPath, login, level))
+  r.handle('forge:remove-collaborator', (_e, repoPath: string, login: string) => c.forge.removeRepoCollaborator(repoPath, login))
+  r.handle('forge:set-repo-team', (_e, repoPath: string, team: string, level?: RepoAccessLevel) => c.forge.setRepoTeamAccess(repoPath, team, level))
+  r.handle('forge:remove-repo-team', (_e, repoPath: string, team: string) => c.forge.removeRepoTeamAccess(repoPath, team))
+  r.handle('forge:cancel-invitation', (_e, repoPath: string, id: number) => c.forge.cancelRepoInvitation(repoPath, id))
+  r.handle('forge:readme-state', (_e, repoPath: string) => c.repoSettings.readmeState(repoPath))
+  r.handle('forge:sync-readme', (_e, repoPath: string, description: string) => c.repoSettings.syncReadme(repoPath, description))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())

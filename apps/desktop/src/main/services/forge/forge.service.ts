@@ -5,13 +5,13 @@ import * as path from 'path'
 import git from 'isomorphic-git'
 import type {
   CreateRepoInput, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeOwners, ForgeRepo,
-  ForgeRepoAccess, ForgeRepoDetails, ForgeTeam, RepoMemberGrant, RepoVisibility,
+  ForgeRepoAccess, ForgeRepoDetails, ForgeTeam, RepoAccessLevel, RepoMemberGrant, RepoSettings, RepoVisibility,
 } from '@polenta/types'
 
 import type { AuthService } from '../auth.service'
 import type { SyncService } from '../sync.service'
 import type { WorkspaceService } from '../workspace.service'
-import { assertRepoName, RepoNameTakenError, type ForgeProvider } from './forge-provider'
+import { AdminRequiredError, assertRepoName, LastAdminError, RepoNameTakenError, type ForgeProvider } from './forge-provider'
 import { forgejoProvider } from './forgejo.provider'
 import { githubProvider } from './github.provider'
 import { ForgeHttpError } from './forge-http'
@@ -136,6 +136,119 @@ export class ForgeService {
     }
   }
 
+  /** GH108 — sans appel réseau : `origin` sur une forge `github` ou `forgejo` d'un compte connecté. */
+  async repoSettingsAvailable(repoPath: string): Promise<boolean> {
+    return (await this.originTarget(repoPath, REPO_KINDS)) !== null
+  }
+
+  /**
+   * GH108 — contenu de la fenêtre « Paramètres du repo » ; `null` : sans objet. Une forge injoignable
+   * rend `offline` ; une liste que la forge refuse à ce compte (lecteur) reste vide, sans erreur.
+   */
+  async repoSettings(repoPath: string): Promise<RepoSettings | null> {
+    const target = await this.originTarget(repoPath, REPO_KINDS)
+    const provider = target ? providerFor(target.account.provider) : null
+    if (!target || !provider) return null
+    const { account, token, owner, repo } = target
+    const { baseUrl } = account
+    let restricted = false
+    const soft = async <T>(op: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await op()
+      } catch (err) {
+        if (!(err instanceof ForgeHttpError) || (err.status !== 403 && err.status !== 404)) throw err
+        restricted = true
+        return fallback
+      }
+    }
+    // Dans `guard`, qui traduirait l'erreur réseau en simple message.
+    return this.guard(account, async (): Promise<RepoSettings> => {
+      try {
+        const details = await provider.repoDetails!(baseUrl, token, owner, repo)
+        if (!details) throw new Error(`Dépôt ${owner}/${repo} introuvable sur ${account.host} (ou inaccessible avec ce compte).`)
+        const orgMembers = await provider.orgMembers!(baseUrl, token, owner).catch(err => {
+          if (err instanceof ForgeHttpError && err.status === 403) return null
+          throw err
+        })
+        const isOrg = orgMembers !== null
+        const [collaborators, teams, invitations, orgTeams, scopeMissing] = await Promise.all([
+          soft(() => provider.listCollaborators!(baseUrl, token, owner, repo), []),
+          isOrg ? soft(() => provider.listRepoTeams!(baseUrl, token, owner, repo), []) : Promise.resolve([]),
+          details.permissions.admin && provider.listInvitations ? soft(() => provider.listInvitations!(baseUrl, token, owner, repo), []) : Promise.resolve([]),
+          isOrg ? soft(() => provider.listOrgTeams!(baseUrl, token, owner), []) : Promise.resolve([]),
+          provider.teamScopeMissing?.(baseUrl, token) ?? Promise.resolve(false),
+        ])
+        return {
+          available: true, fullName: `${owner}/${repo}`, host: account.host, login: account.login, details, collaborators, teams,
+          invitations, orgTeams, orgMembers: orgMembers ?? [], isOrg, scopeMissing, membersRestricted: restricted,
+          teamsUrl: provider.kind === 'github' ? `${baseUrl}/orgs/${owner}/teams` : `${baseUrl}/org/${owner}/teams`,
+          teamLevelEditable: provider.kind === 'github',
+        }
+      } catch (err) {
+        if (isNetworkUnreachable(err)) return { available: false, reason: 'offline' }
+        throw err
+      }
+    })
+  }
+
+  async updateRepoSettings(repoPath: string, patch: { description?: string; visibility?: RepoVisibility }): Promise<void> {
+    if (patch.description !== undefined && !patch.description.trim()) throw new Error('La description est obligatoire.')
+    await this.asAdmin(repoPath, (t, p) => p.updateRepo!(t.account.baseUrl, t.token, t.owner, t.repo, {
+      ...patch, ...(patch.description !== undefined ? { description: patch.description.trim() } : {}),
+    }))
+  }
+
+  /** Ajoute ou change un collaborateur ; rétrograder le dernier admin direct est refusé comme son retrait. */
+  async setRepoCollaborator(repoPath: string, login: string, level: RepoAccessLevel): Promise<'added' | 'invited'> {
+    return this.asAdmin(repoPath, async (t, p) => {
+      if (level !== 'admin') await this.assertNotLastAdmin(t, p, login)
+      return p.setCollaborator!(t.account.baseUrl, t.token, t.owner, t.repo, login, level)
+    })
+  }
+
+  async removeRepoCollaborator(repoPath: string, login: string): Promise<void> {
+    await this.asAdmin(repoPath, async (t, p) => {
+      await this.assertNotLastAdmin(t, p, login)
+      await p.removeCollaborator!(t.account.baseUrl, t.token, t.owner, t.repo, login)
+    })
+  }
+
+  async setRepoTeamAccess(repoPath: string, team: string, level?: RepoAccessLevel): Promise<void> {
+    await this.asAdmin(repoPath, (t, p) => p.setRepoTeam!(t.account.baseUrl, t.token, t.owner, t.repo, team, level))
+  }
+
+  async removeRepoTeamAccess(repoPath: string, team: string): Promise<void> {
+    await this.asAdmin(repoPath, (t, p) => p.removeRepoTeam!(t.account.baseUrl, t.token, t.owner, t.repo, team))
+  }
+
+  async cancelRepoInvitation(repoPath: string, id: number): Promise<void> {
+    await this.asAdmin(repoPath, (t, p) => p.cancelInvitation!(t.account.baseUrl, t.token, t.owner, t.repo, id))
+  }
+
+  /** Droit admin revérifié ici avant chaque écriture (spec §3.1). */
+  private async asAdmin<T>(repoPath: string, op: (target: OriginTarget, provider: ForgeProvider) => Promise<T>): Promise<T> {
+    const target = await this.originTarget(repoPath, REPO_KINDS)
+    const provider = target ? providerFor(target.account.provider) : null
+    if (!target || !provider) throw new Error('Compte introuvable ou déconnecté : reconnectez-vous.')
+    return this.guard(target.account, async () => {
+      const details = await provider.repoDetails!(target.account.baseUrl, target.token, target.owner, target.repo)
+      if (!details?.permissions.admin) throw new AdminRequiredError(`${target.owner}/${target.repo}`)
+      return op(target, provider)
+    })
+  }
+
+  /** Garde du §3.2 : dernier admin direct d'un repo d'organisation, sans équipe admin. */
+  private async assertNotLastAdmin(t: OriginTarget, provider: ForgeProvider, login: string): Promise<void> {
+    const { baseUrl } = t.account
+    // Repo personnel : le propriétaire, exclu de la liste, reste administrateur.
+    if (await provider.orgMembers!(baseUrl, t.token, t.owner) === null) return
+    const collaborators = await provider.listCollaborators!(baseUrl, t.token, t.owner, t.repo)
+    const admins = collaborators.filter(c => c.level === 'admin')
+    if (admins.length !== 1 || admins[0].login.toLowerCase() !== login.toLowerCase()) return
+    const teams = await provider.listRepoTeams!(baseUrl, t.token, t.owner, t.repo)
+    if (!teams.some(team => team.level === 'admin' || team.level === 'owner')) throw new LastAdminError(login)
+  }
+
   /**
    * Erreurs des API de la forge comme pour git (design §3.4) : jeton refusé ou compte désactivé →
    * hôte marqué « accès révoqué » et erreur qui déclenche la bannière de reconnexion ; réseau →
@@ -188,10 +301,7 @@ export class ForgeService {
     }
   }
 
-  private async originTarget(
-    repoPath: string,
-    kinds: ForgeKind[] = ['forgejo'],
-  ): Promise<{ account: ForgeAccount; token: string; owner: string; repo: string } | null> {
+  private async originTarget(repoPath: string, kinds: ForgeKind[] = ['forgejo']): Promise<OriginTarget | null> {
     const url = await originUrl(repoPath)
     const parsed = url ? parseRepoUrl(url) : null
     if (!url || !parsed) return null
@@ -199,6 +309,16 @@ export class ForgeService {
     if (!found || !kinds.includes(found.account.provider)) return null
     return { ...found, ...parsed }
   }
+}
+
+/** GH108 — forges où régler un repo depuis Polenta. */
+const REPO_KINDS: ForgeKind[] = ['forgejo', 'github']
+
+interface OriginTarget {
+  account: ForgeAccount
+  token: string
+  owner: string
+  repo: string
 }
 
 function providerFor(kind: ForgeKind): ForgeProvider | null {

@@ -114,6 +114,8 @@ export interface ForgeRepo {
   cloneUrl: string
   /** Le compte n'a pas le droit d'écriture (badge « lecture seule »). */
   readOnly: boolean
+  /** GH108 — une forge du kit (`FORCE_PRIVATE`) crée privé même si public a été demandé. */
+  private?: boolean
 }
 
 /** Organisation dans laquelle le compte peut créer des repos. */
@@ -168,6 +170,8 @@ export interface ForgeRepoDetails {
 
 export interface ForgeCollaborator {
   login: string
+  /** Nom affiché, quand la forge le donne dans la liste (Forgejo). */
+  name?: string
   /** `read`/`write`/`admin`, ou tel que la forge le nomme (`triage`, `maintain`). */
   level: RepoAccessLevel | string
 }
@@ -222,6 +226,43 @@ export interface CreateRepoResult {
   /** Projet, étape `open` réussie. */
   open?: WorkspaceOpenResult
 }
+
+/** GH108 — fenêtre « Paramètres du repo » (spec GH103 §3, design §1). `offline` : forge injoignable. */
+export type RepoSettings =
+  | { available: false; reason: 'offline' }
+  | {
+    available: true
+    /** `propriétaire/nom`. */
+    fullName: string
+    host: string
+    /** Login du compte connecté (confirmation du retrait de son propre accès). */
+    login: string
+    details: ForgeRepoDetails
+    collaborators: ForgeCollaborator[]
+    teams: ForgeRepoTeam[]
+    invitations: ForgeInvitation[]
+    /** Équipes de l'organisation (attribution). */
+    orgTeams: ForgeTeam[]
+    /** Membres de l'organisation (autocomplétion). */
+    orgMembers: ForgeMember[]
+    isOrg: boolean
+    /** GitHub : jeton sans `read:org`, les équipes peuvent manquer (reconnexion proposée). */
+    scopeMissing: boolean
+    /** La forge refuse de lister les membres à ce compte (lecteur) : listes vides, sans erreur. */
+    membersRestricted: boolean
+    /** Page des équipes sur la forge : créer une équipe ou changer sa composition reste là-bas. */
+    teamsUrl: string
+    /** Forgejo : le niveau d'une équipe se règle sur l'équipe, pas par repo. */
+    teamLevelEditable: boolean
+  }
+
+/** GH108 — forme du `README.md` de l'intégration, avant de proposer de le mettre à jour. */
+export type ReadmeState = 'standard' | 'free' | 'none'
+
+export type ReadmeSyncOutcome =
+  | { status: 'committed'; pushError?: string }
+  | { status: 'unchanged' | 'free' | 'pending-changes' }
+  | { status: 'not-on-integration'; branch: string }
 
 /** GH107 — ce qui manque à un repo existant (spec GH103 §2.3). */
 export type RepoMissing = 'integration' | 'description' | 'polenta'

@@ -38,6 +38,8 @@ export interface ForgeProvider {
   removeRepoTeam?(baseUrl: string, token: string, owner: string, repo: string, team: string): Promise<void>
   /** GH107 — GitHub seulement. */
   listInvitations?(baseUrl: string, token: string, owner: string, repo: string): Promise<ForgeInvitation[]>
+  /** GH108 — le jeton n'a pas le droit de lire les équipes (GitHub, sans `read:org`). */
+  teamScopeMissing?(baseUrl: string, token: string): Promise<boolean>
   cancelInvitation?(baseUrl: string, token: string, owner: string, repo: string, id: number): Promise<void>
   /** `null` : pas d'accès (404/403). */
   repoPermissions?(baseUrl: string, token: string, owner: string, repo: string): Promise<{ pull: boolean; push: boolean; admin: boolean } | null>
@@ -88,6 +90,22 @@ export class VisibilityChangeError extends Error {
       ? 'Un changement de visibilité est encore en cours sur le serveur : réessayez dans quelques instants.'
       : `Le serveur refuse de rendre ce dépôt ${visibility === 'public' ? 'public' : 'privé'}${forgeMessage ? ` (${forgeMessage})` : ''}. Un administrateur du serveur peut le faire.`)
     this.name = 'VisibilityChangeError'
+  }
+}
+
+/** GH108 — écriture refusée côté main : l'interface n'est pas la seule barrière (spec §3.1). */
+export class AdminRequiredError extends Error {
+  constructor(readonly fullName: string) {
+    super(`Réservé aux administrateurs du repo ${fullName}.`)
+    this.name = 'AdminRequiredError'
+  }
+}
+
+/** GH108 — garde du §3.2 de la spec : le repo ne doit pas rester sans administrateur. */
+export class LastAdminError extends Error {
+  constructor(readonly login: string) {
+    super(`${login} est le dernier administrateur direct de ce repo, et aucune équipe admin n'y a accès : ajoutez d'abord un autre administrateur.`)
+    this.name = 'LastAdminError'
   }
 }
 

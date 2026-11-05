@@ -52,11 +52,27 @@ export const githubProvider: ForgeProvider = {
     return repos.map(toForgeRepo).sort((a, b) => a.fullName.localeCompare(b.fullName))
   },
 
-  async listOwners(baseUrl, token, login) {
-    // `GET /user/memberships/orgs` donne le rôle ; il exige `read:org` (mesuré : GH107-sprint1 §2).
+  async teamScopeMissing(baseUrl, token) {
     const probe = await forgeRequest<unknown>(`${apiBase(baseUrl)}/user`, opts(baseUrl, token))
     const scopes = scopesOf(probe.headers)
-    const scopeMissing = scopes !== null && !scopes.some(s => s === 'read:org' || s === 'write:org' || s === 'admin:org')
+    return scopes !== null && !scopes.some(s => s === 'read:org' || s === 'write:org' || s === 'admin:org')
+  },
+
+  async orgMembers(baseUrl, token, owner) {
+    let members: Array<{ login: string }>
+    try {
+      members = await paginate(baseUrl, `/orgs/${encodeURIComponent(owner)}/members`, token)
+    } catch (err) {
+      // Propriétaire = utilisateur (repo personnel) : pas d'organisation.
+      if (err instanceof ForgeHttpError && err.status === 404) return null
+      throw err
+    }
+    return members.map(m => ({ login: m.login, name: m.login })).sort((a, b) => a.login.localeCompare(b.login))
+  },
+
+  async listOwners(baseUrl, token, login) {
+    // `GET /user/memberships/orgs` donne le rôle ; il exige `read:org` (mesuré : GH107-sprint1 §2).
+    const scopeMissing = await githubProvider.teamScopeMissing!(baseUrl, token)
     const user: ForgeOwner = { name: login, label: '', kind: 'user', canCreate: true }
     let orgs: Array<{ login: string; role: 'admin' | 'member' }>
     if (scopeMissing) {
@@ -301,7 +317,7 @@ interface ApiRepo {
 function toForgeRepo(r: ApiRepo): ForgeRepo {
   return {
     fullName: r.full_name, owner: r.owner?.login ?? r.full_name.split('/')[0], name: r.name, description: r.description?.trim() ?? '',
-    cloneUrl: r.clone_url, readOnly: r.permissions ? !r.permissions.push : false,
+    cloneUrl: r.clone_url, readOnly: r.permissions ? !r.permissions.push : false, private: r.private,
   }
 }
 

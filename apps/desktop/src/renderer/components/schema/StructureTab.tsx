@@ -13,6 +13,7 @@ import { CATEGORY_CHART_TEXT } from '../../lib/objectCategoryColors'
 import { DiamondConflictModal } from '../DiamondConflictModal'
 import { ElementConfigModal } from './ElementConfigModal'
 import { AddDependencyModal, type AddDependencyValues } from './AddDependencyModal'
+import { RepoSettingsButton } from '../repo/RepoSettingsModal'
 import { RemoveDependencyModal } from './RemoveDependencyModal'
 import { RepoBranchSelector } from './RepoBranchSelector'
 import { IntegrationBranchIndicator } from './IntegrationBranchIndicator'
@@ -770,6 +771,8 @@ function RepoRow({
             <Pencil size={12} />
           </button>
         )}
+        {/* GH108 — fenêtre « Paramètres du repo », seulement sur une forge d'un compte connecté. */}
+        <RepoSettingsButton repoPath={node.repoPath} />
         <AddMenu
           node={node}
           hasRoot={!!rootNode}

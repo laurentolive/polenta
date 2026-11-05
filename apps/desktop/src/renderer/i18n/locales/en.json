@@ -2711,5 +2711,41 @@
       "complete": "Complete and open",
       "fill": "Initialize the repository"
     }
+  },
+  "repoSettings": {
+    "title": "Repository settings",
+    "offline": "Unavailable offline: the server does not respond.",
+    "adminOnly": "Reserved for repository administrators: this information is read-only.",
+    "general": "General",
+    "members": "Members",
+    "description": "Description",
+    "noDescription": "No description.",
+    "visibility": "Visibility",
+    "publicConfirm": "Make this repository public? All its content, history included, becomes readable by everyone.",
+    "makePublic": "Make public",
+    "readme": {
+      "ask": "Also update README.md? A commit is created on the integration branch and published.",
+      "yes": "Update the README",
+      "no": "No",
+      "committed": "README.md updated and published.",
+      "pushFailed": "README.md updated, but publishing it failed ({{message}}). Publish later.",
+      "free": "README.md has a free form: it is not rewritten.",
+      "unchanged": "README.md already contains this description.",
+      "pending": "README.md has pending changes: it is not rewritten.",
+      "notOnIntegration": "README.md is only updated on the integration branch ({{branch}}): switch to it first."
+    },
+    "collaborators": "Collaborators",
+    "noCollaborator": "No direct collaborator.",
+    "invited": "Invitation sent to {{login}}: access starts once it is accepted.",
+    "invitations": "Pending invitations",
+    "cancelInvitation": "Cancel",
+    "teams": "Teams",
+    "noTeam": "No team has access to this repository.",
+    "manageTeams": "Manage teams on the server",
+    "teamLevelOnForge": "On this server, the level belongs to the team, for all its repositories: it is set on the server. Teams covering all the organization's repositories cannot be removed from here.",
+    "scopeMissing": "Your sign-in to {{host}} cannot read all teams: sign in to {{host}} again.",
+    "restricted": "The server does not give the member list to your account.",
+    "removeSelf": "Remove your own administrator access? You will no longer be able to change these settings.",
+    "removeSelfConfirm": "Remove my access"
   }
 }

@@ -1,6 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
 import type { RequirementReflections } from '@polenta/types'
-import { capabilities } from '../../platform'
 
 /** GH210 — colonnes système facultatives des reflets (exigences seulement), comme `coverageStatus`. */
 export const REFLECTION_COLUMNS = ['designStatus', 'validationStatus'] as const
@@ -25,8 +24,7 @@ export function reflectionText(col: ReflectionColumn, r: RequirementReflections 
 }
 
 /**
- * GH210 — cellule d'un reflet : texte, label de version cliquable vers sa page (desktop). Sur le web, les vues
- * Versions ne sont pas exposées (#252) : texte seul (D6). Sans reflet : « — ».
+ * GH210 — cellule d'un reflet : texte, label de version cliquable vers sa page. Sans reflet : « — ».
  */
 export function ReflectionValue({ col, objectId, data }: {
   col: ReflectionColumn
@@ -43,7 +41,7 @@ export function ReflectionValue({ col, objectId, data }: {
   return (
     <span data-testid={`reflection-${col}`}>
       {prefix}
-      {capabilities.productValidation && data
+      {data
         ? (
           <button
             type="button"

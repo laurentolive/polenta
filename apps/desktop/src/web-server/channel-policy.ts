@@ -69,6 +69,10 @@ export const WEB_EXPOSED: ReadonlySet<string> = new Set([
   'tests:create', 'tests:execute', 'tests:get', 'tests:list', 'tests:open-draft', 'tests:runs', 'tests:type-def',
   'tests:update',
   'transitions:preview',
+  // GH252 — versions, analyse d'impact, validation.
+  'versions:analysis', 'versions:backlog', 'versions:copy', 'versions:create', 'versions:delete', 'versions:get', 'versions:impact', 'versions:include', 'versions:list', 'versions:release', 'versions:release-preview', 'versions:remove-changes', 'versions:set-impact', 'versions:tests', 'versions:tree', 'versions:update',
+  'validations:cancel', 'validations:confirm', 'validations:create', 'validations:decide', 'validations:delete', 'validations:page', 'validations:reject', 'validations:sign', 'validations:update', 'validations:versions',
+  'issues:add-decision',
   'reflections:list',
   'traceability:diff-requirements', 'traceability:export-csv', 'traceability:legacy-acks',
   'traceability:matrix', 'traceability:missing-links',
@@ -92,33 +96,6 @@ export const WEB_HIDDEN: Record<string, string> = {
   'auth:save-token': 'compte = session',
   'auth:get-token': 'renverrait le jeton forge au navigateur',
   'auth:delete-token': 'compte = session',
-  'issues:add-decision': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:versions': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:page': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:create': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:update': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:decide': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:confirm': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:reject': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:sign': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:cancel': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'validations:delete': 'GH204 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:tree': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:list': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:get': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:backlog': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:create': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:update': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:include': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:remove-changes': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:release-preview': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:release': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:copy': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:analysis': 'GH245 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:set-impact': 'GH245 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:tests': 'GH245 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:impact': 'GH245 — pas encore exposé au client web (SPEC-WEB §11)',
-  'versions:delete': 'GH201 — pas encore exposé au client web (SPEC-WEB §11)',
 }
 
 /**
@@ -215,6 +192,8 @@ export const CONTENT_ARGS: Record<string, number[]> = {
   'requirements:open-draft': [2, 4],
   'tests:open-draft': [4],
   // GH203 — clé de type et nom de vue : validés par `SavedViewsService`, un nom peut contenir « : » ou « .. ».
+  // GH252 — commentaire d'impact saisi librement (index 4) ; le tag est validé par `VersionsService`.
+  'versions:set-impact': [4],
   'views:list': [2], 'views:create': [2, 4], 'views:update': [2], 'views:rename': [2, 4], 'views:delete': [2],
 }
 

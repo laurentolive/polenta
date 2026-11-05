@@ -598,7 +598,7 @@ mêmes règles que `coverageStatus` : exigences seulement, décochés par défau
 de carte du Document, affichés en permanence dans l'Édition. Valeurs : label de la première version released qui
 inclut l'exigence avec un état identique (« 1.2.4 ») ; décision de la dernière validation signée du composant avec
 le label de sa version (« Conforme (1.2.4) ») ; « — » sinon (SPEC-REQ §13). Filtrés et exportés sur ce texte. Le
-label de version ouvre la page de la version sur le desktop, texte seul sur le web. Calcul (`reflections:list`) lancé
+label de version ouvre la page de la version. Calcul (`reflections:list`) lancé
 seulement si une des colonnes est visible ou la vue Édition ouverte ; invalidé à tout changement de version, de
 validation, d'exigence ou de schéma. Les trois colonnes calculées s'appellent Vérification, Design, Validation.
 

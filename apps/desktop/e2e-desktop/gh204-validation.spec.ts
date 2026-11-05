@@ -6,8 +6,8 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { launch, newProfile } from './support/app'
 
 /**
- * GH204 — vue Validation (specs/GH204-tests.md, E1 à E6). Sur le desktop : les channels `versions:*` et
- * `validations:*` sont masqués sur le web (SPEC-WEB §11). Exigences, version et exécutions créées par
+ * GH204 — vue Validation (specs/GH204-tests.md, E1 à E6), sur le desktop ; le client web a son propre
+ * scénario (`e2e-web/gh252-versions.spec.ts`). Exigences, version et exécutions créées par
  * IPC ou sur disque ; le type validation et les décisions, par l'interface.
  *
  *   pnpm test:e2e:desktop -g GH204

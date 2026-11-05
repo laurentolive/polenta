@@ -1409,7 +1409,7 @@ par navigateur en client web). Logique pure dans `layout/activityBarLayout.ts`, 
 **Panneau Issues (GH244)** : entrée de l'ActivityBar (`/product?category=issue`), même panneau (`SystemPanel`)
 et mêmes vues (`SystemView` : Tableau, Document, fiche) qu'Exigences et Tests ; origine en lecture seule sur la fiche.
 
-**Panneau Validation (GH204)** : entrée de l'ActivityBar, desktop seulement (`capabilities.productValidation`).
+**Panneau Validation (GH204)** : entrée de l'ActivityBar, desktop et web (GH252).
 `ValidationPanel` : composant, puis versions et état de leur validation, « Créer la validation ». Routes
 `/validations` et `/validation/$validationId` : en-tête (statut, version, reste à décider, validations des
 composants, champs, Signer, Annuler, Supprimer), grille d'une ligne par exigence (décision et commentaire en écriture,

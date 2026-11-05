@@ -6,8 +6,8 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { launch, newProfile } from './support/app'
 
 /**
- * GH210 — reflets Design et Validation dans la vue Tableau (specs/GH210-tests.md, I1, I2, I7). Sur le desktop :
- * versions et validations ne sont pas exposées au client web (SPEC-WEB §11). Version et validation créées par IPC.
+ * GH210 — reflets Design et Validation dans la vue Tableau (specs/GH210-tests.md, I1, I2, I7). Sur le desktop ;
+ * le client web a son propre scénario (`e2e-web/gh252-versions.spec.ts`). Version et validation créées par IPC.
  *
  *   pnpm test:e2e:desktop -g GH210
  */

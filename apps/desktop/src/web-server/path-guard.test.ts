@@ -3,6 +3,7 @@ import * as fsP from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
 import { checkArgs, PathGuardError } from './path-guard'
+import { ROOT_ARGS, WEB_EXPOSED, WEB_HIDDEN } from './channel-policy'
 
 let base: string
 let root: string
@@ -66,6 +67,34 @@ describe('checkArgs — refus (S2-10)', () => {
     const isLink = await fsP.lstat(link).then(s => s.isSymbolicLink(), () => false)
     if (!isLink) return
     await rejected('requirements:list', [path.join(link, 'workspaces')])
+  })
+})
+
+describe('GH252 — versions, validation', () => {
+  const CHANNELS = [...WEB_EXPOSED].filter(ch => /^(versions|validations):/.test(ch) || ch === 'issues:add-decision')
+
+  it('tous exposés, plus aucun masqué', () => {
+    expect(CHANNELS).toHaveLength(27)
+    expect(Object.keys(WEB_HIDDEN).filter(ch => /^(versions|validations):/.test(ch) || ch === 'issues:add-decision')).toEqual([])
+  })
+
+  it("repoPath et workspaceDir d'un autre utilisateur refusés sur chaque canal", async () => {
+    const elsewhere = path.join(other, 'workspaces', 'p')
+    const mine = path.join(root, 'workspaces', 'p1', 'repo')
+    for (const channel of CHANNELS) {
+      const positions = ROOT_ARGS[channel] ?? []
+      expect(positions, channel).toContain(0)
+      for (const at of positions) {
+        const args = Array.from({ length: Math.max(...positions) + 1 }, () => mine as unknown)
+        args[at] = elsewhere
+        expect((await rejected(channel, args)).argIndex, channel).toBe(at)
+      }
+    }
+  })
+
+  it("commentaire d'impact libre accepté", async () => {
+    const repo = path.join(root, 'workspaces', 'p1', 'repo')
+    await checkArgs('versions:set-impact', [repo, 'PV-0001', 'SYS-0001', 'a_verifier', 'voir ../docs et C:\notes', repo], root)
   })
 })
 

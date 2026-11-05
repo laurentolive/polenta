@@ -9,7 +9,7 @@ A data model to manage Requirements, test cases, campaigns, reviews and
 trace links is configurable to meet each team terminology & process needs. 
 An MCP server gives AI agents such as Claude Code, Cursor and Codex the access to whole data model to allow assist redaction, mass import, coherence review...
 
-> Status: early development (desktop `v0.0.7`). Expect breaking changes.
+> Status: early development. Expect breaking changes.
 
 ---
 

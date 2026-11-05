@@ -1,6 +1,6 @@
-# 6. Tracking and search
+# 7. Tracking and search
 
-**English** | [Français](../tutoriels/06-suivi.md)
+**English** | [Français](../tutoriels/07-suivi.md)
 
 The **Tracking** view answers project management questions: where the requirements stand, what is
 not tested, how the campaigns are progressing. It relies on **queries** over the whole project
@@ -25,8 +25,17 @@ not tested, how the campaigns are progressing. It relies on **queries** over the
 
 The second dashboard, *Composants & traçabilité*, tracks coverage component by component. On first
 access, Polenta also creates the shared *Status* dashboard (when there is no dashboard yet) and a
-private *Campaigns* dashboard: progress of each campaign (from test preparation to result),
+private *Campagnes* dashboard: progress of each campaign (from test preparation to result),
 % executed, % PASS, executions per day, failed entries, progress over time.
+
+**Parameters chosen when displayed.** The *Campagnes* dashboard shows a **Campaign** selector at the
+top: on *All*, it shows the campaigns in progress; a chosen campaign (even a completed one)
+refocuses all its widgets on that campaign alone — for example the progress over time of one
+specific campaign. The choice is remembered for you only (nothing to publish); *Reset* goes back
+to *All*. Any query can declare such parameters (campaign, component, object type, list of values,
+text, period): through the "… chosen when displayed" checkboxes of its template, or in the
+*Parameters chosen when displayed* section of the Queries view in Script mode, where the script
+reads the values in `polenta.params`. Widgets that share a parameter share the same selector.
 
 ## Queries
 
@@ -43,7 +52,7 @@ A query can be built in two ways:
   to the disk or the network.
 
 **Execute** shows the result, **Save** stores the query, the history keeps the latest queries run;
-**Export** produces Excel or PDF. Example script:
+**Export** produces an Excel or PDF file. Example script:
 
 ```js
 // Approved requirements without a test
@@ -66,14 +75,23 @@ export default (data) => {
   return data.requirements
     .map((r) => ({ r, m: maturity(data, r, ctx) }))
     .filter(({ m }) => !m.ok)
-    .map(({ r, m }) => ({ id: r.id, title: r.title, missing: m.missing.join(', '), _ids: [r.id] }))
+    .map(({ r, m }) => ({ id: r.id, title: r.title, manque: m.missing.join(', '), _ids: [r.id] }))
 }
 ```
 
 When Polenta ships a new version of a library file or of a pre-configured dashboard widget, an
 **Updates available** banner appears at the top of the panel: nothing changes until you click
-*Apply*. An AI assistant connected to the project (tutorial 8) can write and test these scripts for
-you.
+*Apply*. An AI assistant connected to the project ([tutorial 12](12-ai-agent.md)) can write and
+test these scripts for you.
+
+### Computed columns in views
+
+A shared query can also **add a column** to the table views of requirements or tests: it declares a
+column, and returns one value per item. The provided template computes the campaign **Last result**
+of each test; a variant splits the column into **one column per campaign**, and a new campaign adds
+its own column to it automatically. These columns are chosen in **⚙️ › Visible fields › Computed
+columns**, and are filtered and exported like the others. They are defined by the project, not by
+Polenta: each team computes what it needs.
 
 ## Search
 

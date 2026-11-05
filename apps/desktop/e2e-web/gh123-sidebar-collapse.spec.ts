@@ -67,7 +67,7 @@ test('E3 — replié, clic sur un autre panneau : navigation et dépli', async (
   await button(s.page, 'Exigences').click()
   await expect(sidebar()).toBeHidden()
   await button(s.page, 'Version').click()
-  await s.page.waitForURL(/\/graph/)
+  await s.page.waitForURL(/\/versions/) // GH289 — vue par défaut : version produit
   await expect(sidebar()).toBeVisible()
   await expect(button(s.page, 'Version')).toHaveAttribute('aria-expanded', 'true')
 })

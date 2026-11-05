@@ -84,6 +84,8 @@ export function TestPickerGrid({
   // l'enregistrement des colonnes (GH176) renouvelle `prefs` et ne doit pas les réinitialiser.
   const [collapsedFolders, setCollapsedFolders] = useState<string[]>([])
   const [freezeColCount, setFreezeColCount] = useState(0)
+  // GH288 — largeurs de la vue Tableau du type, reprises sans être réenregistrées.
+  const [colWidths, setColWidths] = useState<Record<string, number>>({})
   const initializedFor = useRef<string | null>(null)
   useEffect(() => {
     const key = prefsKey.join('|')
@@ -91,7 +93,8 @@ export function TestPickerGrid({
     initializedFor.current = key
     setCollapsedFolders(prefs?.collapsedFoldersExcel ?? [])
     setFreezeColCount(prefs?.freezeColCountExcel ?? 0)
-  }, [prefs, prefsPending, prefsKey])
+    setColWidths(prefs?.colWidthsExcel ?? {})
+  },[prefs, prefsPending, prefsKey])
 
   // GH176 — écriture partielle (le main fusionne, `null` supprime), appliquée d'abord au cache
   // partagé avec la Vue Système pour un affichage immédiat, puis relue : après une suppression,
@@ -191,6 +194,8 @@ export function TestPickerGrid({
       onCollapsedFoldersChange={setCollapsedFolders}
       freezeColCount={freezeColCount}
       onFreezeColCountChange={setFreezeColCount}
+      colWidths={colWidths}
+      onColWidthsChange={setColWidths}
       selection={selection}
       computedColumns={computedColumns}
     />

@@ -78,6 +78,12 @@ export async function handleFakeForgejoApi(req: http.IncomingMessage, res: http.
     const can = parts[3] === E2E_ORG
     return send(res, 200, { is_owner: can, is_admin: can, can_write: can, can_read: true, can_create_repository: can }), true
   }
+  if (method === 'GET' && parts[0] === 'orgs' && parts.length === 2) {
+    return [E2E_ORG, E2E_READONLY_ORG].includes(parts[1]) ? (send(res, 200, { username: parts[1] }), true) : (send(res, 404, { message: 'GetOrgByName' }), true)
+  }
+  if (method === 'GET' && parts[0] === 'orgs' && parts[2] === 'members') {
+    return send(res, 200, Number(url.searchParams.get('page') ?? 1) > 1 ? [] : [{ login: 'ann', full_name: 'Ann' }, { login: 'bob', full_name: 'Bob' }]), true
+  }
   if (method === 'GET' && parts[0] === 'orgs' && parts[2] === 'teams') {
     return send(res, 200, Number(url.searchParams.get('page') ?? 1) > 1 || parts[1] !== E2E_ORG ? [] : [{ id: 6, name: 'devs', permission: 'write', includes_all_repositories: false }]), true
   }
@@ -109,16 +115,41 @@ export async function handleFakeForgejoApi(req: http.IncomingMessage, res: http.
       const body = await readBody(req)
       if (typeof body['default_branch'] === 'string') git(['-C', dir, 'symbolic-ref', 'HEAD', `refs/heads/${body['default_branch']}`])
       if (typeof body['description'] === 'string') fs.writeFileSync(path.join(dir, 'polenta-description'), body['description'])
+      if (body['private'] === false) fs.writeFileSync(path.join(dir, 'polenta-public'), '')
+      if (body['private'] === true) fs.rmSync(path.join(dir, 'polenta-public'), { force: true })
       return send(res, 200, apiRepo(projectRoot, host, owner, name)), true
     }
     if (sub === 'collaborators' && who && !extra && method === 'PUT') {
       const body = await readBody(req)
       if (who.startsWith('inconnu')) return send(res, 422, { message: `user does not exist [uid: 0, name: ${who}]` }), true
-      list.push({ kind: 'user', name: who, level: String(body['permission'] ?? '') })
+      const existing = list.find(m => m.kind === 'user' && m.name === who)
+      if (existing) existing.level = String(body['permission'] ?? '')
+      else list.push({ kind: 'user', name: who, level: String(body['permission'] ?? '') })
       return send(res, 204), true
+    }
+    if (sub === 'collaborators' && who && !extra && method === 'DELETE') {
+      members.set(key, list.filter(m => !(m.kind === 'user' && m.name === who)))
+      return send(res, 204), true
+    }
+    if (sub === 'collaborators' && !who && method === 'GET') {
+      // `lecture` : la forge refuse la liste à un compte sans écriture.
+      if (owner === E2E_READONLY_ORG) return send(res, 403, { message: 'token denied' }), true
+      return send(res, 200, Number(url.searchParams.get('page') ?? 1) > 1 ? [] : list.filter(m => m.kind === 'user').map(m => ({ login: m.name, full_name: `${m.name} N` }))), true
+    }
+    if (sub === 'collaborators' && who && extra === 'permission' && method === 'GET') {
+      const level = list.find(m => m.kind === 'user' && m.name === who)?.level ?? 'read'
+      return send(res, 200, { permission: level, role_name: level }), true
+    }
+    if (sub === 'teams' && !who && method === 'GET') {
+      if (owner === E2E_READONLY_ORG) return send(res, 403, { message: 'token denied' }), true
+      return send(res, 200, list.filter(m => m.kind === 'team').map(m => ({ name: m.name, permission: 'write', includes_all_repositories: false }))), true
     }
     if (sub === 'teams' && who && method === 'PUT') {
       list.push({ kind: 'team', name: who })
+      return send(res, 204), true
+    }
+    if (sub === 'teams' && who && method === 'DELETE') {
+      members.set(key, list.filter(m => !(m.kind === 'team' && m.name === who)))
       return send(res, 204), true
     }
   }

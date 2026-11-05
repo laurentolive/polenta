@@ -40,25 +40,30 @@ remplaçant le paragraphe qui suit le titre. Un `README.md` sans cette forme n'e
 | `forge:repo-settings-available`, `forge:repo-settings` | exposés, chemin `[0]` |
 | `forge:update-repo-settings`, `forge:set-collaborator`, `forge:remove-collaborator`, `forge:set-repo-team`, `forge:remove-repo-team`, `forge:cancel-invitation` | exposés, chemin `[0]` |
 
-## 3. Point à trancher : niveau d'une équipe sur Forgejo
+## 3. Niveau d'une équipe sur Forgejo (mesuré)
 
-La spec (§3.2 et critère 1 du §3.3) prévoit d'attribuer une équipe à un repo **avec un niveau**, et de le changer.
-C'est le modèle de GitHub. Sur Forgejo et Gitea, à ma connaissance, le niveau est porté par **l'équipe**, pour tous
-ses repos : `PUT /repos/{o}/{r}/teams/{team}` n'a pas de niveau. **À mesurer au sprint 1.**
-
-Si la mesure le confirme, je propose, sans changer le reste de la spec :
+Mesure du 2026-11-05 (`specs/GH107-sprint1.md` §1) : `PUT /repos/{o}/{r}/teams/{team}` n'a pas de niveau, celui-ci
+appartient à l'équipe pour tous ses repos. Donc :
 
 - GitHub : niveau choisi et modifiable par repo ;
-- Forgejo : niveau de l'équipe affiché en lecture, attribution et retrait seulement, avec un lien vers l'équipe sur la
-  forge. Changer ce niveau ailleurs que sur la forge toucherait tous les repos de l'équipe, et la composition et les
-  réglages d'une équipe sont hors scope de la spec.
+- Forgejo : niveau affiché en lecture, attribution et retrait seulement, avec un lien vers les équipes sur la forge.
+  Une équipe `includes_all_repositories` n'a pas d'action de retrait.
 
-Conséquence sur le critère 1 du §3.3 : « Idem pour une équipe » deviendrait, sur Forgejo, attribuer puis retirer. Ce
-serait un amendement de spec, à faire valider.
+Le critère 1 du §3.3 de la spec est amendé en ce sens, comme le critère 2 pour `FORCE_PRIVATE` (§6).
+
+## 3bis. Écarts au moment du code
+
+- **Autocomplétion** : les membres sont rendus par `repoSettings` (`orgMembers`), `githubProvider.orgMembers` ajouté.
+  `forge:org-members`, qui sert le champ `user`, reste limité à Forgejo.
+- **Gardes** : refus en texte français, comme les autres erreurs de forge, sans marqueur traduit. La rétrogradation
+  du dernier admin direct est refusée comme son retrait.
+- **Lecteur** : une liste que la forge refuse (403, 404) reste vide, avec une mention (`membersRestricted`).
+- **README** : `forge:readme-state` et `forge:sync-readme`, `RepoSettingsService`. Hors intégration ou avec une
+  modification en attente sur ce fichier, rien n'est écrit et la fenêtre le dit. README absent : créé.
 
 ## 4. Mises à jour SPEC
 
-`SPEC-ELECTRON-DESKTOP` §20, `SPEC-TEMPLATES` §3, `SPEC-ACCOUNTS-AUTH` §8, `SPEC-WEB`, `SPEC-INDEX`.
+`SPEC-PROJECT-MANAGEMENT` §9.4, `SPEC-TEMPLATES` §3, `SPEC-INDEX`.
 
 ## 5. Scénarios de test
 
@@ -84,3 +89,10 @@ Légende : voir `specs/GH107-tests.md`.
 | S-16 | M | 3 | GitHub, connecté en `SEB-lolive` non admin | Lecture seule |
 | S-17 | M | 1, 2 | Forgejo du VPS | La forge suit chaque action |
 | S-18 | M | 1 | Équipe, sur une organisation GitHub de test et sur Forgejo | Selon le §3 |
+
+## 6. Forge du kit : pas de repo public
+
+`deploy/polenta-host.sh` fixe `repository__FORCE_PRIVATE=true`. Mesuré sur `acme` : `POST /user/repos` avec
+`private: false` répond 201 et crée un repo privé ; `PATCH { private: false }` répond 422. La fenêtre affiche le refus
+(`VisibilityChangeError`). Défaut de #107 corrigé ici : l'assistant signale un repo créé privé alors que public était
+demandé (étape `remote`, statut `admin`).

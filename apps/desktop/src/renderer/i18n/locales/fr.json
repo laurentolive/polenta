@@ -2711,5 +2711,41 @@
       "complete": "Compléter et ouvrir",
       "fill": "Initialiser le repo"
     }
+  },
+  "repoSettings": {
+    "title": "Paramètres du repo",
+    "offline": "Indisponible hors ligne : le serveur ne répond pas.",
+    "adminOnly": "Réservé aux administrateurs du repo : ces informations sont en lecture seule.",
+    "general": "Général",
+    "members": "Membres",
+    "description": "Description",
+    "noDescription": "Aucune description.",
+    "visibility": "Visibilité",
+    "publicConfirm": "Rendre ce repo public ? Tout son contenu, historique compris, deviendra lisible par tous.",
+    "makePublic": "Rendre public",
+    "readme": {
+      "ask": "Mettre aussi à jour le README.md ? Un commit sera créé sur la branche d'intégration et publié.",
+      "yes": "Mettre à jour le README",
+      "no": "Non",
+      "committed": "README.md mis à jour et publié.",
+      "pushFailed": "README.md mis à jour, mais sa publication a échoué ({{message}}). Publiez plus tard.",
+      "free": "Le README.md a une forme libre : il n'est pas réécrit.",
+      "unchanged": "Le README.md contient déjà cette description.",
+      "pending": "Le README.md a des modifications en attente : il n'est pas réécrit.",
+      "notOnIntegration": "Le README.md n'est mis à jour que sur la branche d'intégration ({{branch}}) : basculez dessus pour le faire."
+    },
+    "collaborators": "Collaborateurs",
+    "noCollaborator": "Aucun collaborateur direct.",
+    "invited": "Invitation envoyée à {{login}} : l'accès sera effectif quand elle sera acceptée.",
+    "invitations": "Invitations en attente",
+    "cancelInvitation": "Annuler",
+    "teams": "Équipes",
+    "noTeam": "Aucune équipe n'a accès à ce repo.",
+    "manageTeams": "Gérer les équipes sur le serveur",
+    "teamLevelOnForge": "Sur ce serveur, le niveau est celui de l'équipe, pour tous ses repos : il se règle sur le serveur. Les équipes qui couvrent tous les repos de l'organisation ne se retirent pas d'ici.",
+    "scopeMissing": "Votre connexion à {{host}} ne permet pas de lire toutes les équipes : reconnectez-vous à {{host}}.",
+    "restricted": "Le serveur ne donne pas la liste des membres à votre compte.",
+    "removeSelf": "Retirer votre propre accès administrateur ? Vous ne pourrez plus modifier ces paramètres.",
+    "removeSelfConfirm": "Retirer mon accès"
   }
 }

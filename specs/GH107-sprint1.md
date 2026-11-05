@@ -47,7 +47,9 @@ avec `write:user`. Sonde Python ; repos et équipe créés puis supprimés par l
 2. **Propriétaires** : sur une forge du kit, l'utilisateur crée ses repos dans l'organisation de
    l'instance ou dans son compte ; jamais de création d'organisation. `listOwners` garde le filtre
    `can_create_repository` existant.
-3. **Visibilité** : privé → public refusé par l'API pour un propriétaire non admin de l'instance.
+3. **Visibilité** : privé → public refusé par l'API pour un propriétaire non admin de l'instance. Cause
+   (relevée à GH108) : le kit fixe `FORCE_PRIVATE=true`. Une création avec `private: false` y répond 201
+   et crée un repo **privé, sans erreur** ; `RepoProvisioningService` le signale.
    `updateRepo` envoie la description et la visibilité dans deux appels, pour qu'un refus de
    visibilité n'annule pas la description. Le cas est à traiter dans `GH108-design.md`.
 4. **Collaborateurs** : la liste ne donne pas le niveau. `listCollaborators` lit

@@ -73,7 +73,7 @@ Second mode de connexion, visible uniquement quand le remote effectif résout ve
 - `auth:current-account` → `ForgeAccount | null` (sans jeton, sans réseau) : le compte par défaut s'il a un jeton, sinon le premier qui en a un. Remplace les anciennes boucles sur une liste d'hôtes codée en dur côté renderer.
 - `auth:logout` (desktop) : jetons locaux et compte supprimés, le compte suivant devient compte par défaut. Le jeton reste valide côté forge (révocable dans ses paramètres) : le panneau Compte d'un compte `forgejo` le rappelle.
 - Jetons « nus » d'anciennes versions (sans compte, sur `github.com`/`gitlab.com` seulement — `LEGACY_BARE_TOKEN_HOSTS`, seule liste d'hôtes hors provider) : pris en compte à la lecture (`hasAnyAccount`, `projectUsername`, `logout`), sans migration.
-- GH45 S4 — `forge:accounts` : comptes `forgejo` connectés (compte par défaut en tête), pour les fonctions de forge de l'accueil (SPEC-PROJECT-MANAGEMENT §9.1).
+- GH45 S4 — `forge:accounts` : comptes `forgejo` connectés (compte par défaut en tête), pour les projets de l'équipe. GH107 — `forge:repo-accounts` : comptes `github` et `forgejo` connectés, pour l'assistant « Ajouter un repo » (SPEC-PROJECT-MANAGEMENT §9.1) ; un compte `generic` n'y figure pas.
 
 ## 6. Configuration machine (option DSI, GH45)
 

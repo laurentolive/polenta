@@ -593,7 +593,8 @@
         "created": "Dépôt {{repo}} créé sur le serveur.",
         "repoName": "Nom du repo",
         "creating": "Création…",
-        "confirm": "Créer"
+        "confirm": "Créer",
+        "fromExisting": "Depuis un repo existant"
       }
     },
     "removeDependency": {
@@ -2669,19 +2670,46 @@
       "push": "Publication de la branche d'intégration",
       "defaultBranch": "Branche par défaut du serveur",
       "members": "Ajout des membres",
-      "open": "Ouverture"
+      "open": "Ouverture",
+      "integration": "Branche d'intégration",
+      "description": "Description",
+      "polenta": "Initialisation Polenta"
     },
     "status": {
       "done": "fait",
       "failed": "en échec",
-      "skipped": "non fait"
+      "skipped": "non fait",
+      "admin": "à faire par un administrateur"
     },
     "result": {
       "title": "Création incomplète",
-      "created": "Le repo {{repo}} a été créé sur le serveur (branche {{branch}}). Il n'est pas supprimé.",
+      "created": "Repo {{repo}} sur le serveur, branche {{branch}}. Polenta ne le supprime pas.",
       "steps": "Étapes",
-      "resume": "Les étapes non faites peuvent être reprises plus tard en ajoutant ce repo comme repo existant.",
-      "continue": "Continuer"
+      "resume": "Les étapes non faites peuvent être reprises plus tard, en ajoutant ce repo comme repo existant.",
+      "continue": "Continuer",
+      "titleTodo": "Ajout terminé, points à traiter"
+    },
+    "existing": {
+      "title": "Repo existant",
+      "titleEmpty": "Repo existant, vide",
+      "inspecting": "Lecture du repo…",
+      "adding": "Ajout en cours…",
+      "polentaIncomplete": "Ce projet Polenta n'est pas complet. Vous pouvez compléter ce qui manque, ou l'ouvrir tel quel.",
+      "notPolenta": "Ce repo n'est pas encore un projet Polenta. Seul ce qui manque est demandé.",
+      "branchHelp": "Sera créée depuis {{branch}}, puis désignée et publiée. Elle deviendra la branche par défaut du repo pour toute l'équipe.",
+      "descriptionHelp": "Reportée sur le serveur si elle y manque, et dans un README.md s'il n'y en a pas.",
+      "confirmInit": "Initialiser Polenta dans ce repo : commiter ses fichiers sur la branche d'intégration et les publier.",
+      "adminNote": "Vous n'êtes pas administrateur de ce repo : la description sur le serveur et la branche par défaut seront à faire par un administrateur.",
+      "refused": "Vous n'avez pas le droit d'écriture sur ce repo, et il lui manque : {{missing}}. Il ne peut pas être ajouté.",
+      "refusedEmpty": "Ce repo est vide et vous n'avez pas le droit d'écriture : il ne peut pas être ajouté.",
+      "missing": {
+        "integration": "une branche d'intégration",
+        "description": "une description et un README",
+        "polenta": "l'initialisation Polenta"
+      },
+      "asIs": "Ouvrir tel quel",
+      "complete": "Compléter et ouvrir",
+      "fill": "Initialiser le repo"
     }
   }
 }

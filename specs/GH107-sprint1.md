@@ -99,8 +99,10 @@ Conditions : organisation gratuite `polenta-test-org` (`laurentolive` admin), re
 
 1. **Droit de création dans une organisation** (§2.4) : admin de l'organisation → oui. Membre non admin :
    les champs `members_can_create_*` ne sont garantis que pour un admin, à mesurer avec un membre non admin.
-   S'ils sont `null`, l'organisation est proposée et le refus de la forge affiché, ce qui **ne respecte pas
-   le critère 7 du §2.4 de la spec : à arbitrer par l'humain**.
+   S'ils sont `null`, l'organisation est proposée et le refus de la forge affiché. **Décision de l'humain
+   (2026-11-05)** : acceptable, à condition d'un message explicatif clair (le compte n'a pas le droit de
+   créer un repo dans cette organisation ; demander ce droit à un admin de l'organisation, ou créer le repo
+   dans un autre propriétaire). Le critère 7 du §2.4 de la spec est amendé en ce sens.
 2. **Nom du repo** : validé côté Polenta (`[A-Za-z0-9._-]`, pas de `.` ni `-` en tête comme Forgejo) avant
    la création, sinon GitHub crée sous un autre nom sans le dire. Le provider compare le `name` rendu
    au nom demandé.
@@ -125,4 +127,4 @@ Conditions : organisation gratuite `polenta-test-org` (`laurentolive` admin), re
 | 2.2 Collaborateurs | même appel de liste | Forgejo : un appel de niveau par collaborateur ; GitHub : `role_name` |
 | 2.2 Équipes | `setRepoTeam(…, level?)` | Forgejo : niveau porté par l'équipe, équipes « tous les repos » non retirables |
 | 2.2 Modifier | un `PATCH` | Forgejo : privé → public refusé, tout le `PATCH` annulé ; GitHub : changement asynchrone |
-| 2.4 | droit de création à mesurer | Non garanti pour un membre non admin (point 1 ci-dessus) |
+| 2.4 | droit de création à mesurer | Non garanti pour un membre non admin : proposé, refus expliqué (point 1, décision de l'humain) |

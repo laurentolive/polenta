@@ -123,6 +123,75 @@ export interface ForgeOrg {
   label: string
 }
 
+// ─── Création et réglages d'un repo (GH107, design §2.1, mesures GH107-sprint1.md) ─
+
+export type RepoVisibility = 'private' | 'public'
+/** Niveaux que Polenta écrit ; une forge peut en rendre d'autres (`triage`, `maintain`, `owner`). */
+export type RepoAccessLevel = 'read' | 'write' | 'admin'
+
+/** Propriétaire où créer un repo : le compte lui-même ou une organisation. */
+export interface ForgeOwner {
+  name: string
+  /** Nom affiché (peut être vide). */
+  label: string
+  kind: 'user' | 'org'
+  /**
+   * `'unknown'` : la forge ne le dit pas (membre non admin d'une organisation GitHub) ; l'organisation
+   * est proposée et un refus est expliqué (critère 7 amendé de GH103 §2.4).
+   */
+  canCreate: true | 'unknown'
+}
+
+export interface ForgeOwners {
+  owners: ForgeOwner[]
+  /** GitHub : le jeton n'a pas `read:org`, des organisations peuvent manquer (reconnexion proposée). */
+  scopeMissing?: boolean
+}
+
+export interface CreateRepoInput {
+  owner: string
+  ownerKind: 'user' | 'org'
+  name: string
+  description: string
+  visibility: RepoVisibility
+  /** Forgejo : branche par défaut dès la création ; GitHub l'ignore (`main`), alignée après le push. */
+  defaultBranch?: string
+}
+
+export interface ForgeRepoDetails {
+  description: string
+  visibility: RepoVisibility
+  defaultBranch: string
+  permissions: { pull: boolean; push: boolean; admin: boolean }
+}
+
+export interface ForgeCollaborator {
+  login: string
+  /** `read`/`write`/`admin`, ou tel que la forge le nomme (`triage`, `maintain`). */
+  level: RepoAccessLevel | string
+}
+
+/** Équipe d'une organisation. `name` est l'identifiant des appels (le `slug` sur GitHub). */
+export interface ForgeTeam {
+  name: string
+  label: string
+}
+
+export interface ForgeRepoTeam extends ForgeTeam {
+  level: RepoAccessLevel | string
+  /** Forgejo : le niveau est celui de l'équipe, pour tous ses repos. */
+  levelEditable: boolean
+  /** Forgejo : une équipe « tous les repos » ne se retire pas repo par repo. */
+  removable: boolean
+}
+
+/** Invitation en attente (GitHub). */
+export interface ForgeInvitation {
+  id: number
+  login: string
+  level: RepoAccessLevel | string
+}
+
 /** Membre d'une organisation (autocomplétion des champs `user`). */
 export interface ForgeMember {
   login: string

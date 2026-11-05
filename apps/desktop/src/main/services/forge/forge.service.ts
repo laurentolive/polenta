@@ -4,13 +4,13 @@ import * as os from 'os'
 import * as path from 'path'
 import git from 'isomorphic-git'
 import type {
-  CreateOnServerResult, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess,
+  CreateOnServerResult, DefaultBranchOutcome, ForgeAccount, ForgeKind, ForgeMember, ForgeOrg, ForgeOwners, ForgeRepo, ForgeRepoAccess,
 } from '@polenta/types'
 
 import type { AuthService } from '../auth.service'
 import type { SyncService } from '../sync.service'
 import type { WorkspaceService } from '../workspace.service'
-import { RepoNameTakenError, type ForgeProvider } from './forge-provider'
+import { assertRepoName, RepoNameTakenError, type ForgeProvider } from './forge-provider'
 import { forgejoProvider } from './forgejo.provider'
 import { githubProvider } from './github.provider'
 import { ForgeHttpError } from './forge-http'
@@ -38,15 +38,27 @@ export class ForgeService {
     return this.auth.forgeAccounts()
   }
 
-  async listRepos(accountKey: string): Promise<ForgeRepo[]> {
-    const { account, token } = await this.require(accountKey)
-    // Le repo de configuration de l'organisation (GH45 S2b) n'est pas un projet Polenta.
-    return (await this.guard(account, () => forgejoProvider.listRepos!(account.baseUrl, token))).filter(r => r.name !== CONFIG_REPO)
+  /** GH107 — comptes GitHub et Forgejo connectés, où créer ou adopter un repo. */
+  repoAccounts(): Promise<ForgeAccount[]> {
+    return this.auth.repoAccounts()
   }
 
+  async listRepos(accountKey: string): Promise<ForgeRepo[]> {
+    const { account, token, provider } = await this.require(accountKey)
+    // Le repo de configuration de l'organisation (GH45 S2b) n'est pas un projet Polenta.
+    return (await this.guard(account, () => provider.listRepos!(account.baseUrl, token))).filter(r => r.name !== CONFIG_REPO)
+  }
+
+  /** GH107 — le compte, puis les organisations où créer un repo. */
+  async owners(accountKey: string): Promise<ForgeOwners> {
+    const { account, token, provider } = await this.require(accountKey)
+    return this.guard(account, () => provider.listOwners!(account.baseUrl, token, account.login))
+  }
+
+  /** Organisations où créer un repo (création sur le serveur, GH45 S4). */
   async creatableOrgs(accountKey: string): Promise<ForgeOrg[]> {
-    const { account, token } = await this.require(accountKey)
-    return this.guard(account, () => forgejoProvider.listCreatableOrgs!(account.baseUrl, token, account.login))
+    const { owners } = await this.owners(accountKey)
+    return owners.filter(o => o.kind === 'org').map(o => ({ name: o.name, label: o.label }))
   }
 
   /** Droits du compte sur le repo `origin` de `repoPath` ; `null` dans les cas sans objet. */
@@ -120,13 +132,11 @@ export class ForgeService {
   }
 
   private async createRemoteRepo(accountKey: string, org: string, name: string): Promise<ForgeRepo> {
-    if (!/^[A-Za-z0-9._-]{1,100}$/.test(name) || name.startsWith('.')) {
-      throw new Error(`Nom « ${name} » invalide : lettres, chiffres, « - », « _ » et « . » seulement.`)
-    }
-    const { account, token } = await this.require(accountKey)
+    assertRepoName(name)
+    const { account, token, provider } = await this.require(accountKey)
     return this.guard(account, async () => {
-      if (await forgejoProvider.repoExists!(account.baseUrl, token, org, name)) throw new RepoNameTakenError(`${org}/${name}`)
-      return forgejoProvider.createOrgRepo!(account.baseUrl, token, org, name)
+      if (await provider.repoExists!(account.baseUrl, token, org, name)) throw new RepoNameTakenError(`${org}/${name}`)
+      return provider.createRepo!(account.baseUrl, token, { owner: org, ownerKind: 'org', name, description: '', visibility: 'private', defaultBranch: 'main' })
     })
   }
 
@@ -161,10 +171,12 @@ export class ForgeService {
     }
   }
 
-  private async require(accountKey: string): Promise<{ account: ForgeAccount; token: string }> {
+  /** GH107 — compte d'une forge ayant un provider (Forgejo ou GitHub), avec ce provider. */
+  private async require(accountKey: string): Promise<{ account: ForgeAccount; token: string; provider: ForgeProvider }> {
     const found = await this.auth.accountWithTokenByKey(accountKey)
-    if (!found || found.account.provider !== 'forgejo') throw new Error('Compte introuvable ou déconnecté : reconnectez-vous.')
-    return found
+    const provider = found ? providerFor(found.account.provider) : null
+    if (!found || !provider) throw new Error('Compte introuvable ou déconnecté : reconnectez-vous.')
+    return { ...found, provider }
   }
 
   /**

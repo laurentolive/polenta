@@ -1,20 +1,27 @@
-import type { ForgeDetection, ForgeIdentity, ForgeMember, ForgeOrg, ForgeRepo, PasswordLoginResult } from '@polenta/types'
+import type {
+  ForgeCollaborator, ForgeDetection, ForgeIdentity, ForgeMember, ForgeOwner, ForgeRepo, ForgeRepoTeam, PasswordLoginResult,
+} from '@polenta/types'
 
 import { isNetworkUnreachable, describeFetchError } from '../net-proxy'
 import { forgeRequest, ForgeHttpError, normalizeBaseUrl } from './forge-http'
-import { RepoNameTakenError, type ForgeProvider } from './forge-provider'
+import {
+  assertRepoName, hostOf, normalizeLevel, OwnerCreateForbiddenError, RepoNameTakenError, ScopeMissingError, UnknownAccountError,
+  VisibilityChangeError, type ForgeProvider,
+} from './forge-provider'
 import { GITHUB_HOST } from './github.provider'
 
 /**
  * GH45 — Forgejo et Gitea (API /api/v1 commune). Comportements mesurés le 2026-10-09/10 sur
- * Forgejo 15.0.9 et Gitea 28.1.0 (specs/GH45-sprint1.md §6, GH45-design.md §12).
+ * Forgejo 15.0.9 et Gitea 28.1.0 (specs/GH45-sprint1.md §6, GH45-design.md §12), et le 2026-11-05
+ * sur Forgejo 15.0.9 pour la création et les réglages d'un repo (specs/GH107-sprint1.md §1).
  */
 
 /**
  * Scopes du jeton créé à la connexion par mot de passe : `write:organization` est nécessaire pour
- * créer un repo dans une organisation (`read:organization` → 403).
+ * créer un repo dans une organisation (`read:organization` → 403), `write:user` pour en créer un
+ * dans le compte personnel (GH107 — `read:user` → 403 « required scope(s): [write:user] »).
  */
-export const POLENTA_TOKEN_SCOPES = ['write:repository', 'read:user', 'write:organization'] as const
+export const POLENTA_TOKEN_SCOPES = ['write:repository', 'write:user', 'write:organization'] as const
 
 export const forgejoProvider: ForgeProvider = {
   kind: 'forgejo',
@@ -31,7 +38,7 @@ export const forgejoProvider: ForgeProvider = {
     return repos.map(toForgeRepo).sort((a, b) => a.fullName.localeCompare(b.fullName))
   },
 
-  async listCreatableOrgs(baseUrl, token, login) {
+  async listOwners(baseUrl, token, login) {
     const orgs = await paginate<{ username: string; full_name?: string }>(`${baseUrl}/api/v1/user/orgs`, token)
     // Droit de création par organisation : `can_create_repository` seul (can_read/can_write sont
     // incohérents sur Gitea — mesuré au S1, design §12).
@@ -44,10 +51,14 @@ export const forgejoProvider: ForgeProvider = {
         return false
       }
     }))
-    return orgs
-      .filter((_, i) => checks[i])
-      .map(org => ({ name: org.username, label: org.full_name?.trim() ?? '' }))
-      .sort((a, b) => a.name.localeCompare(b.name))
+    // Pas de création d'organisation : interdite aux utilisateurs sur une forge du kit (GH107-sprint1 §1.1).
+    const user: ForgeOwner = { name: login, label: '', kind: 'user', canCreate: true }
+    return {
+      owners: [user, ...orgs
+        .filter((_, i) => checks[i])
+        .map((org): ForgeOwner => ({ name: org.username, label: org.full_name?.trim() ?? '', kind: 'org', canCreate: true }))
+        .sort((a, b) => a.name.localeCompare(b.name))],
+    }
   },
 
   async repoExists(baseUrl, token, owner, name) {
@@ -60,17 +71,120 @@ export const forgejoProvider: ForgeProvider = {
     }
   },
 
-  async createOrgRepo(baseUrl, token, org, name) {
+  async createRepo(baseUrl, token, input) {
+    assertRepoName(input.name)
+    const url = input.ownerKind === 'user' ? `${baseUrl}/api/v1/user/repos` : `${baseUrl}/api/v1/orgs/${encodeURIComponent(input.owner)}/repos`
     try {
-      const { data } = await forgeRequest<ApiRepo>(`${baseUrl}/api/v1/orgs/${encodeURIComponent(org)}/repos`, {
+      const { data } = await forgeRequest<ApiRepo>(url, {
         method: 'POST', token,
-        json: { name, private: true, auto_init: false, default_branch: 'main' },
+        json: {
+          name: input.name, description: input.description, private: input.visibility === 'private',
+          auto_init: false, default_branch: input.defaultBranch ?? 'main',
+        },
       })
       return toForgeRepo(data)
     } catch (err) {
-      if (err instanceof ForgeHttpError && err.status === 409) throw new RepoNameTakenError(`${org}/${name}`)
+      if (!(err instanceof ForgeHttpError)) throw err
+      if (err.status === 409) throw new RepoNameTakenError(`${input.owner}/${input.name}`)
+      const scope = /required scope\(s\): \[([^\]]+)\]/.exec(err.forgeMessage)
+      if (err.status === 403 && scope) throw new ScopeMissingError(hostOf(baseUrl), scope[1])
+      // Non-membre : 404 (organisation privée invisible) ; membre sans droit : 403.
+      if (input.ownerKind === 'org' && (err.status === 403 || err.status === 404)) throw new OwnerCreateForbiddenError(input.owner, err.forgeMessage)
       throw err
     }
+  },
+
+  async repoDetails(baseUrl, token, owner, repo) {
+    try {
+      const { data } = await forgeRequest<ApiRepo>(repoUrl(baseUrl, owner, repo), { token, timeoutMs: 10_000 })
+      const p = data.permissions
+      return {
+        description: data.description ?? '', visibility: data.private ? 'private' : 'public', defaultBranch: data.default_branch ?? '',
+        permissions: { pull: p?.pull ?? true, push: p?.push ?? false, admin: p?.admin ?? false },
+      }
+    } catch (err) {
+      if (err instanceof ForgeHttpError && err.status === 404) return null
+      throw err
+    }
+  },
+
+  async updateRepo(baseUrl, token, owner, repo, patch) {
+    // Deux appels : un refus de visibilité annule tout le PATCH, description comprise (mesuré).
+    if (patch.description !== undefined) {
+      await forgeRequest(repoUrl(baseUrl, owner, repo), { method: 'PATCH', token, json: { description: patch.description } })
+    }
+    if (patch.visibility !== undefined) {
+      try {
+        await forgeRequest(repoUrl(baseUrl, owner, repo), { method: 'PATCH', token, json: { private: patch.visibility === 'private' } })
+      } catch (err) {
+        if (err instanceof ForgeHttpError && err.status === 422) throw new VisibilityChangeError(patch.visibility, err.forgeMessage, false)
+        throw err
+      }
+    }
+  },
+
+  async listCollaborators(baseUrl, token, owner, repo) {
+    // La liste ne porte pas le niveau : un appel `/permission` par collaborateur (mesuré).
+    const users = await paginate<{ login: string }>(`${repoUrl(baseUrl, owner, repo)}/collaborators`, token)
+    const others = users.filter(u => u.login.toLowerCase() !== owner.toLowerCase())
+    const levels = await Promise.all(others.map(async u => {
+      const { data } = await forgeRequest<{ permission?: string; role_name?: string }>(
+        `${repoUrl(baseUrl, owner, repo)}/collaborators/${encodeURIComponent(u.login)}/permission`, { token })
+      return normalizeLevel(data.role_name || data.permission || '')
+    }))
+    return others
+      .map((u, i): ForgeCollaborator => ({ login: u.login, level: levels[i] }))
+      .sort((a, b) => a.login.localeCompare(b.login))
+  },
+
+  async setCollaborator(baseUrl, token, owner, repo, login, level) {
+    try {
+      await forgeRequest(`${repoUrl(baseUrl, owner, repo)}/collaborators/${encodeURIComponent(login)}`, { method: 'PUT', token, json: { permission: level } })
+    } catch (err) {
+      if (err instanceof ForgeHttpError && err.status === 422 && /does not exist/i.test(err.forgeMessage)) throw new UnknownAccountError(login)
+      throw err
+    }
+    return 'added'
+  },
+
+  async removeCollaborator(baseUrl, token, owner, repo, login) {
+    await forgeRequest(`${repoUrl(baseUrl, owner, repo)}/collaborators/${encodeURIComponent(login)}`, { method: 'DELETE', token })
+  },
+
+  async listRepoTeams(baseUrl, token, owner, repo) {
+    let teams: ApiTeam[]
+    try {
+      teams = (await forgeRequest<ApiTeam[] | null>(`${repoUrl(baseUrl, owner, repo)}/teams`, { token })).data ?? []
+    } catch (err) {
+      // Repo personnel : 405 « repo is not owned by an organization ».
+      if (err instanceof ForgeHttpError && err.status === 405) return []
+      throw err
+    }
+    return teams
+      .map((t): ForgeRepoTeam => ({
+        name: t.name, label: t.name, level: normalizeLevel(t.permission ?? ''),
+        levelEditable: false, removable: !t.includes_all_repositories,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  },
+
+  async listOrgTeams(baseUrl, token, org) {
+    const teams = await paginate<ApiTeam>(`${baseUrl}/api/v1/orgs/${encodeURIComponent(org)}/teams`, token)
+    return teams.map(t => ({ name: t.name, label: t.name })).sort((a, b) => a.name.localeCompare(b.name))
+  },
+
+  async setRepoTeam(baseUrl, token, owner, repo, team) {
+    try {
+      await forgeRequest(`${repoUrl(baseUrl, owner, repo)}/teams/${encodeURIComponent(team)}`, { method: 'PUT', token })
+    } catch (err) {
+      // Déjà ajoutée : 422 — l'état voulu est atteint.
+      if (err instanceof ForgeHttpError && err.status === 422 && /already/i.test(err.forgeMessage)) return
+      throw err
+    }
+  },
+
+  async removeRepoTeam(baseUrl, token, owner, repo, team) {
+    await forgeRequest(`${repoUrl(baseUrl, owner, repo)}/teams/${encodeURIComponent(team)}`, { method: 'DELETE', token })
   },
 
   async repoPermissions(baseUrl, token, owner, repo) {
@@ -126,7 +240,18 @@ interface ApiRepo {
   description?: string
   clone_url: string
   default_branch?: string
+  private?: boolean
   permissions?: { pull?: boolean; push?: boolean; admin?: boolean }
+}
+
+interface ApiTeam {
+  name: string
+  permission?: string
+  includes_all_repositories?: boolean
+}
+
+function repoUrl(baseUrl: string, owner: string, repo: string): string {
+  return `${baseUrl}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
 }
 
 function toForgeRepo(r: ApiRepo): ForgeRepo {

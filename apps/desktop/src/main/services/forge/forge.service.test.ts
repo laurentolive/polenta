@@ -79,20 +79,26 @@ describe('forgejoProvider — fonctions P1', () => {
     expect(forge.requests[0].headers.authorization).toBe('token tok')
   })
 
-  it('listCreatableOrgs : seulement les organisations où can_create_repository', async () => {
+  it('listOwners : le compte, puis les organisations où can_create_repository', async () => {
     forge.route('GET', '/api/v1/user/orgs', () => ({ status: 200, json: [{ username: 'acme', full_name: 'ACME' }, { username: 'lecture' }] }))
     forge.route('GET', '/api/v1/users/bob/orgs/acme/permissions', () => ({ status: 200, json: { is_owner: false, can_read: true, can_write: true, can_create_repository: true } }))
     // Gitea : can_read peut être faux pour un lecteur d'équipe — seul can_create_repository compte.
     forge.route('GET', '/api/v1/users/bob/orgs/lecture/permissions', () => ({ status: 200, json: { is_owner: false, can_read: false, can_write: false, can_create_repository: false } }))
-    expect(await forgejoProvider.listCreatableOrgs!(forge.baseUrl, 'tok', 'bob')).toEqual([{ name: 'acme', label: 'ACME' }])
+    expect(await forgejoProvider.listOwners!(forge.baseUrl, 'tok', 'bob')).toEqual({
+      owners: [
+        { name: 'bob', label: '', kind: 'user', canCreate: true },
+        { name: 'acme', label: 'ACME', kind: 'org', canCreate: true },
+      ],
+    })
   })
 
-  it('createOrgRepo : repo privé et vide ; nom pris (409) → RepoNameTakenError', async () => {
+  it('createRepo : repo vide dans une organisation ; nom pris (409) → RepoNameTakenError', async () => {
     forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/nouveau') }))
-    expect((await forgejoProvider.createOrgRepo!(forge.baseUrl, 'tok', 'acme', 'nouveau')).cloneUrl).toBe('https://forge.test/acme/nouveau.git')
-    expect(JSON.parse(forge.requests[0].body)).toEqual({ name: 'nouveau', private: true, auto_init: false, default_branch: 'main' })
+    const input = { owner: 'acme', ownerKind: 'org' as const, name: 'nouveau', description: '', visibility: 'private' as const }
+    expect((await forgejoProvider.createRepo!(forge.baseUrl, 'tok', input)).cloneUrl).toBe('https://forge.test/acme/nouveau.git')
+    expect(JSON.parse(forge.requests[0].body)).toEqual({ name: 'nouveau', description: '', private: true, auto_init: false, default_branch: 'main' })
     forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 409, json: { message: 'The repository with the same name already exists.' } }))
-    await expect(forgejoProvider.createOrgRepo!(forge.baseUrl, 'tok', 'acme', 'nouveau')).rejects.toBeInstanceOf(RepoNameTakenError)
+    await expect(forgejoProvider.createRepo!(forge.baseUrl, 'tok', input)).rejects.toBeInstanceOf(RepoNameTakenError)
   })
 
   it('repoPermissions : 404 → null', async () => {

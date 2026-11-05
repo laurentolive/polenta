@@ -6,7 +6,7 @@ import type {
   CreateVersionDto, ProductVersion, UpdateVersionDto, VersionBacklogItem, VersionComponentNode, VersionPage,
   VersionReleasePreview, VersionSummary, VersionAnalysis, VersionTestsToRun, ImpactAnalysisStatus,
 } from '@polenta/types'
-import type { Issue, TransitionCheck, Validation, ValidationPage, ValidationVersionItem,
+import type { Issue, RequirementReflectionsList, TransitionCheck, Validation, ValidationPage, ValidationVersionItem,
   MergeFileDetail,
   MergeFileDraft,
   MergeFinalizeResult,
@@ -781,6 +781,10 @@ export interface ApiClient {
     approveObject(repoPath: string, reviewId: string, objectId: string, reviewerId: string): Promise<Review>
     revokeApproval(repoPath: string, reviewId: string, objectId: string, reviewerId: string): Promise<Review>
     close(repoPath: string, reviewId: string, status: 'approved' | 'closed'): Promise<Review>
+  }
+  /** GH210 — reflets Design et Validation des exigences d'un type, par ID. */
+  reflections: {
+    list(repoPath: string, objectTypeRef: string, workspaceDir?: string): Promise<RequirementReflectionsList>
   }
   /** GH206 — contraintes de transition : pré-contrôle des menus de statut, un résultat par statut d'arrivée. */
   transitions: {

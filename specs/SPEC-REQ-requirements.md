@@ -881,4 +881,8 @@ elle vaut feu vert ; sur la version produit, go production série. Détail : `sp
   Signée : verrouillée, seule sortie `annulee`. Suppression : validation en cours seulement. Version référencée non
   supprimable (`VERSION_HAS_VALIDATION`). Composant en lecture seule : `READONLY_REPO`, à faire dans son repo.
 - **Sous-composants** : leur validation s'affiche dans l'en-tête, sans bloquer la signature (Q6).
+- **Reflets dans les vues exigence** (GH210, `specs/GH210.md`) : colonnes facultatives Design (statut de design ci-dessus)
+  et Validation (décision de la **dernière validation signée** du repo de l'exigence, dans l'ordre des livraisons de sa
+  version, avec le label de cette version ; une annulée ne compte plus ; exigence sans entrée : « — »). Lus dans le repo
+  propriétaire (sous-composant compris), rien n'est stocké (`reflections:list`). Vue : SPEC-SYSTEM-VIEW.
 - **Vue** : SPEC-ELECTRON-DESKTOP §19.2. **MCP** : SPEC-MCP-SERVER §4.10. **Graphe** : SPEC-DASHBOARDS.

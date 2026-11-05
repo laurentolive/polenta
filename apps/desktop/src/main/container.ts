@@ -11,6 +11,7 @@ import { ParametersService } from './services/parameters.service'
 import { ReqRefsService } from './services/req-refs.service'
 import { TraceabilityService } from './services/traceability.service'
 import { TransitionGuardService } from './services/transition-guard.service'
+import { ReflectionsService } from './services/reflections.service'
 import { ReviewsService } from './services/reviews.service'
 import { RepoWatcherService } from './services/repo-watcher.service'
 import { SchemaService } from './services/schema.service'
@@ -119,6 +120,8 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   const validations = new ValidationsService(git, sync, schema, versions, traceability, history, {
     history: (repoPath, target, workspaceDir) => executionHistory.history(repoPath, target, workspaceDir),
   })
+  // GH210 — reflets Design et Validation des vues exigence.
+  const reflections = new ReflectionsService(schema, versions, validations)
   // GH203 — vues enregistrées du ⚙️.
   const savedViews = new SavedViewsService((repoPath, workspaceDir) => versions.isReadonly(repoPath, workspaceDir))
   watcher.onFileChange((repoPath, relPath) => {
@@ -201,6 +204,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
 
   return {
     transitionGuard,
+    reflections,
     auth,
     git,
     sync,

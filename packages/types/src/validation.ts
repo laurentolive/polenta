@@ -77,6 +77,18 @@ export interface Validation {
 export type ValidationState = 'open' | 'signed' | 'cancelled'
 
 /** Lu des marques du type : `isApproval` → signée, `isTerminal` → annulée, sinon en cours. */
+/** GH210 — reflets d'une exigence dans les vues : statut de design et décision de la dernière validation signée. */
+export interface RequirementReflections {
+  design?: { versionId: string; versionLabel: string }
+  validation?: { decision: string; decisionLabel: string; validationId: string; versionId: string; versionLabel: string }
+}
+
+/** GH210 — reflets des exigences d'un type, lus dans le repo propriétaire (lien vers la page d'une version). */
+export interface RequirementReflectionsList {
+  repoPath: string
+  requirements: Record<string, RequirementReflections>
+}
+
 export function validationState(typeDef: Pick<ObjectTypeDefinition, 'statuses'> | null | undefined, status: string): ValidationState {
   const def = typeDef?.statuses?.find(s => s.name === status)
   if (def?.isApproval) return 'signed'

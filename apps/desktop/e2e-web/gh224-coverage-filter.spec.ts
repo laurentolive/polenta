@@ -63,7 +63,7 @@ test('GH224-1 — filtre de colonne Couverture sur le libellé du badge', async 
   await expect(row(coveredId).getByText('Couvert', { exact: true })).toBeVisible()
   await expect(row(uncoveredId).getByText('Non couvert', { exact: true })).toBeVisible()
 
-  const header = s.page.locator('th').filter({ hasText: 'Couverture' })
+  const header = s.page.locator('th').filter({ hasText: 'Vérification' })
   const icon = header.getByTitle('Filtrer cette colonne')
   await icon.click()
   const input = s.page.locator('[data-column-filter-popover]').getByPlaceholder('Filtrer…')

@@ -62,6 +62,11 @@ export function useLiveFileSync(): void {
         qc.invalidateQueries({ queryKey: ['versions'] })
         qc.invalidateQueries({ queryKey: ['validations'] })
       }
+      // GH210 — reflets Design et Validation : versions, validations, exigences, schéma.
+      if (relPath === '*' || relPath === '.polenta/schema.yaml' || relPath === 'polenta-repo.yaml'
+        || /^(requirements|versions|validations)\//.test(relPath)) {
+        qc.invalidateQueries({ queryKey: ['reflections'] })
+      }
       // GH197 — historique des exécutions : runs, campagnes, tests et liens (couverture d'une exigence).
       if (relPath === '*' || /^(tests|test-runs|links|campaigns)\//.test(relPath)) {
         qc.invalidateQueries({ queryKey: ['execution-history'] })

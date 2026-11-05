@@ -19,6 +19,7 @@ import { decodeProjectId } from '../../lib/projectId'
 import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
 import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
+import { REFLECTION_COLUMNS, ReflectionValue, type ReflectionsData } from './ReflectionCell'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -366,6 +367,8 @@ export interface EditViewProps {
   linkTypes?: LinkTypeDefinition[]
   objectLinks?: ObjectLink[]
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  /** GH210 — reflets Design et Validation (exigences), chargés si une colonne est visible. */
+  reflections?: ReflectionsData
   testsById?: Map<string, TestCase>
   repoPath?: string
   candidateObjects?: { id: string; title: string; objectTypeRef: string }[]
@@ -405,6 +408,7 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
   linkTypes = [],
   objectLinks = [],
   coverageByReqId,
+  reflections,
   testsById,
   repoPath,
   projectId,
@@ -661,6 +665,13 @@ export const EditView = forwardRef<EditViewHandle, EditViewProps>(function EditV
                 coverage={coverageByReqId?.get(objectData['id'] ?? '')}
                 testsById={testsById ?? new Map()}
               />
+              {/* GH210 — reflets Design et Validation, en lecture seule. */}
+              {REFLECTION_COLUMNS.map(c => (
+                <span key={c} className="text-xs text-ink-2 ml-2">
+                  {t(c === 'designStatus' ? 'system.fieldConfig.colDesign' : 'system.fieldConfig.colValidation')} :{' '}
+                  <ReflectionValue col={c} objectId={objectData['id']} data={reflections} />
+                </span>
+              ))}
             </div>
           )}
           {/* GH200 — élément approuvé : contenu en lecture seule, le statut (réouverture) reste modifiable. */}

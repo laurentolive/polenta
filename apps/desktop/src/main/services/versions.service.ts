@@ -144,9 +144,20 @@ export class VersionsService {
    * des livraisons) dont l'état figé contient l'exigence dans sa `version` courante.
    */
   async designVersions(repoPath: string): Promise<Map<string, string>> {
-    const states = (await this.elements(repoPath, 'requirement')).map(el => el.state)
-    const design = await this.designVersionsFor(repoPath, states)
+    const design = await this.designOf(repoPath)
     return new Map([...design].map(([id, v]) => [id, v.id]))
+  }
+
+  /** GH210 — statut de design de chaque exigence du repo, avec le label de la version (reflet des vues exigence). */
+  async designOf(repoPath: string): Promise<Map<string, { id: string; title: string }>> {
+    const states = (await this.elements(repoPath, 'requirement')).map(el => el.state)
+    return this.designVersionsFor(repoPath, states)
+  }
+
+  /** GH210 — versions released du repo, dans l'ordre des livraisons (`freeze.at`). */
+  async releasedVersions(repoPath: string): Promise<ProductVersion[]> {
+    const vt = await this.versionType(repoPath)
+    return vt ? releasedInOrder(vt.typeDef, await this.list(repoPath)) : []
   }
 
   /**

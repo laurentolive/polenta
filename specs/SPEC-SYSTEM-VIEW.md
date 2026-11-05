@@ -103,7 +103,7 @@ ici en un seul, chaque entrée étant une paire (`SystemNode`, type).
   discrète dans son en-tête. Cliquer dessus ouvre un popover ancré sous l'en-tête,
   avec un champ texte et les mêmes 3 options que la barre de filtre globale
   (sensibilité à la casse, mot entier, expression régulière).
-- La colonne `Couverture` (`coverageStatus`) est filtrée sur le libellé affiché par son badge
+- La colonne `Vérification` (`coverageStatus`, libellée « Couverture » avant GH210) est filtrée sur le libellé affiché par son badge
   (Non couvert / Couvert / Validé / En échec / À revalider, langue de l'interface), comme
   `Statut` sur son libellé (GH136) ; une ligne sans badge a un texte vide. En recherche
   « contient », `couvert` garde aussi « Non couvert » : la regex `^couvert` l'isole (GH224).
@@ -592,6 +592,15 @@ statut de cycle de vie. **En Édition, contrairement à ce que dit le paragraphe
 cette vue (écart déjà relevé dans [SPEC-AUDIT.md](SPEC-AUDIT.md) §"Configuration des champs ⚙️",
 antérieur à ce ticket) — le badge y est donc affiché **en permanence** pour les exigences plutôt que
 d'être désactivable, plutôt que d'élargir ce ticket pour combler cet écart plus général.
+
+**`designStatus` et `validationStatus` (GH210)** — reflets des deux autres statuts d'une exigence (MILESTONE-D §2),
+mêmes règles que `coverageStatus` : exigences seulement, décochés par défaut dans ⚙️, colonnes du Tableau, en-tête
+de carte du Document, affichés en permanence dans l'Édition. Valeurs : label de la première version released qui
+inclut l'exigence avec un état identique (« 1.2.4 ») ; décision de la dernière validation signée du composant avec
+le label de sa version (« Conforme (1.2.4) ») ; « — » sinon (SPEC-REQ §13). Filtrés et exportés sur ce texte. Le
+label de version ouvre la page de la version sur le desktop, texte seul sur le web. Calcul (`reflections:list`) lancé
+seulement si une des colonnes est visible ou la vue Édition ouverte ; invalidé à tout changement de version, de
+validation, d'exigence ou de schéma. Les trois colonnes calculées s'appellent Vérification, Design, Validation.
 
 ---
 

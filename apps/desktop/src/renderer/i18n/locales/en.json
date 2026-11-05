@@ -844,7 +844,7 @@
       "colCreatedAt": "Created on",
       "colUpdatedAt": "Modified on",
       "colAuthor": "Author",
-      "colCoverage": "Coverage",
+      "colCoverage": "Verification",
       "tabExcel": "Table",
       "tabWord": "Document",
       "tabPopup": "Popup",
@@ -857,7 +857,9 @@
       "showFolders": "Show folder headings",
       "computedColumns": "Computed columns",
       "computedGroupPending": "Computing columns…",
-      "computedGroupEmpty": "No column in the result"
+      "computedGroupEmpty": "No column in the result",
+      "colDesign": "Design",
+      "colValidation": "Validation"
     },
     "coverage": {
       "noLinkedTest": "No linked test",

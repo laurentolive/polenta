@@ -17,7 +17,10 @@ const SYSTEM_COLUMN_LABELS: Record<string, string> = {
   updatedAt: 'Modifié le',
   author: 'Auteur',
   steps: 'Étapes',
-  coverageStatus: 'Couverture',
+  // GH210 — les trois statuts calculés d'une exigence : Vérification (couverture), Design, Validation.
+  coverageStatus: 'Vérification',
+  designStatus: 'Design',
+  validationStatus: 'Validation',
 }
 
 /** Colonnes affichées par défaut (aucun choix personnel pour le type ou la vue) — même ordre pour

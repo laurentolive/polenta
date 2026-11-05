@@ -32,6 +32,7 @@ import { useOrgMembers } from './UserFieldInput'
 import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
 import { rowClick, checkboxClick, groupState, toggleGroup, type GroupState } from '../../lib/gridSelection'
 import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
+import { isReflectionColumn, ReflectionValue, reflectionText, type ReflectionsData } from './ReflectionCell'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,8 @@ interface Props {
   linkTypes?: LinkTypeDefinition[]
   linksByObjectId?: Map<string, ObjectLink[]>
   coverageByReqId?: Map<string, { coverageStatus: CoverageStatus; cells: MatrixCell[] }>
+  /** GH210 — reflets Design et Validation (exigences), chargés si une colonne est visible. */
+  reflections?: ReflectionsData
   /** GH83 — ids marqués `needsRevalidation` (T172) : ⚠ à côté du statut. Hors de `objects`,
    *  dont toutes les valeurs alimentent le filtre texte. */
   revalidationIds?: Set<string>
@@ -194,7 +197,7 @@ function getFieldValue(obj: AnyObject, field: string): string {
 
 function isSystemField(field: string): boolean {
   // GH70 — une colonne calculée est en lecture seule, comme un champ système.
-  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'coverageStatus'].includes(field) || isComputedColumnKey(field)
+  return ['section', 'id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'coverageStatus', 'designStatus', 'validationStatus'].includes(field) || isComputedColumnKey(field)
 }
 
 function isDescendantOf(node: TypeTreeNode, targetId: string): boolean {
@@ -1263,6 +1266,7 @@ function ExcelViewInner({
   linkTypes = [],
   linksByObjectId,
   coverageByReqId,
+  reflections,
   revalidationIds,
   testsById,
   repoPath,
@@ -1587,6 +1591,8 @@ function ExcelViewInner({
       const coverage = node.objectId ? coverageByReqId?.get(node.objectId) : undefined
       return coverage ? t(`system.coverage.status.${coverage.coverageStatus}`) : ''
     }
+    // GH210 — reflets : texte affiché, filtré et exporté.
+    if (isReflectionColumn(col)) return reflectionText(col, node.objectId ? reflections?.byId.get(node.objectId) : undefined)
     const text = getCellText(node, obj, col)
     return col === 'status' ? statusFieldDef?.valueLabels?.[text] ?? text : text
   }
@@ -2525,6 +2531,15 @@ function ExcelViewInner({
                         freezeStyle={freezeStyle}
                         stickyBg={stickyBg}
                       />
+                    )
+                  }
+                  if (isReflectionColumn(col)) {
+                    return (
+                      <td key={col} style={freezeStyle} className={['border border-edge px-2 py-1 text-xs', stickyBg ?? ''].join(' ')}>
+                        {typeDef?.category === 'requirement' && node.objectId && (
+                          <ReflectionValue col={col} objectId={node.objectId} data={reflections} />
+                        )}
+                      </td>
                     )
                   }
                   if (col === 'coverageStatus') {

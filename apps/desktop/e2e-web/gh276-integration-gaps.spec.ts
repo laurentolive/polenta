@@ -73,6 +73,8 @@ test('GH276-2 — graphe : une int-* créée depuis un commit est désignée', a
 
 test('GH276-3 — panneau Version : une int-* créée par « Nouvelle branche… » est désignée (T-15)', async () => {
   await s.openView('Version')
+  // GH289 — le panneau s'ouvre sur la version produit : l'arbre des repos est sous le graphe.
+  await s.page.getByTitle("Voir l'arbre de versions").click()
   await s.page.getByPlaceholder('branche…').first().click()
   await s.page.getByRole('button', { name: 'Nouvelle branche…' }).first().click()
   await s.page.getByPlaceholder('nom-de-branche').fill('int-gh276v')

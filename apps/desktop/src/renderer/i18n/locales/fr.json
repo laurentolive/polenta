@@ -2365,7 +2365,7 @@
     }
   },
   "versions": {
-    "title": "Produit",
+    "title": "Version produit",
     "home": "Choisissez un composant, une version ou un backlog dans le panneau latéral.",
     "label": "Label",
     "status": "Statut",

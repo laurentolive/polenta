@@ -102,7 +102,7 @@ export function AppLayout() {
 
   // Remembers which sub-view of the "version" panel (graph/baseline/version-diff) was
   // last open, so switching to another activity-bar panel and back
-  // restores it instead of always resetting to the graph — see handleSelectPanel below.
+  // restores it instead of always resetting to the product versions (GH289) — see handleSelectPanel below.
   const [lastVersionRoute, setLastVersionRoute] = useState<{ pathname: string; search: string } | null>(null)
 
   useEffect(() => {
@@ -235,13 +235,16 @@ export function AppLayout() {
               })
               break
             case '/graph':
+              navigate({ to: '/graph', search: { projectId: currentProjectId, sha: params.get('sha') ?? undefined } })
+              break
             default:
               // GH201 — page d'une version ou backlog : retour à la même page.
               if (lastVersionRoute && isProductVersionsPath(lastVersionRoute.pathname)) {
                 router.history.push(`${lastVersionRoute.pathname}${lastVersionRoute.search}`)
                 break
               }
-              navigate({ to: '/graph', search: { projectId: currentProjectId, sha: params.get('sha') ?? undefined } })
+              // GH289 — sans sous-vue mémorisée, le panneau Version s'ouvre sur la version produit.
+              navigate({ to: '/versions', search: { projectId: currentProjectId } })
           }
         }
         break

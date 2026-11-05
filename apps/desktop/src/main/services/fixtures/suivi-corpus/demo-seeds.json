@@ -60,7 +60,7 @@
     {"campaignTitle":"Vérification des KPI produit","stepLabel":"Passé","stepRank":1004,"stepColor":"var(--chart-progress-pass)","count":1,"_ids":["CAMP-0003/TSYS-0005-1"]},
     {"campaignTitle":"Vérification des KPI produit","stepLabel":"Échoué","stepRank":1003,"stepColor":"var(--chart-progress-fail)","count":1,"_ids":["CAMP-0003/TSYS-0005-2"]},
     {"campaignTitle":"Vérification des KPI produit","stepLabel":"Prêt à exécuter","stepRank":1000,"stepColor":"var(--chart-progress-ready)","count":4,"_ids":["CAMP-0003/TSYS-0005-3","CAMP-0003/TSYS-0005-4","CAMP-0003/TSYS-0005-5","CAMP-0003/TSYS-0005-6"]},
-    {"campaignTitle":"PVT — Présérie","stepLabel":"Prêt à exécuter","stepRank":1000,"stepColor":"var(--chart-progress-ready)","count":3,"_ids":["CAMP-0005/TSYS-0001-1","CAMP-0005/TSYS-0009-1","CAMP-0005/TSYS-0003-1"]}
+    {"campaignTitle":"PVT — Présérie","stepLabel":"Prêt à exécuter","stepRank":1000,"stepColor":"var(--chart-progress-ready)","count":4,"_ids":["CAMP-0005/TSYS-0001-1","CAMP-0005/TSYS-0004-1","CAMP-0005/TSYS-0009-1","CAMP-0005/TSYS-0003-1"]}
   ],
   "Campagnes / executedPct": [
     {"value":46.2,"_ids":["CAMP-0002/TSYS-0002-1","CAMP-0002/TSYS-0004-1","CAMP-0002/TSYS-0006-1","CAMP-0002/TSYS-0007-1","CAMP-0003/TSYS-0005-1","CAMP-0003/TSYS-0005-2"]}
@@ -74,13 +74,13 @@
     {"executedDay":"2026-05-08","count":1,"_ids":["CAMP-0001/TSYS-0003-1"]},
     {"executedDay":"2026-05-11","count":1,"_ids":["CAMP-0001/TSYS-0004-1"]},
     {"executedDay":"2026-05-12","count":1,"_ids":["CAMP-0001/TSYS-0007-1"]},
-    {"executedDay":"2026-05-14","count":1,"_ids":["CAMP-0001/TMOT-0003-1"]},
     {"executedDay":"2026-05-15","count":1,"_ids":["CAMP-0001/TSW-0001-1"]},
     {"executedDay":"2026-07-02","count":1,"_ids":["CAMP-0002/TSYS-0002-1"]},
     {"executedDay":"2026-07-03","count":1,"_ids":["CAMP-0002/TSYS-0004-1"]},
     {"executedDay":"2026-07-04","count":1,"_ids":["CAMP-0002/TSYS-0006-1"]},
     {"executedDay":"2026-07-06","count":1,"_ids":["CAMP-0002/TSYS-0007-1"]},
-    {"executedDay":"2026-07-07","count":2,"_ids":["CAMP-0003/TSYS-0005-1","CAMP-0003/TSYS-0005-2"]}
+    {"executedDay":"2026-07-07","count":2,"_ids":["CAMP-0003/TSYS-0005-1","CAMP-0003/TSYS-0005-2"]},
+    {"executedDay":"2026-05-14","count":1,"_ids":["CMOT-0001/TMOT-0003-1"]}
   ],
   "Campagnes / failures": [
     {"campaignId":"CAMP-0003","campaignTitle":"Vérification des KPI produit","entryId":"TSYS-0005-2","testCaseId":"TSYS-0005","testTitle":"Vérification des KPI produit (itératif par exigence)","status":"FAIL","executedAt":"2026-07-07T11:00:00.000Z","executedBy":"Marc Dubois","_ids":["CAMP-0003/TSYS-0005-2"]}
@@ -88,7 +88,7 @@
   "Campagnes / timeline": [
     {"date":"2026-07-01","step":"prep:draft","stepLabel":"Brouillon","stepRank":0,"stepColor":"var(--chart-progress-prep-1)","status":"pending","count":1,"approximate":false},
     {"date":"2026-07-01","step":"prep:review","stepLabel":"En review","stepRank":1,"stepColor":"var(--chart-progress-prep-2)","status":"pending","count":1,"approximate":false},
-    {"date":"2026-07-01","step":"ready","stepLabel":"Prêt à exécuter","stepRank":1000,"stepColor":"var(--chart-progress-ready)","status":"pending","count":5,"approximate":false},
+    {"date":"2026-07-01","step":"ready","stepLabel":"Prêt à exécuter","stepRank":1000,"stepColor":"var(--chart-progress-ready)","status":"pending","count":6,"approximate":false},
     {"date":"2026-07-01","step":"INCOMPLETE","stepLabel":"Incomplet","stepRank":1001,"stepColor":"var(--chart-progress-incomplete)","status":"INCOMPLETE","count":0,"approximate":false},
     {"date":"2026-07-01","step":"FAIL","stepLabel":"Échoué","stepRank":1003,"stepColor":"var(--chart-progress-fail)","status":"FAIL","count":0,"approximate":false},
     {"date":"2026-07-01","step":"PASS","stepLabel":"Passé","stepRank":1004,"stepColor":"var(--chart-progress-pass)","status":"PASS","count":0,"approximate":false},

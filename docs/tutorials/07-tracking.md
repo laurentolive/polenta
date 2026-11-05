@@ -12,8 +12,9 @@ not tested, how the campaigns are progressing. It relies on **queries** over the
 
 ![Project dashboard](../img/dashboard.en.png)
 
-- Each **widget** shows a query result: bars (here stacked by status), pie, line, table, key figure
-  (*À revalider*: 4), matrix, area over time.
+- Each **widget** shows a query result. *Pilotage LL800* shows bars (here stacked by status), a pie,
+  a key figure (*À revalider*: 4), a table and a line; other forms exist, such as the matrix or the
+  area over time.
 - Clicking a bar, a slice or a key figure opens the **details**: the requirements, tests or campaign
   entries behind it, each one opening in a tab.
 - **Add a widget** adds one; a widget's pencil edits it. A widget is set up with a **template**
@@ -23,8 +24,10 @@ not tested, how the campaigns are progressing. It relies on **queries** over the
   team; a private dashboard stays with its author.
 - **Export** produces a Word or PDF version of the dashboard.
 
-The second dashboard, *Composants & traçabilité*, tracks coverage component by component. On first
-access, Polenta also creates the shared *Status* dashboard (when there is no dashboard yet) and a
+The second dashboard, *Composants & traçabilité*, shows links by type (pie), the motor's
+requirements by status (bars) and the high-priority product requirements not yet approved (table).
+The third, *Versions & validation*, counts the issues of each version and breaks down the decisions
+of a validation. On first access, Polenta also creates the shared *Status* dashboard (when there is no dashboard yet) and a
 private *Campagnes* dashboard: progress of each campaign (from test preparation to result),
 % executed, % PASS, executions per day, failed entries, progress over time.
 
@@ -36,6 +39,8 @@ to *All*. Any query can declare such parameters (campaign, component, object typ
 text, period): through the "… chosen when displayed" checkboxes of its template, or in the
 *Parameters chosen when displayed* section of the Queries view in Script mode, where the script
 reads the values in `polenta.params`. Widgets that share a parameter share the same selector.
+In the shared *Versions & validation* dashboard, the *Décisions de la validation* widget thus has a
+**Validation** selector: *Validation 1.0*, *Validation 2.0* or *Validation 1.2.4* (motor).
 
 ## Queries
 
@@ -48,8 +53,8 @@ A query can be built in two ways:
 - **Template**: a form, no code — *Filtered list* (object type, component, conditions, grouping),
   *Campaign entries*, *Progress over time*;
 - **Script**: a JavaScript script that reads the project data (requirements, tests, links,
-  campaigns, executions, histories) and returns rows. It runs in an isolated sandbox, with no access
-  to the disk or the network.
+  campaigns, executions, histories, versions, issues, validations) and returns rows. It runs in an
+  isolated sandbox, with no access to the disk or the network.
 
 **Execute** shows the result, **Save** stores the query, the history keeps the latest queries run;
 **Export** produces an Excel or PDF file. Example script:
@@ -106,3 +111,45 @@ repositories.
 - The arrow left of the field opens **replace**, across the whole project.
 
 Example: `\{[a-z_]+\}` as a regular expression finds every parameter reference.
+
+## Exercises
+
+**Add a widget.**
+1. *Pilotage LL800*, **Add a widget** on the *Exigences — statut de couverture* query, as a table.
+2. Widget's pencil: change the grouping in the *Template* tab.
+
+Result: the new widget appears next to the six others and follows the change.
+
+**Change a dashboard parameter.**
+1. *Versions & validation* dashboard, **Validation** selector: *Validation 1.0*.
+2. Choose *Validation 1.2.4*, then *Reset*.
+
+Result: the pie is recomputed. The 1.0 shows mostly *conforme* decisions, two *hors scope*
+(PRD-0010, SYS-0013) and one *dérogation* (SYS-0004); the 1.2.4 covers the motor's requirements.
+
+**Show a computed column.**
+1. **Tests** view, *Test Système*, **⚙️ › Visible fields › Computed columns**: tick *Dernier
+   résultat* (QUERY-0010).
+
+Result: a *Dernier résultat* column appears; TSYS-0004 shows `PASS` (DVT), TSYS-0007 `INCOMPLETE`.
+
+**Count issues per version.**
+1. **Tracking** view, new query in Script mode:
+
+```js
+export default (data) => data.versions.map((v) => ({
+  version: v.component + ' ' + v.title,
+  issues: v.changes.filter((c) => data.issues.some((i) => i.id === c.id)).length,
+}))
+```
+
+2. **Execute**, then compare with the shared *Issues par version* query (QUERY-0012).
+
+Result: the product's `1.0` counts one issue (ISS-0001), the `2.0` two (ISS-0002, ISS-0003), the
+motor's `1.3` one (MISS-0001); the other versions, none.
+
+**Search and replace.**
+1. **Search** view: `essorage`.
+2. Open replace, enter a replacement text, read the preview, do not apply.
+
+Result: the matches are listed in the product repository and in `comp-moteur`, each with its field.

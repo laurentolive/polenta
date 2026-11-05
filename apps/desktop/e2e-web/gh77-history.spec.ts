@@ -125,6 +125,11 @@ test('H4 — section « Historique » d\'une campagne : statut planifié', async
 })
 
 test('B8 — reprise depuis git dans les préférences : confirmation, compte rendu, historique repris', async () => {
+  // GH278 — la démo écrit l'historique de certains types : une exigence d'un type qui n'en porte pas,
+  // choisie avant la reprise (qui lui en écrit un).
+  const before = await s.invoke<Array<{ id: string; objectTypeRef: string; history?: unknown }>>('requirements:list', s.project.localPath)
+  const demo = before.find(r => r.objectTypeRef !== REF && !r.history)!
+  expect(demo, 'la démo doit avoir une exigence sans historique écrit').toBeTruthy()
   await goto(s.projectUrl('/preferences', { repoPath: s.project.localPath }))
   const panel = s.page.getByTestId('history-backfill')
   await panel.getByRole('button', { name: 'Reconstruire depuis git' }).first().click()
@@ -132,8 +137,6 @@ test('B8 — reprise depuis git dans les préférences : confirmation, compte re
   await expect(panel.getByRole('status').first()).toContainText('objet(s) complété(s)', { timeout: 90_000 })
 
   // Une exigence de la démo, commitée avant GH77, a maintenant des entrées `source: git`.
-  const reqs = await s.invoke<Array<{ id: string; objectTypeRef: string }>>('requirements:list', s.project.localPath)
-  const demo = reqs.find(r => r.objectTypeRef !== REF)!
   const history = await s.invoke<History>('history:get', s.project.localPath, 'requirement', demo.id)
   expect(history.status?.some(e => (e as { source?: string }).source === 'git')).toBe(true)
 })

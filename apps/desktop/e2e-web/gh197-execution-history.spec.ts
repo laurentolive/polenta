@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { testedVersionArg } from './support/demo-types'
 
 /**
  * GH197 — grille d'historique des exécutions (specs/GH197-tests.md, scénarios 7–8) : section
@@ -47,6 +48,7 @@ test.beforeAll(async () => {
     result: 'FAIL', fields: { gh197Temp: '23,5' },
     stepResults: [{ order: 1, result: 'FAIL', comment: 'trop bas', fields: { gh197Mesure: '11.2' } }],
     campaignEntry: { campaignId: campaign.id, entryId: entry.entryId },
+    ...await testedVersionArg(s),
   }, workspaceDir)
   await s.invoke('campaigns:update-run', localPath, campaign.id, entry.entryId, 'FAIL', run.id)
   // Exigence couverte par le test (premier type de lien du schéma, sens test → exigence).

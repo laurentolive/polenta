@@ -53,7 +53,11 @@ test('GH196-1 — page d\'exécution : champ requis sur FAIL, refus, puis run é
   await expect(runFields).toContainText('Rapport GH196')
   await expect(p.getByTestId('step-fields-1')).toHaveCount(0)        // étape non exécutée (Q3)
 
-  await p.getByRole('combobox').first().selectOption({ label: 'Échoué' })   // verdict de l'étape 1
+  // GH278 — la démo déclare des versions : la version testée est demandée avant le verdict.
+  const version = p.getByTestId('tested-version-select')
+  // Le sélecteur se charge après la page : l'attendre, sans l'exiger (démo sans versions).
+  if (await version.waitFor({ timeout: 10_000 }).then(() => true, () => false)) await version.selectOption({ index: 1 })
+  await p.locator('select:not([data-testid^="tested-"]):visible').first().selectOption({ label: 'Échoué' })   // verdict de l'étape 1
   await expect(p.getByTestId('step-fields-1')).toBeVisible()
   await expect(runFields.locator('label', { hasText: 'Rapport GH196' })).toContainText('*')
 
@@ -64,6 +68,8 @@ test('GH196-1 — page d\'exécution : champ requis sur FAIL, refus, puis run é
   await p.getByTestId('step-fields-1').locator('input').first().fill('13.1')
   await s.shot('gh196-execute')
   await p.getByRole('button', { name: 'Soumettre le résultat' }).click()
+  // GH278 — la démo déclare un type d'issue : l'échec propose une issue (GH244), ignorée ici.
+  await p.getByRole('dialog', { name: 'Exécution en échec' }).getByRole('button', { name: 'Ignorer' }).click({ timeout: 10_000 }).catch(() => {})
   await p.waitForURL(url => !url.pathname.includes('/execute/'))
 
   const runs = await s.invoke<RunLike[]>('tests:runs', localPath, entry.testCaseId)

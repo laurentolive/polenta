@@ -12,8 +12,9 @@ Vue **Suivi**, dashboard *Pilotage LL800* :
 
 ![Dashboard de pilotage](../img/dashboard.png)
 
-- Chaque **widget** affiche le résultat d'une requête : barres (ici empilées par statut),
-  camembert, courbe, tableau, indicateur (*À revalider* : 4), matrice, aire dans le temps.
+- Chaque **widget** affiche le résultat d'une requête. *Pilotage LL800* montre des barres (ici
+  empilées par statut), un camembert, un indicateur (*À revalider* : 4), un tableau et une courbe ;
+  d'autres formes existent, comme la matrice ou l'aire dans le temps.
 - Un clic sur une barre, une part ou un indicateur ouvre le **détail** : les exigences, tests ou
   entrées de campagne concernés, chacun ouvrable dans un onglet.
 - **Ajouter un widget** en ajoute un ; le crayon d'un widget le modifie. Le widget se règle par un
@@ -24,8 +25,10 @@ Vue **Suivi**, dashboard *Pilotage LL800* :
   l'équipe ; un dashboard privé reste à son auteur.
 - **Exporter** produit une version Word ou PDF du dashboard.
 
-Le second dashboard, *Composants & traçabilité*, suit la couverture composant par composant. Au
-premier accès, Polenta crée aussi le dashboard partagé *Status* (s'il n'existe aucun dashboard) et
+Le deuxième dashboard, *Composants & traçabilité*, montre les liens par type (camembert), les
+exigences du moteur par statut (barres) et les exigences produit prioritaires non approuvées
+(tableau). Le troisième, *Versions & validation*, compte les issues de chaque version et répartit
+les décisions d'une validation. Au premier accès, Polenta crée aussi le dashboard partagé *Status* (s'il n'existe aucun dashboard) et
 un dashboard privé *Campagnes* : avancement de chaque campagne (de la préparation des tests au
 résultat), % exécuté, % PASS, exécutions par jour, entrées en échec, avancement dans le temps.
 
@@ -37,6 +40,8 @@ Toute requête peut déclarer de tels paramètres (campagne, composant, type d'o
 texte, période) : par les cases « … choisi(e) à l'affichage » de son modèle, ou dans la section
 *Paramètres choisis à l'affichage* de la vue Requêtes en mode Script, où le script lit les valeurs
 dans `polenta.params`. Les widgets qui partagent un même paramètre partagent le même sélecteur.
+Dans le dashboard partagé *Versions & validation*, le widget *Décisions de la validation* a ainsi
+un sélecteur **Validation** : *Validation 1.0*, *Validation 2.0* ou *Validation 1.2.4* (moteur).
 
 ## Les requêtes
 
@@ -49,7 +54,7 @@ Une requête se construit de deux façons :
 - **Modèle** : un formulaire, sans code — *Liste filtrée* (type d'objet, composant, conditions,
   regroupement), *Entrées de campagne*, *Avancement dans le temps* ;
 - **Script** : un script JavaScript qui lit les données du projet (exigences, tests, liens,
-  campagnes, exécutions, historiques) et renvoie des lignes. Il s'exécute dans un bac à sable isolé,
+  campagnes, exécutions, historiques, versions, issues, validations) et renvoie des lignes. Il s'exécute dans un bac à sable isolé,
   sans accès au disque ni au réseau.
 
 **Exécuter** affiche le résultat, **Sauvegarder** l'enregistre, l'historique garde les dernières
@@ -107,3 +112,49 @@ Vue **Recherche** : un texte, ou une expression régulière, cherché dans tous 
 - La flèche à gauche du champ ouvre le **remplacement**, sur tout le projet.
 
 Exemple : `\{[a-z_]+\}` en expression régulière trouve toutes les références de paramètres.
+
+## Exercices
+
+**Ajouter un widget.**
+1. *Pilotage LL800*, **Ajouter un widget** sur la requête *Exigences — statut de couverture*, en
+   tableau.
+2. Crayon du widget : changer le regroupement dans l'onglet *Modèle*.
+
+Résultat : le nouveau widget s'affiche à côté des six autres et suit la modification.
+
+**Changer un paramètre de dashboard.**
+1. Dashboard *Versions & validation*, sélecteur **Validation** : *Validation 1.0*.
+2. Choisir *Validation 1.2.4*, puis *Réinitialiser*.
+
+Résultat : le camembert se recalcule. La 1.0 montre surtout des décisions *conforme*, deux *hors
+scope* (PRD-0010, SYS-0013) et une *dérogation* (SYS-0004) ; la 1.2.4 porte sur les exigences du
+moteur.
+
+**Afficher une colonne calculée.**
+1. Vue **Tests**, *Test Système*, **⚙️ › Champs visibles › Colonnes calculées** : cocher *Dernier
+   résultat* (QUERY-0010).
+
+Résultat : une colonne *Dernier résultat* apparaît ; TSYS-0004 affiche `PASS` (DVT), TSYS-0007
+`INCOMPLETE`.
+
+**Compter les issues par version.**
+1. Vue **Suivi**, nouvelle requête en mode Script :
+
+```js
+export default (data) => data.versions.map((v) => ({
+  version: v.component + ' ' + v.title,
+  issues: v.changes.filter((c) => data.issues.some((i) => i.id === c.id)).length,
+}))
+```
+
+2. **Exécuter**, puis comparer avec la requête partagée *Issues par version* (QUERY-0012).
+
+Résultat : la `1.0` du produit compte une issue (ISS-0001), la `2.0` deux (ISS-0002, ISS-0003), la
+`1.3` du moteur une (MISS-0001) ; les autres versions, aucune.
+
+**Chercher et remplacer.**
+1. Vue **Recherche** : `essorage`.
+2. Ouvrir le remplacement, saisir un texte de remplacement, lire l'aperçu, ne pas appliquer.
+
+Résultat : les occurrences sont listées dans le dépôt produit et dans `comp-moteur`, chacune avec
+son champ.

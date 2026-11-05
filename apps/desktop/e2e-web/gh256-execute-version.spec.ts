@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { typeOfCategory } from './support/demo-types'
 
 /**
  * GH256 — client web, repo avec une version : l'exécution demande la version testée et l'enregistre,
@@ -43,15 +44,12 @@ test.beforeAll(async () => {
   expect(approved, 'la démo doit avoir un test approuvé').toBeTruthy()
 
   const root = schema.nodes.find(n => n.name === 'root')!
-  root.objectTypes = [
-    ...(root.objectTypes ?? []),
-    { name: 'web-version', label: 'Version', prefix: 'WVR', category: 'version', fields: [], statuses: statuses({ name: 'en_cours' }, { name: 'released', isApproval: true }) } as TypeLike,
-    { name: 'web-issue', label: 'Issue', prefix: 'WIS', category: 'issue', fields: [], statuses: statuses({ name: 'ouverte' }) } as TypeLike,
-  ]
+  const versionType = typeOfCategory(root, 'version', { name: 'web-version', label: 'Version', prefix: 'WVR', category: 'version', fields: [], statuses: statuses({ name: 'en_cours' }, { name: 'released', isApproval: true }) } as TypeLike)
+  const issueType = typeOfCategory(root, 'issue', { name: 'web-issue', label: 'Issue', prefix: 'WIS', category: 'issue', fields: [], statuses: statuses({ name: 'ouverte' }) } as TypeLike)
   await s.invoke('schema:save', localPath, schema)
   fs.mkdirSync(path.join(localPath, 'versions'), { recursive: true })
   fs.writeFileSync(path.join(localPath, 'versions', `${VERSION_ID}.yaml`), [
-    `id: ${VERSION_ID}`, 'objectTypeRef: root::web-version', 'title: "1.0"', 'status: en_cours', 'version: 1', 'fields: {}', '',
+    `id: ${VERSION_ID}`, `objectTypeRef: root::${versionType}`, 'title: "9.1"', 'status: en_cours', 'version: 1', 'fields: {}', '',
   ].join('\n'))
 
   campaign = await s.invoke<Campaign>('campaigns:create', localPath, { title: 'GH256 e2e', testCaseIds: [approved!.id] }, workspaceDir)

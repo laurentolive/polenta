@@ -14,7 +14,7 @@ déduit et comment il signale un lien devenu douteux.
 
 Chaque type de lien a un nom, un libellé dans chaque sens (*est raffinée par* / *raffine*) et la
 liste des éléments autorisés en source et en cible : une catégorie entière (`requirement`, `test`)
-ou un type précis (`root::exigence-produit`). La démo en déclare cinq :
+ou un type précis (`root::exigence-produit`). La démo en déclare six :
 
 | Type | Sens | Exemple |
 |---|---|---|
@@ -22,10 +22,12 @@ ou un type précis (`root::exigence-produit`). La démo en déclare cinq :
 | implémentation | un composant réalise une exigence | CC-0001 implémente SYS-0001 |
 | vérification | un test vérifie une exigence | TSYS-0001 vérifie PRD-0001 |
 | implémentation d'interface | une exigence de composant réalise une exigence d'interface | MOT-0006 implémente une exigence du bus interne |
+| impact d'issue | une issue touche une exigence ([tutoriel 10](10-issues-validation.md)) | ISS-0003 impacte PRD-0002 |
 | relation | lien libre, non contraint | — |
 
 Le sens d'un lien de vérification n'a pas d'importance : créé depuis le test ou depuis l'exigence,
-il compte de la même façon.
+il compte de la même façon. Dans la démo, le lien entre PRD-0002 et TSYS-0002 a été créé depuis
+l'exigence.
 
 ## La vérification (couverture)
 
@@ -57,7 +59,11 @@ Dans la démo, SYS-0002 (qui raffine PRD-0002) est repassée en revue ; PRD-0002
 TSYS-0002 sont marqués. Dans la vue **Version**, l'entrée **Impact à vérifier** du panneau les
 liste : vérifier chaque élément, puis **Lever le flag** (un par un ou sur la sélection). L'analyse
 d'impact d'une version fait ce travail de façon organisée, élément modifié par élément modifié
-([tutoriel 9](09-versions.md)).
+([tutoriel 9](09-versions.md)) : dans la version `2.0` en cours (LLV-0002), SYS-0002 est notée
+*Impact à tester*.
+
+Avant même de publier, l'entrée **Modifications locales (vs HEAD)** du même panneau montre les
+éléments modifiés sur le poste et ce qui leur est lié.
 
 ## La conformité des interfaces
 
@@ -76,3 +82,44 @@ composant qui l'implémente :
 - *manquant* : aucune exigence du composant ne réalise celle de l'interface. Ici, la carte de
   commande (maître) ne couvre pas BIHM-0004 ;
 - un tiret : l'exigence ne concerne pas le rôle de ce composant.
+
+## Exercices
+
+**Couvrir une exigence, dans les deux sens.**
+1. Ouvrir TSYS-0010, rubrique *vérifie* : ajouter SYS-0008.
+2. Ouvrir SYS-0012, rubrique *est vérifiée par* : ajouter TSYS-0010.
+
+Résultat : SYS-0008 et SYS-0012 passent de *Non couvert* à *Couvert* : TSYS-0010 n'a pas encore été
+exécuté. Le sens de création ne change rien.
+
+**Marquer, puis lever un impact.**
+1. Ouvrir SYS-0001 (approuvée) et la repasser en `review`.
+2. Ouvrir CC-0001, qui l'implémente.
+3. Vue **Version**, **Impact à vérifier** : sélectionner CC-0001, **Lever le flag**.
+
+Résultat : CC-0001 porte le ⚠ et le bandeau *Impact à vérifier* ; après la levée, il quitte la
+liste. Son fichier est modifié, à publier.
+
+**Trouver une exigence d'interface sans réalisation.**
+1. *Projet › Modèle de données › Structure*, **Conformité interfaces** : choisir le bus interne.
+
+Résultat : BUS-0006 (*Mode veille du bus*) n'est réalisée par aucun composant.
+
+**Suivre un lien entre dépôts.**
+1. Ouvrir SYS-0002, rubrique *est implémentée par* : cliquer sur MOT-0001.
+
+Résultat : MOT-0001 s'ouvre ; c'est une exigence de `comp-moteur`.
+
+**Parcourir la constellation.**
+1. Vue **Exigences**, **Constellation des exigences** : chercher PRD-0002.
+2. Cliquer sur le point pour l'épingler.
+
+Résultat : la lignée de PRD-0002 s'affiche (SYS-0002, puis MOT-0001…), avec sa couverture par les
+tests.
+
+**Lire l'impact d'une modification locale.**
+1. Modifier l'énoncé de SYS-0005, sans publier.
+2. Vue **Version**, **Modifications locales (vs HEAD)**.
+
+Résultat : SYS-0005 est listée avec les éléments qui lui sont liés (PRD-0003, PRD-0009, HYD-0001,
+EV-0002).

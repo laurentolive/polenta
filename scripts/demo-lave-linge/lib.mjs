@@ -13,6 +13,30 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(path.join(here, '../../apps/desktop/package.json'))
 export const yaml = require('js-yaml')
 
+// ─── Dossier de sortie ───────────────────────────────────────────────────────
+
+/**
+ * GH278 — `--force` supprime la cible : un chemin mal formé ne doit jamais l'atteindre. Un
+ * `--out C:\\…` non quoté sous bash perd ses antislashs et devient un chemin relatif au lecteur, ce
+ * qui a déjà versionné un dossier `apps/desktop/Devesquaresoft…` dans ce repo.
+ */
+export function resolveOutDir(args, defaultDir, repoRoot) {
+  const i = args.indexOf('--out')
+  if (i === -1) return path.resolve(defaultDir)
+  const raw = args[i + 1]
+  if (!raw || raw.startsWith('--')) throw new Error('--out attend un dossier.')
+  if (/^[A-Za-z]:[^\\/]/.test(raw)) throw new Error(`--out "${raw}" : chemin relatif au lecteur (antislashs perdus ?). Utiliser des / ou des guillemets.`)
+  const out = path.resolve(raw)
+  const inside = (child, parent) => {
+    const rel = path.relative(parent, child)
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+  }
+  // `--force` supprime la cible : ni le repo, ni un dossier du repo, ni un dossier qui le contient.
+  if (inside(out, repoRoot)) throw new Error(`--out "${out}" est dans le repo Polenta : choisir un dossier en dehors.`)
+  if (inside(repoRoot, out)) throw new Error(`--out "${out}" contient le repo Polenta : choisir un dossier à part.`)
+  return out
+}
+
 // ─── Fichiers ────────────────────────────────────────────────────────────────
 
 export function writeFile(repoDir, rel, content) {

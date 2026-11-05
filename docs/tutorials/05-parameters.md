@@ -48,3 +48,20 @@ those three items:
 
 In the demo, `vitesse_essorage` went from 1200 to 1400 rpm between baselines RE1 and RE2: comparing
 the two baselines shows it ([tutorial 8](08-publishing-history.md)).
+
+## Exercises
+
+**Change the value of a used parameter.**
+1. **Parameters** view, open `capacite_kg`.
+2. Read **Used by**, then set the value to `9`.
+
+Result: PRD-0001, TSYS-0001 and TSYS-0002 are listed. After the change, the approved ones are marked
+**Impact to check**, and the displayed value becomes `9 kg` everywhere.
+
+**Resolve a reference.**
+1. Open SYS-0012: `{effort_fermeture_hublot}` is still shown as written.
+2. **Parameters** view, product repository: create `effort_fermeture_hublot`, value `30`, unit `N`.
+3. Reopen SYS-0012.
+
+Result: the reference is replaced by `30 N`, in blue. The new parameter's **Used by** lists
+SYS-0012.

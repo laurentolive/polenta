@@ -4,6 +4,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { typeOfCategory } from './support/demo-types'
 
 /**
  * GH252 — versions, analyse d'impact et validation sur le client web (specs/GH252-tests.md, U1 à U8).
@@ -47,13 +48,13 @@ test.beforeAll(async () => {
     { name: 'gh252_req', label: REQ_LABEL, prefix: 'GHV', category: 'requirement', fields: [], statuses: [{ name: 'draft', label: 'Brouillon' }, { name: 'approved', label: 'Approuvé', isApproval: true }] },
     { name: 'gh252_test', label: 'GH252 Test', prefix: 'GHT', category: 'test', fields: [], statuses: [{ name: 'draft', label: 'Brouillon' }] },
     { name: 'gh252_issue', label: 'GH252 Issue', prefix: 'GHI', category: 'issue', fields: [], statuses: [{ name: 'ouverte', label: 'Ouverte' }] },
-    { name: 'gh252_version', label: 'Version', prefix: 'GHP', category: 'version', fields: [], statuses: [{ name: 'en_cours', label: 'En cours' }, { name: 'released', label: 'Released', isApproval: true }, { name: 'abandonnee', label: 'Abandonnée', isTerminal: true }] },
-    {
-      name: 'gh252_validation', label: 'Validation', prefix: 'GHA', category: 'validation', fields: [],
-      statuses: [{ name: 'en_cours', label: 'En cours' }, { name: 'signee', label: 'Signée', isApproval: true }, { name: 'annulee', label: 'Annulée', isTerminal: true }],
-      decisions: [{ name: 'en_attente', label: 'En attente', isPending: true }, { name: 'conforme', label: 'Conforme' }, { name: 'non_conforme', label: 'Non conforme', proposesIssue: true }],
-    },
   ]
+  typeOfCategory(root, 'version', { name: 'gh252_version', label: 'Version', prefix: 'GHP', category: 'version', fields: [], statuses: [{ name: 'en_cours', label: 'En cours' }, { name: 'released', label: 'Released', isApproval: true }, { name: 'abandonnee', label: 'Abandonnée', isTerminal: true }] })
+  typeOfCategory(root, 'validation', {
+    name: 'gh252_validation', label: 'Validation', prefix: 'GHA', category: 'validation', fields: [],
+    statuses: [{ name: 'en_cours', label: 'En cours' }, { name: 'signee', label: 'Signée', isApproval: true }, { name: 'annulee', label: 'Annulée', isTerminal: true }],
+    decisions: [{ name: 'en_attente', label: 'En attente', isPending: true }, { name: 'conforme', label: 'Conforme' }, { name: 'non_conforme', label: 'Non conforme', proposesIssue: true }],
+  })
   await s.invoke('schema:save', repo(), schema)
   reqA = (await s.invoke<{ id: string }>('requirements:create', repo(), { objectTypeRef: 'root::gh252_req', title: 'GH252 livrée', fields: {} }, ws())).id
   reqB = (await s.invoke<{ id: string }>('requirements:create', repo(), { objectTypeRef: 'root::gh252_req', title: 'GH252 autre', fields: {} }, ws())).id

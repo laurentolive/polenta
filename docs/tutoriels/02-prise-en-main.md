@@ -83,7 +83,7 @@ Un projet Polenta est un dossier de fichiers texte versionnés par git. Une exig
 YAML lisible et comparable ligne à ligne :
 
 ```yaml
-# ll800-produit/requirements/PRD-0002.yaml
+# demo-ll800-produit/requirements/PRD-0002.yaml
 id: PRD-0002
 objectTypeRef: root::exigence-produit
 title: Vitesse d'essorage maximale
@@ -107,6 +107,59 @@ fields:
 | `queries/`, `dashboards/` | les requêtes et dashboards partagés |
 | `.polenta/schema.yaml` | le modèle de données |
 | `.polenta/views/` | les vues enregistrées de l'équipe |
+| `.polenta/trees/` | le rangement des éléments en sections |
+| `.polenta/tombstones/` | un fichier vide par ID supprimé, pour ne jamais le réattribuer |
 | `polenta-repo.yaml` | les composants réutilisés et leur version |
 
 L'historique, les auteurs et les dates viennent de git : aucune base de données à part.
+
+Le dépôt produit est cloné dans le dossier `demo-ll800-produit`. Le champ `history` d'une exigence
+garde l'historique de ses champs suivis (statut, priorité) : l'application l'écrit, on ne le modifie
+pas à la main ([tutoriel 3](03-exigences.md)).
+
+## Repartir d'une démo propre
+
+Les exercices modifient la démo, et certains ne se défont pas : passer une version released, signer
+une validation. Pour repartir de l'état publié :
+
+1. *Projet › Fermer le projet* ;
+2. supprimer le dossier choisi à l'ouverture de la démo, avec tout son contenu
+   (`demo-ll800-produit` et les composants) ;
+3. à l'accueil, **Découvrir Polenta avec le projet de démonstration**, dans un dossier vide.
+
+Chaque exercice des tutoriels suivants part de cet état, sauf prérequis indiqué.
+
+## Exercices
+
+**Lire les versions de montage des composants.**
+1. *Projet › Modèle de données › Structure*, repérer les composants réutilisables.
+2. Trouver la version de montage de *Pompe de vidange*, de *Module Wi-Fi* et du bus interne. Le
+   fichier `polenta-repo.yaml` du dépôt produit les donne aussi (`pin`).
+
+Résultat : la pompe est figée sur le tag `v2.0`, le module Wi-Fi sur un commit précis (SHA
+`0d20234…`), le bus interne sur le tag `v1.1`. Le bus est monté sous le moteur, qui suit la branche
+`main`.
+
+**Ranger une exigence.**
+1. Vue **Exigences**, *Lave-linge LL800 / Exigence Produit*.
+2. Glisser PRD-0012 dans une autre section.
+3. Vue **Version**, **Modifications** : ouvrir le fichier modifié.
+
+Résultat : seul `.polenta/trees/root/exigence-produit.yaml` change. Le fichier de PRD-0012 n'est pas
+réécrit : le rangement est séparé du contenu.
+
+**Ajouter un champ à un type.**
+1. *Projet › Modèle de données*, crayon de *Exigence Hydraulique* : ajouter un champ texte
+   *Fournisseur*, enregistrer.
+2. Ouvrir HYD-0001.
+3. Vue **Version**, **Modifications**.
+
+Résultat : le champ apparaît, vide, dans l'éditeur de HYD-0001. Seul `.polenta/schema.yaml` est
+modifié : aucune exigence n'est réécrite. Retirer le champ pour revenir à l'état initial.
+
+**Naviguer.**
+1. Ouvrir PRD-0002, puis cliquer sur SYS-0002 dans ses liens.
+2. **Alt+←**.
+3. Dans le panneau **Compte**, changer le thème, puis la langue.
+
+Résultat : **Alt+←** ramène sur PRD-0002. Le thème et la langue changent sans fermer le projet.

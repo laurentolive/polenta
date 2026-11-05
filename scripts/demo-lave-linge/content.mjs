@@ -1,5 +1,5 @@
 // Contenu métier du workspace de démonstration : exigences, tests, liens, paramètres, runs,
-// campagnes, reviews, requêtes et dashboards — chacun daté par une « phase » du projet, pour
+// campagnes, requêtes et dashboards — chacun daté par une « phase » du projet, pour
 // produire un historique git réaliste (auteurs, dates, baselines RE1/RE2, pins qui bougent).
 
 // ─── Repos & personnes ───────────────────────────────────────────────────────
@@ -33,13 +33,10 @@ export const PHASES = [
   { key: 'P3', date: '2026-04-08T14:00:00+02:00', msg: 'Rédaction des tests et liens de traçabilité', by: { default: P.marc } },
   { key: 'P4', date: '2026-04-24T16:00:00+02:00', msg: "Revue d'étude RE1 — passage en revue / approbation", by: { default: P.hugo },
     tags: [{ tag: 'RE1', message: "Baseline RE1 — revue d'étude n°1", date: '2026-04-30T18:00:00+02:00' }],
-    // Tags de version légers : un pin sur tag annoté n'est pas reconnu hors ligne (cf. GUIDE-EVALUATION §5).
     repoTags: { bus: [{ tag: 'v1.0', lightweight: true }] } },
-  { key: 'P5', date: '2026-05-20T11:00:00+02:00', msg: 'Campagne EVT — exécution des essais', by: { default: P.marc },
-    repoTags: { pompe: [{ tag: 'v2.0', lightweight: true }] } },
+  { key: 'P5', date: '2026-05-20T11:00:00+02:00', msg: 'Campagne EVT — exécution des essais', by: { default: P.marc } },
   { key: 'P6', date: '2026-06-15T09:30:00+02:00', msg: 'Évolutions post-EVT (essorage 1400 tr/min, protocole v1.1, obsolescences)', by: { default: P.hugo, produit: P.claire, moteur: P.yann, bus: P.ines },
-    tags: [{ tag: 'RE2', message: "Baseline RE2 — revue d'étude n°2 (post-EVT)", date: '2026-06-30T18:00:00+02:00' }],
-    repoTags: { bus: [{ tag: 'v1.1', lightweight: true }] } },
+    tags: [{ tag: 'RE2', message: "Baseline RE2 — revue d'étude n°2 (post-EVT)", date: '2026-06-30T18:00:00+02:00' }] },
   { key: 'P7', date: '2026-07-08T10:00:00+02:00', msg: 'Campagnes DVT et KPI, revue des évolutions', by: { default: P.marc } },
   { key: 'P8', date: '2026-07-20T15:00:00+02:00', msg: 'Ajustements après revue DVT', by: { default: P.claire, moteur: P.yann } },
 ]
@@ -264,7 +261,7 @@ req('produit', 'SYS-0002', SYS, 'Cycle de lavage', "Profil de vitesse d'essorage
   } },
   P4: { status: 'approved' },
   // Modifiée après EVT : repasse en review (a quitté l'approbation) — ses voisins sont marqués « impact à vérifier ».
-  P6: { status: 'review', version: 2, fields: {
+  P6: { status: 'review', version: 2, historyComment: 'Essorage porté à 1400 tr/min après EVT.', fields: {
     statement: "WHEN la phase d'essorage démarre\nTHE carte de commande SHALL commander au moteur une rampe jusqu'à {comp-moteur::vitesse_essorage_max} en moins de 60 s.\n\n"
       + imageBlock({ src: 'images/courbe-essorage.png', alt: "Profil de vitesse d'essorage", width: 420 }),
     acceptanceCriteria: '- [ ] Vitesse cible atteinte < 60 s\n- [ ] Pas de dépassement > 3 %',
@@ -810,6 +807,21 @@ req('bus', 'BUS-0006', BUS, 'Protocole', 'Mode veille du bus', {
   P6: { status: 'approved', fields: { statement: 'WHEN le contrôleur émet la trame VEILLE\nTHE participant du bus SHALL réduire sa consommation sous 5 mW.', roles: 'controller, device', version_protocole: '1.1' } },
 })
 
+// Créée puis supprimée physiquement : trou de numérotation et pierre tombale (GH20).
+req('produit', 'SYS-0015', SYS, 'Architecture', 'Capteur de vibration redondant', {
+  P2: { status: 'draft', fields: {
+    statement: 'THE lave-linge SHALL disposer d\'un second capteur de vibration.',
+    priority: 'low', domaine: 'HW',
+  } },
+  P4: { deleted: true },
+})
+
+ELEMENTS.find(e => e.id === 'SYS-0001').at.P6 = { fields: { documents: [
+  { label: 'Règlement UE 2019/2014', url: 'https://eur-lex.europa.eu/eli/reg_del/2019/2014/oj' },
+  { label: 'Note de cadrage (partage interne)', url: 'file://serveur/ll800/cadrage.pdf' },
+] } }
+ELEMENTS.find(e => e.id === 'PRD-0004').at.P2.fields.rationale = 'Principal grief des retours terrain. Porté par le profil de [[SYS-0002]].'
+
 // ─── Liens (links/links.yaml du repo `repo`) ─────────────────────────────────
 
 export const LINKS = []
@@ -883,7 +895,8 @@ export const ADHOC_RUNS = [
   { phase: 'P5', repo: 'pompe', testId: 'TPOMP-0002', result: 'PASS', by: P.sophie, at: '2026-05-05T15:00:00.000Z', duration: 900, stepResults: stepsRes('PASS'), notes: '' },
 ]
 
-// ─── Campagnes (repo produit) ────────────────────────────────────────────────
+// ─── Campagnes ────────────────────────────────────────────────
+// `repo` absent : repo produit. Une campagne ne contient que les tests de son repo (#255).
 // entries : [testId, { status, requirementId?, paramValues?, resolvedParams?, unresolvedParams?, run? }]
 // run : { result, by, at, duration, stepResults, notes } — le fichier de run est écrit dans le repo du test.
 
@@ -905,29 +918,32 @@ export const CAMPAIGNS = [
       ['TSYS-0007', { run: { result: 'BLOCKED', by: P.marc, at: '2026-05-12T09:00:00.000Z', duration: 0,
         stepResults: [{ order: 1, result: 'BLOCKED', comment: 'Banc hydraulique en maintenance.' }, { order: 2, result: 'NOT_EXECUTED', comment: '' }, { order: 3, result: 'NOT_EXECUTED', comment: '' }],
         notes: 'Banc indisponible jusqu\'à fin mai.' } }],
-      ['TMOT-0003', { resolvedParams: { courant_max: '8 A' }, run: { result: 'FAIL', by: P.yann, at: '2026-05-14T10:00:00.000Z', duration: 600,
-        stepResults: [{ order: 1, result: 'FAIL', comment: 'Coupure mesurée à 14 µs.' }], notes: 'Test d\'un composant (repo comp-moteur) exécuté dans une campagne produit.' } }],
       ['TSW-0001', { run: { result: 'PASS', by: P.ines, at: '2026-05-15T10:00:00.000Z', duration: 900, stepResults: stepsRes('PASS', 'PASS'), notes: '' } }],
     ],
   },
   {
-    phase: 'P7', id: 'CAMP-0002', title: 'DVT — Essais de vérification design', status: 'in_progress',
+    phase: 'P7', id: 'CAMP-0002', title: 'DVT — Essais de vérification design', status: 'in_progress', testedVersion: { version: 'LLV-0002' },
     fields: { jalon: 'DVT', lieu: 'Laboratoire essais Lyon' }, paramSourceRef: 'RE2', createdAt: '2026-07-01T08:00:00.000Z',
     entries: [
       ['TSYS-0002', { resolvedParams: { capacite_kg: '8 kg', vitesse_essorage: '1400 tr/min', 'comp-moteur::vitesse_essorage_max': '1400 tr/min' },
-        run: { result: 'PASS', by: P.marc, at: '2026-07-02T10:00:00.000Z', duration: 1200, stepResults: stepsRes('PASS', 'PASS'), notes: 'Vitesse max relevée : 1392 tr/min.' } }],
+        run: { result: 'PASS', by: P.marc, at: '2026-07-02T10:00:00.000Z', duration: 1200, fields: { banc_utilise: 'Banc B2' },
+          stepResults: [{ order: 1, result: 'PASS', comment: '', fields: { mesure: '1392 tr/min' } }, { order: 2, result: 'PASS', comment: '', fields: { mesure: '84 s' } }], notes: 'Vitesse max relevée : 1392 tr/min.' } }],
       ['TSYS-0004', { resolvedParams: { niveau_sonore_essorage: '74 dB(A)' },
         run: { result: 'PASS', by: P.marc, at: '2026-07-03T14:00:00.000Z', duration: 3600, stepResults: stepsRes('PASS', 'PASS'), notes: 'L_WA = 73,1 dB(A) avec raidisseur.' } }],
-      ['TSYS-0006', { run: { result: 'PASS', by: P.marc, at: '2026-07-04T09:00:00.000Z', duration: 2700, stepResults: stepsRes('PASS', 'PASS', 'PASS'), notes: '' } }],
+      ['TSYS-0006', { run: { result: 'PASS', by: P.marc, at: '2026-07-04T09:00:00.000Z', duration: 2700, origin: 'excel-import', stepResults: stepsRes('PASS', 'PASS', 'PASS'), notes: 'Résultats saisis au laboratoire dans le classeur Excel, puis réimportés.' } }],
       ['TSYS-0007', { run: { result: 'INCOMPLETE', by: P.marc, at: '2026-07-06T09:00:00.000Z', duration: 2400,
+        // Écart de la version testée : moteur de préversion, hors composition de la 2.0.
+        testedVersion: { version: 'LLV-0002', components: { 'comp-moteur': 'préversion 1.3-rc2' } },
         stepResults: [{ order: 1, result: 'PASS', comment: '' }, { order: 2, result: 'PASS', comment: '' }, { order: 3, result: 'NOT_EXECUTED', comment: 'Interrompu à 6/10 répétitions.' }], notes: '' } }],
       ['TSYS-0008', {}],
       ['TSYS-0010', {}],
       ['TSYS-0011', { unresolvedParams: [{ ref: 'comp-inexistant::ref_pompe', reason: 'unknown_node' }, { ref: 'comp-pompe-vidange::bruit_max', reason: 'empty' }] }],
     ],
+    // GH73 — entrée retirée de la campagne, conservée avec sa date de retrait.
+    removed: [['TSYS-0003', { removedAt: '2026-07-02T08:00:00.000Z', resolvedParams: { consommation_eau_eco: '45 L', duree_programme_eco: '225 min' }, paramValues: { charge_essai: '8 kg' } }]],
   },
   {
-    phase: 'P7', id: 'CAMP-0003', title: 'Vérification des KPI produit', status: 'in_progress',
+    phase: 'P7', id: 'CAMP-0003', title: 'Vérification des KPI produit', status: 'in_progress', testedVersion: { version: 'LLV-0002' },
     fields: { jalon: 'DVT', description: 'Campagne générée depuis le test itérant **TSYS-0005** : une instance par exigence liée.' },
     createdAt: '2026-07-07T08:00:00.000Z',
     reqInstances: true,
@@ -951,44 +967,20 @@ export const CAMPAIGNS = [
     entries: [['TSYS-0008', {}]],
   },
   {
+    phase: 'P5', id: 'CMOT-0001', repo: 'moteur', objectTypeRef: 'root::campagne-moteur', title: 'Essais de protection de l\'onduleur', status: 'completed',
+    fields: { lieu: 'Banc HIL Lyon' }, paramSourceRef: 'RE1', createdAt: '2026-05-13T08:00:00.000Z', completedAt: '2026-05-15T17:00:00.000Z',
+    entries: [
+      ['TMOT-0003', { resolvedParams: { courant_max: '8 A' }, run: { result: 'FAIL', by: P.yann, at: '2026-05-14T10:00:00.000Z', duration: 600,
+        stepResults: [{ order: 1, result: 'FAIL', comment: 'Coupure mesurée à 14 µs.' }], notes: 'Temps de coupure au-dessus de la limite.' } }],
+    ],
+  },
+  {
     phase: 'P8', id: 'CAMP-0005', title: 'PVT — Présérie', status: 'planned',
     fields: { jalon: 'PVT', lieu: 'Usine' }, createdAt: '2026-07-20T08:00:00.000Z',
-    entries: [['TSYS-0001', { resolvedParams: { capacite_kg: '8 kg' } }], ['TSYS-0009', { resolvedParams: { puissance_veille_max: '0.5 W' } }], ['TSYS-0003', { paramValues: { charge_essai: '' }, resolvedParams: { consommation_eau_eco: '45 L', duree_programme_eco: '225 min' } }]],
-  },
-]
-
-// ─── Reviews (repo produit) ──────────────────────────────────────────────────
-
-export const REVIEWS = [
-  {
-    phase: 'P4', id: 'REVIEW-0001', title: "Revue d'étude RE1 — exigences produit", status: 'approved',
-    description: 'Revue formelle des exigences produit de performance avant le gel **RE1**.',
-    createdBy: P.claire.name, createdAt: '2026-04-20T08:00:00.000Z', dueDate: '2026-04-24', quorum: 2,
-    reviewers: [P.claire.name, P.hugo.name, P.marc.name],
-    objects: ['PRD-0001', 'PRD-0002', 'PRD-0003', 'PRD-0004', 'PRD-0005'].map(id => ({
-      objectId: id, objectType: 'requirement', objectVersion: 1,
-      approvals: [P.hugo, P.marc].map(p => ({ reviewerId: p.name, approvedAt: '2026-04-23T15:00:00.000Z', objectId: id })),
-      approvalStatus: 'quorum_reached',
-    })),
-  },
-  {
-    phase: 'P5', id: 'REVIEW-0002', title: 'Revue IHM — maquettes façade', status: 'closed',
-    description: 'Revue close sans approbation : maquettes à reprendre après le retour UX.',
-    createdBy: P.ines.name, createdAt: '2026-05-02T08:00:00.000Z', dueDate: null, quorum: null,
-    reviewers: [P.ines.name, P.claire.name],
-    objects: [{ objectId: 'IHM-0001', objectType: 'requirement', objectVersion: 1, approvals: [] }],
-  },
-  {
-    phase: 'P7', id: 'REVIEW-0003', title: 'Revue des évolutions post-EVT', status: 'open',
-    description: 'Évolutions issues de la campagne EVT : essorage, remontée d\'état Wi-Fi, entretien du filtre.',
-    createdBy: P.hugo.name, createdAt: '2026-07-08T08:00:00.000Z', dueDate: '2026-07-31', quorum: null,
-    reviewers: [P.hugo.name, P.ines.name, P.marc.name],
-    objects: [
-      { objectId: 'SYS-0002', objectType: 'requirement', objectVersion: 2, approvals: [{ reviewerId: P.ines.name, approvedAt: '2026-07-09T10:00:00.000Z', objectId: 'SYS-0002' }] },
-      { objectId: 'SYS-0013', objectType: 'requirement', objectVersion: 1, approvals: [] },
-      { objectId: 'PRD-0012', objectType: 'requirement', objectVersion: 1, approvals: [] },
-      { objectId: 'TSYS-0011', objectType: 'test_case', objectVersion: 1, approvals: [] },
-    ],
+    entries: [['TSYS-0001', { resolvedParams: { capacite_kg: '8 kg' } }],
+      // GH64 — instance reportée depuis la DVT, à rejouer en présérie.
+      ['TSYS-0004', { resolvedParams: { niveau_sonore_essorage: '74 dB(A)' }, carriedFrom: { campaignId: 'CAMP-0002', entryId: 'TSYS-0004-1' } }],
+      ['TSYS-0009', { resolvedParams: { puissance_veille_max: '0.5 W' } }], ['TSYS-0003', { paramValues: { charge_essai: '' }, resolvedParams: { consommation_eau_eco: '45 L', duree_programme_eco: '225 min' } }]],
   },
 ]
 
@@ -1033,6 +1025,37 @@ export default function (data) {
 }
 `
 
+/** GH201, GH244 — « Issues par version » : les issues incluses dans chaque version du graphe. */
+const ISSUES_BY_VERSION = `// @polenta contract 1
+// Nombre d'issues incluses par version ; détail = issues.
+export default function (data) {
+  const issues = new Set(data.issues.map((i) => i.id))
+  return data.versions.map((v) => {
+    const ids = v.changes.map((c) => c.id).filter((id) => issues.has(id))
+    return { version: v.component + ' ' + v.title, state: v.state, count: ids.length, _ids: ids }
+  })
+}
+`
+
+/** GH93 — requête paramétrée : décisions d'une validation choisie à l'affichage. */
+const DECISIONS_BY_VALIDATION = `// @polenta contract 1
+// Décisions d'une validation, choisie par le paramètre du dashboard.
+export default function (data, polenta) {
+  const wanted = polenta.params.validation ?? 'Validation 1.0'
+  const groups = new Map()
+  for (const v of data.validations) {
+    if (v.title !== wanted) continue
+    for (const e of v.entries) {
+      let g = groups.get(e.decision)
+      if (!g) groups.set(e.decision, (g = { decision: e.decision, count: 0, _ids: [] }))
+      g.count++
+      g._ids.push(e.requirementId)
+    }
+  }
+  return Array.from(groups.values())
+}
+`
+
 export const QUERIES = [
   { id: 'QUERY-0001', title: 'Exigences — statut par composant', template: REQ({ groupBy: ['component', 'status'] }) },
   { id: 'QUERY-0002', title: 'Exigences — statut de couverture', template: REQ({ groupBy: ['coverageStatus'] }) },
@@ -1049,6 +1072,18 @@ export const QUERIES = [
   { id: 'QUERY-0010', title: 'Dernier résultat de campagne', template: { id: 'campaign-last-result', params: {} } },
   // GH126 — colonne éclatée « Résultat par campagne » (une sous-colonne par campagne).
   { id: 'QUERY-0011', title: 'Résultat par campagne', template: { id: 'campaign-results', params: {} } },
+  { id: 'QUERY-0012', title: 'Issues par version', script: ISSUES_BY_VERSION },
+  { id: 'QUERY-0013', title: 'Décisions par validation', script: DECISIONS_BY_VALIDATION,
+    parameters: [{ name: 'validation', kind: 'enum', label: 'Validation', required: true, default: 'Validation 1.0',
+      values: [{ value: 'Validation 1.0' }, { value: 'Validation 2.0' }, { value: 'Validation 1.2.4' }] }] },
+]
+
+/** GH203 — vues d'équipe (`.polenta/views/<nœud>/<type>.yaml`). */
+export const SAVED_VIEWS = [
+  { phase: 'P7', repo: 'produit', node: 'root', type: 'exigence-produit', views: [
+    { name: 'Revue marketing', settings: { excel: ['section', 'id', 'name', 'status', 'priority', 'source', 'marches', 'kpi_cible'], showFoldersExcel: true, freezeColCountExcel: 3 } },
+    { name: 'Suivi de conformité', settings: { excel: ['id', 'name', 'status', 'coverageStatus', 'designStatus', 'validationStatus'], showFoldersExcel: false, freezeColCountExcel: 2 } },
+  ] },
 ]
 
 export const DASHBOARDS = [
@@ -1075,6 +1110,13 @@ export const DASHBOARDS = [
       { key: 'moteur', title: 'Exigences moteur par statut', queryId: 'QUERY-0008', size: 'md', template: { id: 'bar', params: { category: 'status', ...SUM } } },
       { key: 'prio', title: 'Prioritaires non approuvées', queryId: 'QUERY-0003', size: 'lg',
         template: { id: 'table', params: { columns: ['id', 'title', 'status', 'priority'] } } },
+    ],
+  },
+  {
+    id: 'DASHBOARD-0003', title: 'Versions & validation', createdAt: '2026-04-24T16:00:00.000Z', by: P.marc,
+    widgets: [
+      { key: 'issues', title: 'Issues par version', queryId: 'QUERY-0012', size: 'md', template: { id: 'bar', params: { category: 'version', ...SUM } } },
+      { key: 'decisions', title: 'Décisions de la validation', queryId: 'QUERY-0013', size: 'md', template: { id: 'pie', params: { category: 'decision', ...SUM } } },
     ],
   },
 ]

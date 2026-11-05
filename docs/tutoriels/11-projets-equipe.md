@@ -76,3 +76,16 @@ Une fois le projet partagé :
   données sont des fichiers du dépôt : ils se partagent en publiant ;
 - dans une entreprise qui héberge Polenta, les collègues sans poste installé ouvrent le même projet
   dans le **client web** ([tutoriel 1](01-compte-connexion.md#le-client-web)).
+
+## Exercices
+
+Ces exercices demandent un compte sur un serveur GitHub ou Forgejo : ils sont facultatifs.
+
+**Publier une copie de la démo sur vos dépôts.**
+1. Créer sur votre compte un projet vide avec l'assistant (**Sur un serveur (GitHub, Forgejo)**),
+   puis ouvrir ses **Paramètres du repo**, onglet **Membres** : ajouter un collègue en *Lecture*.
+2. Dans la démo, modifier une exigence, puis **Publier**.
+
+Résultat : le projet est créé avec sa branche d'intégration `int-…` et le collègue est invité. Dans
+la démo, l'envoi échoue : ses dépôts sont publics et ne vous appartiennent pas. Pour publier la
+démo elle-même, il faut d'abord pousser ses cinq dépôts sur votre compte et changer leurs adresses.

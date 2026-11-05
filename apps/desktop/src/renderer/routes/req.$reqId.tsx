@@ -72,7 +72,9 @@ function RequirementDetailPage() {
     }
   }, [req, initialized])
 
-  const hasChanges = req
+  // Pas « modifiée » avant que le formulaire ait copié l'objet : entre l'arrivée des données et
+  // l'initialisation, un rendu compare des champs vides et ouvrait « Quitter cette page ? » (gh228 E5).
+  const hasChanges = req && initialized
     ? title !== (req.title ?? '') ||
       Object.keys(fields).some(k => fields[k] !== getStringField(req.fields as Record<string, unknown>, k)) ||
       (typeDef?.fields ?? []).some(f => {

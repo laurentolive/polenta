@@ -1,9 +1,10 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { UpdateState } from '@polenta/types'
 import type { AppSettingsService } from './app-settings.service'
 import { BRAND } from '../../shared/brand'
 import { appVersion } from '../app-version'
+import { findMcpServerPids, stopProcesses } from './mcp-server-processes'
 
 /** GH49 — notes de version de la marque : page du tag pour GitHub, page `releasesUrl` telle quelle
  * pour une source `generic` ; absente → pas de lien. */
@@ -22,6 +23,8 @@ function releaseUrl(version: string): string | undefined {
 export class UpdateService {
   private state: UpdateState = { status: 'idle', currentVersion: appVersion() }
   private scheduled = false
+  private installRequested = false
+  private confirming = false
 
   constructor(private readonly settings: AppSettingsService) {}
 
@@ -66,6 +69,13 @@ export class UpdateService {
       this.setState({ status: 'error' })
     })
 
+    // GH293 — installation à la fermeture : electron-updater lance l'installeur sur 'quit', qui suit
+    // 'will-quit'. Plus de fenêtre pour prévenir : les serveurs MCP sont arrêtés directement.
+    app.on('will-quit', () => {
+      if (this.state.status !== 'ready' || this.installRequested) return
+      stopProcesses(this.findMcpServers())
+    })
+
     setTimeout(() => {
       // La promesse rejette aussi hors ligne, en plus de l'événement 'error' déjà traité.
       // GH45 S2b — relu ici : la configuration de la forge (updates: managed) peut être arrivée
@@ -79,10 +89,40 @@ export class UpdateService {
     return this.state
   }
 
-  install(): void {
-    if (this.state.status !== 'ready') return
+  async install(): Promise<void> {
+    if (this.state.status !== 'ready' || this.confirming) return
+    // GH293 — un serveur MCP lancé depuis l'installation ferait échouer le désinstalleur.
+    const mcpServers = this.findMcpServers()
+    if (mcpServers.length > 0 && !(await this.confirmStopMcpServers(mcpServers.length))) return
+    stopProcesses(mcpServers)
+    this.installRequested = true
     // isSilent : pas d'assistant NSIS ; isForceRunAfter : relance l'app après installation.
     autoUpdater.quitAndInstall(true, true)
+  }
+
+  private findMcpServers(): number[] {
+    return findMcpServerPids(process.execPath, process.resourcesPath)
+  }
+
+  private async confirmStopMcpServers(count: number): Promise<boolean> {
+    const options = {
+      type: 'warning' as const,
+      buttons: ['Arrêter et installer', 'Annuler'],
+      defaultId: 0,
+      cancelId: 1,
+      message: count > 1
+        ? `${count} serveurs MCP de ${BRAND.productName} seront arrêtés`
+        : `Un serveur MCP de ${BRAND.productName} sera arrêté`,
+      detail: `Un client MCP (Claude Desktop, Claude Code…) utilise les fichiers de ${BRAND.productName}, ce qui bloquerait la mise à jour. Redémarrez ce client après l'installation pour le reconnecter.`,
+    }
+    this.confirming = true
+    try {
+      const win = BrowserWindow.getFocusedWindow()
+      const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
+      return response === 0
+    } finally {
+      this.confirming = false
+    }
   }
 
   private setState(patch: Partial<UpdateState>): void {

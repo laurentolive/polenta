@@ -45,7 +45,8 @@ Vue **Version** : pour chaque dépôt, les modifications en attente, puis l'**ar
 ![Arbre de versions du dépôt produit](../img/version.png)
 
 - Chaque ligne est une modification publiée, avec son auteur et sa date. Les étiquettes montrent
-  les branches (`main`, `dev-essorage-1600`) et les baselines (`RE1`, `RE2`).
+  les branches (`main`, `dev-essorage-1600`), les baselines (`RE1`, `RE2`) et les tags de version
+  (`ll800-produit-1.0`).
 - La branche `dev-essorage-1600` est une étude en cours, pas encore intégrée : vitesse
   d'essorage à 1600 tr/min et programme vapeur.
 - Dans le panneau, **Modifications** liste les fichiers modifiés et non publiés. À l'ouverture,
@@ -101,7 +102,8 @@ modifications en attente (ici, `AGENTS.md` bloque la création).
 
 La baseline est un repère documentaire, pour comparer ou retrouver l'état d'un jalon. Ce qui est
 livré et testé est suivi par les **versions** ([tutoriel 9](09-versions.md)) : ce sont elles que
-les exécutions de test et les validations référencent.
+les exécutions de test et les validations référencent. Dans la démo, la version `1.0` du lave-linge
+porte le tag `ll800-produit-1.0`, et le moteur `1.2.4` le tag `comp-moteur-1.2.4`.
 
 ## Comparer deux versions
 
@@ -113,3 +115,44 @@ baselines ou commits.
 La liste des fichiers modifiés (ajoutés `A`, modifiés `M`) s'affiche ; un clic montre les
 différences, en **Rendu** ou en **Raw**. Entre RE1 et RE2, SYS-0002 est repassée de `approved` à
 `review` en version 2, avec une rampe d'accélération ramenée de 90 à 60 s.
+
+## Exercices
+
+La démo clone des dépôts publics : l'envoi au serveur échoue. Ces exercices s'arrêtent avant, ou
+acceptent l'échec de l'envoi après une fusion locale.
+
+**Préparer une publication.**
+1. Modifier le titre de PRD-0005.
+2. **Publier** : lire la liste des modifications, donner un titre.
+3. **Annuler**.
+
+Résultat : la fenêtre liste PRD-0005 (et `AGENTS.md`) ; rien n'est publié.
+
+**Comparer une branche d'étude.**
+1. **Comparer deux versions**, dépôt produit : `main`, puis `dev-essorage-1600`.
+
+Résultat : PRD-0002 est modifiée (statut `review`, KPI 1600 tr/min), PRD-0014 est ajoutée, et
+`vitesse_essorage` passe de 1400 à 1600 dans `parameters/parameters.yaml`.
+
+**Résoudre un conflit.**
+1. Sur `main`, modifier le *KPI cible* de PRD-0002 (`1450 tr/min`), puis **Publier** : la fusion
+   locale se fait, l'envoi échoue (*Fusionné localement, mais le push a échoué*).
+2. *Projet › Modèle de données › Structure* : passer le dépôt produit sur `dev-essorage-1600`.
+3. **Publier**, avec **Fusionner dans main** coché.
+4. Dans la vue **Conflits**, garder une des deux valeurs du KPI, puis terminer.
+
+Résultat : PRD-0002 est en conflit sur le KPI ; une fois le bloc résolu (*✓ Résolu*), la fusion se
+termine. L'envoi échoue ensuite, comme à l'étape 1.
+
+**Comparer deux baselines.**
+1. **Comparer deux versions**, dépôt produit : RE1, puis RE2.
+2. Ouvrir `parameters/parameters.yaml`, puis SYS-0002.
+
+Résultat : `vitesse_essorage` passe de 1200 à 1400 ; SYS-0002 passe de `approved` à `review`, en
+version 2.
+
+**Lire l'historique dans le terminal.**
+1. **Terminal**, **Aller à …** le dépôt produit, puis `git log --format="%an %ad %s" --date=short`.
+
+Résultat : les modifications de Hugo Bernard, Claire Martin et Marc Dubois, de l'initialisation en
+mars à l'abandon du correctif 1.1 en juillet, dont `[version] LLV-0001 1.0 released`.

@@ -1,4 +1,5 @@
 import type { Session } from './session'
+import { testedVersionArg } from './demo-types'
 
 type Result = 'PASS' | 'FAIL' | 'BLOCKED' | 'INCOMPLETE'
 interface Entry { entryId: string; testCaseId: string; requirementId?: string }
@@ -18,6 +19,7 @@ export async function recordResult(s: Session, campaignId: string, entryId: stri
     result,
     ...(entry.requirementId && { requirementId: entry.requirementId }),
     campaignEntry: { campaignId, entryId },
+    ...await testedVersionArg(s),
   }, workspaceDir)
   await s.invoke('campaigns:update-run', localPath, campaignId, entryId, result, run.id)
   return run.id

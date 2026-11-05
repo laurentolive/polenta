@@ -27,13 +27,15 @@ IA. Chaque tutoriel montre où cliquer et quoi regarder.
 | 12 | [Travailler avec un agent IA](12-agent-ia.md) | serveur MCP, `AGENTS.md`, import et modification en masse |
 
 Les tutoriels se suivent dans l'ordre, mais chacun peut se lire seul une fois connecté (tutoriel 1)
-et la démo ouverte (tutoriel 2). Les tutoriels 9 à 11 sortent de la démo : ils ajoutent des types ou
-créent des dépôts.
+et la démo ouverte (tutoriel 2). Les tutoriels 2 à 12 se terminent par des **exercices** à faire sur
+la démo ; le tutoriel 2 explique comment repartir d'une démo propre. Seul le tutoriel 11 sort de la
+démo : il crée des dépôts sur un serveur.
 
 ## Le projet de démonstration
 
 Le lave-linge frontal LL800 (8 kg, 1400 tr/min) est un projet complet, avec plusieurs mois
-d'historique, plusieurs auteurs et deux baselines. Il est réparti sur **cinq dépôts git** :
+d'historique, plusieurs auteurs et deux baselines. Il est réparti sur **cinq dépôts git** (le dépôt
+produit est cloné dans le dossier `demo-ll800-produit`) :
 
 | Dépôt | Rôle |
 |---|---|
@@ -41,12 +43,22 @@ d'historique, plusieurs auteurs et deux baselines. Il est réparti sur **cinq d�
 | `comp-moteur` | composant réutilisable : moteur BLDC et onduleur |
 | `comp-pompe-vidange` | composant réutilisable : pompe de vidange, figé sur le tag `v2.0` |
 | `comp-module-wifi` | composant réutilisable : module Wi-Fi, volontairement sans tests |
-| `if-bus-interne` | **interface** : exigences du bus interne, avec les rôles `controller` et `device` |
+| `if-bus-interne` | **interface** : exigences du bus interne, avec les rôles `controller` et `device`, monté sous le moteur |
 
 Le dépôt produit contient aussi des composants **locaux** (sous-système hydraulique, carte de
 commande et son logiciel, IHM, bus IHM). La démo comporte volontairement des défauts à trouver :
 exigences non couvertes, tests en échec, éléments à revalider, énoncé non EARS, paramètres non
-résolus. Elle ne déclare ni versions, ni issues, ni validations.
+résolus.
+
+Elle suit aussi le produit jusqu'à sa livraison :
+
+- **versions** : lave-linge `1.0` livré et `2.0` en cours, correctif `1.1` abandonné ; moteur
+  `1.2.4` livré et `1.3` en cours ; une version livrée pour la pompe, le module Wi-Fi et le bus ;
+- **issues** ouvertes depuis des essais en échec ou une décision de validation ;
+- **validations** : la `1.0` du lave-linge et la `1.2.4` du moteur sont signées, la `2.0` est en
+  cours ;
+- campagnes avec version testée, champs d'exécution, résultats reportés et importés d'Excel ;
+- vues d'équipe, historique des champs suivis, contraintes de transition, champ lien, ID supprimé.
 
 Les captures ont été faites avec Polenta 0.0.8, sur la démo générée par
 `scripts/demo-lave-linge/generate.mjs` ; certains écrans ont évolué depuis (barre d'activité,

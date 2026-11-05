@@ -49,6 +49,8 @@ const LINK_TYPES_BASE = [
     labelTargetToSource: 'est vérifiée par',
     sourceRefs: ['test'],
     targetRefs: ['requirement'],
+    // GH139 — colonne affichée par défaut : la couverture se voit sans configurer la vue.
+    defaultVisible: true,
   },
   {
     name: 'implements-interface',

@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { typeOfCategory } from './support/demo-types'
 
 /**
  * GH271 — popup d'issue sur une exécution (specs/GH244.md, critères 8 et 9) : PASS ne propose rien, BLOCKED
@@ -45,17 +46,14 @@ test.beforeAll(async () => {
   testId = approved!.id
 
   const root = schema.nodes.find(n => n.name === 'root')!
-  root.objectTypes = [
-    ...(root.objectTypes ?? []),
-    { name: 'web-version', label: 'Version', prefix: 'WVR', category: 'version', fields: [], statuses: statuses({ name: 'en_cours' }, { name: 'released', isApproval: true }, { name: 'abandonnee', isTerminal: true } as StatusLike) },
-    { name: 'web-issue', label: 'Issue', prefix: 'WIS', category: 'issue', fields: [], statuses: statuses({ name: 'ouverte' }) },
-  ]
+  const versionType = typeOfCategory(root, 'version', { name: 'web-version', label: 'Version', prefix: 'WVR', category: 'version', fields: [], statuses: statuses({ name: 'en_cours' }, { name: 'released', isApproval: true }, { name: 'abandonnee', isTerminal: true } as StatusLike) })
+  const issueType = typeOfCategory(root, 'issue', { name: 'web-issue', label: 'Issue', prefix: 'WIS', category: 'issue', fields: [], statuses: statuses({ name: 'ouverte' }) })
   await s.invoke('schema:save', localPath, schema)
   fs.mkdirSync(path.join(localPath, 'versions'), { recursive: true })
   fs.writeFileSync(path.join(localPath, 'versions', `${VERSION_ID}.yaml`), [
-    `id: ${VERSION_ID}`, 'objectTypeRef: root::web-version', 'title: "1.0"', 'status: en_cours', 'version: 1', 'fields: {}', '',
+    `id: ${VERSION_ID}`, `objectTypeRef: root::${versionType}`, 'title: "9.1"', 'status: en_cours', 'version: 1', 'fields: {}', '',
   ].join('\n'))
-  linkedIssue = await s.invoke<IssueLike>('issues:create', localPath, { objectTypeRef: 'root::web-issue', title: 'Issue existante', fields: {} }, workspaceDir)
+  linkedIssue = await s.invoke<IssueLike>('issues:create', localPath, { objectTypeRef: `root::${issueType}`, title: 'Issue existante', fields: {} }, workspaceDir)
   campaign = await s.invoke<Campaign>('campaigns:create', localPath, { title: 'GH271 e2e', testCaseIds: [testId] }, workspaceDir)
 })
 

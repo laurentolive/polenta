@@ -50,3 +50,20 @@ modification de ces trois éléments :
 
 Dans la démo, `vitesse_essorage` est passée de 1200 à 1400 tr/min entre les baselines RE1 et RE2 :
 la comparaison des deux baselines le montre ([tutoriel 8](08-publier-historique.md)).
+
+## Exercices
+
+**Changer la valeur d'un paramètre utilisé.**
+1. Vue **Paramètres**, ouvrir `capacite_kg`.
+2. Lire **Utilisé par**, puis passer la valeur à `9`.
+
+Résultat : PRD-0001, TSYS-0001 et TSYS-0002 sont listés. Après le changement, ceux qui sont
+approuvés sont marqués **Impact à vérifier**, et la valeur affichée devient `9 kg` partout.
+
+**Résoudre une référence.**
+1. Ouvrir SYS-0012 : `{effort_fermeture_hublot}` reste affiché tel quel.
+2. Vue **Paramètres**, dépôt produit : créer `effort_fermeture_hublot`, valeur `30`, unité `N`.
+3. Rouvrir SYS-0012.
+
+Résultat : la référence est remplacée par `30 N`, en bleu. **Utilisé par** du nouveau paramètre
+liste SYS-0012.

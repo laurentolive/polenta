@@ -41,9 +41,9 @@ const FORCE = args.includes('--force')
 const SCHEMAS = { produit: schemaProduit, moteur: schemaMoteur, pompe: schemaPompe, wifi: schemaWifi, bus: schemaBus }
 const repoDir = key => path.join(WS, REPOS[key].dir)
 const phaseIdx = key => PHASES.findIndex(p => p.key === key)
-// GH77 — repos dont les objets portent leur `history` ; ailleurs, l'application lit des entrées
-// déduites et propose « Reconstruire depuis git ».
-const HISTORY_REPOS = new Set(['produit', 'moteur'])
+// GH77 — types dont les objets portent leur `history` (ceux qui historisent aussi leur priorité) ;
+// ailleurs, l'application lit des entrées déduites et propose « Reconstruire depuis git ».
+const HISTORY_TYPES = /::(exigence-produit|exigence-systeme|test-systeme|exigence-moteur|test-moteur)$/
 const historyAt = iso => new Date(iso).toISOString().replace(/\.\d{3}Z$/, 'Z')
 
 // ─── Préparation ─────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ const params = Object.fromEntries(REPO_ORDER.map(k => [k, {}]))
 
 /** Entrées `history` des champs suivis qui changent : statut et priorité (GH77). */
 function withHistory(el, prev, next, stamp, comment) {
-  if (!HISTORY_REPOS.has(el.repo) || !stamp) return next
+  if (!HISTORY_TYPES.test(el.ref) || !stamp) return next
   const history = structuredClone(prev?.history ?? {})
   const add = (key, value, before) => {
     if (value === before || value === undefined) return
@@ -78,7 +78,7 @@ function withHistory(el, prev, next, stamp, comment) {
     ;(history[key] ??= []).push(entry)
   }
   add('status', next.status, prev?.status)
-  if (el.cat === 'requirement' && next.objectTypeRef.match(/exigence-(produit|systeme|moteur)$/)) add('priority', next.fields.priority, prev?.fields?.priority)
+  if (el.cat === 'requirement') add('priority', next.fields.priority, prev?.fields?.priority)
   return Object.keys(history).length ? { ...next, history } : next
 }
 

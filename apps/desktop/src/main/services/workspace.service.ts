@@ -113,38 +113,52 @@ export class WorkspaceService {
   /**
    * Contenu initial d'un nouveau repo Polenta (branche `main`, `.gitignore`, `AGENTS.md`,
    * `.mcp.json`, premier commit). GH45 S4 — partagé avec la création d'un composant sur le serveur.
+   *
+   * GH107 — avec `options` (création sur une forge, design §3.2) : premier commit sur
+   * `integrationBranch`, avec en plus `README.md` (titre = nom, paragraphe = description) et
+   * `config/project.yaml` (`integrationBranch`). Aucune branche `main`.
    */
-  async initProjectRepo(rootRepoPath: string): Promise<void> {
+  async initProjectRepo(rootRepoPath: string, options?: { integrationBranch: string; name: string; description: string }): Promise<void> {
     await fsPromises.mkdir(rootRepoPath, { recursive: true })
-    await git.init({ fs, dir: rootRepoPath, defaultBranch: 'main' })
-
-    await fsPromises.writeFile(
-      path.join(rootRepoPath, '.gitignore'),
-      '.polenta/tree.cache.yaml\n*.pref\n',
-      'utf-8',
-    )
-    await fsPromises.writeFile(path.join(rootRepoPath, 'AGENTS.md'), buildAgentsMdTemplate(BRAND), 'utf-8')
-    // T122 sprint 4 — `.mcp.json` généré au même endroit/moment qu'`AGENTS.md` (T106),
-    // pré-configuré pour lancer le serveur MCP de ce projet (cf. host/mcp-launch.ts).
-    // GH44 — pas de `.mcp.json` hors desktop (cf. `HostContext.mcpServerLaunch`) ; le desktop le
-    // régénère à la première ouverture (`ensureAgentFiles`).
-    const mcpServerLaunch = this.host.mcpServerLaunch
-    if (mcpServerLaunch) {
+    await git.init({ fs, dir: rootRepoPath, defaultBranch: options?.integrationBranch ?? 'main' })
+    if (options) {
+      await fsPromises.writeFile(path.join(rootRepoPath, 'README.md'), `# ${options.name}\n\n${options.description.trim()}\n`, 'utf-8')
+      await fsPromises.mkdir(path.join(rootRepoPath, 'config'), { recursive: true })
       await fsPromises.writeFile(
-        path.join(rootRepoPath, '.mcp.json'),
-        buildMcpJsonContent(mcpServerLaunch()),
+        path.join(rootRepoPath, 'config', 'project.yaml'),
+        yaml.dump({ integrationBranch: options.integrationBranch }, { lineWidth: 120 }),
         'utf-8',
       )
+      await git.add({ fs, dir: rootRepoPath, filepath: 'README.md' })
+      await git.add({ fs, dir: rootRepoPath, filepath: 'config/project.yaml' })
     }
-    await git.add({ fs, dir: rootRepoPath, filepath: '.gitignore' })
-    await git.add({ fs, dir: rootRepoPath, filepath: 'AGENTS.md' })
-    if (mcpServerLaunch) await git.add({ fs, dir: rootRepoPath, filepath: '.mcp.json' })
+
+    for (const [filepath, content] of Object.entries(this.polentaInitFiles())) {
+      await fsPromises.writeFile(path.join(rootRepoPath, filepath), content, 'utf-8')
+      await git.add({ fs, dir: rootRepoPath, filepath })
+    }
     await git.commit({
       fs,
       dir: rootRepoPath,
       message: 'init: create project',
       author: { name: BRAND.productName, email: `${BRAND.id}@localhost` },
     })
+  }
+
+  /**
+   * Fichiers de l'initialisation Polenta, par chemin. T122 sprint 4 — `.mcp.json` généré au même
+   * endroit/moment qu'`AGENTS.md` (T106), pré-configuré pour lancer le serveur MCP de ce projet
+   * (cf. host/mcp-launch.ts). GH44 — pas de `.mcp.json` hors desktop (cf.
+   * `HostContext.mcpServerLaunch`) ; le desktop le régénère à la première ouverture
+   * (`ensureAgentFiles`). GH107 — partagés avec l'adoption d'un repo existant.
+   */
+  polentaInitFiles(): Record<string, string> {
+    const mcpServerLaunch = this.host.mcpServerLaunch
+    return {
+      '.gitignore': '.polenta/tree.cache.yaml\n*.pref\n',
+      'AGENTS.md': buildAgentsMdTemplate(BRAND),
+      ...(mcpServerLaunch ? { '.mcp.json': buildMcpJsonContent(mcpServerLaunch()) } : {}),
+    }
   }
 
   /**

@@ -261,7 +261,8 @@
       "onServer": "Sur le serveur {{host}}",
       "onThisComputer": "Sur ce poste uniquement",
       "noCreatableOrg": "Votre compte n’a le droit de créer un projet dans aucune organisation de {{host}}. Demandez-le à votre administrateur.",
-      "pushWarning": "Projet créé sur le serveur, mais sa première publication a échoué ({{message}}). Publiez plus tard depuis le bouton Publier."
+      "pushWarning": "Projet créé sur le serveur, mais sa première publication a échoué ({{message}}). Publiez plus tard depuis le bouton Publier.",
+      "onAServer": "Sur un serveur (GitHub, Forgejo)"
     }
   },
   "preferences": {
@@ -592,7 +593,8 @@
         "created": "Dépôt {{repo}} créé sur le serveur.",
         "repoName": "Nom du repo",
         "creating": "Création…",
-        "confirm": "Créer"
+        "confirm": "Créer",
+        "fromExisting": "Depuis un repo existant"
       }
     },
     "removeDependency": {
@@ -2619,5 +2621,131 @@
     },
     "noTest": "Aucun test lié à cette exigence.",
     "otherComponent": "Exécutions dans un autre composant"
+  },
+  "repoWizard": {
+    "title": "Ajouter un repo",
+    "titleProject": "Nouveau projet sur un serveur",
+    "titleComponent": "Nouveau repo de composant sur un serveur",
+    "account": "Service",
+    "owner": "Propriétaire",
+    "ownerSelf": "{{login}} (votre compte)",
+    "scopeMissing": "Votre connexion à {{host}} ne permet pas de lister toutes vos organisations : reconnectez-vous à {{host}} pour les voir.",
+    "ownerRightUnknown": "{{owner}} ne dit pas si votre compte peut y créer un repo : en cas de refus, demandez ce droit à un administrateur de {{owner}}.",
+    "name": "Nom du repo",
+    "nameInvalid": "Lettres, chiffres, « - », « _ » et « . » seulement, sans « . » ni « - » au début.",
+    "nameChecking": "Vérification du nom…",
+    "nameTaken": "Le repo {{repo}} existe déjà : choisissez un autre nom.",
+    "nameFree": "Nom disponible.",
+    "visibility": "Visibilité",
+    "private": "Privé",
+    "public": "Public",
+    "description": "Description",
+    "descriptionHelp": "Obligatoire. Description du repo sur le serveur et contenu du README.md.",
+    "branch": "Branche d'intégration",
+    "branchInvalid": "Après « int- » : lettres, chiffres, « - », « _ » et « . » seulement.",
+    "create": "Créer",
+    "creating": "Création…",
+    "members": {
+      "title": "Membres (facultatif)",
+      "list": "Membres ajoutés",
+      "login": "Compte à ajouter",
+      "loginPlaceholder": "identifiant du compte",
+      "team": "Équipe à ajouter",
+      "teamPlaceholder": "Choisir une équipe…",
+      "teamPrefix": "Équipe {{name}}",
+      "add": "Ajouter",
+      "addTeam": "Ajouter l'équipe",
+      "remove": "Retirer {{name}}",
+      "levelOf": "Niveau de {{name}}",
+      "level": {
+        "label": "Niveau",
+        "read": "Lecture",
+        "write": "Écriture",
+        "admin": "Administration"
+      }
+    },
+    "step": {
+      "remote": "Création du repo sur le serveur",
+      "local": "Préparation locale",
+      "push": "Publication de la branche d'intégration",
+      "defaultBranch": "Branche par défaut du serveur",
+      "members": "Ajout des membres",
+      "open": "Ouverture",
+      "integration": "Branche d'intégration",
+      "description": "Description",
+      "polenta": "Initialisation Polenta"
+    },
+    "status": {
+      "done": "fait",
+      "failed": "en échec",
+      "skipped": "non fait",
+      "admin": "à faire par un administrateur"
+    },
+    "result": {
+      "title": "Création incomplète",
+      "created": "Repo {{repo}} sur le serveur, branche {{branch}}. Polenta ne le supprime pas.",
+      "steps": "Étapes",
+      "resume": "Les étapes non faites peuvent être reprises plus tard, en ajoutant ce repo comme repo existant.",
+      "continue": "Continuer",
+      "titleTodo": "Ajout terminé, points à traiter"
+    },
+    "existing": {
+      "title": "Repo existant",
+      "titleEmpty": "Repo existant, vide",
+      "inspecting": "Lecture du repo…",
+      "adding": "Ajout en cours…",
+      "polentaIncomplete": "Ce projet Polenta n'est pas complet. Vous pouvez compléter ce qui manque, ou l'ouvrir tel quel.",
+      "notPolenta": "Ce repo n'est pas encore un projet Polenta. Seul ce qui manque est demandé.",
+      "branchHelp": "Sera créée depuis {{branch}}, puis désignée et publiée. Elle deviendra la branche par défaut du repo pour toute l'équipe.",
+      "descriptionHelp": "Reportée sur le serveur si elle y manque, et dans un README.md s'il n'y en a pas.",
+      "confirmInit": "Initialiser Polenta dans ce repo : commiter ses fichiers sur la branche d'intégration et les publier.",
+      "adminNote": "Vous n'êtes pas administrateur de ce repo : la description sur le serveur et la branche par défaut seront à faire par un administrateur.",
+      "refused": "Vous n'avez pas le droit d'écriture sur ce repo, et il lui manque : {{missing}}. Il ne peut pas être ajouté.",
+      "refusedEmpty": "Ce repo est vide et vous n'avez pas le droit d'écriture : il ne peut pas être ajouté.",
+      "missing": {
+        "integration": "une branche d'intégration",
+        "description": "une description et un README",
+        "polenta": "l'initialisation Polenta"
+      },
+      "asIs": "Ouvrir tel quel",
+      "complete": "Compléter et ouvrir",
+      "fill": "Initialiser le repo"
+    }
+  },
+  "repoSettings": {
+    "title": "Paramètres du repo",
+    "offline": "Indisponible hors ligne : le serveur ne répond pas.",
+    "adminOnly": "Réservé aux administrateurs du repo : ces informations sont en lecture seule.",
+    "general": "Général",
+    "members": "Membres",
+    "description": "Description",
+    "noDescription": "Aucune description.",
+    "visibility": "Visibilité",
+    "publicConfirm": "Rendre ce repo public ? Tout son contenu, historique compris, deviendra lisible par tous.",
+    "makePublic": "Rendre public",
+    "readme": {
+      "ask": "Mettre aussi à jour le README.md ? Un commit sera créé sur la branche d'intégration et publié.",
+      "yes": "Mettre à jour le README",
+      "no": "Non",
+      "committed": "README.md mis à jour et publié.",
+      "pushFailed": "README.md mis à jour, mais sa publication a échoué ({{message}}). Publiez plus tard.",
+      "free": "Le README.md a une forme libre : il n'est pas réécrit.",
+      "unchanged": "Le README.md contient déjà cette description.",
+      "pending": "Le README.md a des modifications en attente : il n'est pas réécrit.",
+      "notOnIntegration": "Le README.md n'est mis à jour que sur la branche d'intégration ({{branch}}) : basculez dessus pour le faire."
+    },
+    "collaborators": "Collaborateurs",
+    "noCollaborator": "Aucun collaborateur direct.",
+    "invited": "Invitation envoyée à {{login}} : l'accès sera effectif quand elle sera acceptée.",
+    "invitations": "Invitations en attente",
+    "cancelInvitation": "Annuler",
+    "teams": "Équipes",
+    "noTeam": "Aucune équipe n'a accès à ce repo.",
+    "manageTeams": "Gérer les équipes sur le serveur",
+    "teamLevelOnForge": "Sur ce serveur, le niveau est celui de l'équipe, pour tous ses repos : il se règle sur le serveur. Les équipes qui couvrent tous les repos de l'organisation ne se retirent pas d'ici.",
+    "scopeMissing": "Votre connexion à {{host}} ne permet pas de lire toutes les équipes : reconnectez-vous à {{host}}.",
+    "restricted": "Le serveur ne donne pas la liste des membres à votre compte.",
+    "removeSelf": "Retirer votre propre accès administrateur ? Vous ne pourrez plus modifier ces paramètres.",
+    "removeSelfConfirm": "Retirer mon accès"
   }
 }

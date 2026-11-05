@@ -10,13 +10,14 @@ import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
 import { RepoPickerModal } from '../components/home/RepoPickerModal'
 import { CreateProjectModal } from '../components/home/CreateProjectModal'
-import type { ServerTarget } from '../components/home/ServerTargetFields'
+import { AddRepoWizard, type NewRepoRequest } from '../components/repo/AddRepoWizard'
+import { AddExistingRepo, type AdoptAnswers, type ExistingRepoTarget } from '../components/repo/AddExistingRepo'
 import { WebProjectList } from '../components/home/WebProjectList'
 import { isWeb } from '../platform'
 import { TeamProjects } from '../components/home/TeamProjects'
 import { TEAM_CONFIG_KEY } from '../hooks/useTeamConfig'
 import { projectHomeRoute } from '../lib/projectHome'
-import type { ForgeAccount, ForgeRepo, ProjectHome, TeamProjectEntry } from '@polenta/types'
+import type { CreateRepoResult, ForgeAccount, ForgeRepo, ProjectHome, TeamProjectEntry } from '@polenta/types'
 import { BrandLogo } from '../components/BrandLogo'
 
 export const Route = createFileRoute('/')({
@@ -28,6 +29,22 @@ export const Route = createFileRoute('/')({
 // prompt.
 type HomeAction = 'demo' | 'open' | 'clone' | 'create' | 'team'
 
+/** GH107 — propriétaire et nom d'une URL `https://hôte/propriétaire/nom(.git)` sur l'hôte d'un compte. */
+function existingRepoOfUrl(url: string, accounts: ForgeAccount[]): ExistingRepoTarget | null {
+  let u: URL
+  try { u = new URL(url) } catch { return null }
+  const account = accounts.find(a => a.host.toLowerCase() === u.hostname.toLowerCase())
+  const parts = u.pathname.replace(/\/+$/, '').replace(/\.git$/, '').split('/').filter(Boolean)
+  if (!account || parts.length < 2) return null
+  return { accountKey: account.key, owner: parts[parts.length - 2], name: parts[parts.length - 1] }
+}
+
+/** URL de clone quand l'inspection a échoué. */
+function forgeUrlOf(repo: ExistingRepoTarget, accounts: ForgeAccount[]): string {
+  const base = accounts.find(a => a.key === repo.accountKey)?.baseUrl ?? ''
+  return `${base}/${repo.owner}/${repo.name}.git`
+}
+
 function HomePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -37,15 +54,22 @@ function HomePage() {
   const [error, setError] = useState<{ action: HomeAction; message: string } | null>(null)
   // GH45 S4 — avec un compte Forgejo/Gitea : liste des repos (« clone ») et création sur le serveur
   // (« create ») ; « clone-url » / « create-local » : saisie simple d'avant GH45.
-  const [prompt, setPrompt] = useState<'clone' | 'clone-url' | 'create' | 'create-local' | null>(null)
+  // GH107 — « wizard » / « adopt » : assistant « Ajouter un repo », nouveau repo / repo existant.
+  const [prompt, setPrompt] = useState<'clone' | 'clone-url' | 'create' | 'create-local' | 'wizard' | 'adopt' | null>(null)
   const qc = useQueryClient()
   const [forgeAccounts, setForgeAccounts] = useState<ForgeAccount[]>([])
-  // Comptes relus au clic : la page est montée une première fois avant la connexion.
+  const [wizardName, setWizardName] = useState('')
+  const [adoptTarget, setAdoptTarget] = useState<ExistingRepoTarget | null>(null)
+  const readRepoAccounts = () => qc.fetchQuery({ queryKey: ['forge-repo-accounts'], queryFn: () => api.forge.repoAccounts(), staleTime: 0 }).catch(() => [])
+  // Comptes relus au clic : la page est montée une première fois avant la connexion. GH107 —
+  // comptes GitHub et Forgejo, pour la création comme pour un repo existant.
   const openPrompt = async (kind: 'clone' | 'create') => {
-    const accounts = await qc.fetchQuery({ queryKey: ['forge-accounts'], queryFn: () => api.forge.accounts(), staleTime: 0 }).catch(() => [])
+    const accounts = await readRepoAccounts()
     setForgeAccounts(accounts)
     setPrompt(accounts.length > 0 ? kind : kind === 'clone' ? 'clone-url' : 'create-local')
   }
+  // GH107 — dossier du projet créé par l'assistant, ouvert à la fin.
+  const wizardDir = useRef<string | null>(null)
   // GH45 — projet de démonstration selon la configuration machine : URL fournie (miroir sur la forge
   // de l'entreprise), sinon la démo publique — masquée si GitHub est masqué. `undefined` : en cours.
   const [demoUrl, setDemoUrl] = useState<string | null | undefined>(undefined)
@@ -205,7 +229,21 @@ function HomePage() {
     return dir
   })
 
-  const handleCloneUrl = (url: string) => {
+  // GH107 — URL sur l'hôte d'un compte connecté : même inspection que depuis la liste. Autre hôte,
+  // ou compte sans API : clone direct, sans complétion (design §4.3).
+  const handleCloneUrl = async (url: string) => {
+    const accounts = await readRepoAccounts()
+    const target = existingRepoOfUrl(url, accounts)
+    if (target && !(await api.workspace.findByRemote(url).catch(() => null))) {
+      setForgeAccounts(accounts)
+      setAdoptTarget(target)
+      setPrompt('adopt')
+      return
+    }
+    cloneFromUrl(url)
+  }
+
+  const cloneFromUrl = (url: string) => {
     setPrompt(null)
     run('clone', async () => {
       const dir = await pickDestination(url.replace(/\.git$/, '').replace(/\/+$/, '').split('/').pop() ?? 'projet', t('home.pickDestinationFolder'))
@@ -215,37 +253,59 @@ function HomePage() {
     })
   }
 
-  // GH45 S4 — repo choisi dans la liste : ouvert s'il est déjà sur le poste, sinon cloné.
-  const handlePickRepo = (repo: ForgeRepo) => {
-    setPrompt(null)
-    run('clone', async () => {
-      const existing = await api.workspace.findByRemote(repo.cloneUrl)
-      if (existing) {
+  // GH45 S4 — repo choisi dans la liste : ouvert s'il est déjà sur le poste. GH107 — sinon inspecté,
+  // seul ce qui manque est demandé.
+  const handlePickRepo = async (repo: ForgeRepo, accountKey: string) => {
+    const existing = await api.workspace.findByRemote(repo.cloneUrl).catch(() => null)
+    if (existing) {
+      setPrompt(null)
+      run('clone', async () => {
         await api.workspace.openProject(existing.workspaceDir)
         return existing.workspaceDir
-      }
-      const dir = await pickDestination(repo.name, t('home.pickDestinationFolder'))
-      if (!dir) return null
-      await api.workspace.createFromClone(dir, repo.cloneUrl)
-      return dir
-    })
+      })
+      return
+    }
+    setAdoptTarget({ accountKey, owner: repo.owner, name: repo.name })
+    setPrompt('adopt')
   }
 
-  // GH45 S4 — projet créé sur le serveur : nom vérifié avant toute création locale ; une
-  // publication initiale en échec laisse le projet ouvert, avec le message dans l'indicateur de
-  // synchronisation (« publiez plus tard »).
-  const handleCreateOnServer = (name: string, target: ServerTarget) => {
+  const handleAdopt = async (answers: AdoptAnswers): Promise<CreateRepoResult | null> => {
+    const dir = await pickDestination(answers.name, t('home.pickDestinationFolder'))
+    if (!dir) return null
+    try {
+      const result = await api.forge.adoptRepo({ ...answers, target: { kind: 'project', containerDir: dir } })
+      wizardDir.current = dir
+      return result
+    } catch (err) {
+      if (isWeb) await api.web.deleteWorkspace(dir, true).catch(() => {})
+      throw err
+    }
+  }
+
+  const handleAdoptDone = () => {
     setPrompt(null)
-    run('create', async () => {
-      const dir = await pickDestination(name, t('home.pickDestinationFolder'))
-      if (!dir) return null
-      const result = await api.workspace.createOnServer(dir, name, target.accountKey, target.org)
-      if (result.pushWarning) {
-        const project = await api.workspace.resolve(dir)
-        qc.setQueryData(['sync:last-error', project.localPath], t('home.server.pushWarning', { message: result.pushWarning }))
-      }
-      return dir
-    })
+    run('clone', async () => wizardDir.current)
+  }
+
+  // GH107 — assistant « Ajouter un repo » : dossier choisi, puis création (validée avant toute
+  // écriture). Une erreur avant la création distante laisse l'assistant ouvert ; sur le web, le
+  // dossier vide préparé dans « Mes projets » est retiré.
+  const handleWizardSubmit = async (req: NewRepoRequest): Promise<CreateRepoResult | null> => {
+    const dir = await pickDestination(req.name, t('home.pickDestinationFolder'))
+    if (!dir) return null
+    try {
+      const result = await api.forge.createRepo({ ...req, target: { kind: 'project', containerDir: dir } })
+      wizardDir.current = dir
+      return result
+    } catch (err) {
+      if (isWeb) await api.web.deleteWorkspace(dir, true).catch(() => {})
+      throw err
+    }
+  }
+
+  const handleWizardDone = () => {
+    setPrompt(null)
+    run('create', async () => wizardDir.current)
   }
 
   const handleCreateName = (name: string) => {
@@ -318,17 +378,26 @@ function HomePage() {
       })}
 
       {prompt === 'clone' && forgeAccounts.length > 0 && (
-        <RepoPickerModal accounts={forgeAccounts} onPick={handlePickRepo}
+        <RepoPickerModal accounts={forgeAccounts} onPick={(repo, accountKey) => void handlePickRepo(repo, accountKey)}
           onEnterUrl={() => setPrompt('clone-url')} onCancel={() => setPrompt(null)} />
       )}
       {prompt === 'clone-url' && (
         <TextPromptModal title={t('home.openFromRepo')} label={t('home.repoUrlLabel')}
           placeholder={`${defaultServer ?? 'https://github.com'}/org/projet.git`} confirmLabel={t('home.continue')}
-          onConfirm={handleCloneUrl} onCancel={() => setPrompt(null)} />
+          onConfirm={url => void handleCloneUrl(url)} onCancel={() => setPrompt(null)} />
       )}
       {prompt === 'create' && forgeAccounts.length > 0 && (
-        <CreateProjectModal accounts={forgeAccounts} onLocal={handleCreateName} onServer={handleCreateOnServer}
+        <CreateProjectModal accounts={forgeAccounts} onLocal={handleCreateName}
+          onServer={name => { setWizardName(name); setPrompt('wizard') }} onCancel={() => setPrompt(null)} />
+      )}
+      {prompt === 'adopt' && adoptTarget && (
+        <AddExistingRepo mode="project" accounts={forgeAccounts} repo={adoptTarget} onAdopt={handleAdopt} onDone={handleAdoptDone}
+          onAsIs={found => cloneFromUrl(found?.details.cloneUrl ?? forgeUrlOf(adoptTarget, forgeAccounts))}
           onCancel={() => setPrompt(null)} />
+      )}
+      {prompt === 'wizard' && forgeAccounts.length > 0 && (
+        <AddRepoWizard mode="project" accounts={forgeAccounts} initialName={wizardName}
+          onSubmit={handleWizardSubmit} onDone={handleWizardDone} onCancel={() => setPrompt(null)} />
       )}
       {prompt === 'create-local' && (
         <TextPromptModal title={t('home.createNew')} label={t('home.projectNameLabel')}

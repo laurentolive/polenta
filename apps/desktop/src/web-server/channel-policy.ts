@@ -25,7 +25,10 @@ export const WEB_EXPOSED: ReadonlySet<string> = new Set([
   'diff:save-working-file',
   'drawio:read',
   'export-templates:install-examples', 'export-templates:list',
-  'forge:accounts', 'forge:creatable-orgs', 'forge:list-repos', 'forge:org-members', 'forge:repo-access',
+  'forge:accounts', 'forge:adopt-repo', 'forge:create-repo', 'forge:inspect-repo', 'forge:list-repos', 'forge:name-available', 'forge:org-members',
+  'forge:org-teams', 'forge:owners', 'forge:repo-access', 'forge:repo-accounts',
+  'forge:cancel-invitation', 'forge:readme-state', 'forge:remove-collaborator', 'forge:remove-repo-team', 'forge:repo-settings',
+  'forge:repo-settings-available', 'forge:set-collaborator', 'forge:set-repo-team', 'forge:sync-readme', 'forge:update-repo-settings',
   'git:head-sha',
   'history:backfill', 'history:get',
   'image:read', 'image:write-paste',
@@ -72,8 +75,8 @@ export const WEB_EXPOSED: ReadonlySet<string> = new Set([
   'traceability:matrix', 'traceability:missing-links',
   'traceability:test-plan',
   'tree:generate-id', 'tree:get', 'tree:save',
-  'workspace:find-by-remote', 'workspace:clear-last-opened', 'workspace:create-component-on-server',
-  'workspace:create-from-clone', 'workspace:create-new', 'workspace:create-on-server',
+  'workspace:find-by-remote', 'workspace:clear-last-opened',
+  'workspace:create-from-clone', 'workspace:create-new',
   'workspace:detect', 'workspace:get-last-opened', 'workspace:get-tree', 'workspace:init',
   'workspace:is-empty-dir', 'workspace:list-recents', 'workspace:mark-recent', 'workspace:open',
   'workspace:open-project', 'workspace:rebuild-tree', 'workspace:remove-repo-dir',
@@ -190,7 +193,9 @@ export const ROOT_ARGS: Record<string, number[]> = {
   'versions:analysis': [0, 2], 'versions:set-impact': [0, 5], 'versions:tests': [0, 2], 'tested-config:context': [0, 2], 'tested-config:drift': [0, 2], 'versions:impact': [0, 2],
   'web:execution-sheet-export': [0, 3], 'web:execution-sheet-preview': [0, 3], 'web:export': [0],
   'web:image-import': [0], 'workspace:create-from-clone': [0], 'workspace:create-new': [0],
-  'workspace:create-on-server': [0], 'forge:repo-access': [0], 'forge:org-members': [0],
+  'forge:repo-access': [0], 'forge:org-members': [0], 'forge:repo-settings-available': [0], 'forge:repo-settings': [0],
+  'forge:update-repo-settings': [0], 'forge:set-collaborator': [0], 'forge:remove-collaborator': [0], 'forge:set-repo-team': [0],
+  'forge:remove-repo-team': [0], 'forge:cancel-invitation': [0], 'forge:readme-state': [0], 'forge:sync-readme': [0],
   'integration:create': [0], 'integration:designate': [0], 'integration:state': [0],
   'workspace:detect': [0], 'workspace:get-tree': [0], 'workspace:init': [0, 1],
   'workspace:is-empty-dir': [0], 'workspace:mark-recent': [0], 'workspace:open': [0],
@@ -206,6 +211,7 @@ export const ROOT_PARAM_NAME = /^(?!rel)[a-zA-Z]*(RepoPath|repoPath|repoPaths|Di
  * règle « pas de segment `..` » de la garde de chemins.
  */
 export const CONTENT_ARGS: Record<string, number[]> = {
+  'forge:sync-readme': [1], // GH108 — description du repo, texte libre
   'sync:commit': [1], // message
   'merge-resolution:validate': [2], // contenu du fichier
   'diff:save-working-file': [2, 3], // GH222 — texte édité et texte de départ

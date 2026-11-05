@@ -1,5 +1,5 @@
 import type {
-  CreateOnServerResult, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  AdoptRepoRequest, ReadmeState, ReadmeSyncOutcome, RepoAccessLevel, RepoSettings, RepoVisibility, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
@@ -495,12 +495,38 @@ export interface ApiClient {
     /** Comptes Forgejo/Gitea connectés, compte par défaut en tête. */
     accounts(): Promise<ForgeAccount[]>
     listRepos(accountKey: string): Promise<ForgeRepo[]>
-    /** Organisations où le compte peut créer un repo. */
-    creatableOrgs(accountKey: string): Promise<ForgeOrg[]>
     /** Droits sur le repo `origin` ; null hors ligne, hors Forgejo ou sans compte. */
     repoAccess(repoPath: string): Promise<ForgeRepoAccess | null>
     /** Membres de l'organisation propriétaire du repo ; null dans les cas sans objet. */
     orgMembers(repoPath: string): Promise<ForgeMember[] | null>
+    /** GH107 — comptes GitHub et Forgejo connectés (assistant « Ajouter un repo »). */
+    repoAccounts(): Promise<ForgeAccount[]>
+    /** GH107 — le compte, puis les organisations où créer un repo. */
+    owners(accountKey: string): Promise<ForgeOwners>
+    /** GH107 — nom libre chez ce propriétaire. */
+    nameAvailable(accountKey: string, owner: string, name: string): Promise<boolean>
+    /** GH107 — équipes d'une organisation (widget Membres). */
+    orgTeams(accountKey: string, org: string): Promise<ForgeTeam[]>
+    /** GH107 — crée le repo : distant, local sur `int-x`, push, branche par défaut, membres, ouverture. */
+    createRepo(req: CreateRepoRequest): Promise<CreateRepoResult>
+    /** GH107 — ce que contient un repo existant, sans rien écrire. */
+    inspectRepo(accountKey: string, owner: string, name: string): Promise<RepoInspection>
+    /** GH107 — complète un repo existant (seul ce qui manque), puis l'ouvre ou rend son URL. */
+    adoptRepo(req: AdoptRepoRequest): Promise<CreateRepoResult>
+    /** GH108 — sans réseau : `origin` sur une forge d'un compte connecté. */
+    repoSettingsAvailable(repoPath: string): Promise<boolean>
+    /** GH108 — fenêtre « Paramètres du repo » ; null : sans objet. */
+    repoSettings(repoPath: string): Promise<RepoSettings | null>
+    updateRepoSettings(repoPath: string, patch: { description?: string; visibility?: RepoVisibility }): Promise<void>
+    setCollaborator(repoPath: string, login: string, level: RepoAccessLevel): Promise<'added' | 'invited'>
+    removeCollaborator(repoPath: string, login: string): Promise<void>
+    setRepoTeam(repoPath: string, team: string, level?: RepoAccessLevel): Promise<void>
+    removeRepoTeam(repoPath: string, team: string): Promise<void>
+    cancelInvitation(repoPath: string, id: number): Promise<void>
+    /** GH108 — forme du README de l'intégration. */
+    readmeState(repoPath: string): Promise<ReadmeState>
+    /** GH108 — reporte la description dans le README (commit sur l'intégration). */
+    syncReadme(repoPath: string, description: string): Promise<ReadmeSyncOutcome>
   }
   workspace: {
     listRecents(): Promise<ProjectRecent[]>
@@ -513,10 +539,6 @@ export interface ApiClient {
     createFromClone(containerDir: string, remoteUrl: string): Promise<WorkspaceOpenResult>
     /** GH45 S2b — projet récent dont l'origin est `remoteUrl`, null sinon. */
     findByRemote(remoteUrl: string): Promise<ProjectRecent | null>
-    /** GH45 S4 — nouveau projet sur le serveur (repo privé dans `org`), puis local, puis publication. */
-    createOnServer(containerDir: string, name: string, accountKey: string, org: string): Promise<CreateOnServerResult>
-    /** GH45 S4 — nouveau repo de composant sur le serveur, initialisé ; renvoie son URL de clone. */
-    createComponentOnServer(accountKey: string, org: string, name: string): Promise<{ cloneUrl: string }>
     // GH27 — true if the folder is missing or has no entries
     isEmptyDir(dir: string): Promise<boolean>
     // T69: flat workspace

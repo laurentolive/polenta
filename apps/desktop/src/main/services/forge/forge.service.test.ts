@@ -79,20 +79,26 @@ describe('forgejoProvider — fonctions P1', () => {
     expect(forge.requests[0].headers.authorization).toBe('token tok')
   })
 
-  it('listCreatableOrgs : seulement les organisations où can_create_repository', async () => {
+  it('listOwners : le compte, puis les organisations où can_create_repository', async () => {
     forge.route('GET', '/api/v1/user/orgs', () => ({ status: 200, json: [{ username: 'acme', full_name: 'ACME' }, { username: 'lecture' }] }))
     forge.route('GET', '/api/v1/users/bob/orgs/acme/permissions', () => ({ status: 200, json: { is_owner: false, can_read: true, can_write: true, can_create_repository: true } }))
     // Gitea : can_read peut être faux pour un lecteur d'équipe — seul can_create_repository compte.
     forge.route('GET', '/api/v1/users/bob/orgs/lecture/permissions', () => ({ status: 200, json: { is_owner: false, can_read: false, can_write: false, can_create_repository: false } }))
-    expect(await forgejoProvider.listCreatableOrgs!(forge.baseUrl, 'tok', 'bob')).toEqual([{ name: 'acme', label: 'ACME' }])
+    expect(await forgejoProvider.listOwners!(forge.baseUrl, 'tok', 'bob')).toEqual({
+      owners: [
+        { name: 'bob', label: '', kind: 'user', canCreate: true },
+        { name: 'acme', label: 'ACME', kind: 'org', canCreate: true },
+      ],
+    })
   })
 
-  it('createOrgRepo : repo privé et vide ; nom pris (409) → RepoNameTakenError', async () => {
+  it('createRepo : repo vide dans une organisation ; nom pris (409) → RepoNameTakenError', async () => {
     forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/nouveau') }))
-    expect((await forgejoProvider.createOrgRepo!(forge.baseUrl, 'tok', 'acme', 'nouveau')).cloneUrl).toBe('https://forge.test/acme/nouveau.git')
-    expect(JSON.parse(forge.requests[0].body)).toEqual({ name: 'nouveau', private: true, auto_init: false, default_branch: 'main' })
+    const input = { owner: 'acme', ownerKind: 'org' as const, name: 'nouveau', description: '', visibility: 'private' as const }
+    expect((await forgejoProvider.createRepo!(forge.baseUrl, 'tok', input)).cloneUrl).toBe('https://forge.test/acme/nouveau.git')
+    expect(JSON.parse(forge.requests[0].body)).toEqual({ name: 'nouveau', description: '', private: true, auto_init: false, default_branch: 'main' })
     forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 409, json: { message: 'The repository with the same name already exists.' } }))
-    await expect(forgejoProvider.createOrgRepo!(forge.baseUrl, 'tok', 'acme', 'nouveau')).rejects.toBeInstanceOf(RepoNameTakenError)
+    await expect(forgejoProvider.createRepo!(forge.baseUrl, 'tok', input)).rejects.toBeInstanceOf(RepoNameTakenError)
   })
 
   it('repoPermissions : 404 → null', async () => {
@@ -138,6 +144,34 @@ describe('ForgeService', () => {
     expect((await service.accounts()).map(a => a.key)).toEqual([`${host}:bob`])
   })
 
+  it('GH107 P-08 / P-07 — repoAccounts : GitHub et Forgejo, compte par défaut en tête ; compte generic refusé', async () => {
+    await tokens.set('git.example:carl', 'g')
+    const store = JSON.parse(await fsP.readFile(path.join(dir, 'auth.json'), 'utf-8'))
+    store.accounts.push({ remoteHost: 'git.example', username: 'carl', name: 'Carl', email: 'c@x', provider: 'generic', baseUrl: 'https://git.example' })
+    await fsP.writeFile(path.join(dir, 'auth.json'), JSON.stringify(store))
+    expect((await service.repoAccounts()).map(a => a.key)).toEqual(['github.com:octo', `${host}:bob`])
+    expect((await service.accounts()).map(a => a.key)).toEqual([`${host}:bob`])
+    await expect(service.owners('git.example:carl')).rejects.toThrow(/reconnectez-vous/)
+  })
+
+  it('GH107 — nameAvailable, createRemote (nom revérifié), grantMember (compte, équipe), orgTeams', async () => {
+    forge.route('GET', '/api/v1/repos/acme/pris', () => ({ status: 200, json: apiRepo('acme/pris') }))
+    expect(await service.nameAvailable(`${host}:bob`, 'acme', 'pris')).toBe(false)
+    expect(await service.nameAvailable(`${host}:bob`, 'acme', 'libre')).toBe(true)
+    await expect(service.nameAvailable(`${host}:bob`, 'acme', 'bad name')).rejects.toThrow(/invalide/)
+    const input = { owner: 'acme', ownerKind: 'org' as const, name: 'pris', description: 'D', visibility: 'private' as const }
+    await expect(service.createRemote(`${host}:bob`, input)).rejects.toBeInstanceOf(RepoNameTakenError)
+    expect(forge.requests.some(r => r.method === 'POST')).toBe(false)
+    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/libre') }))
+    expect((await service.createRemote(`${host}:bob`, { ...input, name: 'libre' })).fullName).toBe('acme/libre')
+    forge.route('PUT', '/api/v1/repos/acme/libre/collaborators/ann', () => ({ status: 204, text: '' }))
+    forge.route('PUT', '/api/v1/repos/acme/libre/teams/devs', () => ({ status: 204, text: '' }))
+    expect(await service.grantMember(`${host}:bob`, 'acme', 'libre', { kind: 'user', name: 'ann', level: 'write' })).toBe('added')
+    expect(await service.grantMember(`${host}:bob`, 'acme', 'libre', { kind: 'team', name: 'devs', level: 'read' })).toBe('added')
+    forge.route('GET', '/api/v1/orgs/acme/teams', () => ({ status: 200, json: [{ name: 'devs', permission: 'write' }] }))
+    expect(await service.orgTeams(`${host}:bob`, 'acme')).toEqual([{ name: 'devs', label: 'devs' }])
+  })
+
   it('listRepos : le repo de configuration n\'est pas proposé', async () => {
     forge.route('GET', '/api/v1/user/repos', () => ({ status: 200, json: [apiRepo('acme/polenta-config'), apiRepo('acme/demo')] }))
     expect((await service.listRepos(`${host}:bob`)).map(r => r.fullName)).toEqual(['acme/demo'])
@@ -151,51 +185,7 @@ describe('ForgeService', () => {
     expect(err.message).toMatch(/Reconnectez-vous/)
     expect(auth.isAccessRevoked(host)).toBe(true)
     forge.route('GET', '/api/v1/user/orgs', () => ({ status: 500, json: { message: 'boom' } }))
-    await expect(service.creatableOrgs(`${host}:bob`)).rejects.toThrow(`Le serveur ${host} a refusé l'opération (HTTP 500 : boom).`)
-  })
-
-  it('createProjectOnServer : nom pris → erreur avant toute écriture locale', async () => {
-    forge.route('GET', '/api/v1/repos/acme/pris', () => ({ status: 200, json: apiRepo('acme/pris') }))
-    await expect(service.createProjectOnServer(dir, 'pris', `${host}:bob`, 'acme')).rejects.toBeInstanceOf(RepoNameTakenError)
-    expect(fs.existsSync(path.join(dir, 'pris'))).toBe(false)
-    expect(forge.requests.some(r => r.method === 'POST')).toBe(false)
-  })
-
-  it('createProjectOnServer : repo distant, projet local, origin, publication de main', async () => {
-    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/nouveau') }))
-    const result = await service.createProjectOnServer(dir, 'nouveau', `${host}:bob`, 'acme')
-    const repoPath = path.join(dir, 'nouveau')
-    expect(result).toMatchObject({ cloneUrl: 'https://forge.test/acme/nouveau.git', pushWarning: undefined, open: { status: 'ok' } })
-    expect((await git.listRemotes({ fs, dir: repoPath }))).toEqual([{ remote: 'origin', url: 'https://forge.test/acme/nouveau.git' }])
-    expect(pushBranch).toHaveBeenCalledWith(repoPath, 'main')
-  })
-
-  it('createProjectOnServer : publication en échec → projet conservé avec origin, avertissement', async () => {
-    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/coupe') }))
-    pushBranch.mockRejectedValueOnce(new Error('réseau coupé'))
-    const result = await service.createProjectOnServer(dir, 'coupe', `${host}:bob`, 'acme')
-    expect(result.pushWarning).toBe('réseau coupé')
-    expect((await git.listRemotes({ fs, dir: path.join(dir, 'coupe') }))[0].url).toBe('https://forge.test/acme/coupe.git')
-  })
-
-  it('createProjectOnServer : nom invalide refusé sans appel réseau', async () => {
-    await expect(service.createProjectOnServer(dir, 'a b', `${host}:bob`, 'acme')).rejects.toThrow(/invalide/)
-    expect(forge.requests).toHaveLength(0)
-  })
-
-  it('createComponentOnServer : initialisé et publié depuis un dossier temporaire supprimé ensuite', async () => {
-    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/comp') }))
-    let pushedFrom = ''
-    pushBranch.mockImplementationOnce(async (repoPath: string) => { pushedFrom = repoPath })
-    expect(await service.createComponentOnServer(`${host}:bob`, 'acme', 'comp')).toEqual({ cloneUrl: 'https://forge.test/acme/comp.git' })
-    expect(pushedFrom).toMatch(/polenta-composant-/)
-    expect(fs.existsSync(pushedFrom)).toBe(false)
-  })
-
-  it('createComponentOnServer : publication en échec → erreur qui donne l\'URL', async () => {
-    forge.route('POST', '/api/v1/orgs/acme/repos', () => ({ status: 201, json: apiRepo('acme/comp') }))
-    pushBranch.mockRejectedValueOnce(new Error('réseau coupé'))
-    await expect(service.createComponentOnServer(`${host}:bob`, 'acme', 'comp')).rejects.toThrow(/https:\/\/forge\.test\/acme\/comp\.git/)
+    await expect(service.owners(`${host}:bob`)).rejects.toThrow(`Le serveur ${host} a refusé l'opération (HTTP 500 : boom).`)
   })
 
   describe('repoAccess / orgMembers (repo local avec origin)', () => {

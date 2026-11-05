@@ -1199,7 +1199,7 @@ désactivés. Une erreur s'affiche sous le bouton concerné et disparaît au lan
 | Démo | sélecteur natif → | dossier contenant `.polenta/workspace.yaml` (`workspace:detect`) : `workspace:open-project` ; sinon dossier vide ou inexistant (`workspace:is-empty-dir`) : `workspace:create-from-clone` avec l'URL de démo — GH45 : `demoProjectUrl` de la configuration machine, sinon `DEMO_PROJECT_URL` (`renderer/lib/demoProject.ts`) ; bouton **masqué** si GitHub est masqué sans démo fournie ; sinon erreur « dossier non vide » |
 | Ouvrir un projet existant | sélecteur natif → | `workspace:open-project` (`not-a-workspace` → erreur) |
 | Depuis un repo existant | popup « URL du repo Git » → sélecteur natif → ; GH45 S4, avec un compte Forgejo/Gitea : **liste des repos accessibles** (`RepoPickerModal`, « Saisir une URL » pour le popup) | `workspace:create-from-clone` (repo déjà sur le poste : rouvert) |
-| Créer un nouveau projet | popup « Nom du projet » → sélecteur natif → ; GH45 S4, avec un compte Forgejo/Gitea : `CreateProjectModal` (nom, « Sur le serveur <hôte> » + organisation, ou « Sur ce poste uniquement ») | `workspace:create-new`, ou `workspace:create-on-server` (SPEC-PROJECT-MANAGEMENT §9.1) |
+| Créer un nouveau projet | popup « Nom du projet » → sélecteur natif → ; GH45 S4, avec un compte GitHub ou Forgejo (GH107) : `CreateProjectModal` (nom, « Sur le serveur <hôte> » ou « Sur ce poste uniquement ») ; le serveur ouvre l'assistant « Ajouter un repo » | `workspace:create-new`, ou `forge:create-repo` (SPEC-PROJECT-MANAGEMENT §9.1) |
 
 **Projets de votre équipe** (GH45 S2b) : au-dessus des boutons, les projets proposés par la
 configuration de l'équipe sur la forge (SPEC-ACCOUNTS-AUTH §7), accessibles à l'utilisateur ; un

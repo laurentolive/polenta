@@ -223,10 +223,19 @@ export class AuthService {
 
   /** GH45 S4 — comptes Forgejo/Gitea connectés (avec jeton), compte par défaut en tête. */
   async forgeAccounts(): Promise<ForgeAccount[]> {
+    return this.accountsOf(['forgejo'])
+  }
+
+  /** GH107 — comptes GitHub et Forgejo connectés (avec jeton), où créer ou adopter un repo. */
+  async repoAccounts(): Promise<ForgeAccount[]> {
+    return this.accountsOf(['github', 'forgejo'])
+  }
+
+  private async accountsOf(kinds: ForgeAccount['provider'][]): Promise<ForgeAccount[]> {
     const store = await this.readStore()
     const out: ForgeAccount[] = []
     for (const account of store.accounts.map(normalize)) {
-      if (account.provider !== 'forgejo' || !(await this.tokenFor(account))) continue
+      if (!kinds.includes(account.provider) || !(await this.tokenFor(account))) continue
       if (keyOf(account) === store.defaultAccount) out.unshift(toForgeAccount(account))
       else out.push(toForgeAccount(account))
     }

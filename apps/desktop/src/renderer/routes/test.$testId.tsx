@@ -86,7 +86,9 @@ function TestCaseDetailPage() {
     }
   }, [tc, initialized])
 
-  const hasChanges = tc
+  // Pas « modifiée » avant que le formulaire ait copié l'objet : entre l'arrivée des données et
+  // l'initialisation, un rendu compare des champs vides et ouvrait « Quitter cette page ? » (gh228 E5).
+  const hasChanges = tc && initialized
     ? title !== (tc.title ?? '') ||
       type !== (tc.objectTypeRef ?? '') ||
       status !== (tc.status ?? '') ||

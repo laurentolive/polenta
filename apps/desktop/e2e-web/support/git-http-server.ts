@@ -1,6 +1,7 @@
 import { spawn, execFileSync } from 'child_process'
 import * as http from 'http'
 import * as path from 'path'
+import { handleFakeForgejoApi } from './fake-forgejo-api'
 
 /**
  * GH44 — serveur git « smart HTTP » local pour les tests e2e : un CGI minimal autour de
@@ -11,7 +12,12 @@ import * as path from 'path'
 export function startGitHttpServer(projectRoot: string, port: number): Promise<http.Server> {
   const backend = path.join(execFileSync('git', ['--exec-path'], { encoding: 'utf-8' }).trim(), 'git-http-backend')
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
+    // GH107 — API Forgejo simulée (assistant « Ajouter un repo »), à côté du git smart HTTP.
+    if ((req.url ?? '').startsWith('/api/v1/')) {
+      await handleFakeForgejoApi(req, res, projectRoot, 'e2e')
+      return
+    }
     const url = new URL(req.url ?? '/', `http://${req.headers.host}`)
     const child = spawn(backend, [], {
       env: {

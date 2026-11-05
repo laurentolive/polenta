@@ -238,32 +238,40 @@ montée une première fois avant la connexion). Code : `main/services/forge/forg
 - « Saisir une URL » : popup URL d'avant GH45 ;
 - un repo déjà présent sur le poste (projet récent de même `origin`) est rouvert, sinon cloné.
 
-**« Créer un nouveau projet »** → `CreateProjectModal` : nom, puis **« Sur le serveur <hôte> »**
-(par défaut quand c'est possible) ou « Sur ce poste uniquement » (création locale ci-dessus) :
-- organisation choisie parmi celles où le compte **peut créer** (`GET /user/orgs`, puis
-  `GET /users/{login}/orgs/{org}/permissions` → `can_create_repository` ou `is_owner`) ; aucune →
-  option désactivée avec l'explication ;
-- `workspace:create-on-server(containerDir, name, accountKey, org)` → `CreateOnServerResult`
-  (`ForgeService.createProjectOnServer`), dans cet ordre :
-  1. nom valide (`[A-Za-z0-9._-]`) et **libre** (`GET /repos/{org}/{nom}` → 404) — sinon erreur
-     **avant toute écriture locale** (« Le dépôt … existe déjà sur le serveur ») ;
-  2. `POST /orgs/{org}/repos` `{ private: true, auto_init: false, default_branch: 'main' }` (409 →
-     même erreur) ;
-  3. `createNewProject` (contenu initial identique au local) ;
-  4. `origin` = URL de clone du repo ;
-  5. publication de `main`. **Un échec de la publication n'annule rien** : le projet reste ouvert
-     avec `origin`, le message (« publiez plus tard ») s'affiche dans l'indicateur de
-     synchronisation (`pushWarning`). Polenta ne supprime **jamais** un repo distant.
+**« Créer un nouveau projet »** → `CreateProjectModal` (comptes GitHub et Forgejo connectés,
+`forge:repo-accounts`) : nom, puis **« Sur le serveur <hôte> »** (par défaut) ou « Sur ce poste
+uniquement » (création locale ci-dessus). Le serveur ouvre l'**assistant « Ajouter un repo »**
+(GH107, `components/repo/AddRepoWizard.tsx`, spec `GH103.md` §2.2, design `GH107-design.md` §3 et §5) :
 
-### 9.2 Composant créé sur le serveur (GH45 S4)
+- service (compte), **propriétaire** : le compte lui-même ou une organisation où il peut créer
+  (`forge:owners`). Forgejo : `can_create_repository` ou `is_owner`. GitHub : admin de
+  l'organisation, ou `members_can_create_repositories` ; droit inconnu → proposée, refus expliqué ;
+- **nom** : `[A-Za-z0-9._-]`, ni `.` ni `-` en tête ; disponibilité vérifiée 400 ms après la dernière
+  frappe (`forge:name-available`) et une dernière fois avant la création ;
+- visibilité (privé par défaut), **description obligatoire** (forge et `README.md`), **branche
+  d'intégration** `int-<x>` pré-remplie avec le nom, membres facultatifs (`RepoMembersEditor` :
+  comptes et équipes de l'organisation, `forge:org-teams`) ;
+- `forge:create-repo(req)` → `CreateRepoResult` (`RepoProvisioningService.create`), étapes dans
+  cet ordre, **tout étant validé avant la première écriture** :
+  1. `remote` : repo vide créé (`auto_init: false`) ; un échec arrête tout, rien n'est écrit ;
+  2. `local` : `initProjectRepo` avec options — **un seul premier commit sur `int-<x>`**, avec
+     `README.md` (titre = nom, paragraphe = description) et `config/project.yaml`
+     (`integrationBranch`) ; aucune branche `main` ; `origin` ; workspace ;
+  3. `push` de `int-<x>` ;
+  4. `defaultBranch` : branche par défaut de la forge alignée (`alignDefaultBranch`) ;
+  5. `members` : un appel par membre, un échec n'arrête pas les suivants ; invitation GitHub signalée ;
+  6. `open` : le projet s'ouvre.
 
-Dans la fenêtre d'ajout d'un composant (SPEC-TEMPLATES §3), « Créer le repo sur le serveur » :
-organisation (mêmes règles qu'en §9.1) et nom du repo (par défaut : nom de montage). 
-`workspace:create-component-on-server(accountKey, org, name)` → `{ cloneUrl }` : nom vérifié, repo
-privé créé, **initialisé dans un dossier temporaire** (même contenu qu'un nouveau projet) puis
-publié, dossier temporaire supprimé. L'URL remplit le champ « Repo (git URL) » ; l'ajout et le
-clone suivent le flux habituel par URL. Si la publication échoue, l'erreur donne l'URL du repo créé
-(vide) pour réessayer par « Saisir une URL ».
+  Après un échec, les étapes suivantes sont `skipped` et l'assistant affiche la liste des étapes.
+  Polenta ne supprime **jamais** un repo distant.
+
+### 9.2 Composant créé sur le serveur (GH107)
+
+Dans la fenêtre d'ajout d'un composant (SPEC-TEMPLATES §3), « Créer le repo sur le serveur » ouvre le
+même assistant (`CreateComponentRepo`, nom par défaut : nom de montage). Le repo est préparé dans un
+dossier temporaire, supprimé ensuite. Au retour, l'URL remplit le champ « Repo (URL git) » et
+`int-<x>` le champ « Branche » (pin de `polenta-repo.yaml`) ; l'ajout et le clone suivent le flux
+habituel par URL.
 
 ### 9.3 Champ `user` et diagnostic des droits (GH45 S4)
 

@@ -63,9 +63,27 @@ un collaborateur porte `level: RepoAccessLevel | string`, pour afficher tels que
 
 Niveaux : Forgejo `read`/`write`/`admin`, GitHub `pull`/`push`/`admin`.
 
-Ces appels sont écrits de mémoire de ces API. Le sprint 1 les **mesure** sur une vraie instance, comme GH45
-(`specs/GH45-sprint1.md` §6) : Forgejo sur le VPS de test, GitHub avec `laurentolive`. Les réponses mesurées
-alimentent le faux serveur de test.
+Mesurés le 2026-11-05 (`specs/GH107-sprint1.md`, qui fait foi pour le détail). Ce qui change par rapport
+au tableau ci-dessus :
+
+- **Forgejo, compte personnel** : `POST /user/repos` exige le scope `write:user` ; `POLENTA_TOKEN_SCOPES`
+  le reçoit. Un jeton antérieur sans ce scope : refus 403 « required scope(s) » rendu comme
+  `ScopeMissingError`, l'assistant propose de se reconnecter.
+- **GitHub, nom** : un nom invalide est renommé sans erreur. `createRepo` valide le nom avant l'appel
+  (`[A-Za-z0-9._-]`, ni `.` ni `-` en tête) et compare le `name` rendu.
+- **GitHub, branche par défaut** : ignorée à la création (`main`) ; l'étape `defaultBranch` l'aligne.
+- **Modifier** : `updateRepo` envoie la description puis la visibilité, en deux `PATCH`. Forgejo refuse
+  privé → public à un non-admin de l'instance et annule tout le `PATCH` ; GitHub refuse un second
+  changement de visibilité tant que le premier est en cours (« still in progress »). Les deux refus sont
+  rendus avec leur message (`VisibilityChangeError`).
+- **Collaborateurs** : Forgejo ne donne pas le niveau dans la liste, `listCollaborators` lit
+  `…/collaborators/{u}/permission` par collaborateur (`role_name`) ; GitHub le donne (`role_name`). Le
+  propriétaire d'un repo personnel est exclu. `setCollaborator` sur GitHub : 201 = `'invited'` ; si une
+  invitation est en attente, le niveau passe par `PATCH …/invitations/{id}`.
+- **Équipes** : GitHub, `slug` et niveau par repo ; Forgejo, niveau porté par l'équipe
+  (`ForgeRepoTeam.levelEditable: false`) et équipes `includes_all_repositories` non retirables
+  (`removable: false`). Équipes d'un repo personnel : Forgejo 405, GitHub `[]` ; les deux rendent `[]`.
+- **Branches d'un repo vide** : Forgejo rend `null`, traité comme `[]`.
 
 ### 2.3 `ForgeService`
 
@@ -84,10 +102,11 @@ ses droits.
 Sans `read:org`, `GET /user/orgs` peut ne pas lister les organisations. L'en-tête `X-OAuth-Scopes` est lu par
 `githubProvider` (`forgeRequest` doit exposer les en-têtes de la réponse). S'il manque le scope :
 `listOwners` rend le compte personnel et `scopeMissing: true` ; l'assistant propose de se reconnecter, sans
-bloquer. Le droit de création dans une organisation GitHub (`members_can_create_repositories`, rôle du
-compte) est à mesurer : à défaut d'une réponse fiable, l'organisation est proposée et le refus de la forge est
-affiché, ce qui ne respecterait pas le critère 7 du §2.4 de la spec. **Si la mesure conclut ainsi, le signaler à
-l'humain.**
+bloquer. Droit de création dans une organisation GitHub (mesuré) : admin (`/user/memberships/orgs`,
+`role: admin`) → oui ; membre → `members_can_create_repositories` de `GET /orgs/{org}` s'il est rempli,
+sinon l'organisation est proposée (`ForgeOwner.canCreate: 'unknown'`). Un refus 403 à la création devient
+`OwnerCreateForbiddenError`, affiché avec un message explicatif (critère 7 amendé, décision de l'humain
+du 2026-11-05).
 
 ## 3. Création (sprint 2)
 
@@ -142,7 +161,7 @@ Au retour de `create`, la fenêtre d'ajout reçoit l'URL **et** la branche, et i
 | `forge:repo-accounts` | exposé |
 | `forge:owners(accountKey)` | exposé |
 | `forge:name-available(accountKey, owner, name)` | exposé |
-| `forge:create-repo(req)` | exposé. `containerDir` de la requête vérifié comme chemin du serveur, ajouté à `GRAPH_WRITE_CHANNELS` |
+| `forge:create-repo(req)` | exposé. `containerDir` de la requête vérifié comme chemin du serveur (clé `…Dir` de la garde de chemins). Pas dans `GRAPH_WRITE_CHANNELS` : son premier argument n'est pas un repo, et le repo créé n'est encore dans aucun graphe |
 | `forge:org-teams(accountKey, org)` | exposé |
 
 `channel-policy.ts` et son test sont à compléter. Point ouvert 4 de la spec : le client web passe par les mêmes
@@ -213,8 +232,10 @@ garde le flux actuel, sans complétion : Polenta n'a pas d'API à interroger.
 - **Repo existant** : affiche ce qui a été trouvé, puis ne demande que `missing`.
 - **Résultat** : liste des étapes (`ProvisionStep`), avec la reprise possible en cas d'échec.
 
-`components/repo/RepoMembersEditor.tsx` : collaborateurs et équipes, autocomplétion sur les membres de
-l'organisation. En mode création, il n'accumule que des demandes, appliquées à l'étape `members`.
+`components/repo/RepoMembersEditor.tsx` : collaborateurs et équipes. En mode création, il n'accumule que des
+demandes, appliquées à l'étape `members`. Sprint 2 : le login est saisi librement (compte inconnu signalé à
+l'étape `members`) ; l'autocomplétion sur les membres de l'organisation demande un channel par compte et
+propriétaire (`forge:org-members` part d'un repo local), reportée à #108.
 
 `CreateProjectModal` garde le choix « Local » et ouvre l'assistant pour le serveur. `AddDependencyModal` remplace
 `CreateRepoOnServer` par l'assistant. `routes/index.tsx` : « Depuis un repo » ouvre l'assistant s'il y a un compte

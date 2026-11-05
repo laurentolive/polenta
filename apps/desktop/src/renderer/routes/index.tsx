@@ -10,13 +10,13 @@ import { DEMO_PROJECT_URL } from '../lib/demoProject'
 import { TextPromptModal } from '../components/home/TextPromptModal'
 import { RepoPickerModal } from '../components/home/RepoPickerModal'
 import { CreateProjectModal } from '../components/home/CreateProjectModal'
-import type { ServerTarget } from '../components/home/ServerTargetFields'
+import { AddRepoWizard, type NewRepoRequest } from '../components/repo/AddRepoWizard'
 import { WebProjectList } from '../components/home/WebProjectList'
 import { isWeb } from '../platform'
 import { TeamProjects } from '../components/home/TeamProjects'
 import { TEAM_CONFIG_KEY } from '../hooks/useTeamConfig'
 import { projectHomeRoute } from '../lib/projectHome'
-import type { ForgeAccount, ForgeRepo, ProjectHome, TeamProjectEntry } from '@polenta/types'
+import type { CreateRepoResult, ForgeAccount, ForgeRepo, ProjectHome, TeamProjectEntry } from '@polenta/types'
 import { BrandLogo } from '../components/BrandLogo'
 
 export const Route = createFileRoute('/')({
@@ -37,15 +37,22 @@ function HomePage() {
   const [error, setError] = useState<{ action: HomeAction; message: string } | null>(null)
   // GH45 S4 — avec un compte Forgejo/Gitea : liste des repos (« clone ») et création sur le serveur
   // (« create ») ; « clone-url » / « create-local » : saisie simple d'avant GH45.
-  const [prompt, setPrompt] = useState<'clone' | 'clone-url' | 'create' | 'create-local' | null>(null)
+  // GH107 — « wizard » : assistant « Ajouter un repo » (création sur GitHub / Forgejo).
+  const [prompt, setPrompt] = useState<'clone' | 'clone-url' | 'create' | 'create-local' | 'wizard' | null>(null)
   const qc = useQueryClient()
   const [forgeAccounts, setForgeAccounts] = useState<ForgeAccount[]>([])
-  // Comptes relus au clic : la page est montée une première fois avant la connexion.
+  const [wizardName, setWizardName] = useState('')
+  // Comptes relus au clic : la page est montée une première fois avant la connexion. GH107 — la
+  // création propose aussi GitHub (`repoAccounts`) ; la liste des repos reste Forgejo (sprint 3).
   const openPrompt = async (kind: 'clone' | 'create') => {
-    const accounts = await qc.fetchQuery({ queryKey: ['forge-accounts'], queryFn: () => api.forge.accounts(), staleTime: 0 }).catch(() => [])
+    const accounts = kind === 'create'
+      ? await qc.fetchQuery({ queryKey: ['forge-repo-accounts'], queryFn: () => api.forge.repoAccounts(), staleTime: 0 }).catch(() => [])
+      : await qc.fetchQuery({ queryKey: ['forge-accounts'], queryFn: () => api.forge.accounts(), staleTime: 0 }).catch(() => [])
     setForgeAccounts(accounts)
     setPrompt(accounts.length > 0 ? kind : kind === 'clone' ? 'clone-url' : 'create-local')
   }
+  // GH107 — dossier du projet créé par l'assistant, ouvert à la fin.
+  const wizardDir = useRef<string | null>(null)
   // GH45 — projet de démonstration selon la configuration machine : URL fournie (miroir sur la forge
   // de l'entreprise), sinon la démo publique — masquée si GitHub est masqué. `undefined` : en cours.
   const [demoUrl, setDemoUrl] = useState<string | null | undefined>(undefined)
@@ -231,21 +238,25 @@ function HomePage() {
     })
   }
 
-  // GH45 S4 — projet créé sur le serveur : nom vérifié avant toute création locale ; une
-  // publication initiale en échec laisse le projet ouvert, avec le message dans l'indicateur de
-  // synchronisation (« publiez plus tard »).
-  const handleCreateOnServer = (name: string, target: ServerTarget) => {
+  // GH107 — assistant « Ajouter un repo » : dossier choisi, puis création (validée avant toute
+  // écriture). Une erreur avant la création distante laisse l'assistant ouvert ; sur le web, le
+  // dossier vide préparé dans « Mes projets » est retiré.
+  const handleWizardSubmit = async (req: NewRepoRequest): Promise<CreateRepoResult | null> => {
+    const dir = await pickDestination(req.name, t('home.pickDestinationFolder'))
+    if (!dir) return null
+    try {
+      const result = await api.forge.createRepo({ ...req, target: { kind: 'project', containerDir: dir } })
+      wizardDir.current = dir
+      return result
+    } catch (err) {
+      if (isWeb) await api.web.deleteWorkspace(dir, true).catch(() => {})
+      throw err
+    }
+  }
+
+  const handleWizardDone = () => {
     setPrompt(null)
-    run('create', async () => {
-      const dir = await pickDestination(name, t('home.pickDestinationFolder'))
-      if (!dir) return null
-      const result = await api.workspace.createOnServer(dir, name, target.accountKey, target.org)
-      if (result.pushWarning) {
-        const project = await api.workspace.resolve(dir)
-        qc.setQueryData(['sync:last-error', project.localPath], t('home.server.pushWarning', { message: result.pushWarning }))
-      }
-      return dir
-    })
+    run('create', async () => wizardDir.current)
   }
 
   const handleCreateName = (name: string) => {
@@ -327,8 +338,12 @@ function HomePage() {
           onConfirm={handleCloneUrl} onCancel={() => setPrompt(null)} />
       )}
       {prompt === 'create' && forgeAccounts.length > 0 && (
-        <CreateProjectModal accounts={forgeAccounts} onLocal={handleCreateName} onServer={handleCreateOnServer}
-          onCancel={() => setPrompt(null)} />
+        <CreateProjectModal accounts={forgeAccounts} onLocal={handleCreateName}
+          onServer={name => { setWizardName(name); setPrompt('wizard') }} onCancel={() => setPrompt(null)} />
+      )}
+      {prompt === 'wizard' && forgeAccounts.length > 0 && (
+        <AddRepoWizard mode="project" accounts={forgeAccounts} initialName={wizardName}
+          onSubmit={handleWizardSubmit} onDone={handleWizardDone} onCancel={() => setPrompt(null)} />
       )}
       {prompt === 'create-local' && (
         <TextPromptModal title={t('home.createNew')} label={t('home.projectNameLabel')}

@@ -36,7 +36,7 @@
 1. détection : autre chose que `forgejo` → `not-a-forge` ;
 2. `POST /api/v1/users/{login}/tokens` en Basic Auth, en-tête `X-Gitea-OTP` si un code est fourni (accepté par Forgejo et Gitea), corps `{ name, scopes }` :
    - nom `polenta-<poste>-<AAAAMMJJ-HHmm>-<aléa>` (deux connexions dans la même minute restent possibles) ;
-   - scopes `write:repository`, `read:user`, `write:organization` (ce dernier est nécessaire pour créer un repo d'organisation, §8) ;
+   - scopes `write:repository`, `write:user`, `write:organization` : `write:organization` pour créer un repo d'organisation (§8), `write:user` pour en créer un dans le compte personnel (GH107, mesuré : `GH107-sprint1.md` §1). Un jeton antérieur sans `write:user` reste valide ; la création personnelle refusée propose de se reconnecter ;
 3. `persistToken`, puis levée de l'état « accès révoqué » de l'hôte.
 
 Résultats d'échec (mesurés sur Forgejo 15.0.9 et Gitea 28.1.0) :
@@ -52,6 +52,8 @@ Résultats d'échec (mesurés sur Forgejo 15.0.9 et Gitea 28.1.0) :
 Sécurité : le mot de passe n'apparaît que dans l'en-tête `Authorization` construit localement (`forge-http.ts`). Il n'est ni stocké, ni journalisé, ni renvoyé dans une erreur (les erreurs ne contiennent ni en-têtes ni corps de requête).
 
 ## 4. GitHub OAuth Device Flow (T98)
+
+Scopes demandés : `repo user:email read:org` (`read:org` depuis GH107 : rôle dans les organisations et équipes ; un jeton antérieur garde ses droits, la liste des propriétaires le signale par `scopeMissing`).
 
 Second mode de connexion, visible uniquement quand le remote effectif résout vers `github.com` (comparaison par hostname normalisé, pas de comparaison de chaîne stricte — tolère `https://github.com/`, casse différente, etc.).
 

@@ -15,7 +15,11 @@ export interface FakeRequest {
   body: string
 }
 
-export type FakeHandler = (req: FakeRequest) => { status: number; json?: unknown; text?: string; contentType?: string; location?: string }
+export type FakeHandler = (req: FakeRequest) => {
+  status: number; json?: unknown; text?: string; contentType?: string; location?: string
+  /** En-têtes supplémentaires (GH107 : `X-OAuth-Scopes` de GitHub). */
+  headers?: Record<string, string>
+}
 
 export interface FakeForge {
   baseUrl: string
@@ -42,12 +46,13 @@ export async function startFakeForge(): Promise<FakeForge> {
       }
       const out = handler(record)
       if (out.json !== undefined) {
-        res.writeHead(out.status, { 'Content-Type': 'application/json;charset=utf-8' })
+        res.writeHead(out.status, { 'Content-Type': 'application/json;charset=utf-8', ...out.headers })
         res.end(JSON.stringify(out.json))
       } else {
         res.writeHead(out.status, {
           'Content-Type': out.contentType ?? 'text/plain; charset=utf-8',
           ...(out.location ? { Location: out.location } : {}),
+          ...out.headers,
         })
         res.end(out.text ?? '')
       }

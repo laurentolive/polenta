@@ -113,10 +113,25 @@ export class WorkspaceService {
   /**
    * Contenu initial d'un nouveau repo Polenta (branche `main`, `.gitignore`, `AGENTS.md`,
    * `.mcp.json`, premier commit). GH45 S4 — partagé avec la création d'un composant sur le serveur.
+   *
+   * GH107 — avec `options` (création sur une forge, design §3.2) : premier commit sur
+   * `integrationBranch`, avec en plus `README.md` (titre = nom, paragraphe = description) et
+   * `config/project.yaml` (`integrationBranch`). Aucune branche `main`.
    */
-  async initProjectRepo(rootRepoPath: string): Promise<void> {
+  async initProjectRepo(rootRepoPath: string, options?: { integrationBranch: string; name: string; description: string }): Promise<void> {
     await fsPromises.mkdir(rootRepoPath, { recursive: true })
-    await git.init({ fs, dir: rootRepoPath, defaultBranch: 'main' })
+    await git.init({ fs, dir: rootRepoPath, defaultBranch: options?.integrationBranch ?? 'main' })
+    if (options) {
+      await fsPromises.writeFile(path.join(rootRepoPath, 'README.md'), `# ${options.name}\n\n${options.description.trim()}\n`, 'utf-8')
+      await fsPromises.mkdir(path.join(rootRepoPath, 'config'), { recursive: true })
+      await fsPromises.writeFile(
+        path.join(rootRepoPath, 'config', 'project.yaml'),
+        yaml.dump({ integrationBranch: options.integrationBranch }, { lineWidth: 120 }),
+        'utf-8',
+      )
+      await git.add({ fs, dir: rootRepoPath, filepath: 'README.md' })
+      await git.add({ fs, dir: rootRepoPath, filepath: 'config/project.yaml' })
+    }
 
     await fsPromises.writeFile(
       path.join(rootRepoPath, '.gitignore'),

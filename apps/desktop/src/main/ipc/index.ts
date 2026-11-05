@@ -80,6 +80,7 @@ import type {
   MergeFileDraft,
   MergeOrigin,
   MachineConfig,
+  CreateRepoRequest,
 } from '@polenta/types'
 import type { RequirementFilters } from '../services/requirements-index.service'
 import type { CreateReviewDto } from '../services/reviews.service'
@@ -88,6 +89,7 @@ import type { BaselineService } from '../services/baseline.service'
 import type { AppSettingsService } from '../services/app-settings.service'
 import type { ForgeConfigService } from '../services/forge-config.service'
 import type { ForgeService } from '../services/forge/forge.service'
+import type { RepoProvisioningService } from '../services/forge/repo-provisioning.service'
 import type { IntegrationBranchService } from '../services/integration-branch.service'
 import type { ExportTemplateLibrary } from '../services/export-template-library'
 import { parseDrawioPages } from '../drawio-xml'
@@ -149,6 +151,8 @@ export interface Container {
   forgeConfig: ForgeConfigService
   /** GH45 S4 — repos, organisations, droits, membres ; création sur le serveur. */
   forge: ForgeService
+  /** GH107 — création d'un repo sur GitHub / Forgejo. */
+  repoProvisioning: RepoProvisioningService
   /** GH106 — désignation de la branche d'intégration, gardes de suppression. */
   integration: IntegrationBranchService
 }
@@ -259,13 +263,14 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
   // ── Forges (GH45 S4) : repos, organisations, droits, membres, création sur le serveur ─────────
   r.handle('forge:accounts', () => c.forge.accounts())
   r.handle('forge:list-repos', (_e, accountKey: string) => c.forge.listRepos(accountKey))
-  r.handle('forge:creatable-orgs', (_e, accountKey: string) => c.forge.creatableOrgs(accountKey))
   r.handle('forge:repo-access', (_e, repoPath: string) => c.forge.repoAccess(repoPath))
   r.handle('forge:org-members', (_e, repoPath: string) => c.forge.orgMembers(repoPath))
-  r.handle('workspace:create-on-server', (_e, containerDir: string, name: string, accountKey: string, org: string) =>
-    c.forge.createProjectOnServer(containerDir, name, accountKey, org))
-  r.handle('workspace:create-component-on-server', (_e, accountKey: string, org: string, name: string) =>
-    c.forge.createComponentOnServer(accountKey, org, name))
+  // GH107 — assistant « Ajouter un repo » (design §3.4).
+  r.handle('forge:repo-accounts', () => c.forge.repoAccounts())
+  r.handle('forge:owners', (_e, accountKey: string) => c.forge.owners(accountKey))
+  r.handle('forge:name-available', (_e, accountKey: string, owner: string, name: string) => c.forge.nameAvailable(accountKey, owner, name))
+  r.handle('forge:org-teams', (_e, accountKey: string, org: string) => c.forge.orgTeams(accountKey, org))
+  r.handle('forge:create-repo', (_e, req: CreateRepoRequest) => c.repoProvisioning.create(req))
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
   r.handle('auth:has-any-account', () => c.auth.hasAnyAccount())

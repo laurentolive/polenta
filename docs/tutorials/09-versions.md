@@ -30,7 +30,7 @@ read-only component: its version is created in its own repository.
 
 ## Create a version
 
-**Version** view, **Product** button (package icon) at the top of the panel:
+**Version** view: the panel opens on **Product version** (otherwise, the package-icon button at the top of the panel):
 
 1. choose the repository in the drop-down list;
 2. **New version**: the **Label** (`1.0`), the **Previous version** (the one it builds on, to

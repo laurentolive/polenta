@@ -30,7 +30,7 @@ lecture seule non plus : sa version se crée dans son propre dépôt.
 
 ## Créer une version
 
-Vue **Version**, bouton **Produit** (icône de paquet) en haut du panneau :
+Vue **Version** : le panneau s'ouvre sur **Version produit** (sinon, bouton à icône de paquet en haut du panneau) :
 
 1. choisir le dépôt dans la liste déroulante ;
 2. **Nouvelle version** : le **Label** (`1.0`), la **Version précédente** (celle sur laquelle elle

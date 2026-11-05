@@ -50,7 +50,7 @@
 - Contrainte « une version en cours » retirée (`IN_PROGRESS_EXISTS` supprimé) ; `releasedInOrder` trie
   par `freeze.at` puis ID, utilisé par le backlog, `basedOn` par défaut et le statut de design.
 - Nouveaux canaux `versions:copy`, `versions:delete` ; menu contextuel `NodeContextMenu` réutilisé.
-- `freeze.at` reste hors du contrat du graphe (`{ tag, sha }`), manifeste inchangé.
+- `freeze.at` reste hors du contrat du graphe (`{ tag, sha }`), manifeste inchangé. Exposé depuis par GH268.
 
 ## 2. Types (`packages/types/src/product-version.ts`, exporté par `index.ts`)
 
@@ -114,6 +114,7 @@ export interface VersionPage {
 export interface CreateVersionDto { title: string; basedOn?: string | null; components?: Record<string, string>; fields?: Record<string, unknown> }
 export interface UpdateVersionDto { title?; basedOn?: string | null; components?: Record<string, string>; fields?; status? }
 export interface VersionReleasePreview { suggestedTag: string; problems: VersionProblem[] }
+// `IN_PROGRESS_EXISTS` supprimé depuis (ajustements PH2, §1).
 export type VersionErrorCode = 'NO_VERSION_TYPE' | 'IN_PROGRESS_EXISTS' | 'LABEL_TAKEN' | 'VERSION_LOCKED'
   | 'TAG_INVALID' | 'TAG_EXISTS' | 'COMPONENT_NOT_RELEASED' | 'DIRTY_CHANGES' | 'READONLY_REPO' | 'NOT_IN_PROGRESS'
 export interface VersionProblem { code: VersionErrorCode; detail: string }
@@ -157,7 +158,7 @@ seule des repos — nouvelle méthode publique `readonlyRepoPaths(root, workspac
 - `tree(root, workspaceDir)` : `logicalTree` du cache workspace (mono-repo : nœud synthétique,
   nom = dossier) → `VersionComponentNode[]` ; `backlogCount` via `backlog(repo).length`.
 - `create(repo, dto, workspaceDir)` : contrôles `READONLY_REPO`, `NO_VERSION_TYPE`,
-  `IN_PROGRESS_EXISTS`, `LABEL_TAKEN` ; ID `nextCounterId(prefix, 'versions')` +
+  ~~`IN_PROGRESS_EXISTS`~~ (supprimé, PH2), `LABEL_TAKEN` ; ID `nextCounterId(prefix, 'versions')` +
   `assertNewObjectFile` ; statut initial `initialStatus(typeDef)` ; `history.stamp`.
 - `update(repo, id, dto, workspaceDir)` : released → seul un passage `isTerminal` est accepté
   (sinon `VERSION_LOCKED`) ; passage vers `isApproval` refusé (`release` obligatoire) ;
@@ -181,7 +182,7 @@ sans faire échouer le push de la branche).
 
 ```
 versions   = list(repo) ; enCours = la version non approuvée non terminale (≤ 1)
-released   = versions isApproval, triées par ID numérique croissant
+released   = versions isApproval, triées par ID numérique croissant  (depuis : freeze.at puis ID, `releasedInOrder`)
 lastIncl   = Map<id, version> : pour chaque released, chaque change → lastIncl[id] = V
 elements   = exigences + tests du repo (index, disque)
 pour chaque élément hors enCours.changes :
@@ -226,7 +227,7 @@ yaml, '[version] <ID> <title> released')` → écriture disque du même contenu 
 
 ## 8. IPC / api-client
 
-Channels (tous dans `DESKTOP_ONLY_CHANNELS`, client web abandonné) : `versions:tree`,
+Channels (tous dans `DESKTOP_ONLY_CHANNELS` à la livraison ; pas encore exposés au client web, maintenu, SPEC-WEB §11) : `versions:tree`,
 `versions:list`, `versions:get` (page), `versions:create`, `versions:update`, `versions:include`,
 `versions:remove-changes`, `versions:backlog`, `versions:release-preview`, `versions:release`.
 Écritures enveloppées par `withGraphInvalidation`. `api.versions.*` dans `packages/api-client`.
@@ -262,7 +263,8 @@ Channels (tous dans `DESKTOP_ONLY_CHANNELS`, client web abandonné) : `versions:
 - `GraphVersion { id, title, status, state, component, objectTypeRef, basedOn, components, changes,
   freeze, fields }` ; collection `versions` ; `GraphRequirement.designVersion: string | null`
   (`VersionsService.designVersions(repo)` : pour chaque released par ID croissant, exigences
-  dont `version` à `freeze.sha` = `version` courante, première trouvée). Contrat inchangé
+  dont `version` à `freeze.sha` = `version` courante, première trouvée ; règle corrigée par GH204 §3, ordre
+  `releasedInOrder`). Contrat inchangé
   (ajout de champs) : `polenta.d.ts` complété.
 - MCP : `list_versions` (composant optionnel), `get_version` (page sans `options`),
   `get_version_backlog`. Aucune écriture.

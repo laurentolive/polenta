@@ -512,8 +512,8 @@ validation externe).
 >
 > **GH243** — une campagne ne porte plus de baseline (`baselineRef`) ni de changeset (`changeset`) :
 > champs retirés du formulaire, du type et du graphe ; présents dans un ancien fichier, ignorés à la
-> lecture et absents de la prochaine écriture. Ce sont les exécutions qui testent une version produit
-> (`specs/MILESTONE-D.md` §6, #202). `/campaign/new?instances` et la page d'une campagne
+> lecture et absents de la prochaine écriture. Ce sont les exécutions qui testent une version du repo
+> de la campagne (`specs/MILESTONE-D.md` §6, #202). `/campaign/new?instances` et la page d'une campagne
 > `?addTests&instances` (sélecteur pré-coché) restent disponibles par lien.
 
 ### 4.2 CampaignTestRun — une entrée par inclusion du test dans la campagne

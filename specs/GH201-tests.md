@@ -26,7 +26,7 @@ temporaire) ; Manuel = à vérifier dans l'application.
 | # | Scénario | Attendu | Couverture |
 |---|---|---|---|
 | L1 | Second type version / type version sur nœud local | `VERSION_TYPE_INVALID` à l'enregistrement | Auto |
-| L2 | Nouvelle version alors qu'une est en cours | `IN_PROGRESS_EXISTS` | Auto |
+| L2 | ~~Nouvelle version alors qu'une est en cours~~ | Sans objet : plusieurs versions en cours permises (PH2) | — |
 | L3 | Label déjà pris par une version non abandonnée | `LABEL_TAKEN` ; repris après abandon : accepté | Auto |
 | L4 | Tag existant | `TAG_EXISTS`, rien d'écrit | Auto |
 | L5 | Composant de `components` non released | `COMPONENT_NOT_RELEASED` | Auto |

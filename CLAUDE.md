@@ -131,7 +131,7 @@ nodes:
       - name: exigence-systeme
         label: Exigence Système
         prefix: SYS           # doit être unique sur tout le projet
-        category: requirement # requirement | test | campaign | version | issue
+        category: requirement # requirement | test | campaign | version | issue | validation
         fields:
           - name: priority
             label: Priorité
@@ -244,6 +244,11 @@ Un cas de test suit le même principe (`tests/<ID>.yaml`), avec en plus `precond
 `equipment`, `steps: [{order, action, expectedResult, notes}]`, `postconditions`.
 
 **Champs système fixes** (non configurables) : `id`, `projectId`, `branchId`, `objectTypeRef`, `title`, `status`, `version`, `jiraLinks`, `needsRevalidation` (T172 — écrit uniquement quand vrai : un élément lié a quitté l'approbation, impact à vérifier ; posé par l'application, jamais à la main), `history` (GH77 — historique des champs suivis, une liste par champ : `status` et les champs `trackHistory: true`, entrées `{ value?, at, by, source? }` ; absent tant que vide ; posé par l'application, jamais à la main — y compris dans les campagnes, mais jamais dans une copie `testSnapshot`)
+**Champs propres aux versions, issues et validations** (milestone D, posés par l'application, SPEC-REQ §11–§13) :
+version (`versions/<ID>.yaml`) — `basedOn`, `components`, `freeze` (`tag`, `sha`, `at`, posé au passage released),
+`changes` (`id`, `base`), `impacted`, `analysis` ; issue (`issues/<ID>.yaml`) — `origin` (`runs`, `decisions`) ;
+validation (`validations/<ID>.yaml`) — `versionId`, `entries` (une par exigence : `requirementId`, `decision`,
+`comment`, `contentHash`, `atSignature`…). Une version released et une validation signée sont figées.
 **Champs personnalisés** : tout dans `fields: {}`, définis par le type dans `schema.yaml`
 **Liens entre objets** : via `ObjectLink`, dans un fichier séparé `links/links.yaml` (pas dans le fichier de l'exigence) — voir §"Sens d'un lien de couverture test ↔ exigence" plus haut
 **Champs dérivés** (non stockés dans le YAML, lus depuis `git log` du fichier) : `createdAt`, `createdBy`, `updatedAt`, `updatedBy`

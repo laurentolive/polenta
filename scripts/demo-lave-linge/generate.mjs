@@ -191,7 +191,7 @@ function writeCampaign(c) {
       ...(run ? { runId: run.id, executedAt: run.at, executedBy: run.by.name } : {}),
       ...(e.paramValues ? { paramValues: e.paramValues } : {}),
       ...(e.resolvedParams ? { resolvedParams: e.resolvedParams } : {}),
-      ...(e.resolvedParams && c.baselineRef ? { paramSourceRef: c.baselineRef } : {}),
+      ...(e.resolvedParams && c.paramSourceRef ? { paramSourceRef: c.paramSourceRef } : {}),
       ...(e.unresolvedParams ? { unresolvedParams: e.unresolvedParams } : {}),
     }
   })
@@ -201,7 +201,6 @@ function writeCampaign(c) {
     objectTypeRef: 'root::campagne-produit',
     fields: c.fields ?? {},
     level: 'campagne-produit',
-    ...(c.baselineRef ? { baselineRef: c.baselineRef } : {}),
     component: 'root',
     status: c.status,
     testCaseIds: [...new Set(c.entries.map(([t]) => t))],

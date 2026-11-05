@@ -784,7 +784,7 @@ Spec : `specs/GH201.md` (milestone D, `specs/MILESTONE-D.md` §3). Une **version
   `basedOn` (exclue, si elle est un ancêtre) et celle retenue ; « Voir les modifications » = diff
   générique `base` → `freeze.sha` (ou disque si en cours).
 - **Statut de design** d'une exigence (MILESTONE-D §2) : première version released (ordre des livraisons)
-  dont l'état figé contient l'exigence dans sa `version` courante — graphe `designVersion`.
+  qui inclut l'exigence dans `changes` et dont l'état figé est identique (§13, P1) — graphe `designVersion`.
 
 ### 11.4 Analyse d'impact et tests à exécuter (GH245)
 
@@ -854,8 +854,8 @@ elle vaut feu vert ; sur la version produit, go production série. Détail : `sp
   `changes` et dont l'état figé est identique (clé du backlog) ; « — » sinon.
 - **Impact** : « changée » (dans `changes`) ou « impactée » (ligne atteinte de l'analyse, ou racine sans changement
   comme une exigence impactée par une issue ; hors `pas_d_impact_reel`).
-- **À revoir** : contenu différent de `contentHash`, décision reprise d'une exigence devenue changée ou impactée, ou
-  d'une validation annulée.
+- **À revoir** (`review`) : contenu différent de `contentHash` (`content`), décision reprise d'une exigence devenue
+  changée ou impactée (`impact`), ou d'une validation annulée (`source`, GH266).
   Bloque la signature. Levé par Confirmer ou par une autre décision ; compléter le commentaire ou les champs ne
   le lève pas.
 - **Reprise** à la création : décisions de la validation signée de `basedOn`, pour les exigences ni changées, ni

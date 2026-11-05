@@ -162,7 +162,7 @@ const ENTRY = (e: Record<string, unknown>) => ({
   addedAt: '2026-09-01T08:00:00Z', resyncable: false, snapshot: null, ...e,
 })
 const CAMP = (id: string, status: string, createdAt: string, entries: Record<string, unknown>[], removed: Record<string, unknown>[] = []) => ({
-  id, title: `Titre ${id}`, status, createdAt, completedAt: null, objectTypeRef: 'root::campagne', baselineRef: null,
+  id, title: `Titre ${id}`, status, createdAt, completedAt: null, objectTypeRef: 'root::campagne',
   level: null, targetComponent: null, component: 'produit', fields: {}, history: {}, entries: entries.map(ENTRY), removedEntries: removed.map(ENTRY),
 })
 const GRAPH = {

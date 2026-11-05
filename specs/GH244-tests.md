@@ -1,6 +1,6 @@
 # GH244 — Scénarios de test
 
-## Automatiques (`versions.gh244.test.ts`, `issues.gh244.test.ts`)
+## Automatiques (`issues.gh244.test.ts`)
 
 | # | Scénario | Attendu |
 |---|---|---|

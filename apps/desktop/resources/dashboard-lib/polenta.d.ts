@@ -215,8 +215,8 @@ export type GraphCoverageStatus = 'not_covered' | 'covered' | 'validated' | 'fai
 export interface GraphRequirement extends GraphObjectBase {
   /** Indicateur Polenta (matrice de traçabilité). */
   coverageStatus: GraphCoverageStatus
-  /** Statut de design (GH201) : première version released du repo dont l'état figé contient
-   *  l'exigence dans sa `version` courante ; `null` si aucune. */
+  /** Statut de design (GH201, corrigé par GH204) : première version released du repo qui inclut
+   *  l'exigence dans ses `changes` et dont l'état figé est identique ; `null` si aucune. */
   designVersion: string | null
 }
 

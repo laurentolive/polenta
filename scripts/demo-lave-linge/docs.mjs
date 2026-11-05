@@ -145,8 +145,8 @@ les champs dérivés createdBy / updatedBy.
 ### Tests, exécutions, campagnes
 | Campagne | Statut | Particularités |
 | --- | --- | --- |
-| CAMP-0001 EVT | completed | baselineRef RE1, PASS/FAIL/BLOCKED, \`paramValues\` saisi à la main (\`charge_essai\`), test **d'un composant** (TMOT-0003) |
-| CAMP-0002 DVT | in_progress | baselineRef RE2, INCOMPLETE, entrées en attente, \`unresolvedParams\` (unknown_node, empty) |
+| CAMP-0001 EVT | completed | paramètres lus au tag RE1, PASS/FAIL/BLOCKED, \`paramValues\` saisi à la main (\`charge_essai\`), test **d'un composant** (TMOT-0003) |
+| CAMP-0002 DVT | in_progress | paramètres lus au tag RE2, INCOMPLETE, entrées en attente, \`unresolvedParams\` (unknown_node, empty) |
 | CAMP-0003 KPI | in_progress | Test **itérant** TSYS-0005 (\`{req.id}\`, \`{req.kpi_cible}\`) : 6 instances, une par exigence ; SYS-0009 sans \`kpi_cible\` → \`missing\` |
 | CAMP-0004 Endurance | abandoned | — |
 | CAMP-0005 PVT | planned | paramètre manuel laissé vide |

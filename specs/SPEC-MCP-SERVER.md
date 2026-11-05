@@ -497,18 +497,6 @@ avec l'objet changeset (`specs/MILESTONE-D.md`). Reste : le contenu d'un éléme
 d'abord le statut (réouverture, `version + 1`), puis le contenu. `get_history` : `kind` parmi
 `requirement`, `test`, `campaign`.
 
-### 4.10 Validations (GH204, `tools/validations.tools.ts`)
-
-`list_validations`, `get_validation` (lignes, décisions restantes, motifs de refus), `propose_validation_decision`.
-Une proposition (`proposed`, `proposedBy` = `--user`) n'écrit que sur une exigence sans décision confirmée d'une
-validation en cours, et bloque la signature. Le MCP ne confirme, ne rejette et ne signe pas (SPEC-REQ §13).
-
-### 4.9 Issues (GH244, `tools/issues.tools.ts`)
-
-`list_issues` (filtres `component`, `status`), `get_issue`, `create_issue`, `update_issue` (SPEC-REQ §12).
-Écritures avec `source: mcp`, refus `READONLY_REPO` sur un composant en lecture seule. Les exigences impactées
-passent par `create_links`, type `issue-impact` (`NOT_OWN_ELEMENT` hors du composant). Pas de popup.
-
 ### 4.8 Versions (GH201, `tools/versions.tools.ts`)
 
 Lecture seule (SPEC-REQ §11) : `list_versions` (par composant : versions du plus récent au plus
@@ -521,6 +509,18 @@ released. Listés dans `AGENTS.md`.
 GH245 : `get_version_impact { id, component? }` (analyse figée ou live : racines, lignes avec statut,
 `reached`, `sources` ; arbres omis) et `get_version_tests { id, component? }` (tests à exécuter,
 instances, sources, `alreadyIn`, `uncovered`). Pas d'écriture des statuts d'impact par le MCP.
+
+### 4.9 Issues (GH244, `tools/issues.tools.ts`)
+
+`list_issues` (filtres `component`, `status`), `get_issue`, `create_issue`, `update_issue` (SPEC-REQ §12).
+Écritures avec `source: mcp`, refus `READONLY_REPO` sur un composant en lecture seule. Les exigences impactées
+passent par `create_links`, type `issue-impact` (`NOT_OWN_ELEMENT` hors du composant). Pas de popup.
+
+### 4.10 Validations (GH204, `tools/validations.tools.ts`)
+
+`list_validations`, `get_validation` (lignes, décisions restantes, motifs de refus), `propose_validation_decision`.
+Une proposition (`proposed`, `proposedBy` = `--user`) n'écrit que sur une exigence sans décision confirmée d'une
+validation en cours, et bloque la signature. Le MCP ne confirme, ne rejette et ne signe pas (SPEC-REQ §13).
 
 ## 5. Génération/régénération d'`AGENTS.md` et `.mcp.json`
 

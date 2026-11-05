@@ -47,7 +47,8 @@ Spec : `specs/GH204.md`. Deux sprints.
 - **Entrées absentes = en attente** : la lecture n'écrit rien, une nouvelle exigence apparaît sans migration.
 - **`sign` commite le seul fichier** (`commitSingleFile`), comme `release`, sans tag : les autres fichiers modifiés
   n'entrent pas dans le commit.
-- **`decide` sur une version abandonnée ou une validation fermée** : `VALIDATION_LOCKED`.
+- **`decide` sur une validation fermée** : `VALIDATION_LOCKED` ; **sur une version abandonnée** : `VERSION_ABANDONED`,
+  comme la création.
 - **Couverture** : `traceability.getMatrix` du repo, une fois par page. Rejeté : calcul par exigence, trop lent.
 - **Pas d'objet « version en lecture seule » à part** : `versions.isReadonly` sert aussi aux validations.
 - **`objectVersion` retiré** (Q3).

@@ -1,5 +1,5 @@
 import type {
-  CreateRepoRequest, CreateRepoResult, ForgeOwners, ForgeTeam, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
+  AdoptRepoRequest, CreateRepoRequest, CreateRepoResult, RepoInspection, ForgeOwners, ForgeTeam, DesignateOutcome, IntegrationState, ForgeAccount, ForgeDetection, ForgeMember, ForgeOrg, ForgeRepo, ForgeRepoAccess, MachineConfig,
   FieldRename, FieldRenameResult, TypeRenameDto, TypeRenamePlan, TypeRenameResult, SchemaDeletePlan, SchemaDeleteResult, SchemaDeleteTarget, HistoryBackfillResult, ObjectHistory, ValueRename, ValueRenamePreview, PasswordLoginResult, TeamConfigStatus, TeamProjectEntry, GraphParamValue, QueryParameterDef, QueryColumnDef,
   ObjectTypeDefinition, ExecutionHistory, ExecutionHistoryTarget,
   SavedView, SavedViewRef, SavedViewScope, SavedViewsList,
@@ -509,6 +509,10 @@ export interface ApiClient {
     orgTeams(accountKey: string, org: string): Promise<ForgeTeam[]>
     /** GH107 — crée le repo : distant, local sur `int-x`, push, branche par défaut, membres, ouverture. */
     createRepo(req: CreateRepoRequest): Promise<CreateRepoResult>
+    /** GH107 — ce que contient un repo existant, sans rien écrire. */
+    inspectRepo(accountKey: string, owner: string, name: string): Promise<RepoInspection>
+    /** GH107 — complète un repo existant (seul ce qui manque), puis l'ouvre ou rend son URL. */
+    adoptRepo(req: AdoptRepoRequest): Promise<CreateRepoResult>
   }
   workspace: {
     listRecents(): Promise<ProjectRecent[]>

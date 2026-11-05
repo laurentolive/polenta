@@ -69,7 +69,7 @@ describe('Forgejo', () => {
   it('repoDetails ; updateRepo : description puis visibilité, refus 422 → VisibilityChangeError', async () => {
     forge.route('GET', `${F}/repos/bob/proj`, () => ({ status: 200, json: repo('bob/proj', { default_branch: 'int-x' }) }))
     expect(await forgejoProvider.repoDetails!(forge.baseUrl, 'tok', 'bob', 'proj')).toEqual({
-      description: 'Sonde GH107', visibility: 'private', defaultBranch: 'int-x', permissions: { pull: true, push: true, admin: true },
+      cloneUrl: 'https://forge.test/bob/proj.git', description: 'Sonde GH107', visibility: 'private', defaultBranch: 'int-x', permissions: { pull: true, push: true, admin: true },
     })
     expect(await forgejoProvider.repoDetails!(forge.baseUrl, 'tok', 'bob', 'absent')).toBeNull()
     const patches: unknown[] = []

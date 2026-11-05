@@ -1,6 +1,6 @@
-# 4. Parameters
+# 5. Parameters
 
-**English** | [Français](../tutoriels/04-parametres.md)
+**English** | [Français](../tutoriels/05-parametres.md)
 
 A value that appears in several requirements and tests (a capacity, a speed, a voltage) is declared
 once in the repository's **parameter base**. Texts refer to it instead of copying the value.
@@ -42,9 +42,9 @@ Clicking `capacite_kg` opens its card:
 **Used by** lists the three items that refer to it. Changing the value is therefore a change to
 those three items:
 
-- the **approved** items that use it are marked **needs revalidation**
-  ([tutorial 5](05-traceability.md));
+- the **approved** items that use it are marked **Impact to check**
+  ([tutorial 6](06-traceability.md));
 - **Delete** is refused as long as the parameter is used.
 
 In the demo, `vitesse_essorage` went from 1200 to 1400 rpm between baselines RE1 and RE2: comparing
-the two baselines shows it ([tutorial 7](07-versions.md)).
+the two baselines shows it ([tutorial 8](08-publishing-history.md)).

@@ -1,6 +1,6 @@
-# 5. Traçabilité
+# 6. Traçabilité
 
-[English](../tutorials/05-traceability.md) | **Français**
+[English](../tutorials/06-traceability.md) | **Français**
 
 Polenta relie les besoins produit aux exigences système, aux composants qui les réalisent et aux
 tests qui les vérifient. Ce tutoriel montre comment ces liens sont définis, ce que Polenta en
@@ -27,31 +27,37 @@ ou un type précis (`root::exigence-produit`). La démo en déclare cinq :
 Le sens d'un lien de vérification n'a pas d'importance : créé depuis le test ou depuis l'exigence,
 il compte de la même façon.
 
-## La couverture
+## La vérification (couverture)
 
-Chaque exigence porte un état de **couverture**, calculé à partir de ses liens de vérification et
-du dernier résultat de chaque test lié. Il apparaît en haut de l'éditeur, dans les colonnes de la
-vue tableau et dans les requêtes (colonne `coverageStatus`).
+Chaque exigence porte un statut de **vérification** (sa couverture), calculé à partir de ses liens
+de vérification et du dernier résultat de chaque test lié. Il apparaît en haut de l'éditeur, dans la
+colonne *Vérification* de la vue tableau (filtrable) et dans les requêtes (colonne
+`coverageStatus`).
 
 | État | Signification | Dans la démo |
 |---|---|---|
 | **Non couvert** | aucun test lié | SYS-0008, exigences du module Wi-Fi |
 | **Couvert** | des tests liés, pas encore exécutés | SYS-0010 |
-| **Validé** | le dernier résultat des tests liés est *Passé* | PRD-0001, SW-0001 |
+| **Vérifié** | le dernier résultat des tests liés est *Passé* | PRD-0001, SW-0001 |
 | **En échec** | le dernier résultat d'un test lié n'est pas *Passé* (échec, blocage…) | PRD-0009 |
 | **À revalider** | un élément lié a changé après approbation | PRD-0002, SYS-0002 |
+
+La vérification est l'un des quatre statuts d'une exigence, avec la rédaction, le design et la
+validation ([tutoriel 3](03-exigences.md#les-quatre-statuts-dune-exigence)).
 
 ## Les éléments à revalider
 
 Quand une exigence approuvée est rouverte, ou qu'un paramètre utilisé change de valeur, Polenta ne
-peut pas savoir si les éléments liés restent justes. Il les marque **à revalider** : un ⚠ à côté de
-leur statut, et le bandeau *À revalider* en haut de l'éditeur.
+peut pas savoir si les éléments liés restent justes. Il les marque **Impact à vérifier** : un ⚠ à
+côté de leur statut, et un bandeau en haut de l'éditeur.
 
 ![PRD-0002, marquée à revalider après la modification de SYS-0002](../img/req-revalidate.png)
 
 Dans la démo, SYS-0002 (qui raffine PRD-0002) est repassée en revue ; PRD-0002 et le test
-TSYS-0002 sont marqués. L'[analyse d'impact](07-versions.md#analyser-limpact) permet de vérifier
-chaque élément et de lever le marqueur.
+TSYS-0002 sont marqués. Dans la vue **Version**, l'entrée **Impact à vérifier** du panneau les
+liste : vérifier chaque élément, puis **Lever le flag** (un par un ou sur la sélection). L'analyse
+d'impact d'une version fait ce travail de façon organisée, élément modifié par élément modifié
+([tutoriel 9](09-versions.md)).
 
 ## La conformité des interfaces
 

@@ -22,6 +22,8 @@ let A: string, B: string, C: string
 const repoSearch = () => ({ repoPath: s.project.localPath })
 const row = (p: Page, entry: string) => p.locator(`tr[data-entry="${entry}"]`)
 const rowBox = (p: Page, entry: string) => row(p, entry).getByRole('checkbox')
+/** Mention « ↩ » d'une entrée reportée : l'ID de la source est un lien d'élément depuis GH229. */
+const carryLinks = (p: Page, campaignId: string) => p.locator('[title^="Reporté depuis"]').getByRole('link', { name: campaignId })
 
 /** Navigation interne (routeur), sans recharger l'application — un chargement direct de l'URL
  *  rouvre la page d'accueil du projet. */
@@ -91,7 +93,7 @@ test('U1–U4 — ajout depuis une campagne clôturée : filtre, coches conserv�
     [A, 'pending', { campaignId: source.id, entryId: `${A}-1` }],
     [B, 'pending', { campaignId: source.id, entryId: `${B}-1` }],
   ].sort())
-  await expect(p.getByRole('button', { name: `↩ ${source.id}` })).toHaveCount(2)
+  await expect(carryLinks(p, source.id)).toHaveCount(2)
 
   // Source inchangée.
   const src = await s.invoke<Campaign>('campaigns:get', s.project.localPath, source.id)
@@ -108,7 +110,7 @@ test('U1–U4 — ajout depuis une campagne clôturée : filtre, coches conserv�
   await p.locator('button.btn-danger', { hasText: 'Abandonner' }).click()
 
   // Le lien ↩ ouvre la campagne source.
-  await p.getByRole('button', { name: `↩ ${source.id}` }).first().click()
+  await carryLinks(p, source.id).first().click()
   await expect(p).toHaveURL(new RegExp(`/campaign/${source.id}`))
 })
 

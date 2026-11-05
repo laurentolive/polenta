@@ -65,7 +65,11 @@ test('S5-10 — restauration : confirmation par le nom de l\'instance cible', as
   await expect(dialog.getByRole('button', { name: 'Restaurer' })).toBeDisabled()
   await dialog.getByRole('textbox').fill('ops')
   await dialog.getByRole('button', { name: 'Restaurer' }).click()
-  await expect(s.page.getByTestId('admin-job').getByTestId('admin-job-state')).toHaveText('Réussi', { timeout: 10_000 })
+  // GH253 — même onglet que S5-2 : son travail « Réussi » reste affiché le temps du lancement. Attendre
+  // celui de la restauration, sinon le test suivant démarre pendant qu'elle tourne (409).
+  const job = s.page.getByTestId('admin-job')
+  await expect(job).toContainText('Restauration')
+  await expect(job.getByTestId('admin-job-state')).toHaveText('Réussi', { timeout: 10_000 })
 })
 
 test('S5-12/S5-14 — exports : liste, téléchargement, suppression confirmée', async () => {

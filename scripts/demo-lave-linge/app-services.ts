@@ -21,6 +21,7 @@ import { TestedConfigService } from '../../apps/desktop/src/main/services/tested
 import { TestsIndexService } from '../../apps/desktop/src/main/services/tests-index.service'
 import { TestsService } from '../../apps/desktop/src/main/services/tests.service'
 import { TraceabilityService } from '../../apps/desktop/src/main/services/traceability.service'
+import { TransitionGuardService } from '../../apps/desktop/src/main/services/transition-guard.service'
 import { ValidationsService } from '../../apps/desktop/src/main/services/validations.service'
 import { VersionTrackingService } from '../../apps/desktop/src/main/services/version-tracking.service'
 import { VersionsService } from '../../apps/desktop/src/main/services/versions.service'
@@ -61,6 +62,9 @@ export function appServices(person: string) {
   const issues = new IssuesService(git, schema, history, (r, wsDir) => versions.isReadonly(r, wsDir))
   const executions = new ExecutionHistoryService(tests, campaigns, requirements, testedConfig)
   const validations = new ValidationsService(git, sync, schema, versions, traceability, history, executions)
+  const transitionGuard = new TransitionGuardService(traceability)
+  for (const service of [requirements, tests, issues]) service.setTransitionGuard(transitionGuard)
+  tests.setTestedConfig(testedConfig)
   return { git, sync, workspaceTree, schema, requirements, tests, campaigns, traceability, versions, testedConfig, issues, validations }
 }
 

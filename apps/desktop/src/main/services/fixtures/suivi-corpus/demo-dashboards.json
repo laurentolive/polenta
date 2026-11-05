@@ -63,6 +63,7 @@
     {"type":"implementation","sum_count":19,"_ids":["SYS-0001","CC-0001","SYS-0002","MOT-0001","FWM-0001","SYS-0004","MOT-0005","FWM-0002","SYS-0005","HYD-0001","EV-0002","SYS-0006","POMP-0001","SYS-0007","CC-0003","SYS-0008","SYS-0003","SW-0001","SYS-0010","SW-0003","SYS-0014","CC-0002","EV-0001","SW-0002","MOT-0004","FWM-0003"]},
     {"type":"raffinement","sum_count":13,"_ids":["PRD-0002","SYS-0002","PRD-0003","SYS-0005","SYS-0007","PRD-0004","SYS-0011","PRD-0005","SYS-0003","PRD-0006","SW-0004","PRD-0007","SW-0005","PRD-0008","SYS-0014","PRD-0009","HYD-0002","PRD-0011","PRD-0010","SYS-0013"]},
     {"type":"implements-interface","sum_count":13,"_ids":["CC-0004","BUS-0001","BUS-0004","BUS-0005","CC-0005","BIHM-0001","BIHM-0003","IHM-0004","BIHM-0002","BIHM-0004","MOT-0006","BUS-0002","BUS-0003","WIFI-0004"]},
+    {"type":"issue-impact","sum_count":4,"_ids":["ISS-0001","PRD-0004","ISS-0002","SYS-0004","ISS-0003","PRD-0002","MISS-0001","MOT-0004"]},
     {"type":"relation","sum_count":1,"_ids":["SYS-0004","SYS-0002"]}
   ],
   "Composants & traçabilité / Exigences moteur par statut": [
@@ -71,5 +72,21 @@
   ],
   "Composants & traçabilité / Prioritaires non approuvées": [
     {"id":"PRD-0012","title":"Facilité d'entretien du filtre","status":"draft","priority":"high","_ids":["PRD-0012"]}
+  ],
+  "Versions & validation / Issues par version": [
+    {"version":"ll800-produit 1.0","sum_count":1,"_ids":["ISS-0001"]},
+    {"version":"ll800-produit 2.0","sum_count":2,"_ids":["ISS-0003","ISS-0002"]},
+    {"version":"ll800-produit 1.1","sum_count":0,"_ids":[]},
+    {"version":"comp-moteur 1.2.4","sum_count":0,"_ids":[]},
+    {"version":"comp-moteur 1.3","sum_count":1,"_ids":["MISS-0001"]},
+    {"version":"if-bus-interne 1.1","sum_count":0,"_ids":[]},
+    {"version":"comp-pompe-vidange 1.0","sum_count":0,"_ids":[]},
+    {"version":"comp-pompe-vidange 2.0","sum_count":0,"_ids":[]},
+    {"version":"comp-module-wifi 1.0","sum_count":0,"_ids":[]}
+  ],
+  "Versions & validation / Décisions de la validation": [
+    {"decision":"conforme","sum_count":104,"_ids":["BIHM-0001","BIHM-0002","BIHM-0003","BIHM-0004","CC-0001","CC-0002","CC-0003","CC-0004","CC-0005","EV-0001","EV-0002","EV-0003","HYD-0001","HYD-0002","HYD-0003","HYD-0004","IHM-0001","IHM-0002","IHM-0003","IHM-0004","PRD-0001","PRD-0002","PRD-0003","PRD-0004","PRD-0005","PRD-0006","PRD-0007","PRD-0008","PRD-0009","PRD-0012","PRD-0013","SW-0001","SW-0002","SW-0003","SW-0004","SW-0005","SW-0006","SYS-0001","SYS-0002","SYS-0003","SYS-0005","SYS-0006","SYS-0007","SYS-0008","SYS-0009","SYS-0010","SYS-0011","SYS-0012","SYS-0014","SYS-0013","FWM-0001","FWM-0002","FWM-0003","MOT-0001","MOT-0002","MOT-0003","MOT-0005","MOT-0006"]},
+    {"decision":"hors_scope","sum_count":3,"_ids":["PRD-0010","SYS-0013","MOT-0007"]},
+    {"decision":"derogation","sum_count":2,"_ids":["SYS-0004","MOT-0004"]}
   ]
 }

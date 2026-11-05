@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process'
 import { createRequire } from 'module'
+import { appServices } from '../../../../../scripts/demo-lave-linge/app-services'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -125,6 +126,11 @@ async function realGraph(repoPath: string, workspaceDir: string): Promise<{ json
   if (built.status === 'ok') await workspaceTree.writeCache(workspaceDir, built.tree)
   else throw new Error(`Arbre du workspace de démo : ${JSON.stringify(built)}`)
   const graph = new GraphService(reqIndex, testsIndex, schema, traceability, git, workspaceTree, campaigns, { cache: false, now: () => NOW })
+  // GH278 — mêmes collections que l'application : la démo montre versions, issues et validations.
+  const app = appServices('corpus')
+  graph.setVersions(app.versions)
+  graph.setIssues(app.issues)
+  graph.setValidations(app.validations)
   const dashboards = new DashboardsService(git)
   return { json: (await graph.build(repoPath, workspaceDir)).json, dashboards, queries: new SavedQueriesService(git, dashboards) }
 }
@@ -174,7 +180,7 @@ describe('GH74 — corpus : projet de démonstration (scripts/demo-lave-linge)',
   })
 
   it('C1 — dashboards de la démo et des seeds : lignes identiques aux références', async () => {
-    expect(demoCases).toHaveLength(9)
+    expect(demoCases).toHaveLength(11)
     await expect(json(runCases(ctx, demoCases))).toMatchFileSnapshot(path.join(REFS, 'demo-dashboards.json'))
     await expect(json(runCases(ctx, SEED_CASES))).toMatchFileSnapshot(path.join(REFS, 'demo-seeds.json'))
   })

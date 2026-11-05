@@ -32,6 +32,9 @@ const F = {
   securite: { name: 'securite', label: 'Exigence de sécurité', type: 'boolean', default: false },
 }
 
+/** GH77 — priorité historisée sur les types où la démo montre l'historique des champs. */
+const PRIORITY_TRACKED = { ...F.priority, trackHistory: true }
+
 const LINK_TYPES_BASE = [
   {
     name: 'implementation',
@@ -56,6 +59,49 @@ const LINK_TYPES_BASE = [
   },
 ]
 
+// GH201, GH244, GH204 — mêmes cycles de vie que les défauts de l'éditeur de schéma.
+const versionType = prefix => ({
+  name: 'version', label: 'Version', prefix, category: 'version',
+  fields: [{ name: 'description', label: 'Description', type: 'richtext' }],
+  statuses: [
+    { name: 'en_cours', label: 'En cours', color: '#2563eb' },
+    { name: 'released', label: 'Released', color: '#16a34a', isApproval: true },
+    { name: 'abandonnee', label: 'Abandonnée', color: '#6b7280', isTerminal: true },
+  ],
+})
+const issueType = prefix => ({
+  name: 'issue', label: 'Issue', prefix, category: 'issue',
+  fields: [
+    { name: 'gravite', label: 'Gravité', type: 'enum', values: ['mineure', 'majeure', 'bloquante'] },
+    { name: 'description', label: 'Description', type: 'richtext' },
+  ],
+  statuses: [
+    { name: 'ouverte', label: 'Ouverte', color: '#b45309' },
+    { name: 'en_cours', label: 'En cours', color: '#2563eb' },
+    { name: 'corrigee', label: 'Corrigée', color: '#16a34a' },
+    { name: 'rejetee', label: 'Rejetée', color: '#6b7280', isTerminal: true },
+  ],
+})
+const validationType = prefix => ({
+  name: 'validation', label: 'Validation', prefix, category: 'validation', fields: [],
+  statuses: [
+    { name: 'en_cours', label: 'En cours', color: '#2563eb' },
+    { name: 'signee', label: 'Signée', color: '#16a34a', isApproval: true },
+    { name: 'annulee', label: 'Annulée', color: '#6b7280', isTerminal: true },
+  ],
+  decisions: [
+    { name: 'en_attente', label: 'En attente', isPending: true },
+    { name: 'conforme', label: 'Conforme' },
+    { name: 'non_conforme', label: 'Non conforme', proposesIssue: true },
+    { name: 'hors_scope', label: 'Hors scope' },
+    { name: 'derogation', label: 'Dérogation', proposesIssue: true },
+  ],
+})
+const ISSUE_IMPACT = {
+  name: 'issue-impact', labelSourceToTarget: 'impacte', labelTargetToSource: 'est impactée par',
+  sourceRefs: ['issue'], targetRefs: ['requirement'], defaultVisible: true,
+}
+
 // ─── Repo produit ────────────────────────────────────────────────────────────
 
 export const schemaProduit = {
@@ -76,7 +122,7 @@ export const schemaProduit = {
           category: 'requirement',
           fields: [
             F.statement,
-            F.priority,
+            PRIORITY_TRACKED,
             { name: 'source', label: 'Source', type: 'enum', values: ['Marketing', 'Normes', 'Retour terrain', 'Réglementation'] },
             { name: 'marches', label: 'Marchés', type: 'multi_enum', values: ['EU', 'US', 'CN', 'JP'] },
             { name: 'claim', label: 'Argument marketing (claim)', type: 'boolean', default: false },
@@ -85,7 +131,8 @@ export const schemaProduit = {
             { name: 'responsable', label: 'Responsable', type: 'user' },
             { name: 'reference_client', label: 'Réf. demande client', type: 'text', validator: 'regex:^CLI-[0-9]{4}$', placeholder: 'CLI-0000' },
             F.rationale,
-            F.acceptance,
+            // GH195 — obligatoire seulement à l'approbation.
+            { ...F.acceptance, requiredWhen: { status: ['approved'] } },
           ],
           statuses: STATUSES_REQ_WITH_REJECT,
         },
@@ -97,15 +144,22 @@ export const schemaProduit = {
           category: 'requirement',
           fields: [
             F.statement,
-            F.priority,
+            PRIORITY_TRACKED,
             F.securite,
             { name: 'domaine', label: 'Domaine', type: 'enum', values: ['SW', 'HW', 'MECA', 'HYDRAU', 'THERMIQUE'] },
             F.acceptance,
             { name: 'diagramme', label: 'Diagramme de référence', type: 'drawio' },
             { name: 'notes', label: 'Notes internes', type: 'textarea' },
             { name: 'derniere_revue', label: 'Dernière revue', type: 'datetime' },
+            { name: 'documents', label: 'Documents de référence', type: 'link', multiple: true },
           ],
           statuses: STATUSES_REQ,
+          // GH206 — pas de blocage en quittant « approuvé » ni sur la couverture : la démo contient des
+          // exigences approuvées sans test, volontairement (un avertissement les signale).
+          transitions: [
+            { to: 'review', from: 'draft', requires: { fieldsFilled: 'block', validatorsPass: 'warn' } },
+            { to: 'approved', requires: { hasCoverageLink: 'warn' } },
+          ],
         },
         {
           name: 'test-systeme',
@@ -120,6 +174,9 @@ export const schemaProduit = {
             { name: 'moyens', label: "Moyens d'essai", type: 'multi_enum', values: ['Banc hydraulique', 'Chambre climatique', 'Balance', 'Wattmètre', 'Sonomètre', 'Tachymètre'] },
           ],
           statuses: STATUSES_TEST,
+          // GH196 — saisis à chaque exécution et à chaque étape.
+          runFields: [{ name: 'banc_utilise', label: 'Banc utilisé', type: 'text' }],
+          stepFields: [{ name: 'mesure', label: 'Mesure relevée', type: 'text' }],
         },
         {
           name: 'campagne-produit',
@@ -132,6 +189,9 @@ export const schemaProduit = {
             { name: 'description', label: 'Description', type: 'richtext' },
           ],
         },
+        versionType('LLV'),
+        issueType('ISS'),
+        validationType('VAL'),
       ],
       children: [
         {
@@ -262,6 +322,8 @@ export const schemaProduit = {
               category: 'requirement',
               fields: [F.statement, F.priority, { name: 'maquette', label: 'Maquette', type: 'richtext' }],
               statuses: STATUSES_REQ,
+              // GH229 — les liens vers une exigence IHM affichent son titre plutôt que son ID.
+              displayIdField: 'title',
             },
           ],
           implements: [{ interface: 'bus-ihm', roles: ['esclave'] }],
@@ -278,6 +340,7 @@ export const schemaProduit = {
       targetRefs: ['requirement'],
     },
     ...LINK_TYPES_BASE,
+    ISSUE_IMPACT,
     {
       name: 'relation',
       labelSourceToTarget: 'est en relation avec',
@@ -302,7 +365,7 @@ export const schemaMoteur = {
           label: 'Exigence Moteur',
           prefix: 'MOT',
           category: 'requirement',
-          fields: [F.statement, F.priority, F.securite, { name: 'couple_nm', label: 'Couple (N·m)', type: 'number' }, F.acceptance],
+          fields: [F.statement, PRIORITY_TRACKED, F.securite, { name: 'couple_nm', label: 'Couple (N·m)', type: 'number' }, F.acceptance],
           statuses: STATUSES_REQ,
         },
         {
@@ -313,6 +376,16 @@ export const schemaMoteur = {
           fields: [{ name: 'banc', label: 'Banc moteur', type: 'enum', values: ['Banc dynamométrique', 'Banc thermique', 'Banc HIL'] }],
           statuses: STATUSES_TEST,
         },
+        {
+          name: 'campagne-moteur',
+          label: 'Campagne Moteur',
+          prefix: 'CMOT',
+          category: 'campaign',
+          fields: [{ name: 'lieu', label: "Lieu d'essai", type: 'text' }],
+        },
+        versionType('MOTV'),
+        issueType('MISS'),
+        validationType('VMOT'),
       ],
       children: [
         {
@@ -335,7 +408,7 @@ export const schemaMoteur = {
     },
   ],
   implements: [{ interface: 'if-bus-interne', roles: ['device'] }],
-  linkTypes: LINK_TYPES_BASE,
+  linkTypes: [...LINK_TYPES_BASE, ISSUE_IMPACT],
 }
 
 export const schemaPompe = {
@@ -362,6 +435,7 @@ export const schemaPompe = {
           fields: [],
           statuses: STATUSES_TEST,
         },
+        versionType('POMV'),
       ],
     },
   ],
@@ -384,6 +458,7 @@ export const schemaWifi = {
           fields: [F.statement, F.priority, { name: 'bande', label: 'Bande', type: 'enum', values: ['2.4 GHz', '5 GHz', 'bi-bande'] }],
           statuses: STATUSES_REQ,
         },
+        versionType('WIFV'),
       ],
       implements: [{ interface: 'if-bus-interne', roles: ['device'] }],
     },
@@ -419,6 +494,7 @@ export const schemaBus = {
           ],
           statuses: STATUSES_REQ,
         },
+        versionType('IFV'),
       ],
     },
   ],

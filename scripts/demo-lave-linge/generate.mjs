@@ -12,13 +12,16 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import {
-  writeFile, writeYaml, stableUuid, stableSuffix, initRepo, commitAll, annotatedTag, lightweightTag, headSha, git, Canvas, drawio,
+  writeFile, writeYaml, removeFile, resolveOutDir, stableUuid, stableSuffix, initRepo, commitAll, annotatedTag, lightweightTag, headSha, git, Canvas, drawio,
 } from './lib.mjs'
 import { schemaProduit, schemaMoteur, schemaPompe, schemaWifi, schemaBus } from './schemas.mjs'
 import {
-  REPOS, REPO_ORDER, repoUrl, P, PHASES, DEV_BRANCH, PARAMETERS, ELEMENTS, LINKS, ADHOC_RUNS, CAMPAIGNS, REVIEWS, QUERIES, DASHBOARDS,
+  REPOS, REPO_ORDER, repoUrl, P, PHASES, DEV_BRANCH, PARAMETERS, ELEMENTS, LINKS, ADHOC_RUNS, CAMPAIGNS, SAVED_VIEWS, QUERIES, DASHBOARDS,
 } from './content.mjs'
 import { README_PRODUIT, README_COMPOSANTS, GUIDE } from './docs.mjs'
+import { STEPS } from './milestone-d.mjs'
+// GH278 — versions, issues, validations et version testée : écrites par les services de l'application.
+import { appServices, atInstant } from './app-services.ts'
 // GH74 — modèles de la vue Suivi (TypeScript sans dépendance) : générateur lancé par tsx.
 import { queryCode, widgetCode } from '../../packages/types/src/suivi-templates.ts'
 
@@ -26,13 +29,22 @@ const sha256 = text => createHash('sha256').update(text, 'utf8').digest('hex')
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
-const outArg = args.includes('--out') ? args[args.indexOf('--out') + 1] : null
-const WS = path.resolve(outArg ?? path.join(here, '../../../demo-lave-linge'))
+let WS
+try {
+  WS = resolveOutDir(args, path.join(here, '../../../demo-lave-linge'), path.resolve(here, '../..'))
+} catch (err) {
+  console.error(err.message)
+  process.exit(1)
+}
 const FORCE = args.includes('--force')
 
 const SCHEMAS = { produit: schemaProduit, moteur: schemaMoteur, pompe: schemaPompe, wifi: schemaWifi, bus: schemaBus }
 const repoDir = key => path.join(WS, REPOS[key].dir)
 const phaseIdx = key => PHASES.findIndex(p => p.key === key)
+// GH77 — repos dont les objets portent leur `history` ; ailleurs, l'application lit des entrées
+// déduites et propose « Reconstruire depuis git ».
+const HISTORY_REPOS = new Set(['produit', 'moteur'])
+const historyAt = iso => new Date(iso).toISOString().replace(/\.\d{3}Z$/, 'Z')
 
 // ─── Préparation ─────────────────────────────────────────────────────────────
 
@@ -55,7 +67,23 @@ for (const key of REPO_ORDER) {
 const state = new Map() // id → objet YAML courant
 const params = Object.fromEntries(REPO_ORDER.map(k => [k, {}]))
 
-function applyPatch(el, patch) {
+/** Entrées `history` des champs suivis qui changent : statut et priorité (GH77). */
+function withHistory(el, prev, next, stamp, comment) {
+  if (!HISTORY_REPOS.has(el.repo) || !stamp) return next
+  const history = structuredClone(prev?.history ?? {})
+  const add = (key, value, before) => {
+    if (value === before || value === undefined) return
+    const entry = { value, at: historyAt(stamp.at), by: stamp.by }
+    if (comment) entry.comment = comment
+    ;(history[key] ??= []).push(entry)
+  }
+  add('status', next.status, prev?.status)
+  if (el.cat === 'requirement' && next.objectTypeRef.match(/exigence-(produit|systeme|moteur)$/)) add('priority', next.fields.priority, prev?.fields?.priority)
+  return Object.keys(history).length ? { ...next, history } : next
+}
+
+function applyPatch(el, rawPatch, stamp) {
+  const { historyComment, ...patch } = rawPatch
   const prev = state.get(el.id)
   const base = prev ?? (el.cat === 'requirement'
     ? { id: el.id, projectId: '', branchId: '', objectTypeRef: el.ref, title: el.title, status: 'draft', version: 1, fields: {}, jiraLinks: [] }
@@ -63,13 +91,14 @@ function applyPatch(el, patch) {
         preconditions: '', equipment: [], steps: [], postconditions: '', fields: {} })
   const next = { ...base, ...patch, fields: { ...base.fields, ...(patch.fields ?? {}) } }
   if (next.needsRevalidation !== true) delete next.needsRevalidation
-  state.set(el.id, next)
-  return next
+  const stamped = withHistory(el, prev, next, stamp, historyComment)
+  state.set(el.id, stamped)
+  return stamped
 }
 
 /** Snapshot TestCase (campagnes) : champs dérivés git à null, comme l'app avant indexation. */
 function testSnapshot(id) {
-  const t = state.get(id)
+  const { history: _history, ...t } = state.get(id)
   return { ...structuredClone(t), createdAt: null, createdBy: null, updatedAt: null, updatedBy: null }
 }
 
@@ -79,7 +108,7 @@ const repoOfElement = Object.fromEntries(ELEMENTS.map(e => [e.id, e.repo]))
 // entryId de chaque entrée (`<test>-<n>`, n = rang parmi les instances du test dans sa campagne).
 for (const c of CAMPAIGNS) {
   const occurrences = {}
-  for (const [testId, e] of c.entries) {
+  for (const [testId, e] of [...c.entries, ...(c.removed ?? [])]) {
     occurrences[testId] = (occurrences[testId] ?? 0) + 1
     e.entryId = `${testId}-${occurrences[testId]}`
   }
@@ -128,7 +157,7 @@ function writeTrees(key) {
         return f.children
       }
       for (const e of items) {
-        folderChildren(e.folder).push({ id: stableUuid(`${key}:item:${e.id}`), kind: 'item', name: state.get(e.id).title, objectId: e.id, children: [] })
+        folderChildren(e.folder).push({ id: stableUuid(`${key}:item:${e.id}`), kind: 'item', objectId: e.id, children: [] })
       }
       writeYaml(dir, `.polenta/trees/${node.name}/${type.name}.yaml`, { nodeId: node.name, typeId: type.name, root })
     }
@@ -161,7 +190,14 @@ function writeLinks(key, phaseKey) {
   if (links.length) writeYaml(repoDir(key), 'links/links.yaml', { links })
 }
 
-function writeRun(r) {
+async function writeRun(r) {
+  // GH202 — version testée posée par le service : un run d'entrée de campagne une fois les versions ouvertes.
+  const choice = r.testedVersion ?? (r.campaignId ? CAMPAIGNS.find(c => c.id === r.campaignId).testedVersion : null)
+  let testedConfig
+  if (choice) {
+    await prepareTree(r.repo)
+    testedConfig = await appServices(r.by.name).testedConfig.resolve(repoDir(r.repo), choice, WS, { required: true })
+  }
   writeYaml(repoDir(r.repo), `test-runs/${r.testId}/${r.id}.yaml`, {
     id: r.id,
     testCaseId: r.testId,
@@ -171,6 +207,9 @@ function writeRun(r) {
     result: r.result,
     executedAt: r.at,
     executedBy: r.by.name,
+    ...(r.origin ? { origin: r.origin } : {}),
+    ...(r.fields ? { fields: r.fields } : {}),
+    ...(testedConfig ? { testedConfig } : {}),
     duration: r.duration ?? 0,
     equipmentUsed: r.equipmentUsed ?? [],
     stepResults: r.stepResults.map(s => ({ ...s, executedAt: r.at })),
@@ -179,7 +218,7 @@ function writeRun(r) {
 }
 
 function writeCampaign(c) {
-  const runs = c.entries.map(([testId, e]) => {
+  const toEntry = ([testId, e]) => {
     const run = allRuns.find(r => r.entry === e)
     return {
       entryId: e.entryId,
@@ -193,18 +232,24 @@ function writeCampaign(c) {
       ...(e.resolvedParams ? { resolvedParams: e.resolvedParams } : {}),
       ...(e.resolvedParams && c.paramSourceRef ? { paramSourceRef: c.paramSourceRef } : {}),
       ...(e.unresolvedParams ? { unresolvedParams: e.unresolvedParams } : {}),
+      ...(e.carriedFrom ? { carriedFrom: e.carriedFrom } : {}),
+      ...(e.removedAt ? { removedAt: e.removedAt } : {}),
     }
-  })
-  writeYaml(repoDir('produit'), `campaigns/${c.id}.yaml`, {
+  }
+  const runs = c.entries.map(toEntry)
+  const removedRuns = (c.removed ?? []).map(toEntry)
+  const objectTypeRef = c.objectTypeRef ?? 'root::campagne-produit'
+  writeYaml(repoDir(c.repo ?? 'produit'), `campaigns/${c.id}.yaml`, {
     id: c.id,
     title: c.title,
-    objectTypeRef: 'root::campagne-produit',
+    objectTypeRef,
     fields: c.fields ?? {},
-    level: 'campagne-produit',
+    level: objectTypeRef.split('::')[1],
     component: 'root',
     status: c.status,
     testCaseIds: [...new Set(c.entries.map(([t]) => t))],
     runs,
+    ...(removedRuns.length ? { removedRuns } : {}),
     createdAt: c.createdAt,
     ...(c.completedAt ? { completedAt: c.completedAt } : {}),
   })
@@ -326,6 +371,40 @@ function courbePng() {
   return c.toPng()
 }
 
+// ─── Étapes jouées par les services (milestone-d.mjs) ────────────────────────
+
+/** Cache de l'arbre du workspace vu depuis `key` : composition et dépendances d'une version. */
+async function prepareTree(key) {
+  const { workspaceTree } = appServices('démo')
+  const built = await workspaceTree.buildTree(WS, repoDir(key), [])
+  if (built.status !== 'ok') throw new Error(`Arbre du workspace (${key}) : ${JSON.stringify(built)}`)
+  await workspaceTree.writeCache(WS, built.tree)
+}
+
+async function playStep(key, phaseKey, step) {
+  const dir = repoDir(key)
+  // `AuthService.getAuthor` retombe sur la configuration du repo, sans compte.
+  git(dir, ['config', 'user.name', step.by.name])
+  git(dir, ['config', 'user.email', step.by.email])
+  if (step.tree) await prepareTree(step.tree)
+  const ctx = {
+    app: appServices(step.by.name), dir, ws: step.tree ? WS : undefined,
+    commit: msg => commitAll(dir, msg, step.by, step.at),
+    elements: () => ELEMENTS.filter(e => e.repo === key && state.has(e.id)).map(e => e.id),
+    backlog: () => ELEMENTS.filter(e => e.repo === key && e.at[phaseKey] && state.has(e.id)).map(e => e.id),
+    link: (type, sourceId, targetId) => {
+      LINKS.push({ phase: phaseKey, repo: key, type, sourceId, targetId, by: step.by })
+      writeLinks(key, phaseKey)
+    },
+    runId: (testId, campaignId, requirementId) => allRuns.find(r =>
+      r.testId === testId && r.campaignId === campaignId && (!requirementId || r.requirementId === requirementId)).id,
+  }
+  await atInstant(new Date(step.at).toISOString(), () => step.run(ctx))
+  commitAll(dir, step.msg, step.by, new Date(Date.parse(step.at) + 3600_000).toISOString())
+  git(dir, ['config', '--unset', 'user.name'])
+  git(dir, ['config', '--unset', 'user.email'])
+}
+
 // ─── Déroulé des phases ──────────────────────────────────────────────────────
 
 for (const phase of PHASES) {
@@ -342,34 +421,41 @@ for (const phase of PHASES) {
     const m = manifest(key, phase.key)
     if (m) writeYaml(dir, 'polenta-repo.yaml', m)
 
+    const by = phase.by[key] ?? phase.by.default
     for (const el of ELEMENTS.filter(e => e.repo === key && e.at[phase.key])) {
-      const obj = applyPatch(el, el.at[phase.key])
-      writeYaml(dir, `${el.cat === 'requirement' ? 'requirements' : 'tests'}/${el.id}.yaml`, obj)
+      const rel = `${el.cat === 'requirement' ? 'requirements' : 'tests'}/${el.id}.yaml`
+      if (el.at[phase.key].deleted) {
+        // Comme l'application (`deleteWithTombstone`) : le numéro n'est jamais réutilisé.
+        removeFile(dir, rel)
+        writeFile(dir, `.polenta/tombstones/${el.id}`, '')
+        state.delete(el.id)
+        continue
+      }
+      writeYaml(dir, rel, applyPatch(el, el.at[phase.key], { at: phase.date, by: by.name }))
     }
 
     writeLinks(key, phase.key)
-    for (const r of allRuns.filter(r => r.repo === key && r.phase === phase.key)) writeRun(r)
+    for (const r of allRuns.filter(r => r.repo === key && r.phase === phase.key)) await writeRun(r)
 
+    for (const c of CAMPAIGNS.filter(c => (c.repo ?? 'produit') === key && c.phase === phase.key)) writeCampaign(c)
+    for (const v of SAVED_VIEWS.filter(v => v.repo === key && v.phase === phase.key)) {
+      writeYaml(dir, `.polenta/views/${v.node}/${v.type}.yaml`, { version: 1, views: v.views })
+    }
     if (key === 'produit') {
-      for (const c of CAMPAIGNS.filter(c => c.phase === phase.key)) writeCampaign(c)
-      for (const r of REVIEWS.filter(r => r.phase === phase.key)) {
-        const { phase: _p, ...review } = r
-        writeYaml(dir, `reviews/${r.id}.yaml`, review)
-      }
       if (phase.key === 'P4') writeSuivi(dir)
       if (phase.key === 'P8') writeFile(dir, 'GUIDE-EVALUATION.md', GUIDE)
     }
 
-    // Pas de config/counters.yaml (GH20) : l'app déduit le prochain ID des fichiers présents, et
-    // la démo ne supprime jamais d'objet — aucune pierre tombale (.polenta/tombstones/) à poser.
+    // Pas de config/counters.yaml (GH20) : l'app déduit le prochain ID des fichiers présents et des
+    // pierres tombales.
     writeTrees(key)
 
-    const by = phase.by[key] ?? phase.by.default
     commitAll(dir, `${phase.msg}`, by, phase.date)
     for (const t of phase.repoTags?.[key] ?? []) {
       if (t.lightweight) lightweightTag(dir, t.tag)
       else annotatedTag(dir, t.tag, t.message, P.hugo, t.date)
     }
+    for (const step of STEPS[phase.key]?.[key] ?? []) await playStep(key, phase.key, step)
   }
   for (const t of phase.tags ?? []) for (const key of REPO_ORDER) annotatedTag(repoDir(key), t.tag, t.message, P.hugo, t.date)
 }
@@ -413,17 +499,21 @@ function writeSuivi(dir) {
   params.produit.vitesse_essorage = { ...params.produit.vitesse_essorage, value: '1600' }
   writeParameters('produit')
   const prd2 = ELEMENTS.find(e => e.id === 'PRD-0002')
-  writeYaml(dir, 'requirements/PRD-0002.yaml', applyPatch(prd2, { status: 'review', version: 2, fields: { kpi_cible: '1600 tr/min' } }))
+  writeYaml(dir, 'requirements/PRD-0002.yaml', applyPatch(prd2, { status: 'review', version: 2, fields: { kpi_cible: '1600 tr/min' } }, { at: DEV_BRANCH.date, by: DEV_BRANCH.by.name }))
   const prd14 = { repo: 'produit', id: 'PRD-0014', ref: 'root::exigence-produit', folder: 'Usage', title: 'Programme vapeur anti-froissage', cat: 'requirement', at: {} }
   ELEMENTS.push(prd14)
   writeYaml(dir, 'requirements/PRD-0014.yaml', applyPatch(prd14, { status: 'draft', fields: {
     statement: 'WHERE le programme vapeur est sélectionné\nTHE lave-linge SHALL injecter de la vapeur pendant les 10 dernières minutes du cycle.',
     priority: 'low', source: 'Marketing', marches: 'CN, JP',
-  } }))
+  } }, { at: DEV_BRANCH.date, by: DEV_BRANCH.by.name }))
   writeTrees('produit')
   commitAll(dir, DEV_BRANCH.msg, DEV_BRANCH.by, DEV_BRANCH.date)
   git(dir, ['checkout', '-q', 'main'])
 }
+
+// Le cache d'arbre appartient au poste : l'application le reconstruit à l'ouverture.
+fs.rmSync(path.join(WS, '.polenta', 'tree.cache.yaml'), { force: true })
+fs.rmSync(path.join(WS, '.gitignore'), { force: true })
 
 // ─── Résumé ──────────────────────────────────────────────────────────────────
 

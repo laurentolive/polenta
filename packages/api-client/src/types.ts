@@ -378,6 +378,8 @@ export interface FieldVisibilityPref {
   collapsedFoldersWord?: string[]
   /** GH24 — nombre de colonnes figées (depuis la gauche) de la vue Tableau. Absent ⇒ 0. */
   freezeColCountExcel?: number
+  /** GH288 — largeurs (px) choisies à la souris dans la vue Tableau, par colonne. Absent ⇒ largeurs auto. */
+  colWidthsExcel?: Record<string, number>
   /** GH176 — colonnes du sélecteur de tests d'une campagne. Absent ⇒ celles de la vue Tableau. */
   picker?: string[]
   /** GH197 — colonnes de la grille d'historique des exécutions. Absent ⇒ défaut (verdict, date…). */

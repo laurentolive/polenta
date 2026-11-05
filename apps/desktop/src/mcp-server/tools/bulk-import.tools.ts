@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import type { ProjectSchema } from '@polenta/types'
+import { initialStatus } from '@polenta/types'
+import type { ProjectSchema, TransitionCheck, TransitionIssue } from '@polenta/types'
 import { CreateRequirementSchema, CreateTestCaseSchema } from '@polenta/zod-schemas'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { GitService } from '../../main/services/git.service'
@@ -12,6 +13,7 @@ import {
   type BulkImportEntryDto,
 } from '../../main/services/bulk-import-validation.util'
 import { peekNextCounterId, formatCounterId } from '../../main/services/id-counter.util'
+import { readOwnedTypeDef } from '../../main/services/field-write.util'
 
 /**
  * Tools d'import massif (T122 sprint 2 — specs/T122-design.md §3) : un tool par
@@ -70,6 +72,22 @@ interface BulkImportToolResult {
   /** `dryRun: true` uniquement — IDs prévisionnels. */
   wouldCreate: Array<{ index: number; id: string }>
   errors: BulkEntryError[]
+  /** GH206 — notifications des contraintes de transition (statut de création), par entrée. */
+  transitionWarnings?: Array<{ index: number; issues: TransitionIssue[] }>
+}
+
+/** GH206 — contrôle du statut de création d'une entrée (`before` null : toutes les règles vers ce statut). */
+type CreationCheck<TDto> = (dto: TDto, id: string) => Promise<TransitionCheck>
+
+function makeCreationCheck(container: McpContainer): CreationCheck<BulkImportEntryDto & { title?: string; status?: string; fields?: Record<string, unknown> }> {
+  const { repoPath, workspaceDir } = container
+  return async (dto, id) => {
+    const ref = dto.objectTypeRef ?? ''
+    const owner = (await container.schema.resolveComponentRepoPath(repoPath, ref, workspaceDir)) ?? repoPath
+    const typeDef = await readOwnedTypeDef(container.git, repoPath, ref, owner)
+    const status = dto.status ?? initialStatus(typeDef)
+    return container.transitionGuard.check(repoPath, typeDef, null, { id, title: dto.title, status, fields: dto.fields ?? {} }, workspaceDir)
+  }
 }
 
 /**
@@ -93,19 +111,36 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
   entries: TDto[],
   dryRun: boolean,
   nextIdPreview: (objectTypeRef: string | undefined) => string,
-  create: (dto: TDto) => Promise<{ id: string }>,
+  create: (dto: TDto) => Promise<{ id: string; transitionWarnings?: TransitionIssue[] }>,
+  /** GH206 — absent pour les campagnes (pas de contraintes de transition). */
+  creationCheck?: CreationCheck<TDto>,
 ): Promise<BulkImportToolResult> {
-  const { valid, errors } = validateBulkEntries(schema, entries, nextIdPreview)
+  const { valid: validated, errors } = validateBulkEntries(schema, entries, nextIdPreview)
+  const transitionWarnings: Array<{ index: number; issues: TransitionIssue[] }> = []
+  const withWarnings = () => (transitionWarnings.length > 0 ? { transitionWarnings } : {})
 
   if (dryRun) {
+    // Même contrôle qu'à l'écriture (le service le refait) : refus en erreur, notifications à part.
+    const valid: typeof validated = []
+    for (const v of validated) {
+      const check = creationCheck ? await creationCheck(v.dto, v.predictedId) : null
+      if (check?.blocked) {
+        errors.push({ index: v.index, reason: `TRANSITION_BLOCKED: ${check.issues.map(i => i.message).join(' ; ')}` })
+        continue
+      }
+      if (check && check.issues.length > 0) transitionWarnings.push({ index: v.index, issues: check.issues })
+      valid.push(v)
+    }
     return {
       dryRun: true,
       summary: { total: entries.length, ok: valid.length, failed: errors.length },
       created: [],
       wouldCreate: valid.map((v) => ({ index: v.index, id: v.predictedId })),
       errors: [...errors].sort((a, b) => a.index - b.index),
+      ...withWarnings(),
     }
   }
+  const valid = validated
 
   const created: Array<{ index: number; id: string }> = []
   const writeErrors: BulkEntryError[] = []
@@ -116,6 +151,7 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
     try {
       const obj = await create(entry.dto)
       created.push({ index: entry.index, id: obj.id })
+      if (obj.transitionWarnings?.length) transitionWarnings.push({ index: entry.index, issues: obj.transitionWarnings })
     } catch (e) {
       writeErrors.push({ index: entry.index, reason: e instanceof Error ? e.message : String(e) })
     }
@@ -128,6 +164,7 @@ async function runBulkImport<TDto extends BulkImportEntryDto>(
     created,
     wouldCreate: [],
     errors: allErrors,
+    ...withWarnings(),
   }
 }
 
@@ -213,6 +250,7 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
         : NOOP_ID_PREVIEW
       const result = await runBulkImport(schema, entries, dryRun, preview, (dto) =>
         container.requirements.create(container.repoPath, dto, container.workspaceDir),
+        makeCreationCheck(container),
       )
       return jsonToolResult(result)
     },
@@ -235,6 +273,7 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
         : NOOP_ID_PREVIEW
       const result = await runBulkImport(schema, entries, dryRun, preview, (dto) =>
         container.tests.create(container.repoPath, dto, container.workspaceDir),
+        makeCreationCheck(container),
       )
       return jsonToolResult(result)
     },

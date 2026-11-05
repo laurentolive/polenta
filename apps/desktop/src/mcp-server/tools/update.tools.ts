@@ -1,11 +1,13 @@
 import { z } from 'zod'
-import type { ObjectCategory, ObjectHistory, ProjectSchema } from '@polenta/types'
+import type { ObjectCategory, ObjectHistory, ProjectSchema, TransitionIssue } from '@polenta/types'
 import { UpdateRequirementSchema, UpdateTestCaseSchema } from '@polenta/zod-schemas'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
 import { planUpdate, type FieldChange, type UpdatableObject } from '../../main/services/update-validation.util'
 import { findObjectTypeDef } from '../../main/services/schema-lookup.util'
+import { mergeFields } from '../../main/services/field-merge.util'
+import { readOwnedTypeDef } from '../../main/services/field-write.util'
 
 /**
  * Tools de modification d'objets existants (GH150 — specs/GH150-design.md) :
@@ -37,9 +39,9 @@ interface UpdateToolResult {
   dryRun: boolean
   summary: { total: number; ok: number; failed: number }
   /** `dryRun: false` uniquement — objets réécrits (ou inchangés : `changed: false`). */
-  updated: Array<{ index: number; id: string; version?: number; changed: boolean; warning?: string }>
-  /** `dryRun: true` uniquement — modifications prévues, par champ. */
-  preview: Array<{ index: number; id: string; changes: Record<string, FieldChange> }>
+  updated: Array<{ index: number; id: string; version?: number; changed: boolean; warning?: string; transitionWarnings?: TransitionIssue[] }>
+  /** `dryRun: true` uniquement — modifications prévues, par champ. GH206 : notifications du passage de statut. */
+  preview: Array<{ index: number; id: string; changes: Record<string, FieldChange>; transitionWarnings?: TransitionIssue[] }>
   errors: Array<{ index: number; id: string; reason: string; field?: string; partial?: boolean }>
 }
 
@@ -85,8 +87,20 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
       result.errors.push({ index, id: entry.id, reason: plan.reason, ...(plan.field && { field: plan.field }) })
       continue
     }
+    // GH206 — contraintes de transition sur l'état prévu, avant toute écriture : `dryRun` et écriture réelle
+    // donnent le même résultat, et un statut refusé n'écrit pas le contenu (pas d'écriture partielle).
+    let transitionWarnings: TransitionIssue[] = []
+    if (plan.changes.status) {
+      const check = await transitionCheck(container, existing, entry)
+      if (check.blocked) {
+        result.errors.push({ index, id: entry.id, reason: `TRANSITION_BLOCKED: ${check.issues.map(i => i.message).join(' ; ')}` })
+        continue
+      }
+      transitionWarnings = check.issues
+    }
+    const warned = transitionWarnings.length > 0 ? { transitionWarnings } : {}
     if (dryRun) {
-      result.preview.push({ index, id: entry.id, changes: plan.changes })
+      result.preview.push({ index, id: entry.id, changes: plan.changes, ...warned })
       continue
     }
 
@@ -105,7 +119,7 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
       if (plan.changes.status && !reopening) written = await target.writeStatus(entry.id, entry.status!, entry.modificationComment)
       const commentLost = !!entry.modificationComment?.trim() && historySize(written) <= historySize(existing)
       result.updated.push({
-        index, id: entry.id, version: written?.version, changed: true, ...(commentLost && { warning: NO_TRACKED_CHANGE }),
+        index, id: entry.id, version: written?.version, changed: true, ...(commentLost && { warning: NO_TRACKED_CHANGE }), ...warned,
       })
     } catch (e) {
       result.errors.push({
@@ -120,6 +134,24 @@ async function runUpdate<TEntry extends { id: string; status?: string; modificat
   result.summary.failed = result.errors.length
   result.errors.sort((a, b) => a.index - b.index)
   return result
+}
+
+/** GH206 — contrôle du passage de statut d'une entrée, sur l'état prévu (titre, champs fusionnés, statut). */
+async function transitionCheck(
+  container: McpContainer,
+  existing: UpdatableObject & { id?: string },
+  entry: { id: string; status?: string; title?: string; fields?: Record<string, unknown> },
+) {
+  const { repoPath, workspaceDir } = container
+  const owner = (await container.schema.resolveComponentRepoPath(repoPath, existing.objectTypeRef, workspaceDir)) ?? repoPath
+  const typeDef = await readOwnedTypeDef(container.git, repoPath, existing.objectTypeRef, owner)
+  const planned = {
+    id: entry.id,
+    title: entry.title ?? existing.title,
+    status: entry.status ?? existing.status,
+    fields: mergeFields(existing.fields, entry.fields),
+  }
+  return container.transitionGuard.check(repoPath, typeDef, existing, planned, workspaceDir)
 }
 
 /** GH200 — le passage à `status` fait-il quitter un statut `isApproval` ? */

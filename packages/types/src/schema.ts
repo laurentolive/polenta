@@ -119,6 +119,8 @@ export interface ObjectTypeDefinition {
   decisions?: ValidationDecisionDef[]
   /** GH204 — catégorie `validation` : champs saisis avec chaque décision. */
   entryFields?: SchemaField[]
+  /** GH206 — contraintes de transition facultatives (exigence, test, issue). */
+  transitions?: import('./transitions').TransitionRule[]
 }
 
 /** GH229 — types de champ admis comme « ID affiché ». */

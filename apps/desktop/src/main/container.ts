@@ -10,6 +10,7 @@ import { RevalidationService } from './services/revalidation.service'
 import { ParametersService } from './services/parameters.service'
 import { ReqRefsService } from './services/req-refs.service'
 import { TraceabilityService } from './services/traceability.service'
+import { TransitionGuardService } from './services/transition-guard.service'
 import { ReviewsService } from './services/reviews.service'
 import { RepoWatcherService } from './services/repo-watcher.service'
 import { SchemaService } from './services/schema.service'
@@ -130,6 +131,9 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   // GH202 — version testée d'une exécution : versions proposées, copie dans le run, évolution.
   const testedConfig = new TestedConfigService(versions, sync, tests, campaigns)
   tests.setTestedConfig(testedConfig)
+  // GH206 — contraintes de transition, contrôlées dans le `persist` des trois services.
+  const transitionGuard = new TransitionGuardService(traceability)
+  for (const service of [requirements, tests, issues]) service.setTransitionGuard(transitionGuard)
   const campaignExecution = new CampaignExecutionService(campaigns, tests, auth, testedConfig)
   // GH197 — historique des exécutions d'un test ou d'une exigence.
   const executionHistory = new ExecutionHistoryService(tests, campaigns, requirements, testedConfig)
@@ -196,6 +200,7 @@ export function createContainer(host: HostContext, print: PrintRenderer): Contai
   )
 
   return {
+    transitionGuard,
     auth,
     git,
     sync,

@@ -1,5 +1,5 @@
 import { initialStatus, isUnknownStatus, prepareRunFields, renameFieldKeys } from '@polenta/types'
-import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, TestCase, TestRun, WithTransitionWarnings } from '@polenta/types'
 import type { CreateTestCaseDto, UpdateTestCaseDto, ExecuteTestCaseDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { TestsIndexService } from './tests-index.service'
@@ -14,6 +14,7 @@ import type { HistoryService } from './history.service'
 import { applyFieldsWrite, FieldWriteError, readOwnedTypeDef } from './field-write.util'
 import { assertContentEditable, versionBump } from './approved-lock.util'
 import type { TestedConfigService } from './tested-config.service'
+import type { TransitionGuardService } from './transition-guard.service'
 
 /** GH200 — champs de contenu d'un test, verrouillés quand il est approuvé (`objectTypeRef` : cascade système). */
 const TEST_CONTENT_KEYS = ['title', 'fields', 'preconditions', 'equipment', 'steps', 'postconditions'] as const
@@ -28,6 +29,13 @@ export class TestsService {
   ) {}
 
   private testedConfig?: Pick<TestedConfigService, 'resolve'>
+
+  private transitionGuard?: Pick<TransitionGuardService, 'assert'>
+
+  /** GH206 — contraintes de transition (injectées après construction : le garde lit la couverture). */
+  setTransitionGuard(guard: Pick<TransitionGuardService, 'assert'>): void {
+    this.transitionGuard = guard
+  }
 
   /** GH202 — copie de la version testée (injectée après construction : le service lit les runs d'ici). */
   setTestedConfig(service: Pick<TestedConfigService, 'resolve'>): void {
@@ -48,7 +56,7 @@ export class TestsService {
     return this.testsIndex.findRuns(repoPath, testCaseId)
   }
 
-  async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<TestCase> {
+  async create(repoPath: string, dto: CreateTestCaseDto, workspaceDir?: string): Promise<WithTransitionWarnings<TestCase>> {
     // GH149 — cf. RequirementsService.create : statut initial lu dans le schéma.
     const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
     if (dto.status && isUnknownStatus(typeDef, dto.status)) {
@@ -83,7 +91,7 @@ export class TestsService {
       updatedBy: null,
     }
 
-    return this.persist(repoPath, targetRepo, null, test)
+    return this.persist(repoPath, targetRepo, null, test, { workspaceDir })
   }
 
   // T159 — cf. RequirementsService : sérialise les read-modify-write concurrents sur le
@@ -92,7 +100,7 @@ export class TestsService {
     repoPath: string, id: string, dto: UpdateTestCaseDto, workspaceDir?: string,
     /** GH150 — `update_tests` (MCP) : une clé de `fields` à `null` retire le champ. */
     opts: { removeNullFields?: boolean } = {},
-  ): Promise<TestCase> {
+  ): Promise<WithTransitionWarnings<TestCase>> {
     const { updated, leftApproval } = await withKeyLock(`${repoPath}::tests/${id}`, async () => {
       const existing = await this.testsIndex.findById(repoPath, id)
       if (!existing) throw new Error(`Test case ${id} not found`)
@@ -120,7 +128,7 @@ export class TestsService {
       }
       // GH200 — contenu d'un test approuvé : réouverture d'abord (dans la même écriture, acceptée).
       assertContentEditable(typeDef, existing, next, TEST_CONTENT_KEYS)
-      const updated = await this.persist(repoPath, targetRepo, existing, next, { comment: dto.modificationComment })
+      const updated = await this.persist(repoPath, targetRepo, existing, next, { comment: dto.modificationComment, workspaceDir })
       // T172 — changement de statut direct (colonne Statut de la vue Excel) quittant l'approbation.
       const leftApproval = !!dto.status && RevalidationService.leavesApproval(typeDef, existing.status, dto.status)
       return { updated, leftApproval }
@@ -184,16 +192,21 @@ export class TestsService {
   private async persist(
     repoPath: string, targetRepo: string, before: TestCase | null, after: TestCase,
     /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel. */
-    opts: { raw?: boolean; comment?: string } = {},
-  ): Promise<TestCase> {
+    opts: { raw?: boolean; comment?: string; workspaceDir?: string } = {},
+  ): Promise<WithTransitionWarnings<TestCase>> {
     // GH195 — liens normalisés, `requiredWhen` contrôlé (lève FieldWriteError).
     if (!opts.raw) after = await applyFieldsWrite(this.git, repoPath, before, after, targetRepo)
+    // GH206 — contraintes de transition, sur l'état résultant (champs normalisés) et le type du propriétaire.
+    const transitionWarnings = this.transitionGuard && !opts.raw
+      ? await this.transitionGuard.assert(repoPath, await readOwnedTypeDef(this.git, repoPath, after.objectTypeRef, targetRepo), before, after, opts.workspaceDir)
+      : []
     const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, opts.comment)
       : after
     await this.git.writeYaml(targetRepo, `tests/${stamped.id}.yaml`, omitAuditFields(stamped))
     this.testsIndex.upsertTestCase(repoPath, stamped)
-    return stamped
+    // Notifications rendues à l'appelant, jamais écrites ni indexées.
+    return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped
   }
 
   /** Définition du type de l'objet dans le schéma du repo ouvert (null si non résolvable). */

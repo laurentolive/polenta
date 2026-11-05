@@ -1,5 +1,5 @@
 import { initialStatus, isUnknownStatus, renameFieldKeys } from '@polenta/types'
-import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, Requirement } from '@polenta/types'
+import type { FieldRename, FieldRenameResult, ObjectHistory, ObjectTypeDefinition, ProjectSchema, Requirement, WithTransitionWarnings } from '@polenta/types'
 import type { CreateRequirementDto, UpdateRequirementDto, TransitionRequirementDto } from '@polenta/zod-schemas'
 import type { GitService } from './git.service'
 import type { RequirementsIndexService, RequirementFilters } from './requirements-index.service'
@@ -11,7 +11,8 @@ import { nextCounterId } from './id-counter.util'
 import { withKeyLock } from './serialize-writes.util'
 import { mergeFields } from './field-merge.util'
 import type { HistoryService } from './history.service'
-import { applyFieldsWrite } from './field-write.util'
+import { applyFieldsWrite, readOwnedTypeDef } from './field-write.util'
+import type { TransitionGuardService } from './transition-guard.service'
 import { assertContentEditable, versionBump } from './approved-lock.util'
 
 export class RequirementsService {
@@ -22,6 +23,13 @@ export class RequirementsService {
     private readonly revalidation?: RevalidationService,
     private readonly history?: HistoryService,
   ) {}
+
+  private transitionGuard?: Pick<TransitionGuardService, 'assert'>
+
+  /** GH206 — contraintes de transition (injectées après construction : le garde lit la couverture). */
+  setTransitionGuard(guard: Pick<TransitionGuardService, 'assert'>): void {
+    this.transitionGuard = guard
+  }
 
   findAll(repoPath: string, filters: RequirementFilters): Promise<Requirement[]> {
     return this.index.findAll(repoPath, filters)
@@ -65,7 +73,7 @@ export class RequirementsService {
     return this.index.deleteLinks(repoPath, ids)
   }
 
-  async create(repoPath: string, dto: CreateRequirementDto, workspaceDir?: string): Promise<Requirement> {
+  async create(repoPath: string, dto: CreateRequirementDto, workspaceDir?: string): Promise<WithTransitionWarnings<Requirement>> {
     // GH149 — statut initial lu dans le schéma (premier statut du type), pas `draft` en dur.
     const typeDef = await this.readTypeDef(repoPath, dto.objectTypeRef)
     if (dto.status && isUnknownStatus(typeDef, dto.status)) {
@@ -100,7 +108,7 @@ export class RequirementsService {
       updatedBy: null,
     }
 
-    return this.persist(repoPath, targetRepo, null, req)
+    return this.persist(repoPath, targetRepo, null, req, { workspaceDir })
   }
 
   // T159 — `withKeyLock` sérialise les read-modify-write concurrents sur le même fichier
@@ -128,7 +136,7 @@ export class RequirementsService {
       }
       // GH200 — contenu d'une exigence approuvée : réouverture d'abord.
       assertContentEditable(await this.readTypeDef(repoPath, existing.objectTypeRef), existing, next, ['title', 'fields'])
-      return this.persist(repoPath, targetRepo, existing, next, { comment: dto.modificationComment })
+      return this.persist(repoPath, targetRepo, existing, next, { comment: dto.modificationComment, workspaceDir })
     })
   }
 
@@ -140,7 +148,7 @@ export class RequirementsService {
     return this.transition(repoPath, id, { toStatus: targetStatus, comment }, workspaceDir)
   }
 
-  async transition(repoPath: string, id: string, dto: TransitionRequirementDto, workspaceDir?: string): Promise<Requirement> {
+  async transition(repoPath: string, id: string, dto: TransitionRequirementDto, workspaceDir?: string): Promise<WithTransitionWarnings<Requirement>> {
     const { updated, leftApproval } = await withKeyLock(`${repoPath}::requirements/${id}`, async () => {
       const existing = await this.index.findById(repoPath, id)
       if (!existing) throw new Error(`Requirement ${id} not found`)
@@ -152,7 +160,7 @@ export class RequirementsService {
         ...existing,
         status: dto.toStatus,
         ...versionBump(typeDef, existing, dto.toStatus),
-      }, { comment: dto.comment })
+      }, { comment: dto.comment, workspaceDir })
       return { updated, leftApproval: RevalidationService.leavesApproval(typeDef, existing.status, dto.toStatus) }
     })
     // T172 — hors du verrou de cette exigence (pas de verrous imbriqués avec ceux des pairs).
@@ -168,16 +176,21 @@ export class RequirementsService {
     repoPath: string, targetRepo: string, before: Requirement | null, after: Requirement,
     /** Écriture qui ne change aucune valeur (renommage, reprise git) : `history` écrit tel quel.
      *  `comment` (GH163) : commentaire de modification, posé sur les entrées d'historique créées. */
-    opts: { raw?: boolean; comment?: string } = {},
-  ): Promise<Requirement> {
+    opts: { raw?: boolean; comment?: string; workspaceDir?: string } = {},
+  ): Promise<WithTransitionWarnings<Requirement>> {
     // GH195 — liens normalisés, `requiredWhen` contrôlé (lève FieldWriteError).
     if (!opts.raw) after = await applyFieldsWrite(this.git, repoPath, before, after, targetRepo)
+    // GH206 — contraintes de transition, sur l'état résultant (champs normalisés) et le type du propriétaire.
+    const transitionWarnings = this.transitionGuard && !opts.raw
+      ? await this.transitionGuard.assert(repoPath, await readOwnedTypeDef(this.git, repoPath, after.objectTypeRef, targetRepo), before, after, opts.workspaceDir)
+      : []
     const stamped = this.history && !opts.raw
       ? await this.history.stamp(repoPath, after.objectTypeRef, before, after, before ?? { updatedAt: null, updatedBy: null }, targetRepo, opts.comment)
       : after
     await this.git.writeYaml(targetRepo, `requirements/${stamped.id}.yaml`, omitAuditFields(stamped))
     this.index.upsert(repoPath, stamped)
-    return stamped
+    // Notifications rendues à l'appelant, jamais écrites ni indexées.
+    return transitionWarnings.length > 0 ? { ...stamped, transitionWarnings } : stamped
   }
 
   /** Définition du type de l'objet dans le schéma du repo ouvert (null si non résolvable). */

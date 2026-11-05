@@ -274,6 +274,9 @@ export function createIpcClient(
         invoke('reviews:revoke-approval', p, reviewId, objectId, reviewerId),
       close: (p, reviewId, status) => invoke('reviews:close', p, reviewId, status),
     },
+    transitions: {
+      preview: (p, category, id, workspaceDir) => invoke('transitions:preview', p, category, id, workspaceDir),
+    },
     issues: {
       list: (p) => invoke('issues:list', p),
       get: (p, id) => invoke('issues:get', p, id),

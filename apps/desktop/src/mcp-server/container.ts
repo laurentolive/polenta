@@ -17,6 +17,7 @@ import { IssuesService } from '../main/services/issues.service'
 import { ValidationsService } from '../main/services/validations.service'
 import { ExecutionHistoryService } from '../main/services/execution-history.service'
 import { TraceabilityService } from '../main/services/traceability.service'
+import { TransitionGuardService } from '../main/services/transition-guard.service'
 import { DashboardsService } from '../main/services/dashboards.service'
 import { SavedQueriesService } from '../main/services/saved-queries.service'
 import { HistoryService } from '../main/services/history.service'
@@ -43,6 +44,8 @@ export interface McpContainer {
   versions: VersionsService
   /** GH244 — issues : lecture et écriture. */
   issues: IssuesService
+  /** GH206 — contraintes de transition : `dryRun` des écritures. */
+  transitionGuard: TransitionGuardService
   /** GH204 — validations : lecture et décisions proposées, jamais signées. */
   validations: ValidationsService
   workspaceTree: WorkspaceTreeService
@@ -140,6 +143,9 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   graph.setVersions(versions)
   const issues = new IssuesService(git, schema, history, (r, wsDir) => versions.isReadonly(r, wsDir))
   graph.setIssues(issues)
+  // GH206 — contraintes de transition, contrôlées dans le `persist` des trois services.
+  const transitionGuard = new TransitionGuardService(traceability)
+  for (const service of [requirements, tests, issues]) service.setTransitionGuard(transitionGuard)
   const validations = new ValidationsService(git, sync, schema, versions, traceability, history, new ExecutionHistoryService(tests, campaigns, requirements))
   graph.setValidations(validations)
   versions.setImpactSources({ traceability, campaigns })
@@ -152,7 +158,7 @@ export function createMcpContainer(repoPath: string, workspaceDir?: string, user
   const parameters = new ParametersService(git, reqIndex, testsIndex, schema, polentaRepo, revalidation, workspaceTree)
 
   return {
-    repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, issues, validations, workspaceTree, reqIndex, testsIndex,
+    repoPath, workspaceDir, git, schema, requirements, tests, campaigns, versions, issues, validations, transitionGuard, workspaceTree, reqIndex, testsIndex,
     user, savedQueries, dashboards, history, graph, dashboardLibrary, scriptEngine, suivi, workspaceLinks, parameters,
   }
 }

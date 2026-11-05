@@ -2,6 +2,7 @@ import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { AppLayout } from '../components/layout/AppLayout'
 import { TabBar } from '../components/layout/TabBar'
 import { ZoomIndicator } from '../components/layout/ZoomIndicator'
+import { TransitionNoticeHost } from '../components/transitions/TransitionNoticeHost'
 import { capabilities } from '../platform'
 import { useMenuEvents } from '../hooks/useMenuEvents'
 import { useLiveFileSync } from '../hooks/useLiveFileSync'
@@ -45,6 +46,8 @@ function RootLayout() {
       {/* GH237 — zoom de l'interface, aussi sur /login ; jamais dans une fenêtre d'export. */}
       {!isPrint && capabilities.appZoom && <ZoomIndicator />}
       {isBareRoute ? <Outlet /> : <TabsProvider><AppChrome /></TabsProvider>}
+      {/* GH206 — notifications des contraintes de transition (passage notifié, refus). */}
+      {!isBareRoute && <TransitionNoticeHost />}
     </ThemeProvider>
   )
 }

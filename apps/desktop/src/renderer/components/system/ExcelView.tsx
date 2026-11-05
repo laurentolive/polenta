@@ -31,6 +31,7 @@ import { ExcelTextEditor } from './ExcelTextEditor'
 import { useOrgMembers } from './UserFieldInput'
 import { buildFilterRegex, NO_FILTER_OPTIONS, type FilterOptions } from '../../lib/textFilter'
 import { rowClick, checkboxClick, groupState, toggleGroup, type GroupState } from '../../lib/gridSelection'
+import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -479,9 +480,12 @@ const InlineCell = memo(function InlineCell({
         >
           {/* GH165 — sans option vide, une valeur absente s'affiche comme la 1re valeur et ne peut pas être choisie. */}
           {(!fieldDef.required || !value) && <option value="">—</option>}
-          {(fieldDef.values ?? []).map(v => (
-            <option key={v} value={v} title={fieldDef.valueLabels?.[v] ? v : undefined}>{fieldDef.valueLabels?.[v] ?? v}</option>
-          ))}
+          {/* GH206 — statut : transitions bloquées désactivées avec leur motif, notifiées marquées ⚠. */}
+          {field === 'status'
+            ? <TransitionStatusOptions objectId={objectId} current={value} values={fieldDef.values ?? []} labels={fieldDef.valueLabels} />
+            : (fieldDef.values ?? []).map(v => (
+              <option key={v} value={v} title={fieldDef.valueLabels?.[v] ? v : undefined}>{fieldDef.valueLabels?.[v] ?? v}</option>
+            ))}
         </select>
       </td>
     )

@@ -3,11 +3,11 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DISPLAY_ID_FIELD_TYPES, HISTORY_TRACKABLE_TYPES, RUN_RESULT_KEY, RUN_RESULT_VALUES, STATUS_HISTORY_KEY, STEP_RESULT_VALUES,
-  displayIdFieldCandidates, historyModeFor, renameRequiredWhenRefs, renameValues, requiredWhenIssues,
+  TRANSITION_CATEGORIES, displayIdFieldCandidates, historyModeFor, renameRequiredWhenRefs, renameTransitionRefs, renameValues, requiredWhenIssues,
 } from '@polenta/types'
 import type {
   FieldRename, FieldRenameResult, SchemaField, SchemaStatus, SchemaFieldType, ObjectCategory, ObjectTypeDefinition,
-  TypeRenameDto, TypeRenamePlan, TypeRenameResult, ValueRename,
+  TransitionRule, TypeRenameDto, TypeRenamePlan, TypeRenameResult, ValueRename,
 } from '@polenta/types'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 
@@ -52,6 +52,8 @@ export interface EditableObjectType {
   trackStatusHistory: boolean
   /** GH229 — champ affiché à la place de l'ID dans les liens ('' = ID Polenta). */
   displayIdField: string
+  /** GH206 — contraintes de transition (exigence, test, issue). */
+  transitions: TransitionRule[]
   /** GH86 — clés du type que l'éditeur n'affiche pas, réécrites telles quelles. */
   extra?: Record<string, unknown>
 }
@@ -68,7 +70,7 @@ function extraKeys(obj: object, editorKeys: readonly string[]): Record<string, u
 
 const FIELD_EDITOR_KEYS = ['name', 'label', 'type', 'values', 'required', 'default', 'placeholder', 'trackHistory', 'multiple', 'requiredWhen', 'defaultVisible'] as const
 const STATUS_EDITOR_KEYS = ['name', 'label', 'color', 'isApproval', 'isTerminal'] as const
-const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'runFields', 'stepFields', 'decisions', 'entryFields', 'displayIdField'] as const
+const TYPE_EDITOR_KEYS = ['name', 'label', 'color', 'prefix', 'category', 'fields', 'statuses', 'trackStatusHistory', 'runFields', 'stepFields', 'decisions', 'entryFields', 'displayIdField', 'transitions'] as const
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
@@ -243,6 +245,8 @@ export function withRenamedRequiredWhen(
     stepFields: rewrite(t.stepFields, enumValueRenames(t.stepFields, original?.stepFields), RUN_RESULT_KEY),
     // GH266 — champs d'entrée d'une validation : `decision` est leur pseudo-champ.
     entryFields: rewrite(t.entryFields, enumValueRenames(t.entryFields, original?.entryFields), 'decision'),
+    // GH206 — règles de transition : `from` / `to` suivent les statuts renommés.
+    transitions: renameTransitionRefs(t.transitions, chosen),
   }
 }
 
@@ -301,6 +305,7 @@ export function objTypeToEditable(t: ObjectTypeDefinition): EditableObjectType {
     entryFields: (t.entryFields ?? []).map(fieldToEditable),
     trackStatusHistory: t.trackStatusHistory !== false,
     displayIdField: t.displayIdField ?? '',
+    transitions: t.transitions ?? [],
     ...withExtra(extraKeys(t, TYPE_EDITOR_KEYS)),
   }
 }
@@ -327,6 +332,8 @@ export function editableToObjType(t: EditableObjectType): ObjectTypeDefinition {
   // Un champ renommé dans l'éditeur est suivi (`originalName`).
   const shown = t.fields.find(f => f.originalName && f.originalName !== f.name && f.originalName === t.displayIdField)?.name ?? t.displayIdField
   if (shown && displayIdFieldCandidates(result).includes(shown)) result.displayIdField = shown
+  // GH206 — contraintes de transition : exigence, test, issue seulement (refusées ailleurs par le main).
+  if (TRANSITION_CATEGORIES.includes(t.category) && t.transitions.length > 0) result.transitions = t.transitions
   return { ...result, ...t.extra }
 }
 
@@ -439,6 +446,7 @@ export function emptyObjType(
     entryFields: [],
     trackStatusHistory: true,
     displayIdField: '',
+    transitions: [],
     statuses: category === 'requirement' ? [...DEFAULT_REQ_STATUSES]
       : category === 'test' ? [...DEFAULT_TEST_STATUSES]
       : category === 'version' ? [...DEFAULT_VERSION_STATUSES]

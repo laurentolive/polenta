@@ -2631,5 +2631,33 @@
     },
     "noTest": "No test linked to this requirement.",
     "otherComponent": "Executions in another component"
+  },
+  "transitions": {
+    "notice": {
+      "blocked": "Status change of {{id}} refused",
+      "warning": "Status of {{id}} changed — items to check"
+    },
+    "option": {
+      "blocked": "blocked"
+    },
+    "level": {
+      "off": "No check",
+      "warn": "Notify",
+      "block": "Block"
+    },
+    "condition": {
+      "fieldsFilled": "Required fields filled",
+      "validatorsPass": "Valid formats (EARS…)",
+      "hasCoverageLink": "Covered by a test"
+    },
+    "editor": {
+      "title": "Transition constraints",
+      "help": "Optional: each condition is set to No check, Notify (the change happens, what is missing is reported) or Block. A change without a rule stays free.",
+      "from": "From",
+      "to": "To",
+      "anyStatus": "Any status",
+      "remove": "Remove the rule",
+      "add": "+ Add a rule"
+    }
   }
 }

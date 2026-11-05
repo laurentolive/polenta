@@ -403,9 +403,24 @@ approved ──[rendre obsolète]──► obsolete (isTerminal)
 | `isApproval` | bool | Ce statut marque la validation formelle de l'objet |
 | `isTerminal` | bool | L'objet est masqué des listes par défaut (soft-archive) |
 
-**Toutes les transitions sont autorisées** — il n'y a pas de graphe de transitions à définir.
-Seule exception côté interface : l'approbation d'un élément assigné à aucun change ouvert propose
-de l'assigner (§10, GH199 §8bis).
+**Contraintes de transition facultatives (GH206, `specs/GH206.md`)** — sans bloc `transitions`, tout passage
+est libre (pas de graphe de transitions imposé). Un type d'exigence, de test ou d'issue peut déclarer des
+règles `{ to, from?, requires: { <condition>: off | warn | block } }`, par condition : `fieldsFilled`
+(champs `required` et `requiredWhen` actifs au statut d'arrivée), `validatorsPass` (champs à `validator`,
+EARS ou `regex:`), `hasCoverageLink` (exigence couverte au sens de la matrice, tests de tout le workspace).
+- **Évaluation** : règles dont `to` est le statut d'arrivée et `from` absent ou égal au départ ; niveau le
+  plus fort par condition ; création = toutes les règles vers le statut de création ; statut inchangé : aucun
+  contrôle. Contrôle dans le `persist` des services (UI, MCP, import), jamais sur le YAML édité à la main ni
+  à la fusion GH37.
+- **Niveaux** : `off` (déclarée, inactive), `warn` (passage fait ; motifs rendus dans `transitionWarnings` de
+  la réponse, jamais écrits ; notification sans confirmation), `block` (refus `TRANSITION_BLOCKED`, tous les
+  motifs). Notification par défaut dans l'éditeur : le blocage est un choix du projet.
+- **Schéma** : cohérence contrôlée à l'enregistrement (`TRANSITION_INVALID`) : catégorie, statuts connus (un
+  statut retiré encore cité est refusé), `from ≠ to`, conditions et niveaux admis, pas de doublon `from` /
+  `to`. Avertissement non bloquant pour un blocage qui peut s'appliquer à la réouverture d'un élément
+  approuvé. `from` / `to` suivent le renommage d'un statut.
+- **Écrans** : section « Contraintes de transition » de l'éditeur de type ; menus de statut annotés par le
+  pré-contrôle `transitions:preview` (option bloquée désactivée avec son motif, option notifiée marquée ⚠).
 
 ### 4.4 Historique des champs suivis (GH77)
 

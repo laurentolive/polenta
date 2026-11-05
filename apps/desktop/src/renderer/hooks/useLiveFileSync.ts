@@ -42,6 +42,8 @@ export function useLiveFileSync(): void {
         for (const key of WORKSPACE_LINK_QUERY_KEYS) qc.invalidateQueries({ queryKey: [key] })
         // Couverture calculée sur tout le workspace (clé indexée sur le repo affiché).
         qc.invalidateQueries({ queryKey: ['traceability-matrix'] })
+        // GH206 — pré-contrôle des menus de statut : règles du schéma, champs et couverture.
+        qc.invalidateQueries({ queryKey: ['transitions'] })
       }
 
       // GH65 / GH74 — résultats des widgets de la vue Suivi : clé indexée sur le repo RACINE, mais le

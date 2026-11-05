@@ -460,6 +460,14 @@ lignes).
 `tools/update.tools.ts`, `tools/parameters.tools.ts`. Même contrat que l'import massif (§4.2) :
 `dryRun` par défaut `true`, écriture en série, best-effort, erreurs par entrée.
 
+> **GH206** — un changement de statut est soumis aux contraintes de transition du type (SPEC-REQ §4.3),
+> sur l'état prévu de l'entrée et **avant toute écriture** : `dryRun` et écriture réelle donnent le même
+> résultat, et un statut refusé n'écrit pas le contenu. Refus : erreur `TRANSITION_BLOCKED: <motifs>` ;
+> notification : `transitionWarnings` sur la ligne de `preview` ou de `updated`. `bulk_import_requirements`
+> / `bulk_import_tests` contrôlent de même le statut de création (`transitionWarnings: [{ index, issues }]`),
+> `create_issue` / `update_issue` par le service. Le bloc `transitions` d'un type est accepté par les outils
+> de mutation de schéma (`TRANSITION_INVALID` sinon).
+
 #### `update_requirements` / `update_tests`
 
 Entrée `{ entries: [{ id, title?, status?, fields? }], dryRun? }` ; pour un test, en plus

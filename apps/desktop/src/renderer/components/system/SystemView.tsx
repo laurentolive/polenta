@@ -50,6 +50,8 @@ import { layoutPatch, resolveLayout, sameLayout, type ViewLayout } from './saved
 import { useElementNav } from '../../contexts/ElementNavContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
+import { TransitionScopeContext, transitionPreviewKey } from '../../hooks/useTransitionPreview'
+import { notifyTransitionError, notifyTransitionResult } from '../../lib/transitionNotices'
 
 const SYSTEM_FIELDS_SET = new Set(['id', 'createdAt', 'updatedAt', 'author', 'objectTypeRef', 'version', 'status', 'originRuns'])
 
@@ -642,10 +644,13 @@ export function SystemView() {
       if (!cat || !repoPath || !objectId) return
       if (field === 'status') {
         // GH243 — changer le statut rouvre un élément approuvé (version + 1 côté main), partout.
-        if (cat === 'requirement') return api.requirements.transition(repoPath, objectId, { toStatus: value, comment })
-        if (cat === 'test') return api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto)
-        if (cat === 'issue') return api.issues.update(repoPath, objectId, { status: value, modificationComment: comment })
-        return
+        // GH206 — `workspaceDir` : la couverture d'une contrainte de transition se lit sur tout le workspace.
+        const result = cat === 'requirement' ? await api.requirements.transition(repoPath, objectId, { toStatus: value, comment }, ws.workspaceDir)
+          : cat === 'test' ? await api.tests.update(repoPath, objectId, { status: value, modificationComment: comment } as UpdateTestCaseDto, ws.workspaceDir)
+            : cat === 'issue' ? await api.issues.update(repoPath, objectId, { status: value, modificationComment: comment }, ws.workspaceDir)
+              : undefined
+        notifyTransitionResult(result, objectId)
+        return result
       }
       if (SYSTEM_FIELDS_SET.has(field)) return
       const dto = field === 'title'
@@ -670,8 +675,15 @@ export function SystemView() {
       if (variables.field === 'title') invalidateCandidateObjects()
       if (variables.field === 'status') invalidateImpactedObjects()
       clearPendingEditsFor(variables.objectId, variables.field, variables.value)
+      void qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
     },
-    onError: (err) => {
+    onError: (err, variables) => {
+      // GH206 — transition refusée : motifs notifiés, saisie optimiste annulée (retour au statut réel).
+      if (notifyTransitionError(err, variables.objectId)) {
+        clearPendingEditsFor(variables.objectId, variables.field, variables.value)
+        void qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
+        return
+      }
       console.error('[EditView] Erreur sauvegarde champ:', err)
     },
   })
@@ -1016,6 +1028,12 @@ export function SystemView() {
 
   // ── Empty / loading states ────────────────────────────────────────────────
 
+  // GH206 — pré-contrôle des menus de statut des vues Tableau, Document et Édition.
+  const transitionScope = useMemo(
+    () => ({ repoPath, category: effectiveType?.category, workspaceDir: ws.workspaceDir }),
+    [repoPath, effectiveType?.category, ws.workspaceDir],
+  )
+
   if (schemaLoading) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">
@@ -1057,6 +1075,7 @@ export function SystemView() {
 
   return (
     <WorkspaceLinksProvider value={ws}>
+    <TransitionScopeContext.Provider value={transitionScope}>
     <ParamRefProvider repoPath={repoPath} workspaceDir={currentProjectId ? decodeProjectId(currentProjectId) : ''} projectId={currentProjectId ?? ''}>
     <RichTextProvider>
     <div className="flex flex-col h-full overflow-hidden">
@@ -1369,6 +1388,7 @@ export function SystemView() {
     </div>
     </RichTextProvider>
     </ParamRefProvider>
+    </TransitionScopeContext.Provider>
     </WorkspaceLinksProvider>
   )
 }

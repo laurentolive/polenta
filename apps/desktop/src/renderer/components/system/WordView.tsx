@@ -22,6 +22,7 @@ import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { LinkEditor } from '../links/LinkEditor'
 import { LinkList } from '../links/LinkList'
+import { TransitionStatusOptions } from '../transitions/TransitionStatusOptions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -505,6 +506,8 @@ function ItemCard({
   onOpenComputedTarget?: (target: string) => void
 }) {
   const { t } = useTranslation()
+  // GH206 — pré-contrôle du menu de statut, chargé à sa première ouverture.
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const currentStatus = obj ? getFieldValue(obj, 'status') : ''
   const isLocked = !!typeDef?.statuses?.find(s => s.name === currentStatus)?.isApproval
 
@@ -575,12 +578,19 @@ function ItemCard({
                     <select
                       value={status}
                       onChange={e => onInlineEdit!(node.objectId!, 'status', e.target.value)}
+                      // GH206 — pré-contrôle chargé seulement quand le menu reçoit le focus (document long).
+                      onFocus={() => setStatusMenuOpen(true)}
+                      onMouseDown={() => setStatusMenuOpen(true)}
                       className={`${badgeClass} appearance-none cursor-pointer hover:ring-1 hover:ring-current/40 outline-none`}
                       title={t('system.wordView.changeStatus')}
                     >
-                      {typeDef!.statuses!.map(s => (
-                        <option key={s.name} value={s.name}>{s.label ?? s.name}</option>
-                      ))}
+                      <TransitionStatusOptions
+                        objectId={node.objectId}
+                        current={status}
+                        values={typeDef!.statuses!.map(s => s.name)}
+                        labels={Object.fromEntries(typeDef!.statuses!.filter(s => s.label).map(s => [s.name, s.label!]))}
+                        enabled={statusMenuOpen}
+                      />
                     </select>
                   ) : (
                     <span className={badgeClass}>{statusDef?.label ?? status}</span>

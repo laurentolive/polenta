@@ -2631,5 +2631,33 @@
     },
     "noTest": "Aucun test lié à cette exigence.",
     "otherComponent": "Exécutions dans un autre composant"
+  },
+  "transitions": {
+    "notice": {
+      "blocked": "Changement de statut de {{id}} refusé",
+      "warning": "Statut de {{id}} changé — points à vérifier"
+    },
+    "option": {
+      "blocked": "bloqué"
+    },
+    "level": {
+      "off": "Aucun contrôle",
+      "warn": "Notification",
+      "block": "Blocage"
+    },
+    "condition": {
+      "fieldsFilled": "Champs obligatoires remplis",
+      "validatorsPass": "Formats valides (EARS…)",
+      "hasCoverageLink": "Couverte par un test"
+    },
+    "editor": {
+      "title": "Contraintes de transition",
+      "help": "Facultatives : chaque condition se règle sur Aucun contrôle, Notification (le passage se fait, ce qui manque est signalé) ou Blocage. Un passage sans règle reste libre.",
+      "from": "Depuis",
+      "to": "Vers",
+      "anyStatus": "Tout statut",
+      "remove": "Retirer la règle",
+      "add": "+ Ajouter une règle"
+    }
   }
 }

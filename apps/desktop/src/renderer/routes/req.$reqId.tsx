@@ -13,6 +13,8 @@ import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { Requirement } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
 import { decodeProjectId } from '../lib/projectId'
+import { transitionPreviewKey, useTransitionPreview } from '../hooks/useTransitionPreview'
+import { notifyTransitionResult } from '../lib/transitionNotices'
 
 export const Route = createFileRoute('/req/$reqId')({
   component: RequirementDetailPage,
@@ -97,9 +99,14 @@ function RequirementDetailPage() {
   // Ctrl/Cmd+Entrée depuis un champ richtext → « Enregistrer » (no-op sans modification).
   const submitEdit = () => { if (hasChanges && !saveMutation.isPending) saveMutation.mutate() }
 
+  const workspaceDir = projectId ? decodeProjectId(projectId) : undefined
+  // GH206 — pré-contrôle des boutons de statut ; `workspaceDir` : couverture lue sur tout le workspace.
+  const { data: transitionChecks } = useTransitionPreview(reqId, true, { repoPath, category: 'requirement', workspaceDir })
   const transitionMutation = useMutation({
-    mutationFn: (toStatus: string) => api.requirements.transition(repoPath, reqId, { toStatus }),
-    onSuccess: () => {
+    mutationFn: (toStatus: string) => api.requirements.transition(repoPath, reqId, { toStatus }, workspaceDir),
+    onSuccess: (result) => {
+      notifyTransitionResult(result, reqId)
+      qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
       qc.invalidateQueries({ queryKey: ['requirements', repoPath] })
       qc.invalidateQueries({ queryKey: ['requirement', repoPath, reqId] })
       setConfirmObsolete(false)
@@ -225,7 +232,9 @@ function RequirementDetailPage() {
                 <button
                   type="button"
                   onClick={() => transitionMutation.mutate(nextStatus.name)}
-                  disabled={transitionMutation.isPending}
+                  disabled={transitionMutation.isPending || !!transitionChecks?.[nextStatus.name]?.blocked}
+                  title={transitionChecks?.[nextStatus.name]?.issues.map(i => i.message).join('\n') || undefined}
+                  data-testid="req-next-status"
                   className={`rounded px-4 py-2 text-sm disabled:opacity-50 transition-colors hover:opacity-90 ${
                     nextStatus.isApproval
                       ? 'bg-status-success-solid text-status-success-fg'
@@ -234,10 +243,15 @@ function RequirementDetailPage() {
                 >
                   {transitionMutation.isPending
                     ? t('requirementsPage.transitioning')
-                    : nextStatus.isApproval
+                    : `${transitionChecks?.[nextStatus.name]?.issues.length && !transitionChecks[nextStatus.name].blocked ? '⚠ ' : ''}${nextStatus.isApproval
                       ? t('requirementsPage.approve', { label: nextStatus.label ?? nextStatus.name })
-                      : nextStatus.label ?? nextStatus.name}
+                      : nextStatus.label ?? nextStatus.name}`}
                 </button>
+              )}
+              {nextStatus && transitionChecks?.[nextStatus.name]?.blocked && (
+                <p className="text-xs text-status-danger w-full" data-testid="req-next-status-blocked">
+                  {transitionChecks[nextStatus.name].issues.filter(i => i.level === 'block').map(i => i.message).join(' ; ')}
+                </p>
               )}
 
               {canMarkObsolete && !confirmObsolete && (

@@ -231,6 +231,7 @@ la version web »).
 - Isolation par conteneur de services dans un seul process (pas un process par utilisateur) ;
   dossier courant partagé mais vide.
 - Révocation constatée au plus tard après 5 min pour un utilisateur sans opération git.
+- Contraintes de transition (GH206) : disponibles sur le web, pré-contrôle `transitions:preview` exposé.
 - Non disponibles sur le web à ce jour, livrées desktop seulement : vues Versions et analyse d'impact
   (GH201, GH245 — channels `versions:*` dans `WEB_HIDDEN`), vue Validation (GH204 — `validations:*`, `issues:add-decision` ; entrée masquée, elle dépend des versions), terminal Git Bash (GH238), zoom de
   l'interface (GH237 — `capabilities.appZoom`).

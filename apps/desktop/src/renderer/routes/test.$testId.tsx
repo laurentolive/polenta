@@ -18,6 +18,9 @@ import { useRegisterTabDirty, useSetTabTitle } from '../contexts/TabsContext'
 import type { TestCase } from '@polenta/types'
 import { ParamRefProvider } from '../contexts/ParamRefContext'
 import { decodeProjectId } from '../lib/projectId'
+import { TransitionScopeContext, transitionPreviewKey } from '../hooks/useTransitionPreview'
+import { notifyTransitionResult } from '../lib/transitionNotices'
+import { TransitionStatusOptions } from '../components/transitions/TransitionStatusOptions'
 
 export const Route = createFileRoute('/test/$testId')({
   component: TestCaseDetailPage,
@@ -109,8 +112,11 @@ function TestCaseDetailPage() {
         steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult, notes: null })),
         postconditions: postconditions.trim() || undefined,
         fields,
-      }),
-    onSuccess: () => {
+      }, projectId ? decodeProjectId(projectId) : undefined),
+    onSuccess: (result) => {
+      // GH206 — passage de statut notifié : motifs affichés, sans confirmation.
+      notifyTransitionResult(result, testId)
+      qc.invalidateQueries({ queryKey: transitionPreviewKey(repoPath) })
       qc.invalidateQueries({ queryKey: ['tests', repoPath] })
       qc.invalidateQueries({ queryKey: ['test', repoPath, testId] })
       setInitialized(false)
@@ -148,15 +154,22 @@ function TestCaseDetailPage() {
             <span className="flex items-center gap-2">
               {tc.title}
               {typeDef?.statuses?.length ? (
-                <select
-                  value={status}
-                  onChange={e => setStatus(e.target.value)}
-                  className="text-xs font-medium px-2 py-0.5 rounded bg-status-neutral-bg text-status-neutral border border-edge outline-none cursor-pointer"
-                >
-                  {typeDef.statuses.map(s => (
-                    <option key={s.name} value={s.name}>{s.label ?? s.name}</option>
-                  ))}
-                </select>
+                <TransitionScopeContext.Provider value={{ repoPath, category: 'test', workspaceDir: projectId ? decodeProjectId(projectId) : undefined }}>
+                  <select
+                    value={status}
+                    onChange={e => setStatus(e.target.value)}
+                    className="text-xs font-medium px-2 py-0.5 rounded bg-status-neutral-bg text-status-neutral border border-edge outline-none cursor-pointer"
+                    data-testid="test-status-select"
+                  >
+                    {/* GH206 — options annotées par rapport au statut enregistré. */}
+                    <TransitionStatusOptions
+                      objectId={testId}
+                      current={tc.status}
+                      values={typeDef.statuses.map(s => s.name)}
+                      labels={Object.fromEntries(typeDef.statuses.filter(s => s.label).map(s => [s.name, s.label!]))}
+                    />
+                  </select>
+                </TransitionScopeContext.Provider>
               ) : (
                 <input
                   type="text"

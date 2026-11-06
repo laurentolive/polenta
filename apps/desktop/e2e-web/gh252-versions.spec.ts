@@ -68,7 +68,8 @@ test.beforeAll(async () => {
 test('U1, U2 — panneau Version, backlog, page d\'une version', async () => {
   const p = s.page
   await s.openView('Version')
-  await p.getByRole('button', { name: 'Version produit', exact: true }).click()
+  // Par test id : l'onglet de la vue porte aussi le titre « Version produit ».
+  await p.getByTestId('version-product-button').click()
   await expect(p.getByTestId('product-versions-panel')).toBeVisible()
   await expect(p.getByTestId('version-backlog')).toBeVisible()
   await p.getByTestId(`version-row-${versionId}`).click()
@@ -107,7 +108,8 @@ test('U4, U5 — passage released : tag en attente, poussé avec le repo', async
 test('U6, U7 — validation : création, popup d\'issue, signature par le compte de la session', async () => {
   const p = s.page
   await s.openView('Validation')
-  await p.getByTestId(`validation-create-${versionId}`).click()
+  // GH306 — clic sur le titre de la version (pas sur « Créer ») : toute la ligne crée la validation.
+  await p.getByTestId(`validation-version-${versionId}`).click({ position: { x: 20, y: 5 } })
   await p.getByTestId('new-validation-submit').click()
   await expect(p.getByTestId('validation-page')).toBeVisible()
 
@@ -130,6 +132,16 @@ test('U6, U7 — validation : création, popup d\'issue, signature par le compte
   const author = git('log', '-1', '--format=%an').trim()
   const username = await s.invoke<string>('auth:project-username', repo())
   expect(author.toLowerCase()).toContain(username.toLowerCase())
+
+  // GH306 — la ligne du panneau ne porte que le statut de la validation, et s'ouvre par un clic n'importe où.
+  const row = p.getByTestId(`validation-version-${versionId}`)
+  await expect(row.locator('span.rounded')).toHaveCount(1)
+  await expect(row.getByTestId(`validation-open-${versionId}`)).toHaveText('signée')
+  await navigate(p, s.projectUrl('/validations'))
+  await expect(p.getByTestId('validation-page')).toHaveCount(0)
+  await row.click({ position: { x: 20, y: 5 } })
+  await expect(p).toHaveURL(new RegExp(`/validation/${id}`))
+  await expect(p.getByTestId('validation-page')).toBeVisible()
 })
 
 test('U8 — colonne Design : le label de version ouvre sa page', async () => {

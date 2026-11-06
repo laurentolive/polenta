@@ -2075,15 +2075,17 @@ function ExcelViewInner({
   // cède donc la place à tout rendu urgent de l'application.
   const gotoIndex = gotoNodeId ? visibleRowIds.indexOf(gotoNodeId) : -1
   const anchorIndex = anchorNodeId ? visibleRowIds.indexOf(anchorNodeId) : -1
+  // GH300 — retour sur une page déjà vue (onglet, Précédent, passage par une autre vue) : sa
+  // position l'emporte sur l'ancrage et la cible goto rejouée ; les lignes jusqu'à l'élément
+  // mémorisé sont rendues d'emblée pour la rétablir avant la première peinture.
+  const scrollMemory = useViewScrollMemory(containerRef, scrollMemoryKey, { ready: renderAllRows, gotoNodeId, gotoSeq })
+  const memoryIndex = scrollMemory.saved?.nodeId ? visibleRowIds.indexOf(scrollMemory.saved.nodeId) : -1
   const renderedRowCount = renderAllRows
     ? filteredRows.length
-    : Math.max(INITIAL_RENDERED_ROWS, gotoIndex + INITIAL_RENDERED_ROWS, anchorIndex + INITIAL_RENDERED_ROWS)
+    : Math.max(INITIAL_RENDERED_ROWS, gotoIndex + INITIAL_RENDERED_ROWS, anchorIndex + INITIAL_RENDERED_ROWS, memoryIndex + INITIAL_RENDERED_ROWS)
   // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
   // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
   // GH230 — après le rendu des lignes (sinon le repli viserait une des premières).
-  // GH300 — retour sur une page déjà vue (onglet, Précédent) : sa position l'emporte sur l'ancrage
-  // et la cible goto de la visite précédente.
-  const scrollMemory = useViewScrollMemory(containerRef, scrollMemoryKey, { ready: renderAllRows, gotoSeq })
   useScrollToNode(containerRef, scrollMemory.blocksGoto ? null : gotoNodeId, gotoSeq, { root, ready: renderAllRows || gotoIndex >= 0 })
   useScrollToNode(containerRef, scrollMemory.restoring ? null : anchorNodeId, undefined, { root, ready: renderAllRows || anchorIndex >= 0 })
 

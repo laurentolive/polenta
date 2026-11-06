@@ -61,7 +61,7 @@ test('E1 — le serveur sert une nouvelle version : « Recharger la page » pour
   await expect(badge(s.page)).toHaveCount(0)
 })
 
-test('E2 — release disponible : visible pour l’administrateur avec la commande de mise à jour', async () => {
+test('E2 — release disponible : visible pour l’administrateur avec la mise à jour en un clic (GH305)', async () => {
   await setRole('instance')
   await routeUpdateState(s.page, {
     status: 'available', currentVersion: served, availableVersion: '99.0.0', releaseUrl: 'https://example.org/releases/v99.0.0',
@@ -73,7 +73,7 @@ test('E2 — release disponible : visible pour l’administrateur avec la comman
   await badge(s.page).click()
   const popover = s.page.getByRole('dialog')
   await expect(popover).toContainText(`Version actuelle ${served} → 99.0.0`)
-  await expect(popover).toContainText('polenta-host instance web enable acme --version 99.0.0')
+  await expect(popover.getByRole('button', { name: 'Mettre à jour vers v99.0.0' })).toBeVisible()
   const notes = popover.getByRole('link', { name: 'Voir les nouveautés' })
   await expect(notes).toHaveAttribute('href', 'https://example.org/releases/v99.0.0')
   // Lisible : couleur du texte différente du fond du popover (un jeton « -fg » est blanc).

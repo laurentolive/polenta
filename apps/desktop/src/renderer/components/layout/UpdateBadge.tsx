@@ -8,6 +8,7 @@ import { useTabs } from '../../contexts/TabsContext'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { platform } from '../../platform'
 import { UpdateInstallConfirm } from './UpdateInstallConfirm'
+import { WebReleaseUpdate, WebUpdateProgress } from './WebReleaseUpdate'
 import { updateView, type UpdateView } from './updateView'
 
 function BadgeIcon({ view }: { view: UpdateView }) {
@@ -33,6 +34,8 @@ export function UpdateBadge() {
   const [open, setOpen] = useState(false)
   const [confirmingInstall, setConfirmingInstall] = useState(false)
   const [confirmingReload, setConfirmingReload] = useState(false)
+  // GH305 — travail `web.update` lancé depuis le popover : suivi gardé quand le popover se ferme.
+  const [webJobId, setWebJobId] = useState<string | null>(null)
 
   const close = useCallback(() => { setOpen(false); setConfirmingReload(false) }, [])
   useModalHotkeys(close, undefined, !open || confirmingInstall)
@@ -113,13 +116,15 @@ export function UpdateBadge() {
             {view.kind === 'reload' && (
               <p className="text-xs text-ink-2 mb-3">{t('update.popover.reloadMessage', { current: state.currentVersion })}</p>
             )}
-            {view.kind === 'release' && (
-              <div className="text-xs text-ink-2 mb-3">
-                {t('update.popover.releaseAdmin')}
-                <code className="block mt-1 p-1.5 rounded bg-hover font-mono text-[11px] break-all select-all">
-                  {`polenta-host instance web enable ${me?.instance ?? '<instance>'} --version ${view.version}`}
-                </code>
-              </div>
+            {view.kind === 'reload' && webJobId && <WebUpdateProgress jobId={webJobId} />}
+            {view.kind === 'release' && me?.instance && (
+              <WebReleaseUpdate
+                version={view.version}
+                instance={me.instance}
+                dirtyTabs={dirtyTabIds.size}
+                jobId={webJobId}
+                onLaunched={setWebJobId}
+              />
             )}
             {confirmingReload && (
               <p className="text-xs text-status-warning mb-3">{t('update.popover.dirtyReloadWarning')}</p>

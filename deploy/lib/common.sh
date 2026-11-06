@@ -13,6 +13,8 @@ HOST_ENV="$POLENTA_ROOT/host.env"
 DEFAULT_FORGE_IMAGE="codeberg.org/forgejo/forgejo"
 DEFAULT_FORGE_VERSION="15.0.9"      # LTS — épinglée, jamais « latest »
 DEFAULT_CADDY_VERSION="2.11.7"
+# GH305 — image du client web publiée par la CI à chaque release (tag de version exact, pas de latest).
+DEFAULT_POLENTA_WEB_IMAGE="ghcr.io/laurentolive/polenta-web"
 # GH61 — cohabitation avec d'autres projets dockerisés sur un même serveur (host.env).
 DEFAULT_CADDY_MODE="managed"          # managed : Caddy du kit ; external : Caddy existant
 DEFAULT_EDGE_NETWORK="polenta-edge"
@@ -250,8 +252,8 @@ load_host_env() {
   [[ -f "$HOST_ENV" ]] || die "$HOST_ENV introuvable — lancez « polenta-host setup »."
   ACME_EMAIL="$(env_get "$HOST_ENV" ACME_EMAIL)"
   BASE_DOMAIN="$(env_get "$HOST_ENV" BASE_DOMAIN)"
-  # GH44 — image du client web proposée par défaut (instance web enable), ex. ghcr.io/…/polenta-web.
-  POLENTA_WEB_IMAGE_DEFAULT="$(env_get "$HOST_ENV" POLENTA_WEB_IMAGE)"
+  # GH44 — image du client web proposée par défaut (instance web enable) ; GH305 : image publiée par la CI.
+  POLENTA_WEB_IMAGE_DEFAULT="$(env_get "$HOST_ENV" POLENTA_WEB_IMAGE)"; POLENTA_WEB_IMAGE_DEFAULT="${POLENTA_WEB_IMAGE_DEFAULT:-$DEFAULT_POLENTA_WEB_IMAGE}"
   FORGE_IMAGE_DEFAULT="$(env_get "$HOST_ENV" FORGE_IMAGE)"; FORGE_IMAGE_DEFAULT="${FORGE_IMAGE_DEFAULT:-$DEFAULT_FORGE_IMAGE}"
   FORGE_VERSION_DEFAULT="$(env_get "$HOST_ENV" FORGE_VERSION)"; FORGE_VERSION_DEFAULT="${FORGE_VERSION_DEFAULT:-$DEFAULT_FORGE_VERSION}"
   CADDY_VERSION="$(env_get "$HOST_ENV" CADDY_VERSION)"; CADDY_VERSION="${CADDY_VERSION:-$DEFAULT_CADDY_VERSION}"

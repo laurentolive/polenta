@@ -17,6 +17,7 @@
 #   polenta-host instance export <nom>         archive de restitution au client
 #   polenta-host instance remove <nom> [--confirm <nom>]   export puis suppression définitive
 #   polenta-host instance web enable <nom> --domain d --version v [--image i]   client web (GH44)
+#   polenta-host instance web update <nom> --version v   nouvelle version d'un client web activé (GH305)
 #   polenta-host instance web disable <nom>    arrête le client web (données conservées)
 #   polenta-host dns check <domaine>           le domaine pointe-t-il vers cet hôte ? (GH63)
 #   polenta-host exports list | exports delete <archive> --confirm <archive>   archives d'export (GH63)
@@ -1485,12 +1486,12 @@ cmd_instance_web_enable() {
       *) die "option inconnue : $1" ;;
     esac
   done
-  image="${image:-${POLENTA_WEB_IMAGE_DEFAULT:-polenta-web}}"
+  image="${image:-$POLENTA_WEB_IMAGE_DEFAULT}"
   [[ -n "$domain" && -n "$version" ]] \
     || die "usage : polenta-host instance web enable <nom> --domain <domaine web> --version <version> [--image <image>]"
   [[ "$domain" != "$(env_get "$env" DOMAIN)" ]] || die "le client web demande son propre domaine (différent de celui de la forge)."
   docker image inspect "$image:$version" >/dev/null 2>&1 || docker pull -q "$image:$version" >/dev/null \
-    || die "image introuvable : $image:$version (construite avec apps/desktop/Dockerfile.web ?)"
+    || die "$E_NO_VERSION" "image introuvable : $image:$version — rien n'a été modifié."
   check_front_dns "$domain"
   env_set "$env" WEB_DOMAIN "$domain"
   env_set "$env" POLENTA_WEB_IMAGE "$image"
@@ -1499,6 +1500,50 @@ cmd_instance_web_enable() {
   web_start "$name"
   admin_log "$name" "instance web enable ($domain, $image:$version)" OK
   log "Client web de « $name » — https://$domain"
+}
+
+# GH305 — polenta-host instance web update <nom> --version <v> : nouvelle version d'un client web
+# déjà activé. Seule l'image change (domaine, image, application OAuth2, page de consentement et site
+# Caddy conservés : pas de redémarrage de la forge). Image introuvable : rien n'est modifié (14).
+# Conteneur ou site en échec : version précédente rétablie, sortie 17 (comme instance update).
+cmd_instance_web_update() {
+  require_operator; load_host_env; require_cmd docker curl
+  local name; name="$(resolve_instance "${1:-}")"; shift || true
+  local version=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version) version="${2:-}"; shift 2 ;;
+      *) die "$E_USAGE" "option inconnue : $1" ;;
+    esac
+  done
+  [[ -n "$version" ]] || die "$E_USAGE" "usage : polenta-host instance web update <nom> --version <version>"
+  acquire_lock "instance web update $name"
+  local env domain image old
+  env="$(instance_env "$name")"
+  domain="$(env_get "$env" WEB_DOMAIN)"; image="$(env_get "$env" POLENTA_WEB_IMAGE)"; old="$(env_get "$env" POLENTA_WEB_VERSION)"
+  [[ -n "$domain" ]] || die "$E_PRECOND" "client web non activé sur l'instance « $name » (polenta-host instance web enable)."
+  image="${image:-$POLENTA_WEB_IMAGE_DEFAULT}"
+  [[ "$version" != "$old" ]] || { skip "client web de $name déjà en $version"; return 0; }
+  docker image inspect "$image:$version" >/dev/null 2>&1 || docker pull -q "$image:$version" >/dev/null \
+    || die "$E_NO_VERSION" "image introuvable : $image:$version — rien n'a été modifié."
+  ok "image $image:$version"
+  log "Client web de « $name » : $old → $version"
+  env_set "$env" POLENTA_WEB_VERSION "$version"
+  local rc=0
+  ( inst_compose "$name" up -d polenta-web >/dev/null 2>&1 || inst_compose "$name" up -d polenta-web
+    wait_web_healthy "$name"
+    wait_front "$name" "$domain" 180 /healthz ) || rc=$?
+  if [[ $rc != 0 ]]; then
+    warn "client web en échec en $version : retour en $old."
+    env_set "$env" POLENTA_WEB_VERSION "$old"
+    inst_compose "$name" up -d polenta-web >/dev/null 2>&1 || inst_compose "$name" up -d polenta-web
+    wait_web_healthy "$name"
+    admin_log "$name" "instance web update $old → $version" "ERREUR, retour à $old"
+    die "$E_ROLLED_BACK" "mise à jour du client web de $name annulée : revenu en $old."
+  fi
+  front_ok "$domain"
+  admin_log "$name" "instance web update ($image:$old → $version)" OK
+  ok "client web de $name en $version — https://$domain"
 }
 
 # polenta-host instance web disable <nom> — arrêt du client web ; web-data et web.env conservés.
@@ -1580,9 +1625,11 @@ instances_json() {
       --arg version "$(env_get "$env" FORGE_VERSION)" --arg state "$state" --argjson complete "$complete" \
       --arg disk "$(du -sh "$(instance_dir "$name")/data" 2>/dev/null | cut -f1)" \
       --arg lastBackup "$(env_get "$env" LAST_BACKUP || true)" --arg webDomain "$(env_get "$env" WEB_DOMAIN)" \
+      --arg webVersion "$(env_get "$env" POLENTA_WEB_VERSION)" \
       '{name:$name, domain:$domain, org:$org, forgeVersion:$version, state:$state, complete:$complete, disk:$disk,
         lastBackup:(if $lastBackup == "" then null else $lastBackup end),
-        webDomain:(if $webDomain == "" then null else $webDomain end)}')")
+        webDomain:(if $webDomain == "" then null else $webDomain end),
+        webVersion:(if $webDomain == "" or $webVersion == "" then null else $webVersion end)}')")
   done
   if ((${#rows[@]})); then printf '%s\n' "${rows[@]}" | jq -sc .; else printf '[]\n'; fi
 }
@@ -1897,6 +1944,7 @@ main() {
           local websub="${1:-}"; shift || true
           case "$websub" in
             enable) cmd_instance_web_enable "$@" ;;
+            update) cmd_instance_web_update "$@" ;;
             disable) cmd_instance_web_disable "$@" ;;
             *) usage 1 ;;
           esac ;;

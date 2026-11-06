@@ -47,6 +47,8 @@ export interface InstanceRow {
   disk: string
   lastBackup: string | null
   webDomain: string | null
+  /** GH305 — version du client web (null sans client web). */
+  webVersion?: string | null
 }
 
 export interface Snapshot {

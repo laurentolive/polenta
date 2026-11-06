@@ -206,7 +206,9 @@ la version web »).
   [--image <i>]` crée l'application OAuth2 de la forge, installe la page de consentement
   personnalisée (GH57, `deploy/lib/grant-template.py`), écrit `web.env` (600), démarre le conteneur
   et publie le site Caddy `<nom>.web.caddy` (reverse proxy vers `polenta-web-<nom>:8787`, WebSocket
-  compris) ; `instance web disable` l'arrête (données conservées). Sauvegarde, restauration et export
+  compris) ; `instance web update <nom> --version <v>` (GH305) change la seule image d'un client web
+  activé (pas de DNS, OAuth2, consentement ni Caddy ; image introuvable : rien modifié, code 14 ;
+  conteneur ou site en échec : version précédente rétablie, code 17) ; `instance web disable` l'arrête (données conservées). Sauvegarde, restauration et export
   de l'instance incluent `web-data` et `web.env`. Procédures : `deploy/RUNBOOK.md` A15.
   **Caddy optionnel** (GH61) : avec `CADDY_MODE=external` (`host.env`, défaut `managed`), le kit ne crée
   aucun Caddy et n'ouvre pas 80/443 ; les blocs `<nom>.caddy` / `<nom>.web.caddy` (contenu identique)
@@ -260,5 +262,11 @@ l'instance d'exploitation `ADMIN_INSTANCE` : toutes les instances et l'hôte). D
   travaux par sondage, bandeau global « opération en cours » (interface ou SSH) ; confirmation par saisie
   du nom pour les opérations destructives ; valeurs à usage unique (clé de sauvegarde, mots de passe
   temporaires) affichées une fois, masquées par défaut.
+- **Mise à jour du client web (GH305)** : opération `web.update` (niveau instance, sa propre instance
+  comprise, confirmation simple, version obligatoire, audit `version`) → `instance web update`. Deux
+  entrées : bouton « Mettre à jour vers vX » du popover W2 de l'administrateur (`WebReleaseUpdate`,
+  travail suivi même popover fermé et après le redémarrage du serveur) et formulaire « Client web »
+  d'Administration › Instances (prérempli avec la release W2 si plus récente, saisie libre).
+  `instance list --json` expose `webVersion`.
 - **Tests** : `src/web-server/admin/admin-routes.test.ts` ; e2e `gh63-admin.spec.ts`,
   `gh63-sensitive.spec.ts` contre `e2e-web/support/fake-admin-service.mjs`.

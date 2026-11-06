@@ -216,6 +216,22 @@ const OPS: OperationDef[] = [
     },
   },
   {
+    // GH305 — nouvelle version d'un client web activé (domaine et image de l'instance conservés) ;
+    // sa propre instance comprise : le travail s'exécute ici, pas dans le conteneur redémarré.
+    id: 'web.update',
+    level: 'instance',
+    needsInstance: true,
+    mutating: true,
+    destructive: false,
+    confirm: 'simple',
+    cancellable: false,
+    script: 'host',
+    params: { version: { validate: v.version, required: true } },
+    audit: ['version'],
+    // Pas d'étapes affichées : le kit n'en signale pas (le runner ne saurait laquelle a échoué).
+    argv: (t, p) => ['instance', 'web', 'update', s(t), '--version', s(p.version)],
+  },
+  {
     id: 'web.disable',
     level: 'instance',
     needsInstance: true,

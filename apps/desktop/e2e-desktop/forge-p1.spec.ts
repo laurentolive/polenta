@@ -178,9 +178,10 @@ test('S4-10 — champ `user` : membres de l’organisation proposés, login enre
     // d'équipe, ou tableau de bord du projet déjà ouvert) : on attend qu'elle soit affichée.
     await expect(page).toHaveURL(/dashboardId=|\/schema\?/, { timeout: 30_000 })
     await page.locator('button[title="Exigences"], button[title="Requirements"]').first().click()
-    await page.getByText(/Create the first element|Créer le premier élément/).click()
-    await page.getByText(/^(Create an element|Créer un élément)$/).click()
-    const row = page.locator('main tr').filter({ hasText: 'REQ-' }).first()
+    // GH282 — exigence déposée par `seedItest` pour ce scénario (affichée « non classée » depuis
+    // GH180) : la liste n'est jamais vide, on édite cette exigence au lieu d'en créer une.
+    const id = 'REQ-0001'
+    const row = page.locator('main tr').filter({ hasText: id }).first()
     await expect(row).toBeVisible({ timeout: 30_000 })
     // Vue Excel : cellule « Responsable » (dernière colonne).
     await row.locator('td').last().dblclick()
@@ -192,7 +193,6 @@ test('S4-10 — champ `user` : membres de l’organisation proposés, login enre
     await input.fill('itest-lecteur')
     await input.press('Enter')
     await expect(row.locator('td').last()).toHaveText('itest-lecteur')
-    const id = (await row.locator('td').filter({ hasText: /^REQ-\d+$/ }).first().textContent())!.trim()
     await expect.poll(() => fs.readFileSync(path.join(repo, 'requirements', `${id}.yaml`), 'utf-8'), { timeout: 15_000 })
       .toContain('responsable: itest-lecteur')
     // Saisie libre (utilisateur externe) acceptée telle quelle.

@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import fastifyCookie from '@fastify/cookie'
 import fastifyMultipart from '@fastify/multipart'
 import { BRAND } from '../shared/brand'
+import { ReleaseCheck } from './release-check'
 import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import { createReadStream, createWriteStream, existsSync } from 'fs'
@@ -99,7 +100,12 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
     }
   }
 
+  // GH302 W2 — dernière release de la marque (information de l'administrateur de l'instance).
+  const releases = new ReleaseCheck(version, BRAND.update, BRAND.releasesUrl, (msg) => app.log.warn(msg))
+  if (config.updateCheck) releases.start()
+
   const pool = new UserPool({
+    updateState: () => releases.state(),
     dataDir: config.dataDir, resourcesDir: config.resourcesDir, idleMinutes: config.idleMinutes, version,
     machineConfig: config.machineConfig, maxActiveUsers: config.maxActiveUsers,
     ...(printer ? { createPrintRenderer: (login: string) => printer.forUser(ttlMs => openPrintSession(login, ttlMs)) } : {}),
@@ -501,6 +507,7 @@ export async function buildServer(config: WebConfig, version: string): Promise<B
   }
 
   app.addHook('onClose', async () => {
+    releases.stop()
     await printer?.close()
     if (accessTimer) clearInterval(accessTimer)
     clearInterval(evictTimer)

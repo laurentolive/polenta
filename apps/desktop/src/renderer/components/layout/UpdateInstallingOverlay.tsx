@@ -11,7 +11,7 @@ export function UpdateInstallingOverlay() {
   return (
     <div role="alertdialog" aria-live="assertive" aria-labelledby="update-installing-title"
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-3 bg-canvas/95">
-      <Loader2 size={28} className="animate-spin text-status-info-fg" />
+      <Loader2 size={28} className="animate-spin text-status-info" />
       <p id="update-installing-title" className="text-sm font-semibold text-ink">
         {t('update.installing.title', { version: state.availableVersion ?? '' })}
       </p>

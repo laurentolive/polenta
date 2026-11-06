@@ -1,6 +1,6 @@
 import * as fsP from 'fs/promises'
 import * as path from 'path'
-import type { ExportKind, ExportFormat, ExecutionSheetLocale } from '@polenta/types'
+import type { ExportKind, ExportFormat, ExecutionSheetLocale, UpdateState } from '@polenta/types'
 import type { Container } from '../main/ipc/index'
 import type { HandlerRegistry } from '../main/ipc/registry'
 import { findAvailableFileName, importFileIntoRepo, saveExport, saveExecutionSheet } from '../main/ipc/file-ops'
@@ -19,6 +19,8 @@ export interface WebHandlerContext {
   uploads: FileStore
   downloads: FileStore
   version: string
+  /** GH302 — dernière release connue de la marque (ReleaseCheck du serveur). */
+  updateState?: () => UpdateState
 }
 
 export interface WebWorkspaceEntry {
@@ -64,6 +66,9 @@ export function registerWebHandlers(r: HandlerRegistry, ctx: WebHandlerContext):
   }
 
   handle('app:get-version', () => ctx.version)
+  // GH302 — version servie + dernière release (le pont la compare à la version chargée par la page ;
+  // l'affichage de la release est réservé à l'administrateur).
+  handle('web:update-state', (): UpdateState => ctx.updateState?.() ?? { status: 'idle', currentVersion: ctx.version })
 
   // ── Mes projets ─────────────────────────────────────────────────────────────────
   handle('web:workspaces-root', () => dirs.workspaces)

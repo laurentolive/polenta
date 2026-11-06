@@ -84,7 +84,7 @@ Fichier facultatif, déployé par l'informatique : `%ProgramData%\Polenta\config
 | `defaultServer` | Serveur de l'entreprise pré-sélectionné |
 | `hideGithub` | github.com, gitlab.com et le Device Flow masqués ; démo publique masquée |
 | `demoProjectUrl` | Projet de démonstration (miroir sur la forge de l'entreprise) |
-| `autoUpdate: false` | Vérification des mises à jour désactivée et **verrouillée** (aucune requête vers github.com) |
+| `autoUpdate: false` | Mises à jour **verrouillées** : les nouvelles versions sont signalées (information), jamais téléchargées ni installées par l'app ; préférence grisée (GH302 — la vérification reste faite) |
 
 Validation clé par clé : une clé inconnue ou invalide est ignorée (avertissement dans le journal) ; un JSON illisible équivaut à l'absence de fichier. Web : construite par l'exploitant (`POLENTA_WEB_DEFAULT_SERVER`, `POLENTA_WEB_DEMO_PROJECT_URL`).
 
@@ -94,7 +94,7 @@ L'utilisateur se contente de se connecter. Sa configuration vient de la forge : 
 
 - `defaults`, puis une section par **équipe** (`teams.<nom exact>`) dont l'utilisateur est membre :
   - `projects` (« Projets de votre équipe » à l'accueil, seulement ceux auxquels il a accès) — cumulés ;
-  - `updates: auto | managed` — `managed` l'emporte (mises à jour verrouillées) ;
+  - `updates: auto | managed` — `managed` l'emporte (mises à jour verrouillées : signalées, ni téléchargées ni installées, GH302) ;
   - `preferences` (`language`, `theme`, `projectHome`) : **valeurs par défaut**, jamais imposées à qui a fait son propre choix ; la première équipe du fichier qui définit une clé l'emporte. GH139 — `fieldVisibility` n'est plus lu (avertissement) : les colonnes par défaut sont déclarées dans `schema.yaml` (`defaultVisible`, SPEC-SYSTEM-VIEW §Configuration des champs).
 - Relue à la connexion, au démarrage et toutes les 30 minutes (`app:refresh-team-config`) ; gardée en cache (`userData/forge-config.json`) pour le hors-ligne ; une clé invalide est ignorée et signalée dans le panneau Compte.
 - Une politique de la configuration machine (§6) l'emporte toujours sur la configuration d'équipe.

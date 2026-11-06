@@ -40,6 +40,8 @@ export const E2E = {
       POLENTA_WEB_GIT_HOSTS: '127.0.0.1,github.com',
       POLENTA_WEB_GIT_ALLOW_HTTP: 'true',
       POLENTA_WEB_LOG_LEVEL: 'warn',
+      // GH302 — pas de vérification de la dernière release (réseau, badge imprévu) ; simulée par gh302-update.
+      POLENTA_WEB_UPDATE_CHECK: 'false',
       POLENTA_E2E_RUN: process.env['POLENTA_E2E_RUN']!,
       // GH63 — administration du serveur contre un faux service (support/fake-admin-service.mjs).
       POLENTA_WEB_ADMIN_DEV: '1',

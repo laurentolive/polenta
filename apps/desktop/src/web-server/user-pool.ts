@@ -1,4 +1,4 @@
-import type { MachineConfig } from '@polenta/types'
+import type { MachineConfig, UpdateState } from '@polenta/types'
 import * as fsP from 'fs/promises'
 import * as path from 'path'
 import { createContainer } from '../main/container'
@@ -54,6 +54,8 @@ export interface UserPoolOptions {
   createTokenStore?: (login: string) => SessionTokenStore
   /** GH44 S4 — impression (PDF, diagrammes) dans une session de l'utilisateur ; défaut : indisponible. */
   createPrintRenderer?: (login: string) => PrintRenderer
+  /** GH302 — dernière release connue (ReleaseCheck) ; absent = jamais de nouvelle version. */
+  updateState?: () => UpdateState
 }
 
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
@@ -157,7 +159,10 @@ export class UserPool {
     ))
     const uploads = new FileStore(path.join(dirs.userData, 'uploads'), UPLOAD_TTL_MS)
     const downloads = new FileStore(path.join(dirs.userData, 'downloads'), DOWNLOAD_TTL_MS)
-    registerWebHandlers(registry, { container, dirs, uploads, downloads, version: this.opts.version })
+    registerWebHandlers(registry, {
+      container, dirs, uploads, downloads, version: this.opts.version,
+      ...(this.opts.updateState ? { updateState: this.opts.updateState } : {}),
+    })
 
     const runtime: UserRuntime = {
       login, realRoot, dirs, container, handlers, sockets, uploads, downloads, lastSeen: Date.now(), inflight: 0,

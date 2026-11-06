@@ -209,6 +209,7 @@ export const CONTENT_ARGS: Record<string, number[]> = {
  */
 export const WEB_ONLY_CHANNELS = [
   'app:get-version',
+  'web:update-state',
   'web:workspaces-root',
   'web:list-workspaces',
   'web:new-workspace-dir',

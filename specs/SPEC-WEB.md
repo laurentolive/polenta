@@ -159,7 +159,7 @@ apps/desktop/
 | Export enregistré sur disque, « Ouvrir », « Afficher dans le dossier » | `web:export` / `web:execution-sheet-export` → téléchargement `GET /download/:id`, message « Téléchargé » |
 | Comptes, PAT, Device Flow, « Changer de compte » | Identité de la session (`/auth/me`), « Se déconnecter » |
 | « Ouvrir dans draw.io » | masqué (édition dans le desktop ou remplacement du fichier) |
-| Mise à jour automatique | masquée ; « À propos » affiche la version du serveur |
+| Mise à jour automatique | préférence masquée ; « À propos » affiche la version du serveur. GH302 : un onglet compare toutes les 5 min (onglet visible) et à chaque reconnexion la version servie (`web:update-state`) à celle de son code (`__POLENTA_WEB_VERSION__`) → « Recharger la page » ; l'administrateur voit la release plus récente et la commande du kit (mise à jour en un clic : #305) |
 | `Ctrl+T` / `Ctrl+W` | `Alt+T` / `Alt+W` en plus (raccourcis capturés par le navigateur) |
 | Titre de fenêtre | `document.title` |
 | Administration du serveur | Page « Administration » pour les propriétaires (GH63, §12) — absente du desktop |

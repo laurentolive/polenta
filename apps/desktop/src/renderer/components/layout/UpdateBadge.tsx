@@ -13,7 +13,7 @@ import { updateView, type UpdateView } from './updateView'
 function BadgeIcon({ view }: { view: UpdateView }) {
   switch (view.kind) {
     case 'downloading': return <Loader2 size={20} className="animate-spin" />
-    case 'error': return <AlertTriangle size={20} className="text-status-warning-fg" />
+    case 'error': return <AlertTriangle size={20} className="text-status-warning" />
     case 'reload': return <RefreshCw size={20} />
     case 'ready': return <ArrowDownCircle size={20} className="text-status-success-solid" />
     default: return <ArrowDownCircle size={20} />
@@ -59,8 +59,8 @@ export function UpdateBadge() {
 
   const releaseNotes = state.releaseUrl && view.kind !== 'reload' && (
     platform === 'web'
-      ? <a href={state.releaseUrl} target="_blank" rel="noreferrer" className="text-xs text-status-info-fg hover:underline mb-3 block">{t('update.popover.releaseNotes')}</a>
-      : <button type="button" onClick={() => void api.app.openReleasePage(state.releaseUrl!)} className="text-xs text-status-info-fg hover:underline mb-3 block">{t('update.popover.releaseNotes')}</button>
+      ? <a href={state.releaseUrl} target="_blank" rel="noreferrer" className="text-xs text-status-info hover:underline mb-3 block">{t('update.popover.releaseNotes')}</a>
+      : <button type="button" onClick={() => void api.app.openReleasePage(state.releaseUrl!)} className="text-xs text-status-info hover:underline mb-3 block">{t('update.popover.releaseNotes')}</button>
   )
 
   return (
@@ -108,7 +108,7 @@ export function UpdateBadge() {
               <p className="text-xs text-ink-2 mb-3">{t('update.popover.managed')}</p>
             )}
             {view.kind === 'error' && (
-              <p className="text-xs text-status-warning-fg mb-3">{t('update.popover.error')}</p>
+              <p className="text-xs text-status-warning mb-3">{t('update.popover.error')}</p>
             )}
             {view.kind === 'reload' && (
               <p className="text-xs text-ink-2 mb-3">{t('update.popover.reloadMessage', { current: state.currentVersion })}</p>

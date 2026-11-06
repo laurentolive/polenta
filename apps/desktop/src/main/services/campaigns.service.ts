@@ -5,7 +5,7 @@ import type { TestsService } from './tests.service'
 import type { ParametersService } from './parameters.service'
 import type { SchemaService } from './schema.service'
 import type { HistoryService } from './history.service'
-import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, isApprovalStatus, renameFieldKeys, withoutHistory } from '@polenta/types'
+import { REQ_REF_PREFIX, carryKey, extractTestReqRefs, flattenSystemNodes, isApprovalStatus, renameFieldKeys, withoutHistory } from '@polenta/types'
 import type { FieldRename, FieldRenameResult, HistoryCarrier, ObjectHistory } from '@polenta/types'
 import { assertNewObjectFile, deleteWithTombstone, nextCounterId } from './id-counter.util'
 import { findObjectTypeDef } from './schema-lookup.util'
@@ -76,7 +76,7 @@ export class CampaignsService {
     const id = await this.nextCampaignId(repoPath)
     const testCaseIds = dto.testCaseIds ?? []
     const snapshots = await this.snapshotsFor(repoPath, testCaseIds)
-    await this.assertOwnTests(repoPath, snapshots, workspaceDir)
+    await this.assertOwnTests(repoPath, testCaseIds, snapshots, workspaceDir)
     const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
     // GH73 — les entrées initiales sont ajoutées à la création : `addedAt` = `createdAt`.
     const now = new Date().toISOString()
@@ -257,7 +257,7 @@ export class CampaignsService {
       ])
       const candidates = [...new Set(testCaseIds)]
       const snapshots = await this.snapshotsFor(repoPath, candidates)
-      await this.assertOwnTests(repoPath, snapshots, workspaceDir)
+      await this.assertOwnTests(repoPath, candidates, snapshots, workspaceDir)
       const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
       // T179 — un test itérant (`{req.…}` avec exigences liées) déjà présent reste ajoutable pour
       // ses exigences sans instance : la déduplication porte sur le couple (test, exigence).
@@ -298,6 +298,7 @@ export class CampaignsService {
       }
 
       const snapshots = await this.snapshotsFor(repoPath, [testCaseId])
+      await this.assertOwnTests(repoPath, [testCaseId], snapshots, workspaceDir)
       const previews = await this.previewsFor(repoPath, snapshots, workspaceDir)
       const linked = previews.get(testCaseId)?.requirements
       if (requirementId && linked && !linked.some(r => r.requirementId === requirementId)) {
@@ -685,12 +686,9 @@ export class CampaignsService {
    * le gating "test approuvé" reste une contrainte côté renderer (panneau d'ajout), cohérent
    * avec le fait que la création de campagne (`campaign.new.tsx`) n'en applique déjà aucun.
    *
-   * Un id qui ne résout plus (ex. test supprimé entre l'affichage du panneau d'ajout côté
-   * renderer et cet appel) est silencieusement omis de la map plutôt que de faire échouer
-   * tout l'ajout groupé — avant T49, un `testCaseId` invalide n'empêchait jamais `addTests`/
-   * `create`/`duplicateTest` de réussir (seul l'affichage l'ignorait). L'entrée correspondante
-   * se retrouve simplement sans `testSnapshot`, avec le même repli sur résolution live que les
-   * entrées créées avant ce ticket.
+   * Un id qui ne résout pas est omis de la map. GH298 — `create`/`addTests`/`duplicateTest`
+   * refusent alors l'appel (`assertOwnTests`) au lieu de créer une entrée sans `testSnapshot` ;
+   * les autres appelants (lecture, report GH64) ignorent simplement l'id.
    */
   /** Résolution des paramètres pour chaque test trouvé (vide sans ParametersService). */
   private async previewsFor(
@@ -707,18 +705,50 @@ export class CampaignsService {
    * GH255 — une campagne ne contient que les tests de son repo (décision du 2026-11-05) : un test de
    * composant se teste dans une campagne du composant. Le repo d'un test se lit à son type, comme à
    * sa création (`resolveComponentRepoPath`).
+   *
+   * GH298 — un ID demandé mais introuvable dans le repo (`snapshots` sans entrée) est refusé lui
+   * aussi, au lieu de créer une entrée sans copie : `TEST_OTHER_REPO` si le fichier du test existe
+   * dans le repo d'un composant du projet, `TEST_NOT_FOUND` sinon. Concerne les appels hors
+   * interface (MCP) : le sélecteur ne liste que les tests du repo.
    */
-  private async assertOwnTests(repoPath: string, snapshots: Map<string, TestCase>, workspaceDir?: string): Promise<void> {
-    if (!this.schema?.resolveComponentRepoPath) return
+  private async assertOwnTests(
+    repoPath: string,
+    requestedIds: string[],
+    snapshots: Map<string, TestCase>,
+    workspaceDir?: string,
+  ): Promise<void> {
     const foreign: string[] = []
-    for (const tc of snapshots.values()) {
-      const owner = await this.schema.resolveComponentRepoPath(repoPath, tc.objectTypeRef, workspaceDir).catch(() => null)
+    const missing: string[] = []
+    for (const id of new Set(requestedIds)) {
+      const tc = snapshots.get(id)
+      if (!tc) {
+        if (await this.existsInComponent(repoPath, id, workspaceDir)) foreign.push(id)
+        else missing.push(id)
+        continue
+      }
+      const owner = await this.schema?.resolveComponentRepoPath?.(repoPath, tc.objectTypeRef, workspaceDir).catch(() => null)
       // Fichier présent dans le repo : le test est le sien, quel que soit son nœud (nœud local sans url).
-      if (owner && path.resolve(owner).toLowerCase() !== path.resolve(repoPath).toLowerCase() && !await this.gitService.fileExists(repoPath, `tests/${tc.id}.yaml`)) foreign.push(tc.id)
+      if (owner && !samePath(owner, repoPath) && !await this.gitService.fileExists(repoPath, `tests/${tc.id}.yaml`)) foreign.push(tc.id)
     }
     if (foreign.length > 0) {
       throw new Error(`TEST_OTHER_REPO: ${foreign.join(', ')} — une campagne ne contient que les tests de son repo ; testez-les dans une campagne de leur composant.`)
     }
+    if (missing.length > 0) {
+      throw new Error(`TEST_NOT_FOUND: ${missing.join(', ')} — test introuvable dans le repo de la campagne.`)
+    }
+  }
+
+  /** GH298 — le fichier `tests/<id>.yaml` existe-t-il dans le repo d'un composant du projet ? */
+  private async existsInComponent(repoPath: string, id: string, workspaceDir?: string): Promise<boolean> {
+    // L'ID sert de nom de fichier : un ID qui n'est pas un simple identifiant n'est cherché nulle part.
+    if (!this.schema?.resolveComponentRepoPath || !/^[A-Za-z0-9_-]+$/.test(id)) return false
+    const schema = await this.schema.get(repoPath).catch(() => null)
+    for (const { node } of flattenSystemNodes(schema?.nodes ?? [])) {
+      if (node.name === 'root') continue
+      const repo = await this.schema.resolveComponentRepoPath(repoPath, `${node.name}::test`, workspaceDir).catch(() => null)
+      if (repo && !samePath(repo, repoPath) && await this.gitService.fileExists(repo, `tests/${id}.yaml`)) return true
+    }
+    return false
   }
 
   private async snapshotsFor(repoPath: string, testCaseIds: string[]): Promise<Map<string, TestCase>> {
@@ -776,6 +806,11 @@ interface EntryAllocator { counts: Map<string, number>; addedAt: string }
 
 function entryAllocator(runs: CampaignTestRun[], removed: RemovedCampaignTestRun[] | undefined, addedAt: string): EntryAllocator {
   return { counts: lastEntrySuffixes([...runs, ...(removed ?? [])]), addedAt }
+}
+
+/** Même dossier, à la casse près (Windows). */
+function samePath(a: string, b: string): boolean {
+  return path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
 }
 
 /**

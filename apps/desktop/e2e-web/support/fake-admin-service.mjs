@@ -8,14 +8,16 @@ const SERVICE_TOKEN = process.env.POLENTA_E2E_ADMIN_TOKEN ?? 'e2e-admin-service-
 
 let level = 'instance'
 let durationMs = 1500
+// GH305 — opérations à faire échouer (POST /__role {"fail": ["web.update"]}).
+let failing = new Set()
 const audit = []
 const jobs = new Map()
 let seq = 0
 
 const instances = () => [
-  { name: 'acme', domain: 'acme.forge.test', org: 'acme', forgeVersion: '11.0.3', state: 'ok', complete: true, disk: '120M', lastBackup: '2026-10-28 03:00', webDomain: 'polenta.acme.test' },
+  { name: 'acme', domain: 'acme.forge.test', org: 'acme', forgeVersion: '11.0.3', state: 'ok', complete: true, disk: '120M', lastBackup: '2026-10-28 03:00', webDomain: 'polenta.acme.test', webVersion: '0.3.2' },
   { name: 'globex', domain: 'globex.forge.test', org: 'globex', forgeVersion: '11.0.3', state: 'ok', complete: true, disk: '80M', lastBackup: null, webDomain: null },
-  { name: 'ops', domain: 'ops.forge.test', org: 'ops', forgeVersion: '11.0.3', state: 'ok', complete: true, disk: '60M', lastBackup: null, webDomain: 'polenta.ops.test' },
+  { name: 'ops', domain: 'ops.forge.test', org: 'ops', forgeVersion: '11.0.3', state: 'ok', complete: true, disk: '60M', lastBackup: null, webDomain: 'polenta.ops.test', webVersion: '0.3.2' },
 ]
 
 function send(res, status, body) {
@@ -32,7 +34,7 @@ function createJob(body, actor) {
   const id = `JOB${String(++seq).padStart(23, '0')}`
   const instance = body.instance ?? (['host.setup', 'host.reboot', 'fail2ban.status', 'fail2ban.unban', 'firewall.status', 'dns.check'].includes(body.operation) ? null : 'acme')
   const job = {
-    id, operation: body.operation, instance, actor: { login: actor, instance: 'acme' }, origin: 'ui', state: 'running',
+    id, operation: body.operation, instance, params: body.params ?? {}, actor: { login: actor, instance: 'acme' }, origin: 'ui', state: 'running',
     createdAt: new Date().toISOString(), startedAt: new Date().toISOString(), steps: [], cancellable: body.operation === 'backup.run',
     logSize: 0, lines: [`Début : ${body.operation}${instance ? ` ${instance}` : ''}`],
   }
@@ -42,6 +44,13 @@ function createJob(body, actor) {
   setTimeout(() => job.lines.push('… en cours'), Math.min(500, durationMs / 2))
   setTimeout(() => {
     if (job.state !== 'running') return
+    if (failing.has(body.operation)) {
+      job.lines.push('Erreur : image introuvable — rien n’a été modifié.')
+      job.state = 'failed'
+      job.endedAt = new Date().toISOString()
+      job.error = { code: 14, cause: 'no-version', message: 'image introuvable — rien n’a été modifié.' }
+      return
+    }
     job.lines.push('Terminé.')
     job.state = 'succeeded'
     job.endedAt = new Date().toISOString()
@@ -78,9 +87,12 @@ http.createServer((req, res) => {
       const ctl = JSON.parse(raw || '{}')
       level = ctl.level ?? null
       durationMs = ctl.durationMs ?? 1500
+      failing = new Set(ctl.fail ?? [])
       return send(res, 200, { level })
     }
     if (path === '/healthz') return send(res, 200, { ok: true })
+    // GH305 — contrôle des tests : travaux créés, avec leurs paramètres (sans authentification).
+    if (path === '/__jobs') return send(res, 200, { jobs: [...jobs.values()].map(view) })
     if (req.headers.authorization !== `Bearer ${SERVICE_TOKEN}`) return err(res, 401, 'unauthenticated', 'jeton de service invalide')
     if (!req.headers['x-polenta-forge-token']) return err(res, 401, 'unauthenticated', 'jeton utilisateur absent')
     if (!level) return err(res, 403, 'forbidden', 'droit propriétaire non confirmé par la forge')

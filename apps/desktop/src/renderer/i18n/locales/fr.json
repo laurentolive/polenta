@@ -1792,7 +1792,13 @@
       "reloadAnyway": "Recharger quand même",
       "reloadMessage": "Le serveur a été mis à jour (cette page est en {{current}}). Rechargez la page pour utiliser la nouvelle version.",
       "dirtyReloadWarning": "Des onglets ont des modifications non enregistrées : elles seront perdues au rechargement.",
-      "releaseAdmin": "Pour mettre à jour le client web de cette instance, sur l’hôte :"
+      "webUpdate": "Mettre à jour vers v{{version}}",
+      "webUpdateConfirm": "Le client web de {{instance}} passe en v{{version}}. Polenta sera indisponible quelques secondes pour tous les utilisateurs de l’instance ; leurs modifications non enregistrées risquent d’être perdues.",
+      "webUpdateRun": "Mettre à jour",
+      "webUpdateRunning": "Mise à jour du client web en cours…",
+      "webUpdateRestarting": "Le serveur redémarre : reconnexion…",
+      "webUpdateDone": "Client web mis à jour. Rechargez la page dès que c’est proposé.",
+      "webUpdateFailed": "La mise à jour a échoué : {{message}}"
     },
     "confirm": {
       "title": "Installer {{appName}} v{{version}}",
@@ -2091,6 +2097,7 @@
       "backup.list": "Liste des sauvegardes",
       "dns.check": "Vérification DNS",
       "web.enable": "Activation du client web",
+      "web.update": "Mise à jour du client web",
       "web.disable": "Désactivation du client web",
       "host.setup": "Remise à niveau de l'hôte",
       "host.reboot": "Redémarrage de l'hôte",
@@ -2155,7 +2162,13 @@
       "removeMessage": "Un export est fait avant la suppression. Les données de la forge sont ensuite effacées de l'hôte.",
       "updateTitle": "Mettre à jour la forge de {{name}} en {{version}} ?",
       "updateMessage": "Une sauvegarde est faite avant ; en cas d'échec, la version précédente est rétablie automatiquement.",
-      "updateSelfWarning": "C'est la forge de cette instance : la page perdra la connexion quelques minutes puis reprendra le suivi. Une sauvegarde est faite avant, avec retour arrière automatique en cas d'échec."
+      "updateSelfWarning": "C'est la forge de cette instance : la page perdra la connexion quelques minutes puis reprendra le suivi. Une sauvegarde est faite avant, avec retour arrière automatique en cas d'échec.",
+      "webVersion": "web {{version}}",
+      "webUpdate": "Mettre à jour le client web",
+      "webVersionInput": "Version du client web pour {{name}}",
+      "webUpdateTitle": "Mettre à jour le client web de {{name}} en {{version}} ?",
+      "webUpdateMessage": "Le client web redémarre : ses utilisateurs perdent la connexion quelques secondes. En cas d’échec, la version actuelle est rétablie automatiquement.",
+      "webUpdateSelfWarning": "C’est le client web que vous utilisez : la page perdra la connexion quelques secondes, puis proposera de se recharger."
     },
     "backups": {
       "instance": "Instance",

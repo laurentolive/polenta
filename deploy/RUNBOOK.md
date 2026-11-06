@@ -372,22 +372,38 @@ sur un domaine distinct de la forge (ex. `acme-web.forge.example.fr`, couvert pa
 `*.forge`). Les utilisateurs s'y connectent **avec leur compte de la forge** (OIDC) : mêmes droits,
 même désactivation, commits à leur nom.
 
-**Image** — construite depuis le dépôt Polenta, une fois par version (et par marque) :
+**Image** — publiée par la CI à chaque release Polenta (GH305) : `ghcr.io/laurentolive/polenta-web:X.Y.Z`
+(paquet public, `linux/amd64`, tag de version exact, jamais `latest`). C'est l'image par défaut du kit ;
+`POLENTA_WEB_IMAGE` dans `host.env` la remplace (registre d'une marque client, image locale).
+
+> Première publication : GitHub crée le paquet **privé**. Le rendre public une fois (GitHub › paquet
+> `polenta-web` › Package settings › Change visibility › Public), sinon le `docker pull` de l'hôte échoue.
+
+Image d'une marque client, ou construite à la main (contexte = racine du dépôt) :
 
 ```bash
-docker build -f apps/desktop/Dockerfile.web --build-arg POLENTA_BRAND=polenta -t polenta-web:0.0.9 .
-# ou poussée sur un registre : … -t ghcr.io/<org>/polenta-web:0.0.9 && docker push …
+docker build -f apps/desktop/Dockerfile.web --build-arg POLENTA_BRAND=polenta --build-arg POLENTA_VERSION=0.4.0 -t polenta-web:0.4.0 .
 ```
-
-Image par défaut de l'hôte : `POLENTA_WEB_IMAGE=ghcr.io/<org>/polenta-web` dans `host.env`
-(sinon `polenta-web`, image locale).
 
 **Activer, mettre à jour, désactiver :**
 
 ```bash
-sudo polenta-host instance web enable acme --domain acme-web.forge.example.fr --version 0.0.9
-sudo polenta-host instance web enable acme --version 0.0.10     # mise à jour : même commande
+sudo polenta-host instance web enable acme --domain acme-web.forge.example.fr --version 0.4.0
+sudo polenta-host instance web update acme --version 0.4.1      # mise à jour d'un client web activé
 sudo polenta-host instance web disable acme                     # arrêt ; données conservées
+```
+
+La mise à jour se fait aussi depuis l'interface (GH305) : bouton « Mettre à jour vers vX » du popover de
+mise à jour (administrateur de l'instance, quand une release plus récente existe) ou formulaire « Client
+web » d'Administration › Instances (toute version, y compris un retour en arrière). Les utilisateurs de
+l'instance perdent la connexion quelques secondes ; la page propose ensuite de se recharger.
+
+**Instance activée avant GH305** (image locale `polenta-web` inscrite dans son `instance.env`) : la mise
+à jour vers une version publiée échoue (« image introuvable — rien n'a été modifié »). Passage unique à
+l'image publiée :
+
+```bash
+sudo polenta-host instance web enable acme --image ghcr.io/laurentolive/polenta-web --version 0.4.0
 ```
 
 `enable` vérifie l'image et le DNS, crée l'application OAuth2 `polenta-web` de la forge (adresse de
@@ -631,6 +647,7 @@ disque, dans un journal ou dans l'audit.
 | `export.run` | instance | `polenta-host instance export <nom>` |
 | `export.delete` | instance | `polenta-host exports delete <archive> --confirm <archive>` |
 | `web.enable` | instance | `polenta-host instance web enable <nom> [--domain d] [--version v]` |
+| `web.update` | instance | `polenta-host instance web update <nom> --version v` (GH305 : sa propre instance comprise) |
 | `web.disable` | instance | `polenta-host instance web disable <nom>` |
 | `dns.check` | instance | `polenta-host dns check <domaine>` |
 | `host.setup` | hôte | `polenta-host setup` |

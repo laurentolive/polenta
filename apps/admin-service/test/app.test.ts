@@ -243,3 +243,19 @@ describe('reprise au démarrage (S2-3, S2-5)', () => {
     expect((await post(a, { operation: 'backup.run' })).statusCode).toBe(202)
   })
 })
+
+describe('GH305 — web.update', () => {
+  it('niveau instance : sa propre instance acceptée (commande exacte, audit version) ; autre instance et confirmation absente refusées', async () => {
+    const env = setupRoot()
+    const a = start(env)
+    expect((await post(a, { operation: 'web.update', instance: 'acme', params: { version: '0.4.0' } })).statusCode).toBe(400)
+    expect((await post(a, { operation: 'web.update', instance: 'acme', params: { version: 'latest' }, confirm: true })).statusCode).toBe(400)
+    expect((await post(a, { operation: 'web.update', instance: 'acme', params: { version: '0.4.0' }, confirm: true }, 'svc-globex', 'u-gina')).statusCode).toBe(403)
+    const res = await post(a, { operation: 'web.update', instance: 'acme', params: { version: '0.4.0' }, confirm: true })
+    expect(res.statusCode).toBe(202)
+    const { jobId } = res.json()
+    await until(async () => (await a.inject({ url: `/jobs/${jobId}`, headers: hdr('svc-acme', 'u-alice') })).json().state === 'succeeded')
+    expect(calls(env.root)).toContain('instance web update acme --version 0.4.0')
+    expect(auditLines(env.root).find((l) => l.operation === 'web.update' && l.result === 'accepted')).toMatchObject({ target: 'acme', params: { version: '0.4.0' } })
+  })
+})

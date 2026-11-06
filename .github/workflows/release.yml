@@ -20,6 +20,82 @@ permissions:
   issues: read
 
 jobs:
+  # GH305 — image du client web de chaque release publique (marque polenta), tag de version exact,
+  # jamais « latest ». Indépendant du job desktop : un échec ici ne retire pas la release desktop.
+  # Le paquet ghcr.io/<owner>/polenta-web est rendu public une fois, à sa première publication
+  # (réglages du paquet sur GitHub, deploy/RUNBOOK.md A15).
+  web-image:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version from tag
+        id: version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $GITHUB_REF_NAME : attendu vX.Y.Z"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/polenta-web" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Image construite et chargée localement d'abord : contrôlée avant d'être poussée.
+      - name: Build polenta-web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/desktop/Dockerfile.web
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            POLENTA_BRAND=polenta
+            POLENTA_VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.licenses=AGPL-3.0
+
+      # CA1 — l'image démarre (configuration OIDC factice, aucune connexion à la forge au
+      # démarrage) et /healthz annonce la version du tag.
+      - name: Smoke test /healthz
+        shell: bash
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker run -d --name smoke \
+            -e POLENTA_WEB_AUTH=oidc -e POLENTA_WEB_DEFAULT_SERVER=https://forge.invalid \
+            -e POLENTA_WEB_OIDC_CLIENT_ID=smoke -e POLENTA_WEB_OIDC_CLIENT_SECRET=smoke \
+            -e POLENTA_WEB_PUBLIC_URL=https://web.invalid \
+            -e POLENTA_WEB_SESSION_SECRET=smoke-0123456789abcdef0123456789abcdef "$IMAGE"
+          out=""
+          for i in $(seq 1 30); do
+            out=$(docker exec smoke node -e "fetch('http://127.0.0.1:8787/healthz').then(r=>r.ok?r.text():Promise.reject(r.status)).then(t=>console.log(t)).catch(()=>process.exit(1))" 2>/dev/null) && break
+            sleep 2
+          done
+          echo "healthz: $out"
+          docker logs smoke 2>&1 | tail -20
+          [[ "$out" == *"\"version\":\"$VERSION\""* ]] || { echo "version $VERSION absente de /healthz"; exit 1; }
+          docker rm -f smoke
+
+      - name: Push polenta-web
+        run: docker push "${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}"
+
   release:
     runs-on: windows-latest
     steps:

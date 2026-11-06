@@ -9,11 +9,13 @@ export function useLaunch() {
   const [jobId, setJobId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  async function launch(job: JobCreate): Promise<boolean> {
+  /** Identifiant du travail créé (GH305 : suivi par l'appelant), `null` en cas de refus. */
+  async function launch(job: JobCreate): Promise<string | null> {
     setError(null)
     try {
-      setJobId(await adminApi.create(job))
-      return true
+      const id = await adminApi.create(job)
+      setJobId(id)
+      return id
     } catch (err) {
       if (err instanceof AdminApiError && err.status === 409 && err.runningJob) {
         const { operation, actor, since } = err.runningJob
@@ -22,7 +24,7 @@ export function useLaunch() {
       } else {
         setError(err instanceof Error ? err.message : String(err))
       }
-      return false
+      return null
     }
   }
 

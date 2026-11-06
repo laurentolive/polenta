@@ -1792,7 +1792,13 @@
       "reloadAnyway": "Reload anyway",
       "reloadMessage": "The server has been updated (this page runs {{current}}). Reload the page to use the new version.",
       "dirtyReloadWarning": "Some tabs have unsaved changes: they will be lost on reload.",
-      "releaseAdmin": "To update this instance’s web client, on the host:"
+      "webUpdate": "Update to v{{version}}",
+      "webUpdateConfirm": "{{instance}}’s web client moves to v{{version}}. Polenta will be unavailable for a few seconds for every user of the instance; their unsaved changes may be lost.",
+      "webUpdateRun": "Update",
+      "webUpdateRunning": "Updating the web client…",
+      "webUpdateRestarting": "The server is restarting: reconnecting…",
+      "webUpdateDone": "Web client updated. Reload the page as soon as it is offered.",
+      "webUpdateFailed": "The update failed: {{message}}"
     },
     "confirm": {
       "title": "Install {{appName}} v{{version}}",
@@ -2091,6 +2097,7 @@
       "backup.list": "Backup list",
       "dns.check": "DNS check",
       "web.enable": "Enable web client",
+      "web.update": "Web client update",
       "web.disable": "Disable web client",
       "host.setup": "Host setup",
       "host.reboot": "Host reboot",
@@ -2155,7 +2162,13 @@
       "removeMessage": "An export is made first. The forge data is then erased from the host.",
       "updateTitle": "Update the forge of {{name}} to {{version}}?",
       "updateMessage": "A backup is made first; on failure the previous version is restored automatically.",
-      "updateSelfWarning": "This is this instance's forge: the page will lose its connection for a few minutes, then resume. A backup is made first, with automatic rollback on failure."
+      "updateSelfWarning": "This is this instance's forge: the page will lose its connection for a few minutes, then resume. A backup is made first, with automatic rollback on failure.",
+      "webVersion": "web {{version}}",
+      "webUpdate": "Update web client",
+      "webVersionInput": "Web client version for {{name}}",
+      "webUpdateTitle": "Update {{name}}’s web client to {{version}}?",
+      "webUpdateMessage": "The web client restarts: its users lose the connection for a few seconds. On failure, the current version is restored automatically.",
+      "webUpdateSelfWarning": "This is the web client you are using: the page will lose its connection for a few seconds, then offer to reload."
     },
     "backups": {
       "instance": "Instance",

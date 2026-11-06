@@ -47,6 +47,7 @@ export type OperationId =
   | 'export.run'
   | 'export.delete'
   | 'web.enable'
+  | 'web.update'
   | 'web.disable'
   | 'dns.check'
   | 'host.setup'

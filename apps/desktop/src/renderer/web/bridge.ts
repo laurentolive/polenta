@@ -34,15 +34,15 @@ function redirectToLogin(): never {
   return redirectTo(LOGIN_URL)
 }
 
-async function readResult(res: Response): Promise<unknown> {
+async function readResult(res: Response, redirectOn401 = true): Promise<unknown> {
   let body: { ok?: boolean; value?: unknown; error?: { message?: string; revoked?: boolean } } | null = null
   try {
     body = await res.json()
   } catch {
-    if (res.status === 401) redirectToLogin()
+    if (res.status === 401 && redirectOn401) redirectToLogin()
     throw new Error(`Erreur serveur (${res.status})`)
   }
-  if (res.status === 401) {
+  if (res.status === 401 && redirectOn401) {
     if (body?.error?.revoked) redirectTo(REVOKED_URL)
     redirectToLogin()
   }
@@ -50,7 +50,7 @@ async function readResult(res: Response): Promise<unknown> {
   return body.value
 }
 
-async function rpc(channel: string, args: unknown[]): Promise<unknown> {
+async function rpc(channel: string, args: unknown[], opts: { redirectOn401?: boolean } = {}): Promise<unknown> {
   const res = await fetch(`/rpc/${encodeURIComponent(channel)}`, {
     method: 'POST',
     credentials: 'same-origin',
@@ -59,7 +59,7 @@ async function rpc(channel: string, args: unknown[]): Promise<unknown> {
     // s'appliquerait plus) : ses positions voyagent à part et le serveur le restaure.
     body: JSON.stringify({ args, undefinedArgs: args.flatMap((a, i) => (a === undefined ? [i] : [])) }),
   })
-  return readResult(res)
+  return readResult(res, opts.redirectOn401 ?? true)
 }
 
 // ── Fichiers ────────────────────────────────────────────────────────────────────
@@ -154,10 +154,8 @@ const adapters: Record<string, (...args: unknown[]) => Promise<unknown>> = {
   'export:save': (...args) => exportAndDownload('web:export', args),
   'campaigns:execution-sheet-export': (...args) => exportAndDownload('web:execution-sheet-export', args),
   'app:set-title': async (title) => { document.title = String(title) },
-  // Le serveur est mis à jour par l'exploitant : jamais de mise à jour côté navigateur.
-  'update:get-state': async (): Promise<UpdateState> => ({
-    status: 'idle', currentVersion: String(await rpc('app:get-version', [])),
-  }),
+  // GH302 — le serveur est mis à jour par l'exploitant : le navigateur ne fait que recharger.
+  'update:get-state': () => webUpdateState(),
   // Signal de fin de rendu d'une route `/print/*` : relayé au Chromium headless du serveur (sprint 4).
   'export:print-ready': async (...args) => callPrintHook('__polentaPrintReady', args),
   'export:drawio-snapshot-ready': async (...args) => callPrintHook('__polentaDrawioSnapshotReady', args),
@@ -171,12 +169,22 @@ async function callPrintHook(name: string, args: unknown[]): Promise<unknown> {
 /** Channels propres au poste local : l'interface web les masque ; un appel résiduel échoue net. */
 const UNAVAILABLE = new Set([
   'dialog:pick-folder', 'drawio:open-external', 'export:show-in-folder', 'export:open-file',
-  'app:open-release-page', 'app:open-link', 'update:install', 'auth:device-flow-start', 'auth:device-flow-poll',
+  'app:open-release-page', 'app:open-link', 'update:download', 'update:prepare-install', 'update:install', 'auth:device-flow-start', 'auth:device-flow-poll',
 ])
 
 // ── Événements ──────────────────────────────────────────────────────────────────
 
 const listeners = new Map<string, Set<Listener>>()
+
+function addListener(channel: string, cb: Listener): () => void {
+  let set = listeners.get(channel)
+  if (!set) {
+    set = new Set()
+    listeners.set(channel, set)
+  }
+  set.add(cb)
+  return () => { listeners.get(channel)?.delete(cb) }
+}
 
 function emit(channel: string, args: unknown[]): void {
   for (const cb of listeners.get(channel) ?? []) {
@@ -226,6 +234,56 @@ function redirectToLoginSafe(): void {
   try { redirectToLogin() } catch { /* redirection en cours */ }
 }
 
+// ── Mise à jour (GH302) ─────────────────────────────────────────────────────────
+
+/** Un onglet ouvert vérifie toutes les 5 min (et à chaque reconnexion) que le serveur sert
+ *  toujours la version qu'il a chargée. */
+const UPDATE_POLL_MS = 5 * 60 * 1000
+
+declare const __POLENTA_WEB_VERSION__: string | undefined
+
+/** Version du code exécuté par l'onglet : figée au build ; en `dev:web`, version servie à la
+ *  première lecture. */
+let pageVersion: string | null = typeof __POLENTA_WEB_VERSION__ !== 'undefined' ? __POLENTA_WEB_VERSION__ : null
+/** Dernier état émis : n'émettre que ce qui change. */
+let lastEmitted = ''
+
+/**
+ * État `web:update-state` du serveur (version servie, dernière release) ramené au point de vue de
+ * l'onglet : `currentVersion` = version chargée par la page, `servedVersion` = version du serveur
+ * si elle a changé depuis (redéploiement) → « Recharger la page ».
+ */
+async function webUpdateState(background = false): Promise<UpdateState> {
+  // Sondage de fond : une session expirée ne redirige pas vers la connexion (onglets non
+  // enregistrés) ; la prochaine action de l'utilisateur s'en chargera.
+  const server = await rpc('web:update-state', [], { redirectOn401: !background }) as UpdateState
+  pageVersion ??= server.currentVersion
+  return {
+    ...server,
+    currentVersion: pageVersion,
+    ...(server.currentVersion !== pageVersion ? { servedVersion: server.currentVersion } : {}),
+  }
+}
+
+function pollUpdateState(): void {
+  const refresh = () => {
+    // Onglet en arrière-plan : rien à montrer, pas de charge pour le serveur (repris au retour).
+    if (document.hidden) return
+    webUpdateState(true)
+      .then(state => {
+        const key = JSON.stringify(state)
+        if (key === lastEmitted) return
+        lastEmitted = key
+        emit('update:state-changed', [state])
+      })
+      .catch(() => { /* hors ligne, session expirée : prochain essai */ })
+  }
+  setInterval(refresh, UPDATE_POLL_MS)
+  document.addEventListener('visibilitychange', refresh)
+  // Un redéploiement coupe le canal d'événements : la reconnexion est le signal le plus rapide.
+  addListener(EVENTS_RECONNECTED, refresh)
+}
+
 // ── window.polenta ──────────────────────────────────────────────────────────────
 
 window.polenta = Object.assign({
@@ -239,13 +297,7 @@ window.polenta = Object.assign({
     return rpc(channel, args)
   },
   on(channel: string, cb: Listener): () => void {
-    let set = listeners.get(channel)
-    if (!set) {
-      set = new Set()
-      listeners.set(channel, set)
-    }
-    set.add(cb)
-    return () => { listeners.get(channel)?.delete(cb) }
+    return addListener(channel, cb)
   },
   off(channel: string, cb: Listener): void {
     listeners.get(channel)?.delete(cb)
@@ -253,3 +305,4 @@ window.polenta = Object.assign({
 }, { platform: 'web' as const })
 
 connectEvents()
+pollUpdateState()

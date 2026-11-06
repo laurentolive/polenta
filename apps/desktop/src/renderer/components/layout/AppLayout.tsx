@@ -19,6 +19,7 @@ import { isProductVersionsPath } from '../versions/useVersions'
 import { isValidationPath } from '../validation/useValidations'
 import { ElementNavProvider } from '../../contexts/ElementNavContext'
 import { ElementPreviewPopup } from '../element/ElementPreviewPopup'
+import { UpdateInstallingOverlay } from './UpdateInstallingOverlay'
 
 export type Panel = 'account' | 'project' | 'search' | 'version' | 'requirements' | 'tests' | 'campaigns' | 'issues' | 'validation' | 'dashboard' | 'parameters' | 'merge'
 
@@ -312,6 +313,8 @@ export function AppLayout() {
         {/* GH238 — terminal des vues Version (rien hors projet ouvert : pas de TerminalProvider). */}
         <TerminalPanel />
       </div>
+      {/* GH302 — l'application se ferme pour laisser place à l'installeur. */}
+      <UpdateInstallingOverlay />
     </div>
   )
 

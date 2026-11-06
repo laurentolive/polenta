@@ -15,6 +15,8 @@ export const DESKTOP_ONLY_CHANNELS = [
   'app:open-link',
   'app:zoom',
   'update:get-state',
+  'update:download',
+  'update:prepare-install',
   'update:install',
   'campaigns:execution-sheet-export',
   'campaigns:execution-sheet-preview',

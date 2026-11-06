@@ -1,7 +1,8 @@
 // GH26 — préférences de l'application (par machine/utilisateur OS, userData/app-settings.json),
 // distinctes des préférences de projet versionnées dans schema.yaml.
 export interface AppSettings {
-  /** Vérifier, télécharger puis proposer les mises à jour au démarrage. Défaut : true. */
+  /** GH302 — téléchargement automatique des nouvelles versions (la vérification se fait toujours ;
+   *  clé GH26 conservée pour reprendre le choix existant). Défaut : true. */
   autoCheckUpdates: boolean
   /** GH34 — dossier de la bibliothèque de gabarits d'export (chemin absolu). Absent = non configuré. */
   exportTemplatesDir?: string
@@ -17,15 +18,30 @@ export interface AppSettings {
 export type ZoomAction = 'in' | 'out' | 'reset'
 
 // GH26 — état de la mise à jour automatique (electron-updater), poussé par le main au renderer.
-export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
+// GH302 — 'available' (détectée, pas téléchargée), 'installing' (installeur lancé).
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'installing'
 
 export interface UpdateState {
   status: UpdateStatus
   currentVersion: string
-  /** Renseigné dès qu'une version plus récente est trouvée ('downloading'). */
+  /** Renseigné dès qu'une version plus récente est trouvée ('available'). */
   availableVersion?: string
   /** Page de la release GitHub de availableVersion. */
   releaseUrl?: string
+  /** GH302 — 'downloading' : avancement 0–100 (entier). */
+  progress?: number
+  /** GH302 — verrou DSI / forge (GH45) : information seulement, ni téléchargement ni installation. */
+  managed?: boolean
+  /** GH302 — web : version servie par le serveur, différente de celle chargée par la page. */
+  servedVersion?: string
+}
+
+/** GH302 — ce que l'installation va fermer (confirmation du renderer). */
+export interface UpdateInstallPlan {
+  /** Serveurs MCP lancés depuis cette installation (Windows). */
+  mcpServers: number
+  /** Fenêtres de l'application autres que celle qui demande l'installation. */
+  otherWindows: number
 }
 
 // GH238 — terminal de la vue Version (desktop) : shell détecté, ou Git Bash introuvable.

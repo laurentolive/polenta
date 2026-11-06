@@ -4,6 +4,7 @@ import { TanStackRouterVite } from '@tanstack/router-vite-plugin'
 import { resolve } from 'path'
 import { loadBrand } from './scripts/brand'
 import { brandPlugin } from './scripts/vite-brand-plugin'
+import { appVersion } from './scripts/app-version'
 
 /**
  * GH44 — build web du renderer desktop (même code, même routes), servi par le serveur web
@@ -38,9 +39,15 @@ function webHtmlFallback(): Plugin {
 // GH49 — même marque que le desktop (POLENTA_BRAND, défaut polenta) : define + plugin de marque.
 const brand = loadBrand()
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: resolve(__dirname, 'src/renderer'),
-  define: { __POLENTA_BRAND__: JSON.stringify(brand.info) },
+  define: {
+    __POLENTA_BRAND__: JSON.stringify(brand.info),
+    // GH302 — version du code exécuté par l'onglet, comparée à celle du serveur (redéploiement).
+    // Même calcul que le serveur web (build-web-server.ts) ; absente en `dev:web` (le serveur de
+    // dev lit package.json : les deux ne concorderaient pas).
+    ...(command === 'build' ? { __POLENTA_WEB_VERSION__: JSON.stringify(appVersion()) } : {}),
+  },
   plugins: [
     TanStackRouterVite({
       routesDirectory: './routes',
@@ -77,4 +84,4 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: { input: resolve(__dirname, 'src/renderer/web.html') },
   },
-})
+}))

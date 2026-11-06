@@ -24,6 +24,9 @@ export interface WebConfig {
   maxActiveUsers: number
   /** GH44 S4 — impression (PDF, diagrammes d'un export par gabarit) par Chromium headless. */
   print: boolean
+  /** GH302 — vérifie la dernière release de la marque (information de l'administrateur). Absent =
+   *  désactivé (tests) ; `POLENTA_WEB_UPDATE_CHECK=false` le coupe en exploitation. */
+  updateCheck?: boolean
   /** Hôtes git que le serveur peut contacter (clone/fetch/push) — défaut : hôte de la forge. */
   gitHosts: string[]
   gitAllowHttp: boolean
@@ -148,6 +151,7 @@ export function loadConfig(appRoot: string): WebConfig {
     maxUploadMb: int('POLENTA_WEB_MAX_UPLOAD_MB', 20),
     maxActiveUsers: int('POLENTA_WEB_MAX_ACTIVE_USERS', 50),
     print: env('POLENTA_WEB_PRINT', 'true') !== 'false',
+    updateCheck: env('POLENTA_WEB_UPDATE_CHECK', 'true') !== 'false',
     secureCookies: env('POLENTA_WEB_SECURE_COOKIES', secureDefault) === 'true',
     gitHosts,
     gitAllowHttp: env('POLENTA_WEB_GIT_ALLOW_HTTP', 'false') === 'true',

@@ -88,7 +88,9 @@ describe('ChannelPolicy (S2-12, S2-13)', () => {
   })
 
   it('channels sensibles ou locaux non exposés', () => {
+    expect(isExposed('web:update-state')).toBe(true)
     for (const ch of ['auth:get-token', 'auth:save-token', 'auth:setup', 'dialog:pick-folder', 'update:install',
+      'update:download', 'update:prepare-install',
       'export:open-file', 'export:show-in-folder', 'drawio:open-external', 'inconnu:x']) {
       expect(isExposed(ch)).toBe(false)
     }

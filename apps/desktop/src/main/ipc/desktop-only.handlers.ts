@@ -115,6 +115,9 @@ export function registerDesktopOnlyHandlers(c: Container, update: UpdateService,
   // État poussé aux fenêtres par 'update:state-changed' ; get-state couvre une fenêtre
   // montée après l'événement.
   handle('update:get-state', () => update.getState())
+  handle('update:download', () => update.download())
+  // GH302 — la fenêtre appelante est exclue du décompte des fenêtres qui vont être fermées.
+  handle('update:prepare-install', (e) => update.prepareInstall((e as IpcMainInvokeEvent).sender.id))
   handle('update:install', () => update.install())
 
   // ── Campagnes : classeur Excel d'exécution (GH36) ──────────────────────────────

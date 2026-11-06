@@ -63,6 +63,8 @@ describe('session et RPC', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json().value).toBe(path.join(base, 'users', 'alice', 'workspaces'))
     expect((await rpc('app:get-version', [])).json().value).toBe('9.9.9')
+    // GH302 — sans vérification des releases (tests) : version servie, rien de disponible.
+    expect((await rpc('web:update-state', [])).json().value).toEqual({ status: 'idle', currentVersion: '9.9.9' })
   })
 
   it('channels masqués, desktop-only ou inconnus → 404 (S2-13)', async () => {

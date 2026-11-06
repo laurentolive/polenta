@@ -1,3 +1,5 @@
+import { stripRichTextColorTags } from '@polenta/types'
+
 /**
  * GH178 — diff mot à mot des vues de diff (mode Rendu) : LCS sur des jetons (mots, espaces,
  * ponctuation isolée), sur le modèle de `computeLineDiff`.
@@ -221,8 +223,9 @@ export function wordDiff(before: string, after: string): DiffPart[] {
   return parts
 }
 
-/** Valeur d'un champ du diff (`changedFields[].from/to`) rendue en texte. */
+/** Valeur d'un champ du diff (`changedFields[].from/to`) rendue en texte — GH299 : texte visible,
+ *  sans les balises de couleur d'un richtext (un changement de couleur seule n'est pas un mot changé). */
 export function diffValueText(v: unknown): string {
   if (v === undefined || v === null) return ''
-  return typeof v === 'string' ? v : JSON.stringify(v)
+  return typeof v === 'string' ? stripRichTextColorTags(v) : JSON.stringify(v)
 }

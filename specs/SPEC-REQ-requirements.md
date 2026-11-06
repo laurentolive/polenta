@@ -95,7 +95,7 @@ dans `AGENTS.md`). Voir `SPEC-MCP-SERVER.md` §4.2.
 |------|-------------|
 | `text` | Texte court, ligne unique |
 | `textarea` | Texte court multi-ligne |
-| `richtext` | Éditeur riche (markdown, images référencées par fichier du repo ou par URL externe — voir §3.2b, liens internes `[[SW-0042]]`, diagrammes draw.io référencés — voir §3.2a) |
+| `richtext` | Éditeur riche (markdown, couleur du texte et surlignage — voir §3.2h, images référencées par fichier du repo ou par URL externe — voir §3.2b, liens internes `[[SW-0042]]`, diagrammes draw.io référencés — voir §3.2a) |
 | `number` | Nombre |
 | `enum` | Valeur unique parmi une liste |
 | `multi_enum` | Valeurs multiples parmi une liste (cases à cocher) — rendu cohérent dans les 4 endroits d'édition : Vue Système (`EditView`), formulaires détail/création req/test/campagne (`DynamicField`), édition inline Vue Tableau et Vue Document (popover ancré sur la cellule/le champ) — T126 |
@@ -343,6 +343,45 @@ reconnaissance dans du code Markdown, le texte d'un lien Markdown, un bloc `draw
 saisie ; les valeurs d'ID affiché personnalisé ne sont pas reconnues. Rendu : règle markdown-it
 `element_refs` (`lib/elementRefs.ts`), décoration Tiptap `ElementRefDecoration` (viewer en lecture
 seule), `ElementRefText` (texte brut) ; gestes délégués au conteneur.
+
+### 3.2h Couleur du texte et surlignage (GH299)
+
+Un champ `richtext` peut colorer une portion de texte et la surligner. Pas de syntaxe couleur en
+Markdown : une couleur s'écrit en HTML inline restreint, avec une **classe nommée** de la palette —
+jamais un code couleur (la teinte vient du thème clair/sombre) :
+
+```yaml
+statement: |
+  WHEN the pack temperature exceeds <span class="pl-c-red">60 °C</span>
+  THE BMS SHALL <mark class="pl-hl-yellow">cut the charge within 1 s</mark>
+```
+
+- **Palette fixe** (`@polenta/types` `richtext-colors`, noms stables — ne jamais en renommer ni en
+  retirer) : texte `pl-c-` `red`, `orange`, `green`, `blue`, `purple`, `gray` ; surlignage `pl-hl-`
+  `yellow`, `green`, `blue`, `pink`, `orange`. Teintes (clair / sombre) : `shared/richTextColorValues.ts`,
+  source unique des tokens de thème `rt-c-*` / `rt-hl-*` et des couleurs de l'export Word.
+- **Liste blanche stricte** : seules ces formes exactes (balise, attribut `class` seul entre
+  guillemets doubles, nom de la palette), **appariées et strictement imbriquées** dans un même
+  paragraphe, sont interprétées — plugin markdown-it partagé `shared/richTextColors.ts`, branché sur
+  l'éditeur, `StaticRichTextViewer` et les exports (`html: false` reste partout). Tout autre HTML
+  (attribut `style`, classe inconnue, balise orpheline ou chevauchante, balise dans du code) reste du
+  texte littéral. Un champ sans couleur s'écrit comme avant.
+- **Écriture par l'éditeur** : `<mark>` à l'extérieur de `<span>`, et les deux **à l'extérieur** du
+  gras / italique / barré / code (`<span …>**x**</span>`) — en CommonMark, `**<span …>x</span>**y`
+  n'est pas du gras. Marques Tiptap `HighlightColor` / `TextColor` (`tiptap/RichTextColorMarks.ts`,
+  priorité 101).
+- **Édition** : boutons « Couleur du texte » / « Surlignage » (`RichTextColorButton`) dans la barre
+  partagée et la barre inline — pastilles + « Aucune », couleur active soulignée sous l'icône ;
+  désactivés en Raw, absents en lecture seule ; menu fermé par Échap / défilement. Collage depuis
+  Word / le web : couleurs non reprises ; collage interne : conservées.
+- **Texte visible** (balises retirées, `stripRichTextColorTags`) : validateur EARS, filtre global
+  (`VisibleTextRegExp`), Vue Recherche (correspondance, extrait ; le remplacement porte sur le texte
+  visible et conserve les balises traversées), diff mot à mot (un changement de couleur seule n'y
+  apparaît pas), index de recherche, texte simple des gabarits (`{{x}}`), infobulles et aperçus.
+- **Exports** : gabarit Word `{{@rich.x}}` → `w:color` / `w:shd` (teintes claires) ; export Standard
+  (docx, xlsx) et impression → balises retirées des colonnes richtext (le Markdown y est déjà écrit
+  brut) ; xlsx sans couleur.
+- **MCP** : descriptions de `update_requirements` / `bulk_import_requirements` documentent la forme.
 
 ### 3.3 Validation (`validator`)
 

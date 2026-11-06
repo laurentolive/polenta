@@ -1,3 +1,4 @@
+import { stripRichTextColorTags } from '@polenta/types'
 import MiniSearch from 'minisearch'
 import type { Requirement, ObjectLink } from '@polenta/types'
 import type { GitService } from './git.service'
@@ -320,8 +321,9 @@ export class RequirementsIndexService {
       storeFields: ['id', 'type', 'status', 'title'],
       extractField: (doc: unknown, field: string) => {
         const r = doc as Requirement & { statement?: string; rationale?: string }
-        if (field === 'statement') return String((r.fields as Record<string, unknown>)?.['statement'] ?? '')
-        if (field === 'rationale') return String((r.fields as Record<string, unknown>)?.['rationale'] ?? '')
+        // GH299 — texte visible : sans les balises de couleur d'un richtext.
+        if (field === 'statement') return stripRichTextColorTags(String((r.fields as Record<string, unknown>)?.['statement'] ?? ''))
+        if (field === 'rationale') return stripRichTextColorTags(String((r.fields as Record<string, unknown>)?.['rationale'] ?? ''))
         return String((r as unknown as Record<string, unknown>)[field] ?? '')
       },
     })

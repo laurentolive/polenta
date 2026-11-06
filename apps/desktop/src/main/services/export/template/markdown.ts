@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import { markdownRichTextColors } from '../../../../shared/richTextColors'
 
 export type MdToken = ReturnType<MarkdownIt['parse']>[number]
 
@@ -8,7 +9,11 @@ let md: MarkdownIt | null = null
 
 /** GH34 — tokens markdown-it d'un champ richtext (Polenta stocke le richtext en Markdown). */
 export function parseMarkdown(markdown: string): MdToken[] {
-  md ??= new MarkdownIt({ html: false, linkify: false })
+  if (!md) {
+    md = new MarkdownIt({ html: false, linkify: false })
+    // GH299 — balises de couleur → jetons `pl_color_open/close` (rendus par l'OOXML, ignorés du texte simple).
+    markdownRichTextColors(md)
+  }
   return md.parse(markdown, {})
 }
 

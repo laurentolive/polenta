@@ -1,3 +1,4 @@
+import { stripRichTextColorTags } from '@polenta/types'
 import type { ExportColumn, LinkTypeDefinition, ObjectTypeDefinition, SchemaFieldType, TemplateOutlineEntry, TypeTreeNode } from '@polenta/types'
 import { getRelevantLinkTypes, linkColumnKeys } from '../components/system/linkUtils'
 import { treeFlatten } from '../hooks/useTreeState'
@@ -94,15 +95,17 @@ export function buildExportRows(
   const objectsById = new Map(objects.map(o => [o['id'], o]))
   const needle = filter.trim().toLowerCase()
   const rows: Record<string, string>[] = []
+  const columns = buildColumns(exportFields, typeDef, extra)
+  const richtextKeys = columns.filter(c => c.type === 'richtext').map(c => c.key)
 
   for (const node of treeFlatten(root)) {
     if (node.kind !== 'item' || !node.objectId) continue
     const obj = objectsById.get(node.objectId)
     if (!obj || !matchesFilter(obj, needle)) continue
-    rows.push(buildRow(node, obj, exportFields, sectionNumbers, stepsByObjectId))
+    rows.push(stripColorTags(buildRow(node, obj, exportFields, sectionNumbers, stepsByObjectId), richtextKeys))
   }
 
-  return { columns: buildColumns(exportFields, typeDef, extra), rows }
+  return { columns, rows }
 }
 
 /**
@@ -173,6 +176,19 @@ function buildColumns(exportFields: string[], typeDef: ObjectTypeDefinition | un
     const type = typeDef?.fields.find(f => f.name === key)?.type ?? extra?.get(key)?.type
     return { key, label: getExportColumnLabel(key, typeDef, extra), ...(type ? { type } : {}) }
   })
+}
+
+/**
+ * GH299 — export Standard (docx, xlsx) et impression : le Markdown y est écrit brut, sans mise en
+ * forme ; les balises de couleur des colonnes richtext sont retirées (texte seul) — les autres
+ * colonnes (titre, texte simple) restent telles quelles. L'outline du gabarit
+ * (`buildExportOutline`) garde la source : `{{@rich.x}}` rend les couleurs.
+ */
+function stripColorTags(row: Record<string, string>, richtextKeys: string[]): Record<string, string> {
+  if (richtextKeys.length === 0) return row
+  const out = { ...row }
+  for (const k of richtextKeys) if (out[k]) out[k] = stripRichTextColorTags(out[k])
+  return out
 }
 
 function matchesFilter(obj: Record<string, string>, needle: string): boolean {

@@ -27,6 +27,8 @@ import { ParamInsertButton } from './parameters/ParamInsertButton'
 import { useParamRefs } from '../contexts/ParamRefContext'
 import { ParamRefDecoration, paramRefPluginKey } from '../tiptap/ParamRefDecoration'
 import { VIEWER_CLASS_COMPACT } from '../lib/staticRichText'
+import { HighlightColor, TextColor } from '../tiptap/RichTextColorMarks'
+import { RichTextColorButton } from './RichTextColorButton'
 
 interface Props {
   value: string
@@ -129,6 +131,9 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
   const editor = useEditor({
     extensions: [
       StarterKit,
+      // GH299 — surlignage avant couleur : `<mark>` extérieur à l'écriture ; balises hors du gras (priorité, cf. RichTextColorMarks).
+      HighlightColor,
+      TextColor,
       ResizableImage.configure({ inline: false, allowBase64: true, repoPath }),
       Link.configure({ openOnClick: false }),
       Placeholder.configure({ placeholder: placeholder ?? '' }),
@@ -441,6 +446,8 @@ export function RichTextField({ value, onChange, disabled, placeholder, repoPath
           className={btn(!!editor?.isActive('code'))}
           title={t('system.shared.inlineCode')}
         ><span className="font-mono">{"`…`"}</span></button>
+        <RichTextColorButton editor={editor} kind="text" className={btn(false)} />
+        <RichTextColorButton editor={editor} kind="highlight" className={btn(false)} />
         <span className="w-px h-4 bg-edge mx-1" />
         <button
           type="button"

@@ -1417,6 +1417,22 @@
     "insertImage": "Insert an image (file)",
     "insertImageNoRepo": "Insert an image (repo context unavailable)"
   },
+  "richTextColor": {
+    "textColor": "Text color",
+    "highlight": "Highlight",
+    "noTextColor": "No color",
+    "noHighlight": "No highlight",
+    "colors": {
+      "red": "Red",
+      "orange": "Orange",
+      "green": "Green",
+      "blue": "Blue",
+      "purple": "Purple",
+      "gray": "Gray",
+      "yellow": "Yellow",
+      "pink": "Pink"
+    }
+  },
   "tableInsert": {
     "insertTable": "Insert a table"
   },

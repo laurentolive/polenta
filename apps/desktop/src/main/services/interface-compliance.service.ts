@@ -31,7 +31,7 @@ import type {
 } from '@polenta/types'
 import { flattenSystemNodes } from '@polenta/types'
 import type { Requirement, ObjectLink } from '@polenta/types'
-import { parseMultiEnumValue } from '@polenta/types'
+import { parseMultiEnumValue, stripRichTextColorTags } from '@polenta/types'
 
 /** A component this service can reason about: a SystemNode (root, local, or imbriqué) inside a
  *  given repo, identified for display by the path of its local ancestors (cf. §9 du design). */
@@ -289,7 +289,9 @@ export class InterfaceComplianceService {
 
   private toRowDescriptor(req: Requirement): ComplianceRequirementRow {
     const reqRoles = parseMultiEnumValue(req.fields?.['roles'])
-    const title = (req.fields?.['statement'] as string | undefined)?.split('\n')[0]
+    // GH299 — titre en texte : sans les balises de couleur d'un richtext.
+    const statement = req.fields?.['statement'] as string | undefined
+    const title = (statement === undefined ? undefined : stripRichTextColorTags(statement).split('\n')[0])
       ?? req.title
       ?? req.id
     return {

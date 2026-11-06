@@ -86,6 +86,17 @@
     --print-ink-2: 100 116 139;
     --print-border: 226 232 240;
     --overlay: 0 0 0;
+    --rt-c-red: 220 38 38;
+    --rt-c-orange: 194 65 12;
+    --rt-c-green: 21 128 61;
+    --rt-c-blue: 29 78 216;
+    --rt-c-purple: 126 34 206;
+    --rt-c-gray: 100 116 139;
+    --rt-hl-yellow: 254 240 138;
+    --rt-hl-green: 187 247 208;
+    --rt-hl-blue: 191 219 254;
+    --rt-hl-pink: 251 207 232;
+    --rt-hl-orange: 254 215 170;
   }
 
   .dark {
@@ -153,6 +164,17 @@
     --diff-auto-left: 96 165 250;
     --diff-auto-right: 74 222 128;
     --diff-hatch: 71 85 105;
+    --rt-c-red: 248 113 113;
+    --rt-c-orange: 251 146 60;
+    --rt-c-green: 74 222 128;
+    --rt-c-blue: 96 165 250;
+    --rt-c-purple: 192 132 252;
+    --rt-c-gray: 148 163 184;
+    --rt-hl-yellow: 113 63 18;
+    --rt-hl-green: 20 83 45;
+    --rt-hl-blue: 30 58 138;
+    --rt-hl-pink: 131 24 67;
+    --rt-hl-orange: 124 45 18;
   }
 /* THEME:GENERATED:END */
 
@@ -308,3 +330,28 @@
     @apply text-xs font-semibold text-ink-3 uppercase tracking-wider;
   }
 }
+
+/* GH299 — couleur du texte / surlignage d'un richtext : classes nommées écrites dans le Markdown
+   (palette : @polenta/types richtext-colors, teintes : shared/richTextColorValues.ts → tokens
+   rt-c-* / rt-hl-*). Mêmes règles dans l'éditeur Tiptap et le rendu markdown-it. `color: inherit`
+   sur le surlignage : neutralise l'encre noire par défaut de <mark> (illisible en thème sombre).
+   Hors @layer : classes composées dynamiquement (`pl-c-${couleur}`), que la purge Tailwind ne verrait pas. */
+.pl-c-red { color: rgb(var(--rt-c-red)); }
+.pl-c-orange { color: rgb(var(--rt-c-orange)); }
+.pl-c-green { color: rgb(var(--rt-c-green)); }
+.pl-c-blue { color: rgb(var(--rt-c-blue)); }
+.pl-c-purple { color: rgb(var(--rt-c-purple)); }
+.pl-c-gray { color: rgb(var(--rt-c-gray)); }
+.pl-hl-yellow, .pl-hl-green, .pl-hl-blue, .pl-hl-pink, .pl-hl-orange {
+  color: inherit;
+  border-radius: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.pl-hl-yellow { background-color: rgb(var(--rt-hl-yellow)); }
+.pl-hl-green { background-color: rgb(var(--rt-hl-green)); }
+.pl-hl-blue { background-color: rgb(var(--rt-hl-blue)); }
+.pl-hl-pink { background-color: rgb(var(--rt-hl-pink)); }
+.pl-hl-orange { background-color: rgb(var(--rt-hl-orange)); }
+/* Trait de couleur sous l'icône du bouton « Couleur du texte » (RichTextColorButton). */
+.rt-swatch[class*='pl-c-'] { background-color: currentColor; }

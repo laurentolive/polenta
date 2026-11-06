@@ -843,9 +843,9 @@ export const WordView = memo(function WordView({
 
   // T164 — "goto" : défiler jusqu'à la carte / l'en-tête portant data-node-id.
   const containerRef = useRef<HTMLDivElement>(null)
-  // GH300 — retour sur une page déjà vue (onglet, Précédent) : sa position l'emporte sur l'ancrage
-  // et la cible goto de la visite précédente.
-  const scrollMemory = useViewScrollMemory(containerRef, scrollMemoryKey, { gotoSeq })
+  // GH300 — retour sur une page déjà vue (onglet, Précédent, passage par une autre vue) : sa
+  // position l'emporte sur l'ancrage et la cible goto rejouée.
+  const scrollMemory = useViewScrollMemory(containerRef, scrollMemoryKey, { gotoNodeId, gotoSeq })
   useScrollToNode(containerRef, scrollMemory.blocksGoto ? null : gotoNodeId, gotoSeq, { root })
   // GH230 — ancrage `top` : nœud aligné en haut, sans contour.
   useScrollToNode(containerRef, scrollMemory.restoring ? null : anchorNodeId, undefined, { root })

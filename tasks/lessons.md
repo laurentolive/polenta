@@ -18,3 +18,7 @@ Format :
 ## 2026-11-03 — Correctif limité au premier emplacement trouvé
 - Erreur : pour une info-bulle gênante en vue Excel, seul le `title` de `LinkCell` a été retiré et testé, sur le projet de démo ; d'autres cellules et le lien lui-même gardaient le leur, et l'humain a revu la bulle au premier essai.
 - Règle : pour un symptôme d'affichage, recenser tous les éléments qui peuvent le produire avant de corriger, et écrire le test sur le symptôme (toute la vue), pas sur la ligne modifiée.
+
+## 2026-11-06 — Bug de position : seul l'état final testé, sur un seul parcours
+- Erreur : GH300, la position de défilement était testée après coup, sur le changement d'onglet et Précédent ; l'humain a vu un à-coup (frames peintes en haut puis sur l'élément sélectionné) et une perte de position en revenant par la barre d'activité (Exigences → Tests → Exigences).
+- Règle : pour un bug de position / d'affichage, recenser tous les chemins de retour qu'a l'utilisateur (onglet, historique, barre d'activité, arbre) et tester aussi les états intermédiaires (échantillonnage à chaque frame), pas seulement l'état final.

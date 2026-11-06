@@ -6,7 +6,7 @@ import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor } from './LinkTypeEditor'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
-import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels, fieldValueToText } from '@polenta/types'
+import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels, fieldValueToText, stripRichTextColorTags } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
@@ -21,6 +21,7 @@ import { LinkFieldPopover } from '../links/LinkFieldPopover'
 import { LinkList } from '../links/LinkList'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { useScrollToNode } from '../../hooks/useScrollToNode'
+import { useViewScrollMemory } from './viewScrollMemory'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { getExportColumnLabel } from '../../lib/exportColumns'
@@ -87,6 +88,9 @@ interface Props {
   gotoSeq?: number
   /** GH230 — nœud aligné en haut de la vue, sans contour (ancrage `top` de l'URL). */
   anchorNodeId?: string | null
+  /** GH300 — clé de la mémoire de défilement (onglet + entrée d'historique + page), null en
+   *  transition. */
+  scrollMemoryKey?: string | null
   /** Hauteur max d'une ligne, en nombre de lignes de texte (1 = une seule ligne tronquée,
    *  `Infinity` = toutes les lignes). */
   rowMaxLines?: number
@@ -799,7 +803,8 @@ function RichtextCell({
     )
   }
 
-  const nonEmptyLines = value.split('\n').filter(l => l.trim())
+  // GH299 — ligne repliée en texte : sans les balises de couleur.
+  const nonEmptyLines = stripRichTextColorTags(value).split('\n').filter(l => l.trim())
   let content: React.ReactNode
   if (!value) {
     content = <span className="text-ink-3 italic">—</span>
@@ -1293,6 +1298,7 @@ function ExcelViewInner({
   gotoNodeId,
   gotoSeq,
   anchorNodeId,
+  scrollMemoryKey,
   rowMaxLines = 1,
   collapsedFolders: collapsedFolderIds,
   onCollapsedFoldersChange,
@@ -2070,14 +2076,19 @@ function ExcelViewInner({
   // cède donc la place à tout rendu urgent de l'application.
   const gotoIndex = gotoNodeId ? visibleRowIds.indexOf(gotoNodeId) : -1
   const anchorIndex = anchorNodeId ? visibleRowIds.indexOf(anchorNodeId) : -1
+  // GH300 — retour sur une page déjà vue (onglet, Précédent, passage par une autre vue) : sa
+  // position l'emporte sur l'ancrage et la cible goto rejouée ; les lignes jusqu'à l'élément
+  // mémorisé sont rendues d'emblée pour la rétablir avant la première peinture.
+  const scrollMemory = useViewScrollMemory(containerRef, scrollMemoryKey, { ready: renderAllRows, gotoNodeId, gotoSeq })
+  const memoryIndex = scrollMemory.saved?.nodeId ? visibleRowIds.indexOf(scrollMemory.saved.nodeId) : -1
   const renderedRowCount = renderAllRows
     ? filteredRows.length
-    : Math.max(INITIAL_RENDERED_ROWS, gotoIndex + INITIAL_RENDERED_ROWS, anchorIndex + INITIAL_RENDERED_ROWS)
+    : Math.max(INITIAL_RENDERED_ROWS, gotoIndex + INITIAL_RENDERED_ROWS, anchorIndex + INITIAL_RENDERED_ROWS, memoryIndex + INITIAL_RENDERED_ROWS)
   // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
   // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
   // GH230 — après le rendu des lignes (sinon le repli viserait une des premières).
-  useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root, ready: renderAllRows || gotoIndex >= 0 })
-  useScrollToNode(containerRef, anchorNodeId, undefined, { root, ready: renderAllRows || anchorIndex >= 0 })
+  useScrollToNode(containerRef, scrollMemory.blocksGoto ? null : gotoNodeId, gotoSeq, { root, ready: renderAllRows || gotoIndex >= 0 })
+  useScrollToNode(containerRef, scrollMemory.restoring ? null : anchorNodeId, undefined, { root, ready: renderAllRows || anchorIndex >= 0 })
 
   // GH229 §3.4 — élément ciblé (lien suivi) masqué par un filtre actif : le filtre est conservé,
   // un message l'indique.

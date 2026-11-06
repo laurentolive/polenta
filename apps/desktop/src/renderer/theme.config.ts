@@ -14,6 +14,8 @@
  * Ne pas dupliquer une valeur ailleurs dans le code — toujours passer par un token.
  */
 
+import { RICHTEXT_HIGHLIGHT_COLOR_VALUES, RICHTEXT_TEXT_COLOR_VALUES } from '../shared/richTextColorValues'
+
 export interface ThemeTokenValue {
   light: string
   dark: string
@@ -136,4 +138,10 @@ export const themeTokens: Record<string, ThemeTokenValue> = {
   // la trame de fond des modales ET les survols d'assombrissement ponctuels (ex.
   // ElementTree.tsx) — même besoin visuel, pas de token dédié par cas d'usage ---
   overlay: { light: '0 0 0', dark: '0 0 0' },
+
+  // --- GH299 — palette des couleurs de texte / surlignage d'un richtext (classes `pl-c-*` /
+  // `pl-hl-*`, cf. index.css). Valeurs : `shared/richTextColorValues.ts`, source unique partagée
+  // avec l'export Word ---
+  ...Object.fromEntries(Object.entries(RICHTEXT_TEXT_COLOR_VALUES).map(([name, v]) => [`rt-c-${name}`, v])),
+  ...Object.fromEntries(Object.entries(RICHTEXT_HIGHLIGHT_COLOR_VALUES).map(([name, v]) => [`rt-hl-${name}`, v])),
 }

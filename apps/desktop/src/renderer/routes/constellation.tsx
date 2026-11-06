@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeftRight, ExternalLink, Loader2, Search } from 'lucide-react'
-import { flattenSystemNodes, type ObjectTypeDefinition, type Requirement } from '@polenta/types'
+import { flattenSystemNodes, stripRichTextColorTags, type ObjectTypeDefinition, type Requirement } from '@polenta/types'
 import { api } from '../api'
 import { ViewHeader } from '../components/layout/ViewHeader'
 import { useTabs } from '../contexts/TabsContext'
@@ -61,7 +61,8 @@ const STARS = Array.from({ length: 140 }, (_, i) => {
 
 function plainText(value: unknown): string {
   if (typeof value !== 'string') return ''
-  return value.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+  // GH299 — balises de couleur retirées sans espace : un mot coloré en partie reste un mot.
+  return stripRichTextColorTags(value).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 /** Énoncé affiché : le champ `statement`, sinon le premier champ texte renseigné du type. */

@@ -1,5 +1,6 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { HighlightColor, TextColor } from '../tiptap/RichTextColorMarks'
 import Link from '@tiptap/extension-link'
 import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
@@ -46,6 +47,8 @@ export function RichTextViewer({ value, className = '', repoPath }: Props) {
   const editor = useEditor({
     extensions: [
       StarterKit,
+      HighlightColor, // GH299
+      TextColor,
       ResizableImage.configure({ inline: false, allowBase64: true, repoPath }),
       Link.configure({ openOnClick: false }),
       Table.configure({ resizable: false }),

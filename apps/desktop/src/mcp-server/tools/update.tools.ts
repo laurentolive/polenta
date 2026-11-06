@@ -4,6 +4,7 @@ import { UpdateRequirementSchema, UpdateTestCaseSchema } from '@polenta/zod-sche
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
+import { RICHTEXT_COLORS_NOTE } from './richtext-colors-note'
 import { planUpdate, type FieldChange, type UpdatableObject } from '../../main/services/update-validation.util'
 import { findObjectTypeDef } from '../../main/services/schema-lookup.util'
 import { mergeFields } from '../../main/services/field-merge.util'
@@ -177,7 +178,7 @@ export function registerUpdateTools(server: McpServer, container: McpContainer):
         "best-effort, par les règles de l'appli (historique, version, revalidation des éléments liés " +
         "en sortie d'approbation). modificationComment (facultatif) : conservé sur les entrées d'historique " +
         "créées par l'entrée (changement de statut ou de champ suivi), sinon avertissement. Ne jamais " +
-        "réécrire un YAML d'exigence à la main.",
+        "réécrire un YAML d'exigence à la main." + RICHTEXT_COLORS_NOTE,
       inputSchema: { entries: z.array(requirementEntrySchema), dryRun: z.boolean().optional().default(true) },
     },
     async ({ entries, dryRun }) => jsonToolResult(await runUpdate(container, entries, dryRun, {

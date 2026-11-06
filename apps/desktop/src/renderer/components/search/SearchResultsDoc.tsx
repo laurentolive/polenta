@@ -26,6 +26,7 @@ import type {
   TestCase,
   TestCampaign,
 } from '@polenta/types'
+import { stripRichTextColorTags } from '@polenta/types'
 
 // Aligné sur `WordView.GOTO_OUTLINE_CLASS` (anneau bleu plein, distinct de la sélection).
 const GOTO_OUTLINE_CLASS = 'ring-2 ring-inset ring-status-info-solid rounded'
@@ -193,7 +194,8 @@ function ResultCard({
           ? stringOf(fields[f.name])
           : (normalized[f.name] ?? stringOf(fields[f.name])),
       }))
-    : Object.entries(fields).map(([k, v]) => ({ key: k, label: k, type: 'text', value: stringOf(v) }))
+    // GH299 — repli en texte simple : sans les balises de couleur.
+    : Object.entries(fields).map(([k, v]) => ({ key: k, label: k, type: 'text', value: stripRichTextColorTags(stringOf(v)) }))
 
   return (
     <div

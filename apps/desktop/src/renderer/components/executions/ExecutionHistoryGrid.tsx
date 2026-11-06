@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { fieldValueToText, isOpenCampaignStatus, testedDeviations, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue, type TestedConfigNode } from '@polenta/types'
+import { fieldValueToText, isOpenCampaignStatus, testedDeviations, type ExecutionHistory, type ExecutionHistoryRow, type StepResultValue, type TestedConfigNode, stripRichTextColorTags } from '@polenta/types'
 import type { FieldVisibilityPref } from '@polenta/api-client'
 import { api } from '../../api'
 import { RichTextViewer } from '../RichTextViewer'
@@ -187,7 +187,8 @@ export function ExecutionHistoryGrid({ repoPath, projectId, history, typeKey, wi
           const def = fieldDefOf(row, name) ?? c.field
           return def ? <RunFieldValue def={def} value={value} repoPath={repoPath} /> : fieldValueToText(value)
         }
-        if (c.key.startsWith('campaign:')) return fieldValueToText(row.campaign?.fields[c.key.slice(9)])
+        // GH299 — cellule texte : sans les balises de couleur d'un richtext.
+        if (c.key.startsWith('campaign:')) return stripRichTextColorTags(fieldValueToText(row.campaign?.fields[c.key.slice(9)]))
         return ''
       }
     }

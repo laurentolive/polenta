@@ -6,6 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { GitService } from '../../main/services/git.service'
 import type { McpContainer } from '../container'
 import { jsonToolResult } from '../mcp-types'
+import { RICHTEXT_COLORS_NOTE } from './richtext-colors-note'
 import {
   validateBulkEntries,
   resolveIdPrefix,
@@ -240,7 +241,7 @@ export function registerBulkImportTools(server: McpServer, container: McpContain
         "SANS RIEN ÉCRIRE. dryRun: false : écrit réellement, en série, best-effort " +
         "(une entrée en échec n'annule pas les précédentes). Appeler get_schema " +
         "d'abord pour connaître les objectTypeRef valides et leurs champs requis. " +
-        "status est facultatif : sans lui, l'exigence prend le premier statut du type.",
+        "status est facultatif : sans lui, l'exigence prend le premier statut du type." + RICHTEXT_COLORS_NOTE,
       inputSchema: bulkImportRequirementsInput,
     },
     async ({ entries, dryRun }) => {

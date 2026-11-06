@@ -3,6 +3,9 @@ import { parseMarkdown, stripInternalLinks, type MdToken } from './markdown'
 import type { DocxPackage, ListKind } from './docx-package'
 import { loadImage, type LoadedImage } from './image-source'
 import { drawioKey, parseDrawioFence, type DrawioSnapshot } from './drawio-ref'
+import type { RichTextColorOpenMeta } from '../../../../shared/richTextColors'
+import { RICHTEXT_HIGHLIGHT_COLOR_VALUES, RICHTEXT_TEXT_COLOR_VALUES, rgbTripletToHex } from '../../../../shared/richTextColorValues'
+import type { RichTextHighlightColor, RichTextTextColor } from '@polenta/types'
 
 const EMU_PER_PX = 9525 // 96 dpi
 const TWIPS_PER_EMU = 1 / 635
@@ -277,6 +280,12 @@ class Conversion {
       depth[mark] = Math.max(0, depth[mark] + delta)
       marks[mark] = !!base[mark] || depth[mark] > 0
     }
+    // GH299 — couleur / surlignage : pile par balise (la fermeture rend la couleur englobante).
+    const colors: { span: string[]; mark: string[] } = { span: [], mark: [] }
+    const applyColors = () => {
+      marks.color = colors.span.at(-1) ?? base.color
+      marks.highlight = colors.mark.at(-1) ?? base.highlight
+    }
     let out = ''
     let text = ''
     for (const child of children) {
@@ -306,6 +315,17 @@ class Conversion {
         case 'em_close': set('italic', -1); break
         case 's_open': set('strike', 1); break
         case 's_close': set('strike', -1); break
+        case 'pl_color_open': {
+          const meta = child.meta as RichTextColorOpenMeta
+          if (meta.tag === 'span') colors.span.push(rgbTripletToHex(RICHTEXT_TEXT_COLOR_VALUES[meta.color as RichTextTextColor].light))
+          else colors.mark.push(rgbTripletToHex(RICHTEXT_HIGHLIGHT_COLOR_VALUES[meta.color as RichTextHighlightColor].light))
+          applyColors()
+          break
+        }
+        case 'pl_color_close':
+          colors[(child.meta as { tag: 'span' | 'mark' }).tag].pop()
+          applyColors()
+          break
         case 'image':
           out += await this.imageRun({
             src: child.attrGet('src') ?? '',
@@ -410,7 +430,11 @@ export function textParagraphs(text: string): string {
   return text.split('\n').map(line => paragraph([], run(line, {}))).join('')
 }
 
-interface RunMarks { bold?: boolean; italic?: boolean; strike?: boolean; code?: boolean }
+interface RunMarks {
+  bold?: boolean; italic?: boolean; strike?: boolean; code?: boolean
+  /** GH299 — hex sans `#` (valeurs claires de la palette richtext). */
+  color?: string; highlight?: string
+}
 
 function paragraph(props: string[], runs: string): string {
   return `<w:p>${props.length ? `<w:pPr>${props.join('')}</w:pPr>` : ''}${runs}</w:p>`
@@ -418,7 +442,7 @@ function paragraph(props: string[], runs: string): string {
 
 function run(text: string, marks: RunMarks, pkg?: DocxPackage): string {
   if (!text) return ''
-  // Ordre des éléments imposé par le schéma : rStyle, rFonts, b, i, strike.
+  // Ordre des éléments imposé par le schéma : rStyle, rFonts, b, i, strike, color, …, shd.
   let rPr = ''
   if (marks.code) {
     rPr += pkg?.styles.codeChar
@@ -428,6 +452,8 @@ function run(text: string, marks: RunMarks, pkg?: DocxPackage): string {
   if (marks.bold) rPr += '<w:b/>'
   if (marks.italic) rPr += '<w:i/>'
   if (marks.strike) rPr += '<w:strike/>'
+  if (marks.color) rPr += `<w:color w:val="${marks.color}"/>`
+  if (marks.highlight) rPr += `<w:shd w:val="clear" w:color="auto" w:fill="${marks.highlight}"/>`
   return `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`
 }
 

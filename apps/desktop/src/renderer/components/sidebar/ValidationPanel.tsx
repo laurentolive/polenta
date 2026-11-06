@@ -13,7 +13,7 @@ import { ComponentTypeCombobox } from '../system/ComponentTypeCombobox'
 import type { ComponentTypeOption } from '../../contexts/SystemViewContext'
 import { DynamicField } from '../DynamicField'
 import { flattenVersionTree } from './version/ProductVersionsPanel'
-import { STATE_BADGE, useVersionTree } from '../versions/useVersions'
+import { useVersionTree } from '../versions/useVersions'
 import { isValidationPath, useInvalidateValidations, useValidationVersions, validationErrorText, VALIDATION_STATE_BADGE } from '../validation/useValidations'
 
 const LAST_COMPONENT_KEY = 'polenta:validationComponent:'
@@ -72,19 +72,26 @@ export function ValidationPanel({ projectId }: { projectId: string }) {
         {validationType && current?.versionType && shown.length === 0 && <p className="px-4 py-1 text-xs text-ink-3 italic">{t('versions.noVersion')}</p>}
         {validationType && current?.versionType && shown.map(item => {
           const active = !!item.validation && pathname === `/validation/${item.validation.id}`
-          return (
-            <div key={item.version.id} className={`flex items-center gap-2 px-4 py-1 text-xs ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2'}`} data-testid={`validation-version-${item.version.id}`}>
+          const validation = item.validation
+          const canCreate = !validation && !current.readonly && item.version.state !== 'abandoned'
+          // GH306 — toute la ligne est l'action (ouvrir la validation, ou la créer) ; seul le statut de la validation est affiché.
+          const onClick = validation ? () => open(validation.id) : canCreate ? () => setCreating(item.version) : undefined
+          const className = `w-full flex items-center gap-2 px-4 py-1 text-xs text-left ${active ? 'bg-hover text-prim font-medium' : 'text-ink-2'} ${onClick ? 'hover:bg-hover cursor-pointer' : ''}`
+          const content = (
+            <>
               <span className="flex-1 truncate">{item.version.title}</span>
-              <span className={`px-1.5 rounded text-[10px] ${STATE_BADGE[item.version.state]}`}>{t(`versions.state.${item.version.state}`)}</span>
-              {item.validation ? (
-                <button type="button" className={`px-1.5 rounded text-[10px] ${VALIDATION_STATE_BADGE[item.validation.state]}`} onClick={() => open(item.validation!.id)} data-testid={`validation-open-${item.version.id}`}>
-                  {t(`validation.state.${item.validation.state}`)}
-                </button>
-              ) : !current.readonly && item.version.state !== 'abandoned' ? (
-                <button type="button" className="text-prim hover:underline" onClick={() => setCreating(item.version)} data-testid={`validation-create-${item.version.id}`}>{t('validation.create')}</button>
+              {validation ? (
+                <span className={`px-1.5 rounded text-[10px] ${VALIDATION_STATE_BADGE[validation.state]}`} data-testid={`validation-open-${item.version.id}`}>
+                  {t(`validation.state.${validation.state}`)}
+                </span>
+              ) : canCreate ? (
+                <span className="text-prim" data-testid={`validation-create-${item.version.id}`}>{t('validation.create')}</span>
               ) : <span className="text-ink-3">—</span>}
-            </div>
+            </>
           )
+          return onClick
+            ? <button type="button" key={item.version.id} className={className} onClick={onClick} data-testid={`validation-version-${item.version.id}`}>{content}</button>
+            : <div key={item.version.id} className={className} data-testid={`validation-version-${item.version.id}`}>{content}</div>
         })}
       </div>
       {creating && validationType && (

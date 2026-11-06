@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import type { FieldVisibilityPref } from '@polenta/api-client'
-import { findSystemNode, type Issue, type MatrixCell, type ObjectTypeDefinition, type Requirement, type SchemaField, type TestCampaign, type TestCase } from '@polenta/types'
+import { findSystemNode, type Issue, type MatrixCell, type ObjectTypeDefinition, type Requirement, type SchemaField, type TestCampaign, type TestCase, stripRichTextColorTags } from '@polenta/types'
 import { api } from '../../api'
 import { InPreviewContext, useElementNav, useElementPreviewTarget, type ElementRef } from '../../contexts/ElementNavContext'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
@@ -169,7 +169,8 @@ function PreviewField({ fieldKey, obj, target, typeDef }: {
     return (
       <Row label={t('system.wordView.stepsHeading')}>
         <ol className="list-decimal pl-4 space-y-0.5">
-          {steps.map((s, i) => <li key={i}>{s.action}{s.expectedResult ? <span className="text-ink-3"> → {s.expectedResult}</span> : null}</li>)}
+          {/* GH299 — aperçu en texte : sans les balises de couleur. */}
+          {steps.map((s, i) => <li key={i}>{stripRichTextColorTags(s.action ?? '')}{s.expectedResult ? <span className="text-ink-3"> → {stripRichTextColorTags(s.expectedResult)}</span> : null}</li>)}
         </ol>
       </Row>
     )

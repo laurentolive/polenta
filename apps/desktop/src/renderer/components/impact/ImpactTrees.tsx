@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ChangedRequirement, ImpactAnalysisStatus, ImpactNode, Requirement, RequirementChangeType } from '@polenta/types'
 import { api } from '../../api'
-import { IMPACT_ANALYSIS_STATUSES } from '@polenta/types'
+import { IMPACT_ANALYSIS_STATUSES, stripRichTextColorTags } from '@polenta/types'
 import { STATUS_LABEL_KEY } from '../../lib/impactStatus'
 import { wordDiff, diffValueText } from '../../lib/wordDiff'
 import { RevalidationFlag } from '../system/RevalidationFlag'
@@ -114,7 +114,8 @@ export function useRequirementStatementTooltip(repoPath: string, reqId: string, 
     enabled: !!repoPath && !!reqId,
   })
   const rawStatement = req?.fields ? (req.fields as Record<string, unknown>)['statement'] : undefined
-  return (typeof rawStatement === 'string' && rawStatement.trim() ? rawStatement : fallback).replace(/\s+/g, ' ').trim()
+  // GH299 — infobulle en texte : sans les balises de couleur.
+  return stripRichTextColorTags(typeof rawStatement === 'string' && rawStatement.trim() ? rawStatement : fallback).replace(/\s+/g, ' ').trim()
 }
 
 function ImpactNodeStatusEditor({ node, onUpdateStatus, dense }: { node: ImpactNode; onUpdateStatus: UpdateNodeStatus; dense?: boolean }) {

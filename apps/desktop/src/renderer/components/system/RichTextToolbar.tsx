@@ -4,6 +4,7 @@ import { DrawioInsertButton } from '../DrawioInsertButton'
 import { ImageInsertButton } from '../ImageInsertButton'
 import { TableInsertButton } from '../TableInsertButton'
 import { ParamInsertButton } from '../parameters/ParamInsertButton'
+import { RichTextColorButton } from '../RichTextColorButton'
 
 interface Props {
   repoPath?: string
@@ -42,6 +43,8 @@ export function RichTextToolbar({ repoPath }: Props) {
         className={btn(!!activeEditor?.isActive('code'), isRaw)}
         title={t('system.shared.inlineCode')}
       ><span className="font-mono">{"`…`"}</span></button>
+      <RichTextColorButton editor={activeEditor} kind="text" disabled={isRaw} className={btn(false, isRaw)} />
+      <RichTextColorButton editor={activeEditor} kind="highlight" disabled={isRaw} className={btn(false, isRaw)} />
       <span className="w-px h-4 bg-edge mx-1" />
       <button
         type="button"

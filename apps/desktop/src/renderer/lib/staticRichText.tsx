@@ -10,6 +10,7 @@ import { useElementRefDelegation, useElementRefExists } from '../components/elem
 import { useParamRefs } from '../contexts/ParamRefContext'
 import { useTranslation } from 'react-i18next'
 import { applyWordDiff, clearWordDiff } from './wordDiff'
+import { markdownRichTextColors } from '../../shared/richTextColors'
 
 /**
  * Read-only counterpart to RichTextField/RichTextViewer, for lists that render many objects at
@@ -97,6 +98,7 @@ function getMarkdownIt(): MarkdownIt {
   }
   markdownParamRefs(md)
   markdownElementRefs(md)
+  markdownRichTextColors(md) // GH299
   sharedMd = md
   return md
 }

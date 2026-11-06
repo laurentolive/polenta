@@ -6,7 +6,7 @@ import type { Candidate } from './LinkCombobox'
 import { LinkTypeEditor } from './LinkTypeEditor'
 import { ChevronRight, ChevronDown, Pencil, Filter as FilterIcon } from 'lucide-react'
 import type { TypeTreeNode, ObjectTypeDefinition, LinkTypeDefinition, ObjectLink, Requirement, TestCase, SchemaField, CoverageStatus, MatrixCell } from '@polenta/types'
-import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels, fieldValueToText } from '@polenta/types'
+import { isComputedColumnKey, parseMultiEnumValue, serializeMultiEnumValue, resolveMultiEnumOptions, statusValueLabels, fieldValueToText, stripRichTextColorTags } from '@polenta/types'
 import type { ComputedColumn, ComputedColumnResult } from '../../hooks/useComputedColumns'
 import { CoverageBadge } from './CoverageBadge'
 import { RevalidationFlag } from './RevalidationFlag'
@@ -799,7 +799,8 @@ function RichtextCell({
     )
   }
 
-  const nonEmptyLines = value.split('\n').filter(l => l.trim())
+  // GH299 — ligne repliée en texte : sans les balises de couleur.
+  const nonEmptyLines = stripRichTextColorTags(value).split('\n').filter(l => l.trim())
   let content: React.ReactNode
   if (!value) {
     content = <span className="text-ink-3 italic">—</span>

@@ -1,4 +1,5 @@
 import type { SchemaField } from './schema'
+import { stripRichTextColorTags } from './richtext-colors'
 
 // GH206 — validateurs de champ (`SchemaField.validator`), partagés par le main (import en masse, fusion,
 // mise à jour MCP, contraintes de transition) et le renderer. Déplacés de `field-checks.util.ts`.
@@ -18,7 +19,8 @@ export function isFilled(v: unknown): boolean {
  */
 function stripMarkdownForEars(v: unknown): string {
   if (typeof v !== 'string') return ''
-  let text = v.trimStart()
+  // GH299 — balises de couleur retirées : `<span class="pl-c-red">WHEN</span>` commence par WHEN.
+  let text = stripRichTextColorTags(v).trimStart()
   let prev: string
   do {
     prev = text

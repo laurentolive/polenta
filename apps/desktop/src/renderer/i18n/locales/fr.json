@@ -144,8 +144,8 @@
       "language": "Langue",
       "french": "Français",
       "english": "English",
-      "autoUpdate": "Mises à jour auto.",
-      "autoUpdateHint": "Rechercher et télécharger les mises à jour au démarrage (effectif au prochain lancement)",
+      "autoUpdate": "Téléchargement automatique des nouvelles versions",
+      "autoUpdateHint": "Les nouvelles versions sont toujours recherchées ; décochée, le bouton de mise à jour propose « Télécharger ».",
       "networkTimeout": "Délai de connexion réseau (s)",
       "networkTimeoutHint": "À augmenter si les opérations échouent sur un délai dépassé (réseau lent ou filtré, ex. accès à GitHub depuis la Chine). De 10 à 120 s, effectif immédiatement.",
       "exportTemplates": "Gabarits d'export",
@@ -1748,16 +1748,52 @@
   },
   "update": {
     "badge": {
-      "title": "{{appName}} v{{version}} est disponible"
+      "available": "{{appName}} v{{version}} est disponible",
+      "downloading": "Téléchargement de {{appName}} v{{version}} — {{progress}} %",
+      "ready": "{{appName}} v{{version}} est prête à installer",
+      "error": "Mise à jour de {{appName}} v{{version}} : échec du téléchargement",
+      "reload": "{{appName}} v{{version}} est en service — recharger la page"
     },
     "popover": {
-      "title": "Mise à jour disponible",
+      "title": {
+        "available": "Nouvelle version disponible",
+        "downloading": "Téléchargement en cours",
+        "ready": "Mise à jour prête à installer",
+        "error": "Téléchargement interrompu",
+        "reload": "Nouvelle version en service",
+        "release": "Nouvelle version disponible"
+      },
       "versions": "Version actuelle {{current}} → {{available}}",
       "releaseNotes": "Voir les nouveautés",
+      "progress": "{{progress}} %",
+      "download": "Télécharger",
+      "retry": "Réessayer",
+      "error": "Le téléchargement a échoué (réseau indisponible ?).",
+      "managed": "Les mises à jour sont gérées par votre service informatique.",
       "install": "Redémarrer pour installer",
-      "installAnyway": "Installer quand même",
       "later": "Plus tard",
-      "dirtyWarning": "Des onglets ont des modifications non enregistrées : elles seront perdues au redémarrage."
+      "reload": "Recharger la page",
+      "reloadAnyway": "Recharger quand même",
+      "reloadMessage": "Le serveur a été mis à jour (cette page est en {{current}}). Rechargez la page pour utiliser la nouvelle version.",
+      "dirtyReloadWarning": "Des onglets ont des modifications non enregistrées : elles seront perdues au rechargement.",
+      "releaseAdmin": "Pour mettre à jour le client web de cette instance, sur l’hôte :"
+    },
+    "confirm": {
+      "title": "Installer {{appName}} v{{version}}",
+      "message": "{{appName}} va se fermer, installer la nouvelle version puis redémarrer.",
+      "willClose": "Seront fermés :",
+      "dirtyTabs_one": "{{count}} onglet avec des modifications non enregistrées (elles seront perdues)",
+      "dirtyTabs_other": "{{count}} onglets avec des modifications non enregistrées (elles seront perdues)",
+      "otherWindows_one": "{{count}} autre fenêtre de {{appName}} (ses modifications non enregistrées seront perdues)",
+      "otherWindows_other": "{{count}} autres fenêtres de {{appName}} (leurs modifications non enregistrées seront perdues)",
+      "mcpServers_one": "{{count}} serveur MCP de {{appName}}",
+      "mcpServers_other": "{{count}} serveurs MCP de {{appName}}",
+      "mcpHint": "Un client MCP (Claude Desktop, Claude Code…) utilise {{appName}} : redémarrez-le après l’installation pour le reconnecter.",
+      "confirm": "Fermer et installer"
+    },
+    "installing": {
+      "title": "Installation de {{appName}} v{{version}}",
+      "message": "{{appName}} se ferme ; l’installeur affiche sa progression, puis {{appName}} redémarre."
     }
   },
   "mergeResolve": {

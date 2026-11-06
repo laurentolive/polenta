@@ -57,6 +57,8 @@ export function createIpcClient(
     },
     update: {
       getState: () => invoke('update:get-state'),
+      download: () => invoke('update:download'),
+      prepareInstall: () => invoke('update:prepare-install'),
       install: () => invoke('update:install'),
     },
     terminal: {

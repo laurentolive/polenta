@@ -144,8 +144,8 @@
       "language": "Language",
       "french": "Français",
       "english": "English",
-      "autoUpdate": "Auto updates",
-      "autoUpdateHint": "Check for and download updates at startup (applies on next launch)",
+      "autoUpdate": "Download new versions automatically",
+      "autoUpdateHint": "New versions are always checked for; when unchecked, the update button offers “Download”.",
       "networkTimeout": "Network connection timeout (s)",
       "networkTimeoutHint": "Increase if operations fail with a timeout (slow or filtered network, e.g. accessing GitHub from China). 10 to 120 s, applies immediately.",
       "exportTemplates": "Export templates",
@@ -1748,16 +1748,52 @@
   },
   "update": {
     "badge": {
-      "title": "{{appName}} v{{version}} is available"
+      "available": "{{appName}} v{{version}} is available",
+      "downloading": "Downloading {{appName}} v{{version}} — {{progress}}%",
+      "ready": "{{appName}} v{{version}} is ready to install",
+      "error": "{{appName}} v{{version}} update: download failed",
+      "reload": "{{appName}} v{{version}} is live — reload the page"
     },
     "popover": {
-      "title": "Update available",
+      "title": {
+        "available": "New version available",
+        "downloading": "Downloading",
+        "ready": "Update ready to install",
+        "error": "Download interrupted",
+        "reload": "New version live",
+        "release": "New version available"
+      },
       "versions": "Current version {{current}} → {{available}}",
       "releaseNotes": "See what's new",
+      "progress": "{{progress}}%",
+      "download": "Download",
+      "retry": "Retry",
+      "error": "The download failed (network unavailable?).",
+      "managed": "Updates are managed by your IT department.",
       "install": "Restart to install",
-      "installAnyway": "Install anyway",
       "later": "Later",
-      "dirtyWarning": "Some tabs have unsaved changes: they will be lost on restart."
+      "reload": "Reload page",
+      "reloadAnyway": "Reload anyway",
+      "reloadMessage": "The server has been updated (this page runs {{current}}). Reload the page to use the new version.",
+      "dirtyReloadWarning": "Some tabs have unsaved changes: they will be lost on reload.",
+      "releaseAdmin": "To update this instance’s web client, on the host:"
+    },
+    "confirm": {
+      "title": "Install {{appName}} v{{version}}",
+      "message": "{{appName}} will close, install the new version, then restart.",
+      "willClose": "Will be closed:",
+      "dirtyTabs_one": "{{count}} tab with unsaved changes (they will be lost)",
+      "dirtyTabs_other": "{{count}} tabs with unsaved changes (they will be lost)",
+      "otherWindows_one": "{{count}} other {{appName}} window (its unsaved changes will be lost)",
+      "otherWindows_other": "{{count}} other {{appName}} windows (their unsaved changes will be lost)",
+      "mcpServers_one": "{{count}} {{appName}} MCP server",
+      "mcpServers_other": "{{count}} {{appName}} MCP servers",
+      "mcpHint": "An MCP client (Claude Desktop, Claude Code…) uses {{appName}}: restart it after the installation to reconnect.",
+      "confirm": "Close and install"
+    },
+    "installing": {
+      "title": "Installing {{appName}} v{{version}}",
+      "message": "{{appName}} is closing; the installer shows its progress, then {{appName}} restarts."
     }
   },
   "mergeResolve": {

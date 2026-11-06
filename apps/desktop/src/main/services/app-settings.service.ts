@@ -12,9 +12,11 @@ const DEFAULTS: AppSettings = { autoCheckUpdates: true }
  * (d'où pas de localStorage, cf. le thème). Fichier absent ou illisible → valeurs par défaut.
  */
 export class AppSettingsService {
+  private readonly listeners = new Set<(settings: AppSettings) => void>()
+
   constructor(
     private readonly userDataDir: string,
-    /** GH45 — `autoUpdate: false` impose et verrouille `autoCheckUpdates: false`. */
+    /** GH45 — `autoUpdate: false` impose et verrouille `autoCheckUpdates: false` (GH302 : téléchargement automatique ; la vérification se fait quand même). */
     private readonly machineConfig: MachineConfig = { hideGithub: false },
     /** GH45 S2b — `updates: managed` dans la configuration de la forge (même effet). */
     private readonly forgeUpdatesManaged: () => boolean = () => false,
@@ -77,6 +79,21 @@ export class AppSettingsService {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
     fs.writeFileSync(this.filePath, JSON.stringify(next, null, 2), 'utf-8')
     this.onNetworkTimeout?.(this.networkTimeout(next))
-    return this.get()
+    const saved = this.get()
+    // Préférences déjà écrites : un abonné en échec ne fait pas échouer l'enregistrement.
+    for (const listener of this.listeners) {
+      try {
+        listener(saved)
+      } catch (err) {
+        console.error('[settings] abonné en échec :', err)
+      }
+    }
+    return saved
+  }
+
+  /** GH302 — préférences modifiées (téléchargement automatique : effet immédiat). */
+  onChange(listener: (settings: AppSettings) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
   }
 }

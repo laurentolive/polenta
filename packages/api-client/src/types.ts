@@ -82,6 +82,7 @@ import type { Issue, RequirementReflectionsList, TransitionCheck, Validation, Va
   ExecutionImportResult,
   AppSettings,
   UpdateState,
+  UpdateInstallPlan,
   ZoomAction,
   TerminalDetectResult,
   TerminalKind,
@@ -449,6 +450,10 @@ export interface ApiClient {
    *  'update:state-changed' (window.polenta.on). */
   update: {
     getState(): Promise<UpdateState>
+    /** GH302 — téléchargement manuel (préférence décochée) ou nouvel essai après une erreur. */
+    download(): Promise<void>
+    /** GH302 — ce que l'installation va fermer, pour la confirmation. */
+    prepareInstall(): Promise<UpdateInstallPlan>
     install(): Promise<void>
   }
   /** GH238 — pseudo-terminal de la vue Version (desktop seulement) ; sortie et fin poussées par

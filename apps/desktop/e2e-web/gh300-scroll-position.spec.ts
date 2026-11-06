@@ -253,12 +253,17 @@ test("R11 — après le retour, re-cliquer l'élément sélectionné dans l'arbr
   await expect.poll(() => param('item')).toBeTruthy()
   const target = s.page.locator('[data-view-scroll] [data-node-id].outline-2, [data-view-scroll] [data-node-id][data-selected]').first()
   const nodeId = (await target.getAttribute('data-node-id'))!
-  // Défilement qui sort la ligne de la vue (en haut ou en bas selon sa place).
-  const box = await scroller().evaluate((el, id) => {
+  // Défilement qui sort la ligne de la vue : juste au-dessus si possible, sinon en dessous.
+  await scroller().evaluate((el, id) => {
+    const area = el.getBoundingClientRect()
     const r = el.querySelector(`[data-node-id="${id}"]`)!.getBoundingClientRect()
-    return r.top - el.getBoundingClientRect().top
+    const above = r.bottom - area.top + 40
+    if (el.scrollTop + above <= el.scrollHeight - el.clientHeight) el.scrollTop += above
+    else el.scrollTop -= area.bottom - r.top + 40
   }, nodeId)
-  const p = await scrollTo(box > 200 ? 0 : 1)
+  await s.page.waitForTimeout(400)
+  const p = await position()
+  await expect(s.page.locator(`[data-view-scroll] [data-node-id="${nodeId}"]`)).not.toBeInViewport()
   await roundTripThroughNewTab()
   await expectPosition(p)
   await expect(s.page.locator(`[data-view-scroll] [data-node-id="${nodeId}"]`)).not.toBeInViewport()

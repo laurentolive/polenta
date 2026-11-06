@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { StepsTable } from '../StepsTable'
 import { LinkedReqValues } from '../parameters/LinkedReqValues'
@@ -51,6 +52,7 @@ import { layoutPatch, resolveLayout, sameLayout, type ViewLayout } from './saved
 import { useElementNav } from '../../contexts/ElementNavContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
+import { viewScrollKey } from './viewScrollMemory'
 import { TransitionScopeContext, transitionPreviewKey } from '../../hooks/useTransitionPreview'
 import { notifyTransitionError, notifyTransitionResult } from '../../lib/transitionNotices'
 import { REFLECTION_COLUMNS, reflectionText, type ReflectionsData } from './ReflectionCell'
@@ -579,6 +581,18 @@ export function SystemView() {
     if (backInHistory) attemptHistoryNav(activeTab.historyIndex - 1)
     else showView(storedViewMode, editingObjectId)
   }, [backInHistory, attemptHistoryNav, activeTab.historyIndex, showView, storedViewMode, editingObjectId])
+
+  // GH300 — clé de la mémoire de défilement des vues : onglet, entrée de son historique et page.
+  // L'onglet enregistre la nouvelle URL un rendu après le routeur : tant que les deux diffèrent
+  // (transition), pas de clé, donc ni restauration ni mémorisation sur la mauvaise entrée.
+  const { pathname: urlPathname, searchStr: urlSearchStr } = useRouterState({ select: s => ({ pathname: s.location.pathname, searchStr: s.location.searchStr }) })
+  const entryKey = activeTab.history[activeTab.historyIndex]?.key
+  const scrollMemoryKey = useMemo(() => {
+    if (!entryKey) return null
+    const fromUrl = viewScrollKey(activeTab.id, entryKey, urlPathname, Object.fromEntries(new URLSearchParams(urlSearchStr ?? '')))
+    const fromTab = viewScrollKey(activeTab.id, entryKey, activeTab.pathname, activeTab.searchParams)
+    return fromUrl === fromTab ? fromUrl : null
+  }, [activeTab.id, entryKey, activeTab.pathname, activeTab.searchParams, urlPathname, urlSearchStr])
 
   // GH230 — bascule Tableau ↔ Document : l'élément de référence est lu dans le DOM de la vue
   // courante (ligne sélectionnée du Tableau, premier élément portant un objet en haut de la vue).
@@ -1329,6 +1343,7 @@ export function SystemView() {
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             anchorNodeId={anchorNodeId}
+            scrollMemoryKey={scrollMemoryKey}
             rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}
             collapsedFolders={collapsedFoldersExcel}
             onCollapsedFoldersChange={stableCollapsedFoldersExcelChange}
@@ -1369,6 +1384,7 @@ export function SystemView() {
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             anchorNodeId={anchorNodeId}
+            scrollMemoryKey={scrollMemoryKey}
             collapsedFolders={collapsedFoldersWord}
             onCollapsedFoldersChange={stableCollapsedFoldersWordChange}
           />

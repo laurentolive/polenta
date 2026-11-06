@@ -7,7 +7,14 @@ export interface TabHistoryEntry {
   pathname: string
   searchParams: Record<string, string>
   title: string
+  /** GH300 — identifiant de l'entrée : gardé quand l'URL précise la page (REPLACE), nouveau à
+   *  chaque page poussée — une entrée qui reprend l'index d'une page abandonnée (Précédent puis
+   *  navigation) n'en hérite pas la mémoire de défilement. */
+  key?: string
 }
+
+let entrySeq = 0
+const newEntryKey = (): string => `h${++entrySeq}`
 
 export interface TabHistory {
   history: TabHistoryEntry[]
@@ -33,13 +40,13 @@ export function sameDestination(
  *  redirection, retour arrière) et remplace l'entrée. Revenir sur la page courante n'ajoute rien. */
 export function recordLocation(state: TabHistory, entry: TabHistoryEntry, push: boolean): TabHistory {
   const current = state.history[state.historyIndex]
-  if (!current) return { history: [entry], historyIndex: 0 }
+  if (!current) return { history: [{ ...entry, key: entry.key ?? newEntryKey() }], historyIndex: 0 }
   if (!push || sameDestination(current, entry)) {
     const history = state.history.slice()
-    history[state.historyIndex] = entry
+    history[state.historyIndex] = { ...entry, key: current.key ?? newEntryKey() }
     return { history, historyIndex: state.historyIndex }
   }
-  const history = [...state.history.slice(0, state.historyIndex + 1), entry].slice(-HISTORY_LIMIT)
+  const history = [...state.history.slice(0, state.historyIndex + 1), { ...entry, key: newEntryKey() }].slice(-HISTORY_LIMIT)
   return { history, historyIndex: history.length - 1 }
 }
 

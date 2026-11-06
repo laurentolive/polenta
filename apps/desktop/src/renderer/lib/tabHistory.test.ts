@@ -85,3 +85,21 @@ describe('GH228 — raccourcis Précédent / Suivant (U7)', () => {
     expect(historyNavDirection(k('ArrowLeft', { altKey: true, defaultPrevented: true }), false, false)).toBeNull()
   })
 })
+
+describe('GH300 — identifiant d\'entrée (mémoire de défilement)', () => {
+  it('kept on replace, new on push — an index reused after Back gets a new key', () => {
+    const first = recordLocation({ history: [], historyIndex: 0 }, e('/a'), true)
+    const a = first.history[0].key
+    expect(a).toBeTruthy()
+    const refined = recordLocation(first, e('/a', { top: 'X' }), false)
+    expect(refined.history[0].key).toBe(a)
+    const pushed = recordLocation(refined, e('/b'), true)
+    const b = pushed.history[1].key
+    expect(b).toBeTruthy()
+    expect(b).not.toBe(a)
+    // Précédent puis nouvelle page : même index que /b, autre entrée.
+    const repushed = recordLocation({ ...pushed, historyIndex: 0 }, e('/b', { x: '1' }), true)
+    expect(repushed.historyIndex).toBe(1)
+    expect(repushed.history[1].key).not.toBe(b)
+  })
+})

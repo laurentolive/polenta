@@ -21,6 +21,7 @@ import { LinkFieldPopover } from '../links/LinkFieldPopover'
 import { LinkList } from '../links/LinkList'
 import { useProjectSchema } from '../../hooks/useProjectSchema'
 import { useScrollToNode } from '../../hooks/useScrollToNode'
+import { useViewScrollMemory } from './viewScrollMemory'
 import { StepsTable } from '../StepsTable'
 import type { StepDraft } from '../StepsTable'
 import { getExportColumnLabel } from '../../lib/exportColumns'
@@ -87,6 +88,9 @@ interface Props {
   gotoSeq?: number
   /** GH230 — nœud aligné en haut de la vue, sans contour (ancrage `top` de l'URL). */
   anchorNodeId?: string | null
+  /** GH300 — clé de la mémoire de défilement (onglet + entrée d'historique + page), null en
+   *  transition. */
+  scrollMemoryKey?: string | null
   /** Hauteur max d'une ligne, en nombre de lignes de texte (1 = une seule ligne tronquée,
    *  `Infinity` = toutes les lignes). */
   rowMaxLines?: number
@@ -1293,6 +1297,7 @@ function ExcelViewInner({
   gotoNodeId,
   gotoSeq,
   anchorNodeId,
+  scrollMemoryKey,
   rowMaxLines = 1,
   collapsedFolders: collapsedFolderIds,
   onCollapsedFoldersChange,
@@ -2076,8 +2081,11 @@ function ExcelViewInner({
   // T164 — "goto" : défiler jusqu'à la ligne / ligne de groupe portant data-node-id
   // (les lignes portent `scroll-mt-8` pour ne pas finir sous le <thead> sticky).
   // GH230 — après le rendu des lignes (sinon le repli viserait une des premières).
-  useScrollToNode(containerRef, gotoNodeId, gotoSeq, { root, ready: renderAllRows || gotoIndex >= 0 })
-  useScrollToNode(containerRef, anchorNodeId, undefined, { root, ready: renderAllRows || anchorIndex >= 0 })
+  // GH300 — retour sur une page déjà vue (onglet, Précédent) : sa position l'emporte sur l'ancrage
+  // et la cible goto de la visite précédente.
+  const scrollMemory = useViewScrollMemory(containerRef, scrollMemoryKey, { ready: renderAllRows, gotoSeq })
+  useScrollToNode(containerRef, scrollMemory.blocksGoto ? null : gotoNodeId, gotoSeq, { root, ready: renderAllRows || gotoIndex >= 0 })
+  useScrollToNode(containerRef, scrollMemory.restoring ? null : anchorNodeId, undefined, { root, ready: renderAllRows || anchorIndex >= 0 })
 
   // GH229 §3.4 — élément ciblé (lien suivi) masqué par un filtre actif : le filtre est conservé,
   // un message l'indique.

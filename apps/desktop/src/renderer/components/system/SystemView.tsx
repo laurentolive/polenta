@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { StepsTable } from '../StepsTable'
 import { LinkedReqValues } from '../parameters/LinkedReqValues'
@@ -51,6 +52,7 @@ import { layoutPatch, resolveLayout, sameLayout, type ViewLayout } from './saved
 import { useElementNav } from '../../contexts/ElementNavContext'
 import { isLinkColumn, normalizeLinkColumns } from './linkUtils'
 import { firstVisibleNode, selectedRowNode, viewScroller } from './viewAnchor'
+import { forgetViewScroll, viewScrollKey } from './viewScrollMemory'
 import { TransitionScopeContext, transitionPreviewKey } from '../../hooks/useTransitionPreview'
 import { notifyTransitionError, notifyTransitionResult } from '../../lib/transitionNotices'
 import { REFLECTION_COLUMNS, reflectionText, type ReflectionsData } from './ReflectionCell'
@@ -580,6 +582,21 @@ export function SystemView() {
     else showView(storedViewMode, editingObjectId)
   }, [backInHistory, attemptHistoryNav, activeTab.historyIndex, showView, storedViewMode, editingObjectId])
 
+  // GH300 — clé de la mémoire de défilement des vues : onglet, page et mode affiché.
+  // L'onglet enregistre la nouvelle URL un rendu après le routeur : tant que les deux diffèrent
+  // (transition), pas de clé, donc ni restauration ni mémorisation sous la page quittée.
+  const { pathname: urlPathname, searchStr: urlSearchStr } = useRouterState({ select: s => ({ pathname: s.location.pathname, searchStr: s.location.searchStr }) })
+  const urlSearch = useMemo(() => Object.fromEntries(new URLSearchParams(urlSearchStr ?? '')), [urlSearchStr])
+  const scrollKeyFor = useCallback(
+    (mode: string) => viewScrollKey(activeTab.id, mode, urlPathname, urlSearch),
+    [activeTab.id, urlPathname, urlSearch],
+  )
+  const scrollMemoryKey = useMemo(() => {
+    const fromUrl = scrollKeyFor(viewMode)
+    const fromTab = viewScrollKey(activeTab.id, viewMode, activeTab.pathname, activeTab.searchParams)
+    return fromUrl === fromTab ? fromUrl : null
+  }, [scrollKeyFor, viewMode, activeTab.id, activeTab.pathname, activeTab.searchParams])
+
   // GH230 — bascule Tableau ↔ Document : l'élément de référence est lu dans le DOM de la vue
   // courante (ligne sélectionnée du Tableau, premier élément portant un objet en haut de la vue).
   const viewAreaRef = useRef<HTMLDivElement>(null)
@@ -588,11 +605,13 @@ export function SystemView() {
     const scroller = viewScroller(scope)
     const objectIds = new Map(treeFlatten(root).filter(n => n.objectId).map(n => [n.id, n.objectId!]))
     const firstVisible = scroller ? firstVisibleNode(scroller, id => objectIds.has(id)) : null
+    // GH300 — la bascule s'ouvre sur l'élément de GH230, pas sur la position d'une visite antérieure.
+    if (mode !== viewMode) forgetViewScroll(scrollKeyFor(mode))
     switchView(mode, {
       selectedNodeId: selectedRowNode(scope),
       firstVisibleObjectId: firstVisible ? objectIds.get(firstVisible)! : null,
     })
-  }, [switchView, root])
+  }, [switchView, root, viewMode, scrollKeyFor])
 
   // GH228 — titre de l'onglet et de l'entrée d'historique (menu Précédent / Suivant) : l'élément
   // édité, sinon le composant / type affiché.
@@ -1329,6 +1348,7 @@ export function SystemView() {
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             anchorNodeId={anchorNodeId}
+            scrollMemoryKey={scrollMemoryKey}
             rowMaxLines={excelRowMaxLines >= ROW_MAX_LINES_ALL ? Infinity : excelRowMaxLines}
             collapsedFolders={collapsedFoldersExcel}
             onCollapsedFoldersChange={stableCollapsedFoldersExcelChange}
@@ -1369,6 +1389,7 @@ export function SystemView() {
             gotoNodeId={gotoNodeId}
             gotoSeq={gotoSeq}
             anchorNodeId={anchorNodeId}
+            scrollMemoryKey={scrollMemoryKey}
             collapsedFolders={collapsedFoldersWord}
             onCollapsedFoldersChange={stableCollapsedFoldersWordChange}
           />

@@ -56,6 +56,45 @@ export function stateForExit(code: number): JobState {
   return 'failed'
 }
 
+/**
+ * GH308 — interpréteur bash des scripts du kit. Sous Linux (production) : `bash` du PATH.
+ * Sous Windows (poste de dev), `bash` nu peut désigner le lanceur WSL (`WindowsApps\bash.exe`,
+ * `System32\bash.exe`), qui ne voit ni les chemins Windows du kit ni l'environnement du travail :
+ * on retient le premier bash.exe du PATH hors lanceurs WSL, sinon celui de Git for Windows
+ * (déduit de git.exe). `POLENTA_BASH` force un interpréteur.
+ */
+export function resolveBash(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  if (env.POLENTA_BASH) return env.POLENTA_BASH
+  if (platform !== 'win32') return 'bash'
+  const dirs = (env.PATH ?? env.Path ?? '').split(';').filter(Boolean)
+  const isWslLauncher = (dir: string) => /[\\/](windowsapps|system32)[\\/]?$/i.test(dir)
+  const exists = (p: string) => {
+    try {
+      return fs.statSync(p).isFile()
+    } catch {
+      return false
+    }
+  }
+  for (const dir of dirs) {
+    const candidate = path.win32.join(dir, 'bash.exe')
+    if (!isWslLauncher(dir) && exists(candidate)) return candidate
+  }
+  for (const dir of dirs) {
+    if (!exists(path.win32.join(dir, 'git.exe'))) continue
+    // <Git>\cmd\git.exe, <Git>\bin\git.exe ou <Git>\mingw64\bin\git.exe → <Git>\bin\bash.exe
+    for (const up of ['..', path.win32.join('..', '..')]) {
+      const candidate = path.win32.join(dir, up, 'bin', 'bash.exe')
+      if (exists(candidate)) return candidate
+    }
+  }
+  return 'bash'
+}
+
+let bashCache: string | undefined
+function bash(): string {
+  return (bashCache ??= resolveBash())
+}
+
 export function bootId(): string {
   try {
     return fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()
@@ -166,7 +205,7 @@ export class JobRunner {
     const out = fs.openSync(path.join(dir, 'out.raw'), 'w', 0o600)
     const err = fs.openSync(path.join(dir, 'err.raw'), 'w', 0o600)
     const child = spawn(
-      'bash',
+      bash(),
       ['-c', WRAPPER, this.scriptPath(args.script), ...args.argv, '--json', '--non-interactive'],
       {
         detached: true,
@@ -482,7 +521,7 @@ export function runInline(
   fs.mkdirSync(args.tmpDir, { recursive: true, mode: 0o700 })
   const resultFile = path.join(args.tmpDir, `inline-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`)
   return new Promise((resolve) => {
-    const child = spawn('bash', [runner.scriptPath(args.script), ...args.argv, '--json', '--non-interactive'], {
+    const child = spawn(bash(), [runner.scriptPath(args.script), ...args.argv, '--json', '--non-interactive'], {
       stdio: ['ignore', 'ignore', 'pipe'],
       env: runner.scriptEnv(args.actor, { POLENTA_RESULT_FILE: resultFile }),
       timeout: args.timeoutMs,

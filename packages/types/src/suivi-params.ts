@@ -1,9 +1,9 @@
 import type { GraphParamValue } from './graph'
 
 // GH93 — paramètres de requête choisis à l'affichage (specs/GH93.md, GH93-design.md §1.2). Logique
-// pure partagée par le main (enregistrement, exécution), le serveur MCP et le renderer (barre du
-// dashboard) : validation d'une déclaration, format et résolution des valeurs, sélecteurs d'un
-// dashboard, libellés d'affichage.
+// pure partagée par le main (enregistrement, exécution), le serveur MCP et le renderer (sélecteurs
+// des widgets, GH125 ; barre de la vue `/query`) : validation d'une déclaration, format et résolution
+// des valeurs, sélecteurs, libellés d'affichage.
 
 export type QueryParameterKind = 'campaign' | 'component' | 'objectType' | 'enum' | 'text' | 'period'
 
@@ -165,9 +165,9 @@ export function resolveRunParams(
   return { ok: true, params }
 }
 
-// ─── Sélecteurs d'un dashboard ──────────────────────────────────────────────
+// ─── Sélecteurs ─────────────────────────────────────────────────────────────
 
-/** Clé d'un sélecteur de la barre : deux requêtes déclarant le même couple le partagent. */
+/** Clé d'un sélecteur (`name:kind`) : clé des valeurs mémorisées d'un widget (GH125). */
 export function selectorKey(d: Pick<QueryParameterDef, 'name' | 'kind'>): string {
   return `${d.name}:${d.kind}`
 }
@@ -186,8 +186,11 @@ export interface DashboardSelector {
   widgetIds: string[]
 }
 
+/** GH125 — valeurs choisies d'un dashboard, par widget : `widgetId → name:kind → valeur`. */
+export type WidgetParamValues = Record<string, Record<string, GraphParamValue>>
+
 /**
- * Sélecteurs d'un dashboard, dans l'ordre de première apparition (widgets dans l'ordre fourni, puis
+ * Sélecteurs regroupés par `name:kind` sur plusieurs requêtes, dans l'ordre de première apparition (widgets dans l'ordre fourni, puis
  * ordre de déclaration). Libellé : celui de la première déclaration ; `enum` : union des valeurs.
  */
 export function dashboardSelectors(
@@ -211,6 +214,12 @@ export function dashboardSelectors(
     }
   }
   return [...out.values()]
+}
+
+/** GH125 — sélecteurs d'un widget : un par paramètre déclaré par sa requête, dans l'ordre de la
+ *  déclaration (valeurs `enum` de cette seule déclaration). */
+export function widgetSelectors(widgetId: string, decls: readonly QueryParameterDef[] | undefined): DashboardSelector[] {
+  return dashboardSelectors([{ id: widgetId, queryId: '' }], () => decls)
 }
 
 /**

@@ -3,7 +3,8 @@
 > Référence parent : [SPEC.md](../SPEC.md) §2.7
 > Dépend de : [SPEC-TECH-stack.md](SPEC-TECH-stack.md) §1.1/§2, [SPEC-TRACEABILITY.md](SPEC-TRACEABILITY.md), [SPEC-REQ-requirements.md](SPEC-REQ-requirements.md)
 > Introduit par T77 (sprints 1–3) ; réécrit par GH74 (graphe de données JSON, scripts JS isolés, rendu Vega-Lite) ;
-> paramètres choisis à l'affichage : GH93 (§5.1) ; colonnes calculées de la Vue Système : GH70 (§5.2)
+> paramètres choisis à l'affichage : GH93 (§5.1) ; colonnes calculées de la Vue Système : GH70 (§5.2) ;
+> changement de portée depuis l'app, partage d'un dashboard avec ses requêtes : GH67 (§7.0b)
 
 ---
 
@@ -14,7 +15,8 @@ Dashboards personnalisables construits sur des **scripts de données** : un scri
 (transformation JS facultative) et les rend avec une **spec Vega-Lite**. Un client non technique
 n'écrit pas de code : des **modèles** (§5) génèrent script, transformation et spec à partir d'un
 formulaire. Une requête peut déclarer des **paramètres choisis à l'affichage** (§5.1) : le dashboard
-affiche une barre de sélecteurs (ex. une campagne) et le script lit les valeurs dans `polenta.params`.
+affiche des sélecteurs dans l'en-tête de chaque widget concerné (ex. une campagne ; valeur propre au
+widget, GH125) et le script lit les valeurs dans `polenta.params`.
 
 Trois entités, chacune privée ou partagée : **Requête** (`SavedQuery` — un script de données),
 **Widget** (dans un Dashboard), **Dashboard**.
@@ -126,7 +128,8 @@ Canaux : `suivi:run` (script fourni, requête enregistrée, ou widget = requête
 `drill`, `params` (valeurs), `parameters` (déclaration d'un script fourni) facultatifs),
 `suivi:describe-ids`, `suivi:resolve-target`, `suivi:templates`, `suivi:render-template` (requête :
 script + déclaration), `suivi:object-types`, `suivi:updates-list` / `-apply` / `-ignore`,
-`dashboards:param-values-get` / `-set` (§5.1).
+`dashboards:param-values-get` (valeurs du dashboard, par widget) / `-set` (valeurs d'un widget)
+(§5.1, GH125).
 
 ---
 
@@ -203,18 +206,28 @@ Logique pure : `packages/types/src/suivi-params.ts` (main, MCP, renderer).
   Sélection simple.
 - **Résolution** (main, `resolveRunParams`) : clé non déclarée → erreur `params` ; valeur fournie
   (même `null`) → normalisée ; absente → `default`, sinon `null` ; `required` sans valeur → erreur.
-- **Barre du dashboard** (`ParamBar`, `useDashboardParams`) : un sélecteur par couple (`name`,
-  `kind`), partagé par les requêtes qui le déclarent, dans l'ordre des widgets puis des déclarations
-  (libellé de la première ; `enum` : union des valeurs, une valeur non déclarée par une requête ne lui
-  est pas transmise). Pas de barre sans paramètre. Changer une valeur ne relance que les widgets
-  concernés (valeurs dans la clé du résultat). Paramètre obligatoire sans valeur → widget « Choisir
-  <libellé> », non exécuté. **Réinitialiser** → défauts des déclarations.
-- **Valeur choisie** : par utilisateur et par dashboard dans le `.pref` (`suiviParamValues[dashboard]
-  ["name:kind"]`, jamais commité, aussi sur une branche ou un dashboard en lecture seule) ; suit le
-  dashboard au changement de portée, retirée à sa suppression. Pas de défaut propre au dashboard.
-  Valeur devenue introuvable (campagne supprimée, composant / type retiré, valeur d'énumération
-  retirée) → « Valeur introuvable : … », défaut appliqué, valeur conservée dans le `.pref`.
-- **Vue `/query`** : barre des paramètres de la requête (défauts à l'ouverture, non mémorisée) ;
+- **Sélecteurs du widget** (GH125 ; `WidgetParamSelectors`, `useDashboardParams`,
+  `widgetSelectors`) : plus de barre au niveau du dashboard. Chaque widget dont la requête déclare des
+  paramètres porte dans l'en-tête de sa carte un sélecteur par déclaration (« Libellé : valeur »,
+  ordre et valeurs `enum` de sa seule requête), aucun regroupement entre widgets : deux widgets de la
+  même requête ont chacun leur valeur. Pas de sélecteur sans paramètre. Changer une valeur ne relance
+  que ce widget (valeurs dans la clé du résultat). Paramètre obligatoire sans valeur → widget
+  « Choisir <libellé> », non exécuté, sélecteur dans l'en-tête. **Réinitialiser** (icône de
+  l'en-tête, visible seulement si une valeur diffère du défaut ou est introuvable) → défauts des
+  déclarations, pour ce widget. Pointeur sur les sélecteurs → la carte n'est pas déplaçable. Pas
+  d'« appliquer à tous » : recentrer tout le dashboard = changer chaque widget.
+- **Valeur choisie** : par utilisateur, par dashboard **et par widget** dans le `.pref`
+  (`suiviWidgetParamValues[dashboard][widget]["name:kind"]`, jamais commité, aussi sur une branche ou
+  un dashboard en lecture seule ; jamais indexée par requête). Suit le dashboard au changement de
+  portée (ids de widgets conservés) et le widget au remappage de sa requête (promotion) ; retirée à
+  la suppression du widget (app et MCP) ou du dashboard. Une valeur d'un `name:kind` que la requête
+  ne déclare plus est ignorée, conservée. Pas de défaut propre au dashboard ni au widget, pas de
+  valeur figée dans la configuration du widget. Valeur devenue introuvable (campagne supprimée,
+  composant / type retiré, valeur d'énumération retirée) → « Valeur introuvable : … » sur le widget,
+  défaut appliqué, valeur conservée dans le `.pref`. Les choix de la barre GH93
+  (`suiviParamValues`) sont abandonnés : jamais lus, clé retirée à la première écriture.
+- **Vue `/query`** : barre des paramètres de la requête (`ParamBar`, défauts à l'ouverture, non
+  mémorisée ; inchangée par GH125) ;
   exécution et export Excel avec ces valeurs ; déclaration éditable (`ParameterDeclEditor`) en mode
   Script, affichée en lecture seule pour un modèle ; enregistrement impossible tant qu'elle est
   invalide.
@@ -309,16 +322,18 @@ column:
   `suivi:describe-ids`) ; sinon relance script + transformation avec `polenta.drill` = colonnes
   scalaires de la ligne → lignes avec `_ids` ; aucun → « Détail non disponible : le script ne fournit
   pas d'identifiants ». KPI : union des `_ids`. Table : ligne à un seul ID → ouverture directe. La
-  relance utilise les valeurs de paramètres du widget cliqué.
+  relance utilise les valeurs de paramètres propres au widget cliqué (GH125). Aperçu de la
+  configuration d'un widget : valeurs de ce widget (nouveau widget : défauts).
 - **Ouverture** (`suivi:resolve-target`) : exigence, test, campagne ; entrée de campagne →
   résultat d'exécution si exécutée, sinon page de campagne filtrée sur son **statut brut**
   (`status`). ID inconnu → « Objet introuvable ». Rien de cliquable dans l'aperçu ni en impression.
 - **Exports** : Excel du résultat d'une requête (colonnes du script, `_ids` joints par « , »),
   docx du dashboard (une table des lignes de chaque widget, direct et par gabarit), PDF (impression,
-  graphes SVG, prêt après rendu Vega). Dashboard paramétré : valeurs courantes de l'utilisateur,
-  rappelées en tête (docx : paragraphes « Libellé : valeur », gabarit : `{#parameters}{label} :
-  {value}{/parameters}` ; impression : barre en texte) ; widget en attente d'un paramètre
-  obligatoire : « Aucune donnée. ».
+  graphes SVG, prêt après rendu Vega). Widget paramétré : valeurs courantes de l'utilisateur pour
+  ce widget, rappelées sous son titre (GH125 ; docx : paragraphes « Libellé : valeur » ; gabarit :
+  `{{#parameters}}{{label}} : {{value}}{{/parameters}}` dans `{{#widgets}}`, `parameters` de
+  premier niveau toujours vide, déprécié ; impression : lignes texte) ; widget en attente d'un
+  paramètre obligatoire : « Aucune donnée. ».
 
 ---
 
@@ -331,7 +346,7 @@ column:
 | Requête | `queries/QUERY-NNNN/` : `query.yaml` (`id`, `title`, `formatVersion: 1`, `template?`, `parameters?` (GH93), `column?` (GH70, §5.2 ; `splitColumn` / `splitLabelColumn` GH126), `createdBy`, `createdAt`) + `script.js` | `savedQueries[]` (script inclus, jamais de `column`), ID `local-<ts>-<rand>` |
 | Dashboard | `dashboards/DASHBOARD-NNNN/` : `dashboard.yaml` (widgets : `id`, `title`, `queryId`, `size`, `template?`) + `<widgetId>.js` (transformation) + `<widgetId>.vl.json` (spec) | `dashboards[]` (code des widgets inclus) |
 | Historique de requêtes | — | `queryHistory` (texte du script) |
-| Valeurs de la barre de paramètres (GH93) | — | `suiviParamValues` (dashboard → `name:kind` → valeur) |
+| Valeurs des paramètres des widgets (GH125) | — | `suiviWidgetParamValues` (dashboard → widget → `name:kind` → valeur) ; `suiviParamValues` (GH93) abandonnée, retirée à la première écriture |
 
 IDs par `nextCounterId` (fichiers **et** dossiers `<PREFIX>-NNNN/`, pierres tombales GH20).
 `state` (`customized`, `templateUpdate`, `readOnly`, `legacyFormat`) calculé à la lecture, jamais
@@ -348,11 +363,33 @@ jamais réécrit. Écriture d'un objet en lecture seule → refus `SUIVI_READ_ON
 
 - Un widget ne peut être partagé que si sa requête l'est — UI (filtre du sélecteur) et service
   (`DashboardsService.setScope` / `addWidget` / `updateWidget`).
-- Rétrogradation (partagé → privé) d'une requête bloquée si des widgets partagés en dépendent ;
-  suppression d'une requête utilisée par un widget bloquée (dépendants affichés).
+- Rétrogradation (partagé → privé) d'une requête bloquée si un widget en dépend (dashboard partagé
+  ou dashboard privé de l'utilisateur, `assertNoDependents`) ; sa colonne calculée (GH70) est
+  retirée ; suppression d'une requête utilisée par un widget bloquée (dépendants affichés).
 - Promotion (privé → partagé) libre ; l'id change, les widgets privés de l'utilisateur sont
   remappés ; la copie partagée est écrite avant le retrait de la privée.
+- Portée autre que `private` / `shared` refusée (`Portée invalide`, GH67).
+- Données du `.pref` indexées par id de dashboard (ordre du panneau, `suiviWidgetParamValues` GH125) : suivent le
+  nouvel id au changement de portée, en un point unique (`moveDashboardKeys`, GH67).
 - Limite connue : les dashboards privés d'un autre utilisateur ne sont pas visibles.
+
+**Changement de portée depuis l'app (GH67).** Toujours après une confirmation qui montre un aperçu
+calculé dans le main (`SuiviScopeService`, canaux `queries:scope-preview`, `dashboards:share-preview`) :
+- **Requête seule** : sélecteur *Privée / Partagée* de l'en-tête de `/query` (requête enregistrée,
+  non en lecture seule) ou bouton de portée au survol de sa ligne dans le panneau (§8). Aperçu :
+  effet, autres dashboards privés remappés, titre déjà pris par une requête partagée (non bloquant,
+  casse et espaces de bord ignorés), colonne retirée ; bloquants : lecture seule, paramètres
+  invalides, widgets dépendants (rétrogradation). Après : l'URL suit le nouvel id, l'éditeur de
+  `/query` est conservé (modifications non enregistrées comprises ; seule la version enregistrée
+  change de portée).
+- **Dashboard privé avec requêtes privées** (`dashboards:share-with-queries`) : *Partagé* ouvre une
+  confirmation listant ses requêtes privées (widgets de ce dashboard, autres dashboards privés
+  remappés, titre déjà pris, y compris entre requêtes du lot) ; sans requête privée, partage
+  immédiat. Bloquants vérifiés avant toute écriture (lecture seule, paramètres invalides, requête
+  introuvable → `SCOPE_BLOCKED`). Écriture : chaque requête promue, puis le dashboard. Échec après au
+  moins une promotion → `SCOPE_PARTIAL` (« k requête(s) sur N partagée(s) »), pas d'annulation :
+  relancer reprend sur les requêtes restées privées. Repasser le dashboard en privé ne rétrograde pas
+  ses requêtes.
 
 ### 7.1 Seeds
 
@@ -375,7 +412,7 @@ partagées) :
   pas journalier : `campaignsTimeline({ withStep })`, étape de préparation d'une entrée non exécutée
   = statut du test vivant à la fin du jour d'après son historique, à défaut son étape actuelle ;
   GH112). Libellés fr / en. Les six requêtes ont la campagne « choisie à l'affichage » (GH93) :
-  un sélecteur **Campagne** commun, « Toutes » par défaut (filtres du seed). Seeds créés avant GH93 :
+  un sélecteur **Campagne** dans chaque widget (GH125), « Toutes » par défaut (filtres du seed). Seeds créés avant GH93 :
   non repris.
 - **Seeds d'avant GH74** : requêtes reconnues à leur SQL **exact** d'origine (GH65, GH71) réécrites
   sous le même id, widgets restés au mapping d'origine réécrits ; objet modifié → laissé en
@@ -407,7 +444,8 @@ Sections « Dashboards » et « Requêtes » réorganisables par glisser-dépose
 empilées, repliables (`localStorage['polenta:suiviCollapsed']`), séparateur déplaçable
 (`localStorage['polenta:suiviSplit']`), section dépliée automatiquement quand elle contient l'élément
 actif. Badge « SQL » / « Lecture seule » sur un objet en lecture seule. Suppression d'une requête
-depuis le panneau uniquement.
+depuis le panneau uniquement. Section Requêtes : bouton de portée au survol (« Passer en partagée /
+privée », absent en lecture seule), qui ouvre la confirmation de §7.0b (GH67).
 
 ### 8.1 Bandeau des mises à jour
 
@@ -452,8 +490,10 @@ bibliothèque). Budgets (contexte préparé) : avancement des campagnes < 200 ms
 
 ## 10. Hors scope
 
-- Via MCP : changement de scope privé ↔ partagé, ordre du panneau latéral, historique, seeds,
-  bandeau — réservés à l'app.
+- Via MCP : changement de scope privé ↔ partagé (y compris le partage d'un dashboard avec ses
+  requêtes, GH67), ordre du panneau latéral, historique, seeds, bandeau — réservés à l'app.
+- Rétrogradation groupée (dashboard partagé → privé avec ses requêtes), dédoublonnage de requêtes
+  identiques au partage, bouton de portée d'un dashboard dans le panneau (GH67).
 - Redimensionnement libre des widgets ; partage d'un widget entre dashboards.
 - Alertes / notifications sur seuils, requêtes planifiées.
 - Colonnes calculées (GH70) : tri des colonnes de la Vue Excel, vue Édition et autres vues (Recherche,
@@ -461,5 +501,8 @@ bibliothèque). Budgets (contexte préparé) : avancement des campagnes < 200 ms
   choisis à l'affichage pour une colonne (valeurs toujours `null`), seed automatique de « Dernier résultat ».
 - Politique CSP de l'application (#88) ; le rendu Vega est déjà compatible (pas d'`eval`).
 - Paramètres (GH93) : sélection multiple, valeurs dépendantes entre sélecteurs, défaut propre au
-  dashboard, paramètres dans l'URL, paramètres déclarés par un widget ; intégration d'un widget dans
-  la page d'une campagne ; comparaison de campagnes sur un même graphique.
+  dashboard, paramètres dans l'URL ; intégration d'un widget dans la page d'une campagne ;
+  comparaison de campagnes sur un même graphique.
+- Paramètres par widget (GH125) : « appliquer à tous les widgets » / sélecteur commun au dashboard,
+  défaut configurable, sélecteur masqué ou valeur figée par widget, recopie des choix GH93, sélecteurs
+  dans la modale de configuration, lecture / écriture des valeurs choisies via le MCP.

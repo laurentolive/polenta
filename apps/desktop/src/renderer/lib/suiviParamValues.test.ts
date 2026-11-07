@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DashboardSelector, QueryParameterDef } from '@polenta/types'
-import { effectiveValues, isKnownValue, missingRequired, optionTitle, storedChoices } from './suiviParamValues'
+import { differsFromDefault, effectiveValues, isKnownValue, missingRequired, optionTitle, storedChoices } from './suiviParamValues'
 
 // GH93 — valeurs effectives de la barre de paramètres (specs/GH93-tests.md 6, 18, 19, 30).
 
@@ -46,11 +46,26 @@ describe('GH93 — valeurs effectives de la barre', () => {
     expect(missingRequired(undefined, {}, 'fr')).toEqual([])
   })
 
-  it('30 — choix mémorisés : sélecteurs disparus nettoyés, valeur introuvable conservée', () => {
-    const selectors = [sel({})]
-    expect(storedChoices(selectors, { 'old:text': 'x', 'campaign:campaign': 'CAMP-0009' }, 'campaign:campaign', 'CAMP-0001')).toEqual({ 'campaign:campaign': 'CAMP-0001' })
-    expect(storedChoices([...selectors, sel({ key: 'p:period', name: 'p', kind: 'period' })], { 'campaign:campaign': 'CAMP-0009' }, 'p:period', null))
-      .toEqual({ 'campaign:campaign': 'CAMP-0009', 'p:period': null })
+  it('GH125-18 — choix mémorisés d\'un widget : valeurs non déclarées gardées, valeur introuvable conservée', () => {
+    expect(storedChoices({ 'old:text': 'x', 'campaign:campaign': 'CAMP-0009' }, 'campaign:campaign', 'CAMP-0001')).toEqual({ 'old:text': 'x', 'campaign:campaign': 'CAMP-0001' })
+    expect(storedChoices({ 'campaign:campaign': 'CAMP-0009' }, 'p:period', null)).toEqual({ 'campaign:campaign': 'CAMP-0009', 'p:period': null })
+  })
+
+  it('GH125-19 — Réinitialiser proposé hors défaut ou sur valeur introuvable', () => {
+    const camp = [sel({})]
+    expect(differsFromDefault(camp, effectiveValues(camp, {}, OPTIONS), OPTIONS)).toBe(false)
+    expect(differsFromDefault(camp, effectiveValues(camp, { 'campaign:campaign': null }, OPTIONS), OPTIONS)).toBe(false)
+    expect(differsFromDefault(camp, effectiveValues(camp, { 'campaign:campaign': 'CAMP-0001' }, OPTIONS), OPTIONS)).toBe(true)
+    // Introuvable : défaut appliqué, mais le bouton efface l'avertissement.
+    expect(differsFromDefault(camp, effectiveValues(camp, { 'campaign:campaign': 'CAMP-0009' }, OPTIONS), OPTIONS)).toBe(true)
+    // Défaut non nul : « Toutes » choisi diffère du défaut.
+    const withDefault = [sel({ default: 'CAMP-0001' })]
+    expect(differsFromDefault(withDefault, effectiveValues(withDefault, {}, OPTIONS), OPTIONS)).toBe(false)
+    expect(differsFromDefault(withDefault, effectiveValues(withDefault, { 'campaign:campaign': null }, OPTIONS), OPTIONS)).toBe(true)
+    // Période : comparée par bornes.
+    const period = [sel({ key: 'p:period', name: 'p', kind: 'period', default: { from: '2026-01-01', to: null } })]
+    expect(differsFromDefault(period, effectiveValues(period, { 'p:period': { from: '2026-01-01', to: null } }, OPTIONS), OPTIONS)).toBe(false)
+    expect(differsFromDefault(period, effectiveValues(period, { 'p:period': { from: '2026-01-02', to: null } }, OPTIONS), OPTIONS)).toBe(true)
   })
 
   it('libellé d\'une valeur', () => {

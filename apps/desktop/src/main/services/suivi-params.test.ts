@@ -8,7 +8,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Dashboard, GraphParamValue, QueryParameterDef, ScriptRunResult } from '@polenta/types'
 import { buildDashboardData } from './export/template/template-data-campaign'
 import {
-  buildHost, dashboardSelectors, findQueryTemplate, normalizeParamValue, paramsForQuery, paramValueText, queryCode,
+  buildHost, dashboardSelectors, widgetSelectors, findQueryTemplate, normalizeParamValue, paramsForQuery, paramValueText, queryCode,
   queryCodeForHash, resolveRunParams, validateParameterDecls,
 } from '@polenta/types'
 import { GitService } from './git.service'
@@ -110,6 +110,20 @@ describe('GH93 — déclaration et valeurs', () => {
     expect(paramsForQuery(decls.Q1, { 's:enum': 'B' })).toEqual({})
     expect(paramsForQuery(decls.Q2, { 's:enum': 'B' })).toEqual({ s: 'B' })
     expect(paramsForQuery(decls.Q1, { 's:enum': null })).toEqual({ s: null })
+  })
+
+  it('GH125-2 — sélecteurs d\'un widget : un par déclaration, ordre et valeurs de sa seule requête', () => {
+    const decls: QueryParameterDef[] = [
+      { name: 's', kind: 'enum', label: 'S', values: [{ value: 'A' }], default: 'A' },
+      { ...CAMPAIGN, required: true },
+    ]
+    const sel = widgetSelectors('w1', decls)
+    expect(sel.map((s) => [s.key, s.widgetIds, s.required, s.default])).toEqual([
+      ['s:enum', ['w1'], false, 'A'],
+      ['campaign:campaign', ['w1'], true, null],
+    ])
+    expect(sel[0].values!.map((v) => v.value)).toEqual(['A'])
+    expect(widgetSelectors('w1', undefined)).toEqual([])
   })
 
   it('14 — valeur lisible (impression, docx)', () => {
@@ -345,34 +359,100 @@ describe('GH93 — exécution (SuiviService.run)', () => {
   })
 })
 
-describe('GH93 — valeurs choisies (.pref)', () => {
-  it('4 / 5 / 6 — par utilisateur et par dashboard ; Réinitialiser ; jamais dans le dashboard', async () => {
+describe('GH125 — valeurs choisies par widget (.pref)', () => {
+  const W = { transform: 'export default (r) => r', spec: '{"data":{"name":"rows"},"mark":"bar"}' }
+
+  it('12 / 13 / 21 — par utilisateur, par dashboard et par widget ; Réinitialiser ; jamais dans le dashboard', async () => {
     const d = await dashboards.create(repo, U, { title: 'D', scope: 'shared', createdBy: U })
     const before = read(`dashboards/${d.id}/dashboard.yaml`)
-    await dashboards.setParamValues(repo, U, d.id, { 'campaign:campaign': 'CAMP-0002', 'p:period': { from: '2026-09-01', to: null }, 'x:inconnu': 'y', 'bad:period': 'z' })
-    await dashboards.setParamValues(repo, 'bob', d.id, { 'campaign:campaign': null })
-    expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({ 'campaign:campaign': 'CAMP-0002', 'p:period': { from: '2026-09-01', to: null } })
-    expect(await dashboards.getParamValues(repo, 'bob', d.id)).toEqual({ 'campaign:campaign': null })
+    await dashboards.setParamValues(repo, U, d.id, 'w1', { 'campaign:campaign': 'CAMP-0002', 'p:period': { from: '2026-09-01', to: null }, 'x:inconnu': 'y', 'bad:period': 'z' })
+    await dashboards.setParamValues(repo, U, d.id, 'w2', { 'campaign:campaign': null })
+    await dashboards.setParamValues(repo, 'bob', d.id, 'w1', { 'campaign:campaign': 'CAMP-0001' })
+    expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({
+      w1: { 'campaign:campaign': 'CAMP-0002', 'p:period': { from: '2026-09-01', to: null } },
+      w2: { 'campaign:campaign': null },
+    })
+    expect(await dashboards.getParamValues(repo, 'bob', d.id)).toEqual({ w1: { 'campaign:campaign': 'CAMP-0001' } })
     expect(await dashboards.getParamValues(repo, U, 'DASHBOARD-0099')).toEqual({})
     expect(read(`dashboards/${d.id}/dashboard.yaml`)).toBe(before)
-    await dashboards.setParamValues(repo, U, d.id, null)
+    expect(JSON.parse(read(`.${U}.pref`)).suiviWidgetParamValues[d.id].w2).toEqual({ 'campaign:campaign': null })
+    // Réinitialiser un widget : son entrée seule ; le dernier → plus de dashboard, plus de clé.
+    await dashboards.setParamValues(repo, U, d.id, 'w1', null)
+    expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({ w2: { 'campaign:campaign': null } })
+    await dashboards.setParamValues(repo, U, d.id, 'w2', {})
     expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({})
-    expect(JSON.parse(read(`.${U}.pref`))).not.toHaveProperty('suiviParamValues')
+    expect(JSON.parse(read(`.${U}.pref`))).not.toHaveProperty('suiviWidgetParamValues')
   })
 
-  it('29 / 32 — changement de portée : valeurs suivies ; suppression : retirées ; lecture seule : autorisé', async () => {
-    const d = await dashboards.create(repo, U, { title: 'D', scope: 'private', createdBy: U })
-    await dashboards.setParamValues(repo, U, d.id, { 'campaign:campaign': 'CAMP-0001' })
-    const shared = await dashboards.setScope(repo, U, d.id, 'shared')
+  it('14 — ancienne clé GH93 jamais lue, retirée à la première écriture', async () => {
+    const d = await dashboards.create(repo, U, { title: 'D', scope: 'shared', createdBy: U })
+    const prefPath = path.join(repo, `.${U}.pref`)
+    const pref = fs.existsSync(prefPath) ? JSON.parse(fs.readFileSync(prefPath, 'utf8')) : {}
+    fs.writeFileSync(prefPath, JSON.stringify({ ...pref, suiviParamValues: { [d.id]: { 'campaign:campaign': 'CAMP-0001' } } }))
     expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({})
-    expect(await dashboards.getParamValues(repo, U, shared.id)).toEqual({ 'campaign:campaign': 'CAMP-0001' })
-    await dashboards.delete(repo, U, shared.id)
-    expect(await dashboards.getParamValues(repo, U, shared.id)).toEqual({})
-    // Dashboard d'un format plus récent : valeurs privées quand même mémorisables.
+    expect(JSON.parse(read(`.${U}.pref`))).toHaveProperty('suiviParamValues')
+    await dashboards.setParamValues(repo, U, d.id, 'w1', { 'campaign:campaign': 'CAMP-0002' })
+    const after = JSON.parse(read(`.${U}.pref`))
+    expect(after).not.toHaveProperty('suiviParamValues')
+    expect(after.suiviWidgetParamValues).toEqual({ [d.id]: { w1: { 'campaign:campaign': 'CAMP-0002' } } })
+  })
+
+  it('15 / 16 — changement de portée : valeurs de chaque widget suivies ; suppression de widget / dashboard : retirées', async () => {
+    const q = await queries.create(repo, U, { title: 'Q', scope: 'shared', createdBy: U, script: SCRIPT, parameters: [CAMPAIGN] })
+    const d0 = await dashboards.create(repo, U, { title: 'D', scope: 'private', createdBy: U })
+    await dashboards.addWidget(repo, U, d0.id, { title: 'A', queryId: q.id, size: 'md', ...W })
+    const d = await dashboards.addWidget(repo, U, d0.id, { title: 'B', queryId: q.id, size: 'md', ...W })
+    const [a, b] = d.widgets.map((w) => w.id)
+    await dashboards.setParamValues(repo, U, d.id, a, { 'campaign:campaign': 'CAMP-0001' })
+    await dashboards.setParamValues(repo, U, d.id, b, { 'campaign:campaign': null })
+    const shared = await dashboards.setScope(repo, U, d.id, 'shared')
+    expect(shared.widgets.map((w) => w.id)).toEqual([a, b])
+    expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({})
+    expect(await dashboards.getParamValues(repo, U, shared.id)).toEqual({ [a]: { 'campaign:campaign': 'CAMP-0001' }, [b]: { 'campaign:campaign': null } })
+    const back = await dashboards.setScope(repo, U, shared.id, 'private')
+    expect(await dashboards.getParamValues(repo, U, back.id)).toEqual({ [a]: { 'campaign:campaign': 'CAMP-0001' }, [b]: { 'campaign:campaign': null } })
+    await dashboards.deleteWidget(repo, U, back.id, a)
+    expect(await dashboards.getParamValues(repo, U, back.id)).toEqual({ [b]: { 'campaign:campaign': null } })
+    await dashboards.delete(repo, U, back.id)
+    expect(await dashboards.getParamValues(repo, U, back.id)).toEqual({})
+    expect(JSON.parse(read(`.${U}.pref`))).not.toHaveProperty('suiviWidgetParamValues')
+  })
+
+  it('17 — promotion d\'une requête (remappage des widgets) : valeurs du widget conservées', async () => {
+    const q = await queries.create(repo, U, { title: 'Q', scope: 'private', createdBy: U, script: SCRIPT, parameters: [CAMPAIGN] })
+    const d0 = await dashboards.create(repo, U, { title: 'D', scope: 'private', createdBy: U })
+    const d = await dashboards.addWidget(repo, U, d0.id, { title: 'A', queryId: q.id, size: 'md', ...W })
+    const w = d.widgets[0].id
+    await dashboards.setParamValues(repo, U, d.id, w, { 'campaign:campaign': 'CAMP-0003' })
+    await dashboards.remapWidgetQueryId(repo, U, q.id, 'QUERY-0042')
+    expect((await dashboards.get(repo, U, d.id))!.widgets[0].queryId).toBe('QUERY-0042')
+    expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({ [w]: { 'campaign:campaign': 'CAMP-0003' } })
+  })
+
+  it('21 — dashboard en lecture seule (format plus récent) : valeurs privées quand même mémorisables', async () => {
     fs.mkdirSync(path.join(repo, 'dashboards/DASHBOARD-0007'), { recursive: true })
     fs.writeFileSync(path.join(repo, 'dashboards/DASHBOARD-0007/dashboard.yaml'), yaml.dump({ id: 'DASHBOARD-0007', title: 'N', formatVersion: 99, widgetOrder: [], widgets: [] }))
-    await dashboards.setParamValues(repo, U, 'DASHBOARD-0007', { 'campaign:campaign': 'CAMP-0001' })
-    expect(await dashboards.getParamValues(repo, U, 'DASHBOARD-0007')).toEqual({ 'campaign:campaign': 'CAMP-0001' })
+    await dashboards.setParamValues(repo, U, 'DASHBOARD-0007', 'w1', { 'campaign:campaign': 'CAMP-0001' })
+    expect(await dashboards.getParamValues(repo, U, 'DASHBOARD-0007')).toEqual({ w1: { 'campaign:campaign': 'CAMP-0001' } })
+  })
+
+  it('valeurs mal formées dans le .pref (fichier modifié à la main) : ignorées', async () => {
+    const d = await dashboards.create(repo, U, { title: 'D', scope: 'shared', createdBy: U })
+    const prefPath = path.join(repo, `.${U}.pref`)
+    const pref = fs.existsSync(prefPath) ? JSON.parse(fs.readFileSync(prefPath, 'utf8')) : {}
+    fs.writeFileSync(prefPath, JSON.stringify({ ...pref, suiviWidgetParamValues: { [d.id]: { w1: 'x', w2: ['y'], w3: { 'campaign:campaign': 'CAMP-0001' } } } }))
+    expect(await dashboards.getParamValues(repo, U, d.id)).toEqual({ w3: { 'campaign:campaign': 'CAMP-0001' } })
+  })
+
+  it('ids reçus de l\'IPC : vides ou __proto__ refusés ; réinitialiser un widget sans valeur n\'écrit rien', async () => {
+    const d = await dashboards.create(repo, U, { title: 'D', scope: 'shared', createdBy: U })
+    await expect(dashboards.setParamValues(repo, U, d.id, '__proto__', { 'campaign:campaign': 'CAMP-0001' })).rejects.toThrow()
+    await expect(dashboards.setParamValues(repo, U, '__proto__', 'w1', { 'campaign:campaign': 'CAMP-0001' })).rejects.toThrow()
+    await expect(dashboards.setParamValues(repo, U, d.id, '', null)).rejects.toThrow()
+    const prefPath = path.join(repo, `.${U}.pref`)
+    const before = fs.existsSync(prefPath) ? fs.readFileSync(prefPath, 'utf8') : null
+    await dashboards.setParamValues(repo, U, d.id, 'constructor', null)
+    expect(fs.existsSync(prefPath) ? fs.readFileSync(prefPath, 'utf8') : null).toBe(before)
   })
 })
 
@@ -454,11 +534,13 @@ describe('GH93 — tools MCP des requêtes', () => {
   })
 })
 
-describe('GH93 — export docx par gabarit', () => {
-  it('14 — valeurs des paramètres exposées au gabarit', () => {
-    const dashboard = { id: 'D', title: 'D', scope: 'shared', formatVersion: 1, widgetOrder: [], widgets: [], createdBy: U, createdAt: '', state: { customized: false } } as unknown as Dashboard
-    const parameters = [{ label: 'Campagne', value: 'CAMP-0002 — Lot 2' }]
-    expect(buildDashboardData({ dashboard, widgetResults: {}, parameters }, () => '')).toMatchObject({ parameters })
-    expect(buildDashboardData({ dashboard, widgetResults: {} }, () => '')).toMatchObject({ parameters: [] })
+describe('GH125 — export docx par gabarit', () => {
+  it('10 — valeurs de chaque widget exposées au gabarit ; `parameters` de premier niveau toujours vide (D3)', () => {
+    const widget = (id: string) => ({ id, title: id, queryId: 'Q', size: 'md', spec: '{}', state: { customized: false } })
+    const dashboard = { id: 'D', title: 'D', scope: 'shared', formatVersion: 1, widgetOrder: ['w1', 'w2'], widgets: [widget('w1'), widget('w2')], createdBy: U, createdAt: '', state: { customized: false } } as unknown as Dashboard
+    const w1 = [{ label: 'Campagne', value: 'CAMP-0002 — Lot 2' }]
+    const data = buildDashboardData({ dashboard, widgetResults: {}, widgetParameters: { w1 } }, () => '') as { parameters: unknown[]; widgets: { id: string; parameters: unknown[] }[] }
+    expect(data.parameters).toEqual([])
+    expect(data.widgets.map((w) => [w.id, w.parameters])).toEqual([['w1', w1], ['w2', []]])
   })
 })

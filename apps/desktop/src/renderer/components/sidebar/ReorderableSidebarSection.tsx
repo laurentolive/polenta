@@ -35,6 +35,9 @@ interface Props<T extends SidebarItem> {
   onReorder: (order: string[]) => void
   onSelect: (item: T) => void
   onDelete: (item: T) => void
+  /** GH67 — bouton de changement de portée au survol (absent : pas de bouton ; jamais pour un
+   *  objet en lecture seule). */
+  onToggleScope?: (item: T) => void
   onAdd: () => void
   emptyMessage: string
   addTitle: string
@@ -80,6 +83,7 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
   onReorder,
   onSelect,
   onDelete,
+  onToggleScope,
   onAdd,
   emptyMessage,
   addTitle,
@@ -248,6 +252,23 @@ export function ReorderableSidebarSection<T extends SidebarItem>({
                       >
                         {t(`sidebar.reorderable.readOnlyBadge.${item.state.readOnly}`)}
                       </span>
+                    )}
+                    {onToggleScope && !item.state?.readOnly && (
+                      <button
+                        type="button"
+                        data-testid="scope-toggle"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // Focus rendu : sinon Entrée dans la confirmation réactiverait ce bouton.
+                          e.currentTarget.blur()
+                          onToggleScope(item)
+                        }}
+                        title={t(item.scope === 'shared' ? 'suiviScope.toPrivate' : 'suiviScope.toShared')}
+                        aria-label={t(item.scope === 'shared' ? 'suiviScope.toPrivate' : 'suiviScope.toShared')}
+                        className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-ink-3 hover:text-ink transition-opacity shrink-0"
+                      >
+                        {item.scope === 'shared' ? <Lock size={12} /> : <Users2 size={12} />}
+                      </button>
                     )}
                     <button
                       type="button"

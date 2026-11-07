@@ -14,12 +14,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 import { AlertTriangle, Loader2, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react'
-import type { Dashboard, GraphParamValue, SavedQuery, Widget, WidgetSize } from '@polenta/types'
+import type { Dashboard, SavedQuery, Widget, WidgetSize } from '@polenta/types'
 import { useWidgetRun } from '../../hooks/useScriptRun'
 import { DrillDownModal } from './DrillDownModal'
 import { useModalHotkeys } from '../../hooks/useModalHotkeys'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 import { orderItems } from '../sidebar/ReorderableSidebarSection'
+import { WidgetParamSelectors } from './ParamBar'
+import type { WidgetParams } from '../../hooks/useDashboardParams'
+import type { ParamOptions } from '../../lib/suiviParamValues'
 
 interface Props {
   dashboard: Dashboard
@@ -35,10 +38,10 @@ interface Props {
   printMode?: boolean
   /** Impression : rendu d'un widget terminé (PDF généré quand tous le sont). */
   onWidgetRendered?: (widgetId: string) => void
-  /** GH93 — valeurs des paramètres de la requête d'un widget (barre du dashboard). */
-  paramsFor?: (widget: Widget) => Record<string, GraphParamValue>
-  /** GH93 — paramètres obligatoires sans valeur : le widget attend un choix, sans s'exécuter. */
-  missingFor?: (widget: Widget) => string[]
+  /** GH125 — paramètres d'un widget : sélecteurs de son en-tête, valeurs propres, actions. */
+  paramsOf?: (widget: Widget) => WidgetParams
+  /** GH125 — listes d'options des sélecteurs (campagnes, composants, types). */
+  paramOptions?: ParamOptions
   /** GH93 — choix de l'utilisateur pas encore lus : les widgets attendent (une seule exécution). */
   paramsReady?: boolean
 }
@@ -61,9 +64,10 @@ function WidgetCard({
   printMode = false,
   readOnly = false,
   onRendered,
-  params,
-  missing = [],
+  widgetParams,
+  paramOptions = {},
   paramsReady = true,
+  onDragLock,
 }: {
   widget: Widget
   dashboardId: string
@@ -77,11 +81,15 @@ function WidgetCard({
   /** GH74 — dashboard en lecture seule (format plus récent) : ni modification ni suppression. */
   readOnly?: boolean
   onRendered?: () => void
-  params?: Record<string, GraphParamValue>
-  missing?: string[]
+  widgetParams?: WidgetParams
+  paramOptions?: ParamOptions
   paramsReady?: boolean
+  /** Pointeur sur les sélecteurs : glisser de la carte désactivé. */
+  onDragLock?: (locked: boolean) => void
 }) {
   const { t } = useTranslation()
+  const params = widgetParams?.params
+  const missing = widgetParams?.missing ?? []
   const query = savedQueries.find((q) => q.id === widget.queryId)
   // Choix pas encore lus : un paramètre obligatoire paraîtrait manquant (impression déclarée prête).
   const waiting = paramsReady && missing.length > 0
@@ -97,7 +105,8 @@ function WidgetCard({
 
   return (
     <div className="bg-surface border border-edge rounded-lg flex flex-col overflow-hidden h-64" data-testid="widget-card">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-edge-subtle shrink-0">
+      <div className="border-b border-edge-subtle shrink-0">
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
         <p className="text-xs font-medium text-ink truncate">{widget.title}</p>
         {!printMode && !readOnly && (
           <div className="flex items-center gap-2 shrink-0">
@@ -120,7 +129,21 @@ function WidgetCard({
           </div>
         )}
       </div>
-      <div className="flex-1 min-h-0 p-2">
+      {widgetParams && widgetParams.selectors.length > 0 && (
+        <WidgetParamSelectors
+          widgetId={widget.id}
+          selectors={widgetParams.selectors}
+          values={widgetParams.values}
+          invalid={widgetParams.invalid}
+          options={paramOptions}
+          onChange={widgetParams.setValue}
+          onReset={widgetParams.canReset ? widgetParams.reset : undefined}
+          printMode={printMode}
+          onPointerInside={onDragLock}
+        />
+      )}
+      </div>
+      <div className="flex-1 min-h-0 p-2" data-testid="widget-body">
         {!query ? (
           <div className="flex items-center justify-center h-full gap-2 text-xs text-ink-3 italic px-4 text-center">
             <AlertTriangle size={13} className="shrink-0" />
@@ -164,13 +187,16 @@ function WidgetCard({
   )
 }
 
-export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir, username, onReorder, onDeleteWidget, onEditWidget, printMode = false, onWidgetRendered, paramsFor, missingFor, paramsReady = true }: Props) {
+export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir, username, onReorder, onDeleteWidget, onEditWidget, printMode = false, onWidgetRendered, paramsOf, paramOptions, paramsReady = true }: Props) {
   // GH74 — réordonner : jamais en impression ni sur un dashboard en lecture seule.
   const editable = !printMode && !dashboard.state.readOnly
   const { t } = useTranslation()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  // GH125 — pointeur sur les sélecteurs d'un widget : sa carte n'est plus déplaçable (ouvrir une
+  // liste ou sélectionner du texte démarrerait sinon un glisser).
+  const [dragLockedId, setDragLockedId] = useState<string | null>(null)
   const dragImageRef = useRef<HTMLDivElement | null>(null)
 
   const ordered = useMemo(() => orderItems(dashboard.widgets, dashboard.widgetOrder), [dashboard.widgets, dashboard.widgetOrder])
@@ -241,7 +267,7 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
               <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-status-info-solid z-10 pointer-events-none" />
             )}
             <div
-              draggable={editable}
+              draggable={editable && dragLockedId !== widget.id}
               onDragStart={editable ? (e) => handleDragStart(e, widget.id) : undefined}
               onDragOver={editable ? (e) => handleDragOver(e, widget.id) : undefined}
               onDrop={editable ? handleDrop : undefined}
@@ -260,9 +286,10 @@ export function DashboardGrid({ dashboard, savedQueries, repoPath, workspaceDir,
                 onRequestDelete={() => setPendingDeleteId(widget.id)}
                 printMode={printMode}
                 readOnly={!!dashboard.state.readOnly}
-                params={paramsFor?.(widget)}
-                missing={missingFor?.(widget)}
+                widgetParams={paramsOf?.(widget)}
+                paramOptions={paramOptions}
                 paramsReady={paramsReady}
+                onDragLock={(locked) => setDragLockedId((prev) => (locked ? widget.id : prev === widget.id ? null : prev))}
               />
             </div>
             {dropTarget?.id === widget.id && dropTarget.position === 'after' && (

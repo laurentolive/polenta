@@ -7,7 +7,8 @@ import { recordResult } from './support/campaign'
 /**
  * GH93 — paramètres choisis à l'affichage : sélecteur « Campagne » du seed Campagnes (mémorisé par
  * utilisateur, valeur introuvable, réinitialisation), types texte / énumération / obligatoire sur une
- * requête écrite à la main (specs/GH93-tests.md 1–4, 6, 10, 12, 17–19, 23).
+ * requête écrite à la main (specs/GH93-tests.md 1–4, 6, 10, 12, 17–19, 23). GH125 : sélecteurs dans
+ * l'en-tête de chaque widget, valeur propre au widget (plus de barre du dashboard).
  */
 const s = setupSession()
 
@@ -40,26 +41,28 @@ async function openDashboard(title: string) {
 
 const widget = (title: string) => s.page.getByTestId('widget-card').filter({ has: s.page.getByText(title, { exact: true }) })
 const dialog = () => s.page.getByRole('dialog')
-const campaignSelect = () => s.page.getByTestId('param-bar').getByTestId('param-campaign')
+const campaignSelect = (title: string) => widget(title).getByTestId('param-campaign')
 
 test('1 / 2 / 3 / 12 — seed Campagnes : « Toutes » puis une campagne terminée, drill-down limité à elle', async () => {
   await openDashboard('Campagnes')
-  await expect(campaignSelect()).toHaveValue('')
+  await expect(campaignSelect('Avancement par campagne')).toHaveValue('')
   // « Toutes » : filtres du seed (campagnes en cours) — la campagne terminée n'apparaît pas.
   const progress = widget('Avancement par campagne')
   await expect(progress.locator('[aria-roledescription="bar"]').first()).toBeAttached({ timeout: 15_000 })
   await expect(progress.locator(`[aria-label*="${CLOSED_TITLE}"]`)).toHaveCount(0)
   await expect(progress.locator(`[aria-label*="${OPEN_TITLE}"]`).first()).toBeAttached()
 
-  await campaignSelect().selectOption(closed.id)
+  await campaignSelect('Avancement par campagne').selectOption(closed.id)
   await expect(progress.locator(`[aria-label*="${CLOSED_TITLE}"]`).first()).toBeAttached({ timeout: 15_000 })
   await expect(progress.locator(`[aria-label*="${OPEN_TITLE}"]`)).toHaveCount(0)
+  await campaignSelect('Entrées en échec').selectOption(closed.id)
   await expect(widget('Entrées en échec')).toContainText(closed.runs[0].testCaseId)
   await s.shot('gh93-campaign-chosen')
 
   // Avancement dans le temps : le point FAIL du dernier jour ne contient que l'entrée de cette campagne.
   const timeline = widget('Avancement dans le temps')
   await timeline.scrollIntoViewIfNeeded()
+  await campaignSelect('Avancement dans le temps').selectOption(closed.id)
   const point = timeline.locator('[aria-roledescription="bar"][aria-label*="stepLabel: Échoué"]').last()
   await point.click({ force: true })
   await expect(dialog()).toBeVisible()
@@ -73,12 +76,18 @@ test('4 / 6 — choix mémorisé (rechargement), propre à l\'utilisateur ; Réi
   const { localPath } = s.project
   await s.page.reload()
   await openDashboard('Campagnes')
-  await expect(campaignSelect()).toHaveValue(closed.id)
-  const pref = JSON.parse(fs.readFileSync(path.join(localPath, `.${username}.pref`), 'utf8')) as { suiviParamValues?: Record<string, Record<string, unknown>> }
-  expect(Object.values(pref.suiviParamValues ?? {})).toContainEqual({ 'campaign:campaign': closed.id })
+  await expect(campaignSelect('Avancement par campagne')).toHaveValue(closed.id)
+  const pref = JSON.parse(fs.readFileSync(path.join(localPath, `.${username}.pref`), 'utf8')) as { suiviWidgetParamValues?: Record<string, Record<string, Record<string, unknown>>> }
+  expect(Object.values(pref.suiviWidgetParamValues ?? {}).flatMap((w) => Object.values(w))).toContainEqual({ 'campaign:campaign': closed.id })
 
-  await s.page.getByTestId('param-reset').click()
-  await expect(campaignSelect()).toHaveValue('')
+  await widget('Avancement par campagne').getByTestId('widget-param-reset').click()
+  await expect(campaignSelect('Avancement par campagne')).toHaveValue('')
+  // Les autres widgets recentrés au test 1 reviennent aussi au défaut (pas d'état laissé aux tests suivants).
+  for (const title of ['Entrées en échec', 'Avancement dans le temps']) {
+    await widget(title).getByTestId('widget-param-reset').click()
+    await expect(campaignSelect(title)).toHaveValue('')
+  }
+  await expect(s.page.getByTestId('widget-param-reset')).toHaveCount(0)
   await expect(widget('Avancement par campagne').locator(`[aria-label*="${OPEN_TITLE}"]`).first()).toBeAttached({ timeout: 15_000 })
 })
 
@@ -86,19 +95,23 @@ test('18 — valeur introuvable : signalée, widgets sur « Toutes »', async ()
   const { localPath } = s.project
   const dashboards = await s.invoke<Array<{ id: string; title: string }>>('dashboards:list', localPath, username)
   const id = dashboards.find(d => d.title === 'Campagnes')!.id
-  await s.invoke('dashboards:param-values-set', localPath, username, id, { 'campaign:campaign': 'CAMP-9999' })
+  const full = await s.invoke<{ widgets: Array<{ id: string; title: string }> }>('dashboards:get', localPath, username, id)
+  const progressId = full.widgets.find(w => w.title === 'Avancement par campagne')!.id
+  await s.invoke('dashboards:param-values-set', localPath, username, id, progressId, { 'campaign:campaign': 'CAMP-9999' })
   await s.page.reload()
   await openDashboard('Campagnes')
-  await expect(s.page.getByTestId('param-not-found')).toContainText('CAMP-9999')
+  await expect(widget('Avancement par campagne').getByTestId('param-not-found')).toContainText('CAMP-9999')
+  await expect(s.page.getByTestId('param-not-found')).toHaveCount(1)
   await expect(widget('Avancement par campagne').locator(`[aria-label*="${OPEN_TITLE}"]`).first()).toBeAttached({ timeout: 15_000 })
-  await s.page.getByTestId('param-reset').click()
+  await widget('Avancement par campagne').getByTestId('widget-param-reset').click()
   await expect(s.page.getByTestId('param-not-found')).toHaveCount(0)
 })
 
-test('17 — dashboard sans paramètre : pas de barre', async () => {
+test('17 — dashboard sans paramètre : ni barre ni sélecteur', async () => {
   await openDashboard('Pilotage LL800')
   await expect(s.page.getByTestId('widget-card').first()).toBeVisible()
   await expect(s.page.getByTestId('param-bar')).toHaveCount(0)
+  await expect(s.page.getByTestId('widget-params')).toHaveCount(0)
 })
 
 test('10 / 19 / 23 — requête écrite à la main : texte, énumération, obligatoire', async () => {
@@ -117,23 +130,23 @@ test('10 / 19 / 23 — requête écrite à la main : texte, énumération, oblig
 
   await s.page.reload()
   await openDashboard('GH93 paramètres')
-  const bar = s.page.getByTestId('param-bar')
+  const bar = widget('Valeurs').getByTestId('widget-params')
   // Obligatoire sans valeur : le widget attend un choix ; pas d'option « Toutes ».
   await expect(widget('Valeurs').getByTestId('widget-param-missing')).toContainText('Choisir Campagne')
   await expect(bar.getByTestId('param-campaign').locator('option', { hasText: 'Toutes' })).toHaveCount(0)
   await bar.getByTestId('param-campaign').selectOption(open.id)
-  await expect(widget('Valeurs')).toContainText(open.id, { timeout: 15_000 })
-  await expect(widget('Valeurs')).toContainText('aucun')
+  await expect(widget('Valeurs').getByTestId('widget-body')).toContainText(open.id, { timeout: 15_000 })
+  await expect(widget('Valeurs').getByTestId('widget-body')).toContainText('aucun')
 
   // Texte appliqué à la validation seulement, espaces retirés.
   const lot = bar.getByTestId('param-lot')
   await lot.fill('  L42 ')
-  await expect(widget('Valeurs')).toContainText('aucun')
+  await expect(widget('Valeurs').getByTestId('widget-body')).toContainText('aucun')
   await lot.press('Enter')
-  await expect(widget('Valeurs')).toContainText('L42', { timeout: 15_000 })
+  await expect(widget('Valeurs').getByTestId('widget-body')).toContainText('L42', { timeout: 15_000 })
 
   await bar.getByTestId('param-statut').selectOption('A')
-  await expect(widget('Valeurs')).not.toContainText('toutes', { timeout: 15_000 })
+  await expect(widget('Valeurs').getByTestId('widget-body')).not.toContainText('toutes', { timeout: 15_000 })
   await expect(bar.getByTestId('param-statut').locator('option', { hasText: 'Alpha' })).toHaveCount(1)
   await s.shot('gh93-custom-params')
 })

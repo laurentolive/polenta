@@ -21,7 +21,9 @@ not tested, how the campaigns are progressing. It relies on **queries** over the
   (*Template* tab: chart type, columns, measure); the *Code* tab shows the generated code, which an
   advanced user can edit (the widget is then "customized", *Back to template* undoes it).
 - **Private** / **Shared**: a shared dashboard is saved in the repository and visible to the whole
-  team; a private dashboard stays with its author.
+  team; a private dashboard stays with its author. Sharing a private dashboard whose widgets use
+  private queries (such as *Campagnes*) opens a confirmation that lists them: they are shared with it,
+  in a single action.
 - **Export** produces a Word or PDF version of the dashboard.
 
 The second dashboard, *Composants & traçabilité*, shows links by type (pie), the motor's
@@ -31,20 +33,25 @@ of a validation. On first access, Polenta also creates the shared *Status* dashb
 private *Campagnes* dashboard: progress of each campaign (from test preparation to result),
 % executed, % PASS, executions per day, failed entries, progress over time.
 
-**Parameters chosen when displayed.** The *Campagnes* dashboard shows a **Campaign** selector at the
-top: on *All*, it shows the campaigns in progress; a chosen campaign (even a completed one)
-refocuses all its widgets on that campaign alone — for example the progress over time of one
-specific campaign. The choice is remembered for you only (nothing to publish); *Reset* goes back
-to *All*. Any query can declare such parameters (campaign, component, object type, list of values,
-text, period): through the "… chosen when displayed" checkboxes of its template, or in the
+**Parameters chosen when displayed.** In the *Campagnes* dashboard, each widget shows a **Campaign**
+selector in its header: on *All*, the widget shows the campaigns in progress; a chosen campaign
+(even a completed one) refocuses that widget alone on it — for example the progress over time of
+one specific campaign, next to the progress of all campaigns. The choice belongs to each widget and
+is remembered for you only (nothing to publish); the header's *Reset* icon, shown as soon as a value
+differs from the default, goes back to *All*. To refocus the whole dashboard, change the campaign of
+each widget. Any query can declare such parameters (campaign, component, object type, list of
+values, text, period): through the "… chosen when displayed" checkboxes of its template, or in the
 *Parameters chosen when displayed* section of the Queries view in Script mode, where the script
-reads the values in `polenta.params`. Widgets that share a parameter share the same selector.
+reads the values in `polenta.params`. Two widgets of the same query each have their own selector and
+value.
 In the shared *Versions & validation* dashboard, the *Décisions de la validation* widget thus has a
 **Validation** selector: *Validation 1.0*, *Validation 2.0* or *Validation 1.2.4* (motor).
 
 ## Queries
 
-The bottom of the side panel lists the shared queries. Open *Exigences — statut de couverture*:
+The bottom of the side panel lists the queries (scope icon: private or shared). The **Private** /
+**Shared** selector in a query's header, or the scope button shown when hovering its row in the
+panel, changes its scope after confirmation. Open *Exigences — statut de couverture*:
 
 ![Query on requirements](../img/query.en.png)
 
@@ -120,9 +127,10 @@ Example: `\{[a-z_]+\}` as a regular expression finds every parameter reference.
 
 Result: the new widget appears next to the six others and follows the change.
 
-**Change a dashboard parameter.**
-1. *Versions & validation* dashboard, **Validation** selector: *Validation 1.0*.
-2. Choose *Validation 1.2.4*, then *Reset*.
+**Change a widget parameter.**
+1. *Versions & validation* dashboard, *Décisions de la validation* widget, **Validation** selector
+   in its header: *Validation 1.0*.
+2. Choose *Validation 1.2.4*, then the header's *Reset* icon.
 
 Result: the pie is recomputed. The 1.0 shows mostly *conforme* decisions, two *hors scope*
 (PRD-0010, SYS-0013) and one *dérogation* (SYS-0004); the 1.2.4 covers the motor's requirements.

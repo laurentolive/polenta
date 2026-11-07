@@ -24,3 +24,13 @@ export async function recordResult(s: Session, campaignId: string, entryId: stri
   await s.invoke('campaigns:update-run', localPath, campaignId, entryId, result, run.id)
   return run.id
 }
+
+/**
+ * GH312 — page d'exécution ouverte : choisit la version testée exigée depuis GH202 quand le repo
+ * déclare une version en cours (la démo depuis GH278), sans quoi « Soumettre le résultat » reste
+ * sur la page avec « La version testée est obligatoire. ».
+ */
+export async function chooseTestedVersion(s: Session): Promise<void> {
+  const { testedVersion } = await testedVersionArg(s)
+  if (testedVersion) await s.page.getByTestId('tested-version-select').selectOption(testedVersion.version)
+}

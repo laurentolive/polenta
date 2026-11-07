@@ -1323,6 +1323,42 @@
       "splitLabelDefault": "(the value)"
     }
   },
+  "suiviScope": {
+    "widgetRef": "{{widget}} — dashboard {{dashboard}} ({{scope}})",
+    "alsoUsedBy": "Also used by: {{list}} — these widgets will follow the shared query.",
+    "titleTaken_one": "Another query already has this title: rename it if needed.",
+    "titleTaken_other": "{{count}} other queries already have this title: rename it if needed.",
+    "toShared": "Make shared",
+    "toPrivate": "Make private",
+    "blocker": {
+      "readOnly": "Read-only query ({{reason}}): rewrite it or remove it from the dashboard.",
+      "params": "Invalid parameters ({{message}}): fix them in the Queries view.",
+      "dependents_one": "Used by {{count}} widget:",
+      "dependents_other": "Used by {{count}} widgets:",
+      "missing": "Widget “{{title}}”: query not found, reconfigure or delete it."
+    },
+    "query": {
+      "toSharedTitle": "Make the query shared",
+      "toPrivateTitle": "Make the query private",
+      "sharedEffect": "“{{title}}” becomes visible to the whole team: it is written to the repository (change to publish) and leaves your private items.",
+      "privateEffect": "“{{title}}” is removed from the repository (change to publish; other members no longer see it once published) and joins your private items.",
+      "columnRemoved": "The “{{label}}” column will be removed: it is reserved for shared queries and disappears from table views.",
+      "confirmShared": "Share",
+      "confirmPrivate": "Make private",
+      "savedOnly": "Only the saved version changes scope: save your pending changes first."
+    },
+    "dashboard": {
+      "title": "Share the dashboard and its private queries",
+      "intro_one": "This dashboard uses {{count}} private query: it will be shared with it.",
+      "intro_other": "This dashboard uses {{count}} private queries: they will be shared with it.",
+      "widgets": "Widgets: {{list}}",
+      "effect": "The queries and the dashboard become visible to the whole team and are written to the repository (changes to publish).",
+      "stayShared": "If the dashboard is made private again, its queries stay shared.",
+      "confirm_one": "Share (1 query + the dashboard)",
+      "confirm_other": "Share ({{count}} queries + the dashboard)",
+      "confirmNone": "Share the dashboard"
+    }
+  },
   "dashboardPage": {
     "cannotChangeScope": "Unable to change scope.",
     "selectOrCreateHint": "Select a dashboard in the sidebar, or create one with the \"+\" button.",

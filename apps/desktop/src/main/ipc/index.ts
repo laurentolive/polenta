@@ -44,6 +44,7 @@ import type { GraphService } from '../services/graph.service'
 import type { DashboardLibraryService } from '../services/dashboard-library.service'
 import type { ScriptEngineService } from '../services/script-engine.service'
 import type { SavedQueriesService, CreateSavedQueryDto, UpdateSavedQueryDto, AddHistoryEntryDto } from '../services/saved-queries.service'
+import type { SuiviScopeService } from '../services/suivi-scope.service'
 import type {
   DashboardsService,
   CreateDashboardDto,
@@ -141,6 +142,7 @@ export interface Container {
   suivi: SuiviService
   suiviUpdates: SuiviUpdatesService
   savedQueries: SavedQueriesService
+  suiviScope: SuiviScopeService
   savedViews: SavedViewsService
   dashboards: DashboardsService
   dashboardSeed: DashboardSeedService
@@ -932,6 +934,9 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.savedQueries.setQueriesOrder(repoPath, username, order))
   r.handle('queries:set-scope', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
     c.savedQueries.setScope(repoPath, username, id, scope as QueryScope))
+  // GH67 — aperçu d'un changement de portée (rien n'est écrit).
+  r.handle('queries:scope-preview', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
+    c.suiviScope.previewQueryScope(repoPath, username, id, scope as QueryScope))
 
   // ── Dashboards & widgets (T77 sprint 2, seed sprint 3) ───────────────────────
   r.handle('dashboards:list', async (_e, repoPath: string, username: string, locale?: string) => {
@@ -953,6 +958,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.dashboards.delete(repoPath, username, id))
   r.handle('dashboards:set-scope', (_e, repoPath: string, username: string, id: string, scope: unknown) =>
     c.dashboards.setScope(repoPath, username, id, scope as QueryScope))
+  // GH67 — partage d'un dashboard privé avec ses requêtes privées : aperçu, puis écriture.
+  r.handle('dashboards:share-preview', (_e, repoPath: string, username: string, id: string) =>
+    c.suiviScope.previewDashboardShare(repoPath, username, id))
+  r.handle('dashboards:share-with-queries', (_e, repoPath: string, username: string, id: string) =>
+    c.suiviScope.shareDashboardWithQueries(repoPath, username, id))
   r.handle('dashboards:add-widget', (_e, repoPath: string, username: string, dashboardId: string, dto: unknown) =>
     c.dashboards.addWidget(repoPath, username, dashboardId, dto as AddWidgetDto))
   r.handle(
@@ -974,11 +984,11 @@ export function registerHandlers(registry: HandlerRegistry, c: Container, platfo
     c.dashboards.getDashboardsOrder(repoPath, username))
   r.handle('dashboards:order-set', (_e, repoPath: string, username: string, order: string[]) =>
     c.dashboards.setDashboardsOrder(repoPath, username, order))
-  // GH93 — valeurs choisies dans la barre de paramètres (`.pref` de l'utilisateur, jamais commité).
+  // GH125 — valeurs choisies dans les sélecteurs des widgets (`.pref` de l'utilisateur, jamais commité).
   r.handle('dashboards:param-values-get', (_e, repoPath: string, username: string, dashboardId: string) =>
     c.dashboards.getParamValues(repoPath, username, dashboardId))
-  r.handle('dashboards:param-values-set', (_e, repoPath: string, username: string, dashboardId: string, values: Record<string, unknown> | null) =>
-    c.dashboards.setParamValues(repoPath, username, dashboardId, values))
+  r.handle('dashboards:param-values-set', (_e, repoPath: string, username: string, dashboardId: string, widgetId: string, values: Record<string, unknown> | null) =>
+    c.dashboards.setParamValues(repoPath, username, dashboardId, widgetId, values))
 
   // ── Git (T43) ────────────────────────────────────────────────────────────────
   r.handle('git:head-sha', (_e, repoPath: string) => c.git.headSha(repoPath))

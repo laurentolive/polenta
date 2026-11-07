@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { setupSession } from './support/session'
+import { chooseTestedVersion } from './support/campaign'
 
 /**
  * GH81 — plus d'écriture du fichier de campagne sur une consultation : l'ouverture de la page
@@ -73,6 +74,7 @@ test('E1–E2 — ouverture sans écriture ; la saisie fige la version affichée
 
   // E2 — le test change pendant la saisie : c'est la version affichée (v2) qui est figée.
   await s.invoke('tests:update', localPath, executed.id, { steps: steps('exec', 3) }, workspaceDir)
+  await chooseTestedVersion(s)
   await p.getByRole('button', { name: 'Soumettre le résultat' }).click()
   await p.getByRole('button', { name: 'Exécuter quand même' }).click()
   await p.waitForURL(new RegExp(`/campaign/${campaign.id}(\\?|$)`))

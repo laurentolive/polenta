@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs'
 import { test, expect, type Page } from '@playwright/test'
 import { EXECUTION_SHEET_COLUMNS, EXECUTION_SHEET_HEADER_ROW, EXECUTION_SHEET_META_NAME } from '@polenta/types'
 import { setupSession } from './support/session'
+import { chooseTestedVersion } from './support/campaign'
 import { E2E } from './support/env'
 
 /**
@@ -84,7 +85,12 @@ async function fillAsTester(file: string, testIds: string[], v1 = false) {
   const verdictCol = EXECUTION_SHEET_COLUMNS.indexOf('verdict') + 1
   for (let r = EXECUTION_SHEET_HEADER_ROW + 1; r <= sheet.rowCount; r++) {
     const key = String(sheet.getRow(r).getCell(keyCol).value ?? '')
-    if (key.includes('#') && testIds.some(id => key.startsWith(`${id}-`))) sheet.getRow(r).getCell(verdictCol).value = 'Passé'
+    const target = testIds.some(id => key.startsWith(`${id}-`))
+    if (key.includes('#') && target) sheet.getRow(r).getCell(verdictCol).value = 'Passé'
+    // GH312 — un classeur v1 précède le pré-remplissage des résultats déjà saisis (GH196) et les
+    // colonnes de version testée (GH202, présentes depuis que la démo a des versions, GH278) :
+    // lues à l'ordre fixe v1, ces lignes pré-remplies passeraient pour des saisies nouvelles.
+    else if (v1 && !target) sheet.getRow(r).getCell(verdictCol).value = null
   }
   if (v1) {
     wb.getWorksheet(EXECUTION_SHEET_META_NAME)!.eachRow(row => {
@@ -141,6 +147,7 @@ test('M1 + E2 — page d\'exécution : rien d\'écrit à la consultation ; la sa
   await navigate(p, s.projectUrl(`/campaign/${campaign.id}/execute/${entry.entryId}`, { repoPath: s.project.localPath }))
   await expect(p.getByText('Action GH81V m1 v2')).toBeVisible()
   await update(draft, 'm1', 3)
+  await chooseTestedVersion(s)
   await p.getByRole('button', { name: 'Soumettre le résultat' }).click()
   await p.getByRole('button', { name: 'Exécuter quand même' }).click()
   await p.waitForURL(new RegExp(`/campaign/${campaign.id}(\\?|$)`))
